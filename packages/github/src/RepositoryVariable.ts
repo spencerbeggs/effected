@@ -4,7 +4,7 @@ import type { GitHubError } from "./GitHubError.js";
 import { Repo } from "./Repo.js";
 
 /**
- * A variable, as listing returns it.
+ * A variable's name and value, as listing returns it.
  *
  * @remarks
  * Unlike a secret this carries its **value**: variables are readable, so a
@@ -15,12 +15,15 @@ import { Repo } from "./Repo.js";
  * @public
  */
 export interface VariableInfo {
+	/** The variable's name. */
 	readonly name: string;
+	/** The variable's current value. */
 	readonly value: string;
 }
 
 /**
- * Repository and environment variables.
+ * Create or update, list and delete Actions variables on a repository and on
+ * its environments.
  *
  * @public
  */
@@ -41,9 +44,7 @@ export interface RepositoryVariableShape {
 	 * treating any error as absence would turn a permissions problem into a
 	 * spurious create.
 	 *
-	 * **The 404-for-absent behaviour is documented, not probed.** Neither this
-	 * suite nor the first consumer's has issued this read against real GitHub —
-	 * both run against doubles.
+	 * The 404-for-absent behaviour is GitHub's documented contract.
 	 *
 	 * Only `notFound` selects the create branch: a successful read selects the
 	 * update branch, and any other failure propagates rather than being guessed
@@ -72,7 +73,8 @@ export interface RepositoryVariableShape {
 }
 
 /**
- * Repository and environment variables.
+ * Create or update, list and delete Actions variables on a repository and on
+ * its environments.
  *
  * @remarks
  * No encryption and no public key, unlike secrets — but also **no upsert**,
@@ -80,12 +82,29 @@ export interface RepositoryVariableShape {
  * the create and update routes are different endpoints with different verbs and
  * neither tolerates the other's case.
  *
+ * Provide it with {@link RepositoryVariable.layer}, which needs a
+ * `GitHubClient`; each method also needs a `Repo` in `R`.
+ *
+ * @example
+ * ```ts
+ * import { RepositoryVariable } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const variables = yield* RepositoryVariable;
+ *   yield* variables.set("DEPLOY_REGION", "eu-west-1"); // creates or updates
+ *   return yield* variables.list();
+ * });
+ * ```
+ *
  * @public
  */
 export class RepositoryVariable extends Context.Service<RepositoryVariable, RepositoryVariableShape>()(
 	"@effected/github/RepositoryVariable",
 ) {
 	/**
+	 * The live service, built over a `GitHubClient`.
+	 *
 	 * @remarks
 	 * `(client) => make(client)` rather than `make`: a static initializer runs
 	 * while the module body is still evaluating, so naming a `const` declared

@@ -116,9 +116,8 @@ export class InstallationToken extends Schema.Class<InstallationToken>("Installa
 	 * Whether this token is spent, `skew` before its stated expiry.
 	 *
 	 * @remarks
-	 * Modelled **and enforced**. The package this replaces persisted `expiresAt`
-	 * and read it nowhere, so a long `main` phase that outlived the hour simply
-	 * started answering 401 with no explanation.
+	 * `skew` defaults to one minute, so a token is treated as spent slightly early
+	 * rather than answering 401 mid-request.
 	 */
 	isExpired(nowMillis: number, skew: Duration.Duration = DEFAULT_SKEW): boolean {
 		return DateTime.toEpochMillis(this.expiresAt) - Duration.toMillis(skew) <= nowMillis;
@@ -142,10 +141,10 @@ const DEFAULT_SKEW = Duration.seconds(60);
  * Who a bot commits as.
  *
  * @remarks
- * A **pure class**, not a service member. The package this replaces put
- * `botIdentity(source?)` on the `GitHubApp` service shape as a plain synchronous
- * method, which makes it required in every `Layer.mock` and silently degrades
- * every partial double to a full implementation.
+ * A **pure class**, not a `GitHubApp` service member: a synchronous method on
+ * the service shape would be required in every `Layer.mock` and would silently
+ * degrade every partial double to a full implementation. Get one from
+ * `InstallationToken.botIdentity` or `AppIdentity.botIdentity`.
  *
  * @public
  */
@@ -258,9 +257,28 @@ export interface GitHubAppOptions {
  * `@effected/commands`' service, for the same reason.
  *
  * The JWT signer is `universal-github-app-jwt` — zero dependencies, and
- * `@octokit/auth-app`'s own JWT dependency. Taking it directly rather than
- * taking `auth-app` leaves behind roughly half a megabyte of OAuth app, user and
- * device-flow machinery that this package never calls.
+ * `@octokit/auth-app`'s own JWT dependency.
+ *
+ * @example
+ * ```ts
+ * import { GitHubApp, GitHubClient } from "@effected/github";
+ * import { Effect, Redacted } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const client = yield* GitHubClient;
+ *   const accessible = yield* client.request("GET /installation/repositories", { per_page: 1 });
+ *   return accessible.total_count;
+ * });
+ *
+ * // Mints an installation token on build, re-mints before expiry, revokes on release.
+ * const layer = GitHubApp.clientLayer({
+ *   appId: "12345",
+ *   privateKey: Redacted.make("-----BEGIN PRIVATE KEY-----\n..."),
+ *   owner: "my-org",
+ * });
+ *
+ * Effect.runPromise(Effect.provide(program, layer));
+ * ```
  *
  * @public
  */
@@ -286,11 +304,12 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 	 * The token's lifetime is the layer's scope: it is minted on build and
 	 * **revoked on release**, best-effort, so a workflow does not leave live
 	 * credentials behind. It is also **re-minted automatically** a minute before
-	 * it expires, which the package this replaces did not do — it persisted
-	 * `expiresAt` and read it nowhere, so a `main` phase outliving the hour
-	 * started answering 401 with nothing explaining why.
+	 * it expires, so a long-running program does not start answering 401 when
+	 * the hour ends.
 	 *
-	 * A failure to obtain credentials surfaces to the caller as a
+	 * Building the layer mints the first token, so a misconfigured app fails
+	 * construction with `GitHubAppError`. After that, a failure to obtain
+	 * credentials surfaces to the caller as a
 	 * `GitHubError { kind: "unauthorized" }` carrying the `GitHubAppError` as its
 	 * cause: from a request's point of view, "could not authenticate" is an
 	 * authorization failure, and widening every method's error channel to say so
@@ -334,22 +353,19 @@ export interface GitHubAppShape {
 	 * Mint an installation token.
 	 *
 	 * @remarks
-	 * Used by `@effected/github-actions`' token bridge in a workflow's `pre`
-	 * phase. Touches: nothing else on this shape.
+	 * `installationId` is used when given; otherwise the installation is
+	 * discovered from `owner`, or from the app's only installation.
 	 */
 	readonly token: (request: TokenRequest) => Effect.Effect<InstallationToken, GitHubAppError>;
 	/**
-	 * Mint a token that is revoked when the scope closes.
+	 * Mint a token that is revoked, best-effort, when the scope closes.
 	 *
 	 * @remarks
-	 * Touches: `token`, `revoke`.
+	 * Mints through `token` and releases through `revoke`.
 	 */
 	readonly scopedToken: (request: TokenRequest) => Effect.Effect<InstallationToken, GitHubAppError, Scope.Scope>;
 	/**
 	 * Revoke a token now.
-	 *
-	 * @remarks
-	 * Used by the token bridge's `post` phase. Touches: nothing else.
 	 */
 	readonly revoke: (token: Redacted.Redacted<string>) => Effect.Effect<void, GitHubAppError>;
 	/**
@@ -358,17 +374,12 @@ export interface GitHubAppShape {
 	 * @remarks
 	 * Supply `installationToken` when you have one: `GET /users/{slug}[bot]`
 	 * rejects an app JWT, so without it the lookup runs unauthenticated at
-	 * GitHub's 60-requests-per-hour-per-IP limit. Touches: nothing else.
+	 * GitHub's 60-requests-per-hour-per-IP limit.
 	 */
 	readonly identity: (
 		request: AppCredentials & { readonly installationToken?: Redacted.Redacted<string> | undefined },
 	) => Effect.Effect<AppIdentity, GitHubAppError>;
-	/**
-	 * Every installation of the app.
-	 *
-	 * @remarks
-	 * Touches: nothing else.
-	 */
+	/** Every installation of the app. */
 	readonly installations: (credentials: AppCredentials) => Effect.Effect<ReadonlyArray<Installation>, GitHubAppError>;
 }
 

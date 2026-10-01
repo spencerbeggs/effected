@@ -1,15 +1,10 @@
-/**
- * The Twirp JSON client the Actions results backend speaks.
- *
- * @remarks
- * The cache, artifact and blob-store protocols are the same transport with a
- * different service segment, so the RPC, the conflict sentinel and the retry
- * policy live here once. Generic over nothing at all: each caller maps a
- * {@link TwirpFailure} into its own typed error, because the failure a caller
- * reports is about *its* operation, not about HTTP.
- *
- * @internal
- */
+// The Twirp JSON client the Actions results backend speaks.
+//
+// The cache, artifact and blob-store protocols are the same transport with a
+// different service segment, so the RPC, the conflict sentinel and the retry
+// policy live here once. Generic over nothing at all: each caller maps a
+// `TwirpFailure` into its own typed error, because the failure a caller
+// reports is about *its* operation, not about HTTP.
 
 import type { Redacted } from "effect";
 import { Effect, Schedule } from "effect";

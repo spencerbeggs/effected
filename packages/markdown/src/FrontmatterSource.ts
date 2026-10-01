@@ -1,18 +1,15 @@
-/**
- * String-level frontmatter split and join — the raw-source surface, usable
- * without parsing the body at all.
- *
- * @remarks
- * The `MarkdownFrontmatter` seam requires a parsed `MarkdownDocument`; this
- * module serves the consumer whose body the CommonMark engine cannot or
- * should not parse (an MDX page, a template) and whose contract is
- * byte-exact boundaries (a snapshot hash over the body). It runs the SAME
- * closed fence grammar as the parser's offset-0 pre-scan — `---` yaml,
- * `+++` toml, `---json` json, fence lines exactly the fence, an unclosed
- * fence is not frontmatter — over raw bytes, and never parses the
- * frontmatter value or the body: string level only, decoding is the codec
- * modules' business.
- */
+// String-level frontmatter split and join — the raw-source surface, usable
+// without parsing the body at all.
+//
+// The `MarkdownFrontmatter` seam requires a parsed `MarkdownDocument`; this
+// module serves the consumer whose body the CommonMark engine cannot or
+// should not parse (an MDX page, a template) and whose contract is
+// byte-exact boundaries (a snapshot hash over the body). It runs the SAME
+// closed fence grammar as the parser's offset-0 pre-scan — `---` yaml,
+// `+++` toml, `---json` json, fence lines exactly the fence, an unclosed
+// fence is not frontmatter — over raw bytes, and never parses the
+// frontmatter value or the body: string level only, decoding is the codec
+// modules' business.
 
 import { Effect, Schema } from "effect";
 import { scanRawFrontmatter } from "./internal/blocks/frontmatter.js";

@@ -7,8 +7,8 @@
 
 The GitHub Actions workflow-command grammar as pure functions: render a command with the runner's escaping, and neutralize text so the runner cannot read it as one. Strings in, strings out. No service, no layer, no platform, no `effect`, and no dependency at all.
 
-> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development. Packages graduate to `1.0.0` once Effect `4.0.0` ships.
+> **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, still in `0.x`
+> development. It has no dependencies, not even `effect`.
 >
 > **Stability: unstable.** This package's API surface is not yet considered
 > complete and may change across `0.x` releases. Pin an exact version. Full

@@ -5,8 +5,7 @@
 // filesystem enumeration, only the live root walk (the one place it touches the
 // working tree, because you need a repository to run git against). Package
 // discovery reuses the compiled `@effected/glob` set, matched against
-// `Git.lsTree` output rather than a directory descent — the promise glob.md
-// recorded when at-ref discovery was deferred. Catalogs assemble from the inline
+// `Git.lsTree` output rather than a directory descent. Catalogs assemble from the inline
 // config source at the ref plus the detected manager's own lockfile at the ref,
 // and BOTH pnpm and bun carry catalogs, so the lockfile read is PM-aware.
 //
@@ -121,8 +120,7 @@ export interface WorkspaceSnapshotsOptions {
 	 * hook-injected catalogs at full precedence, so the seed answers nothing the
 	 * snapshot could not answer itself.
 	 *
-	 * @defaultValue absent — no seed, and resolution behaves exactly as before
-	 *   this option existed.
+	 * @defaultValue absent — no seed.
 	 */
 	readonly seedCatalogs?: CatalogSet;
 }
@@ -375,7 +373,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 							),
 						);
 						const pnpmPatterns = pnpmPatternsOf(document);
-						// c594ff1: a `pnpm-workspace.yaml` with no `packages:` falls back to
+						// A `pnpm-workspace.yaml` with no `packages:` falls back to
 						// the root manifest's `workspaces` field, matching live `readPatterns`.
 						patterns = pnpmPatterns.length > 0 ? pnpmPatterns : manifestPatternsOf(rootManifest);
 						inline = yield* CatalogSet.fromWorkspaceYaml(pnpmWorkspaceText.value);
@@ -398,7 +396,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						hookReplays = replayed.injection.replays;
 						recorded = yield* lockfileRecord(lockfile, "pnpm");
 					} else {
-						// c594ff1: with no `pnpm-workspace.yaml`, the workspace globs come
+						// With no `pnpm-workspace.yaml`, the workspace globs come
 						// from the root `package.json` `workspaces` field. WITHOUT this, a
 						// bun or npm workspace collapses to the root package alone at a ref,
 						// and a consumer diffing two snapshots sees every declared dependency
@@ -407,9 +405,8 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						// Inline catalogs come from the root manifest UNCONDITIONALLY: a bun
 						// workspace declaring `workspaces.catalog`/`.catalogs` with no committed
 						// `bun.lock` at the ref still has catalogs, and gating them on the
-						// lockfile reintroduced c594ff1 one layer up — `at(ref)` and
-						// `worktree()` (which reads inline via `fromManifestWorkspaces`
-						// regardless of any lockfile) would disagree. `bunInlineCatalogs` is
+						// lockfile would make `at(ref)` and `worktree()` (which reads inline
+						// via `fromManifestWorkspaces` regardless of any lockfile) disagree. `bunInlineCatalogs` is
 						// tolerant: an npm/yarn array-form `workspaces` yields empty. The
 						// lockfile half degrades the absent `bun.lock` to empty on `Option.none`.
 						inline = bunInlineCatalogs(rootManifest);
@@ -482,7 +479,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 				// NUL-separated — a NUL can occur in neither a path nor a ref, so keys
 				// cannot collide. Kept as the `\0` escape deliberately: a literal NUL
 				// byte makes `file` classify this source as binary and grep/ripgrep
-				// silently skip it (#187).
+				// silently skip it.
 				const key = `${root}\0${ref}`;
 				let memo = atCaches.get(key);
 				if (memo === undefined) {
@@ -544,11 +541,14 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 		});
 
 	/**
-	 * The live layer.
+	 * The live layer, reading workspace state at a git ref or from the live
+	 * worktree.
 	 *
 	 * @remarks
 	 * Parameterized, so it mints a fresh reference per call — bind it to a
 	 * `const` and reuse it, or layer memoization does not apply.
+	 *
+	 * @param options - Root resolution and the optional `seedCatalogs`.
 	 */
 	static readonly layer = (
 		options?: WorkspaceSnapshotsOptions,

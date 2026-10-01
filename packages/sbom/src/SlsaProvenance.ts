@@ -1,25 +1,19 @@
 // SLSA Provenance v1 for a GitHub Actions `workflow/v1` build.
 //
-// Three corrections travel with this port, each measured in the source it
-// replaces:
+// Design notes:
 //
-// 1. TYPED, not `Record<string, unknown>`. The predecessor returned a bare
-//    record and its consumer returned `Record<string, unknown> | null`; a
-//    verifier reading a malformed predicate fails far from the mistake.
-// 2. TOTAL, no error channel. The predecessor wrapped the body in `Effect.try`
-//    and declared `SlsaError { reason: "env" }`, but string interpolation over
-//    already-present claims cannot throw. That was the SECOND can't-fire error
-//    channel in one source package, which is what makes it a pattern rather
-//    than an oversight.
-// 3. NO ambient `process.env`. `serverUrl` is a field. Upstream
-//    `@actions/attest` reads `process.env.GITHUB_SERVER_URL` with no default,
-//    so an unset variable puts the literal string `undefined` into every URL it
-//    builds; a required field cannot do that.
+// 1. TYPED, not `Record<string, unknown>`: a verifier reading a malformed
+//    predicate fails far from the mistake.
+// 2. TOTAL, no error channel: string interpolation over already-present claims
+//    cannot throw.
+// 3. NO ambient `process.env`: `serverUrl` is a field. Reading
+//    `GITHUB_SERVER_URL` with no default would put the literal string
+//    `undefined` into every URL built from an unset variable; a required field
+//    cannot do that.
 //
-// The emitted shape stays byte-compatible with `@actions/attest`'s
+// The emitted shape is byte-compatible with `@actions/attest`'s
 // `attestProvenance`, because a verifier must see the same structure whichever
-// path produced the attestation. That is pinned by
-// `__test__/fixtures/actions-attest-provenance.json`, not by this comment.
+// path produced the attestation.
 
 import { Schema } from "effect";
 import type { PredicateType } from "./InTotoStatement.js";
@@ -114,8 +108,7 @@ export class SlsaRunDetails extends Schema.Class<SlsaRunDetails>("SlsaRunDetails
  *
  * @remarks
  * A plain input record, **not** a service. There is nothing to swap and no IO
- * to invert — it is the argument to a data constructor, and inventing a seam
- * for one would repeat a mistake this program already reversed once.
+ * to invert — it is the argument to a data constructor.
  *
  * Fields are camelCase here and re-spelled to the platform's claim names where
  * the predicate demands it, so a caller reads its own vocabulary and the
@@ -167,7 +160,20 @@ const workflowPathOf = (input: GitHubWorkflowProvenance): string =>
  * ```ts
  * import { SlsaProvenance } from "@effected/sbom";
  *
- * const provenance = SlsaProvenance.forGitHubWorkflow(claims);
+ * const provenance = SlsaProvenance.forGitHubWorkflow({
+ *   serverUrl: "https://github.com",
+ *   repository: "acme/app",
+ *   ref: "refs/heads/main",
+ *   sha: "0123456789abcdef0123456789abcdef01234567",
+ *   eventName: "push",
+ *   workflowRef: "acme/app/.github/workflows/release.yml@refs/heads/main",
+ *   jobWorkflowRef: "acme/app/.github/workflows/release.yml@refs/heads/main",
+ *   repositoryId: "1",
+ *   repositoryOwnerId: "2",
+ *   runnerEnvironment: "github-hosted",
+ *   runId: "3",
+ *   runAttempt: "1",
+ * });
  * ```
  *
  * @public

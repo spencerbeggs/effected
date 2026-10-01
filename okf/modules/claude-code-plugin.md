@@ -17,8 +17,8 @@ sources:
     resource: ../../plugins/CLAUDE.md
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-24T05:05:33Z
-  body_sha256: 93bf4a24babe0d2287059d2b2fecb37cbcd7ec259ef00ee5c1c033b82cc2a581
+  at: 2026-10-01T17:24:58Z
+  body_sha256: deb6b441b402bc4cccf9e543c78c8e7d64b920b1d56d0790d9a1970c73c7956c
 ---
 
 # claude-code-plugin
@@ -35,9 +35,9 @@ During dogfooding it is loaded via `claude --plugin-dir plugins/claude-code`.
 The Claude Code manifest names the plugin `effected`, so a skill or agent
 reference takes the form `effected:effect-developer`.[^plugin-json]
 
-The plugin's ethos is "verify against the installed prerelease, not
+The plugin's ethos is "verify against the installed release, not
 memory": every skill is authored from claims probed against the `effect`
-prerelease the workspace catalog pins. Its corpus is the vendored Effect
+release the workspace lockfile resolves. Its corpus is the vendored Effect
 source and its shipped notes, the official Effect-TS skill guides, and
 the shipped kit itself.
 

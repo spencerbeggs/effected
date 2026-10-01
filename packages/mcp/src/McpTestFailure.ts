@@ -29,6 +29,8 @@ import { Schema } from "effect";
  * @public
  */
 export class McpTestFailure extends Schema.TaggedError<McpTestFailure>()("McpTestFailure", {
+	/** Which failure occurred; see the list above for which client raises which. */
 	reason: Schema.Literals(["StreamEnded", "ServerStopped", "NotJsonRpc", "NotInitialized", "ErrorResponse"]),
+	/** A human-readable description of what went wrong. */
 	message: Schema.String,
 }) {}

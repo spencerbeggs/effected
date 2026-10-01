@@ -59,32 +59,25 @@ export class RepoRef extends Schema.Class<RepoRef>("RepoRef")({
  * `{ owner, repo }` argument**, which is what makes a read like
  * `GitHubRepository.defaultBranch` a single expression instead of a preamble.
  *
- * The package this replaces read `process.env.GITHUB_REPOSITORY` in three
- * places — inside the client, inside the App layer, and transitively in every
- * caller of `client.repo` — which is most of what coupled a GitHub API client to
- * the GitHub Actions runtime. Here the coordinate is a value, the env-driven way
- * to get one is a layer variant **named for being env-driven**, and a program
- * that acts on several repositories uses {@link Repo.provide}:
+ * The coordinate is a plain value. The only env-driven way to get one is
+ * {@link Repo.layerFromConfig}, which is named for being env-driven, and a
+ * program that acts on several repositories uses {@link Repo.provide}.
+ *
+ * The service shape is entirely one immutable value (a `RepoRef`), with no
+ * methods, so `Layer.succeed` is the correct test double.
  *
  * @example
  * ```ts
- * import { Repo } from "@effected/github";
+ * import { Repo, RepoRef } from "@effected/github";
  * import { Effect } from "effect";
  *
  * declare const syncOne: Effect.Effect<void, never, Repo>;
- * declare const targets: ReadonlyArray<Repo["Service"]>;
+ * declare const targets: ReadonlyArray<RepoRef>;
  *
  * const syncAll = Effect.forEach(targets, (target) => syncOne.pipe(Repo.provide(target)), {
  *   concurrency: 4,
  * });
  * ```
- *
- * **A deliberate exception to "no non-effectful members on a service shape."**
- * This shape is entirely one immutable value: there is nothing to leave
- * unimplemented, so `Layer.mock` has nothing to degrade and `Layer.succeed` is
- * the correct double. The rule exists to stop a sync member from quietly
- * degrading a *mixed* shape's partial mock. The boundary to hold: the moment a
- * method appears here, this is a service again and the rule applies.
  *
  * @public
  */

@@ -1,11 +1,11 @@
 // The pure extends-merge engine — reproduces tsc's `extends` merge semantics
-// (R2/E4) and its path absolutization (R2/E5) as plain string transforms over
+// and its path absolutization as plain string transforms over
 // already-decoded `TsconfigJson.Type` documents. No FileSystem, no Path service:
 // `absolutize` takes an injected `join` (the call site passes `Path.Path.resolve`)
 // and `merge`/`substituteConfigDir` operate on internal forward-slash path
 // helpers, so the module never reaches into `R`.
 //
-// The loader (Task 8) drives the three phases per tsc: absolutize each config at
+// The loader drives the three phases per tsc: absolutize each config at
 // parse time against its own directory; fold the chain with `merge`, own config
 // last; then run `substituteConfigDir` once against the final config's directory.
 //
@@ -19,7 +19,7 @@ import type { Reference, TsconfigJson, TypeAcquisition, WatchOptions } from "./T
 
 /**
  * The result of resolving a tsconfig.json's full `extends` chain: the merged
- * compiler options and inherited settings, flattened per R2/E4, with enough
+ * compiler options and inherited settings, flattened the way tsc does, with enough
  * provenance for the consumer (`configPath`, `extendedPaths`, and `pathsBase`,
  * the directory of the config that declared `paths`). Unknown top-level keys
  * survive as passthrough via the index signature.
@@ -47,18 +47,18 @@ export interface ResolvedTsconfig {
 	readonly typeAcquisition?: TypeAcquisition.Type;
 	/** `compileOnSave`, inherited only when own is undefined and the inherited value is truthy. */
 	readonly compileOnSave?: boolean;
-	/** The directory of the config that declared `paths` (E4), against which `paths` values resolve. */
+	/** The directory of the config that declared `paths`, against which `paths` values resolve. */
 	readonly pathsBase?: string;
 	/** Unknown top-level keys, preserved through the merge (forward tolerance). */
 	readonly [key: string]: unknown;
 }
 
-// ── The `${configDir}` template (E5) ────────────────────────────────────────
+// ── The `${configDir}` template ────────────────────────────────────────
 
 const CONFIG_DIR_TEMPLATE = `\${configDir}`;
 const CONFIG_DIR_TEMPLATE_LOWER = CONFIG_DIR_TEMPLATE.toLowerCase();
 
-/** A value is `${configDir}`-prefixed if its leading token matches case-insensitively (E5). */
+/** A value is `${configDir}`-prefixed if its leading token matches case-insensitively. */
 const startsWithConfigDir = (value: string): boolean =>
 	value.slice(0, CONFIG_DIR_TEMPLATE.length).toLowerCase() === CONFIG_DIR_TEMPLATE_LOWER;
 
@@ -115,7 +115,7 @@ const rebuildRecord = (
 	return out;
 };
 
-// ── compilerOptions path surfaces (R1.4) ────────────────────────────────────
+// ── compilerOptions path surfaces ────────────────────────────────────
 
 const PATH_STRING_KEYS = [
 	"outFile",
@@ -133,10 +133,10 @@ const PATH_STRING_KEYS = [
 const PATH_LIST_KEYS = ["typeRoots", "rootDirs"] as const;
 
 /**
- * Apply `transform` to every path-typed compilerOptions surface: the R1.4 path
+ * Apply `transform` to every path-typed compilerOptions surface: the path
  * strings and path lists, and — when `includePathsValues` — the `paths` record's
- * values (E5's final phase substitutes those; E5's parse phase leaves them
- * verbatim). Non-string values pass through untouched (forward tolerance).
+ * values (the final `${configDir}` phase substitutes those; the parse phase
+ * leaves them verbatim). Non-string values pass through untouched (forward tolerance).
  */
 const transformCompilerOptionPaths = (
 	co: CompilerOptions.Type,
@@ -175,10 +175,10 @@ const absolutize = (
 	return { ...doc, compilerOptions: transformCompilerOptionPaths(co, absolutizeValue, false) };
 };
 
-// ── merge per field (E4) ────────────────────────────────────────────────────
+// ── merge per field ────────────────────────────────────────────────────
 
 // Top-level keys consumed by name from a derived `TsconfigJson.Type` — everything
-// else is passthrough. `extends` is consumed and dropped (never data, E4).
+// else is passthrough. `extends` is consumed and dropped (never data).
 const DERIVED_CONSUMED_KEYS: ReadonlySet<string> = new Set([
 	"compilerOptions",
 	"extends",
@@ -220,7 +220,7 @@ const extractPassthrough = (
 	return out;
 };
 
-/** Re-root one inherited `files`/`include`/`exclude` entry, exempting absolute and `${configDir}` entries (E4). */
+/** Re-root one inherited `files`/`include`/`exclude` entry, exempting absolute and `${configDir}` entries. */
 const rerootEntry = (prefix: string, entry: string): string => {
 	if (startsWithConfigDir(entry) || isAbsolutePath(entry)) return entry;
 	return prefix === "" ? entry : `${prefix}/${entry}`;
@@ -302,7 +302,7 @@ const merge = (base: ResolvedTsconfig, derived: TsconfigJson.Type, derivedPath: 
 	};
 };
 
-// ── ${configDir} substitution (E5 final phase) ──────────────────────────────
+// ── ${configDir} substitution (final phase) ──────────────────────────────
 
 const substituteWatchExcludes = (
 	wo: WatchOptions.Type | undefined,
@@ -353,19 +353,19 @@ export class ResolvedTsconfig {
 	private constructor() {}
 
 	/**
-	 * Absolutize a config's path-typed options (E5) against its own
+	 * Absolutize a config's path-typed options against its own
 	 * `configDir`, using the injected `join` (`Path.Path.resolve` at the call
 	 * site — so an already-absolute value is preserved). `${configDir}`-prefixed
 	 * values are exempt (resolved later, in
 	 * {@link (ResolvedTsconfig:class).substituteConfigDir}), and `paths`
 	 * VALUES stay verbatim. Only `compilerOptions` path surfaces are touched;
-	 * `files`/`include`/`exclude` are re-rooted at merge time instead (E4).
+	 * `files`/`include`/`exclude` are re-rooted at merge time instead.
 	 */
 	static readonly absolutize = absolutize;
 
 	/**
-	 * Fold one more-derived config onto the accumulated base (E4), derived
-	 * winning. The loader (Task 8) applies this across the resolution chain,
+	 * Fold one more-derived config onto the accumulated base, derived
+	 * winning. The loader applies this across the resolution chain,
 	 * own config last. `derivedPath` is the derived config's absolute
 	 * normalized path, from which the re-rooting frame and `pathsBase` are
 	 * computed.
@@ -373,7 +373,7 @@ export class ResolvedTsconfig {
 	static readonly merge = merge;
 
 	/**
-	 * The E5 final phase: replace a leading `${configDir}` token
+	 * The final phase: replace a leading `${configDir}` token
 	 * (case-insensitive, leading position only) with `finalDir` — the
 	 * top-level extending config's directory — across every eligible
 	 * surface: compilerOptions path options, `paths` values,

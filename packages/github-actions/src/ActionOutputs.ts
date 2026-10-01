@@ -192,7 +192,9 @@ export interface RecordingOutputs {
 }
 
 /**
- * The {@link ActionOutputs} service shape.
+ * The members of the {@link ActionOutputs} service: step outputs, exported
+ * variables, `PATH` additions, the job summary, masking and failure
+ * annotations.
  *
  * @public
  */
@@ -271,11 +273,32 @@ const dies = unstubbed("ActionOutputs.makeTest");
  * — that is `Action.run`'s job, so that an action which reports a failure and
  * then recovers is not silently doomed by a side effect it cannot undo.
  *
+ * Members that write a runner file fail with {@link ActionOutputError}.
+ *
+ * @example
+ * ```ts
+ * import { ActionOutputs } from "@effected/github-actions";
+ * import { Effect, Schema } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const outputs = yield* ActionOutputs;
+ *   yield* outputs.set("version", "1.2.3");
+ *   yield* outputs.setJson("packages", ["a", "b"], Schema.Array(Schema.String));
+ * });
+ * ```
+ *
  * @public
  */
 export class ActionOutputs extends Context.Service<ActionOutputs, ActionOutputsShape>()(
 	"@effected/github-actions/ActionOutputs",
 ) {
+	/**
+	 * The live service, appending to the runner's `GITHUB_OUTPUT`, `GITHUB_ENV`,
+	 * `GITHUB_PATH` and `GITHUB_STEP_SUMMARY` files.
+	 *
+	 * @remarks
+	 * `ActionRuntime.layer` already provides every requirement.
+	 */
 	static readonly layer: Layer.Layer<ActionOutputs, never, ActionEnvironment | FileSystem.FileSystem> = Layer.effect(
 		this,
 		make,
@@ -289,10 +312,8 @@ export class ActionOutputs extends Context.Service<ActionOutputs, ActionOutputsS
 	 * stdout is a **log file no runner parses**, so under the real layer
 	 * `setSecret` emits `::add-mask::<plaintext>` into that file — a command
 	 * that is simultaneously **inert** (nothing reads it, so nothing is masked)
-	 * and a **secret leak** (the plaintext is now sitting verbatim in a log). A
-	 * production action shipped exactly that for one round: an S3 secret and
-	 * session token written into a worker's log by the masking call itself.
-	 * This layer is the worker-side fix; the parent-side rule is that every
+	 * and a **secret leak** (the plaintext is now sitting verbatim in a log).
+	 * This layer is the worker-side guard; the parent-side rule is that every
 	 * secret a worker will hold is masked **before** the spawn, by
 	 * `Secret.forChildEnv` under the real layer.
 	 *
@@ -305,7 +326,7 @@ export class ActionOutputs extends Context.Service<ActionOutputs, ActionOutputsS
 	 *   spelling of it in the log IS the leak. Masking is the parent's job,
 	 *   before the worker exists.
 	 * - **`set`, `setJson`, `exportVariable`, `addPath`, `summary` — fail
-	 *   typed** (`reason: "detached"`, naming the file). Each writes a runner
+	 *   typed** with {@link DetachedOutputError}, naming the file. Each writes a runner
 	 *   file that configures the parent job's *later steps* — `GITHUB_OUTPUT`,
 	 *   `GITHUB_ENV`, `GITHUB_PATH` — or is collected when the step completes
 	 *   (`GITHUB_STEP_SUMMARY`). A detached worker has no later steps, may
@@ -370,7 +391,7 @@ export class ActionOutputs extends Context.Service<ActionOutputs, ActionOutputsS
 	 * @remarks
 	 * This is the double most tests of an action want — "what did it publish?"
 	 * — shipped so that nobody hand-writes a `setJson` override that drops the
-	 * schema encode (the trap `makeTest` now closes too). `setJson` encodes
+	 * schema encode (a trap `makeTest` closes too). `setJson` encodes
 	 * through its schema exactly as the real layer does, failing typed with
 	 * {@link OutputEncodeError} and recording nothing on a drift, and records
 	 * the **encoded JSON text** — what the runner would have read — not the

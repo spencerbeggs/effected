@@ -2,9 +2,9 @@
 // bring a document to canonical shape, or apply them in one step.
 //
 // Kept as its own concept module (rather than folded into the `Jsonc` facade)
-// so the jsonc and yaml surfaces stay structurally symmetric — `YamlFormatter`
-// will want the identical shape. Both statics are pure and total: computing
-// edits never fails, so there is no `Effect` wrapper.
+// so the jsonc, yaml, toml and markdown format surfaces stay structurally
+// symmetric. Both statics are pure and total: computing edits never fails, so
+// there is no `Effect` wrapper.
 
 import type { SyntaxKind } from "./internal/scanner.js";
 import { createScanner } from "./internal/scanner.js";
@@ -12,7 +12,16 @@ import type { JsoncFormattingOptions, JsoncRange } from "./JsoncEdit.js";
 import { JsoncEdit } from "./JsoncEdit.js";
 
 /**
- * Pure JSONC formatting statics. Not instantiable.
+ * Formats JSONC text into canonical whitespace, as minimal edits or as a
+ * finished string, preserving comments. Pure and total; not instantiable.
+ *
+ * @example
+ * ```ts
+ * import { JsoncFormatter } from "@effected/jsonc";
+ *
+ * const formatted = JsoncFormatter.formatToString('{"a":1,"b":[1,2]} // keep');
+ * // => '{\n  "a": 1,\n  "b": [\n    1,\n    2\n  ]\n} // keep'
+ * ```
  *
  * @public
  */
@@ -36,8 +45,7 @@ export class JsoncFormatter {
 
 	/**
 	 * Format `text` and apply the resulting edits in one step
-	 * (`applyAll ∘ format`). The sole surviving convenience from v3's
-	 * `formatAndApply`. Pure and total.
+	 * (`applyAll ∘ format`). Pure and total.
 	 *
 	 * @param text - The JSONC source to format.
 	 * @param range - Optional sub-range; only edits within it are applied.

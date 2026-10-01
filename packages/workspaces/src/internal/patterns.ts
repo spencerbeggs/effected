@@ -2,9 +2,7 @@
 //
 // pnpm records it in `pnpm-workspace.yaml`; npm, yarn and bun record it in the
 // root package.json `workspaces` field (array form, or the legacy
-// `{ packages: [...] }` object form). v3 hand-rolled a line-by-line YAML
-// scanner here "to avoid pulling in a YAML library"; `@effected/yaml` is a
-// workspace sibling, so the scanner is deleted.
+// `{ packages: [...] }` object form). The YAML is parsed with `@effected/yaml`.
 
 import { Yaml } from "@effected/yaml";
 import { Effect, FileSystem, Path } from "effect";

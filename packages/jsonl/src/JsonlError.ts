@@ -1,12 +1,9 @@
-/**
- * The `@effected/jsonl` error taxonomy.
- *
- * Every tag names a distinct recovery a caller would actually make, and every
- * cause is carried structurally rather than stringified. Core's `PlatformError`
- * passes through untranslated rather than being wrapped.
- *
- * @since 0.1.0
- */
+// The `@effected/jsonl` error taxonomy.
+//
+// Every tag names a distinct recovery a caller would actually make, and every
+// cause is carried structurally rather than stringified. Core's `PlatformError`
+// passes through untranslated rather than being wrapped.
+
 import { Option, Schema } from "effect";
 import { LineSlice } from "./LineSlice.js";
 

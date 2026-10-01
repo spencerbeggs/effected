@@ -99,6 +99,20 @@ interface HarnessParts {
  *   first (as in `McpStdio.protocols`), or `-32603 Internal error` when
  *   only stateful revisions are served.
  *
+ * @example
+ * ```ts
+ * import { McpHarness } from "@effected/mcp/testing";
+ * import { Effect } from "effect";
+ *
+ * // `ServerLayer` is the server's layer, built without its own `Stdio`.
+ * const program = Effect.gen(function* () {
+ * 	const harness = yield* McpHarness.make(ServerLayer);
+ * 	yield* harness.initialize;
+ * 	const tools = yield* harness.listTools;
+ * 	return tools.map((tool) => tool.name);
+ * }).pipe(Effect.scoped);
+ * ```
+ *
  * @public
  */
 export class McpHarness {

@@ -1,14 +1,10 @@
-/**
- * JSON-over-HTTP transport, free of the public facade.
- *
- * This is the lowest engine layer: it speaks `HttpClient` and returns **raw
- * failure records**, never the public error classes. The facade (`GitHub.ts`)
- * materializes those records into `AuthenticationError` / `RateLimitError` /
- * `NetworkError` / `ResponseParseError`. That is what keeps this module
- * importable from every direction without an import cycle.
- *
- * @internal
- */
+// JSON-over-HTTP transport, free of the public facade.
+//
+// This is the lowest engine layer: it speaks `HttpClient` and returns **raw
+// failure records**, never the public error classes. The facade (`GitHub.ts`)
+// materializes those records into `AuthenticationError` / `RateLimitError` /
+// `NetworkError` / `ResponseParseError`. That is what keeps this module
+// importable from every direction without an import cycle.
 
 import type { Schema } from "effect";
 import { Duration, Effect, Schedule } from "effect";

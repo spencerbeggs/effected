@@ -256,8 +256,8 @@ export class LenientManifest extends Schema.Class<LenientManifest>("LenientManif
 	 * {@link LenientManifest.decodeResult}, adding the tracing span.
 	 *
 	 * @param input - the parsed package.json JSON value (e.g. from `JSON.parse`)
-	 * @returns an Effect resolving to the decoded {@link LenientManifest}
-	 * @throws (typed) `PackageDecodeError` when `input` is not a JSON object
+	 * @returns an Effect resolving to the decoded {@link LenientManifest},
+	 * failing with {@link PackageDecodeError} when `input` is not a JSON object
 	 */
 	static readonly decode = Effect.fn("LenientManifest.decode")((input: unknown) =>
 		Effect.fromResult(LenientManifest.decodeResult(input)),
@@ -291,8 +291,8 @@ export class LenientManifest extends Schema.Class<LenientManifest>("LenientManif
 	 * {@link LenientManifest.parseResult}, adding the tracing span.
 	 *
 	 * @param text - the package.json source text
-	 * @returns an Effect resolving to the decoded {@link LenientManifest}
-	 * @throws (typed) `PackageJsonSyntaxError` when the text is not valid JSON
+	 * @returns an Effect resolving to the decoded {@link LenientManifest},
+	 * failing with {@link PackageJsonSyntaxError} when the text is not valid JSON
 	 * or is not a JSON object
 	 */
 	static readonly parse = Effect.fn("LenientManifest.parse")((text: string) =>

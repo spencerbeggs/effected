@@ -42,10 +42,9 @@ function serialize(node: SpdxNode): string {
 
 /**
  * A simple-license leaf of an SPDX expression: a license identifier with the
- * trailing `+` ("or later") marker. This is the expression-level license node —
- * distinct from, and a finer altitude than, the catalog `License` class in
- * `./License.js`, which validates and resolves an identifier but does not model
- * the `+` operator.
+ * trailing `+` ("or later") marker. This is the expression-level license node,
+ * distinct from the catalog {@link License} class, which validates and resolves
+ * an identifier but does not model the `+` operator.
  *
  * @public
  */
@@ -300,9 +299,11 @@ const collectLicenses = (expr: SpdxExpression, into: Array<License>): void => {
  * @example
  * ```ts
  * import { SpdxExpression } from "@effected/spdx";
+ * import { Result } from "effect";
  *
- * const expr = SpdxExpression.parseResult("(MIT OR Apache-2.0)");
- * // => [License("MIT"), License("Apache-2.0")]
+ * const expr = Result.getOrThrow(SpdxExpression.parseResult("(MIT OR Apache-2.0)"));
+ * SpdxExpression.licensesOf(expr).map((license) => license.id);
+ * // => ["MIT", "Apache-2.0"]
  * ```
  *
  * @param expr - the expression to read
@@ -340,9 +341,14 @@ const licensesOf = (expr: SpdxExpression): ReadonlyArray<License> => {
  * @example
  * ```ts
  * import { SpdxExpression } from "@effected/spdx";
+ * import { Option, Result } from "effect";
  *
- * // "(MIT OR Apache-2.0)"  => Option.some(License("MIT"))
- * // "(MIT AND Apache-2.0)" => Option.none()
+ * const parse = (input: string) => Result.getOrThrow(SpdxExpression.parseResult(input));
+ *
+ * Option.map(SpdxExpression.primaryLicense(parse("(MIT OR Apache-2.0)")), (license) => license.id);
+ * // => Option.some("MIT")
+ * SpdxExpression.primaryLicense(parse("(MIT AND Apache-2.0)"));
+ * // => Option.none()
  * ```
  *
  * @param expr - the expression to read
@@ -374,7 +380,7 @@ export const SpdxExpression = {
 	 * The recursive tagged-union `Schema` for the AST.
 	 *
 	 * @remarks
-	 * The `MAX_NESTING_DEPTH` cap guards STRING parsing only (via {@link (SpdxExpression:variable).parse}
+	 * The parser's nesting-depth cap guards STRING parsing only (via {@link (SpdxExpression:variable).parse}
 	 * and {@link (SpdxExpression:variable).FromString}); decoding an already-built POJO directly through
 	 * this raw `Schema` is not depth-capped.
 	 */

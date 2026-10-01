@@ -1,19 +1,14 @@
-/**
- * The Actions `CacheService` choreography — reserve, upload, finalize; look up
- * — spelled once for the two services that speak it.
- *
- * @remarks
- * `ActionCache` files a tar archive under a path-derived version and
- * `BlobStore.githubCache` files an envelope under a constant one, but the
- * three RPCs between them and their conflict semantics are identical. Each
- * caller supplies its own per-key `call` and its own `refused` constructor, so
- * the errors stay the caller's; this module owns only the protocol. It reaches
- * `effect` and the Twirp client and nothing heavier — the Azure transfer of
- * the bytes between the two RPCs stays in the three modules licensed to import
- * it (`__test__/reachability.test.ts`).
- *
- * @internal
- */
+// The Actions `CacheService` choreography — reserve, upload, finalize; look up
+// — spelled once for the two services that speak it.
+//
+// `ActionCache` files a tar archive under a path-derived version and
+// `BlobStore.githubCache` files an envelope under a constant one, but the
+// three RPCs between them and their conflict semantics are identical. Each
+// caller supplies its own per-key `call` and its own `refused` constructor, so
+// the errors stay the caller's; this module owns only the protocol. It reaches
+// `effect` and the Twirp client and nothing heavier — the Azure transfer of
+// the bytes between the two RPCs stays in the three modules licensed to import
+// it (`__test__/reachability.test.ts`).
 
 import { Effect, Option } from "effect";
 import type { TwirpResult } from "./twirp.js";

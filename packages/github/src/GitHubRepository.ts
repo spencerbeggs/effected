@@ -10,11 +10,9 @@ import type * as Rest from "./Rest.js";
  * Everything GitHub reports about a repository.
  *
  * @remarks
- * The **generated** response type, not a hand-written projection. One surveyed
- * consumer declared a sixteen-field interface for this endpoint and round-tripped
- * those fields back through `PATCH` — and every one of the sixteen already
- * existed, verbatim, in the OpenAPI types the package now leans on. Re-declaring
- * them would have been the same mistake with our name on it.
+ * The **generated** response type for `GET /repos/{owner}/{repo}`, not a
+ * hand-written projection, so every field GitHub documents is available with
+ * its documented type.
  *
  * @public
  */
@@ -35,10 +33,9 @@ export type RepositoryPatch = Omit<Rest.Params<"PATCH /repos/{owner}/{repo}">, "
  * The shape you actually have when you are applying only what a user
  * configured. Octokit's generated params spell an optional field as
  * `has_issues?: boolean`, **not** `has_issues?: boolean | undefined`, so under
- * `exactOptionalPropertyTypes` — on in this repo and in the silk tsconfig base
- * — a `Partial<T>` built from your own settings schema does not assign to
- * `RepositoryPatch` at all. This type does, and {@link repositoryPatch} turns
- * it into one.
+ * `exactOptionalPropertyTypes` a `Partial<T>` built from your own settings
+ * schema does not assign to `RepositoryPatch` at all. This type does, and
+ * {@link repositoryPatch} turns it into one.
  *
  * @public
  */
@@ -52,10 +49,7 @@ export type RepositoryPatchDraft = {
  *
  * @remarks
  * The supported spelling for "apply only what was configured" — the natural
- * shape for a sync action, and the one the checker cannot follow on its own.
- * Without it a consumer under the recommended tsconfig is quietly pushed toward
- * `as`, which is a real cost in a package whose stated design property is that
- * the route is the key and there are no casts.
+ * shape for a sync action, without a cast at the call site.
  *
  * Dropping the key rather than sending `undefined` is what the wire needs:
  * `PATCH` treats an absent field as "leave it alone", while an explicit `null`
@@ -131,12 +125,9 @@ export const SECURITY_ANALYSIS_STATUS_FIELDS: ReadonlySet<string> = new Set([
  * `PATCH /repos/{owner}/{repo}` route accepts none of them, and
  * `has_discussions` is the treacherous one: the REST **read** returns it, so
  * routing its write to the PATCH looks symmetric, but the PATCH silently
- * ignores unknown body fields and answers 200 — reported as applied on every
- * run while the repository never changed (effected#358). Setting any of these
- * forces a second round trip to learn the repository's node id.
- *
- * Field names verified against `UpdateRepositoryInput` by live introspection,
- * 2026-08-15.
+ * ignores unknown body fields and answers 200, so the write would look applied
+ * while the repository never changed. Setting any of these forces a second
+ * round trip to learn the repository's node id.
  *
  * @public
  */
@@ -289,7 +280,8 @@ export interface AppliedSettings {
 }
 
 /**
- * The repository itself.
+ * Read and update a repository's settings, and look up its default branch, node
+ * id and owner type.
  *
  * @public
  */
@@ -302,8 +294,7 @@ export interface GitHubRepositoryShape {
 	 * The default branch's name.
 	 *
 	 * @remarks
-	 * One surveyed consumer spent eight lines of hand-written octokit interface
-	 * plus eleven lines of code to read this one string.
+	 * Reads the repository payload and returns `default_branch`.
 	 */
 	readonly defaultBranch: Effect.Effect<string, GitHubError, Repo>;
 	/**
@@ -311,7 +302,7 @@ export interface GitHubRepositoryShape {
 	 *
 	 * @remarks
 	 * Needed as `repositoryId` by the `createLinkedBranch` and `createPullRequest`
-	 * mutations, which is why a second consumer cast `repos.get` for it alone.
+	 * mutations.
 	 */
 	readonly nodeId: Effect.Effect<string, GitHubError, Repo>;
 
@@ -337,13 +328,14 @@ export interface GitHubRepositoryShape {
 	 * @remarks
 	 * `updateSettings` is the thin, faithfully-typed PATCH and returns what
 	 * GitHub then reports. This is the **applicator**: it takes an open map,
-	 * routes each key to whichever API can actually set it, and returns nothing.
+	 * routes each key to whichever API can actually set it, and returns an
+	 * {@link AppliedSettings} naming the keys that were sent through each.
 	 *
-	 * Two settings — `has_sponsorships` and `has_pull_requests` — have never
-	 * existed on the REST endpoint and are only reachable through GraphQL's
-	 * `updateRepository`, which addresses a repository by **node id**. So a map
-	 * touching either costs an extra read; a map touching neither does not, which
-	 * is the common case.
+	 * Three settings — `has_sponsorships`, `has_pull_requests` and
+	 * `has_discussions` ({@link GRAPHQL_ONLY_SETTINGS}) — are only reachable
+	 * through GraphQL's `updateRepository`, which addresses a repository by **node
+	 * id**. So a map touching any of them costs an extra read; a map touching none
+	 * does not, which is the common case.
 	 *
 	 * The map is open by design. GitHub's settings surface is large and moving,
 	 * and a closed type here would date the package — but it also means a typo is
@@ -356,13 +348,33 @@ export interface GitHubRepositoryShape {
 }
 
 /**
- * Repository settings and coordinates.
+ * Read and update a repository's settings, including settings only GraphQL can
+ * write, and look up its default branch, node id and owner type.
+ *
+ * @remarks
+ * Provide it with {@link GitHubRepository.layer}, which needs a `GitHubClient`;
+ * every member also needs a `Repo` in `R`. `settings`, `defaultBranch`, `nodeId`
+ * and `ownerType` are `Effect` values, not functions.
+ *
+ * @example
+ * ```ts
+ * import { GitHubRepository } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const repository = yield* GitHubRepository;
+ *   const branch = yield* repository.defaultBranch;
+ *   const applied = yield* repository.applySettings({ has_wiki: false, has_discussions: true });
+ *   return { branch, applied }; // applied.rest, applied.graphql
+ * });
+ * ```
  *
  * @public
  */
 export class GitHubRepository extends Context.Service<GitHubRepository, GitHubRepositoryShape>()(
 	"@effected/github/GitHubRepository",
 ) {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<GitHubRepository, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),

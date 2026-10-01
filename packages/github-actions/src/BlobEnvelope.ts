@@ -115,33 +115,51 @@ const HEADER_BYTES = MAGIC.length + 1 + 4;
  * [4B magic "EFBS"][1B version][4B metadata length, big-endian][metadata JSON][body]
  * ```
  *
- * Three properties earn the format, and each replaces something a consumer was
- * hand-rolling:
+ * Three properties earn the format:
  *
- * - **The magic prefix makes a legacy blob legible.** Raw, unframed bytes
- *   decode as `notAnEnvelope` rather than as garbage metadata, so a store
- *   holding pre-envelope entries produces a clean miss instead of a corrupt
- *   read.
- * - **The version lives in the blob, not in the key.** A consumer previously
- *   namespaced keys (`v2/...`) to represent a format change, because there was
- *   no in-band version. Here a revision is detected on read and reported
- *   typed, so **keys stay stable** and old entries age out naturally.
+ * - **The magic prefix makes an unframed blob legible.** Raw, unframed bytes
+ *   decode as {@link NotABlobEnvelopeError} rather than as garbage metadata, so
+ *   a store holding entries written without an envelope produces a clean miss
+ *   instead of a corrupt read.
+ * - **The version lives in the blob, not in the key.** A format revision is
+ *   detected on read and reported typed
+ *   ({@link UnsupportedBlobEnvelopeVersionError}), so **keys stay stable** and
+ *   old entries age out naturally rather than needing a `v2/...` key prefix.
  * - **The metadata is the caller's own schema.** This module owns *framing*;
- *   the caller owns *meaning*. Fields like a cache tag or a duration stop
- *   being bytes at fixed offsets in a consumer's private codec.
+ *   the caller owns *meaning*. Fields like a cache tag or a duration are
+ *   schema fields, not bytes at fixed offsets in a private codec.
  *
  * **Pure**: `Result`-returning, no IO, no service — the framing is testable
  * from a byte array, which is the point.
+ *
+ * @example
+ * ```ts
+ * import { BlobEnvelope } from "@effected/github-actions";
+ * import { Result, Schema } from "effect";
+ *
+ * const Meta = Schema.Struct({ tag: Schema.String });
+ *
+ * const framed = BlobEnvelope.encodeResult({ tag: "v1" }, new Uint8Array([1, 2, 3]), Meta);
+ * if (Result.isSuccess(framed)) {
+ *   const read = BlobEnvelope.decodeResult(framed.success, Meta);
+ *   // => Result.succeed({ metadata: { tag: "v1" }, body: Uint8Array [1, 2, 3] })
+ * }
+ * ```
  *
  * @public
  */
 export class BlobEnvelope {
 	private constructor() {}
 
-	/** The version this build writes. */
+	/** The envelope version this build writes and accepts. */
 	static readonly version: number = VERSION;
 
-	/** Frame metadata and a body into a single blob. */
+	/**
+	 * Frame metadata and a body into a single blob.
+	 *
+	 * @returns a `Result` holding the framed bytes, or a
+	 * {@link BlobMetadataEncodeError} when `metadata` does not satisfy `schema`
+	 */
 	static encodeResult<A, I>(
 		metadata: A,
 		body: Uint8Array,
@@ -161,7 +179,15 @@ export class BlobEnvelope {
 		return Result.succeed(out);
 	}
 
-	/** Read a framed blob back into its metadata and body. */
+	/**
+	 * Read a framed blob back into its metadata and body.
+	 *
+	 * @returns a `Result` holding the decoded metadata and a copy of the body, or
+	 * a {@link BlobEnvelopeError}: {@link NotABlobEnvelopeError} for unframed
+	 * bytes, {@link TruncatedBlobEnvelopeError},
+	 * {@link UnsupportedBlobEnvelopeVersionError}, or
+	 * {@link BlobMetadataDecodeError} when the metadata fails `schema`
+	 */
 	static decodeResult<A, I>(
 		bytes: Uint8Array,
 		schema: Schema.Codec<A, I>,

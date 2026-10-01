@@ -83,8 +83,7 @@ export interface AppConfigOptions<A, I, RR = never> {
 	 * native probe, still behind it as the fallback. `ConfigResolver.upwardWalk`
 	 * for a project-local file goes here too.
 	 *
-	 * Absent, the chain is exactly what it always was, so the default is
-	 * unchanged: `XdgConfig.resolver`, then `XdgConfig.nativeResolver`.
+	 * Absent, the chain is `XdgConfig.resolver`, then `XdgConfig.nativeResolver`.
 	 *
 	 * A layer is built before a CLI parses anything, so getting the parsed flag
 	 * here is the one wiring question this option raises. `effect/cli`
@@ -259,9 +258,7 @@ export class AppConfig {
 	 * `options.resolversAfter` appends, `options.systemEtc` adds the `/etc`
 	 * tier behind the XDG pair, and `options.xdg: false` removes the XDG pair
 	 * altogether — at which point the chain is exactly the caller's own, and
-	 * the preset is contributing the ambient namespace and `defaultPath` alone.
-	 * Dropping to `ConfigFile.layer` directly is no longer the price of an
-	 * unusual chain.
+	 * the preset contributes the ambient namespace and `defaultPath` alone.
 	 *
 	 * **The namespace is never a parameter.** It is read from the ambient
 	 * `AppDirs` service at layer build time, so it is typed exactly once, in
@@ -270,6 +267,25 @@ export class AppConfig {
 	 *
 	 * This is a layer-returning function: bind the result to a `const` and reuse
 	 * that binding, or two provide sites mint two independent service instances.
+	 *
+	 * @example
+	 * ```ts
+	 * import { AppConfig } from "@effected/app";
+	 * import { ConfigFile, JsonCodec } from "@effected/config-file";
+	 * import { Schema } from "effect";
+	 *
+	 * class Settings extends Schema.Class<Settings>("Settings")({
+	 * 	registry: Schema.String,
+	 * }) {}
+	 * class SettingsFile extends ConfigFile.Service<SettingsFile, Settings>()("myapp/Settings") {}
+	 *
+	 * // The namespace comes from the ambient `AppDirs`, provided by `App.layer`.
+	 * const ConfigLive = AppConfig.layer(SettingsFile, {
+	 * 	filename: "config.json",
+	 * 	schema: Settings,
+	 * 	codec: JsonCodec,
+	 * });
+	 * ```
 	 */
 	static readonly layer = layer;
 }

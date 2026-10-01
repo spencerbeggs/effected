@@ -68,9 +68,7 @@ const GAP = "[ \\t]+";
 
 /**
  * Compiled matchers are cached per dialect instance. A `WeakMap` rather than
- * a field keeps `SectionDialect` a pure schema class — v3 hung a non-schema
- * private field off its definition class and had to hand-copy it on every
- * derivation.
+ * a field keeps `SectionDialect` a pure schema class.
  */
 const matcherCache = new WeakMap<
 	SectionDialect,

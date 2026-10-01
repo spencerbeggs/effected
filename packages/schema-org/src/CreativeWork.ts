@@ -14,9 +14,9 @@ import { ThingFields } from "./Thing.js";
  * so this gives up no expressiveness and buys exactly one representation per
  * property.
  *
- * Where arity was genuinely uncertain the choice is **many**, because the error
- * costs are asymmetric: being wrong toward many costs one pair of brackets at a
- * call site, and being wrong toward one costs a breaking change.
+ * Where arity is uncertain the property is repeatable: the cost of one pair of
+ * brackets at a call site is small next to the breaking change of widening a
+ * scalar later.
  *
  * @public
  */
@@ -45,9 +45,8 @@ export const CreativeWorkFields = {
 	/**
 	 * The primary entity described by the work, by reference.
 	 *
-	 * Single-valued, and **this collapse belongs to the vocabulary, not to this
-	 * package**: schema.org defines `mainEntity` as *the primary* entity. It is
-	 * not ours to revisit.
+	 * Single-valued, because schema.org defines `mainEntity` as *the primary*
+	 * entity.
 	 */
 	mainEntity: Schema.optional(NodeRef),
 	/** Subjects of the work, by reference. Repeatable. */

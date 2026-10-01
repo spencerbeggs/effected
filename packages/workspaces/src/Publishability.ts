@@ -2,8 +2,7 @@
 //
 // A service rather than a function precisely so it is swappable: standard npm
 // semantics are the default, and an organization with its own publish rules
-// replaces the layer with `Layer.succeed` instead of forking the package. The
-// v3 README made that its headline layer-DI example; it stays true here.
+// replaces the layer with `Layer.succeed` instead of forking the package.
 
 import { Context, Effect, Layer, Schema } from "effect";
 import type { WorkspacePackage } from "./WorkspacePackage.js";
@@ -130,16 +129,13 @@ export class PublishabilityDetector extends Context.Service<PublishabilityDetect
 ) {
 	/**
 	 * Standard npm publishing semantics, **as a value**. Pure — no filesystem,
-	 * no platform services.
+	 * no platform services. Never publishes with provenance (`provenance: false`).
 	 *
 	 * @remarks
 	 * Exposed as a shape and not only as a layer, because a consumer composing
-	 * *around* these rules cannot reach them through a layer without re-entering
-	 * the very tag it is replacing. `@savvy-web/silk-effects` had to write
-	 * `Effect.provide(PublishabilityDetector, PublishabilityDetector.layer)`
-	 * **inside its own implementation of that tag** to get at this function for
-	 * its pass-through branch; with the value exposed that becomes
-	 * `PublishabilityDetector.npm.detect(pkg)`.
+	 * *around* these rules cannot reach them through a layer without
+	 * re-entering the very tag it is replacing. A custom detector's pass-through
+	 * branch calls `PublishabilityDetector.npm.detect(pkg)` directly.
 	 *
 	 * @example
 	 * ```ts
@@ -186,13 +182,12 @@ export class PublishabilityDetector extends Context.Service<PublishabilityDetect
 	 *
 	 * @remarks
 	 * Named for its policy rather than called `layer`, deliberately. **No
-	 * composite in this package provides a publishability detector**: a
-	 * `Workspaces.layer()` that quietly supplied npm semantics made the choice
-	 * invisible, and worse, made a naively-ordered override lose to it in
-	 * silence — `Layer.mergeAll(myDetector, Workspaces.layer())` resolved to the
-	 * default, because `mergeAll` is last-wins. For a service that decides
-	 * whether a package publishes and to which registry, that silent revert was
-	 * the worst available failure.
+	 * composite in this package provides a publishability detector**: one that
+	 * quietly supplied npm semantics would hide the choice and, because
+	 * `Layer.mergeAll` is last-wins, would let a naively-ordered override such
+	 * as `Layer.mergeAll(myDetector, Workspaces.layer())` lose to the default in
+	 * silence. For a service that decides whether a package publishes and to
+	 * which registry, that silent revert is the worst available failure.
 	 *
 	 * The composites do not *require* a detector either — nothing inside them
 	 * asks a publishability question, so their `R` stays `FileSystem | Path`.

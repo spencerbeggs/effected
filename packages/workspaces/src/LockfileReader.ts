@@ -1,7 +1,7 @@
 // The IO half of `@effected/lockfiles`.
 //
-// The extraction drew the seam at `content: string`: lockfiles is pure and
-// parses text, workspaces finds the root, detects the manager, reads the file
+// The seam is `content: string`: lockfiles is pure and parses text,
+// workspaces finds the root, detects the manager, reads the file
 // and — for pnpm — supplies the importer-path → name map that the pure
 // `Lockfile.withImporterNames` second stage needs. That map is built here
 // because building it requires reading every workspace `package.json`, which is
@@ -45,8 +45,7 @@ export class LockfileReadError extends Schema.TaggedError<LockfileReadError>()("
 }
 
 /**
- * Every failure the lockfile methods can surface — the exported init-error
- * union the review named best-in-class DX.
+ * Every failure the lockfile methods can surface.
  *
  * @remarks
  * Layer construction does no IO, so every member surfaces from the *methods*
@@ -78,9 +77,7 @@ export interface LockfileReaderShape {
 	 * @remarks
 	 * A name can resolve at **several versions** in one lockfile (two members
 	 * depending on different majors of the same package). This returns the
-	 * **first** entry in lockfile order and does not attempt to rank them — there
-	 * is no single "the" version to return, and picking the highest semver would
-	 * imply a resolution decision this reader is not entitled to make. Callers
+	 * **first** entry in lockfile order and does not rank them. Callers
 	 * that must see every resolution should read `lockfile.packagesNamed(name)`
 	 * off `read()` directly.
 	 */
@@ -181,12 +178,11 @@ export class LockfileReader extends Context.Service<LockfileReader, LockfileRead
 					.readFileString(lockfilePath)
 					.pipe(Effect.mapError((cause) => new LockfileReadError({ lockfilePath, format, cause })));
 
-				// `Lockfile.parse` owns YAML-stream framing as of `@effected/lockfiles`
-				// #58: `pnpm-lock.yaml` is a stream, and pnpm's writer always emits the
-				// config-dependencies document as a PREFIX, so the real lockfile is
-				// deterministically the last one. This reader used to select the document
-				// itself; the pure package now does it correctly, and a stream carrying no
-				// lockfile document fails typed as a `LockfileFramingError`.
+				// `Lockfile.parse` owns YAML-stream framing: `pnpm-lock.yaml` is a
+				// stream, and pnpm's writer always emits the config-dependencies document
+				// as a PREFIX, so the real lockfile is deterministically the last one. A
+				// stream carrying no lockfile document fails typed as a
+				// `LockfileFramingError`.
 				//
 				// A preamble followed by an EMPTY main document is ambiguous: pnpm writes
 				// those bytes for a config-dependency-only workspace with no root
@@ -276,11 +272,14 @@ export class LockfileReader extends Context.Service<LockfileReader, LockfileRead
 		});
 
 	/**
-	 * The live layer.
+	 * The live layer: reads the lockfile of the detected package manager at the
+	 * workspace root.
 	 *
 	 * @remarks
 	 * Parameterized, so it mints a fresh reference per call — bind it to a
 	 * `const` and reuse it.
+	 *
+	 * @param options - Root resolution (`cwd`, `stopAt`).
 	 */
 	static readonly layer = (
 		options?: LockfileReaderOptions,

@@ -14,7 +14,7 @@ import type { ConfigSource, MergeStrategy, NonEmptySources } from "./MergeStrate
  * @remarks
  * Its own tag, so "no config anywhere" is routable with `Effect.catchTag`
  * separately from "the config I found is broken" — the single most important
- * distinction the v3 mega-error could not express.
+ * distinction in the error set.
  *
  * @public
  */
@@ -45,8 +45,8 @@ export class ConfigFileNotFoundError extends Schema.TaggedError<ConfigFileNotFou
  * Indicates that a config file could not be read from the filesystem.
  *
  * @remarks
- * `cause` preserves the underlying filesystem failure structurally. v3 flattened
- * it to `reason: String(e)`.
+ * `cause` preserves the underlying filesystem failure structurally rather than
+ * flattening it to a string.
  *
  * @public
  */
@@ -82,13 +82,12 @@ export class ConfigFileWriteError extends Schema.TaggedError<ConfigFileWriteErro
  * was called on a service configured without a `defaultPath`.
  *
  * @remarks
- * v3 reported this as a generic `ConfigError` carrying `operation: "save"` and
- * `reason: "no default path configured"` — indistinguishable by tag from a real
- * write failure.
+ * It is distinct by tag from a real {@link ConfigFileWriteError}, so a caller
+ * can tell "no destination was configured" from "the write failed".
  *
  * It carries no `path` field on purpose. The whole point of this failure is
  * that there is no path; a {@link ConfigFileWriteError} with a fabricated path
- * would be a lie, and lying error payloads are what this port exists to undo.
+ * would be a lie.
  *
  * @public
  */
@@ -107,10 +106,9 @@ export class ConfigDefaultPathMissingError extends Schema.TaggedError<ConfigDefa
  *
  * @remarks
  * `issue` carries the **structured** schema failure — at runtime a
- * `SchemaIssue.Issue` tree, reachable through `_tag` and nested `issues`. v3
- * flattened this to `String(ParseError)`, destroying every field a caller might
- * branch on. It is typed `unknown` because v4 exposes no `Schema` for `Issue`;
- * narrow it with the `SchemaIssue` module.
+ * `SchemaIssue.Issue` tree, reachable through `_tag` and nested `issues`, so
+ * every field a caller might branch on survives. It is typed `unknown` because
+ * there is no `Schema` for `Issue`; narrow it with the `SchemaIssue` module.
  *
  * @public
  */
@@ -225,7 +223,7 @@ export interface ConfigFileShape<A> {
 	 * @remarks
 	 * A found-but-corrupt source ABORTS discovery with a typed error rather than
 	 * being silently skipped: silently skipping a corrupt file would mean running
-	 * on the wrong config. This is deliberate, and is parity with v3.
+	 * on the wrong config. This is deliberate.
 	 */
 	readonly discover: Effect.Effect<ReadonlyArray<ConfigSource<A>>, ConfigReadError>;
 	/**
@@ -289,7 +287,7 @@ export interface ConfigFileOptions<A, I, RR> {
 	 * The schema every discovered document is decoded through.
 	 *
 	 * @remarks
-	 * `Schema.Codec<A, I>` rather than v4's one-parameter `Schema.Schema<A>`,
+	 * `Schema.Codec<A, I>` rather than the one-parameter `Schema.Schema<A>`,
 	 * because the encoded form `I` matters on the write path. Its decoding and
 	 * encoding service channels default to `never`, keeping `decode` free of
 	 * requirements.
@@ -333,8 +331,6 @@ export interface ConfigFileOptions<A, I, RR> {
 	 *
 	 * @remarks
 	 * Its requirements join the resolvers' in `RR` and flow into the layer's `R`.
-	 * v3 typed this `Effect<string, ConfigError, any>` and cast the requirements
-	 * away at the call site.
 	 *
 	 * When absent, `save` and `update` fail with
 	 * {@link ConfigDefaultPathMissingError}.
@@ -506,10 +502,10 @@ const makeImpl = <A, I, RR>(
 
 	/**
 	 * Merge the discovered sources and announce the result. Shared by `load` and
-	 * `loadOrDefault`, which in v3 each re-inlined it and drifted apart.
+	 * `loadOrDefault`, so the two cannot drift apart.
 	 *
-	 * Both events carry EVERY contributing source. v3 reported `sources[0].path`,
-	 * which is wrong under `layeredMerge`, where all of them contributed.
+	 * Both events carry EVERY contributing source, because under `layeredMerge`
+	 * all of them contributed.
 	 */
 	const mergeAndEmit = (sources: NonEmptySources<A>): Effect.Effect<A> =>
 		Effect.gen(function* () {
@@ -610,17 +606,17 @@ const makeImpl = <A, I, RR>(
 	 * Resolve `defaultPath`, `mkdir -p` its parent and write. Shared by `save`
 	 * and `update`, and — crucially — emits nothing.
 	 *
-	 * v3's `update` called the public `save`, so a single `update` published
-	 * `Written` + `Saved` + `Updated`; v3 documented this as a known smell. Event
-	 * granularity is per-operation, so the emitting boundary must sit in the
-	 * public method, never in the shared internals it delegates to.
+	 * `update` must not call the public `save`, or one `update` would publish
+	 * `Saved` as well as `Updated`. Event granularity is per-operation, so the
+	 * emitting boundary sits in the public method, never in the shared internals
+	 * it delegates to.
 	 */
 	const saveTo = (value: A): Effect.Effect<string, ConfigSaveError> =>
 		Effect.gen(function* () {
 			const configured = options.defaultPath;
 			if (configured === undefined) return yield* Effect.fail(new ConfigDefaultPathMissingError({}));
 			// `defaultPath`'s requirements are `RR`, satisfied by the same context the
-			// resolvers use. No cast — v3 wrote `as Effect.Effect<string, ConfigError>`.
+			// resolvers use. No cast needed.
 			const target = yield* Effect.provide(configured, resolverEnv);
 			yield* fs
 				.makeDirectory(path.dirname(target), { recursive: true })
@@ -694,7 +690,7 @@ const layer = <Self, A, I, RR = never>(
 		tag,
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
-			// `save` needs `dirname`. Task 5 declared Path in `R` without yielding it.
+			// `save` needs `dirname`, so `Path` is required alongside `FileSystem`.
 			const path = yield* Path.Path;
 			const resolverEnv = yield* Effect.context<RR>();
 			return makeImpl(options, fs, path, resolverEnv);
@@ -854,14 +850,30 @@ export class ConfigFile {
 	 * Build the live layer for a config service class.
 	 *
 	 * @remarks
-	 * Resolver requirements flow into the layer's `R` type. v3 cast them away with
-	 * `as Effect.Effect<Option<string>>`, making `Layer<Service, never, FileSystem>`
-	 * a claim rather than a proof.
+	 * Resolver requirements flow into the layer's `R` type: the result is
+	 * `Layer<Self, never, FileSystem | Path | RR>`, so the platform services and
+	 * every resolver's needs are visible at the provide site.
 	 *
 	 * `ConfigFile.layer` is a layer-RETURNING function, not a layer: calling it
 	 * twice builds two independent service instances. Bind its result to a const
-	 * and provide that const, per the memoization discipline — do not call
-	 * `ConfigFile.layer(...)` inline at each provide site.
+	 * and provide that const — do not call `ConfigFile.layer(...)` inline at each
+	 * provide site.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ConfigFile, ConfigResolver, JsonCodec, MergeStrategy } from "@effected/config-file";
+	 * import { Schema } from "effect";
+	 *
+	 * const AppShape = Schema.Struct({ port: Schema.Number });
+	 * class AppConfig extends ConfigFile.Service<AppConfig, typeof AppShape.Type>()("app/Config") {}
+	 *
+	 * const AppConfigLive = ConfigFile.layer(AppConfig, {
+	 * 	schema: AppShape,
+	 * 	codec: JsonCodec,
+	 * 	resolvers: [ConfigResolver.explicitPath("./app.config.json")],
+	 * 	strategy: MergeStrategy.firstMatch<typeof AppShape.Type>(),
+	 * });
+	 * ```
 	 */
 	static readonly layer = layer;
 
@@ -881,10 +893,9 @@ export class ConfigFile {
 	 * directory is created through `FileSystem.makeTempDirectory` rather than
 	 * `node:fs`.
 	 *
-	 * `Layer.scoped` does not exist in v4. `Layer.effect` types its layer as
-	 * `Layer<I, E, Exclude<R, Scope>>`, so an `Effect.addFinalizer` inside it binds
-	 * to the layer's own scope and runs on release without surfacing `Scope` in the
-	 * layer's requirements.
+	 * The temp directory is removed by a finalizer bound to the layer's own scope,
+	 * so cleanup runs on release without surfacing `Scope` in the layer's
+	 * requirements.
 	 *
 	 * @example
 	 * ```ts
@@ -921,10 +932,17 @@ export class ConfigFile {
 	 * @example
 	 * ```ts
 	 * import { ConfigFile, JsonCodec } from "@effected/config-file";
+	 * import { Effect, Schema } from "effect";
 	 *
-	 * const config = yield* ConfigFile.read(inputs.configFile, {
-	 *   schema: MyConfig,
-	 *   codec: JsonCodec,
+	 * const MyConfig = Schema.Struct({ port: Schema.Number });
+	 *
+	 * // Requires `FileSystem` in `R`; provide it from a platform layer.
+	 * const program = Effect.gen(function* () {
+	 * 	const config = yield* ConfigFile.read("./app.config.json", {
+	 * 		schema: MyConfig,
+	 * 		codec: JsonCodec,
+	 * 	});
+	 * 	return config.port;
 	 * });
 	 * ```
 	 */

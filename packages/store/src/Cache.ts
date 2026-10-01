@@ -35,8 +35,7 @@ export class CacheEntry extends Schema.Class<CacheEntry>("CacheEntry")({
  *
  * @remarks
  * Returned by {@link CacheShape.entries} so listing a cache never loads BLOBs.
- * Unlike v3, the timestamps are structured `DateTime.Utc` values, not raw ISO
- * strings.
+ * The timestamps are structured `DateTime.Utc` values, not raw ISO strings.
  *
  * @public
  */
@@ -61,7 +60,7 @@ export interface CacheEntryMeta {
  *
  * @remarks
  * Returned by {@link CacheShape.invalidateByTag}, {@link CacheShape.invalidateAll}
- * and {@link CacheShape.prune}. v3's `PruneResult` alias is not ported.
+ * and {@link CacheShape.prune}.
  *
  * @public
  */
@@ -77,8 +76,8 @@ export interface CacheRemovalResult {
  * {@link CacheShape.events}.
  *
  * @remarks
- * `Evicted` is new in v4: it reports entries removed by the
- * {@link CacheOptions.maxEntries} eviction policy during a `set`.
+ * `Evicted` reports entries removed by the {@link CacheOptions.maxEntries}
+ * eviction policy during a `set`.
  *
  * @public
  */
@@ -135,10 +134,9 @@ export class CacheEvent extends Schema.Class<CacheEvent>("CacheEvent")({
  * Raised when a cache operation's SQL fails.
  *
  * @remarks
- * `cause` carries the underlying `SqlError` structurally; v3 flattened it to a
- * `reason` string. Defects — a throwing `onRemoved` callback, a programmer
- * error inside the engine — are NOT laundered into this error; they propagate
- * as defects (the v3 `catchAllDefect` round-trip is deliberately not ported).
+ * `cause` carries the underlying `SqlError` structurally. Defects — a throwing
+ * `onRemoved` callback, a programmer error inside the engine — are NOT
+ * laundered into this error; they propagate as defects.
  *
  * @public
  */
@@ -655,9 +653,8 @@ const make = (options: CacheOptions): Effect.Effect<CacheShape, CacheError, SqlC
 					Effect.gen(function* () {
 						// The tags column stores JSON text, so match the JSON encoding of
 						// the tag (quotes included — they anchor whole-tag matches), with
-						// LIKE metacharacters escaped. v3 matched the RAW tag against the
-						// JSON column, so a tag containing a backslash or quote never
-						// matched its own entry.
+						// LIKE metacharacters escaped, so a tag containing a backslash or
+						// quote still matches its own entry.
 						const escaped = JSON.stringify(tag).replace(/[%_\\]/g, "\\$&");
 						const pattern = `%${escaped}%`;
 						const removed = yield* sql<{ key: string }>`
@@ -803,13 +800,24 @@ const makeDegraded = (cause: Cause.Cause<unknown>): Effect.Effect<CacheShape> =>
  * `TestClock.adjust`. **Provide `TestClock.layer()` outside the `Effect.provide`
  * that supplies this cache, not beneath it** — underneath, the test body has no
  * `TestClock` in its own context and `TestClock.adjust` dies as a defect, so
- * nothing you try to expire ever expires. The layer statics are parameterized factories: call each
- * once and bind the result to a `const`, or memoization by reference is lost
- * and the database is opened twice.
+ * nothing you try to expire ever expires.
+ *
+ * The layer statics are parameterized factories: call each once and bind the
+ * result to a `const`, or memoization by reference is lost and the database is
+ * opened twice.
  *
  * @example
  * ```ts
- * const CacheLayer = Cache.layerSqlite({ filename: "cache.db", maxEntries: 1000 });
+ * import { Cache } from "@effected/store";
+ * import { Duration, Effect } from "effect";
+ *
+ * const CacheLive = Cache.layerSqlite({ filename: "cache.db", maxEntries: 1000 });
+ *
+ * const program = Effect.gen(function* () {
+ * 	const cache = yield* Cache;
+ * 	yield* cache.set({ key: "greeting", value: new TextEncoder().encode("hello"), ttl: Duration.minutes(5) });
+ * 	return yield* cache.has("greeting"); // => true
+ * }).pipe(Effect.provide(CacheLive));
  * ```
  *
  * @public
@@ -823,7 +831,13 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 		return Layer.effect(Cache, make(options ?? {}));
 	}
 
-	/** The batteries-included layer over `@effect/sql-sqlite-node`. */
+	/**
+	 * The batteries-included layer: a `Cache` over a SQLite database file via
+	 * `@effect/sql-sqlite-node`.
+	 *
+	 * @remarks
+	 * Fails with `CacheError` on the layer's error channel if setup fails.
+	 */
 	static layerSqlite(options: CacheSqliteOptions): Layer.Layer<Cache, CacheError> {
 		// `filename` last: the layer owns it, whatever the passthrough says. The
 		// name transforms are stripped at runtime too — the `Omit` on `client`
@@ -842,7 +856,7 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 			: cache;
 	}
 
-	/** An in-memory (`:memory:`) layer for tests. */
+	/** An in-memory (`:memory:`) `Cache` layer for tests; each build is a fresh, empty cache. */
 	static layerTest(options?: CacheOptions): Layer.Layer<Cache, CacheError> {
 		return Cache.layerSqlite({ ...(options ?? {}), filename: ":memory:" });
 	}
@@ -905,9 +919,8 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 	 * its result and return that.
 	 *
 	 * @remarks
-	 * `get` → decode → on miss run `onMiss` → encode → `set` is the entire
-	 * reason to have a cache, and it was roughly twenty-five lines every
-	 * consumer wrote for themselves. `schema` encodes to `string`; the last
+	 * Runs `get` → decode → on miss `onMiss` → encode → `set` in one call.
+	 * `schema` encodes to `string`; the last
 	 * step to bytes is {@link Uint8ArrayFromUtf8}, so the encoding decision
 	 * lives in one audited place here rather than one per consumer.
 	 *
@@ -929,12 +942,18 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 	 *
 	 * @example
 	 * ```ts
+	 * import { Cache } from "@effected/store";
+	 * import { Duration, Effect, Schema } from "effect";
+	 *
+	 * const Members = Schema.Array(Schema.String);
+	 * const fetchMembersFromApi = Effect.succeed(["ada", "grace"]);
+	 *
 	 * const program = Effect.gen(function* () {
-	 *   const members = yield* Cache.through("team:platform", Schema.fromJsonString(Members), {
-	 *     ttl: "1 hour",
-	 *     tags: ["team"],
-	 *   })(fetchMembersFromApi);
-	 *   return members;
+	 * 	const members = yield* Cache.through("team:platform", Schema.fromJsonString(Members), {
+	 * 		ttl: Duration.hours(1),
+	 * 		tags: ["team"],
+	 * 	})(fetchMembersFromApi);
+	 * 	return members;
 	 * });
 	 * ```
 	 */

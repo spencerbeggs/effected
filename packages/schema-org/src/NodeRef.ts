@@ -30,7 +30,7 @@ export class InvalidNodeIdError extends Schema.TaggedError<InvalidNodeIdError>()
  *
  * @remarks
  * Written lookahead-free so that `Arbitrary.schema` derivation stays possible
- * for property tests, per the kit's schema standards.
+ * for property tests.
  *
  * Control characters are excluded via `\p{Cc}` rather than a hand-written
  * `\u0000-\u001F\u007F` range. The property escape is both narrower to read and
@@ -112,8 +112,8 @@ export class NodeRef extends Schema.Class<NodeRef>("NodeRef")({
 	 * Validates an identifier and returns a reference, or fails with
 	 * {@link InvalidNodeIdError}.
 	 *
-	 * The synchronous `Result` form is the primitive, per the kit's
-	 * sync-primitive policy; {@link NodeRef.toChecked} is its `Effect` twin.
+	 * The synchronous `Result` form is the primitive; {@link NodeRef.toChecked}
+	 * is its `Effect` twin.
 	 */
 	static toCheckedResult(id: string): Result.Result<NodeRef, InvalidNodeIdError> {
 		return NodeRef.isValidId(id)

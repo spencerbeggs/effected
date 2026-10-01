@@ -1,5 +1,4 @@
-// A short display-width implementation checked against `string-width` by a differential test; see
-// okf/decisions/own-display-width.md. It embeds a hand-kept East Asian Width table that will drift from Unicode, and
+// A short display-width implementation checked against `string-width` by a differential test. It embeds a hand-kept East Asian Width table that will drift from Unicode, and
 // `__test__/displayWidth.oracle.test.ts` is what catches the drift.
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });

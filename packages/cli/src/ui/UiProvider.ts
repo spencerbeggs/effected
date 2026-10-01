@@ -58,9 +58,8 @@ export interface UiProviderProps {
  * out at: `renderToString(tree, { columns })` with `size: { columns, rows }` keeps the kit's widgets cut to that
  * width. A tree given a `size` no longer follows the terminal's resizes.
  *
- * Standalone, there is no screen to end: `useScreenCancel` does nothing (a widget's own quit key, such as `Select`'s
- * `q`, is inert), and an input handler a kit widget registers is called as is, so what it throws escapes as Ink
- * leaves it. Nested inside a `CliUi.run` screen, it overrides only the theme, the glyphs and the size: the screen's
+ * Standalone, there is no screen to end: a kit widget's own quit key, such as `Select`'s `q`, does nothing, and an
+ * input handler a kit widget registers is called as is, so what it throws escapes as Ink leaves it. Nested inside a `CliUi.run` screen, it overrides only the theme, the glyphs and the size: the screen's
  * cancel and its defect route pass through, so `q` still cancels and a throwing handler is still the screen's defect.
  * Ink's colour level is the host's: `Styled` passes the theme's props, none at colour `none`.
  *

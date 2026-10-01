@@ -1,4 +1,4 @@
-// parse-validity (#129): the always-on rule #1. Bridges the engine's
+// parse-validity: the always-on rule #1. Bridges the engine's
 // recovered diagnostics into the lint layer — the reason `YamlLint.run`
 // works on documents that do not parse.
 //

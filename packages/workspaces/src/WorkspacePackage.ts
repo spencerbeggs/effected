@@ -16,8 +16,8 @@ import { Effect, FileSystem, Option, Schema } from "effect";
 const EMPTY: Record<string, string> = Object.freeze(Object.create(null) as Record<string, string>);
 
 // The frozen empty default for `manifestRecord`, shared like the dependency-map
-// default: construction sites that predate the field — and previously-serialized
-// values without it — decode to `{}` rather than failing or carrying `undefined`.
+// default: construction sites and serialized values without the field decode to
+// `{}` rather than failing or carrying `undefined`.
 const EMPTY_MANIFEST: Record<string, unknown> = Object.freeze(Object.create(null) as Record<string, unknown>);
 
 /**
@@ -69,7 +69,7 @@ export interface DependencyDiff {
 	readonly added: Record<string, string>;
 	/** Present in the other, absent from the receiver. */
 	readonly removed: Record<string, string>;
-	/** Present in both at different specifiers. */
+	/** Present in both at different specifiers: `from` is the other package's, `to` the receiver's. */
 	readonly changed: Record<string, { readonly from: string; readonly to: string }>;
 }
 
@@ -157,13 +157,9 @@ export class WorkspacePackage extends Schema.Class<WorkspacePackage>("WorkspaceP
 	 * Absolute path to the workspace root this package was discovered under.
 	 *
 	 * @remarks
-	 * Carried, not derived. Whoever built this value already knew the root —
-	 * `WorkspaceDiscovery` resolved it before enumerating, and the sync entry
-	 * point is handed it — so dropping it forced every consumer into per-package
-	 * root arithmetic (counting `relativePath` segments and re-ascending that
-	 * many `..`). That reconstruction is exact only while `path` and
-	 * `relativePath` agree, and it re-derives something the kit never had to
-	 * lose.
+	 * Carried, not derived: `WorkspaceDiscovery` resolves the root before
+	 * enumerating, so every package arrives with it and consumers need no
+	 * per-package root arithmetic over `relativePath`.
 	 *
 	 * For the root package this equals `path`, and `relativePath` is `"."`.
 	 */
@@ -193,8 +189,7 @@ export class WorkspacePackage extends Schema.Class<WorkspacePackage>("WorkspaceP
 	 * validated beyond being a record. For the strict typed model use
 	 * `manifest()`, which deliberately **re-reads** the file — a point-in-time
 	 * refresh this captured record cannot provide. Defaults to `{}` for
-	 * construction sites and previously-serialized values that predate the
-	 * field.
+	 * values constructed or decoded without the field.
 	 */
 	manifestRecord: Schema.Record(Schema.String, Schema.Unknown).pipe(
 		Schema.withDecodingDefaultKey(Effect.succeed(EMPTY_MANIFEST)),
@@ -290,8 +285,8 @@ export class WorkspacePackage extends Schema.Class<WorkspacePackage>("WorkspaceP
 	}
 
 	/**
-	 * Whether any dependency name matches `pattern` — the `minimatch` runtime
-	 * dependency's one call site, now over `@effected/glob`'s vendored engine.
+	 * Whether any dependency name (across all four kinds) matches the glob
+	 * `pattern`, using `@effected/glob`.
 	 *
 	 * @remarks
 	 * A `GlobPattern` is total and free to test. A `string` is compiled on every
@@ -308,7 +303,12 @@ export class WorkspacePackage extends Schema.Class<WorkspacePackage>("WorkspaceP
 		return Object.keys(this.allDependencies).some((dependency) => compiled.matches(dependency));
 	}
 
-	/** Compare this package's dependencies against `other`'s. */
+	/**
+	 * Compare this package's dependencies against `other`'s, treating `other` as
+	 * the baseline: what this package added, removed or re-specified.
+	 *
+	 * @param other - The package to compare against.
+	 */
 	dependencyDiff(other: WorkspacePackage): DependencyDiff {
 		const mine = this.allDependencies;
 		const theirs = other.allDependencies;
@@ -344,6 +344,10 @@ export class WorkspacePackage extends Schema.Class<WorkspacePackage>("WorkspaceP
 	 * Read and decode this package's `package.json` into the strict
 	 * `@effected/package-json` `Package` model — the bridge from the
 	 * tolerant discovery projection to the fully typed manifest.
+	 *
+	 * @remarks
+	 * Fails with {@link WorkspaceManifestError} (`kind: "read"` or `"decode"`) and
+	 * requires core `FileSystem`.
 	 */
 	static readonly manifest = Effect.fn("WorkspacePackage.manifest")(function* (self: WorkspacePackage) {
 		const fs = yield* FileSystem.FileSystem;

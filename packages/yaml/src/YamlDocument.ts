@@ -45,6 +45,17 @@ export class YamlDirective extends Schema.Class<YamlDirective>("YamlDirective")(
  * Construct via `YamlDocument.parse` / `parseAll`; `YamlDocument.make` is for
  * synthetic documents.
  *
+ * @example
+ * ```ts
+ * import { YamlDocument } from "@effected/yaml";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const doc = yield* YamlDocument.parse("# header\nname: Alice\n");
+ *   return doc.errors.length; // 0 — no recovered errors
+ * });
+ * ```
+ *
  * @public
  */
 export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
@@ -63,6 +74,12 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	 * recovered diagnostics. Fails with the aggregate {@link YamlParseError}
 	 * when any fatal-code diagnostic is present; non-fatal diagnostics are
 	 * data on the returned document.
+	 *
+	 * @param text - The YAML source to parse.
+	 * @param options - Optional {@link YamlParseOptions}; defaults apply for
+	 *   omitted fields.
+	 * @returns An `Effect` that succeeds with the {@link YamlDocument}, or fails
+	 *   with {@link YamlParseError}.
 	 */
 	static readonly parse = Effect.fn("YamlDocument.parse")(function* (text: string, options?: YamlParseOptions) {
 		const raw = composeFirstDocument(text, toParseInput(options));
@@ -80,6 +97,12 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	 * Parse a multi-document YAML stream into one {@link YamlDocument} per
 	 * document. Any fatal diagnostic in any document — or a stream-level
 	 * directive-placement error — fails the whole Effect.
+	 *
+	 * @param text - The YAML stream to parse.
+	 * @param options - Optional {@link YamlParseOptions}; defaults apply for
+	 *   omitted fields.
+	 * @returns An `Effect` that succeeds with one {@link YamlDocument} per
+	 *   document, or fails with {@link YamlParseError}.
 	 */
 	static readonly parseAll = Effect.fn("YamlDocument.parseAll")(function* (text: string, options?: YamlParseOptions) {
 		const { documents, streamErrors } = composeAllDocuments(text, toParseInput(options));
@@ -104,6 +127,9 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	 * Schema-producing: each call returns a fresh schema whose derivation
 	 * caches are not shared across calls; bind the result to a `const` on hot
 	 * paths.
+	 *
+	 * @param options - Optional {@link YamlParseOptions} applied on decode.
+	 * @returns A `Schema.Codec<YamlDocument, string>`.
 	 */
 	static schema(options?: YamlParseOptions): Schema.Codec<YamlDocument, string> {
 		return Schema.String.pipe(
@@ -141,6 +167,11 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	 * option. Callers that need folding should render the plain value
 	 * instead — `Yaml.stringify(doc.toValue(), options)` — at the cost of
 	 * the document-level framing and styles this path preserves.
+	 *
+	 * @param options - Optional {@link YamlStringifyOptions}; defaults apply for
+	 *   omitted fields.
+	 * @returns An `Effect` that succeeds with the YAML text, or fails with
+	 *   {@link YamlStringifyError}.
 	 */
 	stringify(options?: YamlStringifyOptions): Effect.Effect<string, YamlStringifyError> {
 		return Effect.try({

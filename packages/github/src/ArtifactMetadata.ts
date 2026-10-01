@@ -7,10 +7,7 @@ import { Repo } from "./Repo.js";
  * What to record about a published artifact.
  *
  * @remarks
- * These are the fields the endpoint actually accepts. The version this replaces
- * declared a `version` field the endpoint has no notion of — a fabricated key
- * that a `Record<string, unknown>` body accepted silently and the generated
- * types reject outright.
+ * These are the fields the storage-record endpoint accepts.
  *
  * @public
  */
@@ -35,9 +32,8 @@ export class StorageRecordInput extends Schema.Class<StorageRecordInput>("Storag
  * @remarks
  * The endpoint is org-scoped rather than repository-scoped, but the
  * organization is resolved from {@link Repo}'s `owner` per call like every
- * other resource — an earlier version took it as a positional argument, the
- * one method on the surface that did. `Repo.provide` covers the cross-org
- * case, exactly as it covers the cross-repository one.
+ * other resource. `Repo.provide` covers the cross-org case, exactly as it
+ * covers the cross-repository one.
  *
  * @public
  */
@@ -47,13 +43,18 @@ export interface ArtifactMetadataShape {
 }
 
 /**
- * Artifact metadata.
+ * Records where published artifacts are stored, at the organization level.
+ *
+ * @remarks
+ * Provide it with {@link ArtifactMetadata.layer}, which needs a `GitHubClient`;
+ * `createStorageRecord` also needs a `Repo` in `R`.
  *
  * @public
  */
 export class ArtifactMetadata extends Context.Service<ArtifactMetadata, ArtifactMetadataShape>()(
 	"@effected/github/ArtifactMetadata",
 ) {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<ArtifactMetadata, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),
@@ -77,9 +78,7 @@ const make = (client: GitHubClient["Service"]): ArtifactMetadataShape => ({
 	createStorageRecord: Effect.fn("ArtifactMetadata.createStorageRecord")(function* (input: StorageRecordInput) {
 		const { owner } = yield* Repo;
 		yield* Effect.annotateCurrentSpan({ org: owner, artifact: input.name });
-		// The route is in GitHub's OpenAPI description now, so this is a typed call
-		// — the defensive `octokit.request` cast and string-body tolerance the
-		// previous version carried are both unnecessary.
+		// The route is in GitHub's OpenAPI description, so this is a typed call.
 		const stored = yield* client.request("POST /orgs/{org}/artifacts/metadata/storage-record", {
 			org: owner,
 			name: input.name,

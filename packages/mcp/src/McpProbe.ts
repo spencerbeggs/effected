@@ -49,8 +49,7 @@ export interface McpProbeResult {
  *
  * @remarks
  * Stdin stays open until the id-1 response has arrived. Closing it right
- * after writing, as every hand-rolled smoke test did, makes an Effect server
- * drop the in-flight response and exit 0, so a slow boot reads as a pass with
+ * after writing makes an Effect server drop the in-flight response and exit 0, so a slow boot reads as a pass with
  * no response. The caller asserts `response.error === undefined`, `stderr` is
  * empty and `exitCode` is 0; this is the MCP half of a packed-install proof.
  * Checking stderr and the exit code alone passes a server that answers
@@ -63,6 +62,20 @@ export interface McpProbeResult {
  *   message carries its exit code and stderr.
  * - A child that ignores stdin EOF never exits, and the probe waits for it.
  *   Wrap the probe in `Effect.timeout`.
+ *
+ * @example
+ * ```ts
+ * import { McpProbe } from "@effected/mcp/testing";
+ * import { Effect } from "effect";
+ * import { ChildProcess } from "effect/process";
+ *
+ * const program = Effect.gen(function* () {
+ * 	const probe = yield* McpProbe.initialize(ChildProcess.make(process.execPath, ["./bin/server.js"]));
+ * 	// A clean boot: no JSON-RPC error, empty stderr, exit code 0.
+ * 	return probe.response.error === undefined && probe.stderr === "" && probe.exitCode === 0;
+ * });
+ * // Requires a `ChildProcessSpawner` from the platform layer.
+ * ```
  *
  * @public
  */

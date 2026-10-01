@@ -1,10 +1,8 @@
 import { Effect, Layer } from "effect";
 import * as SqlClient from "effect/sql/SqlClient";
 
-/**
- * SQLite-only support shared by the `Store` and `Cache` batteries-included
- * layers. Facade-free like `migrator.ts`: it never imports a facade module.
- */
+// SQLite-only support shared by the `Store` and `Cache` batteries-included
+// layers. Facade-free like `migrator.ts`: it never imports a facade module.
 
 /**
  * A layer that registers a `PRAGMA wal_checkpoint(TRUNCATE)` finalizer against

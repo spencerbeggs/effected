@@ -1,18 +1,14 @@
-/**
- * The pnpm native-binary layout: from pnpm 12 the `pnpm` registry package is a
- * thin wrapper whose `pnpm` bin is a shebang-less placeholder that the
- * package's own install script overwrites with the host's native executable,
- * fetched as an optional dependency named `@pnpm/exe.<os>-<arch>[-musl]`.
- * The installer never runs lifecycle scripts, so it performs that overlay
- * itself; the pure pieces of that live here, where they are testable without
- * a tarball.
- *
- * Detection is by LAYOUT (the manifest's `optionalDependencies` naming an
- * `@pnpm/exe.*` package), never by major version — pnpm 11 and earlier ship
- * no such dependency and keep their Node entry points.
- *
- * @internal
- */
+// The pnpm native-binary layout: from pnpm 12 the `pnpm` registry package is a
+// thin wrapper whose `pnpm` bin is a shebang-less placeholder that the
+// package's own install script overwrites with the host's native executable,
+// fetched as an optional dependency named `@pnpm/exe.<os>-<arch>[-musl]`.
+// The installer never runs lifecycle scripts, so it performs that overlay
+// itself; the pure pieces of that live here, where they are testable without
+// a tarball.
+//
+// Detection is by LAYOUT (the manifest's `optionalDependencies` naming an
+// `@pnpm/exe.*` package), never by major version — pnpm 11 and earlier ship
+// no such dependency and keep their Node entry points.
 
 import { Option, Result } from "effect";
 import * as Base64 from "effect/encoding/Base64";

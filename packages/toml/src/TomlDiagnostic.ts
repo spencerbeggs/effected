@@ -113,8 +113,12 @@ export class TomlDiagnostic extends Schema.Class<TomlDiagnostic>("TomlDiagnostic
 }) {
 	/**
 	 * Materialize an engine record, deriving `line`/`character` (0-based)
-	 * from `offset` against the source `text`. Advanced — the parse/stringify
+	 * from `offset` against the source text. Advanced — the parse/stringify
 	 * entry points call this for you.
+	 *
+	 * @param source - The source text the record's `offset` indexes into.
+	 * @param raw - The engine record: `code`, `message`, `offset` and `length`.
+	 * @returns The diagnostic with `line` and `character` filled in.
 	 */
 	static fromRaw(
 		source: string,

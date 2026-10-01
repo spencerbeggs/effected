@@ -1,6 +1,6 @@
 // The single `Dependency` model — one class carrying a `kind` field
-// (`prod` / `dev` / `peer` / `optional`) rather than v3's four copy-pasted
-// `Schema.TaggedClass`es. The protocol getters are written once, delegating to
+// (`prod` / `dev` / `peer` / `optional`) rather than one class per map. The
+// protocol getters are written once, delegating to
 // `@effected/npm`'s `DependencySpecifier`; `kind` types against `@effected/npm`'s
 // `DependencyKind`, the kit-wide dependency-section vocabulary.
 

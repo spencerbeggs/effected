@@ -1,4 +1,4 @@
-// Shared rule helpers (#129): span queries over the eager token array, the
+// Shared rule helpers: span queries over the eager token array, the
 // scalar walk the style rules share, and the bounded numeric option schema.
 
 import { Schema } from "effect";

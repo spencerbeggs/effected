@@ -10,11 +10,11 @@ sources:
     title: "A real-process check that a live view's scoped tick lets the process exit"
   - id: effect-clock
     resource: ../../.repos/effect/packages/effect/src/internal/effect.ts
-    title: "effect 4.0.0-rc.118, internal/effect.ts:6341-6350: the default Clock sleeps on a plain, ref'd setTimeout"
+    title: "effect internal/effect.ts:6313-6326: the default Clock sleeps on a plain, ref'd setTimeout"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T14:11:47Z
-  body_sha256: b62296f069b876c8bb4bc592c896009aa6b0d2f669e8b66776112728c47ee90b
+  at: 2026-10-01T17:24:58Z
+  body_sha256: ad7dd6c483353d93abc529cafe09152a64d66b3c24afaab534d8d4165a05c483
 ---
 
 # The live view's tick is a scoped Effect schedule, and its frame index comes from Clock
@@ -63,4 +63,4 @@ Effect tick frame by frame; it could not drive a `setInterval` at all, and
   spec's `unref`'d timer would have let it exit mid-run.
 
 [^pinned-by]: `packages/cli/__test__/ui/CliUi.live.exit.test.ts` (the process exits at once) and `CliUi.live.modes.test.ts` (`TestClock` drives the tick)
-[^effect-clock]: `.repos/effect/packages/effect/src/internal/effect.ts:6341-6350`
+[^effect-clock]: `.repos/effect/packages/effect/src/internal/effect.ts:6313-6326`

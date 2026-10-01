@@ -1,12 +1,8 @@
-/**
- * Pollution-safe shallow merge for `appendPatch`.
- *
- * Ported from `@effected/config-file`'s `internal/deepMerge.ts` recipe, minus
- * the recursion: `appendPatch` is a **shallow** merge by decision, so a nested
- * object in the patch replaces the one beneath it rather than merging into it.
- *
- * @internal
- */
+// Pollution-safe shallow merge for `appendPatch`.
+//
+// Ported from `@effected/config-file`'s `internal/deepMerge.ts` recipe, minus
+// the recursion: `appendPatch` is a **shallow** merge by decision, so a nested
+// object in the patch replaces the one beneath it rather than merging into it.
 
 /**
  * Keys that must never be copied from either side.

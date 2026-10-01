@@ -20,7 +20,7 @@ export class GraphQLErrorEntry extends Schema.Class<GraphQLErrorEntry>("GraphQLE
  * @remarks
  * Separate from `GitHubError` because GraphQL genuinely answers differently:
  * a 200 response can still carry failures, and it carries a **list** of them.
- * `errors` is the one structured field a surveyed consumer actually read.
+ * `errors` carries every entry GitHub reported, in order.
  *
  * @public
  */
@@ -30,9 +30,8 @@ export class GitHubGraphQLError extends Schema.TaggedError<GitHubGraphQLError>()
 	 *
 	 * @remarks
 	 * `"alreadyExists"` exists here for the same reason it exists on the REST
-	 * error: without it a consumer lowercases the message and greps it for
-	 * `"already"` and `"exists"`, which is exactly what one surveyed repo did to
-	 * make project creation idempotent.
+	 * error: it lets a caller make a create idempotent without lowercasing the
+	 * message and grepping it.
 	 */
 	kind: Schema.Literals([
 		"alreadyExists",
@@ -153,25 +152,29 @@ const classify = (
  *
  * @remarks
  * This is the mechanism that makes `client.graphql` return a **domain value**
- * rather than an `unknown` the caller casts. The package this replaces took a
- * query string and a caller-chosen type parameter with nothing connecting them,
- * so every consumer wrote its own response interface and hoped.
+ * rather than an `unknown` the caller casts: the response schema ties the
+ * query to its decoded type.
  *
- * The kit owns the documents its resources need; a consumer with a domain of
- * its own — silk-sync-action's ProjectV2 work, for instance — builds its own
- * `GraphQLDocument` and gets the same typing and the same error taxonomy
- * without this package having to know about its schema.
+ * This package owns the documents its resource services need; a consumer with a
+ * domain of its own (GitHub Projects, say) builds its own `GraphQLDocument` and
+ * gets the same typing and the same error taxonomy.
  *
  * @example
  * ```ts
- * import { GraphQLDocument } from "@effected/github";
- * import { Schema } from "effect";
+ * import { GitHubClient, GraphQLDocument } from "@effected/github";
+ * import { Effect, Schema } from "effect";
  *
- * const ViewerLogin = GraphQLDocument.make({
- *   name: "viewerLogin",
- *   document: `query { viewer { login } }`,
- *   response: Schema.Struct({ viewer: Schema.Struct({ login: Schema.String }) }),
- * })<{ readonly login: string }>();
+ * const OwnerLogin = GraphQLDocument.make({
+ *   name: "ownerLogin",
+ *   document: `query ($owner: String!) { repositoryOwner(login: $owner) { login } }`,
+ *   response: Schema.Struct({ repositoryOwner: Schema.NullOr(Schema.Struct({ login: Schema.String })) }),
+ * })<{ readonly owner: string }>();
+ *
+ * const login = Effect.gen(function* () {
+ *   const client = yield* GitHubClient;
+ *   const data = yield* client.graphql(OwnerLogin, { owner: "effect-ts" });
+ *   return data.repositoryOwner?.login;
+ * });
  * ```
  *
  * @public

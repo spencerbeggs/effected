@@ -745,7 +745,22 @@ const terminal = (cur: Cursor, segment: TomlSegment, value: unknown, ctx: Modify
 // ── Facade ──────────────────────────────────────────────────────────────────
 
 /**
- * Formatting and modification statics. Not instantiable.
+ * Formats TOML text and modifies values at a path as byte-minimal edits that
+ * leave comments and layout elsewhere untouched. Not instantiable.
+ *
+ * @example
+ * ```ts
+ * import { TomlFormat } from "@effected/toml";
+ * import { Effect } from "effect";
+ *
+ * const formatted = TomlFormat.formatToString('  title="x"   #note\n[server]\nport=1');
+ * // => 'title = "x" # note\n[server]\nport = 1\n'
+ *
+ * const program = Effect.gen(function* () {
+ *   return yield* TomlFormat.modifyToString("[server]\nport = 1 # dev\n", ["server", "port"], 2);
+ *   // => "[server]\nport = 2 # dev\n"
+ * });
+ * ```
  *
  * @remarks
  * `format`/`formatToString` are pure and total: malformed input yields no
@@ -770,7 +785,14 @@ export class TomlFormat {
 	 * strings. Nothing else: no reordering, no blank-line collapsing, no value
 	 * rewriting. `range` restricts edits to the expressions intersecting it.
 	 * Non-mutating — apply with `TomlEdit.applyAll` (or use
-	 * {@link TomlFormat.formatToString}).
+	 * {@link TomlFormat.formatToString}). Pure and total.
+	 *
+	 * @param text - The TOML source to format.
+	 * @param range - Optional sub-range; only edits whose expression intersects
+	 *   it are returned.
+	 * @param options - Optional {@link TomlFormattingOptions}.
+	 * @returns The edits that bring `text` (or `range`) to canonical shape;
+	 *   apply them with `TomlEdit.applyAll`.
 	 */
 	static format(text: string, range?: TomlRangeLike, options?: TomlFormattingOptions): ReadonlyArray<TomlEdit> {
 		const tagged = computeFormatEdits(text, options);
@@ -786,6 +808,12 @@ export class TomlFormat {
 	/**
 	 * Format `text` and apply the resulting edits in one step
 	 * (`TomlEdit.applyAll ∘ format`). Pure and total.
+	 *
+	 * @param text - The TOML source to format.
+	 * @param range - Optional sub-range; only edits whose expression intersects
+	 *   it are applied.
+	 * @param options - Optional {@link TomlFormattingOptions}.
+	 * @returns The formatted text.
 	 */
 	static formatToString(text: string, range?: TomlRangeLike, options?: TomlFormattingOptions): string {
 		return TomlEdit.applyAll(text, TomlFormat.format(text, range, options));
@@ -803,6 +831,17 @@ export class TomlFormat {
 	 * section; inline and implicitly created tables refuse. Inserted lines
 	 * inherit the document's dominant newline unless `options.newline`
 	 * overrides it. Every modified document reparses cleanly.
+	 *
+	 * @param text - The TOML source to modify.
+	 * @param path - The location to set, replace or delete.
+	 * @param value - The plain JavaScript value to write; `undefined` deletes the
+	 *   target instead.
+	 * @param options - Optional {@link TomlFormattingOptions}; `newline` overrides
+	 *   the newline used for inserted lines.
+	 * @returns An `Effect` that succeeds with the edits to apply (via
+	 *   `TomlEdit.applyAll`), or fails with {@link TomlParseError} when the
+	 *   source does not parse, or {@link TomlModificationError} when `path`
+	 *   cannot be resolved or the insertion target is not allowed.
 	 */
 	static readonly modify = Effect.fn("TomlFormat.modify")(function* (
 		text: string,
@@ -851,6 +890,15 @@ export class TomlFormat {
 	/**
 	 * Modify `text` and apply the resulting edits in one step
 	 * (`TomlEdit.applyAll ∘ modify`).
+	 *
+	 * @param text - The TOML source to modify.
+	 * @param path - The location to set, replace or delete.
+	 * @param value - The plain JavaScript value to write; `undefined` deletes the
+	 *   target instead.
+	 * @param options - Optional {@link TomlFormattingOptions}.
+	 * @returns An `Effect` that succeeds with the modified text, or fails with
+	 *   {@link TomlParseError} or {@link TomlModificationError}, as
+	 *   {@link TomlFormat.modify} does.
 	 */
 	static readonly modifyToString = Effect.fn("TomlFormat.modifyToString")(function* (
 		text: string,

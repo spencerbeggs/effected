@@ -8,7 +8,7 @@
  * @remarks
  * A separate subpath, never re-exported from `.`, so the main entry's
  * consumers never load a scanner, a policy decoder or package-manager
- * orchestration they do not use (the second-published-entrypoint decision).
+ * orchestration they do not use.
  *
  * @packageDocumentation
  */
@@ -18,8 +18,7 @@
 // the discovery closure WorkspaceLayering's signatures reach (edgesOf's
 // parameter, checkWorkspace's requirement and error channel): the
 // WorkspaceDiscovery service's shape, options and failures, the WorkspaceRoot
-// service its layer requires, and WorkspacePackage's field and method types
-// (the second-published-entrypoint decision).
+// service its layer requires, and WorkspacePackage's field and method types.
 export { LayerPolicy, LayerPolicyError } from "./LayerPolicy.js";
 export { PackageManagerName } from "./PackageManagerName.js";
 export {

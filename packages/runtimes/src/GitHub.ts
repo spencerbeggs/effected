@@ -1,13 +1,9 @@
-/**
- * Talking to GitHub: pluggable authentication, a REST client, and the typed
- * failure ladder that every network fetch in this package reports through.
- *
- * The two nodejs.org feeds reuse this ladder rather than minting a parallel
- * one, so the module is named for its dominant user rather than for the
- * lowest common denominator.
- *
- * @packageDocumentation
- */
+// Talking to GitHub: pluggable authentication, a REST client, and the typed
+// failure ladder that every network fetch in this package reports through.
+//
+// The two nodejs.org feeds reuse this ladder rather than minting a parallel
+// one, so the module is named for its dominant user rather than for the
+// lowest common denominator.
 
 import { Config, Context, Effect, Layer, Option, Redacted, Schema } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/http";
@@ -85,10 +81,8 @@ export type GitHubError = AuthenticationError | RateLimitError | NetworkError | 
  * records and this is the single place they become errors. That is what keeps
  * the transport layer free of the facade and the import graph acyclic.
  *
- * `method` is what the *caller* actually sent, not a guess. Hardcoding it to
- * `"token"` made the `"anonymous"` arm of `AuthenticationError` unreachable and
- * mislabelled every anonymous rejection — the same shape of lie as v3's
- * hardcoded `source: "api"`.
+ * `method` is what the *caller* actually sent, not a guess, so the
+ * `"anonymous"` arm of `AuthenticationError` is reachable.
  *
  * @internal
  */
@@ -195,8 +189,8 @@ export class GitHubAuth extends Context.Service<GitHubAuth, GitHubAuthShape>()("
 	 * Detect a credential from the environment, preferring an explicit PAT.
 	 *
 	 * Precedence is `GITHUB_PERSONAL_ACCESS_TOKEN`, then `GITHUB_TOKEN`, then
-	 * unauthenticated — the v3 policy, kept, but read through `Config` so a test
-	 * can swap the `ConfigProvider` instead of mutating `process.env`.
+	 * unauthenticated. The variables are read through `Config`, so a test can swap
+	 * the `ConfigProvider` instead of mutating `process.env`.
 	 */
 	static readonly layer: Layer.Layer<GitHubAuth> = Layer.effect(
 		GitHubAuth,
@@ -277,9 +271,9 @@ const GITHUB_HEADERS = {
 /**
  * A GitHub REST client over `HttpClient`.
  *
- * v3 reached for `octokit` here, which cost two large dependency graphs to fund
- * two GET requests. Programming against `HttpClient` from `effect` core keeps
- * the package boundary tier and lets a consumer supply any transport.
+ * Programs against `HttpClient` from `effect` core, so the package stays
+ * boundary tier and a consumer can supply any transport. It lists a
+ * repository's tags and releases, and fails with the {@link GitHubError} ladder.
  *
  * @public
  */

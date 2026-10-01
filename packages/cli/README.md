@@ -7,10 +7,10 @@
 
 The presentation boundary of a command-line program built on `effect/cli`: who the output is for, and how it reaches them. Plain log lines on the right stream. Colour, glyphs and links only where the terminal and the reader can use them. Documents rendered for a person, an agent or a CI log. Failures reported through your own logger with the right exit code. Prompts that know when there is nobody to ask. Interactive screens and live progress views drawn with Ink. `effect/cli` still owns argument parsing, flags, the command tree and help; this package adds no parser and no command model.
 
-> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 prerelease. Packages graduate to
-> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
-> exactly the ones the kit is built and tested against, install
+> **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
+> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
+> `@effect/*` versions on the line the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
 >
 > **Stability: unstable.** This package's API surface is not yet considered

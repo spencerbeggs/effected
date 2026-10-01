@@ -2,9 +2,8 @@
 // text, including the canonical-output logic exercised by the
 // yaml-test-suite byte-equality assertion family.
 //
-// Sync throughout; the two v3 `Effect.try` failure wrappers become the
-// thrown `StringifyFailure`, which the public facade catches and
-// materializes into the public error type. Implements configurable
+// Sync throughout; failures are thrown as `StringifyFailure`, which the
+// public facade catches and materializes into the public error type. Implements configurable
 // formatting with support for block/flow styles, scalar quoting rules, and
 // round-trip preservation of AST node styles.
 
@@ -206,7 +205,7 @@ function wouldBeResolved11(s: string): boolean {
  * `,[]{}` are plain-unsafe anywhere in the scalar (YAML 1.2 §7.3.3,
  * `ns-plain-safe(flow-in)` excludes `c-flow-indicator`), where block context
  * lets them through. Without it a plain `p, q` rendered into `[x, y]` reads
- * back as three items (#695).
+ * back as three items.
  */
 function requiresQuoting(s: string, ignoreType = false, quoteCompat?: QuoteCompat, inFlow = false): boolean {
 	// Empty string must be quoted
@@ -1285,7 +1284,7 @@ function pushExplicitKeyValueLines(
 		return lines.length - 1;
 	}
 	const valLines = stringifyNodeLines(valNode, ctx, depth + 1);
-	// #348: the value node's OWN leading comment needs a line of its own above
+	// The value node's OWN leading comment needs a line of its own above
 	// the value, which none of the compact spellings below can give it — take
 	// the non-compact `:` form so the comment block sits at the value's indent.
 	// Every sibling branch of the block-mapping stringifier already does this;
@@ -1861,7 +1860,7 @@ function stringifySeqNodeLines(node: YamlSeq, ctx: StringifyContext, depth: numb
 				for (let i = 1; i < itemLines.length; i++) {
 					lines.push(itemLines[i]);
 				}
-				// #341: a block scalar's HEADER line legally carries the item's
+				// A block scalar's HEADER line legally carries the item's
 				// trailing comment (`- | # c`); a multi-line quoted scalar closes
 				// on its last line, which carries it instead.
 				appendItemTrailing(isBlockScalarHeader ? headerIdx : lines.length - 1);
@@ -1961,9 +1960,9 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 
 	const result = stringifyNodeLines(contents, ctx, 0).join("\n");
 
-	// #349: a block scalar at the DOCUMENT ROOT carries its captured header
+	// A block scalar at the DOCUMENT ROOT carries its captured header
 	// comment on the header line, exactly as the pair, seq-item and
-	// explicit-key paths do (#341). Splicing before `body` is formed covers the
+	// explicit-key paths do. Splicing before `body` is formed covers the
 	// bare, `---` and tag/anchor return branches alike; unlike those three
 	// paths the root has no competing pair-level comment, so the one header
 	// slot is never contested. Canonical mode stays comment-free.
@@ -2034,7 +2033,7 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 	// A header comment sitting AFTER the `---` marker leads the ROOT NODE, and
 	// the root is the one position with no parent to emit a node's leading
 	// block for it — the same missing-slot shape as the root block-scalar
-	// header (#349). Emit it on the marker's far side.
+	// header. Emit it on the marker's far side.
 	// Not gated on the marker: a marker-LESS header over a scalar or empty
 	// collection root is stored the same way (a non-empty collection takes it
 	// on its first entry instead), and gating dropped it entirely.

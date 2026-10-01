@@ -30,7 +30,9 @@ export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>
  * @public
  */
 export class ConfigLoadError extends Schema.TaggedError<ConfigLoadError>()("ConfigLoadError", {
+	/** The config file that failed to load. */
 	path: Schema.String,
+	/** Why it failed; the first line is the message, any remainder is detail such as a stack. */
 	reason: Schema.String,
 }) {
 	override get message(): string {
@@ -46,8 +48,11 @@ export class ConfigLoadError extends Schema.TaggedError<ConfigLoadError>()("Conf
  * @public
  */
 export interface LoadedConfig {
+	/** The absolute path of the config file. */
 	readonly path: string;
+	/** The directory containing the config file; every relative path in `config` is resolved against it. */
 	readonly directory: string;
+	/** The config, with its paths resolved. */
 	readonly config: SchemastoreConfig;
 }
 

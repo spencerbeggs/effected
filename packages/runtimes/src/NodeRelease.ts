@@ -1,8 +1,4 @@
-/**
- * A published Node.js release.
- *
- * @packageDocumentation
- */
+// A published Node.js release.
 
 import { SemVer } from "@effected/semver";
 import type { DateTime } from "effect";
@@ -11,17 +7,15 @@ import type { NodePhase, NodeSchedule } from "./NodeSchedule.js";
 import { isLtsPhase } from "./NodeSchedule.js";
 
 /**
- * One Node.js release.
+ * One published Node.js release: its version, bundled npm version and release date.
  *
- * Unlike its v3 ancestor this is an ordinary immutable value. v3's `NodeRelease`
- * carried a `Ref<NodeSchedule>` so that `release.phase()` could reach the
- * schedule, which meant every release held shared mutable state and could not be
- * a data class at all. Phase is now a question you ask *with* a schedule rather
- * than a property the release drags around.
+ * An ordinary immutable value. Phase is a question you ask *with* a schedule
+ * (`release.phase(schedule, now)`) rather than a property the release carries.
  *
  * @example
  * ```ts
  * import { NodeRelease, NodeSchedule } from "@effected/runtimes";
+ * import { SemVer } from "@effected/semver";
  * import { DateTime, Effect } from "effect";
  *
  * const program = Effect.gen(function* () {

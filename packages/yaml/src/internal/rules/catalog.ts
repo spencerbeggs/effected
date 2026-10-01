@@ -1,4 +1,4 @@
-// The built-in rule catalog (#129): the ordered rule array the facade
+// The built-in rule catalog: the ordered rule array the facade
 // exposes as `YamlLint.builtins`, and the per-rule options schemas the
 // config layer validates against. Aggregates VALUES (an array and a map) —
 // not a re-export barrel; rules are imported from their own modules.

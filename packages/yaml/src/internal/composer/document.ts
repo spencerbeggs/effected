@@ -1068,9 +1068,9 @@ export const EMPTY_DOCUMENT: RawYamlDocument = {
 };
 
 /**
- * Compose the first document of `text` with full error recovery — v3
- * `parseDocument` semantics minus the Effect wrapper and minus fatal-code
- * filtering (the facade applies `isFatalCode` to the returned diagnostics).
+ * Compose the first document of `text` with full error recovery, with no
+ * fatal-code filtering (the facade applies `isFatalCode` to the returned
+ * diagnostics).
  * Cross-document directive-placement errors are validated into the same
  * state and therefore appear in the returned document's `errors`.
  */
@@ -1106,12 +1106,10 @@ export function composeFirstDocumentCounted(
 }
 
 /**
- * Compose every document of `text` with full error recovery — v3
- * `parseAllDocuments` semantics minus the Effect wrapper and minus
+ * Compose every document of `text` with full error recovery, with no
  * fatal-code filtering. Each document is composed with a fresh state; the
  * cross-document directive validation runs in its own state whose errors
- * are returned unfiltered as `streamErrors` (v3 filtered these to
- * `InvalidDirective` before failing — the facade applies that filter).
+ * are returned unfiltered as `streamErrors` (the facade applies its filter).
  */
 export function composeAllDocuments(
 	text: string,

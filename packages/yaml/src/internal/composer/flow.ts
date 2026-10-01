@@ -127,7 +127,7 @@ function validateFlowContentIndent(cst: CstNode, state: ComposerState, parentBlo
 			const col = i - lineStart;
 			// A line holding only the collection's own CLOSING indicators is not
 			// content, and the spec puts no indentation floor on a flow closer —
-			// `x: {\n  a: 1\n}` is valid, and the reference accepts it (#340).
+			// `x: {\n  a: 1\n}` is valid, and the reference accepts it.
 			// Only real content has to clear the parent block column.
 			if (col <= parentBlockColumn && !isClosersOnly(text, i, end)) {
 				state.errors.push({
@@ -533,7 +533,7 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 	// Own-line comments left over after the last item become the sequence's
 	// trailing comment (mirroring buildPairs' leftover contract).
 	let seqTrailing: string | undefined;
-	// Forward-attribution state, hoisted ACROSS comma segments (#127): an
+	// Forward-attribution state, hoisted ACROSS comma segments: an
 	// own-line comment belongs to the FOLLOWING item even when a comma splits
 	// the segment before that item arrives; a same-line comment trails the
 	// last pushed item even when the comma sits between them (`a, # c`).
@@ -647,7 +647,7 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 				if (si.kind === "comment") {
 					const cText = si.comment ?? "";
 					// Own-line vs trailing is decided from the comment's own line
-					// (#127): only a comment SHARING a line with content attaches
+					//: only a comment SHARING a line with content attaches
 					// backward as the previous item's trailing comment; an
 					// own-line comment attributes FORWARD to the next item.
 					const ownLine = si.offset === undefined ? true : isOwnLineAt(state.text, si.offset);

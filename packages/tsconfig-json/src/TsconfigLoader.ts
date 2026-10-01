@@ -1,20 +1,20 @@
 // The tsconfig.json IO pipeline: read a config file, decode it through
-// `TsconfigJsonFromString` (Task 3), then resolve its full `extends` chain
-// against the pure merge engine (`ResolvedTsconfig`, Task 5) and the target
-// resolver (`resolveExtendsTarget`, Task 7). Everything the loader touches on
+// `TsconfigJsonFromString`, then resolve its full `extends` chain
+// against the pure merge engine (`ResolvedTsconfig`) and the target
+// resolver (`resolveExtendsTarget`). Everything the loader touches on
 // disk goes through core `FileSystem`/`Path` in `R`; a `PlatformError` from the
-// underlying IO flows through untranslated (global constraint, boundary tier).
+// underlying IO flows through untranslated.
 //
-// Phase order per file, exactly per tsc (R2): decode -> absolutize path options
-// against the config's OWN directory (E5 parse phase) -> recurse into `extends`
-// depth-first (E1-E3) -> fold each config onto the accumulated base, own config
-// last (E4) -> substitute a leading `${configDir}` once, against the TOP config's
-// directory (E5 final phase). The resolution is a recursive walk over untrusted
+// Phase order per file, exactly per tsc: decode -> absolutize path options
+// against the config's OWN directory (parse phase) -> recurse into `extends`
+// depth-first -> fold each config onto the accumulated base, own config
+// last -> substitute a leading `${configDir}` once, against the TOP config's
+// directory (final phase). The resolution is a recursive walk over untrusted
 // files, so it carries a cycle guard and a depth guard (MAX_EXTENDS_DEPTH), both
 // failing through the typed `TsconfigExtendsError` channel — never as a defect
 // (hardening-a-parser-port invariant).
 //
-// FILE-EXISTENCE CONTRACT (the Task 7 residual, decided here). Target resolution
+// FILE-EXISTENCE CONTRACT (a deliberate divergence from tsc). Target resolution
 // probes candidates with core `FileSystem.exists`, which on a real filesystem is
 // TRUE for a directory, whereas tsc's `host.fileExists` is file-only. A relative
 // `"./dir"` extends target pointing at a real DIRECTORY therefore resolves the
@@ -25,8 +25,7 @@
 // cannot be exercised by the in-memory fixture filesystem (which is file-only by
 // construction — a directory is never a map key), and the alternative (a
 // stat-and-isFile probe) would require rewriting the tsc-cited `extendsTarget`
-// engine and its fixtures for a case no supported test can reach. See the Task 8
-// report for the full rationale.
+// engine and its fixtures for a case no supported test can reach.
 
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
@@ -136,7 +135,7 @@ const collect = (
 		}
 
 		const doc = yield* loadAbs(abs);
-		// E5 parse phase: absolutize this config's path options against its own dir.
+		// Parse phase: absolutize this config's path options against its own dir.
 		const absolutized = ResolvedTsconfig.absolutize(doc, path.dirname(abs), path.resolve);
 		const newChain = [...chain, abs];
 
@@ -154,7 +153,7 @@ const collect = (
 				);
 			}
 			const normTarget = normalizeSlashes(target.value);
-			// Cycle guard (E6): the target already sits on this branch's stack.
+			// Cycle guard: the target already sits on this branch's stack.
 			if (newChain.includes(normTarget)) {
 				return yield* Effect.fail(
 					TsconfigExtendsError.make({
@@ -165,11 +164,11 @@ const collect = (
 					}),
 				);
 			}
-			// Depth-first: fully flatten this entry's nested chain before the sibling (E3).
+			// Depth-first: fully flatten this entry's nested chain before the sibling.
 			const subLayers = yield* collect(normTarget, newChain);
 			for (const sub of subLayers) layers.push(sub);
 		}
-		// Own config last (E4): it wins over everything it extends.
+		// Own config last: it wins over everything it extends.
 		layers.push({ doc: absolutized, path: abs });
 		return layers;
 	});
@@ -188,7 +187,7 @@ const resolve = Effect.fn("TsconfigLoader.resolve")(function* (configPath: strin
 		acc = ResolvedTsconfig.merge(acc, entry.doc, entry.path);
 	}
 
-	// E5 final phase: ${configDir} resolves against the TOP config's directory.
+	// Final phase: ${configDir} resolves against the TOP config's directory.
 	return ResolvedTsconfig.substituteConfigDir(acc, path.dirname(topAbs));
 });
 
@@ -203,6 +202,18 @@ const compilerOptions = Effect.fn("TsconfigLoader.compilerOptions")(function* (c
  * config file, {@link TsconfigLoader.resolve} runs the full load -\> extends -\>
  * merge -\> `${configDir}` pipeline, and {@link TsconfigLoader.compilerOptions}
  * projects the resolved result down to its merged `compilerOptions`.
+ *
+ * @example
+ * ```ts
+ * import { TsconfigLoader } from "@effected/tsconfig-json";
+ * import { Effect } from "effect";
+ *
+ * // Requires `FileSystem` and `Path` in `R`; provide them from a platform layer.
+ * const program = Effect.gen(function* () {
+ * 	const resolved = yield* TsconfigLoader.resolve("./tsconfig.json");
+ * 	return resolved.compilerOptions.target;
+ * });
+ * ```
  *
  * @public
  */
@@ -221,10 +232,10 @@ export class TsconfigLoader {
 	/**
 	 * Resolve a tsconfig.json and its full `extends` chain into a
 	 * {@link (ResolvedTsconfig:interface)}: load and decode each config,
-	 * absolutize its path options (E5), resolve `extends` depth-first with
-	 * per-branch cycle and depth guards (E1-E3, E6), fold the chain
-	 * own-config-last (E4), then substitute a leading `${configDir}` once
-	 * against the top config's directory (E5 final phase). `configPath` +
+	 * absolutize its path options, resolve `extends` depth-first with
+	 * per-branch cycle and depth guards, fold the chain
+	 * own-config-last, then substitute a leading `${configDir}` once
+	 * against the top config's directory. `configPath` +
 	 * `extendedPaths` come back base-most first, own config last. Every
 	 * failure is a typed error — `TsconfigParseError` (a malformed file,
 	 * carrying that file's path), `TsconfigExtendsError` (a broken chain), or

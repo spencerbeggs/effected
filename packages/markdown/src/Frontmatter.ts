@@ -188,9 +188,8 @@ export class FrontmatterMissingError extends Schema.TaggedError<FrontmatterMissi
  * @remarks
  * `issue` carries the **structured** schema failure — at runtime a
  * `SchemaIssue.Issue` tree, reachable through `_tag` and nested `issues` —
- * never a stringified rendering (the `ConfigValidationError` precedent from
- * `@effected/config-file`). It is typed `unknown` because v4 exposes no
- * `Schema` for `Issue`; narrow it with the `SchemaIssue` module.
+ * never a stringified rendering. It is typed `unknown` because core exposes
+ * no `Schema` for `Issue`; narrow it with the `SchemaIssue` module.
  *
  * @public
  */
@@ -257,13 +256,27 @@ const renderBlock = (format: FrontmatterFormat, body: string): string => {
 };
 
 /**
- * The frontmatter schema composition facade — typed gray-matter parity.
+ * The frontmatter schema composition facade: decodes a parsed document's frontmatter into typed data, and writes typed data back as a frontmatter block.
  *
  * @remarks
- * The design doc's indicative spelling was `Frontmatter.schema`, but
- * `Frontmatter` names the capture node class (the node classes co-locate in
- * `MarkdownNode.ts` and are named after their mdast types), so the facade
- * follows the package's Markdown-prefix convention instead.
+ * Named `MarkdownFrontmatter` rather than `Frontmatter` because `Frontmatter`
+ * names the capture node class (the node classes are named after their mdast
+ * types).
+ *
+ * @example
+ * ```ts
+ * import { MarkdownDocument, MarkdownFrontmatter, MarkdownParseOptions, YamlFrontmatter } from "@effected/markdown";
+ * import { Effect, Schema } from "effect";
+ *
+ * const Meta = Schema.Struct({ title: Schema.String });
+ *
+ * const program = Effect.gen(function* () {
+ *   // Frontmatter capture is opt-in at parse time.
+ *   const source = "---\ntitle: Hello\n---\n\n# Body\n";
+ *   const doc = yield* MarkdownDocument.parse(source, MarkdownParseOptions.make({ frontmatter: true }));
+ *   return yield* MarkdownFrontmatter.schema(Meta, YamlFrontmatter)(doc); // { title: "Hello" }
+ * });
+ * ```
  *
  * @public
  */
@@ -354,7 +367,7 @@ export class MarkdownFrontmatter {
 	 * parity, not surgical editing — so anything the format's data model does
 	 * not carry is not preserved: comments inside a yaml frontmatter block do
 	 * **not** survive `set`. A per-key surgical mode over the format packages'
-	 * edit layers is a documented future refinement, not current scope.
+	 * edit layers is not offered.
 	 *
 	 * Schema-producing in spirit: bind the returned writer to a `const` when
 	 * writing many documents.

@@ -9,10 +9,10 @@ import { Config, ConfigProvider, Context, Effect, Schema, SchemaIssue } from "ef
  * and leaves every other character, **dashes included**, alone. So the input
  * `sbom-config` arrives as `INPUT_SBOM-CONFIG`, not `INPUT_SBOM_CONFIG`.
  *
- * That distinction is not academic: a consumer read `process.env["INPUT_SBOM_CONFIG"]`
- * directly, silently got nothing, and shipped it. Every accessor in this module
- * goes through this function so no caller ever spells the variable name, which
- * makes that class of bug unrepresentable rather than merely documented.
+ * That distinction is not academic: reading `process.env["INPUT_SBOM_CONFIG"]`
+ * directly silently yields nothing. Every accessor in this module goes through
+ * this function so no caller ever spells the variable name, which makes that
+ * class of bug unrepresentable rather than merely documented.
  *
  * @internal
  */
@@ -25,11 +25,10 @@ export const inputVariable = (name: string): string => `INPUT_${name.replaceAll(
  * `Config.withDefault` and `Config.option` fall back only when the config
  * resolves *absent* — no provider input at all. A failure raised from inside
  * `Config.mapEffect` is a hard evaluation failure carrying the evidence that
- * input WAS present, so a default never swallows it (`Config.ts`: the
- * `Resolved`/`Absent` resolution model and `mapEffect`). That is the guard
- * against the shipped defect where `dry-run: yes` quietly became `false` and
- * the action performed the mutations the author meant to rehearse. `actual`
- * carries the offending value so the rendered error names it.
+ * input WAS present, so a default never swallows it. That is the guard against
+ * `dry-run: yes` quietly becoming `false` and the action performing the
+ * mutations the author meant to rehearse. `actual` carries the offending value
+ * so the rendered error names it.
  */
 const configError = (message: string, actual: unknown): Config.ConfigError =>
 	new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue({ message }, actual)));
@@ -64,19 +63,12 @@ const stripComment = (line: string): string => {
  * @remarks
  * Inputs are **never** read from `process.env` directly. Every accessor names
  * the input the way the workflow author wrote it and lets this module derive
- * the runner's variable name — see `inputVariable` for why that matters. (A
- * `{@link}` cannot reach it: it is internal, so it is not exported from the
- * entrypoint and the reference would not resolve.)
+ * the runner's variable name — see `ActionInput.variable` for why that
+ * matters.
  *
- * `lines`, `list` and `pairs` exist because the `@actions/core`-faithful
- * newline split was not enough for real consumers: two of them reinvented
- * richer parsing independently, one parsing JSON arrays and bullet lists, the
- * other stripping comments and reading `key=value` pairs. Those are now one
- * implementation with one set of tests instead of two divergent ones with
- * none.
- *
- * These are grouped statics over one concept reaching nothing but `Config` —
- * not a namespace object over engines.
+ * `lines` is the `@actions/core`-faithful newline split; `list` and `pairs`
+ * read the richer shapes workflow authors write — JSON arrays, bullet lists,
+ * comments and `key=value` pairs.
  *
  * **The absence contract, shared by every accessor:** the runner writes `""`
  * for an input the workflow left out, and the provider reads an empty string
@@ -133,10 +125,9 @@ export class ActionInput {
 	 * **An input whose documented meaning is "set it empty to disable this"
 	 * cannot be read with `Config.withDefault`.** Empty is classified as missing
 	 * *before* the default is consulted, so the default substitutes and the
-	 * documented behavior can never happen. A live action shipped exactly that
-	 * for its whole lifetime: `action.yml` promised `release-prefix: ""` would
-	 * disable retry, and it never could. `Config.option` is the shape that
-	 * distinguishes the states:
+	 * documented behavior can never happen: if `action.yml` promises
+	 * `release-prefix: ""` disables retry, a `withDefault` read makes that
+	 * impossible. `Config.option` is the shape that distinguishes the states:
 	 *
 	 * ```ts
 	 * Config.option(ActionInput.string("release-prefix"))
@@ -152,8 +143,7 @@ export class ActionInput {
 	 * no-default case, and it is the manifest default — when there is one — that
 	 * makes the unsupplied and explicitly-empty cases distinguishable at all.
 	 *
-	 * Two consequences follow from how the runner actually behaves, both
-	 * confirmed against `actions/runner` and on a live runner:
+	 * Two consequences follow from how the runner actually behaves:
 	 *
 	 * - **The runner publishes a variable for every declared input**, so *absent*
 	 *   is a state a runner never produces. The `Some` branch above depends on
@@ -178,8 +168,8 @@ export class ActionInput {
 	 * Absent or `""` is **missing data** — wrap with `Config.withDefault` for
 	 * an optional flag. A **present but malformed** value (`yes`, `on`, `1`) is
 	 * a different class: it fails carrying its `actual`, deliberately, so a
-	 * default does NOT swallow it — the shipped defect this guards against was
-	 * a malformed `dry-run` quietly reading as `false`.
+	 * default does NOT swallow it, so a malformed `dry-run` never quietly reads
+	 * as `false`.
 	 */
 	static boolean(name: string): Config.Config<boolean> {
 		return Config.String(inputVariable(name)).pipe(
@@ -294,10 +284,8 @@ export class ActionInput {
 	 * @remarks
 	 * A JSON array (`["a","b"]`), a bullet list (`- a` or `* a`), or comma- and
 	 * newline-separated values, with full-line `#` comments dropped — any
-	 * combination of these in the same input. Each shape was reinvented
-	 * independently by a consumer (one a bullet-list-and-JSON parser, the other
-	 * comment-stripping); accepting the union means a workflow author's first
-	 * guess works and nothing either prior consumer relied on regresses.
+	 * combination of these in the same input — so a workflow author's first
+	 * guess works.
 	 *
 	 * Parsing order, applied per newline/comma-separated item after trimming:
 	 *
@@ -361,9 +349,9 @@ export class ActionInput {
 	 * Only the **first** `=` splits, so a value may contain one.
 	 *
 	 * An **empty key** (`=value`, or a bare `=`) is always rejected: `{ "": v }`
-	 * cannot be what a workflow meant, and the damage lands far from the typo —
-	 * an empty key became a repository filter that matched nothing, and the run
-	 * reported zero results with no indication why. An empty **value** (`key=`)
+	 * cannot be what a workflow meant, and the damage would land far from the
+	 * typo — an empty key becomes a filter that matches nothing, and the run
+	 * reports zero results with no indication why. An empty **value** (`key=`)
 	 * is accepted by default, because setting a property to the empty string is
 	 * legitimate; pass `requireValue` to reject it. Every rejection names the
 	 * offending line.
@@ -415,9 +403,8 @@ export class ActionInput {
 	 *
 	 * There is no `schemaOption`: `ActionInput.schema(name, S).pipe(Config.option)`
 	 * yields `Config<Option<A>>` with missing → `None` and a malformed value
-	 * still failing — core's documented `Config.option` behaviour ("validation
-	 * errors ... still propagate", `Config.ts`), which is exactly the
-	 * missing-versus-malformed split above.
+	 * still failing — core's `Config.option` lets validation errors propagate,
+	 * which is exactly the missing-versus-malformed split above.
 	 */
 	static schema<A, I>(name: string, schema: Schema.Codec<A, I>): Config.Config<A> {
 		return Config.String(inputVariable(name)).pipe(
@@ -442,7 +429,7 @@ export class ActionInput {
 	 * The record dual-accepts, and the split is the `INPUT_` prefix:
 	 *
 	 * - A key already spelled as a runner variable (`INPUT_BIOME-VERSION`,
-	 *   `PLAIN_VAR`) is read verbatim, exactly as before.
+	 *   `PLAIN_VAR`) is read verbatim.
 	 * - Any other key is treated as an **input name**, `with:`-block style —
 	 *   `{ "biome-version": "2.3.14" }` — and serves the variable this module
 	 *   derives for it (`ActionInput.variable`). This is the spelling to
@@ -459,11 +446,10 @@ export class ActionInput {
 	 * installs ({@link ActionInput.providerOver} via `layerDefault`) — so a
 	 * bare `Config.String("biome-version")` resolves under this provider
 	 * exactly as it does inside `Action.run`. Nested and numeric paths pass
-	 * through as the joined spelling only, as ever.
+	 * through as the joined spelling only.
 	 *
-	 * The source package's `ActionsConfigProvider` behaviors are otherwise
-	 * preserved exactly: the path is joined with `_`, spaces become underscores
-	 * and the whole is uppercased; and an **empty string reads as absent**,
+	 * Otherwise the path is joined with `_`, spaces become underscores and the
+	 * whole is uppercased; and an **empty string reads as absent**,
 	 * because the runner sets unsupplied inputs to `""` and treating that as
 	 * present would make every optional input look supplied. That rule applies
 	 * to input-name entries too: `{ "flag": "" }` is an unsupplied input.
@@ -481,9 +467,7 @@ export class ActionInput {
 	 * `TARGET-BRANCH`, never matches, and the read falls through to whatever
 	 * default the call site supplies. It **fails green**: nothing errors, the
 	 * suite passes against the default, and the test's name claims it proved the
-	 * input was read. A consuming action's integration harness did exactly this
-	 * and stayed green across several commits while a supplied `target-branch`
-	 * silently did nothing.
+	 * input was read.
 	 *
 	 * Runner-variable keys (`INPUT_TARGET-BRANCH`, `PLAIN_VAR`) are unaffected —
 	 * they are already in the spelling `fromEnv` produces, and they resolve. The
@@ -523,9 +507,8 @@ export class ActionInput {
 	 * A layer installing {@link ActionInput.provider}.
 	 *
 	 * @remarks
-	 * `ConfigProvider.ConfigProvider` is a `Context.Reference` in v4, so this is
-	 * a reference override rather than a service — there is no
-	 * `Effect.withConfigProvider`.
+	 * `ConfigProvider.ConfigProvider` is a `Context.Reference`, so this is a
+	 * reference override rather than a service.
 	 *
 	 * A parameterized layer factory mints a fresh reference per call; bind it to
 	 * a `const` rather than calling it at each composition site.
@@ -546,10 +529,9 @@ export class ActionInput {
 	 * passed to `ambient` untouched, so no path semantics are invented that the
 	 * runner does not have.
 	 *
-	 * This exists because a live action shipped a **false green**: every bare
-	 * `Config` read fell back to its `withDefault` because the runner exposes
-	 * inputs as `INPUT_<MANGLED>` variables and a plain-named lookup finds
-	 * nothing. Under this provider a bare read resolves through the same
+	 * This exists because the runner exposes inputs as `INPUT_<MANGLED>`
+	 * variables, so a plain-named lookup finds nothing and a bare `Config` read
+	 * would silently fall back to its `withDefault`. Under this provider a bare read resolves through the same
 	 * derivation `ActionInput.string` uses, so side-stepping the typed accessors
 	 * degrades to the right answer instead of to the default.
 	 *
@@ -612,7 +594,7 @@ export class ActionInput {
 	 * `ActionInput.provider` dual-accepts both spellings, so neither can miss.
 	 *
 	 * When none is installed, a **fresh** `ConfigProvider.fromEnv()`
-	 * is built rather than reading the reference's default: v4 caches that
+	 * is built rather than reading the reference's default: core caches that
 	 * default once per process, and a snapshot taken before the runner's
 	 * variables are visible would resurrect exactly the missed-input class this
 	 * layer exists to kill. An action's environment is fixed before the process

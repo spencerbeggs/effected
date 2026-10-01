@@ -1,16 +1,11 @@
-/**
- * The sanctioned `node:crypto` digests, spelled once.
- *
- * @remarks
- * Core `Crypto` offers one-shot SHA digests over bytes already in memory, but
- * no HMAC and no incremental hasher, so this package's licence for a `node:`
- * import covers hashing (see the Module concept in `okf/`). Keeping every
- * `createHash` behind this module is what makes that licence auditable in one
- * place rather than six, and keeps the streamed file digest — the shape a
- * multi-gigabyte toolchain archive needs — from being re-derived per caller.
- *
- * @internal
- */
+// The sanctioned `node:crypto` digests, spelled once.
+//
+// Core `Crypto` offers one-shot SHA digests over bytes already in memory, but
+// no HMAC and no incremental hasher, so this package's licence for a `node:`
+// import covers hashing. Keeping every
+// `createHash` behind this module is what makes that licence auditable in one
+// place rather than six, and keeps the streamed file digest — the shape a
+// multi-gigabyte toolchain archive needs — from being re-derived per caller.
 
 import { createHash } from "node:crypto";
 import type { FileSystem, PlatformError } from "effect";

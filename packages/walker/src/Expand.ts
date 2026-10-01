@@ -7,10 +7,9 @@
 // enough that every consumer wrote it themselves, and differently each time.
 // That is what this module removes: one spelling, one error to catch.
 //
-// This is walker's first VALUE import from `@effected/glob` (`compileResult`);
-// every other reference in the package is type-and-property only. The peer
-// dependency was already declared, so nothing changes about the dependency
-// graph — but the "type-only" description of that peer no longer holds.
+// This is the module that takes a VALUE import from `@effected/glob`
+// (`compileResult`); every other reference in the package is type-and-property
+// only.
 
 import type { GlobPatternOptions } from "@effected/glob";
 import { GlobPattern, GlobPatternError } from "@effected/glob";
@@ -110,13 +109,18 @@ export class GlobExpansionError extends Schema.TaggedError<GlobExpansionError>()
  *
  * @example
  * ```ts
- * import { compileAndExpand } from "@effected/walker"
- * import { GlobPatternOptions } from "@effected/glob"
+ * import { GlobPatternOptions } from "@effected/glob";
+ * import { compileAndExpand } from "@effected/walker";
+ * import { Effect } from "effect";
  *
- * const files = yield* compileAndExpand("packages/*​/src/**​/*.ts", {
- *   cwd: "/repo",
- *   glob: GlobPatternOptions.make({ dot: true })
- * })
+ * const program = Effect.gen(function* () {
+ * 	// Sorted, cwd-relative POSIX paths; fails with `GlobExpansionError`.
+ * 	return yield* compileAndExpand("src/*.ts", {
+ * 		cwd: "/repo",
+ * 		glob: GlobPatternOptions.make({ dot: true }),
+ * 	});
+ * });
+ * // Requires `FileSystem` and `Path` from the platform layer.
  * ```
  *
  * @public

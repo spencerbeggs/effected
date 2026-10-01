@@ -28,7 +28,7 @@ import type { WorkspacePackage } from "./WorkspacePackage.js";
  * Why a report is not a complete answer.
  *
  * @remarks
- * Closed at exactly four, by measurement rather than by guess:
+ * Closed at exactly four:
  *
  * - `"peerRulesNotApplied"` — the effective suppression policy was not applied,
  *   so pnpm's post-hoc suppression could not be replicated and some reported
@@ -36,7 +36,7 @@ import type { WorkspacePackage } from "./WorkspacePackage.js";
  *   because "nobody looked" and "I looked and there are none" are different
  *   facts. Supplied rules never produce it: all three axes —
  *   `allowedVersions`, `ignoreMissing` and `allowAny` — are applied with
- *   pnpm's measured semantics.
+ *   pnpm's semantics.
  * - `"unresolvedEdge"` — some instance records an edge this model could not
  *   name (`ResolvedPackage.unresolvedEdges`), or an importer dependency
  *   resolved through `link:` whose target the caller did not supply, so its
@@ -98,8 +98,8 @@ export type UnverifiedReason =
  * different results, because a gate must be able to tell "clean" from
  * "unchecked".
  *
- * **All three axes of the supplied rules are applied**, each with the
- * semantics measured against pnpm (see {@link PeerCheck.run}): `allowedVersions`
+ * **All three axes of the supplied rules are applied**, each with pnpm's
+ * semantics (see {@link PeerCheck.run}): `allowedVersions`
  * permits a resolved version by range, `ignoreMissing` hides a required peer
  * nothing resolved for, and `allowAny` hides a peer that resolved outside its
  * range. The two list axes are name patterns, never `parent>peer` keys.
@@ -645,9 +645,11 @@ interface Policy {
  *
  * @example
  * ```ts
- * import { PeerCheck } from "@effected/workspaces";
  * import { Lockfile } from "@effected/lockfiles";
+ * import { PeerCheck } from "@effected/workspaces";
  * import { Effect } from "effect";
+ *
+ * declare const text: string; // the text of a pnpm-lock.yaml
  *
  * const program = Effect.gen(function* () {
  *   const lockfile = yield* Lockfile.parse(text, { format: "pnpm" });
@@ -749,7 +751,7 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 	 * `pnpm peers check` DOES report the linked parent's peers (it reads the
 	 * manifest on disk): every `link:` edge whose target the caller did not
 	 * supply therefore fails the report closed rather than letting the
-	 * invisible parent pass as checked (effected#800).
+	 * invisible parent pass as checked.
 	 *
 	 * Supplying {@link PeerCheckOptions.workspacePackages} closes that gap for
 	 * every `link:` target the set covers — the root importer's included,
@@ -784,6 +786,8 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 	 * version check, and a plain unparseable version is still skipped.
 	 *
 	 * @param lockfile - a lockfile parsed by `@effected/lockfiles`
+	 * @param options - the workspace's effective rules, manifests and catalogs; see
+	 *   {@link PeerCheckOptions}
 	 * @returns the report; never fails
 	 */
 	static run(lockfile: Lockfile, options?: PeerCheckOptions): PeerCheck {
@@ -897,7 +901,7 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 		// incomplete, and says so rather than presenting its rows as the answer.
 		//
 		// A `link:`-resolved importer dependency is the same gap from the other
-		// side (effected#800): pnpm records no peer declarations for workspace
+		// side: pnpm records no peer declarations for workspace
 		// projects, so a parent reached through `link:` joins at best to a row
 		// whose peers are empty BY DESIGN, and at worst — the root importer —
 		// to nothing at all, while `pnpm peers check` reads the linked manifest

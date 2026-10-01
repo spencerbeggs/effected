@@ -8,10 +8,9 @@ import { IV_LENGTH, decrypt, deriveKey, encrypt, fromBase64, randomIv, toBase64 
  * failed.
  *
  * @remarks
- * Its own error rather than v3's `"key-derivation"` value on the generic
- * `ConfigCodecError.operation` union — an encryption-only concern was leaking
- * into every codec's error type. `cause` preserves the underlying host failure
- * structurally; v3 assembled it into a prose `reason` string.
+ * Its own error rather than a value on the generic `ConfigCodecError.operation`
+ * union, so an encryption-only concern does not leak into every codec's error
+ * type. `cause` preserves the underlying host failure structurally.
  *
  * @public
  */
@@ -104,6 +103,14 @@ const keyEffect = (keySource: EncryptedCodecKey): Effect.Effect<CryptoKey, Confi
  * flattening — the inner codec's failures stay distinguishable from
  * cryptographic ones.
  *
+ * @example
+ * ```ts
+ * import { EncryptedCodec, EncryptedCodecKey, JsonCodec } from "@effected/config-file";
+ *
+ * const salt = new Uint8Array(16); // use a stored, random per-deployment salt
+ * const codec = EncryptedCodec(JsonCodec, EncryptedCodecKey.fromPassphrase("correct horse", salt));
+ * ```
+ *
  * @public
  */
 export function EncryptedCodec<E>(
@@ -113,15 +120,13 @@ export function EncryptedCodec<E>(
 	const name = `encrypted(${inner.name})`;
 
 	// Memoize so the key is resolved once per codec instance, even across forked
-	// fibers. v3 leaned on a mutable closure variable inside the async body, and
-	// memoized only the passphrase path despite documenting otherwise.
+	// fibers.
 	//
 	// Only SUCCESS may be memoized. `Effect.cached` alone memoizes the whole
 	// `Exit`, so an interrupt — a property of whichever caller's fiber touched
 	// the key first, not of the key effect — would be replayed forever, outside
 	// this codec's declared error channel and unrecoverable via `Effect.catch`.
-	// Invalidating on any non-success exit lets the next caller resolve again,
-	// matching v3, which assigned its memo only after the `await` returned.
+	// Invalidating on any non-success exit lets the next caller resolve again.
 	// Lazy either way: nothing runs until the first parse/stringify.
 	const [resolveKey, invalidateKey] = Effect.runSync(
 		Effect.cachedInvalidateWithTTL(keyEffect(keySource), Duration.infinity),

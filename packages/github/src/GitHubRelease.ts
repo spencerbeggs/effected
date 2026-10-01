@@ -5,7 +5,7 @@ import { Repo } from "./Repo.js";
 import type { PageOptions } from "./Rest.js";
 
 /**
- * A release.
+ * A release, projected to the fields callers read.
  *
  * @public
  */
@@ -37,11 +37,12 @@ export class ReleaseAsset extends Schema.Class<ReleaseAsset>("ReleaseAsset")({
 }) {}
 
 /**
- * Releases and their assets.
+ * Create, read, list and update releases, and upload and list their assets.
  *
  * @public
  */
 export interface GitHubReleaseShape {
+	/** Create a release for `tag`. Unset fields are left to GitHub's defaults. */
 	readonly create: (input: {
 		readonly tag: string;
 		readonly name?: string | undefined;
@@ -50,12 +51,15 @@ export interface GitHubReleaseShape {
 		readonly prerelease?: boolean | undefined;
 		readonly generateReleaseNotes?: boolean | undefined;
 	}) => Effect.Effect<ReleaseInfo, GitHubError, Repo>;
+	/** Read the release for `tag`. Fails `notFound` when there is none. */
 	readonly getByTag: (tag: string) => Effect.Effect<ReleaseInfo, GitHubError, Repo>;
 	/** As {@link GitHubReleaseShape.getByTag}, with absence as `Option.none`. */
 	readonly getByTagOption: (tag: string) => Effect.Effect<Option.Option<ReleaseInfo>, GitHubError, Repo>;
+	/** List releases, paginated. */
 	readonly list: (options?: {
 		readonly page?: PageOptions | undefined;
 	}) => Effect.Effect<ReadonlyArray<ReleaseInfo>, GitHubError, Repo>;
+	/** Patch a release by id; only the fields given are sent. */
 	readonly update: (
 		id: number,
 		patch: {
@@ -90,6 +94,7 @@ export interface GitHubReleaseShape {
 			readonly label?: string | undefined;
 		},
 	) => Effect.Effect<ReleaseAsset, GitHubError, Repo>;
+	/** List a release's assets, paginated. */
 	readonly listAssets: (
 		id: number,
 		options?: { readonly page?: PageOptions | undefined },
@@ -97,13 +102,31 @@ export interface GitHubReleaseShape {
 }
 
 /**
- * Releases.
+ * Create, read, list and update GitHub releases, and upload and list their
+ * assets.
+ *
+ * @remarks
+ * Provide it with {@link GitHubRelease.layer}, which needs a `GitHubClient`;
+ * each method also needs a `Repo` in `R`.
+ *
+ * @example
+ * ```ts
+ * import { GitHubRelease } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const publish = Effect.gen(function* () {
+ *   const releases = yield* GitHubRelease;
+ *   const release = yield* releases.create({ tag: "v1.2.3", generateReleaseNotes: true });
+ *   return release.url;
+ * });
+ * ```
  *
  * @public
  */
 export class GitHubRelease extends Context.Service<GitHubRelease, GitHubReleaseShape>()(
 	"@effected/github/GitHubRelease",
 ) {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<GitHubRelease, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),
@@ -249,7 +272,7 @@ const make = (client: GitHubClient["Service"]): GitHubReleaseShape => {
 			// `name` MUST be in the template: this route is outside the generated
 			// endpoint map, so no schema routes it to the query string — passed
 			// only as a parameter it is silently dropped and GitHub answers 400
-			// "Invalid name for request" (live incident, 2026-07-26). The two
+			// "Invalid name for request". The two
 			// template spellings exist because `{?name,label}` with an absent
 			// label expands to a dangling `&` (probed at @octokit/endpoint 11.0.3).
 			const raw = yield* client.requestDecoded(
@@ -277,8 +300,7 @@ const make = (client: GitHubClient["Service"]): GitHubReleaseShape => {
 		) {
 			const { owner, repo } = yield* Repo;
 			yield* Effect.annotateCurrentSpan({ owner, repo, id });
-			// Paginated, and the caller's budget is forwarded — the version this
-			// replaces paginated here with a hardcoded `{}`.
+			// Paginated, and the caller's budget is forwarded.
 			const raw = yield* client.paginate(
 				"GET /repos/{owner}/{repo}/releases/{release_id}/assets",
 				{ owner, repo, release_id: id },

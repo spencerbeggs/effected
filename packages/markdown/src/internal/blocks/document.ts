@@ -4,8 +4,7 @@
 //
 // Port notes: upstream's `document` finalize runs
 // `removeLinkReferenceDefinitions`, a whole-tree walk that strips definitions
-// out. This package keeps definitions as nodes (the design's third port
-// delta) and splits them out as each paragraph closes
+// out. This package keeps definitions as nodes and splits them out as each paragraph closes
 // (`linkReferenceDefinition.ts`), so this construct's finalize is a no-op.
 
 import { Root } from "../../MarkdownNode.js";

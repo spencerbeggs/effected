@@ -1,8 +1,4 @@
-/**
- * The shared vocabulary of resolution: what a resolver returns, and how it fails.
- *
- * @packageDocumentation
- */
+// The shared vocabulary of resolution: what a resolver returns, and how it fails.
 
 import { Schema } from "effect";
 import { NodePhase } from "./NodeSchedule.js";
@@ -28,10 +24,8 @@ export type Runtime = typeof Runtime.Type;
  * - `cache` — the bundled snapshot was used, either because the offline
  *   strategy was chosen or because the auto strategy fell back to it.
  *
- * This is honest provenance. In v3 the field existed, was advertised as a
- * headline feature, and was hardcoded to `"api"` by every resolver — so a
- * caller could not tell a live answer from a snapshot served after a silent
- * network failure.
+ * This is honest provenance: a caller can always tell a live answer from a
+ * snapshot served after a network failure.
  *
  * @public
  */
@@ -63,7 +57,7 @@ export const Increments = Schema.Literals(["latest", "minor", "patch"]);
 export type Increments = typeof Increments.Type;
 
 /**
- * What every resolver returns.
+ * What every resolver returns: the matching versions, the newest one, and where the data came from.
  *
  * @public
  */
@@ -85,8 +79,6 @@ export class ResolvedVersions extends Schema.Class<ResolvedVersions>("ResolvedVe
  *
  * Distinct from an invalid constraint: `@effected/semver`'s `InvalidRangeError`
  * says the range is malformed, this says the range is fine and nothing matched.
- * v3 collapsed the former into the latter, so a typo in a range surfaced to the
- * user as "no versions found".
  *
  * @public
  */

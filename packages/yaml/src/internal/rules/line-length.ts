@@ -1,4 +1,4 @@
-// line-length (#129): lines must not exceed the configured maximum. No fix —
+// line-length: lines must not exceed the configured maximum. No fix —
 // a line can only be shortened by reflowing content, and reflowing is
 // formatting, not fixing.
 
@@ -42,7 +42,7 @@ export const lineLength: YamlRule = {
 		}
 		return out;
 	},
-	// Inference (#345): line length is inferable only as a FLOOR — the
+	// Inference: line length is inferable only as a FLOOR — the
 	// longest observed line proves `max` is at least that long, never what
 	// it is. The floor rides in the evidence for callers that want it; the
 	// option stays default-driven under both resolvers.

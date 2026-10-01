@@ -21,15 +21,14 @@ export const ConfigSourceRef = Schema.Struct({
  * persistence.
  *
  * @remarks
- * v3's `Stringified` and `ResolutionFailed` variants were declared and never
- * emitted; they are not ported. `DiscoveryFailed` goes with them: under this
- * package's resolver-absorption contract a resolver's error channel is `never`
- * — every filesystem failure becomes `Option.none()` — so the pipeline can
- * never observe a discovery failure to report one.
+ * There is no discovery-failure variant: under this package's
+ * resolver-absorption contract a resolver's error channel is `never` — every
+ * filesystem failure becomes `Option.none()` — so the pipeline never observes a
+ * discovery failure to report.
  *
  * The failure variants carry the **structured** typed error in `error`, not a
- * `reason` string. v3 stringified them, destroying every field a subscriber
- * might branch on; a subscriber that wants prose can read `error.message`.
+ * `reason` string, so every field a subscriber might branch on survives; a
+ * subscriber that wants prose can read `error.message`.
  *
  * @public
  */
@@ -50,8 +49,8 @@ export const ConfigEventPayload = Schema.Union([
 	 * The merge strategy combined the discovered sources into one value.
 	 *
 	 * @remarks
-	 * Carries EVERY contributing source. v3 reported `sources[0].path`, which is
-	 * wrong under `layeredMerge` where all of them contributed.
+	 * Carries EVERY contributing source — under `layeredMerge` all of them
+	 * contributed, not just the first.
 	 */
 	Schema.TaggedStruct("Resolved", { sources: Schema.Array(ConfigSourceRef), strategy: Schema.String }),
 	/** The load completed. Carries every contributing source, as `Resolved` does. */

@@ -1,7 +1,7 @@
 // The typed failure of catalog *assembly* — reading and validating whatever
-// declares a workspace's catalogs — relocated here from `@effected/workspaces`
-// so the `CatalogResolver` contract can name it in its error channel and every
-// consumer can branch on it without `_tag`-sniffing an untyped defect.
+// declares a workspace's catalogs — defined here so the `CatalogResolver`
+// contract can name it in its error channel and every consumer can branch on
+// it without `_tag`-sniffing an untyped defect.
 //
 // It lives in its own module (rather than beside `CatalogResolver`) for the
 // same reason `DependencyResolutionError` lives in `WorkspaceResolver.ts`:
@@ -30,10 +30,10 @@ const causeMessage = (cause: unknown): string | undefined => {
  * a silently-empty catalog read is the "every dependency looks newly added" bug,
  * because catalog output is load-bearing for snapshot diffing.
  *
- * Defined here, next to the {@link CatalogResolver} contract that raises it,
- * rather than in the implementing package (`@effected/workspaces`): folding it
- * into `DependencyResolutionError`'s defect `cause` forced every consumer to
- * `_tag`-sniff `unknown` to tell an assembly failure from a resolution failure.
+ * Defined next to the {@link CatalogResolver} contract that raises it, so a
+ * consumer tells an assembly failure from a resolution failure by catching the
+ * tag (`Effect.catchTag("CatalogAssemblyError", ...)`) rather than inspecting an
+ * untyped defect `cause`.
  *
  * @public
  */

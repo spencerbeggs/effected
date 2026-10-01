@@ -179,19 +179,17 @@ export interface GitHubFixtures {
 	 * A missing fixture is a **test wiring** mistake, not a condition the code
 	 * under test should handle, so the default kills the fiber rather than
 	 * entering the error channel — the same treatment an absent `graphql`
-	 * fixture has always had.
+	 * fixture gets.
 	 *
-	 * The default used to be `"fail"`, and the reason it changed is worth
-	 * knowing before you set it back: **a typed failure is only loud in code
-	 * that does not catch.** A consumer whose methods each catch `GitHubError`
-	 * and report it — a per-resource sync, say — turns a missing stub into a
-	 * *different execution path* rather than a failure, and the assertions then
-	 * fail for a new reason with nothing in any message naming a fixture. That
-	 * cost `@spencerbeggs/reposets` 28 tests reading as ordinary logic bugs.
+	 * Prefer `"die"` to `"fail"`: **a typed failure is only loud in code that
+	 * does not catch.** Code whose methods each catch `GitHubError` and report
+	 * it — a per-resource sync, say — turns a missing stub into a *different
+	 * execution path* rather than a failure, and the assertions then fail for a
+	 * new reason with nothing in any message naming a fixture.
 	 *
 	 * - `"die"` — defect naming the route. Loud in every consumer.
-	 * - `"fail"` — the old behaviour: `GitHubError.notFound`. Rarely what you
-	 *   want now that a recorded `GitHubError` value stubs a failure explicitly:
+	 * - `"fail"` — fail with `GitHubError.notFound`. Rarely what you want, since
+	 *   a recorded `GitHubError` value stubs a failure explicitly:
 	 *   `{ "GET /repos/{owner}/{repo}": GitHubError.notFound("read", "repo") }`
 	 *   says which route fails and why, where absence says only "unwired".
 	 * - `"empty"` — serve `{}` for a request and no items for a paginated read.
@@ -212,11 +210,6 @@ export interface GitHubFixtures {
 	 * **params** they were called with, which is what lets a suite assert that a
 	 * method sent the right `owner`/`repo`/body rather than only the right
 	 * route. `graphql` records the document name as `route`.
-	 *
-	 * Recording params was added for the resource modules ported in from
-	 * `@spencerbeggs/reposets`, whose ~80-line hand-rolled harness existed
-	 * because every one of their methods goes through `request` and a fixture
-	 * could assert nothing about them.
 	 */
 	readonly requested?: Array<RecordedCall> | undefined;
 }
@@ -242,12 +235,27 @@ const unstubbed = (member: string): never => {
  * literal and gets both sides typed, with no callback, no type parameter to
  * invent, and no cast.
  *
- * That is the whole point of this package. The surface it replaces was
- * `rest<T>(operation: string, fn: (octokit: any) => Promise<{ data: T }>)`,
- * where `T` was whatever the caller wrote and nothing connected it to the
- * endpoint. Four consumer repos paid for that with sixteen cast sites and three
- * hand-written octokit interfaces, one of which gave up and typed its methods as
- * `Record<string, (p: unknown) => Promise<{ data: unknown }>>`.
+ * Nothing here asks the caller to invent a response type: the route literal is
+ * the only thing written, and a mismatch between a route and its parameters is
+ * a compile error.
+ *
+ * @example
+ * ```ts
+ * import { GitHubClient } from "@effected/github";
+ * import { Effect, Redacted } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const client = yield* GitHubClient;
+ *   const release = yield* client.request("GET /repos/{owner}/{repo}/releases/latest", {
+ *     owner: "effect-ts",
+ *     repo: "effect",
+ *   });
+ *   return release.tag_name;
+ * });
+ *
+ * const layer = GitHubClient.layerFromToken({ token: Redacted.make("ghp_example") });
+ * Effect.runPromise(program.pipe(Effect.provide(layer)));
+ * ```
  *
  * @public
  */
@@ -272,10 +280,7 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 	 * provides a provider instead of mutating the environment and a non-Actions
 	 * consumer can source the token however it likes.
 	 *
-	 * Construction fails with core's `ConfigError` — an honest "no token is
-	 * configured". The layer this replaces failed with a **wire-failure** error
-	 * type instead, which is why one consumer wrapped it in `Layer.orDie` under a
-	 * five-line comment explaining that the error did not mean what it said.
+	 * Construction fails with core's `ConfigError` when no token is configured.
 	 */
 	static readonly layerFromConfig = (
 		options: Omit<GitHubClientOptions, "token"> & { readonly name?: string | undefined } = {},
@@ -318,16 +323,10 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 	 * A double over recorded responses that **pages them for real**.
 	 *
 	 * @remarks
-	 * The one recorded-response double in this package, and the single narrow
-	 * exception to the no-behavior-reimplementing-doubles rule — safe precisely
-	 * because it reimplements nothing: it builds a `PageSource` over the recorded
+	 * The recorded-response double in this package. It reimplements no behavior:
+	 * it builds a `PageSource` over the recorded
 	 * array and hands it to the same `paginate` engine the live client uses, so
 	 * `perPage` and `maxPages` cannot behave differently here than in production.
-	 *
-	 * The double it replaces named its pagination parameters `_options` and
-	 * ignored them, returning every recorded page regardless of what the caller
-	 * asked for — which made every truncation path in every consumer
-	 * structurally untestable.
 	 *
 	 * `fixtures.requested` is appended to as the test runs, so a suite can assert
 	 * which routes were walked and at what page size.

@@ -135,6 +135,17 @@ export interface RenderContextOptions {
  * A renderer has no environment and no effects, so the same document and context always give the same string.
  * {@link Render.plain} is for agents; the rest of the set follows.
  *
+ * @example
+ * ```ts
+ * import { Doc, Render } from "@effected/cli"
+ *
+ * const doc = [Doc.heading(2, "Results"), Doc.paragraph("3 checks passed")]
+ * const ctx = Render.contextOf({ audience: "agent" })
+ *
+ * Render.plain(doc, ctx)
+ * // => "Results\n3 checks passed"
+ * ```
+ *
  * @public
  */
 export class Render {

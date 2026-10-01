@@ -9,8 +9,8 @@ import { Schema } from "effect";
  * `"publish"` (`npm publish` failed), `"output"` (npm ran but its `--json`
  * output was unreadable), `"digest"` (npm packed, but the tarball could not be
  * read back to hash it), `"executor"` (a pinned npm was requested with no
- * launcher to fetch it). There is no `reason: string` — v3 had one and every
- * consumer matched substrings on it.
+ * launcher to fetch it). There is deliberately no free-form `reason` string:
+ * branch on `kind`, never on substrings of the message.
  *
  * A resident of its own module because both {@link NpmExecutor} and
  * `PackagePublish` raise it and `NpmExecutor` is imported *by* `PackagePublish`

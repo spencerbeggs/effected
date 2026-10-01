@@ -1,12 +1,10 @@
 // The signed bundle, as a value.
 //
-// This module imports NOTHING from `@sigstore/*` — deliberately, and it is
-// asserted in `__test__/reachability.test.ts`. A bundle is what crosses the
-// seam to `@effected/github`'s attestation upload, and it is what a verifier
-// reads; neither should have to load Fulcio's transport to name the shape. The
-// media-type constants are therefore written out rather than re-exported from
-// `@sigstore/bundle`, with a test in the signer's suite asserting the literal
-// still equals the package's own constant.
+// This module imports NOTHING from `@sigstore/*`, deliberately. A bundle is
+// what crosses the seam to `@effected/github`'s attestation upload, and it is
+// what a verifier reads; neither should have to load Fulcio's transport to name
+// the shape. The media-type constants are therefore written out rather than
+// re-exported from `@sigstore/bundle`.
 
 import { Schema } from "effect";
 
@@ -35,8 +33,8 @@ export const IN_TOTO_PAYLOAD_TYPE = "application/vnd.in-toto+json" as const;
  * @remarks
  * `verificationMaterial` and `dsseEnvelope` are `unknown` because their shapes
  * belong to the Sigstore protobuf specifications, and re-declaring them here
- * would be a second, drifting copy of a wire format we do not own. The bundle
- * is opaque to everything that merely stores or forwards it.
+ * would be a second, drifting copy of a wire format this package does not own.
+ * The bundle is opaque to everything that merely stores or forwards it.
  *
  * `mediaType` is carried through from what the builder produced rather than
  * asserted — the version is the producer's statement about the bundle, and a

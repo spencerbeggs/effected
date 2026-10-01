@@ -8,10 +8,10 @@
 
 A pnpm [config dependency](https://pnpm.io/config-dependencies) that centralizes versioning for two package sets through four [pnpm catalogs](https://pnpm.io/catalogs). The `effect` pair covers `effect` and its `@effect/*` satellites on one [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release, plus `@effect/tsgo` at its own independent pin; the `effected` pair covers every published `@effected/*` package except this one. Each pair has a catalog for the versions you depend on and a second one for the ranges you advertise as peers, so a library does not over-constrain the applications that install it. Install it once and all four catalogs are available to every package in your workspace.
 
-> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 prerelease. Packages graduate to
-> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
-> exactly the ones the kit is built and tested against, install
+> **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
+> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
+> `@effect/*` versions on the line the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
 >
 > **Stability: unstable.** This package's API surface is not yet considered
@@ -110,7 +110,7 @@ It also ships a pnpmfile, which pnpm loads from the config dependency automatica
 Besides the catalogs, the pnpmfile applies two settings to every consumer:
 
 - **Release-age exclusion:** `effect` and `@effect/*` are exempt from `minimumReleaseAge`, so a pinned Effect release that is only hours old still installs.
-- **One scoped override:** `@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared` is pinned to `4.0.0-rc.117`. Tools still built on effect rc.117 depend on that `platform-node`, which takes its shared package with a caret. On a fresh resolve, the rc.118 shared package imports a module rc.117 does not ship, and the tool crashes at startup. The override applies only under the rc.117 parent, and your own `overrides` are kept alongside it. If you set the same selector yourself, your value wins and the plugin warns.
+- **Scoped overrides:** `@effect/platform-node-shared` is pinned to its parent's version under `@effect/platform-node@4.0.0-rc.117` and `@effect/platform-node@4.0.0-rc.118`. Tools still built on those release candidates take the shared package with a caret, and a fresh resolve would pair it with a newer one built for a different `effect`, which crashes the tool at startup. Each override applies only under its own parent, so a stable install is never touched, and your own `overrides` are kept alongside them. If you set the same selector yourself, your value wins and the plugin warns.
 
 The `effect` catalogs move when the Effect pin advances, which is a deliberate, human-run upgrade. The `effected` catalogs are rebuilt automatically as kit packages release, so each new version of this package carries the kit's current versions; upgrading the config dependency is how a consumer picks them up.
 
@@ -120,7 +120,7 @@ pnpm install
 # every catalog: specifier in the workspace re-resolves to the new pins
 ```
 
-While the whole ecosystem is pinned to a single Effect v4 prerelease, the two `effect` catalogs largely coincide. The floor computation earns its keep once the packages' releases desynchronize — and it earned it under Effect v3, where the floors genuinely diverged. The `effected` pair diverges routinely, because a kit package's dependency entry tracks its exact release while its peer range is floored to the minor.
+Because Effect releases `effect` and every `@effect/*` package together at one version, the two `effect` catalogs largely coincide. The floor computation earns its keep once the packages' releases desynchronize — and it earned it under Effect v3, where the floors genuinely diverged. The `effected` pair diverges routinely, because a kit package's dependency entry tracks its exact release while its peer range is floored to the minor.
 
 ## License
 

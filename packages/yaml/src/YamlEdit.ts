@@ -3,13 +3,13 @@
 //
 // Edits describe replacements as `offset`/`length`/`content`; applying them in
 // reverse-offset order is byte-minimal and preserves comments and whitespace —
-// the library's real differentiator over `yaml` round-trips.
+// the core value proposition over `yaml` round-trips.
 //
 // `YamlEdit`, `YamlRange`, `YamlPath`, `YamlSegment` and
-// `YamlFormattingOptions` are bound by the jsonc/yaml parity convention: they
-// are structurally identical to their `Jsonc*` counterparts (same field names,
-// types, optionality and semantics) so consumer code can be written once over
-// "a document codec's Edit/Range/Path".
+// `YamlFormattingOptions` are bound by the cross-package parity convention:
+// they are structurally identical to their `Jsonc*`, `Toml*` and `Markdown*`
+// counterparts (same field names, types, optionality and semantics) so
+// consumer code can be written once over "a document codec's Edit/Range/Path".
 
 import { Schema } from "effect";
 
@@ -46,9 +46,10 @@ export class YamlRange extends Schema.Class<YamlRange>("YamlRange")({
  * `content`. Set `length` to `0` to insert, `content` to `""` to delete.
  *
  * @remarks
- * Structurally identical to `@effected/jsonc`'s edit shape (same field names,
- * types and semantics) per the jsonc/yaml parity convention, so consumer code
- * can be written once over "a document codec's Edit/Range/Path".
+ * Structurally identical to the edit shape of `@effected/jsonc`,
+ * `@effected/toml` and `@effected/markdown` (same field names, types and
+ * semantics), so consumer code can be written once over "a document codec's
+ * Edit/Range/Path".
  *
  * @public
  */
@@ -62,6 +63,10 @@ export class YamlEdit extends Schema.Class<YamlEdit>("YamlEdit")({
 	 * reverse-offset order so earlier offsets stay valid; the input `edits`
 	 * array is not mutated. Overlapping edits are a programmer error and throw
 	 * as a defect — `YamlFormat` never produces them.
+	 *
+	 * @param text - The source text to edit.
+	 * @param edits - The edits to apply, in any order.
+	 * @returns The edited text.
 	 */
 	static applyAll(text: string, edits: ReadonlyArray<YamlEdit>): string {
 		const sorted = [...edits].sort((a, b) => b.offset - a.offset);

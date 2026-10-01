@@ -19,7 +19,9 @@ import { Effect, FileSystem, Option, Path } from "effect";
  * @public
  */
 export interface ConfigResolver<R = never> {
+	/** The resolver's name, reported in `searched` lists, events and `ConfigSource.resolver`. */
 	readonly name: string;
+	/** Look up the config file's path: `Option.some(path)` when found, `Option.none()` otherwise. */
 	readonly resolve: Effect.Effect<Option.Option<string>, never, R>;
 	/**
 	 * The same lookup, reporting **how** the file was found rather than only

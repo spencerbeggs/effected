@@ -254,7 +254,7 @@ export class CliLinks extends Context.Service<CliLinks, CliLinksShape>()("@effec
  *
  * Without them there is no `.vscode/` to look for and no working directory to resolve a relative path against, so
  * `auto` is `vscode` only on the terminal signal. This keeps the requirements of `CliEnv.layer` and of every
- * `CliRuntime.main` overload as they were.
+ * `CliRuntime.main` overload unchanged.
  *
  * @internal
  */

@@ -63,7 +63,7 @@ const reMaybeSpecial = /^[#`~*+_=<>0-9-]/;
 export interface BlockPassResult {
 	/** The document, with every node positioned. */
 	readonly root: Root;
-	/** Leaf-block raw text awaiting the inline pass (Task 8). */
+	/** Leaf-block raw text awaiting the inline pass. */
 	readonly rawInlines: ReadonlyArray<RawInlineSlice>;
 	/** Non-fatal engine diagnostics; the facade materializes them. */
 	readonly carriers: ReadonlyArray<RawDiagnostic>;

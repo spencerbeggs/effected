@@ -2,7 +2,7 @@
 // (MarkdownEdit) that normalize concrete-syntax markers or surgically replace
 // one node, both computed against the original source so everything outside
 // the spliced spans survives byte-for-byte — the offset-splice editing model
-// the design chose over a lossless CST.
+// chosen over a lossless CST.
 //
 // `format` is conservative by construction: an edit is emitted only when the
 // rewrite is provably safe against re-parse hazards, and every hazard is
@@ -18,8 +18,8 @@
 // `modify` is toml-strict: a replacement is a node fragment or plain text —
 // both rendered through the canonical stringifier — so a modified document
 // re-parses cleanly by construction. Raw markdown replacement is deliberately
-// not offered day one; it would delegate the structure-escape problem to the
-// caller. Day-one target scope: flow nodes, phrasing nodes and table cells;
+// not offered; it would delegate the structure-escape problem to the
+// caller. Target scope: flow nodes, phrasing nodes and table cells;
 // container-slot nodes (list items, table rows, the root, frontmatter)
 // refuse with a typed error, as does any multi-line replacement whose target
 // sits inside a container whose continuation lines carry a prefix the splice
@@ -82,7 +82,7 @@ export type CodeBlockStyle = typeof CodeBlockStyle.Type;
  * source with (same defaults as `Markdown.parse`). Every marker option is
  * optional and independent; an absent option normalizes nothing.
  *
- * Day-one scope is marker normalization only — heading style, bullet
+ * Scope is marker normalization only — heading style, bullet
  * character, emphasis/strong marker, fence character, thematic-break
  * character, code-block style. Content is never rewritten, rewrapped or
  * reflowed.
@@ -139,7 +139,7 @@ export type MarkdownModificationErrorCode = typeof MarkdownModificationErrorCode
 /**
  * Raised when `MarkdownFormat.modify` cannot perform the requested
  * replacement: the target node is not in the document (`NodeNotInDocument`),
- * the target kind or splice context is outside the day-one scope
+ * the target kind or splice context is outside the supported scope
  * (`UnsupportedTarget`), the fragment's content category does not fit the
  * target's slot (`FragmentCategoryMismatch`), or the fragment trips the
  * stringifier's hardening guard (`FragmentUnrenderable`). Carries the typed
@@ -573,7 +573,26 @@ const findAncestry = (root: Root, target: MarkdownNode): ReadonlyArray<MarkdownN
 // ── Facade ──────────────────────────────────────────────────────────────────
 
 /**
- * Formatting and modification statics. Not instantiable.
+ * Normalizes markdown markers and replaces a single node, as byte-minimal
+ * edits that leave the rest of the source untouched. Not instantiable.
+ *
+ * @example
+ * ```ts
+ * import { MarkdownDocument, MarkdownFormat, MarkdownFormattingOptions } from "@effected/markdown";
+ * import { Effect } from "effect";
+ *
+ * const options = MarkdownFormattingOptions.make({ bulletChar: "-", headingStyle: "atx" });
+ * const normalized = MarkdownFormat.formatToString("* a\n* b\n\nSetext\n======\n", undefined, options);
+ * // => "- a\n- b\n\n# Setext\n"
+ *
+ * const program = Effect.gen(function* () {
+ *   const doc = yield* MarkdownDocument.parse("# Title\n\nHello world\n");
+ *   const paragraph = doc.root.children[1];
+ *   if (paragraph === undefined) return doc.source;
+ *   return yield* MarkdownFormat.modifyToString(doc, paragraph, "Goodbye");
+ *   // => "# Title\n\nGoodbye\n"
+ * });
+ * ```
  *
  * @remarks
  * `format`/`formatToString` are pure and total: input that trips a parse
@@ -605,6 +624,15 @@ export class MarkdownFormat {
 	 * code block keeps whichever spelling it has — `fenceChar` alone
 	 * normalizes existing fences and deliberately leaves indented blocks
 	 * indented.
+	 *
+	 * @param text - The markdown source to format.
+	 * @param range - Optional sub-range; only edits whose node intersects it are
+	 *   returned.
+	 * @param options - Optional {@link MarkdownFormattingOptions}; an absent
+	 *   marker option normalizes nothing.
+	 * @returns The edits that normalize the requested markers; apply them with
+	 *   `MarkdownEdit.applyAll`. Empty when the input trips a parse hardening
+	 *   guard.
 	 */
 	static format(
 		text: string,
@@ -669,6 +697,12 @@ export class MarkdownFormat {
 	/**
 	 * Format `text` and apply the resulting edits in one step
 	 * (`MarkdownEdit.applyAll ∘ format`). Pure and total.
+	 *
+	 * @param text - The markdown source to format.
+	 * @param range - Optional sub-range; only edits whose node intersects it are
+	 *   applied.
+	 * @param options - Optional {@link MarkdownFormattingOptions}.
+	 * @returns The formatted text.
 	 */
 	static formatToString(text: string, range?: MarkdownRangeLike, options?: MarkdownFormattingOptions): string {
 		return MarkdownEdit.applyAll(text, MarkdownFormat.format(text, range, options));
@@ -681,11 +715,19 @@ export class MarkdownFormat {
 	 * node) or a node fragment whose content category must fit the target's
 	 * slot (flow for flow targets, phrasing for phrasing targets and table
 	 * cells). Every replacement renders through the canonical stringifier, so
-	 * the modified document re-parses cleanly by construction. Day-one scope:
-	 * list items, table rows, frontmatter and the root refuse with
+	 * the modified document re-parses cleanly by construction. List
+	 * items, table rows, frontmatter and the root refuse with
 	 * `UnsupportedTarget`, as does a multi-line replacement whose target sits
 	 * inside a container (a blockquote, list, table or heading) whose
 	 * continuation lines the splice cannot prefix.
+	 *
+	 * @param document - The parsed {@link MarkdownDocument} the target belongs to.
+	 * @param target - The node to replace; it must be a node of
+	 *   `document.root`, matched by identity.
+	 * @param replacement - A plain string (literal text) or a node fragment of
+	 *   the target's content category.
+	 * @returns An `Effect` that succeeds with the edit to apply (via
+	 *   `MarkdownEdit.applyAll`), or fails with {@link MarkdownModificationError}.
 	 */
 	static readonly modify = Effect.fn("MarkdownFormat.modify")(function* (
 		document: MarkdownDocument,
@@ -755,6 +797,14 @@ export class MarkdownFormat {
 	/**
 	 * Modify `document` and apply the resulting edit in one step
 	 * (`MarkdownEdit.applyAll ∘ modify`).
+	 *
+	 * @param document - The parsed {@link MarkdownDocument} the target belongs to.
+	 * @param target - The node to replace; it must be a node of
+	 *   `document.root`, matched by identity.
+	 * @param replacement - A plain string (literal text) or a node fragment of
+	 *   the target's content category.
+	 * @returns An `Effect` that succeeds with the modified source, or fails with
+	 *   {@link MarkdownModificationError}.
 	 */
 	static readonly modifyToString = Effect.fn("MarkdownFormat.modifyToString")(function* (
 		document: MarkdownDocument,

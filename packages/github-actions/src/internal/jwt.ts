@@ -1,20 +1,15 @@
-/**
- * The JWT segment codec — read a payload, or frame an unsigned token — for the
- * two places this package reads a runner-issued token's claims.
- *
- * @remarks
- * **No signature verification, deliberately.** Every token read here was
- * handed to this process by the runner that started it, and the claim read
- * scopes a request (`actionsResults`) or is republished for a verifier
- * elsewhere (`OidcTokenIssuer`); neither authorizes anything on the strength
- * of the claim alone. Do not "fix" it here.
- *
- * Core `Base64Url` does the base64url work, so no `Buffer` is involved: it is
- * strict about the alphabet where Node's decoder is forgiving, which is why
- * there is a test whose payload actually contains `-` and `_`.
- *
- * @internal
- */
+// The JWT segment codec — read a payload, or frame an unsigned token — for the
+// two places this package reads a runner-issued token's claims.
+//
+// **No signature verification, deliberately.** Every token read here was
+// handed to this process by the runner that started it, and the claim read
+// scopes a request (`actionsResults`) or is republished for a verifier
+// elsewhere (`OidcTokenIssuer`); neither authorizes anything on the strength
+// of the claim alone. Do not "fix" it here.
+//
+// Core `Base64Url` does the base64url work, so no `Buffer` is involved: it is
+// strict about the alphabet where Node's decoder is forgiving, which is why
+// there is a test whose payload actually contains `-` and `_`.
 
 import { Result } from "effect";
 import * as Base64Url from "effect/encoding/Base64Url";

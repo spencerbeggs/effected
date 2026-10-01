@@ -1,4 +1,4 @@
-// truthy (#129): the YAML 1.1 boolean trap. `yes`/`no`/`on`/`off` parse as
+// truthy: the YAML 1.1 boolean trap. `yes`/`no`/`on`/`off` parse as
 // STRINGS in YAML 1.2 but read as booleans to humans (the `on:` key of a
 // workflow file is the canonical victim), and `True`/`FALSE` are booleans in
 // spellings a config may not want. Flags plain scalars — keys included —

@@ -14,8 +14,8 @@ sources:
     resource: ../../plugins/copilot/skills
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T02:53:15Z
-  body_sha256: dcbffcc5c4ddea30992ffab1c77681cd75c4681cde78848dd8139a47325a0b48
+  at: 2026-10-01T17:24:58Z
+  body_sha256: fcd5e1e4db16ca2652726465d9b49f9d7b22060ab239d9b8f398fa39e0171c57
 ---
 
 # Consumer-facing text states current Effect behaviour, never versions
@@ -40,8 +40,9 @@ What to write:
 
 A version may appear only when the text is about versioning itself. Examples
 are an `@effected/*` package's own semver, a package-manager major in a support
-policy, and a `catalog:` strategy example such as the `lock` strategy's exact
-prerelease pin. A version inside example data whose format is the subject also
+policy, and a `catalog:` range or pinned-version example such as the caret
+`^4.0.0` a catalog gives the stable line. Even there, never name a prerelease
+number as the Effect version the text describes. A version inside example data whose format is the subject also
 counts, such as a lockfile specifier `4.0.0-rc.109(effect@4.0.0-rc.109)` in a
 parser's TSDoc. Plain `//` comments in `packages/*/src` do not ship, but they
 follow the same rule whenever they are edited: a "probed against beta.101" note
@@ -57,8 +58,8 @@ Every hit is either rewritten or justified as one of the exceptions above.
 
 ## Why
 
-- Consumers take the kit's Effect through `catalog:effected`, and the
-  prerelease number moves on every advance.
+- Consumers take the kit's Effect through `catalog:effected`, and the exact
+  Effect release the kit builds against moves with its lockfile.
 - Every consumer repository pins and vendors its own Effect source.
 - Agents are already told to verify every claim against that pinned source.
 

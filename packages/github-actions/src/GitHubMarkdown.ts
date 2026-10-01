@@ -152,8 +152,7 @@ const passthrough = (value: string): Html => Html.make({ value });
  * `Markdown.stringifyResult` is total over every tree this module can
  * construct — its only failure is the hardening nesting-depth guard (cap
  * 256) — so the impossible arm is a defect, **not** a silent fallback to
- * unescaped string joining. The predecessor's fallback arm is the live
- * table-corruption defect this module exists to delete.
+ * unescaped string joining.
  *
  * What makes the guard unreachable is not that these trees are small; it is
  * that **their depth does not depend on input**. A fragment handed to a
@@ -190,8 +189,7 @@ const block = (node: Root["children"][number]): string => render(Root.make({ chi
  * a backtick gets a wider delimiter; a URL containing spaces or parentheses
  * is angle-bracketed.
  *
- * This module is the package's **only** importer of `@effected/markdown` — a
- * structural test pins that, on the same terms as the Azure confinement — so
+ * This module is the package's **only** importer of `@effected/markdown`, so
  * an action that never renders markdown never links the engine.
  *
  * **Renders cannot fail, so do not `Effect.try`-wrap them.** The serializer's
@@ -259,8 +257,8 @@ export class GitHubMarkdown {
 	 * each cell is the field value's **encoded** string form — a branded or
 	 * typed field projects through its own codec, so the vocabulary lives
 	 * with the schema instead of being respelled at every call site, and a
-	 * row can no longer transpose columns because it is a typed object, not
-	 * a positional array.
+	 * row cannot transpose columns because it is a typed object, not a
+	 * positional array.
 	 *
 	 * A field whose encoded side is not a string has no string projection to
 	 * borrow; the type of `options` makes its column's `format` — and
@@ -272,8 +270,8 @@ export class GitHubMarkdown {
 	 * {@link GitHubMarkdown.table}, so escaping is inherited and identical
 	 * rows produce identical output. Rows are already-decoded values of the
 	 * schema's type, so encoding them is total in practice; a value smuggled
-	 * past the types throws the codec's `SchemaError` as a defect — same
-	 * posture as the serializer arm above, **not** a silent fallback.
+	 * past the types throws the codec's `SchemaError` as a defect, **not** a
+	 * silent fallback.
 	 *
 	 * This is the **only** member where a throw is reachable at runtime, and
 	 * neither route is the serializer — see the no-wrapping remark on
@@ -403,8 +401,8 @@ export class GitHubMarkdown {
 	 * its fragments as markdown, so `raw` adds no behavior — it adds the
 	 * *statement* that a value is already rendered. Use it where a fragment
 	 * from elsewhere enters a composition and a reader would otherwise wonder
-	 * whether it still needs escaping. It replaces the `Html.make` idiom,
-	 * which passes markdown through correctly but announces the wrong intent.
+	 * whether it still needs escaping. Prefer it to `Html.make`, which passes
+	 * markdown through correctly but announces the wrong intent.
 	 */
 	static raw(markdown: string): string {
 		return markdown;

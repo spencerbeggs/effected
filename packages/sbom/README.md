@@ -7,10 +7,10 @@
 
 Supply-chain artifacts for [Effect](https://effect.website) v4: a CycloneDX 1.6 SBOM, an NTIA minimum-elements report, in-toto statements, SLSA provenance, and Sigstore DSSE signing. `Sbom.generate` and `Sbom.toJson` are total, plain functions — assembling and serializing a document cannot fail, so the package's only error channel belongs to `Sbom.write`, the one member that touches a filesystem. Signing is a separate, deliberately walled-off capability: a consumer that only ever emits an SBOM never reaches `@sigstore/*` or its Fulcio/Rekor network calls.
 
-> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 prerelease. Packages graduate to
-> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
-> exactly the ones the kit is built and tested against, install
+> **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
+> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
+> `@effect/*` versions on the line the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
 >
 > **Stability: unstable.** This package's API surface is not yet considered
@@ -53,7 +53,7 @@ declare const pkg: Package;
 const root = SbomMetadataSource.rootComponent(pkg);
 const metadata = SbomMetadataSource.fromPackage(pkg, { timestamp: new Date().toISOString() });
 const components = [
-  SbomMetadataSource.componentFor({ name: "effect", version: "4.0.0-rc.109", license: "MIT" }),
+  SbomMetadataSource.componentFor({ name: "effect", version: "4.0.0", license: "MIT" }),
 ];
 
 const document = Sbom.generate({ root, components, metadata });

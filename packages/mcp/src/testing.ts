@@ -5,7 +5,7 @@
  *
  * @remarks
  * A separate entrypoint, so a server's runtime import graph never loads test
- * code. See the reachability test beside it.
+ * code.
  *
  * @packageDocumentation
  */

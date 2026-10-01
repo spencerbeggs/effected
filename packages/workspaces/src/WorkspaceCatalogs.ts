@@ -966,10 +966,9 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 	 * `rangeOf` returns `Option.none()` for a dependency no catalog declares, per
 	 * the contract's convention. A failed catalog *assembly* — an unreadable or
 	 * malformed `pnpm-workspace.yaml`, a broken config-dependency hook — passes
-	 * through **typed** as the contract's `CatalogAssemblyError` (it used to be
-	 * folded into `DependencyResolutionError`'s defect `cause`, which forced
-	 * consumers to `_tag`-sniff `unknown`); only the remaining mechanism failure,
-	 * an unfindable workspace root, is wrapped as `DependencyResolutionError`.
+	 * through **typed** as the contract's `CatalogAssemblyError`; only the
+	 * remaining mechanism failure, an unfindable workspace root, is wrapped as
+	 * `DependencyResolutionError`.
 	 */
 	static readonly catalogResolver: Layer.Layer<CatalogResolver, never, WorkspaceCatalogs> = Layer.effect(
 		CatalogResolver,

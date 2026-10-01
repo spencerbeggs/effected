@@ -7,7 +7,9 @@
  * {@link YamlDocument} exposes the full parsed AST plus recovered
  * diagnostics; {@link YamlFormat} computes non-mutating format/modify edits
  * that preserve comments and whitespace; {@link YamlVisitor} streams
- * SAX-style AST events. All fallible entry points — parse, stringify, encode
+ * SAX-style AST events; {@link YamlTokens} exposes the positioned token
+ * stream; {@link YamlLint} runs style rules, applies their fixes and infers a
+ * config from observed style. All fallible entry points — parse, stringify, encode
  * and modify — carry typed errors built from {@link YamlDiagnostic}, never a
  * collapsed string reason or an unhandled defect on malformed or adversarial
  * input.

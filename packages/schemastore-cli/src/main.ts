@@ -1,8 +1,4 @@
-/**
- * The assembled schemastore CLI program.
- *
- * @packageDocumentation
- */
+// The assembled schemastore CLI program, run by `bin.ts`.
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";

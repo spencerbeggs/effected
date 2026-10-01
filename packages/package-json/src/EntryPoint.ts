@@ -24,9 +24,8 @@ export interface ResolveEntryPointOptions {
  *
  * @remarks
  * The reason is discriminated rather than a bare "not found" because the three
- * shapes call for different responses, and a caller staring at a consumer's
- * plugin at 3am needs to know which one it hit. Collapsing them into one
- * sentinel is the same class of quiet wrong answer as an untyped error channel.
+ * shapes call for different responses, and a caller needs to know which one it
+ * hit.
  *
  * @public
  */
@@ -70,7 +69,9 @@ export class UnresolvedEntryPointError extends Schema.TaggedError<UnresolvedEntr
  * @public
  */
 export interface EntryPointManifest {
+	/** The `exports` field, in any of its legal shapes. */
 	readonly exports?: unknown;
+	/** The `main` field; consulted only when `exports` is absent. */
 	readonly main?: unknown;
 }
 
@@ -124,11 +125,10 @@ const resolveConditions = (
  * Resolve a package's root entry point from its manifest.
  *
  * @remarks
- * The half of "read something out of a published package" that has no home
- * anywhere else: given a manifest, which file is the package's `"."` entry?
- * It is pure and IO-free by design — nothing here touches a filesystem, so it
- * is testable against plain manifest objects with no package on disk, and it
- * composes with a directory that arrived by any route.
+ * Answers "given a manifest, which file is the package's `"."` entry?". It is
+ * pure and IO-free by design — nothing here touches a filesystem, so it works
+ * on plain manifest objects with no package on disk, and it composes with a
+ * directory that arrived by any route.
  *
  * All three legal `exports` spellings are honoured, because all three appear in
  * real published packages:
@@ -155,7 +155,6 @@ const resolveConditions = (
  * @example
  * ```ts
  * import { resolveEntryPoint } from "@effected/package-json";
- * import { Result, Schema } from "effect";
  *
  * resolveEntryPoint({ exports: { import: "./esm.js", require: "./cjs.js" } });
  * // Result.succeed("./esm.js")

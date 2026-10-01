@@ -15,8 +15,8 @@ import { FrontmatterDecodeError, FrontmatterEncodeError, FrontmatterFormatMismat
  *
  * Encodes with `Toml.stringify`; a value toml cannot represent fails as a
  * {@link FrontmatterEncodeError} carrying the `TomlStringifyError`
- * structurally. An empty object encodes to the **empty body** — the exact
- * mirror of the decode ruling above, rendering as adjacent `+++` fences —
+ * structurally. An empty object encodes to the **empty body** — the mirror
+ * of an empty capture decoding to `{}` — rendering as adjacent `+++` fences,
  * so `set`-then-decode recovers `{}` exactly.
  *
  * `@effected/toml` is an optional peer — importing this module is what

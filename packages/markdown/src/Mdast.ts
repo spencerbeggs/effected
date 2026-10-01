@@ -1,29 +1,6 @@
-/**
- * The remark-ecosystem interop boundary: projection between this package's
- * node classes and plain mdast JSON.
- *
- * @remarks
- * `Mdast.toMdast` projects a parsed {@link Root} to plain spec-valid mdast
- * objects — fidelity extras stripped, optional fields spelled the way
- * `mdast-util-from-markdown` spells them (explicit `null`/`false` where the
- * reference utility emits them), so the output deep-equals what the remark
- * ecosystem produces and consumes. `Mdast.fromMdast` admits foreign plain
- * mdast back into the package's Schema node classes, synthesizing zero-width
- * sentinel positions where unist leaves them optional.
- *
- * The emission target is `mdast-util-from-markdown@2.0.3` (the vendored
- * interop corpus pin): `list.ordered`/`start`/`spread` and
- * `listItem.spread`/`checked` always explicit (`null` for unknown `start`/
- * `checked`), `code.lang`/`meta` and every `title` explicit `null` when
- * absent, `image.alt`/`imageReference.alt` always a string. Under unist's
- * null-equals-absent convention for optional fields this stays spec-valid
- * mdast; it is also byte-identical to the reference utility's output, which
- * is what interop means operationally. GFM shapes follow the same convention
- * from `mdast-util-gfm`; the frontmatter capture projects to mdast's
- * `yaml`/`toml` literal nodes, and a `json` capture projects to a
- * `json`-typed literal node per the `mdast-util-frontmatter` custom-preset
- * convention (presets name the node type after the language).
- */
+// The remark-ecosystem interop boundary: projection between this package's
+// node classes and plain mdast JSON. The emission conventions are documented on
+// the exported `Mdast` class.
 
 import { Effect, Result, Schema } from "effect";
 import { unescapeString } from "./internal/unescape.js";
@@ -61,9 +38,8 @@ export interface MdastNode {
  * @remarks
  * `issue` carries the **structured** schema failure — at runtime a
  * `SchemaIssue.Issue` tree, reachable through `_tag` and nested `issues` —
- * never a stringified rendering (the `FrontmatterValidationError`
- * precedent). It is typed `unknown` because v4 exposes no `Schema` for
- * `Issue`; narrow it with the `SchemaIssue` module.
+ * never a stringified rendering. It is typed `unknown` because core exposes
+ * no `Schema` for `Issue`; narrow it with the `SchemaIssue` module.
  *
  * @public
  */
@@ -93,7 +69,7 @@ const projectChildren = (children: ReadonlyArray<AnyNode>): Array<Record<string,
 	children.map((child) => projectNode(child));
 
 // This package's Code.value carries its final line terminator (the engine's
-// convention, pinned since P1); mdast-util-from-markdown stores the value
+// convention); mdast-util-from-markdown stores the value
 // without it and lets renderers re-add it. The projection translates: strip
 // one final line ending going out, restore it coming back in.
 const stripFinalLineEnding = (value: string): string =>
@@ -452,7 +428,41 @@ const normalizeMdxAttribute = (value: unknown): unknown => {
 const decodeRoot = Schema.decodeUnknownResult(Root);
 
 /**
- * The mdast projection facade — the remark-ecosystem interop boundary.
+ * Projects parsed markdown trees to plain mdast JSON and admits foreign mdast
+ * back into this package's node classes, for interop with the remark
+ * ecosystem.
+ *
+ * @remarks
+ * `Mdast.toMdast` projects a parsed {@link Root} to plain spec-valid mdast
+ * objects — fidelity extras stripped, optional fields spelled the way
+ * `mdast-util-from-markdown@2.0.3` spells them (explicit `null`/`false` where
+ * the reference utility emits them), so the output deep-equals what the
+ * remark ecosystem produces and consumes: `list.ordered`/`start`/`spread` and
+ * `listItem.spread`/`checked` are always explicit (`null` for unknown
+ * `start`/`checked`), `code.lang`/`meta` and every `title` are explicit
+ * `null` when absent, and `image.alt`/`imageReference.alt` are always
+ * strings. Under unist's null-equals-absent convention for optional fields
+ * this stays spec-valid mdast. GFM shapes follow the same convention from
+ * `mdast-util-gfm`; the frontmatter capture projects to mdast's `yaml`/`toml`
+ * literal nodes, and a `json` capture projects to a `json`-typed literal node
+ * per the `mdast-util-frontmatter` custom-preset convention (presets name the
+ * node type after the language).
+ *
+ * `Mdast.fromMdast` admits foreign plain mdast back into the package's Schema
+ * node classes, synthesizing zero-width sentinel positions where unist leaves
+ * them optional.
+ *
+ * @example
+ * ```ts
+ * import { Markdown, Mdast } from "@effected/markdown";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const root = yield* Markdown.parse("# Hello\n");
+ *   const plain = Mdast.toMdast(root); // plain mdast JSON
+ *   return yield* Mdast.fromMdast(plain); // back to node classes
+ * });
+ * ```
  *
  * @public
  */

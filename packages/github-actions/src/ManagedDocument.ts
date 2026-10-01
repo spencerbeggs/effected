@@ -129,9 +129,8 @@ export interface ManagedDocumentSource {
  * region carrying the latest content, which is what makes a check that
  * resolves many times safe to re-render.
  *
- * The region engine is `@effected/templates`' pure `SectionDocument` —
- * reused, not reinvented — fixed to the HTML comment style and a
- * region-specific phrase. Everything here is string → string; the GitHub
+ * The region engine is `@effected/templates`' pure `SectionDocument`, fixed to
+ * the HTML comment style and a region-specific phrase. Everything here is string → string; the GitHub
  * write path composes this with `PullRequestComment` (whose `CommentMarker`
  * renders the *same* sentinel for the same namespace and key) or a PR-body
  * update in `@effected/github`.
@@ -254,7 +253,7 @@ export class ManagedDocument extends Schema.Class<ManagedDocument>("ManagedDocum
 	 * call keeps its content *and* its metadata untouched — and never
 	 * participates in region addressability: a region is found by key alone,
 	 * so changing metadata updates the region in place. A two-element entry
-	 * behaves exactly as it always has. Names must match
+	 * supplies no metadata. Names must match
 	 * `[A-Za-z][A-Za-z0-9_-]*` and values may not contain `"` or a line
 	 * break; violations fail typed as `invalidAttribute`.
 	 *

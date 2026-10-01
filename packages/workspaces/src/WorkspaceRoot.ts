@@ -240,12 +240,10 @@ export class WorkspaceRoot extends Context.Service<WorkspaceRoot, WorkspaceRootS
 	 * A test double resolving every `find` to `root`, with no filesystem.
 	 *
 	 * @remarks
-	 * The nine-copies-of-a-four-line-mock case — a `Layer.succeed` over a `find`
-	 * that ignores its arguments and succeeds with a fixed root is what consumers
-	 * were writing by hand. The difference is that this double **honours
-	 * `stopAt`**: a hand-rolled `find` that ignores the ceiling makes a bounded
-	 * call pass under test and fail against the live service, which is the
-	 * failure mode the option exists to catch. A `root` above the ceiling fails
+	 * Stands in for a hand-written `Layer.succeed` over a `find` that ignores its
+	 * arguments. Unlike that, this double **honours `stopAt`**: a `find` that
+	 * ignores the ceiling makes a bounded call pass under test and fail against
+	 * the live service, which is the failure mode the option exists to catch. A `root` above the ceiling fails
 	 * here exactly as it would live, with the same
 	 * {@link WorkspaceRootNotFoundError}.
 	 *

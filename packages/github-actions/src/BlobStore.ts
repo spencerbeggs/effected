@@ -56,12 +56,19 @@ export interface StoredBlob<A> {
 }
 
 /**
- * The {@link BlobStore} service shape.
+ * The members of the {@link BlobStore} service: `get`, `put` and `has` over
+ * blobs that carry the caller's own metadata.
  *
  * @public
  */
 export interface BlobStoreShape {
-	/** Read a blob, or nothing if the key is absent. */
+	/**
+	 * Read a blob, or nothing if the key is absent.
+	 *
+	 * @remarks
+	 * Fails with {@link BlobStoreError}, or a {@link BlobEnvelopeError} when the
+	 * stored bytes are not a valid envelope for `schema`.
+	 */
 	readonly get: <A, I>(
 		key: string,
 		schema: Schema.Codec<A, I>,
@@ -82,7 +89,9 @@ export interface BlobStoreShape {
  * @public
  */
 export interface S3Config {
+	/** The bucket name. */
 	readonly bucket: string;
+	/** The bucket's region, used for SigV4 signing and the default AWS endpoint. */
 	readonly region: string;
 	/**
 	 * A custom endpoint, e.g. `https://<account>.r2.cloudflarestorage.com`.
@@ -94,7 +103,9 @@ export interface S3Config {
 	 * DNS that none of them provide the same way.
 	 */
 	readonly endpoint?: string | undefined;
+	/** The access key id. */
 	readonly accessKeyId: string;
+	/** The secret access key, declassified once and masked in the runner log. */
 	readonly secretAccessKey: Redacted.Redacted<string>;
 	/** For temporary credentials. */
 	readonly sessionToken?: Redacted.Redacted<string> | undefined;
@@ -107,14 +118,15 @@ export interface S3Config {
  *
  * @remarks
  * `get`/`put`/`has` over `Uint8Array` **plus the caller's own metadata**, framed
- * by {@link BlobEnvelope}. The metadata channel is the reason this exists: the
- * consumer it was designed against hand-rolled a binary frame
- * (`[4B tagLen][4B durationMs][tag][body]`) and namespaced its keys with a `v2`
- * prefix to represent a format change. Both are framing concerns that had
- * leaked into a consumer, and both are absorbed here.
+ * by {@link BlobEnvelope}. The metadata channel is the reason this exists:
+ * fields like a cache tag or a duration travel as schema-typed metadata, and a
+ * format revision is detected in the blob rather than by prefixing keys.
  *
- * Deliberately no `list` and no `delete`: eviction belongs to the backend, both
- * backends already have one, and no consumer asked for either.
+ * Deliberately no `list` and no `delete`: eviction belongs to the backend, and
+ * both backends already have one.
+ *
+ * Backends: {@link BlobStore.layerS3}, `GitHubCacheBlobStore.layer` and the
+ * in-memory {@link BlobStore.layerMemory}.
  *
  * @example
  * ```ts

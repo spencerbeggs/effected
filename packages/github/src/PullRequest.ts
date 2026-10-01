@@ -16,13 +16,9 @@ export const MergeMethod = Schema.Literals(["merge", "squash", "rebase"]);
  *
  * @remarks
  * This is the **domain** shape, and the only pull-request type this package
- * exports. The wire shape GitHub actually answers with is the private
- * `RawPull` interface further down this module, and the two are deliberately
- * different: `RawPull` nests `head`/`base` as `{ ref, sha }` and spells the
- * link `html_url`, where this class flattens them to `head`/`headSha` and
- * spells it `url`. Reading the wrong one produces code that typechecks against
- * a member set the boundary will never hand it. If you are writing a test
- * double or a fixture, this is the type you build.
+ * exports. It flattens GitHub's nested `head`/`base` objects to
+ * `head`/`headSha` and `base`/`baseSha`, and spells the link `url`. If you are
+ * writing a test double or a fixture, this is the type you build.
  *
  * @public
  */
@@ -60,9 +56,15 @@ export class PullRequestInfo extends Schema.Class<PullRequestInfo>("PullRequestI
 	mergeCommitSha: Schema.optionalKey(Schema.String),
 }) {}
 
-/** What {@link PullRequestShape.upsert} did. @public */
+/**
+ * What {@link PullRequestShape.upsert} did.
+ *
+ * @public
+ */
 export interface UpsertedPullRequest {
+	/** The pull request, as created or as updated. */
 	readonly pullRequest: PullRequestInfo;
+	/** `true` when a new pull request was opened, `false` when an open one was updated. */
 	readonly created: boolean;
 }
 
@@ -90,11 +92,13 @@ const DisableAutoMerge = GraphQLDocument.make({
 const GRAPHQL_MERGE_METHOD = { merge: "MERGE", squash: "SQUASH", rebase: "REBASE" } as const;
 
 /**
- * Pull requests.
+ * Read, list, create, update, merge and label pull requests, and control
+ * auto-merge.
  *
  * @public
  */
 export interface PullRequestShape {
+	/** Read one pull request. Fails `notFound` when it does not exist. */
 	readonly get: (number: number) => Effect.Effect<PullRequestInfo, GitHubError, Repo>;
 	/**
 	 * Open, closed or all pull requests, optionally filtered.
@@ -103,10 +107,8 @@ export interface PullRequestShape {
 	 * `head` accepts **either** the qualified `owner:ref` GitHub's filter wants
 	 * or a bare `ref`, which is qualified with the current repo's owner on the
 	 * way out. So for a pull request opened **from the current repository**,
-	 * feeding this method `PullRequestInfo.head` — which is the bare
-	 * `raw.head.ref` — round-trips correctly, and a consumer filtering the full
-	 * list client-side because the raw REST route ignores an unqualified ref no
-	 * longer needs to.
+	 * feeding this method `PullRequestInfo.head` (the bare branch name)
+	 * round-trips correctly; GitHub's own route ignores an unqualified ref.
 	 *
 	 * **The round trip does not hold for a fork-originated pull request.**
 	 * `PullRequestInfo` projects only the ref and drops the source owner, so
@@ -128,9 +130,7 @@ export interface PullRequestShape {
 	 * Each entry is a full {@link CommitFile} — path **and** status, plus the
 	 * line counts and any pre-rename path — the same projection
 	 * `GitHubCommit.changedFiles` returns, because GitHub answers both
-	 * endpoints with the same `diff-entry` shape. An earlier version projected
-	 * to the path alone, and consumers who needed the status fell back to a raw
-	 * route.
+	 * endpoints with the same `diff-entry` shape.
 	 */
 	readonly listFiles: (
 		number: number,
@@ -140,15 +140,13 @@ export interface PullRequestShape {
 	 * The pull requests associated with a commit.
 	 *
 	 * @remarks
-	 * Named for the question it answers, because the previous surface had this
-	 * method and one consumer never found it — dropping to a raw octokit callback
-	 * with the only `noExplicitAny` suppression in the entire survey. It also
-	 * paginates now, which the previous one did not.
+	 * Paginated: pass `page` to bound the walk.
 	 */
 	readonly listAssociatedWithCommit: (
 		sha: string,
 		options?: { readonly page?: PageOptions | undefined },
 	) => Effect.Effect<ReadonlyArray<PullRequestInfo>, GitHubError, Repo>;
+	/** Open a pull request from `head` into `base`. */
 	readonly create: (input: {
 		readonly title: string;
 		readonly head: string;
@@ -156,6 +154,7 @@ export interface PullRequestShape {
 		readonly body?: string | undefined;
 		readonly draft?: boolean | undefined;
 	}) => Effect.Effect<PullRequestInfo, GitHubError, Repo>;
+	/** Patch a pull request; only the fields given are sent. */
 	readonly update: (
 		number: number,
 		patch: {
@@ -165,7 +164,13 @@ export interface PullRequestShape {
 			readonly base?: string | undefined;
 		},
 	) => Effect.Effect<PullRequestInfo, GitHubError, Repo>;
-	/** Update the open pull request for `head`→`base`, or open one. */
+	/**
+	 * Update the open pull request for `head`→`base`, or open one.
+	 *
+	 * @remarks
+	 * When a pull request is already open, only `title` and `body` are updated;
+	 * `draft` applies only when a new pull request is opened.
+	 */
 	readonly upsert: (input: {
 		readonly title: string;
 		readonly head: string;
@@ -173,6 +178,7 @@ export interface PullRequestShape {
 		readonly body?: string | undefined;
 		readonly draft?: boolean | undefined;
 	}) => Effect.Effect<UpsertedPullRequest, GitHubError, Repo>;
+	/** Merge a pull request and return the merge commit sha. `method` defaults to GitHub's choice. */
 	readonly merge: (
 		number: number,
 		options?: {
@@ -181,7 +187,9 @@ export interface PullRequestShape {
 			readonly commitMessage?: string | undefined;
 		},
 	) => Effect.Effect<string, GitHubError, Repo>;
+	/** Add labels to a pull request (as an issue), keeping the ones already there. */
 	readonly addLabels: (number: number, labels: ReadonlyArray<string>) => Effect.Effect<void, GitHubError, Repo>;
+	/** Request reviews from users and/or teams (team slugs). */
 	readonly requestReviewers: (
 		number: number,
 		reviewers: {
@@ -193,10 +201,9 @@ export interface PullRequestShape {
 	 * Turn auto-merge on or off.
 	 *
 	 * @remarks
-	 * An explicit call, not an option on `create`/`update`. The previous surface
-	 * fired these mutations from an `Effect.tap` **after** the create succeeded,
-	 * so a create that worked could still surface an auto-merge failure as if the
-	 * create had failed.
+	 * An explicit call, not an option on `create`/`update`, so a create that
+	 * worked is never reported as failed because auto-merge was refused. Pass
+	 * `"off"` to disable it.
 	 */
 	readonly setAutoMerge: (
 		pullRequest: PullRequestInfo,
@@ -205,11 +212,34 @@ export interface PullRequestShape {
 }
 
 /**
- * Pull requests.
+ * Read, list, create, update, merge and label pull requests, and control
+ * auto-merge.
+ *
+ * @remarks
+ * Provide it with {@link PullRequest.layer}, which needs a `GitHubClient`; each
+ * method also needs a `Repo` in `R`.
+ *
+ * @example
+ * ```ts
+ * import { PullRequest } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const openOrUpdate = Effect.gen(function* () {
+ *   const pulls = yield* PullRequest;
+ *   const { pullRequest, created } = yield* pulls.upsert({
+ *     title: "chore: release",
+ *     head: "changeset-release/main",
+ *     base: "main",
+ *   });
+ *   yield* pulls.setAutoMerge(pullRequest, "squash");
+ *   return created;
+ * });
+ * ```
  *
  * @public
  */
 export class PullRequest extends Context.Service<PullRequest, PullRequestShape>()("@effected/github/PullRequest") {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<PullRequest, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),

@@ -7,10 +7,10 @@
 
 Publish Effect Schemas as SchemaStore-shaped Draft-07 JSON Schema documents. Core `effect` already generates JSON Schema (`Schema.toJsonSchemaDocument`) and lowers it to Draft-07 (`JsonSchema.toDocumentDraft07`); this package owns what [SchemaStore](https://www.schemastore.org) and the editors expect around that output — the publication shape, the hosted identity a document is published under, the keyword-family gate, catalog entries, lints, versioning, canonical JSON and content-comparing file IO — and the [`schemastore`](https://www.npmjs.com/package/@effected/schemastore-cli) command runs all of it from one config file.
 
-> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 prerelease. Packages graduate to
-> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
-> exactly the ones the kit is built and tested against, install
+> **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
+> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
+> `@effect/*` versions on the line the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
 >
 > **Stability: unstable.** This package's API surface is not yet considered

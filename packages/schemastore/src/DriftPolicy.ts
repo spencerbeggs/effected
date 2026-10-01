@@ -28,7 +28,9 @@ export type OnDrift = "error" | "warn";
  * @public
  */
 export interface DriftOptions {
+	/** How much change a published document may absorb. */
 	readonly policy: DriftTolerance;
+	/** What a build does when it finds drift. */
 	readonly onDrift: OnDrift;
 }
 
@@ -57,6 +59,18 @@ export class DriftPolicy {
 	/** `{ policy: "semantic", onDrift: "error" }` — what a config gets when it says nothing. */
 	static readonly defaults: DriftOptions = { policy: "semantic", onDrift: "error" };
 
+	/**
+	 * Answer `"write"` or `"drift"` for one target, given whether it is
+	 * published and how its content changed.
+	 *
+	 * @example
+	 * ```ts
+	 * import { DriftPolicy } from "@effected/schemastore";
+	 *
+	 * DriftPolicy.classify({ published: true, change: "contract" }, "semantic");
+	 * // => "drift"
+	 * ```
+	 */
 	static classify(
 		input: { readonly published: boolean; readonly change: WriteChange },
 		policy: DriftTolerance,

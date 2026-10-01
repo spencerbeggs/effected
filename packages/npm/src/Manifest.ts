@@ -1,9 +1,9 @@
 // The `Manifest` domain model: a tolerant manifest as a `Schema.Class` — the
 // four dependency fields typed, everything else preserved verbatim in a
 // `rest` catch-all — plus manifest-level resolution of `catalog:` and
-// `workspace:` specifiers over the resolver contracts. Pure tier — no IO of
-// its own; the `CatalogResolver` / `WorkspaceResolver` implementations arrive
-// in `R` and the application provides them at the edge.
+// `workspace:` specifiers over the resolver contracts. No IO of its own; the
+// `CatalogResolver` / `WorkspaceResolver` implementations arrive in `R` and
+// the application provides them at the edge.
 //
 // The wire codec is deliberately tolerant: mid-build manifests are arbitrary
 // user records, and forcing them through a strict `Package` decode would fail
@@ -143,7 +143,7 @@ const makeWire = (
  * });
  *
  * Effect.runPromise(Effect.provide(program, Default)).then(console.log);
- * // => { dependencies: { effect: "^4.0.0" }, name: "app" }
+ * // => { name: "app", dependencies: { effect: "^4.0.0" } }
  * ```
  *
  * @public
@@ -172,8 +172,8 @@ export class Manifest extends Schema.Class<Manifest>("Manifest")({
 	 * `SchemaError` to a typed {@link ManifestDecodeError} at the boundary.
 	 *
 	 * @param input - the parsed manifest value (e.g. from `JSON.parse`)
-	 * @returns an Effect resolving to the decoded `Manifest`
-	 * @throws (typed) `ManifestDecodeError` when a dependency field is not a
+	 * @returns an Effect resolving to the decoded `Manifest`, failing with
+	 * {@link ManifestDecodeError} when a dependency field is not a
 	 * string→string record, or the input is not a record at all
 	 */
 	static readonly decode = Effect.fn("Manifest.decode")(function* (input: unknown) {
@@ -210,8 +210,9 @@ export class Manifest extends Schema.Class<Manifest>("Manifest")({
 	 * This instance is never mutated; a new `Manifest` is returned with `rest`
 	 * carried over unchanged. A specifier the resolvers cannot answer fails
 	 * typed as {@link UnresolvedDependencyError}; mechanism failures surface
-	 * as the resolver contracts' own `CatalogAssemblyError` /
-	 * `DependencyResolutionError`.
+	 * as the resolver contracts' own {@link CatalogAssemblyError} /
+	 * {@link DependencyResolutionError}. Requires {@link CatalogResolver} and
+	 * {@link WorkspaceResolver} in `R`.
 	 *
 	 * @remarks
 	 * Fails typed on unresolvable entries. For the leave-unchanged policy over

@@ -10,8 +10,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 4eb2c61fdc8d105f6c3a6188b8152e7203f92b08aeccb9d7c7e5da4eee801ab0
+  at: 2026-10-01T17:24:58Z
+  body_sha256: 60f21558afeb84e5bb7d9f5534521e23f19d6f4e42a7aef36b50534d349c5035
 ---
 
 # pnpm-plugin-effect
@@ -30,7 +30,7 @@ so one installed config dependency pins both halves of what a consumer
 builds against.
 
 Four catalogs, and this is the whole set: `effect` (every `effect` /
-`@effect/*` package on the v4 line, pinned to the current prerelease),
+`@effect/*` package on the v4 line, at a caret range on the stable line),
 `effect:peers` (the same set as the advertised peer range), `effected`
 (the kit's own packages, at the version each will next publish) and
 `effected:peers` (the same set as the advertised peer range). Every name
@@ -58,13 +58,16 @@ Memberships, versions and strategies all live in that one file. See
 [the effected catalog literal](../models/effected-catalog-literal.md) for
 its shape and load-bearing constraints.
 
-The `effect` (v4) catalog pins exact versions, never a caret — a caret on
-a prerelease floats across the release line and desynchronizes the
-installed `effect` from the `.repos/effect` submodule that is
-authoritative on what v4 exports — and uses the `lock` strategy, so every
-consumer resolves to the same pinned version on install and the `peer`
-inputs equal the pinned versions under that strategy, which is why
-`effect:peers` holds the same exact pin rather than a caret floor.
+The `effect` (v4) catalog gives `effect` and every `@effect/*` satellite
+the caret range `^4.0.0` and uses the `lock-minor` strategy, as the
+[stable-line decision](../decisions/effect-catalog-tracks-stable-minor.md)
+rules. `range` (what a workspace installs) and `peer` (the input to the
+floor computation) are separate fields, and for these entries both read
+`^4.0.0`, so `effect:peers` advertises the same caret. The catalog literal
+does not fix the exact `effect`: the lockfile does, and `.repos/effect` is
+pinned to the tag matching that resolution. `@effect/tsgo` versions on its
+own line, so its entry differs: `range` is exact (`0.47.2`) and `peer`
+is its floor (`0.47.0`).
 
 `src/index.ts` and `src/pnpmfile.ts` are one-line re-exports over
 `rolldown-pnpm-config` virtual modules; all real configuration lives in
@@ -106,36 +109,61 @@ See [effect3 catalogs are retired](../decisions/effect3-catalogs-retired.md).
 
 ## The generated allowed-versions table
 
-Every catalog advance strands previously-published artifacts: under
-`lock`, a registry package peers on the exact version it was built
-against, so the moment the workspace installs the next pin, that peer
-goes unmet and `pnpm peers check` gains a warning. The structural fix is
-a `peerDependencyRules.allowedVersions` table in the root
-`pnpm-workspace.yaml` declaring the lock catalog's current pin an
-acceptable resolution, retiring the warning class rather than documenting
-each occupant by hand.
+A `peerDependencyRules.allowedVersions` table in the root
+`pnpm-workspace.yaml` declares a satellite's current pin an acceptable
+resolution of its `effect` peer, so a peer that cannot be satisfied by
+range does not leave a warning in `pnpm peers check`.
 
 The table is derived, never hand-written. `PnpmConfigPlugin`'s
 `peerDependencyRules.allowedVersionsFromCatalogs` option names the source
 catalog and the peer each rule targets, and `rolldown-pnpm-config export`
-emits one rule per lock-catalog package into the workspace file. Rules
-are version-qualified parent selectors (`"<satellite>@<its pin>>effect"`),
-never blanket and never name-only, so pnpm applies a qualified rule only
-when the actual parent instance's version satisfies the qualifier — any
-other instance of the same satellite name, such as a toolchain-carried
-older prerelease, still warns on a genuinely unmet peer. The scope is
-effect's own satellites, never the kit's own `@effected/*` members,
-because the kit controls its own artifacts and the republish cycle
-repairs their stranding properly — covering them here would mask a real
-defect.
+emits the rules into the workspace file. It emits a rule **only for an
+entry whose `range` is an exact version**, because a rule is a
+version-qualified parent selector (`"<satellite>@<its pin>>effect"`) and a
+caret range has no single version to qualify. With the `effect` catalog
+on `^4.0.0`, that leaves one rule: `@effect/tsgo`'s, whose exact `range`
+is its own line (`"@effect/tsgo@0.47.2>effect": 4.0.0`). Every other
+satellite peers on `effect` with a caret that the installed copy
+satisfies, so the stable line needs no table for them.
+
+Rules are never blanket and never name-only, so pnpm applies a qualified
+rule only when the actual parent instance's version satisfies the
+qualifier — any other instance of the same satellite name, such as a
+toolchain-carried release candidate, still warns on a genuinely unmet
+peer. The scope is effect's own satellites, never the kit's own
+`@effected/*` members, because the kit controls its own artifacts and the
+republish cycle repairs their stranding properly — covering them here
+would mask a real defect.
 
 The table suppresses reporting only; it does not change resolution, so
-`autoInstallPeers` may still materialize an older `effect` instance for a
+`autoInstallPeers` may still materialize a second `effect` instance for a
 stranded artifact's subgraph. A second copy is not always inert — a
 lagging toolchain has mixed two `effect` copies into one `Schema` decode
 pipeline and crashed every build — so keeping the workspace and toolchain
 resolved to one `effect` copy remains the invariant this table's own
 package does not solve.
+
+## The scoped platform-node-shared overrides
+
+The plugin also publishes a pnpm `overrides` block, which a consumer's
+install applies. It holds two entries, one per release candidate whose
+`@effect/platform-node` is still in use by built tools:
+
+- `@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared`:
+  `4.0.0-rc.117`
+- `@effect/platform-node@4.0.0-rc.118>@effect/platform-node-shared`:
+  `4.0.0-rc.118`
+
+Each pins the shared package to its parent's own version. A tool built on
+a release candidate takes `@effect/platform-node-shared` with a caret, and
+a fresh resolve pairs it with the newest shared package, which was built
+against a different `effect` than the tool runs. The rc.118 shared package
+imports a module that rc.117 does not ship, and a tool on rc.117 crashed at
+startup. A selector names its parent's exact version, so an entry never
+touches a stable `4.x` install. Remove an entry once no tool consumers run
+is built on that candidate. This is the `overrides` bridge shape from
+[one resolved effect copy](../conventions/one-resolved-effect-copy.md),
+published by the plugin rather than written per workspace.
 
 ## Maintainer workflows
 
@@ -144,10 +172,11 @@ they rewrite this package's `savvy.build.ts` and the root
 `pnpm-workspace.yaml`, mutating the lockfile on the next install:
 `pnpm pnpm:up` (pin each Effect package to its latest v4 release and
 recompute the peer floor), `pnpm pnpm:export` (write the generated
-catalogs and allowed-versions table into `pnpm-workspace.yaml`, and
-surface drift) and `pnpm pnpm:preview` (preview without writing).
+catalogs, allowed-versions table and overrides into `pnpm-workspace.yaml`,
+and surface drift) and `pnpm pnpm:preview` (preview without writing).
 Advancing the Effect pin is `pnpm:up` then `pnpm:export`, with the
-`.repos/effect` submodule re-pinned in the same commit — see
+`.repos/effect` submodule re-pinned to the lockfile's resolved `effect` in
+the same commit — see
 [advance the effect pin](../runbooks/advance-the-effect-pin.md).
 
 The two `catalog:` scripts are a different class and **agents may run
@@ -171,11 +200,10 @@ the peer range: `catalog:effect` in `devDependencies`,
 These catalogs are the mechanism behind the kit's peer-dependency
 discipline. Root `pnpm-workspace.yaml` sets exactly one
 resolver-relevant key, `autoInstallPeers: true` — no
-`dedupePeerDependents`, no `dedupeDirectDeps`, no `.npmrc`. The direct
-`effect` (`catalog:effect`) devDependency on this package is load-bearing
-and must not be removed as unused: without an `effect` of its own, this
-package would let pnpm bind the bundler's `@effected/*` peers to
-whatever older `effect` copy the toolchain carries, loading v4 code
-against it at build time. The devDependency exists purely to give the
-resolver the right version to bind; the companion still ships no
-`effect`-importing code.
+`dedupePeerDependents`, no `dedupeDirectDeps`, no `.npmrc`. This
+package declares **no** `effect` devDependency, and that absence is
+deliberate: it ships and tests no `effect`-importing code. The
+devDependency it once carried steered the resolver to bind the bundler's
+`@effected/*` peers to the workspace's `effect`, and once the build
+toolchain carried its own `effect` the steering inverted and leaked the
+workspace's copy into the toolchain's peers. Do not reintroduce it.

@@ -48,10 +48,8 @@ export type FileChange = FileContent | FileDeletion;
  * A commit, projected to the three fields callers actually use.
  *
  * @remarks
- * `treeSha` is here because two surveyed call sites dropped to a raw octokit
- * cast for it alone, both with the comment *"the Git Data API's `base_tree`
- * wants a tree SHA, not a commit SHA"* — the same eight lines written twice, in
- * two files, for one string.
+ * `treeSha` is here because the Git Data API's `base_tree` wants a tree SHA,
+ * not a commit SHA.
  *
  * @public
  */
@@ -101,9 +99,7 @@ export interface GitCommitShape {
 	 * `GitBranch.upsert` straight to the finished commit. Do **not** spell a
 	 * rebase as `upsert(branch, targetHead)` followed by `commitFiles`: between
 	 * those calls the branch *is* the target head, an open pull request from it
-	 * has an empty diff, and GitHub auto-closes PRs in that state — a real
-	 * consumer lost its open release PR to that ~3-second window while the run
-	 * went green.
+	 * has an empty diff, and GitHub auto-closes PRs in that state.
 	 */
 	readonly commitFiles: (options: {
 		readonly branch: string;
@@ -113,11 +109,33 @@ export interface GitCommitShape {
 }
 
 /**
- * Commits, trees and blobs.
+ * Read commits and build trees and commits through GitHub's Git Database API,
+ * including a one-call "commit these files onto a branch".
+ *
+ * @remarks
+ * Provide it with {@link GitCommit.layer}, which needs a `GitHubClient`; each
+ * method also needs a `Repo` in `R`. No local git runs: this is the REST API,
+ * not `@effected/git`.
+ *
+ * @example
+ * ```ts
+ * import { FileContent, GitCommit } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const writeNotes = Effect.gen(function* () {
+ *   const commits = yield* GitCommit;
+ *   return yield* commits.commitFiles({
+ *     branch: "docs/notes",
+ *     message: "docs: add notes",
+ *     changes: [FileContent.make({ path: "NOTES.md", content: "# Notes\n" })],
+ *   }); // the new commit's sha
+ * });
+ * ```
  *
  * @public
  */
 export class GitCommit extends Context.Service<GitCommit, GitCommitShape>()("@effected/github/GitCommit") {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<GitCommit, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),

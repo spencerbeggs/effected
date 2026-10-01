@@ -1,4 +1,4 @@
-// indentation (#129): block-structure indent STYLE — the one rule that
+// indentation: block-structure indent STYLE — the one rule that
 // reasons about structure rather than a token and its neighbours, built
 // last by design. Two checks:
 //
@@ -177,7 +177,7 @@ export const indentation: YamlRule = {
 
 		return out;
 	},
-	// Inference (#345): every indent INCREASE votes its delta for `spaces`,
+	// Inference: every indent INCREASE votes its delta for `spaces`,
 	// and every key-then-sequence-entry pair votes whether the sequence is
 	// indented for `indentSequences` — the same content lines and the same
 	// detection the check polices in "consistent" mode.

@@ -1,30 +1,26 @@
-/**
- * A run-at-most-once gate for deferred layer population.
- *
- * The resolver layers are lazy: acquiring one performs no IO, and the feed
- * fetch happens on the first `resolve`. This helper is the memoization behind
- * that contract, chosen over `Effect.cached` deliberately — `cached` memoizes
- * the *Exit*, so a transient network failure (or an interrupted first resolve)
- * would poison the resolver for the layer's whole lifetime.
- *
- * Semantics, exactly:
- *
- * - **Success is memoized.** The first successful run flips the gate; every
- *   later and every concurrently-waiting caller skips the work.
- * - **Concurrent first callers share one run.** A semaphore serializes entry;
- *   waiters re-check the gate under the permit and skip when the winner
- *   succeeded.
- * - **Failure is not memoized.** The gate only flips after success, so a
- *   failed run leaves it open and the next caller retries. Same for an
- *   interrupted run — `withPermits` releases the permit on interruption.
- *
- * The effect's requirements are captured from the *acquiring* scope
- * (`Effect.context`), so the gated effect needs nothing at call time — which
- * is what lets a lazy `resolve` keep `R = never` while the layer still
- * honestly advertises the strategy's requirements.
- *
- * @internal
- */
+// A run-at-most-once gate for deferred layer population.
+//
+// The resolver layers are lazy: acquiring one performs no IO, and the feed
+// fetch happens on the first `resolve`. This helper is the memoization behind
+// that contract, chosen over `Effect.cached` deliberately — `cached` memoizes
+// the *Exit*, so a transient network failure (or an interrupted first resolve)
+// would poison the resolver for the layer's whole lifetime.
+//
+// Semantics, exactly:
+//
+// - **Success is memoized.** The first successful run flips the gate; every
+//   later and every concurrently-waiting caller skips the work.
+// - **Concurrent first callers share one run.** A semaphore serializes entry;
+//   waiters re-check the gate under the permit and skip when the winner
+//   succeeded.
+// - **Failure is not memoized.** The gate only flips after success, so a
+//   failed run leaves it open and the next caller retries. Same for an
+//   interrupted run — `withPermits` releases the permit on interruption.
+//
+// The effect's requirements are captured from the *acquiring* scope
+// (`Effect.context`), so the gated effect needs nothing at call time — which
+// is what lets a lazy `resolve` keep `R = never` while the layer still
+// honestly advertises the strategy's requirements.
 
 import { Effect, Ref, Semaphore } from "effect";
 

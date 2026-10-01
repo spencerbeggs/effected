@@ -150,8 +150,7 @@ export const holdChalkLevel = (
 	});
 
 /**
- * Set Ink's colour level from the stream's `ColorLevel` for the enclosing scope, on Ink's own chalk
- * (`okf/decisions/ink-colour-via-inks-own-chalk.md`). The level is process-global while held: the last screen
+ * Set Ink's colour level from the stream's `ColorLevel` for the enclosing scope, on Ink's own chalk. The level is process-global while held: the last screen
  * mounted wins.
  *
  * @internal

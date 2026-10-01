@@ -4,11 +4,22 @@ import { Schema } from "effect";
  * What a caller — usually an agent — should do after a failure.
  *
  * @remarks
- * The superset of two shapes consumers built independently: the folded-message
- * shape `{ hint, suggestedTool? }` and the structured-data shape
- * `{ suggestedTool, suggestedArgs, humanHint }`. `humanHint` maps to `hint`.
- * Keys are `optionalKey`, so an explicit `undefined` is rejected rather than
- * silently encoded.
+ * `hint` is the human-readable instruction. `suggestedTool` and `suggestedArgs`
+ * optionally name the tool to call next and the arguments to call it with, so
+ * an agent can act without parsing the hint. The optional keys are
+ * `optionalKey`: omit them rather than passing an explicit `undefined`, which
+ * is rejected instead of silently encoded.
+ *
+ * @example
+ * ```ts
+ * import { Remediation } from "@effected/engine"
+ *
+ * const remediation: Remediation = {
+ * 	hint: "Run the validator on the whole bundle first.",
+ * 	suggestedTool: "validate_bundle",
+ * 	suggestedArgs: { strict: true },
+ * }
+ * ```
  *
  * @public
  */

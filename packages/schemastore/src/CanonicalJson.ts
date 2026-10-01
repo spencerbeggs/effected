@@ -58,8 +58,8 @@ export type CanonicalJsonError = NonJsonValueError | JsonDepthExceededError;
  */
 export interface CanonicalJsonOptions {
 	/**
-	 * Indentation unit: `"tab"` (the default, matching the repo formatter
-	 * convention the extraction source committed its files under) or a
+	 * Indentation unit: `"tab"` (the default, matching the formatter
+	 * convention of most JSON schema repos) or a
 	 * space count — a non-negative integer (`0` emits multi-line output
 	 * with no leading indentation). Counts above 10 are honored as given,
 	 * deliberately diverging from `JSON.stringify`'s silent clamp to 10.

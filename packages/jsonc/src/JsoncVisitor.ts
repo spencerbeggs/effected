@@ -3,12 +3,10 @@
 // AST.
 //
 // The event union is a `Data.TaggedEnum` — serializable tagged values with
-// structural equality, consistent with the rest of the library — replacing
-// v3's plain object literals. Malformed input surfaces as `Error` events
-// inside the union (mirroring v3's `onError` callback), so the stream stays
-// infallible at the type level. v3's `visitCollect` is dropped: `Stream.filter`
-// + `Stream.runCollect` cover it (and in v4 `runCollect` already yields an
-// `Array`, so no `Chunk.toReadonlyArray` step is needed).
+// structural equality, consistent with the rest of the library. Malformed
+// input surfaces as `Error` events inside the union, so the stream stays
+// infallible at the type level. There is no collecting variant:
+// `Stream.filter` + `Stream.runCollect` cover it.
 
 import { Data, Stream } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
@@ -64,7 +62,22 @@ export type JsoncVisitorEvent = Data.TaggedEnum<{
 export const JsoncVisitorEvent = Data.taggedEnum<JsoncVisitorEvent>();
 
 /**
- * SAX-style JSONC visitor statics. Not instantiable.
+ * Walks JSONC text as a lazy `Stream` of typed events — objects, properties,
+ * values, separators, comments and recovered errors — without building an AST.
+ * Not instantiable.
+ *
+ * @example
+ * ```ts
+ * import { JsoncVisitor, JsoncVisitorEvent } from "@effected/jsonc";
+ * import { Effect, Stream } from "effect";
+ *
+ * const keys = JsoncVisitor.visit('{ "a": 1, "b": 2 }').pipe(
+ *   Stream.filter(JsoncVisitorEvent.$is("ObjectProperty")),
+ *   Stream.map((event) => event.property),
+ *   Stream.runCollect,
+ * );
+ * // Effect.runSync(keys) // => ["a", "b"]
+ * ```
  *
  * @public
  */

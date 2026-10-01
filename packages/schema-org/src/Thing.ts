@@ -12,11 +12,10 @@ import { Schema } from "effect";
  * heritage chain, and leaves every class's emitted declaration listing its own
  * fields.
  *
- * Every field is `Schema.optional` rather than `Schema.optionalKey`. That is a
- * deliberate, **scoped** divergence from the kit's schema standard, licensed by
- * this package's construction pattern: every field originates in a
- * possibly-absent piece of upstream metadata, so `optionalKey` would turn every
- * call site into a wall of conditional spreads. It is not a kit-wide precedent.
+ * Every field is `Schema.optional` rather than `Schema.optionalKey`, so it
+ * accepts an explicit `undefined`: node fields usually come from
+ * possibly-absent upstream metadata, and passing that straight through avoids a
+ * wall of conditional spreads at each call site.
  *
  * @public
  */

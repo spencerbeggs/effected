@@ -67,10 +67,9 @@ export class ActionRuntime {
 		// and stays exported for resolving inputs from an explicit record in a
 		// test). This one changes bare `Config` reads only: a flat name tries the
 		// runner's INPUT_ derivation first and then falls back to the ambient
-		// lookup unchanged. It is here because a live action shipped a false
-		// green — every bare read fell back to its `withDefault` because the
-		// runner publishes INPUT_<MANGLED> and a plain-named lookup finds
-		// nothing. A caller-supplied provider in the `layer` option still wins:
+		// lookup unchanged. It is needed because the runner publishes
+		// INPUT_<MANGLED>, so a plain-named lookup finds nothing and every bare
+		// read would silently fall back to its `withDefault`. A caller-supplied provider in the `layer` option still wins:
 		// the extra layer's context merges last in `Action.run`'s composition.
 		ActionInput.layerDefault,
 	).pipe(
@@ -136,7 +135,7 @@ const withStepDebugLogLevel = <A, E, R>(program: Effect.Effect<A, E, R>): Effect
  * A readable one-line summary of why an action failed.
  *
  * @remarks
- * `[Tag] message` because a workflow log is read by a human scanning for the
+ * `[Tag]: message` because a workflow log is read by a human scanning for the
  * first red line, and every error in this kit carries both. The `_tag` is what
  * makes two failures with the same wording distinguishable, and the `message`
  * getter is what makes the line worth reading.
@@ -189,11 +188,11 @@ const describeError = (error: unknown): string => {
  *
  * Two things it deliberately does **not** do:
  *
- * - **It does not wrap the program in a log buffer.** The package this replaces
- *   did, and an unhandled defect inside the buffer swallowed the entire
- *   transcript — the run failed and printed nothing. `ActionLogger.withBuffer`
- *   is opt-in and flushes on every exit path including a defect, so the
- *   buffering is where the caller can see it.
+ * - **It does not wrap the program in a log buffer.** A buffer that swallowed
+ *   the transcript on an unhandled defect would leave a run that failed and
+ *   printed nothing. `ActionLogger.withBuffer` is opt-in and flushes on every
+ *   exit path including a defect, so the buffering is where the caller can
+ *   see it.
  * - **It does not throw.** The returned promise always resolves; the failure is
  *   in `process.exitCode`, which is what the runner reads. An action entry
  *   point that rejected would produce an unhandled rejection *and* a failed
@@ -202,9 +201,9 @@ const describeError = (error: unknown): string => {
  * The rendering depth is deliberate too: one `::error::` line carrying
  * `[Tag]: message`, and the fiddly diagnostics — the full `Cause.pretty` render
  * with its span trace and stack — behind `::debug::`, which the runner shows
- * only when someone turns step debugging on. The package this replaces spliced
- * a JS stack into the visible error, which in a bundled action points at one
- * line of `dist/main.js`.
+ * only when someone turns step debugging on. No JS stack is spliced into the
+ * visible error, because in a bundled action it points at one line of
+ * `dist/main.js`.
  *
  * @example
  * ```ts
@@ -225,8 +224,9 @@ export class Action {
 	 * Run an action program to completion.
 	 *
 	 * @remarks
-	 * Resolves whether the program succeeded or not; read `process.exitCode` for
-	 * the verdict.
+	 * Never rejects: the promise resolves whether the program succeeded or not,
+	 * so read `process.exitCode` for the verdict. Requirements beyond
+	 * {@link ActionServices} come from `options.layer`.
 	 */
 	static readonly run = <E, R = never>(
 		program: Effect.Effect<void, E, ActionServices | R>,

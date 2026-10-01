@@ -2,11 +2,9 @@
 //
 // `WorkspaceDiscovery`, `LockfileReader`, `WorkspaceCatalogs` and
 // `WorkspaceSnapshots` each resolve their workspace root from a layer-level
-// `cwd` and optional `stopAt`. They used to spell the lookup four times, and
-// the ceiling reached only one of them — a split where discovery refused an
-// enclosing workspace while the lockfile and catalog reads adopted it. One
-// implementation means the four cannot disagree about which root a layer's
-// options name.
+// `cwd` and optional `stopAt`. One implementation means the four cannot
+// disagree about which root a layer's options name — discovery refusing an
+// enclosing workspace while the lockfile and catalog reads adopt it.
 
 import { Effect } from "effect";
 import type { WorkspaceRootNotFoundError, WorkspaceRootShape } from "../WorkspaceRoot.js";

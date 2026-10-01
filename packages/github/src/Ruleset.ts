@@ -16,7 +16,9 @@ import type * as Rest from "./Rest.js";
  * @public
  */
 export interface RulesetInfo {
+	/** The ruleset's numeric id. */
 	readonly id: number;
+	/** The ruleset's name. */
 	readonly name: string;
 	/** `"Repository"` for the repository's own, `"Organization"` for an inherited one. */
 	readonly source_type?: string | undefined;
@@ -33,16 +35,23 @@ export interface RulesetInfo {
  * @public
  */
 export interface RulesetPayload {
+	/** The ruleset's name, which `upsert` matches on. */
 	readonly name: string;
+	/** What it applies to: `"branch"`, `"tag"` or `"push"`. */
 	readonly target: string;
+	/** `"active"`, `"evaluate"` or `"disabled"`. */
 	readonly enforcement: string;
+	/** Which refs it applies to. Passed to GitHub as given. */
 	readonly conditions?: unknown;
+	/** The rules it enforces. Passed to GitHub as given. */
 	readonly rules?: unknown;
+	/** Actors allowed to bypass it. Passed to GitHub as given. */
 	readonly bypass_actors?: unknown;
 }
 
 /**
- * Repository rulesets, and the lookups their bypass actors need.
+ * Create or update, list and delete repository rulesets, and look up the team
+ * and role ids their bypass actors need.
  *
  * @public
  */
@@ -81,7 +90,8 @@ interface OrganizationRoles {
 }
 
 /**
- * Repository rulesets.
+ * Create or update, list and delete repository rulesets, and look up the team
+ * and role ids their bypass actors need.
  *
  * @remarks
  * ## An inherited ruleset is never written to
@@ -93,14 +103,34 @@ interface OrganizationRoles {
  * that never mentioned the organization.
  *
  * {@link RulesetShape.upsert} filters on `source_type` before matching, so an
- * inherited ruleset can never be the target of a write. This arrived as a fix
- * for a live defect in the consumer this module was ported from, where the
- * filter was absent.
+ * inherited ruleset can never be the target of a write.
+ *
+ * Provide it with {@link Ruleset.layer}, which needs a `GitHubClient`; each
+ * method also needs a `Repo` in `R`.
+ *
+ * @example
+ * ```ts
+ * import { Ruleset } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const protectMain = Effect.gen(function* () {
+ *   const rulesets = yield* Ruleset;
+ *   yield* rulesets.upsert({
+ *     name: "protect-main",
+ *     target: "branch",
+ *     enforcement: "active",
+ *     conditions: { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } },
+ *     rules: [{ type: "deletion" }],
+ *   });
+ * });
+ * ```
  *
  * @public
  */
 export class Ruleset extends Context.Service<Ruleset, RulesetShape>()("@effected/github/Ruleset") {
 	/**
+	 * The live service, built over a `GitHubClient`.
+	 *
 	 * @remarks
 	 * `(client) => make(client)` rather than `make`: a static initializer runs
 	 * while the module body is still evaluating, so naming a `const` declared

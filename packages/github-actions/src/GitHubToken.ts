@@ -135,9 +135,8 @@ const identified = (
  * The GitHub App token lifecycle, shaped like a workflow.
  *
  * @remarks
- * One of the two seams between this package and
- * [`@effected/github`](https://npmjs.com) — mint in `pre`, use in `main`,
- * revoke in `post`. The three phases are **three separate processes**, so
+ * One of the two seams between this package and `@effected/github` — mint in
+ * `pre`, use in `main`, revoke in `post`. The three phases are **three separate processes**, so
  * nothing survives between them except what `GITHUB_STATE` carries, which is
  * why this is a persistence problem rather than a `Scope`.
  *
@@ -149,16 +148,14 @@ const identified = (
  * **The token lives about an hour, and no later phase can re-mint one.** The
  * credentials that could are the app's private key, and persisting *that*
  * through `GITHUB_STATE` — a plaintext file by GitHub's protocol — would trade
- * a one-hour token for a permanent one. So the v1 contract is stated rather
- * than worked around: {@link GitHubToken.read} fails typed when the persisted
+ * a one-hour token for a permanent one. So the contract is stated rather than
+ * worked around: {@link GitHubToken.read} fails typed when the persisted
  * token is spent, and a phase that can outlive the hour calls
  * {@link GitHubToken.provision} itself.
  *
- * Grouped statics on one module reaching one dependency — the carve-out to the
- * no-namespace-objects rule, not the hazard it names. Every member's `R` says
- * exactly which services it needs, and the members below say which parts of
- * each they touch, so a partial double is built from the documentation rather
- * than from a stack trace:
+ * Every member's `R` says exactly which services it needs, and this table says
+ * which parts of each it touches, so a partial double is built from the
+ * documentation rather than from a stack trace:
  *
  * | Member | `ActionState` | `ActionOutputs` | `GitHubApp` |
  * | --- | --- | --- | --- |
@@ -240,10 +237,11 @@ export class GitHubToken {
 	 * The token an earlier phase persisted.
 	 *
 	 * @remarks
-	 * Fails typed when it is spent. The package this replaces persisted the
-	 * expiry and read it nowhere, so a `main` phase that outlived the hour simply
-	 * started answering `401` with no explanation — which is the single hardest
-	 * failure in this whole lifecycle to diagnose from a workflow log.
+	 * Fails with {@link GitHubTokenError} when it is spent, and with
+	 * {@link ActionStateError} when no token was persisted. Without that check a
+	 * `main` phase that outlived the hour would simply start answering `401` with
+	 * no explanation — the hardest failure in this lifecycle to diagnose from a
+	 * workflow log.
 	 */
 	static readonly read = Effect.fn("GitHubToken.read")(function* (options: ReadOptions = {}) {
 		const state = yield* ActionState;

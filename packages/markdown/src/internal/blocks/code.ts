@@ -9,7 +9,7 @@
 //
 // The absence of `fenceChar`/`fenceLength` on the materialized node is what
 // tells an indented block from a fenced one on the way back out, so the
-// indented branch must never set them (Task 4's schema contract).
+// indented branch must never set them (the `Code` schema contract).
 
 import { Code } from "../../MarkdownNode.js";
 import type { BlockConstruct, BlockNode } from "../blockTypes.js";

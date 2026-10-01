@@ -57,8 +57,7 @@ const make = (
 ): Effect.Effect<BlobStoreShape, never, HttpClient.HttpClient | ActionEnvironment> =>
 	Effect.gen(function* () {
 		const http = yield* HttpClient.HttpClient;
-		// Resolved once, at construction, so every member's `R` is `never` — the
-		// same fix `ActionEnvironment.payload` got, for the same reason.
+		// Resolved once, at construction, so every member's `R` is `never`.
 		const env = yield* ActionEnvironment;
 
 		const backend = resultsBackend(env).pipe(
@@ -128,9 +127,9 @@ const make = (
  * The Actions cache is reachable over a Twirp v2 protocol at
  * `ACTIONS_RESULTS_URL`, which answers a `CreateCacheEntry` /
  * `GetCacheEntryDownloadURL` RPC with a **pre-signed Azure blob url** — which is
- * why this backend lives in its own module rather than beside the S3 one, and
- * why the spec's "Azure is confined to the cache and the artifact service" is
- * three modules rather than two.
+ * why this backend lives in its own module rather than beside the S3 one: it,
+ * `ActionCache` and `Artifact` are the only three modules that import the
+ * Azure client.
  *
  * **Only reachable from a `uses:` step.** The runner injects
  * `ACTIONS_RESULTS_URL` and `ACTIONS_RUNTIME_TOKEN` into action execution
@@ -156,7 +155,14 @@ const make = (
 export class GitHubCacheBlobStore {
 	private constructor() {}
 
-	/** The backend, over the real Azure client. */
+	/**
+	 * The backend, over the real Azure client.
+	 *
+	 * @remarks
+	 * Requires `ActionEnvironment` for `ACTIONS_RESULTS_URL` and
+	 * `ACTIONS_RUNTIME_TOKEN`; fails with `BlobStoreError` (`misconfigured`) when
+	 * either is absent.
+	 */
 	static readonly layer: Layer.Layer<BlobStore, never, HttpClient.HttpClient | ActionEnvironment> = Layer.effect(
 		BlobStore,
 		make(azure),

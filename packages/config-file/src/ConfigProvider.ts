@@ -3,22 +3,21 @@ import { ConfigProvider, Effect } from "effect";
 import type { ConfigFileShape, ConfigLoadError } from "./ConfigFile.js";
 
 /**
- * Expose a loaded, merged, schema-validated document as a v4 `ConfigProvider`,
+ * Expose a loaded, merged, schema-validated document as a `ConfigProvider`,
  * so it can be read through `Config.String("port")` and layered beneath other
  * providers.
  *
  * @remarks
  * Strictly additive, and deliberately in its own module so it never becomes a
  * required import. The schema-validated whole-document
- * {@link ConfigFileShape.load} remains the primary API: v4's `Config` has no
+ * {@link ConfigFileShape.load} remains the primary API: `Config` has no
  * whole-document story, and this function is the bridge, not a replacement.
  *
  * Three properties, in order of how easy they are to lose:
  *
  * 1. **A missing file is a failure, not an empty provider.** The
  *    {@link ConfigFileNotFoundError} propagates. Handing back an empty provider
- *    would silently turn every subsequent `Config` read into "not found", which
- *    is the exact class of lie this port exists to undo.
+ *    would silently turn every subsequent `Config` read into "not found".
  * 2. **Nested keys are structural, not dotted.** `fromUnknown` descends one path
  *    segment at a time, so `{ db: { host } }` is reached with
  *    `Config.nested(Config.String("host"), "db")` — never `Config.String("db.host")`,
@@ -46,8 +45,14 @@ import type { ConfigFileShape, ConfigLoadError } from "./ConfigFile.js";
  *
  * @example
  * ```ts
- * const fileProvider = yield* asConfigProvider(cfg);
- * const provider = ConfigProvider.orElse(ConfigProvider.fromEnv(), fileProvider);
+ * import { asConfigProvider } from "@effected/config-file";
+ * import { ConfigProvider, Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ * 	const cfg = yield* AppConfig; // a ConfigFile.Service class
+ * 	const fileProvider = yield* asConfigProvider(cfg);
+ * 	return ConfigProvider.orElse(ConfigProvider.fromEnv(), fileProvider);
+ * });
  * ```
  *
  * @public
@@ -79,9 +84,8 @@ export interface LayerConfigProviderOptions {
  * `ConfigProvider`, so `Config` accessors read env first and the file second.
  *
  * @remarks
- * This is the composition the v3 library could not express. This layer
- * composes beneath the **ambient** `ConfigProvider`, v4's `Context.Reference`
- * for it, so a consumer supplying `ConfigProvider.layer(...)` controls
+ * This layer composes beneath the **ambient** `ConfigProvider` (a
+ * `Context.Reference`), so a consumer supplying `ConfigProvider.layer(...)` controls
  * precedence explicitly: whatever that provider resolves wins, and the config
  * file supplies whatever it lacks. That reference's own default is
  * `ConfigProvider.fromEnv()`, which is what most applications want; this

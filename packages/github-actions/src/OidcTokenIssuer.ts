@@ -114,7 +114,8 @@ const readClaims = (token: string): Effect.Effect<OidcClaims, OidcTokenError> =>
 	});
 
 /**
- * The {@link OidcTokenIssuer} service shape.
+ * The members of the {@link OidcTokenIssuer} service: request an ID `token`
+ * and read its decoded `claims`, both failing with {@link OidcTokenError}.
  *
  * @public
  */
@@ -150,9 +151,9 @@ export interface OidcTokenIssuerShape {
 	 *
 	 * Claims are on the surface rather than left to the call site because that is
 	 * what makes the provenance path reachable in a test: a double built with
-	 * {@link OidcTokenIssuer.layerFor} answers with real, decodable claims, where
-	 * the synthetic non-JWT its predecessor returned made every consumer's
-	 * `decodeJwtClaims` yield nothing and silently skipped the path under test.
+	 * {@link OidcTokenIssuer.layerFor} answers with real, decodable claims, so
+	 * a test cannot silently skip the path under test because the double
+	 * returned a token that is not a JWT.
 	 */
 	readonly claims: (audience?: string) => Effect.Effect<OidcClaims, OidcTokenError>;
 }
@@ -172,9 +173,7 @@ const make = Effect.gen(function* () {
 	 * `Redacted.value` does not appear in this module at all — the package's
 	 * declassification invariant is that `Secret.ts` is the only place a secret
 	 * becomes a string, and a wrap-then-immediately-unwrap here would be a
-	 * genuine exception to it rather than a cosmetic one. A structural test over
-	 * `src/` enforces this, and it caught exactly this call when the first draft
-	 * did it the obvious way.
+	 * genuine exception to it rather than a cosmetic one.
 	 */
 	const issue = Effect.fn("OidcTokenIssuer.token")(function* (audience?: string) {
 		const bearer = yield* required(REQUEST_TOKEN);
@@ -233,6 +232,13 @@ const dies = unstubbed("OidcTokenIssuer.makeTest");
 export class OidcTokenIssuer extends Context.Service<OidcTokenIssuer, OidcTokenIssuerShape>()(
 	"@effected/github-actions/OidcTokenIssuer",
 ) {
+	/**
+	 * The live issuer, requesting tokens from the runner's token service.
+	 *
+	 * @remarks
+	 * Fails with {@link OidcTokenError} (`unavailable`) at use when the workflow
+	 * lacks `permissions: id-token: write`.
+	 */
 	static readonly layer: Layer.Layer<OidcTokenIssuer, never, ActionEnvironment | HttpClient.HttpClient> = Layer.effect(
 		this,
 		make,
@@ -243,10 +249,9 @@ export class OidcTokenIssuer extends Context.Service<OidcTokenIssuer, OidcTokenI
 	 *
 	 * @remarks
 	 * For building test doubles, and nothing else: the signature segment is a
-	 * placeholder, so this token would fail any verifier. It exists because the
-	 * alternative — a double returning a synthetic non-JWT — is what made the
-	 * provenance path structurally unreachable in the source package, drawing
-	 * four separate apologetic comments from one consumer.
+	 * placeholder, so this token would fail any verifier. It exists because a
+	 * double returning a synthetic non-JWT would make the provenance path
+	 * structurally unreachable in a test.
 	 */
 	static readonly unsignedTokenFor = (claims: OidcClaims): Redacted.Redacted<string> =>
 		Redacted.make(unsignedJwt({ alg: "RS256", typ: "JWT" }, Schema.encodeUnknownSync(OidcClaims)(claims)));

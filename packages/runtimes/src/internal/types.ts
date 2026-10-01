@@ -1,14 +1,10 @@
-/**
- * Raw record shapes shared by the engine.
- *
- * These are the *unparsed* shapes of the bundled snapshots and the network
- * feeds — plain strings, no `SemVer`, no `DateTime`, no public classes. The
- * engine speaks these; the public modules materialize them into domain
- * classes. Keeping the leaf free of facade imports is what lets
- * `internal/http.ts` stay importable from every direction without a cycle.
- *
- * @internal
- */
+// Raw record shapes shared by the engine.
+//
+// These are the *unparsed* shapes of the bundled snapshots and the network
+// feeds — plain strings, no `SemVer`, no `DateTime`, no public classes. The
+// engine speaks these; the public modules materialize them into domain
+// classes. Keeping the leaf free of facade imports is what lets
+// `internal/http.ts` stay importable from every direction without a cycle.
 
 /** Where a loaded release set came from. Mirrors the public `Source` literal. */
 export type RawSource = "api" | "cache";

@@ -64,8 +64,7 @@ export class StoreMigrationStatus extends Schema.Class<StoreMigrationStatus>("St
  * queries around a migration.
  *
  * @remarks
- * `cause` carries the underlying `SqlError` structurally; v3 flattened it to a
- * `reason` string. A failing user migration raises the more specific
+ * `cause` carries the underlying `SqlError` structurally. A failing user migration raises the more specific
  * {@link StoreMigrationError} instead.
  *
  * @public
@@ -86,10 +85,8 @@ export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
  *
  * @remarks
  * Carries the failing migration's `id`, `name` and `direction` — exactly what
- * a caller needs to report or repair. The v3 shape ran migrations through an
- * `orDie`/`catchAllDefect` round-trip that laundered defects into failures;
- * here a throwing migration callback stays a defect, and only its typed
- * `SqlError` channel lands in `cause`.
+ * a caller needs to report or repair. A throwing migration callback stays a
+ * defect; only its typed `SqlError` channel lands in `cause`.
  *
  * @public
  */
@@ -264,10 +261,19 @@ const make = (
  *
  * @example
  * ```ts
+ * import { Store } from "@effected/store";
+ * import type { StoreMigration } from "@effected/store";
+ * import { Effect } from "effect";
+ *
  * const migrations: ReadonlyArray<StoreMigration> = [
  * 	{ id: 1, name: "create-notes", up: (sql) => sql`CREATE TABLE notes (body TEXT)` },
  * ];
- * const StoreLayer = Store.layerSqlite({ filename: "state.db", migrations });
+ * const StoreLive = Store.layerSqlite({ filename: "state.db", migrations });
+ *
+ * const program = Effect.gen(function* () {
+ * 	const store = yield* Store;
+ * 	yield* store.client`INSERT INTO notes (body) VALUES (${"hello"})`;
+ * }).pipe(Effect.provide(StoreLive));
  * ```
  *
  * @public
@@ -281,7 +287,14 @@ export class Store extends Context.Service<Store, StoreShape>()("@effected/store
 		return Layer.effect(Store, make(options));
 	}
 
-	/** The batteries-included layer over `@effect/sql-sqlite-node`. */
+	/**
+	 * The batteries-included layer: a `Store` over a SQLite database file via
+	 * `@effect/sql-sqlite-node`.
+	 *
+	 * @remarks
+	 * Fails on the layer's error channel with `StoreError` or
+	 * `StoreMigrationError` if setup or a pending migration fails.
+	 */
 	static layerSqlite(options: StoreSqliteOptions): Layer.Layer<Store, StoreError | StoreMigrationError> {
 		// `filename` last: the layer owns it, whatever the passthrough says. The
 		// name transforms are stripped at runtime too — the `Omit` on `client`
@@ -300,7 +313,7 @@ export class Store extends Context.Service<Store, StoreShape>()("@effected/store
 			: store;
 	}
 
-	/** An in-memory (`:memory:`) layer for tests. */
+	/** An in-memory (`:memory:`) `Store` layer for tests; each build is a fresh, empty database. */
 	static layerTest(options: StoreOptions): Layer.Layer<Store, StoreError | StoreMigrationError> {
 		return Store.layerSqlite({ ...options, filename: ":memory:" });
 	}

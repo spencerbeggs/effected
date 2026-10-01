@@ -1,6 +1,5 @@
-// Git-based change detection, with the v3 progressive-disclosure shape kept
-// intact: changedFiles → changedPackages → affectedPackages, three depths of
-// analysis on one service.
+// Git-based change detection: changedFiles → changedPackages →
+// affectedPackages, three depths of analysis on one service.
 //
 // It runs git through `@effected/git`'s `Git` service rather than a raw
 // subprocess seam, so a test provides `Layer.succeed(Git, …)` and needs no

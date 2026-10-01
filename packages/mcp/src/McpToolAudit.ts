@@ -19,7 +19,7 @@ export interface McpToolAuditPolicy {
 	readonly requireOutputSchema?: boolean | undefined;
 	/**
 	 * A served `outputSchema` must be rooted at `type: "object"`. Defaults to
-	 * `true` (D10). Only the stateless revision serves a non-object root, so
+	 * `true`. Only the stateless revision serves a non-object root, so
 	 * only there does this fire; a union root (`anyOf` or `oneOf`) names
 	 * `ToolOutputSchema.objectRooted` as the fix for a union whose members are
 	 * all objects (a union with a primitive member needs an object envelope

@@ -25,9 +25,9 @@
  * real disk: a read-only, synchronous `FileSystem` over `node:fs`. This main
  * entry imports nothing from `node:*`.
  *
- * The engine is a vendored port with attribution of Effect-TS/effect PR #6573
- * (pinned `c0528bd5`); see the package design doc for the adaptation ledger.
- * The seeding, fault-injection and volume-inspection APIs are kit extensions.
+ * The engine is a vendored port, with attribution, of the `MemoryFileSystem`
+ * proposed in Effect-TS/effect PR #6573. The seeding, fault-injection and
+ * volume-inspection APIs are extensions beyond it.
  *
  * @packageDocumentation
  */

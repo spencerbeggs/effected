@@ -150,15 +150,13 @@ export class Range extends Schema.Class<Range>("Range")({
 	 * comes first, the range it is tested against second. The data-last form
 	 * takes the range: `Range.satisfies(range)` applied to a version.
 	 *
-	 * Worth stating because the two parameters are distinct classes and the
-	 * order is not recoverable from the call site. TypeScript rejects a flipped
-	 * call outright, so this only bites callers without type checking — which
-	 * includes the untyped `node --input-type=module` probes this repo's own
-	 * evidence ladder calls for. There, `Range.satisfies(range, version)`
-	 * dispatches data-first, binds the `Range` to `version`, and dies with
-	 * `TypeError: range.test is not a function` — a message naming the
-	 * parameter that received the *version*, so it reads as a defect inside
-	 * this package rather than a caller error.
+	 * The two parameters are distinct classes and the order is not recoverable
+	 * from the call site. TypeScript rejects a flipped call outright, so this
+	 * only bites callers without type checking (untyped scripts, REPL probes).
+	 * There, `Range.satisfies(range, version)` dispatches data-first, binds the
+	 * `Range` to `version`, and dies with
+	 * `TypeError: range.test is not a function` — a message that reads as a
+	 * defect inside this package rather than a caller error.
 	 *
 	 * The same order and the same hazard apply to `Range.filter`,
 	 * {@link Range.maxSatisfying} and {@link Range.minSatisfying}: subject

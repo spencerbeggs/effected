@@ -7,13 +7,13 @@ import { PublishError } from "./PublishError.js";
  * Which `npm` runs a publish command.
  *
  * @remarks
- * v3 repeated a `packageManager?: "npm" | "pnpm" | "yarn" | "bun"` option on
- * five method signatures to express one thing: whether to use the runner's
- * bundled `npm` or fetch a fresh one. The distinction is real — OIDC trusted
- * publishing needs npm ≥ 11.5.1 and GitHub-hosted runners ship 10.x — but it is
- * not package-manager knowledge this package should own. `@effected/commands`'
- * `LocalExec` already models "fetch and run a package binary" as `applyDlx`, so
- * that is what this value delegates to.
+ * An executor expresses one choice: use the runner's bundled `npm`
+ * ({@link NpmExecutor.ambient}) or fetch a pinned one ({@link NpmExecutor.dlx}).
+ * The distinction is real — OIDC trusted publishing needs npm ≥ 11.5.1 and
+ * GitHub-hosted runners ship 10.x — but fetching is not package-manager
+ * knowledge this package owns. `@effected/commands`' `LocalExec` already models
+ * "fetch and run a package binary" as `applyDlx`, so a pinned executor
+ * delegates to it, and {@link NpmExecutor.command} then requires `LocalExec`.
  *
  * @public
  */
@@ -69,6 +69,7 @@ export class NpmExecutor extends Schema.Class<NpmExecutor>("NpmExecutor")({
 	 * ```ts
 	 * import { NpmExecutor } from "@effected/npm";
 	 *
+	 * const runnerTemp = process.env.RUNNER_TEMP ?? "/tmp";
 	 * const executor = NpmExecutor.dlx("npm@11").withCacheDir(`${runnerTemp}/npm-cache`);
 	 * ```
 	 *

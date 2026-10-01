@@ -5,12 +5,9 @@ import { headerNumber, headerString, retryAfterMillisFrom } from "./internal/hea
  * Why a GitHub call failed, as a value you can branch on.
  *
  * @remarks
- * This discriminant is what replaces string-matching an error message. The
- * package this replaces carried a free-form `reason` string and nothing else
- * structural, so consumers grepped it: one repo lowercased a GraphQL message and
- * tested `includes("already") || includes("exists")`, and another re-issued an
- * existence check after every failed branch creation because it could not tell
- * "someone else created it" from "that failed".
+ * Branch on this discriminant instead of string-matching an error message:
+ * `alreadyExists` tells "someone else created it" apart from "that failed", so
+ * an upsert needs no follow-up existence check.
  *
  * @public
  */
@@ -90,16 +87,9 @@ export class GitHubValidationEntry extends Schema.Class<GitHubValidationEntry>("
  * Every REST failure this package produces, from every resource.
  *
  * @remarks
- * One error class, not one per resource. Across the six repos surveyed for this
- * port, consumers read `reason` about forty times, `status` twice, `operation`
- * twice, and matched a resource-specific `_tag` exactly **once** — at a call
- * site that disappears entirely now that `GitBranch.upsert` exists. Eighteen
- * near-identical error classes and thirteen near-identical mapper closures
- * bought that one match.
- *
- * What replaces them is {@link GitHubErrorKind} for routing and `operation` for
- * identification. This mirrors `@effected/git`, where the rule is that no
- * consumer ever string-matches stderr because classification happens once.
+ * One error class, not one per resource: {@link GitHubErrorKind} routes and
+ * `operation` identifies what was attempted. This mirrors `@effected/git`,
+ * where classification happens once so no consumer string-matches stderr.
  *
  * @public
  */
@@ -118,8 +108,8 @@ export class GitHubError extends Schema.TaggedError<GitHubError>()("GitHubError"
 	 * @remarks
 	 * Written by the client from `retry-after` or the rate-limit reset, and read
 	 * by exactly one thing: the retry `Schedule`. It is a policy input, not
-	 * information for a caller — which is why it is optional and why the
-	 * `retryable` boolean it used to travel with is now a derived getter.
+	 * information for a caller. Whether a failure is worth retrying at all is the
+	 * derived `retryable` getter.
 	 */
 	retryAfterMillis: Schema.optionalKey(Schema.Int),
 	/**
@@ -189,7 +179,7 @@ export class GitHubError extends Schema.TaggedError<GitHubError>()("GitHubError"
 	 * @remarks
 	 * The single classification step for the whole package — every resource
 	 * method's failures come through here, so the taxonomy cannot drift between
-	 * resources the way thirteen hand-written mapper closures did.
+	 * resources.
 	 *
 	 * `nowMillis` is passed in rather than read from the wall clock so the
 	 * function stays pure and total: the rate-limit reset header is an absolute
@@ -302,9 +292,8 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined =>
  * multi-kilobyte "message".
  *
  * @remarks
- * The package this replaces detected the "Unicorn" page specifically; this is
- * the general form — an HTML body is never a useful reason string, and letting
- * one through means a log line with a whole web page in it.
+ * An HTML body is never a useful reason string, and letting one through means
+ * a log line with a whole web page in it.
  */
 const sanitizeReason = (message: string): string => {
 	const trimmed = message.trim();

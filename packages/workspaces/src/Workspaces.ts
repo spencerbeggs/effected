@@ -1,11 +1,8 @@
 // The composite layers.
 //
-// v3 split its two composites on PLATFORM REQUIREMENTS — `WorkspacesLive`
-// (FileSystem + Path) versus `WorkspacesFullLive` (+ a subprocess runner) — and
-// the review called that a great consumer story because the requirement set,
-// not a feature flag, is the split axis. The axis survives: `layer` needs a
-// filesystem, `layerWithGit` additionally needs core's `ChildProcessSpawner`
-// (behind `@effected/git`'s `Git` service) to run git.
+// The composites split on PLATFORM REQUIREMENTS, not on a feature flag:
+// `layer` needs a filesystem, `layerWithGit` additionally needs core's
+// `ChildProcessSpawner` (behind `@effected/git`'s `Git` service) to run git.
 
 import { ExecContext, LocalExec, LocalExecError } from "@effected/commands";
 import { Git } from "@effected/git";
@@ -315,10 +312,9 @@ export class Workspaces {
 	 * `@effected/memfs` volume).
 	 *
 	 * **`PublishabilityDetector` is neither provided nor required here.** The
-	 * composite used to bake in npm semantics, which a naively-ordered override
-	 * silently lost to; now it supplies no default, and — because nothing inside
-	 * the composite asks a publishability question — it does not require one in
-	 * `R` either. The requirement surfaces in the `R` of each operation that
+	 * composite supplies no default policy, and — because nothing inside it asks
+	 * a publishability question — it does not require one in `R` either. The
+	 * requirement surfaces in the `R` of each operation that
 	 * asks (`VersioningStrategy.detect`, e.g.), so a program that asks and never
 	 * wires a detector fails to compile at that operation, and a program that
 	 * never asks never supplies a publish policy. Wire one explicitly where
@@ -403,10 +399,9 @@ export class Workspaces {
 	 * `pnpmfile.cjs` hooks**.
 	 *
 	 * @remarks
-	 * The composite that did not exist. `layerWithGit` hard-wires the no-op
-	 * catalogs layer, so a consumer wanting snapshots + git + hook replay had to
-	 * rebuild the entire service graph by hand — which is exactly what
-	 * `@savvy-web/silk-effects` did, and the copy this static deletes.
+	 * `layerWithGit` wires the no-op catalogs layer, so this is the composite to
+	 * reach for when you want snapshots, git and hook replay together without
+	 * assembling the service graph by hand.
 	 *
 	 * Requirements are unchanged from {@link Workspaces.layerWithGit}: a
 	 * filesystem, a path service, and core's `ChildProcessSpawner` (behind
@@ -471,8 +466,7 @@ export class Workspaces {
 	 * and {@link ConfigDependencyHooks.layerSubprocess}. It exists for the fourth
 	 * policy: {@link ConfigDependencyHooks.layerFrom}, the hermetic seam, which a
 	 * snapshot-backed test otherwise cannot reach without rebuilding the whole
-	 * git graph by hand — the copy `layerWithGitAndConfigDependencies` was added
-	 * to delete. The ONE hooks reference is handed to both `WorkspaceCatalogs`
+	 * git graph by hand. The ONE hooks reference is handed to both `WorkspaceCatalogs`
 	 * and `WorkspaceSnapshots`, so `at(ref)` and `worktree()` cannot drift on
 	 * which policy they replay. A hooks layer carrying its own requirement (the
 	 * subprocess variant's `ChildProcessSpawner`) threads it through to the
@@ -503,13 +497,11 @@ export class Workspaces {
 	 * contract: how to run a project-local binary here.
 	 *
 	 * @remarks
-	 * **An inverted contract, the `@effected/npm` `CatalogResolver`
-	 * precedent.** Tool discovery needs package-manager detection and
-	 * workspace-root resolution, both of which live here — but a direct edge
-	 * from `@effected/commands` to this package would make that boundary-tier
-	 * package integrated, and through the planned `npm` → `commands` edge
-	 * would drag `npm`, `lockfiles` (pure!) and `package-json` up a tier with
-	 * it. So `commands` declares the narrow contract and we ship the layer.
+	 * **An inverted contract, like `@effected/npm`'s `CatalogResolver`.** Tool
+	 * discovery needs package-manager detection and workspace-root resolution,
+	 * both of which live here, but `@effected/commands` must not depend on this
+	 * package. So `commands` declares the narrow `LocalExec` contract and this
+	 * package ships the layer.
 	 *
 	 * **The argv knowledge is not duplicated.** `LocalExec.prefixes(name)` is
 	 * the one home of the four managers' `exec`/`dlx`/script-runner prefixes;
@@ -543,6 +535,7 @@ export class Workspaces {
 	 *
 	 * @example
 	 * ```ts
+	 * import { NodeServices } from "@effect/platform-node";
 	 * import { ToolDiscovery } from "@effected/commands";
 	 * import { Workspaces } from "@effected/workspaces";
 	 * import { Layer } from "effect";

@@ -9,11 +9,8 @@ import { Duration, Effect, Random, Schedule, Schema } from "effect";
  * one. Read it through the client's `rateLimit` member when you want to pace
  * yourself — **nothing in this package throttles on your behalf.**
  *
- * The package this replaces coupled the writer and the reader through an
- * optional shared `Ref` service that both resolved with `Effect.serviceOption`,
- * so an application that forgot to provide it got two private cells and a
- * silently dead feature. Here the cell lives inside the client layer that writes
- * it, and this is the only way to read it.
+ * The cell lives inside the client layer that writes it, so there is nothing
+ * extra to provide: reading it through the client is the only way.
  *
  * @public
  */
@@ -59,15 +56,22 @@ export interface RetryableFailure {
  *
  * @remarks
  * There is exactly **one** retry policy in this package, and it is wired into
- * the client so every resource inherits it and no resource carries its own. The
- * package this replaces shipped four mutually inconsistent policies — a
- * hand-rolled recursive loop, a second exported `Schedule` that ignored
- * server-advised delays, a per-operation branch retry layered on top of the
- * client's, and a rate-limiter retry with no predicate at all, which cheerfully
- * retried permission denials — and consumers added two more on top.
+ * the client so every resource inherits it and no resource carries its own.
  *
- * Only failures that report `retryable` are retried, which for `GitHubError` means a transport failure or a rate limit. A 404, a
- * validation rejection and an authorization failure fail on the first attempt.
+ * Only failures that report `retryable` are retried, which for `GitHubError`
+ * means a transport failure or a rate limit. A 404, a validation rejection and
+ * an authorization failure fail on the first attempt.
+ *
+ * @example
+ * ```ts
+ * import { GitHubClient, RetryPolicy } from "@effected/github";
+ * import { Duration, Redacted } from "effect";
+ *
+ * const layer = GitHubClient.layerFromToken({
+ *   token: Redacted.make("ghp_example"),
+ *   retry: RetryPolicy.make({ ...RetryPolicy.default, maxRetries: 2, maxDelay: Duration.seconds(10) }),
+ * });
+ * ```
  *
  * @public
  */
@@ -154,9 +158,7 @@ export class RetryPolicy extends Schema.Class<RetryPolicy>("RetryPolicy")({
 	 * Built on `Schedule.modifyDelay`, whose callback receives the schedule's
 	 * `Metadata` — including the **input that failed**. That is what makes a
 	 * header-driven policy expressible as a `Schedule` at all: the delay is a
-	 * function of the error, not only of the attempt number. Not knowing this was
-	 * available is why the package this replaces hand-rolled a recursive retry
-	 * loop instead of using `Effect.retry`.
+	 * function of the error, not only of the attempt number.
 	 */
 	schedule<E extends RetryableFailure>(): Schedule.Schedule<number, E> {
 		return Schedule.forever.pipe(

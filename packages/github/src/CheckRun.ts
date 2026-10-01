@@ -42,8 +42,8 @@ export class Annotation extends Schema.Class<Annotation>("Annotation")({
  * GitHub's limits are **byte** limits, and that distinction is the whole reason
  * this class exists rather than a struct: `✅`, `❌`, `🦋` and `│` cost several
  * bytes each, so a character-count check passes while the request comes back
- * 422 saying *"summary exceeds a maximum bytesize of 65535"*. One consumer hit
- * exactly that and wrote the truncation by hand.
+ * 422 saying *"summary exceeds a maximum bytesize of 65535"*. Use
+ * {@link CheckRunOutput.truncated} to cut an output to fit.
  *
  * @public
  */
@@ -88,8 +88,7 @@ export class CheckRunOutput extends Schema.Class<CheckRunOutput>("CheckRunOutput
  * @remarks
  * Slicing a UTF-8 buffer mid-character decodes to U+FFFD. Splitting a four-byte
  * code point can produce **more than one** replacement character, so the trim
- * loops rather than dropping a single one — which is the hardening this needed
- * over the hand-written version it replaces.
+ * loops rather than dropping a single one.
  */
 const capBytes = (value: string): string => {
 	if (Buffer.byteLength(value, "utf8") <= CheckRunOutput.LIMIT_BYTES) return value;
@@ -137,7 +136,11 @@ export type ConcludeCheckRun = (
 ) => Effect.Effect<void>;
 
 /**
- * Check runs.
+ * Create, update and conclude GitHub check runs on a commit, including a
+ * bracket that always concludes the run.
+ *
+ * @remarks
+ * Every member resolves the target repository from the `Repo` service in `R`.
  *
  * @public
  */
@@ -175,19 +178,29 @@ export interface CheckRunShape {
 	 * Neither an interrupt nor an existing failure is replaced by whatever went
 	 * wrong while reporting it.
 	 *
-	 * `use` keeps its own `R` and its own `A`, unlike the version this replaces,
-	 * whose callback was `R`-less and so forced consumers to build
-	 * self-contained layers just to use the bracket.
+	 * `use` keeps its own `R` and its own `A`, so the bracket composes with
+	 * whatever services the wrapped work needs.
 	 *
 	 * @example
 	 * ```ts
-	 * check.withCheckRun("lint", sha, (id, conclude) =>
+	 * import { CheckRun, CheckRunOutput } from "@effected/github";
+	 * import { Effect } from "effect";
+	 *
+	 * const lintWithCheck = (sha: string) =>
 	 *   Effect.gen(function* () {
-	 *     const findings = yield* lint();
-	 *     yield* conclude(deriveConclusion(findings), report(findings));
-	 *     return findings;
-	 *   }),
-	 * );
+	 *     const check = yield* CheckRun;
+	 *     return yield* check.withCheckRun("lint", sha, (_id, conclude) =>
+	 *       Effect.gen(function* () {
+	 *         const findings = 3; // run the linter here
+	 *         // An advisory result: record "neutral" instead of the default "success".
+	 *         yield* conclude(
+	 *           "neutral",
+	 *           CheckRunOutput.make({ title: "lint", summary: `${findings} findings` }),
+	 *         );
+	 *         return findings;
+	 *       }),
+	 *     );
+	 *   });
 	 * ```
 	 */
 	readonly withCheckRun: <A, E, R>(
@@ -198,11 +211,17 @@ export interface CheckRunShape {
 }
 
 /**
- * Check runs.
+ * Create, update and conclude GitHub check runs, including the
+ * {@link CheckRunShape.withCheckRun} bracket that always reaches a terminal state.
+ *
+ * @remarks
+ * Provide it with {@link CheckRun.layer}, which needs a `GitHubClient`; each
+ * method also needs a `Repo` in `R`.
  *
  * @public
  */
 export class CheckRun extends Context.Service<CheckRun, CheckRunShape>()("@effected/github/CheckRun") {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<CheckRun, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),

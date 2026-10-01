@@ -39,7 +39,10 @@ export interface TabsProps<N extends string> {
 	readonly defaultValue?: N;
 	/** Called with the starting tab once on mount, then with every tab a key asks for. */
 	readonly onChange?: (name: N, index: number) => void;
-	/** Whether the tabs read keys; `true` by default. Unfocused, every tab is muted and keys are ignored. */
+	/**
+	 * Whether the tabs read keys; `true` by default. Unfocused, every tab is muted (the active one still underlined)
+	 * and keys are ignored.
+	 */
 	readonly isFocused?: boolean;
 	/** Number each tab, `1. Label`; `false` by default. */
 	readonly showIndex?: boolean;
@@ -98,7 +101,7 @@ const fitAround = (widths: ReadonlyArray<number>, active: number, gap: number, w
 };
 
 /**
- * A row (or column) of tabs: the kit's replacement for `ink-tab`.
+ * A row (or column) of tabs, for a consumer's own screen.
  *
  * @remarks
  * Not a screen: render `Tabs.View` inside a consumer's own screen. Its keys come from one `useKeys`, so there is a

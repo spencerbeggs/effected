@@ -73,8 +73,7 @@ const transient = (options?: {
  * on it.
  *
  * @remarks
- * Resurrects the `execWithRetry` helper the v3 action packages lost — as
- * composable vocabulary rather than a retrying runner, because core's
+ * This is composable vocabulary rather than a retrying runner, because core's
  * `Effect.retry` already accepts `{ while, schedule, times }`.
  *
  * @public

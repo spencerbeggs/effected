@@ -44,25 +44,19 @@ export interface GitBranchShape {
 	 * Point `name` at `sha`, creating it if needed.
 	 *
 	 * @remarks
-	 * **One call, one intent.** Creating a branch that may already exist is the
-	 * single most-repeated dance in the surveyed consumers: the marketplace
-	 * manager spent a seven-line comment and a nine-line workaround on it, doing
-	 * `getSha` → `exists` → `create` → on failure `exists` again → `reset`, up to
-	 * four round trips, because the error it caught carried no structured
-	 * "already exists". silk-release-action wrote the mirror image of the same
-	 * dance a few files away.
-	 *
-	 * This is one round trip in the common case and two in the raced one, and the
-	 * recovery **resets** rather than inheriting a branch a concurrent creator
-	 * rooted somewhere else — which is the semantics that comment was defending.
+	 * **One call, one intent.** Creating a branch that may already exist needs no
+	 * `exists` check, no catch and no second attempt: this creates the ref, and
+	 * when GitHub answers `alreadyExists` it resets the ref to `sha`. It is one
+	 * round trip in the common case and two in the raced one, and the recovery
+	 * **resets** rather than inheriting a branch a concurrent creator rooted
+	 * somewhere else. The result says which happened: `"created"` or `"reset"`.
 	 *
 	 * **A reset is observable, and open pull requests react to it.** Resetting a
 	 * branch to its PR's base — `upsert(branch, targetHead)` — makes that PR's
 	 * head equal its base, and GitHub **auto-closes a PR whose diff is empty**.
-	 * The window is invisible at this call site: a consumer ran
-	 * `upsert(releaseBranch, mainHead)` intending to re-add content with a commit
-	 * ~3 seconds later, and GitHub closed the open release PR inside that window
-	 * while the run reported success. When the end state is "the target head plus
+	 * The window is invisible at this call site: `upsert(releaseBranch, mainHead)`
+	 * followed a few seconds later by a commit that re-adds content can lose an
+	 * open release PR in between while the run reports success. When the end state is "the target head plus
 	 * a commit", build the commit first — `GitCommit.get` the target for its
 	 * `treeSha`, `createTree` on it, `createCommit` with the target as parent —
 	 * and upsert **once**, straight to the finished sha, so the ref never rests
@@ -99,12 +93,32 @@ export interface GitBranchShape {
 }
 
 /**
- * Branches, as refs.
+ * Create, move, read and delete branch refs through GitHub's Git Database API,
+ * with an `upsert` that needs no existence check.
+ *
+ * @remarks
+ * Provide it with {@link GitBranch.layer}, which needs a `GitHubClient`; each
+ * method also needs a `Repo` in `R`. Branch names are accepted as `main`,
+ * `heads/main` or `refs/heads/main`.
+ *
+ * @example
+ * ```ts
+ * import { GitBranch } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const ensureBranch = (name: string, sha: string) =>
+ *   Effect.gen(function* () {
+ *     const branches = yield* GitBranch;
+ *     return yield* branches.upsert(name, sha); // "created" | "reset"
+ *   });
+ * ```
  *
  * @public
  */
 export class GitBranch extends Context.Service<GitBranch, GitBranchShape>()("@effected/github/GitBranch") {
 	/**
+	 * The live service, built over a `GitHubClient`.
+	 *
 	 * @remarks
 	 * The callback is written `(client) => make(client)` rather than passed as
 	 * `make` directly, and that is load-bearing: a static initializer runs while
@@ -167,8 +181,7 @@ const rejectEmpty = (operation: string, name: string): Effect.Effect<string, Git
  * house pattern for a stable dependency — but it would also make a scoped
  * override silently do nothing, because the resource would already hold the
  * repository it was built with. The repository is precisely the dependency that
- * is *not* stable: silk-sync-action loops one program over many target
- * repositories.
+ * is *not* stable: one program may loop over many target repositories.
  *
  * The client stays resolved at construction, so this costs one context read per
  * call and nothing else.

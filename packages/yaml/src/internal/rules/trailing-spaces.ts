@@ -1,4 +1,4 @@
-// trailing-spaces (#129): no trailing whitespace at line ends — except
+// trailing-spaces: no trailing whitespace at line ends — except
 // inside scalar content, where trailing whitespace is part of the parsed
 // value (a recorded divergence from yamllint, which flags content too; a
 // layout rule must not corrupt values, and its fix certainly must not).

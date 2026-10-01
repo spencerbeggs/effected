@@ -14,11 +14,14 @@ import { ToolFailure } from "./ToolFailure.js";
  * {@link ToolRefusal.refuse}; its message already carries the remediation,
  * because a declared `Error` failure sends `message` and nothing else.
  *
- * Audit every throw path when porting a tool: any failure left undeclared
- * loses its message on the wire, however carefully it was worded.
+ * Audit every throw path of a tool: any failure left undeclared loses its
+ * message on the wire, however carefully it was worded.
  *
  * @example
  * ```ts
+ * import { ToolFailure, ToolRefusal } from "@effected/mcp";
+ * import { Tool } from "effect/ai";
+ *
  * const Lookup = Tool.make("lookup", { parameters, success, failure: ToolRefusal })
  * // in the handler:
  * return yield* ToolRefusal.refuse(`No run "${ToolFailure.truncate(id)}".`, { hint: "List runs first.", suggestedTool: "list_runs" })

@@ -4,7 +4,7 @@ import { GitHubError } from "./GitHubError.js";
 import { Repo } from "./Repo.js";
 
 /**
- * Reading a file out of a repository.
+ * Read a text file out of a repository at a ref.
  *
  * @public
  */
@@ -12,6 +12,11 @@ export interface GitHubContentShape {
 	/**
 	 * A text file's contents at `ref`, or the default branch when `ref` is
 	 * omitted.
+	 *
+	 * @remarks
+	 * Fails `notFound` when the path does not exist, and `rejected` when it is a
+	 * directory, is not a regular file, or is too large for the contents API
+	 * (which answers an empty body above roughly a megabyte).
 	 */
 	readonly getFile: (
 		path: string,
@@ -25,13 +30,31 @@ export interface GitHubContentShape {
 }
 
 /**
- * Repository file contents.
+ * Read a text file out of a repository at a ref, with absence as an `Option`
+ * when you want it.
+ *
+ * @remarks
+ * Provide it with {@link GitHubContent.layer}, which needs a `GitHubClient`;
+ * each method also needs a `Repo` in `R`.
+ *
+ * @example
+ * ```ts
+ * import { GitHubContent } from "@effected/github";
+ * import { Effect, Option } from "effect";
+ *
+ * const readme = Effect.gen(function* () {
+ *   const content = yield* GitHubContent;
+ *   const file = yield* content.getFileOption("README.md", { ref: "main" });
+ *   return Option.getOrElse(file, () => "");
+ * });
+ * ```
  *
  * @public
  */
 export class GitHubContent extends Context.Service<GitHubContent, GitHubContentShape>()(
 	"@effected/github/GitHubContent",
 ) {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<GitHubContent, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),

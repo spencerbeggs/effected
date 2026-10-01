@@ -1,18 +1,14 @@
 // The frontmatter $schema declaration contract and the registry-backed
 // resolver. Dependency-free by design: this module imports `effect` only —
-// the version grammar below is the design doc's committed X[.Y[.Z]] contract
-// in ~30 lines, and `@effected/semver` was consciously declined as a peer so
+// the version grammar below is the X[.Y[.Z]] contract in ~30 lines, and `@effected/semver` was consciously declined as a peer so
 // a consumer who never resolves declarations never loads anything for it.
 //
 // Its own module (not `Frontmatter.ts`) for the same tree-shaking reason the
 // codecs are free-standing: `Frontmatter.ts` stays the lean composition seam,
 // and the resolution machinery loads only when a consumer names it.
 //
-// Day-one resolution is EXACT version-segment equality. Prefix resolution
-// (`skill@2` selecting the highest registered `2.y.z` — the Docker-tag/Go-
-// module model) is the documented future minor: no grammar or API change,
-// `SchemaVersionUnresolvableError` simply stops firing for satisfiable
-// prefixes.
+// Resolution is EXACT version-segment equality. Prefix resolution (`skill@2`
+// selecting the highest registered `2.y.z`) is not offered.
 
 import { Effect, Result, Schema } from "effect";
 
@@ -298,9 +294,7 @@ export class SchemaResolver {
 	 * @remarks
 	 * Non-mapping data and a mapping without a `$schema` key both carry no
 	 * declaration: the result succeeds with `undefined` by default, or fails
-	 * with {@link SchemaDeclarationMissingError} under `requireDeclaration` —
-	 * the design's strictness knob, applied at extraction where the
-	 * present-or-absent branch actually lives.
+	 * with {@link SchemaDeclarationMissingError} under `requireDeclaration`.
 	 *
 	 * @param data - The decoded frontmatter data.
 	 * @param options - `requireDeclaration` makes a missing `$schema` a typed
@@ -321,7 +315,7 @@ export class SchemaResolver {
 	}
 
 	/**
-	 * The package's one built-in resolver: a name-keyed registry with day-one
+	 * The package's one built-in resolver: a name-keyed registry with
 	 * exact version-segment resolution.
 	 *
 	 * @remarks

@@ -1,4 +1,4 @@
-// KIT EXTENSION (errno fidelity — adaptation ledger entry 10). One module owns
+// KIT EXTENSION (errno fidelity). One module owns
 // errno for the whole package: the engine, the sync/promises ports and the
 // NodeSyncFileSystem subpath all build and classify failures here.
 //

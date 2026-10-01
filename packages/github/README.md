@@ -7,10 +7,10 @@
 
 Typed GitHub REST and GraphQL for [Effect](https://effect.website) v4. `client.request("GET /repos/{owner}/{repo}", { owner, repo })` types both the parameters and the returned `data` from the route literal alone — no `operation: string`, no callback, no cast. One `GitHubError` covers every REST failure with a `kind` you branch on instead of grepping a message, one pagination engine backs every paginating route and `client.request`'s `Stream` form, and a set of resource services (`GitBranch`, `GitTag`, `CheckRun`, `PullRequest`, `PullRequestComment`, `GitHubRelease`, `Attestation`) turn multi-call dances — "does this branch already exist?", "conclude this check run no matter how the program exits" — into one call. A second tier writes the configuration half: secrets, variables, rulesets, deployment environments, the security toggles and CodeQL default setup. `GitHubApp` mints and revokes installation tokens for App auth.
 
-> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 prerelease. Packages graduate to
-> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
-> exactly the ones the kit is built and tested against, install
+> **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
+> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
+> `@effect/*` versions on the line the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
 >
 > **Stability: unstable.** This package's API surface is not yet considered
@@ -287,7 +287,7 @@ const TestClient = GitHubClient.layerFixture(fixtures);
 // A route with no entry above DIES naming itself, rather than failing typed.
 ```
 
-- **An unstubbed route dies by default.** A missing fixture is test wiring rather than a domain outcome, and a typed failure is only loud in code that does not catch — a program handling `GitHubError` per resource turns a missing stub into a different execution path, and the assertions then fail for reasons that name no fixture. `unstubbed: "fail"` restores the old typed not-found, and `"empty"` serves an empty value for a suite whose subject is decisions rather than endpoints.
+- **An unstubbed route dies by default.** A missing fixture is test wiring rather than a domain outcome, and a typed failure is only loud in code that does not catch — a program handling `GitHubError` per resource turns a missing stub into a different execution path, and the assertions then fail for reasons that name no fixture. `unstubbed: "fail"` fails the route with a typed not-found instead, and `"empty"` serves an empty value for a suite whose subject is decisions rather than endpoints.
 - **A recorded `GitHubError` value is the response.** That is how a suite stubs a 404, a 422 or a rate limit deliberately. Leaning on a route's absence says only "unwired"; a recorded error says which route fails and why.
 - **`fixtures.requested` records every call.** Each `RecordedCall` carries the `kind` of surface used, the `route` (the document name for `graphql`), the `params` the call was made with, and `perPage` for a paginated read. Params are what let a test assert what a method *sent*, which is the question any normalising write turns on.
 

@@ -194,8 +194,7 @@ const storesFromEnvironment = (root: string): Effect.Effect<ReadonlyArray<string
 		// The XDG path is also searched off-platform: a pnpm installed through its
 		// standalone script sets `PNPM_HOME` to `~/.local/share/pnpm` on macOS too,
 		// and a shell that did not export it (CI, a login-less runner) would
-		// otherwise miss a store that is really there — measured on this project's
-		// own macOS development machine.
+		// otherwise miss a store that is really there.
 		if (platform !== "win32") roots.push(join(home, ".local", "share", "pnpm", "store"));
 		const stores: Array<string> = [];
 		for (const storeRoot of roots) {
@@ -313,7 +312,7 @@ const notInstalledMessage = (
 	const found =
 		`config dependency ${name}@${declared}${by} is not installed: node_modules/.pnpm-config/${name} holds ${holds}, ` +
 		`and no store copy of ${name}@${declared} was found (${searched}).`;
-	// The case #842 hit: the replayed side pins a DIFFERENT version from the
+	// The case: the replayed side pins a DIFFERENT version from the
 	// installed one, which is what the base side of a diff across a
 	// config-dependency bump always does on a fresh checkout.
 	const why =

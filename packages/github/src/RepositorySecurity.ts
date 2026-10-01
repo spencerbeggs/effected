@@ -4,7 +4,9 @@ import type { GitHubError } from "./GitHubError.js";
 import { Repo } from "./Repo.js";
 
 /**
- * The three repository security features that have their own endpoints.
+ * Read and toggle the three repository security features that have their own
+ * endpoints: Dependabot alerts, Dependabot security fixes and private
+ * vulnerability reporting.
  *
  * @public
  */
@@ -31,7 +33,8 @@ interface EnabledFlag {
 }
 
 /**
- * Repository security features with dedicated endpoints.
+ * Read and toggle Dependabot alerts, Dependabot security fixes and private
+ * vulnerability reporting.
  *
  * @remarks
  * These are **not** `security_and_analysis` fields and cannot ride along on the
@@ -54,12 +57,30 @@ interface EnabledFlag {
  * every other failure still fails. A 404 from the other two is a real failure
  * and stays one, which is why the mapping is not applied uniformly.
  *
+ * Provide it with {@link RepositorySecurity.layer}, which needs a
+ * `GitHubClient`; each method also needs a `Repo` in `R`.
+ *
+ * @example
+ * ```ts
+ * import { RepositorySecurity } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const harden = Effect.gen(function* () {
+ *   const security = yield* RepositorySecurity;
+ *   yield* security.setVulnerabilityAlerts(true);
+ *   yield* security.setPrivateVulnerabilityReporting(true);
+ *   return yield* security.vulnerabilityAlerts(); // true
+ * });
+ * ```
+ *
  * @public
  */
 export class RepositorySecurity extends Context.Service<RepositorySecurity, RepositorySecurityShape>()(
 	"@effected/github/RepositorySecurity",
 ) {
 	/**
+	 * The live service, built over a `GitHubClient`.
+	 *
 	 * @remarks
 	 * `(client) => make(client)` rather than `make`: a static initializer runs
 	 * while the module body is still evaluating, so naming a `const` declared

@@ -1,13 +1,10 @@
-/**
- * The one filter shape, shared by every read surface.
- *
- * One vocabulary means one thing to learn: a consumer who can express a
- * subscription can express a query and a projection without translating. It is
- * also what makes the filter-before-decode guarantee expressible — every field
- * here lives on the envelope **frame**, so matching never touches `data`.
- *
- * @since 0.1.0
- */
+// The one filter shape, shared by every read surface.
+//
+// One vocabulary means one thing to learn: a consumer who can express a
+// subscription can express a query and a projection without translating. It is
+// also what makes the filter-before-decode guarantee expressible — every field
+// here lives on the envelope **frame**, so matching never touches `data`.
+
 import type { DateTime } from "effect";
 import type { EnvelopeFrame } from "./Envelope.js";
 import type { JsonlEvent } from "./JsonlEvent.js";

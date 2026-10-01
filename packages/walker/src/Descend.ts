@@ -133,8 +133,7 @@ export interface DescendResult {
 export class DescendError extends Schema.TaggedError<DescendError>()("DescendError", {
 	/** The glob pattern's source text. */
 	pattern: Schema.String,
-	// Schema.Literals, not Schema.Literal: the v3 variadic Literal silently
-	// ignores every argument after the first in the beta.
+	/** Why the walk failed: a directory could not be read, or the walk went past `maxDepth`. */
 	reason: Schema.Literals(["unreadableDirectory", "depthExceeded"]),
 	/** The offending directory, relative to `cwd` (`""` is the walk's base). */
 	path: Schema.String,
@@ -445,6 +444,20 @@ export function descend(
  *
  * Passing `onUnreadable: "record"` resolves to a {@link DescendResult}
  * instead — see that overload.
+ *
+ * @example
+ * ```ts
+ * import { GlobPattern } from "@effected/glob";
+ * import { descend } from "@effected/walker";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ * 	const pattern = yield* GlobPattern.compile("src/*.ts");
+ * 	// Sorted, cwd-relative POSIX paths of the matching files.
+ * 	return yield* descend(pattern, { cwd: "/repo" });
+ * });
+ * // Requires `FileSystem` and `Path` from the platform layer.
+ * ```
  *
  * @public
  */

@@ -70,7 +70,7 @@ type BunLockfileRawType = typeof BunLockfileRaw.Type;
 /**
  * Parse bun `bun.lock` (JSONC) content into the unified field bundle.
  * Resolved packages are tuples whose first element is `"name@version"`;
- * the integrity hash is assumed at tuple index 3 (the permissive v3
+ * the integrity hash is assumed at tuple index 3 (a permissive
  * reading of an under-documented upstream shape).
  *
  * @internal

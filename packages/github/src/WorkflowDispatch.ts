@@ -11,11 +11,13 @@ import { PageOptions } from "./Rest.js";
  * @public
  */
 export class WorkflowRunStatus extends Schema.Class<WorkflowRunStatus>("WorkflowRunStatus")({
+	/** The run's numeric id. */
 	id: Schema.Int,
 	/** `queued`, `in_progress`, `completed`, … */
 	status: Schema.String,
 	/** Set once `status` is `completed`. */
 	conclusion: Schema.optionalKey(Schema.String),
+	/** The run's web URL. */
 	url: Schema.String,
 }) {
 	/** Has the run finished, whatever the outcome? */
@@ -31,9 +33,8 @@ export class WorkflowRunStatus extends Schema.Class<WorkflowRunStatus>("Workflow
  * `state` is GitHub's own value — `active`, `disabled_manually`,
  * `disabled_inactivity`, and so on. It is reported rather than interpreted:
  * whether a *disabled* workflow counts for a given GitHub feature is that
- * feature's rule, not this package's, and encoding a guess here would put an
- * unverified server-side behaviour in a library that cannot test it. Callers
- * that care filter on it themselves.
+ * feature's rule, not this package's. Callers that care filter on it
+ * themselves.
  *
  * @public
  */
@@ -49,7 +50,7 @@ export interface WorkflowInfo {
 }
 
 /**
- * How long to wait for a dispatched run.
+ * How often to poll for a dispatched run, and how long to keep polling.
  *
  * @public
  */
@@ -64,7 +65,8 @@ const DEFAULT_INTERVAL = Duration.seconds(10);
 const DEFAULT_TIMEOUT = Duration.minutes(5);
 
 /**
- * Triggering workflows.
+ * Dispatch workflows, wait for the run they start, and list the repository's
+ * workflows.
  *
  * @public
  */
@@ -75,6 +77,7 @@ export interface WorkflowDispatchShape {
 		ref: string,
 		inputs?: Record<string, string>,
 	) => Effect.Effect<void, GitHubError, Repo>;
+	/** Read one workflow run's status. */
 	readonly runStatus: (runId: number) => Effect.Effect<WorkflowRunStatus, GitHubError, Repo>;
 	/**
 	 * Every workflow defined in the repository.
@@ -95,10 +98,11 @@ export interface WorkflowDispatchShape {
 	 * Dispatch, find the run it created, and wait for it to finish.
 	 *
 	 * @remarks
-	 * The wait is `Effect.repeat` with a predicate over the **success** value.
-	 * The version this replaces encoded "not finished yet" as a sentinel *error*
-	 * baked into a user-visible error union — control flow in the error channel,
-	 * which every consumer then had to know not to treat as a failure.
+	 * The wait is `Effect.repeat` with a predicate over the **success** value, so
+	 * "not finished yet" is never an error. If the run is not found finished
+	 * within `poll.timeout`, it fails with a `rejected` `GitHubError` (status
+	 * 408). The run is matched by branch, creation time and workflow path, so
+	 * concurrent dispatches of the same workflow on the same ref can be confused.
 	 */
 	readonly dispatchAndWait: (
 		workflow: string,
@@ -108,13 +112,35 @@ export interface WorkflowDispatchShape {
 }
 
 /**
- * Workflow dispatch.
+ * Dispatch workflows, wait for the run they start, and list the repository's
+ * workflows.
+ *
+ * @remarks
+ * Provide it with {@link WorkflowDispatch.layer}, which needs a `GitHubClient`;
+ * each method also needs a `Repo` in `R`. `list` is an `Effect` value, not a
+ * function.
+ *
+ * @example
+ * ```ts
+ * import { WorkflowDispatch } from "@effected/github";
+ * import { Duration, Effect } from "effect";
+ *
+ * const release = Effect.gen(function* () {
+ *   const workflows = yield* WorkflowDispatch;
+ *   const run = yield* workflows.dispatchAndWait("release.yml", "main", {
+ *     inputs: { dryRun: "false" },
+ *     poll: { interval: Duration.seconds(15), timeout: Duration.minutes(20) },
+ *   });
+ *   return run.conclusion;
+ * });
+ * ```
  *
  * @public
  */
 export class WorkflowDispatch extends Context.Service<WorkflowDispatch, WorkflowDispatchShape>()(
 	"@effected/github/WorkflowDispatch",
 ) {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<WorkflowDispatch, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),

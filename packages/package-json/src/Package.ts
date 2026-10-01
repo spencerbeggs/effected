@@ -94,8 +94,8 @@ export const PeerDependenciesMetaField = Schema.Record(
  *
  * @deprecated Superseded by {@link Repository.FromValue}, which decodes both
  * encodings into a typed {@link Repository} with normalization getters and
- * round-trips the original form. Kept as a named type for consumers that were
- * matching on the raw union; it is no longer what `Package.repository` uses.
+ * round-trips the original form. Retained only as a name for the raw union;
+ * `Package.repository` is a {@link Repository}.
  *
  * @public
  */
@@ -219,9 +219,9 @@ export class Package extends Schema.Class<Package>("Package")({
 	rest: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 }) {
 	// ── Pipeable ──────────────────────────────────────────────────────────
-	// v4 `Schema.Class` instances are not `Pipeable` out of the box, so the
-	// manual overload block is retained to make `pkg.pipe(Package.setVersion(v))`
-	// work alongside the dual statics' data-first and curried call styles.
+	// `Schema.Class` instances are not `Pipeable` out of the box, so this manual
+	// overload block makes `pkg.pipe(Package.setVersion(v))` work alongside the
+	// dual statics' data-first and curried call styles.
 
 	pipe<A>(this: A): A;
 	pipe<A, B>(this: A, ab: (_: A) => B): B;
@@ -262,8 +262,8 @@ export class Package extends Schema.Class<Package>("Package")({
 	 * `SchemaError` to a typed {@link PackageDecodeError} at the boundary.
 	 *
 	 * @param input - the parsed package.json JSON value (e.g. from `JSON.parse`)
-	 * @returns an Effect resolving to the decoded `Package`
-	 * @throws (typed) `PackageDecodeError` when `input` does not satisfy the schema
+	 * @returns an Effect resolving to the decoded `Package`, failing with
+	 * {@link PackageDecodeError} when `input` does not satisfy the schema
 	 */
 	static readonly decode = Effect.fn("Package.decode")(function* (input: unknown) {
 		return yield* Schema.decodeUnknownEffect(Package.schema)(input).pipe(
@@ -453,20 +453,39 @@ export class Package extends Schema.Class<Package>("Package")({
 	/**
 	 * Resolve `catalog:` and `workspace:` specifiers across all four dependency
 	 * maps using the `CatalogResolver` and `WorkspaceResolver` from context,
-	 * classifying and projecting through `@effected/npm`'s `DependencySpecifier`
-	 * statics (`workspace:` uses the pnpm publish-time projection; the alias
-	 * form `workspace:<name>@<range>` resolves the TARGET package's version and
-	 * becomes the published `npm:<name>@<range>` alias). Specifiers the
-	 * resolvers return `None` for are left unchanged — resolution still
-	 * succeeds. A `CatalogResolver` whose catalog assembly failed surfaces
-	 * typed as `@effected/npm`'s `CatalogAssemblyError`, alongside the
-	 * contracts' `DependencyResolutionError`. This is the explicit resolution
-	 * step — `PackageJsonFile.write` never resolves.
+	 * returning a new `Package`. This is the explicit resolution step —
+	 * `PackageJsonFile.write` never resolves.
 	 *
 	 * @remarks
-	 * Leaves unresolvable specifiers unchanged. For fail-typed manifest
+	 * Classification and projection go through `@effected/npm`'s
+	 * `DependencySpecifier` statics: `workspace:` uses the pnpm publish-time
+	 * projection, and the alias form `workspace:<name>@<range>` resolves the
+	 * TARGET package's version and becomes the published `npm:<name>@<range>`
+	 * alias. Specifiers the resolvers answer `Option.none()` for are left
+	 * unchanged — resolution still succeeds. Fails with `@effected/npm`'s
+	 * `CatalogAssemblyError` when catalog assembly failed, or
+	 * `DependencyResolutionError` when a resolver's mechanism failed; requires
+	 * `CatalogResolver` and `WorkspaceResolver` in `R`. For fail-typed
 	 * resolution over the tolerant model, see `@effected/npm`'s
 	 * `Manifest#resolve`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Default } from "@effected/npm";
+	 * import { Package } from "@effected/package-json";
+	 * import { Effect } from "effect";
+	 *
+	 * const program = Effect.gen(function* () {
+	 *   const pkg = yield* Package.decode({
+	 *     name: "my-pkg",
+	 *     version: "1.0.0",
+	 *     dependencies: { effect: "catalog:" },
+	 *   });
+	 *   return yield* Package.resolve(pkg);
+	 * }).pipe(Effect.provide(Default)); // the no-op resolvers leave `catalog:` unchanged
+	 * ```
+	 *
+	 * @param pkg - the package whose specifiers to resolve
 	 */
 	static readonly resolve = Effect.fn("Package.resolve")(function* (pkg: Package) {
 		const workspace = yield* WorkspaceResolver;

@@ -1,18 +1,16 @@
 // Manifest → CycloneDX derivation.
 //
-// The predecessor's `infer-sbom-metadata.ts` was 282 lines doing three jobs.
-// Two of them are gone rather than ported: `parseAuthor` is
-// `@effected/package-json`'s `Person.FromValue`, and `parseRepository`'s
-// four-substitution git-URL regex chain is `Repository.browseUrl` — both with
-// wire fidelity the hand-roll lacked, and both serving consumers with no SBOM
-// interest at all. What is left here is the part that is genuinely CycloneDX
-// vocabulary: which manifest field becomes which external-reference type, how a
-// supplier and publisher resolve, and what a purl looks like.
+// Author parsing and repository-URL normalization are not done here: they are
+// `@effected/package-json`'s `Person.FromValue` and `Repository.browseUrl`,
+// which serve consumers with no SBOM interest at all. What lives here is the
+// part that is genuinely CycloneDX vocabulary: which manifest field becomes
+// which external-reference type, how a supplier and publisher resolve, and
+// what a purl looks like.
 //
-// The third job — layering an explicit config file over inferred values — is
-// NOT here. Precedence is release policy and the config file is the consumer's;
-// this module offers derivation and `merge`, and which side wins is the
-// caller's call.
+// Layering an explicit config file over inferred values is NOT here.
+// Precedence is release policy and the config file is the consumer's; this
+// module offers derivation and `merge`, and which side wins is the caller's
+// call.
 //
 // Everything is total. Nothing reads an ambient clock or environment: a
 // timestamp is an argument, and so is the copyright year.
@@ -29,9 +27,9 @@ import { Component, Contact, ExternalReference, SbomMetadata, Supplier } from ".
 // percent-encoded, the separating slash kept literal — which is the
 // package-url spec's own roundtrip vector (`tests/types/npm-test.json`) and
 // what its npm type definition states ("the npm scope @ sign prefix is always
-// percent encoded"). The predecessor wrote `encodeURIComponent(name)`,
-// collapsing that slash to `%2F`; the result parses back as a namespace-less
-// name and is not a canonical purl.
+// percent encoded"). Encoding the whole name with `encodeURIComponent` would
+// collapse that slash to `%2F`, which parses back as a namespace-less name and
+// is not a canonical purl.
 //
 // Versions pass through verbatim: every character semver permits
 // (`0-9A-Za-z.+-`) is a legal RFC 3986 path character — `+` is a sub-delim — so
@@ -110,7 +108,7 @@ export interface ComponentInput {
 export interface CopyrightYears {
 	/** The first year of the range. Omit for a single-year statement. */
 	readonly startYear?: number | undefined;
-	/** The year the statement is current through — the caller's clock read, never ours. */
+	/** The year the statement is current through, supplied by the caller. */
 	readonly year: number;
 }
 
@@ -237,11 +235,16 @@ const merge = (base: SbomMetadata, override: SbomMetadata): SbomMetadata => {
  *
  * @example
  * ```ts
- * import { Sbom, SbomMetadataSource } from "@effected/sbom";
+ * import { Package, Sbom, SbomMetadataSource, Supplier } from "@effected/sbom";
+ * import { Effect } from "effect";
  *
- * const root = SbomMetadataSource.rootComponent(pkg, { supplier });
- * const metadata = SbomMetadataSource.fromPackage(pkg, { supplier, timestamp });
- * const document = Sbom.generate({ root, components, metadata });
+ * const program = Effect.gen(function* () {
+ *   const pkg = yield* Package.decode({ name: "@acme/app", version: "1.0.0", license: "MIT" });
+ *   const supplier = Supplier.make({ name: "Acme Inc." });
+ *   const root = SbomMetadataSource.rootComponent(pkg, { supplier });
+ *   const metadata = SbomMetadataSource.fromPackage(pkg, { supplier, timestamp: "2026-01-01T00:00:00Z" });
+ *   return Sbom.generate({ root, components: [], metadata });
+ * });
  * ```
  *
  * @public
@@ -319,10 +322,8 @@ export class SbomMetadataSource {
 	 * A copyright statement for a holder and a year, or a span of years.
 	 *
 	 * @remarks
-	 * The year is an **argument**. The predecessor defaulted it to
-	 * `new Date().getFullYear()`, which made its output untestable and its
-	 * purity a claim rather than a property; the ambient read belongs at the
-	 * caller's edge.
+	 * The year is an **argument**: nothing here reads the clock, so the output is
+	 * deterministic. Read the ambient year at the caller's edge.
 	 */
 	static readonly formatCopyright = formatCopyright;
 

@@ -53,7 +53,7 @@ export interface StringifyOptionsInput {
 	 * the ROOT value as if it already sat inside a flow collection, so a
 	 * plain scalar carrying a flow indicator (`,[]{}`) is quoted. Used by the
 	 * region-confined `modify` splice when the target's parent is
-	 * flow-styled (#695). Default `false`.
+	 * flow-styled. Default `false`.
 	 */
 	readonly inFlow?: boolean | undefined;
 }

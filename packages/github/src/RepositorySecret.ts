@@ -27,11 +27,13 @@ export type SecretScope = "actions" | "dependabot" | "codespaces";
  * @public
  */
 export interface SecretInfo {
+	/** The secret's name. */
 	readonly name: string;
 }
 
 /**
- * Repository and environment secrets.
+ * Write, list and delete Actions, Dependabot and Codespaces secrets on a
+ * repository, and Actions secrets on its environments.
  *
  * @public
  */
@@ -81,7 +83,8 @@ const ROUTES = {
 } as const;
 
 /**
- * Secrets, encrypted client-side before they leave the process.
+ * Write, list and delete repository and environment secrets, encrypted
+ * client-side before they leave the process.
  *
  * @remarks
  * Every write is a **two-step**: fetch the store's public key, then `PUT` a
@@ -97,12 +100,29 @@ const ROUTES = {
  * the type; this module performs the single `Redacted.value` unwrap, at the
  * moment of encryption, and the sealed box is what continues.
  *
+ * Provide it with {@link RepositorySecret.layer}, which needs a `GitHubClient`;
+ * each method also needs a `Repo` in `R`.
+ *
+ * @example
+ * ```ts
+ * import { RepositorySecret } from "@effected/github";
+ * import { Effect, Redacted } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const secrets = yield* RepositorySecret;
+ *   yield* secrets.set("NPM_TOKEN", Redacted.make("npm_example"), "actions");
+ *   return yield* secrets.list("actions"); // names only; values are never returned
+ * });
+ * ```
+ *
  * @public
  */
 export class RepositorySecret extends Context.Service<RepositorySecret, RepositorySecretShape>()(
 	"@effected/github/RepositorySecret",
 ) {
 	/**
+	 * The live service, built over a `GitHubClient`.
+	 *
 	 * @remarks
 	 * `(client) => make(client)` rather than `make`: a static initializer runs
 	 * while the module body is still evaluating, so naming a `const` declared

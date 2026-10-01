@@ -247,9 +247,9 @@ export const guardRegistration = (registration: Registration): Registration => {
 	};
 };
 
-// Strict by default because a real client allows it: Claude Code 2.1.281 sends a tool call's `arguments` with
-// exactly the declared keys and keeps every extra under `params._meta`, so
-// strict-by-default rejects nothing a real client sends.
+// Strict by default because real clients allow it: they send a tool call's
+// `arguments` with exactly the declared keys and keep every extra under
+// `params._meta`, so strict-by-default rejects nothing a real client sends.
 const DEFAULT_STRICT: "all" | "annotated" = "all";
 
 // A dynamic tool is skipped: core dies at registration on a strict dynamic
@@ -350,6 +350,11 @@ export class McpToolkit {
 	 *
 	 * @example
 	 * ```ts
+	 * import { McpToolkit, ToolOutputSchema, ToolRefusal } from "@effected/mcp";
+	 * import { Schema } from "effect";
+	 * import { Tool } from "effect/ai";
+	 *
+	 * // `AddNote`, `ListNotes`, `Added`, `Listed` are object schemas; `Kit` is a Toolkit that includes `Note`.
 	 * const Note = McpToolkit.unionTool("note", {
 	 *   parameters: Schema.Union([AddNote, ListNotes]),
 	 *   success: ToolOutputSchema.objectRooted(Schema.Union([Added, Listed])),

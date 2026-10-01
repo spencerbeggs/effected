@@ -1,22 +1,12 @@
-/**
- * The release index: releases plus the provenance of the load that produced them.
- *
- * Generic over any release carrying a `SemVer`, so one implementation serves
- * Node, Bun and Deno — the v3 code had three near-identical release caches on
- * top of a generic core it could not quite commit to.
- *
- * Two v3 defects are fixed here:
- *
- * 1. **Provenance.** v3 advertised `source: "api" | "cache"` and hardcoded
- *    `"api"` in all three resolvers, because the Auto layer's knowledge of
- *    whether it had fallen back died at the layer boundary. Provenance is now
- *    part of the index's state, set by whichever strategy loaded it.
- * 2. **Concurrency.** v3 held a bare closure `Map` with a comment admitting
- *    "load is not concurrency-safe". State lives in a `Ref`; `load` is one
- *    atomic write.
- *
- * @internal
- */
+// The release index: releases plus the provenance of the load that produced them.
+//
+// Generic over any release carrying a `SemVer`, so one implementation serves
+// Node, Bun and Deno.
+//
+// - **Provenance** (`"api"` or `"cache"`) is part of the index's state, set by
+//   whichever strategy loaded it, so the auto layer's fallback is not lost at
+//   the layer boundary.
+// - **Concurrency.** State lives in a `Ref`; `load` is one atomic write.
 
 import type { Range, SemVer } from "@effected/semver";
 import { Effect, Option, Ref } from "effect";

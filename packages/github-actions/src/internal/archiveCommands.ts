@@ -1,69 +1,63 @@
-/**
- * The archiver command lines this package spawns, spelled once.
- *
- * @remarks
- * `Artifact` (pack and unpack) and `ToolInstaller` (unpack only) each spawn
- * the same three shapes — a zip, an unzip, a tar extraction — and each has a
- * Windows half that no test on a POSIX host can execute. Two hand-written
- * copies drifted: `ToolInstaller.extractZip` learned the overwrite overload
- * and the stderr capture below, `Artifact.download` did not, and a download
- * into a non-empty directory kept failing on Windows with an EMPTY stderr.
- * This module is the one spelling; the tests pin its text verbatim, which
- * is the only proof the Windows halves get.
- *
- * **The pwsh unzip is deliberately belt-and-braces.** The THREE-argument
- * `ExtractToDirectory(src, dest, $true)` overload overwrites existing files —
- * the two-argument one refuses, which is what turned a repeated extraction
- * into a hard failure — and the `$ErrorActionPreference = 'Stop'` plus
- * try/catch writes the actual .NET exception text plainly to stderr and
- * exits 1. pwsh's own error rendering does not reliably reach a captured
- * stream, and an empty complaint costs a source dive to even hypothesize
- * about.
- *
- * **The pwsh zip drives .NET's `ZipFile` directly, not `Compress-Archive`.**
- * Microsoft's own reference for `Compress-Archive -Path` states both faults:
- * handed individual file paths it stores every entry under its bare file
- * name — directory structure is kept only when `-Path` names a directory —
- * so `dir\b.txt` landed as `b.txt`, same-named files in different
- * directories collided, and a Windows artifact was structurally different
- * from the POSIX `zip -qr` one; and `-Path` expands wildcards, so a literal
- * `report[1].txt` matched nothing and failed the upload. Stating every entry
- * name explicitly through `CreateEntryFromFile(zip, source, entryName)`
- * removes both: the source is `Path.Combine(root, rel)`, taken literally,
- * and the entry name is `rel` with `\` turned to `/`, which is what `zip`
- * records on POSIX.
- *
- * **The Windows script is constant-size: the file list travels in a manifest
- * file, never in `-Command`.** `CreateProcessW` caps the whole command line
- * at 32,767 characters, and inlining one `CreateEntryFromFile` statement per
- * file (~214 characters each) hit that ceiling at roughly 150 files with
- * `ENAMETOOLONG` — fewer than the `Compress-Archive` form it replaced carried.
- * The script now reads {@link zipManifest}'s output (one relative path per
- * line) with `File.ReadAllLines` and loops. **The two branches deliberately
- * differ in mechanism**: POSIX `zip` takes the files as argv, whose ceiling
- * (`ARG_MAX`, megabytes on the hosted runners) is far larger, so the only
- * file-count ceiling left is that POSIX argv limit. The manifest is written by
- * the caller (`Artifact.zip`) as UTF-8 WITHOUT a BOM, which is what
- * `ReadAllLines` reads by default. Its BOM detection would consume a BOM
- * rather than leak it into the first path (measured), so this is a
- * plain-bytes preference, not a correctness guard.
- *
- * **Every `CreateEntryFromFile` is assigned to `$null`.** Unassigned, pwsh
- * writes the returned `ZipArchiveEntry` to stdout — roughly 430 bytes of
- * formatted object per file — and `internal/spawn.ts` interleaves stdout with
- * stderr into the captured output, which is what `ArtifactError.stderr`
- * carries. Left in, that chatter buried the one line that matters, the .NET
- * exception, under kilobytes of entry listings.
- *
- * Every path handed to PowerShell is single-quoted, and a single quote inside
- * one is doubled — the only escape a single-quoted PowerShell literal has.
- *
- * Pure: no filesystem, no environment, no spawn. `internal/spawn.ts` is the
- * execution half. Reaches `effect/process` alone, so it is safe for
- * any module to import (`__test__/reachability.test.ts`).
- *
- * @internal
- */
+// The archiver command lines this package spawns, spelled once.
+//
+// `Artifact` (pack and unpack) and `ToolInstaller` (unpack only) each spawn
+// the same three shapes — a zip, an unzip, a tar extraction — and each has a
+// Windows half that no test on a POSIX host can execute. Two hand-written
+// copies drifted: `ToolInstaller.extractZip` learned the overwrite overload
+// and the stderr capture below, `Artifact.download` did not, and a download
+// into a non-empty directory kept failing on Windows with an EMPTY stderr.
+// This module is the one spelling; the tests pin its text verbatim, which
+// is the only proof the Windows halves get.
+//
+// **The pwsh unzip is deliberately belt-and-braces.** The THREE-argument
+// `ExtractToDirectory(src, dest, $true)` overload overwrites existing files —
+// the two-argument one refuses, which is what turned a repeated extraction
+// into a hard failure — and the `$ErrorActionPreference = 'Stop'` plus
+// try/catch writes the actual .NET exception text plainly to stderr and
+// exits 1. pwsh's own error rendering does not reliably reach a captured
+// stream, and an empty complaint costs a source dive to even hypothesize
+// about.
+//
+// **The pwsh zip drives .NET's `ZipFile` directly, not `Compress-Archive`.**
+// Microsoft's own reference for `Compress-Archive -Path` states both faults:
+// handed individual file paths it stores every entry under its bare file
+// name — directory structure is kept only when `-Path` names a directory —
+// so `dir\b.txt` landed as `b.txt`, same-named files in different
+// directories collided, and a Windows artifact was structurally different
+// from the POSIX `zip -qr` one; and `-Path` expands wildcards, so a literal
+// `report[1].txt` matched nothing and failed the upload. Stating every entry
+// name explicitly through `CreateEntryFromFile(zip, source, entryName)`
+// removes both: the source is `Path.Combine(root, rel)`, taken literally,
+// and the entry name is `rel` with `\` turned to `/`, which is what `zip`
+// records on POSIX.
+//
+// **The Windows script is constant-size: the file list travels in a manifest
+// file, never in `-Command`.** `CreateProcessW` caps the whole command line
+// at 32,767 characters, and inlining one `CreateEntryFromFile` statement per
+// file (~214 characters each) hit that ceiling at roughly 150 files with
+// `ENAMETOOLONG`. The script therefore reads `zipManifest`'s output (one relative path per
+// line) with `File.ReadAllLines` and loops. **The two branches deliberately
+// differ in mechanism**: POSIX `zip` takes the files as argv, whose ceiling
+// (`ARG_MAX`, megabytes on the hosted runners) is far larger, so the only
+// file-count ceiling left is that POSIX argv limit. The manifest is written by
+// the caller (`Artifact.zip`) as UTF-8 WITHOUT a BOM, which is what
+// `ReadAllLines` reads by default. Its BOM detection would consume a BOM
+// rather than leak it into the first path (measured), so this is a
+// plain-bytes preference, not a correctness guard.
+//
+// **Every `CreateEntryFromFile` is assigned to `$null`.** Unassigned, pwsh
+// writes the returned `ZipArchiveEntry` to stdout — roughly 430 bytes of
+// formatted object per file — and `internal/spawn.ts` interleaves stdout with
+// stderr into the captured output, which is what `ArtifactError.stderr`
+// carries. Left in, that chatter buried the one line that matters, the .NET
+// exception, under kilobytes of entry listings.
+//
+// Every path handed to PowerShell is single-quoted, and a single quote inside
+// one is doubled — the only escape a single-quoted PowerShell literal has.
+//
+// Pure: no filesystem, no environment, no spawn. `internal/spawn.ts` is the
+// execution half. Reaches `effect/process` alone, so it is safe for
+// any module to import (`__test__/reachability.test.ts`).
 import { ChildProcess } from "effect/process";
 
 /** A PowerShell single-quoted literal: `'` becomes `''`, nothing else is special. */

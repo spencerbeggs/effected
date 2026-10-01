@@ -130,6 +130,17 @@ const encodePersonObject = (person: Person): { readonly [k: string]: unknown } =
  * A structured person object with `name`, optional `email` / `url`, and a
  * `rest` catch-all preserving any additional keys across a read/write cycle.
  *
+ * @example
+ * ```ts
+ * import { Person } from "@effected/package-json";
+ * import { Schema } from "effect";
+ *
+ * const ann = Schema.decodeUnknownSync(Person.FromValue)("Ann <ann@example.com> (https://example.com)");
+ * ann.name; // => "Ann"
+ * ann.email; // => "ann@example.com"
+ * Schema.encodeSync(Person.FromValue)(ann); // => "Ann <ann@example.com> (https://example.com)"
+ * ```
+ *
  * @public
  */
 export class Person extends Schema.Class<Person>("Person")({

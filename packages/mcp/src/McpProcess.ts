@@ -53,6 +53,23 @@ interface ProcessParts {
  * - A request in flight when stdin closes is dropped by an Effect server:
  *   read its response first.
  *
+ * @example
+ * ```ts
+ * import { McpProcess } from "@effected/mcp/testing";
+ * import { Effect } from "effect";
+ * import { ChildProcess } from "effect/process";
+ *
+ * const program = Effect.gen(function* () {
+ * 	const child = yield* McpProcess.spawn(ChildProcess.make(process.execPath, ["./bin/server.js"]));
+ * 	yield* child.handshake();
+ * 	yield* child.send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+ * 	const { response } = yield* child.readUntilResponse(2);
+ * 	yield* child.closeStdin;
+ * 	return response;
+ * }).pipe(Effect.scoped);
+ * // Requires a `ChildProcessSpawner` from the platform layer.
+ * ```
+ *
  * @public
  */
 export class McpProcess {

@@ -1,8 +1,4 @@
-/**
- * Resolving Node.js versions.
- *
- * @packageDocumentation
- */
+// Resolving Node.js versions.
 
 import type { InvalidRangeError } from "@effected/semver";
 import { Context, DateTime, Effect, Layer, Option, Ref, Schema } from "effect";
@@ -53,7 +49,15 @@ export type NodeResolverOptions = typeof NodeResolverOptions.Type;
 const DEFAULT_PHASES: ReadonlyArray<NodePhase> = ["current", "active-lts"];
 
 /**
- * The Node.js resolver.
+ * Resolves a semver range to concrete Node.js versions, filtered by lifecycle
+ * phase, with release data from the nodejs.org feeds or a bundled snapshot.
+ *
+ * @remarks
+ * Choose a strategy with the layer: `layer` tries the live feeds and falls back
+ * to the snapshot (recorded as `source: "cache"`), `layerFresh` fails rather
+ * than fall back, and `layerOffline` uses only the snapshot. `resolve` fails
+ * with `InvalidRangeError`, `NoMatchingVersionError`, `UnresolvableDefaultError`
+ * or `FreshnessError`.
  *
  * @example
  * ```ts
@@ -72,6 +76,7 @@ const DEFAULT_PHASES: ReadonlyArray<NodePhase> = ["current", "active-lts"];
 export class NodeResolver extends Context.Service<
 	NodeResolver,
 	{
+		/** Resolve a range to the matching versions, newest first. */
 		readonly resolve: (
 			options?: NodeResolverOptions,
 		) => Effect.Effect<
@@ -178,7 +183,7 @@ function build<E extends FreshnessError, RIn>(
 
 			const live: Load = Effect.gen(function* () {
 				// `Effect.all` defaults to `concurrency: 1` (sequential). These two
-				// network calls are independent, so we must opt into overlap explicitly.
+				// network calls are independent, so overlap is opted into explicitly.
 				const [raw, scheduleData] = yield* Effect.all([fetchNodeReleases(), fetchNodeSchedule()], {
 					concurrency: 2,
 				});

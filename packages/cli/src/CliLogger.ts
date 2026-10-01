@@ -34,7 +34,7 @@ export interface CliLoggerOptions {
 	 * program writes with `Console.log`.
 	 *
 	 * @remarks
-	 * Pass `"Error"` to restore the old split, for a tool whose output *is*
+	 * Pass `"Error"` to send only errors to stderr, for a tool whose output *is*
 	 * its log lines rather than a separate document written with
 	 * `Console.log`.
 	 */
@@ -45,7 +45,8 @@ const defaultRender = (message: unknown): string =>
 	Array.isArray(message) ? message.map(String).join(" ") : String(message);
 
 /**
- * A `Logger` that renders CLI output rather than service logs.
+ * A `Logger` that renders CLI output rather than service logs: no timestamp, level or fiber id, with every level
+ * going to stderr by default so stdout carries only what the program writes.
  *
  * @remarks
  * Effect's default logger emits `[00:33:56.619] INFO (#2): message`. That is
@@ -54,27 +55,15 @@ const defaultRender = (message: unknown): string =>
  * in front of output a human is reading, and they make a formatted block — a
  * permissions table, a summary — unreadable.
  *
- * **This is not a preference, and it is not visible from the call site.** A
- * program that never installs a CLI logger looks correct in review and ships
- * timestamps to its users; the consumer this package was extracted from had it
- * missing for a day while its own docs claimed it existed.
+ * **A program that never installs a CLI logger looks correct in review and
+ * ships timestamps to its users**, so install this one at the program's
+ * boundary.
  *
- * ## Why the `Console` reference, and not `Stdio`
- *
- * The obvious design — write through `Stdio`'s `stdout()` / `stderr()` sinks —
- * does not fit. `Logger.make` takes a **synchronous** callback and a `Sink`
- * write is an `Effect`: a logger cannot `yield*`.
- *
- * Writing to `process.stdout` would fit, and is what the consumer did first,
- * but it drags a platform assumption into a library and — the part that
- * actually matters — makes the stream split **untestable**, because asserting
- * it means monkey-patching a global inside a runner that is itself writing to
- * those streams.
- *
- * So this takes the path core's own `defaultLogger` takes: read the `Console`
- * off the fiber, synchronously. `Console.Console` is a public
- * `Context.Reference`, so it carries a default and never appears in `R`, and a
- * test swaps the reference instead of stubbing a global.
+ * It writes through the `Console` reference read off the logging fiber,
+ * synchronously, as core's own default logger does: `Logger.make` takes a
+ * synchronous callback, and a `Stdio` sink write is an `Effect` a logger cannot
+ * `yield*`. `Console.Console` is a `Context.Reference`, so it never appears in
+ * `R`, and a test swaps the reference rather than stubbing a global.
  *
  * @example
  * ```ts
@@ -90,12 +79,10 @@ const defaultRender = (message: unknown): string =>
  * program.pipe(Effect.provide(CliLogger.layer()))
  * ```
  *
- * @remarks
  * `stderrFrom` defaults to `"All"`: a CLI's stdout is its product, so every
  * log level is a diagnostic unless a consumer narrows the threshold. Write
  * program output with `Console.log`, never `Effect.log`. Pass
- * `stderrFrom: "Error"` for a tool whose output *is* its log lines. This is
- * a breaking change on the 0.x line (#716).
+ * `stderrFrom: "Error"` for a tool whose output *is* its log lines.
  *
  * @public
  */

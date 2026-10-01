@@ -6,7 +6,7 @@ This is **effected**, a pnpm monorepo (npm org `@effected`) building an **Effect
 
 The monorepo holds libraries only — applications stay in external repos.
 
-**Releases are changeset-driven: CI builds the changesets and releases the packages they name.** A release may be the whole kit or a single package — both are ordinary. Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA.
+**Releases are changeset-driven: CI builds the changesets and releases the packages they name.** A release may be the whole kit or a single package — both are ordinary. Everything published is `0.x` and unstable. Effect v4 is now stable, which makes a kit `1.0.0` possible, not automatic: the kit takes it when it chooses to.
 
 ## Knowledge bundle
 
@@ -105,7 +105,7 @@ Biome, commitlint, lint-staged and markdownlint take their presets from `@savvy-
 
 Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml`, managed via `packages/pnpm-plugin-effect`. Catalog detail and the expected peer-warning class → `okf/modules/pnpm-plugin-effect.md`, `okf/conventions/peer-dependency-discipline.md`, `okf/gotchas/expected-peers-check-occupant.md`.
 
-**`catalog:effect` uses the `lock` strategy: exact prerelease pins (`4.0.0-rc.112`), never a caret.** A caret on a prerelease floats across the release line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports.
+**`catalog:effect` uses the `lock-minor` strategy: caret ranges on the stable line (`^4.0.0`), so the exact `effect` the kit builds and tests against is the lockfile's resolution, not the catalog literal.** `.repos/effect`, the authority on what v4 exports, is pinned to the tag matching that resolution; re-pin it whenever the lockfile's `effect` moves, or the vendored source and the installed package drift apart silently.
 
 **Always check the lockfile diff after an install** — a plain `pnpm install` can strip turbo/biome/tsgo platform binaries from it.
 

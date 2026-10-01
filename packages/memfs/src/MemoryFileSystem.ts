@@ -1,9 +1,8 @@
 // The public surface over the vendored engine (see internal/volume.ts for the
-// port header and the adaptation ledger pointer): the public types and the
-// MemoryFileSystem class. The machinery lives in internal/ — seeding (seed.ts),
-// the inspection view (view.ts), the node-shaped ports (ports.ts), fault
-// injection (faults.ts) and errno (errno.ts) — all kit extensions, not part of
-// the vendored port.
+// port header): the public types and the MemoryFileSystem class. The machinery
+// lives in internal/ — seeding (seed.ts), the inspection view (view.ts), the
+// node-shaped ports (ports.ts), fault injection (faults.ts) and errno
+// (errno.ts) — all extensions beyond the vendored port.
 
 import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
@@ -41,7 +40,7 @@ import * as internal from "./internal/volume.js";
  * API's job. Hard links surface once per directory entry, each path carrying
  * the same content. Returned byte arrays are defensive copies.
  *
- * Honest absence (the effected#249 contract) carries over: `text`/`bytes`
+ * Honest absence carries over: `text`/`bytes`
  * answer `undefined` for a path holding no regular file — `""` only ever
  * means a genuinely empty file.
  *
@@ -539,8 +538,7 @@ export interface MemoryFileSystemOptions {
 	 * models a case-insensitive, case-PRESERVING volume such as default APFS.
 	 *
 	 * @remarks
-	 * Semantics are taken from a real APFS volume (the adaptation ledger has
-	 * the table): a lookup in any spelling finds the stored entry, and
+	 * Semantics are taken from a real APFS volume: a lookup in any spelling finds the stored entry, and
 	 * listings, `paths()` and `snapshot()` keep the stored spelling. `realPath`
 	 * keeps the QUERIED spelling (only a link's target text supplies its own),
 	 * as the node adapter's `realPath` does. Renaming or `copyFile`-ing onto a
@@ -706,8 +704,7 @@ const buildHandle = (
 				return false;
 			}
 		};
-		// KIT EXTENSION (errno fidelity — adaptation ledger entry 13): a
-		// recursive mkdir fails with an errno only when some component blocks
+		// errno fidelity: a recursive mkdir fails with an errno only when some component blocks
 		// it — a non-directory, or a dangling or looping link HIGHER up (which
 		// makes `lstat` of the parent fail too). The call that follows walks
 		// the same component, so it is bound to fail on it: swallow the mkdir's
@@ -748,7 +745,6 @@ const buildHandle = (
 					return error;
 				}),
 			);
-		// END KIT EXTENSION (errno fidelity)
 		const handle: MemoryFileSystemHandle = {
 			fileSystem,
 			volume,
@@ -1263,12 +1259,17 @@ export class MemoryFileSystem {
 	 *
 	 * @example
 	 * ```ts
-	 * const { fileSystem, volume } = yield* MemoryFileSystem.makeHandle({
-	 * 	"/repo/package.json": `{ "name": "root" }`,
-	 * 	"/repo/packages": MemoryFileSystem.directory(),
+	 * import { MemoryFileSystem } from "@effected/memfs";
+	 * import { Effect } from "effect";
+	 *
+	 * const program = Effect.gen(function* () {
+	 * 	const { volume } = yield* MemoryFileSystem.makeHandle({
+	 * 		"/repo/package.json": `{ "name": "root" }`,
+	 * 		"/repo/packages": MemoryFileSystem.directory(),
+	 * 	});
+	 * 	const sync = MemoryFileSystem.syncFileSystem(volume);
+	 * 	return sync.readDirectory("/repo"); // => ["package.json", "packages"]
 	 * });
-	 * const sync = MemoryFileSystem.syncFileSystem(volume);
-	 * sync.readDirectory("/repo"); // => ["package.json", "packages"]
 	 * ```
 	 */
 	static readonly syncFileSystem = (

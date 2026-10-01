@@ -7,11 +7,9 @@
 // an autolink before raw HTML, exactly as
 // `this.parseAutolink(block) || this.parseHtmlTag(block)` does.
 //
-// Task 9 registers emphasis on `*`/`_` and links on `[`, `]` and `!`. Until
-// then those characters have no construct, fall through to the text
-// fallback — whose pattern excludes them — and end up as literal single
-// characters, which is the correct intermediate behavior rather than a
-// special case.
+// Emphasis registers on `*`/`_` and links on `[`, `]` and `!`. A character with
+// no registered construct falls through to the text fallback — whose pattern
+// excludes it — and ends up as a literal single character.
 
 import { autolinkConstruct } from "./inlines/autolink.js";
 import { linkifyEmails, urlAutolinkConstruct, wwwAutolinkConstruct } from "./inlines/autolinkLiteral.js";

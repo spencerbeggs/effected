@@ -50,8 +50,8 @@ const stripGitSuffix = (value: string): string => (value.endsWith(".git") ? valu
  * The browsable `https://host/path` form of a repository reference, or none
  * when the value is not one this model recognizes.
  *
- * Total by construction: `repository` is caller data, and a value we cannot
- * interpret is a missing answer rather than a failure.
+ * Total by construction: `repository` is caller data, and a value that cannot
+ * be interpreted is a missing answer rather than a failure.
  */
 const browseUrlOf = (raw: string): Option.Option<string> => {
 	const url = raw.trim();
@@ -71,8 +71,7 @@ const browseUrlOf = (raw: string): Option.Option<string> => {
 
 	// Anything with a scheme: normalize the transport away and keep host + path.
 	// `git+ssh://git@github.com/o/n.git` and `git://github.com/o/n.git` both
-	// browse at `https://github.com/o/n` — the hand-rolled predecessor handled
-	// the second and left the first with its scheme intact.
+	// browse at `https://github.com/o/n`.
 	const withoutGitPlus = url.startsWith("git+") ? url.slice(4) : url;
 	const schemeMatch = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/i.exec(withoutGitPlus);
 	if (schemeMatch !== null) {
@@ -166,8 +165,13 @@ const isFaithfulBugs = (wire: { readonly [k: string]: unknown }, bugs: Bugs): bo
  *
  * @example
  * ```ts
- * // "effected/kit" → https://github.com/effected/kit
- * // "git@github.com:effected/kit.git" → https://github.com/effected/kit
+ * import { Repository } from "@effected/package-json";
+ * import { Schema } from "effect";
+ *
+ * const repo = Schema.decodeUnknownSync(Repository.FromValue)("effected/kit");
+ * repo.url; // => "effected/kit"
+ * repo.browseUrl; // => Option.some("https://github.com/effected/kit")
+ * // "git@github.com:effected/kit.git" browses to the same URL
  * ```
  *
  * @public
@@ -232,8 +236,15 @@ export class Repository extends Schema.Class<Repository>("Repository")({
 	 *
 	 * @example
 	 * ```ts
-	 * // { url: "effected/kit", directory: "packages/spdx" }
-	 * // => https://github.com/effected/kit/tree/HEAD/packages/spdx
+	 * import { Repository } from "@effected/package-json";
+	 * import { Schema } from "effect";
+	 *
+	 * const repo = Schema.decodeUnknownSync(Repository.FromValue)({
+	 *   url: "effected/kit",
+	 *   directory: "packages/spdx",
+	 * });
+	 * repo.directoryUrl;
+	 * // => Option.some("https://github.com/effected/kit/tree/HEAD/packages/spdx")
 	 * ```
 	 */
 	get directoryUrl(): Option.Option<string> {

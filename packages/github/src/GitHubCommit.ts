@@ -90,14 +90,14 @@ export class CommitComparison extends Schema.Class<CommitComparison>("CommitComp
 }) {}
 
 /**
- * Reading commits.
+ * Read commits, list them, compare two refs and list the files a commit touched.
  *
  * @public
  */
 export interface GitHubCommitShape {
-	/** One commit. */
+	/** Read one commit by sha or ref. */
 	readonly get: (ref: string) => Effect.Effect<CommitSummary, GitHubError, Repo>;
-	/** Commits on a ref, newest first. */
+	/** List commits reachable from `ref` (the default branch when omitted), newest first, optionally limited to those touching `path`. */
 	readonly list: (options?: {
 		readonly ref?: string | undefined;
 		readonly path?: string | undefined;
@@ -109,8 +109,9 @@ export interface GitHubCommitShape {
 	 * @remarks
 	 * GitHub paginates this **by commit**, while the single-commit read paginates
 	 * **by file** at 300 per page — so a one-commit comparison is permanently
-	 * truncated at 300 files no matter what you pass. That is GitHub's constraint,
-	 * recorded here rather than discovered later.
+	 * truncated at 300 files no matter what you pass. That is GitHub's
+	 * constraint; use {@link GitHubCommitShape.changedFiles} to page every file
+	 * of one commit.
 	 */
 	readonly compare: (base: string, head: string) => Effect.Effect<CommitComparison, GitHubError, Repo>;
 	/** The files one commit touched, paginated by file. */
@@ -121,11 +122,30 @@ export interface GitHubCommitShape {
 }
 
 /**
- * Commits, as GitHub reports them.
+ * Read commits, compare refs and list changed files through GitHub's commits
+ * API.
+ *
+ * @remarks
+ * Provide it with {@link GitHubCommit.layer}, which needs a `GitHubClient`; each
+ * method also needs a `Repo` in `R`. For commits as Git Database objects (trees,
+ * parents), use `GitCommit` instead.
+ *
+ * @example
+ * ```ts
+ * import { GitHubCommit } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const changedSinceMain = Effect.gen(function* () {
+ *   const commits = yield* GitHubCommit;
+ *   const comparison = yield* commits.compare("main", "feature");
+ *   return comparison.files.map((file) => file.path);
+ * });
+ * ```
  *
  * @public
  */
 export class GitHubCommit extends Context.Service<GitHubCommit, GitHubCommitShape>()("@effected/github/GitHubCommit") {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<GitHubCommit, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),
@@ -154,9 +174,7 @@ const unstubbed = (member: string): never => {
  * @remarks
  * `author.login` is **optional**, not required, because GitHub answers with an
  * empty object — typed `Record<string, never>` — for a commit it cannot
- * attribute to an account. A hand-written `{ login: string } | null` compiles
- * against the happy path and is rejected by the generated types, which is how
- * this was caught rather than shipped.
+ * attribute to an account.
  */
 interface RawCommit {
 	readonly sha: string;

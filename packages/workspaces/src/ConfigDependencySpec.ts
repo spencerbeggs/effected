@@ -4,7 +4,7 @@
 // form) — into a strict `version` and an optional SRI `integrity`.
 //
 // pnpm 11 moved config-dependency integrity into the lockfile and
-// `pnpm add --config` now writes the bare version, so a tool that touches the
+// `pnpm add --config` writes the bare version, so a tool that touches the
 // field normalizes to `bare`; `toString()` keeps the spelling it read for a
 // tool that must not rewrite it.
 //

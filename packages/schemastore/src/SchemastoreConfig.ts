@@ -134,9 +134,10 @@ export interface SchemastoreConfigInput {
 	 * file in it is read as a slice, so it holds nothing else, must not be
 	 * `outputDir` itself, and must not be the merged catalog's own path.
 	 * Every config that shares a merged catalog must share the same
-	 * `catalogDir`, under a `name` unique case-insensitively among them: two sibling directories (`schemas/catalogs`,
-	 * `schemas/more`) both merge into `schemas/catalog.json` from different
-	 * slice sets and overwrite each other — no single config can detect it.
+	 * `catalogDir`, under a `name` unique case-insensitively among them: two
+	 * sibling directories (`schemas/catalogs`, `schemas/more`) both merge into
+	 * `schemas/catalog.json` from different slice sets and overwrite each
+	 * other — no single config can detect it.
 	 */
 	readonly catalogDir?: string;
 	/**
@@ -487,6 +488,21 @@ const assertUniquePaths = (paths: ReadonlyArray<string>): void => {
  * a lexical normalisation (`./`, `..`, trailing `/`) — the CLI's loader
  * re-checks on the resolved absolute paths. Branding the result lets a loader recognise a config
  * module's default export via {@link isSchemastoreConfig}.
+ *
+ * @example
+ * ```ts
+ * import { defineConfig } from "@effected/schemastore";
+ * import { Schema } from "effect";
+ *
+ * const Config = Schema.Struct({ name: Schema.String });
+ *
+ * export default defineConfig({
+ * 	name: "my-tool",
+ * 	outputDir: "schemas",
+ * 	baseUrl: "https://example.com/schemas",
+ * 	schemas: { config: { schema: Config } },
+ * });
+ * ```
  *
  * @public
  */

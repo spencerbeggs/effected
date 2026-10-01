@@ -22,6 +22,8 @@
  * import { Lockfile } from "@effected/lockfiles";
  * import { Effect } from "effect";
  *
+ * declare const content: string; // the text of a pnpm-lock.yaml
+ *
  * const program = Effect.gen(function* () {
  *   const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
  *   return lockfile.workspacePackages.length;

@@ -190,6 +190,30 @@ const RESERVED = 3;
  * The cursor moves over items only; section titles are headers drawn by the viewport, which keeps a scrolled-off
  * header visible. Submitting with nothing selected resolves an empty list, which is a result, not a cancel.
  *
+ * @example
+ * ```ts
+ * import { CliUi, MultiSelect } from "@effected/cli/ui"
+ * import { Effect } from "effect"
+ *
+ * const pickFeatures = Effect.gen(function* () {
+ * 	const features = yield* CliUi.run(
+ * 		MultiSelect.screen({
+ * 			message: "Which features?",
+ * 			sections: [
+ * 				{
+ * 					title: "Tooling",
+ * 					items: [
+ * 						{ key: "lint", label: "Linting", value: "lint", selected: true },
+ * 						{ key: "test", label: "Tests", value: "test" },
+ * 					],
+ * 				},
+ * 			],
+ * 		}),
+ * 	)
+ * 	return features
+ * })
+ * ```
+ *
  * @public
  */
 export class MultiSelect {

@@ -29,6 +29,18 @@ const findNearest = (
 /**
  * Nearest-config upward discovery for `tsconfig.json`.
  *
+ * @example
+ * ```ts
+ * import { TsconfigDiscovery } from "@effected/tsconfig-json";
+ * import { Effect, Option } from "effect";
+ *
+ * // Requires `FileSystem` and `Path` in `R`; provide them from a platform layer.
+ * const program = Effect.gen(function* () {
+ * 	const found = yield* TsconfigDiscovery.findNearest(process.cwd());
+ * 	return Option.getOrUndefined(found);
+ * });
+ * ```
+ *
  * @public
  */
 export class TsconfigDiscovery {

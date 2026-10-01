@@ -5,14 +5,10 @@
 // keeping it here rather than on a git-shaped service is what lets a release
 // planner compute its tags before it has decided to talk to anything.
 //
-// The default version prefix is "" uniformly — strict SemVer, chosen
-// deliberately (2026-07-25, Spencer's call) rather than inherited. v3
-// disagreed with itself about a scoped/unscoped `v` asymmetry (two
-// implementations differed, and one contradicted its own documentation); this
-// kit does not reproduce that asymmetry. A tool that needs GitHub's
-// `v<semver>` release-tag convention passes `versionPrefix: "v"` explicitly.
-// Git tag history is not an API — pre-1.0 breaking-change freedom covers our
-// code, not a consumer's existing tags.
+// The default version prefix is "" uniformly, for scoped and unscoped tags
+// alike — strict SemVer. A tool that needs GitHub's `v<semver>` release-tag
+// convention passes `versionPrefix: "v"` explicitly. Git tag history is not an
+// API, so changing a default here would not rewrite a consumer's existing tags.
 
 import { Schema } from "effect";
 
@@ -54,19 +50,13 @@ export interface TagFormatOptions {
 	readonly versionPrefix?: string;
 }
 
-/**
- * The numeric core of a SemVer version, plus whether it carries a prerelease.
- *
- * Parsed here rather than through `@effected/semver` on purpose. Two reasons,
- * and they are worth stating because reaching for the sibling package would
- * otherwise be the obvious move: the tracking-tag grammar is deliberately NOT
- * SemVer (a truncated `v1` is not a version at all), and the only facts the
- * derivation needs are the three numeric segments and the presence of a
- * prerelease. A dependency edge for that is disproportionate — the same call
- * `@effected/markdown` records for its `$schema` version grammar. The edge
- * earns itself the day we need real semver *comparison* (say, "is this the
- * newest release matching v1"), which no caller here asks for.
- */
+// The numeric core of a SemVer version, plus whether it carries a prerelease.
+//
+// Parsed here rather than through `@effected/semver` on purpose: the
+// tracking-tag grammar is deliberately NOT SemVer (a truncated `v1` is not a
+// version at all), and the only facts the derivation needs are the major and
+// minor segments and the presence of a prerelease. A dependency edge for that
+// is disproportionate; real semver *comparison* would justify one.
 interface VersionCore {
 	readonly major: number;
 	readonly minor: number;
@@ -308,11 +298,11 @@ export const classifyTag = (tag: string): TagClassification => {
  * even when `value` carries a prefix, so a consumer comparing versions never
  * has to strip one back off.
  *
- * Formatting is **total**: there is no error channel, because the only failure
- * v3 modelled — an empty version — is caught by `Schema.NonEmptyString` when
- * the value is constructed. A bad version reaching these statics is developer
- * wiring rather than untrusted input, so it dies as a defect, the same posture
- * as an uncompilable glob literal in `WorkspacePackage.matchesDependency`.
+ * Formatting has **no error channel**: an empty version is rejected by
+ * `Schema.NonEmptyString` when the value is constructed. A bad version
+ * reaching these statics is developer wiring rather than untrusted input, so it
+ * dies as a defect, the same posture as an uncompilable glob literal in
+ * `WorkspacePackage.matchesDependency`.
  *
  * @example
  * ```ts
@@ -341,6 +331,7 @@ export class ReleaseTag extends Schema.Class<ReleaseTag>("ReleaseTag")({
 	 *
 	 * @param version - The version being released. Must not be empty.
 	 * @param options - Formatting overrides.
+	 * @returns the single-style {@link ReleaseTag}.
 	 */
 	static single(version: string, options?: TagFormatOptions): ReleaseTag {
 		const prefix = options?.versionPrefix ?? "";

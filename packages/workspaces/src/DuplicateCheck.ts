@@ -135,9 +135,11 @@ export class DuplicatedPackage extends Schema.Class<DuplicatedPackage>("Duplicat
  *
  * @example
  * ```ts
- * import { DuplicateCheck } from "@effected/workspaces";
  * import { Lockfile } from "@effected/lockfiles";
+ * import { DuplicateCheck } from "@effected/workspaces";
  * import { Effect } from "effect";
+ *
+ * declare const text: string; // the text of a pnpm-lock.yaml
  *
  * const program = Effect.gen(function* () {
  *   const lockfile = yield* Lockfile.parse(text, { format: "pnpm" });
@@ -169,8 +171,8 @@ export class DuplicateCheck extends Schema.Class<DuplicateCheck>("DuplicateCheck
 	 * In practice this is the **root importer under npm and bun**: neither
 	 * records a resolved version per importer dependency, and neither emits a
 	 * package row for the root, so there is nothing to join on. pnpm records a
-	 * version per importer dependency and is unaffected. The same limitation
-	 * `PeerCheck` reports, measured by the same code.
+	 * version per importer dependency and is unaffected. `PeerCheck` reports the
+	 * same limitation.
 	 *
 	 * Reported rather than silently skipped: a gate that sees no duplicates is
 	 * entitled to know whether that means "clean" or "not looked at".
@@ -198,8 +200,7 @@ export class DuplicateCheck extends Schema.Class<DuplicateCheck>("DuplicateCheck
 	 * Exactly those — not `@effect/*`, and not names merely starting with
 	 * `effect`. A duplicated kit package presents as a `Layer` requirement that
 	 * looks provided yet cannot be satisfied, at the entry point, naming neither
-	 * the package nor the skew (issue #298); this predicate is the check that
-	 * names both.
+	 * the package nor the skew; this predicate is the check that names both.
 	 *
 	 * @param name - a package name
 	 * @returns whether the name belongs to the kit
@@ -287,7 +288,7 @@ export class DuplicateCheck extends Schema.Class<DuplicateCheck>("DuplicateCheck
 		const dependents = new Map<string, Array<Dependent>>();
 		const seen = new Set<string>();
 		const record = (targetId: string, dependent: Dependent): void => {
-			const key = `${targetId} ${renderKey(dependent)}`;
+			const key = `${targetId}\0${renderKey(dependent)}`;
 			if (seen.has(key)) return;
 			seen.add(key);
 			const list = dependents.get(targetId) ?? [];
@@ -364,4 +365,4 @@ const dependentOf = (from: ResolvedPackage): Dependent =>
 
 /** @internal */
 const renderKey = (dependent: Dependent): string =>
-	dependent._tag === "importer" ? `importer ${dependent.path}` : `package ${dependent.name} ${dependent.version}`;
+	dependent._tag === "importer" ? `importer\0${dependent.path}` : `package\0${dependent.name}\0${dependent.version}`;

@@ -184,7 +184,8 @@ export interface WithStepOptions {
 }
 
 /**
- * The {@link ActionLogger} service shape.
+ * The members of the {@link ActionLogger} service: log groups, buffered steps,
+ * notices and source annotations.
  *
  * @public
  */
@@ -241,10 +242,9 @@ export interface ActionLoggerShape {
 	 * test.
 	 *
 	 * The header and the summary are the whole difference from `withBuffer`, and
-	 * they are why this is a member rather than a documented recipe: the recipe
-	 * was independently derived wrong three times by careful readers during one
-	 * port, because `group` + `withBuffer` looks like complete parity until you
-	 * notice nothing emits the success line.
+	 * they are why this is a member rather than a documented recipe: `group` +
+	 * `withBuffer` looks like complete parity until you notice nothing emits the
+	 * success line.
 	 *
 	 * The summary survives step debugging. Buffering is skipped when the runner
 	 * asks for verbose output, but the line naming what succeeded is still the
@@ -400,7 +400,13 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 	 */
 	static readonly logger: Logger.Logger<unknown, void> = commandLogger;
 
-	/** {@link ActionLogger.logger} installed as the only logger. */
+	/**
+	 * {@link ActionLogger.logger} installed as the only logger.
+	 *
+	 * @remarks
+	 * Bound to a constant so every composition site shares one layer;
+	 * `ActionRuntime.layer` already includes it.
+	 */
 	static readonly layerLogger: Layer.Layer<never> = Logger.layer([ActionLogger.logger]);
 
 	/**
@@ -430,10 +436,9 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 	 * A silent service **and** a silent `Effect.log*`.
 	 *
 	 * @remarks
-	 * This one layer replaces the bare `Effect.provide(Logger.layer([]))` that
-	 * appeared thirteen times in one consuming action and twenty-three in
-	 * another, purely to keep test output quiet. Bound to a constant rather than
-	 * exposed as a factory, so composing it twice is free.
+	 * This one layer stands in for a bare `Effect.provide(Logger.layer([]))`
+	 * repeated in every suite just to keep test output quiet. Bound to a
+	 * constant rather than exposed as a factory, so composing it twice is free.
 	 */
 	static readonly layerSilent: Layer.Layer<ActionLogger> = Layer.mergeAll(ActionLogger.layerTest(), Logger.layer([]));
 }

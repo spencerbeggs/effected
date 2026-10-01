@@ -32,6 +32,17 @@ export type CoreStatusName = "success" | "failure" | "warning" | "info" | "skip"
  * Start from `Status.core` and add your own with `extend`. The names are a type parameter,
  * so `def` and `worst` reject a name the vocabulary does not have at compile time.
  *
+ * @example
+ * ```ts
+ * import { Status } from "@effected/cli"
+ *
+ * const vocab = Status.extend({
+ * 	timeout: { glyph: "⏱", ascii: "[time]", token: "warning", rank: 85 },
+ * })
+ * const worst = vocab.worst(["success", "timeout"])
+ * // => "timeout"
+ * ```
+ *
  * @public
  */
 export class Status<Names extends string> {

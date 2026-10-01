@@ -24,9 +24,9 @@ export type ToolSource = typeof ToolSource.Type;
  * versions.
  *
  * @remarks
- * Three, not v3's four: its `Report` and `PreferLocal` produced identical
- * results, and the fact of a mismatch is already reported by
- * `ResolvedTool.mismatch` whichever policy is in force.
+ * `"preferLocal"` and `"preferGlobal"` pick a winner; `"fail"` refuses to
+ * resolve. The fact of a mismatch is reported by `ResolvedTool.mismatch`
+ * whichever policy is in force, so no separate "report only" policy exists.
  *
  * @public
  */
@@ -82,10 +82,9 @@ export class VersionNone extends Schema.TaggedClass<VersionNone>()("VersionNone"
  * How to learn a tool's version.
  *
  * @remarks
- * v3 carried an arbitrary `parse` callback here, which is neither serializable
- * nor inspectable. A capture pattern covers the cases that callback was used
- * for, and the default pattern covers most of them with no configuration at
- * all.
+ * A probe is plain data, so it is serializable and inspectable. A capture
+ * `pattern` on {@link VersionFlag} handles unusual output formats, and the
+ * default pattern handles most tools with no configuration at all.
  *
  * @public
  */
@@ -114,7 +113,7 @@ export class Tool extends Schema.Class<Tool>("Tool")({
 	onMismatch: MismatchPolicy,
 }) {
 	/**
-	 * The 90% constructor: a name, and defaults for everything else
+	 * Builds a `Tool` from a name, with defaults for everything else
 	 * (`--version`, `source: "any"`, `onMismatch: "preferLocal"`).
 	 *
 	 * @example

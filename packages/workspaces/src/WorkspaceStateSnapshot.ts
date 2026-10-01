@@ -30,10 +30,9 @@ const DependencyMap = Schema.Record(Schema.String, Schema.String).pipe(
  *
  * @remarks
  * The Type side is a `NonEmptyString`, so `make` rejects `""` outright. The
- * encoded side stays a plain optional string for one reason only: snapshots
- * serialized while `""` was the "declared no version" sentinel must still
- * decode, and they decode to the absent key they always meant — so an old
- * stored value and a fresh capture of the same manifest compare equal.
+ * encoded side stays a plain optional string so that a stored value carrying
+ * `""` still decodes, to the absent key it meant — a stored value and a fresh
+ * capture of the same manifest compare equal.
  */
 const SnapshotVersion = Schema.optionalKey(Schema.String).pipe(
 	Schema.decodeTo(
@@ -71,8 +70,7 @@ export class PackageStateSnapshot extends Schema.Class<PackageStateSnapshot>("Pa
 	 * an ordinary pnpm shape. Both capture paths — `WorkspaceSnapshots.at(ref)`
 	 * and `WorkspaceSnapshots.worktree()` — omit the key for such a member, so
 	 * the two sides of a diff agree without a placeholder. Never `""`: `make`
-	 * rejects it, and a snapshot serialized when `""` was the "no version"
-	 * sentinel decodes to the absent key.
+	 * rejects it, and a stored `""` decodes to the absent key.
 	 *
 	 * A version-less member is still a member: it appears in `packages` and
 	 * answers {@link WorkspaceStateSnapshot.package}, but is absent from
@@ -150,11 +148,9 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 * lockfile recorded it at this moment.
 	 *
 	 * @remarks
-	 * Defaults to `{}`, so a `WorkspaceStateSnapshot` serialized before this field
-	 * existed still decodes — and an empty index simply makes the `catalog:`
-	 * fallback in {@link WorkspaceStateSnapshot.resolve} inert, which is exactly
-	 * the behavior those older values were captured under. Only pnpm records
-	 * importer versions; bun and npm yield an empty index.
+	 * Defaults to `{}` when absent from a stored value; an empty index makes the
+	 * `catalog:` fallback in {@link WorkspaceStateSnapshot.resolve} inert. Only
+	 * pnpm records importer versions; bun and npm yield an empty index.
 	 */
 	importerVersions: Schema.optionalKey(Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.String))),
 	/**
@@ -168,9 +164,8 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 * diagnostic and off this serializable value. Every fresh read sets the
 	 * field: `{}` under the no-op layer, which resolves nothing, when the file
 	 * declares no config dependencies, or on the bun / `package.json` path,
-	 * where config dependencies do not exist. Absent only when decoding a
-	 * snapshot serialized before the field existed, so stored values stay
-	 * readable. Carried through `withSeededCatalogs` and `crossSeed`
+	 * where config dependencies do not exist. Absent only when decoding a stored
+	 * value that omits it. Carried through `withSeededCatalogs` and `crossSeed`
 	 * unchanged, like `importerVersions`.
 	 */
 	hookReplays: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
@@ -196,8 +191,7 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 * replays the ref's own pinned hook and the seed answers only what neither
 	 * source declared.
 	 *
-	 * Defaults to absent, which makes the seed inert — exactly the behavior of
-	 * every snapshot captured before this field existed.
+	 * Defaults to absent, which makes the seed inert.
 	 */
 	seededCatalogs: Schema.optionalKey(CatalogSet),
 }) {

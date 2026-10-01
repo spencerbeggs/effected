@@ -3,14 +3,11 @@
 // Everything else in this package — the SBOM emitter, the NTIA report,
 // statements, provenance, the bundle value — is pure computation, and a
 // consumer that only emits an SBOM must not pull Fulcio's HTTP stack into its
-// bundle. `__test__/reachability.test.ts` walks the runtime import graph and
-// says so structurally, with a control proving it can fail.
+// bundle.
 //
-// What this module does NOT contain is the 30-line recursive cause-chain
-// flattener its predecessor needed. That function existed because the error was
-// about to become a string; `cause: Schema.Defect()` keeps the original
-// structurally, and the four `kind` values say which step failed. The port
-// deletes it outright.
+// Errors keep the original failure structurally (`cause: Schema.Defect()`) and
+// the four `kind` values say which step failed, so no cause-chain flattening
+// into a message string is needed.
 
 import type { Bundle, SerializedBundle } from "@sigstore/bundle";
 import { bundleToJSON } from "@sigstore/bundle";
@@ -29,9 +26,7 @@ import { IN_TOTO_PAYLOAD_TYPE, SigstoreBundle } from "./SigstoreBundle.js";
  * It lives here, not at the call site, because it is the **signing protocol's**
  * requirement rather than the caller's knowledge — which is why
  * {@link SigstoreSignerShape.sign} takes only a statement and asks the identity
- * contract for a token. Considered and rejected: `sign(statement, { token })`,
- * which reads simpler and forces every caller to learn a constant that is none
- * of its business.
+ * contract for a token.
  *
  * @public
  */
@@ -73,14 +68,12 @@ export class SigningError extends Schema.TaggedError<SigningError>()("SigningErr
 	}
 }
 
-/**
- * Attribute a `@sigstore/sign` failure to a step.
- *
- * `InternalError` carries a `code`, which is a far better signal than the
- * message text the predecessor scraped. An unrecognized failure is `bundle` —
- * literally "the bundle did not get built" — rather than being guessed into a
- * step it may not belong to.
- */
+// Attribute a `@sigstore/sign` failure to a step.
+//
+// `InternalError` carries a `code`, which is a far better signal than scraping
+// the message text. An unrecognized failure is `bundle` — literally "the bundle
+// did not get built" — rather than being guessed into a step it may not belong
+// to.
 const kindOf = (cause: unknown): SigningErrorKind => {
 	const code = (cause as { readonly code?: unknown } | null)?.code;
 	if (typeof code !== "string") return "bundle";
@@ -180,17 +173,28 @@ const unstubbed = (): never => {
 };
 
 /**
- * Sigstore signing.
+ * Signs an in-toto statement into a Sigstore DSSE bundle, using a Fulcio
+ * certificate and a Rekor transparency-log entry.
+ *
+ * @remarks
+ * Fails with {@link SigningError}. The live {@link (SigstoreSigner:class).layer}
+ * requires {@link IdentityToken} in `R`.
  *
  * @example
  * ```ts
+ * import type { InTotoStatement } from "@effected/sbom";
  * import { IdentityToken, SigstoreSigner } from "@effected/sbom";
- * import { Effect, Layer } from "effect";
+ * import { Effect, Layer, Redacted } from "effect";
  *
- * const program = Effect.gen(function* () {
- *   const signer = yield* SigstoreSigner;
- *   return yield* signer.sign(statement);
- * });
+ * const sign = (statement: InTotoStatement) =>
+ *   Effect.gen(function* () {
+ *     const signer = yield* SigstoreSigner;
+ *     return yield* signer.sign(statement);
+ *   });
+ *
+ * const live = SigstoreSigner.layer.pipe(
+ *   Layer.provide(IdentityToken.layerStatic(Redacted.make(process.env.OIDC_TOKEN ?? ""))),
+ * );
  * ```
  *
  * @public

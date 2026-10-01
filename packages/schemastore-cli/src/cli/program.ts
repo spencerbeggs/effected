@@ -16,6 +16,7 @@ import { makeCommands } from "./root.js";
  * @public
  */
 export interface ProgramDeps extends ExecuteDeps {
+	/** The version `--version` prints. */
 	readonly version: string;
 }
 

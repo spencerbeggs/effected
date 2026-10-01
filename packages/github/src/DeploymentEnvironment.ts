@@ -10,11 +10,12 @@ import type * as Rest from "./Rest.js";
  * @public
  */
 export interface DeploymentEnvironmentInfo {
+	/** The environment's name. */
 	readonly name: string;
 }
 
 /**
- * Deployment environments.
+ * Create or update, list and delete a repository's deployment environments.
  *
  * @public
  */
@@ -48,7 +49,23 @@ export interface DeploymentEnvironmentShape {
 }
 
 /**
- * Deployment environments.
+ * Create or update, list and delete a repository's deployment environments.
+ *
+ * @remarks
+ * Provide it with {@link DeploymentEnvironment.layer}, which needs a
+ * `GitHubClient`; each method also needs a `Repo` in `R`.
+ *
+ * @example
+ * ```ts
+ * import { DeploymentEnvironment } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const environments = yield* DeploymentEnvironment;
+ *   yield* environments.upsert("production", { wait_timer: 10 });
+ *   return yield* environments.list();
+ * });
+ * ```
  *
  * @public
  */
@@ -56,6 +73,8 @@ export class DeploymentEnvironment extends Context.Service<DeploymentEnvironment
 	"@effected/github/DeploymentEnvironment",
 ) {
 	/**
+	 * The live service, built over a `GitHubClient`.
+	 *
 	 * @remarks
 	 * `(client) => make(client)` rather than `make`: a static initializer runs
 	 * while the module body is still evaluating, so naming a `const` declared

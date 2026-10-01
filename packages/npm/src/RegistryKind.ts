@@ -55,17 +55,22 @@ const matchesDomain = (hostname: string | undefined, domain: string): boolean =>
  * public npm registry, which is every npm client's default and this package's
  * {@link DEFAULT_REGISTRY}.
  *
- * This replaces the v3 helpers `isNpmRegistry` / `isGitHubPackagesRegistry` /
- * `isJsrRegistry` / `isCustomRegistry` with **one** classification, so a
- * consumer `switch`es exhaustively instead of composing four booleans that can
- * disagree — v3 had one call site asking two of them in sequence and another
- * negating a third to mean "everything else".
+ * There is **one** classification rather than a boolean per registry, so a
+ * consumer `switch`es exhaustively instead of composing booleans that can
+ * disagree or negating one to mean "everything else".
+ *
+ * @param registry - A registry URL or bare host; absent or empty means the
+ *   public npm registry.
+ * @returns The registry's kind.
  *
  * @example
  * ```ts
- * const kind = classifyRegistry(target.registry);
- * if (kind === "jsr") return skipJsrTarget(target);
- * const provenance = kind === "npm";
+ * import { classifyRegistry } from "@effected/npm";
+ *
+ * classifyRegistry("https://registry.npmjs.org/"); // => "npm"
+ * classifyRegistry("https://npm.pkg.github.com/"); // => "github-packages"
+ * classifyRegistry("https://npm.jsr.io/"); // => "jsr"
+ * classifyRegistry("https://registry.example.com/"); // => "custom"
  * ```
  *
  * @public

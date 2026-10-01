@@ -3,10 +3,10 @@
 // matching. This is deliberately distinct from minimatch's whole-pattern
 // negation: both exist, at different levels, on purpose.
 //
-// GlobSet pins DEFAULT options internally: it is the drift-free workspaces
-// contract and takes no options surface of its own. Braced patterns classify
-// per expanded alternative (the pinned implementation decision), so
-// {tools/cli,packages/*} contributes a literal AND a wildcard.
+// GlobSet pins DEFAULT options internally and takes no options surface of its
+// own, so a set means the same thing everywhere. Braced patterns classify per
+// expanded alternative, so {tools/cli,packages/*} contributes a literal AND a
+// wildcard.
 
 import { Effect, Result, Schema } from "effect";
 import { GlobPattern, GlobPatternError } from "./GlobPattern.js";
@@ -47,11 +47,28 @@ interface Classified {
  * `patterns` — the source text of every member, preserved verbatim; the
  * classified indexes live in a private field the schema never encodes.
  *
+ * @remarks
+ * A member starting with `!` is an exclusion, applied after positive matching.
+ * This is set-level exclusion, distinct from a single {@link GlobPattern}'s
+ * whole-pattern negation.
+ *
  * The structural accessors ({@link GlobSet.literals},
- * {@link GlobSet.wildcards}, {@link GlobSet.excludes}) serve the workspaces
- * enumerator: literals fast-path an exact lookup, wildcards drive directory
- * reads from their `enumerationPrefix`, and `crossesSegments` triggers the
- * bounded recursive descent — the issue-#62 fix end to end.
+ * {@link GlobSet.wildcards}, {@link GlobSet.excludes}) serve directory
+ * enumerators: literals fast-path an exact lookup, wildcards drive directory
+ * reads from their `enumerationPrefix`, and `crossesSegments` triggers a
+ * bounded recursive descent.
+ *
+ * @example
+ * ```ts
+ * import { GlobSet } from "@effected/glob";
+ * import { Result } from "effect";
+ *
+ * const compiled = GlobSet.compileResult(["packages/*", "!packages/legacy"]);
+ * if (Result.isSuccess(compiled)) {
+ * 	compiled.success.matches("packages/app"); // => true
+ * 	compiled.success.matches("packages/legacy"); // => false
+ * }
+ * ```
  *
  * @public
  */

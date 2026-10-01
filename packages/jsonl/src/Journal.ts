@@ -1,8 +1,5 @@
-/**
- * The `Journal` service: one append-only, schema-validated JSONL file.
- *
- * @since 0.1.0
- */
+// The `Journal` service: one append-only, schema-validated JSONL file.
+
 import type { Duration as DurationType, PlatformError, Scope, Take } from "effect";
 import {
 	Channel,
@@ -200,8 +197,8 @@ export interface JournalShape<R extends JsonlEvent.Registry> {
 	 * Elements are `Take` chunks and end-of-stream is a published `Exit`, which
 	 * is what lets quiescence and graceful shutdown arrive at a subscriber as a
 	 * normal stream end. Never shut this down to signal completion —
-	 * `PubSub.shutdown` *interrupts* subscribers, which is the tear the design
-	 * forbids.
+	 * `PubSub.shutdown` *interrupts* subscribers, which tears an in-flight
+	 * stream instead of ending it.
 	 *
 	 * @internal
 	 */
@@ -383,7 +380,7 @@ const makeEngine = (
 		const latest = yield* SubscriptionRef.make(Option.none<EnvelopeUnion<JsonlEvent.Registry>>());
 		/** Refusal state. Read before the permit so a late append fails fast. */
 		let closed = false;
-		/** Logical bytes decoded so far — the resume cursor the watcher (P5) advances. */
+		/** Logical bytes decoded so far — the resume cursor the watcher advances. */
 		let consumed = 0;
 
 		// Called per use rather than hoisted into a const: a hoisted Effect would
@@ -1034,7 +1031,7 @@ const makeEngine = (
 					// The one primitive that would make this airtight is
 					// `FileSystem.WatchBackend.register(path, stat)`, which registers
 					// synchronously and returns the stream — at the cost of putting
-					// `WatchBackend` in this layer's `R`. Flagged for a ruling.
+					// `WatchBackend` in this layer's `R`.
 					for (let turn = 0; turn < ARM_YIELDS; turn++) {
 						yield* Effect.yieldNow;
 					}
@@ -1147,6 +1144,9 @@ export interface JournalClass<Self, Id extends string, R extends JsonlEvent.Regi
  * one layer graph with each one's operations typed by *its* registry. This
  * mirrors `ConfigFile.Service<Self, A>()(id)`.
  *
+ * Pass the registry as `options.events`; the returned class exposes it as
+ * `events` and builds the scoped layer with `.layer(config)`.
+ *
  * @example
  * ```ts
  * import { Journal, JsonlEvent } from "@effected/jsonl";
@@ -1154,9 +1154,9 @@ export interface JournalClass<Self, Id extends string, R extends JsonlEvent.Regi
  *
  * const events = [JsonlEvent.make("started", { data: Schema.Void })] as const;
  *
- * class MailJournal extends Journal.Service<MailJournal>()("dogfood/MailJournal", { events }) {}
+ * class MailJournal extends Journal.Service<MailJournal>()("app/MailJournal", { events }) {}
  *
- * export const layer = MailJournal.layer({ path: ".claude/dogfood/silk.jsonl" });
+ * export const layer = MailJournal.layer({ path: ".app/mail.jsonl" });
  * ```
  *
  * @public

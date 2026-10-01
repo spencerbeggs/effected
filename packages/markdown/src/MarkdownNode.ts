@@ -1063,11 +1063,11 @@ export type FrontmatterFormat = typeof FrontmatterFormat.Type;
  *
  * mdast has no single frontmatter node: it names `yaml` in the readme and
  * `toml` through the frontmatter extension, and json has no mdast name at
- * all. This package captures all three through ONE node — the design doc's
- * "text plus a format marker" — and the `Mdast` projection (P5) maps
- * `format` onto the mdast type names where they exist. Decoding the value is
- * the codec modules' job (`YamlFrontmatter`/`TomlFrontmatter`/
- * `JsonFrontmatter`, P3 Task 2); the engine never looks inside it.
+ * all. This package captures all three through ONE node — text plus a format
+ * marker — and the `Mdast` projection maps `format` onto the mdast type
+ * names where they exist. Decoding the value is the codec modules' job
+ * (`YamlFrontmatter`/`TomlFrontmatter`/`JsonFrontmatter`); the engine never
+ * looks inside it.
  *
  * Only ever the first child of {@link Root}, and only when parsing opted in
  * via `MarkdownParseOptions.frontmatter` — mdast's "limited to one node, only

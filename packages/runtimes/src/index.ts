@@ -32,8 +32,6 @@
  * Effect.runPromise(program.pipe(Effect.provide(layer)));
  * ```
  *
- * @see {@link https://effect.website | Effect}
- *
  * @packageDocumentation
  */
 

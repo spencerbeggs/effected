@@ -35,7 +35,7 @@
 | `CliLogFile` | TypeAlias | Where the file sink writes: a literal path, or the environment variable that holds it. | |
 | `CliLogFileOptions` | Interface | `CliLogOptions` with a file sink, which is what makes the layer require `FileSystem` and `Path`. | |
 | `CliLogOptions` | Interface | Options for `CliLog.layer`. | |
-| `CliLogger` | Class | A `Logger` that renders CLI output rather than service logs. | plain-line cli logger, no timestamp or level prefix, every level to stderr by default |
+| `CliLogger` | Class | A `Logger` that renders CLI output rather than service logs: no timestamp, level or fiber id, with every level going to stderr by default so stdout carries only what the program writes. | plain-line cli logger, no timestamp or level prefix, every level to stderr by default |
 | `CliLoggerOptions` | Interface | How a log record is turned into a line. | |
 | `CliMessage` | Class | One-line status messages: a glyph and some text, themed for a person and plain for an agent. | print one themed success, info, warning or failure line no log level silences |
 | `CliMessageOptions` | Interface | Options for `CliMessage.status`. | |
@@ -56,12 +56,12 @@
 | `CliUiTestHandle` | Interface | A screen mounted by `CliUiTest.render`: a `CliUiTestScreen` that can also be swapped and awaited. | from `@effected/cli/ui/testing` |
 | `CliUiTestLive` | Interface | A live view mounted by `CliUiTest.live`: its event stream to publish to, and its output on the production render path. | from `@effected/cli/ui/testing` |
 | `CliUiTestNextOptions` | Interface | Options for `CliUiTestSession.next`. | from `@effected/cli/ui/testing` |
-| `CliUiTestOptions` | Interface | Options for `CliUiTest.render`, `CliUiTest.view` and `CliUiTest.session`. | from `@effected/cli/ui/testing` |
+| `CliUiTestOptions` | Interface | Options for `CliUiTest.render`, `CliUiTest.view` and `CliUiTest.session`, and the terminal's half of `CliUiTest.live`'s. | from `@effected/cli/ui/testing` |
 | `CliUiTestScreen` | Interface | A screen under test: drive it with keys and read its frames. | from `@effected/cli/ui/testing` |
 | `CliUiTestSession` | Interface | A terminal a whole program runs its screens on, from `CliUiTest.session`. | from `@effected/cli/ui/testing` |
 | `CliUiTestView` | Interface | A display-only element mounted by `CliUiTest.view`: a `CliUiTestScreen` that can be swapped for another element, with no result to wait for. | from `@effected/cli/ui/testing` |
 | `Column` | Interface | One column of a table. | |
-| `ConfigIssueRenderer` | Class | Render a `@effected/config-file` validation failure. | render a @effected/config-file validation error into human-readable lines |
+| `ConfigIssueRenderer` | Class | Turns a `@effected/config-file` `ConfigValidationError` into one line per rejected value. | render a @effected/config-file validation error into human-readable lines |
 | `Confirm` | Class | A yes/no question, optionally with extra on/off rows beneath it: a pure reducer, its key table, a view and a ready-made screen. | from `@effected/cli/ui` — yes or no question screen with extra toggles |
 | `ConfirmAction` | TypeAlias | What a key does in a `Confirm`. | from `@effected/cli/ui` |
 | `ConfirmInitOptions` | Interface | Options for `Confirm.init`. | from `@effected/cli/ui` |
@@ -125,7 +125,7 @@
 | `RunOptions` | Interface | How `CliTest.run` spawns a bin. | from `@effected/cli/testing` |
 | `RunResult` | Interface | What a spawned bin did, as data: a non-zero exit is a result, not a failure. | from `@effected/cli/testing` |
 | `Sandbox` | Interface | A hermetic temp directory minted by `CliTest.sandbox`, removed when its scope closes. | from `@effected/cli/testing` |
-| `SchemaIssueRenderer` | Class | Turn a `SchemaIssue` tree into lines a user can act on. | turn a schema decode failure issue tree into lines a user can act on |
+| `SchemaIssueRenderer` | Class | Turns a `SchemaIssue` tree into lines a user can act on. | turn a schema decode failure issue tree into lines a user can act on |
 | `Screen` | TypeAlias | A screen: given its control, the React element to mount, or a promise of one. | from `@effected/cli/ui` |
 | `ScreenControl` | Interface | How a screen ends: with a result, or cancelled for a reason. | from `@effected/cli/ui` |
 | `Select` | Class | A single choice from a list: a pure reducer, its key table, a view, and a ready-made screen. | from `@effected/cli/ui` — pick one value from a scrolling list screen, disabled choices skipped |
@@ -144,7 +144,7 @@
 | `StyledProps` | Interface | Props of `Styled`. | from `@effected/cli/ui` |
 | `Tab` | Interface | One tab. | from `@effected/cli/ui` |
 | `TableOptions` | Interface | Options for `Doc.table`. | |
-| `Tabs` | Class | A row (or column) of tabs: the kit's replacement for `ink-tab`. | from `@effected/cli/ui` — tab bar for a custom ink screen, tab and digit keys switch tabs |
+| `Tabs` | Class | A row (or column) of tabs, for a consumer's own screen. | from `@effected/cli/ui` — tab bar for a custom ink screen, tab and digit keys switch tabs |
 | `TabsAction` | TypeAlias | What a key does to a `Tabs` row: move to the previous or next tab (wrapping), or jump to one by index. | from `@effected/cli/ui` |
 | `TabsProps` | Interface | Props of `Tabs.View`. | from `@effected/cli/ui` |
 | `TerminalSize` | Interface | The usable size of the terminal. | from `@effected/cli/ui` |

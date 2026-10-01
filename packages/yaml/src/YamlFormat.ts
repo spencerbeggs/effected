@@ -52,8 +52,8 @@ export type YamlRangeLike = YamlRange | { readonly offset: number; readonly leng
  * field (derived, not hand-duplicated — including `indentSequences`,
  * `quoteStyle` and `quoteCompat`) plus
  * `preserveComments` (default `true`), `range` (restrict edits to a
- * region; see the module-level remarks on the `range` parameter vs. this
- * field) and `requoteScalars` (default `false`).
+ * region; the positional `range` argument of {@link YamlFormat.format} takes
+ * precedence over this field) and `requoteScalars` (default `false`).
  *
  * `requoteScalars` makes `quoteStyle` apply to scalars **already quoted in
  * the source** on the format path — by default formatting preserves an
@@ -181,7 +181,7 @@ function definedFields<T extends Record<string, unknown>>(fields: T): Partial<T>
 	return out;
 }
 
-// ── format: opt-in re-quoting (#347) ────────────────────────────────────────
+// ── format: opt-in re-quoting ────────────────────────────────────────
 
 /**
  * Walk a composed AST and flip the `style` of every scalar the shared
@@ -357,7 +357,7 @@ function formatStream(
  * Before this was recursive, a mapping or sequence value fell through to the
  * node stringifier's `String(value)` fallback and landed in the document as
  * the literal text `[object Object]` — a silent corruption that only surfaced
- * on the next read (#642).
+ * on the next read.
  *
  * The two conditions with no finite rendering fail typed rather than hanging
  * or overflowing the stack: a cycle raises `CircularReference` and a graph
@@ -544,7 +544,7 @@ function rebuildSeq(node: YamlSeq, items: ReadonlyArray<YamlNode>): YamlSeq {
 	});
 }
 
-// ── modify: region-confined scalar replacement (#659) ───────────────────────
+// ── modify: region-confined scalar replacement ───────────────────────
 
 /**
  * Whether a value carries characters single-quoted style cannot express (it
@@ -608,7 +608,7 @@ function findExistingTarget(
  * resolved type — as does any plain target, so the stringifier's own
  * plain-safety rules decide whether the text needs quotes — under the
  * target's own context, so a flow indicator inside a value spliced into a
- * flow collection is quoted rather than corrupting the collection (#695). A
+ * flow collection is quoted rather than corrupting the collection. A
  * rendering that spans lines (folding, block styles) bails out: the fast
  * path never introduces a line break inside the spliced region.
  */
@@ -659,7 +659,7 @@ function regionalRenderPreservesValue(rendered: string, value: string | number |
 }
 
 /**
- * Attempt the region-confined scalar splice for `modify` (#659): replace
+ * Attempt the region-confined scalar splice for `modify`: replace
  * only the target scalar's byte range, re-emitting its original quote
  * character and leaving line endings (and every other byte) elsewhere
  * untouched. Returns the single edit, an empty array for a no-op
@@ -718,7 +718,22 @@ function tryRegionalScalarEdit(
 // ── Facade ──────────────────────────────────────────────────────────────────
 
 /**
- * Formatting and modification statics. Not instantiable.
+ * Formats YAML text and modifies values at a path as byte-minimal edits that
+ * preserve comments and layout elsewhere. Not instantiable.
+ *
+ * @example
+ * ```ts
+ * import { YamlFormat } from "@effected/yaml";
+ * import { Effect } from "effect";
+ *
+ * const formatted = YamlFormat.formatToString("a:   1\nb:\n    - x\n    - y # c\n");
+ * // => "a: 1\nb:\n- x\n- y # c\n"
+ *
+ * const program = Effect.gen(function* () {
+ *   return yield* YamlFormat.modifyToString("port: 3000 # dev\n", ["port"], 8080);
+ *   // => "port: 8080 # dev\n"
+ * });
+ * ```
  *
  * @remarks
  * `format`/`formatToString` are pure and total (edit computation never fails
@@ -744,8 +759,8 @@ function tryRegionalScalarEdit(
  * (`!e!foo`) turns a valid file into one no parser can read. So
  * `format`/`formatToString` leave such input byte-identical (no edits), and
  * `modify`/`modifyToString` fail typed with a `DirectiveCarryingDocument`
- * diagnostic. Directive re-emission is unimplemented, not undesired — the
- * refusal is the floor that stops corruption until it lands.
+ * diagnostic. Directive re-emission is unimplemented, and the refusal is what
+ * stops the corruption.
  *
  * @public
  */
@@ -775,6 +790,12 @@ export class YamlFormat {
 	 * into an unparseable one — so a document carrying `%YAML`/`%TAG`
 	 * directives is left untouched. Detection is directive-token-level: a
 	 * literal `%TAG` inside a scalar is content and formats normally.
+	 *
+	 * @param text - The YAML source to format.
+	 * @param range - Optional sub-range; only edits fully within it are returned.
+	 * @param options - Optional {@link YamlFormattingOptions}.
+	 * @returns The edits that bring `text` to canonical shape; apply them with
+	 *   `YamlEdit.applyAll`. Empty when the input cannot be formatted faithfully.
 	 *
 	 * @remarks
 	 * The positional `range` argument takes precedence over
@@ -822,6 +843,12 @@ export class YamlFormat {
 	 * document — single or in a stream — carrying `%YAML`/`%TAG` directives)
 	 * is returned byte-identical — never a truncated first document, never a
 	 * document re-emitted without the directive its tags depend on.
+	 *
+	 * @param text - The YAML source to format.
+	 * @param range - Optional sub-range; only edits fully within it are applied.
+	 * @param options - Optional {@link YamlFormattingOptions}.
+	 * @returns The formatted text, or `text` unchanged when it cannot be
+	 *   formatted faithfully.
 	 */
 	static formatToString(text: string, range?: YamlRangeLike, options?: YamlFormattingOptions): string {
 		return YamlEdit.applyAll(text, YamlFormat.format(text, range, options));
@@ -838,15 +865,12 @@ export class YamlFormat {
 	 * sequence and any other non-null object as a block mapping over its own
 	 * enumerable string keys, recursively — the same lowering
 	 * {@link Yaml.stringify} applies to the same value, so `modify` and
-	 * `stringify` agree on what a given JavaScript value means. (Before
-	 * 0.14.0 only scalars were lowered and a mapping or sequence value was
-	 * coerced through `String(value)`, writing the literal text
-	 * `[object Object]` into the document — see #642.) For a synthesized
+	 * `stringify` agree on what a given JavaScript value means. For a synthesized
 	 * subtree (an object/array value) only the surrounding document is
 	 * preserved byte-for-byte; the subtree carries no comments and takes the
 	 * stringifier's styles.
 	 *
-	 * **Scalar replacement is region-confined and quote-preserving (#659).**
+	 * **Scalar replacement is region-confined and quote-preserving.**
 	 * When the path resolves to an existing single-line `plain`,
 	 * `single-quoted`, or `double-quoted` scalar with no tag or anchor, and
 	 * the replacement is a string, number, or boolean, `modify` splices
@@ -886,6 +910,15 @@ export class YamlFormat {
 	 * it — unparseable output. A typed refusal beats silent corruption;
 	 * directive re-emission is unimplemented, not undesired. A literal
 	 * `%TAG` inside a scalar is content and does not trigger the refusal.
+	 *
+	 * @param text - The YAML source to modify.
+	 * @param path - The location to insert, replace or remove.
+	 * @param value - The JavaScript value to write; `undefined` removes the
+	 *   target instead.
+	 * @param options - Optional {@link YamlStringifyOptions} for the
+	 *   re-stringify step.
+	 * @returns An `Effect` that succeeds with the edits to apply (via
+	 *   `YamlEdit.applyAll`), or fails with {@link YamlModificationError}.
 	 *
 	 * @remarks
 	 * `options` is a bare {@link YamlStringifyOptions} — it controls only the
@@ -940,7 +973,7 @@ export class YamlFormat {
 			});
 		}
 
-		// Region-confined scalar replacement (#659): when the target is an
+		// Region-confined scalar replacement: when the target is an
 		// existing single-line untagged scalar and the value is scalar-shaped,
 		// splice just its span — quote style preserved, CRLFs and every other
 		// byte outside the span untouched. Any precondition miss falls through
@@ -977,6 +1010,15 @@ export class YamlFormat {
 	 * error channel, including the single-document contract's
 	 * `MultiDocumentStream` refusal and the `DirectiveCarryingDocument`
 	 * refusal of `%YAML`/`%TAG`-carrying documents.
+	 *
+	 * @param text - The YAML source to modify.
+	 * @param path - The location to insert, replace or remove.
+	 * @param value - The JavaScript value to write; `undefined` removes the
+	 *   target instead.
+	 * @param options - Optional {@link YamlStringifyOptions} for the
+	 *   re-stringify step.
+	 * @returns An `Effect` that succeeds with the modified text, or fails with
+	 *   {@link YamlModificationError}.
 	 */
 	static readonly modifyToString = Effect.fn("YamlFormat.modifyToString")(function* (
 		text: string,

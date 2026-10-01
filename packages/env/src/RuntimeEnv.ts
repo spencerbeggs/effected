@@ -24,9 +24,9 @@ export type CiName = "github-actions" | "generic";
  *
  * @remarks
  * Each field is an `Option` in memory and `null` when absent on the wire, so the snapshot persists as plain JSON
- * through `Schema.fromJsonString(RuntimeEnv)`. **Fields added after 0.1.0 must decode when absent**, as every field
- * does today, so a persisted snapshot keeps decoding. Built from `Config` only (no stream is consulted), so it is safe
- * inside a stdio MCP server. See `okf/modules/env.md`.
+ * through `Schema.fromJsonString(RuntimeEnv)`. Every field decodes when its key is absent, so a persisted snapshot
+ * keeps decoding after a field is added. Built from `Config` only (no stream is consulted), so it is safe inside a
+ * stdio MCP server.
  *
  * @public
  */
@@ -81,7 +81,18 @@ export interface RuntimeEnvOverrides {
  * @remarks
  * The service's whole shape is one immutable value, so it is provided with `Layer.succeed` rather than mocked.
  * `layer` reads the ambient `ConfigProvider` once when it is built; `layerTest` is the only way a test changes the
- * environment. See `okf/modules/env.md`.
+ * environment.
+ *
+ * @example
+ * ```ts
+ * import { CurrentRuntimeEnv } from "@effected/env"
+ * import { Effect, Option } from "effect"
+ *
+ * const program = Effect.gen(function* () {
+ * 	const env = yield* CurrentRuntimeEnv
+ * 	return Option.getOrElse(env.agent, () => "no agent")
+ * }).pipe(Effect.provide(CurrentRuntimeEnv.layerTest({ agent: Option.some("claude") })))
+ * ```
  *
  * @public
  */

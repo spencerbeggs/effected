@@ -1,9 +1,8 @@
-// The lint rule model (#129): the context handed to every rule, the public
+// The lint rule model: the context handed to every rule, the public
 // rule interface, the severity vocabulary and the lint diagnostic.
 //
-// Cycle firewall: the design sketches one YamlLint.ts owning model AND
-// facade, but built-in rules must construct `YamlLintDiagnostic` while the
-// facade must import the built-in catalog — one module would close the cycle
+// Cycle firewall: built-in rules must construct `YamlLintDiagnostic` while the
+// facade must import the built-in catalog — one module owning both would close the cycle
 // `YamlLint → rules → YamlLint` (`noImportCycles` is error-level). So the
 // model lives here, `src/internal/rules/*` import it, and `YamlLint.ts`
 // (config + facade) imports both. Nothing imports this module back.
@@ -88,7 +87,7 @@ export interface LintContext {
 }
 
 /**
- * One categorical style observation (#345): a single occurrence of a style
+ * One categorical style observation: a single occurrence of a style
  * choice in the source, voting a `value` for an inference `dimension`.
  *
  * The `dimension` IS the rule's option key and the `value` IS that option's
@@ -117,7 +116,7 @@ export class StyleVote extends Schema.TaggedClass<StyleVote>()("StyleVote", {
 }) {}
 
 /**
- * One measured style floor (#345): a value the source PROVES is at least
+ * One measured style floor: a value the source PROVES is at least
  * `value`, without proving what the configured limit should be — the longest
  * observed line proves `line-length.max` is at least that long, not what it
  * is. Floors are carried in the evidence for callers that want them and are
@@ -152,7 +151,7 @@ export type StyleObservation = StyleVote | StyleFloor;
  * rules receive options already validated against their exported options
  * schema, custom rules validate their own.
  *
- * `infer` is the optional config-inference hook (#345): it reports the style
+ * `infer` is the optional config-inference hook: it reports the style
  * the source already follows as per-occurrence {@link StyleObservation}s, so
  * detection logic lives beside the check logic that polices the same
  * dimension (and shares its fixtures). Rules with no detectable style — the

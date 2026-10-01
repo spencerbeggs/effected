@@ -1,7 +1,7 @@
-// quoted-strings (#129): quote-style policy for string VALUE scalars (and
+// quoted-strings: quote-style policy for string VALUE scalars (and
 // sequence items) — keys are out of scope (they belong to `truthy`'s trap
-// detection when they matter). `quoteType` defaults to DOUBLE — the one
-// taste call the design doc pins for the default preset.
+// detection when they matter). `quoteType` defaults to DOUBLE, the
+// default preset's one taste call.
 //
 // Fixes are conservative: a quote swap or a wrap happens only when it
 // provably preserves the parsed value (single-line, no escapes in play, no
@@ -34,7 +34,7 @@ interface QuotedStringsOptions {
 
 /**
  * A value-preserving requote/wrap edit, or undefined when none is safe.
- * Delegates to the shared helper's CONSERVATIVE mode (#347) — the shipped
+ * Delegates to the shared helper's CONSERVATIVE mode — the shipped
  * fix behavior stays exactly as released; the escaping-capable mode belongs
  * to the format path's opt-in `requoteScalars`, not the lint fix.
  */
@@ -93,7 +93,7 @@ export const quotedStrings: YamlRule = {
 		});
 		return out;
 	},
-	// Inference (#345): every already-quoted string VALUE scalar votes its
+	// Inference: every already-quoted string VALUE scalar votes its
 	// quote style for `quoteType` — the same scope the check polices (keys
 	// excluded, plain scalars say nothing about quote preference).
 	infer: (ctx) => {

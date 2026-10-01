@@ -1,9 +1,8 @@
 // The corepack pin triple `<name>@<version>[+<integrity>]` as a first-class
-// schema — e.g. `pnpm@11.17.0+sha512.abc…`. Previously the grammar existed only
-// as `@effected/package-json`'s `PackageManager.FromString` (bound to the
-// `packageManager` field); this module gives the triple itself a reusable home
-// beside the dependency vocabulary that already lives here (`IntegrityHash`,
-// `DependencySpecifier`).
+// schema — e.g. `pnpm@11.17.0+sha512.abc…`. `@effected/package-json`'s
+// `PackageManager.FromString` binds the same grammar to the `packageManager`
+// field; this module gives the triple itself a reusable home beside the
+// dependency vocabulary that lives here (`IntegrityHash`, `DependencySpecifier`).
 //
 // The one load-bearing grammar rule: the FIRST `+` after the version always
 // begins the integrity component. A pin's version NEVER carries semver build
@@ -60,9 +59,7 @@ export class InvalidPackageManagerPinError extends Schema.TaggedError<InvalidPac
  * Structurally identical to `@effected/workspaces`' `PackageManagerName` and
  * `@effected/commands`' `Launcher`, and assigns freely to both. It is
  * deliberately a mirror, not an import: either edge would point from this
- * package at a downstream consumer and invert the dependency tiers — the same
- * posture `@effected/github-actions`' `CheckState` takes toward
- * `@effected/github`'s conclusion literals.
+ * package at a downstream consumer and invert the dependency direction.
  *
  * **This four-literal set is narrower than the `packageManager` manifest field,
  * and the difference is deliberate.** `@effected/package-json`'s

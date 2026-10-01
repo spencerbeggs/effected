@@ -146,7 +146,9 @@ export interface ProvisionedFile {
 }
 
 /**
- * The {@link ToolInstaller} service shape.
+ * The members of the {@link ToolInstaller} service: find, download, extract and
+ * cache tools in the runner's tool cache, each failing with
+ * {@link ToolInstallerError}.
  *
  * @public
  */
@@ -164,9 +166,9 @@ export interface ToolInstallerShape {
 	 * location contract ({@link ToolInstaller.cachePath}); the directory's
 	 * *interior* layout is whatever its writer produced, which is not
 	 * necessarily what this consumer's own `cacheDir` would have written.
-	 * Validate the layout of a foreign hit before relying on it — applying an
+	 * Validate the layout of a foreign hit before relying on it — an
 	 * assumption from your own install path (an archive-wrapper subdirectory,
-	 * say) to a foreign entry is a real shipped bug.
+	 * say) may not hold for a foreign entry.
 	 */
 	readonly find: (tool: string, version: string) => Effect.Effect<Option.Option<string>>;
 	/**
@@ -277,8 +279,8 @@ const make = Effect.gen(function* () {
 	 * installed". Discarding it is what makes an extraction failure unactionable.
 	 *
 	 * **One spawn, not two — load-bearing**, and why is spelled once in
-	 * `internal/spawn.ts`: the double run failed 5/5 on real Windows runners
-	 * because .NET's `ZipFile.ExtractToDirectory` refuses to overwrite.
+	 * `internal/spawn.ts`: a second run fails on Windows because .NET's
+	 * `ZipFile.ExtractToDirectory` refuses to overwrite.
 	 */
 	const extractWith = (command: ChildProcess.Command, archive: string): Effect.Effect<void, ToolInstallerError> =>
 		Effect.gen(function* () {
@@ -494,7 +496,7 @@ const dies = unstubbed("ToolInstaller.makeTest");
  * environment because a double has no `ActionEnvironment` to ask. The literal
  * `/tmp/runner-tool-cache` is what `make`'s `path.join("/tmp", "runner-tool-cache")`
  * spells on POSIX, which is the only place a test double runs. Test-double
- * only; allowlisted as such in `__test__/ambientReads.test.ts`.
+ * only.
  */
 const testRoot = (): string => process.env.RUNNER_TOOL_CACHE ?? "/tmp/runner-tool-cache";
 
@@ -533,6 +535,13 @@ const testRoot = (): string => process.env.RUNNER_TOOL_CACHE ?? "/tmp/runner-too
 export class ToolInstaller extends Context.Service<ToolInstaller, ToolInstallerShape>()(
 	"@effected/github-actions/ToolInstaller",
 ) {
+	/**
+	 * The live installer, over the runner's tool cache, `HttpClient` and `tar`.
+	 *
+	 * @remarks
+	 * The cache root comes from `RUNNER_TOOL_CACHE`, resolved once at layer
+	 * construction.
+	 */
 	static readonly layer: Layer.Layer<
 		ToolInstaller,
 		never,
@@ -571,9 +580,8 @@ export class ToolInstaller extends Context.Service<ToolInstaller, ToolInstallerS
 	 * otherwise have to stub it in every test. The default is the static layout
 	 * over `RUNNER_TOOL_CACHE`, or the same off-runner root `make` resolves
 	 * (`internal/runner.ts`). **That is a read of the ambient environment**,
-	 * sanctioned here only because a double has no `ActionEnvironment` to ask —
-	 * test-double-only, and listed as such in the package's ambient-read
-	 * allowlist (`__test__/ambientReads.test.ts`).
+	 * sanctioned here only because a double has no `ActionEnvironment` to ask,
+	 * and limited to the test double.
 	 */
 	static readonly makeTest = (overrides: Partial<ToolInstallerShape> = {}): ToolInstallerShape => ({
 		find: () => dies("find"),

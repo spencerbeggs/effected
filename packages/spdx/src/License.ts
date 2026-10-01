@@ -8,8 +8,8 @@ import { LICENSE_META, META_FLAG_FSF_LIBRE, META_FLAG_OSI_APPROVED } from "./int
  * `LicenseRef-`/`DocumentRef-` reference.
  *
  * This is the package's single typed error. Both malformed grammar and an
- * unknown identifier fail through it on the `E` channel — never as a defect,
- * per the input-hardening invariant. {@link License.parse} and
+ * unknown identifier fail through it on the `E` channel — never as a defect.
+ * {@link License.parse} and
  * `LicenseException.parse` raise it, and the recursive expression parser reuses
  * it for the whole grammar.
  *
@@ -43,12 +43,10 @@ const LICENSE_REF_PATTERN = /^(?:DocumentRef-[A-Za-z0-9.-]+:)?LicenseRef-[A-Za-z
  * there is no `*Schema` suffix.
  *
  * This is the catalog-level model: it validates and resolves an identifier and
- * owns the static catalog and predicates. It is deliberately distinct from, and
- * a coarser altitude than, the expression AST's simple-license leaf: the
- * trailing `+` ("or later") marker is an expression-level operator and does not
- * live here, and a `LicenseRef` is accepted whole as an `id` rather than
- * decomposed. The AST layer consumes these validation statics rather than
- * unifying its leaf with this class.
+ * owns the static catalog and predicates. It is deliberately distinct from the
+ * expression AST's simple-license leaf ({@link LicenseNode}): the trailing `+`
+ * ("or later") marker is an expression-level operator and does not live here,
+ * and a `LicenseRef` is accepted whole as an `id` rather than decomposed.
  *
  * Construction of a resolved identifier goes through {@link License.parse}
  * (Effect) or {@link License.parseResult} (the synchronous `Result` primitive);

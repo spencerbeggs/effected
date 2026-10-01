@@ -163,7 +163,7 @@ export interface PackageManagerInstallOptions {
 	 * carrying no parseable SRI fails with `integrityMismatch` (the
 	 * could-not-verify arm), and a tarball that hashes to anything else fails
 	 * with `integrityMismatch` naming the tarball url. Absent, the registry's
-	 * own `dist.integrity` is the authority, as before. A tool-cache hit is
+	 * own `dist.integrity` is the authority. A tool-cache hit is
 	 * answered without re-verifying, exactly as the pin's own integrity is.
 	 */
 	readonly nativeIntegrity?: Readonly<Record<string, string>> | undefined;
@@ -273,7 +273,8 @@ export const InstalledPackageManager = Schema.Union([AmbientPackageManager, Cach
 export type InstalledPackageManager = typeof InstalledPackageManager.Type;
 
 /**
- * The {@link PackageManagerInstaller} service shape.
+ * The members of the {@link PackageManagerInstaller} service: `install` the
+ * exact package-manager version a pin names.
  *
  * @public
  */
@@ -583,9 +584,8 @@ const make = Effect.gen(function* () {
 	/**
 	 * Whether a file is still pnpm's shebang-less placeholder (a `#`-led text
 	 * file that is not a `#!` script) rather than the native binary meant to
-	 * overlay it — the mark of an entry written by a version of this module
-	 * that predates the overlay, or by a foreign writer that ran no lifecycle
-	 * scripts. Anything else (a shebang, an executable's magic, an unreadable
+	 * overlay it — the mark of an entry written without the overlay, by an
+	 * older writer or a foreign one that ran no lifecycle scripts. Anything else (a shebang, an executable's magic, an unreadable
 	 * or empty file) is left to the ordinary layout checks.
 	 */
 	const isPlaceholder = (file: string): Effect.Effect<boolean> =>
@@ -673,9 +673,9 @@ const make = Effect.gen(function* () {
 			const manifest = yield* readPackageManifest(pin, directory);
 			let bins = manifest.bins;
 			if (Object.keys(manifest.nativePackages).length > 0) {
-				// A native-binary wrapper cached by an older version of this module
-				// (which shimmed the placeholder as a Node script) or by a foreign
-				// writer that ran no lifecycle scripts still holds the placeholder.
+				// A native-binary wrapper cached by an older writer (which shimmed the
+				// placeholder as a Node script) or by a foreign writer that ran no
+				// lifecycle scripts still holds the placeholder.
 				// A stale `exec node` shim beside it would survive `skipExisting`,
 				// so the whole entry is reinstalled over rather than patched in
 				// place — the install path rewrites every shim.
@@ -1129,6 +1129,14 @@ const dies = unstubbed("PackageManagerInstaller.makeTest");
 export class PackageManagerInstaller extends Context.Service<PackageManagerInstaller, PackageManagerInstallerShape>()(
 	"@effected/github-actions/PackageManagerInstaller",
 ) {
+	/**
+	 * The live installer, caching through {@link ToolInstaller}.
+	 *
+	 * @remarks
+	 * Fails with {@link PackageManagerInstallerError}; requires the runner's
+	 * environment, a filesystem, `Path`, a child-process spawner and a
+	 * `ToolInstaller`.
+	 */
 	static readonly layer: Layer.Layer<
 		PackageManagerInstaller,
 		never,

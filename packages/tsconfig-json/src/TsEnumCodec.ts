@@ -1,13 +1,12 @@
-// The string↔numeric enum codec — PURE DATA, per R1.6 (task-4 reference
-// table). Every table is transcribed from R1.6 verbatim, in R1.6's own row
-// order: an alias immediately precedes the canonical spelling it collapses
+// The string↔numeric enum codec — PURE DATA. Every table is transcribed
+// verbatim from TypeScript's enums, in row order: an alias immediately precedes the canonical spelling it collapses
 // to, and the reverse (numeric→canonical string) map is built by iterating
 // each family's rows in that same order and always overwriting on a
 // duplicate value — so the LAST row listed for a given numeric value wins as
-// canonical. That single rule reproduces every alias/canonical pairing R1.6
-// documents (es6→es2015, node→node10) with no per-family special-casing.
+// canonical. That single rule reproduces every alias/canonical pairing
+// (es6→es2015, node→node10) with no per-family special-casing.
 //
-// Zero `typescript` imports, including `import type` — Task 2's
+// Zero `typescript` imports, including `import type` — the package's
 // `CompilerOptions` is consumed type-only, and every value here is a plain
 // map/Option lookup. No Schema: this module does no validation, only lossless
 // numeric↔string data movement for values a schema already validated
@@ -25,20 +24,20 @@
 //     entry as a literal file name and joins it directly onto the lib
 //     directory. A short name like "esnext" would resolve to a
 //     nonexistent "<libdir>/esnext" path; only "lib.esnext.d.ts" resolves
-//     to the real file. `@effected/ts-vfs`'s `TsEnvironment.make` hands
-//     `options.compilerOptions` straight to `@typescript/vfs`'s
+//     to the real file. A virtual environment built on `@typescript/vfs`
+//     hands `options.compilerOptions` straight to
 //     `createVirtualTypeScriptEnvironment`, which hands it straight to
 //     `ts.createProgram` — so this IS the form that reaches the real
 //     compiler.
 //   - `@typescript/vfs@1.6.4`'s OWN `knownLibFilesForCompilerOptions`
 //     helper (used by `createDefaultMapFromNodeModules`, which
-//     `TsEnvironment.make` also calls) separately expects the short form
+//     the virtual-environment helper also calls) separately expects the short form
 //     for ITS OWN over-inclusive cut-index heuristic — but that helper's
 //     doc comment says it "will return a bit more than necessary", so it
 //     tolerates the mismatch by over-including rather than under-including
 //     when handed the file-name form. The `Program`-level requirement
 //     above is the one with no tolerance for the wrong form.
-//   - This matches the task brief's own worked example verbatim:
+//   - Worked example:
 //     `encodeCompilerOptions({ target: "es2023", strict: true, lib: ["esnext"] })`
 //     → `{ target: 10, strict: true, lib: ["lib.esnext.d.ts"] }`.
 
@@ -46,8 +45,7 @@ import { Option } from "effect";
 import type { CompilerOptions } from "./CompilerOptions.js";
 
 /**
- * The nine `compilerOptions` / `watchOptions` enum families this codec knows,
- * per R1.6.
+ * The nine `compilerOptions` / `watchOptions` enum families this codec knows.
  *
  * @public
  */
@@ -69,9 +67,9 @@ interface FamilyTable {
 }
 
 /**
- * Builds a family's forward/reverse maps from its R1.6 row order. The
+ * Builds a family's forward/reverse maps from its row order. The
  * reverse map overwrites on every duplicate value, so the last-listed name
- * for a value is canonical — exactly R1.6's alias/canonical rule.
+ * for a value is canonical.
  */
 const buildTable = (rows: ReadonlyArray<readonly [name: string, value: number]>): FamilyTable => {
 	const forward = new Map<string, number>();
@@ -83,7 +81,7 @@ const buildTable = (rows: ReadonlyArray<readonly [name: string, value: number]>)
 	return { forward, reverse };
 };
 
-// ── R1.6 tables, transcribed verbatim in row order ───────────────────────
+// ── Tables, transcribed verbatim in row order ───────────────────────
 
 /** ScriptTarget. Decode-only 0=es3 and 100=JSON have no forward string and are deliberately omitted. */
 const TARGET = buildTable([
@@ -207,7 +205,7 @@ const normalizeLibReference = (lib: string): string => {
 	return withoutPrefix.endsWith(".d.ts") ? withoutPrefix.slice(0, -5) : withoutPrefix;
 };
 
-/** `compilerOptions` keys whose values are one of the R1.6 enum families. */
+/** `compilerOptions` keys whose values are one of the enum families. */
 const COMPILER_OPTION_ENUM_KEYS: ReadonlyArray<readonly [key: string, family: EnumFamily]> = [
 	["target", "target"],
 	["module", "module"],
@@ -348,7 +346,7 @@ const decodeCompilerOptions = (numeric: Readonly<Record<string, unknown>>): Reco
 
 /**
  * The string↔numeric enum codec for `compilerOptions` / `watchOptions`
- * families, per R1.6. Plain data: every lookup is a synchronous map read
+ * families. Plain data: every lookup is a synchronous map read
  * returning `Option.Option`, never a thrown error.
  *
  * @public
@@ -382,8 +380,8 @@ export class TsEnumCodec {
 	/**
 	 * Encodes a decoded `compilerOptions` object into the
 	 * numeric-enum-shaped {@link ProgrammaticCompilerOptions} form
-	 * `ts.CompilerOptions` (and `@typescript/vfs`'s `TsEnvironment`) expect:
-	 * every R1.6 enum family becomes its numeric value, and `lib` entries
+	 * `ts.CompilerOptions` (and `@typescript/vfs`'s virtual environment) expect:
+	 * every enum family becomes its numeric value, and `lib` entries
 	 * become the file-name form (`lib.esnext.d.ts`) — see the module banner
 	 * for the evidence. Every other key (booleans, strings, arrays, unknown
 	 * passthrough keys) is copied through untouched.
@@ -403,7 +401,7 @@ export class TsEnumCodec {
 	 * Decodes a numeric-enum-shaped `compilerOptions` object (as produced by
 	 * {@link TsEnumCodec.encodeCompilerOptions} or read off a live
 	 * `ts.CompilerOptions`) back into the string-enum shape this package's
-	 * schemas use: every R1.6 enum family becomes its canonical string, and
+	 * schemas use: every enum family becomes its canonical string, and
 	 * `lib` entries become the short form. A numeric value with no table
 	 * entry — a future TS enum member — is left as-is (passthrough, never an
 	 * error) — which is why the return type stays the wider

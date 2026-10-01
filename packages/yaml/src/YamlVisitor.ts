@@ -3,14 +3,11 @@
 // building a full in-memory result beyond the AST itself.
 //
 // The event union is a `Data.TaggedEnum` — serializable tagged values with
-// structural equality, consistent with the rest of the library — replacing
-// v3's eleven `Schema.TaggedClass` event classes and its 24 `is*` guards
-// (`_tag` narrowing suffices). v3's `visitCollect` is dropped: `Stream.filter`
-// + `Stream.runCollect` cover it (and in v4 `runCollect` already yields an
-// `Array`, so no `Chunk.toReadonlyArray` step is needed).
+// structural equality, consistent with the rest of the library; `_tag`
+// narrowing suffices, so there are no `is*` guards. There is no collecting
+// variant: `Stream.filter` + `Stream.runCollect` cover it.
 //
-// This is the AST-level visitor only — the CST/token layers stay internal
-// per the design's deferral of a public tokenizer/CST surface.
+// This is the AST-level visitor only — the CST layer stays internal.
 
 import { Data, Stream } from "effect";
 import { composeAllDocuments } from "./internal/composer/document.js";
@@ -84,7 +81,23 @@ export type YamlVisitorEvent = Data.TaggedEnum<{
 export const YamlVisitorEvent = Data.taggedEnum<YamlVisitorEvent>();
 
 /**
- * SAX-style YAML AST visitor statics. Not instantiable.
+ * Walks YAML text as a lazy `Stream` of typed events — documents, collections,
+ * pairs, scalars, aliases, comments, directives and recovered errors — in
+ * document order. Not instantiable.
+ *
+ * @example
+ * ```ts
+ * import { YamlVisitor, YamlVisitorEvent } from "@effected/yaml";
+ * import { Effect, Stream } from "effect";
+ *
+ * // Mapping keys are scalar events too, so keys and values interleave.
+ * const scalars = YamlVisitor.visit("a: 1\nb:\n  - x\n").pipe(
+ *   Stream.filter(YamlVisitorEvent.$is("Scalar")),
+ *   Stream.map((event) => event.value),
+ *   Stream.runCollect,
+ * );
+ * // Effect.runSync(scalars) // => ["a", 1, "b", "x"]
+ * ```
  *
  * @public
  */
@@ -103,6 +116,11 @@ export class YamlVisitor {
 	 * (fatal or not, including an exceeded `maxAliasCount`, recorded as
 	 * `AliasCountExceeded`) surface as `Error` events inside the stream rather
 	 * than failing it.
+	 *
+	 * @param text - The YAML source to visit.
+	 * @param options - Optional {@link YamlParseOptions} controlling composition.
+	 * @returns A lazy `Stream` of `YamlVisitorEvent`, infallible at the type
+	 *   level.
 	 */
 	static visit(text: string, options?: YamlParseOptions): Stream.Stream<YamlVisitorEvent> {
 		return Stream.fromIterable(visitGen(text, options));

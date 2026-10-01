@@ -1,21 +1,17 @@
-/**
- * The bounded tail read.
- *
- * `latest` and every `lastValid`-backed read go through this: `Line.lastValid`
- * takes whole text, so "just read the file" is the easy wrong move — it makes
- * the cost of answering "what is the current state" grow with the age of the
- * journal, which is the thing this package exists to avoid.
- *
- * **The scope of that, honestly**: it binds the tail reads. The historical read
- * (`Journal`'s `readFrom`, behind `query` and the replay half of `changes`)
- * currently reads its whole requested region in one allocation bounded by the
- * file's size, and is bounded by the caller's `cursor` rather than by a window.
- * Paging it through {@link readRangeText} is spencerbeggs/effected#233; until
- * that lands, this module's discipline is a property of the tail reads, not of
- * every read in the service.
- *
- * @internal
- */
+// The bounded tail read.
+//
+// `latest` and every `lastValid`-backed read go through this: `Line.lastValid`
+// takes whole text, so "just read the file" is the easy wrong move — it makes
+// the cost of answering "what is the current state" grow with the age of the
+// journal, which is the thing this package exists to avoid.
+//
+// **The scope of that, honestly**: it binds the tail reads. The historical read
+// (`Journal`'s `readFrom`, behind `query` and the replay half of `changes`)
+// currently reads its whole requested region in one allocation bounded by the
+// file's size, and is bounded by the caller's `cursor` rather than by a window.
+// Paging it through `readRangeText` is spencerbeggs/effected#233; until
+// that lands, this module's discipline is a property of the tail reads, not of
+// every read in the service.
 
 import type { FileSystem, PlatformError } from "effect";
 import { ByteSize, Effect, Option } from "effect";

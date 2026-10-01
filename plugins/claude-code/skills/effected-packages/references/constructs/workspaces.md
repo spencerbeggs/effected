@@ -46,7 +46,7 @@
 | `LayeringGraph` | Interface | The input to `WorkspaceLayering.check`: package names, and per-field edges between them. | from `@effected/workspaces/testing` |
 | `LayeringReport` | Class | What a layering check found. | from `@effected/workspaces/testing` — layering violations, sideways upward edges, cycles, unclassified packages |
 | `LockfileReadError` | Class | Raised when the workspace's lockfile cannot be read off disk. | handle the workspace lockfile file cannot be read off disk |
-| `LockfileReadFailure` | TypeAlias | Every failure the lockfile methods can surface — the exported init-error union the review named best-in-class DX. | |
+| `LockfileReadFailure` | TypeAlias | Every failure the lockfile methods can surface. | |
 | `LockfileReader` | Class | Reads and parses the workspace's lockfile. | read and parse the workspace lockfile, look up a resolved package version |
 | `LockfileReaderOptions` | Interface | Options for the `LockfileReader` layer. | |
 | `LockfileReaderShape` | Interface | The `LockfileReader` service shape. | |

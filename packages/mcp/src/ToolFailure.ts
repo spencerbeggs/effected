@@ -26,6 +26,9 @@ const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xd
  *
  * @example
  * ```ts
+ * import { ToolFailure } from "@effected/mcp";
+ * import { Schema } from "effect";
+ *
  * class NotFound extends Schema.TaggedError<NotFound>()("NotFound", { ...ToolFailure.fields, id: Schema.String }) {}
  * const remediation = { hint: "List the ids first.", suggestedTool: "list_things" }
  * new NotFound({ id, remediation, message: ToolFailure.message(`No thing "${ToolFailure.truncate(id)}".`, remediation) })

@@ -66,7 +66,7 @@ const ascend = (start: string, options?: AscendOptions): Effect.Effect<ReadonlyA
 		}
 		// A relative CEILING dies, exactly as an invalid maxDepth does — same
 		// category, same construct. `start` is deliberately unconstrained: a
-		// relative start still ascends to the relative root, exactly as before.
+		// relative start still ascends to the relative root.
 		if (options?.stopAt !== undefined && !path.isAbsolute(options.stopAt)) {
 			return yield* Effect.die(
 				new Error(
@@ -166,7 +166,8 @@ const findRoot = <E, R>(
 ): Effect.Effect<Option.Option<string>, never, R> => firstMatch(dirs, isRoot);
 
 /**
- * Upward path traversal primitives.
+ * Upward path traversal primitives: the directory chain from a start path to the
+ * root, and first-match scans over it.
  *
  * @public
  */
@@ -187,13 +188,25 @@ export class Walker {
 	 * a pathological `Path` implementation that never reaches one.
 	 *
 	 * `stopAt` is compared in normalized form — see {@link AscendOptions.stopAt}.
-	 * Raw string equality made the ceiling fail OPEN: an unnormalized ceiling
-	 * matched nothing and the ascent ran silently to the filesystem root, which is
-	 * the unbounded walk the option exists to prevent, with no error to notice it
-	 * by. A relative ceiling **dies** for the same reason — resolving one against
-	 * `process.cwd()` would reintroduce the silent-wrong-walk failure through a
-	 * different door. See {@link AscendOptions.stopAt} for why that is a defect
-	 * rather than a typed error; the error channel stays `never`.
+	 * Comparing raw strings would let an unnormalized ceiling match nothing and
+	 * the ascent run silently to the filesystem root, which is the unbounded walk
+	 * the option exists to prevent. A relative ceiling **dies** for the same
+	 * reason — resolving one against `process.cwd()` would reintroduce the
+	 * silent-wrong-walk failure through a different door. See
+	 * {@link AscendOptions.stopAt} for why that is a defect rather than a typed
+	 * error; the error channel stays `never`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Walker } from "@effected/walker";
+	 * import { Effect } from "effect";
+	 *
+	 * const program = Effect.gen(function* () {
+	 * 	// => ["/repo/packages/app", "/repo/packages", "/repo"]
+	 * 	return yield* Walker.ascend("/repo/packages/app", { stopAt: "/repo" });
+	 * });
+	 * // Requires `Path` from the platform layer.
+	 * ```
 	 */
 	static readonly ascend = ascend;
 

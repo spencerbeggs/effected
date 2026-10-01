@@ -226,7 +226,7 @@ export function joinComments(a: string | undefined, b: string): string {
 
 /**
  * Zero-based column of `offset` within its line. A byte-order mark at the
- * line start occupies no column — the lexer's convention (#694) — so a
+ * line start occupies no column — the lexer's convention — so a
  * BOM-prefixed root mapping's content column is `0`, not `1`, and its
  * terminal own-line comment is not mistaken for one escaping a nested map.
  */

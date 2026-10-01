@@ -1,11 +1,7 @@
-/**
- * The upstream release feeds, and how raw records become domain releases.
- *
- * v3 had four fetcher services with four `*Live` layers; the shapes differ only
- * in the URL and how a tag name is stripped, so they collapse into functions.
- *
- * @internal
- */
+// The upstream release feeds, and how raw records become domain releases.
+//
+// The feeds differ only in the URL and how a tag name is stripped, so each is a
+// small function.
 
 import type { InvalidVersionError } from "@effected/semver";
 import { SemVer } from "@effected/semver";
@@ -117,8 +113,7 @@ export const buildNodeReleases = (
 /**
  * Fetch a runtime's releases from GitHub, dropping drafts and prereleases.
  *
- * Bun and Deno differ by a repository name and a tag prefix. v3 had two fetcher
- * services, two service files and two `*Live` layers for that difference.
+ * Bun and Deno differ only by a repository name and a tag prefix.
  */
 export const fetchGitHubReleases = (
 	client: GitHubClient["Service"],
@@ -132,8 +127,8 @@ export const fetchGitHubReleases = (
 				.flatMap((release): ReadonlyArray<RawRelease> => {
 					const date = release.published_at;
 					// A release with no publication date carries no orderable time; skip it
-					// rather than inventing `new Date()` the way v3 did, which made every
-					// undated historical release look like it shipped today.
+					// rather than inventing `new Date()`, which would make every undated
+					// historical release look like it shipped today.
 					if (date === null) return [];
 					return [{ version: stripTagPrefix(release.tag_name), date }];
 				}),

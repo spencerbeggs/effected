@@ -1,12 +1,12 @@
 // The marker scanner: locate every managed section in a document, in order,
 // and refuse any structure that could only be resolved by guessing.
 //
-// Ambiguity is a typed failure rather than a silent choice. The model this
-// replaces skipped an unterminated begin marker and picked the first
-// begin/end pair by `indexOf`; both are silent wrong answers with a
-// file-corrupting tail — a skipped marker makes the next write append a
-// SECOND copy of the section, and a duplicate means every sync updates the
-// first copy while the stale second lives on disk forever.
+// Ambiguity is a typed failure rather than a silent choice: skipping an
+// unterminated begin marker or picking the first begin/end pair by `indexOf`
+// are silent wrong answers with a file-corrupting tail — a skipped marker
+// makes the next write append a SECOND copy of the section, and a duplicate
+// means every sync updates the first copy while the stale second lives on
+// disk forever.
 
 import type { CommentStyle } from "../CommentStyle.js";
 import { PlacedSection, Section } from "../Section.js";

@@ -1,11 +1,8 @@
 // The emitter facade.
 //
-// `generate` and `toJson` are plain total functions. The package this replaces
-// typed both as `Effect<_, SbomError>` with `reason: "build" | "serialize"`,
-// but those arms described failures that could only come from the CycloneDX
-// library throwing — a possibility introduced BY the dependency. Owning the
-// model removes the failure, so the error channel goes with it. Only `write`
-// keeps one, and it is the filesystem's.
+// `generate` and `toJson` are plain total functions: the model is owned, so
+// there is no third-party serializer whose failure they would need to surface.
+// Only `write` has an error channel, and it is the filesystem's.
 
 import { Effect, FileSystem, Schema } from "effect";
 import type { Component } from "./SbomDocument.js";
@@ -101,10 +98,11 @@ const write = Effect.fn("Sbom.write")(function* (document: SbomDocument, path: s
  *
  * @example
  * ```ts
- * import { Sbom } from "@effected/sbom";
+ * import { Component, Sbom } from "@effected/sbom";
  *
- * const document = Sbom.generate({ root, components });
- * const json = Sbom.toJson(document);
+ * const root = Component.make({ type: "application", name: "app", version: "1.0.0" });
+ * const document = Sbom.generate({ root, components: [] });
+ * const json = Sbom.toJson(document); // CycloneDX 1.6 JSON text
  * ```
  *
  * @public
@@ -136,7 +134,8 @@ export class Sbom {
 	 * Write a document to `path` as canonical JSON.
 	 *
 	 * @remarks
-	 * The one fallible member. It does not create parent directories — a caller
+	 * The one fallible member; it fails with {@link SbomWriteError} and requires
+	 * `FileSystem` in `R`. It does not create parent directories — a caller
 	 * that wants one creates it, so the failure mode stays "the path you gave me
 	 * is not writable" rather than "something was created somewhere".
 	 */

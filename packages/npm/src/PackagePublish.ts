@@ -110,9 +110,13 @@ export interface PublishOutcome {
  * @public
  */
 export interface DryRunOutcome {
+	/** Whether the package packs. `false` is an answer, not a failure. */
 	readonly ok: boolean;
+	/** Tarball size in bytes, when npm reported it. */
 	readonly packedSize?: number | undefined;
+	/** Unpacked size in bytes, when npm reported it. */
 	readonly unpackedSize?: number | undefined;
+	/** Number of files the tarball would contain, when npm reported it. */
 	readonly fileCount?: number | undefined;
 	/** npm's output, for diagnostics. */
 	readonly output: string;
@@ -362,9 +366,8 @@ const make = Effect.fnUntraced(function* () {
 		// Provenance is an npm-registry feature. Passing `--provenance` to GitHub
 		// Packages or a custom registry fails the publish outright, so a caller
 		// who asks for it against a non-npm target gets the publish without it
-		// rather than a failed release — the v3 behavior, kept because a release
-		// pipeline publishing to three registries should not lose two of them to
-		// one flag.
+		// rather than a failed release: a release pipeline publishing to three
+		// registries should not lose two of them to one flag.
 		const provenance = options.provenance === true && classifyRegistry(options.registry) === "npm";
 		const args = [
 			"publish",
@@ -451,23 +454,45 @@ const notStubbed = (method: string) => () =>
 	);
 
 /**
- * The npm publish workflow, run through `@effected/commands`.
+ * Packs, dry-runs and publishes npm tarballs, and writes registry auth into an
+ * npmrc, by running `npm` through `@effected/commands`.
  *
  * @remarks
  * Every invocation goes through `Run`, so a non-zero npm exit arrives as a
- * typed failure and npm's `--json` output is schema-decoded rather than cast.
- * The service deliberately does **not** own: masking (the caller's job, so no
- * Actions edge lives in a publish library), the npmrc location (caller-supplied
- * — resolving `~` needs `node:os`, which a boundary package may not import),
- * or a fused probe-then-publish (v3's `publishIdempotent`, deprecated in its
- * own source for hardcoding the wrong registry).
+ * typed {@link PublishError} and npm's `--json` output is schema-decoded rather
+ * than cast. The service deliberately does **not** own: log masking (the
+ * caller's job, so no Actions edge lives in a publish library), the npmrc
+ * location (caller-supplied — resolving `~` needs `node:os`), or a fused
+ * probe-then-publish (probe with `NpmRegistry`, then call `publishTarball`
+ * against an explicit registry).
+ *
+ * Every method's `R` is `never`: the live layer resolves its platform services
+ * once at construction.
+ *
+ * @example
+ * ```ts
+ * import { PackagePublish } from "@effected/npm";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const publish = yield* PackagePublish;
+ *   const packed = yield* publish.pack("./packages/my-lib");
+ *   return yield* publish.publishTarball(packed.tarballPath, {
+ *     registry: "https://registry.npmjs.org",
+ *     provenance: true,
+ *   });
+ * });
+ * ```
  *
  * @public
  */
 export class PackagePublish extends Context.Service<PackagePublish, PackagePublishShape>()(
 	"@effected/npm/PackagePublish",
 ) {
-	/** Resolves its platform dependencies once at construction. */
+	/**
+	 * The live service. Requires `FileSystem`, `Crypto`, `ChildProcessSpawner`
+	 * and `LocalExec` (from `@effected/commands`), resolved once at construction.
+	 */
 	static readonly layer: Layer.Layer<
 		PackagePublish,
 		never,

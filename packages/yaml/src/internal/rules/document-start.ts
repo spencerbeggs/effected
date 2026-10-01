@@ -1,4 +1,4 @@
-// document-start (#129): the `---` marker at the head of the stream —
+// document-start: the `---` marker at the head of the stream —
 // required (`present: true`, the default) or forbidden (`present: false`).
 // Scope is deliberately the STREAM HEAD only: `---` separators between the
 // documents of a multi-document stream are structure, not style — removing
@@ -78,7 +78,7 @@ export const documentStart: YamlRule = {
 		}
 		return [];
 	},
-	// Inference (#345): a non-empty stream votes `present` — headed by `---`
+	// Inference: a non-empty stream votes `present` — headed by `---`
 	// or not. An unmarked file IS evidence of the no-marker style (the
 	// workflow-file corpus above all), so absence votes `false` rather than
 	// saying nothing.

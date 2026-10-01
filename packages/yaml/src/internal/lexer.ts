@@ -1107,7 +1107,7 @@ export function createScanner(text: string): YamlScanner {
 		// BOM (YAML 1.2 §5.2). Consumed WITHOUT `advance()`: the mark is
 		// invisible, so it must not occupy a column — otherwise the first
 		// line's content lexes one column deeper than every line that follows
-		// and the composer opens a second collection at that indent (#694).
+		// and the composer opens a second collection at that indent.
 		// The token still spans its real offset so node offsets stay indices
 		// into the original text.
 		if (ch === "\uFEFF") {

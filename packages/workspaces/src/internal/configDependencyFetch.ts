@@ -1,7 +1,7 @@
 // The fetch rung of the config-dependency ladder: when neither
 // `node_modules/.pnpm-config` nor any discovered store holds the version a
 // side DECLARES, have pnpm put exactly that version into the store, verified
-// against the integrity the declaring side recorded (effected#842).
+// against the integrity the declaring side recorded.
 //
 // Only `ConfigDependencyHooks.layerSubprocess` wires this rung; every other
 // replaying layer fails typed with `reason: "notInstalled"` instead. The

@@ -120,8 +120,18 @@ const quiet: StreamEnv = { isTerminal: false, color: "none", hyperlinks: false, 
  * @remarks
  * `layer` reads the environment through `Config` and the TTY state through `Stdio` and `Terminal` once, when it
  * is built. `layerTest` is the only way a test changes it, and defaults to a quiet terminal so a test opts into
- * colour. `colorLevel` needs `Stdio` alone, so a caller that only decides colour never requires `Terminal`. See
- * `okf/modules/env.md`.
+ * colour. `colorLevel` needs `Stdio` alone, so a caller that only decides colour never requires `Terminal`.
+ *
+ * @example
+ * ```ts
+ * import { TerminalEnv } from "@effected/env"
+ * import { Effect, Option } from "effect"
+ *
+ * const program = Effect.gen(function* () {
+ * 	const terminal = yield* TerminalEnv
+ * 	return { color: terminal.stdout.color, width: terminal.width() }
+ * }).pipe(Effect.provide(TerminalEnv.layerTest({ stdout: { color: "256", columns: Option.some(100) } })))
+ * ```
  *
  * @public
  */

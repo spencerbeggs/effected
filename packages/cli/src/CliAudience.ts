@@ -19,7 +19,7 @@ const KINDS: ReadonlyArray<AudienceKind> = ["human", "agent", "ci"];
  * that is not `dumb` (`canPrompt`, the decision `CliInteractive.layer` makes). With the
  * terminal facts in the environment (`TerminalEnv`) that is decided from them, not from the ambient value, so a
  * flag can WIDEN: `--human` under a detected agent on real terminals prompts, and in a pipe it still cannot. With no
- * `TerminalEnv` there is nothing to decide from and the flag only narrows, as it always did.
+ * `TerminalEnv` there is nothing to decide from and the flag only narrows.
  */
 const interactiveWhenFlagged = (kind: AudienceKind, current: boolean): Effect.Effect<boolean> =>
 	Effect.flatMap(Effect.serviceOption(TerminalEnv), (terminal) => {

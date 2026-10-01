@@ -9,11 +9,9 @@ import type { PageOptions } from "./Rest.js";
  * The hidden marker that makes a comment findable again.
  *
  * @remarks
- * A pure class, not a hardcoded string. The surface this replaces baked
- * `<!-- savvy-web:${key} -->` into the library — one vendor's name, inside a
- * package meant to be general. Here the namespace is the caller's, the marker is
- * testable without a client, and the library has no opinion about whose comments
- * these are.
+ * The marker is `<!-- namespace:key -->`, an HTML comment appended to the body.
+ * The namespace is the caller's, so the library has no opinion about whose
+ * comments these are, and a marker is testable without a client.
  *
  * @public
  */
@@ -35,7 +33,7 @@ export class CommentMarker extends Schema.Class<CommentMarker>("CommentMarker")(
 }
 
 /**
- * A comment this package wrote or found.
+ * A comment this package wrote or found: its id, body and web URL.
  *
  * @public
  */
@@ -46,7 +44,8 @@ export class CommentRecord extends Schema.Class<CommentRecord>("CommentRecord")(
 }) {}
 
 /**
- * Sticky comments on a pull request or issue.
+ * Post, update, find and delete comments on a pull request or issue, including
+ * a "sticky" comment kept current through a marker.
  *
  * @public
  */
@@ -69,26 +68,46 @@ export interface PullRequestCommentShape {
 	 * Find the marked comment.
 	 *
 	 * @remarks
-	 * **Paginates.** The version this replaces requested a single page of 100 and
-	 * stopped, so on a busy pull request the marker silently vanished and every
-	 * update posted a new comment instead.
+	 * **Paginates**, so the marker is found on a busy pull request too; pass
+	 * `page` to bound the walk.
 	 */
 	readonly find: (
 		issueNumber: number,
 		marker: CommentMarker,
 		options?: { readonly page?: PageOptions | undefined },
 	) => Effect.Effect<Option.Option<CommentRecord>, GitHubError, Repo>;
+	/** Delete a comment by id. */
 	readonly delete: (commentId: number) => Effect.Effect<void, GitHubError, Repo>;
 }
 
 /**
- * Sticky comments.
+ * Post, update, find and delete comments on a pull request or issue, including
+ * a "sticky" comment kept current through a `CommentMarker`.
+ *
+ * @remarks
+ * Provide it with {@link PullRequestComment.layer}, which needs a `GitHubClient`;
+ * each method also needs a `Repo` in `R`.
+ *
+ * @example
+ * ```ts
+ * import { CommentMarker, PullRequestComment } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const marker = CommentMarker.make({ namespace: "my-action", key: "report" });
+ *
+ * const report = (pullNumber: number, body: string) =>
+ *   Effect.gen(function* () {
+ *     const comments = yield* PullRequestComment;
+ *     return yield* comments.upsert(pullNumber, marker, body); // edits the marked comment in place
+ *   });
+ * ```
  *
  * @public
  */
 export class PullRequestComment extends Context.Service<PullRequestComment, PullRequestCommentShape>()(
 	"@effected/github/PullRequestComment",
 ) {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<PullRequestComment, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),

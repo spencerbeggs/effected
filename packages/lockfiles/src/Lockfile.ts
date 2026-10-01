@@ -32,8 +32,11 @@ const EMPTY_IMPORTERS: ReadonlyArray<LockfileImporter> = [];
  * @public
  */
 export class LockfileParseError extends Schema.TaggedError<LockfileParseError>()("LockfileParseError", {
+	/** The lockfile format that was being parsed. */
 	format: LockfileFormat,
+	/** Whether the text itself failed to parse (`"syntax"`) or parsed but had the wrong shape (`"validation"`). */
 	stage: Schema.Literals(["syntax", "validation"]),
+	/** The underlying engine or schema failure, preserved structurally. */
 	cause: Schema.Defect(),
 }) {
 	override get message(): string {
@@ -48,14 +51,13 @@ export class LockfileParseError extends Schema.TaggedError<LockfileParseError>()
  * lockfile document could be located in it.
  *
  * @remarks
- * `pnpm-lock.yaml` is a YAML **stream**. pnpm 11 and 12 write an env
- * preamble document ahead of the lockfile whenever the workspace declares
- * `configDependencies` or `devEngines.packageManager`, so the file holds two
- * documents. The
+ * `pnpm-lock.yaml` is a YAML **stream**. pnpm writes an env preamble document
+ * ahead of the lockfile whenever the workspace declares `configDependencies`
+ * or `devEngines.packageManager`, so the file holds two documents. The
  * lockfile is the last one — pnpm composes the preamble as a prefix — and a
- * parser that reads only the first document gets the preamble: a document
- * that *validates*, and yields a lockfile with an empty workspace. This error
- * exists so that case can never again succeed quietly.
+ * parser that read only the first document would get the preamble: a document
+ * that *validates*, yielding a lockfile with an empty workspace. This error
+ * makes that case fail instead of succeeding quietly.
  *
  * - `format` — which format was being parsed.
  * - `documents` — how many YAML documents the stream carried.
@@ -86,8 +88,11 @@ export class LockfileParseError extends Schema.TaggedError<LockfileParseError>()
  * @public
  */
 export class LockfileFramingError extends Schema.TaggedError<LockfileFramingError>()("LockfileFramingError", {
+	/** The lockfile format that was being parsed. */
 	format: LockfileFormat,
+	/** Which framing check failed; see the class remarks for each. */
 	reason: Schema.Literals(["noLockfileDocument", "noImporters", "unexpectedDocuments"]),
+	/** How many YAML documents the stream carried. */
 	documents: Schema.Int,
 }) {
 	override get message(): string {
@@ -325,9 +330,8 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 	 *
 	 * @remarks
 	 * `ResolvedPackage.instanceId` is what a resolved edge points at, so peer and
-	 * dependency resolution is a lookup through this index rather than a scan.
-	 * Without it every consumer rebuilds the same map — `new Map(lockfile.packages.map((p) => [p.instanceId, p]))` —
-	 * which is O(n) per walk and one more place for the key choice to drift.
+	 * dependency resolution is a lookup through this index rather than a scan
+	 * over `packages`.
 	 *
 	 * The index is a `Map`, so an instance id that collides with an `Object`
 	 * member name (`__proto__`, `constructor`) neither pollutes nor

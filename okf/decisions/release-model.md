@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: Releases are changeset-driven and scope-agnostic
-description: CI builds the changesets present on a branch and releases exactly the packages they name — a whole-kit wave and a single-package patch are the same mechanism, every package stays 0.x and unstable until Effect v4 reaches GA, and breaking changes ride minors under exact-pin discipline.
+description: CI builds the changesets present on a branch and releases exactly the packages they name — a whole-kit wave and a single-package patch are the same mechanism, every package stays 0.x and unstable until the kit chooses 1.0.0, which stable Effect v4 makes possible rather than automatic, and breaking changes ride minors.
 status: draft
 tags:
   - release
@@ -14,8 +14,8 @@ sources:
     resource: ../../packages/github-actions/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 6e0f4fb2a7603e64375da0f3c4c041b19fdcd1b18c523d38661f099d7f94f42a
+  at: 2026-10-01T17:24:58Z
+  body_sha256: 5181bf0ec118d337d2ed83390d8f5c98294185a5ec17b0d99e5a97934acbb17e
 ---
 
 # Releases are changeset-driven and scope-agnostic
@@ -44,17 +44,20 @@ catalog literal is itself one of the artifacts a release keeps
 current — see [the catalog holds next-release versions](catalog-holds-next-release-versions.md).
 
 Version and stability are kept as separate axes. Every package stays
-below `1.0.0` until Effect `4.0.0` reaches GA, pinning one Effect v4
-prerelease throughout development; graduation to `1.0.0` follows Effect's
-own. Independently, every package carries the same `unstable` status
-regardless of version number, so consumers are expected to pin exact
-versions rather than ranges — an accidental break then surfaces in a
+below `1.0.0` until the kit chooses to graduate. Effect v4's stable
+release makes that possible, not automatic: the kit builds on `^4.0.0`
+(see [the effect catalog takes caret ranges on the stable
+line](effect-catalog-tracks-stable-minor.md)) and still ships `0.x`.
+Independently, every package carries the same `unstable` status
+regardless of version number, so consumers are expected to pin the kit's
+packages to a minor (a caret on `0.x` does exactly that) and read the
+changeset before advancing — an accidental break then surfaces in a
 consumer's typechecking rather than silently through a satisfied range.
 
 Below `1.0.0`, a breaking change is allowed to ride an ordinary minor
-release rather than being held for a major, and the exact-pin discipline
-above is what makes that survivable: a consumer that pins exactly does
-not silently absorb the break. `@effected/schemastore` is the worked
+release rather than being held for a major, and the minor-pinning discipline
+above is what makes that survivable: a consumer pinned to a `0.x` minor
+does not silently absorb the break. `@effected/schemastore` is the worked
 example — one minor release changed `SchemaFile.write`'s return type from
 a boolean to a result object, narrowed the `SchemaVersion` grammar to
 require all three semver components, and flipped the package's tier from
@@ -163,7 +166,7 @@ mechanism. This makes the catalog-sync ordering load-bearing (see
 because the catalog literal a consumer resolves from must reflect
 whatever changesets are about to publish, not a hand-maintained
 schedule. It also means a package's tier or contract can change inside
-an ordinary minor, so a consumer that pins exactly and reads the
+an ordinary minor, so a consumer that pins a minor and reads the
 changeset before advancing is the safety net, not a major-version
 bump.
 

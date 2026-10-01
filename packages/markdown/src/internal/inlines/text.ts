@@ -3,8 +3,8 @@
 // License: BSD-2-Clause
 //
 // `parseString`: the fallback that consumes a run of ordinary characters.
-// Upstream's smart-punctuation branch is deliberately not ported (the design
-// declines the `smart` option outright).
+// Upstream's smart-punctuation branch is deliberately not ported (the `smart`
+// option is not offered).
 
 import type { InlineConstruct } from "../inlineTypes.js";
 

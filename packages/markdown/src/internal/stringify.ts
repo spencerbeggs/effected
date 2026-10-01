@@ -12,7 +12,7 @@
 //   heading         ATX (`#` × depth); setext only via fidelity, depth <= 2
 //   emphasis        `*`     strong  `**`    (flipped to `_` at run junctions)
 //   bullet list     `-`     ordered delimiter `.`   start `1`
-//   list spread     absent reads as tight (the P1 writer ruling)
+//   list spread     absent reads as tight
 //   code            absent `fenceChar` reads as INDENTED (the node contract:
 //                   absence is how fenced and indented are told apart), with
 //                   a representability escape to a backtick fence when the
@@ -46,7 +46,7 @@
 // a `:` right after a scheme word (http/https/ftp/mailto/xmpp) are escaped so
 // raw-source literal scanners cannot fire; escapes decode away, so the text
 // is unchanged. Email-shaped plain text is a RECORDED LIMITATION: the email
-// matcher is a postprocess over decoded text (the P2 hook-placement ruling),
+// matcher is a postprocess over decoded text,
 // so no escape spelling survives to defeat it.
 //
 // Unrepresentable shapes (documented, synthesized-tree-only — the parser

@@ -4,7 +4,7 @@
 // BOM included, on the first line) and ends after its terminating newline (or
 // at EOF); consecutive blank/comment-only lines coalesce into one TomlTrivia;
 // concatenating every expression's source slice in order reproduces the
-// source byte-exactly. Task 11's stringify rides on it.
+// source byte-exactly. Stringify rides on it.
 //
 // The one recursion surface is parseValue → parseArray/parseInlineTable,
 // guarded by an explicit `depth` parameter against MAX_NESTING_DEPTH
@@ -401,7 +401,7 @@ const parseHeaderExpression = (
 /**
  * Parse a TOML document into its linear CST: the flat, source-tiling list of
  * expressions. Throws RawTomlError on malformed input and GuardExceeded when
- * value nesting exceeds MAX_NESTING_DEPTH; the facade (Task 7) materializes
+ * value nesting exceeds MAX_NESTING_DEPTH; the facade materializes
  * both into typed errors.
  */
 export const parseExpressions = (source: string): ReadonlyArray<TomlExpression> => {

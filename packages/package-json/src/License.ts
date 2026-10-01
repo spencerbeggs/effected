@@ -74,9 +74,8 @@ export type SpdxLicense = string & Brand.Brand<"SpdxLicense">;
  * @remarks
  * This is the accessor to reach for whenever a branded `SpdxLicense` has
  * to become an actual expression — a license URL, a badge, structured data, a
- * policy check. It exists because the brand and the grammar disagree, and that
- * disagreement is knowledge these two packages jointly own rather than
- * something each consumer should rediscover.
+ * policy check. It exists because the brand and the grammar disagree, so no
+ * consumer has to rediscover that disagreement.
  *
  * `UNLICENSED` and `SEE LICENSE IN <file>` are legal in a manifest and are not
  * SPDX expressions, so they yield `Option.none()`. Everything else parses.
@@ -87,12 +86,14 @@ export type SpdxLicense = string & Brand.Brand<"SpdxLicense">;
  *
  * @example
  * ```ts
- * import { licenseExpressionOf } from "@effected/package-json";
- * import { SpdxExpression } from "@effected/spdx";
+ * import { SpdxLicense, licenseExpressionOf } from "@effected/package-json";
+ * import { Option, Schema } from "effect";
  *
- * // "MIT"          => Option.some(<LicenseNode MIT>)
- * // "UNLICENSED"   => Option.none()
- * // "SEE LICENSE IN LICENSE.txt" => Option.none()
+ * const decode = Schema.decodeUnknownSync(SpdxLicense);
+ *
+ * Option.isSome(licenseExpressionOf(decode("MIT"))); // => true
+ * Option.isSome(licenseExpressionOf(decode("UNLICENSED"))); // => false
+ * Option.isSome(licenseExpressionOf(decode("SEE LICENSE IN LICENSE.txt"))); // => false
  * ```
  *
  * @param license - a branded manifest license value
@@ -102,8 +103,7 @@ export type SpdxLicense = string & Brand.Brand<"SpdxLicense">;
  */
 export const licenseExpressionOf = (license: SpdxLicense): Option.Option<SpdxExpression> =>
 	// No explicit screen for npm's two spellings: the grammar already declines
-	// them, so discarding the parse failure IS the screen. An earlier draft
-	// checked them by hand; removing those branches changed no test, which is
-	// what proved them dead. The absence is load-bearing — it is why a future
-	// third npm special case needs no change here.
+	// them, so discarding the parse failure IS the screen. The absence is
+	// load-bearing — it is why a future third npm special case needs no change
+	// here.
 	Result.getSuccess(SpdxExpressionOps.parseResult(license));

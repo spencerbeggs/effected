@@ -15,7 +15,7 @@ import type { EscapedComment } from "./comments.js";
 // Single-entry memo keyed on the text reference: composition issues one
 // lineCol call per AST node against the same document string, so scanning
 // from offset 0 on every call made composition O(nodes × length). The index
-// is rebuilt only when a different text arrives (issue #108).
+// is rebuilt only when a different text arrives.
 let lineStartsText: string | undefined;
 let lineStartsCache: ReadonlyArray<number> = [];
 
@@ -32,7 +32,7 @@ export function getLineStarts(text: string): ReadonlyArray<number> {
 
 /**
  * Zero-based line and column of `offset`. A byte-order mark at the line start
- * occupies no column, matching the lexer and `columnAt` (#694), so a
+ * occupies no column, matching the lexer and `columnAt`, so a
  * diagnostic's `character` behind a BOM equals the BOM-less document's.
  */
 export function lineCol(text: string, offset: number): { line: number; column: number } {

@@ -177,17 +177,23 @@ const RESERVED = 3;
  * in a window under the answer row, so the question, the answer and the help line stay on screen.
  * The answer starts as no unless `initial` says otherwise, and `←`/`→` flip it whichever row is highlighted.
  *
- * okfit's verify step passes one toggle when it has drafts, and reads it back with a fallback, since with no drafts
- * the key is absent:
+ * A toggle passed conditionally is absent from the result when it was left out, so read it back with a fallback:
  *
  * ```ts
- * const { confirmed, toggles } = yield* CliUi.run(
- *   Confirm.screen({
- *     message: "Publish the release?",
- *     toggles: drafts > 0 ? [{ key: "promote", label: `promote ${drafts} drafts to stable`, value: true }] : [],
- *   }),
- * )
- * const promote = toggles.promote ?? false
+ * import { CliUi, Confirm } from "@effected/cli/ui"
+ * import { Effect } from "effect"
+ *
+ * const publish = (drafts: number) =>
+ *   Effect.gen(function* () {
+ *     const { confirmed, toggles } = yield* CliUi.run(
+ *       Confirm.screen({
+ *         message: "Publish the release?",
+ *         toggles: drafts > 0 ? [{ key: "promote", label: `promote ${drafts} drafts to stable`, value: true }] : [],
+ *       }),
+ *     )
+ *     const promote = toggles.promote ?? false
+ *     return { confirmed, promote }
+ *   })
  * ```
  *
  * @public

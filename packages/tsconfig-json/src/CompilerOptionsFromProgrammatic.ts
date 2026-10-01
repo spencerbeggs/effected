@@ -66,7 +66,7 @@ const encodeOut = (encoded: typeof CompilerOptions.Encoded): ProgrammaticRecord 
  * the three in one object, and `lib` entries in any of their three spellings
  * (`"esnext"`, `"lib.esnext.d.ts"`, an absolute path to the lib file) — producing
  * validated {@link (CompilerOptions:namespace).Type} with canonical lowercase enum
- * strings and short-form `lib`. Unknown and dead keys pass through, exactly as
+ * strings and short-form `lib`. Unknown and removed keys pass through, exactly as
  * {@link (CompilerOptions:variable)} itself allows. Decoding is idempotent on
  * already-canonical input.
  *

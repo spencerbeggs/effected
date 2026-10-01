@@ -58,7 +58,7 @@ const capture = (
  * `setRawMode`, `ref` and `unref`, and captured writes.
  *
  * @remarks
- * The third file licensed to touch Node (`okf/decisions/ui-binds-process-streams.md`), testing only: Ink's stream
+ * The third file licensed to touch Node, testing only: Ink's stream
  * contract is Node's, so the fakes are `node:stream` streams rather than a hand-rolled emitter that would have to
  * reproduce `readable`, `read()`, `setEncoding` and the write-callback barrier Ink waits on at unmount.
  *

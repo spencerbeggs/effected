@@ -23,10 +23,12 @@ export class TarballError extends Schema.TaggedError<TarballError>()("TarballErr
 	 * **The `notFound` split is load-bearing, not cosmetic.** A consumer that
 	 * cannot tell "this version legitimately does not exist" from "something
 	 * went wrong fetching a version that does" has to treat both the same way,
-	 * and the failure that results is silent: a downstream reported an
-	 * integrity mismatch being handled as a missing merge base, which
-	 * downgraded a merge to a lossy algorithm and dropped a user's override on
-	 * a run that reported success.
+	 * and the failure that results is silent: an integrity mismatch handled as
+	 * a missing version can send a caller down a lossy fallback on a run that
+	 * still reports success. Branch on `reason`.
+	 *
+	 * `integrityUnverifiable` — the registry vouched for an integrity but no
+	 * digest could be computed to check it, so nothing was compared.
 	 */
 	reason: Schema.Literals(["notFound", "http", "integrityMismatch", "integrityUnverifiable", "extractFailed"]),
 	/** The package being fetched. */
@@ -119,7 +121,7 @@ const make = Effect.fnUntraced(function* () {
 
 		// A non-2xx body must be caught BEFORE it reaches the disk: piping a 404
 		// error page to `tar` surfaces as a misleading "could not extract"
-		// instead of naming the real failure. A downstream paid for this one.
+		// instead of naming the real failure.
 		if (Math.floor(response.status / 100) !== 2) {
 			return yield* Effect.fail(fail(response.status === 404 ? "notFound" : "http", { status: response.status }));
 		}
@@ -192,11 +194,11 @@ const make = Effect.fnUntraced(function* () {
  *
  * @remarks
  * The inbound half of the registry surface: `NpmRegistry` reads *metadata* and
- * `PackagePublish` sends a tarball out, but nothing read a published one back.
- * The need is real and not served elsewhere — reading something out of a
- * published package **before any install has run**, which is what a tool
- * reproducing a package manager's config-dependency workflow has to do, since
- * its output is the input the install then consumes.
+ * `PackagePublish` sends a tarball out, while this service reads a published
+ * tarball back. Use it to read something out of a published package **before
+ * any install has run**, such as a tool reproducing a package manager's
+ * config-dependency workflow, whose output is the input the install then
+ * consumes.
  *
  * Pair it with `resolveEntryPoint` from `@effected/package-json` to find
  * the package's entry file inside the extracted directory. Loading that file is
@@ -205,16 +207,13 @@ const make = Effect.fnUntraced(function* () {
  * would hand every bundling consumer that problem with no seam to fix it.
  *
  * **Extraction shells out to `tar`** through core's `ChildProcessSpawner`
- * rather than taking a tarball-reader dependency — which is a tier decision,
- * not a convenience: a non-core runtime dependency here would make this package
- * *integrated*, and that propagates to the pure packages that depend on it for
- * vocabulary. `tar` is on every CI runner image; a consumer off a runner needs
- * both a spawner and the binary.
+ * rather than taking a tarball-reader dependency, so the package keeps its
+ * core-only dependency footprint. `tar` is on every CI runner image; a consumer
+ * off a runner needs both a spawner and the `tar` binary.
  *
  * @example
  * ```ts
  * import { NpmRegistry, PackageTarball } from "@effected/npm";
- * import { resolveEntryPoint } from "@effected/package-json";
  * import { Effect, Option } from "effect";
  *
  * const read = Effect.gen(function* () {
@@ -233,8 +232,9 @@ export class PackageTarball extends Context.Service<PackageTarball, PackageTarba
 	"@effected/npm/PackageTarball",
 ) {
 	/**
-	 * The live service, over core's filesystem, crypto, HTTP and process
-	 * contracts.
+	 * The live service, over core's `FileSystem`, `Crypto`, `HttpClient` and
+	 * `ChildProcessSpawner`. Pair it with {@link NpmRegistry.layer} to obtain the
+	 * {@link PublishedVersion} that `extract` takes.
 	 */
 	static readonly layer: Layer.Layer<
 		PackageTarball,

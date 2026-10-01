@@ -1,6 +1,6 @@
 /**
- * The `extends` target-resolution engine (E1 relative/rooted, E2 bare-specifier
- * node_modules lookup). Every input reaching {@link resolveExports} is an
+ * The `extends` target-resolution engine (relative/rooted specifiers and the bare-specifier
+ * `node_modules` lookup). Every input reaching {@link resolveExports} is an
  * untrusted `package.json` `exports` map, so every recursive surface carries a
  * depth guard, every untrusted map read goes through `Object.hasOwn`, dunder
  * keys are skipped, and substituted maps are built with `Object.create(null)` —
@@ -161,7 +161,7 @@ const ownProp = (record: Record<string, unknown>, key: string): unknown =>
 	!DUNDER_KEYS.has(key) && Object.hasOwn(record, key) ? record[key] : undefined;
 
 /**
- * Resolve E1 relative/rooted targets: the exact file wins verbatim (even
+ * Resolve relative/rooted targets: the exact file wins verbatim (even
  * extensionless); otherwise, if the target does not already end in `.json`, the
  * `.json`-appended path is tried. There is no directory fallback.
  */
@@ -240,8 +240,8 @@ const tryCandidate = (
 
 /**
  * Resolve an `extends` target to an absolute config path. Relative and rooted
- * specifiers (E1) resolve against the extending config's directory; bare
- * specifiers (E2) walk up the ancestor `node_modules` chain, skipping ancestors
+ * specifiers resolve against the extending config's directory; bare
+ * specifiers walk up the ancestor `node_modules` chain, skipping ancestors
  * named `node_modules`, and resolve against the first package found.
  *
  * Absence is `Option.none()`; a malformed manifest is coerced to an empty one

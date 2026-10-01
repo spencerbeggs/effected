@@ -1,10 +1,10 @@
-// The provenance state machine (G8): every defined name records HOW it came
+// The provenance state machine: every defined name records HOW it came
 // to exist (value, inline, static-array, table-explicit, table-implicit,
 // table-dotted, array-tables) and — for dotted-created tables — WHICH
 // document section created it. Each expression either legally extends the
 // tree or throws RawTomlError at the offending key, first violation wins.
 //
-// One corpus-driven deviation from the G8 matrix as originally written:
+// One corpus-driven refinement of the provenance rules:
 // header navigation PASSES THROUGH `table-dotted` intermediates (the spec's
 // "[table] form can be used to define sub-tables within tables defined via
 // dotted keys" — valid/spec-1.1.0/common-46.toml, valid/table/
@@ -65,7 +65,7 @@ interface Context {
 }
 
 /**
- * Header navigation (G8 rules 1 and 2, shared prefix): walk every segment but
+ * Header navigation (rules 1 and 2, shared prefix): walk every segment but
  * the last, creating `table-implicit` for absent names, passing through
  * tables (dotted included — the corpus deviation) and descending into the
  * last element of an array of tables.
@@ -101,7 +101,7 @@ const navigateHeaderPrefix = (root: SemNode, keyPath: ReadonlyArray<TomlKey>): S
 	return current;
 };
 
-/** G8 rule 1, final segment: create `table-explicit`, promote `table-implicit`, or error. */
+/** Rule 1, final segment: create `table-explicit`, promote `table-implicit`, or error. */
 const openTable = (root: SemNode, keyPath: ReadonlyArray<TomlKey>): SemNode => {
 	const parent = navigateHeaderPrefix(root, keyPath);
 	const key = keyPath[keyPath.length - 1];
@@ -118,7 +118,7 @@ const openTable = (root: SemNode, keyPath: ReadonlyArray<TomlKey>): SemNode => {
 	return raise("TableRedefined", `table "${key.value}" is already defined`, key);
 };
 
-/** G8 rule 2, final segment: create the array and its first element, append to an existing one, or error. */
+/** Rule 2, final segment: create the array and its first element, append to an existing one, or error. */
 const openArrayTable = (
 	root: SemNode,
 	keyPath: ReadonlyArray<TomlKey>,
@@ -142,7 +142,7 @@ const openArrayTable = (
 };
 
 /**
- * G8 rule 3: a (possibly dotted) key assignment scoped to `table` under
+ * Rule 3: a (possibly dotted) key assignment scoped to `table` under
  * `sectionId`. Intermediates must be absent (create `table-dotted`) or
  * `table-dotted` from the same section; the final key must be absent.
  */
@@ -207,7 +207,7 @@ const checkArrayItem = (item: TomlValueNode, context: Context): void => {
 };
 
 /**
- * G8 rule 4: build an inline table's own scope (dotted keys follow rule 3
+ * Rule 4: build an inline table's own scope (dotted keys follow rule 3
  * inside it), then freeze it — the returned node's `inline` kind makes every
  * later navigation through it an `InlineTableExtended` error.
  */
@@ -222,7 +222,7 @@ const inlineNode = (node: TomlInlineTable, context: Context): SemNode => {
 };
 
 /**
- * Walk the expressions through the G8 state machine, firing the visitor after
+ * Walk the expressions through the provenance state machine, firing the visitor after
  * each expression validates; throws `RawTomlError` at the first violation.
  */
 export const analyze = (expressions: ReadonlyArray<TomlExpression>, visitor?: SemanticVisitor): void => {

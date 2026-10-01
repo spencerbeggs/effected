@@ -165,20 +165,17 @@ const sriRestricted = brandedIntegrity.pipe(
 );
 
 /**
- * {@link (IntegrityHash:variable)} narrowed to the SRI `<algo>-<base64>` form
- * — `sha512-<base64>` as pnpm and npm lockfiles record it, and as pnpm's
- * legacy inline `configDependencies` integrity carries it. A corepack
- * (`sha512.<hex>`) or yarn (`10c0/<hex>`) hash, both valid `IntegrityHash`
- * values, fails this schema.
+ * A subresource-integrity hash in the SRI `<algo>-<base64>` form only —
+ * `sha512-<base64>` as pnpm and npm lockfiles record it, and as pnpm's inline
+ * `configDependencies` integrity carries it. A corepack (`sha512.<hex>`) or yarn
+ * (`10c0/<hex>`) hash, both valid {@link (IntegrityHash:variable)} values, fails
+ * this schema.
  *
  * @remarks
  * The SRI counterpart of {@link (CorepackIntegrityHash:variable)}, with the same
  * posture: it decodes to the same {@link IntegrityHashBrand} as the
- * unrestricted schema (no second brand), and because a `Schema.check` is erased
- * from the built type, a consumer that re-derives the restriction privately
- * compiles clean and behaves identically. Each consuming field therefore
- * asserts its schema IS this export (object identity), as the corepack
- * consumers do.
+ * unrestricted schema (no second brand), so a value it accepts assigns anywhere
+ * an `IntegrityHash` is expected.
  *
  * It validates SRI shape only: the digest is not base64-decoded or
  * length-checked. A value this schema accepts, such as `sha512-oldHash==`, can
@@ -228,10 +225,7 @@ export const SriIntegrityHash: Schema.brand<Schema.String, "IntegrityHash"> = sr
 // two `integrity` strings that differ as text can decode to identical bytes —
 // precisely the ambiguity an integrity check exists to deny. Core is also
 // *stricter* where this codec is deliberately lenient: it rejects the unpadded
-// form. Neither direction is a drop-in. Do not "fix" this to `Base64`. The
-// codec's own strictness on exactly this class of input is pinned by
-// __test__/IntegrityHash.test.ts's "rejects malformed and non-canonical
-// base64"; core's leniency above is not pinned by an in-repo test.
+// form. Neither direction is a drop-in. Do not "fix" this to `Base64`.
 //
 // Canonical base64 alphabet; index = 6-bit value.
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -422,10 +416,10 @@ interface CorepackIntegrityHashStatics {
 }
 
 /**
- * {@link (IntegrityHash:variable)} narrowed to the corepack `<algo>.<hex>` form
- * — `sha512.deadbeef`, and corepack's own sha224 default pins
- * (`sha224.877304e3…`). An SRI (`sha512-<base64>`) or yarn (`10c0/<hex>`)
- * hash, both valid `IntegrityHash` values, fails this schema.
+ * A subresource-integrity hash in the corepack `<algo>.<hex>` form only —
+ * `sha512.deadbeef`, and corepack's own sha224 default pins
+ * (`sha224.877304e3…`). An SRI (`sha512-<base64>`) or yarn (`10c0/<hex>`) hash,
+ * both valid {@link (IntegrityHash:variable)} values, fails this schema.
  *
  * The schema value also carries the SRI bridge: the `FromSri` codec decodes
  * npm's `sha512-<base64>` form (what `NpmRegistry.version()` returns, with one
@@ -439,33 +433,24 @@ interface CorepackIntegrityHashStatics {
  * The corepack pin tail (`<name>@<version>+<integrity>`) is the one place the
  * kit meets this form, and two schemas name it: `PackageManagerPin.integrity`
  * here and `@effected/package-json`'s `PackageManager.integrity`. Both consume
- * **this** schema — the restriction existed privately in each module until they
- * were consolidated, and a private copy is exactly how the two drift (the
- * widening that admitted sha224 had to be made twice).
+ * **this** schema, so a value validated by one is accepted by the other.
  *
  * It decodes to the same {@link IntegrityHashBrand} the unrestricted schema
  * does, so a corepack-validated value assigns anywhere an `IntegrityHash` is
- * expected; there is no second brand. Reach for
- * `IntegrityHash.isCorepack(value)` to ask the same question about a raw
- * string without decoding.
+ * expected; there is no second brand. A `Schema.check` is erased from the built
+ * type, so this schema and the unrestricted one are the same declared type.
+ * Reach for `IntegrityHash.isCorepack(value)` to ask the same question about a
+ * raw string without decoding.
  *
- * That single brand is also why sharing this schema is not type-enforced, and
- * the consequence is sharper than it looks: a `Schema.check` is **erased from
- * the built type**, so this schema and the unrestricted one are the same
- * declared type. A consumer that quietly reverts to a private copy compiles
- * clean, and — if the copy is faithful — passes every rejection test too.
- * Neither `tsc` nor behaviour can see the re-fork.
- *
- * What does see it is **object identity**, so each consumer's suite asserts
- * that its field schema IS this export:
- * `PackageManagerPin.fields.integrity.schema === CorepackIntegrityHash` (an
- * `optionalKey` field keeps the inner schema on `.schema`), and
+ * @privateRemarks
+ * Sharing is not type-enforced: a consumer that quietly reverts to a private
+ * copy of the restriction compiles clean and, if the copy is faithful, passes
+ * every rejection test. What sees a re-fork is **object identity**, so each
+ * consumer's suite asserts its field schema IS this export
+ * (`PackageManagerPin.fields.integrity.schema === CorepackIntegrityHash`, and
  * `PackageManager.fields.integrity.value === CorepackIntegrityHash` on the
- * `@effected/package-json` side (a `Schema.Option` keeps it on `.value`). Both
- * assertions carry a control against the unrestricted brand, so they discriminate
- * rather than passing on any schema at all. That identity assertion is the only
- * thing standing between the two surfaces and a silent re-fork; do not replace
- * it with a behavioural test, which cannot fail.
+ * `@effected/package-json` side), each with a control against the unrestricted
+ * brand. Do not replace those with a behavioural test, which cannot fail.
  *
  * @example
  * ```ts

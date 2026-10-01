@@ -213,6 +213,17 @@ const mount = <A>(
 /**
  * Interactive screens drawn with Ink, mounted as scoped resources.
  *
+ * @example
+ * ```ts
+ * import { CliUi, Confirm } from "@effected/cli/ui"
+ * import { Effect } from "effect"
+ *
+ * // Answers `otherwise` when there is no person to ask, and fails with `Cancelled` when they back out.
+ * const ask = CliUi.prompt(Confirm.screen({ message: "Overwrite the config?" }), {
+ * 	otherwise: { confirmed: false, toggles: {} },
+ * })
+ * ```
+ *
  * @public
  */
 export class CliUi {
@@ -227,7 +238,8 @@ export class CliUi {
 	 * `UiStreams` with Ink's own Ctrl-C exit off: Ctrl-C cancels with `"interrupt"` and Esc with `"escape"`.
 	 *
 	 * Mounting is one scoped resource. However the screen ends (resolved, cancelled, crashed, or the fiber
-	 * interrupted), it is unmounted, raw mode is off, the cursor is shown, and the colour level is restored. A
+	 * interrupted), it is unmounted, raw mode and bracketed paste are off, the cursor is shown, and the colour level is
+	 * restored. A
 	 * component that throws is a defect, never a hang or a typed failure, and nothing of Ink's crash screen reaches
 	 * stdout. So is a `useKeys` handler that throws; a handler a consumer registers with Ink's own `useInput` or
 	 * `usePaste` is outside the kit, and what it throws escapes as Ink leaves it. A crash wins over an end in the same
@@ -236,7 +248,9 @@ export class CliUi {
 	 * that crash in the cause rather than replacing it. An interrupt stays an interrupt, even when the tree reports a
 	 * crash as it unmounts.
 	 *
-	 * A screen draws on stdout, and is interactive when `CliInteractive` is, which reads stdout's terminal.
+	 * A screen draws on stdout (`UiStreams`), and mounts only when `CliInteractive` is true: a human audience, a
+	 * terminal on both stdin and stdout, and a `TERM` that is not `dumb`. `CliInteractive` reads `false` until a layer
+	 * sets it (`CliRuntime.main`'s `env` does), so a program that never provides one always gets `NotInteractive`.
 	 *
 	 * Screens run one at a time, process-wide: Ink owns raw mode on the one terminal, so a second `run` waits until the
 	 * first is released; so does a `run` while a {@link CliUi.live} view has a run drawn. A screen that itself awaits

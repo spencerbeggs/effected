@@ -32,24 +32,23 @@ export const bytesToUtf8 = (bytes: Uint8Array): Option.Option<string> => {
  *
  * @remarks
  * Core's Schema ships `Uint8ArrayFromBase64`, `Uint8ArrayFromBase64Url` and
- * `Uint8ArrayFromHex` — and **nothing for UTF-8**. So the advice this package
- * gives, "cache values are bytes, so encode them deliberately through a
- * schema," could not be followed to the end: `Schema.fromJsonString(schema)`
- * reaches `string` and stops there. Every consumer hand-wired a `TextEncoder`
- * at exactly the seam the advice exists to close, or paid base64's 33% size
- * premium to stay inside Schema.
+ * `Uint8ArrayFromHex` — and **nothing for UTF-8**. `Schema.fromJsonString(schema)`
+ * reaches `string` and stops there, so this codec supplies the last step from
+ * text to the bytes a cache value is, without a hand-wired `TextEncoder` or
+ * base64's 33% size premium.
  *
- * This closes it. **Decoding** takes UTF-8 text to its bytes and always
+ * **Decoding** takes UTF-8 text to its bytes and always
  * succeeds; **encoding** takes bytes back to text and *fails* on malformed
  * UTF-8 rather than substituting replacement characters, so a corrupt value
  * stays distinguishable from a valid one that happens to contain `U+FFFD`.
  *
- * It lives here, next to the byte-valued API that needs it, rather than in a
- * schema package. If core ever ships an equivalent, prefer that one.
- *
  * @example
  * ```ts
- * const Payload = Schema.fromJsonString(Settings).pipe(Schema.encodeTo(Uint8ArrayFromUtf8));
+ * import { Uint8ArrayFromUtf8 } from "@effected/store";
+ * import { Schema } from "effect";
+ *
+ * const bytes = Schema.decodeSync(Uint8ArrayFromUtf8)("héllo"); // => Uint8Array of the UTF-8 bytes
+ * const text = Schema.encodeSync(Uint8ArrayFromUtf8)(bytes); // => "héllo"
  * ```
  *
  * @public

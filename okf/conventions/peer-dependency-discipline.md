@@ -12,8 +12,8 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "claude-code/opus-5"
-  at: 2026-10-01T01:20:02Z
-  body_sha256: e3e259fffd66360b9f9f214d8c3f645c190652d5b44b96cda375b0d81dab08dd
+  at: 2026-10-01T17:24:58Z
+  body_sha256: 9a582e015902bf84783059915ecb13514b21ccc1ee5217d287afe79fef90e16f
 ---
 
 # Peer-dependency discipline
@@ -23,12 +23,12 @@ Every package must declare its complete peer closure. A declared
 is a defect — unfulfilled transitive peers escape to the consumer's
 importer, where pnpm's `autoInstallPeers` can bind an incompatible
 `effect` version (historically a v4 beta bound into a v3-wanting
-package, and on at least one prerelease advance, two different v4
-prereleases glued into a single decode pipeline). Because every
-published package's `effect` peer is an exact pin, an unsatisfiable one
-glues in anyway with no install-time error and surfaces later as a
-runtime failure far from its cause — see [an unsatisfiable exact effect
-peer installs clean and fails somewhere
+package, and on at least one release-candidate advance, two different v4
+release candidates glued into a single decode pipeline). Because
+`autoInstallPeers` binds an `effect` peer it cannot satisfy anyway, an
+unsatisfiable one, exact or caret, glues in with no install-time error and
+surfaces later as a runtime failure far from its cause — see [an
+unsatisfiable effect peer installs clean and fails somewhere
 else](../gotchas/exact-effect-peer-silently-satisfiable.md).
 
 - The `@effected` closure is declared, never left to transitive satisfaction: a published package lists every required peer of each `@effected` package it peers on or depends on, recursively, and an optional peer's closure stays optional, but an optional declaration never closes a required chain (a consumer may skip it, and the chain still needs it). `peerClosure.int.test.ts` in `packages/workspaces` enforces it and names the package and the missing peer.
@@ -40,7 +40,7 @@ else](../gotchas/exact-effect-peer-silently-satisfiable.md).
 `pnpm peers check` has one known-issue slot and its occupant rotates,
 always somewhere in the toolchain graph rather than in this workspace,
 clearing when the offending tool republishes against the current
-`effect` prerelease — see [the expected `pnpm peers check`
+`effect` release — see [the expected `pnpm peers check`
 occupant](../gotchas/expected-peers-check-occupant.md) for who currently
 holds it. Do not silence the occupant, and do not
 read its presence as license to tolerate a second one: any other warning

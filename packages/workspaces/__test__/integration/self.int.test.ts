@@ -111,7 +111,7 @@ describe("the effected repository, discovered by the package that lives in it", 
 				// package depends on `catalog:effect`.
 				const range = set.rangeOf("effect", Option.some("effect"));
 				assert.isTrue(Option.isSome(range), "the effect catalog must resolve");
-				assert.include(Option.getOrThrow(range), "4.0.0-");
+				assert.match(Option.getOrThrow(range), /^\^?4\./);
 			}),
 		);
 

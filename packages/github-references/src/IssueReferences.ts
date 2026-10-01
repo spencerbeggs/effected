@@ -1,33 +1,29 @@
 import { Option } from "effect";
 
-/**
- * GitHub's closing-keyword issue-reference grammar, as pure functions.
- *
- * @remarks
- * GitHub links an issue to a pull request when the PR's description carries
- * `<keyword> #<number>` for one of nine documented keywords. Consumers speak
- * that grammar in two distinct dialects, and this module models exactly those
- * two — no service, no layer, nothing but strings in and values out:
- *
- * - **Inline-in-prose** ({@link harvestIssueReferences}): a reference may appear anywhere in
- *   running text — `"fixes #12 and closes #13"` — with mandatory whitespace
- *   and **no colon**, because that is the spelling GitHub itself scans PR
- *   bodies for. This is the dialect a release pipeline harvests from commit
- *   subjects and PR descriptions.
- * - **Bare-line** ({@link parseBareLineReference}): the whole line, after trimming, *is*
- *   the reference — `"Closes: #12"` — with an **optional colon**, because a
- *   generated references region writes one reference per line and a colon
- *   reads better there. GitHub does not require the colon; the region format
- *   allows it, so the parser must too. The dialects differ because their
- *   producers do: prose is written by humans for GitHub's scanner, the region
- *   is written by tooling for humans.
- *
- * Deliberately out of scope this round: cross-repo references
- * (`owner/repo#N`) and full-URL references
- * (`https://github.com/owner/repo/issues/N`). Both are real GitHub spellings;
- * neither dialect's consumers emit them yet, and guessing at their shape here
- * would freeze an API nobody has driven.
- */
+// GitHub's closing-keyword issue-reference grammar, as pure functions.
+//
+// GitHub links an issue to a pull request when the PR's description carries
+// `<keyword> #<number>` for one of nine documented keywords. Consumers speak
+// that grammar in two distinct dialects, and this module models exactly those
+// two — no service, no layer, nothing but strings in and values out:
+//
+// - **Inline-in-prose** (`harvestIssueReferences`): a reference may appear anywhere in
+//   running text — `"fixes #12 and closes #13"` — with mandatory whitespace
+//   and **no colon**, because that is the spelling GitHub itself scans PR
+//   bodies for. This is the dialect a release pipeline harvests from commit
+//   subjects and PR descriptions.
+// - **Bare-line** (`parseBareLineReference`): the whole line, after trimming, *is*
+//   the reference — `"Closes: #12"` — with an **optional colon**, because a
+//   generated references region writes one reference per line and a colon
+//   reads better there. GitHub does not require the colon; the region format
+//   allows it, so the parser must too. The dialects differ because their
+//   producers do: prose is written by humans for GitHub's scanner, the region
+//   is written by tooling for humans.
+//
+// Deliberately out of scope: cross-repo references (`owner/repo#N`) and
+// full-URL references (`https://github.com/owner/repo/issues/N`). Both are
+// real GitHub spellings, but neither dialect's producers emit them, and
+// guessing at their shape here would freeze an API nobody has driven.
 
 /**
  * The nine closing keywords GitHub documents, lowercased.
@@ -124,7 +120,19 @@ const safeIssueNumber = (digits: string): number | undefined => {
  * or two is the caller's business, not a parser's.
  *
  * A match whose digits exceed `Number.MAX_SAFE_INTEGER` is skipped, not
- * misparsed — see the module remarks for the scope boundary.
+ * misparsed. Cross-repo (`owner/repo#N`) and full-URL references are not
+ * recognized.
+ *
+ * @example
+ * ```ts
+ * import { harvestIssueReferences } from "@effected/github-references";
+ *
+ * harvestIssueReferences("fixes #12 and closes #13");
+ * // => [
+ * //   { issueNumber: 12, keyword: "fixes", start: 0, end: 9 },
+ * //   { issueNumber: 13, keyword: "closes", start: 14, end: 24 },
+ * // ]
+ * ```
  *
  * @public
  */
@@ -153,6 +161,14 @@ export const harvestIssueReferences = (text: string): ReadonlyArray<IssueReferen
  * anything else at all is a rejection, never a partial parse; a line carries
  * one reference or none. Digits past `Number.MAX_SAFE_INTEGER` reject too,
  * for the same reason {@link harvestIssueReferences} skips them.
+ *
+ * @example
+ * ```ts
+ * import { parseBareLineReference } from "@effected/github-references";
+ *
+ * parseBareLineReference("Closes: #12");
+ * // => Option.some({ issueNumber: 12, keyword: "closes" })
+ * ```
  *
  * @public
  */

@@ -44,7 +44,20 @@ const KINDS: ReadonlyArray<AudienceKind> = ["human", "agent", "ci"];
  * Precedence: a valid override environment variable, then an agent, then CI, then a human, so an agent inside a
  * CI job gets agent output. A human typing a command inside an agent-detected shell is still detected as an
  * agent, never refused: the override variable flips it back. The shape is one immutable value, so the service is
- * provided with `Layer.succeed` and there is no `Layer.mock` to reach for. See `okf/modules/env.md`.
+ * provided with `Layer.succeed` and there is no `Layer.mock` to reach for.
+ *
+ * @example
+ * ```ts
+ * import { Audience, CurrentRuntimeEnv } from "@effected/env"
+ * import { Effect, Layer } from "effect"
+ *
+ * const AudienceLive = Audience.layer({ envVar: "MYTOOL_AUDIENCE" }).pipe(Layer.provide(CurrentRuntimeEnv.layer))
+ *
+ * const program = Effect.gen(function* () {
+ * 	const { kind, source } = yield* Audience
+ * 	return `${kind} (${source})`
+ * }).pipe(Effect.provide(AudienceLive))
+ * ```
  *
  * @public
  */
@@ -58,8 +71,8 @@ export class Audience extends Context.Service<Audience, AudienceShape>()("@effec
 	 * detection; it never fails the run. That warning is once per layer build, so building the layer a second time
 	 * warns again. The warning goes through `Effect.logWarning`, and Effect's default logger writes to stdout unless
 	 * `References.LogToStderr` is set: an MCP server or any stdio-sensitive host must route logs to stderr (the `cli`
-	 * package's `CliLogger` does). Without `options.envVar` the audience is always detected. A layer-returning function mints a
-	 * fresh layer per call: call it once and bind the result to a constant.
+	 * package's `CliLogger` does). Without `options.envVar` the audience is always detected. A layer-returning function
+	 * mints a fresh layer per call: call it once and bind the result to a constant.
 	 *
 	 * @param options - `envVar` names the override variable
 	 */

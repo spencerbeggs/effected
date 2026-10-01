@@ -15,9 +15,8 @@ const classifyDiff = (a: SemVer, b: SemVer): "major" | "minor" | "patch" | "prer
 
 /**
  * The difference between two {@link SemVer} versions: the classification of
- * the change plus signed numeric deltas. A `Schema.TaggedClass` — the one
- * concept in this package where serialized tag discrimination earns its
- * keep.
+ * the change plus signed numeric deltas. A `Schema.TaggedClass`, so a serialized
+ * diff carries a `_tag` discriminator.
  *
  * The `type` field is the highest-precedence field that differs: `"major"`,
  * `"minor"`, `"patch"`, `"prerelease"` (only prerelease identifiers differ),

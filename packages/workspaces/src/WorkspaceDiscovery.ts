@@ -1,9 +1,8 @@
 // Workspace discovery: read the `packages:` patterns, enumerate them, decode a
 // WorkspacePackage per directory.
 //
-// This module also folds in v3's `PackageResolver` (file → owning package,
-// longest-prefix) — that service existed only so ChangeDetector could depend on
-// it, and it is a lookup over discovery output, not a concern of its own.
+// It also owns file → owning-package resolution (longest-prefix), which is a
+// lookup over discovery output rather than a concern of its own.
 //
 // It is also where `@effected/npm`'s `WorkspaceResolver` contract is
 // implemented: `versionOf` is a lookup over the discovered package list.
@@ -30,7 +29,7 @@ import { WorkspaceRoot } from "./WorkspaceRoot.js";
  * A manifest with no `version` is NOT a failure: pnpm accepts a version-less
  * private package and a private monorepo root without one is the ordinary
  * shape, so the member is discovered with `WorkspacePackage.version` absent.
- * The former `missingVersion` kind is retired. Only ABSENCE is tolerated: a
+ * Only ABSENCE is tolerated: a
  * `version` that is present but not a string — or present and `""`, which pnpm
  * never wrote and which would resolve `workspace:^` to a bare `"^"` — is the
  * manifest's shape being wrong and reports `invalidShape`.
@@ -166,11 +165,10 @@ export interface WorkspaceDiscoveryOptions {
 	 * `importerMap`, `getPackage`, `resolveFile`, `resolveFiles`). The per-call
 	 * `infoIn`, `listPackagesIn` and `refreshIn` resolve from an arbitrary
 	 * directory the caller names, which a single layer-level ceiling cannot
-	 * sensibly bound, so they ascend unbounded as before.
+	 * sensibly bound, so they ascend unbounded.
 	 *
 	 * `LockfileReader`, `WorkspaceCatalogs` and `WorkspaceSnapshots` each
-	 * take the same option; give them the same
-	 * value when wiring by hand, or let a `Workspaces.*` composite forward one
+	 * take the same option; give them the same value when wiring by hand, or let a `Workspaces.*` composite forward one
 	 * `stopAt` to all of them, so no service adopts a root another refused.
 	 *
 	 * @defaultValue no ceiling — the ascent runs to the filesystem root.
@@ -272,11 +270,9 @@ export interface WorkspaceDiscoveryShape {
  * the lifetime of the layer. A Vitest reporter that builds the layer per call
  * site and never queries it pays nothing.
  *
- * The memo is **success-only**. `Effect.cached` memoizes the first `Exit`,
- * *including an interrupt* — an init interrupted by an unrelated timeout would
- * otherwise brick the layer permanently with a cause outside its declared error
- * channel. A failure or interrupt is therefore retried on the next call, which
- * is a deliberate behaviour change from the v3 library.
+ * The memo is **success-only**: a failure or interrupt is not cached, so an
+ * init interrupted by an unrelated timeout cannot brick the layer, and the next
+ * call retries.
  *
  * @example
  * ```ts
@@ -678,12 +674,14 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 		});
 
 	/**
-	 * The live layer.
+	 * The live layer, discovering the workspace from `options.cwd`.
 	 *
 	 * @remarks
 	 * A parameterized layer factory mints a **fresh reference per call**, and
 	 * layers memoize by reference — bind the result to a `const` and reuse it
 	 * rather than calling `layer(...)` at each composition site.
+	 *
+	 * @param options - Root resolution and enumeration bounds.
 	 */
 	static readonly layer = (
 		options?: WorkspaceDiscoveryOptions,

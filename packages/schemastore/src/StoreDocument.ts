@@ -8,8 +8,7 @@ import { KeywordFamilies } from "./KeywordFamilies.js";
  * The Draft-07 meta-schema URL SchemaStore documents declare as `$schema`.
  *
  * Deliberately carries the trailing `#` fragment: the SchemaStore corpus
- * (and the extraction source's committed files) use the fragment form,
- * where core's `JsonSchema.META_SCHEMA_URI_DRAFT_07` omits it.
+ * uses the fragment form, where core's `JsonSchema.META_SCHEMA_URI_DRAFT_07` omits it.
  *
  * @public
  */
@@ -294,7 +293,7 @@ const restoreDefsRefs = (node: unknown, depth: number): unknown => {
 // either `additionalItems: false` or `maxItems` equals it. An open tail
 // given as `additionalItems: <schema>` fails that rule by construction, so
 // `Schema.NonEmptyArray(X)` — which always lowers to a uniform 1-tuple with
-// an open tail — could not be published through the CLI at all (#818).
+// an open tail — could not be published through the CLI at all.
 //
 // When every tuple element is content-equal to the rest element (the
 // `NonEmptyArray` case, and any `TupleWithRest` with a uniform head), the
@@ -403,7 +402,7 @@ const collapseUniformTuples = (node: unknown, depth: number): unknown => {
  * `#/$defs` `$ref` rewrite the lowering makes necessary — so every `$ref`
  * in a built document already resolves against the `$defs` pool — the
  * uniform-tuple collapse that keeps open-ended `NonEmptyArray`-shaped
- * arrays publishable through the strict ajv gate (#818), and the gate that
+ * arrays publishable through the strict ajv gate, and the gate that
  * holds the document's non-standard surface to the declared keyword
  * families ({@link KeywordFamilies}). The package owns assembly and
  * publication shape, not a JSON Schema engine.
@@ -546,8 +545,7 @@ export class StoreDocument extends Schema.Class<StoreDocument>("StoreDocument")(
 	/**
 	 * The flat SchemaStore publication shape: `$schema`, `$id`, the root
 	 * schema's keywords spread at the top level, then the `$defs` pool.
-	 * `$defs` is omitted when the pool is empty (a deliberate divergence
-	 * from the extraction source, which always emitted the key).
+	 * `$defs` is omitted when the pool is empty.
 	 */
 	toJson(): Record<string, unknown> {
 		return {

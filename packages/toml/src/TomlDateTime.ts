@@ -4,9 +4,8 @@
 // Schema.Class value objects with calendar validity, canonical `toString`
 // and structural equality.
 //
-// Leaf module: imports only `effect`. The scanner (Task 5) constructs these,
-// value stringify (Task 8) prints them, and the corpus harness (Task 9)
-// compares them.
+// Leaf module: imports only `effect`. The scanner constructs these, value
+// stringify prints them, and the corpus harness compares them.
 
 import { Schema } from "effect";
 

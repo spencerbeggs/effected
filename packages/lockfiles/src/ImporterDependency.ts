@@ -23,7 +23,7 @@ import { Schema } from "effect";
  *   `name` against `Lockfile.packages`.
  * - `peerSuffix` — pnpm's peer-disambiguation context: the raw parenthesized
  *   chain the lockfile recorded after the version, e.g.
- *   `(effect@4.0.0-beta.101)(ioredis@5.11.1(supports-color@8.1.1))`. Present
+ *   `(effect@4.0.0)(ioredis@5.11.1(supports-color@8.1.1))`. Present
  *   only when the lockfile recorded one — never for suffix-free pnpm entries,
  *   and never for the other formats, which do not record peer context per
  *   importer dependency.

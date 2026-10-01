@@ -1,9 +1,8 @@
 // Structural JSONC modification: compute the edits needed to set, replace or
 // delete a value at a path, without mutating the source.
 //
-// Navigation goes through the scanner-based `internal/navigate.ts` (a
-// correctness fix over v3's fragile string search); this module owns only edit
-// synthesis and the `JsoncModificationError` it raises on a navigation miss.
+// Navigation goes through the scanner-based `internal/navigate.ts`; this
+// module owns only edit synthesis and the `JsoncModificationError` it raises on a navigation miss.
 
 import { Effect, Schema } from "effect";
 import { navigate } from "./internal/navigate.js";
@@ -20,17 +19,17 @@ import type { JsoncPath } from "./JsoncNode.js";
  * - `expected` — the container kind (`"object"` or `"array"`) the segment at
  *   `depth` required.
  * - `depth` — the 1-based index into `path` where navigation failed.
- * - `offset` — reserved for a future source-position annotation; currently
- *   always omitted (navigation reports the mismatch structurally, without a
- *   text offset).
+ * - `offset` — reserved for a source-position annotation; currently always
+ *   omitted (navigation reports the mismatch structurally, without a text
+ *   offset).
  *
  * @remarks
  * Follows the structure-preserving-errors house rule — the mismatch's
  * discriminating data is carried as typed fields (`path`, `expected`, `depth`,
  * optional `offset`), not collapsed into a `reason: string`. This mirrors
  * `YamlModificationError`'s posture (its fields differ because the underlying
- * failures differ; the jsonc/yaml parity convention binds `Edit`/`Range`/`Path`,
- * not this error).
+ * failures differ; the cross-package parity convention binds
+ * `Edit`/`Range`/`Path`, not this error).
  *
  * @public
  */
@@ -62,7 +61,23 @@ export interface JsoncModifyOptions {
 }
 
 /**
- * Structural JSONC modification statics. Not instantiable.
+ * Sets, replaces or deletes a value at a path in JSONC text, as byte-minimal
+ * edits that leave comments and formatting elsewhere untouched. Not
+ * instantiable.
+ *
+ * @example
+ * ```ts
+ * import { JsoncEdit, JsoncModifier } from "@effected/jsonc";
+ * import { Effect } from "effect";
+ *
+ * const text = '{\n  // dev port\n  "port": 3000\n}';
+ *
+ * const program = Effect.gen(function* () {
+ *   const edits = yield* JsoncModifier.modify(text, ["port"], 8080);
+ *   return JsoncEdit.applyAll(text, edits);
+ *   // => '{\n  // dev port\n  "port": 8080\n}'
+ * });
+ * ```
  *
  * @public
  */

@@ -19,8 +19,7 @@ export const DEFAULT_REGISTRY = "https://registry.npmjs.org";
  * **Per call, never baked into the layer.** A publish flow probes two
  * registries for one package inside a single program, so a layer-scoped
  * registry cannot express what consumers actually do — and a test double
- * keyed without the registry cannot express it either, which is how the v3
- * double silently answered the same integrity for two different registries.
+ * keyed without the registry could not express it either.
  *
  * @public
  */
@@ -28,10 +27,10 @@ export interface RegistryTarget {
 	/** Registry base URL. Defaults to {@link DEFAULT_REGISTRY}. */
 	readonly registry?: string | undefined;
 	/**
-	 * Renamed to {@link RegistryTarget.credential}.
+	 * Superseded by {@link RegistryTarget.credential}.
 	 *
 	 * @deprecated Use `credential: { kind: "token", token }`. This field is
-	 * retained as `never` for one minor **as a tripwire, not as an alias**:
+	 * typed `never` **as a tripwire, not as an alias**:
 	 * removing it outright would be a SILENT break rather than a loud one.
 	 * Callers commonly pass it through a conditional spread —
 	 * `...(token !== null ? { token } : {})` — and a spread of a no-longer-known
@@ -76,9 +75,8 @@ export class PublishedVersion extends Schema.Class<PublishedVersion>("PublishedV
  * @remarks
  * A class rather than a bare `version → timestamp` record because the
  * registry's `time` object mixes per-version entries with two non-version keys
- * (`created`, `modified`), and every consumer that reads it raw re-derives that
- * exclusion — including, before this package, silk-update-action's release-age
- * filter.
+ * (`created`, `modified`), and every consumer that reads it raw has to
+ * re-derive that exclusion.
  *
  * @public
  */
@@ -217,7 +215,7 @@ export interface NpmRegistryShape {
 		name: string,
 		target?: RegistryTarget,
 	) => Effect.Effect<Record<string, string>, RegistryReadError>;
-	/** Per-version publish timestamps — the endpoint that replaces `npm view <pkg> time --json`. */
+	/** Per-version publish timestamps, from the packument's `time` map (without its `created` / `modified` keys). */
 	readonly publishTimes: (
 		name: string,
 		target?: RegistryTarget,
@@ -232,9 +230,8 @@ const make = Effect.fnUntraced(function* () {
 	 * Fetches and decodes one registry document, mapping absence to `None`.
 	 *
 	 * @remarks
-	 * The 404-is-absence rule is applied on the **status**, structurally — the
-	 * v3 layer matched `npm error code E404` on the CLI's stderr, which broke
-	 * whenever npm reworded it (it did, between `npm ERR!` and `npm error`).
+	 * The 404-is-absence rule is applied on the **status**, structurally, rather
+	 * than by matching the wording of a CLI's stderr.
 	 */
 	const read = <A, I>(
 		schema: Schema.Codec<A, I>,
@@ -400,12 +397,10 @@ export interface SeededVersion {
  * A whole fake registry world, keyed the way real reads are.
  *
  * @remarks
- * `registries[registry][name][version]` — all three axes, because the v3 double
- * had none of them: it keyed by package name alone, so it could not serve two
- * versions of one package (silk-update-action's three-way merge) nor two
- * registries for one version (silk-release-action's mixed publish/recover run).
- * Both call sites hand-rolled a replacement stub; this shape is what they were
- * hand-rolling.
+ * `registries[registry][name][version]` — all three axes, so one seed can serve
+ * two versions of one package and two registries for one version (a mixed
+ * publish/recover run). Registry keys are matched exactly against
+ * `RegistryTarget.registry`; a read with no registry uses {@link DEFAULT_REGISTRY}.
  *
  * @public
  */
@@ -417,17 +412,36 @@ export interface RegistrySeed {
 }
 
 /**
- * Registry reads over core `HttpClient`.
+ * Reads package metadata from an npm-protocol registry over core `HttpClient`:
+ * one version, every version, dist-tags and per-version publish times.
  *
  * @remarks
- * Replaces every shelled `npm view`. The registry is a **per-call** argument,
- * a 404 is `Option.none()` rather than an error, and `integrity` is typed as
- * this package's own {@link IntegrityHash} rather than a bare string.
+ * No `npm view` subprocess is involved. The registry is a **per-call**
+ * argument, a 404 is `Option.none()` (or an empty collection) rather than an
+ * error, and `integrity` is typed as this package's own {@link IntegrityHash}
+ * rather than a bare string. Failures are {@link RegistryReadError}. The live
+ * {@link NpmRegistry.layer} requires `HttpClient`; tests use
+ * {@link NpmRegistry.layerSeeded} or {@link NpmRegistry.layerTest}.
+ *
+ * @example
+ * ```ts
+ * import { NpmRegistry } from "@effected/npm";
+ * import { Effect, Option } from "effect";
+ * import { FetchHttpClient } from "effect/http";
+ *
+ * const program = Effect.gen(function* () {
+ *   const registry = yield* NpmRegistry;
+ *   const found = yield* registry.version("effect", "4.0.0");
+ *   return Option.map(found, (published) => published.tarball);
+ * });
+ *
+ * Effect.runPromise(program.pipe(Effect.provide(NpmRegistry.layer), Effect.provide(FetchHttpClient.layer)));
+ * ```
  *
  * @public
  */
 export class NpmRegistry extends Context.Service<NpmRegistry, NpmRegistryShape>()("@effected/npm/NpmRegistry") {
-	/** Resolves `HttpClient` once at construction, so every method's `R` is `never`. */
+	/** The live service. Resolves `HttpClient` once at construction, so every method's `R` is `never`. */
 	static readonly layer: Layer.Layer<NpmRegistry, never, HttpClient.HttpClient> = Layer.effect(this, make());
 
 	/**
@@ -458,7 +472,7 @@ export class NpmRegistry extends Context.Service<NpmRegistry, NpmRegistryShape>(
 	static readonly layerTest = (overrides: Partial<NpmRegistryShape> = {}): Layer.Layer<NpmRegistry> =>
 		Layer.succeed(NpmRegistry, NpmRegistry.makeTest(overrides));
 
-	/** A fully-working double over a {@link RegistrySeed}. */
+	/** A fully-working in-memory double over a {@link RegistrySeed}. */
 	static readonly makeSeeded = (seed: RegistrySeed): NpmRegistryShape => {
 		const at = (target: RegistryTarget | undefined): Record<string, Record<string, SeededVersion>> =>
 			seed.registries[target?.registry ?? DEFAULT_REGISTRY] ?? {};

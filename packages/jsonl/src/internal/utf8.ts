@@ -1,12 +1,8 @@
-/**
- * UTF-8 byte accounting.
- *
- * A zero-dependency leaf so that both the line splitter and the error taxonomy
- * can measure bytes without either importing the other — the same cycle
- * firewall the other pure-tier packages use.
- *
- * @internal
- */
+// UTF-8 byte accounting.
+//
+// A zero-dependency leaf so that both the line splitter and the error taxonomy
+// can measure bytes without either importing the other — the same cycle
+// firewall the other pure-tier packages use.
 
 /**
  * The UTF-8 byte length of a JavaScript string.

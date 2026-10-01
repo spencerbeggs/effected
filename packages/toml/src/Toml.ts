@@ -329,6 +329,9 @@ export class Toml {
 	 *
 	 * Schema-producing: bind the result to a `const` on hot paths (see
 	 * {@link Toml.fromString}).
+	 *
+	 * @param target - The domain schema decoded values must satisfy.
+	 * @returns A `Schema.Codec<T, string>` decoding TOML text straight into `T`.
 	 */
 	static schema<T, E, RD = never, RE = never>(target: Schema.Codec<T, E, RD, RE>): Schema.Codec<T, string, RD, RE> {
 		return Toml.TomlFromString.pipe(

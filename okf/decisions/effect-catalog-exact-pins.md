@@ -2,7 +2,7 @@
 type: Decision
 title: The effect catalog pins exact versions
 description: The Effect catalogs pin exact prerelease versions with no caret, never a range.
-status: draft
+status: deprecated
 tags:
   - architecture
   - compat

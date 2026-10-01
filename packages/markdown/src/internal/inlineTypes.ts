@@ -8,7 +8,7 @@
 //
 // Upstream dispatches on a character in a `switch` inside `parseInline`. Here
 // the same dispatch is a per-dialect table keyed by trigger character, which
-// is what lets P2's GFM constructs (autolink literals, strikethrough) register
+// is what lets the GFM constructs (autolink literals, strikethrough) register
 // without touching the parser.
 
 import type { Definition } from "../MarkdownNode.js";

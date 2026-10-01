@@ -1,12 +1,12 @@
 // The tsconfig.json document schema — the top-level `TsconfigJson` struct plus
 // its sub-object schemas (`Reference`, `WatchOptions`, `TypeAcquisition`) and
-// the JSONC codec (`TsconfigJsonFromString`). Ported against TS 6.0.3 ×
-// schemastore per R1 (task-3 reference table); the three watchOptions VALUE
-// enums (watchFile/watchDirectory/fallbackPolling) are new here — Task 2's
+// the JSONC codec (`TsconfigJsonFromString`), modelled on TS 6.0.3 ×
+// schemastore. The three watchOptions VALUE enums
+// (watchFile/watchDirectory/fallbackPolling) are defined here;
 // CompilerOptions.ts owns compilerOptions only.
 //
 // Every parse goes through `@effected/jsonc`'s `Jsonc.schema` — there is no
-// JSON-strict path (global constraint). `TsconfigJsonFromString` is bound
+// JSON-strict path. `TsconfigJsonFromString` is bound
 // once at module top level, per the house Schema-producing-function
 // discipline (`Jsonc.schema` derives fresh caches per call).
 
@@ -59,7 +59,7 @@ export const FallbackPolling = caseInsensitiveLiterals([
 
 /**
  * One `references[]` entry: `path` is required and non-empty; every other key
- * is preserved verbatim (per R1.5).
+ * is preserved verbatim.
  *
  * @public
  */
@@ -91,8 +91,8 @@ export declare namespace Reference {
 }
 
 /**
- * `watchOptions` — the three enum fields (R1.2), the two live booleans/arrays
- * (R1.5), and a passthrough record (schemastore's `force` is phantom).
+ * `watchOptions` — the three enum fields, the two live booleans/arrays,
+ * and a passthrough record (schemastore's `force` is phantom).
  *
  * @public
  */
@@ -129,7 +129,7 @@ export declare namespace WatchOptions {
 }
 
 /**
- * `typeAcquisition` — per R1.5.
+ * `typeAcquisition` — the automatic type-acquisition settings, with unknown keys preserved.
  *
  * @public
  */
@@ -164,7 +164,7 @@ export declare namespace TypeAcquisition {
 }
 
 /**
- * The tsconfig.json document: every typed top-level field (R1.1) optional,
+ * The tsconfig.json document: every typed top-level field optional,
  * plus a passthrough record so unrecognized keys (`buildOptions`, `ts-node`,
  * …) survive decode and re-encode untouched — tsc itself silently ignores
  * unknown top-level keys, and this schema follows suit.
@@ -211,10 +211,9 @@ export declare namespace TsconfigJson {
 /**
  * Decodes a JSONC-encoded tsconfig.json document straight into
  * {@link (TsconfigJson:variable)}. Bound once at module top level —
- * `Jsonc.schema` is schema-producing, and this is the shared instance (the
- * house `FromString` idiom, R3.3; `TsconfigJson` is a `Schema.StructWithRest`
- * value rather than a `Schema.Class`, so the codec is a sibling export, not a
- * static).
+ * `Jsonc.schema` is schema-producing, and this is the shared instance
+ * (`TsconfigJson` is a `Schema.StructWithRest` value rather than a
+ * `Schema.Class`, so the codec is a sibling export, not a static).
  *
  * @public
  */
@@ -223,8 +222,8 @@ export const TsconfigJsonFromString: Schema.Codec<typeof TsconfigJson.Type, stri
 /**
  * Raised when a tsconfig.json document fails to parse or decode. `path` is
  * the file path when the failure is file-bound, and the empty string
- * otherwise (e.g. decoding an in-memory string). The loader (Task 8) wraps
- * file-bound decode failures in this error; this module only declares it.
+ * otherwise (e.g. decoding an in-memory string). `TsconfigLoader` wraps
+ * file-bound decode failures in this error.
  *
  * @public
  */

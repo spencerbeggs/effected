@@ -1,5 +1,6 @@
 /**
- * Where an annotation points in the repository.
+ * The title and source location of a `::notice::`, `::warning::` or `::error::`
+ * annotation.
  *
  * @remarks
  * The field names here are the readable ones; GitHub's wire protocol uses
@@ -74,18 +75,22 @@ export class WorkflowCommand {
 	private constructor() {}
 
 	/**
-	 * Render an arbitrary command. The primitive every other member uses.
+	 * Render an arbitrary command: `::name key=value::message`, with the message and
+	 * property values escaped. The primitive every other member uses.
 	 *
 	 * @remarks
-	 * The property type is written out structurally rather than as the module's
-	 * `CommandProperties` alias: an internal named type on a `@public` signature
-	 * fails the API Extractor gate, and neither an `@internal` tag nor a second
-	 * alias helps — only inlining does.
+	 * Properties whose value is `undefined` are omitted.
 	 *
 	 * Use a name the runner registers (`error`, `warning`, `notice`, `debug`, `group`, `endgroup`, `add-mask` and the
 	 * rest of its list). The runner tries its V2 parser first and, if the name is not registered, rejects the line, and
 	 * its legacy parser then reads the line for `##[` ANYWHERE in it: a `##[` in the data of a command with an
 	 * unregistered name is therefore a command. {@link CommandNeutralizer} is the tool for text that is only data.
+	 *
+	 * @privateRemarks
+	 * The property type is written out structurally rather than as the module's
+	 * `CommandProperties` alias: an internal named type on a `@public` signature
+	 * fails the API Extractor gate, and neither an `@internal` tag nor a second
+	 * alias helps — only inlining does.
 	 */
 	static render(
 		name: string,

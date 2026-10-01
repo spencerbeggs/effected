@@ -156,8 +156,7 @@ function composeBlockMapInner(
  * scope re-attributes it (see `EscapedComment` in `comments.ts`: "it belongs to
  * an outer scope"). The span was the one place that disagreed, reporting an
  * `offset`/`length` whose end lay past a comment the node does not own — so a
- * caller splicing text at the end of the collection inserted AFTER the comment
- * (#642's sibling, #643).
+ * caller splicing text at the end of the collection inserted AFTER the comment.
  *
  * The disowned set is the input rather than a re-derived column test, so the
  * span and the comment model cannot drift apart: whatever the partition threw
@@ -865,7 +864,7 @@ export function flattenBlockMapChildren(
  * Pattern: node, value-sep (no node) produces a key:null pair.
  * Pattern: value-sep, node produces a null:value pair.
  *
- * Comment attribution (#127): a comment on the same line as the end of the
+ * Comment attribution: a comment on the same line as the end of the
  * previous pair attaches to it as the trailing `comment`; an own-line
  * comment attaches FORWARD to the next pair as `commentBefore` (consecutive
  * lines join with `\n`); a blank line before a pair (or before its
@@ -1171,7 +1170,7 @@ function consumeValueNode(
 	// Peek past comments to the first node WITHOUT consuming anything: a node
 	// on a LATER line than our `:` that is immediately followed by its own
 	// value-sep is the next pair's KEY, not this pair's value — the pending
-	// pair's value is empty/null (#339: `key:\nother: 1` composed `other` as
+	// pair's value is empty/null (`key:\nother: 1` composed `other` as
 	// the value of `key` and then paired the orphaned `:` with an empty key).
 	// Same-line nodes stay consumed so `a: b: c: d` keeps its original,
 	// error-flagged pairing (ZCZ6). Mirrors consumeValueNodeForNullKey (S3PD).
@@ -1220,7 +1219,7 @@ function consumeValueNode(
 		}
 		break;
 	}
-	// #348: no value node follows, so these own-line comments never had a value
+	// No value node follows, so these own-line comments never had a value
 	// to lead — they belong to the enclosing mapping (its terminal comment run,
 	// or the next pair's `commentBefore`). Consuming them here dropped them on
 	// the floor, because the caller can only attach `leadingComments` to a value
@@ -1250,7 +1249,7 @@ function consumeValueNodeForNullKey(
 ): { node: YamlNode | null; nextIdx: number } | null {
 	let i = startIdx;
 	// Index of the first OWN-LINE comment after the `:` — the rewind point when
-	// no value node follows (#348; mirrors consumeValueNode, and matters here
+	// no value node follows (mirrors consumeValueNode, and matters here
 	// for the empty-key document `:\n# c\n`).
 	let firstOwnLineIdx = -1;
 	while (i < items.length) {
@@ -1279,7 +1278,7 @@ function consumeValueNodeForNullKey(
 		break;
 	}
 	// No value node followed: leave the own-line comments to the caller's own
-	// attribution rather than consuming them into nothing (#348).
+	// attribution rather than consuming them into nothing.
 	if (firstOwnLineIdx >= 0) return { node: null, nextIdx: firstOwnLineIdx };
 	return i > startIdx ? { node: null, nextIdx: i } : null;
 }
@@ -1714,7 +1713,7 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 	// mirrors the outer/inner meta split in flattenBlockMapChildren.
 	let sawNewlineSincePending = false;
 
-	// Comment attribution (#127), mirroring buildPairs: own-line comments
+	// Comment attribution, mirroring buildPairs: own-line comments
 	// attach forward to the next item as `commentBefore`; a comment on the
 	// same line as the end of the previous item attaches as its trailing
 	// `comment`; a blank line before an item sets `spaceBefore`; terminal

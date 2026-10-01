@@ -27,6 +27,19 @@ export interface ProjectDirInput {
 /**
  * Resolves where a tool launched by an agent host should treat as its project.
  *
+ * @example
+ * ```ts
+ * import { LaunchContext } from "@effected/engine"
+ *
+ * const dir = LaunchContext.projectDir({
+ * 	argv: [],
+ * 	env: { CLAUDE_PROJECT_DIR: "/work/app" },
+ * 	keys: ["MYTOOL_PROJECT_DIR", "CLAUDE_PROJECT_DIR"],
+ * 	cwd: "/home/me",
+ * })
+ * // => "/work/app"
+ * ```
+ *
  * @public
  */
 export class LaunchContext {
@@ -36,8 +49,8 @@ export class LaunchContext {
 	 * Whether a value still carries a literal `${VAR}` placeholder.
 	 *
 	 * @remarks
-	 * Claude Code passes `${CLAUDE_PROJECT_DIR}` through unsubstituted in some
-	 * launch paths; a path containing a placeholder is never what was meant.
+	 * An agent host can pass `${CLAUDE_PROJECT_DIR}` through unsubstituted in
+	 * some launch paths; a path containing a placeholder is never what was meant.
 	 */
 	static readonly isUnsubstituted = (value: string): boolean => {
 		// A `${` with any `}` after it. The first `${` has the most text after it,
@@ -51,7 +64,7 @@ export class LaunchContext {
 	 * The first usable argv value, then the first usable env value in `keys`
 	 * order, then `cwd`. A value is usable when it is non-empty after trimming
 	 * and carries no placeholder — `??` would return an empty string or a literal
-	 * `${VAR}`, which is the bug this replaces.
+	 * `${VAR}`, neither of which names a directory.
 	 */
 	static readonly projectDir = (input: ProjectDirInput): string => {
 		const usable = (value: string | undefined): string | undefined => {

@@ -5,7 +5,8 @@ import { heredocBlock, isUsableName } from "./internal/runnerFile.js";
 import { unstubbed } from "./internal/unstubbed.js";
 
 /**
- * Raised when state cannot cross the phase boundary.
+ * Raised when action state cannot be saved, read or decoded across the phase
+ * boundary.
  *
  * @public
  */
@@ -20,7 +21,9 @@ export class ActionStateError extends Schema.TaggedError<ActionStateError>()("Ac
 	 * appended to.
 	 */
 	reason: Schema.Literals(["missing", "malformed", "notPlainJson", "writeFailed"]),
+	/** The state key that was being saved or read. */
 	key: Schema.String,
+	/** The underlying failure, preserved structurally. */
 	cause: Schema.optionalKey(Schema.Defect()),
 }) {
 	override get message(): string {
@@ -38,7 +41,8 @@ export class ActionStateError extends Schema.TaggedError<ActionStateError>()("Ac
 }
 
 /**
- * The {@link ActionState} service shape.
+ * The members of the {@link ActionState} service: save and read values, and
+ * persist secrets, across the `pre` → `main` → `post` boundary.
  *
  * @public
  */
@@ -162,13 +166,39 @@ const dies = unstubbed("ActionState.makeTest");
  * write-only file (`GITHUB_STATE`) whose entries the runner republishes to the
  * next phase as `STATE_<key>` environment variables — so saving and reading go
  * through different mechanisms, which is why this is a service rather than a
- * pair of helpers.
+ * pair of helpers. Every member fails with {@link ActionStateError}.
+ *
+ * @example
+ * ```ts
+ * import { ActionState } from "@effected/github-actions";
+ * import { Effect, Schema } from "effect";
+ *
+ * // in `pre`
+ * const pre = Effect.gen(function* () {
+ *   const state = yield* ActionState;
+ *   yield* state.save("server-pid", 4242, Schema.Number);
+ * });
+ *
+ * // in `post`
+ * const post = Effect.gen(function* () {
+ *   const state = yield* ActionState;
+ *   const pid = yield* state.get("server-pid", Schema.Number);
+ *   return pid;
+ * });
+ * ```
  *
  * @public
  */
 export class ActionState extends Context.Service<ActionState, ActionStateShape>()(
 	"@effected/github-actions/ActionState",
 ) {
+	/**
+	 * The live service, writing to the runner's `GITHUB_STATE` file and reading
+	 * the `STATE_<key>` variables it republishes.
+	 *
+	 * @remarks
+	 * `ActionRuntime.layer` already provides every requirement.
+	 */
 	static readonly layer: Layer.Layer<ActionState, never, ActionEnvironment | FileSystem.FileSystem | ActionOutputs> =
 		Layer.effect(this, make);
 

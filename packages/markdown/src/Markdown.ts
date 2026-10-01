@@ -68,7 +68,7 @@ export class MarkdownParseOptions extends Schema.Class<MarkdownParseOptions>("Ma
  *
  * @remarks
  * CommonMark has no syntax errors — every string is a valid document — so
- * this error carries only hardening-guard trips (P1: `NestingDepthExceeded`).
+ * this error carries only hardening-guard trips (`NestingDepthExceeded`).
  * Recoverable oddities are diagnostics on {@link MarkdownDocument}, not
  * failures. A malformed-looking document parses; a nesting bomb fails here
  * rather than crashing with a `RangeError`.
@@ -119,7 +119,7 @@ const dialectOf = (options?: MarkdownParseOptions): MarkdownDialect => options?.
 
 /**
  * Whether an options object opts into frontmatter capture. The default —
- * `false`, a P3 ruling — is spelled exactly once, here: capture changes how
+ * `false` — is spelled exactly once, here: capture changes how
  * a `---` at offset 0 parses, so the spec-conformant reading is the default
  * and frontmatter is the consumer's explicit choice.
  */

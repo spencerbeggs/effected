@@ -147,7 +147,7 @@ export class JsoncNode extends Schema.Class<JsoncNode>("JsoncNode")({
  * Constructing a `JsoncNode` through `make`/`new` re-parses the recursive
  * `children` field, and each element parse re-runs the class transformation,
  * which re-parses ITS children — construction cost doubles per nesting level
- * (issue #13; measured ~4s at depth 20, effectively hanging past 25). The
+ * (measured ~4s at depth 20, effectively hanging past 25). The
  * parser guarantees validity by construction — every field comes straight off
  * a scanner token — so it skips schema construction entirely.
  *

@@ -1,12 +1,6 @@
-/**
- * The resolution pipeline, shared by all three runtimes.
- *
- * v3 wrote this loop three times — once per resolver — and the copies had
- * drifted: only Node grouped by minor correctly, and all three collapsed an
- * invalid range into "no versions found".
- *
- * @internal
- */
+// The resolution pipeline, shared by all three runtimes.
+//
+// An invalid range fails as `InvalidRangeError`, never as "no versions found".
 
 import type { InvalidRangeError } from "@effected/semver";
 import { Range } from "@effected/semver";
@@ -40,8 +34,8 @@ export const resolveWith = <R extends Versioned>(args: {
 		const { index, runtime, constraint, increments, defaultVersion, refine, pickLts, defaultsToLts, phases } = args;
 
 		// An unparseable range is the caller's bug and must reach them as such.
-		// v3 caught this and returned an empty array, so a typo surfaced as
-		// "no versions found" — the one error message guaranteed to mislead.
+		// Swallowing it would surface a typo as "no versions found" — the one
+		// error message guaranteed to mislead.
 		const range = yield* Range.parse(constraint);
 
 		const matching = yield* index.filter(range);

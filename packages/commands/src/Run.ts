@@ -496,7 +496,7 @@ const extendEnv: {
  * These are free functions over core's contract, **not** a service: core's
  * `ChildProcessSpawner` already is the subprocess service, and wrapping it in a
  * second one is the re-declaration this package exists not to repeat. Tests
- * stub the spawner (`ChildProcessSpawner.make(mockSpawn)`), not these.
+ * script the spawner with {@link ScriptedSpawner}, not these.
  *
  * A non-zero exit is a *result* for {@link Run.collect}, {@link Run.exitCode},
  * {@link Run.succeeds} and {@link Run.jsonLine}, and a typed *failure* for
@@ -512,6 +512,22 @@ const extendEnv: {
  * column through either, producing plausible wrong values rather than an
  * error. Parse that kind of output from the untrimmed `stdout` of
  * {@link Run.collect}'s {@link CommandOutput} instead.
+ *
+ * @example
+ * ```ts
+ * import { Run } from "@effected/commands";
+ * import { NodeServices } from "@effect/platform-node";
+ * import { Effect } from "effect";
+ * import { ChildProcess } from "effect/process";
+ *
+ * const program = Effect.gen(function* () {
+ *   const sha = yield* Run.text(ChildProcess.make("git", ["rev-parse", "HEAD"]), { timeout: "10 seconds" });
+ *   const clean = yield* Run.succeeds(ChildProcess.make("git", ["diff", "--quiet"]));
+ *   return { sha, clean };
+ * });
+ *
+ * Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer)));
+ * ```
  *
  * @public
  */
@@ -613,8 +629,7 @@ export class Run {
 	 * The framing tolerates noise on **both sides** of the payload: noise before
 	 * it (a subprocess-loaded hook's own `console.log`, a tool's warnings) and
 	 * noise after it (a hook logging from `process.on("exit", ...)` fires after
-	 * the payload has flushed — the trigger for widening the old "last non-empty
-	 * line must decode" contract, spencerbeggs/effected#292). Lines are split on
+	 * the payload has flushed). Lines are split on
 	 * `\r?\n`, whitespace-only lines are dropped, and the scan runs from the last
 	 * line backwards until one decodes. The tolerance is positional, not
 	 * volumetric: the whole of stdout is still captured under

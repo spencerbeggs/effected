@@ -93,9 +93,8 @@ export interface VersionCacheShape {
 	readonly prev: (version: SemVer) => Effect.Effect<Option.Option<SemVer>, VersionNotFoundError>;
 }
 
-// Membership and ordering follow SemVer precedence (build metadata ignored),
-// matching the v3 SortedSet-with-SemVerOrder semantics: versions differing
-// only in build metadata occupy one slot.
+// Membership and ordering follow SemVer precedence (build metadata ignored):
+// versions differing only in build metadata occupy one slot.
 
 const search = (arr: ReadonlyArray<SemVer>, target: SemVer): { readonly found: boolean; readonly index: number } => {
 	let lo = 0;
@@ -118,7 +117,8 @@ const dedupeSorted = (versions: ReadonlyArray<SemVer>): ReadonlyArray<SemVer> =>
 /**
  * An in-memory sorted version cache: mutation, query, resolution and
  * navigation over a set of {@link SemVer} versions ordered by SemVer
- * precedence. Pure state (a `Ref` of a sorted array) — no IO.
+ * precedence. Pure state (a `Ref` of a sorted array) — no IO. Versions that
+ * differ only in build metadata occupy one slot.
  *
  * Provide {@link VersionCache.layer} to construct the live implementation.
  *

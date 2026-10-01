@@ -23,8 +23,7 @@ const Delimiter = Schema.String.check(Schema.isPattern(/^\P{Cc}+$/u));
  * @remarks
  * A **line** style carries only a `prefix` (`#`, `//`); a **wrapped** style
  * carries a `suffix` as well (`<!--` … `-->`). The wrapped form is what makes
- * managed sections representable in Markdown, HTML and XML, which the two-way
- * literal union this replaces could not express.
+ * managed sections representable in Markdown, HTML and XML.
  *
  * The preset set is a convenience, not a closed world: a format nobody
  * anticipated is one `CommentStyle.make({ prefix: "%" })` away.
@@ -58,7 +57,7 @@ export class CommentStyle extends Schema.Class<CommentStyle>("CommentStyle")({
 	/** SQL, Lua, Haskell. */
 	static readonly dash: CommentStyle = CommentStyle.make({ prefix: "--" });
 
-	/** Markdown, HTML, XML — the wrapped style v3 could not represent. */
+	/** Markdown, HTML, XML — a wrapped style. */
 	static readonly html: CommentStyle = CommentStyle.make({ prefix: "<!--", suffix: "-->" });
 
 	/** CSS, and the block form of every C-family language. */
@@ -89,8 +88,8 @@ export class CommentStyle extends Schema.Class<CommentStyle>("CommentStyle")({
 	 * The `NUL` separator is not cosmetic: without it `{ prefix: "ab" }`
 	 * and `{ prefix: "a", suffix: "b" }` would produce the same id and two
 	 * genuinely different styles would collide in a lookup table. `NUL`
-	 * cannot occur in a delimiter, which the single-line check guarantees is
-	 * printable-ish, so the encoding is unambiguous.
+	 * cannot occur in a delimiter, because delimiters exclude control characters,
+	 * so the encoding is unambiguous.
 	 */
 	get id(): string {
 		return `${this.prefix}\u0000${this.suffix ?? ""}`;

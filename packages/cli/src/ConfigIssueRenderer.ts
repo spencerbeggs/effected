@@ -2,35 +2,21 @@ import type { ConfigValidationError } from "@effected/config-file";
 import { formatIssue } from "./internal/format.js";
 
 /**
- * Render a `@effected/config-file` validation failure.
+ * Turns a `@effected/config-file` `ConfigValidationError` into one line per rejected value.
  *
  * @remarks
  * `ConfigValidationError` carries the structured `issue` tree rather than a
- * string, which is the right design and leaves the consumer holding a tree it
- * has to turn into sentences. This is that step, and it is the same treatment
- * {@link SchemaIssueRenderer} gives a bare issue.
+ * string, so a caller holds a tree it has to turn into sentences. This is that
+ * step, the same treatment {@link SchemaIssueRenderer} gives a bare issue.
  *
- * **This module is the only thing in the package that references
- * `@effected/config-file`, deliberately.** The peer is declared optional, and
- * an optional peer whose import is reachable from a shared module is not
- * optional — it is a crash for every consumer who took the manifest at its word
- * and did not install it. So nothing else in this package imports this module;
- * only the entrypoint re-exports it, and the shared rendering lives in
- * `internal/format`.
+ * `ConfigValidationError.message` names the file but not the value, and the
+ * value is the diagnostic: printing only the message tells a user their config
+ * is invalid without saying which value is wrong or how it is shaped.
  *
- * The import is additionally `import type`, so it is erased at build time and
- * the runtime reach is **zero** — a consumer without `@effected/config-file`
- * installed can import this module and call `render` on any value without the
- * resolver ever being asked for the package.
- *
- * ## Why this and not just the error's message
- *
- * `ConfigValidationError.message` names the file. It does not name the value,
- * and the difference is the whole diagnostic: a consumer that printed only the
- * message told users "your config is invalid, run the doctor command", and the
- * doctor command — which guessed from a hand-written list of known keys — could
- * only ever find a *misspelling*. A wrongly **shaped** value left the two
- * commands pointing at each other and neither saying what was wrong.
+ * `@effected/config-file` is an optional peer, and this module only
+ * `import type`s it, so the import is erased at build time. A consumer without
+ * the package installed can import this module without the resolver being asked
+ * for it.
  *
  * @example
  * ```ts
@@ -57,17 +43,12 @@ export class ConfigIssueRenderer {
 	 *
 	 * @remarks
 	 * Takes the **error**, not its `issue`, because that is what a `catchTag`
-	 * hands you and because `issue` is typed `Schema.Defect` — reaching into it
-	 * at every call site is exactly the ceremony this removes.
-	 *
-	 * The parameter is the **typed** error rather than `unknown`. An earlier
-	 * draft wrote `ConfigValidationError | unknown` to be accommodating, which
-	 * collapses to plain `unknown` in TypeScript — so it accepted anything, said
-	 * nothing, and left the type import in the `.d.ts` earning nothing. Inside
+	 * hands you and because `issue` is typed `Schema.Defect`, which every call
+	 * site would otherwise have to reach into. Inside
 	 * `Effect.catchTag("ConfigValidationError", …)` the error is already this
-	 * type, which is where this is called.
+	 * type.
 	 *
-	 * It still cannot throw on a malformed value: the issue tree is validated by
+	 * It cannot throw on a malformed value: the issue tree is validated by
 	 * a guard before it is read, so a renderer on an error path never becomes the
 	 * reason a program dies.
 	 */

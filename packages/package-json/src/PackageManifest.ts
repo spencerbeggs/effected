@@ -7,7 +7,7 @@
 // package that will be PUBLISHED. The idiomatic monorepo root manifest —
 // `{ "private": true, "packageManager": "pnpm@11.2.0", "devEngines": {...} }` —
 // has neither and is entirely valid, and a tool that edits other people's
-// manifests meets that shape as its primary target (#286).
+// manifests meets that shape as its primary target.
 //
 // The kit's tolerance ladder, so nothing here duplicates a sibling:
 //   Package            — strict, publishable: name+version required.
@@ -62,11 +62,11 @@ import { PackageName } from "./PackageName.js";
  * @example
  * ```ts
  * import { PackageManifest } from "@effected/package-json";
- * import { Effect, Option } from "effect";
+ * import { Effect } from "effect";
  *
  * const program = Effect.gen(function* () {
  *   const root = yield* PackageManifest.decode({ private: true, packageManager: "pnpm@^11.20.0" });
- *   console.log(root.isPrivate, root.packageManager?.isExact); // true false
+ *   console.log(root.isPrivate); // => true
  * });
  * ```
  *
@@ -90,9 +90,8 @@ export class PackageManifest extends Schema.Class<PackageManifest>("PackageManif
 	 * any `SchemaError` to a typed {@link PackageDecodeError} at the boundary.
 	 *
 	 * @param input - the parsed package.json JSON value (e.g. from `JSON.parse`)
-	 * @returns an Effect resolving to the decoded `PackageManifest`
-	 * @throws (typed) `PackageDecodeError` when a present field does not satisfy
-	 * its codec
+	 * @returns an Effect resolving to the decoded `PackageManifest`, failing with
+	 * {@link PackageDecodeError} when a present field does not satisfy its codec
 	 */
 	static readonly decode = Effect.fn("PackageManifest.decode")(function* (input: unknown) {
 		return yield* Schema.decodeUnknownEffect(PackageManifest.schema)(input).pipe(

@@ -69,7 +69,7 @@ const tableOf = (data: unknown, properties?: ReadonlyArray<string>): string => {
 const now = (): number => globalThis.performance?.now() ?? Date.now();
 
 /**
- * Build an `InkConsole` over `UiStreams` (`okf/decisions/live-logs-through-ink.md`).
+ * Build an `InkConsole` over `UiStreams`.
  *
  * @remarks
  * Ink's writers (`useStdout().write`, `useStderr().write`) clear the frame, write the line and repaint the frame, so a

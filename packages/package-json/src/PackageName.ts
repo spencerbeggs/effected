@@ -105,9 +105,19 @@ const isScoped = (name: string): boolean => name.startsWith("@");
 
 /**
  * The union of `ScopedPackageName` and `UnscopedPackageName`,
- * carrying the classification statics (`PackageName.isValid` and friends)
- * that absorb the v3 floating `PackageNameUtil` object. Use it as the schema
- * for a package-name field and reach for the statics to inspect a raw string.
+ * carrying the classification statics (`PackageName.isValid`,
+ * `PackageName.scope`, `PackageName.unscoped`, `PackageName.isScoped`). Use it as
+ * the schema for a package-name field and reach for the statics to inspect a raw
+ * string.
+ *
+ * @example
+ * ```ts
+ * import { PackageName } from "@effected/package-json";
+ *
+ * PackageName.isValid("@effected/semver"); // => true
+ * PackageName.scope("@effected/semver"); // => Option.some("effected")
+ * PackageName.unscoped("@effected/semver"); // => "semver"
+ * ```
  *
  * @public
  */

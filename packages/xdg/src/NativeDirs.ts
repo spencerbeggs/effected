@@ -29,8 +29,7 @@ export class NativeDirs extends Schema.Class<NativeDirs>("NativeDirs")({
 	 * **Pure**: no filesystem, no environment, no `process.platform`. Every input
 	 * is a parameter, which is what makes the whole platform matrix testable
 	 * without any platform IO. Paths are joined through the supplied `Path`, so a
-	 * win32 `Path` layer yields win32 separators — v3 interpolated `/` on every
-	 * platform.
+	 * win32 `Path` layer yields win32 separators.
 	 *
 	 * - **darwin** — `config`/`data`/`state` under `~/Library/Application Support/<ns>`;
 	 *   `cache` under `~/Library/Caches/<ns>`.

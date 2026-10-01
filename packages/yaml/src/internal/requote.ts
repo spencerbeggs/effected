@@ -1,4 +1,4 @@
-// Shared re-quoting semantics (#347): the ONE definition of "which scalar can
+// Shared re-quoting semantics: the ONE definition of "which scalar can
 // be re-quoted to the target style, and with what replacement text", so the
 // `quoted-strings` lint fix and `YamlFormat`'s opt-in `requoteScalars` option
 // cannot drift into two dialects of "re-quotable".

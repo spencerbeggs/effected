@@ -705,7 +705,7 @@ export class SourceBoundary {
 	/** The shipped positive- and negative-control snippets, at least one of each per rule kind. */
 	static readonly fixtures: ReadonlyArray<BoundaryFixture> = FIXTURES;
 
-	/** The names of shipped fixtures the scanner now gets wrong; `[]` means it still flags and spares what it must. */
+	/** The names of shipped fixtures the scanner gets wrong; `[]` means it still flags and spares what it must. */
 	static readonly verifyFixtures = (): ReadonlyArray<string> =>
 		FIXTURES.filter(
 			(fixture) => SourceBoundary.check("fixture.ts", fixture.source, [fixture.rule]).length > 0 !== fixture.flagged,

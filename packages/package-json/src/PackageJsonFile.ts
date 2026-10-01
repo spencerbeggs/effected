@@ -1,9 +1,8 @@
 // The `PackageJsonFile` service — the only IO module. It reads and writes
-// package.json over core `FileSystem` / `Path` (v4, no `@effect/platform`
-// peer), so the layer requires those services and the consumer provides a
-// platform implementation (`@effect/platform-node`) at the edge. Merges v3's
-// `PackageJsonReader` + `PackageJsonWriter`; resolution is not fused into
-// `write` (compose `Package.resolve` explicitly).
+// package.json over core `FileSystem` / `Path`, so the layer requires those
+// services and the consumer provides a platform implementation
+// (`@effect/platform-node`) at the edge. Resolution is not fused into `write`
+// (compose `Package.resolve` explicitly).
 
 import type { JsoncPath } from "@effected/jsonc";
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
@@ -179,9 +178,10 @@ export interface PackageJsonFileShape {
 }
 
 /**
- * Reads and writes package.json over core `FileSystem` / `Path`. The layer
- * requires those services; provide `@effect/platform-node`'s `NodeFileSystem` /
- * `NodePath` (or a bun equivalent) at the application boundary.
+ * Reads, writes and surgically edits package.json files over core `FileSystem`
+ * / `Path`. The layer requires those services; provide
+ * `@effect/platform-node`'s `NodeFileSystem` / `NodePath` (or a bun equivalent)
+ * at the application boundary.
  *
  * @example
  * ```ts

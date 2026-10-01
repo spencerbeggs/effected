@@ -9,8 +9,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 5809adbc2784f5cce8b02097a9b4683e09639c0ce8e05e4fc6bab37961bde0a4
+  at: 2026-10-01T17:24:58Z
+  body_sha256: f092917f1218385a397a999c4ecafb2fb732e4b4d55ed4a8a9fcf104cf927b9d
 ---
 
 # The effected catalog literal
@@ -18,18 +18,24 @@ generated:
 ## Shape
 
 `packages/pnpm-plugin-effect/savvy.build.ts` calls `PnpmConfigPlugin({ ... })`
-with a `catalogs` object carrying four named catalogs — `effect`,
-`effect:peers` (folded into `effect` under the `lock` strategy, since
-`peer` equals `range` there), `effected` and `effected:peers`. Each
-catalog's `packages` map holds one entry per package name, and every
-entry is an object of the same three fields: `range` (the version pinned
-in this catalog, or for `effected` the package's next-release version),
-`peer` (the input the peer-floor computation reads) and `strategy`
-(`"lock"` for the Effect catalogs — pin exact, peer equals range;
-`"lock-minor"` for `effected` — floor the peer to the minor). `effected`
-entries additionally carry `source: "workspace"`, telling the upgrade CLI
-to resolve the version from this workspace rather than treating `range`
-as an already-final value.
+with a `catalogs` object carrying two declared catalogs, `effect` and
+`effected`; each generates a `:peers` twin from its `peer` fields, so four
+named catalogs result — `effect`, `effect:peers`, `effected` and
+`effected:peers`. Each catalog's `packages` map holds one entry per
+package name, and every entry is an object of the same three fields:
+`range` (the version this catalog installs, or for `effected` the
+package's next-release version), `peer` (the input the peer-floor
+computation reads, which becomes the `:peers` twin's value) and
+`strategy`. Both catalogs use `"lock-minor"`, so `range` and `peer` are
+separate fields in both. For `effect` and every `@effect/*` satellite they
+read the same caret, `^4.0.0`. `@effect/tsgo` versions on its own line, so
+its `range` is exact (`0.47.2`) and its `peer` is the floor (`0.47.0`).
+`effected` entries additionally carry `source: "workspace"`, telling the
+upgrade CLI to resolve the version from this workspace rather than
+treating `range` as an already-final value.
+
+The literal also carries an `overrides` block of scoped `platform-node-shared`
+pins; see [the scoped overrides](../modules/pnpm-plugin-effect.md#the-scoped-platform-node-shared-overrides).
 
 A `peerDependencyRules.allowedVersionsFromCatalogs` block sits alongside
 `catalogs`, naming the source catalog (`effect`) and the peer each rule
@@ -51,11 +57,15 @@ from this same literal.
 
 ## What breaks if an entry is wrong
 
-An entry with the wrong `range` under the `effect` catalog's `lock`
-strategy desynchronizes every `@effected/*` package's devDependency pin
-from what `.repos/effect` actually vendors, which is the authority on
-what v4 exports — see [the effect catalog pins exact
-versions](../decisions/effect-catalog-exact-pins.md). An entry missing
+An entry with the wrong `range` or `peer` under the `effect` catalog moves
+every `@effected/*` package's devDependency range or advertised peer
+away from the stable line the kit builds and tests against, and a `range`
+that resolves outside the line `.repos/effect` is pinned to lets the
+vendored source describe a surface that is not installed — see [the
+effect catalog takes caret ranges on the stable
+line](../decisions/effect-catalog-tracks-stable-minor.md). An exact
+`range` also changes the allowed-versions table: the generator emits a
+rule only for an exact entry. An entry missing
 from the `effected` catalog entirely is invisible to `rolldown-pnpm-config
 upgrade`, which walks the literal and can only report on packages it
 already names — see [the catalog:sync / catalog:check

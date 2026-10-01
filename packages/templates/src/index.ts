@@ -1,3 +1,13 @@
+/**
+ * Managed sections in files: marker-delimited blocks a tool owns inside a file
+ * whose surrounding content belongs to the user. `SectionDocument` is the pure
+ * string-to-string core, `ManagedSection` the `FileSystem`-backed service, and
+ * `CommentStyle` and `SectionDialect` describe how markers are written and
+ * scanned.
+ *
+ * @packageDocumentation
+ */
+
 export { CommentStyle } from "./CommentStyle.js";
 export {
 	ManagedSection,

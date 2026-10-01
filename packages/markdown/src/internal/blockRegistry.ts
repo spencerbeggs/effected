@@ -5,7 +5,7 @@
 // Port notes: upstream's `blocks` object and `blockStarts` array are module
 // globals. Here they are per-dialect tables, which is the whole point of the
 // restructuring — a dialect is a registry composition and nothing else, so
-// GFM (P2) and a future `obsidian` dialect land as new construct modules with
+// GFM and a future `obsidian` dialect land as new construct modules with
 // no change to any public API.
 //
 // THE ORDER OF `starts` IS THE ALGORITHM, and it is upstream's order exactly.

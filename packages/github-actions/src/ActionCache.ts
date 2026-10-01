@@ -60,7 +60,8 @@ export class ActionCacheError extends Schema.TaggedError<ActionCacheError>()("Ac
 }
 
 /**
- * The {@link ActionCache} service shape.
+ * The members of the {@link ActionCache} service: `save` a set of paths under a
+ * key and `restore` them in a later job.
  *
  * @public
  */
@@ -227,8 +228,7 @@ const make = (
 		 *
 		 * Output and exit code come from the SAME `spawn` handle
 		 * (`internal/spawn.ts` — the spawner's convenience members each spawn
-		 * independently, and the double run failed loudly in
-		 * `ToolInstaller.extractZip` on Windows).
+		 * independently, so reading both from them would run `tar` twice).
 		 */
 		const tar = (args: ReadonlyArray<string>, key: string, tolerateWarnings: boolean) =>
 			Effect.gen(function* () {

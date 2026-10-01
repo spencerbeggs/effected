@@ -26,7 +26,7 @@ export type Route = keyof Endpoints;
  * @remarks
  * octokit's own `RequestParameters` carries an `[parameter: string]: unknown`
  * index signature, so intersecting it would silently accept every misspelled
- * parameter. These three are the ones the surveyed call sites genuinely need:
+ * parameter. These three are the ones callers need:
  * `headers` for a release asset's `content-type` and the attestations API
  * version pin, `mediaType.format` for raw content reads, and `baseUrl` for the
  * `uploads.github.com` host that release-asset uploads go to. Everything else a
@@ -69,8 +69,7 @@ export type Data<R extends Route> = Endpoints[R]["response"]["data"];
  * The subset of routes that paginate.
  *
  * @remarks
- * Handing a non-paginating route to a paginating call is a **compile** error,
- * which the string-keyed surface this package replaces could not express.
+ * Handing a non-paginating route to a paginating call is a **compile** error.
  *
  * Intersected with `Rest.Route` because `plugin-paginate-rest` generates its
  * map from its own `@octokit/types` pin, which can trail the one this package
@@ -104,10 +103,8 @@ export type Item<R extends PaginatingRoute> =
  * How far a paginated read should go.
  *
  * @remarks
- * Both fields are honored by every paginating method in this package. The
- * package it replaces accepted them on the client and then passed `{}` at six
- * of its eight call sites, so callers silently got 100-item pages and an
- * unbounded walk with no way to say otherwise.
+ * Both fields are honored by every paginating method in this package. Unset,
+ * a read requests 100-item pages and walks until GitHub stops.
  *
  * `perPage` is **validated, not clamped**: GitHub caps a page at 100 and
  * silently ignores anything larger, so a caller asking for 250 has a bug whose

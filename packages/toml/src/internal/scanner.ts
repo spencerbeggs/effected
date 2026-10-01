@@ -2,10 +2,10 @@
 // the source string, plus value-token classification. Every scan function is
 // pure and stateless — `(source, pos)` in, `ScanResult` out — and every
 // malformed input throws RawTomlError with the offset of the offending
-// character. The parser (Task 6) drives these; nothing here recurses.
+// character. The parser drives these; nothing here recurses.
 //
-// The classification regexes are the grammar reference's G4/G5 literals,
-// copied verbatim. Datetime range validation happens BEFORE constructing the
+// The classification regexes are the TOML ABNF literal grammars, copied
+// verbatim. Datetime range validation happens BEFORE constructing the
 // TomlDateTime classes so the diagnostic carries the token's offset instead
 // of a schema check message.
 
@@ -455,7 +455,7 @@ const scanTokenSpan = (source: string, pos: number): number => {
 	return i;
 };
 
-// G5 classification regexes (anchored). TOML 1.1 makes seconds optional:
+// Classification regexes (anchored). TOML 1.1 makes seconds optional:
 // `partial-time = time-hour ":" time-minute [ ":" time-second [ time-secfrac ] ]`
 // — time-secfrac nests INSIDE the optional seconds group, so `07:32` is valid
 // but `07:32.5` is not. The regexes nest accordingly; they must never chain
@@ -468,7 +468,7 @@ const LOCAL_TIME = /^([0-9]{2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]+))?)?$/;
 
 /**
  * Scan a non-string scalar value token. Stops at whitespace, newlines, `,`,
- * `]`, `}` and `#` — with the G5 extension: a token that scanned as a full
+ * `]`, `}` and `#` — with one extension: a token that scanned as a full
  * date followed by a single space and a digit continues through the time
  * part, so `1979-05-27 07:32:00Z` is one token.
  */
@@ -484,7 +484,7 @@ export const scanValueToken = (source: string, pos: number): ScanResult<string> 
 	return { value: source.slice(pos, end), end };
 };
 
-// G4 classification regexes (anchored, copied verbatim from the grammar reference).
+// Classification regexes (anchored, copied verbatim from the TOML ABNF).
 const INTEGER_DEC = /^[+-]?(?:0|[1-9](?:_?[0-9])*)$/;
 const INTEGER_HEX = /^0x[0-9A-Fa-f](?:_?[0-9A-Fa-f])*$/;
 const INTEGER_OCT = /^0o[0-7](?:_?[0-7])*$/;
@@ -570,7 +570,7 @@ const decodeOffsetMinutes = (text: string, offset: number, length: number): numb
 };
 
 /**
- * Classify a scanned value token per G4-G6: booleans, the four datetime
+ * Classify a scanned value token: booleans, the four datetime
  * shapes (validated against the Gregorian calendar and clock ranges before
  * construction), integers across four radixes with int64 range checking and
  * number/bigint narrowing, and floats including the special spellings.

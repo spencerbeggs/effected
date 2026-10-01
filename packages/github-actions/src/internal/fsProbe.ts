@@ -1,9 +1,5 @@
-/**
- * "Is there a file / a directory at this path?" — the probe the installers
- * ask before deciding whether to reinstall, skip or fail typed.
- *
- * @internal
- */
+// "Is there a file / a directory at this path?" — the probe the installers
+// ask before deciding whether to reinstall, skip or fail typed.
 
 import type { FileSystem } from "effect";
 import { Effect } from "effect";

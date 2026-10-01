@@ -1,17 +1,16 @@
-// The portable-tsconfig filter — projects a `ResolvedTsconfig` (Task 5) or a
-// bare `CompilerOptions.Type` (Task 2) down to the small, machine-independent
+// The portable-tsconfig filter — projects a `ResolvedTsconfig` or a
+// bare `CompilerOptions.Type` down to the small, machine-independent
 // slice of compilerOptions that a virtual TypeScript environment (Twoslash,
 // API Extractor, an in-memory language service) can safely reuse: no absolute
 // paths, no emit artifacts, no file-selection surface.
 //
 // This module is already string-level (CompilerOptions decodes TS's numeric
 // enums to canonical lowercase strings — see CompilerOptions.ts and
-// TsEnumCodec.ts), so unlike the numeric-enum-juggling prior art it
-// generalizes from (savvy-web/systems' tsdown-plugins TsconfigResolver), the
+// TsEnumCodec.ts), the
 // filter here is exactly three things: a key allow-list, two forced flags,
 // and a `$schema` stamp. No enum conversion is needed or performed.
 //
-// ALLOW-LIST, NOT DENY-LIST (per the task brief): only the keys named below
+// ALLOW-LIST, NOT DENY-LIST: only the keys named below
 // ever reach the output. An option this package does not yet know about —
 // including every unknown/future passthrough key `CompilerOptions.Type`
 // preserves for forward tolerance — is silently dropped here. A portable
@@ -22,16 +21,15 @@
 // The allow-list has two tiers. The unconditional one below is safe for every
 // consumer. The second is a single opt-in key, `types`, which is portable but
 // resolution-dependent — see OPT_IN_TYPES_OPTION for why that distinction
-// exists and why it does not default on. Reported by savvy-web-systems on
-// 2026-07-27, whose virtual TypeScript environments lost their Node globals
-// because `types` had never been classified either way.
+// exists and why it does not default on. (Virtual TypeScript environments lost
+// their Node globals when `types` was left unclassified.)
 
 import type { CompilerOptions } from "./CompilerOptions.js";
 import type { ResolvedTsconfig } from "./ResolvedTsconfig.js";
 
 const TSCONFIG_SCHEMA_URL = "https://json.schemastore.org/tsconfig";
 
-// ── The allow-list (R1.2/R1.3/R1.4 classification) ──────────────────────────
+// ── The allow-list ──────────────────────────
 //
 // Preserved = affects what the type checker accepts/reports, independent of
 // any file path or emitted artifact. Excluded = emit destination, absolute/
@@ -40,10 +38,9 @@ const TSCONFIG_SCHEMA_URL = "https://json.schemastore.org/tsconfig";
 // environment driving its own file set and its own emit (or non-emit) should
 // inherit from the source config.
 //
-// Three groups below are judgment calls documented for review (see the task
-// report for the full rationale): `importHelpers` / `downlevelIteration` /
+// Three groups below are judgment calls: `importHelpers` / `downlevelIteration` /
 // `preserveConstEnums` are carried even though they shape emitted JS, because
-// they were in the prior art's PRESERVED_BOOLEAN_OPTIONS and a Twoslash-style
+// a Twoslash-style
 // virtual environment can still execute emitted code; `newLine` and
 // `maxNodeModuleJsDepth` are excluded despite touching neither path nor emit
 // destination, because the former is pure output formatting and the latter is

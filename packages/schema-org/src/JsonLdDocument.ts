@@ -117,19 +117,18 @@ const withoutUndefined = (value: Record<string, unknown>): Record<string, unknow
  *
  * `JsonLdDocument` is a `Schema.Class`, so its encode direction is available through the
  * schema as well as through {@link JsonLdDocument.toJsonLd}. **The two are not the same
- * value**, and the difference is deliberate: `Schema.encode(JsonLdDocument)` produces the
+ * value**, and the difference is deliberate: `Schema.encodeSync(JsonLdDocument)` produces the
  * structural form, in which each node's catch-all is still nested under an
  * `additional` key, while `toJsonLd` produces the JSON-LD wire form, in which
  * the catch-all is flattened into the node object as the format requires.
  * `toJsonLd` is the documented output; the schema's own encode is not a
  * publishable JSON-LD document.
  *
- * **The decode direction is unimplemented in this release.** Decoding a JSON-LD
- * document back into typed nodes requires re-gathering every unrecognized key
- * into `additional`, which is a real transformation with real decisions, and
- * round 1 does not make them. Do not infer `decode(encode(g))` round-tripping
- * from the fact that this is a `Schema.Class`; a test pins the asymmetry so it
- * cannot start half-working by accident.
+ * **Do not rely on decoding.** Decoding a JSON-LD document back into typed
+ * nodes would have to re-gather every unrecognized key into `additional`, and
+ * this schema does not: decoding `toJsonLd()` output succeeds but silently
+ * drops the flattened catch-all keys. Do not infer `decode(encode(g))`
+ * round-tripping from the fact that this is a `Schema.Class`.
  *
  * @example
  * ```ts
@@ -146,7 +145,7 @@ const withoutUndefined = (value: Record<string, unknown>): Record<string, unknow
  * ]);
  *
  * if (Result.isSuccess(built)) {
- * 	const body = built.success.toScriptBody();
+ * 	console.log(built.success.toScriptBody());
  * }
  * ```
  *
@@ -161,8 +160,8 @@ export class JsonLdDocument extends Schema.Class<JsonLdDocument>("JsonLdDocument
 	/**
 	 * Assembles nodes into a graph, checking identity.
 	 *
-	 * This is the synchronous primitive, per the kit's sync-primitive policy;
-	 * {@link JsonLdDocument.build} is its `Effect` twin, derived from it. Note that
+	 * This is the synchronous primitive; {@link JsonLdDocument.build} is its
+	 * `Effect` twin. Note that
 	 * `make` is reserved by `Schema.Class` for its raw structural constructor,
 	 * which runs none of these checks — `buildResult` is the entry point.
 	 *
@@ -244,7 +243,7 @@ export class JsonLdDocument extends Schema.Class<JsonLdDocument>("JsonLdDocument
 	 * moment this value is serialized by hand.
 	 *
 	 * This accessor exists because the encoded value is reachable through
-	 * `Schema.encode` whatever this package does, so naming it is the only way
+	 * `Schema.encodeSync` whatever this package does, so naming it is the only way
 	 * to attach that warning to it. Its legitimate use is handing an object to
 	 * a framework that serializes JSON-LD itself.
 	 */
@@ -292,8 +291,8 @@ export class JsonLdDocument extends Schema.Class<JsonLdDocument>("JsonLdDocument
 	 * **The escape is idempotent**, so a caller layering its own escaping over
 	 * this output is safe: the escaped form contains none of the three
 	 * characters the escape matches on, so a second pass matches nothing and
-	 * changes nothing. That is a composition guarantee a consumer can rely on,
-	 * and it is pinned by a test rather than left to inspection. Note that it
+	 * changes nothing. That is a composition guarantee a consumer can rely on.
+	 * Note that it
 	 * is a property of *this* escape form specifically — an HTML entity form
 	 * (`&lt;`) would be equally correct escaping and would **not** be
 	 * idempotent, because it reintroduces an `&`.

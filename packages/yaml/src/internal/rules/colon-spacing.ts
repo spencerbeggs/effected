@@ -1,4 +1,4 @@
-// colon-spacing (#129): spaces around the block-mapping `:` indicator —
+// colon-spacing: spaces around the block-mapping `:` indicator —
 // none before it (a `key :` reads as a key containing a space), at most one
 // after it. An explicit-value `:` at the head of its line is structure, not
 // spacing, and a comment after the colon belongs to comments-spacing.

@@ -125,6 +125,22 @@ export class App {
 	 * layer, never beneath it. Underneath, the test body has no `TestClock` in
 	 * its own context and `TestClock.adjust` dies as a defect — so the entries
 	 * under test carry real timestamps and nothing ever expires.
+	 *
+	 * @example
+	 * ```ts
+	 * import { App } from "@effected/app";
+	 * import { NodeServices } from "@effect/platform-node";
+	 * import { Layer } from "effect";
+	 *
+	 * const migrations = [
+	 * 	{ id: 1, name: "runs", up: (sql) => sql`CREATE TABLE runs (id TEXT PRIMARY KEY)` },
+	 * ];
+	 *
+	 * // Bound once, to a const: XDG dirs for "myapp", store.db and cache.db.
+	 * const AppLive = App.layer({ namespace: "myapp", store: { migrations } }).pipe(
+	 * 	Layer.provide(NodeServices.layer),
+	 * );
+	 * ```
 	 */
 	static readonly layer = layer;
 

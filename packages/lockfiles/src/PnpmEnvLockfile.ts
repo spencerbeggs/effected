@@ -94,6 +94,8 @@ export interface PnpmEnvLockfileReaders {
  * import { PnpmEnvLockfile } from "@effected/lockfiles";
  * import { Effect, Option } from "effect";
  *
+ * declare const content: string; // the text of a pnpm-lock.yaml
+ *
  * const program = Effect.gen(function* () {
  *   const lock = yield* PnpmEnvLockfile.packageManager(content);
  *   const configDependencies = yield* PnpmEnvLockfile.configDependencies(content);

@@ -3,11 +3,11 @@
 // src/MarkdownDocument.ts) catch them and materialize a MarkdownDiagnostic or
 // a tagged error. This module imports nothing public — the dependency edge
 // runs public modules -> engine only (toml src/internal/diagnostics.ts and
-// src/internal/limits.ts precedent, collapsed into one file per the P1 plan).
+// src/internal/limits.ts precedent, collapsed into one file).
 
 /**
- * P1's error-code vocabulary. Widens as later phases add parse-error kinds;
- * P1 registers exactly one, the hardening-guard trip.
+ * The engine's error-code vocabulary: currently exactly one, the
+ * hardening-guard trip. Widens as new parse-error kinds are added.
  */
 export const MARKDOWN_PARSE_ERROR_CODES = ["NestingDepthExceeded"] as const;
 

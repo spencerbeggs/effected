@@ -162,8 +162,7 @@ const maxStampOf = (
  * render was byte-identical, so no write was issued. `stale` — the document
  * already carries regions from a more recent run, so the pass was dropped
  * without writing (only possible when {@link CheckDocumentOptions.stamp} is
- * set). A plain literal union: callers that ignored `flush`'s old `void`
- * success stay compile-compatible.
+ * set).
  *
  * @public
  */
@@ -274,7 +273,8 @@ export interface CheckDocumentOptions {
 }
 
 /**
- * The check-run → document reconciler's surface.
+ * The members of the {@link CheckDocument} service: `report` a check's state,
+ * read the `checks` registry and `flush` the document.
  *
  * @public
  */
@@ -298,8 +298,7 @@ export interface CheckDocumentShape {
 	 * Rendering unchanged state issues no write. Call it at the end of a run;
 	 * the layer's finalizer also runs it, so the last burst of reports lands
 	 * even when the scope closes inside the quiet window. The outcome says
-	 * what the pass did — `written`, `unchanged` or `stale` — and callers
-	 * that ignore it stay exactly as they were.
+	 * what the pass did — `written`, `unchanged` or `stale`.
 	 */
 	readonly flush: Effect.Effect<CheckFlushOutcome, CheckDocumentError>;
 }

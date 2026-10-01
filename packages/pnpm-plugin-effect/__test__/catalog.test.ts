@@ -125,8 +125,10 @@ describe("effected catalog", () => {
 	});
 });
 
-describe("rc.117 platform-node-shared override", () => {
-	const SELECTOR = "@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared";
+describe("platform-node-shared overrides", () => {
+	const RC117 = "@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared";
+	const RC118 = "@effect/platform-node@4.0.0-rc.118>@effect/platform-node-shared";
+	const PINS = { [RC117]: "4.0.0-rc.117", [RC118]: "4.0.0-rc.118" };
 	const PNPMFILE = join(PACKAGE_ROOT, "dist/dev/pkg/pnpmfile.mjs");
 
 	/**
@@ -144,18 +146,18 @@ describe("rc.117 platform-node-shared override", () => {
 		return hooks.updateConfig(config);
 	}
 
-	it("pins the shared package only under the rc.117 parent", async () => {
+	it("pins each prerelease parent's shared package to its own version", async () => {
 		const { overrides } = await updateConfig({});
-		assert.deepStrictEqual(overrides, { [SELECTOR]: "4.0.0-rc.117" });
+		assert.deepStrictEqual(overrides, PINS);
 	});
 
 	it("keeps a consumer's own overrides", async () => {
 		const { overrides } = await updateConfig({ overrides: { foo: "1.0.0" } });
-		assert.deepStrictEqual(overrides, { [SELECTOR]: "4.0.0-rc.117", foo: "1.0.0" });
+		assert.deepStrictEqual(overrides, { ...PINS, foo: "1.0.0" });
 	});
 
 	it("lets a consumer's value for the same selector win", async () => {
-		const { overrides } = await updateConfig({ overrides: { [SELECTOR]: "4.0.0-rc.116" } });
-		assert.deepStrictEqual(overrides, { [SELECTOR]: "4.0.0-rc.116" });
+		const { overrides } = await updateConfig({ overrides: { [RC117]: "4.0.0-rc.116" } });
+		assert.deepStrictEqual(overrides, { ...PINS, [RC117]: "4.0.0-rc.116" });
 	});
 });

@@ -293,6 +293,19 @@ const appendAtEof = (text: string, content: string): string =>
  * `GitConfig.make` over text that does not scan cleanly dies as a defect at
  * the first operation (bad wiring, not bad input).
  *
+ * @example
+ * ```ts
+ * import { GitConfig } from "@effected/git";
+ * import { Effect, Option, Result } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const config = yield* GitConfig.parse('[remote "origin"]\n\turl = git@example.com:o/r.git\n');
+ *   const url = config.get("remote", "origin", "url"); // Option.some("git@example.com:o/r.git")
+ *   const edited = config.set("remote", "origin", "pushurl", "git@example.com:o/fork.git");
+ *   return { url: Option.getOrNull(url), text: Result.isSuccess(edited) ? edited.success.stringify() : config.text };
+ * });
+ * ```
+ *
  * @public
  */
 export class GitConfig extends Schema.Class<GitConfig>("GitConfig")({

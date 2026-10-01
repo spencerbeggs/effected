@@ -2,12 +2,12 @@
 // modifier: TomlEdit, TomlRange, TomlPath and TomlSegment. Edits are text
 // splices computed against the linear CST's expression spans — applying them
 // in reverse-offset order is byte-minimal and preserves comments and layout,
-// the package's real differentiator over parse → re-stringify round trips.
+// the core value proposition over parse → re-stringify round trips.
 //
 // `TomlEdit`, `TomlRange`, `TomlPath` and `TomlSegment` are bound by the
-// jsonc/yaml parity convention: they are structurally identical to their
-// `Jsonc*` and `Yaml*` counterparts (same field names, types and semantics)
-// so consumer code can be written once over "a document codec's
+// cross-package parity convention: they are structurally identical to their
+// `Jsonc*`, `Yaml*` and `Markdown*` counterparts (same field names, types and
+// semantics) so consumer code can be written once over "a document codec's
 // Edit/Range/Path".
 
 import { Schema } from "effect";
@@ -45,9 +45,9 @@ export class TomlRange extends Schema.Class<TomlRange>("TomlRange")({
  * `content`. Set `length` to `0` to insert, `content` to `""` to delete.
  *
  * @remarks
- * Structurally identical to `@effected/jsonc`'s and `@effected/yaml`'s edit
- * shapes (same field names, types and semantics) per the jsonc/yaml parity
- * convention, so consumer code can be written once over "a document codec's
+ * Structurally identical to the edit shapes of `@effected/jsonc`,
+ * `@effected/yaml` and `@effected/markdown` (same field names, types and
+ * semantics), so consumer code can be written once over "a document codec's
  * Edit/Range/Path".
  *
  * @public
@@ -62,6 +62,10 @@ export class TomlEdit extends Schema.Class<TomlEdit>("TomlEdit")({
 	 * reverse-offset order so earlier offsets stay valid; the input `edits`
 	 * array is not mutated. Overlapping edits are a programmer error and throw
 	 * as a defect — `TomlFormat` never produces them.
+	 *
+	 * @param text - The source text to edit.
+	 * @param edits - The edits to apply, in any order.
+	 * @returns The edited text.
 	 */
 	static applyAll(text: string, edits: ReadonlyArray<TomlEdit>): string {
 		const sorted = [...edits].sort((a, b) => b.offset - a.offset);

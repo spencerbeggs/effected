@@ -1,12 +1,8 @@
-/**
- * Bounds on remote-feed traversal.
- *
- * A paginated GitHub listing is driven by a remote server's paging behaviour,
- * so an unbounded page loop is a denial-of-service surface: the v3 code
- * defaulted `maxPages` to `Number.POSITIVE_INFINITY`. Every listing is capped.
- *
- * @internal
- */
+// Bounds on remote-feed traversal.
+//
+// A paginated GitHub listing is driven by a remote server's paging behaviour,
+// so an unbounded page loop is a denial-of-service surface. Every listing is
+// capped.
 
 /** Items requested per page. GitHub's own maximum. */
 export const DEFAULT_PER_PAGE = 100;

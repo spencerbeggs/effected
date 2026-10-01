@@ -8,7 +8,7 @@
 // closing runs it too, over its own span of the stack.
 //
 // Upstream's smart-punctuation arms (`'` and `"` becoming curly quotes) are
-// deliberately not ported: the design declines the `smart` option, so those
+// deliberately not ported: the `smart` option is not offered, so those
 // two characters never reach the delimiter stack at all.
 
 import type { EmphasisChar } from "../../MarkdownNode.js";

@@ -28,12 +28,12 @@ import type { WorkspacePackage } from "./WorkspacePackage.js";
  * @remarks
  * `{ directory }` runs `npm pack` in that subdirectory of each package, whose
  * manifest must already be publish-ready. The default,
- * `{ directory: "dist/prod/npm/pkg" }`, is the effected bundler's prod npm
+ * `{ directory: "dist/prod/npm/pkg" }`, is `@savvy-web/bundler`'s prod npm
  * output: the same file list a release publishes.
  *
  * `"source"` runs `pnpm pack` in the package directory: pnpm honours
  * `publishConfig.directory` and rewrites `workspace:` and `catalog:`
- * specifiers. Two costs. Under the effected bundler `publishConfig.directory`
+ * specifiers. Two costs. Under `@savvy-web/bundler`, `publishConfig.directory`
  * names the DEV build, so source mode proves the dev artifact, not the
  * published one. And pnpm can rewrite a `workspace:` specifier only in a
  * workspace that has been `pnpm install`ed: in a never-installed one the pack
@@ -70,10 +70,10 @@ export interface PackedInstallClosureOptions {
 	 * `.tgz`, with or without a `file:` prefix.
 	 *
 	 * @remarks
-	 * The dogfood case: a closure member imports a surface of a dependency
-	 * that exists only in a sibling checkout's unreleased build, and the
-	 * registry's copy lacks it. A directory is `npm pack`ed, so it must be
-	 * publish-ready (for an effected-bundled package, its
+	 * For a closure member that imports a surface of a dependency existing
+	 * only in a sibling checkout's unreleased build, which the registry's copy
+	 * lacks. A directory is `npm pack`ed, so it must be
+	 * publish-ready (for a package built by `@savvy-web/bundler`, its
 	 * `dist/prod/npm/pkg`); a `.tgz` is used as it is. Either way the packed
 	 * manifest must be named as its key, carry no specifier only a workspace
 	 * could resolve, and it joins `PackedInstallResult.tarballs`. Each
@@ -90,9 +90,9 @@ export interface PackedInstallClosureOptions {
 	readonly overrides?: Readonly<Record<string, string>> | undefined;
 	/**
 	 * Also read the workspace root's `pnpm-workspace.yaml` and take every
-	 * `overrides:` entry of the dogfood link shape,
-	 * `"@scope/name": "file:<dir>"`, as if passed through `overrides`: the
-	 * linked sibling builds the workspace itself installs. Entries that are not `file:`, or
+	 * `overrides:` entry of the link shape `"@scope/name": "file:<dir>"` as if
+	 * passed through `overrides`: the linked sibling builds the workspace itself
+	 * installs. Entries that are not `file:`, or
 	 * whose key carries a selector (`a>b`, `a@1`), are left out. A root with
 	 * no readable `pnpm-workspace.yaml`, or one that is not YAML, fails
 	 * `InvalidOverride`.
@@ -658,8 +658,8 @@ export interface PackedInstallBudget {
 	readonly perConsumer?: Duration.Input | undefined;
 }
 
-// Probe P3: npm-packing the prod output is byte-identical to the published
-// tarball; pnpm-packing the source packs the dev build.
+// npm-packing the prod output is byte-identical to the published tarball;
+// pnpm-packing the source packs the dev build.
 const DEFAULT_PACK_FROM: PackSource = { directory: "dist/prod/npm/pkg" };
 const WORKSPACE_PROTOCOL_NOT_INSTALLED = "ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL";
 const TAIL = 2000;

@@ -1,13 +1,11 @@
 // Strict SemVer 2.0.0 recursive-descent parser and printer.
 //
-// Ported from semver-effect's Effect-based grammar as plain synchronous code:
-// parsing is pure and total, so the Effect wrapper added ceremony without
-// value. Failures propagate as a private exception carrying the failure
-// position and are converted to `ParseResult` at the three entry points; the
-// concept modules (`SemVer`, `Range`, `Comparator`) construct their own
-// domain errors from that result. This replaces the v3 `FailFn<E>`
-// parameterized fail-constructor — the same low-level parsers serve every
-// entry point without threading error constructors through.
+// Plain synchronous code: parsing is pure and total, so an Effect wrapper would
+// add ceremony without value. Failures propagate as a private exception
+// carrying the failure position and are converted to `ParseResult` at the three
+// entry points; the concept modules (`SemVer`, `Range`, `Comparator`) construct
+// their own domain errors from that result. The same low-level parsers serve
+// every entry point without threading error constructors through.
 //
 // Rejects `v`/`V` prefixes, `=` prefixes on versions, leading zeros on
 // numeric identifiers, and unsafe integers. Input must be fully consumed.

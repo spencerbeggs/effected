@@ -43,7 +43,9 @@ export type NonEmptySources<A> = readonly [ConfigSource<A>, ...ConfigSource<A>[]
  * @public
  */
 export interface MergeStrategy<A> {
+	/** The strategy's name, reported on the `Resolved` event. */
 	readonly name: string;
+	/** Combine the sources, highest priority first, into one value. */
 	readonly resolve: (sources: NonEmptySources<A>) => Effect.Effect<A>;
 }
 
@@ -86,11 +88,19 @@ const layeredMerge = <A>(): MergeStrategy<A> => ({
 });
 
 /**
- * Built-in merge strategies.
+ * Built-in merge strategies: `firstMatch` (the highest-priority source wins
+ * whole) and `layeredMerge` (every source deep-merged, higher priority winning).
  *
  * @remarks
- * Renamed from v3's `ConfigWalkStrategy`, which never walked anything — the
- * thing that walks is the `upwardWalk` resolver.
+ * Strategies only combine sources; the walk up the directory tree belongs to
+ * the `upwardWalk` resolver.
+ *
+ * @example
+ * ```ts
+ * import { MergeStrategy } from "@effected/config-file";
+ *
+ * const strategy = MergeStrategy.layeredMerge<{ port: number }>();
+ * ```
  *
  * @public
  */

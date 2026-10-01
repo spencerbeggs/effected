@@ -69,7 +69,7 @@ const redactUrlUserinfo = (value: string): string =>
  * classifiable and keep it from blocking on a prompt live in `Git.ts`
  * alongside the classifier and the timeout they exist to serve; one of them
  * is conditional on the caller's own environment, which a pure constructor
- * must not read (#670).
+ * must not read.
  *
  * `extendEnv: true` is the one spawn option set here, and it is deliberately
  * NOT one of those pins: it declares that a git invocation inherits the

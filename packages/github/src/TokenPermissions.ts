@@ -33,7 +33,9 @@ export class PermissionGap extends Schema.Class<PermissionGap>("PermissionGap")(
  * @public
  */
 export class ExtraPermission extends Schema.Class<ExtraPermission>("ExtraPermission")({
+	/** The permission's name, e.g. `"contents"`. */
 	permission: Schema.String,
+	/** What the token has. */
 	granted: PermissionLevel,
 	/** What was asked for, when anything was. */
 	required: Schema.optionalKey(PermissionLevel),
@@ -83,17 +85,12 @@ export class TokenPermissionError extends Schema.TaggedError<TokenPermissionErro
  * The permissions a token was granted, and what they satisfy.
  *
  * @remarks
- * **A pure class, not a service.** The version this replaces was a
- * `Context.Service` whose live layer was a `Layer.succeed` with zero octokit
- * calls and an empty `R` — a `read < write < admin` comparator behind a service
- * boundary that bought nothing. It cost something, though: its test double
- * reimplemented the entire ranking and every assertion branch, making it the
- * heaviest of the thirty-eight doubles in the package.
- *
- * Here there is no service, no layer and no double: a caller holds the
- * permissions GitHub already gave it (`InstallationToken.permissions`) and
- * compares them. The only `Effect`s are the two assertions, and they exist only
- * because failing typed is more useful than returning a boolean.
+ * **A pure class, not a service.** It compares permission levels
+ * (`read < write < admin`), so there is no layer and no test double: a caller
+ * holds the permissions GitHub already gave it (`InstallationToken.permissions`)
+ * and compares them. The only `Effect`s are the two assertions, which fail with
+ * `TokenPermissionError` because failing typed is more useful than returning a
+ * boolean.
  *
  * @example
  * ```ts

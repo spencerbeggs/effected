@@ -2,14 +2,12 @@ import { DateTime, Effect } from "effect";
 import type { SqlClient } from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
-/**
- * The migration-ledger engine shared by `Store` (user migrations over
- * `_store_migrations`) and `Cache` (its fixed schema over `_cache_migrations`).
- *
- * The engine is deliberately facade-free: it works over raw records and fails
- * with raw {@link MigratorFailure} values; `Store.ts` and `Cache.ts`
- * materialize the public error classes. It never imports a facade module.
- */
+// The migration-ledger engine shared by `Store` (user migrations over
+// `_store_migrations`) and `Cache` (its fixed schema over `_cache_migrations`).
+//
+// The engine is deliberately facade-free: it works over raw records and fails
+// with raw `MigratorFailure` values; `Store.ts` and `Cache.ts` materialize the
+// public error classes. It never imports a facade module.
 
 /** A single migration as the engine sees it; callback values are discarded. */
 export interface MigratorMigration {
@@ -135,8 +133,8 @@ export const runPending = (
 
 /**
  * Roll back applied migrations with `id > toId`, newest first. A migration
- * without a `down` is skipped over — its ledger row is still removed, matching
- * the v3 contract. Each `down` and its ledger delete commit atomically.
+ * without a `down` is skipped over — its ledger row is still removed. Each `down` and its ledger
+ * delete commit atomically.
  */
 export const rollbackTo = (
 	sql: SqlClient,

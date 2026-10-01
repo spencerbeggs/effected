@@ -1,4 +1,4 @@
-// empty-lines (#129): caps runs of consecutive blank lines — in the body
+// empty-lines: caps runs of consecutive blank lines — in the body
 // (`max`), at document start (`maxStart`) and at document end (`maxEnd`).
 // Blank lines inside scalar content are the value's business and are
 // skipped. The fix deletes the excess lines surgically.
@@ -85,7 +85,7 @@ export const emptyLines: YamlRule = {
 		}
 		return out;
 	},
-	// Inference (#345): the max blank run is inferable only as a FLOOR — a
+	// Inference: the max blank run is inferable only as a FLOOR — a
 	// corpus whose longest body run is N proves `max` must be at least N to
 	// accept it, not that the author would forbid N+1. The floor rides in
 	// the evidence; the caps stay default-driven under both resolvers. Same

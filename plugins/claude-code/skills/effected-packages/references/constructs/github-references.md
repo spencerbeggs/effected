@@ -15,7 +15,7 @@
 | `REFERENCE_KEYWORDS` | Variable | The non-closing reference keywords the list dialect accepts, lowercased. | the non-closing reference keywords ref, refs, references |
 | `ReferenceKeyword` | TypeAlias | One of the non-closing reference keywords, in canonical lowercase form. | |
 | `ReferenceList` | Interface | The issues a reference-list line names, per `parseReferenceList`. | |
-| `collectReferenceLists` | Function | Every reference list a text carries, line by line, across both postures. | extract every closing or reference list from commit or PR body text |
+| `collectReferenceLists` | Function | Every reference list a text carries, line by line, whether a line is a whole-line list or has lists inline in prose. | extract every closing or reference list from commit or PR body text |
 | `harvestIssueReferences` | Function | Every inline closing reference in `text`, in document order. | find closes/fixes/resolves #12 style references in commit message or pr body prose |
 | `harvestReferenceLists` | Function | Every reference list found inline in `text`, in document order. | find several issue lists inline in running text, e.g. closes #123, fixes #456 |
 | `keywordFamily` | Function | The family a keyword belongs to. | collapse close/closes/closed and similar conjugations to one stem |
@@ -23,5 +23,5 @@
 | `parseBareLines` | Function | Every bare-line reference a whole text carries, one per line. | parse every bare trailer line in a text into issue references |
 | `parseClosingList` | Function | The closing-only view of `parseReferenceList`: the list a whole line carries under one of the nine closing keywords, or `Option.none()`. | parse a whole line naming several issues under a closing keyword |
 | `parseClosingLists` | Function | Every closing list a whole text carries, one whole-line list per line. | parse every closing-list line in a text |
-| `parseReferenceList` | Function | The list a whole line carries under either keyword set, or `Option.none()`. | parse a whole line naming several issues under a closing or ref keyword |
+| `parseReferenceList` | Function | The issue list a whole line carries under either keyword set, or `Option.none()`. | parse a whole line naming several issues under a closing or ref keyword |
 | `parseReferenceLists` | Function | Every reference list a whole text carries, one whole-line list per line. | parse every reference-list line in a text |

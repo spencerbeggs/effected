@@ -184,7 +184,7 @@ const cleanStack = (
 	const lines = stack.split(/\r\n|\r|\n/).filter((line) => /^\s*at\s/.test(line));
 	const app = lines.filter((line) => !isRuntime(line) && !isDependency(line));
 	// An installed program (a global install, `npx`, a pnpm store) has every frame of its own under `node_modules`:
-	// when dropping dependencies leaves nothing, keep everything but the runtime's and Effect's, as before.
+	// when dropping dependencies leaves nothing, keep everything but the runtime's and Effect's.
 	const kept = mode === "all" ? lines : app.length > 0 ? app : lines.filter((line) => !isRuntime(line));
 	return { frames: kept.map(parseFrame), hidden: lines.length - kept.length };
 };

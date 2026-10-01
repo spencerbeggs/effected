@@ -4,9 +4,7 @@
 // This is a value class with statics, not a service. Classification is a pure
 // total fold over (publishable names, fixed groups) — there is nothing to swap
 // and nothing to configure — and the kit-wide rule that a service shape carries
-// only effectful members is what settles it. The v3 original wrapped both
-// halves in `Effect` with a `never` error channel purely to fit a service,
-// which is the shape that rule exists to prevent. The one genuinely effectful
+// only effectful members settles it. The one genuinely effectful
 // entry point, `detect`, is a static over two services that already exist and
 // already have their own test doubles.
 
@@ -96,13 +94,13 @@ export interface PackageRelease {
  *
  * @example
  * ```ts
- * import { VersioningStrategy } from "@effected/workspaces";
+ * import { PublishabilityDetector, VersioningStrategy } from "@effected/workspaces";
  * import { Effect } from "effect";
  *
  * const program = Effect.gen(function* () {
- *   const strategy = yield* VersioningStrategy.detect({ fixedGroups });
- *   return strategy.tagsFor(released).map((tag) => tag.value);
- * });
+ *   const strategy = yield* VersioningStrategy.detect({ fixedGroups: [["@acme/a", "@acme/b"]] });
+ *   return strategy.tagsFor([{ name: "@acme/a", version: "1.2.3" }]).map((tag) => tag.value);
+ * }).pipe(Effect.provide(PublishabilityDetector.layerNpm));
  * ```
  *
  * @public
@@ -134,6 +132,9 @@ export class VersioningStrategy extends Schema.Class<VersioningStrategy>("Versio
 	 * Pure and total — no IO, no error channel. `packages` is sorted and
 	 * de-duplicated first, so a name listed twice cannot inflate a one-package
 	 * repo into an independent one.
+	 *
+	 * @param options - The publishable package names and any fixed groups.
+	 * @returns the classified {@link VersioningStrategy}.
 	 */
 	static classify(options: ClassifyOptions): VersioningStrategy {
 		const fixedGroups = options.fixedGroups ?? [];
@@ -159,6 +160,10 @@ export class VersioningStrategy extends Schema.Class<VersioningStrategy>("Versio
 	 * The publishability question is asked through the service precisely so a
 	 * consumer with its own rules — honouring a release tool's ignore list, say —
 	 * swaps the layer instead of filtering afterwards.
+	 *
+	 * Requires `WorkspaceDiscovery` and `PublishabilityDetector` (for example
+	 * `PublishabilityDetector.layerNpm`) in `R`, and fails with
+	 * `WorkspaceDiscoveryFailure` when discovery does.
 	 */
 	static readonly detect = Effect.fn("VersioningStrategy.detect")(function* (options?: VersioningDetectOptions) {
 		const discovery = yield* WorkspaceDiscovery;
@@ -204,6 +209,9 @@ export class VersioningStrategy extends Schema.Class<VersioningStrategy>("Versio
 	 * one-line check rather than a field here.
 	 *
 	 * An empty batch produces no tags under either style.
+	 *
+	 * @param releases - The packages released and their versions.
+	 * @param options - Tag formatting overrides, such as `versionPrefix`.
 	 */
 	tagsFor(releases: ReadonlyArray<PackageRelease>, options?: TagFormatOptions): ReadonlyArray<ReleaseTag> {
 		if (releases.length === 0) return [];

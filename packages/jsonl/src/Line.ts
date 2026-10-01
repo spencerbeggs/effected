@@ -1,13 +1,10 @@
-/**
- * The pure, synchronous line layer of a JSONL journal.
- *
- * Nothing here touches `FileSystem`, builds an `Effect`, or needs a runtime —
- * a `PreToolUse` hook script reads the current state of a journal with one
- * call. That is a contract, not a convenience: a hook that had to construct an
- * Effect runtime to read one line would not adopt this package.
- *
- * @since 0.1.0
- */
+// The pure, synchronous line layer of a JSONL journal.
+//
+// Nothing here touches `FileSystem`, builds an `Effect`, or needs a runtime —
+// a `PreToolUse` hook script reads the current state of a journal with one
+// call. That is a contract, not a convenience: a hook that had to construct an
+// Effect runtime to read one line would not adopt this package.
+
 import { Option, Result, Schema } from "effect";
 import { utf8Length } from "./internal/utf8.js";
 import { MalformedLine } from "./JsonlError.js";

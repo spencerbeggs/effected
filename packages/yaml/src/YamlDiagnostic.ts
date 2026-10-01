@@ -137,8 +137,10 @@ export class YamlDiagnostic extends Schema.Class<YamlDiagnostic>("YamlDiagnostic
 	/**
 	 * The single fatal-code predicate: whether diagnostics with this code
 	 * abort a parse (vs. being recoverable warnings-as-data). Declared once,
-	 * as a property of the code — replacing the v3 source's three
-	 * subtly-differing inline fatal lists.
+	 * as a property of the code.
+	 *
+	 * @param code - The diagnostic code to classify.
+	 * @returns `true` when diagnostics with `code` abort a parse.
 	 */
 	static isFatal(code: YamlErrorCode): boolean {
 		return isFatalCode(code);
@@ -148,6 +150,10 @@ export class YamlDiagnostic extends Schema.Class<YamlDiagnostic>("YamlDiagnostic
 	 * Materialize a raw engine diagnostic record into a `YamlDiagnostic`,
 	 * deriving `line`/`character` from `offset` against the source `text`.
 	 * Advanced — the parse/stringify entry points call this for you.
+	 *
+	 * @param raw - The engine record: `code`, `message`, `offset` and `length`.
+	 * @param text - The source text the record's `offset` indexes into.
+	 * @returns The diagnostic with `line` and `character` filled in.
 	 */
 	static fromRaw(
 		raw: { readonly code: YamlErrorCode; readonly message: string; readonly offset: number; readonly length: number },

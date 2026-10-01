@@ -65,7 +65,7 @@ export class LockfileIntegrity extends Schema.Class<LockfileIntegrity>("Lockfile
 	 * @remarks
 	 * Constraint checking is best-effort by design: `workspace:` / `link:` /
 	 * `file:` specifiers and rows whose range (or every resolved version) does
-	 * not parse as SemVer are skipped, exactly as in the v3 implementation.
+	 * not parse as SemVer are skipped.
 	 * A lockfile may resolve the same package at several versions; a
 	 * constraint is satisfied when *any* resolved version matches, and an
 	 * unsatisfied row reports every candidate in `resolved`. The
@@ -73,9 +73,9 @@ export class LockfileIntegrity extends Schema.Class<LockfileIntegrity>("Lockfile
 	 * `Lockfile#withImporterNames` first so workspace names align with
 	 * manifest names.
 	 *
-	 * (Named `compare`, not `check`: every v4 `Schema.Class` already carries
-	 * a `static check(...checks)` for attaching schema checks, and statics
-	 * cannot be shadowed with an incompatible signature.)
+	 * (Named `compare`, not `check`: every `Schema.Class` already carries a
+	 * `static check(...checks)` for attaching schema checks, and statics cannot
+	 * be shadowed with an incompatible signature.)
 	 *
 	 * @param lockfile - The parsed lockfile.
 	 * @param manifests - The workspace manifests to compare against.

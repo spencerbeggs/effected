@@ -8,7 +8,7 @@ import { ThingFields } from "./Thing.js";
  * Carries only `Thing`-level fields plus the two person-specific ones. The
  * `CreativeWork` vocabulary (`license`, `author`, `datePublished`, …) is
  * deliberately absent: those properties are not `domainIncludes`-legal on
- * `Person`, and the package's self-conformance test asserts it.
+ * `Person`.
  *
  * @example
  * ```ts

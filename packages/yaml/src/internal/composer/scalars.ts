@@ -164,7 +164,7 @@ export function getBlockIndent(node: CstNode): number | undefined {
  * a `#` comment — body lines absorb `#` as content — and the lexer packs the
  * whole scalar (header comment included) into one CST token, so the comment
  * never surfaces as a sibling comment token for the ordinary attribution
- * pass (#341).
+ * pass.
  */
 function blockScalarHeaderComment(cst: CstNode): string | undefined {
 	const src = cst.source.trimStart();
@@ -1202,7 +1202,7 @@ export function makeScalar(cst: CstNode, state: ComposerState, meta?: NodeMeta):
 	const value = resolveScalar(rawValue, style, meta?.tag, state);
 	const chomp = getBlockChomp(cst);
 	const blockIndent = getBlockIndent(cst);
-	// #341: a block scalar's header-line comment (`| # c`) lives inside the
+	// A block scalar's header-line comment (`| # c`) lives inside the
 	// CST token, so it is captured here as the SCALAR's trailing `comment`
 	// (reference `yaml` parity) rather than by the sibling attribution pass.
 	const headerComment =

@@ -1,8 +1,4 @@
-/**
- * Resolving Bun versions.
- *
- * @packageDocumentation
- */
+// Resolving Bun versions.
 
 import type { InvalidRangeError } from "@effected/semver";
 import { SemVer } from "@effected/semver";
@@ -56,7 +52,14 @@ export const BunResolverOptions = Schema.Struct({
 export type BunResolverOptions = typeof BunResolverOptions.Type;
 
 /**
- * The Bun resolver.
+ * Resolves a semver range to concrete Bun versions, with release data from GitHub
+ * (`oven-sh/bun`) or a bundled snapshot.
+ *
+ * @remarks
+ * Choose a strategy with the layer: `layer` tries GitHub and falls back to the
+ * snapshot, `layerFresh` fails rather than fall back, and `layerOffline` uses
+ * only the snapshot. `resolve` fails with `InvalidRangeError`,
+ * `NoMatchingVersionError`, `UnresolvableDefaultError` or `FreshnessError`.
  *
  * @example
  * ```ts
@@ -74,6 +77,7 @@ export type BunResolverOptions = typeof BunResolverOptions.Type;
 export class BunResolver extends Context.Service<
 	BunResolver,
 	{
+		/** Resolve a range to the matching versions, newest first. */
 		readonly resolve: (
 			options?: BunResolverOptions,
 		) => Effect.Effect<

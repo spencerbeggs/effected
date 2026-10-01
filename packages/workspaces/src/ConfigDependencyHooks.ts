@@ -59,21 +59,19 @@ interface HookConfig {
  * **after** computing peer violations, in pnpm's own shape.
  *
  * @remarks
- * The shape is pnpm's rather than ours because that is what comes back off the
- * threaded config: measured against `@savvy-web/pnpm-plugin-silk@0.27.0`, a
- * replayed hook returns `{ allowedVersions, ignoreMissing, allowAny }` intact,
- * needing no reshaping.
+ * The shape is pnpm's own, because that is what comes back off the threaded
+ * config: a replayed hook returns `{ allowedVersions, ignoreMissing, allowAny }`
+ * intact, needing no reshaping.
  *
- * All three axes are consumed by `PeerCheck`, each established by measurement
- * against `pnpm peers check` with a firing control. `ignoreMissing` and
- * `allowAny` are lists of **peer-name patterns** in pnpm's `@pnpm/matcher`
+ * All three axes are consumed by `PeerCheck`, matching `pnpm peers check`.
+ * `ignoreMissing` and `allowAny` are lists of **peer-name patterns** in pnpm's `@pnpm/matcher`
  * grammar (`*` wildcard, leading `!` negation) — not `parent>peer` keys, which
  * match nothing on those two axes. `ignoreMissing` hides only a required peer
  * that resolved to nothing; `allowAny` hides only a peer that resolved outside
  * its wanted range; the two never cross.
  *
  * `allowedVersions` keys come in two spellings in the wild, and both must be
- * handled: parent-versioned (`"@effect/ai-anthropic@4.0.0-rc.109>effect"`, as
+ * handled: parent-versioned (`"@effect/ai-anthropic@4.0.0>effect"`, as
  * `pnpm:export` materializes them into `pnpm-workspace.yaml`) and unversioned
  * (`"@effect/vitest>vitest"`, as a config-dependency plugin injects them).
  *
@@ -201,15 +199,11 @@ export interface HookInjection {
 	 * @remarks
 	 * Effective rather than hook-only because the rules are **seeded** into the
 	 * threaded config and the hooks merge onto them, exactly as pnpm seeds its
-	 * own config and takes back what the hooks return. That is deliberate: a
-	 * kit-owned merge function would be a second implementation of a rule this
-	 * seam already enforces, and the two would drift the first time pnpm changed
-	 * its threading.
+	 * own config and takes back what the hooks return, so there is no second
+	 * merge implementation to drift from pnpm's threading.
 	 *
-	 * Measured caveat, and **not a bug to fix**: this repo's plugin *merges*
-	 * onto the seeded rules; another plugin could overwrite them. Under seeding
-	 * that is pnpm's own behaviour reproduced — a hook that overwrites
-	 * overwrites for pnpm too — so do not "repair" it into a merger.
+	 * A plugin whose hook *overwrites* the seeded rules rather than merging
+	 * onto them replaces them here exactly as it does under pnpm.
 	 */
 	readonly peerDependencyRules: PeerDependencyRules;
 	/**

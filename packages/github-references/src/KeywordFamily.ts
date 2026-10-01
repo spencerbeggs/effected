@@ -1,19 +1,15 @@
 import type { ReferenceKeyword } from "./ClosingList.js";
 import type { ClosingKeyword } from "./IssueReferences.js";
 
-/**
- * The keyword-family projection: every keyword's tense-collapsed stem.
- *
- * @remarks
- * The twelve keywords across both sets are four stems conjugated —
- * `close`/`closes`/`closed` are one intent spelled three ways — and
- * consumers that categorize harvested references (keying a map by family
- * rather than by all twelve spellings) were each re-deriving the collapse
- * with a stringly `startsWith("fix")`. This module is that projection, once:
- * an explicit total record from keyword to family, so a keyword added to
- * either constant without a family entry is a **type error**, not a silent
- * miscategorization at runtime.
- */
+// The keyword-family projection: every keyword's tense-collapsed stem.
+//
+// The twelve keywords across both sets are four stems conjugated —
+// `close`/`closes`/`closed` are one intent spelled three ways — and
+// consumers that categorize harvested references can key a map by family
+// rather than by all twelve spellings. This module is that projection: an
+// explicit total record from keyword to family, so a keyword added to
+// either constant without a family entry is a **type error**, not a silent
+// miscategorization at runtime.
 
 /**
  * The four keyword families: the twelve keywords collapsed to their stems.
@@ -46,12 +42,19 @@ const FAMILIES: Record<ClosingKeyword | ReferenceKeyword, KeywordFamily> = {
  * The family a keyword belongs to.
  *
  * @remarks
- * Total over both keyword sets by construction — see the module remarks for
- * why an explicit record beats a `startsWith` heuristic. `close`, `closes`
- * and `closed` map to `"close"`; the `fix` and `resolve` conjugations
- * likewise; `ref`, `refs` and `references` map to `"ref"`. The evidence for
- * the projection is downstream: categorized harvesters key maps by family,
- * and each was hand-rolling this collapse.
+ * Total over both keyword sets by construction — an explicit record rather
+ * than a `startsWith` heuristic, so a keyword added without a family entry is
+ * a type error. `close`, `closes` and `closed` map to `"close"`; the `fix`
+ * and `resolve` conjugations likewise; `ref`, `refs` and `references` map to
+ * `"ref"`.
+ *
+ * @example
+ * ```ts
+ * import { keywordFamily } from "@effected/github-references";
+ *
+ * keywordFamily("closed");     // "close"
+ * keywordFamily("references"); // "ref"
+ * ```
  *
  * @public
  */

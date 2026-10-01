@@ -78,7 +78,7 @@ const hasDescription: ValidationRule = {
 
 const hasRepository: ValidationRule = {
 	name: "has-repository",
-	// `repository` is a modeled field now — no poking into `pkg.rest`.
+	// `repository` is a modeled field, so it is read directly rather than from `pkg.rest`.
 	validate: (pkg) =>
 		pkg.repository !== undefined
 			? Effect.void
@@ -150,7 +150,9 @@ const runRules = Effect.fn("PackageValidator.validate")(function* (pkg: Package,
 
 /**
  * Validates a {@link Package} against a set of {@link ValidationRule}s,
- * aggregating every failure into one {@link PackageValidationError}.
+ * aggregating every failure into one {@link PackageValidationError}. Use
+ * `PackageValidator.layer` for {@link defaultRules} or `PackageValidator.layerRules`
+ * for a custom rule set.
  *
  * @example
  * ```ts
@@ -162,6 +164,8 @@ const runRules = Effect.fn("PackageValidator.validate")(function* (pkg: Package,
  *   const validator = yield* PackageValidator;
  *   yield* validator.validate(pkg);
  * }).pipe(Effect.provide(PackageValidator.layer));
+ * // fails with PackageValidationError: the default rules require a license,
+ * // a description and a repository, and forbid `private: true`
  * ```
  *
  * @public

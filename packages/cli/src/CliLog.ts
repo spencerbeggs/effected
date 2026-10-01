@@ -261,6 +261,20 @@ const actionsDecision =
  * sink keeps filtering on its own level rather than following the flag. The plain `CliLogger` prints those records
  * regardless.
  *
+ * @example
+ * ```ts
+ * import { CliRuntime } from "@effected/cli"
+ * import { NodeRuntime, NodeServices } from "@effect/platform-node"
+ *
+ * // `env.log` makes `main` install `CliLog.layer`: set MYTOOL_LOG_LEVEL=debug to get diagnostics on stderr.
+ * NodeRuntime.runMain(
+ *   CliRuntime.main(program, {
+ *     platform: NodeServices.layer,
+ *     env: { audienceEnvVar: "MYTOOL_AUDIENCE", log: { envVar: "MYTOOL_LOG_LEVEL" } },
+ *   }),
+ * )
+ * ```
+ *
  * @public
  */
 export class CliLog {
@@ -385,7 +399,7 @@ export class CliLog {
 				const color = terminal?.stderr.color ?? "none";
 				// Decided per record, not once at build: the logger is built outermost, before an audience flag is read,
 				// so the format follows the `Audience` in force in the fiber that logs (`CliAudience.run` provides it
-				// around the whole run; `Fiber.context` is `Fiber.ts:77`), falling back to the one the layer was built with.
+				// around the whole run), falling back to the one the layer was built with.
 				const isPretty = (record: Logger.Options<unknown>): boolean => {
 					if (format !== "auto") return format === "pretty";
 					const inForce = Context.getOption(record.fiber.context, Audience);
@@ -583,7 +597,7 @@ export const platformLogLayer = (
  * level say, and neutralized under GitHub Actions like the platform's lines. It goes to stderr alone, whatever
  * `stderrFrom` the program's `CliLogger` options raise, and never to `extraLoggers` or the file sink. Only this
  * logger is pinned to stderr: the platform's build-time logger keeps the host's `stderrFrom`. It floors at `Warning` and installs no
- * `MinimumLogLevel`, so `CliLog.layer`'s own build, which shares this context, reads the ambient minimum as before.
+ * `MinimumLogLevel`, so `CliLog.layer`'s own build, which shares this context, reads the ambient minimum.
  *
  * @internal
  */

@@ -540,7 +540,7 @@ function parseBlockValue(state: ParserState, parentIndent: number, explicitKey =
 		// blowing past the line boundary. The loop would then keep consuming
 		// the next line's tokens as value content with no column check, so a
 		// dedented sibling key after `value # comment` was absorbed into the
-		// nested mapping (shipped P0: trailing comment on the last key of a
+		// nested mapping (trailing comment on the last key of a
 		// nested block mapping swallowed the following dedent). Comments and
 		// newlines end the value line via the branches below.
 		if (token.kind === "whitespace") {

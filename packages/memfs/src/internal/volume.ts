@@ -6,9 +6,8 @@
 // Copyright: Effectful Technologies Inc.
 // License: MIT (https://github.com/Effect-TS/effect/blob/main/LICENSE)
 //
-// Port notes, the deliberate changes from the pinned upstream (the authoritative
-// adaptation ledger lives in okf/modules/memfs.md — anything
-// else diverging from c0528bd5 is drift, not design):
+// Port notes, the deliberate changes from the pinned upstream (anything else
+// diverging from the pinned head is drift, not design):
 // - Imports come from the installed `effect` package instead of sibling source
 //   files; `badArgument`/`systemError` and the PlatformError types are reached
 //   through the root `PlatformError` namespace via local aliases so the ported
@@ -38,8 +37,8 @@
 //   code carried as `cause.code`; sites whose upstream tag or success/failure
 //   disagreed with node were corrected (readLink EINVAL, non-recursive remove
 //   of any directory, ENOTEMPTY, EBADF, fs.cp codes, trailing slashes, NUL
-//   bytes, glob roots, negative truncate). Ledger entry 10 has the table.
-// - Case folding (ledger 11): State.caseSensitive, lookupEntry, case-only rename.
+//   bytes, glob roots, negative truncate).
+// - Case folding: State.caseSensitive, lookupEntry, case-only rename.
 
 import type { Cause } from "effect";
 import {
@@ -154,7 +153,7 @@ interface State {
 	readonly descriptors: HashMap.HashMap<FileDescriptor, OpenFileDescriptor>;
 	readonly nextDescriptor: number;
 	readonly nextTemporary: number;
-	// KIT EXTENSION (case folding — ledger entry 11): fixed at build, never changed afterwards.
+	// KIT EXTENSION (case folding): fixed at build, never changed afterwards.
 	readonly caseSensitive: boolean;
 }
 
@@ -221,7 +220,7 @@ const fileSystemError = (options: {
 const invalidData = (method: string, path: string, description: string): PlatformError =>
 	fileSystemError({ _tag: "InvalidData", method, pathOrDescriptor: path, description });
 
-// Errno fidelity (ledger entry 10): the errno → tag mapping lives in ./errno.js.
+// Errno fidelity: the errno → tag mapping lives in ./errno.js.
 
 const alreadyExists = (method: string, path: string): PlatformError => errnoError(method, path, "EEXIST");
 
@@ -252,7 +251,7 @@ const nullBytePath = (method: string): PlatformError => argumentError(method, "p
 const findInode = (state: State, inode: Inode): InodeEntry | undefined =>
 	Option.getOrUndefined(HashMap.get(state.inodes, inode));
 
-// KIT EXTENSION (case folding — adaptation ledger entry 11): a case-insensitive,
+// KIT EXTENSION (case folding): a case-insensitive,
 // case-preserving volume looks a name up exactly first, then by folded
 // comparison, and answers the STORED key alongside the inode. Every mutation of
 // an existing entry keys on that stored name, so removal and rekeying hit the
@@ -332,7 +331,7 @@ const includesWatchPath = (watchedPath: string, directory: boolean, recursive: b
 	(directory && !recursive && eventPath !== "/" && parentOfPath(eventPath) === watchedPath) ||
 	(eventPath !== "/" && watchedPath.startsWith(`${eventPath}/`));
 
-// KIT EXTENSION (case folding — adaptation ledger entry 11): on a
+// KIT EXTENSION (case folding): on a
 // case-insensitive volume a subscription and an event name one entry in any
 // spelling, so matching compares FOLDED paths; the delivered event keeps its own.
 const publishWatchEvents = (
@@ -490,7 +489,7 @@ const attachDirectory = Effect.fnUntraced(function* (
 ) {
 	yield* validateEntryName(method, name);
 	const parentEntry = yield* getDirectory(state, parent, method, name);
-	// KIT EXTENSION (case folding — adaptation ledger entry 11): a folded match exists.
+	// KIT EXTENSION (case folding): a folded match exists.
 	if (findEntry(state, parentEntry, name) !== undefined) {
 		return yield* alreadyExists(method, name);
 	}
@@ -522,7 +521,7 @@ const linkInode = Effect.fnUntraced(function* (
 ) {
 	yield* validateEntryName(method, name);
 	const parentEntry = yield* getDirectory(state, parent, method, name);
-	// KIT EXTENSION (case folding — adaptation ledger entry 11): a folded match exists.
+	// KIT EXTENSION (case folding): a folded match exists.
 	if (findEntry(state, parentEntry, name) !== undefined) {
 		return yield* alreadyExists(method, name);
 	}
@@ -581,7 +580,7 @@ const resolve = Effect.fnUntraced(function* (state: State, path: string, options
 		}
 
 		const parent = yield* getDirectory(state, stack[stack.length - 1], method, originalPath);
-		// KIT EXTENSION (case folding — adaptation ledger entry 11): the lookup
+		// KIT EXTENSION (case folding): the lookup
 		// folds, but `names` keeps the queried component — node's realpath never
 		// canonicalizes case; only a link's target text supplies its own spelling.
 		const inode = findEntry(state, parent, component);
@@ -785,7 +784,7 @@ const resolveParent = Effect.fnUntraced(function* (
 
 const resolveEntry = Effect.fnUntraced(function* (state: State, path: string, method: string) {
 	const parent = yield* resolveParent(state, path, method);
-	// KIT EXTENSION (case folding — adaptation ledger entry 11): the entry is
+	// KIT EXTENSION (case folding): the entry is
 	// addressed by its STORED key, so `detachEntry` and `rename` mutate the real
 	// map entry rather than a folded spelling of it; `requestedName` keeps the
 	// queried leaf for rename's byte-identical no-op guard.
@@ -918,9 +917,9 @@ const makeDirectory = (volume: Volume) =>
 						return yield* withSystemErrorPath(existing.failure, method, path);
 					}
 					const parent = yield* resolveParent(nextState, candidate, method, path);
-					// KIT EXTENSION (case folding — adaptation ledger entry 11)
+					// KIT EXTENSION (case folding)
 					if (findEntry(nextState, parent.entry, parent.name) !== undefined) {
-						// KIT EXTENSION (errno fidelity — adaptation ledger entry 13): the
+						// KIT EXTENSION (errno fidelity): the
 						// entry exists but does not resolve, so it is a dangling or looping
 						// symbolic link. A recursive mkdir follows it and reports why it
 						// failed (node's EEXIST → stat fallback): the final component
@@ -1085,7 +1084,7 @@ const rename = (volume: Volume) =>
 					source.entry._tag === "Directory" && /[^/]\/+$/.test(newPath)
 						? yield* resolveParent(state, newPath.replace(/\/+$/, ""), method, newPath)
 						: yield* resolveParent(state, newPath, method, newPath, "ENOTDIR");
-				// KIT EXTENSION (case folding — adaptation ledger entry 11): the no-op
+				// KIT EXTENSION (case folding): the no-op
 				// guard compares the QUERIED source leaf — XNU skips a byte-identical
 				// rename, so `rename("dir", "dir")` over a stored `Dir` keeps `Dir`.
 				if (source.parent.ino === destinationParent.inode && source.requestedName === destinationParent.name) {
@@ -1094,7 +1093,7 @@ const rename = (volume: Volume) =>
 				if (source.entry._tag === "Directory" && containsDirectory(state, source.entry.ino, destinationParent.inode)) {
 					return yield* errnoError(method, newPath, "EINVAL", "Cannot move a directory into itself");
 				}
-				// KIT EXTENSION (case folding — adaptation ledger entry 11): one folded
+				// KIT EXTENSION (case folding): one folded
 				// lookup gives the destination's stored key and inode. A hit on the source
 				// entry ITSELF (same directory, same stored key) is a case-only rename: it
 				// rekeys the entry under the requested spelling, children attached, and
@@ -1255,7 +1254,7 @@ const validateCopyDirectoryContents: (
 	}
 	for (const [name, sourceInode] of source.entries) {
 		const sourceEntry = yield* getInode(state, sourceInode, method, path);
-		// KIT EXTENSION (case folding — adaptation ledger entry 11): folded lookup.
+		// KIT EXTENSION (case folding): folded lookup.
 		const destinationInode = findEntry(state, destination, name);
 		if (destinationInode === undefined) continue;
 		const destinationEntry = yield* getInode(state, destinationInode, method, path);
@@ -1314,7 +1313,7 @@ const copyDirectoryContents: (
 	for (const [name, sourceInode] of children) {
 		const sourceEntry = yield* getInode(nextState, sourceInode, method, path);
 		const currentDestination = yield* getDirectory(nextState, destination.ino, method, path);
-		// KIT EXTENSION (case folding — adaptation ledger entry 11): a folded-equal
+		// KIT EXTENSION (case folding): a folded-equal
 		// destination child is detached by its STORED key and the copy linked under
 		// the SOURCE spelling — node's async `fs.cp` unlinks then recreates
 		// (host-proven: `x.txt` replaced from `X.txt` lists as `X.txt`).
@@ -1403,7 +1402,7 @@ const copyFileUnlocked = Effect.fnUntraced(function* (state: State, fromPath: st
 	}
 	const sourceFile = source.entry;
 	const destination = yield* resolveCopyFileDestination(state, toPath, method);
-	// KIT EXTENSION (case folding — adaptation ledger entry 11): folded lookup.
+	// KIT EXTENSION (case folding): folded lookup.
 	const existingInode = findEntry(state, destination.entry, destination.name);
 	if (existingInode === source.inode) return [state, false] as const;
 
@@ -1455,7 +1454,7 @@ const copyEntryUnlocked = Effect.fnUntraced(function* (
 		return yield* errnoError(method, toPath, "ERR_FS_CP_EINVAL", "Cannot copy a directory into itself");
 	}
 
-	// KIT EXTENSION (case folding — adaptation ledger entry 11): an existing
+	// KIT EXTENSION (case folding): an existing
 	// folded-equal destination is detached by its STORED key and the copy linked
 	// under the REQUESTED spelling — node's async `fs.cp` unlinks then recreates
 	// (host-proven: `a.txt` copied onto `B.TXT` over `b.txt` lists as `B.TXT`).
@@ -1646,7 +1645,7 @@ const openDescriptorUnlocked: (
 				return yield* withSystemErrorPath(unresolved.failure, "open", path);
 			}
 			const parent = yield* resolveParent(nextState, candidatePath, "open", path, "EISDIR");
-			// KIT EXTENSION (case folding — adaptation ledger entry 11)
+			// KIT EXTENSION (case folding)
 			if (findEntry(nextState, parent.entry, parent.name) !== undefined) {
 				continue;
 			}
@@ -2016,7 +2015,7 @@ const collectDirectoryEntries = (
 		const relativePath = frame.prefix.length === 0 ? name : `${frame.prefix}/${name}`;
 		output.push(relativePath);
 		if (!recursive) continue;
-		// KIT EXTENSION (case folding — adaptation ledger entry 11): `name` is a stored key; exact hit.
+		// KIT EXTENSION (case folding): `name` is a stored key; exact hit.
 		const inode = findEntry(state, frame.directory, name);
 		const child = inode === undefined ? undefined : findInode(state, inode);
 		if (child?._tag === "Directory") {
@@ -2239,7 +2238,7 @@ const allocateTempDirectory = Effect.fnUntraced(function* (
 		nextState = allocatedState;
 		const name = `${prefix}${token}`;
 		const currentParent = yield* getDirectory(nextState, parent.inode, method, parentPath);
-		// KIT EXTENSION (case folding — adaptation ledger entry 11)
+		// KIT EXTENSION (case folding)
 		if (findEntry(nextState, currentParent, name) !== undefined) continue;
 		const [createdState, inode] = yield* createDirectory(nextState);
 		nextState = createdState;
@@ -2599,7 +2598,7 @@ const compileGlobPatterns = Effect.fnUntraced(function* (method: string, pattern
 	return yield* Effect.forEach(expanded, (alternative) => compileGlobPattern(method, alternative));
 });
 
-// KIT EXTENSION (case folding — adaptation ledger entry 11): `fold` matches
+// KIT EXTENSION (case folding): `fold` matches
 // the way a case-insensitive regex does — a literal compares folded, and a
 // character class accepts the value in either case. Host-proven: node's
 // `fs.glob` on a folding volume matches `*.JSON` against a stored `docs.json`.
@@ -2617,7 +2616,7 @@ const matchesGlobToken = (token: GlobToken, value: string, fold = false): boolea
 		},
 	});
 
-// KIT EXTENSION (case folding — adaptation ledger entry 11): `fold`, see matchesGlobToken.
+// KIT EXTENSION (case folding): `fold`, see matchesGlobToken.
 const matchesGlobSegment = (pattern: GlobSegment, value: string, fold = false): boolean => {
 	if (value.startsWith(".") && !pattern.startsWithDot) return false;
 	let patternIndex = 0;
@@ -2647,7 +2646,7 @@ const matchesGlobSegment = (pattern: GlobSegment, value: string, fold = false): 
 	return patternIndex === pattern.tokens.length;
 };
 
-// KIT EXTENSION (case folding — adaptation ledger entry 11): `fold`, see matchesGlobToken.
+// KIT EXTENSION (case folding): `fold`, see matchesGlobToken.
 const matchesGlob = (
 	pattern: CompiledGlobPattern,
 	path: ReadonlyArray<string>,
@@ -2697,7 +2696,7 @@ const glob = (volume: Volume) =>
 				}
 				const resolved = root.success;
 				if (resolved.entry._tag !== "Directory") return [];
-				// KIT EXTENSION (case folding — adaptation ledger entry 11)
+				// KIT EXTENSION (case folding)
 				const fold = !state.caseSensitive;
 				const rootExcluded = excludes.some((pattern) => matchesGlob(pattern, [], true, fold));
 				if (rootExcluded) return [];
@@ -2709,7 +2708,7 @@ const glob = (volume: Volume) =>
 					const [directory, parent] = next;
 					for (const name of [...HashMap.keys(directory.entries)].sort()) {
 						const path = [...parent, name];
-						// KIT EXTENSION (case folding — adaptation ledger entry 11): folded lookup.
+						// KIT EXTENSION (case folding): folded lookup.
 						const inode = findEntry(state, directory, name);
 						const entry = inode === undefined ? undefined : findInode(state, inode);
 						const isDirectory = entry?._tag === "Directory";
@@ -2730,7 +2729,7 @@ const glob = (volume: Volume) =>
 // volume
 // =============================================================================
 
-// KIT EXTENSION (case folding — ledger entry 11): the engine's build-time options.
+// KIT EXTENSION (case folding): the engine's build-time options.
 /** @internal */
 export interface EngineOptions {
 	readonly caseSensitive: boolean;
@@ -2946,7 +2945,7 @@ const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 		}
 		const name = frame.names[frame.index];
 		frame.index += 1;
-		// KIT EXTENSION (case folding — adaptation ledger entry 11): `name` is a stored key; exact hit.
+		// KIT EXTENSION (case folding): `name` is a stored key; exact hit.
 		const inode = findEntry(state, frame.directory, name);
 		const entry = inode === undefined ? undefined : findInode(state, inode);
 		if (entry === undefined) {
@@ -2963,8 +2962,8 @@ const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 
 // KIT EXTENSION (inspection lookup): a literal, O(depth) lookup for the
 // inspection view, so a point query never walks the whole tree. Components
-// resolve through `lookupEntry` (so a case-insensitive volume folds for free,
-// ledger entry 11) and a symbolic link is NEVER followed — not even an
+// resolve through `lookupEntry` (so a case-insensitive volume folds for free)
+// and a symbolic link is NEVER followed — not even an
 // intermediate one: a component under a link is absent, which is the view's
 // literal contract. `components` is the already-normalized path split on "/",
 // "" segments removed.

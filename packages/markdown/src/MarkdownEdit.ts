@@ -3,7 +3,7 @@
 //
 // Edits describe replacements as `offset`/`length`/`content`; applying them in
 // reverse-offset order is byte-minimal and preserves everything outside the
-// spliced spans — the offset-splice editing model the design chose over a
+// spliced spans — the offset-splice editing model chosen over a
 // lossless CST (nobody in the ecosystem ships one; positional splicing is the
 // remark maintainers' own recommendation).
 //
@@ -22,8 +22,7 @@ import { Schema } from "effect";
 
 /**
  * A single path segment: a `number` for child indices in the node tree, or a
- * `string` for named addressing (reserved for the navigation surface — e.g.
- * definition identifiers — which arrives with the visitor phase).
+ * `string` for named addressing (reserved, e.g. for definition identifiers).
  *
  * @public
  */
@@ -71,6 +70,10 @@ export class MarkdownEdit extends Schema.Class<MarkdownEdit>("MarkdownEdit")({
 	 * reverse-offset order so earlier offsets stay valid; the input `edits`
 	 * array is not mutated. Overlapping edits are a programmer error and throw
 	 * as a defect — `MarkdownFormat` never produces them.
+	 *
+	 * @param text - The source text to edit.
+	 * @param edits - The edits to apply, in any order.
+	 * @returns The edited text.
 	 */
 	static applyAll(text: string, edits: ReadonlyArray<MarkdownEdit>): string {
 		const sorted = [...edits].sort((a, b) => b.offset - a.offset);

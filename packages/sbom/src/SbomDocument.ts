@@ -1,14 +1,12 @@
 // The CycloneDX 1.6 model, owned.
 //
-// The library this replaces is 6.6 MB with seven optional peer dependencies,
-// and the parts that earn that weight — XML serialization, ajv-backed schema
-// validation, SPDX expression parsing — are exactly the parts an emitter never
-// calls. What is left is an object model and a JSON normalizer, which is what
-// this module is. Conformance is not taken on trust: `__test__/conformance.test.ts`
-// derives its expectations from the published 1.6 schema itself.
+// A general-purpose CycloneDX library carries XML serialization, schema
+// validation and SPDX expression parsing, which an emitter never calls. What an
+// emitter needs is an object model and a JSON normalizer, which is what this
+// module is.
 //
 // 1.6 ONLY. There is no 1.5 path, no dual-emission branch and no version
-// option — a settled ruling, not an omission.
+// option.
 
 import { License, isValidExpression } from "@effected/spdx";
 import { Schema } from "effect";
@@ -107,7 +105,7 @@ export class Supplier extends Schema.Class<Supplier>("Supplier")({
  * @remarks
  * `bomRef` is spelled **`bom-ref`** in the emitted JSON; the rename happens in
  * `Sbom.toJson`. Emitting `bomRef` produces a document that looks
- * correct and validates wrong, which is why a test pins the key name.
+ * correct and validates wrong.
  *
  * @public
  */

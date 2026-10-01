@@ -8,7 +8,7 @@ import { isErrno } from "./internal/fsProbe.js";
 import { unstubbed } from "./internal/unstubbed.js";
 
 /**
- * Raised when a detached child cannot be started, waited for, or reaped.
+ * Raised when the log file for a detached child's output cannot be opened.
  *
  * @public
  */
@@ -348,8 +348,7 @@ export class DetachedProcess {
 	 * @remarks
 	 * A domain predicate rather than a sleep: "the server answers" is the thing
 	 * being waited for, and any fixed delay is simultaneously too long on a fast
-	 * runner and too short on a slow one. Two consumers hand-rolled this, one of
-	 * them around an `Effect.suspend` footgun it had to explain in a comment.
+	 * runner and too short on a slow one.
 	 *
 	 * A probe *failure* is propagated rather than treated as "not ready" — a
 	 * probe that cannot run is a different situation from a child that is not up
@@ -379,11 +378,9 @@ export class DetachedProcess {
 	 * @remarks
 	 * The probe {@link DetachedProcess.awaitReady} almost always wants: an HTTP
 	 * `GET` at a port the child is still binding, where connection-refused *is*
-	 * "not up yet". The consumers that hand-rolled the polling wrote exactly
-	 * this probe around it, and each had to discover the same subtlety — the
-	 * probe's error channel must stay empty, because `awaitReady` deliberately
-	 * propagates probe failures, and a refused connection is not a failure of
-	 * the probe.
+	 * "not up yet". The probe's error channel must stay empty, because
+	 * `awaitReady` deliberately propagates probe failures, and a refused
+	 * connection is not a failure of the probe.
 	 *
 	 * So this probe never fails: a refused connection, any other transport
 	 * error and a non-2xx answer all collapse to `false`, leaving
@@ -392,9 +389,9 @@ export class DetachedProcess {
 	 * only sound because every failure an HTTP readiness check can see means
 	 * the same thing here. The cost is the documented one: a *misconfigured*
 	 * probe — a typo'd port, a wrong path — is indistinguishable from a child
-	 * that never came up, and reports as `notReady` only after the full budget.
-	 * A probe whose failures are meaningfully distinct should stay a
-	 * hand-written effect with those failures in `E`.
+	 * that never came up, and reports as {@link DetachedNotReadyError} only after
+	 * the full budget. A probe whose failures are meaningfully distinct should
+	 * stay a hand-written effect with those failures in `E`.
 	 *
 	 * The request goes through core's `HttpClient` — `Action.run` provides it
 	 * ambiently — rather than a bare `fetch`, per the package rule that

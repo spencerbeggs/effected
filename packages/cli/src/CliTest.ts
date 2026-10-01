@@ -64,6 +64,22 @@ const text = <E, R>(stream: Stream.Stream<Uint8Array, E, R>): Effect.Effect<stri
 /**
  * Spawn a built CLI bin hermetically and read its exit code and streams as data.
  *
+ * @example
+ * ```ts
+ * import * as NodeServices from "@effect/platform-node/NodeServices"
+ * import { assert, it } from "@effect/vitest"
+ * import { CliTest } from "@effected/cli/testing"
+ * import { Effect } from "effect"
+ *
+ * it.effect("prints its version", () =>
+ *   Effect.gen(function* () {
+ *     const sandbox = yield* CliTest.sandbox({ path: process.env.PATH ?? "" })
+ *     const result = yield* CliTest.run("dist/bin.js", ["--version"], { sandbox, execPath: process.execPath })
+ *     assert.strictEqual(result.exitCode, 0)
+ *   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+ * )
+ * ```
+ *
  * @public
  */
 export class CliTest {

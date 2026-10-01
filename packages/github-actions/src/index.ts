@@ -1,4 +1,28 @@
-// `WorkflowCommand` moved to the pure `@effected/github-commands`; this entrypoint keeps the old import path working.
+/**
+ * The GitHub Actions runtime for Effect: the services an action needs to talk
+ * to the runner it executes inside.
+ *
+ * {@link Action.run} composes the default runtime ({@link ActionRuntime}), runs
+ * your program, renders a failure as an `::error::` annotation and sets the exit
+ * code. {@link ActionInput} reads workflow inputs as typed `Config` values, and
+ * {@link ActionOutputs}, {@link ActionState}, {@link ActionLogger} and
+ * {@link ActionEnvironment} cover outputs, cross-phase state, workflow-command
+ * logging and the runner's variables. Heavier protocols are opt-in services:
+ * {@link ActionCache}, {@link Artifact}, {@link BlobStore}, {@link ToolInstaller},
+ * {@link PackageManagerInstaller}, {@link OidcTokenIssuer} and the GitHub App
+ * token bridge {@link GitHubToken}. {@link Secret} is the one place a `Redacted`
+ * value becomes plaintext, and always masks first. A reporting suite
+ * ({@link GitHubMarkdown}, {@link ManagedDocument}, {@link CheckState} and
+ * {@link CheckDocument}) renders what a run did onto a pull request comment, a
+ * check run or the job summary.
+ *
+ * The cache, artifact and tool-cache protocols are implemented directly against
+ * their HTTP APIs, with no `@actions/*` dependency.
+ *
+ * @packageDocumentation
+ */
+
+// `WorkflowCommand` is owned by the pure `@effected/github-commands`; this entrypoint re-exports it so it stays importable from here.
 export { type AnnotationProperties, WorkflowCommand } from "@effected/github-commands";
 export {
 	Action,

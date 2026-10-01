@@ -202,9 +202,9 @@ const resolveEdges = (
 			// in two spellings: the snapshot body keeps the readable `link:<path>`
 			// while the peer suffix carries a MANGLED identity
 			// (`react@packages+fakereact`) that appears nowhere as a key. Neither
-			// spelling composes, so the edge used to be dropped — and one layer up
-			// a dropped edge for a peer reads as an unsatisfied peer, turning a
-			// satisfied `link:` into a false positive.
+			// spelling composes, and a dropped edge for a peer reads one layer up as
+			// an unsatisfied peer, turning a satisfied `link:` into a false positive,
+			// so the edge is resolved explicitly.
 			//
 			// A snapshot's `link:` target is recorded relative to the workspace
 			// ROOT (importer sections record theirs relative to the importer), so

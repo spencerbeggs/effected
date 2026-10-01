@@ -1,4 +1,4 @@
-// The structured diagnostic concept: MarkdownDiagnostic and the P1
+// The structured diagnostic concept: MarkdownDiagnostic and the
 // error-code literal union.
 //
 // Cycle firewall: the internal engine emits raw `{ code, message, offset,
@@ -11,9 +11,9 @@ import { Schema } from "effect";
 import { MARKDOWN_PARSE_ERROR_CODES } from "./internal/carriers.js";
 
 /**
- * Error codes `Markdown.parse`/`MarkdownDocument.parse` can fail with. P1
- * registers exactly the hardening-guard trip; later phases widen the union
- * as new fatal (as opposed to diagnostic-only) conditions are identified.
+ * Error codes `Markdown.parse`/`MarkdownDocument.parse` can fail with.
+ * Currently exactly one, `"NestingDepthExceeded"`, the hardening-guard trip;
+ * the union may widen as new fatal conditions are identified.
  *
  * @public
  */
@@ -38,9 +38,8 @@ export type MarkdownParseErrorCode = typeof MarkdownParseErrorCode.Type;
  * shape and `@effected/yaml`'s `YamlDiagnostic`); `message` is this
  * package's additive extra. `line`/`character` here are zero-based to match
  * that contract — a different numbering from the one-based `line`/`column`
- * unist `Point`s carried on `MarkdownNode` positions (`internal/lineIndex.ts`),
- * which is a deliberate, unrelated convention for the AST rather than a
- * mismatch to reconcile.
+ * unist `Point`s carried on `MarkdownNode` positions, which is a deliberate,
+ * unrelated convention for the AST rather than a mismatch to reconcile.
  *
  * @public
  */
@@ -54,8 +53,12 @@ export class MarkdownDiagnostic extends Schema.Class<MarkdownDiagnostic>("Markdo
 }) {
 	/**
 	 * Materialize an engine record, deriving zero-based `line`/`character`
-	 * from `offset` against the source `text`. Advanced — the parse entry
+	 * from `offset` against the source text. Advanced — the parse entry
 	 * points call this for you.
+	 *
+	 * @param source - The source text the record's `offset` indexes into.
+	 * @param raw - The engine record: `code`, `message`, `offset` and `length`.
+	 * @returns The diagnostic with `line` and `character` filled in.
 	 */
 	static fromRaw(
 		source: string,

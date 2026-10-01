@@ -39,8 +39,7 @@ export interface PathPrependOptions {
 
 /**
  * Child-process environment construction: prepending directories to `PATH`
- * without falling into the three traps that each cost a real consumer a
- * cross-OS matrix round.
+ * without falling into three cross-platform traps.
  *
  * @remarks
  * Spawning a child with directories prepended to `PATH` is one tiny concern
@@ -73,9 +72,7 @@ export interface PathPrependOptions {
  * taken as an argument — which is what makes every platform branch
  * exercisable from a test on any host. The sanctioned exceptions are
  * *defaults a caller can override by passing the value*: `ActionInput.provider`'s
- * `env = process.env` and `DetachedProcess.spawn`'s `base`. A structural test
- * (`__test__/ambientReads.test.ts`) holds the list closed; a new default is
- * added there with its reason, never silently.
+ * `env = process.env` and `DetachedProcess.spawn`'s `base`.
  *
  * @public
  */

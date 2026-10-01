@@ -86,7 +86,7 @@ function supersedingName(index: number | undefined, names: readonly string[]): O
  * {@link Vocabulary.version}, 933 classes and 1,521 properties, with no
  * scoping and no section cut. Completeness is what makes "this term does not
  * exist" an honest answer rather than an ambiguity between *you misspelled it*
- * and *we did not ship that part*.
+ * and *that part was not shipped*.
  *
  * Foreign alignment terms (`gs1:`, `fibo-…`, `snomed:`, `foaf:`) are
  * deliberately absent: schema.org's document carries them under the same
@@ -204,8 +204,8 @@ export class Vocabulary {
 	 * `@effected/spdx` treats a deprecated license id.
 	 *
 	 * One lookup covers classes and properties because the two namespaces are
-	 * disjoint at v30.0 — every class name begins uppercase and every property
-	 * name lowercase, and no name appears in both tables (there is a test).
+	 * disjoint in release 30.0 — every class name begins uppercase and every property
+	 * name lowercase,, and no name appears in both tables.
 	 */
 	static supersededBy(term: string): Option.Option<string> {
 		const typeIdx = TYPE_INDEX.get(term);

@@ -10,8 +10,8 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 60212e1ec00ffbca600e20e3f7865feb1a74cf655f3cbd12b831ad514bd37106
+  at: 2026-10-01T17:24:58Z
+  body_sha256: dd378ac5e27f5d63abfc82d3c2c5a36728a0e3647d92662f43f22342aaff9c49
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:22.388Z
@@ -26,7 +26,7 @@ verified:
 Each entry carries:
 
 - **`url`** — the upstream git remote.
-- **`ref`** — the pinned ref, either a tag (`effect@4.0.0-rc.115`, `0.31.2`) or in principle a branch; for `.repos/effect` this is always a release tag matching the `effect` pnpm catalog pin, never `main` (see [vendored Effect is pinned to the catalog tag](../decisions/vendored-effect-pinned-to-catalog-tag.md)).
+- **`ref`** — the pinned ref, either a tag (`effect@4.0.0`, `0.31.2`) or in principle a branch; for `.repos/effect` this is always a release tag matching the `effect` the lockfile resolves, never `main` (see [vendored Effect is pinned to the lockfile's tag](../decisions/vendored-effect-pinned-to-catalog-tag.md)).
 - **`purpose`** — one paragraph stating why the repo is vendored and what it is an authority or port base for.
 - **`sparse`** — an array of paths materialized by the sparse checkout; an entry may omit this to mean a full checkout (`mdast`, and the MDX oracle repos, have no `sparse` key).
 - **`orientation`** — an object with `layout` (prose describing what is under each sparse path), `keyPaths` (a map of short names to paths worth starting from) and `startHere` (prose pointing a reader at the single most useful file or directory first).

@@ -7,10 +7,10 @@
 
 Append-only, schema-validated JSONL journals as a definable Effect service. The subject is not the format — one JSON value per line is a two-sentence specification and needs no library — but the file as a live object: a journal that only ever grows, whose current state is its last valid line, whose tail may be torn mid-append, and which several processes read while one writes. Every line is an envelope (`at`, `event`, an optional `scope`, and a `data` payload validated by the schema you registered for that event), so a journal stays greppable, `jq`-able and diffable in a pull request while the reads that matter stay typed.
 
-> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 prerelease. Packages graduate to
-> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
-> exactly the ones the kit is built and tested against, install
+> **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
+> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
+> `@effect/*` versions on the line the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
 >
 > **Stability: unstable.** This package's API surface is not yet considered

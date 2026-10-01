@@ -120,9 +120,8 @@ export interface RawDiagnostic {
 
 /**
  * The single source of truth for which diagnostic codes are fatal to a
- * parse (vs. recoverable warnings-as-data). Replaces the v3 source's three
- * subtly-differing inline fatal lists with their union: fatality is a
- * property of the code, declared once.
+ * parse (vs. recoverable warnings-as-data): fatality is a property of the
+ * code, declared once.
  */
 export const FATAL_CODES: ReadonlySet<YamlErrorCode> = new Set([
 	"UndefinedAlias",
@@ -134,8 +133,8 @@ export const FATAL_CODES: ReadonlySet<YamlErrorCode> = new Set([
 	"InvalidIndentation",
 	"TabIndentation",
 	"UnresolvedTag",
-	// Hardening additions beyond the v3 lists: raw C0 control characters in
-	// scalars and the composer's nesting-depth guard both abort a parse.
+	// Hardening: raw C0 control characters in scalars and the composer's
+	// nesting-depth guard both abort a parse.
 	"UnexpectedCharacter",
 	"NestingDepthExceeded",
 ]);

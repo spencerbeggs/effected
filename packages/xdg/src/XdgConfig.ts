@@ -63,16 +63,13 @@ export class XdgConfig {
 	 *
 	 * @remarks
 	 * Probes the app's own config directory first, then each `$XDG_CONFIG_DIRS`
-	 * entry namespaced — `~/.config/myapp/rc`, then `/etc/xdg/myapp/rc`. v3 probed
-	 * only the first of those; the system search path is half the XDG spec and it
-	 * was missing.
+	 * entry namespaced — `~/.config/myapp/rc`, then `/etc/xdg/myapp/rc`.
 	 *
 	 * The scan runs through `Walker.firstMatch`, so a failure on one candidate means
-	 * "this candidate did not match" and the search continues to the next. That is a
-	 * bug fixed, not a refactor: v3 wrapped the whole resolver in a single
-	 * `catchAll`, so an unreadable `/etc/xdg` aborted the probe and hid a perfectly
-	 * readable `~/.config`. Not-found and cannot-look stay indistinguishable to the
-	 * caller, which is the resolver contract — `resolve`'s error channel is `never`.
+	 * "this candidate did not match" and the search continues to the next: an unreadable
+	 * `/etc/xdg` never hides a readable `~/.config`. Not-found and cannot-look stay
+	 * indistinguishable to the caller, which is the resolver contract —
+	 * `resolve`'s error channel is `never`.
 	 *
 	 * Place it **before** {@link XdgConfig.nativeResolver} in a chain, so an
 	 * existing `~/.config/<app>` still wins over the OS-native directory.
@@ -103,14 +100,17 @@ export class XdgConfig {
 	 * @remarks
 	 * Drops straight into `ConfigFileOptions.defaultPath`, whose slot is typed
 	 * `Effect<string, never, RR>`. That infallible channel is the whole reason
-	 * {@link AppDirs} resolves at layer-construction time: with v3's per-access
-	 * resolution this could fail, and a consumer had to `orDie` it into the slot.
+	 * {@link AppDirs} resolves at layer-construction time, so no `orDie` is needed
+	 * to fit the slot.
 	 *
 	 * It does **not** create the directory — `ConfigFile.save` already `mkdir -p`s
 	 * the parent of whatever path it is given.
 	 *
 	 * @example
 	 * ```ts
+	 * import { XdgConfig } from "@effected/xdg";
+	 * import { ConfigFile, JsonCodec, MergeStrategy } from "@effected/config-file";
+	 *
 	 * const layer = ConfigFile.layer(AppConfig, {
 	 * 	schema: AppShape,
 	 * 	codec: JsonCodec,

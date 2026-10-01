@@ -80,10 +80,9 @@ export class McpStdio {
 	 * first, then the two newest stateful ones.
 	 *
 	 * @remarks
-	 * Real clients open with either handshake: Claude Code 2.1.281 was
-	 * measured opening a stdio server with the stateless `server/discover`,
-	 * while most other shipping clients still send `initialize`. The order
-	 * is load-bearing:
+	 * Real clients open with either handshake: some (Claude Code, for one)
+	 * open a stdio server with the stateless `server/discover`, while others
+	 * still send `initialize`. The order is load-bearing:
 	 *
 	 * - Stateless first: a request with no session and no `_meta` falls to
 	 *   `protocols[0]`.

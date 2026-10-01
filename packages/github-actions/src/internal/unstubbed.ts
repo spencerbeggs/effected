@@ -1,15 +1,10 @@
-/**
- * The one way an unstubbed test-double member dies, for every `makeTest` in
- * this package.
- *
- * @remarks
- * A double's unstubbed member must die rather than silently succeed — a stub
- * that returns nothing teaches a test that nothing happened. The message names
- * the double, the member and the override that fixes it, and it is spelled
- * here once so a wording change is one edit rather than ten.
- *
- * @internal
- */
+// The one way an unstubbed test-double member dies, for every `makeTest` in
+// this package.
+//
+// A double's unstubbed member must die rather than silently succeed — a stub
+// that returns nothing teaches a test that nothing happened. The message names
+// the double, the member and the override that fixes it, and it is spelled
+// here once so a wording change is one edit rather than ten.
 
 import { Effect } from "effect";
 

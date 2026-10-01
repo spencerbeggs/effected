@@ -55,11 +55,11 @@ export const resolveInkEntry = (resolve: ((specifier: string) => string) | undef
  * The chalk instance Ink itself imports, resolved from Ink's own location; `None` when it cannot be resolved.
  *
  * @remarks
- * One of the three files licensed to touch Node (`okf/decisions/ui-binds-process-streams.md`). Ink's `exports` has
+ * One of the three files licensed to touch Node. Ink's `exports` has
  * only `"."` and chalk is its own dependency, so the kit cannot import Ink's chalk by name: a `chalk` of the kit's
  * own could be a different copy, and setting its level would silently change nothing. Resolving `chalk` from Ink's
  * entry ({@link resolveInkEntry}) and importing its realpath yields the very module Ink imports, because Node keys ES
- * modules by realpath (`okf/decisions/ink-colour-via-inks-own-chalk.md`). A consumer that bundles Ink leaves nothing
+ * modules by realpath. A consumer that bundles Ink leaves nothing
  * to resolve, and the answer is `None`; it never rejects.
  *
  * @param inkEntryOf - how Ink's entry is found; {@link resolveInkEntry} by default

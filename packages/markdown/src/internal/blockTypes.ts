@@ -64,7 +64,7 @@ export type BlockType =
  *
  * The block pass strips container prefixes and expands tabs, so a leaf's
  * content is not a contiguous source slice. Each segment pins one run that
- * IS contiguous, which is what lets the inline pass (Task 8) give its nodes
+ * IS contiguous, which is what lets the inline pass give its nodes
  * absolute source positions instead of guessing. Characters the engine
  * injects — the `\n` between lines, the spaces a partially consumed tab
  * expands to — lie between segments and belong to no source range.

@@ -10,8 +10,7 @@ const isProvider = (
  * Reads an environment variable that picks a mode within an audience.
  *
  * @remarks
- * The kit never learns a consumer's literals: the caller passes, per audience, the values it accepts. See
- * `okf/modules/env.md`.
+ * The kit never learns a consumer's literals: the caller passes, per audience, the values it accepts.
  *
  * @public
  */

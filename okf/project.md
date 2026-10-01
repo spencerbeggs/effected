@@ -7,15 +7,15 @@ tags:
   - architecture
 generated:
   by: "claude-code/opus-5"
-  at: 2026-10-01T14:11:47Z
-  body_sha256: a9c9889d0f34af4f22257463f5d28298e8849c02a6bc07d10d064af397271908
+  at: 2026-10-01T17:24:58Z
+  body_sha256: 84cc2876023c2daddced1975200fc679655735d0ff9649350080318c868e4599
 ---
 
 # effected
 
 ## Purpose
 
-effected (GitHub `spencerbeggs/effected`, npm org `@effected`) is a pnpm monorepo building an **Effect v4 app kit**: a coherent set of libraries designed v4-first rather than a grab-bag of utilities that happen to share a repo. It replaces per-repo development of a family of predecessor `*-effect` libraries that suffered cross-repo release loops and dependency-interaction bugs surfacing only after publishing. The unit of design is the kit, not the package — packages are carved along the seams real applications press on, and a capability with no named consumer is not built. Scope is closed by five consuming applications (below), not by how much surface an ecosystem could have. All `@effected/*` packages target Effect v4, currently prerelease and pinned via the `effect` pnpm catalog, tracking prereleases (the release line renamed `-beta` to `-rc` at `4.0.0-rc.108`) until v4 stabilizes. Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. Releases are changeset-driven: CI builds the changesets present on a branch and releases the packages they name, whether that is the whole kit behind a catalog advance or a single package on a patch — both are ordinary outcomes of the same mechanism, not different processes.
+effected (GitHub `spencerbeggs/effected`, npm org `@effected`) is a pnpm monorepo building an **Effect v4 app kit**: a coherent set of libraries designed v4-first rather than a grab-bag of utilities that happen to share a repo. It replaces per-repo development of a family of predecessor `*-effect` libraries that suffered cross-repo release loops and dependency-interaction bugs surfacing only after publishing. The unit of design is the kit, not the package — packages are carved along the seams real applications press on, and a capability with no named consumer is not built. Scope is closed by five consuming applications (below), not by how much surface an ecosystem could have. All `@effected/*` packages target Effect v4, now stable: the `effect` pnpm catalog gives it the caret range `^4.0.0` and the lockfile fixes the exact release. Everything published is `0.x` and unstable; Effect v4 being stable makes a kit `1.0.0` possible, not automatic, and the kit takes it when it chooses to. Releases are changeset-driven: CI builds the changesets present on a branch and releases the packages they name, whether that is the whole kit behind a catalog advance or a single package on a patch — both are ordinary outcomes of the same mechanism, not different processes.
 
 ## Design posture
 

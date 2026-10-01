@@ -7,10 +7,10 @@
 | --- | --- | --- | --- |
 | `AuthenticationError` | Class | GitHub rejected the credentials. | github rejected credentials, bad token, 401 auth failure |
 | `BunRelease` | Class | One published Bun release. | one published bun version and its release date |
-| `BunResolver` | Class | The Bun resolver. | resolve a bun version from a semver range, pick a bun release, latest bun |
+| `BunResolver` | Class | Resolves a semver range to concrete Bun versions, with release data from GitHub (`oven-sh/bun`) or a bundled snapshot. | resolve a bun version from a semver range, pick a bun release, latest bun |
 | `BunResolverOptions` | Variable + TypeAlias | How to resolve Bun versions. | options for resolving bun versions, range and increments and default |
 | `DenoRelease` | Class | One published Deno release. | one published deno version and its release date |
-| `DenoResolver` | Class | The Deno resolver. | resolve a deno version from a semver range, pick a deno release, latest deno |
+| `DenoResolver` | Class | Resolves a semver range to concrete Deno versions, with release data from GitHub (`denoland/deno`) or a bundled snapshot. | resolve a deno version from a semver range, pick a deno release, latest deno |
 | `DenoResolverOptions` | Variable + TypeAlias | How to resolve Deno versions. | options for resolving deno versions, range and increments and default |
 | `FreshnessError` | Class | Fresh data was required and could not be obtained. | live runtime feed unreachable, layerFresh failed, no snapshot fallback allowed |
 | `GitHubAuth` | Class | How GitHub requests are authenticated. | how github api requests are authenticated, pat or GITHUB_TOKEN, anonymous auth |
@@ -26,15 +26,15 @@
 | `NetworkError` | Class | A request did not complete, or completed with an unusable status. | http request to a runtime feed failed or returned a bad status |
 | `NoMatchingVersionError` | Class | No release matched the constraint. | no runtime release matched the semver range or lifecycle phases searched |
 | `NodePhase` | Variable + TypeAlias | Lifecycle phase of a Node.js major release line. | node lifecycle phase: current, active-lts, maintenance-lts, end-of-life |
-| `NodeRelease` | Class | One Node.js release. | one published node version with its npm version, ask if a release is lts |
+| `NodeRelease` | Class | One published Node.js release: its version, bundled npm version and release date. | one published node version with its npm version, ask if a release is lts |
 | `NodeReleaseLine` | Interface | The parts of a version that decide which release line it belongs to. | |
-| `NodeResolver` | Class | The Node.js resolver. | resolve a node version from a semver range and lifecycle phase |
+| `NodeResolver` | Class | Resolves a semver range to concrete Node.js versions, filtered by lifecycle phase, with release data from the nodejs.org feeds or a bundled snapshot. | resolve a node version from a semver range and lifecycle phase |
 | `NodeResolverOptions` | Variable + TypeAlias | How to resolve Node.js versions. | options for resolving node versions, range, phases, increments, default, date |
 | `NodeSchedule` | Class | An immutable snapshot of the Node.js release schedule. | the node.js release schedule, look up lifecycle phase for a version |
 | `NodeScheduleData` | Variable + TypeAlias | The raw shape of `schedule.json`. | raw shape of nodejs/Release schedule.json before parsing |
 | `NodeScheduleEntry` | Class | One release line's lifecycle dates. | one node release line's lifecycle dates: start, lts, maintenance, end, codename |
 | `RateLimitError` | Class | GitHub's rate limit was exhausted. | github api rate limit exhausted, back off using retryAfter |
-| `ResolvedVersions` | Class | What every resolver returns. | what a runtime resolver returns: matching versions, latest, lts, default, and provenance |
+| `ResolvedVersions` | Class | What every resolver returns: the matching versions, the newest one, and where the data came from. | what a runtime resolver returns: matching versions, latest, lts, default, and provenance |
 | `ResponseParseError` | Class | A feed responded, but not with the shape this package expects. | a runtime feed responded in an unexpected shape, upstream feed changed |
 | `Runtime` | Variable + TypeAlias | The JavaScript runtime a resolver targets. | which javascript runtime a resolver targets: node, bun, or deno |
 | `Source` | Variable + TypeAlias | Where a resolution's release data came from. | whether resolved versions came from a live api fetch or the bundled offline snapshot |

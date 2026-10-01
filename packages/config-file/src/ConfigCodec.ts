@@ -63,7 +63,10 @@ export class ConfigCodecError extends Schema.TaggedError<ConfigCodecError>()("Co
  * @public
  */
 export interface ConfigCodec<E = ConfigCodecError> {
+	/** The codec's name, e.g. `"json"`; recorded on {@link ConfigCodecError} and in events. */
 	readonly name: string;
+	/** Turn file content into an unknown document. */
 	readonly parse: (raw: string) => Effect.Effect<unknown, E>;
+	/** Turn a document back into file content. */
 	readonly stringify: (value: unknown) => Effect.Effect<string, E>;
 }

@@ -11,7 +11,7 @@ import { WorkspaceDependency } from "../WorkspaceDependency.js";
 
 /**
  * The four dependency sections of a manifest, in a stable order — the shared
- * dependency-sections table (v3's `DEP_SECTIONS`). Each entry is both the
+ * dependency-sections table. Each entry is both the
  * manifest field name to read and the `@effected/npm` `DependencyField` it maps
  * to, since the two coincide. Consumed by `extractWorkspaceDeps` and by the
  * pnpm/bun/npm importer builders.

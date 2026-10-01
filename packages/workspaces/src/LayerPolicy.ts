@@ -63,7 +63,7 @@ export class LayerPolicyError extends Schema.TaggedError<LayerPolicyError>()("La
  * message names every such key. A typo on an optional key would otherwise be
  * silently dropped: `requiredEdge` would remove the non-vacuity guard and
  * leave the report green. `$schema` is always accepted. A file that carries
- * keys of its own, such as systems' `harness`, passes them in `allowKeys`.
+ * keys of its own, such as a `harness` block, passes them in `allowKeys`.
  *
  * @example
  * ```ts

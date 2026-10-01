@@ -219,7 +219,7 @@ const chooseExitCode = (error: unknown, fallback: number | undefined): number =>
  * Report a CLI program's failures through the program's own logger.
  *
  * @remarks
- * ## The bug this exists to prevent
+ * ## What it prevents
  *
  * A platform `runMain` reports an unhandled failure using Effect's **default**
  * logger. That logger sits **outside** the layers the program was provided —
@@ -236,18 +236,7 @@ const chooseExitCode = (error: unknown, fallback: number | undefined): number =>
  *
  * The fix has to happen **inside** the effect, before any `runMain` sees it. So
  * this is a combinator you apply to your program, and you still call your own
- * platform's runner:
- *
- * @example
- * ```ts
- * import { CliRuntime } from "@effected/cli"
- * import { NodeRuntime } from "@effect/platform-node"
- * import { Effect } from "effect"
- *
- * NodeRuntime.runMain(program.pipe(CliRuntime.reportFailures(), Effect.provide(MainLive)))
- * ```
- *
- * Wrapping `runMain` itself would drag a platform choice into a library that
+ * platform's runner. Wrapping `runMain` itself would drag a platform choice into a library that
  * has no business making one, and would make this package unusable from Bun or
  * Deno for no gain.
  *
@@ -290,6 +279,15 @@ const chooseExitCode = (error: unknown, fallback: number | undefined): number =>
  * raises is likewise never rendered; it only carries the exit code a
  * successful program recorded through `CliExit`.
  *
+ * @example
+ * ```ts
+ * import { CliRuntime } from "@effected/cli"
+ * import { NodeRuntime } from "@effect/platform-node"
+ * import { Effect } from "effect"
+ *
+ * NodeRuntime.runMain(program.pipe(CliRuntime.reportFailures(), Effect.provide(MainLive)))
+ * ```
+ *
  * @public
  */
 export class CliRuntime {
@@ -328,8 +326,10 @@ export class CliRuntime {
 		plainFailureLines(details.cause.reasons.length > 0 ? details.cause : Cause.fail(error), options?.status !== false);
 
 	/**
-	 * Catch, render through the ambient logger, and re-fail with the exit code
-	 * and the no-double-report mark.
+	 * Catch a program's failure, render it through the ambient logger, and re-fail with the exit code and the
+	 * no-double-report mark.
+	 *
+	 * @param options - how to render the failure and which exit codes to use
 	 */
 	static readonly reportFailures =
 		(options: ReportFailuresOptions = {}) =>
@@ -391,7 +391,7 @@ export class CliRuntime {
 							defaultLines,
 							lines: (options) => (options?.status === false ? reportLines(false) : defaultLines),
 						};
-						// Without a `render`, written through the logger, so `--log-level` and its routing are as they were.
+						// Without a `render`, written through the logger, so `--log-level` and its routing apply.
 						const lines =
 							render === undefined
 								? defaultLines
@@ -422,14 +422,21 @@ export class CliRuntime {
 	 *   provided beside the platform, inside failure reporting, so the program can
 	 *   read the audience, terminal, theme and `CliInteractive`.
 	 *
-	 * You still call your platform's runner:
+	 * You still call your platform's runner.
 	 *
 	 * @example
 	 * ```ts
+	 * import { CliRuntime } from "@effected/cli"
+	 * import { NodeRuntime, NodeServices } from "@effect/platform-node"
+	 * import { Command } from "effect/cli"
+	 *
 	 * NodeRuntime.runMain(
-	 *   CliRuntime.main(Command.run(root, { version }), { platform: NodeServices.layer, exitCode: 3 }),
+	 *   CliRuntime.main(Command.run(root, { version: "1.0.0" }), { platform: NodeServices.layer, exitCode: 3 }),
 	 * )
 	 * ```
+	 *
+	 * @param program - the CLI program, usually `Command.run(root, { version })`
+	 * @param options - the platform layer, and optionally the logger, environment services, exit codes and rendering
 	 */
 	static main<A, E, R, RP, EP>(
 		program: Effect.Effect<A, E, R>,

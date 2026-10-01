@@ -7,10 +7,10 @@
 
 Platform-free primitives shared by every front end of an Effect v4 tool. A carrier-pattern tool (a CLI, an MCP server, an LSP server) ships more than one bin behind one meta-package, and every one of those front ends needs to answer the same handful of questions the same way: which carrier was I installed through, and what version line does that make me. This package holds those primitives once, so a consumer's own `engine` package can depend on them without also depending on `@effected/cli` or any other front end.
 
-> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 prerelease. Packages graduate to
-> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
-> exactly the ones the kit is built and tested against, install
+> **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
+> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
+> `@effect/*` versions on the line the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
 >
 > **Stability: unstable.** This package's API surface is not yet considered

@@ -2,7 +2,7 @@
 
 * [Add a kit package](add-a-kit-package.md) - The end-to-end cycle for adding a new @effected library — design as an okf Module concept first, then scaffold, build, test, document and advance the package roster.
 * [Add a workspace package](add-a-workspace-package.md) - The ordered scaffold procedure for a new packages/X library, with the stub-entrypoint-before-install step that keeps a half-scaffolded package from breaking every pnpm run in the repo.
-* [Advance the effect pin](advance-the-effect-pin.md) - Move the whole kit onto a new Effect v4 prerelease, in one coordinated commit sequence.
+* [Advance the effect pin](advance-the-effect-pin.md) - Move the whole kit onto a new Effect 4.x release the lockfile resolves to, with the vendored source, the plugin pins and the skill anchors moved in the same sequence.
 * [Close a catalog membership gap](close-a-catalog-membership-gap.md) - When catalog:check fails naming a package missing from the effected catalog, add its entry by hand at the PnpmConfigPlugin(...) call site — the tool refuses to guess a first-release range. A ripple-version gap needs no hand edit at all; the next catalog:sync closes it on its own.
 * [Design a GitHub Action repository on the kit](design-an-action-on-the-kit.md) - The ordered sequence in which a new action's design decisions are actually forced, from kit-capability recon through documentation refresh.
 * [Enable fork pull-request review on a repository](enable-fork-pull-request-review.md) - Add a required-reviewer environment and a pull\_request\_target trigger so a repository driven by the Silk dispatcher runs full validation on fork pull requests only after a maintainer reads the diff.

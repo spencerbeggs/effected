@@ -1,14 +1,13 @@
 // The NTIA minimum elements, as a report.
 //
-// Three deltas from the validator this replaces, each with a reason:
+// Three design choices, each with a reason:
 //
-// - `id` is a stable literal, not a display string. The predecessor carried
-//   `name: "Supplier Name"` and consumers matched on prose; rendering that is
-//   presentation and belongs at the edge.
-// - No `suggestion` field. The predecessor's suggestions named its own config
-//   file ("Add supplier.name to .github/silk-release.json"). A library cannot
-//   know a consumer's config format, and embedding one repository's file name
-//   in a kit package is exactly the coupling this program removes.
+// - `id` is a stable literal, not a display string. Consumers branch on the
+//   identifier; rendering a display name is presentation and belongs at the
+//   edge.
+// - No `suggestion` field. A library cannot know a consumer's config format,
+//   so remediation advice naming a particular file would couple a kit package
+//   to one repository.
 // - A REPORT, not a failure. Compliance is a question: a caller may
 //   legitimately emit a non-compliant SBOM and warn. `compliant` is a derived
 //   getter, so a caller wanting a hard gate writes its own `Effect.fail`.
@@ -144,10 +143,13 @@ const timestamp = (document: SbomDocument): NtiaElement => {
  *
  * @example
  * ```ts
- * import { NtiaReport } from "@effected/sbom";
+ * import { Component, NtiaReport, Sbom } from "@effected/sbom";
  *
- * const report = NtiaReport.of(document);
- * if (!report.compliant) yield* Effect.logWarning(`SBOM missing: ${report.missing.join(", ")}`);
+ * const root = Component.make({ type: "library", name: "lib", version: "1.0.0" });
+ * const report = NtiaReport.of(Sbom.generate({ root, components: [] }));
+ *
+ * report.compliant; // => false
+ * report.missing; // => ["supplierName", "uniqueIdentifier", "sbomAuthor", "timestamp"]
  * ```
  *
  * @public

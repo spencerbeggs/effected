@@ -5,8 +5,7 @@
  *
  * The SBOM half is pure and reaches no external dependency; only
  * `SigstoreSigner` imports `@sigstore/*`, so a consumer that emits an SBOM
- * never pulls Fulcio's transport into its bundle. That confinement is asserted
- * structurally in `__test__/reachability.test.ts`.
+ * never pulls Fulcio's transport into its bundle.
  *
  * @packageDocumentation
  */

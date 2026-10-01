@@ -2,7 +2,7 @@
 	"repos": {
 		"effect": {
 			"url": "https://github.com/Effect-TS/effect.git",
-			"ref": "effect@4.0.0-rc.118",
+			"ref": "effect@4.0.0",
 			"purpose": "Read-only Effect v4 source pinned to the tag matching the effect catalog — the authority on what v4 actually exports, plus the v3→v4 migration notes and the @effect/vitest reference implementation. Tracks the main Effect-TS/effect monorepo (v4 development moved back there on 2026-07-19 when the effect-smol repo was archived); vendored at .repos/effect since the 2026-07-24 rename, matching the path a consuming repo would use.",
 			"sparse": [
 				"packages/effect",
@@ -16,7 +16,6 @@
 				"layout": "Sparse checkout: packages/effect (core source + package.json exports map), packages/vitest (@effect/vitest reference implementation), migration/ (per-domain v3→v4 notes), ai-docs/, LLMS.md, MIGRATION.md.",
 				"keyPaths": {
 					"effect-source": "packages/effect/src",
-					"unstable-modules": "packages/effect/src/unstable",
 					"migration-notes": "migration",
 					"vitest-reference": "packages/vitest/src"
 				},
@@ -40,6 +39,12 @@
 					"date": "2026-09-22",
 					"ref": "effect@4.0.0-rc.117",
 					"note": "rc.116→rc.117 advance (2026-09-22): zero kit source breaks; a patch-only release. Consumer-visible changes: Queue.shutdown now returns false when the queue was already shut down or completed (previously always true), and Queue.shutdownUnsafe is new; Decision.Probability.criteria is optional (guard before reading criteria.true); SqlClient gains a releaseSavepoint option and the bundled clients (sqlite-node included) now RELEASE savepoints after nested transactions; Pool.makeWithTTL leak fixed; Schema gains ~40 NetAddress refinements (Ip/Mac Multicast/Unicast/Broadcast/Loopback/LinkLocal + FromString forms) and NetAddress.toCanonical/formatNativeHost/formatMulticastInterface; MCP output schemas normalize to object roots. unstable/cli and @effect/vitest peers unchanged. The toolchain still binds effect@rc.116 through its own regular deps (two copies by intent, no bridge)."
+				},
+				{
+					"id": "n-36d8",
+					"date": "2026-10-01",
+					"ref": "effect@4.0.0",
+					"note": "rc.118→4.0.0 GA advance (2026-10-01): zero kit source breaks; the catalog moves from lock (exact prerelease) to lock-minor (^4.0.0), so the installed effect is now the LOCKFILE's resolution, not the catalog literal — re-pin this tree when the lockfile's effect moves. Consumer-visible 4.0.0 changes: Array/Chunk/Effect/Record partition, their separate helpers and Option.partitionMap return [successes, failures] (was [failures, successes]; silent when both sides share a type); Schema.brand takes one identifier and is type-only (no AST annotation, not preserved by SchemaRepresentation); TestSchema.verifyLosslessTransformation is verifyRoundTrip and TestSchema is @stability unstable; Queue.State.takers holds Queue.Taker (entry.resume); Effect.race* interrupts losers still starting; RpcMessage.ExitEncoded interrupt fiberId admits null. Stability: APIs tagged @stability unstable may break in a minor; untagged APIs follow semver. src/unstable no longer exists — modules live at src/<area> (the keyPaths.unstable-modules entry is stale). Published kit stays on rc.118 via its own regular deps (two effect copies by intent); the pnpm-plugin-effect overrides pin platform-node-shared under the rc.117 and rc.118 platform-node parents."
 				}
 			]
 		},

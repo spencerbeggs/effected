@@ -212,13 +212,12 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 	 * A copy of this key that restores from its **exact key only** — no ladder.
 	 *
 	 * @remarks
-	 * The third point in the policy space, and the one the typed key had no
-	 * spelling for: absence of a policy means the default every-prefix ladder,
-	 * so exact-match-only restores (a cache-bust mode, where a stale partial
-	 * hit is worse than a cold start) previously forced the caller back to the
-	 * string form. This is the same `restoreDepths` field carrying **zero
-	 * rungs** — an honest value, not a sentinel: `ActionCache.restore` sends no
-	 * `restore_keys` at all, so the backend answers this key or a miss.
+	 * The third point in the policy space: absence of a policy means the default
+	 * every-prefix ladder, so exact-match-only restores (a cache-bust mode, where
+	 * a stale partial hit is worse than a cold start) need their own spelling.
+	 * This is the same `restoreDepths` field carrying **zero rungs** — an honest
+	 * value, not a sentinel: `ActionCache.restore` sends no `restore_keys` at
+	 * all, so the backend answers this key or a miss.
 	 *
 	 * @example
 	 * ```ts
@@ -389,8 +388,7 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 			),
 			// The `concurrency` option is load-bearing, not a tuning knob: `Effect.all`
 			// defaults to `concurrency: 1`, so omitting it reads every file one at a
-			// time and this whole shape buys nothing over the sequential loop it
-			// replaced. Bounded rather than `"unbounded"` because a pattern set can
+			// time and this whole shape buys nothing over a sequential loop. Bounded rather than `"unbounded"` because a pattern set can
 			// match thousands of files and one fiber per file would exhaust the
 			// runner's descriptors; 8 is the width `ActionCache` and `Artifact`
 			// already use for their own IO fan-out.
@@ -475,8 +473,7 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 			if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
 				continue;
 			}
-			// Absent is a miss, as the old whole-workspace walk read it; unreadable
-			// is not, because a key computed without a file the caller asked for
+			// Absent is a miss; unreadable is not, because a key computed without a file the caller asked for
 			// silently restores the wrong cache.
 			const info = yield* fs.stat(target).pipe(
 				Effect.map(Option.some),

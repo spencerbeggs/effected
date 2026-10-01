@@ -172,7 +172,7 @@ export class CatalogEntry extends Schema.Class<CatalogEntry>("CatalogEntry")({
 	}
 
 	/**
-	 * {@link CatalogEntry.lint} over a bare pattern list, for callers
+	 * {@link CatalogEntry.lintFileMatch} over a bare pattern list, for callers
 	 * checking patterns before an entry exists.
 	 */
 	static lintFileMatch(patterns: ReadonlyArray<string>): ReadonlyArray<CatalogLintFinding> {

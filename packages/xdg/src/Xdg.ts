@@ -42,7 +42,7 @@ const detectPlatform = (): XdgPlatform => {
  * The platform every native-directory decision is taken against.
  *
  * @remarks
- * A {@link https://effect.website | Context.Reference}, not a global read. It
+ * A `Context.Reference`, not a global read. It
  * defaults to `process.platform`, so production behaviour is what you expect;
  * a test pins macOS or Windows semantics with
  * `Layer.succeed(CurrentPlatform, "win32")` and exercises the whole native-path
@@ -61,7 +61,7 @@ export const CurrentPlatform: Context.Reference<XdgPlatform> = Context.Reference
  * @remarks
  * Raised only for `HOME`: every other XDG variable is optional by construction,
  * and its absence is a resolved default rather than a failure. `cause` carries
- * the underlying `ConfigError` structurally — v3 flattened it to a string.
+ * the underlying `ConfigError` structurally.
  *
  * @public
  */
@@ -82,8 +82,7 @@ export class XdgEnvError extends Schema.TaggedError<XdgEnvError>()("XdgEnvError"
  * @remarks
  * Every field but `home` is optional because the corresponding variable is:
  * `Schema.optionalKey`, so an unset variable is an **absent key** and the read
- * is `paths.configHome ?? fallback`. v3 modeled these as `Option`, which forced
- * `Option.some(...)` into the construction API of everything downstream.
+ * is `paths.configHome ?? fallback`.
  *
  * `configDirs` and `dataDirs` are the colon-separated system search paths, split
  * and defaulted per the spec (`/etc/xdg` and `/usr/local/share:/usr/share`).
@@ -133,11 +132,9 @@ const splitDirs = (raw: string | undefined, fallback: ReadonlyArray<string>): Re
  *
  * @remarks
  * The service's shape **is** {@link XdgPaths}: the environment is read once, at
- * layer construction, and the service is the resolved value. v3 exposed nine
- * `Effect`s that each re-read the environment on every access, which is why
- * every path downstream of it was fallible. Here `yield* Xdg` gives you a record
- * of strings, and the only failure — an unset `HOME` — happens once, where the
- * layer is built.
+ * layer construction, and the service is the resolved value. `yield* Xdg` gives
+ * you a record of strings, and the only failure — an unset `HOME` — happens
+ * once, where the layer is built.
  *
  * @public
  */
@@ -203,8 +200,21 @@ export class Xdg extends Context.Service<Xdg, XdgPaths>()("@effected/xdg/Xdg") {
 	 *
 	 * @remarks
 	 * The test layer, and the escape hatch for an application that resolves its
-	 * environment some other way. It needs no filesystem — v3's test layer reached
-	 * past the platform abstraction for a `node:fs` temp directory.
+	 * environment some other way. It needs no filesystem.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Xdg, XdgPaths } from "@effected/xdg";
+	 *
+	 * const TestXdg = Xdg.layerFrom(
+	 * 	XdgPaths.make({
+	 * 		home: "/home/test",
+	 * 		configHome: "/home/test/.config",
+	 * 		configDirs: ["/etc/xdg"],
+	 * 		dataDirs: ["/usr/local/share", "/usr/share"],
+	 * 	}),
+	 * );
+	 * ```
 	 */
 	static layerFrom(paths: XdgPaths): Layer.Layer<Xdg> {
 		return Layer.succeed(Xdg, paths);

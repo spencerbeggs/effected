@@ -1,14 +1,8 @@
-// The inter-workspace dependency graph — a pure VALUE, not a service.
+// The inter-workspace dependency graph — a pure VALUE, not a service. Sorting
+// is a pure function of the graph, so it lives here as a method.
 //
-// v3 shipped this as two services (`DependencyGraph` and `TopologicalSorter`)
-// wrapping a `Request`/`RequestResolver` cache with a one-minute TTL over a
-// `Map.get`. There is no batching win on a single-key resolver and nothing to
-// deduplicate that discovery's own memo has not already done, so both services
-// and the whole request machinery are deleted. Sorting is a pure function of
-// the graph, so it lives here as a method.
-//
-// Cycle detection is ITERATIVE. v3's was a recursive DFS closure — the one
-// stack-overflow surface the lockfiles/glob extractions left behind.
+// Cycle detection is ITERATIVE, so a long dependency chain cannot overflow the
+// stack.
 
 import { Effect, Graph, Schema } from "effect";
 import { PackageNotFoundError } from "./WorkspaceDiscovery.js";
@@ -78,8 +72,9 @@ interface Edges {
  * `dependencies`, `devDependencies`, `peerDependencies` and
  * `optionalDependencies`; a self-edge is dropped.
  *
- * Total accessors never fail; the four fallible operations are `Effect.fn`
- * boundaries.
+ * Total accessors never fail. The lookups fail with `PackageNotFoundError` for
+ * an unknown name, and the ordering operations (`levels`, `sort`, `sortSubset`)
+ * fail with {@link CyclicDependencyError} when the graph has a cycle.
  *
  * @example
  * ```ts
@@ -192,8 +187,11 @@ export class DependencyGraph extends Schema.Class<DependencyGraph>("DependencyGr
 	);
 
 	/**
-	 * `name` plus every package that transitively depends on it — the blast
-	 * radius of a change. Sorted; includes `name` itself.
+	 * Each of `names` plus every package that transitively depends on any of
+	 * them — the blast radius of a change. Sorted and de-duplicated; the given
+	 * names are included, whether or not the graph knows them.
+	 *
+	 * @param names - The changed package names.
 	 */
 	readonly affectedBy = Effect.fn("DependencyGraph.affectedBy")(
 		(names: ReadonlyArray<string>): Effect.Effect<ReadonlyArray<string>, never> => {
@@ -218,9 +216,8 @@ export class DependencyGraph extends Schema.Class<DependencyGraph>("DependencyGr
 	 * the workspace, level *n* depends only on levels below it.
 	 *
 	 * @remarks
-	 * Kahn's algorithm over the reverse-edge index — linear, where v3's rescanned
-	 * the whole adjacency map per processed node. Each level is sorted
-	 * lexicographically, so the output is deterministic.
+	 * Kahn's algorithm over the reverse-edge index, linear in the edge count.
+	 * Each level is sorted lexicographically, so the output is deterministic.
 	 */
 	readonly levels = Effect.fn("DependencyGraph.levels")(
 		(): Effect.Effect<ReadonlyArray<ReadonlyArray<string>>, CyclicDependencyError> =>
@@ -242,6 +239,13 @@ export class DependencyGraph extends Schema.Class<DependencyGraph>("DependencyGr
 	/**
 	 * A topological order over `names` plus their transitive workspace
 	 * dependencies — the build order for a subset.
+	 *
+	 * @remarks
+	 * Fails with `PackageNotFoundError` for a name the graph does not contain,
+	 * and with {@link CyclicDependencyError} when the subset's closure has a
+	 * cycle.
+	 *
+	 * @param names - The packages to build; each must be a workspace package.
 	 */
 	readonly sortSubset = Effect.fn("DependencyGraph.sortSubset")(
 		(

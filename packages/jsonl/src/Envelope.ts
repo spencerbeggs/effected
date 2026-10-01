@@ -1,22 +1,19 @@
-/**
- * The envelope layer: the one opinion this package imposes.
- *
- * Every line is an envelope — `at`, `event`, an optional `scope`, and the
- * payload under `data` — and the payload is validated by the schema registered
- * for its tag. Everything the read vocabulary is built on lives on the
- * envelope, which is why it is a contract rather than a convention.
- *
- * The runtime read path is **two stages**, and the split is what makes the
- * package's headline property true rather than aspirational: the
- * {@link EnvelopeFrame} decodes first with `data` left untouched, filtering
- * reads only frame fields, and the registered payload schema applies **on
- * demand, to selected lines only**. The "derived discriminated union" is the
- * derived *type* — see {@link (Envelope:interface)} — never a `Schema.Union`
- * value on the read path, because discriminating through a union decodes every
- * line's payload eagerly and inverts the guarantee.
- *
- * @since 0.1.0
- */
+// The envelope layer: the one opinion this package imposes.
+//
+// Every line is an envelope — `at`, `event`, an optional `scope`, and the
+// payload under `data` — and the payload is validated by the schema registered
+// for its tag. Everything the read vocabulary is built on lives on the
+// envelope, which is why it is a contract rather than a convention.
+//
+// The runtime read path is **two stages**, and the split is what makes the
+// package's headline property true rather than aspirational: the
+// `EnvelopeFrame` decodes first with `data` left untouched, filtering
+// reads only frame fields, and the registered payload schema applies **on
+// demand, to selected lines only**. The "derived discriminated union" is the
+// derived *type* — see the `Envelope` interface — never a `Schema.Union`
+// value on the read path, because discriminating through a union decodes every
+// line's payload eagerly and inverts the guarantee.
+
 import type { DateTime } from "effect";
 import { Effect, Option, Result, Schema } from "effect";
 import type { MalformedLine } from "./JsonlError.js";
@@ -175,6 +172,23 @@ const completeResult = <const R extends JsonlEvent.Registry>(
  * defined **in terms of** the sync ones via `Effect.fromResult`, so the two can
  * never drift into two implementations of the same rule.
  *
+ * @example
+ * ```ts
+ * import { Envelope, JsonlEvent, Line } from "@effected/jsonl";
+ * import { Result, Schema } from "effect";
+ *
+ * const events = [JsonlEvent.make("started", { data: Schema.Struct({ id: Schema.String }) })] as const;
+ *
+ * declare const sourceText: string;
+ *
+ * for (const line of Line.split(sourceText)) {
+ *   const decoded = Envelope.decodeResult(events, line);
+ *   if (Result.isSuccess(decoded) && decoded.success.event === "started") {
+ *     decoded.success.data.id; // typed from the registered payload schema
+ *   }
+ * }
+ * ```
+ *
  * @public
  */
 export const Envelope = {
@@ -186,6 +200,9 @@ export const Envelope = {
 	 * filtered out never pays for its payload at all.
 	 *
 	 * @param line - A slice from `Line.split`.
+	 * @returns The frame with its source `line` attached, or `MalformedLine`
+	 *   when the line is not JSON, or `InvalidData` when it is JSON that is not
+	 *   an envelope frame.
 	 */
 	frameResult: (
 		line: LineSlice,
@@ -263,6 +280,10 @@ export const Envelope = {
 	 *
 	 * Same contract as `Line.parseAll` one layer down: a line that is not a
 	 * legal envelope is a `Result` in the array, never a gap in it.
+	 *
+	 * @param events - The registry to validate against.
+	 * @param text - JSONL source text.
+	 * @returns One `Result` per non-blank line, in file order.
 	 */
 	decodeAllResult: <const R extends JsonlEvent.Registry>(
 		events: R,
@@ -326,6 +347,10 @@ export const Envelope = {
 	 * @param events - The registry to validate against.
 	 * @param envelope - The event tag, its payload, the service-assigned
 	 *   timestamp, and an optional scope.
+	 * @returns The encoded line, or `UnknownEvent` for a tag the registry does
+	 *   not define, `InvalidData` when the payload does not satisfy its schema,
+	 *   or `UnserializableData` when the encoded payload cannot be turned into
+	 *   JSON (a bigint or a reference cycle).
 	 */
 	encodeResult: <const R extends JsonlEvent.Registry, const T extends JsonlEvent.Tag<R>>(
 		events: R,
@@ -382,10 +407,11 @@ export const Envelope = {
 	// forced past the type system.
 
 	/**
-	 * {@link (Envelope:variable).decodeResult} in the `Effect` channel.
+	 * `Envelope.decodeResult` in the `Effect` channel.
 	 *
 	 * Prefer the sync form in a hook or any caller that has no runtime; this
-	 * exists for programs that already are one.
+	 * exists for programs that already are one. Fails with `MalformedLine`,
+	 * `InvalidData` or `UnknownEvent`; requires nothing.
 	 */
 	decode: <const R extends JsonlEvent.Registry>(
 		events: R,
@@ -394,7 +420,10 @@ export const Envelope = {
 		Effect.fromResult(Envelope.decodeResult(events, line)),
 
 	/**
-	 * {@link (Envelope:variable).encodeResult} in the `Effect` channel.
+	 * `Envelope.encodeResult` in the `Effect` channel.
+	 *
+	 * Fails with `UnknownEvent`, `InvalidData` or `UnserializableData`; requires
+	 * nothing.
 	 */
 	encode: <const R extends JsonlEvent.Registry, const T extends JsonlEvent.Tag<R>>(
 		events: R,

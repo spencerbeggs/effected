@@ -1,9 +1,9 @@
-// The lint engine (#129): the rule-aware config schema and the `YamlLint`
+// The lint engine: the rule-aware config schema and the `YamlLint`
 // facade (`run`, `fix`, `builtins`). The rule model (`LintContext`,
 // `YamlRule`, `YamlLintDiagnostic`) lives in `YamlLintRule.ts` — see the
 // cycle-firewall note there.
 //
-// The governing constraint: v1 is the pure half only. No file discovery, no
+// The governing constraint: this is the pure half only. No file discovery, no
 // config-file loading, no IO, no CLI — strings in, diagnostics or a fixed
 // string out. The runner is someone else's tier.
 
@@ -97,9 +97,8 @@ export class YamlLintConfig extends Schema.Class<YamlLintConfig>("YamlLintConfig
 	rules: Schema.Record(Schema.String, YamlLintRuleSetting).pipe(Schema.check(Schema.makeFilter(validateRulesMap))),
 }) {
 	/**
-	 * The default preset. Rule entries accrete as built-ins land; the
-	 * `quoted-strings` rule defaults to DOUBLE quotes here (the one taste
-	 * call the design pins).
+	 * The default preset: the built-in rules at their default settings. The
+	 * `quoted-strings` rule defaults to DOUBLE quotes here.
 	 */
 	static readonly default: YamlLintConfig = YamlLintConfig.make({
 		rules: {
@@ -186,7 +185,7 @@ const buildContext = (text: string): LintContext => {
 	};
 };
 
-// ── Style evidence (#345) ───────────────────────────────────────────────────
+// ── Style evidence ───────────────────────────────────────────────────
 
 /**
  * An accumulated tally of one {@link StyleVote} spelling: how many times a
@@ -245,7 +244,7 @@ const byTallyOrder = (
 							: 0;
 
 /**
- * Per-dimension style evidence (#345): what the observed sources say about
+ * Per-dimension style evidence: what the observed sources say about
  * each inferable `(rule, dimension)` — vote histograms with first-seen
  * positions, and measured floors.
  *
@@ -275,13 +274,13 @@ export class StyleEvidence extends Schema.Class<StyleEvidence>("StyleEvidence")(
 	static combine(a: StyleEvidence, b: StyleEvidence): StyleEvidence {
 		const votes = new Map<string, StyleVoteTally>();
 		for (const tally of [...a.votes, ...b.votes]) {
-			const key = `${tally.rule} ${tally.dimension} ${valueKey(tally.value)}`;
+			const key = `${tally.rule}\0${tally.dimension}\0${valueKey(tally.value)}`;
 			const seen = votes.get(key);
 			votes.set(key, seen === undefined ? tally : StyleVoteTally.make({ ...seen, count: seen.count + tally.count }));
 		}
 		const floors = new Map<string, StyleFloorTally>();
 		for (const floor of [...a.floors, ...b.floors]) {
-			const key = `${floor.rule} ${floor.dimension}`;
+			const key = `${floor.rule}\0${floor.dimension}`;
 			const seen = floors.get(key);
 			floors.set(key, seen === undefined || floor.value > seen.value ? floor : seen);
 		}
@@ -515,7 +514,25 @@ const runRules = (
 };
 
 /**
- * Linting statics. Not instantiable.
+ * Lints YAML text against a rule set, applies the rules' non-overlapping
+ * fixes, and infers a lint config from the style a corpus already follows.
+ * Not instantiable.
+ *
+ * @example
+ * ```ts
+ * import { YamlLint, YamlLintConfig } from "@effected/yaml";
+ * import { Result } from "effect";
+ *
+ * const text = "a:   1\nb: 2   \n";
+ *
+ * const diagnostics = YamlLint.run(text, YamlLint.builtins, YamlLintConfig.default);
+ * // => a colon-spacing finding on line 0 and a trailing-spaces finding on line 1 (zero-based)
+ *
+ * const fixed = YamlLint.fix(text, YamlLint.builtins, YamlLintConfig.default);
+ * if (Result.isSuccess(fixed)) {
+ *   fixed.success; // "a: 1\nb: 2\n"
+ * }
+ * ```
  *
  * @remarks
  * Pure and synchronous throughout — the lint engine is the pure half only:
@@ -548,6 +565,12 @@ export class YamlLint {
 	 * literal, else `"error"`) overrides what the rule emitted, again except
 	 * for `parse-validity`, whose bridged engine diagnostics keep the
 	 * engine's own grading.
+	 *
+	 * @param text - The YAML source to lint.
+	 * @param rules - The rules to run, e.g. {@link YamlLint.builtins}.
+	 * @param config - The {@link YamlLintConfig} choosing each rule's severity
+	 *   and options.
+	 * @returns Every finding, sorted by position.
 	 */
 	static run(text: string, rules: ReadonlyArray<YamlRule>, config: YamlLintConfig): ReadonlyArray<YamlLintDiagnostic> {
 		return runRules(buildContext(text), rules, config);
@@ -565,6 +588,13 @@ export class YamlLint {
 	 * fixes overlap — or start at the same offset — the earlier one in
 	 * {@link YamlLint.run} order (position, then rule id) wins and the later
 	 * is dropped (its diagnostic remains reported by {@link YamlLint.run}).
+	 *
+	 * @param text - The YAML source to fix.
+	 * @param rules - The rules to run, e.g. {@link YamlLint.builtins}.
+	 * @param config - The {@link YamlLintConfig} choosing each rule's severity
+	 *   and options.
+	 * @returns A `Result` succeeding with the fixed text, or failing with
+	 *   {@link YamlParseError}.
 	 */
 	static fix(
 		text: string,
@@ -597,7 +627,7 @@ export class YamlLint {
 	}
 
 	/**
-	 * Observe the style `text` already follows (#345): run every rule's
+	 * Observe the style `text` already follows: run every rule's
 	 * optional `infer` hook over one eagerly-built context and merge the
 	 * observations into canonical {@link StyleEvidence}. Pure and total —
 	 * strings in, evidence out; observing N files is N `observe` calls merged

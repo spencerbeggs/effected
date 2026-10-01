@@ -58,8 +58,7 @@ const ListResponse = Schema.Struct({
  * @remarks
  * Upload and listing only. Building a statement, signing it and producing the
  * bundle belong to `@effected/sbom`; assembling those into a pipeline belongs to
- * the consumer. That split is what dissolves the five-service knot the previous
- * package needed a mega-layer to test.
+ * the consumer.
  *
  * @public
  */
@@ -81,11 +80,17 @@ export interface AttestationShape {
 }
 
 /**
- * Attestations.
+ * Uploads signed attestation bundles to a repository and lists what is attested
+ * about a subject digest.
+ *
+ * @remarks
+ * Provide it with {@link Attestation.layer}, which needs a `GitHubClient`; each
+ * method also needs a `Repo` in `R`.
  *
  * @public
  */
 export class Attestation extends Context.Service<Attestation, AttestationShape>()("@effected/github/Attestation") {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<Attestation, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),

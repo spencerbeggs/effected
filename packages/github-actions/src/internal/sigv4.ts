@@ -77,10 +77,7 @@ const timestamps = (now: Date): { readonly amzDate: string; readonly dateStamp: 
  * @remarks
  * Exported separately from {@link sign} so a test can pin it against AWS's
  * **own documented** canonical request rather than against this
- * implementation's output. That distinction is not pedantry: the first draft of
- * this module was checked against a remembered signature constant that turned
- * out to be from a different example, and the only thing that settled which side
- * was wrong was reproducing a value AWS publishes.
+ * implementation's output.
  */
 export const canonicalize = (
 	request: SigV4Request,

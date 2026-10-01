@@ -15,14 +15,14 @@ const GIT_TIMEOUT = Duration.seconds(30);
  * @remarks
  * These live here, next to `classify` and `GIT_TIMEOUT`, because they exist
  * to serve them — not on the pure `GitCommand` constructors, which carry no
- * run-time context at all (#670).
+ * run-time context at all.
  *
  * - `LC_ALL=C` — `classify` matches untranslated stderr text (`"not a git
  *   repository"`, `"unknown revision"`). A localized message silently
  *   misclassifies into `GitCommandError` instead of the typed domain error.
  * - `GIT_TERMINAL_PROMPT=0` — git's own credential prompt. Without it a
  *   network-touching member against a credential-requiring remote blocks
- *   until `GIT_TIMEOUT` fires (#647).
+ *   until `GIT_TIMEOUT` fires.
  * - `GIT_ASKPASS=""` — the askpass chain, which `GIT_TERMINAL_PROMPT=0` does
  *   NOT close. Probed against git 2.55: an empty `GIT_ASKPASS` is a hard
  *   stop, not a fall-through — it suppresses a configured `core.askPass` and
@@ -47,7 +47,7 @@ const BASE_ENV = {
  * block. Probed against OpenSSH under a real pty: with the askpass chain
  * closed but no `BatchMode`, a first-contact host key hangs indefinitely;
  * with `BatchMode=yes` the same call fails immediately with `"Host key
- * verification failed."` (#670).
+ * verification failed."`.
  */
 const BATCH_MODE = "-o BatchMode=yes";
 
@@ -483,8 +483,7 @@ const matchesAny = (stderr: string, patterns: ReadonlyArray<string>): boolean =>
  * this before deciding its own return value.
  *
  * `args` is the invocation's REDACTED argv: it is the only argv this
- * function may persist into a `GitCommandError`, per the #86 redaction
- * policy.
+ * function may persist into a `GitCommandError`, per the redaction policy.
  */
 const classify = (
 	cwd: string,
@@ -555,7 +554,7 @@ const classify = (
  * The argv handed to `classify` — and therefore persisted into any
  * `GitCommandError` — is the invocation's REDACTED argv, never the raw one:
  * the redaction mask the pure constructor carries is applied here, at the
- * single classification choke point (the #86 redaction policy).
+ * single classification choke point (the redaction policy).
  *
  * This is also the single ENVIRONMENT choke point: `env` (computed once in
  * {@link Git.layer}) is applied here the same way `cwd` is, so every one of
@@ -978,7 +977,7 @@ export class LsRemoteEntry extends Schema.Class<LsRemoteEntry>("LsRemoteEntry")(
 	 * The entries whose short name is a NEAR MISS for `ref`: not an exact
 	 * match, but ending in `ref` right behind a separator (`@`, `/`, `-`,
 	 * `_`) — the monorepo-prefixed-tag case, where a caller asks for
-	 * `4.0.0-beta.101` and the remote advertises `effect@4.0.0-beta.101`.
+	 * `4.0.0` and the remote advertises `effect@4.0.0`.
 	 *
 	 * @remarks
 	 * A pure, decode-side helper for validate-before-mutate flows: run
@@ -1267,7 +1266,7 @@ const parseLsFiles = (output: string): ReadonlyArray<LsFilesEntry> =>
  *
  * `sensitive` values get the same check but a REDACTED report: a refused
  * sensitive positional (a `configSet` value) must not leak into
- * `GitCommandError.args`/`detail` any more than a spawned one may — the #86
+ * `GitCommandError.args`/`detail` any more than a spawned one may — the
  * redaction policy applies to guard rejections too.
  */
 const rejectOptionLikeRefs = (
@@ -1963,7 +1962,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		options: { readonly url: string; readonly path: string; readonly depth?: number },
 	) {
 		// The url is deliberately NOT annotated: a URL can embed userinfo, and
-		// span annotations carry stable identifiers only (the #86 policy).
+		// span annotations carry stable identifiers only (the redaction policy).
 		yield* Effect.annotateCurrentSpan({ cwd, path: options.path });
 		yield* rejectNonNaturalNumber(cwd, "a submodule add depth", options.depth);
 		const classified = yield* runForNetwork(
@@ -2019,7 +2018,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		// reading it as a flag. Recorded limitation: a legitimate "-..." config
 		// value cannot be written through this method. The value rides the
 		// SENSITIVE arm: a refused config value is reported as <redacted>, never
-		// echoed into the error (the #86 redaction policy).
+		// echoed into the error (the redaction policy).
 		yield* rejectOptionLikeRefs(cwd, [key, ...(options?.file !== undefined ? [options.file] : [])], [value]);
 		const classified = yield* runFor(GitCommand.configSet(key, value, options?.file), cwd, "generic");
 		switch (classified._tag) {
@@ -2398,7 +2397,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 
 	const submoduleSetUrl = Effect.fn("Git.submoduleSetUrl")(function* (cwd: string, path: string, url: string) {
 		// The url is deliberately NOT annotated: a URL can embed userinfo, and
-		// span annotations carry stable identifiers only (the #86 policy).
+		// span annotations carry stable identifiers only (the redaction policy).
 		yield* Effect.annotateCurrentSpan({ cwd, path });
 		const classified = yield* runFor(GitCommand.submoduleSetUrl(path, url), cwd, "generic");
 		switch (classified._tag) {
@@ -2550,7 +2549,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		},
 	) {
 		// The remote is deliberately NOT annotated: it may be a URL embedding
-		// userinfo, and span annotations carry stable identifiers only (#86).
+		// userinfo, and span annotations carry stable identifiers only.
 		yield* Effect.annotateCurrentSpan({
 			cwd,
 			heads: options?.heads ?? false,
@@ -2571,7 +2570,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 	});
 
 	const remoteAdd = Effect.fn("Git.remoteAdd")(function* (cwd: string, name: string, url: string) {
-		// The url is deliberately NOT annotated (#86).
+		// The url is deliberately NOT annotated.
 		yield* Effect.annotateCurrentSpan({ cwd, name });
 		yield* rejectOptionLikeRefs(cwd, [name, url]);
 		return yield* runVoid("Git.remoteAdd", GitCommand.remoteAdd(name, url), cwd, name);
@@ -2584,7 +2583,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 	});
 
 	const remoteSetUrl = Effect.fn("Git.remoteSetUrl")(function* (cwd: string, name: string, url: string) {
-		// The url is deliberately NOT annotated (#86).
+		// The url is deliberately NOT annotated.
 		yield* Effect.annotateCurrentSpan({ cwd, name });
 		yield* rejectOptionLikeRefs(cwd, [name, url]);
 		return yield* runVoid("Git.remoteSetUrl", GitCommand.remoteSetUrl(name, url), cwd, name);
@@ -2761,7 +2760,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		},
 	) {
 		const remote = options?.remote ?? "origin";
-		// The remote is deliberately NOT annotated: it may be a URL (#86).
+		// The remote is deliberately NOT annotated: it may be a URL.
 		yield* Effect.annotateCurrentSpan({
 			cwd,
 			refspec: options?.refspec ?? "(current branch)",
@@ -2811,7 +2810,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		},
 	) {
 		const remote = options?.remote ?? "origin";
-		// The remote is deliberately NOT annotated: it may be a URL (#86).
+		// The remote is deliberately NOT annotated: it may be a URL.
 		yield* Effect.annotateCurrentSpan({
 			cwd,
 			ref: options?.ref ?? "(upstream)",
@@ -4096,14 +4095,30 @@ const notStubbed = (method: string) => () =>
  * local `git config` reads, each bounded separately, so their worst case is
  * 60 s; `fetchAny`, which runs `fetch` twice, is 120 s. A consumer merely
  * duplicating a 30 s layer buys nothing but two ceilings racing each other;
- * one whose budget is tighter than the figures above still needs its own
- * (#652).
+ * one whose budget is tighter than the figures above still needs its own.
  *
  * **Redaction policy (documented, not just convention).** Error values
  * persist only the constructor's REDACTED argv (see `GitCommandError.args`),
  * and span annotations carry stable identifiers only — `cwd`, refs, keys,
  * paths, remote names — never config values and never URLs, which can embed
- * userinfo. A new method must follow both halves before it ships.
+ * userinfo.
+ *
+ * @example
+ * ```ts
+ * import { Git } from "@effected/git";
+ * import { NodeServices } from "@effect/platform-node";
+ * import { Effect, Option } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const git = yield* Git;
+ *   const root = yield* git.repoRoot(process.cwd());
+ *   const branch = yield* git.currentBranch(root); // Option.none() when detached
+ *   const changed = yield* git.changedFiles(root, { base: "origin/main", head: "HEAD" });
+ *   return { root, branch: Option.getOrNull(branch), changed };
+ * });
+ *
+ * Effect.runPromise(program.pipe(Effect.provide(Git.layer), Effect.provide(NodeServices.layer)));
+ * ```
  *
  * @public
  */

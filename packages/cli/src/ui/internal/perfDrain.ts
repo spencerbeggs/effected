@@ -5,7 +5,7 @@ import { Config, Effect } from "effect";
  *
  * @remarks
  * React picks its development build whenever `NODE_ENV` is not exactly `"production"`, and that build records
- * user-timing entries on every render and never clears them (`okf/gotchas/react-dev-performance-entries.md`). An
+ * user-timing entries on every render and never clears them. An
  * unset `NODE_ENV`, the common case for a CLI, leaks like `"development"`, so `"auto"` drains then too. `NODE_ENV` is
  * read through `Config`, so a test sets it with a `ConfigProvider` and `./ui` reads no `process`.
  *
@@ -26,8 +26,8 @@ export const resolveDrain = (mode: boolean | "auto"): Effect.Effect<boolean> =>
  * @remarks
  * The clear is global: it removes a consumer's own measures too, because the platform's `clearMeasures` filters only
  * by name, and React's entries (`Update`, `Mount`, tagged `detail.devtools`) share their names with anything a
- * consumer might call a measure. Marks are left alone: React's development build leaks measures only, never marks
- * (`okf/gotchas/react-dev-performance-entries.md`), so clearing marks would only take a host's own. A runtime without `performance` is left alone.
+ * consumer might call a measure. Marks are left alone: React's development build leaks measures only, never marks,
+ * so clearing marks would only take a host's own. A runtime without `performance` is left alone.
  *
  * @internal
  */

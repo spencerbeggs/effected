@@ -1,8 +1,5 @@
-/**
- * One candidate line of a JSONL journal, located in the source by byte.
- *
- * @since 0.1.0
- */
+// One candidate line of a JSONL journal, located in the source by byte.
+
 import { Schema } from "effect";
 
 /**

@@ -87,8 +87,7 @@ export class SchemaGateError extends Schema.TaggedError<SchemaGateError>()("Sche
  *   any write. A target with no `version`, or with a prerelease label, is a
  *   document that replaces its predecessor in place and is rewritten as
  *   before.
- * - `"allow"` — classify and report only, never refuse: the pre-guard
- *   behaviour. Also the sanctioned REPAIR path for a published file whose
+ * - `"allow"` — classify and report only, never refuse. Also the sanctioned REPAIR path for a published file whose
  *   text no longer parses — `SchemaFile` classifies unparseable text as
  *   `"contract"` so it stays regenerable, and under the default that
  *   classification is refused.
@@ -304,7 +303,7 @@ const gate = (
 
 /**
  * The emit pipeline over a target manifest: generate, lint, validate, gate,
- * write — the loop every consumer of this package was writing by hand.
+ * and write each schema document.
  *
  * Requires `SchemaFile` and `SchemaValidator` in `R`; provide
  * `SchemaFile.layer` and an engine — `AjvValidator.layer` from

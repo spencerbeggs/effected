@@ -1,26 +1,23 @@
-/**
- * The git-config engine: a lossless, line-oriented scanner producing raw
- * structural records over the source text, plus the splice-based edit
- * primitives the facade compiles surgical edits into.
- *
- * Never exported from the package. Per the cycle firewall, this module emits
- * raw carriers (plain records with offsets) and never imports the public
- * `GitConfig` classes — the facade materializes typed errors and Schema
- * classes from what it finds here.
- *
- * The grammar is git-config (git-config(5)), NOT generic INI:
- *
- * - `[section]` and `[section "subsection"]` headers; section and variable
- *   names are case-insensitive, quoted subsection names are case-SENSITIVE.
- * - The deprecated dotted form `[section.subsection]` splits at the FIRST
- *   dot and compares its subsection case-insensitively (git lowercases it).
- * - Variable names start with a letter and contain letters, digits and `-`.
- * - A bare `key` line (no `=`) is git's boolean-true shorthand.
- * - Values: unquoted trailing whitespace is discarded, internal whitespace
- *   kept verbatim; `"` toggles quoting; `\"`, `\\`, `\n`, `\t`, `\b` are the
- *   recognized escapes; a backslash at end of line continues the value onto
- *   the next line; `#` and `;` start a comment outside quotes.
- */
+// The git-config engine: a lossless, line-oriented scanner producing raw
+// structural records over the source text, plus the splice-based edit
+// primitives the facade compiles surgical edits into.
+//
+// Never exported from the package. This module emits raw carriers (plain
+// records with offsets) and never imports the public `GitConfig` classes — the
+// facade materializes typed errors and Schema classes from what it finds here.
+//
+// The grammar is git-config (git-config(5)), NOT generic INI:
+//
+// - `[section]` and `[section "subsection"]` headers; section and variable
+//   names are case-insensitive, quoted subsection names are case-SENSITIVE.
+// - The deprecated dotted form `[section.subsection]` splits at the FIRST
+//   dot and compares its subsection case-insensitively (git lowercases it).
+// - Variable names start with a letter and contain letters, digits and `-`.
+// - A bare `key` line (no `=`) is git's boolean-true shorthand.
+// - Values: unquoted trailing whitespace is discarded, internal whitespace
+//   kept verbatim; `"` toggles quoting; `\"`, `\\`, `\n`, `\t`, `\b` are the
+//   recognized escapes; a backslash at end of line continues the value onto
+//   the next line; `#` and `;` start a comment outside quotes.
 
 /** The diagnostic vocabulary the scanner can emit. */
 export type RawDiagnosticCode =

@@ -8,37 +8,37 @@
 | `Action` | Class | The entry point an action's `main`, `pre` and `post` scripts call. | run an action's main/pre/post entry point, compose the runtime, set exit code on failure |
 | `ActionCache` | Class | The runner's own cache: archive a set of paths under a key, and get them back in a later job. | save and restore the runner's actions/cache, warm a toolchain or dependency cache between jobs |
 | `ActionCacheError` | Class | Raised when the runner's cache cannot be read or written. | handle a cache save or restore failure, actions cache misconfigured or unreachable |
-| `ActionCacheShape` | Interface | The `ActionCache` service shape. | |
+| `ActionCacheShape` | Interface | The members of the `ActionCache` service: `save` a set of paths under a key and `restore` them in a later job. | |
 | `ActionEnvironment` | Class | The runner environment an action is executing inside. | read `GITHUB_*` and `RUNNER_*` variables, process.env access for an action, step debug mode |
 | `ActionEnvironmentError` | Class | Raised when the runner environment does not say what an action needs. | handle a missing or malformed runner environment variable |
-| `ActionEnvironmentShape` | Interface | The `ActionEnvironment` service shape. | |
+| `ActionEnvironmentShape` | Interface | The members of the `ActionEnvironment` service: variable lookup, the `GITHUB_*` and `RUNNER_*` contexts, the event payload and scoped overrides. | |
 | `ActionInput` | Class | Action inputs, read as `Config` values. | read with: inputs, INPUT_ variables, config provider for action inputs, dry-run boolean input |
 | `ActionLogger` | Class | Groups, buffered step transcripts, notices — and the `Logger` that renders every `Effect.log*` in the kit as a workflow command. | workflow-command logger, collapsible log groups, buffered step transcript, notice annotation |
-| `ActionLoggerShape` | Interface | The `ActionLogger` service shape. | |
+| `ActionLoggerShape` | Interface | The members of the `ActionLogger` service: log groups, buffered steps, notices and source annotations. | |
 | `ActionOutputError` | TypeAlias | Anything that can go wrong publishing an output, variable or summary. | |
 | `ActionOutputs` | Class | Everything an action publishes: step outputs, exported variables, `PATH` additions, the job summary, log masking and failure annotations. | set step output, export env var, add to PATH, mask a secret |
-| `ActionOutputsShape` | Interface | The `ActionOutputs` service shape. | |
+| `ActionOutputsShape` | Interface | The members of the `ActionOutputs` service: step outputs, exported variables, `PATH` additions, the job summary, masking and failure annotations. | |
 | `ActionRunOptions` | Interface | How to run an action. | |
 | `ActionRuntime` | Class | The default runtime an action executes inside. | the composed default action runtime layer, wire ActionEnvironment/Logger/Outputs/State |
 | `ActionServices` | TypeAlias | Everything `ActionRuntime.layer` provides. | |
 | `ActionState` | Class | State that survives the `pre` → `main` → `post` phase boundary. | persist and read state across pre/main/post phase boundary, GITHUB_STATE file |
-| `ActionStateError` | Class | Raised when state cannot cross the phase boundary. | handle action state save or read failure across the phase boundary |
-| `ActionStateShape` | Interface | The `ActionState` service shape. | |
-| `ActionsIdentityToken` | Class | The Actions side of `@effected/sbom`'s inverted OIDC contract. | serve @effected/sbom's IdentityToken contract from the runner's OIDC issuer, sign with runner identity — implements `IdentityToken` from `@effected/sbom` |
-| `ActionsProvenance` | Class | The Actions side of `@effected/sbom`'s SLSA provenance constructor. | build SLSA provenance from the runner's OIDC claims, attest a GitHub Actions workflow run |
+| `ActionStateError` | Class | Raised when action state cannot be saved, read or decoded across the phase boundary. | handle action state save or read failure across the phase boundary |
+| `ActionStateShape` | Interface | The members of the `ActionState` service: save and read values, and persist secrets, across the `pre` → `main` → `post` boundary. | |
+| `ActionsIdentityToken` | Class | Serves `@effected/sbom`'s `IdentityToken` contract from the runner's own OIDC token service, so signing an SBOM inside a workflow needs no further wiring. | serve @effected/sbom's IdentityToken contract from the runner's OIDC issuer, sign with runner identity — implements `IdentityToken` from `@effected/sbom` |
+| `ActionsProvenance` | Class | Builds the current run's SLSA provenance from the runner's OIDC claims: the Actions side of `@effected/sbom`'s `SlsaProvenance.forGitHubWorkflow`. | build SLSA provenance from the runner's OIDC claims, attest a GitHub Actions workflow run |
 | `AmbientPackageManager` | Class | A package manager the runner's own toolchain already had: nothing was downloaded and nothing was cached, so there is no directory to publish. | a package manager already on PATH from the runner's toolchain, no tool-cache entry |
 | `Artifact` | Class | Upload, list, download and delete GitHub Actions artifacts. | upload, list, download and delete GitHub Actions artifacts |
 | `ArtifactError` | Class | Raised when an artifact cannot be uploaded, listed, downloaded or deleted. | handle an artifact upload, list, download or delete failure |
 | `ArtifactItem` | Interface | One artifact, as the backend describes it. | |
-| `ArtifactRef` | Interface | A reference to an artifact that is no longer there. | |
-| `ArtifactShape` | Interface | The `Artifact` service shape. | |
+| `ArtifactRef` | Interface | The id of an artifact that `delete` removed. | |
+| `ArtifactShape` | Interface | The members of the `Artifact` service: upload, list, get, download and delete, each failing with `ArtifactError`. | |
 | `BlobEnvelope` | Class | The schema-versioned frame that gives a stored blob a **metadata channel**. | frame bytes with a versioned metadata header, pure encode/decode a stored blob |
 | `BlobEnvelopeError` | TypeAlias | Anything that can go wrong reading or writing a blob envelope. | |
 | `BlobMetadataDecodeError` | Class | Raised when well-framed metadata does not satisfy the caller's schema. | handle blob metadata that does not satisfy the caller's schema |
 | `BlobMetadataEncodeError` | Class | Raised when the value being stored does not satisfy its schema. | handle a value that will not encode into blob metadata |
 | `BlobStore` | Class | Durable blob storage with a metadata channel. | get/put/has durable blob storage with a metadata channel, S3-compatible or in-memory backend |
 | `BlobStoreError` | Class | Raised when a blob cannot be stored or retrieved. | handle a blob store read or write failure, unreachable or refused backend |
-| `BlobStoreShape` | Interface | The `BlobStore` service shape. | |
+| `BlobStoreShape` | Interface | The members of the `BlobStore` service: `get`, `put` and `has` over blobs that carry the caller's own metadata. | |
 | `BlobTransferError` | Class | Raised when bytes could not be moved to or from a signed blob url. | handle a signed blob url upload or download failure |
 | `CacheKey` | Class | A GitHub Actions cache key and the restore-key ladder that goes with it. | build a GitHub Actions cache key, restore-key fallback ladder, hash files |
 | `CacheKeyBadPatternError` | Class | Raised when a glob pattern would not compile. | handle a glob pattern that will not compile while deriving a cache key |
@@ -48,7 +48,7 @@
 | `CheckDocument` | Class | A living document of check state: an in-process registry the run reports into, debounced onto a marker-delimited document, written through a narrow sink. | reconcile check-run state onto a sticky PR comment or PR description, debounced managed regions |
 | `CheckDocumentError` | Class | Raised when the check document cannot be regenerated, read back or written. | handle a check document render, read-back or sink write failure |
 | `CheckDocumentOptions` | Interface | Options for `CheckDocument.layer`. | |
-| `CheckDocumentShape` | Interface | The check-run → document reconciler's surface. | |
+| `CheckDocumentShape` | Interface | The members of the `CheckDocument` service: `report` a check's state, read the `checks` registry and `flush` the document. | |
 | `CheckDocumentSink` | TypeAlias | How a rendered document leaves the process: the narrow sink contract. | |
 | `CheckDocumentStamp` | Class | A run's identity for staleness ordering: when it started and which run it is. | run identity for staleness ordering between two runs writing the same document |
 | `CheckFlushOutcome` | TypeAlias | What one reconcile pass did. | |
@@ -56,10 +56,10 @@
 | `CheckRunConclusion` | TypeAlias | The check-run conclusions the kit vocabulary can produce. | |
 | `CheckRunProjection` | TypeAlias | A `CheckState` on GitHub's check-run wire: a status, and a conclusion exactly when the status is `completed`. | |
 | `CheckState` | Variable + TypeAlias | The type of `CheckState`. | running/pass/fail/warn/skipped/timeout vocabulary for a release pipeline's checks |
-| `ChildEnv` | Class | Child-process environment construction: prepending directories to `PATH` without falling into the three traps that each cost a real consumer a cross-OS matrix round. | prepend directories to PATH for a spawned child, cross-platform PATH casing, extendEnv trap |
+| `ChildEnv` | Class | Child-process environment construction: prepending directories to `PATH` without falling into three cross-platform traps. | prepend directories to PATH for a spawned child, cross-platform PATH casing, extendEnv trap |
 | `ClientLayerOptions` | Interface | How to build a client from a persisted token. | |
 | `DataBlobTransfer` | Interface | Moving in-memory bytes to and from a signed blob url. | |
-| `DetachedLogUnavailableError` | Class | Raised when a detached child cannot be started, waited for, or reaped. | handle a detached child's log file that could not be opened |
+| `DetachedLogUnavailableError` | Class | Raised when the log file for a detached child's output cannot be opened. | handle a detached child's log file that could not be opened |
 | `DetachedNotReadyError` | Class | Raised when the readiness probe never held. | handle a detached child readiness probe that never succeeded |
 | `DetachedOutputError` | Class | Raised when an output member was called under `ActionOutputs.layerDetached`. | handle output from a detached worker that cannot reach the runner file |
 | `DetachedProcess` | Class | A long-lived child that outlives the phase that started it. | spawn a long-lived child outliving the action, poll readiness, signal by pid |
@@ -98,12 +98,12 @@
 | `OidcClaims` | Class | The claims a GitHub Actions OIDC token carries about the workflow that ran. | claims carried by a GitHub Actions OIDC token: repository, ref, sha, job |
 | `OidcTokenError` | Class | Raised when an OIDC token cannot be issued or read. | handle an OIDC token that could not be minted or decoded, missing id-token permission |
 | `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint a runner OIDC token, request an identity token, decode unverified JWT claims |
-| `OidcTokenIssuerShape` | Interface | The `OidcTokenIssuer` service shape. | |
+| `OidcTokenIssuerShape` | Interface | The members of the `OidcTokenIssuer` service: request an ID `token` and read its decoded `claims`, both failing with `OidcTokenError`. | |
 | `OutputEncodeError` | Class | Raised when a value did not satisfy its schema. | handle a value that did not satisfy its schema while publishing a JSON output |
 | `PackageManagerInstallOptions` | Interface | How `PackageManagerInstallerShape.install` should behave. | |
 | `PackageManagerInstaller` | Class | First-class exact-version package-manager provisioning on a GitHub runner. | provision an exact npm/pnpm/yarn/bun version from a corepack pin onto the runner |
 | `PackageManagerInstallerError` | Class | Raised when a package manager cannot be provisioned on the runner. | handle a package manager provisioning failure: integrity mismatch, unsupported platform |
-| `PackageManagerInstallerShape` | Interface | The `PackageManagerInstaller` service shape. | |
+| `PackageManagerInstallerShape` | Interface | The members of the `PackageManagerInstaller` service: `install` the exact package-manager version a pin names. | |
 | `PairsOptions` | Interface | Options for `ActionInput.pairs`. | |
 | `PathPrependEnv` | Interface | The environment additions `ChildEnv.prependPath` builds: exactly one entry, keyed by the spelling of `PATH` the base environment already uses. | |
 | `PathPrependOptions` | Interface | What `ChildEnv.prependPath` derives the additions from. | |
@@ -125,7 +125,7 @@
 | `ToolDownloadOptions` | Interface | How a `ToolInstallerShape.download` should behave. | |
 | `ToolInstaller` | Class | Download, extract and cache a toolchain in the runner's tool cache. | download, extract and cache a toolchain binary in the runner's tool cache |
 | `ToolInstallerError` | Class | Raised when a tool cannot be downloaded, extracted or cached. | handle a tool download, extract or tool-cache write failure, retryable download status |
-| `ToolInstallerShape` | Interface | The `ToolInstaller` service shape. | |
+| `ToolInstallerShape` | Interface | The members of the `ToolInstaller` service: find, download, extract and cache tools in the runner's tool cache, each failing with `ToolInstallerError`. | |
 | `TruncatedBlobEnvelopeError` | Class | Raised when the frame ends mid-header or mid-metadata. | handle a blob envelope frame that ends mid-header or mid-metadata |
 | `UnsupportedBlobEnvelopeVersionError` | Class | Raised when the envelope came from a newer revision of the format. | handle a blob envelope written by a newer format revision |
 | `UploadOptions` | Interface | How to pack an upload. | |

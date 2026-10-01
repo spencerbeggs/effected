@@ -285,26 +285,35 @@ const phrasingText = (nodes: ReadonlyArray<PhrasingContent>): string => {
  *
  * @remarks
  * The document is the lossless unit — `source` is retained so offsets on the
- * tree stay meaningful and so P4's edit/format layer can splice against the
- * exact bytes that were parsed.
+ * tree stay meaningful and so the edit and format layer can splice against
+ * the exact bytes that were parsed.
  *
  * `definitions` is an index over the {@link Definition} nodes that remain in
  * the tree, keyed by case-folded label with the first definition winning; it
  * is not a place they were moved to. References are emitted unresolved, so
  * resolution happens against this map.
  *
- * `diagnostics` is empty for every input the P1 parser accepts, and that is
- * the current state of the world rather than a missing feature: the plumbing
- * from the engine through to this field is real and exercised, but no P1
- * construct emits a non-fatal diagnostic yet. The producers arrive with the
- * conditions that warrant them — unresolved link references, and
- * present-but-unparseable frontmatter in P3. Read an empty array as "nothing
- * to report", not as "not implemented", and do not code against it staying
- * empty.
+ * `diagnostics` is empty for every input the parser currently accepts: the
+ * plumbing from the engine through to this field exists, but no construct
+ * emits a non-fatal diagnostic yet. Read an empty array as "nothing to
+ * report", and do not code against it staying empty — fatal conditions fail
+ * through `MarkdownParseError` instead.
  *
  * The navigation accessors (`headings`, `sections`, `links`) are derived
  * getters over the tree — no stored state, no parse-time cost, and they can
  * never disagree with the tree they read.
+ *
+ * @example
+ * ```ts
+ * import { MarkdownDocument } from "@effected/markdown";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const doc = yield* MarkdownDocument.parse("# Title\n\nSee [docs](./docs.md).\n\n## Usage\n");
+ *   doc.headings.map((heading) => heading.text); // ["Title", "Usage"]
+ *   doc.links.map((link) => link.url); // ["./docs.md"]
+ * });
+ * ```
  *
  * @public
  */

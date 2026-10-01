@@ -6,8 +6,8 @@
 // The strict `PackageManager` models what corepack provisions — an exact,
 // pinnable version. pnpm's own reading of the field is wider: with
 // `manage-package-manager-versions` it accepts a semver *range* and resolves
-// it itself, and manifests carrying `pnpm@^11.20.0` exist in the wild
-// (probe-verified by the silk-update-action consumer, #286). This class models
+// it itself, and manifests carrying `pnpm@^11.20.0` exist in the wild. This
+// class models
 // that wider field without weakening the strict one: the range text is carried
 // **verbatim** (the `Repository` posture — fidelity first, interpretation as
 // derived getters), validated only to parse as a semver range, and `isExact`
@@ -37,7 +37,9 @@ import type { DevEngine } from "./DevEngines.js";
  * @public
  */
 export interface DevEnginePackageManagerEntry {
+	/** The package-manager name (e.g. `pnpm`). */
 	readonly name: string;
+	/** The `<range>[+<integrity>]` version constraint; an entry without one names no range. */
 	readonly version?: string | undefined;
 }
 
@@ -270,8 +272,7 @@ export class PackageManagerRange extends Schema.Class<PackageManagerRange>("Pack
 	 * @remarks
 	 * The entry's `name` is the package-manager name and its `version` is the
 	 * same `<range>[+<integrity>]` tail the `packageManager` field carries after
-	 * its `@` — `^12.6.0`, `12.6.0`, or `12.6.0+sha512.<hex>` as
-	 * `pnpm self-update` historically wrote it. Both are validated exactly as
+	 * its `@` — `^12.6.0`, `12.6.0`, or `12.6.0+sha512.<hex>`. Both are validated exactly as
 	 * {@link PackageManagerRange.parseResult} validates them. The `version`
 	 * slot is optional on a {@link DevEngine}, but an entry without one names
 	 * no range, so it fails with `reason: "range"`; `onFail` is ignored. The

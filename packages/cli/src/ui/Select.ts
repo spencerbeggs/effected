@@ -54,7 +54,10 @@ export type SelectAction = ViewportMove | "submit" | "cancel";
  * @public
  */
 export interface SelectInitOptions {
-	/** The choice to start on; the first enabled one at or after it. 0 by default. */
+	/**
+	 * The choice to start on: the first enabled one at or after it, or the nearest enabled one before it when none
+	 * follows. 0 by default.
+	 */
 	readonly initial?: number;
 	/** How many rows the list shows at most; the terminal height also limits it. 10 by default. */
 	readonly height?: number;
@@ -169,13 +172,33 @@ const RESERVED = 3;
  * @remarks
  * A select with no enabled choice is a programming error: `init` throws, and `screen` dies, saying so.
  *
+ * @example
+ * ```ts
+ * import { CliUi, Select } from "@effected/cli/ui"
+ * import { Effect } from "effect"
+ *
+ * const pickTarget = Effect.gen(function* () {
+ * 	const target = yield* CliUi.run(
+ * 		Select.screen({
+ * 			message: "Deploy to which environment?",
+ * 			choices: [
+ * 				{ label: "staging", value: "staging" },
+ * 				{ label: "production", value: "production", detail: "Needs approval" },
+ * 			],
+ * 		}),
+ * 	)
+ * 	return target
+ * })
+ * ```
+ *
  * @public
  */
 export class Select {
 	private constructor() {}
 
 	/**
-	 * A select over `choices`, on the first enabled choice at or after `initial`.
+	 * A select over `choices`, on the first enabled choice at or after `initial` (the nearest enabled one before it
+	 * when none follows).
 	 *
 	 * @param choices - the choices
 	 * @param options - the starting choice and the list height

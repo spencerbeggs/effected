@@ -22,12 +22,13 @@ import { GLOBSTAR, Minimatch, escape as engineEscape, unescape as engineUnescape
  * @public
  */
 export class GlobPatternError extends Schema.TaggedError<GlobPatternError>()("GlobPatternError", {
+	/** The pattern source that was rejected. */
 	pattern: Schema.String,
-	// Schema.Literals, not Schema.Literal: Schema.Literal takes ONE argument —
-	// called with several, it silently keeps only the first and rejects every
-	// other value.
+	/** Which guard tripped: pattern length, brace-expansion budget, or nesting depth. */
 	reason: Schema.Literals(["PatternTooLong", "ExpansionBudgetExceeded", "NestingDepthExceeded"]),
+	/** The cap the pattern exceeded. */
 	limit: Schema.Number,
+	/** The measured value that exceeded `limit`. */
 	actual: Schema.Number,
 }) {
 	override get message(): string {
@@ -37,7 +38,8 @@ export class GlobPatternError extends Schema.TaggedError<GlobPatternError>()("Gl
 }
 
 /**
- * The full minimatch options surface, schema-validated. Invalid options are a
+ * Matching options for a glob pattern: the full minimatch options surface,
+ * schema-validated. Invalid options are a
  * developer wiring error and throw at `make` — a defect at construction; the
  * typed channel stays reserved for malformed patterns.
  *
@@ -49,24 +51,41 @@ export class GlobPatternError extends Schema.TaggedError<GlobPatternError>()("Gl
  * @public
  */
 export class GlobPatternOptions extends Schema.Class<GlobPatternOptions>("GlobPatternOptions")({
+	/** Do not expand `{x,y}` style braces. */
 	nobrace: Schema.optionalKey(Schema.Boolean),
+	/** Do not treat a pattern starting with `#` as a comment. */
 	nocomment: Schema.optionalKey(Schema.Boolean),
+	/** Do not treat a pattern starting with `!` as a negation. */
 	nonegate: Schema.optionalKey(Schema.Boolean),
+	/** Treat `**` the same as `*`. */
 	noglobstar: Schema.optionalKey(Schema.Boolean),
+	/** Do not expand extglobs like `+(a|b)`. */
 	noext: Schema.optionalKey(Schema.Boolean),
+	/** Allow matches that start with `.` even if the pattern does not. */
 	dot: Schema.optionalKey(Schema.Boolean),
+	/** Match case-insensitively. */
 	nocase: Schema.optionalKey(Schema.Boolean),
+	/** Ignore case only in wildcard portions of the pattern. */
 	nocaseMagicOnly: Schema.optionalKey(Schema.Boolean),
+	/** Consider braces to be "magic" for the purpose of `hasMagic`. */
 	magicalBraces: Schema.optionalKey(Schema.Boolean),
+	/** Match a pattern without slashes against the basename of a path that contains slashes. */
 	matchBase: Schema.optionalKey(Schema.Boolean),
+	/** Invert the results of negated matches. */
 	flipNegate: Schema.optionalKey(Schema.Boolean),
+	/** Compare a partial path to the pattern: a path is a match as long as the parts present are not contradicted by the pattern. */
 	partial: Schema.optionalKey(Schema.Boolean),
+	/** Do not collapse multiple `/` into a single `/`. */
 	preserveMultipleSlashes: Schema.optionalKey(Schema.Boolean),
+	/** Treat `\\` as a path separator, not an escape character. */
 	windowsPathsNoEscape: Schema.optionalKey(Schema.Boolean),
+	/** For a pattern starting with a UNC path or drive letter in `nocase` mode, keep the root portions as strings instead of case-insensitive regular expressions. */
 	windowsNoMagicRoot: Schema.optionalKey(Schema.Boolean),
+	/** The level of pre-parse pattern optimization: `0`, `1` or `2`. */
 	optimizationLevel: Schema.optionalKey(
 		Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 0, maximum: 2 })),
 	),
+	/** The operating system the pattern is interpreted for. Defaults to `"posix"`; only `"win32"` changes behavior, and it is never read from the ambient process. */
 	platform: Schema.optionalKey(
 		Schema.Literals([
 			"posix",
@@ -83,10 +102,13 @@ export class GlobPatternOptions extends Schema.Class<GlobPatternOptions>("GlobPa
 			"netbsd",
 		]),
 	),
+	/** Maximum number of `{...}` expansions, from `1` to `100000` (the default and ceiling). */
 	braceExpandMax: Schema.optionalKey(
 		Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: EXPANSION_MAX })),
 	),
+	/** Maximum number of non-adjacent `**` segments the matcher recursively walks down. */
 	maxGlobstarRecursion: Schema.optionalKey(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
+	/** Maximum depth to traverse for nested extglobs like `*(a|b|c)`. */
 	maxExtglobRecursion: Schema.optionalKey(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
 }) {}
 
@@ -131,10 +153,14 @@ const compilesUnderDefaults = (source: string): true | string => {
 };
 
 /**
- * A compiled glob pattern: the schema IS the domain class. One encoded field,
- * `source`; the compiled matcher lives in a private field the schema never
- * encodes, built lazily for `make`/decode-constructed instances and pre-warmed
- * by {@link GlobPattern.compile}.
+ * A compiled glob pattern with a total `matches(candidate)` predicate, plus the
+ * metadata a directory walker needs.
+ *
+ * @remarks
+ * The schema IS the domain class. One encoded field, `source`; the compiled
+ * matcher lives in a private field the schema never encodes, built lazily for
+ * `make`/decode-constructed instances and pre-warmed by
+ * {@link GlobPattern.compile}.
  *
  * A GlobPattern value is ALWAYS a pattern that compiles under default options
  * — the schema check enforces it on every construction path. Options refine
@@ -183,6 +209,17 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * `Effect.runSync(Effect.result(...))` escape hatch: pair it with
 	 * `Result.isSuccess` and read `.success` directly. Effect call sites should
 	 * prefer {@link GlobPattern.compile}, which carries the tracing span.
+	 *
+	 * @example
+	 * ```ts
+	 * import { GlobPattern } from "@effected/glob";
+	 * import { Result } from "effect";
+	 *
+	 * const compiled = GlobPattern.compileResult("src/*.ts");
+	 * if (Result.isSuccess(compiled)) {
+	 * 	compiled.success.matches("src/index.ts"); // => true
+	 * }
+	 * ```
 	 */
 	static compileResult(source: string, options?: GlobPatternOptions): Result.Result<GlobPattern, GlobPatternError> {
 		const engineOptions = toEngineOptions(options);
@@ -241,9 +278,8 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	/**
 	 * The longest literal directory prefix: the common run of leading literal
 	 * segments across every brace alternative, joined and slash-terminated;
-	 * `""` when the first segment carries magic. New API with no upstream
-	 * analogue, designed for the workspaces enumerator; well-defined for
-	 * default-options patterns.
+	 * `""` when the first segment carries magic. Designed for directory
+	 * enumerators; well-defined for default-options patterns.
 	 *
 	 * @remarks
 	 * Meaningful for **non-negated** patterns only. For a negated pattern
@@ -283,7 +319,7 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * {@link GlobPattern.enumerationPrefix}: true iff any alternative contains
 	 * a globstar, or a magic segment followed by more segments. The enumerator
 	 * uses this to decide between a single-level read and a bounded recursive
-	 * descent (the issue-#62 fix, end to end).
+	 * descent.
 	 *
 	 * @remarks
 	 * Like {@link GlobPattern.enumerationPrefix}, this reads the inner pattern

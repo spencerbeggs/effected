@@ -72,11 +72,9 @@ const SILENT_LOG = {
  * distinction an app JWT and an installation token need, so the App path
  * requires no separate auth strategy.
  *
- * `log` is silenced. The package this replaces installed
- * `plugin-request-log` and then rerouted every line of it into an Actions
- * `::debug::` workflow command, which is how GitHub Actions knowledge ended up
- * inside a GitHub API client. Here retries log through `Effect.logDebug`, and an
- * application maps Effect's logs to whatever its runtime wants.
+ * `log` is silenced. Retries log through `Effect.logDebug`, and an application
+ * maps Effect's logs to whatever its runtime wants, so no GitHub Actions
+ * knowledge lives in this client.
  */
 const makeOctokit = (options: TransportOptions): Octokit =>
 	new Octokit({
@@ -93,12 +91,8 @@ const makeOctokit = (options: TransportOptions): Octokit =>
  * Build a transport over a freshly constructed octokit instance.
  *
  * @remarks
- * The rate-limit cell lives here, in the closure of the layer that writes it.
- * The package this replaces made it an optional shared `Ref` **service** that
- * the writer and the reader both resolved through `Effect.serviceOption`, so an
- * application that forgot to provide it got two private cells, a limiter that
- * never saw the client's headers, and no error, warning or type signal saying
- * so.
+ * The rate-limit cell lives here, in the closure of the layer that writes it,
+ * so the writer and the reader can never see different cells.
  */
 export const makeTransport = (options: TransportOptions): Effect.Effect<Transport> =>
 	Effect.gen(function* () {

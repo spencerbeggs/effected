@@ -1,4 +1,4 @@
-// document-end (#129): the `...` marker at the tail of the stream —
+// document-end: the `...` marker at the tail of the stream —
 // required (`present: true`, the default when the rule is enabled) or
 // forbidden (`present: false`). Tail-of-stream scope only, mirroring
 // document-start's head-of-stream scope: mid-stream `...` markers are
@@ -92,7 +92,7 @@ export const documentEnd: YamlRule = {
 		}
 		return [];
 	},
-	// Inference (#345): a non-empty stream votes `present` — tailed by `...`
+	// Inference: a non-empty stream votes `present` — tailed by `...`
 	// or not; absence votes `false` (mirroring document-start).
 	infer: (ctx) => {
 		if (ctx.text.trim() === "") return [];

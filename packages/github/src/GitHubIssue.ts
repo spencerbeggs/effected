@@ -41,10 +41,8 @@ export class LinkedIssue extends Schema.Class<LinkedIssue>("LinkedIssue")({
 	 * branch or commit messages.
 	 *
 	 * @remarks
-	 * This is the field the whole document exists for. The version this replaces
-	 * could not express `userLinkedOnly`, so one consumer re-declared the query
-	 * with the field aliased twice to get it — the single largest duplicated
-	 * document in the survey.
+	 * Resolved by querying the pull request's closing references twice, once with
+	 * `userLinkedOnly`, and marking the issues present in the second result.
 	 */
 	userLinked: Schema.Boolean,
 }) {}
@@ -133,19 +131,28 @@ const CrossReferencedDocument = GraphQLDocument.make({
 })<{ readonly owner: string; readonly repo: string; readonly issueNumber: number }>();
 
 /**
- * Issues.
+ * Read, list, close and comment on issues, and resolve the issues a pull
+ * request closes.
  *
  * @public
  */
 export interface GitHubIssueShape {
+	/** Read one issue. Fails `notFound` when it does not exist. */
 	readonly get: (number: number) => Effect.Effect<IssueInfo, GitHubError, Repo>;
+	/**
+	 * List issues, paginated. `state` is omitted from the request when unset, so GitHub's default applies.
+	 *
+	 * @remarks
+	 * GitHub's issues endpoint also returns pull requests; this does not filter them out.
+	 */
 	readonly list: (options?: {
 		readonly state?: "open" | "closed" | "all" | undefined;
 		readonly labels?: ReadonlyArray<string> | undefined;
 		readonly page?: PageOptions | undefined;
 	}) => Effect.Effect<ReadonlyArray<IssueInfo>, GitHubError, Repo>;
+	/** Close an issue. `reason` is sent as `state_reason` when given; unset, GitHub chooses. */
 	readonly close: (number: number, reason?: "completed" | "not_planned") => Effect.Effect<void, GitHubError, Repo>;
-	/** Post a comment. */
+	/** Post a comment and return its id. */
 	readonly comment: (number: number, body: string) => Effect.Effect<number, GitHubError, Repo>;
 	/**
 	 * Post a marked comment once: create it, or skip if it already exists.
@@ -179,10 +186,10 @@ export interface GitHubIssueShape {
 	 * Has `prNumber` already been cross-referenced on this issue?
 	 *
 	 * @remarks
-	 * The idempotence guard one consumer wrote a bespoke timeline query for,
-	 * so that re-running a workflow does not comment twice.
+	 * An idempotence guard over the issue's timeline, so that re-running a
+	 * workflow does not comment twice.
 	 *
-	 * Two hazards before building on it (effected#306):
+	 * Two hazards before building on it:
 	 *
 	 * - **An issue obtained from `linkedIssues(pr)` answers `true` from the
 	 *   outset** — the closing link itself puts a cross-reference on the
@@ -202,11 +209,30 @@ export interface GitHubIssueShape {
 }
 
 /**
- * Issues.
+ * Read, list, close and comment on issues, and resolve the issues a pull
+ * request closes.
+ *
+ * @remarks
+ * Provide it with {@link GitHubIssue.layer}, which needs a `GitHubClient`; each
+ * method also needs a `Repo` in `R`.
+ *
+ * @example
+ * ```ts
+ * import { GitHubIssue } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const closeWontFix = (number: number) =>
+ *   Effect.gen(function* () {
+ *     const issues = yield* GitHubIssue;
+ *     yield* issues.comment(number, "Closing as not planned.");
+ *     yield* issues.close(number, "not_planned");
+ *   });
+ * ```
  *
  * @public
  */
 export class GitHubIssue extends Context.Service<GitHubIssue, GitHubIssueShape>()("@effected/github/GitHubIssue") {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<GitHubIssue, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),
@@ -245,15 +271,14 @@ const unstubbed = (member: string): never => {
  * silence it, because the fetch wrapper resolves `request.log ?? console`.
  * `PATCH /repos/{owner}/{repo}/issues/{issue_number}` is on that list (the
  * singular `assignee` parameter was removed), so every `close` warned once per
- * issue in consumer workflow logs (effected#189).
+ * issue in consumer workflow logs.
  *
  * Nothing this module sends or reads changed in 2026-03-10: `state` and
  * `state_reason` are untouched, and the projections read only fields both
  * versions carry. Pinning the current version is therefore the whole fix, and
  * it deliberately does **not** hide future deprecations — when GitHub
  * deprecates 2026-03-10 in turn, the header comes back and octokit warns
- * again. Verified live 2026-08-14: the pinned request answers with no
- * `Deprecation`/`Sunset` headers.
+ * again.
  */
 const API_VERSION_HEADERS = { "x-github-api-version": "2026-03-10" } as const;
 

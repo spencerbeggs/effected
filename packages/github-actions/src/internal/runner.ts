@@ -1,16 +1,11 @@
-/**
- * What the runner host is — the two facts several services resolve once at
- * construction, spelled once.
- *
- * @remarks
- * Both read the environment **shape**, not the service, so a layer resolves
- * `ActionEnvironment` once and every member's `R` stays `never`. Both are
- * optional reads: off a runner the variables are absent, and the answer is
- * the host default rather than a failure, so merely composing a layer outside
- * Actions never fails.
- *
- * @internal
- */
+// What the runner host is — the two facts several services resolve once at
+// construction, spelled once.
+//
+// Both read the environment **shape**, not the service, so a layer resolves
+// `ActionEnvironment` once and every member's `R` stays `never`. Both are
+// optional reads: off a runner the variables are absent, and the answer is
+// the host default rather than a failure, so merely composing a layer outside
+// Actions never fails.
 
 import type { Path } from "effect";
 import { Effect, Option } from "effect";

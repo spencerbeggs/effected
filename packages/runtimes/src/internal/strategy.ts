@@ -1,19 +1,13 @@
-/**
- * The three cache strategies, parameterized once.
- *
- * v3 shipped nine layer files for this: {auto, fresh, offline} × {node, bun,
- * deno}, where the Bun and Deno "fresh" layers differed by a repository name.
- * The strategy is a property of *how the index is populated*, not of which
- * runtime it holds, so it is one function per strategy taking a loader.
- *
- * Each is typed exactly, which is the point: `offline` requires nothing and
- * cannot fail, `auto` requires the feed but still cannot fail, and only `fresh`
- * carries a `FreshnessError`. A single function switching on a kind would union
- * all three channels together and force every layer to advertise failures it
- * cannot have.
- *
- * @internal
- */
+// The three cache strategies, parameterized once.
+//
+// The strategy is a property of *how the index is populated*, not of which
+// runtime it holds, so it is one function per strategy taking a loader.
+//
+// Each is typed exactly, which is the point: `offline` requires nothing and
+// cannot fail, `auto` requires the feed but still cannot fail, and only `fresh`
+// carries a `FreshnessError`. A single function switching on a kind would union
+// all three channels together and force every layer to advertise failures it
+// cannot have.
 
 import { Effect } from "effect";
 import type { Runtime } from "../ResolvedVersions.js";
@@ -51,8 +45,7 @@ export const populateFresh = <R extends Versioned, E, RIn>(
  * Try the live feed; fall back to the bundled snapshot.
  *
  * The fallback is **visible**: provenance becomes `"cache"` and a warning is
- * logged. v3 fell back silently and then reported the result as `source: "api"`,
- * so a caller had no way to tell a live answer from a stale one served after a
+ * logged, so a caller can tell a live answer from a stale one served after a
  * network failure.
  */
 export const populateAuto = <R extends Versioned, E, RIn>(

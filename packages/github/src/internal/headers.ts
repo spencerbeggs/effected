@@ -1,13 +1,8 @@
-/**
- * Reading GitHub's response headers.
- *
- * @remarks
- * octokit hands headers back as a plain object whose values may be `string`,
- * `number` or absent depending on the fetch implementation, so every read here
- * is defensive about both. Header names are already lowercased by octokit.
- *
- * @internal
- */
+// Reading GitHub's response headers.
+//
+// octokit hands headers back as a plain object whose values may be `string`,
+// `number` or absent depending on the fetch implementation, so every read here
+// is defensive about both. Header names are already lowercased by octokit.
 
 /** A header's value as a string, when it is present and non-empty. */
 export const headerString = (

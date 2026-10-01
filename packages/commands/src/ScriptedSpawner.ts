@@ -97,8 +97,7 @@ const spawnError = (tag: "NotFound" | "PermissionDenied", command: string, code:
  * import { Effect } from "effect";
  * import { ChildProcess } from "effect/process";
  *
- * // Replaces the per-suite hand-roll of ChildProcessSpawner.make +
- * // makeHandle's eleven fields with one call:
+ * // One call scripts the whole spawner contract:
  * const spawner = ScriptedSpawner.make((command, args) =>
  *   command === "git" ? { stdout: "abc123\n" } : ScriptedSpawner.notFound(command),
  * );

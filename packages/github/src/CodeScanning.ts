@@ -50,8 +50,8 @@ export interface CodeScanningShape {
 	 * the repository's workflows afterwards. A caller that treats "default setup
 	 * is off" as "no CodeQL workflow exists" will be wrong, and one that counts
 	 * workflows to decide whether a repository has any CI will count that one.
-	 * Reported by `@spencerbeggs/reposets` (dogfood round 8, 2026-08-14) from a
-	 * real organization, not inferred from the API description.
+	 * Observed against a real organization, not inferred from the API
+	 * description.
 	 */
 	readonly configure: (setup: CodeScanningSetup) => Effect.Effect<void, GitHubError, Repo>;
 	/**
@@ -67,12 +67,19 @@ export interface CodeScanningShape {
 }
 
 /**
- * CodeQL default setup.
+ * Configure CodeQL default setup and read the languages GitHub detects in a
+ * repository.
+ *
+ * @remarks
+ * Provide it with {@link CodeScanning.layer}, which needs a `GitHubClient`; each
+ * method also needs a `Repo` in `R`.
  *
  * @public
  */
 export class CodeScanning extends Context.Service<CodeScanning, CodeScanningShape>()("@effected/github/CodeScanning") {
 	/**
+	 * The live service, built over a `GitHubClient`.
+	 *
 	 * @remarks
 	 * The callback is written `(client) => make(client)` rather than passed as
 	 * `make` directly, and that is load-bearing: a static initializer runs while

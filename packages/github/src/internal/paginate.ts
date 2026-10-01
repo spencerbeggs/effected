@@ -27,10 +27,7 @@ export interface PageSource<A> {
  * **This is the only pagination implementation in the package**, and it is why
  * the fixture double cannot drift from the live client: both build a
  * `PageSource` and hand it here, so `maxPages` and item flattening have exactly
- * one behavior. The package this replaces had a live loop that honored
- * `maxPages` and a test double whose equivalent parameters were named
- * `_options` and ignored — which made every truncation path structurally
- * untestable.
+ * one behavior.
  *
  * `maxPages` bounds **requests, not items**: the walk stops issuing them rather
  * than fetching everything and slicing.

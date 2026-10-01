@@ -25,8 +25,7 @@ export type AppDirKind = typeof AppDirKind.Type;
  * layer construction, from an environment that is already resolved — so this
  * error means exactly one thing: the `mkdir -p` did not work. `directory` says
  * which kind, `path` says where, and `cause` carries the underlying
- * `PlatformError` structurally. v3 carried `reason: String(e)` and a `directory`
- * that could also be the string `"all"`.
+ * `PlatformError` structurally.
  *
  * @public
  */
@@ -72,8 +71,8 @@ export class ResolvedAppDirs extends Schema.Class<ResolvedAppDirs>("ResolvedAppD
 	 *
 	 * @remarks
 	 * The app's own config directory, then each `$XDG_CONFIG_DIRS` entry
-	 * namespaced. This is the half of the XDG spec v3 ignored entirely, and it is
-	 * what makes {@link XdgConfig.resolver} a real search rather than a single stat.
+	 * namespaced. It is what makes {@link XdgConfig.resolver} a real search
+	 * rather than a single stat.
 	 */
 	configSearchPath: Schema.Array(Schema.String),
 	/** Where to look for data files, in priority order. */
@@ -102,9 +101,9 @@ export interface AppDirOverrides {
  * Options for {@link AppDirs.layer}.
  *
  * @remarks
- * Plain optional fields, not `Option`s: v3 made callers write
- * `fallbackDir: Option.some(".myapp"), dirs: Option.none()`. `Option` is an
- * internal representation, not an input format.
+ * Plain optional fields, not `Option`s: `Option` is an internal
+ * representation, not an input format, so write `fallbackDir: ".myapp"` and
+ * omit `dirs` when unused.
  *
  * @public
  */
@@ -184,9 +183,8 @@ export interface AppDirsShape {
  * 5. `$HOME/.<namespace>`.
  *
  * Rungs 4 and 5 are deliberately **not** the XDG spec's per-kind defaults
- * (`~/.config`, `~/.local/share`, …). This is inherited v3 behaviour and is kept:
- * a CLI wanting spec defaults passes them as `dirs` overrides. The deviation is
- * documented rather than left for a reader to discover.
+ * (`~/.config`, `~/.local/share`, …): a CLI wanting spec defaults passes them as
+ * `dirs` overrides.
  */
 const resolveDir = (input: {
 	readonly override: string | undefined;
@@ -276,8 +274,18 @@ const badNamespace = (namespace: string): Error | undefined => {
  *
  * @example
  * ```ts
- * const AppDirsLayer = AppDirs.layer({ namespace: "myapp", native: true });
- * const XdgLayer = Layer.mergeAll(Xdg.layer, AppDirsLayer.pipe(Layer.provide(Xdg.layer)));
+ * import { AppDirs, Xdg } from "@effected/xdg";
+ * import { Effect, Layer } from "effect";
+ *
+ * // Bound once to a const, with the ambient `Xdg` environment provided and kept.
+ * const AppDirsLive = Layer.provideMerge(AppDirs.layer({ namespace: "myapp", native: true }), Xdg.layer);
+ *
+ * const program = Effect.gen(function* () {
+ * 	const appDirs = yield* AppDirs;
+ * 	const configDir = yield* appDirs.ensureConfig;
+ * 	console.log(configDir);
+ * });
+ * // Requires `FileSystem` and `Path` from the platform layer.
  * ```
  *
  * @public
@@ -290,8 +298,7 @@ export class AppDirs extends Context.Service<AppDirs, AppDirsShape>()("@effected
 	 * @remarks
 	 * The error channel is `never`. The one failure that could happen during
 	 * resolution — an unset `HOME` — surfaces on {@link Xdg.layer} as an
-	 * `XdgEnvError`, before an `AppDirs` exists at all. v3 laundered it into an
-	 * `AppDirsError({ directory: "all" })`.
+	 * `XdgEnvError`, before an `AppDirs` exists at all.
 	 */
 	static layer(options: AppDirsOptions): Layer.Layer<AppDirs, never, Xdg | FileSystem.FileSystem | Path.Path> {
 		return Layer.effect(

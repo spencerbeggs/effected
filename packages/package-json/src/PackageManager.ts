@@ -52,9 +52,8 @@ const invalid = (input: string, message: string) => Effect.fail(new SchemaIssue.
  * - Corepack 0.34.0 (`specUtils.ts`, `parseSpec`) recognises **three** names —
  *   `npm`, `pnpm`, `yarn` — and throws an "unsupported package manager
  *   specification" usage error for any other. Adopting that set here would reject
- *   `bun@1.2.20`, which is real: six published packages in this repo's own
- *   `node_modules` carry exactly that value, and a manifest model that cannot
- *   read them is useless for the job it has.
+ *   `bun@1.2.20`, which real published manifests carry, and a manifest model
+ *   that cannot read them is useless for the job it has.
  * - Corepack does not treat the set as closed either. `parseSpec` skips the
  *   name check entirely when the spec is a URL, so a custom name is reachable
  *   in corepack's own grammar (behind `COREPACK_ENABLE_UNSAFE_CUSTOM_URLS`).
@@ -66,6 +65,17 @@ const invalid = (input: string, message: string) => Effect.fail(new SchemaIssue.
  * provisioning vocabulary. A name outside the pin's four is representable here
  * and simply will not be installable through the pin — which is the honest
  * relationship between a document model and a provisioning contract.
+ *
+ * @example
+ * ```ts
+ * import { PackageManager } from "@effected/package-json";
+ * import { Schema } from "effect";
+ *
+ * const pm = Schema.decodeUnknownSync(PackageManager.FromString)("pnpm@10.33.0+sha512.abc");
+ * pm.name; // => "pnpm"
+ * pm.version; // => "10.33.0"
+ * pm.hasIntegrity; // => true
+ * ```
  *
  * @public
  */
@@ -79,8 +89,7 @@ export class PackageManager extends Schema.Class<PackageManager>("PackageManager
 	 * allowed (`10.0.0-rc.1`); ranges, partial versions, dist-tags,
 	 * leading-zero components and padded values are not, and a version
 	 * carrying build metadata is rejected at construction because the grammar
-	 * cannot express it. The shared schema is consumed by identity, not
-	 * copied — the suite asserts `fields.version === SemVer.PinnableVersionString`.
+	 * cannot express it.
 	 */
 	version: SemVer.PinnableVersionString,
 	/**

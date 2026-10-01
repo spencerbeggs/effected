@@ -3,7 +3,8 @@ import { Effect, Layer } from "effect";
 import { OidcTokenIssuer } from "./OidcTokenIssuer.js";
 
 /**
- * The Actions side of `@effected/sbom`'s inverted OIDC contract.
+ * Serves `@effected/sbom`'s `IdentityToken` contract from the runner's own OIDC
+ * token service, so signing an SBOM inside a workflow needs no further wiring.
  *
  * @remarks
  * `@effected/sbom` declares `IdentityToken` — one method, one audience,

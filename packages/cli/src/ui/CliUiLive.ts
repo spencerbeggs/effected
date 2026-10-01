@@ -75,8 +75,9 @@ export interface LiveOptions<E, S> {
 	readonly isStart: (event: E) => boolean;
 	/**
 	 * Whether an event begins a run while none is going, given the state before and after it is folded; `isStart` by
-	 * default, so only a start begins one. Pass it to begin on something else as well, such as a stream that a program
-	 * joins mid-run: `(event, before, after) => isStart(event) || (before.phase === "idle" && after.phase !== "idle")`.
+	 * default, so only a start begins one. Given, it replaces that default rather than adding to it, so keep `isStart`
+	 * in it to begin on a start as well as on something else, such as a stream that a program joins mid-run:
+	 * `(event, before, after) => isStart(event) || (before.phase === "idle" && after.phase !== "idle")`.
 	 * An event that begins nothing while no run is going is folded and not drawn. A start while a run is going redraws
 	 * that run in place, and this is not asked then; a start while a degraded run is going ends that run and begins a
 	 * fresh one.
@@ -149,9 +150,9 @@ export interface LiveHandle<S> {
 	 *
 	 * Idempotent: a second `close`, concurrent or later, waits for the same end and writes nothing more. After the events
 	 * have ended it only waits for `done`. It dies as `done` does (a `reduce` that threw, a stream that died). Closing
-	 * the caller's scope instead stops the view at once (nothing still queued is folded); after `close` it releases what
-	 * is left, and a `close` after it completes, there being nothing left to end, where `done` is interrupted. A host
-	 * ends its view with:
+	 * the caller's scope instead of calling `close` stops the view at once (nothing still queued is folded); closing it
+	 * after `close` releases what is left. A `close` after the scope has closed completes at once, there being nothing
+	 * left to end, where `done` is interrupted. A host ends its view with:
 	 *
 	 * ```ts
 	 * handle.close.pipe(Effect.ensuring(Scope.close(scope, Exit.void)))
@@ -162,8 +163,7 @@ export interface LiveHandle<S> {
 
 /**
  * The live tree's height clamp: at most the terminal's rows less one, re-read on every render and when the terminal
- * resizes, so a tall frame never takes Ink's clear-terminal path, which wipes the scrollback
- * (`okf/decisions/live-height-clamp-not-width.md`). No width: Ink sizes the root itself.
+ * resizes, so a tall frame never takes Ink's clear-terminal path, which wipes the scrollback. No width: Ink sizes the root itself.
  */
 const heightClamp: () => FunctionComponent<{ readonly children?: ReactNode }> = fromReact(() => {
 	const HeightClamp = (props: { readonly children?: ReactNode }): ReactElement => {
@@ -427,7 +427,7 @@ export const live = <E, S>(
 								await exited.catch(() => undefined);
 							}),
 					);
-					// The tick, in the run's scope: interrupted with the run, so no timer outlives it (`okf/decisions/live-tick-is-a-scoped-schedule.md`).
+					// The tick, in the run's scope: interrupted with the run, so no timer outlives it.
 					yield* Effect.forkIn(
 						// The frame index is read when the tick fires, so a frame is never skipped while the controller is busy.
 						Effect.repeat(

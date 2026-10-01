@@ -1,4 +1,4 @@
-// The public positioned token stream (#129): promotes the internal lexer
+// The public positioned token stream: promotes the internal lexer
 // token to public surface for lint- and LSP-class consumers. The internal
 // token spells two fields differently (`value`, `column`); promotion
 // reconciles them to the positioned-diagnostic vocabulary the public surface
@@ -112,7 +112,9 @@ const promoteAll = (text: string, tokens: ReadonlyArray<InternalToken>): Readonl
 };
 
 /**
- * Tokenizer statics. Not instantiable.
+ * Tokenizes YAML text into positioned tokens, as a complete array or a lazy
+ * `Stream`, for lint- and editor-class consumers. Never fails on malformed
+ * input: lexical errors arrive as `"error"`-kind tokens. Not instantiable.
  *
  * @public
  */
@@ -122,12 +124,11 @@ export class YamlTokens {
 	/**
 	 * Tokenize YAML text into the full positioned token array — the sync
 	 * `Result` primitive (tokenizing is a pure batch transform; the
-	 * {@link YamlTokens.stream} form is derived from this one, per the kit's
-	 * sync-primitive policy).
+	 * {@link YamlTokens.stream} form is derived from this one).
 	 *
 	 * @remarks
-	 * The failure channel is **reserved** (for future input-hardening guards)
-	 * and never fires today: the lexer is total, and lexical errors surface as
+	 * The failure channel is **reserved** for input-hardening guards and never
+	 * fires today: the lexer is total, and lexical errors surface as
 	 * `"error"`-kind tokens **in the success array** so that linting can run
 	 * on malformed input — the `parse-validity` lint rule exists precisely for
 	 * documents that do not parse. Do not "fix" this method to fail on
@@ -143,6 +144,9 @@ export class YamlTokens {
 	 *   result.success.map((t) => t.kind); // ["scalar", "block-map-start", ...]
 	 * }
 	 * ```
+	 *
+	 * @param text - The YAML source to tokenize.
+	 * @returns A `Result` succeeding with every token in source order.
 	 */
 	static tokenize(text: string): Result.Result<ReadonlyArray<YamlToken>, YamlParseError> {
 		return Result.succeed(promoteAll(text, lexAll(text)));

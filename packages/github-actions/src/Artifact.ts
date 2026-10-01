@@ -81,6 +81,7 @@ export class ArtifactError extends Schema.TaggedError<ArtifactError>()("Artifact
 export interface ArtifactItem {
 	/** The database id, which is what `download` takes. */
 	readonly id: number;
+	/** The name the artifact was uploaded under. */
 	readonly name: string;
 	/** The size of the stored zip, in bytes. */
 	readonly size: number;
@@ -121,6 +122,7 @@ export interface UploadOptions {
  * @public
  */
 export interface UploadResult {
+	/** The new artifact's database id, which `download` takes. */
 	readonly id: number;
 	/** The size of the uploaded zip, in bytes. */
 	readonly size: number;
@@ -147,16 +149,18 @@ export interface DownloadResult {
 }
 
 /**
- * A reference to an artifact that is no longer there.
+ * The id of an artifact that `delete` removed.
  *
  * @public
  */
 export interface ArtifactRef {
+	/** The deleted artifact's database id. */
 	readonly id: number;
 }
 
 /**
- * The {@link Artifact} service shape.
+ * The members of the {@link Artifact} service: upload, list, get, download and
+ * delete, each failing with {@link ArtifactError}.
  *
  * @public
  */
@@ -566,14 +570,10 @@ const dies = unstubbed("Artifact.makeTest");
  * third thing that can be absent, and it is reported as `misconfigured` for the
  * same reason.
  *
- * **This surface is provisional.** Unlike every other service here it was
- * ported without a call site to shape it against, so it keeps the source's
- * shape rather than a narrower one invented from nothing. The first consumer to
- * adopt it is the one whose feedback reshapes it — the members lost their
- * `Artifact` prefix (`artifact.uploadArtifact(...)` stutters) and the
- * cross-run `findBy` lookup is **not** ported, because every path through it in
- * the source is a typed "not implemented" failure. Adding it later is additive;
- * shipping a parameter that has never had behavior is not.
+ * **This surface is provisional.** It has not yet been shaped by a real call
+ * site, so it may be reworked once a consumer adopts it. It covers the current
+ * run only: there is no cross-run lookup, and adding one later would be
+ * additive.
  *
  * @example
  * ```ts

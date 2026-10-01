@@ -1,10 +1,6 @@
-// The `packages:` enumerator — the fix for workspaces issue #62.
-//
-// v3's glob-core silently rewrote a trailing `/**` to `/*`, so `packages/**`
-// matched exactly one level and a nested package went undiscovered with no
-// diagnostic. Here `@effected/glob` classifies the pattern set and tells us,
-// per wildcard, whether it can cross a segment boundary; when it can, we owe a
-// real descent.
+// The `packages:` enumerator. `@effected/glob` classifies the pattern set and
+// tells us, per wildcard, whether it can cross a segment boundary; when it can,
+// a trailing `/**` earns a real descent rather than a one-level read.
 //
 // The descent is a WORKLIST, not a recursion: it cannot overflow the stack, so
 // there is no cap to get wrong. It is bounded by depth, by a visited-directory
@@ -110,8 +106,8 @@ export const enumerate = (
 
 			const exists = yield* isDirectory(absoluteBase);
 			if (!exists) {
-				// v3 failed here too, and it is the behaviour that catches a typo in
-				// `packages:` instead of silently discovering nothing.
+				// Failing here is what catches a typo in `packages:` instead of
+				// silently discovering nothing.
 				return yield* Effect.fail<EnumerationFailure>({
 					kind: "missingBaseDir",
 					pattern: wildcard.source,
@@ -171,7 +167,7 @@ export const enumerate = (
 					}
 
 					// Only a segment-crossing pattern earns a descent. `packages/*`
-					// reads one level, exactly as v3 did — correctly, for that pattern.
+					// reads one level, correctly for that pattern.
 					if (!wildcard.crossesSegments) continue;
 
 					traversal.push(frame, relative, absolute);

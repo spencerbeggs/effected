@@ -1,8 +1,4 @@
-/**
- * The Node.js release schedule and the lifecycle phases derived from it.
- *
- * @packageDocumentation
- */
+// The Node.js release schedule and the lifecycle phases derived from it.
 
 import { DateTime, Effect, Option, Order, Schema } from "effect";
 
@@ -152,11 +148,9 @@ const SCHEDULE_KEY = /^v?(\d+)(?:\.(\d+))?$/;
 /**
  * An immutable snapshot of the Node.js release schedule.
  *
- * In v3 a `Ref<NodeSchedule>` was threaded *into every `NodeRelease`* so that
- * `release.phase()` could reach the schedule — mutable service state inside an
- * immutable domain value, which is why `NodeRelease` could not be a data class.
- * Here the schedule is a value the caller passes in: phase is a function of
- * `(release, schedule, now)`, and nothing in the model is mutable.
+ * The schedule is a value the caller passes in: phase is a function of
+ * `(release, schedule, now)`, so nothing in the model is mutable and
+ * {@link NodeRelease} stays a plain data class.
  *
  * @example
  * ```ts

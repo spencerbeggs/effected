@@ -1,6 +1,36 @@
-// The issue-reference grammar moved to @effected/github-references; these six
-// re-exports keep existing consumers working. The new closing-list dialect is
-// deliberately NOT re-exported here — new consumers take the grammar package.
+/**
+ * Typed GitHub REST and GraphQL for Effect: a route-keyed client, one error
+ * taxonomy, GitHub App auth, and one resource service per GitHub noun.
+ *
+ * @remarks
+ * `GitHubClient.request` types both the parameters and the returned `data` from
+ * the route literal. Every REST failure is a `GitHubError` whose `kind` you
+ * branch on. Resource services (`GitBranch`, `GitTag`, `CheckRun`,
+ * `PullRequest`, `GitHubRelease` and others) turn multi-call sequences into one
+ * call, and a configuration tier writes secrets, variables, rulesets,
+ * deployment environments and security settings. `GitHubApp` mints and revokes
+ * installation tokens.
+ *
+ * @example
+ * ```ts
+ * import { GitHubClient } from "@effected/github";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const client = yield* GitHubClient;
+ *   const repo = yield* client.request("GET /repos/{owner}/{repo}", { owner: "effect-ts", repo: "effect" });
+ *   return repo.default_branch;
+ * });
+ *
+ * // GITHUB_TOKEN is read through the ambient ConfigProvider.
+ * Effect.runPromise(program.pipe(Effect.provide(GitHubClient.layerFromConfig())));
+ * ```
+ *
+ * @packageDocumentation
+ */
+
+// Six issue-reference names from `@effected/github-references` are re-exported
+// here for existing consumers; the closing-list dialect is deliberately not.
 export {
 	type BareLineReference,
 	CLOSING_KEYWORDS,

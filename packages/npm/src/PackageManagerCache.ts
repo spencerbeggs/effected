@@ -3,15 +3,14 @@
 // "Where does manager X cache on platform Y by default" is a set of documented
 // facts, not policy, and it belongs low in the graph: a pure function of
 // (manager, platform, home) that a CI action, a workspace tool or a doctor
-// command can all read without a runner, a filesystem or a subprocess. The
-// legacy alternative — shelling `npm config get cache` / `pnpm store path` per
-// run — spent fifty lines of subprocess on a value that, on any freshly
-// provisioned machine, is always the default.
+// command can all read without a runner, a filesystem or a subprocess. Asking
+// the manager (`npm config get cache` / `pnpm store path`) would cost a
+// subprocess for a value that, on any freshly provisioned machine, is always
+// the default.
 //
 // Every row is verified against the manager's own authority (cited on the
-// member), not lifted from folklore: two of the three prior-art rows this
-// replaces were wrong (pnpm's macOS store is NOT the Linux XDG path, and
-// yarn Classic's cache was never `~/.yarn/cache`).
+// member), not lifted from folklore (pnpm's macOS store is NOT the Linux XDG
+// path, and yarn Classic's cache is not `~/.yarn/cache`).
 
 import { Schema } from "effect";
 
@@ -114,7 +113,7 @@ export class PackageManagerCache {
 	 * - **bun** — the global install cache (bun.com/docs, `install.cache`):
 	 *   `~/.bun/install/cache` on **every** platform — bun documents no Windows
 	 *   divergence, so the Windows answer is under the user profile, not
-	 *   `AppData` (a correction to the prior-art table this replaces).
+	 *   `AppData`.
 	 */
 	static defaultDirectory(manager: CachingPackageManager, options: DefaultCacheDirectoryOptions): string {
 		const windows = options.platform === "win32";

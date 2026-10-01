@@ -64,8 +64,7 @@ export const deriveKey = (passphrase: string, salt: Uint8Array): Effect.Effect<C
 					name: "PBKDF2",
 					// Copy into ArrayBuffer-backed Uint8Array — required by PBKDF2Params.salt
 					salt: toArrayBufferView(salt),
-					// OWASP Password Storage Cheat Sheet, PBKDF2-HMAC-SHA256. v3 shipped 100_000;
-					// nothing is published yet, so raising it costs no ciphertext compatibility.
+					// OWASP Password Storage Cheat Sheet, PBKDF2-HMAC-SHA256.
 					// Derivation is memoized per codec instance, so the cost is paid once.
 					iterations: 600_000,
 					hash: "SHA-256",

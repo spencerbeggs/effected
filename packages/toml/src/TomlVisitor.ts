@@ -15,7 +15,7 @@
 // first position a `#` can legally appear, since nothing between there and
 // the comment marker can itself contain a `#` character.
 //
-// Cycle firewall: same materialization as `Toml.parse` (Task 7) — the engine
+// Cycle firewall: same materialization as `Toml.parse` — the engine
 // throws raw carriers (`RawTomlError`, `GuardExceeded`); this module builds
 // the typed `TomlParseError`, never letting a raw carrier escape as a defect.
 
@@ -36,7 +36,9 @@ import { TomlKeyValue, TomlTrivia } from "./TomlNode.js";
  * event, then again for every `[table]` header. `ArrayTableStart` fires for
  * every `[[array]]` header with the 0-based element `index`. `KeyValue.path`
  * includes the final key. `Comment` covers both standalone (trivia) and
- * trailing comments — see the module remarks for `offset`'s exact meaning.
+ * trailing comments: `offset` is the source position of the comment's `#`
+ * marker, and `text` is the comment after the `#` with one leading space
+ * removed.
  *
  * @public
  */
@@ -170,7 +172,21 @@ const collectEventsOrFail = (text: string): Effect.Effect<Array<TomlVisitorEvent
 	});
 
 /**
- * SAX-style TOML visitor statics. Not instantiable.
+ * Walks TOML text as a `Stream` of table, array-table, key-value and comment
+ * events in document order, without building a value. Not instantiable.
+ *
+ * @example
+ * ```ts
+ * import { TomlVisitor, TomlVisitorEvent } from "@effected/toml";
+ * import { Effect, Stream } from "effect";
+ *
+ * const keys = TomlVisitor.visit("[server]\nport = 1\n").pipe(
+ *   Stream.filter(TomlVisitorEvent.$is("KeyValue")),
+ *   Stream.map((event) => event.path.join(".")),
+ *   Stream.runCollect,
+ * );
+ * // Effect.runSync(keys) // => ["server.port"]
+ * ```
  *
  * @public
  */

@@ -39,7 +39,7 @@ export class SemverTag extends Schema.Class<SemverTag>("SemverTag")({
  *
  * @remarks
  * The default covers the three shapes `@effected/workspaces`' `ReleaseTag`
- * produces and the surveyed repos actually cut: `v1.2.3`, `pkg@v1.2.3` and
+ * produces: `v1.2.3`, `pkg@v1.2.3` and
  * `@scope/pkg@1.2.3`. Taking the substring after the **last** `@` is what makes
  * the scoped form work, since the scope itself contains one.
  *
@@ -83,7 +83,7 @@ export interface GitTagShape {
 	readonly upsert: (tag: string, sha: string) => Effect.Effect<void, GitHubError, Repo>;
 	/** Delete the tag ref. */
 	readonly delete: (tag: string) => Effect.Effect<void, GitHubError, Repo>;
-	/** Every tag, newest GitHub-order first. `prefix` filters client-side. */
+	/** Every tag, in GitHub's order. `prefix` filters client-side. */
 	readonly list: (options?: {
 		readonly prefix?: string | undefined;
 		readonly page?: PageOptions | undefined;
@@ -99,10 +99,9 @@ export interface GitTagShape {
 	 * The newest version-shaped tag.
 	 *
 	 * @remarks
-	 * Replaces thirty-five lines at one surveyed call site that ran **one
-	 * `Effect.result` per parse and another per comparison** to answer this. Both
-	 * are synchronous in `@effected/semver` (`parseResult`, `compare`), so this is
-	 * a single pass over the page stream with no round trips at all.
+	 * Parsing and comparison are both synchronous in `@effected/semver`
+	 * (`parseResult`, `compare`), so this is a single pass over the page stream
+	 * with no extra round trips.
 	 *
 	 * **"Newest" means highest version, not most recent.** That is the right
 	 * answer for a single-versioned repository and the wrong instrument for a
@@ -110,8 +109,7 @@ export interface GitTagShape {
 	 * ordering and recency are unrelated: a `pkg-a@2.0.0` tag outranks a
 	 * `pkg-b@1.4.0` cut yesterday, so the result can sit several releases behind
 	 * the actual head and never move. Nothing about the failure is visible —
-	 * a stale-but-plausible tag comes back, and one consumer pinned its release
-	 * boundary two releases back, permanently. In a monorepo, filter by the
+	 * a stale-but-plausible tag comes back. In a monorepo, filter by the
 	 * package's tag prefix (see {@link LatestSemverOptions}) so the comparison
 	 * runs within one version line, or order by tagged-commit date instead.
 	 */
@@ -119,11 +117,29 @@ export interface GitTagShape {
 }
 
 /**
- * Tags.
+ * Create, move, resolve, list and delete tag refs through GitHub's Git Database
+ * API, and find the newest version-shaped tag.
+ *
+ * @remarks
+ * Provide it with {@link GitTag.layer}, which needs a `GitHubClient`; each
+ * method also needs a `Repo` in `R`.
+ *
+ * @example
+ * ```ts
+ * import { GitTag } from "@effected/github";
+ * import { Effect, Option } from "effect";
+ *
+ * const latest = Effect.gen(function* () {
+ *   const tags = yield* GitTag;
+ *   const newest = yield* tags.latestSemver({ prefix: "v" });
+ *   return Option.map(newest, (tag) => tag.version.toString());
+ * });
+ * ```
  *
  * @public
  */
 export class GitTag extends Context.Service<GitTag, GitTagShape>()("@effected/github/GitTag") {
+	/** The live service, built over a `GitHubClient`. */
 	static readonly layer: Layer.Layer<GitTag, never, GitHubClient> = Layer.effect(
 		this,
 		Effect.map(GitHubClient, (client) => make(client)),

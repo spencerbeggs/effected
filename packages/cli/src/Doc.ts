@@ -432,6 +432,18 @@ export interface DocPrintOptions {
  * Freezing covers what a `Doc` constructor builds. A literal you write by hand is not frozen, and a `Style` object
  * given as a token is shared by reference (the freeze of a status definition is shallow for the same reason).
  *
+ * @example
+ * ```ts
+ * import { Doc, Status } from "@effected/cli"
+ *
+ * const report = [
+ * 	Doc.heading(2, "Results"),
+ * 	Doc.paragraph(Doc.status(Status.core, "success"), " ", "3 checks passed"),
+ * 	Doc.table([{ header: "Check" }, { header: "Time", align: "right" }], [["lint", "1.2s"]]),
+ * ]
+ * // Written for whoever is reading: `yield* Doc.print(report)`
+ * ```
+ *
  * @public
  */
 export class Doc {

@@ -1,3 +1,14 @@
+/**
+ * Composable config file loading for Effect: pluggable codecs, resolvers that
+ * find the file, and merge strategies that combine several into one value.
+ *
+ * Name the codec you use (`JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`)
+ * and a bundler drops the rest. Build a service with `ConfigFile.Service` and
+ * `ConfigFile.layer`, or read one known path with `ConfigFile.read`.
+ *
+ * @packageDocumentation
+ */
+
 export type { ConfigCodec } from "./ConfigCodec.js";
 export { ConfigCodecError } from "./ConfigCodec.js";
 export type { ConfigEventsShape } from "./ConfigEvent.js";

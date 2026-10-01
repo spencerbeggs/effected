@@ -7,8 +7,7 @@ import type { ConfigCodec, ConfigCodecError } from "./ConfigCodec.js";
  * @remarks
  * `phase` says where: reading the current version, applying a step, or writing
  * the new version back. `cause` preserves the underlying failure by identity
- * when the failing step signals recoverable failure with `Effect.fail`. v3
- * assembled all three into a prose `reason` string.
+ * when the failing step signals recoverable failure with `Effect.fail`.
  *
  * @public
  */
@@ -33,13 +32,14 @@ export class ConfigMigrationError extends Schema.TaggedError<ConfigMigrationErro
  * A single versioned migration step.
  *
  * @remarks
- * v3 also declared a `down` reverse migration. It was never invoked anywhere in
- * the codebase, so it is not ported.
+ * Steps are forward-only: there is no reverse (`down`) migration.
  *
  * @public
  */
 export interface ConfigFileMigration {
+	/** The version this step migrates the config to. Steps run in ascending order. */
 	readonly version: number;
+	/** A label for the step, carried on {@link ConfigMigrationError} when it fails. */
 	readonly name: string;
 	/**
 	 * Transforms the parsed config. Signal recoverable failure with `Effect.fail`;
@@ -50,7 +50,9 @@ export interface ConfigFileMigration {
 
 /** How the version number is read from and written to the parsed config. @public */
 export interface VersionAccess {
+	/** Read the current version from the parsed config. */
 	readonly get: (raw: unknown) => Effect.Effect<number, unknown>;
+	/** Return the config with `version` written back. */
 	readonly set: (raw: unknown, version: number) => Effect.Effect<unknown, unknown>;
 }
 
@@ -70,8 +72,11 @@ export const VersionAccess = { default: defaultVersionAccess } as const;
 
 /** Options for {@link ConfigMigration.make}. @public */
 export interface ConfigMigrationOptions {
+	/** The codec being wrapped. */
 	readonly codec: ConfigCodec;
+	/** The migration steps; they run in ascending `version` order. */
 	readonly migrations: ReadonlyArray<ConfigFileMigration>;
+	/** How the version is read and written; defaults to {@link (VersionAccess:variable).default}, a top-level `version` field. */
 	readonly versionAccess?: VersionAccess;
 }
 
@@ -133,6 +138,23 @@ export class ConfigMigration {
 	 * {@link ConfigMigrationError} rather than flattening migration failures into
 	 * the inner codec's error — the reason the {@link (ConfigCodec:interface)} seam is generic
 	 * in its error type.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ConfigMigration, JsonCodec } from "@effected/config-file";
+	 * import { Effect } from "effect";
+	 *
+	 * const codec = ConfigMigration.make({
+	 * 	codec: JsonCodec,
+	 * 	migrations: [
+	 * 		{
+	 * 			version: 2,
+	 * 			name: "rename-host",
+	 * 			up: (raw) => Effect.succeed({ ...(raw as object), host: (raw as { hostname?: string }).hostname }),
+	 * 		},
+	 * 	],
+	 * });
+	 * ```
 	 */
 	static readonly make = make;
 }

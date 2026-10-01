@@ -1,4 +1,4 @@
-// The single dependency-specifier concept, relocated from `@effected/package-json`.
+// The single dependency-specifier concept, shared with `@effected/package-json`.
 //
 // Two forms sit side by side and share one classifier:
 //   - the branded `DependencySpecifier` schema + its protocol taxonomy statics
@@ -12,11 +12,10 @@
 // through the same taxonomy the brand uses, then groups the eleven protocols
 // into the five resolver-relevant cases. Every case stores the original `raw`
 // string, so `FromString.encode` returns the input byte-for-byte — the
-// exact-string round-trip guarantee brownfield consumers rely on.
+// exact-string round-trip guarantee consumers rely on.
 //
 // Range detection decodes `@effected/semver`'s `Range.FromString` purely via
-// `Schema.decodeUnknownExit` — no `Effect.runSync` inside a getter. The
-// `@effected/semver` edge is pure-to-pure, so this package stays pure tier.
+// `Schema.decodeUnknownExit` — no `Effect.runSync` inside a getter.
 
 import { Range } from "@effected/semver";
 import type { Brand } from "effect";
@@ -341,7 +340,7 @@ interface DependencySpecifierStatics {
 	 * aliased dependency pnpm publishes: `npm:<name>@<projected>`, with the
 	 * range modifier projected the same way — `version` must then be the
 	 * TARGET package's version, resolved via
-	 * {@link DependencySpecifierStatics.workspaceTargetOf | workspaceTargetOf}.
+	 * `workspaceTargetOf`.
 	 * Non-workspace input is returned unchanged.
 	 */
 	readonly resolveWorkspace: (specifier: string, version: string) => string;
@@ -395,6 +394,18 @@ const decode = (input: string): Effect.Effect<DependencySpecifierBrand, InvalidD
  * decodes a string into a {@link ClassifiedSpecifier} tagged union. Use it as a
  * schema for a specifier field and reach for the statics to inspect a raw
  * string.
+ *
+ * @example
+ * ```ts
+ * import { DependencySpecifier } from "@effected/npm";
+ * import { Schema } from "effect";
+ *
+ * DependencySpecifier.protocolOf("workspace:^"); // => "workspace"
+ * DependencySpecifier.resolveWorkspace("workspace:^", "1.2.3"); // => "^1.2.3"
+ *
+ * const classified = Schema.decodeUnknownSync(DependencySpecifier.FromString)("catalog:");
+ * // => CatalogSpecifier { raw: "catalog:", name: Option.none() }
+ * ```
  *
  * @public
  */

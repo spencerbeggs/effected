@@ -29,7 +29,7 @@ export type TermKind = typeof TermKind.Type;
  *
  * The distinction is only honest because the whole vocabulary ships. Under a
  * scoped subset "unknown" would be irreducibly ambiguous between *you
- * misspelled it* and *we did not ship that part*.
+ * misspelled it* and *that part was not shipped*.
  *
  * @public
  */
@@ -80,8 +80,7 @@ export class PropertyNotOnType extends Schema.TaggedClass<PropertyNotOnType>()("
 /**
  * A node whose `@type` schema.org has deprecated.
  *
- * Deprecated terms are **valid but flagged, never rejected** — the same
- * treatment `@effected/spdx` gives a deprecated license id. The default gate
+ * Deprecated terms are **valid but flagged, never rejected**. The default gate
  * does not fail on this.
  *
  * @public
@@ -304,9 +303,22 @@ function referencesOf(node: JsonLdNode): ReadonlyArray<readonly [property: strin
  *
  * @example
  * ```ts
+ * import { JsonLdDocument, SoftwareSourceCode } from "@effected/schema-org";
  * import { Conformance } from "@effected/schema-org/validate";
+ * import { Result } from "effect";
+ *
+ * const graph = Result.getOrThrow(
+ * 	JsonLdDocument.buildResult([
+ * 		SoftwareSourceCode.make({
+ * 			"@id": "https://example.com/pkg#source",
+ * 			// `softwareVersion` is a real term, but not legal on SoftwareSourceCode.
+ * 			additional: { softwareVersion: "1.2.3" },
+ * 		}),
+ * 	]),
+ * );
  *
  * for (const issue of Conformance.check(graph)) console.log(issue.message);
+ * // => https://example.com/pkg#source: schema.org does not define "softwareVersion" on SoftwareSourceCode
  * ```
  *
  * @public
@@ -388,8 +400,7 @@ export class Conformance {
 	 * The gate: the graph back when it conforms, or
 	 * {@link NonConformantGraphError} carrying every issue when it does not.
 	 *
-	 * This is the synchronous primitive per the kit's sync-primitive policy,
-	 * and it is defined in terms of {@link Conformance.check} — the list and
+	 * This is the synchronous primitive, and it is defined in terms of {@link Conformance.check} — the list and
 	 * the gate cannot disagree about what is wrong with a graph.
 	 *
 	 * By default only the structural kinds close the gate:

@@ -13,7 +13,7 @@ export interface WrapperInfo {
 /**
  * Detect a multiplexer wrapper from the env. Conservative — `passesThrough`
  * is always `false` because we cannot verify version or config without
- * spawning a subprocess (out of scope per design).
+ * spawning a subprocess, which this package never does.
  *
  * Users who know their tmux ≥ 3.4 has `set -g allow-passthrough on` can
  * opt back in via FORCE_HYPERLINK=1.

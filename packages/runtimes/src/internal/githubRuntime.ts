@@ -1,13 +1,6 @@
-/**
- * The layer builder shared by the two GitHub-hosted runtimes.
- *
- * Bun and Deno are the same resolver pointed at a different repository. v3
- * expressed that with two release-cache services, two fetcher services, two
- * resolver services and six strategy layers whose only textual difference was
- * the string `"oven-sh"` versus `"denoland"`.
- *
- * @internal
- */
+// The layer builder shared by the two GitHub-hosted runtimes.
+//
+// Bun and Deno are the same resolver pointed at a different repository.
 
 import type { InvalidRangeError, SemVer } from "@effected/semver";
 import type { Context, DateTime } from "effect";

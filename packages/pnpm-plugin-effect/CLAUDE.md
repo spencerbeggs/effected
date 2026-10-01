@@ -23,8 +23,8 @@ All real configuration lives in `savvy.build.ts`, where `PnpmConfigPlugin` decla
 
 The Effect pair, consumed by every `@effected/*` package:
 
-- **`catalog:effect`** — the pinned current Effect v4 prerelease, `lock` strategy, used in `devDependencies`.
-- **`catalog:effect:peers`** — the same package set as the advertised peer range. Under `lock` it holds the same exact pin, not a caret floor.
+- **`catalog:effect`** — `effect` and every `@effect/*` package at `^4.0.0`, `lock-minor` strategy, used in `devDependencies`.
+- **`catalog:effect:peers`** — the same package set as the advertised peer range, `^4.0.0`.
 
 The kit pair, for consumers only — internal edges stay `workspace:*` and these are **not** exported into the root `pnpm-workspace.yaml`:
 
@@ -37,7 +37,7 @@ Four properties are load-bearing ([reasoning](../../okf/models/effected-catalog-
 - **The literal must stay inline at the `PnpmConfigPlugin(...)` call site** — the `upgrade` CLI finds it by statically walking that call argument; hoisting it into an exported `const` makes it invisible to the rewriter.
 - **`lock-minor` floors peer patches**, so a first sync normalizing `^0.11.1` down to `^0.11.0` is correct, not drift.
 
-Currently `effect` pins `4.0.0-rc.115` — **exact, never a caret**. A caret on a prerelease floats across the release line and desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports. `@effect/tsgo` keeps an exact `lock` entry although no workspace package consumes it — do not reintroduce it as a typechecker devDependency.
+`effect` and its satellites take the caret range `^4.0.0`, so the exact version the workspace builds against is the **lockfile's resolution**, and `.repos/effect` is re-pinned to match whenever that resolution moves (see `okf/decisions/effect-catalog-tracks-stable-minor.md`). `@effect/tsgo` versions on its own line and keeps its own entry although no workspace package consumes it — do not reintroduce it as a typechecker devDependency.
 
 The Effect **v3** interop catalogs (`effect3` / `effect3:peers`) and the camelCase `effectPeers` alias were removed on the rc.109 advance. Do not reintroduce them.
 
@@ -57,9 +57,9 @@ Advancing the pin is `pnpm pnpm:up` then `pnpm pnpm:export`.
 
 ## The derived allowed-versions table
 
-`savvy.build.ts` **declares** the table rather than containing it: a `peerDependencyRules.allowedVersionsFromCatalogs` block tells `rolldown-pnpm-config export` to derive one rule per v4 lock-catalog package — `"<satellite>@<its pin>>effect"` — into the root `pnpm-workspace.yaml`, retiring the `@effect/*` satellite-drift warning class. The rules are version-qualified so a genuine v3 unmet peer still warns, and the kit's own `@effected/*` artifacts are deliberately out of scope. Hand-edit the table and the next export overwrites it.
+`savvy.build.ts` **declares** the table rather than containing it: a `peerDependencyRules.allowedVersionsFromCatalogs` block tells `rolldown-pnpm-config export` to derive one rule per exact entry in the `effect` catalog — `"<satellite>@<its version>>effect"` — into the root `pnpm-workspace.yaml`. The satellites share `effect`'s own caret range and need no rule, so today only `@effect/tsgo` gets one. The rules are version-qualified so a genuine v3 unmet peer still warns, and the kit's own `@effected/*` artifacts are deliberately out of scope. Hand-edit the table and the next export overwrites it.
 
-**There is no generator script and no checked-in table.** `allowed-versions.gen.ts` and its tripwire `__test__/allowed-versions.test.ts` are gone; do not restore either — regeneration is just `pnpm pnpm:export`, and there is nothing to drift. (`__test__/` does exist: it holds `catalog.test.ts`, which pins the `effected` catalog's membership.)
+**There is no generator script and no checked-in table.** `allowed-versions.gen.ts` and its tripwire `__test__/allowed-versions.test.ts` are gone; do not restore either — regeneration is just `pnpm pnpm:export`, and there is nothing to drift. (`__test__/` does exist: it holds `catalog.test.ts`, which pins the `effected` catalog's membership and the scoped `@effect/platform-node-shared` overrides in the built pnpmfile.)
 
 ## Peer discipline this package exists to hold
 

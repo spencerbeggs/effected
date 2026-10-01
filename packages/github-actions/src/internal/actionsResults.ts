@@ -1,15 +1,10 @@
-/**
- * Reading the runner's *results backend* coordinates — the two variables the
- * cache, artifact and blob-store protocols all speak through.
- *
- * @remarks
- * Shared by `ActionCache`, `Artifact` and `BlobStore.githubCache`, and
- * deliberately free of `@azure/storage-blob`: an internal helper is exactly how
- * a heavy import leaks into a light module's graph, so the one piece those
- * three modules share is the piece with no dependencies.
- *
- * @internal
- */
+// Reading the runner's *results backend* coordinates — the two variables the
+// cache, artifact and blob-store protocols all speak through.
+//
+// Shared by `ActionCache`, `Artifact` and `BlobStore.githubCache`, and
+// deliberately free of `@azure/storage-blob`: an internal helper is exactly how
+// a heavy import leaks into a light module's graph, so the one piece those
+// three modules share is the piece with no dependencies.
 
 import { Effect, Option, Redacted, Result } from "effect";
 import type { ActionEnvironmentShape } from "../ActionEnvironment.js";

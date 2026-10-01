@@ -1,7 +1,7 @@
-// comments-spacing (#129): a `#` needs a space after it to read as prose,
+// comments-spacing: a `#` needs a space after it to read as prose,
 // and a TRAILING comment needs breathing room from the content before it.
 // Own-line versus trailing is decided from token adjacency (content before
-// the comment on its line) — the P2 comment model's leading/trailing split
+// the comment on its line) — the comment model's leading/trailing split
 // at the source level. A shebang (`#!` at the very start of the stream) is
 // exempt.
 
@@ -100,7 +100,7 @@ export const commentsSpacing: YamlRule = {
 		}
 		return out;
 	},
-	// Inference (#345): every non-shebang comment with content after its `#`
+	// Inference: every non-shebang comment with content after its `#`
 	// votes `requireSpaceAfter` (does a space follow?), and every TRAILING
 	// comment votes its observed spacing for `minSpacesBefore`. A bare `#`
 	// says nothing about after-spacing; own-line comments say nothing about

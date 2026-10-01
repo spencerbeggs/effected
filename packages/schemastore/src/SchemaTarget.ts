@@ -6,8 +6,7 @@ import { SchemaVersioning } from "./SchemaVersioning.js";
 /**
  * A single schema publication target: an Effect Schema source paired with
  * the identity and destination it is serialized under. A repo generating
- * SchemaStore artifacts declares one target per emitted document (the
- * extraction source's `{schema, $id, path}` triples, generalized).
+ * SchemaStore artifacts declares one target per emitted document.
  *
  * Not a `Schema.Class`: a target carries a live Effect Schema value, which
  * is program wiring rather than serializable data.
@@ -23,9 +22,7 @@ export interface SchemaTarget {
 	 * The catalog/file base name (`name.json` / `name-<version>.json`).
 	 *
 	 * Only the catalog path consumes it — a target that merely emits a file
-	 * to `path` needs no name, and inventing one to
-	 * satisfy the constructor duplicates the basename with no invariant
-	 * tying the two together. Required whenever `version` is present, since
+	 * to `path` needs no name. Required whenever `version` is present, since
 	 * versioned catalog naming is defined in terms of it.
 	 */
 	readonly name?: string;

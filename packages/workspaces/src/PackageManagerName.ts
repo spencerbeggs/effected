@@ -120,8 +120,8 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
  * is not an exact version.
  *
  * Reuses the corepack `name@version+integrity` grammar rather than a second
- * parser, so a `devEngines` version carrying a hash (`11.11.0+sha512.…`, which
- * this repo's own root manifest does) normalizes to the same `11.11.0` the
+ * parser, so a `devEngines` version carrying a hash (`11.11.0+sha512.…`)
+ * normalizes to the same `11.11.0` the
  * top-level field reports — and a *range* (`^11`, `11.x`) yields none, because a
  * range is not a version and corepack will not run one either.
  */
@@ -404,13 +404,11 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 			// ── the standalone tier ────────────────────────────────────────────
 			//
 			// Every workspace marker has missed, so this is not a workspace. Most
-			// repos are not: before this tier existed, a single-package repo with a
-			// pnpm-lock.yaml and no `workspaces` field was undetectable, and
-			// consumers answered the question themselves — three times, with two
-			// different silent defaults.
+			// repos are not: a single-package repo with a pnpm-lock.yaml and no
+			// `workspaces` field must still be detectable.
 			//
-			// It runs LAST on purpose, so it is strictly additive: no input that
-			// already resolved can change its answer, and a stray package-lock.json
+			// It runs after the workspace tier on purpose, so no input that
+			// already resolved there can change its answer, and a stray package-lock.json
 			// cannot turn a pnpm workspace into an npm repo.
 			//
 			// The conjunctions mirror the workspace tier exactly rather than
@@ -477,11 +475,9 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 				}
 			}
 
-			// Nothing matched, and the package REFUSES TO GUESS. Both consumer
-			// reimplementations invented a default at this point and invented
-			// different ones — "npm" in one, "pnpm" in the other — which is the
-			// proof that the choice is policy, not detection. A caller who wants a
-			// default writes `Effect.orElseSucceed` where a reader can see it.
+			// Nothing matched, and the package REFUSES TO GUESS: a default is policy,
+			// not detection. A caller who wants one writes `Effect.orElseSucceed`
+			// where a reader can see it.
 			return yield* Effect.fail(new PackageManagerDetectionError({ root, checked: CHECKED }));
 		});
 
@@ -505,8 +501,7 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 	 * `WorkspaceDiscovery.info` posture, for the same reason. A stand-in that
 	 * answered `"pnpm"` would hand a consumer a fact nothing established, and it
 	 * would contradict the very service it stands in for: the live detector's
-	 * defining property is that it [refuses to
-	 * guess](https://github.com/spencerbeggs/effected) when no evidence matches.
+	 * defining property is that it refuses to guess when no evidence matches.
 	 * A double that guesses is worse than no double.
 	 *
 	 * Failing typed would be the subtler mistake: `PackageManagerDetectionError`

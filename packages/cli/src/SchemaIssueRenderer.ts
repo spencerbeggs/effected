@@ -1,20 +1,14 @@
 import { formatIssue } from "./internal/format.js";
 
 /**
- * Turn a `SchemaIssue` tree into lines a user can act on.
+ * Turns a `SchemaIssue` tree into lines a user can act on.
  *
  * @remarks
  * A decode failure arrives as a structured tree; a person needs
- * `unknown key at groups.g.cleanup.rulesetz`.
- *
- * **Core already ships the formatters this wraps, and they are effectively
- * undiscoverable.** They live on `SchemaIssue` rather than `SchemaError` or
- * `Schema`, they are named `makeFormatter*` rather than anything containing
- * "render" or "format issue", and `SchemaError.message` does not use them — so
- * the obvious probe, printing the error, hints at nothing. Two engineers
- * searched for two rounds and concluded core had none. This export exists to
- * end that search, and the one phrasing override is a bonus rather than the
- * point.
+ * `unknown key at groups.g.cleanup.rulesetz`. The formatters core ships for
+ * this live on `SchemaIssue` rather than on `SchemaError` or `Schema`, and
+ * `SchemaError.message` does not use them, so printing the error alone does not
+ * give these lines.
  *
  * The lines and `CliFailure`'s tree are two views of the same rejected values (`internal/format`), so a schema
  * failure in the default report and these lines never disagree.

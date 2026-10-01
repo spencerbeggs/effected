@@ -5,11 +5,8 @@ import type { Section, SectionId } from "./Section.js";
  * What a sync did to one declared section.
  *
  * @remarks
- * `Updated` carries **both sides** rather than a diff. The model this replaces
- * computed a set difference over lines, which deduplicated, ignored order, and
- * reported a pure line reordering as no change at all — a diff that could say
- * "nothing changed" about changed content. Every consumer of that model read
- * only the tag, so the honest primitive is the pair; a caller wanting a
+ * `Updated` carries **both sides** rather than a diff, so a pure line
+ * reordering is never reported as "nothing changed". A caller wanting a
  * rendering diffs `before.content` against `after.content` with the diff
  * library of its choice.
  *
@@ -36,10 +33,8 @@ export const SyncOutcome = Data.taggedEnum<SyncOutcome>();
  * What a check found, without touching the document.
  *
  * @remarks
- * Three flat variants rather than the `Found({ isUpToDate, diff })` +
- * `NotFound` pair they replace: a boolean beside a diff that already encodes
- * the same fact is two sources of truth for one question, and it forces every
- * caller through a nested branch.
+ * Three flat variants (`Absent`, `UpToDate`, `Drifted`), so every caller
+ * branches once on one tag instead of through a nested check.
  *
  * @public
  */

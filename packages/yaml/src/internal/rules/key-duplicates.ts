@@ -1,4 +1,4 @@
-// key-duplicates (#129): duplicate mapping keys, reported at every
+// key-duplicates: duplicate mapping keys, reported at every
 // occurrence AFTER the first. Detection walks the composed AST with the same
 // key identity the engine's own duplicate check uses (type AND value — an
 // `!!int 1` never collides with the string `"1"`), and runs on the lint

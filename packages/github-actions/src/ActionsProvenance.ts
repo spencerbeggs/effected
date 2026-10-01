@@ -16,7 +16,8 @@ import { OidcTokenIssuer } from "./OidcTokenIssuer.js";
 const DEFAULT_SERVER_URL = "https://github.com";
 
 /**
- * The Actions side of `@effected/sbom`'s SLSA provenance constructor.
+ * Builds the current run's SLSA provenance from the runner's OIDC claims: the
+ * Actions side of `@effected/sbom`'s `SlsaProvenance.forGitHubWorkflow`.
  *
  * @remarks
  * `SlsaProvenance.forGitHubWorkflow` is total and does the real work, but it

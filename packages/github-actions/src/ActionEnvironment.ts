@@ -13,6 +13,7 @@ import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect";
  * @public
  */
 export class ActionEnvironmentError extends Schema.TaggedError<ActionEnvironmentError>()("ActionEnvironmentError", {
+	/** `missing` — absent or empty; `malformed` — present but unusable. */
 	reason: Schema.Literals(["missing", "malformed"]),
 	/** The environment variable involved. */
 	name: Schema.String,
@@ -34,6 +35,7 @@ export class ActionEnvironmentError extends Schema.TaggedError<ActionEnvironment
 export class GitHubContext extends Schema.Class<GitHubContext>("GitHubContext")({
 	/** `owner/repo`. */
 	repository: Schema.String,
+	/** The repository owner's login. */
 	repositoryOwner: Schema.String,
 	/** The full ref, e.g. `refs/heads/main`. */
 	ref: Schema.String,
@@ -55,16 +57,27 @@ export class GitHubContext extends Schema.Class<GitHubContext>("GitHubContext")(
 	 * an encoded context stays plain JSON.
 	 */
 	headRef: Schema.OptionFromNullOr(Schema.String),
+	/** The commit SHA that triggered the workflow. */
 	sha: Schema.String,
+	/** The workflow's name. */
 	workflow: Schema.String,
+	/** The current job's id. */
 	job: Schema.String,
+	/** The run's unique number, decoded from `GITHUB_RUN_ID`. */
 	runId: Schema.Number,
+	/** The attempt number of this run, starting at 1. */
 	runAttempt: Schema.Number,
+	/** The name of the event that triggered the workflow, e.g. `push`. */
 	eventName: Schema.String,
+	/** The login of the user that triggered the run. */
 	actor: Schema.String,
+	/** The GitHub server URL, e.g. `https://github.com`. */
 	serverUrl: Schema.String,
+	/** The REST API URL, e.g. `https://api.github.com`. */
 	apiUrl: Schema.String,
+	/** The GraphQL API URL. */
 	graphqlUrl: Schema.String,
+	/** The default working directory on the runner for steps. */
 	workspace: Schema.String,
 }) {
 	/**
@@ -89,8 +102,11 @@ export class GitHubContext extends Schema.Class<GitHubContext>("GitHubContext")(
  * @public
  */
 export class RunnerContext extends Schema.Class<RunnerContext>("RunnerContext")({
+	/** The runner's operating system: `Linux`, `Windows` or `macOS`. */
 	os: Schema.String,
+	/** The runner's architecture, e.g. `X64` or `ARM64`. */
 	arch: Schema.String,
+	/** The runner's name. */
 	name: Schema.String,
 	/** A scratch directory emptied between jobs. */
 	temp: Schema.String,
@@ -105,8 +121,7 @@ export class RunnerContext extends Schema.Class<RunnerContext>("RunnerContext")(
  * A `Context.Reference` rather than a mutable global: overrides are
  * **fiber-local**, so two concurrent fibers can override the same variable
  * without seeing each other, and nothing needs restoring afterwards. This is
- * what makes {@link ActionEnvironmentShape.withEnv} parallel-safe — the
- * property the hand-rolled set/restore version it replaces could not have.
+ * what makes {@link ActionEnvironmentShape.withEnv} parallel-safe.
  *
  * @internal
  */
@@ -115,7 +130,8 @@ const EnvOverrides = Context.Reference<Readonly<Record<string, string>>>("@effec
 });
 
 /**
- * The {@link ActionEnvironment} service shape.
+ * The members of the {@link ActionEnvironment} service: variable lookup, the
+ * `GITHUB_*` and `RUNNER_*` contexts, the event payload and scoped overrides.
  *
  * @public
  */
@@ -332,10 +348,10 @@ export class ActionEnvironment extends Context.Service<ActionEnvironment, Action
 	 * @remarks
 	 * **A recorded exception to the die-on-unstubbed rule.** Every other service
 	 * in this package dies when a suite calls something it did not stub, because
-	 * a plausible default hides a real gap. Here the opposite is true: the twelve
-	 * context variables have one obviously-correct shape, and requiring each
-	 * suite to restate them produced a byte-identical block duplicated six times
-	 * across the consumers. Overrides merge on top.
+	 * a plausible default hides a real gap. Here the opposite is true: the context
+	 * variables have one obviously-correct shape, and requiring each suite to
+	 * restate them would duplicate a byte-identical block in every suite.
+	 * Overrides merge on top.
 	 *
 	 * The optional second argument serves {@link ActionEnvironmentShape.payload}
 	 * **directly**, replacing the `GITHUB_EVENT_PATH` read rather than seeding a

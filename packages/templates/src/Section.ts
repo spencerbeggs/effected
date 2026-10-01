@@ -76,10 +76,8 @@ export class SectionId extends Schema.Class<SectionId>("SectionId")({
  * markers.
  *
  * @remarks
- * Equality is **structural and whitespace-significant**. The v3 model this
- * replaces compared trimmed, whitespace-collapsed content, which silently
- * swallowed any template change that altered only indentation — the change
- * compared equal, reported `Unchanged`, and never reached the file. The one
+ * Equality is **structural and whitespace-significant**: a template change that
+ * alters only indentation is a real change and reaches the file. The one
  * normalization this package applies is to line endings, and it happens at
  * parse time rather than inside equality, so `Equal.equals` stays honest for
  * a consumer comparing two sections directly.

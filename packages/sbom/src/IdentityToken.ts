@@ -7,11 +7,11 @@
 // edge would drag a platform peer into every consumer that only wanted to emit
 // an SBOM.
 //
-// So the dependency is inverted, as it was for `@effected/npm`'s
-// `CatalogResolver` and `@effected/commands`' `LocalExec`: this package
-// declares the narrow contract it needs, github-actions ships the layer that
-// implements it (`ActionsIdentityToken.layer`, over its `OidcTokenIssuer`),
-// and a consumer already holding a token uses `IdentityToken.layerStatic`.
+// So the dependency is inverted, as with `@effected/npm`'s `CatalogResolver`
+// and `@effected/commands`' `LocalExec`: this package declares the narrow
+// contract it needs, github-actions ships the layer that implements it
+// (`ActionsIdentityToken.layer`, over its `OidcTokenIssuer`), and a consumer
+// already holding a token uses `IdentityToken.layerStatic`.
 
 import { Context, Effect, Layer, Redacted, Schema } from "effect";
 
@@ -56,13 +56,21 @@ export interface IdentityTokenShape {
 const TEST_TOKEN = "test-identity-token";
 
 /**
- * A source of workload identity tokens.
+ * A source of workload identity tokens (OIDC), the input `SigstoreSigner` needs
+ * to obtain a signing certificate.
+ *
+ * @remarks
+ * In GitHub Actions, provide `ActionsIdentityToken.layer` from
+ * `@effected/github-actions`. A consumer that already holds a token uses
+ * {@link (IdentityToken:class).layerStatic}; tests use
+ * {@link (IdentityToken:class).layerTest}.
  *
  * @example
  * ```ts
  * import { IdentityToken, SigstoreSigner } from "@effected/sbom";
  * import { Layer } from "effect";
  *
+ * const token = process.env.OIDC_TOKEN ?? "";
  * const layer = SigstoreSigner.layer.pipe(Layer.provide(IdentityToken.layerStatic(token)));
  * ```
  *

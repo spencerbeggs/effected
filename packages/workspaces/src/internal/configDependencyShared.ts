@@ -52,8 +52,7 @@ export const ioOrNone = <A>(
 /**
  * What the `package.json` in a directory says about its version: there is no
  * manifest, there is one carrying no usable version, or it carries `version`.
- * Closed, so no caller has to know a sentinel for "no version" (part of
- * effected#613).
+ * Closed, so no caller has to know a sentinel for "no version".
  */
 export type ManifestVersion =
 	| { readonly _tag: "absent" }

@@ -87,6 +87,10 @@ export class TomlDocument extends Schema.Class<TomlDocument>("TomlDocument")({
 	 * diagnostic, never an unhandled defect. Semantic violations do not fail:
 	 * they land in `diagnostics` as data (first violation wins, so there is at
 	 * most one today; the array shape is the contract).
+	 *
+	 * @param text - The TOML source to parse.
+	 * @returns An `Effect` that succeeds with the {@link TomlDocument}, or fails
+	 *   with {@link TomlParseError}.
 	 */
 	static readonly parse = Effect.fn("TomlDocument.parse")(function* (text: string) {
 		const expressions = yield* Effect.try({

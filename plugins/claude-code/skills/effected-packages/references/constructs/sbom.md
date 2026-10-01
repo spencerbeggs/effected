@@ -17,7 +17,7 @@
 | `GitHubWorkflowProvenance` | Interface | The claims and runner facts a GitHub Actions provenance predicate is built from. | |
 | `IN_TOTO_PAYLOAD_TYPE` | Variable | The DSSE payload type for an in-toto statement, per the GitHub attestations specification. | dsse payload type for an in-toto statement, github attestations media type |
 | `IN_TOTO_STATEMENT_V1` | Variable | The in-toto Statement v1 type URI, stamped onto every statement this package emits. | in-toto statement v1 type uri stamped onto every statement |
-| `IdentityToken` | Class | A source of workload identity tokens. | oidc identity token contract, get a workload token to sign with sigstore — implemented by `ActionsIdentityToken` in `@effected/github-actions` |
+| `IdentityToken` | Class | A source of workload identity tokens (OIDC), the input `SigstoreSigner` needs to obtain a signing certificate. | oidc identity token contract, get a workload token to sign with sigstore — implemented by `ActionsIdentityToken` in `@effected/github-actions` |
 | `IdentityTokenError` | Class | Raised when an identity token cannot be obtained. | handle failure obtaining an oidc identity token for an audience |
 | `IdentityTokenShape` | Interface | The contract: one method, one audience, one redacted token. | |
 | `InTotoStatement` | Class | An in-toto Statement v1. | build an in-toto attestation statement, wrap a subject and predicate for signing |
@@ -44,7 +44,7 @@
 | `SigningError` | Class | Raised when a statement cannot be signed. | handle sigstore signing failure, identity certificate transparency log or bundle step |
 | `SigningErrorKind` | Variable + TypeAlias | The decoded type of `(SigningErrorKind:variable)`. | which sigstore signing step failed, identity certificate transparency log bundle |
 | `SigstoreBundle` | Class | A signed Sigstore bundle: the wire form of an attestation. | the signed dsse bundle wire form, sigstore attestation result value |
-| `SigstoreSigner` | Class | Sigstore signing. | sign with sigstore, produce a dsse bundle over fulcio and rekor |
+| `SigstoreSigner` | Class | Signs an in-toto statement into a Sigstore DSSE bundle, using a Fulcio certificate and a Rekor transparency-log entry. | sign with sigstore, produce a dsse bundle over fulcio and rekor |
 | `SigstoreSignerOptions` | Interface | Where signing happens, and with what. | |
 | `SigstoreSignerShape` | Interface | The signing surface. | |
 | `SlsaBuildDefinition` | Class | How the build was invoked, and what it was invoked from. | slsa provenance build definition, workflow ref, repository and resolved dependencies |

@@ -7,9 +7,9 @@
 //
 // `JsoncEdit`, `JsoncRange`, `JsoncPath`, `JsoncSegment` and
 // `JsoncFormattingOptions` are bound by the jsonc/yaml parity convention:
-// their future `Yaml*` counterparts must be structurally identical (same
-// field names, types, optionality and semantics) so consumer code can be
-// written once over "a document codec's Edit/Range/Path".
+// their `Yaml*`, `Toml*` and `Markdown*` counterparts are structurally
+// identical (same field names, types, optionality and semantics) so consumer
+// code can be written once over "a document codec's Edit/Range/Path".
 
 import { Schema } from "effect";
 
@@ -54,8 +54,7 @@ export class JsoncFormattingOptions extends Schema.Class<JsoncFormattingOptions>
  * Formatting options accepted at call sites: either a
  * {@link JsoncFormattingOptions} instance or a plain literal with the same
  * fields (the two are structurally interchangeable — only the option fields
- * are read). Mirrors the `YamlRangeLike` posture in `@effected/yaml`, so a
- * caller can pass `{ insertSpaces: false, tabSize: 2 }` without constructing
+ * are read). A caller can pass `{ insertSpaces: false, tabSize: 2 }` without constructing
  * the class. `JsoncFormattingOptions` remains the canonical decoded form.
  *
  * @public

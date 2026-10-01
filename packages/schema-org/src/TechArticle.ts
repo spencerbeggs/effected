@@ -5,8 +5,7 @@ import { CreativeWorkFields } from "./CreativeWork.js";
  * The fields shared by `TechArticle` and its descendant `APIReference`.
  *
  * `APIReference` is `rdfs:subClassOf TechArticle` in the vocabulary, so it
- * carries every one of these. They are spread rather than inherited, per the
- * no-schema-inheritance rule.
+ * carries every one of these. They are spread rather than inherited.
  *
  * @public
  */

@@ -2,7 +2,7 @@
  * The process's own standard streams, the default `UiStreams`.
  *
  * @remarks
- * One of the three files licensed to touch Node (`okf/decisions/ui-binds-process-streams.md`): it reads
+ * One of the three files licensed to touch Node: it reads
  * `process.stdin`, `process.stdout` and `process.stderr` and nothing else, and only when called, never at import.
  * The boundary test holds that licence exact.
  *

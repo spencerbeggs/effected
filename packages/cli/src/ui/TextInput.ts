@@ -211,6 +211,23 @@ const HELP: KeyTable<"submit"> = KeyTable.make<"submit">([{ keys: ["enter"], act
  * Every typed character is text, `q` included: the input binds no letter, so Esc and Ctrl-C are the screen's root
  * keys and still cancel with `"escape"` and `"interrupt"`.
  *
+ * @example
+ * ```ts
+ * import { CliUi, TextInput } from "@effected/cli/ui"
+ * import { Effect } from "effect"
+ *
+ * const askName = Effect.gen(function* () {
+ * 	const name = yield* CliUi.run(
+ * 		TextInput.screen({
+ * 			message: "Package name?",
+ * 			placeholder: "my-package",
+ * 			validate: (value) => (value.trim() === "" ? "A name is required" : undefined),
+ * 		}),
+ * 	)
+ * 	return name
+ * })
+ * ```
+ *
  * @public
  */
 export class TextInput {
@@ -236,7 +253,7 @@ export class TextInput {
 	/**
 	 * Draw the input: the message, the value with the cursor shown as `▏` (`|` under ASCII glyphs, so it stays visible
 	 * without colour), the placeholder while empty, a validation message in the error token, and the key help. Enter
-	 * submits when `validate` passes; otherwise its message is shown until the next edit.
+	 * submits when `validate` passes; otherwise its message is shown until the next key other than enter, or a paste.
 	 *
 	 * @remarks
 	 * Text read in one go (a fast typist) is typed as it reads: printable runs are inserted whole, a return submits

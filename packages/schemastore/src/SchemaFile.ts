@@ -1,6 +1,5 @@
 // The `SchemaFile` service — the package's only IO module. It reads and
-// writes emitted schema documents over core `FileSystem` / `Path` (v4, no
-// platform package), so the layer requires those services and the consumer
+// writes emitted schema documents over core `FileSystem` / `Path`, so the layer requires those services and the consumer
 // provides a platform implementation (`@effect/platform-node`) at the edge.
 // Mirrors `@effected/package-json`'s `PackageJsonFile` pattern.
 

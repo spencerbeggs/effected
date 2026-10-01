@@ -24,7 +24,7 @@
 // 2. PLACEMENT. `process_footnotes` unlinks every definition and re-appends it
 //    to the document root in reference order, dropping the ones nothing
 //    referenced. Definitions here stay where they were written, on exactly the
-//    terms `Definition` does (the P1 delta): this package edits markdown, and
+//    terms `Definition` does: this package edits markdown, and
 //    a relocated or deleted definition is a lost edit. A renderer that wants
 //    cmark's end-of-document section builds it from the references, which is
 //    what the test writer does.

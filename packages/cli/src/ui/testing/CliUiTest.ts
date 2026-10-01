@@ -20,7 +20,8 @@ import { makeFakeStreams } from "./fakeStreams.js";
 import { screenAfter } from "./terminalModel.js";
 
 /**
- * Options for {@link CliUiTest.render}, {@link CliUiTest.view} and {@link CliUiTest.session}.
+ * Options for {@link CliUiTest.render}, {@link CliUiTest.view} and {@link CliUiTest.session}, and the terminal's
+ * half of {@link CliUiTest.live}'s.
  *
  * @public
  */
@@ -40,7 +41,10 @@ export interface CliUiTestOptions {
 	readonly color?: ColorLevel;
 	/** The glyph set; Unicode by default. */
 	readonly glyphs?: "unicode" | "ascii";
-	/** Whether the run is interactive; `true` by default. `false` makes the screen fail with `NotInteractive`. */
+	/**
+	 * Whether the run is interactive; `true` by default. `false` makes a screen fail with `NotInteractive`, and makes a
+	 * live view print each run's final frame as a string instead of mounting it.
+	 */
 	readonly interactive?: boolean;
 }
 
@@ -219,8 +223,9 @@ export interface CliUiTestLive<E, S> {
 	/**
 	 * What the terminal shows now, scrollback included, as plain text: every committed frame, every line logged above a
 	 * frame, every frame printed as a string, and the frame drawn now, with Ink's erases and clears applied (a
-	 * scrollback wipe shows as the loss of what was above the frame). For assertions about what stays on the terminal.
-	 * With `interactive: false`, the frames printed as strings show here and in `written`, and nowhere else.
+	 * scrollback wipe shows as the loss of what was above the frame), each line's trailing spaces trimmed and blank
+	 * lines left out. For assertions about what stays on the terminal. With `interactive: false`, the frames printed
+	 * as strings show here and in `written`, and nowhere else.
 	 */
 	readonly transcript: Effect.Effect<string>;
 	/**
@@ -729,6 +734,26 @@ const capturingConsole = (ambient: Console.Console) => {
  * Drive and read Ink screens in tests: mount a screen on in-memory streams, press keys, and read its frames as token
  * markup.
  *
+ * @example
+ * ```ts
+ * import { assert, it } from "@effect/vitest"
+ * import { Select } from "@effected/cli/ui"
+ * import { CliUiTest } from "@effected/cli/ui/testing"
+ * import { Effect } from "effect"
+ *
+ * it.effect("chooses the second option", () =>
+ *   Effect.gen(function* () {
+ *     const choices = [
+ *       { label: "a", value: "a" },
+ *       { label: "b", value: "b" },
+ *     ]
+ *     const handle = yield* CliUiTest.render(Select.screen({ message: "Pick one", choices }))
+ *     yield* handle.press("down", "enter")
+ *     assert.strictEqual(yield* handle.result, "b")
+ *   }).pipe(Effect.scoped),
+ * )
+ * ```
+ *
  * @public
  */
 export class CliUiTest {
@@ -922,10 +947,29 @@ export class CliUiTest {
 	 *
 	 * @example
 	 * ```ts
-	 * const view = yield* CliUiTest.live({ initial: 0, reduce: (n) => n + 1, render, isStart, isTerminal })
-	 * yield* view.publish({ _tag: "RunStarted" })
-	 * yield* view.advance("160 millis")
-	 * assert.include(yield* view.plainFrame, "frame 2")
+	 * import { assert, it } from "@effect/vitest"
+	 * import { CliUiTest } from "@effected/cli/ui/testing"
+	 * import { Effect } from "effect"
+	 * import { Text } from "ink"
+	 * import { createElement } from "react"
+	 *
+	 * type Event = { readonly _tag: "RunStarted" } | { readonly _tag: "RunEnded" }
+	 *
+	 * it.effect("turns the spinner on the tick", () =>
+	 *   Effect.gen(function* () {
+	 *     const view = yield* CliUiTest.live({
+	 *       initial: 0,
+	 *       reduce: (count: number, _event: Event) => count + 1,
+	 *       render: (_count, frame) => createElement(Text, null, `frame ${frame}`),
+	 *       isStart: (event) => event._tag === "RunStarted",
+	 *       isTerminal: (event) => event._tag === "RunEnded",
+	 *     })
+	 *     yield* view.publish({ _tag: "RunStarted" })
+	 *     // The clock starts at 0 and the tick is 80 ms, so 160 ms on is frame 2.
+	 *     yield* view.advance("160 millis")
+	 *     assert.include(yield* view.plainFrame, "frame 2")
+	 *   }).pipe(Effect.scoped),
+	 * )
 	 * ```
 	 *
 	 * @param options - the live view's options without `events`, and the terminal's size, colour, glyphs and
