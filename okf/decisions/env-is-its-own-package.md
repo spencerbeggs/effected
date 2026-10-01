@@ -5,13 +5,13 @@ description: Audience and terminal detection live in a dedicated @effected/env p
 status: draft
 tags: [architecture, bundle, deps]
 sources:
-  - id: interactive-cli-kit-design
-    resource: ../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md
-    title: Interactive CLI kit design, sections 4 and 10
+  - id: boundary-test
+    resource: ../../packages/env/__test__/purity.test.ts
+    title: "env purity: no process read, node: import, platform or kit import, or console write in src"
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T19:52:41Z
-  body_sha256: 127a715c3d8cbcae4e5bdbc4bb1d9b136327e5200bb068daafe94f5bb6dd7015
+  at: 2026-10-01T14:11:47Z
+  body_sha256: 8a9f77cf139801b1714904d05b57f259fb2b9a0a14bf4d24f34332a742ca2bbe
 ---
 
 # @effected/env is its own boundary package, a required peer of cli
@@ -23,7 +23,7 @@ outside a command-line program: a stdio MCP server must pick quiet,
 machine-shaped output, an engine must stamp what it ran under, and a Vitest
 plugin must choose a reporter. None of those may take a dependency on
 `@effected/cli`, which only applications depend on (see
-[`cli.md`](../modules/cli.md)).[^interactive-cli-kit-design]
+[`cli.md`](../modules/cli.md)).[^boundary-test]
 
 ## Decision
 
@@ -48,4 +48,4 @@ so a consumer resolves one copy of the `CurrentRuntimeEnv`, `TerminalEnv` and
 `Audience` service tags. A second resolved copy would be two distinct tags and a layer built
 from one would not satisfy the other.
 
-[^interactive-cli-kit-design]: `../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md`
+[^boundary-test]: `packages/env/__test__/purity.test.ts`, which scans env's source for exactly those; env's manifest lists `effect` as its only peer, and `packages/cli/package.json` lists `@effected/env` as a required one

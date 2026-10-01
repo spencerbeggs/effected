@@ -1,20 +1,20 @@
 ---
 type: Decision
 title: While a live view is mounted, kit logs go through Ink's own stdout and stderr writers
-description: "The live view exposes a bridged Console whose writes go through Ink's useStdout().write and useStderr().write while a run is mounted, so a log line lands above the frame without tearing it, and straight to the stream before mount and after unmount, since Ink silently drops hook writes after unmount (probe L4)."
+description: "The live view exposes a bridged Console whose writes go through Ink's useStdout().write and useStderr().write while a run is mounted, so a log line lands above the frame without tearing it, and straight to the stream before mount and after unmount, since Ink silently drops hook writes after unmount."
 status: draft
 tags: [architecture, observability]
 sources:
-  - id: p5-probes
-    resource: ../../docs/superpowers/specs/2026-10-01-p5-probes.md
-    title: "P5 planning probe L4: writing log lines above a live frame"
+  - id: pinned-by
+    resource: ../../packages/cli/__test__/ui/inkConsole.test.ts
+    title: "The console bridge writes above a live Ink frame on the production path"
   - id: ink-writers
     resource: "npm:ink@7.1.1"
     title: "Ink 7.1.1, build/ink.js:433-489 (writeToStdout/writeToStderr, early return when unmounted) and build/render.js:23-35 (the instance has no writers)"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T09:31:36Z
-  body_sha256: e73a2a03a6435b7456d1aa2163448f795f596f36f131e49b6c9f62afbb9df600
+  at: 2026-10-01T14:11:47Z
+  body_sha256: 3f49640a467f009d31594c0ce958690470c1ce8940ad8c4bd964f1ec04c07c29
 ---
 
 # While a live view is mounted, kit logs go through Ink's own stdout and stderr writers
@@ -26,7 +26,7 @@ counting the lines it last wrote, so a line from elsewhere lands inside the
 frame and tears it. A live view lasts a whole test run, so "do not log" is
 not an option.
 
-Probe L4 tried seven mechanisms on a pty.[^p5-probes] `<Static>`, the hook
+A probe tried seven mechanisms on a pty.[^pinned-by] `<Static>`, the hook
 writers (`useStdout().write`, `useStderr().write`) and `patchConsole` were
 clean; raw `process.stdout` and `process.stderr` writes left stale frame
 copies and erased the log lines; `clear()` then a raw write destroyed the
@@ -58,5 +58,5 @@ once unmounted, so a write after unmount is silently lost.[^ink-writers]
   the view is mounted; a log written any other way still tears the frame.
 - A degrade warning is written after the unmount, never mid-frame.
 
-[^p5-probes]: `docs/superpowers/specs/2026-10-01-p5-probes.md`, section L4
+[^pinned-by]: `packages/cli/__test__/ui/inkConsole.test.ts`, which asserts the bridged writes land above the frame on the production path. The seven-mechanism probe that chose it was run once and is not kept.
 [^ink-writers]: `npm:ink@7.1.1`, `build/ink.js:433-489` and `build/render.js:23-35`

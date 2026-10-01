@@ -9,8 +9,8 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
-  body_sha256: c84a3fb68026a8f3818ccf730cd0e188ed6d991be13b3db63626170375ca5cb1
+  at: 2026-10-01T14:11:47Z
+  body_sha256: 63accc47d5687f80d63ea50548f6d1be6f12687ad9c6d5a83212e9638139d22b
 ---
 
 # @effected/mcp
@@ -122,10 +122,9 @@ rejects nothing a real client sends.
 
 ## Spec amendments
 
-Made in the phase-2 plan (`docs/superpowers/plans/2026-09-23-front-end-kit-phase-2.md`,
-"Spec amendments") and applied here and to the design spec
-(`docs/superpowers/specs/2026-09-23-front-end-kit-design.md` §7/§12) in Task 11.
-These are the binding A1–A10; the prose below also carries the
+Made while building phase 2, each correcting the phase's original design
+against core's source. These are the binding A1–A10, each with its citation
+in the table; the prose below also carries the
 implementation-driven refinements the later tasks made on top of them.
 
 | # | Amendment | Citation |

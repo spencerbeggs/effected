@@ -6,8 +6,8 @@ status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
-  body_sha256: 4bf3e2e020c5f552f3e81d43438ffa8c7d02cb5ce009ede97f9cfab48c04a53e
+  at: 2026-10-01T14:11:47Z
+  body_sha256: 55dc10bfcc41a019ea96fd0bb5504f7e38c0a86df932bc2429198841a0de5de9
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -53,6 +53,6 @@ of shipping the check as a default-on audit rather than an opt-in lint.
 A tool intentionally returning a bare scalar or array under the stateless
 adapter — a legitimate but rare shape — must opt the audit out explicitly
 per call, making the exception visible in the audit invocation itself
-rather than silent. The check's own test suite (spec §7) includes
+rather than silent. The check's own test suite (`packages/mcp/__test__/McpToolAudit.test.ts`) includes
 positive-control fixtures proving both the enforced-default and the
 opted-out paths behave as this Decision states.

@@ -6,13 +6,13 @@ status: draft
 supersedes: cli-color-ignores-force-color.md
 tags: [architecture, dx]
 sources:
-  - id: interactive-cli-kit-design
-    resource: ../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md
-    title: Interactive CLI kit design, sections 4.2 and 10
+  - id: boundary-test
+    resource: ../../packages/env/__test__/colorDepth.test.ts
+    title: "The colour-depth precedence tests: FORCE_COLOR ahead of NO_COLOR, NODE_DISABLE_COLORS, TERM=dumb and the TTY gate"
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T20:09:31Z
-  body_sha256: 96e2065aa56f9ea8e1f6459b6fdffb962f5daed781963f2f866c6426ff6dd0e7
+  at: 2026-10-01T14:11:47Z
+  body_sha256: d3960108c1a73553760c405f8289cc4ed4029751bf81f4c7d326c93fd4d48d13
 ---
 
 # FORCE_COLOR is honoured, with Node's getColorDepth precedence
@@ -25,7 +25,7 @@ moves the colour decision into [`@effected/env`](../modules/env.md), where
 it is shared by the CLI, MCP servers and test tooling, and where a consumer
 running under a CI log or an agent transcript routinely sets `FORCE_COLOR`
 to get colour through a non-TTY pipe. Ignoring it there is a defect, not a
-posture.[^interactive-cli-kit-design]
+posture.[^boundary-test]
 
 ## Decision
 
@@ -75,4 +75,4 @@ mistake the gap for a bug in `env`:
   `env` reads 256 because the empty `CI` is dropped.
 - There is no win32 branch, because `env` reads no `process.platform`.
 
-[^interactive-cli-kit-design]: `../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md`
+[^boundary-test]: `packages/env/__test__/colorDepth.test.ts`, the precedence pinned case by case against Node's `getColorDepth`

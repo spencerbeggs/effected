@@ -27,8 +27,8 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
-  body_sha256: e81b028e3ec3816b6de70d5dca9412593d8464439bb0085cecc8cdb7ed14a0f2
+  at: 2026-10-01T14:11:47Z
+  body_sha256: 925272d3d9ee134553c94517a91e0f6822d0de163be0423bbed296cddff3ba00
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -249,7 +249,7 @@ is honoured at the `.`/`./testing` boundary rather than inside `./testing`.
 
 ### Spec amendments (phase 3)
 
-The front-end kit design's §8 was amended during phase 3. The amendments
+The front-end kit's design was amended during phase 3. The amendments
 continue phase 2's A1–A10:
 
 - **B1**: `WorkspaceLayering.check` takes a `LayeringGraph` of names and

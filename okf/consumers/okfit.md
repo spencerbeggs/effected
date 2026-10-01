@@ -7,8 +7,8 @@ status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T21:15:01Z
-  body_sha256: 3f69ce4a1d1985fcd9033fc3f550f602cc5dbfe379e292dcf8812f357aa51735
+  at: 2026-10-01T14:11:47Z
+  body_sha256: 7f14a24d7bf398cb6b1f024c31e94b25f37c0ab4be20513634c05e6fb9c61a87
 ---
 
 # spencerbeggs/okfit
@@ -32,6 +32,26 @@ integration. No front end depends on another front end.
   reporting layer, also in `main.ts`), and `ConfigIssueRenderer`
   (`packages/cli/src/errors.ts`) for rendering a validation error's
   `render` option one line per stderr line.
+- [`@effected/cli`](../modules/cli.md)'s `./ui` screens, behind the
+  optional peers `ink` and `react`: the `okfit init` wizard runs on
+  `CliUi.fallback` (`packages/cli/src/internal/initWizard.ts`), a `Select` for
+  the profile, a `TextInput` with an inline `validate` for the bundle
+  directory and a `Select` for the config location, each with an `otherwise`
+  default so a non-interactive run writes what the flags say and loads
+  neither peer. The `okfit verify` picker runs `MultiSelect.screen` through
+  `CliUi.prompt` with no `otherwise`, one section per concept type, then
+  `Confirm.screen` with a toggle (`packages/cli/src/commands/verify-picker.ts`);
+  declining raises `Cancelled` with reason `escape` and exits 130. Its tests
+  drive the screens with `CliUiTest.session`, counting `mounts === 0` for the
+  run that must not prompt.
+- The presentation root around those screens: `CliEnv.layer` and
+  `CliAudience` with an `OKFIT_AUDIENCE` override, `CliExit.set` in place of
+  its own exit-code cell, and `FORCE_COLOR` honoured through
+  [`@effected/env`](../modules/env.md).
+- [`@effected/cli`](../modules/cli.md)'s `Doc` IR, as a **trial only**: its
+  human `validate` report and `verify --all` batch lines were rebuilt as
+  `Doc`s and compared byte for byte with the current renderers. They match in
+  plain output; okfit is not adopting the IR.
 - [`@effected/app`](../modules/app.md) — `AppConfig` only
   (`packages/engine/src/config/layer.ts`). `App`, `AppStore`, and
   `AppCache` are forbidden imports, enforced by a boundary test in both
@@ -57,6 +77,16 @@ integration. No front end depends on another front end.
   addresses.
 
 ## Open questions it holds the kit to
+
+- Whether the `Doc` IR can carry okfit's human output without workarounds:
+  the trial's remaining asks are a `Doc.verbatim` with an indent, so an
+  indented fragment (`would write:` and a frontmatter excerpt) survives
+  `Render.markdown`, and a nullable link target that degrades to its label for
+  a finding with no file. Until then okfit keeps its own renderers (colour is
+  K-19: only the severity word is painted).
+- Every `./ui` screen keeps its non-interactive answer byte-identical to the
+  flag path: a screen reached with no terminal resolves `otherwise`, never
+  a missing-flag error, and never loads `ink` or `react`.
 
 - A `Distribution` reference below the front ends — worth a
   `@effected/engine` package, since `okfit`'s own `engine` package is

@@ -20,8 +20,8 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T17:06:19Z
-  body_sha256: bc700ace52cdfc85b3e9aaf8b6c5c241299208b151e15a8cace3621927eada62
+  at: 2026-10-01T14:11:47Z
+  body_sha256: 522749f07160ad72f495733e32583596fe8ae9a84c0ffd8e30b293f953a987ba
 ---
 
 # @effected/memfs
@@ -341,7 +341,7 @@ release) and `NodeSyncFileSystem.layer`.
   `integration/node-sync.int.test.ts` runs 67 cases (NUL and non-string
   arguments included) against `@effect/platform-node`. It does not run
   `errnoSuite`, which includes write cases that would die against a
-  read-only adapter; the design spec's claim that it does is wrong.
+  read-only adapter; an earlier design's claim that it does was wrong.
 
 ## What the volume does not see
 

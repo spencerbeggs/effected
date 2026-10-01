@@ -7,8 +7,8 @@ tags:
   - architecture
 generated:
   by: "claude-code/opus-5"
-  at: 2026-10-01T01:26:10Z
-  body_sha256: 6bb211928261f460cc140a57c37c623a187e45e10209ec859edc3d9c65cf687c
+  at: 2026-10-01T14:11:47Z
+  body_sha256: a9c9889d0f34af4f22257463f5d28298e8849c02a6bc07d10d064af397271908
 ---
 
 # effected
@@ -46,7 +46,8 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `spdx` | pure | invention; vendored SPDX license expressions as pure schemas |
 | `app` | integrated | invention; thin composition over `xdg` + `config-file` + `store` |
 | `engine` | pure | invention; platform-free primitives shared across front ends (distribution identity, remediation, launch context) |
-| `cli` | boundary | invention; the CLI boundary (logger, failure reporting, issue rendering) over `effect/cli` |
+| `env` | boundary | invention; who is running a program and in what terminal (`RuntimeEnv`, `TerminalEnv`, `Audience`, `EnvOverride`) read through `Config`, with no `node:` import; a required peer of `cli`, so an MCP server or engine detects without a CLI dependency |
+| `cli` | boundary (`./ui` integrated on opt-in) | invention; the CLI presentation boundary over `effect/cli`: audience, theme and messages, the document IR and its renderers, links, failure reports, logging and prompts in a React-free root; interactive Ink screens and the live view behind `./ui` (`ink` and `react` optional peers) and their harness behind `./ui/testing` |
 | `mcp` | boundary | invention; the MCP boundary (stdio wiring, tool-failure shaping, strict-input walkers) over `effect/ai`, plus `./testing` clients |
 | `markdown` | pure | invention; CommonMark + GFM as pure schemas |
 | `commands` | boundary | part-port of `@savvy-web/silk-effects`' `ToolDiscovery` plus invention |
@@ -54,7 +55,7 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `memfs` | pure | invention; a virtual POSIX volume behind core's `FileSystem` key — carries **no `@effected/*` edge, ever** |
 | `github` | integrated | port-with-redesign of `@savvy-web/github-action-effects`'s GitHub half |
 | `github-references` | pure | extraction from `github`; the issue-reference grammar as pure functions |
-| `github-commands` | pure | extraction from `github-actions`; the workflow-command grammar (`WorkflowCommand`, and `CommandNeutralizer`, the runner's two-parser rule) as pure functions |
+| `github-commands` | pure | extraction from `github-actions`; the workflow-command grammar (`WorkflowCommand`, and `CommandNeutralizer`, the runner's two-parser rule) as pure functions; a regular dependency of `github-actions` and `cli` |
 | `github-actions` | integrated | port-with-redesign of the same package's Actions half |
 | `sbom` | integrated | port-with-redesign of the same package's `Attest` knot |
 | `schemastore` | boundary (integrated 2026-08-04 → 2026-09-15) | invention; SchemaStore-shaped JSON Schema documents from Effect Schema sources |
@@ -62,6 +63,8 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `schema-org` | pure | invention; schema.org vocabulary as Effect Schema classes |
 | `jsonl` | boundary | invention; append-only schema-validated JSONL journals |
 | `pnpm-plugin-effect` | companion — no tier | invention; publishes the Effect catalogs the kit pins against |
+
+The roster is **36 packages**: 34 libraries and two companions (`pnpm-plugin-effect` and `schemastore-cli`). 31 have published; `env`, `github-commands`, `engine`, `mcp` and `schemastore-cli` await their first release.
 
 ### Consumers
 
@@ -78,8 +81,10 @@ The kit's scope is closed by the applications that consume it, surveyed read-onl
 | savvy-web/systems | [systems](consumers/systems.md) |
 | spencerbeggs/reposets | [reposets](consumers/reposets.md) |
 | spencerbeggs/tsdoctor | [tsdoctor](consumers/tsdoctor.md) |
+| spencerbeggs/okfit | [okfit](consumers/okfit.md) |
+| spencerbeggs/vitest-agent | [vitest-agent](consumers/vitest-agent.md) |
 
-Two named applications resolved the "library wearing app clothing" question differently rather than joining the kit outright: `type-registry-effect` stays entirely outside, in its own repo, because it carries `typescript` / `@typescript/vfs` peers the kit refuses; `runtime-resolver`'s library half ships from the kit as `runtimes`, while its CLI ships from the external `runtime-resolver` repo against the published package, so the library's consumers never install `@effect/platform-node`. Further external consumers — `rolldown-pnpm-config`, `vitest-agent`, `rspress-plugin-api-extractor`, and `soda3js/tools` via `@soda3js/config` — take published packages without a register entry of their own in this bundle.
+Two named applications resolved the "library wearing app clothing" question differently rather than joining the kit outright: `type-registry-effect` stays entirely outside, in its own repo, because it carries `typescript` / `@typescript/vfs` peers the kit refuses; `runtime-resolver`'s library half ships from the kit as `runtimes`, while its CLI ships from the external `runtime-resolver` repo against the published package, so the library's consumers never install `@effect/platform-node`. Further external consumers — `rolldown-pnpm-config`, `rspress-plugin-api-extractor`, and `soda3js/tools` via `@soda3js/config` — take published packages without a register entry of their own in this bundle.
 
 The repository's monorepo tooling and layout are documented in [the workspace module](modules/workspace.md); the two agent plugins, the probe workspace and the docs site each have their own Module: [claude-code-plugin](modules/claude-code-plugin.md), [copilot-plugin](modules/copilot-plugin.md), [scratchpad](modules/scratchpad.md), [website](modules/website.md).
 

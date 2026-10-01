@@ -1,20 +1,20 @@
 ---
 type: Decision
 title: A live view is a scoped drain of runs, hosted or owned, with no input and the mount permit per run
-description: "CliUi.live folds a Stream into state inside the caller's scope; a run begins at an isStart event (or where an optional begins predicate says, given the state before and after) and ends at an isTerminal event, which unmounts and commits the frame, and an event outside a run that begins none is folded and not drawn; hosted and owned differ only when not interactive, neither mounts input hooks, and interactive is passed explicitly rather than left to Ink's is-in-ci guess (probes L1, L5, L6)."
+description: "CliUi.live folds a Stream into state inside the caller's scope; a run begins at an isStart event (or where an optional begins predicate says, given the state before and after) and ends at an isTerminal event, which unmounts and commits the frame, and an event outside a run that begins none is folded and not drawn; hosted and owned differ only when not interactive, neither mounts input hooks, and interactive is passed explicitly rather than left to Ink's is-in-ci guess."
 status: draft
 tags: [architecture, dx]
 sources:
-  - id: p5-probes
-    resource: ../../docs/superpowers/specs/2026-10-01-p5-probes.md
-    title: "P5 planning probes L1-L8, run 2026-10-01 on ink 7.1.1, react 19.3.0, effect 4.0.0-rc.118"
+  - id: pinned-by
+    resource: ../../packages/cli/__test__/ui/CliUi.live.modes.test.ts
+    title: "The live-view mode tests: hosted and owned, runs, mounting and the non-interactive final frame"
   - id: ink-render
     resource: "npm:ink@7.1.1"
     title: "Ink 7.1.1, build/ink.js:706-708: interactive defaults to !isInCi && stdout.isTTY"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T12:17:52Z
-  body_sha256: 32e2c968ad0e1e3e1a28ddee6e132b9a3260eb991f1aa18c50f849c158639bfd
+  at: 2026-10-01T14:11:47Z
+  body_sha256: 2329fc1131614fc5222318f96127e4748e4ef8118f21f26808002b4257538c3a
 ---
 
 # A live view is a scoped drain of runs, hosted or owned, with no input and the mount permit per run
@@ -24,15 +24,15 @@ generated:
 `CliUi.run` mounts one screen and waits for an answer. A reporter's progress
 view is the other shape: a stream of events that may span several runs (a
 watch mode) and never ends on a key. vitest-agent hand-rolled that view; the
-kit takes it over in P5.
+kit takes it over.
 
-Three probe findings shape it.[^p5-probes] Remounting on the same stdout
+Three probe findings shape it.[^pinned-by] Remounting on the same stdout
 straight after `unmount()` is clean, while mounting twice warns, reuses the
-instance and tears the frame (L5). Inside a Vitest worker stdout is a
+instance and tears the frame. Inside a Vitest worker stdout is a
 non-TTY socket and Ink's `is-in-ci` guess resolves to non-interactive, while
-the main process is a TTY (L6). `renderToString` honours the kit's colour
+the main process is a TTY. `renderToString` honours the kit's colour
 level and runs hooks, but terminal hooks there read the unprovided default
-stdout (L1).
+stdout.
 
 ## Decision
 
@@ -75,9 +75,9 @@ stdout (L1).
 - **Holding the permit for the view's whole life.** It would block every
   prompt for as long as a reporter lives, including between watch runs.
 - **Skipping the permit.** Ink keys instances by stdout, so a prompt during
-  a run would hijack the live instance (L5).
+  a run would hijack the live instance.
 - **Letting Ink decide `interactive`.** Its `is-in-ci` guess is wrong in a
-  Vitest worker and ignores the kit's agent audience (L6).
+  Vitest worker and ignores the kit's agent audience.
 - **An `owned` mode with Ctrl-C handling.** It needs raw mode, which steals
   stdin from a host; SIGINT already ends the scope.
 
@@ -89,5 +89,5 @@ stdout (L1).
 - `useTerminalSize` needs a size override for the `renderToString` path,
   which `UiProvider`'s `size` provides.
 
-[^p5-probes]: `docs/superpowers/specs/2026-10-01-p5-probes.md`, sections L1, L5 and L6
+[^pinned-by]: `packages/cli/__test__/ui/CliUi.live.modes.test.ts` and `CliUi.live.test.ts`, which pin the runs, the two modes and the explicit `interactive`; `UiProvider.test.ts` pins the size override `renderToString` needs. The probes behind the three findings were run once and are not kept.
 [^ink-render]: `npm:ink@7.1.1`, `build/ink.js:706-708`

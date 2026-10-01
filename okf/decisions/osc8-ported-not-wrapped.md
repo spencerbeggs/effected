@@ -8,13 +8,13 @@ sources:
   - id: std-osc8-constants
     resource: https://github.com/spencerbeggs/std-osc8/blob/0.2.0/src/constants.ts#L6-L7
     title: std-osc8 src/constants.ts, lines 6 and 7
-  - id: interactive-cli-kit-design
-    resource: ../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md
-    title: Interactive CLI kit design, sections 4.2 and 10
+  - id: boundary-test
+    resource: ../../packages/env/__test__/purity.test.ts
+    title: "env purity: nothing reads process or imports node: at any depth of src, the ported osc8 modules included"
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T19:52:41Z
-  body_sha256: d0cfc8034ab1fb462f8ed70c4ecac2844394ab9bab24d9d53c5d9ddc2a79fb30
+  at: 2026-10-01T14:11:47Z
+  body_sha256: b98ff37bcaec6a81a9838c2d82be9ed9c13772f58c079e3178de652ed3450028
 ---
 
 # std-osc8's pure core is ported into env, not wrapped
@@ -26,7 +26,7 @@ already has it, but its `constants.ts` snapshots `process.env` and isTTY when
 the module is imported, and its pure internals are not exported.[^std-osc8-constants]
 Wrapping the published package would make detection depend on the process
 at import time, defeating a test's `layerTest` control and breaking the rule
-that `env` reads nothing at import and imports nothing from `node:`.[^interactive-cli-kit-design]
+that `env` reads nothing at import and imports nothing from `node:`.[^boundary-test]
 
 ## Decision
 
@@ -50,4 +50,4 @@ controllable by `layerTest`. See [`env.md`](../modules/env.md) and
 [`dependency-policy`](../conventions/dependency-policy.md).
 
 [^std-osc8-constants]: `https://github.com/spencerbeggs/std-osc8/blob/0.2.0/src/constants.ts#L6-L7`
-[^interactive-cli-kit-design]: `../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md`
+[^boundary-test]: `packages/env/__test__/purity.test.ts` (nothing in `src`, the ported `internal/osc8` directory included, reads `process` or imports `node:`), with the `osc8.*.test.ts` files pinning the port

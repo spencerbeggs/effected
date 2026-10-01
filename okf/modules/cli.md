@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T13:48:57Z
-  body_sha256: 402d2ea6bd43086ed772cef38f34ca0b82bd91a3de5ec8405835df3e357edfdd
+  at: 2026-10-01T14:11:47Z
+  body_sha256: a8dd094e1b69d85558d1c3b2d9565102d0c18d59bdcf98c8286fb3d6bb90ccb7
 ---
 
 # @effected/cli
@@ -68,6 +68,15 @@ same posture as `@effected/config-file`, and deliberately not
 `@effected/github-actions`', which is the one package carrying
 `@effect/platform-node` as a required peer.
 
+The dependency closure is declared in full. Required peers: `effect`,
+`@effected/env`, and `@effected/walker` with `@effected/glob` beneath it
+(`CliLinks` finds the project root with `Walker`: [the walker
+edge](../decisions/cli-takes-the-walker-edge.md)). Optional peers:
+`@effected/config-file` (for `ConfigIssueRenderer`), and `ink`, `react` and
+`@types/react` (for `./ui`). One regular dependency, the pure
+[`@effected/github-commands`](github-commands.md), which has no
+shared-instance contract and so no need to be a peer.
+
 **Nothing in the kit may depend on it except an application**, the same
 rule `@effected/app` carries. A library that reaches for CLI output has
 made a decision that belongs to the program at the top. `app` and `cli` are
@@ -102,8 +111,7 @@ Exports are static classes with a private constructor — never an
 
 ### The presentation layer
 
-Exports the interactive CLI kit adds to the root. Rows marked planned are
-later phases and not yet exported. See
+Exports the interactive CLI kit adds to the root. See
 [the presentation-layer decision](../decisions/cli-grows-presentation-layer.md)
 for why the package owns them.
 
@@ -115,7 +123,7 @@ for why the package owns them.
 | `CliAudience.provide` | Piped onto the composite root (after `withSubcommands`): resolves the flags with `Command.provideEffect` and re-provides env's `Audience` with `source: "flag"`. More than one occurrence is a `CliError.UserError`, exit 64. `run` and `runWith` apply it themselves, so it is the path for a bare `Command.run` only; it then covers the subcommand handler (with the same interactivity decision) but not a fallback prompt. See [the audience flag decision](../decisions/audience-flag-is-shared-root-flags.md). |
 | `CliAudience.runWith`, `CliAudience.run` | THE wiring for the audience flag: `Command.make(...).pipe(Command.withSharedFlags(CliAudience.flags()), Command.withSubcommands([...]))`, then `CliRuntime.main(CliAudience.run(root, { version }), { platform, env })`. `runWith(root, config)(argv)` and `run(root, config)` (reads `Stdio.args` like `Command.run`) scan argv for the four flags BEFORE core parses, apply `provide` themselves, and run core inside a provided `Audience` (`{ kind, source: "flag" }` for exactly one flag) and a `CliInteractive` the flag decides from the audience and the TTY facts (`--human` is interactive when `TerminalEnv` reports a terminal on stdin and stdout, even under a detected agent, and never in a pipe; a non-human flag or a conflict makes it false; with no `TerminalEnv` a flag only narrows), with `--wizard` following that decision (restored only into the exact config object `gateWizard` produced when it dropped it, so a consumer's own `CliConfig`, from outside the gate or inside, never gets it back) and diagnostics switched to NDJSON for a non-human flag. A root without the shared flags does not compile (`RequiresAudienceFlags`). The scan and the resolver share one counting rule (true occurrences only). |
 | `CliInteractive` | A `Context.Reference<boolean>` defaulting to `false`, read with `yield* CliInteractive` and never in `R`: `Audience` is `human`, stdin is a terminal, stdout is a terminal and `TERM` is not `dumb` (a dumb terminal cannot move the cursor or take synchronized output, so it gets what a pipe gets: a live view prints its final frame once, a screen is `NotInteractive`). The decision is `internal/canPrompt.ts`, shared by `layer` and the audience flag's recompute; `TERM` is read through `Config`, only when both streams are terminals, so it adds no requirement. Static `layer` (from `Audience` and `TerminalEnv`), `layerTest(value)` and `unless(condition)`, a scoped override that can only turn it off. Both layers are typed `Layer<never>` because they set the reference. |
-| `Token`, `Style`, `TokenName` | A token is a style; applying it is identity when colour is `none`. `TokenName` is `success`, `failure`, `warning`, `info`, `error`, `muted`, `accent` or `emphasis`. `Token.hex`, `Token.named` and `Token.style` build custom styles. `Token.defaults` is the frozen default style of every token and `Token.resolve(token, overrides?)` the pure resolution `CliTheme.paint` applies (a name that is not a token resolves to the empty style), so a renderer with no Effect context reads styles as data. `NamedColor`'s bright variants are spelled as chalk and Ink spell them (`redBright`, `blackBright`, with `gray` as an alias); the `Style` to Ink props mapping ships in `./ui` in P4 and P5. A colour name that is not a `NamedColor` paints nothing. |
+| `Token`, `Style`, `TokenName` | A token is a style; applying it is identity when colour is `none`. `TokenName` is `success`, `failure`, `warning`, `info`, `error`, `muted`, `accent` or `emphasis`. `Token.hex`, `Token.named` and `Token.style` build custom styles. `Token.defaults` is the frozen default style of every token and `Token.resolve(token, overrides?)` the pure resolution `CliTheme.paint` applies (a name that is not a token resolves to the empty style), so a renderer with no Effect context reads styles as data. `NamedColor`'s bright variants are spelled as chalk and Ink spell them (`redBright`, `blackBright`, with `gray` as an alias); the `Style` to Ink props mapping is `inkProps` in `./ui`. A colour name that is not a `NamedColor` paints nothing. |
 | `Status` | An open vocabulary: `Status.core` (`success`, `failure`, `warning`, `info`, `skip`, `pending`) and `Status.extend(extra)`, each entry a glyph, an ASCII glyph, a token and a rank. `resolve(name)` returns the full definition as a frozen copy, which the document IR stores, and, like `def`, throws on a name the vocabulary lacks (reachable only through a cast). `worst(names)` takes a non-empty list and returns the highest rank, ties to the first (rank is severity, not an aggregation policy: a consumer whose rule differs folds its own); `worstOption(names)` takes any array and returns an `Option`, `None` when empty. `glyph(name, glyphSet)` is the unpainted glyph from a set. Names are typed, so a misspelt one is a compile error. |
 | `Glyphs` | `Glyphs.unicode` and `Glyphs.ascii`: the status glyphs, bullet, arrow, ellipsis, spinner frames, `spinnerIntervalMs` (80), `tree` segments (`branch`, `last`, `pipe`, `blank`: box-drawing in Unicode, `-`, `\` and pipe characters in ASCII) and `pathSeparator` (`human`, `agent`: `›` and ` > `, or `>` and ` > ` in ASCII). ASCII is chosen under `TERM=dumb` or by option. `Glyphs.select({ ascii?, term? })` is that choice as a pure function (`auto` is ASCII only for `term` `dumb`, passed in because `StreamEnv` carries no `TERM`), which `CliTheme.layer` calls after reading `TERM` through `Config`. |
 | `CliTheme` | A `Context.Service` with `paint`, `style` (the resolved style `paint` renders, whatever the colour level), `sgr`, `glyphs`, `color` and `status` (the stdout ones) and `forStream("stdout" \| "stderr")`, a `StreamTheme` painting with THAT stream's colour from `TerminalEnv.stderr.color` or `.stdout.color`; anything written to stderr is painted through `forStream("stderr")`, as `CliMessage` does. `layer({ tokens?, glyphs? })` needs `TerminalEnv`; `layerTest` fixes the colour level; `promptTheme` sets core's `Prompt.Theme` from the tokens, with empty colour strings when colour is `none`. |
@@ -136,7 +144,7 @@ for why the package owns them.
 
 ### `@effected/cli/ui`
 
-Optional peers `ink` (^7.1.1) and `react` (^19.2.0). Kit files hold only
+Optional peers `ink` (^7.1.1), `react` (^19.2.0) and `@types/react` (^19.2.0, for the declarations). Kit files hold only
 type imports from them; the modules are loaded on a screen's first mount, so
 importing `./ui`, or running a program that is not interactive, loads
 neither, except that an owned live view loads them to print its final frame
@@ -170,13 +178,13 @@ reviewed export list is pinned in `__test__/declarations.test.ts`.
 | `CliUiTestScreen`, `CliUiTestHandle`, `CliUiTestView`, `CliUiTestSession`, `CliUiTestNextOptions`, `CliUiTestOptions` | A screen handle: `press` (named keys, or `{ char }` items typed as `chunk` sends them; a bare string that names no key dies naming `type(...)` and `{ char }`, never a Node stream error: okfit O2a), `type`, `chunk` (keys or characters in ONE stdin write, which `press` can never show), `resize`, `frame` (token markup), `rawFrame`, `plainFrame`, `frames`; a key for a screen that has ended is a defect. `render`'s handle adds `rerender` and `result`; `view`'s adds `rerender(element)` only. |
 | `CliUiTest.styled`, `CliUiTest.serializer` | ANSI decoded back to token markup, and a Vitest snapshot serializer that prints it. |
 
-### `@effected/cli/testing` (new subpath)
+### `@effected/cli/testing`
 
 | Export | Contract |
 | --- | --- |
 | `CliTest.sandbox` | `Effect<Sandbox, PlatformError, FileSystem \| Path \| Scope>`. A temporary directory with a fresh `HOME` and `XDG_{CONFIG,DATA,STATE,CACHE}_HOME`, and `NO_COLOR=1`. `PATH` is taken from an injected value and never inherited through `extendEnv`. |
 | `TestTerminal.make` | `(options?: { columns? }) =>` an `Effect` of a `Terminal` layer with `input(keys)`, `type(text)`, `end` and captured `output`. Core's own mock terminal is test-only and unexported; this one drives core `Prompt` and `CliPrompt.fallback` in tests. |
-| `CliTest.run` | `(bin, args, { sandbox, execPath, cwd?, env?, stdin? }) => Effect<{ exitCode; stdout; stderr }, PlatformError, ChildProcessSpawner>`. Two deliberate differences from spec §6: there is **no `path?` option** (`PATH` is fixed once by `CliTest.sandbox({ path })`, and a per-run override goes through `env`, which merges over the sandbox environment), and it **scopes itself** (`Effect.scoped` around the spawn), so `Scope` is not in `R` and a caller need not wrap each run. A non-zero exit is data, not a failure. Spawns `execPath` with `[bin, ...args]` over core `ChildProcess` (D9), no peer on `@effected/commands`. **When `stdin` is omitted OR passed as `""`, the spawned child receives an already-ended empty input, never an open pipe** — a test that does not pass `stdin` never hangs waiting for one. |
+| `CliTest.run` | `(bin, args, { sandbox, execPath, cwd?, env?, stdin? }) => Effect<{ exitCode; stdout; stderr }, PlatformError, ChildProcessSpawner>`. Two deliberate differences from the original design: there is **no `path?` option** (`PATH` is fixed once by `CliTest.sandbox({ path })`, and a per-run override goes through `env`, which merges over the sandbox environment), and it **scopes itself** (`Effect.scoped` around the spawn), so `Scope` is not in `R` and a caller need not wrap each run. A non-zero exit is data, not a failure. Spawns `execPath` with `[bin, ...args]` over core `ChildProcess` (D9), no peer on `@effected/commands`. **When `stdin` is omitted OR passed as `""`, the spawned child receives an already-ended empty input, never an open pipe** — a test that does not pass `stdin` never hangs waiting for one. |
 
 See [D9: `CliTest` uses core `ChildProcess`](../decisions/cli-testing-uses-core-child-process.md)
 for why this subpath takes no dependency on `@effected/commands`.
@@ -323,7 +331,7 @@ The presentation layer adds its own:
   [it has no JSON renderer](../decisions/no-json-renderer.md) and
   [`CliLinks` finds the project root with `@effected/walker`](../decisions/cli-takes-the-walker-edge.md),
   which supersedes the draft that had it [inline](../decisions/cli-links-inline-ascent.md)
-  (all drafts, built in P3, awaiting a human to verify them)
+  (all drafts, awaiting a human to verify them)
 - [`FORCE_COLOR` is honoured](../decisions/force-color-honoured-node-precedence.md)
   and [`@effected/env` is its own package](../decisions/env-is-its-own-package.md),
   both recorded against the [`env` Module](env.md)

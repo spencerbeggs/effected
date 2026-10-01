@@ -8,19 +8,19 @@ resource: ../../packages/env
 layer: boundary
 tags: [architecture, bundle, dx]
 sources:
-  - id: interactive-cli-kit-design
-    resource: ../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md
-    title: Interactive CLI kit design, section 4
+  - id: boundary-test
+    resource: ../../packages/env/__test__/purity.test.ts
+    title: "env purity: no process read, node: import, platform or kit import, or console write in src"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T07:28:21Z
-  body_sha256: 6eaf6e04782f43333b4e80dd9c55dd4922d42ed0d579b31a3d23cc87eade25fd
+  at: 2026-10-01T14:11:47Z
+  body_sha256: c7cc9376861e4f39c168600c229cbe3c219ef92e216863d20ae36a549db72061
 ---
 
 # @effected/env
 
 `@effected/env` answers two questions for any front end of a tool: *who is
-running this* and *what can the terminal do*.[^interactive-cli-kit-design]
+running this* and *what can the terminal do*.[^boundary-test]
 It is a [boundary-tier](../glossary/library-tier.md) package with `effect` as
 its only peer, no `node:` import, and nothing read at import time. Every
 environment variable goes through `Config`, so a test controls it. Each
@@ -60,4 +60,4 @@ here.
 - [`@effected/cli`](cli.md)
 - [`@effected/engine`](engine.md)
 
-[^interactive-cli-kit-design]: `../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md`
+[^boundary-test]: `packages/env/__test__/purity.test.ts`, which pins the no-`node:` and no-import-time-read rules; the exports are pinned in `entrypoints.test.ts`

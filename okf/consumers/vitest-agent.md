@@ -7,8 +7,8 @@ status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:39:07Z
-  body_sha256: 8514b162dc5112547947a44e5bf15ba424f0fcba366f4507d2c63e97e0f265c2
+  at: 2026-10-01T14:11:47Z
+  body_sha256: 3939e0fbc2f40319a8c8733cfcd97c6e5bbbe4cd1af9af5d507771a1642e5469
 ---
 
 # spencerbeggs/vitest-agent
@@ -37,18 +37,48 @@ tarball rather than a workspace link.
   XDG-namespaced data paths.
 - [`@effected/schemastore`](../modules/schemastore.md) — the report schema
   its MCP tool results validate against.
+- [`@effected/cli`](../modules/cli.md)'s live view, behind the optional peers
+  `ink` and `react`: the reporter's live run view is `CliUi.live` over a
+  `PubSub` subscription passed as `events`, with `close` as the lossless end
+  (`packages/reporter/src/liveView.ts`), drawn through `UiProvider` and
+  `DocView` so a `Doc` document is the same rows in a static report and in the
+  live frame. `UiProvider` takes its value from `CliUi.context`.
+- `CliRuntime.main` with `env` for its CLI entry point, reporting failures
+  through `details.lines({ status: false })` under its own `vitest-agent:`
+  prefix and `env.displayPath` relative to the project directory, in place
+  of reporting by hand.
+- The document IR for the report: `Doc.countsTable` for the per-project totals
+  (a `labelHeader`, a `durationHeader` and a `Doc.strong` total row), `Doc.list`,
+  `Doc.verbatim`, `Doc.line` with `truncate` and `Doc.diffText` for a failure,
+  `Render.contextOf` for a pure context outside Effect, and `CliLog` for
+  diagnostics, with `format: "auto"` and `argv: process.argv.slice(2)` so an
+  audience flag decides NDJSON or plain.
+- [`@effected/env`](../modules/env.md)'s `EnvOverride.readResult`, which
+  reads its console-mode override variable without logging, so the host owns
+  the warning's wording and stream.
+- The tests: `CliUiTest.live` (every live-view behaviour is pinned against it)
+  and `CliUiTest.view` for a display-only element such as a status icon.
 
 ## Open questions
 
 - `process.exit` inside handlers — skips finalizers and uses ad-hoc exit
   codes 4 and 5, rather than routing through a kit `CliExit` primitive.
-- No `CliLogger` / `reportFailures` — its CLI entry point reports failures
-  by hand rather than through `CliRuntime.main`.
 - `spawnSync` e2e throws on non-zero exit — its packed-install e2e cannot
   express "ran and failed as expected" the way a future `CliTest` would.
 - Its two independent ports of `registerToolkit` — duplicated MCP toolkit
   registration logic that a shared `@effected/mcp` primitive would
   collapse (phase 2).
+- A live handle available before Ink loads: `CliUi.live` returns its handle
+  only after Ink has loaded asynchronously, so a host that can be asked to
+  close before the first mount keeps its own "mounted" `Deferred`; the ask is a
+  handle that returns first, or a `close` that is safe and draining before
+  any mount.
+- `CliEnv.layerTest({ tty, term, audience })`: faking a terminal in a test
+  today is a hand-composed stack of `CliTheme.layer`, `CliInteractive.layer`
+  over `TerminalEnv.layerTest` and `Audience.layerTest`, and `UiStreams`.
+- `Glyphs.ascii` has no pass, fail or skip marks of its own, so the reporter
+  draws those itself and a `TERM=dumb` assertion about kit glyphs needs a
+  control to mean anything.
 - `npm pack --json` read as an array — breaks under npm 12, which reports
   the same shape keyed by name rather than as an array; a phase 3 finding
   the kit's own `PackagePublish` already handles both shapes for.
