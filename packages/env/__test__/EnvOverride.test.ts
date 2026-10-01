@@ -189,3 +189,29 @@ describe("EnvOverride.readResult with a source", () => {
 		}),
 	);
 });
+
+describe("EnvOverride.readResult: testing a module-level reader (A8)", () => {
+	// A host's reader, built once at module level with no `source`: each read takes the fiber's provider.
+	const consoleMode = EnvOverride.readResult({ envVar: "VITEST_AGENT_CONSOLE", accepts });
+	const under = (env: Record<string, string>) =>
+		consoleMode.pipe(Effect.provide(Audience.layerTest("human")), withEnv(env));
+
+	it.effect("one options object, two provided ConfigProviders: each read sees its own", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual((yield* under({ VITEST_AGENT_CONSOLE: "stream" })).accepted, Option.some("stream"));
+			assert.deepStrictEqual((yield* under({ VITEST_AGENT_CONSOLE: "silent" })).accepted, Option.some("silent"));
+		}),
+	);
+
+	it.effect("a host that needs a fixed source builds the options inside a function that takes it", () =>
+		Effect.gen(function* () {
+			const consoleModeFrom = (source: Readonly<Record<string, string | undefined>>) =>
+				EnvOverride.readResult({ envVar: "VITEST_AGENT_CONSOLE", accepts, source });
+			const result = yield* consoleModeFrom({ VITEST_AGENT_CONSOLE: "agent" }).pipe(
+				Effect.provide(Audience.layerTest("human")),
+				withEnv({ VITEST_AGENT_CONSOLE: "silent" }),
+			);
+			assert.deepStrictEqual(result.accepted, Option.some("agent"));
+		}),
+	);
+});

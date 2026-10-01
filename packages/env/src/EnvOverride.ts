@@ -31,8 +31,30 @@ export class EnvOverride {
 	 * call, so a host passing `process.env` sees each change, and an `undefined` value is unset) or a `ConfigProvider`
 	 * of its own.
 	 *
+	 * Without `source`, every read takes the `ConfigProvider` of the fiber that runs it, so a reader built once at
+	 * module level stays testable: a test provides its own provider around the read.
+	 *
+	 * ```ts
+	 * const consoleMode = EnvOverride.readResult({ envVar: "MYTOOL_CONSOLE", accepts })
+	 * // in a test:
+	 * consoleMode.pipe(
+	 *   Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ MYTOOL_CONSOLE: "silent" })),
+	 * )
+	 * ```
+	 *
+	 * `source` is for a long-lived host that must re-read a record on each call (`process.env` in a watch-mode runner,
+	 * where core's default provider snapshots the environment once). It is fixed when the options object is built, so a
+	 * host that wants it AND testability builds the options inside a function that takes the source:
+	 *
+	 * ```ts
+	 * const consoleModeFrom = (source: Readonly<Record<string, string | undefined>>) =>
+	 *   EnvOverride.readResult({ envVar: "MYTOOL_CONSOLE", accepts, source })
+	 * // production: consoleModeFrom(process.env); a test: consoleModeFrom({ MYTOOL_CONSOLE: "silent" })
+	 * ```
+	 *
 	 * @param options - `envVar` is the variable; `accepts` lists, per audience, the literals it accepts; `source`, if
-	 *   given, is where the variable is read in place of the ambient environment
+	 *   given, is where the variable is read in place of the ambient environment: a long-lived host's record, re-read
+	 *   on every call, or a `ConfigProvider`; omit it to read the fiber's `ConfigProvider`, which a test provides
 	 */
 	static readResult<const M extends Record<AudienceKind, ReadonlyArray<string>>>(options: {
 		readonly envVar: string;
