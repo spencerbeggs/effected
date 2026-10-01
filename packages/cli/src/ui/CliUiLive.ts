@@ -3,7 +3,21 @@ import type * as Cli from "@effected/cli";
 import { Audience } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
 import type { Console } from "effect";
-import { Cause, Clock, Duration, Effect, Exit, Fiber, Option, Pull, Queue, Schedule, Scope, Stream } from "effect";
+import {
+	Cause,
+	Clock,
+	Duration,
+	Effect,
+	Exit,
+	Fiber,
+	Option,
+	PubSub,
+	Pull,
+	Queue,
+	Schedule,
+	Scope,
+	Stream,
+} from "effect";
 import type { FunctionComponent, ReactElement, ReactNode } from "react";
 import { CliInteractive } from "../CliInteractive.js";
 import { CliTheme, themeForAudience } from "../CliTheme.js";
@@ -27,12 +41,19 @@ import { useTerminalSize } from "./UiTheme.js";
  */
 export interface LiveOptions<E, S> {
 	/**
-	 * The events to fold. `live` makes the stream's first pull before it returns, so a stream that subscribes on its
-	 * first pull without forking (`Stream.fromPubSub`) is subscribed by then and sees an event published at once. One
-	 * that forks its upstream (`Stream.merge`, `buffer`, a concurrent `flatMap`) subscribes later, and an event published
-	 * before that is lost. To be certain, subscribe first (`PubSub.subscribe`) and pass `Stream.fromSubscription`.
+	 * The events to fold: a `PubSub` subscription, or a stream.
+	 *
+	 * A subscription (`PubSub.subscribe`, made before the first publish) is the surest: the view takes from it directly,
+	 * so nothing published after the subscribe is missed, and `LiveHandle.close` folds every message still queued in it
+	 * before the view ends. The view ends on its own when the subscription's `PubSub` is shut down, but a shutdown drops
+	 * the messages the view has not taken yet: end with `close`, then shut the `PubSub` down.
+	 *
+	 * A stream: `live` makes its first pull before it returns, so one that subscribes on its first pull without forking
+	 * (`Stream.fromPubSub`) is subscribed by then and sees an event published at once. One that forks its upstream
+	 * (`Stream.merge`, `buffer`, a concurrent `flatMap`) subscribes later, and an event published before that is lost.
+	 * `close` folds what the view has already pulled; what the stream holds and has not yielded is the stream's.
 	 */
-	readonly events: Stream.Stream<E>;
+	readonly events: Stream.Stream<E> | PubSub.Subscription<E>;
 	/** The state before the first event. */
 	readonly initial: S;
 	/** Fold one event into the state. The kit never resets the state: a reducer that wants a fresh run resets it. */
@@ -95,8 +116,32 @@ export interface LiveHandle<S> {
 	 * around the work done while the view is mounted; a line written to the terminal any other way tears the frame.
 	 */
 	readonly logConsole: Console.Console;
-	/** Completes once the event stream has ended and the last run's frame is committed. */
+	/**
+	 * Completes once the events have ended (the stream ended, the subscription's `PubSub` was shut down, or `close`
+	 * ended them) and the last run's frame is committed. Dies with what the view died of: a `reduce` that threw, or a
+	 * stream that died.
+	 */
 	readonly done: Effect.Effect<void>;
+	/**
+	 * End the view cleanly, then wait for `done`.
+	 *
+	 * @remarks
+	 * It stops taking events, folds what the view holds and has not folded yet, and ends the run as the events ending
+	 * does: an `isTerminal` event among them commits its run as usual, and a run with no terminal event is committed as
+	 * drawn (owned and not interactive: its final frame is printed once). With a subscription, that includes every
+	 * message still queued in it, so a run's tail published just before the close is never lost, as it would be to a
+	 * `PubSub.shutdown`. With a stream, it is what the view has already pulled; elements the stream holds and has not
+	 * yielded are the stream's own.
+	 *
+	 * Idempotent: a second `close`, concurrent or later, waits for the same end and writes nothing more. After the events
+	 * have ended it only waits for `done`. It dies as `done` does. Closing the caller's scope instead stops the view at
+	 * once (nothing still queued is folded); after `close` it releases what is left. A host ends its view with:
+	 *
+	 * ```ts
+	 * handle.close.pipe(Effect.ensuring(Scope.close(scope, Exit.void)))
+	 * ```
+	 */
+	readonly close: Effect.Effect<void>;
 }
 
 /**
@@ -192,6 +237,9 @@ export const live = <E, S>(
 		const drain = yield* resolveDrain(options.drainPerformance ?? "auto");
 		const bridge = yield* makeInkConsole;
 		const inbox = yield* Queue.unbounded<Message<E, S>>();
+		const source = options.events;
+		const stream = Stream.isStream(source) ? (source as Stream.Stream<E>) : undefined;
+		const subscription = stream === undefined ? (source as PubSub.Subscription<E>) : undefined;
 
 		let state = options.initial;
 		let run: Run<S> | undefined;
@@ -506,6 +554,17 @@ export const live = <E, S>(
 				return current?.mounted === undefined || frame <= current.frame ? Effect.void : drawAt(frame);
 			});
 
+		/**
+		 * What a subscription still queues, taken without waiting; nothing for a stream. Read once the pump has stopped
+		 * (an `Ended` comes after it), so nothing else is taking. A subscription whose PubSub was shut down has nothing
+		 * left, and a take from it would interrupt: it is not asked.
+		 */
+		const queuedTail: Effect.Effect<ReadonlyArray<E>> = Effect.suspend(() => {
+			if (subscription === undefined) return Effect.succeed([]);
+			const queued = Option.getOrElse(PubSub.remainingUnsafe(subscription), () => 0);
+			return queued > 0 ? PubSub.takeUpTo(subscription, queued) : Effect.succeed([]);
+		});
+
 		const control: Effect.Effect<void> = Effect.gen(function* () {
 			while (true) {
 				// Everything queued at once, in order. Event chunks that arrived together are folded as one chunk and drawn
@@ -530,9 +589,13 @@ export const live = <E, S>(
 						case "Failed":
 							if (message.run === run) yield* checkFailure;
 							break;
-						case "Ended":
-							// The stream ended mid-run: commit what is drawn, or print it.
+						case "Ended": {
+							// The events ended (or `close` ended them) mid-run: fold what a subscription still queues, then
+							// commit what is drawn, or print it.
+							const tail = yield* queuedTail;
+							if (tail.length > 0) yield* onChunk(tail);
 							return yield* endRun;
+						}
 						case "Died":
 							// The stream died: unmount first, as for a reducer that throws, then die with its cause.
 							yield* takeRun;
@@ -543,8 +606,14 @@ export const live = <E, S>(
 			}
 		});
 
-		const pull = yield* Stream.toPull(options.events);
-		const pump = Effect.forever(Effect.flatMap(pull, (chunk) => Queue.offer(inbox, { _tag: "Events", chunk }))).pipe(
+		// A subscription is taken from as `Stream.fromSubscription` takes: it ends when its PubSub is shut down.
+		const pull = yield* Stream.toPull(stream ?? Stream.fromSubscription(source as PubSub.Subscription<E>));
+		// Only a pull that is still waiting can be interrupted: a chunk it returned reaches the inbox, so `close` never
+		// loses what the view has taken.
+		const step = Effect.uninterruptibleMask((restore) =>
+			Effect.flatMap(restore(pull), (chunk) => Queue.offer(inbox, { _tag: "Events", chunk })),
+		);
+		const pump = Effect.forever(step).pipe(
 			Pull.catchDone(() => Queue.offer(inbox, { _tag: "Ended" })),
 			// A stream that dies tells the controller, which would otherwise wait for an event that never comes.
 			Effect.catchCause((cause) =>
@@ -557,9 +626,17 @@ export const live = <E, S>(
 		// Registered last, so it runs first when the caller's scope closes: stop the fold, then unmount what is drawn.
 		// Nothing more is written: a run cut off by the close prints nothing.
 		yield* Effect.addFinalizer(() => Effect.andThen(Fiber.interruptAll([controlling, pumping]), takeRun));
+		const done = Fiber.join(controlling);
+		// Once, however many callers: stop taking events, then end. The pump is stopped first, so the controller, which
+		// takes what a subscription still queues when it ends, never races it for a message. After an earlier end the
+		// controller has returned, and this `Ended` sits in the inbox unread.
+		const ending = yield* Effect.cached(
+			Effect.uninterruptible(Effect.andThen(Fiber.interrupt(pumping), Queue.offer(inbox, { _tag: "Ended" }))),
+		);
 		return {
 			state: Effect.sync(() => state),
 			logConsole: bridge.writer,
-			done: Fiber.join(controlling),
+			done,
+			close: Effect.andThen(ending, done),
 		};
 	});

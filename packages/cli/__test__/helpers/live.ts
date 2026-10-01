@@ -1,5 +1,5 @@
 // Shared by the CliUi.live tests: a small event model, its fold and frame, and the fake-terminal runner.
-import type { Cause, Stream } from "effect";
+import type { Cause, PubSub, Stream } from "effect";
 import { Console, Effect, Option, Queue, Schedule } from "effect";
 import { Box, Text } from "ink";
 import type { ReactElement } from "react";
@@ -49,7 +49,7 @@ export const frameOf = (state: State): ReactElement =>
 	);
 
 export const optionsOf = (
-	events: Stream.Stream<Ev>,
+	events: Stream.Stream<Ev> | PubSub.Subscription<Ev>,
 	extra: Partial<LiveOptions<Ev, State>> = {},
 ): LiveOptions<Ev, State> => ({
 	events,

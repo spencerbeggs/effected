@@ -302,12 +302,17 @@ export class CliUi {
 	 * scope.
 	 *
 	 * @remarks
-	 * `live` makes the first pull of `events` before it returns, and folds them in a fiber of the caller's scope. A
-	 * stream that subscribes on its first pull without forking (`Stream.fromPubSub`) is therefore subscribed by then; one
-	 * that forks its upstream (`Stream.merge`, `buffer`, a concurrent `flatMap`) subscribes later, and loses what is
-	 * published before. To be certain, subscribe first and pass `Stream.fromSubscription`. Closing the scope stops the
-	 * fold and unmounts whatever is drawn: the terminal is restored (the cursor shown, Ink's colour level put back) and
-	 * nothing more is written. `done` completes when the stream ends.
+	 * `events` is a `PubSub` subscription or a stream, folded in a fiber of the caller's scope. A subscription, made
+	 * before the first publish, is the surest: nothing published after it is missed. `live` makes a stream's first pull
+	 * before it returns, so one that subscribes on its first pull without forking (`Stream.fromPubSub`) is subscribed by
+	 * then; one that forks its upstream (`Stream.merge`, `buffer`, a concurrent `flatMap`) subscribes later, and loses
+	 * what is published before.
+	 *
+	 * End the view with `handle.close`: it stops taking events, folds what is still queued (a subscription's queued
+	 * messages included), commits or prints the run as the events ending would, and waits for `done`. Then close the
+	 * scope. A `PubSub.shutdown` drops what the view has not taken yet, and closing the scope by itself stops the fold
+	 * at once: both lose a run's tail. Closing the scope unmounts whatever is drawn: the terminal is restored (the
+	 * cursor shown, Ink's colour level put back) and nothing more is written. `done` completes when the events end.
 	 *
 	 * A run begins at an `isStart` event (or wherever `begins` says, given the state before and after the event) and ends
 	 * at an `isTerminal` event; an event while no run is going that begins none is folded and not drawn, so what a program

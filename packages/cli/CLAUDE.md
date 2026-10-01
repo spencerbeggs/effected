@@ -97,10 +97,13 @@ one read. `okf/modules/cli.md` has the rows.
   - **Modes** differ only when not interactive: `owned` prints each run's final
     frame once as a string at stdout's width, `hosted` prints nothing. Neither
     mounts input: Ctrl-C stays the platform's SIGINT and closes the scope.
-  - **Subscription:** `live` makes the stream's first pull before returning, so
-    `Stream.fromPubSub` is subscribed; a stream that forks its upstream
-    (`merge`, `buffer`) is not — subscribe first and pass
-    `Stream.fromSubscription`.
+  - **Subscription and the end:** `events` is a `PubSub.Subscription` (subscribe
+    first: the surest) or a stream, whose first pull `live` makes before
+    returning (`Stream.fromPubSub` is subscribed; a stream that forks its
+    upstream is not). End a view with `handle.close`, which folds what is still
+    queued, a subscription's included, and ends the run as the events ending
+    would; then close the scope. `PubSub.shutdown` drops what the view has not
+    taken, and a bare scope close stops the fold at once: both lose a tail.
   - **Height, not width:** the frame is clipped to `rows - 1` (its content keeps
     its height and is clipped, never squeezed); the root takes no width at all —
     `@./okf/decisions/live-height-clamp-not-width.md` — Load when: touching the
