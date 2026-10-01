@@ -50,8 +50,13 @@
 	},
 	"peerDependencies": {
 		"@effected/config-file": "workspace:^",
+		"@effected/glob": "workspace:^",
+		"@effected/jsonc": "workspace:^",
 		"@effected/store": "workspace:^",
+		"@effected/toml": "workspace:^",
+		"@effected/walker": "workspace:^",
 		"@effected/xdg": "workspace:^",
+		"@effected/yaml": "workspace:^",
 		"effect": "catalog:effect:peers"
 	},
 	"engines": {

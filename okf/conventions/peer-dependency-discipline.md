@@ -12,8 +12,8 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-14T04:45:45Z
-  body_sha256: f79ab9e095c64f9cb6e5038c7ac14d2800bb6958a01480dba281d1b848f83a4c
+  at: 2026-10-01T00:15:16Z
+  body_sha256: c757f59bd9dfc1804b3f5c66ba187f09ecb27a235c8e4ca612914c6af17c4f86
 ---
 
 # Peer-dependency discipline
@@ -31,6 +31,7 @@ runtime failure far from its cause — see [an unsatisfiable exact effect
 peer installs clean and fails somewhere
 else](../gotchas/exact-effect-peer-silently-satisfiable.md).
 
+- The `@effected` closure is declared, never left to transitive satisfaction: a published package lists every required peer of each `@effected` package it peers on or depends on, recursively, and an optional peer's closure stays optional. `peerClosure.int.test.ts` in `packages/workspaces` enforces it and names the package and the missing peer.
 - Libraries keep `effect` as a peer dependency, never a regular one.
 - Tools and applications consuming libraries declare the full stack as
   regular dependencies instead of peers, since nothing downstream needs

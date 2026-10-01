@@ -43,6 +43,7 @@
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
+		"@effected/glob": "workspace:^",
 		"@effected/jsonc": "workspace:^",
 		"@effected/walker": "workspace:^",
 		"effect": "catalog:effect:peers"
