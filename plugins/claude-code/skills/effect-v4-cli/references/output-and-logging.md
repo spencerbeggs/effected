@@ -46,7 +46,10 @@ Implementation facts worth knowing even if you write your own:
   `Console.log`, never `Effect.log`: every `Effect.log*` call is a diagnostic.
   Pass `CliLogger.layer({ stderrFrom: "Error" })` for the alternative split,
   where `Info`/`Warning` go to stdout as program output — right only for a tool
-  whose output *is* its log lines.
+  whose output *is* its log lines. For diagnostics an operator opts into (a
+  level variable, NDJSON for agents and CI), use `CliLog.layer` (or `env.log`
+  under `CliRuntime.main`) **instead of** `CliLogger.layer`: it owns the whole
+  logger set and builds its own `CliLogger` — see `presentation.md`.
 - **`Command.runWith` renders a `CliError.UserError` itself** — through the
   `CliOutput` formatter, on stderr — then re-fails with it, so
   `CliRuntime.reportFailures` and `CliRuntime.main` skip it (and exit with the
@@ -76,7 +79,9 @@ envelopes, rendered results, help text. **Everything else goes to stderr**:
 every `Effect.log*` call, warnings, summaries and every reported failure
 (`CliLogger`'s default `stderrFrom` is `"All"`). A `--format json` consumer
 piping only stdout therefore never has to filter a stray log line out of its
-document.
+document. `CliMessage` is the exception by design: `success` and `info` are
+one-line outcomes on stdout, `warning` and `failure` go to stderr, all through
+`Console` so no log level silences them.
 
 Message conventions, so different commands read as one program: lowercase
 the message, prefix with `error:` or `warning:`, no trailing period, and
@@ -84,36 +89,34 @@ render paths relative to the current working directory rather than absolute.
 
 ## Colour: `CliColor`
 
-**`CliColor.enabled`** is the no-color.org decision, `Effect<boolean, never,
-Stdio>`: colour is on only when stdout is a terminal *and* `NO_COLOR` is not
-set to a non-empty value. It reads `NO_COLOR` through the ambient `Config`
-(never `process.env` directly), so a test swaps the provider instead of
-mutating a global — `FORCE_COLOR` is ignored, matching core's own formatter.
+**`CliColor.enabled`**, `Effect<boolean, never, Stdio>`, is stdout's colour level as a plain boolean: `@effected/env`'s `TerminalEnv.colorLevel("stdout") !== "none"`. It follows Node's `getColorDepth` precedence — **`FORCE_COLOR` first, and it beats `NO_COLOR`**; then the TTY gate; then a non-empty `NO_COLOR`, `NODE_DISABLE_COLORS` or `TERM=dumb`, and the terminal table (`TERM`, `COLORTERM`, `TERM_PROGRAM`, CI). The environment is read through the ambient `Config` (never `process.env` directly), so a test swaps the provider instead of mutating a global; an ambient `TerminalEnv`, such as `TerminalEnv.layerTest`, answers instead when one is provided. The full precedence lives in `presentation.md`.
 
 ~~~ts
 import { CliColor } from "@effected/cli"
 import { ConfigProvider, Effect, Stdio } from "effect"
 
-const program = CliColor.enabled.pipe(
-  Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ NO_COLOR: "1" }))),
-  Effect.provide(Stdio.layerTest({ stdoutIsTerminal: Effect.succeed(true) })),
-)
+const decide = (env: Record<string, string>) =>
+  CliColor.enabled.pipe(
+    Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(env))),
+    Effect.provide(Stdio.layerTest({ stdoutIsTerminal: Effect.succeed(true) })),
+  )
 
-Effect.runPromise(program).then((enabled) => {
-  console.log(enabled)
-})
+Effect.runPromise(decide({ NO_COLOR: "1" })).then(console.log) // false
+Effect.runPromise(decide({ NO_COLOR: "1", FORCE_COLOR: "1" })).then(console.log) // true
 ~~~
 
-This prints `false`: stdout is a (faked) terminal, but a non-empty `NO_COLOR`
-still wins.
+A non-empty `NO_COLOR` turns colour off on a (faked) terminal, and `FORCE_COLOR` turns it back on.
 
 **`CliColor.formatterLayer(overrides?)`** builds core's own
 `CliOutput.Formatter` from that same decision, so help text, parse errors and
 any rendered output agree on whether colour is on — never wire a formatter by
-hand next to `CliColor.enabled`, or the two can disagree.
+hand next to `CliColor.enabled`, or the two can disagree. Under
+`CliRuntime.main` with `env`, `main` installs this formatter itself; pass
+overrides as `env.formatter` instead.
 
-**Every colour decision in the program reads `CliColor.enabled`, not just the
-formatter.** Diagnostic rendering, tables, and anything else a command prints
+**Every colour decision in the program reads the one decision, not just the
+formatter** — `CliColor.enabled`, or, under `env`, the `CliTheme` and
+`Render.context` built from the same `TerminalEnv`. Diagnostic rendering, tables, and anything else a command prints
 in colour are each their own call site outside `CliOutput.Formatter` — for
 the same one-decision-point reason `CliRuntime.main` exists, none of them
 gets to re-derive "is colour on" with its own `isTTY`/`NO_COLOR` check.

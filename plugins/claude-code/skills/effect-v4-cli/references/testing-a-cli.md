@@ -1,6 +1,6 @@
 # Testing a CLI
 
-Loaded from `effect-v4-cli`. Covers the two false-green traps specific to testing a CLI.
+Loaded from `effect-v4-cli`. Covers the two false-green traps specific to testing a CLI, testing presentation in process with the `layerTest` doubles, driving core prompts with `TestTerminal`, driving Ink screens and live views with `CliUiTest`, and spawning a built bin with `CliTest`.
 
 ## Testing a CLI
 
@@ -14,6 +14,123 @@ Two false-green traps bite CLIs specifically. Both are covered in
 - **`TestConsole.logLines` accumulates for the whole test.** A test that invokes
   the CLI twice and asserts on `logLines` both times is asserting against the
   first run's output both times — the second assertion cannot fail.
+
+## Presentation in process: fix the environment, capture `Console`
+
+Every presentation service has a double that needs nothing, and the environment is read through `Config`, so a test never touches `process`:
+
+| Double | Fixes |
+| --- | --- |
+| `Audience.layerTest(kind, source?)` (`@effected/env`) | who the run is for |
+| `TerminalEnv.layerTest({ stdinIsTerminal?, stdout?, stderr? })` (`@effected/env`) | terminal facts: `isTerminal`, `color`, `hyperlinks`, `columns` per stream |
+| `CurrentRuntimeEnv.layerTest({ agent?, ci?, terminal? })` (`@effected/env`) | the detected agent, CI (`github-actions` turns on workflow-command neutralization) and terminal |
+| `CliTheme.layerTest({ color?, stderrColor?, glyphs? })` | the theme at a fixed colour level |
+| `CliInteractive.layerTest(value)` | whether the run may prompt |
+| `CliLinks.layerTest(mode)` | where file links open |
+| `Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ ... }))` | any variable the real layers read: `FORCE_COLOR`, `NO_COLOR`, `TERM`, an audience override |
+
+Then capture `Console.Console` and assert on **what** was written and **which stream** it went to — the stream is the half a content-only assertion misses:
+
+~~~ts
+import { assert, it } from "@effect/vitest"
+import { CliMessage, CliTheme } from "@effected/cli"
+import { Audience } from "@effected/env"
+import { Console, Effect, Layer } from "effect"
+
+it.effect("a warning goes to stderr, colourless", () =>
+  Effect.gen(function* () {
+    const out: Array<string> = []
+    const err: Array<string> = []
+    const capture = {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => void out.push(args.join(" ")),
+      error: (...args: ReadonlyArray<unknown>) => void err.push(args.join(" ")),
+    } as unknown as Console.Console
+    yield* CliMessage.warning("2 files skipped").pipe(Effect.provideService(Console.Console, capture))
+    assert.deepStrictEqual(out, [])
+    assert.include(err[0], "2 files skipped")
+    assert.notInclude(err[0], "\u001b[")
+  }).pipe(Effect.provide(Layer.mergeAll(CliTheme.layerTest({ color: "none" }), Audience.layerTest("human")))),
+)
+~~~
+
+A renderer needs no Effect at all: `Render.plain(doc, Render.contextOf({ audience: "agent" }))` is a string, and an agent's context stays escape-free even through `Render.ansi`.
+
+## Core prompts: `TestTerminal`
+
+`@effected/cli/testing`'s `TestTerminal.make({ columns?, rows? })` is a `Terminal` a test drives: `type(text)`, `input([{ name: "enter" }])`, `end`, and the captured `output`, plus `pending` and `reads` (`{ keys, lines, subscriptions }`) to prove a non-interactive run never read the terminal. Core's own mock terminal is test-only and unexported; this is the public one.
+
+~~~ts
+import { assert, it } from "@effect/vitest"
+import { TestTerminal } from "@effected/cli/testing"
+import { MemoryFileSystem } from "@effected/memfs"
+import { Effect, Layer, Path } from "effect"
+import { Prompt } from "effect/cli"
+
+it.effect("answers a core prompt", () =>
+  Effect.gen(function* () {
+    const terminal = yield* TestTerminal.make()
+    yield* terminal.type("demo")
+    yield* terminal.input([{ name: "enter" }])
+    const answer = yield* Prompt.run(Prompt.String({ message: "Name" })).pipe(
+      Effect.provide(Layer.mergeAll(terminal.layer, MemoryFileSystem.layer, Path.layer)),
+    )
+    assert.strictEqual(answer, "demo")
+  }),
+)
+~~~
+
+`Prompt.run` requires `FileSystem | Path` (for the file prompt) whichever prompt you run; `@effected/memfs` satisfies it without touching disk. To drive a whole command's fallback prompts, provide the terminal through `CliPrompt.gateTerminal.pipe(Layer.provide(terminal.layer))` beside the platform, with `CliInteractive.layerTest(true)` and an `Audience.layerTest("human")`.
+
+## Ink screens and live views: `CliUiTest`
+
+`@effected/cli/ui/testing`'s `CliUiTest` mounts on in-memory streams under a marker-palette theme (`columns`, `rows`, `color`, `glyphs`, `interactive` options):
+
+| `CliUiTest` | Use |
+| --- | --- |
+| `render(screen, options?)` | one screen: a handle with `press`, `type`, `chunk`, `resize`, `frame`/`rawFrame`/`plainFrame`/`frames`, `rerender` and `result` |
+| `view(element, options?)` | a display-only element (no `result`): a crash surfaces on the next read instead of a silent empty frame |
+| `session(options?)` | a program that runs several screens: provide its `layer`, then `next({ contains? })` for each screen as it mounts; `mounts === 0` is the "nothing mounted" assertion. Its own TSDoc carries the recipe for driving a whole `Command` handler |
+| `live(options)` | a live view on the **production** render path, with `publish(event)`, `end`, `advance(duration)`, `transcript` (what the terminal shows, scrollback included) and `written` (every raw byte, e.g. to assert no scrollback-wiping `ESC[3J`) |
+| `cancelReason(exitOrCause)` | `Option<"escape" \| "interrupt">` from an `Exit` or `Cause`, so a test never walks the cause |
+| `styled(ansi)`, `serializer` | ANSI decoded back to token markup, and a Vitest snapshot serializer printing it |
+
+~~~ts
+import { assert, it } from "@effect/vitest"
+import { Select } from "@effected/cli/ui"
+import { CliUiTest } from "@effected/cli/ui/testing"
+import { Effect, Option } from "effect"
+
+const template = Select.screen({
+  message: "Template",
+  choices: [
+    { label: "Library", value: "lib" },
+    { label: "CLI", value: "cli" },
+  ],
+})
+
+it.effect("picks the second template", () =>
+  Effect.gen(function* () {
+    const handle = yield* CliUiTest.render(template)
+    assert.include(yield* handle.plainFrame, "Template")
+    yield* handle.press("down", "enter")
+    assert.strictEqual(yield* handle.result, "cli")
+  }),
+)
+
+it.effect("Esc cancels", () =>
+  Effect.gen(function* () {
+    const handle = yield* CliUiTest.render(template)
+    yield* handle.press("escape")
+    assert.deepStrictEqual(CliUiTest.cancelReason(yield* Effect.exit(handle.result)), Option.some("escape"))
+  }),
+)
+~~~
+
+- **`press` sends one key per stdin read; `chunk` sends them all in one read.** Ink hands every key of one read to the handler before React re-renders, so only `chunk` catches a handler reading stale render-closure state.
+- **A live test is `it.effect`.** The run's tick runs on the `TestClock`, so `advance("160 millis")` moves it frame by frame; under `it.live` `advance` dies. A plain-Vitest consumer provides `TestClock.layer()` (from `effect/testing`) itself.
+- **`frames` are best-effort; `transcript` and `written` are authoritative.** With `interactive: false`, the printed frame shows only there.
+- **A crash is never swallowed**: a component that throws makes `result` (or the next read, key or resize) die with it.
 
 ## Unit-test in process, spawn the built bin for the exit-code contract
 

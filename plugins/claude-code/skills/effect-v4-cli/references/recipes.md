@@ -23,24 +23,38 @@ own version of this layout:
   `process.argv` for distribution identity (see [Process confinement](#process-confinement)).
 
 ~~~ts
-import { CliColor, CliRuntime } from "@effected/cli"
+import { CliAudience, CliRuntime } from "@effected/cli"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
-import { Layer } from "effect"
 import { Command } from "effect/cli"
 
 declare const rootCommand: Command.Command<"demo", Record<string, never>>
 
 export const main = (): void => {
-  const platform = CliColor.formatterLayer().pipe(Layer.provideMerge(NodeServices.layer))
-  NodeRuntime.runMain(CliRuntime.main(Command.run(rootCommand, { version: "1.0.0" }), { platform }))
+  const root = rootCommand.pipe(Command.withSharedFlags(CliAudience.flags()))
+  NodeRuntime.runMain(
+    CliRuntime.main(CliAudience.run(root, { version: "1.0.0" }), {
+      platform: NodeServices.layer,
+      env: { audienceEnvVar: "DEMO_AUDIENCE", log: { envVar: "DEMO_LOG_LEVEL", argv: process.argv.slice(2) } },
+    }),
+  )
 }
 ~~~
 
-`CliColor.formatterLayer()` is the program's one formatter layer — never
-wire a bare `CliOutput.layer(formatter)` beside or instead of it, or the two
-can disagree on whether colour is on. A formatter override, such as
-`formatVersion`, goes through `formatterLayer`'s own `overrides` argument;
-see [Version formatter](#version-formatter) for that override in place.
+`env` is what makes `main` build the audience, terminal and theme services,
+decide `CliInteractive`, and install a coloured `CliOutput.Formatter` closer
+to the program than the platform — so help text, parse errors, prompts and
+rendered output share one colour decision. Customise that formatter through
+`env.formatter` (see [Version formatter](#version-formatter)); never wire a
+bare `CliOutput.layer(formatter)` or a second `CliColor.formatterLayer` into
+the platform, which `main`'s own formatter shadows. `env.log.argv` is the one
+`process` read the logging needs: the platform's `Stdio` does not exist while
+the platform itself builds, so the build-time log format reads an audience
+flag from here (`main.ts` is one of the files allowed to read `process`).
+
+A program that does not use `env` (no audience, no prompts) still assembles
+the same way, minus the flags and `env`; there,
+`platform: CliColor.formatterLayer().pipe(Layer.provideMerge(NodeServices.layer))`
+is how help text gets the colour decision.
 
 Why a recipe: every consumer's command tree, flag set and platform choice
 differ; there is nothing left to extract beyond `CliRuntime.main` itself,
@@ -63,6 +77,32 @@ package's own bundler config — the kit cannot perform a consumer's own
 package substitution for it.
 
 ## Version formatter
+
+Under `CliRuntime.main` with `env`, the override is a plain function on
+`env.formatter`, and the distribution a plain value `version.ts` already
+computed from `process.argv`:
+
+~~~ts
+import { CliAudience, CliRuntime } from "@effected/cli"
+import { distributionSuffix } from "@effected/engine"
+import type { Distribution } from "@effected/engine"
+import { NodeRuntime, NodeServices } from "@effect/platform-node"
+import type { Option } from "effect"
+import { Command } from "effect/cli"
+
+declare const root: Command.Command<"mytool", {}, {}, never, never>
+declare const distribution: Option.Option<Distribution> // from version.ts
+
+NodeRuntime.runMain(
+  CliRuntime.main(CliAudience.run(root.pipe(Command.withSharedFlags(CliAudience.flags())), { version: "1.2.3" }), {
+    platform: NodeServices.layer,
+    env: { formatter: { formatVersion: (name, version) => `${name} ${version}${distributionSuffix(distribution)}` } },
+  }),
+)
+~~~
+
+Without `env`, read the distribution from its reference and build the
+formatter layer from it, provided once at the program boundary:
 
 ~~~ts
 import { MemoryFileSystem } from "@effected/memfs"
@@ -121,10 +161,11 @@ parameter fails to typecheck (`TS2322`, not assignable to
 to the wrong pair.
 
 **Ruling for the reader:** a *consumer* front end may depend on both
-`@effected/cli` and `@effected/engine`. The kit's own `cli` package may
-depend on `@effected/config-file` (an optional peer, for config-issue
-rendering) but never on `@effected/engine` or any other kit package beyond
-that.
+`@effected/cli` and `@effected/engine`. The kit's own `cli` package never
+depends on `@effected/engine`: its kit edges are `@effected/env`,
+`@effected/glob` and `@effected/walker` (required peers),
+`@effected/config-file` (an optional peer, for config-issue rendering) and
+`@effected/github-commands` (a regular dependency, pure).
 
 Why a recipe: combining `distributionSuffix` into a formatter is only
 possible for a package willing to take the `@effected/engine` dependency,
