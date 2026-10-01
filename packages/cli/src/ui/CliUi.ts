@@ -3,14 +3,17 @@
 import type * as Cli from "@effected/cli";
 import type { Scope } from "effect";
 import { Deferred, Effect, Exit, Semaphore } from "effect";
-import type { Context as ReactContext, ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { Cancelled } from "../Cancelled.js";
 import { CliInteractive } from "../CliInteractive.js";
 import { CliTheme } from "../CliTheme.js";
 import { NotInteractive } from "../NotInteractive.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
-import { fromReact, inkModules, loadInk, withInkColour } from "./internal/ink.js";
+import { loadInk, withInkColour } from "./internal/ink.js";
 import { UiRenderOptions } from "./internal/renderOptions.js";
+import type { ScreenContextValue } from "./internal/ScreenContext.js";
+import { screenContext } from "./internal/ScreenContext.js";
+import { KeyTable, useKeys } from "./KeyTable.js";
 import { UiStreams } from "./UiStreams.js";
 
 /**
@@ -45,38 +48,12 @@ export interface CliUiRunOptions {
 	readonly stream?: "stdout" | "stderr";
 }
 
-/**
- * What every kit widget reads from its screen.
- *
- * @internal
- */
-export interface ScreenContextValue {
-	/** Cancel the screen. */
-	readonly cancel: ScreenControl<unknown>["cancel"];
-	/** The theme of the stream the screen draws on. */
-	readonly theme: Cli.StreamTheme;
-	/** The glyph set in use. */
-	readonly glyphs: Cli.GlyphSet;
-}
-
-/**
- * The React context carrying {@link ScreenContextValue}, built on the loaded React.
- *
- * @internal
- */
-export const screenContext: () => ReactContext<ScreenContextValue | undefined> = fromReact((react) =>
-	react.createContext<ScreenContextValue | undefined>(undefined),
-);
-
-/** The root keys: Ctrl-C cancels with `"interrupt"` and Esc with `"escape"`. `q` belongs to widgets, never here. */
+/** The root keys: Esc cancels with `"escape"`, Ctrl-C with `"interrupt"`. `q` belongs to widgets, never here. */
 const RootKeys = (props: {
 	readonly cancel: ScreenContextValue["cancel"];
 	readonly children: ReactNode;
 }): ReactNode => {
-	inkModules().ink.useInput((input, key) => {
-		if (key.ctrl && input === "c") props.cancel("interrupt");
-		else if (key.escape) props.cancel("escape");
-	});
+	useKeys(KeyTable.root, props.cancel);
 	return props.children;
 };
 

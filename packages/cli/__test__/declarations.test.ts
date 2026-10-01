@@ -25,6 +25,7 @@ const sourceExports = (text: string): ReadonlyArray<string> =>
 			).trim(),
 		)
 		.filter((name) => name !== "")
+		.filter((name, index, names) => names.indexOf(name) === index)
 		.sort();
 
 const CONSUMER = `import { CliTheme } from "@effected/cli";
@@ -150,7 +151,8 @@ const builtExports = (dts: string): ReadonlyArray<string> => {
 			)
 			.filter((name) => name !== ""),
 	);
-	return [...inline, ...listed].sort();
+	// A name exported as both a type and a value (`export type UiKey` beside `export declare const UiKey`) is one name.
+	return [...new Set([...inline, ...listed])].sort();
 };
 
 /** Each source entrypoint, the rolled-up declarations built from it, and the package import it must keep external. */
@@ -188,6 +190,11 @@ describe("the built declarations", () => {
 			sourceExports(source),
 		);
 		assert.notDeepEqual(builtExports(`${built}export declare class E {}\n`), sourceExports(source));
+		assert.deepStrictEqual(
+			builtExports(`${built}export declare const D: unknown;\n`),
+			sourceExports(source),
+			"a name exported as both a type and a value counts once",
+		);
 	});
 
 	it("let a consumer provide CliUi.run's CliTheme from the root entrypoint, leaving no requirement", () => {

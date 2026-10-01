@@ -31,6 +31,8 @@ export interface FakeStreams {
 	readonly stderr: () => string;
 	/** Feed raw bytes to stdin, as a terminal in raw mode would deliver a key. */
 	readonly input: (data: string) => void;
+	/** Resize the terminal: set both outputs' size and emit `resize` on stdout, as a terminal does. */
+	readonly resize: (columns: number, rows: number) => void;
 }
 
 const capture = (
@@ -90,6 +92,11 @@ export const makeFakeStreams = (options: FakeStreamsOptions = {}): FakeStreams =
 		stderr: stderr.text,
 		input: (data) => {
 			stdin.write(data);
+		},
+		resize: (nextColumns, nextRows) => {
+			Object.assign(stdout.stream, { columns: nextColumns, rows: nextRows });
+			Object.assign(stderr.stream, { columns: nextColumns, rows: nextRows });
+			stdout.stream.emit("resize");
 		},
 	};
 };

@@ -56,6 +56,8 @@ export interface CliUiTestHandle<A> {
 	readonly press: (...keys: ReadonlyArray<KeyName>) => Effect.Effect<void>;
 	/** Type text, one character at a time, each settling like a key. */
 	readonly type: (text: string) => Effect.Effect<void>;
+	/** Resize the terminal and emit `resize`, as a real one does, settling like a key. */
+	readonly resize: (columns: number, rows: number) => Effect.Effect<void>;
 	/**
 	 * Show another screen in place of the current one, settling like a key.
 	 *
@@ -355,6 +357,13 @@ export class CliUiTest {
 						discard: true,
 					}),
 				type: (text) => Effect.forEach([...text], (character) => send(character), { discard: true }),
+				resize: (nextColumns, nextRows) =>
+					Effect.suspend(() => {
+						const before = raws.length;
+						const since = Date.now();
+						fake.resize(nextColumns, nextRows);
+						return settle(before, since);
+					}),
 				rerender: (next) =>
 					Effect.gen(function* () {
 						yield* realTime(() => swap !== undefined || ended);

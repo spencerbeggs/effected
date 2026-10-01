@@ -9,5 +9,17 @@
  * @packageDocumentation
  */
 export { CliUi, type CliUiRunOptions, type Screen, type ScreenControl } from "./ui/CliUi.js";
-export type { KeyName } from "./ui/UiKey.js";
+export { KeyHelp, type KeyHelpProps } from "./ui/KeyHelp.js";
+export { type Binding, type KeyHelpRow, KeyTable, type UseKeysOptions, useKeys } from "./ui/KeyTable.js";
+export { type KeyName, UiKey } from "./ui/UiKey.js";
 export { UiStreams, type UiStreamsShape } from "./ui/UiStreams.js";
+export {
+	type InkTextProps,
+	Styled,
+	type StyledProps,
+	type TerminalSize,
+	inkProps,
+	useGlyphs,
+	useTerminalSize,
+	useTheme,
+} from "./ui/UiTheme.js";
