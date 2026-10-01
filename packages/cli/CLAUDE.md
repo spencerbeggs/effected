@@ -90,7 +90,10 @@ one read. `okf/modules/cli.md` has the rows.
   when: changing how runs start, end or redraw. One controller fiber owns every
   transition (events, the run's `Schedule.spaced` tick in the run's scope, render
   failures, the stream ending or dying); a failed render degrades the run (unmount
-  first, then one warning, the last good frame kept), never kills the view.
+  first, then one warning, the last good frame kept), never kills the view; a
+  start during a degraded run ends it and mounts afresh. Clearing a run and
+  closing its scope is one uninterruptible step (an interrupt between them
+  orphans the mount permit).
   - **Modes** differ only when not interactive: `owned` prints each run's final
     frame once as a string at stdout's width, `hosted` prints nothing. Neither
     mounts input: Ctrl-C stays the platform's SIGINT and closes the scope.
