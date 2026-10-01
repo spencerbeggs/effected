@@ -1,0 +1,145 @@
+---
+title: Getting Started
+description: Write GitHub Actions workflow commands with the runner's escaping, and make untrusted text safe for an Actions log, with @effected/github-commands.
+---
+
+# Getting Started
+
+`@effected/github-commands` comes down to two jobs: writing the commands you mean, and making sure nothing else you print turns into one. Both are plain functions over strings. There is no layer to provide and no runtime to set up. Writing the result to stdout is up to you.
+
+## Install
+
+```bash
+npm install @effected/github-commands
+```
+
+```bash
+pnpm add @effected/github-commands
+```
+
+## Your first task: annotate a file
+
+A lint step that finds a problem should point at the line, so GitHub shows the message on the pull request diff. That is an `::error` command with file and position properties:
+
+```ts with-api
+import { WorkflowCommand } from "@effected/github-commands";
+
+const line = WorkflowCommand.error("unused import 'fs'", {
+  title: "lint",
+  file: "src/main.ts",
+  startLine: 12,
+  startColumn: 1,
+});
+
+console.log(line);
+// ::error title=lint,file=src/main.ts,line=12,col=1::unused import 'fs'
+```
+
+The properties use readable names. `startLine` and `startColumn` go out as `line` and `col`, which are the names the runner expects. A property you leave out is not written at all.
+
+`notice` and `warning` take the same properties. `debug` takes only a message, and the runner shows it only when step debug logging is on.
+
+## Common operations
+
+### Escape whatever goes into a command
+
+A message can contain anything, and the protocol is line-based. A raw newline inside a message would end the command, and the runner would read what follows as a **new** command. So the message escapes `%`, CR and LF, and a property value also escapes the `:` and `,` that delimit the property list:
+
+```ts with-api
+import { WorkflowCommand } from "@effected/github-commands";
+
+console.log(WorkflowCommand.warning("deprecated: 50% of calls\nuse v2", { title: "API: v1", file: "a,b.ts" }));
+// ::warning title=API%3A v1,file=a%2Cb.ts::deprecated: 50%25 of calls%0Ause v2
+```
+
+The `%` is escaped first. If it went last, it would re-escape the `%0A` written for the newline.
+
+### Group a section of the log
+
+`group` opens a collapsible section and `endGroup` closes the innermost one:
+
+```ts with-api
+import { WorkflowCommand } from "@effected/github-commands";
+
+console.log(WorkflowCommand.group("Install dependencies"));
+console.log("added 312 packages");
+console.log(WorkflowCommand.endGroup());
+// ::group::Install dependencies
+// added 312 packages
+// ::endgroup::
+```
+
+### Mask a secret
+
+`addMask` registers a value for redaction. Every later occurrence in the log is shown as `***`:
+
+```ts with-api
+import { WorkflowCommand } from "@effected/github-commands";
+
+console.log(WorkflowCommand.addMask("ghs_example_token"));
+// ::add-mask::ghs_example_token
+```
+
+### Write any other command
+
+Every helper is built on `render(name, properties, message)`. Call it directly for a command the helpers do not cover, and use a name the runner registers:
+
+```ts with-api
+import { WorkflowCommand } from "@effected/github-commands";
+
+console.log(WorkflowCommand.render("echo", {}, "on"));
+// ::echo::on
+```
+
+With a name the runner does not register, its current parser rejects the line. The legacy parser then reads the same line looking for `##[` anywhere in it, so a `##[` in such a command's data still counts as a command. Text that is only data belongs in the neutralizer below.
+
+### Print text you do not control
+
+Neutralizing is the other half of the job. An error message, a file name or a fetched document is data, and the runner must never read it as a command:
+
+```ts with-api
+import { CommandNeutralizer } from "@effected/github-commands";
+
+const fetched = "notes:\n  ::error::not really\nsee ##[warning]here\n## Changelog";
+const safe = CommandNeutralizer.text(fetched);
+
+// The zero-width space is invisible, so show it as <ZWSP>:
+console.log(safe.replaceAll("​", "<ZWSP>"));
+// notes:
+// <ZWSP>  ::error::not really
+// see ##<ZWSP>[warning]here
+// ## Changelog
+```
+
+That covers both parsers. A line that starts with `::` once its leading whitespace is trimmed gets a zero-width space (U+200B) in front of it. The runner does not count that character as whitespace, so the line no longer starts with `::`. Every `##[` gets a zero-width space between the `##` and the `[`, wherever it is in the line. The `## Changelog` heading has no `[` after the `##`, so it is left as it was.
+
+`lines` returns one entry per line instead of a joined string. It splits at CR, LF and CRLF, as the runner does, so a lone CR also starts a new line:
+
+```ts with-api
+import { CommandNeutralizer } from "@effected/github-commands";
+
+console.log(CommandNeutralizer.lines("a\r\nb\rc"));
+// [ 'a', 'b', 'c' ]
+```
+
+### Neutralize twice without worrying
+
+Neutralizing is idempotent. A neutralized line matches neither parser, so a second pass changes nothing. That lets a renderer neutralize as it builds a document, and a writer neutralize the finished text again, without either one needing to know about the other:
+
+```ts with-api
+import { CommandNeutralizer } from "@effected/github-commands";
+
+const once = CommandNeutralizer.text("::add-mask::x");
+console.log(CommandNeutralizer.text(once) === once);
+// true
+```
+
+## Handling errors
+
+Nothing here fails or throws. Every function is total over its string inputs, which is why it is safe to call while handling another failure, for example when printing an error message that came back from a subprocess.
+
+## Next steps
+
+- Building a whole action? [`@effected/github-actions`](/github-actions) writes these commands for you and re-exports `WorkflowCommand`.
+- Building a CLI that may run inside Actions? [`@effected/cli`](/cli) neutralizes its documents, messages, failure reports and log lines whenever the runner is GitHub Actions.
+- Every signature lives in the [API reference](/github-commands/api): [`WorkflowCommand`](/github-commands/api/class/workflowcommand), [`CommandNeutralizer`](/github-commands/api/class/commandneutralizer) and [`AnnotationProperties`](/github-commands/api/interface/annotationproperties).

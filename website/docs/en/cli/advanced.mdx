@@ -11,11 +11,11 @@ Picture a tool that has been carefully built. It installs a CLI logger, so its o
 
 Nothing in that program is visibly wrong. The report came from the platform's `runMain`, which composes its reporting `tapCause` *around* the already-provided effect, so it runs **outside** the layers the program installed and prints through Effect's default logger. The key went unnamed because a decode failure is a structured tree, and `SchemaError.message` does not use the formatters core ships for it. Both defects are invisible from the call site and both are only discovered by running the binary and reading what a person sees.
 
-`@effected/cli` is the presentation surface that fixes that class of defect and nothing else: [`CliLogger`](/cli/api/class/clilogger), [`CliRuntime`](/cli/api/class/cliruntime) (including `CliRuntime.main`), `CliExit`, `CliColor`, [`SchemaIssueRenderer`](/cli/api/class/schemaissuerenderer) and [`ConfigIssueRenderer`](/cli/api/class/configissuerenderer) — plus a `./testing` subpath exporting `CliTest`, test tooling that never enters a CLI's own runtime import graph. This guide covers the composition rules, the exit-code semantics, findings that exit non-zero without crashing, the reference that can move the stream split, the optional-peer discipline, and how to test the parts that silently regress. It assumes the basics from the [getting-started guide](/cli/getting-started).
+This guide covers the boundary half of `@effected/cli`, the part that fixes that class of defect: [`CliLogger`](/cli/api/class/clilogger), [`CliRuntime`](/cli/api/class/cliruntime) (including `CliRuntime.main`), [`CliExit`](/cli/api/class/cliexit), [`CliColor`](/cli/api/class/clicolor), [`SchemaIssueRenderer`](/cli/api/class/schemaissuerenderer) and [`ConfigIssueRenderer`](/cli/api/class/configissuerenderer), plus `CliTest` from the `./testing` subpath. It covers the composition rules, the exit-code semantics, findings that exit non-zero without crashing, the reference that can move the stream split, the optional-peer discipline, and how to test the parts that silently regress. It assumes the basics from the [getting-started guide](/cli/getting-started). The presentation layer built on top (audiences, themes, documents, prompts, screens and live views) has its own guides: [audiences and output](/cli/output), [prompts and screens](/cli/prompts), [live views](/cli/live-views) and [testing](/cli/testing).
 
 ## How it composes with Effect
 
-Almost nothing here is a service. `CliLogger.layer` produces a `Layer.Layer<never>`, `CliRuntime.reportFailures` is a plain combinator that preserves your `R`, `CliColor` is pure functions and a layer factory, and both renderers are pure functions. The logger reaches for `Console.Console`, which is a `Context.Reference` carrying `globalThis.console` as its default — a reference never lands in the requirements channel, so a consumer's layer stack is untouched. `CliExit` is the one deliberate exception: a real `Context.Service`, so that forgetting to run a findings command under `CliRuntime.main` is a type error rather than a silently-ignored default.
+Almost nothing in this half is a service. `CliLogger.layer` produces a `Layer.Layer<never>`, `CliRuntime.reportFailures` is a plain combinator that preserves your `R`, `CliColor` is an effect and a layer factory, and both renderers are pure functions. The logger reaches for `Console.Console`, which is a `Context.Reference` carrying `globalThis.console` as its default — a reference never lands in the requirements channel, so a consumer's layer stack is untouched. `CliExit` is the one deliberate exception: a real `Context.Service`, so that forgetting to run a findings command under `CliRuntime.main` is a type error rather than a silently-ignored default.
 
 There is also **no platform package**, required or optional. That is a deliberate tier boundary: the moment `@effect/platform-node` appeared here the package would stop being usable from Bun and Deno for no benefit. You call your own runner.
 
@@ -161,7 +161,7 @@ Two reasons, and neither is about ordering. **Portability**: `process.exitCode` 
 
 ## `CliColor`: one colour decision, shared by everything that renders
 
-Both `effect/cli`'s own help/error rendering and anything your program renders itself should agree on whether output carries ANSI colour. `CliColor.enabled` is that decision, computed once per the [no-color.org](https://no-color.org) rule:
+Both `effect/cli`'s own help and error rendering and anything your program renders itself should agree on whether output carries ANSI colour. `CliColor.enabled` is that decision, made once:
 
 ```ts with-api
 import { CliColor } from "@effected/cli";
@@ -170,13 +170,15 @@ import { Effect, Stdio } from "effect";
 Effect.runPromise(CliColor.enabled.pipe(Effect.provide(Stdio.layerTest({}))));
 ```
 
-- Off when stdout is not a terminal.
-- Off when `NO_COLOR` is set to any **non-empty** value — an empty `NO_COLOR=""` does not disable colour.
-- `FORCE_COLOR` is **ignored**, matching core's own formatter.
+It is [`@effected/env`](/env)'s colour level for stdout, so it follows Node's own precedence:
 
-The environment is read through the ambient `ConfigProvider`, never `process`, so a test swaps it with `Effect.provideService(ConfigProvider.ConfigProvider, ...)` rather than mutating `process.env`.
+- `FORCE_COLOR` decides first, even without a terminal, and **beats `NO_COLOR`**. `1`, `2`, `3` or `true` turn colour on, and `0` or any other value turns it off. An empty `FORCE_COLOR=""` counts as unset.
+- Otherwise colour is off when stdout is not a terminal.
+- Otherwise it is off when `NO_COLOR` or `NODE_DISABLE_COLORS` is set to a **non-empty** value, or `TERM=dumb`. An empty `NO_COLOR=""` does not disable colour.
 
-`CliColor.formatterLayer(overrides?)` builds `effect/cli`'s own `CliOutput.defaultFormatter({ colors })` from that same decision, so help text, parse errors and anything your program renders never disagree:
+The environment is read through the ambient `ConfigProvider`, never `process`, so a test swaps it with `Effect.provideService(ConfigProvider.ConfigProvider, ...)` rather than mutating `process.env`. An ambient `TerminalEnv`, such as `TerminalEnv.layerTest`, answers instead when one is provided.
+
+`CliColor.formatterLayer(overrides?)` builds `effect/cli`'s own `CliOutput.defaultFormatter({ colors })` from that same decision, so help text, parse errors and anything your program renders never disagree. `CliRuntime.main` with `env` installs it for you; `env.formatter` passes the same overrides:
 
 ```ts
 import { CliColor } from "@effected/cli";
@@ -388,4 +390,5 @@ A **reachability test** guards the split: nothing reachable from `@effected/cli`
 ## Next steps
 
 - New to the package? Start with the [overview](/cli) for the shape of the problem, or the [getting-started guide](/cli/getting-started) for the wiring.
+- Audiences, themes, documents, prompts, screens and live views have their own guides, starting with [audiences and output](/cli/output).
 - Every export, with full signatures, lives in the [API reference](/cli/api): [`CliLogger`](/cli/api/class/clilogger) with its [`CliLoggerOptions`](/cli/api/interface/cliloggeroptions), [`CliRuntime`](/cli/api/class/cliruntime) with its [`ReportFailuresOptions`](/cli/api/interface/reportfailuresoptions) and `MainOptions`, `CliExit`, `CliColor`, [`SchemaIssueRenderer`](/cli/api/class/schemaissuerenderer) and [`ConfigIssueRenderer`](/cli/api/class/configissuerenderer).

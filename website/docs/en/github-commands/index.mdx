@@ -1,0 +1,65 @@
+---
+title: "@effected/github-commands"
+description: "The GitHub Actions workflow-command grammar as pure functions: render a command with the runner's escaping, and neutralize text so the runner cannot read it as one."
+---
+
+# @effected/github-commands
+
+The GitHub Actions workflow-command grammar as pure functions. [`WorkflowCommand`](/github-commands/api/class/workflowcommand) renders the commands you mean to write, such as `::error file=src/main.ts,line=12::build failed`, with the escaping the protocol needs. [`CommandNeutralizer`](/github-commands/api/class/commandneutralizer) defangs text you did *not* mean as a command, so the runner cannot read it as one. Strings go in and strings come out. There is no service, no layer and no platform here, and no dependency at all, not even `effect`.
+
+## Why @effected/github-commands
+
+The Actions runner reads every line a step writes, and when it recognises a line as a command it does what the command says. `::add-mask::` redacts a value, `::error::` raises an annotation, and `::stop-commands::` switches command processing off. So a line your program did not write itself, such as an error message, a file name or a README it fetched, can carry a command. That is an injection channel, and nothing at the call site warns you about it.
+
+Two details make it easy to get wrong:
+
+- **The runner has two parsers.** A line is a command if *either* accepts it. The current parser trims leading whitespace and looks for `::` at the start. The legacy parser looks for `##[` **anywhere** in the line. "Starts with `::`" is only half the rule.
+- **Escaping has an order.** A message escapes `%`, CR and LF, and a property value also escapes `:` and `,`. The percent sign has to go first, or the escaper re-escapes the `%` of an escape it just wrote, turning `%0A` into `%250A`.
+
+This package writes those rules down once. Every kit package that writes to an Actions log uses it: [`@effected/github-actions`](/github-actions) re-exports `WorkflowCommand`, and [`@effected/cli`](/cli)'s renderers, messages and loggers neutralize through `CommandNeutralizer` when the runner is GitHub Actions.
+
+## Install
+
+```bash
+npm install @effected/github-commands
+```
+
+```bash
+pnpm add @effected/github-commands
+```
+
+Requires Node.js >=24.11.0. The package has no dependencies and no peers, `effect` included.
+
+## Quick start
+
+```ts with-api
+import { CommandNeutralizer, WorkflowCommand } from "@effected/github-commands";
+
+console.log(WorkflowCommand.error("build failed", { file: "src/main.ts", startLine: 12 }));
+// ::error file=src/main.ts,line=12::build failed
+
+const safe = CommandNeutralizer.text("fetched README:\n::add-mask::\nsee ##[warning]here");
+
+// The zero-width space it inserts is invisible, so show it as <ZWSP>:
+console.log(safe.replaceAll("​", "<ZWSP>"));
+// fetched README:
+// <ZWSP>::add-mask::
+// see ##<ZWSP>[warning]here
+```
+
+A bare `##` with no `[` after it is not a command, so a markdown heading comes through unchanged.
+
+## What it exports
+
+- **[`WorkflowCommand`](/github-commands/api/class/workflowcommand)** has `render(name, properties, message)`, the primitive, plus `debug`, `notice`, `warning`, `error`, `group`, `endGroup` and `addMask`. The annotation helpers take [`AnnotationProperties`](/github-commands/api/interface/annotationproperties), whose field names are readable (`startLine`, `startColumn`), and map them onto the wire's abbreviations (`line`, `col`).
+- **[`CommandNeutralizer`](/github-commands/api/class/commandneutralizer)** has `lines(text)`, which splits at CR, LF and CRLF as the runner does and neutralizes each line, and `text(text)`, which does the same and joins the result with LF. It is idempotent: neutralizing a neutralized line changes nothing.
+
+There is deliberately no detector, no function that answers "is this a command?". A detector shipped next to the neutralizer would be the implementation's own opinion of the grammar, and a test that used it would be checking the output against itself.
+
+## Reach for it when
+
+- You write workflow commands yourself and want the escaping right. Inside an action built on [`@effected/github-actions`](/github-actions), its `ActionLogger` already does this for you.
+- You write text you do not control to a log an Actions runner reads.
+- You are building a package at any tier that must stay small. This one asks for nothing, so a pure package can depend on it.
+
+See the [getting-started guide](/github-commands/getting-started) for each function in use, or go straight to the [API reference](/github-commands/api).

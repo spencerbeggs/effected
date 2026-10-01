@@ -1,111 +1,111 @@
 ---
 title: "@effected/cli"
-description: "The boundary layer of an effect/cli program: plain output, failure reporting and schema-issue rendering."
+description: "The presentation boundary of an effect/cli program: audiences, colour, themed messages, a document IR with per-audience renderers, failure reports, diagnostics, prompts, Ink screens and live views."
 ---
 
 # @effected/cli
 
-The boundary layer of a command-line program built on `effect/cli`: how output reaches a human, how a failure is reported, how a findings command exits non-zero without crashing, and how a schema issue becomes a sentence someone can act on. `CliLogger` renders log records as plain lines and routes diagnostics to stderr. `CliRuntime.reportFailures` reports failures through *your* logger, inside your program, then re-fails with the exit code the runtime should use; `CliRuntime.main` assembles a whole program from a platform layer, a `CliExit`, and a logger, in the one order that reports every failure well. `CliColor` decides once, per the no-color.org rule, whether output carries colour. `SchemaIssueRenderer` and `ConfigIssueRenderer` flatten an issue tree into `unknown key at groups.g.rulesetz`. A separate `@effected/cli/testing` entrypoint spawns a built bin hermetically for tests.
+The presentation boundary of a command-line program built on `effect/cli`. It covers who the output is for and how it reaches them: plain log lines on the right stream, colour and links only where the terminal and the reader can use them, documents rendered for a person, an agent or a CI log, failures reported through your own logger with the right exit code, prompts that know when there is nobody to ask, and interactive screens and live views drawn with Ink. `effect/cli` still owns argument parsing, flags, the command tree and help. This package adds no parser and no command model.
 
 ## Why @effected/cli
 
-Everything here shares one property: **you only discover you needed it by shipping bad output to a person.** None of it fails a type-check, a test, or a review of the code in isolation.
+Everything here shares one property: **you only discover you needed it by shipping bad output to a person or a machine.** None of it fails a type-check, a test, or a review of the code in isolation.
 
-Effect's default logger emits `[00:33:56.619] INFO (#2): message`. That is right for a service being scraped and wrong for a tool someone is watching — it turns a formatted table into noise — and nothing at the call site suggests it. A platform `runMain` then reports an unhandled failure through that *same* default logger, which sits outside the layers your program was provided, so a program that carefully installs a CLI logger still prints its failures in the format that logger exists to replace, on **stdout**, the one stream errors must not use. And a decode failure arrives as a structured tree when what a user needs is a sentence naming the key they got wrong.
+Effect's default logger emits `[00:33:56.619] INFO (#2): message`, which is right for a service and noise for a tool someone is watching. A platform `runMain` reports an unhandled failure through that same default logger, outside the layers your program was given, so it prints on **stdout**, the one stream errors must not use. Colour codes end up in an agent's context window or a CI log. A prompt fires inside a pipe and hangs. A file name containing `::error::` becomes a workflow command in GitHub Actions. And a decode failure arrives as a structured tree when what a user needs is a sentence naming the key they got wrong.
 
-This package is **not a CLI framework**. `effect/cli` owns argument parsing, flags, the command tree and help; there are no prompts and no spinners, because `Prompt` already exists in core. Everything under `@effected/cli` is presentation, and `CliTest` — behind the separate `@effected/cli/testing` entrypoint — is test tooling for spawning a built bin, never reachable from a CLI's own runtime import graph.
+This package makes those decisions once, at the edge of the program, from the environment it actually runs in, so the code that prints does not have to make them.
+
+## What it covers
+
+| You need to… | Reach for |
+| --- | --- |
+| Wire a program: audience flags, environment, theme, failure reporting, exit codes | [`CliAudience`](/cli/api/class/cliaudience), [`CliRuntime.main`](/cli/api/class/cliruntime), [`CliEnv`](/cli/api/class/clienv) |
+| Print a themed status line that no log level can silence | [`CliMessage`](/cli/api/class/climessage), [`Status`](/cli/api/class/status), [`CliTheme`](/cli/api/class/clitheme) |
+| Print tables, trees, counts and diffs that read right for a person, an agent and a CI log | [`Doc`](/cli/api/class/doc), [`Render`](/cli/api/class/render) |
+| Report a failure as a readable document with a cleaned stack | [`CliFailure`](/cli/api/class/clifailure), [`CliDoc`](/cli/api/variable/clidoc) |
+| Keep diagnostics apart from output, with a level, NDJSON and a file sink | [`CliLog`](/cli/api/class/clilog), [`CliLogger`](/cli/api/class/clilogger) |
+| Ask a question only when there is a person to ask | [`CliPrompt`](/cli/api/class/cliprompt), [`CliInteractive`](/cli/api/class/cliinteractive), [`CliUi`](/cli/api/class/cliui) |
+| Draw an interactive screen or a live progress view | [`CliUi`](/cli/api/class/cliui), [`DocView`](/cli/api/function/docview) and the widgets in `@effected/cli/ui` |
+| Test a screen, a live view, a whole command or a built bin | [`CliUiTest`](/cli/api/class/cliuitest), [`TestTerminal`](/cli/api/class/testterminal), [`CliTest`](/cli/api/class/clitest) |
+| Turn a schema issue into a sentence | [`SchemaIssueRenderer`](/cli/api/class/schemaissuerenderer), [`ConfigIssueRenderer`](/cli/api/class/configissuerenderer) |
 
 ## Install
 
 ```bash
-npm install @effected/cli effect
+npm install @effected/cli @effected/env @effected/glob @effected/walker effect
 ```
 
 ```bash
-pnpm add @effected/cli effect
+pnpm add @effected/cli @effected/env @effected/glob @effected/walker effect
 ```
 
-Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no runtime dependencies of its own and never imports a platform package, so it runs unchanged on Node, Bun and Deno.
+Requires Node.js >=24.11.0. `effect` v4, [`@effected/env`](/env), [`@effected/glob`](/glob) and [`@effected/walker`](/walker) are peer dependencies. `@effected/env` supplies the audience and terminal services, and `walker` (with its `glob` peer) finds the project root for editor links. The package's one runtime dependency is [`@effected/github-commands`](/github-commands). It never imports a platform package, so it runs unchanged on Node, Bun and Deno.
 
-[`@effected/config-file`](/config-file) is an **optional** peer, needed only by [`ConfigIssueRenderer`](/cli/api/class/configissuerenderer). It lives in its own module and is imported as a type, so a consumer who never installs it can still import the package without the resolver ever being asked.
+Three peers are **optional**:
+
+- `ink` and `react`, with `@types/react` for TypeScript, are needed only for the interactive screens and live views in `@effected/cli/ui`. The package root never reaches them, and importing `./ui` loads neither until a screen first mounts.
+- [`@effected/config-file`](/config-file) is needed only by [`ConfigIssueRenderer`](/cli/api/class/configissuerenderer).
+
+```bash
+npm install ink react @types/react
+```
+
+## Four entrypoints
+
+- **`@effected/cli`** is the presentation layer: audience, theme, messages, documents, renderers, links, failure reports, logging, prompts and the runtime. It loads no React.
+- **`@effected/cli/ui`** holds the interactive screens drawn with Ink: `CliUi.run`, `prompt`, `fallback`, `live` and `context`, the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`, `Toggle`, `Tabs`, `Viewport`), the key layer, the theme bridge, `DocView` and `UiProvider`.
+- **`@effected/cli/testing`** is `CliTest`, which spawns a built bin hermetically, and `TestTerminal`, which drives core's prompts in a test.
+- **`@effected/cli/ui/testing`** is `CliUiTest`, which mounts a screen, a display-only element, a whole program's screens or a live view on in-memory streams.
+
+Nothing reachable from the root imports a testing entrypoint, so a CLI's runtime bundle never carries test machinery.
 
 ## Quick start
 
-Install the logger, write program output with `Console.log`, and every diagnostic — `Effect.log` included — lands on stderr, plainly, with no timestamp, level or fiber id in front of either:
-
-```ts with-api
-import { CliLogger } from "@effected/cli";
-import { Console, Effect } from "effect";
-
-const program = Effect.gen(function* () {
-  yield* Effect.logInfo("building 3 packages"); // a diagnostic, not the product
-  yield* Console.log("build.json contents"); // the program's actual output
-  yield* Effect.logError("nothing to build");
-});
-
-Effect.runPromise(program.pipe(Effect.provide(CliLogger.layer())));
-// stdout: build.json contents
-// stderr: building 3 packages
-// stderr: nothing to build
-```
-
-A real binary adds the failure-reporting combinator and its own platform runner. Note that `CliLogger.layer()` is **merged** into the application layer rather than provided beneath it — merged, it also covers lines emitted during layer construction, which is exactly where a startup failure prints:
+The one wiring: share the audience flags on the root command, run it through `CliAudience.run`, and hand that to `CliRuntime.main` with an `env`:
 
 ```ts
-import { CliLogger, CliRuntime } from "@effected/cli";
-import { NodeRuntime } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
+import { CliAudience, CliMessage, CliRuntime, Doc } from "@effected/cli";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+import { Command } from "effect/cli";
 
-declare const AppLive: Layer.Layer<never>;
-declare const program: Effect.Effect<void>;
+const sync = Command.make("sync", {}, () =>
+  Effect.gen(function* () {
+    yield* CliMessage.info("syncing 2 repositories");
+    yield* Doc.print([
+      Doc.table(
+        [{ header: "Repository" }, { header: "Files", align: "right" }],
+        [
+          ["acme/widgets", "12"],
+          ["acme/gadgets", "3"],
+        ],
+      ),
+    ]);
+    yield* CliMessage.success("synced 2 repositories");
+  }),
+);
 
-const MainLive = Layer.mergeAll(AppLive, CliLogger.layer());
+const root = Command.make("tool").pipe(Command.withSharedFlags(CliAudience.flags()), Command.withSubcommands([sync]));
 
-NodeRuntime.runMain(program.pipe(CliRuntime.reportFailures(), Effect.provide(MainLive)));
+NodeRuntime.runMain(
+  CliRuntime.main(CliAudience.run(root, { version: "1.0.0" }), {
+    platform: NodeServices.layer,
+    env: { audienceEnvVar: "TOOL_AUDIENCE" },
+  }),
+);
 ```
-
-A whole program — the platform layer, a fresh `CliExit`, failure reporting and the logger, in the one order that reports every failure well — is `CliRuntime.main`; see the [getting-started guide](/cli/getting-started) for the full wiring.
-
-## The stream split is a guarantee, not a default
-
-`CliLogger` routes a record to stderr when its level is at or above `stderrFrom`, which **defaults to `"All"`** — a CLI's stdout is its product, so every log level is a diagnostic unless a consumer narrows the threshold explicitly. This is a breaking change on the 0.x line (#716); pass `stderrFrom: "Error"` to restore the old split, for a tool whose output *is* its log lines rather than a separate document written with `Console.log`. The comparison is **ordinal** — `LogLevel.isGreaterThanOrEqualTo` — never string equality against two hard-coded names, so a level added upstream lands on the right stream without a change here. `mytool run > log.txt` therefore still shows failures on the terminal.
-
-The one reference that can move the line is `References.LogToStderr`, and it is honoured in **one direction only**: it can force everything to stderr, and it can never move an error back onto stdout. That is the single guarantee this logger exists to make, and a reference should not be able to revoke it.
-
-The logger reads `Console.Console` off the fiber rather than writing to `process.stdout`. `Logger.make` takes a *synchronous* callback and a `Sink` write is an `Effect`, so `Stdio` is unreachable from a logger at all; `Console.Console` is a `Context.Reference`, so it carries a default, never appears in `R`, and a test swaps it instead of stubbing a global.
-
-## Failures report through your logger
-
-[`CliRuntime.reportFailures`](/cli/api/class/cliruntime) is a combinator you apply **inside** your program, not a replacement `runMain`. That placement is the whole fix: a platform `runMain` composes its reporting around the already-provided effect, so its report runs outside your layers. Catching inside means the failure renders through the logger you installed, on the stream you chose.
-
-It then re-fails with a marked error rather than swallowing the failure, so a broken run never exits `0`. The marks are core's own: `Runtime.errorExitCode` carries the process exit code — an error that already had one **keeps** it, since that was a deliberate choice by whatever raised it — and `Runtime.errorReported` suppresses the runtime's duplicate report. An interrupt is left alone; the default teardown already maps an interrupt-only cause to `130`.
-
-When a command reports its own diagnostics, `CliRuntime.reported(error)` applies the same two marks so you do not have to rediscover them.
-
-## Issues become sentences
-
-A decode failure arrives as a structured tree. [`SchemaIssueRenderer.render`](/cli/api/class/schemaissuerenderer) flattens it to one line per rejected value, deepest path last, over core's own `SchemaIssue.makeFormatterStandardSchemaV1`. Two things it adds are worth knowing: duplicate lines are removed, because a three-member union reports the same unknown-key line once per member and buries the per-branch lines that say which shapes *were* allowed; and core's `"Expected no excess property"` — which describes the schema's rule rather than the user's mistake — is rephrased as `unknown key`.
 
 ```text
-ConfigValidationError: Config validation failed at "/home/me/.config/app/config.toml"
-  unknown key at variables.keep.KEEP_ME
-  Missing key at variables.keep.file
-  Missing key at variables.keep.value
+$ tool sync
+ℹ syncing 2 repositories
+Repository    Files
+------------  -----
+acme/widgets     12
+acme/gadgets      3
+✓ synced 2 repositories
 ```
 
-`ConfigIssueRenderer.render` is the same treatment for `@effected/config-file`'s `ConfigValidationError`, taking the error rather than its `issue` because that is what a `catchTag` hands you. Neither renderer can throw: a value that is not an issue tree yields no lines, since a helper on an error path must never become the reason a program dies.
-
-## Findings exit non-zero without crashing
-
-A validation command that finds problems has not failed — it succeeded at telling you something — yet it still needs a non-zero exit. `CliExit.set(code)` records that code from inside a **successful** handler; `CliRuntime.main` reads it back once the program ends and turns a non-zero value into a real exit, with finalizers intact on any runtime. Writing `process.exitCode` directly does not reach every runtime's teardown reliably, and calling `process.exit(n)` from inside a handler skips finalizers outright.
-
-## Colour, decided once
-
-`CliColor.enabled` is the no-color.org decision — off when stdout is not a terminal, or `NO_COLOR` is a non-empty value; `FORCE_COLOR` is ignored — read through the ambient `ConfigProvider`, never `process`. `CliColor.formatterLayer()` builds `effect/cli`'s own `CliOutput.Formatter` from that same decision, so help text, parse errors and any output you render never disagree about whether colour is on.
-
-## Testing a built bin
-
-`@effected/cli/testing` is a **separate entrypoint** — nothing reachable from `.` imports it, so a CLI's own runtime bundle never carries test-spawning machinery. `CliTest.sandbox` mints a hermetic temp directory and `CliTest.run` spawns a built bin inside it, returning its exit code and both streams as plain data. See the [getting-started guide](/cli/getting-started) for a worked example.
+At a colour terminal the glyphs are painted and the header is bold. In a pipe, for an agent (`--agent`, or an agent detected from the environment), or under `NO_COLOR`, the same program writes no escape sequence of any kind. Under GitHub Actions, anything the runner could read as a workflow command is neutralized. A failure anywhere renders as a short report on stderr, with a non-zero exit. The [getting-started guide](/cli/getting-started) builds this up step by step.
 
 ## API reference
 

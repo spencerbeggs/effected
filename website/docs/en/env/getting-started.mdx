@@ -1,0 +1,208 @@
+---
+title: Getting Started
+description: Decide who a program's output is for, read what the terminal can do, and test both without touching process.env, with @effected/env.
+---
+
+# Getting Started
+
+`@effected/env` turns the environment a program runs in into a few small services: who is running it, what each output stream can do, and who the output is for. You build them once at the edge of the program, and everything below that asks the services instead of reading `process.env`.
+
+## Install
+
+```bash
+npm install @effected/env effect
+```
+
+```bash
+pnpm add @effected/env effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is the only peer.
+
+## Your first task: decide who the output is for
+
+A tool prints differently for a person at a terminal, for an AI agent reading its output, and for a CI log. Make that decision once, as the `Audience` service, and let anything that prints ask it.
+
+`Audience.layer` needs `CurrentRuntimeEnv`, the snapshot of who is running the program. Both layers read the ambient `ConfigProvider`, which for a real program is the process environment:
+
+```ts with-api
+import { Audience, CurrentRuntimeEnv } from "@effected/env";
+import { ConfigProvider, Effect, Layer } from "effect";
+
+// Bind a layer-returning function's result once, then provide it.
+const AudienceLive = Audience.layer({ envVar: "MYTOOL_AUDIENCE" }).pipe(Layer.provide(CurrentRuntimeEnv.layer));
+
+const greet = Effect.gen(function* () {
+  const audience = yield* Audience;
+  return `${audience.kind} (${audience.source})`;
+});
+
+// Here the environment is a fixed record, so the result is predictable:
+const environment = ConfigProvider.fromUnknown({ CI: "true", MYTOOL_AUDIENCE: "human" });
+
+Effect.runPromise(
+  greet.pipe(Effect.provide(AudienceLive), Effect.provideService(ConfigProvider.ConfigProvider, environment)),
+).then(console.log);
+// human (override)
+```
+
+The order of precedence is:
+
+1. **The override variable**, if you named one and it holds `human`, `agent` or `ci` (case-insensitive). This is how a person working inside an agent-detected shell gets human output back.
+2. **An agent**, if one is detected. An agent inside a CI job gets agent output.
+3. **CI**, if a CI signal is set.
+4. **A human** otherwise.
+
+A value the override variable does not accept is not an error. It logs one warning and falls back to detection, because a typo in an environment variable should not stop a tool from running:
+
+```text
+MYTOOL_AUDIENCE=robot is not one of human|agent|ci; ignoring it
+```
+
+That warning goes through `Effect.logWarning`. Effect's default logger writes to stdout, so a program whose stdout is a protocol (an MCP server, say) should install a logger that writes to stderr. [`@effected/cli`](/cli)'s `CliLogger` does.
+
+## Common operations
+
+### Read what the terminal can do
+
+`TerminalEnv` describes each output stream: whether it is a terminal, its colour level, whether it renders OSC 8 hyperlinks, and its width. `TerminalEnv.layer()` reads the TTY facts from core's `Stdio` and the width from core's `Terminal`, which your platform layer provides:
+
+```ts
+import { TerminalEnv } from "@effected/env";
+import { NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+
+const describe = Effect.gen(function* () {
+  const terminal = yield* TerminalEnv;
+  return `${terminal.stdout.color} colour, ${terminal.width()} columns`;
+});
+
+Effect.runPromise(describe.pipe(Effect.provide(TerminalEnv.layer()), Effect.provide(NodeServices.layer))).then(
+  console.log,
+);
+// in a pipe: none colour, 80 columns
+```
+
+`width(fallback)` is what to lay output out at: the terminal's columns, else a positive integer in `COLUMNS`, else the fallback, which defaults to 80.
+
+Core's `Stdio` reports only whether stdout is a terminal, so stderr mirrors stdout unless you say otherwise. On Node, pass the real answer:
+
+```ts
+import { TerminalEnv } from "@effected/env";
+import { Effect } from "effect";
+
+const TerminalLive = TerminalEnv.layer({ stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true) });
+```
+
+Building the platform `Terminal` has a cost in a long-lived host: `NodeTerminal` listens on `process.stdin`. Use `TerminalEnv.layerStdio()` there instead. It needs only `Stdio` and reports no columns, so `width()` falls back to `COLUMNS` and then to the fallback.
+
+### Decide colour on its own
+
+When all you need is colour, say for an output formatter, `TerminalEnv.colorLevel("stdout")` answers with a `Stdio`-only requirement:
+
+```ts
+import { TerminalEnv } from "@effected/env";
+import { NodeServices } from "@effect/platform-node";
+import { ConfigProvider, Effect } from "effect";
+
+const level = (variables: Record<string, string>) =>
+  Effect.runPromise(
+    TerminalEnv.colorLevel("stdout").pipe(
+      Effect.provide(NodeServices.layer),
+      Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(variables)),
+    ),
+  );
+
+// stdout piped to a file:
+console.log(await level({})); // none
+console.log(await level({ FORCE_COLOR: "1" })); // basic
+console.log(await level({ FORCE_COLOR: "3", NO_COLOR: "1" })); // truecolor
+console.log(await level({ FORCE_COLOR: "0" })); // none
+```
+
+`FORCE_COLOR` decides alone when it is set, even without a terminal, and it beats `NO_COLOR`, as it does in Node. `0` or an unrecognised value forces colour off. Otherwise a stream that is not a terminal gets no colour. On a terminal, a non-empty `NO_COLOR`, `NODE_DISABLE_COLORS` or `TERM=dumb` turns colour off, and Node's terminal table decides the rest. When a `TerminalEnv` is already provided, `colorLevel` answers with its stdout colour instead, so a test that fixes the terminal also fixes this.
+
+### Let users pick a mode within an audience
+
+Some tools offer modes, such as a quiet console for agents or a fancy one for people. Which values make sense depends on the audience. `EnvOverride` reads a variable and accepts it only if the current audience allows it. You list the literals per audience, and the result is typed to their union:
+
+```ts with-api
+import { Audience, EnvOverride } from "@effected/env";
+import { ConfigProvider, Effect, Option } from "effect";
+
+const consoleMode = EnvOverride.readResult({
+  envVar: "MYTOOL_CONSOLE",
+  accepts: { human: ["fancy", "plain"], agent: ["plain", "silent"], ci: ["plain"] },
+});
+
+Effect.runPromise(
+  consoleMode.pipe(
+    Effect.provide(Audience.layerTest("agent")),
+    Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ MYTOOL_CONSOLE: "Fancy" })),
+  ),
+).then((result) => console.log(Option.getOrNull(result.rejected)));
+// { value: 'Fancy', audience: 'agent', accepts: [ 'plain', 'silent' ] }
+```
+
+Matching is case-insensitive and yields your literal. `readResult` never logs: it reports the `audience`, an `accepted` literal or a `rejected` value, and leaves the wording and the stream to you. `EnvOverride.read` is the convenience version. It returns the accepted literal as an `Option` and logs one warning for a rejected value.
+
+A long-lived host, such as a watch-mode runner, can pass `source: process.env` to re-read the live record on every call. Core's default provider snapshots the environment once per process.
+
+### Persist a snapshot
+
+`RuntimeEnv` is a schema class, and its `Option` fields encode as `null`, so a snapshot round-trips as plain JSON. Every field decodes when absent, so an older snapshot keeps decoding after a field is added:
+
+```ts with-api
+import { RuntimeEnv } from "@effected/env";
+import { Schema } from "effect";
+
+const Json = Schema.fromJsonString(RuntimeEnv);
+
+console.log(Schema.encodeSync(Json)(RuntimeEnv.fromRecord({ GITHUB_ACTIONS: "true" })));
+// {"agent":null,"ci":"github-actions","terminal":null}
+```
+
+### Re-read the environment in a long-lived host
+
+`CurrentRuntimeEnv.layer` reads once. Core's default `ConfigProvider` snapshots `process.env` once per process, and the layer is one static value, memoized by reference, so a host that keeps running never sees a change. `CurrentRuntimeEnv.layerFrom(source)` takes a record or a `ConfigProvider`. Each call returns a new layer that is rebuilt on every use:
+
+```ts
+import { Audience, CurrentRuntimeEnv } from "@effected/env";
+import { Effect, Layer } from "effect";
+
+// Re-read on every request, not once at startup:
+const audienceNow = Audience.pipe(Effect.provide(Audience.layer().pipe(Layer.provide(CurrentRuntimeEnv.layerFrom(process.env)))));
+```
+
+## Testing
+
+Every service has a `layerTest` that touches neither `Config` nor a stream, so a test states the environment it wants:
+
+```ts with-api
+import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
+import { Effect, Layer, Option } from "effect";
+
+const Environment = Layer.mergeAll(
+  CurrentRuntimeEnv.layerTest({ agent: Option.some("claude"), ci: Option.some("github-actions") }),
+  Audience.layerTest("agent"),
+  TerminalEnv.layerTest({ stdout: { isTerminal: true, color: "256", columns: Option.some(120) } }),
+);
+
+const check = Effect.gen(function* () {
+  const terminal = yield* TerminalEnv;
+  const audience = yield* Audience;
+  return [audience.kind, terminal.stdout.color, terminal.width()] as const;
+});
+
+Effect.runPromise(check.pipe(Effect.provide(Environment))).then(console.log);
+// [ 'agent', '256', 120 ]
+```
+
+`TerminalEnv.layerTest` starts from a quiet terminal (not a terminal, no colour, no links, no width), so a test opts into colour explicitly. `Audience.layerTest(kind, source)` records `override` as the source by default. Pass `detected` to test a layer stacked on top, such as a CLI flag that applies only when the environment variable did not decide.
+
+To test the real detection rules instead, provide a `ConfigProvider` built from a record, as the examples above do. Never mutate `process.env` in a test.
+
+## Next steps
+
+- Building a CLI? [`@effected/cli`](/cli)'s `CliEnv.layer` provides all of these in the right order, and its audience flags (`--agent`, `--human`, `--ci`) stack a `flag` source on top.
+- Every signature lives in the [API reference](/env/api): start with [`Audience`](/env/api/class/audience), [`TerminalEnv`](/env/api/class/terminalenv) and [`EnvOverride`](/env/api/class/envoverride).

@@ -1,11 +1,11 @@
 ---
 title: Packages
-description: The 34 packages of the effected kit — 32 Effect v4 libraries plus two companions — grouped by the runtime cost of depending on them.
+description: The 36 packages of the effected kit — 34 Effect v4 libraries plus two companions — grouped by the runtime cost of depending on them.
 ---
 
 # Packages
 
-The kit is **34 publishable packages**: 32 libraries and two companions. They are not a grab bag of
+The kit is **36 publishable packages**: 34 libraries and two companions. They are not a grab bag of
 utilities that happened to end up in the same repo. Scope is closed by five consuming applications, and a
 library earns its place by being something one of those five actually needs — which is why there is a TOML
 parser and a SPDX expression evaluator here, and no HTTP client or ORM.
@@ -18,7 +18,7 @@ of an exception. Learn those shapes once and the rest of the kit reads the same 
 
 Every package below has an overview, a getting-started guide, an advanced guide and a generated API
 reference. If you are new here, [@effected/semver](/semver) is the one to read first — it is the repo's DX
-north star, and the conventions the other thirty follow all started there.
+north star, and the conventions the rest follow all started there.
 
 ## Start from what you are trying to do
 
@@ -34,7 +34,9 @@ north star, and the conventions the other thirty follow all started there.
 | Shell out to a tool, or find one on `PATH` | [commands](/commands), [git](/git) |
 | Talk to the GitHub API | [github](/github), [github-references](/github-references) |
 | Build a GitHub Action | [github-actions](/github-actions), [sbom](/sbom) |
-| Ship a CLI | [cli](/cli), [app](/app) |
+| Write workflow commands, or keep untrusted text from becoming one | [github-commands](/github-commands) |
+| Ship a CLI: audiences, themed output, prompts, Ink screens and live views | [cli](/cli), [app](/app) |
+| Detect the agent, the CI, the terminal's colour and links, and the audience | [env](/env) |
 | Keep durable local state or a cache | [store](/store), [app](/app) |
 | Write to files a human also edits | [templates](/templates) |
 | Keep an append-only event log | [jsonl](/jsonl) |
@@ -82,6 +84,7 @@ No IO, no runtime dependencies beyond `effect` itself.
 | [@effected/memfs](/memfs) | A virtual POSIX volume behind core's `FileSystem` key — the kit's filesystem test double, with fault injection |
 | [@effected/lockfiles](/lockfiles) | bun, npm, pnpm and yarn Berry lockfiles normalized into one model, plus pure integrity checking against workspace manifests |
 | [@effected/engine](/engine) | Platform-free primitives shared across a tool's front ends: carrier distribution identity, a remediation shape, and agent-launch-context resolution |
+| [@effected/github-commands](/github-commands) | The GitHub Actions workflow-command grammar as pure functions: render a command with the runner's escaping, and neutralize text so the runner cannot read it as one |
 
 ## Boundary
 
@@ -100,11 +103,14 @@ IO through Effect core's service contracts, required in `R` and never provided f
 | [@effected/templates](/templates) | Managed `BEGIN`/`END` sections in files whose surrounding content belongs to the user |
 | [@effected/jsonl](/jsonl) | Append-only, schema-validated JSONL journals as a definable service, with filtered reads that never materialize the file |
 | [@effected/runtimes](/runtimes) | Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot |
-| [@effected/cli](/cli) | The CLI boundary: a plain-line logger, a runtime that reports failures through the program's own logger and sets the exit code, and the issue renderers |
+| [@effected/env](/env) | Who is running a program and in what terminal — agent, CI, colour level, hyperlinks, width and audience — read through `Config` and swapped in tests with `layerTest` |
+| [@effected/cli](/cli) | The CLI presentation boundary: audiences, themed messages, a document IR with per-audience renderers, failure reports, diagnostics and prompts; Ink screens and live views behind an optional `./ui` subpath |
 | [@effected/mcp](/mcp) | The MCP boundary: stdio wiring that keeps stdout the wire, remediated tool failures, strict-input walkers, and in-process and spawned test clients |
 
 [@effected/cli](/cli) is deliberately **not** a CLI framework. Argument parsing belongs to
-`effect/cli` in core; this package only owns the edge where a program becomes a process.
+`effect/cli` in core; this package owns how a program's output reaches whoever is reading it. Its
+`./ui` subpath is integrated tier for a consumer who installs the optional `ink` and `react` peers;
+the root never reaches them.
 
 ## Integrated
 
@@ -137,14 +143,14 @@ and releases as a fixed pair with `@effected/schemastore`.
 
 ## Versions and stability
 
-Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 34 packages are on npm except
-`@effected/schemastore-cli`, `@effected/engine` and `@effected/mcp`, which are built and documented but
-have not cut their first release.
+Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 36 packages are on npm except
+`@effected/env`, `@effected/github-commands`, `@effected/engine`, `@effected/mcp` and
+`@effected/schemastore-cli`, which are built and documented but have not cut their first release.
 
 Releases are changeset-driven, so versions move per package rather than in lockstep — a release is
 sometimes the whole kit and sometimes a single package, and both are ordinary. Each package's npm page is
 the source of truth for the version to install. What *is* coordinated is the Effect pin: every package is
-built against the single beta named in the `effect` catalog, so peer ranges agree with each other.
+built against the single Effect version named in the `effect` catalog, so peer ranges agree with each other.
 
 For the project's own framing — how it is organized, how releases are cut, and what comes next — see the
 [documentation overview](/docs). The source lives at

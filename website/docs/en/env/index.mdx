@@ -1,0 +1,77 @@
+---
+title: "@effected/env"
+description: "Effect-native environment detection: which agent or CI runs a program, what the terminal can do, and which audience the output is for, read once through Config and swapped in tests with layerTest."
+---
+
+# @effected/env
+
+Effect-native environment detection for any front end of a tool. It answers three questions once, at the edge of a program: **who is running it** (an AI agent, a CI job, or neither), **what the terminal can do** (colour level, OSC 8 hyperlinks and width, per stream), and **who the output is for** (a human, an agent or CI). Every answer is read through `Config`, never from `process`, and every service has a `layerTest`, so a test sets the environment it wants without touching a global.
+
+## Why @effected/env
+
+Every tool that prints something ends up asking these questions, usually by reading `process.env` and `process.stdout.isTTY` wherever the answer happens to be needed. That approach goes wrong in ways nobody notices for a while:
+
+- **The answers drift.** One module decides colour from `NO_COLOR`, another from `FORCE_COLOR`, and a third from the TTY alone, so the help text and the report disagree about whether colour is on.
+- **The answers are untestable.** A test that wants "an agent, in CI, with colour forced" has to mutate `process.env` inside a runner that is itself reading those variables.
+- **The rules are subtle.** `FORCE_COLOR` beats `NO_COLOR` in Node, an empty `NO_COLOR` means unset, `TERM=dumb` is a terminal that cannot move the cursor, and an agent running inside a CI job should get agent output.
+
+This package makes each decision once, as a service, from rules taken from established sources. Colour depth follows Node's own `getColorDepth`. Hyperlink support follows std-osc8's terminal table. Agent detection is transcribed from std-env. A layer reads the environment when it is built, and code that needs an answer asks the service.
+
+## Install
+
+```bash
+npm install @effected/env effect
+```
+
+```bash
+pnpm add @effected/env effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is the only peer. The package has no runtime dependencies, no platform import and no `@effected/*` edge, so it runs unchanged on Node, Bun and Deno.
+
+## Quick start
+
+Who is running this program? `RuntimeEnv.fromRecord` answers as a pure function. `Audience.detect` turns that answer into the audience the output is for:
+
+```ts with-api
+import { Audience, RuntimeEnv } from "@effected/env";
+import { Option } from "effect";
+
+const env = RuntimeEnv.fromRecord({ CLAUDECODE: "1", GITHUB_ACTIONS: "true" });
+
+console.log(Option.getOrNull(env.agent), Option.getOrNull(env.ci), Audience.detect(env));
+// claude github-actions agent
+```
+
+An agent inside a CI job gets agent output. In a real program you provide the services instead, and the layers read the ambient `ConfigProvider`. The [getting-started guide](/env/getting-started) shows that wiring.
+
+## What it exports
+
+- **[`RuntimeEnv`](/env/api/class/runtimeenv)** is a schema class snapshot of the agent, the CI and the terminal program. Each field is an `Option`, stored as `null` when absent, so a snapshot persists as plain JSON. `RuntimeEnv.fromRecord(env)` builds one from a plain record.
+- **[`CurrentRuntimeEnv`](/env/api/class/currentruntimeenv)** is that snapshot as a service. `layer` reads the ambient `ConfigProvider` once. `layerFrom(source)` reads a record or a provider of your own and is rebuilt on every use. `layerTest(overrides)` sets the fields directly.
+- **[`TerminalEnv`](/env/api/class/terminalenv)** is per-stream capability: `isTerminal`, a [`ColorLevel`](/env/api/type/colorlevel) (`none`, `basic`, `256` or `truecolor`), `hyperlinks` and `columns`, plus `width(fallback)` for layout. `layer()` needs core's `Stdio` and `Terminal`. `layerStdio()` needs only `Stdio`. `colorLevel("stdout")` decides colour alone, with a `Stdio`-only requirement.
+- **[`Audience`](/env/api/class/audience)** is who the output is for: an [`AudienceKind`](/env/api/type/audiencekind) of `human`, `agent` or `ci`, plus the `source` that decided it (`override`, `detected` or `flag`). `layer({ envVar })` decides it from `CurrentRuntimeEnv` and an override variable you name.
+- **[`EnvOverride`](/env/api/class/envoverride)** reads an environment variable that picks a mode *within* an audience, accepting only the values you list for each audience.
+
+## How each answer is decided
+
+| Question | Rule |
+| --- | --- |
+| Agent | `AI_AGENT` first, folded to its family (`claude-code_2-1-285_agent` reads as `claude`). Otherwise std-env's table, in its order: `CLAUDECODE` or `CLAUDE_CODE` is `claude`, and so on for Replit, Gemini, Codex, opencode, Pi, Auggie, Goose, Junie, Copilot, Devin and Cursor. |
+| CI | `github-actions` when `GITHUB_ACTIONS` is truthy, else `generic` when `CI` or `CONTINUOUS_INTEGRATION` is truthy. `""`, `0` and `false` all count as unset. |
+| Colour level | `FORCE_COLOR` decides alone when set (`1` or `true` is `basic`, `2` is `256`, `3` is `truecolor`, `0` or anything else is `none`). It beats `NO_COLOR`, as in Node. Otherwise a stream that is not a terminal gets `none`. Then a non-empty `NO_COLOR` or `NODE_DISABLE_COLORS`, or `TERM=dumb`, gives `none`. Otherwise Node's terminal table decides (`TMUX`, the CI providers, `TERM_PROGRAM`, `COLORTERM`, `TERM`). |
+| Hyperlinks | A truthy `FORCE_HYPERLINK` turns them on. Otherwise `NO_HYPERLINK` or a non-empty `NO_COLOR` turns them off, as does a stream that is not a terminal or a multiplexer that may strip them. Beyond that, the terminal has to be one std-osc8 knows renders OSC 8, at a version that does. This is terminal capability only. Turning links off for an agent is up to the consumer; [`@effected/cli`](/cli) does it. |
+| Width | The terminal's columns, else a positive integer `COLUMNS`, else the fallback (80 by default). |
+| Audience | A valid value in the override variable you name, else an agent, else CI, else a human. |
+
+An empty value counts as unset everywhere, under every `ConfigProvider`. So `FORCE_COLOR=""` does not force colour.
+
+## Reach for it when
+
+- A front end needs to decide colour, links, width or audience, and wants one answer the rest of the program agrees with.
+- A test needs "an agent in CI with colour forced" without mutating `process.env`.
+- A long-lived host, such as an MCP server or a watch-mode runner, needs to re-read the environment rather than trust a snapshot taken at startup.
+
+[`@effected/cli`](/cli) builds its whole presentation layer on these services. Its `CliEnv.layer` provides them in the right order, so a CLI built on it rarely wires them by hand.
+
+See the [getting-started guide](/env/getting-started), or every signature in the [API reference](/env/api).

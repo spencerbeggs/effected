@@ -1,0 +1,236 @@
+---
+title: Prompts and Screens
+description: Ask questions only when a person can answer — core prompts as flag fallbacks, and Ink screens with @effected/cli/ui's widgets — with a defined answer, or a clean exit, everywhere else.
+---
+
+# Prompts and Screens
+
+A prompt is only safe when there is a person at a terminal to answer it. In a pipe it hangs or reads the wrong input. For an agent it is a dead end, and in CI it fails a job that would otherwise have succeeded. Every prompt in this package therefore checks [`CliInteractive`](/cli/api/class/cliinteractive) first. That is `true` only for a human audience with a terminal on stdin and stdout and a `TERM` that is not `dumb`. When it is `false`, the prompt never touches the terminal: it answers with a default you supply, or fails with a clear message and a usage exit code.
+
+There are two engines:
+
+- **Core's prompts** (`effect/cli`'s `Prompt`), used as a flag fallback through [`CliPrompt.fallback`](/cli/api/class/cliprompt). They need nothing beyond the root package.
+- **Ink screens** from `@effected/cli/ui`, for richer interactions: a scrolling select, sectioned multi-select, confirm-with-options, or a screen of your own. These need the optional `ink` and `react` peers.
+
+Both need `CliRuntime.main` with `env` (see the [getting-started guide](/cli/getting-started)). Without it, `CliInteractive` keeps its default of `false`, and nothing ever prompts.
+
+## A flag that asks when it is missing
+
+The commonest prompt is a fallback: `tool init --profile library` uses the flag, and plain `tool init` at a terminal asks. Wrap a core prompt in `CliPrompt.fallback` and hand it to `Flag.withFallbackPrompt`:
+
+```ts
+import { CliAudience, CliMessage, CliPrompt, CliRuntime } from "@effected/cli";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Command, Flag, Prompt } from "effect/cli";
+
+const profile = Flag.String("profile").pipe(
+  Flag.withFallbackPrompt(
+    CliPrompt.fallback(
+      Prompt.Select({
+        message: "Profile",
+        choices: [
+          { title: "library", value: "library" },
+          { title: "application", value: "application" },
+        ],
+      }),
+      { flag: "profile", otherwise: "library" },
+    ),
+  ),
+);
+
+const init = Command.make("init", { profile }, ({ profile }) => CliMessage.success(`created a ${profile} config`));
+
+const root = Command.make("tool").pipe(Command.withSharedFlags(CliAudience.flags()), Command.withSubcommands([init]));
+
+NodeRuntime.runMain(
+  CliRuntime.main(CliAudience.run(root, { version: "1.0.0" }), { platform: NodeServices.layer, env: {} }),
+);
+```
+
+```text
+$ tool init | cat
+✓ created a library config
+```
+
+When the run is interactive, the prompt runs and its answer is used. When it is not, the fallback uses `otherwise`. Without `otherwise`, the flag fails as missing, exactly as it would with no fallback, and `main` exits `64`. Name the parameter with `flag` (without dashes) or `argument`, so that error can name it.
+
+A person who quits the prompt with Ctrl-C gets [`Cancelled`](/cli/api/class/cancelled), reported as the one line `cancelled; nothing written` with exit `130`. Core's own `withFallbackPrompt` would turn that quit into "missing flag" and exit `64`, as if the user had forgotten it. `Cancelled` travels as a defect, because core's parse step turns every typed failure into a usage error. So a handler's `catchTag` cannot see it; `CliRuntime.main` reports it.
+
+## Screens with `@effected/cli/ui`
+
+### Install the peers
+
+```bash
+npm install ink react @types/react
+```
+
+`ink` and `react` are optional peers. Importing `@effected/cli/ui` loads neither: they are loaded when a screen first mounts, so a run that never shows a screen never loads React. A TypeScript program also needs `@types/react` (React ships no types) and `@types/node`. Without `@types/react`, a program compiled with `skipLibCheck` silently types every screen as `any`. Screens are written in JSX, so set `"jsx": "react-jsx"` in your `tsconfig.json`.
+
+### Ask with a ready-made screen
+
+Every widget has a `screen(options)` that is a complete [`Screen`](/cli/api/type/screen). Run it from a handler with `CliUi.prompt`, which takes an `otherwise` for the non-interactive case:
+
+```tsx
+import { CliMessage } from "@effected/cli";
+import { CliUi, Select } from "@effected/cli/ui";
+import { Effect } from "effect";
+
+const pickProfile = Select.screen({
+  message: "Profile",
+  choices: [
+    { label: "library", value: "library", detail: "a published package" },
+    { label: "application", value: "application" },
+    { label: "legacy", value: "legacy", disabled: true },
+  ],
+});
+
+const init = Effect.gen(function* () {
+  const profile = yield* CliUi.prompt(pickProfile, { otherwise: "library" });
+  yield* CliMessage.success(`created a ${profile} config`);
+});
+```
+
+```text
+Profile
+→ library
+  application
+  legacy (disabled)
+a published package
+↑/↓ move · enter choose · q/esc cancel
+```
+
+The three ways to run a screen differ only in what happens when the run is not interactive:
+
+| | Not interactive | Use it |
+| --- | --- | --- |
+| `CliUi.run(screen)` | Fails with `NotInteractive` (exit `64`), and loads nothing | When there is no sensible default |
+| `CliUi.prompt(screen, { otherwise })` | Answers `otherwise`, or fails with `NotInteractive` without one | In a handler |
+| `CliUi.fallback(screen, { flag, otherwise })` | Answers `otherwise`, or fails as a missing flag (exit `64`) | As a flag's `withFallbackPrompt`, in place of `CliPrompt.fallback` |
+
+All three fail with `Cancelled` when the person presses Esc (reason `"escape"`) or Ctrl-C (reason `"interrupt"`), which `main` reports with exit `130`. The screen's last frame stays on the terminal as a record of the answer. Pass `clear: true` to erase it as the screen unmounts.
+
+### The widgets
+
+| Widget | Answers | Notes |
+| --- | --- | --- |
+| [`Select`](/cli/api/class/select) | One value | Scrolls; disabled choices are skipped; an optional `detail` line for the highlighted choice |
+| [`TextInput`](/cli/api/class/textinput) | A string | `placeholder`, `initial`, and `validate`, which returns an error message or `undefined` |
+| [`MultiSelect`](/cli/api/class/multiselect) | An array of values, in section order | Sections with titles; space toggles an item, `a` toggles a section |
+| [`Confirm`](/cli/api/class/confirm) | `{ confirmed, toggles }` | Yes/No, plus optional boolean toggles shown underneath |
+| [`Toggle`](/cli/api/class/toggle) | — | A `View` for one boolean row, for your own screens |
+| [`Tabs`](/cli/api/class/tabs) | — | A tab bar for your own screens: Tab and Shift-Tab cycle, digits jump |
+| [`Viewport`](/cli/api/class/viewport) | — | A scrolling window over rows, which the list widgets are built on |
+
+Each widget is also a pure `init`/`step` reducer, a `keys` table and a `View` component, so you can compose it into a screen of your own. Every string a widget draws from data (labels, messages, details) is sanitised and folded onto one line, so data cannot paint colour, plant a link or add a row the layout did not count.
+
+```tsx
+import { CliUi, Confirm, MultiSelect, TextInput } from "@effected/cli/ui";
+import { Effect } from "effect";
+
+const setup = Effect.gen(function* () {
+  const name = yield* CliUi.run(
+    TextInput.screen({ message: "Package name", validate: (value) => (value === "" ? "required" : undefined) }),
+  );
+  const workspaces = yield* CliUi.run(
+    MultiSelect.screen({
+      message: "Workspaces",
+      sections: [
+        { title: "packages", items: [{ key: "env", label: "env", value: "packages/env", selected: true }] },
+        { title: "apps", items: [{ key: "web", label: "web", value: "apps/web" }] },
+      ],
+    }),
+  );
+  const { confirmed, toggles } = yield* CliUi.run(
+    Confirm.screen({
+      message: `Create ${name}?`,
+      initial: true,
+      toggles: [{ key: "git", label: "Commit it", value: false }],
+    }),
+  );
+  return { name, workspaces, confirmed, commit: toggles.git === true };
+});
+```
+
+### Load a screen only when it is shown
+
+`CliUi.lazy` defers a screen's module until it mounts, so a large screen costs nothing on runs that never show it. The module default-exports the screen:
+
+```ts
+import { CliUi } from "@effected/cli/ui";
+
+const wizard = CliUi.lazy(() => import("./screens/wizard.js"));
+const answers = CliUi.run(wizard);
+```
+
+## A screen of your own
+
+A [`Screen<A>`](/cli/api/type/screen) is a function from a [`ScreenControl<A>`](/cli/api/interface/screencontrol) to a React element. Call `resolve(value)` to answer and `cancel(reason)` to cancel; the first call wins. The kit mounts it, binds Esc and Ctrl-C, and restores the terminal however it ends.
+
+Keys are data. A [`KeyTable`](/cli/api/class/keytable) maps keys to actions, [`useKeys`](/cli/api/function/usekeys) dispatches them, and [`KeyHelp`](/cli/api/function/keyhelp) renders the help line from the same table, so the two never disagree. [`Styled`](/cli/api/function/styled) paints a token through the screen's theme:
+
+```tsx
+import type { Screen } from "@effected/cli/ui";
+import { KeyHelp, KeyTable, Styled, useKeys } from "@effected/cli/ui";
+import { Box, Text } from "ink";
+import { useEffect, useReducer } from "react";
+
+type Action = "more" | "less" | "done";
+
+const keys = KeyTable.make<Action>([
+  { keys: ["up", { char: "+" }], action: "more", help: "more" },
+  { keys: ["down", { char: "-" }], action: "less", help: "fewer" },
+  { keys: ["enter"], action: "done", help: "confirm" },
+]);
+
+interface State {
+  readonly workers: number;
+  readonly done: boolean;
+}
+
+const step = (state: State, action: Action): State =>
+  action === "more"
+    ? { ...state, workers: state.workers + 1 }
+    : action === "less"
+      ? { ...state, workers: Math.max(1, state.workers - 1) }
+      : { ...state, done: true };
+
+const Workers = ({ onDone }: { readonly onDone: (workers: number) => void }) => {
+  const [state, dispatch] = useReducer(step, { workers: 1, done: false });
+  useKeys(keys, dispatch);
+  useEffect(() => {
+    if (state.done) onDone(state.workers);
+  }, [state.done, state.workers, onDone]);
+  return (
+    <Box flexDirection="column">
+      <Text>
+        Workers: <Styled token="accent">{String(state.workers)}</Styled>
+      </Text>
+      <KeyHelp tables={[keys]} />
+    </Box>
+  );
+};
+
+export const workers: Screen<number> = ({ resolve }) => <Workers onDone={resolve} />;
+```
+
+```text
+Workers: 4
+↑/+ more · ↓/- fewer · enter confirm · esc cancel
+```
+
+Rules worth knowing before you write one:
+
+- **Step from current state.** When text is pasted or typed fast, Ink hands every key from one read to the handler *before* React re-renders. A handler that reads state captured at render time drops keys. Use a reducer, as above, a functional update, or a ref. [`CliUiTest`](/cli/testing)'s `chunk` sends several keys in one read, which is how to test this.
+- **Never log while a screen is mounted.** Ink draws the frame in place, and a line written to the terminal from elsewhere tears it. Log before or after.
+- **Sanitise data you draw yourself.** The widgets sanitise their text, but text from data in your own `Text` or `Styled` is yours: pass it through [`Fmt.sanitize`](/cli/api/class/fmt).
+- **Errors in raw Ink input handlers are not caught.** A `useKeys` handler that throws ends the screen as a defect, cleanly. React's error boundaries do not catch errors thrown inside Ink's own `useInput` or `usePaste` handlers, so a raw handler of yours that throws is not guarded. Prefer `useKeys`.
+- **One screen at a time.** Screens run one at a time across the whole process, and draw on stdout at stdout's colour level.
+- **Escape is reserved.** Esc and Ctrl-C always cancel. `Select`, `MultiSelect` and `Confirm` also cancel on `q`; `TextInput` does not, since `q` is text there. Your own screen decides that for itself.
+
+For a tree you mount yourself, outside `CliUi.run`, `useTheme`, `useGlyphs`, `Styled` and `useTerminalSize` need the kit's context. Wrap the tree in [`UiProvider`](/cli/api/function/uiprovider) with the value from `CliUi.context`; the [live views guide](/cli/live-views#outside-a-live-view) shows how.
+
+## Next steps
+
+- [Live views](/cli/live-views): a view that redraws as events arrive, rather than waiting for an answer.
+- [Testing](/cli/testing): `CliUiTest.render` drives a screen with keys and reads its frames; `CliUiTest.session` drives a whole command.
+- The [API reference](/cli/api) covers every widget's options, state and actions: start with [`CliUi`](/cli/api/class/cliui).

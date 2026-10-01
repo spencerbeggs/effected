@@ -72,6 +72,11 @@
 		"label": "@effected/lockfiles"
 	},
 	{
+		"type": "custom-link",
+		"link": "/github-commands",
+		"label": "@effected/github-commands"
+	},
+	{
 		"type": "section-header",
 		"label": "Boundary"
 	},
@@ -129,6 +134,11 @@
 		"type": "custom-link",
 		"link": "/runtimes",
 		"label": "@effected/runtimes"
+	},
+	{
+		"type": "custom-link",
+		"link": "/env",
+		"label": "@effected/env"
 	},
 	{
 		"type": "custom-link",

@@ -1,0 +1,349 @@
+---
+title: Audiences and Output
+description: How @effected/cli decides who a program's output is for, and how that decision shapes colour, themed messages, documents, links, failure reports, diagnostics and GitHub Actions output.
+---
+
+# Audiences and Output
+
+Every decision this package makes about output starts from one question: **who is reading it?** A person at a colour terminal, an AI agent, and a CI log want different things. The person wants colour, glyphs and clickable file links laid out to the terminal's width. The agent wants plain text with nothing cut off and no escape sequence of any kind. The CI log wants plain text, and under GitHub Actions it must never contain a line the runner would read as a command.
+
+This guide covers how the audience is decided and how each kind of output follows it. It assumes the wiring from the [getting-started guide](/cli/getting-started): `CliAudience.flags()` on the root, and `CliRuntime.main(CliAudience.run(root, …), { platform, env })`.
+
+## Who the output is for
+
+The audience is an [`Audience`](/env/api/class/audience) from [`@effected/env`](/env), decided once per run in this order:
+
+1. **A flag.** `--audience <human|agent|ci>`, `--human`, `--agent` or `--ci`, given exactly once. Two of them, even two that agree, are a usage error, and the run exits `64`.
+2. **The override variable** you name with `env.audienceEnvVar`, holding `human`, `agent` or `ci`. Any other value logs one warning and is ignored.
+3. **An agent** detected from the environment, such as `CLAUDECODE`, `AI_AGENT` or `CURSOR_AGENT`. An agent inside a CI job counts as an agent.
+4. **CI**, when `GITHUB_ACTIONS`, `CI` or `CONTINUOUS_INTEGRATION` is set.
+5. **A human** otherwise.
+
+`CliAudience.run` reads the flag from the arguments *before* core parses them. That matters because a fallback prompt fires during parsing, earlier than any handler runs, so `tool --agent init` must already know it is talking to an agent when the prompt would fire. Use `CliAudience.run` (or `runWith(root, config)(argv)`) rather than core's `Command.run`. With a bare `Command.run`, pipe [`CliAudience.provide`](/cli/api/class/cliaudience) onto the root after `withSubcommands`. That covers the handlers, but not a fallback prompt.
+
+Core lists shared flags in every subcommand's help. To keep the four flags out of help entirely, use `CliAudience.flags({ hidden: true })`.
+
+## What changes with the audience
+
+| | Human | Agent | CI |
+| --- | --- | --- | --- |
+| `CliMessage` glyph colour | When the stream has colour | **Never**, even with `FORCE_COLOR` | When the stream has colour |
+| `Doc.print` renderer | `ansi`: painted and linked | `plain` | `githubLog` under GitHub Actions, otherwise `plain` |
+| Layout width | The terminal's columns | Unbounded | Unbounded |
+| File links in documents | OSC 8, when the terminal renders it | The label, then the target in parentheses | The label, then the target in parentheses |
+| Path separator | `›` | ` > ` | ` > ` |
+| Diagnostics (`CliLog`, `format: "auto"`) | Pretty lines | NDJSON | NDJSON |
+| Prompts and screens | When the run is interactive | Never | Never |
+
+Two rules hold across all of them. **An agent is never written an escape sequence of any kind**: no colour, no hyperlink, no cursor movement. And **under GitHub Actions every audience's output is neutralized**: a line the runner would read as a workflow command gets a zero-width space that defuses it.
+
+## Colour
+
+Colour is decided per stream from the environment, through [`@effected/env`](/env)'s `TerminalEnv`. It follows Node's own precedence:
+
+1. **`FORCE_COLOR`** decides alone when set, even in a pipe, and beats `NO_COLOR`. `1` or `true` gives 16 colours, `2` gives 256, and `3` gives truecolor. `0`, or any other value, turns colour off.
+2. Otherwise a stream that **is not a terminal** gets no colour.
+3. Otherwise a non-empty **`NO_COLOR`**, **`NODE_DISABLE_COLORS`**, or **`TERM=dumb`** turns colour off.
+4. Otherwise the terminal's own signals decide (`TMUX`, the CI provider, `TERM_PROGRAM`, `COLORTERM`, `TERM`).
+
+An empty value counts as unset, so `FORCE_COLOR=""` forces nothing. The audience then applies on top: an agent gets no colour whatever the level.
+
+stdout and stderr are decided separately, so `tool 2> err.log` stops colouring stderr without touching stdout. Core's `Stdio` reports only stdout's terminal state, so on Node pass the real stderr check to `main`: `env: { stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true) }`. Anything you paint for stderr yourself goes through `theme.forStream("stderr")`.
+
+`TERM=dumb` does two more things. The glyph set switches to ASCII (`v`, `x`, `!` and so on), and the run is not interactive, because a dumb terminal cannot move the cursor.
+
+## Interactivity
+
+[`CliInteractive`](/cli/api/class/cliinteractive) is a boolean reference: may this run prompt a person? It is `true` only when **all** of these hold: the audience is `human`, stdin is a terminal, stdout is a terminal, and `TERM` is not `dumb`. Read it with `yield* CliInteractive`.
+
+When the run is not interactive:
+
+- A fallback prompt uses its `otherwise` value, or fails as a missing flag (exit `64`).
+- `CliUi.run` fails with `NotInteractive` (exit `64`), and `CliUi.prompt` answers its `otherwise`.
+- A live view prints its final frame once instead of redrawing.
+- Core's `--wizard` flag is removed.
+- The `Terminal` service is gated: `readLine` fails as a quit and `display` writes nothing. A program that reads piped input must read `Stdio.stdin`, never `Terminal`.
+
+`--human` re-enables interactivity under a detected agent, when there really is a terminal on both stdin and stdout. In a pipe it still cannot prompt. `CliInteractive.unless(condition)` switches prompting off for one part of a program and can never switch it on:
+
+```ts with-api
+import { CliInteractive } from "@effected/cli";
+import { Effect } from "effect";
+
+declare const askQuestions: Effect.Effect<void>;
+declare const yes: boolean;
+
+// `--yes` means "never ask", for this part of the program only.
+const setup = askQuestions.pipe(CliInteractive.unless(yes));
+```
+
+## The theme
+
+[`CliTheme`](/cli/api/class/clitheme) holds the colour level, the glyph set, and the functions that paint with them. Under `main` with `env` it is built for you, and `env.theme` adjusts it:
+
+```ts
+import { CliAudience, CliMessage, CliRuntime, Token } from "@effected/cli";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Command } from "effect/cli";
+
+const hello = Command.make("hello", {}, () => CliMessage.success("hello"));
+const root = Command.make("tool").pipe(Command.withSharedFlags(CliAudience.flags()), Command.withSubcommands([hello]));
+
+NodeRuntime.runMain(
+  CliRuntime.main(CliAudience.run(root, { version: "1.0.0" }), {
+    platform: NodeServices.layer,
+    env: {
+      theme: {
+        tokens: { accent: Token.hex("#d6219b"), success: Token.style({ fg: "greenBright", bold: true }) },
+        glyphs: "auto",
+      },
+    },
+  }),
+);
+```
+
+A theme paints **tokens**, not colours: `success`, `failure`, `warning`, `info`, `error`, `muted`, `accent` and `emphasis`. Each resolves to a [`Style`](/cli/api/interface/style), a foreground (a named colour such as `cyan` or `redBright`, or a hex) plus bold, dim, italic and underline. Painting is the identity when the colour level is `none`, so code that paints never has to check.
+
+Core's own prompts follow the theme too. `CliEnv.layer` installs `CliTheme.promptTheme`, which sets core's `Prompt.Theme` from the same tokens.
+
+### Statuses
+
+A [`Status`](/cli/api/class/status) vocabulary gives each status a glyph, an ASCII fallback, a token and a rank. `Status.core` has `success`, `skip`, `pending`, `info`, `warning` and `failure`. Add your own with `extend`. The names are typed, so a misspelt status is a compile error:
+
+```ts with-api
+import { CliMessage, Status } from "@effected/cli";
+import { Effect } from "effect";
+
+const Release = Status.extend({
+  shipped: { glyph: "🚀", ascii: "^", token: "success", rank: 15 },
+  blocked: { glyph: "⛔", ascii: "X", token: "error", rank: 80 },
+});
+
+const report = Effect.gen(function* () {
+  yield* CliMessage.status(Release, "shipped", "cli 0.11.0");
+  yield* CliMessage.status(Release, "blocked", "env: waiting on review");
+});
+```
+
+`CliMessage.status` sends a line to stderr when its status ranks at or above `warning`'s rank in the vocabulary (60 in `Status.core`), and to stdout otherwise. `blocked` therefore goes to stderr, and `shipped` to stdout. `Status.worst(names)` picks the highest rank, which is severity, not an aggregation rule. Under `TERM=dumb` the ASCII glyphs are used.
+
+## Messages
+
+[`CliMessage`](/cli/api/class/climessage) is the simplest output: one line, a glyph and some text. `success` and `info` go to stdout, and `warning` and `failure` to stderr. They write through `Console`, never the logger, so no log level and no `--log-level none` silences them. The text is sanitised (escape sequences and control characters are removed), so an error message you interpolate cannot paint the terminal or plant a link.
+
+## Documents
+
+For anything bigger than a line, build a **document**: an array of blocks from [`Doc`](/cli/api/class/doc). A document is plain, frozen data, and the same document renders for every audience.
+
+| Block | What it is |
+| --- | --- |
+| `Doc.heading`, `paragraph`, `line`, `lines` | Text. `line({ truncate: true })` cuts to the width instead of wrapping. |
+| `Doc.list`, `table`, `tree` | Structure. `list` and `table` take a `cap` and an `overflow` line for what they hid. |
+| `Doc.counts`, `countsTable`, `counter` | Status counters inline, in columns or as a table with a total row and durations. |
+| `Doc.section`, `collapsible`, `callout` | Grouping. Under GitHub Actions a top-level `collapsible` becomes a `::group::`. |
+| `Doc.codeBlock`, `verbatim`, `diff`, `diffText` | Preformatted text. `verbatim` never wraps or cuts, and `diffText` takes a unified diff. |
+| `Doc.annotation` | A GitHub annotation (`::error file=…::`). Only the `githubLog` renderer writes it. |
+
+Inline content mixes strings with `Doc.text(value, token)`, `code`, `strong`, `em`, `status`, `path`, `file` and `link`.
+
+### Print a document
+
+`Doc.print(doc, options)` builds the render context from the services the program has, picks the renderer from the audience, and writes with `Console.log` (or `Console.error` with `stream: "stderr"`):
+
+```ts
+import { Doc, Status } from "@effected/cli";
+
+const document = [
+  Doc.heading(2, "Sync"),
+  Doc.paragraph(Doc.status(Status.core, "success"), " synced ", Doc.code("acme/widgets")),
+  Doc.paragraph("see ", Doc.link({ file: "/repo/sync.config.ts", line: 4 }, "the config")),
+];
+
+const printed = Doc.print(document, { displayPath: (path) => path.replace("/repo/", "") });
+```
+
+The options are `stream`, `format` (`auto` by default, or `plain`, `ansi`, `markdown` or `githubLog`), `displayPath` for how a file path is shown, and `width`. An explicit `format` is honoured for every audience, except that an agent still gets no escape sequences, even from `ansi`.
+
+### Render without the services
+
+The renderers themselves are pure functions of a document and a [`RenderContext`](/cli/api/interface/rendercontext). [`Render.contextOf`](/cli/api/class/render) builds a context from plain options, for code outside Effect, such as a test reporter, or for writing a file:
+
+```ts with-api
+import { Doc, Render, Status } from "@effected/cli";
+
+const document = [
+  Doc.heading(2, "Sync"),
+  Doc.paragraph(Doc.status(Status.core, "success"), " synced ", Doc.code("acme/widgets")),
+  Doc.table(
+    [{ header: "Repo" }, { header: "Files", align: "right" }],
+    [
+      ["acme/widgets", "12"],
+      ["acme/gadgets", "3"],
+    ],
+  ),
+];
+
+console.log(Render.plain(document, Render.contextOf({ audience: "agent" })));
+// Sync
+// ✓ synced `acme/widgets`
+// Repo          Files
+// ------------  -----
+// acme/widgets     12
+// acme/gadgets      3
+
+console.log(Render.markdown(document, Render.contextOf({ audience: "human" })));
+// ## Sync
+//
+// ✓ synced `acme/widgets`
+//
+// | Repo | Files |
+// | --- | --: |
+// | acme/widgets | 12 |
+// | acme/gadgets | 3 |
+```
+
+`Render.markdown` writes GitHub-flavoured markdown for a step summary or a file. It escapes text so data cannot become markdown, and it only writes links with a safe scheme. `Render.githubLog` is plain text with groups and annotations as workflow commands. `Render.ansi` is the same layout as `plain`, painted and linked through the context. Inside Effect, `Render.context(stream)` builds the context from the program's services, the same one `Doc.print` uses.
+
+## Editor links
+
+A `Doc.link` to a file opens in an editor when the terminal supports OSC 8 hyperlinks. [`CliLinks`](/cli/api/class/clilinks) decides where: `vscode://file/…` when VS Code is detected (`TERM_PROGRAM=vscode`, or a `.vscode/` directory at the project root), and `file://…` otherwise. Set it with `env.editorLinks` (`auto`, `vscode`, `file` or `off`), and name a variable with `env.editorLinksEnvVar` to let users override it. An agent never gets a hyperlink. Where a link cannot be followed, plain text shows the label with the target in parentheses: `the config (/repo/sync.config.ts:4)`.
+
+## Failure reports
+
+Under `CliRuntime.main`, a failure is rendered as a document on stderr, through the audience's renderer, and the run exits non-zero. By default the report is [`CliFailure.toDoc`](/cli/api/class/clifailure):
+
+- A **typed failure** is a status line with its message, such as `✗ RepoNotFound: repository acme/gadgets not found`.
+- A **schema failure** is a tree of the rejected values, nested by path.
+- A **defect** (a thrown exception or a `die`) is its message plus a collapsible `stack` of *your* frames, each a file link. Frames from `node:`, from Effect and from `node_modules` are hidden and counted.
+- **`Cancelled`** and **`NotInteractive`** are their own fixed line: `cancelled; nothing written` and `not interactive: run in a terminal or pass the flag`.
+
+`env.displayPath` controls how file paths show in the stack (relative to the workspace, say), and `env.stackFrames: "all"` keeps every frame.
+
+### An error that draws itself
+
+To control how one of your errors is reported, give its class a method under the [`CliDoc`](/cli/api/variable/clidoc) key that returns a document. The default report uses it with no registration:
+
+```ts with-api
+import type { Document } from "@effected/cli";
+import { CliDoc, Doc, Status } from "@effected/cli";
+import { Data } from "effect";
+
+class ConflictError extends Data.TaggedError("ConflictError")<{ readonly files: ReadonlyArray<string> }> {
+  [CliDoc](): Document {
+    return [
+      Doc.paragraph(Doc.status(Status.core, "failure"), ` ${this.files.length} files changed on both sides`),
+      Doc.list(this.files.map((file) => Doc.paragraph(Doc.file(file)))),
+    ];
+  }
+}
+```
+
+```text
+✗ 2 files changed on both sides
+- src/a.ts
+- src/b.ts
+```
+
+### Replace the rendering
+
+For full control, pass `render` to `main`. It receives the squashed error and a [`FailureDetails`](/cli/api/interface/failuredetails), which says whether it is a defect and carries the report the kit would have written for this run. Return your own lines for the errors you own, and hand the rest back:
+
+```ts
+import { CliAudience, CliRuntime } from "@effected/cli";
+import type { FailureDetails } from "@effected/cli";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+import { Command } from "effect/cli";
+
+const deploy = Command.make("deploy", {}, () => Effect.fail(new Error("no credentials for acme")));
+const root = Command.make("tool").pipe(Command.withSharedFlags(CliAudience.flags()), Command.withSubcommands([deploy]));
+
+// Prefix every report with the program's name, keeping the run's colour, links and paths.
+const render = (_error: unknown, details: FailureDetails) =>
+  details.lines({ status: false }).map((line, index) => (index === 0 ? `tool: ${line}` : line));
+
+NodeRuntime.runMain(
+  CliRuntime.main(CliAudience.run(root, { version: "1.0.0" }), { platform: NodeServices.layer, env: {}, render }),
+);
+```
+
+What `render` returns is text the kit did not build, so the kit still applies the output policy to it. Escape sequences are removed for an agent or a CI audience, and lines are neutralized under GitHub Actions. For a person your escapes are kept, because the kit cannot tell your colour from an injected sequence, so sanitise any data you interpolate with [`Fmt.sanitize`](/cli/api/class/fmt).
+
+## Diagnostics with CliLog
+
+Diagnostics are not output. `CliMessage`, `Doc.print` and the failure report are what a program says; diagnostics are what it was doing, and the user should be able to turn them up or down without changing the output. Pass `env.log` to `main` and the logger becomes [`CliLog`](/cli/api/class/clilog):
+
+```ts
+import { CliAudience, CliLog, CliRuntime } from "@effected/cli";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Console, Effect } from "effect";
+import { Command } from "effect/cli";
+
+const build = Command.make("build", {}, () =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo("building 2 packages");
+    yield* Effect.logDebug("cache hit for env").pipe(CliLog.component("cache"));
+    yield* Console.log("built");
+  }),
+);
+
+const root = Command.make("tool").pipe(Command.withSharedFlags(CliAudience.flags()), Command.withSubcommands([build]));
+
+NodeRuntime.runMain(
+  CliRuntime.main(CliAudience.run(root, { version: "1.0.0" }), {
+    platform: NodeServices.layer,
+    env: { log: { envVar: "TOOL_LOG_LEVEL", argv: process.argv.slice(2) } },
+  }),
+);
+```
+
+```text
+$ tool build
+building 2 packages
+built
+
+$ TOOL_LOG_LEVEL=debug tool build
+building 2 packages
+14:22:57.302 INFO building 2 packages
+14:22:57.304 DEBUG [cache] cache hit for env
+built
+
+$ TOOL_LOG_LEVEL=debug tool --agent build
+building 2 packages
+{"message":"building 2 packages","level":"INFO",…,"annotations":{},…}
+{"message":"cache hit for env","level":"DEBUG",…,"annotations":{"component":"cache"},…}
+built
+```
+
+Ordinary log lines still go through the plain `CliLogger`, on stderr. The diagnostics sink is separate: it writes at its **own** level, which defaults to off. The `level` option sets it directly. Otherwise `envVar` names the variable that sets it, and core's `--log-level` flag beats both. With `format: "auto"`, the default, a person gets pretty lines and an agent or CI gets NDJSON. Pass `format: "json"` to get NDJSON for everyone. While diagnostics are on, stderr mixes plain and NDJSON lines, so a parser should read the lines that start with `{`.
+
+`argv` lets `main` pick the right format for lines logged while the platform itself is still being built, before core has read the arguments. A Node host passes `process.argv.slice(2)`. `file: { envVar }` or `file: { path }` adds an NDJSON log file, written asynchronously, which needs the platform's `FileSystem` and `Path`. `CliLog.component(name)` tags the lines of one part of a program.
+
+A library host that only wants diagnostics, such as an MCP server or a test reporter, passes `plainLogger: false`, so nothing but the sink writes to stderr.
+
+## GitHub Actions
+
+When `@effected/env` detects GitHub Actions, the audience is `ci`, and every path that writes text a program did not fully control neutralizes it: `Doc.print`, `CliMessage`, the failure report, `CliLogger`, `CliLog` and the live view. A line the runner would read as a command gets a zero-width space that defuses it, through [`@effected/github-commands`](/github-commands)' `CommandNeutralizer`.
+
+The kit's own commands are written deliberately. `Doc.print` uses the `githubLog` renderer, so a top-level `Doc.collapsible` becomes a `::group::`, and a `Doc.annotation` becomes an `::error`, `::warning` or `::notice` with a file and position:
+
+```ts with-api
+import { Doc, Render } from "@effected/cli";
+
+const document = [
+  Doc.collapsible("details", [Doc.paragraph("::error::this is data, not a command")]),
+  Doc.annotation({ level: "error", file: "src/a.ts", line: 3 }, "unused import"),
+];
+
+console.log(Render.githubLog(document, Render.contextOf({ audience: "ci" })).replaceAll("​", "<ZWSP>"));
+// ::group::details
+// <ZWSP>::error::this is data, not a command
+// ::endgroup::
+// ::error file=src/a.ts,line=3::unused import
+```
+
+## Next steps
+
+- [Prompts and screens](/cli/prompts): what an interactive run can ask, and how a non-interactive one answers.
+- [Live views](/cli/live-views): `DocView` draws these same documents in a live Ink view.
+- The [API reference](/cli/api) has every block, option and renderer: start with [`Doc`](/cli/api/class/doc), [`Render`](/cli/api/class/render), [`CliTheme`](/cli/api/class/clitheme) and [`CliLog`](/cli/api/class/clilog).

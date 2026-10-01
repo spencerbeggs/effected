@@ -1,0 +1,272 @@
+---
+title: Testing
+description: Test an @effected/cli program at every level — output for each audience in-process, core prompts with TestTerminal, Ink screens and live views with CliUiTest, whole commands with a session, and a built bin with CliTest.
+---
+
+# Testing
+
+Everything in `@effected/cli` reads its environment from services and writes through the fiber's `Console`. So a test never mutates `process.env`, never stubs `process.stdout`, and never needs a real terminal: it provides the services it wants and reads back what was written, and on which stream.
+
+There are two testing entrypoints, and nothing in a CLI's runtime import graph reaches either:
+
+- **`@effected/cli/testing`**: [`CliTest`](/cli/api/class/clitest), which spawns a built bin, and [`TestTerminal`](/cli/api/class/testterminal), which drives core's prompts.
+- **`@effected/cli/ui/testing`**: [`CliUiTest`](/cli/api/class/cliuitest), which mounts Ink screens and live views on in-memory streams.
+
+The examples use `@effect/vitest`'s `it.effect` and its `assert`.
+
+## Output for each audience
+
+Fix the environment with `layerTest`s, swap the `Console` for a capturing one, and assert on both streams. The same test, run once per audience, pins the rule that matters most: an agent never gets an escape sequence.
+
+```ts
+import { CliLinks, CliMessage, CliTheme, Doc } from "@effected/cli";
+import { Audience, TerminalEnv } from "@effected/env";
+import { assert, describe, it } from "@effect/vitest";
+import { Console, Effect, Layer } from "effect";
+
+const capturing = () => {
+  const out: string[] = [];
+  const err: string[] = [];
+  // Object.create(console) inherits the members nothing here touches.
+  const double: Console.Console = Object.assign(Object.create(console) as Console.Console, {
+    log: (...args: ReadonlyArray<unknown>) => out.push(args.map(String).join(" ")),
+    error: (...args: ReadonlyArray<unknown>) => err.push(args.map(String).join(" ")),
+  });
+  return { double, out, err };
+};
+
+const environment = (kind: "human" | "agent") =>
+  Layer.mergeAll(
+    CliTheme.layerTest({ color: "truecolor" }),
+    Audience.layerTest(kind),
+    TerminalEnv.layerTest({ stdout: { isTerminal: true, color: "truecolor", hyperlinks: true } }),
+    CliLinks.layerTest("file"),
+  );
+
+const report = Effect.gen(function* () {
+  yield* CliMessage.success("synced");
+  yield* CliMessage.failure("acme/gadgets failed");
+  yield* Doc.print([Doc.paragraph(Doc.link({ file: "/repo/a.ts", line: 3 }, "a.ts"))]);
+});
+
+describe("report", () => {
+  it.effect("is plain for an agent, even on a colour terminal", () =>
+    Effect.gen(function* () {
+      const { double, out, err } = capturing();
+      yield* report.pipe(Effect.provide(environment("agent")), Effect.provideService(Console.Console, double));
+      assert.deepStrictEqual(out, ["✓ synced", "a.ts (/repo/a.ts:3)"]);
+      assert.deepStrictEqual(err, ["✗ acme/gadgets failed"]);
+    }),
+  );
+
+  it.effect("is painted and linked for a person", () =>
+    Effect.gen(function* () {
+      const { double, out } = capturing();
+      yield* report.pipe(Effect.provide(environment("human")), Effect.provideService(Console.Console, double));
+      assert.strictEqual(out[0], "\u001b[32m✓\u001b[39m synced");
+      assert.include(out[1], "\u001b]8;;file:///repo/a.ts");
+    }),
+  );
+});
+```
+
+To exercise the real detection rules instead of fixing their answers, provide a `ConfigProvider` built from a record: `Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ CLAUDECODE: "1" }))`. `CliInteractive.layerTest(true)` or `layerTest(false)` fixes interactivity the same way.
+
+The [advanced guide](/cli/advanced#testing-with-effectvitest) covers testing the logger's stream split and the exit-code markers.
+
+## Core prompts with TestTerminal
+
+[`TestTerminal.make`](/cli/api/class/testterminal) gives you a `Terminal` layer you can type into, for core's `Prompt` and for [`CliPrompt.fallback`](/cli/api/class/cliprompt). Core's own mock terminal is test-only and not exported, so this is the way to drive one:
+
+```ts
+import { TestTerminal } from "@effected/cli/testing";
+import { NodeServices } from "@effect/platform-node";
+import { assert, it } from "@effect/vitest";
+import { Effect, Fiber } from "effect";
+import { Prompt } from "effect/cli";
+
+it.effect("asks for the package name", () =>
+  Effect.gen(function* () {
+    const terminal = yield* TestTerminal.make({ columns: 60 });
+    const answer = yield* Effect.forkChild(
+      Prompt.run(Prompt.String({ message: "Package name" })).pipe(Effect.provide(terminal.layer)),
+    );
+    yield* terminal.type("widgets");
+    yield* terminal.input([{ name: "enter" }]);
+    assert.strictEqual(yield* Fiber.join(answer), "widgets");
+    assert.include(yield* terminal.output, "Package name");
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+```
+
+`end` ends the input, which is how to test a quit. `pending` and `reads` show what the prompt has consumed.
+
+## A screen with CliUiTest.render
+
+[`CliUiTest.render`](/cli/api/class/cliuitest) mounts one screen on in-memory streams and returns once it has drawn. Press keys, read frames, and await the result:
+
+```tsx
+import { Select } from "@effected/cli/ui";
+import { CliUiTest } from "@effected/cli/ui/testing";
+import { assert, it } from "@effect/vitest";
+import { Effect, Option } from "effect";
+
+const pickProfile = Select.screen({
+  message: "Profile",
+  choices: [
+    { label: "library", value: "library" },
+    { label: "application", value: "application" },
+  ],
+});
+
+it.effect("chooses the second profile", () =>
+  Effect.gen(function* () {
+    const screen = yield* CliUiTest.render(pickProfile, { columns: 40 });
+    assert.include(yield* screen.plainFrame, "→ library");
+    yield* screen.press("down", "enter");
+    assert.strictEqual(yield* screen.result, "application");
+  }).pipe(Effect.scoped),
+);
+
+it.effect("cancels on escape", () =>
+  Effect.gen(function* () {
+    const screen = yield* CliUiTest.render(pickProfile);
+    yield* screen.press("escape");
+    const exit = yield* Effect.exit(screen.result);
+    assert.deepStrictEqual(CliUiTest.cancelReason(exit), Option.some("escape"));
+  }).pipe(Effect.scoped),
+);
+```
+
+The handle reads frames three ways. `plainFrame` is the text alone. `frame` is token markup, such as `Workers: [accent]4[/accent]`, which shows *which token* painted each part without depending on colour codes; `CliUiTest.serializer` is a Vitest snapshot serializer for it. `rawFrame` is the bytes Ink wrote.
+
+Keys go in three ways. `press` sends named keys (`"down"`, `"enter"`, `"escape"`, `"ctrl+c"`…) or `{ char }` items, one write each. `type(text)` types text. `chunk` sends several keys in **one** stdin read, which is how a fast typist or a paste arrives. Ink delivers all of them before React re-renders, so `chunk` is the test that catches a key handler reading stale state.
+
+A screen that crashes is never swallowed: `result` dies with the crash, and so does the next read or key. Options are `columns`, `rows`, `color`, `glyphs` and `interactive`. `interactive: false` makes the screen refuse with `NotInteractive`, as a pipe would.
+
+## A display-only element with CliUiTest.view
+
+`CliUiTest.view(element)` mounts an element that never ends on its own, such as a status line or a frame from a live view's `render`. It is wrapped in the kit's providers, so `useTheme`, `useGlyphs` and `Styled` work in it. The handle has the same frame readers and keys, plus `rerender(element)`, but no `result`.
+
+## A whole command with CliUiTest.session
+
+To test a command that shows screens as part of a run, take a session, provide its `layer` to the program, fork it, and take each screen with `next` as it mounts:
+
+```tsx
+import { CliExit, CliMessage } from "@effected/cli";
+import { CliUi, Select } from "@effected/cli/ui";
+import { CliUiTest } from "@effected/cli/ui/testing";
+import { Audience } from "@effected/env";
+import { NodeServices } from "@effect/platform-node";
+import { assert, it } from "@effect/vitest";
+import { Effect, Fiber, MutableRef } from "effect";
+import { Command, Flag } from "effect/cli";
+
+const profileScreen = Select.screen({
+  message: "Profile",
+  choices: [
+    { label: "library", value: "library" },
+    { label: "application", value: "application" },
+  ],
+});
+
+const init = Command.make(
+  "init",
+  { profile: Flag.String("profile").pipe(Flag.withFallbackPrompt(CliUi.fallback(profileScreen, { flag: "profile" }))) },
+  ({ profile }) => CliMessage.success(`created a ${profile} config`),
+);
+const root = Command.make("tool").pipe(Command.withSubcommands([init]));
+
+it.live("prompts for the profile when the flag is missing", () =>
+  Effect.gen(function* () {
+    const session = yield* CliUiTest.session({ columns: 60 });
+    const program = Effect.gen(function* () {
+      yield* Command.runWith(root, { version: "1.0.0" })(["init"]);
+      return MutableRef.get((yield* CliExit).code);
+    }).pipe(
+      Effect.provide(session.layer),
+      Effect.provide(Audience.layerTest("human")),
+      Effect.provide(CliExit.layer),
+      Effect.provide(NodeServices.layer),
+    );
+    const fiber = yield* Effect.forkScoped(program);
+    const screen = yield* session.next({ contains: "Profile" });
+    yield* screen.press("down", "enter");
+    assert.strictEqual(yield* Fiber.join(fiber), 0);
+    assert.include(yield* session.stdout, "created a application config");
+    assert.strictEqual(yield* session.mounts, 1);
+  }).pipe(Effect.scoped),
+);
+```
+
+The session's `layer` supplies in-memory streams, a theme, `CliInteractive` and a capturing `Console`. Anything the program provides closer to its screens wins, so under `CliRuntime.main` with `env`, `CliEnv` decides the theme and interactivity as it does for real. `next` waits up to two seconds for the next screen, optionally one whose frame contains some text, and dies naming what it waited for. To assert that *no* screen mounted (a non-interactive run, or a flag that skips the prompt), check that `mounts` is `0` once the program has finished.
+
+The waits are real time, so a session test that itself sleeps or times out needs `it.live`. To test a command that reads `HOME` or the XDG directories, also provide a `ConfigProvider` that points them into a sandbox.
+
+## A live view with CliUiTest.live
+
+[`CliUiTest.live`](/cli/api/class/cliuitest) mounts a live view on the **production** render path, Ink interactive and not in debug mode, over an in-memory terminal. It takes `CliUi.live`'s options without `events`; you `publish` instead:
+
+```tsx
+import { CliUiTest } from "@effected/cli/ui/testing";
+import { assert, it } from "@effect/vitest";
+import { Effect } from "effect";
+import { Text } from "ink";
+
+type Event = { readonly _tag: "Start" } | { readonly _tag: "Tick" } | { readonly _tag: "End" };
+
+it.effect("draws a run and commits its last frame", () =>
+  Effect.gen(function* () {
+    const view = yield* CliUiTest.live({
+      initial: 0,
+      reduce: (count: number, event: Event) => (event._tag === "Tick" ? count + 1 : count),
+      render: (count: number, frame: number) => <Text>{`ticks ${count} frame ${frame}`}</Text>,
+      isStart: (event: Event) => event._tag === "Start",
+      isTerminal: (event: Event) => event._tag === "End",
+      columns: 40,
+    });
+    yield* view.publish({ _tag: "Start" });
+    yield* view.advance("160 millis");
+    assert.strictEqual(yield* view.plainFrame, "ticks 0 frame 2");
+    yield* view.publish({ _tag: "Tick" });
+    yield* view.publish({ _tag: "End" });
+    assert.strictEqual(yield* view.transcript, "ticks 1 frame 2");
+    yield* view.end;
+  }).pipe(Effect.scoped),
+);
+```
+
+`advance(duration)` moves the `TestClock`, which fires the view's tick, so write live tests with `it.effect`. Outside `@effect/vitest`, provide `TestClock.layer()` from `effect/testing` yourself. `transcript` is what the terminal shows afterwards, scrollback included, and `written` is every raw byte (the place to assert that nothing wiped the scrollback). Frames are best-effort, since an unchanged render adds none, so prefer `transcript` for what the user ends up seeing. `end` ends the events and waits for the view, dying with whatever the view died of.
+
+## A built bin with CliTest
+
+Everything above runs the program in-process. [`CliTest`](/cli/api/class/clitest) runs the **built** artifact a user installs, as a real subprocess:
+
+```ts
+import { CliTest } from "@effected/cli/testing";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+describe("tool", () => {
+  it.effect("exits 1 when it finds a problem", () =>
+    Effect.gen(function* () {
+      const sandbox = yield* CliTest.sandbox({ path: process.env.PATH ?? "" });
+      const result = yield* CliTest.run("./dist/tool.js", ["check"], {
+        sandbox,
+        execPath: process.execPath,
+        env: { TOOL_AUDIENCE: "agent" },
+      });
+      assert.strictEqual(result.exitCode, 1);
+      assert.include(result.stdout, "2 problems found");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+});
+```
+
+`CliTest.sandbox({ path })` creates a temporary directory with a fresh `HOME`, fresh XDG directories, `NO_COLOR=1`, and the `PATH` you pass. Nothing else from the host environment is inherited, so a detected agent or CI on the machine running the tests cannot change the bin's audience. Pass `env` to set it deliberately. `CliTest.run` returns `{ exitCode, stdout, stderr }` as data, so a non-zero exit is never a test failure by itself. When `stdin` is omitted, or passed as `""`, the child gets an already-ended empty input rather than an open pipe, so a bin that reads stdin cannot hang the test.
+
+## Next steps
+
+- [Advanced](/cli/advanced): testing the stream split and the exit-code markers in depth.
+- The [API reference](/cli/api) has every handle's members: [`CliUiTestScreen`](/cli/api/interface/cliuitestscreen), [`CliUiTestSession`](/cli/api/interface/cliuitestsession), [`CliUiTestLive`](/cli/api/interface/cliuitestlive) and [`TestTerminalHandle`](/cli/api/interface/testterminalhandle).

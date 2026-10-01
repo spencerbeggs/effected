@@ -15,6 +15,26 @@
 	},
 	{
 		"type": "file",
+		"name": "output.mdx",
+		"label": "Audiences and Output"
+	},
+	{
+		"type": "file",
+		"name": "prompts.mdx",
+		"label": "Prompts and Screens"
+	},
+	{
+		"type": "file",
+		"name": "live-views.mdx",
+		"label": "Live Views"
+	},
+	{
+		"type": "file",
+		"name": "testing.mdx",
+		"label": "Testing"
+	},
+	{
+		"type": "file",
 		"name": "advanced.mdx",
 		"label": "Advanced"
 	},

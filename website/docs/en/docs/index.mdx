@@ -14,8 +14,9 @@ place by being something one of those five actually needs.
 
 ## How this ships
 
-The kit is **32 publishable packages**: 30 libraries plus two companions. All of them are on npm except
-`@effected/schemastore-cli`, which is built and documented but has not cut its first release yet.
+The kit is **36 publishable packages**: 34 libraries plus two companions. All of them are on npm except
+`@effected/env`, `@effected/github-commands`, `@effected/engine`, `@effected/mcp` and
+`@effected/schemastore-cli`, which are built and documented but have not cut their first release yet.
 [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) and `@effected/schemastore-cli` are the companions —
 neither is a library, so the tier taxonomy does not describe them, but both are public packages and
 publish like the rest. Everything is
@@ -25,8 +26,8 @@ Releases are changeset-driven. CI releases whatever the pending changesets name,
 whole kit and sometimes one package on its own — both are ordinary, and versions move per package rather
 than in lockstep. Each package's npm page is the source of truth for the version to install.
 
-What is coordinated is the Effect pin: every package is built against the single beta named in the `effect`
-catalog, so peer ranges agree with each other, and advancing that beta is a change across the whole kit
+What is coordinated is the Effect pin: every package is built against the single Effect version named in the `effect`
+catalog, so peer ranges agree with each other, and advancing that version is a change across the whole kit
 rather than a per-package decision.
 
 The API reference in these pages is generated from the source of the published packages.

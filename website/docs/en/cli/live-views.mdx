@@ -1,0 +1,206 @@
+---
+title: Live Views
+description: Draw a live progress view over a stream of events with CliUi.live — runs that start and commit, a ticking frame, lossless endings, logging above the frame, and a printed final frame when nobody is watching.
+---
+
+# Live Views
+
+A build, a test run or a sync emits events: started, one package done, another done, finished. A person at a terminal wants to watch that happen, with a spinner, a growing table and a count, redrawn in place. A pipe, an agent or a CI log wants none of the redrawing, just the final result once. [`CliUi.live`](/cli/api/class/cliui) handles both from the same code. It folds a stream of events into state, draws the state with Ink while a **run** is going, and when nobody is watching prints each run's final frame once.
+
+`CliUi.live` lives in `@effected/cli/ui`, so it needs the optional `ink` and `react` peers. The [prompts and screens guide](/cli/prompts#install-the-peers) covers installing them. It requires `CliTheme`, which `CliRuntime.main` with `env` provides.
+
+## A progress view
+
+Model the work as events and the view as a reducer over them:
+
+```tsx
+import { Doc, Fmt, Status } from "@effected/cli";
+import { CliUi, DocView, useGlyphs } from "@effected/cli/ui";
+import { Console, Effect, PubSub } from "effect";
+import { Text } from "ink";
+
+type BuildEvent =
+  | { readonly _tag: "Started"; readonly total: number }
+  | { readonly _tag: "Built"; readonly name: string; readonly ms: number }
+  | { readonly _tag: "Finished" };
+
+interface Progress {
+  readonly total: number;
+  readonly built: ReadonlyArray<{ readonly name: string; readonly ms: number }>;
+  readonly finished: boolean;
+}
+
+const reduce = (state: Progress, event: BuildEvent): Progress => {
+  switch (event._tag) {
+    case "Started":
+      return { total: event.total, built: [], finished: false };
+    case "Built":
+      return { ...state, built: [...state.built, { name: event.name, ms: event.ms }] };
+    case "Finished":
+      return { ...state, finished: true };
+  }
+};
+
+const Spinner = ({ frame }: { readonly frame: number }) => {
+  const glyphs = useGlyphs();
+  return <Text>{glyphs.spinner[frame % glyphs.spinner.length]}</Text>;
+};
+
+const render = (state: Progress, frame: number) => (
+  <>
+    {state.finished ? null : <Spinner frame={frame} />}
+    <DocView
+      doc={[
+        Doc.table(
+          [{ header: "Package" }, { header: "Time", align: "right" }],
+          state.built.map((pkg) => [pkg.name, Fmt.duration(pkg.ms)]),
+        ),
+        Doc.paragraph(
+          Doc.status(Status.core, state.finished ? "success" : "pending"),
+          ` ${state.built.length}/${state.total} built`,
+        ),
+      ]}
+    />
+  </>
+);
+
+export const watchBuild = (events: PubSub.PubSub<BuildEvent>, build: Effect.Effect<void>) =>
+  Effect.gen(function* () {
+    // Subscribe BEFORE the build publishes anything, so no event is missed.
+    const subscription = yield* PubSub.subscribe(events);
+    const view = yield* CliUi.live({
+      events: subscription,
+      initial: { total: 0, built: [], finished: false },
+      reduce,
+      render,
+      isStart: (event) => event._tag === "Started",
+      isTerminal: (event) => event._tag === "Finished",
+    });
+    // Route the build's log lines above the frame instead of through it.
+    yield* build.pipe(Effect.provideService(Console.Console, view.logConsole));
+    // Fold what is still queued, commit the run, and wait for the view to finish.
+    yield* view.close;
+  }).pipe(Effect.scoped);
+```
+
+At a terminal, while the build runs:
+
+```text
+⠙
+Package   Time
+-------  -----
+env      640ms
+◯ 1/2 built
+```
+
+and what stays on the terminal when it finishes:
+
+```text
+Package   Time
+-------  -----
+env      640ms
+cli       2.1s
+✓ 2/2 built
+```
+
+`render` gets the state and a **frame** number, which is the clock in ticks of `tickMillis` (80 ms by default). While a run is drawn, the view redraws on every tick, so the spinner turns even when no events arrive. Inside `render`, the theme hooks (`useTheme`, `useGlyphs`, `Styled`, `useTerminalSize`) all work.
+
+## Runs
+
+A live view does not draw all the time. It draws **runs**:
+
+- A run **begins** at an event where `isStart` is true. A start during a run redraws that run in place.
+- A run **ends** at an event where `isTerminal` is true. Its final frame is committed to the terminal and stays there, and the view unmounts until the next run.
+- The next run mounts afresh, **below** the last one. Nothing is ever cleared, because clearing the screen would also take the scrollback above the frame.
+- An event outside a run that does not begin one is still folded into the state, but not drawn. A late event after the end therefore never mounts a second copy of a finished frame.
+
+A program that joins a stream mid-run, after the start event, passes `begins(event, before, after)` to decide when a run starts from what it sees. For example: `isStart(event) || (before.phase === "idle" && after.phase !== "idle")`.
+
+The kit never resets the state between runs. A reducer that wants a fresh run resets it itself, as the `Started` case above does.
+
+## Feeding events
+
+`events` is a `PubSub` subscription or a `Stream`.
+
+**A subscription is the safe choice.** Call `PubSub.subscribe` before anything publishes, and pass the subscription itself as `events`. The view takes from it directly, so nothing published after the subscribe is missed.
+
+A stream works too. `live` pulls once before it returns, so `Stream.fromPubSub` is subscribed by the time `live` hands you the handle. A stream that forks its upstream (`Stream.merge`, `buffer`, a concurrent `flatMap`) subscribes *later*, and loses what is published before that.
+
+## Ending a view
+
+How a view ends decides whether the end of a run survives:
+
+| End | What happens to the last events |
+| --- | --- |
+| `handle.close` | Kept. The view stops taking events, folds everything still queued (a subscription's queue included), commits the run, and waits for `done`. |
+| `PubSub.end(pubsub, last)` | Kept. The view folds the buffer, then `last` once, then ends. Make `last` an `isTerminal` event to commit the run with it. |
+| `PubSub.shutdown(pubsub)` | **Lost.** A shutdown drops whatever the view has not taken yet. |
+| Closing the scope alone | **Lost.** The view stops at once, and nothing still queued is folded. |
+
+So end with `close`, then close the scope. `close` is idempotent: a second call waits for the same end. `done` completes when the events have ended and the last frame is committed, and dies with what the view died of, such as a `reduce` that threw. Closing the scope restores the terminal (the cursor is shown again) whatever happened.
+
+## Logging while a frame is drawn
+
+Ink redraws the frame in place, so a line written to the terminal any other way tears it. [`LiveHandle`](/cli/api/interface/livehandle)'s `logConsole` writes through Ink, so lines land *above* the frame. While no run is drawn, they go straight to the stream.
+
+`Console.Console` is the seam. The kit's loggers and `Effect.log*` all write through the fiber's `Console`, so providing `logConsole` around the work routes everything it logs:
+
+```ts
+import type { LiveHandle } from "@effected/cli/ui";
+import { Console, Effect } from "effect";
+
+declare const program: Effect.Effect<void>;
+declare const view: LiveHandle<unknown>;
+
+const withView = Effect.provideService(program, Console.Console, view.logConsole);
+```
+
+Output that never goes through Effect's `Console`, such as another library's own `process.stderr` writes, still tears the frame.
+
+## When nobody is watching
+
+A run that is not interactive (a pipe, an agent, CI, or `TERM=dumb`) never redraws. The `mode` option decides what it does instead:
+
+- **`owned`** (the default) prints each run's final frame **once**, as plain text at stdout's width (80 when unknown), when the run ends. An agent gets no escape sequences in it.
+- **`hosted`** prints nothing, for a view drawn inside a host that has its own output, such as a test reporter.
+
+The same program piped into a file therefore writes just the final table and count, once. Neither mode reads input: Ctrl-C stays the platform's interrupt and closes the scope.
+
+## Rules worth knowing
+
+- **Height, not width.** The frame is clipped to the terminal's rows minus one, so a tall frame never makes Ink wipe the scrollback. The content keeps its own height and is clipped, never squeezed. Width is left to the content.
+- **A failed render degrades the run, not the view.** When `render` throws, the run unmounts with its last good frame still showing, one warning is logged, and folding continues. A run that never painted prints its final frame once at its end. A throwing `reduce` is different: it ends the view, and `done` dies.
+- **Screens wait.** A view holds the same one-at-a-time permit as a screen during a run, so a `CliUi.run` while a run is drawn waits for it to end.
+- **GitHub Actions.** Under the Actions runner, `DocView` neutralizes workflow commands in what it draws, and a frame printed as text is neutralized whole, your own `Text` included.
+
+## Documents in a view
+
+[`DocView`](/cli/api/function/docview) draws a [`Doc`](/cli/api/class/doc) document as Ink rows. It uses the same renderers as `Doc.print`, so a live frame and a static report show a document byte for byte alike. Each line is one row that Ink truncates rather than re-wraps. Without a `ctx` prop it builds a render context from the view's theme and the terminal's width. Pass `ctx` (from `Render.contextOf`) to take full control.
+
+## Outside a live view
+
+`DocView`, `Styled` and the theme hooks need the kit's context. Inside `CliUi.run` and `CliUi.live` they have it. In an Ink tree you mount yourself, or a frame you render to a string with Ink's `renderToString`, wrap the tree in [`UiProvider`](/cli/api/function/uiprovider) with the value from `CliUi.context`. That value is an Effect, because it loads Ink and React; run it once, then render synchronously as often as you like:
+
+```tsx
+import { CliTheme, Doc, Status } from "@effected/cli";
+import { CliUi, DocView, UiProvider } from "@effected/cli/ui";
+import { Effect } from "effect";
+import { renderToString } from "ink";
+
+const value = await Effect.runPromise(CliUi.context.pipe(Effect.provide(CliTheme.layerTest())));
+
+const columns = 60;
+const text = renderToString(
+  <UiProvider value={{ ...value, size: { columns, rows: 24 } }}>
+    <DocView doc={[Doc.paragraph(Doc.status(Status.core, "success"), " 12 passed")]} />
+  </UiProvider>,
+  { columns },
+);
+```
+
+Pass `size` when rendering to a string: Ink's terminal hooks otherwise read the process's own stdout, whatever width the string is laid out at.
+
+## Next steps
+
+- [Testing](/cli/testing): `CliUiTest.live` drives a live view on the real render path, with a test clock for the tick.
+- The [API reference](/cli/api) has [`LiveOptions`](/cli/api/interface/liveoptions), [`LiveHandle`](/cli/api/interface/livehandle), [`DocView`](/cli/api/function/docview) and [`UiProvider`](/cli/api/function/uiprovider).
