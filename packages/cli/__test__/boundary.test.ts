@@ -257,6 +257,31 @@ describe("cli boundary", () => {
 			assert.deepStrictEqual(valueImportsOf('import type * as Cli from "@effected/cli";', isPackageSelfName), []);
 		});
 
+		it("no root module imports the package's own name, which would make the root declarations import themselves", () => {
+			const rootFiles = (readdirSync(SRC, { recursive: true }) as ReadonlyArray<string>)
+				.map((file) => file.split(sep).join("/"))
+				.filter((file) => file.endsWith(".ts") && !isUiModule(file));
+			assert.include(rootFiles, "CliRuntime.ts", "the walk read the root tree");
+			const offenders = rootFiles.flatMap((file) =>
+				specifiersOf(join(SRC, file), readSource)
+					.filter(isPackageSelfName)
+					.map((spec) => `${file} ${spec}`),
+			);
+			assert.deepStrictEqual(offenders, []);
+			assert.deepStrictEqual(
+				SourceBoundary.importSpecifiers('import type { CliTheme } from "@effected/cli";').filter(isPackageSelfName),
+				["@effected/cli"],
+				"mutation control: even a type-only self-import is caught",
+			);
+			assert.deepStrictEqual(
+				SourceBoundary.importSpecifiers('/** import { CliLogger } from "@effected/cli" */\nexport {};').filter(
+					isPackageSelfName,
+				),
+				[],
+				"a TSDoc example naming the package is not an import",
+			);
+		});
+
 		it("mutation control: the type-only detector flags every runtime spelling and spares every type-only one", () => {
 			const value = [
 				'import { Text } from "ink";',

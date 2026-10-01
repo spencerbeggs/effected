@@ -1,15 +1,5 @@
 import { spawnSync } from "node:child_process";
-import {
-	mkdirSync,
-	mkdtempSync,
-	readFileSync,
-	readdirSync,
-	realpathSync,
-	rmSync,
-	statSync,
-	symlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,13 +11,21 @@ const SRC = join(PACKAGE, "src");
 const BUILT = join(PACKAGE, "dist", "dev");
 const TSC = join(PACKAGE, "node_modules", ".bin", "tsc");
 
-/** The newest modification time of any file under `dir`. */
-const newestMtime = (dir: string): number =>
-	Math.max(
-		...(readdirSync(dir, { recursive: true }) as ReadonlyArray<string>).map(
-			(file) => statSync(join(dir, file)).mtimeMs,
-		),
-	);
+/** The public names a source entrypoint re-exports: every name in its `export { … } from` lines, aliases resolved. */
+const sourceExports = (text: string): ReadonlyArray<string> =>
+	[...text.matchAll(/^export\s+(?:type\s+)?\{([^}]*)\}\s*from\s/gm)]
+		.flatMap((match) => (match[1] ?? "").split(","))
+		.map((name) =>
+			(
+				name
+					.trim()
+					.replace(/^type\s+/, "")
+					.split(/\s+as\s+/)
+					.at(-1) ?? ""
+			).trim(),
+		)
+		.filter((name) => name !== "")
+		.sort();
 
 const CONSUMER = `import { CliTheme } from "@effected/cli";
 import type { KeyName, Screen } from "@effected/cli/ui";
@@ -133,14 +131,63 @@ const unexportedDeclarations = (dts: string): ReadonlyArray<string> => {
 		.sort();
 };
 
+/** The names a rolled-up `.d.ts` exports: inline `export declare …` lines and `export { … }` lists, by public name. */
+const builtExports = (dts: string): ReadonlyArray<string> => {
+	const inline = [...dts.matchAll(TOP_LEVEL_DECLARATION)]
+		.filter((match) => match[1] !== undefined)
+		.map((match) => match[2] ?? "");
+	const listed = [...dts.matchAll(EXPORT_LIST)].flatMap((match) =>
+		(match[1] ?? "")
+			.split(",")
+			.map((name) =>
+				(
+					name
+						.trim()
+						.replace(/^type\s+/, "")
+						.split(/\s+as\s+/)
+						.at(-1) ?? ""
+				).trim(),
+			)
+			.filter((name) => name !== ""),
+	);
+	return [...inline, ...listed].sort();
+};
+
+/** Each source entrypoint, the rolled-up declarations built from it, and the package import it must keep external. */
+const ENTRIES: ReadonlyArray<{ readonly source: string; readonly built: string; readonly external: string }> = [
+	{ source: "ui.ts", built: "ui.d.ts", external: "@effected/cli" },
+	{ source: "ui-testing.ts", built: "ui-testing.d.ts", external: "@effected/cli/ui" },
+];
+
 describe("the built declarations", () => {
-	it("are newer than every source file, or the gate below would read a stale build", () => {
-		const { generatedAt } = JSON.parse(readFileSync(join(BUILT, "issues.json"), "utf8")) as { generatedAt: string };
-		assert.isAtLeast(
-			Date.parse(generatedAt),
-			newestMtime(SRC),
-			"dist/dev predates a source edit: run pnpm build --filter @effected/cli (the test pre-build does this)",
+	it("match the source entrypoints they were built from, or the gates below would read a stale build", () => {
+		for (const entry of ENTRIES) {
+			const source = sourceExports(readFileSync(join(SRC, entry.source), "utf8"));
+			const dts = readFileSync(join(BUILT, "pkg", entry.built), "utf8");
+			assert.isNotEmpty(source, `${entry.source} was read`);
+			assert.deepStrictEqual(
+				builtExports(dts),
+				source,
+				`${entry.built} does not export what ${entry.source} does: run pnpm build --filter @effected/cli`,
+			);
+			assert.include(
+				dts,
+				`from "${entry.external}";`,
+				`${entry.built} imports ${entry.external} instead of copying it`,
+			);
+		}
+	});
+
+	it("mutation control: an export missing from, or extra in, the built declarations is a mismatch", () => {
+		const source = 'export { A, type B } from "./a.js";\nexport type { C as D } from "./c.js";\n';
+		assert.deepStrictEqual(sourceExports(source), ["A", "B", "D"]);
+		const built = "export declare class A {}\ninterface B {}\ntype D = string;\nexport type { B, D };\n";
+		assert.deepStrictEqual(builtExports(built), sourceExports(source));
+		assert.notDeepEqual(
+			builtExports(built.replace("export type { B, D };", "export type { B };")),
+			sourceExports(source),
 		);
+		assert.notDeepEqual(builtExports(`${built}export declare class E {}\n`), sourceExports(source));
 	});
 
 	it("let a consumer provide CliUi.run's CliTheme from the root entrypoint, leaving no requirement", () => {
