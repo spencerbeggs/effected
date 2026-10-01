@@ -1,6 +1,7 @@
+import type { AudienceKind, ColorLevel, StreamEnv } from "@effected/env";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import type { Effect, Layer, Stdio, Terminal } from "effect";
-import { Layer as LayerModule } from "effect";
+import { ConfigProvider, Layer as LayerModule, Option } from "effect";
 import type { CliOutput } from "effect/cli";
 import { CliInteractive } from "./CliInteractive.js";
 import type { CliLinks, EditorLinks } from "./CliLinks.js";
@@ -86,6 +87,36 @@ export interface CliEnvOptions {
 export type CliEnvServices = CurrentRuntimeEnv | TerminalEnv | Audience | CliTheme | CliLinks | Terminal.Terminal;
 
 /**
+ * Options for {@link CliEnv.layerTest}: the answers a test fixes. Every field has a quiet default.
+ *
+ * @public
+ */
+export interface CliEnvTestOptions {
+	/** Whether standard input, output and error are all terminals; `false` by default, as for a pipe. */
+	readonly tty?: boolean | undefined;
+	/**
+	 * The `TERM` the layer's own builds read: `dumb` makes a terminal not interactive and, with the theme's glyphs at
+	 * `auto`, draws ASCII. Unset by default, whatever the host's `TERM` is.
+	 */
+	readonly term?: string | undefined;
+	/** The audience; `human` by default. */
+	readonly audience?: AudienceKind | undefined;
+	/** The width of the terminal, in columns; none by default, so a width falls back to the reader's (80). */
+	readonly columns?: number | undefined;
+	/** The colour level of both stdout and stderr; `none` by default. Fixed as given: `term` does not change it. */
+	readonly color?: ColorLevel | undefined;
+	/** Options for the theme, as {@link CliEnvOptions.theme}; its glyphs are `auto` by default, so `term` decides. */
+	readonly theme?: CliThemeOptions | undefined;
+}
+
+/**
+ * The services {@link CliEnv.layerTest} provides.
+ *
+ * @public
+ */
+export type CliEnvTestServices = TerminalEnv | Audience | CliTheme;
+
+/**
  * The environment services a CLI reads, built once and in the right order.
  *
  * @remarks
@@ -147,6 +178,43 @@ export class CliEnv {
 		// `promptTheme` bridges the theme to core's prompts, so they follow the terminal's colour too.
 		return LayerModule.mergeAll(CliPrompt.gateTerminal, CliPrompt.gateWizard, CliTheme.promptTheme).pipe(
 			LayerModule.provideMerge(withInteractive),
+		);
+	};
+
+	/**
+	 * The environment services a test fixes, needing nothing and reading nothing of the host's: `TerminalEnv` and
+	 * `Audience` from the answers given, `CliTheme` built from them as {@link CliEnv.layer} builds it, and
+	 * `CliInteractive` set from them by the same rule (a human, every stream a terminal, and a `TERM` that is not
+	 * `dumb`).
+	 *
+	 * @remarks
+	 * `term` is handed to the theme and interactivity builds alone, through a `ConfigProvider` of their own: the
+	 * program under the layer keeps its own provider, and a host's `TERM` (a test runner in a dumb terminal) never
+	 * decides. A screen or a live view also needs `UiStreams` from `@effected/cli/ui`, which `CliUiTest` provides; this
+	 * layer provides no `Terminal` and installs neither of `CliEnv.layer`'s prompt gates.
+	 *
+	 * A layer-returning function mints a fresh layer per call: call it once and bind the result to a constant.
+	 *
+	 * @param options - whether the streams are terminals, the `TERM`, the audience, the width, the colour and the theme
+	 */
+	static readonly layerTest = (options: CliEnvTestOptions = {}): Layer.Layer<CliEnvTestServices> => {
+		const tty = options.tty ?? false;
+		const stream: Partial<StreamEnv> = {
+			isTerminal: tty,
+			color: options.color ?? "none",
+			columns: options.columns === undefined ? Option.none() : Option.some(options.columns),
+		};
+		const facts = LayerModule.mergeAll(
+			TerminalEnv.layerTest({ stdinIsTerminal: tty, stdout: stream, stderr: stream }),
+			Audience.layerTest(options.audience ?? "human"),
+		);
+		// Only these two builds read TERM, and only while they are built: they get it from a provider of their own.
+		const term = ConfigProvider.layer(
+			ConfigProvider.fromUnknown(options.term === undefined ? {} : { TERM: options.term }),
+		);
+		return LayerModule.mergeAll(CliTheme.layer(options.theme), CliInteractive.layer).pipe(
+			LayerModule.provide(term),
+			LayerModule.provideMerge(facts),
 		);
 	};
 }

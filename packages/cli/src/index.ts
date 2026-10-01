@@ -40,7 +40,13 @@ export {
 	type RequiresAudienceFlags,
 } from "./CliAudience.js";
 export { CliColor } from "./CliColor.js";
-export { CliEnv, type CliEnvOptions, type CliEnvServices } from "./CliEnv.js";
+export {
+	CliEnv,
+	type CliEnvOptions,
+	type CliEnvServices,
+	type CliEnvTestOptions,
+	type CliEnvTestServices,
+} from "./CliEnv.js";
 export { CliExit, type CliExitShape } from "./CliExit.js";
 export { CliDoc, type CliDocSource, CliFailure, type CliFailureOptions } from "./CliFailure.js";
 export { CliInteractive } from "./CliInteractive.js";
