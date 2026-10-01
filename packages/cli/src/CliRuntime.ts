@@ -370,12 +370,14 @@ export class CliRuntime {
 						) => Layer.Layer<never, never, Audience | TerminalEnv | FileSystem.FileSystem | Path.Path>
 					)(envLog).pipe(
 						Layer.provide(env),
-						// The env and platform builds log too (an invalid audience override warns): give that build a
-						// CliLogger, or the warning goes through Effect's default logger to STDOUT, before any logger exists.
-						Layer.provide(Layer.mergeAll(options.platform, CliLogger.layer(envLog.logger))),
+						// The platform and env builds log too (an invalid audience override warns, a platform may log while it
+						// builds): build them UNDER a CliLogger, never beside it, or those lines go through Effect's default
+						// logger to STDOUT, before any logger exists. `provideMerge` hands the same logger set on to the env build.
+						Layer.provide(Layer.provideMerge(options.platform, CliLogger.layer(envLog.logger))),
 						Layer.catchCause(() => CliLogger.layer(envLog.logger)),
 					));
-		const inside = env === undefined ? Layer.empty : CliColor.formatterLayer().pipe(Layer.provideMerge(env));
+		const inside =
+			env === undefined ? Layer.empty : CliColor.formatterLayer(options.env?.formatter).pipe(Layer.provideMerge(env));
 
 		return Effect.gen(function* () {
 			// Inside the platform provide, so the rerouting sees the platform's own Formatter.

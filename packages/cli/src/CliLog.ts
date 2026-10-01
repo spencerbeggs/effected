@@ -27,10 +27,28 @@ import type { Style } from "./Token.js";
  */
 export interface CliLogOptions {
 	/**
+	 * The diagnostics level, for a host that has already decided it.
+	 *
+	 * @remarks
+	 * Beats `envVar`, which is then not read at all (so a bad value there neither warns nor overrides this), and
+	 * loses to core's `--log-level` flag like every diagnostics level: the sink follows the flag while it is set.
+	 */
+	readonly level?: LogLevel.LogLevel | undefined;
+	/**
 	 * The environment variable that sets the diagnostics level, for example `MYTOOL_LOG_LEVEL`. Read through
-	 * `Config`, never `process`. Unset or empty means `None`.
+	 * `Config`, never `process`. Unset or empty means `None`. Ignored when `level` is given.
 	 */
 	readonly envVar?: string | undefined;
+	/**
+	 * Whether to install the plain `CliLogger` for ordinary lines. `true` by default.
+	 *
+	 * @remarks
+	 * `false` is the diagnostics-only mode for a library host (an MCP server, a test reporter): the layer installs
+	 * only the diagnostics sink, the file sink if any, and `extraLoggers`. With no level set as well, stderr gets
+	 * no output. An invalid level in `envVar` still prints its one warning line, through a private `CliLogger`,
+	 * since that is a configuration error the host should see.
+	 */
+	readonly plainLogger?: boolean | undefined;
 	/**
 	 * `json` is NDJSON, `pretty` a human line, `auto` (the default) is pretty for a human audience with a
 	 * terminal on stderr and NDJSON otherwise.
@@ -99,11 +117,13 @@ const LEVEL_STYLES: Readonly<Record<string, Style>> = {
 	TRACE: { dim: true },
 };
 
-/** The diagnostics level from the env var, and the raw text when it is not a level. */
+/** The diagnostics level: the option when given, else the env var, and the raw text when that is not a level. */
 const readLevel = (
+	explicit: LogLevel.LogLevel | undefined,
 	envVar: string | undefined,
 ): Effect.Effect<{ readonly level: LogLevel.LogLevel; readonly invalid: string | undefined }> =>
 	Effect.gen(function* () {
+		if (explicit !== undefined) return { level: explicit, invalid: undefined };
 		if (envVar === undefined) return { level: "None", invalid: undefined };
 		const raw = yield* Config.option(Config.String(envVar)).pipe(Effect.orElseSucceed(() => Option.none<string>()));
 		if (Option.isNone(raw) || raw.value === "") return { level: "None", invalid: undefined };
@@ -167,15 +187,39 @@ export class CliLog {
 	 * `CliRuntime.main`, or use `main`'s `env.log` option; never wrap it around `main`, whose own logger would
 	 * replace this one. Bind it to a constant.
 	 *
+	 * The requirements follow the format. `format: "json"` reads neither the audience nor the terminal, so it
+	 * requires neither; `"pretty"` requires `TerminalEnv` alone, for the stderr colour; `"auto"` and an omitted
+	 * format require both. A long-lived host that never builds a platform `Terminal` can provide
+	 * `TerminalEnv.layerStdio()` for the pretty case.
+	 *
+	 * A platform or program that installs its own `Logger.layer([...])` replaces this set: do not. The diagnostics
+	 * then go silent with no error.
+	 *
+	 * The NDJSON line is core's `Logger.formatJson`, unchanged so it stays interoperable with Effect tooling: the
+	 * `message` field is a string for one log argument and an array for several.
+	 *
 	 * Level parsing is case-insensitive and accepts `warn`, `warning`, `error`, `info`, `debug`, `trace`,
 	 * `fatal`, `all` and `none`. An invalid value warns once, through the `CliLogger`, and leaves diagnostics
 	 * off.
 	 *
 	 * With a `file` option ({@link CliLogFileOptions}) the layer also writes an async NDJSON file, and only then
-	 * does it require `FileSystem` and `Path`: the two overloads keep a file-less program free of them.
+	 * does it require `FileSystem` and `Path`, and it leaves them in `R` unprovided: the platform supplies them, or
+	 * a test supplies a memory filesystem, so a host never provides Node inside its own layer.
 	 *
-	 * @param options - the env var, the format, the `CliLogger` options and the optional file sink
+	 * @param options - the level, the env var, the format, the `CliLogger` options and the optional file sink
 	 */
+	static layer(
+		options: CliLogOptions & { readonly format: "json"; readonly file?: undefined },
+	): Layer.Layer<never, never, never>;
+	static layer(
+		options: CliLogFileOptions & { readonly format: "json" },
+	): Layer.Layer<never, never, FileSystem.FileSystem | PathModule.Path>;
+	static layer(
+		options: CliLogOptions & { readonly format: "pretty"; readonly file?: undefined },
+	): Layer.Layer<never, never, TerminalEnv>;
+	static layer(
+		options: CliLogFileOptions & { readonly format: "pretty" },
+	): Layer.Layer<never, never, TerminalEnv | FileSystem.FileSystem | PathModule.Path>;
 	static layer(
 		options?: CliLogOptions & { readonly file?: undefined },
 	): Layer.Layer<never, never, Audience | TerminalEnv>;
@@ -186,23 +230,24 @@ export class CliLog {
 		options: CliLogOptions | CliLogFileOptions = {},
 	): Layer.Layer<never, never, Audience | TerminalEnv | FileSystem.FileSystem | PathModule.Path> {
 		const file = "file" in options ? options.file : undefined;
+		const format = options.format ?? "auto";
 		return Layer.unwrap(
 			Effect.gen(function* () {
-				const audience = yield* Audience;
-				const terminal = yield* TerminalEnv;
-				const { level, invalid } = yield* readLevel(options.envVar);
+				// Read only what the format needs, so a fixed format never requires the rest (the overloads say so).
+				const audience = format === "auto" ? yield* Audience : undefined;
+				const terminal = format === "json" ? undefined : yield* TerminalEnv;
+				const { level, invalid } = yield* readLevel(options.level, options.envVar);
 				const ambient = yield* References.MinimumLogLevel;
 
-				const format = options.format ?? "auto";
-				const color = terminal.stderr.color;
+				const color = terminal?.stderr.color ?? "none";
 				// Decided per record, not once at build: the logger is built outermost, before an audience flag is read,
 				// so the format follows the `Audience` in force in the fiber that logs (`CliAudience.run` provides it
 				// around the whole run; `Fiber.context` is `Fiber.ts:77`), falling back to the one the layer was built with.
 				const isPretty = (record: Logger.Options<unknown>): boolean => {
 					if (format !== "auto") return format === "pretty";
 					const inForce = Context.getOption(record.fiber.context, Audience);
-					const kind = Option.isSome(inForce) ? inForce.value.kind : audience.kind;
-					return kind === "human" && terminal.stderr.isTerminal;
+					const kind = Option.isSome(inForce) ? inForce.value.kind : audience?.kind;
+					return kind === "human" && terminal?.stderr.isTerminal === true;
 				};
 
 				// Effect filters on MinimumLogLevel before any logger runs: lower it just far enough for the sink.
@@ -251,7 +296,11 @@ export class CliLog {
 					Layer.effect(
 						Logger.CurrentLoggers,
 						Effect.gen(function* () {
-							const loggers: Array<Logger.Logger<unknown, unknown>> = [cliLogger, sink, ...extras];
+							const loggers: Array<Logger.Logger<unknown, unknown>> = [
+								...(options.plainLogger === false ? [] : [cliLogger]),
+								sink,
+								...extras,
+							];
 							if (file !== undefined) {
 								const target =
 									"path" in file

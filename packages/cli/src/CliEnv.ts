@@ -1,6 +1,7 @@
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import type { Effect, Layer, Stdio, Terminal } from "effect";
 import { Layer as LayerModule } from "effect";
+import type { CliOutput } from "effect/cli";
 import { CliInteractive } from "./CliInteractive.js";
 import type { CliLinks, EditorLinks } from "./CliLinks.js";
 import { ambientLinksLayer } from "./CliLinks.js";
@@ -23,13 +24,26 @@ export interface CliEnvOptions {
 	readonly theme?: CliThemeOptions | undefined;
 	/**
 	 * Diagnostics options. Only `CliRuntime.main` reads this: when given, `main` uses `CliLog.layer` with these
-	 * options as the program's logger, instead of the default `CliLogger.layer()`.
+	 * options as the program's logger, instead of the default `CliLogger.layer()`. The platform is built under
+	 * that logger, so a line it logs while building goes to stderr.
 	 *
 	 * @remarks
 	 * It may carry the `file` option, which also writes an async NDJSON file. The platform must then provide
 	 * `FileSystem` and `Path`, and `main`'s type says so when it does not.
+	 *
+	 * A platform or program that installs its own `Logger.layer([...])` replaces this logger set, and the
+	 * diagnostics go silent with no error: do not install one. See `CliLog.layer`.
 	 */
 	readonly log?: CliLogOptions | CliLogFileOptions | undefined;
+	/**
+	 * Methods of core's `CliOutput.Formatter` to replace in the one `CliRuntime.main` installs, for example
+	 * `formatVersion` to name the carrier a bin runs through. Only `CliRuntime.main` reads this.
+	 *
+	 * @remarks
+	 * `main` installs a coloured default formatter inside the platform, which shadows any formatter the platform
+	 * sets; this is the way to keep a method of your own. Methods you omit keep the coloured defaults.
+	 */
+	readonly formatter?: Partial<CliOutput.Formatter> | undefined;
 	/** Whether file links open in an editor; `auto` by default. See {@link CliLinks}. */
 	readonly editorLinks?: EditorLinks | undefined;
 	/** The environment variable that overrides `editorLinks`, read through `Config`. Not read unless named. */

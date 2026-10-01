@@ -166,6 +166,66 @@ describe("TerminalEnv.layer", () => {
 	);
 });
 
+describe("TerminalEnv.layerStdio", () => {
+	/** Provide ONLY `Stdio`: a `Terminal` requirement left in R would not compile here. */
+	const readStdio = <A>(
+		env: Env,
+		io: { readonly stdin?: boolean; readonly stdout: boolean },
+		use: (terminalEnv: TerminalEnv["Service"]) => A,
+	) =>
+		Effect.gen(function* () {
+			return use(yield* TerminalEnv);
+		}).pipe(Effect.provide(TerminalEnv.layerStdio()), Effect.provide(stdio(io)), withEnv(env));
+
+	it.effect("needs only Stdio, and reports no columns whatever the terminal would say", () =>
+		Effect.map(
+			readStdio({}, { stdout: true }, (t) => t),
+			(t) => {
+				assert.isTrue(Option.isNone(t.stdout.columns));
+				assert.isTrue(Option.isNone(t.stderr.columns));
+				assert.strictEqual(t.width(), 80);
+			},
+		),
+	);
+
+	it.effect("the width comes from COLUMNS, then the fallback", () =>
+		Effect.map(
+			readStdio({ COLUMNS: "132" }, { stdout: true }, (t) => [t.width(), t.width(40)]),
+			(widths) => assert.deepStrictEqual(widths, [132, 132]),
+		),
+	);
+
+	it.effect("everything but columns agrees with TerminalEnv.layer over the same facts", () =>
+		Effect.gen(function* () {
+			const env = { TERM: "xterm-256color", TERM_PROGRAM: "iTerm.app", TERM_PROGRAM_VERSION: "3.5.0" };
+			const stdioOnly = yield* readStdio(env, { stdin: true, stdout: true }, (t) => t);
+			const full = yield* read(env, { stdin: true, stdout: true, columns: 120 }, (t) => t);
+			assert.strictEqual(stdioOnly.stdinIsTerminal, full.stdinIsTerminal);
+			assert.deepStrictEqual(
+				{ ...stdioOnly.stdout, columns: Option.none() },
+				{ ...full.stdout, columns: Option.none() },
+			);
+			assert.deepStrictEqual(
+				{ ...stdioOnly.stderr, columns: Option.none() },
+				{ ...full.stderr, columns: Option.none() },
+			);
+			assert.isTrue(Option.isSome(full.stdout.columns), "the control reads columns, so the difference is real");
+		}),
+	);
+
+	it.effect("stderrIsTerminal overrides the stderr check, as it does for layer", () =>
+		Effect.gen(function* () {
+			const t = yield* TerminalEnv.pipe(
+				Effect.provide(TerminalEnv.layerStdio({ stderrIsTerminal: Effect.succeed(false) })),
+				Effect.provide(stdio({ stdout: true })),
+				withEnv({ TERM: "xterm-256color" }),
+			);
+			assert.strictEqual(t.stdout.color, "256");
+			assert.strictEqual(t.stderr.color, "none");
+		}),
+	);
+});
+
 describe("TerminalEnv.layerTest", () => {
 	// No Stdio, no Terminal, no ConfigProvider is provided: this compiling is the type-level check that the layer
 	// has no requirements, and running is the behavioural one.

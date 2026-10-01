@@ -94,6 +94,20 @@ const make = (
 	};
 };
 
+/** Read the TTY facts from `Stdio` and the environment from `Config`, with the width the caller already knows. */
+const snapshot = (
+	options: TerminalEnvOptions | undefined,
+	columns: Option.Option<number>,
+): Effect.Effect<TerminalEnvShape, never, StdioModule.Stdio> =>
+	Effect.gen(function* () {
+		const stdio = yield* Stdio.Stdio;
+		const stdin = yield* stdio.stdinIsTerminal;
+		const stdout = yield* stdio.stdoutIsTerminal;
+		const stderr = yield* options?.stderrIsTerminal ?? Effect.succeed(stdout);
+		const env = yield* readEnv([...allKeys, "COLUMNS"]);
+		return make(env, { stdin, stdout, stderr }, columns);
+	});
+
 /** The quiet terminal {@link TerminalEnv.layerTest} starts from: not a terminal, no colour, no links, no width. */
 const quiet: StreamEnv = { isTerminal: false, color: "none", hyperlinks: false, columns: Option.none() };
 
@@ -124,16 +138,28 @@ export class TerminalEnv extends Context.Service<TerminalEnv, TerminalEnvShape>(
 		return Layer.effect(
 			TerminalEnv,
 			Effect.gen(function* () {
-				const stdio = yield* Stdio.Stdio;
 				const terminal = yield* Terminal.Terminal;
-				const stdin = yield* stdio.stdinIsTerminal;
-				const stdout = yield* stdio.stdoutIsTerminal;
-				const stderr = yield* options?.stderrIsTerminal ?? Effect.succeed(stdout);
-				const env = yield* readEnv([...allKeys, "COLUMNS"]);
 				const width = yield* terminal.columns;
-				return make(env, { stdin, stdout, stderr }, width > 0 ? Option.some(width) : Option.none());
+				return yield* snapshot(options, width > 0 ? Option.some(width) : Option.none());
 			}),
 		);
+	}
+
+	/**
+	 * The snapshot from `Stdio` and the ambient `ConfigProvider` alone: it never requires or builds `Terminal`, and
+	 * reports no columns.
+	 *
+	 * @remarks
+	 * Everything else is what {@link TerminalEnv.layer} reports: the TTY facts come from `Stdio`, the colour and
+	 * hyperlink decisions from the environment, and `width()` falls back to `COLUMNS`, then the fallback, since no
+	 * terminal width is known. Use it where building the platform `Terminal` has a cost, for example a long-lived
+	 * host, where `NodeTerminal` listens on `process.stdin`. A layer-returning function mints a fresh layer per
+	 * call: call it once and bind the result to a constant.
+	 *
+	 * @param options - `stderrIsTerminal` overrides the stderr TTY check
+	 */
+	static layerStdio(options?: TerminalEnvOptions): Layer.Layer<TerminalEnv, never, StdioModule.Stdio> {
+		return Layer.effect(TerminalEnv, snapshot(options, Option.none()));
 	}
 
 	/**
