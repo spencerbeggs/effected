@@ -243,8 +243,9 @@ export class CliAudience {
 				// before the flag was read. A non-interactive run drops it, and a run the flag has made interactive
 				// where the gate had dropped it gets it back.
 				const hasWizard = ambient.builtIns.includes(GlobalFlag.Wizard);
-				// Restored only where the gate took it: a consumer's own `builtIns` without it stay without it.
-				const restore = interactive && !hasWizard && (yield* WizardDropped);
+				// Restored only into the config the gate produced: a consumer's own `builtIns` without it, whether it came from
+				// outside the gate or inside, is a different object and stays without it.
+				const restore = interactive && !hasWizard && (yield* WizardDropped) === ambient;
 				const drop = !interactive && hasWizard;
 				if (!restore && !drop) return yield* decided;
 				const builtIns = interactive

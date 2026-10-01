@@ -201,6 +201,7 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 		gateWizard = false,
 		endInput = false,
 		builtIns: ReadonlyArray<GlobalFlag.BuiltIn> | undefined = undefined,
+		innerBuiltIns: ReadonlyArray<GlobalFlag.BuiltIn> | undefined = undefined,
 	) =>
 		Effect.gen(function* () {
 			const terminal = yield* TestTerminal.make();
@@ -212,7 +213,10 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 				via === "runWith"
 					? CliAudience.runWith(both, { version: "1.0.0" })(argv)
 					: Command.runWith(CliAudience.provide(both), { version: "1.0.0" })(argv);
-			const exit = yield* CliRuntime.main(program, {
+			// A consumer's config provided INSIDE the gate, around the program: the gate never saw it.
+			const inner =
+				innerBuiltIns === undefined ? program : Effect.provide(program, CliConfig.layer({ builtIns: innerBuiltIns }));
+			const exit = yield* CliRuntime.main(inner, {
 				platform: Layer.mergeAll(NodeServices.layer, CliPrompt.gateTerminal.pipe(Layer.provide(terminal.layer))),
 			}).pipe(
 				Effect.exit,
@@ -335,6 +339,34 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 				// The same consumer's --human still widens the prompt itself.
 				const prompted = yield* runUnder(agentOnTtys, ["--human", "init"], "runWith", true, false, noWizard);
 				assert.deepStrictEqual(prompted.out, ["profile=library audience=human/flag"]);
+			}),
+	);
+
+	it.effect(
+		"a consumer config provided INSIDE the gate, without Wizard, is not overridden: --human --wizard is 64",
+		() =>
+			Effect.gen(function* () {
+				const noWizard = GlobalFlag.BuiltIns.filter((flag) => flag !== GlobalFlag.Wizard);
+				// The gate (outside) saw the full list and dropped Wizard, so its mark is set; the consumer's config is a
+				// different object, so the mark must not license putting Wizard back into it.
+				const inner = yield* runUnder(
+					agentOnTtys,
+					["--human", "--wizard", "init"],
+					"runWith",
+					true,
+					true,
+					undefined,
+					noWizard,
+				);
+				assert.strictEqual(inner.code, 64, inner.err.join("\n"));
+				assert.isTrue(
+					inner.err.some((line) => /unrecogni[sz]ed.*wizard/i.test(line)),
+					inner.err.join("\n"),
+				);
+				assert.strictEqual(inner.reads.subscriptions, 0, "the wizard never ran");
+				// Control: with no consumer config inside, the gate's own object is current, so the restore still happens.
+				const control = yield* runUnder(agentOnTtys, ["--human", "--wizard", "init"], "runWith", true, true);
+				assert.isTrue(control.reads.subscriptions >= 1, "the wizard ran");
 			}),
 	);
 

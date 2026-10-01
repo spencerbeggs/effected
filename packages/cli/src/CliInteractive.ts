@@ -55,6 +55,10 @@ export class CliInteractive extends Context.Reference<boolean>("@effected/cli/Cl
 	 * non-interactive scope stays non-interactive. The outer value is restored when `self` ends, whether it
 	 * succeeds, fails or is interrupted.
 	 *
+	 * A flag that resolves the audience (`--human`, under `CliAudience.runWith` or `provide`) recomputes interactivity
+	 * from the terminal facts, so it can override an outer `unless` or a `layerTest(false)`: those narrow the
+	 * environment's answer, and the flag is a later, explicit one.
+	 *
 	 * @param condition - `true` to switch prompting off for `self`
 	 */
 	static readonly unless =

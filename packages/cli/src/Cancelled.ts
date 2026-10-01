@@ -28,6 +28,14 @@ export class Cancelled extends Schema.TaggedError<Cancelled>()("Cancelled", {
 	}
 
 	/**
+	 * Ignores the assignment: a library that rewrites `error.message` (to prefix a context, say) must not make this
+	 * error throw, which a getter-only property does in strict mode. The line is fixed.
+	 */
+	override set message(_value: string) {
+		// No-op by design.
+	}
+
+	/**
 	 * The process exit code: `130`.
 	 *
 	 * @remarks

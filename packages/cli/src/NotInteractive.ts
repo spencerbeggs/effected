@@ -24,6 +24,14 @@ export class NotInteractive extends Schema.TaggedError<NotInteractive>()("NotInt
 	}
 
 	/**
+	 * Ignores the assignment: a library that rewrites `error.message` must not make this error throw, which a
+	 * getter-only property does in strict mode. The line is fixed.
+	 */
+	override set message(_value: string) {
+		// No-op by design.
+	}
+
+	/**
 	 * The process exit code: `64`.
 	 *
 	 * @remarks

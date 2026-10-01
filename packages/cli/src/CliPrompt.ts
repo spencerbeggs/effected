@@ -135,11 +135,10 @@ export class CliPrompt {
 			const ambient = yield* CliConfig.CliConfig;
 			const unchanged = Context.make(CliConfig.CliConfig, ambient);
 			if ((yield* CliInteractive) || !ambient.builtIns.includes(GlobalFlag.Wizard)) return unchanged;
-			// Recorded, so an audience flag that later makes the run interactive restores the wizard only where this took it.
-			return Context.make(
-				CliConfig.CliConfig,
-				CliConfig.make({ builtIns: ambient.builtIns.filter((flag) => flag !== GlobalFlag.Wizard) }),
-			).pipe(Context.add(WizardDropped, true));
+			// The config this produced is recorded, as that exact object, so an audience flag that later makes the run
+			// interactive restores the wizard only into this one and never into a config someone else provided.
+			const dropped = CliConfig.make({ builtIns: ambient.builtIns.filter((flag) => flag !== GlobalFlag.Wizard) });
+			return Context.make(CliConfig.CliConfig, dropped).pipe(Context.add(WizardDropped, dropped));
 		}),
 	);
 }

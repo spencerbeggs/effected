@@ -72,6 +72,25 @@ describe("Cancelled", () => {
 	});
 });
 
+describe("a library that rewrites error.message cannot make these errors throw", () => {
+	// ES modules are strict, so assigning to a property that has only a getter throws a TypeError.
+	it("assigning to message is a no-op, for both errors, and the line stays", () => {
+		for (const error of [new Cancelled({ reason: "escape" }), new NotInteractive()]) {
+			const line = error.message;
+			assert.doesNotThrow(() => {
+				error.message = "rewritten by a library";
+			});
+			assert.strictEqual(error.message, line);
+			assert.strictEqual(String(error).includes("rewritten"), false);
+		}
+	});
+
+	it("a wrapper that sets message on a copy of the error keeps working", () => {
+		const wrapped = Object.assign(Object.create(new Cancelled({ reason: "interrupt" })), { message: "x" }) as Cancelled;
+		assert.strictEqual(wrapped.message, "cancelled; nothing written");
+	});
+});
+
 describe("the fixed lines are the errors' own message", () => {
 	const CANCELLED = "cancelled; nothing written";
 	const NOT_INTERACTIVE = "not interactive: run in a terminal or pass the flag";

@@ -83,6 +83,18 @@ describe("RuntimeEnv", () => {
 		assert.strictEqual(Schema.encodeSync(Schema.fromJsonString(RuntimeEnv))(decoded), FROZEN_0_1_0);
 	});
 
+	// A second frozen 0.1.0 literal, with a CI named: `ci` was a plain string then, and `github-actions` is one of the
+	// two values 0.1.0 ever wrote. Like the first, never regenerate it.
+	const FROZEN_0_1_0_CI = '{"agent":"codex","ci":"github-actions","terminal":null}';
+
+	it("decodes the frozen 0.1.0 wire literal that names a CI, and encodes it back identically", () => {
+		const decoded = Schema.decodeSync(Schema.fromJsonString(RuntimeEnv))(FROZEN_0_1_0_CI);
+		assert.deepStrictEqual(decoded.agent, Option.some("codex"));
+		assert.deepStrictEqual(decoded.ci, Option.some("github-actions"));
+		assert.deepStrictEqual(decoded.terminal, Option.none());
+		assert.strictEqual(Schema.encodeSync(Schema.fromJsonString(RuntimeEnv))(decoded), FROZEN_0_1_0_CI);
+	});
+
 	it("every field decodes when its key is absent, so an older or sparser snapshot keeps decoding", () => {
 		const codec = Schema.fromJsonString(RuntimeEnv);
 		const empty = Schema.decodeSync(codec)("{}");
