@@ -1,14 +1,13 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Console, Effect, Exit, Fiber, Layer, Runtime } from "effect";
+import { Cause, ConfigProvider, Console, Effect, Exit, Fiber, Layer, Runtime, Stdio, Terminal } from "effect";
 import { Command } from "effect/cli";
 import { vi } from "vitest";
-import { CliInteractive, CliPrompt, CliRuntime, CliTheme } from "../../src/index.js";
+import { CliPrompt, CliRuntime } from "../../src/index.js";
 import { TestTerminal } from "../../src/testing.js";
-import type { FakeStreams } from "../../src/ui/testing/fakeStreams.js";
-import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
-import { CliUi, Select, TextInput, UiStreams } from "../../src/ui.js";
-import { KEY, answer } from "../helpers/uiScript.js";
+import { CliUi, Select, TextInput } from "../../src/ui.js";
+import type { CliUiTestSession } from "../../src/ui-testing.js";
+import { CliUiTest } from "../../src/ui-testing.js";
 
 // Count loads of the peers through the kit's one loader, without changing what it does.
 const { loads } = vi.hoisted(() => ({ loads: { count: 0 } }));
@@ -57,83 +56,115 @@ const init = Command.make("init", {}, () =>
 	}),
 );
 
-const capturing = () => {
-	const out: string[] = [];
-	const err: string[] = [];
-	const double: Console.Console = Object.assign(Object.create(console) as Console.Console, {
-		log: (...args: ReadonlyArray<unknown>) => out.push(args.map(String).join(" ")),
-		error: (...args: ReadonlyArray<unknown>) => err.push(args.map(String).join(" ")),
-	});
-	return { double, out, err };
-};
+const exitCode = (exit: Exit.Exit<unknown, unknown>): number =>
+	Exit.isFailure(exit) ? Runtime.getErrorExitCode(Cause.squash(exit.cause)) : 0;
 
-const run = (options: { readonly interactive: boolean; readonly fake: FakeStreams }) =>
+/** okfit's init through `CliRuntime.main`, under a session: its streams, theme, interactivity and console. */
+const run = (session: CliUiTestSession) =>
 	Effect.gen(function* () {
-		const { double, out, err } = capturing();
 		const terminal = yield* TestTerminal.make();
-		const exit = yield* CliRuntime.main(Command.runWith(init, { version: "1.0.0" })([]), {
+		return yield* CliRuntime.main(Command.runWith(init, { version: "1.0.0" })([]), {
 			platform: Layer.mergeAll(NodeServices.layer, CliPrompt.gateTerminal.pipe(Layer.provide(terminal.layer))),
-		}).pipe(
-			Effect.provide(CliTheme.layerTest()),
-			Effect.provide(CliInteractive.layerTest(options.interactive)),
-			Effect.provideService(UiStreams, options.fake.streams),
-			Effect.exit,
-			Effect.provideService(Console.Console, double),
-		);
-		const code = Exit.isFailure(exit) ? Runtime.getErrorExitCode(Cause.squash(exit.cause)) : 0;
-		return { out, err, code };
+		}).pipe(Effect.provide(session.layer), Effect.exit, Effect.map(exitCode));
 	});
 
-describe("okfit's init wizard through CliUi.prompt", () => {
-	it.live("interactive: each screen starts on the discovered default, and the answers flow through", () =>
+describe("okfit's init wizard through CliUi.prompt, driven by CliUiTest.session", () => {
+	it.effect("interactive: each screen starts on the discovered default, and the answers flow through", () =>
 		Effect.gen(function* () {
-			const fake = makeFakeStreams();
-			const script = yield* Effect.forkChild(
-				answer(fake, [
-					{ when: "Profile", send: [KEY.up, KEY.enter] },
-					{ when: "Bundle directory", send: ["2", KEY.enter] },
-					{ when: "Config location", send: [KEY.up, KEY.enter] },
-				]),
+			const session = yield* CliUiTest.session();
+			const program = yield* Effect.forkScoped(run(session));
+			const profile = yield* session.next({ contains: "Profile" });
+			yield* profile.press("up", "enter");
+			const dir = yield* session.next({ contains: "Bundle directory" });
+			yield* dir.type("2");
+			yield* dir.press("enter");
+			const location = yield* session.next({ contains: "Config location" });
+			yield* location.press("up", "enter");
+			assert.strictEqual(yield* Fiber.join(program), 0, yield* session.stderr);
+			assert.strictEqual(
+				yield* session.stdout,
+				`${JSON.stringify({ profile: "software-project", dir: "docs/okf2", location: ".config/okfit.toml" })}\n`,
 			);
-			const { out, err, code } = yield* run({ interactive: true, fake });
-			yield* Fiber.join(script);
-			assert.strictEqual(code, 0, err.join("\n"));
-			assert.deepStrictEqual(out, [
-				JSON.stringify({ profile: "software-project", dir: "docs/okf2", location: ".config/okfit.toml" }),
-			]);
-		}),
+			assert.strictEqual(yield* session.mounts, 3);
+		}).pipe(Effect.scoped),
 	);
 
-	it.live("not interactive: the discovered defaults, byte-identical, with nothing mounted and Ink never loaded", () =>
+	it.effect("not interactive: the discovered defaults, byte-identical, with nothing mounted and Ink never loaded", () =>
 		Effect.gen(function* () {
-			const fake = makeFakeStreams();
 			const before = loads.count;
-			const { out, code } = yield* run({ interactive: false, fake });
-			assert.strictEqual(code, 0);
-			assert.deepStrictEqual(out, [JSON.stringify(yield* discover)]);
-			assert.deepStrictEqual(fake.rawModes, []);
-			assert.strictEqual(fake.stdout(), "");
+			const session = yield* CliUiTest.session({ interactive: false });
+			assert.strictEqual(yield* run(session), 0);
+			assert.strictEqual(yield* session.stdout, `${JSON.stringify(yield* discover)}\n`);
+			assert.strictEqual(yield* session.mounts, 0);
 			assert.strictEqual(loads.count, before);
-		}),
+		}).pipe(Effect.scoped),
 	);
 
-	it.live("Esc on the second screen: exit 130, and the third screen never mounts", () =>
+	it.effect("Esc on the second screen: exit 130, and the third screen never mounts", () =>
 		Effect.gen(function* () {
-			const fake = makeFakeStreams();
-			const script = yield* Effect.forkChild(
-				answer(fake, [
-					{ when: "Profile", send: [KEY.enter] },
-					{ when: "Bundle directory", send: [KEY.escape] },
-				]),
-			);
-			const { out, err, code } = yield* run({ interactive: true, fake });
-			yield* Fiber.join(script);
-			assert.strictEqual(code, 130);
-			assert.deepStrictEqual(err, ["cancelled; nothing written"]);
-			assert.deepStrictEqual(out, [], "the handler wrote nothing");
-			assert.include(fake.stdout(), "Bundle directory", "control: the second screen did mount");
-			assert.notInclude(fake.stdout(), "Config location");
-			assert.strictEqual(fake.rawModes.filter((mode) => mode).length, 2, "two screens mounted, not three");
-		}),
+			const session = yield* CliUiTest.session();
+			const program = yield* Effect.forkScoped(run(session));
+			const profile = yield* session.next({ contains: "Profile" });
+			yield* profile.press("enter");
+			const dir = yield* session.next({ contains: "Bundle directory" });
+			yield* dir.press("escape");
+			assert.strictEqual(yield* Fiber.join(program), 130);
+			assert.strictEqual(yield* session.stderr, "cancelled; nothing written\n");
+			assert.strictEqual(yield* session.stdout, "", "the handler wrote nothing");
+			assert.strictEqual(yield* session.mounts, 2, "two screens mounted, not three");
+		}).pipe(Effect.scoped),
+	);
+});
+
+/** Node's services, with `Stdio` and `Terminal` doubles over them (last wins): what CliEnv reads to decide. */
+const platform = (tty: boolean) =>
+	Layer.mergeAll(
+		NodeServices.layer,
+		Stdio.layerTest({ stdinIsTerminal: Effect.succeed(tty), stdoutIsTerminal: Effect.succeed(tty) }),
+		Layer.succeed(
+			Terminal.Terminal,
+			Terminal.make({
+				columns: Effect.succeed(80),
+				rows: Effect.succeed(24),
+				readInput: Effect.die("unused"),
+				readLine: Effect.die("unused"),
+				display: () => Effect.void,
+			}),
+		),
+	);
+
+/** okfit's production wiring: `CliRuntime.main` with `env`, so CliEnv provides the theme and decides interactivity. */
+const production = (session: CliUiTestSession, tty: boolean) =>
+	CliRuntime.main(Command.runWith(init, { version: "1.0.0" })([]), { platform: platform(tty), env: {} }).pipe(
+		// The session supplies only the streams, the frame capture and the console here: CliEnv, provided inside
+		// main, shadows the session's own theme and interactivity, exactly as it does for a real program.
+		Effect.provide(session.layer),
+		Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({})),
+		Effect.exit,
+		Effect.map(exitCode),
+	);
+
+describe("CliUi.prompt under okfit's production wiring (CliRuntime.main with env)", () => {
+	it.effect("a human on a terminal gets the screens, with CliEnv's theme and interactivity", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session({ interactive: false });
+			const program = yield* Effect.forkScoped(production(session, true));
+			yield* (yield* session.next({ contains: "Profile" })).press("enter");
+			yield* (yield* session.next({ contains: "Bundle directory" })).press("enter");
+			yield* (yield* session.next({ contains: "Config location" })).press("enter");
+			assert.strictEqual(yield* Fiber.join(program), 0, yield* session.stderr);
+			assert.strictEqual(yield* session.stdout, `${JSON.stringify(yield* discover)}\n`);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("piped: CliEnv decides not interactive, and the defaults come back with Ink never loaded", () =>
+		Effect.gen(function* () {
+			const before = loads.count;
+			const session = yield* CliUiTest.session();
+			assert.strictEqual(yield* production(session, false), 0, yield* session.stderr);
+			assert.strictEqual(yield* session.stdout, `${JSON.stringify(yield* discover)}\n`);
+			assert.strictEqual(yield* session.mounts, 0);
+			assert.strictEqual(loads.count, before);
+		}).pipe(Effect.scoped),
 	);
 });

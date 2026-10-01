@@ -5,7 +5,7 @@ import type { KeyName, Screen, ScreenControl } from "@effected/cli/ui";
 import type { ColorLevel } from "@effected/env";
 import { TerminalEnv } from "@effected/env";
 import type { Scope } from "effect";
-import { Effect, Fiber, Layer, Option } from "effect";
+import { Console, Effect, Fiber, Layer, Option } from "effect";
 import type { ReactElement } from "react";
 import { CliInteractive } from "../../CliInteractive.js";
 import { CliTheme } from "../../CliTheme.js";
@@ -43,11 +43,11 @@ export interface CliUiTestOptions {
 }
 
 /**
- * A mounted screen under test: drive it with keys and read its frames.
+ * A screen under test: drive it with keys and read its frames.
  *
  * @public
  */
-export interface CliUiTestHandle<A> {
+export interface CliUiTestScreen {
 	/**
 	 * Press named keys, one after another. Each waits until the screen draws its next frame or 50 ms pass with
 	 * nothing written; `"escape"` first waits a real 30 ms, because Ink holds a lone ESC for 20 ms before reporting
@@ -58,6 +58,22 @@ export interface CliUiTestHandle<A> {
 	readonly type: (text: string) => Effect.Effect<void>;
 	/** Resize the terminal and emit `resize`, as a real one does, settling like a key. */
 	readonly resize: (columns: number, rows: number) => Effect.Effect<void>;
+	/** The latest frame as token markup ({@link CliUiTest.styled}), each line's trailing spaces trimmed. */
+	readonly frame: Effect.Effect<string>;
+	/** The latest frame as Ink wrote it, escapes included. */
+	readonly rawFrame: Effect.Effect<string>;
+	/** The latest frame as plain text: no escapes and no markup, each line's trailing spaces trimmed. */
+	readonly plainFrame: Effect.Effect<string>;
+	/** Every frame of this screen so far, oldest first, as token markup like {@link CliUiTestScreen.frame}. */
+	readonly frames: Effect.Effect<ReadonlyArray<string>>;
+}
+
+/**
+ * A screen mounted by {@link CliUiTest.render}: a {@link CliUiTestScreen} that can also be swapped and awaited.
+ *
+ * @public
+ */
+export interface CliUiTestHandle<A> extends CliUiTestScreen {
 	/**
 	 * Show another screen in place of the current one, settling like a key.
 	 *
@@ -69,16 +85,51 @@ export interface CliUiTestHandle<A> {
 	 * handle queued behind another mounted screen.
 	 */
 	readonly rerender: (screen: Screen<A>) => Effect.Effect<void>;
-	/** The latest frame as token markup ({@link CliUiTest.styled}), each line's trailing spaces trimmed. */
-	readonly frame: Effect.Effect<string>;
-	/** The latest frame as Ink wrote it, escapes included. */
-	readonly rawFrame: Effect.Effect<string>;
-	/** The latest frame as plain text: no escapes and no markup, each line's trailing spaces trimmed. */
-	readonly plainFrame: Effect.Effect<string>;
-	/** Every frame so far, oldest first, as token markup like {@link CliUiTestHandle.frame}. */
-	readonly frames: Effect.Effect<ReadonlyArray<string>>;
 	/** How the screen ended: its value, or `Cancelled` or `NotInteractive`. Waits for it to end. */
 	readonly result: Effect.Effect<A, Cli.Cancelled | Cli.NotInteractive>;
+}
+
+/**
+ * Options for {@link CliUiTestSession.next}.
+ *
+ * @public
+ */
+export interface CliUiTestNextOptions {
+	/** Text the screen must show (in plain text) before `next` returns it. */
+	readonly contains?: string;
+}
+
+/**
+ * A terminal a whole program runs its screens on, from {@link CliUiTest.session}.
+ *
+ * @public
+ */
+export interface CliUiTestSession {
+	/**
+	 * Provide it around the program: in-memory terminal streams, the marker-palette `CliTheme`, `CliInteractive`
+	 * from the session's options, frame capture, and a `Console` whose writes the session keeps.
+	 *
+	 * @remarks
+	 * Anything the program provides closer to the screens wins: under `CliRuntime.main` with `env`, `CliEnv.layer`
+	 * supplies the theme and decides interactivity, as it does for real, and the session keeps only the streams, the
+	 * capture and the console.
+	 */
+	readonly layer: Layer.Layer<Cli.CliTheme>;
+	/**
+	 * Wait for the next screen to mount and draw (and, with `contains`, to show that text), and return it.
+	 *
+	 * @remarks
+	 * Each call takes the next mount in order, counting every mount since the session began, so a screen that mounted
+	 * before the call is not missed. It waits at most 2 s, then dies naming the screen's number, the text it waited
+	 * for and how many screens had mounted. The returned screen's frames start at its own mount.
+	 */
+	readonly next: (options?: CliUiTestNextOptions) => Effect.Effect<CliUiTestScreen>;
+	/** How many screens have mounted so far. */
+	readonly mounts: Effect.Effect<number>;
+	/** What the program wrote to stdout through `Console` (`log`, `info`, `debug`), one line per call. */
+	readonly stdout: Effect.Effect<string>;
+	/** What the program wrote to stderr through `Console` (`error`, `warn`, `trace`), one line per call. */
+	readonly stderr: Effect.Effect<string>;
 }
 
 /** The tokens, in the order their marker colours are numbered. */
@@ -238,6 +289,137 @@ const RERENDER_AFTER_END = "@effected/cli/ui/testing: rerender after the screen 
 const RERENDER_BEFORE_MOUNT =
 	"@effected/cli/ui/testing: rerender before the screen mounted (waited 2 s; is another screen still mounted?)";
 
+const NEXT_DIED = (index: number, contains: string | undefined, mounted: number, why: string): string =>
+	`@effected/cli/ui/testing: next waited for screen ${index + 1} to mount and ${
+		contains === undefined ? "draw" : `show "${contains}"`
+	}, but ${why}; ${mounted} mounted so far`;
+
+/** One mounted screen's frames, and whether it has unmounted. */
+interface Capture {
+	readonly raws: Array<string>;
+	ended: boolean;
+}
+
+/**
+ * The in-memory terminal `render` and `session` share: fake streams, the environment, and a capture per mount, with
+ * the settle-and-send machinery that drives a screen.
+ */
+const makeTerminal = (options: CliUiTestOptions) => {
+	const columns = options.columns ?? 80;
+	const rows = options.rows ?? 24;
+	const color = options.color ?? "truecolor";
+	const captures: Array<Capture> = [];
+	let lastWrite = 0;
+	let frameDue = false;
+	const fake = makeFakeStreams({
+		columns,
+		rows,
+		onStdoutWrite: (chunk) => {
+			lastWrite = Date.now();
+			const current = captures.at(-1);
+			if (frameDue && current !== undefined) {
+				frameDue = false;
+				current.raws.push(chunk);
+			}
+		},
+	});
+	const stream = { isTerminal: true, color, hyperlinks: false, columns: Option.some(columns) };
+	const terminal = TerminalEnv.layerTest({ stdinIsTerminal: true, stdout: stream, stderr: stream });
+	const layer = Layer.mergeAll(
+		CliTheme.layer({ tokens: MARKER_STYLES, glyphs: options.glyphs ?? "unicode" }).pipe(Layer.provide(terminal)),
+		CliInteractive.layerTest(options.interactive ?? true),
+		Layer.succeed(UiStreams, fake.streams),
+		Layer.succeed(UiRenderOptions, {
+			debug: true,
+			onRender: () => {
+				frameDue = true;
+			},
+			onMount: () => {
+				captures.push({ raws: [], ended: false });
+			},
+			onUnmount: () => {
+				const current = captures.at(-1);
+				if (current !== undefined) current.ended = true;
+			},
+		}),
+	);
+
+	/**
+	 * Wait until a frame after `before` has been followed by a short quiet, so a reaction that renders twice is read
+	 * whole; or, with no new frame, until quiet since the later of `since` and the last write. Never longer than
+	 * `limitMs` from `since` once a frame has come.
+	 */
+	const settle = (
+		raws: () => ReadonlyArray<string>,
+		ended: () => boolean,
+		before: number,
+		since: number,
+		limitMs = QUIET_MS,
+	): Effect.Effect<void> =>
+		realTime(() => {
+			if (ended()) return true;
+			const now = Date.now();
+			if (raws().length > before) return now - lastWrite >= TRAILING_QUIET_MS || now - since >= limitMs;
+			return now - Math.max(since, lastWrite) >= QUIET_MS && now - since >= QUIET_MS;
+		});
+
+	/** Drive and read the screen whose capture `capture` returns (none yet: no frames), ended when `ended` says. */
+	const screen = (capture: () => Capture | undefined, ended: () => boolean) => {
+		const raws = (): ReadonlyArray<string> => capture()?.raws ?? [];
+		const after = (before: number, since: number) => settle(raws, ended, before, since);
+		const send = (bytes: string, flushMs = 0): Effect.Effect<void> =>
+			Effect.suspend(() => {
+				const before = raws().length;
+				fake.input(bytes);
+				const sent = Date.now();
+				const flushed = flushMs === 0 ? Effect.void : realTime(() => Date.now() - sent >= flushMs);
+				return Effect.andThen(flushed, after(before, Date.now()));
+			});
+		const handle: CliUiTestScreen = {
+			press: (...keys) =>
+				Effect.forEach(keys, (key) => send(KEY_BYTES[key], key === "escape" ? ESCAPE_FLUSH_MS : 0), {
+					discard: true,
+				}),
+			type: (text) => Effect.forEach([...text], (character) => send(character), { discard: true }),
+			resize: (nextColumns, nextRows) =>
+				Effect.suspend(() => {
+					const before = raws().length;
+					const since = Date.now();
+					fake.resize(nextColumns, nextRows);
+					return after(before, since);
+				}),
+			frame: Effect.sync(() => trimLines(styled(raws().at(-1) ?? ""))),
+			rawFrame: Effect.sync(() => raws().at(-1) ?? ""),
+			plainFrame: Effect.sync(() => trimLines((raws().at(-1) ?? "").replace(ESCAPES, ""))),
+			frames: Effect.sync(() => raws().map((raw) => trimLines(styled(raw)))),
+		};
+		return { handle, raws, after };
+	};
+
+	return { fake, layer, captures, screen };
+};
+
+/** A `Console` that keeps what is written: `log`, `info` and `debug` as stdout, `error`, `warn` and `trace` as stderr. */
+const capturingConsole = (ambient: Console.Console) => {
+	const out: Array<string> = [];
+	const err: Array<string> = [];
+	const line =
+		(sink: Array<string>) =>
+		(...args: ReadonlyArray<unknown>): void => {
+			sink.push(`${args.map(String).join(" ")}\n`);
+		};
+	// Over the ambient Console, so every method this does not keep still behaves as it did.
+	const writer: Console.Console = Object.assign(Object.create(ambient) as Console.Console, {
+		log: line(out),
+		info: line(out),
+		debug: line(out),
+		error: line(err),
+		warn: line(err),
+		trace: line(err),
+	});
+	return { writer, out, err };
+};
+
 /**
  * Drive and read Ink screens in tests: mount a screen on in-memory streams, press keys, and read its frames as token
  * markup.
@@ -277,30 +459,8 @@ export class CliUiTest {
 		options: CliUiTestOptions = {},
 	): Effect.Effect<CliUiTestHandle<A>, never, Scope.Scope> =>
 		Effect.gen(function* () {
-			const columns = options.columns ?? 80;
-			const rows = options.rows ?? 24;
-			const color = options.color ?? "truecolor";
-			const raws: Array<string> = [];
-			let lastWrite = 0;
-			let frameDue = false;
+			const terminal = makeTerminal(options);
 			let ended = false;
-			const fake = makeFakeStreams({
-				columns,
-				rows,
-				onStdoutWrite: (chunk) => {
-					lastWrite = Date.now();
-					if (frameDue) {
-						frameDue = false;
-						raws.push(chunk);
-					}
-				},
-			});
-			const stream = { isTerminal: true, color, hyperlinks: false, columns: Option.some(columns) };
-			const terminal = TerminalEnv.layerTest({ stdinIsTerminal: true, stdout: stream, stderr: stream });
-			const environment = Layer.mergeAll(
-				CliTheme.layer({ tokens: MARKER_STYLES, glyphs: options.glyphs ?? "unicode" }).pipe(Layer.provide(terminal)),
-				CliInteractive.layerTest(options.interactive ?? true),
-			);
 			let swap: ((next: ReactElement) => void) | undefined;
 			let control: ScreenControl<A> | undefined;
 			// The screen is held in a swappable holder, so rerender changes only its subtree, under the same control.
@@ -316,14 +476,7 @@ export class CliUiTest {
 			};
 			const fiber = yield* Effect.forkScoped(
 				CliUi.run(held).pipe(
-					Effect.provideService(UiStreams, fake.streams),
-					Effect.provideService(UiRenderOptions, {
-						debug: true,
-						onRender: () => {
-							frameDue = true;
-						},
-					}),
-					Effect.provide(environment),
+					Effect.provide(terminal.layer),
 					Effect.onExit(() =>
 						Effect.sync(() => {
 							ended = true;
@@ -331,45 +484,16 @@ export class CliUiTest {
 					),
 				),
 			);
-			/**
-			 * Wait until a frame after `before` has been followed by a short quiet, so a reaction that renders twice
-			 * is read whole; or, with no new frame, until quiet since the later of `since` and the last write. Never
-			 * longer than `limitMs` from `since` once a frame has come.
-			 */
-			const settle = (before: number, since: number, limitMs = QUIET_MS): Effect.Effect<void> =>
-				realTime(() => {
-					if (ended) return true;
-					const now = Date.now();
-					if (raws.length > before) return now - lastWrite >= TRAILING_QUIET_MS || now - since >= limitMs;
-					return now - Math.max(since, lastWrite) >= QUIET_MS && now - since >= QUIET_MS;
-				});
-
+			// One screen per render: its capture is the first, and it has ended when the run has.
+			const { handle, raws, after } = terminal.screen(
+				() => terminal.captures[0],
+				() => ended,
+			);
 			const mountedBy = Date.now() + MOUNT_LIMIT_MS;
-			yield* realTime(() => raws.length > 0 || ended || Date.now() >= mountedBy);
-			yield* settle(0, Date.now());
-
-			const send = (bytes: string, flushMs = 0): Effect.Effect<void> =>
-				Effect.suspend(() => {
-					const before = raws.length;
-					fake.input(bytes);
-					const sent = Date.now();
-					const flushed = flushMs === 0 ? Effect.void : realTime(() => Date.now() - sent >= flushMs);
-					return Effect.andThen(flushed, settle(before, Date.now()));
-				});
-
-			const handle: CliUiTestHandle<A> = {
-				press: (...keys) =>
-					Effect.forEach(keys, (key) => send(KEY_BYTES[key], key === "escape" ? ESCAPE_FLUSH_MS : 0), {
-						discard: true,
-					}),
-				type: (text) => Effect.forEach([...text], (character) => send(character), { discard: true }),
-				resize: (nextColumns, nextRows) =>
-					Effect.suspend(() => {
-						const before = raws.length;
-						const since = Date.now();
-						fake.resize(nextColumns, nextRows);
-						return settle(before, since);
-					}),
+			yield* realTime(() => raws().length > 0 || ended || Date.now() >= mountedBy);
+			yield* after(0, Date.now());
+			return {
+				...handle,
 				rerender: (next) =>
 					Effect.gen(function* () {
 						// Bounded like render's first frame: a handle queued behind another screen may never mount here.
@@ -382,18 +506,65 @@ export class CliUiTest {
 						const given = control;
 						const element = yield* Effect.promise(async () => next(given));
 						if (ended) return yield* Effect.die(new Error(RERENDER_AFTER_END));
-						const before = raws.length;
+						const before = raws().length;
 						const since = Date.now();
 						swap(element);
-						yield* settle(before, since);
+						yield* after(before, since);
 					}),
-				frame: Effect.sync(() => trimLines(styled(raws.at(-1) ?? ""))),
-				rawFrame: Effect.sync(() => raws.at(-1) ?? ""),
-				plainFrame: Effect.sync(() => trimLines((raws.at(-1) ?? "").replace(ESCAPES, ""))),
-				frames: Effect.sync(() => raws.map((raw) => trimLines(styled(raw)))),
 				result: Fiber.join(fiber),
-			};
-			return handle;
+			} satisfies CliUiTestHandle<A>;
+		});
+
+	/**
+	 * A terminal for a whole program that runs screens of its own (a wizard, a handler calling `CliUi.prompt` several
+	 * times): provide its `layer` around the program, then take each screen as it mounts with `next`.
+	 *
+	 * @remarks
+	 * The same environment and the same waiting as {@link CliUiTest.render}, with the same options. The session also
+	 * keeps what the program writes through `Console`, its own output beside the screens, as `stdout` and `stderr`.
+	 *
+	 * Run the program forked (`Effect.forkScoped`) and drive it from the test: `next` returns each screen once it has
+	 * mounted and drawn, `press` and `type` settle as they do on a rendered screen, and joining the program's fiber
+	 * gives its exit. Screens still run one at a time, process-wide, so `next` sees them in the order they mount.
+	 *
+	 * @param options - the terminal's size, colour and glyphs, and whether the run is interactive
+	 */
+	static readonly session = (options: CliUiTestOptions = {}): Effect.Effect<CliUiTestSession, never, Scope.Scope> =>
+		Effect.map(Console.Console, (ambient) => {
+			const terminal = makeTerminal(options);
+			const output = capturingConsole(ambient);
+			let taken = 0;
+			const next = (nextOptions: CliUiTestNextOptions = {}): Effect.Effect<CliUiTestScreen> =>
+				Effect.gen(function* () {
+					const index = taken++;
+					const { contains } = nextOptions;
+					const capture = () => terminal.captures[index];
+					const { handle, raws, after } = terminal.screen(capture, () => capture()?.ended ?? false);
+					const shows = (): boolean =>
+						contains === undefined
+							? raws().length > 0
+							: raws().some((raw) => raw.replace(ESCAPES, "").includes(contains));
+					const by = Date.now() + MOUNT_LIMIT_MS;
+					yield* realTime(() => shows() || capture()?.ended === true || Date.now() >= by);
+					if (!shows()) {
+						const why =
+							capture() === undefined
+								? "none mounted within 2 s"
+								: capture()?.ended === true
+									? "it unmounted first"
+									: "it did not within 2 s";
+						return yield* Effect.die(new Error(NEXT_DIED(index, contains, terminal.captures.length, why)));
+					}
+					yield* after(0, Date.now());
+					return handle;
+				});
+			return {
+				layer: Layer.merge(terminal.layer, Layer.succeed(Console.Console, output.writer)),
+				next,
+				mounts: Effect.sync(() => terminal.captures.length),
+				stdout: Effect.sync(() => output.out.join("")),
+				stderr: Effect.sync(() => output.err.join("")),
+			} satisfies CliUiTestSession;
 		});
 
 	/**

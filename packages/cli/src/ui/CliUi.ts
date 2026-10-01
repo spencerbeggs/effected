@@ -108,8 +108,10 @@ const mount = <A>(
 			}),
 		});
 		const instance = yield* Effect.acquireRelease(
-			Effect.sync(() =>
-				ink.render(tree, {
+			Effect.sync(() => {
+				// Before render: Ink draws the first frame inside it, and the harness files frames under the mount.
+				overrides.onMount?.();
+				return ink.render(tree, {
 					stdin: streams.stdin,
 					// Ink draws its frames on what it calls stdout, so a screen on stderr hands it stderr there.
 					stdout: stream === "stderr" ? streams.stderr : streams.stdout,
@@ -119,12 +121,13 @@ const mount = <A>(
 					patchConsole: false,
 					...(overrides.debug === true ? { debug: true } : {}),
 					...(overrides.onRender === undefined ? {} : { onRender: overrides.onRender }),
-				}),
-			),
+				});
+			}),
 			(instance) =>
 				Effect.promise(async () => {
 					instance.unmount();
 					await instance.waitUntilExit().catch(() => undefined);
+					overrides.onUnmount?.();
 				}),
 		);
 		const exited: Effect.Effect<A, Cli.Cancelled> = Effect.tryPromise({
@@ -219,18 +222,26 @@ export class CliUi {
 	 * so core renders its own message and `CliRuntime.main` exits `64`. Name the parameter with `flag` (the name
 	 * without dashes) or `argument` so that error can be built.
 	 *
+	 * The options are {@link @effected/cli!CliPromptFallbackOptions}, the same as `CliPrompt.fallback`'s.
+	 *
 	 * It runs during parsing, whose environment is core's alone, so it reads `CliTheme` if one is there: with
 	 * `CliRuntime.main`'s `env` (`CliEnv.layer`), or provided around the program. With no theme it treats the run as
-	 * not interactive. Interactivity is `CliInteractive`, which an audience flag can set before parsing under
-	 * `CliAudience`.
+	 * not interactive, and when `CliInteractive` is on it says so once, at debug level. Interactivity is
+	 * `CliInteractive`, which an audience flag can set before parsing under `CliAudience`.
 	 *
 	 * As with `CliPrompt.fallback`, the screen runs here rather than being handed to core, whose fallback runner
 	 * turns a quit into the missing-parameter error, which would exit `64`. A cancel (Esc, Ctrl-C) is `Cancelled`,
 	 * raised as a defect because core's parse step turns every typed failure into a usage error, so only
-	 * `CliRuntime.main` (or `CliRuntime.reportFailures`) renders it, as one line with exit `130`. Core then runs the
-	 * answered prompt it is handed, which subscribes the terminal: pair it with `CliPrompt.gateTerminal`, which
-	 * `CliEnv.layer` installs. A missing Ink in an interactive run is a defect naming the peers, never a silent
-	 * `otherwise`.
+	 * `CliRuntime.main` (or `CliRuntime.reportFailures`) renders it, as one line with exit `130`. A missing Ink in an
+	 * interactive run is a defect naming the peers, never a silent `otherwise`.
+	 *
+	 * After the screen has unmounted, core still runs the answered `Prompt.succeed` it is handed against the
+	 * terminal, exactly as it does for `CliPrompt.fallback`: `Prompt.run` opens the terminal's input in a scope (on
+	 * Node a readline over stdin, in raw mode) before looking at the prompt. That is harmless. The prompt is already
+	 * answered, so nothing is read and no key is waited for; the scope closes at once, restoring the mode and closing
+	 * the reader; and Ink has already let go of stdin, so the two never hold it together. Not interactive, the screen
+	 * never mounts, and `CliPrompt.gateTerminal`, which `CliEnv.layer` installs, keeps that subscription off the real
+	 * terminal altogether.
 	 *
 	 * @param screen - the screen to show
 	 * @param options - the parameter it stands in for, and the non-interactive default
@@ -238,10 +249,21 @@ export class CliUi {
 	static readonly fallback = <A>(
 		screen: Screen<A>,
 		options: Cli.CliPromptFallbackOptions<A>,
-	): Param.FallbackPrompt<A> =>
-		Effect.gen(function* () {
+	): Param.FallbackPrompt<A> => {
+		// Said once per fallback: a parse that retries must not repeat it.
+		let explained = false;
+		return Effect.gen(function* () {
 			const theme = yield* Effect.serviceOption(CliTheme);
-			if (Option.isNone(theme)) return yield* answerWithoutPerson(options);
+			if (Option.isNone(theme)) {
+				if (!explained && (yield* CliInteractive)) {
+					explained = true;
+					const name = "flag" in options ? `--${options.flag}` : `<${options.argument}>`;
+					yield* Effect.logDebug(
+						`@effected/cli/ui: CliUi.fallback for ${name} answered without its screen: CliInteractive is on, but no CliTheme is provided around parsing (CliRuntime.main's env provides one)`,
+					);
+				}
+				return yield* answerWithoutPerson(options);
+			}
 			return yield* CliUi.run(screen).pipe(
 				Effect.provideService(CliTheme, theme.value),
 				Effect.map((answer) => Prompt.succeed(answer)),
@@ -249,6 +271,7 @@ export class CliUi {
 				Effect.catchTag("NotInteractive", () => answerWithoutPerson(options)),
 			);
 		});
+	};
 
 	/**
 	 * A screen whose module is loaded only when it mounts, so importing the command that uses it loads neither the

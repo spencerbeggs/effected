@@ -1,14 +1,13 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Console, Effect, Exit, Fiber, Layer, Runtime } from "effect";
-import { Command, Flag } from "effect/cli";
+import { Cause, Console, Effect, Exit, Fiber, Layer, Logger, References, Runtime } from "effect";
+import { Command, Flag, Prompt } from "effect/cli";
 import { vi } from "vitest";
 import { CliInteractive, CliPrompt, CliRuntime, CliTheme, NotInteractive } from "../../src/index.js";
 import { TestTerminal } from "../../src/testing.js";
-import type { FakeStreams } from "../../src/ui/testing/fakeStreams.js";
-import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
-import { CliUi, Select, UiStreams } from "../../src/ui.js";
-import { KEY, answer } from "../helpers/uiScript.js";
+import { CliUi, Select } from "../../src/ui.js";
+import type { CliUiTestSession } from "../../src/ui-testing.js";
+import { CliUiTest } from "../../src/ui-testing.js";
 
 // Count loads of the peers through the kit's one loader, without changing what it does.
 const { loads } = vi.hoisted(() => ({ loads: { count: 0 } }));
@@ -58,124 +57,143 @@ const app = (options: { readonly otherwise?: string } = {}) =>
 		]),
 	);
 
-/** Run argv through `CliRuntime.main`, with screens on `fake`; `theme: false` leaves CliTheme out of the parse. */
-const run = (
-	root: ReturnType<typeof app>,
-	argv: ReadonlyArray<string>,
-	options: { readonly interactive: boolean; readonly fake: FakeStreams; readonly theme?: boolean },
-) =>
-	Effect.gen(function* () {
-		const { double, out, err } = capturing();
-		const terminal = yield* TestTerminal.make();
-		const main = CliRuntime.main(Command.runWith(root, { version: "1.0.0" })(argv), {
-			platform: Layer.mergeAll(NodeServices.layer, CliPrompt.gateTerminal.pipe(Layer.provide(terminal.layer))),
-		});
-		const exit = yield* (options.theme === false ? main : main.pipe(Effect.provide(CliTheme.layerTest()))).pipe(
-			Effect.provide(CliInteractive.layerTest(options.interactive)),
-			Effect.provideService(UiStreams, options.fake.streams),
+const exitCode = (exit: Exit.Exit<unknown, unknown>): number =>
+	Exit.isFailure(exit) ? Runtime.getErrorExitCode(Cause.squash(exit.cause)) : 0;
+
+const platform = Effect.map(TestTerminal.make(), (terminal) =>
+	Layer.mergeAll(NodeServices.layer, CliPrompt.gateTerminal.pipe(Layer.provide(terminal.layer))),
+);
+
+/** Run argv through `CliRuntime.main` under a session: its streams, theme, interactivity and console. */
+const run = (root: ReturnType<typeof app>, argv: ReadonlyArray<string>, session: CliUiTestSession) =>
+	Effect.flatMap(platform, (layer) =>
+		CliRuntime.main(Command.runWith(root, { version: "1.0.0" })(argv), { platform: layer }).pipe(
+			Effect.provide(session.layer),
 			Effect.exit,
-			Effect.provideService(Console.Console, double),
-		);
-		const code = Exit.isFailure(exit) ? Runtime.getErrorExitCode(Cause.squash(exit.cause)) : 0;
-		return { out, err, code };
-	});
+			Effect.map(exitCode),
+		),
+	);
 
 describe("CliUi.fallback", () => {
-	it.live("the flag given: the screen never mounts and Ink is never loaded", () =>
+	it.effect("the flag given: the screen never mounts and Ink is never loaded", () =>
 		Effect.gen(function* () {
-			const fake = makeFakeStreams();
+			const session = yield* CliUiTest.session();
 			const before = loads.count;
-			const { out, code } = yield* run(app(), ["run", "--profile", "library"], { interactive: true, fake });
-			assert.strictEqual(code, 0);
-			assert.deepStrictEqual(out, ["profile=library"]);
-			assert.deepStrictEqual(fake.rawModes, []);
+			assert.strictEqual(yield* run(app(), ["run", "--profile", "library"], session), 0);
+			assert.strictEqual(yield* session.stdout, "profile=library\n");
+			assert.strictEqual(yield* session.mounts, 0);
 			assert.strictEqual(loads.count, before);
-		}),
+		}).pipe(Effect.scoped),
 	);
 
-	it.live("the flag absent, interactive: the screen mounts and its answer is the flag's value", () =>
+	it.effect("the flag absent, interactive: the screen mounts and its answer is the flag's value", () =>
 		Effect.gen(function* () {
-			const fake = makeFakeStreams();
+			const session = yield* CliUiTest.session();
 			const before = loads.count;
-			const script = yield* Effect.forkChild(answer(fake, [{ when: "Profile", send: [KEY.down, KEY.enter] }]));
-			const { out, code } = yield* run(app({ otherwise: "software-project" }), ["run"], { interactive: true, fake });
-			yield* Fiber.join(script);
-			assert.strictEqual(code, 0);
-			assert.deepStrictEqual(out, ["profile=library"]);
+			const program = yield* Effect.forkScoped(run(app({ otherwise: "software-project" }), ["run"], session));
+			yield* (yield* session.next({ contains: "Profile" })).press("down", "enter");
+			assert.strictEqual(yield* Fiber.join(program), 0, yield* session.stderr);
+			assert.strictEqual(yield* session.stdout, "profile=library\n");
 			assert.isAbove(loads.count, before, "control: an interactive fallback does load Ink");
-			assert.strictEqual(fake.rawModes.at(-1), false, "raw mode is off again");
-		}),
+		}).pipe(Effect.scoped),
 	);
 
-	it.live("not interactive with otherwise: the default is the value, nothing mounts, Ink is never loaded", () =>
+	it.effect("not interactive with otherwise: the default is the value, nothing mounts, Ink is never loaded", () =>
 		Effect.gen(function* () {
-			const fake = makeFakeStreams();
+			const session = yield* CliUiTest.session({ interactive: false });
 			const before = loads.count;
-			const { out, code } = yield* run(app({ otherwise: "software-project" }), ["run"], { interactive: false, fake });
-			assert.strictEqual(code, 0);
+			assert.strictEqual(yield* run(app({ otherwise: "software-project" }), ["run"], session), 0);
+			assert.strictEqual(yield* session.stdout, "profile=software-project\n");
+			assert.strictEqual(yield* session.mounts, 0);
+			assert.strictEqual(loads.count, before);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("not interactive without otherwise: core's missing-flag error, exit 64, Ink never loaded", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session({ interactive: false });
+			const before = loads.count;
+			assert.strictEqual(yield* run(app(), ["run"], session), 64);
+			assert.notInclude(yield* session.stdout, "profile=");
+			assert.include(yield* session.stderr, "Missing required flag: --profile");
+			assert.strictEqual(loads.count, before);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("no CliTheme around the parse counts as not interactive, even with CliInteractive on", () =>
+		Effect.gen(function* () {
+			const before = loads.count;
+			// No session: it would provide a theme. Only CliInteractive, on, and a console.
+			const { double, out } = capturing();
+			const bare = (root: ReturnType<typeof app>) =>
+				Effect.flatMap(platform, (layer) =>
+					CliRuntime.main(Command.runWith(root, { version: "1.0.0" })(["run"]), { platform: layer }).pipe(
+						Effect.provide(CliInteractive.layerTest(true)),
+						Effect.provideService(Console.Console, double),
+						Effect.exit,
+						Effect.map(exitCode),
+					),
+				);
+			assert.strictEqual(yield* bare(app({ otherwise: "software-project" })), 0);
 			assert.deepStrictEqual(out, ["profile=software-project"]);
-			assert.deepStrictEqual(fake.rawModes, []);
-			assert.strictEqual(fake.stdout(), "");
+			assert.strictEqual(yield* bare(app()), 64);
 			assert.strictEqual(loads.count, before);
 		}),
 	);
 
-	it.live("not interactive without otherwise: core's missing-flag error, exit 64, Ink never loaded", () =>
+	it.effect("with CliInteractive on but no CliTheme, it says why at debug level, once per fallback", () =>
 		Effect.gen(function* () {
-			const fake = makeFakeStreams();
-			const before = loads.count;
-			const { out, err, code } = yield* run(app(), ["run"], { interactive: false, fake });
-			assert.strictEqual(code, 64);
-			assert.isFalse(out.some((line) => line.includes("profile=")));
-			assert.isTrue(
-				err.some((line) => line.includes("Missing required flag: --profile")),
-				err.join("\n"),
+			const lines: Array<string> = [];
+			const debug = Logger.layer([
+				Logger.make(({ logLevel, message }) => {
+					lines.push(`${logLevel}: ${Array.isArray(message) ? message.join(" ") : String(message)}`);
+				}),
+			]);
+			const answered = (interactive: boolean) =>
+				Effect.gen(function* () {
+					const fallback = CliUi.fallback(profile, { flag: "profile", otherwise: "library" });
+					const effect = Prompt.isPrompt(fallback) ? Effect.die("a bare prompt") : fallback;
+					yield* effect;
+					yield* effect;
+				}).pipe(
+					Effect.provide(NodeServices.layer),
+					Effect.provide(CliInteractive.layerTest(interactive)),
+					Effect.provide(debug),
+					Effect.provideService(References.MinimumLogLevel, "Debug"),
+				);
+			yield* answered(false);
+			assert.deepStrictEqual(lines, [], "not interactive is the ordinary case: nothing to explain");
+			yield* answered(true);
+			assert.lengthOf(lines, 1, lines.join("\n"));
+			assert.match(lines[0] ?? "", /^Debug: /);
+			assert.include(lines[0], "--profile");
+			assert.include(lines[0], "CliTheme");
+		}),
+	);
+
+	it.effect("Esc on the screen: exit 130, one line on stderr, and the handler never runs", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session();
+			const program = yield* Effect.forkScoped(run(app({ otherwise: "software-project" }), ["run"], session));
+			yield* (yield* session.next({ contains: "Profile" })).press("escape");
+			assert.strictEqual(
+				yield* Fiber.join(program),
+				130,
+				"a cancel is not a usage error: core's parse step never saw it as one",
 			);
-			assert.strictEqual(loads.count, before);
-		}),
+			assert.strictEqual(yield* session.stderr, "cancelled; nothing written\n");
+			assert.strictEqual(yield* session.stdout, "");
+		}).pipe(Effect.scoped),
 	);
 
-	it.live("no CliTheme around the parse counts as not interactive, even with CliInteractive on", () =>
+	it.effect("Ctrl-C on the screen: exit 130 too", () =>
 		Effect.gen(function* () {
-			const before = loads.count;
-			const fake = makeFakeStreams();
-			const given = yield* run(app({ otherwise: "software-project" }), ["run"], {
-				interactive: true,
-				fake,
-				theme: false,
-			});
-			assert.deepStrictEqual(given.out, ["profile=software-project"]);
-			const missing = yield* run(app(), ["run"], { interactive: true, fake, theme: false });
-			assert.strictEqual(missing.code, 64);
-			assert.deepStrictEqual(fake.rawModes, []);
-			assert.strictEqual(loads.count, before);
-		}),
-	);
-
-	it.live("Esc on the screen: exit 130, one line on stderr, and the handler never runs", () =>
-		Effect.gen(function* () {
-			const fake = makeFakeStreams();
-			const script = yield* Effect.forkChild(answer(fake, [{ when: "Profile", send: [KEY.escape] }]));
-			const { out, err, code } = yield* run(app({ otherwise: "software-project" }), ["run"], {
-				interactive: true,
-				fake,
-			});
-			yield* Fiber.join(script);
-			assert.strictEqual(code, 130, "a cancel is not a usage error: core's parse step never saw it as one");
-			assert.deepStrictEqual(err, ["cancelled; nothing written"]);
-			assert.deepStrictEqual(out, []);
-		}),
-	);
-
-	it.live("Ctrl-C on the screen: exit 130 too", () =>
-		Effect.gen(function* () {
-			const fake = makeFakeStreams();
-			const script = yield* Effect.forkChild(answer(fake, [{ when: "Profile", send: [KEY.ctrlC] }]));
-			const { err, code } = yield* run(app(), ["run"], { interactive: true, fake });
-			yield* Fiber.join(script);
-			assert.strictEqual(code, 130);
-			assert.deepStrictEqual(err, ["cancelled; nothing written"]);
-		}),
+			const session = yield* CliUiTest.session();
+			const program = yield* Effect.forkScoped(run(app(), ["run"], session));
+			yield* (yield* session.next({ contains: "Profile" })).press("ctrl+c");
+			assert.strictEqual(yield* Fiber.join(program), 130);
+			assert.strictEqual(yield* session.stderr, "cancelled; nothing written\n");
+		}).pipe(Effect.scoped),
 	);
 });
 

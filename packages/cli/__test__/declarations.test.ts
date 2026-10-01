@@ -32,7 +32,8 @@ const CONSUMER = `import { CliTheme } from "@effected/cli";
 import type { KeyName, Screen } from "@effected/cli/ui";
 import { CliUi, Confirm } from "@effected/cli/ui";
 import { CliUiTest } from "@effected/cli/ui/testing";
-import { Effect } from "effect";
+import type { Scope } from "effect";
+import { Effect, Fiber } from "effect";
 
 const program = CliUi.run<number>(() => {
 	throw new Error("never mounted");
@@ -62,6 +63,17 @@ export const verify = Effect.gen(function* () {
 }).pipe(Effect.provide(CliTheme.layerTest()));
 export const verified: Effect.Effect<{ confirmed: boolean; promote: boolean; mayBeAbsent: true }, unknown, never> =
 	verify;
+
+// A program that runs several screens, driven through a session: its layer satisfies CliUi.run's CliTheme.
+export const sessioned: Effect.Effect<readonly [number, string, number], unknown, Scope.Scope> = Effect.gen(function* () {
+	const session = yield* CliUiTest.session({ columns: 40, color: "none" });
+	const program: Effect.Effect<number, unknown, never> = CliUi.run(screen).pipe(Effect.provide(session.layer));
+	const fiber = yield* Effect.forkScoped(program);
+	const first = yield* session.next({ contains: "Profile" });
+	yield* first.press("enter");
+	const frame: string = yield* first.plainFrame;
+	return [yield* Fiber.join(fiber), frame, yield* session.mounts] as const;
+});
 `;
 
 /** The live control: a requirement left unprovided must be reported, or the gate cannot fail. */

@@ -7,4 +7,11 @@
  *
  * @packageDocumentation
  */
-export { CliUiTest, type CliUiTestHandle, type CliUiTestOptions } from "./ui/testing/CliUiTest.js";
+export {
+	CliUiTest,
+	type CliUiTestHandle,
+	type CliUiTestNextOptions,
+	type CliUiTestOptions,
+	type CliUiTestScreen,
+	type CliUiTestSession,
+} from "./ui/testing/CliUiTest.js";

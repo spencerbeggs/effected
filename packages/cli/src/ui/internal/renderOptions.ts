@@ -10,6 +10,10 @@ export interface UiRenderOverrides {
 	readonly debug?: boolean;
 	/** Called after each render, just before Ink writes the frame; the harness counts frames with it. */
 	readonly onRender?: () => void;
+	/** Called as a screen mounts, before Ink draws its first frame; the harness starts that screen's capture. */
+	readonly onMount?: () => void;
+	/** Called once a screen has unmounted and Ink has exited; the harness marks that screen's capture ended. */
+	readonly onUnmount?: () => void;
 }
 
 /**
