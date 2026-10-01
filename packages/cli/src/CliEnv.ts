@@ -32,7 +32,9 @@ export interface CliEnvOptions {
 	 * `FileSystem` and `Path`, and `main`'s type says so when it does not.
 	 *
 	 * A platform or program that installs its own `Logger.layer([...])` replaces this logger set, and the
-	 * diagnostics go silent with no error: do not install one. See `CliLog.layer`.
+	 * diagnostics go silent with no error: do not install one. See `CliLog.layer`. Only `CliLog`'s own records can be
+	 * silenced (`plainLogger: false`): what the platform logs while it builds, the audience-override warning, the failure
+	 * report and the `CliMessage` lines still go through a plain `CliLogger`.
 	 */
 	readonly log?: CliLogOptions | CliLogFileOptions | undefined;
 	/**

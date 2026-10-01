@@ -47,6 +47,10 @@ export interface CliLogOptions {
 	 * only the diagnostics sink, the file sink if any, and `extraLoggers`. With no level set as well, stderr gets
 	 * no output. An invalid level in `envVar` still prints its one warning line, through a private `CliLogger`,
 	 * since that is a configuration error the host should see.
+	 *
+	 * Only `CliLog`'s own records are silenced. Under `CliRuntime.main`, what the platform logs while it builds and
+	 * the audience-override warning still go through a plain `CliLogger`, and so do the failure report and the
+	 * `CliMessage` lines.
 	 */
 	readonly plainLogger?: boolean | undefined;
 	/**

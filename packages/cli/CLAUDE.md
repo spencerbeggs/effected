@@ -13,7 +13,10 @@ document IR (`Doc`, plain frozen nodes), the pure renderers over a
 `Render.context(stream)` to build one from the services), `Doc.print`,
 `GithubAnnotation`, editor-aware `CliLinks`, and `CliFailure`, which is how the
 default failure report is drawn. An agent is never written an escape of any
-kind; every string that enters a document is stripped of control characters.
+kind. Every string that enters a document is sanitised: escape sequences and
+control characters are removed, a tab becomes a space, and line breaks are kept
+as breaks. The glyph strings of a vocabulary or a theme are configuration and
+are not sanitised.
 `okf/modules/cli.md` has the rows.
 
 **Design doc:** `@./okf/modules/cli.md` — Load when:

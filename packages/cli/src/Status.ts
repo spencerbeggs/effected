@@ -98,11 +98,8 @@ export class Status<Names extends string> {
 	 * @remarks
 	 * `def` answers the vocabulary's own entry. `resolve` answers a frozen copy, so a document node that holds
 	 * the definition stays plain data and editing it cannot change the vocabulary. The copy is shallow: a
-	 * `token` given as a `Style` keeps its own identity.
-	 *
-	 * @remarks
-	 * Throws on an unknown name, as {@link Status.def} does; storing an empty definition in a document instead
-	 * would fail far from the cause.
+	 * `token` given as a `Style` keeps its own identity. Throws on an unknown name, as {@link Status.def} does;
+	 * storing an empty definition in a document instead would fail far from the cause.
 	 *
 	 * @param name - a name in this vocabulary
 	 */
