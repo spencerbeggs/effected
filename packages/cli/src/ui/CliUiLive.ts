@@ -114,6 +114,12 @@ export interface LiveHandle<S> {
 	 * `warn`, `trace` and a failed `assert` to stderr; a group indents what follows. An `Error` argument is written with
 	 * its stack. `clear` does nothing, since erasing the screen would take the scrollback above the frame. Provide it
 	 * around the work done while the view is mounted; a line written to the terminal any other way tears the frame.
+	 *
+	 * `Console.Console` is the seam: the kit's logger (`CliLogger`, `CliLog`) and `Effect.log*` write through whatever
+	 * `Console` the fiber has, so they need no reference to the view. A host whose logging lives outside the view's
+	 * owner provides the handle's console at the top of the program it runs, and every log line under it lands above
+	 * the frame: `Effect.provideService(program, Console.Console, handle.logConsole)`. Output that never goes through
+	 * Effect's `Console` (another library's own `process.stderr` writes) still tears the frame.
 	 */
 	readonly logConsole: Console.Console;
 	/**
