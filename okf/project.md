@@ -7,8 +7,8 @@ tags:
   - architecture
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-28T18:00:23Z
-  body_sha256: cffa2476f35856091eeda0efe8a4fe7999a53e49014e236fa85630930517f8d9
+  at: 2026-10-01T01:26:10Z
+  body_sha256: 6bb211928261f460cc140a57c37c623a187e45e10209ec859edc3d9c65cf687c
 ---
 
 # effected
@@ -54,6 +54,7 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `memfs` | pure | invention; a virtual POSIX volume behind core's `FileSystem` key — carries **no `@effected/*` edge, ever** |
 | `github` | integrated | port-with-redesign of `@savvy-web/github-action-effects`'s GitHub half |
 | `github-references` | pure | extraction from `github`; the issue-reference grammar as pure functions |
+| `github-commands` | pure | extraction from `github-actions`; the workflow-command grammar (`WorkflowCommand`, and `CommandNeutralizer`, the runner's two-parser rule) as pure functions |
 | `github-actions` | integrated | port-with-redesign of the same package's Actions half |
 | `sbom` | integrated | port-with-redesign of the same package's `Attest` knot |
 | `schemastore` | boundary (integrated 2026-08-04 → 2026-09-15) | invention; SchemaStore-shaped JSON Schema documents from Effect Schema sources |
