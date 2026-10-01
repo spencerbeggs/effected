@@ -7,15 +7,4 @@
  *
  * @packageDocumentation
  */
-
-/**
- * The screen harness. A placeholder while the `./ui/testing` entrypoint is scaffolded.
- *
- * @public
- */
-export class CliUiTest {
-	private constructor() {}
-
-	/** The scaffold marker; the harness surface replaces it. */
-	static readonly version = "p4";
-}
+export { CliUiTest, type CliUiTestHandle, type CliUiTestOptions } from "./ui/testing/CliUiTest.js";

@@ -8,6 +8,8 @@ import { Context } from "effect";
 export interface UiRenderOverrides {
 	/** Render every frame in full, unthrottled, as Ink's `debug` mode does; the harness reads frames this way. */
 	readonly debug?: boolean;
+	/** Called after each render, just before Ink writes the frame; the harness counts frames with it. */
+	readonly onRender?: () => void;
 }
 
 /**

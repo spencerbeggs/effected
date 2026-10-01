@@ -11,6 +11,8 @@ export interface FakeStreamsOptions {
 	readonly columns?: number;
 	/** The terminal height; 24 by default. */
 	readonly rows?: number;
+	/** Called with each chunk written to stdout, as it is written. */
+	readonly onStdoutWrite?: (chunk: string) => void;
 }
 
 /**
@@ -31,11 +33,17 @@ export interface FakeStreams {
 	readonly input: (data: string) => void;
 }
 
-const capture = (columns: number, rows: number): { readonly stream: Writable; readonly text: () => string } => {
+const capture = (
+	columns: number,
+	rows: number,
+	onWrite?: (chunk: string) => void,
+): { readonly stream: Writable; readonly text: () => string } => {
 	const chunks: Array<string> = [];
 	const stream = new Writable({
 		write(chunk: Buffer | string, _encoding, callback) {
-			chunks.push(chunk.toString());
+			const text = chunk.toString();
+			chunks.push(text);
+			onWrite?.(text);
 			callback();
 		},
 	});
@@ -68,7 +76,7 @@ export const makeFakeStreams = (options: FakeStreamsOptions = {}): FakeStreams =
 		ref: () => stdin,
 		unref: () => stdin,
 	});
-	const stdout = capture(columns, rows);
+	const stdout = capture(columns, rows, options.onStdoutWrite);
 	const stderr = capture(columns, rows);
 	return {
 		// The fakes carry every member Ink reads; Node's tty stream types also demand a file descriptor they cannot have.

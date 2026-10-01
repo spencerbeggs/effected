@@ -128,6 +128,7 @@ const mount = <A>(
 					exitOnCtrlC: false,
 					patchConsole: false,
 					...(overrides.debug === true ? { debug: true } : {}),
+					...(overrides.onRender === undefined ? {} : { onRender: overrides.onRender }),
 				}),
 			),
 			(instance) =>

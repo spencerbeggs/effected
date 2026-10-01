@@ -30,6 +30,7 @@ const newestMtime = (dir: string): number =>
 	);
 
 const CONSUMER = `import { CliTheme } from "@effected/cli";
+import type { KeyName, Screen } from "@effected/cli/ui";
 import { CliUi } from "@effected/cli/ui";
 import { CliUiTest } from "@effected/cli/ui/testing";
 import { Effect } from "effect";
@@ -39,7 +40,13 @@ const program = CliUi.run<number>(() => {
 }).pipe(Effect.provide(CliTheme.layerTest()));
 
 export const provided: Effect.Effect<number, unknown, never> = program;
-export const harness: typeof CliUiTest = CliUiTest;
+const screen: Screen<number> = () => {
+	throw new Error("never mounted");
+};
+const keys: ReadonlyArray<KeyName> = ["up", "enter"];
+export const driven: Effect.Effect<number, unknown, never> = Effect.scoped(
+	Effect.flatMap(CliUiTest.render(screen), (handle) => Effect.andThen(handle.press(...keys), handle.result)),
+);
 `;
 
 /** The live control: a requirement left unprovided must be reported, or the gate cannot fail. */

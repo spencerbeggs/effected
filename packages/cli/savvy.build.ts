@@ -1,9 +1,10 @@
 import { build } from "@savvy-web/bundler";
 
 await build({
-	// ./ui names the root's types through the package's own name; keep that import external in the declarations
-	// so ui.d.ts refers to the root's types instead of carrying copies.
-	dtsExternals: ["@effected/cli"],
+	// ./ui and ./ui/testing name the root's (and ./ui's) types through the package's own name; keep those imports
+	// external in the declarations so each entry refers to the other's types instead of carrying copies. The match is
+	// exact, so each subpath is listed.
+	dtsExternals: ["@effected/cli", "@effected/cli/ui"],
 	meta: {
 		localPaths: ["../../website/lib/models/cli"],
 		tsdoc: {

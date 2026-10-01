@@ -9,4 +9,5 @@
  * @packageDocumentation
  */
 export { CliUi, type CliUiRunOptions, type Screen, type ScreenControl } from "./ui/CliUi.js";
+export type { KeyName } from "./ui/UiKey.js";
 export { UiStreams, type UiStreamsShape } from "./ui/UiStreams.js";
