@@ -9,6 +9,16 @@
  * @packageDocumentation
  */
 export { CliUi, type CliUiRunOptions, type Screen, type ScreenControl } from "./ui/CliUi.js";
+export {
+	Confirm,
+	type ConfirmAction,
+	type ConfirmInitOptions,
+	type ConfirmResult,
+	type ConfirmScreenOptions,
+	type ConfirmState,
+	type ConfirmToggle,
+	type ConfirmViewProps,
+} from "./ui/Confirm.js";
 export { KeyHelp, type KeyHelpProps } from "./ui/KeyHelp.js";
 export { type Binding, type KeyHelpRow, KeyTable, type UseKeysOptions, useKeys } from "./ui/KeyTable.js";
 export {
@@ -37,6 +47,7 @@ export {
 	type TextInputState,
 	type TextInputViewProps,
 } from "./ui/TextInput.js";
+export { Toggle, type ToggleViewProps } from "./ui/Toggle.js";
 export { type KeyName, UiKey } from "./ui/UiKey.js";
 export { UiStreams, type UiStreamsShape } from "./ui/UiStreams.js";
 export {
