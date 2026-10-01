@@ -1,10 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { Text, useInput } from "ink";
 import type { ReactElement } from "react";
 import { createElement, useEffect, useState } from "react";
 import { Cancelled, Doc, NotInteractive, Render } from "../../src/index.js";
-import type { Screen } from "../../src/ui.js";
+import type { Screen, ScreenControl } from "../../src/ui.js";
 import { CliUiTest } from "../../src/ui-testing.js";
 import { contextOf } from "../helpers/renderContext.js";
 
@@ -160,6 +160,76 @@ describe("CliUiTest.render", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect("plainFrame is the latest frame with neither escapes nor markup", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(showing(RawRed), { color: "truecolor" });
+			assert.include(yield* handle.rawFrame, ESC, "the raw frame is coloured");
+			assert.include(yield* handle.frame, "[fg:red]", "the styled frame carries markup");
+			assert.strictEqual((yield* handle.plainFrame).trim(), "raw red");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a key whose reaction renders twice, across a timer, settles on the second render", () =>
+		Effect.gen(function* () {
+			const Twice = (): ReactElement => {
+				const [phase, setPhase] = useState("idle");
+				useInput((input) => {
+					if (input !== "x") return;
+					setPhase("first");
+					setTimeout(() => setPhase("second"), 3);
+				});
+				return createElement(Text, null, `phase:${phase}`);
+			};
+			const handle = yield* CliUiTest.render(showing(() => createElement(Twice)));
+			yield* handle.type("x");
+			assert.strictEqual((yield* handle.frame).trim(), "phase:second");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("rerender swaps the screen's element in place: the new frame shows, under the same control", () =>
+		Effect.gen(function* () {
+			const controls: Array<ScreenControl<string>> = [];
+			const first: Screen<string> = (control) => {
+				controls.push(control);
+				return createElement(Text, null, "state one");
+			};
+			const second: Screen<string> = (control) => {
+				controls.push(control);
+				const Done = (props: { readonly done: (value: string) => void }): ReactElement => {
+					useEffect(() => {
+						const timer = setTimeout(() => props.done("from the second"), 20);
+						return () => clearTimeout(timer);
+					}, [props.done]);
+					return createElement(Text, null, "state two");
+				};
+				return createElement(Done, { done: control.resolve });
+			};
+			const handle = yield* CliUiTest.render(first);
+			assert.strictEqual((yield* handle.frame).trim(), "state one");
+			yield* handle.rerender(second);
+			assert.strictEqual((yield* handle.frame).trim(), "state two");
+			assert.lengthOf(controls, 2);
+			assert.strictEqual(controls[1], controls[0], "the new element gets the original ScreenControl");
+			assert.strictEqual(yield* handle.result, "from the second");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("rerender after the screen has ended is a defect", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(showing(() => createElement(Echo)));
+			yield* handle.press("escape");
+			yield* Effect.flip(handle.result);
+			const exit = yield* Effect.exit(handle.rerender(showing(() => createElement(Text, null, "late"))));
+			if (Exit.isFailure(exit)) {
+				assert.isTrue(Cause.hasDies(exit.cause));
+				const defect = Cause.squash(exit.cause);
+				assert.include(defect instanceof Error ? defect.message : "", "after the screen ended");
+			} else {
+				assert.fail("expected a defect, but the rerender succeeded");
+			}
+		}).pipe(Effect.scoped),
+	);
+
 	it.effect("closing the scope unmounts the screen", () =>
 		Effect.gen(function* () {
 			let unmounted = false;
@@ -186,6 +256,11 @@ describe("CliUiTest.serializer", () => {
 			assert.isTrue(CliUiTest.serializer.test(ansi));
 			assert.isTrue(CliUiTest.serializer.test("[success]ok[/success]"));
 			assert.isFalse(CliUiTest.serializer.test("plain text"), "a plain string is left to the default serializer");
+			assert.isTrue(CliUiTest.serializer.test("[fg:red]x[/fg]"));
+			assert.isFalse(
+				CliUiTest.serializer.test("some [b]bold[/b], [i]italic[/i] and [u]underlined[/u] BBCode"),
+				"style-only brackets in unrelated data are not claimed",
+			);
 			assert.isFalse(CliUiTest.serializer.test(42));
 			assert.strictEqual(CliUiTest.serializer.serialize(ansi), CliUiTest.styled(ansi));
 			assert.notInclude(CliUiTest.serializer.serialize(ansi), ESC);

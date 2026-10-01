@@ -1,15 +1,18 @@
 // Root and ./ui types are named through the package's own name, so the emitted ui-testing.d.ts imports them rather
 // than carrying copies a consumer's own layers and screens could not satisfy.
 import type * as Cli from "@effected/cli";
-import type { KeyName, Screen } from "@effected/cli/ui";
+import type { KeyName, Screen, ScreenControl } from "@effected/cli/ui";
 import type { ColorLevel } from "@effected/env";
 import { TerminalEnv } from "@effected/env";
 import type { Scope } from "effect";
 import { Effect, Fiber, Layer, Option } from "effect";
+import type { ReactElement } from "react";
 import { CliInteractive } from "../../CliInteractive.js";
 import { CliTheme } from "../../CliTheme.js";
 import type { Style, TokenName } from "../../Token.js";
 import { CliUi } from "../CliUi.js";
+import { holder } from "../internal/Holder.js";
+import { inkModules } from "../internal/ink.js";
 import { UiRenderOptions } from "../internal/renderOptions.js";
 import { UiStreams } from "../UiStreams.js";
 import { makeFakeStreams } from "./fakeStreams.js";
@@ -27,6 +30,10 @@ export interface CliUiTestOptions {
 	/**
 	 * The colour level of both streams; `"truecolor"` by default, so frames carry the marker palette that
 	 * {@link CliUiTest.styled} decodes to token markup. `"none"` gives escape-free frames.
+	 *
+	 * @remarks
+	 * Only truecolor keeps tokens apart. Below it, chalk maps every marker `#0000NN` to the same colour
+	 * (`ansi256(16)` at `"256"`, black at `"basic"`), so token identity is lost; do not snapshot tokens from such a run.
 	 */
 	readonly color?: ColorLevel;
 	/** The glyph set; Unicode by default. */
@@ -49,10 +56,22 @@ export interface CliUiTestHandle<A> {
 	readonly press: (...keys: ReadonlyArray<KeyName>) => Effect.Effect<void>;
 	/** Type text, one character at a time, each settling like a key. */
 	readonly type: (text: string) => Effect.Effect<void>;
+	/**
+	 * Show another screen in place of the current one, settling like a key.
+	 *
+	 * @remarks
+	 * `screen` is called with the same `ScreenControl` the first screen got, so `result` still resolves through it,
+	 * and only the screen's own subtree is swapped: the error boundary, root keys and colour hold stay mounted. Ink's
+	 * own `rerender` is never used. A rerender after the screen has ended is a defect, not a no-op, because a test
+	 * that does it has lost track of the screen.
+	 */
+	readonly rerender: (screen: Screen<A>) => Effect.Effect<void>;
 	/** The latest frame as token markup ({@link CliUiTest.styled}), each line's trailing spaces trimmed. */
 	readonly frame: Effect.Effect<string>;
 	/** The latest frame as Ink wrote it, escapes included. */
 	readonly rawFrame: Effect.Effect<string>;
+	/** The latest frame as plain text: no escapes and no markup, each line's trailing spaces trimmed. */
+	readonly plainFrame: Effect.Effect<string>;
 	/** Every frame so far, oldest first, as token markup like {@link CliUiTestHandle.frame}. */
 	readonly frames: Effect.Effect<ReadonlyArray<string>>;
 	/** How the screen ended: its value, or `Cancelled` or `NotInteractive`. Waits for it to end. */
@@ -189,9 +208,8 @@ const trimLines = (text: string): string =>
 		.map((line) => line.trimEnd())
 		.join("\n");
 
-const MARKUP = new RegExp(
-	`\\[/?(?:${TOKENS.join("|")}|b|dim|i|u|s|inverse)\\]|\\[(?:fg|bg):[^\\]\\s]+\\]|\\[/(?:fg|bg)\\]`,
-);
+/** Markup only this harness writes: a token tag or a colour tag. Style-only tags (`[b]`, `[i]`) are too common to claim. */
+const MARKUP = new RegExp(`\\[/?(?:${TOKENS.join("|")})\\]|\\[(?:fg|bg):[^\\]\\s]+\\]`);
 
 /** Run `register`'s check on native timers, which a `TestClock` cannot hold, until it says done. */
 const realTime = (poll: () => boolean): Effect.Effect<void> =>
@@ -207,8 +225,10 @@ const realTime = (poll: () => boolean): Effect.Effect<void> =>
 	});
 
 const QUIET_MS = 50;
+const TRAILING_QUIET_MS = 8;
 const ESCAPE_FLUSH_MS = 30;
 const MOUNT_LIMIT_MS = 2_000;
+const RERENDER_AFTER_END = "@effected/cli/ui/testing: rerender after the screen ended";
 
 /**
  * Drive and read Ink screens in tests: mount a screen on in-memory streams, press keys, and read its frames as token
@@ -231,6 +251,11 @@ export class CliUiTest {
 	 *
 	 * Waiting is on real time, through native timers a `TestClock` cannot hold, so it works under `it.effect` and
 	 * `it.live` alike, and never sleeps longer than 50 ms past the last write (30 ms first, for Esc).
+	 *
+	 * The first frame is awaited for at most 2 s: a screen that draws nothing for longer gives a handle whose `frames`
+	 * is `[]`. Screens run one at a time process-wide (`CliUi.run`), so a second handle opened while another is
+	 * still mounted waits for that mount: it returns at the 2 s cap with no frames, and its keys queue in its input until
+	 * it mounts.
 	 *
 	 * Debug frames bypass Ink's erase-and-redraw path, so a harness frame says nothing about what Ink writes between
 	 * frames on a real terminal (a screen clear, for instance); a test of that needs the production render path.
@@ -268,8 +293,21 @@ export class CliUiTest {
 				CliTheme.layer({ tokens: MARKER_STYLES, glyphs: options.glyphs ?? "unicode" }).pipe(Layer.provide(terminal)),
 				CliInteractive.layerTest(options.interactive ?? true),
 			);
+			let swap: ((next: ReactElement) => void) | undefined;
+			let control: ScreenControl<A> | undefined;
+			// The screen is held in a swappable holder, so rerender changes only its subtree, under the same control.
+			const held: Screen<A> = async (given) => {
+				control = given;
+				const initial = await screen(given);
+				return inkModules().react.createElement(holder(), {
+					initial,
+					bind: (next) => {
+						swap = next;
+					},
+				});
+			};
 			const fiber = yield* Effect.forkScoped(
-				CliUi.run(screen).pipe(
+				CliUi.run(held).pipe(
 					Effect.provideService(UiStreams, fake.streams),
 					Effect.provideService(UiRenderOptions, {
 						debug: true,
@@ -285,12 +323,22 @@ export class CliUiTest {
 					),
 				),
 			);
+			/**
+			 * Wait until a frame after `before` has been followed by a short quiet, so a reaction that renders twice
+			 * is read whole; or, with no new frame, until quiet since the later of `since` and the last write. Never
+			 * longer than `limitMs` from `since` once a frame has come.
+			 */
+			const settle = (before: number, since: number, limitMs = QUIET_MS): Effect.Effect<void> =>
+				realTime(() => {
+					if (ended) return true;
+					const now = Date.now();
+					if (raws.length > before) return now - lastWrite >= TRAILING_QUIET_MS || now - since >= limitMs;
+					return now - Math.max(since, lastWrite) >= QUIET_MS && now - since >= QUIET_MS;
+				});
+
 			const mountedBy = Date.now() + MOUNT_LIMIT_MS;
 			yield* realTime(() => raws.length > 0 || ended || Date.now() >= mountedBy);
-
-			/** Wait for the next frame after `before`, or for quiet since the later of `since` and the last write. */
-			const settle = (before: number, since: number): Effect.Effect<void> =>
-				realTime(() => raws.length > before || ended || Date.now() - Math.max(since, lastWrite) >= QUIET_MS);
+			yield* settle(0, Date.now());
 
 			const send = (bytes: string, flushMs = 0): Effect.Effect<void> =>
 				Effect.suspend(() => {
@@ -307,8 +355,23 @@ export class CliUiTest {
 						discard: true,
 					}),
 				type: (text) => Effect.forEach([...text], (character) => send(character), { discard: true }),
+				rerender: (next) =>
+					Effect.gen(function* () {
+						yield* realTime(() => swap !== undefined || ended);
+						if (ended || swap === undefined || control === undefined) {
+							return yield* Effect.die(new Error(RERENDER_AFTER_END));
+						}
+						const given = control;
+						const element = yield* Effect.promise(async () => next(given));
+						if (ended) return yield* Effect.die(new Error(RERENDER_AFTER_END));
+						const before = raws.length;
+						const since = Date.now();
+						swap(element);
+						yield* settle(before, since);
+					}),
 				frame: Effect.sync(() => trimLines(styled(raws.at(-1) ?? ""))),
 				rawFrame: Effect.sync(() => raws.at(-1) ?? ""),
+				plainFrame: Effect.sync(() => trimLines((raws.at(-1) ?? "").replace(ESCAPES, ""))),
 				frames: Effect.sync(() => raws.map((raw) => trimLines(styled(raw)))),
 				result: Fiber.join(fiber),
 			};
@@ -326,9 +389,10 @@ export class CliUiTest {
 	static readonly styled: (ansi: string) => string = styled;
 
 	/**
-	 * A Vitest snapshot serializer: it claims a string carrying escapes or token markup (a raw or styled frame, or a
-	 * `Render.ansi` string) and prints it as token markup with each line's trailing spaces trimmed, so a snapshot
-	 * reads without escapes and does not churn with the palette. Register it with `expect.addSnapshotSerializer`.
+	 * A Vitest snapshot serializer. It claims a string carrying escapes, a token tag or a colour tag (a raw or styled
+	 * frame, or a `Render.ansi` string), but not one whose only brackets are style tags like `[b]`, which unrelated data
+	 * uses too. It prints the string as token markup with each line's trailing spaces trimmed, so a snapshot reads
+	 * without escapes and does not churn with the palette. Register it with `expect.addSnapshotSerializer`.
 	 */
 	static readonly serializer: {
 		readonly test: (value: unknown) => boolean;
