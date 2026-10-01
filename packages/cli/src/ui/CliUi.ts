@@ -311,10 +311,11 @@ export class CliUi {
 	 *
 	 * A run begins at an `isStart` event (or wherever `begins` says, given the state before and after the event) and ends
 	 * at an `isTerminal` event; an event while no run is going that begins none is folded and not drawn, so what a program
-	 * reports after a run ends never mounts a second copy of it. A run mounts the view; its end unmounts it, which leaves its last frame on the terminal, and the next run
-	 * mounts afresh below it. A start while a run is drawn redraws in place: the frame is never cleared, so nothing above
-	 * it is erased (`okf/decisions/live-never-clears.md`, `okf/decisions/live-view-runs-and-modes.md`). The state is
-	 * never reset by the kit: a reducer that wants a fresh run resets it on the start.
+	 * reports after a run ends never mounts a second copy of it. A run mounts the view; its end unmounts it, which leaves
+	 * its last frame on the terminal, and the next run mounts afresh below it. A start while a run is drawn redraws in
+	 * place: the frame is never cleared, so nothing above it is erased (`okf/decisions/live-never-clears.md`,
+	 * `okf/decisions/live-view-runs-and-modes.md`). The state is never reset by the kit: a reducer that wants a fresh run
+	 * resets it on the start.
 	 *
 	 * The frame is at most the terminal's rows less one, re-read on every render and on a resize, so a tall frame never
 	 * makes Ink wipe the scrollback; its width is Ink's own (`okf/decisions/live-height-clamp-not-width.md`). The clamp
