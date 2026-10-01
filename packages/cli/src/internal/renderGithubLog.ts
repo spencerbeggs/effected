@@ -2,10 +2,11 @@ import { CommandNeutralizer, WorkflowCommand } from "@effected/github-commands";
 import type { Block, Document } from "../Doc.js";
 import { sanitize } from "../Fmt.js";
 import type { RenderContext } from "../Render.js";
-import { plainInline, renderPlain } from "./renderPlain.js";
+import { plainInline, renderPlainLines } from "./renderPlain.js";
 
+/** Plain lines, neutralized; a block that draws nothing, such as an empty table, gives no line at all. */
 const plainLines = (blocks: ReadonlyArray<Block>, ctx: RenderContext): ReadonlyArray<string> =>
-	blocks.length === 0 ? [] : CommandNeutralizer.lines(renderPlain(blocks, ctx));
+	renderPlainLines(blocks, ctx).flatMap((line) => CommandNeutralizer.lines(line));
 
 /** An annotation as the kit's own command, on the trusted path: escaped by `WorkflowCommand`, never neutralized. */
 const annotationLine = (block: Extract<Block, { readonly _tag: "Annotation" }>): string =>

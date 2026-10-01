@@ -321,7 +321,11 @@ const blockMd = (walk: Walk, block: Block, depth: number, compact = false): Line
 			const aligns = Array.from({ length: columns }, (_, index) => block.columns[index]?.align);
 			const rows = shown.map((row) => Array.from({ length: columns }, (_, index) => cell(row[index])));
 			const hidden = block.rows.length - shown.length;
-			return joinBlocks([tableMd(header, aligns, rows), hidden > 0 ? overflowMd(block.overflow, hidden, ctx) : []]);
+			const overflow = hidden > 0 ? overflowMd(block.overflow, hidden, ctx) : [];
+			// No header text and no row shown, such as a counts table over zero projects: an empty table is noise, as in
+			// the text renderers, which draw nothing for it.
+			if (rows.length === 0 && header.every((text) => text === "")) return overflow;
+			return joinBlocks([tableMd(header, aligns, rows), overflow]);
 		}
 		case "Tree": {
 			const lines: Array<string> = [];

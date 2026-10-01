@@ -199,6 +199,23 @@ describe("Doc.print: an empty document", () => {
 	);
 });
 
+describe("Doc.print: an empty headerless table", () => {
+	it.effect("prints nothing for it, and does not throw, for every format", () =>
+		Effect.gen(function* () {
+			for (const table of [Doc.countsTable([]), Doc.table([{ header: [] }], [])]) {
+				for (const format of ["auto", "plain", "ansi", "markdown", "githubLog"] as const) {
+					const { double, out, err } = capturing();
+					yield* Doc.print([table], { format }).pipe(
+						Effect.provide(layers({ audience: "human", stdout: { color: "basic" } })),
+						Effect.provideService(Console.Console, double),
+					);
+					assert.deepStrictEqual([out, err], [[], []], `${table._tag} ${format}`);
+				}
+			}
+		}),
+	);
+});
+
 describe("Doc.print: an explicit format wins over the audience", () => {
 	it.effect("every format, for every audience, is that renderer over the context Render.context builds", () =>
 		Effect.gen(function* () {

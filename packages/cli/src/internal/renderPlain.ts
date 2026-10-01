@@ -3,7 +3,7 @@ import type { RenderContext } from "../Render.js";
 import type { Span } from "./layout.js";
 import { flatten } from "./layout.js";
 import type { Flavour } from "./renderDoc.js";
-import { renderDoc, showsSuffix, targetText } from "./renderDoc.js";
+import { renderDocLines, showsSuffix, targetText } from "./renderDoc.js";
 
 /**
  * Inline content as spans of plain text: code in backticks, and a link as its label followed by its target in
@@ -36,11 +36,18 @@ const plain: Flavour = {
 };
 
 /**
+ * {@link renderPlain}'s finished lines, one entry per line: a block that draws nothing contributes none.
+ *
+ * @internal
+ */
+export const renderPlainLines = (doc: Document, ctx: RenderContext): ReadonlyArray<string> =>
+	// Plain text is for agents whatever the context says, so the path separator is always the agent one, and the
+	// context's paint and link are never reached: a span's token and link are dropped when its line is finished.
+	renderDocLines(doc, { ...ctx, audience: "agent" }, plain);
+
+/**
  * Render a document as plain text for an agent: no escape sequences, no decoration.
  *
  * @internal
  */
-export const renderPlain = (doc: Document, ctx: RenderContext): string =>
-	// Plain text is for agents whatever the context says, so the path separator is always the agent one, and the
-	// context's paint and link are never reached: a span's token and link are dropped when its line is finished.
-	renderDoc(doc, { ...ctx, audience: "agent" }, plain);
+export const renderPlain = (doc: Document, ctx: RenderContext): string => renderPlainLines(doc, ctx).join("\n");

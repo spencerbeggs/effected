@@ -176,9 +176,12 @@ const tableLines = (
 	);
 	const body = shown.map((row) => Array.from({ length: columns }, (_, index) => cellOf(walk, row[index])));
 	const showHeader = header.some((cell) => cell.length > 0);
+	const hidden = block.rows.length - shown.length;
+	// No header text and no row shown, such as a counts table over zero projects: nothing to draw but the overflow line.
+	if (!showHeader && body.length === 0) return hidden > 0 ? [overflowLine(walk, block.overflow, hidden)] : [];
 
 	const widths = Array.from({ length: columns }, (_, index) =>
-		Math.max(...[...(showHeader ? [header] : []), ...body].map((row) => widthOf(row[index] ?? []))),
+		Math.max(0, ...[...(showHeader ? [header] : []), ...body].map((row) => widthOf(row[index] ?? []))),
 	);
 	shrink(widths, width);
 
@@ -215,11 +218,9 @@ const tableLines = (
 				),
 			);
 		const piped = [...(showHeader ? [pipeRule, pipeRow(header)] : []), pipeRule, ...body.map(pipeRow), pipeRule];
-		const hiddenRows = block.rows.length - shown.length;
-		return hiddenRows > 0 ? [...piped, overflowLine(walk, block.overflow, hiddenRows)] : piped;
+		return hidden > 0 ? [...piped, overflowLine(walk, block.overflow, hidden)] : piped;
 	}
 	const lines = [...(showHeader ? [render(header), rule] : []), ...body.map(render)];
-	const hidden = block.rows.length - shown.length;
 	return hidden > 0 ? [...lines, overflowLine(walk, block.overflow, hidden)] : lines;
 };
 
@@ -424,15 +425,21 @@ const blockLines = (walk: Walk, block: Block, width: number, compact = false): R
 };
 
 /**
+ * Render a document to its finished lines in the given flavour: a block that draws nothing contributes no line, where
+ * the joined string could not tell it from one empty line.
+ *
+ * @internal
+ */
+export const renderDocLines = (doc: Document, ctx: RenderContext, flavour: Flavour): ReadonlyArray<string> => {
+	const width = Number.isNaN(ctx.width) ? 80 : Math.max(1, ctx.width);
+	const walk: Walk = { ctx, flavour };
+	return doc.flatMap((block) => blockLines(walk, block, width)).map((line) => flavour.finish(trimLine(line), ctx));
+};
+
+/**
  * Render a document to lines of text in the given flavour.
  *
  * @internal
  */
-export const renderDoc = (doc: Document, ctx: RenderContext, flavour: Flavour): string => {
-	const width = Number.isNaN(ctx.width) ? 80 : Math.max(1, ctx.width);
-	const walk: Walk = { ctx, flavour };
-	return doc
-		.flatMap((block) => blockLines(walk, block, width))
-		.map((line) => flavour.finish(trimLine(line), ctx))
-		.join("\n");
-};
+export const renderDoc = (doc: Document, ctx: RenderContext, flavour: Flavour): string =>
+	renderDocLines(doc, ctx, flavour).join("\n");
