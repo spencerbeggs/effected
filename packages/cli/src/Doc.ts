@@ -771,6 +771,10 @@ export class Doc {
 	/**
 	 * One line of content; with `truncate`, it is cut to the width with the glyph set's ellipsis instead of wrapping.
 	 *
+	 * @remarks
+	 * Without `truncate` a line longer than the width wraps. For a single line that must never wrap nor be cut, such
+	 * as a test's full name used as a title, use {@link Doc.verbatim}.
+	 *
 	 * @param content - the line
 	 * @param options - `truncate`
 	 */
@@ -811,6 +815,9 @@ export class Doc {
 	 *
 	 * @remarks
 	 * Plain, `ansi` and `githubLog` write the lines as they are; markdown fences them, so the indentation survives.
+	 *
+	 * It is the tool for a single line that must never wrap nor be cut, whatever the width: {@link Doc.line} wraps at
+	 * the width, or cuts with `truncate`, and `verbatim` does neither.
 	 *
 	 * @param text - the lines
 	 * @param options - `indent`, the spaces in front of every line; none by default
