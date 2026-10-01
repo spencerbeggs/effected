@@ -7,6 +7,7 @@ import type { ReactElement } from "react";
 import { createElement } from "react";
 import { vi } from "vitest";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
+import { screenAfter } from "../../src/ui/testing/terminalModel.js";
 import { Styled, useTerminalSize } from "../../src/ui.js";
 import type { State } from "../helpers/live.js";
 import {
@@ -23,7 +24,6 @@ import {
 	until,
 	warningsIn,
 } from "../helpers/live.js";
-import { screenAfter } from "../helpers/terminalModel.js";
 
 // Count loads of the peers through the kit's one loader, without changing what it does.
 const { loads } = vi.hoisted(() => ({ loads: { count: 0 } }));

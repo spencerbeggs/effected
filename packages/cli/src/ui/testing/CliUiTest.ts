@@ -1,11 +1,12 @@
 // Root and ./ui types are named through the package's own name, so the emitted ui-testing.d.ts imports them rather
 // than carrying copies a consumer's own layers and screens could not satisfy.
 import type * as Cli from "@effected/cli";
-import type { KeyName, Screen, ScreenControl } from "@effected/cli/ui";
+import type { KeyName, LiveHandle, LiveOptions, Screen, ScreenControl } from "@effected/cli/ui";
 import type { ColorLevel } from "@effected/env";
 import { TerminalEnv } from "@effected/env";
-import type { Scope } from "effect";
-import { Cause, Console, Effect, Exit, Fiber, Inspectable, Layer, Option } from "effect";
+import type { Duration, Scope } from "effect";
+import { Cause, Console, Effect, Exit, Fiber, Inspectable, Layer, Option, Queue, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import type { ReactElement } from "react";
 import { CliInteractive } from "../../CliInteractive.js";
 import { CliTheme } from "../../CliTheme.js";
@@ -16,6 +17,7 @@ import { inkModules } from "../internal/ink.js";
 import { UiRenderOptions } from "../internal/renderOptions.js";
 import { UiStreams } from "../UiStreams.js";
 import { makeFakeStreams } from "./fakeStreams.js";
+import { screenAfter } from "./terminalModel.js";
 
 /**
  * Options for {@link CliUiTest.render}, {@link CliUiTest.view} and {@link CliUiTest.session}.
@@ -172,6 +174,44 @@ export interface CliUiTestSession {
 	readonly stdout: Effect.Effect<string>;
 	/** What the program wrote to stderr through `Console` (`error`, `warn`, `trace`), one line per call. */
 	readonly stderr: Effect.Effect<string>;
+}
+
+/**
+ * A live view mounted by {@link CliUiTest.live}: its event stream to publish to, and its output on the production
+ * render path.
+ *
+ * @public
+ */
+export interface CliUiTestLive<E, S> {
+	/**
+	 * Publish one event to the view's stream, then wait as a key press does: until the view draws its next frame and a
+	 * short quiet follows, or 50 ms pass with nothing drawn.
+	 */
+	readonly publish: (event: E) => Effect.Effect<void>;
+	/** End the event stream, then wait for the view to finish (`handle.done`): it dies with what the view died of. */
+	readonly end: Effect.Effect<void>;
+	/**
+	 * Move the `TestClock` on by `duration`, which fires the view's tick, then wait as `publish` does. The test runs
+	 * under `it.effect`, whose clock is a `TestClock`.
+	 */
+	readonly advance: (duration: Duration.Input) => Effect.Effect<void>;
+	/** Resize the terminal, then wait as `publish` does. */
+	readonly resize: (columns: number, rows: number) => Effect.Effect<void>;
+	/** The last frame drawn, as token markup (see {@link CliUiTest.styled}); empty before the first. */
+	readonly frame: Effect.Effect<string>;
+	/** The last frame drawn, as written: with its escape sequences. */
+	readonly rawFrame: Effect.Effect<string>;
+	/** The last frame drawn, as plain text. */
+	readonly plainFrame: Effect.Effect<string>;
+	/** Every frame drawn, across every run, as token markup, oldest first. */
+	readonly frames: Effect.Effect<ReadonlyArray<string>>;
+	/**
+	 * What the terminal shows now, scrollback included, as plain text: every committed frame, every line logged above a
+	 * frame, and the frame drawn now, with Ink's erases applied. For assertions about what stays on the terminal.
+	 */
+	readonly transcript: Effect.Effect<string>;
+	/** The view's own handle: its state, its `logConsole`, and `done`. */
+	readonly handle: LiveHandle<S>;
 }
 
 /** The tokens, in the order their marker colours are numbered. */
@@ -362,11 +402,29 @@ interface Capture {
 	crash: { readonly defect: unknown } | undefined;
 }
 
+/** Synchronized-update brackets and cursor show/hide: written around a frame, never a frame themselves. */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the sequences start with ESC
+const FRAME_BRACKETS = /\u001b\[\?(?:2026|25)[hl]/g;
+
+/** A chunk of nothing but control sequences: Ink erasing its frame to write a log line above it. */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the sequences start with ESC
+const CONTROLS_ONLY = /^(?:\u001b\[[0-9;?]*[A-Za-z])*$/;
+
+/** The erase and cursor moves log-update writes before a frame; colour (SGR, `m`) is part of the frame. */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the sequences start with ESC
+const LEADING_MOVES = /^(?:\u001b\[[0-9;?]*[A-Za-ln-z])+/;
+
 /**
- * The in-memory terminal `render` and `session` share: fake streams, the environment, and a capture per mount, with
- * the settle-and-send machinery that drives a screen.
+ * The in-memory terminal `render`, `session` and `live` share: fake streams, the environment, and a capture per mount,
+ * with the settle-and-send machinery that drives a screen.
+ *
+ * @remarks
+ * In `"debug"` mode (screens) Ink writes each frame whole and the capture keeps it as written. In `"production"` mode
+ * (the live view) Ink runs as it does for real: each render writes its erase moves and the new frame in one write, so
+ * the capture keeps that write without its moves; a write of moves alone is Ink clearing the frame for a log line, not
+ * a frame. stderr is the same stream as stdout there, as on a terminal, so the transcript holds both.
  */
-const makeTerminal = (options: CliUiTestOptions) => {
+const makeTerminal = (options: CliUiTestOptions, mode: "debug" | "production" = "debug") => {
 	const columns = options.columns ?? 80;
 	const rows = options.rows ?? 24;
 	const color = options.color ?? "truecolor";
@@ -379,20 +437,28 @@ const makeTerminal = (options: CliUiTestOptions) => {
 		onStdoutWrite: (chunk) => {
 			lastWrite = Date.now();
 			const current = captures.at(-1);
-			if (frameDue && current !== undefined) {
+			if (!frameDue || current === undefined) return;
+			if (mode === "debug") {
 				frameDue = false;
 				current.raws.push(chunk);
+				return;
 			}
+			const text = chunk.replace(FRAME_BRACKETS, "");
+			if (text === "") return;
+			frameDue = false;
+			if (CONTROLS_ONLY.test(text)) return;
+			current.raws.push(text.replace(LEADING_MOVES, "").replace(/\n+$/, ""));
 		},
 	});
+	const streams = mode === "production" ? { ...fake.streams, stderr: fake.streams.stdout } : fake.streams;
 	const stream = { isTerminal: true, color, hyperlinks: false, columns: Option.some(columns) };
 	const terminal = TerminalEnv.layerTest({ stdinIsTerminal: true, stdout: stream, stderr: stream });
 	const layer = Layer.mergeAll(
 		CliTheme.layer({ tokens: MARKER_STYLES, glyphs: options.glyphs ?? "unicode" }).pipe(Layer.provide(terminal)),
 		CliInteractive.layerTest(options.interactive ?? true),
-		Layer.succeed(UiStreams, fake.streams),
+		Layer.succeed(UiStreams, streams),
 		Layer.succeed(UiRenderOptions, {
-			debug: true,
+			...(mode === "debug" ? { debug: true } : {}),
 			onRender: () => {
 				frameDue = true;
 			},
@@ -493,7 +559,7 @@ const makeTerminal = (options: CliUiTestOptions) => {
 		return { handle, raws, after, surfaced };
 	};
 
-	return { fake, layer, captures, screen };
+	return { fake, layer, captures, screen, settle };
 };
 
 /**
@@ -768,6 +834,77 @@ export class CliUiTest {
 				stdout: Effect.sync(() => output.out.join("")),
 				stderr: Effect.sync(() => output.err.join("")),
 			} satisfies CliUiTestSession;
+		});
+
+	/**
+	 * Mount a live view (`CliUi.live`) on a fresh in-memory terminal for the enclosing scope, with an event stream the
+	 * test publishes to, and read what it draws on the production render path.
+	 *
+	 * @remarks
+	 * The options are `CliUi.live`'s without `events`, which the harness supplies, and the terminal's own (`columns`,
+	 * `rows`, `color`, `glyphs`, `interactive`). The view runs as it does for real: Ink is interactive and not in debug
+	 * mode, so frames are what Ink actually writes, committed frames stay on the terminal, and `transcript` shows what is
+	 * left there, scrollback included, through a small terminal model (it does not wrap a line wider than the terminal).
+	 * stderr is the same stream as stdout, as on a terminal, so a line logged through `handle.logConsole` lands in the
+	 * transcript too.
+	 *
+	 * Write live tests with `it.effect`: the view's tick runs on the `TestClock`, so `advance` (or `TestClock.adjust`)
+	 * drives it frame by frame, and the frame index is `floor(now / tickMillis)` from the clock's epoch. The waits after
+	 * `publish`, `advance` and `resize` are real time, which the `TestClock` does not hold.
+	 *
+	 * @example
+	 * ```ts
+	 * const view = yield* CliUiTest.live({ initial: 0, reduce: (n) => n + 1, render, isStart, isTerminal })
+	 * yield* view.publish({ _tag: "RunStarted" })
+	 * yield* view.advance("160 millis")
+	 * assert.include(yield* view.plainFrame, "frame 2")
+	 * ```
+	 *
+	 * @param options - the live view's options without `events`, and the terminal's size, colour, glyphs and
+	 * interactivity
+	 */
+	static readonly live = <E, S>(
+		options: Omit<LiveOptions<E, S>, "events"> & CliUiTestOptions,
+	): Effect.Effect<CliUiTestLive<E, S>, never, Scope.Scope> =>
+		Effect.gen(function* () {
+			const { columns, rows, color, glyphs, interactive, ...view } = options;
+			const terminal = makeTerminal(
+				{
+					...(columns === undefined ? {} : { columns }),
+					...(rows === undefined ? {} : { rows }),
+					...(color === undefined ? {} : { color }),
+					...(glyphs === undefined ? {} : { glyphs }),
+					...(interactive === undefined ? {} : { interactive }),
+				},
+				"production",
+			);
+			const queue = yield* Queue.unbounded<E, Cause.Done>();
+			const handle = yield* CliUi.live<E, S>({ ...view, events: Stream.fromQueue(queue) }).pipe(
+				Effect.provide(terminal.layer),
+			);
+			const raws = (): ReadonlyArray<string> => terminal.captures.flatMap((capture) => capture.raws);
+			const settled = <X>(effect: Effect.Effect<X>): Effect.Effect<void> =>
+				Effect.suspend(() => {
+					const before = raws().length;
+					const since = Date.now();
+					return Effect.andThen(
+						effect,
+						terminal.settle(raws, () => false, before, since),
+					);
+				});
+			const last = (): string => raws().at(-1) ?? "";
+			return {
+				publish: (event) => settled(Queue.offer(queue, event)),
+				end: Effect.andThen(Queue.end(queue), handle.done),
+				advance: (duration) => settled(TestClock.adjust(duration)),
+				resize: (nextColumns, nextRows) => settled(Effect.sync(() => terminal.fake.resize(nextColumns, nextRows))),
+				frame: Effect.sync(() => trimLines(styled(last()))),
+				rawFrame: Effect.sync(last),
+				plainFrame: Effect.sync(() => trimLines(last().replace(ESCAPES, ""))),
+				frames: Effect.sync(() => raws().map((raw) => trimLines(styled(raw)))),
+				transcript: Effect.sync(() => screenAfter(terminal.fake.stdout()).join("\n")),
+				handle,
+			};
 		});
 
 	/**

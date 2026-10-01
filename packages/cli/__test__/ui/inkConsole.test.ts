@@ -9,9 +9,9 @@ import type { InkConsole } from "../../src/ui/internal/inkConsole.js";
 import { makeInkConsole } from "../../src/ui/internal/inkConsole.js";
 import type { FakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
+import { screenAfter } from "../../src/ui/testing/terminalModel.js";
 import type { UiStreamsShape } from "../../src/ui.js";
 import { UiStreams } from "../../src/ui.js";
-import { screenAfter } from "../helpers/terminalModel.js";
 
 /** A two-row frame, so a torn repaint shows as a stranded header. */
 const frame = (tick: number): ReactElement =>

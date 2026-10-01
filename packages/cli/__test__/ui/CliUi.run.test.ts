@@ -12,9 +12,9 @@ import { inkChalk } from "../../src/ui/internal/inkChalk.js";
 import { useScreenGuard } from "../../src/ui/internal/ScreenContext.js";
 import type { FakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
+import { screenAfter } from "../../src/ui/testing/terminalModel.js";
 import type { Screen, ScreenControl } from "../../src/ui.js";
 import { CliUi, KeyTable, Select, UiStreams, useKeys } from "../../src/ui.js";
-import { screenAfter } from "../helpers/terminalModel.js";
 
 // Count loads of the peers through the kit's one loader, without changing what it does.
 const { loads } = vi.hoisted(() => ({ loads: { count: 0 } }));

@@ -29,11 +29,11 @@ const sourceExports = (text: string): ReadonlyArray<string> =>
 		.sort();
 
 const CONSUMER = `import { CliTheme } from "@effected/cli";
-import type { KeyName, Screen } from "@effected/cli/ui";
+import type { KeyName, LiveOptions, Screen } from "@effected/cli/ui";
 import { CliUi, Confirm } from "@effected/cli/ui";
 import { CliUiTest } from "@effected/cli/ui/testing";
 import type { Scope } from "effect";
-import { Effect, Exit, Fiber, Option } from "effect";
+import { Console, Effect, Exit, Fiber, Option, Stream } from "effect";
 
 const program = CliUi.run<number>(() => {
 	throw new Error("never mounted");
@@ -93,6 +93,31 @@ export const viewed: Effect.Effect<string, never, Scope.Scope> = Effect.gen(func
 	// @ts-expect-error a view has no result
 	void view.result;
 	return yield* view.plainFrame;
+});
+
+// A live view over a stream (vitest-agent's reporter), and the same view driven by the harness.
+type Ev = { readonly _tag: "Start" } | { readonly _tag: "Tick" } | { readonly _tag: "End" };
+declare const draw: LiveOptions<Ev, number>["render"];
+const liveOptions = {
+	initial: 0,
+	reduce: (count: number, _event: Ev) => count + 1,
+	render: draw,
+	isStart: (event: Ev) => event._tag === "Start",
+	isTerminal: (event: Ev) => event._tag === "End",
+};
+export const watched: Effect.Effect<number, never, Scope.Scope> = Effect.gen(function* () {
+	const view = yield* CliUi.live({ ...liveOptions, events: Stream.make<Array<Ev>>({ _tag: "Start" }, { _tag: "End" }) });
+	yield* Effect.provideService(Effect.log("above the frame"), Console.Console, view.logConsole);
+	yield* view.done;
+	return yield* view.state;
+}).pipe(Effect.provide(CliTheme.layerTest()));
+export const harnessed: Effect.Effect<string, never, Scope.Scope> = Effect.gen(function* () {
+	const view = yield* CliUiTest.live({ ...liveOptions, columns: 40, color: "none" });
+	yield* view.publish({ _tag: "Start" });
+	yield* view.advance("80 millis");
+	const frame: string = yield* view.plainFrame;
+	yield* view.end;
+	return frame + (yield* view.transcript);
 });
 `;
 
@@ -470,6 +495,7 @@ const UI_VALUES = [
 const UI_TESTING_TYPES_AND_VALUES = [
 	"CliUiTest",
 	"CliUiTestHandle",
+	"CliUiTestLive",
 	"CliUiTestNextOptions",
 	"CliUiTestOptions",
 	"CliUiTestScreen",

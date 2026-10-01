@@ -10,6 +10,7 @@
 export {
 	CliUiTest,
 	type CliUiTestHandle,
+	type CliUiTestLive,
 	type CliUiTestNextOptions,
 	type CliUiTestOptions,
 	type CliUiTestScreen,

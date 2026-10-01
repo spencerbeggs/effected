@@ -5,6 +5,7 @@ import { createElement } from "react";
 import { CliInteractive, CliTheme } from "../../src/index.js";
 import type { FakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
+import { screenAfter } from "../../src/ui/testing/terminalModel.js";
 import type { LiveHandle } from "../../src/ui.js";
 import { CliUi, UiStreams } from "../../src/ui.js";
 import type { Ev, State } from "../helpers/live.js";
@@ -25,7 +26,6 @@ import {
 	until,
 	warningsIn,
 } from "../helpers/live.js";
-import { screenAfter } from "../helpers/terminalModel.js";
 
 describe("CliUi.live: subscription and the fold", () => {
 	it.live("a PubSub-backed stream is subscribed when live returns: an event published at once is seen", () =>

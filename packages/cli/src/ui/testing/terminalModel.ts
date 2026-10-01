@@ -1,11 +1,15 @@
 const ESC = String.fromCharCode(0x1b);
 
 /**
- * A small terminal model for production-path tests: what a terminal shows after `written`, as its non-empty lines.
+ * A small terminal model for the production render path: what a terminal shows after `written`, as its non-empty
+ * lines.
  *
  * @remarks
  * It applies printable text, line feeds, and the erase and cursor moves Ink's log-update writes (erase line, cursor
- * up, cursor to column one); every other escape is ignored. Shared by the `clear` tests and the live view's.
+ * up, cursor to column one); every other escape is ignored. It does not wrap a line wider than the terminal. Shared by
+ * `CliUiTest.live`'s transcript and the kit's own production-path tests.
+ *
+ * @internal
  */
 export const screenAfter = (written: string): ReadonlyArray<string> => {
 	const lines: Array<string> = [""];
