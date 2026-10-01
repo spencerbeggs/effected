@@ -214,6 +214,35 @@ describe("CliUiTest.render", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.live("a screen that never stops drawing still lets a key press return: the wait is bounded", () =>
+		Effect.gen(function* () {
+			const Restless = (): ReactElement => {
+				const [count, setCount] = useState(0);
+				// A redraw on every turn of the loop: a write always lands between the harness's quiet and its confirmation.
+				useEffect(() => {
+					let next: ReturnType<typeof setImmediate> | undefined;
+					const redraw = (): void => {
+						setCount((value) => value + 1);
+						next = setImmediate(redraw);
+					};
+					next = setImmediate(redraw);
+					return () => {
+						if (next !== undefined) clearImmediate(next);
+					};
+				}, []);
+				return createElement(Text, null, `count:${count}`);
+			};
+			const handle = yield* CliUiTest.render(showing(() => createElement(Restless)));
+			const started = Date.now();
+			yield* handle.type("x").pipe(Effect.timeout("2 seconds"));
+			assert.isBelow(
+				Date.now() - started,
+				500,
+				"a key press waits at most about its limit, not until the screen rests",
+			);
+		}).pipe(Effect.scoped),
+	);
+
 	it.effect("rerender swaps the screen's element in place: the new frame shows, under the same control", () =>
 		Effect.gen(function* () {
 			const controls: Array<ScreenControl<string>> = [];

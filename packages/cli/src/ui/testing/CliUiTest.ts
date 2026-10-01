@@ -392,12 +392,18 @@ const realTime = (poll: () => boolean): Effect.Effect<void> =>
  */
 const afterDueTimers: Effect.Effect<void> = Effect.callback<void>((resume) => {
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	let after: ReturnType<typeof setImmediate> | undefined;
 	const immediate = setImmediate(() => {
-		timer = setTimeout(() => resume(Effect.void), 0);
+		timer = setTimeout(() => {
+			// One more check phase: work a due timer scheduled there (React's scheduler runs on `setImmediate` in Node,
+			// so an update a timer makes can commit, and Ink write its frame, only then) runs before the resume.
+			after = setImmediate(() => resume(Effect.void));
+		}, 0);
 	});
 	return Effect.sync(() => {
 		clearImmediate(immediate);
 		if (timer !== undefined) clearTimeout(timer);
+		if (after !== undefined) clearImmediate(after);
 	});
 });
 
@@ -518,7 +524,9 @@ const makeTerminal = (options: CliUiTestOptions, mode: "debug" | "production" = 
 	/**
 	 * Wait until a frame after `before` has been followed by a short quiet, so a reaction that renders twice is read
 	 * whole; or, with no new frame, until quiet since the later of `since` and the last write. Never longer than
-	 * `limitMs` from `since` once a frame has come.
+	 * `limitMs` from the first new frame once one has come, so a screen that never stops drawing still lets the wait end;
+	 * counted from that frame rather than from `since`, so a loaded machine that was slow to draw it still gets the
+	 * time to see the reaction that follows it.
 	 */
 	const settle = (
 		raws: () => ReadonlyArray<string>,
@@ -528,21 +536,27 @@ const makeTerminal = (options: CliUiTestOptions, mode: "debug" | "production" = 
 		limitMs = QUIET_MS,
 	): Effect.Effect<void> =>
 		Effect.suspend(() => {
+			let firstFrameAt: number | undefined;
+			const pastLimit = (now: number): boolean => firstFrameAt !== undefined && now - firstFrameAt >= limitMs;
 			const quiet = realTime(() => {
 				if (ended()) return true;
 				const now = Date.now();
-				if (raws().length > before) return now - lastWrite >= TRAILING_QUIET_MS || now - since >= limitMs;
+				if (raws().length > before) {
+					firstFrameAt ??= now;
+					return now - lastWrite >= TRAILING_QUIET_MS || pastLimit(now);
+				}
 				return now - Math.max(since, lastWrite) >= QUIET_MS && now - since >= QUIET_MS;
 			});
-			return Effect.flatMap(quiet, () => {
-				// A quiet judged by a late poll is confirmed only once every timer already due has run: on a loaded machine
-				// the poll can wake with a screen's own reaction timer overdue too, and fire first. A zero-delay timer comes
-				// due after all of them, so a write they make is seen, and the wait goes on from it.
+			// A quiet judged by a late poll is confirmed only once every timer already due has run: on a loaded machine the
+			// poll can wake with a screen's own reaction timer overdue too, and fire first. A write they make keeps the wait
+			// going, still bounded by `limitMs` from the first new frame.
+			const confirmed: Effect.Effect<void> = Effect.flatMap(quiet, () => {
 				const seen = lastWrite;
 				return Effect.flatMap(afterDueTimers, () =>
-					lastWrite === seen || ended() ? Effect.void : settle(raws, ended, before, Date.now(), limitMs),
+					lastWrite === seen || ended() || pastLimit(Date.now()) ? Effect.void : confirmed,
 				);
 			});
+			return confirmed;
 		});
 
 	/**
