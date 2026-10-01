@@ -157,7 +157,7 @@ const TICK_INVALID = (tickMillis: number): string =>
 	`@effected/cli/ui: CliUi.live's tickMillis must be a positive, finite number of milliseconds, not ${tickMillis}`;
 
 const DEGRADED = (error: unknown): string =>
-	`@effected/cli/ui: the live view stopped drawing this run, and will draw its last frame when it ends: ${
+	`@effected/cli/ui: the live view stopped drawing this run; its last good frame stays (or is printed once at its end): ${
 		error instanceof Error ? error.message : String(error)
 	}`;
 
