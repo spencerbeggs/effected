@@ -29,12 +29,13 @@ fi
 # Drain the envelope on stdin; we do not need any field from it.
 cat >/dev/null 2>&1 || true
 
-# The kit's current Effect pin. ONE-LINE MAINTENANCE: bump this on every
-# catalog advance, in the same commit that moves catalog:effect. It is
+# The kit's current Effect pin. ONE-LINE MAINTENANCE: bump this whenever the
+# lockfile's resolved effect moves (catalog:effect is a caret range, so the
+# exact version is the lockfile's, not the catalog's). It is
 # deliberately a constant rather than read from the host repo's catalog — the
 # point is to tell a LAGGING repo what it should move to, so comparing against
 # that repo's own (possibly stale) catalog would defeat the check.
-EFFECT_PIN="4.0.0-rc.118"
+EFFECT_PIN="4.0.0"
 
 # --- vendored-source posture -------------------------------------------------
 # Resolve the host repo root. CLAUDE_PROJECT_DIR is set by Claude Code; fall
@@ -87,8 +88,8 @@ Effect-TS v4 guides.
 READ THIS BEFORE WRITING ANY EFFECT CODE.
 
 This project is Effect **v4 only**. Effect v4 is a ground-up redesign, not an
-increment on v3, and it is still moving on the release-candidate line. Whatever
-you know about Effect from training is v3-shaped and is **out of date by
+increment on v3, and although it is stable, its API still looks nothing like v3.
+Whatever you know about Effect from training is v3-shaped and is **out of date by
 construction** — not "mostly right", not "close enough to adapt". Modules moved
 into core, Either is gone, @effect/cli and @effect/sql no longer exist as
 packages, and signatures you are confident about have changed.

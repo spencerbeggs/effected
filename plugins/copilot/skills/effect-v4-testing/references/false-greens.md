@@ -496,7 +496,7 @@ Three sharp edges, all clock-adjacent:
   through `Effect.scoped`:
   `makeTester<Scope.Scope>(flow(Effect.scoped, Effect.provide(TestEnv)), it)`
   (`@effect/vitest` `internal/internal.ts:386`), and its type is
-  `Tester<R | Scope.Scope>` (`index.ts:117`), so a `Scope` requirement is
+  `Tester<R | Scope.Scope>` (`index.ts:121`), so a `Scope` requirement is
   satisfied by the runner. An explicit `Effect.scoped` in the pipeline is
   harmless — it just closes the scope earlier, before the test ends — but it is
   belt-and-braces, not a requirement.

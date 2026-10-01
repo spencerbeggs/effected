@@ -555,7 +555,7 @@ you now subclass the schema value directly (`class MyString extends Schema.Strin
 ## Reference map
 
 Load the one section you need. Each file carries a provenance banner (upstream
-source + the prerelease-skew warning).
+source + the version-skew warning).
 
 | Reference | Load when |
 | --- | --- |

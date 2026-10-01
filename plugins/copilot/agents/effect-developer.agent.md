@@ -24,8 +24,8 @@ Effect-TS v4 guides; lean on them and do not re-derive them from memory.
 
 ## Prime directive: verify against the installed package
 
-Effect v4 is a fast-moving prerelease line (the workspace `effect` catalog carries the exact pin).
-Before you write any API you are not 100% certain of, confirm it. v3 muscle
+Effect v4 is a ground-up redesign, so verify against the installed `effect` (the lockfile's
+resolution is the version you compile against). Before you write any API you are not 100% certain of, confirm it. v3 muscle
 memory is a liability here — many names moved, split modules, or were removed.
 
 Use `effect-v4-source-lookup` and climb only as far as your claim needs:

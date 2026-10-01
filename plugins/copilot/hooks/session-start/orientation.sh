@@ -30,11 +30,12 @@ ENVELOPE="$(cat 2>/dev/null || true)"
 CWD="$(printf '%s' "$ENVELOPE" | jq -r '.cwd // empty' 2>/dev/null || true)"
 [ -n "$CWD" ] && [ -d "$CWD" ] || CWD="$PWD"
 
-# The kit's current Effect pin. ONE-LINE MAINTENANCE: bump on every catalog
-# advance, in the same commit that moves catalog:effect. Deliberately a constant
+# The kit's current Effect pin. ONE-LINE MAINTENANCE: bump whenever the lockfile's
+# resolved effect moves (catalog:effect is a caret range, so the exact version is
+# the lockfile's, not the catalog's). Deliberately a constant
 # rather than read from the host repo's catalog — the point is to tell a LAGGING
 # repo what to move to.
-EFFECT_PIN="4.0.0-rc.118"
+EFFECT_PIN="4.0.0"
 
 # Walk up from cwd to the repo root (Copilot gives cwd, not the root).
 PROJECT_DIR="$CWD"
@@ -82,8 +83,8 @@ The "effected" plugin is loaded: Effect v4 development skills plus three
 specialist subagents, distilled from the @effected packages and the official
 Effect-TS v4 guides.
 
-This project is Effect **v4 only**. Effect v4 is a ground-up redesign and is
-still moving on the release-candidate line, so whatever you know about Effect
+This project is Effect **v4 only**. Effect v4 is a ground-up redesign and, though
+stable, nothing like v3, so whatever you know about Effect
 from training is out of date by construction — modules moved into core, there is
 no Either, and @effect/cli and @effect/sql do not exist as packages. Do NOT write
 Effect from memory: delegate to a specialist below, or load the skill, and verify
@@ -220,7 +221,7 @@ When a task is substantially "write or review Effect code" or "build
 an action / call the GitHub API," dispatch the matching agent rather than
 doing it inline — when dispatch is permitted;
 otherwise load the same skills and do it inline. Either way what matters is the
-verify-against-installed-beta, typed-error-channel, and hardening disciplines
+verify-against-installed-effect, typed-error-channel, and hardening disciplines
 they carry, which are easy to drop when working freehand.
 
 <dogfood_feedback>
@@ -229,7 +230,7 @@ feedback loops, both proactive:
 
 Plugin: if a skill, an agent, or this SessionStart hook gives wrong,
 unhelpful, or confusing guidance, fires at the wrong moment, recommends a v4
-API that does not match the installed \`effect\` beta, or shows any rough edge
+API that does not match the installed \`effect\`, or shows any rough edge
 worth improving, note it as you go.
 
 Packages: if an @effected package has a gap in its services, an API that

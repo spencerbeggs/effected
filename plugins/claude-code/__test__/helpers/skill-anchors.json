@@ -43,11 +43,11 @@
 		},
 		{
 			"file": "effect-v4-testing/SKILL.md",
-			"anchor": "packages/vitest/src/index.ts:61-62",
+			"anchor": "packages/vitest/src/index.ts:65-66",
 			"source": "vitest:index.ts",
 			"symbols": {
-				"61": "skipIf:",
-				"62": "runIf:"
+				"65": "skipIf:",
+				"66": "runIf:"
 			}
 		},
 		{
@@ -62,19 +62,19 @@
 		},
 		{
 			"file": "effect-v4-testing/references/providing-layers.md",
-			"anchor": "packages/vitest/src/index.ts:116-131",
+			"anchor": "packages/vitest/src/index.ts:120-135",
 			"source": "vitest:index.ts",
 			"symbols": {
-				"116": "export interface MethodsNonLive<R = never, ExtraContext = {}>"
+				"120": "export interface MethodsNonLive<R = never, ExtraContext = {}>"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/providing-layers.md",
-			"anchor": "`:245-256`",
+			"anchor": "`:249-260`",
 			"source": "vitest:index.ts",
 			"symbols": {
-				"245": "export const layer: <R, E>(",
-				"256": "= internal.layer"
+				"249": "export const layer: <R, E>(",
+				"260": "= internal.layer"
 			}
 		},
 		{
@@ -113,19 +113,19 @@
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "packages/vitest/src/index.ts:108,161",
+			"anchor": "packages/vitest/src/index.ts:112,165",
 			"source": "vitest:index.ts",
 			"symbols": {
-				"108": "arbitrary?: Arbitrary.CheckOptions",
-				"161": "arbitrary?: Arbitrary.CheckOptions"
+				"112": "arbitrary?: Arbitrary.CheckOptions",
+				"165": "arbitrary?: Arbitrary.CheckOptions"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "index.ts:117",
+			"anchor": "index.ts:121",
 			"source": "vitest:index.ts",
 			"symbols": {
-				"117": "readonly effect: Vitest.Tester<R | Scope.Scope, ExtraContext>"
+				"121": "readonly effect: Vitest.Tester<R | Scope.Scope, ExtraContext>"
 			}
 		},
 		{
@@ -440,10 +440,10 @@
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "Schema.ts:6636",
+			"anchor": "Schema.ts:6662",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"6636": "const canExport = /^[dg]*uy?$/.test(flags)"
+				"6662": "const canExport = /^[dg]*uy?$/.test(flags)"
 			}
 		},
 		{

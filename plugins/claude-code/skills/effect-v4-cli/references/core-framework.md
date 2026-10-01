@@ -2,9 +2,9 @@
 
 Loaded from `effect-v4-cli`. Covers the module inventory, PascalCase constructors, `Flag.Boolean`'s missing default, `Command.Environment`, and the two different `Command`s.
 
-**Do not install `@effect/cli`.** Its latest release is `0.77.0`, it declares
-`peerDependencies: { effect: "^3.22.1", "@effect/platform": "^0.97.1",
-"@effect/printer": "^0.51.0", "@effect/printer-ansi": "^0.51.0" }`, and its
+**Do not install `@effect/cli`.** Its latest release is on the `0.77.x` line, it declares
+`peerDependencies: { effect: "^3.22.x", "@effect/platform": "^0.97.x",
+"@effect/printer": "^0.51.x", "@effect/printer-ansi": "^0.51.x" }`, and its
 only dist-tags are `latest` and `snapshot` — **no `beta` tag, so there is no v4
 line**. It keeps shipping releases, so "it was updated recently" is not evidence
 of v4 support; check the `effect` peer range, which has never crossed to `^4`.

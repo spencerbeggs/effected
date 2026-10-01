@@ -14,7 +14,7 @@ already ships (the `effect-v4-planning` contract-inventory gate).
 `packages/effect/src/<Name>.ts` (testing modules under
 `src/testing/`, the namespace modules below under `src/<ns>/`; resolve the
 tree root via `effect-v4-source-lookup`). The vendored
-submodule is pinned to the installed prerelease and is the authority on existence,
+submodule is pinned to the installed `effect` release and is the authority on existence,
 signatures, and — read alongside a probe — semantics (`effect-v4-source-lookup`
 owns the evidence ladder). It is also the **style oracle**: before building
 anything module-shaped, read how core writes the analogous module.
@@ -23,8 +23,14 @@ anything module-shaped, read how core writes the analogous module.
 import path — every module in core imports as `effect/<Name>` or
 `effect/<ns>/<Name>` alike. The namespace modules below (`ai`, `cli`, `http`,
 `http-api`, `sql`, and the rest of the table under "The unstable-stability
-namespaces") carry `@stability unstable` and may still break in a minor
-release; everything else follows strict semver.
+namespaces"), `Arbitrary` and `testing/TestSchema` carry `@stability unstable`:
+the API may break in a minor release. A few symbols in otherwise-stable modules
+carry the tag too (the network-address schemas in `Schema`, for one), and so does
+any API that exposes a third-party dependency's types. `@stability experimental`
+is the weaker still — it may break across patch versions. An API with no tag
+follows strict semver. Read the tag in the vendored source before building on an
+API (`grep -n "@stability" $SRC/packages/effect/src/<Name>.ts`), and keep unstable
+ones behind one seam of your own so a minor release has a single place to fix.
 
 ## Routing by task
 
@@ -182,7 +188,7 @@ phrasing and missed on its module name.
 | `Utils` | internal generator machinery behind `Effect.gen`/HKT | internal — skip |
 | `testing/TestClock` | controllable `Clock` service driving virtual time | make sleep/timeout/schedule/retry tests deterministic by advancing time |
 | `testing/TestConsole` | test `Console` capturing log/error calls in memory | assert on console output deterministically in tests |
-| `testing/TestSchema` | assertions for schema construct/decode/encode/arbitrary/round-trip (its arbitrary assertions run `Arbitrary.ts`'s `checkEffect`, `TestSchema.ts:22-25`) | testing that a schema decodes, encodes, and round-trips correctly. **There is no `testing/FastCheck`** — there is no fast-check bridge; property generation is `Arbitrary` |
+| `testing/TestSchema` | assertions for one schema: `new TestSchema.Asserts(schema)` with `make`, `decoding()` / `encoding()` (`succeed`/`fail` as Promises, `succeedEffect`/`failEffect` as lazy Effects), `arbitrary()` and `verifyRoundTrip` / `verifyRoundTripEffect`; the property checks run `Arbitrary.checkEffect`. `@stability unstable` | testing that a schema constructs, decodes, encodes and round-trips correctly. The `Effect`-suffixed forms use the calling fiber's services, so they compose inside `it.effect`. **There is no `testing/FastCheck`** — there is no fast-check bridge; property generation is `Arbitrary` |
 
 ## The unstable-stability namespaces (`effect/<ns>`)
 

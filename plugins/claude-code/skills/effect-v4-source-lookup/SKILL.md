@@ -13,9 +13,9 @@ here.)
 
 **Every claim this skill settles is written about current behaviour, never a
 version.** Cite a source finding by module and symbol, with the line resolved
-against the vendored tree, and never name an Effect prerelease — the reader
-takes their own Effect through their own pin, and a number in a claim goes
-stale on the next advance without teaching anything the current tree does
+against the vendored tree, and never name a pinned Effect version as history —
+the reader takes their own Effect through their own pin, and a number in a claim
+goes stale on the next advance without teaching anything the current tree does
 not already show.
 
 ## The evidence ladder
@@ -27,6 +27,8 @@ Three rungs, ordered by cost. Each settles a strictly different class of questio
 | 1 | `$SRC/migration/*.md`, `$SRC/ai-docs/`, `$SRC/LLMS.md` | **Renames** |
 | 2 | `$SRC/packages/*/src`, or `$EFFECT_SRC` | **Existence and signature** |
 | 3 | A probe compiled and run from inside a package | **Semantics** |
+
+**Rung 2 also tells you how far to trust an API.** A TSDoc `@stability unstable` tag on a module or symbol means it may break in a minor release; an untagged API follows strict semver. Grep the source for the tag (`grep -n "@stability" $SRC/packages/effect/src/<Name>.ts`) before building on an API, and treat an unstable one as a moving target: pin your usage behind one seam and re-verify it when the installed `effect` moves.
 
 ### Resolving `$SRC` and `$EFFECT_SRC`
 
@@ -71,9 +73,9 @@ a right one.
 #### When they disagree, the installed source wins
 
 **Do not assume the vendored tree matches what you compile against.** The submodule
-sits at the exact tag it was last pinned to, and a catalog bump that lands without its
+sits at the exact tag it was last pinned to, and a lockfile resolution that moves without its
 matching `savvy repos pin` leaves the two silently disagreeing — exactly this drift
-happened under the old subtree pattern, a vendored prerelease sitting one advance
+happened under the old subtree pattern, a vendored tree sitting one release
 behind an already-bumped install — and version-checking is still the reader's job, not
 the tooling's.
 
@@ -155,7 +157,7 @@ directories, which outlive the lockfile: during a catalog advance the previous
 release's directory lingers there, orphaned. And a grep of the lockfile itself
 can show a second version that is not a second copy — while a toolchain
 `overrides` bridge is up, `pnpm-lock.yaml` carries a redirect line
-(`effect@4.0.0-rc.109: 4.0.0-rc.112`) whose *only* hit is the mapping. One
+(`effect@<old>: <new>`) whose *only* hit is the mapping. One
 resolved version, two spellings. (A `packageExtensions` bridge, the other shape,
 really does keep two copies — read `okf/conventions/one-resolved-effect-copy.md` for which shape stands.) What voids a probe is the version it
 **resolves**, printed from inside itself.
@@ -346,7 +348,7 @@ A probe that cannot fail is worse than no probe. Every precondition below exists
 
 Some kit repos (the effected monorepo among them) ship a private `scratchpad/`
 workspace member with every kit package at `workspace:*` and `effect` at the
-catalog pin. There, a probe is TYPED: write free-form probes as
+catalog's resolution. There, a probe is TYPED: write free-form probes as
 `scratchpad/probes/<name>.ts` and run `pnpm scratchpad:probe probes/<name>.ts`
 from the repo root (`pnpm --filter scratchpad probe` under the hood — pnpm's
 `--filter` executes the underlying script with its cwd inside `scratchpad/`,
@@ -394,7 +396,7 @@ Two riders on the package-root form, both learned by leaving mess behind:
   root is committed ground.
 
 1. **Run from inside the package, never the repo root.** A workspace root that has a v3 installed resolves it and will describe the v3 surface with total confidence; a root that has none — this repo today — fails with `ERR_MODULE_NOT_FOUND` instead. Both are the same rule: only `packages/<pkg>/` is guaranteed to resolve the pinned v4.
-2. **Print the resolved version inside every probe, and compare it to the exact `catalog:effect` pin — never to a prerelease channel word.** Channel words (`beta`, `rc`) are not stable across the v4 line, so a check that requires one rejects a valid probe. The thing that voids a probe is resolving **v3** (`3.x`); read the pin out of `pnpm-workspace.yaml`'s `catalog:effect` and require an exact match.
+2. **Print the resolved version inside every probe, and compare it to the installed `effect` and the vendored tag — never to a prerelease channel word.** `catalog:effect` is a caret range, so it cannot be the exact match: the exact version is the **lockfile's resolution**, the `version` in `node_modules/effect/package.json` (and the vendored tree's tag, `.repos/effect`'s `effect@<version>`). The probe prints what *it* resolved and that must equal both; a mismatch means the probe linked a different copy or the vendored tree is stale, and what it says about semantics is unreliable until reconciled. Resolving **v3** (`3.x`) voids a probe outright.
 3. **In a repo without a scratchpad workspace: probe files live at the package root** — *inside* `packages/<pkg>/`, written there, not merely run from there. Two distinct failures, and they bite at different moments:
    - **Outside the package, it will not even load.** Node resolves bare imports relative to the **script's own path, not the cwd**, walking up from the file for a `node_modules`. A probe parked in a scratch/temp directory therefore dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` no matter how carefully you `cd packages/<pkg>` first. Write the file into the package; `cd` alone buys you nothing.
    - **In a *subdirectory* of the package, it silently false-passes.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories, so a probe one level down drops out of the compilation program and its control error never fires.
@@ -442,7 +444,7 @@ has no `await`.
 
 ```ts
 import pkg from "effect/package.json" with { type: "json" };
-console.log("resolved effect:", pkg.version); // must match this workspace's catalog:effect pin
+console.log("resolved effect:", pkg.version); // must equal the installed (lockfile) effect and the vendored tag
 ```
 
 ## Portability

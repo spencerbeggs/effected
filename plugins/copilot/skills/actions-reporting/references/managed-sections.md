@@ -117,11 +117,11 @@ consumer policy, not a library concern: compose `GitHubMarkdown` pieces or
 reach for `@effected/markdown` directly rather than looking for a
 report-builder construct. Fan-out-and-accumulate over a collection has no
 named construct either; `Effect.partition(items, f)` is the answer — it
-runs every effect and never fails, separating successes from failures in
+runs every effect and never fails, returning `[successes, failures]` in
 one call, with no custom accumulator type for a consumer to hand-roll:
 
 ```ts
 import { Effect } from "effect";
 
-const [failures, successes] = yield* Effect.partition(reports, (report) => publish(report));
+const [successes, failures] = yield* Effect.partition(reports, (report) => publish(report));
 ```

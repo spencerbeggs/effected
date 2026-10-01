@@ -397,6 +397,8 @@ const UserId = Schema.String.pipe(Schema.brand("UserId")); // nominal refinement
 // Schema.Opaque — opaque schema-backed type, same runtime shape
 ```
 
+`Schema.brand` takes one concrete string-literal identifier and composes by applying `brand` again; it is type-only, so the identifier is not stored in AST annotations and does not survive `SchemaRepresentation` or generated schema code.
+
 **Export the branded type as `string & Brand.Brand<"Name">`, not `typeof X.Type`
 — for EVERY exported brand**, whether or not it carries a statics namespace. Both
 forms resolve to the same type, but `typeof X.Type` reads as an opaque alias on

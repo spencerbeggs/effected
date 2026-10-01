@@ -1,7 +1,7 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
+Effect v4 release pinned in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
@@ -73,6 +73,8 @@ schema.make
 > `Schema.brand("a")`. The type-argument-only spelling `Schema.brand<"a">()`
 > fails with `TS2554: Expected 1 arguments, but got 0`. The brand string is
 > inferred from the argument, so no explicit type argument is needed.
+
+A brand is type-only: `make` checks nothing extra for it, and the identifier is not stored in the schema's AST annotations. Apply `Schema.brand` once per identifier to compose several brands.
 
 However, when a branded schema is part of a composite (such as a struct), you must pass a branded value.
 

@@ -198,7 +198,7 @@ its call to the library.
 > Everything in this section is **shape per the official guide; verify against
 > the installed `@effect/opentelemetry` when first adopted.** The package is not
 > in this monorepo. Confirm the version compatible with
-> the installed `effect` prerelease and the exact option names before shipping.
+> the installed `effect` and the exact option names before shipping.
 
 Libraries never touch this. An **application** composes one telemetry layer at its
 top level:

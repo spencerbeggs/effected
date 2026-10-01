@@ -1,7 +1,7 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
+Effect v4 release pinned in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
@@ -317,6 +317,8 @@ import { Schema } from "effect"
 //      ▼
 const branded = Schema.String.pipe(Schema.brand("UserId"))
 ```
+
+`Schema.brand` takes one concrete string-literal identifier — a widened `string`, a union or an open template literal is rejected. To carry several brands, apply `brand` once per identifier; `Schema.fromBrand` applies a `Brand` constructor's checks and uses the constructor's sole brand key, and its checks are preserved. A brand is **type-only**: it never reaches the schema's AST annotations or runtime checks, so `SchemaRepresentation` and generated schema code omit it — reapply `brand` after rebuilding a schema from a representation.
 
 ## Structural Filters
 

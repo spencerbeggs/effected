@@ -43,7 +43,7 @@ _run_hook() {
 # The pin the hook advertises. Kept in sync with EFFECT_PIN in the hook itself;
 # a mismatch here is the point — it fails the "advertised pin" test below and
 # forces the bump to be deliberate.
-EXPECTED_PIN="4.0.0-rc.118"
+EXPECTED_PIN="4.0.0"
 
 # _ctx_of output — extract additionalContext from a hook response.
 _ctx_of() {
@@ -193,7 +193,7 @@ _ctx_of() {
 	local vendor_dir="$proj/.repos"
 	printf '[submodule ".repos/effect"]\n\tpath = .repos/effect\n' >"$proj/.gitmodules"
 	mkdir -p "$vendor_dir"
-	printf '{"repos":{"effect":{"ref":"effect@4.0.0-rc.109"}}}\n' >"$vendor_dir/config.json"
+	printf '{"repos":{"effect":{"ref":"effect@4.0.0-pre.1"}}}\n' >"$vendor_dir/config.json"
 
 	run _run_hook "$FIXTURES/sessionstart.startup.json" "$PATH" "$proj"
 	rm -rf "$proj"
@@ -202,7 +202,7 @@ _ctx_of() {
 	local ctx
 	ctx="$(_ctx_of "$output")"
 	# Names the stale ref, the wanted ref, and makes the re-pin mandatory.
-	echo "$ctx" | grep -qF "effect@4.0.0-rc.109"
+	echo "$ctx" | grep -qF "effect@4.0.0-pre.1"
 	echo "$ctx" | grep -qF "effect@$EXPECTED_PIN"
 	echo "$ctx" | grep -qF "MUST"
 }

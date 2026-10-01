@@ -29,26 +29,9 @@ testing an MCP server → `effect-v4-mcp` (`McpHarness`, `McpProbe`); a
 monorepo's own repo-shape checks (layering, source boundaries, packed
 installs) → `@effected/workspaces/testing` (see `effected-packages`).
 
-**Install it by exact version, matching your `effect` pin** — never bare,
-never `@latest`, never `@beta`, never `@rc`. `@effect/vitest`'s v4 line is
-published only under prerelease versions mirroring `effect`'s own numbering,
-and no dist-tag can be trusted to resolve to your pin: a tag frozen on one
-prerelease line goes stale the moment the v4 line moves past it, and a tag that
-tracks the newest prerelease floats off your pin the instant upstream
-publishes. Pin `@effect/vitest` to the *exact same* prerelease your `effect`
-catalog pins, never a caret or a tag.
+**Install it from the same catalog as `effect`, so it resolves to the same version** — never bare and never from a dist-tag. Effect releases `effect` and every `@effect/*` package together at one shared version, so `@effect/vitest` must resolve to exactly the version `effect` does. A dist-tag (`latest`, `beta`, `rc`, `snapshot`) is a moving pointer that can resolve to a version other than the one `effect` resolves to.
 
-The bare/`@latest` form is the dangerous one: `latest` still points at the
-**v3-line** package. pnpm installs it with only a one-line
-`Issues with peer dependencies found` warning; `pnpm peers check` then lists
-unmet `effect ^3` and `vitest ^3` peers from `@effect/vitest`. The runtime
-failure names neither: the test file fails to load with
-`Cannot find module '…/effect/dist/Arbitrary.js'`, because the v3 package
-imports a module the v4 `effect` does not ship. It reads as a broken install
-rather than a version mismatch. Run `npm view @effect/vitest dist-tags` and
-`pnpm peers check` before believing any resolution. **Inside this monorepo**
-the dependency comes from `catalog:effect`, which already pins the matching
-prerelease.
+The failure of a mismatch names neither package: a v3 `@effect/vitest` installed beside v4 `effect` loads with only a one-line `Issues with peer dependencies found` warning; `pnpm peers check` then lists unmet `effect ^3` and `vitest ^3` peers, and the test file fails to load with `Cannot find module '…/effect/dist/Arbitrary.js'`, because the v3 package imports a module the v4 `effect` does not ship. It reads as a broken install rather than a version mismatch. Run `pnpm peers check` and compare `@effect/vitest`'s resolved version with `effect`'s in the lockfile before believing any resolution. **Inside this monorepo** the dependency comes from `catalog:effect`, which carries both at the same range.
 
 **`vi.mock` is the one import that must NOT come from `@effect/vitest`.** Vitest
 hoists it above all imports, so a `vi` bound through the re-export is not yet
@@ -92,7 +75,7 @@ describe("Jsonc", () => {
   spells the replacement out — `it.scoped(...)` becomes `it.effect(...)`,
   `it.scopedLive(...)` becomes `it.live(...)`). The Tester surface is
   `skip`/`skipIf`/`runIf`/`only`/`each`/`fails`/`prop` — **`it.effect.skipIf`
-  and `it.effect.runIf` exist and are well-typed** (`packages/vitest/src/index.ts:61-62`);
+  and `it.effect.runIf` exist and are well-typed** (`packages/vitest/src/index.ts:65-66`);
   reach for them instead of hand-rolling a conditional `describe`.
 - **`it.live`** (`Tester<Scope.Scope | R>`) opts into the real `Clock` and live
   runtime services. Use only when a test genuinely needs wall-clock behavior.

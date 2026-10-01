@@ -54,7 +54,7 @@ Where state must vary per test, keep the per-test provide, or use **distinct
 keys per test** and flush explicitly before asserting counts.
 
 Other `layer(...)` mechanics (surface checked against
-`packages/vitest/src/index.ts:116-131` and `:245-256`):
+`packages/vitest/src/index.ts:120-135` and `:249-260`):
 
 - The block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`), and
   **`MethodsNonLive` has no `.live`** — a wall-clock test that also needs the

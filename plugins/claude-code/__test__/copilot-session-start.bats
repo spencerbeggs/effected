@@ -28,7 +28,7 @@
 PLUGIN_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../copilot" && pwd)"
 SCRIPT="$PLUGIN_ROOT/hooks/session-start/orientation.sh"
 
-EXPECTED_PIN="4.0.0-rc.118"
+EXPECTED_PIN="4.0.0"
 
 # _run_copilot cwd [path_override] — feed a sessionStart envelope naming `cwd`.
 _run_copilot() {
@@ -139,7 +139,7 @@ _ctx_of() {
 	vendor="$proj/.repos"
 	printf '[submodule ".repos/effect"]\n\tpath = .repos/effect\n' >"$proj/.gitmodules"
 	mkdir -p "$vendor"
-	printf '{"repos":{"effect":{"ref":"effect@4.0.0-rc.109"}}}\n' >"$vendor/config.json"
+	printf '{"repos":{"effect":{"ref":"effect@4.0.0-pre.1"}}}\n' >"$vendor/config.json"
 
 	run _run_copilot "$proj"
 	rm -rf "$proj"
@@ -147,7 +147,7 @@ _ctx_of() {
 	[ "$status" -eq 0 ]
 	local ctx
 	ctx="$(_ctx_of "$output")"
-	echo "$ctx" | grep -qF "effect@4.0.0-rc.109"
+	echo "$ctx" | grep -qF "effect@4.0.0-pre.1"
 	echo "$ctx" | grep -qF "effect@$EXPECTED_PIN"
 	echo "$ctx" | grep -qF "MUST"
 }
