@@ -163,3 +163,107 @@ describe("main's env.displayPath is the default report's path display", () => {
 		assert.isAbove((typeof lines === "string" ? [lines] : lines).length, 0);
 	});
 });
+
+describe("a consumer render's output is untrusted text", () => {
+	const ZWSP = String.fromCodePoint(0x200b);
+	const BEL = String.fromCharCode(7);
+	const PROBE = [
+		"fine",
+		"::add-mask::secret",
+		"prefix ##[error]y",
+		`${ESC}[31mred${ESC}[0m`,
+		`${ESC}]8;;http://evil${BEL}z`,
+	];
+	const render = () => PROBE;
+
+	const reportWith = (env: Record<string, string>, options: { readonly env?: boolean } = {}) =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			const program = Effect.suspend(() => Effect.fail(new Error("x")));
+			yield* (
+				options.env === false
+					? CliRuntime.main(program, { platform: Layer.empty, render })
+					: CliRuntime.main(program, { platform, env: { audienceEnvVar: "TEST_AUDIENCE" }, render })
+			).pipe(
+				Effect.exit,
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)),
+				Effect.provideService(Console.Console, double),
+			);
+			return err;
+		});
+
+	it.effect("under GitHub Actions no line is a command, whatever the audience", () =>
+		Effect.gen(function* () {
+			for (const env of [
+				{ GITHUB_ACTIONS: "true", AI_AGENT: "x" },
+				{ GITHUB_ACTIONS: "true", TEST_AUDIENCE: "human", TERM: "xterm-256color" },
+				{ GITHUB_ACTIONS: "true" },
+			]) {
+				const err = yield* reportWith(env);
+				assert.deepStrictEqual(commandLines(err.join("\n")), [], JSON.stringify(env));
+				assert.isAbove(err.length, 0);
+				assert.include(err.join("\n"), "secret", "the text itself is kept");
+			}
+		}),
+	);
+
+	it.effect("an agent gets no escape of any kind from it", () =>
+		Effect.gen(function* () {
+			const err = yield* reportWith({ AI_AGENT: "x", TERM: "xterm-256color" });
+			const text = err.join("\n");
+			assert.notInclude(text, ESC);
+			assert.notInclude(text, BEL);
+			assert.notInclude(text, "evil");
+			assert.include(text, "red");
+			// Outside Actions nothing is neutralized, so the command lines are still there.
+			assert.notInclude(text, ZWSP);
+		}),
+	);
+
+	it.effect("a human outside GitHub Actions keeps the consumer's own escapes, and nothing is neutralized", () =>
+		Effect.gen(function* () {
+			const err = yield* reportWith({ TEST_AUDIENCE: "human", TERM: "xterm-256color" });
+			const text = err.join("\n");
+			assert.include(text, `${ESC}[31mred`, "the consumer's SGR is theirs");
+			assert.notInclude(text, ZWSP);
+			assert.strictEqual(commandLines(text).length, 2, "control: the command lines are really there");
+		}),
+	);
+
+	it.effect("a human under GitHub Actions keeps the consumer's SGR but is neutralized", () =>
+		Effect.gen(function* () {
+			const err = yield* reportWith({ GITHUB_ACTIONS: "true", TEST_AUDIENCE: "human", TERM: "xterm-256color" });
+			const text = err.join("\n");
+			assert.include(text, `${ESC}[31mred`);
+			assert.deepStrictEqual(commandLines(text), []);
+		}),
+	);
+
+	it.effect("with no environment services at all it neutralizes, and does not strip what it cannot judge", () =>
+		Effect.gen(function* () {
+			const err = yield* reportWith({}, { env: false });
+			const text = err.join("\n");
+			assert.deepStrictEqual(commandLines(text), []);
+			assert.include(text, `${ESC}[31mred`, "an unknown audience is not an agent: no sanitising");
+		}),
+	);
+
+	it.effect("a render that returns one string with line breaks is neutralized per line", () =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			yield* CliRuntime.main(
+				Effect.suspend(() => Effect.fail(new Error("x"))),
+				{
+					platform,
+					env: {},
+					render: () => "a\r::add-mask::b\n##[error]c",
+				},
+			).pipe(
+				Effect.exit,
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ GITHUB_ACTIONS: "true" })),
+				Effect.provideService(Console.Console, double),
+			);
+			assert.deepStrictEqual(commandLines(err.join("\n")), []);
+		}),
+	);
+});

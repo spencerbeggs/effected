@@ -12,7 +12,13 @@ import { CliLog } from "./CliLog.js";
 import { CliLogger } from "./CliLogger.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
 import type { FailureTarget } from "./internal/failureTarget.js";
-import { FailureTargetCell, failureLines, plainFailureLines, refreshFailureTarget } from "./internal/failureTarget.js";
+import {
+	FailureTargetCell,
+	failureLines,
+	guardConsumerLines,
+	plainFailureLines,
+	refreshFailureTarget,
+} from "./internal/failureTarget.js";
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
 import { isExitCode } from "./internal/isExitCode.js";
 import { sanitize } from "./internal/layout.js";
@@ -61,6 +67,12 @@ export interface ReportFailuresOptions {
 	 * failure can render as one line and a defect as a full report, without
 	 * guessing from the error's shape. A renderer that takes only `error`
 	 * still fits.
+	 *
+	 * What it returns is text the kit did not build, so the report applies the output policy to it: under GitHub
+	 * Actions a line the runner would read as a workflow command is neutralized (with no environment services at all,
+	 * always), and for an agent audience escape sequences are removed. For a person the escapes you return are kept,
+	 * since the kit cannot tell your own colour from an injected sequence: a `render` must sanitise the data it
+	 * interpolates (an error message, a file name) itself.
 	 */
 	readonly render?: ((error: unknown, details: FailureDetails) => string | ReadonlyArray<string>) | undefined;
 	/**
@@ -327,7 +339,8 @@ export class CliRuntime {
 										Effect.catchCause(() => Effect.sync(() => plainFailureLines(cause))),
 										Effect.catchCause(() => Effect.sync(() => lastResort(error))),
 									)
-								: toLines(render(error, details));
+								: // A consumer's lines are text the kit did not build: neutralized under Actions, stripped for an agent.
+									yield* guardConsumerLines(toLines(render(error, details)));
 						for (const line of lines) {
 							// Rendered by the kit (or by the consumer's own `render`): not sanitised again by the logger.
 							yield* Effect.logError(line).pipe(Effect.provideService(TrustedLine, true));

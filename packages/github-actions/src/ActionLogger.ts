@@ -377,6 +377,14 @@ const make = Effect.gen(function* () {
 export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShape>()(
 	"@effected/github-actions/ActionLogger",
 ) {
+	/**
+	 * The service: groups, the buffered step renderer, notices and annotations.
+	 *
+	 * @remarks
+	 * This installs no `Logger`. Without {@link ActionLogger.layerLogger} (or `Action.run`, which installs it) Effect's
+	 * default logger writes `Effect.log*` text raw, so a message carrying `::add-mask::` or `##[` is a workflow command
+	 * to the runner. Install both: the service for its structure, the logger for its neutralizing of every log line.
+	 */
 	static readonly layer: Layer.Layer<ActionLogger, never, ActionEnvironment> = Layer.effect(this, make);
 
 	/**

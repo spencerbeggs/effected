@@ -169,6 +169,10 @@ const readLevel = (
  * legacy parser reads `##[` anywhere in a line, so under Actions it is written as the JSON escape `#\u0023[`, which
  * decodes to the identical text. The file sink's lines are not read by the runner and are written as they are.
  *
+ * `CurrentRuntimeEnv` is read from the logging fiber's context, so a record logged outside its scope (the warnings
+ * logged while `CliRuntime.main` builds its environment, or a program with no `CurrentRuntimeEnv` provided) is
+ * sanitised but not neutralized.
+ *
  * Core's `--log-level` flag sets `MinimumLogLevel` inside the command. While it is set to something other than
  * the value this layer installed, the diagnostics logger follows the flag instead of its own level: it writes
  * every record that reaches it. The `CliLogger` prints the same record too, so a record at or above the ambient

@@ -21,6 +21,11 @@ export interface CliLoggerOptions {
 	 * escape sequences and control characters removed (a line break stays one, a tab becomes a space); with yours, you
 	 * receive the string parts already sanitised and own what you add, a colour included. Under GitHub Actions, where
 	 * `CurrentRuntimeEnv` says so, a line the runner would read as a workflow command is neutralized either way.
+	 *
+	 * The logger reads `CurrentRuntimeEnv` from the logging fiber's context, so a line logged outside its scope
+	 * (`CliLogger.layer()` provided alone, with no `CurrentRuntimeEnv`, or the warnings logged while `CliRuntime.main`
+	 * builds its environment) is sanitised but not neutralized. Provide the environment around the program, as `main`
+	 * does, for the neutralizing to apply.
 	 */
 	readonly render?: ((message: unknown) => string) | undefined;
 	/**

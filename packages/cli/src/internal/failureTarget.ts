@@ -1,5 +1,6 @@
 import type { AudienceShape } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
+import { CommandNeutralizer } from "@effected/github-commands";
 import type { Cause } from "effect";
 import { Context, Effect, MutableRef, Option } from "effect";
 import { CliFailure } from "../CliFailure.js";
@@ -9,6 +10,7 @@ import { Glyphs } from "../Glyphs.js";
 import type { RenderContext } from "../Render.js";
 import { Render } from "../Render.js";
 import { autoFormat } from "./autoFormat.js";
+import { sanitize } from "./layout.js";
 
 /**
  * Where a failure report is written to: the context the renderer lays out for, and which renderer.
@@ -18,6 +20,8 @@ import { autoFormat } from "./autoFormat.js";
 export interface FailureTarget {
 	readonly ctx: RenderContext;
 	readonly format: "plain" | "ansi" | "githubLog";
+	/** `true` for the fallback: nothing is known of the audience or the runner, so it is assumed, not read. */
+	readonly assumed?: boolean;
 }
 
 /**
@@ -51,6 +55,7 @@ export const fallbackTarget: FailureTarget = {
 		neutralizeWorkflowCommands: true,
 	},
 	format: "plain",
+	assumed: true,
 };
 
 /**
@@ -120,6 +125,27 @@ const linesOf = (cause: Cause.Cause<unknown>, target: FailureTarget): ReadonlyAr
  */
 export const failureLines = (cause: Cause.Cause<unknown>): Effect.Effect<ReadonlyArray<string>> =>
 	Effect.flatMap(currentTarget, (target) => Effect.sync(() => linesOf(cause, target)));
+
+/**
+ * A consumer `render`'s lines, made safe: neutralized under GitHub Actions, and stripped of escapes for an agent.
+ *
+ * @remarks
+ * What a consumer's `render` returns is text the kit did not build and cannot vouch for: it interpolates error
+ * messages, file names, whatever the failure carried. So it gets the output policy the kit's own report has. Under
+ * GitHub Actions (the target says so, and with no environment services at all it is assumed) every line is neutralized,
+ * a returned line break splitting it first. For an agent audience the escapes are removed too. For a person they are
+ * kept: the kit cannot tell the consumer's own colour from an injected sequence, so the consumer's `render` is
+ * responsible for sanitising what it interpolates. An audience that was only assumed is not an agent.
+ *
+ * @internal
+ */
+export const guardConsumerLines = (lines: ReadonlyArray<string>): Effect.Effect<ReadonlyArray<string>> =>
+	Effect.map(currentTarget, (target) => {
+		const stripped = target.assumed !== true && target.ctx.audience === "agent" ? lines.map(sanitize) : lines;
+		return target.ctx.neutralizeWorkflowCommands === true
+			? stripped.flatMap((line) => CommandNeutralizer.lines(line))
+			: stripped;
+	});
 
 /**
  * The plain lines of a failure, for a caller with no services: what `CliRuntime.defaultRender` returns.

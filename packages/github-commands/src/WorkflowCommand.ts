@@ -81,6 +81,11 @@ export class WorkflowCommand {
 	 * `CommandProperties` alias: an internal named type on a `@public` signature
 	 * fails the API Extractor gate, and neither an `@internal` tag nor a second
 	 * alias helps — only inlining does.
+	 *
+	 * Use a name the runner registers (`error`, `warning`, `notice`, `debug`, `group`, `endgroup`, `add-mask` and the
+	 * rest of its list). The runner tries its V2 parser first and, if the name is not registered, rejects the line, and
+	 * its legacy parser then reads the line for `##[` ANYWHERE in it: a `##[` in the data of a command with an
+	 * unregistered name is therefore a command. {@link CommandNeutralizer} is the tool for text that is only data.
 	 */
 	static render(
 		name: string,
