@@ -17,10 +17,13 @@ export interface StreamEnv {
 	/** The colour level: `none` unless the stream is a terminal or `FORCE_COLOR` says otherwise. */
 	readonly color: ColorLevel;
 	/**
-	 * Whether the terminal can render OSC 8 hyperlinks on this stream: a hyperlink-capable terminal, and the stream
-	 * is a terminal.
+	 * Whether the terminal can render OSC 8 hyperlinks on this stream.
 	 *
 	 * @remarks
+	 * Decided in this order: a truthy `FORCE_HYPERLINK` turns links on, even on a stream that is not a terminal; a
+	 * truthy `NO_HYPERLINK` or a non-empty `NO_COLOR` turns them off; then the stream must be a terminal, not inside a
+	 * multiplexer that strips them (tmux, GNU screen), and a known terminal at a version that renders them.
+	 *
 	 * This is terminal capability only and does not consider the audience. Turning links off for an agent audience
 	 * is applied by `@effected/cli`, where the audience is known.
 	 */

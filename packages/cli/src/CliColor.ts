@@ -10,8 +10,8 @@ import { CliOutput } from "effect/cli";
  * @remarks
  * The decision is `@effected/env`'s `TerminalEnv.colorLevel("stdout")`, which
  * follows Node's `getColorDepth` precedence: `FORCE_COLOR` first (`0` or an
- * unrecognised value forces colour off, `1`/`2`/`3` force it on even without
- * a terminal), then a non-empty `NO_COLOR` or `NODE_DISABLE_COLORS` and
+ * unrecognised value forces colour off; an empty value, `1` or `true` force basic colour, `2` 256 colours and
+ * `3` truecolor, even without a terminal), then a non-empty `NO_COLOR` or `NODE_DISABLE_COLORS` and
  * `TERM=dumb`, then the TTY gate. `FORCE_COLOR` therefore beats `NO_COLOR`.
  * The environment
  * is read through the ambient `ConfigProvider`, never `process`, so a test
