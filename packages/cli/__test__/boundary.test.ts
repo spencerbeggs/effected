@@ -76,13 +76,22 @@ const nodeImporters = (entry: string): ReadonlyArray<string> =>
  *
  * - `ui/internal/processStreams.ts`: `process` (reads the three process streams);
  * - `ui/internal/inkChalk.ts`: `forbidImports` of `node:module`, `node:url`, `node:fs`;
- * - `ui/testing/fakeStreams.ts` (testing only): `forbidImports` of `node:events`, `node:stream`.
- *
- * None of them exists yet, so the licence waives nothing.
+ * - `ui/testing/fakeStreams.ts` (testing only): `forbidImports` of `node:events`, `node:stream`
+ *   (not yet landed).
  */
-const NODE_LICENCE: ReadonlyArray<string> = [];
+const NODE_LICENCE: ReadonlyArray<string> = [
+	"ui/internal/inkChalk.ts forbidImports node:fs",
+	"ui/internal/inkChalk.ts forbidImports node:module",
+	"ui/internal/inkChalk.ts forbidImports node:url",
+	"ui/internal/processStreams.ts process process",
+];
 
-/** The `node:` importers reachable from `./ui`: `ui/internal/inkChalk.ts` joins when it lands. */
+/**
+ * The `node:` importers reachable from `./ui`. `ui/internal/inkChalk.ts` joins
+ * once a public module reaches the Ink bridge (the screen runner); until then
+ * `./ui` reaches only `UiStreams` and `processStreams.ts`, which imports no
+ * `node:` module.
+ */
 const UI_NODE_IMPORTERS: ReadonlyArray<string> = [];
 
 /** The `node:` importers `./ui/testing` may reach. */

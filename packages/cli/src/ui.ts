@@ -8,6 +8,7 @@
  *
  * @packageDocumentation
  */
+export { UiStreams, type UiStreamsShape } from "./ui/UiStreams.js";
 
 /**
  * Interactive screens. A placeholder while the `./ui` entrypoint is scaffolded.
