@@ -476,7 +476,8 @@ const mount = <A>(screen: Screen<A>, options: CliUiTestOptions) =>
 	Effect.gen(function* () {
 		const terminal = makeTerminal(options);
 		let ended = false;
-		// How the run ended when it failed or died (a crash, `NotInteractive`), never for the scope's own interrupt.
+		// How the run ended when it failed or died (a crash, `NotInteractive`), never for the scope's own interrupt nor a
+		// deliberate end (Esc or Ctrl-C, a `Cancelled`), after which the frames stay readable and a key is SCREEN_ENDED.
 		let failure: Cause.Cause<unknown> | undefined;
 		let swap: ((next: ReactElement) => void) | undefined;
 		let control: ScreenControl<A> | undefined;
@@ -496,7 +497,13 @@ const mount = <A>(screen: Screen<A>, options: CliUiTestOptions) =>
 				Effect.onExit((exit) =>
 					Effect.sync(() => {
 						ended = true;
-						if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) failure = exit.cause;
+						if (
+							Exit.isFailure(exit) &&
+							!Cause.hasInterruptsOnly(exit.cause) &&
+							cancelledReason(Cause.squash(exit.cause)) === undefined
+						) {
+							failure = exit.cause;
+						}
 					}),
 				),
 			),
@@ -616,7 +623,8 @@ export class CliUiTest {
 	 *
 	 * An element that crashes, or a run that is refused (`interactive: false` ends it with `NotInteractive`), is never
 	 * swallowed: `view` dies with that error when it happens before the first frame, and otherwise the next frame read,
-	 * key, resize or rerender does.
+	 * key, resize or rerender does. A deliberate end (Esc or Ctrl-C) is not a crash:
+	 * the frames stay readable, and only a key, resize or rerender after it dies, saying the screen has ended.
 	 *
 	 * @param element - the element to mount
 	 * @param options - the terminal's size, colour and glyphs, and whether the run is interactive

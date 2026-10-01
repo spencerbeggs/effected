@@ -129,3 +129,21 @@ describe("CliUiTest.view surfaces an element that crashes or is refused (r4 fix 
 		}),
 	);
 });
+
+describe("CliUiTest.view after a deliberate end (r4 fix 2, R2)", () => {
+	for (const key of ["escape", "ctrl+c"] as const) {
+		it.live(`${key}: the frames stay readable, and a key after the end dies with the ended message`, () =>
+			Effect.gen(function* () {
+				const view = yield* CliUiTest.view(createElement(Status, { label: "done" }));
+				yield* view.press(key);
+				assert.include(yield* view.plainFrame, "done");
+				assert.isNotEmpty(yield* view.frames);
+				const pressed = yield* Effect.exit(view.press("enter"));
+				assert.isTrue(Exit.isFailure(pressed));
+				const message = Exit.isFailure(pressed) ? String(Cause.squash(pressed.cause)) : "";
+				assert.include(message, "has ended");
+				assert.notInclude(message, "cancelled");
+			}).pipe(Effect.scoped),
+		);
+	}
+});
