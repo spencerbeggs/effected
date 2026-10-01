@@ -25,24 +25,30 @@ const isUiPackage = (specifier: string): boolean => /^(?:ink|react)(?:$|\/)/.tes
 /** A self-reference into `./ui`: the package's own name resolves through its `exports`, so no relative edge shows it. */
 const isUiSelfReference = (specifier: string): boolean => /^@effected\/cli\/ui(?:$|\/)/.test(specifier);
 
-/** An `import type` or `export type` clause naming `ink`, `react` or a subpath, in comment-stripped source. */
+/** The package's own name, or a subpath of it: what `./ui` uses to name root types without copying them. */
+const isPackageSelfName = (specifier: string): boolean => /^@effected\/cli(?:$|\/)/.test(specifier);
+
+/** An `import type` or `export type` clause and its specifier, in comment-stripped source. */
 // The clause body excludes quotes as well as semicolons, so a match cannot run past an earlier `from "…"` in code
 // written without semicolons.
-const TYPE_ONLY_UI_IMPORT = /\b(?:import|export)\s+type\b[^;"']*?\bfrom\s*(["'])((?:ink|react)(?:\/[^"']*)?)\1/g;
+const TYPE_ONLY_IMPORT = /\b(?:import|export)\s+type\b[^;"']*?\bfrom\s*(["'])([^"']+)\1/g;
 
 /**
- * The `ink` and `react` specifiers a source text names other than through `import type` or `export type`: a value
- * import, an inline `import { type X }` (which `verbatimModuleSyntax` keeps as a side-effect import), a re-export or
- * an `import()`. Each loads the peer at runtime.
+ * The specifiers matching `isTarget` that a source text names other than through `import type` or `export type`: a
+ * value import, an inline `import { type X }` (which `verbatimModuleSyntax` keeps as a side-effect import), a
+ * re-export or an `import()`. Each loads the module at runtime.
  */
-const valueImportsOfUiPackages = (text: string): ReadonlyArray<string> => {
-	const remaining = SourceBoundary.importSpecifiers(text).filter(isUiPackage);
-	for (const match of SourceBoundary.stripComments(text).matchAll(TYPE_ONLY_UI_IMPORT)) {
+const valueImportsOf = (text: string, isTarget: (specifier: string) => boolean): ReadonlyArray<string> => {
+	const remaining = SourceBoundary.importSpecifiers(text).filter(isTarget);
+	for (const match of SourceBoundary.stripComments(text).matchAll(TYPE_ONLY_IMPORT)) {
 		const index = remaining.indexOf(match[2] ?? "");
 		if (index >= 0) remaining.splice(index, 1);
 	}
 	return remaining;
 };
+
+/** The `ink` and `react` specifiers a source text loads at runtime. */
+const valueImportsOfUiPackages = (text: string): ReadonlyArray<string> => valueImportsOf(text, isUiPackage);
 
 /** The one module that may load `ink` and `react` as values (ruling S1). */
 const INK_LOADER = "ui/internal/ink.ts";
@@ -229,6 +235,26 @@ describe("cli boundary", () => {
 				["ink", "react"],
 				"positive control: the detector sees the loader's own import()s",
 			);
+		});
+
+		it("./ui files name the package's own entrypoint through import type only, so the root types are never copied", () => {
+			const uiFiles = (readdirSync(SRC, { recursive: true }) as ReadonlyArray<string>)
+				.map((file) => file.split(sep).join("/"))
+				.filter((file) => file.endsWith(".ts") && isUiModule(file))
+				.sort();
+			const offenders = uiFiles.flatMap((file) =>
+				valueImportsOf(readSource(join(SRC, file)), isPackageSelfName).map((spec) => `${file} ${spec}`),
+			);
+			assert.deepStrictEqual(offenders, []);
+			assert.include(
+				specifiersOf(join(SRC, "ui", "CliUi.ts"), readSource),
+				"@effected/cli",
+				"positive control: CliUi.ts names the root types through the package's own name",
+			);
+			assert.deepStrictEqual(valueImportsOf('import { CliTheme } from "@effected/cli";', isPackageSelfName), [
+				"@effected/cli",
+			]);
+			assert.deepStrictEqual(valueImportsOf('import type * as Cli from "@effected/cli";', isPackageSelfName), []);
 		});
 
 		it("mutation control: the type-only detector flags every runtime spelling and spares every type-only one", () => {

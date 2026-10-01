@@ -1,11 +1,12 @@
+// Root types are named through the package's own name, so the emitted ui.d.ts imports them from "@effected/cli"
+// (kept external by dtsExternals) instead of carrying copies a consumer's root layers cannot satisfy.
+import type * as Cli from "@effected/cli";
 import type { Scope } from "effect";
 import { Deferred, Effect, Exit, Semaphore } from "effect";
 import type { Context as ReactContext, ReactElement, ReactNode } from "react";
 import { Cancelled } from "../Cancelled.js";
 import { CliInteractive } from "../CliInteractive.js";
-import type { StreamTheme } from "../CliTheme.js";
 import { CliTheme } from "../CliTheme.js";
-import type { GlyphSet } from "../Glyphs.js";
 import { NotInteractive } from "../NotInteractive.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
 import { fromReact, inkModules, loadInk, withInkColour } from "./internal/ink.js";
@@ -53,9 +54,9 @@ export interface ScreenContextValue {
 	/** Cancel the screen. */
 	readonly cancel: ScreenControl<unknown>["cancel"];
 	/** The theme of the stream the screen draws on. */
-	readonly theme: StreamTheme;
+	readonly theme: Cli.StreamTheme;
 	/** The glyph set in use. */
-	readonly glyphs: GlyphSet;
+	readonly glyphs: Cli.GlyphSet;
 }
 
 /**
@@ -89,15 +90,15 @@ const SCREEN_EXITED = "@effected/cli/ui: the screen exited without resolving or 
 
 const mount = <A>(
 	screen: Screen<A>,
-	theme: StreamTheme,
+	theme: Cli.StreamTheme,
 	stream: "stdout" | "stderr",
-): Effect.Effect<A, Cancelled, Scope.Scope> =>
+): Effect.Effect<A, Cli.Cancelled, Scope.Scope> =>
 	Effect.gen(function* () {
 		const { ink, react } = yield* loadInk;
 		const streams = yield* UiStreams;
 		const overrides = yield* UiRenderOptions;
 		yield* withInkColour(theme.color);
-		const result = yield* Deferred.make<A, Cancelled>();
+		const result = yield* Deferred.make<A, Cli.Cancelled>();
 		const control: ScreenControl<A> = {
 			resolve: (value) => {
 				Deferred.doneUnsafe(result, Exit.succeed(value));
@@ -135,7 +136,7 @@ const mount = <A>(
 					await instance.waitUntilExit().catch(() => undefined);
 				}),
 		);
-		const exited: Effect.Effect<A, Cancelled> = Effect.tryPromise({
+		const exited: Effect.Effect<A, Cli.Cancelled> = Effect.tryPromise({
 			try: () => instance.waitUntilExit(),
 			catch: (cause) => cause,
 		}).pipe(
@@ -183,7 +184,7 @@ export class CliUi {
 	static readonly run = <A>(
 		screen: Screen<A>,
 		options?: CliUiRunOptions,
-	): Effect.Effect<A, Cancelled | NotInteractive, CliTheme> =>
+	): Effect.Effect<A, Cli.Cancelled | Cli.NotInteractive, Cli.CliTheme> =>
 		Effect.gen(function* () {
 			if (!(yield* CliInteractive)) return yield* Effect.fail(new NotInteractive());
 			const stream = options?.stream ?? "stdout";
