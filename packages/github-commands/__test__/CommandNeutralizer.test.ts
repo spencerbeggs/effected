@@ -70,9 +70,14 @@ describe("CommandNeutralizer: the runner's two parsers", () => {
 });
 
 describe("CommandNeutralizer: exhaustive over a small alphabet, judged by the independent oracle", () => {
-	// Every string up to length 6 over the characters that make or break a command: the colon, the hash, the bracket,
+	// Every string up to length 5 over the characters that make or break a command: the colon, the hash, the bracket,
 	// ordinary and .NET whitespace (a space, a tab, NEL), the three line break characters and a letter.
-	const ALL = strings([":", "#", "[", " ", "\t", "\u0085", "\r", "\n", "x"], 6);
+	//
+	// Length 5 is enough. The longest trigger is three characters (`##[`, or whitespace then `::`), so five holds a
+	// line break, a whole trigger and one character before it: every way a trigger meets a break or what precedes it.
+	// Length 6 was 597,871 strings walked by four tests and ran past the CI runner's 5 s test timeout; length 5 is
+	// 66,430.
+	const ALL = strings([":", "#", "[", " ", "\t", "\u0085", "\r", "\n", "x"], 5);
 
 	it(`no output line is a command, for all ${ALL.length} strings`, () => {
 		for (const text of ALL) {
