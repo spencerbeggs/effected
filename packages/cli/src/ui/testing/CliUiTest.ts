@@ -4,8 +4,8 @@ import type * as Cli from "@effected/cli";
 import type { KeyName, Screen, ScreenControl } from "@effected/cli/ui";
 import type { ColorLevel } from "@effected/env";
 import { TerminalEnv } from "@effected/env";
-import type { Scope } from "effect";
-import { Console, Effect, Fiber, Inspectable, Layer, Option } from "effect";
+import type { Cause, Scope } from "effect";
+import { Console, Effect, Exit, Fiber, Inspectable, Layer, Option } from "effect";
 import type { ReactElement } from "react";
 import { CliInteractive } from "../../CliInteractive.js";
 import { CliTheme } from "../../CliTheme.js";
@@ -53,8 +53,13 @@ export interface CliUiTestScreen {
 	 * nothing written; `"escape"` first waits a real 30 ms, because Ink holds a lone ESC for 20 ms before reporting
 	 * it. Pressing, typing or chunking on a screen that has ended is a defect, not a key for whatever screen is mounted
 	 * now.
+	 *
+	 * @remarks
+	 * A `{ char }` item sends its text as typed, as `chunk` does, settling like a key: `press({ char: "n" }, "enter")`.
+	 * A bare string that is not a key name (`press("n")`) is a defect naming `type("n")` and `{ char: "n" }`, since a
+	 * letter is not a `KeyName`.
 	 */
-	readonly press: (...keys: ReadonlyArray<KeyName>) => Effect.Effect<void>;
+	readonly press: (...keys: ReadonlyArray<KeyName | { readonly char: string }>) => Effect.Effect<void>;
 	/** Type text, one character at a time, each settling like a key. */
 	readonly type: (text: string) => Effect.Effect<void>;
 	/**
@@ -330,6 +335,22 @@ const NEXT_DIED = (index: number, contains: string | undefined, mounted: number,
 		contains === undefined ? "draw" : `show "${contains}"`
 	}, but ${why}; ${mounted} mounted so far`;
 
+const NOT_A_KEY = (method: string, text: string): string =>
+	`@effected/cli/ui/testing: ${method}(${JSON.stringify(text)}): ${JSON.stringify(text)} is not a key name; send text with type(${JSON.stringify(text)}) or ${method}({ char: ${JSON.stringify(text)} })`;
+
+/** The bytes of a named key or a `{ char }`; a bare string that names no key is a defect saying how to send text. */
+const bytesOf = (key: KeyName | { readonly char: string }, method: "press" | "chunk"): Effect.Effect<string> => {
+	if (typeof key !== "string") return Effect.succeed(key.char);
+	return Object.hasOwn(KEY_BYTES, key) ? Effect.succeed(KEY_BYTES[key]) : Effect.die(new Error(NOT_A_KEY(method, key)));
+};
+
+/** A `Cancelled` from the root entrypoint, matched by shape: this entry may carry its own copy of the class. */
+const cancelledReason = (value: unknown): "escape" | "interrupt" | undefined => {
+	if (typeof value !== "object" || value === null) return undefined;
+	const { _tag, reason } = value as { readonly _tag?: unknown; readonly reason?: unknown };
+	return _tag === "Cancelled" && (reason === "escape" || reason === "interrupt") ? reason : undefined;
+};
+
 /** One mounted screen's frames, and whether it has unmounted. */
 interface Capture {
 	readonly raws: Array<string>;
@@ -416,14 +437,17 @@ const makeTerminal = (options: CliUiTestOptions) => {
 			});
 		const handle: CliUiTestScreen = {
 			press: (...keys) =>
-				Effect.forEach(keys, (key) => send(KEY_BYTES[key], key === "escape" ? ESCAPE_FLUSH_MS : 0), {
-					discard: true,
-				}),
+				Effect.forEach(
+					keys,
+					(key) =>
+						Effect.flatMap(bytesOf(key, "press"), (bytes) => send(bytes, key === "escape" ? ESCAPE_FLUSH_MS : 0)),
+					{ discard: true },
+				),
 			type: (text) => Effect.forEach([...text], (character) => send(character), { discard: true }),
 			chunk: (...keys) =>
-				send(
-					keys.map((key) => (typeof key === "string" ? KEY_BYTES[key] : key.char)).join(""),
-					keys.at(-1) === "escape" ? ESCAPE_FLUSH_MS : 0,
+				Effect.flatMap(
+					Effect.forEach(keys, (key) => bytesOf(key, "chunk")),
+					(bytes) => send(bytes.join(""), keys.at(-1) === "escape" ? ESCAPE_FLUSH_MS : 0),
 				),
 			resize: (nextColumns, nextRows) =>
 				Effect.suspend(() => {
@@ -543,8 +567,10 @@ export class CliUiTest {
 	 * are taken from those writes. Closing the scope unmounts the screen. The returned handle is ready once the first
 	 * frame is drawn or the screen has ended.
 	 *
-	 * Waiting is on real time, through native timers a `TestClock` cannot hold, so it works under `it.effect` and
-	 * `it.live` alike, and never sleeps longer than 50 ms past the last write (30 ms first, for Esc).
+	 * Waiting is on real time, through native timers a `TestClock` cannot hold, so the harness's own waits work under
+	 * `it.effect` and `it.live` alike, and never sleep longer than 50 ms past the last write (30 ms first, for Esc). A
+	 * screen test that itself sleeps, times out or retries on a schedule needs `it.live` (or real timers): under
+	 * `it.effect` those run on the `TestClock`, which nothing advances while a screen waits on real time.
 	 *
 	 * The first frame is awaited for at most 2 s: a screen that draws nothing for longer gives a handle whose `frames`
 	 * is `[]`. Screens run one at a time process-wide (`CliUi.run`), so a second handle opened while another is
@@ -552,7 +578,8 @@ export class CliUiTest {
 	 * it mounts.
 	 *
 	 * Debug frames bypass Ink's erase-and-redraw path, so a harness frame says nothing about what Ink writes between
-	 * frames on a real terminal (a screen clear, for instance); a test of that needs the production render path.
+	 * frames on a real terminal (a screen clear, for instance), nor about the final frame left in the scrollback once
+	 * the screen ends (answered screens stay); a test of that needs the production render path.
 	 * For the same reason `CliUi.run`'s `clear` has no visible effect on a harness frame, since Ink's `clear` does
 	 * nothing in debug mode: test `clear` on the production render path, as the kit's own tests do.
 	 * Unmounting is the scope's close; to draw a different screen, render it in a new scope.
@@ -611,8 +638,33 @@ export class CliUiTest {
 	 * mounted and drawn, `press` and `type` settle as they do on a rendered screen, and joining the program's fiber
 	 * gives its exit. Screens still run one at a time, process-wide, so `next` sees them in the order they mount.
 	 *
-	 * As with `render`, a screen run with `clear` leaves its frames unchanged here: Ink renders in debug mode, where its
-	 * `clear` does nothing, so test `clear` on the production render path.
+	 * As with `render`, a screen run with `clear` leaves its frames unchanged here, and the final scrollback is not
+	 * captured: Ink renders in debug mode, where its `clear` does nothing, so test `clear` on the production render path.
+	 * The waits are real time: a session test that itself sleeps or times out needs `it.live`. To assert that no screen mounted (a
+	 * non-interactive run, a flag that skips a prompt), check that `mounts` is `0` once the program has finished.
+	 *
+	 * Driving a whole `Command` handler: provide `layer`, a fresh `CliExit.layer` if the handler records a code, a
+	 * `ConfigProvider` that sandboxes what the handler reads (`HOME`, the XDG directories), and the platform core's
+	 * runner needs, then fork the program and take each screen with `next`:
+	 *
+	 * ```ts
+	 * const session = yield* CliUiTest.session()
+	 * const program = Effect.gen(function* () {
+	 *   yield* Command.runWith(root, { version })(["init"])
+	 *   return MutableRef.get((yield* CliExit).code)
+	 * }).pipe(
+	 *   Effect.provide(session.layer),
+	 *   Effect.provide(CliExit.layer),
+	 *   Effect.provide(NodeServices.layer),
+	 *   Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ HOME: "/sandbox/home" })),
+	 * )
+	 * const fiber = yield* Effect.forkScoped(program)
+	 * yield* (yield* session.next({ contains: "Profile" })).press("enter")
+	 * const code = yield* Fiber.join(fiber)
+	 * ```
+	 *
+	 * To exercise `CliRuntime.main` as well (its failure report and exit code), run the program through it with the
+	 * session's layer provided around it instead; `main` provides its own `CliExit`.
 	 *
 	 * @param options - the terminal's size, colour and glyphs, and whether the run is interactive
 	 */
@@ -653,6 +705,38 @@ export class CliUiTest {
 				stderr: Effect.sync(() => output.err.join("")),
 			} satisfies CliUiTestSession;
 		});
+
+	/**
+	 * Why a screen or a program was cancelled, read from its `Exit` or `Cause`: `"escape"` or `"interrupt"` when it
+	 * carries a `Cancelled`, as a typed failure or as a defect, else `None`.
+	 *
+	 * @remarks
+	 * Pure. A screen's `result` fails with `Cancelled` in the typed channel; a prompt cancelled where the program
+	 * declares no such error carries it as a defect. Either way a test asks this instead of walking `cause.reasons`:
+	 *
+	 * ```ts
+	 * const exit = yield* Fiber.await(program)
+	 * assert.deepStrictEqual(CliUiTest.cancelReason(exit), Option.some("escape"))
+	 * ```
+	 *
+	 * @param exitOrCause - the exit of a screen's `result` or of a program, or a bare cause
+	 */
+	static readonly cancelReason = (
+		exitOrCause: Exit.Exit<unknown, unknown> | Cause.Cause<unknown>,
+	): Option.Option<"escape" | "interrupt"> => {
+		const cause = Exit.isExit(exitOrCause)
+			? Exit.isFailure(exitOrCause)
+				? exitOrCause.cause
+				: undefined
+			: exitOrCause;
+		for (const reason of cause?.reasons ?? []) {
+			const found = cancelledReason(
+				reason._tag === "Fail" ? reason.error : reason._tag === "Die" ? reason.defect : undefined,
+			);
+			if (found !== undefined) return Option.some(found);
+		}
+		return Option.none();
+	};
 
 	/**
 	 * Decode ANSI back to markup: a marker colour to its token (`[success]…[/success]`), any other foreground to

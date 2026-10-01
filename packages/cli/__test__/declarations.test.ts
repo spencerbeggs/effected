@@ -33,7 +33,7 @@ import type { KeyName, Screen } from "@effected/cli/ui";
 import { CliUi, Confirm } from "@effected/cli/ui";
 import { CliUiTest } from "@effected/cli/ui/testing";
 import type { Scope } from "effect";
-import { Effect, Fiber } from "effect";
+import { Effect, Exit, Fiber, Option } from "effect";
 
 const program = CliUi.run<number>(() => {
 	throw new Error("never mounted");
@@ -49,7 +49,12 @@ const keys: ReadonlyArray<KeyName> = ["up", "enter"];
 // @ts-expect-error CliUiRunOptions has no stream
 export const onStderr = CliUi.run(screen, { stream: "stderr" });
 export const driven: Effect.Effect<number, unknown, never> = Effect.scoped(
-	Effect.flatMap(CliUiTest.render(screen), (handle) => Effect.andThen(handle.press(...keys), handle.result)),
+	Effect.flatMap(CliUiTest.render(screen), (handle) =>
+		Effect.andThen(handle.press({ char: "y" }, ...keys), handle.result),
+	),
+);
+export const reason: "escape" | "interrupt" | undefined = Option.getOrUndefined(
+	CliUiTest.cancelReason(Exit.fail("not cancelled")),
 );
 
 // okfit's verify step, verbatim: one toggle only when there are drafts, read back with a fallback.
@@ -510,6 +515,7 @@ describe("the reviewed ./ui and ./ui/testing surfaces", () => {
 		for (const member of [
 			"static readonly session",
 			"static readonly view",
+			"static readonly cancelReason",
 			"readonly chunk:",
 			"readonly next:",
 			"readonly mounts:",
