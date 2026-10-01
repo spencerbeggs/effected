@@ -52,7 +52,8 @@ export interface LiveOptions<E, S> {
 	 * default, so only a start begins one. Pass it to begin on something else as well, such as a stream that a program
 	 * joins mid-run: `(event, before, after) => isStart(event) || (before.phase === "idle" && after.phase !== "idle")`.
 	 * An event that begins nothing while no run is going is folded and not drawn. A start while a run is going redraws
-	 * that run in place; this is not asked then.
+	 * that run in place, and this is not asked then; a start while a degraded run is going ends that run and begins a
+	 * fresh one.
 	 */
 	readonly begins?: (event: E, before: S, after: S) => boolean;
 	/** Whether an event ends a run: its frame is committed to the terminal and the view unmounts until the next. */
@@ -470,6 +471,16 @@ export const live = <E, S>(
 						),
 					);
 					const before = state;
+					if (run?.degraded === true && options.isStart(event)) {
+						// A start during a run that degraded ends it, keeping what it left on the terminal (or printing it, at
+						// the state before the start), and mounts a fresh run: a degraded run draws nothing more, so a host that
+						// starts again without a terminal event would otherwise get no frames until one came.
+						yield* endRun;
+						state = folded;
+						yield* beginRun;
+						dirty = false;
+						continue;
+					}
 					state = folded;
 					if (options.isTerminal(event)) {
 						if (dirty || run !== undefined) yield* draw;
@@ -481,7 +492,7 @@ export const live = <E, S>(
 						if (begins(event, before, folded)) yield* beginRun;
 						dirty = false;
 					} else {
-						// A start during a run redraws it in place, as any other event does.
+						// A start during a run redraws it in place, as any other event does (a degraded one excepted, above).
 						dirty = true;
 					}
 				}

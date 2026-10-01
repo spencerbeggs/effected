@@ -253,6 +253,35 @@ describe("CliUi.live: a render that fails degrades the run (Review Focus 2, ruli
 		}).pipe(Effect.scoped),
 	);
 
+	it.live("a start during a degraded run ends it and mounts a fresh run, with no terminal event between", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const log = capturing();
+			const queue = yield* queueOf();
+			let mounts = 0;
+			const options = optionsOf(Stream.fromQueue(queue), {
+				render: (state) => {
+					if (state.run === 1 && state.last === "tick 2") throw new Error("render threw");
+					return frameOf(state);
+				},
+			});
+			const handle = yield* liveOn(fake, options, { console: log.console, onMount: () => mounts++ });
+			yield* Queue.offerAll(queue, [Start, tick(1)]);
+			yield* until(() => screenAfter(fake.stdout()).includes("tick 1"));
+			yield* Queue.offer(queue, tick(2));
+			yield* until(() => warningsIn(log.lines).length === 1);
+			// A host that aborts a run without its terminal event (a watch rerun mid-run) starts the next one.
+			yield* Queue.offerAll(queue, [Start, tick(5)]);
+			yield* until(() => screenAfter(fake.stdout()).includes("tick 5"));
+			yield* Queue.offer(queue, End);
+			yield* Queue.end(queue);
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.strictEqual(mounts, 2, "the start mounted a fresh run");
+			assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 1", "tick 1", "RUN 2", "ended"]);
+			assert.strictEqual(warningsIn(log.lines).length, 1, log.lines.join("\n"));
+		}).pipe(Effect.scoped),
+	);
+
 	it.live("a reduce that throws unmounts first, then done dies with the error, and the terminal is restored", () =>
 		Effect.gen(function* () {
 			const fake = makeFakeStreams({ columns: 40, rows: 20 });

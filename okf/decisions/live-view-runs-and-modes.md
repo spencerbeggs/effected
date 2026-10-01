@@ -13,8 +13,8 @@ sources:
     title: "Ink 7.1.1, build/ink.js:706-708: interactive defaults to !isInCi && stdout.isTTY"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T11:49:06Z
-  body_sha256: a8ef805bebbed4ecc425c12866d54d2f7aed78ff3974125a3ff626b65dba3788
+  at: 2026-10-01T12:17:52Z
+  body_sha256: 32e2c968ad0e1e3e1a28ddee6e132b9a3260eb991f1aa18c50f849c158639bfd
 ---
 
 # A live view is a scoped drain of runs, hosted or owned, with no input and the mount permit per run
@@ -47,7 +47,9 @@ stdout (L1).
   from idle to anything else. An event while no run is going that begins none
   is folded and not drawn. The end of a run is Ink's own `unmount()`, which
   commits the final frame; the next start mounts fresh. A start while mounted
-  re-renders in place. The fold is never reset by the kit: that is the
+  re-renders in place. A start during a run that degraded ends it, as its
+  terminal event would, and mounts a fresh run, so a host that restarts
+  without a terminal event (a watch rerun mid-run) is drawn again. The fold is never reset by the kit: that is the
   reducer's job.
 - **The mount permit is held per run,** from mount to unmount, not for the
   view's whole life, so a `CliUi.run` between runs mounts and one during a

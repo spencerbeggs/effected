@@ -333,7 +333,8 @@ export class CliUi {
 	 * A run whose drawing fails (a `render` that throws, or a mount that fails) degrades rather than ending the view:
 	 * it is unmounted, leaving its last good frame on the terminal, then one warning is logged (`Effect.logWarning`),
 	 * and the fold goes on. At its terminal event, a run with no frame left on the terminal (it never painted, or its
-	 * last good frame threw too) writes its final frame once, as a string. The next run mounts afresh. A `reduce` that
+	 * last good frame threw too) writes its final frame once, as a string. The next run mounts afresh, and so does a
+	 * start that comes while a degraded run is going: it ends that run as its terminal event would. A `reduce` that
 	 * throws, or an `events` stream that dies, unmounts the run, then `done` dies with the error.
 	 *
 	 * When the run is not interactive, nothing is mounted and Ink is loaded only when a string is due. In the `owned`
