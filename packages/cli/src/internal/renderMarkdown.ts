@@ -43,12 +43,33 @@ const escapeLineStart = (line: string): string => {
 const htmlEscape = (text: string): string =>
 	text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-/** Inline code: a backtick fence longer than any run inside, padded where a reader would strip or merge a space. */
+/** Whether some `|` in the text has an odd run of backslashes straight before it. */
+const pipeAfterOddBackslashes = (text: string): boolean => {
+	let run = 0;
+	for (const ch of text) {
+		if (ch === "|" && run % 2 === 1) return true;
+		run = ch === "\\" ? run + 1 : 0;
+	}
+	return false;
+};
+
+/**
+ * Inline code: a backtick fence longer than any run inside, padded where a reader would strip or merge a space.
+ *
+ * @remarks
+ * In a table cell a `|` is written `\|`, which GFM unescapes before it reads the code span. GFM's row scanner reads a
+ * backslash and the character after it as a pair, so a `|` survives the scanner only after an odd run of backslashes,
+ * and the unescape then leaves an even run: a code span in a cell cannot hold a `|` after an odd run of backslashes at
+ * all. That text is written as `<code>` around escaped text instead, which reads the same; every other `|` follows an
+ * even run, which `\|` keeps.
+ */
 const codeSpan = (text: string, mode: Mode): string => {
 	const flat = text.replace(/\r\n|\r|\n/g, " ");
+	if (mode === "cell" && pipeAfterOddBackslashes(flat)) return `<code>${escapeText(flat)}</code>`;
 	const longest = Math.max(0, ...[...flat.matchAll(/`+/g)].map((run) => run[0].length));
 	const fence = "`".repeat(longest + 1);
 	const padded = /^`|`$/.test(flat) || (/^ .* $/.test(flat) && flat.trim() !== "") || flat === "";
+	// Backslashes in a code span are literal, so they are not escaped: every `|` here follows an even run of them.
 	const body = mode === "cell" ? flat.replace(/\|/g, "\\|") : flat;
 	const pad = padded ? " " : "";
 	return `${fence}${pad}${body === "" ? " " : body}${pad}${fence}`;
@@ -292,15 +313,26 @@ const countsMd = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>
 	return line === "" ? [] : [flowLines(line)];
 };
 
+/**
+ * A heading's text with any closing run of `#` escaped, so a reader does not take it for the optional closing sequence.
+ *
+ * @remarks
+ * The text is already markdown: every backslash that came from the document was escaped as text, so a backslash can
+ * never sit unescaped in front of the run.
+ */
+const headingText = (markdown: string): string => {
+	const text = markdown.trim();
+	let start = text.length;
+	while (start > 0 && text[start - 1] === "#") start--;
+	return `${text.slice(0, start)}${"\\#".repeat(text.length - start)}`;
+};
+
 /** A block as markdown. `compact` is set on a compact list's item: a section there joins its parts with no blank lines. */
 const blockMd = (walk: Walk, block: Block, depth: number, compact = false): Lines => {
 	const { ctx } = walk;
 	switch (block._tag) {
 		case "Heading": {
-			const content = inlineMd(block.content, ctx, "line")
-				.trim()
-				.replace(/#+$/, (hashes) => hashes.replace(/#/g, "\\#"));
-			return [`${"#".repeat(block.level)} ${content}`.trimEnd()];
+			return [`${"#".repeat(block.level)} ${headingText(inlineMd(block.content, ctx, "line"))}`.trimEnd()];
 		}
 		case "Paragraph":
 			return flowLines(inlineMd(block.content, ctx, "flow"));
@@ -393,11 +425,7 @@ const blockMd = (walk: Walk, block: Block, depth: number, compact = false): Line
 			const title =
 				block.title === undefined
 					? []
-					: [
-							`${"#".repeat(level)} ${inlineMd(block.title, ctx, "line")
-								.trim()
-								.replace(/#+$/, (h) => h.replace(/#/g, "\\#"))}`.trimEnd(),
-						];
+					: [`${"#".repeat(level)} ${headingText(inlineMd(block.title, ctx, "line"))}`.trimEnd()];
 			const parts = [title, ...block.children.map((child) => blockMd(walk, child, depth + 1))];
 			return compact ? joinTight(parts) : joinBlocks(parts);
 		}

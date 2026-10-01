@@ -59,6 +59,18 @@ const upTo = (alphabet: ReadonlyArray<string>, length: number): ReadonlyArray<st
 };
 
 describe("Render.markdown: headings and paragraphs", () => {
+	it.effect("a heading or section title ending in # keeps it, whatever backslashes come before it", () =>
+		Effect.gen(function* () {
+			const titles = ["C#", "a #", "a ##", "a\\#", "a\\\\#", "a\\ #", "#", "\\##", "x `#`#"];
+			const root = yield* treeOf([
+				...titles.map((title) => Doc.heading(2, title)),
+				Doc.section(titles[3] as string, [Doc.paragraph("body")]),
+			]);
+			const headings = kids(root).filter((n) => n.type === "heading");
+			assert.deepStrictEqual(headings.map(textOf), [...titles, titles[3]]);
+		}),
+	);
+
 	it.effect("a heading is # repeated by its level, with its text", () =>
 		Effect.gen(function* () {
 			const root = yield* treeOf([
@@ -403,7 +415,22 @@ describe("Render.markdown: tables", () => {
 
 	it.effect("inline code in a cell keeps its pipes and backticks", () =>
 		Effect.gen(function* () {
-			const codes = ["a|b", "a`b", "``", "` x `", " lead", "trail ", "x", "||"];
+			const codes = [
+				"a|b",
+				"a`b",
+				"``",
+				"` x `",
+				" lead",
+				"trail ",
+				"x",
+				"||",
+				"a\\|b",
+				"\\|",
+				"a\\",
+				"\\\\|",
+				"\\",
+				"`\\|`",
+			];
 			const root = yield* treeOf([
 				Doc.table(
 					[{ header: "c" }],
@@ -413,10 +440,47 @@ describe("Render.markdown: tables", () => {
 			const values = kids(tableOf(root))
 				.slice(1)
 				.map((row) => kids(kids(row)[0]).map((n) => [n.type, n.value]));
+			// A `|` after an odd run of backslashes cannot be held by a code span in a cell (GFM's scanner pairs a backslash
+			// with the next character, and the unescape then leaves an even run), so that code is `<code>` around text.
+			const html = new Set(["a\\|b", "\\|", "`\\|`"]);
 			assert.deepStrictEqual(
 				values,
-				codes.map((c) => [["inlineCode", c]]),
+				codes.map((c) =>
+					html.has(c)
+						? [
+								["html", "<code>"],
+								["text", c],
+								["html", "</code>"],
+							]
+						: [["inlineCode", c]],
+				),
 			);
+		}),
+	);
+
+	it.effect("small-alphabet property: inline code in a cell of up to 5 characters reads back as itself", () =>
+		Effect.gen(function* () {
+			const ctx = yield* contextOf();
+			const codes = upTo(["\\", "|", "`", " ", "x"], 5).filter((c) => c.trim() !== "");
+			const markdown = Render.markdown(
+				[
+					Doc.table(
+						[{ header: "c" }, { header: "after" }],
+						codes.map((c) => [[Doc.code(c)], "z"]),
+					),
+				],
+				ctx,
+			);
+			const rows = kids(tableOf(yield* parse(markdown))).slice(1);
+			assert.strictEqual(rows.length, codes.length);
+			const failures = codes.flatMap((c, index) => {
+				const cells = kids(rows[index]);
+				const got = cells.map(textOf);
+				return got.length === 2 && got[0] === c && got[1] === "z"
+					? []
+					: [`${JSON.stringify(c)} -> ${JSON.stringify(got)}`];
+			});
+			assert.deepStrictEqual(failures.slice(0, 5), []);
 		}),
 	);
 
