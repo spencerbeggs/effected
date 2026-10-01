@@ -119,6 +119,16 @@ describe("CliAudience", () => {
 		}),
 	);
 
+	it.effect("--audience names its values as the placeholder, not core's generic `choice`", () =>
+		Effect.gen(function* () {
+			const { out } = yield* run(["--help"]);
+			const line = out.find((text) => text.includes("--audience"));
+			assert.isDefined(line);
+			assert.include(line ?? "", "--audience <human|agent|ci>", out.join("\n"));
+			assert.notMatch(line ?? "", /--audience choice\b/);
+		}),
+	);
+
 	describe("flags({ hidden: true })", () => {
 		it.effect("the root --help does not list --audience", () =>
 			Effect.gen(function* () {

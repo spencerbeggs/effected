@@ -98,6 +98,9 @@ const resolve = (input: AudienceFlagInput): Effect.Effect<AudienceShape, CliErro
  * )
  * ```
  *
+ * Core lists a shared flag in the help of every subcommand, not only at the root: that is upstream (Effect-TS/effect
+ * issue 8642), and `flags({ hidden: true })` is the way to keep them out of help altogether.
+ *
  * A root that forgot `Command.withSharedFlags(CliAudience.flags())` does not compile. Giving more than one
  * occurrence across the four flags is a usage error even when they agree; a boolean set to false (`--no-agent`,
  * `--agent=false`) counts as not given. A bad `--audience` value is core's own parse error. Both exit `64` under
@@ -140,7 +143,12 @@ export class CliAudience {
 		const maybeHide = <A>(flag: Flag.Flag<A>): Flag.Flag<A> => (hide ? Flag.withHidden(flag) : flag);
 		return {
 			audience: maybeHide(
-				Flag.Literals("audience", KINDS).pipe(Flag.atLeast(0), Flag.withDescription("Audience: human | agent | ci")),
+				Flag.Literals("audience", KINDS).pipe(
+					Flag.atLeast(0),
+					// Core's own flags spell the angle brackets in the metavar; without one it prints the generic `choice`.
+					Flag.withMetavar("<human|agent|ci>"),
+					Flag.withDescription("Audience: human | agent | ci"),
+				),
 			),
 			human: maybeHide(
 				Flag.Boolean("human").pipe(Flag.atLeast(0), Flag.withDescription("Shorthand for --audience human")),

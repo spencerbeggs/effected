@@ -133,3 +133,43 @@ describe("NotInteractive", () => {
 		assert.deepStrictEqual(Schema.encodeSync(NotInteractive)(e), { _tag: "NotInteractive" });
 	});
 });
+
+describe("CliRuntime.defaultRender", () => {
+	const details = { cause: Cause.empty, isDefect: false };
+
+	it("is the kit's own line for the two prompt failures, and String(error) for anything else", () => {
+		assert.strictEqual(
+			CliRuntime.defaultRender(new Cancelled({ reason: "escape" }), details),
+			"cancelled; nothing written",
+		);
+		assert.strictEqual(
+			CliRuntime.defaultRender(new NotInteractive(), details),
+			"not interactive: run in a terminal or pass the flag",
+		);
+		assert.strictEqual(CliRuntime.defaultRender(new Error("boom"), details), String(new Error("boom")));
+		assert.strictEqual(CliRuntime.defaultRender("plain", details), "plain");
+	});
+
+	it.effect("a consumer render can hand the two prompt failures back and keep its own line for the rest", () =>
+		Effect.gen(function* () {
+			const render = (error: unknown, d: { readonly cause: Cause.Cause<unknown>; readonly isDefect: boolean }) =>
+				error instanceof Cancelled || error instanceof NotInteractive
+					? CliRuntime.defaultRender(error, d)
+					: `tool: ${String(error)}`;
+			const run2 = <E>(failure: E) =>
+				Effect.gen(function* () {
+					const { double, err } = capturing();
+					yield* CliRuntime.main(Effect.fail(failure), { platform: Layer.empty, render }).pipe(
+						Effect.exit,
+						Effect.provideService(Console.Console, double),
+					);
+					return err;
+				});
+			assert.deepStrictEqual(yield* run2(new Cancelled({ reason: "interrupt" })), ["cancelled; nothing written"]);
+			assert.deepStrictEqual(yield* run2(new NotInteractive()), [
+				"not interactive: run in a terminal or pass the flag",
+			]);
+			assert.deepStrictEqual(yield* run2("other"), ["tool: other"]);
+		}),
+	);
+});

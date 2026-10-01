@@ -139,7 +139,7 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 }
 
 /** The default one-line rendering: the two prompt failures are their own fixed line, everything else is `String(error)`. */
-const defaultRender = (error: unknown): string => {
+const defaultRender = (error: unknown, _details?: FailureDetails): string => {
 	if (error instanceof Cancelled || error instanceof NotInteractive) return error.message;
 	return String(error);
 };
@@ -240,6 +240,27 @@ const chooseExitCode = (error: unknown, fallback: number | undefined): number =>
  */
 export class CliRuntime {
 	private constructor() {}
+
+	/**
+	 * What `reportFailures` and `main` render a failure as when no `render` option is given, for a consumer's own
+	 * `render` to hand a failure back to.
+	 *
+	 * @remarks
+	 * The two prompt failures, `Cancelled` and `NotInteractive`, are their own fixed line; anything else is
+	 * `String(error)`. A custom `render` that only cares about its own errors delegates the rest here rather than
+	 * re-implementing those lines:
+	 *
+	 * ```ts
+	 * const render = (error: unknown, details: FailureDetails) =>
+	 *   error instanceof MyError ? myLines(error) : CliRuntime.defaultRender(error, details)
+	 * ```
+	 *
+	 * @param error - the squashed failure
+	 * @param details - what `render` is told about the failure; accepted so a delegating `render` passes both
+	 *   arguments through unchanged
+	 */
+	static readonly defaultRender = (error: unknown, details: FailureDetails): string | ReadonlyArray<string> =>
+		defaultRender(error, details);
 
 	/**
 	 * Catch, render through the ambient logger, and re-fail with the exit code
