@@ -1,11 +1,10 @@
+import { CommandNeutralizer, WorkflowCommand } from "@effected/github-commands";
 import type { Block, Document } from "../Doc.js";
 import type { RenderContext } from "../Render.js";
-import { neutralizeLines } from "./neutralize.js";
 import { plainInline, renderPlain } from "./renderPlain.js";
-import { escapeData } from "./workflowCommand.js";
 
 const plainLines = (blocks: ReadonlyArray<Block>, ctx: RenderContext): ReadonlyArray<string> =>
-	blocks.length === 0 ? [] : neutralizeLines(renderPlain(blocks, ctx));
+	blocks.length === 0 ? [] : CommandNeutralizer.lines(renderPlain(blocks, ctx));
 
 const blockLines = (block: Block, ctx: RenderContext): ReadonlyArray<string> => {
 	switch (block._tag) {
@@ -15,7 +14,7 @@ const blockLines = (block: Block, ctx: RenderContext): ReadonlyArray<string> => 
 				.map((span) => span.text)
 				.join("");
 			// Groups do not nest: inside this one a collapsible is plain text, its title and its indented body.
-			return [`::group::${escapeData(title)}`, ...plainLines(block.body, ctx), "::endgroup::"];
+			return [WorkflowCommand.group(title), ...plainLines(block.body, ctx), WorkflowCommand.endGroup()];
 		}
 		case "Section": {
 			// A section's children start a line, so they may be groups. Everything else is plain text.

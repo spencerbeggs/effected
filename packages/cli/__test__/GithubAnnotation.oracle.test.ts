@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { WorkflowCommand } from "@effected/github-actions";
+import { WorkflowCommand } from "@effected/github-commands";
 import type { GithubAnnotationProperties } from "../src/index.js";
 import { GithubAnnotation } from "../src/index.js";
 

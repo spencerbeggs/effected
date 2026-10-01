@@ -37,7 +37,6 @@
 		"@effect/vitest": "catalog:effect",
 		"@effected/config-file": "workspace:*",
 		"@effected/env": "workspace:*",
-		"@effected/github-actions": "workspace:*",
 		"@effected/github-commands": "workspace:*",
 		"@effected/glob": "workspace:*",
 		"@effected/jsonc": "workspace:*",

@@ -1,4 +1,5 @@
 import type { Audience, TerminalEnv } from "@effected/env";
+import { CommandNeutralizer } from "@effected/github-commands";
 import type { FileSystem, Path, Stdio, Terminal } from "effect";
 import { Cause, Effect, Layer, MutableRef, Runtime } from "effect";
 import { CliError } from "effect/cli";
@@ -15,7 +16,6 @@ import { FailureTargetCell, failureLines, plainFailureLines, refreshFailureTarge
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
 import { isExitCode } from "./internal/isExitCode.js";
 import { sanitize } from "./internal/layout.js";
-import { neutralizeLines } from "./internal/neutralize.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
 
@@ -150,7 +150,7 @@ const lastResort = (error: unknown): ReadonlyArray<string> => {
 	} catch {
 		text = "[unprintable failure]";
 	}
-	return neutralizeLines(sanitize(text));
+	return CommandNeutralizer.lines(sanitize(text));
 };
 
 const toLines = (rendered: string | ReadonlyArray<string>): ReadonlyArray<string> =>

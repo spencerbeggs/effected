@@ -1,12 +1,12 @@
 import type { AudienceKind, ColorLevel } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
+import { CommandNeutralizer } from "@effected/github-commands";
 import { Effect } from "effect";
 import { CliLinks } from "./CliLinks.js";
 import { CliTheme } from "./CliTheme.js";
 import type { Document, LinkTarget } from "./Doc.js";
 import type { GlyphSet } from "./Glyphs.js";
 import { underGithubActions } from "./internal/autoFormat.js";
-import { neutralizeLines } from "./internal/neutralize.js";
 import { renderAnsi } from "./internal/renderAnsi.js";
 import { renderGithubLog } from "./internal/renderGithubLog.js";
 import { renderMarkdown } from "./internal/renderMarkdown.js";
@@ -69,7 +69,7 @@ export interface RenderContext {
 
 /** A renderer's text, with workflow commands neutralized when the context says the runner is reading it. */
 const guarded = (text: string, ctx: RenderContext): string =>
-	ctx.neutralizeWorkflowCommands === true ? neutralizeLines(text).join("\n") : text;
+	ctx.neutralizeWorkflowCommands === true ? CommandNeutralizer.text(text) : text;
 
 /**
  * Options for {@link Render.context}.

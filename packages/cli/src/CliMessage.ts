@@ -1,9 +1,9 @@
 import { Audience } from "@effected/env";
+import { CommandNeutralizer } from "@effected/github-commands";
 import { Console, Effect } from "effect";
 import { CliTheme } from "./CliTheme.js";
 import { underGithubActions } from "./internal/autoFormat.js";
 import { sanitize } from "./internal/layout.js";
-import { neutralizeLines } from "./internal/neutralize.js";
 import { Status } from "./Status.js";
 
 /**
@@ -77,7 +77,7 @@ export class CliMessage {
 				line = streamTheme.status(vocab, name, message);
 			}
 			// The runner reads a log line as a command; this is the one place a message's text reaches it.
-			if (yield* underGithubActions) line = neutralizeLines(line).join("\n");
+			if (yield* underGithubActions) line = CommandNeutralizer.text(line);
 
 			yield* stream === "stderr" ? Console.error(line) : Console.log(line);
 		});

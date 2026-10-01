@@ -1,8 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
+import { CommandNeutralizer } from "@effected/github-commands";
 import { Effect } from "effect";
 import type { Block, RenderContext } from "../src/index.js";
 import { Doc, Render, Status } from "../src/index.js";
-import { neutralizeLines } from "../src/internal/neutralize.js";
 import { ESC, composite } from "./helpers/hostileDoc.js";
 import { contextOf } from "./helpers/renderContext.js";
 import { LINE_BREAK, isCommand } from "./helpers/runnerCommands.js";
@@ -223,7 +223,7 @@ describe("Render.githubLog: document text cannot become a workflow command", () 
 	);
 
 	it("the neutralizer splits at a lone CR, LF and CRLF, as the runner does, and leaves the rest of each line alone", () => {
-		const out = neutralizeLines(
+		const out = CommandNeutralizer.lines(
 			"a\r::error::x\r\n##[group]y\n  ::add-mask::z\rplain text\r\n\u00A0::warning::w\n\u0085::error::n",
 		);
 		assert.strictEqual(out.length, 7);
@@ -232,7 +232,7 @@ describe("Render.githubLog: document text cannot become a workflow command", () 
 			out.map((line) => line.replaceAll("\u200B", "")),
 			["a", "::error::x", "##[group]y", "  ::add-mask::z", "plain text", "\u00A0::warning::w", "\u0085::error::n"],
 		);
-		assert.deepStrictEqual(neutralizeLines("no command\nhere: ::"), ["no command", "here: ::"]);
+		assert.deepStrictEqual(CommandNeutralizer.lines("no command\nhere: ::"), ["no command", "here: ::"]);
 	});
 
 	it("the legacy ##[ form is a command anywhere in a line: every occurrence is broken, a bare ## is left alone", () => {
@@ -245,20 +245,20 @@ describe("Render.githubLog: document text cannot become a workflow command", () 
 		];
 		for (const line of hostile) {
 			assert.isTrue(isCommand(line), `the oracle flags it first: ${JSON.stringify(line)}`);
-			const out = neutralizeLines(line);
+			const out = CommandNeutralizer.lines(line);
 			assert.deepStrictEqual(out.filter(isCommand), [], JSON.stringify(line));
 			assert.strictEqual(out.join("").replaceAll("\u200B", ""), line, "only a zero-width space is added");
 		}
-		assert.strictEqual(neutralizeLines("a ##[x] b ##[y]").join(""), "a ##\u200B[x] b ##\u200B[y]");
+		assert.strictEqual(CommandNeutralizer.lines("a ##[x] b ##[y]").join(""), "a ##\u200B[x] b ##\u200B[y]");
 		for (const bare of ["## Heading", "a ## b", "##", "###", "## [link]", "#[x]", "# #[x]", "##x[y]"]) {
-			assert.deepStrictEqual(neutralizeLines(bare), [bare], JSON.stringify(bare));
+			assert.deepStrictEqual(CommandNeutralizer.lines(bare), [bare], JSON.stringify(bare));
 		}
 	});
 
 	it("neutralizing is idempotent, so githubLog's own pass and the facade's never double up", () => {
 		for (const text of ["::error::x\n a ##[b]\n##[c]", "plain", "::a::##[b]##[c]", "x\r\n::y"]) {
-			const once = neutralizeLines(text).join("\n");
-			assert.strictEqual(neutralizeLines(once).join("\n"), once, JSON.stringify(text));
+			const once = CommandNeutralizer.lines(text).join("\n");
+			assert.strictEqual(CommandNeutralizer.lines(once).join("\n"), once, JSON.stringify(text));
 		}
 	});
 

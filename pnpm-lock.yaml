@@ -300,9 +300,6 @@ importers:
       '@effected/env':
         specifier: workspace:*
         version: link:../env/dist/dev/pkg
-      '@effected/github-actions':
-        specifier: workspace:*
-        version: link:../github-actions/dist/dev/pkg
       '@effected/github-commands':
         specifier: workspace:*
         version: link:../github-commands/dist/dev/pkg

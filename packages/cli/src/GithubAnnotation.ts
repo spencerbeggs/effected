@@ -1,4 +1,4 @@
-import { escapeData, escapeProperty } from "./internal/workflowCommand.js";
+import { WorkflowCommand } from "@effected/github-commands";
 
 /**
  * The severity of a GitHub annotation.
@@ -47,26 +47,25 @@ export class GithubAnnotation {
 	 * break in a message would let the text after it be read as a new command, which is why the escaping is not optional.
 	 *
 	 * A property that is not given is left out, and the properties are written in the order `title`, `file`, `line`,
-	 * `endLine`, `col`, `endColumn`, the same as `@effected/github-actions`' `WorkflowCommand`, whose output this
-	 * matches for the same annotation.
+	 * `endLine`, `col`, `endColumn`, the same as `@effected/github-commands`' `WorkflowCommand`, which this renders
+	 * through.
 	 *
 	 * @param annotation - the level and the optional file, position and title
 	 * @param message - the annotation's text
 	 */
 	static readonly format = (annotation: GithubAnnotationProperties, message: string): string => {
-		const properties: ReadonlyArray<readonly [string, string | number | undefined]> = [
-			["title", annotation.title],
-			["file", annotation.file],
-			["line", annotation.line],
-			["endLine", annotation.endLine],
-			["col", annotation.col],
-			["endColumn", annotation.endColumn],
-		];
-		const rendered = properties
-			.filter((entry): entry is readonly [string, string | number] => entry[1] !== undefined)
-			.map(([key, value]) => `${key}=${escapeProperty(String(value))}`)
-			.join(",");
-		const head = rendered === "" ? `::${annotation.level}::` : `::${annotation.level} ${rendered}::`;
-		return `${head}${escapeData(message)}`;
+		// One escaping: this renders through `WorkflowCommand`, not a copy of it.
+		return WorkflowCommand.render(
+			annotation.level,
+			{
+				title: annotation.title,
+				file: annotation.file,
+				line: annotation.line,
+				endLine: annotation.endLine,
+				col: annotation.col,
+				endColumn: annotation.endColumn,
+			},
+			message,
+		);
 	};
 }
