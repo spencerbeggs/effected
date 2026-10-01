@@ -1,0 +1,60 @@
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Fiber, Schedule } from "effect";
+import { CliInteractive } from "../../src/CliInteractive.js";
+import { CliTheme } from "../../src/index.js";
+import { stripAnsi } from "../../src/internal/displayWidth.js";
+import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
+import type { MultiSelectSection } from "../../src/ui.js";
+import { CliUi, MultiSelect, UiStreams } from "../../src/ui.js";
+
+const sections: ReadonlyArray<MultiSelectSection<string>> = [
+	{
+		title: "Drafts",
+		items: [
+			{ key: "a1", label: "first draft", value: "a1", detail: "about the first draft" },
+			{ key: "a2", label: "second draft", value: "a2" },
+		],
+	},
+];
+
+/** A MultiSelect on the production render path (Ink's ordinary output) over fake TTY streams of the given size. */
+const drawn = (columns: number, rows: number) =>
+	Effect.gen(function* () {
+		const fake = makeFakeStreams({ columns, rows });
+		const fiber = yield* Effect.forkChild(
+			CliUi.run(MultiSelect.screen({ message: "Attest which?", sections })).pipe(
+				Effect.provideService(UiStreams, fake.streams),
+				Effect.provideService(CliInteractive, true),
+				Effect.provide(CliTheme.layerTest()),
+			),
+		);
+		yield* Effect.suspend(() => (fake.rawModes.includes(true) ? Effect.void : Effect.fail("not yet"))).pipe(
+			Effect.retry(Schedule.spaced("5 millis")),
+			Effect.timeout("2 seconds"),
+			Effect.orDie,
+		);
+		yield* Effect.sleep("80 millis");
+		yield* Fiber.interrupt(fiber);
+		return stripAnsi(fake.stdout());
+	});
+
+describe("a terminal reporting 0x0 is an unknown size (O1)", () => {
+	it.live("the production path draws a full MultiSelect row and its detail line, and no bare ellipsis row", () =>
+		Effect.gen(function* () {
+			const out = yield* drawn(0, 0);
+			assert.include(out, "first draft");
+			assert.include(out, "about the first draft");
+			assert.include(out, "Attest which?");
+			const bare = out.split(/\r?\n/).filter((line) => line.trim() === "…");
+			assert.deepStrictEqual(bare, [], out);
+		}),
+	);
+
+	it.live("control: a real 80x24 terminal draws the same rows", () =>
+		Effect.gen(function* () {
+			const out = yield* drawn(80, 24);
+			assert.include(out, "first draft");
+			assert.include(out, "about the first draft");
+		}),
+	);
+});

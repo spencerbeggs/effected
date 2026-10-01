@@ -121,11 +121,18 @@ export const Styled = (props: StyledProps): ReactElement => {
 	return react.createElement(ink.Text, inkProps(theme.style(props.token), theme.color), props.children);
 };
 
+/** A reported size, or `fallback` when it is unknown: absent, or not positive (a pty `script` opens reports 0x0). */
+const known = (reported: number | undefined, fallback: number): number =>
+	reported !== undefined && reported > 0 ? reported : fallback;
+
 /**
  * The usable terminal size: the stdout Ink draws on, less one column and one row, re-read on every render and when
  * the terminal resizes.
  *
  * @remarks
+ * A width or height the stream does not report, or reports as 0 (a pty that `script` opens says `0 0`), is unknown and
+ * reads as 80 columns by 24 rows, so a screen never lays itself out at width 0.
+ *
  * A React hook: call it from a component rendered inside a `CliUi.run` screen.
  *
  * @public
@@ -140,5 +147,5 @@ export const useTerminalSize = (): TerminalSize => {
 			stdout.off("resize", redraw);
 		};
 	}, [stdout]);
-	return { columns: Math.max(1, (stdout.columns ?? 80) - 1), rows: Math.max(1, (stdout.rows ?? 24) - 1) };
+	return { columns: Math.max(1, known(stdout.columns, 80) - 1), rows: Math.max(1, known(stdout.rows, 24) - 1) };
 };
