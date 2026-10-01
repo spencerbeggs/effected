@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Console, Effect } from "effect";
 import type { Instance } from "ink";
 import { Box, Text, render } from "ink";
 import type { ReactElement } from "react";
@@ -41,15 +41,54 @@ const mount = (streams: UiStreamsShape, bridge: InkConsole, tick: number): Insta
 		exitOnCtrlC: false,
 	});
 
+/** An ambient `Console` that records every call: the bridge must never fall through to it. */
+const recordingConsole = (): { readonly console: Console.Console; readonly calls: Array<string> } => {
+	const calls: Array<string> = [];
+	const record = (name: string) => (): void => {
+		calls.push(name);
+	};
+	const names = [
+		"assert",
+		"clear",
+		"count",
+		"countReset",
+		"debug",
+		"dir",
+		"dirxml",
+		"error",
+		"group",
+		"groupCollapsed",
+		"groupEnd",
+		"info",
+		"log",
+		"table",
+		"time",
+		"timeEnd",
+		"timeLog",
+		"trace",
+		"warn",
+	];
+	return {
+		console: Object.fromEntries(names.map((name) => [name, record(name)])) as unknown as Console.Console,
+		calls,
+	};
+};
+
 const LOGS = [1, 2, 3, 4, 5].flatMap((index) => [`out line ${index}`, `err line ${index}`]);
 const FINAL = ["LIVE HEADER", "tick 5"];
 
 /** A live frame rerendered five times, with a stdout and a stderr line written after each rerender by `write`. */
-const run = (write: (bridge: InkConsole, streams: UiStreamsShape, index: number) => void) =>
+const run = (
+	write: (bridge: InkConsole, streams: UiStreamsShape, index: number) => void,
+	ambient: Console.Console = recordingConsole().console,
+) =>
 	Effect.gen(function* () {
 		yield* loadInk;
 		const { fake, streams } = terminal();
-		const bridge = yield* makeInkConsole.pipe(Effect.provideService(UiStreams, streams));
+		const bridge = yield* makeInkConsole.pipe(
+			Effect.provideService(UiStreams, streams),
+			Effect.provideService(Console.Console, ambient),
+		);
 		const instance = mount(streams, bridge, 0);
 		for (let index = 1; index <= 5; index++) {
 			instance.rerender(createElement(bridge.Bridge, null, frame(index)));
@@ -79,7 +118,11 @@ describe("the console bridge writes above a live Ink frame (probe L4, production
 				streams.stdout.write(`out line ${index}\n`);
 				streams.stderr.write(`err line ${index}\n`);
 			});
-			assert.notDeepEqual(screenAfter(fake.stdout()), [...LOGS, ...FINAL]);
+			const shown = screenAfter(fake.stdout());
+			// Torn: the repaint erases lines it did not write, so log lines go missing or a stale header stays behind.
+			const missing = LOGS.filter((line) => !shown.includes(line));
+			const headers = shown.filter((line) => line === "LIVE HEADER").length;
+			assert.isTrue(missing.length > 0 || headers > 1, `torn: ${JSON.stringify(shown)}`);
 		}),
 	);
 
@@ -139,6 +182,80 @@ describe("the console bridge writes above a live Ink frame (probe L4, production
 			assert.strictEqual(fake.stderr(), "written between detach and unmount\n");
 			instance.unmount();
 			yield* Effect.promise(() => instance.waitUntilExit().catch(() => undefined));
+		}),
+	);
+
+	it.live("every Console method that writes goes above the frame: table, dir, assert, count, group, time", () =>
+		Effect.gen(function* () {
+			const ambient = recordingConsole();
+			const { fake } = yield* run((bridge, _streams, index) => {
+				bridge.writer.log(`out line ${index}`);
+				bridge.writer.error(`err line ${index}`);
+				if (index !== 3) return;
+				const writer = bridge.writer;
+				writer.table([{ name: "a", n: 1 }]);
+				writer.dir({ n: 2 });
+				writer.dirxml("dirxml line");
+				writer.assert(true, "never shown");
+				writer.assert(false, "an assertion");
+				writer.count("hits");
+				writer.count("hits");
+				writer.group("a group");
+				writer.log("inside");
+				writer.groupEnd();
+				writer.groupCollapsed("collapsed");
+				writer.groupEnd();
+				writer.time("t");
+				writer.timeLog("t", "mid");
+				writer.timeEnd("t");
+			}, ambient.console);
+			assert.deepStrictEqual(ambient.calls, [], "nothing falls through to the ambient console");
+			const shown = screenAfter(fake.stdout());
+			const at = shown.indexOf("out line 3");
+			const added = shown.slice(shown.indexOf("err line 3") + 1, shown.indexOf("out line 4"));
+			assert.isAbove(at, -1, `the run wrote: ${JSON.stringify(shown)}`);
+			assert.deepStrictEqual(added.slice(0, 11), [
+				"| (index) | name | n |",
+				"| 0       | a    | 1 |",
+				'{"n":2}',
+				"dirxml line",
+				"Assertion failed: an assertion",
+				"hits: 1",
+				"hits: 2",
+				"a group",
+				"  inside",
+				"collapsed",
+				added[10] ?? "",
+			]);
+			assert.match(added[10] ?? "", /^t: \d+(\.\d+)?ms mid$/);
+			assert.match(added[11] ?? "", /^t: \d+(\.\d+)?ms$/);
+			assert.deepStrictEqual(shown.slice(-2), FINAL, "one frame left, below every line");
+			assert.strictEqual(shown.filter((line) => line === "LIVE HEADER").length, 1, "no torn copy");
+		}),
+	);
+
+	it.live("clear erases nothing: the history above and the frame stay", () =>
+		Effect.gen(function* () {
+			const ambient = recordingConsole();
+			const { fake } = yield* run((bridge, _streams, index) => {
+				bridge.writer.log(`out line ${index}`);
+				bridge.writer.error(`err line ${index}`);
+				if (index === 5) bridge.writer.clear();
+			}, ambient.console);
+			assert.deepStrictEqual(ambient.calls, [], "clear does not reach the ambient console either");
+			assert.notInclude(fake.stdout(), `${String.fromCharCode(0x1b)}[2J`);
+			assert.deepStrictEqual(screenAfter(fake.stdout()), [...LOGS, ...FINAL]);
+		}),
+	);
+
+	it.live("an Error is written with its stack, as a console writes it, not as JSON", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams();
+			const bridge = yield* makeInkConsole.pipe(Effect.provideService(UiStreams, fake.streams));
+			bridge.writer.error("failed:", new Error("boom"));
+			const written = fake.stderr();
+			assert.match(written, /^failed: Error: boom\n\s+at /);
+			assert.notInclude(written, '"message"');
 		}),
 	);
 
