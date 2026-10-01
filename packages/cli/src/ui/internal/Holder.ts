@@ -68,7 +68,8 @@ export interface HolderSlot {
 	readonly isBound: () => boolean;
 	/**
 	 * Swap the shown element; `false`, and nothing done, when no holder is bound (not yet mounted, or unmounted).
-	 * `committed` is called once React has committed the element, or at once when nothing was swapped.
+	 * `committed` is called once React has committed the element, or a later swap's, or at once when nothing was
+	 * swapped, and also when the holder unmounts first: every waiter is released exactly once.
 	 */
 	readonly swap: (next: ReactElement, committed?: () => void) => boolean;
 }
@@ -80,14 +81,16 @@ export interface HolderSlot {
  */
 export const holderSlot = (): HolderSlot => {
 	let bound: HolderSwap | undefined;
-	// Waiters for a swap not yet committed: released when the holder unmounts first (a render that throws, a close).
-	const pending = new Set<() => void>();
+	// Waiters for swaps not yet committed, oldest first. React commits only the latest of several swaps made before it
+	// renders, so a commit releases its own waiter and every older one; an unmount releases them all.
+	const pending: Array<() => void> = [];
+	const release = (through: number): void => {
+		for (const committed of pending.splice(0, through + 1)) committed();
+	};
 	return {
 		bind: (swap) => {
 			bound = swap;
-			if (swap !== undefined) return;
-			// Each waiter removes itself as it fires.
-			for (const committed of [...pending]) committed();
+			if (swap === undefined) release(pending.length - 1);
 		},
 		isBound: () => bound !== undefined,
 		swap: (next, committed) => {
@@ -99,11 +102,12 @@ export const holderSlot = (): HolderSlot => {
 				bound(next);
 				return true;
 			}
-			const once = (): void => {
-				if (pending.delete(once)) committed();
-			};
-			pending.add(once);
-			bound(next, once);
+			const own = (): void => committed();
+			pending.push(own);
+			bound(next, () => {
+				const at = pending.indexOf(own);
+				if (at !== -1) release(at);
+			});
 			return true;
 		},
 	};

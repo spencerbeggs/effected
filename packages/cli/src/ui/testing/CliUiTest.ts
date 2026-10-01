@@ -554,11 +554,15 @@ const mount = <A>(screen: Screen<A>, options: CliUiTestOptions, refusal: boolean
 				}
 				const given = control;
 				const element = yield* Effect.promise(async () => next(given));
-				if (ended) return yield* Effect.die(new Error(RERENDER_AFTER_END));
 				const before = raws().length;
 				const since = Date.now();
-				// Unbound only if the screen unmounted while the element was built: the same end as above.
-				if (!slot.swap(element)) return yield* Effect.die(new Error(RERENDER_AFTER_END));
+				// The screen ended while the element was built (unbound: it is unmounting). Wait for the end to be
+				// recorded, so a screen that crashed reports its crash rather than having ended.
+				if (ended || !slot.swap(element)) {
+					const endedBy = Date.now() + MOUNT_LIMIT_MS;
+					yield* realTime(() => ended || Date.now() >= endedBy);
+					return yield* surfaced(Effect.die(new Error(RERENDER_AFTER_END)));
+				}
 				yield* after(before, since);
 			});
 		// A rerender that crashes dies with the crash, never with "rerender after the screen ended".

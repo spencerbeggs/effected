@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Cause, Effect, Exit, Fiber, Layer, Option } from "effect";
 import { Text } from "ink";
 import type { ReactElement } from "react";
-import { createElement, useContext, useEffect } from "react";
+import { createElement, useContext, useEffect, useState } from "react";
 import { UiRenderOptions } from "../../src/ui/internal/renderOptions.js";
 import { screenContext, useScreenCancel } from "../../src/ui/internal/ScreenContext.js";
 import type { Screen } from "../../src/ui.js";
@@ -286,5 +286,32 @@ describe("a crash and an interrupt, and the cause run keeps (r5 review minors)",
 				JSON.stringify(defects),
 			);
 		}).pipe(Effect.scoped, Effect.timeout("2 seconds")),
+	);
+});
+
+/** Draws, then crashes 30 ms later, on its own. */
+const CrashSoon = (): ReactElement => {
+	const [crash, setCrash] = useState(false);
+	useEffect(() => {
+		const timer = setTimeout(() => setCrash(true), 30);
+		return () => clearTimeout(timer);
+	}, []);
+	if (crash) throw new Error("crashed while the rerender was built");
+	return createElement(Text, null, "steady");
+};
+
+describe("a rerender racing a crash (Task 3 review, minor 2)", () => {
+	it.live("a rerender whose element is built while the screen crashes dies with the crash, not 'screen ended'", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(() => createElement(CrashSoon));
+			const exit = yield* Effect.exit(
+				handle.rerender(async () => {
+					await new Promise((resolve) => setTimeout(resolve, 150));
+					return createElement(Text, null, "next");
+				}),
+			);
+			assert.isTrue(isDie(exit), messageOf(exit));
+			assert.include(messageOf(exit), "crashed while the rerender was built");
+		}).pipe(Effect.scoped, Effect.timeout("3 seconds")),
 	);
 });

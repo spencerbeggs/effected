@@ -214,7 +214,7 @@ export class CliUi {
 	 * A screen draws on stdout, and is interactive when `CliInteractive` is, which reads stdout's terminal.
 	 *
 	 * Screens run one at a time, process-wide: Ink owns raw mode on the one terminal, so a second `run` waits until
-	 * the first is released, as one does while a {@link CliUi.live} view has a run drawn. A screen that itself awaits another `CliUi.run` therefore deadlocks, and nothing guards
+	 * the first is released; so does a `run` while a {@link CliUi.live} view has a run drawn. A screen that itself awaits another `CliUi.run` therefore deadlocks, and nothing guards
 	 * against it.
 	 *
 	 * Do not log while a screen is mounted. Ink redraws its frame by counting the lines it last wrote, and it is
@@ -270,8 +270,10 @@ export class CliUi {
 	 * scope.
 	 *
 	 * @remarks
-	 * `live` starts pulling `events` before it returns, so a stream over a `PubSub` is subscribed by then, and folds
-	 * them in a fiber of the caller's scope. Closing the scope stops the fold and unmounts whatever is drawn: the
+	 * `live` makes the first pull of `events` before it returns, and folds them in a fiber of the caller's scope. A
+	 * stream that subscribes on its first pull without forking (`Stream.fromPubSub`) is therefore subscribed by then; one
+	 * that forks its upstream (`Stream.merge`, `buffer`, a concurrent `flatMap`) subscribes later, and loses what is
+	 * published before. To be certain, subscribe first and pass `Stream.fromSubscription`. Closing the scope stops the fold and unmounts whatever is drawn: the
 	 * terminal is restored (the cursor shown, Ink's colour level put back) and nothing more is written. `done`
 	 * completes when the stream ends.
 	 *

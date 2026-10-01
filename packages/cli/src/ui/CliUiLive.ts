@@ -24,8 +24,10 @@ import { useTerminalSize } from "./UiTheme.js";
  */
 export interface LiveOptions<E, S> {
 	/**
-	 * The events to fold. Pulled from before `live` returns, so a stream over a `PubSub` (`Stream.fromPubSub`) is
-	 * subscribed by then and sees an event published at once.
+	 * The events to fold. `live` makes the stream's first pull before it returns, so a stream that subscribes on its
+	 * first pull without forking (`Stream.fromPubSub`) is subscribed by then and sees an event published at once. One
+	 * that forks its upstream (`Stream.merge`, `buffer`, a concurrent `flatMap`) subscribes later, and an event published
+	 * before that is lost. To be certain, subscribe first (`PubSub.subscribe`) and pass `Stream.fromSubscription`.
 	 */
 	readonly events: Stream.Stream<E>;
 	/** The state before the first event. */
@@ -117,7 +119,6 @@ export const live = <E, S>(
 		const drain = yield* resolveDrain(options.drainPerformance ?? "auto");
 		const tickMillis = options.tickMillis ?? 80;
 		const bridge = yield* makeInkConsole;
-		const parent = yield* Scope.Scope;
 
 		let state = options.initial;
 		let run: Run | undefined;
@@ -128,8 +129,10 @@ export const live = <E, S>(
 		const frameOf = Effect.map(Clock.currentTimeMillis, (now) => Math.floor(now / tickMillis));
 		const elementOf = (frame: number): ReactElement => inkModules().react.createElement(Frame, { state, frame });
 
+		// A run's scope is its own, not a child of the caller's: the caller's scope ends runs through one finalizer that
+		// stops the drain first, so no event is folded or drawn while a run is closing.
 		const mountRun: Effect.Effect<void> = Effect.gen(function* () {
-			const scope = yield* Scope.fork(parent, "sequential");
+			const scope = yield* Scope.make("sequential");
 			const slot = holderSlot();
 			yield* Effect.gen(function* () {
 				// One Ink mount at a time, process-wide, held for this run only: a `CliUi.run` between runs mounts.
@@ -178,7 +181,11 @@ export const live = <E, S>(
 							await instance.waitUntilExit().catch(() => undefined);
 						}),
 				);
-			}).pipe(Scope.provide(scope));
+			}).pipe(
+				Scope.provide(scope),
+				// A mount that fails or is interrupted partway releases what it took: the permit, the colour, the instance.
+				Effect.onExit((exit) => (Exit.isSuccess(exit) ? Effect.void : Scope.close(scope, exit))),
+			);
 			run = { scope, slot };
 		});
 
@@ -219,6 +226,8 @@ export const live = <E, S>(
 		);
 		// Started at once, so its first pull (which subscribes a PubSub-backed stream) happens before `live` returns.
 		const fiber = yield* Effect.forkScoped(drainEvents, { startImmediately: true });
+		// Registered last, so it runs first when the caller's scope closes: stop the drain, then end the run drawn.
+		yield* Effect.addFinalizer(() => Fiber.interrupt(fiber).pipe(Effect.andThen(endRun)));
 		return {
 			state: Effect.sync(() => state),
 			logConsole: bridge.writer,

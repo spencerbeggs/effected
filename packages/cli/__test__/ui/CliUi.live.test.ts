@@ -121,6 +121,46 @@ describe("CliUi.live: subscription and the fold", () => {
 	);
 });
 
+describe("CliUi.live: when a stream is subscribed (Task 3 review, important 1)", () => {
+	it.live("a subscription made first and passed as Stream.fromSubscription sees an event published at once", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams();
+			const pubsub = yield* PubSub.unbounded<Ev>();
+			const subscription = yield* PubSub.subscribe(pubsub);
+			const events = Stream.fromSubscription(subscription).pipe(Stream.takeUntil((event) => event._tag === "End"));
+			const handle = yield* liveOn(fake, optionsOf(events), { interactive: false });
+			yield* PubSub.publish(pubsub, tick(7));
+			yield* PubSub.publish(pubsub, End);
+			yield* handle.done.pipe(Effect.timeout("1 second"));
+			assert.deepStrictEqual((yield* handle.state).seen, ["tick 7", "End"]);
+		}).pipe(Effect.scoped),
+	);
+
+	it.live(
+		"a stream that forks its upstream (merge) subscribes after live returns: an event published at once is lost",
+		() =>
+			Effect.gen(function* () {
+				const fake = makeFakeStreams();
+				const pubsub = yield* PubSub.unbounded<Ev>();
+				const events = Stream.merge(Stream.fromPubSub(pubsub), Stream.never).pipe(
+					Stream.takeUntil((event) => event._tag === "End"),
+				);
+				const handle = yield* liveOn(fake, optionsOf(events), { interactive: false });
+				yield* PubSub.publish(pubsub, tick(7));
+				// By now the forked upstream has subscribed: what is published from here on is seen.
+				yield* Effect.sleep("50 millis");
+				yield* PubSub.publish(pubsub, tick(8));
+				yield* PubSub.publish(pubsub, End);
+				yield* handle.done.pipe(Effect.timeout("1 second"));
+				assert.deepStrictEqual(
+					(yield* handle.state).seen,
+					["tick 8", "End"],
+					"tick 7 was published before the subscribe",
+				);
+			}).pipe(Effect.scoped),
+	);
+});
+
 describe("CliUi.live: runs on the production path", () => {
 	it.live("start, events, terminal: the final frame is committed, and the mount permit is released", () =>
 		Effect.gen(function* () {
@@ -261,6 +301,43 @@ describe("CliUi.live: runs on the production path", () => {
 			}).pipe(Effect.scoped),
 		);
 	}
+});
+
+describe("CliUi.live: closing and failing (Task 3 review, minors 4 and 5a)", () => {
+	it.live("closing the scope stops the fold first: events queued just before the close are never folded or drawn", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const queue = yield* queueOf();
+			let mounts = 0;
+			const handle = yield* Effect.scoped(
+				Effect.gen(function* () {
+					const handle = yield* liveOn(fake, optionsOf(Stream.fromQueue(queue)), { onMount: () => mounts++ });
+					yield* Queue.offerAll(queue, [Start, tick(1)]);
+					yield* until(() => screenAfter(fake.stdout()).includes("tick 1"));
+					yield* Queue.offerAll(queue, [End, Start, tick(2)]);
+					return handle;
+				}),
+			);
+			const written = fake.stdout();
+			yield* Effect.sleep("100 millis");
+			assert.deepStrictEqual((yield* handle.state).seen, ["Start", "tick 1"], "nothing folded after the close began");
+			assert.strictEqual(mounts, 1, "no run mounted during the close");
+			assert.strictEqual(fake.stdout(), written, "nothing written after the close");
+		}),
+	);
+
+	it.live("a mount that fails partway releases its run: the mount permit is free for a CliUi.run", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const handle = yield* liveOn(fake, optionsOf(Stream.fromIterable([Start, tick(1)])), {
+				onMount: () => {
+					throw new Error("the mount failed");
+				},
+			});
+			yield* Effect.exit(handle.done.pipe(Effect.timeout("1 second")));
+			assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted", "the permit was released");
+		}).pipe(Effect.scoped),
+	);
 });
 
 describe("CliUi.live: around a mounted run", () => {
