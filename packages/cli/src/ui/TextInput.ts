@@ -88,6 +88,9 @@ const insert = (state: TextInputState, text: string): TextInputState => ({
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to split typed text at control characters
 const CONTROLS = /([\u0000-\u001f\u007f])/;
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: a paste's control characters are dropped
+const PASTE_CONTROLS = /[\u0000-\u001f\u007f]/g;
+
 /**
  * The keys one Ink input holds. Text read in one go (a fast typist, a paste) reaches `useInput` as one string, controls
  * and all, so it is split at its control characters: the printable runs are typed whole, `\r` is enter (and ends the
@@ -234,9 +237,10 @@ export class TextInput {
 	 * submits when `validate` passes; otherwise its message is shown until the next edit.
 	 *
 	 * @remarks
-	 * Text read in one go (a fast typist, a paste) is typed as it reads: printable runs are inserted whole, a return
-	 * submits what came before it (anything after it is dropped), a backspace byte deletes, a line feed becomes a space,
-	 * and a tab or other control character is dropped.
+	 * Text read in one go (a fast typist) is typed as it reads: printable runs are inserted whole, a return submits
+	 * what came before it (anything after it is dropped), a backspace byte deletes, a line feed becomes a space, and a
+	 * tab or other control character is dropped. A bracketed paste is inserted as text, its line breaks as spaces, and
+	 * never submits.
 	 *
 	 * @param props - the message, the starting text, the placeholder, the validator and where the value goes
 	 */
@@ -258,6 +262,13 @@ export class TextInput {
 				setState((current) => ({ ...current, submitted: false }));
 			}
 		}, [state.submitted]);
+		// A paste is text: inserted whole, a pasted line break a space (a paste never submits), other controls dropped.
+		ink.usePaste((text) => {
+			const typed = text.replace(/\r\n|\r|\n/g, " ").replace(PASTE_CONTROLS, "");
+			if (typed === "") return;
+			setError(undefined);
+			setState((current) => step(current, UiKey.char(typed)));
+		});
 		ink.useInput((input, key) => {
 			const keys = typedKeys(input, key);
 			// Esc and Ctrl-C belong to the screen's root keys.

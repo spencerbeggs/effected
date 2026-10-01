@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { Text } from "ink";
 import type { ReactElement } from "react";
 import { createElement, useState } from "react";
-import { CliUi, Confirm, KeyTable, TextInput, useKeys } from "../../src/ui.js";
+import { CliUi, Confirm, KeyTable, Select, TextInput, useKeys } from "../../src/ui.js";
 import { CliUiTest } from "../../src/ui-testing.js";
 
 const RIGHT = KeyTable.make<"step">([{ keys: ["right"], action: "step", help: "step" }]);
@@ -96,6 +96,83 @@ describe("chunk: coalesced characters (Ink hands one read of text to useInput as
 			yield* handle.chunk({ char: "a" }, { char: "b" }, "space");
 			yield* handle.chunk({ char: "c" });
 			assert.include(yield* handle.plainFrame, "ab c");
+		}).pipe(Effect.scoped),
+	);
+});
+
+/** Counts the actions a table dispatches, by name. */
+const counter = <A extends string>(table: KeyTable<A>) => {
+	const Counter = (): ReactElement => {
+		const [seen, setSeen] = useState<ReadonlyArray<string>>([]);
+		useKeys(table, (action) => setSeen((current) => [...current, action]));
+		return createElement(Text, null, `seen=${seen.join(",")}`);
+	};
+	return Counter;
+};
+const seenOf = (frame: string): string => frame.trim().replace(/^seen=/, "");
+
+describe("useKeys splits by grapheme and compares NFC", () => {
+	const letters = KeyTable.make<"e" | "é" | "dev" | "enter">([
+		{ keys: [{ char: "e" }], action: "e", help: "e" },
+		{ keys: [{ char: "é" }], action: "é", help: "é" },
+		{ keys: [{ char: "👩‍💻" }], action: "dev", help: "dev" },
+		{ keys: ["enter"], action: "enter", help: "enter" },
+	]);
+
+	it.effect("a decomposed é does not fire e, and fires the precomposed é binding", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(() => createElement(counter(letters)));
+			yield* handle.chunk({ char: "éé" });
+			assert.strictEqual(seenOf(yield* handle.plainFrame), "é,é");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a ZWJ emoji is one key, and CR LF is one enter", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(() => createElement(counter(letters)));
+			yield* handle.chunk({ char: "👩‍💻👩‍💻\r\n" });
+			assert.strictEqual(seenOf(yield* handle.plainFrame), "dev,dev,enter");
+		}).pipe(Effect.scoped),
+	);
+});
+
+describe("a bracketed paste never drives a key table", () => {
+	const paste = (text: string) => ({ char: `\u001b[200~${text}\u001b[201~` });
+
+	it.effect("a paste holding q does not cancel a Select", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(
+				Select.screen({
+					message: "Pick",
+					choices: [
+						{ label: "one", value: 1 },
+						{ label: "two", value: 2 },
+					],
+				}),
+			);
+			yield* handle.chunk(paste("q"));
+			yield* handle.press("enter");
+			assert.strictEqual(yield* handle.result, 1);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a paste of yes and a newline does not answer a Confirm", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(Confirm.screen({ message: "Go?", initial: false }));
+			yield* handle.chunk(paste("yes\n"));
+			assert.include(yield* handle.plainFrame, "[No]");
+			yield* handle.press("enter");
+			assert.isFalse((yield* handle.result).confirmed);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("TextInput takes a paste as text, a pasted newline as a space, and never submits on it", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(TextInput.screen({ message: "Name" }));
+			yield* handle.chunk(paste("a\nb\r"));
+			assert.include(yield* handle.plainFrame, "a b");
+			yield* handle.press("enter");
+			assert.strictEqual(yield* handle.result, "a b ");
 		}).pipe(Effect.scoped),
 	);
 });

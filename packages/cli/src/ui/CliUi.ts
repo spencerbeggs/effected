@@ -12,7 +12,7 @@ import { CliTheme } from "../CliTheme.js";
 import { answerWithoutPerson } from "../internal/fallbackAnswer.js";
 import { NotInteractive } from "../NotInteractive.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
-import { loadInk, withInkColour } from "./internal/ink.js";
+import { inkModules, loadInk, withInkColour } from "./internal/ink.js";
 import { UiRenderOptions } from "./internal/renderOptions.js";
 import type { ScreenContextValue } from "./internal/ScreenContext.js";
 import { screenContext } from "./internal/ScreenContext.js";
@@ -67,6 +67,10 @@ const RootKeys = (props: {
 	readonly children: ReactNode;
 }): ReactNode => {
 	useKeys(KeyTable.root, props.cancel);
+	// Registering a paste handler turns on bracketed paste and moves every paste onto Ink's paste channel, so pasted
+	// text never reaches a `useInput` handler as keys: a pasted `q` or `yes\n` cannot cancel or answer a widget.
+	// `TextInput` registers its own handler to read a paste as text.
+	inkModules().ink.usePaste(() => undefined);
 	return props.children;
 };
 

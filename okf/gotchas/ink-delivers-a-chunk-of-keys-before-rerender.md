@@ -26,8 +26,8 @@ sources:
     last_modified: "2026-10-01T05:17:00Z"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T06:07:29Z
-  body_sha256: db755971d4b14d40a1f58d0f24908bced36b99a771a624da857bab2a2be58811
+  at: 2026-10-01T06:22:24Z
+  body_sha256: c365f3a18be22403427d24646ec3dda87362d5bc05977eb40b549216b30e3eed
 ---
 
 # Ink delivers every key in one stdin read before React re-renders
@@ -68,9 +68,15 @@ Two related facts bound the trap:
   nothing either: `"yy"`, `"y\r"` and `"\t\t"` each arrive as one input
   string with no `return` or `tab` flag, and only a backspace byte is
   split out as its own key[^char-probe]. `useKeys` therefore splits text
-  of more than one code point into a key per code point (`\r` as enter,
-  `\t` as tab, a space as space), so `{ char: "y" }` matches each `y` of
-  `"yy"`.
+  of more than one grapheme into a key per grapheme (a decomposed letter
+  or a ZWJ emoji is one key; CR, LF or CR LF is one enter; `\t` is tab;
+  a space is space) and compares `{ char }` bindings in NFC, so
+  `{ char: "y" }` matches each `y` of `"yy"`.
+- **A bracketed paste is not keys.** The screen registers a paste
+  handler, which turns on bracketed paste and moves every paste onto
+  Ink's paste channel, so a pasted `q` or `yes` and a newline cannot
+  cancel or answer a widget. `TextInput` reads a paste as text, its line
+  breaks as spaces.
 - **`TextInput` splits such text at its control characters.** It inserts
   each printable run whole, which is right for a paste; a `\r` submits
   what came before it, and anything after is dropped; a backspace byte

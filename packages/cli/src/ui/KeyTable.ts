@@ -1,5 +1,6 @@
 import type * as Cli from "@effected/cli";
 import { Option } from "effect";
+import { graphemes } from "../internal/displayWidth.js";
 import { inkModules } from "./internal/ink.js";
 import type { KeyName } from "./UiKey.js";
 import { UiKey } from "./UiKey.js";
@@ -78,7 +79,8 @@ const identity = (key: KeyName | { readonly char: string }): string =>
 const bound = (binding: KeyName | { readonly char: string }, key: UiKey): boolean =>
 	typeof binding === "string"
 		? key._tag === "Named" && key.name === binding
-		: key._tag === "Char" && key.char === binding.char;
+		: // Compared in NFC, so a precomposed binding matches decomposed input and the reverse.
+			key._tag === "Char" && key.char.normalize("NFC") === binding.char.normalize("NFC");
 
 /**
  * The keys a widget understands, as data: the one source both for dispatching input and for the help line, so the
@@ -151,7 +153,7 @@ export class KeyTable<Action> {
 
 /** What a character of coalesced text is as a key: a line break is enter, and so on; another control is nothing. */
 const keyOfCharacter = (character: string): UiKey | undefined => {
-	if (character === "\r" || character === "\n") return UiKey.named("enter");
+	if (character === "\r" || character === "\n" || character === "\r\n") return UiKey.named("enter");
 	if (character === "\t") return UiKey.named("tab");
 	if (character === " ") return UiKey.named("space");
 	if (character === "\u007f" || character === "\b") return UiKey.named("backspace");
@@ -190,7 +192,8 @@ const PLAIN = {
 const keysOf = (input: string, key: Parameters<typeof UiKey.fromInk>[1]): ReadonlyArray<UiKey> => {
 	const single = UiKey.fromInk(input, key);
 	if (single?._tag === "Named" || key.ctrl || key.meta) return single === undefined ? [] : [single];
-	const characters = [...input];
+	// By grapheme, not code point: a decomposed é or a ZWJ emoji is one key, and CR LF is one enter.
+	const characters = graphemes(input);
 	if (characters.length <= 1) return single === undefined ? [] : [single];
 	return characters.flatMap((character) => {
 		const pressed = keyOfCharacter(character);
@@ -205,7 +208,10 @@ const keysOf = (input: string, key: Parameters<typeof UiKey.fromInk>[1]): Readon
  * One Ink `useInput` per call, and nothing else reads input.
  *
  * Text read in one go (`"yy"`, `"y\r"`) reaches Ink's `useInput` as one string; it is split here into a key per
- * character, a line break as enter, a tab as tab, a space as space, so `{ char: "y" }` matches each `y`.
+ * grapheme (a decomposed letter or a ZWJ emoji is one key), a line break (CR, LF or CR LF) as one enter, a tab as tab, a
+ * space as space, so `{ char: "y" }` matches each `y`. A `{ char }` binding matches in NFC, whichever form was typed.
+ * A bracketed paste never reaches it: the screen takes pastes on Ink's paste channel, so pasted text cannot press a
+ * widget's keys (a pasted `q` does not cancel); `TextInput` reads pastes as text.
  *
  * Several keys from one stdin read (a fast typist, a held arrow, a terminal that batches) are each dispatched
  * before React re-renders, so `dispatch` must never step from state captured in the render that created it: the
