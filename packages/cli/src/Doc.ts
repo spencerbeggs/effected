@@ -124,7 +124,8 @@ export interface Counter {
  *   `durationMs` is how long it took. `share: false` drops the headline's share of the total, and `paint` limits what
  *   is painted.
  * - `Verbatim`: lines kept exactly, each indented, never wrapped.
- * - `CountsTable`: a table of `Counts` rows, a column per counter key, with an optional summed total row.
+ * - `CountsTable`: a table of `Counts` rows, a column per counter key, a `duration` column when some row has one, and
+ *   an optional summed total row.
  * - `Lines`: one line per entry; markdown keeps them apart with hard breaks.
  * - `Line`: one line, which `truncate` cuts to the width instead of wrapping.
  * - `DiffText`: a unified diff, as given.
@@ -184,6 +185,8 @@ export type Block =
 			readonly _tag: "CountsTable";
 			readonly rows: ReadonlyArray<CountsRow>;
 			readonly totalRow?: boolean | ReadonlyArray<Inline>;
+			readonly labelHeader?: ReadonlyArray<Inline>;
+			readonly durationHeader?: ReadonlyArray<Inline>;
 	  }
 	| { readonly _tag: "Lines"; readonly lines: ReadonlyArray<ReadonlyArray<Inline>> }
 	| { readonly _tag: "Line"; readonly content: ReadonlyArray<Inline>; readonly truncate?: boolean }
@@ -214,7 +217,7 @@ export interface AnnotationOptions {
 }
 
 /**
- * One row of a `CountsTable`: its label and its counters.
+ * One row of a `CountsTable`: its label, its counters and how long it took.
  *
  * @public
  */
@@ -223,6 +226,22 @@ export interface CountsRow {
 	readonly label: ReadonlyArray<Inline>;
 	/** Its counters; their keys pick the column each lands in. */
 	readonly counters: ReadonlyArray<Counter>;
+	/** How long it took, in milliseconds, shown with `Fmt.duration` in the duration column. */
+	readonly durationMs?: number;
+}
+
+/**
+ * The options of {@link Doc.countsTable}.
+ *
+ * @public
+ */
+export interface CountsTableOptions {
+	/** A last row summing each column: labelled `Total` when `true`, or with the content given. */
+	readonly totalRow?: boolean | InlineInput;
+	/** The header of the label column, such as `Project`; empty when unset. */
+	readonly labelHeader?: InlineInput;
+	/** The header of the duration column, shown only when some row has a `durationMs`; `duration` when unset. */
+	readonly durationHeader?: InlineInput;
 }
 
 /**
@@ -705,22 +724,37 @@ export class Doc {
 	 *
 	 * @remarks
 	 * A row without a counter for some key leaves that cell empty, and it counts as zero in the total. `totalRow`
-	 * labels the total row `Total` when `true`, or with the content given.
+	 * labels the total row `Total` when `true`, or with the content given. `labelHeader` heads the label column, which
+	 * is otherwise empty. When some row has a `durationMs`, a last column shows it with `Fmt.duration`, headed
+	 * `durationHeader` (`duration` by default); a row without one has an empty cell there and counts as zero in the
+	 * total row's summed duration.
 	 *
-	 * @param rows - each row's label and counters
-	 * @param options - `totalRow`, to add the summed row
+	 * @param rows - each row's label, counters and optional duration
+	 * @param options - `totalRow`, to add the summed row; the label and duration column headers
 	 */
 	static countsTable(
-		rows: ReadonlyArray<{ readonly label: InlineInput; readonly counters: ReadonlyArray<Counter> }>,
-		options?: { readonly totalRow?: boolean | InlineInput },
+		rows: ReadonlyArray<{
+			readonly label: InlineInput;
+			readonly counters: ReadonlyArray<Counter>;
+			readonly durationMs?: number;
+		}>,
+		options?: CountsTableOptions,
 	): BlockOf<"CountsTable"> {
 		const totalRow = options?.totalRow;
 		return freeze({
 			_tag: "CountsTable",
 			rows: frozenArray(
-				rows.map((row) => freeze({ label: inlines(row.label), counters: frozenArray(row.counters.map(counterOf)) })),
+				rows.map((row) =>
+					freeze({
+						label: inlines(row.label),
+						counters: frozenArray(row.counters.map(counterOf)),
+						...(row.durationMs === undefined ? {} : { durationMs: row.durationMs }),
+					}),
+				),
 			),
 			...(totalRow === undefined ? {} : { totalRow: typeof totalRow === "boolean" ? totalRow : inlines(totalRow) }),
+			...(options?.labelHeader === undefined ? {} : { labelHeader: inlines(options.labelHeader) }),
+			...(options?.durationHeader === undefined ? {} : { durationHeader: inlines(options.durationHeader) }),
 		});
 	}
 

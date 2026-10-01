@@ -1,4 +1,5 @@
 import type { BlockOf, Counter, Inline } from "../Doc.js";
+import { Fmt } from "../Fmt.js";
 
 /**
  * The total of a `Counts` block: the caller's rule when it has one, otherwise the sum of `n` over every counter.
@@ -24,7 +25,8 @@ export const visibleCountersOf = (block: BlockOf<"Counts">): ReadonlyArray<Count
 /**
  * A `CountsTable` as the `Table` it renders as: a label column, then a column per counter key in the order the keys
  * first appear, headed by that counter's label; a cell is the count painted with its status token, empty where a row
- * has no counter for the key; and, with `totalRow`, a last row summing each column (a missing count is zero).
+ * has no counter for the key; a duration column, when some row has a `durationMs`, formatted with `Fmt.duration`; and,
+ * with `totalRow`, a last row summing each column (a missing count or duration is zero).
  *
  * @remarks
  * Plain literals, not `Doc` constructors: a renderer needs nothing from `Doc` at runtime (see {@link totalOf}).
@@ -40,9 +42,13 @@ export const countsTableOf = (block: BlockOf<"CountsTable">): BlockOf<"Table"> =
 		token === undefined ? { _tag: "Text", value } : { _tag: "Text", value, token };
 	const countCell = (counter: Counter | undefined): ReadonlyArray<Inline> =>
 		counter === undefined ? [] : [text(String(counter.n), counter.status.def.token)];
+	const timed = block.rows.some((row) => row.durationMs !== undefined);
+	const durationCell = (ms: number | undefined): ReadonlyArray<ReadonlyArray<Inline>> =>
+		timed ? [ms === undefined ? [] : [text(Fmt.duration(ms))]] : [];
 	const rows = block.rows.map((row) => [
 		row.label,
 		...keys.map((key) => countCell(row.counters.find((counter) => counter.key === key.key))),
+		...durationCell(row.durationMs),
 	]);
 	const totalLabel =
 		block.totalRow === undefined || block.totalRow === false
@@ -66,11 +72,16 @@ export const countsTableOf = (block: BlockOf<"CountsTable">): BlockOf<"Table"> =
 								),
 							),
 						]),
+						...durationCell(block.rows.reduce((sum, row) => sum + (row.durationMs ?? 0), 0)),
 					],
 				];
 	return {
 		_tag: "Table",
-		columns: [{ header: [] }, ...keys.map((key) => ({ header: [text(key.label)] }))],
+		columns: [
+			{ header: block.labelHeader ?? [] },
+			...keys.map((key) => ({ header: [text(key.label)] })),
+			...(timed ? [{ header: block.durationHeader ?? [text("duration")] }] : []),
+		],
 		rows: [...rows, ...total],
 	};
 };

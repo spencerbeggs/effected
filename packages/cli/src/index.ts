@@ -76,6 +76,7 @@ export {
 	type Counter,
 	type CountsOptions,
 	type CountsRow,
+	type CountsTableOptions,
 	Doc,
 	type DocPrintOptions,
 	type Document,

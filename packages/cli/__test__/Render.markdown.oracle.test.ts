@@ -1283,3 +1283,56 @@ describe("Render.markdown: Task 12 review carry-ins", () => {
 		}),
 	);
 });
+
+describe("countsTable: a real totals table (A4)", () => {
+	const count = (key: string, label: string, status: "success" | "failure" | "skip", n: number) =>
+		Doc.counter(Status.core, status, { key, label, n });
+	const project = (name: string, p: number, f: number, t: number, s: number, durationMs?: number) => ({
+		label: name,
+		counters: [
+			count("passed", "Passed", "success", p),
+			count("failed", "Failed", "failure", f),
+			count("timedOut", "Timed out", "failure", t),
+			count("skipped", "Skipped", "skip", s),
+		],
+		...(durationMs === undefined ? {} : { durationMs }),
+	});
+
+	it.effect("vitest-agent's case: a Project header, a Duration column and a summed total", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.countsTable([project("unit", 10, 1, 0, 2, 67_000), project("e2e", 3, 0, 1, 0, 5_000)], {
+					labelHeader: "Project",
+					durationHeader: "Duration",
+					totalRow: Doc.strong("Total"),
+				}),
+			]);
+			assert.deepStrictEqual(cellTexts(tableOf(root)), [
+				["Project", "Passed", "Failed", "Timed out", "Skipped", "Duration"],
+				["unit", "10", "1", "0", "2", "1m 7s"],
+				["e2e", "3", "0", "1", "0", "5s"],
+				["Total", "13", "1", "1", "2", "1m 12s"],
+			]);
+		}),
+	);
+
+	it.effect("a row without a duration has an empty cell and counts as zero in the total", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.countsTable([project("unit", 1, 0, 0, 0, 1_500), project("lint", 1, 0, 0, 0)], { totalRow: true }),
+			]);
+			const rows = cellTexts(tableOf(root));
+			assert.strictEqual(rows[0]?.[0], "", "control: the label header stays empty when unset");
+			assert.strictEqual(rows[0]?.[5], "duration");
+			assert.strictEqual(rows[2]?.[5], "");
+			assert.strictEqual(rows[3]?.[5], "1.5s");
+		}),
+	);
+
+	it.effect("with no duration anywhere there is no duration column", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([Doc.countsTable([project("unit", 1, 0, 0, 0)], { labelHeader: "Project" })]);
+			assert.deepStrictEqual(cellTexts(tableOf(root))[0], ["Project", "Passed", "Failed", "Timed out", "Skipped"]);
+		}),
+	);
+});
