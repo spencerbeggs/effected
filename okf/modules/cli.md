@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T07:41:01Z
-  body_sha256: 10fa05c7ce798b89fba35ace9c53d6e439aefd49c12ec9866f86bb84ca769c7d
+  at: 2026-10-01T07:54:29Z
+  body_sha256: 20f332e545aa3f26b28c085b8489fbd56b23e7ae736fbb07a6112174d352a253
 ---
 
 # @effected/cli
@@ -159,7 +159,7 @@ reviewed export list is pinned in `__test__/declarations.test.ts`.
 | Export | Contract |
 | --- | --- |
 | `CliUiTest.render` | `(screen, options?) => Effect<CliUiTestHandle<A>, never, Scope>`: mounts one screen on in-memory streams under a marker-palette theme, with Ink in debug mode, and returns once it has drawn. Options are `columns`, `rows`, `color`, `glyphs` and `interactive`. |
-| `CliUiTest.view` | `(element, options?) => Effect<CliUiTestView, never, Scope>`: mounts a display-only element (a status line, a live view) under the same harness as `render` (marker theme, fake streams, debug frames), wrapped in the kit's providers so `useTheme`, `useGlyphs` and `Styled` work in it; its handle has the frame readers, `press`/`type`/`chunk`, `resize` and `rerender(element)` but no `result`, since a display-only element never ends on its own (vitest-agent A10). `render` and `view` share one mount helper over `makeTerminal`. |
+| `CliUiTest.view` | `(element, options?) => Effect<CliUiTestView, never, Scope>`: mounts a display-only element (a status line, a live view) under the same harness as `render` (marker theme, fake streams, debug frames), wrapped in the kit's providers so `useTheme`, `useGlyphs` and `Styled` work in it; its handle has the frame readers, `press`/`type`/`chunk`, `resize` and `rerender(element)` but no `result`, since a display-only element never ends on its own (vitest-agent A10). With no `result` to re-raise how its run ended, a crash or a refusal (`interactive: false`, `NotInteractive`) is surfaced instead: `view` dies with the error when it happens before the first frame, and otherwise the next read, key, resize or rerender does, never a silent empty frame or the misleading "screen has ended" defect (r4 review, fix 1). `render` and `view` share one mount helper over `makeTerminal`. |
 | `CliUiTest.cancelReason` | `(exitOrCause) => Option<"escape" \| "interrupt">`: pure; finds a `Cancelled` in an `Exit` or `Cause`, typed or as a defect, matched by shape (`_tag` and `reason`) so a copy of the class bundled into this entry still matches, so a test never walks `cause.reasons` (okfit O2b). |
 | `CliUiTest.session` | `(options?) => Effect<CliUiTestSession, never, Scope>` for a program that runs several screens: `layer` (fake streams, theme, `CliInteractive`, frame capture and a capturing `Console`; anything the program provides closer to its screens, `CliEnv` under `CliRuntime.main` with `env`, wins), `next({ contains? })` for each screen as it mounts (2 s cap, a defect naming what it waited for), `mounts`, `stdout` and `stderr`. Its TSDoc carries the recipe for driving a whole `Command` handler (the session's `layer`, a fresh `CliExit.layer`, a sandboxing `ConfigProvider` for `HOME`/XDG and the platform, forked, then `next`), pinned by a kit test, and says `mounts === 0` is the "nothing mounted" assertion, a test that itself sleeps needs `it.live`, and debug frames show neither `clear` nor the final scrollback (okfit O2c, O2e). |
 | `CliUiTestScreen`, `CliUiTestHandle`, `CliUiTestView`, `CliUiTestSession`, `CliUiTestNextOptions`, `CliUiTestOptions` | A screen handle: `press` (named keys, or `{ char }` items typed as `chunk` sends them; a bare string that names no key dies naming `type(...)` and `{ char }`, never a Node stream error: okfit O2a), `type`, `chunk` (keys or characters in ONE stdin write, which `press` can never show), `resize`, `frame` (token markup), `rawFrame`, `plainFrame`, `frames`; a key for a screen that has ended is a defect. `render`'s handle adds `rerender` and `result`; `view`'s adds `rerender(element)` only. |

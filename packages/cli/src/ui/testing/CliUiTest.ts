@@ -4,8 +4,8 @@ import type * as Cli from "@effected/cli";
 import type { KeyName, Screen, ScreenControl } from "@effected/cli/ui";
 import type { ColorLevel } from "@effected/env";
 import { TerminalEnv } from "@effected/env";
-import type { Cause, Scope } from "effect";
-import { Console, Effect, Exit, Fiber, Inspectable, Layer, Option } from "effect";
+import type { Scope } from "effect";
+import { Cause, Console, Effect, Exit, Fiber, Inspectable, Layer, Option } from "effect";
 import type { ReactElement } from "react";
 import { CliInteractive } from "../../CliInteractive.js";
 import { CliTheme } from "../../CliTheme.js";
@@ -476,6 +476,8 @@ const mount = <A>(screen: Screen<A>, options: CliUiTestOptions) =>
 	Effect.gen(function* () {
 		const terminal = makeTerminal(options);
 		let ended = false;
+		// How the run ended when it failed or died (a crash, `NotInteractive`), never for the scope's own interrupt.
+		let failure: Cause.Cause<unknown> | undefined;
 		let swap: ((next: ReactElement) => void) | undefined;
 		let control: ScreenControl<A> | undefined;
 		const held: Screen<A> = async (given) => {
@@ -491,9 +493,10 @@ const mount = <A>(screen: Screen<A>, options: CliUiTestOptions) =>
 		const fiber = yield* Effect.forkScoped(
 			CliUi.run(held).pipe(
 				Effect.provide(terminal.layer),
-				Effect.onExit(() =>
+				Effect.onExit((exit) =>
 					Effect.sync(() => {
 						ended = true;
+						if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) failure = exit.cause;
 					}),
 				),
 			),
@@ -523,7 +526,7 @@ const mount = <A>(screen: Screen<A>, options: CliUiTestOptions) =>
 				swap(element);
 				yield* after(before, since);
 			});
-		return { handle, swapTo, fiber };
+		return { handle, swapTo, fiber, failed: (): Cause.Cause<unknown> | undefined => failure };
 	});
 
 /** A `Console` that keeps what is written: `log`, `info` and `debug` as stdout, `error`, `warn` and `trace` as stderr. */
@@ -611,6 +614,10 @@ export class CliUiTest {
 	 * The kit's root keys stay bound, as on every screen: Esc or Ctrl-C ends the view, after which a key or a rerender
 	 * is a defect.
 	 *
+	 * An element that crashes, or a run that is refused (`interactive: false` ends it with `NotInteractive`), is never
+	 * swallowed: `view` dies with that error when it happens before the first frame, and otherwise the next frame read,
+	 * key, resize or rerender does.
+	 *
 	 * @param element - the element to mount
 	 * @param options - the terminal's size, colour and glyphs, and whether the run is interactive
 	 */
@@ -618,12 +625,35 @@ export class CliUiTest {
 		element: ReactElement,
 		options: CliUiTestOptions = {},
 	): Effect.Effect<CliUiTestView, never, Scope.Scope> =>
-		Effect.map(
+		Effect.flatMap(
 			mount<never>(() => element, options),
-			({ handle, swapTo }) => ({
-				...handle,
-				rerender: (next) => swapTo(() => next),
-			}),
+			({ handle, swapTo, failed }) => {
+				// A view has no `result` to re-raise how its run ended, so a crash or a refusal surfaces here instead: at the
+				// mount, and on every read, key or rerender after it, never as a screen that silently drew nothing.
+				const surfaced = <X>(effect: Effect.Effect<X>): Effect.Effect<X> =>
+					Effect.suspend(() => {
+						const cause = failed();
+						return cause === undefined ? effect : Effect.die(Cause.squash(cause));
+					});
+				const view: CliUiTestView = {
+					press: (...keys) => surfaced(handle.press(...keys)),
+					type: (text) => surfaced(handle.type(text)),
+					chunk: (...keys) => surfaced(handle.chunk(...keys)),
+					resize: (columns, rows) => surfaced(handle.resize(columns, rows)),
+					frame: surfaced(handle.frame),
+					rawFrame: surfaced(handle.rawFrame),
+					plainFrame: surfaced(handle.plainFrame),
+					frames: surfaced(handle.frames),
+					rerender: (next) =>
+						surfaced(
+							Effect.andThen(
+								swapTo(() => next),
+								surfaced(Effect.void),
+							),
+						),
+				};
+				return surfaced(Effect.succeed(view));
+			},
 		);
 
 	/**

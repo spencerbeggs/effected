@@ -1,8 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { Text, useInput } from "ink";
 import type { ReactElement } from "react";
 import { createElement, useState } from "react";
+import { NotInteractive } from "../../src/index.js";
 import { Styled, useGlyphs, useTerminalSize, useTheme } from "../../src/ui.js";
 import type { CliUiTestView } from "../../src/ui-testing.js";
 import { CliUiTest } from "../../src/ui-testing.js";
@@ -77,4 +78,54 @@ describe("CliUiTest.view: a display-only element (A10)", () => {
 		assert.isFalse(hasResult);
 		assert.isTrue(hasRerender);
 	});
+});
+
+describe("CliUiTest.view surfaces an element that crashes or is refused (r4 fix 1)", () => {
+	const messageOf = (exit: Exit.Exit<unknown, unknown>): string => {
+		if (Exit.isSuccess(exit)) return "<succeeded>";
+		const error = Cause.squash(exit.cause);
+		return error instanceof Error ? error.message : String(error);
+	};
+	const Boom = (): ReactElement => {
+		throw new Error("element crashed");
+	};
+
+	it.live("a throwing element: view dies with the thrown message, within 2 s", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(Effect.scoped(CliUiTest.view(createElement(Boom)))).pipe(
+				Effect.timeout("2 seconds"),
+			);
+			assert.include(messageOf(exit), "element crashed");
+		}),
+	);
+
+	it.live("an element that crashes after its first frame: the next read dies with its error, not SCREEN_ENDED", () =>
+		Effect.gen(function* () {
+			const Later = (props: { readonly crash: boolean }): ReactElement => {
+				if (props.crash) throw new Error("crashed on rerender");
+				return createElement(Text, null, "fine");
+			};
+			const view = yield* CliUiTest.view(createElement(Later, { crash: false }));
+			assert.include(yield* view.plainFrame, "fine", "control: it drew first");
+			const swapped = yield* Effect.exit(view.rerender(createElement(Later, { crash: true })));
+			const read = yield* Effect.exit(view.frame);
+			const pressed = yield* Effect.exit(view.press("enter"));
+			for (const exit of [read, pressed]) {
+				assert.include(messageOf(exit), "crashed on rerender");
+				assert.notInclude(messageOf(exit), "session.next");
+			}
+			assert.notInclude(messageOf(swapped), "session.next");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("interactive: false: view dies with NotInteractive's message", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(
+				Effect.scoped(CliUiTest.view(createElement(Text, null, "x"), { interactive: false })),
+			);
+			assert.isTrue(Exit.isFailure(exit), "control: it did not succeed");
+			assert.notInclude(messageOf(exit), "<succeeded>");
+			assert.isTrue(Exit.isFailure(exit) && Cause.squash(exit.cause) instanceof NotInteractive, messageOf(exit));
+		}),
+	);
 });
