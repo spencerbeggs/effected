@@ -148,8 +148,6 @@ export class CliAudience {
 					Flag.atLeast(0),
 					// No metavar of its own: core appends "(choices: human, agent, ci)" to the description, and a
 					// `<human|agent|ci>` placeholder would name the choices a second time.
-					// Core appends "(choices: human, agent, ci)" to a Literals flag's description, so it names no list of its
-					// own: with the placeholder, that list is all the help needs.
 					Flag.withDescription("Who the output is for"),
 				),
 			),
