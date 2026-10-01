@@ -48,6 +48,7 @@ export const trimLine = (line: Line): Line => {
 	const out = [...line];
 	while (out.length > 0) {
 		const last = out[out.length - 1] as Span;
+		if (last.hold === true) break;
 		const trimmed = last.text.trimEnd();
 		if (trimmed === "") {
 			out.pop();
@@ -341,7 +342,11 @@ const blockLines = (walk: Walk, block: Block, width: number, compact = false): R
 			const shown = cap === undefined ? items : items.slice(0, cap);
 			const compactItems = block.compact === true;
 			const lines = shown.flatMap((item) =>
-				hang(blockLines(walk, item, width - 2, compactItems), [span("- ")], [span("  ")]),
+				hang(blockLines(walk, item, width - 2, compactItems), [span("- ")], [span("  ")]).map((line, index) =>
+					// A compact item has no separator lines, so a blank line is the content's own (a diff's): it keeps the
+					// indent, held against trimming, so the item stays one indented block.
+					compactItems && index > 0 && line.length === 0 ? [{ text: "  ", hold: true as const }] : line,
+				),
 			);
 			const hidden = items.length - shown.length;
 			return hidden > 0 ? [...lines, overflowLine(walk, block.overflow, hidden)] : lines;
@@ -408,8 +413,10 @@ const blockLines = (walk: Walk, block: Block, width: number, compact = false): R
 			const hidden = lines.length - shown.length;
 			const tone = (line: string): Tone | undefined =>
 				line.startsWith("+") ? "success" : line.startsWith("-") ? "failure" : undefined;
+			const cut = (spans: Line): Line =>
+				block.truncate === true ? truncateSpans(spans, width, walk.ctx.glyphs.ellipsis) : spans;
 			return [
-				...shown.map((line) => trimLine([span(line, tone(line))])),
+				...shown.map((line) => trimLine(cut([span(line, tone(line))]))),
 				...(hidden > 0 ? [[span(`${walk.ctx.glyphs.ellipsis} ${hidden} more lines`, "muted")]] : []),
 			];
 		}

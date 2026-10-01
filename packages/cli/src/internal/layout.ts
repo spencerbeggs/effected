@@ -33,6 +33,11 @@ export interface Span {
 	readonly strong?: true;
 	/** It came from inside an `Emphasis`: italic in `ansi`, `_` in markdown. */
 	readonly em?: true;
+	/**
+	 * Whitespace kept at the end of a line, never trimmed: the indent of a blank line inside a compact list item, so
+	 * the item's lines read as one indented block (a test runner's diff has blank lines).
+	 */
+	readonly hold?: true;
 }
 
 const pathSeparator = (ctx: RenderContext): string =>

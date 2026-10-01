@@ -844,3 +844,46 @@ describe("Render.plain: vitest-agent round 3 (strong, lines, file, counts tables
 		}),
 	);
 });
+
+describe("Render.plain: diffText in a compact list item (A5)", () => {
+	const failure = (diff: Block) => [Doc.list([Doc.section("FAIL a.test.ts", [diff])], { compact: true })];
+
+	it.effect("a blank line inside the item keeps the item's indent", () =>
+		Effect.gen(function* () {
+			const out = yield* plain(failure(Doc.diffText("+ Received\n\n- 1")));
+			assert.strictEqual(out, "- FAIL a.test.ts\n  + Received\n  \n  - 1");
+		}),
+	);
+
+	it.effect("control: outside a list a blank line is empty, and a non-compact list keeps its separators empty", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(yield* plain([Doc.diffText("+ a\n\n- b")]), "+ a\n\n- b");
+			const loose = yield* plain([Doc.list([Doc.section("T", [Doc.paragraph("x")])])]);
+			assert.strictEqual(loose, "- T\n\n  x");
+		}),
+	);
+
+	it.effect("truncate cuts each line to the width with the theme ellipsis", () =>
+		Effect.gen(function* () {
+			const long = `+ ${"x".repeat(40)}`;
+			const out = yield* plain(failure(Doc.diffText(`${long}\n- 1`, { truncate: true })), { width: 20 });
+			const lines = out.split("\n");
+			assert.strictEqual(lines[1], `  + ${"x".repeat(15)}…`);
+			assert.strictEqual(displayWidth(lines[1] as string), 20);
+			assert.strictEqual(lines[2], "  - 1");
+			const untruncated = yield* plain(failure(Doc.diffText(`${long}\n- 1`)), { width: 20 });
+			assert.strictEqual(untruncated.split("\n")[1], `  ${long}`, "control: without truncate the line is whole");
+		}),
+	);
+
+	it.effect("an agent's infinite width cuts nothing", () =>
+		Effect.gen(function* () {
+			const long = `+ ${"x".repeat(400)}`;
+			const out = yield* plain([Doc.diffText(long, { truncate: true })], {
+				audience: "agent",
+				width: Number.POSITIVE_INFINITY,
+			});
+			assert.strictEqual(out, long);
+		}),
+	);
+});

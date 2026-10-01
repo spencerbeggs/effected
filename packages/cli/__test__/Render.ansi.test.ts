@@ -577,3 +577,14 @@ describe("Render.contextOf: a ci audience neutralizes workflow commands by defau
 		assert.lengthOf(commands(Render.plain(doc, Render.contextOf({ audience: "human" }))), 2, "control: a human is not");
 	});
 });
+
+describe("Render.ansi: diffText in a compact list item (A5)", () => {
+	it.effect("a blank line inside the item keeps the item's indent, unpainted", () =>
+		Effect.gen(function* () {
+			const doc = [Doc.list([Doc.section("FAIL a.test.ts", [Doc.diffText("+ Received\n\n- 1")])], { compact: true })];
+			const out = yield* ansi(doc);
+			assert.strictEqual(out.split("\n")[2], "  ");
+			assert.strictEqual(stripAnsi(out), "- FAIL a.test.ts\n  + Received\n  \n  - 1");
+		}),
+	);
+});

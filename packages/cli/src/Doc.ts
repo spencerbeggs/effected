@@ -128,8 +128,9 @@ export interface Counter {
  *   an optional summed total row.
  * - `Lines`: one line per entry; markdown keeps them apart with hard breaks.
  * - `Line`: one line, which `truncate` cuts to the width instead of wrapping.
- * - `DiffText`: a unified diff, as given.
- * - A `List` may be `compact`, with no blank lines between an item's children, and a `Table` may be `style: "pipe"`.
+ * - `DiffText`: a unified diff, as given; `truncate` cuts each line to the width.
+ * - A `List` may be `compact`, with no blank lines between an item's children (a blank line of an item's own content
+ *   keeps the item's indent in plain and `ansi`), and a `Table` may be `style: "pipe"`.
  * - `Annotation`: a GitHub Actions annotation, which only `Render.githubLog` writes.
  *
  * Nodes are plain data and nothing decodes them, so a function field such as `overflow` or `total` is fine.
@@ -190,7 +191,7 @@ export type Block =
 	  }
 	| { readonly _tag: "Lines"; readonly lines: ReadonlyArray<ReadonlyArray<Inline>> }
 	| { readonly _tag: "Line"; readonly content: ReadonlyArray<Inline>; readonly truncate?: boolean }
-	| { readonly _tag: "DiffText"; readonly text: string; readonly cap?: number }
+	| { readonly _tag: "DiffText"; readonly text: string; readonly cap?: number; readonly truncate?: boolean }
 	| { readonly _tag: "Verbatim"; readonly text: string; readonly indent?: number }
 	| ({ readonly _tag: "Annotation"; readonly message: string } & AnnotationOptions);
 
@@ -785,11 +786,24 @@ export class Doc {
 	 * A unified diff as given, such as a test runner's: sanitized, its `+` and `-` lines painted `success` and
 	 * `failure` in `ansi`, and a `diff` fence in markdown.
 	 *
+	 * @remarks
+	 * With `truncate`, plain and `ansi` cut each line to the width with the glyph set's ellipsis instead of wrapping
+	 * it; an agent's or a CI's width is unbounded, so nothing is cut for them unless the context gives a finite width.
+	 * Markdown keeps every line whole. Inside a compact list item a blank line of the diff keeps the item's indent.
+	 *
 	 * @param unified - the diff
-	 * @param options - `cap`, the most lines shown
+	 * @param options - `cap`, the most lines shown; `truncate`, to cut each line to the width
 	 */
-	static diffText(unified: string, options?: { readonly cap?: number }): BlockOf<"DiffText"> {
-		return freeze({ _tag: "DiffText", text: unified, ...(options?.cap === undefined ? {} : { cap: options.cap }) });
+	static diffText(
+		unified: string,
+		options?: { readonly cap?: number; readonly truncate?: boolean },
+	): BlockOf<"DiffText"> {
+		return freeze({
+			_tag: "DiffText",
+			text: unified,
+			...(options?.cap === undefined ? {} : { cap: options.cap }),
+			...(options?.truncate === undefined ? {} : { truncate: options.truncate }),
+		});
 	}
 
 	/**
