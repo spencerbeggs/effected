@@ -7,7 +7,7 @@ import { lineText } from "./internal/lineText.js";
 import { useScreenCancel } from "./internal/ScreenContext.js";
 import { KeyHelp } from "./KeyHelp.js";
 import { KeyTable, useKeys } from "./KeyTable.js";
-import { Styled, useGlyphs, useTerminalSize } from "./UiTheme.js";
+import { Styled, useGlyphs, useTerminalSize, useTheme } from "./UiTheme.js";
 import type { ViewportMove, ViewportRow, ViewportState } from "./Viewport.js";
 import { Viewport } from "./Viewport.js";
 
@@ -158,6 +158,9 @@ const KEYS: KeyTable<SelectAction> = KeyTable.make<SelectAction>([
 ]);
 
 /** Lines around the list: the message above, the detail and the help line below. */
+/** The text mark a disabled row carries at colour `none`, where the muted token paints nothing. */
+const DISABLED = " (disabled)";
+
 const RESERVED = 3;
 
 /**
@@ -205,7 +208,8 @@ export class Select {
 
 	/**
 	 * Draw the select: the message, the list (the highlighted row in the accent token with the arrow glyph, disabled
-	 * rows muted, every row cut to the width with the glyph set's ellipsis), the highlighted choice's detail, and the
+	 * rows muted, and at colour `none` ending in ` (disabled)` instead, every row cut to the width with the glyph set's
+	 * ellipsis), the highlighted choice's detail, and the
 	 * key help. Enter calls `onSubmit` with the value; `q` cancels the screen with `"escape"`.
 	 *
 	 * Single-shot: the choices and the starting choice are read once, when the view mounts, and later changes to them
@@ -216,6 +220,7 @@ export class Select {
 	static readonly View = <A>(props: SelectViewProps<A>): ReactElement => {
 		const { ink, react } = inkModules();
 		const glyphs = useGlyphs();
+		const theme = useTheme();
 		const { columns } = useTerminalSize();
 		const cancel = useScreenCancel();
 		const [state, setState] = react.useState(() =>
@@ -240,9 +245,12 @@ export class Select {
 		const blank = " ".repeat(Fmt.width(glyphs.arrow));
 		const renderRow = (row: ViewportRow, highlighted: boolean): ReactElement => {
 			const choice = row._tag === "Item" ? props.choices[Number(row.key)] : undefined;
-			const text = Fmt.truncate(`${highlighted ? glyphs.arrow : blank} ${lineText(choice?.label ?? "")}`, columns, {
-				ellipsis: glyphs.ellipsis,
-			});
+			const line = `${highlighted ? glyphs.arrow : blank} ${lineText(choice?.label ?? "")}`;
+			// At colour none the muted token paints nothing, so a disabled row says so in text; the label is cut, never the mark.
+			const marked = choice?.disabled === true && theme.color === "none";
+			const text = marked
+				? `${Fmt.truncate(line, Math.max(0, columns - Fmt.width(DISABLED)), { ellipsis: glyphs.ellipsis })}${DISABLED}`
+				: Fmt.truncate(line, columns, { ellipsis: glyphs.ellipsis });
 			if (highlighted) return react.createElement(Styled, { token: "accent" }, text);
 			if (choice?.disabled === true) return react.createElement(Styled, { token: "muted" }, text);
 			return react.createElement(ink.Text, null, text);

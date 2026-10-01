@@ -152,3 +152,53 @@ describe("Select.screen under CliUiTest", () => {
 		}).pipe(Effect.scoped),
 	);
 });
+
+describe("Select: a disabled choice is marked without colour", () => {
+	it.effect("at colour none a disabled row ends with (disabled), which survives a narrow terminal", () =>
+		Effect.gen(function* () {
+			const lines = (yield* Effect.scoped(
+				Effect.flatMap(
+					CliUiTest.render(Select.screen({ message: "Pick one", choices }), { color: "none" }),
+					(plain) => plain.rawFrame,
+				),
+			)).split("\n");
+			assert.isTrue(
+				lines.some((line) => line.trimEnd().endsWith("beta (disabled)")),
+				"the disabled row is marked",
+			);
+			assert.isFalse(
+				lines.some((line) => /alpha|gamma|delta/.test(line) && line.includes("(disabled)")),
+				"enabled rows are not",
+			);
+			// Its own scope: screens mount one at a time, so a second render waits for the first to be released.
+			const narrowFrame = yield* Effect.scoped(
+				Effect.flatMap(
+					CliUiTest.render(
+						Select.screen({
+							message: "Pick",
+							choices: [
+								{ label: "a", value: 1 },
+								{ label: "a very long disabled choice label", value: 2, disabled: true },
+							],
+						}),
+						{ color: "none", columns: 24 },
+					),
+					(narrow) => narrow.rawFrame,
+				),
+			);
+			assert.isTrue(
+				narrowFrame.split("\n").some((line) => line.trimEnd().endsWith("(disabled)")),
+				"the marker is kept and the label cut instead",
+			);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("with colour the muted token marks it, so the row carries no text marker", () =>
+		Effect.gen(function* () {
+			const coloured = yield* CliUiTest.render(Select.screen({ message: "Pick one", choices }), {
+				color: "truecolor",
+			});
+			assert.notInclude(yield* coloured.frame, "(disabled)");
+		}).pipe(Effect.scoped),
+	);
+});
