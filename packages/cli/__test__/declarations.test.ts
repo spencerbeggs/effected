@@ -395,6 +395,8 @@ const UI_TYPES_AND_VALUES = [
 	"KeyHelpRow",
 	"KeyName",
 	"KeyTable",
+	"LiveHandle",
+	"LiveOptions",
 	"MultiSelect",
 	"MultiSelectAction",
 	"MultiSelectInitOptions",

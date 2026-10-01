@@ -20,6 +20,7 @@ export {
 	type Screen,
 	type ScreenControl,
 } from "./ui/CliUi.js";
+export type { LiveHandle, LiveOptions } from "./ui/CliUiLive.js";
 export {
 	Confirm,
 	type ConfirmAction,

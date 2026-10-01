@@ -11,8 +11,11 @@ import { CliInteractive } from "../CliInteractive.js";
 import { CliTheme } from "../CliTheme.js";
 import { answerWithoutPerson } from "../internal/fallbackAnswer.js";
 import { NotInteractive } from "../NotInteractive.js";
+import type { LiveHandle, LiveOptions } from "./CliUiLive.js";
+import { live } from "./CliUiLive.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
 import { inkModules, loadInk, withInkColour } from "./internal/ink.js";
+import { mountPermit } from "./internal/mountPermit.js";
 import { UiRenderOptions } from "./internal/renderOptions.js";
 import { useScreenGuard } from "./internal/ScreenContext.js";
 import { uiProviders } from "./internal/UiProviders.js";
@@ -94,12 +97,6 @@ const RootKeys = (props: {
 	inkModules().ink.usePaste(guard(() => undefined));
 	return props.children;
 };
-
-/**
- * One screen at a time, process-wide: Ink owns raw mode on the one terminal, so concurrent screens are meaningless,
- * and serializing them keeps each mount's save-and-restore of Ink's colour level well nested.
- */
-const mounts = Semaphore.makeUnsafe(1);
 
 const SCREEN_EXITED = "@effected/cli/ui: the screen exited without resolving or cancelling";
 
@@ -217,7 +214,7 @@ export class CliUi {
 	 * A screen draws on stdout, and is interactive when `CliInteractive` is, which reads stdout's terminal.
 	 *
 	 * Screens run one at a time, process-wide: Ink owns raw mode on the one terminal, so a second `run` waits until
-	 * the first is released. A screen that itself awaits another `CliUi.run` therefore deadlocks, and nothing guards
+	 * the first is released, as one does while a {@link CliUi.live} view has a run drawn. A screen that itself awaits another `CliUi.run` therefore deadlocks, and nothing guards
 	 * against it.
 	 *
 	 * Do not log while a screen is mounted. Ink redraws its frame by counting the lines it last wrote, and it is
@@ -239,7 +236,7 @@ export class CliUi {
 			const theme = (yield* CliTheme).forStream("stdout");
 			const crash: CrashCell = { current: undefined };
 			const exit = yield* Effect.exit(
-				Semaphore.withPermit(mounts, Effect.scoped(mount(screen, theme, options?.clear === true, crash))),
+				Semaphore.withPermit(mountPermit, Effect.scoped(mount(screen, theme, options?.clear === true, crash))),
 			);
 			// A tree that crashed is a defect however the screen ended: a cancel or a resolve in the same tick, which
 			// settled the result first, must not hide it. An interrupt stays an interrupt. The interrupt check is
@@ -267,6 +264,42 @@ export class CliUi {
 		yield* loadInk;
 		return { "~@effected/cli/ui/UiContextValue": true, theme, glyphs: theme.glyphs };
 	});
+
+	/**
+	 * A live view over a stream: fold `events` into state, and draw it with Ink while a run is going, for the caller's
+	 * scope.
+	 *
+	 * @remarks
+	 * `live` starts pulling `events` before it returns, so a stream over a `PubSub` is subscribed by then, and folds
+	 * them in a fiber of the caller's scope. Closing the scope stops the fold and unmounts whatever is drawn: the
+	 * terminal is restored (the cursor shown, Ink's colour level put back) and nothing more is written. `done`
+	 * completes when the stream ends.
+	 *
+	 * A run starts at an `isStart` event, or at the first other event while nothing is drawn, and ends at an
+	 * `isTerminal` event. A run mounts the view; its end unmounts it, which leaves its last frame on the terminal, and the
+	 * next run mounts afresh below it. A start while a run is drawn redraws in place: the frame is never cleared, so
+	 * nothing above it is erased (`okf/decisions/live-never-clears.md`, `okf/decisions/live-view-runs-and-modes.md`).
+	 * The state is never reset by the kit: a reducer that wants a fresh run resets it on the start.
+	 *
+	 * The frame is at most the terminal's rows less one, re-read on every render and on a resize, so a tall frame never
+	 * makes Ink wipe the scrollback; its width is Ink's own (`okf/decisions/live-height-clamp-not-width.md`).
+	 *
+	 * No input is mounted: the view reads no keys and never enters raw mode, so Ctrl-C stays the platform's SIGINT,
+	 * which interrupts the program and so closes the scope. Each run holds the process-wide mount permit from its
+	 * mount to its end, so a `CliUi.run` during a run waits for the run to end, and one between runs mounts at once.
+	 *
+	 * While a run is drawn, write logs through `logConsole`, provided around the work the view reports on: its lines
+	 * land above the frame. A line written to the terminal any other way tears the frame
+	 * (`okf/decisions/live-logs-through-ink.md`).
+	 *
+	 * The view draws on stdout (`UiStreams`), at stdout's colour level and glyphs, and mounts only when the run is
+	 * interactive (`CliInteractive`).
+	 *
+	 * @param options - the events, the fold, the drawing, and what starts and ends a run
+	 */
+	static readonly live: <E, S>(
+		options: LiveOptions<E, S>,
+	) => Effect.Effect<LiveHandle<S>, never, Scope.Scope | Cli.CliTheme> = live;
 
 	/**
 	 * Run `screen` from a handler when the run is interactive; otherwise answer with `otherwise`, or fail with

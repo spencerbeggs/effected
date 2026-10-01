@@ -11,7 +11,7 @@ import { CliInteractive } from "../../CliInteractive.js";
 import { CliTheme } from "../../CliTheme.js";
 import type { Style, TokenName } from "../../Token.js";
 import { CliUi } from "../CliUi.js";
-import { holder } from "../internal/Holder.js";
+import { holder, holderSlot } from "../internal/Holder.js";
 import { inkModules } from "../internal/ink.js";
 import { UiRenderOptions } from "../internal/renderOptions.js";
 import { UiStreams } from "../UiStreams.js";
@@ -509,17 +509,12 @@ const mount = <A>(screen: Screen<A>, options: CliUiTestOptions, refusal: boolean
 		// How the run ended when it failed or died (a crash, `NotInteractive`), never for the scope's own interrupt nor a
 		// deliberate end (Esc or Ctrl-C, a `Cancelled`), after which the frames stay readable and a key is SCREEN_ENDED.
 		let failure: Cause.Cause<unknown> | undefined;
-		let swap: ((next: ReactElement) => void) | undefined;
+		const slot = holderSlot();
 		let control: ScreenControl<A> | undefined;
 		const held: Screen<A> = async (given) => {
 			control = given;
 			const initial = await screen(given);
-			return inkModules().react.createElement(holder(), {
-				initial,
-				bind: (next) => {
-					swap = next;
-				},
-			});
+			return inkModules().react.createElement(holder(), { initial, bind: slot.bind });
 		};
 		const fiber = yield* Effect.forkScoped(
 			CliUi.run(held).pipe(
@@ -552,9 +547,9 @@ const mount = <A>(screen: Screen<A>, options: CliUiTestOptions, refusal: boolean
 			Effect.gen(function* () {
 				// Bounded like the first frame: a handle queued behind another screen may never mount here.
 				const mountedBy = Date.now() + MOUNT_LIMIT_MS;
-				yield* realTime(() => swap !== undefined || ended || Date.now() >= mountedBy);
+				yield* realTime(() => slot.isBound() || ended || Date.now() >= mountedBy);
 				if (ended) return yield* Effect.die(new Error(RERENDER_AFTER_END));
-				if (swap === undefined || control === undefined) {
+				if (!slot.isBound() || control === undefined) {
 					return yield* Effect.die(new Error(RERENDER_BEFORE_MOUNT));
 				}
 				const given = control;
@@ -562,7 +557,8 @@ const mount = <A>(screen: Screen<A>, options: CliUiTestOptions, refusal: boolean
 				if (ended) return yield* Effect.die(new Error(RERENDER_AFTER_END));
 				const before = raws().length;
 				const since = Date.now();
-				swap(element);
+				// Unbound only if the screen unmounted while the element was built: the same end as above.
+				if (!slot.swap(element)) return yield* Effect.die(new Error(RERENDER_AFTER_END));
 				yield* after(before, since);
 			});
 		// A rerender that crashes dies with the crash, never with "rerender after the screen ended".
