@@ -45,8 +45,16 @@ export interface LiveOptions<E, S> {
 	 * not allocate per row.
 	 */
 	readonly render: (state: S, frame: number) => ReactElement;
-	/** Whether an event starts a run. */
+	/** Whether an event starts a run: by default, the only event that begins one (see `begins`). */
 	readonly isStart: (event: E) => boolean;
+	/**
+	 * Whether an event begins a run while none is going, given the state before and after it is folded; `isStart` by
+	 * default, so only a start begins one. Pass it to begin on something else as well, such as a stream that a program
+	 * joins mid-run: `(event, before, after) => isStart(event) || (before.phase === "idle" && after.phase !== "idle")`.
+	 * An event that begins nothing while no run is going is folded and not drawn. A start while a run is going redraws
+	 * that run in place; this is not asked then.
+	 */
+	readonly begins?: (event: E, before: S, after: S) => boolean;
 	/** Whether an event ends a run: its frame is committed to the terminal and the view unmounts until the next. */
 	readonly isTerminal: (event: E) => boolean;
 	/**
@@ -161,6 +169,7 @@ export const live = <E, S>(
 ): Effect.Effect<LiveHandle<S>, never, Scope.Scope | Cli.CliTheme> =>
 	Effect.gen(function* () {
 		const tickMillis = options.tickMillis ?? 80;
+		const begins = options.begins ?? ((event: E) => options.isStart(event));
 		if (!(Number.isFinite(tickMillis) && tickMillis > 0)) return yield* Effect.die(new Error(TICK_INVALID(tickMillis)));
 		// An agent never gets an escape of any kind, whatever the terminal could do: it sees the theme at colour none, as
 		// `Render.context` does, both as Ink's colour level and as the theme the tree reads (its `paint`, its colour-none
@@ -429,16 +438,19 @@ export const live = <E, S>(
 							),
 						),
 					);
+					const before = state;
 					state = folded;
 					if (options.isTerminal(event)) {
 						if (dirty || run !== undefined) yield* draw;
 						dirty = false;
 						yield* endRun;
 					} else if (run === undefined) {
-						// A start, or any event while no run is going, begins one; a start during a run redraws in place.
-						yield* beginRun;
+						// No run is going: only an event that begins one mounts; any other is folded and not drawn, so what a
+						// program reports after a run ends (coverage, thresholds) never mounts a second copy of it.
+						if (begins(event, before, folded)) yield* beginRun;
 						dirty = false;
 					} else {
+						// A start during a run redraws it in place, as any other event does.
 						dirty = true;
 					}
 				}

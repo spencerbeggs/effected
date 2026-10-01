@@ -25,7 +25,7 @@ const program = Effect.scoped(
 				frames.add(frame);
 				return createElement(Text, null, `events ${count}`);
 			},
-			isStart: () => false,
+			isStart: () => true,
 			isTerminal: () => false,
 			tickMillis: 20,
 		});

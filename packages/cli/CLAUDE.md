@@ -59,7 +59,9 @@ one read. `okf/modules/cli.md` has the rows.
 
 - **Optional peers `ink` (^7.1.1) and `react` (^19.2.0).** The root never
   reaches them, and `./ui` imports them only when a screen mounts (`loadInk`),
-  so importing `./ui` or running a non-interactive program loads neither.
+  so importing `./ui` or running a non-interactive program loads neither,
+  except that an owned live view loads them to print its final frame as a
+  string.
   `src/ui/**` may only `import type` from them (ruling S1, held by
   `boundary.test.ts`); a missing peer in an interactive run is a defect
   naming both, never a silent fallback.
@@ -78,9 +80,11 @@ one read. `okf/modules/cli.md` has the rows.
   `{@link}` targets resolvable. The two "could not harvest per-module source
   locations" build warnings are those entries and are accepted.
 - **`CliUi.live` is a scoped live view over a `Stream`, not a screen.** It folds
-  events into state in a fiber of the caller's scope and draws runs: a run starts
-  at `isStart` (or the first other event while nothing is drawn) and ends at
-  `isTerminal`, where Ink's own unmount leaves its frame on the terminal; the next
+  events into state in a fiber of the caller's scope and draws runs: a run begins
+  at `isStart` (or where an optional `begins(event, before, after)` says, for a
+  consumer that joins mid-run) and ends at `isTerminal`; an event outside a run
+  that begins none is folded and not drawn, so post-run events never mount a
+  second copy, where Ink's own unmount leaves its frame on the terminal; the next
   run mounts afresh below, and `clear()` is never called —
   `@./okf/decisions/live-view-runs-and-modes.md`, `live-never-clears.md` — Load
   when: changing how runs start, end or redraw. One controller fiber owns every

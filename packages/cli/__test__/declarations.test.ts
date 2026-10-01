@@ -108,8 +108,8 @@ export const documented: Effect.Effect<void, never, Scope.Scope> = Effect.gen(fu
 		initial: 0,
 		reduce: (total: number, n: number) => total + n,
 		render: (total: number) => DocView({ doc: [Doc.paragraph(\`total \${total}\`)] }),
-		isStart: () => false,
-		isTerminal: () => false,
+		isStart: (n: number) => n === 1,
+		isTerminal: (n: number) => n === 3,
 	});
 	yield* view.done;
 }).pipe(Effect.provide(CliTheme.layerTest()));

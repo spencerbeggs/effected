@@ -3,10 +3,11 @@ import { Effect, Fiber, PubSub, Queue, Stream } from "effect";
 import { Box, Text, render } from "ink";
 import { createElement } from "react";
 import { CliInteractive, CliTheme } from "../../src/index.js";
+import { UiRenderOptions } from "../../src/ui/internal/renderOptions.js";
 import type { FakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { screenAfter } from "../../src/ui/testing/terminalModel.js";
-import type { LiveHandle } from "../../src/ui.js";
+import type { LiveHandle, LiveOptions } from "../../src/ui.js";
 import { CliUi, UiStreams } from "../../src/ui.js";
 import type { Ev, State } from "../helpers/live.js";
 import {
@@ -131,16 +132,19 @@ describe("CliUi.live: runs on the production path", () => {
 		}).pipe(Effect.scoped),
 	);
 
-	it.live("the first non-terminal event while nothing is mounted starts a run", () =>
+	it.live("by default only a start begins a run: events before it, or after a terminal event, mount nothing", () =>
 		Effect.gen(function* () {
 			const fake = makeFakeStreams({ columns: 40, rows: 20 });
 			let mounts = 0;
-			const handle = yield* liveOn(fake, optionsOf(Stream.fromIterable([tick(1), tick(2), End])), {
-				onMount: () => mounts++,
-			});
+			const handle = yield* liveOn(
+				fake,
+				optionsOf(Stream.fromIterable([tick(1), Start, tick(2), End, tick(3), tick(4)]).pipe(Stream.rechunk(1))),
+				{ onMount: () => mounts++ },
+			);
 			yield* handle.done.pipe(Effect.timeout("2 seconds"));
-			assert.strictEqual(mounts, 1);
-			assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 0", "ended"]);
+			assert.strictEqual(mounts, 1, "one run: the events after its end are folded, never drawn");
+			assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 1", "ended"], "one frame, the run's own");
+			assert.strictEqual((yield* handle.state).last, "tick 4", "the fold went on");
 		}).pipe(Effect.scoped),
 	);
 
@@ -369,5 +373,101 @@ describe("CliUi.live: around a mounted run", () => {
 			assert.strictEqual((yield* handle.state).last, "ended");
 			assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted", "the run unmounted");
 		}).pipe(Effect.scoped),
+	);
+});
+
+/** vitest-agent's model, in small: a run joins mid-way, and coverage and thresholds come after it ends. */
+type AgentEvent =
+	| { readonly _tag: "RunStarted" }
+	| { readonly _tag: "Progress" }
+	| { readonly _tag: "RunFinished" }
+	| { readonly _tag: "CoverageReady" }
+	| { readonly _tag: "ThresholdViolation" };
+interface AgentState {
+	readonly phase: "idle" | "running" | "finished";
+	readonly seen: number;
+}
+const agentReduce = (state: AgentState, event: AgentEvent): AgentState => {
+	const seen = state.seen + 1;
+	switch (event._tag) {
+		case "RunStarted":
+			return { phase: "running", seen };
+		case "Progress":
+			return { phase: state.phase === "idle" ? "running" : state.phase, seen };
+		case "RunFinished":
+			return { phase: "finished", seen };
+		default:
+			return { ...state, seen };
+	}
+};
+const agentView = (events: ReadonlyArray<AgentEvent>, begins?: LiveOptions<AgentEvent, AgentState>["begins"]) => ({
+	events: Stream.fromIterable(events).pipe(Stream.rechunk(1)),
+	initial: { phase: "idle", seen: 0 } as AgentState,
+	reduce: agentReduce,
+	render: (state: AgentState) => createElement(Text, null, `${state.phase} after ${state.seen}`),
+	isStart: (event: AgentEvent) => event._tag === "RunStarted",
+	isTerminal: (event: AgentEvent) => event._tag === "RunFinished",
+	...(begins === undefined ? {} : { begins }),
+});
+const runAgent = (options: LiveOptions<AgentEvent, AgentState>) =>
+	Effect.gen(function* () {
+		const fake = makeFakeStreams({ columns: 40, rows: 20 });
+		let mounts = 0;
+		const handle = yield* CliUi.live(options).pipe(
+			Effect.provideService(UiStreams, fake.streams),
+			Effect.provideService(CliInteractive, true),
+			Effect.provideService(UiRenderOptions, { onMount: () => mounts++ }),
+			Effect.provide(CliTheme.layerTest()),
+		);
+		yield* handle.done.pipe(Effect.timeout("2 seconds"));
+		return { mounts, shown: screenAfter(fake.stdout()) };
+	}).pipe(Effect.scoped);
+
+describe("CliUi.live: what begins a run (Task 7 review, I1)", () => {
+	it.live("by default, events after the terminal event (coverage, thresholds) never mount a second run", () =>
+		Effect.gen(function* () {
+			const { mounts, shown } = yield* runAgent(
+				agentView([
+					{ _tag: "RunStarted" },
+					{ _tag: "Progress" },
+					{ _tag: "RunFinished" },
+					{ _tag: "CoverageReady" },
+					{ _tag: "ThresholdViolation" },
+				]),
+			);
+			assert.strictEqual(mounts, 1);
+			assert.deepStrictEqual(shown, ["finished after 3"], "the finished run's frame, once");
+		}),
+	);
+
+	it.live("vitest-agent's begins (a start, or idle to not idle) joins a run mid-way, and not again after it ends", () =>
+		Effect.gen(function* () {
+			const begins: LiveOptions<AgentEvent, AgentState>["begins"] = (event, before, after) =>
+				event._tag === "RunStarted" || (before.phase === "idle" && after.phase !== "idle");
+			const { mounts, shown } = yield* runAgent(
+				agentView(
+					[
+						{ _tag: "Progress" },
+						{ _tag: "Progress" },
+						{ _tag: "RunFinished" },
+						{ _tag: "CoverageReady" },
+						{ _tag: "ThresholdViolation" },
+					],
+					begins,
+				),
+			);
+			assert.strictEqual(mounts, 1, "joined at the first Progress, never remounted by what came after the end");
+			assert.deepStrictEqual(shown, ["finished after 3"]);
+		}),
+	);
+
+	it.live("control: without begins, the same joined-mid-way stream mounts nothing at all", () =>
+		Effect.gen(function* () {
+			const { mounts, shown } = yield* runAgent(
+				agentView([{ _tag: "Progress" }, { _tag: "Progress" }, { _tag: "RunFinished" }, { _tag: "CoverageReady" }]),
+			);
+			assert.strictEqual(mounts, 0);
+			assert.deepStrictEqual(shown, []);
+		}),
 	);
 });
