@@ -8,8 +8,9 @@ import { uiProviders } from "./internal/UiProviders.js";
  * What the kit's hooks read in a tree the kit did not mount: the theme, the glyph set, and optionally the size.
  *
  * @remarks
- * Only `CliUi.context` mints one, because only it also loads the Ink and React the provider renders with: a value
- * built by hand lacks the brand and does not compile. Spread a minted value to change its fields
+ * Only `CliUi.context` mints one, because only it also loads the Ink and React the provider renders with. A value
+ * without the brand does not compile, which stops one being built by accident; the brand is a plain key, so a
+ * literal that spells it out compiles, and must never be written. Spread a minted value to change its fields
  * (`{ ...value, size }`).
  *
  * @public
