@@ -70,6 +70,7 @@ export const sessioned: Effect.Effect<readonly [number, string, number], unknown
 	const program: Effect.Effect<number, unknown, never> = CliUi.run(screen).pipe(Effect.provide(session.layer));
 	const fiber = yield* Effect.forkScoped(program);
 	const first = yield* session.next({ contains: "Profile" });
+	yield* first.chunk("down", "up");
 	yield* first.press("enter");
 	const frame: string = yield* first.plainFrame;
 	return [yield* Fiber.join(fiber), frame, yield* session.mounts] as const;

@@ -56,6 +56,17 @@ export interface CliUiTestScreen {
 	readonly press: (...keys: ReadonlyArray<KeyName>) => Effect.Effect<void>;
 	/** Type text, one character at a time, each settling like a key. */
 	readonly type: (text: string) => Effect.Effect<void>;
+	/**
+	 * Press named keys together: all their bytes in ONE stdin write, then one settle, as a fast typist, a held key or
+	 * a batching terminal delivers them.
+	 *
+	 * @remarks
+	 * Ink dispatches every key of one read before React re-renders, so a handler that steps from state its render
+	 * captured repeats the first key's move; {@link CliUiTestScreen.press}, which writes and settles key by key, can
+	 * never show that. Use `chunk` to test a key handler against it. An `"escape"` inside a chunk joins the bytes after
+	 * it, as on a real terminal; only a trailing one waits out Ink's ESC hold.
+	 */
+	readonly chunk: (...keys: ReadonlyArray<KeyName>) => Effect.Effect<void>;
 	/** Resize the terminal and emit `resize`, as a real one does, settling like a key. */
 	readonly resize: (columns: number, rows: number) => Effect.Effect<void>;
 	/** The latest frame as token markup ({@link CliUiTest.styled}), each line's trailing spaces trimmed. */
@@ -381,6 +392,8 @@ const makeTerminal = (options: CliUiTestOptions) => {
 					discard: true,
 				}),
 			type: (text) => Effect.forEach([...text], (character) => send(character), { discard: true }),
+			chunk: (...keys) =>
+				send(keys.map((key) => KEY_BYTES[key]).join(""), keys.at(-1) === "escape" ? ESCAPE_FLUSH_MS : 0),
 			resize: (nextColumns, nextRows) =>
 				Effect.suspend(() => {
 					const before = raws().length;

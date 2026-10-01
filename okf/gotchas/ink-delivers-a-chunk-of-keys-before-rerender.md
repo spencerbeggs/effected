@@ -13,13 +13,17 @@ sources:
     resource: "../../packages/cli/__test__/ui/Tabs.test.ts"
     author: "agent:claude-code"
     last_modified: "2026-10-01T05:17:00Z"
+  - id: chunk-test
+    resource: "../../packages/cli/__test__/ui/CliUiTest.chunk.test.ts"
+    author: "agent:claude-code"
+    last_modified: "2026-10-01T05:29:00Z"
   - id: ink-input-parser
     resource: "npm:ink@7.1.1/build/input-parser.js"
     last_modified: "2026-10-01T05:17:00Z"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T05:18:37Z
-  body_sha256: 3c2b9c5862a9aa3d208a28bf4bd5633d9499e52a292e7a911ef573ffcd23f29a
+  at: 2026-10-01T05:29:59Z
+  body_sha256: 7d66889748ddb00b0561f437b1f888490a34ac947038987633c32304c5e2127a
 ---
 
 # Ink delivers every key in one stdin read before React re-renders
@@ -57,9 +61,11 @@ Two related facts bound the trap:
   because they can appear inside pasted text, so `\t\t` in one read
   reaches `useInput` as a single two-character string rather than as two
   Tab keys[^ink-input-parser].
-- **`CliUiTest` cannot show it.** `handle.press` and `handle.type` write
-  each key as its own chunk and settle between them. A test that wants
-  to see this class of bug must write one chunk itself, on fake streams.
+- **`press` and `type` cannot show it.** They write each key as its own
+  chunk and settle between them, so every key meets a fresh render. The
+  screen handles of `CliUiTest.render` and `CliUiTest.session` also have
+  `chunk(...keys)`, which writes all the keys in one stdin read and
+  settles once: that is the call that shows this bug class[^chunk-test].
 
 ## The check
 
@@ -73,7 +79,9 @@ state. Use any of:
 Select, MultiSelect, Confirm and TextInput use functional updates. Tabs,
 which also reports each step through `onChange` and may be controlled,
 advances a ref that every render re-syncs. When reviewing a new widget,
-cover it with a one-chunk test of two keys.
+cover it with a one-chunk test of two keys: `handle.chunk("right",
+"right")` from `@effected/cli/ui/testing`.
 
 [^tabs-one-chunk-probe]: `__test__/ui/Tabs.test.ts`, "Tabs input in one chunk"
+[^chunk-test]: `__test__/ui/CliUiTest.chunk.test.ts`
 [^ink-input-parser]: Ink 7.1.1, `build/input-parser.js`, `splitBackspaceBytes`
