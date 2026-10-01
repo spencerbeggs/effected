@@ -199,29 +199,33 @@ describe("Viewport.View under CliUiTest", () => {
 		}).pipe(Effect.scoped),
 	);
 
-	it.effect("on a 20-column terminal the KeyHelp line is cut to 19 cells, ending in the theme's ellipsis", () =>
-		Effect.gen(function* () {
-			const unicode = yield* Effect.scoped(
-				Effect.flatMap(
-					CliUiTest.render(() => createElement(KeyHelp, { tables: [Viewport.keys] }), { columns: 20 }),
-					(handle) => handle.plainFrame,
-				),
-			);
-			assert.lengthOf(unicode.trimEnd().split("\n"), 1, "one line, not wrapped");
-			assert.isAtMost(Fmt.width(unicode.trimEnd()), 19);
-			assert.isTrue(unicode.trimEnd().endsWith("…"), unicode);
-			const ascii = yield* Effect.scoped(
-				Effect.flatMap(
-					CliUiTest.render(() => createElement(KeyHelp, { tables: [Viewport.keys] }), {
-						columns: 20,
-						glyphs: "ascii",
-					}),
-					(handle) => handle.plainFrame,
-				),
-			);
-			assert.isTrue(ascii.trimEnd().endsWith("..."), ascii);
-			assert.isAtMost(Fmt.width(ascii.trimEnd()), 19);
-		}),
+	it.effect(
+		"on a 20-column terminal the KeyHelp line is cut to 19 cells, cutting the widget keys and keeping esc cancel",
+		() =>
+			Effect.gen(function* () {
+				const unicode = yield* Effect.scoped(
+					Effect.flatMap(
+						CliUiTest.render(() => createElement(KeyHelp, { tables: [Viewport.keys] }), { columns: 20 }),
+						(handle) => handle.plainFrame,
+					),
+				);
+				assert.lengthOf(unicode.trimEnd().split("\n"), 1, "one line, not wrapped");
+				assert.isAtMost(Fmt.width(unicode.trimEnd()), 19);
+				assert.include(unicode, "…", "the widget keys were cut");
+				assert.isTrue(unicode.trimEnd().endsWith(" · esc cancel"), `the root hint stays whole at the end: ${unicode}`);
+				const ascii = yield* Effect.scoped(
+					Effect.flatMap(
+						CliUiTest.render(() => createElement(KeyHelp, { tables: [Viewport.keys] }), {
+							columns: 20,
+							glyphs: "ascii",
+						}),
+						(handle) => handle.plainFrame,
+					),
+				);
+				assert.include(ascii, "...", "the widget keys were cut");
+				assert.isTrue(ascii.trimEnd().endsWith(" | esc cancel"), ascii);
+				assert.isAtMost(Fmt.width(ascii.trimEnd()), 19);
+			}),
 	);
 
 	it.effect("KeyHelp for the viewport's keys reads ↑/↓ move", () =>

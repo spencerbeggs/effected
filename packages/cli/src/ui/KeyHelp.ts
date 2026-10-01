@@ -22,8 +22,9 @@ export interface KeyHelpProps {
  *
  * @remarks
  * Drawn from the same tables that dispatch the keys, so the help cannot name a key the screen ignores. Neighbouring
- * rows with the same help share one entry (`↑/↓ move`). It stays one line: cut to the terminal width, ending in
- * the glyph set's ellipsis. Painted with the `muted` token; labels follow the screen's glyph set.
+ * rows with the same help share one entry (`↑/↓ move`). It stays one line, cut to the terminal width with the glyph
+ * set's ellipsis; when it must be cut, the widget's own keys give way and the root hint (`esc cancel`) stays whole at
+ * the end. Painted with the `muted` token; labels follow the screen's glyph set.
  *
  * @param props - the tables, and whether to append the root keys
  *
@@ -32,19 +33,26 @@ export interface KeyHelpProps {
 export const KeyHelp = (props: KeyHelpProps): ReactElement => {
 	const glyphs = useGlyphs();
 	const { columns } = useTerminalSize();
-	const tables = props.root === false ? props.tables : [...props.tables, KeyTable.root];
-	// Neighbouring rows that say the same thing share one entry: ↑ move, ↓ move reads ↑/↓ move.
-	const rows: Array<{ label: string; help: string }> = [];
-	for (const row of tables.flatMap((table) => table.help(glyphs))) {
-		const previous = rows.at(-1);
-		if (previous !== undefined && previous.help === row.help) previous.label = `${previous.label}/${row.label}`;
-		else rows.push({ ...row });
-	}
-	const line = rows.map((row) => `${row.label} ${row.help}`).join(glyphs.kind === "unicode" ? " · " : " | ");
+	const separator = glyphs.kind === "unicode" ? " · " : " | ";
+	const describe = (tables: ReadonlyArray<KeyTable<unknown>>): string => {
+		// Neighbouring rows that say the same thing share one entry: ↑ move, ↓ move reads ↑/↓ move.
+		const rows: Array<{ label: string; help: string }> = [];
+		for (const row of tables.flatMap((table) => table.help(glyphs))) {
+			const previous = rows.at(-1);
+			if (previous !== undefined && previous.help === row.help) previous.label = `${previous.label}/${row.label}`;
+			else rows.push({ ...row });
+		}
+		return rows.map((row) => `${row.label} ${row.help}`).join(separator);
+	};
+	const own = describe(props.tables);
+	const root = props.root === false ? "" : describe([KeyTable.root]);
+	const whole = [own, root].filter((part) => part !== "").join(separator);
 	// One line, cut to the terminal width with the theme's ellipsis, so the footer never wraps into a second row.
-	return inkModules().react.createElement(
-		Styled,
-		{ token: "muted" },
-		Fmt.truncate(line, columns, { ellipsis: glyphs.ellipsis }),
-	);
+	// When it must be cut, the widget's own keys give way and the root hint (esc cancel) stays whole at the end.
+	const pinned = root === "" || own === "" ? "" : `${separator}${root}`;
+	const line =
+		Fmt.width(whole) <= columns || pinned === "" || Fmt.width(pinned) >= columns
+			? Fmt.truncate(whole, columns, { ellipsis: glyphs.ellipsis })
+			: `${Fmt.truncate(own, columns - Fmt.width(pinned), { ellipsis: glyphs.ellipsis })}${pinned}`;
+	return inkModules().react.createElement(Styled, { token: "muted" }, line);
 };
