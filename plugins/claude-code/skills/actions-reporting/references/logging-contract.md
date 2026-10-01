@@ -81,7 +81,17 @@ replaced **first**, or a later `\r`/`\n` substitution's own `%` would get
 re-escaped. A legitimate reason to reach for it directly: rendering a
 command's exact wire text in a unit test with no runner and no service —
 which is exactly what `ActionOutputs.setFailed` and `.setSecret` do
-internally.
+internally. It lives in the pure, dependency-free `@effected/github-commands`
+and `@effected/github-actions` re-exports it, so an action imports it from
+either.
+
+The opposite direction is `CommandNeutralizer` (same package): the runner
+reads a line as a command when it starts with `::` (after whitespace) or
+contains `##[` anywhere, so text the program did not author — an error
+message, file contents — can smuggle in `::add-mask::` or `##[group]`.
+`ActionLogger.logger` already neutralizes an `Info` line and escapes the
+data of the levels it renders as commands; text written to stdout any other
+way goes through `CommandNeutralizer.text` first.
 
 ## Masking
 
