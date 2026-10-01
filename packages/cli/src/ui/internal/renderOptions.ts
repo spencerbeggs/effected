@@ -10,10 +10,16 @@ export interface UiRenderOverrides {
 	readonly debug?: boolean;
 	/** Called after each render, just before Ink writes the frame; the harness counts frames with it. */
 	readonly onRender?: () => void;
-	/** Called as a screen mounts, before Ink draws its first frame; the harness starts that screen's capture. */
+	/**
+	 * Called as a screen's run starts mounting, before Ink is loaded and before the screen's thunk is called, so a run
+	 * that crashes before Ink draws still has a capture; the harness starts that screen's capture.
+	 */
 	readonly onMount?: () => void;
-	/** Called once a screen has unmounted and Ink has exited; the harness marks that screen's capture ended. */
-	readonly onUnmount?: () => void;
+	/**
+	 * Called once a screen has unmounted, Ink has exited and the colour level is restored, with the defect the run died
+	 * of, if it died (a thunk or a component that threw); the harness marks that screen's capture ended, and crashed.
+	 */
+	readonly onUnmount?: (crash: { readonly defect: unknown } | undefined) => void;
 }
 
 /**

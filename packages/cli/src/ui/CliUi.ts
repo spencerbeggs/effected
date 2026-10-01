@@ -2,7 +2,7 @@
 // (kept external by dtsExternals) instead of carrying copies a consumer's root layers cannot satisfy.
 import type * as Cli from "@effected/cli";
 import type { Scope } from "effect";
-import { Deferred, Effect, Exit, Option, Semaphore } from "effect";
+import { Cause, Deferred, Effect, Exit, Option, Semaphore } from "effect";
 import type { Param } from "effect/cli";
 import { Prompt } from "effect/cli";
 import type { ReactElement, ReactNode } from "react";
@@ -108,9 +108,19 @@ const mount = <A>(
 	clear: boolean,
 ): Effect.Effect<A, Cli.Cancelled, Scope.Scope> =>
 	Effect.gen(function* () {
+		const overrides = yield* UiRenderOptions;
+		// The harness's bracket, around everything a run does, so a thunk that throws before Ink draws is a screen too.
+		// Released last: after Ink has exited and the colour level is restored, with the defect the run died of.
+		yield* Effect.acquireRelease(
+			Effect.sync(() => overrides.onMount?.()),
+			(_, exit) =>
+				Effect.sync(() => {
+					const died = Exit.isFailure(exit) ? exit.cause.reasons.find(Cause.isDieReason) : undefined;
+					overrides.onUnmount?.(died === undefined ? undefined : { defect: died.defect });
+				}),
+		);
 		const { ink, react } = yield* loadInk;
 		const streams = yield* UiStreams;
-		const overrides = yield* UiRenderOptions;
 		yield* withInkColour(theme.color);
 		const result = yield* Deferred.make<A, Cli.Cancelled>();
 		const control: ScreenControl<A> = {
@@ -133,10 +143,8 @@ const mount = <A>(
 			}),
 		});
 		const instance = yield* Effect.acquireRelease(
-			Effect.sync(() => {
-				// Before render: Ink draws the first frame inside it, and the harness files frames under the mount.
-				overrides.onMount?.();
-				return ink.render(tree, {
+			Effect.sync(() =>
+				ink.render(tree, {
 					stdin: streams.stdin,
 					stdout: streams.stdout,
 					stderr: streams.stderr,
@@ -145,15 +153,14 @@ const mount = <A>(
 					patchConsole: false,
 					...(overrides.debug === true ? { debug: true } : {}),
 					...(overrides.onRender === undefined ? {} : { onRender: overrides.onRender }),
-				});
-			}),
+				}),
+			),
 			(instance) =>
 				Effect.promise(async () => {
 					// Erases the last frame and marks it written, so the unmount's final render draws nothing over it.
 					if (clear) instance.clear();
 					instance.unmount();
 					await instance.waitUntilExit().catch(() => undefined);
-					overrides.onUnmount?.();
 				}),
 		);
 		const exited: Effect.Effect<A, Cli.Cancelled> = Effect.tryPromise({

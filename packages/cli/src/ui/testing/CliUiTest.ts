@@ -159,10 +159,14 @@ export interface CliUiTestSession {
 	 * @remarks
 	 * Each call takes the next mount in order, counting every mount since the session began, so a screen that mounted
 	 * before the call is not missed. It waits at most 2 s, then dies naming the screen's number, the text it waited
-	 * for and how many screens had mounted. The returned screen's frames start at its own mount.
+	 * for and how many screens had mounted. The returned screen's frames start at its own mount. A screen that crashed
+	 * makes `next` die with the crash instead.
 	 */
 	readonly next: (options?: CliUiTestNextOptions) => Effect.Effect<CliUiTestScreen>;
-	/** How many screens have mounted so far. */
+	/**
+	 * How many screens have mounted so far: every run that started mounting, one whose thunk threw before Ink drew
+	 * included.
+	 */
 	readonly mounts: Effect.Effect<number>;
 	/** What the program wrote to stdout through `Console` (`log`, `info`, `debug`), one line per call. */
 	readonly stdout: Effect.Effect<string>;
@@ -351,10 +355,11 @@ const cancelledReason = (value: unknown): "escape" | "interrupt" | undefined => 
 	return _tag === "Cancelled" && (reason === "escape" || reason === "interrupt") ? reason : undefined;
 };
 
-/** One mounted screen's frames, and whether it has unmounted. */
+/** One mounted screen's frames, whether it has unmounted, and the defect it died of, if it crashed. */
 interface Capture {
 	readonly raws: Array<string>;
 	ended: boolean;
+	crash: { readonly defect: unknown } | undefined;
 }
 
 /**
@@ -392,11 +397,13 @@ const makeTerminal = (options: CliUiTestOptions) => {
 				frameDue = true;
 			},
 			onMount: () => {
-				captures.push({ raws: [], ended: false });
+				captures.push({ raws: [], ended: false, crash: undefined });
 			},
-			onUnmount: () => {
+			onUnmount: (crash) => {
 				const current = captures.at(-1);
-				if (current !== undefined) current.ended = true;
+				if (current === undefined) return;
+				current.ended = true;
+				current.crash = crash;
 			},
 		}),
 	);
@@ -420,8 +427,24 @@ const makeTerminal = (options: CliUiTestOptions) => {
 			return now - Math.max(since, lastWrite) >= QUIET_MS && now - since >= QUIET_MS;
 		});
 
-	/** Drive and read the screen whose capture `capture` returns (none yet: no frames), ended when `ended` says. */
-	const screen = (capture: () => Capture | undefined, ended: () => boolean) => {
+	/**
+	 * Drive and read the screen whose capture `capture` returns (none yet: no frames), ended when `ended` says. A crash
+	 * is never swallowed: once `failed` (by default, the capture's own crash) holds a cause, every read and send dies
+	 * with it, so a screen that drew nothing is never read as an empty one.
+	 */
+	const screen = (
+		capture: () => Capture | undefined,
+		ended: () => boolean,
+		failed: () => Cause.Cause<unknown> | undefined = () => {
+			const crash = capture()?.crash;
+			return crash === undefined ? undefined : Cause.die(crash.defect);
+		},
+	) => {
+		const surfaced = <X>(effect: Effect.Effect<X>): Effect.Effect<X> =>
+			Effect.suspend(() => {
+				const cause = failed();
+				return cause === undefined ? effect : Effect.die(Cause.squash(cause));
+			});
 		const raws = (): ReadonlyArray<string> => capture()?.raws ?? [];
 		const after = (before: number, since: number) => settle(raws, ended, before, since);
 		const send = (bytes: string, flushMs = 0): Effect.Effect<void> =>
@@ -440,28 +463,34 @@ const makeTerminal = (options: CliUiTestOptions) => {
 				Effect.forEach(
 					keys,
 					(key) =>
-						Effect.flatMap(bytesOf(key, "press"), (bytes) => send(bytes, key === "escape" ? ESCAPE_FLUSH_MS : 0)),
+						surfaced(
+							Effect.flatMap(bytesOf(key, "press"), (bytes) => send(bytes, key === "escape" ? ESCAPE_FLUSH_MS : 0)),
+						),
 					{ discard: true },
 				),
-			type: (text) => Effect.forEach([...text], (character) => send(character), { discard: true }),
+			type: (text) => Effect.forEach([...text], (character) => surfaced(send(character)), { discard: true }),
 			chunk: (...keys) =>
-				Effect.flatMap(
-					Effect.forEach(keys, (key) => bytesOf(key, "chunk")),
-					(bytes) => send(bytes.join(""), keys.at(-1) === "escape" ? ESCAPE_FLUSH_MS : 0),
+				surfaced(
+					Effect.flatMap(
+						Effect.forEach(keys, (key) => bytesOf(key, "chunk")),
+						(bytes) => send(bytes.join(""), keys.at(-1) === "escape" ? ESCAPE_FLUSH_MS : 0),
+					),
 				),
 			resize: (nextColumns, nextRows) =>
-				Effect.suspend(() => {
-					const before = raws().length;
-					const since = Date.now();
-					fake.resize(nextColumns, nextRows);
-					return after(before, since);
-				}),
-			frame: Effect.sync(() => trimLines(styled(raws().at(-1) ?? ""))),
-			rawFrame: Effect.sync(() => raws().at(-1) ?? ""),
-			plainFrame: Effect.sync(() => trimLines((raws().at(-1) ?? "").replace(ESCAPES, ""))),
-			frames: Effect.sync(() => raws().map((raw) => trimLines(styled(raw)))),
+				surfaced(
+					Effect.suspend(() => {
+						const before = raws().length;
+						const since = Date.now();
+						fake.resize(nextColumns, nextRows);
+						return after(before, since);
+					}),
+				),
+			frame: surfaced(Effect.sync(() => trimLines(styled(raws().at(-1) ?? "")))),
+			rawFrame: surfaced(Effect.sync(() => raws().at(-1) ?? "")),
+			plainFrame: surfaced(Effect.sync(() => trimLines((raws().at(-1) ?? "").replace(ESCAPES, "")))),
+			frames: surfaced(Effect.sync(() => raws().map((raw) => trimLines(styled(raw))))),
 		};
-		return { handle, raws, after };
+		return { handle, raws, after, surfaced };
 	};
 
 	return { fake, layer, captures, screen };
@@ -470,9 +499,10 @@ const makeTerminal = (options: CliUiTestOptions) => {
 /**
  * Mount `screen` on a fresh terminal for the enclosing scope, held in a swappable holder so a rerender changes only its
  * subtree under the same control: what `render` and `view` share. Ready once the first frame is drawn, the screen has
- * ended, or 2 s have passed.
+ * ended, or 2 s have passed. A crash surfaces on every read and send, as on a session's screen; with `refusal`, so does
+ * a run refused as not interactive, for a view, which has no `result` to carry it.
  */
-const mount = <A>(screen: Screen<A>, options: CliUiTestOptions) =>
+const mount = <A>(screen: Screen<A>, options: CliUiTestOptions, refusal: boolean) =>
 	Effect.gen(function* () {
 		const terminal = makeTerminal(options);
 		let ended = false;
@@ -509,9 +539,10 @@ const mount = <A>(screen: Screen<A>, options: CliUiTestOptions) =>
 			),
 		);
 		// One screen per mount: its capture is the first, and it has ended when the run has.
-		const { handle, raws, after } = terminal.screen(
+		const { handle, raws, after, surfaced } = terminal.screen(
 			() => terminal.captures[0],
 			() => ended,
+			refusal ? () => failure : undefined,
 		);
 		const mountedBy = Date.now() + MOUNT_LIMIT_MS;
 		yield* realTime(() => raws().length > 0 || ended || Date.now() >= mountedBy);
@@ -533,7 +564,10 @@ const mount = <A>(screen: Screen<A>, options: CliUiTestOptions) =>
 				swap(element);
 				yield* after(before, since);
 			});
-		return { handle, swapTo, fiber, failed: (): Cause.Cause<unknown> | undefined => failure };
+		// A rerender that crashes dies with the crash, never with "rerender after the screen ended".
+		const rerender = (next: Screen<A>): Effect.Effect<void> =>
+			surfaced(Effect.andThen(swapTo(next), surfaced(Effect.void)));
+		return { handle, rerender, fiber, surfaced };
 	});
 
 /** A `Console` that keeps what is written: `log`, `info` and `debug` as stdout, `error`, `warn` and `trace` as stderr. */
@@ -594,6 +628,12 @@ export class CliUiTest {
 	 * nothing in debug mode: test `clear` on the production render path, as the kit's own tests do.
 	 * Unmounting is the scope's close; to draw a different screen, render it in a new scope.
 	 *
+	 * A crash is never swallowed. A screen thunk that throws (a classic-JSX `React is not defined` included) or a
+	 * component that throws ends the run with a defect: `result` dies with it, and so does the next frame read, key,
+	 * resize or rerender, so a crashed screen is never read as one that drew nothing. As with `view`, after a crash
+	 * the frames drawn before it cannot be read. A run refused as not interactive is `result`'s `NotInteractive`, and
+	 * its frames read as `[]`.
+	 *
 	 * @param screen - the screen to mount
 	 * @param options - the terminal's size, colour and glyphs, and whether the run is interactive
 	 */
@@ -601,9 +641,9 @@ export class CliUiTest {
 		screen: Screen<A>,
 		options: CliUiTestOptions = {},
 	): Effect.Effect<CliUiTestHandle<A>, never, Scope.Scope> =>
-		Effect.map(mount(screen, options), ({ handle, swapTo, fiber }) => ({
+		Effect.map(mount(screen, options, false), ({ handle, rerender, fiber }) => ({
 			...handle,
-			rerender: swapTo,
+			rerender,
 			result: Fiber.join(fiber),
 		}));
 
@@ -635,32 +675,10 @@ export class CliUiTest {
 		options: CliUiTestOptions = {},
 	): Effect.Effect<CliUiTestView, never, Scope.Scope> =>
 		Effect.flatMap(
-			mount<never>(() => element, options),
-			({ handle, swapTo, failed }) => {
-				// A view has no `result` to re-raise how its run ended, so a crash or a refusal surfaces here instead: at the
-				// mount, and on every read, key or rerender after it, never as a screen that silently drew nothing.
-				const surfaced = <X>(effect: Effect.Effect<X>): Effect.Effect<X> =>
-					Effect.suspend(() => {
-						const cause = failed();
-						return cause === undefined ? effect : Effect.die(Cause.squash(cause));
-					});
-				const view: CliUiTestView = {
-					press: (...keys) => surfaced(handle.press(...keys)),
-					type: (text) => surfaced(handle.type(text)),
-					chunk: (...keys) => surfaced(handle.chunk(...keys)),
-					resize: (columns, rows) => surfaced(handle.resize(columns, rows)),
-					frame: surfaced(handle.frame),
-					rawFrame: surfaced(handle.rawFrame),
-					plainFrame: surfaced(handle.plainFrame),
-					frames: surfaced(handle.frames),
-					rerender: (next) =>
-						surfaced(
-							Effect.andThen(
-								swapTo(() => next),
-								surfaced(Effect.void),
-							),
-						),
-				};
+			mount<never>(() => element, options, true),
+			({ handle, rerender, surfaced }) => {
+				// A view has no `result` to re-raise how its run ended, so a crash or a refusal also surfaces at the mount.
+				const view: CliUiTestView = { ...handle, rerender: (next) => rerender(() => next) };
 				return surfaced(Effect.succeed(view));
 			},
 		);
@@ -681,6 +699,10 @@ export class CliUiTest {
 	 * captured: Ink renders in debug mode, where its `clear` does nothing, so test `clear` on the production render path.
 	 * The waits are real time: a session test that itself sleeps or times out needs `it.live`. To assert that no screen mounted (a
 	 * non-interactive run, a flag that skips a prompt), check that `mounts` is `0` once the program has finished.
+	 *
+	 * A screen that crashes (its thunk or a component throws) is never swallowed: `next` dies with the crash when it has
+	 * happened by then, whatever `contains` waited for, and otherwise the screen's next frame read, key or resize does.
+	 * The program's own fiber dies with it too.
 	 *
 	 * Driving a whole `Command` handler: provide `layer`, a fresh `CliExit.layer` if the handler records a code, a
 	 * `ConfigProvider` that sandboxes what the handler reads (`HOME`, the XDG directories), and the platform core's
@@ -717,13 +739,15 @@ export class CliUiTest {
 					const index = taken++;
 					const { contains } = nextOptions;
 					const capture = () => terminal.captures[index];
-					const { handle, raws, after } = terminal.screen(capture, () => capture()?.ended ?? false);
+					const { handle, raws, after, surfaced } = terminal.screen(capture, () => capture()?.ended ?? false);
 					const shows = (): boolean =>
 						contains === undefined
 							? raws().length > 0
 							: raws().some((raw) => raw.replace(ESCAPES, "").includes(contains));
 					const by = Date.now() + MOUNT_LIMIT_MS;
 					yield* realTime(() => shows() || capture()?.ended === true || Date.now() >= by);
+					// A screen that crashed dies with its crash, whatever `next` waited for.
+					yield* surfaced(Effect.void);
 					if (!shows()) {
 						const why =
 							capture() === undefined
