@@ -23,3 +23,10 @@ export {
 	useTerminalSize,
 	useTheme,
 } from "./ui/UiTheme.js";
+export {
+	Viewport,
+	type ViewportMove,
+	type ViewportRow,
+	type ViewportState,
+	type ViewportViewProps,
+} from "./ui/Viewport.js";

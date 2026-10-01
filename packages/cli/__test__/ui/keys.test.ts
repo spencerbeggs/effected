@@ -154,8 +154,11 @@ describe("useKeys and KeyHelp", () => {
 			const handle = yield* CliUiTest.render(() => createElement(KeyHelp, { tables: [table] }));
 			const line = (yield* handle.plainFrame).trim();
 			for (const row of table.help(Glyphs.unicode)) {
-				assert.include(line, `${row.label} ${row.help}`, row.label);
+				assert.include(line, row.label, row.label);
+				assert.include(line, row.help, row.help);
 			}
+			assert.include(line, "↑/↓ move", "neighbouring rows with the same help share one entry");
+			assert.include(line, "space/x toggle");
 			assert.notInclude(line, "hidden");
 			assert.isTrue(line.endsWith("esc cancel"), line);
 			assert.include(yield* handle.frame, "[muted]", "the help line is painted muted");
@@ -166,7 +169,7 @@ describe("useKeys and KeyHelp", () => {
 		Effect.gen(function* () {
 			const handle = yield* CliUiTest.render(() => createElement(KeyHelp, { tables: [table] }), { glyphs: "ascii" });
 			const line = (yield* handle.plainFrame).trim();
-			assert.include(line, "up move");
+			assert.include(line, "up/down move");
 			assert.notInclude(line, "↑");
 		}).pipe(Effect.scoped),
 	);

@@ -20,8 +20,9 @@ export interface KeyHelpProps {
  * `↑/↓ move · space toggle · enter continue · esc cancel`.
  *
  * @remarks
- * Drawn from the same tables that dispatch the keys, so the help cannot name a key the screen ignores. Painted
- * with the `muted` token; labels follow the screen's glyph set.
+ * Drawn from the same tables that dispatch the keys, so the help cannot name a key the screen ignores. Neighbouring
+ * rows with the same help share one entry (`↑/↓ move`). Painted with the `muted` token; labels follow the screen's
+ * glyph set.
  *
  * @param props - the tables, and whether to append the root keys
  *
@@ -30,9 +31,13 @@ export interface KeyHelpProps {
 export const KeyHelp = (props: KeyHelpProps): ReactElement => {
 	const glyphs = useGlyphs();
 	const tables = props.root === false ? props.tables : [...props.tables, KeyTable.root];
-	const line = tables
-		.flatMap((table) => table.help(glyphs))
-		.map((row) => `${row.label} ${row.help}`)
-		.join(glyphs.kind === "unicode" ? " · " : " | ");
+	// Neighbouring rows that say the same thing share one entry: ↑ move, ↓ move reads ↑/↓ move.
+	const rows: Array<{ label: string; help: string }> = [];
+	for (const row of tables.flatMap((table) => table.help(glyphs))) {
+		const previous = rows.at(-1);
+		if (previous !== undefined && previous.help === row.help) previous.label = `${previous.label}/${row.label}`;
+		else rows.push({ ...row });
+	}
+	const line = rows.map((row) => `${row.label} ${row.help}`).join(glyphs.kind === "unicode" ? " · " : " | ");
 	return inkModules().react.createElement(Styled, { token: "muted" }, line);
 };
