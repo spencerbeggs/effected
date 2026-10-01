@@ -1,5 +1,8 @@
+import { CommandNeutralizer } from "@effected/github-commands";
 import type { Layer } from "effect";
 import { Console, LogLevel, Logger, References } from "effect";
+import { sanitize } from "./internal/layout.js";
+import { TrustedLine, sanitizeParts, underActionsIn } from "./internal/logSafety.js";
 
 /**
  * How a log record is turned into a line.
@@ -13,6 +16,11 @@ export interface CliLoggerOptions {
 	 *
 	 * @remarks
 	 * An array arrives because `Effect.log("synced", 3, "repos")` is variadic.
+	 *
+	 * The text is sanitised, because it is whatever the program logged: with the default render, the line has its
+	 * escape sequences and control characters removed (a line break stays one, a tab becomes a space); with yours, you
+	 * receive the string parts already sanitised and own what you add, a colour included. Under GitHub Actions, where
+	 * `CurrentRuntimeEnv` says so, a line the runner would read as a workflow command is neutralized either way.
 	 */
 	readonly render?: ((message: unknown) => string) | undefined;
 	/**
@@ -97,7 +105,8 @@ export class CliLogger {
 	 * the logger set yourself and want this one among several.
 	 */
 	static readonly make = (options: CliLoggerOptions = {}): Logger.Logger<unknown, void> => {
-		const render = options.render ?? defaultRender;
+		const custom = options.render;
+		const render = custom ?? defaultRender;
 		const stderrFrom = options.stderrFrom ?? "All";
 
 		return Logger.make<unknown, void>(({ fiber, logLevel, message }) => {
@@ -119,7 +128,15 @@ export class CliLogger {
 			// `console.log`/`console.error` supply their own newline, which is why
 			// nothing here appends one.
 			const write = diagnostic ? console.error : console.log;
-			write(render(message));
+			// A line the kit already rendered (the failure report) keeps the escapes it painted; everything else is a
+			// program's own text, sanitised before it is written, and the runner never reads it as a command.
+			const trusted = fiber.getRef(TrustedLine);
+			const rendered = trusted
+				? render(message)
+				: custom === undefined
+					? sanitize(render(message))
+					: render(sanitizeParts(message));
+			write(underActionsIn(fiber) ? CommandNeutralizer.text(rendered) : rendered);
 		});
 	};
 

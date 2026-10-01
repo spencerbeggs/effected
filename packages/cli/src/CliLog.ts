@@ -1,4 +1,5 @@
 import { Audience, TerminalEnv } from "@effected/env";
+import { CommandNeutralizer } from "@effected/github-commands";
 import type { FileSystem } from "effect";
 import {
 	Cause,
@@ -18,6 +19,8 @@ import { CliLogger } from "./CliLogger.js";
 import { paintStyle } from "./internal/ansi.js";
 import { Level, passes } from "./internal/diagnostics.js";
 import { makeFileSink } from "./internal/fileSink.js";
+import { sanitize } from "./internal/layout.js";
+import { neutralizeJson, underActionsIn } from "./internal/logSafety.js";
 import type { Style } from "./Token.js";
 
 /**
@@ -159,6 +162,13 @@ const readLevel = (
  * minimum it had, so it never prints a record the diagnostics level alone let through. A failure report is
  * written outside the scope core's `--log-level` flag sets, so `--log-level none` does not silence it either.
  *
+ * The text a program logs is sanitised before anything is painted in the pretty line (the message, the component and an
+ * error's cause lose their escape sequences and control characters), and under GitHub Actions, where
+ * `CurrentRuntimeEnv` in the logging fiber's context says so, a line the runner would read as a workflow command is
+ * neutralized. An NDJSON record is not safe merely because `JSON.stringify` escapes control characters: the runner's
+ * legacy parser reads `##[` anywhere in a line, so under Actions it is written as the JSON escape `#\u0023[`, which
+ * decodes to the identical text. The file sink's lines are not read by the runner and are written as they are.
+ *
  * Core's `--log-level` flag sets `MinimumLogLevel` inside the command. While it is set to something other than
  * the value this layer installed, the diagnostics logger follows the flag instead of its own level: it writes
  * every record that reaches it. The `CliLogger` prints the same record too, so a record at or above the ambient
@@ -259,14 +269,24 @@ export class CliLog {
 				const isLowered = lowered !== ambient;
 
 				const render = (record: Logger.Options<unknown>): string => {
-					if (!isPretty(record)) return Logger.formatJson.log(record);
+					const underActions = underActionsIn(record.fiber);
+					// NDJSON: JSON.stringify escapes every control character, but the runner's legacy parser reads `##[`
+					// anywhere in a line, so under Actions it is written as a JSON escape that decodes to the same text.
+					if (!isPretty(record)) {
+						const json = Logger.formatJson.log(record);
+						return underActions ? neutralizeJson(json) : json;
+					}
 					const annotations = record.fiber.getRef(References.CurrentLogAnnotations);
-					const component = annotations.component === undefined ? "" : ` [${String(annotations.component)}]`;
-					const message = Array.isArray(record.message) ? record.message.map(String).join(" ") : String(record.message);
+					// The program's text is sanitised before anything is painted, and the line is neutralized last.
+					const component = annotations.component === undefined ? "" : ` [${sanitize(String(annotations.component))}]`;
+					const message = sanitize(
+						Array.isArray(record.message) ? record.message.map(String).join(" ") : String(record.message),
+					);
 					const name = record.logLevel.toUpperCase();
 					const levelText = paintStyle(LEVEL_STYLES[name] ?? {}, color, name);
-					const cause = record.cause.reasons.length > 0 ? `\n${Cause.pretty(record.cause)}` : "";
-					return `${record.date.toISOString().slice(11, 23)} ${levelText}${component} ${message}${cause}`;
+					const cause = record.cause.reasons.length > 0 ? `\n${sanitize(Cause.pretty(record.cause))}` : "";
+					const line = `${record.date.toISOString().slice(11, 23)} ${levelText}${component} ${message}${cause}`;
+					return underActions ? CommandNeutralizer.text(line) : line;
 				};
 
 				const sink = Logger.make<unknown, void>((record) => {

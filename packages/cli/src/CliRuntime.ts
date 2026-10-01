@@ -16,6 +16,7 @@ import { FailureTargetCell, failureLines, plainFailureLines, refreshFailureTarge
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
 import { isExitCode } from "./internal/isExitCode.js";
 import { sanitize } from "./internal/layout.js";
+import { TrustedLine } from "./internal/logSafety.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
 
@@ -328,7 +329,8 @@ export class CliRuntime {
 									)
 								: toLines(render(error, details));
 						for (const line of lines) {
-							yield* Effect.logError(line);
+							// Rendered by the kit (or by the consumer's own `render`): not sanitised again by the logger.
+							yield* Effect.logError(line).pipe(Effect.provideService(TrustedLine, true));
 						}
 
 						return yield* Effect.fail(CliRuntime.reported(error, chooseExitCode(error, options.exitCode)));
