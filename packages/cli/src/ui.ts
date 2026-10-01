@@ -31,6 +31,7 @@ export {
 	type ConfirmToggle,
 	type ConfirmViewProps,
 } from "./ui/Confirm.js";
+export { DocView, type DocViewProps } from "./ui/DocView.js";
 export { KeyHelp, type KeyHelpProps } from "./ui/KeyHelp.js";
 export { type Binding, type KeyHelpRow, KeyTable, type UseKeysOptions, useKeys } from "./ui/KeyTable.js";
 export {

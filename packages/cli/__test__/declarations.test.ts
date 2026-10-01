@@ -28,9 +28,9 @@ const sourceExports = (text: string): ReadonlyArray<string> =>
 		.filter((name, index, names) => names.indexOf(name) === index)
 		.sort();
 
-const CONSUMER = `import { CliTheme } from "@effected/cli";
+const CONSUMER = `import { CliTheme, Doc, Render } from "@effected/cli";
 import type { KeyName, LiveOptions, Screen } from "@effected/cli/ui";
-import { CliUi, Confirm } from "@effected/cli/ui";
+import { CliUi, Confirm, DocView } from "@effected/cli/ui";
 import { CliUiTest } from "@effected/cli/ui/testing";
 import type { Scope } from "effect";
 import { Console, Effect, Exit, Fiber, Option, Stream } from "effect";
@@ -94,6 +94,12 @@ export const viewed: Effect.Effect<string, never, Scope.Scope> = Effect.gen(func
 	void view.result;
 	return yield* view.plainFrame;
 });
+
+// A document drawn with the kit's own renderer, from the root's Doc IR: its props take the root's types.
+export const docProps: Parameters<typeof DocView>[0] = {
+	doc: [Doc.heading(2, "Results"), Doc.paragraph("a body")],
+	ctx: Render.contextOf({ audience: "human", width: 40 }),
+};
 
 // A live view over a stream (vitest-agent's reporter), and the same view driven by the harness.
 type Ev = { readonly _tag: "Start" } | { readonly _tag: "Tick" } | { readonly _tag: "End" };
@@ -414,6 +420,8 @@ const UI_TYPES_AND_VALUES = [
 	"ConfirmState",
 	"ConfirmToggle",
 	"ConfirmViewProps",
+	"DocView",
+	"DocViewProps",
 	"InkTextProps",
 	"KeyHelp",
 	"KeyHelpProps",
@@ -474,6 +482,7 @@ const UI_TYPES_AND_VALUES = [
 const UI_VALUES = [
 	"CliUi",
 	"Confirm",
+	"DocView",
 	"KeyHelp",
 	"KeyTable",
 	"MultiSelect",
