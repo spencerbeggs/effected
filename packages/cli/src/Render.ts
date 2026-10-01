@@ -1,10 +1,11 @@
 import type { AudienceKind, ColorLevel } from "@effected/env";
-import { Audience, TerminalEnv } from "@effected/env";
-import { Effect } from "effect";
+import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
+import { Effect, Option } from "effect";
 import { CliLinks } from "./CliLinks.js";
 import { CliTheme } from "./CliTheme.js";
 import type { Document, LinkTarget } from "./Doc.js";
 import type { GlyphSet } from "./Glyphs.js";
+import { neutralizeLines } from "./internal/neutralize.js";
 import { renderAnsi } from "./internal/renderAnsi.js";
 import { renderGithubLog } from "./internal/renderGithubLog.js";
 import { renderMarkdown } from "./internal/renderMarkdown.js";
@@ -49,7 +50,21 @@ export interface RenderContext {
 	readonly link: (target: LinkTarget, label: string) => string;
 	/** Turns an absolute path into its display form; the identity by default. */
 	readonly displayPath: (absolute: string) => string;
+	/**
+	 * Whether the output will be read by the GitHub Actions runner, which treats a line that starts with `::` or `##`
+	 * as a workflow command. When `true`, every renderer puts a zero-width space in front of such a line, so a
+	 * document's text, an error message, say, can never inject a command. Unset or `false` leaves the text alone.
+	 *
+	 * @remarks
+	 * The trigger is the runner, not the audience: a person or an agent whose output lands in an Actions log is read
+	 * by it just the same. `Render.context` sets it when `CurrentRuntimeEnv` says GitHub Actions.
+	 */
+	readonly neutralizeWorkflowCommands?: boolean | undefined;
 }
+
+/** A renderer's text, with workflow commands neutralized when the context says the runner is reading it. */
+const guarded = (text: string, ctx: RenderContext): string =>
+	ctx.neutralizeWorkflowCommands === true ? neutralizeLines(text).join("\n") : text;
 
 /**
  * Options for {@link Render.context}.
@@ -90,6 +105,8 @@ export class Render {
 	 *   writes an escape for an agent whatever the terminal could do;
 	 * - `link` is `CliLinks.linker` over that stream's hyperlink support and the audience, so an agent never
 	 *   gets an escape and a terminal without OSC 8 gets the label;
+	 * - `neutralizeWorkflowCommands` is set when `CurrentRuntimeEnv` says GitHub Actions (read if present, not
+	 *   required), for every audience, since the runner reads whatever is written there;
 	 * - `width` is the option, else `TerminalEnv.width()` for a human, and **unbounded** (`Infinity`) for an agent
 	 *   or a CI, so nothing a reader needs is truncated or wrapped for a terminal that is not there.
 	 *
@@ -105,7 +122,15 @@ export class Render {
 			const terminal = yield* TerminalEnv;
 			const { kind } = yield* Audience;
 			const links = yield* CliLinks;
+			// Read if the environment has it, as `Doc.print` does: GitHub Actions makes every format unable to inject a
+			// workflow command, whoever the audience is.
+			const runtime = yield* Effect.serviceOption(CurrentRuntimeEnv);
+			const underActions = Option.contains(
+				Option.flatMap(runtime, (env) => env.ci),
+				"github-actions",
+			);
 			return {
+				...(underActions ? { neutralizeWorkflowCommands: true } : {}),
 				width: options?.width ?? (kind === "human" ? terminal.width() : Number.POSITIVE_INFINITY),
 				audience: kind,
 				// An agent never gets an escape of any kind, so its context is colourless whatever the terminal says: every
@@ -143,7 +168,7 @@ export class Render {
 	 * @param doc - the document
 	 * @param ctx - where the output is going
 	 */
-	static readonly plain = (doc: Document, ctx: RenderContext): string => renderPlain(doc, ctx);
+	static readonly plain = (doc: Document, ctx: RenderContext): string => guarded(renderPlain(doc, ctx), ctx);
 
 	/**
 	 * Render a document for a person: the same layout as {@link Render.plain}, painted and linked.
@@ -170,7 +195,7 @@ export class Render {
 	 * @param doc - the document
 	 * @param ctx - where the output is going
 	 */
-	static readonly ansi = (doc: Document, ctx: RenderContext): string => renderAnsi(doc, ctx);
+	static readonly ansi = (doc: Document, ctx: RenderContext): string => guarded(renderAnsi(doc, ctx), ctx);
 
 	/**
 	 * Render a document as GitHub-flavoured markdown, for a step summary or a file.
@@ -206,7 +231,7 @@ export class Render {
 	 * @param doc - the document
 	 * @param ctx - where the output is going; its glyph set, audience and `displayPath` are used
 	 */
-	static readonly markdown = (doc: Document, ctx: RenderContext): string => renderMarkdown(doc, ctx);
+	static readonly markdown = (doc: Document, ctx: RenderContext): string => guarded(renderMarkdown(doc, ctx), ctx);
 
 	/**
 	 * Render a document for a GitHub Actions log.

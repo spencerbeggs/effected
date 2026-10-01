@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import type { Block, RenderContext } from "../src/index.js";
 import { Doc, Render, Status } from "../src/index.js";
-import { neutralizeLines } from "../src/internal/renderGithubLog.js";
+import { neutralizeLines } from "../src/internal/neutralize.js";
 import { ESC, composite } from "./helpers/hostileDoc.js";
 import { contextOf } from "./helpers/renderContext.js";
 

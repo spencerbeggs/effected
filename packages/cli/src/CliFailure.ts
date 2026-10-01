@@ -145,7 +145,7 @@ const parseFrame = (raw: string): Frame => {
 const isInternal = (raw: string): boolean =>
 	/node:internal\//.test(raw) ||
 	/[\\/]node_modules[\\/]effect[\\/]/.test(raw) ||
-	/[\\/]effect[\\/]src[\\/]/.test(raw) ||
+	/[\\/]packages[\\/]effect[\\/]src[\\/]/.test(raw) ||
 	/Generator\.next|~effect\//.test(raw);
 
 /** The frames of a stack that belong to the program, and how many were left out. */

@@ -46,6 +46,9 @@ export const fallbackTarget: FailureTarget = {
 		glyphs: Glyphs.ascii,
 		link: (_target, label) => label,
 		displayPath: (absolute) => absolute,
+		// Nothing is known about the runner here, so the report refuses to emit a workflow command: a zero-width space
+		// in front of a line that starts with `::` or `##` costs nothing anywhere else.
+		neutralizeWorkflowCommands: true,
 	},
 	format: "plain",
 };
