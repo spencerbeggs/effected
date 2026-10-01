@@ -7,6 +7,15 @@ exporting `CliTest`, for spawning a built bin hermetically in tests. Every
 export but `CliTest` is presentation, and `CliTest` is test tooling behind
 its own entrypoint so it never enters a CLI's runtime import graph.
 
+It also owns how a program's output is written for whoever is reading it: the
+document IR (`Doc`, plain frozen nodes), the pure renderers over a
+`RenderContext` (`Render.plain`, `ansi`, `markdown`, `githubLog`, and
+`Render.context(stream)` to build one from the services), `Doc.print`,
+`GithubAnnotation`, editor-aware `CliLinks`, and `CliFailure`, which is how the
+default failure report is drawn. An agent is never written an escape of any
+kind; every string that enters a document is stripped of control characters.
+`okf/modules/cli.md` has the rows.
+
 **Design doc:** `@./okf/modules/cli.md` — Load when:
 changing the public surface, the logger's stream routing, the failure-reporting
 combinator or the renderers. It carries the reasoning this file only
