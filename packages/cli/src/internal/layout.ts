@@ -28,6 +28,10 @@ export interface Span {
 	readonly suffix?: boolean;
 	/** It came from a `StatusMark`: a glyph, which `Counts` with `paint: "glyph"` keeps painted. */
 	readonly glyph?: true;
+	/** It came from inside a `Strong`: bold in `ansi`, `**` in markdown. */
+	readonly strong?: true;
+	/** It came from inside an `Emphasis`: italic in `ansi`, `_` in markdown. */
+	readonly em?: true;
 }
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to match control characters
@@ -80,6 +84,12 @@ const spansOf = (inline: Inline, ctx: RenderContext): ReadonlyArray<Span> => {
 			];
 		case "Path":
 			return [{ text: inline.segments.map(sanitize).join(pathSeparator(ctx)) }];
+		case "Strong":
+			return inline.content.flatMap((part) => spansOf(part, ctx)).map((span) => ({ ...span, strong: true as const }));
+		case "Emphasis":
+			return inline.content.flatMap((part) => spansOf(part, ctx)).map((span) => ({ ...span, em: true as const }));
+		case "File":
+			return [{ text: safeTargetText(ctx.displayPath(inline.path)) }];
 	}
 };
 
@@ -195,7 +205,11 @@ export const truncateSpans = (spans: ReadonlyArray<Span>, width: number, ellipsi
  * @internal
  */
 export const paintSpans = (spans: ReadonlyArray<Span>, ctx: RenderContext): string => {
-	const paint = (span: Span): string => (span.token === undefined ? span.text : ctx.paint(span.token, span.text));
+	const paint = (span: Span): string => {
+		const toned = span.token === undefined ? span.text : ctx.paint(span.token, span.text);
+		const bold = span.strong === true ? ctx.paint({ bold: true }, toned) : toned;
+		return span.em === true ? ctx.paint({ italic: true }, bold) : bold;
+	};
 	let out = "";
 	let i = 0;
 	while (i < spans.length) {

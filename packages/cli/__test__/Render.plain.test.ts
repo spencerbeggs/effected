@@ -733,3 +733,114 @@ describe("Render.plain: okfit's trial (link suffix, verbatim, counts options, an
 		}),
 	);
 });
+
+describe("Render.plain: vitest-agent round 3 (strong, lines, file, counts tables and suffix, compact, line, diffText, pipe)", () => {
+	const passed = (n: number) => Doc.counter(Status.core, "success", { key: "passed", label: "passed", n });
+	const failed = (n: number) => Doc.counter(Status.core, "failure", { key: "failed", label: "failed", n });
+
+	it.effect("strong and em are their content as is", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(yield* plain([Doc.paragraph("a ", Doc.strong("Total"), " ", Doc.em("x"))]), "a Total x");
+		}),
+	);
+
+	it.effect("lines are one line per entry", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(
+				yield* plain([Doc.lines(["one", ["two ", Doc.code("x")], "- three"])]),
+				"one\ntwo `x`\n- three",
+			);
+		}),
+	);
+
+	it.effect("a file is its display path, never linked or suffixed", () =>
+		Effect.gen(function* () {
+			const out = yield* plain([Doc.paragraph("at ", Doc.file("/repo/src/a.ts"))], {
+				displayPath: (a) => a.replace("/repo/", ""),
+			});
+			assert.strictEqual(out, "at src/a.ts");
+		}),
+	);
+
+	it.effect("countsTable: a column per counter key and a summed total row", () =>
+		Effect.gen(function* () {
+			const out = yield* plain([
+				Doc.countsTable(
+					[
+						{ label: "web", counters: [passed(3), failed(1)] },
+						{ label: "api", counters: [passed(2)] },
+					],
+					{ totalRow: true },
+				),
+			]);
+			assert.deepStrictEqual(out.split("\n"), [
+				"       passed  failed",
+				"-----  ------  ------",
+				"web    3       1",
+				"api    2",
+				"Total  5       1",
+			]);
+		}),
+	);
+
+	it.effect("counts suffix follows the duration", () =>
+		Effect.gen(function* () {
+			const out = yield* plain([
+				Doc.counts({ layout: "inline", counters: [passed(3), failed(1)], durationMs: 250, suffix: "across 3 files" }),
+			]);
+			assert.strictEqual(out, "3/4 passed, 1 failed (250ms) across 3 files");
+		}),
+	);
+
+	it.effect("a compact list puts no blank lines between an item's children", () =>
+		Effect.gen(function* () {
+			const item = Doc.section("FAIL a.test.ts", [Doc.paragraph("expected 1"), Doc.paragraph("got 2")]);
+			assert.include(yield* plain([Doc.list([item])]), "\n\n", "control: an ordinary list keeps the section's spacing");
+			assert.deepStrictEqual((yield* plain([Doc.list([item], { compact: true })])).split("\n"), [
+				"- FAIL a.test.ts",
+				"  expected 1",
+				"  got 2",
+			]);
+		}),
+	);
+
+	it.effect("a truncating line is cut to the width with the ellipsis; without it, it wraps", () =>
+		Effect.gen(function* () {
+			const content = "a very long line of text";
+			const cut = yield* plain([Doc.line(content, { truncate: true })], { width: 10 });
+			assert.strictEqual(cut, "a very lo…");
+			assert.isAbove((yield* plain([Doc.line(content)], { width: 10 })).split("\n").length, 1);
+		}),
+	);
+
+	it.effect("diffText is the unified diff as given, sanitized, with a cap", () =>
+		Effect.gen(function* () {
+			const unified = `@@ -1 +1 @@\n-old${ESC}[31m\n+new\n context`;
+			assert.strictEqual(yield* plain([Doc.diffText(unified)]), "@@ -1 +1 @@\n-old\n+new\n context");
+			assert.strictEqual(yield* plain([Doc.diffText(unified, { cap: 2 })]), "@@ -1 +1 @@\n-old\n… 2 more lines");
+		}),
+	);
+
+	it.effect("a pipe table is istanbul's shape: rules above and below, cells joined with |", () =>
+		Effect.gen(function* () {
+			const out = yield* plain([
+				Doc.table(
+					[{ header: "File" }, { header: "% Stmts", align: "right" }],
+					[
+						["All files", "100"],
+						["index.js", "90"],
+					],
+					{ style: "pipe" },
+				),
+			]);
+			assert.deepStrictEqual(out.split("\n"), [
+				"----------|---------",
+				"File      | % Stmts",
+				"----------|---------",
+				"All files |     100",
+				"index.js  |      90",
+				"----------|---------",
+			]);
+		}),
+	);
+});

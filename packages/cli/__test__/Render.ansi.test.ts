@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
-import type { Block, RenderContext } from "../src/index.js";
+import { Effect, Option } from "effect";
+import type { Block, CliLinksShape, RenderContext } from "../src/index.js";
 import { Doc, Glyphs, Render, Status } from "../src/index.js";
 import { displayWidth, stripAnsi } from "../src/internal/displayWidth.js";
 import { composite } from "./helpers/hostileDoc.js";
@@ -490,6 +490,74 @@ describe("Render.ansi: okfit's trial (counts paint, link suffix, annotations)", 
 	it.effect("an annotation renders nothing", () =>
 		Effect.gen(function* () {
 			assert.strictEqual(yield* ansi([Doc.annotation({ level: "warning" }, "careful")]), "");
+		}),
+	);
+});
+
+describe("vitest-agent round 3: contextOf, strong and em, diffText, pipe tables (ansi)", () => {
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: asserting the absence of any escape
+	const ESCAPE = /\u001b/;
+	const doc = [
+		Doc.paragraph(Doc.text("bad", "failure"), " ", Doc.strong("Total"), " ", Doc.link({ url: "https://a.test" }, "a")),
+	];
+	const links: CliLinksShape = {
+		mode: "file",
+		target: (target) => Option.some("url" in target ? target.url : "file:///x"),
+	};
+
+	it("Render.contextOf with defaults is escape-free, and an agent stays escape-free at truecolor with links on", () => {
+		const ci = Render.contextOf({ audience: "ci" });
+		assert.strictEqual(ci.color, "none");
+		assert.strictEqual(ci.width, Number.POSITIVE_INFINITY);
+		assert.strictEqual(ci.glyphs, Glyphs.unicode);
+		assert.notMatch(Render.ansi(doc, ci), ESCAPE);
+		const human = Render.contextOf({ audience: "human", color: "truecolor", links });
+		assert.match(Render.ansi(doc, human), ESCAPE, "control: a human at truecolor with links is painted and linked");
+		const agent = Render.contextOf({ audience: "agent", color: "truecolor", links });
+		assert.strictEqual(agent.color, "none");
+		assert.notMatch(Render.ansi(doc, agent), ESCAPE);
+	});
+
+	it("Render.contextOf carries width, displayPath, neutralizing and linkBase through", () => {
+		const ctx = Render.contextOf({
+			audience: "ci",
+			width: 40,
+			displayPath: (a) => a.replace("/r/", ""),
+			neutralizeWorkflowCommands: true,
+			linkBase: "https://x.test/blob/sha/",
+		});
+		assert.strictEqual(ctx.width, 40);
+		assert.strictEqual(ctx.displayPath("/r/a.ts"), "a.ts");
+		assert.isTrue(ctx.neutralizeWorkflowCommands);
+		assert.strictEqual(ctx.linkBase, "https://x.test/blob/sha/");
+	});
+
+	it.effect("strong is bold and em italic, nested cleanly with a colour", () =>
+		Effect.gen(function* () {
+			const out = yield* ansi([Doc.paragraph(Doc.strong(Doc.text("x", "failure")), " ", Doc.em("y"))]);
+			assert.include(out, "\u001b[1m");
+			assert.include(out, "\u001b[3m");
+			assert.deepStrictEqual(sgrProblems(out), []);
+			assert.strictEqual(stripAnsi(out), "x y");
+		}),
+	);
+
+	it.effect("diffText keeps the unified diff as given, + lines success and - lines failure", () =>
+		Effect.gen(function* () {
+			const unified = "@@ -1 +1 @@\n-old\n+new\n same";
+			const lines = yield* tokensOf([Doc.diffText(unified)]);
+			assert.deepStrictEqual(lines[1], [["failure", "-old"]]);
+			assert.deepStrictEqual(lines[2], [["success", "+new"]]);
+			assert.deepStrictEqual(lines[3], [[undefined, " same"]]);
+		}),
+	);
+
+	it.effect("a pipe table has the same shape as in plain", () =>
+		Effect.gen(function* () {
+			const table = Doc.table([{ header: "File" }, { header: "% Stmts", align: "right" }], [["All files", "100"]], {
+				style: "pipe",
+			});
+			assert.strictEqual(stripAnsi(yield* ansi([table])), yield* plain([table], OFF));
 		}),
 	);
 });

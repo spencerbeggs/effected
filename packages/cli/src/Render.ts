@@ -2,16 +2,20 @@ import type { AudienceKind, ColorLevel } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
 import { Effect } from "effect";
+import type { CliLinksShape } from "./CliLinks.js";
 import { CliLinks } from "./CliLinks.js";
 import { CliTheme } from "./CliTheme.js";
 import type { Document, LinkTarget } from "./Doc.js";
 import type { GlyphSet } from "./Glyphs.js";
+import { Glyphs } from "./Glyphs.js";
+import { paintStyle } from "./internal/ansi.js";
 import { underGithubActions } from "./internal/autoFormat.js";
 import { renderAnsi } from "./internal/renderAnsi.js";
 import { renderGithubLog } from "./internal/renderGithubLog.js";
 import { renderMarkdown } from "./internal/renderMarkdown.js";
 import { renderPlain } from "./internal/renderPlain.js";
 import type { Style, TokenName } from "./Token.js";
+import { Token } from "./Token.js";
 
 /**
  * Everything a renderer needs to know about where its output is going.
@@ -66,6 +70,40 @@ export interface RenderContext {
 	 * by it just the same. `Render.context` sets it when `CurrentRuntimeEnv` says GitHub Actions.
 	 */
 	readonly neutralizeWorkflowCommands?: boolean | undefined;
+	/**
+	 * A base URL for file links in markdown, such as `https://github.com/<owner>/<repo>/blob/<sha>/`. When set,
+	 * `Render.markdown` links a `{ file }` target to the base followed by its display path (`displayPath`, URL-encoded,
+	 * without a leading `/`) and `#L<line>` when it has a line, in place of a `file://` URL a step summary's reader
+	 * cannot open. The other renderers do not read it.
+	 */
+	readonly linkBase?: string | undefined;
+}
+
+/**
+ * Options for {@link Render.contextOf}.
+ *
+ * @public
+ */
+export interface RenderContextOfOptions {
+	/** Who the output is for. An `agent` gets no escape of any kind, whatever the other options say. */
+	readonly audience: AudienceKind;
+	/** The colour level; `none` by default, which paints nothing. */
+	readonly color?: ColorLevel | undefined;
+	/** The glyph set; Unicode by default. */
+	readonly glyphs?: GlyphSet | undefined;
+	/** The display columns; unbounded (`Infinity`) by default. */
+	readonly width?: number | undefined;
+	/** Turns an absolute path into its display form; the identity by default. */
+	readonly displayPath?: ((absolute: string) => string) | undefined;
+	/**
+	 * Hyperlinks: `off` (the default) leaves every label unlinked; a `CliLinksShape`, such as a `CliLinks` service's
+	 * value, makes OSC 8 hyperlinks through {@link CliLinks.linker}, for any audience but an agent.
+	 */
+	readonly links?: "off" | CliLinksShape | undefined;
+	/** See {@link RenderContext.neutralizeWorkflowCommands}; unset by default. */
+	readonly neutralizeWorkflowCommands?: boolean | undefined;
+	/** See {@link RenderContext.linkBase}; unset by default. */
+	readonly linkBase?: string | undefined;
 }
 
 /** A renderer's text, with workflow commands neutralized when the context says the runner is reading it. */
@@ -146,6 +184,42 @@ export class Render {
 		});
 
 	/**
+	 * A {@link RenderContext} from plain options, for a caller outside Effect, such as a test reporter or an Ink tree.
+	 *
+	 * @remarks
+	 * Pure: nothing is read from the environment. The defaults are colour `none`, the identity paint, no links,
+	 * Unicode glyphs, unbounded width and the identity `displayPath`, so a context built from an audience alone renders
+	 * with no escape of any kind. A colour level paints with the default token styles. An `agent` is colourless and
+	 * unlinked whatever `color` and `links` say, as in {@link Render.context}.
+	 *
+	 * @param options - the audience, and the colour, glyphs, width, path display, links, neutralizing and link base
+	 */
+	static readonly contextOf = (options: RenderContextOfOptions): RenderContext => {
+		const agent = options.audience === "agent";
+		const color: ColorLevel = agent ? "none" : (options.color ?? "none");
+		const links = agent ? "off" : (options.links ?? "off");
+		return {
+			width: options.width ?? Number.POSITIVE_INFINITY,
+			audience: options.audience,
+			color,
+			paint:
+				color === "none"
+					? (_token: TokenName | Style, text: string) => text
+					: (token: TokenName | Style, text: string) => paintStyle(Token.resolve(token), color, text),
+			glyphs: options.glyphs ?? Glyphs.unicode,
+			link:
+				links === "off"
+					? (_target: LinkTarget, label: string) => label
+					: CliLinks.linker({ links, hyperlinks: true, audience: options.audience }),
+			displayPath: options.displayPath ?? ((absolute: string) => absolute),
+			...(options.neutralizeWorkflowCommands === undefined
+				? {}
+				: { neutralizeWorkflowCommands: options.neutralizeWorkflowCommands }),
+			...(options.linkBase === undefined ? {} : { linkBase: options.linkBase }),
+		};
+	};
+
+	/**
 	 * Render a document as plain text for an agent.
 	 *
 	 * @remarks
@@ -167,6 +241,12 @@ export class Render {
 	 *   total, unless `share` is `false`. Columns gives aligned label and number pairs, and row one line of cells.
 	 * - A link with `suffix: false` never has its target after the label, and one with `suffix: true` always does.
 	 * - Verbatim text is its lines exactly, each indented by `indent` spaces, never wrapped; an annotation is nothing.
+	 * - Strong and emphasised content is its text; a file is its display path, unlinked. `Lines` are one line per entry,
+	 *   a `Line` with `truncate` is cut to the width with the ellipsis, and diff text is its lines as given, the cap
+	 *   followed by `… N more lines`. A counts table is a table with a column per counter key and the total row last,
+	 *   and a counts `suffix` follows the duration.
+	 * - A compact list has no blank lines inside an item. A `style: "pipe"` table is istanbul's shape: a rule of dashes
+	 *   meeting at `|` above and below the header and at the end, and cells joined with ` | `.
 	 * - Top-level blocks are consecutive lines; a section separates its title and children with blank lines.
 	 *
 	 * @param doc - the document
@@ -186,8 +266,10 @@ export class Render {
 	 *   lines and overflow rows are `muted`;
 	 * - a status glyph takes its definition's token, and a diff's `-` lines are `failure` and `+` lines `success`;
 	 * - a callout's label takes its kind's token (`note` info, `tip` success, `important` accent, `warning` warning,
-	 *   `caution` error), and a counter the token of its status, with the qualifier and the duration `muted`. A
-	 *   `Counts` with `paint: "none"` paints none of it, and with `paint: "glyph"` only a status glyph.
+	 *   `caution` error), and a counter the token of its status, with the qualifier, the duration and the suffix `muted`.
+	 *   A `Counts` with `paint: "none"` paints none of it, and with `paint: "glyph"` only a status glyph.
+	 * - strong content is bold and emphasised content italic, over any token it has; in diff text a `+` line is
+	 *   `success` and a `-` line `failure`; a counts table's counts take their status's token.
 	 *
 	 * A link goes through `ctx.link`, which makes an OSC 8 hyperlink only when the policy allows it. When it does
 	 * not (it returns the label unchanged), the target follows the label in parentheses, muted, as in plain text.
@@ -238,6 +320,12 @@ export class Render {
 	 *   they cap. Counts inline is a paragraph, columns a list of `label: n` and row a one-row table of the counter
 	 *   labels over their numbers.
 	 * - Verbatim text is a fenced code block, so its indentation survives; an annotation is nothing.
+	 * - Strong content is `**…**` and emphasised `_…_` (which does not open inside a word), with the spaces at a run's
+	 *   edges kept outside the markers. `Lines` are one paragraph with a hard break between entries; a `Line` is one
+	 *   paragraph; diff text a `diff` fence; a counts table a pipe table; a file is its display path as text.
+	 * - With `linkBase`, a file link goes to the base and the display path, plus `#L<line>`, in place of `file://`.
+	 * - A compact list item joins its parts with no blank line, putting a hard break where two paragraphs would merge.
+	 *   A row of counts names its duration column `duration`.
 	 *
 	 * @param doc - the document
 	 * @param ctx - where the output is going; its glyph set, audience and `displayPath` are used

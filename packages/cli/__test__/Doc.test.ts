@@ -385,3 +385,27 @@ describe("Doc: okfit's trial additions", () => {
 		assert.isTrue(deepFrozen(block));
 	});
 });
+
+describe("Doc: vitest-agent round 3 additions are frozen plain data", () => {
+	it("strong, em, file, lines, line, countsTable, diffText, compact lists, pipe tables and counts suffix", () => {
+		const nodes: ReadonlyArray<Inline | Block> = [
+			Doc.strong("a", Doc.code("b")),
+			Doc.em("x"),
+			Doc.file("/a.ts"),
+			Doc.lines(["one", ["two", Doc.code("x")]]),
+			Doc.line("a", { truncate: true }),
+			Doc.countsTable([{ label: "web", counters: [counter("a", 1, "success")] }], { totalRow: "All" }),
+			Doc.diffText("-a\n+b", { cap: 3 }),
+			Doc.list([Doc.paragraph("a")], { compact: true }),
+			Doc.table([{ header: "h" }], [["c"]], { style: "pipe" }),
+			Doc.counts({ layout: "inline", counters: [], suffix: "across 3 files" }),
+		];
+		for (const node of nodes) assert.isTrue(deepFrozen(node), JSON.stringify(node));
+		assert.deepStrictEqual(Doc.strong("a"), { _tag: "Strong", content: [{ _tag: "Text", value: "a" }] });
+		assert.deepStrictEqual(Doc.em("a"), { _tag: "Emphasis", content: [{ _tag: "Text", value: "a" }] });
+		assert.deepStrictEqual(Doc.file("/a.ts"), { _tag: "File", path: "/a.ts" });
+		assert.notProperty(Doc.list([]), "compact");
+		assert.notProperty(Doc.table([], []), "style");
+		assert.notProperty(Doc.line("a"), "truncate");
+	});
+});

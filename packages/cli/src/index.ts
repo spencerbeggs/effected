@@ -75,6 +75,7 @@ export {
 	type Column,
 	type Counter,
 	type CountsOptions,
+	type CountsRow,
 	Doc,
 	type DocPrintOptions,
 	type Document,
@@ -83,8 +84,10 @@ export {
 	type InlineOf,
 	type LinkOptions,
 	type LinkTarget,
+	type ListOptions,
 	type OverflowOptions,
 	type StatusRef,
+	type TableOptions,
 	type TreeInput,
 	type TreeNode,
 } from "./Doc.js";
@@ -92,7 +95,7 @@ export { Fmt, type PercentOptions, type TruncateOptions } from "./Fmt.js";
 export { type AnnotationLevel, GithubAnnotation, type GithubAnnotationProperties } from "./GithubAnnotation.js";
 export { type GlyphSelectOptions, type GlyphSet, Glyphs } from "./Glyphs.js";
 export { NotInteractive } from "./NotInteractive.js";
-export { Render, type RenderContext, type RenderContextOptions } from "./Render.js";
+export { Render, type RenderContext, type RenderContextOfOptions, type RenderContextOptions } from "./Render.js";
 export { SchemaIssueRenderer } from "./SchemaIssueRenderer.js";
 export { type CoreStatusName, Status, type StatusDef } from "./Status.js";
 export { type NamedColor, type Style, Token, type TokenName } from "./Token.js";

@@ -872,7 +872,7 @@ describe("Render.markdown: lists, trees and counts", () => {
 				yield* treeOf([Doc.counts({ label: "Widgets", counters, durationMs: 61000, layout: "row" })]),
 			);
 			assert.deepStrictEqual(cellTexts(table), [
-				["", "passed", "failed", ""],
+				["", "passed", "failed", "duration"], // G4: the duration column is named, never an empty header
 				["Widgets", "3/4", "1", "1m 1s"],
 			]);
 		}),
@@ -1075,6 +1075,132 @@ describe("Render.markdown: okfit's trial (verbatim, link suffix, counts share, a
 				yield* render([Doc.paragraph("a"), annotation, Doc.paragraph("b")]),
 				yield* render([Doc.paragraph("a"), Doc.paragraph("b")]),
 			);
+		}),
+	);
+});
+
+describe("Render.markdown: vitest-agent round 3 (parsed back)", () => {
+	const passed = (n: number) => Doc.counter(Status.core, "success", { key: "passed", label: "passed", n });
+	const failed = (n: number) => Doc.counter(Status.core, "failure", { key: "failed", label: "failed", n });
+
+	it.effect("strong is a strong node and em an emphasis node, their text escaped", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.paragraph("a ", Doc.strong("To*tal"), " and ", Doc.em("x_y"), " ", Doc.strong(" pad ")),
+			]);
+			const paragraph = kids(root)[0];
+			const types = kids(paragraph).map((n) => n.type);
+			assert.deepStrictEqual(types.slice(0, 4), ["text", "strong", "text", "emphasis"]);
+			assert.strictEqual(textOf(kids(paragraph)[1] as N), "To*tal");
+			assert.strictEqual(textOf(kids(paragraph)[3] as N), "x_y");
+			assert.include(descendantTypes(root).slice(6), "strong", "spaces at a run's edge stay outside its markers");
+		}),
+	);
+
+	it.effect("lines are one paragraph with a hard break between entries, so they never collapse", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([Doc.lines(["one", "two", "- three"])]);
+			assert.lengthOf(kids(root), 1);
+			assert.strictEqual(kids(root)[0]?.type, "paragraph");
+			assert.strictEqual(textOf(root), "one\ntwo\n- three");
+			assert.lengthOf(
+				descendantTypes(root).filter((type) => type === "break"),
+				2,
+			);
+		}),
+	);
+
+	it.effect("with linkBase a file link goes to linkBase plus the display path and #L<line>", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf(
+				[Doc.paragraph(Doc.link({ file: "/repo/src/a b.ts", line: 3 }, "a.ts"), " ", Doc.file("/repo/src/c.ts"))],
+				{
+					linkBase: "https://github.com/o/r/blob/sha/",
+					displayPath: (a) => a.replace("/repo/", ""),
+				},
+			);
+			const link = kids(kids(root)[0])[0];
+			assert.strictEqual(link?.type, "link");
+			assert.strictEqual(link?.url, "https://github.com/o/r/blob/sha/src/a%20b.ts#L3");
+			assert.strictEqual(textOf(root), "a.ts src/c.ts");
+			assert.lengthOf(
+				descendantTypes(root).filter((type) => type === "link"),
+				1,
+				"a file is never linked",
+			);
+		}),
+	);
+
+	it.effect("countsTable is a table: a column per counter, a row per entry, and the total row", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.countsTable(
+					[
+						{ label: "web", counters: [passed(3), failed(1)] },
+						{ label: "api", counters: [passed(2)] },
+					],
+					{ totalRow: "All" },
+				),
+			]);
+			assert.deepStrictEqual(cellTexts(tableOf(root)), [
+				["", "passed", "failed"],
+				["web", "3", "1"],
+				["api", "2", ""],
+				["All", "5", "1"],
+			]);
+		}),
+	);
+
+	it.effect("G4: the row layout's duration column has a header, never an empty one", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([Doc.counts({ layout: "row", counters: [passed(3), failed(1)], durationMs: 250 })]);
+			const header = cellTexts(tableOf(root))[0] ?? [];
+			assert.deepStrictEqual(header, ["passed", "failed", "duration"]);
+		}),
+	);
+
+	it.effect("counts suffix follows the duration", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.counts({ layout: "inline", counters: [passed(3), failed(1)], durationMs: 250, suffix: "across 3 files" }),
+			]);
+			assert.strictEqual(textOf(root), "3/4 passed, 1 failed (250ms) across 3 files");
+		}),
+	);
+
+	it.effect("a compact list item's children have no blank line between them, so the list stays tight", () =>
+		Effect.gen(function* () {
+			const item = Doc.section("FAIL a.test.ts", [Doc.paragraph("expected 1"), Doc.paragraph("got 2")]);
+			const out = yield* render([Doc.list([item], { compact: true })]);
+			assert.notInclude(out, "\n\n");
+			const root = yield* parse(out);
+			assert.strictEqual(kids(root)[0]?.type, "list");
+			assert.include(textOf(root), "expected 1");
+		}),
+	);
+
+	it.effect("a line is one paragraph", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([Doc.line("one\ntwo", { truncate: true })]);
+			assert.deepStrictEqual(descendantTypes(root), ["root", "paragraph", "text"]);
+			assert.strictEqual(textOf(root), "one two");
+		}),
+	);
+
+	it.effect("diffText is a diff fence holding the text as given", () =>
+		Effect.gen(function* () {
+			const unified = "@@ -1 +1 @@\n-old\n+new\n context ```";
+			const code = kids(yield* treeOf([Doc.diffText(unified)]))[0];
+			assert.strictEqual(code?.type, "code");
+			assert.strictEqual(code?.lang, "diff");
+			assert.strictEqual((code?.value ?? "").replace(/\n$/, ""), unified);
+		}),
+	);
+
+	it.effect("a pipe-style table is still a GFM table in markdown", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([Doc.table([{ header: "File" }], [["a.ts"]], { style: "pipe" })]);
+			assert.deepStrictEqual(cellTexts(tableOf(root)), [["File"], ["a.ts"]]);
 		}),
 	);
 });

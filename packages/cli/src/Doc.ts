@@ -41,6 +41,8 @@ export type LinkTarget =
  * - `Link`: a labelled link to a URL or a file position.
  * - `StatusMark`: a status glyph, carrying its resolved definition.
  * - `Path`: a path or breadcrumb, joined with the audience's path separator.
+ * - `Strong` and `Emphasis`: content in bold or italic; markdown `**` and `_`.
+ * - `File`: a path shown through the context's `displayPath`, never linked.
  *
  * @public
  */
@@ -58,7 +60,10 @@ export type Inline =
 			readonly suffix?: boolean;
 	  }
 	| { readonly _tag: "StatusMark"; readonly name: string; readonly def: StatusDef }
-	| { readonly _tag: "Path"; readonly segments: ReadonlyArray<string> };
+	| { readonly _tag: "Path"; readonly segments: ReadonlyArray<string> }
+	| { readonly _tag: "Strong"; readonly content: ReadonlyArray<Inline> }
+	| { readonly _tag: "Emphasis"; readonly content: ReadonlyArray<Inline> }
+	| { readonly _tag: "File"; readonly path: string };
 
 /**
  * A node of a {@link TreeNode} tree: a label and its children.
@@ -119,6 +124,11 @@ export interface Counter {
  *   `durationMs` is how long it took. `share: false` drops the headline's share of the total, and `paint` limits what
  *   is painted.
  * - `Verbatim`: lines kept exactly, each indented, never wrapped.
+ * - `CountsTable`: a table of `Counts` rows, a column per counter key, with an optional summed total row.
+ * - `Lines`: one line per entry; markdown keeps them apart with hard breaks.
+ * - `Line`: one line, which `truncate` cuts to the width instead of wrapping.
+ * - `DiffText`: a unified diff, as given.
+ * - A `List` may be `compact`, with no blank lines between an item's children, and a `Table` may be `style: "pipe"`.
  * - `Annotation`: a GitHub Actions annotation, which only `Render.githubLog` writes.
  *
  * Nodes are plain data and nothing decodes them, so a function field such as `overflow` or `total` is fine.
@@ -133,6 +143,7 @@ export type Block =
 			readonly items: ReadonlyArray<Block>;
 			readonly cap?: number;
 			readonly overflow?: (hidden: number) => ReadonlyArray<Inline>;
+			readonly compact?: boolean;
 	  }
 	| {
 			readonly _tag: "Table";
@@ -140,6 +151,7 @@ export type Block =
 			readonly rows: ReadonlyArray<ReadonlyArray<ReadonlyArray<Inline>>>;
 			readonly cap?: number;
 			readonly overflow?: (hidden: number) => ReadonlyArray<Inline>;
+			readonly style?: "pipe";
 	  }
 	| { readonly _tag: "Tree"; readonly root: TreeNode }
 	| {
@@ -166,7 +178,16 @@ export type Block =
 			readonly layout: "inline" | "columns" | "row";
 			readonly share?: boolean;
 			readonly paint?: "all" | "glyph" | "none";
+			readonly suffix?: ReadonlyArray<Inline>;
 	  }
+	| {
+			readonly _tag: "CountsTable";
+			readonly rows: ReadonlyArray<CountsRow>;
+			readonly totalRow?: boolean | ReadonlyArray<Inline>;
+	  }
+	| { readonly _tag: "Lines"; readonly lines: ReadonlyArray<ReadonlyArray<Inline>> }
+	| { readonly _tag: "Line"; readonly content: ReadonlyArray<Inline>; readonly truncate?: boolean }
+	| { readonly _tag: "DiffText"; readonly text: string; readonly cap?: number }
 	| { readonly _tag: "Verbatim"; readonly text: string; readonly indent?: number }
 	| ({ readonly _tag: "Annotation"; readonly message: string } & AnnotationOptions);
 
@@ -190,6 +211,41 @@ export interface AnnotationOptions {
 	readonly endColumn?: number;
 	/** Its title. */
 	readonly title?: string;
+}
+
+/**
+ * One row of a `CountsTable`: its label and its counters.
+ *
+ * @public
+ */
+export interface CountsRow {
+	/** What the row is, such as a project name. */
+	readonly label: ReadonlyArray<Inline>;
+	/** Its counters; their keys pick the column each lands in. */
+	readonly counters: ReadonlyArray<Counter>;
+}
+
+/**
+ * Options for {@link Doc.list}.
+ *
+ * @public
+ */
+export interface ListOptions extends OverflowOptions {
+	/** No blank lines between the children of an item, such as a section's title and body. */
+	readonly compact?: boolean;
+}
+
+/**
+ * Options for {@link Doc.table}.
+ *
+ * @public
+ */
+export interface TableOptions extends OverflowOptions {
+	/**
+	 * `pipe` gives plain and `ansi` istanbul's shape: rules above and below the header and at the end, cells joined
+	 * with ` | `. Markdown's table is a pipe table either way. Unset, the columns are space-aligned.
+	 */
+	readonly style?: "pipe";
 }
 
 /**
@@ -286,6 +342,8 @@ export interface CountsOptions {
 	 * paints only a status glyph, if one is shown; `none` paints nothing.
 	 */
 	readonly paint?: "all" | "glyph" | "none";
+	/** Text after the duration, such as `across 3 files`. */
+	readonly suffix?: InlineInput;
 }
 
 const isList = (input: InlineInput): input is ReadonlyArray<string | Inline> => Array.isArray(input);
@@ -420,6 +478,36 @@ export class Doc {
 	}
 
 	/**
+	 * Content in bold: markdown `**…**`, bold in `ansi`, and the content as is in plain and `githubLog`.
+	 *
+	 * @param content - any number of strings, inlines or arrays of them, in order
+	 */
+	static strong(...content: Array<InlineInput>): InlineOf<"Strong"> {
+		return freeze({ _tag: "Strong", content: inlines(content.flatMap((part) => (isList(part) ? part : [part]))) });
+	}
+
+	/**
+	 * Content in italic: markdown `_…_`, italic in `ansi`, and the content as is in plain and `githubLog`.
+	 *
+	 * @remarks
+	 * Markdown's `_` does not open inside a word, so content glued to a letter on either side reads as plain text there.
+	 *
+	 * @param content - any number of strings, inlines or arrays of them, in order
+	 */
+	static em(...content: Array<InlineInput>): InlineOf<"Emphasis"> {
+		return freeze({ _tag: "Emphasis", content: inlines(content.flatMap((part) => (isList(part) ? part : [part]))) });
+	}
+
+	/**
+	 * A file path, shown through the context's `displayPath` and never linked.
+	 *
+	 * @param path - the path, usually absolute
+	 */
+	static file(path: string): InlineOf<"File"> {
+		return freeze({ _tag: "File", path });
+	}
+
+	/**
 	 * A path or breadcrumb; a renderer joins the segments with the audience's separator.
 	 *
 	 * @param segments - the segments, in order
@@ -451,10 +539,15 @@ export class Doc {
 	 * A list of blocks.
 	 *
 	 * @param items - the items
-	 * @param options - `cap` and `overflow`
+	 * @param options - `cap`, `overflow`, and `compact` for no blank lines inside an item
 	 */
-	static list(items: ReadonlyArray<Block>, options?: OverflowOptions): BlockOf<"List"> {
-		return freeze({ _tag: "List", items: frozenArray(items), ...overflowFields(options) });
+	static list(items: ReadonlyArray<Block>, options?: ListOptions): BlockOf<"List"> {
+		return freeze({
+			_tag: "List",
+			items: frozenArray(items),
+			...overflowFields(options),
+			...(options?.compact === undefined ? {} : { compact: options.compact }),
+		});
 	}
 
 	/**
@@ -462,12 +555,12 @@ export class Doc {
 	 *
 	 * @param columns - the columns: a header and an optional alignment each
 	 * @param rows - the rows; each cell takes a string, an inline or an array of either
-	 * @param options - `cap` and `overflow`
+	 * @param options - `cap`, `overflow`, and `style: "pipe"` for istanbul's shape in plain and `ansi`
 	 */
 	static table(
 		columns: ReadonlyArray<{ readonly header: InlineInput; readonly align?: "left" | "right" | "center" }>,
 		rows: ReadonlyArray<ReadonlyArray<InlineInput>>,
-		options?: OverflowOptions,
+		options?: TableOptions,
 	): BlockOf<"Table"> {
 		return freeze({
 			_tag: "Table",
@@ -478,6 +571,7 @@ export class Doc {
 			),
 			rows: frozenArray(rows.map((row) => frozenArray(row.map(inlines)))),
 			...overflowFields(options),
+			...(options?.style === undefined ? {} : { style: options.style }),
 		});
 	}
 
@@ -603,7 +697,67 @@ export class Doc {
 			layout: options.layout,
 			...(options.share === undefined ? {} : { share: options.share }),
 			...(options.paint === undefined ? {} : { paint: options.paint }),
+			...(options.suffix === undefined ? {} : { suffix: inlines(options.suffix) }),
 		});
+	}
+
+	/**
+	 * Counters as a table: a row per entry, a column per counter key (in the order the keys first appear, headed by
+	 * the counter's label), and an optional total row summing each column.
+	 *
+	 * @remarks
+	 * A row without a counter for some key leaves that cell empty, and it counts as zero in the total. `totalRow`
+	 * labels the total row `Total` when `true`, or with the content given.
+	 *
+	 * @param rows - each row's label and counters
+	 * @param options - `totalRow`, to add the summed row
+	 */
+	static countsTable(
+		rows: ReadonlyArray<{ readonly label: InlineInput; readonly counters: ReadonlyArray<Counter> }>,
+		options?: { readonly totalRow?: boolean | InlineInput },
+	): BlockOf<"CountsTable"> {
+		const totalRow = options?.totalRow;
+		return freeze({
+			_tag: "CountsTable",
+			rows: frozenArray(
+				rows.map((row) => freeze({ label: inlines(row.label), counters: frozenArray(row.counters.map(counterOf)) })),
+			),
+			...(totalRow === undefined ? {} : { totalRow: typeof totalRow === "boolean" ? totalRow : inlines(totalRow) }),
+		});
+	}
+
+	/**
+	 * Lines, one per entry, in every renderer: markdown joins them with hard breaks so they never collapse into one.
+	 *
+	 * @param lines - the entries; each takes a string, an inline or an array of either
+	 */
+	static lines(lines: ReadonlyArray<InlineInput>): BlockOf<"Lines"> {
+		return freeze({ _tag: "Lines", lines: frozenArray(lines.map(inlines)) });
+	}
+
+	/**
+	 * One line of content; with `truncate`, it is cut to the width with the glyph set's ellipsis instead of wrapping.
+	 *
+	 * @param content - the line
+	 * @param options - `truncate`
+	 */
+	static line(content: InlineInput, options?: { readonly truncate?: boolean }): BlockOf<"Line"> {
+		return freeze({
+			_tag: "Line",
+			content: inlines(content),
+			...(options?.truncate === undefined ? {} : { truncate: options.truncate }),
+		});
+	}
+
+	/**
+	 * A unified diff as given, such as a test runner's: sanitized, its `+` and `-` lines painted `success` and
+	 * `failure` in `ansi`, and a `diff` fence in markdown.
+	 *
+	 * @param unified - the diff
+	 * @param options - `cap`, the most lines shown
+	 */
+	static diffText(unified: string, options?: { readonly cap?: number }): BlockOf<"DiffText"> {
+		return freeze({ _tag: "DiffText", text: unified, ...(options?.cap === undefined ? {} : { cap: options.cap }) });
 	}
 
 	/**
