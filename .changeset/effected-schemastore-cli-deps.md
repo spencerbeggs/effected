@@ -6,7 +6,7 @@
 
 | Dependency | Type | Action | From | To |
 | --- | --- | --- | --- | --- |
-| @effected/env | dependency | added | — | 0.0.0 |
+| @effected/env | dependency | added | — | 0.1.0 |
 | @effected/glob | dependency | added | — | 0.9.0 |
 | @effected/walker | dependency | added | — | 0.14.1 |
 

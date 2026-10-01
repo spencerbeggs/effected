@@ -46,7 +46,9 @@ Every package is `unstable`; see [release strategy](#release-strategy).
 | [@effected/commands](packages/commands) | unstable | Structured command running and CLI tool discovery over Effect's core ChildProcessSpawner contract |
 | [@effected/templates](packages/templates) | unstable | Managed-section blocks in user-editable files: parse, reconcile, sync and check delimited regions |
 | [@effected/jsonl](packages/jsonl) | unstable | Append-only, schema-validated JSONL journals as a definable Effect service |
-| [@effected/cli](packages/cli) | unstable | The boundary layer of an `effect/unstable/cli` program: plain CLI output, failure reporting and schema-issue rendering |
+| [@effected/cli](packages/cli) | unstable | The presentation boundary of an `effect/unstable/cli` program: audience-aware output, a document IR and renderers, editor links, failure reports and logging, plus opt-in Ink screens, widgets and a live view |
+| [@effected/env](packages/env) | unstable | Environment detection read through `Config`: agent, CI, terminal colour level, hyperlinks, columns and audience, swapped in tests with `layerTest` |
+| [@effected/mcp](packages/mcp) | unstable | The boundary layer of an `effect/ai` MCP server: stdio wiring that keeps stdout the wire, tool-failure shaping, strict-input walkers and test clients |
 
 ### Pure
 
@@ -63,12 +65,15 @@ Every package is `unstable`; see [release strategy](#release-strategy).
 | [@effected/markdown](packages/markdown) | unstable | CommonMark 0.31.2 and GFM as pure schemas: parse to mdast-shaped nodes with byte offsets, edit, format and project to and from mdast |
 | [@effected/memfs](packages/memfs) | unstable | An isolated virtual POSIX volume behind Effect's core FileSystem service: the kit's filesystem test double, for tests and dry-run programs |
 | [@effected/github-references](packages/github-references) | unstable | GitHub's issue-reference grammar as pure functions: inline-in-prose harvesting with offsets, bare-line parsing and the closing-list dialect |
+| [@effected/github-commands](packages/github-commands) | unstable | The GitHub Actions workflow-command grammar as pure functions: render a command, and neutralize text so the runner cannot read it as one |
+| [@effected/engine](packages/engine) | unstable | Platform-free primitives shared by every front end of an Effect v4 tool: distribution identity, remediation and launch context |
 
 ### Companion
 
 | Package | Stability | Description |
 | ------- | --------- | ----------- |
 | [@effected/pnpm-plugin-effect](packages/pnpm-plugin-effect) | unstable | pnpm config dependency shipping the catalogs that pin Effect and the `@effected/*` kit, for dependencies and peer ranges alike |
+| [@effected/schemastore-cli](packages/schemastore-cli) | unstable | The `schemastore` command: build and check SchemaStore-shaped JSON Schema documents from a `schemastore.config.ts`, with a per-schema published flag and a drift policy |
 
 ## Release strategy
 
