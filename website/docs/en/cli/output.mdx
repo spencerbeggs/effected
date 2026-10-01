@@ -50,7 +50,7 @@ An empty value counts as unset, so `FORCE_COLOR=""` forces nothing. The audience
 
 stdout and stderr are decided separately, so `tool 2> err.log` stops colouring stderr without touching stdout. Core's `Stdio` reports only stdout's terminal state, so on Node pass the real stderr check to `main`: `env: { stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true) }`. Anything you paint for stderr yourself goes through `theme.forStream("stderr")`.
 
-`TERM=dumb` does two more things. The glyph set switches to ASCII (`v`, `x`, `!` and so on), and the run is not interactive, because a dumb terminal cannot move the cursor.
+`TERM=dumb` does two more things. The glyph set switches to ASCII (`[ok]`, `[FAIL]`, `[warn]` and so on), and the run is not interactive, because a dumb terminal cannot move the cursor.
 
 ## Interactivity
 

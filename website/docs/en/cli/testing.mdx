@@ -70,6 +70,53 @@ describe("report", () => {
 });
 ```
 
+### The whole environment in one layer
+
+Composing those layers by hand is useful when a test needs one service set unusually. Usually it doesn't, and [`CliEnv.layerTest`](/cli/api/class/clienv) fixes the whole environment from a few answers. It provides `TerminalEnv`, `Audience` and a `CliTheme` built as `CliEnv.layer` builds it, and it sets `CliInteractive` by the same rule as a real run. It reads nothing from the host, not even `TERM`:
+
+```ts
+import { CliEnv, CliInteractive, CliLinks, CliMessage, Doc } from "@effected/cli";
+import { assert, it } from "@effect/vitest";
+import { Console, Effect, Layer } from "effect";
+
+// `capturing` as above.
+
+it.effect("an agent on a colour terminal gets plain output and no prompts", () =>
+  Effect.gen(function* () {
+    const { double, out } = capturing();
+    const interactive = yield* Effect.gen(function* () {
+      yield* CliMessage.success("synced");
+      yield* Doc.print([Doc.paragraph(Doc.link({ file: "/repo/a.ts", line: 3 }, "a.ts"))]);
+      return yield* CliInteractive;
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          CliEnv.layerTest({ tty: true, audience: "agent", color: "truecolor", columns: 100 }),
+          CliLinks.layerTest("file"),
+        ),
+      ),
+      Effect.provideService(Console.Console, double),
+    );
+    assert.deepStrictEqual(out, ["✓ synced", "a.ts (/repo/a.ts:3)"]);
+    assert.isFalse(interactive);
+  }),
+);
+
+it.effect("TERM=dumb is not interactive and draws ASCII", () =>
+  Effect.gen(function* () {
+    const { double, out } = capturing();
+    const interactive = yield* Effect.gen(function* () {
+      yield* CliMessage.success("synced");
+      return yield* CliInteractive;
+    }).pipe(Effect.provide(CliEnv.layerTest({ tty: true, term: "dumb" })), Effect.provideService(Console.Console, double));
+    assert.deepStrictEqual(out, ["[ok] synced"]);
+    assert.isFalse(interactive);
+  }),
+);
+```
+
+The options are `tty` (stdin, stdout and stderr are all terminals; `false` by default, as for a pipe), `term`, `audience` (`human` by default), `columns`, `color` (for both streams; `none` by default) and `theme`. It provides no `CliLinks`, so add `CliLinks.layerTest` when a test prints links, as above. It also provides no `Terminal` and installs neither of `CliEnv.layer`'s prompt gates. A screen or live view also needs the in-memory streams that `CliUiTest` provides.
+
 To exercise the real detection rules instead of fixing their answers, provide a `ConfigProvider` built from a record: `Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ CLAUDECODE: "1" }))`. `CliInteractive.layerTest(true)` or `layerTest(false)` fixes interactivity the same way.
 
 The [advanced guide](/cli/advanced#testing-with-effectvitest) covers testing the logger's stream split and the exit-code markers.
