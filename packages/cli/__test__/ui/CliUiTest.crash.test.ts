@@ -1,10 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Exit, Fiber } from "effect";
+import { Cause, Effect, Exit, Fiber, Option } from "effect";
 import { Text } from "ink";
 import type { ReactElement } from "react";
 import { createElement } from "react";
+import { useScreenCancel } from "../../src/ui/internal/ScreenContext.js";
 import type { Screen } from "../../src/ui.js";
-import { CliUi } from "../../src/ui.js";
+import { CliUi, KeyTable, useKeys } from "../../src/ui.js";
 import type { CliUiTestScreen } from "../../src/ui-testing.js";
 import { CliUiTest } from "../../src/ui-testing.js";
 
@@ -106,6 +107,66 @@ describe("CliUiTest.session surfaces a crash (r5 B2)", () => {
 			yield* Effect.forkScoped(CliUi.run(() => createElement(Boom)).pipe(Effect.provide(session.layer)));
 			const taken = yield* Effect.exit(session.next({ contains: "never shown" }));
 			assert.include(messageOf(taken), "component crashed");
+		}).pipe(Effect.scoped, Effect.timeout("2 seconds")),
+	);
+});
+
+/**
+ * Cancels and then throws in the same key handler: the cancel settles the screen's result first, and the crash comes
+ * in the same tick, before anything has unmounted. `useScreenCancel` is the hook widgets cancel through.
+ */
+const CancelThenCrash = (): ReactElement => {
+	const cancel = useScreenCancel();
+	useKeys(KeyTable.make([{ keys: ["enter"], action: "go", help: "go" }]), () => {
+		cancel("escape");
+		throw new Error("crashed with the cancel");
+	});
+	return createElement(Text, null, "armed");
+};
+
+describe("a crash in the same tick as a cancel wins (r4 re-review nit)", () => {
+	it.live("render: result dies with the crash, never Cancelled", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(() => createElement(CancelThenCrash));
+			assert.include(yield* handle.plainFrame, "armed", "control: it drew first");
+			yield* handle.press("enter");
+			const result = yield* Effect.exit(handle.result);
+			assert.isTrue(isDie(result), `result is a die: ${messageOf(result)}`);
+			assert.include(messageOf(result), "crashed with the cancel");
+			assert.include(messageOf(yield* Effect.exit(handle.frame)), "crashed with the cancel");
+		}).pipe(Effect.scoped, Effect.timeout("2 seconds")),
+	);
+
+	it.live("view: the next read dies with the crash, not a readable cancelled frame", () =>
+		Effect.gen(function* () {
+			const view = yield* CliUiTest.view(createElement(CancelThenCrash));
+			yield* view.press("enter");
+			assert.include(messageOf(yield* Effect.exit(view.frame)), "crashed with the cancel");
+		}).pipe(Effect.scoped, Effect.timeout("2 seconds")),
+	);
+
+	it.live("session: the screen's next read and the program both die with the crash", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session();
+			const fiber = yield* Effect.forkScoped(
+				CliUi.run(() => createElement(CancelThenCrash)).pipe(Effect.provide(session.layer)),
+			);
+			const screen = yield* session.next({ contains: "armed" });
+			yield* screen.press("enter");
+			assert.include(messageOf(yield* Effect.exit(screen.frame)), "crashed with the cancel");
+			const program = yield* Fiber.await(fiber);
+			assert.isTrue(isDie(program), messageOf(program));
+			assert.include(messageOf(program), "crashed with the cancel");
+		}).pipe(Effect.scoped, Effect.timeout("2 seconds")),
+	);
+
+	it.live("control: Esc alone still cancels with escape, and the frames stay readable", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(() => createElement(Text, null, "calm"));
+			yield* handle.press("escape");
+			const result = yield* Effect.exit(handle.result);
+			assert.isTrue(Option.isSome(CliUiTest.cancelReason(result)), messageOf(result));
+			assert.include(yield* handle.plainFrame, "calm");
 		}).pipe(Effect.scoped, Effect.timeout("2 seconds")),
 	);
 });

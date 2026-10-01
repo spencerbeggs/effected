@@ -527,10 +527,11 @@ const mount = <A>(screen: Screen<A>, options: CliUiTestOptions, refusal: boolean
 				Effect.onExit((exit) =>
 					Effect.sync(() => {
 						ended = true;
+						// A defect is a failure even beside a `Cancelled`: a crash in the same tick as a cancel wins.
 						if (
 							Exit.isFailure(exit) &&
 							!Cause.hasInterruptsOnly(exit.cause) &&
-							cancelledReason(Cause.squash(exit.cause)) === undefined
+							(exit.cause.reasons.some(Cause.isDieReason) || cancelledReason(Cause.squash(exit.cause)) === undefined)
 						) {
 							failure = exit.cause;
 						}

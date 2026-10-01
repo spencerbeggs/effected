@@ -102,10 +102,16 @@ const mounts = Semaphore.makeUnsafe(1);
 
 const SCREEN_EXITED = "@effected/cli/ui: the screen exited without resolving or cancelling";
 
+/** The first defect a screen's tree reported, kept apart from the result so a crash beats an end in the same tick. */
+interface CrashCell {
+	current: { readonly defect: unknown } | undefined;
+}
+
 const mount = <A>(
 	screen: Screen<A>,
 	theme: Cli.StreamTheme,
 	clear: boolean,
+	crash: CrashCell,
 ): Effect.Effect<A, Cli.Cancelled, Scope.Scope> =>
 	Effect.gen(function* () {
 		const overrides = yield* UiRenderOptions;
@@ -116,7 +122,7 @@ const mount = <A>(
 			(_, exit) =>
 				Effect.sync(() => {
 					const died = Exit.isFailure(exit) ? exit.cause.reasons.find(Cause.isDieReason) : undefined;
-					overrides.onUnmount?.(died === undefined ? undefined : { defect: died.defect });
+					overrides.onUnmount?.(died === undefined ? crash.current : { defect: died.defect });
 				}),
 		);
 		const { ink, react } = yield* loadInk;
@@ -133,6 +139,8 @@ const mount = <A>(
 		};
 		const element = yield* Effect.promise(async () => screen(control));
 		const die = (error: unknown): void => {
+			// Recorded even when the result is already settled: a crash in the same tick as a cancel or a resolve wins.
+			if (crash.current === undefined) crash.current = { defect: error };
 			Deferred.doneUnsafe(result, Exit.die(error));
 		};
 		const tree = react.createElement(errorBoundary(), {
@@ -197,7 +205,9 @@ export class CliUi {
 	 * interrupted), it is unmounted, raw mode is off, the cursor is shown, and the colour level is restored. A
 	 * component that throws is a defect, never a hang or a typed failure, and nothing of Ink's crash screen reaches
 	 * stdout. So is a `useKeys` handler that throws; a handler a consumer registers with Ink's own `useInput` or
-	 * `usePaste` is outside the kit, and what it throws escapes as Ink leaves it.
+	 * `usePaste` is outside the kit, and what it throws escapes as Ink leaves it. A crash wins over an end in the same
+	 * tick: a handler that cancels or resolves and then throws, or a component that throws before the screen has
+	 * unmounted, is a defect, never the `Cancelled` or the value.
 	 *
 	 * A screen draws on stdout, and is interactive when `CliInteractive` is, which reads stdout's terminal.
 	 *
@@ -222,7 +232,15 @@ export class CliUi {
 		Effect.gen(function* () {
 			if (!(yield* CliInteractive)) return yield* Effect.fail(new NotInteractive());
 			const theme = (yield* CliTheme).forStream("stdout");
-			return yield* Semaphore.withPermit(mounts, Effect.scoped(mount(screen, theme, options?.clear === true)));
+			const crash: CrashCell = { current: undefined };
+			const exit = yield* Effect.exit(
+				Semaphore.withPermit(mounts, Effect.scoped(mount(screen, theme, options?.clear === true, crash))),
+			);
+			// A tree that crashed is a defect however the screen ended: a cancel or a resolve in the same tick, which
+			// settled the result first, must not hide it. An interrupt stays an interrupt.
+			const interrupted = Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause);
+			if (crash.current !== undefined && !interrupted) return yield* Effect.die(crash.current.defect);
+			return yield* exit;
 		});
 
 	/**
