@@ -5,6 +5,7 @@ import { totalOf, visibleCountersOf } from "./counts.js";
 import type { Span } from "./layout.js";
 import { flatten, sanitize } from "./layout.js";
 import { isAllowedLinkUrl } from "./linkScheme.js";
+import { DRIVE, fileUrlPath } from "./linkTarget.js";
 import { capOf, targetText, textLines } from "./renderDoc.js";
 
 type Lines = ReadonlyArray<string>;
@@ -71,8 +72,10 @@ const linkUrl = (target: LinkTarget): string | undefined => {
 		const url = target.url.trim();
 		return isAllowedLinkUrl(url) ? url : undefined;
 	}
-	if (!target.file.startsWith("/")) return undefined;
-	return `file://${encodeURI(target.file).replace(/#/g, "%23").replace(/\?/g, "%3F")}`;
+	// The same builder as `CliLinks`, so a drive path links the same way here; a UNC or relative path has no link.
+	if (!target.file.startsWith("/") && !DRIVE.test(target.file)) return undefined;
+	const path = fileUrlPath(target.file);
+	return path === undefined ? undefined : `file://${path}`;
 };
 
 /** A link destination. `&` is escaped so a reader does not decode an entity into something other than what was written. */

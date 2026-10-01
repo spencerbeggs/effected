@@ -6,6 +6,7 @@ import { Config, Context, Effect, FileSystem, Layer, Option, Path } from "effect
 import type { LinkTarget } from "./Doc.js";
 import { sanitize } from "./internal/layout.js";
 import { isAllowedLinkUrl } from "./internal/linkScheme.js";
+import { DRIVE, UNC, encodeForOsc8, fileUrlPath } from "./internal/linkTarget.js";
 
 /**
  * Whether file links open in an editor.
@@ -72,22 +73,6 @@ const MODES: ReadonlyArray<EditorLinks> = ["auto", "vscode", "file", "off"];
 
 const parseSetting = (raw: string): EditorLinks | undefined => MODES.find((mode) => mode === raw.trim().toLowerCase());
 
-// A lone surrogate makes `encodeURIComponent` throw, so it becomes U+FFFD first.
-const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
-
-/** RFC 3986: everything but the unreserved characters is percent-encoded, in each segment, and `/` is kept. */
-const encodePath = (path: string): string =>
-	path
-		.replace(LONE_SURROGATE, "�")
-		.split("/")
-		.map((segment) =>
-			encodeURIComponent(segment).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`),
-		)
-		.join("/");
-
-/** A Windows drive path (`C:\x`, `C:/x`): absolute whatever the `Path` flavour, so never resolved against a directory. */
-const DRIVE = /^[A-Za-z]:[\\/]/;
-
 /** A URL with its control characters and line breaks removed: none is legal in one, and each could end an OSC 8 early. */
 const cleanUrl = (url: string): string => sanitize(url).replace(/[\r\n]/g, "");
 
@@ -101,10 +86,8 @@ const makeTarget =
 		if (mode === "off") return Option.none();
 		const resolved = absolute(target.file);
 		if (resolved === undefined) return Option.none();
-		// A drive path keeps its drive and becomes /C:/x/y.ts: the colon is part of the URL's path, not data to encode.
-		const path = DRIVE.test(resolved)
-			? `/${resolved.slice(0, 2)}${encodePath(resolved.slice(2).replace(/\\/g, "/"))}`
-			: encodePath(resolved.startsWith("/") ? resolved : `/${resolved.replace(/\\/g, "/")}`);
+		const path = fileUrlPath(resolved);
+		if (path === undefined) return Option.none();
 		if (mode === "file") return Option.some(`file://${path}`);
 		const position =
 			target.line === undefined ? "" : target.col === undefined ? `:${target.line}` : `:${target.line}:${target.col}`;
@@ -153,10 +136,13 @@ interface Ambient {
 const build = (options: CliLinksOptions, ambient: Ambient): Effect.Effect<CliLinksShape, never, CurrentRuntimeEnv> =>
 	Effect.gen(function* () {
 		const runtime = yield* CurrentRuntimeEnv;
-		const fromEnv =
-			options.envVar === undefined
-				? undefined
-				: parseSetting(Option.getOrElse(yield* readOption(options.envVar), () => ""));
+		const raw =
+			options.envVar === undefined ? "" : Option.getOrElse(yield* readOption(options.envVar), () => "").trim();
+		const fromEnv = parseSetting(raw);
+		// A value that is not a mode warns once, as the audience override does, and the option is used.
+		if (options.envVar !== undefined && raw !== "" && fromEnv === undefined) {
+			yield* Effect.logWarning(`${options.envVar}=${raw} is not one of ${MODES.join("|")}; ignoring it`);
+		}
 		const setting = fromEnv ?? options.editorLinks ?? "auto";
 
 		// The working directory: the option, else PWD, else where the path service resolves ".".
@@ -167,6 +153,8 @@ const build = (options: CliLinksOptions, ambient: Ambient): Effect.Effect<CliLin
 			(Option.isSome(ambient.path) ? ambient.path.value.resolve(".") : undefined);
 		const path = Option.getOrUndefined(ambient.path);
 		const absolute = (file: string): string | undefined => {
+			// A UNC path is not on this machine: it must not be resolved against the working directory as a filename.
+			if (UNC.test(file)) return undefined;
 			if (DRIVE.test(file)) return file;
 			if (path === undefined) return file.startsWith("/") ? file : undefined;
 			if (path.isAbsolute(file)) return file;
@@ -254,7 +242,7 @@ export class CliLinks extends Context.Service<CliLinks, CliLinksShape>()("@effec
 			if (!options.hyperlinks || options.audience === "agent") return label;
 			const url = options.links.target(target);
 			if (Option.isNone(url)) return label;
-			const written = cleanUrl(url.value);
+			const written = encodeForOsc8(cleanUrl(url.value));
 			if (!isAllowedLinkUrl(written)) return label;
 			return `\u001B]8;;${written}\u001B\\${label}\u001B]8;;\u001B\\`;
 		};
