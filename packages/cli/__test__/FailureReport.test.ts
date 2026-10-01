@@ -326,3 +326,63 @@ describe("a delegating render gets the default report (F4, F5)", () => {
 		assert.strictEqual(`vitest-agent: ${without[0]}`, "vitest-agent: Error: boom");
 	});
 });
+
+describe("details.lines: the run's report, with or without its status (A2)", () => {
+	const run = (env: Record<string, string>, render: NonNullable<ReportFailuresOptions["render"]>) =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			yield* CliRuntime.main(dying("kaboom"), {
+				platform,
+				env: { displayPath: (p) => p.replace("/repo/", "") },
+				render,
+			}).pipe(
+				Effect.exit,
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)),
+				Effect.provideService(Console.Console, double),
+			);
+			return err;
+		});
+
+	it.effect("a prefixing render keeps the run's displayPath and has no status marker", () =>
+		Effect.gen(function* () {
+			const err = yield* run({ AI_AGENT: "x" }, (_error, details) =>
+				details.lines({ status: false }).map((line, index) => (index === 0 ? `prog: ${line}` : line)),
+			);
+			assert.strictEqual(err[0], "prog: Error: kaboom");
+			const text = err.join("\n");
+			assert.include(text, "src/run.ts:3:4");
+			assert.notInclude(text, "/repo/");
+			assert.notInclude(text, "[FAIL]");
+		}),
+	);
+
+	it.effect("for a person it keeps the run's colour, and drops the status glyph", () =>
+		Effect.gen(function* () {
+			const human = { TERM: "xterm-256color", FORCE_COLOR: "3" };
+			const withStatus = yield* run(human, (_error, details) => details.lines());
+			const without = yield* run(human, (_error, details) => details.lines({ status: false }));
+			assert.isTrue(
+				without.some((line) => line.includes(ESC)),
+				"painted, like the run",
+			);
+			assert.notStrictEqual(withStatus[0], without[0], "control: the status leads lines()");
+			assert.include(without.join("\n"), "src/run.ts:3:4");
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: the SGR sequences being stripped
+			const strip = (line: string | undefined) => (line ?? "").replace(/\u001b\[[0-9;]*m/g, "");
+			assert.strictEqual(strip(without[0]), "Error: kaboom");
+			assert.match(strip(withStatus[0]), /^\S+ Error: kaboom$/, "control: a glyph leads lines()");
+		}),
+	);
+
+	it.effect("lines() is defaultLines", () =>
+		Effect.gen(function* () {
+			let pair: readonly [ReadonlyArray<string>, ReadonlyArray<string>] | undefined;
+			yield* run({ TERM: "xterm-256color", FORCE_COLOR: "3" }, (_error, details) => {
+				pair = [details.lines(), details.defaultLines];
+				return details.defaultLines;
+			});
+			assert.isDefined(pair);
+			assert.deepStrictEqual(pair?.[0], pair?.[1]);
+		}),
+	);
+});

@@ -105,8 +105,12 @@ export const refreshFailureTarget = (
 		if (target !== undefined) MutableRef.set(cell, target);
 	});
 
-/** The target a report is rendered with: the cell, else the services in context, else the plain fallback. */
-const currentTarget: Effect.Effect<FailureTarget> = Effect.gen(function* () {
+/**
+ * The target a report is rendered with: the cell, else the services in context, else the plain fallback.
+ *
+ * @internal
+ */
+export const currentTarget: Effect.Effect<FailureTarget> = Effect.gen(function* () {
 	const cell = yield* FailureTargetCell;
 	const recorded = cell === undefined ? undefined : MutableRef.get(cell);
 	if (recorded !== undefined) return recorded;
@@ -131,20 +135,17 @@ const withoutStatus = (doc: Document): Document =>
 		return block;
 	});
 
-const linesOf = (cause: Cause.Cause<unknown>, target: FailureTarget, status = true): ReadonlyArray<string> => {
+/**
+ * The lines of a failure report for a target, with or without the leading status.
+ *
+ * @internal
+ */
+export const linesOf = (cause: Cause.Cause<unknown>, target: FailureTarget, status = true): ReadonlyArray<string> => {
 	const full = CliFailure.toDoc(cause, { displayPath: target.ctx.displayPath });
 	const doc = status ? full : withoutStatus(full);
 	const text = Render[target.format](doc, target.ctx);
 	return text === "" ? [] : text.split("\n");
 };
-
-/**
- * The lines of a failure report for the current environment.
- *
- * @internal
- */
-export const failureLines = (cause: Cause.Cause<unknown>): Effect.Effect<ReadonlyArray<string>> =>
-	Effect.flatMap(currentTarget, (target) => Effect.sync(() => linesOf(cause, target)));
 
 /**
  * A consumer `render`'s lines, made safe: neutralized under GitHub Actions, and stripped of escapes for an agent.
