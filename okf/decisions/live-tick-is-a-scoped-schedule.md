@@ -13,8 +13,8 @@ sources:
     title: "effect 4.0.0-rc.118, internal/effect.ts:6341-6350: the default Clock sleeps on a plain, ref'd setTimeout"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T09:47:15Z
-  body_sha256: 997bc9ae7ebb91dc355a85cb6247122986140828c6a9bde209d95b59580056ba
+  at: 2026-10-01T12:21:26Z
+  body_sha256: fce2a436e105981d686b86fd58006b66048e10937c9fb525fd488b909f42cf1e
 ---
 
 # The live view's tick is a scoped Effect schedule, and its frame index comes from Clock
@@ -56,6 +56,11 @@ Effect tick frame by frame; it could not drive a `setInterval` at all, and
 - The process exiting promptly depends on the tick being forked into the
   view's scope; a refactor that forks it anywhere else reintroduces the hang
   L7 measured.
+- The tick never outlives its run or the view's scope, but while a run is
+  mounted its ref'd timer keeps the process alive. A run that never sees its
+  terminal event holds the process open until the scope closes, so a host
+  must end the stream or close the scope for the process to exit; the
+  spec's `unref`'d timer would have let it exit mid-run.
 
 [^p5-probes]: `docs/superpowers/specs/2026-10-01-p5-probes.md`, section L7
 [^effect-clock]: `.repos/effect/packages/effect/src/internal/effect.ts:6341-6350`
