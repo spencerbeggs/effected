@@ -22,8 +22,8 @@ sources:
     title: CliRuntime, which remaps usage failures to exit 64
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T21:34:00Z
-  body_sha256: 51bc32c5bcd44e0990c958795bdab3afa33566aff4ca195503cc943a447250fb
+  at: 2026-10-01T00:03:44Z
+  body_sha256: 44d4cd57c44273ed834272643c9de730a76a43edab64f370a1fda6ba461aa7c0
 ---
 
 # The audience flag is four shared root flags resolved into env's Audience
@@ -146,8 +146,19 @@ runs the subcommand's parse, where a fallback fires, before any parsed flag is v
 wraps only the subcommand handler.[^core-command-parse][^core-fallback] So `--agent init` on a human-detected
 terminal would still prompt. `CliAudience.runWith` and `run` close it: a pure scan of argv, mirroring the four
 flags' syntax and sharing the counting rule with the resolver, runs before core, and the whole run is wrapped in
-the provided `Audience` (`source: flag`) and a `CliInteractive` narrowed to match. The terminal gate decides per
-call, not at build, so the narrowing reaches it.
+the provided `Audience` (`source: flag`) and a `CliInteractive` decided to match. The terminal gate decides per
+call, not at build, so the decision reaches it.
+
+### A flag decides interactivity from the TTY facts
+
+A flag that names the audience does not just narrow `CliInteractive`; it recomputes it from that audience and
+`TerminalEnv`: interactive means `human` with a terminal on both stdin and stdout. So `--human` can widen. A person
+who runs the tool inside an agent (detected `agent`) on real terminals gets the prompt back, which the flag's
+higher precedence over the environment variable already promised, and a pipe still cannot prompt, because the TTY
+requirement is unchanged and only the audience input moves. A non-human flag, or a conflict, still makes it false.
+Without `TerminalEnv` in the environment there are no facts to decide from and the flag only narrows. `--wizard`
+follows the decision: a run a flag makes interactive gets it back where the environment's gate had dropped it. This
+came from okfit's round-2 adoption, where `--human` under Claude Code skipped the prompt on a real pty.
 
 ## Consequences
 

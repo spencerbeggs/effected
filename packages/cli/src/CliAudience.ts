@@ -1,13 +1,27 @@
 import type { AudienceKind, AudienceShape } from "@effected/env";
-import { Audience } from "@effected/env";
+import { Audience, TerminalEnv } from "@effected/env";
 import type { Terminal } from "effect";
-import { Effect, Stdio } from "effect";
+import { Effect, Option, Stdio } from "effect";
 import type { Command } from "effect/cli";
 import { CliConfig, CliError, Command as CommandModule, Flag, GlobalFlag } from "effect/cli";
 import { CliInteractive } from "./CliInteractive.js";
 import { scanAudience, tallyAudience } from "./internal/scanAudience.js";
 
 const KINDS: ReadonlyArray<AudienceKind> = ["human", "agent", "ci"];
+
+/**
+ * Whether the run may prompt once a flag has named the audience.
+ *
+ * Only a `human` audience prompts, and only with a terminal on both standard input and standard output. With the
+ * terminal facts in the environment (`TerminalEnv`) that is decided from them, not from the ambient value, so a
+ * flag can WIDEN: `--human` under a detected agent on real terminals prompts, and in a pipe it still cannot. With no
+ * `TerminalEnv` there is nothing to decide from and the flag only narrows, as it always did.
+ */
+const interactiveWhenFlagged = (kind: AudienceKind, current: boolean): Effect.Effect<boolean> =>
+	Effect.map(Effect.serviceOption(TerminalEnv), (terminal) => {
+		if (kind !== "human") return false;
+		return Option.isSome(terminal) ? terminal.value.stdinIsTerminal && terminal.value.stdout.isTerminal : current;
+	});
 
 /**
  * The four parsed audience flags a root command carries once {@link CliAudience.flags} is shared onto it.
@@ -89,8 +103,13 @@ const resolve = (input: AudienceFlagInput): Effect.Effect<AudienceShape, CliErro
  * `CliRuntime.main`. A conflicting audience together with `--help` exits `0` and prints help, because core handles
  * its action flags before the resolver runs.
  *
- * A non-human flag (`--agent`, `--ci`, `--audience agent|ci`) also turns `CliInteractive` off, drops `--wizard`,
- * and switches diagnostics to NDJSON, for the whole run including the parse step where a fallback prompt fires.
+ * A flag decides `CliInteractive` from the audience it names and the terminal facts: `--human` is interactive when
+ * `TerminalEnv` says there is a terminal on stdin and on stdout, even where the environment detected an agent, so a
+ * person running the tool inside an agent can ask for the human experience; in a pipe it still cannot prompt. A
+ * non-human flag (`--agent`, `--ci`, `--audience agent|ci`) turns it off and drops `--wizard`, and switches
+ * diagnostics to NDJSON, for the whole run including the parse step where a fallback prompt fires. Without
+ * `TerminalEnv` in the environment a flag only narrows. `--wizard` follows the decision: a run a flag makes
+ * interactive gets it back where the environment's gate had dropped it.
  * {@link CliAudience.provide} on its own, the path for a bare `Command.run`, acts only on the subcommand handler,
  * because core parses the root flags into a local context before any of it is visible.
  *
@@ -148,13 +167,14 @@ export class CliAudience {
 		command: Command.Command<Name, Input, ContextInput, E, R>,
 	): Command.Command<Name, Input, ContextInput, E | CliError.UserError, Exclude<R, Audience> | Audience> =>
 		CommandModule.provideEffect(command, Audience, (input: Input) => resolve(input)).pipe(
-			// A non-human flag narrows interactivity for the handler too: the env layer decided it from the DETECTED
-			// audience, before the flag was read, so `--agent` on a terminal would otherwise stay interactive. Only
-			// ever narrows, like `CliInteractive.unless`; `--human` never turns it on.
+			// A flag decides interactivity for the handler too: the env layer decided it from the DETECTED audience,
+			// before the flag was read, so `--agent` on a terminal would otherwise stay interactive and `--human` under
+			// a detected agent would stay off. See `interactiveWhenFlagged`.
 			CommandModule.provideEffect(CliInteractive, (input: Input) =>
-				Effect.map(CliInteractive, (current) => {
+				Effect.gen(function* () {
+					const current = yield* CliInteractive;
 					const [flagged] = tallyAudience(input).given;
-					return flagged === undefined ? current : current && flagged === "human";
+					return flagged === undefined ? current : yield* interactiveWhenFlagged(flagged, current);
 				}),
 			),
 		);
@@ -164,8 +184,9 @@ export class CliAudience {
 	 *
 	 * @remarks
 	 * It scans `argv` for the four audience flags first, then runs core around a provided `Audience` (when exactly
-	 * one is given: `{ kind, source: "flag" }`) and a `CliInteractive` narrowed to match (a non-human flag, or a
-	 * conflict, makes it false; it never turns it on). A fallback prompt fires while core parses, earlier than
+	 * one is given: `{ kind, source: "flag" }`) and a `CliInteractive` decided from it: `--human` is interactive when
+	 * `TerminalEnv` reports a terminal on stdin and stdout (it can turn prompting on under a detected agent), a
+	 * non-human flag or a conflict makes it false. A fallback prompt fires while core parses, earlier than
 	 * anything `CliAudience.provide` can reach, so `--agent init` on a terminal would otherwise still prompt. No
 	 * flag leaves the ambient values untouched. A conflict still gets core's own usage error, exit `64`, from
 	 * `CliAudience.provide`'s resolver.
@@ -199,17 +220,17 @@ export class CliAudience {
 			return Effect.gen(function* () {
 				const current = yield* CliInteractive;
 				const ambient = yield* CliConfig.CliConfig;
-				const interactive = current && !conflict && kind === "human";
-				const narrowed = Effect.provideService(withAudience, CliInteractive, interactive);
-				// The wizard prompts, so a non-human flag drops it too: the environment decided its gate from the
-				// detected audience, before the flag was read.
-				return yield* interactive
-					? narrowed
-					: Effect.provideService(
-							narrowed,
-							CliConfig.CliConfig,
-							CliConfig.make({ builtIns: ambient.builtIns.filter((flag) => flag !== GlobalFlag.Wizard) }),
-						);
+				const interactive = !conflict && (yield* interactiveWhenFlagged(kind, current));
+				const decided = Effect.provideService(withAudience, CliInteractive, interactive);
+				// The wizard prompts, so it follows the decision: the environment gated it from the detected audience,
+				// before the flag was read. A non-interactive run drops it, and a run the flag has made interactive
+				// where the gate had dropped it gets it back.
+				const hasWizard = ambient.builtIns.includes(GlobalFlag.Wizard);
+				if (interactive === hasWizard) return yield* decided;
+				const builtIns = interactive
+					? [...ambient.builtIns, GlobalFlag.Wizard]
+					: ambient.builtIns.filter((flag) => flag !== GlobalFlag.Wizard);
+				return yield* Effect.provideService(decided, CliConfig.CliConfig, CliConfig.make({ builtIns }));
 			}) as typeof run;
 		};
 	};

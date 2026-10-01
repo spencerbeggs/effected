@@ -4,7 +4,7 @@
 // `CliAudience.run` / `runWith` scan argv first and provide the answer around the whole run.
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Audience } from "@effected/env";
+import { Audience, TerminalEnv } from "@effected/env";
 import { Cause, Console, Effect, Exit, Layer, Runtime } from "effect";
 import { Command, Flag, Prompt } from "effect/cli";
 import { CliAudience, CliInteractive, CliPrompt, CliRuntime } from "../src/index.js";
@@ -168,4 +168,152 @@ describe("CliAudience.runWith resolves the audience flag before parsing", () => 
 		const program = CliAudience.runWith(bare, { version: "1.0.0" });
 		assert.isDefined(program);
 	});
+});
+
+// A flag that names the audience decides interactivity from the TTY facts, so `--human` can widen it: a human who runs a
+// tool inside an agent (detected `agent`) on a real terminal gets the human experience back, and a pipe still cannot
+// prompt. Only the audience input changes; the TTY requirement does not.
+describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => {
+	interface Facts {
+		/** The audience the environment detected, before any flag. */
+		readonly detected: "human" | "agent" | "ci";
+		readonly stdin: boolean;
+		readonly stdout: boolean;
+		/** What `CliInteractive` was built as from the detected audience and the TTYs. */
+		readonly ambient: boolean;
+	}
+
+	const probe = Command.make("probe", {}, () =>
+		Effect.gen(function* () {
+			const audience = yield* Audience;
+			yield* Console.log(`interactive=${yield* CliInteractive} audience=${audience.kind}/${audience.source}`);
+		}),
+	);
+	const both = Command.make("tool").pipe(
+		Command.withSharedFlags(CliAudience.flags()),
+		Command.withSubcommands([init, probe]),
+	);
+
+	const runUnder = (
+		facts: Facts,
+		argv: ReadonlyArray<string>,
+		via: "runWith" | "core" = "runWith",
+		gateWizard = false,
+		endInput = false,
+	) =>
+		Effect.gen(function* () {
+			const terminal = yield* TestTerminal.make();
+			yield* terminal.input([{ name: "down" }, { name: "enter" }]);
+			// Core's wizard keeps reading until the input ends; ending it quits the wizard instead of hanging.
+			if (endInput) yield* terminal.end;
+			const { double, out, err } = capturing();
+			const program =
+				via === "runWith"
+					? CliAudience.runWith(both, { version: "1.0.0" })(argv)
+					: Command.runWith(CliAudience.provide(both), { version: "1.0.0" })(argv);
+			const exit = yield* CliRuntime.main(program, {
+				platform: Layer.mergeAll(NodeServices.layer, CliPrompt.gateTerminal.pipe(Layer.provide(terminal.layer))),
+			}).pipe(
+				Effect.exit,
+				Effect.provideService(Console.Console, double),
+				gateWizard ? Effect.provide(CliPrompt.gateWizard) : (self) => self,
+				Effect.provide(CliInteractive.layerTest(facts.ambient)),
+				Effect.provide(TerminalEnv.layerTest({ stdinIsTerminal: facts.stdin, stdout: { isTerminal: facts.stdout } })),
+				Effect.provide(Audience.layerTest(facts.detected, "detected")),
+			);
+			const code = Exit.isFailure(exit) ? Runtime.getErrorExitCode(Cause.squash(exit.cause)) : 0;
+			return { out, err, code, reads: yield* terminal.reads };
+		});
+
+	// Detected as an agent on real TTYs (a human running `! tool` inside Claude Code): ambient interactivity is off.
+	const agentOnTtys: Facts = { detected: "agent", stdin: true, stdout: true, ambient: false };
+
+	it.effect("--human on real TTYs widens a detected agent: the prompt runs", () =>
+		Effect.gen(function* () {
+			const { out, reads, code } = yield* runUnder(agentOnTtys, ["--human", "init"]);
+			assert.strictEqual(code, 0);
+			assert.deepStrictEqual(out, ["profile=library audience=human/flag"]);
+			assert.strictEqual(reads.keys, 2, "the prompt read the terminal");
+		}),
+	);
+
+	it.effect("--human still cannot prompt without a terminal on stdin, or on stdout", () =>
+		Effect.gen(function* () {
+			for (const facts of [
+				{ ...agentOnTtys, stdin: false },
+				{ ...agentOnTtys, stdout: false },
+				{ ...agentOnTtys, stdin: false, stdout: false },
+			]) {
+				const { out, reads } = yield* runUnder(facts, ["--human", "init"]);
+				assert.deepStrictEqual(out, ["profile=x audience=human/flag"], JSON.stringify(facts));
+				assert.deepStrictEqual(reads, QUIET, JSON.stringify(facts));
+			}
+		}),
+	);
+
+	it.effect("--agent and --ci still narrow, even on a human terminal", () =>
+		Effect.gen(function* () {
+			const humanOnTtys: Facts = { detected: "human", stdin: true, stdout: true, ambient: true };
+			for (const flag of ["--agent", "--ci"]) {
+				const { out, reads } = yield* runUnder(humanOnTtys, [flag, "init"]);
+				assert.deepStrictEqual(out, [`profile=x audience=${flag.slice(2)}/flag`], flag);
+				assert.deepStrictEqual(reads, QUIET, flag);
+			}
+		}),
+	);
+
+	it.effect("a conflict is never interactive, whatever the TTYs say", () =>
+		Effect.gen(function* () {
+			const { code, reads } = yield* runUnder(agentOnTtys, ["--human", "--agent", "init"]);
+			assert.strictEqual(code, 64);
+			assert.deepStrictEqual(reads, QUIET);
+		}),
+	);
+
+	it.effect("the handler sees the recomputed value, through runWith and through a bare provide", () =>
+		Effect.gen(function* () {
+			for (const via of ["runWith", "core"] as const) {
+				const widened = yield* runUnder(agentOnTtys, ["--human", "probe"], via);
+				assert.deepStrictEqual(widened.out, ["interactive=true audience=human/flag"], via);
+				const piped = yield* runUnder({ ...agentOnTtys, stdin: false }, ["--human", "probe"], via);
+				assert.deepStrictEqual(piped.out, ["interactive=false audience=human/flag"], `${via} piped`);
+				const narrowed = yield* runUnder(
+					{ detected: "human", stdin: true, stdout: true, ambient: true },
+					["--agent", "probe"],
+					via,
+				);
+				assert.deepStrictEqual(narrowed.out, ["interactive=false audience=agent/flag"], `${via} agent`);
+				const none = yield* runUnder(agentOnTtys, ["probe"], via);
+				assert.deepStrictEqual(
+					none.out,
+					["interactive=false audience=agent/detected"],
+					`${via} no flag: the ambient value stays`,
+				);
+			}
+		}),
+	);
+
+	it.effect("--human --wizard on real TTYs is the wizard, not an unknown flag, though the gate had dropped it", () =>
+		Effect.gen(function* () {
+			const { err, code, reads } = yield* runUnder(agentOnTtys, ["--human", "--wizard", "init"], "runWith", true, true);
+			assert.isAtLeast(reads.subscriptions, 1, "the wizard read the terminal");
+			assert.isFalse(
+				err.some((line) => /unrecogni[sz]ed.*wizard|wizard.*unrecogni[sz]ed|unknown.*wizard/i.test(line)),
+				err.join("\n"),
+			);
+			assert.notStrictEqual(code, 64, err.join("\n"));
+			// Without a terminal the gate's drop stands: the wizard is an unknown flag.
+			const piped = yield* runUnder({ ...agentOnTtys, stdin: false }, ["--human", "--wizard", "init"], "runWith", true);
+			assert.strictEqual(piped.code, 64);
+		}),
+	);
+
+	it.effect("with no TerminalEnv in the environment a flag only narrows, as before", () =>
+		Effect.gen(function* () {
+			// The harness of the first block provides no TerminalEnv: `--human` leaves the ambient value alone.
+			const { out, reads } = yield* run(["--human", "init"]);
+			assert.deepStrictEqual(out, ["profile=library audience=human/flag"]);
+			assert.strictEqual(reads.keys, 2);
+		}),
+	);
 });
