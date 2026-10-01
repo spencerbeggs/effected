@@ -1,7 +1,7 @@
 // LiveHandle.close and a PubSub subscription as `events`: the kit ends a view cleanly, folding the tail of a run that
 // was published but not yet pulled (round 7, P5-1).
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Exit, Fiber, PubSub, Stream } from "effect";
+import { Effect, Exit, Fiber, PubSub, Scheduler, Scope, Stream } from "effect";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { screenAfter } from "../../src/ui/testing/terminalModel.js";
 import type { LiveHandle } from "../../src/ui.js";
@@ -102,11 +102,9 @@ describe("LiveHandle.close with a subscription", () => {
 			const subscription = yield* PubSub.subscribe(pubsub);
 			const handle = yield* liveOn(fake, optionsOf(subscription));
 			yield* PubSub.publishAll(pubsub, runOf(3));
-			const [first, second] = yield* Effect.all([handle.close, handle.close], { concurrency: "unbounded" }).pipe(
+			yield* Effect.all([handle.close, handle.close], { concurrency: "unbounded", discard: true }).pipe(
 				Effect.timeout("2 seconds"),
-				Effect.as([true, true] as const),
 			);
-			assert.isTrue(first && second);
 			const after = fake.stdout();
 			yield* handle.close.pipe(Effect.timeout("1 second"));
 			assert.strictEqual(fake.stdout(), after, "a later close writes nothing");
@@ -168,7 +166,7 @@ describe("LiveHandle.close with a plain stream", () => {
 		}).pipe(Effect.scoped),
 	);
 
-	it.live("the caller's scope closing mid-close still releases everything", () =>
+	it.live("close inside the caller's scope, then the scope closes: the mount permit is released", () =>
 		Effect.gen(function* () {
 			const fake = makeFakeStreams({ columns: 40, rows: 20 });
 			const events = Stream.concat(Stream.fromIterable(runOf(1)), Stream.never);
@@ -177,6 +175,110 @@ describe("LiveHandle.close with a plain stream", () => {
 			);
 			yield* Fiber.join(fiber).pipe(Effect.timeout("2 seconds"));
 			assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted", "the permit was released");
+		}),
+	);
+});
+
+describe("a subscription whose PubSub is ended with PubSub.end (review I1)", () => {
+	it.live("the buffered messages, then the final message once, are folded, and done completes", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const pubsub = yield* PubSub.unbounded<Ev>();
+			const subscription = yield* PubSub.subscribe(pubsub);
+			let folds = 0;
+			const handle = yield* liveOn(
+				fake,
+				optionsOf(subscription, {
+					reduce: (state, event) => {
+						folds++;
+						return reduce(state, event);
+					},
+				}),
+			);
+			yield* PubSub.publishAll(pubsub, runOf(3));
+			yield* PubSub.end(pubsub, End);
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.deepStrictEqual((yield* handle.state).seen, [...seenOf(3), "End"]);
+			assert.strictEqual(folds, 5, "the sticky final message is folded once, never again");
+			assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 1", "ended"]);
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("ended while the view waits: the final message ends it", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const pubsub = yield* PubSub.unbounded<Ev>();
+			const subscription = yield* PubSub.subscribe(pubsub);
+			const handle = yield* liveOn(fake, optionsOf(subscription), { interactive: false });
+			yield* PubSub.publishAll(pubsub, runOf(2));
+			// The view has taken both and is waiting again when the PubSub ends.
+			yield* until(() => Effect.runSync(handle.state).seen.length === 3);
+			yield* PubSub.end(pubsub, End);
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.deepStrictEqual((yield* handle.state).seen, [...seenOf(2), "End"]);
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("a final message that is not terminal: the run is committed as drawn, and close after it is safe", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const pubsub = yield* PubSub.unbounded<Ev>();
+			const subscription = yield* PubSub.subscribe(pubsub);
+			const handle = yield* liveOn(fake, optionsOf(subscription));
+			yield* PubSub.publishAll(pubsub, runOf(1));
+			yield* PubSub.end(pubsub, tick(9));
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			yield* handle.close.pipe(Effect.timeout("1 second"));
+			assert.deepStrictEqual((yield* handle.state).seen, [...seenOf(1), "tick 9"]);
+			assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 1", "tick 9"]);
+		}).pipe(Effect.scoped),
+	);
+});
+
+describe("close under a small scheduler budget loses nothing it took (review I2)", () => {
+	// A budget this small makes the fibers yield every few operations, which is where a chunk taken but not yet
+	// handed to the fold could be dropped by close's interrupt. Through the stream machinery the tail was lost at 7, 8
+	// and 13-18; with the direct take it is not, and budget 3 is the one that loses it if the step is allowed to yield.
+	for (const budget of [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 32]) {
+		it.live(`MaxOpsBeforeYield ${budget}: every message published before close is folded`, () =>
+			Effect.gen(function* () {
+				const losses: Array<string> = [];
+				for (const n of [1, 2, 3, 5, 7]) {
+					for (const k of [0, 1, 2, 3]) {
+						const folded = yield* Effect.gen(function* () {
+							const pubsub = yield* PubSub.unbounded<Ev>();
+							const subscription = yield* PubSub.subscribe(pubsub);
+							const handle = yield* liveOn(makeFakeStreams(), optionsOf(subscription, { mode: "hosted" }), {
+								interactive: false,
+							});
+							for (const event of runOf(n - 1)) PubSub.publishUnsafe(pubsub, event);
+							for (let i = 0; i < k; i++) yield* Effect.yieldNow;
+							yield* handle.close.pipe(Effect.timeout("2 seconds"));
+							return (yield* handle.state).seen.length;
+						}).pipe(Effect.scoped, Effect.provideService(Scheduler.MaxOpsBeforeYield, budget));
+						if (folded !== n) losses.push(`n=${n} k=${k}: ${folded}`);
+					}
+				}
+				assert.deepStrictEqual(losses, []);
+			}),
+		);
+	}
+});
+
+describe("close after the caller's scope has closed (review minor 1)", () => {
+	it.live("completes: the scope already stopped the view, and there is nothing left to end", () =>
+		Effect.gen(function* () {
+			const pubsub = yield* PubSub.unbounded<Ev>();
+			const scope = yield* Scope.make();
+			const subscription = yield* Scope.provide(PubSub.subscribe(pubsub), scope);
+			const handle = yield* Scope.provide(
+				liveOn(makeFakeStreams(), optionsOf(subscription), { interactive: false }),
+				scope,
+			);
+			yield* PubSub.publishAll(pubsub, runOf(2));
+			yield* Scope.close(scope, Exit.void);
+			const exit = yield* Effect.exit(handle.close.pipe(Effect.timeout("1 second")));
+			assert.isTrue(Exit.isSuccess(exit), String(exit));
 		}),
 	);
 });

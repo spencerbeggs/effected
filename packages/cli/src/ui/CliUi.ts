@@ -323,8 +323,9 @@ export class CliUi {
 	 *
 	 * End the view with `handle.close`: it stops taking events, folds what is still queued (a subscription's queued
 	 * messages included), commits or prints the run as the events ending would, and waits for `done`. Then close the
-	 * scope. A `PubSub.shutdown` drops what the view has not taken yet, and closing the scope by itself stops the fold
-	 * at once: both lose a run's tail. Closing the scope unmounts whatever is drawn: the terminal is restored (the
+	 * scope. A publisher may instead end a subscription with `PubSub.end(pubsub, last)`, which keeps everything: the view
+	 * folds what is buffered and `last` once, then ends. A `PubSub.shutdown` drops what the view has not taken yet, and
+	 * closing the scope by itself stops the fold at once: both lose a run's tail. Closing the scope unmounts whatever is drawn: the terminal is restored (the
 	 * cursor shown, Ink's colour level put back) and nothing more is written. `done` completes when the events end.
 	 *
 	 * A run begins at an `isStart` event (or wherever `begins` says, given the state before and after the event) and ends

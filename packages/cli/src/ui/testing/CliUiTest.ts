@@ -228,7 +228,7 @@ export interface CliUiTestLive<E, S> {
 	 * (a scrollback wipe) anywhere in a run.
 	 */
 	readonly written: Effect.Effect<string>;
-	/** The view's own handle: its state, its `logConsole`, and `done`. */
+	/** The view's own handle: its `state`, its `logConsole`, `done` and `close`. */
 	readonly handle: LiveHandle<S>;
 }
 

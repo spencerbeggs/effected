@@ -104,8 +104,12 @@ one read. `okf/modules/cli.md` has the rows.
     returning (`Stream.fromPubSub` is subscribed; a stream that forks its
     upstream is not). End a view with `handle.close`, which folds what is still
     queued, a subscription's included, and ends the run as the events ending
-    would; then close the scope. `PubSub.shutdown` drops what the view has not
-    taken, and a bare scope close stops the fold at once: both lose a tail.
+    would; then close the scope. `PubSub.end(pubsub, last)` is lossless too (the
+    view folds the buffer and `last` once, though core repeats it to every take).
+    `PubSub.shutdown` drops what the view has not taken, and a bare scope close
+    stops the fold at once: both lose a tail. A subscription is taken from
+    directly (never `Stream.fromSubscription`), yield-free from a take to the
+    inbox, so `close` never drops a taken message.
   - **Height, not width:** the frame is clipped to `rows - 1` (its content keeps
     its height and is clipped, never squeezed); the root takes no width at all —
     `@./okf/decisions/live-height-clamp-not-width.md` — Load when: touching the
