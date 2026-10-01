@@ -1,11 +1,13 @@
 // Root types are named through the package's own name, so the emitted ui.d.ts imports them from "@effected/cli".
 import type * as Cli from "@effected/cli";
 import { Audience } from "@effected/env";
+import { CommandNeutralizer } from "@effected/github-commands";
 import type { Console } from "effect";
 import { Cause, Clock, Duration, Effect, Exit, Fiber, Option, Pull, Queue, Schedule, Scope, Stream } from "effect";
 import type { FunctionComponent, ReactElement, ReactNode } from "react";
 import { CliInteractive } from "../CliInteractive.js";
 import { CliTheme, themeForAudience } from "../CliTheme.js";
+import { underGithubActions } from "../internal/autoFormat.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
 import type { HolderSlot } from "./internal/Holder.js";
 import { holder, holderSlot } from "./internal/Holder.js";
@@ -169,6 +171,10 @@ export const live = <E, S>(
 			Option.isSome(audience) ? audience.value.kind : undefined,
 		);
 		const colour = theme.color;
+		// Under the GitHub Actions runner, text from data must not form a workflow command: a DocView neutralizes its own
+		// lines, and a frame printed as a string is neutralized whole, a consumer's raw Text included.
+		const neutralize = yield* underGithubActions;
+		const provided = { theme, glyphs: theme.glyphs, ...(neutralize ? { neutralizeWorkflowCommands: true } : {}) };
 		const interactive = yield* CliInteractive;
 		const streams = yield* UiStreams;
 		const overrides = yield* UiRenderOptions;
@@ -222,7 +228,7 @@ export const live = <E, S>(
 						failure ??= { error };
 					},
 					children: uiProviders(
-						{ theme, glyphs: theme.glyphs, size: { columns, rows: Number.POSITIVE_INFINITY } },
+						{ ...provided, size: { columns, rows: Number.POSITIVE_INFINITY } },
 						elementOf(state, frame),
 					),
 				});
@@ -241,7 +247,7 @@ export const live = <E, S>(
 					}
 					return;
 				}
-				bridge.print(text);
+				bridge.print(neutralize ? CommandNeutralizer.text(text) : text);
 			});
 
 		/** Mount a run's view with the current state, its tick beside it; a failure degrades the run. */
@@ -285,7 +291,7 @@ export const live = <E, S>(
 					const tree = react.createElement(errorBoundary(), {
 						onError: report,
 						children: uiProviders(
-							{ theme, glyphs: theme.glyphs },
+							provided,
 							react.createElement(
 								bridge.Bridge,
 								null,

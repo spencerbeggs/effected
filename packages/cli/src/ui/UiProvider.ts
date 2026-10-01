@@ -23,6 +23,11 @@ export interface UiContextValue {
 	readonly glyphs: Cli.GlyphSet;
 	/** The terminal size the tree is laid out at, which `useTerminalSize` reads in place of the stdout's. */
 	readonly size?: { readonly columns: number; readonly rows: number };
+	/**
+	 * Whether the GitHub Actions runner reads the output (`CliUi.context` sets it from `CurrentRuntimeEnv`, when one is
+	 * provided): a `DocView` under it neutralizes any line its data would turn into a workflow command.
+	 */
+	readonly neutralizeWorkflowCommands?: boolean;
 }
 
 /**
@@ -69,6 +74,8 @@ export const UiProvider = (props: UiProviderProps): ReactElement => {
 	const parent = react.useContext(screenContext());
 	const cancel = parent?.cancel;
 	const die = parent?.die;
+	// Under the runner if this value says so, or the tree above does: a nested provider never lifts it.
+	const neutralize = props.value.neutralizeWorkflowCommands === true || parent?.neutralizeWorkflowCommands === true;
 	const value = react.useMemo(
 		() => ({
 			theme,
@@ -76,8 +83,9 @@ export const UiProvider = (props: UiProviderProps): ReactElement => {
 			...(columns === undefined || rows === undefined ? {} : { size: { columns, rows } }),
 			...(cancel === undefined ? {} : { cancel }),
 			...(die === undefined ? {} : { die }),
+			...(neutralize ? { neutralizeWorkflowCommands: true } : {}),
 		}),
-		[theme, glyphs, columns, rows, cancel, die],
+		[theme, glyphs, columns, rows, cancel, die, neutralize],
 	);
 	return uiProviders(value, props.children);
 };

@@ -21,6 +21,11 @@ export interface ScreenContextValue {
 	readonly glyphs: Cli.GlyphSet;
 	/** The terminal size the tree is laid out at, read by `useTerminalSize` in place of the stdout's. */
 	readonly size?: { readonly columns: number; readonly rows: number };
+	/**
+	 * Whether the GitHub Actions runner reads the output, so text from data must not form a workflow command:
+	 * `DocView` sets `neutralizeWorkflowCommands` from it.
+	 */
+	readonly neutralizeWorkflowCommands?: boolean;
 }
 
 /**

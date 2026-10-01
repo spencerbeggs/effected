@@ -1,16 +1,18 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Audience } from "@effected/env";
-import { Effect } from "effect";
-import { Box } from "ink";
+import { Audience, CurrentRuntimeEnv } from "@effected/env";
+import { Effect, Option, Stream } from "effect";
+import { Box, Text } from "ink";
 import type { ReactElement } from "react";
 import { createElement } from "react";
 import { vi } from "vitest";
 import type { Document, RenderContext, StreamTheme } from "../../src/index.js";
 import { Doc, Render, Status } from "../../src/index.js";
+import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { DocView, useTerminalSize, useTheme } from "../../src/ui.js";
 import { CliUiTest } from "../../src/ui-testing.js";
 import type { Ev, State } from "../helpers/live.js";
-import { End, Start, reduce, tick } from "../helpers/live.js";
+import { End, Start, liveOn, optionsOf, reduce, tick } from "../helpers/live.js";
+import { commandLines } from "../helpers/runnerCommands.js";
 
 const ESC = String.fromCharCode(0x1b);
 
@@ -237,6 +239,53 @@ describe("DocView inside a live view (Review Focus, ruling P2)", () => {
 			const shown = (yield* view.transcript).split("\n");
 			assert.strictEqual(shown.filter((line) => line.includes("status")).length, 1, shown.join("\n"));
 			assert.notInclude(yield* view.written, `${ESC}[3J`);
+		}).pipe(Effect.scoped),
+	);
+});
+
+describe("DocView and the live view under GitHub Actions: no workflow command from data (Task 6 review, I1)", () => {
+	const actions = CurrentRuntimeEnv.layerTest({ ci: Option.some("github-actions") });
+	const injected = [Doc.lines([[Doc.text("::error::injected from test data")], [Doc.text("a ##[warning]legacy one")]])];
+	const printed = (render: () => ReactElement, underActions: boolean) =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 80, rows: 20 });
+			const live = liveOn(fake, optionsOf(Stream.fromIterable([Start, End]), { render }), { interactive: false });
+			const handle = yield* underActions ? live.pipe(Effect.provide(actions)) : live;
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			return fake.stdout();
+		}).pipe(Effect.scoped);
+
+	it.live("an owned live view's printed DocView: the runner reads no command in it", () =>
+		Effect.gen(function* () {
+			const out = yield* printed(() => createElement(DocView, { doc: injected }), true);
+			assert.include(out, "injected from test data", "control: the text is there");
+			assert.deepStrictEqual(commandLines(out), []);
+		}),
+	);
+
+	it.live("an owned live view's printed raw Text: the printed string is neutralized too", () =>
+		Effect.gen(function* () {
+			const out = yield* printed(() => createElement(Text, null, "::error::from a raw Text"), true);
+			assert.include(out, "from a raw Text");
+			assert.deepStrictEqual(commandLines(out), []);
+		}),
+	);
+
+	it.live("control: off Actions the same output is left alone, so the runner oracle does see the commands", () =>
+		Effect.gen(function* () {
+			const out = yield* printed(() => createElement(DocView, { doc: injected }), false);
+			assert.deepStrictEqual(commandLines(out), ["::error::injected from test data", "a ##[warning]legacy one"]);
+		}),
+	);
+
+	it.effect("a CliUi.run screen's DocView under Actions: its frame carries no command either", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(() => createElement(DocView, { doc: injected }), { color: "none" }).pipe(
+				Effect.provide(actions),
+			);
+			const frame = yield* handle.plainFrame;
+			assert.include(frame, "injected from test data");
+			assert.deepStrictEqual(commandLines(frame), []);
 		}).pipe(Effect.scoped),
 	);
 });

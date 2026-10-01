@@ -16,8 +16,10 @@ export interface DocViewProps {
 	readonly doc: Cli.Document | Cli.Block;
 	/**
 	 * The render context. Omitted, it is built from the tree's theme (`useTheme`): its colour, its `paint` (token
-	 * overrides included) and its glyphs, the width `useTerminalSize().columns`, a human audience, links off and the
-	 * identity `displayPath`. Given, it replaces that context entirely, and the view needs no provider.
+	 * overrides included) and its glyphs, the width `useTerminalSize().columns`, a human audience, links off, the
+	 * identity `displayPath`, and `neutralizeWorkflowCommands` when the tree is under the GitHub Actions runner. Given,
+	 * it replaces that context entirely, neutralizing included (set `neutralizeWorkflowCommands` on it when the runner
+	 * reads the output), and the view needs no provider.
 	 */
 	readonly ctx?: Cli.RenderContext;
 }
@@ -26,7 +28,8 @@ const OUTSIDE =
 	"@effected/cli/ui: DocView was drawn with no ctx outside a screen, a live view or a UiProvider, so it has no theme";
 
 /** The context a `DocView` builds from its tree's theme: the theme's own paint, so token overrides hold. */
-const contextOf = (theme: Cli.StreamTheme, width: number): Cli.RenderContext => ({
+const contextOf = (theme: Cli.StreamTheme, width: number, neutralize: boolean): Cli.RenderContext => ({
+	...(neutralize ? { neutralizeWorkflowCommands: true } : {}),
 	width,
 	audience: "human",
 	color: theme.color,
@@ -51,8 +54,12 @@ const docView: () => FunctionComponent<DocViewProps> = fromReact((react) => {
 		const { columns } = useTerminalSize();
 		const given = props.ctx;
 		const theme = screen?.theme;
+		const neutralize = screen?.neutralizeWorkflowCommands === true;
 		if (given === undefined && theme === undefined) throw new Error(OUTSIDE);
-		const ctx = react.useMemo(() => given ?? contextOf(theme as Cli.StreamTheme, columns), [given, theme, columns]);
+		const ctx = react.useMemo(
+			() => given ?? contextOf(theme as Cli.StreamTheme, columns, neutralize),
+			[given, theme, columns, neutralize],
+		);
 		// Laid out once per document and context: a live view's tick redraws with the same document.
 		const lines = react.useMemo(() => linesOf(props.doc, ctx), [props.doc, ctx]);
 		return react.createElement(

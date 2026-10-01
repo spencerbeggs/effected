@@ -10,6 +10,7 @@ import type { ReactElement, ReactNode } from "react";
 import { Cancelled } from "../Cancelled.js";
 import { CliInteractive } from "../CliInteractive.js";
 import { CliTheme, themeForAudience } from "../CliTheme.js";
+import { underGithubActions } from "../internal/autoFormat.js";
 import { answerWithoutPerson } from "../internal/fallbackAnswer.js";
 import { NotInteractive } from "../NotInteractive.js";
 import type { LiveHandle, LiveOptions } from "./CliUiLive.js";
@@ -124,6 +125,7 @@ const mount = <A>(
 	theme: Cli.StreamTheme,
 	clear: boolean,
 	crash: CrashCell,
+	neutralize: boolean,
 ): Effect.Effect<A, Cli.Cancelled, Scope.Scope> =>
 	Effect.gen(function* () {
 		const overrides = yield* UiRenderOptions;
@@ -160,7 +162,13 @@ const mount = <A>(
 		const tree = react.createElement(errorBoundary(), {
 			onError: die,
 			children: uiProviders(
-				{ cancel: control.cancel, die, theme, glyphs: theme.glyphs },
+				{
+					cancel: control.cancel,
+					die,
+					theme,
+					glyphs: theme.glyphs,
+					...(neutralize ? { neutralizeWorkflowCommands: true } : {}),
+				},
 				react.createElement(RootKeys, { cancel: control.cancel, children: element }),
 			),
 		});
@@ -248,9 +256,13 @@ export class CliUi {
 		Effect.gen(function* () {
 			if (!(yield* CliInteractive)) return yield* Effect.fail(new NotInteractive());
 			const theme = yield* audienceTheme;
+			const neutralize = yield* underGithubActions;
 			const crash: CrashCell = { current: undefined };
 			const exit = yield* Effect.exit(
-				Semaphore.withPermit(mountPermit, Effect.scoped(mount(screen, theme, options?.clear === true, crash))),
+				Semaphore.withPermit(
+					mountPermit,
+					Effect.scoped(mount(screen, theme, options?.clear === true, crash, neutralize)),
+				),
 			);
 			// A tree that crashed is a defect however the screen ended: a cancel or a resolve in the same tick, which
 			// settled the result first, must not hide it. An interrupt stays an interrupt. The interrupt check is
@@ -275,8 +287,14 @@ export class CliUi {
 	 */
 	static readonly context: Effect.Effect<UiContextValue, never, Cli.CliTheme> = Effect.gen(function* () {
 		const theme = yield* audienceTheme;
+		const neutralize = yield* underGithubActions;
 		yield* loadInk;
-		return { "~@effected/cli/ui/UiContextValue": true, theme, glyphs: theme.glyphs };
+		return {
+			"~@effected/cli/ui/UiContextValue": true,
+			theme,
+			glyphs: theme.glyphs,
+			...(neutralize ? { neutralizeWorkflowCommands: true } : {}),
+		};
 	});
 
 	/**
