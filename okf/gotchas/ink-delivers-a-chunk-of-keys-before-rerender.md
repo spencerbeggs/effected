@@ -26,8 +26,8 @@ sources:
     last_modified: "2026-10-01T05:17:00Z"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T05:50:58Z
-  body_sha256: c1b7b52a274fd521de49541581b30f3e24167d152524485998aa1f4b0d3727f2
+  at: 2026-10-01T06:07:29Z
+  body_sha256: db755971d4b14d40a1f58d0f24908bced36b99a771a624da857bab2a2be58811
 ---
 
 # Ink delivers every key in one stdin read before React re-renders
@@ -71,10 +71,11 @@ Two related facts bound the trap:
   of more than one code point into a key per code point (`\r` as enter,
   `\t` as tab, a space as space), so `{ char: "y" }` matches each `y` of
   `"yy"`.
-- **The known limit is `TextInput`.** It inserts typed text whole, which
-  is right for a paste, but text holding a control character is not text
-  it inserts: `"y\r"` read in one go into a `TextInput` loses both the
-  `y` and the enter.
+- **`TextInput` splits such text at its control characters.** It inserts
+  each printable run whole, which is right for a paste; a `\r` submits
+  what came before it, and anything after is dropped; a backspace byte
+  deletes; a line feed becomes a space; any other control is dropped. So
+  `"foo\r"` read in one go submits `foo`.
 - **`press` and `type` cannot show it.** They write each key as its own
   chunk and settle between them, so every key meets a fresh render. The
   screen handles of `CliUiTest.render` and `CliUiTest.session` also have

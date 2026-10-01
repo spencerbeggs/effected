@@ -185,3 +185,42 @@ describe("TextInput.screen under CliUiTest", () => {
 		}).pipe(Effect.scoped),
 	);
 });
+
+describe("TextInput with text read in one go (a fast typist, a paste)", () => {
+	it.effect("foo then return in one write submits foo", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(TextInput.screen({ message: "Name" }));
+			yield* handle.chunk({ char: "foo" }, "enter");
+			assert.strictEqual(yield* handle.result, "foo");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a backspace inside the chunk edits as it goes: ab, backspace, c, return gives ac", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(TextInput.screen({ message: "Name" }));
+			yield* handle.chunk({ char: "ab" }, "backspace", { char: "c" }, "enter");
+			assert.strictEqual(yield* handle.result, "ac");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("text after the return is ignored, a line feed becomes a space, and a tab is dropped", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(TextInput.screen({ message: "Name" }));
+			yield* handle.chunk({ char: "a\nb\tc" }, "enter", { char: "after" });
+			assert.strictEqual(yield* handle.result, "a bc");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("the validator still blocks a submit that arrives in the chunk", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(
+				TextInput.screen({ message: "Port", validate: (value) => (/^\d+$/.test(value) ? undefined : "digits only") }),
+			);
+			yield* handle.chunk({ char: "8x" }, "enter");
+			assert.include(yield* handle.plainFrame, "digits only");
+			yield* handle.press("backspace");
+			yield* handle.chunk({ char: "0" }, "enter");
+			assert.strictEqual(yield* handle.result, "80");
+		}).pipe(Effect.scoped),
+	);
+});

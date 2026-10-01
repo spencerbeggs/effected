@@ -85,6 +85,35 @@ const insert = (state: TextInputState, text: string): TextInputState => ({
 	submitted: false,
 });
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to split typed text at control characters
+const CONTROLS = /([\u0000-\u001f\u007f])/;
+
+/**
+ * The keys one Ink input holds. Text read in one go (a fast typist, a paste) reaches `useInput` as one string, controls
+ * and all, so it is split at its control characters: the printable runs are typed whole, `\r` is enter (and ends the
+ * input: text after a submit is not typed into a submitted field), a backspace byte is backspace, a line feed is a
+ * space (a pasted line break separates words in a one-line field), and a tab or any other control is dropped. A named
+ * key, or a Ctrl or Meta combination, is the one key Ink reported.
+ */
+const typedKeys = (input: string, key: Parameters<typeof UiKey.fromInk>[1]): ReadonlyArray<UiKey> => {
+	const single = UiKey.fromInk(input, key);
+	if (single?._tag === "Named" || key.ctrl || key.meta || !CONTROLS.test(input) || [...input].length < 2) {
+		return single === undefined ? [] : [single];
+	}
+	const keys: Array<UiKey> = [];
+	for (const piece of input.split(CONTROLS)) {
+		if (piece === "") continue;
+		if (piece === "\r") {
+			keys.push(UiKey.named("enter"));
+			break;
+		}
+		if (piece === "\u007f" || piece === "\b") keys.push(UiKey.named("backspace"));
+		else if (piece === "\n") keys.push(UiKey.char(" "));
+		else if (!CONTROLS.test(piece)) keys.push(UiKey.char(piece));
+	}
+	return keys;
+};
+
 const step = (state: TextInputState, key: UiKey): TextInputState => {
 	if (key._tag === "Char") return insert(state, key.char);
 	const { value, cursor } = state;
@@ -204,6 +233,11 @@ export class TextInput {
 	 * without colour), the placeholder while empty, a validation message in the error token, and the key help. Enter
 	 * submits when `validate` passes; otherwise its message is shown until the next edit.
 	 *
+	 * @remarks
+	 * Text read in one go (a fast typist, a paste) is typed as it reads: printable runs are inserted whole, a return
+	 * submits what came before it (anything after it is dropped), a backspace byte deletes, a line feed becomes a space,
+	 * and a tab or other control character is dropped.
+	 *
 	 * @param props - the message, the starting text, the placeholder, the validator and where the value goes
 	 */
 	static readonly View = (props: TextInputViewProps): ReactElement => {
@@ -225,16 +259,15 @@ export class TextInput {
 			}
 		}, [state.submitted]);
 		ink.useInput((input, key) => {
-			const pressed = UiKey.fromInk(input, key);
+			const keys = typedKeys(input, key);
 			// Esc and Ctrl-C belong to the screen's root keys.
 			if (
-				pressed === undefined ||
-				(pressed._tag === "Named" && (pressed.name === "escape" || pressed.name === "ctrl+c"))
+				keys.some((pressed) => pressed._tag === "Named" && (pressed.name === "escape" || pressed.name === "ctrl+c"))
 			) {
 				return;
 			}
-			if (!(pressed._tag === "Named" && pressed.name === "enter")) setError(undefined);
-			setState((current) => step(current, pressed));
+			if (keys.some((pressed) => !(pressed._tag === "Named" && pressed.name === "enter"))) setError(undefined);
+			for (const pressed of keys) setState((current) => step(current, pressed));
 		});
 		const cursorGlyph = glyphs.kind === "unicode" ? "▏" : "|";
 		const [before, after] = windowAround(
