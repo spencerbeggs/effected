@@ -1,9 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Exit, Fiber, Option } from "effect";
+import { Cause, Effect, Exit, Fiber, Layer, Option } from "effect";
 import { Text } from "ink";
 import type { ReactElement } from "react";
-import { createElement } from "react";
-import { useScreenCancel } from "../../src/ui/internal/ScreenContext.js";
+import { createElement, useContext, useEffect } from "react";
+import { UiRenderOptions } from "../../src/ui/internal/renderOptions.js";
+import { screenContext, useScreenCancel } from "../../src/ui/internal/ScreenContext.js";
 import type { Screen } from "../../src/ui.js";
 import { CliUi, KeyTable, useKeys } from "../../src/ui.js";
 import type { CliUiTestScreen } from "../../src/ui-testing.js";
@@ -167,6 +168,86 @@ describe("a crash in the same tick as a cancel wins (r4 re-review nit)", () => {
 			const result = yield* Effect.exit(handle.result);
 			assert.isTrue(Option.isSome(CliUiTest.cancelReason(result)), messageOf(result));
 			assert.include(yield* handle.plainFrame, "calm");
+		}).pipe(Effect.scoped, Effect.timeout("2 seconds")),
+	);
+});
+
+/** Reports a crash through the screen's own `die` as it unmounts: a crash recorded while an interrupt ends the run. */
+const CrashOnUnmount = (): ReactElement => {
+	const screen = useContext(screenContext());
+	useEffect(
+		() => () => {
+			screen?.die(new Error("crashed on unmount"));
+		},
+		[screen],
+	);
+	return createElement(Text, null, "steady");
+};
+
+describe("a crash and an interrupt, and the cause run keeps (r5 review minors)", () => {
+	it.live(
+		"a crash recorded while the run is interrupted: run is an interrupt, and the screen does not die with it",
+		() =>
+			Effect.gen(function* () {
+				const session = yield* CliUiTest.session();
+				const fiber = yield* Effect.forkScoped(
+					CliUi.run(() => createElement(CrashOnUnmount)).pipe(Effect.provide(session.layer)),
+				);
+				const screen = yield* session.next({ contains: "steady" });
+				yield* Fiber.interrupt(fiber);
+				const program = yield* Fiber.await(fiber);
+				assert.isTrue(Exit.isFailure(program) && Cause.hasInterruptsOnly(program.cause), messageOf(program));
+				const read = yield* Effect.exit(screen.plainFrame);
+				assert.isTrue(Exit.isSuccess(read), `the read reports no crash: ${messageOf(read)}`);
+				assert.include(Exit.isSuccess(read) ? read.value : "", "steady");
+			}).pipe(Effect.scoped, Effect.timeout("2 seconds")),
+	);
+
+	it.live("control: the same crash with no interrupt is a defect on the screen", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session();
+			const Swap = (props: { readonly control: { readonly resolve: (value: number) => void } }): ReactElement => {
+				useKeys(KeyTable.make([{ keys: ["enter"], action: "go", help: "go" }]), () => props.control.resolve(1));
+				return createElement(CrashOnUnmount);
+			};
+			const fiber = yield* Effect.forkScoped(
+				CliUi.run<number>((control) => createElement(Swap, { control })).pipe(Effect.provide(session.layer)),
+			);
+			const screen = yield* session.next({ contains: "steady" });
+			yield* screen.press("enter");
+			const program = yield* Fiber.await(fiber);
+			assert.include(messageOf(program), "crashed on unmount");
+			assert.include(messageOf(yield* Effect.exit(screen.plainFrame)), "crashed on unmount");
+		}).pipe(Effect.scoped, Effect.timeout("2 seconds")),
+	);
+
+	it.live("a run that already died keeps its whole cause: a failing finalizer's defect is not dropped", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session();
+			const fiber = yield* Effect.forkScoped(
+				CliUi.run(() => createElement(Boom)).pipe(
+					Effect.provide(
+						Layer.succeed(UiRenderOptions, {
+							onUnmount: () => {
+								throw new Error("finalizer failed");
+							},
+						}),
+					),
+					Effect.provide(session.layer),
+				),
+			);
+			const program = yield* Fiber.await(fiber);
+			const defects = Exit.isFailure(program)
+				? program.cause.reasons.filter(Cause.isDieReason).map((reason) => String(reason.defect))
+				: [];
+			assert.isTrue(
+				defects.some((defect) => defect.includes("component crashed")),
+				JSON.stringify(defects),
+			);
+			assert.isTrue(
+				defects.some((defect) => defect.includes("finalizer failed")),
+				JSON.stringify(defects),
+			);
 		}).pipe(Effect.scoped, Effect.timeout("2 seconds")),
 	);
 });

@@ -122,7 +122,9 @@ const mount = <A>(
 			(_, exit) =>
 				Effect.sync(() => {
 					const died = Exit.isFailure(exit) ? exit.cause.reasons.find(Cause.isDieReason) : undefined;
-					overrides.onUnmount?.(died === undefined ? crash.current : { defect: died.defect });
+					// An interrupt stays an interrupt, as `run` reports it: a crash recorded while it unmounts is not reported.
+					const interrupted = Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause);
+					overrides.onUnmount?.(died !== undefined ? { defect: died.defect } : interrupted ? undefined : crash.current);
 				}),
 		);
 		const { ink, react } = yield* loadInk;
@@ -207,7 +209,8 @@ export class CliUi {
 	 * stdout. So is a `useKeys` handler that throws; a handler a consumer registers with Ink's own `useInput` or
 	 * `usePaste` is outside the kit, and what it throws escapes as Ink leaves it. A crash wins over an end in the same
 	 * tick: a handler that cancels or resolves and then throws, or a component that throws before the screen has
-	 * unmounted, is a defect, never the `Cancelled` or the value.
+	 * unmounted, is a defect, never the `Cancelled` or the value. An interrupt stays an interrupt, even when the tree
+	 * reports a crash as it unmounts.
 	 *
 	 * A screen draws on stdout, and is interactive when `CliInteractive` is, which reads stdout's terminal.
 	 *
@@ -238,8 +241,11 @@ export class CliUi {
 			);
 			// A tree that crashed is a defect however the screen ended: a cancel or a resolve in the same tick, which
 			// settled the result first, must not hide it. An interrupt stays an interrupt.
+			// A run that already died keeps its whole cause, a failing finalizer's defect included. The interrupt check is
+			// defensive: a fiber interrupted from outside stops before it gets here.
 			const interrupted = Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause);
-			if (crash.current !== undefined && !interrupted) return yield* Effect.die(crash.current.defect);
+			const died = Exit.isFailure(exit) && exit.cause.reasons.some(Cause.isDieReason);
+			if (crash.current !== undefined && !interrupted && !died) return yield* Effect.die(crash.current.defect);
 			return yield* exit;
 		});
 
