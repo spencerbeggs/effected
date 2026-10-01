@@ -69,9 +69,12 @@ export interface LiveHandle<S> {
 	/** The current state of the fold. */
 	readonly state: Effect.Effect<S>;
 	/**
-	 * A `Console` whose lines land above the frame while a run is mounted, and go straight to the stream otherwise:
-	 * `log`, `info` and `debug` to stdout, `error`, `warn` and `trace` to stderr. Provide it around the work done while
-	 * the view is mounted; a line written to the terminal any other way tears the frame.
+	 * A `Console` whose every method writes above the frame while a run is mounted, and straight to the stream
+	 * otherwise; none falls through to the program's own console. Output is split as Node's console splits it: `log`,
+	 * `info`, `debug`, `dir`, `dirxml`, `table`, `count`, `timeLog`, `timeEnd` and a group's label to stdout, and `error`,
+	 * `warn`, `trace` and a failed `assert` to stderr; a group indents what follows. An `Error` argument is written with
+	 * its stack. `clear` does nothing, since erasing the screen would take the scrollback above the frame. Provide it
+	 * around the work done while the view is mounted; a line written to the terminal any other way tears the frame.
 	 */
 	readonly logConsole: Console.Console;
 	/** Completes once the event stream has ended and the last run's frame is committed. */
