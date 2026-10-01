@@ -136,3 +136,108 @@ describe("CliRuntime.main: the log level applies while the platform builds (F3)"
 		}),
 	);
 });
+
+describe("CliRuntime.main: format auto decides the build-time lines from env and argv (A1)", () => {
+	const building = Layer.mergeAll(io, Layer.effectDiscard(Effect.logDebug("migration ran")));
+	const program = Effect.logDebug("handler ran");
+	const isJson = (line: string): boolean => {
+		try {
+			JSON.parse(line);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+	const run = (env: Record<string, string>, log: { readonly argv?: ReadonlyArray<string> } = {}) =>
+		Effect.gen(function* () {
+			const { double, out, err } = capturing();
+			yield* CliRuntime.main(program, {
+				platform: building,
+				env: { audienceEnvVar: "TOOL_AUDIENCE", log: { level: "Debug", ...log } },
+			}).pipe(
+				Effect.provideService(Console.Console, double),
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)),
+			);
+			assert.deepStrictEqual(out, []);
+			const built = err.find((line) => line.includes("migration ran"));
+			assert.isDefined(built, JSON.stringify(err));
+			return { err, built: built as string };
+		});
+
+	it.effect("AI_AGENT: every stderr line is NDJSON, build-time and runtime alike", () =>
+		Effect.gen(function* () {
+			const { err } = yield* run({ AI_AGENT: "claude-code_x_agent" });
+			assert.isTrue(
+				err.some((line) => line.includes("handler ran")),
+				"control: the runtime line was written",
+			);
+			assert.deepStrictEqual(
+				err.filter((line) => !isJson(line)),
+				[],
+			);
+		}),
+	);
+
+	it.effect("CI: the build-time line is NDJSON", () =>
+		Effect.gen(function* () {
+			assert.isTrue(isJson((yield* run({ CI: "true" })).built));
+		}),
+	);
+
+	it.effect("--agent in the argv option, with no env: the build-time line is NDJSON", () =>
+		Effect.gen(function* () {
+			assert.isTrue(isJson((yield* run({}, { argv: ["--agent", "go"] })).built));
+		}),
+	);
+
+	it.effect("--human in argv beats a detected agent: plain", () =>
+		Effect.gen(function* () {
+			const { built } = yield* run({ AI_AGENT: "claude-code_x_agent" }, { argv: ["--human"] });
+			assert.isFalse(isJson(built), built);
+		}),
+	);
+
+	it.effect("the audience override variable beats detection: plain", () =>
+		Effect.gen(function* () {
+			const { built } = yield* run({ AI_AGENT: "claude-code_x_agent", TOOL_AUDIENCE: "human" });
+			assert.isFalse(isJson(built), built);
+		}),
+	);
+
+	it.effect("no agent and no CI: plain, as before", () =>
+		Effect.gen(function* () {
+			const { built } = yield* run({});
+			assert.isFalse(isJson(built), built);
+		}),
+	);
+
+	it.effect("control: the argv the platform's Stdio carries is not seen at build time, only the option's", () =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			const withArgs = Layer.mergeAll(
+				Stdio.layerTest({
+					args: Effect.succeed(["--agent"]),
+					stdinIsTerminal: Effect.succeed(false),
+					stdoutIsTerminal: Effect.succeed(false),
+				}),
+				Layer.effectDiscard(Effect.logDebug("migration ran")),
+				Layer.succeed(
+					Terminal.Terminal,
+					Terminal.make({
+						columns: Effect.succeed(80),
+						rows: Effect.succeed(24),
+						readInput: Effect.die("unused"),
+						readLine: Effect.die("unused"),
+						display: () => Effect.void,
+					}),
+				),
+			);
+			yield* CliRuntime.main(Effect.void, { platform: withArgs, env: { log: { level: "Debug" } } }).pipe(
+				Effect.provideService(Console.Console, double),
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({})),
+			);
+			const built = err.find((line) => line.includes("migration ran")) ?? "";
+			assert.isFalse(isJson(built), built);
+		}),
+	);
+});

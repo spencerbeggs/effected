@@ -490,7 +490,7 @@ export class CliRuntime {
 						// only, so its lowered MinimumLogLevel never reaches this CliLog's own build, which reads the ambient one.
 						Layer.provide(
 							Layer.provideMerge(
-								options.platform.pipe(Layer.provide(platformLogLayer(envLog))),
+								options.platform.pipe(Layer.provide(platformLogLayer(envLog, options.env?.audienceEnvVar))),
 								CliLogger.layer(envLog.logger),
 							),
 						),

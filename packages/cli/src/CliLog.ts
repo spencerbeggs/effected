@@ -1,4 +1,4 @@
-import type { RuntimeEnv } from "@effected/env";
+import type { AudienceKind, RuntimeEnv } from "@effected/env";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
 import type { Fiber, FileSystem } from "effect";
@@ -22,6 +22,7 @@ import { paintStyle } from "./internal/ansi.js";
 import { Level, passes } from "./internal/diagnostics.js";
 import { makeFileSink } from "./internal/fileSink.js";
 import { neutralizeJson } from "./internal/logSafety.js";
+import { scanAudience } from "./internal/scanAudience.js";
 import type { Style } from "./Token.js";
 
 /**
@@ -62,11 +63,24 @@ export interface CliLogOptions {
 	 * terminal on stderr and NDJSON otherwise.
 	 *
 	 * @remarks
-	 * Under `CliRuntime.main` with `env.log`, `auto` (like `pretty`) builds the platform under a plain `CliLogger`,
-	 * since the audience is not known yet, so what the platform logs while it builds is a plain line even for an
-	 * agent whose runtime lines are NDJSON. `json` builds it under the full `CliLog`, so those lines are NDJSON too.
+	 * Under `CliRuntime.main` with `env.log`, what the platform logs while it builds is written before the platform
+	 * provides the terminal or the arguments, so `auto` decides those lines from what needs no platform: an audience
+	 * flag in {@link CliLogOptions.argv}, else the audience override variable (`env.audienceEnvVar`), else agent and
+	 * CI detection from the environment. An agent or a CI gets NDJSON, as its runtime lines are; anything else gets
+	 * a plain line. The terminal is not consulted for those lines. `json` is NDJSON and `pretty` plain throughout.
 	 */
 	readonly format?: "auto" | "json" | "pretty" | undefined;
+	/**
+	 * The program's arguments, for the format of what the platform logs while it builds under `CliRuntime.main` with
+	 * `format: "auto"`: an audience flag (`--agent`, `--ci`, `--human`, `--audience <kind>`) in them decides those
+	 * lines as it decides the run's. Only `CliRuntime.main` reads this.
+	 *
+	 * @remarks
+	 * The arguments core parses come from the platform's `Stdio`, which does not exist until the platform is built, and
+	 * this package never reads `process`. A Node host passes `process.argv.slice(2)`; without it the build-time lines
+	 * follow the environment alone, so `--agent` with no agent detected gets plain lines until the platform is built.
+	 */
+	readonly argv?: ReadonlyArray<string> | undefined;
 	/** Options for the `CliLogger` this layer builds for ordinary log lines; see {@link CliLoggerOptions}. */
 	readonly logger?: CliLoggerOptions | undefined;
 	/**
@@ -463,22 +477,53 @@ export class CliLog {
 }
 
 /**
+ * The audience while the platform builds, from what needs no platform: a flag in `argv` (the rule `CliAudience` reads
+ * argv with), else the override variable, else detection from the environment. No terminal is consulted. Silent: the
+ * environment layer warns about an invalid override value itself, once.
+ */
+const buildTimeAudience = (
+	argv: ReadonlyArray<string> | undefined,
+	audienceEnvVar: string | undefined,
+): Effect.Effect<AudienceKind> => {
+	const { given, conflict } = scanAudience(argv ?? []);
+	const [flagged] = given;
+	// A conflict is core's usage error later; until then the environment decides, as it does at runtime.
+	if (!conflict && flagged !== undefined) return Effect.succeed(flagged);
+	return Effect.map(Audience, (audience) => audience.kind).pipe(
+		Effect.provide(
+			Audience.layer(audienceEnvVar === undefined ? undefined : { envVar: audienceEnvVar }).pipe(
+				Layer.provide(CurrentRuntimeEnv.layer),
+			),
+		),
+		Effect.provideService(Logger.CurrentLoggers, new Set<Logger.Logger<unknown, unknown>>()),
+	);
+};
+
+/**
  * The logger the platform is built under by `CliRuntime.main` with `env.log`: the log level and env var apply to
  * what the platform logs while it builds, too.
  *
  * @remarks
- * With `format: "json"` it is the full `CliLog.layer` (that format needs neither the audience nor the terminal, which
- * the platform has not built yet), without the file sink, whose `FileSystem` the platform provides. Otherwise it is
- * the plain `CliLogger`, with `MinimumLogLevel` lowered to the resolved level. The level is resolved silently: the
+ * With `format: "json"`, or `auto` when the build-time audience (`argv`, the override variable, detection) is an
+ * agent or a CI, it is the full `CliLog.layer` in NDJSON (that format needs neither the audience nor the terminal,
+ * which the platform has not built yet), without the file sink, whose `FileSystem` the platform provides. Otherwise it
+ * is the plain `CliLogger`, with `MinimumLogLevel` lowered to the resolved level. The level is resolved silently: the
  * program's own `CliLog.layer` warns about an invalid value, once.
  *
  * @internal
  */
-export const platformLogLayer = (options: CliLogOptions | CliLogFileOptions): Layer.Layer<never> =>
+export const platformLogLayer = (
+	options: CliLogOptions | CliLogFileOptions,
+	audienceEnvVar?: string | undefined,
+): Layer.Layer<never> =>
 	Layer.unwrap(
 		Effect.gen(function* () {
 			const { level } = yield* readLevel(options.level, options.envVar);
-			if (options.format === "json") {
+			const format = options.format ?? "auto";
+			const ndjson =
+				format === "json" ||
+				(format === "auto" && (yield* buildTimeAudience(options.argv, audienceEnvVar)) !== "human");
+			if (ndjson) {
 				return CliLog.layer({
 					level,
 					format: "json",
