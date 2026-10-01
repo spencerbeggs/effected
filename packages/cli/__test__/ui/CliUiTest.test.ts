@@ -230,6 +230,24 @@ describe("CliUiTest.render", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect(
+		"rerender on a handle still queued behind another screen dies at the mount cap instead of hanging",
+		() =>
+			Effect.gen(function* () {
+				yield* CliUiTest.render(showing(() => createElement(Text, null, "first")));
+				const queued = yield* CliUiTest.render(showing(() => createElement(Text, null, "second")));
+				assert.deepStrictEqual(yield* queued.frames, [], "the second screen is waiting for the first");
+				const exit = yield* Effect.exit(queued.rerender(showing(() => createElement(Text, null, "swapped"))));
+				if (Exit.isFailure(exit)) {
+					const defect = Cause.squash(exit.cause);
+					assert.include(defect instanceof Error ? defect.message : "", "before the screen mounted");
+				} else {
+					assert.fail("expected a defect, but the rerender succeeded");
+				}
+			}).pipe(Effect.scoped),
+		15_000,
+	);
+
 	it.effect("closing the scope unmounts the screen", () =>
 		Effect.gen(function* () {
 			let unmounted = false;
@@ -257,6 +275,8 @@ describe("CliUiTest.serializer", () => {
 			assert.isTrue(CliUiTest.serializer.test("[success]ok[/success]"));
 			assert.isFalse(CliUiTest.serializer.test("plain text"), "a plain string is left to the default serializer");
 			assert.isTrue(CliUiTest.serializer.test("[fg:red]x[/fg]"));
+			assert.isFalse(CliUiTest.serializer.test("[info] starting"), "a log-style level prefix is not markup");
+			assert.isFalse(CliUiTest.serializer.test("[error] failed\n[info] retrying"), "nor are several of them");
 			assert.isFalse(
 				CliUiTest.serializer.test("some [b]bold[/b], [i]italic[/i] and [u]underlined[/u] BBCode"),
 				"style-only brackets in unrelated data are not claimed",

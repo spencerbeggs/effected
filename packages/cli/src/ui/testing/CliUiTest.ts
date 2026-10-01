@@ -65,7 +65,8 @@ export interface CliUiTestHandle<A> {
 	 * `screen` is called with the same `ScreenControl` the first screen got, so `result` still resolves through it,
 	 * and only the screen's own subtree is swapped: the error boundary, root keys and colour hold stay mounted. Ink's
 	 * own `rerender` is never used. A rerender after the screen has ended is a defect, not a no-op, because a test
-	 * that does it has lost track of the screen.
+	 * that does it has lost track of the screen; so is one on a screen that has not mounted within 2 s, such as a
+	 * handle queued behind another mounted screen.
 	 */
 	readonly rerender: (screen: Screen<A>) => Effect.Effect<void>;
 	/** The latest frame as token markup ({@link CliUiTest.styled}), each line's trailing spaces trimmed. */
@@ -210,8 +211,11 @@ const trimLines = (text: string): string =>
 		.map((line) => line.trimEnd())
 		.join("\n");
 
-/** Markup only this harness writes: a token tag or a colour tag. Style-only tags (`[b]`, `[i]`) are too common to claim. */
-const MARKUP = new RegExp(`\\[/?(?:${TOKENS.join("|")})\\]|\\[(?:fg|bg):[^\\]\\s]+\\]`);
+/**
+ * Markup only this harness writes: a token tag opened and closed (`[info]…[/info]`), or a colour tag. A lone
+ * `[info]` is a log prefix, and style-only tags (`[b]`, `[i]`) are too common in unrelated data, so neither is claimed.
+ */
+const MARKUP = new RegExp(`\\[(${TOKENS.join("|")})\\][\\s\\S]*?\\[/\\1\\]|\\[(?:fg|bg):[^\\]\\s]+\\]`);
 
 /** Run `register`'s check on native timers, which a `TestClock` cannot hold, until it says done. */
 const realTime = (poll: () => boolean): Effect.Effect<void> =>
@@ -231,6 +235,8 @@ const TRAILING_QUIET_MS = 8;
 const ESCAPE_FLUSH_MS = 30;
 const MOUNT_LIMIT_MS = 2_000;
 const RERENDER_AFTER_END = "@effected/cli/ui/testing: rerender after the screen ended";
+const RERENDER_BEFORE_MOUNT =
+	"@effected/cli/ui/testing: rerender before the screen mounted (waited 2 s; is another screen still mounted?)";
 
 /**
  * Drive and read Ink screens in tests: mount a screen on in-memory streams, press keys, and read its frames as token
@@ -366,9 +372,12 @@ export class CliUiTest {
 					}),
 				rerender: (next) =>
 					Effect.gen(function* () {
-						yield* realTime(() => swap !== undefined || ended);
-						if (ended || swap === undefined || control === undefined) {
-							return yield* Effect.die(new Error(RERENDER_AFTER_END));
+						// Bounded like render's first frame: a handle queued behind another screen may never mount here.
+						const mountedBy = Date.now() + MOUNT_LIMIT_MS;
+						yield* realTime(() => swap !== undefined || ended || Date.now() >= mountedBy);
+						if (ended) return yield* Effect.die(new Error(RERENDER_AFTER_END));
+						if (swap === undefined || control === undefined) {
+							return yield* Effect.die(new Error(RERENDER_BEFORE_MOUNT));
 						}
 						const given = control;
 						const element = yield* Effect.promise(async () => next(given));
@@ -398,9 +407,9 @@ export class CliUiTest {
 	static readonly styled: (ansi: string) => string = styled;
 
 	/**
-	 * A Vitest snapshot serializer. It claims a string carrying escapes, a token tag or a colour tag (a raw or styled
-	 * frame, or a `Render.ansi` string), but not one whose only brackets are style tags like `[b]`, which unrelated data
-	 * uses too. It prints the string as token markup with each line's trailing spaces trimmed, so a snapshot reads
+	 * A Vitest snapshot serializer. It claims a string carrying escapes, a token tag opened and closed, or a colour
+	 * tag (a raw or styled frame, or a `Render.ansi` string), but not a log line's lone `[info]` prefix, nor one whose
+	 * only brackets are style tags like `[b]`, which unrelated data uses too. It prints the string as token markup with each line's trailing spaces trimmed, so a snapshot reads
 	 * without escapes and does not churn with the palette. Register it with `expect.addSnapshotSerializer`.
 	 */
 	static readonly serializer: {
