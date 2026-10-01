@@ -22,6 +22,11 @@ export interface InkConsole {
 	 * key as the global.
 	 */
 	readonly writer: Console.Console;
+	/**
+	 * Write `text` and a line break to stdout, as `writer.log` would but as given: no formatting and no group indent.
+	 * For a frame drawn as a string.
+	 */
+	readonly print: (text: string) => void;
 	/** Mounted inside the Ink tree, it hands Ink's writers to `writer`, and renders its children. */
 	readonly Bridge: FunctionComponent<{ readonly children?: ReactNode }>;
 	/** Write straight to the streams from now on, until a `Bridge` mounts again; call it before Ink's `unmount()`. */
@@ -164,6 +169,11 @@ export const makeInkConsole: Effect.Effect<InkConsole> = Effect.gen(function* ()
 	};
 	return {
 		writer,
+		print: (text) => {
+			const data = `${text}\n`;
+			if (attached !== undefined) attached.out(data);
+			else streams.stdout.write(data);
+		},
 		Bridge,
 		detach: () => {
 			attached = undefined;

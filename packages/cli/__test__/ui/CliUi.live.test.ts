@@ -1,110 +1,31 @@
 import { assert, describe, it } from "@effect/vitest";
-import type { Cause } from "effect";
-import { Effect, Fiber, Option, PubSub, Queue, Schedule, Stream } from "effect";
-import { Box, Text, render } from "ink";
-import type { ReactElement } from "react";
-import { createElement, useEffect } from "react";
-import { CliInteractive, CliTheme } from "../../src/index.js";
-import type { InkChalk } from "../../src/ui/internal/inkChalk.js";
-import { inkChalk } from "../../src/ui/internal/inkChalk.js";
-import { UiRenderOptions } from "../../src/ui/internal/renderOptions.js";
+import { Effect, Fiber, PubSub, Queue, Stream } from "effect";
+import { Text, render } from "ink";
+import { createElement } from "react";
+import { CliTheme } from "../../src/index.js";
 import type { FakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
-import type { LiveHandle, LiveOptions } from "../../src/ui.js";
-import { CliUi, UiStreams } from "../../src/ui.js";
+import type { LiveHandle } from "../../src/ui.js";
+import { CliUi } from "../../src/ui.js";
+import type { Ev, State } from "../helpers/live.js";
+import {
+	CLEAR_SCREEN,
+	CLEAR_SCROLLBACK,
+	End,
+	SHOW_CURSOR,
+	Start,
+	capturing,
+	chalk,
+	frameOf,
+	liveOn,
+	mountsAndResolves,
+	optionsOf,
+	queueOf,
+	tick,
+	until,
+	warningsIn,
+} from "../helpers/live.js";
 import { screenAfter } from "../helpers/terminalModel.js";
-
-const ESC = String.fromCharCode(0x1b);
-const SHOW_CURSOR = `${ESC}[?25h`;
-const CLEAR_SCROLLBACK = `${ESC}[3J`;
-const CLEAR_SCREEN = `${ESC}[2J`;
-
-type Ev = { readonly _tag: "Start" } | { readonly _tag: "Tick"; readonly n: number } | { readonly _tag: "End" };
-const Start: Ev = { _tag: "Start" };
-const End: Ev = { _tag: "End" };
-const tick = (n: number): Ev => ({ _tag: "Tick", n });
-
-interface State {
-	readonly run: number;
-	readonly last: string;
-	readonly seen: ReadonlyArray<string>;
-}
-
-const reduce = (state: State, event: Ev): State => {
-	const seen = [...state.seen, event._tag === "Tick" ? `tick ${event.n}` : event._tag];
-	switch (event._tag) {
-		case "Start":
-			return { run: state.run + 1, last: "started", seen };
-		case "Tick":
-			return { ...state, last: `tick ${event.n}`, seen };
-		case "End":
-			return { ...state, last: "ended", seen };
-	}
-};
-
-const frameOf = (state: State): ReactElement =>
-	createElement(
-		Box,
-		{ flexDirection: "column" },
-		createElement(Text, null, `RUN ${state.run}`),
-		createElement(Text, null, state.last),
-	);
-
-const optionsOf = (events: Stream.Stream<Ev>, extra: Partial<LiveOptions<Ev, State>> = {}): LiveOptions<Ev, State> => ({
-	events,
-	initial: { run: 0, last: "idle", seen: [] },
-	reduce,
-	render: frameOf,
-	isStart: (event) => event._tag === "Start",
-	isTerminal: (event) => event._tag === "End",
-	...extra,
-});
-
-/** `CliUi.live` on fake streams, interactive unless told otherwise, at colour `color`. */
-const liveOn = (
-	fake: FakeStreams,
-	options: LiveOptions<Ev, State>,
-	settings: {
-		readonly interactive?: boolean;
-		readonly color?: "none" | "truecolor";
-		readonly onMount?: () => void;
-	} = {},
-) =>
-	CliUi.live(options).pipe(
-		Effect.provideService(UiStreams, fake.streams),
-		Effect.provideService(CliInteractive, settings.interactive ?? true),
-		Effect.provideService(UiRenderOptions, settings.onMount === undefined ? {} : { onMount: settings.onMount }),
-		Effect.provide(CliTheme.layerTest({ color: settings.color ?? "none" })),
-	);
-
-/** Wait, in real time, until `ready` holds; dies after two seconds. */
-const until = (ready: () => boolean): Effect.Effect<void> =>
-	Effect.suspend(() => (ready() ? Effect.void : Effect.fail("not yet"))).pipe(
-		Effect.retry(Schedule.spaced("5 millis")),
-		Effect.timeout("2 seconds"),
-		Effect.orDie,
-	);
-
-/** A `CliUi.run` screen that resolves as soon as it mounts: it can only finish once the mount permit is free. */
-const mountsAndResolves = (fake: FakeStreams) => {
-	const Resolve = (props: { readonly resolve: (value: string) => void }): ReactElement => {
-		useEffect(() => props.resolve("mounted"), [props.resolve]);
-		return createElement(Text, null, "a screen");
-	};
-	return CliUi.run<string>((control) => createElement(Resolve, { resolve: control.resolve })).pipe(
-		Effect.provideService(UiStreams, fake.streams),
-		Effect.provideService(CliInteractive, true),
-		Effect.provide(CliTheme.layerTest()),
-		Effect.timeout("2 seconds"),
-	);
-};
-
-const chalk: Effect.Effect<InkChalk> = Effect.flatMap(
-	Effect.promise(() => inkChalk()),
-	Option.match({ onNone: () => Effect.die(new Error("Ink's chalk did not resolve")), onSome: Effect.succeed }),
-);
-
-const queueOf = () => Queue.unbounded<Ev, Cause.Done>();
 
 describe("CliUi.live: subscription and the fold", () => {
 	it.live("a PubSub-backed stream is subscribed when live returns: an event published at once is seen", () =>
@@ -329,12 +250,15 @@ describe("CliUi.live: closing and failing (Task 3 review, minors 4 and 5a)", () 
 	it.live("a mount that fails partway releases its run: the mount permit is free for a CliUi.run", () =>
 		Effect.gen(function* () {
 			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const log = capturing();
 			const handle = yield* liveOn(fake, optionsOf(Stream.fromIterable([Start, tick(1)])), {
+				console: log.console,
 				onMount: () => {
 					throw new Error("the mount failed");
 				},
 			});
 			yield* Effect.exit(handle.done.pipe(Effect.timeout("1 second")));
+			assert.strictEqual(warningsIn(log.lines).length, 1, "the failure is said once, as a warning");
 			assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted", "the permit was released");
 		}).pipe(Effect.scoped),
 	);

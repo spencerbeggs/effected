@@ -1,7 +1,7 @@
 // Root types are named through the package's own name, so the emitted ui.d.ts imports them from "@effected/cli".
 import type * as Cli from "@effected/cli";
 import type { Console } from "effect";
-import { Clock, Effect, Exit, Fiber, Pull, Scope, Stream } from "effect";
+import { Cause, Clock, Duration, Effect, Exit, Fiber, Pull, Queue, Schedule, Scope, Stream } from "effect";
 import type { FunctionComponent, ReactElement, ReactNode } from "react";
 import { CliInteractive } from "../CliInteractive.js";
 import { CliTheme } from "../CliTheme.js";
@@ -46,10 +46,14 @@ export interface LiveOptions<E, S> {
 	readonly isTerminal: (event: E) => boolean;
 	/**
 	 * `"owned"` (the default) for a view that owns its output, `"hosted"` for one drawn inside a host's (a test
-	 * reporter). They differ only when the run is not interactive.
+	 * reporter). They differ only when the run is not interactive: owned writes each run's final frame once, as a
+	 * string; hosted writes nothing, its host having its own output.
 	 */
 	readonly mode?: "owned" | "hosted";
-	/** The frame tick, in milliseconds; 80 by default. */
+	/**
+	 * The frame tick, in milliseconds; 80 by default. While a run is drawn the view redraws on every tick, so a spinner
+	 * turns without events. Anything but a positive, finite number is a defect.
+	 */
 	readonly tickMillis?: number;
 	/**
 	 * Clear React's user-timing entries after every render: `true`, `false`, or `"auto"` (the default), which clears
@@ -100,11 +104,41 @@ const heightClamp: () => FunctionComponent<{ readonly children?: ReactNode }> = 
 	return HeightClamp;
 });
 
-/** One mounted run: its scope (permit, colour, Ink instance) and the slot that swaps its frame. */
-interface Run {
+/** What the controller acts on: a chunk of events, a tick, a render failure to look at, or the end of the stream. */
+type Message<E> =
+	| { readonly _tag: "Events"; readonly chunk: ReadonlyArray<E> }
+	| { readonly _tag: "Tick"; readonly frame: number }
+	| { readonly _tag: "Failed" }
+	| { readonly _tag: "Ended" };
+
+/** What is mounted for a run: its scope (permit, colour, Ink instance, tick) and the slot that swaps its frame. */
+interface Mounted {
 	readonly scope: Scope.Closeable;
 	readonly slot: HolderSlot;
 }
+
+/** A run, from its first event to its terminal one, mounted or not. */
+interface Run<S> {
+	mounted: Mounted | undefined;
+	/** A render failed, or the mount did: the run is unmounted and draws nothing more. */
+	degraded: boolean;
+	/** A frame of this run was committed to the terminal. */
+	painted: boolean;
+	/** The error a render threw, reported by the error boundary, not yet acted on. */
+	failed: { readonly error: unknown } | undefined;
+	/** The frame index last drawn. */
+	frame: number;
+	/** The last state and frame committed, which the boundary draws in place of a frame that threw. */
+	good: { readonly state: S; readonly frame: number } | undefined;
+}
+
+const TICK_INVALID = (tickMillis: number): string =>
+	`@effected/cli/ui: CliUi.live's tickMillis must be a positive, finite number of milliseconds, not ${tickMillis}`;
+
+const DEGRADED = (error: unknown): string =>
+	`@effected/cli/ui: the live view stopped drawing this run, and will draw its last frame when it ends: ${
+		error instanceof Error ? error.message : String(error)
+	}`;
 
 /**
  * `CliUi.live`, kept in its own module: see `CliUi.live` for the contract.
@@ -115,125 +149,312 @@ export const live = <E, S>(
 	options: LiveOptions<E, S>,
 ): Effect.Effect<LiveHandle<S>, never, Scope.Scope | Cli.CliTheme> =>
 	Effect.gen(function* () {
+		const tickMillis = options.tickMillis ?? 80;
+		if (!(Number.isFinite(tickMillis) && tickMillis > 0)) return yield* Effect.die(new Error(TICK_INVALID(tickMillis)));
 		const theme = (yield* CliTheme).forStream("stdout");
 		const interactive = yield* CliInteractive;
 		const streams = yield* UiStreams;
 		const overrides = yield* UiRenderOptions;
 		const drain = yield* resolveDrain(options.drainPerformance ?? "auto");
-		const tickMillis = options.tickMillis ?? 80;
 		const bridge = yield* makeInkConsole;
+		const inbox = yield* Queue.unbounded<Message<E>>();
 
 		let state = options.initial;
-		let run: Run | undefined;
+		let run: Run<S> | undefined;
 
-		// The consumer's render runs inside React, under the error boundary, never in the drain fiber.
+		// The consumer's render runs inside React, under an error boundary, never in a fiber of the kit's.
 		const Frame = (props: { readonly state: S; readonly frame: number }): ReactElement =>
 			options.render(props.state, props.frame);
 		const frameOf = Effect.map(Clock.currentTimeMillis, (now) => Math.floor(now / tickMillis));
-		const elementOf = (frame: number): ReactElement => inkModules().react.createElement(Frame, { state, frame });
+		const elementOf = (shown: S, frame: number): ReactElement =>
+			inkModules().react.createElement(Frame, { state: shown, frame });
 
-		// A run's scope is its own, not a child of the caller's: the caller's scope ends runs through one finalizer that
-		// stops the drain first, so no event is folded or drawn while a run is closing.
-		const mountRun: Effect.Effect<void> = Effect.gen(function* () {
-			const scope = yield* Scope.make("sequential");
-			const slot = holderSlot();
-			yield* Effect.gen(function* () {
-				// One Ink mount at a time, process-wide, held for this run only: a `CliUi.run` between runs mounts.
-				yield* Effect.acquireRelease(mountPermit.take(1), () => mountPermit.release(1), { interruptible: true });
-				yield* Effect.acquireRelease(
-					Effect.sync(() => overrides.onMount?.()),
-					() => Effect.sync(() => overrides.onUnmount?.(undefined)),
-				);
-				const { ink, react } = yield* loadInk;
-				yield* withInkColour(theme.color);
-				const initial = elementOf(yield* frameOf);
-				const tree = react.createElement(errorBoundary(), {
-					// What a render that throws comes to is the degrade path's; until then the boundary draws nothing.
-					onError: () => undefined,
-					children: uiProviders(
-						{ theme, glyphs: theme.glyphs },
-						react.createElement(
-							bridge.Bridge,
-							null,
-							react.createElement(heightClamp(), null, react.createElement(holder(), { initial, bind: slot.bind })),
-						),
-					),
-				});
-				yield* Effect.acquireRelease(
-					Effect.sync(() => {
-						const instance = ink.render(tree, {
-							stdin: streams.stdin,
-							stdout: streams.stdout,
-							stderr: streams.stderr,
-							interactive: true,
-							exitOnCtrlC: false,
-							patchConsole: false,
-							...(overrides.debug === true ? { debug: true } : {}),
-							...(overrides.onRender === undefined ? {} : { onRender: overrides.onRender }),
-						});
-						drainPerformance(drain);
-						return instance;
-					}),
-					(instance) =>
-						Effect.promise(async () => {
-							// Ink drops a hook write once it has unmounted: the console goes back to the streams first.
-							bridge.detach();
-							// Ink's own unmount commits the last frame to the terminal; `clear()` is never called.
-							instance.unmount();
-							drainPerformance(drain);
-							await instance.waitUntilExit().catch(() => undefined);
-						}),
-				);
-			}).pipe(
-				Scope.provide(scope),
-				// A mount that fails or is interrupted partway releases what it took: the permit, the colour, the instance.
-				Effect.onExit((exit) => (Exit.isSuccess(exit) ? Effect.void : Scope.close(scope, exit))),
-			);
-			run = { scope, slot };
+		/** Unmount what a run has mounted: Ink's own unmount commits the last frame. Nothing is written after it. */
+		const unmount = (current: Run<S>): Effect.Effect<void> =>
+			Effect.suspend(() => {
+				const mounted = current.mounted;
+				current.mounted = undefined;
+				return mounted === undefined ? Effect.void : Scope.close(mounted.scope, Exit.void);
+			});
+
+		/** Stop drawing a run: unmount first, so the one warning never lands inside a frame (ruling P1), then warn. */
+		const degrade = (current: Run<S>, error: unknown): Effect.Effect<void> =>
+			Effect.suspend(() => {
+				if (current.degraded) return unmount(current);
+				current.degraded = true;
+				return Effect.andThen(unmount(current), Effect.logWarning(DEGRADED(error)));
+			});
+
+		/** Act on a failure the boundary reported for the run mounted now, if any. */
+		const checkFailure: Effect.Effect<void> = Effect.suspend(() => {
+			const current = run;
+			const failed = current?.failed;
+			return current === undefined || failed === undefined ? Effect.void : degrade(current, failed.error);
 		});
 
+		/** The final frame as a string, at the stdout width (80 when it reports none) and with no height to fit. */
+		const printFrame = (current: Run<S>): Effect.Effect<void> =>
+			Effect.gen(function* () {
+				const { ink, react } = yield* loadInk;
+				const frame = yield* frameOf;
+				const reported = streams.stdout.columns;
+				const columns = reported !== undefined && reported > 0 ? reported : 80;
+				let failure: { readonly error: unknown } | undefined;
+				const tree = react.createElement(errorBoundary(), {
+					onError: (error) => {
+						failure ??= { error };
+					},
+					children: uiProviders(
+						{ theme, glyphs: theme.glyphs, size: { columns, rows: Number.POSITIVE_INFINITY } },
+						elementOf(state, frame),
+					),
+				});
+				const text = yield* Effect.scoped(
+					Effect.andThen(
+						withInkColour(theme.color),
+						Effect.sync(() => ink.renderToString(tree, { columns })),
+					),
+				);
+				drainPerformance(drain);
+				if (failure !== undefined) {
+					// Already said once for a degraded run; a run that never mounted says it here.
+					if (!current.degraded) {
+						current.degraded = true;
+						yield* Effect.logWarning(DEGRADED(failure.error));
+					}
+					return;
+				}
+				bridge.print(text);
+			});
+
+		/** Mount a run's view with the current state, its tick beside it; a failure degrades the run. */
+		const mount = (current: Run<S>): Effect.Effect<void> =>
+			Effect.gen(function* () {
+				const scope = yield* Scope.make("sequential");
+				const slot = holderSlot();
+				const report = (error: unknown): void => {
+					current.failed ??= { error };
+					Queue.offerUnsafe(inbox, { _tag: "Failed" });
+				};
+				yield* Effect.gen(function* () {
+					// One Ink mount at a time, process-wide, held for this run only: a `CliUi.run` between runs mounts.
+					yield* Effect.acquireRelease(mountPermit.take(1), () => mountPermit.release(1), { interruptible: true });
+					yield* Effect.acquireRelease(
+						Effect.sync(() => overrides.onMount?.()),
+						() => Effect.sync(() => overrides.onUnmount?.(undefined)),
+					);
+					const { ink, react } = yield* loadInk;
+					yield* withInkColour(theme.color);
+					const frame = yield* frameOf;
+					const initial = elementOf(state, frame);
+					const shown = state;
+					// A frame that throws is replaced by the last good one, guarded in turn, so the run's last frame stays.
+					const lastGood = (): ReactElement | null => {
+						const good = current.good;
+						return good === undefined
+							? null
+							: react.createElement(errorBoundary(), {
+									onError: () => undefined,
+									children: elementOf(good.state, good.frame),
+								});
+					};
+					const tree = react.createElement(errorBoundary(), {
+						onError: report,
+						children: uiProviders(
+							{ theme, glyphs: theme.glyphs },
+							react.createElement(
+								bridge.Bridge,
+								null,
+								react.createElement(
+									heightClamp(),
+									null,
+									react.createElement(errorBoundary(), {
+										onError: report,
+										fallback: lastGood,
+										children: react.createElement(holder(), { initial, bind: slot.bind }),
+									}),
+								),
+							),
+						),
+					});
+					yield* Effect.acquireRelease(
+						Effect.sync(() => {
+							const instance = ink.render(tree, {
+								stdin: streams.stdin,
+								stdout: streams.stdout,
+								stderr: streams.stderr,
+								interactive: true,
+								exitOnCtrlC: false,
+								patchConsole: false,
+								...(overrides.debug === true ? { debug: true } : {}),
+								...(overrides.onRender === undefined ? {} : { onRender: overrides.onRender }),
+							});
+							drainPerformance(drain);
+							return instance;
+						}),
+						(instance) =>
+							Effect.promise(async () => {
+								// Ink drops a hook write once it has unmounted: the console goes back to the streams first.
+								bridge.detach();
+								// Ink's own unmount commits the last frame to the terminal; `clear()` is never called.
+								instance.unmount();
+								drainPerformance(drain);
+								await instance.waitUntilExit().catch(() => undefined);
+							}),
+					);
+					// The tick, in the run's scope: interrupted with the run, so no timer outlives it (probe L7).
+					yield* Effect.forkIn(
+						// The frame index is read when the tick fires, so a frame is never skipped while the controller is busy.
+						Effect.repeat(
+							Effect.flatMap(frameOf, (at) => Queue.offer(inbox, { _tag: "Tick", frame: at })),
+							Schedule.spaced(Duration.millis(tickMillis)),
+						),
+						scope,
+					);
+					current.frame = frame;
+					if (current.failed === undefined) {
+						current.painted = true;
+						current.good = { state: shown, frame };
+					}
+				}).pipe(
+					Scope.provide(scope),
+					// A mount that fails or is interrupted partway releases what it took: the permit, the colour, the instance.
+					Effect.onExit((exit) => (Exit.isSuccess(exit) ? Effect.void : Scope.close(scope, exit))),
+				);
+				current.mounted = { scope, slot };
+				yield* checkFailure;
+			}).pipe(
+				Effect.catchCause((cause) =>
+					Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : degrade(current, Cause.squash(cause)),
+				),
+			);
+
+		/**
+		 * Push the current state to the mounted run, at `at` or the clock's frame, and wait for React to commit it; a
+		 * frame that throws degrades the run.
+		 */
+		const drawAt = (at: number | undefined): Effect.Effect<void> =>
+			Effect.suspend(() => {
+				const current = run;
+				const mounted = current?.mounted;
+				if (current === undefined || mounted === undefined) return Effect.void;
+				const shown = state;
+				return Effect.gen(function* () {
+					const frame = at ?? (yield* frameOf);
+					yield* Effect.callback<void>((resume) => {
+						mounted.slot.swap(elementOf(shown, frame), () => resume(Effect.void));
+					});
+					drainPerformance(drain);
+					current.frame = frame;
+					if (current.failed === undefined) {
+						current.painted = true;
+						current.good = { state: shown, frame };
+					}
+					yield* checkFailure;
+				});
+			});
+		const draw = drawAt(undefined);
+
+		/** End the run: unmount, which commits its frame; a degraded run that never painted prints its frame instead. */
 		const endRun: Effect.Effect<void> = Effect.suspend(() => {
 			const current = run;
 			run = undefined;
-			return current === undefined ? Effect.void : Scope.close(current.scope, Exit.void);
-		});
-
-		// A swap is committed by React in a microtask, not at once: wait for it, so the next event, or the unmount that
-		// commits a run's last frame, sees it drawn.
-		const draw: Effect.Effect<void> = Effect.suspend(() => {
-			const current = run;
 			if (current === undefined) return Effect.void;
-			return Effect.flatMap(frameOf, (frame) =>
-				Effect.callback<void>((resume) => {
-					current.slot.swap(elementOf(frame), () => resume(Effect.void));
-				}),
-			).pipe(Effect.andThen(Effect.sync(() => drainPerformance(drain))));
+			if (!interactive) return options.mode === "hosted" ? Effect.void : printFrame(current);
+			return Effect.andThen(unmount(current), current.painted ? Effect.void : printFrame(current));
 		});
 
-		const step = (event: E): Effect.Effect<void> =>
-			Effect.suspend(() => {
-				state = options.reduce(state, event);
-				if (!interactive) return Effect.void;
-				if (options.isTerminal(event)) return Effect.andThen(draw, endRun);
-				// A start, or any event while nothing is mounted, begins a run; a start while mounted redraws in place.
-				return run === undefined ? mountRun : draw;
+		const beginRun: Effect.Effect<void> = Effect.suspend(() => {
+			const current: Run<S> = {
+				mounted: undefined,
+				degraded: false,
+				painted: false,
+				failed: undefined,
+				frame: 0,
+				good: undefined,
+			};
+			run = current;
+			return interactive ? mount(current) : Effect.void;
+		});
+
+		/** Fold a chunk, starting and ending runs at its events, and draw once for what is left of it. */
+		const onChunk = (chunk: ReadonlyArray<E>): Effect.Effect<void> =>
+			Effect.gen(function* () {
+				let dirty = false;
+				for (const event of chunk) {
+					const folded = yield* Effect.try({ try: () => options.reduce(state, event), catch: (error) => error }).pipe(
+						// A reducer that throws: unmount first, then the drain dies with the error.
+						Effect.catch((error) =>
+							Effect.andThen(
+								Effect.suspend(() => (run === undefined ? Effect.void : unmount(run))),
+								Effect.die(error),
+							),
+						),
+					);
+					state = folded;
+					if (options.isTerminal(event)) {
+						if (dirty || run !== undefined) yield* draw;
+						dirty = false;
+						yield* endRun;
+					} else if (run === undefined) {
+						// A start, or any event while no run is going, begins one; a start during a run redraws in place.
+						yield* beginRun;
+						dirty = false;
+					} else {
+						dirty = true;
+					}
+				}
+				if (dirty) yield* draw;
 			});
 
+		const onTick = (frame: number): Effect.Effect<void> =>
+			Effect.suspend(() => {
+				const current = run;
+				return current?.mounted === undefined || frame === current.frame ? Effect.void : drawAt(frame);
+			});
+
+		const control: Effect.Effect<void> = Effect.gen(function* () {
+			while (true) {
+				const message = yield* Queue.take(inbox);
+				switch (message._tag) {
+					case "Events":
+						yield* onChunk(message.chunk);
+						break;
+					case "Tick":
+						yield* onTick(message.frame);
+						break;
+					case "Failed":
+						yield* checkFailure;
+						break;
+					case "Ended":
+						// The stream ended mid-run: commit what is drawn, or print it.
+						return yield* endRun;
+				}
+			}
+		});
+
 		const pull = yield* Stream.toPull(options.events);
-		const drainEvents = Effect.forever(
-			Effect.flatMap(pull, (chunk) => Effect.forEach(chunk, step, { discard: true })),
-		).pipe(
-			Pull.catchDone(() => Effect.void),
-			// The stream ended mid-run: commit what is drawn.
-			Effect.andThen(endRun),
+		const pump = Effect.forever(Effect.flatMap(pull, (chunk) => Queue.offer(inbox, { _tag: "Events", chunk }))).pipe(
+			Pull.catchDone(() => Queue.offer(inbox, { _tag: "Ended" })),
 		);
 		// Started at once, so its first pull (which subscribes a PubSub-backed stream) happens before `live` returns.
-		const fiber = yield* Effect.forkScoped(drainEvents, { startImmediately: true });
-		// Registered last, so it runs first when the caller's scope closes: stop the drain, then end the run drawn.
-		yield* Effect.addFinalizer(() => Fiber.interrupt(fiber).pipe(Effect.andThen(endRun)));
+		const pumping = yield* Effect.forkScoped(pump, { startImmediately: true });
+		const controlling = yield* Effect.forkScoped(Effect.onExit(control, () => Fiber.interrupt(pumping)));
+		// Registered last, so it runs first when the caller's scope closes: stop the fold, then unmount what is drawn.
+		// Nothing more is written: a run cut off by the close prints nothing.
+		yield* Effect.addFinalizer(() =>
+			Effect.andThen(
+				Fiber.interruptAll([controlling, pumping]),
+				Effect.suspend(() => {
+					const current = run;
+					run = undefined;
+					return current === undefined ? Effect.void : unmount(current);
+				}),
+			),
+		);
 		return {
 			state: Effect.sync(() => state),
 			logConsole: bridge.writer,
-			done: Fiber.join(fiber),
+			done: Fiber.join(controlling),
 		};
 	});

@@ -290,6 +290,20 @@ export class CliUi {
 	 * than the terminal, which Ink answers by clearing the screen and its scrollback. Only a shrink in height while
 	 * the frame is at its full height does it; a frame that keeps a few rows spare never meets it.
 	 *
+	 * While a run is drawn the view also redraws on a tick of `tickMillis` (80 by default), a schedule in the run's
+	 * scope, so it never keeps the process alive (`okf/decisions/live-tick-is-a-scoped-schedule.md`). A chunk of events
+	 * that arrives at once is folded whole and drawn once.
+	 *
+	 * A run whose drawing fails (a `render` that throws, or a mount that fails) degrades rather than ending the view:
+	 * it is unmounted, leaving its last good frame on the terminal, then one warning is logged (`Effect.logWarning`),
+	 * and the fold goes on. At its terminal event, a run that never painted a frame writes its final frame once, as a
+	 * string. The next run mounts afresh. A `reduce` that throws unmounts the run, then `done` dies with the error.
+	 *
+	 * When the run is not interactive, nothing is mounted and Ink is loaded only when a string is due. In the `owned`
+	 * mode (the default) each run's final frame is written once to stdout, as a string laid out at stdout's width (80
+	 * when it reports none) with no height to fit, at its terminal event or when the stream ends; at colour `none`, as
+	 * for an agent, it is escape-free. In the `hosted` mode nothing is written.
+	 *
 	 * No input is mounted: the view reads no keys and never enters raw mode, so Ctrl-C stays the platform's SIGINT,
 	 * which interrupts the program and so closes the scope. Each run holds the process-wide mount permit from its
 	 * mount to its end, so a `CliUi.run` during a run waits for the run to end, and one between runs mounts at once.

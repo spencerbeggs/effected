@@ -1,0 +1,337 @@
+import { assert, describe, it } from "@effect/vitest";
+import type { Console } from "effect";
+import { Effect, Exit, Fiber, Queue, Stream } from "effect";
+import { TestClock } from "effect/testing";
+import { Text } from "ink";
+import type { ReactElement } from "react";
+import { createElement } from "react";
+import { vi } from "vitest";
+import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
+import { Styled, useTerminalSize } from "../../src/ui.js";
+import type { State } from "../helpers/live.js";
+import {
+	End,
+	SHOW_CURSOR,
+	Start,
+	capturing,
+	frameOf,
+	liveOn,
+	mountsAndResolves,
+	optionsOf,
+	queueOf,
+	tick,
+	until,
+	warningsIn,
+} from "../helpers/live.js";
+import { screenAfter } from "../helpers/terminalModel.js";
+
+// Count loads of the peers through the kit's one loader, without changing what it does.
+const { loads } = vi.hoisted(() => ({ loads: { count: 0 } }));
+vi.mock("../../src/ui/internal/ink.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../src/ui/internal/ink.js")>();
+	const { Effect } = await import("effect");
+	return {
+		...actual,
+		loadInk: Effect.suspend(() => {
+			loads.count++;
+			return actual.loadInk;
+		}),
+	};
+});
+
+const ESC = String.fromCharCode(0x1b);
+
+/** Real time, which a `TestClock` does not hold: for Ink's own timers and React's commits. */
+const settle = (millis: number): Effect.Effect<void> =>
+	Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, millis)));
+
+describe("CliUi.live: the tick (probe L7)", () => {
+	it.effect("each run ticks on the clock: 400 ms on the TestClock draws frames 0 through 5", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const frames: Array<number> = [];
+			const queue = yield* queueOf();
+			yield* liveOn(
+				fake,
+				optionsOf(Stream.fromQueue(queue), {
+					render: (state, frame) => {
+						frames.push(frame);
+						return frameOf(state);
+					},
+				}),
+			);
+			yield* Queue.offer(queue, Start);
+			yield* settle(30);
+			yield* TestClock.adjust("400 millis");
+			yield* settle(50);
+			assert.deepStrictEqual(
+				[...new Set(frames)].sort((a, b) => a - b),
+				[0, 1, 2, 3, 4, 5],
+			);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("control: the tick stops at the terminal event, so time passing after it draws nothing", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const frames: Array<number> = [];
+			const queue = yield* queueOf();
+			yield* liveOn(
+				fake,
+				optionsOf(Stream.fromQueue(queue), {
+					render: (state, frame) => {
+						frames.push(frame);
+						return frameOf(state);
+					},
+				}),
+			);
+			yield* Queue.offerAll(queue, [Start, End]);
+			yield* settle(30);
+			const drawn = frames.length;
+			yield* TestClock.adjust("400 millis");
+			yield* settle(50);
+			assert.strictEqual(frames.length, drawn, "no frame after the run ended");
+			assert.deepStrictEqual([...new Set(frames)], [0]);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a tick that is not a positive number of milliseconds is a defect, before anything is pulled", () =>
+		Effect.gen(function* () {
+			for (const tickMillis of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+				const exit = yield* Effect.exit(
+					Effect.scoped(liveOn(makeFakeStreams(), optionsOf(Stream.fromIterable([Start]), { tickMillis }))),
+				);
+				assert.isTrue(Exit.isFailure(exit), String(tickMillis));
+				assert.include(String(exit), "tickMillis", String(tickMillis));
+			}
+		}),
+	);
+});
+
+describe("CliUi.live: a render that fails degrades the run (Review Focus 2, ruling P1)", () => {
+	it.live("a render that throws mid-run: the last frame stays, one warning after the unmount, the fold goes on", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const log = capturing();
+			const timeline: Array<string> = [];
+			const keep = log.console.warn;
+			const console = Object.assign(Object.create(log.console) as Console.Console, {
+				log: (...args: ReadonlyArray<unknown>) => {
+					timeline.push("log");
+					keep(...args);
+				},
+			});
+			// One event per chunk, so every state is drawn: a chunk is folded whole and drawn once.
+			const options = optionsOf(Stream.fromIterable([Start, tick(1), tick(2), tick(3), End]).pipe(Stream.rechunk(1)), {
+				render: (state) => {
+					if (state.last === "tick 2") throw new Error("render threw");
+					return frameOf(state);
+				},
+			});
+			const handle = yield* liveOn(fake, options, { console, onUnmount: () => timeline.push("unmount") });
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.strictEqual((yield* handle.state).last, "ended", "the fold went on");
+			assert.strictEqual(warningsIn(log.lines).length, 1, log.lines.join("\n"));
+			assert.include(warningsIn(log.lines)[0] ?? "", "render threw");
+			assert.deepStrictEqual(timeline, ["unmount", "log"], "the warning is written after the unmount");
+			assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 1", "tick 1"], "the last good frame, once");
+			assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted", "no instance or permit leaked");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("a render that throws before the first paint: the final frame is written once, as a string", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const log = capturing();
+			const options = optionsOf(Stream.fromIterable([Start, tick(1), End]), {
+				render: (state) => {
+					if (state.last === "started") throw new Error("first paint threw");
+					return frameOf(state);
+				},
+			});
+			const handle = yield* liveOn(fake, options, { console: log.console });
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.strictEqual(warningsIn(log.lines).length, 1, log.lines.join("\n"));
+			const shown = screenAfter(fake.stdout());
+			assert.deepStrictEqual(shown, ["RUN 1", "ended"]);
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("a mount that fails degrades the same way: one warning, the fold goes on, the final frame once", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const log = capturing();
+			const handle = yield* liveOn(fake, optionsOf(Stream.fromIterable([Start, tick(1), End])), {
+				console: log.console,
+				onMount: () => {
+					throw new Error("the mount failed");
+				},
+			});
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.strictEqual((yield* handle.state).last, "ended");
+			assert.strictEqual(warningsIn(log.lines).length, 1, log.lines.join("\n"));
+			assert.include(warningsIn(log.lines)[0] ?? "", "the mount failed");
+			assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 1", "ended"]);
+			assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("a degraded run ends at its terminal event: the next run mounts and draws again", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const log = capturing();
+			const events = Stream.fromIterable([Start, tick(1), tick(2), End, Start, tick(5), End]).pipe(Stream.rechunk(1));
+			const options = optionsOf(events, {
+				render: (state) => {
+					if (state.last === "tick 2") throw new Error("render threw");
+					return frameOf(state);
+				},
+			});
+			const handle = yield* liveOn(fake, options, { console: log.console });
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 1", "tick 1", "RUN 2", "ended"]);
+			assert.strictEqual(warningsIn(log.lines).length, 1);
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("a reduce that throws unmounts first, then done dies with the error, and the terminal is restored", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const queue = yield* queueOf();
+			const timeline: Array<string> = [];
+			const handle = yield* liveOn(
+				fake,
+				optionsOf(Stream.fromQueue(queue), {
+					reduce: (state, event) => {
+						if (event._tag === "Tick" && event.n === 2) throw new Error("reduce threw");
+						return { ...state, last: event._tag === "Tick" ? `tick ${event.n}` : event._tag, run: 1 };
+					},
+				}),
+				{ onUnmount: () => timeline.push("unmount") },
+			);
+			const done = yield* Effect.forkChild(Effect.exit(handle.done));
+			yield* Queue.offerAll(queue, [Start, tick(1)]);
+			yield* until(() => screenAfter(fake.stdout()).includes("tick 1"));
+			yield* Queue.offer(queue, tick(2));
+			const exit = yield* Fiber.join(done).pipe(Effect.timeout("2 seconds"));
+			timeline.push("done");
+			assert.isTrue(Exit.isFailure(exit), "done failed");
+			assert.include(String(exit), "reduce threw");
+			assert.deepStrictEqual(timeline, ["unmount", "done"]);
+			assert.deepStrictEqual(fake.rawModes, []);
+			assert.include(fake.stdout().slice(-64), SHOW_CURSOR);
+			assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted", "the permit was released");
+		}).pipe(Effect.scoped),
+	);
+});
+
+const Styledframe = (state: State): ReactElement =>
+	createElement(Styled, { token: "accent" }, `${state.last} ${"x".repeat(60)}`);
+
+describe("CliUi.live when not interactive (Review Focus 4)", () => {
+	it.live("owned: the final frame is written once at the terminal event, escape-free at colour none", () =>
+		Effect.gen(function* () {
+			loads.count = 0;
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const handle = yield* liveOn(fake, optionsOf(Stream.fromIterable([Start, tick(1), End])), { interactive: false });
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.strictEqual(fake.stdout(), "RUN 1\nended\n");
+			assert.strictEqual(loads.count, 1, "Ink was loaded once, for the string");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("owned: a human at truecolor gets the theme's colour; at none, no escape at all", () =>
+		Effect.gen(function* () {
+			const coloured = makeFakeStreams({ columns: 200, rows: 20 });
+			const human = yield* liveOn(coloured, optionsOf(Stream.fromIterable([Start, End]), { render: Styledframe }), {
+				interactive: false,
+				color: "truecolor",
+			});
+			yield* human.done.pipe(Effect.timeout("2 seconds"));
+			assert.include(coloured.stdout(), `${ESC}[`, "coloured for a human at truecolor");
+			const plain = makeFakeStreams({ columns: 200, rows: 20 });
+			const agent = yield* liveOn(plain, optionsOf(Stream.fromIterable([Start, End]), { render: Styledframe }), {
+				interactive: false,
+				color: "none",
+			});
+			yield* agent.done.pipe(Effect.timeout("2 seconds"));
+			assert.notInclude(plain.stdout(), ESC, "escape-free at colour none");
+			assert.include(plain.stdout(), "ended");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("owned: laid out at the stdout width, or 80 when it reports none, and never cut in height", () =>
+		Effect.gen(function* () {
+			const Size = (state: State): ReactElement => {
+				const Probe = (): ReactElement => {
+					const { columns, rows } = useTerminalSize();
+					return createElement(Text, null, `${state.last} size=${columns} rows=${rows} ${"word ".repeat(30)}`);
+				};
+				return createElement(Probe);
+			};
+			const narrow = makeFakeStreams({ columns: 40, rows: 5 });
+			const first = yield* liveOn(narrow, optionsOf(Stream.fromIterable([Start, End]), { render: Size }), {
+				interactive: false,
+			});
+			yield* first.done.pipe(Effect.timeout("2 seconds"));
+			const lines = narrow.stdout().trimEnd().split("\n");
+			assert.include(lines[0] ?? "", "size=39");
+			assert.isTrue(
+				lines.every((line) => line.length <= 40),
+				lines.join("|"),
+			);
+			assert.isAbove(lines.length, 4, "taller than the 5 rows the stream reports: not height-clipped");
+			assert.include(lines.join(" "), "rows=Infinity", "widgets see no height to fit, not the stream's 5 rows");
+			const unknown = makeFakeStreams({ columns: 40, rows: 20 });
+			Object.assign(unknown.streams.stdout, { columns: undefined });
+			const second = yield* liveOn(unknown, optionsOf(Stream.fromIterable([Start, End]), { render: Size }), {
+				interactive: false,
+			});
+			yield* second.done.pipe(Effect.timeout("2 seconds"));
+			assert.include(unknown.stdout(), "size=79");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("owned: a stream that ends without a terminal event still writes its frame once; each run writes one", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const handle = yield* liveOn(fake, optionsOf(Stream.fromIterable([Start, tick(1), End, Start, tick(2)])), {
+				interactive: false,
+			});
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.strictEqual(fake.stdout(), "RUN 1\nended\nRUN 2\ntick 2\n");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("hosted: nothing is written and Ink is never loaded", () =>
+		Effect.gen(function* () {
+			loads.count = 0;
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const handle = yield* liveOn(fake, optionsOf(Stream.fromIterable([Start, tick(1), End]), { mode: "hosted" }), {
+				interactive: false,
+			});
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.strictEqual(fake.stdout(), "");
+			assert.strictEqual(fake.stderr(), "");
+			assert.strictEqual(loads.count, 0);
+			assert.strictEqual((yield* handle.state).last, "ended", "the fold still ran");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("owned: no string is due until the terminal event, so Ink is not loaded before it", () =>
+		Effect.gen(function* () {
+			loads.count = 0;
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const queue = yield* queueOf();
+			const handle = yield* liveOn(fake, optionsOf(Stream.fromQueue(queue)), { interactive: false });
+			yield* Queue.offerAll(queue, [Start, tick(1)]);
+			yield* until(() => true);
+			yield* Effect.sleep("30 millis");
+			assert.strictEqual(loads.count, 0, "nothing loaded mid-run");
+			assert.strictEqual((yield* handle.state).last, "tick 1");
+			yield* Queue.offer(queue, End);
+			yield* until(() => fake.stdout().includes("ended"));
+			assert.strictEqual(loads.count, 1);
+		}).pipe(Effect.scoped),
+	);
+});

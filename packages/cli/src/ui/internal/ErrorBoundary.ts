@@ -11,6 +11,8 @@ export interface ErrorBoundaryProps {
 	readonly onError: (error: unknown) => void;
 	/** The screen's tree. */
 	readonly children?: ReactNode;
+	/** What to draw once a descendant has thrown, read when it is drawn; nothing by default. */
+	readonly fallback?: () => ReactNode;
 }
 
 /**
@@ -40,7 +42,7 @@ export const errorBoundary: () => ComponentClass<ErrorBoundaryProps> = fromReact
 			}
 
 			override render(): ReactNode {
-				return this.state.failed ? null : (this.props.children ?? null);
+				return this.state.failed ? (this.props.fallback?.() ?? null) : (this.props.children ?? null);
 			}
 		},
 );
