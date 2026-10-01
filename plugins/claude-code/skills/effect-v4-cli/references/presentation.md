@@ -45,7 +45,7 @@ Not interactive, `CliEnv` replaces `Terminal` with a gated one: `readLine` fails
 
 ## `CliEnv`
 
-`CliEnv.layer(options?)` → `Layer<CurrentRuntimeEnv | TerminalEnv | Audience | CliTheme | CliLinks | Terminal, never, Stdio | Terminal>` builds the environment once, in order: the runtime snapshot, the terminal snapshot from the real terminal, the audience, the theme, editor links, then the `CliInteractive` decision and the two gates (`CliPrompt.gateTerminal`, `CliPrompt.gateWizard`) plus `CliTheme.promptTheme`, so core's own prompts follow the theme. Every environment read goes through `Config` and degrades to "unset" when it fails; only `Stdio` or `Terminal` failing fails the layer. Under `CliRuntime.main` pass the same options as `env` rather than providing the layer yourself.
+`CliEnv.layer(options?)` → `Layer<CurrentRuntimeEnv | TerminalEnv | Audience | CliTheme | CliLinks | Terminal, never, Stdio | Terminal>` builds the environment once, in order: the runtime snapshot, the terminal snapshot from the real terminal, the audience, the theme, editor links, then the `CliInteractive` decision and the two gates (`CliPrompt.gateTerminal`, `CliPrompt.gateWizard`) plus `CliTheme.promptTheme`, so core's own prompts follow the theme. Every environment read goes through `Config` and degrades to "unset" when it fails; only `Stdio` or `Terminal` failing fails the layer. Under `CliRuntime.main` pass the same options as `env` rather than providing the layer yourself. A test fixes the same services with `CliEnv.layerTest({ tty?, term?, audience?, columns?, color?, theme? })`, which reads nothing of the host's (see `testing-a-cli.md`).
 
 | `CliEnvOptions` | What it does |
 | --- | --- |

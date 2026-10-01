@@ -38,7 +38,7 @@ NodeRuntime.runMain(
 | `ChildProcess`, `ChildProcessSpawner` | `effect/process` | building or running a spawned command — **not** `effect/cli`'s `Command`, which only declares your own CLI |
 | `CliRuntime.main`, `CliRuntime.reportFailures` | `@effected/cli` | assembling `main`: platform, environment, failure reporting through your own logger, and the process exit code |
 | `CliAudience` | `@effected/cli` | `--audience`/`--human`/`--agent`/`--ci` on the root, resolved before core parses |
-| `CliEnv` | `@effected/cli` | building audience, terminal, theme and links once, and deciding `CliInteractive` — normally via `main`'s `env` |
+| `CliEnv` | `@effected/cli` | building audience, terminal, theme and links once, and deciding `CliInteractive` — normally via `main`'s `env`; `CliEnv.layerTest` fixes them in a test |
 | `Audience`, `TerminalEnv`, `CurrentRuntimeEnv`, `EnvOverride` | `@effected/env` | reading who runs the program and what the terminal can do (colour level, width, hyperlinks) |
 | `CliInteractive` | `@effected/cli` | asking whether this run may prompt a person |
 | `CliTheme`, `Token`, `Status`, `Glyphs` | `@effected/cli` | painting by token, a typed status vocabulary, Unicode or ASCII glyphs |

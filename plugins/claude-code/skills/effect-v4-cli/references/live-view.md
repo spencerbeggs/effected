@@ -4,7 +4,7 @@ Loaded from `effect-v4-cli`. Covers drawing progress that updates in place while
 
 ## The shape
 
-`CliUi.live(options)` → `Effect<LiveHandle<S>, never, Scope | CliTheme>`. It folds `events` into state in a fiber of the caller's scope and draws **runs**: a run begins at an `isStart` event and ends at an `isTerminal` one, whose frame is committed to the terminal (the view never clears it). Between runs nothing is drawn; the next run mounts afresh below. It is a view, not a screen: it mounts no input, so Ctrl-C stays the platform's SIGINT and closes the scope.
+`CliUi.live(options)` → `Effect<LiveHandle<S>, never, Scope | CliTheme>`. It folds `events` into state in a fiber of the caller's scope and draws **runs**: a run begins at an `isStart` event and ends at an `isTerminal` one, whose frame is committed to the terminal (the view never clears it). Between runs nothing is drawn; the next run mounts afresh below. It is a view, not a screen: it mounts no input, so Ctrl-C stays the platform's SIGINT and closes the scope. `live` returns its handle **at once, before Ink loads** — Ink is loaded when a run first mounts, or when an owned run prints its final frame — so a host outside Effect can take the handle with `Effect.runSync`, and a `close` before any run mounted loads nothing.
 
 ```tsx
 import { Doc, Status } from "@effected/cli"
