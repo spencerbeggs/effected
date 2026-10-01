@@ -221,6 +221,42 @@ describe("a crash and an interrupt, and the cause run keeps (r5 review minors)",
 		}).pipe(Effect.scoped, Effect.timeout("2 seconds")),
 	);
 
+	it.live("a finalizer that dies beside a crash recorded with a cancel: run carries both defects, not the cancel", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session();
+			const program = CliUi.run(() => createElement(CancelThenCrash));
+			const fiber = yield* Effect.forkScoped(
+				Effect.gen(function* () {
+					const harness = yield* UiRenderOptions;
+					return yield* program.pipe(
+						Effect.provideService(UiRenderOptions, {
+							...harness,
+							onUnmount: (crash) => {
+								harness.onUnmount?.(crash);
+								throw new Error("finalizer failed");
+							},
+						}),
+					);
+				}).pipe(Effect.provide(session.layer)),
+			);
+			const screen = yield* session.next({ contains: "armed" });
+			yield* screen.press("enter");
+			const exit = yield* Fiber.await(fiber);
+			const defects = Exit.isFailure(exit)
+				? exit.cause.reasons.filter(Cause.isDieReason).map((reason) => String(reason.defect))
+				: [];
+			assert.isTrue(
+				defects.some((defect) => defect.includes("crashed with the cancel")),
+				`the recorded crash is kept: ${JSON.stringify(defects)}`,
+			);
+			assert.isTrue(
+				defects.some((defect) => defect.includes("finalizer failed")),
+				`the finalizer's defect is kept: ${JSON.stringify(defects)}`,
+			);
+			assert.isTrue(Option.isNone(CliUiTest.cancelReason(exit)), "a crash beats the cancel in the same tick");
+		}).pipe(Effect.scoped, Effect.timeout("2 seconds")),
+	);
+
 	it.live("a run that already died keeps its whole cause: a failing finalizer's defect is not dropped", () =>
 		Effect.gen(function* () {
 			const session = yield* CliUiTest.session();
@@ -240,9 +276,10 @@ describe("a crash and an interrupt, and the cause run keeps (r5 review minors)",
 			const defects = Exit.isFailure(program)
 				? program.cause.reasons.filter(Cause.isDieReason).map((reason) => String(reason.defect))
 				: [];
-			assert.isTrue(
-				defects.some((defect) => defect.includes("component crashed")),
-				JSON.stringify(defects),
+			assert.strictEqual(
+				defects.filter((defect) => defect.includes("component crashed")).length,
+				1,
+				`the crash once, never doubled: ${JSON.stringify(defects)}`,
 			);
 			assert.isTrue(
 				defects.some((defect) => defect.includes("finalizer failed")),

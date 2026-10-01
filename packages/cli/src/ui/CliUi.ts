@@ -210,8 +210,9 @@ export class CliUi {
 	 * stdout. So is a `useKeys` handler that throws; a handler a consumer registers with Ink's own `useInput` or
 	 * `usePaste` is outside the kit, and what it throws escapes as Ink leaves it. A crash wins over an end in the same
 	 * tick: a handler that cancels or resolves and then throws, or a component that throws before the screen has
-	 * unmounted, is a defect, never the `Cancelled` or the value. An interrupt stays an interrupt, even when the tree
-	 * reports a crash as it unmounts.
+	 * unmounted, is a defect, never the `Cancelled` or the value; a defect raised while the screen unmounts stays beside
+	 * that crash in the cause rather than replacing it. An interrupt stays an interrupt, even when the tree reports a
+	 * crash as it unmounts.
 	 *
 	 * A screen draws on stdout, and is interactive when `CliInteractive` is, which reads stdout's terminal.
 	 *
@@ -241,13 +242,17 @@ export class CliUi {
 				Semaphore.withPermit(mounts, Effect.scoped(mount(screen, theme, options?.clear === true, crash))),
 			);
 			// A tree that crashed is a defect however the screen ended: a cancel or a resolve in the same tick, which
-			// settled the result first, must not hide it. An interrupt stays an interrupt.
-			// A run that already died keeps its whole cause, a failing finalizer's defect included. The interrupt check is
+			// settled the result first, must not hide it. An interrupt stays an interrupt. The interrupt check is
 			// defensive: a fiber interrupted from outside stops before it gets here.
+			const crashed = crash.current;
 			const interrupted = Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause);
-			const died = Exit.isFailure(exit) && exit.cause.reasons.some(Cause.isDieReason);
-			if (crash.current !== undefined && !interrupted && !died) return yield* Effect.die(crash.current.defect);
-			return yield* exit;
+			if (crashed === undefined || interrupted) return yield* exit;
+			const dies = Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isDieReason) : [];
+			// A run that died of the crash keeps its whole cause, a failing finalizer's defect included.
+			if (dies.some((reason) => reason.defect === crashed.defect)) return yield* exit;
+			// Otherwise the crash replaces the end it beat, and any defect already there (a kit finalizer that failed)
+			// stays beside it.
+			return yield* Effect.failCause(Cause.fromReasons<never>([Cause.makeDieReason(crashed.defect), ...dies]));
 		});
 
 	/**
