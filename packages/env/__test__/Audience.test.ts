@@ -15,7 +15,7 @@ const capture = (lines: Array<{ readonly level: string; readonly text: string }>
 		}),
 	]);
 
-const runtime = (fields: { agent?: string; ci?: string }) =>
+const runtime = (fields: { agent?: string; ci?: "github-actions" | "generic" }) =>
 	RuntimeEnv.make({
 		agent: Option.fromNullishOr(fields.agent),
 		ci: Option.fromNullishOr(fields.ci),

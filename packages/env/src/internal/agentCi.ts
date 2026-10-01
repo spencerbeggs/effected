@@ -73,7 +73,7 @@ const isFalsy = (value: string | undefined): boolean =>
  *
  * @internal
  */
-export const detectCi = (env: Env): Option.Option<string> => {
+export const detectCi = (env: Env): Option.Option<"github-actions" | "generic"> => {
 	if (!isFalsy(env.GITHUB_ACTIONS)) return Option.some("github-actions");
 	if (!isFalsy(env.CI) || !isFalsy(env.CONTINUOUS_INTEGRATION)) return Option.some("generic");
 	return Option.none();

@@ -12,6 +12,14 @@ const optionField = <S extends Schema.Constraint>(schema: S) =>
 	Schema.OptionFromNullOr(schema).pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed(Option.none())));
 
 /**
+ * The CI providers a {@link RuntimeEnv} names: `github-actions` when `GITHUB_ACTIONS` is set, `generic` for any other
+ * CI signal (`CI`, `CONTINUOUS_INTEGRATION`).
+ *
+ * @public
+ */
+export type CiName = "github-actions" | "generic";
+
+/**
  * A snapshot of who is running the program: the agent, the CI, and the terminal.
  *
  * @remarks
@@ -28,8 +36,8 @@ export class RuntimeEnv extends Schema.Class<RuntimeEnv>("@effected/env/RuntimeE
 	 * beyond that), or `None`.
 	 */
 	agent: optionField(Schema.String),
-	/** The CI the process runs in: `github-actions` or `generic`, or `None`. */
-	ci: optionField(Schema.String),
+	/** The CI the process runs in: {@link CiName}, so a consumer can match it exhaustively, or `None`. */
+	ci: optionField(Schema.Literals(["github-actions", "generic"])),
 	/** The identified terminal program and its version when it exposes one, or `None`. */
 	terminal: optionField(Schema.Struct({ name: Schema.String, version: optionField(Schema.String) })),
 }) {}
@@ -43,7 +51,7 @@ export interface RuntimeEnvOverrides {
 	/** Replaces the detected agent. */
 	readonly agent?: Option.Option<string>;
 	/** Replaces the detected CI. */
-	readonly ci?: Option.Option<string>;
+	readonly ci?: Option.Option<CiName>;
 	/** Replaces the detected terminal. */
 	readonly terminal?: Option.Option<{ readonly name: string; readonly version: Option.Option<string> }>;
 }

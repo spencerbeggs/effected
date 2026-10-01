@@ -95,6 +95,50 @@ describe("RuntimeEnv", () => {
 		assert.deepStrictEqual(noVersion.terminal, Option.some({ name: "kitty", version: Option.none() }));
 	});
 
+	it("ci is the literal union github-actions | generic: both decode and encode, and anything else is rejected", () => {
+		const codec = Schema.fromJsonString(RuntimeEnv);
+		for (const ci of ["github-actions", "generic"] as const) {
+			const decoded = Schema.decodeSync(codec)(`{"agent":null,"ci":"${ci}","terminal":null}`);
+			assert.deepStrictEqual(decoded.ci, Option.some(ci));
+			assert.strictEqual(Schema.encodeSync(codec)(decoded), `{"agent":null,"ci":"${ci}","terminal":null}`);
+		}
+		for (const bad of ["jenkins", "", "GITHUB-ACTIONS", "true"]) {
+			assert.throws(
+				() => Schema.decodeSync(codec)(`{"agent":null,"ci":"${bad}","terminal":null}`),
+				Error,
+				"github-actions",
+				bad,
+			);
+		}
+	});
+
+	it("consumers match ci exhaustively: the compiler knows both names", () => {
+		const describeCi = (ci: RuntimeEnv["ci"]): string =>
+			Option.match(ci, {
+				onNone: () => "none",
+				onSome: (name) => {
+					switch (name) {
+						case "github-actions":
+							return "gha";
+						case "generic":
+							return "ci";
+						default: {
+							// Reached only if the type grew a name this switch does not handle: `name` would not be `never`.
+							const unreachable: never = name;
+							return unreachable;
+						}
+					}
+				},
+			});
+		assert.strictEqual(describeCi(Option.some("github-actions")), "gha");
+		assert.strictEqual(describeCi(Option.some("generic")), "ci");
+		assert.strictEqual(describeCi(Option.none()), "none");
+		const unknown = () =>
+			// @ts-expect-error a CI that is not one of the two names is not a RuntimeEnv
+			RuntimeEnv.make({ agent: Option.none(), ci: Option.some("jenkins"), terminal: Option.none() });
+		assert.throws(unknown);
+	});
+
 	it("round-trips the all-none snapshot", () => {
 		const codec = Schema.fromJsonString(RuntimeEnv);
 		const value = RuntimeEnv.make({ agent: Option.none(), ci: Option.none(), terminal: Option.none() });
