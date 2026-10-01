@@ -57,7 +57,8 @@ export interface CliLogOptions {
 	 * the build-time format: in NDJSON (`json`, or `auto` for an agent or a CI) it goes through this layer, so `false`
 	 * silences it there as at runtime; otherwise it goes through a plain `CliLogger`. The audience-override warning is a
 	 * configuration error and is never silenced: it is written exactly once, as NDJSON when the build-time format is
-	 * NDJSON and as a plain line otherwise, whatever this option says. The failure report and the `CliMessage` lines
+	 * NDJSON and as a plain line otherwise, whatever this option says, to stderr alone (never stdout, whatever
+	 * `logger.stderrFrom` says) and never to `extraLoggers` or the file sink. The failure report and the `CliMessage` lines
 	 * always go through a plain `CliLogger`.
 	 */
 	readonly plainLogger?: boolean | undefined;
@@ -578,7 +579,8 @@ export const platformLogLayer = (
  * What the environment layer logs is a configuration error (an invalid audience override, which interpolates the
  * variable's value), so it is never silenced and never written twice: NDJSON alone for an agent or a CI (`json`, or
  * `auto` for that build-time audience), a plain `CliLogger` line otherwise, whatever `plainLogger` and the diagnostics
- * level say, and neutralized under GitHub Actions like the platform's lines. It floors at `Warning` and installs no
+ * level say, and neutralized under GitHub Actions like the platform's lines. It goes to stderr alone, whatever
+ * `stderrFrom` the program's `CliLogger` options raise, and never to `extraLoggers` or the file sink. It floors at `Warning` and installs no
  * `MinimumLogLevel`, so `CliLog.layer`'s own build, which shares this context, reads the ambient minimum as before.
  *
  * @internal
@@ -591,7 +593,9 @@ export const envBuildLogLayer = (
 		Effect.gen(function* () {
 			const { ndjson, runtimeEnv } = yield* buildTimeDecision(options, audienceEnvVar);
 			const underActions = actionsDecision(options.neutralize ?? "auto", Option.some(runtimeEnv));
-			if (!ndjson) return Logger.layer([makeCliLogger(options.logger, underActions)]);
+			// A configuration warning is never program output: whatever `stderrFrom` the program's logger raises, every
+			// line the environment build writes goes to stderr.
+			if (!ndjson) return Logger.layer([makeCliLogger({ ...options.logger, stderrFrom: "All" }, underActions)]);
 			return Logger.layer([
 				Logger.make<unknown, void>((record) => {
 					if (!LogLevel.isGreaterThanOrEqualTo(record.logLevel, "Warn")) return;

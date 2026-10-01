@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { ConfigProvider, Console, Effect, Layer, Stdio, Terminal } from "effect";
+import { ConfigProvider, Console, Effect, Layer, Logger, Stdio, Terminal } from "effect";
 import { Command } from "effect/cli";
 import { CliRuntime } from "../src/index.js";
 import { LINE_BREAK, isCommand } from "./helpers/runnerCommands.js";
@@ -391,4 +391,47 @@ describe("CliRuntime.main: the audience-override warning is written exactly once
 			assert.deepStrictEqual(yield* run({ ...AGENT, TOOL_AUDIENCE: "agent" }, { plainLogger: false }), []);
 		}),
 	);
+});
+
+describe("CliRuntime.main: the audience-override warning goes to stderr alone (r4 re-review nit 2)", () => {
+	const seen: Array<string> = [];
+	const extra = Logger.make<unknown, void>(({ message }) => {
+		seen.push(String(message));
+	});
+	for (const [audience, env] of [
+		["human", { TOOL_AUDIENCE: "bogus" }],
+		["agent", { AI_AGENT: "claude-code_x_agent", TOOL_AUDIENCE: "bogus" }],
+	] as const) {
+		it.effect(`${audience}: on stderr even with stderrFrom raised, stdout empty, never on an extra logger`, () =>
+			Effect.gen(function* () {
+				seen.length = 0;
+				const { double, out, err } = capturing();
+				yield* CliRuntime.main(Effect.void, {
+					platform: io,
+					env: {
+						audienceEnvVar: "TOOL_AUDIENCE",
+						log: { logger: { stderrFrom: "Error" }, extraLoggers: [extra] },
+					},
+				}).pipe(
+					Effect.provideService(Console.Console, double),
+					Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)),
+				);
+				assert.deepStrictEqual(out, []);
+				assert.strictEqual(err.filter((line) => line.includes("TOOL_AUDIENCE=bogus")).length, 1, JSON.stringify(err));
+				assert.isFalse(
+					seen.some((line) => line.includes("TOOL_AUDIENCE")),
+					`not on the extra logger: ${JSON.stringify(seen)}`,
+				);
+				// Control: the extra logger is installed and live for the run's own records.
+				yield* CliRuntime.main(Effect.logError("run record"), {
+					platform: io,
+					env: { log: { logger: { stderrFrom: "Error" }, extraLoggers: [extra] } },
+				}).pipe(Effect.provideService(Console.Console, capturing().double));
+				assert.isTrue(
+					seen.some((line) => line.includes("run record")),
+					`control: the extra logger saw the run: ${JSON.stringify(seen)}`,
+				);
+			}),
+		);
+	}
 });
