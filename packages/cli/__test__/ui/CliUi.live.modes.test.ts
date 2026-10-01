@@ -196,6 +196,63 @@ describe("CliUi.live: a render that fails degrades the run (Review Focus 2, ruli
 		}).pipe(Effect.scoped),
 	);
 
+	it.live(
+		"a render that throws only on the terminal state: one warning, after the unmount, and the last good frame",
+		() =>
+			Effect.gen(function* () {
+				const fake = makeFakeStreams({ columns: 40, rows: 20 });
+				const log = capturing();
+				const timeline: Array<string> = [];
+				const keep = log.console.warn;
+				const console = Object.assign(Object.create(log.console) as Console.Console, {
+					log: (...args: ReadonlyArray<unknown>) => {
+						timeline.push("log");
+						keep(...args);
+					},
+				});
+				// A summary that first renders on the final data: the likeliest real shape of a render that throws. Paced, so
+				// `tick 2` is drawn on its own before the end arrives (events that arrive together are drawn once).
+				const queue = yield* queueOf();
+				const options = optionsOf(Stream.fromQueue(queue), {
+					render: (state) => {
+						if (state.last === "ended") throw new Error("the summary threw");
+						return frameOf(state);
+					},
+				});
+				const handle = yield* liveOn(fake, options, { console, onUnmount: () => timeline.push("unmount") });
+				yield* Queue.offerAll(queue, [Start, tick(1), tick(2)]);
+				yield* until(() => screenAfter(fake.stdout()).includes("tick 2"));
+				yield* Queue.offer(queue, End);
+				yield* Queue.end(queue);
+				yield* handle.done.pipe(Effect.timeout("2 seconds"));
+				assert.strictEqual(warningsIn(log.lines).length, 1, log.lines.join("\n"));
+				assert.include(warningsIn(log.lines)[0] ?? "", "the summary threw");
+				assert.deepStrictEqual(timeline, ["unmount", "log"], "the warning is written after the unmount");
+				assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 1", "tick 2"], "the last good frame, once");
+				assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted", "no instance or permit leaked");
+			}).pipe(Effect.scoped),
+	);
+
+	it.live("a render that throws on the terminal state, and on the last good frame after it: one warning still", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const log = capturing();
+			let broken = false;
+			const options = optionsOf(Stream.fromIterable([Start, tick(1), tick(2), End]).pipe(Stream.rechunk(1)), {
+				render: (state) => {
+					if (state.last === "ended") broken = true;
+					if (broken) throw new Error("every render threw");
+					return frameOf(state);
+				},
+			});
+			const handle = yield* liveOn(fake, options, { console: log.console });
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.strictEqual(warningsIn(log.lines).length, 1, log.lines.join("\n"));
+			assert.include(warningsIn(log.lines)[0] ?? "", "every render threw");
+			assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted", "no instance or permit leaked");
+		}).pipe(Effect.scoped),
+	);
+
 	it.live("a reduce that throws unmounts first, then done dies with the error, and the terminal is restored", () =>
 		Effect.gen(function* () {
 			const fake = makeFakeStreams({ columns: 40, rows: 20 });

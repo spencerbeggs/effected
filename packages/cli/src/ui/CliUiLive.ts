@@ -123,10 +123,11 @@ const heightClamp: () => FunctionComponent<{ readonly children?: ReactNode }> = 
  * What the controller acts on: a chunk of events, a tick, a render failure to look at, the end of the stream, or the
  * stream's death.
  */
-type Message<E> =
+type Message<E, S> =
 	| { readonly _tag: "Events"; readonly chunk: ReadonlyArray<E> }
 	| { readonly _tag: "Tick"; readonly frame: number }
-	| { readonly _tag: "Failed" }
+	// The run it failed in, so a report that arrives late is never read against another run.
+	| { readonly _tag: "Failed"; readonly run: Run<S> }
 	| { readonly _tag: "Ended" }
 	| { readonly _tag: "Died"; readonly cause: Cause.Cause<never> };
 
@@ -189,7 +190,7 @@ export const live = <E, S>(
 		const overrides = yield* UiRenderOptions;
 		const drain = yield* resolveDrain(options.drainPerformance ?? "auto");
 		const bridge = yield* makeInkConsole;
-		const inbox = yield* Queue.unbounded<Message<E>>();
+		const inbox = yield* Queue.unbounded<Message<E, S>>();
 
 		let state = options.initial;
 		let run: Run<S> | undefined;
@@ -284,7 +285,7 @@ export const live = <E, S>(
 				current.mounted = { scope, slot };
 				const report = (error: unknown): void => {
 					current.failed ??= { error };
-					Queue.offerUnsafe(inbox, { _tag: "Failed" });
+					Queue.offerUnsafe(inbox, { _tag: "Failed", run: current });
 				};
 				yield* Effect.gen(function* () {
 					// One Ink mount at a time, process-wide, held for this run only: a `CliUi.run` between runs mounts.
@@ -404,7 +405,9 @@ export const live = <E, S>(
 				return Effect.gen(function* () {
 					const frame = at ?? (yield* frameOf);
 					yield* Effect.callback<void>((resume) => {
-						mounted.slot.swap(elementOf(shown, frame), () => resume(Effect.void));
+						// Resumed on a microtask, never inside React's commit: `resume` runs this fiber at once, and the commit
+						// releases a waiter before the boundary hears of a frame that threw (`componentDidCatch` comes later in it).
+						mounted.slot.swap(elementOf(shown, frame), () => queueMicrotask(() => resume(Effect.void)));
 					});
 					drainPerformance(drain);
 					current.frame = frame;
@@ -421,8 +424,22 @@ export const live = <E, S>(
 		const endRun: Effect.Effect<void> = Effect.flatMap(takeRun, (current) => {
 			if (current === undefined) return Effect.void;
 			if (!interactive) return options.mode === "hosted" ? Effect.void : printFrame(current);
-			// Read after the unmount, which is what settles whether anything of the run is left on the terminal.
-			return Effect.suspend(() => (current.painted ? Effect.void : printFrame(current)));
+			return Effect.suspend(() => {
+				// A frame that threw as the run ended is said here, once, after the unmount, as any other degrade is.
+				const failed = current.failed;
+				const warned =
+					failed === undefined || current.degraded
+						? Effect.void
+						: Effect.suspend(() => {
+								current.degraded = true;
+								return Effect.logWarning(DEGRADED(failed.error));
+							});
+				// Read after the unmount, which is what settles whether anything of the run is left on the terminal.
+				return Effect.andThen(
+					warned,
+					Effect.suspend(() => (current.painted ? Effect.void : printFrame(current))),
+				);
+			});
 		});
 
 		const beginRun: Effect.Effect<void> = Effect.suspend(() => {
@@ -500,7 +517,7 @@ export const live = <E, S>(
 							yield* onTick(message.frame);
 							break;
 						case "Failed":
-							yield* checkFailure;
+							if (message.run === run) yield* checkFailure;
 							break;
 						case "Ended":
 							// The stream ended mid-run: commit what is drawn, or print it.
