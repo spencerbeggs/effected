@@ -18,7 +18,7 @@ import { UiStreams } from "../UiStreams.js";
 import { makeFakeStreams } from "./fakeStreams.js";
 
 /**
- * Options for {@link CliUiTest.render}.
+ * Options for {@link CliUiTest.render}, {@link CliUiTest.view} and {@link CliUiTest.session}.
  *
  * @public
  */
@@ -100,6 +100,23 @@ export interface CliUiTestHandle<A> extends CliUiTestScreen {
 	readonly rerender: (screen: Screen<A>) => Effect.Effect<void>;
 	/** How the screen ended: its value, or `Cancelled` or `NotInteractive`. Waits for it to end. */
 	readonly result: Effect.Effect<A, Cli.Cancelled | Cli.NotInteractive>;
+}
+
+/**
+ * A display-only element mounted by {@link CliUiTest.view}: a {@link CliUiTestScreen} that can be swapped for another
+ * element, with no result to wait for.
+ *
+ * @public
+ */
+export interface CliUiTestView extends CliUiTestScreen {
+	/**
+	 * Show another element in place of the current one, settling like a key.
+	 *
+	 * @remarks
+	 * Only the element's subtree is swapped: the kit's providers stay mounted. A rerender after the view has ended
+	 * (Esc or Ctrl-C ends it, as on every screen) is a defect, not a no-op.
+	 */
+	readonly rerender: (element: ReactElement) => Effect.Effect<void>;
 }
 
 /**
@@ -426,6 +443,65 @@ const makeTerminal = (options: CliUiTestOptions) => {
 	return { fake, layer, captures, screen };
 };
 
+/**
+ * Mount `screen` on a fresh terminal for the enclosing scope, held in a swappable holder so a rerender changes only its
+ * subtree under the same control: what `render` and `view` share. Ready once the first frame is drawn, the screen has
+ * ended, or 2 s have passed.
+ */
+const mount = <A>(screen: Screen<A>, options: CliUiTestOptions) =>
+	Effect.gen(function* () {
+		const terminal = makeTerminal(options);
+		let ended = false;
+		let swap: ((next: ReactElement) => void) | undefined;
+		let control: ScreenControl<A> | undefined;
+		const held: Screen<A> = async (given) => {
+			control = given;
+			const initial = await screen(given);
+			return inkModules().react.createElement(holder(), {
+				initial,
+				bind: (next) => {
+					swap = next;
+				},
+			});
+		};
+		const fiber = yield* Effect.forkScoped(
+			CliUi.run(held).pipe(
+				Effect.provide(terminal.layer),
+				Effect.onExit(() =>
+					Effect.sync(() => {
+						ended = true;
+					}),
+				),
+			),
+		);
+		// One screen per mount: its capture is the first, and it has ended when the run has.
+		const { handle, raws, after } = terminal.screen(
+			() => terminal.captures[0],
+			() => ended,
+		);
+		const mountedBy = Date.now() + MOUNT_LIMIT_MS;
+		yield* realTime(() => raws().length > 0 || ended || Date.now() >= mountedBy);
+		yield* after(0, Date.now());
+		const swapTo = (next: Screen<A>): Effect.Effect<void> =>
+			Effect.gen(function* () {
+				// Bounded like the first frame: a handle queued behind another screen may never mount here.
+				const mountedBy = Date.now() + MOUNT_LIMIT_MS;
+				yield* realTime(() => swap !== undefined || ended || Date.now() >= mountedBy);
+				if (ended) return yield* Effect.die(new Error(RERENDER_AFTER_END));
+				if (swap === undefined || control === undefined) {
+					return yield* Effect.die(new Error(RERENDER_BEFORE_MOUNT));
+				}
+				const given = control;
+				const element = yield* Effect.promise(async () => next(given));
+				if (ended) return yield* Effect.die(new Error(RERENDER_AFTER_END));
+				const before = raws().length;
+				const since = Date.now();
+				swap(element);
+				yield* after(before, since);
+			});
+		return { handle, swapTo, fiber };
+	});
+
 /** A `Console` that keeps what is written: `log`, `info` and `debug` as stdout, `error`, `warn` and `trace` as stderr. */
 const capturingConsole = (ambient: Console.Console) => {
 	const out: Array<string> = [];
@@ -488,62 +564,40 @@ export class CliUiTest {
 		screen: Screen<A>,
 		options: CliUiTestOptions = {},
 	): Effect.Effect<CliUiTestHandle<A>, never, Scope.Scope> =>
-		Effect.gen(function* () {
-			const terminal = makeTerminal(options);
-			let ended = false;
-			let swap: ((next: ReactElement) => void) | undefined;
-			let control: ScreenControl<A> | undefined;
-			// The screen is held in a swappable holder, so rerender changes only its subtree, under the same control.
-			const held: Screen<A> = async (given) => {
-				control = given;
-				const initial = await screen(given);
-				return inkModules().react.createElement(holder(), {
-					initial,
-					bind: (next) => {
-						swap = next;
-					},
-				});
-			};
-			const fiber = yield* Effect.forkScoped(
-				CliUi.run(held).pipe(
-					Effect.provide(terminal.layer),
-					Effect.onExit(() =>
-						Effect.sync(() => {
-							ended = true;
-						}),
-					),
-				),
-			);
-			// One screen per render: its capture is the first, and it has ended when the run has.
-			const { handle, raws, after } = terminal.screen(
-				() => terminal.captures[0],
-				() => ended,
-			);
-			const mountedBy = Date.now() + MOUNT_LIMIT_MS;
-			yield* realTime(() => raws().length > 0 || ended || Date.now() >= mountedBy);
-			yield* after(0, Date.now());
-			return {
+		Effect.map(mount(screen, options), ({ handle, swapTo, fiber }) => ({
+			...handle,
+			rerender: swapTo,
+			result: Fiber.join(fiber),
+		}));
+
+	/**
+	 * Mount a display-only element on in-memory terminal streams for the enclosing scope: a status line, a live view,
+	 * a component a consumer mounts in an Ink tree of its own.
+	 *
+	 * @remarks
+	 * The same harness as {@link CliUiTest.render}, with the same options: the marker-palette theme, the fake streams
+	 * and the debug frames, and the element is drawn inside the kit's providers, so `useTheme`, `useGlyphs`,
+	 * `useTerminalSize` and `Styled` work in it. The handle reads frames and sends keys as a rendered screen's does, and
+	 * `rerender` swaps in another element, but it has no `result`: a display-only element never ends on its own, so a
+	 * `render` of one would leave `result` waiting forever. Closing the scope unmounts it.
+	 *
+	 * The kit's root keys stay bound, as on every screen: Esc or Ctrl-C ends the view, after which a key or a rerender
+	 * is a defect.
+	 *
+	 * @param element - the element to mount
+	 * @param options - the terminal's size, colour and glyphs, and whether the run is interactive
+	 */
+	static readonly view = (
+		element: ReactElement,
+		options: CliUiTestOptions = {},
+	): Effect.Effect<CliUiTestView, never, Scope.Scope> =>
+		Effect.map(
+			mount<never>(() => element, options),
+			({ handle, swapTo }) => ({
 				...handle,
-				rerender: (next) =>
-					Effect.gen(function* () {
-						// Bounded like render's first frame: a handle queued behind another screen may never mount here.
-						const mountedBy = Date.now() + MOUNT_LIMIT_MS;
-						yield* realTime(() => swap !== undefined || ended || Date.now() >= mountedBy);
-						if (ended) return yield* Effect.die(new Error(RERENDER_AFTER_END));
-						if (swap === undefined || control === undefined) {
-							return yield* Effect.die(new Error(RERENDER_BEFORE_MOUNT));
-						}
-						const given = control;
-						const element = yield* Effect.promise(async () => next(given));
-						if (ended) return yield* Effect.die(new Error(RERENDER_AFTER_END));
-						const before = raws().length;
-						const since = Date.now();
-						swap(element);
-						yield* after(before, since);
-					}),
-				result: Fiber.join(fiber),
-			} satisfies CliUiTestHandle<A>;
-		});
+				rerender: (next) => swapTo(() => next),
+			}),
+		);
 
 	/**
 	 * A terminal for a whole program that runs screens of its own (a wizard, a handler calling `CliUi.prompt` several

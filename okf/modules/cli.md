@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T07:29:52Z
-  body_sha256: c790a8232fde2424f89bc1fc0318b80c41589e212aa502cd619468857466c9da
+  at: 2026-10-01T07:33:15Z
+  body_sha256: 687f3b330a3a3b2b9ba4be1dd70b9d5230a09adf4a04e5d626945fd32d8ca516
 ---
 
 # @effected/cli
@@ -159,8 +159,9 @@ reviewed export list is pinned in `__test__/declarations.test.ts`.
 | Export | Contract |
 | --- | --- |
 | `CliUiTest.render` | `(screen, options?) => Effect<CliUiTestHandle<A>, never, Scope>`: mounts one screen on in-memory streams under a marker-palette theme, with Ink in debug mode, and returns once it has drawn. Options are `columns`, `rows`, `color`, `glyphs` and `interactive`. |
+| `CliUiTest.view` | `(element, options?) => Effect<CliUiTestView, never, Scope>`: mounts a display-only element (a status line, a live view) under the same harness as `render` (marker theme, fake streams, debug frames), wrapped in the kit's providers so `useTheme`, `useGlyphs` and `Styled` work in it; its handle has the frame readers, `press`/`type`/`chunk`, `resize` and `rerender(element)` but no `result`, since a display-only element never ends on its own (vitest-agent A10). `render` and `view` share one mount helper over `makeTerminal`. |
 | `CliUiTest.session` | `(options?) => Effect<CliUiTestSession, never, Scope>` for a program that runs several screens: `layer` (fake streams, theme, `CliInteractive`, frame capture and a capturing `Console`; anything the program provides closer to its screens, `CliEnv` under `CliRuntime.main` with `env`, wins), `next({ contains? })` for each screen as it mounts (2 s cap, a defect naming what it waited for), `mounts`, `stdout` and `stderr`. |
-| `CliUiTestScreen`, `CliUiTestHandle`, `CliUiTestSession`, `CliUiTestNextOptions`, `CliUiTestOptions` | A screen handle: `press`, `type`, `chunk` (keys or characters in ONE stdin write, which `press` can never show), `resize`, `frame` (token markup), `rawFrame`, `plainFrame`, `frames`; a key for a screen that has ended is a defect. `render`'s handle adds `rerender` and `result`. |
+| `CliUiTestScreen`, `CliUiTestHandle`, `CliUiTestView`, `CliUiTestSession`, `CliUiTestNextOptions`, `CliUiTestOptions` | A screen handle: `press`, `type`, `chunk` (keys or characters in ONE stdin write, which `press` can never show), `resize`, `frame` (token markup), `rawFrame`, `plainFrame`, `frames`; a key for a screen that has ended is a defect. `render`'s handle adds `rerender` and `result`; `view`'s adds `rerender(element)` only. |
 | `CliUiTest.styled`, `CliUiTest.serializer` | ANSI decoded back to token markup, and a Vitest snapshot serializer that prints it. |
 
 ### `@effected/cli/testing` (new subpath)

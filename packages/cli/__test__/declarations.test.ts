@@ -79,6 +79,16 @@ export const sessioned: Effect.Effect<readonly [number, string, number], unknown
 	const frame: string = yield* first.plainFrame;
 	return [yield* Fiber.join(fiber), frame, yield* session.mounts] as const;
 });
+
+// A display-only element under view: frames and rerender, and no result to wait for.
+declare const element: Parameters<typeof CliUiTest.view>[0];
+export const viewed: Effect.Effect<string, never, Scope.Scope> = Effect.gen(function* () {
+	const view = yield* CliUiTest.view(element, { columns: 40 });
+	yield* view.rerender(element);
+	// @ts-expect-error a view has no result
+	void view.result;
+	return yield* view.plainFrame;
+});
 `;
 
 /** The live control: a requirement left unprovided must be reported, or the gate cannot fail. */
@@ -453,6 +463,7 @@ const UI_TESTING_TYPES_AND_VALUES = [
 	"CliUiTestOptions",
 	"CliUiTestScreen",
 	"CliUiTestSession",
+	"CliUiTestView",
 ];
 
 describe("the published manifest", () => {
@@ -496,7 +507,13 @@ describe("the reviewed ./ui and ./ui/testing surfaces", () => {
 		]) {
 			assert.include(ui, member, member);
 		}
-		for (const member of ["static readonly session", "readonly chunk:", "readonly next:", "readonly mounts:"]) {
+		for (const member of [
+			"static readonly session",
+			"static readonly view",
+			"readonly chunk:",
+			"readonly next:",
+			"readonly mounts:",
+		]) {
 			assert.include(testing, member, member);
 		}
 	});
