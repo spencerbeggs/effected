@@ -21,18 +21,16 @@ export class Cancelled extends Schema.TaggedError<Cancelled>()("Cancelled", {
 	 * The one line, `cancelled; nothing written`.
 	 *
 	 * @remarks
-	 * A prototype getter, not a field, so it is not part of the encoded form, equality or a JSON dump.
+	 * A prototype getter, not a field, so it is not part of the encoded form, equality or a JSON dump. Assigning to
+	 * it is ignored: a library that rewrites `error.message` (to prefix a context, say) must not make this error throw,
+	 * which a getter-only property does in strict mode. The line is fixed.
 	 */
 	override get message(): string {
 		return "cancelled; nothing written";
 	}
 
-	/**
-	 * Ignores the assignment: a library that rewrites `error.message` (to prefix a context, say) must not make this
-	 * error throw, which a getter-only property does in strict mode. The line is fixed.
-	 */
 	override set message(_value: string) {
-		// No-op by design.
+		// Ignored by design: see the getter.
 	}
 
 	/**

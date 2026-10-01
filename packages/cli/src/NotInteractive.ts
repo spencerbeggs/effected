@@ -17,18 +17,16 @@ export class NotInteractive extends Schema.TaggedError<NotInteractive>()("NotInt
 	 * The one line, `not interactive: run in a terminal or pass the flag`.
 	 *
 	 * @remarks
-	 * A prototype getter, not a field, so it is not part of the encoded form, equality or a JSON dump.
+	 * A prototype getter, not a field, so it is not part of the encoded form, equality or a JSON dump. Assigning to
+	 * it is ignored: a library that rewrites `error.message` must not make this error throw, which a getter-only
+	 * property does in strict mode. The line is fixed.
 	 */
 	override get message(): string {
 		return "not interactive: run in a terminal or pass the flag";
 	}
 
-	/**
-	 * Ignores the assignment: a library that rewrites `error.message` must not make this error throw, which a
-	 * getter-only property does in strict mode. The line is fixed.
-	 */
 	override set message(_value: string) {
-		// No-op by design.
+		// Ignored by design: see the getter.
 	}
 
 	/**
