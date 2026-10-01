@@ -11,6 +11,22 @@
 export { CliUi, type CliUiRunOptions, type Screen, type ScreenControl } from "./ui/CliUi.js";
 export { KeyHelp, type KeyHelpProps } from "./ui/KeyHelp.js";
 export { type Binding, type KeyHelpRow, KeyTable, type UseKeysOptions, useKeys } from "./ui/KeyTable.js";
+export {
+	Select,
+	type SelectAction,
+	type SelectChoice,
+	type SelectInitOptions,
+	type SelectScreenOptions,
+	type SelectState,
+	type SelectViewProps,
+} from "./ui/Select.js";
+export {
+	TextInput,
+	type TextInputInitOptions,
+	type TextInputScreenOptions,
+	type TextInputState,
+	type TextInputViewProps,
+} from "./ui/TextInput.js";
 export { type KeyName, UiKey } from "./ui/UiKey.js";
 export { UiStreams, type UiStreamsShape } from "./ui/UiStreams.js";
 export {

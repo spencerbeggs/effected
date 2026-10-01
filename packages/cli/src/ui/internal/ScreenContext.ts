@@ -1,6 +1,6 @@
 import type * as Cli from "@effected/cli";
 import type { Context as ReactContext } from "react";
-import { fromReact } from "./ink.js";
+import { fromReact, inkModules } from "./ink.js";
 
 /**
  * What every kit widget reads from its screen.
@@ -24,3 +24,18 @@ export interface ScreenContextValue {
 export const screenContext: () => ReactContext<ScreenContextValue | undefined> = fromReact((react) =>
 	react.createContext<ScreenContextValue | undefined>(undefined),
 );
+
+/**
+ * The mounted screen's cancel, for a widget whose own key (such as Select's `q`) ends the screen.
+ *
+ * @remarks
+ * A React hook; throws outside a screen mounted by `CliUi.run`.
+ *
+ * @internal
+ */
+export const useScreenCancel = (): ScreenContextValue["cancel"] => {
+	const screen = inkModules().react.useContext(screenContext());
+	if (screen === undefined)
+		throw new Error("@effected/cli/ui: a widget was used outside a screen mounted by CliUi.run");
+	return screen.cancel;
+};
