@@ -52,6 +52,14 @@ describe("drainPerformance: React's development build leaks user-timing entries 
 	it("with the drain after every rerender and the unmount, none are left", () => {
 		assert.strictEqual(measuresAfterRerenders(true), 0);
 	});
+
+	it("a host's own marks survive the drain: React leaks measures only, so marks are left alone", () => {
+		performance.clearMarks("host-mark");
+		performance.mark("host-mark");
+		drainPerformance(true);
+		assert.strictEqual(performance.getEntriesByName("host-mark", "mark").length, 1);
+		performance.clearMarks("host-mark");
+	});
 });
 
 describe("resolveDrain: whether a drain mode drains", () => {

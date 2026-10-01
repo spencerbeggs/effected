@@ -52,7 +52,8 @@ export interface LiveOptions<E, S> {
 	/**
 	 * Clear React's user-timing entries after every render: `true`, `false`, or `"auto"` (the default), which clears
 	 * unless `NODE_ENV` is exactly `"production"`. React's development build records them on every render and never
-	 * clears them. The clear is process-wide: it removes every `measure` and `mark` entry, a program's own included.
+	 * clears them. The clear is process-wide: it removes every `measure` entry, a program's own included; marks are left
+	 * alone.
 	 */
 	readonly drainPerformance?: boolean | "auto";
 }

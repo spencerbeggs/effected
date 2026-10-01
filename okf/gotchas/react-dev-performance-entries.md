@@ -18,8 +18,8 @@ sources:
     title: "react/index.js:3 and react-reconciler/index.js:3 pick the development build when NODE_ENV !== production"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T09:56:12Z
-  body_sha256: 45873eff1803916cb2922fdd5a4c87e6b828e737aef085a846fa636172ba2530
+  at: 2026-10-01T10:16:13Z
+  body_sha256: 3633da2060c0526fbe21038395e5673b09be5b2fda42d222d088c330cb15beee
 ---
 
 # React 19's development build leaks user-timing entries on every render
@@ -60,13 +60,15 @@ Probe L3 counted them on Node 24 and 26 alike:[^p5-probes]
 Clearing after every render (`performance.clearMeasures()`) holds the count
 at 0. That call takes no filter by `detail`, and clearing by name would hit
 any user measure named `Update` or `Mount`, so the drain is global: it also
-clears a consumer's own user-timing entries.
+clears a consumer's own measures. Leave marks alone: React leaks measures
+only, so `clearMarks()` would take nothing of React's and only a host's own
+marks.
 
 ## What to do
 
 Drain after every rerender, the final unmount and every `renderToString`,
 unconditionally rather than gated on `NODE_ENV === "production"`, and
-document the drain as global. Drain long-lived `CliUi.run` screens too, not
+document the drain as global; clear measures, never marks. Drain long-lived `CliUi.run` screens too, not
 only live views: a screen left open re-renders on every key and resize.
 
 [^p5-probes]: `docs/superpowers/specs/2026-10-01-p5-probes.md`, section L3
