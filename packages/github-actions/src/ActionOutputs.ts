@@ -1,8 +1,8 @@
+import { WorkflowCommand } from "@effected/github-commands";
 import { Console, Context, Effect, FileSystem, Layer, Schema } from "effect";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import { heredocBlock, isUsableName } from "./internal/runnerFile.js";
 import { unstubbed } from "./internal/unstubbed.js";
-import { WorkflowCommand } from "./WorkflowCommand.js";
 
 /**
  * Raised when an action cannot publish an output.

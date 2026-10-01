@@ -19,6 +19,7 @@
 		"@effected/git": "workspace:*",
 		"@effected/github": "workspace:*",
 		"@effected/github-actions": "workspace:*",
+		"@effected/github-commands": "workspace:*",
 		"@effected/github-references": "workspace:*",
 		"@effected/glob": "workspace:*",
 		"@effected/jsonc": "workspace:*",

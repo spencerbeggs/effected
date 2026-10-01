@@ -38,6 +38,7 @@
 		"@effect/platform-node": "catalog:effect",
 		"@effected/cli": "workspace:^",
 		"@effected/env": "workspace:^",
+		"@effected/github-commands": "workspace:^",
 		"@effected/glob": "workspace:^",
 		"@effected/walker": "workspace:^",
 		"ajv": "^8.20.0",

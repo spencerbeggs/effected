@@ -1,3 +1,5 @@
+// `WorkflowCommand` moved to the pure `@effected/github-commands`; this entrypoint keeps the old import path working.
+export { type AnnotationProperties, WorkflowCommand } from "@effected/github-commands";
 export {
 	Action,
 	type ActionRunOptions,
@@ -131,4 +133,3 @@ export {
 	ToolInstallerError,
 	type ToolInstallerShape,
 } from "./ToolInstaller.js";
-export { type AnnotationProperties, WorkflowCommand } from "./WorkflowCommand.js";

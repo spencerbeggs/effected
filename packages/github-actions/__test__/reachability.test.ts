@@ -98,7 +98,6 @@ const LIGHT_MODULES = [
 	"PackageManagerInstaller.ts",
 	"Secret.ts",
 	"ToolInstaller.ts",
-	"WorkflowCommand.ts",
 	"internal/actionsResults.ts",
 	"internal/archiveCommands.ts",
 	"internal/cacheService.ts",
@@ -156,7 +155,10 @@ describe("bundle reachability", () => {
 		// Exact edge sets, so a stray value import fails here rather than in a
 		// consumer's bundle — and so a stripper that blinded the walker shows up as
 		// an empty set rather than as a pass.
-		assert.deepStrictEqual([...reachableBareImports("ActionOutputs.ts")].sort(), ["effect"]);
+		assert.deepStrictEqual([...reachableBareImports("ActionOutputs.ts")].sort(), [
+			"@effected/github-commands",
+			"effect",
+		]);
 		assert.deepStrictEqual([...reachableBareImports("BlobEnvelope.ts")].sort(), ["effect"]);
 		// `node:crypto` is the sanctioned import, and it is here because core
 		// `Crypto` is RNG-only at beta.101 — no digest, no HMAC.
@@ -170,15 +172,19 @@ describe("bundle reachability", () => {
 			"node:crypto",
 		]);
 		assert.deepStrictEqual([...reachableBareImports("BlobStore.ts")].sort(), [
+			"@effected/github-commands",
 			"effect",
 			"effect/encoding/Hex",
 			"effect/http",
 			"node:crypto",
 		]);
-		// The workflow-command protocol imports NOTHING — not even `effect`. It is
-		// the one piece of this package a non-Actions consumer might legitimately
-		// want, and it stays a pure string renderer so it costs nothing to take.
-		assert.deepStrictEqual([...reachableBareImports("WorkflowCommand.ts")], []);
+		// The workflow-command protocol is not in this package any more: it lives in the pure
+		// `@effected/github-commands` (which imports nothing, not even `effect`), and this package takes it as a peer. The
+		// modules that write commands reach it as one bare import and nothing else.
+		assert.deepStrictEqual(
+			[...reachableBareImports("ActionLogger.ts")].filter((name) => name.startsWith("@effected/")),
+			["@effected/github-commands"],
+		);
 		// Same posture for the child-env helper: a pure value builder for core's
 		// CommandOptions contract, importing nothing — not even `effect`.
 		assert.deepStrictEqual([...reachableBareImports("ChildEnv.ts")], []);
@@ -188,6 +194,7 @@ describe("bundle reachability", () => {
 		// merely sets an output.
 		assert.deepStrictEqual([...reachableBareImports("Action.ts")].sort(), [
 			"@effect/platform-node",
+			"@effected/github-commands",
 			"effect",
 			"effect/http",
 		]);

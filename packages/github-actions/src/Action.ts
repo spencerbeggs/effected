@@ -1,4 +1,5 @@
 import { NodeServices } from "@effect/platform-node";
+import { WorkflowCommand } from "@effected/github-commands";
 import { Cause, Effect, Exit, Layer, LogLevel, Option, References, Result } from "effect";
 import type { HttpClient } from "effect/http";
 import { FetchHttpClient } from "effect/http";
@@ -7,7 +8,6 @@ import { ActionInput } from "./ActionInput.js";
 import { ActionLogger } from "./ActionLogger.js";
 import { ActionOutputs } from "./ActionOutputs.js";
 import { ActionState } from "./ActionState.js";
-import { WorkflowCommand } from "./WorkflowCommand.js";
 
 /**
  * Everything {@link ActionRuntime.layer} provides.

@@ -54,7 +54,7 @@ const escapeProperty = (value: string): string => escapeMessage(value).replaceAl
  * **Pure.** This module renders strings and nothing else — it performs no IO
  * and holds no service — which is what makes the escaping rules testable
  * without a runner, and what lets a non-Actions consumer reuse the protocol.
- * Writing a rendered command to stdout is {@link ActionOutputs}'s job.
+ * Writing a rendered command to stdout is the caller's job (`@effected/github-actions` does it).
  *
  * The escaping is the whole point of the module. A message carrying a raw
  * newline does not merely render oddly: the runner reads the text after it as
@@ -62,7 +62,7 @@ const escapeProperty = (value: string): string => escapeMessage(value).replaceAl
  *
  * @example
  * ```ts
- * import { WorkflowCommand } from "@effected/github-actions";
+ * import { WorkflowCommand } from "@effected/github-commands";
  *
  * WorkflowCommand.error("build failed", { file: "src/main.ts", startLine: 12 });
  * // "::error file=src/main.ts,line=12::build failed"

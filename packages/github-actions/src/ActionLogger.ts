@@ -1,7 +1,7 @@
+import type { AnnotationProperties } from "@effected/github-commands";
+import { WorkflowCommand } from "@effected/github-commands";
 import { Console, Context, Effect, Exit, Inspectable, Layer, LogLevel, Logger, References } from "effect";
 import { ActionEnvironment } from "./ActionEnvironment.js";
-import type { AnnotationProperties } from "./WorkflowCommand.js";
-import { WorkflowCommand } from "./WorkflowCommand.js";
 
 /**
  * Render a log message, which arrives as an array of the values passed to
