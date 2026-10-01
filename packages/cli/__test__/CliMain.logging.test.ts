@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { ConfigProvider, Console, Effect, Layer, Stdio, Terminal } from "effect";
 import { Command } from "effect/cli";
 import { CliRuntime } from "../src/index.js";
+import { LINE_BREAK, isCommand } from "./helpers/runnerCommands.js";
 
 const capturing = () => {
 	const out: string[] = [];
@@ -238,6 +239,39 @@ describe("CliRuntime.main: format auto decides the build-time lines from env and
 			);
 			const built = err.find((line) => line.includes("migration ran")) ?? "";
 			assert.isFalse(isJson(built), built);
+		}),
+	);
+});
+
+describe("CliRuntime.main: build-time lines are neutralized under GitHub Actions (r4 fix 3)", () => {
+	const injecting = Layer.mergeAll(io, Layer.effectDiscard(Effect.logWarning("build ##[warning]injected")));
+	const commands = (lines: ReadonlyArray<string>) => lines.flatMap((line) => line.split(LINE_BREAK)).filter(isCommand);
+	const run = (format: "auto" | "json" | "pretty", env: Record<string, string>) =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			yield* CliRuntime.main(Effect.void, { platform: injecting, env: { log: { level: "Debug", format } } }).pipe(
+				Effect.provideService(Console.Console, double),
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)),
+			);
+			return err;
+		});
+
+	for (const format of ["auto", "json", "pretty"] as const) {
+		it.effect(`${format}: no workflow command reaches stderr from what the platform logs while it builds`, () =>
+			Effect.gen(function* () {
+				const err = yield* run(format, { GITHUB_ACTIONS: "true", CI: "true" });
+				assert.isTrue(
+					err.some((line) => line.includes("injected")),
+					`the build line was written: ${JSON.stringify(err)}`,
+				);
+				assert.deepStrictEqual(commands(err), [], JSON.stringify(err));
+			}),
+		);
+	}
+
+	it.effect("control: off GitHub Actions the same line is left as it is", () =>
+		Effect.gen(function* () {
+			assert.isNotEmpty(commands(yield* run("pretty", {})));
 		}),
 	);
 });

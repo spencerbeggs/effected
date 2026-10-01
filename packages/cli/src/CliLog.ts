@@ -16,7 +16,7 @@ import {
 	References,
 } from "effect";
 import type { CliLoggerOptions } from "./CliLogger.js";
-import { CliLogger, makeCliLogger } from "./CliLogger.js";
+import { makeCliLogger } from "./CliLogger.js";
 import { sanitize } from "./Fmt.js";
 import { paintStyle } from "./internal/ansi.js";
 import { Level, passes } from "./internal/diagnostics.js";
@@ -184,6 +184,22 @@ const readLevel = (
 			invalid: `${envVar}=${raw.value} is not a log level (${Object.keys(LEVELS).join("|")}); ignoring it`,
 		};
 	});
+
+/**
+ * Whether a record's line is neutralized: the `neutralize` option when it is a boolean, else whether the logging
+ * fiber's `CurrentRuntimeEnv`, or `fallback` where the fiber has none, says GitHub Actions.
+ */
+const actionsDecision =
+	(neutralize: boolean | "auto", fallback: Option.Option<RuntimeEnv>) =>
+	(fiber: Fiber.Fiber<unknown, unknown>): boolean => {
+		if (neutralize !== "auto") return neutralize;
+		const inFiber = Context.getOption(fiber.context, CurrentRuntimeEnv);
+		const runtime = Option.isSome(inFiber) ? inFiber : fallback;
+		return Option.contains(
+			Option.flatMap(runtime, (env) => env.ci),
+			"github-actions",
+		);
+	};
 
 /**
  * Diagnostics kept apart from a program's output: a level, a format and a place to write.
@@ -358,16 +374,7 @@ export class CliLog {
 				const captured = yield* Effect.serviceOption(CurrentRuntimeEnv);
 				// The option beats the capture: a host that names its environment means it.
 				const fallback = options.runtimeEnv === undefined ? captured : Option.some(options.runtimeEnv);
-				const neutralize = options.neutralize ?? "auto";
-				const underActionsIn = (fiber: Fiber.Fiber<unknown, unknown>): boolean => {
-					if (neutralize !== "auto") return neutralize;
-					const inFiber = Context.getOption(fiber.context, CurrentRuntimeEnv);
-					const runtime = Option.isSome(inFiber) ? inFiber : fallback;
-					return Option.contains(
-						Option.flatMap(runtime, (env) => env.ci),
-						"github-actions",
-					);
-				};
+				const underActionsIn = actionsDecision(options.neutralize ?? "auto", fallback);
 
 				const color = terminal?.stderr.color ?? "none";
 				// Decided per record, not once at build: the logger is built outermost, before an audience flag is read,
@@ -484,6 +491,7 @@ export class CliLog {
 const buildTimeAudience = (
 	argv: ReadonlyArray<string> | undefined,
 	audienceEnvVar: string | undefined,
+	detected: RuntimeEnv,
 ): Effect.Effect<AudienceKind> => {
 	const { given, conflict } = scanAudience(argv ?? []);
 	const [flagged] = given;
@@ -492,7 +500,7 @@ const buildTimeAudience = (
 	return Effect.map(Audience, (audience) => audience.kind).pipe(
 		Effect.provide(
 			Audience.layer(audienceEnvVar === undefined ? undefined : { envVar: audienceEnvVar }).pipe(
-				Layer.provide(CurrentRuntimeEnv.layer),
+				Layer.provide(Layer.succeed(CurrentRuntimeEnv, detected)),
 			),
 		),
 		Effect.provideService(Logger.CurrentLoggers, new Set<Logger.Logger<unknown, unknown>>()),
@@ -519,10 +527,14 @@ export const platformLogLayer = (
 	Layer.unwrap(
 		Effect.gen(function* () {
 			const { level } = yield* readLevel(options.level, options.envVar);
+			// No CurrentRuntimeEnv exists while the platform builds: detect it here, from the environment alone, so the
+			// build-time lines are neutralized under GitHub Actions as the program's are; `runtimeEnv` wins when given.
+			const detected: RuntimeEnv = yield* Effect.provide(CurrentRuntimeEnv, CurrentRuntimeEnv.layer);
+			const runtimeEnv = options.runtimeEnv ?? detected;
 			const format = options.format ?? "auto";
 			const ndjson =
 				format === "json" ||
-				(format === "auto" && (yield* buildTimeAudience(options.argv, audienceEnvVar)) !== "human");
+				(format === "auto" && (yield* buildTimeAudience(options.argv, audienceEnvVar, detected)) !== "human");
 			if (ndjson) {
 				return CliLog.layer({
 					level,
@@ -531,12 +543,14 @@ export const platformLogLayer = (
 					...(options.logger === undefined ? {} : { logger: options.logger }),
 					...(options.extraLoggers === undefined ? {} : { extraLoggers: options.extraLoggers }),
 					...(options.neutralize === undefined ? {} : { neutralize: options.neutralize }),
-					...(options.runtimeEnv === undefined ? {} : { runtimeEnv: options.runtimeEnv }),
+					runtimeEnv,
 				});
 			}
 			const ambient = yield* References.MinimumLogLevel;
 			return Layer.merge(
-				CliLogger.layer(options.logger),
+				Logger.layer([
+					makeCliLogger(options.logger, actionsDecision(options.neutralize ?? "auto", Option.some(runtimeEnv))),
+				]),
 				LogLevel.isLessThan(level, ambient) ? Layer.succeed(References.MinimumLogLevel, level) : Layer.empty,
 			);
 		}),
