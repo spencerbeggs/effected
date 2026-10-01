@@ -438,7 +438,12 @@ it is load-bearing → **[references/structural-checks.md](./references/structur
 filter that matched no test file; the separate `ERR_LOAD_URL` a repo suffers
 while its config declares a cwd-relative `globalSetup` path is a config defect
 to fix, not a cwd rule to obey); `TestConsole.logLines` accumulation; the eager
-`layerNoop` recorder; `PubSub.takeAll` hanging on an empty subscription; timing
+`layerNoop` recorder; `PubSub.takeAll` hanging on an empty subscription; a
+drain test whose subscriber took every message inside `publish`, so nothing
+was ever queued; `PubSub.shutdown` dropping the tail it was meant to drain; a
+stream over an ended subscription repeating `PubSub.end`'s sticky final
+message forever; a race that only shows below the default
+`Scheduler.MaxOpsBeforeYield` budget; timing
 gates lying under coverage; a green suite that fails the vitest **process**
 because a test left `process.exitCode` set; a big green count for a surface the
 suite never calls; a helper used on **both sides** of every comparison, which

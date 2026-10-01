@@ -17,7 +17,8 @@ For the general `Effect.log*`/span rules every package follows, see `effect-v4-o
 | Construct | Import | Reach for it when |
 | --- | --- | --- |
 | `ActionLogger.group` / `.withBuffer` / `.notice` / `.annotated` | `import { ActionLogger } from "@effected/github-actions"` | grouping log output, holding a quiet-green transcript, or attaching source annotations to `Effect.log*` |
-| `WorkflowCommand` | same | rendering a command's exact wire text with no runner or service — mostly internal |
+| `WorkflowCommand` | same (re-exported from `@effected/github-commands`) | rendering a command's exact wire text with no runner or service — mostly internal |
+| `CommandNeutralizer` | `import { CommandNeutralizer } from "@effected/github-commands"` | writing text you did not author (an error message, file contents) to the log by a route other than `ActionLogger`, so the runner never reads it as a command |
 | `ActionOutputs.summary` / `.setSecret` | `import { ActionOutputs } from "@effected/github-actions"` | writing the job summary, or masking a value in the runner's log filter |
 | `CheckRun.withCheckRun` / `.create` / `.update` / `.complete` | `import { CheckRun } from "@effected/github"` | creating, updating or reaching a terminal state on a GitHub check run |
 | `PullRequestComment.upsert` / `CommentMarker` | `import { PullRequestComment, CommentMarker } from "@effected/github"` | posting or updating a sticky, marker-findable PR comment |

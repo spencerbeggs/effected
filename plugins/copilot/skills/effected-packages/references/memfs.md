@@ -23,7 +23,7 @@ The main entry imports nothing from `node:*`; only the `./node-sync` subpath doe
 
 `options` is `{ root?, caseSensitive?, faults? }`:
 
-- `root` — seed keys are relative to it (`""` is the root itself; it exists even for an empty seed). A **join base, not a jail**: keys join lexically, so `"../x"` under `/ws/repo` is `/ws/x`. The handle's mutators join relative paths to it too. A relative root or an absolute key alongside it is a typed `BadArgument` naming the value.
+- `root` — seed keys are relative to it (`""` is the root itself; it exists even for an empty seed). A **join base, not a jail**: keys join lexically, so `"../x"` under `/ws/repo` is `/ws/x`. The handle's mutators join relative paths to it too, but unnormalized: `..` resolves after links are followed, as `writeFileSync` does. A relative root or an absolute key alongside it is a typed `BadArgument` naming the value.
 - `caseSensitive` — `true` by default; `false` models a case-insensitive, case-preserving volume (default APFS), with semantics measured on a real APFS volume.
 - `faults` — the fault map (or `(base) => faults` factory) wrapped around the built `FileSystem`. The seed lands beneath the faults; `Volume` inspects the raw volume. It does not reach a handle's ports.
 

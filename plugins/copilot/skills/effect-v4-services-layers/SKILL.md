@@ -152,6 +152,14 @@ generics** — a `get<T>(key): Effect<T>` collapses to `Effect<unknown>` and
 overloads are lost — which is why `use`/`useSync`, or plain `yield*`, are the
 whole accessor story and preserve the real method signatures.
 
+**The class IS the Effect — there is no `.asEffect()`.** `class Database
+extends Context.Service<...>()("Database")` is itself an
+`Effect<Shape, never, Database>`, so pass the class wherever an Effect goes:
+`Effect.flatMap(Database, (db) => ...)`, `Database.pipe(Effect.map(...))`, or
+as a value typed `Effect.Effect<Database["Service"], never, Database>`.
+`.asEffect()` is `Effectable.Class`'s abstract method, not a service's;
+calling it on a service class is a type error, not a conversion you forgot.
+
 For a config knob / feature flag with a default (not a full API), use
 `Context.Reference<T>(id, { defaultValue: () => ... })` instead of a
 service.

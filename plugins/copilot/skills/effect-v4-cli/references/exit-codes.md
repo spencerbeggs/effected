@@ -55,8 +55,8 @@ wrong (fail), or did the *world* simply not contain what they asked for (succeed
 
 ## `CliRuntime.main` assembles the whole program, in one order
 
-`CliRuntime.main(program, { platform, logger?, render?, exitCode?, usageExitCode?
-})` wraps an `effect/cli` program so every failure — a parse error, a
+`CliRuntime.main(program, { platform, env?, logger?, render?, exitCode?,
+usageExitCode?, helpOnUsageError? })` wraps an `effect/cli` program so every failure — a parse error, a
 layer-build failure, a domain error, a findings exit — reports the same way.
 The order it assembles in is the whole point, not an implementation detail:
 
@@ -69,8 +69,15 @@ The order it assembles in is the whole point, not an implementation detail:
 3. `CliRuntime.reportFailures` catches every failure, remaps `ShowHelp` and an
    already-rendered `CliError.UserError` to `usageExitCode`, and re-fails with
    a marked, exit-coded error.
-4. The `logger` is provided **outermost** (default `CliLogger.layer()`), so it
-   is present no matter which of the layers above fails.
+4. The `logger` is provided **outermost** (default `CliLogger.layer()`, or
+   `CliLog.layer(env.log)` when `env.log` is given), so it is present no matter
+   which of the layers above fails.
+
+With `env`, the environment services (`CliEnv.layer(env)`) and a coloured
+formatter are provided beside the platform, inside failure reporting, so a
+failure to build them renders one line too. `helpOnUsageError: "stderr"` moves
+the help core prints alongside a usage error onto stderr (core prints help with
+the same `Console.log` for `--help` and for a usage error).
 
 `CliRuntime.main` makes no platform choice of its own — pass `platform` and
 still call your own runtime's runner:
@@ -100,7 +107,8 @@ Running this prints nothing and exits `2`.
 | --- | --- |
 | `0` | success — including a bare `--help` or root invocation (`ShowHelp` with no errors) |
 | `64` | usage — `usageExitCode`'s default, BSD `EX_USAGE`: a `ShowHelp` carrying parse errors, or a `CliError.UserError` `Command.runWith` already rendered |
-| `130` | interrupt — the default teardown maps an interrupt-only cause to `130` before any error-exit-code logic runs |
+| `64` | `NotInteractive` — a screen reached in a run that cannot prompt, with no `otherwise` |
+| `130` | interrupt — the default teardown maps an interrupt-only cause to `130` before any error-exit-code logic runs; also `Cancelled`, a prompt or screen the user quit with Esc or Ctrl-C |
 | the `exitCode` fallback (default `1`) | any other failure that carries no `Runtime.errorExitCode` of its own |
 | an error's own `Runtime.errorExitCode` | always wins over both fallbacks — see below |
 | 2, 3 | not reserved by the kit; a consumer's own taxonomy (conformance vs. lint, say) — `1` is already the kit's own `exitCode` fallback, above, not a free code to repurpose |
