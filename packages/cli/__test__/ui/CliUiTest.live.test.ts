@@ -160,7 +160,10 @@ describe("CliUiTest.live: vitest-agent's eight behaviours", () => {
 				yield* view.transcript,
 				["RUN 1", "ended frame 0", "RUN 2", "ended frame 0", "RUN 4", "ended frame 0"].join("\n"),
 			);
-			assert.notInclude(yield* view.rawFrame, `${ESC}[3J`);
+			const written = yield* view.written;
+			assert.include(written, "RUN 4", "control: the raw bytes are what the view wrote");
+			assert.notInclude(written, `${ESC}[3J`, "the scrollback was never wiped");
+			assert.notInclude(written, `${ESC}[2J`, "the screen was never cleared");
 		}).pipe(Effect.scoped),
 	);
 
@@ -197,5 +200,56 @@ describe("CliUiTest.live: vitest-agent's eight behaviours", () => {
 				}).pipe(Effect.scoped),
 			(spy) => Effect.sync(() => spy.mockRestore()),
 		),
+	);
+});
+
+describe("CliUiTest.live: what the harness can see (Task 5 review)", () => {
+	it.effect("a scrollback wipe shows: written carries ESC[3J, and the transcript loses what was above the frame", () =>
+		Effect.gen(function* () {
+			// A frame at the clamp's full height, then a height shrink: the one-paint lag the CliUi.live docs describe
+			// makes Ink paint the old height into the shorter terminal, which it answers with a clear-terminal frame.
+			const tall = (state: State): ReactElement =>
+				createElement(
+					Box,
+					{ flexDirection: "column" },
+					...Array.from({ length: 40 }, (_, index) =>
+						createElement(Text, { key: index }, `${state.last} line ${index}`),
+					),
+				);
+			const view = yield* CliUiTest.live({ ...viewOptions, render: tall, columns: 40, rows: 10 });
+			view.handle.logConsole.log("HISTORY");
+			yield* view.publish(Start);
+			assert.isTrue((yield* view.transcript).startsWith("HISTORY"), "control: the history is there before the shrink");
+			yield* view.resize(40, 4);
+			yield* view.publish(tick(1));
+			assert.include(yield* view.written, `${ESC}[3J`, "Ink wiped the scrollback");
+			assert.isFalse((yield* view.transcript).startsWith("HISTORY"), "and the transcript shows it gone");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a line logged after a run ended is not taken for a frame", () =>
+		Effect.gen(function* () {
+			const view = yield* CliUiTest.live(viewOptions);
+			yield* view.publish(Start);
+			yield* view.publish(End);
+			const frames = yield* view.frames;
+			view.handle.logConsole.log("after the run");
+			yield* view.advance("0 millis");
+			assert.deepStrictEqual(yield* view.frames, frames, "no frame was added");
+			assert.strictEqual(yield* view.plainFrame, "RUN 1\nended frame 0");
+			assert.include(yield* view.transcript, "after the run");
+		}).pipe(Effect.scoped),
+	);
+});
+
+describe("CliUiTest.live: advance needs the TestClock", () => {
+	it.live("under it.live, with the real clock, advance dies instead of waiting", () =>
+		Effect.gen(function* () {
+			const view = yield* CliUiTest.live(viewOptions);
+			yield* view.publish(Start);
+			const exit = yield* Effect.exit(view.advance("80 millis"));
+			assert.isTrue(Exit.isFailure(exit), "advance has no TestClock to move under it.live");
+			assert.include(yield* view.plainFrame, "started", "the view itself is unaffected");
+		}).pipe(Effect.scoped),
 	);
 });

@@ -192,12 +192,20 @@ export interface CliUiTestLive<E, S> {
 	readonly end: Effect.Effect<void>;
 	/**
 	 * Move the `TestClock` on by `duration`, which fires the view's tick, then wait as `publish` does. The test runs
-	 * under `it.effect`, whose clock is a `TestClock`.
+	 * under `it.effect`, whose clock is a `TestClock`; under `it.live` there is no `TestClock` to move and `advance`
+	 * dies, while the view's own tick runs on real time.
 	 */
 	readonly advance: (duration: Duration.Input) => Effect.Effect<void>;
 	/** Resize the terminal, then wait as `publish` does. */
 	readonly resize: (columns: number, rows: number) => Effect.Effect<void>;
-	/** The last frame drawn, as token markup (see {@link CliUiTest.styled}); empty before the first. */
+	/**
+	 * The last frame drawn, as token markup (see {@link CliUiTest.styled}); empty before the first.
+	 *
+	 * @remarks
+	 * Frames are best-effort: each is the write Ink makes after a render, so a render whose output is unchanged, or
+	 * empty, adds none, and a frame printed as a string (not interactive, or a degraded run) is not one. `transcript`
+	 * and `written` are the authority on what reached the terminal.
+	 */
 	readonly frame: Effect.Effect<string>;
 	/** The last frame drawn, as written: with its escape sequences. */
 	readonly rawFrame: Effect.Effect<string>;
@@ -207,9 +215,16 @@ export interface CliUiTestLive<E, S> {
 	readonly frames: Effect.Effect<ReadonlyArray<string>>;
 	/**
 	 * What the terminal shows now, scrollback included, as plain text: every committed frame, every line logged above a
-	 * frame, and the frame drawn now, with Ink's erases applied. For assertions about what stays on the terminal.
+	 * frame, every frame printed as a string, and the frame drawn now, with Ink's erases and clears applied (a
+	 * scrollback wipe shows as the loss of what was above the frame). For assertions about what stays on the terminal.
+	 * With `interactive: false`, the frames printed as strings show here and in `written`, and nowhere else.
 	 */
 	readonly transcript: Effect.Effect<string>;
+	/**
+	 * Every byte written to the terminal, escapes included: what to assert a sequence on, such as no `ESC[3J`
+	 * (a scrollback wipe) anywhere in a run.
+	 */
+	readonly written: Effect.Effect<string>;
 	/** The view's own handle: its state, its `logConsole`, and `done`. */
 	readonly handle: LiveHandle<S>;
 }
@@ -437,7 +452,8 @@ const makeTerminal = (options: CliUiTestOptions, mode: "debug" | "production" = 
 		onStdoutWrite: (chunk) => {
 			lastWrite = Date.now();
 			const current = captures.at(-1);
-			if (!frameDue || current === undefined) return;
+			// An ended capture takes no more frames: a write after its unmount (a log line, a printed frame) is not one.
+			if (!frameDue || current === undefined || current.ended) return;
 			if (mode === "debug") {
 				frameDue = false;
 				current.raws.push(chunk);
@@ -466,6 +482,8 @@ const makeTerminal = (options: CliUiTestOptions, mode: "debug" | "production" = 
 				captures.push({ raws: [], ended: false, crash: undefined });
 			},
 			onUnmount: (crash) => {
+				// The unmount's own final render can leave a frame due that it never wrote: nothing more is a frame.
+				frameDue = false;
 				const current = captures.at(-1);
 				if (current === undefined) return;
 				current.ended = true;
@@ -902,7 +920,10 @@ export class CliUiTest {
 				rawFrame: Effect.sync(last),
 				plainFrame: Effect.sync(() => trimLines(last().replace(ESCAPES, ""))),
 				frames: Effect.sync(() => raws().map((raw) => trimLines(styled(raw)))),
-				transcript: Effect.sync(() => screenAfter(terminal.fake.stdout()).join("\n")),
+				transcript: Effect.sync(() =>
+					screenAfter(terminal.fake.stdout(), terminal.fake.streams.stdout.rows).join("\n"),
+				),
+				written: Effect.sync(() => terminal.fake.stdout()),
 				handle,
 			};
 		});
