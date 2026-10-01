@@ -7,8 +7,8 @@ status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T14:11:47Z
-  body_sha256: 3939e0fbc2f40319a8c8733cfcd97c6e5bbbe4cd1af9af5d507771a1642e5469
+  at: 2026-10-01T14:18:02Z
+  body_sha256: ac6fabcae16f470f1e61dbb698811a17b594d3fa4d83952c90a909a8d203bea6
 ---
 
 # spencerbeggs/vitest-agent
@@ -68,14 +68,6 @@ tarball rather than a workspace link.
 - Its two independent ports of `registerToolkit` — duplicated MCP toolkit
   registration logic that a shared `@effected/mcp` primitive would
   collapse (phase 2).
-- A live handle available before Ink loads: `CliUi.live` returns its handle
-  only after Ink has loaded asynchronously, so a host that can be asked to
-  close before the first mount keeps its own "mounted" `Deferred`; the ask is a
-  handle that returns first, or a `close` that is safe and draining before
-  any mount.
-- `CliEnv.layerTest({ tty, term, audience })`: faking a terminal in a test
-  today is a hand-composed stack of `CliTheme.layer`, `CliInteractive.layer`
-  over `TerminalEnv.layerTest` and `Audience.layerTest`, and `UiStreams`.
 - `Glyphs.ascii` has no pass, fail or skip marks of its own, so the reporter
   draws those itself and a `TERM=dumb` assertion about kit glyphs needs a
   control to mean anything.
