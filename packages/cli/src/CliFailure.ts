@@ -134,30 +134,57 @@ const asPath = (location: string): string | undefined => {
 	return location.startsWith("/") || /^[A-Za-z]:[\\/]/.test(location) ? location : undefined;
 };
 
-const parseFrame = (raw: string): Frame => {
+/** A frame's text without `at `, and its location: the part in parentheses, or the whole text when there are none. */
+const splitFrame = (raw: string): { readonly text: string; readonly fn?: string; readonly location: string } => {
 	const text = raw.trim().replace(/^at\s+/, "");
 	const wrapped = /^(.*?)\s+\((.*)\)$/.exec(text);
 	const fn = wrapped?.[1];
-	const location = wrapped === null ? text : (wrapped[2] ?? "");
-	const position = /^(.*):(\d+):(\d+)$/.exec(location);
-	const file = asPath(position === null ? location : (position[1] ?? ""));
 	return {
-		raw: text,
+		text,
 		...(fn === undefined || fn === "" ? {} : { fn }),
-		...(file === undefined ? {} : { file }),
-		...(file === undefined || position === null ? {} : { line: Number(position[2]), col: Number(position[3]) }),
+		location: wrapped === null ? text : (wrapped[2] ?? ""),
 	};
 };
 
-/** A frame under `node_modules`: a dependency's, or an installed program's own. */
-const isDependency = (raw: string): boolean => /[\\/]node_modules[\\/]/.test(raw);
+/** A location without its `:line:col`, and the position when there is one. */
+const splitPosition = (location: string): { readonly where: string; readonly line?: number; readonly col?: number } => {
+	const position = /^(.*):(\d+):(\d+)$/.exec(location);
+	return position === null
+		? { where: location }
+		: { where: position[1] ?? "", line: Number(position[2]), col: Number(position[3]) };
+};
 
-/** A frame that is the runtime's or Effect's, never the program's, wherever the program is installed. */
-const isRuntime = (raw: string): boolean =>
-	/node:internal\//.test(raw) ||
-	/[\\/]node_modules[\\/]effect[\\/]/.test(raw) ||
-	/[\\/]packages[\\/]effect[\\/]src[\\/]/.test(raw) ||
-	/Generator\.next|~effect\//.test(raw);
+const parseFrame = (raw: string): Frame => {
+	const { text, fn, location } = splitFrame(raw);
+	const { where, line, col } = splitPosition(location);
+	const file = asPath(where);
+	return {
+		raw: text,
+		...(fn === undefined ? {} : { fn }),
+		...(file === undefined ? {} : { file }),
+		...(file === undefined || line === undefined || col === undefined ? {} : { line, col }),
+	};
+};
+
+/** The file a frame ran in, as a path, or `undefined` for a frame with none: `node:`, `<anonymous>`, `native`, `eval`. */
+const frameFile = (raw: string): string | undefined => asPath(splitPosition(splitFrame(raw).location).where);
+
+/** A frame under `node_modules`: a dependency's, or an installed program's own. Decided by its file alone. */
+const isDependency = (raw: string): boolean => /[\\/]node_modules[\\/]/.test(frameFile(raw) ?? "");
+
+/**
+ * A frame that is the runtime's or Effect's, never the program's, wherever the program is installed: one with no file
+ * (every `node:` frame, `<anonymous>`, native), or one in Effect's own files. Decided by the file alone, never by the
+ * function name: V8 names a program's own thunk by Effect's method alias (`boom [as ~effect/Effect/args]`).
+ */
+const isRuntime = (raw: string): boolean => {
+	const file = frameFile(raw);
+	return (
+		file === undefined ||
+		/[\\/]node_modules[\\/]effect[\\/]/.test(file) ||
+		/[\\/]packages[\\/]effect[\\/]src[\\/]/.test(file)
+	);
+};
 
 /** The frames of a stack that belong to the program, and how many were left out. */
 const cleanStack = (
@@ -282,8 +309,10 @@ const spanBlocks = (reason: CauseType.Reason<unknown>): ReadonlyArray<Block> => 
  * implements {@link CliDoc}; the document `options.render` holds for its `_tag`; for `Cancelled` and
  * `NotInteractive`, their one fixed line; a `Tree` of the rejected values, for a schema error or issue; else a failure
  * status line with its message. A defect is its message followed by a collapsible `stack` of the program's own frames,
- * each a file link (so a terminal can open it in an editor) shown through `displayPath`, with `node:internal` and every
- * `node_modules` frame (Effect's and any other dependency's) left out unless `stackFrames` is `all`; when that would
+ * each a file link (so a terminal can open it in an editor) shown through `displayPath`, with the runtime's frames (every
+ * `node:` frame and every frame with no file) and every `node_modules` frame (Effect's and any other dependency's)
+ * left out unless `stackFrames` is `all`. A frame is classified by its file alone, never by its function name, so a
+ * program's own thunk that V8 names by Effect's method alias is still shown. When that would
  * leave no frame at all, as for a program run from its own install under `node_modules`, only the runtime's and
  * Effect's are left out. Then an
  * `Error.cause` chain as a tree. When cleaning leaves no frame the stack says

@@ -449,6 +449,23 @@ describe("CliRuntime: the default failure path", () => {
 		}),
 	);
 
+	it.effect("a real Effect.sync defect shows the frame that threw (r5 B1)", () =>
+		Effect.gen(function* () {
+			let thrown: Error | undefined;
+			const program = Effect.sync(() => {
+				thrown = new Error("thrown by a thunk");
+				throw thrown;
+			});
+			const { err } = yield* runMain(program, { AI_AGENT: "claude" }, true);
+			const text = err.join("\n");
+			assert.include(text, "thrown by a thunk");
+			// V8 names the thunk's own frame by Effect's method alias; the frame is still the program's.
+			const first = /\((.*CliFailure\.test\.ts:\d+:\d+)\)/.exec(thrown?.stack ?? "")?.[1];
+			assert.isDefined(first, "control: V8 put the thunk's frame on the stack");
+			assert.include(text, first as string);
+		}),
+	);
+
 	it.effect("exit codes are unchanged: the exitCode option, a marked error's own code, and Cancelled's 130", () =>
 		Effect.gen(function* () {
 			assert.strictEqual((yield* runMain(failing, {}, true, { exitCode: 7 })).code, 7);
@@ -669,5 +686,42 @@ describe("CliFailure.toDoc: an installed program's own frames (r4 fix 2)", () =>
 	it("a stack of nothing but runtime and Effect frames still says no user frames, with the count", () => {
 		const text = plain(CliFailure.toDoc(Cause.die(errorWithStack("boom", INTERNAL_FRAMES))));
 		assert.include(text, `no user frames (${INTERNAL_FRAMES.length} internal frames hidden)`);
+	});
+});
+
+describe("CliFailure.toDoc: frames are classified by file path, never by name (r5 B1)", () => {
+	const ALIAS = "PrimitiveImpl.boom [as ~effect/Effect/args] (/abs/probe-defect.ts:10:8)";
+	const EFFECT_DIST =
+		"PrimitiveImpl.~effect/Effect/evaluate (file:///repo/node_modules/.pnpm/effect@4.0.0/node_modules/effect/dist/internal/effect.js:709:29)";
+
+	it("a user frame carrying Effect's method alias is the program's, and its file is shown", () => {
+		const text = plain(CliFailure.toDoc(Cause.die(errorWithStack("boom", [ALIAS, EFFECT_DIST, ...INTERNAL_FRAMES]))));
+		assert.include(text, "/abs/probe-defect.ts:10:8");
+		assert.notInclude(text, "no user frames");
+	});
+
+	it("an Effect dist frame is still hidden, whatever its name", () => {
+		const text = plain(CliFailure.toDoc(Cause.die(errorWithStack("boom", [ALIAS, EFFECT_DIST]))));
+		assert.include(text, "/abs/probe-defect.ts:10:8");
+		assert.notInclude(text, "node_modules/effect");
+		assert.notInclude(text, "effect.js");
+	});
+
+	it("every node: frame and every frame with no file is the runtime's", () => {
+		const text = plain(
+			CliFailure.toDoc(
+				Cause.die(
+					errorWithStack("boom", [
+						ALIAS,
+						"FSReqCallback.oncomplete (node:fs:197:5)",
+						"process.processTicksAndRejections (node:internal/process/task_queues:105:5)",
+						"new Promise (<anonymous>)",
+						"Array.map (native)",
+					]),
+				),
+			),
+		);
+		assert.include(text, "/abs/probe-defect.ts:10:8");
+		for (const hidden of ["node:fs", "node:internal", "new Promise", "Array.map"]) assert.notInclude(text, hidden);
 	});
 });
