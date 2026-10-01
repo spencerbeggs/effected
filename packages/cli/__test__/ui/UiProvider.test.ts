@@ -120,7 +120,7 @@ describe("UiProvider: the kit's hooks in a tree the kit did not mount", () => {
 	);
 });
 
-describe("UiProvider's size override (probe L1)", () => {
+describe("UiProvider's size override", () => {
 	it.effect(
 		"renderToString: useTerminalSize reads the override, not process.stdout, so it agrees with Ink's layout",
 		() =>

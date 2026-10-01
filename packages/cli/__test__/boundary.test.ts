@@ -50,7 +50,7 @@ const valueImportsOf = (text: string, isTarget: (specifier: string) => boolean):
 /** The `ink` and `react` specifiers a source text loads at runtime. */
 const valueImportsOfUiPackages = (text: string): ReadonlyArray<string> => valueImportsOf(text, isUiPackage);
 
-/** The one module that may load `ink` and `react` as values (ruling S1). */
+/** The one module that may load `ink` and `react` as values: every other ui module goes through its `loadInk`, so importing `./ui` loads neither. */
 const INK_LOADER = "ui/internal/ink.ts";
 
 /** Every module specifier a file names: static, re-export, type-only and `import("<literal>")`. */
@@ -97,7 +97,7 @@ const nodeImporters = (entry: string): ReadonlyArray<string> =>
 		.sort();
 
 /**
- * The D-D licence (`okf/decisions/ui-binds-process-streams.md`), one
+ * The process-streams licence (`okf/decisions/ui-binds-process-streams.md`), one
  * `file rule detail` line per waived offence that is not an `ink` or `react`
  * import. Exactly three files may ever appear here, and each joins when it
  * lands:
@@ -117,7 +117,7 @@ const NODE_LICENCE: ReadonlyArray<string> = [
 /**
  * The one `./ui` write to a stream outside Ink: the live view's console bridge writes a log line straight to
  * `UiStreams.stdout` when no frame is mounted to write it through (`okf/decisions/live-logs-through-ink.md`). It is
- * the stream `./ui` binds under the D-D licence, not the process's own, and the file imports nothing from Node.
+ * the stream `./ui` binds under the process-streams licence, not the process's own, and the file imports nothing from Node.
  */
 const UI_WRITE_LICENCE: ReadonlyArray<string> = ["ui/internal/inkConsole.ts stdout-write stdout.write"];
 
@@ -168,7 +168,7 @@ describe("cli boundary", () => {
 					assert.include(scan.files, "ui-testing.ts", "the scan read the ./ui/testing entry");
 					assert.deepStrictEqual(scan.allowed, []);
 					assert.deepStrictEqual(scan.violations, []);
-					// Every waived offence is a ./ui file naming ink or react, a line of the D-D licence, or the one
+					// Every waived offence is a ./ui file naming ink or react, a line of the process-streams licence, or the one
 					// stream write. The licences are exact, so a waiver that waives something new fails here.
 					const licensed = scan.waived
 						.filter((offence) => !(offence.rule === "forbidImports" && isUiPackage(offence.detail)))

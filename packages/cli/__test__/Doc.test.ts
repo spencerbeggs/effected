@@ -386,7 +386,7 @@ describe("Doc: okfit's trial additions", () => {
 	});
 });
 
-describe("Doc: vitest-agent round 3 additions are frozen plain data", () => {
+describe("Doc: the reporter blocks are frozen plain data", () => {
 	it("strong, em, file, lines, line, countsTable, diffText, compact lists, pipe tables and counts suffix", () => {
 		const nodes: ReadonlyArray<Inline | Block> = [
 			Doc.strong("a", Doc.code("b")),

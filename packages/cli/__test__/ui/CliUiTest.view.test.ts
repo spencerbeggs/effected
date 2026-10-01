@@ -80,7 +80,7 @@ describe("CliUiTest.view: a display-only element (A10)", () => {
 	});
 });
 
-describe("CliUiTest.view surfaces an element that crashes or is refused (r4 fix 1)", () => {
+describe("CliUiTest.view surfaces an element that crashes or is refused", () => {
 	const messageOf = (exit: Exit.Exit<unknown, unknown>): string => {
 		if (Exit.isSuccess(exit)) return "<succeeded>";
 		const error = Cause.squash(exit.cause);
@@ -130,7 +130,7 @@ describe("CliUiTest.view surfaces an element that crashes or is refused (r4 fix 
 	);
 });
 
-describe("CliUiTest.view after a deliberate end (r4 fix 2, R2)", () => {
+describe("CliUiTest.view after a deliberate end", () => {
 	for (const key of ["escape", "ctrl+c"] as const) {
 		it.live(`${key}: the frames stay readable, and a key after the end dies with the ended message`, () =>
 			Effect.gen(function* () {

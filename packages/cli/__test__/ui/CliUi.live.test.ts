@@ -44,7 +44,7 @@ describe("CliUi.live: subscription and the fold", () => {
 	);
 });
 
-describe("CliUi.live: when a stream is subscribed (Task 3 review, important 1)", () => {
+describe("CliUi.live: when a stream is subscribed", () => {
 	it.live("a subscription made first and passed as Stream.fromSubscription sees an event published at once", () =>
 		Effect.gen(function* () {
 			const fake = makeFakeStreams();
@@ -248,7 +248,7 @@ describe("CliUi.live: runs on the production path", () => {
 	}
 });
 
-describe("CliUi.live: closing and failing (Task 3 review, minors 4 and 5a)", () => {
+describe("CliUi.live: closing and failing", () => {
 	it.live("closing the scope stops the fold first: events queued just before the close are never folded or drawn", () =>
 		Effect.gen(function* () {
 			const fake = makeFakeStreams({ columns: 40, rows: 20 });
@@ -424,7 +424,7 @@ const runAgent = (options: LiveOptions<AgentEvent, AgentState>) =>
 		return { mounts, shown: screenAfter(fake.stdout()) };
 	}).pipe(Effect.scoped);
 
-describe("CliUi.live: what begins a run (Task 7 review, I1)", () => {
+describe("CliUi.live: what begins a run", () => {
 	it.live("by default, events after the terminal event (coverage, thresholds) never mount a second run", () =>
 		Effect.gen(function* () {
 			const { mounts, shown } = yield* runAgent(

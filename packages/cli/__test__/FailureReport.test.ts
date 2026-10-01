@@ -285,7 +285,7 @@ describe("a consumer render's output is untrusted text", () => {
 	);
 });
 
-describe("a delegating render gets the default report (F4, F5)", () => {
+describe("a delegating render gets the default report", () => {
 	const human = ConfigProvider.fromUnknown({ TERM: "xterm-256color", FORCE_COLOR: "3" });
 	const report = (render?: NonNullable<ReportFailuresOptions["render"]>) =>
 		Effect.gen(function* () {
@@ -433,7 +433,7 @@ describe("main's env.stackFrames (A3)", () => {
 	);
 });
 
-describe("a report target that cannot be built falls back to plain (r4 fix 4, minor 2)", () => {
+describe("a report target that cannot be built falls back to plain", () => {
 	it.effect(
 		"bare reportFailures with services whose terminal width throws: the plain report, not an escaped defect",
 		() =>

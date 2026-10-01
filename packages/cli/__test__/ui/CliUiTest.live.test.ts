@@ -203,7 +203,7 @@ describe("CliUiTest.live: vitest-agent's eight behaviours", () => {
 	);
 });
 
-describe("CliUiTest.live: what the harness can see (Task 5 review)", () => {
+describe("CliUiTest.live: what the harness can see", () => {
 	it.effect("a scrollback wipe shows: written carries ESC[3J, and the transcript loses what was above the frame", () =>
 		Effect.gen(function* () {
 			// A frame at the clamp's full height, then a height shrink: the one-paint lag the CliUi.live docs describe

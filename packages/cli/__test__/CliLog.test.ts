@@ -213,7 +213,7 @@ describe("CliLog.layer format", () => {
 		}),
 	);
 
-	it.effect("auto is plain for a human whose stderr is not a terminal, with no NDJSON line and no escape (r5 F2)", () =>
+	it.effect("auto is plain for a human whose stderr is not a terminal, with no NDJSON line and no escape", () =>
 		Effect.gen(function* () {
 			const { err } = yield* capture(one, { env, audience: "human", stderrTty: false, color: "none" });
 			assert.match(pretty(err)[0] ?? "", /INFO hello$/);
@@ -305,7 +305,7 @@ describe("CliLog owns the logger set", () => {
 			return { out, err, code };
 		});
 
-	// Review Focus 1: neither the diagnostics default nor `--log-level none` may silence the failure report.
+	// Neither the diagnostics default nor `--log-level none` may silence the failure report.
 	for (const argv of [["boom"], ["--log-level", "none", "boom"]]) {
 		it.effect(`a failure is still reported, once and plain, with the diagnostics level None: ${argv.join(" ")}`, () =>
 			Effect.gen(function* () {
@@ -477,7 +477,7 @@ describe("CliLog.layer format follows the audience in force for each record", ()
 	);
 });
 
-describe("CliLog.layer under GitHub Actions captured when it was built (F2)", () => {
+describe("CliLog.layer under GitHub Actions captured when it was built", () => {
 	const hostile = Effect.logWarning("::error::injected\n##[warning]also");
 	/** A host's layer: CliLog built over a layer whose CurrentRuntimeEnv says GitHub Actions, never in the fiber. */
 	const hosted = (neutralize?: boolean | "auto") =>
@@ -562,7 +562,7 @@ type RIn<L> = L extends Layer.Layer<infer _A, infer _E, infer R> ? R : never;
 /** True only when `A` and `B` are the same type. */
 type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 
-describe("CliLog.layer requirements per overload (F7)", () => {
+describe("CliLog.layer requirements per overload", () => {
 	it("each overload's R, and an optional file keeps FileSystem and Path in R", () => {
 		const maybe = undefined as CliLogFile | undefined;
 		type Fs = FileSystem.FileSystem | Path.Path;
@@ -588,7 +588,7 @@ const prettyMaybe = () => CliLog.layer({ format: "pretty", file: undefined as Cl
 const autoNoFile = () => CliLog.layer({});
 const autoMaybe = () => CliLog.layer({ file: undefined as CliLogFile | undefined });
 
-describe("CliLog.layer's own plain CliLogger neutralizes as its sink does (F2 fix round)", () => {
+describe("CliLog.layer's own plain CliLogger neutralizes as its sink does", () => {
 	it.effect("with the default plainLogger, a host-built layer over Actions writes no command on either line", () =>
 		Effect.gen(function* () {
 			const { double, err } = capturing();

@@ -56,7 +56,7 @@ const CASES: ReadonlyArray<readonly [string, Screen<never>, string]> = [
 	["a classic-JSX thunk with React not in scope", classicJsxThunk, "React is not defined"],
 ];
 
-describe("CliUiTest.render surfaces a crash (r5 B2)", () => {
+describe("CliUiTest.render surfaces a crash", () => {
 	for (const [name, screen, message] of CASES) {
 		it.live(`${name}: result dies, and every read and send dies, with the thrown message within 2 s`, () =>
 			Effect.gen(function* () {
@@ -81,7 +81,7 @@ describe("CliUiTest.render surfaces a crash (r5 B2)", () => {
 	);
 });
 
-describe("CliUiTest.session surfaces a crash (r5 B2)", () => {
+describe("CliUiTest.session surfaces a crash", () => {
 	for (const [name, screen, message] of CASES) {
 		it.live(`${name}: next, or the next read or send, dies with the thrown message within 2 s`, () =>
 			Effect.gen(function* () {
@@ -125,7 +125,7 @@ const CancelThenCrash = (): ReactElement => {
 	return createElement(Text, null, "armed");
 };
 
-describe("a crash in the same tick as a cancel wins (r4 re-review nit)", () => {
+describe("a crash in the same tick as a cancel wins", () => {
 	it.live("render: result dies with the crash, never Cancelled", () =>
 		Effect.gen(function* () {
 			const handle = yield* CliUiTest.render(() => createElement(CancelThenCrash));
@@ -184,7 +184,7 @@ const CrashOnUnmount = (): ReactElement => {
 	return createElement(Text, null, "steady");
 };
 
-describe("a crash and an interrupt, and the cause run keeps (r5 review minors)", () => {
+describe("a crash and an interrupt, and the cause run keeps", () => {
 	it.live(
 		"a crash recorded while the run is interrupted: run is an interrupt, and the screen does not die with it",
 		() =>
@@ -300,7 +300,7 @@ const CrashSoon = (): ReactElement => {
 	return createElement(Text, null, "steady");
 };
 
-describe("a rerender racing a crash (Task 3 review, minor 2)", () => {
+describe("a rerender racing a crash", () => {
 	it.live("a rerender whose element is built while the screen crashes dies with the crash, not 'screen ended'", () =>
 		Effect.gen(function* () {
 			const handle = yield* CliUiTest.render(() => createElement(CrashSoon));

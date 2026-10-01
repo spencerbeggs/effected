@@ -101,7 +101,7 @@ const run = (
 		return { fake, bridge };
 	});
 
-describe("the console bridge writes above a live Ink frame (probe L4, production path)", () => {
+describe("the console bridge writes above a live Ink frame (production path; okf/decisions/live-logs-through-ink.md)", () => {
 	it.live("five stdout and five stderr lines land above the frame, in order, with one frame left", () =>
 		Effect.gen(function* () {
 			const { fake } = yield* run((bridge, _streams, index) => {

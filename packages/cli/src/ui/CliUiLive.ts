@@ -292,7 +292,7 @@ export const live = <E, S>(
 			}),
 		);
 
-		/** Stop drawing a run: unmount first, so the one warning never lands inside a frame (ruling P1), then warn. */
+		/** Stop drawing a run: unmount first, so the one warning never lands inside a frame, then warn. */
 		const degrade = (current: Run<S>, error: unknown): Effect.Effect<void> =>
 			Effect.suspend(() => {
 				if (current.degraded) return unmount(current);
@@ -424,7 +424,7 @@ export const live = <E, S>(
 								await instance.waitUntilExit().catch(() => undefined);
 							}),
 					);
-					// The tick, in the run's scope: interrupted with the run, so no timer outlives it (probe L7).
+					// The tick, in the run's scope: interrupted with the run, so no timer outlives it (`okf/decisions/live-tick-is-a-scoped-schedule.md`).
 					yield* Effect.forkIn(
 						// The frame index is read when the tick fires, so a frame is never skipped while the controller is busy.
 						Effect.repeat(

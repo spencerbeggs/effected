@@ -1,13 +1,12 @@
 // A real process for CliUi.live.exit.test.ts: an interactive live view on in-memory streams, its tick running, inside a
 // scope that closes after 200 ms. The parent measures how long the process takes to exit once the scope has closed:
-// a tick left running on a ref'd timer would hold it open (probe L7), so a prompt exit is the proof that it was not.
+// a tick left running on a ref'd timer would hold it open (okf/decisions/live-tick-is-a-scoped-schedule.md), so a prompt exit is the proof that it was not.
 import { Effect, Queue, Stream } from "effect";
 import { Text } from "ink";
 import { createElement } from "react";
 import { CliInteractive, CliTheme } from "../../src/index.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
-// The live module and the streams reference, not the ./ui barrel: KeyTable.ts uses a parameter property, which Node's
-// type stripping rejects, and the live view does not need it.
+// The live module and the streams reference, not the ./ui barrel: the live view needs nothing more.
 import { live } from "../../src/ui/CliUiLive.js";
 import { UiStreams } from "../../src/ui/UiStreams.js";
 

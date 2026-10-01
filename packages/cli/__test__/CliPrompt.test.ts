@@ -151,7 +151,7 @@ describe("CliPrompt.fallback", () => {
 			}),
 	);
 
-	// Review Focus 3.
+	// A prompt needs a terminal on stdin AND stdout: one alone is not enough.
 	it.effect("a human with stdin NOT a TTY but stdout a TTY is non-interactive: no prompt", () =>
 		Effect.gen(function* () {
 			const terminal = yield* TestTerminal.make();

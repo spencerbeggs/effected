@@ -14,7 +14,7 @@ const linesOf = (doc: ReadonlyArray<Block>, overrides: Partial<RenderContext> = 
 
 const BOX = /[─│┌┐└┘├┤┬┴┼═║╔╗╚╝]/;
 
-describe("Render.plain: no escapes of any kind (Review Focus 2)", () => {
+describe("Render.plain: no escapes of any kind", () => {
 	for (const [name, overrides] of [
 		["human audience, truecolor, hyperlinks available", {}],
 		["agent audience", { audience: "agent" as const }],
@@ -734,7 +734,7 @@ describe("Render.plain: okfit's trial (link suffix, verbatim, counts options, an
 	);
 });
 
-describe("Render.plain: vitest-agent round 3 (strong, lines, file, counts tables and suffix, compact, line, diffText, pipe)", () => {
+describe("Render.plain: reporter blocks (strong, lines, file, counts tables and suffix, compact, line, diffText, pipe)", () => {
 	const passed = (n: number) => Doc.counter(Status.core, "success", { key: "passed", label: "passed", n });
 	const failed = (n: number) => Doc.counter(Status.core, "failure", { key: "failed", label: "failed", n });
 

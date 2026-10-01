@@ -243,7 +243,7 @@ describe("widthOf", () => {
 	});
 });
 
-describe("truncateSpans: a coloured, linked label wider than the width (Review Focus 1)", () => {
+describe("truncateSpans: a coloured, linked label wider than the width", () => {
 	for (const [name, label] of CASES) {
 		it.effect(
 			`${name}: every width gives at most that many columns, balanced SGR, one intact link, whole graphemes`,

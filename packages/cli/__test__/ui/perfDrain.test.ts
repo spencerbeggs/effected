@@ -44,7 +44,7 @@ const withNodeEnv = (value: string | undefined) =>
 		ConfigProvider.fromUnknown(value === undefined ? {} : { NODE_ENV: value }),
 	);
 
-describe("drainPerformance: React's development build leaks user-timing entries (probe L3)", () => {
+describe("drainPerformance: React's development build leaks user-timing entries (okf/gotchas/react-dev-performance-entries.md)", () => {
 	it("control: without the drain, 200 rerenders leave more than one measure entry per rerender", () => {
 		assert.isAbove(measuresAfterRerenders(false), RERENDERS);
 	});

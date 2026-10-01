@@ -1,5 +1,5 @@
 // CliEnv.layerTest: the env services a CliEnv.layer would build, from fixed answers, needing nothing and reading no
-// host environment (vitest-agent round 8, finding 2).
+// host environment.
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, TerminalEnv } from "@effected/env";
 import { Config, ConfigProvider, Effect, Layer, Option } from "effect";

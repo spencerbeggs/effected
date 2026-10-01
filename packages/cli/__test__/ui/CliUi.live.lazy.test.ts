@@ -1,5 +1,5 @@
-// CliUi.live hands its handle back without loading Ink: a run's first mount loads it (vitest-agent round 8, finding 1),
-// so a host holds the handle, and can close it, before Ink has resolved. No static ink or react import here: the mock
+// CliUi.live hands its handle back without loading Ink: a run's first mount loads it, so a
+// host holds the handle, and can close it, before Ink has resolved. No static ink or react import here: the mock
 // below gates Ink's load, and a static import would open it.
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Exit, Fiber, PubSub, Scope } from "effect";

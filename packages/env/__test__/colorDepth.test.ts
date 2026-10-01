@@ -119,7 +119,7 @@ describe("colorDepth", () => {
 		assert.strictEqual(colorDepth({ FORCE_COLOR: "0" }, false), "none");
 	});
 
-	it("FORCE_COLOR beats NO_COLOR (Node precedence, decision D-C)", () => {
+	it("FORCE_COLOR beats NO_COLOR (Node precedence, okf/decisions/force-color-honoured-node-precedence.md)", () => {
 		assert.strictEqual(colorDepth({ FORCE_COLOR: "3", NO_COLOR: "1" }, false), "truecolor");
 	});
 

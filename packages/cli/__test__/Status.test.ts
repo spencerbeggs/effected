@@ -120,7 +120,7 @@ describe("Status.def", () => {
 	});
 });
 
-describe("Status.glyph (F8)", () => {
+describe("Status.glyph", () => {
 	it("is the status's glyph from the given set", () => {
 		assert.strictEqual(Status.core.glyph("failure", Glyphs.unicode), "✗");
 		assert.strictEqual(Status.core.glyph("failure", Glyphs.ascii), "[FAIL]");

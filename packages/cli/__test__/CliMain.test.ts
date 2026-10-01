@@ -194,7 +194,7 @@ describe("CliRuntime.main and a UserError raised through Command.runWith", () =>
 });
 
 describe("CliRuntime.main and --log-level", () => {
-	// Review Focus 1: core's --log-level flag sets MinimumLogLevel for the command program. Effect filters a log
+	// Core's --log-level flag sets MinimumLogLevel for the command program. Effect filters a log
 	// record against MinimumLogLevel BEFORE any logger runs, so a flag value of `none` silences every Effect.log*
 	// call made inside the handler. The failure report is written by reportFailures AFTER the handler's scope
 	// has closed, so it must still reach stderr, and the exit code must still be right.

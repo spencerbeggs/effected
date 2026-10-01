@@ -47,7 +47,7 @@ const ESC = String.fromCharCode(0x1b);
 const settle = (millis: number): Effect.Effect<void> =>
 	Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, millis)));
 
-describe("CliUi.live: the tick (probe L7)", () => {
+describe("CliUi.live: the tick, an Effect schedule in the run's scope", () => {
 	it.effect("each run ticks on the clock: 400 ms on the TestClock draws frames 0 through 5", () =>
 		Effect.gen(function* () {
 			const fake = makeFakeStreams({ columns: 40, rows: 20 });
@@ -110,7 +110,7 @@ describe("CliUi.live: the tick (probe L7)", () => {
 	);
 });
 
-describe("CliUi.live: a render that fails degrades the run (Review Focus 2, ruling P1)", () => {
+describe("CliUi.live: a render that fails degrades the run, unmounting before its one warning", () => {
 	it.live("a render that throws mid-run: the last frame stays, one warning after the unmount, the fold goes on", () =>
 		Effect.gen(function* () {
 			const fake = makeFakeStreams({ columns: 40, rows: 20 });
@@ -336,7 +336,7 @@ describe("CliUi.live: a render that fails degrades the run (Review Focus 2, ruli
 const Styledframe = (state: State): ReactElement =>
 	createElement(Styled, { token: "accent" }, `${state.last} ${"x".repeat(60)}`);
 
-describe("CliUi.live when not interactive (Review Focus 4)", () => {
+describe("CliUi.live when not interactive", () => {
 	it.live("owned: the final frame is written once at the terminal event, escape-free at colour none", () =>
 		Effect.gen(function* () {
 			loads.count = 0;
@@ -444,7 +444,7 @@ describe("CliUi.live when not interactive (Review Focus 4)", () => {
 	);
 });
 
-describe("CliUi.live: Task 4 review fixes", () => {
+describe("CliUi.live: a stream that dies, a fallback that throws, an agent audience and the frame index", () => {
 	const dying = Stream.fromIterable([Start, tick(1)]).pipe(
 		Stream.rechunk(1),
 		Stream.concat(Stream.die(new Error("the stream died"))),
@@ -545,7 +545,7 @@ describe("CliUi.live: Task 4 review fixes", () => {
 	);
 });
 
-describe("CliUi.live and CliUi.run for an agent: the provided theme is colourless (Task 4 re-review)", () => {
+describe("CliUi.live and CliUi.run for an agent: the provided theme is colourless", () => {
 	/** What an agent's frame must show: the theme's own colour and paint, and the kit's colour-none text markers. */
 	const AgentProbe = (): ReactElement => {
 		const theme = useTheme();

@@ -157,7 +157,7 @@ describe("Fmt.percent scale", () => {
 	});
 });
 
-describe("Fmt.sanitize (F6)", () => {
+describe("Fmt.sanitize", () => {
 	it("removes escapes and controls, turns a tab into a space, and keeps line breaks", () => {
 		assert.strictEqual(Fmt.sanitize("a\u001b[31mb\u001b[39m\tc\u0007\u009b\nd\r\ne"), "ab c\nd\r\ne");
 	});

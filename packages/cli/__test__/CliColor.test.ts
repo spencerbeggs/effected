@@ -135,7 +135,7 @@ describe("CliColor.formatterLayer", () => {
 		),
 	);
 
-	// Review Focus 4: a forced colour level reaches the formatter even with no TTY.
+	// A forced colour level reaches the formatter even with no TTY.
 	it.effect("renders with colours under FORCE_COLOR=1 and no terminal", () =>
 		Effect.gen(function* () {
 			const formatter = yield* CliOutput.Formatter;

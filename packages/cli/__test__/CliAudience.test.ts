@@ -107,7 +107,7 @@ describe("CliAudience", () => {
 
 	it.effect("--agent --ci --help exits 0 and prints help (intended: core's action flags win before the resolver)", () =>
 		Effect.gen(function* () {
-			// Review Focus 2. Core handles --help before the resolver runs, so a conflicting audience together with
+			// Core handles --help before the resolver runs, so a conflicting audience together with
 			// --help is not a usage error. This is core's precedence, pinned here so a change to it is noticed.
 			const { code, out, err } = yield* run(["--agent", "--ci", "--help"]);
 			assert.strictEqual(code, 0);

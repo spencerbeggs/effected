@@ -117,7 +117,7 @@ describe("Render.markdown: headings and paragraphs", () => {
 		}),
 	);
 
-	it.effect("text cannot inject formatting: every metacharacter stays text (Review Focus 4 for paragraphs)", () =>
+	it.effect("text cannot inject formatting: every metacharacter stays text", () =>
 		Effect.gen(function* () {
 			const text = "*em* _em_ **strong** ~~gone~~ [l](https://evil.test) ![i](x) <b>html</b> &amp; `code` # h > q";
 			const root = yield* treeOf([Doc.paragraph(text)]);
@@ -324,7 +324,7 @@ describe("Render.markdown: headings and paragraphs", () => {
 	);
 });
 
-describe("Render.markdown: tables (Review Focus 4)", () => {
+describe("Render.markdown: tables", () => {
 	it.effect("is a GFM pipe table: N rows by M cells whose text is the input, with the alignment", () =>
 		Effect.gen(function* () {
 			const root = yield* treeOf([
@@ -1079,7 +1079,7 @@ describe("Render.markdown: okfit's trial (verbatim, link suffix, counts share, a
 	);
 });
 
-describe("Render.markdown: vitest-agent round 3 (parsed back)", () => {
+describe("Render.markdown: reporter blocks (parsed back)", () => {
 	const passed = (n: number) => Doc.counter(Status.core, "success", { key: "passed", label: "passed", n });
 	const failed = (n: number) => Doc.counter(Status.core, "failure", { key: "failed", label: "failed", n });
 
@@ -1205,7 +1205,7 @@ describe("Render.markdown: vitest-agent round 3 (parsed back)", () => {
 	);
 });
 
-describe("Render.markdown: Task 12 review carry-ins", () => {
+describe("Render.markdown: emphasis, list caps, counts headers, link fallbacks and duration columns", () => {
 	const passed = (n: number) => Doc.counter(Status.core, "success", { key: "passed", label: "passed", n });
 	const failed = (n: number) => Doc.counter(Status.core, "failure", { key: "failed", label: "failed", n });
 

@@ -1,5 +1,5 @@
 // A TERM=dumb terminal cannot move the cursor or take synchronized output, so the kit's screens treat it as not
-// interactive, through CliInteractive's own decision (round 7, P5-3): a live view prints its final frame once, as for a
+// interactive, through CliInteractive's own decision: a live view prints its final frame once, as for a
 // pipe, and a screen is refused.
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, TerminalEnv } from "@effected/env";

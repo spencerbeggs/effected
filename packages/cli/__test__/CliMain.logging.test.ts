@@ -88,7 +88,7 @@ describe("CliRuntime.main: env.formatter", () => {
 	);
 });
 
-describe("CliRuntime.main: the log level applies while the platform builds (F3)", () => {
+describe("CliRuntime.main: the log level applies while the platform builds", () => {
 	const debugging = Layer.mergeAll(io, Layer.effectDiscard(Effect.logDebug("migration ran")));
 
 	it.effect("format json: a Debug record the platform logs while it builds is one NDJSON line on stderr", () =>
@@ -212,21 +212,19 @@ describe("CliRuntime.main: format auto decides the build-time lines from env and
 		}),
 	);
 
-	it.effect(
-		"a human whose stderr is not a terminal: every stderr line is plain, build-time and runtime alike (r5 F2)",
-		() =>
-			Effect.gen(function* () {
-				// The platform double's stdout is not a terminal, and stderr mirrors it: a human piping stderr to a file.
-				const { err } = yield* run({});
-				assert.isTrue(
-					err.some((line) => line.includes("handler ran")),
-					"control: the runtime line was written",
-				);
-				assert.deepStrictEqual(
-					err.filter((line) => isJson(line)),
-					[],
-				);
-			}),
+	it.effect("a human whose stderr is not a terminal: every stderr line is plain, build-time and runtime alike", () =>
+		Effect.gen(function* () {
+			// The platform double's stdout is not a terminal, and stderr mirrors it: a human piping stderr to a file.
+			const { err } = yield* run({});
+			assert.isTrue(
+				err.some((line) => line.includes("handler ran")),
+				"control: the runtime line was written",
+			);
+			assert.deepStrictEqual(
+				err.filter((line) => isJson(line)),
+				[],
+			);
+		}),
 	);
 
 	it.effect("control: the argv the platform's Stdio carries is not seen at build time, only the option's", () =>
@@ -260,7 +258,7 @@ describe("CliRuntime.main: format auto decides the build-time lines from env and
 	);
 });
 
-describe("CliRuntime.main: build-time lines are neutralized under GitHub Actions (r4 fix 3)", () => {
+describe("CliRuntime.main: build-time lines are neutralized under GitHub Actions", () => {
 	const injecting = Layer.mergeAll(io, Layer.effectDiscard(Effect.logWarning("build ##[warning]injected")));
 	const commands = (lines: ReadonlyArray<string>) => lines.flatMap((line) => line.split(LINE_BREAK)).filter(isCommand);
 	const run = (format: "auto" | "json" | "pretty", env: Record<string, string>) =>
@@ -293,7 +291,7 @@ describe("CliRuntime.main: build-time lines are neutralized under GitHub Actions
 	);
 });
 
-describe("CliRuntime.main: the audience-override warning is neutralized under GitHub Actions (r4 fix 1 addendum)", () => {
+describe("CliRuntime.main: the audience-override warning is neutralized under GitHub Actions", () => {
 	const commands = (lines: ReadonlyArray<string>) => lines.flatMap((line) => line.split(LINE_BREAK)).filter(isCommand);
 	const run = (format: "auto" | "json" | "pretty", env: Record<string, string>) =>
 		Effect.gen(function* () {
@@ -333,7 +331,7 @@ describe("CliRuntime.main: the audience-override warning is neutralized under Gi
 	);
 });
 
-describe("CliRuntime.main: the audience-override warning is written exactly once, in the decided format (r4 fix 2, R1)", () => {
+describe("CliRuntime.main: the audience-override warning is written exactly once, in the decided format", () => {
 	const isJson = (line: string): boolean => {
 		try {
 			JSON.parse(line);
@@ -393,7 +391,7 @@ describe("CliRuntime.main: the audience-override warning is written exactly once
 	);
 });
 
-describe("CliRuntime.main: the audience-override warning goes to stderr alone (r4 re-review nit 2)", () => {
+describe("CliRuntime.main: the audience-override warning goes to stderr alone", () => {
 	const seen: Array<string> = [];
 	const extra = Logger.make<unknown, void>(({ message }) => {
 		seen.push(String(message));

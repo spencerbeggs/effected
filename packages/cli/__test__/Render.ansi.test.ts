@@ -495,7 +495,7 @@ describe("Render.ansi: okfit's trial (counts paint, link suffix, annotations)", 
 	);
 });
 
-describe("vitest-agent round 3: contextOf, strong and em, diffText, pipe tables (ansi)", () => {
+describe("Render.ansi reporter blocks: contextOf, strong and em, diffText, pipe tables (ansi)", () => {
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: asserting the absence of any escape
 	const ESCAPE = /\u001b/;
 	const doc = [
@@ -563,7 +563,7 @@ describe("vitest-agent round 3: contextOf, strong and em, diffText, pipe tables 
 	);
 });
 
-describe("Render.contextOf: a ci audience neutralizes workflow commands by default (Task 12 carry-in)", () => {
+describe("Render.contextOf: a ci audience neutralizes workflow commands by default", () => {
 	const doc = [Doc.paragraph("::error::injected"), Doc.paragraph("x ##[warning]y")];
 	const commands = (text: string) => text.split(LINE_BREAK).filter(isCommand);
 

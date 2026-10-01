@@ -181,7 +181,7 @@ describe("DocView", () => {
 	);
 });
 
-describe("DocView inside a live view (Review Focus, ruling P2)", () => {
+describe("DocView inside a live view (okf/decisions/live-height-clamp-not-width.md)", () => {
 	const tallDoc = (state: State): Document => [
 		Doc.heading(2, `run ${state.run}: ${state.last}`),
 		Doc.lines(Array.from({ length: 200 }, (_, index) => [Doc.text(`row ${index}`)])),
@@ -243,7 +243,7 @@ describe("DocView inside a live view (Review Focus, ruling P2)", () => {
 	);
 });
 
-describe("DocView and the live view under GitHub Actions: no workflow command from data (Task 6 review, I1)", () => {
+describe("DocView and the live view under GitHub Actions: no workflow command from data", () => {
 	const actions = CurrentRuntimeEnv.layerTest({ ci: Option.some("github-actions") });
 	const injected = [Doc.lines([[Doc.text("::error::injected from test data")], [Doc.text("a ##[warning]legacy one")]])];
 	const printed = (render: () => ReactElement, underActions: boolean) =>

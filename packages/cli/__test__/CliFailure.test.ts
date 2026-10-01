@@ -449,7 +449,7 @@ describe("CliRuntime: the default failure path", () => {
 		}),
 	);
 
-	it.effect("a real Effect.sync defect shows the frame that threw (r5 B1)", () =>
+	it.effect("a real Effect.sync defect shows the frame that threw", () =>
 		Effect.gen(function* () {
 			let thrown: Error | undefined;
 			const program = Effect.sync(() => {
@@ -658,7 +658,7 @@ describe("CliFailure.toDoc: third-party frames (A3)", () => {
 	});
 });
 
-describe("CliFailure.toDoc: an installed program's own frames (r4 fix 2)", () => {
+describe("CliFailure.toDoc: an installed program's own frames", () => {
 	const INSTALLED = [
 		"main (/usr/lib/node_modules/my-cli/dist/main.js:10:3)",
 		"run (file:///home/me/.local/share/pnpm/store/node_modules/.pnpm/my-cli@1.0.0/node_modules/my-cli/dist/run.js:4:7)",
@@ -689,7 +689,7 @@ describe("CliFailure.toDoc: an installed program's own frames (r4 fix 2)", () =>
 	});
 });
 
-describe("CliFailure.toDoc: frames are classified by file path, never by name (r5 B1)", () => {
+describe("CliFailure.toDoc: frames are classified by file path, never by name", () => {
 	const ALIAS = "PrimitiveImpl.boom [as ~effect/Effect/args] (/abs/probe-defect.ts:10:8)";
 	const EFFECT_DIST =
 		"PrimitiveImpl.~effect/Effect/evaluate (file:///repo/node_modules/.pnpm/effect@4.0.0/node_modules/effect/dist/internal/effect.js:709:29)";
@@ -726,7 +726,7 @@ describe("CliFailure.toDoc: frames are classified by file path, never by name (r
 	});
 });
 
-describe("CliFailure.toDoc: the hidden-frame count (r5 F1)", () => {
+describe("CliFailure.toDoc: the hidden-frame count", () => {
 	it("a mixed stack shows its app frames and, after them, how many internal frames were hidden", () => {
 		const frames = [
 			`run (${USER}:3:4)`,

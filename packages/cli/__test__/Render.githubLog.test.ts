@@ -364,7 +364,7 @@ describe("Render.githubLog: always neutralizes (G6)", () => {
 	);
 });
 
-describe("Render.githubLog: an annotation below a group's direct children (Task 12 carry-in)", () => {
+describe("Render.githubLog: an annotation below a group's direct children", () => {
 	it.effect("is dropped, as plain drops it, and documented so", () =>
 		Effect.gen(function* () {
 			const nested = Doc.collapsible("G", [Doc.section("S", [Doc.annotation({ level: "error" }, "x")])]);

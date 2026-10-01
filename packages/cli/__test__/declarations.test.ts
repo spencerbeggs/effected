@@ -558,7 +558,7 @@ describe("the reviewed ./ui and ./ui/testing surfaces", () => {
 		assert.deepStrictEqual(Object.keys(testing).sort(), ["CliUiTest"]);
 	});
 
-	it("the members added since the plan are on the built declarations", () => {
+	it("the members the reviewed lists add are on the built declarations", () => {
 		const ui = readFileSync(join(BUILT, "pkg", "ui.d.ts"), "utf8");
 		const testing = readFileSync(join(BUILT, "pkg", "ui-testing.d.ts"), "utf8");
 		for (const member of [

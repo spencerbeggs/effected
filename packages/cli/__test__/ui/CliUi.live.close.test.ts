@@ -1,5 +1,5 @@
 // LiveHandle.close and a PubSub subscription as `events`: the kit ends a view cleanly, folding the tail of a run that
-// was published but not yet pulled (round 7, P5-1).
+// was published but not yet pulled.
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Exit, Fiber, PubSub, Scheduler, Scope, Stream } from "effect";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
@@ -12,7 +12,7 @@ const runOf = (n: number): ReadonlyArray<Ev> => [Start, ...Array.from({ length: 
 const seenOf = (n: number): ReadonlyArray<string> => ["Start", ...Array.from({ length: n }, (_, i) => `tick ${i + 1}`)];
 const count = (text: string, part: string): number => text.split(part).length - 1;
 
-describe("PubSub.shutdown drops what a subscriber has not pulled (the truth P5-1 rests on)", () => {
+describe("PubSub.shutdown drops what a subscriber has not pulled (why close drains a subscription itself)", () => {
 	it.effect("published, then shut down: Stream.fromSubscription collects nothing, and remaining interrupts", () =>
 		Effect.gen(function* () {
 			const pubsub = yield* PubSub.unbounded<number>();

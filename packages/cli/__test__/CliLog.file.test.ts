@@ -139,7 +139,6 @@ describe("CliLog.layer file option", () => {
 		}),
 	);
 
-	// Review Focus 5.
 	describe("the first write error", () => {
 		it.effect("prints exactly one stderr line, keeps the program running, and drops later writes", () =>
 			Effect.gen(function* () {

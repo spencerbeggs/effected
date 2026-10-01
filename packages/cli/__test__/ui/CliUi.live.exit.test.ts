@@ -1,4 +1,4 @@
-// Real-process check for probe L7: a live view's tick is an Effect schedule forked into the run's scope, so closing the
+// Real-process check of okf/decisions/live-tick-is-a-scoped-schedule.md: a live view's tick is an Effect schedule forked into the run's scope, so closing the
 // scope interrupts it and the process exits at once. A tick left on a ref'd timer would keep the child alive.
 // Runs the package sources through Node's type stripping (fixtures/register-ts.mjs); see CliStdin.test.ts for the
 // preconditions (a built @effected/env, type-strip-clean sources).
@@ -10,7 +10,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 const FIXTURES = join(import.meta.dirname, "..", "fixtures");
 
-describe("CliUi.live in a real process (probe L7)", () => {
+describe("CliUi.live in a real process: the tick never holds it open", () => {
 	it.live(
 		"the process exits promptly once the view's scope closes: no ref'd timer is left behind",
 		() =>

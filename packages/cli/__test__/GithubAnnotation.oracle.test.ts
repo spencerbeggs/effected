@@ -65,7 +65,7 @@ const MESSAGES = [
 	"日本語 👨‍👩‍👧‍👦",
 ];
 
-describe("GithubAnnotation.format against the WorkflowCommand oracle (Review Focus 5)", () => {
+describe("GithubAnnotation.format against the WorkflowCommand oracle", () => {
 	it("a table of messages, at every level, with no properties", () => {
 		for (const level of LEVELS) {
 			for (const message of MESSAGES) {

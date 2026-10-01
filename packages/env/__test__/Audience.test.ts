@@ -37,7 +37,7 @@ describe("Audience.detect", () => {
 });
 
 describe("Audience.layer", () => {
-	it.effect("the override beats detection: CLAUDECODE=1 with OKFIT_AUDIENCE=human is a human (Review Focus 4)", () =>
+	it.effect("the override beats detection: CLAUDECODE=1 with OKFIT_AUDIENCE=human is a human", () =>
 		Effect.map(audienceFrom({ CLAUDECODE: "1", OKFIT_AUDIENCE: "human" }), (audience) =>
 			assert.deepStrictEqual({ ...audience }, { kind: "human", source: "override" }),
 		),

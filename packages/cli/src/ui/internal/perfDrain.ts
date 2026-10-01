@@ -26,8 +26,8 @@ export const resolveDrain = (mode: boolean | "auto"): Effect.Effect<boolean> =>
  * @remarks
  * The clear is global: it removes a consumer's own measures too, because the platform's `clearMeasures` filters only
  * by name, and React's entries (`Update`, `Mount`, tagged `detail.devtools`) share their names with anything a
- * consumer might call a measure. Marks are left alone: React's development build leaks measures only (marks stayed at
- * 0 in probe L3), so clearing marks would only take a host's own. A runtime without `performance` is left alone.
+ * consumer might call a measure. Marks are left alone: React's development build leaks measures only, never marks
+ * (`okf/gotchas/react-dev-performance-entries.md`), so clearing marks would only take a host's own. A runtime without `performance` is left alone.
  *
  * @internal
  */
