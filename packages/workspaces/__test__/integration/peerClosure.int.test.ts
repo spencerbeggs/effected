@@ -46,7 +46,9 @@ const closureGaps = (manifests: ReadonlyArray<Manifest>): ReadonlyArray<Gap> => 
 	const byName = new Map(manifests.map((m) => [m.name, m]));
 	const gaps: Array<Gap> = [];
 	for (const pkg of manifests.filter((m) => m.published)) {
-		const declared = new Set([...pkg.dependencies, ...pkg.peers, ...pkg.optionalPeers]);
+		// Only a regular dependency or a REQUIRED peer closes a required chain: an optional peer says a consumer may skip it,
+		// which is exactly what a required chain cannot allow.
+		const declared = new Set([...pkg.dependencies, ...pkg.peers]);
 		const seen = new Set<string>([pkg.name]);
 		const queue: Array<readonly [string, ReadonlyArray<string>]> = [...pkg.dependencies, ...pkg.peers]
 			.filter((name) => byName.has(name))
@@ -92,7 +94,7 @@ describe("the closure rule, on a toy graph (positive controls)", () => {
 		]);
 	});
 
-	it("declaring it, as a peer or as a regular dependency, closes the gap", () => {
+	it("declaring it, as a required peer or as a regular dependency, closes the gap", () => {
 		assert.deepStrictEqual(
 			closureGaps([kit({ name: "a", peers: ["@effected/walker", "@effected/glob"] }), walker, glob]),
 			[],
@@ -101,9 +103,14 @@ describe("the closure rule, on a toy graph (positive controls)", () => {
 			closureGaps([kit({ name: "a", dependencies: ["@effected/walker", "@effected/glob"] }), walker, glob]),
 			[],
 		);
+	});
+
+	it("an OPTIONAL peer declaration does not close a required chain: the consumer may skip it and the chain still needs it", () => {
 		assert.deepStrictEqual(
-			closureGaps([kit({ name: "a", peers: ["@effected/walker"], optionalPeers: ["@effected/glob"] }), walker, glob]),
-			[],
+			describeGaps(
+				closureGaps([kit({ name: "a", peers: ["@effected/walker"], optionalPeers: ["@effected/glob"] }), walker, glob]),
+			),
+			["a is missing peer @effected/glob (required through @effected/walker)"],
 		);
 	});
 
