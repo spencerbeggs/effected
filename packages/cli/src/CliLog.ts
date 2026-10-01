@@ -55,8 +55,10 @@ export interface CliLogOptions {
 	 *
 	 * Only `CliLog`'s own records are silenced. Under `CliRuntime.main`, what the platform logs while it builds follows
 	 * the build-time format: in NDJSON (`json`, or `auto` for an agent or a CI) it goes through this layer, so `false`
-	 * silences it there as at runtime; otherwise it goes through a plain `CliLogger`. The audience-override warning, the
-	 * failure report and the `CliMessage` lines always go through a plain `CliLogger`.
+	 * silences it there as at runtime; otherwise it goes through a plain `CliLogger`. The audience-override warning is a
+	 * configuration error and is never silenced: it is written exactly once, as NDJSON when the build-time format is
+	 * NDJSON and as a plain line otherwise, whatever this option says. The failure report and the `CliMessage` lines
+	 * always go through a plain `CliLogger`.
 	 */
 	readonly plainLogger?: boolean | undefined;
 	/**
@@ -501,6 +503,22 @@ const buildTimeAudience = (
 	);
 };
 
+/** What the build-time loggers decide from, read once: the format and the runtime environment to neutralize by. */
+const buildTimeDecision = (
+	options: CliLogOptions | CliLogFileOptions,
+	audienceEnvVar: string | undefined,
+): Effect.Effect<{ readonly ndjson: boolean; readonly runtimeEnv: RuntimeEnv }> =>
+	Effect.gen(function* () {
+		// No CurrentRuntimeEnv exists while the platform builds: detect it here, from the environment alone, so the
+		// build-time lines are neutralized under GitHub Actions as the program's are; `runtimeEnv` wins when given.
+		const detected: RuntimeEnv = yield* Effect.provide(CurrentRuntimeEnv, CurrentRuntimeEnv.layer);
+		const format = options.format ?? "auto";
+		const ndjson =
+			format === "json" ||
+			(format === "auto" && (yield* buildTimeAudience(options.argv, audienceEnvVar, detected)) !== "human");
+		return { ndjson, runtimeEnv: options.runtimeEnv ?? detected };
+	});
+
 /**
  * The logger the platform is built under by `CliRuntime.main` with `env.log`: the log level and env var apply to
  * what the platform logs while it builds, too.
@@ -509,34 +527,21 @@ const buildTimeAudience = (
  * With `format: "json"`, or `auto` when the build-time audience (`argv`, the override variable, detection) is an
  * agent or a CI, it is the full `CliLog.layer` in NDJSON (that format needs neither the audience nor the terminal,
  * which the platform has not built yet), without the file sink, whose `FileSystem` the platform provides. Otherwise it
- * is the plain `CliLogger`, with `MinimumLogLevel` lowered to the resolved level. The level is resolved silently: the
- * program's own `CliLog.layer` warns about an invalid value, once.
- *
- * `lowerMinimum: false` is the same logger without lowering `MinimumLogLevel` (the level is floored at the ambient
- * minimum instead): what `main` builds the environment layer under, so the audience-override warning is written as the
- * platform's lines are, while `CliLog.layer`'s own build, which shares that context, still reads the ambient minimum.
+ * is the plain `CliLogger`, with `MinimumLogLevel` lowered to the resolved level. Either way it neutralizes under
+ * GitHub Actions from the detected environment. The level is resolved silently: the program's own `CliLog.layer` warns
+ * about an invalid value, once.
  *
  * @internal
  */
 export const platformLogLayer = (
 	options: CliLogOptions | CliLogFileOptions,
 	audienceEnvVar?: string | undefined,
-	lowerMinimum = true,
 ): Layer.Layer<never> =>
 	Layer.unwrap(
 		Effect.gen(function* () {
-			const resolved = (yield* readLevel(options.level, options.envVar)).level;
+			const { level } = yield* readLevel(options.level, options.envVar);
 			const ambient = yield* References.MinimumLogLevel;
-			// Without lowering, the level never drops below the ambient minimum, so no MinimumLogLevel leaves this layer.
-			const level = lowerMinimum || !LogLevel.isLessThan(resolved, ambient) ? resolved : ambient;
-			// No CurrentRuntimeEnv exists while the platform builds: detect it here, from the environment alone, so the
-			// build-time lines are neutralized under GitHub Actions as the program's are; `runtimeEnv` wins when given.
-			const detected: RuntimeEnv = yield* Effect.provide(CurrentRuntimeEnv, CurrentRuntimeEnv.layer);
-			const runtimeEnv = options.runtimeEnv ?? detected;
-			const format = options.format ?? "auto";
-			const ndjson =
-				format === "json" ||
-				(format === "auto" && (yield* buildTimeAudience(options.argv, audienceEnvVar, detected)) !== "human");
+			const { ndjson, runtimeEnv } = yield* buildTimeDecision(options, audienceEnvVar);
 			if (ndjson) {
 				return CliLog.layer({
 					level,
@@ -554,5 +559,36 @@ export const platformLogLayer = (
 				]),
 				LogLevel.isLessThan(level, ambient) ? Layer.succeed(References.MinimumLogLevel, level) : Layer.empty,
 			);
+		}),
+	);
+
+/**
+ * The logger `CliRuntime.main` builds the environment layer under: one line per record, in the build-time format.
+ *
+ * @remarks
+ * What the environment layer logs is a configuration error (an invalid audience override, which interpolates the
+ * variable's value), so it is never silenced and never written twice: NDJSON alone for an agent or a CI (`json`, or
+ * `auto` for that build-time audience), a plain `CliLogger` line otherwise, whatever `plainLogger` and the diagnostics
+ * level say, and neutralized under GitHub Actions like the platform's lines. It floors at `Warning` and installs no
+ * `MinimumLogLevel`, so `CliLog.layer`'s own build, which shares this context, reads the ambient minimum as before.
+ *
+ * @internal
+ */
+export const envBuildLogLayer = (
+	options: CliLogOptions | CliLogFileOptions,
+	audienceEnvVar?: string | undefined,
+): Layer.Layer<never> =>
+	Layer.unwrap(
+		Effect.gen(function* () {
+			const { ndjson, runtimeEnv } = yield* buildTimeDecision(options, audienceEnvVar);
+			const underActions = actionsDecision(options.neutralize ?? "auto", Option.some(runtimeEnv));
+			if (!ndjson) return Logger.layer([makeCliLogger(options.logger, underActions)]);
+			return Logger.layer([
+				Logger.make<unknown, void>((record) => {
+					if (!LogLevel.isGreaterThanOrEqualTo(record.logLevel, "Warn")) return;
+					const json = Logger.formatJson.log(record);
+					record.fiber.getRef(Console.Console).error(underActions(record.fiber) ? neutralizeJson(json) : json);
+				}),
+			]);
 		}),
 	);

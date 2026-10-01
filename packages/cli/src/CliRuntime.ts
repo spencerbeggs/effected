@@ -8,7 +8,7 @@ import type { CliEnvOptions, CliEnvServices } from "./CliEnv.js";
 import { CliEnv } from "./CliEnv.js";
 import { CliExit } from "./CliExit.js";
 import type { CliLogFileOptions, CliLogOptions } from "./CliLog.js";
-import { CliLog, platformLogLayer } from "./CliLog.js";
+import { CliLog, envBuildLogLayer, platformLogLayer } from "./CliLog.js";
 import { CliLogger } from "./CliLogger.js";
 import { sanitize } from "./Fmt.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
@@ -493,10 +493,10 @@ export class CliRuntime {
 						Layer.provide(
 							Layer.provideMerge(
 								options.platform.pipe(Layer.provide(platformLogLayer(envLog, options.env?.audienceEnvVar))),
-								// The env build logs too (an invalid override value warns, interpolating it): under the same build-time
-								// format and neutralizing as the platform's lines, but without lowering MinimumLogLevel, which this
+								// The env build logs too (an invalid override value warns, interpolating it): once, in the build-time
+								// format and neutralized, never silenced by plainLogger, and without lowering MinimumLogLevel, which this
 								// CliLog's own build reads.
-								platformLogLayer(envLog, options.env?.audienceEnvVar, false),
+								envBuildLogLayer(envLog, options.env?.audienceEnvVar),
 							),
 						),
 						Layer.catchCause(() => CliLogger.layer(envLog.logger)),

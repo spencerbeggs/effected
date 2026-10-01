@@ -308,35 +308,70 @@ describe("CliRuntime.main: the audience-override warning is neutralized under Gi
 		);
 	}
 
-	it.effect("an agent with diagnostics on gets the warning's NDJSON record, as a runtime warning gets one", () =>
-		Effect.gen(function* () {
-			const { double, err } = capturing();
-			yield* CliRuntime.main(Effect.logWarning("runtime TOOL_AUDIENCE-like warning"), {
-				platform: io,
-				env: { audienceEnvVar: "TOOL_AUDIENCE", log: { level: "Debug" } },
-			}).pipe(
-				Effect.provideService(Console.Console, double),
-				Effect.provideService(
-					ConfigProvider.ConfigProvider,
-					ConfigProvider.fromUnknown({ AI_AGENT: "claude-code_x_agent", TOOL_AUDIENCE: "bogus" }),
-				),
-			);
-			const records = (needle: string) =>
-				err.filter((line) => line.startsWith("{") && line.includes(needle)).map((line) => JSON.parse(line));
-			assert.lengthOf(records("runtime TOOL_AUDIENCE-like"), 1, `control: a runtime warning: ${JSON.stringify(err)}`);
-			assert.lengthOf(records("TOOL_AUDIENCE=bogus"), 1, JSON.stringify(err));
-			assert.lengthOf(
-				err.filter((line) => line.includes("TOOL_AUDIENCE=bogus")),
-				2,
-				"one plain line and one NDJSON record, warned once",
-			);
-		}),
-	);
-
 	it.effect("control: off GitHub Actions the warning keeps the value as given", () =>
 		Effect.gen(function* () {
 			const err = yield* run("pretty", { TOOL_AUDIENCE: "##[error]injected" });
 			assert.isNotEmpty(commands(err), JSON.stringify(err));
+		}),
+	);
+});
+
+describe("CliRuntime.main: the audience-override warning is written exactly once, in the decided format (r4 fix 2, R1)", () => {
+	const isJson = (line: string): boolean => {
+		try {
+			JSON.parse(line);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+	const run = (env: Record<string, string>, log: { readonly plainLogger?: boolean; readonly level?: "Debug" }) =>
+		Effect.gen(function* () {
+			const { double, out, err } = capturing();
+			yield* CliRuntime.main(Effect.void, {
+				platform: io,
+				env: { audienceEnvVar: "TOOL_AUDIENCE", log },
+			}).pipe(
+				Effect.provideService(Console.Console, double),
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)),
+			);
+			assert.deepStrictEqual(out, []);
+			return err;
+		});
+	const AGENT = { AI_AGENT: "claude-code_x_agent" };
+
+	for (const plainLogger of [true, false]) {
+		it.effect(`agent, plainLogger ${plainLogger}: one NDJSON warning line`, () =>
+			Effect.gen(function* () {
+				const err = yield* run({ ...AGENT, TOOL_AUDIENCE: "bogus" }, { plainLogger });
+				assert.lengthOf(err, 1, JSON.stringify(err));
+				assert.isTrue(isJson(err[0] as string), err[0]);
+				assert.include(err[0], "TOOL_AUDIENCE=bogus");
+			}),
+		);
+
+		it.effect(`human, plainLogger ${plainLogger}: one plain warning line`, () =>
+			Effect.gen(function* () {
+				const err = yield* run({ TOOL_AUDIENCE: "bogus" }, { plainLogger });
+				assert.lengthOf(err, 1, JSON.stringify(err));
+				assert.isFalse(isJson(err[0] as string), err[0]);
+				assert.include(err[0], "TOOL_AUDIENCE=bogus");
+			}),
+		);
+	}
+
+	it.effect("agent with diagnostics on: still exactly one warning, in NDJSON", () =>
+		Effect.gen(function* () {
+			const err = yield* run({ ...AGENT, TOOL_AUDIENCE: "bogus" }, { level: "Debug" });
+			const warnings = err.filter((line) => line.includes("TOOL_AUDIENCE=bogus"));
+			assert.lengthOf(warnings, 1, JSON.stringify(err));
+			assert.isTrue(isJson(warnings[0] as string), warnings[0]);
+		}),
+	);
+
+	it.effect("agent, plainLogger false, a valid override: nothing on stderr", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* run({ ...AGENT, TOOL_AUDIENCE: "agent" }, { plainLogger: false }), []);
 		}),
 	);
 });
