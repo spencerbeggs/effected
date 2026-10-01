@@ -171,6 +171,136 @@ describe("Tabs.View drawing", () => {
 	);
 });
 
+describe("Tabs.View at colour none", () => {
+	it.effect("brackets the active tab and pads the others, focused or not", () =>
+		Effect.gen(function* () {
+			const focused = yield* Effect.scoped(
+				Effect.gen(function* () {
+					const handle = yield* CliUiTest.render(hosting({ tabs: three }, []), { color: "none" });
+					const first = (yield* handle.plainFrame).trim();
+					yield* handle.press("right");
+					return [first, (yield* handle.plainFrame).trim(), yield* handle.rawFrame] as const;
+				}),
+			);
+			assert.strictEqual(focused[0], "[Alpha] │  Beta  │  Gamma");
+			assert.strictEqual(focused[1], "Alpha  │ [Beta] │  Gamma");
+			assert.notInclude(focused[2], "\u001b[", "escape-free at none");
+			const unfocused = yield* Effect.scoped(
+				Effect.flatMap(
+					CliUiTest.render(hosting({ tabs: three, value: "gamma", isFocused: false }, []), { color: "none" }),
+					(handle) => handle.plainFrame,
+				),
+			);
+			assert.strictEqual(unfocused.trim(), "Alpha  │  Beta  │ [Gamma]");
+		}),
+	);
+
+	it.effect("a column brackets the active tab too", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(hosting({ tabs: three, direction: "column" }, []), { color: "none" });
+			yield* handle.press("down");
+			assert.deepStrictEqual(
+				(yield* handle.plainFrame)
+					.trimEnd()
+					.split("\n")
+					.map((line) => line.trimEnd()),
+				[" Alpha", "[Beta]", " Gamma"],
+			);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("the overflow fit counts the brackets, so the row stays within the width", () =>
+		Effect.gen(function* () {
+			const many = Array.from({ length: 6 }, (_, index) => ({ name: `t${index}`, label: `Section ${index}` }));
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const handle = yield* CliUiTest.render(hosting({ tabs: many }, []), { columns: 20, color: "none" });
+					for (const [key, expected] of [
+						["1", "[Section 0]"],
+						["6", "[Section 5]"],
+						["3", "[Section 2]"],
+					] as const) {
+						yield* handle.type(key);
+						const lines = (yield* handle.plainFrame).trimEnd().split("\n");
+						assert.lengthOf(lines, 1, lines.join(" / "));
+						assert.isAtMost(Fmt.width(lines[0] ?? ""), 19, lines[0]);
+						assert.include(lines[0], expected);
+					}
+				}),
+			);
+			const lone = yield* Effect.scoped(
+				Effect.flatMap(
+					CliUiTest.render(hosting({ tabs: [{ name: "x", label: "A very long single tab label" }] }, []), {
+						columns: 20,
+						color: "none",
+					}),
+					(handle) => handle.plainFrame,
+				),
+			);
+			assert.isAtMost(Fmt.width(lone.trim()), 19, lone);
+			assert.match(lone.trim(), /^\[A very.*\]$/, "a lone cut tab keeps both brackets");
+		}),
+	);
+});
+
+/** Mount a screen on fake streams through `CliUi.run`, send `chunk` as ONE stdin write, and wait for `calls`. */
+const oneChunk = (screen: Screen<never>, chunk: string, settled: () => boolean) =>
+	Effect.gen(function* () {
+		const fake = makeFakeStreams();
+		const fiber = yield* Effect.forkChild(
+			CliUi.run(screen).pipe(
+				Effect.provideService(UiStreams, fake.streams),
+				Effect.provideService(CliInteractive, true),
+				Effect.provide(CliTheme.layerTest()),
+			),
+		);
+		const until = (ready: () => boolean) =>
+			Effect.suspend(() => (ready() ? Effect.void : Effect.fail("not yet"))).pipe(
+				Effect.retry(Schedule.spaced("5 millis")),
+				Effect.timeout("2 seconds"),
+				Effect.orDie,
+			);
+		yield* until(() => fake.rawModes.includes(true));
+		fake.input(chunk);
+		yield* until(settled).pipe(Effect.ignore);
+		yield* Fiber.interrupt(fiber);
+	});
+
+describe("Tabs input in one chunk", () => {
+	it.live("two arrows in one stdin write move two tabs", () =>
+		Effect.gen(function* () {
+			const calls: Array<readonly [Name, number]> = [];
+			yield* oneChunk(hosting({ tabs: three }, calls), "\u001b[C\u001b[C", () => calls.length >= 3);
+			assert.deepStrictEqual(calls, [
+				["alpha", 0],
+				["beta", 1],
+				["gamma", 2],
+			]);
+		}),
+	);
+
+	// Ink splits a chunk at escape sequences, never inside plain text: "\t\t" arrives as one pasted string, not as
+	// two Tab keys. So the Tab cases lead with, or are, escape sequences: Shift-Tab is `ESC [ Z`.
+	it.live("shift+tab twice, and tab then right, in one stdin write each move two tabs", () =>
+		Effect.gen(function* () {
+			const back: Array<readonly [Name, number]> = [];
+			yield* oneChunk(hosting({ tabs: three }, back), "\u001b[Z\u001b[Z", () => back.length >= 3);
+			assert.deepStrictEqual(back, [
+				["alpha", 0],
+				["gamma", 2],
+				["beta", 1],
+			]);
+			const forward: Array<readonly [Name, number]> = [];
+			yield* oneChunk(hosting({ tabs: three }, forward), "\t\u001b[C", () => forward.length >= 3);
+			assert.deepStrictEqual(forward, [
+				["alpha", 0],
+				["beta", 1],
+				["gamma", 2],
+			]);
+		}),
+	);
+});
+
 describe("Tabs input", () => {
 	it.live("adds no keypress or data listener, and no second readable listener, to stdin", () =>
 		Effect.gen(function* () {

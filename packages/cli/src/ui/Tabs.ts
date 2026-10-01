@@ -129,7 +129,8 @@ export class Tabs {
 
 	/**
 	 * Draw the tabs: the active one in the accent token, bold and underlined; the others plain; every tab muted while
-	 * unfocused. A row wider than the terminal shows the tabs that fit around the active one, with the glyph set's
+	 * unfocused. At colour `"none"`, where all of that vanishes, the active tab is bracketed, `[Alpha]`, and the others
+	 * padded a space each side. A row wider than the terminal shows the tabs that fit around the active one, with the glyph set's
 	 * ellipsis at a cut edge, so it never wraps.
 	 *
 	 * @remarks
@@ -152,17 +153,27 @@ export class Tabs {
 		const focused = props.isFocused ?? true;
 		const column = props.direction === "column";
 		const { onChange } = props;
-		// Fires once, on mount, with the starting tab; later changes are reported from the key handler.
+		// Where the next key steps from. Re-read from the render on every render, and moved by the handler itself, so
+		// keys arriving in one stdin chunk (handled before React re-renders) each step from the last one's tab.
+		const at = react.useRef(index);
+		at.current = index;
+		// Fires once, on mount, with the starting tab; later changes are reported from the key handler. The ref keeps
+		// it to once even if React runs mount effects twice.
+		const announced = react.useRef(false);
 		react.useEffect(() => {
+			if (announced.current) return;
+			announced.current = true;
 			const first = props.tabs[index];
 			if (first !== undefined) onChange?.(first.name, index);
 		}, []);
 		useKeys(
 			column ? COLUMN_KEYS : ROW_KEYS,
 			(action) => {
-				const next = step(index, props.tabs.length, action);
+				const from = at.current;
+				const next = step(from, props.tabs.length, action);
 				const tab = props.tabs[next];
-				if (next === index || tab === undefined) return;
+				if (next === from || tab === undefined) return;
+				at.current = next;
 				if (!controlled) setOwn(next);
 				onChange?.(tab.name, next);
 			},
@@ -170,6 +181,12 @@ export class Tabs {
 		);
 		const labelOf = (position: number): string =>
 			`${props.showIndex === true ? `${position + 1}. ` : ""}${props.tabs[position]?.label ?? ""}`;
+		// At colour none, accent, bold and underline all vanish: the active tab is bracketed instead, and the others
+		// padded a space each side so a tab's width does not change as it becomes active.
+		const plain = theme.color === "none";
+		const marks = plain ? 2 : 0;
+		const marked = (position: number, text: string): string =>
+			plain ? (position === index ? `[${text}]` : ` ${text} `) : text;
 		const draw = (position: number, text: string): ReactElement => {
 			if (!focused) {
 				return react.createElement(
@@ -194,13 +211,19 @@ export class Tabs {
 					react.createElement(
 						ink.Box,
 						{ key: position },
-						draw(position, Fmt.truncate(labelOf(position), columns, { ellipsis: glyphs.ellipsis })),
+						draw(
+							position,
+							marked(
+								position,
+								Fmt.truncate(labelOf(position), Math.max(1, columns - marks), { ellipsis: glyphs.ellipsis }),
+							),
+						),
 					),
 				),
 			);
 		}
 		const separator = props.separator ?? (glyphs.kind === "unicode" ? " │ " : " | ");
-		const labels = props.tabs.map((_, position) => labelOf(position));
+		const labels = props.tabs.map((_, position) => marked(position, labelOf(position)));
 		const mark = Fmt.width(glyphs.ellipsis);
 		const total = labels.reduce((sum, label) => sum + Fmt.width(label), 0) + Fmt.width(separator) * (labels.length - 1);
 		// Too wide: show the tabs that fit around the active one, keeping room for an ellipsis at each cut edge.
@@ -219,7 +242,9 @@ export class Tabs {
 			if (position > from) children.push(separator);
 			const room = Math.max(1, columns - (from > 0 ? mark : 0) - (to < labels.length - 1 ? mark : 0));
 			const label = labels[position] ?? "";
-			children.push(draw(position, from === to ? Fmt.truncate(label, room, { ellipsis: glyphs.ellipsis }) : label));
+			const cut = (): string =>
+				marked(position, Fmt.truncate(labelOf(position), Math.max(1, room - marks), { ellipsis: glyphs.ellipsis }));
+			children.push(draw(position, from === to && Fmt.width(label) > room ? cut() : label));
 		}
 		if (to < labels.length - 1) children.push(glyphs.ellipsis);
 		return react.createElement(ink.Text, { wrap: "truncate-end" }, ...children);
