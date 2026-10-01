@@ -878,6 +878,61 @@ describe("Render.markdown: lists, trees and counts", () => {
 		}),
 	);
 
+	it.effect(
+		"a counter label cannot start a block in the columns list: no heading, code, nested list, quote or rule",
+		() =>
+			Effect.gen(function* () {
+				const labels = [
+					"# h",
+					"## h",
+					"    code",
+					"\tcode",
+					"- x",
+					"+ x",
+					"* x",
+					"1. x",
+					"2) x",
+					"> q",
+					"---",
+					"===",
+					"```",
+					"~~~",
+					"<div>",
+					"[x]: y",
+				];
+				for (const label of labels) {
+					const counts = Doc.counts({
+						counters: [
+							Doc.counter(Status.core, "failure", { key: "f", label, n: 1 }),
+							Doc.counter(Status.core, "success", { key: "p", label: "ok", n: 2 }),
+						],
+						layout: "columns",
+					});
+					const root = yield* treeOf([counts]);
+					assert.deepStrictEqual(
+						kids(root).map((n) => n.type),
+						["list"],
+						JSON.stringify(label),
+					);
+					const items = kids(kids(root)[0]);
+					assert.strictEqual(items.length, 2, `${JSON.stringify(label)}: two items`);
+					for (const item of items) {
+						assert.deepStrictEqual(
+							kids(item).map((n) => n.type),
+							["paragraph"],
+							`${JSON.stringify(label)}: an item is one paragraph`,
+						);
+						assert.deepStrictEqual(
+							[...new Set(descendantTypes(item))].sort(),
+							["listItem", "paragraph", "text"],
+							JSON.stringify(label),
+						);
+					}
+					assert.strictEqual(textOf(items[0] as N), `${label.trimStart()}: 1`, JSON.stringify(label));
+				}
+			}),
+	);
+
 	it.effect("Counts as columns is a list of label and number pairs", () =>
 		Effect.gen(function* () {
 			const root = yield* treeOf([Doc.counts({ label: "Summary", counters, layout: "columns" })]);

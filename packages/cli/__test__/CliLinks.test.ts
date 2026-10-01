@@ -247,6 +247,30 @@ describe("CliLinks: the target of a link", () => {
 		}),
 	);
 
+	it.effect("a Windows drive path is absolute everywhere and keeps its drive: file:///C:/x/y.ts, with slashes", () =>
+		Effect.gen(function* () {
+			const file = yield* target("file");
+			const vscode = yield* target("vscode");
+			for (const path of ["C:\\x\\y.ts", "C:/x/y.ts", "c:\\x\\y.ts"]) {
+				const drive = path.slice(0, 1);
+				assert.deepStrictEqual(file.target({ file: path, line: 3 }), Option.some(`file:///${drive}:/x/y.ts`), path);
+				assert.deepStrictEqual(
+					vscode.target({ file: path, line: 3, col: 4 }),
+					Option.some(`vscode://file/${drive}:/x/y.ts:3:4`),
+					path,
+				);
+			}
+			assert.deepStrictEqual(file.target({ file: "C:\\my dir\\a#b.ts" }), Option.some("file:///C:/my%20dir/a%23b.ts"));
+			// The same through layerTest, which has no filesystem and no Path.
+			const test = yield* Effect.gen(function* () {
+				return yield* CliLinks;
+			}).pipe(Effect.provide(CliLinks.layerTest("file")));
+			assert.deepStrictEqual(test.target({ file: "D:\\a\\b.ts" }), Option.some("file:///D:/a/b.ts"));
+			// A drive-relative path ("C:x.ts") is not absolute, so it has no link without a Path to resolve it.
+			assert.deepStrictEqual(test.target({ file: "C:x.ts" }), Option.none());
+		}),
+	);
+
 	it.effect("layerTest fixes the mode without a filesystem", () =>
 		Effect.gen(function* () {
 			for (const mode of ["vscode", "file", "off"] as const) {
@@ -322,6 +346,67 @@ describe("CliLinks.linker: the RenderContext.link policy", () => {
 			const agent = yield* linker("off", { hyperlinks: true, audience: "agent" });
 			assert.strictEqual(agent({ url: "https://example.test/x" }, "docs"), "docs");
 		}),
+	);
+
+	it.effect(
+		"a URL with a scheme that is not allowed is the label alone: javascript:, data:, vbscript: and their disguises",
+		() =>
+			Effect.gen(function* () {
+				const human = yield* linker("vscode", { hyperlinks: true, audience: "human" });
+				for (const url of [
+					"javascript:alert(1)",
+					"JaVaScRiPt:alert(1)",
+					" javascript:alert(1)",
+					"java\tscript:alert(1)",
+					"java script:alert(1)",
+					"data:text/html,<script>x</script>",
+					"vbscript:x",
+					"blob:https://x.test/y",
+					"ftp://files.test/x",
+					"ssh://host/repo",
+				]) {
+					assert.strictEqual(human({ url }, "label"), "label", JSON.stringify(url));
+				}
+				// The service itself has no target for one either, so no other caller of `target` gets one.
+				const l = yield* Effect.gen(function* () {
+					return yield* CliLinks;
+				}).pipe(Effect.provide(CliLinks.layerTest("vscode")));
+				assert.deepStrictEqual(l.target({ url: "javascript:alert(1)" }), Option.none());
+				assert.deepStrictEqual(l.target({ url: "data:text/html,x" }), Option.none());
+			}),
+	);
+
+	it.effect("an allowed scheme, or a relative URL, still links", () =>
+		Effect.gen(function* () {
+			const human = yield* linker("file", { hyperlinks: true, audience: "human" });
+			for (const url of [
+				"https://example.test/x",
+				"http://example.test/x",
+				"HTTPS://EXAMPLE.TEST/x",
+				"mailto:a@b.test",
+				"file:///repo/a.ts",
+				"vscode://file/repo/a.ts:1",
+				"vscode-insiders://file/repo/a.ts:1",
+				"/relative/path",
+				"#fragment",
+				"relative/path.html",
+			]) {
+				assert.strictEqual(linksOf(human({ url }, "label")).pairs, 1, JSON.stringify(url));
+			}
+		}),
+	);
+
+	it.effect(
+		"a custom service that hands back an unsafe URL still gets the label: the linker checks what it writes",
+		() =>
+			Effect.gen(function* () {
+				const hostile: CliLinksShape = { mode: "vscode", target: () => Option.some("javascript:alert(1)") };
+				const out = CliLinks.linker({ links: hostile, hyperlinks: true, audience: "human" })(
+					{ file: "/a.ts" },
+					"label",
+				);
+				assert.strictEqual(out, "label");
+			}),
 	);
 
 	it.effect("a hostile file path or URL yields exactly one balanced pair and no injected sequence", () =>

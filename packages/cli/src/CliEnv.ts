@@ -57,6 +57,10 @@ export type CliEnvServices = CurrentRuntimeEnv | TerminalEnv | Audience | CliThe
  * degrades to "unset" when it fails, so building the layer does not fail on a bad provider; it fails only when
  * `Stdio` or `Terminal` do.
  *
+ * `CliLinks` reads `FileSystem` and `Path` from the surrounding context if it has them, and does not require them: a
+ * `.vscode/` directory is looked for, and a relative path resolved, only when the platform is provided OUTSIDE this
+ * layer, as `CliRuntime.main` does. Without them `auto` is `vscode` on the terminal signal alone.
+ *
  * Not interactive, the gated `Terminal`'s `readLine` fails as a quit, its input is already ended and its `display`
  * writes nothing. A program that reads piped data must read `Stdio.stdin`, and one that writes output must use
  * `Console` or `Stdio`, never `Terminal`. It also installs `CliTheme.promptTheme`, so core's prompts follow the

@@ -5,6 +5,7 @@ import type { Layer as LayerType } from "effect";
 import { Config, Context, Effect, FileSystem, Layer, Option, Path } from "effect";
 import type { LinkTarget } from "./Doc.js";
 import { sanitize } from "./internal/layout.js";
+import { isAllowedLinkUrl } from "./internal/linkScheme.js";
 
 /**
  * Whether file links open in an editor.
@@ -84,6 +85,9 @@ const encodePath = (path: string): string =>
 		)
 		.join("/");
 
+/** A Windows drive path (`C:\x`, `C:/x`): absolute whatever the `Path` flavour, so never resolved against a directory. */
+const DRIVE = /^[A-Za-z]:[\\/]/;
+
 /** A URL with its control characters and line breaks removed: none is legal in one, and each could end an OSC 8 early. */
 const cleanUrl = (url: string): string => sanitize(url).replace(/[\r\n]/g, "");
 
@@ -92,12 +96,15 @@ const makeTarget =
 	(target: LinkTarget): Option.Option<string> => {
 		if ("url" in target) {
 			const url = cleanUrl(target.url);
-			return url === "" ? Option.none() : Option.some(url);
+			return url === "" || !isAllowedLinkUrl(url) ? Option.none() : Option.some(url);
 		}
 		if (mode === "off") return Option.none();
 		const resolved = absolute(target.file);
 		if (resolved === undefined) return Option.none();
-		const path = encodePath(resolved.startsWith("/") ? resolved : `/${resolved.replace(/\\/g, "/")}`);
+		// A drive path keeps its drive and becomes /C:/x/y.ts: the colon is part of the URL's path, not data to encode.
+		const path = DRIVE.test(resolved)
+			? `/${resolved.slice(0, 2)}${encodePath(resolved.slice(2).replace(/\\/g, "/"))}`
+			: encodePath(resolved.startsWith("/") ? resolved : `/${resolved.replace(/\\/g, "/")}`);
 		if (mode === "file") return Option.some(`file://${path}`);
 		const position =
 			target.line === undefined ? "" : target.col === undefined ? `:${target.line}` : `:${target.line}:${target.col}`;
@@ -160,6 +167,7 @@ const build = (options: CliLinksOptions, ambient: Ambient): Effect.Effect<CliLin
 			(Option.isSome(ambient.path) ? ambient.path.value.resolve(".") : undefined);
 		const path = Option.getOrUndefined(ambient.path);
 		const absolute = (file: string): string | undefined => {
+			if (DRIVE.test(file)) return file;
 			if (path === undefined) return file.startsWith("/") ? file : undefined;
 			if (path.isAbsolute(file)) return file;
 			return cwd === undefined ? undefined : path.resolve(cwd, file);
@@ -222,7 +230,10 @@ export class CliLinks extends Context.Service<CliLinks, CliLinksShape>()("@effec
 	 * @param mode - `vscode`, `file` or `off`
 	 */
 	static readonly layerTest = (mode: "vscode" | "file" | "off"): LayerType.Layer<CliLinks> =>
-		Layer.succeed(CliLinks, { mode, target: makeTarget(mode, (file) => (file.startsWith("/") ? file : undefined)) });
+		Layer.succeed(CliLinks, {
+			mode,
+			target: makeTarget(mode, (file) => (file.startsWith("/") || DRIVE.test(file) ? file : undefined)),
+		});
 
 	/**
 	 * The function that writes a link: a target and a label in, the label out, wrapped in OSC 8 when it should be.
@@ -231,7 +242,8 @@ export class CliLinks extends Context.Service<CliLinks, CliLinksShape>()("@effec
 	 * It writes the hyperlink `ESC ] 8 ; ; URL ESC \ label ESC ] 8 ; ; ESC \` only when the stream's terminal can
 	 * render it (`hyperlinks`) and the audience is not an agent, which never gets an escape of any kind; in every other
 	 * case, and whenever the target has no URL, it returns the label unchanged. The URL has its control characters
-	 * removed again here, so a hostile target cannot end the sequence early or start another. It is pure and cheap,
+	 * removed again here, so a hostile target cannot end the sequence early or start another, and a URL whose scheme is
+	 * not one a link may have (`javascript:`, `data:`, and the like; the same list markdown uses) is the label alone. It is pure and cheap,
 	 * which {@link RenderContext}'s `link` requires.
 	 *
 	 * @param options - the links, whether hyperlinks are available, and the audience
@@ -242,7 +254,9 @@ export class CliLinks extends Context.Service<CliLinks, CliLinksShape>()("@effec
 			if (!options.hyperlinks || options.audience === "agent") return label;
 			const url = options.links.target(target);
 			if (Option.isNone(url)) return label;
-			return `\u001B]8;;${cleanUrl(url.value)}\u001B\\${label}\u001B]8;;\u001B\\`;
+			const written = cleanUrl(url.value);
+			if (!isAllowedLinkUrl(written)) return label;
+			return `\u001B]8;;${written}\u001B\\${label}\u001B]8;;\u001B\\`;
 		};
 }
 

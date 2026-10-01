@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T00:05:24Z
-  body_sha256: a7e15436bc14c8835e55fc20cfdc226dde4e68cf4204640a9a67b616899e99f9
+  at: 2026-10-01T00:10:47Z
+  body_sha256: e73e94454ed70ccc4c20dac2d0b4f8d1680ae47e9e8cf9a0a2511e8cdd2f9a10
 ---
 
 # @effected/cli
@@ -284,8 +284,9 @@ The presentation layer adds its own:
 - [the package owns its display width](../decisions/own-display-width.md)
 - [the document IR is plain data](../decisions/doc-ir-is-plain-data.md),
   [it has no JSON renderer](../decisions/no-json-renderer.md) and
-  [links find the editor directory inline](../decisions/cli-links-inline-ascent.md)
-  (all three drafts, landing in P3)
+  [`CliLinks` finds the project root with `@effected/walker`](../decisions/cli-takes-the-walker-edge.md),
+  which supersedes the draft that had it [inline](../decisions/cli-links-inline-ascent.md)
+  (all drafts, landing in P3)
 - [`FORCE_COLOR` is honoured](../decisions/force-color-honoured-node-precedence.md)
   and [`@effected/env` is its own package](../decisions/env-is-its-own-package.md),
   both recorded against the [`env` Module](env.md)

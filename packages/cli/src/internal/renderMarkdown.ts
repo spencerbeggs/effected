@@ -4,6 +4,7 @@ import { Fmt } from "../Fmt.js";
 import type { RenderContext } from "../Render.js";
 import type { Span } from "./layout.js";
 import { flatten, sanitize } from "./layout.js";
+import { isAllowedLinkUrl } from "./linkScheme.js";
 import { capOf, targetText, textLines } from "./renderDoc.js";
 
 type Lines = ReadonlyArray<string>;
@@ -13,8 +14,6 @@ type Mode = "flow" | "cell" | "line";
 
 /** Marks a line break inside flowing text until the paragraph is split into lines. Sanitized text never holds NUL. */
 const BREAK = "\u0000";
-
-const SAFE_SCHEMES = new Set(["http", "https", "mailto", "file", "vscode", "vscode-insiders"]);
 
 /**
  * Escape what markdown would read as syntax: backslash, backtick, `*`, `_`, brackets, angle brackets, `&`, `~` and
@@ -70,8 +69,7 @@ const textPiece = (text: string, mode: Mode): string =>
 const linkUrl = (target: LinkTarget): string | undefined => {
 	if ("url" in target) {
 		const url = target.url.trim();
-		const scheme = /^([a-z][a-z0-9+.-]*):/.exec(sanitize(url).replace(/\s/g, "").toLowerCase());
-		return scheme === null || SAFE_SCHEMES.has(scheme[1] as string) ? url : undefined;
+		return isAllowedLinkUrl(url) ? url : undefined;
 	}
 	if (!target.file.startsWith("/")) return undefined;
 	return `file://${encodeURI(target.file).replace(/#/g, "%23").replace(/\?/g, "%3F")}`;
@@ -202,7 +200,12 @@ const countsMd = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>
 			...(label === "" ? [] : [flowLines(label)]),
 			...(visible.length === 0
 				? []
-				: [visible.flatMap((counter) => hang([`${name(counter)}: ${counter.n}`], "- ", "  "))]),
+				: // The name starts a list item, so it is cleared of indentation and of a block marker like any line start.
+					[
+						visible.flatMap((counter) =>
+							hang([`${escapeLineStart(name(counter).trimStart())}: ${counter.n}`], "- ", "  "),
+						),
+					]),
 			...(qualifier === "" ? [] : [flowLines(qualifier)]),
 			...(duration === "" ? [] : [[duration]]),
 		];
