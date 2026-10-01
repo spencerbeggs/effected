@@ -1,7 +1,8 @@
 import type { ReactElement } from "react";
+import { Fmt } from "../Fmt.js";
 import { inkModules } from "./internal/ink.js";
 import { KeyTable } from "./KeyTable.js";
-import { Styled, useGlyphs } from "./UiTheme.js";
+import { Styled, useGlyphs, useTerminalSize } from "./UiTheme.js";
 
 /**
  * Props of {@link KeyHelp}.
@@ -21,8 +22,8 @@ export interface KeyHelpProps {
  *
  * @remarks
  * Drawn from the same tables that dispatch the keys, so the help cannot name a key the screen ignores. Neighbouring
- * rows with the same help share one entry (`↑/↓ move`). Painted with the `muted` token; labels follow the screen's
- * glyph set.
+ * rows with the same help share one entry (`↑/↓ move`). It stays one line: cut to the terminal width, ending in
+ * the glyph set's ellipsis. Painted with the `muted` token; labels follow the screen's glyph set.
  *
  * @param props - the tables, and whether to append the root keys
  *
@@ -30,6 +31,7 @@ export interface KeyHelpProps {
  */
 export const KeyHelp = (props: KeyHelpProps): ReactElement => {
 	const glyphs = useGlyphs();
+	const { columns } = useTerminalSize();
 	const tables = props.root === false ? props.tables : [...props.tables, KeyTable.root];
 	// Neighbouring rows that say the same thing share one entry: ↑ move, ↓ move reads ↑/↓ move.
 	const rows: Array<{ label: string; help: string }> = [];
@@ -39,5 +41,10 @@ export const KeyHelp = (props: KeyHelpProps): ReactElement => {
 		else rows.push({ ...row });
 	}
 	const line = rows.map((row) => `${row.label} ${row.help}`).join(glyphs.kind === "unicode" ? " · " : " | ");
-	return inkModules().react.createElement(Styled, { token: "muted" }, line);
+	// One line, cut to the terminal width with the theme's ellipsis, so the footer never wraps into a second row.
+	return inkModules().react.createElement(
+		Styled,
+		{ token: "muted" },
+		Fmt.truncate(line, columns, { ellipsis: glyphs.ellipsis }),
+	);
 };

@@ -99,16 +99,38 @@ describe("KeyTable", () => {
 		const ascii = table.help(Glyphs.ascii);
 		assert.deepStrictEqual(
 			unicode.map((row) => row.label),
-			["↑", "↓", "space/x", "space", "q"],
+			["↑", "↓", "space/x", "q"],
 		);
 		assert.deepStrictEqual(
 			ascii.map((row) => row.label),
-			["up", "down", "space/x", "space", "q"],
+			["up", "down", "space/x", "q"],
+		);
+		assert.notInclude(
+			unicode.map((row) => row.help),
+			"never reached",
+			"a binding whose keys are all taken by earlier ones can never fire, so help omits it",
 		);
 		assert.notInclude(
 			unicode.map((row) => row.help),
 			"hidden",
 		);
+	});
+
+	it("labels a partly shadowed binding with only the keys that can still fire it", () => {
+		const partly = KeyTable.make([
+			{ keys: ["space"], action: "first", help: "first" },
+			{ keys: ["space", { char: "y" }], action: "second", help: "second" },
+		]);
+		assert.deepStrictEqual(partly.help(Glyphs.unicode), [
+			{ label: "space", help: "first" },
+			{ label: "y", help: "second" },
+		]);
+	});
+
+	it("normalises a typed space to the named space key, which is the only one Ink input ever gives", () => {
+		const spaced = KeyTable.make([{ keys: [{ char: " " }], action: "toggle", help: "toggle" }]);
+		assert.deepStrictEqual(spaced.match(named("space")), Option.some("toggle"));
+		assert.deepStrictEqual(spaced.help(Glyphs.unicode), [{ label: "space", help: "toggle" }]);
 	});
 
 	it("the root table cancels with escape on Esc (help: cancel) and interrupt on Ctrl-C (hidden)", () => {
@@ -160,6 +182,7 @@ describe("useKeys and KeyHelp", () => {
 			assert.include(line, "↑/↓ move", "neighbouring rows with the same help share one entry");
 			assert.include(line, "space/x toggle");
 			assert.notInclude(line, "hidden");
+			assert.notInclude(line, "never reached");
 			assert.isTrue(line.endsWith("esc cancel"), line);
 			assert.include(yield* handle.frame, "[muted]", "the help line is painted muted");
 		}).pipe(Effect.scoped),

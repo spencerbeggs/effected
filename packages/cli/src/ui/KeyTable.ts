@@ -68,6 +68,13 @@ const labelOf = (key: KeyName | { readonly char: string }, glyphs: Cli.GlyphSet)
 	return (glyphs.kind === "unicode" ? ARROWS[key] : undefined) ?? WORDS[key];
 };
 
+/** A typed space is only ever reported as the named space key, so a `{ char: " " }` binding means `"space"`. */
+const normalise = (key: KeyName | { readonly char: string }): KeyName | { readonly char: string } =>
+	typeof key !== "string" && key.char === " " ? "space" : key;
+
+const identity = (key: KeyName | { readonly char: string }): string =>
+	typeof key === "string" ? `named:${key}` : `char:${key.char}`;
+
 const bound = (binding: KeyName | { readonly char: string }, key: UiKey): boolean =>
 	typeof binding === "string"
 		? key._tag === "Named" && key.name === binding
@@ -86,11 +93,13 @@ export class KeyTable<Action> {
 	) {}
 
 	/**
-	 * A table from its bindings. When two bindings share a key, the first wins.
+	 * A table from its bindings. When two bindings share a key, the first wins. A `{ char: " " }` key is stored as
+	 * the named `"space"`, the only form in which Ink reports a space.
 	 *
 	 * @param bindings - the bindings, in priority order
 	 */
-	static readonly make = <Action>(bindings: ReadonlyArray<Binding<Action>>): KeyTable<Action> => new KeyTable(bindings);
+	static readonly make = <Action>(bindings: ReadonlyArray<Binding<Action>>): KeyTable<Action> =>
+		new KeyTable(bindings.map((binding) => ({ ...binding, keys: binding.keys.map(normalise) })));
 
 	/**
 	 * The keys every screen has: Esc cancels with `"escape"` (help: cancel), and Ctrl-C cancels with `"interrupt"`,
@@ -114,18 +123,26 @@ export class KeyTable<Action> {
 	};
 
 	/**
-	 * The help rows of every binding not hidden, in order, labelled for `glyphs`: `↑/↓` under Unicode, `up/down`
-	 * under ASCII.
+	 * The help rows of every binding not hidden that can still fire, in order, labelled for `glyphs`: `↑/↓` under
+	 * Unicode, `up/down` under ASCII.
+	 *
+	 * @remarks
+	 * A key an earlier binding already holds (hidden or not) can never fire a later one, so a later binding is
+	 * labelled with its remaining keys only, and left out when none remain.
 	 *
 	 * @param glyphs - the glyph set the labels are drawn with
 	 */
-	readonly help = (glyphs: Cli.GlyphSet): ReadonlyArray<KeyHelpRow> =>
-		this.bindings
-			.filter((binding) => binding.hidden !== true)
-			.map((binding) => ({
-				label: binding.keys.map((key) => labelOf(key, glyphs)).join("/"),
-				help: binding.help,
-			}));
+	readonly help = (glyphs: Cli.GlyphSet): ReadonlyArray<KeyHelpRow> => {
+		const taken = new Set<string>();
+		const rows: Array<KeyHelpRow> = [];
+		for (const binding of this.bindings) {
+			const live = binding.keys.filter((key) => !taken.has(identity(key)));
+			for (const key of binding.keys) taken.add(identity(key));
+			if (binding.hidden === true || live.length === 0) continue;
+			rows.push({ label: live.map((key) => labelOf(key, glyphs)).join("/"), help: binding.help });
+		}
+		return rows;
+	};
 }
 
 /**

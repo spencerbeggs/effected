@@ -157,6 +157,31 @@ describe("Viewport.View under CliUiTest", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect("on a 20-column terminal the KeyHelp line is cut to 19 cells, ending in the theme's ellipsis", () =>
+		Effect.gen(function* () {
+			const unicode = yield* Effect.scoped(
+				Effect.flatMap(
+					CliUiTest.render(() => createElement(KeyHelp, { tables: [Viewport.keys] }), { columns: 20 }),
+					(handle) => handle.plainFrame,
+				),
+			);
+			assert.lengthOf(unicode.trimEnd().split("\n"), 1, "one line, not wrapped");
+			assert.isAtMost(Fmt.width(unicode.trimEnd()), 19);
+			assert.isTrue(unicode.trimEnd().endsWith("…"), unicode);
+			const ascii = yield* Effect.scoped(
+				Effect.flatMap(
+					CliUiTest.render(() => createElement(KeyHelp, { tables: [Viewport.keys] }), {
+						columns: 20,
+						glyphs: "ascii",
+					}),
+					(handle) => handle.plainFrame,
+				),
+			);
+			assert.isTrue(ascii.trimEnd().endsWith("..."), ascii);
+			assert.isAtMost(Fmt.width(ascii.trimEnd()), 19);
+		}),
+	);
+
 	it.effect("KeyHelp for the viewport's keys reads ↑/↓ move", () =>
 		Effect.gen(function* () {
 			const handle = yield* CliUiTest.render(() => createElement(KeyHelp, { tables: [Viewport.keys] }));
