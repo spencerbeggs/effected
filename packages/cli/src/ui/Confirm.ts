@@ -30,8 +30,11 @@ export interface ConfirmToggle<K extends string> {
 export interface ConfirmResult<K extends string> {
 	/** Yes or no. */
 	readonly confirmed: boolean;
-	/** Each toggle's final value, by its key. */
-	readonly toggles: Readonly<Record<K, boolean>>;
+	/**
+	 * Each toggle's final value, by its key. Partial, because a toggle passed conditionally may be absent: read one
+	 * with a fallback, `toggles.promote ?? false`.
+	 */
+	readonly toggles: Readonly<Partial<Record<K, boolean>>>;
 }
 
 /**
@@ -136,7 +139,7 @@ const step = <K extends string>(state: ConfirmState<K>, action: ConfirmAction): 
 
 const result = <K extends string>(state: ConfirmState<K>): ConfirmResult<K> => ({
 	confirmed: state.confirmed,
-	toggles: Object.fromEntries(state.toggles.map((toggle) => [toggle.key, toggle.value])) as Record<K, boolean>,
+	toggles: Object.fromEntries(state.toggles.map((toggle) => [toggle.key, toggle.value])) as Partial<Record<K, boolean>>,
 });
 
 const KEYS: KeyTable<ConfirmAction> = KeyTable.make<ConfirmAction>([
@@ -159,8 +162,20 @@ const KEYS: KeyTable<ConfirmAction> = KeyTable.make<ConfirmAction>([
  * The rows are the yes/no row first, then each toggle. `y` and `n` set the answer and `←`/`→` flip it, from any
  * row; `↑`/`↓` move between rows; space flips the highlighted toggle and does nothing on the yes/no row; enter
  * submits; `q` cancels with `"escape"`. Toggle keys must be unique; `init` throws, and `screen` dies, on a repeat.
- * okfit's verify step passes one toggle when it has drafts:
- * `toggles: drafts > 0 ? [{ key: "promote", label: \`promote ${drafts} drafts to stable\`, value: true }] : []`.
+ * The answer starts as no unless `initial` says otherwise, and `←`/`→` flip it whichever row is highlighted.
+ *
+ * okfit's verify step passes one toggle when it has drafts, and reads it back with a fallback, since with no drafts
+ * the key is absent:
+ *
+ * ```ts
+ * const { confirmed, toggles } = yield* CliUi.run(
+ *   Confirm.screen({
+ *     message: "Publish the release?",
+ *     toggles: drafts > 0 ? [{ key: "promote", label: `promote ${drafts} drafts to stable`, value: true }] : [],
+ *   }),
+ * )
+ * const promote = toggles.promote ?? false
+ * ```
  *
  * @public
  */

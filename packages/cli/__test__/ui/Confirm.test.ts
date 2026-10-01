@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Cause, Effect, Exit, Option } from "effect";
 import { createElement } from "react";
 import { Cancelled, Fmt } from "../../src/index.js";
-import type { ConfirmToggle } from "../../src/ui.js";
+import type { ConfirmResult, ConfirmToggle } from "../../src/ui.js";
 import { Confirm, Toggle } from "../../src/ui.js";
 import { CliUiTest } from "../../src/ui-testing.js";
 
@@ -90,8 +90,11 @@ describe("Confirm.screen under CliUiTest", () => {
 			assert.notInclude(lines.join("\n"), "◯");
 			yield* handle.type("y");
 			yield* handle.press("enter");
-			// okfit's shape infers K = "promote" even with no drafts, so the typed result claims a key that is absent here.
-			assert.deepStrictEqual<unknown>(yield* handle.result, { confirmed: true, toggles: {} });
+			const result = yield* handle.result;
+			assert.isTrue(result.confirmed);
+			// okfit's shape infers K = "promote" even with no drafts: the key is then absent, and the type says so.
+			assert.strictEqual(result.toggles.promote, undefined);
+			assert.isFalse(result.toggles.promote ?? false, "okfit reads it with ?? false");
 		}).pipe(Effect.scoped),
 	);
 
@@ -175,6 +178,17 @@ describe("Confirm.screen under CliUiTest", () => {
 			}
 		}).pipe(Effect.scoped),
 	);
+});
+
+/** True only when `A` and `B` are the same type. */
+type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+
+describe("ConfirmResult typing", () => {
+	it("types a toggle as boolean | undefined, because a conditional toggle may be absent", () => {
+		type Promote = ConfirmResult<"promote">["toggles"]["promote"];
+		const honest: Equals<Promote, boolean | undefined> = true;
+		assert.isTrue(honest);
+	});
 });
 
 describe("Toggle.View", () => {
