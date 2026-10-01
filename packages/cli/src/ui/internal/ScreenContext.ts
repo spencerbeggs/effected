@@ -8,14 +8,19 @@ import { fromReact, inkModules } from "./ink.js";
  * @internal
  */
 export interface ScreenContextValue {
-	/** Cancel the screen. */
-	readonly cancel: (reason: "escape" | "interrupt") => void;
-	/** End the screen as a defect carrying `error`: what an input handler that throws comes to. */
-	readonly die: (error: unknown) => void;
-	/** The theme of the stream the screen draws on. */
+	/** Cancel the screen; absent under a tree that is not a screen (a `UiProvider`, a live view). */
+	readonly cancel?: (reason: "escape" | "interrupt") => void;
+	/**
+	 * End the screen as a defect carrying `error`: what an input handler that throws comes to. Absent under a tree
+	 * that is not a screen.
+	 */
+	readonly die?: (error: unknown) => void;
+	/** The theme of the stream the tree draws on. */
 	readonly theme: Cli.StreamTheme;
 	/** The glyph set in use. */
 	readonly glyphs: Cli.GlyphSet;
+	/** The terminal size the tree is laid out at, read by `useTerminalSize` in place of the stdout's. */
+	readonly size?: { readonly columns: number; readonly rows: number };
 }
 
 /**
@@ -27,19 +32,22 @@ export const screenContext: () => ReactContext<ScreenContextValue | undefined> =
 	react.createContext<ScreenContextValue | undefined>(undefined),
 );
 
+const ignore = (): void => undefined;
+
 /**
  * The mounted screen's cancel, for a widget whose own key (such as Select's `q`) ends the screen.
  *
  * @remarks
- * A React hook; throws outside a screen mounted by `CliUi.run`.
+ * A React hook; throws outside a screen mounted by `CliUi.run` or a `UiProvider`. Under a tree that is not a screen
+ * (a `UiProvider`, a live view) there is nothing to cancel, and it does nothing.
  *
  * @internal
  */
-export const useScreenCancel = (): ScreenContextValue["cancel"] => {
+export const useScreenCancel = (): ((reason: "escape" | "interrupt") => void) => {
 	const screen = inkModules().react.useContext(screenContext());
 	if (screen === undefined)
-		throw new Error("@effected/cli/ui: a widget was used outside a screen mounted by CliUi.run");
-	return screen.cancel;
+		throw new Error("@effected/cli/ui: a widget was used outside a screen mounted by CliUi.run or a UiProvider");
+	return screen.cancel ?? ignore;
 };
 
 /**
@@ -49,7 +57,8 @@ export const useScreenCancel = (): ScreenContextValue["cancel"] => {
  * Ink calls `useInput` and `usePaste` handlers from its stdin listener, outside React's render, so an error boundary
  * never sees what they throw: unguarded, it is an uncaught exception (the process dies, Effect finalizers skipped)
  * or, where something keeps the process alive, a screen left waiting. Guarded, the screen dies with the error and
- * `CliUi.run` unmounts it like any other defect. Outside a screen mounted by `CliUi.run` a handler is called as is.
+ * `CliUi.run` unmounts it like any other defect. Outside a screen mounted by `CliUi.run`, a `UiProvider` tree
+ * included, a handler is called as is.
  *
  * A React hook.
  *
@@ -58,14 +67,14 @@ export const useScreenCancel = (): ScreenContextValue["cancel"] => {
 export const useScreenGuard = (): (<Args extends ReadonlyArray<unknown>>(
 	handler: (...args: Args) => void,
 ) => (...args: Args) => void) => {
-	const screen = inkModules().react.useContext(screenContext());
+	const die = inkModules().react.useContext(screenContext())?.die;
 	return (handler) =>
 		(...args) => {
-			if (screen === undefined) return handler(...args);
+			if (die === undefined) return handler(...args);
 			try {
 				handler(...args);
 			} catch (error) {
-				screen.die(error);
+				die(error);
 			}
 		};
 };

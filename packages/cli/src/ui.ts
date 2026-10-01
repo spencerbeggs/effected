@@ -61,6 +61,7 @@ export {
 } from "./ui/TextInput.js";
 export { Toggle, type ToggleViewProps } from "./ui/Toggle.js";
 export { type KeyName, UiKey } from "./ui/UiKey.js";
+export { type UiContextValue, UiProvider } from "./ui/UiProvider.js";
 export { UiStreams, type UiStreamsShape } from "./ui/UiStreams.js";
 export {
 	type InkTextProps,

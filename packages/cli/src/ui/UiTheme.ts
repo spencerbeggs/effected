@@ -47,7 +47,7 @@ export interface TerminalSize {
 	readonly rows: number;
 }
 
-const OUTSIDE = "@effected/cli/ui: a theme hook was used outside a screen mounted by CliUi.run";
+const OUTSIDE = "@effected/cli/ui: a theme hook was used outside a screen mounted by CliUi.run or a UiProvider";
 
 const useScreen = (): ScreenContextValue => {
 	const screen = inkModules().react.useContext(screenContext());
@@ -85,7 +85,7 @@ export const inkProps = (style: Cli.Style, color?: ColorLevel): InkTextProps =>
  * The theme of the stream the mounted screen draws on.
  *
  * @remarks
- * A React hook: call it from a component rendered inside a `CliUi.run` screen.
+ * A React hook: call it from a component rendered inside a `CliUi.run` screen or a `UiProvider`.
  *
  * @public
  */
@@ -95,7 +95,7 @@ export const useTheme = (): Cli.StreamTheme => useScreen().theme;
  * The glyph set of the mounted screen, so a component draws Unicode or ASCII glyphs to match the rest of the output.
  *
  * @remarks
- * A React hook: call it from a component rendered inside a `CliUi.run` screen.
+ * A React hook: call it from a component rendered inside a `CliUi.run` screen or a `UiProvider`.
  *
  * @public
  */
@@ -127,7 +127,7 @@ const known = (reported: number | undefined, fallback: number): number =>
 
 /**
  * The usable terminal size: the stdout Ink draws on, less one column and one row, re-read on every render and when
- * the terminal resizes.
+ * the terminal resizes; or, under a `UiProvider` given a `size`, that size less one column and one row.
  *
  * @remarks
  * A width or height the stream does not report, or reports as 0 (a pty that `script` opens says `0 0`), is unknown and
@@ -135,19 +135,28 @@ const known = (reported: number | undefined, fallback: number): number =>
  * first asks the process's terminal (`terminal-size`: the tty, `COLUMNS`, `tput`) and only then uses 80x24; the kit
  * reads no `process` here. On a 0x0 pty with `COLUMNS=50`, Ink lays out at 50 while these rows are cut at 79.
  *
- * A React hook: call it from a component rendered inside a `CliUi.run` screen.
+ * The override exists for Ink's `renderToString`, whose `useStdout` is the process's own stdout whatever width it
+ * lays out at; without it, the kit's widgets would cut their rows to the wrong width there.
+ *
+ * A React hook: call it from a component rendered inside an Ink tree; it needs no screen, but reads a `UiProvider`'s
+ * size when there is one.
  *
  * @public
  */
 export const useTerminalSize = (): TerminalSize => {
 	const { ink, react } = inkModules();
 	const { stdout } = ink.useStdout();
+	const override = react.useContext(screenContext())?.size;
 	const [, redraw] = react.useReducer((count: number) => count + 1, 0);
+	const followsStdout = override === undefined;
 	react.useEffect(() => {
+		if (!followsStdout) return undefined;
 		stdout.on("resize", redraw);
 		return () => {
 			stdout.off("resize", redraw);
 		};
-	}, [stdout]);
-	return { columns: Math.max(1, known(stdout.columns, 80) - 1), rows: Math.max(1, known(stdout.rows, 24) - 1) };
+	}, [stdout, followsStdout]);
+	const columns = override?.columns ?? stdout.columns;
+	const rows = override?.rows ?? stdout.rows;
+	return { columns: Math.max(1, known(columns, 80) - 1), rows: Math.max(1, known(rows, 24) - 1) };
 };

@@ -14,9 +14,10 @@ import { NotInteractive } from "../NotInteractive.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
 import { inkModules, loadInk, withInkColour } from "./internal/ink.js";
 import { UiRenderOptions } from "./internal/renderOptions.js";
-import type { ScreenContextValue } from "./internal/ScreenContext.js";
-import { screenContext, useScreenGuard } from "./internal/ScreenContext.js";
+import { useScreenGuard } from "./internal/ScreenContext.js";
+import { uiProviders } from "./internal/UiProviders.js";
 import { KeyTable, useKeys } from "./KeyTable.js";
+import type { UiContextValue } from "./UiProvider.js";
 import { UiStreams } from "./UiStreams.js";
 
 /**
@@ -82,7 +83,7 @@ export type CliUiFallbackOptions<A> = Cli.CliPromptFallbackOptions<A> & {
 
 /** The root keys: Esc cancels with `"escape"`, Ctrl-C with `"interrupt"`. `q` belongs to widgets, never here. */
 const RootKeys = (props: {
-	readonly cancel: ScreenContextValue["cancel"];
+	readonly cancel: ScreenControl<unknown>["cancel"];
 	readonly children: ReactNode;
 }): ReactNode => {
 	useKeys(KeyTable.root, props.cancel);
@@ -147,10 +148,10 @@ const mount = <A>(
 		};
 		const tree = react.createElement(errorBoundary(), {
 			onError: die,
-			children: react.createElement(screenContext().Provider, {
-				value: { cancel: control.cancel, die, theme, glyphs: theme.glyphs },
-				children: react.createElement(RootKeys, { cancel: control.cancel, children: element }),
-			}),
+			children: uiProviders(
+				{ cancel: control.cancel, die, theme, glyphs: theme.glyphs },
+				react.createElement(RootKeys, { cancel: control.cancel, children: element }),
+			),
 		});
 		const instance = yield* Effect.acquireRelease(
 			Effect.sync(() =>
@@ -248,6 +249,19 @@ export class CliUi {
 			if (crash.current !== undefined && !interrupted && !died) return yield* Effect.die(crash.current.defect);
 			return yield* exit;
 		});
+
+	/**
+	 * The kit's context for an Ink tree the kit did not mount: stdout's theme and glyph set.
+	 *
+	 * @remarks
+	 * Hand it to {@link UiProvider}. It loads Ink and React, as a screen's mount does, so the provider and the kit's
+	 * hooks can render; a missing peer is a defect naming both.
+	 */
+	static readonly context: Effect.Effect<UiContextValue, never, Cli.CliTheme> = Effect.gen(function* () {
+		const theme = (yield* CliTheme).forStream("stdout");
+		yield* loadInk;
+		return { theme, glyphs: theme.glyphs };
+	});
 
 	/**
 	 * Run `screen` from a handler when the run is interactive; otherwise answer with `otherwise`, or fail with

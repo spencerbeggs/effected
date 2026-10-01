@@ -177,7 +177,7 @@ const CrashOnUnmount = (): ReactElement => {
 	const screen = useContext(screenContext());
 	useEffect(
 		() => () => {
-			screen?.die(new Error("crashed on unmount"));
+			screen?.die?.(new Error("crashed on unmount"));
 		},
 		[screen],
 	);
