@@ -15,7 +15,11 @@ import { Styled, useGlyphs, useTerminalSize } from "./UiTheme.js";
 export interface TextInputState {
 	/** The text. */
 	readonly value: string;
-	/** The insertion point, from 0 to the value's length, in UTF-16 code units. */
+	/**
+	 * The insertion point, from 0 to the value's length, in UTF-16 code units, always on a code-point boundary: an
+	 * astral character (an emoji) is never split. Editing is by code point, not by grapheme, so a character built
+	 * from several code points (a flag, a family emoji) is still crossed one code point at a time.
+	 */
 	readonly cursor: number;
 	/** Whether enter was pressed; the view submits only when the value also validates. */
 	readonly submitted: boolean;
@@ -62,6 +66,19 @@ const init = (options: TextInputInitOptions = {}): TextInputState => {
 	return { value, cursor: value.length, submitted: false };
 };
 
+const isHigh = (code: number): boolean => code >= 0xd800 && code <= 0xdbff;
+const isLow = (code: number): boolean => code >= 0xdc00 && code <= 0xdfff;
+
+/** The code-point boundary before `at`: one code unit back, two when that would land inside a surrogate pair. */
+const previous = (value: string, at: number): number =>
+	at >= 2 && isLow(value.charCodeAt(at - 1)) && isHigh(value.charCodeAt(at - 2)) ? at - 2 : Math.max(0, at - 1);
+
+/** The code-point boundary after `at`. */
+const following = (value: string, at: number): number =>
+	at + 1 < value.length && isHigh(value.charCodeAt(at)) && isLow(value.charCodeAt(at + 1))
+		? at + 2
+		: Math.min(value.length, at + 1);
+
 const insert = (state: TextInputState, text: string): TextInputState => ({
 	value: state.value.slice(0, state.cursor) + text + state.value.slice(state.cursor),
 	cursor: state.cursor + text.length,
@@ -74,18 +91,19 @@ const step = (state: TextInputState, key: UiKey): TextInputState => {
 	switch (key.name) {
 		case "space":
 			return insert(state, " ");
-		case "backspace":
-			return cursor === 0
-				? state
-				: { value: value.slice(0, cursor - 1) + value.slice(cursor), cursor: cursor - 1, submitted: false };
+		case "backspace": {
+			if (cursor === 0) return state;
+			const from = previous(value, cursor);
+			return { value: value.slice(0, from) + value.slice(cursor), cursor: from, submitted: false };
+		}
 		case "delete":
 			return cursor === value.length
 				? state
-				: { value: value.slice(0, cursor) + value.slice(cursor + 1), cursor, submitted: false };
+				: { value: value.slice(0, cursor) + value.slice(following(value, cursor)), cursor, submitted: false };
 		case "left":
-			return { ...state, cursor: Math.max(0, cursor - 1), submitted: false };
+			return { ...state, cursor: previous(value, cursor), submitted: false };
 		case "right":
-			return { ...state, cursor: Math.min(value.length, cursor + 1), submitted: false };
+			return { ...state, cursor: following(value, cursor), submitted: false };
 		case "home":
 			return { ...state, cursor: 0, submitted: false };
 		case "end":
@@ -95,6 +113,51 @@ const step = (state: TextInputState, key: UiKey): TextInputState => {
 		default:
 			return state;
 	}
+};
+
+/** Take code points from the end of `text` while they fit in `width` cells. */
+const tail = (text: string, width: number): string => {
+	const points = [...text];
+	let out = "";
+	let used = 0;
+	for (let index = points.length - 1; index >= 0; index--) {
+		const point = points[index] ?? "";
+		const cells = Fmt.width(point);
+		if (used + cells > width) break;
+		out = point + out;
+		used += cells;
+	}
+	return out;
+};
+
+/** Take code points from the start of `text` while they fit in `width` cells. */
+const head = (text: string, width: number): string => {
+	let out = "";
+	let used = 0;
+	for (const point of text) {
+		const cells = Fmt.width(point);
+		if (used + cells > width) break;
+		out += point;
+		used += cells;
+	}
+	return out;
+};
+
+/**
+ * The text either side of the cursor, scrolled so the line fits `width` cells and the cursor stays in view: a cut
+ * edge is marked with the ellipsis, the text after the cursor keeps up to a third of the room, and the text before
+ * it the rest.
+ */
+const windowAround = (before: string, after: string, width: number, ellipsis: string): readonly [string, string] => {
+	if (Fmt.width(before) + Fmt.width(after) <= width) return [before, after];
+	const mark = Fmt.width(ellipsis);
+	const afterRoom = Math.min(Fmt.width(after), Math.floor(width / 3));
+	const beforeRoom = width - afterRoom;
+	const shownBefore =
+		Fmt.width(before) <= beforeRoom ? before : `${ellipsis}${tail(before, Math.max(0, beforeRoom - mark))}`;
+	const room = width - Fmt.width(shownBefore);
+	const shownAfter = Fmt.width(after) <= room ? after : `${head(after, Math.max(0, room - mark))}${ellipsis}`;
+	return [shownBefore, shownAfter];
 };
 
 /** Shown in the help line only; the input reads every key itself. */
@@ -143,6 +206,8 @@ export class TextInput {
 		const [state, setState] = react.useState(() => init(props.initial === undefined ? {} : { initial: props.initial }));
 		const [error, setError] = react.useState<string | undefined>(undefined);
 		const { validate, onSubmit } = props;
+		// Deliberately keyed on `submitted` alone: the effect runs in the render where it flipped, whose closure already
+		// holds that render's validate and onSubmit, so listing them would only re-run it with nothing new to do.
 		react.useEffect(() => {
 			if (!state.submitted) return;
 			const problem = validate?.(state.value);
@@ -165,8 +230,12 @@ export class TextInput {
 			setState((current) => step(current, pressed));
 		});
 		const cursorGlyph = glyphs.kind === "unicode" ? "▏" : "|";
-		const before = state.value.slice(0, state.cursor);
-		const after = state.value.slice(state.cursor);
+		const [before, after] = windowAround(
+			state.value.slice(0, state.cursor),
+			state.value.slice(state.cursor),
+			columns - Fmt.width(cursorGlyph),
+			glyphs.ellipsis,
+		);
 		return react.createElement(
 			ink.Box,
 			{ flexDirection: "column" },

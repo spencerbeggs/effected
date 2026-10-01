@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
-import { Cancelled } from "../../src/index.js";
+import { Effect, Schema } from "effect";
+import { Cancelled, Fmt } from "../../src/index.js";
 import type { UiKey } from "../../src/ui.js";
 import { TextInput } from "../../src/ui.js";
 import { CliUiTest } from "../../src/ui-testing.js";
@@ -38,6 +38,33 @@ describe("TextInput reducer", () => {
 	it("enter marks it submitted", () => {
 		assert.isTrue(run([char("x"), named("enter")]).submitted);
 	});
+
+	it("edits by code point: an astral character is never split", () => {
+		assert.strictEqual(run([char("😀"), named("backspace")]).value, "", "backspace removes the whole pair");
+		assert.strictEqual(run([named("left"), char("x")], "😀").value, "x😀", "left steps over the whole pair");
+		assert.strictEqual(run([named("home"), named("delete")], "😀b").value, "b", "delete removes the whole pair");
+		assert.strictEqual(run([named("home"), named("right"), char("x")], "😀b").value, "😀xb");
+	});
+
+	it.prop(
+		"any edit sequence over astral text leaves it well formed, with the cursor on a code-point boundary",
+		{
+			initial: Schema.Array(Schema.Literals(["a", "😀", "𝒳", "é", "中"])),
+			edits: Schema.Array(Schema.Literals(["a", "😀", "𝒳", "left", "right", "home", "end", "backspace", "delete"])),
+		},
+		({ initial, edits }) => {
+			const keys = edits.map(
+				(edit): UiKey => (edit === "a" || edit === "😀" || edit === "𝒳" ? char(edit) : named(edit)),
+			);
+			const state = run(keys, initial.join(""));
+			const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+			const high = state.value.charCodeAt(state.cursor - 1);
+			const low = state.value.charCodeAt(state.cursor);
+			const splitsPair = high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff;
+			return !lone.test(state.value) && !splitsPair && state.cursor >= 0 && state.cursor <= state.value.length;
+		},
+		{ arbitrary: { runs: 500, size: 40 } },
+	);
 });
 
 describe("TextInput.screen under CliUiTest", () => {
@@ -94,6 +121,23 @@ describe("TextInput.screen under CliUiTest", () => {
 			assert.include(yield* handle.rawFrame, "ab▏");
 			yield* handle.press("left");
 			assert.include(yield* handle.rawFrame, "a▏b");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a value wider than the terminal stays on one line, scrolled to keep the cursor in view", () =>
+		Effect.gen(function* () {
+			const long = "x".repeat(100) + "y".repeat(100);
+			const handle = yield* CliUiTest.render(TextInput.screen({ message: "Paste", initial: long }), {
+				columns: 20,
+				color: "none",
+			});
+			const valueLine = (frame: string): string => frame.split("\n")[1] ?? "";
+			assert.include(valueLine(yield* handle.plainFrame), "y▏", "the cursor, at the end, is in view");
+			assert.isAtMost(Fmt.width(valueLine(yield* handle.plainFrame)), 19);
+			assert.lengthOf((yield* handle.plainFrame).split("\n"), 3, "message, value and help: the value did not wrap");
+			yield* handle.press("home");
+			assert.include(valueLine(yield* handle.plainFrame), "▏x", "home scrolls the window to the start");
+			assert.isAtMost(Fmt.width(valueLine(yield* handle.plainFrame)), 19);
 		}).pipe(Effect.scoped),
 	);
 

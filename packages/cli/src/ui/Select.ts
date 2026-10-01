@@ -112,7 +112,10 @@ const moveTo = (viewport: ViewportState, index: number): ViewportState => {
 	return state;
 };
 
+const NO_ENABLED_CHOICE = "@effected/cli/ui: Select needs at least one enabled choice";
+
 const init = <A>(choices: ReadonlyArray<SelectChoice<A>>, options: SelectInitOptions = {}): SelectState<A> => {
+	if (!choices.some((choice) => choice.disabled !== true)) throw new Error(NO_ENABLED_CHOICE);
 	const height = options.height ?? 10;
 	const start = options.initial ?? 0;
 	const first = nearest(choices, start, 1) ?? nearest(choices, start, -1) ?? 0;
@@ -152,6 +155,9 @@ const RESERVED = 3;
 
 /**
  * A single choice from a list: a pure reducer, its key table, a view, and a ready-made screen.
+ *
+ * @remarks
+ * A select with no enabled choice is a programming error: `init` throws, and `screen` dies, saying so.
  *
  * @public
  */
@@ -195,6 +201,9 @@ export class Select {
 	 * rows muted, every row cut to the width with the glyph set's ellipsis), the highlighted choice's detail, and the
 	 * key help. Enter calls `onSubmit` with the value; `q` cancels the screen with `"escape"`.
 	 *
+	 * Single-shot: the choices and the starting choice are read once, when the view mounts, and later changes to them
+	 * are ignored; after a submit it stays as it is. Render a new view (a new screen) to ask again.
+	 *
 	 * @param props - the message, the choices, and where the chosen value goes
 	 */
 	static readonly View = <A>(props: SelectViewProps<A>): ReactElement => {
@@ -210,6 +219,8 @@ export class Select {
 		);
 		const submitted = state.submitted;
 		const { onSubmit } = props;
+		// Deliberately keyed on `submitted` alone: the effect runs in the render where it flipped, whose closure
+		// already holds that render's state and onSubmit, so listing them would only re-run it with nothing new to do.
 		react.useEffect(() => {
 			const choice = state.choices[state.viewport.cursor];
 			if (submitted && choice !== undefined) onSubmit(choice.value);
@@ -253,6 +264,9 @@ export class Select {
 	 */
 	static readonly screen =
 		<A>(options: SelectScreenOptions<A>): Screen<A> =>
-		(control) =>
-			inkModules().react.createElement(Select.View<A>, { ...options, onSubmit: control.resolve });
+		(control) => {
+			// Checked before mounting, so a screen with nothing to choose dies rather than drawing an empty list.
+			if (!options.choices.some((choice) => choice.disabled !== true)) throw new Error(NO_ENABLED_CHOICE);
+			return inkModules().react.createElement(Select.View<A>, { ...options, onSubmit: control.resolve });
+		};
 }

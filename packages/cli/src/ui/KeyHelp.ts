@@ -37,7 +37,7 @@ export const KeyHelp = (props: KeyHelpProps): ReactElement => {
 	const glyphs = useGlyphs();
 	const { columns } = useTerminalSize();
 	const separator = glyphs.kind === "unicode" ? " · " : " | ";
-	const describe = (tables: ReadonlyArray<KeyTable<unknown>>): string => {
+	const rowsOf = (tables: ReadonlyArray<KeyTable<unknown>>): Array<{ label: string; help: string }> => {
 		// Neighbouring rows that say the same thing share one entry: ↑ move, ↓ move reads ↑/↓ move.
 		const rows: Array<{ label: string; help: string }> = [];
 		for (const row of tables.flatMap((table) => table.help(glyphs))) {
@@ -45,10 +45,20 @@ export const KeyHelp = (props: KeyHelpProps): ReactElement => {
 			if (previous !== undefined && previous.help === row.help) previous.label = `${previous.label}/${row.label}`;
 			else rows.push({ ...row });
 		}
-		return rows.map((row) => `${row.label} ${row.help}`).join(separator);
+		return rows;
 	};
-	const own = describe(props.tables);
-	const root = props.root === false ? "" : describe([KeyTable.root]);
+	const ownRows = rowsOf(props.tables);
+	const rootRows = props.root === false ? [] : rowsOf([KeyTable.root]);
+	// A widget's last entry that says what the root's first says ("q cancel", "esc cancel") joins it across the pinned
+	// boundary, so the hint reads "q/esc cancel" and is kept whole with it.
+	const lastOwn = ownRows.at(-1);
+	const firstRoot = rootRows[0];
+	if (lastOwn !== undefined && firstRoot !== undefined && lastOwn.help === firstRoot.help) {
+		rootRows[0] = { label: `${lastOwn.label}/${firstRoot.label}`, help: firstRoot.help };
+		ownRows.pop();
+	}
+	const own = ownRows.map((row) => `${row.label} ${row.help}`).join(separator);
+	const root = rootRows.map((row) => `${row.label} ${row.help}`).join(separator);
 	const whole = [own, root].filter((part) => part !== "").join(separator);
 	// One line, cut to the terminal width with the theme's ellipsis, so the footer never wraps into a second row.
 	// When it must be cut, the widget's own keys give way and the root hint (esc cancel) stays whole at the end;

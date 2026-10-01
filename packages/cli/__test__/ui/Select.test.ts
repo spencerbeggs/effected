@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import { Cancelled, Fmt } from "../../src/index.js";
 import type { SelectChoice } from "../../src/ui.js";
 import { Select } from "../../src/ui.js";
@@ -38,6 +38,11 @@ describe("Select reducer", () => {
 		assert.isTrue(Option.isNone(Select.chosen(Select.init(choices))), "nothing is chosen before submit");
 	});
 
+	it("needs at least one enabled choice: none, or only disabled ones, is a programming error", () => {
+		assert.throws(() => Select.init([]), /at least one enabled choice/);
+		assert.throws(() => Select.init([{ label: "x", value: 1, disabled: true }]), /at least one enabled choice/);
+	});
+
 	it("binds q to cancel, enter to submit, and the viewport's moves", () => {
 		assert.deepStrictEqual(Select.keys.match({ _tag: "Char", char: "q" }), Option.some("cancel"));
 		assert.deepStrictEqual(Select.keys.match({ _tag: "Named", name: "enter" }), Option.some("submit"));
@@ -65,6 +70,44 @@ describe("Select.screen under CliUiTest", () => {
 			yield* handle.press("down");
 			assert.include(yield* handle.frame, "[accent]→ gamma[/accent]");
 			assert.include(yield* handle.frame, "[muted]the third[/muted]");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a screen with no enabled choice dies with the reason", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(
+				Select.screen({ message: "Pick", choices: [{ label: "x", value: 1, disabled: true }] }),
+			);
+			const exit = yield* Effect.exit(handle.result);
+			if (Exit.isFailure(exit)) {
+				const defect = Cause.squash(exit.cause);
+				assert.include(defect instanceof Error ? defect.message : "", "at least one enabled choice");
+			} else {
+				assert.fail("expected a defect, but the select resolved");
+			}
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("the help line merges q and the root's esc into one pinned q/esc cancel", () =>
+		Effect.gen(function* () {
+			const wide = yield* Effect.scoped(
+				Effect.flatMap(
+					CliUiTest.render(Select.screen({ message: "Pick one", choices })),
+					(handle) => handle.plainFrame,
+				),
+			);
+			const help = wide.trimEnd().split("\n").at(-1) ?? "";
+			assert.isTrue(help.endsWith("q/esc cancel"), help);
+			assert.notInclude(help, "q cancel ·");
+			const narrow = yield* Effect.scoped(
+				Effect.flatMap(
+					CliUiTest.render(Select.screen({ message: "Pick one", choices }), { columns: 30 }),
+					(handle) => handle.plainFrame,
+				),
+			);
+			const cut = narrow.trimEnd().split("\n").at(-1) ?? "";
+			assert.isTrue(cut.endsWith(" · q/esc cancel"), `still pinned when cut: ${cut}`);
+			assert.include(cut, "…");
 		}).pipe(Effect.scoped),
 	);
 
