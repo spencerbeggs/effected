@@ -1,6 +1,6 @@
 {
 	"name": "@effected/env",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Effect-native environment detection: agent, CI, terminal colour level, hyperlinks, columns and audience — read once through Config, swapped in tests with layerTest",
 	"keywords": ["effect", "env", "ci", "agent", "color", "tty", "osc8", "hyperlinks", "effected"],

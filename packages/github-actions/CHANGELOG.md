@@ -1,5 +1,54 @@
 # @effected/github-actions
 
+## 0.20.0
+
+### Breaking Changes
+
+#### `ActionLogger` neutralizes plain log text
+
+- `ActionLogger.layerLogger` writes `Effect.log*` text at `Info` and above as plain step output, and the runner reads every line of it. That text is now neutralized, so a message carrying `::add-mask::` or `##[` is no longer a workflow command. The same applies to the buffered transcript a step replays, the failure line `withStep` prints, and a detached `ActionOutputs.setFailed` message.
+
+- A program that deliberately wrote a command through `Effect.logInfo("::…")` must now use the service's own methods (`group`, `notice`, annotations, `setFailed`, `setSecret`), which are unaffected. `ActionLogger.layer` installs no logger of its own, so install both `ActionLogger.layer` and `ActionLogger.layerLogger` (as `Action.run` does) for log text to be neutralized.
+
+* The kit now builds on and peers stable `effect` `^4.0.0`, in place of an exact release-candidate pin. Move `effect` and every `@effect/*` package to the same `4.x` version in one install: Effect releases them together at one version. A package from this release cannot share an install with an `effect` release candidate. The peer is a caret range, so later `4.x` releases of Effect satisfy the kit without a kit release.
+* Kit exports are unchanged. A consumer moving to stable `effect` meets these changes in its own code:
+  - `Array`, `Chunk`, `Effect` and `Record` `partition`, their `separate` helpers and `Option.partitionMap` return `[successes, failures]`. Where both sides share a type, the reversed destructuring still compiles, so search for every call.
+  - `Schema.brand` takes one identifier and is type-only: the identifier is not stored on the AST and does not survive `SchemaRepresentation`. Compose distinct brands by applying `brand` more than once.
+  - `TestSchema`'s round-trip assertion is `verifyRoundTrip`, with Effect forms `succeedEffect`, `failEffect` and `verifyRoundTripEffect`.
+  - Effect marks some APIs `@stability unstable`: those may change in a minor Effect release. Untagged APIs follow semver.
+
+### Features
+
+- `WorkflowCommand` and `AnnotationProperties` moved to the new pure package `@effected/github-commands`, which this package now depends on. They are still exported from `@effected/github-actions`, so existing imports keep compiling. Import `CommandNeutralizer` from `@effected/github-commands` to defang text you write to the log by another route. [#905][#905]
+
+### Documentation
+
+- Every exported construct's TSDoc was reviewed against the current API. Summaries open with what the construct does, error channels and requirements are stated, examples use real imports and compile, and links resolve. Comments that described options, errors or defaults the code does not have were corrected. [#910][#910]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github | dependency | updated | 0.14.0 | 0.15.0 |
+| @effected/glob | dependency | updated | 0.9.0 | 0.10.0 |
+| @effected/markdown | dependency | updated | 0.14.0 | 0.15.0 |
+| @effected/npm | dependency | updated | 0.19.1 | 0.20.0 |
+| @effected/sbom | dependency | updated | 0.9.1 | 0.10.0 |
+| @effected/semver | dependency | updated | 0.10.1 | 0.11.0 |
+| @effected/templates | dependency | updated | 0.9.1 | 0.10.0 |
+| @effected/walker | dependency | updated | 0.14.1 | 0.15.0 |
+| @effected/github-commands | dependency | added | — | 0.1.0 |
+
+[#905][#905]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#905]: https://github.com/spencerbeggs/effected/pull/905
+
+[#910]: https://github.com/spencerbeggs/effected/pull/910
+
 ## 0.19.1
 
 ### Dependencies

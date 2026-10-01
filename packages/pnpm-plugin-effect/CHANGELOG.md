@@ -1,5 +1,66 @@
 # @effected/pnpm-plugin-effect
 
+## 0.13.0
+
+### Breaking Changes
+
+- The `effect` and `effect:peers` catalogs give `effect` and every `@effect/*` package the range `^4.0.0` under the `lock-minor` strategy, in place of an exact release-candidate pin. Your lockfile now holds the exact `effect` version, so a fresh resolve can pick up a newer `4.x`. `@effect/tsgo` is `0.47.2` (peer `0.47.0`).
+- `catalog:effected` names every `@effected` package at its new minor. Bump the `configDependencies` pin (version and integrity together), then reinstall without the old lockfile, or the previous catalog versions keep resolving.
+
+### Features
+
+- The managed `catalog:effected` now covers the kit's two new packages, each at `^0.1.0` (peer `^0.1.0`, `lock-minor`): `@effected/env`, environment and audience detection, and `@effected/github-commands`, the GitHub Actions workflow-command grammar. [#905][#905]
+
+### Bug Fixes
+
+- The scoped `@effect/platform-node-shared` override now also covers the `4.0.0-rc.118` parent. Tools still built on that release candidate take `@effect/platform-node-shared` with a caret, which a fresh resolve would pair with the stable `4.0.0` package built for a different `effect`. The override keeps it at `4.0.0-rc.118` under that parent only, so a stable install is never touched. [#910][#910]
+
+### Maintenance
+
+#### Updates 33 catalog:effected versions
+
+- `@effected/app` ^0.19.1 -> ^0.20.0 (peer ^0.20.0)
+- `@effected/cli` ^0.10.0 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/commands` ^0.10.0 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/config-file` ^0.13.1 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/engine` ^0.2.0 -> ^0.3.0 (peer ^0.3.0)
+- `@effected/git` ^0.19.0 -> ^0.20.0 (peer ^0.20.0)
+- `@effected/github` ^0.14.0 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/github-actions` ^0.19.1 -> ^0.20.0 (peer ^0.20.0)
+- `@effected/github-references` ^0.6.0 -> ^0.7.0 (peer ^0.7.0)
+- `@effected/glob` ^0.9.0 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/jsonc` ^0.14.0 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/jsonl` ^0.8.0 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/lockfiles` ^0.14.0 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/markdown` ^0.14.0 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/mcp` ^0.3.0 -> ^0.4.0 (peer ^0.4.0)
+- `@effected/memfs` ^0.13.1 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/npm` ^0.19.1 -> ^0.20.0 (peer ^0.20.0)
+- `@effected/package-json` ^0.19.1 -> ^0.20.0 (peer ^0.20.0)
+- `@effected/runtimes` ^0.9.0 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/sbom` ^0.9.1 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/schema-org` ^0.6.0 -> ^0.7.0 (peer ^0.7.0)
+- `@effected/schemastore` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/schemastore-cli` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/semver` ^0.10.1 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/spdx` ^0.10.0 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/store` ^0.11.0 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/templates` ^0.9.1 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/toml` ^0.10.0 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/tsconfig-json` ^0.12.2 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/walker` ^0.14.1 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/workspaces` ^0.30.4 -> ^0.31.0 (peer ^0.31.0)
+- `@effected/xdg` ^0.8.2 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/yaml` ^0.18.0 -> ^0.19.0 (peer ^0.19.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) and [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
+[#905]: https://github.com/spencerbeggs/effected/pull/905
+
+[#910]: https://github.com/spencerbeggs/effected/pull/910
+
 ## 0.12.8
 
 ### Maintenance
