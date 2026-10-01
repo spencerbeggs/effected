@@ -512,15 +512,23 @@ const buildTimeAudience = (
  * is the plain `CliLogger`, with `MinimumLogLevel` lowered to the resolved level. The level is resolved silently: the
  * program's own `CliLog.layer` warns about an invalid value, once.
  *
+ * `lowerMinimum: false` is the same logger without lowering `MinimumLogLevel` (the level is floored at the ambient
+ * minimum instead): what `main` builds the environment layer under, so the audience-override warning is written as the
+ * platform's lines are, while `CliLog.layer`'s own build, which shares that context, still reads the ambient minimum.
+ *
  * @internal
  */
 export const platformLogLayer = (
 	options: CliLogOptions | CliLogFileOptions,
 	audienceEnvVar?: string | undefined,
+	lowerMinimum = true,
 ): Layer.Layer<never> =>
 	Layer.unwrap(
 		Effect.gen(function* () {
-			const { level } = yield* readLevel(options.level, options.envVar);
+			const resolved = (yield* readLevel(options.level, options.envVar)).level;
+			const ambient = yield* References.MinimumLogLevel;
+			// Without lowering, the level never drops below the ambient minimum, so no MinimumLogLevel leaves this layer.
+			const level = lowerMinimum || !LogLevel.isLessThan(resolved, ambient) ? resolved : ambient;
 			// No CurrentRuntimeEnv exists while the platform builds: detect it here, from the environment alone, so the
 			// build-time lines are neutralized under GitHub Actions as the program's are; `runtimeEnv` wins when given.
 			const detected: RuntimeEnv = yield* Effect.provide(CurrentRuntimeEnv, CurrentRuntimeEnv.layer);
@@ -540,7 +548,6 @@ export const platformLogLayer = (
 					runtimeEnv,
 				});
 			}
-			const ambient = yield* References.MinimumLogLevel;
 			return Layer.merge(
 				Logger.layer([
 					makeCliLogger(options.logger, actionsDecision(options.neutralize ?? "auto", Option.some(runtimeEnv))),

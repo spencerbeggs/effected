@@ -275,3 +275,68 @@ describe("CliRuntime.main: build-time lines are neutralized under GitHub Actions
 		}),
 	);
 });
+
+describe("CliRuntime.main: the audience-override warning is neutralized under GitHub Actions (r4 fix 1 addendum)", () => {
+	const commands = (lines: ReadonlyArray<string>) => lines.flatMap((line) => line.split(LINE_BREAK)).filter(isCommand);
+	const run = (format: "auto" | "json" | "pretty", env: Record<string, string>) =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			yield* CliRuntime.main(Effect.void, {
+				platform: io,
+				env: { audienceEnvVar: "TOOL_AUDIENCE", log: { format } },
+			}).pipe(
+				Effect.provideService(Console.Console, double),
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)),
+			);
+			return err;
+		});
+
+	for (const format of ["auto", "json", "pretty"] as const) {
+		it.effect(`${format}: an override value carrying a workflow command writes no command`, () =>
+			Effect.gen(function* () {
+				const err = yield* run(format, {
+					GITHUB_ACTIONS: "true",
+					CI: "true",
+					TOOL_AUDIENCE: "##[error]injected\n::error::injected",
+				});
+				assert.isTrue(
+					err.some((line) => line.includes("TOOL_AUDIENCE")),
+					`the warning was written: ${JSON.stringify(err)}`,
+				);
+				assert.deepStrictEqual(commands(err), [], JSON.stringify(err));
+			}),
+		);
+	}
+
+	it.effect("an agent with diagnostics on gets the warning's NDJSON record, as a runtime warning gets one", () =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			yield* CliRuntime.main(Effect.logWarning("runtime TOOL_AUDIENCE-like warning"), {
+				platform: io,
+				env: { audienceEnvVar: "TOOL_AUDIENCE", log: { level: "Debug" } },
+			}).pipe(
+				Effect.provideService(Console.Console, double),
+				Effect.provideService(
+					ConfigProvider.ConfigProvider,
+					ConfigProvider.fromUnknown({ AI_AGENT: "claude-code_x_agent", TOOL_AUDIENCE: "bogus" }),
+				),
+			);
+			const records = (needle: string) =>
+				err.filter((line) => line.startsWith("{") && line.includes(needle)).map((line) => JSON.parse(line));
+			assert.lengthOf(records("runtime TOOL_AUDIENCE-like"), 1, `control: a runtime warning: ${JSON.stringify(err)}`);
+			assert.lengthOf(records("TOOL_AUDIENCE=bogus"), 1, JSON.stringify(err));
+			assert.lengthOf(
+				err.filter((line) => line.includes("TOOL_AUDIENCE=bogus")),
+				2,
+				"one plain line and one NDJSON record, warned once",
+			);
+		}),
+	);
+
+	it.effect("control: off GitHub Actions the warning keeps the value as given", () =>
+		Effect.gen(function* () {
+			const err = yield* run("pretty", { TOOL_AUDIENCE: "##[error]injected" });
+			assert.isNotEmpty(commands(err), JSON.stringify(err));
+		}),
+	);
+});

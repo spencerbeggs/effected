@@ -493,7 +493,10 @@ export class CliRuntime {
 						Layer.provide(
 							Layer.provideMerge(
 								options.platform.pipe(Layer.provide(platformLogLayer(envLog, options.env?.audienceEnvVar))),
-								CliLogger.layer(envLog.logger),
+								// The env build logs too (an invalid override value warns, interpolating it): under the same build-time
+								// format and neutralizing as the platform's lines, but without lowering MinimumLogLevel, which this
+								// CliLog's own build reads.
+								platformLogLayer(envLog, options.env?.audienceEnvVar, false),
 							),
 						),
 						Layer.catchCause(() => CliLogger.layer(envLog.logger)),
