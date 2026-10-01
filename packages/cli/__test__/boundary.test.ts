@@ -114,6 +114,13 @@ const NODE_LICENCE: ReadonlyArray<string> = [
 	"ui/testing/fakeStreams.ts forbidImports node:stream",
 ];
 
+/**
+ * The one `./ui` write to a stream outside Ink: the live view's console bridge writes a log line straight to
+ * `UiStreams.stdout` when no frame is mounted to write it through (`okf/decisions/live-logs-through-ink.md`). It is
+ * the stream `./ui` binds under the D-D licence, not the process's own, and the file imports nothing from Node.
+ */
+const UI_WRITE_LICENCE: ReadonlyArray<string> = ["ui/internal/inkConsole.ts stdout-write stdout.write"];
+
 /** The `node:` importers reachable from `./ui`: only Ink's chalk resolution. The testing fakes stay off it. */
 const UI_NODE_IMPORTERS: ReadonlyArray<string> = ["ui/internal/inkChalk.ts"];
 
@@ -153,6 +160,7 @@ describe("cli boundary", () => {
 						allowRules: {
 							forbidImports: ["ui.ts", "ui-testing.ts", "ui/**"],
 							process: ["ui/internal/processStreams.ts"],
+							"stdout-write": ["ui/internal/inkConsole.ts"],
 						},
 					});
 					assert.include(scan.files, "CliRuntime.ts", "the scan read the real tree");
@@ -160,12 +168,12 @@ describe("cli boundary", () => {
 					assert.include(scan.files, "ui-testing.ts", "the scan read the ./ui/testing entry");
 					assert.deepStrictEqual(scan.allowed, []);
 					assert.deepStrictEqual(scan.violations, []);
-					// Every waived offence is a ./ui file naming ink or react, or a line of the D-D licence.
-					// The licence is exact, so a waiver that waives something new fails here.
+					// Every waived offence is a ./ui file naming ink or react, a line of the D-D licence, or the one
+					// stream write. The licences are exact, so a waiver that waives something new fails here.
 					const licensed = scan.waived
 						.filter((offence) => !(offence.rule === "forbidImports" && isUiPackage(offence.detail)))
 						.map(licensedLine);
-					assert.deepStrictEqual([...new Set(licensed)].sort(), [...NODE_LICENCE].sort());
+					assert.deepStrictEqual([...new Set(licensed)].sort(), [...NODE_LICENCE, ...UI_WRITE_LICENCE].sort());
 					for (const offence of scan.waived) assert.isTrue(isUiModule(offence.file), offence.label);
 				}),
 		);
