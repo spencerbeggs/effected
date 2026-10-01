@@ -157,10 +157,10 @@ const KEYS: KeyTable<SelectAction> = KeyTable.make<SelectAction>([
 	{ keys: [{ char: "q" }], action: "cancel", help: "cancel" },
 ]);
 
-/** Lines around the list: the message above, the detail and the help line below. */
 /** The text mark a disabled row carries at colour `none`, where the muted token paints nothing. */
 const DISABLED = " (disabled)";
 
+/** Lines around the list: the message above, the detail and the help line below. */
 const RESERVED = 3;
 
 /**
