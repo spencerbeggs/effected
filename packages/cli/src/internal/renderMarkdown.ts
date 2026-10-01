@@ -327,6 +327,28 @@ const headingText = (markdown: string): string => {
 	return `${text.slice(0, start)}${"\\#".repeat(text.length - start)}`;
 };
 
+const WHITESPACE = /\s/;
+
+/**
+ * A cell's text without the whitespace and `<br>` breaks at either edge, scanned from each end. A regex alternation
+ * anchored only at the end retries from every position of an interior run, which is quadratic on a long one.
+ */
+const trimCellEdges = (text: string): string => {
+	let start = 0;
+	let end = text.length;
+	for (;;) {
+		if (start < end && WHITESPACE.test(text.charAt(start))) start += 1;
+		else if (start + 4 <= end && text.startsWith("<br>", start)) start += 4;
+		else break;
+	}
+	for (;;) {
+		if (end > start && WHITESPACE.test(text.charAt(end - 1))) end -= 1;
+		else if (end - 4 >= start && text.startsWith("<br>", end - 4)) end -= 4;
+		else break;
+	}
+	return text.slice(start, end);
+};
+
 /** A block as markdown. `compact` is set on a compact list's item: a section there joins its parts with no blank lines. */
 const blockMd = (walk: Walk, block: Block, depth: number, compact = false): Lines => {
 	const { ctx } = walk;
@@ -352,7 +374,7 @@ const blockMd = (walk: Walk, block: Block, depth: number, compact = false): Line
 			const shown = cap === undefined ? block.rows : block.rows.slice(0, cap);
 			// A line break at the edge of a cell is not content: the cell is its trimmed text.
 			const cell = (inlines: ReadonlyArray<Inline> | undefined): string =>
-				inlines === undefined ? "" : inlineMd(inlines, ctx, "cell").replace(/^(?:\s|<br>)+|(?:\s|<br>)+$/g, "");
+				inlines === undefined ? "" : trimCellEdges(inlineMd(inlines, ctx, "cell"));
 			const header = Array.from({ length: columns }, (_, index) => cell(block.columns[index]?.header));
 			const aligns = Array.from({ length: columns }, (_, index) => block.columns[index]?.align);
 			const rows = shown.map((row) => Array.from({ length: columns }, (_, index) => cell(row[index])));
