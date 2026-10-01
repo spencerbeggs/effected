@@ -1,9 +1,10 @@
 import type { Cause } from "effect";
 import { Context, Effect, Layer, Queue, Terminal } from "effect";
 import type { Param } from "effect/cli";
-import { CliConfig, CliError, GlobalFlag, Prompt } from "effect/cli";
+import { CliConfig, GlobalFlag, Prompt } from "effect/cli";
 import { Cancelled } from "./Cancelled.js";
 import { CliInteractive } from "./CliInteractive.js";
+import { answerWithoutPerson } from "./internal/fallbackAnswer.js";
 import { WizardDropped } from "./internal/wizardGate.js";
 
 /**
@@ -69,13 +70,7 @@ export class CliPrompt {
 				);
 				return Prompt.succeed(answer);
 			}
-			// `{ otherwise: undefined }` counts as not given.
-			if ("otherwise" in options && options.otherwise !== undefined) return Prompt.succeed(options.otherwise);
-			return yield* Effect.fail(
-				"flag" in options
-					? new CliError.MissingOption({ option: options.flag })
-					: new CliError.MissingArgument({ argument: options.argument }),
-			);
+			return yield* answerWithoutPerson(options);
 		});
 
 	/**

@@ -2,11 +2,14 @@
 // (kept external by dtsExternals) instead of carrying copies a consumer's root layers cannot satisfy.
 import type * as Cli from "@effected/cli";
 import type { Scope } from "effect";
-import { Deferred, Effect, Exit, Semaphore } from "effect";
+import { Deferred, Effect, Exit, Option, Semaphore } from "effect";
+import type { Param } from "effect/cli";
+import { Prompt } from "effect/cli";
 import type { ReactElement, ReactNode } from "react";
 import { Cancelled } from "../Cancelled.js";
 import { CliInteractive } from "../CliInteractive.js";
 import { CliTheme } from "../CliTheme.js";
+import { answerWithoutPerson } from "../internal/fallbackAnswer.js";
 import { NotInteractive } from "../NotInteractive.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
 import { loadInk, withInkColour } from "./internal/ink.js";
@@ -46,6 +49,16 @@ export type Screen<A> = (control: ScreenControl<A>) => ReactElement | Promise<Re
 export interface CliUiRunOptions {
 	/** The stream the screen draws on, which decides its colour level; `"stdout"` by default. */
 	readonly stream?: "stdout" | "stderr";
+}
+
+/**
+ * Options for {@link CliUi.prompt}.
+ *
+ * @public
+ */
+export interface CliUiPromptOptions<A> {
+	/** The value to use when the run is not interactive. Without it a non-interactive run fails with `NotInteractive`. */
+	readonly otherwise?: A;
 }
 
 /** The root keys: Esc cancels with `"escape"`, Ctrl-C with `"interrupt"`. `q` belongs to widgets, never here. */
@@ -168,6 +181,73 @@ export class CliUi {
 			const stream = options?.stream ?? "stdout";
 			const theme = (yield* CliTheme).forStream(stream);
 			return yield* Semaphore.withPermit(mounts, Effect.scoped(mount(screen, theme, stream)));
+		});
+
+	/**
+	 * Run `screen` from a handler when the run is interactive; otherwise answer with `otherwise`, or fail with
+	 * `NotInteractive` when there is none.
+	 *
+	 * @remarks
+	 * `CliUi.run` with a default: not interactive, it returns `otherwise` and Ink and React are never loaded.
+	 * Interactive, it mounts the screen, and a cancel is the typed `Cancelled` a handler can catch, which
+	 * `CliRuntime.main` otherwise renders as one line with exit `130`. A missing Ink in an interactive run is a defect
+	 * naming the peers, never a silent `otherwise`. Screens in sequence make a wizard: discover the defaults first,
+	 * pass each as an `otherwise`, and a non-interactive run returns exactly them.
+	 *
+	 * @param screen - the screen to show
+	 * @param options - the non-interactive default
+	 */
+	static readonly prompt = <A>(
+		screen: Screen<A>,
+		options?: CliUiPromptOptions<A>,
+	): Effect.Effect<A, Cli.Cancelled | Cli.NotInteractive, Cli.CliTheme> =>
+		CliUi.run(screen).pipe(
+			Effect.catchTag("NotInteractive", (error) => {
+				// `{ otherwise: undefined }` counts as not given.
+				const otherwise = options?.otherwise;
+				return otherwise === undefined ? Effect.fail(error) : Effect.succeed(otherwise);
+			}),
+		);
+
+	/**
+	 * A fallback for `Flag.withFallbackPrompt` or `Argument.withFallbackPrompt` that shows a screen when the run is
+	 * interactive: `CliPrompt.fallback` for screens.
+	 *
+	 * @remarks
+	 * Interactive, the screen mounts and its answer is the parameter's value. Not interactive, `otherwise` is used when
+	 * given and Ink and React are never loaded; without it the parameter fails as missing, exactly as with no fallback,
+	 * so core renders its own message and `CliRuntime.main` exits `64`. Name the parameter with `flag` (the name
+	 * without dashes) or `argument` so that error can be built.
+	 *
+	 * It runs during parsing, whose environment is core's alone, so it reads `CliTheme` if one is there: with
+	 * `CliRuntime.main`'s `env` (`CliEnv.layer`), or provided around the program. With no theme it treats the run as
+	 * not interactive. Interactivity is `CliInteractive`, which an audience flag can set before parsing under
+	 * `CliAudience`.
+	 *
+	 * As with `CliPrompt.fallback`, the screen runs here rather than being handed to core, whose fallback runner
+	 * turns a quit into the missing-parameter error, which would exit `64`. A cancel (Esc, Ctrl-C) is `Cancelled`,
+	 * raised as a defect because core's parse step turns every typed failure into a usage error, so only
+	 * `CliRuntime.main` (or `CliRuntime.reportFailures`) renders it, as one line with exit `130`. Core then runs the
+	 * answered prompt it is handed, which subscribes the terminal: pair it with `CliPrompt.gateTerminal`, which
+	 * `CliEnv.layer` installs. A missing Ink in an interactive run is a defect naming the peers, never a silent
+	 * `otherwise`.
+	 *
+	 * @param screen - the screen to show
+	 * @param options - the parameter it stands in for, and the non-interactive default
+	 */
+	static readonly fallback = <A>(
+		screen: Screen<A>,
+		options: Cli.CliPromptFallbackOptions<A>,
+	): Param.FallbackPrompt<A> =>
+		Effect.gen(function* () {
+			const theme = yield* Effect.serviceOption(CliTheme);
+			if (Option.isNone(theme)) return yield* answerWithoutPerson(options);
+			return yield* CliUi.run(screen).pipe(
+				Effect.provideService(CliTheme, theme.value),
+				Effect.map((answer) => Prompt.succeed(answer)),
+				Effect.catchTag("Cancelled", (cancelled) => Effect.die(cancelled)),
+				Effect.catchTag("NotInteractive", () => answerWithoutPerson(options)),
+			);
 		});
 
 	/**
