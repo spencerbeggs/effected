@@ -369,7 +369,7 @@ describe("McpToolkit.layer", () => {
 		}),
 	);
 
-	// DEFAULT — probe P2 outcome O1 (Claude Code 2.1.281 sends exactly the declared keys in `arguments`): "all".
+	// DEFAULT is "all": Claude Code 2.1.281 sends exactly the declared keys in `arguments`, so strict rejects nothing it sends.
 	it.effect("by default an unannotated tool is strict", () =>
 		Effect.gen(function* () {
 			const harness = yield* McpHarness.make(serve(McpToolkit.layer(Kit)));

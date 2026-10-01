@@ -62,8 +62,8 @@ one read. `okf/modules/cli.md` has the rows.
   so importing `./ui` or running a non-interactive program loads neither,
   except that an owned live view loads them to print its final frame as a
   string.
-  `src/ui/**` may only `import type` from them (ruling S1, held by
-  `boundary.test.ts`); a missing peer in an interactive run is a defect
+  `src/ui/**` may only `import type` from them: only `ui/internal/ink.ts`
+  loads them as values (held by `boundary.test.ts`); a missing peer in an interactive run is a defect
   naming both, never a silent fallback.
 - **The ui declarations name the root by its package name.** `src/ui/**`
   imports root types as `import type * as Cli from "@effected/cli"`, and

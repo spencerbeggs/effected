@@ -247,7 +247,7 @@ export const guardRegistration = (registration: Registration): Registration => {
 	};
 };
 
-// Set from probe P2: Claude Code 2.1.281 sends a tool call's `arguments` with
+// Strict by default because a real client allows it: Claude Code 2.1.281 sends a tool call's `arguments` with
 // exactly the declared keys and keeps every extra under `params._meta`, so
 // strict-by-default rejects nothing a real client sends.
 const DEFAULT_STRICT: "all" | "annotated" = "all";
