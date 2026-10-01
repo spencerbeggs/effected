@@ -22,6 +22,9 @@ const isUiModule = (path: string): boolean => /^ui(?:\.ts$|-testing\.ts$|\/)/.te
 /** A specifier naming a package only `./ui` may load: `ink`, `react`, or a subpath of either. */
 const isUiPackage = (specifier: string): boolean => /^(?:ink|react)(?:$|\/)/.test(specifier);
 
+/** A self-reference into `./ui`: the package's own name resolves through its `exports`, so no relative edge shows it. */
+const isUiSelfReference = (specifier: string): boolean => /^@effected\/cli\/ui(?:$|\/)/.test(specifier);
+
 /** Every module specifier a file names: static, re-export, type-only and `import("<literal>")`. */
 const specifiersOf = (file: string, read: Read): ReadonlyArray<string> => SourceBoundary.importSpecifiers(read(file));
 
@@ -52,7 +55,7 @@ const rootOffences = (root: string, entries: ReadonlyArray<string>, read: Read =
 		const path = relativeTo(root, file);
 		if (isUiModule(path)) offences.push(`${path} is a ./ui module`);
 		for (const specifier of specifiersOf(file, read)) {
-			if (isUiPackage(specifier)) offences.push(`${path} imports ${specifier}`);
+			if (isUiPackage(specifier) || isUiSelfReference(specifier)) offences.push(`${path} imports ${specifier}`);
 		}
 	}
 	return offences.sort();
@@ -130,7 +133,7 @@ describe("cli boundary", () => {
 					const licensed = scan.waived
 						.filter((offence) => !(offence.rule === "forbidImports" && isUiPackage(offence.detail)))
 						.map(licensedLine);
-					assert.deepStrictEqual([...new Set(licensed)], [...NODE_LICENCE]);
+					assert.deepStrictEqual([...new Set(licensed)].sort(), [...NODE_LICENCE].sort());
 					for (const offence of scan.waived) assert.isTrue(isUiModule(offence.file), offence.label);
 				}),
 		);
@@ -239,6 +242,19 @@ describe("cli boundary", () => {
 				rootOffences(root, ["index.ts"], graph({ ...tree, "Cli.ts": 'import type { Ink } from "ink";\n' })),
 				["Cli.ts imports ink"],
 				"even a type-only ink import is off limits to the root",
+			);
+			assert.deepStrictEqual(
+				rootOffences(
+					root,
+					["index.ts"],
+					graph({
+						...tree,
+						"Cli.ts":
+							'export const lazy = () => import("@effected/cli/ui");\nexport * from "@effected/cli/ui/testing";\n',
+					}),
+				),
+				["Cli.ts imports @effected/cli/ui", "Cli.ts imports @effected/cli/ui/testing"],
+				"a self-reference into ./ui through the package's own name is flagged",
 			);
 		});
 	});
