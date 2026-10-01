@@ -15,7 +15,7 @@ import { errorBoundary } from "./internal/ErrorBoundary.js";
 import { inkModules, loadInk, withInkColour } from "./internal/ink.js";
 import { UiRenderOptions } from "./internal/renderOptions.js";
 import type { ScreenContextValue } from "./internal/ScreenContext.js";
-import { screenContext } from "./internal/ScreenContext.js";
+import { screenContext, useScreenGuard } from "./internal/ScreenContext.js";
 import { KeyTable, useKeys } from "./KeyTable.js";
 import { UiStreams } from "./UiStreams.js";
 
@@ -70,7 +70,8 @@ const RootKeys = (props: {
 	// Registering a paste handler turns on bracketed paste and moves every paste onto Ink's paste channel, so pasted
 	// text never reaches a `useInput` handler as keys: a pasted `q` or `yes\n` cannot cancel or answer a widget.
 	// `TextInput` registers its own handler to read a paste as text.
-	inkModules().ink.usePaste(() => undefined);
+	const guard = useScreenGuard();
+	inkModules().ink.usePaste(guard(() => undefined));
 	return props.children;
 };
 
@@ -102,12 +103,13 @@ const mount = <A>(
 			},
 		};
 		const element = yield* Effect.promise(async () => screen(control));
+		const die = (error: unknown): void => {
+			Deferred.doneUnsafe(result, Exit.die(error));
+		};
 		const tree = react.createElement(errorBoundary(), {
-			onError: (error) => {
-				Deferred.doneUnsafe(result, Exit.die(error));
-			},
+			onError: die,
 			children: react.createElement(screenContext().Provider, {
-				value: { cancel: control.cancel, theme, glyphs: theme.glyphs },
+				value: { cancel: control.cancel, die, theme, glyphs: theme.glyphs },
 				children: react.createElement(RootKeys, { cancel: control.cancel, children: element }),
 			}),
 		});
@@ -167,7 +169,8 @@ export class CliUi {
 	 * Mounting is one scoped resource. However the screen ends (resolved, cancelled, crashed, or the fiber
 	 * interrupted), it is unmounted, raw mode is off, the cursor is shown, and the colour level is restored. A
 	 * component that throws is a defect, never a hang or a typed failure, and nothing of Ink's crash screen reaches
-	 * stdout.
+	 * stdout. So is a `useKeys` handler that throws; a handler a consumer registers with Ink's own `useInput` or
+	 * `usePaste` is outside the kit, and what it throws escapes as Ink leaves it.
 	 *
 	 * With `stream: "stderr"` the frames, like the colour level, follow stderr, so stdout carries only what the
 	 * program itself writes.

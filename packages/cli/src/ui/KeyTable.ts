@@ -2,6 +2,7 @@ import type * as Cli from "@effected/cli";
 import { Option } from "effect";
 import { graphemes } from "../internal/displayWidth.js";
 import { inkModules } from "./internal/ink.js";
+import { useScreenGuard } from "./internal/ScreenContext.js";
 import type { KeyName } from "./UiKey.js";
 import { UiKey } from "./UiKey.js";
 
@@ -219,6 +220,9 @@ const keysOf = (input: string, key: Parameters<typeof UiKey.fromInk>[1]): Readon
  * second key would see the first key's starting point and repeat its move. Step with a functional update
  * (`setState((current) => step(current, action))`), a `useReducer` dispatch, or a ref the handler itself advances.
  *
+ * Inside a screen mounted by `CliUi.run`, a `dispatch` that throws ends the screen as a defect carrying the error, as a
+ * component that throws in render does; it never escapes as an uncaught exception.
+ *
  * @param table - the keys to read
  * @param dispatch - receives each matched action
  * @param options - whether the keys are read
@@ -230,13 +234,14 @@ export const useKeys = <Action>(
 	dispatch: (action: Action) => void,
 	options: UseKeysOptions = {},
 ): void => {
+	const guard = useScreenGuard();
 	inkModules().ink.useInput(
-		(input, key) => {
+		guard((input, key) => {
 			for (const pressed of keysOf(input, key)) {
 				const action = table.match(pressed);
 				if (Option.isSome(action)) dispatch(action.value);
 			}
-		},
+		}),
 		{ isActive: options.isActive ?? true },
 	);
 };

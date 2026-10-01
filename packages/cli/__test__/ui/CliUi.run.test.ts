@@ -6,12 +6,14 @@ import type { ReactElement } from "react";
 import { createElement, useEffect, useState } from "react";
 import { vi } from "vitest";
 import { Cancelled, CliInteractive, CliTheme, NotInteractive } from "../../src/index.js";
+import { inkModules } from "../../src/ui/internal/ink.js";
 import type { ChalkLevel, InkChalk } from "../../src/ui/internal/inkChalk.js";
 import { inkChalk } from "../../src/ui/internal/inkChalk.js";
+import { useScreenGuard } from "../../src/ui/internal/ScreenContext.js";
 import type { FakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import type { Screen } from "../../src/ui.js";
-import { CliUi, UiStreams } from "../../src/ui.js";
+import { CliUi, KeyTable, UiStreams, useKeys } from "../../src/ui.js";
 
 // Count loads of the peers through the kit's one loader, without changing what it does.
 const { loads } = vi.hoisted(() => ({ loads: { count: 0 } }));
@@ -397,6 +399,61 @@ describe("bracketed paste is switched off however a screen ends (production path
 			yield* until(() => fake.stdout().includes(`${ESC}[?2004h`));
 			yield* Fiber.interrupt(fiber);
 			assert.strictEqual(lastPasteMode(fake.stdout()), "l");
+		}),
+	);
+});
+
+describe("a throwing input handler is a defect, never an uncaught exception or a hang", () => {
+	const restored = (fake: FakeStreams): void => {
+		assert.deepStrictEqual(fake.rawModes, [true, false], "raw mode ends off");
+		assert.include(fake.stdout().slice(-64), SHOW_CURSOR, "the cursor is shown");
+		const switches = [...fake.stdout().matchAll(new RegExp(`${ESC}\\[\\?2004([hl])`, "g"))];
+		assert.strictEqual(switches.at(-1)?.[1], "l", "bracketed paste ends off");
+	};
+
+	it.live("a useKeys dispatch that throws dies with the error, and the terminal is restored", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams();
+			const table = KeyTable.make([{ keys: [{ char: "x" }], action: "x", help: "boom" }]);
+			const Thrower = (): ReactElement => {
+				useKeys(table, () => {
+					throw new Error("key handler threw");
+				});
+				return createElement(Text, null, "press x");
+			};
+			const fiber = yield* Effect.forkChild(
+				runOn(fake, () => createElement(Thrower)).pipe(Effect.timeout("2 seconds")),
+			);
+			yield* until(() => fake.stdout().includes(`${ESC}[?2004h`));
+			fake.input("x");
+			const exit = yield* Effect.exit(Fiber.join(fiber));
+			const defect = defectOf(exit);
+			assert.strictEqual(defect instanceof Error ? defect.message : String(defect), "key handler threw");
+			restored(fake);
+		}),
+	);
+
+	it.live("a guarded paste handler that throws dies with the error, and the terminal is restored", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams();
+			const Thrower = (): ReactElement => {
+				const guard = useScreenGuard();
+				inkModules().ink.usePaste(
+					guard(() => {
+						throw new Error("paste handler threw");
+					}),
+				);
+				return createElement(Text, null, "paste here");
+			};
+			const fiber = yield* Effect.forkChild(
+				runOn(fake, () => createElement(Thrower)).pipe(Effect.timeout("2 seconds")),
+			);
+			yield* until(() => fake.stdout().includes(`${ESC}[?2004h`));
+			fake.input(`${ESC}[200~pasted${ESC}[201~`);
+			const exit = yield* Effect.exit(Fiber.join(fiber));
+			const defect = defectOf(exit);
+			assert.strictEqual(defect instanceof Error ? defect.message : String(defect), "paste handler threw");
+			restored(fake);
 		}),
 	);
 });

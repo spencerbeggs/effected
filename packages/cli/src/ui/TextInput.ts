@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { Fmt } from "../Fmt.js";
 import type { Screen } from "./CliUi.js";
 import { inkModules } from "./internal/ink.js";
+import { useScreenGuard } from "./internal/ScreenContext.js";
 import { KeyHelp } from "./KeyHelp.js";
 import { KeyTable } from "./KeyTable.js";
 import { UiKey } from "./UiKey.js";
@@ -263,23 +264,28 @@ export class TextInput {
 			}
 		}, [state.submitted]);
 		// A paste is text: inserted whole, a pasted line break a space (a paste never submits), other controls dropped.
-		ink.usePaste((text) => {
-			const typed = text.replace(/\r\n|\r|\n/g, " ").replace(PASTE_CONTROLS, "");
-			if (typed === "") return;
-			setError(undefined);
-			setState((current) => step(current, UiKey.char(typed)));
-		});
-		ink.useInput((input, key) => {
-			const keys = typedKeys(input, key);
-			// Esc and Ctrl-C belong to the screen's root keys.
-			if (
-				keys.some((pressed) => pressed._tag === "Named" && (pressed.name === "escape" || pressed.name === "ctrl+c"))
-			) {
-				return;
-			}
-			if (keys.some((pressed) => !(pressed._tag === "Named" && pressed.name === "enter"))) setError(undefined);
-			for (const pressed of keys) setState((current) => step(current, pressed));
-		});
+		const guard = useScreenGuard();
+		ink.usePaste(
+			guard((text: string) => {
+				const typed = text.replace(/\r\n|\r|\n/g, " ").replace(PASTE_CONTROLS, "");
+				if (typed === "") return;
+				setError(undefined);
+				setState((current) => step(current, UiKey.char(typed)));
+			}),
+		);
+		ink.useInput(
+			guard((input: string, key: Parameters<typeof UiKey.fromInk>[1]) => {
+				const keys = typedKeys(input, key);
+				// Esc and Ctrl-C belong to the screen's root keys.
+				if (
+					keys.some((pressed) => pressed._tag === "Named" && (pressed.name === "escape" || pressed.name === "ctrl+c"))
+				) {
+					return;
+				}
+				if (keys.some((pressed) => !(pressed._tag === "Named" && pressed.name === "enter"))) setError(undefined);
+				for (const pressed of keys) setState((current) => step(current, pressed));
+			}),
+		);
 		const cursorGlyph = glyphs.kind === "unicode" ? "▏" : "|";
 		const [before, after] = windowAround(
 			state.value.slice(0, state.cursor),
