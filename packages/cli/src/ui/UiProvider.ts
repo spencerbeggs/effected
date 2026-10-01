@@ -25,7 +25,9 @@ export interface UiContextValue {
 	readonly size?: { readonly columns: number; readonly rows: number };
 	/**
 	 * Whether the GitHub Actions runner reads the output (`CliUi.context` sets it from `CurrentRuntimeEnv`, when one is
-	 * provided): a `DocView` under it neutralizes any line its data would turn into a workflow command.
+	 * provided): a `DocView` under it neutralizes any line its data would turn into a workflow command. `false` opts the
+	 * tree out of that under GitHub Actions, the consumer's choice; a nested provider cannot clear it once a provider
+	 * above it has set it.
 	 */
 	readonly neutralizeWorkflowCommands?: boolean;
 }
