@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
 import { Cause, ConfigProvider, Console, Effect, Layer, Stdio, Terminal } from "effect";
-import type { Document } from "../src/index.js";
+import type { Document, ReportFailuresOptions } from "../src/index.js";
 import { CliDoc, CliLinks, CliRuntime, CliTheme, Doc, Render } from "../src/index.js";
 import { commandLines } from "./helpers/runnerCommands.js";
 
@@ -283,4 +283,46 @@ describe("a consumer render's output is untrusted text", () => {
 			assert.deepStrictEqual(commandLines(err.join("\n")), []);
 		}),
 	);
+});
+
+describe("a delegating render gets the default report (F4, F5)", () => {
+	const human = ConfigProvider.fromUnknown({ TERM: "xterm-256color", FORCE_COLOR: "3" });
+	const report = (render?: NonNullable<ReportFailuresOptions["render"]>) =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			yield* CliRuntime.main(dying("kaboom"), {
+				platform,
+				env: { displayPath: (p) => p.replace("/repo/", "") },
+				...(render === undefined ? {} : { render }),
+			}).pipe(
+				Effect.exit,
+				Effect.provideService(ConfigProvider.ConfigProvider, human),
+				Effect.provideService(Console.Console, double),
+			);
+			return err;
+		});
+
+	it.effect(
+		"details.defaultLines is the report the kit would write, painted and path-displayed: returned, it is identical",
+		() =>
+			Effect.gen(function* () {
+				const kit = yield* report();
+				assert.isTrue(
+					kit.some((line) => line.includes(ESC)),
+					"control: the default report is painted for this human",
+				);
+				assert.include(kit.join("\n"), "src/run.ts:3:4");
+				const delegated = yield* report((_error, details) => details.defaultLines);
+				assert.deepStrictEqual(delegated, kit);
+			}),
+	);
+
+	it("defaultRender with status: false drops the leading status mark, so a prefix reads cleanly", () => {
+		const cause = Cause.fail(new Error("boom"));
+		const lines = (value: string | ReadonlyArray<string>) => (typeof value === "string" ? [value] : value);
+		const withStatus = lines(CliRuntime.defaultRender(Cause.squash(cause), { cause, isDefect: false }));
+		assert.match(withStatus[0] ?? "", /^\[FAIL\] /, "control: the status leads by default");
+		const without = lines(CliRuntime.defaultRender(Cause.squash(cause), { cause, isDefect: false }, { status: false }));
+		assert.strictEqual(`vitest-agent: ${without[0]}`, "vitest-agent: Error: boom");
+	});
 });

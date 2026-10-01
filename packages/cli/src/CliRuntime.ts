@@ -44,6 +44,13 @@ export interface FailureDetails {
 	 * failure from the error channel.
 	 */
 	readonly isDefect: boolean;
+	/**
+	 * The report the kit writes for this failure when there is no `render`: for this run, in this audience, with its
+	 * colour, links and `displayPath`. A `render` that hands a failure back returns these lines unchanged, and the
+	 * output is then exactly the default report; to drop the leading status, use `CliRuntime.defaultRender` with
+	 * `status: false` instead.
+	 */
+	readonly defaultLines: ReadonlyArray<string>;
 }
 
 /**
@@ -271,8 +278,10 @@ export class CliRuntime {
 	 * The plain lines of `CliFailure.toDoc(details.cause)`: a failure status line, a `Tree` for a schema failure, a
 	 * defect's message with its cleaned `stack`, and the one fixed line each for `Cancelled` and `NotInteractive`.
 	 * It has no terminal to ask, so it is the plain rendering for an agent; the report `main` writes with no `render`
-	 * option is the same document in the renderer the audience gets (painted for a person). A custom `render` that
-	 * only cares about its own errors delegates the rest here rather than re-implementing those lines:
+	 * option is the same document in the renderer the audience gets (painted for a person), and that report is
+	 * `details.defaultLines`: return those to hand a failure back with the run's colour, links and path display. With
+	 * `status: false` the leading status (the glyph, or `[FAIL]` in plain text) is left off, so a prefix such as the
+	 * program's name reads cleanly. A custom `render` that only cares about its own errors delegates the rest:
 	 *
 	 * ```ts
 	 * const render = (error: unknown, details: FailureDetails) =>
@@ -281,11 +290,16 @@ export class CliRuntime {
 	 *
 	 * @param error - the squashed failure
 	 * @param details - what `render` is told about the failure; accepted so a delegating `render` passes both
-	 *   arguments through unchanged
+	 *   arguments through unchanged (only `cause` and `isDefect` are read)
+	 * @param options - `status: false` leaves off the leading status glyph or `[FAIL]` tag
 	 */
-	static readonly defaultRender = (error: unknown, details: FailureDetails): string | ReadonlyArray<string> =>
+	static readonly defaultRender = (
+		error: unknown,
+		details: Pick<FailureDetails, "cause" | "isDefect">,
+		options?: { readonly status?: boolean | undefined },
+	): string | ReadonlyArray<string> =>
 		// `details.cause` is what a report is told; a hand-built `details` with an empty cause renders the error itself.
-		plainFailureLines(details.cause.reasons.length > 0 ? details.cause : Cause.fail(error));
+		plainFailureLines(details.cause.reasons.length > 0 ? details.cause : Cause.fail(error), options?.status !== false);
 
 	/**
 	 * Catch, render through the ambient logger, and re-fail with the exit code
@@ -325,20 +339,21 @@ export class CliRuntime {
 					}
 
 					const render = options.render;
-					// Cause.squash prefers a Fail over a Die, so `error` is a defect exactly when there is no Fail.
-					const details: FailureDetails = { cause, isDefect: !Cause.hasFails(cause) };
 
 					return Effect.gen(function* () {
-						// Without a `render` the report is the failure's document in the renderer the audience gets, still
-						// written through the logger, so `--log-level` and the logger's own routing are as they were.
+						// The failure's document in the renderer the audience gets: the report itself without a `render`, and
+						// `details.defaultLines` with one. If the document cannot be rendered for the audience, the plain path;
+						// if that dies too, the message alone, still sanitised and neutralized: the last resort keeps the policy.
+						const defaultLines = yield* failureLines(cause).pipe(
+							Effect.catchCause(() => Effect.sync(() => plainFailureLines(cause))),
+							Effect.catchCause(() => Effect.sync(() => lastResort(error))),
+						);
+						// Cause.squash prefers a Fail over a Die, so `error` is a defect exactly when there is no Fail.
+						const details: FailureDetails = { cause, isDefect: !Cause.hasFails(cause), defaultLines };
+						// Without a `render`, written through the logger, so `--log-level` and its routing are as they were.
 						const lines =
 							render === undefined
-								? yield* failureLines(cause).pipe(
-										// If the document cannot be rendered for the audience, the plain path; if that dies too, the
-										// message alone, still sanitised and neutralized: the last resort keeps the output policy.
-										Effect.catchCause(() => Effect.sync(() => plainFailureLines(cause))),
-										Effect.catchCause(() => Effect.sync(() => lastResort(error))),
-									)
+								? defaultLines
 								: // A consumer's lines are text the kit did not build: neutralized under Actions, stripped for an agent.
 									yield* guardConsumerLines(toLines(render(error, details)));
 						for (const line of lines) {

@@ -6,6 +6,7 @@ import { Context, Effect, MutableRef, Option } from "effect";
 import { CliFailure } from "../CliFailure.js";
 import { CliLinks } from "../CliLinks.js";
 import { CliTheme } from "../CliTheme.js";
+import type { Block, Document, Inline } from "../Doc.js";
 import { Glyphs } from "../Glyphs.js";
 import type { RenderContext } from "../Render.js";
 import { Render } from "../Render.js";
@@ -112,8 +113,27 @@ const currentTarget: Effect.Effect<FailureTarget> = Effect.gen(function* () {
 	return (yield* build()) ?? fallbackTarget;
 });
 
-const linesOf = (cause: Cause.Cause<unknown>, target: FailureTarget): ReadonlyArray<string> => {
-	const doc = CliFailure.toDoc(cause, { displayPath: target.ctx.displayPath });
+/** Content with its leading status mark (and the space after it) removed. */
+const dropStatus = (content: ReadonlyArray<Inline>): ReadonlyArray<Inline> => {
+	if (content[0]?._tag !== "StatusMark") return content;
+	const next = content[1];
+	return next?._tag === "Text" && next.value === " " ? content.slice(2) : content.slice(1);
+};
+
+/**
+ * A failure document without its status marks. A failure's status leads its first paragraph, or a schema failure's
+ * tree label; nothing else in the document carries one.
+ */
+const withoutStatus = (doc: Document): Document =>
+	doc.map((block): Block => {
+		if (block._tag === "Paragraph") return { ...block, content: dropStatus(block.content) };
+		if (block._tag === "Tree") return { ...block, root: { ...block.root, label: dropStatus(block.root.label) } };
+		return block;
+	});
+
+const linesOf = (cause: Cause.Cause<unknown>, target: FailureTarget, status = true): ReadonlyArray<string> => {
+	const full = CliFailure.toDoc(cause, { displayPath: target.ctx.displayPath });
+	const doc = status ? full : withoutStatus(full);
 	const text = Render[target.format](doc, target.ctx);
 	return text === "" ? [] : text.split("\n");
 };
@@ -155,4 +175,5 @@ export const guardConsumerLines = (lines: ReadonlyArray<string>): Effect.Effect<
  *
  * @internal
  */
-export const plainFailureLines = (cause: Cause.Cause<unknown>): ReadonlyArray<string> => linesOf(cause, fallbackTarget);
+export const plainFailureLines = (cause: Cause.Cause<unknown>, status = true): ReadonlyArray<string> =>
+	linesOf(cause, fallbackTarget, status);
