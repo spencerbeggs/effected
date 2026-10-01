@@ -213,10 +213,30 @@ describe("CliLog.layer format", () => {
 		}),
 	);
 
-	it.effect("auto is NDJSON for a human whose stderr is not a terminal", () =>
+	it.effect("auto is plain for a human whose stderr is not a terminal, with no NDJSON line and no escape (r5 F2)", () =>
 		Effect.gen(function* () {
-			const { err } = yield* capture(one, { env, audience: "human", stderrTty: false });
-			assert.strictEqual(json(ndjson(err)[0] ?? "").message, "hello");
+			const { err } = yield* capture(one, { env, audience: "human", stderrTty: false, color: "none" });
+			assert.match(pretty(err)[0] ?? "", /INFO hello$/);
+			assert.deepStrictEqual(ndjson(err), []);
+			assert.notInclude(err.join("\n"), "\x1b");
+		}),
+	);
+
+	it.effect("auto is plain for a human on a terminal too: the audience alone decides", () =>
+		Effect.gen(function* () {
+			const { err } = yield* capture(one, { env, audience: "human", stderrTty: true });
+			assert.match(pretty(err)[0] ?? "", /INFO hello$/);
+			assert.deepStrictEqual(ndjson(err), []);
+		}),
+	);
+
+	it.effect("auto is NDJSON for an agent and a CI whose stderr is not a terminal", () =>
+		Effect.gen(function* () {
+			for (const audience of ["agent", "ci"] as const) {
+				const { err } = yield* capture(one, { env, audience, stderrTty: false });
+				assert.strictEqual(json(ndjson(err)[0] ?? "").message, "hello", audience);
+				assert.deepStrictEqual(pretty(err), []);
+			}
 		}),
 	);
 

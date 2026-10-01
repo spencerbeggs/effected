@@ -212,6 +212,23 @@ describe("CliRuntime.main: format auto decides the build-time lines from env and
 		}),
 	);
 
+	it.effect(
+		"a human whose stderr is not a terminal: every stderr line is plain, build-time and runtime alike (r5 F2)",
+		() =>
+			Effect.gen(function* () {
+				// The platform double's stdout is not a terminal, and stderr mirrors it: a human piping stderr to a file.
+				const { err } = yield* run({});
+				assert.isTrue(
+					err.some((line) => line.includes("handler ran")),
+					"control: the runtime line was written",
+				);
+				assert.deepStrictEqual(
+					err.filter((line) => isJson(line)),
+					[],
+				);
+			}),
+	);
+
 	it.effect("control: the argv the platform's Stdio carries is not seen at build time, only the option's", () =>
 		Effect.gen(function* () {
 			const { double, err } = capturing();

@@ -62,15 +62,19 @@ export interface CliLogOptions {
 	 */
 	readonly plainLogger?: boolean | undefined;
 	/**
-	 * `json` is NDJSON, `pretty` a human line, `auto` (the default) is pretty for a human audience with a
-	 * terminal on stderr and NDJSON otherwise.
+	 * `json` is NDJSON, `pretty` a human line, `auto` (the default) decides by the audience alone: NDJSON for an agent
+	 * or a CI, the pretty `CliLogger` line for a human, at build time and at runtime alike.
 	 *
 	 * @remarks
+	 * Stderr's terminal state is never consulted, so a human piping stderr to a file gets plain lines, never a mix of
+	 * plain and NDJSON; colour still follows `stderr.color`, so those lines carry no escapes when stderr is not a colour
+	 * terminal. Pass `format: "json"` for machine-readable logs whoever runs the program.
+	 *
 	 * Under `CliRuntime.main` with `env.log`, what the platform logs while it builds is written before the platform
 	 * provides the terminal or the arguments, so `auto` decides those lines from what needs no platform: an audience
 	 * flag in {@link CliLogOptions.argv}, else the audience override variable (`env.audienceEnvVar`), else agent and
 	 * CI detection from the environment. An agent or a CI gets NDJSON, as its runtime lines are; anything else gets
-	 * a plain line. The terminal is not consulted for those lines. `json` is NDJSON and `pretty` plain throughout.
+	 * a plain line, the same choice the runtime lines make. `json` is NDJSON and `pretty` plain throughout.
 	 */
 	readonly format?: "auto" | "json" | "pretty" | undefined;
 	/**
@@ -229,6 +233,10 @@ const actionsDecision =
  * minimum it had, so it never prints a record the diagnostics level alone let through. A failure report is
  * written outside the scope core's `--log-level` flag sets, so `--log-level none` does not silence it either.
  *
+ * `format: "auto"`, the default, decides by the audience alone, at build time and at runtime alike: NDJSON for an
+ * agent or a CI, the pretty line for a human, whatever stderr's terminal state. A human piping stderr therefore gets
+ * plain lines (without escapes unless stderr is a colour terminal); pass `format: "json"` for machine-readable logs.
+ *
  * The text a program logs is sanitised before anything is painted in the pretty line (the message, the component and an
  * error's cause lose their escape sequences and control characters), and under GitHub Actions, where
  * `CurrentRuntimeEnv` in the logging fiber's context says so, a line the runner would read as a workflow command is
@@ -380,7 +388,8 @@ export class CliLog {
 					if (format !== "auto") return format === "pretty";
 					const inForce = Context.getOption(record.fiber.context, Audience);
 					const kind = Option.isSome(inForce) ? inForce.value.kind : audience?.kind;
-					return kind === "human" && terminal?.stderr.isTerminal === true;
+					// The audience alone decides, as it does at build time: stderr's terminal state is never consulted.
+					return kind === "human";
 				};
 
 				// Effect filters on MinimumLogLevel before any logger runs: lower it just far enough for the sink.
