@@ -8,7 +8,7 @@ import type { CliEnvOptions, CliEnvServices } from "./CliEnv.js";
 import { CliEnv } from "./CliEnv.js";
 import { CliExit } from "./CliExit.js";
 import type { CliLogFileOptions, CliLogOptions } from "./CliLog.js";
-import { CliLog } from "./CliLog.js";
+import { CliLog, platformLogLayer } from "./CliLog.js";
 import { CliLogger } from "./CliLogger.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
 import type { FailureTarget } from "./internal/failureTarget.js";
@@ -432,7 +432,14 @@ export class CliRuntime {
 						// The platform and env builds log too (an invalid audience override warns, a platform may log while it
 						// builds): build them UNDER a CliLogger, never beside it, or those lines go through Effect's default
 						// logger to STDOUT, before any logger exists. `provideMerge` hands the same logger set on to the env build.
-						Layer.provide(Layer.provideMerge(options.platform, CliLogger.layer(envLog.logger))),
+						// The platform alone is built under the run's log level and format (`platformLogLayer`): provided to it
+						// only, so its lowered MinimumLogLevel never reaches this CliLog's own build, which reads the ambient one.
+						Layer.provide(
+							Layer.provideMerge(
+								options.platform.pipe(Layer.provide(platformLogLayer(envLog))),
+								CliLogger.layer(envLog.logger),
+							),
+						),
 						Layer.catchCause(() => CliLogger.layer(envLog.logger)),
 					));
 		const inside =

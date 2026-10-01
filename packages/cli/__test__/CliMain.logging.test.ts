@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Console, Effect, Layer, Stdio, Terminal } from "effect";
+import { ConfigProvider, Console, Effect, Layer, Stdio, Terminal } from "effect";
 import { Command } from "effect/cli";
 import { CliRuntime } from "../src/index.js";
 
@@ -83,6 +83,56 @@ describe("CliRuntime.main: env.formatter", () => {
 			const text = yield* run();
 			assert.include(text, "1.2.3");
 			assert.notInclude(text, "carrier");
+		}),
+	);
+});
+
+describe("CliRuntime.main: the log level applies while the platform builds (F3)", () => {
+	const debugging = Layer.mergeAll(io, Layer.effectDiscard(Effect.logDebug("migration ran")));
+
+	it.effect("format json: a Debug record the platform logs while it builds is one NDJSON line on stderr", () =>
+		Effect.gen(function* () {
+			const { double, out, err } = capturing();
+			yield* CliRuntime.main(Effect.void, {
+				platform: debugging,
+				env: { log: { level: "Debug", format: "json" } },
+			}).pipe(Effect.provideService(Console.Console, double));
+			assert.deepStrictEqual(out, []);
+			const records = err.filter((line) => line.includes("migration ran"));
+			assert.lengthOf(records, 1, JSON.stringify(err));
+			const record = JSON.parse(records[0] as string) as { readonly level: string; readonly message: unknown };
+			assert.strictEqual(record.level, "DEBUG");
+			assert.strictEqual(record.message, "migration ran");
+		}),
+	);
+
+	it.effect("another format: the build-time plain logger is floored at the same level, read from envVar", () =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			yield* CliRuntime.main(Effect.void, {
+				platform: debugging,
+				env: { log: { envVar: "REPORTER_LOG_LEVEL", format: "pretty" } },
+			}).pipe(
+				Effect.provideService(Console.Console, double),
+				Effect.provideService(
+					ConfigProvider.ConfigProvider,
+					ConfigProvider.fromUnknown({ REPORTER_LOG_LEVEL: "debug" }),
+				),
+			);
+			assert.isTrue(
+				err.some((line) => line.includes("migration ran")),
+				JSON.stringify(err),
+			);
+		}),
+	);
+
+	it.effect("control: with diagnostics off, the platform's Debug record is not shown", () =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			yield* CliRuntime.main(Effect.void, { platform: debugging, env: { log: { format: "json" } } }).pipe(
+				Effect.provideService(Console.Console, double),
+			);
+			assert.isFalse(err.some((line) => line.includes("migration ran")));
 		}),
 	);
 });

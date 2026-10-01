@@ -1,4 +1,4 @@
-import { Audience, TerminalEnv } from "@effected/env";
+import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
 import type { FileSystem } from "effect";
 import {
@@ -20,7 +20,7 @@ import { paintStyle } from "./internal/ansi.js";
 import { Level, passes } from "./internal/diagnostics.js";
 import { makeFileSink } from "./internal/fileSink.js";
 import { sanitize } from "./internal/layout.js";
-import { neutralizeJson, underActionsIn } from "./internal/logSafety.js";
+import { neutralizeJson } from "./internal/logSafety.js";
 import type { Style } from "./Token.js";
 
 /**
@@ -72,6 +72,13 @@ export interface CliLogOptions {
 	 * diagnostics sink never makes it see records it would not have seen otherwise.
 	 */
 	readonly extraLoggers?: ReadonlyArray<Logger.Logger<unknown, unknown>> | undefined;
+	/**
+	 * Whether a line the GitHub Actions runner would read as a workflow command is neutralized. `auto`, the default,
+	 * follows the `CurrentRuntimeEnv` of the fiber that logs, and where that fiber has none, the one the layer was
+	 * built with: a host that builds this layer over its environment covers records logged outside it too. `true`
+	 * always neutralizes, `false` never does.
+	 */
+	readonly neutralize?: boolean | "auto" | undefined;
 }
 
 /**
@@ -98,8 +105,11 @@ export interface CliLogFileOptions extends CliLogOptions {
 	 * running with its normal exit code: from then on lines, including any still queued, are discarded silently.
 	 * Closing the layer's scope flushes the lines queued before it, unless the sink had already disabled itself.
 	 * `{ envVar }` names the variable that holds the path; unset or empty, no file is written.
+	 *
+	 * `undefined` writes no file but keeps the requirements of a file sink (`FileSystem` and `Path`) in `R`, so a
+	 * host whose sink is optional has one stable layer type either way.
 	 */
-	readonly file: CliLogFile;
+	readonly file: CliLogFile | undefined;
 }
 
 /** The accepted spellings of a level, lower-cased, to the level they mean. */
@@ -169,9 +179,10 @@ const readLevel = (
  * legacy parser reads `##[` anywhere in a line, so under Actions it is written as the JSON escape `#\u0023[`, which
  * decodes to the identical text. The file sink's lines are not read by the runner and are written as they are.
  *
- * `CurrentRuntimeEnv` is read from the logging fiber's context, so a record logged outside its scope (the warnings
- * logged while `CliRuntime.main` builds its environment, or a program with no `CurrentRuntimeEnv` provided) is
- * sanitised but not neutralized.
+ * `CurrentRuntimeEnv` is read from the logging fiber's context, and where that has none, from the layer's own build
+ * context (captured if present, never required), so a host that builds the layer over its environment neutralizes
+ * every record. A record with neither (a program with no `CurrentRuntimeEnv` anywhere) is sanitised but not
+ * neutralized, unless the `neutralize` option says otherwise.
  *
  * Core's `--log-level` flag sets `MinimumLogLevel` inside the command. While it is set to something other than
  * the value this layer installed, the diagnostics logger follows the flag instead of its own level: it writes
@@ -256,6 +267,18 @@ export class CliLog {
 				const terminal = format === "json" ? undefined : yield* TerminalEnv;
 				const { level, invalid } = yield* readLevel(options.level, options.envVar);
 				const ambient = yield* References.MinimumLogLevel;
+				// Captured here, not required: the fallback for a record whose own fiber has no CurrentRuntimeEnv.
+				const captured = yield* Effect.serviceOption(CurrentRuntimeEnv);
+				const neutralize = options.neutralize ?? "auto";
+				const underActionsFor = (record: Logger.Options<unknown>): boolean => {
+					if (neutralize !== "auto") return neutralize;
+					const inFiber = Context.getOption(record.fiber.context, CurrentRuntimeEnv);
+					const runtime = Option.isSome(inFiber) ? inFiber : captured;
+					return Option.contains(
+						Option.flatMap(runtime, (env) => env.ci),
+						"github-actions",
+					);
+				};
 
 				const color = terminal?.stderr.color ?? "none";
 				// Decided per record, not once at build: the logger is built outermost, before an audience flag is read,
@@ -273,7 +296,7 @@ export class CliLog {
 				const isLowered = lowered !== ambient;
 
 				const render = (record: Logger.Options<unknown>): string => {
-					const underActions = underActionsIn(record.fiber);
+					const underActions = underActionsFor(record);
 					// NDJSON: JSON.stringify escapes every control character, but the runner's legacy parser reads `##[`
 					// anywhere in a line, so under Actions it is written as a JSON escape that decodes to the same text.
 					if (!isPretty(record)) {
@@ -362,3 +385,37 @@ export class CliLog {
 		<A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
 			Effect.annotateLogs(self, "component", name);
 }
+
+/**
+ * The logger the platform is built under by `CliRuntime.main` with `env.log`: the log level and env var apply to
+ * what the platform logs while it builds, too.
+ *
+ * @remarks
+ * With `format: "json"` it is the full `CliLog.layer` (that format needs neither the audience nor the terminal, which
+ * the platform has not built yet), without the file sink, whose `FileSystem` the platform provides. Otherwise it is
+ * the plain `CliLogger`, with `MinimumLogLevel` lowered to the resolved level. The level is resolved silently: the
+ * program's own `CliLog.layer` warns about an invalid value, once.
+ *
+ * @internal
+ */
+export const platformLogLayer = (options: CliLogOptions | CliLogFileOptions): Layer.Layer<never> =>
+	Layer.unwrap(
+		Effect.gen(function* () {
+			const { level } = yield* readLevel(options.level, options.envVar);
+			if (options.format === "json") {
+				return CliLog.layer({
+					level,
+					format: "json",
+					...(options.plainLogger === undefined ? {} : { plainLogger: options.plainLogger }),
+					...(options.logger === undefined ? {} : { logger: options.logger }),
+					...(options.extraLoggers === undefined ? {} : { extraLoggers: options.extraLoggers }),
+					...(options.neutralize === undefined ? {} : { neutralize: options.neutralize }),
+				});
+			}
+			const ambient = yield* References.MinimumLogLevel;
+			return Layer.merge(
+				CliLogger.layer(options.logger),
+				LogLevel.isLessThan(level, ambient) ? Layer.succeed(References.MinimumLogLevel, level) : Layer.empty,
+			);
+		}),
+	);

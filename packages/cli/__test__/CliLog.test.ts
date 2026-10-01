@@ -1,11 +1,13 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
-import { Audience, TerminalEnv } from "@effected/env";
-import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Logger, Runtime } from "effect";
+import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
+import type { FileSystem, Path } from "effect";
+import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Logger, Option, Runtime } from "effect";
 import { Command } from "effect/cli";
-import type { CliLoggerOptions } from "../src/index.js";
+import type { CliLogFile, CliLoggerOptions } from "../src/index.js";
 import { CliLog, CliLogger, CliRuntime } from "../src/index.js";
+import { LINE_BREAK, isCommand } from "./helpers/runnerCommands.js";
 
 const ENV = "VITEST_REPORTER_LOG_LEVEL";
 
@@ -454,3 +456,71 @@ describe("CliLog.layer format follows the audience in force for each record", ()
 		}),
 	);
 });
+
+describe("CliLog.layer under GitHub Actions captured when it was built (F2)", () => {
+	const hostile = Effect.logWarning("::error::injected\n##[warning]also");
+	/** A host's layer: CliLog built over a layer whose CurrentRuntimeEnv says GitHub Actions, never in the fiber. */
+	const hosted = (neutralize?: boolean | "auto") =>
+		CliLog.layer({
+			level: "Info",
+			format: "json",
+			plainLogger: false,
+			...(neutralize === undefined ? {} : { neutralize }),
+		}).pipe(Layer.provide(CurrentRuntimeEnv.layerTest({ ci: Option.some("github-actions") })));
+	const commands = (lines: ReadonlyArray<string>) => lines.flatMap((line) => line.split(LINE_BREAK)).filter(isCommand);
+	const written = (layer: Layer.Layer<never>) =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			yield* hostile.pipe(Effect.provide(layer), Effect.provideService(Console.Console, double));
+			return err;
+		});
+
+	it.effect("auto: a record from a fiber without CurrentRuntimeEnv is neutralized from the capture", () =>
+		Effect.gen(function* () {
+			const err = yield* written(hosted());
+			assert.isNotEmpty(err, "the record was written");
+			assert.deepStrictEqual(commands(err), []);
+		}),
+	);
+
+	it.effect("false never neutralizes, and true always does even with nothing captured", () =>
+		Effect.gen(function* () {
+			assert.isNotEmpty(commands(yield* written(hosted(false))), "false leaves the command");
+			const bare = CliLog.layer({ level: "Info", format: "json", plainLogger: false, neutralize: true });
+			assert.deepStrictEqual(commands(yield* written(bare)), []);
+			const control = CliLog.layer({ level: "Info", format: "json", plainLogger: false });
+			assert.isNotEmpty(commands(yield* written(control)), "control: off Actions, nothing captured, not neutralized");
+		}),
+	);
+});
+
+/** The `R` of a layer. */
+type RIn<L> = L extends Layer.Layer<infer _A, infer _E, infer R> ? R : never;
+/** True only when `A` and `B` are the same type. */
+type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+
+describe("CliLog.layer requirements per overload (F7)", () => {
+	it("each overload's R, and an optional file keeps FileSystem and Path in R", () => {
+		const maybe = undefined as CliLogFile | undefined;
+		type Fs = FileSystem.FileSystem | Path.Path;
+		const checks: ReadonlyArray<boolean> = [
+			true satisfies Same<RIn<ReturnType<typeof jsonNoFile>>, never>,
+			true satisfies Same<RIn<typeof jsonFile>, Fs>,
+			true satisfies Same<RIn<ReturnType<typeof jsonMaybe>>, Fs>,
+			true satisfies Same<RIn<ReturnType<typeof prettyNoFile>>, TerminalEnv>,
+			true satisfies Same<RIn<ReturnType<typeof prettyMaybe>>, TerminalEnv | Fs>,
+			true satisfies Same<RIn<ReturnType<typeof autoNoFile>>, Audience | TerminalEnv>,
+			true satisfies Same<RIn<ReturnType<typeof autoMaybe>>, Audience | TerminalEnv | Fs>,
+		];
+		assert.isTrue(checks.every(Boolean));
+		assert.isUndefined(maybe);
+	});
+});
+
+const jsonNoFile = () => CliLog.layer({ format: "json" });
+const jsonFile = CliLog.layer({ format: "json", file: { path: "/x.ndjson" } });
+const jsonMaybe = () => CliLog.layer({ format: "json", file: undefined as CliLogFile | undefined });
+const prettyNoFile = () => CliLog.layer({ format: "pretty" });
+const prettyMaybe = () => CliLog.layer({ format: "pretty", file: undefined as CliLogFile | undefined });
+const autoNoFile = () => CliLog.layer({});
+const autoMaybe = () => CliLog.layer({ file: undefined as CliLogFile | undefined });
