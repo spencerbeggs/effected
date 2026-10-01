@@ -13,8 +13,8 @@ sources:
     title: "effect 4.0.0-rc.118, internal/effect.ts:6341-6350: the default Clock sleeps on a plain, ref'd setTimeout"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T09:31:36Z
-  body_sha256: f9c4e7c50ac91f44c0a2832848832e1e0736f697356745ee036063ed336fa8fa
+  at: 2026-10-01T09:47:15Z
+  body_sha256: 997bc9ae7ebb91dc355a85cb6247122986140828c6a9bde209d95b59580056ba
 ---
 
 # The live view's tick is a scoped Effect schedule, and its frame index comes from Clock
@@ -30,7 +30,7 @@ Probe L7 measured both.[^p5-probes] v4's default `Clock` sleeps on a ref'd
 outside any scope held the process open past its stream. Forked with
 `forkScoped` into the scope that drains the stream, it was interrupted with
 that scope and the process exited at once. `TestClock.adjust` drove the
-Effect tick frame by frame; it could not drive an `setInterval` at all, and
+Effect tick frame by frame; it could not drive a `setInterval` at all, and
 `Date.now()` stayed real time under it.
 
 ## Decision

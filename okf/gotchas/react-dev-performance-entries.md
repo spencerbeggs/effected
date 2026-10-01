@@ -15,8 +15,8 @@ sources:
     title: "react/index.js:3 and react-reconciler/index.js:3 pick the development build when NODE_ENV !== production"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T09:31:36Z
-  body_sha256: 192b79502e7b2e8e3f14a8561ae9670079676cb1c27a1d1efe59f0bab392d0e4
+  at: 2026-10-01T09:47:15Z
+  body_sha256: c0285b125958b2ee47abc62fb542a3a0880986cb64a2abaa870ff0d56052c86f
 ---
 
 # React 19's development build leaks user-timing entries on every render
@@ -57,7 +57,8 @@ clears a consumer's own user-timing entries.
 
 Drain after every rerender, the final unmount and every `renderToString`,
 unconditionally rather than gated on `NODE_ENV === "production"`, and
-document the drain as global.
+document the drain as global. Drain long-lived `CliUi.run` screens too, not
+only live views: a screen left open re-renders on every key and resize.
 
 [^p5-probes]: `docs/superpowers/specs/2026-10-01-p5-probes.md`, section L3
 [^react-entry]: `npm:react@19.3.0`, `index.js:3`, and `npm:react-reconciler`, `index.js:3`
