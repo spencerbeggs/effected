@@ -5,7 +5,7 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, TerminalEnv } from "@effected/env";
-import { Cause, Console, Effect, Exit, Layer, Runtime } from "effect";
+import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Runtime } from "effect";
 import { CliConfig, Command, Flag, GlobalFlag, Prompt } from "effect/cli";
 import { CliAudience, CliInteractive, CliPrompt, CliRuntime } from "../src/index.js";
 import { TestTerminal } from "../src/testing.js";
@@ -254,6 +254,21 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 				const { out, reads } = yield* runUnder(facts, ["--human", "init"]);
 				assert.deepStrictEqual(out, ["profile=x audience=human/flag"], JSON.stringify(facts));
 				assert.deepStrictEqual(reads, QUIET, JSON.stringify(facts));
+			}
+		}),
+	);
+
+	it.effect("--human cannot prompt on a TERM=dumb terminal, through runWith and through a bare provide", () =>
+		Effect.gen(function* () {
+			for (const via of ["runWith", "core"] as const) {
+				const dumb = yield* runUnder(agentOnTtys, ["--human", "probe"], via).pipe(
+					Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ TERM: "dumb" })),
+				);
+				assert.deepStrictEqual(dumb.out, ["interactive=false audience=human/flag"], via);
+				const real = yield* runUnder(agentOnTtys, ["--human", "probe"], via).pipe(
+					Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ TERM: "xterm" })),
+				);
+				assert.deepStrictEqual(real.out, ["interactive=true audience=human/flag"], `${via} control`);
 			}
 		}),
 	);

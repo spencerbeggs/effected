@@ -1,10 +1,15 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
-import { Effect, Fiber, Layer } from "effect";
+import { ConfigProvider, Effect, Fiber, Layer } from "effect";
 import { CliInteractive } from "../src/index.js";
 
-const decide = (kind: AudienceKind, stdinIsTerminal: boolean, stdoutIsTerminal: boolean) =>
+const decide = (
+	kind: AudienceKind,
+	stdinIsTerminal: boolean,
+	stdoutIsTerminal: boolean,
+	env: Record<string, string> = {},
+) =>
 	Effect.gen(function* () {
 		return yield* CliInteractive;
 	}).pipe(
@@ -18,6 +23,8 @@ const decide = (kind: AudienceKind, stdinIsTerminal: boolean, stdoutIsTerminal: 
 				),
 			),
 		),
+		// The environment is fixed, never the host's, and provided outside the layer that reads it: TERM decides too.
+		Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)),
 	);
 
 describe("CliInteractive.layer", () => {
@@ -35,6 +42,14 @@ describe("CliInteractive.layer", () => {
 			}
 		}
 	}
+
+	it.effect("a human on two terminals is not interactive when TERM is dumb: it cannot move the cursor", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(yield* decide("human", true, true, { TERM: "dumb" }), false);
+			assert.strictEqual(yield* decide("human", true, true, { TERM: "xterm-256color" }), true, "control: a real TERM");
+			assert.strictEqual(yield* decide("human", true, true, { TERM: "" }), true, "an empty TERM is unset");
+		}),
+	);
 
 	it.effect("defaults to non-interactive when no layer is provided", () =>
 		Effect.gen(function* () {

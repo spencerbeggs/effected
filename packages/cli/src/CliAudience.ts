@@ -5,6 +5,7 @@ import { Effect, Option, Stdio } from "effect";
 import type { Command } from "effect/cli";
 import { CliConfig, CliError, Command as CommandModule, Flag, GlobalFlag } from "effect/cli";
 import { CliInteractive } from "./CliInteractive.js";
+import { canPrompt } from "./internal/canPrompt.js";
 import { refreshFailureTarget } from "./internal/failureTarget.js";
 import { scanAudience, tallyAudience } from "./internal/scanAudience.js";
 import { WizardDropped } from "./internal/wizardGate.js";
@@ -14,15 +15,16 @@ const KINDS: ReadonlyArray<AudienceKind> = ["human", "agent", "ci"];
 /**
  * Whether the run may prompt once a flag has named the audience.
  *
- * Only a `human` audience prompts, and only with a terminal on both standard input and standard output. With the
+ * Only a `human` audience prompts, and only with a terminal on both standard input and standard output and a `TERM`
+ * that is not `dumb` (`canPrompt`, the decision `CliInteractive.layer` makes). With the
  * terminal facts in the environment (`TerminalEnv`) that is decided from them, not from the ambient value, so a
  * flag can WIDEN: `--human` under a detected agent on real terminals prompts, and in a pipe it still cannot. With no
  * `TerminalEnv` there is nothing to decide from and the flag only narrows, as it always did.
  */
 const interactiveWhenFlagged = (kind: AudienceKind, current: boolean): Effect.Effect<boolean> =>
-	Effect.map(Effect.serviceOption(TerminalEnv), (terminal) => {
-		if (kind !== "human") return false;
-		return Option.isSome(terminal) ? terminal.value.stdinIsTerminal && terminal.value.stdout.isTerminal : current;
+	Effect.flatMap(Effect.serviceOption(TerminalEnv), (terminal) => {
+		if (kind !== "human") return Effect.succeed(false);
+		return Option.isSome(terminal) ? canPrompt(terminal.value) : Effect.succeed(current);
 	});
 
 /**
@@ -199,7 +201,7 @@ export class CliAudience {
 	 * @remarks
 	 * It scans `argv` for the four audience flags first, then runs core around a provided `Audience` (when exactly
 	 * one is given: `{ kind, source: "flag" }`) and a `CliInteractive` decided from it: `--human` is interactive when
-	 * `TerminalEnv` reports a terminal on stdin and stdout (it can turn prompting on under a detected agent), a
+	 * `TerminalEnv` reports a terminal on stdin and stdout and `TERM` is not `dumb` (it can turn prompting on under a detected agent), a
 	 * non-human flag or a conflict makes it false. A fallback prompt fires while core parses, earlier than
 	 * anything `CliAudience.provide` can reach, so `--agent init` on a terminal would otherwise still prompt. No
 	 * flag leaves the ambient values untouched. A conflict still gets core's own usage error, exit `64`, from

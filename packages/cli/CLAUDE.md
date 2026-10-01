@@ -94,8 +94,10 @@ one read. `okf/modules/cli.md` has the rows.
   start during a degraded run ends it and mounts afresh. Clearing a run and
   closing its scope is one uninterruptible step (an interrupt between them
   orphans the mount permit).
-  - **Modes** differ only when not interactive: `owned` prints each run's final
-    frame once as a string at stdout's width, `hosted` prints nothing. Neither
+  - **Modes** differ only when not interactive (`CliInteractive`: a pipe, a
+    non-human audience, or `TERM=dumb`, which cannot move the cursor): `owned`
+    prints each run's final frame once as a string at stdout's width, `hosted`
+    prints nothing. Neither
     mounts input: Ctrl-C stays the platform's SIGINT and closes the scope.
   - **Subscription and the end:** `events` is a `PubSub.Subscription` (subscribe
     first: the surest) or a stream, whose first pull `live` makes before

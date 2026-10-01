@@ -1,9 +1,10 @@
 import { Audience, TerminalEnv } from "@effected/env";
 import { Context, Effect, Layer } from "effect";
+import { canPrompt } from "./internal/canPrompt.js";
 
 /**
  * Whether this run may prompt a person: a human audience, with a terminal on
- * both standard input and standard output.
+ * both standard input and standard output, and a `TERM` that is not `dumb`.
  *
  * @remarks
  * A `Context.Reference`, not a `Context.Service`, for three reasons. It is one
@@ -26,9 +27,14 @@ export class CliInteractive extends Context.Reference<boolean>("@effected/cli/Cl
 }) {
 	/**
 	 * Decide from the audience and the terminal: `true` only for a human audience with a terminal on both
-	 * standard input and standard output.
+	 * standard input and standard output, and a `TERM` that is not `dumb`.
 	 *
 	 * @remarks
+	 * A dumb terminal is a terminal, but it cannot move the cursor or take synchronized output, which a prompt or a
+	 * screen redrawing in place needs: it gets what a pipe gets. `TERM` is read through the ambient `ConfigProvider`,
+	 * as `@effected/env` reads the environment, so it adds no requirement; a test fixes it with
+	 * `Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ TERM: "dumb" }))`.
+	 *
 	 * Bind the layer to a constant and provide it once; `Audience` and `TerminalEnv` come from `@effected/env`.
 	 */
 	static readonly layer: Layer.Layer<never, never, Audience | TerminalEnv> = Layer.effect(
@@ -36,7 +42,7 @@ export class CliInteractive extends Context.Reference<boolean>("@effected/cli/Cl
 		Effect.gen(function* () {
 			const audience = yield* Audience;
 			const terminal = yield* TerminalEnv;
-			return audience.kind === "human" && terminal.stdinIsTerminal && terminal.stdout.isTerminal;
+			return audience.kind === "human" && (yield* canPrompt(terminal));
 		}),
 	);
 

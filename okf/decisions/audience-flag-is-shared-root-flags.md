@@ -22,8 +22,8 @@ sources:
     title: CliRuntime, which remaps usage failures to exit 64
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T00:12:37Z
-  body_sha256: b766b6f754f2d10c23f963e95a326c04ae4c88db44ac264e06b6700f6abf39ac
+  at: 2026-10-01T13:19:39Z
+  body_sha256: 973393281a2161a73865b201fe659eb1bc99b4f9ddda4f6a1cb836a3c0e9a1fd
 ---
 
 # The audience flag is four shared root flags resolved into env's Audience
@@ -152,7 +152,8 @@ call, not at build, so the decision reaches it.
 ### A flag decides interactivity from the TTY facts
 
 A flag that names the audience does not just narrow `CliInteractive`; it recomputes it from that audience and
-`TerminalEnv`: interactive means `human` with a terminal on both stdin and stdout. So `--human` can widen. A person
+`TerminalEnv`: interactive means `human` with a terminal on both stdin and stdout and a `TERM` that is not `dumb`, the
+same decision `CliInteractive.layer` makes. So `--human` can widen. A person
 who runs the tool inside an agent (detected `agent`) on real terminals gets the prompt back, which the flag's
 higher precedence over the environment variable already promised, and a pipe still cannot prompt, because the TTY
 requirement is unchanged and only the audience input moves. A non-human flag, or a conflict, still makes it false.
