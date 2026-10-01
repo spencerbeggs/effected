@@ -551,6 +551,58 @@ If the service resolves its dependency from the **caller's** context at call
 time, that layer must be `Layer.mergeAll`'d into the test's context, not buried
 under `Layer.provide` beneath the service's own layer.
 
+## Three more `PubSub` edges a drain test walks into
+
+- **A waiting subscriber takes each message inside `publish` itself.** In
+  process, a fiber suspended on `PubSub.take` is handed the message before
+  `publish` returns, so the publisher's next line already sees it taken and
+  nothing queued. A test of "close folds what is still queued" therefore
+  passes vacuously when its consumer keeps up: nothing was ever queued.
+  Make the consumer slow (a `reduce` that does real work, a consumer that is
+  not yet waiting) or publish with `PubSub.publishUnsafe` in a burst before
+  it can take, and assert the queue was non-empty before the close.
+- **`PubSub.shutdown` drops what a subscriber has not taken**, and a later
+  `take` is interrupted. A test that publishes, shuts down and then expects
+  the tail has tested the loss, not the drain. `PubSub.end(pubsub, last)` is
+  the lossless end: each subscriber gets its buffer, then `last`.
+- **`PubSub.end`'s final message is sticky**: every later `take` returns it
+  again, by design. **`Stream.fromSubscription` cannot recognise it**, so a
+  stream over an ended subscription emits the final message forever and
+  never ends — a test awaiting that stream hangs to the timeout. Take from the
+  subscription directly and stop at the final message (the subscription's
+  `ended` is a `MutableRef<Option<A>>`: `Some` once the `PubSub` has ended), or
+  end with `PubSub.shutdown` where losing the
+  untaken tail is acceptable.
+
+## A concurrency test at the default scheduler budget never sees the window
+
+A fiber yields to the scheduler only every `Scheduler.MaxOpsBeforeYield`
+operations (`2048` by default), so an interrupt can land between two steps
+only at a yield. At the default budget a two-step race (clear a reference,
+then close a scope; take a message, then hand it on) almost never yields in
+the window, and the test passes against the broken implementation too.
+Lower the budget to widen every window cheaply, and sweep it:
+
+```ts
+import { assert, it } from "@effect/vitest"
+import { Effect, Scheduler } from "effect"
+
+declare const closeLosesNothing: Effect.Effect<boolean>
+
+for (const budget of [3, 4, 5, 6, 7, 8, 16, 32]) {
+  it.live(`MaxOpsBeforeYield ${budget}: nothing taken is lost on close`, () =>
+    Effect.gen(function* () {
+      assert.isTrue(yield* closeLosesNothing)
+    }).pipe(Effect.provideService(Scheduler.MaxOpsBeforeYield, budget)),
+  )
+}
+```
+
+A loss that shows at some budgets and not others is real, not flaky: it is
+the race the default budget hides. `Scheduler.PreventSchedulerYield` is the
+other end of the dial — it removes yields entirely, which a fix can use to
+make a short critical step yield-free.
+
 ## One latch is not enough to prove a concurrency leak
 
 A test that two fibers do not see each other's overrides needs **two** latches,
