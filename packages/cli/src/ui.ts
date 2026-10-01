@@ -12,6 +12,16 @@ export { CliUi, type CliUiRunOptions, type Screen, type ScreenControl } from "./
 export { KeyHelp, type KeyHelpProps } from "./ui/KeyHelp.js";
 export { type Binding, type KeyHelpRow, KeyTable, type UseKeysOptions, useKeys } from "./ui/KeyTable.js";
 export {
+	MultiSelect,
+	type MultiSelectAction,
+	type MultiSelectInitOptions,
+	type MultiSelectItem,
+	type MultiSelectScreenOptions,
+	type MultiSelectSection,
+	type MultiSelectState,
+	type MultiSelectViewProps,
+} from "./ui/MultiSelect.js";
+export {
 	Select,
 	type SelectAction,
 	type SelectChoice,
