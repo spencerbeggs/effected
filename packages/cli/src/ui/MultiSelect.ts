@@ -106,10 +106,22 @@ const flatten = <A>(
 ): ReadonlyArray<{ readonly section: number; readonly item: MultiSelectItem<A> }> =>
 	sections.flatMap((section, index) => section.items.map((item) => ({ section: index, item })));
 
+/** Throws when two items, in any sections, share a key: keys identify rows. */
+const assertUniqueKeys = <A>(sections: ReadonlyArray<MultiSelectSection<A>>): void => {
+	const seen = new Set<string>();
+	for (const { item } of flatten(sections)) {
+		if (seen.has(item.key)) {
+			throw new Error(`@effected/cli/ui: MultiSelect item keys must be unique across sections; "${item.key}" repeats`);
+		}
+		seen.add(item.key);
+	}
+};
+
 const init = <A>(
 	sections: ReadonlyArray<MultiSelectSection<A>>,
 	options: MultiSelectInitOptions = {},
 ): MultiSelectState<A> => {
+	assertUniqueKeys(sections);
 	const items = flatten(sections);
 	const chosen = new Set(items.flatMap((entry, index) => (entry.item.selected === true ? [index] : [])));
 	return { sections, chosen, viewport: Viewport.init(items.length, options.height ?? 10), submitted: false };
@@ -170,6 +182,8 @@ const RESERVED = 3;
 
 /**
  * Several choices from sectioned lists: a pure reducer, its key table, a view and a ready-made screen.
+ *
+ * Item keys must be unique across all sections; `init` throws, and `screen` dies, on a repeat.
  *
  * @remarks
  * The cursor moves over items only; section titles are headers drawn by the viewport, which keeps a scrolled-off
@@ -240,10 +254,11 @@ export class MultiSelect {
 			else setState((current) => step(current, action));
 		});
 		const items = flatten(props.sections);
-		let number = 0;
+		// Rows are keyed by the item's own key (unique, checked at init), which is also the React key of the row.
+		const numberOf = new Map(items.map((entry, index) => [entry.item.key, index] as const));
 		const rows: ReadonlyArray<ViewportRow> = props.sections.flatMap((section) => [
 			{ _tag: "Header" as const, label: section.title },
-			...section.items.map(() => ({ _tag: "Item" as const, key: String(number++) })),
+			...section.items.map((item) => ({ _tag: "Item" as const, key: item.key })),
 		]);
 		const on = glyphs.kind === "unicode" ? "◉" : "[x]";
 		const off = glyphs.kind === "unicode" ? "◯" : "[ ]";
@@ -252,7 +267,7 @@ export class MultiSelect {
 		const renderRow = (row: ViewportRow, highlighted: boolean): ReactElement => {
 			if (row._tag === "Header")
 				return react.createElement(Styled, { token: "emphasis" }, Fmt.truncate(row.label, columns, ellipsis));
-			const index = Number(row.key);
+			const index = numberOf.get(row.key) ?? -1;
 			const entry = items[index];
 			const text = Fmt.truncate(
 				`${highlighted ? glyphs.arrow : blank} ${state.chosen.has(index) ? on : off} ${entry?.item.label ?? ""}`,
@@ -283,6 +298,9 @@ export class MultiSelect {
 	 */
 	static readonly screen =
 		<A>(options: MultiSelectScreenOptions<A>): Screen<ReadonlyArray<A>> =>
-		(control) =>
-			inkModules().react.createElement(MultiSelect.View<A>, { ...options, onSubmit: control.resolve });
+		(control) => {
+			// Checked before mounting, so a repeated key dies rather than drawing an ambiguous list.
+			assertUniqueKeys(options.sections);
+			return inkModules().react.createElement(MultiSelect.View<A>, { ...options, onSubmit: control.resolve });
+		};
 }

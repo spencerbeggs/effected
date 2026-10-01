@@ -141,6 +141,41 @@ describe("TextInput.screen under CliUiTest", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect("on a terminal narrower than the ASCII ellipsis the value line still fits", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(TextInput.screen({ message: "M", initial: "abcdefghij" }), {
+				columns: 4,
+				glyphs: "ascii",
+				color: "none",
+			});
+			const valueLine = (yield* handle.plainFrame).split("\n")[1] ?? "";
+			assert.include(valueLine, "|", "the cursor is drawn");
+			assert.isAtMost(Fmt.width(valueLine), 3, valueLine);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a long placeholder and a long error are cut to the width, one line each", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(
+				TextInput.screen({
+					message: "Port",
+					placeholder: "a placeholder far too long to fit in twenty columns",
+					validate: () => "an error message far too long to fit in twenty columns",
+				}),
+				{ columns: 20, color: "none" },
+			);
+			const before = (yield* handle.plainFrame).split("\n");
+			assert.include(before[1] ?? "", "a placeholder");
+			assert.isAtMost(Fmt.width(before[1] ?? ""), 19, before[1]);
+			assert.lengthOf(before, 3, "message, value and help");
+			yield* handle.press("enter");
+			const after = (yield* handle.plainFrame).split("\n");
+			assert.include(after[2] ?? "", "an error");
+			assert.isAtMost(Fmt.width(after[2] ?? ""), 19, after[2]);
+			assert.lengthOf(after, 4, "message, value, error and help");
+		}).pipe(Effect.scoped),
+	);
+
 	it.effect("shows the placeholder, muted, while the value is empty", () =>
 		Effect.gen(function* () {
 			const handle = yield* CliUiTest.render(TextInput.screen({ message: "Name", placeholder: "your name" }));

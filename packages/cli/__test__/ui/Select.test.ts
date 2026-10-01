@@ -111,6 +111,18 @@ describe("Select.screen under CliUiTest", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect("the help line fits 80 columns: page, home and end are bound but not listed", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(Select.screen({ message: "Pick one", choices }));
+			const help = (yield* handle.plainFrame).trimEnd().split("\n").at(-1) ?? "";
+			assert.notInclude(help, "…", help);
+			assert.include(help, "enter choose");
+			assert.isTrue(help.endsWith("q/esc cancel"), help);
+			assert.notInclude(help, "pgup");
+			assert.deepStrictEqual(Select.keys.match({ _tag: "Named", name: "end" }), Option.some("end"), "still bound");
+		}).pipe(Effect.scoped),
+	);
+
 	it.effect("q cancels with escape", () =>
 		Effect.gen(function* () {
 			const handle = yield* CliUiTest.render(Select.screen({ message: "Pick one", choices }));

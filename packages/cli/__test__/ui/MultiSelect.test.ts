@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import { Cancelled, Fmt } from "../../src/index.js";
 import type { MultiSelectSection } from "../../src/ui.js";
 import { MultiSelect } from "../../src/ui.js";
@@ -70,6 +70,14 @@ describe("MultiSelect reducer", () => {
 		assert.strictEqual(MultiSelect.step(MultiSelect.init(sections), "up").viewport.cursor, 0);
 	});
 
+	it("item keys must be unique across all sections", () => {
+		const twice: ReadonlyArray<MultiSelectSection<string>> = [
+			{ title: "A", items: [{ key: "same", label: "one", value: "1" }] },
+			{ title: "B", items: [{ key: "same", label: "two", value: "2" }] },
+		];
+		assert.throws(() => MultiSelect.init(twice), /unique.*same/);
+	});
+
 	it("binds space, a, enter and q, and keeps page, home and end out of the help line", () => {
 		const named = (name: "space" | "enter" | "pagedown") => MultiSelect.keys.match({ _tag: "Named", name });
 		assert.deepStrictEqual(named("space"), Option.some("toggle"));
@@ -97,6 +105,32 @@ describe("MultiSelect.screen under CliUiTest", () => {
 			yield* handle.press("down", "space");
 			yield* handle.press("enter");
 			assert.deepStrictEqual(yield* handle.result, []);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a screen with a repeated item key dies with the reason", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(
+				MultiSelect.screen({
+					message: "Pick",
+					sections: [
+						{
+							title: "A",
+							items: [
+								{ key: "k", label: "one", value: 1 },
+								{ key: "k", label: "two", value: 2 },
+							],
+						},
+					],
+				}),
+			);
+			const exit = yield* Effect.exit(handle.result);
+			if (Exit.isFailure(exit)) {
+				const defect = Cause.squash(exit.cause);
+				assert.include(defect instanceof Error ? defect.message : "", "unique");
+			} else {
+				assert.fail("expected a defect, but the multi-select resolved");
+			}
 		}).pipe(Effect.scoped),
 	);
 

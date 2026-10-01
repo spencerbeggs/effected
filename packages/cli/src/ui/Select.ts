@@ -144,8 +144,14 @@ const step = <A>(state: SelectState<A>, action: SelectAction): SelectState<A> =>
 	return target === undefined ? state : { ...state, viewport: moveTo(viewport, target) };
 };
 
+/** ↑/↓ shown; the page, home and end moves bound but hidden, so the help line fits 80 columns. */
 const KEYS: KeyTable<SelectAction> = KeyTable.make<SelectAction>([
-	...Viewport.keys.bindings,
+	{ keys: ["up"], action: "up", help: "move" },
+	{ keys: ["down"], action: "down", help: "move" },
+	{ keys: ["pageup"], action: "pageup", help: "page", hidden: true },
+	{ keys: ["pagedown"], action: "pagedown", help: "page", hidden: true },
+	{ keys: ["home"], action: "home", help: "top", hidden: true },
+	{ keys: ["end"], action: "end", help: "bottom", hidden: true },
 	{ keys: ["enter"], action: "submit", help: "choose" },
 	{ keys: [{ char: "q" }], action: "cancel", help: "cancel" },
 ]);

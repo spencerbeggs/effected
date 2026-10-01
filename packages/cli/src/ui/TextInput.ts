@@ -153,10 +153,17 @@ const windowAround = (before: string, after: string, width: number, ellipsis: st
 	const mark = Fmt.width(ellipsis);
 	const afterRoom = Math.min(Fmt.width(after), Math.floor(width / 3));
 	const beforeRoom = width - afterRoom;
+	// The ellipsis marks a cut edge only when it fits with at least one cell of text beside it; on a terminal too narrow
+	// for that (ASCII "..." in three cells), the text is simply cut.
 	const shownBefore =
-		Fmt.width(before) <= beforeRoom ? before : `${ellipsis}${tail(before, Math.max(0, beforeRoom - mark))}`;
-	const room = width - Fmt.width(shownBefore);
-	const shownAfter = Fmt.width(after) <= room ? after : `${head(after, Math.max(0, room - mark))}${ellipsis}`;
+		Fmt.width(before) <= beforeRoom
+			? before
+			: beforeRoom > mark
+				? `${ellipsis}${tail(before, beforeRoom - mark)}`
+				: tail(before, Math.max(0, beforeRoom));
+	const room = Math.max(0, width - Fmt.width(shownBefore));
+	const shownAfter =
+		Fmt.width(after) <= room ? after : room > mark ? `${head(after, room - mark)}${ellipsis}` : head(after, room);
 	return [shownBefore, shownAfter];
 };
 
@@ -251,10 +258,18 @@ export class TextInput {
 				cursorGlyph,
 				after,
 				state.value === "" && props.placeholder !== undefined
-					? react.createElement(Styled, { token: "muted" }, props.placeholder)
+					? react.createElement(
+							Styled,
+							{ token: "muted" },
+							Fmt.truncate(props.placeholder, Math.max(0, columns - Fmt.width(cursorGlyph)), {
+								ellipsis: glyphs.ellipsis,
+							}),
+						)
 					: null,
 			),
-			error === undefined ? null : react.createElement(Styled, { token: "error" }, error),
+			error === undefined
+				? null
+				: react.createElement(Styled, { token: "error" }, Fmt.truncate(error, columns, { ellipsis: glyphs.ellipsis })),
 			react.createElement(KeyHelp, { tables: [HELP] }),
 		);
 	};

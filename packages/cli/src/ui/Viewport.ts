@@ -24,7 +24,8 @@ export interface ViewportState {
 }
 
 /**
- * A row a viewport shows: a section header, or an item. Only items are selectable.
+ * A row a viewport shows: a section header, or an item. Only items are selectable. An item's `key` is its React
+ * key in the view, so keys should be unique within one list.
  *
  * @public
  */
@@ -229,7 +230,12 @@ export class Viewport {
 				const row = props.rows[index] as ViewportRow;
 				return react.createElement(
 					ink.Box,
-					{ key: index, height: 1, width: size.columns, overflow: "hidden" },
+					{
+						key: row._tag === "Item" ? `item:${row.key}` : `header:${index}`,
+						height: 1,
+						width: size.columns,
+						overflow: "hidden",
+					},
 					props.renderRow(row, index === selected),
 				);
 			}),
