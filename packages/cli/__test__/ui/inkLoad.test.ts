@@ -18,8 +18,8 @@ describe("loading the optional peers", () => {
 		Effect.gen(function* () {
 			yield* Effect.promise(() => import("../../src/ui.js"));
 			const bridge = yield* Effect.promise(() => import("../../src/ui/internal/ink.js"));
-			// A stray import() at module scope resolves asynchronously, so let any such load land before asserting none did.
-			yield* Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, 200)));
+			// A stray import() at module scope resolves asynchronously: wait for every started import before asserting none did.
+			yield* Effect.promise(() => vi.dynamicImportSettled());
 			assert.deepStrictEqual(loads, [], "importing ./ui and the bridge loads nothing");
 			assert.throws(() => bridge.inkModules(), /read Ink before loading it/);
 

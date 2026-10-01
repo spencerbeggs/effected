@@ -8,6 +8,9 @@ import { processStreams } from "./internal/processStreams.js";
  * `stdin` must offer `isTTY`, `setRawMode`, `ref` and `unref`, and emit `readable`; `stdout` and `stderr` offer
  * `columns`, `rows`, `isTTY` and `write`, and emit `resize`.
  *
+ * The members are typed with Node's own stream types (`NodeJS.ReadStream`, `NodeJS.WriteStream`), as Ink's are, so a
+ * TypeScript consumer of `./ui` needs `@types/node`.
+ *
  * @public
  */
 export interface UiStreamsShape {

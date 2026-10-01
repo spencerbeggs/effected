@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NodeServices } from "@effect/platform-node";
@@ -24,6 +24,26 @@ const isUiPackage = (specifier: string): boolean => /^(?:ink|react)(?:$|\/)/.tes
 
 /** A self-reference into `./ui`: the package's own name resolves through its `exports`, so no relative edge shows it. */
 const isUiSelfReference = (specifier: string): boolean => /^@effected\/cli\/ui(?:$|\/)/.test(specifier);
+
+/** An `import type` or `export type` clause naming `ink`, `react` or a subpath, in comment-stripped source. */
+const TYPE_ONLY_UI_IMPORT = /\b(?:import|export)\s+type\b[^;]*?\bfrom\s*(["'])((?:ink|react)(?:\/[^"']*)?)\1/g;
+
+/**
+ * The `ink` and `react` specifiers a source text names other than through `import type` or `export type`: a value
+ * import, an inline `import { type X }` (which `verbatimModuleSyntax` keeps as a side-effect import), a re-export or
+ * an `import()`. Each loads the peer at runtime.
+ */
+const valueImportsOfUiPackages = (text: string): ReadonlyArray<string> => {
+	const remaining = SourceBoundary.importSpecifiers(text).filter(isUiPackage);
+	for (const match of SourceBoundary.stripComments(text).matchAll(TYPE_ONLY_UI_IMPORT)) {
+		const index = remaining.indexOf(match[2] ?? "");
+		if (index >= 0) remaining.splice(index, 1);
+	}
+	return remaining;
+};
+
+/** The one module that may load `ink` and `react` as values (ruling S1). */
+const INK_LOADER = "ui/internal/ink.ts";
 
 /** Every module specifier a file names: static, re-export, type-only and `import("<literal>")`. */
 const specifiersOf = (file: string, read: Read): ReadonlyArray<string> => SourceBoundary.importSpecifiers(read(file));
@@ -191,6 +211,50 @@ describe("cli boundary", () => {
 		it("node: imports reachable from ./ui are exactly the licensed ones", () => {
 			assert.deepStrictEqual(nodeImporters("ui.ts"), [...UI_NODE_IMPORTERS]);
 			for (const file of nodeImporters("ui-testing.ts")) assert.isTrue(UI_TESTING_NODE_LICENCE.has(file), file);
+		});
+
+		it("only the Ink loader imports ink or react as a value; every other ./ui file imports types only", () => {
+			const uiFiles = (readdirSync(SRC, { recursive: true }) as ReadonlyArray<string>)
+				.map((file) => file.split(sep).join("/"))
+				.filter((file) => file.endsWith(".ts") && isUiModule(file))
+				.sort();
+			assert.include(uiFiles, INK_LOADER, "the walk read the ui tree");
+			const offenders = uiFiles
+				.filter((file) => file !== INK_LOADER)
+				.flatMap((file) => valueImportsOfUiPackages(readSource(join(SRC, file))).map((spec) => `${file} ${spec}`));
+			assert.deepStrictEqual(offenders, []);
+			assert.deepStrictEqual(
+				[...valueImportsOfUiPackages(readSource(join(SRC, INK_LOADER)))].sort(),
+				["ink", "react"],
+				"positive control: the detector sees the loader's own import()s",
+			);
+		});
+
+		it("mutation control: the type-only detector flags every runtime spelling and spares every type-only one", () => {
+			const value = [
+				'import { Text } from "ink";',
+				'import React from "react";',
+				'import { type ReactElement } from "react";',
+				'export { useInput } from "ink";',
+				'import "react/jsx-runtime";',
+				'const load = () => import("ink");',
+			];
+			for (const text of value) assert.lengthOf(valueImportsOfUiPackages(text), 1, text);
+			const typeOnly = [
+				'import type { Instance } from "ink";',
+				'import type React from "react";',
+				'import type * as Ink from "ink";',
+				'export type { ReactElement } from "react";',
+				'import type {\n\tReactElement,\n\tReactNode,\n} from "react/jsx-runtime";',
+				'// import { Text } from "ink";',
+				'import type { Text } from "ink";\nimport type { Box } from "ink";',
+			];
+			for (const text of typeOnly) assert.deepStrictEqual(valueImportsOfUiPackages(text), [], text);
+			assert.deepStrictEqual(
+				valueImportsOfUiPackages('import type { Box } from "ink";\nimport { Text } from "ink";'),
+				["ink"],
+				"a type import beside a value import of the same package does not hide the value one",
+			);
 		});
 
 		it("mutation control: a root module reaching ./ui is flagged, however it gets there", () => {
