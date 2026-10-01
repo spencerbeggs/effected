@@ -194,18 +194,24 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 		Command.withSubcommands([init, probe]),
 	);
 
-	const runUnder = (
-		facts: Facts,
-		argv: ReadonlyArray<string>,
-		via: "runWith" | "core" = "runWith",
-		gateWizard = false,
-		endInput = false,
-		builtIns: ReadonlyArray<GlobalFlag.BuiltIn> | undefined = undefined,
-		innerBuiltIns: ReadonlyArray<GlobalFlag.BuiltIn> | undefined = undefined,
-		// The environment, fixed, never the host's: `TERM` decides interactivity on two terminals.
-		env: Record<string, string> = {},
-	) =>
+	interface RunUnderOptions {
+		/** Through `CliAudience.runWith` (the default) or core's `Command.runWith` over `CliAudience.provide`. */
+		readonly via?: "runWith" | "core";
+		/** Provide `CliPrompt.gateWizard`. */
+		readonly gateWizard?: boolean;
+		/** End the terminal's input, so core's wizard quits instead of waiting. */
+		readonly endInput?: boolean;
+		/** A consumer's own `builtIns`, provided under the gate. */
+		readonly builtIns?: ReadonlyArray<GlobalFlag.BuiltIn>;
+		/** A consumer's `builtIns`, provided inside the gate, around the program. */
+		readonly innerBuiltIns?: ReadonlyArray<GlobalFlag.BuiltIn>;
+		/** The environment, fixed, never the host's: `TERM` decides interactivity on two terminals. */
+		readonly env?: Record<string, string>;
+	}
+
+	const runUnder = (facts: Facts, argv: ReadonlyArray<string>, options: RunUnderOptions = {}) =>
 		Effect.gen(function* () {
+			const { via = "runWith", gateWizard = false, endInput = false, builtIns, innerBuiltIns, env = {} } = options;
 			const terminal = yield* TestTerminal.make();
 			yield* terminal.input([{ name: "down" }, { name: "enter" }]);
 			// Core's wizard keeps reading until the input ends; ending it quits the wizard instead of hanging.
@@ -264,13 +270,9 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 	it.effect("--human cannot prompt on a TERM=dumb terminal, through runWith and through a bare provide", () =>
 		Effect.gen(function* () {
 			for (const via of ["runWith", "core"] as const) {
-				const dumb = yield* runUnder(agentOnTtys, ["--human", "probe"], via, false, false, undefined, undefined, {
-					TERM: "dumb",
-				});
+				const dumb = yield* runUnder(agentOnTtys, ["--human", "probe"], { via, env: { TERM: "dumb" } });
 				assert.deepStrictEqual(dumb.out, ["interactive=false audience=human/flag"], via);
-				const real = yield* runUnder(agentOnTtys, ["--human", "probe"], via, false, false, undefined, undefined, {
-					TERM: "xterm",
-				});
+				const real = yield* runUnder(agentOnTtys, ["--human", "probe"], { via, env: { TERM: "xterm" } });
 				assert.deepStrictEqual(real.out, ["interactive=true audience=human/flag"], `${via} control`);
 			}
 		}),
@@ -298,17 +300,17 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 	it.effect("the handler sees the recomputed value, through runWith and through a bare provide", () =>
 		Effect.gen(function* () {
 			for (const via of ["runWith", "core"] as const) {
-				const widened = yield* runUnder(agentOnTtys, ["--human", "probe"], via);
+				const widened = yield* runUnder(agentOnTtys, ["--human", "probe"], { via });
 				assert.deepStrictEqual(widened.out, ["interactive=true audience=human/flag"], via);
-				const piped = yield* runUnder({ ...agentOnTtys, stdin: false }, ["--human", "probe"], via);
+				const piped = yield* runUnder({ ...agentOnTtys, stdin: false }, ["--human", "probe"], { via });
 				assert.deepStrictEqual(piped.out, ["interactive=false audience=human/flag"], `${via} piped`);
 				const narrowed = yield* runUnder(
 					{ detected: "human", stdin: true, stdout: true, ambient: true },
 					["--agent", "probe"],
-					via,
+					{ via },
 				);
 				assert.deepStrictEqual(narrowed.out, ["interactive=false audience=agent/flag"], `${via} agent`);
-				const none = yield* runUnder(agentOnTtys, ["probe"], via);
+				const none = yield* runUnder(agentOnTtys, ["probe"], { via });
 				assert.deepStrictEqual(
 					none.out,
 					["interactive=false audience=agent/detected"],
@@ -320,7 +322,10 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 
 	it.effect("--human --wizard on real TTYs is the wizard, not an unknown flag, though the gate had dropped it", () =>
 		Effect.gen(function* () {
-			const { err, code, reads } = yield* runUnder(agentOnTtys, ["--human", "--wizard", "init"], "runWith", true, true);
+			const { err, code, reads } = yield* runUnder(agentOnTtys, ["--human", "--wizard", "init"], {
+				gateWizard: true,
+				endInput: true,
+			});
 			assert.isAtLeast(reads.subscriptions, 1, "the wizard read the terminal");
 			assert.isFalse(
 				err.some((line) => /unrecogni[sz]ed.*wizard|wizard.*unrecogni[sz]ed|unknown.*wizard/i.test(line)),
@@ -328,7 +333,9 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 			);
 			assert.notStrictEqual(code, 64, err.join("\n"));
 			// Without a terminal the gate's drop stands: the wizard is an unknown flag.
-			const piped = yield* runUnder({ ...agentOnTtys, stdin: false }, ["--human", "--wizard", "init"], "runWith", true);
+			const piped = yield* runUnder({ ...agentOnTtys, stdin: false }, ["--human", "--wizard", "init"], {
+				gateWizard: true,
+			});
 			assert.strictEqual(piped.code, 64);
 		}),
 	);
@@ -340,14 +347,11 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 				const noWizard = GlobalFlag.BuiltIns.filter((flag) => flag !== GlobalFlag.Wizard);
 				assert.isFalse(noWizard.includes(GlobalFlag.Wizard));
 				// Under a detected agent the gate has nothing to drop, and --human on real TTYs must not invent a wizard.
-				const { err, code, reads } = yield* runUnder(
-					agentOnTtys,
-					["--human", "--wizard", "init"],
-					"runWith",
-					true,
-					true,
-					noWizard,
-				);
+				const { err, code, reads } = yield* runUnder(agentOnTtys, ["--human", "--wizard", "init"], {
+					gateWizard: true,
+					endInput: true,
+					builtIns: noWizard,
+				});
 				assert.strictEqual(code, 64, err.join("\n"));
 				assert.isTrue(
 					err.some((line) => /unrecogni[sz]ed.*wizard/i.test(line)),
@@ -355,7 +359,7 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 				);
 				assert.strictEqual(reads.subscriptions, 0, "the wizard never ran");
 				// The same consumer's --human still widens the prompt itself.
-				const prompted = yield* runUnder(agentOnTtys, ["--human", "init"], "runWith", true, false, noWizard);
+				const prompted = yield* runUnder(agentOnTtys, ["--human", "init"], { gateWizard: true, builtIns: noWizard });
 				assert.deepStrictEqual(prompted.out, ["profile=library audience=human/flag"]);
 			}),
 	);
@@ -367,15 +371,11 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 				const noWizard = GlobalFlag.BuiltIns.filter((flag) => flag !== GlobalFlag.Wizard);
 				// The gate (outside) saw the full list and dropped Wizard, so its mark is set; the consumer's config is a
 				// different object, so the mark must not license putting Wizard back into it.
-				const inner = yield* runUnder(
-					agentOnTtys,
-					["--human", "--wizard", "init"],
-					"runWith",
-					true,
-					true,
-					undefined,
-					noWizard,
-				);
+				const inner = yield* runUnder(agentOnTtys, ["--human", "--wizard", "init"], {
+					gateWizard: true,
+					endInput: true,
+					innerBuiltIns: noWizard,
+				});
 				assert.strictEqual(inner.code, 64, inner.err.join("\n"));
 				assert.isTrue(
 					inner.err.some((line) => /unrecogni[sz]ed.*wizard/i.test(line)),
@@ -383,7 +383,10 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 				);
 				assert.strictEqual(inner.reads.subscriptions, 0, "the wizard never ran");
 				// Control: with no consumer config inside, the gate's own object is current, so the restore still happens.
-				const control = yield* runUnder(agentOnTtys, ["--human", "--wizard", "init"], "runWith", true, true);
+				const control = yield* runUnder(agentOnTtys, ["--human", "--wizard", "init"], {
+					gateWizard: true,
+					endInput: true,
+				});
 				assert.isTrue(control.reads.subscriptions >= 1, "the wizard ran");
 			}),
 	);
@@ -391,11 +394,11 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 	it.effect("the gate's drop is restored, and a second flag-driven narrowing then drops it again", () =>
 		Effect.gen(function* () {
 			// Gate dropped it (ambient non-interactive, full builtIns): --human on TTYs brings it back.
-			const back = yield* runUnder(agentOnTtys, ["--human", "--wizard", "init"], "runWith", true, true);
+			const back = yield* runUnder(agentOnTtys, ["--human", "--wizard", "init"], { gateWizard: true, endInput: true });
 			assert.isTrue(back.reads.subscriptions >= 1, "the wizard ran");
 			// A non-human flag drops it whatever the ambient config had.
 			const humanOnTtys: Facts = { detected: "human", stdin: true, stdout: true, ambient: true };
-			const dropped = yield* runUnder(humanOnTtys, ["--agent", "--wizard", "init"], "runWith", true);
+			const dropped = yield* runUnder(humanOnTtys, ["--agent", "--wizard", "init"], { gateWizard: true });
 			assert.strictEqual(dropped.code, 64);
 		}),
 	);

@@ -128,8 +128,8 @@ export interface LiveHandle<S> {
 	 */
 	readonly logConsole: Console.Console;
 	/**
-	 * Completes once the events have ended (the stream ended, the subscription's `PubSub` was shut down, or `close`
-	 * ended them) and the last run's frame is committed. Dies with what the view died of: a `reduce` that threw, or a
+	 * Completes once the events have ended (the stream ended, the subscription's `PubSub` was ended with `PubSub.end` or
+	 * shut down, or `close` ended them) and the last run's frame is committed. Dies with what the view died of: a `reduce` that threw, or a
 	 * stream that died.
 	 */
 	readonly done: Effect.Effect<void>;
