@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Fiber, PubSub, Queue, Stream } from "effect";
-import { Text, render } from "ink";
+import { Box, Text, render } from "ink";
 import { createElement } from "react";
 import { CliInteractive, CliTheme } from "../../src/index.js";
 import type { FakeStreams } from "../../src/ui/testing/fakeStreams.js";
@@ -183,6 +183,25 @@ describe("CliUi.live: runs on the production path", () => {
 			assert.notInclude(written, CLEAR_SCROLLBACK);
 			assert.notInclude(written, CLEAR_SCREEN);
 			assert.isAtMost(screenAfter(written).length, 9, "rows - 1 at most");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("200 separate rows on a 10-row terminal are clipped to the first ones, never squashed into a sample", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 10 });
+			const rows = (state: State) =>
+				createElement(
+					Box,
+					{ flexDirection: "column" },
+					createElement(Text, { key: "head" }, `head ${state.last}`),
+					...Array.from({ length: 200 }, (_, index) => createElement(Text, { key: index }, `row ${index}`)),
+				);
+			const handle = yield* liveOn(fake, optionsOf(Stream.fromIterable([Start, End]), { render: rows }));
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.deepStrictEqual(screenAfter(fake.stdout()), [
+				"head ended",
+				...Array.from({ length: 8 }, (_, index) => `row ${index}`),
+			]);
 		}).pipe(Effect.scoped),
 	);
 

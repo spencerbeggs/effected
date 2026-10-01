@@ -97,10 +97,12 @@ const heightClamp: () => FunctionComponent<{ readonly children?: ReactNode }> = 
 	const HeightClamp = (props: { readonly children?: ReactNode }): ReactElement => {
 		const { ink, react } = inkModules();
 		const { rows } = useTerminalSize();
+		// The content keeps its own height (`flexShrink: 0`) and the clamp clips it: left to shrink, Yoga squeezes every
+		// row of a tall column into the height, and Ink draws a scattered sample of them, or nothing.
 		return react.createElement(
 			ink.Box,
 			{ flexDirection: "column", maxHeight: rows, overflow: "hidden" },
-			props.children,
+			react.createElement(ink.Box, { flexDirection: "column", flexShrink: 0 }, props.children),
 		);
 	};
 	HeightClamp.displayName = "CliUiLiveHeightClamp";
