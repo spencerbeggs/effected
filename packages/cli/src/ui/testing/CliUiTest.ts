@@ -381,6 +381,26 @@ const realTime = (poll: () => boolean): Effect.Effect<void> =>
 		return Effect.sync(() => clearInterval(timer));
 	});
 
+/**
+ * Resume once every timer already due by the wall clock has run.
+ *
+ * @remarks
+ * A zero-delay timer set straight away is not enough: during a timers phase the loop's time is the one cached when the
+ * phase began, so after a long block a new timer can count as due before an older one the wall clock says is overdue.
+ * `setImmediate` runs in the check phase, after the loop has refreshed its time; a zero-delay timer set there comes due
+ * after every timer already overdue, so the next timers phase runs them first.
+ */
+const afterDueTimers: Effect.Effect<void> = Effect.callback<void>((resume) => {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const immediate = setImmediate(() => {
+		timer = setTimeout(() => resume(Effect.void), 0);
+	});
+	return Effect.sync(() => {
+		clearImmediate(immediate);
+		if (timer !== undefined) clearTimeout(timer);
+	});
+});
+
 const QUIET_MS = 50;
 const TRAILING_QUIET_MS = 8;
 const ESCAPE_FLUSH_MS = 30;
@@ -507,11 +527,22 @@ const makeTerminal = (options: CliUiTestOptions, mode: "debug" | "production" = 
 		since: number,
 		limitMs = QUIET_MS,
 	): Effect.Effect<void> =>
-		realTime(() => {
-			if (ended()) return true;
-			const now = Date.now();
-			if (raws().length > before) return now - lastWrite >= TRAILING_QUIET_MS || now - since >= limitMs;
-			return now - Math.max(since, lastWrite) >= QUIET_MS && now - since >= QUIET_MS;
+		Effect.suspend(() => {
+			const quiet = realTime(() => {
+				if (ended()) return true;
+				const now = Date.now();
+				if (raws().length > before) return now - lastWrite >= TRAILING_QUIET_MS || now - since >= limitMs;
+				return now - Math.max(since, lastWrite) >= QUIET_MS && now - since >= QUIET_MS;
+			});
+			return Effect.flatMap(quiet, () => {
+				// A quiet judged by a late poll is confirmed only once every timer already due has run: on a loaded machine
+				// the poll can wake with a screen's own reaction timer overdue too, and fire first. A zero-delay timer comes
+				// due after all of them, so a write they make is seen, and the wait goes on from it.
+				const seen = lastWrite;
+				return Effect.flatMap(afterDueTimers, () =>
+					lastWrite === seen || ended() ? Effect.void : settle(raws, ended, before, Date.now(), limitMs),
+				);
+			});
 		});
 
 	/**

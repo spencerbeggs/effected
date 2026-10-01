@@ -186,6 +186,34 @@ describe("CliUiTest.render", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect("a reaction timer that comes due while the event loop is blocked still settles on its render", () =>
+		Effect.gen(function* () {
+			// Load, made deterministic: the handler schedules its second render on a 3 ms timer, then blocks the loop for
+			// 30 ms. When the loop wakes, the harness's quiet poll and that timer are both overdue; the poll must not
+			// declare the screen settled before the timer, which was due first, has run.
+			const Blocked = (): ReactElement => {
+				const [phase, setPhase] = useState("idle");
+				useInput((input) => {
+					if (input !== "x") return;
+					setPhase("first");
+					// A loaded machine: the loop is blocked for 30 ms just after the harness starts polling, so its next
+					// quiet poll and this reaction's timer are both overdue when it wakes, the poll due first.
+					setTimeout(() => {
+						const until = Date.now() + 30;
+						while (Date.now() < until) {
+							// busy
+						}
+					}, 1);
+					setTimeout(() => setPhase("second"), 6);
+				});
+				return createElement(Text, null, `phase:${phase}`);
+			};
+			const handle = yield* CliUiTest.render(showing(() => createElement(Blocked)));
+			yield* handle.type("x");
+			assert.strictEqual((yield* handle.frame).trim(), "phase:second");
+		}).pipe(Effect.scoped),
+	);
+
 	it.effect("rerender swaps the screen's element in place: the new frame shows, under the same control", () =>
 		Effect.gen(function* () {
 			const controls: Array<ScreenControl<string>> = [];
