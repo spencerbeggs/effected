@@ -1,10 +1,11 @@
 import type { AudienceKind, ColorLevel } from "@effected/env";
-import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
-import { Effect, Option } from "effect";
+import { Audience, TerminalEnv } from "@effected/env";
+import { Effect } from "effect";
 import { CliLinks } from "./CliLinks.js";
 import { CliTheme } from "./CliTheme.js";
 import type { Document, LinkTarget } from "./Doc.js";
 import type { GlyphSet } from "./Glyphs.js";
+import { underGithubActions } from "./internal/autoFormat.js";
 import { neutralizeLines } from "./internal/neutralize.js";
 import { renderAnsi } from "./internal/renderAnsi.js";
 import { renderGithubLog } from "./internal/renderGithubLog.js";
@@ -126,11 +127,7 @@ export class Render {
 			const links = yield* CliLinks;
 			// Read if the environment has it, as `Doc.print` does: GitHub Actions makes every format unable to inject a
 			// workflow command, whoever the audience is.
-			const runtime = yield* Effect.serviceOption(CurrentRuntimeEnv);
-			const underActions = Option.contains(
-				Option.flatMap(runtime, (env) => env.ci),
-				"github-actions",
-			);
+			const underActions = yield* underGithubActions;
 			return {
 				...(underActions ? { neutralizeWorkflowCommands: true } : {}),
 				width: options?.width ?? (kind === "human" ? terminal.width() : Number.POSITIVE_INFINITY),

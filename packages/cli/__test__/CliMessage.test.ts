@@ -1,8 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
-import { Audience } from "@effected/env";
-import { Console, Effect, References } from "effect";
+import { Audience, CurrentRuntimeEnv } from "@effected/env";
+import { Console, Effect, Layer, Option, References } from "effect";
 import { CliMessage, CliTheme, Status, Token } from "../src/index.js";
+import { commandLines } from "./helpers/runnerCommands.js";
 
 /** A `Console` recording which stream each line went to, in one sequence. */
 const capturing = () => {
@@ -22,6 +23,8 @@ const run = (
 		readonly color?: "none" | "basic" | "truecolor";
 		readonly stderrColor?: "none" | "basic" | "truecolor";
 		readonly glyphs?: "unicode" | "ascii";
+		/** Provide `CurrentRuntimeEnv` with this CI; omitted, the service is not in the environment at all. */
+		readonly ci?: "github-actions" | "generic" | "none";
 	} = {},
 ) =>
 	Effect.gen(function* () {
@@ -35,6 +38,11 @@ const run = (
 				}),
 			),
 			Effect.provide(Audience.layerTest(options.audience ?? "human")),
+			Effect.provide(
+				options.ci === undefined
+					? Layer.empty
+					: CurrentRuntimeEnv.layerTest({ ci: options.ci === "none" ? Option.none() : Option.some(options.ci) }),
+			),
 			Effect.provideService(Console.Console, double),
 		);
 		return { out, err };
@@ -227,6 +235,70 @@ describe("CliMessage paints each line with the colour of the stream it goes to",
 				stderrColor: "basic",
 			});
 			assert.deepStrictEqual(out, ["✗ to stdout"]);
+		}),
+	);
+});
+
+describe("CliMessage joins the output policy: sanitised, and neutralized under GitHub Actions", () => {
+	const ESC = String.fromCharCode(0x1b);
+	const BEL = String.fromCharCode(7);
+	const ZWSP = String.fromCodePoint(0x200b);
+	const HOSTILE = `ok\n::add-mask::secret\n${ESC}[31mred${ESC}[0m ${ESC}]8;;http://evil${BEL}x${ESC}]8;;${BEL} a ##[error]b\rz`;
+
+	const lines = (written: ReadonlyArray<string>) => written.join("\n").split(/\r\n|\r|\n/);
+
+	it.effect("an agent gets no escape of any kind, whatever the text carries", () =>
+		Effect.gen(function* () {
+			for (const name of ["info", "failure"] as const) {
+				const { out, err } = yield* run(CliMessage[name](HOSTILE), { audience: "agent", color: "truecolor" });
+				const text = [...out, ...err].join("\n");
+				assert.notInclude(text, ESC);
+				assert.notInclude(text, BEL);
+				assert.notInclude(text, "evil");
+				assert.include(text, "red", "the text itself is kept");
+			}
+		}),
+	);
+
+	it.effect(
+		"a human on a colour terminal gets only the glyph's own SGR from the kit: the text's escapes are gone",
+		() =>
+			Effect.gen(function* () {
+				const { out } = yield* run(CliMessage.info(HOSTILE), { audience: "human", color: "truecolor" });
+				const text = out.join("\n");
+				assert.notInclude(text, `${ESC}[31mred`);
+				assert.notInclude(text, `${ESC}]8`);
+				assert.notInclude(text, BEL);
+			}),
+	);
+
+	it.effect("under GitHub Actions no line is a command to either runner parser, for every audience", () =>
+		Effect.gen(function* () {
+			for (const audience of ["human", "agent", "ci"] as const) {
+				const { out, err } = yield* run(
+					Effect.all([CliMessage.info(HOSTILE), CliMessage.failure(HOSTILE)]).pipe(Effect.asVoid),
+					{
+						audience,
+						ci: "github-actions",
+					},
+				);
+				assert.deepStrictEqual(commandLines([...out, ...err].join("\n")), [], audience);
+				assert.isAbove(lines([...out, ...err]).filter((line) => line.includes("add-mask")).length, 0);
+			}
+		}),
+	);
+
+	it.effect("outside GitHub Actions the lines are untouched: no zero-width space, the commands are still there", () =>
+		Effect.gen(function* () {
+			for (const ci of [undefined, "generic", "none"] as const) {
+				const { out } = yield* run(CliMessage.info("ok\n::add-mask::secret\nx ##[error]y"), {
+					audience: "agent",
+					...(ci === undefined ? {} : { ci }),
+				});
+				const text = out.join("\n");
+				assert.notInclude(text, ZWSP, String(ci));
+				assert.strictEqual(commandLines(text).length, 2, String(ci));
+			}
 		}),
 	);
 });

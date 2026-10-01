@@ -1,6 +1,9 @@
 import { Audience } from "@effected/env";
 import { Console, Effect } from "effect";
 import { CliTheme } from "./CliTheme.js";
+import { underGithubActions } from "./internal/autoFormat.js";
+import { sanitize } from "./internal/layout.js";
+import { neutralizeLines } from "./internal/neutralize.js";
 import { Status } from "./Status.js";
 
 /**
@@ -24,6 +27,11 @@ export interface CliMessageOptions {
  * log level can silence it. Only the glyph is painted; the text stays plain. An `agent` audience gets the glyph
  * and the text and never colour, even when the theme has colour. `success` and `info` go to stdout, `warning`
  * and `failure` to stderr.
+ *
+ * The text is whatever the caller supplies, so it is sanitised: escape sequences and control characters are removed
+ * (a line break is kept as one, a tab becomes a space), as in a document. Under GitHub Actions, where
+ * `CurrentRuntimeEnv` says so, a line the runner would read as a workflow command is neutralized as well. The glyphs
+ * come from the vocabulary, which is configuration, and are not.
  *
  * @public
  */
@@ -52,6 +60,7 @@ export class CliMessage {
 			const theme = yield* CliTheme;
 			const audience = yield* Audience;
 			const def = vocab.def(name);
+			const message = sanitize(text);
 
 			// The stream first, then the line painted with THAT stream's colour: a redirected stderr is not coloured
 			// because stdout is.
@@ -63,10 +72,12 @@ export class CliMessage {
 			let line: string;
 			if (audience.kind === "agent") {
 				const glyph = streamTheme.glyphs.kind === "ascii" ? def.ascii : def.glyph;
-				line = text === "" ? glyph : `${glyph} ${text}`;
+				line = message === "" ? glyph : `${glyph} ${message}`;
 			} else {
-				line = streamTheme.status(vocab, name, text);
+				line = streamTheme.status(vocab, name, message);
 			}
+			// The runner reads a log line as a command; this is the one place a message's text reaches it.
+			if (yield* underGithubActions) line = neutralizeLines(line).join("\n");
 
 			yield* stream === "stderr" ? Console.error(line) : Console.log(line);
 		});
