@@ -623,7 +623,8 @@ export class CliUiTest {
 	 *
 	 * An element that crashes, or a run that is refused (`interactive: false` ends it with `NotInteractive`), is never
 	 * swallowed: `view` dies with that error when it happens before the first frame, and otherwise the next frame read,
-	 * key, resize or rerender does. A deliberate end (Esc or Ctrl-C) is not a crash:
+	 * key, resize or rerender does. After a crash every read dies with it, `frames` included, so the frames drawn before
+	 * the crash cannot be read: the crash is the signal a test needs. A deliberate end (Esc or Ctrl-C) is not a crash:
 	 * the frames stay readable, and only a key, resize or rerender after it dies, saying the screen has ended.
 	 *
 	 * @param element - the element to mount
