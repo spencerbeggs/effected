@@ -830,8 +830,9 @@ export class CliUiTest {
 	 *
 	 * As with `render`, a screen run with `clear` leaves its frames unchanged here, and the final scrollback is not
 	 * captured: Ink renders in debug mode, where its `clear` does nothing, so test `clear` on the production render path.
-	 * The waits are real time: a session test that itself sleeps or times out needs `it.live`. To assert that no screen mounted (a
-	 * non-interactive run, a flag that skips a prompt), check that `mounts` is `0` once the program has finished.
+	 * The waits are real time: a session test that itself sleeps or times out needs `it.live`. To assert that no screen
+	 * mounted (a non-interactive run, a flag that skips a prompt), check that `mounts` is `0` once the program has
+	 * finished.
 	 *
 	 * A screen that crashes (its thunk or a component throws) is never swallowed: `next` dies with the crash when it has
 	 * happened by then, whatever `contains` waited for, and otherwise the screen's next frame read, key or resize does.
@@ -1021,8 +1022,9 @@ export class CliUiTest {
 	/**
 	 * A Vitest snapshot serializer. It claims a string carrying escapes, a token tag opened and closed, or a colour
 	 * tag (a raw or styled frame, or a `Render.ansi` string), but not a log line's lone `[info]` prefix, nor one whose
-	 * only brackets are style tags like `[b]`, which unrelated data uses too. It prints the string as token markup with each line's trailing spaces trimmed, so a snapshot reads
-	 * without escapes and does not churn with the palette. Register it with `expect.addSnapshotSerializer`.
+	 * only brackets are style tags like `[b]`, which unrelated data uses too. It prints the string as token markup with
+	 * each line's trailing spaces trimmed, so a snapshot reads without escapes and does not churn with the palette.
+	 * Register it with `expect.addSnapshotSerializer`.
 	 */
 	static readonly serializer: {
 		readonly test: (value: unknown) => boolean;

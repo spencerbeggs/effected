@@ -156,10 +156,10 @@ interface Run<S> {
 const TICK_INVALID = (tickMillis: number): string =>
 	`@effected/cli/ui: CliUi.live's tickMillis must be a positive, finite number of milliseconds, not ${tickMillis}`;
 
+// Neutral about what is left on the terminal: when the warning is written, the run's last good frame may stay, may be
+// printed at its end, or, when that frame and the final one both throw, be gone.
 const DEGRADED = (error: unknown): string =>
-	`@effected/cli/ui: the live view stopped drawing this run; its last good frame stays (or is printed once at its end): ${
-		error instanceof Error ? error.message : String(error)
-	}`;
+	`@effected/cli/ui: the live view stopped drawing this run: ${error instanceof Error ? error.message : String(error)}`;
 
 /**
  * `CliUi.live`, kept in its own module: see `CliUi.live` for the contract.

@@ -131,8 +131,8 @@ export class Tabs {
 	/**
 	 * Draw the tabs: the active one in the accent token, bold and underlined; the others plain; every tab muted while
 	 * unfocused. At colour `"none"`, where all of that vanishes, the active tab is bracketed, `[Alpha]`, and the others
-	 * padded a space each side. A row wider than the terminal shows the tabs that fit around the active one, with the glyph set's
-	 * ellipsis at a cut edge, so it never wraps.
+	 * padded a space each side. A row wider than the terminal shows the tabs that fit around the active one, with the
+	 * glyph set's ellipsis at a cut edge, so it never wraps.
 	 *
 	 * @remarks
 	 * Controlled when `value` is given: a key calls `onChange` and the active tab moves only when `value` does.

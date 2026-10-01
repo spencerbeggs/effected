@@ -143,8 +143,7 @@ describe("CliUi.live: a render that fails degrades the run (Review Focus 2, ruli
 			assert.strictEqual((yield* handle.state).last, "ended", "the fold went on");
 			assert.strictEqual(warningsIn(log.lines).length, 1, log.lines.join("\n"));
 			assert.include(warningsIn(log.lines)[0] ?? "", "render threw");
-			// It says what is left: the last good frame stays, so nothing is drawn again at the run's end.
-			assert.include(warningsIn(log.lines)[0] ?? "", "its last good frame stays (or is printed once at its end)");
+			assert.include(warningsIn(log.lines)[0] ?? "", "the live view stopped drawing this run: render threw");
 			assert.deepStrictEqual(timeline, ["unmount", "log"], "the warning is written after the unmount");
 			assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 1", "tick 1"], "the last good frame, once");
 			assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted", "no instance or permit leaked");
@@ -266,6 +265,10 @@ describe("CliUi.live: a render that fails degrades the run (Review Focus 2, ruli
 			yield* handle.done.pipe(Effect.timeout("2 seconds"));
 			assert.strictEqual(warningsIn(log.lines).length, 1, log.lines.join("\n"));
 			assert.include(warningsIn(log.lines)[0] ?? "", "every render threw");
+			// Nothing of the run is left on the terminal here, and its final frame cannot be printed: the warning claims
+			// no frame (final review N1).
+			assert.include(warningsIn(log.lines)[0] ?? "", "the live view stopped drawing this run");
+			assert.notInclude(warningsIn(log.lines)[0] ?? "", "frame", "the warning claims no frame");
 			assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted", "no instance or permit leaked");
 		}).pipe(Effect.scoped),
 	);
