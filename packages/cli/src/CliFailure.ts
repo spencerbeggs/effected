@@ -5,6 +5,7 @@ import type { Block, Document, InlineOf, TreeInput } from "./Doc.js";
 import { Doc } from "./Doc.js";
 import { Fmt } from "./Fmt.js";
 import { issueEntries, issueTreeChildren } from "./internal/format.js";
+import { splitFrame } from "./internal/splitFrame.js";
 import { NotInteractive } from "./NotInteractive.js";
 import { Status } from "./Status.js";
 
@@ -132,18 +133,6 @@ const asPath = (location: string): string | undefined => {
 		}
 	}
 	return location.startsWith("/") || /^[A-Za-z]:[\\/]/.test(location) ? location : undefined;
-};
-
-/** A frame's text without `at `, and its location: the part in parentheses, or the whole text when there are none. */
-const splitFrame = (raw: string): { readonly text: string; readonly fn?: string; readonly location: string } => {
-	const text = raw.trim().replace(/^at\s+/, "");
-	const wrapped = /^(.*?)\s+\((.*)\)$/.exec(text);
-	const fn = wrapped?.[1];
-	return {
-		text,
-		...(fn === undefined || fn === "" ? {} : { fn }),
-		location: wrapped === null ? text : (wrapped[2] ?? ""),
-	};
 };
 
 /** A location without its `:line:col`, and the position when there is one. */
