@@ -67,7 +67,7 @@ describe("under GitHub Actions no format emits a line the runner would read as a
 				}
 			});
 
-			it(`${audience}: ${JSON.stringify(text)} through Doc.print, every format, both streams`, () =>
+			it.effect(`${audience}: ${JSON.stringify(text)} through Doc.print, every format, both streams`, () =>
 				Effect.gen(function* () {
 					for (const format of ["auto", ...formats] as const) {
 						for (const stream of ["stdout", "stderr"] as const) {
@@ -83,7 +83,8 @@ describe("under GitHub Actions no format emits a line the runner would read as a
 							assert.deepStrictEqual(commandLines(written.join("\n")), [], `${format} ${stream}`);
 						}
 					}
-				}).pipe(Effect.runSync));
+				}),
+			);
 		}
 	}
 

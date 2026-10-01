@@ -110,7 +110,7 @@ describe("CliAudience.runWith resolves the audience flag before parsing", () => 
 		}),
 	);
 
-	it.effect("--human on an interactive run still prompts (a flag never turns interactivity on, nor off here)", () =>
+	it.effect("--human on an interactive run still prompts, and the audience is the flag's", () =>
 		Effect.gen(function* () {
 			const { out } = yield* run(["--human", "init"]);
 			assert.deepStrictEqual(out, ["profile=library audience=human/flag"]);

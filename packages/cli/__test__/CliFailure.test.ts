@@ -469,13 +469,11 @@ describe("CliRuntime: the default failure path", () => {
 		}),
 	);
 
-	it.effect(
-		"the failure report stays on the logger: --log-level none does not silence it, and nothing goes to stdout",
-		() =>
-			Effect.gen(function* () {
-				const { out } = yield* runMain(failing, { AI_AGENT: "claude" }, true);
-				assert.deepStrictEqual(out, []);
-			}),
+	it.effect("the failure report is written through the logger and never to stdout", () =>
+		Effect.gen(function* () {
+			const { out } = yield* runMain(failing, { AI_AGENT: "claude" }, true);
+			assert.deepStrictEqual(out, []);
+		}),
 	);
 
 	it.effect("without env the report is the plain rendering too, with no services to ask", () =>
@@ -513,45 +511,48 @@ describe("CliRuntime: the default failure path", () => {
 		}),
 	);
 
-	it.effect(
-		"an audience flag decides the report's audience: --agent is plain on a colour terminal, no flag is painted",
-		() =>
-			Effect.gen(function* () {
-				const runTool = (argv: ReadonlyArray<string>) =>
-					Effect.gen(function* () {
-						const { double, err } = capturing();
-						const tool = Command.make("tool").pipe(
-							Command.withSharedFlags(CliAudience.flags()),
-							Command.withSubcommands([Command.make("go", {}, () => Effect.fail(new Boom("flagged")))]),
-						);
-						// The platform main builds the environment from is the colour terminal; the command only gets the
-						// services core's runner needs, so they cannot replace the terminal.
-						yield* CliRuntime.main(
-							CliAudience.runWith(tool, { version: "1.0.0" })(argv).pipe(Effect.provide(NodeServices.layer)),
-							{
-								platform: platform(true),
-								env: {},
-							},
-						).pipe(
-							Effect.exit,
-							Effect.provideService(
-								ConfigProvider.ConfigProvider,
-								ConfigProvider.fromUnknown({ TERM: "xterm-256color" }),
-							),
-							Effect.provideService(Console.Console, double),
-						);
-						return err.join("\n");
-					});
-				const flagged = yield* runTool(["--agent", "go"]);
-				assert.include(flagged, "flagged");
-				assert.notInclude(flagged, ESC);
-				const unflagged = yield* runTool(["go"]);
-				assert.include(unflagged, "flagged");
-				assert.include(unflagged, ESC, "control: with no flag the same terminal is painted");
-				// And --human restores the painted report where the environment detected an agent.
-				const human = yield* runTool(["--human", "go"]);
-				assert.include(human, ESC);
-			}),
+	it.effect("an audience flag decides the report's audience, and --log-level none does not silence the report", () =>
+		Effect.gen(function* () {
+			const runTool = (argv: ReadonlyArray<string>, env: Record<string, string> = { TERM: "xterm-256color" }) =>
+				Effect.gen(function* () {
+					const { double, err } = capturing();
+					const tool = Command.make("tool").pipe(
+						Command.withSharedFlags(CliAudience.flags()),
+						Command.withSubcommands([Command.make("go", {}, () => Effect.fail(new Boom("flagged")))]),
+					);
+					// The platform main builds the environment from is the colour terminal; the command only gets the
+					// services core's runner needs, so they cannot replace the terminal.
+					yield* CliRuntime.main(
+						CliAudience.runWith(tool, { version: "1.0.0" })(argv).pipe(Effect.provide(NodeServices.layer)),
+						{
+							platform: platform(true),
+							env: {},
+						},
+					).pipe(
+						Effect.exit,
+						Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)),
+						Effect.provideService(Console.Console, double),
+					);
+					return err.join("\n");
+				});
+			const flagged = yield* runTool(["--agent", "go"]);
+			assert.include(flagged, "flagged");
+			assert.notInclude(flagged, ESC);
+			const unflagged = yield* runTool(["go"]);
+			assert.include(unflagged, "flagged");
+			assert.include(unflagged, ESC, "control: with no flag the same terminal is painted");
+			// And --human restores the painted report where the environment DETECTED an agent.
+			const agentEnv = { AI_AGENT: "x", TERM: "xterm-256color" };
+			const detected = yield* runTool(["go"], agentEnv);
+			assert.include(detected, "flagged");
+			assert.notInclude(detected, ESC, "control: a detected agent gets the plain report");
+			const human = yield* runTool(["--human", "go"], agentEnv);
+			assert.include(human, "flagged");
+			assert.include(human, ESC);
+			// --log-level none silences the logger, but not the failure report, which is written outside that scope.
+			const silent = yield* runTool(["--log-level", "none", "go"], agentEnv);
+			assert.include(silent, "flagged");
+		}),
 	);
 });
 
