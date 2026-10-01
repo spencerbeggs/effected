@@ -1,6 +1,6 @@
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
-import type { FileSystem } from "effect";
+import type { Fiber, FileSystem } from "effect";
 import {
 	Cause,
 	Config,
@@ -15,7 +15,7 @@ import {
 	References,
 } from "effect";
 import type { CliLoggerOptions } from "./CliLogger.js";
-import { CliLogger } from "./CliLogger.js";
+import { CliLogger, makeCliLogger } from "./CliLogger.js";
 import { sanitize } from "./Fmt.js";
 import { paintStyle } from "./internal/ansi.js";
 import { Level, passes } from "./internal/diagnostics.js";
@@ -59,6 +59,11 @@ export interface CliLogOptions {
 	/**
 	 * `json` is NDJSON, `pretty` a human line, `auto` (the default) is pretty for a human audience with a
 	 * terminal on stderr and NDJSON otherwise.
+	 *
+	 * @remarks
+	 * Under `CliRuntime.main` with `env.log`, `auto` (like `pretty`) builds the platform under a plain `CliLogger`,
+	 * since the audience is not known yet, so what the platform logs while it builds is a plain line even for an
+	 * agent whose runtime lines are NDJSON. `json` builds it under the full `CliLog`, so those lines are NDJSON too.
 	 */
 	readonly format?: "auto" | "json" | "pretty" | undefined;
 	/** Options for the `CliLogger` this layer builds for ordinary log lines; see {@link CliLoggerOptions}. */
@@ -108,6 +113,9 @@ export interface CliLogFileOptions extends CliLogOptions {
 	 *
 	 * `undefined` writes no file but keeps the requirements of a file sink (`FileSystem` and `Path`) in `R`, so a
 	 * host whose sink is optional has one stable layer type either way.
+	 *
+	 * Under `CliRuntime.main` with `env.log`, what the platform logs while it builds, before it provides
+	 * `FileSystem`, reaches stderr but not the file; the file starts with the program's own records.
 	 */
 	readonly file: CliLogFile | undefined;
 }
@@ -270,9 +278,9 @@ export class CliLog {
 				// Captured here, not required: the fallback for a record whose own fiber has no CurrentRuntimeEnv.
 				const captured = yield* Effect.serviceOption(CurrentRuntimeEnv);
 				const neutralize = options.neutralize ?? "auto";
-				const underActionsFor = (record: Logger.Options<unknown>): boolean => {
+				const underActionsIn = (fiber: Fiber.Fiber<unknown, unknown>): boolean => {
 					if (neutralize !== "auto") return neutralize;
-					const inFiber = Context.getOption(record.fiber.context, CurrentRuntimeEnv);
+					const inFiber = Context.getOption(fiber.context, CurrentRuntimeEnv);
 					const runtime = Option.isSome(inFiber) ? inFiber : captured;
 					return Option.contains(
 						Option.flatMap(runtime, (env) => env.ci),
@@ -296,7 +304,7 @@ export class CliLog {
 				const isLowered = lowered !== ambient;
 
 				const render = (record: Logger.Options<unknown>): string => {
-					const underActions = underActionsFor(record);
+					const underActions = underActionsIn(record.fiber);
 					// NDJSON: JSON.stringify escapes every control character, but the runner's legacy parser reads `##[`
 					// anywhere in a line, so under Actions it is written as a JSON escape that decodes to the same text.
 					if (!isPretty(record)) {
@@ -331,7 +339,8 @@ export class CliLog {
 								if (LogLevel.isGreaterThanOrEqualTo(record.logLevel, threshold)) inner.log(record);
 							})
 						: inner;
-				const cliLogger = floor(CliLogger.make(options.logger));
+				// The same decision as the sink's, so the plain line and the diagnostics line are neutralized alike.
+				const cliLogger = floor(makeCliLogger(options.logger, underActionsIn));
 				const extras = (options.extraLoggers ?? []).map(floor);
 
 				// An invalid level warns through the CliLogger only, never through the sink.

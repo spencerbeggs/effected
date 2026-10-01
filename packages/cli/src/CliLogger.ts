@@ -1,5 +1,5 @@
 import { CommandNeutralizer } from "@effected/github-commands";
-import type { Layer } from "effect";
+import type { Fiber, Layer } from "effect";
 import { Console, LogLevel, Logger, References } from "effect";
 import { sanitize } from "./Fmt.js";
 import { TrustedLine, sanitizeParts, underActionsIn } from "./internal/logSafety.js";
@@ -109,41 +109,7 @@ export class CliLogger {
 	 * Prefer {@link CliLogger.layer}. Reach for this only when you are building
 	 * the logger set yourself and want this one among several.
 	 */
-	static readonly make = (options: CliLoggerOptions = {}): Logger.Logger<unknown, void> => {
-		const custom = options.render;
-		const render = custom ?? defaultRender;
-		const stderrFrom = options.stderrFrom ?? "All";
-
-		return Logger.make<unknown, void>(({ fiber, logLevel, message }) => {
-			const console = fiber.getRef(Console.Console);
-
-			// `LogToStderr` is core's own reference and its own loggers honour it, so
-			// ignoring it here would make this logger surprising in a way nothing
-			// signals. It is an override in ONE direction: a consumer who sets it
-			// meant "this program's output is diagnostic". It must never be able to
-			// move an error back onto stdout — that is the one guarantee this logger
-			// exists to make, and a reference should not be able to revoke it.
-			const forced = fiber.getRef(References.LogToStderr);
-
-			// The level ordinal rises with severity, so this catches the named level
-			// and everything above it — including any level added later, which a
-			// `logLevel === "Error" || logLevel === "Fatal"` test would miss.
-			const diagnostic = forced || LogLevel.isGreaterThanOrEqualTo(logLevel, stderrFrom);
-
-			// `console.log`/`console.error` supply their own newline, which is why
-			// nothing here appends one.
-			const write = diagnostic ? console.error : console.log;
-			// A line the kit already rendered (the failure report) keeps the escapes it painted; everything else is a
-			// program's own text, sanitised before it is written, and the runner never reads it as a command.
-			const trusted = fiber.getRef(TrustedLine);
-			const rendered = trusted
-				? render(message)
-				: custom === undefined
-					? sanitize(render(message))
-					: render(sanitizeParts(message));
-			write(underActionsIn(fiber) ? CommandNeutralizer.text(rendered) : rendered);
-		});
-	};
+	static readonly make = (options: CliLoggerOptions = {}): Logger.Logger<unknown, void> => makeCliLogger(options);
 
 	/**
 	 * Replace the default logger with this one.
@@ -158,3 +124,49 @@ export class CliLogger {
 	static readonly layer = (options: CliLoggerOptions = {}): Layer.Layer<never> =>
 		Logger.layer([CliLogger.make(options)]);
 }
+
+/**
+ * `CliLogger.make`, with the neutralizing decision as a parameter: `CliLog.layer` passes its own (the fiber's
+ * `CurrentRuntimeEnv`, else the one captured at build, or its `neutralize` option), so its plain line and its
+ * diagnostics line are neutralized alike.
+ *
+ * @internal
+ */
+export const makeCliLogger = (
+	options: CliLoggerOptions = {},
+	underActions: (fiber: Fiber.Fiber<unknown, unknown>) => boolean = underActionsIn,
+): Logger.Logger<unknown, void> => {
+	const custom = options.render;
+	const render = custom ?? defaultRender;
+	const stderrFrom = options.stderrFrom ?? "All";
+
+	return Logger.make<unknown, void>(({ fiber, logLevel, message }) => {
+		const console = fiber.getRef(Console.Console);
+
+		// `LogToStderr` is core's own reference and its own loggers honour it, so
+		// ignoring it here would make this logger surprising in a way nothing
+		// signals. It is an override in ONE direction: a consumer who sets it
+		// meant "this program's output is diagnostic". It must never be able to
+		// move an error back onto stdout — that is the one guarantee this logger
+		// exists to make, and a reference should not be able to revoke it.
+		const forced = fiber.getRef(References.LogToStderr);
+
+		// The level ordinal rises with severity, so this catches the named level
+		// and everything above it — including any level added later, which a
+		// `logLevel === "Error" || logLevel === "Fatal"` test would miss.
+		const diagnostic = forced || LogLevel.isGreaterThanOrEqualTo(logLevel, stderrFrom);
+
+		// `console.log`/`console.error` supply their own newline, which is why
+		// nothing here appends one.
+		const write = diagnostic ? console.error : console.log;
+		// A line the kit already rendered (the failure report) keeps the escapes it painted; everything else is a
+		// program's own text, sanitised before it is written, and the runner never reads it as a command.
+		const trusted = fiber.getRef(TrustedLine);
+		const rendered = trusted
+			? render(message)
+			: custom === undefined
+				? sanitize(render(message))
+				: render(sanitizeParts(message));
+		write(underActions(fiber) ? CommandNeutralizer.text(rendered) : rendered);
+	});
+};

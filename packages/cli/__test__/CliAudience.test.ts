@@ -119,24 +119,14 @@ describe("CliAudience", () => {
 		}),
 	);
 
-	it.effect("--audience's description lists the choices once: core's (choices: …), not a second list of its own", () =>
+	it.effect("--audience's help line lists the choices exactly once: core's (choices: …), no placeholder list", () =>
 		Effect.gen(function* () {
 			const { out } = yield* run(["--help"]);
-			const line = out.flatMap((text) => text.split("\n")).find((text) => text.includes("--audience <")) ?? "";
-			// The description is everything after the placeholder; core appends its own "(choices: human, agent, ci)".
-			const description = line.slice(line.indexOf(">") + 1);
-			assert.include(description, "(choices: human, agent, ci)", line);
-			assert.lengthOf(description.match(/human/g) ?? [], 1, line);
-		}),
-	);
-
-	it.effect("--audience names its values as the placeholder, not core's generic `choice`", () =>
-		Effect.gen(function* () {
-			const { out } = yield* run(["--help"]);
-			const line = out.find((text) => text.includes("--audience"));
-			assert.isDefined(line);
-			assert.include(line ?? "", "--audience <human|agent|ci>", out.join("\n"));
-			assert.notMatch(line ?? "", /--audience choice\b/);
+			const line =
+				out.flatMap((text) => text.split("\n")).find((text) => text.trimStart().startsWith("--audience")) ?? "";
+			// The whole line names the choices once: core's "(choices: human, agent, ci)", and no placeholder list of its own.
+			assert.include(line, "(choices: human, agent, ci)", line);
+			assert.lengthOf(line.match(/human/g) ?? [], 1, line);
 		}),
 	);
 

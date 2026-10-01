@@ -524,3 +524,35 @@ const prettyNoFile = () => CliLog.layer({ format: "pretty" });
 const prettyMaybe = () => CliLog.layer({ format: "pretty", file: undefined as CliLogFile | undefined });
 const autoNoFile = () => CliLog.layer({});
 const autoMaybe = () => CliLog.layer({ file: undefined as CliLogFile | undefined });
+
+describe("CliLog.layer's own plain CliLogger neutralizes as its sink does (F2 fix round)", () => {
+	it.effect("with the default plainLogger, a host-built layer over Actions writes no command on either line", () =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			const hosted = CliLog.layer({ level: "Info", format: "json" }).pipe(
+				Layer.provide(CurrentRuntimeEnv.layerTest({ ci: Option.some("github-actions") })),
+			);
+			yield* Effect.logWarning("::error::injected").pipe(
+				Effect.provide(hosted),
+				Effect.provideService(Console.Console, double),
+			);
+			assert.isAtLeast(err.length, 2, "the plain line and the NDJSON line were both written");
+			assert.deepStrictEqual(err.flatMap((line) => line.split(LINE_BREAK)).filter(isCommand), [], err.join(" | "));
+		}),
+	);
+
+	it.effect("neutralize: false reaches the plain line too", () =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			const hosted = CliLog.layer({ level: "Info", format: "json", neutralize: false }).pipe(
+				Layer.provide(CurrentRuntimeEnv.layerTest({ ci: Option.some("github-actions") })),
+			);
+			yield* Effect.logWarning("::error::injected").pipe(
+				Effect.provide(hosted),
+				Effect.provideService(Console.Console, double),
+			);
+			// The plain line is the one a `::` command could open: an NDJSON line starts with `{`.
+			assert.deepStrictEqual(err.flatMap((line) => line.split(LINE_BREAK)).filter(isCommand), ["::error::injected"]);
+		}),
+	);
+});
