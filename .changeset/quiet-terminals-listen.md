@@ -15,7 +15,7 @@ First release. `@effected/env` answers three questions for any front end of an E
 ### Terminal capabilities
 
 - `TerminalEnv` — per-stream `isTerminal`, colour level (`none`, `basic`, `256`, `truecolor`), `hyperlinks` and `columns`, plus `width(fallback)`. `layer()` needs core's `Stdio` and `Terminal`; `layerStdio()` needs only `Stdio`; `colorLevel("stdout")` decides colour alone.
-- Colour follows Node's `getColorDepth` precedence: `FORCE_COLOR` first (so it beats `NO_COLOR`), then a non-empty `NO_COLOR` or `NODE_DISABLE_COLORS` and `TERM=dumb`, then the TTY check, then Node's terminal table.
+- Colour follows Node's `getColorDepth` precedence: `FORCE_COLOR` first (so it beats `NO_COLOR`), then a non-empty `NO_COLOR` or `NODE_DISABLE_COLORS` and `TERM=dumb`, then the TTY check, then Windows (`OS=Windows_NT`, truecolor, as Node gives on Windows 10 build 14931 and later), then Node's terminal table.
 - Hyperlink support uses std-osc8's detector: `FORCE_HYPERLINK` and `NO_HYPERLINK`, the terminal and version table, and tmux or screen as unsupported.
 
 ### Audience

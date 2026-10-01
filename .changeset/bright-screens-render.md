@@ -18,7 +18,8 @@ On the `0.x` line breaking changes ship as `minor`; the changes below can need a
 
 - `FORCE_COLOR` is honoured and beats `NO_COLOR`; it forces colour even without a terminal, and `FORCE_COLOR=0` forces it off.
 - `NODE_DISABLE_COLORS` and `TERM=dumb` turn colour off, as a non-empty `NO_COLOR` already did.
-- A terminal Node's table does not recognise (no `TERM`, `COLORTERM` or known `TERM_PROGRAM`) gets no colour, as in Node.
+- On Windows (`OS=Windows_NT`), a terminal gets truecolor, as Node gives on Windows 10 build 14931 and later.
+- Elsewhere, a terminal Node's table does not recognise (no `TERM`, `COLORTERM` or known `TERM_PROGRAM`) gets no colour, as in Node.
 
 A harness that checks for escape-free output without a terminal should pin `FORCE_COLOR=0`, since a `FORCE_COLOR` inherited from CI now colours the output.
 
@@ -86,6 +87,7 @@ NodeRuntime.runMain(
 
 - `Doc` is a plain-data document model: headings, paragraphs, lists, tables, counts and counts tables, trees, collapsibles, code and diff blocks, strong and emphasis text, and links.
 - `Doc.print` picks the renderer by audience: ANSI for a person, plain for an agent, a GitHub Actions log under Actions, and plain for other CI. `Render.plain`, `Render.ansi`, `Render.markdown` (for a step summary or a file) and `Render.githubLog` are pure functions of a document and a `RenderContext`, built with `Render.context` or `Render.contextOf`.
+- A table with no header text and no rows draws nothing in every renderer, or only its overflow line when a cap hid rows, so an empty `Doc.countsTable([])` is safe to print.
 - `CliLinks` turns file targets into OSC 8 links for people only: `vscode://file/…` when a `.vscode/` directory sits at the workspace or git root, `file://` otherwise.
 - `CliFailure.toDoc` draws a failure as a document, and the `CliDoc` protocol lets your own error class supply its document.
 - `Fmt` adds width-aware `truncate`, `width`, `duration`, `percent`, `plural` and `sanitize`. `GithubAnnotation` writes `::error file=…,line=…::` annotation lines.
