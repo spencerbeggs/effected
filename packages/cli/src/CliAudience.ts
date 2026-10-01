@@ -148,7 +148,9 @@ export class CliAudience {
 					Flag.atLeast(0),
 					// Core's own flags spell the angle brackets in the metavar; without one it prints the generic `choice`.
 					Flag.withMetavar("<human|agent|ci>"),
-					Flag.withDescription("Audience: human | agent | ci"),
+					// Core appends "(choices: human, agent, ci)" to a Literals flag's description, so it names no list of its
+					// own: with the placeholder, that list is all the help needs.
+					Flag.withDescription("Who the output is for"),
 				),
 			),
 			human: maybeHide(

@@ -119,6 +119,17 @@ describe("CliAudience", () => {
 		}),
 	);
 
+	it.effect("--audience's description lists the choices once: core's (choices: …), not a second list of its own", () =>
+		Effect.gen(function* () {
+			const { out } = yield* run(["--help"]);
+			const line = out.flatMap((text) => text.split("\n")).find((text) => text.includes("--audience <")) ?? "";
+			// The description is everything after the placeholder; core appends its own "(choices: human, agent, ci)".
+			const description = line.slice(line.indexOf(">") + 1);
+			assert.include(description, "(choices: human, agent, ci)", line);
+			assert.lengthOf(description.match(/human/g) ?? [], 1, line);
+		}),
+	);
+
 	it.effect("--audience names its values as the placeholder, not core's generic `choice`", () =>
 		Effect.gen(function* () {
 			const { out } = yield* run(["--help"]);
