@@ -21,6 +21,7 @@ Every presentation service has a double that needs nothing, and the environment 
 
 | Double | Fixes |
 | --- | --- |
+| `CliEnv.layerTest({ tty?, term?, audience?, columns?, color?, theme? })` | the whole environment in one layer: `TerminalEnv`, `Audience` and a `CliTheme` built from them, with `CliInteractive` set by the real rule. Quiet defaults (a pipe, a human, colour `none`), and the host's `TERM` never decides. No `Terminal`, no prompt gates, no `CliLinks` |
 | `Audience.layerTest(kind, source?)` (`@effected/env`) | who the run is for |
 | `TerminalEnv.layerTest({ stdinIsTerminal?, stdout?, stderr? })` (`@effected/env`) | terminal facts: `isTerminal`, `color`, `hyperlinks`, `columns` per stream |
 | `CurrentRuntimeEnv.layerTest({ agent?, ci?, terminal? })` (`@effected/env`) | the detected agent, CI (`github-actions` turns on workflow-command neutralization) and terminal |
@@ -33,9 +34,10 @@ Then capture `Console.Console` and assert on **what** was written and **which st
 
 ~~~ts
 import { assert, it } from "@effect/vitest"
-import { CliMessage, CliTheme } from "@effected/cli"
-import { Audience } from "@effected/env"
-import { Console, Effect, Layer } from "effect"
+import { CliEnv, CliMessage } from "@effected/cli"
+import { Console, Effect } from "effect"
+
+const TestEnv = CliEnv.layerTest({ audience: "human", color: "none" })
 
 it.effect("a warning goes to stderr, colourless", () =>
   Effect.gen(function* () {
@@ -50,11 +52,11 @@ it.effect("a warning goes to stderr, colourless", () =>
     assert.deepStrictEqual(out, [])
     assert.include(err[0], "2 files skipped")
     assert.notInclude(err[0], "\u001b[")
-  }).pipe(Effect.provide(Layer.mergeAll(CliTheme.layerTest({ color: "none" }), Audience.layerTest("human")))),
+  }).pipe(Effect.provide(TestEnv)),
 )
 ~~~
 
-A renderer needs no Effect at all: `Render.plain(doc, Render.contextOf({ audience: "agent" }))` is a string, and an agent's context stays escape-free even through `Render.ansi`.
+`Doc.print` and `Render.context` also read `CliLinks`: add `CliLinks.layerTest("off")` beside `CliEnv.layerTest`. A renderer needs no Effect at all: `Render.plain(doc, Render.contextOf({ audience: "agent" }))` is a string, and an agent's context stays escape-free even through `Render.ansi`.
 
 ## Core prompts: `TestTerminal`
 

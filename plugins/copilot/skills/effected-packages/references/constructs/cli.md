@@ -5,18 +5,177 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `CliColor` | Class | Whether a CLI's output should carry ANSI colour, decided once and shared by everything that renders — help text, error output, and any rendered result. | decide once whether cli output gets ansi color, no_color and terminal-detection aware, share with the formatter layer |
+| `AnnotationLevel` | TypeAlias | The severity of a GitHub annotation. | |
+| `AnnotationOptions` | Interface | Where and how a GitHub Actions annotation is shown: its level, and an optional position and title. | |
+| `AudienceFlagInput` | Interface | The four parsed audience flags a root command carries once `CliAudience.flags` is shared onto it. | |
+| `Binding` | Interface | One row of a `KeyTable`: the keys that trigger an action, and the help line that names it. | from `@effected/cli/ui` |
+| `Block` | TypeAlias | A block of a document. | |
+| `BlockOf` | TypeAlias | The block node with a given `_tag`, so a constructor can return its precise type. | |
+| `Cancelled` | Class | A person backed out of an interactive prompt: they pressed escape, or the prompt was interrupted. | user quit a prompt or screen with esc or ctrl-c, exit 130 |
+| `CliAudience` | Class | The audience flags of a CLI: `--audience <human\|agent\|ci>` and the shorthands `--human`, `--agent`, `--ci`, resolved into `@effected/env`'s `Audience`. | add --agent --human --ci --audience flags, resolve the audience before parsing |
+| `CliAudienceFlagsOptions` | Interface | Options for `CliAudience.flags`. | |
+| `CliColor` | Class | Whether a CLI's output should carry ANSI colour, decided once and shared by everything that renders — help text, error output, and any rendered result. | decide once whether stdout gets ansi colour, `FORCE_COLOR` and `NO_COLOR` aware |
+| `CliDoc` | Variable | The protocol an error class implements to say how a failure is shown: a method under this key that returns the document. | let an error class draw its own failure report as a document |
+| `CliDocSource` | Interface | An error that draws itself: see `CliDoc`. | |
+| `CliEnv` | Class | The environment services a CLI reads, built once and in the right order. | build audience, terminal, theme and links once, decide whether the run may prompt |
+| `CliEnvOptions` | Interface | Options for `CliEnv.layer` and for `CliRuntime.main`'s `env` option. | |
+| `CliEnvServices` | TypeAlias | The services `CliEnv.layer` provides. | |
+| `CliEnvTestOptions` | Interface | Options for `CliEnv.layerTest`: the answers a test fixes. Every field has a quiet default. | |
+| `CliEnvTestServices` | TypeAlias | The services `CliEnv.layerTest` provides. | |
 | `CliExit` | Class | The exit code a successful run wants, for commands whose findings are a result rather than a failure (a linter that found problems, say). | record the highest exit code set during a run for a findings-not-a-failure cli command, read back by CliRuntime.main |
 | `CliExitShape` | Interface | The shape behind `CliExit`. | |
-| `CliLogger` | Class | A `Logger` that renders CLI output rather than service logs. | plain-line cli output logger, no timestamp or level prefix, errors to stderr |
+| `CliFailure` | Class | A failure as a document: what the default report prints, and a building block for a custom one. | draw a failure as a document, schema issues as a tree, app frames only |
+| `CliFailureOptions` | Interface | Options for `CliFailure.toDoc`. | |
+| `CliInteractive` | Class | Whether this run may prompt a person: a human audience, with a terminal on both standard input and standard output, and a `TERM` that is not `dumb`. | may this run prompt a person, human audience on a tty, not TERM=dumb |
+| `CliLinks` | Class | Editor-aware links for file targets: where a link to a file opens. | open file links in vscode or as file urls, osc 8, never for agents |
+| `CliLinksLinkerOptions` | Interface | The options of `CliLinks.linker`. | |
+| `CliLinksOptions` | Interface | Options for `CliLinks.layer`. | |
+| `CliLinksShape` | Interface | The shape of the `CliLinks` service: the mode decided, and the URL a link target becomes. | |
+| `CliLog` | Class | Diagnostics kept apart from a program's output: a level, a format and a place to write. | opt-in diagnostics, log level env var, ndjson for agents and CI, file sink |
+| `CliLogFile` | TypeAlias | Where the file sink writes: a literal path, or the environment variable that holds it. | |
+| `CliLogFileOptions` | Interface | `CliLogOptions` with a file sink, which is what makes the layer require `FileSystem` and `Path`. | |
+| `CliLogOptions` | Interface | Options for `CliLog.layer`. | |
+| `CliLogger` | Class | A `Logger` that renders CLI output rather than service logs. | plain-line cli logger, no timestamp or level prefix, every level to stderr by default |
 | `CliLoggerOptions` | Interface | How a log record is turned into a line. | |
+| `CliMessage` | Class | One-line status messages: a glyph and some text, themed for a person and plain for an agent. | print one themed success, info, warning or failure line no log level silences |
+| `CliMessageOptions` | Interface | Options for `CliMessage.status`. | |
+| `CliPrompt` | Class | Prompts that know whether there is a person to ask. | prompt for a missing flag or argument only when interactive, else a default |
+| `CliPromptFallbackOptions` | TypeAlias | Options for `CliPrompt.fallback`. | |
+| `CliPromptTarget` | TypeAlias | Which missing parameter a fallback stands in for, so a non-interactive run can fail with core's own error. | |
 | `CliRuntime` | Class | Report a CLI program's failures through the program's own logger. | report a cli program's failures through its own logger, set exit code |
 | `CliTest` | Class | Spawn a built CLI bin hermetically and read its exit code and streams as data. | from `@effected/cli/testing` — spawn a built cli bin hermetically in a sandboxed temp home, read exit code and stdout/stderr as data |
+| `CliTheme` | Class | The presentation of a CLI: colour tokens, glyphs and statuses, decided once from the terminal. | paint text by semantic token per stream, colour level aware, status glyphs |
+| `CliThemeOptions` | Interface | Options for `CliTheme.layer`. | |
+| `CliThemeShape` | Interface | The shape of the `CliTheme` service: a colour level, a glyph set and the functions that use them. | |
+| `CliThemeTestOptions` | Interface | Options for `CliTheme.layerTest`. | |
+| `CliUi` | Class | Interactive screens drawn with Ink, mounted as scoped resources. | from `@effected/cli/ui` — run an ink screen from a handler or flag fallback, live progress view |
+| `CliUiFallbackOptions` | TypeAlias | Options for `CliUi.fallback`: `CliPrompt.fallback`'s, and whether the screen erases its last frame. | from `@effected/cli/ui` |
+| `CliUiPromptOptions` | Interface | Options for `CliUi.prompt`. | from `@effected/cli/ui` |
+| `CliUiRunOptions` | Interface | Options for `CliUi.run`. | from `@effected/cli/ui` |
+| `CliUiTest` | Class | Drive and read Ink screens in tests: mount a screen on in-memory streams, press keys, and read its frames as token markup. | from `@effected/cli/ui/testing` — test ink screens and live views in memory: press keys, read frames, terminal transcript |
+| `CliUiTestHandle` | Interface | A screen mounted by `CliUiTest.render`: a `CliUiTestScreen` that can also be swapped and awaited. | from `@effected/cli/ui/testing` |
+| `CliUiTestLive` | Interface | A live view mounted by `CliUiTest.live`: its event stream to publish to, and its output on the production render path. | from `@effected/cli/ui/testing` |
+| `CliUiTestNextOptions` | Interface | Options for `CliUiTestSession.next`. | from `@effected/cli/ui/testing` |
+| `CliUiTestOptions` | Interface | Options for `CliUiTest.render`, `CliUiTest.view` and `CliUiTest.session`. | from `@effected/cli/ui/testing` |
+| `CliUiTestScreen` | Interface | A screen under test: drive it with keys and read its frames. | from `@effected/cli/ui/testing` |
+| `CliUiTestSession` | Interface | A terminal a whole program runs its screens on, from `CliUiTest.session`. | from `@effected/cli/ui/testing` |
+| `CliUiTestView` | Interface | A display-only element mounted by `CliUiTest.view`: a `CliUiTestScreen` that can be swapped for another element, with no result to wait for. | from `@effected/cli/ui/testing` |
+| `Column` | Interface | One column of a table. | |
 | `ConfigIssueRenderer` | Class | Render a `@effected/config-file` validation failure. | render a @effected/config-file validation error into human-readable lines |
+| `Confirm` | Class | A yes/no question, optionally with extra on/off rows beneath it: a pure reducer, its key table, a view and a ready-made screen. | from `@effected/cli/ui` — yes or no question screen with extra toggles |
+| `ConfirmAction` | TypeAlias | What a key does in a `Confirm`. | from `@effected/cli/ui` |
+| `ConfirmInitOptions` | Interface | Options for `Confirm.init`. | from `@effected/cli/ui` |
+| `ConfirmResult` | Interface | What a `Confirm` resolves with: the answer, and every toggle by key. | from `@effected/cli/ui` |
+| `ConfirmScreenOptions` | Interface | Options for `Confirm.screen`. | from `@effected/cli/ui` |
+| `ConfirmState` | Interface | Where a `Confirm` is. | from `@effected/cli/ui` |
+| `ConfirmToggle` | Interface | An extra on/off row a `Confirm` hosts beneath its yes/no answer. | from `@effected/cli/ui` |
+| `ConfirmViewProps` | Interface | Props of `Confirm.View`. | from `@effected/cli/ui` |
+| `CoreStatusName` | TypeAlias | The names of the core vocabulary. | |
+| `Counter` | Interface | One counter of a `Counts` block. | |
+| `CountsOptions` | Interface | The options of `Doc.counts`. | |
+| `CountsRow` | Interface | One row of a `CountsTable`: its label, its counters and how long it took. | |
+| `CountsTableOptions` | Interface | The options of `Doc.countsTable`. | |
+| `Doc` | Class | Constructors for the document IR, and two helpers a renderer shares. | build a report once as a document: tables, trees, lists, counts, diffs, callouts |
+| `DocPrintOptions` | Interface | Options for `Doc.print`. | |
+| `DocView` | Function | The kit's document IR (`Doc`) drawn as Ink rows, laid out by the kit's own renderers, so a live view and a static report show a document the same way. | from `@effected/cli/ui` — draw a document inside an ink tree, byte for byte like the static output |
+| `DocViewProps` | Interface | Props of `DocView`. | from `@effected/cli/ui` |
+| `Document` | TypeAlias | A whole document: its blocks, in order. | |
+| `EditorLinks` | TypeAlias | Whether file links open in an editor. | |
 | `FailureDetails` | Interface | What `render` is told about a failure beyond the squashed error. | |
+| `Fmt` | Class | Small, pure formatting primitives for terminal output. | sanitize escapes from text, display width, grapheme-safe truncate, durations, percent, plural |
+| `GithubAnnotation` | Class | GitHub Actions annotations, as workflow commands. | format a GitHub Actions error or warning annotation for a file and line |
+| `GithubAnnotationProperties` | Interface | What an annotation says about where it points and what it is called. | |
+| `GlyphSelectOptions` | Interface | Options for `Glyphs.select`. | |
+| `GlyphSet` | Interface | The symbols a theme draws with. | |
+| `Glyphs` | Class | The two glyph sets: Unicode, and a plain-ASCII fallback for terminals that cannot draw it. | unicode or ascii status glyphs, spinner frames, tree segments, ascii under TERM=dumb |
+| `InkTextProps` | Interface | The styling props of an Ink `Text` that a `@effected/cli!Style` maps to. | from `@effected/cli/ui` |
+| `Inline` | TypeAlias | Content that flows inside a line. | |
+| `InlineInput` | TypeAlias | What a constructor accepts for content: a string, one `Inline`, or an array of either. | |
+| `InlineOf` | TypeAlias | The inline node with a given `_tag`, so a constructor can return its precise type. | |
+| `KeyHelp` | Function | A one-line footer naming every visible binding of the given tables, then the root keys: `↑/↓ move · space toggle · enter continue · esc cancel`. | from `@effected/cli/ui` — one-line key help footer from key tables, cut to the terminal width |
+| `KeyHelpProps` | Interface | Props of `KeyHelp`. | from `@effected/cli/ui` |
+| `KeyHelpRow` | Interface | One entry of a key table's help: the key labels and what they do. | from `@effected/cli/ui` |
+| `KeyInput` | Interface | One key press for `TestTerminal`. | from `@effected/cli/testing` |
+| `KeyName` | TypeAlias | The named keys a screen understands and a test can press. | from `@effected/cli/ui` |
+| `KeyTable` | Class | The keys a widget understands, as data: the one source both for dispatching input and for the help line, so the two cannot drift apart. | from `@effected/cli/ui` — declare a screen key bindings once for dispatch and help |
+| `LinkOptions` | Interface | Options for `Doc.link`. | |
+| `LinkTarget` | TypeAlias | Where a link points: a URL, or a file with an optional position. | |
+| `ListOptions` | Interface | Options for `Doc.list`. | |
+| `LiveHandle` | Interface | The handle of a live view. | from `@effected/cli/ui` |
+| `LiveOptions` | Interface | Options for `CliUi.live`. | from `@effected/cli/ui` |
 | `MainOptions` | Interface | Options for `CliRuntime.main`. | |
+| `MultiSelect` | Class | Several choices from sectioned lists: a pure reducer, its key table, a view and a ready-made screen. | from `@effected/cli/ui` — checkbox list screen in sections, pick several values |
+| `MultiSelectAction` | TypeAlias | What a key does in a `MultiSelect`. | from `@effected/cli/ui` |
+| `MultiSelectInitOptions` | Interface | Options for `MultiSelect.init`. | from `@effected/cli/ui` |
+| `MultiSelectItem` | Interface | One item of a `MultiSelect` section. | from `@effected/cli/ui` |
+| `MultiSelectScreenOptions` | Interface | Options for `MultiSelect.screen`. | from `@effected/cli/ui` |
+| `MultiSelectSection` | Interface | A titled group of items; the title is a header the cursor never stops on. | from `@effected/cli/ui` |
+| `MultiSelectState` | Interface | Where a `MultiSelect` is: its sections, which items are selected, the viewport over the items, and whether it was submitted. | from `@effected/cli/ui` |
+| `MultiSelectViewProps` | Interface | Props of `MultiSelect.View`. | from `@effected/cli/ui` |
+| `NamedColor` | TypeAlias | A named terminal colour: the eight ANSI colours and their bright variants. | |
+| `NotInteractive` | Class | A command needed to prompt, but there is no terminal to prompt on. | a prompt was reached with no person to ask, exit 64 |
+| `OverflowOptions` | Interface | The cap and overflow options of a list or table. | |
+| `PercentOptions` | Interface | Options for `Fmt.percent`. | |
+| `Render` | Class | Pure renderers of a document: `(doc, context) => string`. | render a document as plain text, ansi, markdown or a GitHub Actions log |
+| `RenderContext` | Interface | Everything a renderer needs to know about where its output is going. | |
+| `RenderContextOfOptions` | Interface | Options for `Render.contextOf`. | |
+| `RenderContextOptions` | Interface | Options for `Render.context`. | |
 | `ReportFailuresOptions` | Interface | How a failure is turned into output and an exit code. | |
+| `RequiresAudienceFlags` | TypeAlias | Resolves to nothing for a command that carries the four audience flags, and to an unsatisfiable marker otherwise, so `CliAudience.run` on a root that forgot `Command.withSharedFlags(CliAudience.flags())` does not compile. (A plain `Input extends AudienceFlagInput` constraint does not do this: `Command` is contravariant in its input, so a command with no flags still type-checks against it.) | |
 | `RunOptions` | Interface | How `CliTest.run` spawns a bin. | from `@effected/cli/testing` |
 | `RunResult` | Interface | What a spawned bin did, as data: a non-zero exit is a result, not a failure. | from `@effected/cli/testing` |
 | `Sandbox` | Interface | A hermetic temp directory minted by `CliTest.sandbox`, removed when its scope closes. | from `@effected/cli/testing` |
 | `SchemaIssueRenderer` | Class | Turn a `SchemaIssue` tree into lines a user can act on. | turn a schema decode failure issue tree into lines a user can act on |
+| `Screen` | TypeAlias | A screen: given its control, the React element to mount, or a promise of one. | from `@effected/cli/ui` |
+| `ScreenControl` | Interface | How a screen ends: with a result, or cancelled for a reason. | from `@effected/cli/ui` |
+| `Select` | Class | A single choice from a list: a pure reducer, its key table, a view, and a ready-made screen. | from `@effected/cli/ui` — pick one value from a scrolling list screen, disabled choices skipped |
+| `SelectAction` | TypeAlias | What a key does in a `Select`: a viewport move, submit, or cancel. | from `@effected/cli/ui` |
+| `SelectChoice` | Interface | One choice of a `Select`. | from `@effected/cli/ui` |
+| `SelectInitOptions` | Interface | Options for `Select.init`. | from `@effected/cli/ui` |
+| `SelectScreenOptions` | Interface | Options for `Select.screen`. | from `@effected/cli/ui` |
+| `SelectState` | Interface | Where a `Select` is: its choices, the viewport over them, and whether one was submitted. | from `@effected/cli/ui` |
+| `SelectViewProps` | Interface | Props of `Select.View`. | from `@effected/cli/ui` |
+| `Status` | Class | An open vocabulary of statuses. | typed status vocabulary with glyphs, colours and severity rank, extend it, pick the worst |
+| `StatusDef` | Interface | How one status looks: a Unicode glyph, an ASCII fallback, a token and a rank. | |
+| `StatusRef` | Interface | A status as a document stores it: its name and its resolved definition. | |
+| `StreamTheme` | Interface | A theme bound to one stream's colour level. | |
+| `Style` | Interface | A terminal style: an optional foreground colour and text attributes. | |
+| `Styled` | Function | Text painted with a theme token or style, through the mounted screen's theme. | from `@effected/cli/ui` — paint ink text with a theme token |
+| `StyledProps` | Interface | Props of `Styled`. | from `@effected/cli/ui` |
+| `Tab` | Interface | One tab. | from `@effected/cli/ui` |
+| `TableOptions` | Interface | Options for `Doc.table`. | |
+| `Tabs` | Class | A row (or column) of tabs: the kit's replacement for `ink-tab`. | from `@effected/cli/ui` — tab bar for a custom ink screen, tab and digit keys switch tabs |
+| `TabsAction` | TypeAlias | What a key does to a `Tabs` row: move to the previous or next tab (wrapping), or jump to one by index. | from `@effected/cli/ui` |
+| `TabsProps` | Interface | Props of `Tabs.View`. | from `@effected/cli/ui` |
+| `TerminalSize` | Interface | The usable size of the terminal. | from `@effected/cli/ui` |
+| `TestTerminal` | Class | A scripted `Terminal` for testing prompts and anything that reads the terminal. | from `@effected/cli/testing` — drive core prompts in a test, type keys, capture output, prove nothing was read |
+| `TestTerminalHandle` | Interface | What `TestTerminal.make` builds: the `Terminal` layer and the means to drive and inspect it. | from `@effected/cli/testing` |
+| `TextInput` | Class | One line of text: a pure reducer, a view and a ready-made screen. | from `@effected/cli/ui` — single-line text entry screen with placeholder and validation |
+| `TextInputInitOptions` | Interface | Options for `TextInput.init`. | from `@effected/cli/ui` |
+| `TextInputScreenOptions` | Interface | Options for `TextInput.screen`. | from `@effected/cli/ui` |
+| `TextInputState` | Interface | Where a `TextInput` is: its value, the cursor within it, and whether enter was pressed. | from `@effected/cli/ui` |
+| `TextInputViewProps` | Interface | Props of `TextInput.View`. | from `@effected/cli/ui` |
+| `Toggle` | Class | An on/off row: a check glyph and a label. | from `@effected/cli/ui` — on or off switch view for a custom ink screen |
+| `ToggleViewProps` | Interface | Props of `Toggle.View`. | from `@effected/cli/ui` |
+| `Token` | Class | Constructors for `Style` values, and the pure resolution of a token to one. | semantic colour tokens and custom styles, hex or named colours, colourless at none |
+| `TokenName` | TypeAlias | The semantic tokens a theme resolves to a `Style`. | |
+| `TreeInput` | Interface | A tree node as a constructor accepts it: the label may be a string and `children` may be left out. | |
+| `TreeNode` | Interface | A node of a `TreeNode` tree: a label and its children. | |
+| `TruncateOptions` | Interface | Options for `Fmt.truncate`. | |
+| `UiContextValue` | Interface | What the kit's hooks read in a tree the kit did not mount: the theme, the glyph set, and optionally the size. | from `@effected/cli/ui` |
+| `UiKey` | Variable + TypeAlias | A key as a screen sees it: a named key, or typed text. | from `@effected/cli/ui` — normalise ink key input into named keys or characters |
+| `UiProvider` | Function | Provide the kit's context to an Ink tree the kit did not mount, so `useTheme`, `useGlyphs`, `Styled` and `useTerminalSize` work in it. | from `@effected/cli/ui` — give an ink tree the kit did not mount the cli theme and glyphs |
+| `UiProviderProps` | Interface | Props of `UiProvider`. | from `@effected/cli/ui` |
+| `UiStreams` | Class | The streams a screen mounts on, the process's own standard streams by default. | from `@effected/cli/ui` — which stdin, stdout and stderr an ink screen binds to |
+| `UiStreamsShape` | Interface | The streams a screen mounts on: Node streams, because Ink's stream contract is Node's. | from `@effected/cli/ui` |
+| `UseKeysOptions` | Interface | Options for `useKeys`. | from `@effected/cli/ui` |
+| `Viewport` | Class | A scrolling list: a pure reducer over a window of items, its key table, and a view that draws the window. | from `@effected/cli/ui` — scroll a window of rows that never overflows the terminal, sticky section headers |
+| `ViewportMove` | TypeAlias | A move through a viewport. | from `@effected/cli/ui` |
+| `ViewportRow` | TypeAlias | A row a viewport shows: a section header, or an item. Only items are selectable. An item's `key` is its React key in the view, so keys must be unique within one list: `Viewport.View` dies on a repeat. | from `@effected/cli/ui` |
+| `ViewportState` | Interface | Where a viewport is: the selected item, the first item in view, how many items fit, and how many there are. | from `@effected/cli/ui` |
+| `ViewportViewProps` | Interface | Props of `Viewport.View`. | from `@effected/cli/ui` |
+| `inkProps` | Function | The Ink `Text` props for `style` at `color`. | from `@effected/cli/ui` — map a theme style to ink text props, colourless at colour none |
+| `useGlyphs` | Function | The glyph set of the mounted screen, so a component draws Unicode or ASCII glyphs to match the rest of the output. | from `@effected/cli/ui` — read the cli glyph set inside an ink component |
+| `useKeys` | Function | Read the keys of `table` and dispatch the action each one matches; keys the table does not bind are ignored. | from `@effected/cli/ui` — dispatch ink keystrokes through a key table, chunk-safe |
+| `useTerminalSize` | Function | The usable terminal size: the stdout Ink draws on, less one column and one row, re-read on every render and when the terminal resizes; or, under a `UiProvider` given a `size`, that size less one column and one row. | from `@effected/cli/ui` — usable terminal columns and rows inside an ink component |
+| `useTheme` | Function | The theme of the stream the mounted screen draws on. | from `@effected/cli/ui` — read the cli theme inside an ink component |
