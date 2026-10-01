@@ -156,7 +156,12 @@ const overflowLine = (
 const cellOf = (walk: Walk, inlines: ReadonlyArray<Inline> | undefined): Line => {
 	if (inlines === undefined) return [];
 	const spans = inline(walk, inlines);
-	const joined = textOf(spans).replace(/(?:\r\n|\r|\n)+$/, "");
+	const text = textOf(spans);
+	// Trailing line breaks are not content. A loop, not `/(?:\r\n|\r|\n)+$/`, which backtracks exponentially on a
+	// CRLF run followed by more text, since it can read each CRLF as one break or two.
+	let end = text.length;
+	while (end > 0 && (text[end - 1] === "\n" || text[end - 1] === "\r")) end--;
+	const joined = text.slice(0, end);
 	const at = joined.search(/\r\n|\r|\n/);
 	if (at < 0) return sliceSpans(spans, joined.length);
 	return [...sliceSpans(spans, at), span(walk.ctx.glyphs.ellipsis, "muted")];

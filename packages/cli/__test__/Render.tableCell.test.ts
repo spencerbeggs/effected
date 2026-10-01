@@ -1,0 +1,29 @@
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+import { Doc, Render } from "../src/index.js";
+import { contextOf } from "./helpers/renderContext.js";
+
+describe("a table cell's trailing line breaks", () => {
+	it.effect("are trimmed in linear time: a long CRLF run before more text does not backtrack", () =>
+		Effect.gen(function* () {
+			const ctx = yield* contextOf({ color: "none" });
+			const cell = `a${"\r\n".repeat(26)}b`;
+			const started = performance.now();
+			const out = Render.plain([Doc.table([{ header: "h" }], [[cell]])], ctx);
+			const elapsed = performance.now() - started;
+			assert.strictEqual(out, `h\n${"-".repeat(2)}\na${ctx.glyphs.ellipsis}`);
+			assert.isBelow(elapsed, 500, `took ${elapsed} ms`);
+		}),
+	);
+
+	it.effect("only trailing breaks are dropped, of every kind, and a cell keeps its first line", () =>
+		Effect.gen(function* () {
+			const ctx = yield* contextOf({ color: "none" });
+			const rows = ["a\r\n\r\n", "a\n\r", "a\r\r\n\n", "a\nb\r\n"].map((cell) => [cell]);
+			assert.strictEqual(
+				Render.plain([Doc.table([{ header: "h" }], rows)], ctx),
+				["h", "--", "a", "a", "a", `a${ctx.glyphs.ellipsis}`].join("\n"),
+			);
+		}),
+	);
+});
