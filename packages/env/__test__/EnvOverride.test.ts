@@ -147,3 +147,45 @@ describe("EnvOverride.readResult", () => {
 		}),
 	);
 });
+
+describe("EnvOverride.readResult with a source", () => {
+	const readFrom = (source: Readonly<Record<string, string | undefined>> | ConfigProvider.ConfigProvider) =>
+		EnvOverride.readResult({ envVar: "VITEST_AGENT_CONSOLE", accepts, source }).pipe(
+			Effect.provide(Audience.layerTest("human")),
+			// The ambient environment says something else: a source wins over it.
+			withEnv({ VITEST_AGENT_CONSOLE: "silent" }),
+		);
+
+	it.effect("a record is read fresh on every call", () =>
+		Effect.gen(function* () {
+			const env: Record<string, string | undefined> = { VITEST_AGENT_CONSOLE: "stream" };
+			assert.deepStrictEqual((yield* readFrom(env)).accepted, Option.some("stream"));
+			env["VITEST_AGENT_CONSOLE"] = "agent";
+			assert.deepStrictEqual((yield* readFrom(env)).accepted, Option.some("agent"), "the change is seen");
+			env["VITEST_AGENT_CONSOLE"] = undefined;
+			const unset = yield* readFrom(env);
+			assert.isTrue(Option.isNone(unset.accepted) && Option.isNone(unset.rejected), "an undefined value is unset");
+		}),
+	);
+
+	it.effect("a ConfigProvider is read in place of the ambient one", () =>
+		Effect.gen(function* () {
+			const provider = ConfigProvider.fromUnknown({ VITEST_AGENT_CONSOLE: "bogus" });
+			const result = yield* readFrom(provider);
+			assert.deepStrictEqual(
+				Option.map(result.rejected, (rejected) => rejected.value),
+				Option.some("bogus"),
+			);
+		}),
+	);
+
+	it.effect("control: without a source the ambient environment is read, as before", () =>
+		Effect.gen(function* () {
+			const result = yield* EnvOverride.readResult({ envVar: "VITEST_AGENT_CONSOLE", accepts }).pipe(
+				Effect.provide(Audience.layerTest("human")),
+				withEnv({ VITEST_AGENT_CONSOLE: "silent" }),
+			);
+			assert.deepStrictEqual(result.accepted, Option.some("silent"));
+		}),
+	);
+});

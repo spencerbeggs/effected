@@ -1,6 +1,10 @@
-import { Config, Effect, Option } from "effect";
+import { Config, ConfigProvider, Effect, Option } from "effect";
 import type { AudienceKind } from "./Audience.js";
 import { Audience } from "./Audience.js";
+
+const isProvider = (
+	source: Readonly<Record<string, string | undefined>> | ConfigProvider.ConfigProvider,
+): source is ConfigProvider.ConfigProvider => typeof (source as { readonly load?: unknown }).load === "function";
 
 /**
  * Reads an environment variable that picks a mode within an audience.
@@ -23,11 +27,17 @@ export class EnvOverride {
 	 * that audience accepts, so the caller owns the wording, the stream and any once-per-run dedupe. Unset and
 	 * empty are neither. At most one of the two is `Some`. {@link EnvOverride.read} is the logging convenience.
 	 *
-	 * @param options - `envVar` is the variable; `accepts` lists, per audience, the literals it accepts
+	 * The variable is read from the ambient `ConfigProvider` unless `source` is given: a record (read fresh on every
+	 * call, so a host passing `process.env` sees each change, and an `undefined` value is unset) or a `ConfigProvider`
+	 * of its own.
+	 *
+	 * @param options - `envVar` is the variable; `accepts` lists, per audience, the literals it accepts; `source`, if
+	 *   given, is where the variable is read in place of the ambient environment
 	 */
 	static readResult<const M extends Record<AudienceKind, ReadonlyArray<string>>>(options: {
 		readonly envVar: string;
 		readonly accepts: M;
+		readonly source?: Readonly<Record<string, string | undefined>> | ConfigProvider.ConfigProvider | undefined;
 	}): Effect.Effect<
 		{
 			readonly audience: AudienceKind;
@@ -43,9 +53,15 @@ export class EnvOverride {
 	> {
 		return Effect.gen(function* () {
 			const { kind } = yield* Audience;
-			const raw = yield* Config.option(Config.String(options.envVar)).pipe(
-				Effect.orElseSucceed(() => Option.none<string>()),
-			);
+			const config = Config.option(Config.String(options.envVar));
+			const { source } = options;
+			// A record becomes a provider on every call, so its current values are read; a provider is used as given.
+			const raw =
+				source === undefined
+					? yield* config.pipe(Effect.orElseSucceed(() => Option.none<string>()))
+					: yield* config
+							.parse(isProvider(source) ? source : ConfigProvider.fromEnvRecord({ ...source }))
+							.pipe(Effect.orElseSucceed(() => Option.none<string>()));
 			if (Option.isNone(raw) || raw.value === "") {
 				return { audience: kind, accepted: Option.none(), rejected: Option.none() };
 			}
