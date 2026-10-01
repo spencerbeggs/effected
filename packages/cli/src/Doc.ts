@@ -724,7 +724,9 @@ export class Doc {
 	 * the counter's label), and an optional total row summing each column.
 	 *
 	 * @remarks
-	 * A row without a counter for some key leaves that cell empty, and it counts as zero in the total. `totalRow`
+	 * A row without a counter for some key leaves that cell empty, and it counts as zero in the total. A counter whose
+	 * `n` is zero shows `0`, as a `Doc.table` cell would: a counter's `showZero` has no effect in a table, only in a
+	 * `Counts` block, so there is no need to set it. `totalRow`
 	 * labels the total row with a plain `Total` when `true`, or with the content given: for a bold one, pass
 	 * `totalRow: Doc.strong("Total")`. A column is headed by its counter's `label`; a counter's status paints its cells
 	 * in `ansi` and is ignored in markdown, so a plain numbers table may pass any status. `labelHeader` heads the label column, which
