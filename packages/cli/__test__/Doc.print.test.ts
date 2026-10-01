@@ -129,6 +129,76 @@ describe("Doc.print: each audience picks its renderer", () => {
 	);
 });
 
+describe("Doc.print: an agent never gets an escape of any kind", () => {
+	const OSC = `${ESC}]`;
+
+	it.effect("on truecolor, hyperlink-capable streams, every format, on either stream, is escape-free", () =>
+		Effect.gen(function* () {
+			const setup: Setup = {
+				audience: "agent",
+				stdout: { color: "truecolor", hyperlinks: true },
+				stderr: { color: "truecolor", hyperlinks: true },
+				ci: "github-actions",
+			};
+			for (const format of ["auto", "plain", "ansi", "markdown", "githubLog"] as const) {
+				for (const stream of ["stdout", "stderr"] as const) {
+					const { out, err } = yield* print(setup, { format, stream });
+					const text = [...out, ...err].join("\n");
+					assert.isAbove(text.length, 0, `${format} ${stream}`);
+					assert.notInclude(text, ESC, `${format} ${stream}`);
+					assert.notInclude(text, OSC, `${format} ${stream}`);
+				}
+			}
+		}),
+	);
+
+	it.effect(
+		"the context itself is colourless for an agent, so a consumer calling Render.ansi gets nothing either",
+		() =>
+			Effect.gen(function* () {
+				const ctx = (yield* under(
+					{ audience: "agent", stdout: { color: "truecolor", hyperlinks: true } },
+					Render.context("stdout"),
+				)).value;
+				assert.strictEqual(ctx.color, "none");
+				assert.strictEqual(ctx.paint("failure", "x"), "x");
+				assert.strictEqual(ctx.paint({ fg: "#ff0000", bold: true }, "x"), "x");
+				assert.notInclude(Render.ansi(doc, ctx), ESC);
+			}),
+	);
+
+	it.effect(
+		"control: a human on the same terminal IS painted, so the agent rule is the audience's and not the terminal's",
+		() =>
+			Effect.gen(function* () {
+				const { out } = yield* print(
+					{ audience: "human", stdout: { color: "truecolor", hyperlinks: true } },
+					{ format: "ansi" },
+				);
+				assert.include(out[0] ?? "", `${ESC}[`);
+				const ci = yield* print({ audience: "ci", stdout: { color: "truecolor" } }, { format: "ansi" });
+				assert.include(ci.out[0] ?? "", `${ESC}[`);
+			}),
+	);
+});
+
+describe("Doc.print: an empty document", () => {
+	it.effect("prints nothing: no blank line on either stream, for every format", () =>
+		Effect.gen(function* () {
+			for (const format of ["auto", "plain", "ansi", "markdown", "githubLog"] as const) {
+				for (const stream of ["stdout", "stderr"] as const) {
+					const { double, out, err } = capturing();
+					yield* Doc.print([], { format, stream }).pipe(
+						Effect.provide(layers({ audience: "human", stdout: { color: "basic" } })),
+						Effect.provideService(Console.Console, double),
+					);
+					assert.deepStrictEqual([out, err], [[], []], `${format} ${stream}`);
+				}
+			}
+		}),
+	);
+});
+
 describe("Doc.print: an explicit format wins over the audience", () => {
 	it.effect("every format, for every audience, is that renderer over the context Render.context builds", () =>
 		Effect.gen(function* () {

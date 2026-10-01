@@ -554,6 +554,9 @@ export class Doc {
 	 * `Console.error`: a test captures it by swapping the `Console`. With `format: "auto"` the renderer follows
 	 * the audience, and the width is unbounded for an agent and a CI.
 	 *
+	 * An agent is never written an escape of any kind, even with an explicit `format: "ansi"`: its context is
+	 * colourless and its links are off. A document that renders to nothing prints nothing.
+	 *
 	 * `CurrentRuntimeEnv` is read if the environment has one and is not required: a `ci` audience prints
 	 * GitHub's log format only when it says GitHub Actions, and plain text otherwise, including when it is
 	 * absent. An explicit `format` is honoured whatever the audience.
@@ -571,6 +574,8 @@ export class Doc {
 			const requested = options?.format ?? "auto";
 			const format = requested === "auto" ? yield* autoFormat(ctx.audience) : requested;
 			const text = Render[format](doc, ctx);
+			// An empty document prints nothing, not a blank line.
+			if (text === "") return;
 			yield* stream === "stderr" ? Console.error(text) : Console.log(text);
 		});
 }

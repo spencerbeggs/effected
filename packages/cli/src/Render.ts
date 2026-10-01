@@ -22,7 +22,12 @@ import type { Style, TokenName } from "./Token.js";
  * @public
  */
 export interface RenderContext {
-	/** The display columns available. */
+	/**
+	 * The display columns available.
+	 *
+	 * @remarks
+	 * `Infinity` is no limit. A renderer clamps what it is given: zero or a negative width is 1, and `NaN` is 80.
+	 */
 	readonly width: number;
 	/** Who the output is for. */
 	readonly audience: AudienceKind;
@@ -81,7 +86,8 @@ export class Render {
 	 *
 	 * - `audience` is the `Audience` in force, so an audience flag is honoured;
 	 * - `color`, `paint` and `glyphs` are the `CliTheme`'s for THAT stream, so redirecting stdout does not quiet
-	 *   stderr;
+	 *   stderr; except that an agent's `color` is `none` and its `paint` the identity, so no renderer, `ansi` included,
+	 *   writes an escape for an agent whatever the terminal could do;
 	 * - `link` is `CliLinks.linker` over that stream's hyperlink support and the audience, so an agent never
 	 *   gets an escape and a terminal without OSC 8 gets the label;
 	 * - `width` is the option, else `TerminalEnv.width()` for a human, and **unbounded** (`Infinity`) for an agent
@@ -102,8 +108,10 @@ export class Render {
 			return {
 				width: options?.width ?? (kind === "human" ? terminal.width() : Number.POSITIVE_INFINITY),
 				audience: kind,
-				color: theme.color,
-				paint: theme.paint,
+				// An agent never gets an escape of any kind, so its context is colourless whatever the terminal says: every
+				// renderer, including an explicit `ansi`, then writes none (the linker already refuses its hyperlinks).
+				color: kind === "agent" ? "none" : theme.color,
+				paint: kind === "agent" ? (_token: TokenName | Style, text: string) => text : theme.paint,
 				glyphs: theme.glyphs,
 				link: CliLinks.linker({ links, hyperlinks: terminal[stream].hyperlinks, audience: kind }),
 				displayPath: options?.displayPath ?? ((absolute: string) => absolute),
