@@ -20,7 +20,7 @@ const MISSING_PEERS =
 	"@effected/cli/ui could not load its optional peers ink and react: install both beside @effected/cli to mount a screen";
 
 const READ_BEFORE_LOAD =
-	"@effected/cli/ui read Ink before loading it: a kit component rendered outside a screen that ran loadInk";
+	"@effected/cli/ui read Ink before loading it: run CliUi.context (or mount a screen with CliUi.run) before rendering UiProvider or a kit component in a tree of your own";
 
 const UNRESOLVED_CHALK =
 	"@effected/cli/ui could not resolve the chalk Ink uses (is ink bundled?), so Ink decides its own colour level";

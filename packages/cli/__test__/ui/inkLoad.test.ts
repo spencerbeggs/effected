@@ -21,7 +21,7 @@ describe("loading the optional peers", () => {
 			// A stray import() at module scope resolves asynchronously: wait for every started import before asserting none did.
 			yield* Effect.promise(() => vi.dynamicImportSettled());
 			assert.deepStrictEqual(loads, [], "importing ./ui and the bridge loads nothing");
-			assert.throws(() => bridge.inkModules(), /read Ink before loading it/);
+			assert.throws(() => bridge.inkModules(), /read Ink before loading it: run CliUi\.context/);
 
 			const first = yield* bridge.loadInk;
 			const second = yield* bridge.loadInk;

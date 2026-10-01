@@ -260,12 +260,12 @@ export class CliUi {
 	 *
 	 * @remarks
 	 * Hand it to {@link UiProvider}. It loads Ink and React, as a screen's mount does, so the provider and the kit's
-	 * hooks can render; a missing peer is a defect naming both.
+	 * hooks can render; a missing peer is a defect naming both. It is the only way to get a `UiContextValue`.
 	 */
 	static readonly context: Effect.Effect<UiContextValue, never, Cli.CliTheme> = Effect.gen(function* () {
 		const theme = (yield* CliTheme).forStream("stdout");
 		yield* loadInk;
-		return { theme, glyphs: theme.glyphs };
+		return { "~@effected/cli/ui/UiContextValue": true, theme, glyphs: theme.glyphs };
 	});
 
 	/**

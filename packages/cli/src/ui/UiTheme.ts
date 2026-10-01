@@ -141,8 +141,9 @@ const known = (reported: number | undefined, fallback: number): number =>
  * Never feed `columns` into a `Box`'s `width`. On a resize Ink re-lays out the tree it already has and repaints
  * before React re-renders with the new size, so a width taken from this hook is one paint stale. After a shrink,
  * that stale, wider frame wraps in the narrower terminal and leaves a copy stranded above the live one. For a
- * one-column margin use `marginRight: 1`, which Ink recomputes within its own resize. Cutting text to `columns` is
- * fine.
+ * one-column margin use `marginRight: 1`, which Ink recomputes within its own resize. Text cut to `columns` lags the
+ * same paint, so give a long row Ink's `wrap: "truncate-end"` too: on a shrink Ink then clips it rather than letting
+ * the terminal wrap it.
  *
  * A React hook: call it from a component rendered inside an Ink tree; it needs no screen, but reads a `UiProvider`'s
  * size when there is one.

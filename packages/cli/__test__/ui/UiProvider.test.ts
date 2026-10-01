@@ -1,15 +1,27 @@
 import { assert, describe, it } from "@effect/vitest";
 import { TerminalEnv } from "@effected/env";
-import { Effect, Exit, Layer, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { Box, Text, render, renderToString } from "ink";
 import type { ReactElement, ReactNode } from "react";
 import { createElement } from "react";
+import { vi } from "vitest";
 import { CliTheme } from "../../src/CliTheme.js";
 import { withInkColour } from "../../src/ui/internal/ink.js";
 import { useScreenCancel } from "../../src/ui/internal/ScreenContext.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import type { UiContextValue } from "../../src/ui.js";
-import { CliUi, Styled, UiProvider, useGlyphs, useTerminalSize, useTheme } from "../../src/ui.js";
+import {
+	CliUi,
+	KeyTable,
+	Select,
+	Styled,
+	UiProvider,
+	useGlyphs,
+	useKeys,
+	useTerminalSize,
+	useTheme,
+} from "../../src/ui.js";
+import { CliUiTest } from "../../src/ui-testing.js";
 
 /** A truecolor terminal and a theme whose accent token is one unmistakable colour, with ASCII glyphs. */
 const themeLayer = CliTheme.layer({ tokens: { accent: { fg: "#123456" } }, glyphs: "ascii" }).pipe(
@@ -39,6 +51,7 @@ const mountPlain = (
 			debug: true,
 			patchConsole: false,
 			exitOnCtrlC: false,
+			interactive: true,
 		});
 		instance.unmount();
 		const exit = yield* Effect.exit(Effect.tryPromise(() => instance.waitUntilExit()));
@@ -77,12 +90,20 @@ describe("UiProvider: the kit's hooks in a tree the kit did not mount", () => {
 	);
 
 	it.effect("control: without the provider the same component throws the outside-a-screen error", () =>
-		Effect.gen(function* () {
-			yield* CliUi.context;
-			const { exit } = yield* mountPlain(createElement(Probe));
-			assert.isTrue(Exit.isFailure(exit));
-			assert.include(String(exit), "outside a screen");
-		}).pipe(Effect.provide(themeLayer)),
+		Effect.acquireUseRelease(
+			// The render error goes to Ink's own boundary and rejects waitUntilExit; nothing may reach console.error.
+			Effect.sync(() => vi.spyOn(console, "error").mockImplementation(() => undefined)),
+			(spy) =>
+				Effect.gen(function* () {
+					yield* CliUi.context;
+					const { exit } = yield* mountPlain(createElement(Probe));
+					assert.isTrue(Exit.isFailure(exit));
+					assert.include(String(exit), "outside a screen");
+					const reported = spy.mock.calls.map((call) => String(call[0])).join(" | ");
+					assert.strictEqual(spy.mock.calls.length, 0, `nothing reaches console.error: ${reported}`);
+				}),
+			(spy) => Effect.sync(() => spy.mockRestore()),
+		).pipe(Effect.provide(themeLayer)),
 	);
 
 	it.effect("useScreenCancel is a no-op under the provider, where there is no screen to cancel", () =>
@@ -119,6 +140,76 @@ describe("UiProvider's size override (probe L1)", () => {
 			assert.include(overridden.stdout, "size=29x7");
 			const control = yield* mountPlain(provided(value, createElement(Size)));
 			assert.include(control.stdout, "size=79x23");
+		}).pipe(Effect.provide(themeLayer)),
+	);
+});
+
+/** A widget whose enter handler throws: inside a screen the kit's guard must turn it into a defect. */
+const ThrowsOnEnter = (): ReactElement => {
+	useKeys(KeyTable.make([{ keys: ["enter"], action: "go", help: "go" }]), () => {
+		throw new Error("handler threw under a nested provider");
+	});
+	return createElement(Text, null, "armed");
+};
+
+const messageOf = (exit: Exit.Exit<unknown, unknown>): string => {
+	if (Exit.isSuccess(exit)) return "<succeeded>";
+	const error = Cause.squash(exit.cause);
+	return error instanceof Error ? error.message : String(error);
+};
+
+describe("a UiProvider nested in a CliUi.run screen keeps the screen (review I1)", () => {
+	it.live("a throwing key handler under it is still the screen's defect, never an uncaught exception", () =>
+		Effect.gen(function* () {
+			const value = yield* CliUi.context.pipe(Effect.provide(themeLayer));
+			const handle = yield* CliUiTest.render(() =>
+				createElement(
+					UiProvider,
+					{ value: { ...value, size: { columns: 30, rows: 8 } } },
+					createElement(ThrowsOnEnter),
+				),
+			);
+			assert.include(yield* handle.plainFrame, "armed", "control: it drew first");
+			yield* handle.press("enter");
+			const result = yield* Effect.exit(handle.result.pipe(Effect.timeout("1 second")));
+			assert.isTrue(
+				Exit.isFailure(result) && result.cause.reasons.some(Cause.isDieReason),
+				`a defect: ${messageOf(result)}`,
+			);
+			assert.include(messageOf(result), "handler threw under a nested provider");
+		}).pipe(Effect.scoped, Effect.timeout("3 seconds")),
+	);
+
+	it.live("Select's q under it still cancels the screen with escape", () =>
+		Effect.gen(function* () {
+			const value = yield* CliUi.context.pipe(Effect.provide(themeLayer));
+			const handle = yield* CliUiTest.render<number>((control) =>
+				createElement(
+					UiProvider,
+					{ value },
+					createElement(Select.View<number>, {
+						message: "Pick",
+						choices: [{ label: "one", value: 1 }],
+						onSubmit: control.resolve,
+					}),
+				),
+			);
+			assert.include(yield* handle.plainFrame, "Pick", "control: it drew first");
+			yield* handle.press({ char: "q" });
+			const result = yield* Effect.exit(handle.result.pipe(Effect.timeout("1 second")));
+			assert.deepStrictEqual(CliUiTest.cancelReason(result), Option.some("escape"), messageOf(result));
+		}).pipe(Effect.scoped, Effect.timeout("3 seconds")),
+	);
+});
+
+describe("UiContextValue is minted only by CliUi.context (review M1)", () => {
+	it.effect("a hand-built value does not compile; a spread of a minted one does", () =>
+		Effect.gen(function* () {
+			const value = yield* CliUi.context;
+			// @ts-expect-error a value built by hand lacks the brand only CliUi.context sets
+			const forged: UiContextValue = { theme: value.theme, glyphs: value.glyphs };
+			const sized: UiContextValue = { ...value, size: { columns: 30, rows: 8 } };
+			assert.strictEqual(sized.theme, forged.theme, "both carry the same theme at runtime");
 		}).pipe(Effect.provide(themeLayer)),
 	);
 });

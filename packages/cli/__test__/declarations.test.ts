@@ -429,6 +429,7 @@ const UI_TYPES_AND_VALUES = [
 	"UiContextValue",
 	"UiKey",
 	"UiProvider",
+	"UiProviderProps",
 	"UiStreams",
 	"UiStreamsShape",
 	"UseKeysOptions",
