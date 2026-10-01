@@ -13,7 +13,7 @@ import { CliOutput } from "effect/cli";
  * unrecognised value forces colour off, `1`/`2`/`3` force it on even without
  * a terminal), then a non-empty `NO_COLOR` or `NODE_DISABLE_COLORS` and
  * `TERM=dumb`, then the TTY gate. `FORCE_COLOR` therefore beats `NO_COLOR`.
- * See `okf/decisions/force-color-honoured-node-precedence.md`. The environment
+ * The environment
  * is read through the ambient `ConfigProvider`, never `process`, so a test
  * swaps it with `Effect.provideService(ConfigProvider.ConfigProvider, ...)`;
  * an ambient `TerminalEnv`, such as `TerminalEnv.layerTest`, answers instead

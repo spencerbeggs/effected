@@ -28,7 +28,7 @@ export interface UiStreamsShape {
  * @remarks
  * A `Context.Reference`, so it never appears in `R`: the default reads the process streams when first used, never
  * at import, and a test provides in-memory streams with `Effect.provideService(UiStreams, streams)`. `./ui` binds
- * Node's process streams on its own licence (`okf/decisions/ui-binds-process-streams.md`).
+ * Node's process streams.
  *
  * @public
  */

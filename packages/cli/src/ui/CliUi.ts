@@ -338,12 +338,11 @@ export class CliUi {
 	 * at an `isTerminal` event; an event while no run is going that begins none is folded and not drawn, so what a program
 	 * reports after a run ends never mounts a second copy of it. A run mounts the view; its end unmounts it, which leaves
 	 * its last frame on the terminal, and the next run mounts afresh below it. A start while a run is drawn redraws in
-	 * place: the frame is never cleared, so nothing above it is erased (`okf/decisions/live-never-clears.md`,
-	 * `okf/decisions/live-view-runs-and-modes.md`). The state is never reset by the kit: a reducer that wants a fresh run
+	 * place: the frame is never cleared, so nothing above it is erased. The state is never reset by the kit: a reducer that wants a fresh run
 	 * resets it on the start.
 	 *
 	 * The frame is at most the terminal's rows less one, re-read on every render and on a resize, so a tall frame never
-	 * makes Ink wipe the scrollback; its width is Ink's own (`okf/decisions/live-height-clamp-not-width.md`). The clamp
+	 * makes Ink wipe the scrollback; its width is Ink's own. The clamp
 	 * lags one paint when the terminal gets shorter: Ink re-lays out and repaints the tree it already has on a resize,
 	 * before React re-renders with the new row count, so a frame already at the old height can be drawn once taller
 	 * than the terminal, which Ink answers by clearing the screen and its scrollback. Only a shrink in height while
@@ -351,8 +350,8 @@ export class CliUi {
 	 *
 	 * While a run is drawn the view also redraws on a tick of `tickMillis` (80 by default), a schedule in the run's
 	 * scope: interrupted with the run or the scope, it never outlives them. Its timer is not unref'd, so while a run is
-	 * drawn it keeps the process alive: the run's terminal event, or the scope's close, is what lets the process exit
-	 * (`okf/decisions/live-tick-is-a-scoped-schedule.md`). The frame index never steps back. Events that arrive at
+	 * drawn it keeps the process alive: the run's terminal event, or the scope's close, is what lets the process exit.
+	 * The frame index never steps back. Events that arrive at
 	 * once, in one chunk or in several the view had not yet caught up with, are folded together and drawn once. The view
 	 * takes events from `events` as fast as the stream yields them, so a stream that applies backpressure buffers in the
 	 * view while it draws.
@@ -375,8 +374,7 @@ export class CliUi {
 	 * mount to its end, so a `CliUi.run` during a run waits for the run to end, and one between runs mounts at once.
 	 *
 	 * While a run is drawn, write logs through `logConsole`, provided around the work the view reports on: its lines
-	 * land above the frame. A line written to the terminal any other way tears the frame
-	 * (`okf/decisions/live-logs-through-ink.md`).
+	 * land above the frame. A line written to the terminal any other way tears the frame.
 	 *
 	 * The view draws on stdout (`UiStreams`), at stdout's colour level and glyphs, and mounts only when the run is
 	 * interactive (`CliInteractive`).
