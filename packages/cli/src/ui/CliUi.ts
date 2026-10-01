@@ -53,6 +53,11 @@ export type Screen<A> = (control: ScreenControl<A>) => ReactElement | Promise<Re
 export interface CliUiRunOptions {
 	/** The stream the screen draws on, which decides its colour level; `"stdout"` by default. */
 	readonly stream?: "stdout" | "stderr";
+	/**
+	 * Erase the screen's last frame as it unmounts, however it ended; `false` by default, which leaves the last frame
+	 * on the terminal, as a record of the answer.
+	 */
+	readonly clear?: boolean;
 }
 
 /**
@@ -63,7 +68,19 @@ export interface CliUiRunOptions {
 export interface CliUiPromptOptions<A> {
 	/** The value to use when the run is not interactive. Without it a non-interactive run fails with `NotInteractive`. */
 	readonly otherwise?: A;
+	/** Erase the screen's last frame as it unmounts; `false` by default. See {@link CliUiRunOptions.clear}. */
+	readonly clear?: boolean;
 }
+
+/**
+ * Options for {@link CliUi.fallback}: `CliPrompt.fallback`'s, and whether the screen erases its last frame.
+ *
+ * @public
+ */
+export type CliUiFallbackOptions<A> = Cli.CliPromptFallbackOptions<A> & {
+	/** Erase the screen's last frame as it unmounts; `false` by default. See {@link CliUiRunOptions.clear}. */
+	readonly clear?: boolean;
+};
 
 /** The root keys: Esc cancels with `"escape"`, Ctrl-C with `"interrupt"`. `q` belongs to widgets, never here. */
 const RootKeys = (props: {
@@ -91,6 +108,7 @@ const mount = <A>(
 	screen: Screen<A>,
 	theme: Cli.StreamTheme,
 	stream: "stdout" | "stderr",
+	clear: boolean,
 ): Effect.Effect<A, Cli.Cancelled, Scope.Scope> =>
 	Effect.gen(function* () {
 		const { ink, react } = yield* loadInk;
@@ -135,6 +153,8 @@ const mount = <A>(
 			}),
 			(instance) =>
 				Effect.promise(async () => {
+					// Erases the last frame and marks it written, so the unmount's final render draws nothing over it.
+					if (clear) instance.clear();
 					instance.unmount();
 					await instance.waitUntilExit().catch(() => undefined);
 					overrides.onUnmount?.();
@@ -184,7 +204,10 @@ export class CliUi {
 	 * against it.
 	 *
 	 * @param screen - builds the element to mount from its {@link ScreenControl}
-	 * @param options - the stream to draw on
+	 * With `clear` the last frame is erased as the screen unmounts, so a wizard of several screens leaves only what the
+	 * program prints; without it the last frame stays, with the highlight where the answer was.
+	 *
+	 * @param options - the stream to draw on, and whether to erase the last frame
 	 */
 	static readonly run = <A>(
 		screen: Screen<A>,
@@ -194,7 +217,7 @@ export class CliUi {
 			if (!(yield* CliInteractive)) return yield* Effect.fail(new NotInteractive());
 			const stream = options?.stream ?? "stdout";
 			const theme = (yield* CliTheme).forStream(stream);
-			return yield* Semaphore.withPermit(mounts, Effect.scoped(mount(screen, theme, stream)));
+			return yield* Semaphore.withPermit(mounts, Effect.scoped(mount(screen, theme, stream, options?.clear === true)));
 		});
 
 	/**
@@ -209,13 +232,13 @@ export class CliUi {
 	 * pass each as an `otherwise`, and a non-interactive run returns exactly them.
 	 *
 	 * @param screen - the screen to show
-	 * @param options - the non-interactive default
+	 * @param options - the non-interactive default, and whether to erase the last frame
 	 */
 	static readonly prompt = <A>(
 		screen: Screen<A>,
 		options?: CliUiPromptOptions<A>,
 	): Effect.Effect<A, Cli.Cancelled | Cli.NotInteractive, Cli.CliTheme> =>
-		CliUi.run(screen).pipe(
+		CliUi.run(screen, options?.clear === true ? { clear: true } : undefined).pipe(
 			Effect.catchTag("NotInteractive", (error) => {
 				// `{ otherwise: undefined }` counts as not given.
 				const otherwise = options?.otherwise;
@@ -233,7 +256,8 @@ export class CliUi {
 	 * so core renders its own message and `CliRuntime.main` exits `64`. Name the parameter with `flag` (the name
 	 * without dashes) or `argument` so that error can be built.
 	 *
-	 * The options are {@link @effected/cli!CliPromptFallbackOptions}, the same as `CliPrompt.fallback`'s.
+	 * The options are {@link @effected/cli!CliPromptFallbackOptions}, the same as `CliPrompt.fallback`'s, and `clear`
+	 * as for {@link CliUi.run}.
 	 *
 	 * It runs during parsing, whose environment is core's alone, so it reads `CliTheme` if one is there: with
 	 * `CliRuntime.main`'s `env` (`CliEnv.layer`), or provided around the program. With no theme it treats the run as
@@ -255,12 +279,9 @@ export class CliUi {
 	 * terminal altogether.
 	 *
 	 * @param screen - the screen to show
-	 * @param options - the parameter it stands in for, and the non-interactive default
+	 * @param options - the parameter it stands in for, the non-interactive default, and whether to erase the last frame
 	 */
-	static readonly fallback = <A>(
-		screen: Screen<A>,
-		options: Cli.CliPromptFallbackOptions<A>,
-	): Param.FallbackPrompt<A> => {
+	static readonly fallback = <A>(screen: Screen<A>, options: CliUiFallbackOptions<A>): Param.FallbackPrompt<A> => {
 		// Said once per fallback: a parse that retries must not repeat it.
 		let explained = false;
 		return Effect.gen(function* () {
@@ -275,7 +296,7 @@ export class CliUi {
 				}
 				return yield* answerWithoutPerson(options);
 			}
-			return yield* CliUi.run(screen).pipe(
+			return yield* CliUi.run(screen, options.clear === true ? { clear: true } : undefined).pipe(
 				Effect.provideService(CliTheme, theme.value),
 				Effect.map((answer) => Prompt.succeed(answer)),
 				Effect.catchTag("Cancelled", (cancelled) => Effect.die(cancelled)),

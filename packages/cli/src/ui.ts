@@ -8,7 +8,14 @@
  *
  * @packageDocumentation
  */
-export { CliUi, type CliUiPromptOptions, type CliUiRunOptions, type Screen, type ScreenControl } from "./ui/CliUi.js";
+export {
+	CliUi,
+	type CliUiFallbackOptions,
+	type CliUiPromptOptions,
+	type CliUiRunOptions,
+	type Screen,
+	type ScreenControl,
+} from "./ui/CliUi.js";
 export {
 	Confirm,
 	type ConfirmAction,

@@ -359,6 +359,7 @@ describe("the built declarations", () => {
 const UI_TYPES_AND_VALUES = [
 	"Binding",
 	"CliUi",
+	"CliUiFallbackOptions",
 	"CliUiPromptOptions",
 	"CliUiRunOptions",
 	"Confirm",
