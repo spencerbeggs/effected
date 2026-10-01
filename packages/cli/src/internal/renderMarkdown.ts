@@ -73,9 +73,11 @@ const linkUrl = (target: LinkTarget, ctx: RenderContext): string | undefined => 
 		return isAllowedLinkUrl(url) ? url : undefined;
 	}
 	if (ctx.linkBase !== undefined) {
-		// A repository URL in place of `file://`: the display path under the base, with the line as GitHub's anchor.
-		const path = encodePath(sanitize(ctx.displayPath(target.file)).replace(/\\/g, "/").replace(/^\/+/, ""));
-		const url = `${ctx.linkBase}${path}${target.line === undefined ? "" : `#L${target.line}`}`;
+		// A repository URL in place of `file://`: the display path under the base, with the line as GitHub's anchor. A
+		// display path that is absolute or climbs out with `..` is not under the base, so it has no URL form.
+		const display = sanitize(ctx.displayPath(target.file)).replace(/\\/g, "/");
+		if (display.startsWith("/") || DRIVE.test(display) || display.split("/").includes("..")) return undefined;
+		const url = `${ctx.linkBase}${encodePath(display)}${target.line === undefined ? "" : `#L${target.line}`}`;
 		return isAllowedLinkUrl(url) ? url : undefined;
 	}
 	// The same builder as `CliLinks`, so a drive path links the same way here; a UNC or relative path has no link.
@@ -123,7 +125,8 @@ const emphasized = (spans: ReadonlyArray<Span>, mode: Mode): string => {
 			out += body;
 			continue;
 		}
-		out += `${lead}${strong ? "**" : ""}${em ? "_" : ""}${core}${em ? "_" : ""}${strong ? "**" : ""}${trail}`;
+		// `*` for emphasis, not `_`: GFM opens and closes `*` inside a word, where `_` reads as literal text.
+		out += `${lead}${strong ? "**" : ""}${em ? "*" : ""}${core}${em ? "*" : ""}${strong ? "**" : ""}${trail}`;
 	}
 	return out;
 };
@@ -233,32 +236,29 @@ const countsMd = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>
 		escapeText(sanitize(counter.label).replace(/\r\n|\r|\n/g, " "));
 
 	if (block.layout === "row") {
-		const header = [
-			...(label === "" ? [] : [""]),
-			...visible.map(name),
-			...(qualifier === "" ? [] : [""]),
-			// The duration's column is named: an empty header cell reads as a broken table.
-			...(duration === "" ? [] : ["duration"]),
-			...(suffix === "" ? [] : [""]),
-		];
+		// Every column of the table is named: the counters by their labels and the duration as `duration`. The label,
+		// which names the row rather than a column, goes above it, and the qualifier and suffix below.
+		const header = [...visible.map(name), ...(duration === "" ? [] : ["duration"])];
 		const cells = [
-			...(label === "" ? [] : [label]),
 			...visible.map((counter, index) =>
 				index === 0 && block.share !== false ? `${counter.n}/${total}` : String(counter.n),
 			),
-			...(qualifier === "" ? [] : [qualifier]),
 			...(duration === "" ? [] : [duration]),
-			...(suffix === "" ? [] : [suffix]),
 		];
-		return header.length === 0
-			? []
-			: [
-					tableMd(
-						header,
-						header.map(() => undefined),
-						[cells],
-					),
-				];
+		const after = [qualifier, suffix].filter((part) => part !== "").join(" ");
+		return [
+			...(label === "" ? [] : [flowLines(label)]),
+			...(header.length === 0
+				? []
+				: [
+						tableMd(
+							header,
+							header.map(() => undefined),
+							[cells],
+						),
+					]),
+			...(after === "" ? [] : [flowLines(after)]),
+		];
 	}
 	if (block.layout === "columns") {
 		return [
@@ -302,11 +302,11 @@ const blockMd = (walk: Walk, block: Block, depth: number, compact = false): Line
 			return flowLines(inlineMd(block.content, ctx, "flow"));
 		case "List": {
 			const cap = capOf(block.cap);
-			const shown = cap === undefined ? block.items : block.items.slice(0, cap);
-			const items = shown
-				.filter((item) => !isAnnotation(item))
-				.flatMap((item) => hang(blockMd(walk, item, depth, block.compact === true), "- ", "  "));
-			const hidden = block.items.length - shown.length;
+			// Annotations are skipped before the cap, so it counts what is shown, as in the other renderers.
+			const listed = block.items.filter((item) => !isAnnotation(item));
+			const shown = cap === undefined ? listed : listed.slice(0, cap);
+			const items = shown.flatMap((item) => hang(blockMd(walk, item, depth, block.compact === true), "- ", "  "));
+			const hidden = listed.length - shown.length;
 			return joinBlocks([items, hidden > 0 ? overflowMd(block.overflow, hidden, ctx) : []]);
 		}
 		case "Table": {
@@ -404,9 +404,17 @@ const blockMd = (walk: Walk, block: Block, depth: number, compact = false): Line
 			return [];
 		case "CountsTable":
 			return blockMd(walk, countsTableOf(block), depth);
-		case "Lines":
-			// One paragraph, the entries kept apart by hard breaks, so a reader never runs them together.
-			return flowLines(block.lines.map((entry) => inlineMd(entry, ctx, "line")).join(BREAK));
+		case "Lines": {
+			// One paragraph, the entries kept apart by hard breaks, so a reader never runs them together. An empty entry
+			// between two others is an empty line, a hard break of its own; at either end it has nothing to hold it.
+			const entries = block.lines.map((entry) => escapeLineStart(inlineMd(entry, ctx, "line").trim()));
+			let first = 0;
+			let last = entries.length;
+			while (first < last && entries[first] === "") first++;
+			while (last > first && entries[last - 1] === "") last--;
+			const kept = entries.slice(first, last);
+			return kept.map((line, index) => (index < kept.length - 1 ? `${line}\\` : line));
+		}
 		case "Line":
 			return flowLines(inlineMd(block.content, ctx, "line"));
 		case "DiffText": {

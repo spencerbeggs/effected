@@ -5,6 +5,7 @@ import { Doc, Glyphs, Render, Status } from "../src/index.js";
 import { displayWidth, stripAnsi } from "../src/internal/displayWidth.js";
 import { composite } from "./helpers/hostileDoc.js";
 import { contextOf, decodeTokens, link, linksOf, sgrProblems, tokenPaint } from "./helpers/renderContext.js";
+import { LINE_BREAK, isCommand } from "./helpers/runnerCommands.js";
 
 const ansi = (doc: ReadonlyArray<Block>, overrides: Partial<RenderContext> = {}) =>
 	Effect.map(contextOf(overrides), (ctx) => Render.ansi(doc, ctx));
@@ -560,4 +561,19 @@ describe("vitest-agent round 3: contextOf, strong and em, diffText, pipe tables 
 			assert.strictEqual(stripAnsi(yield* ansi([table])), yield* plain([table], OFF));
 		}),
 	);
+});
+
+describe("Render.contextOf: a ci audience neutralizes workflow commands by default (Task 12 carry-in)", () => {
+	const doc = [Doc.paragraph("::error::injected"), Doc.paragraph("x ##[warning]y")];
+	const commands = (text: string) => text.split(LINE_BREAK).filter(isCommand);
+
+	it("ci neutralizes unless told not to; other audiences keep the explicit setting", () => {
+		assert.deepStrictEqual(commands(Render.plain(doc, Render.contextOf({ audience: "ci" }))), []);
+		assert.lengthOf(
+			commands(Render.plain(doc, Render.contextOf({ audience: "ci", neutralizeWorkflowCommands: false }))),
+			2,
+			"an explicit false wins",
+		);
+		assert.lengthOf(commands(Render.plain(doc, Render.contextOf({ audience: "human" }))), 2, "control: a human is not");
+	});
 });

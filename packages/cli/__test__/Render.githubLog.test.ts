@@ -363,3 +363,13 @@ describe("Render.githubLog: always neutralizes (G6)", () => {
 		}),
 	);
 });
+
+describe("Render.githubLog: an annotation below a group's direct children (Task 12 carry-in)", () => {
+	it.effect("is dropped, as plain drops it, and documented so", () =>
+		Effect.gen(function* () {
+			const nested = Doc.collapsible("G", [Doc.section("S", [Doc.annotation({ level: "error" }, "x")])]);
+			const out = yield* log([nested]);
+			assert.deepStrictEqual(out.split(LINE_BREAK).filter(isCommand), ["::group::G", "::endgroup::"]);
+		}),
+	);
+});

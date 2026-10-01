@@ -872,8 +872,8 @@ describe("Render.markdown: lists, trees and counts", () => {
 				yield* treeOf([Doc.counts({ label: "Widgets", counters, durationMs: 61000, layout: "row" })]),
 			);
 			assert.deepStrictEqual(cellTexts(table), [
-				["", "passed", "failed", "duration"], // G4: the duration column is named, never an empty header
-				["Widgets", "3/4", "1", "1m 1s"],
+				["passed", "failed", "duration"], // every column named; the label goes above the table
+				["3/4", "1", "1m 1s"],
 			]);
 		}),
 	);
@@ -1201,6 +1201,85 @@ describe("Render.markdown: vitest-agent round 3 (parsed back)", () => {
 		Effect.gen(function* () {
 			const root = yield* treeOf([Doc.table([{ header: "File" }], [["a.ts"]], { style: "pipe" })]);
 			assert.deepStrictEqual(cellTexts(tableOf(root)), [["File"], ["a.ts"]]);
+		}),
+	);
+});
+
+describe("Render.markdown: Task 12 review carry-ins", () => {
+	const passed = (n: number) => Doc.counter(Status.core, "success", { key: "passed", label: "passed", n });
+	const failed = (n: number) => Doc.counter(Status.core, "failure", { key: "failed", label: "failed", n });
+
+	it.effect("em is *…*, so it opens and closes inside a word too", () =>
+		Effect.gen(function* () {
+			const out = yield* render([Doc.paragraph("a", Doc.em("b"), "c")]);
+			assert.strictEqual(out, "a*b*c");
+			const paragraph = kids(yield* parse(out))[0];
+			assert.deepStrictEqual(
+				kids(paragraph).map((n) => n.type),
+				["text", "emphasis", "text"],
+			);
+		}),
+	);
+
+	it.effect("a list's cap counts the items left after annotations are skipped", () =>
+		Effect.gen(function* () {
+			const annotation = Doc.annotation({ level: "error" }, "x");
+			const root = yield* treeOf([
+				Doc.list([annotation, Doc.paragraph("a"), Doc.paragraph("b"), Doc.paragraph("c")], { cap: 2 }),
+			]);
+			assert.lengthOf(kids(kids(root)[0]), 2, "two items shown");
+			assert.strictEqual(textOf(kids(root)[1] as N), "… 1 more");
+		}),
+	);
+
+	it.effect("a row of counts has a header for every column: the label goes above, qualifier and suffix below", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.counts({
+					layout: "row",
+					label: "Widgets",
+					counters: [passed(3), failed(1)],
+					qualifier: "(1 flaky)",
+					durationMs: 250,
+					suffix: "across 3 files",
+				}),
+			]);
+			assert.deepStrictEqual(
+				kids(root).map((n) => n.type),
+				["paragraph", "table", "paragraph"],
+			);
+			const cells = cellTexts(tableOf(root));
+			assert.deepStrictEqual(cells, [
+				["passed", "failed", "duration"],
+				["3/4", "1", "250ms"],
+			]);
+			assert.isTrue(
+				(cells[0] ?? []).every((cell) => cell !== ""),
+				"no empty header",
+			);
+			assert.strictEqual(textOf(kids(root)[0] as N), "Widgets");
+			assert.strictEqual(textOf(kids(root)[2] as N), "(1 flaky) across 3 files");
+		}),
+	);
+
+	it.effect("with linkBase, a display path that is absolute or climbs with .. falls back to the no-URL form", () =>
+		Effect.gen(function* () {
+			for (const display of ["/abs/x.ts", "../x.ts", "a/../../x.ts", "C:\\x.ts"]) {
+				const root = yield* treeOf([Doc.paragraph(Doc.link({ file: "/repo/x.ts", line: 2 }, "x"))], {
+					linkBase: "https://github.com/o/r/blob/sha/",
+					displayPath: () => display,
+				});
+				assert.notInclude(descendantTypes(root), "link", display);
+				assert.include(descendantTypes(root), "inlineCode", display);
+			}
+		}),
+	);
+
+	it.effect("an empty entry of Doc.lines is kept as an empty line between hard breaks", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([Doc.lines(["one", "", "two"])]);
+			assert.lengthOf(kids(root), 1, "still one paragraph");
+			assert.strictEqual(textOf(root), "one\n\ntwo");
 		}),
 	);
 });

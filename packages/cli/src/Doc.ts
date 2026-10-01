@@ -487,10 +487,8 @@ export class Doc {
 	}
 
 	/**
-	 * Content in italic: markdown `_…_`, italic in `ansi`, and the content as is in plain and `githubLog`.
-	 *
-	 * @remarks
-	 * Markdown's `_` does not open inside a word, so content glued to a letter on either side reads as plain text there.
+	 * Content in italic: markdown `*…*` (which GFM reads inside a word too), italic in `ansi`, and the content as is in
+	 * plain and `githubLog`.
 	 *
 	 * @param content - any number of strings, inlines or arrays of them, in order
 	 */
@@ -779,7 +777,8 @@ export class Doc {
 	 *
 	 * @remarks
 	 * It is the kit's own command, so `githubLog` does not neutralize it; its message and properties are escaped, so
-	 * no text in them can end the command or start another.
+	 * no text in them can end the command or start another. It is a command where a line starts: at the top level, as a
+	 * top-level section's child, or as a direct child of a group's body. Nested deeper, it is dropped.
 	 *
 	 * @param options - the level, and the optional file, position and title
 	 * @param message - what it says

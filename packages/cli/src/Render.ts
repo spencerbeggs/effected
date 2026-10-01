@@ -100,7 +100,10 @@ export interface RenderContextOfOptions {
 	 * value, makes OSC 8 hyperlinks through {@link CliLinks.linker}, for any audience but an agent.
 	 */
 	readonly links?: "off" | CliLinksShape | undefined;
-	/** See {@link RenderContext.neutralizeWorkflowCommands}; unset by default. */
+	/**
+	 * See {@link RenderContext.neutralizeWorkflowCommands}. `true` by default for a `ci` audience, whose output the
+	 * Actions runner may read (it is harmless elsewhere), and unset for the others; an explicit `false` always wins.
+	 */
 	readonly neutralizeWorkflowCommands?: boolean | undefined;
 	/** See {@link RenderContext.linkBase}; unset by default. */
 	readonly linkBase?: string | undefined;
@@ -212,9 +215,12 @@ export class Render {
 					? (_target: LinkTarget, label: string) => label
 					: CliLinks.linker({ links, hyperlinks: true, audience: options.audience }),
 			displayPath: options.displayPath ?? ((absolute: string) => absolute),
-			...(options.neutralizeWorkflowCommands === undefined
-				? {}
-				: { neutralizeWorkflowCommands: options.neutralizeWorkflowCommands }),
+			// A ci audience may be read by the Actions runner, and neutralizing is harmless anywhere else.
+			...((options.neutralizeWorkflowCommands ?? options.audience === "ci")
+				? { neutralizeWorkflowCommands: true }
+				: options.neutralizeWorkflowCommands === false
+					? { neutralizeWorkflowCommands: false }
+					: {}),
 			...(options.linkBase === undefined ? {} : { linkBase: options.linkBase }),
 		};
 	};
@@ -318,12 +324,15 @@ export class Render {
 	 *   `path:line:col` for a file.
 	 * - A list is bullets, a tree a nested bullet list under its root label, and overflow rows paragraphs after what
 	 *   they cap. Counts inline is a paragraph, columns a list of `label: n` and row a one-row table of the counter
-	 *   labels over their numbers.
+	 *   labels over their numbers, every header named (the duration as `duration`), with the label above the table and
+	 *   the qualifier and suffix below it.
 	 * - Verbatim text is a fenced code block, so its indentation survives; an annotation is nothing.
-	 * - Strong content is `**…**` and emphasised `_…_` (which does not open inside a word), with the spaces at a run's
-	 *   edges kept outside the markers. `Lines` are one paragraph with a hard break between entries; a `Line` is one
+	 * - Strong content is `**…**` and emphasised `*…*`, which GFM reads inside a word too, with the spaces at a run's
+	 *   edges kept outside the markers. `Lines` are one paragraph with a hard break between entries, an empty entry
+	 *   between two others an empty line (one at either end is dropped); a `Line` is one
 	 *   paragraph; diff text a `diff` fence; a counts table a pipe table; a file is its display path as text.
-	 * - With `linkBase`, a file link goes to the base and the display path, plus `#L<line>`, in place of `file://`.
+	 * - With `linkBase`, a file link goes to the base and the display path, plus `#L<line>`, in place of `file://`. A
+	 *   display path that is absolute or climbs out with `..` is not under the base, so its link has no URL form.
 	 * - A compact list item joins its parts with no blank line, putting a hard break where two paragraphs would merge.
 	 *   A row of counts names its duration column `duration`.
 	 *
@@ -338,8 +347,9 @@ export class Render {
 	 * @remarks
 	 * Everything is what {@link Render.plain} renders, except an annotation, which is one workflow command
 	 * (`::error file=…,line=…::message`), and a collapsible that starts a line, which is a group: `::group::title`, its
-	 * body, `::endgroup::`. An annotation is a command at the top level, as a section's child, and inside a group's body;
-	 * inside a list or callout it is nothing, as in plain. Its message and properties are escaped, so no text can end
+	 * body, `::endgroup::`. An annotation is a command at the top level, as a top-level section's child, and as a direct
+	 * child of a group's body; anywhere deeper (inside a list, a callout, or a section within a group) it is nothing,
+	 * as in plain. Its message and properties are escaped, so no text can end
 	 * the command or start another, and the kit's own command is never neutralized. That is a top-level collapsible, or one that is a direct child of a
 	 * top-level section. GitHub does not nest groups, so a collapsible inside a group, or inside a list or callout
 	 * (where it would not start a line), keeps plain's rendering: its title on a line and its body indented.
