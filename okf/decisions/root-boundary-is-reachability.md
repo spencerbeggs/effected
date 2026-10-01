@@ -19,8 +19,8 @@ sources:
     title: The cli boundary test
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T03:17:21Z
-  body_sha256: ad87492a2fe7431737c56fcb4c87750270ea9b5f039f6aab984dabc94a2f5e18
+  at: 2026-10-01T03:23:20Z
+  body_sha256: a5ae698a88b1a16f29096daae1ba2f0e8ea0fcea3a8c068b0691988d65d8ce83
 ---
 
 # The cli root boundary is a module-graph walk, not a per-file scan
@@ -46,12 +46,15 @@ synthetic trees.[^probe-p4]
 
 `packages/cli/__test__/boundary.test.ts` has two parts.[^cli-boundary-test]
 
-- **Part 2, the boundary, is reachability.** A breadth-first walk over
+- **Part 2, the boundary, is reachability.** A walk over
   `SourceBoundary.importSpecifiers`, following relative specifiers with `.js`
   mapped to `.ts`, copied from the workspaces entrypoints
   test.[^workspaces-entrypoints] From `src/index.ts` and `src/testing.ts` it
-  asserts that no `src/ui*` file and no `ink`, `react` or `react/*` specifier
-  is reachable. An `import("<literal>")` is an edge like any other, so the
+  asserts that no `src/ui*` file, no `ink`, `react` or `react/*` specifier,
+  and no self-reference to `@effected/cli/ui` is reachable; the package's own
+  name resolves through its `exports`, so a self-reference is a way into
+  `./ui` that no relative edge shows. An `import("<literal>")` is an edge like
+  any other, so the
   root may not reach `./ui` even lazily.
 - **Part 1, per-file purity, is kept.** The scan still holds every file to
   the `process`, `stdout-write`, `node:` and platform rules. The ui files are

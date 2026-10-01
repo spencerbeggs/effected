@@ -11,10 +11,19 @@ sources:
   - id: cli-package-json
     resource: ../../packages/cli/package.json
     title: The cli manifest
+  - id: schemastore-cli-package-json
+    resource: ../../packages/schemastore-cli/package.json
+    title: The schemastore-cli manifest, the one kit package that depends on cli
+  - id: npm-optional-peers
+    resource: https://docs.npmjs.com/cli/v11/configuring-npm/package-json#peerdependenciesmeta
+    title: "npm package.json docs, peerDependenciesMeta"
+  - id: pnpm-auto-install-peers
+    resource: https://pnpm.io/settings/peer-dependencies#autoinstallpeers
+    title: "pnpm settings, autoInstallPeers"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T03:17:21Z
-  body_sha256: 8bc9a12196fee7b6d77b3aca04282e3e065ff6c0745523065b6b8037f015ea0a
+  at: 2026-10-01T03:23:20Z
+  body_sha256: 5951dba03d70fc3c782c2a7c72cacf5d9aacc2496fdbe9d9f50124912f8382b5
 ---
 
 # The cli root stays boundary, and ./ui is integrated only for consumers who opt in
@@ -37,14 +46,26 @@ package in the kit to need that reading:
 - **The root and `./testing` stay boundary.** They reach neither `ink` nor
   `react`, which the boundary test proves by walking the module graph.
 - **`./ui` and `./ui/testing` are integrated, on opt-in.** `ink` and `react`
-  are optional peers, so a package manager installs them only when the
-  consumer asks for them. A consumer who imports `./ui` and installs the
-  peers takes an integrated edge; a consumer who does not pays nothing.[^cli-package-json]
+  are optional peers.[^cli-package-json] npm states that it "will not
+  automatically install optional peer dependencies",[^npm-optional-peers]
+  and pnpm's `autoInstallPeers` installs only missing **non-optional**
+  peers.[^pnpm-auto-install-peers] So a consumer who imports `./ui` and
+  installs the peers takes an integrated edge, and a consumer who does not
+  installs nothing for it.
 
-R1 to R4 apply as follows. R1 is held by the root, which takes no external
-runtime dependency. R2 propagates nothing, because nothing in the kit depends
-on `@effected/cli`: only applications do. R4 holds, because the tier follows
-the surface a consumer actually imports, not what the manifest permits.
+R1 to R4 apply as follows:
+
+- **R1** is held by the root and `./testing`, which take no external runtime
+  dependency. Only the opt-in subpaths name one.
+- **R2** propagates tier only from a tier-3 package. The one kit package that
+  depends on `@effected/cli` is `schemastore-cli`,[^schemastore-cli-package-json]
+  a [companion](../glossary/companion-package.md) that carries no tier and
+  imports only the boundary root, so nothing inherits a tier from `./ui`.
+- **R3** keeps the root boundary despite its `@effected/*` edges (`env`,
+  `walker`, `glob`, `config-file`, `github-commands`): each is boundary or
+  pure, and a boundary edge does not propagate.
+- **R4** holds, because the tier follows the surface a consumer actually
+  imports, not what the manifest permits.
 
 ## Alternatives rejected
 
@@ -57,10 +78,19 @@ the surface a consumer actually imports, not what the manifest permits.
 
 ## Consequences
 
-The project roster lists `@effected/cli` as boundary, with `./ui` noted as
-integrated on opt-in. The layering check reads `peerDependencies`, but it
-constrains `@effected/*` edges only, so the two new external peers do not
-move `cli` in `layers.json`.
+- The project roster keeps `cli` at boundary. The per-entrypoint reading lives
+  here and in the [cli Module](../modules/cli.md).
+- The layering check reads `peerDependencies`, but it constrains `@effected/*`
+  edges only, so the two new external peers do not move `cli` in
+  `layers.json`.
+- **"Installs nothing" holds only while no incompatible `react` is in the
+  tree. This is not probed.** npm's resolver treats a present but out-of-range
+  optional peer as a conflict, so a consumer tree that already holds, say,
+  `react@18` may fail `npm install` with `ERESOLVE` even though it never
+  imports `./ui`.
 
 [^dependency-policy]: `../conventions/dependency-policy.md`
 [^cli-package-json]: `../../packages/cli/package.json`
+[^npm-optional-peers]: <https://docs.npmjs.com/cli/v11/configuring-npm/package-json#peerdependenciesmeta>
+[^pnpm-auto-install-peers]: <https://pnpm.io/settings/peer-dependencies#autoinstallpeers>
+[^schemastore-cli-package-json]: `../../packages/schemastore-cli/package.json`

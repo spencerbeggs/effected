@@ -1,15 +1,15 @@
 ---
 type: Module
 title: "@effected/cli"
-description: The presentation boundary of an effect/cli program — audience, colour, theme, messages, logging, failure reporting and schema-issue renderers in a React-free root, with interactive screens planned behind ./ui.
+description: The presentation boundary of an effect/cli program — audience, colour, theme, messages, logging, failure reporting and schema-issue renderers in a React-free root, with interactive screens landing behind ./ui (P4).
 status: stable
 kind: package
 resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T03:17:21Z
-  body_sha256: 1153fde3dcde0a9ff86eb6dfda309a2dffd12df327d927fbea7d2ee3a7e0e65d
+  at: 2026-10-01T03:23:20Z
+  body_sha256: 00b8b213546d78a4eb50e55a97655fb5133b0f9d5958c4a9b31011f1c9dccd66
 ---
 
 # @effected/cli
@@ -19,7 +19,7 @@ on `effect/cli`: who the output is for, how it reaches them, how a failure is
 reported, and how a schema issue is rendered into a sentence a user can act
 on. The [presentation layer](../decisions/cli-grows-presentation-layer.md)
 — audience, interactivity, theme, a status vocabulary, messages and logging
-composition — lives in a React-free root; interactive screens are planned
+composition — lives in a React-free root; interactive screens are landing
 behind a `./ui` subpath the root never reaches. It is still not a CLI
 framework: `effect/cli` owns argument parsing, flags, the command tree and the
 help system, and this package must never grow a second one.
