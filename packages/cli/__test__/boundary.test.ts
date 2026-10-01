@@ -96,23 +96,18 @@ const nodeImporters = (entry: string): ReadonlyArray<string> =>
  *
  * - `ui/internal/processStreams.ts`: `process` (reads the three process streams);
  * - `ui/internal/inkChalk.ts`: `forbidImports` of `node:module`, `node:url`, `node:fs`;
- * - `ui/testing/fakeStreams.ts` (testing only): `forbidImports` of `node:events`, `node:stream`
- *   (not yet landed).
+ * - `ui/testing/fakeStreams.ts` (testing only): `forbidImports` of `node:stream` (it needs no `node:events`).
  */
 const NODE_LICENCE: ReadonlyArray<string> = [
 	"ui/internal/inkChalk.ts forbidImports node:fs",
 	"ui/internal/inkChalk.ts forbidImports node:module",
 	"ui/internal/inkChalk.ts forbidImports node:url",
 	"ui/internal/processStreams.ts process process",
+	"ui/testing/fakeStreams.ts forbidImports node:stream",
 ];
 
-/**
- * The `node:` importers reachable from `./ui`. `ui/internal/inkChalk.ts` joins
- * once a public module reaches the Ink bridge (the screen runner); until then
- * `./ui` reaches only `UiStreams` and `processStreams.ts`, which imports no
- * `node:` module.
- */
-const UI_NODE_IMPORTERS: ReadonlyArray<string> = [];
+/** The `node:` importers reachable from `./ui`: only Ink's chalk resolution. The testing fakes stay off it. */
+const UI_NODE_IMPORTERS: ReadonlyArray<string> = ["ui/internal/inkChalk.ts"];
 
 /** The `node:` importers `./ui/testing` may reach. */
 const UI_TESTING_NODE_LICENCE: ReadonlySet<string> = new Set(["ui/internal/inkChalk.ts", "ui/testing/fakeStreams.ts"]);
@@ -203,8 +198,12 @@ describe("cli boundary", () => {
 			assert.deepStrictEqual(rootOffences(SRC, ["index.ts", "testing.ts"]), []);
 		});
 
-		it("positive control: the walker reads the ./ui and ./ui/testing entries", () => {
-			assert.isTrue(reachableFrom(resolve(SRC, "ui.ts")).has(resolve(SRC, "ui.ts")));
+		it("positive control: from ./ui the walker reaches the Ink loader's react import and more than one file", () => {
+			const reached = reachableFrom(resolve(SRC, "ui.ts"));
+			assert.isAbove(reached.size, 1, "the walker follows ./ui's imports");
+			const specifiers = [...reached].flatMap((file) => specifiersOf(file, readSource));
+			assert.include(specifiers, "react", 'the dynamic import("react") in the loader is reached');
+			assert.include(specifiers, "ink");
 			assert.isTrue(reachableFrom(resolve(SRC, "ui-testing.ts")).has(resolve(SRC, "ui-testing.ts")));
 		});
 

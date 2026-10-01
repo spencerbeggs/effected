@@ -80,6 +80,25 @@ export const inkModules = (): InkModules => {
 	return modules;
 };
 
+/**
+ * A value built once from the loaded React, such as a class component or a context, which cannot be declared at
+ * module scope because the kit holds no runtime React until {@link loadInk} runs.
+ *
+ * @remarks
+ * The returned accessor builds on first call and returns the same value thereafter; like {@link inkModules}, it
+ * throws if called before the load.
+ *
+ * @internal
+ */
+export const fromReact = <T>(build: (react: InkModules["react"]) => T): (() => T) => {
+	let built: { readonly react: InkModules["react"]; readonly value: T } | undefined;
+	return () => {
+		const { react } = inkModules();
+		if (built === undefined || built.react !== react) built = { react, value: build(react) };
+		return built.value;
+	};
+};
+
 const LEVELS: Record<ColorLevel, ChalkLevel> = { none: 0, basic: 1, "256": 2, truecolor: 3 };
 
 /**

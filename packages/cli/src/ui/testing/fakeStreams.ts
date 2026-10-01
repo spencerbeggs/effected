@@ -1,0 +1,87 @@
+import { PassThrough, Writable } from "node:stream";
+import type { UiStreamsShape } from "../UiStreams.js";
+
+/**
+ * Options for {@link makeFakeStreams}.
+ *
+ * @internal
+ */
+export interface FakeStreamsOptions {
+	/** The terminal width; 80 by default. */
+	readonly columns?: number;
+	/** The terminal height; 24 by default. */
+	readonly rows?: number;
+}
+
+/**
+ * In-memory terminal streams a screen mounts on.
+ *
+ * @internal
+ */
+export interface FakeStreams {
+	/** The streams, to provide as `UiStreams`. */
+	readonly streams: UiStreamsShape;
+	/** Every `setRawMode` call, in order. */
+	readonly rawModes: ReadonlyArray<boolean>;
+	/** Everything written to stdout so far. */
+	readonly stdout: () => string;
+	/** Everything written to stderr so far. */
+	readonly stderr: () => string;
+	/** Feed raw bytes to stdin, as a terminal in raw mode would deliver a key. */
+	readonly input: (data: string) => void;
+}
+
+const capture = (columns: number, rows: number): { readonly stream: Writable; readonly text: () => string } => {
+	const chunks: Array<string> = [];
+	const stream = new Writable({
+		write(chunk: Buffer | string, _encoding, callback) {
+			chunks.push(chunk.toString());
+			callback();
+		},
+	});
+	Object.assign(stream, { isTTY: true, columns, rows });
+	return { stream, text: () => chunks.join("") };
+};
+
+/**
+ * Make in-memory stdin, stdout and stderr that satisfy Ink's stream contract: TTYs with a size, a recorded
+ * `setRawMode`, `ref` and `unref`, and captured writes.
+ *
+ * @remarks
+ * The third file licensed to touch Node (`okf/decisions/ui-binds-process-streams.md`), testing only: Ink's stream
+ * contract is Node's, so the fakes are `node:stream` streams rather than a hand-rolled emitter that would have to
+ * reproduce `readable`, `read()`, `setEncoding` and the write-callback barrier Ink waits on at unmount.
+ *
+ * @internal
+ */
+export const makeFakeStreams = (options: FakeStreamsOptions = {}): FakeStreams => {
+	const columns = options.columns ?? 80;
+	const rows = options.rows ?? 24;
+	const rawModes: Array<boolean> = [];
+	const stdin = new PassThrough();
+	Object.assign(stdin, {
+		isTTY: true,
+		setRawMode: (mode: boolean) => {
+			rawModes.push(mode);
+			return stdin;
+		},
+		ref: () => stdin,
+		unref: () => stdin,
+	});
+	const stdout = capture(columns, rows);
+	const stderr = capture(columns, rows);
+	return {
+		// The fakes carry every member Ink reads; Node's tty stream types also demand a file descriptor they cannot have.
+		streams: {
+			stdin: stdin as unknown as NodeJS.ReadStream,
+			stdout: stdout.stream as unknown as NodeJS.WriteStream,
+			stderr: stderr.stream as unknown as NodeJS.WriteStream,
+		},
+		rawModes,
+		stdout: stdout.text,
+		stderr: stderr.text,
+		input: (data) => {
+			stdin.write(data);
+		},
+	};
+};
