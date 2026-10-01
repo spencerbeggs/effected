@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { Audience } from "@effected/env";
 import type { Console } from "effect";
 import { Effect, Exit, Fiber, Queue, Stream } from "effect";
 import { TestClock } from "effect/testing";
@@ -332,6 +333,99 @@ describe("CliUi.live when not interactive (Review Focus 4)", () => {
 			yield* Queue.offer(queue, End);
 			yield* until(() => fake.stdout().includes("ended"));
 			assert.strictEqual(loads.count, 1);
+		}).pipe(Effect.scoped),
+	);
+});
+
+describe("CliUi.live: Task 4 review fixes", () => {
+	const dying = Stream.fromIterable([Start, tick(1)]).pipe(
+		Stream.rechunk(1),
+		Stream.concat(Stream.die(new Error("the stream died"))),
+	);
+
+	it.live("a stream that dies mid-run: the run unmounts first, then done dies with the stream's defect", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const timeline: Array<string> = [];
+			const handle = yield* liveOn(fake, optionsOf(dying), { onUnmount: () => timeline.push("unmount") });
+			const exit = yield* Effect.exit(handle.done).pipe(Effect.timeout("2 seconds"));
+			timeline.push("done");
+			assert.isTrue(Exit.isFailure(exit), String(exit));
+			assert.include(String(exit), "the stream died");
+			assert.deepStrictEqual(timeline, ["unmount", "done"]);
+			assert.deepStrictEqual(fake.rawModes, []);
+			assert.include(fake.stdout().slice(-64), SHOW_CURSOR);
+			assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted", "the permit was released");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("a stream that dies when not interactive: done dies with the stream's defect too", () =>
+		Effect.gen(function* () {
+			const handle = yield* liveOn(makeFakeStreams(), optionsOf(dying), { interactive: false });
+			const exit = yield* Effect.exit(handle.done).pipe(Effect.timeout("2 seconds"));
+			assert.isTrue(Exit.isFailure(exit), String(exit));
+			assert.include(String(exit), "the stream died");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("a fallback that throws too leaves the run unpainted, so its final frame is printed as a string", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const log = capturing();
+			const drawn = new Set<string>();
+			const options = optionsOf(Stream.fromIterable([Start, tick(1), tick(2), End]).pipe(Stream.rechunk(1)), {
+				render: (state) => {
+					if (state.last === "tick 2") throw new Error("render threw");
+					// The fallback draws the last good state again: this time it throws as well.
+					if (drawn.has(state.last)) throw new Error("fallback threw");
+					drawn.add(state.last);
+					return frameOf(state);
+				},
+			});
+			const handle = yield* liveOn(fake, options, { console: log.console });
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.strictEqual(warningsIn(log.lines).length, 1, log.lines.join("\n"));
+			assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 1", "ended"], "the final frame, once");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("owned, not interactive, for an agent audience: escape-free even on a truecolor terminal", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 200, rows: 20 });
+			const handle = yield* liveOn(fake, optionsOf(Stream.fromIterable([Start, End]), { render: Styledframe }), {
+				interactive: false,
+				color: "truecolor",
+			}).pipe(Effect.provide(Audience.layerTest("agent")));
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			assert.include(fake.stdout(), "ended");
+			assert.notInclude(fake.stdout(), ESC, "no escape of any kind for an agent");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("the frame index never steps back: every frame drawn is at or after the last", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			const frames: Array<number> = [];
+			const queue = yield* queueOf();
+			yield* liveOn(
+				fake,
+				optionsOf(Stream.fromQueue(queue), {
+					tickMillis: 10,
+					render: (state, frame) => {
+						frames.push(frame);
+						return frameOf(state);
+					},
+				}),
+			);
+			yield* Queue.offer(queue, Start);
+			yield* settle(20);
+			for (let step = 1; step <= 30; step++) {
+				yield* Queue.offer(queue, tick(step));
+				yield* TestClock.adjust("25 millis");
+			}
+			yield* settle(80);
+			const backwards = frames.filter((frame, index) => index > 0 && frame < (frames[index - 1] ?? 0));
+			assert.deepStrictEqual(backwards, [], `frames drawn: ${frames.join(",")}`);
 		}).pipe(Effect.scoped),
 	);
 });

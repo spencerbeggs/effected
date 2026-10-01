@@ -1,7 +1,8 @@
 // Root types are named through the package's own name, so the emitted ui.d.ts imports them from "@effected/cli".
 import type * as Cli from "@effected/cli";
+import { Audience } from "@effected/env";
 import type { Console } from "effect";
-import { Cause, Clock, Duration, Effect, Exit, Fiber, Pull, Queue, Schedule, Scope, Stream } from "effect";
+import { Cause, Clock, Duration, Effect, Exit, Fiber, Option, Pull, Queue, Schedule, Scope, Stream } from "effect";
 import type { FunctionComponent, ReactElement, ReactNode } from "react";
 import { CliInteractive } from "../CliInteractive.js";
 import { CliTheme } from "../CliTheme.js";
@@ -37,7 +38,9 @@ export interface LiveOptions<E, S> {
 	/**
 	 * Draw the state. `frame` is the wall clock in ticks of `tickMillis` (`floor(now / tickMillis)`, from `Clock`), so a
 	 * spinner keeps turning across runs. Rendered inside the kit's providers: `useTheme`, `useGlyphs`, `Styled` and
-	 * `useTerminalSize` work in it.
+	 * `useTerminalSize` work in it. When the final frame is printed as a string (not interactive, or a run that degraded
+	 * before it painted), `useTerminalSize().rows` is `Infinity`, since that frame has no height to fit: a render must
+	 * not allocate per row.
 	 */
 	readonly render: (state: S, frame: number) => ReactElement;
 	/** Whether an event starts a run. */
@@ -104,12 +107,16 @@ const heightClamp: () => FunctionComponent<{ readonly children?: ReactNode }> = 
 	return HeightClamp;
 });
 
-/** What the controller acts on: a chunk of events, a tick, a render failure to look at, or the end of the stream. */
+/**
+ * What the controller acts on: a chunk of events, a tick, a render failure to look at, the end of the stream, or the
+ * stream's death.
+ */
 type Message<E> =
 	| { readonly _tag: "Events"; readonly chunk: ReadonlyArray<E> }
 	| { readonly _tag: "Tick"; readonly frame: number }
 	| { readonly _tag: "Failed" }
-	| { readonly _tag: "Ended" };
+	| { readonly _tag: "Ended" }
+	| { readonly _tag: "Died"; readonly cause: Cause.Cause<never> };
 
 /** What is mounted for a run: its scope (permit, colour, Ink instance, tick) and the slot that swaps its frame. */
 interface Mounted {
@@ -152,6 +159,10 @@ export const live = <E, S>(
 		const tickMillis = options.tickMillis ?? 80;
 		if (!(Number.isFinite(tickMillis) && tickMillis > 0)) return yield* Effect.die(new Error(TICK_INVALID(tickMillis)));
 		const theme = (yield* CliTheme).forStream("stdout");
+		// An agent never gets an escape of any kind, whatever the terminal could do (as `Render.context` does): Ink's
+		// colour level is held at none for it. Read only when provided, so `Audience` stays out of the requirements.
+		const audience = yield* Effect.serviceOption(Audience);
+		const colour = Option.isSome(audience) && audience.value.kind === "agent" ? "none" : theme.color;
 		const interactive = yield* CliInteractive;
 		const streams = yield* UiStreams;
 		const overrides = yield* UiRenderOptions;
@@ -211,7 +222,7 @@ export const live = <E, S>(
 				});
 				const text = yield* Effect.scoped(
 					Effect.andThen(
-						withInkColour(theme.color),
+						withInkColour(colour),
 						Effect.sync(() => ink.renderToString(tree, { columns })),
 					),
 				);
@@ -247,7 +258,7 @@ export const live = <E, S>(
 						() => Effect.sync(() => overrides.onUnmount?.(undefined)),
 					);
 					const { ink, react } = yield* loadInk;
-					yield* withInkColour(theme.color);
+					yield* withInkColour(colour);
 					const frame = yield* frameOf;
 					const initial = elementOf(state, frame);
 					const shown = state;
@@ -257,7 +268,11 @@ export const live = <E, S>(
 						return good === undefined
 							? null
 							: react.createElement(errorBoundary(), {
-									onError: () => undefined,
+									// The last good frame threw as well: nothing of this run is left on the terminal, so its end
+									// prints the final frame as a string.
+									onError: () => {
+										current.painted = false;
+									},
 									children: elementOf(good.state, good.frame),
 								});
 					};
@@ -421,32 +436,58 @@ export const live = <E, S>(
 		const onTick = (frame: number): Effect.Effect<void> =>
 			Effect.suspend(() => {
 				const current = run;
-				return current?.mounted === undefined || frame === current.frame ? Effect.void : drawAt(frame);
+				// A tick that waited in the inbox past a later draw is stale: the spinner never steps back.
+				return current?.mounted === undefined || frame <= current.frame ? Effect.void : drawAt(frame);
 			});
 
 		const control: Effect.Effect<void> = Effect.gen(function* () {
 			while (true) {
-				const message = yield* Queue.take(inbox);
-				switch (message._tag) {
-					case "Events":
-						yield* onChunk(message.chunk);
-						break;
-					case "Tick":
-						yield* onTick(message.frame);
-						break;
-					case "Failed":
-						yield* checkFailure;
-						break;
-					case "Ended":
-						// The stream ended mid-run: commit what is drawn, or print it.
-						return yield* endRun;
+				// Everything queued at once, in order. Event chunks that arrived together are folded as one chunk and drawn
+				// once, so a controller that lags behind its stream catches up in one draw, not one per chunk.
+				const messages = yield* Queue.takeAll(inbox);
+				let pending: Array<E> = [];
+				const flush = Effect.suspend(() => {
+					const chunk = pending;
+					pending = [];
+					return chunk.length === 0 ? Effect.void : onChunk(chunk);
+				});
+				for (const message of messages) {
+					if (message._tag === "Events") {
+						pending.push(...message.chunk);
+						continue;
+					}
+					yield* flush;
+					switch (message._tag) {
+						case "Tick":
+							yield* onTick(message.frame);
+							break;
+						case "Failed":
+							yield* checkFailure;
+							break;
+						case "Ended":
+							// The stream ended mid-run: commit what is drawn, or print it.
+							return yield* endRun;
+						case "Died":
+							// The stream died: unmount first, as for a reducer that throws, then die with its cause.
+							yield* Effect.suspend(() => {
+								const current = run;
+								run = undefined;
+								return current === undefined ? Effect.void : unmount(current);
+							});
+							return yield* Effect.failCause(message.cause);
+					}
 				}
+				yield* flush;
 			}
 		});
 
 		const pull = yield* Stream.toPull(options.events);
 		const pump = Effect.forever(Effect.flatMap(pull, (chunk) => Queue.offer(inbox, { _tag: "Events", chunk }))).pipe(
 			Pull.catchDone(() => Queue.offer(inbox, { _tag: "Ended" })),
+			// A stream that dies tells the controller, which would otherwise wait for an event that never comes.
+			Effect.catchCause((cause) =>
+				Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : Queue.offer(inbox, { _tag: "Died", cause }),
+			),
 		);
 		// Started at once, so its first pull (which subscribes a PubSub-backed stream) happens before `live` returns.
 		const pumping = yield* Effect.forkScoped(pump, { startImmediately: true });

@@ -291,18 +291,22 @@ export class CliUi {
 	 * the frame is at its full height does it; a frame that keeps a few rows spare never meets it.
 	 *
 	 * While a run is drawn the view also redraws on a tick of `tickMillis` (80 by default), a schedule in the run's
-	 * scope, so it never keeps the process alive (`okf/decisions/live-tick-is-a-scoped-schedule.md`). A chunk of events
-	 * that arrives at once is folded whole and drawn once.
+	 * scope, so it never keeps the process alive (`okf/decisions/live-tick-is-a-scoped-schedule.md`). The frame index
+	 * never steps back. Events that arrive at once, in one chunk or in several the view had not yet caught up with, are
+	 * folded together and drawn once. The view takes events from `events` as fast as the stream yields them, so a
+	 * stream that applies backpressure buffers in the view while it draws.
 	 *
 	 * A run whose drawing fails (a `render` that throws, or a mount that fails) degrades rather than ending the view:
 	 * it is unmounted, leaving its last good frame on the terminal, then one warning is logged (`Effect.logWarning`),
-	 * and the fold goes on. At its terminal event, a run that never painted a frame writes its final frame once, as a
-	 * string. The next run mounts afresh. A `reduce` that throws unmounts the run, then `done` dies with the error.
+	 * and the fold goes on. At its terminal event, a run with no frame left on the terminal (it never painted, or its
+	 * last good frame threw too) writes its final frame once, as a string. The next run mounts afresh. A `reduce` that
+	 * throws, or an `events` stream that dies, unmounts the run, then `done` dies with the error.
 	 *
 	 * When the run is not interactive, nothing is mounted and Ink is loaded only when a string is due. In the `owned`
 	 * mode (the default) each run's final frame is written once to stdout, as a string laid out at stdout's width (80
-	 * when it reports none) with no height to fit, at its terminal event or when the stream ends; at colour `none`, as
-	 * for an agent, it is escape-free. In the `hosted` mode nothing is written.
+	 * when it reports none) with no height to fit, at its terminal event or when the stream ends. It is escape-free at
+	 * colour `none`, and for an agent audience (`Audience`, when provided) whatever the terminal could do. In the
+	 * `hosted` mode nothing is written.
 	 *
 	 * No input is mounted: the view reads no keys and never enters raw mode, so Ctrl-C stays the platform's SIGINT,
 	 * which interrupts the program and so closes the scope. Each run holds the process-wide mount permit from its
