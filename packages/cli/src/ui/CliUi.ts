@@ -203,6 +203,10 @@ export class CliUi {
 	 * the first is released. A screen that itself awaits another `CliUi.run` therefore deadlocks, and nothing guards
 	 * against it.
 	 *
+	 * Do not log while a screen is mounted. Ink redraws its frame by counting the lines it last wrote, and it is
+	 * mounted with `patchConsole` off, so a line written to the terminal from elsewhere (an `Effect.log`, `CliLog`, a
+	 * background fiber) lands inside the frame and tears it. Log before the screen mounts or after it resolves.
+	 *
 	 * @param screen - builds the element to mount from its {@link ScreenControl}
 	 * With `clear` the last frame is erased as the screen unmounts, so a wizard of several screens leaves only what the
 	 * program prints; without it the last frame stays, with the highlight where the answer was.
@@ -230,6 +234,9 @@ export class CliUi {
 	 * `CliRuntime.main` otherwise renders as one line with exit `130`. A missing Ink in an interactive run is a defect
 	 * naming the peers, never a silent `otherwise`. Screens in sequence make a wizard: discover the defaults first,
 	 * pass each as an `otherwise`, and a non-interactive run returns exactly them.
+	 *
+	 * As with `CliUi.run`, do not log while the screen is mounted: a line written to the terminal from elsewhere tears
+	 * the frame.
 	 *
 	 * @param screen - the screen to show
 	 * @param options - the non-interactive default, and whether to erase the last frame
