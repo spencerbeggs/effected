@@ -6,20 +6,43 @@ Loaded from `effect-v4-cli`. Covers drawing progress that updates in place while
 
 `CliUi.live(options)` → `Effect<LiveHandle<S>, never, Scope | CliTheme>`. It folds `events` into state in a fiber of the caller's scope and draws **runs**: a run begins at an `isStart` event and ends at an `isTerminal` one, whose frame is committed to the terminal (the view never clears it). Between runs nothing is drawn; the next run mounts afresh below. It is a view, not a screen: it mounts no input, so Ctrl-C stays the platform's SIGINT and closes the scope. `live` returns its handle **at once, before Ink loads** — Ink is loaded when a run first mounts, or when an owned run prints its final frame — so a host outside Effect can take the handle with `Effect.runSync`, and a `close` before any run mounted loads nothing.
 
+The JSX lives in a module of its own, so the command that uses the view imports no React until a run draws:
+
 ```tsx
+// view.tsx: the only module that holds JSX
 import { Doc, Status } from "@effected/cli"
-import { CliUi, DocView } from "@effected/cli/ui"
+import { DocView } from "@effected/cli/ui"
+import type { ReactElement } from "react"
+
+export interface State { readonly done: number; readonly failed: number }
+
+export const renderView = (state: State): ReactElement => (
+  <DocView
+    doc={Doc.counts({
+      layout: "inline",
+      counters: [
+        Doc.counter(Status.core, "success", { key: "ok", label: "passed", n: state.done - state.failed }),
+        Doc.counter(Status.core, "failure", { key: "bad", label: "failed", n: state.failed }),
+      ],
+    })}
+  />
+)
+```
+
+```ts
+// verify.ts: the command module, no JSX
+import { CliUi } from "@effected/cli/ui"
 import { Console, Effect, PubSub } from "effect"
+import type { State } from "./view.js"
 
 type Event =
   | { readonly _tag: "RunStarted"; readonly files: number }
   | { readonly _tag: "FileDone"; readonly ok: boolean }
   | { readonly _tag: "RunEnded" }
 
-interface State { readonly done: number; readonly failed: number }
-
 const program = Effect.scoped(
   Effect.gen(function* () {
+    const { renderView } = yield* Effect.promise(() => import("./view.js")) // render is synchronous: import first
     const pubsub = yield* PubSub.unbounded<Event>()
     const events = yield* PubSub.subscribe(pubsub) // subscribe before anything publishes
 
@@ -30,17 +53,7 @@ const program = Effect.scoped(
         event._tag === "RunStarted" ? { done: 0, failed: 0 }
         : event._tag === "FileDone" ? { done: state.done + 1, failed: state.failed + (event.ok ? 0 : 1) }
         : state,
-      render: (state) => (
-        <DocView
-          doc={Doc.counts({
-            layout: "inline",
-            counters: [
-              Doc.counter(Status.core, "success", { key: "ok", label: "passed", n: state.done - state.failed }),
-              Doc.counter(Status.core, "failure", { key: "bad", label: "failed", n: state.failed }),
-            ],
-          })}
-        />
-      ),
+      render: renderView,
       isStart: (event) => event._tag === "RunStarted",
       isTerminal: (event) => event._tag === "RunEnded",
     })
@@ -92,6 +105,10 @@ When `CliInteractive` is false (a pipe, a non-human audience, `TERM=dumb`), noth
 - The frame is clipped to `rows - 1` (its content keeps its height and is clipped, never squeezed); the kit imposes no width.
 - A render that throws **degrades** the run: it unmounts, logs one warning, and keeps folding; the last good frame stays. A throwing `reduce` unmounts and `done` dies.
 - Each run's tick is a `Schedule.spaced(tickMillis)` in the run's own scope, so under `it.effect` a test moves it with `TestClock`.
+- **The tick keeps the process alive.** Its timer is not unref'd, so while a run is drawn the process cannot exit until the run's terminal event or the scope's close.
+- **A `CliUi.run` during a drawn run waits for the run to end** (one Ink mount at a time, process-wide), so a handler must not prompt in the middle of progress; a run between runs mounts at once.
+- **`render` is synchronous**, so it cannot be lazy. If the view's JSX lives in a module of its own, `import()` it before calling `CliUi.live`, on the path that draws (see `prompts-and-screens.md`, "Keeping React off the runs that never prompt"); an owned view that is not interactive still loads Ink to print its final frame, so the saving is on runs that draw nothing.
+- **Test the same view the handler runs.** Define the view's options minus `events` as one exported value, use it in the handler, and pass the same value to `CliUiTest.live` (see `testing-a-cli.md`); a test that rebuilds the options exercises a copy.
 
 ## Drawing documents and hosting trees
 

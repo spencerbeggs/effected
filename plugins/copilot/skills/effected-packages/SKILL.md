@@ -6,7 +6,7 @@ description: >-
   JSONC/YAML/TOML/Markdown, semver, SPDX, glob matching, an in-memory filesystem for tests,
   package.json/tsconfig/lockfile/config-file handling, monorepo/workspace introspection, git introspection,
   runtime-version resolution, running commands, managed sections, JSONL journals, the GitHub REST/GraphQL API
-  and Actions runtime, CLI output, prompts and failure reporting, cross-front-end primitives for a CLI or MCP boundary,
+  and Actions runtime, CLI output, prompts, TUI screens and wizards (Ink), failure reporting, cross-front-end primitives for a CLI or MCP boundary,
   serving or testing an MCP server over stdio, SBOM generation and signing, or publishing SchemaStore JSON
   Schema or schema.org JSON-LD. Also use when choosing dependencies for a new Effect v4 app or library. Rows
   route; per-package depth lives in references/; per-construct intent search lives in references/constructs/.

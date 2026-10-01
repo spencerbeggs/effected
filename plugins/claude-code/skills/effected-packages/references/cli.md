@@ -17,6 +17,16 @@ import { CliUiTest } from "@effected/cli/ui/testing"; // test-only
 
 Four entrypoints. A reachability test proves nothing reachable from `.` imports `./testing` or `./ui`, so a program importing the root never loads test code or Ink.
 
+## Setup
+
+```sh
+pnpm add @effected/cli @effected/env @effected/walker @effected/glob effect
+pnpm add ink react                  # only for @effected/cli/ui
+pnpm add -D @types/react @types/node
+```
+
+`@effected/env`, `@effected/walker` and `@effected/glob` are required peers of the root; `ink`, `react` and `@types/react` are optional peers for `./ui` only. A `.tsx` screen needs `"jsx": "react-jsx"` in its tsconfig (classic `"jsx": "react"` crashes at mount with `React is not defined`), and a module of your own that holds JSX or imports `ink` loads React whenever it loads — keep screens in their own modules and mount them with `CliUi.lazy` so `--agent` and CI runs never load React. Detail in `effect-v4-cli`'s `prompts-and-screens.md`.
+
 ## Feature surface
 
 | Reach for | When |
@@ -39,12 +49,13 @@ Four entrypoints. A reachability test proves nothing reachable from `.` imports 
 | `CliPrompt.fallback(prompt, { flag, otherwise })` | a flag or argument that prompts with core's `Prompt` only when interactive |
 | `Cancelled`, `NotInteractive` | the one quit error (exit `130`) and the prompt-without-a-person error (exit `64`) |
 | `SchemaIssueRenderer.render(issue)` / `ConfigIssueRenderer.render(error)` | a schema or `@effected/config-file` issue tree as one actionable line per rejected value |
-| `CliUi.prompt`/`fallback`/`run` + `Select`, `TextInput`, `MultiSelect`, `Confirm` | an Ink screen from a handler or as a fallback, with a non-interactive default |
+| `CliUi.prompt`/`fallback`/`run` + `Select`, `TextInput`, `MultiSelect`, `Confirm` | an Ink screen from a handler or as a fallback, with a non-interactive default (`Confirm`'s `otherwise` is a whole `{ confirmed, toggles }`) |
+| `CliUi.lazy(() => import("./screen.js"))` | mounting a screen of your own whose module holds the JSX, loaded only when it mounts |
 | `CliUi.live`, `DocView`, `UiProvider` | progress that redraws in place while work runs, drawing the `Doc` IR inside Ink |
 | `KeyTable`, `useKeys`, `KeyHelp`, `Styled`, `Tabs`, `Toggle`, `Viewport` | writing your own screen |
 | `CliTest.sandbox()` / `CliTest.run()` | spawning a **built** bin hermetically and reading its exit code and streams as data |
 | `TestTerminal.make()` | driving core prompts in a test |
-| `CliUiTest.render`/`view`/`session`/`live` | driving a screen or live view with keys and reading its frames |
+| `CliUiTest.render`/`view`/`session`/`live` | driving a screen, a whole wizard (`session`, run forked, `next` per screen) or a live view with keys and reading its frames; `CliUiTest.serializer` for snapshots |
 
 The presentation layer and `./ui` are taught in depth in `effect-v4-cli` (`presentation.md`, `prompts-and-screens.md`, `live-view.md`, `testing-a-cli.md`); the API below is the boundary core those build on.
 

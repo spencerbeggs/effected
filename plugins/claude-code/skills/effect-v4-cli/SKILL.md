@@ -1,7 +1,7 @@
 ---
 name: effect-v4-cli
-description: Use when building or reviewing a command-line program on Effect v4 — effect/cli in core, its exit-code contract, and @effected/cli, the presentation boundary that decides who the output is for (human, agent, CI), keeps stdout clean, reports failures on stderr, and adds prompts, Ink screens and live progress views.
-when_to_use: effect/cli, Command, Flag, Argument, @effect/cli, exit code, findings exit code, usage error, --format json, --version, stdout vs stderr, stdin, CliLogger, CliRuntime, CliExit, CliColor, CliTest, @effected/cli/testing, NO_COLOR, FORCE_COLOR, TERM=dumb, bin-only package, emitDts false, Command.Environment, ChildProcess vs Command, --agent, --human, --ci, audience, CliAudience, CliEnv, CliTheme, CliMessage, CliLog, Doc, Render, CliFailure, CliPrompt, prompt fallback, interactive, CliUi, @effected/cli/ui, Ink, Select, MultiSelect, Confirm, TextInput, live view, spinner, progress, DocView, UiProvider, CliUiTest, TestTerminal
+description: Use when building or reviewing a command-line program on Effect v4 — effect/cli in core, its exit-code contract, and @effected/cli, the presentation boundary that decides who the output is for (human, agent, CI), keeps stdout clean, reports failures on stderr, and adds prompts, Ink screens and live progress views — a TUI, wizard, picker or interactive prompt, and the tests that drive them.
+when_to_use: effect/cli, Command, Flag, Argument, @effect/cli, exit code, findings exit code, usage error, --format json, --version, stdout vs stderr, stdin, CliLogger, CliRuntime, CliExit, CliColor, CliTest, @effected/cli/testing, NO_COLOR, FORCE_COLOR, TERM=dumb, bin-only package, emitDts false, Command.Environment, ChildProcess vs Command, --agent, --human, --ci, audience, CliAudience, CliEnv, CliTheme, CliMessage, CliLog, Doc, Render, CliFailure, CliPrompt, prompt fallback, interactive, CliUi, @effected/cli/ui, Ink, Select, MultiSelect, Confirm, TextInput, live view, spinner, progress, DocView, UiProvider, CliUiTest, TestTerminal, TUI, terminal UI, wizard, picker, menu, checkbox, interactive prompt, key bindings, KeyTable, useKeys, Tabs, Viewport, CliUi.lazy, jsx react-jsx, React is not defined
 ---
 
 # Effect v4 CLIs
@@ -51,8 +51,9 @@ NodeRuntime.runMain(
 | `CliColor` | `@effected/cli` | the stdout colour decision as a boolean, and core's formatter coloured by it, in a program without `env` |
 | `CliPrompt.fallback` | `@effected/cli` | a flag or argument that prompts with core's `Prompt` when missing — only when interactive |
 | `CliUi`, `Select`, `TextInput`, `MultiSelect`, `Confirm` | `@effected/cli/ui` | an Ink screen from a handler (`prompt`) or as a fallback (`fallback`), with a non-interactive default |
+| `CliUi.lazy` | `@effected/cli/ui` | mounting a screen of your own whose module holds the JSX, so a non-interactive run never loads React |
 | `CliUi.live`, `DocView`, `UiProvider` | `@effected/cli/ui` | progress that redraws in place while work runs, drawing the `Doc` IR inside Ink |
-| `KeyTable`, `useKeys`, `KeyHelp`, `Styled` | `@effected/cli/ui` | writing your own screen: keys as data, themed text |
+| `KeyTable`, `useKeys`, `KeyHelp`, `Styled`, `Viewport`, `Tabs` | `@effected/cli/ui` | writing your own screen: keys as data, themed text, a scrolling list, tabs |
 | `CliTest`, `TestTerminal` | `@effected/cli/testing` | spawning a built bin hermetically; driving core prompts in a test |
 | `CliUiTest` | `@effected/cli/ui/testing` | driving a screen or live view with keys and reading its frames |
 | `CurrentDistribution`, `distributionSuffix` | `@effected/engine` | a consumer front end's `--version` line needs the carrier it was installed through |
@@ -68,6 +69,7 @@ NodeRuntime.runMain(
 - Write program output with `Console.log` or `Doc.print`, one-line outcomes with `CliMessage`, and diagnostics with `Effect.log*` — the streams must never trade places.
 - Build a report as a `Doc` and let the audience pick the renderer; reach for `Render.markdown` only for a file or a step summary.
 - Ask for input only through `CliPrompt.fallback`, `CliUi.prompt` or `CliUi.fallback`, each with a non-interactive default.
+- Set `"jsx": "react-jsx"` for a `.tsx` screen, keep each screen in its own module with a default export, and mount it with `CliUi.lazy`, so JSX never loads in the command module.
 - Log through `handle.logConsole` while a live view is drawn, and not at all while a screen is mounted.
 - Report findings by succeeding and calling `CliExit.set(code)`, never by failing or calling `process.exit` in a handler.
 - Set `emitDts: false` in `savvy.build.ts` for a package whose `exports` is `"./package.json"` only.
@@ -84,10 +86,14 @@ NodeRuntime.runMain(
 - An agent audience never gets an escape, even from an explicit `Render.ansi` — see `presentation.md`.
 - Under `env`, `main`'s formatter shadows one the platform sets; override through `env.formatter` — see `recipes.md`.
 - A `Logger.layer([...])` of your own beside `CliLog` replaces its whole logger set and silences diagnostics — see `presentation.md`.
+- JSX or an `ink`/`react` import in the module that declares your commands loads React on every run, `--agent` and CI included; `@effected/cli/ui` itself never does — see `prompts-and-screens.md`.
+- `"jsx": "react"` (classic) crashes a screen at mount with `React is not defined` — see `prompts-and-screens.md`.
 - A cancel in a fallback prompt is a defect a handler's `catchTag` cannot see; `main` renders it, exit `130` — see `prompts-and-screens.md`.
 - A line written while a screen is mounted tears the frame (`patchConsole` is off) — see `prompts-and-screens.md`.
+- A screen that awaits another `CliUi.run` deadlocks, and `Confirm`'s `otherwise` is a whole `{ confirmed, toggles }`, never a boolean — see `prompts-and-screens.md`.
 - Ink delivers a whole stdin read of keys before React re-renders; a handler must step from current state — see `prompts-and-screens.md`.
 - React error boundaries do not catch errors thrown in Ink `useInput`/`usePaste` handlers — see `prompts-and-screens.md`.
+- `CliUiTest`'s `press("y")` dies (send `type("y")` or `press({ char: "y" })`), its waits are real time (`it.live` for a test that sleeps), and under `main` with `env` the session's `interactive` is shadowed by `CliEnv` — see `testing-a-cli.md`.
 - `PubSub.shutdown` and a bare scope close drop a live view's tail; end with `handle.close` or `PubSub.end` — see `live-view.md`.
 - A live view fed a forking stream subscribes late; pass the `PubSub.Subscription` itself — see `live-view.md`.
 - The default logger and `runMain`'s failure report both land on stdout, not stderr — see `output-and-logging.md`.
@@ -106,13 +112,13 @@ NodeRuntime.runMain(
 ## Additional resources
 
 - [presentation.md](./references/presentation.md) — the one wiring, audience and `CliInteractive`, `CliEnv` and its options, colour precedence, the theme vocabulary, `CliMessage`, the `Doc` IR and renderers, the failure report and `CliLog`. Load when: wiring `main`, deciding which channel a line goes to, rendering a report, or customising the failure report or diagnostics.
-- [prompts-and-screens.md](./references/prompts-and-screens.md) — `CliPrompt.fallback` vs `CliUi`, the widgets and their options, writing a screen with `KeyTable`/`useKeys`, and the rules that keep a screen from tearing the terminal. Load when: asking a person for input, or writing or reviewing an Ink screen.
+- [prompts-and-screens.md](./references/prompts-and-screens.md) — setup (install line, peers, `jsx: react-jsx`), keeping React off non-interactive runs with `CliUi.lazy`, `CliPrompt.fallback` vs `CliUi`, the widgets and their options, a `Confirm` worked through (whole-`ConfirmResult` default, the boolean-flag adapter), writing a screen with `KeyTable`/`useKeys`/`Viewport`/`Tabs`, and the rules that keep a screen from tearing the terminal. Load when: setting up Ink screens, asking a person for input, or writing or reviewing an Ink screen.
 - [live-view.md](./references/live-view.md) — `CliUi.live`: runs, subscribing and ending without losing the tail, `logConsole`, non-interactive modes, `DocView` and `UiProvider`. Load when: drawing progress that updates in place, or hosting an Ink tree the kit did not mount.
 - [core-framework.md](./references/core-framework.md) — the module inventory, PascalCase constructors, `Flag.Boolean`'s missing default, `Command.Environment`, and the two different `Command`s. Load when: writing or reviewing the `Command`/`Flag`/`Argument` declaration itself.
 - [output-and-logging.md](./references/output-and-logging.md) — the three defaults core gets wrong at a terminal, the `CliLogger` implementation facts, exit-code reporting, and `CliColor`. Load when: wiring a logger by hand, or debugging a duplicate or missing failure report.
 - [bin-only-package.md](./references/bin-only-package.md) — `emitDts: false`, the `exports: "./package.json"` shape, and why `Cannot merge zero API models` is not an extractor bug. Load when: building a package whose only surface is a `bin`.
 - [exit-codes.md](./references/exit-codes.md) — the exit-code contract, `CliRuntime.main`'s assembly order, the code table, and how a findings command exits non-zero by succeeding. Load when: deciding whether a code path should fail or succeed, assembling `main.ts`, or handling `CliError` exhaustively.
-- [testing-a-cli.md](./references/testing-a-cli.md) — the two false-green traps, the `layerTest` doubles and a capturing `Console`, `TestTerminal`, `CliUiTest` for screens and live views, and `CliTest` for spawning a built bin. Load when: writing a test that asserts on CLI output, a prompt, a screen, a live view, or a real subprocess's exit code and streams.
+- [testing-a-cli.md](./references/testing-a-cli.md) — the two false-green traps, the `layerTest` doubles and a capturing `Console`, `TestTerminal`, `CliUiTest` for screens and live views (a worked `session` test of a whole wizard, the harness traps, the snapshot serializer), and `CliTest` for spawning a built bin. Load when: writing a test that asserts on CLI output, a prompt, a screen, a wizard, a live view, or a real subprocess's exit code and streams.
 - [gotchas.md](./references/gotchas.md) — seven traps that pass a type-check and a casual run: `Command.provide`'s build order, `Flag.File`'s parse-time existence check, positional binding order, `decodeUnknownSync`'s defect, the exit-code marker, `Argument.Path`/`Flag.Path` resolution, and the on-by-default global flags. Load when: a handler isn't seeing the value you expect, or an exit code doesn't match what the handler did.
 - [recipes.md](./references/recipes.md) — patterns the kit deliberately does not package: the main-assembly file layout, the version constant and formatter, the JSON failure tap, reading stdin safely, process confinement, and an injectable clock. Load when: wiring up a new CLI front end from scratch.
 
