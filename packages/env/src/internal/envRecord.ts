@@ -2,6 +2,15 @@ import { Config, Effect, Option } from "effect";
 import type { Env } from "./types.js";
 
 /**
+ * Drop an absent or empty value from a plain record, so it carries non-empty values only: the normalisation
+ * {@link readEnv} applies to what it reads, for a record a caller already holds.
+ *
+ * @internal
+ */
+export const normalizeEnv = (record: Env): Env =>
+	Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined && value !== ""));
+
+/**
  * Read a fixed key set from the ambient `ConfigProvider` into a plain {@link Env} record.
  *
  * @remarks

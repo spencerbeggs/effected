@@ -88,3 +88,62 @@ describe("EnvOverride.read", () => {
 		assert.isDefined(tooNarrow);
 	});
 });
+
+describe("EnvOverride.readResult", () => {
+	const result = (env: Record<string, string>, kind: "human" | "agent" | "ci", lines: Array<string> = []) =>
+		EnvOverride.readResult({ envVar: "VITEST_AGENT_CONSOLE", accepts }).pipe(
+			Effect.provide(Audience.layerTest(kind)),
+			Effect.provide(capture(lines)),
+			withEnv(env),
+		);
+
+	it.effect("an accepted value is accepted, with the audience, and nothing is rejected", () =>
+		Effect.map(result({ VITEST_AGENT_CONSOLE: "STREAM" }, "human"), (r) => {
+			assert.strictEqual(r.audience, "human");
+			assert.deepStrictEqual(r.accepted, Option.some("stream" as const));
+			assert.deepStrictEqual(r.rejected, Option.none());
+		}),
+	);
+
+	it.effect("a rejected value carries the value as written, the audience and the literals it accepts", () =>
+		Effect.map(result({ VITEST_AGENT_CONSOLE: "stream" }, "agent"), (r) => {
+			assert.deepStrictEqual(r.accepted, Option.none());
+			assert.deepStrictEqual(r.rejected, Option.some({ value: "stream", audience: "agent", accepts: accepts.agent }));
+			assert.strictEqual(r.audience, "agent");
+		}),
+	);
+
+	it.effect("unset and empty are neither accepted nor rejected", () =>
+		Effect.gen(function* () {
+			for (const env of [{}, { VITEST_AGENT_CONSOLE: "" }]) {
+				const r = yield* result(env, "ci");
+				assert.strictEqual(r.audience, "ci");
+				assert.deepStrictEqual(r.accepted, Option.none());
+				assert.deepStrictEqual(r.rejected, Option.none());
+			}
+		}),
+	);
+
+	it.effect("never logs, even for a rejected value, where read warns", () => {
+		const viaResult: Array<string> = [];
+		const viaRead: Array<string> = [];
+		return Effect.gen(function* () {
+			yield* result({ VITEST_AGENT_CONSOLE: "stream" }, "agent", viaResult);
+			yield* read({ VITEST_AGENT_CONSOLE: "stream" }, "agent", viaRead);
+			assert.deepStrictEqual(viaResult, []);
+			assert.lengthOf(viaRead, 1);
+		});
+	});
+
+	it.effect("read is the logging convenience over it: same accepted value for every audience and input", () =>
+		Effect.gen(function* () {
+			for (const kind of ["human", "agent", "ci"] as const) {
+				for (const value of ["passthrough", "SILENT", "stream", "agent", "ci-annotations", "nope", ""]) {
+					const env = value === "" ? {} : { VITEST_AGENT_CONSOLE: value };
+					const r = yield* result(env, kind);
+					assert.deepStrictEqual(yield* read(env, kind), r.accepted, `${kind} ${value}`);
+				}
+			}
+		}),
+	);
+});

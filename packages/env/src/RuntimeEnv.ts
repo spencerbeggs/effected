@@ -1,6 +1,6 @@
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { ConfigProvider, Context, Effect, Layer, Option, Schema } from "effect";
 import { detectAgent, detectCi } from "./internal/agentCi.js";
-import { readEnv } from "./internal/envRecord.js";
+import { normalizeEnv, readEnv } from "./internal/envRecord.js";
 import { allKeys } from "./internal/keys.js";
 import { detectOsc8 } from "./internal/osc8/detect.js";
 
@@ -40,7 +40,26 @@ export class RuntimeEnv extends Schema.Class<RuntimeEnv>("@effected/env/RuntimeE
 	ci: optionField(Schema.Literals(["github-actions", "generic"])),
 	/** The identified terminal program and its version when it exposes one, or `None`. */
 	terminal: optionField(Schema.Struct({ name: Schema.String, version: optionField(Schema.String) })),
-}) {}
+}) {
+	/**
+	 * The snapshot of an environment record, as a pure function: no `Config`, no `process`, no service.
+	 *
+	 * @remarks
+	 * It is what {@link CurrentRuntimeEnv.layer} computes from the variables it reads, so the two agree on the same
+	 * record. An `undefined` or empty value reads as unset, under every caller. Use it where a service is in the
+	 * way: a long-lived host that holds its own environment record, or a renderer with no Effect context.
+	 *
+	 * @param env - variable name to value
+	 */
+	static fromRecord(env: Readonly<Record<string, string | undefined>>): RuntimeEnv {
+		const clean = normalizeEnv(env);
+		return RuntimeEnv.make({
+			agent: detectAgent(clean),
+			ci: detectCi(clean),
+			terminal: detectOsc8(clean, false, false).terminal,
+		});
+	}
+}
 
 /**
  * The fields {@link CurrentRuntimeEnv.layerTest} can override.
@@ -72,17 +91,48 @@ export class CurrentRuntimeEnv extends Context.Service<CurrentRuntimeEnv, Runtim
 	/**
 	 * Reads the environment through `Config` once, when the layer is built. Requires nothing: the provider is read
 	 * from the ambient `ConfigProvider`.
+	 *
+	 * @remarks
+	 * Two things make this a frozen read, and a long-lived host (an MCP server, a watch-mode runner) trips on both.
+	 * Core's default `ConfigProvider.fromEnv()` snapshots `process.env` once per process, so a change after the
+	 * first read is never seen; and this is one static layer, memoized by reference, so two consumers that provide
+	 * different providers in one graph share the first snapshot. Use {@link CurrentRuntimeEnv.layerFrom}, which is
+	 * a fresh layer per call and per use, or provide a fresh `ConfigProvider` for every read.
 	 */
 	static readonly layer: Layer.Layer<CurrentRuntimeEnv> = Layer.effect(
 		this,
-		Effect.map(readEnv(allKeys), (env) =>
-			RuntimeEnv.make({
-				agent: detectAgent(env),
-				ci: detectCi(env),
-				terminal: detectOsc8(env, false, false).terminal,
-			}),
-		),
+		Effect.map(readEnv(allKeys), (env) => RuntimeEnv.fromRecord(env)),
 	);
+
+	/**
+	 * A snapshot of an explicit source: an environment record, or a `ConfigProvider` read instead of the ambient
+	 * one.
+	 *
+	 * @remarks
+	 * Each call returns a new layer, and the layer is `Layer.fresh`, so it is built again for every use rather
+	 * than shared through the build's memo: two calls with different sources in one graph see different values,
+	 * and a provider is read again each time the layer is used. A record is read when the layer is built, never
+	 * at the call.
+	 *
+	 * @param source - a variable-name-to-value record, or a `ConfigProvider`
+	 */
+	static readonly layerFrom = (
+		source: Readonly<Record<string, string | undefined>> | ConfigProvider.ConfigProvider,
+	): Layer.Layer<CurrentRuntimeEnv> =>
+		Layer.fresh(
+			Layer.effect(
+				CurrentRuntimeEnv,
+				// A record's values are strings, so a function-valued `load` identifies a provider.
+				typeof source.load === "function"
+					? Effect.map(
+							readEnv(allKeys).pipe(
+								Effect.provideService(ConfigProvider.ConfigProvider, source as ConfigProvider.ConfigProvider),
+							),
+							(env) => RuntimeEnv.fromRecord(env),
+						)
+					: Effect.sync(() => RuntimeEnv.fromRecord(source as Readonly<Record<string, string | undefined>>)),
+			),
+		);
 
 	/**
 	 * A fixed snapshot that never touches `Config`: every field is `None` unless `overrides` sets it.

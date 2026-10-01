@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { ConfigProvider, Effect, Option, Schema } from "effect";
+import { ConfigProvider, Context, Effect, Layer, Option, Schema } from "effect";
 import { CurrentRuntimeEnv, RuntimeEnv } from "../src/RuntimeEnv.js";
 
 const withEnv = (env: Record<string, string>) =>
@@ -145,4 +145,137 @@ describe("RuntimeEnv", () => {
 		assert.strictEqual(Schema.encodeSync(codec)(value), '{"agent":null,"ci":null,"terminal":null}');
 		assert.deepStrictEqual(Schema.decodeSync(codec)('{"agent":null,"ci":null,"terminal":null}'), value);
 	});
+});
+
+const RECORDS: ReadonlyArray<Record<string, string>> = [
+	{},
+	{ CLAUDECODE: "1" },
+	{ AI_AGENT: "claude-code_2-1-285_agent" },
+	{ AI_AGENT: "mystery-agent" },
+	{ GITHUB_ACTIONS: "true" },
+	{ CI: "true" },
+	{ CONTINUOUS_INTEGRATION: "1", TERM_PROGRAM: "iTerm.app", TERM_PROGRAM_VERSION: "3.5.0" },
+	{ TERM: "xterm-kitty" },
+	{ CLAUDECODE: "1", GITHUB_ACTIONS: "true", TERM_PROGRAM: "vscode", TERM_PROGRAM_VERSION: "1.99.0" },
+	{ AI_AGENT: "", CI: "", CLAUDECODE: "", GITHUB_ACTIONS: "" },
+	// An empty variable is unset for the terminal too: no version, and no program name to identify.
+	{ TERM_PROGRAM: "iTerm.app", TERM_PROGRAM_VERSION: "" },
+	{ TERM_PROGRAM: "", TERM: "xterm-kitty" },
+];
+
+describe("RuntimeEnv.fromRecord", () => {
+	for (const record of RECORDS) {
+		it.effect(`equals what the layer reads from the same record: ${JSON.stringify(record)}`, () =>
+			Effect.gen(function* () {
+				const viaLayer = yield* CurrentRuntimeEnv;
+				assert.deepStrictEqual(RuntimeEnv.fromRecord(record), viaLayer);
+			}).pipe(Effect.provide(CurrentRuntimeEnv.layer), withEnv(record)),
+		);
+	}
+
+	it("an empty string and an undefined value both read as unset", () => {
+		const unset = RuntimeEnv.fromRecord({});
+		assert.deepStrictEqual(RuntimeEnv.fromRecord({ AI_AGENT: "", CI: "", GITHUB_ACTIONS: "", CLAUDECODE: "" }), unset);
+		assert.deepStrictEqual(RuntimeEnv.fromRecord({ AI_AGENT: undefined, CI: undefined, CLAUDECODE: undefined }), unset);
+		// Control: a non-empty value is not unset.
+		assert.notDeepEqual(RuntimeEnv.fromRecord({ CLAUDECODE: "1" }), unset);
+	});
+
+	it("never reads the process environment", () => {
+		const before = process.env.CLAUDECODE;
+		process.env.CLAUDECODE = "1";
+		try {
+			assert.deepStrictEqual(RuntimeEnv.fromRecord({}), RuntimeEnv.fromRecord({}));
+			assert.isTrue(Option.isNone(RuntimeEnv.fromRecord({}).agent));
+		} finally {
+			if (before === undefined) delete process.env.CLAUDECODE;
+			else process.env.CLAUDECODE = before;
+		}
+	});
+});
+
+describe("CurrentRuntimeEnv.layerFrom", () => {
+	class First extends Context.Service<First, Option.Option<string>>()("test/First") {}
+	class Second extends Context.Service<Second, Option.Option<string>>()("test/Second") {}
+	const envOf = Effect.gen(function* () {
+		return yield* CurrentRuntimeEnv;
+	});
+	const agentOf = Effect.map(envOf, (env) => env.agent);
+
+	it.effect("a record source is read without the ambient provider", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual((yield* CurrentRuntimeEnv).agent, Option.none());
+		}).pipe(Effect.provide(CurrentRuntimeEnv.layerFrom({})), withEnv({ CLAUDECODE: "1" })),
+	);
+
+	it.effect("a ConfigProvider source is read instead of the ambient one", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual((yield* CurrentRuntimeEnv).agent, Option.some("claude"));
+		}).pipe(Effect.provide(CurrentRuntimeEnv.layerFrom(ConfigProvider.fromUnknown({ CLAUDECODE: "1" }))), withEnv({})),
+	);
+
+	it.effect("a record source agrees with fromRecord", () =>
+		Effect.gen(function* () {
+			for (const record of RECORDS) {
+				const viaLayer = yield* envOf.pipe(Effect.provide(CurrentRuntimeEnv.layerFrom(record)));
+				assert.deepStrictEqual(viaLayer, RuntimeEnv.fromRecord(record));
+			}
+		}),
+	);
+
+	it.effect("two calls with different records in ONE graph see different values", () =>
+		Effect.gen(function* () {
+			const graph = Layer.mergeAll(
+				Layer.effect(First, agentOf).pipe(Layer.provide(CurrentRuntimeEnv.layerFrom({ CLAUDECODE: "1" }))),
+				Layer.effect(Second, agentOf).pipe(Layer.provide(CurrentRuntimeEnv.layerFrom({ AI_AGENT: "codex" }))),
+			);
+			const context = yield* Layer.build(graph);
+			assert.deepStrictEqual(Context.get(context, First), Option.some("claude"));
+			assert.deepStrictEqual(Context.get(context, Second), Option.some("codex"));
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("control: CurrentRuntimeEnv.layer is ONE shared snapshot, so the second provider is never read", () =>
+		Effect.gen(function* () {
+			const graph = Layer.mergeAll(
+				Layer.effect(First, agentOf).pipe(
+					Layer.provide(CurrentRuntimeEnv.layer),
+					Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ CLAUDECODE: "1" }))),
+				),
+				Layer.effect(Second, agentOf).pipe(
+					Layer.provide(CurrentRuntimeEnv.layer),
+					Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ AI_AGENT: "codex" }))),
+				),
+			);
+			const context = yield* Layer.build(graph);
+			assert.deepStrictEqual(Context.get(context, First), Context.get(context, Second));
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("the same layerFrom value used twice in one graph is read twice: each use sees the provider as it is", () =>
+		Effect.gen(function* () {
+			let reads = 0;
+			const counting = ConfigProvider.make((path) => {
+				reads += 1;
+				return ConfigProvider.fromUnknown({ CLAUDECODE: "1" }).load(path);
+			});
+			const shared = CurrentRuntimeEnv.layerFrom(counting);
+			const graph = Layer.mergeAll(
+				Layer.effect(First, agentOf).pipe(Layer.provide(shared)),
+				Layer.effect(Second, agentOf).pipe(Layer.provide(shared)),
+			);
+			yield* Layer.build(graph);
+			const perBuild = reads / 2;
+			assert.isAbove(perBuild, 0);
+			assert.strictEqual(Number.isInteger(perBuild), true);
+			// A single build reads each key once; two uses read it twice as often.
+			let single = 0;
+			const once = ConfigProvider.make((path) => {
+				single += 1;
+				return ConfigProvider.fromUnknown({ CLAUDECODE: "1" }).load(path);
+			});
+			yield* Layer.build(Layer.effect(First, agentOf).pipe(Layer.provide(CurrentRuntimeEnv.layerFrom(once))));
+			assert.strictEqual(reads, single * 2);
+		}).pipe(Effect.scoped),
+	);
 });
