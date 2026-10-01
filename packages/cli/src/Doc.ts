@@ -237,7 +237,7 @@ export interface CountsRow {
  * @public
  */
 export interface CountsTableOptions {
-	/** A last row summing each column: labelled `Total` when `true`, or with the content given. */
+	/** A last row summing each column: labelled with a plain `Total` when `true`, or with the content given (`Doc.strong("Total")` for a bold one). */
 	readonly totalRow?: boolean | InlineInput;
 	/** The header of the label column, such as `Project`; empty when unset. */
 	readonly labelHeader?: InlineInput;
@@ -725,7 +725,9 @@ export class Doc {
 	 *
 	 * @remarks
 	 * A row without a counter for some key leaves that cell empty, and it counts as zero in the total. `totalRow`
-	 * labels the total row `Total` when `true`, or with the content given. `labelHeader` heads the label column, which
+	 * labels the total row with a plain `Total` when `true`, or with the content given: for a bold one, pass
+	 * `totalRow: Doc.strong("Total")`. A column is headed by its counter's `label`; a counter's status paints its cells
+	 * in `ansi` and is ignored in markdown, so a plain numbers table may pass any status. `labelHeader` heads the label column, which
 	 * is otherwise empty. When some row has a `durationMs`, a last column shows it with `Fmt.duration`, headed
 	 * `durationHeader` (`duration` by default); a row without one has an empty cell there and counts as zero in the
 	 * total row's summed duration.
