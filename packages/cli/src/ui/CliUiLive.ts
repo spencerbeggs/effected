@@ -5,7 +5,7 @@ import type { Console } from "effect";
 import { Cause, Clock, Duration, Effect, Exit, Fiber, Option, Pull, Queue, Schedule, Scope, Stream } from "effect";
 import type { FunctionComponent, ReactElement, ReactNode } from "react";
 import { CliInteractive } from "../CliInteractive.js";
-import { CliTheme } from "../CliTheme.js";
+import { CliTheme, themeForAudience } from "../CliTheme.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
 import type { HolderSlot } from "./internal/Holder.js";
 import { holder, holderSlot } from "./internal/Holder.js";
@@ -158,11 +158,15 @@ export const live = <E, S>(
 	Effect.gen(function* () {
 		const tickMillis = options.tickMillis ?? 80;
 		if (!(Number.isFinite(tickMillis) && tickMillis > 0)) return yield* Effect.die(new Error(TICK_INVALID(tickMillis)));
-		const theme = (yield* CliTheme).forStream("stdout");
-		// An agent never gets an escape of any kind, whatever the terminal could do (as `Render.context` does): Ink's
-		// colour level is held at none for it. Read only when provided, so `Audience` stays out of the requirements.
+		// An agent never gets an escape of any kind, whatever the terminal could do: it sees the theme at colour none, as
+		// `Render.context` does, both as Ink's colour level and as the theme the tree reads (its `paint`, its colour-none
+		// markers). Read only when provided, so `Audience` stays out of the requirements.
 		const audience = yield* Effect.serviceOption(Audience);
-		const colour = Option.isSome(audience) && audience.value.kind === "agent" ? "none" : theme.color;
+		const theme = themeForAudience(
+			(yield* CliTheme).forStream("stdout"),
+			Option.isSome(audience) ? audience.value.kind : undefined,
+		);
+		const colour = theme.color;
 		const interactive = yield* CliInteractive;
 		const streams = yield* UiStreams;
 		const overrides = yield* UiRenderOptions;

@@ -1,4 +1,4 @@
-import type { ColorLevel } from "@effected/env";
+import type { AudienceKind, ColorLevel } from "@effected/env";
 import { TerminalEnv } from "@effected/env";
 import { Config, Context, Effect, Layer, Option } from "effect";
 import { Prompt } from "effect/cli";
@@ -82,29 +82,53 @@ export interface CliThemeTestOptions {
 	readonly glyphs?: "unicode" | "ascii" | undefined;
 }
 
+/**
+ * A stream theme at `color`, over a style resolution and a glyph set: the one way a {@link StreamTheme} is built.
+ *
+ * @internal
+ */
+export const streamThemeAt = (
+	resolve: (token: TokenName | Style) => Style,
+	glyphs: GlyphSet,
+	color: ColorLevel,
+): StreamTheme => {
+	const paint = (token: TokenName | Style, text: string): string => paintStyle(resolve(token), color, text);
+	return {
+		paint,
+		style: resolve,
+		sgr: (token) => openSequence(resolve(token), color),
+		glyphs,
+		color,
+		status: (vocab, name, text) => {
+			const def = vocab.def(name);
+			const glyph = paint(def.token, glyphs.kind === "ascii" ? def.ascii : def.glyph);
+			return text === undefined || text === "" ? glyph : `${glyph} ${text}`;
+		},
+	};
+};
+
+/**
+ * The theme an audience sees of `theme`: for an agent, the same theme at colour `none` (`paint` the identity, `sgr`
+ * empty, `status` unpainted), whatever the terminal could do, because an agent never gets an escape of any kind; for
+ * anyone else, or when the audience is not known, `theme` itself.
+ *
+ * @remarks
+ * The one place that rule is applied to a theme: `Render.context` takes its colour and `paint` from it, and `./ui`
+ * gives it to the trees it mounts, so `useTheme`, `Styled` and the widgets' colour-`none` text markers all agree.
+ *
+ * @internal
+ */
+export const themeForAudience = (theme: StreamTheme, audience: AudienceKind | undefined): StreamTheme =>
+	audience === "agent" && theme.color !== "none" ? streamThemeAt(theme.style, theme.glyphs, "none") : theme;
+
 const make = (
 	colors: { readonly stdout: ColorLevel; readonly stderr: ColorLevel },
 	glyphs: GlyphSet,
 	overrides: Partial<Record<TokenName, Style>> | undefined,
 ): CliThemeShape => {
 	const resolve = (token: TokenName | Style): Style => Token.resolve(token, overrides);
-	const forColor = (color: ColorLevel): StreamTheme => {
-		const paint = (token: TokenName | Style, text: string): string => paintStyle(resolve(token), color, text);
-		return {
-			paint,
-			style: resolve,
-			sgr: (token) => openSequence(resolve(token), color),
-			glyphs,
-			color,
-			status: (vocab, name, text) => {
-				const def = vocab.def(name);
-				const glyph = paint(def.token, glyphs.kind === "ascii" ? def.ascii : def.glyph);
-				return text === undefined || text === "" ? glyph : `${glyph} ${text}`;
-			},
-		};
-	};
-	const stdout = forColor(colors.stdout);
-	const stderr = forColor(colors.stderr);
+	const stdout = streamThemeAt(resolve, glyphs, colors.stdout);
+	const stderr = streamThemeAt(resolve, glyphs, colors.stderr);
 	return { ...stdout, forStream: (stream) => (stream === "stdout" ? stdout : stderr) };
 };
 

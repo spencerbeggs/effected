@@ -1,6 +1,7 @@
 // Root types are named through the package's own name, so the emitted ui.d.ts imports them from "@effected/cli"
 // (kept external by dtsExternals) instead of carrying copies a consumer's root layers cannot satisfy.
 import type * as Cli from "@effected/cli";
+import { Audience } from "@effected/env";
 import type { Scope } from "effect";
 import { Cause, Deferred, Effect, Exit, Option, Semaphore } from "effect";
 import type { Param } from "effect/cli";
@@ -8,7 +9,7 @@ import { Prompt } from "effect/cli";
 import type { ReactElement, ReactNode } from "react";
 import { Cancelled } from "../Cancelled.js";
 import { CliInteractive } from "../CliInteractive.js";
-import { CliTheme } from "../CliTheme.js";
+import { CliTheme, themeForAudience } from "../CliTheme.js";
 import { answerWithoutPerson } from "../internal/fallbackAnswer.js";
 import { NotInteractive } from "../NotInteractive.js";
 import type { LiveHandle, LiveOptions } from "./CliUiLive.js";
@@ -83,6 +84,19 @@ export type CliUiFallbackOptions<A> = Cli.CliPromptFallbackOptions<A> & {
 	/** Erase the screen's last frame as it unmounts; `false` by default. See {@link CliUiRunOptions.clear}. */
 	readonly clear?: boolean;
 };
+
+/**
+ * stdout's theme as the audience sees it: colourless for an agent (as `Render.context` makes it), so a screen's
+ * `useTheme`, `Styled` and the widgets' colour-none markers never carry an escape for one. `Audience` is read only when
+ * provided, so it stays out of the requirements.
+ */
+const audienceTheme: Effect.Effect<Cli.StreamTheme, never, Cli.CliTheme> = Effect.gen(function* () {
+	const audience = yield* Effect.serviceOption(Audience);
+	return themeForAudience(
+		(yield* CliTheme).forStream("stdout"),
+		Option.isSome(audience) ? audience.value.kind : undefined,
+	);
+});
 
 /** The root keys: Esc cancels with `"escape"`, Ctrl-C with `"interrupt"`. `q` belongs to widgets, never here. */
 const RootKeys = (props: {
@@ -233,7 +247,7 @@ export class CliUi {
 	): Effect.Effect<A, Cli.Cancelled | Cli.NotInteractive, Cli.CliTheme> =>
 		Effect.gen(function* () {
 			if (!(yield* CliInteractive)) return yield* Effect.fail(new NotInteractive());
-			const theme = (yield* CliTheme).forStream("stdout");
+			const theme = yield* audienceTheme;
 			const crash: CrashCell = { current: undefined };
 			const exit = yield* Effect.exit(
 				Semaphore.withPermit(mountPermit, Effect.scoped(mount(screen, theme, options?.clear === true, crash))),
@@ -260,7 +274,7 @@ export class CliUi {
 	 * hooks can render; a missing peer is a defect naming both. It is the only way to get a `UiContextValue`.
 	 */
 	static readonly context: Effect.Effect<UiContextValue, never, Cli.CliTheme> = Effect.gen(function* () {
-		const theme = (yield* CliTheme).forStream("stdout");
+		const theme = yield* audienceTheme;
 		yield* loadInk;
 		return { "~@effected/cli/ui/UiContextValue": true, theme, glyphs: theme.glyphs };
 	});

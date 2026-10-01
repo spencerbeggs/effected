@@ -3,13 +3,14 @@ import { Audience } from "@effected/env";
 import type { Console } from "effect";
 import { Effect, Exit, Fiber, Queue, Stream } from "effect";
 import { TestClock } from "effect/testing";
-import { Text } from "ink";
+import { Box, Text } from "ink";
 import type { ReactElement } from "react";
 import { createElement } from "react";
 import { vi } from "vitest";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { screenAfter } from "../../src/ui/testing/terminalModel.js";
-import { Styled, useTerminalSize } from "../../src/ui.js";
+import { Select, Styled, Tabs, useTerminalSize, useTheme } from "../../src/ui.js";
+import { CliUiTest } from "../../src/ui-testing.js";
 import type { State } from "../helpers/live.js";
 import {
 	End,
@@ -426,6 +427,64 @@ describe("CliUi.live: Task 4 review fixes", () => {
 			yield* settle(80);
 			const backwards = frames.filter((frame, index) => index > 0 && frame < (frames[index - 1] ?? 0));
 			assert.deepStrictEqual(backwards, [], `frames drawn: ${frames.join(",")}`);
+		}).pipe(Effect.scoped),
+	);
+});
+
+describe("CliUi.live and CliUi.run for an agent: the provided theme is colourless (Task 4 re-review)", () => {
+	/** What an agent's frame must show: the theme's own colour and paint, and the kit's colour-none text markers. */
+	const AgentProbe = (): ReactElement => {
+		const theme = useTheme();
+		return createElement(
+			Box,
+			{ flexDirection: "column" },
+			createElement(Text, null, `color=${theme.color} ${theme.paint("accent", "painted")}`),
+			createElement(Select.View<number>, {
+				message: "Pick",
+				choices: [
+					{ label: "one", value: 1 },
+					{ label: "two", value: 2, disabled: true },
+				],
+				onSubmit: () => undefined,
+			}),
+			createElement(Tabs.View, {
+				tabs: [
+					{ name: "a", label: "Alpha" },
+					{ name: "b", label: "Beta" },
+				],
+			}),
+		);
+	};
+	const SGR = new RegExp(`${ESC}\\[[0-9;]*m`);
+
+	it.live("an owned live view's printed frame: no escape, color=none, and the colour-none markers drawn", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 80, rows: 20 });
+			const handle = yield* liveOn(
+				fake,
+				optionsOf(Stream.fromIterable([Start, End]), { render: () => createElement(AgentProbe) }),
+				{ interactive: false, color: "truecolor" },
+			).pipe(Effect.provide(Audience.layerTest("agent")));
+			yield* handle.done.pipe(Effect.timeout("2 seconds"));
+			const written = fake.stdout();
+			assert.notInclude(written, ESC, "no escape of any kind for an agent");
+			assert.include(written, "color=none painted");
+			assert.include(written, "(disabled)", "Select's colour-none marker");
+			assert.include(written, "[Alpha]", "Tabs' colour-none brackets");
+		}).pipe(Effect.scoped),
+	);
+
+	it.live("a CliUi.run screen for an agent (forced interactive by the harness) gets the same colourless theme", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(() => createElement(AgentProbe), { color: "truecolor" }).pipe(
+				Effect.provide(Audience.layerTest("agent")),
+			);
+			const raw = yield* handle.rawFrame;
+			assert.notMatch(raw, SGR, "no colour escape for an agent");
+			const plain = yield* handle.plainFrame;
+			assert.include(plain, "color=none painted");
+			assert.include(plain, "(disabled)");
+			assert.include(plain, "[Alpha]");
 		}).pipe(Effect.scoped),
 	);
 });

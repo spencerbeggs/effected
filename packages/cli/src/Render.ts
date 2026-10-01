@@ -4,7 +4,7 @@ import { CommandNeutralizer } from "@effected/github-commands";
 import { Effect } from "effect";
 import type { CliLinksShape } from "./CliLinks.js";
 import { CliLinks } from "./CliLinks.js";
-import { CliTheme } from "./CliTheme.js";
+import { CliTheme, themeForAudience } from "./CliTheme.js";
 import type { Document, LinkTarget } from "./Doc.js";
 import type { GlyphSet } from "./Glyphs.js";
 import { Glyphs } from "./Glyphs.js";
@@ -165,9 +165,10 @@ export class Render {
 		options?: RenderContextOptions,
 	): Effect.Effect<RenderContext, never, CliTheme | TerminalEnv | Audience | CliLinks> =>
 		Effect.gen(function* () {
-			const theme = (yield* CliTheme).forStream(stream);
 			const terminal = yield* TerminalEnv;
 			const { kind } = yield* Audience;
+			const theme = (yield* CliTheme).forStream(stream);
+			const seen = themeForAudience(theme, kind);
 			const links = yield* CliLinks;
 			// Read if the environment has it, as `Doc.print` does: GitHub Actions makes every format unable to inject a
 			// workflow command, whoever the audience is.
@@ -178,8 +179,8 @@ export class Render {
 				audience: kind,
 				// An agent never gets an escape of any kind, so its context is colourless whatever the terminal says: every
 				// renderer, including an explicit `ansi`, then writes none (the linker already refuses its hyperlinks).
-				color: kind === "agent" ? "none" : theme.color,
-				paint: kind === "agent" ? (_token: TokenName | Style, text: string) => text : theme.paint,
+				color: seen.color,
+				paint: seen.paint,
 				glyphs: theme.glyphs,
 				link: CliLinks.linker({ links, hyperlinks: terminal[stream].hyperlinks, audience: kind }),
 				displayPath: options?.displayPath ?? ((absolute: string) => absolute),
