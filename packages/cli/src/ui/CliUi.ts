@@ -87,7 +87,11 @@ const mounts = Semaphore.makeUnsafe(1);
 
 const SCREEN_EXITED = "@effected/cli/ui: the screen exited without resolving or cancelling";
 
-const mount = <A>(screen: Screen<A>, theme: StreamTheme): Effect.Effect<A, Cancelled, Scope.Scope> =>
+const mount = <A>(
+	screen: Screen<A>,
+	theme: StreamTheme,
+	stream: "stdout" | "stderr",
+): Effect.Effect<A, Cancelled, Scope.Scope> =>
 	Effect.gen(function* () {
 		const { ink, react } = yield* loadInk;
 		const streams = yield* UiStreams;
@@ -116,7 +120,8 @@ const mount = <A>(screen: Screen<A>, theme: StreamTheme): Effect.Effect<A, Cance
 			Effect.sync(() =>
 				ink.render(tree, {
 					stdin: streams.stdin,
-					stdout: streams.stdout,
+					// Ink draws its frames on what it calls stdout, so a screen on stderr hands it stderr there.
+					stdout: stream === "stderr" ? streams.stderr : streams.stdout,
 					stderr: streams.stderr,
 					interactive: true,
 					exitOnCtrlC: false,
@@ -163,7 +168,14 @@ export class CliUi {
 	 * Mounting is one scoped resource. However the screen ends (resolved, cancelled, crashed, or the fiber
 	 * interrupted), it is unmounted, raw mode is off, the cursor is shown, and the colour level is restored. A
 	 * component that throws is a defect, never a hang or a typed failure, and nothing of Ink's crash screen reaches
-	 * stdout. Screens are serialized process-wide: a second `run` waits until the first is released.
+	 * stdout.
+	 *
+	 * With `stream: "stderr"` the frames, like the colour level, follow stderr, so stdout carries only what the
+	 * program itself writes.
+	 *
+	 * Screens run one at a time, process-wide: Ink owns raw mode on the one terminal, so a second `run` waits until
+	 * the first is released. A screen that itself awaits another `CliUi.run` therefore deadlocks, and nothing guards
+	 * against it.
 	 *
 	 * @param screen - builds the element to mount from its {@link ScreenControl}
 	 * @param options - the stream to draw on
@@ -174,8 +186,9 @@ export class CliUi {
 	): Effect.Effect<A, Cancelled | NotInteractive, CliTheme> =>
 		Effect.gen(function* () {
 			if (!(yield* CliInteractive)) return yield* Effect.fail(new NotInteractive());
-			const theme = (yield* CliTheme).forStream(options?.stream ?? "stdout");
-			return yield* Semaphore.withPermit(mounts, Effect.scoped(mount(screen, theme)));
+			const stream = options?.stream ?? "stdout";
+			const theme = (yield* CliTheme).forStream(stream);
+			return yield* Semaphore.withPermit(mounts, Effect.scoped(mount(screen, theme, stream)));
 		});
 
 	/**

@@ -116,6 +116,20 @@ describe("CliUi.run", () => {
 		}),
 	);
 
+	it.live("a screen on stderr draws its frames on stderr, and stdout receives nothing", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams();
+			const value = yield* runOn(
+				fake,
+				(control) => createElement(OnMount, { onMount: () => control.resolve("drawn"), label: "on-stderr" }),
+				{ stream: "stderr" },
+			);
+			assert.strictEqual(value, "drawn");
+			assert.include(fake.stderr(), "on-stderr", "the frame reached stderr");
+			assert.strictEqual(fake.stdout(), "", "stdout carries only what the program writes");
+		}),
+	);
+
 	it.live("Ctrl-C cancels with interrupt", () =>
 		Effect.gen(function* () {
 			const fake = makeFakeStreams();

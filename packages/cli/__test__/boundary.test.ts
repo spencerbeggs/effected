@@ -26,7 +26,9 @@ const isUiPackage = (specifier: string): boolean => /^(?:ink|react)(?:$|\/)/.tes
 const isUiSelfReference = (specifier: string): boolean => /^@effected\/cli\/ui(?:$|\/)/.test(specifier);
 
 /** An `import type` or `export type` clause naming `ink`, `react` or a subpath, in comment-stripped source. */
-const TYPE_ONLY_UI_IMPORT = /\b(?:import|export)\s+type\b[^;]*?\bfrom\s*(["'])((?:ink|react)(?:\/[^"']*)?)\1/g;
+// The clause body excludes quotes as well as semicolons, so a match cannot run past an earlier `from "…"` in code
+// written without semicolons.
+const TYPE_ONLY_UI_IMPORT = /\b(?:import|export)\s+type\b[^;"']*?\bfrom\s*(["'])((?:ink|react)(?:\/[^"']*)?)\1/g;
 
 /**
  * The `ink` and `react` specifiers a source text names other than through `import type` or `export type`: a value
@@ -253,6 +255,11 @@ describe("cli boundary", () => {
 				valueImportsOfUiPackages('import type { Box } from "ink";\nimport { Text } from "ink";'),
 				["ink"],
 				"a type import beside a value import of the same package does not hide the value one",
+			);
+			assert.deepStrictEqual(
+				valueImportsOfUiPackages('import type { A } from "./a.js"\nimport { Text } from "ink"'),
+				["ink"],
+				"in code without semicolons, a type import of another module does not swallow a later value import",
 			);
 		});
 
