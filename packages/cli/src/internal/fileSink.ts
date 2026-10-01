@@ -1,5 +1,7 @@
+import { CommandNeutralizer } from "@effected/github-commands";
 import type { LogLevel, Scope } from "effect";
 import { Cause, Console, Effect, Exit, Fiber, FileSystem, Logger, Path, Queue } from "effect";
+import { sanitize } from "../Fmt.js";
 import { formatNdjson, passes } from "./diagnostics.js";
 
 /** How long closing the scope waits for queued lines to reach the file before giving up on a hung filesystem. */
@@ -16,11 +18,16 @@ const CLOSE_TIMEOUT = "2 seconds";
  * waits for the drain for at most two seconds, so lines queued before the close are flushed unless the sink had
  * already disabled itself or the filesystem hangs; past the bound the drain is interrupted and the rest is lost.
  *
+ * The stderr line is held to the rules of every other kit write: the path (which a workflow can set through an env
+ * var) and the error's message are sanitised, and the line is neutralized when `underActions` says the drain's fiber
+ * runs under GitHub Actions, the same decision the diagnostics sink makes.
+ *
  * @internal
  */
 export const makeFileSink = (
 	path: string,
 	installed: LogLevel.LogLevel,
+	underActions: (fiber: Fiber.Fiber<unknown, unknown>) => boolean,
 ): Effect.Effect<Logger.Logger<unknown, void>, never, FileSystem.FileSystem | Path.Path | Scope.Scope> =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
@@ -51,7 +58,8 @@ export const makeFileSink = (
 					disabled = true;
 					const error = Cause.squash(exit.cause);
 					const message = error instanceof Error ? error.message : String(error);
-					yield* Console.error(`diagnostics log file ${path} failed: ${message}; further file logging disabled`);
+					const line = sanitize(`diagnostics log file ${path} failed: ${message}; further file logging disabled`);
+					yield* Effect.withFiber((self) => Console.error(underActions(self) ? CommandNeutralizer.text(line) : line));
 				}
 			}
 		}).pipe(Effect.ignore);

@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Audience, TerminalEnv } from "@effected/env";
+import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import { MemoryFileSystem } from "@effected/memfs";
-import { ConfigProvider, Console, Effect, Exit, Fiber, Layer, PlatformError, Scope } from "effect";
+import { ConfigProvider, Console, Effect, Exit, Fiber, Layer, Option, PlatformError, Scope } from "effect";
 import { TestClock } from "effect/testing";
 import { CliLog } from "../src/index.js";
 
@@ -32,6 +32,8 @@ const harness = (options: {
 	readonly file: { readonly envVar: string } | { readonly path: string };
 	readonly env?: Record<string, string>;
 	readonly failFirstAppend?: boolean;
+	/** Provide `CurrentRuntimeEnv` with this CI; omitted, the service is not in the environment at all. */
+	readonly ci?: "github-actions" | "generic";
 	readonly faults?: Parameters<typeof MemoryFileSystem.makeSync>[1] extends infer O
 		? NonNullable<O> extends { faults?: infer F }
 			? F
@@ -45,7 +47,13 @@ const harness = (options: {
 		const handle = MemoryFileSystem.makeSync({}, faults === undefined ? undefined : { faults });
 		const { double, out, err } = capturing();
 		const layer = CliLog.layer({ envVar: LEVEL_ENV, file: options.file }).pipe(
-			Layer.provide(Layer.mergeAll(Audience.layerTest("agent"), TerminalEnv.layerTest())),
+			Layer.provide(
+				Layer.mergeAll(
+					Audience.layerTest("agent"),
+					TerminalEnv.layerTest(),
+					options.ci === undefined ? Layer.empty : CurrentRuntimeEnv.layerTest({ ci: Option.some(options.ci) }),
+				),
+			),
 			Layer.provide(handle.layer),
 		);
 		const scope = yield* Scope.make();
@@ -138,6 +146,51 @@ describe("CliLog.layer file option", () => {
 			assert.isTrue(h.handle.volume.has("/deep/er/log.ndjson"));
 		}),
 	);
+
+	describe("the failure line is safe to print", () => {
+		const ESC = String.fromCharCode(0x1b);
+		// A path a workflow controls through the env var, and an error that echoes it: both carry an escape, a line break
+		// into a V2 command, and a legacy command anywhere in a line.
+		const HOSTILE = `/logs/a${ESC}[31m\n::add-mask::secret\nb ##[error]c.ndjson`;
+		const hostileFault = PlatformError.systemError({
+			_tag: "PermissionDenied",
+			module: "FileSystem",
+			method: "writeFileString",
+			pathOrDescriptor: HOSTILE,
+			description: `denied${ESC}]8;;x${ESC}\\\n::error::injected`,
+		});
+		const lines = (entries: ReadonlyArray<string>) => entries.flatMap((entry) => entry.split(/\r\n|\r|\n/));
+		const failureLines = (err: ReadonlyArray<string>) => {
+			const at = err.findIndex((entry) => entry.startsWith("diagnostics log file"));
+			assert.isAtLeast(at, 0, `control: the failure line was printed\n${err.join("\n")}`);
+			return lines([err[at] as string]);
+		};
+
+		for (const ci of ["github-actions", undefined] as const) {
+			it.effect(
+				`${ci ?? "outside Actions"}: no escape, ${ci === undefined ? "the text kept" : "and no workflow command"}`,
+				() =>
+					Effect.gen(function* () {
+						const h = yield* harness({
+							file: { envVar: FILE_ENV },
+							env: { [LEVEL_ENV]: "debug", [FILE_ENV]: HOSTILE },
+							faults: { writeFileString: MemoryFileSystem.failTimes(1, hostileFault) },
+							...(ci === undefined ? {} : { ci }),
+						});
+						yield* h.log(Effect.logError("first"));
+						let spins = 0;
+						while (plain(h.err).length === 0 && spins++ < 1000) yield* Effect.yieldNow;
+						yield* h.close;
+						const printed = failureLines(h.err);
+						for (const line of printed) assert.notInclude(line, ESC, JSON.stringify(line));
+						const commands = printed.filter((line) => /^[\s\u0085]*::/.test(line) || line.includes("##["));
+						if (ci === "github-actions") assert.deepStrictEqual(commands, []);
+						else assert.isAbove(commands.length, 0, "control: outside Actions the text is not neutralized");
+						assert.include(printed.join("\n"), "add-mask", "the text is kept, only made inert");
+					}),
+			);
+		}
+	});
 
 	describe("the first write error", () => {
 		it.effect("prints exactly one stderr line, keeps the program running, and drops later writes", () =>

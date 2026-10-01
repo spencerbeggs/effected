@@ -465,7 +465,7 @@ export class CliLog {
 											);
 								if (Option.isSome(target) && target.value !== "") {
 									const location = yield* PathModule.Path;
-									loggers.push(yield* makeFileSink(location.resolve(target.value), lowered));
+									loggers.push(yield* makeFileSink(location.resolve(target.value), lowered, underActionsIn));
 								}
 							}
 							return new Set(loggers);
