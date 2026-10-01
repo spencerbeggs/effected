@@ -9,13 +9,24 @@ import { Runtime, Schema } from "effect";
  * core's own `Runtime.errorExitCode` marker, so `CliRuntime.reportFailures`
  * keeps it. Its default rendering is one line, `cancelled; nothing written`,
  * because nothing has been written by the time a prompt is cancelled and a
- * stack trace would only alarm. A consumer `render` still overrides the line.
+ * stack trace would only alarm. A consumer `render` still overrides the line, and can hand off to it: the line is
+ * the error's `message`, so `error.message` and `String(error)` carry it.
  *
  * @public
  */
 export class Cancelled extends Schema.TaggedError<Cancelled>()("Cancelled", {
 	reason: Schema.Literals(["escape", "interrupt"]),
 }) {
+	/**
+	 * The one line, `cancelled; nothing written`.
+	 *
+	 * @remarks
+	 * A prototype getter, not a field, so it is not part of the encoded form, equality or a JSON dump.
+	 */
+	override get message(): string {
+		return "cancelled; nothing written";
+	}
+
 	/**
 	 * The process exit code: `130`.
 	 *

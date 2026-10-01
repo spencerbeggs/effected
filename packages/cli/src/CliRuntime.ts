@@ -138,10 +138,9 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	readonly helpOnUsageError?: "stdout" | "stderr" | undefined;
 }
 
-/** The default one-line rendering: the two prompt failures have a fixed line, everything else is `String(error)`. */
+/** The default one-line rendering: the two prompt failures are their own fixed line, everything else is `String(error)`. */
 const defaultRender = (error: unknown): string => {
-	if (error instanceof Cancelled) return "cancelled; nothing written";
-	if (error instanceof NotInteractive) return "not interactive: run in a terminal or pass the flag";
+	if (error instanceof Cancelled || error instanceof NotInteractive) return error.message;
 	return String(error);
 };
 

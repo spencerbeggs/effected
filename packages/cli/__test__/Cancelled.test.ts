@@ -72,6 +72,43 @@ describe("Cancelled", () => {
 	});
 });
 
+describe("the fixed lines are the errors' own message", () => {
+	const CANCELLED = "cancelled; nothing written";
+	const NOT_INTERACTIVE = "not interactive: run in a terminal or pass the flag";
+
+	it("Cancelled.message is its line, for either reason, and String(error) carries it", () => {
+		for (const reason of ["escape", "interrupt"] as const) {
+			const error = new Cancelled({ reason });
+			assert.strictEqual(error.message, CANCELLED);
+			assert.include(String(error), CANCELLED);
+		}
+	});
+
+	it("NotInteractive.message is its line, and String(error) carries it", () => {
+		const error = new NotInteractive();
+		assert.strictEqual(error.message, NOT_INTERACTIVE);
+		assert.include(String(error), NOT_INTERACTIVE);
+	});
+
+	it("a decoded instance has the message too, and it is not part of the encoded form or equality", () => {
+		const decoded = Schema.decodeUnknownSync(Cancelled)({ _tag: "Cancelled", reason: "escape" });
+		assert.strictEqual(decoded.message, CANCELLED);
+		assert.deepStrictEqual(Schema.encodeSync(Cancelled)(decoded), { _tag: "Cancelled", reason: "escape" });
+		assert.notInclude(JSON.stringify(decoded), CANCELLED);
+		assert.isTrue(Equal.equals(decoded, new Cancelled({ reason: "escape" })));
+		assert.notInclude(Object.keys(new NotInteractive()).join(","), "message");
+	});
+
+	it.effect("a consumer render that prints error.message gets the kit's line, for these errors and its own", () =>
+		Effect.gen(function* () {
+			const render = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+			assert.deepStrictEqual((yield* run(new Cancelled({ reason: "escape" }), render)).err, [CANCELLED]);
+			assert.deepStrictEqual((yield* run(new NotInteractive(), render)).err, [NOT_INTERACTIVE]);
+			assert.deepStrictEqual((yield* run(new Error("mine"), render)).err, ["mine"]);
+		}),
+	);
+});
+
 describe("NotInteractive", () => {
 	it.effect("exits 64 with its one line", () =>
 		Effect.gen(function* () {
