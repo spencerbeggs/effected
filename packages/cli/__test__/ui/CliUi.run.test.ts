@@ -350,3 +350,53 @@ describe("CliUi.run", () => {
 		}),
 	);
 });
+
+describe("bracketed paste is switched off however a screen ends (production path)", () => {
+	const PASTE_MODE = new RegExp(`${ESC}\\[\\?2004([hl])`, "g");
+	const lastPasteMode = (written: string): string | undefined => [...written.matchAll(PASTE_MODE)].at(-1)?.[1];
+
+	it.live("after Esc: it was on while mounted, and the last switch written turns it off", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams();
+			const fiber = yield* Effect.forkChild(runOn(fake, idle));
+			yield* until(() => fake.rawModes.includes(true));
+			yield* until(() => fake.stdout().includes(`${ESC}[?2004h`));
+			fake.input(ESC);
+			const exit = yield* Effect.exit(Fiber.join(fiber));
+			assert.isTrue(Exit.isFailure(exit), "Esc cancels");
+			assert.strictEqual(lastPasteMode(fake.stdout()), "l");
+		}),
+	);
+
+	it.live("after a render throws: it was on while mounted, and the last switch written turns it off", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams();
+			let explode: (() => void) | undefined;
+			const Fuse = (): ReactElement => {
+				const [boom, setBoom] = useState(false);
+				useEffect(() => {
+					explode = () => setBoom(true);
+				}, []);
+				if (boom) throw new Error("kaboom");
+				return createElement(Text, null, "armed");
+			};
+			const fiber = yield* Effect.forkChild(runOn(fake, () => createElement(Fuse)));
+			yield* until(() => explode !== undefined && fake.stdout().includes(`${ESC}[?2004h`));
+			explode?.();
+			const exit = yield* Effect.exit(Fiber.join(fiber));
+			const defect = defectOf(exit);
+			assert.strictEqual(defect instanceof Error ? defect.message : "", "kaboom");
+			assert.strictEqual(lastPasteMode(fake.stdout()), "l");
+		}),
+	);
+
+	it.live("after the fiber is interrupted: it was on while mounted, and the last switch turns it off", () =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams();
+			const fiber = yield* Effect.forkChild(runOn(fake, idle));
+			yield* until(() => fake.stdout().includes(`${ESC}[?2004h`));
+			yield* Fiber.interrupt(fiber);
+			assert.strictEqual(lastPasteMode(fake.stdout()), "l");
+		}),
+	);
+});

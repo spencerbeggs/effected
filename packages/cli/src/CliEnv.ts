@@ -24,7 +24,8 @@ export interface CliEnvOptions {
 	 * @remarks
 	 * Mirroring means a program whose stdout is a terminal but whose stderr is redirected to a file still paints
 	 * stderr (a failure report, a warning) with colour escapes. A Node host that redirects stderr passes the real
-	 * answer: `env: { stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true) }`.
+	 * answer: `env: { stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true) }`. Core's `Stdio` has no
+	 * stderr terminal check to read instead; that gap is tracked upstream as Effect-TS/effect#8639.
 	 */
 	readonly stderrIsTerminal?: Effect.Effect<boolean> | undefined;
 	/** Options for the theme; see {@link CliThemeOptions}. */

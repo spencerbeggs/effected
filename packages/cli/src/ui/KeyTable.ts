@@ -73,8 +73,9 @@ const labelOf = (key: KeyName | { readonly char: string }, glyphs: Cli.GlyphSet)
 const normalise = (key: KeyName | { readonly char: string }): KeyName | { readonly char: string } =>
 	typeof key !== "string" && key.char === " " ? "space" : key;
 
+/** Two keys shadow each other in help when they would match the same press, so a char compares in NFC as matching does. */
 const identity = (key: KeyName | { readonly char: string }): string =>
-	typeof key === "string" ? `named:${key}` : `char:${key.char}`;
+	typeof key === "string" ? `named:${key}` : `char:${key.char.normalize("NFC")}`;
 
 const bound = (binding: KeyName | { readonly char: string }, key: UiKey): boolean =>
 	typeof binding === "string"

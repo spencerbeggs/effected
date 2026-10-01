@@ -197,3 +197,24 @@ describe("useKeys and KeyHelp", () => {
 		}).pipe(Effect.scoped),
 	);
 });
+
+describe("KeyTable help shadowing compares chars in NFC", () => {
+	it("a precomposed and a decomposed binding of the same char shadow each other", () => {
+		const precomposedFirst = KeyTable.make<"a" | "b">([
+			{ keys: [{ char: "é" }], action: "a", help: "first" },
+			{ keys: [{ char: "é" }], action: "b", help: "second" },
+		]);
+		assert.deepStrictEqual(
+			precomposedFirst.help(Glyphs.unicode).map((row) => row.help),
+			["first"],
+		);
+		const decomposedFirst = KeyTable.make<"a" | "b">([
+			{ keys: [{ char: "é" }], action: "a", help: "first" },
+			{ keys: [{ char: "é" }], action: "b", help: "second" },
+		]);
+		assert.deepStrictEqual(
+			decomposedFirst.help(Glyphs.unicode).map((row) => row.help),
+			["first"],
+		);
+	});
+});

@@ -142,7 +142,8 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 *
 	 * Stderr's colour mirrors stdout's terminal check unless `env.stderrIsTerminal` says otherwise, so with stderr
 	 * redirected and stdout a terminal the failure report is painted into the file. On Node, pass the real check:
-	 * `env: { stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true) }`.
+	 * `env: { stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true) }` (core's `Stdio` reports only
+	 * stdout; upstream Effect-TS/effect#8639).
 	 */
 	readonly env?: CliEnvOptions | undefined;
 	/**
