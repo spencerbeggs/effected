@@ -1,0 +1,62 @@
+---
+type: Decision
+title: While a live view is mounted, kit logs go through Ink's own stdout and stderr writers
+description: "The live view exposes a bridged Console whose writes go through Ink's useStdout().write and useStderr().write while a run is mounted, so a log line lands above the frame without tearing it, and straight to the stream before mount and after unmount, since Ink silently drops hook writes after unmount (probe L4)."
+status: draft
+tags: [architecture, observability]
+sources:
+  - id: p5-probes
+    resource: ../../docs/superpowers/specs/2026-10-01-p5-probes.md
+    title: "P5 planning probe L4: writing log lines above a live frame"
+  - id: ink-writers
+    resource: "npm:ink@7.1.1"
+    title: "Ink 7.1.1, build/ink.js:433-489 (writeToStdout/writeToStderr, early return when unmounted) and build/render.js:23-35 (the instance has no writers)"
+generated:
+  by: "okfit/claude-code"
+  at: 2026-10-01T09:31:36Z
+  body_sha256: e73a2a03a6435b7456d1aa2163448f795f596f36f131e49b6c9f62afbb9df600
+---
+
+# While a live view is mounted, kit logs go through Ink's own stdout and stderr writers
+
+## Context
+
+`CliUi.run` forbids logging while a screen is mounted: Ink redraws by
+counting the lines it last wrote, so a line from elsewhere lands inside the
+frame and tears it. A live view lasts a whole test run, so "do not log" is
+not an option.
+
+Probe L4 tried seven mechanisms on a pty.[^p5-probes] `<Static>`, the hook
+writers (`useStdout().write`, `useStderr().write`) and `patchConsole` were
+clean; raw `process.stdout` and `process.stderr` writes left stale frame
+copies and erased the log lines; `clear()` then a raw write destroyed the
+history. The instance `render()` returns has no writers: they live on the
+internal `Ink` class, reached only through the hooks, and each returns early
+once unmounted, so a write after unmount is silently lost.[^ink-writers]
+
+## Decision
+
+- A kit-internal bridge component, mounted inside the live tree, captures
+  `useStdout().write` and `useStderr().write`.
+- The live handle exposes a `Console` over that bridge: `log` and `info` go
+  to the stdout writer and `error` and `warn` to the stderr writer, keeping
+  the kit's stdout/stderr contract.
+- Before a run mounts, and from just **before** `unmount()`, the same
+  `Console` writes straight to `UiStreams`, so no line hits Ink's drop.
+
+## Alternatives rejected
+
+- **`<Static>`.** It needs an append-only items array in React state
+  (unbounded in watch mode), is throttled, and puts stderr lines on stdout.
+- **`patchConsole`.** It hijacks the global console, which a hosted view
+  must leave to its host (Vitest), and the kit's loggers do not go through
+  `console` reliably.
+
+## Consequences
+
+- A consumer provides the bridged `Console` around the work it does while
+  the view is mounted; a log written any other way still tears the frame.
+- A degrade warning is written after the unmount, never mid-frame.
+
+[^p5-probes]: `docs/superpowers/specs/2026-10-01-p5-probes.md`, section L4
+[^ink-writers]: `npm:ink@7.1.1`, `build/ink.js:433-489` and `build/render.js:23-35`
