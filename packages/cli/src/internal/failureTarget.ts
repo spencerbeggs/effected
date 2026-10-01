@@ -133,15 +133,18 @@ export const failureLines = (cause: Cause.Cause<unknown>): Effect.Effect<Readonl
  * What a consumer's `render` returns is text the kit did not build and cannot vouch for: it interpolates error
  * messages, file names, whatever the failure carried. So it gets the output policy the kit's own report has. Under
  * GitHub Actions (the target says so, and with no environment services at all it is assumed) every line is neutralized,
- * a returned line break splitting it first. For an agent audience the escapes are removed too. For a person they are
- * kept: the kit cannot tell the consumer's own colour from an injected sequence, so the consumer's `render` is
+ * a returned line break splitting it first. For an agent or a CI audience the escapes are removed too (GitHub Actions
+ * detects as `ci`, and the kit's own output for it has none). For a person they are kept: the kit cannot tell the consumer's own colour from an injected sequence, so the consumer's `render` is
  * responsible for sanitising what it interpolates. An audience that was only assumed is not an agent.
  *
  * @internal
  */
 export const guardConsumerLines = (lines: ReadonlyArray<string>): Effect.Effect<ReadonlyArray<string>> =>
 	Effect.map(currentTarget, (target) => {
-		const stripped = target.assumed !== true && target.ctx.audience === "agent" ? lines.map(sanitize) : lines;
+		// An agent or a CI gets no escape of any kind (the kit's own output for them is already escape-free); only a person
+		// keeps what the consumer wrote.
+		const noEscapes = target.assumed !== true && (target.ctx.audience === "agent" || target.ctx.audience === "ci");
+		const stripped = noEscapes ? lines.map(sanitize) : lines;
 		return target.ctx.neutralizeWorkflowCommands === true
 			? stripped.flatMap((line) => CommandNeutralizer.lines(line))
 			: stripped;

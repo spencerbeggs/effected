@@ -220,6 +220,23 @@ describe("a consumer render's output is untrusted text", () => {
 		}),
 	);
 
+	it.effect(
+		"a ci audience, which is what GitHub Actions detects, gets no escape either: OSC 8 and BEL are stripped",
+		() =>
+			Effect.gen(function* () {
+				// Detected CI (GITHUB_ACTIONS, no override) and an explicit ci audience outside Actions.
+				for (const env of [{ GITHUB_ACTIONS: "true" }, { TEST_AUDIENCE: "ci" }, { CI: "true", TEST_AUDIENCE: "ci" }]) {
+					const err = yield* reportWith(env);
+					const text = err.join("\n");
+					assert.notInclude(text, ESC, JSON.stringify(env));
+					assert.notInclude(text, BEL, JSON.stringify(env));
+					assert.notInclude(text, "evil", JSON.stringify(env));
+					assert.include(text, "red", "the text itself is kept");
+					if (env.GITHUB_ACTIONS !== undefined) assert.deepStrictEqual(commandLines(text), [], "and still neutralized");
+				}
+			}),
+	);
+
 	it.effect("a human outside GitHub Actions keeps the consumer's own escapes, and nothing is neutralized", () =>
 		Effect.gen(function* () {
 			const err = yield* reportWith({ TEST_AUDIENCE: "human", TERM: "xterm-256color" });

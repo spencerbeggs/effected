@@ -70,7 +70,7 @@ export interface ReportFailuresOptions {
 	 *
 	 * What it returns is text the kit did not build, so the report applies the output policy to it: under GitHub
 	 * Actions a line the runner would read as a workflow command is neutralized (with no environment services at all,
-	 * always), and for an agent audience escape sequences are removed. For a person the escapes you return are kept,
+	 * always), and for an agent or a CI audience escape sequences are removed (GitHub Actions detects as `ci`). For a person the escapes you return are kept,
 	 * since the kit cannot tell your own colour from an injected sequence: a `render` must sanitise the data it
 	 * interpolates (an error message, a file name) itself.
 	 */
