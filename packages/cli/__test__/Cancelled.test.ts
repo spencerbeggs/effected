@@ -137,17 +137,15 @@ describe("NotInteractive", () => {
 describe("CliRuntime.defaultRender", () => {
 	const details = { cause: Cause.empty, isDefect: false };
 
-	it("is the kit's own line for the two prompt failures, and String(error) for anything else", () => {
-		assert.strictEqual(
-			CliRuntime.defaultRender(new Cancelled({ reason: "escape" }), details),
+	it("is the kit's own line for the two prompt failures, and a status line for anything else", () => {
+		assert.deepStrictEqual(CliRuntime.defaultRender(new Cancelled({ reason: "escape" }), details), [
 			"cancelled; nothing written",
-		);
-		assert.strictEqual(
-			CliRuntime.defaultRender(new NotInteractive(), details),
+		]);
+		assert.deepStrictEqual(CliRuntime.defaultRender(new NotInteractive(), details), [
 			"not interactive: run in a terminal or pass the flag",
-		);
-		assert.strictEqual(CliRuntime.defaultRender(new Error("boom"), details), String(new Error("boom")));
-		assert.strictEqual(CliRuntime.defaultRender("plain", details), "plain");
+		]);
+		assert.deepStrictEqual(CliRuntime.defaultRender(new Error("boom"), details), ["[FAIL] Error: boom"]);
+		assert.deepStrictEqual(CliRuntime.defaultRender("plain", details), ["[FAIL] plain"]);
 	});
 
 	it.effect("a consumer render can hand the two prompt failures back and keep its own line for the rest", () =>

@@ -40,7 +40,7 @@ describe("CliRuntime.reportFailures", () => {
 		Effect.gen(function* () {
 			const { out, err, exit } = yield* run(Effect.fail(new Error("boom")));
 
-			assert.deepStrictEqual(err, ["Error: boom"]);
+			assert.deepStrictEqual(err, ["[FAIL] Error: boom"]);
 			// The bug this exists to prevent is the report landing on stdout.
 			assert.deepStrictEqual(out, []);
 			assert.strictEqual(Exit.isFailure(exit), true);
@@ -218,7 +218,7 @@ describe("CliRuntime.reportFailures and ShowHelp", () => {
 		Effect.gen(function* () {
 			const gate = CliRuntime.reported(new Error("3 schemas drifted"), 1);
 			const { err } = yield* run(Effect.fail(gate));
-			assert.deepStrictEqual(err, ["Error: 3 schemas drifted"]);
+			assert.deepStrictEqual(err, ["[FAIL] Error: 3 schemas drifted"]);
 		}),
 	);
 });

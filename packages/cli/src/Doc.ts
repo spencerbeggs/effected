@@ -1,8 +1,8 @@
-import type { Audience, AudienceKind, TerminalEnv } from "@effected/env";
-import { CurrentRuntimeEnv } from "@effected/env";
-import { Console, Effect, Option } from "effect";
+import type { Audience, TerminalEnv } from "@effected/env";
+import { Console, Effect } from "effect";
 import type { CliLinks } from "./CliLinks.js";
 import type { CliTheme } from "./CliTheme.js";
+import { autoFormat } from "./internal/autoFormat.js";
 import { totalOf, visibleCountersOf } from "./internal/counts.js";
 import { Render } from "./Render.js";
 import type { Status, StatusDef } from "./Status.js";
@@ -260,17 +260,6 @@ const counterOf = (counter: Counter): Counter =>
 	freeze({
 		...counter,
 		status: freeze({ name: counter.status.name, def: freeze({ ...counter.status.def }) }),
-	});
-
-/** The renderer an audience gets when `Doc.print` is not told: a person is painted, a machine reads plain text. */
-const autoFormat = (audience: AudienceKind): Effect.Effect<"plain" | "ansi" | "githubLog"> =>
-	Effect.gen(function* () {
-		if (audience === "human") return "ansi";
-		if (audience === "agent") return "plain";
-		// A CI gets GitHub's log format only where `CurrentRuntimeEnv` says it is GitHub Actions; it is not required.
-		const runtime = yield* Effect.serviceOption(CurrentRuntimeEnv);
-		const ci = Option.flatMap(runtime, (env) => env.ci);
-		return Option.contains(ci, "github-actions") ? "githubLog" : "plain";
 	});
 
 /**

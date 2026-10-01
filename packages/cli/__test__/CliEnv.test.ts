@@ -149,7 +149,8 @@ describe("CliRuntime.main with the env option", () => {
 				Effect.provideService(ConfigProvider.ConfigProvider, withEnv({})),
 				Effect.provideService(Console.Console, double),
 			);
-			assert.deepStrictEqual(err, ["Error: tty broke"]);
+			// A defect: the status line first, then its cleaned stack.
+			assert.strictEqual(err[0], "[FAIL] Error: tty broke");
 			assert.deepStrictEqual(out, []);
 			assert.isTrue(Exit.isFailure(exit));
 			if (Exit.isFailure(exit)) assert.strictEqual(Runtime.getErrorExitCode(Cause.squash(exit.cause)), 3);
@@ -195,7 +196,7 @@ describe("CliRuntime.main with the env option", () => {
 					Effect.provideService(Console.Console, double),
 				);
 				assert.isTrue(Exit.isFailure(exit));
-				assert.include(err, "Error: boom");
+				assert.isTrue(err.some((line) => line.includes("Error: boom")));
 				const records = err.filter((line) => line.startsWith("{") || /^\d\d:\d\d:\d\d\.\d{3} /.test(line));
 				assert.isTrue(
 					records.some((line) => line.includes("inside")),
@@ -229,7 +230,8 @@ describe("CliRuntime.main with the env option", () => {
 				Effect.provideService(ConfigProvider.ConfigProvider, withEnv({})),
 				Effect.provideService(Console.Console, double),
 			);
-			assert.deepStrictEqual(err, ["Error: tty broke"]);
+			// A defect: the status line first, then its cleaned stack.
+			assert.strictEqual(err[0], "[FAIL] Error: tty broke");
 			assert.deepStrictEqual(out, []);
 			if (Exit.isFailure(exit)) assert.strictEqual(Runtime.getErrorExitCode(Cause.squash(exit.cause)), 3);
 			else assert.fail("expected a failure");

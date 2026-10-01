@@ -5,6 +5,7 @@ import { Effect, Option, Stdio } from "effect";
 import type { Command } from "effect/cli";
 import { CliConfig, CliError, Command as CommandModule, Flag, GlobalFlag } from "effect/cli";
 import { CliInteractive } from "./CliInteractive.js";
+import { refreshFailureTarget } from "./internal/failureTarget.js";
 import { scanAudience, tallyAudience } from "./internal/scanAudience.js";
 import { WizardDropped } from "./internal/wizardGate.js";
 
@@ -168,6 +169,9 @@ export class CliAudience {
 	 * directly only with a bare `Command.run`, which leaves a fallback prompt blind to the flags (see the class
 	 * remarks).
 	 *
+	 * A failure report is written outside the run, where the flag is not in force, so only `runWith` and `run` carry
+	 * the flag's audience to it; with this on its own the report follows the environment's audience.
+	 *
 	 * Pipe it onto the composite root, after `withSubcommands`, since a parent's handler does not run when a
 	 * subcommand is selected. With exactly one flag the audience is `{ kind, source: "flag" }`; with none the
 	 * ambient `Audience` is read and provided back unchanged, so `Audience` stays in the requirement a handler
@@ -230,6 +234,9 @@ export class CliAudience {
 			return Effect.gen(function* () {
 				const current = yield* CliInteractive;
 				const ambient = yield* CliConfig.CliConfig;
+				// The report of a failure is written outside this run, where the flag is not in force: record the audience
+				// the flag named, so `--agent` on a terminal gets the plain report and `--human` the painted one.
+				if (!conflict) yield* refreshFailureTarget({ kind, source: "flag" });
 				const interactive = !conflict && (yield* interactiveWhenFlagged(kind, current));
 				const decided = Effect.provideService(withAudience, CliInteractive, interactive);
 				// The wizard prompts, so it follows the decision: the environment gated it from the detected audience,

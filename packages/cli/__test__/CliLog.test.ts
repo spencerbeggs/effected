@@ -288,7 +288,7 @@ describe("CliLog owns the logger set", () => {
 		it.effect(`a failure is still reported, once and plain, with the diagnostics level None: ${argv.join(" ")}`, () =>
 			Effect.gen(function* () {
 				const { out, err, code } = yield* runMain(argv);
-				assert.deepStrictEqual(err, ["Error: boom"]);
+				assert.deepStrictEqual(err, ["[FAIL] Error: boom"]);
 				assert.deepStrictEqual(out, []);
 				assert.strictEqual(code, 1);
 			}),
@@ -308,7 +308,7 @@ describe("CliLog owns the logger set", () => {
 		Effect.gen(function* () {
 			const { err, code } = yield* runMain(["boom"], { [ENV]: "debug" });
 			assert.strictEqual(code, 1);
-			assert.include(err, "Error: boom");
+			assert.include(err, "[FAIL] Error: boom");
 			assert.isTrue(ndjson(err).some((line) => json(line).level === "ERROR"));
 		}),
 	);
@@ -355,7 +355,7 @@ describe("CliLog owns the logger set", () => {
 					assert.strictEqual(debug.err.length, 1, debug.err.join("\n"));
 					assert.strictEqual(json(debug.err[0] ?? "").level, "DEBUG");
 					const failed = yield* runMain(["boom"], {}, wiring());
-					assert.deepStrictEqual(failed.err, ["Error: boom"]);
+					assert.deepStrictEqual(failed.err, ["[FAIL] Error: boom"]);
 					assert.strictEqual(failed.code, 1);
 				}),
 			);

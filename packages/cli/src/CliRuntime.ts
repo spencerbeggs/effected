@@ -2,7 +2,6 @@ import type { Audience, TerminalEnv } from "@effected/env";
 import type { FileSystem, Path, Stdio, Terminal } from "effect";
 import { Cause, Effect, Layer, MutableRef, Runtime } from "effect";
 import { CliError } from "effect/cli";
-import { Cancelled } from "./Cancelled.js";
 import { CliColor } from "./CliColor.js";
 import type { CliEnvOptions, CliEnvServices } from "./CliEnv.js";
 import { CliEnv } from "./CliEnv.js";
@@ -11,9 +10,10 @@ import type { CliLogFileOptions, CliLogOptions } from "./CliLog.js";
 import { CliLog } from "./CliLog.js";
 import { CliLogger } from "./CliLogger.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
+import type { FailureTarget } from "./internal/failureTarget.js";
+import { FailureTargetCell, failureLines, plainFailureLines, refreshFailureTarget } from "./internal/failureTarget.js";
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
 import { isExitCode } from "./internal/isExitCode.js";
-import { NotInteractive } from "./NotInteractive.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
 
@@ -44,8 +44,10 @@ export interface FailureDetails {
  */
 export interface ReportFailuresOptions {
 	/**
-	 * Render the failure. Defaults to `String(error)`, one line, except that a
-	 * {@link Cancelled} and a {@link NotInteractive} render their own fixed line.
+	 * Render the failure. Defaults to the failure's document, `CliFailure.toDoc(cause)`, rendered for the
+	 * audience: a failure status line, a tree for a schema failure, a defect's message with its cleaned stack, and
+	 * the one fixed line each for `Cancelled` and `NotInteractive`. Under `CliRuntime.main` with `env` it is painted for
+	 * a person and plain for an agent or a CI; elsewhere it is plain. It is still written through the logger.
 	 *
 	 * @remarks
 	 * Return several lines to print several: a config error's own message
@@ -137,12 +139,6 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 */
 	readonly helpOnUsageError?: "stdout" | "stderr" | undefined;
 }
-
-/** The default one-line rendering: the two prompt failures are their own fixed line, everything else is `String(error)`. */
-const defaultRender = (error: unknown, _details?: FailureDetails): string => {
-	if (error instanceof Cancelled || error instanceof NotInteractive) return error.message;
-	return String(error);
-};
 
 const toLines = (rendered: string | ReadonlyArray<string>): ReadonlyArray<string> =>
 	typeof rendered === "string" ? [rendered] : rendered;
@@ -246,9 +242,11 @@ export class CliRuntime {
 	 * `render` to hand a failure back to.
 	 *
 	 * @remarks
-	 * The two prompt failures, `Cancelled` and `NotInteractive`, are their own fixed line; anything else is
-	 * `String(error)`. A custom `render` that only cares about its own errors delegates the rest here rather than
-	 * re-implementing those lines:
+	 * The plain lines of `CliFailure.toDoc(details.cause)`: a failure status line, a `Tree` for a schema failure, a
+	 * defect's message with its cleaned `stack`, and the one fixed line each for `Cancelled` and `NotInteractive`.
+	 * It has no terminal to ask, so it is the plain rendering for an agent; the report `main` writes with no `render`
+	 * option is the same document in the renderer the audience gets (painted for a person). A custom `render` that
+	 * only cares about its own errors delegates the rest here rather than re-implementing those lines:
 	 *
 	 * ```ts
 	 * const render = (error: unknown, details: FailureDetails) =>
@@ -260,7 +258,8 @@ export class CliRuntime {
 	 *   arguments through unchanged
 	 */
 	static readonly defaultRender = (error: unknown, details: FailureDetails): string | ReadonlyArray<string> =>
-		defaultRender(error, details);
+		// `details.cause` is what a report is told; a hand-built `details` with an empty cause renders the error itself.
+		plainFailureLines(details.cause.reasons.length > 0 ? details.cause : Cause.fail(error));
 
 	/**
 	 * Catch, render through the ambient logger, and re-fail with the exit code
@@ -299,12 +298,20 @@ export class CliRuntime {
 						return Effect.fail(CliRuntime.reported(error, chooseExitCode(error, options.usageExitCode ?? 64)));
 					}
 
-					const render = options.render ?? defaultRender;
+					const render = options.render;
 					// Cause.squash prefers a Fail over a Die, so `error` is a defect exactly when there is no Fail.
 					const details: FailureDetails = { cause, isDefect: !Cause.hasFails(cause) };
 
 					return Effect.gen(function* () {
-						for (const line of toLines(render(error, details))) {
+						// Without a `render` the report is the failure's document in the renderer the audience gets, still
+						// written through the logger, so `--log-level` and the logger's own routing are as they were.
+						const lines =
+							render === undefined
+								? yield* failureLines(cause).pipe(
+										Effect.catchCause(() => Effect.succeed([String(error)] as ReadonlyArray<string>)),
+									)
+								: toLines(render(error, details));
+						for (const line of lines) {
 							yield* Effect.logError(line);
 						}
 
@@ -398,9 +405,15 @@ export class CliRuntime {
 						Layer.catchCause(() => CliLogger.layer(envLog.logger)),
 					));
 		const inside =
-			env === undefined ? Layer.empty : CliColor.formatterLayer(options.env?.formatter).pipe(Layer.provideMerge(env));
+			env === undefined
+				? Layer.empty
+				: Layer.mergeAll(
+						CliColor.formatterLayer(options.env?.formatter),
+						// Records how a failure is rendered, from the services this layer provides, for the report outside it.
+						Layer.effectDiscard(refreshFailureTarget()),
+					).pipe(Layer.provideMerge(env));
 
-		return Effect.gen(function* () {
+		const run = Effect.gen(function* () {
 			// Inside the platform provide, so the rerouting sees the platform's own Formatter.
 			yield* options.helpOnUsageError === "stderr" ? routeHelpOnUsageError(program) : program;
 			const exit = yield* CliExit;
@@ -421,6 +434,10 @@ export class CliRuntime {
 			CliRuntime.reportFailures(options),
 			Effect.provide(logger),
 		) as Effect.Effect<void, Error, unknown>;
+		// One cell per run, outside failure reporting, which the environment layer fills from inside it.
+		return Effect.suspend(() =>
+			Effect.provideService(run, FailureTargetCell, MutableRef.make<FailureTarget | undefined>(undefined)),
+		);
 	}
 
 	/**

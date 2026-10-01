@@ -16,6 +16,9 @@ import { formatIssue } from "./internal/format.js";
  * end that search, and the one phrasing override is a bonus rather than the
  * point.
  *
+ * The lines and `CliFailure`'s tree are two views of the same rejected values (`internal/format`), so a schema
+ * failure in the default report and these lines never disagree.
+ *
  * @example
  * ```ts
  * import { SchemaIssueRenderer } from "@effected/cli"

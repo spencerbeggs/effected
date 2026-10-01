@@ -74,7 +74,8 @@ describe("CliRuntime.main", () => {
 				Effect.provideService(Console.Console, double),
 			);
 			assert.strictEqual(codeOf(exit), 3);
-			assert.deepStrictEqual(err, ["Error: HOME is not set"]);
+			// A defect: the status line first, then its cleaned stack.
+			assert.strictEqual(err[0], "[FAIL] Error: HOME is not set");
 			assert.deepStrictEqual(out, []);
 		}),
 	);
@@ -86,7 +87,7 @@ describe("CliRuntime.main", () => {
 				Effect.exit,
 				Effect.provideService(Console.Console, double),
 			);
-			assert.deepStrictEqual(err, ["Error: boom"]);
+			assert.deepStrictEqual(err, ["[FAIL] Error: boom"]);
 			assert.deepStrictEqual(out, []);
 		}),
 	);
@@ -106,9 +107,10 @@ describe("CliRuntime.main", () => {
 				// A bad code is a wiring defect: rendered once, exit 1 — never a
 				// silent 0 (256 wraps to 0 under POSIX) or a process.exit throw (1.5).
 				assert.strictEqual(codeOf(exit), 1);
-				assert.deepStrictEqual(err, [
-					`Error: CliRuntime.main: CliExit code must be an integer 0..255, received ${bad}`,
-				]);
+				assert.strictEqual(
+					err[0],
+					`[FAIL] Error: CliRuntime.main: CliExit code must be an integer 0..255, received ${bad}`,
+				);
 				assert.deepStrictEqual(out, []);
 			}),
 		);
@@ -211,7 +213,7 @@ describe("CliRuntime.main and --log-level", () => {
 							platform: NodeServices.layer,
 						},
 					).pipe(Effect.exit, Effect.provideService(Console.Console, double));
-					assert.deepStrictEqual(err, ["Error: boom"]);
+					assert.deepStrictEqual(err, ["[FAIL] Error: boom"]);
 					assert.deepStrictEqual(out, []);
 					assert.strictEqual(codeOf(exit), 1);
 				}),
