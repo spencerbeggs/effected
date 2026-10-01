@@ -182,9 +182,12 @@
 		"ToolInstallerError": "handle a tool download, extract or tool-cache write failure, retryable download status",
 		"TruncatedBlobEnvelopeError": "handle a blob envelope frame that ends mid-header or mid-metadata",
 		"UnsupportedBlobEnvelopeVersionError": "handle a blob envelope written by a newer format revision",
-		"WorkflowCommand": "render ::error::/::warning::/::notice::/::group:: workflow commands, escape a log annotation",
 		"describeCause": "one-line [Tag]: message summary of why an action failed",
 		"projectCheckState": "map the kit's check state onto GitHub's check-run status/conclusion wire vocabulary"
+	},
+	"github-commands": {
+		"CommandNeutralizer": "make log text safe on a GitHub Actions runner: defang ::command:: lines and ##[ anywhere, split at CR/LF/CRLF, idempotent",
+		"WorkflowCommand": "render ::error::/::warning::/::notice::/::group:: workflow commands, escape a log annotation, mask a value"
 	},
 	"github-references": {
 		"CLOSING_KEYWORDS": "the nine github closing keywords, close/fix/resolve conjugations",

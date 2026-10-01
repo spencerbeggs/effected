@@ -27,7 +27,6 @@
 | `ActionsIdentityToken` | Class | The Actions side of `@effected/sbom`'s inverted OIDC contract. | serve @effected/sbom's IdentityToken contract from the runner's OIDC issuer, sign with runner identity — implements `IdentityToken` from `@effected/sbom` |
 | `ActionsProvenance` | Class | The Actions side of `@effected/sbom`'s SLSA provenance constructor. | build SLSA provenance from the runner's OIDC claims, attest a GitHub Actions workflow run |
 | `AmbientPackageManager` | Class | A package manager the runner's own toolchain already had: nothing was downloaded and nothing was cached, so there is no directory to publish. | a package manager already on PATH from the runner's toolchain, no tool-cache entry |
-| `AnnotationProperties` | Interface | Where an annotation points in the repository. | |
 | `Artifact` | Class | Upload, list, download and delete GitHub Actions artifacts. | upload, list, download and delete GitHub Actions artifacts |
 | `ArtifactError` | Class | Raised when an artifact cannot be uploaded, listed, downloaded or deleted. | handle an artifact upload, list, download or delete failure |
 | `ArtifactItem` | Interface | One artifact, as the backend describes it. | |
@@ -133,6 +132,5 @@
 | `UploadResult` | Interface | What an upload produced. | |
 | `WithBufferOptions` | Interface | Options for `ActionLoggerShape.withBuffer`. | |
 | `WithStepOptions` | Interface | Options for `ActionLoggerShape.withStep`. | |
-| `WorkflowCommand` | Class | The GitHub Actions workflow-command wire protocol: `::name key=value::message`. | render ::error::/::warning::/::notice::/::group:: workflow commands, escape a log annotation |
 | `describeCause` | Function | A readable one-line summary of why an action failed. | one-line [Tag]: message summary of why an action failed |
 | `projectCheckState` | Function | Project a kit check state onto GitHub's check-run wire vocabulary. | map the kit's check state onto GitHub's check-run status/conclusion wire vocabulary |

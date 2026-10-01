@@ -228,6 +228,12 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
+						"@effected/github-commands": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
 						"@effected/github-references": {
 							range: "^0.6.0",
 							peer: "^0.6.0",
