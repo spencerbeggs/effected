@@ -29,6 +29,8 @@ export interface RenderContext {
 	 *
 	 * @remarks
 	 * `Infinity` is no limit. A renderer clamps what it is given: zero or a negative width is 1, and `NaN` is 80.
+	 * `Render.context` gives a human `TerminalEnv.width()`, which is the terminal's columns as stdout reports them, even
+	 * for a context built for `"stderr"` (core's `Terminal` has one width); pass `width` to override it.
 	 */
 	readonly width: number;
 	/** Who the output is for. */
@@ -76,8 +78,8 @@ const guarded = (text: string, ctx: RenderContext): string =>
  */
 export interface RenderContextOptions {
 	/**
-	 * The display columns to lay out at. By default a human gets `TerminalEnv.width()` and an agent or a CI gets
-	 * no limit at all.
+	 * The display columns to lay out at. By default a human gets `TerminalEnv.width()`, the terminal's columns as
+	 * stdout reports them even when the stream is `"stderr"`, and an agent or a CI gets no limit at all.
 	 */
 	readonly width?: number | undefined;
 	/** Turns an absolute path into its display form, for example relative to the working directory; the identity by default. */

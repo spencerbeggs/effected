@@ -44,6 +44,11 @@ export interface CliEnvOptions {
 	 * sets; this is the way to keep a method of your own. Methods you omit keep the coloured defaults.
 	 */
 	readonly formatter?: Partial<CliOutput.Formatter> | undefined;
+	/**
+	 * Turns an absolute path into its display form, for example relative to the workspace: the stack frames of the
+	 * default failure report are shown through it. Only `CliRuntime.main` reads this. The identity by default.
+	 */
+	readonly displayPath?: ((absolute: string) => string) | undefined;
 	/** Whether file links open in an editor; `auto` by default. See {@link CliLinks}. */
 	readonly editorLinks?: EditorLinks | undefined;
 	/** The environment variable that overrides `editorLinks`, read through `Config`. Not read unless named. */

@@ -60,7 +60,10 @@ export const fallbackTarget: FailureTarget = {
  * Each is read with `serviceOption`, so this never adds a requirement. `audience` overrides the one in context: an
  * audience flag is provided deeper than the environment layer, where the report cannot see it.
  */
-const build = (audience?: AudienceShape): Effect.Effect<FailureTarget | undefined> =>
+const build = (
+	audience?: AudienceShape,
+	displayPath?: (absolute: string) => string,
+): Effect.Effect<FailureTarget | undefined> =>
 	Effect.gen(function* () {
 		const theme = yield* Effect.serviceOption(CliTheme);
 		const terminal = yield* Effect.serviceOption(TerminalEnv);
@@ -69,7 +72,7 @@ const build = (audience?: AudienceShape): Effect.Effect<FailureTarget | undefine
 		if (Option.isNone(theme) || Option.isNone(terminal) || Option.isNone(links)) return undefined;
 		const shape = audience ?? (Option.isSome(current) ? current.value : undefined);
 		if (shape === undefined) return undefined;
-		const ctx = yield* Render.context("stderr").pipe(
+		const ctx = yield* Render.context("stderr", displayPath === undefined ? undefined : { displayPath }).pipe(
 			Effect.provideService(CliTheme, theme.value),
 			Effect.provideService(TerminalEnv, terminal.value),
 			Effect.provideService(CliLinks, links.value),
@@ -83,11 +86,16 @@ const build = (audience?: AudienceShape): Effect.Effect<FailureTarget | undefine
  *
  * @internal
  */
-export const refreshFailureTarget = (audience?: AudienceShape): Effect.Effect<void> =>
+export const refreshFailureTarget = (
+	audience?: AudienceShape,
+	displayPath?: (absolute: string) => string,
+): Effect.Effect<void> =>
 	Effect.gen(function* () {
 		const cell = yield* FailureTargetCell;
 		if (cell === undefined) return;
-		const target = yield* build(audience);
+		// A rewrite for an audience flag keeps the path display the environment layer recorded.
+		const recorded = MutableRef.get(cell);
+		const target = yield* build(audience, displayPath ?? recorded?.ctx.displayPath);
 		if (target !== undefined) MutableRef.set(cell, target);
 	});
 

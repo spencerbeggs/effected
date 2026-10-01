@@ -14,6 +14,8 @@ import type { FailureTarget } from "./internal/failureTarget.js";
 import { FailureTargetCell, failureLines, plainFailureLines, refreshFailureTarget } from "./internal/failureTarget.js";
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
 import { isExitCode } from "./internal/isExitCode.js";
+import { sanitize } from "./internal/layout.js";
+import { neutralizeLines } from "./internal/neutralize.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
 
@@ -139,6 +141,17 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 */
 	readonly helpOnUsageError?: "stdout" | "stderr" | undefined;
 }
+
+/** The last line of defence of a failure report: the error's text, sanitised and neutralized, whatever else broke. */
+const lastResort = (error: unknown): ReadonlyArray<string> => {
+	let text: string;
+	try {
+		text = String(error);
+	} catch {
+		text = "[unprintable failure]";
+	}
+	return neutralizeLines(sanitize(text));
+};
 
 const toLines = (rendered: string | ReadonlyArray<string>): ReadonlyArray<string> =>
 	typeof rendered === "string" ? [rendered] : rendered;
@@ -308,7 +321,10 @@ export class CliRuntime {
 						const lines =
 							render === undefined
 								? yield* failureLines(cause).pipe(
-										Effect.catchCause(() => Effect.succeed([String(error)] as ReadonlyArray<string>)),
+										// If the document cannot be rendered for the audience, the plain path; if that dies too, the
+										// message alone, still sanitised and neutralized: the last resort keeps the output policy.
+										Effect.catchCause(() => Effect.sync(() => plainFailureLines(cause))),
+										Effect.catchCause(() => Effect.sync(() => lastResort(error))),
 									)
 								: toLines(render(error, details));
 						for (const line of lines) {
@@ -410,7 +426,7 @@ export class CliRuntime {
 				: Layer.mergeAll(
 						CliColor.formatterLayer(options.env?.formatter),
 						// Records how a failure is rendered, from the services this layer provides, for the report outside it.
-						Layer.effectDiscard(refreshFailureTarget()),
+						Layer.effectDiscard(refreshFailureTarget(undefined, options.env?.displayPath)),
 					).pipe(Layer.provideMerge(env));
 
 		const run = Effect.gen(function* () {

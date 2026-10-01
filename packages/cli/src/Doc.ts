@@ -275,6 +275,10 @@ export interface DocPrintOptions {
 	 * that `CurrentRuntimeEnv` says is GitHub Actions and `plain` for any other, and `ansi` for a human.
 	 */
 	readonly format?: "auto" | "plain" | "ansi" | "markdown" | "githubLog" | undefined;
+	/** Turns an absolute path into its display form, for example relative to the workspace; see `Render.context`. */
+	readonly displayPath?: ((absolute: string) => string) | undefined;
+	/** The display columns to lay out at, replacing the audience's default; see `Render.context`. */
+	readonly width?: number | undefined;
 }
 
 /**
@@ -570,7 +574,10 @@ export class Doc {
 	): Effect.Effect<void, never, CliTheme | TerminalEnv | Audience | CliLinks> =>
 		Effect.gen(function* () {
 			const stream = options?.stream ?? "stdout";
-			const ctx = yield* Render.context(stream);
+			const ctx = yield* Render.context(stream, {
+				...(options?.displayPath === undefined ? {} : { displayPath: options.displayPath }),
+				...(options?.width === undefined ? {} : { width: options.width }),
+			});
 			const requested = options?.format ?? "auto";
 			const format = requested === "auto" ? yield* autoFormat(ctx.audience) : requested;
 			const text = Render[format](doc, ctx);
