@@ -151,6 +151,19 @@ describe("Viewport.View under CliUiTest", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect("at the end of the list, a taller terminal pulls the window back so it fills the new height", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(scrolling(items(200), 50), { rows: 10 });
+			yield* handle.press("end");
+			assert.strictEqual(lineCount(yield* handle.plainFrame), 9);
+			yield* handle.resize(80, 20);
+			const lines = (yield* handle.plainFrame).split("\n").filter((line) => line !== "");
+			assert.lengthOf(lines, 19, "the grown window is full");
+			assert.strictEqual(lines.at(-1), "> item199", "still ending on the selected last item");
+			assert.strictEqual(lines[0], "  item181");
+		}).pipe(Effect.scoped),
+	);
+
 	it.effect("highlights the last item when the state's cursor runs past the rows", () =>
 		Effect.gen(function* () {
 			const rows = items(3);
@@ -225,6 +238,30 @@ describe("Viewport.View under CliUiTest", () => {
 				assert.include(ascii, "...", "the widget keys were cut");
 				assert.isTrue(ascii.trimEnd().endsWith(" | esc cancel"), ascii);
 				assert.isAtMost(Fmt.width(ascii.trimEnd()), 19);
+			}),
+	);
+
+	it.effect(
+		"KeyHelp drops a widget part that would get fewer than 4 cells, and the separator when only the hint fits",
+		() =>
+			Effect.gen(function* () {
+				for (const glyphs of ["unicode", "ascii"] as const) {
+					const at = (columns: number) =>
+						Effect.scoped(
+							Effect.flatMap(
+								CliUiTest.render(() => createElement(KeyHelp, { tables: [Viewport.keys] }), { columns, glyphs }),
+								(handle) => handle.plainFrame,
+							),
+						);
+					// 14 usable cells: " · esc cancel" takes 13, leaving 1 for the widget's keys, too few to say anything.
+					assert.strictEqual((yield* at(15)).trim(), "esc cancel", `${glyphs}: the widget part is dropped`);
+					// 11 usable cells: the separator no longer fits, the hint alone does.
+					assert.strictEqual((yield* at(12)).trim(), "esc cancel", `${glyphs}: just the hint`);
+					// 18 usable cells: 5 for the widget's keys, enough to keep.
+					const kept = (yield* at(19)).trim();
+					assert.isTrue(kept.endsWith("esc cancel") && kept.length > "esc cancel".length + 3, `${glyphs}: ${kept}`);
+					assert.isAtMost(Fmt.width(kept), 18);
+				}
 			}),
 	);
 

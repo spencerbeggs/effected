@@ -24,18 +24,23 @@ const entryExports = (file: string): ReadonlyArray<string> =>
 const EXTERNAL: ReadonlySet<string> = new Set(["effect", "Effect", "Layer", "Context", "Scope"]);
 
 /**
- * The `{@link …}` targets in `text` whose first identifier names nothing a consumer can reach. A link inside an
- * `@internal` block is skipped: it never reaches a public declaration. URLs are skipped.
+ * The `{@link …}` targets in `text` that would not resolve from the ui entries. A bare target's first identifier must
+ * be an export of `./ui` or `./ui/testing`, the entries a ui doc ships in, or a known external. A root-only name must be
+ * package-qualified (`@effected/cli!Style`), because API Extractor resolves a bare name against the entry being
+ * documented. A link inside an `@internal` block is skipped, since it never reaches a public declaration, and URLs are
+ * skipped.
  */
-const unresolvedLinks = (text: string, known: ReadonlySet<string>): ReadonlyArray<string> =>
+const unresolvedLinks = (text: string, ui: ReadonlySet<string>, root: ReadonlySet<string>): ReadonlyArray<string> =>
 	[...text.matchAll(/\/\*\*[\s\S]*?\*\//g)]
 		.map((match) => match[0])
 		.filter((block) => !/@internal\b/.test(block))
 		.flatMap((block) => [...block.matchAll(/\{@link\s+([^}\s|]+)/g)].map((match) => match[1] ?? ""))
 		.filter((target) => !target.includes("://"))
 		.filter((target) => {
+			const qualified = /^@effected\/cli!([A-Za-z_$][\w$]*)/.exec(target);
+			if (qualified !== null) return !root.has(qualified[1] ?? "");
 			const first = /^[A-Za-z_$][\w$]*/.exec(target)?.[0];
-			return first === undefined || !(known.has(first) || EXTERNAL.has(first));
+			return first === undefined || !(ui.has(first) || EXTERNAL.has(first));
 		});
 
 /**
@@ -43,31 +48,33 @@ const unresolvedLinks = (text: string, known: ReadonlySet<string>): ReadonlyArra
  * per-module pass fails on the self-referencing import), so a dangling link in a ui doc would ship silently.
  */
 describe("TSDoc links in the ui sources", () => {
-	const known = new Set([...entryExports("ui.ts"), ...entryExports("ui-testing.ts"), ...entryExports("index.ts")]);
+	const ui = new Set([...entryExports("ui.ts"), ...entryExports("ui-testing.ts")]);
+	const root = new Set(entryExports("index.ts"));
 
-	it("name only what a consumer can reach: an export of ./ui, ./ui/testing or the root, or a known external", () => {
+	it("name an export of ./ui or ./ui/testing bare, a root export package-qualified, or a known external", () => {
 		const files = (readdirSync(SRC, { recursive: true }) as ReadonlyArray<string>)
 			.map((file) => file.split(sep).join("/"))
 			.filter((file) => file.endsWith(".ts") && /^ui(?:\.ts$|-testing\.ts$|\/)/.test(file));
 		assert.include(files, "ui/CliUi.ts", "the walk read the ui tree");
 		const offenders = files.flatMap((file) =>
-			unresolvedLinks(readFileSync(join(SRC, file), "utf8"), known).map((target) => `${file} ${target}`),
+			unresolvedLinks(readFileSync(join(SRC, file), "utf8"), ui, root).map((target) => `${file} ${target}`),
 		);
 		assert.deepStrictEqual(offenders, []);
 	});
 
-	it("mutation control: a dangling link is flagged; an exported, external, internal-block or URL link is not", () => {
-		assert.isTrue(known.has("CliUi") && known.has("CliUiTest") && known.has("Style"), "the export lists were read");
-		const text = (doc: string): string => `/**\n * ${doc}\n */\nexport const x = 1;`;
-		assert.deepStrictEqual(unresolvedLinks(text("See {@link NoSuchThing}."), known), ["NoSuchThing"]);
-		assert.deepStrictEqual(
-			unresolvedLinks(text("See {@link Cli.Style}."), known),
-			["Cli.Style"],
-			"a local import alias",
-		);
-		assert.deepStrictEqual(unresolvedLinks(text("See {@link CliUi.run} and {@link Style}."), known), []);
-		assert.deepStrictEqual(unresolvedLinks(text("See {@link Effect.gen}."), known), []);
-		assert.deepStrictEqual(unresolvedLinks(text("Internal: {@link loadInk}.\n * @internal"), known), []);
-		assert.deepStrictEqual(unresolvedLinks(text("See {@link https://example.com | the site}."), known), []);
+	it("mutation control: dangling, alias and bare root-only links are flagged; the rest are not", () => {
+		assert.isTrue(ui.has("CliUi") && ui.has("CliUiTest") && root.has("Style"), "the export lists were read");
+		assert.isFalse(ui.has("Style"), "Style is root-only");
+		const links = (doc: string): ReadonlyArray<string> =>
+			unresolvedLinks(`/**\n * ${doc}\n */\nexport const x = 1;`, ui, root);
+		assert.deepStrictEqual(links("See {@link NoSuchThing}."), ["NoSuchThing"]);
+		assert.deepStrictEqual(links("See {@link Cli.Style}."), ["Cli.Style"], "a local import alias");
+		assert.deepStrictEqual(links("See {@link Style}."), ["Style"], "a root-only name must be package-qualified");
+		assert.deepStrictEqual(links("See {@link @effected/cli!Style}."), []);
+		assert.deepStrictEqual(links("See {@link @effected/cli!NoSuch}."), ["@effected/cli!NoSuch"]);
+		assert.deepStrictEqual(links("See {@link CliUi.run}."), []);
+		assert.deepStrictEqual(links("See {@link Effect.gen}."), []);
+		assert.deepStrictEqual(links("Internal: {@link loadInk}.\n * @internal"), []);
+		assert.deepStrictEqual(links("See {@link https://example.com | the site}."), []);
 	});
 });

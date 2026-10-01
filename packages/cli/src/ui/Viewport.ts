@@ -145,6 +145,14 @@ const slice = (
 		start++;
 		lines = linesFrom(rows, items, start, budget);
 	}
+	// At the end of the list a window can come up short, after the terminal grew or the budget rose: pull the start
+	// back while that fills it and still draws the selected item.
+	while (lines.length < budget && start > 0) {
+		const earlier = linesFrom(rows, items, start - 1, budget);
+		if (!earlier.includes(selected)) break;
+		start--;
+		lines = earlier;
+	}
 	return { lines, start, selected };
 };
 
@@ -207,7 +215,10 @@ export class Viewport {
 		const size = useTerminalSize();
 		const budget = Math.max(1, Math.min(props.state.height, size.rows - (props.reserved ?? 0)));
 		// The window's start is the view's own memory: it depends on the lines headers take, which the reducer
-		// cannot see. Recomputed from the same inputs it is the same, so writing it during render is idempotent.
+		// cannot see. Writing it during render is safe because `slice` is a fixpoint on its own output: fed the start
+		// it just returned, with the same rows, state and budget, it returns that start again (the selected item is
+		// drawn and the window is full or begins at item 0, so neither loop moves). A render repeated by React, or a
+		// second render before commit, therefore sees and writes the same value.
 		const started = react.useRef<number | undefined>(undefined);
 		const { lines, start, selected } = slice(props.rows, props.state, budget, started.current);
 		started.current = start;

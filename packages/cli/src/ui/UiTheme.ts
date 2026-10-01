@@ -6,7 +6,7 @@ import type { ScreenContextValue } from "./internal/ScreenContext.js";
 import { screenContext } from "./internal/ScreenContext.js";
 
 /**
- * The styling props of an Ink `Text` that a {@link Style} maps to.
+ * The styling props of an Ink `Text` that a {@link @effected/cli!Style} maps to.
  *
  * @public
  */

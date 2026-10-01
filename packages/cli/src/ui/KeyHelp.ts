@@ -4,6 +4,9 @@ import { inkModules } from "./internal/ink.js";
 import { KeyTable } from "./KeyTable.js";
 import { Styled, useGlyphs, useTerminalSize } from "./UiTheme.js";
 
+/** The fewest cells worth giving the widget's own keys when the line is cut; below it they are left out. */
+const MIN_OWN = 4;
+
 /**
  * Props of {@link KeyHelp}.
  *
@@ -48,11 +51,16 @@ export const KeyHelp = (props: KeyHelpProps): ReactElement => {
 	const root = props.root === false ? "" : describe([KeyTable.root]);
 	const whole = [own, root].filter((part) => part !== "").join(separator);
 	// One line, cut to the terminal width with the theme's ellipsis, so the footer never wraps into a second row.
-	// When it must be cut, the widget's own keys give way and the root hint (esc cancel) stays whole at the end.
-	const pinned = root === "" || own === "" ? "" : `${separator}${root}`;
+	// When it must be cut, the widget's own keys give way and the root hint (esc cancel) stays whole at the end;
+	// when the keys would get fewer than MIN_OWN cells they are dropped, along with the separator, rather than shown
+	// as an ellipsis; and when even the separator does not fit, the hint stands alone.
+	const ellipsis = { ellipsis: glyphs.ellipsis };
+	const room = columns - Fmt.width(separator) - Fmt.width(root);
 	const line =
-		Fmt.width(whole) <= columns || pinned === "" || Fmt.width(pinned) >= columns
-			? Fmt.truncate(whole, columns, { ellipsis: glyphs.ellipsis })
-			: `${Fmt.truncate(own, columns - Fmt.width(pinned), { ellipsis: glyphs.ellipsis })}${pinned}`;
+		Fmt.width(whole) <= columns || root === "" || own === ""
+			? Fmt.truncate(whole, columns, ellipsis)
+			: room >= MIN_OWN
+				? `${Fmt.truncate(own, room, ellipsis)}${separator}${root}`
+				: Fmt.truncate(root, columns, ellipsis);
 	return inkModules().react.createElement(Styled, { token: "muted" }, line);
 };
