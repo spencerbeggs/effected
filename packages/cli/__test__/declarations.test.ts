@@ -161,6 +161,30 @@ const ENTRIES: ReadonlyArray<{ readonly source: string; readonly built: string; 
 	{ source: "ui-testing.ts", built: "ui-testing.d.ts", external: "@effected/cli/ui" },
 ];
 
+/**
+ * The exported names of a rolled-up `.d.ts` whose declaration carries no release tag. API Extractor's own
+ * `ae-missing-release-tag` never reaches the build report for the ui entries (its per-module pass fails on the
+ * self-referencing import), so this re-pins it: every declaration of every exported name must be preceded by a TSDoc
+ * block with `@public`, `@beta`, `@alpha` or `@internal`.
+ */
+const untaggedExports = (dts: string): ReadonlyArray<string> =>
+	builtExports(dts)
+		.filter((name) => {
+			const declarations = [
+				...dts.matchAll(
+					new RegExp(
+						`(\\/\\*\\*(?:(?!\\*\\/)[\\s\\S])*\\*\\/\\s*)?^(?:export\\s+)?(?:declare\\s+)?(?:abstract\\s+)?(?:class|interface|type|const|let|var|function|enum|namespace)\\s+${name}\\b`,
+						"gm",
+					),
+				),
+			];
+			return (
+				declarations.length === 0 ||
+				declarations.some((match) => !/@(?:public|beta|alpha|internal)\b/.test(match[1] ?? ""))
+			);
+		})
+		.sort();
+
 describe("the built declarations", () => {
 	it("match the source entrypoints they were built from, or the gates below would read a stale build", () => {
 		for (const entry of ENTRIES) {
@@ -215,6 +239,40 @@ describe("the built declarations", () => {
 			assert.isAbove([...dts.matchAll(TOP_LEVEL_DECLARATION)].length, 0, `${entry} was read and parsed`);
 			assert.deepStrictEqual(unexportedDeclarations(dts), [], entry);
 		}
+	});
+
+	it("give every export of ui.d.ts and ui-testing.d.ts a release tag, which API Extractor does not report for them", () => {
+		for (const entry of ENTRIES) {
+			const dts = readFileSync(join(BUILT, "pkg", entry.built), "utf8");
+			assert.isNotEmpty(builtExports(dts), `${entry.built} was read`);
+			assert.deepStrictEqual(untaggedExports(dts), [], entry.built);
+		}
+	});
+
+	it("mutation control: an untagged export, or an untagged second declaration of a name, is flagged", () => {
+		const tagged = [
+			"/**\n * A thing.\n *\n * @public\n */\nexport declare class A {}",
+			"/** B. @public */\ninterface B {}",
+			"/**\n * C, the type.\n * @public\n */\nexport type C = string;",
+			"/**\n * C, the value.\n * @public\n */\nexport declare const C: unknown;",
+			"export type { B };",
+		].join("\n");
+		assert.deepStrictEqual(untaggedExports(tagged), []);
+		assert.deepStrictEqual(untaggedExports(`${tagged}\nexport declare const D: number;`), ["D"]);
+		assert.deepStrictEqual(
+			untaggedExports(`${tagged}\n/** E, documented but untagged. */\nexport declare function E(): void;`),
+			["E"],
+		);
+		assert.deepStrictEqual(
+			untaggedExports(tagged.replace("/**\n * C, the value.\n * @public\n */\n", "")),
+			["C"],
+			"every declaration of a name needs its own tag",
+		);
+		assert.deepStrictEqual(
+			untaggedExports(tagged.replace("/** B. @public */\n", "/** B. @public */\n// spacer\n")),
+			["B"],
+			"a tag in a block that does not immediately precede the declaration does not count",
+		);
 	});
 
 	it("mutation control: an unexported ui-local declaration is flagged, an exported or _base one is not", () => {

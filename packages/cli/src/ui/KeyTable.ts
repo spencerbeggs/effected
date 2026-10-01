@@ -137,6 +137,8 @@ export class KeyTable<Action> {
  * @param table - the keys to read
  * @param dispatch - receives each matched action
  * @param options - whether the keys are read
+ *
+ * @public
  */
 export const useKeys = <Action>(
 	table: KeyTable<Action>,
