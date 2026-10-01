@@ -34,13 +34,53 @@ or nowhere. Presentation and interactive UI are in scope —
 `@./okf/decisions/cli-grows-presentation-layer.md` — Load when: deciding
 whether a capability belongs in this package.
 
-Tier: **boundary**. No platform package, required or optional. The moment
-`@effect/platform-node` appears here the package stops being usable from Bun and
-Deno for no benefit.
+Tier: **boundary** for the root. No platform package, required or optional. The
+moment `@effect/platform-node` appears here the package stops being usable from
+Bun and Deno for no benefit. `./ui` is integrated, but only for a consumer who
+installs its optional peers — `@./okf/decisions/ui-tier-is-integrated-on-opt-in.md`
+— Load when: adding a dependency or a peer to this package.
 
-**Nothing in the kit may depend on this but an application**, same posture as
-`app`. The two are siblings, not layers — `app` is the control plane, `cli` the
-presentation boundary, and neither imports the other.
+**Nothing in the kit may depend on this but an application or a companion.**
+The one kit package that does is `schemastore-cli`, a companion that carries no
+tier and imports only the boundary root, so nothing inherits a tier from `./ui`.
+Same posture as `app`: the two are siblings, not layers — `app` is the control
+plane, `cli` the presentation boundary, and neither imports the other.
+
+## The `./ui` and `./ui/testing` subpaths
+
+`./ui` holds the interactive screens: `CliUi` (`run`, `prompt`, `fallback`,
+`lazy`), the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
+`Toggle`, `Tabs`, `Viewport`), the key layer (`UiKey`, `KeyTable`, `useKeys`,
+`KeyHelp`) and the theme bridge (`Styled`, `inkProps`, `useTheme`,
+`useGlyphs`, `useTerminalSize`). `./ui/testing` holds `CliUiTest`: `render`
+for one screen, `session` for a program that runs several, and `chunk` on
+both handles to send keys in one read. `okf/modules/cli.md` has the rows.
+
+- **Optional peers `ink` (^7.1.1) and `react` (^19.2.0).** The root never
+  reaches them, and `./ui` imports them only when a screen mounts (`loadInk`),
+  so importing `./ui` or running a non-interactive program loads neither.
+  `src/ui/**` may only `import type` from them (ruling S1, held by
+  `boundary.test.ts`); a missing peer in an interactive run is a defect
+  naming both, never a silent fallback.
+- **The ui declarations name the root by its package name.** `src/ui/**`
+  imports root types as `import type * as Cli from "@effected/cli"`, and
+  `savvy.build.ts` keeps `@effected/cli` and `@effected/cli/ui` external
+  (`dtsExternals`), so `ui.d.ts` imports the root instead of inlining a copy
+  a consumer's root layers could not satisfy —
+  `@./okf/decisions/ui-declarations-reference-the-root-by-name.md` — Load
+  when: touching `savvy.build.ts`, an entrypoint, or a root type a ui
+  signature names. API Extractor's per-module pass cannot read those
+  entries, so `declarations.test.ts` stands in for it: the built exports
+  match the source and the pinned reviewed lists, every export carries a
+  release tag, nothing is left unexported, and a consumer compiled against
+  `dist/dev` resolves `CliTheme` from the root. `tsdocLinks.test.ts` keeps
+  `{@link}` targets resolvable. The two "could not harvest per-module source
+  locations" build warnings are those entries and are accepted.
+- **Ink hands every key of one stdin read over before React re-renders.** A
+  key handler must step from current state (a functional update, a reducer
+  or a ref), never render-closure state; test it with `chunk` —
+  `@./okf/gotchas/ink-delivers-a-chunk-of-keys-before-rerender.md` — Load
+  when: writing or reviewing a key handler or a widget.
 
 ## Load-bearing decisions
 

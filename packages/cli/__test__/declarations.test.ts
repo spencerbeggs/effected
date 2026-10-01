@@ -351,3 +351,134 @@ describe("the built declarations", () => {
 		);
 	});
 });
+
+/**
+ * The reviewed public surface of each subpath, pinned by name. The content guard above checks that a build matches
+ * its source; this pins what the source may export at all, so adding or dropping an export is a deliberate edit here.
+ */
+const UI_TYPES_AND_VALUES = [
+	"Binding",
+	"CliUi",
+	"CliUiPromptOptions",
+	"CliUiRunOptions",
+	"Confirm",
+	"ConfirmAction",
+	"ConfirmInitOptions",
+	"ConfirmResult",
+	"ConfirmScreenOptions",
+	"ConfirmState",
+	"ConfirmToggle",
+	"ConfirmViewProps",
+	"InkTextProps",
+	"KeyHelp",
+	"KeyHelpProps",
+	"KeyHelpRow",
+	"KeyName",
+	"KeyTable",
+	"MultiSelect",
+	"MultiSelectAction",
+	"MultiSelectInitOptions",
+	"MultiSelectItem",
+	"MultiSelectScreenOptions",
+	"MultiSelectSection",
+	"MultiSelectState",
+	"MultiSelectViewProps",
+	"Screen",
+	"ScreenControl",
+	"Select",
+	"SelectAction",
+	"SelectChoice",
+	"SelectInitOptions",
+	"SelectScreenOptions",
+	"SelectState",
+	"SelectViewProps",
+	"Styled",
+	"StyledProps",
+	"Tab",
+	"Tabs",
+	"TabsAction",
+	"TabsProps",
+	"TerminalSize",
+	"TextInput",
+	"TextInputInitOptions",
+	"TextInputScreenOptions",
+	"TextInputState",
+	"TextInputViewProps",
+	"Toggle",
+	"ToggleViewProps",
+	"UiKey",
+	"UiStreams",
+	"UiStreamsShape",
+	"UseKeysOptions",
+	"Viewport",
+	"ViewportMove",
+	"ViewportRow",
+	"ViewportState",
+	"ViewportViewProps",
+	"inkProps",
+	"useGlyphs",
+	"useKeys",
+	"useTerminalSize",
+	"useTheme",
+];
+const UI_VALUES = [
+	"CliUi",
+	"Confirm",
+	"KeyHelp",
+	"KeyTable",
+	"MultiSelect",
+	"Select",
+	"Styled",
+	"Tabs",
+	"TextInput",
+	"Toggle",
+	"UiKey",
+	"UiStreams",
+	"Viewport",
+	"inkProps",
+	"useGlyphs",
+	"useKeys",
+	"useTerminalSize",
+	"useTheme",
+];
+const UI_TESTING_TYPES_AND_VALUES = [
+	"CliUiTest",
+	"CliUiTestHandle",
+	"CliUiTestNextOptions",
+	"CliUiTestOptions",
+	"CliUiTestScreen",
+	"CliUiTestSession",
+];
+
+describe("the reviewed ./ui and ./ui/testing surfaces", () => {
+	it("each built .d.ts exports exactly the reviewed names", () => {
+		assert.deepStrictEqual(builtExports(readFileSync(join(BUILT, "pkg", "ui.d.ts"), "utf8")), UI_TYPES_AND_VALUES);
+		assert.deepStrictEqual(
+			builtExports(readFileSync(join(BUILT, "pkg", "ui-testing.d.ts"), "utf8")),
+			UI_TESTING_TYPES_AND_VALUES,
+		);
+	});
+
+	it("each built module exports exactly the reviewed values, and importing ./ui loads no Ink", async () => {
+		const ui = (await import(join(BUILT, "pkg", "ui.js"))) as Record<string, unknown>;
+		const testing = (await import(join(BUILT, "pkg", "ui-testing.js"))) as Record<string, unknown>;
+		assert.deepStrictEqual(Object.keys(ui).sort(), UI_VALUES);
+		assert.deepStrictEqual(Object.keys(testing).sort(), ["CliUiTest"]);
+	});
+
+	it("the members added since the plan are on the built declarations", () => {
+		const ui = readFileSync(join(BUILT, "pkg", "ui.d.ts"), "utf8");
+		const testing = readFileSync(join(BUILT, "pkg", "ui-testing.d.ts"), "utf8");
+		for (const member of [
+			"static readonly columnKeys",
+			"static readonly root",
+			"static readonly prompt",
+			"static readonly fallback",
+		]) {
+			assert.include(ui, member, member);
+		}
+		for (const member of ["static readonly session", "readonly chunk:", "readonly next:", "readonly mounts:"]) {
+			assert.include(testing, member, member);
+		}
+	});
+});
