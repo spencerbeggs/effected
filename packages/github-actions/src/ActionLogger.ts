@@ -268,7 +268,7 @@ export interface ActionLoggerShape {
 	 *
 	 * @remarks
 	 * The point is that a caller never spells an annotation key: the fields go in
-	 * as {@link AnnotationProperties} and come out as `file=`/`line=` on the
+	 * as `AnnotationProperties` (from `@effected/github-commands`) and come out as `file=`/`line=` on the
 	 * rendered command.
 	 */
 	readonly annotated: <A, E, R>(
