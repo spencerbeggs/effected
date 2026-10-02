@@ -62,8 +62,8 @@ export class GateError extends Schema.TaggedError<GateError>()("GateError", { co
 }
 
 /**
- * The merged catalog could not be assembled: a catalog URL is advertised by
- * more than one slice, or a slice in `catalogDir` is not a catalog entry
+ * The merged catalog could not be assembled: a catalog URL or entry name is
+ * advertised more than once across the slices, or a slice in `catalogDir` is not a catalog entry
  * array. Nothing is merged silently, so the merged catalog was left as it
  * is. Exit `1` under both `build` and `check`: only an edit to the slices
  * or the configs clears it.
@@ -72,15 +72,23 @@ export class GateError extends Schema.TaggedError<GateError>()("GateError", { co
  */
 export class CatalogMergeError extends Schema.TaggedError<CatalogMergeError>()("CatalogMergeError", {
 	path: Schema.String,
-	conflicts: Schema.Array(Schema.Struct({ url: Schema.String, slices: Schema.Array(Schema.String) })),
+	conflicts: Schema.Array(
+		Schema.Union([
+			Schema.Struct({ kind: Schema.Literal("url"), url: Schema.String, slices: Schema.Array(Schema.String) }),
+			Schema.Struct({ kind: Schema.Literal("name"), name: Schema.String, slices: Schema.Array(Schema.String) }),
+		]),
+	),
 	invalid: Schema.Array(Schema.Struct({ path: Schema.String, reason: Schema.String })),
 }) {
 	override get message(): string {
 		const lines = [
-			...this.conflicts.map((conflict) => `  url ${conflict.url} is advertised by ${conflict.slices.join(", ")}`),
+			...this.conflicts.map(
+				(conflict) =>
+					`  ${conflict.kind === "url" ? `url ${conflict.url}` : `name ${conflict.name}`} is advertised by ${conflict.slices.join(", ")}`,
+			),
 			...this.invalid.map(({ path, reason }) => `  ${path} is invalid: ${reason}`),
 		];
-		return `The merged catalog ${this.path} was not written.\n${lines.join("\n")}\nGive each catalog URL to exactly one config, and fix or delete every invalid slice.`;
+		return `The merged catalog ${this.path} was not written.\n${lines.join("\n")}\nGive each catalog URL and name to exactly one config, and fix or delete every invalid slice.`;
 	}
 }
 
@@ -194,7 +202,7 @@ const emit = Effect.fn("schemastore.emit")(function* (report: RunReport, format:
  * requested format, appends the step summary, and fails typed —
  * `GateError`, then `DriftError`, then `CatalogMergeError`, then (for
  * `check` only) `StaleError`, each carrying exit `1` — when the report says
- * the run refused to write, the merged catalog was blocked by a URL
+ * the run refused to write, the merged catalog was blocked by a URL or name
  * conflict or an invalid slice, or, under `check`, that a build would
  * write. `SchemaFile` is built here
  * over the environment's `FileSystem`; the validator is `deps.validator` or

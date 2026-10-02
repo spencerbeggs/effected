@@ -948,13 +948,103 @@ describe("Runner.run catalog slices", () => {
 				entries: 2,
 				outcome: "blocked",
 				slices: [sliceOf("a"), sliceOf("b")],
-				conflicts: [{ url: `${BASE}/shared.json`, slices: [sliceOf("a"), sliceOf("b")] }],
+				conflicts: [{ kind: "url", url: `${BASE}/shared.json`, slices: [sliceOf("a"), sliceOf("b")] }],
 				invalid: [],
 			});
 			assert.deepStrictEqual(yield* urlsIn(MERGED), mergedBefore, "a blocked merge writes nothing");
 			const checked = yield* Runner.run(cataloged("a", ["shared", "alpha"]), options("check"));
 			assert.strictEqual(checked.catalog?.merged?.outcome, "blocked", "every config sees the conflict");
 		}).pipe(Effect.provide(layers({}))),
+	);
+
+	// A config named `name` declaring one cataloged schema keyed `key` whose
+	// catalog entry is displayed as `display`.
+	const displayed = (name: string, key: string, display: string) =>
+		defineConfig({
+			name,
+			outputDir: "/repo/schemas",
+			baseUrl: BASE,
+			schemas: {
+				[key]: { schema: Config, catalog: { name: display, description: `${key} config`, fileMatch: [`${key}.json`] } },
+			},
+		});
+
+	const namesIn = Effect.fn(function* (file: string) {
+		const fs = yield* FileSystem.FileSystem;
+		const parsed = JSON.parse(yield* fs.readFileString(file)) as ReadonlyArray<{ name: string; url: string }>;
+		return parsed.map((entry) => [entry.name, entry.url]);
+	});
+
+	it.effect("a catalog display name reaches the slice and the merged catalog while the URL keeps the key", () =>
+		Effect.gen(function* () {
+			const report = yield* Runner.run(displayed("a", "config", "tool.config.toml"), options("build"));
+			assert.strictEqual(report.catalog?.merged?.outcome, "written");
+			assert.deepStrictEqual(yield* namesIn(sliceOf("a")), [["tool.config.toml", `${BASE}/config.json`]]);
+			assert.deepStrictEqual(yield* namesIn(MERGED), [["tool.config.toml", `${BASE}/config.json`]]);
+		}).pipe(Effect.provide(layers({}))),
+	);
+
+	it.effect("a name two slices advertise blocks the merged write as a name conflict", () =>
+		Effect.gen(function* () {
+			yield* Runner.run(displayed("a", "config", "tool.toml"), options("build"));
+			const mergedBefore = yield* namesIn(MERGED);
+			for (const mode of ["build", "check"] as const) {
+				const report = yield* Runner.run(displayed("b", "credentials", "tool.toml"), options(mode));
+				assert.deepStrictEqual(
+					report.catalog?.merged,
+					{
+						path: MERGED,
+						entries: 2,
+						outcome: "blocked",
+						slices: [sliceOf("a"), sliceOf("b")],
+						conflicts: [{ kind: "name", name: "tool.toml", slices: [sliceOf("a"), sliceOf("b")] }],
+						invalid: [],
+					},
+					mode,
+				);
+			}
+			assert.deepStrictEqual(yield* namesIn(MERGED), mergedBefore, "a blocked merge writes nothing");
+		}).pipe(Effect.provide(layers({}))),
+	);
+
+	it.effect("url conflicts sort before name conflicts, and a url collision is never also a name collision", () =>
+		Effect.gen(function* () {
+			const report = yield* Runner.run(displayed("b", "credentials", "tool.toml"), options("check"));
+			assert.deepStrictEqual(report.catalog?.merged?.conflicts, [
+				{ kind: "url", url: `${BASE}/credentials.json`, slices: [sliceOf("a"), sliceOf("b")] },
+				{ kind: "name", name: "tool.toml", slices: [sliceOf("a"), sliceOf("z")] },
+			]);
+		}).pipe(
+			Effect.provide(
+				layers({
+					// `a` repeats b's whole entry (url and name): one url conflict only,
+					// since the entry that loses the url is not advertised.
+					[sliceOf("a")]:
+						`${JSON.stringify([{ name: "tool.toml", description: "d", fileMatch: [], url: `${BASE}/credentials.json` }])}\n`,
+					[sliceOf("z")]:
+						`${JSON.stringify([{ name: "tool.toml", description: "d", fileMatch: [], url: `${BASE}/z.json` }])}\n`,
+				}),
+			),
+		),
+	);
+
+	it.effect("a hand-written slice advertising one name twice is reported, listing that slice twice", () =>
+		Effect.gen(function* () {
+			const report = yield* Runner.run(cataloged("a", ["alpha"]), options("check"));
+			assert.strictEqual(report.catalog?.merged?.outcome, "blocked");
+			assert.deepStrictEqual(report.catalog?.merged?.conflicts, [
+				{ kind: "name", name: "dup", slices: [sliceOf("foreign"), sliceOf("foreign")] },
+			]);
+		}).pipe(
+			Effect.provide(
+				layers({
+					[sliceOf("foreign")]: `${JSON.stringify([
+						{ name: "dup", description: "d", fileMatch: [], url: `${BASE}/one.json` },
+						{ name: "dup", description: "d", fileMatch: [], url: `${BASE}/two.json` },
+					])}\n`,
+				}),
+			),
+		),
 	);
 
 	it.effect("a slice that is not a catalog entry array is reported invalid, never silently dropped", () =>
@@ -1181,7 +1271,7 @@ describe("Runner.run catalog slices", () => {
 				const report = yield* Runner.run(cataloged("Docs", ["alpha"]), options("build"));
 				assert.strictEqual(report.catalog?.merged?.outcome, "blocked", `round ${round}`);
 				assert.deepStrictEqual(report.catalog?.merged?.conflicts, [
-					{ url: `${BASE}/alpha.json`, slices: [sliceOf("Docs"), sliceOf("docs")] },
+					{ kind: "url", url: `${BASE}/alpha.json`, slices: [sliceOf("Docs"), sliceOf("docs")] },
 				]);
 				assert.deepStrictEqual(report.catalog?.merged?.slices, [sliceOf("Docs"), sliceOf("docs")]);
 				assert.isUndefined(report.catalog?.slice?.caseFoldedMatch, `round ${round}`);

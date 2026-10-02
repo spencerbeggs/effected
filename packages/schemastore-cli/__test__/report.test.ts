@@ -250,7 +250,12 @@ const blockedCheck: RunReport = {
 			outcome: "blocked",
 			slices: ["schemas/catalogs/a.json", "schemas/catalogs/b.json"],
 			conflicts: [
-				{ url: "https://example.com/a.json", slices: ["schemas/catalogs/a.json", "schemas/catalogs/b.json"] },
+				{
+					kind: "url",
+					url: "https://example.com/a.json",
+					slices: ["schemas/catalogs/a.json", "schemas/catalogs/b.json"],
+				},
+				{ kind: "name", name: "tool.toml", slices: ["schemas/catalogs/a.json", "schemas/catalogs/c.json"] },
 			],
 			invalid: [{ path: "schemas/catalogs/broken.json", reason: 'Expected no excess property at [0]["extra"]' }],
 		},
@@ -267,6 +272,7 @@ describe("Report.human", () => {
 			"orphaned catalog slice schemas/catalogs/okfit.json (no schema declares a catalog; the merged catalog keeps advertising its entries until it is deleted — delete it by hand; build never will)",
 			"CATALOG BLOCKED schemas/catalog.json (not written: fix the slices below)",
 			"  url https://example.com/a.json advertised by schemas/catalogs/a.json, schemas/catalogs/b.json",
+			"  name tool.toml advertised by schemas/catalogs/a.json, schemas/catalogs/c.json",
 			'  slice schemas/catalogs/broken.json is invalid: Expected no excess property at [0]["extra"]',
 			"1 schema(s): 0 written, 1 unchanged, 0 drift, 0 gate failed — drift per schema (config), on-drift error",
 		]);
@@ -466,7 +472,12 @@ describe("Report.json", () => {
 	it("carries conflicts and invalid only on a merge that has them", () => {
 		const doc = JSON.parse(Report.json(blockedCheck)) as { catalog: { merged: Record<string, unknown> } };
 		assert.deepStrictEqual(doc.catalog.merged.conflicts, [
-			{ url: "https://example.com/a.json", slices: ["schemas/catalogs/a.json", "schemas/catalogs/b.json"] },
+			{
+				kind: "url",
+				url: "https://example.com/a.json",
+				slices: ["schemas/catalogs/a.json", "schemas/catalogs/b.json"],
+			},
+			{ kind: "name", name: "tool.toml", slices: ["schemas/catalogs/a.json", "schemas/catalogs/c.json"] },
 		]);
 		assert.deepStrictEqual(doc.catalog.merged.invalid, [
 			{ path: "schemas/catalogs/broken.json", reason: 'Expected no excess property at [0]["extra"]' },
@@ -550,6 +561,7 @@ describe("Report.markdown", () => {
 		const markdown = Report.markdown(blockedCheck);
 		assert.include(markdown, "| merged | schemas/catalog.json | 2 | blocked |");
 		assert.include(markdown, "| url https://example.com/a.json | schemas/catalogs/a.json, schemas/catalogs/b.json |");
+		assert.include(markdown, "| name tool.toml | schemas/catalogs/a.json, schemas/catalogs/c.json |");
 		assert.include(markdown, '| invalid: Expected no excess property at [0]["extra"] | schemas/catalogs/broken.json |');
 	});
 

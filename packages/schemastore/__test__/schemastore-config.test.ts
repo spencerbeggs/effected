@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Result, Schema } from "effect";
 import type { SchemaVersion } from "../src/index.js";
-import { HostedSchema, SchemaVersioning, defineConfig, isSchemastoreConfig } from "../src/index.js";
+import { CatalogEntry, HostedSchema, SchemaVersioning, defineConfig, isSchemastoreConfig } from "../src/index.js";
 
 const version = (label: string): SchemaVersion => Result.getOrThrow(SchemaVersioning.parseResult(label));
 
@@ -509,6 +509,107 @@ describe("defineConfig validation", () => {
 				assert.notInstanceOf(error, TypeError);
 			}
 		}
+	});
+});
+
+describe("defineConfig catalog display name", () => {
+	const reposets = HostedSchema.github({
+		repo: "o/r",
+		path: "schemas",
+		name: "config",
+		versions: ["3.0"],
+		appendVersion: false,
+	});
+
+	it("names the catalog entry by catalog.name while the key keeps naming the file, $id and URLs", () => {
+		const schema = only(
+			defineConfig({
+				name: "test",
+				outputDir: "schemas",
+				schemas: {
+					config: {
+						schema: Config,
+						hosted: reposets,
+						catalog: { name: "reposets.config.toml", description: "d", fileMatch: ["reposets.config.toml"] },
+					},
+				},
+			}),
+		);
+		assert.strictEqual(schema.name, "config");
+		assert.strictEqual(schema.catalog?.name, "reposets.config.toml");
+		assert.strictEqual(schema.catalog?.url, `${CUSTOM}/3.0/config.json`);
+		assert.deepStrictEqual(schema.catalog?.versions, { "3.0": `${CUSTOM}/3.0/config.json` });
+		assert.strictEqual(schema.target.path, "schemas/3.0/config.json");
+		assert.strictEqual(schema.target.$id, `${CUSTOM}/3.0/config.json`);
+	});
+
+	it("defaults the catalog name to the key, leaving an existing config's entry unchanged", () => {
+		const schema = only(one({ versions: ["1.0"] }));
+		assert.isDefined(schema.catalog);
+		assert.deepStrictEqual(Schema.encodeSync(CatalogEntry)(schema.catalog), {
+			name: "okfit",
+			description: "okfit config",
+			fileMatch: ["okfit.toml"],
+			url: "https://www.schemastore.org/okfit-1.0.json",
+			versions: { "1.0": "https://www.schemastore.org/okfit-1.0.json" },
+		});
+	});
+
+	it("drops an undefined catalog.name as omitted, and rejects an empty one", () => {
+		assert.strictEqual(only(one({ catalog: { ...catalog, name: undefined } })).catalog?.name, "okfit");
+		assert.throws(
+			() => one({ catalog: { ...catalog, name: "" } }),
+			/^defineConfig: schema "okfit" .*\["catalog"\]\["name"\]/,
+		);
+	});
+
+	it("rejects two schemas resolving to one catalog name, naming both keys", () => {
+		assert.throws(
+			() =>
+				defineConfig({
+					name: "test",
+					outputDir: "schemas",
+					baseUrl: CUSTOM,
+					schemas: {
+						config: { schema: Config, catalog: { ...catalog, name: "tool.toml" } },
+						credentials: { schema: Config, catalog: { ...catalog, name: "tool.toml" } },
+					},
+				}),
+			/^defineConfig: schemas "config" and "credentials" both name their catalog entry "tool\.toml"$/,
+		);
+	});
+
+	it("rejects a catalog name equal to another schema's key-derived default", () => {
+		assert.throws(
+			() =>
+				defineConfig({
+					name: "test",
+					outputDir: "schemas",
+					baseUrl: CUSTOM,
+					schemas: {
+						config: { schema: Config, catalog },
+						credentials: { schema: Config, catalog: { ...catalog, name: "config" } },
+					},
+				}),
+			/^defineConfig: schemas "config" and "credentials" both name their catalog entry "config"$/,
+		);
+	});
+
+	it("allows a schema's catalog name to equal its own key, and an uncataloged key to be reused as a name", () => {
+		const config = defineConfig({
+			name: "test",
+			outputDir: "schemas",
+			baseUrl: CUSTOM,
+			schemas: {
+				config: { schema: Config, catalog: { ...catalog, name: "config" } },
+				credentials: { schema: Config },
+				other: { schema: Config, catalog: { ...catalog, name: "credentials" } },
+			},
+		});
+		assert.deepStrictEqual(
+			config.schemas.map((s) => s.catalog?.name),
+			["config", undefined, "credentials"],
+		);
 	});
 });
 

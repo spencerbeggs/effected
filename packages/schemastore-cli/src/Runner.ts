@@ -224,18 +224,31 @@ export interface CatalogSliceReport {
 }
 
 /**
- * One catalog URL advertised by more than one slice. The merged catalog
- * refuses to pick a winner: which entry a host serves would depend on
- * which config built last.
+ * One catalog URL or display name advertised more than once across the
+ * slices, discriminated by `kind`. The merged catalog refuses to pick a
+ * winner: for a URL, which entry a host serves would depend on which config
+ * built last; for a name, an editor or SchemaStore would show two entries
+ * it cannot tell apart. A name is compared over the entries the merge
+ * advertises — an entry that already lost its URL to another slice is
+ * reported once, as the URL conflict.
  *
  * @public
  */
-export interface CatalogConflict {
-	/** The entry `url` claimed more than once. */
-	readonly url: string;
-	/** Every slice file advertising it, sorted; a slice listed twice declares it twice itself. */
-	readonly slices: ReadonlyArray<string>;
-}
+export type CatalogConflict =
+	| {
+			readonly kind: "url";
+			/** The entry `url` claimed more than once. */
+			readonly url: string;
+			/** Every slice file advertising it, sorted; a slice listed twice declares it twice itself. */
+			readonly slices: ReadonlyArray<string>;
+	  }
+	| {
+			readonly kind: "name";
+			/** The entry `name` claimed more than once. */
+			readonly name: string;
+			/** Every slice file advertising it, sorted; a slice listed twice declares it twice itself. */
+			readonly slices: ReadonlyArray<string>;
+	  };
 
 /**
  * One slice the merge could not use, and why: `unreadable: <reason>` (a
@@ -272,14 +285,17 @@ export interface MergedCatalogReport {
 	/**
 	 * `written`/`unchanged`/`would-write`/`held` as for the slice.
 	 * `orphaned`: no slice remains but the merged file exists — stale under
-	 * `check`, left in place under `build`. `blocked`: a URL conflict or an
+	 * `check`, left in place under `build`. `blocked`: a URL or name conflict or an
 	 * invalid slice leaves no merged catalog to trust, so none is written
 	 * (both modes fail, exit `1`).
 	 */
 	readonly outcome: "written" | "unchanged" | "would-write" | "held" | "orphaned" | "blocked";
 	/** Every slice file the merge reads — the running config's own included when it declares entries — sorted. */
 	readonly slices: ReadonlyArray<string>;
-	/** Every URL advertised by more than one slice; empty when none. */
+	/**
+	 * Every URL, then every name, advertised more than once; each kind
+	 * sorted by its value in code-unit order; empty when none.
+	 */
 	readonly conflicts: ReadonlyArray<CatalogConflict>;
 	/**
 	 * Every OTHER slice file that cannot be read (a dangling symlink, a
@@ -560,6 +576,7 @@ const syncCatalog = Effect.fn("Runner.syncCatalog")(function* (
 		}
 	} else {
 		const claims = new Map<string, Array<string>>();
+		const nameClaims = new Map<string, Array<string>>();
 		const union: Array<CatalogEntry> = [];
 		for (const source of sources) {
 			for (const entry of source.entries) {
@@ -567,15 +584,28 @@ const syncCatalog = Effect.fn("Runner.syncCatalog")(function* (
 				if (claimants === undefined) {
 					claims.set(entry.url, [source.slice]);
 					union.push(entry);
+					// Only an entry the merge advertises claims its name: one that
+					// lost its URL is already reported as that URL's conflict.
+					const nameClaimants = nameClaims.get(entry.name);
+					if (nameClaimants === undefined) {
+						nameClaims.set(entry.name, [source.slice]);
+					} else {
+						nameClaimants.push(source.slice);
+					}
 				} else {
 					claimants.push(source.slice);
 				}
 			}
 		}
-		const conflicts: Array<CatalogConflict> = [...claims]
-			.filter(([, slices]) => slices.length > 1)
-			.map(([url, slices]) => ({ url, slices: [...slices].sort(byCodeUnit) }))
-			.sort((a, b) => byCodeUnit(a.url, b.url));
+		const repeated = (claimed: Map<string, Array<string>>) =>
+			[...claimed]
+				.filter(([, slices]) => slices.length > 1)
+				.sort(([a], [b]) => byCodeUnit(a, b))
+				.map(([value, slices]) => ({ value, slices: [...slices].sort(byCodeUnit) }));
+		const conflicts: Array<CatalogConflict> = [
+			...repeated(claims).map(({ value, slices }) => ({ kind: "url" as const, url: value, slices })),
+			...repeated(nameClaims).map(({ value, slices }) => ({ kind: "name" as const, name: value, slices })),
+		];
 		union.sort((a, b) => byCodeUnit(a.url, b.url));
 		const outcome =
 			conflicts.length > 0 || invalid.length > 0

@@ -103,7 +103,7 @@ name: non-empty, no separators, no whitespace.
 | `layout` | no | `"flat"` or `"versioned"`; defaults to `"versioned"` for a custom `baseUrl`, rejected under `baseUrl: "schemastore"` |
 | `appendVersion` | no, default `true` | whether a versioned file carries the `-<version>` suffix; `false` gives `<version>/<name>.json` and requires the `"versioned"` layout. Owned by `hosted` when given |
 | `drift` | no | overrides the config's top-level `drift` for this schema |
-| `catalog` | required under `baseUrl: "schemastore"` | `{ description, fileMatch }` — the catalog entry to assemble for this schema |
+| `catalog` | required under `baseUrl: "schemastore"` | `{ name?, description, fileMatch }` — the catalog entry to assemble for this schema; `name` is its display name, defaulting to the key |
 | `jsonSchema` | no | core's `ToJsonSchemaOptions`, forwarded to generation for this target only; objects are closed by default, `{ onExcessProperty: "ignore" }` reopens this one document |
 | `rootAnnotations` | no | forwarded to the target |
 
@@ -139,9 +139,25 @@ catalog slice (<catalogDir>/<name>.json)`.
 ### `catalog` — one slice per config, one merged catalog
 
 Each schema's `catalog` block carries `description` and `fileMatch`;
-`name`, `url` and `versions` are **derived** from the schema's own key,
+`url` and `versions` are **derived** from the schema's own key,
 `baseUrl`, `layout` and `versions` — never written by hand, so a version
-bump on a schema and its catalog entry cannot disagree. Every schema's
+bump on a schema and its catalog entry cannot disagree. The entry's
+`name` defaults to the key too; an optional `catalog.name` sets a
+descriptive display name instead, and changes nothing else — the key
+still names the file, `$id` and every URL:
+
+```ts
+config: {
+  schema: Config,
+  hosted: HostedSchema.github({ repo: "o/r", path: "schemas", name: "config", versions: ["3.0"], appendVersion: false }),
+  // schemas/3.0/config.json, advertised in the catalog as "tool.config.toml"
+  catalog: { name: "tool.config.toml", description: "tool configuration", fileMatch: ["tool.config.toml"] },
+},
+```
+
+Catalog names are unique within a config: `defineConfig` rejects two
+cataloged schemas whose entries resolve to one name — a `catalog.name`
+equal to another cataloged schema's key included — naming both keys. Every schema's
 assembled entry lands in the config's **slice**, `<catalogDir>/<name>.json`
 — a bare catalog entry array, never one file per schema, rewritten
 wholesale so a removed schema's entry drops out. `catalogDir` defaults to
@@ -156,8 +172,8 @@ identical merged file and `check` is green for all of them once each has
 built. A config that drops its last `catalog` block leaves its slice
 orphaned: `check` fails on it, and the merged catalog keeps advertising
 its entries until the slice is deleted by hand. Two slices
-advertising one `url`, or a slice that is not a catalog entry array,
-blocks the merged file (`CatalogMergeError`, exit `1`) until a config or
+advertising one `url` or one `name`, or a slice that is not a catalog
+entry array, blocks the merged file (`CatalogMergeError`, exit `1`) until a config or
 slice is fixed.
 
 `catalogDir` holds slices only — every `*.json` file directly in it is

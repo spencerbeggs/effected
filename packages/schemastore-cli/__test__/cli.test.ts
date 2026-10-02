@@ -552,13 +552,41 @@ describe("schemastore CLI", () => {
 					const error = yield* Effect.flip(program([command], deps(basicConfig())));
 					assert.instanceOf(error, CatalogMergeError, command);
 					assert.strictEqual(exitCodeOf(error), 1);
-					assert.deepStrictEqual(error.conflicts, [{ url: BASIC_ID, slices: [other, SLICE_PATH] }]);
+					assert.deepStrictEqual(error.conflicts, [{ kind: "url", url: BASIC_ID, slices: [other, SLICE_PATH] }]);
 					assert.include(error.message, `url ${BASIC_ID} is advertised by ${other}, ${SLICE_PATH}`);
 				}
 				assert.include(yield* stdout, `CATALOG BLOCKED ${CATALOG_PATH} (not written: fix the slices below)`);
 			}),
 			{ ...builtSeed, "/repo/schemas/catalogs/other.json": builtSeed[SLICE_PATH] as string },
 		),
+	);
+
+	it.effect(
+		"a catalog name another config's slice advertises fails with a name conflict, in human and JSON output",
+		() =>
+			run(
+				Effect.gen(function* () {
+					const other = "/repo/schemas/catalogs/other.json";
+					const error = yield* Effect.flip(program(["check", "--format=json"], deps(basicConfig())));
+					assert.instanceOf(error, CatalogMergeError);
+					assert.strictEqual(exitCodeOf(error), 1);
+					assert.deepStrictEqual(error.conflicts, [{ kind: "name", name: "basic", slices: [other, SLICE_PATH] }]);
+					assert.include(error.message, `  name basic is advertised by ${other}, ${SLICE_PATH}`);
+					assert.include(error.message, "Give each catalog URL and name to exactly one config");
+					const out = yield* stdout;
+					assert.strictEqual(out.length, 1, out.join("\n"));
+					const doc = JSON.parse(out[0] as string) as { catalog: { merged: Record<string, unknown> } };
+					assert.strictEqual(doc.catalog.merged.outcome, "blocked");
+					assert.deepStrictEqual(doc.catalog.merged.conflicts, [
+						{ kind: "name", name: "basic", slices: [other, SLICE_PATH] },
+					]);
+					assert.include(yield* stderr, `  name basic advertised by ${other}, ${SLICE_PATH}`);
+				}),
+				{
+					...builtSeed,
+					"/repo/schemas/catalogs/other.json": `${JSON.stringify([{ name: "basic", description: "d", fileMatch: [], url: "https://example.com/other.json" }])}\n`,
+				},
+			),
 	);
 
 	it.effect("CatalogMergeError names why each invalid slice is invalid", () =>

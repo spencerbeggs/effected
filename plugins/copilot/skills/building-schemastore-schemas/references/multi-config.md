@@ -160,6 +160,10 @@ each problem under it:
 
 - **A url advertised by two slices.** Usually a rename leftover or a
   schema moved between packages without deleting the old slice entry.
+- **A name advertised twice.** Two entries an editor or SchemaStore
+  would show under one display name — a `catalog.name` in one config
+  matching another config's entry name. Rename one of them. An entry
+  that already collided on its url is reported once, as the url.
 - **An invalid slice.** The reason names the failure: `not JSON`,
   `Expected array`, `Expected string at [0]["name"]`, one
   `Expected no excess property at …` per unexpected key, or

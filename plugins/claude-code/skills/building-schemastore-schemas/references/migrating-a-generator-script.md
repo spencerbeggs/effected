@@ -23,7 +23,7 @@ program. What varies between them is exactly the config it takes.
 | `--check` / `--dry-run` → `SchemaPipeline.check` | `schemastore check` |
 | `--force` / `--allow-contract-change` → `contractChanges: "allow"` | `--force` (sugar for `--drift=allow`) |
 | `const CATALOGUED = false` selecting `"allow"` vs `"block-versioned"` | `published: false` on the schema entry; flip to `true` when the entry is accepted |
-| `CatalogEntry.assemble({ name, description, fileMatch, baseUrl, versions })` + `Schema.encodeSync` + a file write | the `catalog: { description, fileMatch }` block on each schema entry — `name`, `url` and `versions` derive from the schema's own key and `versions`, and every entry lands in the config's slice `<catalogDir>/<name>.json`, merged into `catalog.json` beside `catalogDir` |
+| `CatalogEntry.assemble({ name, description, fileMatch, baseUrl, versions })` + `Schema.encodeSync` + a file write | the `catalog: { description, fileMatch }` block on each schema entry — `url` and `versions` derive from the schema's own key and `versions`, `name` defaults to the key (an optional `catalog.name` keeps a script's descriptive display name), and every entry lands in the config's slice `<catalogDir>/<name>.json`, merged into `catalog.json` beside `catalogDir` |
 | a previous published label kept as a second `SchemaTarget` in the array | append the new label to `versions` and set `current`; the old label freezes and is verified, not regenerated |
 | the `SchemaContractChangeError` handler printing `version → nextVersion` | the `DRIFT contract at published X → suggest Y` line and `nextVersion` in the JSON report |
 | per-result `Effect.logInfo` of advisory findings | the indented finding lines under each schema |

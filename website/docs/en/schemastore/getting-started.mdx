@@ -184,6 +184,8 @@ console.log(Effect.runSync(program).url);
 // https://example.com/schemas/mytool-1.10.0.json
 ```
 
+`name` is what an editor or SchemaStore displays; `fileBaseName` (defaulting to `name`) is what the URLs are built from. A `schemastore.config.ts` makes the same split: a schema's key is the file base name, and its `catalog` block's optional `name` sets the display name, defaulting to the key. `defineConfig` rejects two schemas of one config whose catalog entries resolve to one name, and the CLI blocks a merged catalog in which two slices advertise one.
+
 `1.10.0` wins over `1.9.0` because ordering is real SemVer precedence, not a string sort. Labels are one to three components — `1`, `1.2` and `1.2.0` all parse, optionally with a prerelease — and a missing component reads as `0` for ordering, so those three compare equal while each round-trips verbatim into its file name; `defineConfig` refuses two spellings of one version under one name for exactly that reason.
 
 ### Check `fileMatch` hygiene before you submit

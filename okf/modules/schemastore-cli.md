@@ -35,8 +35,8 @@ sources:
     resource: ../../packages/schemastore-cli/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-29T00:43:39Z
-  body_sha256: 7f932ed3c3fde0c969f63c363d9c5f1d0f5aac40db89ab38823bbc05bb3585f8
+  at: 2026-10-02T18:34:24Z
+  body_sha256: acc889593e9a698105bbdf3663d70e2c4ec41550551194ea641b4f6e519ffd25
 ---
 
 # @effected/schemastore-cli
@@ -409,11 +409,11 @@ schemastore validate <payload.json> [config] [--schema <path|$id|url>] [--format
   tests. Because `check` reports what `build` would do, it also reports
   `held` for the clean siblings of a gate failure or a refused drift,
   exactly as a build would.
-- A merged catalog that cannot be assembled — a catalog URL two slices
-  advertise, or a slice that is not a catalog entry array — fails both
-  modes with `CatalogMergeError` (exit `1`, evaluated after the gate and
-  drift verdicts and before `StaleError`), naming every conflicting URL
-  with its slices and every invalid slice. `build` still writes the
+- A merged catalog that cannot be assembled — a catalog URL or entry
+  name advertised more than once, or a slice that is not a catalog entry
+  array — fails both modes with `CatalogMergeError` (exit `1`, evaluated
+  after the gate and drift verdicts and before `StaleError`), naming every
+  conflicting URL or name with its slices and every invalid slice. `build` still writes the
   schemas and its own slice; only the merged file is left as it is.
 - `--force` is sugar for `--drift=allow` — and nothing more: combined
   with an explicit `--drift` other than `allow` it is a contradiction,
@@ -455,7 +455,8 @@ schemastore validate <payload.json> [config] [--schema <path|$id|url>] [--format
   (`outcome` is `written`, `unchanged`, `would-write`, `held` or
   `orphaned`) and `merged: { path, entries, outcome, slices, conflicts?,
   invalid? }` (`outcome` adds `blocked`; `conflicts` —
-  `[{ url, slices }]` — and `invalid` — `[{ path, reason }]` — appear only
+  `[{ kind: "url", url, slices } | { kind: "name", name, slices }]` — and
+  `invalid` — `[{ path, reason }]` — appear only
   when non-empty) — one
   optional `orphaned: string[]` (the unclaimed-document
   paths, in config order), and
@@ -469,7 +470,7 @@ Exit codes:
 | code | meaning |
 | ------ | -------------------------------------------------------------------------- |
 | 0 | success, including drift under `onDrift: warn` |
-| 1 | drift under `onDrift: error`, a gate failure, a missing frozen version (`FrozenVersionMissingError`), a frozen file without its derived `$id` (`FrozenVersionIdMismatchError`), a merged catalog blocked by a URL conflict or an invalid slice (`CatalogMergeError`), — for `check` — any document `build` would write (a catalog slice or the merged catalog included), an orphaned slice or merged catalog, or an orphaned document at a sibling shape of a derived path, or — for `validate` — a payload that does not conform to the resolved document (`ValidationFailedError`, one finding per problem, pointer and keyword each) |
+| 1 | drift under `onDrift: error`, a gate failure, a missing frozen version (`FrozenVersionMissingError`), a frozen file without its derived `$id` (`FrozenVersionIdMismatchError`), a merged catalog blocked by a URL or name conflict or an invalid slice (`CatalogMergeError`), — for `check` — any document `build` would write (a catalog slice or the merged catalog included), an orphaned slice or merged catalog, or an orphaned document at a sibling shape of a derived path, or — for `validate` — a payload that does not conform to the resolved document (`ValidationFailedError`, one finding per problem, pointer and keyword each) |
 | 2 | config not found, failed to load, failed `SchemastoreConfig` validation, a `catalogDir` that is a file or cannot be listed (`CatalogDirError`, raised before anything is written), or — for `validate` — a payload that cannot be read or parsed (`PayloadError`) or a schema reference that resolves to no readable document (`SchemaResolutionError`) |
 | 3 | infrastructure failure (`CliRuntime.reportFailures` fallback; for `validate`, an engine mechanism failure — `InstanceValidatorError`, a document the instance engine cannot compile — flows here unmarked) |
 | 64 | usage error — `ShowHelp` carrying parse errors, `--force` combined with an explicit non-`allow` `--drift` (`ConflictingFlagsError`), or — for `validate` — a payload with no `$schema` and no `--schema` given (`MissingSchemaRefError`) |
@@ -523,7 +524,16 @@ derived from every slice:
   claim nothing. Another config's slice that vanished
   between listing and reading is skipped. `outputDir` is still never listed
   ([decision](../decisions/output-dir-is-never-exclusively-owned.md)).
-- **Two slices advertising one `url` is a conflict**, and **a slice that
+- **Two slices advertising one `url` is a conflict, and so is one entry
+  `name` advertised twice** — `CatalogConflict` is the tagged union
+  `{ kind: "url", url, slices } | { kind: "name", name, slices }`, URL
+  conflicts first, each kind sorted by value in code-unit order. A name is
+  counted only over the entries the merge advertises: an entry that lost
+  its URL to another slice is reported once, as the URL conflict, and a
+  foreign slice advertising one name twice is listed twice. A catalog
+  display name (`catalog.name`) is decoupled from the key, so it no longer
+  inherits the key's uniqueness; `defineConfig` enforces it within one
+  config and the merge across configs. And **a slice that
   cannot be read (a dangling symlink, a permission failure), is not JSON,
   or is not a catalog entry array — one carrying a key a catalog entry
   does not declare included, since the decode rejects excess keys rather
@@ -559,7 +569,8 @@ derived from every slice:
   line for the catalog slice (`written catalog slice <path> (N entries)`),
   one for the merged catalog (`written catalog <path> (N entries from K
   slice(s))`; a blocked merge renders `CATALOG BLOCKED <path>` with one
-  indented line per conflicting URL and per invalid slice), one line per
+  indented line per conflicting URL or name — `url <u> advertised by …`,
+  `name <n> advertised by …` — and per invalid slice), one line per
   orphaned document, and a
   summary line whose `drift` count is
   verdict-based — the number of schemas classified `drift`, independent

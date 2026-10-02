@@ -3,7 +3,14 @@
 // total function of the report value.
 
 import type { PipelineFinding } from "@effected/schemastore";
-import type { CatalogReport, CatalogSliceReport, MergedCatalogReport, RunReport, SchemaReport } from "./Runner.js";
+import type {
+	CatalogConflict,
+	CatalogReport,
+	CatalogSliceReport,
+	MergedCatalogReport,
+	RunReport,
+	SchemaReport,
+} from "./Runner.js";
 
 const findingLine = (finding: PipelineFinding): string => `  ${finding.label} at "${finding.path}": ${finding.message}`;
 
@@ -81,6 +88,10 @@ const sliceLine = (slice: CatalogSliceReport): string => {
 	}
 };
 
+// `url <url>` or `name <name>`: what a conflict line or table cell names.
+const conflictSubject = (conflict: CatalogConflict): string =>
+	conflict.kind === "url" ? `url ${conflict.url}` : `name ${conflict.name}`;
+
 const mergedLines = (merged: MergedCatalogReport): ReadonlyArray<string> => {
 	const counts = `(${merged.entries} entries from ${merged.slices.length} slice(s))`;
 	switch (merged.outcome) {
@@ -97,7 +108,9 @@ const mergedLines = (merged: MergedCatalogReport): ReadonlyArray<string> => {
 		case "blocked":
 			return [
 				`CATALOG BLOCKED ${merged.path} (not written: fix the slices below)`,
-				...merged.conflicts.map((conflict) => `  url ${conflict.url} advertised by ${conflict.slices.join(", ")}`),
+				...merged.conflicts.map(
+					(conflict) => `  ${conflictSubject(conflict)} advertised by ${conflict.slices.join(", ")}`,
+				),
 				...merged.invalid.map(({ path, reason }) => `  slice ${path} is invalid: ${reason}`),
 			];
 		default:
@@ -129,7 +142,13 @@ const catalogJson = (catalog: CatalogReport) => ({
 					outcome: catalog.merged.outcome,
 					slices: catalog.merged.slices,
 					...(catalog.merged.conflicts.length > 0
-						? { conflicts: catalog.merged.conflicts.map(({ url, slices }) => ({ url, slices })) }
+						? {
+								conflicts: catalog.merged.conflicts.map((conflict) =>
+									conflict.kind === "url"
+										? { kind: conflict.kind, url: conflict.url, slices: conflict.slices }
+										: { kind: conflict.kind, name: conflict.name, slices: conflict.slices },
+								),
+							}
 						: {}),
 					...(catalog.merged.invalid.length > 0
 						? { invalid: catalog.merged.invalid.map(({ path, reason }) => ({ path, reason })) }
@@ -301,7 +320,7 @@ export class Report {
 					"",
 					tableRow(["catalog problem", "slices"]),
 					tableRow(["---", "---"]),
-					...merged.conflicts.map((conflict) => tableRow([`url ${conflict.url}`, conflict.slices.join(", ")])),
+					...merged.conflicts.map((conflict) => tableRow([conflictSubject(conflict), conflict.slices.join(", ")])),
 					...merged.invalid.map(({ path, reason }) => tableRow([`invalid: ${reason}`, path])),
 				);
 			}

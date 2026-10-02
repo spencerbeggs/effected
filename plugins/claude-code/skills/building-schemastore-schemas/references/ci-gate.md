@@ -68,7 +68,7 @@ schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 | code | meaning |
 | --- | --- |
 | `0` | success, including drift under `--on-drift=warn` |
-| `1` | drift under `--on-drift=error`, a gate failure (lint warning, ajv strict finding), a missing frozen version (`FrozenVersionMissingError`), a merged catalog blocked by a `url` two slices advertise or an invalid slice (`CatalogMergeError`), or — for `check` — any document `build` would write (the slice and merged catalog included) or an orphaned output (a catalog slice no schema declares, a merged catalog with no slice left, a document an `appendVersion` or `layout` rename left behind) |
+| `1` | drift under `--on-drift=error`, a gate failure (lint warning, ajv strict finding), a missing frozen version (`FrozenVersionMissingError`), a merged catalog blocked by a `url` or `name` advertised twice or an invalid slice (`CatalogMergeError`), or — for `check` — any document `build` would write (the slice and merged catalog included) or an orphaned output (a catalog slice no schema declares, a merged catalog with no slice left, a document an `appendVersion` or `layout` rename left behind) |
 | `2` | config not found, failed to load, failed `defineConfig` validation, or a `catalogDir` that is a file or cannot be listed (`CatalogDirError`, before anything is written) |
 | `3` | infrastructure failure |
 | `64` | usage error (an unknown flag, a bad literal) |
@@ -151,8 +151,10 @@ drift or gate finding.
   block or the slice still sits on disk without one; outcomes are
   `written` | `unchanged` | `would-write` | `held` | `orphaned`. `merged`
   is `{ path, entries, outcome, slices, conflicts?, invalid? }` for the
-  merged `catalog.json`; its outcomes add `blocked` (a `url` two slices
-  advertise, listed in `conflicts` as `{ url, slices }`, or a slice that
+  merged `catalog.json`; its outcomes add `blocked` (a `url` or `name`
+  advertised more than once, listed in `conflicts` as
+  `{ kind: "url", url, slices }` or `{ kind: "name", name, slices }` —
+  urls first, each kind sorted by value — or a slice that
   cannot be used, listed in `invalid` as `{ path, reason }` — the reason
   is `unreadable: …`, `not JSON`, or the decode issue itself, e.g.
   `Expected no excess property at [0]["extra"]` for an entry carrying a

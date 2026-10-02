@@ -18,6 +18,16 @@ const ConfigBrand: unique symbol = Symbol.for("@effected/schemastore/Schemastore
  * @public
  */
 export interface CatalogInput {
+	/**
+	 * The entry's display name in the catalog — what an editor or SchemaStore
+	 * shows. Defaults to the schema's key. Only the catalog entry's `name`
+	 * changes: the key still names the file, `$id` and every catalog URL, so
+	 * a versioned `<version>/<name>.json` layout keeps its short file names.
+	 * Must be non-empty, and unique among the config's cataloged schemas
+	 * (compared after defaulting, so it must not equal another cataloged
+	 * schema's key either).
+	 */
+	readonly name?: string;
 	/** The catalog description. */
 	readonly description: string;
 	/** Glob patterns editors match files against; must be non-empty. */
@@ -238,6 +248,7 @@ const OptionsInput = Schema.declare((u): u is Readonly<Record<string, unknown>> 
 });
 
 const CatalogBlockInput = Schema.Struct({
+	name: Schema.optionalKey(Schema.NonEmptyString),
 	description: Schema.String,
 	fileMatch: Schema.NonEmptyArray(Schema.String),
 });
@@ -277,11 +288,18 @@ const DECODE_OPTIONS = { onExcessProperty: "error", errors: "all" } as const;
 // exactOptionalPropertyTypes, so a present-but-undefined key typechecks; the
 // decode would reject it where the hand guards read it as absent. Dropping
 // those keys keeps "undefined means omitted" for user-authored input. One
-// level only: nested blocks are decoded on their own.
+// level only: nested blocks are decoded on their own, except the catalog
+// block, whose one optional (`name`) is dropped the same way by
+// `withoutUndefinedCatalog`.
 const withoutUndefined = (input: unknown): unknown =>
 	Predicate.isObject(input) && !Array.isArray(input)
 		? Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined))
 		: input;
+
+const withoutUndefinedCatalog = (entry: unknown): unknown =>
+	Predicate.isObject(entry) && !Array.isArray(entry) && "catalog" in entry
+		? { ...entry, catalog: withoutUndefined(entry.catalog) }
+		: entry;
 
 const decodeOrThrow = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, input: unknown, prefix: string) =>
 	Result.getOrThrowWith(
@@ -335,7 +353,7 @@ const resolveEntry = (
 	if (!SchemaVersioning.isSimpleName(name)) {
 		return fail(`schema "${name}" must be keyed by a simple file base name (no separators, no whitespace)`);
 	}
-	const entry = decodeOrThrow(EntryInput, withoutUndefined(input), `schema "${name}" `);
+	const entry = decodeOrThrow(EntryInput, withoutUndefinedCatalog(withoutUndefined(input)), `schema "${name}" `);
 	const hosted = resolveIdentity(name, entry, defaults.baseUrl);
 	if (hosted.baseUrl === "schemastore" && entry.catalog === undefined) {
 		return fail(`schema "${name}" must declare a catalog block under baseUrl "schemastore"`);
@@ -373,7 +391,8 @@ const resolveEntry = (
 		entry.catalog === undefined
 			? undefined
 			: CatalogEntry.assemble({
-					name,
+					name: entry.catalog.name ?? name,
+					fileBaseName: name,
 					description: entry.catalog.description,
 					fileMatch: entry.catalog.fileMatch,
 					baseUrl: hosted.catalogBase,
@@ -440,6 +459,23 @@ const assertCatalogDirHoldsOnlySlices = (
 	}
 };
 
+// The key used to guarantee a unique catalog name; a display name decoupled
+// from it does not, so two entries of one config advertising one name are
+// refused here — across configs, the CLI's merge refuses it.
+const assertUniqueCatalogNames = (schemas: ReadonlyArray<ResolvedSchema>): void => {
+	const owners = new Map<string, string>();
+	for (const schema of schemas) {
+		if (schema.catalog === undefined) {
+			continue;
+		}
+		const owner = owners.get(schema.catalog.name);
+		if (owner !== undefined) {
+			fail(`schemas "${owner}" and "${schema.name}" both name their catalog entry "${schema.catalog.name}"`);
+		}
+		owners.set(schema.catalog.name, schema.name);
+	}
+};
+
 const assertUniquePaths = (paths: ReadonlyArray<string>): void => {
 	const seen = new Set<string>();
 	for (const p of paths) {
@@ -479,7 +515,9 @@ const assertUniquePaths = (paths: ReadonlyArray<string>): void => {
  * four fields beside it); the config `name` is required (a missing one
  * fails `defineConfig: name is required — …`, naming what it is for), and
  * it and every schema key must be simple file base names; a `catalog` is required under
- * `baseUrl: "schemastore"`; an empty `schemas` record is rejected; a
+ * `baseUrl: "schemastore"`; two cataloged schemas whose catalog
+ * entries resolve to one `name` (a `catalog.name`, else the key) are
+ * rejected, naming both keys; an empty `schemas` record is rejected; a
  * `catalogDir` that is `outputDir`, that is the merged catalog's own path,
  * or that a derived document sits directly in, is rejected (every `*.json`
  * file there is read as a catalog slice); and an output path (a target, a frozen file, this config's
@@ -524,6 +562,7 @@ export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig =
 	// Validated once here, even when every entry overrides it.
 	const defaults = { baseUrl: config.baseUrl, drift: config.drift ?? DriftPolicy.defaults.policy };
 	const schemas = Object.entries(config.schemas).map(([name, entry]) => resolveEntry(name, entry, defaults, outputDir));
+	assertUniqueCatalogNames(schemas);
 	const catalogDir = config.catalogDir !== undefined ? trimSlashes(config.catalogDir) : `${outputDir}/catalogs`;
 	const documents = schemas.flatMap((s) => [s.target.path, ...s.frozen.map((f) => f.path)]);
 	assertCatalogDirHoldsOnlySlices(catalogDir, outputDir, documents);

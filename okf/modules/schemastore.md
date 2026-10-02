@@ -28,8 +28,8 @@ sources:
     resource: ../../packages/schemastore/src/StoreDocument.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T16:41:19Z
-  body_sha256: 12d972033b55f28b1577cc7bf40b857f909e9c129ea47b516210f721a61f2c60
+  at: 2026-10-02T18:34:24Z
+  body_sha256: 2b4627f02f43971bec1e05595623c66c69c6f37edc2fd89145e35f3e9bbf34f4
 ---
 
 # @effected/schemastore
@@ -402,7 +402,13 @@ rest become **frozen** `FrozenVersion` entries (`version`, `path`, `$id`,
 already exist on disk, advertised by the catalog and verified on disk by
 the CLI (existence and the declared `$id`), never regenerated. `outputDir` is top-level only, one destination per config;
 `baseUrl` and `drift` are top-level defaults an entry may override; `onDrift`
-is run-wide and not overridable. `catalog` is opt-in on any host but
+is run-wide and not overridable. A `catalog` block is
+`{ name?, description, fileMatch }`: `name` is the entry's display name
+in the catalog, defaulting to the key, and is the ONE thing it changes —
+`CatalogEntry.assemble` gets the key as `fileBaseName`, so the file,
+`$id` and every catalog URL still derive from the key (a versioned
+`<version>/<name>.json` layout keeps short file names under a descriptive
+catalog name, the reposets ask in #924). `catalog` is opt-in on any host but
 **required** under `baseUrl: "schemastore"` — hosting there means being in
 its catalog — and `layout` is only meaningful for a custom URL, an error
 under `"schemastore"`, which serves one flat shape.
@@ -463,7 +469,10 @@ hand-written after it: an empty `schemas` record; a config `name` or a
 key that fails the simple-name rule; a `catalogDir` that is `outputDir`
 or that a derived document sits directly in; a `hosted` entry keyed differently from `hosted.name`,
 or spelling a hosting field beside it; an entry with no `baseUrl` and no
-config default; a missing `catalog` under `"schemastore"`; and an output
+config default; a missing `catalog` under `"schemastore"`; two cataloged
+schemas whose entries resolve to one catalog `name` (a `catalog.name`, else
+the key — so a display name equal to another cataloged schema's key
+collides; the CLI's merge refuses the same across configs); and an output
 path (a target, a frozen file, the config's catalog slice
 `<catalogDir>/<name>.json` or the merged `catalog.json` in `catalogDir`'s
 parent) declared twice,
