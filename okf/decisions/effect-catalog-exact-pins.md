@@ -10,6 +10,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 08d3d7a1ab0575ddac1fbf3f06a8f0b7dcb4f2de6bcd043bb5c9368bf90d9102
+verified:
+  - by: human:spencer
+    at: 2026-10-02T18:36:38Z
 ---
 
 # The effect catalog pins exact versions
