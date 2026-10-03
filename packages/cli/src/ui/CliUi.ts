@@ -522,9 +522,9 @@ export class CliUi {
 	 * prints a run's final frame as a string; a run that is not interactive and has a `final` document never loads it,
 	 * nor Ink, nor React. An import that fails degrades the run, as a render that throws does: one warning, and the next
 	 * run tries the import again. A load that resolves to no view (neither a function nor a module whose `default` is
-	 * one) degrades the run the same way, with a warning saying what it received and what is expected, and the next
-	 * run loads again; such a shape error is deterministic, so it fails the same clear way each run. A view function
-	 * that happens to carry a `default` property is the view.
+	 * one) is a programming error, and deterministic, so it is kept for the view's life: every run degrades without
+	 * loading again, and the view warns once, saying what it received and what is expected, rather than once per run. A
+	 * view function that happens to carry a `default` property is the view.
 	 *
 	 * The returned function is for `CliUi.live`'s `render` alone: called before its module has loaded, it throws.
 	 *

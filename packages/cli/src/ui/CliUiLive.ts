@@ -31,7 +31,7 @@ import type { HolderSlot } from "./internal/Holder.js";
 import { holder, holderSlot } from "./internal/Holder.js";
 import { fromReact, inkModules, loadInk, withInkColour } from "./internal/ink.js";
 import { makeInkConsole } from "./internal/inkConsole.js";
-import { loadView } from "./internal/lazyView.js";
+import { LazyViewShapeError, loadView } from "./internal/lazyView.js";
 import { mountPermit } from "./internal/mountPermit.js";
 import { drainPerformance, resolveDrain } from "./internal/perfDrain.js";
 import { UiRenderOptions } from "./internal/renderOptions.js";
@@ -323,12 +323,28 @@ export const live = <E, S>(
 			}),
 		);
 
+		/**
+		 * A lazy view's shape errors already warned about. A shape error is deterministic, and the lazy view keeps one
+		 * error object for it, so a long watch session warns once for it, not once per run; any other failure is a fresh
+		 * object, and warns each time.
+		 */
+		const shapesWarned = new Set<LazyViewShapeError>();
+
+		/** The degraded-run warning, unless it is a shape error this view has already warned about. */
+		const warning = (error: unknown): Effect.Effect<void> => {
+			if (error instanceof LazyViewShapeError) {
+				if (shapesWarned.has(error)) return Effect.void;
+				shapesWarned.add(error);
+			}
+			return Effect.logWarning(DEGRADED(error));
+		};
+
 		/** Stop drawing a run: unmount first, so the one warning never lands inside a frame, then warn. */
 		const degrade = (current: Run<S>, error: unknown): Effect.Effect<void> =>
 			Effect.suspend(() => {
 				if (current.degraded) return unmount(current);
 				current.degraded = true;
-				return Effect.andThen(unmount(current), Effect.logWarning(DEGRADED(error)));
+				return Effect.andThen(unmount(current), warning(error));
 			});
 
 		/** Act on a failure the boundary reported for the run mounted now, if any. */
@@ -343,7 +359,7 @@ export const live = <E, S>(
 			Effect.suspend(() => {
 				if (current.degraded) return Effect.void;
 				current.degraded = true;
-				return Effect.logWarning(DEGRADED(error));
+				return warning(error);
 			});
 
 		/** The final frame as a string, at the stdout width (80 when it reports none) and with no height to fit. */

@@ -280,17 +280,16 @@ describe("CliUi.lazyView", () => {
 			for (const event of twoRuns) yield* view.publish(event);
 			yield* view.end;
 			const warnings = lines.filter((line) => line.includes("CliUi.lazyView"));
-			return { attempts, warnings, transcript: yield* view.transcript };
+			return { attempts, warnings, lines, transcript: yield* view.transcript };
 		});
 
 	const assertShapeError = (
 		result: { readonly attempts: number; readonly warnings: ReadonlyArray<string>; readonly transcript: string },
 		received: string,
 	) => {
-		// A failure clears the shared load: the run's mount tries, and its end tries again to print the frame, so each
-		// of the two runs loads twice.
-		assert.strictEqual(result.attempts, 4, "every attempt loads again: nothing cached a failure");
-		assert.lengthOf(result.warnings, 2, `one warning per run: ${result.warnings.join(" | ")}`);
+		// Deterministic, so latched for the handle: loaded once, warned once, however many runs follow.
+		assert.strictEqual(result.attempts, 1, "a shape error is kept: never loaded again");
+		assert.lengthOf(result.warnings, 1, `one warning for the handle, not one per run: ${result.warnings.join(" | ")}`);
 		for (const warning of result.warnings) {
 			assert.include(warning, received);
 			assert.include(
@@ -335,14 +334,15 @@ describe("CliUi.lazyView", () => {
 		}).pipe(Effect.scoped),
 	);
 
-	it.effect("a load that resolves to no view on run 1 and to the view on run 2 draws run 2", () =>
-		Effect.gen(function* () {
-			const result = yield* twoRunsOf([() => undefined, () => ({ default: frameOf })]);
-			// Run 1's mount got no view and degraded, once; its end loaded again, found the view and printed its frame.
-			assert.strictEqual(result.attempts, 2);
-			assert.lengthOf(result.warnings, 1);
-			assert.deepStrictEqual(result.transcript.split("\n"), ["RUN 1", "ended", "RUN 2", "ended"]);
-		}).pipe(Effect.scoped),
+	it.effect(
+		"a shape error is latched for the handle: a loader that would answer differently later is not asked again",
+		() =>
+			Effect.gen(function* () {
+				const result = yield* twoRunsOf([() => undefined, () => ({ default: frameOf })]);
+				assert.strictEqual(result.attempts, 1, "deterministic: kept, not retried");
+				assert.lengthOf(result.warnings, 1);
+				assert.notInclude(result.transcript, "RUN 2", "contrast with the transient case below, which draws run 2");
+			}).pipe(Effect.scoped),
 	);
 
 	it.effect("a transient import failure on run 1, then success, draws run 2", () =>
@@ -353,6 +353,19 @@ describe("CliUi.lazyView", () => {
 			]);
 			assert.strictEqual(result.attempts, 2);
 			assert.deepStrictEqual(result.transcript.split("\n"), ["RUN 1", "ended", "RUN 2", "ended"]);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("an import that keeps failing is never latched: each run loads again and warns again", () =>
+		Effect.gen(function* () {
+			const result = yield* twoRunsOf([() => Promise.reject(new Error("ECONNRESET loading the chunk"))]);
+			// Each run's mount tries, and its end tries again to print the frame: two loads a run, one warning a run.
+			assert.strictEqual(result.attempts, 4);
+			assert.lengthOf(
+				result.lines.filter((line) => line.includes("ECONNRESET")),
+				2,
+				"one warning a run: a transient failure is never latched",
+			);
 		}).pipe(Effect.scoped),
 	);
 

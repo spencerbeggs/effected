@@ -34,20 +34,28 @@ const NO_VIEW = (resolved: unknown): string => {
 
 /** The view `load` resolved to: the value itself when it is a function (a `default` property on it is ignored), else
  * its `default` when that is a function; anything else throws, saying what it got. */
+/**
+ * A load that resolved to no view: deterministic, so a lazy view keeps it (one error object for the handle's life) and
+ * the live view warns about it once, where a failed import is tried again by the next run.
+ *
+ * @internal
+ */
+export class LazyViewShapeError extends Error {}
+
 const pick = (resolved: unknown): ((state: never, frame: number) => ReactElement) => {
 	if (typeof resolved === "function") return resolved as (state: never, frame: number) => ReactElement;
 	if (typeof resolved === "object" && resolved !== null) {
 		const fallback = (resolved as { readonly default?: unknown }).default;
 		if (typeof fallback === "function") return fallback as (state: never, frame: number) => ReactElement;
 	}
-	throw new Error(NO_VIEW(resolved));
+	throw new LazyViewShapeError(NO_VIEW(resolved));
 };
 
 /**
  * `CliUi.lazyView`: a `render` that draws with what `load` resolves to, loaded on first use: the render itself, or a
- * module whose default export it is. One load is shared until it settles; any failure, an import that rejected or one
- * that resolved to no view, clears it, so the next run loads again (a shape error, being deterministic, then fails the
- * same clear way). Calling the render before it has loaded is a defect, since only `CliUi.live` knows to load it first.
+ * module whose default export it is. One load is shared: an import that rejected is cleared, so the next run loads
+ * again; a load that resolved to no view is kept, a `LazyViewShapeError` every later run gets as is. Calling the render
+ * before it has loaded is a defect, since only `CliUi.live` knows to load it first.
  *
  * @internal
  */
@@ -57,15 +65,18 @@ export const lazyView = <S>(
 	let loaded: LiveRender<S> | undefined;
 	let pending: Promise<unknown> | undefined;
 	const ensure = (): Promise<unknown> => {
-		pending ??= load()
-			.then((resolved: unknown) => {
+		pending ??= load().then(
+			// A load that resolved to no view rejects here and STAYS rejected: the module is what it is, so every later
+			// run gets the same error object, and the live view warns about it once.
+			(resolved: unknown) => {
 				loaded = pick(resolved) as LiveRender<S>;
-			})
-			.catch((error: unknown) => {
-				// Any failure is the next run's to retry: a rejected import, or a load that resolved to no view.
+			},
+			(error: unknown) => {
+				// An import that failed (a network blip, a chunk not yet written) is the next run's to try again.
 				pending = undefined;
 				throw error;
-			});
+			},
+		);
 		return pending;
 	};
 	const render: LiveRender<S> = (state, frame) => {
