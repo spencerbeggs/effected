@@ -164,7 +164,7 @@ const profile = Flag.String("profile").pipe(
 );
 ```
 
-`@effected/cli/ui` adds Ink screens: `CliUi.run`, `prompt` (with an `otherwise`) and `fallback` (for a flag), over the widgets `Select`, `TextInput` (with a `mask` for secrets), `MultiSelect`, `Confirm` (with toggles), `Toggle`, `Tabs` and `Viewport`. Your own screens use the key layer (`KeyTable`, `useKeys`, `KeyHelp`) and the theme bridge (`Styled`, `useTheme`, `useGlyphs`, `useTerminalSize`).
+`@effected/cli/ui` adds Ink screens: `CliUi.run`, `prompt` (with an `otherwise`) and `fallback` (for a flag), over the widgets `Select`, `TextInput` (with a `mask` for secrets: its `validate` message is drawn unmasked, so never echo the value in it), `MultiSelect`, `Confirm` (with toggles), `Toggle`, `Tabs` and `Viewport`. Your own screens use the key layer (`KeyTable`, `useKeys`, `KeyHelp`) and the theme bridge (`Styled`, `useTheme`, `useGlyphs`, `useTerminalSize`).
 
 ```tsx
 import { CliUi, Select } from "@effected/cli/ui";

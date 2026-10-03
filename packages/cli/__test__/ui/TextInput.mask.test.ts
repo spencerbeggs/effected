@@ -70,6 +70,22 @@ describe("TextInput mask", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect("the masks either side of the cursor always add up to the graphemes, the cursor never inside one", () =>
+		Effect.gen(function* () {
+			// "aé" with é as e + a combining accent: 2 graphemes, 3 code units.
+			const handle = yield* CliUiTest.render(TextInput.screen({ message: "M", initial: "ae\u0301", mask: true }), {
+				color: "none",
+			});
+			assert.strictEqual(valueLine(yield* handle.plainFrame), "••▏");
+			yield* handle.press("left");
+			assert.strictEqual(valueLine(yield* handle.plainFrame), "•▏•", "one step crosses the accented e whole");
+			yield* handle.press("left");
+			assert.strictEqual(valueLine(yield* handle.plainFrame), "▏••");
+			yield* handle.press("right", "delete", "enter");
+			assert.strictEqual(yield* handle.result, "a", "delete removed the accented e whole");
+		}).pipe(Effect.scoped),
+	);
+
 	it.effect("a string mask is drawn as given, and true is * under ASCII glyphs", () =>
 		Effect.gen(function* () {
 			const custom = yield* Effect.scoped(

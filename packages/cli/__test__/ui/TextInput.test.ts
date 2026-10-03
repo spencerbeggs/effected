@@ -39,11 +39,28 @@ describe("TextInput reducer", () => {
 		assert.isTrue(run([char("x"), named("enter")]).submitted);
 	});
 
-	it("edits by code point: an astral character is never split", () => {
+	it("an astral character is never split", () => {
 		assert.strictEqual(run([char("😀"), named("backspace")]).value, "", "backspace removes the whole pair");
 		assert.strictEqual(run([named("left"), char("x")], "😀").value, "x😀", "left steps over the whole pair");
 		assert.strictEqual(run([named("home"), named("delete")], "😀b").value, "b", "delete removes the whole pair");
 		assert.strictEqual(run([named("home"), named("right"), char("x")], "😀b").value, "😀xb");
+	});
+
+	it("moves and deletes by grapheme: a combining accent, a flag and a ZWJ family are each one step", () => {
+		const accented = "ae\u0301";
+		assert.strictEqual(run([named("left")], accented).cursor, 1, "left from the end crosses e + accent whole");
+		assert.strictEqual(run([named("backspace")], accented).value, "a", "backspace removes the accented e whole");
+		assert.strictEqual(run([named("home"), named("right")], accented).cursor, 1);
+		assert.strictEqual(run([named("home"), named("right"), named("right")], accented).cursor, 3);
+		assert.strictEqual(run([named("home"), named("right"), named("delete")], accented).value, "a");
+		assert.strictEqual(run([named("backspace")], "x🇺🇸").value, "x", "a flag is two code points, one grapheme");
+		const family = "👨\u200d👩\u200d👧";
+		assert.strictEqual(run([named("left"), char("x")], family).value, `x${family}`);
+		assert.strictEqual(run([named("home"), named("delete")], `${family}b`).value, "b");
+	});
+
+	it("control: plain text still moves one character at a time", () => {
+		assert.strictEqual(run([named("left"), named("left")], "abc").cursor, 1);
 	});
 
 	it.prop(

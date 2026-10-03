@@ -18,9 +18,9 @@ export interface TextInputState {
 	/** The text. */
 	readonly value: string;
 	/**
-	 * The insertion point, from 0 to the value's length, in UTF-16 code units, always on a code-point boundary: an
-	 * astral character (an emoji) is never split. Editing is by code point, not by grapheme, so a character built
-	 * from several code points (a flag, a family emoji) is still crossed one code point at a time.
+	 * The insertion point, from 0 to the value's length, in UTF-16 code units. Left, right, backspace and delete move
+	 * and delete by grapheme, so a character built from several code points (an emoji, a flag, a letter with a
+	 * combining accent) is crossed and deleted whole, and the cursor never stops inside one it moved over.
 	 */
 	readonly cursor: number;
 	/** Whether enter was pressed; the view submits only when the value also validates. */
@@ -61,6 +61,9 @@ export interface TextInputScreenOptions {
 	 * before, and the placeholder still shows while the value is empty. A masked frame never holds the text, so neither
 	 * does the scrollback; erase the frame as well with `clear: true` on the run when even the mask's length should not
 	 * stay behind.
+	 *
+	 * The message `validate` returns is drawn as it is, unmasked: a message that echoes the value (`"ghp_abc is a
+	 * token"`) draws the secret in the frame. Say what is wrong without quoting the value.
 	 */
 	readonly mask?: string | true;
 }
@@ -80,18 +83,26 @@ const init = (options: TextInputInitOptions = {}): TextInputState => {
 	return { value, cursor: value.length, submitted: false };
 };
 
-const isHigh = (code: number): boolean => code >= 0xd800 && code <= 0xdbff;
-const isLow = (code: number): boolean => code >= 0xdc00 && code <= 0xdfff;
+const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-/** The code-point boundary before `at`: one code unit back, two when that would land inside a surrogate pair. */
-const previous = (value: string, at: number): number =>
-	at >= 2 && isLow(value.charCodeAt(at - 1)) && isHigh(value.charCodeAt(at - 2)) ? at - 2 : Math.max(0, at - 1);
+/** The grapheme boundary before `at`: the start of the grapheme `at` is in or just after; 0 at the start. */
+const previous = (value: string, at: number): number => {
+	let boundary = 0;
+	for (const { index } of segmenter.segment(value)) {
+		if (index >= at) break;
+		boundary = index;
+	}
+	return boundary;
+};
 
-/** The code-point boundary after `at`. */
-const following = (value: string, at: number): number =>
-	at + 1 < value.length && isHigh(value.charCodeAt(at)) && isLow(value.charCodeAt(at + 1))
-		? at + 2
-		: Math.min(value.length, at + 1);
+/** The grapheme boundary after `at`: the end of the grapheme that starts at or contains `at`; the length at the end. */
+const following = (value: string, at: number): number => {
+	for (const { index, segment } of segmenter.segment(value)) {
+		const end = index + segment.length;
+		if (end > at) return end;
+	}
+	return value.length;
+};
 
 const insert = (state: TextInputState, text: string): TextInputState => ({
 	value: state.value.slice(0, state.cursor) + text + state.value.slice(state.cursor),
@@ -213,10 +224,19 @@ const windowAround = (before: string, after: string, width: number, ellipsis: st
 	return [shownBefore, shownAfter];
 };
 
-const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-
-/** `text` drawn with one `mask` per grapheme, so a cluster of code points (an emoji, an accented letter) is one mask. */
-const masked = (text: string, mask: string): string => mask.repeat([...segmenter.segment(text)].length);
+/**
+ * The value masked either side of the cursor, one `mask` per grapheme of the whole value: the graphemes that start
+ * before the cursor, then the rest, so the two always add up to the value's graphemes, wherever the cursor is.
+ */
+const maskedAround = (value: string, cursor: number, mask: string): readonly [string, string] => {
+	let before = 0;
+	let total = 0;
+	for (const { index } of segmenter.segment(value)) {
+		total++;
+		if (index < cursor) before++;
+	}
+	return [mask.repeat(before), mask.repeat(total - before)];
+};
 
 /** Shown in the help line only; the input reads every key itself. */
 const HELP: KeyTable<"submit"> = KeyTable.make<"submit">([{ keys: ["enter"], action: "submit", help: "submit" }]);
@@ -259,8 +279,8 @@ export class TextInput {
 
 	/**
 	 * Apply a key: a typed character (any, `q` included) or space is inserted at the cursor; backspace and delete
-	 * remove around it; left, right, home and end move it, clamped to the text; enter marks it submitted. Every other
-	 * key changes nothing.
+	 * remove the grapheme before or after it; left and right move it a grapheme, home and end to either end, clamped
+	 * to the text; enter marks it submitted. Every other key changes nothing.
 	 *
 	 * @param state - where the input is
 	 * @param key - the key pressed
@@ -331,13 +351,11 @@ export class TextInput {
 						? "•"
 						: "*"
 					: lineText(props.mask);
-		const shown = (text: string): string => (mask === undefined ? text : masked(text, mask));
-		const [before, after] = windowAround(
-			shown(state.value.slice(0, state.cursor)),
-			shown(state.value.slice(state.cursor)),
-			columns - Fmt.width(cursorGlyph),
-			glyphs.ellipsis,
-		);
+		const [shownBefore, shownAfter] =
+			mask === undefined
+				? [state.value.slice(0, state.cursor), state.value.slice(state.cursor)]
+				: maskedAround(state.value, state.cursor, mask);
+		const [before, after] = windowAround(shownBefore, shownAfter, columns - Fmt.width(cursorGlyph), glyphs.ellipsis);
 		return react.createElement(
 			ink.Box,
 			{ flexDirection: "column" },
