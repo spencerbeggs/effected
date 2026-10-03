@@ -14,9 +14,21 @@ interface Lazy {
 	readonly [LOAD]?: () => Promise<unknown>;
 }
 
+/** What a `load` resolved to that is neither a view nor a module whose default export is one: a programming error. */
+const NO_VIEW = (resolved: unknown): string => {
+	const exports =
+		typeof resolved === "object" && resolved !== null ? Object.keys(resolved).filter((key) => key !== "default") : [];
+	const found =
+		typeof resolved === "object" && resolved !== null
+			? `a module with no default export that is a function${exports.length === 0 ? "" : ` (it exports ${exports.join(", ")})`}`
+			: `${resolved === null ? "null" : typeof resolved}`;
+	return `@effected/cli/ui: CliUi.lazyView's load resolved to ${found}; it must resolve to the view, (state, frame) => ReactElement, or to a module whose default export is the view`;
+};
+
 /**
  * `CliUi.lazyView`: a `render` that draws with what `load` resolves to, loaded on first use: the render itself, or a
- * module whose default export it is. The loader runs once (again after a failure), and calling the render before it
+ * module whose default export it is. The loader runs once: again after an import that failed, but never after one that
+ * resolved to no view, which is a programming error that fails every run the same way. Calling the render before it
  * has loaded is a defect, since only `CliUi.live` knows to load it first.
  *
  * @internal
@@ -28,8 +40,16 @@ export const lazyView = <S>(
 	let pending: Promise<unknown> | undefined;
 	const ensure = (): Promise<unknown> => {
 		pending ??= load().then(
-			(resolved) => {
-				loaded = typeof resolved === "function" ? resolved : resolved.default;
+			(resolved: unknown) => {
+				const view =
+					typeof resolved === "function"
+						? resolved
+						: typeof resolved === "object" && resolved !== null
+							? (resolved as { readonly default?: unknown }).default
+							: undefined;
+				// Not retried: the module is what it is, so the same clear error stands for every run.
+				if (typeof view !== "function") throw new Error(NO_VIEW(resolved));
+				loaded = view as LiveRender<S>;
 			},
 			(error: unknown) => {
 				// A failed load is tried again by the next run, rather than failing every run after it.

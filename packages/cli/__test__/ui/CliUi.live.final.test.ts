@@ -264,6 +264,49 @@ describe("CliUi.lazyView", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect("a module with no view as its default export fails clearly, naming its exports, and is not retried", () =>
+		Effect.gen(function* () {
+			const { double, lines } = capturing();
+			let attempts = 0;
+			const render = CliUi.lazyView<State>(async () => {
+				attempts++;
+				// A named export where a default one was meant: a programming error.
+				return { view: frameOf } as unknown as { readonly default: typeof frameOf };
+			});
+			const view = yield* CliUiTest.live({ ...base, render, color: "none" }).pipe(
+				Effect.provideService(Console.Console, double),
+			);
+			for (const event of twoRuns) yield* view.publish(event);
+			yield* view.end;
+			assert.strictEqual(attempts, 1, "not tried again");
+			const warnings = lines.filter((line) => line.includes("CliUi.lazyView"));
+			assert.lengthOf(warnings, 2, `one warning per run: ${lines.join(" | ")}`);
+			for (const warning of warnings) {
+				assert.include(warning, "no default export");
+				assert.include(warning, "it exports view");
+				assert.include(warning, "(state, frame) => ReactElement");
+				assert.notInclude(warning, "before its module loaded", "never the misleading not-loaded message");
+			}
+			assert.notInclude(yield* view.transcript, "RUN");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a load that resolves to neither a view nor a module says what it got", () =>
+		Effect.gen(function* () {
+			const { double, lines } = capturing();
+			const render = CliUi.lazyView<State>(async () => 42 as unknown as typeof frameOf);
+			const view = yield* CliUiTest.live({ ...base, render, color: "none" }).pipe(
+				Effect.provideService(Console.Console, double),
+			);
+			for (const event of [Start, End]) yield* view.publish(event);
+			yield* view.end;
+			assert.isTrue(
+				lines.some((line) => line.includes("resolved to number")),
+				lines.join(" | "),
+			);
+		}).pipe(Effect.scoped),
+	);
+
 	it("called before its module has loaded, the render throws, naming CliUi.live", () => {
 		const render = CliUi.lazyView<State>(async () => ({ default: frameOf }));
 		assert.throws(() => render({ run: 0, last: "", seen: [] }, 0), /CliUi.live/);
