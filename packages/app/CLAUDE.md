@@ -43,7 +43,8 @@ could be sequenced last.
 ## Four modules, and the split is load-bearing
 
 `App.ts` (`AppOptions`, `AppTestOptions`, `AppError`, `App.layer`,
-`App.layerTest`) · `AppStore.ts` · `AppCache.ts` · `AppConfig.ts`. There is no
+`App.layerDirs`, `App.layerTest`) · `AppStore.ts` (`layer`, `layerAs`) ·
+`AppCache.ts` (`layer`, `layerAs`) · `AppConfig.ts`. There is no
 engine here, only composition — the one `internal/` module is
 `internal/filename.ts`, a 16-line guard rejecting any `filename` that is not a
 single path component (the same wiring-defect rule `xdg` applies to
@@ -124,15 +125,49 @@ composition defect; do not reorder the two.
   inferred from the filename's extension. Hard-coding a *format* choice into a
   composition layer is exactly what `XdgFullLive` was killed for, and the named
   import is what keeps the other three engines out of the consumer's bundle.
-- **`App.layer` always provides both databases.** Passing no `cache` options
-  **still opens `cache.db`** — `CacheOptions` are all-optional, so absence means
-  defaults, not absence. An app that wants only one composes `AppStore.layer` or
-  `AppCache.layer` directly.
+- **`App.layer` always provides both databases, and opens them eagerly.**
+  Building it creates and migrates `store.db` and `cache.db` whether or not the
+  program touches them. Passing no `cache` options **still opens `cache.db`** —
+  `CacheOptions` are all-optional, so absence means defaults, not absence. An app
+  that wants only one, or wants them only on some code paths, composes
+  `App.layerDirs` with `AppStore.layer` / `AppCache.layer` (#923).
+- **`App.layerDirs` opens no database.** It is exactly
+  `Layer.provideMerge(AppDirs.layer(options), Xdg.layer)` — `Xdg | AppDirs` on
+  `XdgEnvError`, `R = FileSystem | Path` — and `App.layer` is built on it, so the
+  two cannot drift. It exists for the CLI shape: directories provided once at
+  `CliRuntime.main`, each database bound once at module scope and attached with
+  `Command.provide` only on the commands that use it. Reposets hit the eager
+  open in production: every command created both files, and `nuke` deleted a
+  `store.db` its own process held open. The integration suite pins the property
+  with a positive control (`App.layer` built and unused DOES create both files).
+- **`layerAs` is the multi-database surface, and its `filename` is required**
+  (#97). `AppStore.layerAs(tag, options)` / `AppCache.layerAs(tag, options)` take
+  a consumer-defined `Context.Service` key over exactly `StoreShape` /
+  `CacheShape` and output **that key alone**: the inner `Store` / `Cache` is
+  `Layer.provide`d to a `Layer.effect(tag, Store)` re-tag and never leaks, so a
+  keyed layer composes beside the primary without shadowing it. `filename` has
+  no default because a defaulted `store.db` / `cache.db` would land silently on
+  the primary's file — two connections and two ledgers on one database. Do not
+  give it one.
+- **The key's shape is pinned exactly, not by assignability.** A class key
+  is checked against `Context.Key` structurally and method bivariance makes that
+  effectively covariant, so a plain `Context.Service<I, StoreShape>` parameter
+  accepted a `StoreShape & { extra }` key and handed it a value missing `extra`.
+  The signature is `<I, S extends StoreShape>(tag: Context.Key<I, S> &
+  ([StoreShape] extends [S] ? unknown : never), …)`; the type tests pin
+  unrelated, wider and missing-filename as compile errors. The cost is a
+  cryptic "not assignable to `never`" for the wider case, documented on the
+  static.
+- **A keyed map was rejected.** `App.layer({ stores: { registry: … } })` would
+  reintroduce #923's eager open for every store and need an app-owned service
+  to hold the map — the one thing this package never defines. N stores are N
+  bound `layerAs` consts, composed by the application.
 - **`AppOptions` is `AppDirsOptions` pass-through.** `namespace`, `native`,
   `fallbackDir`, `dirs` mean what xdg says they mean, five-level precedence
   ladder included. This package re-documents none of it.
 - **A `filename` must be a single path component**, or it dies at construction —
-  for all three filename options. The guard rejects the empty string, anything
+  for all five filename options (store, cache and config, plus both `layerAs`;
+  the die names `AppStore.layerAs` / `AppCache.layerAs` for the keyed ones). The guard rejects the empty string, anything
   containing `/` or `\`, and the traversal names `.` and `..`. Do not weaken it
   to "empty or contains a separator": `filename: ".."` contains no separator and
   still escapes the namespace directory. It can only come from code — the same

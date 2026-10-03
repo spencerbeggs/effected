@@ -194,6 +194,72 @@ const AppLive = App.layer({ namespace: "myapp", store: { migrations } }); // onc
 
 Call the factory inline at two provide sites and you open **two databases**: two connections onto one file, two migration ledgers, and two independent `CacheEvent` PubSubs whose subscribers each see half the events. This is the package where an application is most likely to compose the same layer twice, which is why the rule is here and not in a footnote.
 
+## Databases per command: directories everywhere
+
+Building `App.layer` **opens and migrates both databases**, eagerly — `store.db` and `cache.db` exist the moment the layer is built, whether or not the program touches them. For a long-running service that is what you want. For a CLI it is not: provide `App.layer` at the entry point and every command creates and migrates both files, `--help`-adjacent paths included, and a command that deletes the app's files ends up deleting a database its own process holds open.
+
+`App.layerDirs` is the directories half on its own — `Xdg` and `AppDirs` for one namespace, `XdgEnvError` on the error channel, `FileSystem` and `Path` in `R`, and no database opened. Provide it once at the edge, bind each database layer once at module scope, and attach it with `Command.provide` only on the commands that use it:
+
+```ts
+import { App, AppStore } from "@effected/app";
+import { CliRuntime } from "@effected/cli";
+import { Store } from "@effected/store";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+import { Command } from "effect/cli";
+
+// Module scope, bound once: memoized by reference wherever it is provided.
+const StoreLive = AppStore.layer({ migrations });
+
+// Opens store.db — only when `history` runs.
+const history = Command.make("history", {}, () =>
+  Effect.gen(function* () {
+    const store = yield* Store;
+    yield* store.client`SELECT id FROM runs`;
+  }),
+).pipe(Command.provide(StoreLive));
+
+// Opens no database at all.
+const where = Command.make("where", {}, () => Effect.void);
+
+const cli = Command.make("myapp").pipe(Command.withSubcommands([history, where]));
+
+// Directories at the edge, once; AppDirs satisfies StoreLive's requirement.
+const PlatformLive = App.layerDirs({ namespace: "myapp" }).pipe(Layer.provideMerge(NodeServices.layer));
+
+NodeRuntime.runMain(CliRuntime.main(Command.run(cli, { version: "1.0.0" }), { platform: PlatformLive }));
+```
+
+`Command.provide` also accepts a function of the command's parsed input, `(input) => Layer`, for a database whose options depend on a flag. Bind anything that does not depend on the input outside that function — a layer built inside it is a new reference on every call.
+
+## More than one store
+
+`AppStore.layer` and `AppCache.layer` provide the kit's single `Store` and `Cache` services. An application that keeps a second database — a registry beside its run history, a separate cache for large objects — declares its own service key over the same shape and builds it with `layerAs`:
+
+```ts
+import { AppCache, AppStore } from "@effected/app";
+import type { CacheShape, StoreShape } from "@effected/store";
+import { Context, Layer } from "effect";
+
+class RegistryStore extends Context.Service<RegistryStore, StoreShape>()("myapp/RegistryStore") {}
+class TarballCache extends Context.Service<TarballCache, CacheShape>()("myapp/TarballCache") {}
+
+// Every one bound once, to a const.
+const StoreLive = AppStore.layer({ migrations });
+const RegistryStoreLive = AppStore.layerAs(RegistryStore, { filename: "registry.db", migrations: registryMigrations });
+const TarballCacheLive = AppCache.layerAs(TarballCache, { filename: "tarballs.db", maxEntries: 200 });
+
+const DatabasesLive = Layer.mergeAll(StoreLive, RegistryStoreLive, TarballCacheLive);
+```
+
+Each keyed layer runs the same ensure-before-open glue, in the same directory as its primary — `layerAs` stores in the state directory, `layerAs` caches in the cache directory — and outputs **only its own key**: the `Store` or `Cache` it builds internally never leaks, so it composes beside the primary without shadowing it. Each file has its own migrations and its own ledger.
+
+- **`filename` is required.** A default of `store.db` or `cache.db` would land a keyed layer silently on the primary's file — two connections and two migration ledgers on one database.
+- **The key's service type must be exactly `StoreShape` or `CacheShape`.** Any other shape is a compile error; a wider one (`StoreShape & { … }`) reports as an argument not assignable to `never`, because this layer cannot supply the extra members.
+- **Bind every keyed layer to a `const`.** Each `layerAs(…)` call is a new layer, and the memoization trap above applies to each one separately: two inline calls with the same key open the file twice.
+
+The keyed layers need `AppDirs` and `Path`, which is exactly what `App.layerDirs` plus the platform provides — they slot into the per-command shape above unchanged.
+
 ## Testing: one line, no platform package
 
 `App.layerTest` is the hermetic control plane — fixed XDG paths, `:memory:` databases, and the platform layers provided *internally* rather than merged into the output. A consumer's first test needs no platform import at all:
@@ -255,8 +321,10 @@ Provide it beneath the stack and every span the kit's packages already emit — 
 ## Features
 
 - `App.layer` — the control plane: `Xdg`, `AppDirs`, `Store` and `Cache` from one call, with only `FileSystem` and `Path` left for the platform layer to supply.
+- `App.layerDirs` — `Xdg` and `AppDirs` alone, opening no database: directories everywhere, databases attached only where they are used.
 - `App.layerTest` — the same four services, hermetic: synthetic XDG paths, `:memory:` databases, no platform package required.
 - `AppStore.layer` / `AppCache.layer` — the state-directory and cache-directory databases on their own, each ensuring its directory before it opens the file.
+- `AppStore.layerAs` / `AppCache.layerAs` — an additional database under a service key you define, with its own file, migrations and ledger.
 - `AppConfig.layer` — `@effected/config-file` wired to xdg's resolver chain and save path, with the namespace read from the ambient `AppDirs` and the codec named by you.
 - `AppError` — the type-only union of everything the control plane can fail with, for the `catchTags` block at the edge.
 

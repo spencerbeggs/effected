@@ -16,9 +16,11 @@ Single entrypoint; exactly four value exports (plus their option types and the `
 
 ## Core API
 
-- **`App.layer(options)`** → `Layer<Xdg | AppDirs | Store | Cache, AppError, FileSystem | Path>` — wires all four services from a namespace + `store` (migrations, required) + `cache` options. Always opens BOTH databases.
+- **`App.layer(options)`** → `Layer<Xdg | AppDirs | Store | Cache, AppError, FileSystem | Path>` — wires all four services from a namespace + `store` (migrations, required) + `cache` options. Building it opens and migrates BOTH databases eagerly, used or not — right for a service, wrong at a CLI's entry point (see "CLIs" below).
+- **`App.layerDirs(options)`** → `Layer<Xdg | AppDirs, XdgEnvError, FileSystem | Path>` — the directories half alone (`AppDirsOptions` pass-through); opens no database. `App.layer` is built on it. Its output satisfies the `AppDirs` requirement of every `AppStore` / `AppCache` / `AppConfig` layer.
 - **`App.layerTest(options)`** — same services with `R = never`: synthetic XDG paths, `:memory:` databases, `FileSystem.layerNoop` internally.
 - **`AppStore.layer(options)` / `AppCache.layer(options)`** — the state-dir / cache-dir SQLite glue alone (`R = AppDirs | Path`).
+- **`AppStore.layerAs(tag, options)` / `AppCache.layerAs(tag, options)`** → `Layer<I, …, AppDirs | Path>` — an ADDITIONAL database under a service key you define: `class RegistryStore extends Context.Service<RegistryStore, StoreShape>()("myapp/RegistryStore") {}` (`StoreShape` / `CacheShape` from `@effected/store`). Same directory as the primary, own file, own migrations and ledger; outputs only your key (the inner `Store` / `Cache` never leaks, so it sits beside the primary). `filename` is REQUIRED — a default would land on the primary's `store.db` / `cache.db`. The key's service type must be exactly the shape: anything else is a compile error (a wider `StoreShape & { … }` reports as "not assignable to parameter of type 'never'").
 - **`AppConfig.layer(tag, options)`** — the XDG-flavored `ConfigFile.layer` preset: `{ filename, schema, codec, strategy?, validate?, events?, native? }`. Requires an explicit `codec` (never defaulted or inferred from `filename`'s extension — that would hard-code a format choice into a composition layer); takes NO `namespace` parameter — it reads the namespace from the ambient `AppDirs` service so the two can never drift. `native` (default `true`) probes the OS-native config directory as a fallback, after the XDG resolver — pass `false` to drop it. **`resolvers?`** prepends caller resolvers AHEAD of the XDG chain — this is how a CLI's `--config` flag outranks the app's own search path (`ConfigResolver.explicitPath` for a file, `staticDir` for a directory); absent, the chain is unchanged. A prepended resolver that finds nothing **falls through** to XDG (every resolver's error channel is `never` by contract, so a `--config` naming a missing file is a miss, not an error — guard it yourself before building the layer), and the save path is unaffected. **`parseOptions?`** threads `SchemaAST.ParseOptions` into every decode, chiefly `onExcessProperty: "error"` so a typo'd section or a removed field is reported instead of silently dropped; pair it with `errors: "all"` or a file with three typos surfaces one per run. Reaches only `@effected/xdg` + `@effected/config-file`, never the SQLite driver, so a consumer wanting XDG-placed config alone imports `AppConfig` without pulling a database into their graph.
 
 ## Usage
@@ -46,14 +48,44 @@ const main = Effect.gen(function* () {
 NodeRuntime.runMain(main.pipe(Effect.provide(MainLive)));
 ```
 
+## CLIs: directories everywhere, databases per command
+
+Provide `App.layerDirs` once at `CliRuntime.main`, bind each database layer once at module scope, and attach it with `Command.provide` only on the commands that use it — otherwise every command (help paths included) creates and migrates both files, and a command that deletes the app's files deletes a database its own process holds open.
+
+```ts
+import { App, AppStore } from "@effected/app";
+import { CliRuntime } from "@effected/cli";
+import { Store } from "@effected/store";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+import { Command } from "effect/cli";
+
+const StoreLive = AppStore.layer({ migrations }); // module scope, bound once
+
+const history = Command.make("history", {}, () =>
+  Effect.gen(function* () {
+    const store = yield* Store;
+    yield* store.client`SELECT id FROM runs`;
+  }),
+).pipe(Command.provide(StoreLive)); // store.db opens only when `history` runs
+
+const cli = Command.make("myapp").pipe(Command.withSubcommands([history]));
+const PlatformLive = App.layerDirs({ namespace: "myapp" }).pipe(Layer.provideMerge(NodeServices.layer));
+
+NodeRuntime.runMain(CliRuntime.main(Command.run(cli, { version: "1.0.0" }), { platform: PlatformLive }));
+```
+
+`Command.provide` also takes `(input) => Layer` for a database whose options depend on a flag; keep anything input-independent bound outside that function. Keyed `layerAs` layers slot into the same shape unchanged.
+
 ## Testing machinery
 
 **`App.layerTest(options)`** is exported for consumer suites: `R = never`, no platform package needed. Known limit: it stubs the filesystem, so code paths calling `ensure*` directory creation die against the noop fs — use `App.layer` with a temp-directory `HOME` to exercise real directory behavior.
 
 ## Gotchas
 
-- The memoization trap at maximum cost: every export is a parameterized layer factory — inline calls at two provide sites open duplicate databases with split event streams. Bind each layer once.
+- The memoization trap at maximum cost: every export is a parameterized layer factory — inline calls at two provide sites open duplicate databases with split event streams. Bind each layer once, including every `layerAs(…)`: two inline calls with the same key open the file twice.
+- N named stores are N bound `layerAs` constants — there is no `App.layer({ stores })` map, by design (it would open every store eagerly).
 - Never pass a namespace to `AppConfig` — it comes solely from `AppDirs` via `App.layer`.
-- `filename` options must be a single path component — `.` and `..` die at construction.
+- `filename` options (including `layerAs`'s) must be a single path component — `.` and `..` die at construction.
 - `AppError` is a type-only union alias (`XdgEnvError | AppDirsError | StoreError | StoreMigrationError | CacheError`) for `catchTags` convenience — constituent errors flow through unwrapped.
 - No `App`-level spans exist deliberately — every fallible op is already spanned by its owning package.

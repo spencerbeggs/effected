@@ -1,9 +1,9 @@
 {
 	"app": {
-		"App": "wire xdg dirs, store and cache together, the application control plane layer",
-		"AppCache": "the app's ttl cache database in the xdg cache directory",
+		"App": "wire xdg dirs, store and cache together, the application control plane layer, directories-only layer so a cli opens databases per command",
+		"AppCache": "the app's ttl cache database in the xdg cache directory, a second named cache under your own service key",
 		"AppConfig": "xdg-namespaced config file preset, load and save app config via config-file",
-		"AppStore": "the app's migrated sqlite state database in the xdg state directory"
+		"AppStore": "the app's migrated sqlite state database in the xdg state directory, multiple stores each under your own service key"
 	},
 	"cli": {
 		"Cancelled": "user quit a prompt or screen with esc or ctrl-c, exit 130",

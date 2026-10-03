@@ -1,7 +1,9 @@
-import { assert, describe, layer } from "@effect/vitest";
+import { assert, describe, it, layer } from "@effect/vitest";
 import type { StoreMigration } from "@effected/store";
 import { Cache, Store } from "@effected/store";
+import type { XdgEnvError } from "@effected/xdg";
 import { AppDirs, Xdg, XdgPaths } from "@effected/xdg";
+import type { FileSystem, Layer, Path } from "effect";
 import { Effect, Option } from "effect";
 import { App } from "../src/index.js";
 
@@ -64,5 +66,22 @@ describe("App.layerTest", () => {
 				assert.deepStrictEqual(status, []);
 			}),
 		);
+	});
+});
+
+describe("App.layerDirs", () => {
+	it("provides Xdg | AppDirs on XdgEnvError, requiring only FileSystem | Path — and no database", () => {
+		// Compile-time contract; the runtime #923 property lives in the integration suite.
+		const live = App.layerDirs({ namespace: "myapp" });
+		const exact: Layer.Layer<Xdg | AppDirs, XdgEnvError, FileSystem.FileSystem | Path.Path> = live;
+		// @ts-expect-error no Store comes out — building layerDirs opens no database
+		const withStore: Layer.Layer<Xdg | AppDirs | Store, XdgEnvError, FileSystem.FileSystem | Path.Path> = live;
+		// @ts-expect-error no Cache comes out either
+		const withCache: Layer.Layer<Xdg | AppDirs | Cache, XdgEnvError, FileSystem.FileSystem | Path.Path> = live;
+		// @ts-expect-error the platform is still required: R is FileSystem | Path, not never
+		const closed: Layer.Layer<Xdg | AppDirs, XdgEnvError> = live;
+		// @ts-expect-error an unset HOME stays on the typed channel
+		const infallible: Layer.Layer<Xdg | AppDirs, never, FileSystem.FileSystem | Path.Path> = live;
+		for (const value of [exact, withStore, withCache, closed, infallible]) assert.isDefined(value);
 	});
 });
