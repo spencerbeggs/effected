@@ -1,0 +1,132 @@
+# @effected/schemastore
+
+Effect Schemas published as SchemaStore-shaped Draft-07 JSON Schema documents: document assembly over core's generation + lowering, the gate holding a document's non-standard surface to the declared keyword families, both catalog modes over full-SemVer version labels, structural and hygiene lints, real-engine validation, deterministic JSON text, content-comparing file IO, and the emit pipeline over all of it. **Boundary tier** — the validation engines (and `ajv`) live in `@effected/schemastore-cli` since 2026-09-15 (see [validation](#validation-the-contracts-here-the-engines-in-the-cli)); the only runtime dependency is `@effected/semver`. All IO lives in one module; everything else is pure.
+
+## Import
+
+```ts
+import { SchemaPipeline, SchemaTarget, SchemaFile, SchemaValidator, StoreDocument } from "@effected/schemastore";
+```
+
+**Platform**: `SchemaFile.layer` does real IO over core `FileSystem`/`Path` required in `R` — provide `@effect/platform-node` (or the Bun equivalent) at the edge. Nothing else in the package needs a platform.
+
+## Start here: the pipeline
+
+**`SchemaPipeline` is the entry point.** Reach for the individual modules only when you need something it does not do — most consumers should not be hand-writing the generate → lint → validate → gate → write loop, and three consumers who did each wrote it differently.
+
+- **`SchemaPipeline.run(targets, options?)`** — for each `SchemaTarget`: build the document, gather both gates' findings, gate, write. Answers `ReadonlyArray<PipelineResult>` (`$id`, `path`, `outcome`, `change`, `findings`). **All-or-nothing across targets**: it is two-phase — every target is generated, gated and (for a pinned versioned target) contract-compared before any file is touched; only then are the held documents written. Fails `SchemaGateError` fail-fast on the first blocked target (a document the engine rejects would never be written under any contract policy), and fails `SchemaContractChangeError` total over the remaining targets when the active `ContractChangePolicy` refuses a write — either way, nothing already-checked is written. The guarantee is an all-or-nothing **preflight**, not an atomic multi-file write: phase 2 writes sequentially with no rollback, so a filesystem failure on a later target leaves the earlier ones already written.
+- **`SchemaPipeline.check(targets, options?)`** — the same walk with **no writes**, answering `ReadonlyArray<PipelineCheckResult>` (`wouldWrite`, `blocked`, `contractBlocked`, `change`, `findings`). **Reports**: total over the targets, never stops at a blocked gate or a blocked contract, and never fails on policy — `SchemaGateError`/`SchemaContractChangeError` are *not* in its error union. This is the drift-check surface for CI — a repo with three broken documents learns all three in one run. Read `contractBlocked` side by side with `blocked`: a target the contract policy would refuse needs a version bump, not a re-run of the generator.
+- **`runOne` / `checkOne`** — a single target, one result, no indexing into a one-element array.
+- **`SchemaPipelineOptions`** — `blocking?` (which findings block; **default `severity === "warning"`**), `contractChanges?` (a `ContractChangePolicy`; **default `"block-versioned"`**), `validator?` (through to `SchemaValidator.validate`), `write?` (through to `SchemaFile.write`/`check`).
+- **`PipelineFinding`** — both gates normalized into one shape (`source`, `severity`, `check?`, `path`, `message`) so a single predicate judges both; engine findings are always `"warning"` because a document the engine rejects is not advisory. `finding.label` is the rendered name (`check ?? source`) — use it instead of writing that fallback.
+- **`SchemaGateError`** — `$id` plus **every** blocking finding for that target, so a caller renders one report rather than discovering problems one run at a time.
+- **`ContractChangePolicy`** = `"block-versioned" | "allow"` — how `run` treats a target whose document would change its validation contract. `"block-versioned"` (the default) refuses a target carrying a PINNED `version` (`SchemaVersioning.isPinned`) whose change classifies `"contract"`, before any write; an unversioned or prerelease target is unaffected and rewritten in place. `"allow"` classifies and reports only, and is also the sanctioned repair path for a published file whose on-disk text no longer parses. **`SchemaContractChangeError`** — `targets: ContractChangeTarget[]`, raised total over every guarded target in one `run` call, never one at a time. **`ContractChangeTarget`** — `$id`, `path`, the pinned `version`, and `nextVersion` (`SchemaVersioning.next(version, "contract")`) — the label to bump to; the error's own `message` already renders `version → nextVersion` per target.
+
+**Gating is policy, not mechanism.** The default blocks `warning` and lets `advisory` through, which is right (`UnresolvedRef`, `UnknownKeyword` and `DepthExceeded` each describe a document broken for the editors it exists to serve, and `UnknownKeyword` is by construction the ajv-strict rejection set). Disagreeing costs a predicate, not a re-implementation.
+
+**But know which gate actually blocks here.** A target carries a `Schema`, so pipeline documents come from `fromSchema`, which never admits an undeclared keyword: the pipeline passes no `includeAnnotationKey`, and one that admitted anything outside the declared families fails the build with `UndeclaredAnnotationKeyError`. `UnknownKeyword` is therefore effectively unreachable through this entry point and the **engine** gate is what stops a bad document. The Draft-07 lowering does not drop undeclared keywords — do not restate that as the mechanism. The lint's warning checks earn their keep on documents the pipeline did not build (`StoreDocument.draft07`, or one read off disk) and on depth.
+
+**Findings are values; the package never logs.** Log wording is repo policy. What the package owns is the gating decision, because that is the one that silently changes what ships.
+
+## Validation: the contracts here, the engines in the CLI
+
+`SchemaValidator` is the **contract** — a service the pipeline requires in `R` and never owns — plus its doubles: `noop` turns validation off, `makeTest`/`layerTest` are the test doubles (unstubbed members die naming themselves). The one real implementation is **`@effected/schemastore-cli`'s `AjvValidator.layer`**: ajv strict mode over the Draft-07 meta-schema, which the `schemastore` command composes at its edge and also exports for a program driving `SchemaPipeline` itself. `ajv` is therefore a cost only the command (a devDependency) pays; an application that imports this package at runtime — to read a `HostedSchema`, say — never pulls an engine or bundles one. This is the second reversal of the seam: 2026-08-04 shipped the engine here because every consumer hand-rolled the adapter, worse; once the CLI became the only real-engine consumer that reason died, and the engine followed it (2026-09-15).
+
+- Meta-schema failures keep ajv's structured `instancePath` and `keyword`; a strict-mode rejection (ajv throws those at compile time) becomes one root-pathed finding.
+- Declared `KeywordFamilies` keywords are registered before compiling, **so ajv cannot reject what `DocumentLint` deliberately allows** — one predicate governs both verdicts. A hand-rolled adapter that skips this rejects any document carrying `x-taplo` or `markdownDescription`.
+- `SchemaValidatorShape` / `SchemaValidatorOptions` / `SchemaValidatorError` / `ValidationFinding` are the surrounding types; the error channel is reserved for the engine failing as a *mechanism*, never for a document it rejects.
+
+`InstanceValidator` is the **second contract**, for the payload half of the publication story: not "is this document valid JSON Schema" but "does this instance conform to the published document it names in `$schema`" — decoding against the source Effect Schema is not a substitute, since that proves the instance matches the CODE, not the committed document consumers fetch. Same doubles-only shape (`noop`, `makeTest`/`layerTest`); the one real implementation is the CLI's `AjvInstanceValidator.layer`, composed by the `schemastore validate` command through the same shared ajv setup, so a document the `check` gate admits always compiles in the instance engine too.
+
+- `InstanceFinding` carries the same structure `ValidationFinding` does, but its pointer addresses the INSTANCE — kept a separate type so mixing them up is a compile error.
+- The subject split flips the same throw: a document the engine cannot compile is a finding for `SchemaValidator` (the document IS the subject there) but `InstanceValidatorError` for `InstanceValidator` (the subject is the instance; a document yielding no verdict is a mechanism failure — the document's own gate is `check`'s job).
+- `InstanceValidatorShape` / `InstanceValidatorOptions` / `InstanceValidatorError` / `InstanceFinding` are the surrounding types; `strict` defaults to `true`.
+
+## File IO: compare content, not bytes
+
+- **`SchemaFile.write(path, document, options?)`** → `WriteResult` (`outcome`, `change`). Compares **parsed content** by default, so a repo whose formatter also owns the emitted file does not churn — a byte comparison rewrote forever and made `"unchanged"` unreachable (effected#262). `SchemaWriteOptions.compare: "bytes"` opts back in when the emitted text is itself the artifact.
+- **`SchemaFile.check(path, document, options?)`** → `CheckResult` (`wouldWrite`, `change`). Same comparison, no filesystem write. Both routes compute from one internal helper, so they cannot disagree.
+- **`outcome` / `wouldWrite` are the authoritative "was the file touched" answers** — never infer it from `change`, which is `"none"` on a `compare: "bytes"` write.
+- **`WriteOutcome`** = `"written" | "unchanged"`; **`WriteChange`** = `SchemaChange | "created"`.
+- `read(path)` answers exact text. Failures are typed and apart: `SchemaFileNotFoundError`, `SchemaFileReadError` (a comparison read that fails for any other reason fails rather than silently overwriting), `SchemaFileWriteError`, and `CanonicalJsonError` propagating as itself. `SchemaFileShape` is the service surface.
+
+## Change classification
+
+**`DocumentDiff.classify(existing, next)`** → **`SchemaChange`** = `"none" | "annotations" | "contract"`. This is the versioning signal: `"annotations"` means only prose and editor affordances moved, so the document replaces its predecessor transparently and needs no new version; `"contract"` means an assertion moved and a document valid yesterday may be invalid today.
+
+- Object key order is never a difference (a formatter may sort); array order is.
+- Keyword-position aware like the lint — a property *named* `description` is data.
+- **`default`, `examples`, `readOnly` and `writeOnly` classify as `"contract"`**, not documentation, though the spec's taxonomy calls them annotations: consumers act on them, and misreporting a contract change ships a silent break while the reverse only costs a bump.
+- **`DocumentDiff.isClean(change)`** — the clean case as a predicate rather than a `"none"` literal. `"created"` is deliberately not clean.
+
+## Assembly, lint, catalog, versioning
+
+- **`StoreDocument`** — `fromSchema`/`fromSchemaResult` run core's 2020-12 generation, the Draft-07 lowering, the `#/definitions` → `#/$defs` `$ref` rewrite, and the declared-family gate. **Generated objects are CLOSED by default** — `fromSchema` spreads `onExcessProperty: "error"` beneath the caller's `jsonSchema`, so every object node carries `additionalProperties: false`, where core's own `Schema.toJsonSchemaDocument` defaults to `"ignore"` (open); a published document is a contract and the package does not follow it. `jsonSchema: { onExcessProperty: "ignore" }` on a `SchemaTarget` or a `defineConfig` entry reopens that ONE document, and `SchemaPipeline` forwards each target's `jsonSchema`, so pipeline output is closed or open per target, never per pipeline. `fromSchema` passes the option through unchanged, and `SchemaPipeline` passes only `$id` to it, so a **pipeline** document is open with no target-level knob to close it — a consumer that needs a closed contract builds through `StoreDocument.fromSchema` directly today. `toJson()` is the flat publication shape; `serializeResult` routes through `CanonicalJson`. **`draft07({ $id, root, defs? })`** fills `$schema` for hand-built values — `$schema` stays a real field because it declares the dialect. `StoreDocumentOptions` (`$id`, `jsonSchema?`, and **`rootAnnotations?`** — annotations merged onto the emitted root after assembly, gated up front to the standard annotation keywords plus the declared families; placed on an inline root directly, on the `$defs` entry a bare `$ref` root names when nothing else references it, or as `{ ...annotations, allOf: [{ $ref }] }` when that entry is shared, e.g. a recursive class), `SchemaConversionError`, `UndeclaredAnnotationKeyError`, `DRAFT_07_META_SCHEMA` (keeps the trailing `#`, unlike core's constant).
+- **Annotation carrying is core's, not the package's.** **The Draft-07 lowering copies unknown and custom keywords through as opaque values**, in place, including across the tuple coordinate move (`prefixItems[i]` → `items[i]`, trailing `items` → `additionalItems`). There is no re-graft step and no `AnnotationCarriers` module — do not go looking for it. What the package still owes a declared-family value is that the `#/definitions` → `#/$defs` `$ref` rewrite does **not** descend into it: the payload is opaque advice to a language server, so a `$ref`-shaped string inside one survives verbatim. **Annotate at the definition site** — a usage-site annotation on a hoisted schema carries nothing. **A `Schema.Class` root is annotated on the `Struct` it wraps, not on the class.** Annotations passed as `Schema.Class`'s second argument (or `.annotate()` on the class) sit on the *class* node, while the `$defs` entry is generated from the encoded fields `Struct` — Effect-TS/effect#8084 was closed upstream as **by design**, so this is the rule, not an open bug (effected#606 resolves the same way). Write `class X extends Schema.Class<X>("X")(Schema.Struct({ … }).annotate({ title, description, "x-taplo": { … } })) {}` and `title`/`description`/the declared families all land in the `$defs/XEncoded` entry; a class annotated the other way emits a bare `{ type, properties, required, additionalProperties }` and carries nothing (probed). **An undeclared custom key annotated on a node is silently dropped** — the package answers core's annotation filter with the declared families only, so the build passes and the key is simply absent (probed); `UndeclaredAnnotationKeyError` fires only when `includeAnnotationKey` or `rootAnnotations` admits a key outside the families.
+- **`KeywordFamilies.isDeclared`** — the ONE registry of the declared non-standard families, in two groups: upstream language-server families mirrored from SchemaStore's CONTRIBUTING (the vscode five by name; the `x-taplo`, `x-tombi-`, `x-intellij-` prefixes), and the house machine-annotation family `x-ai-` (WITH the trailing dash — bare `x-ai` and a look-alike like `x-aida-foo` are NOT declared), owned by this package rather than mirrored. `x-ai-` is a namespace, not an enumerated vocabulary; the one recommended, non-binding key is `x-ai-hint` (a string). Two constraints a consumer hits: after the prefix a key may use only `[A-Za-z0-9_$:-]` (ajv holds a keyword name to `/^[a-z_$][a-z0-9_$:-]*$/i`), so a dot, space, slash, `@`, `+` or non-ASCII character makes the engine gate reject the document as a finding; and the value must not contain an `$id` — or a repeated `$anchor` — at ANY depth, since ajv's reference collection walks unknown keywords for them (an empty-string `$id` resolves to the root id and collides too). Consumed by the lint, the `fromSchema` gate and the CLI's engines (`AjvValidator`, `AjvInstanceValidator` — through one shared ajv setup) so none can drift.
+- **`DocumentLint.lint(document)`** → `DocumentLintFinding[]`, never an error. Checks: `UnresolvedRef`, `UnknownKeyword`, `DescriptionWithoutUrl` (advisory), `DepthExceeded`.
+- **`CatalogEntry`** — the `catalog.json` entry, `assemble`, and the `fileMatch` hygiene lint (`CatalogLintFinding`: `GenericFileMatch`, `ComplexFileMatch`).
+- **`SchemaVersioning` / `SchemaVersion`** — **one-to-three-component** labels (`1`, `1.2`, `1.2.0`, optional prerelease, no build metadata) matched by a grammar regex and then validated by `@effected/semver` over the label padded to three components, ordered by SemVer precedence with missing components read as `0`; `parseResult`/`parse`, `InvalidSchemaVersionError`, an `Order` that is **numeric not lexical** (`1.10.0` > `1.9.0`) with the label round-tripping verbatim, plus `fileName`/`schemaUrl`/`catalogUrls` (`CatalogUrls`) deriving both catalog modes. **File names follow SchemaStore's `<name>-<version>.json`**; only the label grammar diverges from the store's partial-label corpus (`agripparc-1.2.json`), so that a label can be split back out of a name or URL unambiguously. **`isPinned(version)`** — whether a label names a published, non-prerelease document; the one predicate `SchemaPipeline`'s `"block-versioned"` guard and `next` both read, so the two can never disagree. **`next(current, change)`** — the version label a `WriteChange` classification calls for: identity for anything but a `"contract"` change on a pinned label, otherwise a MINOR bump on the `0.x` line (`0.4.0` → `0.5.0`) or a MAJOR bump above it (`5.0.0` → `6.0.0`); never mints a prerelease from a stable input.
+- **`SchemaTarget.make`** — `{ schema, $id, path, name?, version? }`. **`name` is optional** (only catalog naming reads it) and **required when `version` is present**, enforced by an overload pair, so a versioned target without a name is a compile error.
+- **`CanonicalJson`** — the deterministic serializer: insertion-order keys (assembly owns ordering, nothing is sorted), tab indent by default (`CanonicalJsonOptions.indent`), LF, single trailing newline. Fails typed where `JSON.stringify` silently drops or rewrites: `NonJsonValueError` (with a JSON pointer) and `JsonDepthExceededError` (also catches cycles). `CanonicalJsonError` is the union. **`equals(left, right)`** — content equality under the same semantics: object key order ignored, arrays positional, non-plain objects by reference, total (a cyclic value equals itself; two distinct cyclic values report `false`).
+
+## Usage
+
+```ts
+import { SchemaFile, SchemaPipeline, SchemaTarget } from "@effected/schemastore";
+import { AjvValidator } from "@effected/schemastore-cli";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+
+const targets = [
+  SchemaTarget.make({
+    schema: Schema.Struct({ name: Schema.String }),
+    $id: "https://example.com/config.schema.json",
+    path: "schemas/config.schema.json",
+  }),
+];
+
+const AppLayer = Layer.mergeAll(SchemaFile.layer, AjvValidator.layer).pipe(
+  Layer.provide(NodeServices.layer),
+);
+
+// Generate: enforces, writes.
+const generate = Effect.gen(function* () {
+  for (const result of yield* SchemaPipeline.run(targets)) {
+    yield* Effect.log(
+      result.outcome === "written" ? `Written (${result.change}): ${result.path}` : `Unchanged: ${result.path}`,
+    );
+  }
+}).pipe(Effect.provide(AppLayer));
+
+// CI drift: reports, writes nothing.
+const drift = SchemaPipeline.check(targets).pipe(Effect.provide(AppLayer));
+```
+
+## Testing
+
+`SchemaValidator.layerTest({ validate })` for a scripted engine and `SchemaValidator.noop` to switch validation off. `SchemaFile` needs no package-specific double: its `FileSystem` double is `@effected/memfs`, never `FileSystem.layerNoop`. `MemoryFileSystem.layerWith({ ...seed })` (plus `Path.layer`) seeds the file the pipeline's contract-change guard reads back, and an unseeded path is already a typed `NotFound` — a missing file needs no stub. For a "nothing written" proof, resolve `MemoryFileSystem.Volume` inside the same provide and assert on it. To prove `"unchanged"` means *untouched*, fault the two members `SchemaFile` writes through as defects, so any write dies loudly instead of landing:
+
+```ts
+import { MemoryFileSystem } from "@effected/memfs";
+import { SchemaFile, SchemaValidator } from "@effected/schemastore";
+import { Layer, Path } from "effect";
+
+const untouched = MemoryFileSystem.die(new Error("an unchanged run must not write"));
+
+const ReadOnlyVolume = Layer.mergeAll(
+  MemoryFileSystem.layerWith(
+    { "/schemas/config.schema.json": "{}" },
+    { faults: { makeDirectory: untouched, writeFileString: untouched } },
+  ),
+  Path.layer,
+);
+
+const layers = Layer.mergeAll(SchemaFile.layer.pipe(Layer.provide(ReadOnlyVolume)), ReadOnlyVolume, SchemaValidator.noop);
+```
+
+`MemoryFileSystem.die` is a defect, not a typed failure, so a caller's `Effect.catch` cannot absorb the write and turn the proof green.
+
+## Scope fence
+
+**Must not grow into a general JSON Schema package**: no schema construction, no `$ref` resolution beyond the document's own `$defs` pool, no dialect conversion — core's `JsonSchema` owns the generation pipeline. The CLI's ajv dependency does not widen this: ajv is the validation gate, not a construction surface. `@effected/json-schema` is off the roadmap entirely because core made it redundant.

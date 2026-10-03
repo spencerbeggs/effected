@@ -1,0 +1,82 @@
+# @effected/toml
+
+TOML parsing, editing and formatting as Effect schemas on a from-scratch engine (the one format package with no vendored code): parse to plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, visit as a `Stream`. Pure tier: peers only on `effect`, zero runtime deps.
+
+The two directions target different spec versions on purpose: `parse` accepts the full **TOML 1.1.0** grammar, while `stringify` deliberately emits only **1.0.0** spellings (`src/index.ts:2`, `src/Toml.ts:25`). Every 1.0 document is valid 1.1, so the narrower output is portable to any consumer. Do not "fix" either side to match the other — the asymmetry is the design.
+
+## Import
+
+```ts
+import { Toml, TomlDocument, TomlFormat, TomlVisitor } from "@effected/toml";
+```
+
+Single entrypoint; no subpaths.
+
+## Core API
+
+- **`Toml`** (facade) — `parse(text)` → `Effect<unknown, TomlParseError>`; `stringify(value, options?)` → `Effect<string, TomlStringifyError>`; schema factories `Toml.schema(target)`, `Toml.fromString`, and the `Toml.TomlFromString` singleton. `TomlStringifyOptions` has exactly one knob (`newline`); there is NO `TomlParseOptions` — TOML 1.1.0 parsing has no knobs (`src/Toml.ts:163`).
+- **`TomlDocument`** — the lossless document: `parse`, `schema()`, `toValue()`, `stringify()`; carries `source`, `expressions`, `diagnostics`.
+- **`TomlEdit`** + `applyAll`, **`TomlFormat`** (`format`/`formatToString` pure and total; `modify`/`modifyToString` → `Effect<_, TomlParseError | TomlModificationError>`) — edit vocabulary parity-identical in shape to jsonc/yaml.
+- **`TomlVisitor`** — `Stream<TomlVisitorEvent, TomlParseError>` (`TableStart`/`ArrayTableStart`/`KeyValue`/`Comment`).
+- **Date-time value objects** — `TomlLocalDate`, `TomlLocalTime`, `TomlLocalDateTime`, `TomlOffsetDateTime`: four `Schema.Class`es with real Gregorian validation; none subclasses JS `Date`.
+- **`TomlDiagnostic`** — `code`, `message`, `offset`/`length`, `line`/`character`, five staged error-code unions.
+
+## Usage
+
+```ts
+import { Toml } from "@effected/toml";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+ return yield* Toml.parse('title = "example"\n[owner]\nname = "Tom"\n');
+});
+```
+
+```ts
+// duplicate keys / table redefinition fail through the typed channel
+const error = Effect.runSync(Effect.flip(Toml.parse("a = 1\na = 2\n")));
+```
+
+Date-time values decode as one of four `Schema.Class`es depending on how much of the calendar the source string carries — never a JS `Date`:
+
+```ts
+import { Toml } from "@effected/toml";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+ const value = (yield* Toml.parse("built = 2024-01-15T10:30:00-05:00\n")) as { built: unknown };
+ return value.built; // a TomlOffsetDateTime instance: { year, month, day, hour, minute, second, nanosecond, offsetMinutes }
+});
+```
+
+```ts
+import { TomlLocalDate } from "@effected/toml";
+
+const date = new TomlLocalDate({ year: 2024, month: 1, day: 15 });
+date.toString(); // "2024-01-15"
+```
+
+Streaming a document's structure without materializing the full parsed value:
+
+```ts
+import { TomlVisitor } from "@effected/toml";
+import { Effect, Stream } from "effect";
+
+const program = TomlVisitor.visit('[owner]\nname = "Tom"\n').pipe(
+ Stream.runForEach((event) =>
+  event._tag === "KeyValue" ? Effect.log(`${event.path.join(".")} = ${event.node.value._tag}`) : Effect.void,
+ ),
+);
+```
+
+## Testing machinery
+
+None exported (differential testing against `smol-toml` and the toml-test corpus is internal).
+
+## Gotchas
+
+- Integers split `number`/`bigint` at `±(2^53 − 1)`; 64-bit overflow fails `IntegerOutOfRange`.
+- An integral float (`1.0`) stringifies as `1` — indistinguishable from an integer on round-trip; shared limitation of every JS TOML emitter, deliberately not papered over with a wrapper type.
+- `U+FFFD` is rejected as `InvalidUtf8` on purpose (corpus-compliant deviation from RFC 3629) — do not "fix".
+- `TomlEdit.applyAll` rejects overlapping edits as a defect (yaml's does not).
+- Only genuinely recursive structures (arrays, inline tables) hit the 256 depth cap; table-header/dotted-key nesting is iterative and deliberately uncapped.

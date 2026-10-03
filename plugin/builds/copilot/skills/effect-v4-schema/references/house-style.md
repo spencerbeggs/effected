@@ -1,0 +1,510 @@
+# Schema house style — worked patterns
+
+The `@effected` house patterns for Effect v4 `Schema`: the opinionated defaults
+and the traps that only surface at test or property-test time. This file is
+**Schema-specific**; the cross-cutting house style — module layout, naming,
+error taxonomy, TSDoc habits, layer conventions, test organization — is the
+`effect-v4-house-style` skill, which links back here for Schema depth. This is the depth
+behind the **Do this, not this** rules in the `effect-v4-schema` `SKILL.md` — read
+those for the at-a-glance directives, come here for the worked examples and the
+reasoning.
+
+The class IS the schema: one `Schema.Class` carries fields, validation, methods,
+statics, and derived tooling (`Arbitrary.schema`, `toEquivalence`,
+`toJsonSchemaDocument`) in a single artifact. These patterns keep that artifact
+idiomatic and sound. The API surface below — every `Schema.*`,
+`SchemaTransformation.*`, `SchemaGetter.*` and `SchemaIssue.*` name it asserts,
+and every `file:line` citation — is verified against the pinned Effect source.
+Probe anything not shown here before writing it
+(`node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)"`).
+When a name doesn't resolve, climb the `effect-v4-source-lookup` ladder; for the
+canonical upstream detail on any construct, see the vendored `references/` in
+this skill.
+
+## Class vs Struct: the first decision
+
+The guide's headline rule — reach for a **named class** for anything real, and
+`Struct` only for throwaway inline shapes:
+
+- reusable named model → `Schema.Class`
+- reusable tagged-union member → `Schema.TaggedClass`
+- reusable error payload → `Schema.TaggedError`
+- small local/anonymous object shape → `Schema.Struct`
+
+(`Schema.TaggedErrorClass` is `undefined` — the current name is
+`Schema.TaggedError`, same curried call shape; code using the old `*Class`
+name fails with "TaggedErrorClass is not a function".)
+
+```ts
+export class User extends Schema.Class<User>("User")({
+ id: Schema.String,
+ name: Schema.String,
+}) {}
+
+class Circle extends Schema.TaggedClass<Circle>()("Circle", {
+ radius: Schema.Number,
+}) {}
+
+class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
+ id: Schema.String,
+}) {}
+```
+
+A class buys you a stable identity, methods and statics, `instanceof`, and one
+place to hang derived tooling. A `Struct` is for the query object you pass once
+and forget.
+
+## Construction: `make` is the default, `new` is a perf exception
+
+The guide's idiomatic default is **`X.make({...})`** across all three class
+variants — consistent, reads as schema construction:
+
+```ts
+const todo = Todo.make({ id: 1, title: "write docs", completed: false });
+```
+
+`new X({...})` and `X.make({...})` **validate identically** in v4 (both run the
+structural parse; neither is a rubber stamp). Our ports keep `new` on hot paths
+for a measured ~8% edge, but that is a deliberate performance exception, not the
+general rule — write `make` unless you are in engine/hot-path code. Either way,
+never pass an explicit `undefined` for a `Schema.optionalKey` field (a *present*
+`undefined` is not an *absent* key and throws); use conditional spreads:
+`new Node({ offset, ...(anchor !== undefined ? { anchor } : {}) })`. See
+`effect-v4-idioms` for the call-not-value family this shares a shape with.
+
+**Instances are NOT `Pipeable` in v4.** The factory's
+instance type is `S["Type"] & Inherited` — the decoded record plus any brand,
+neither of which declares `Pipeable`. A runtime `.pipe` method exists on the
+prototype, so it *runs* — `typeof instance.pipe ===
+"function"` — but tsgo rejects instance `.pipe(...)`. If you want
+pipeable instances — e.g. to call a dual-signature `Function.dual` static
+pipeably (`node.pipe(Node.move(2))`) — retain the manual `Pipeable` overload
+block on the class (the `pipe(...args) { return pipeArguments(this, args) }`
+member) so the instance type advertises it.
+
+### `disableChecks` skips checks, not validation — and buys no speed
+
+`MakeOptions.disableChecks` reads like an escape hatch from validation. Its own
+docstring says "skip validation when you trust the data" (`Schema.ts:118`) and
+"skips constructor validation" (`Schema.ts:14644`). Both are misleading, and the
+vendored cluster code leans on it as the trusted-construction idiom
+(`cluster/EntityAddress.ts:93`, `RunnerAddress.ts:112`, `Runner.ts:129`),
+so it looks blessed. What it actually does:
+
+| Passing `{ disableChecks: true }` | Effect |
+| --- | --- |
+| a failing `.check(...)` filter | **skipped** — the value is accepted |
+| a *type* error (`n: "nope"` where `n` is `Schema.Number`) | **still throws** `Expected number, got "nope"` |
+| the structural re-parse | **still runs** — it is not a fast path |
+
+It gates exactly the check phase and nothing else — `grep -n disableChecks
+SchemaParser.ts SchemaAST.ts` finds every gate site; do not trust an absolute
+line number for it, since the check sites move as the parser is edited.
+
+So it is a *semantic* switch for trusted data, never a *performance* one: a
+depth-20 recursive build measures sub-millisecond with `disableChecks: true`
+and without it alike — both JIT noise.
+
+### Recursive `Schema.Class` construction is LINEAR, not exponential
+
+A left-spine recursive `Schema.Class` tree built node-by-node is **flat and
+sub-millisecond at every depth**, from 10 through 60. A control that
+genuinely does 2^d work measures in the tens of milliseconds at the same
+depths, so a harness built to see exponential cost here would see it if it
+were real; another control proves `make` still rejects a bad field, so
+construction is doing real work while staying flat. Flat and broad shapes
+were never in doubt and remain linear.
+
+**So do not add a validation bypass for cost reasons.** An
+`Object.assign(Object.create(Proto), props)` recipe is not justified by
+performance. Where such a bypass already exists (`@effected/jsonc`'s
+`makeNodeUnsafe`) it buys trusted-path construction, nothing more — and a
+nested class field accepts a plain literal in both the foreign and
+self-recursive cases, so even that motivation is weak (see the nested-field
+table in `SKILL.md`).
+
+If you do keep such a bypass, two corrections to the naive recipe:
+
+- **`Data.Class`'s constructor is not `Object.assign`.** At `Data.ts:48-56`
+  it is `super(); InternalRecord.assignProperties(this, props)`, and
+  `assignProperties` (`internal/record.ts:16`) copies own enumerable keys
+  *but defines `__proto__` as a plain data property* instead of invoking the
+  prototype setter. A raw `Object.assign` bypass is therefore **not** an
+  exact reproduction: it is a prototype-pollution hole on attacker-shaped
+  props.
+- **`TaggedClass` still needs `_tag` written by hand.** The constructor
+  synthesizes it; a property copy does not. Omit it and `_tag === undefined`, so
+  `Equal.equals` is `false` and every `_tag` match falls through. Pass
+  `{ _tag: "TNode", ...props }`.
+
+*Evidence: runtime probe from `packages/semver`, Node 26, left-spine build per
+depth, with the two controls described above.*
+
+## Fields & optionality
+
+- `Schema.optionalKey(schema)` → exact optional **property**; the key may be
+  absent. **Prefer this for object fields.**
+- `Schema.optional(schema)` → the value is `A | undefined`. Use only when the
+  value itself should carry `undefined`.
+
+```ts
+const Query = Schema.Struct({ search: Schema.optionalKey(Schema.String) });
+```
+
+Decoding defaults:
+
+```ts
+Schema.String.pipe(Schema.withDecodingDefaultType(Effect.succeed("")));      // { default }
+Schema.String.pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed("")));   // { exact: true, default }
+```
+
+Reverse direction: `Schema.requiredKey` makes an `optionalKey`/`optional` field
+required; `Schema.required` makes an `optional` field required and drops
+`undefined`. Apply across a struct with `struct.mapFields(Struct.map(Schema.requiredKey))`.
+
+## Checks vs refine vs makeFilter
+
+Three distinct tools — pick by intent:
+
+- **Constraints that keep the type** → `.check(...)` with the `is*`
+  combinators (all renamed with an `is` prefix in v4, all on `Schema`):
+
+  ```ts
+  const nonNegativeInteger = Schema.Number.check(
+   Schema.isInt(),
+   Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+  );
+  ```
+
+  Verified `is*` members: `isInt`, `isBetween`, `isGreaterThan`,
+  `isGreaterThanOrEqualTo`, `isLessThan`, `isLessThanOrEqualTo`, `isMultipleOf`,
+  `isFinite`, `isMinLength`, `isMaxLength`, `isBetweenLength`, `isPattern`,
+  `isNonEmpty`, `isUUID`, `isULID`, `isCapitalized` — all sixteen confirmed
+  present. `positive`/`negative`/`nonNegative`/`nonPositive` do not exist —
+  compose `isGreaterThan(0)` etc. `Schema.filter` is likewise `undefined`.
+  Match the bounds to what your parser enforces (safe integers), or a
+  `make`-constructed value can print a string the parser then rejects.
+
+- **Type-narrowing** → `Schema.refine(refinement)`:
+
+  ```ts
+  const someString = Schema.Option(Schema.String).pipe(Schema.refine(Option.isSome));
+  ```
+
+- **Inline predicates** → `Schema.check(Schema.makeFilter(pred))`
+  (`Schema.ts:6584`). `makeFilter`'s return shape is rich —
+  this is the tool for cross-field validation:
+
+  | return | meaning |
+  | --- | --- |
+  | `undefined` / `true` | success |
+  | `false` | generic failure |
+  | `string` | failure with that message |
+  | `SchemaIssue.Issue` | fully-formed issue |
+  | `{ path, issue }` | failure at a nested path |
+  | `ReadonlyArray<FilterIssue>` | several failures at once (empty = success) |
+
+  ```ts
+  const Signup = Schema.Struct({
+   password: Schema.String,
+   confirmPassword: Schema.String,
+  }).check(
+   Schema.makeFilter((o) =>
+    o.password === o.confirmPassword
+     ? undefined
+     : { path: ["confirmPassword"], issue: "passwords must match" },
+   ),
+  );
+  ```
+
+  **Annotation trap: the message annotation the default formatter reads is
+  `expected`, not `title`.** `makeFilter`'s second argument is an
+  `Annotations.Filter`, and the formatter's `formatCheck` reads
+  `check.annotations?.expected`, falling back to the literal string `<filter>`
+  (`SchemaIssue.ts:1342-1348`). Probed:
+
+  ```text
+  makeFilter(pred, { title: "a === b" })     -> "Expected <filter>"   <-- the trap
+  makeFilter(pred, { expected: "a === b" })  -> "Expected a === b"
+  makeFilter(pred)                           -> "Expected <filter>"
+  ```
+
+  So `title` is not wrong, it is merely invisible to error output — a
+  cross-field check annotated only with `title` reports an anonymous failure.
+  Returning a `string` from the predicate is the other way to get a real
+  message, and it needs no annotation at all.
+
+## Unions & literals — prefer tagged
+
+Array forms; a single literal stays single-arg:
+
+```ts
+Schema.Union([Schema.String, Schema.Number]);
+Schema.Literals(["a", "b"]);
+Schema.Literal("a");
+Schema.Null; // replaces Schema.Literal(null)
+```
+
+For domain variants, prefer a **tagged union of `TaggedClass` members** —
+`_tag`-based branching is the Effect-idiomatic shape:
+
+```ts
+class Created extends Schema.TaggedClass<Created>()("Created", { id: Schema.String }) {}
+class Deleted extends Schema.TaggedClass<Deleted>()("Deleted", { id: Schema.String }) {}
+const Event = Schema.Union([Created, Deleted]);
+```
+
+## Transformations & codecs — the v4 core
+
+Connect one schema's decoded output to another with `Schema.decodeTo(to, transformation)`
+(curried, `pipe`-friendly; `encodeTo` for the reverse-reads-clearer direction).
+A transformation is a `SchemaTransformation.*` value **or** a `{ decode, encode }`
+pair of `SchemaGetter.*` values.
+
+Pure/total transform:
+
+```ts
+const BooleanFromString = Schema.Literals(["on", "off"]).pipe(
+ Schema.decodeTo(
+  Schema.Boolean,
+  SchemaTransformation.transform({
+   decode: (literal) => literal === "on",
+   encode: (bool) => (bool ? "on" : "off"),
+  }),
+ ),
+);
+```
+
+Fallible transform — **both spellings are valid**
+(`SchemaTransformation.transformEffect` at `SchemaTransformation.ts:380`,
+`SchemaGetter.transformEffect` at `SchemaGetter.ts:740`, and `SchemaGetter.String`
+at `:891`); know both, because both spellings occur in the wild:
+
+```ts
+// (a) the kit's spelling — SchemaTransformation.transformEffect passed positionally
+Schema.String.pipe(
+ Schema.decodeTo(
+  Target,
+  SchemaTransformation.transformEffect({
+   decode: (s) => /* Effect.succeed(...) | Effect.fail(new SchemaIssue.InvalidValue({ message: "…" }, s)) */,
+   encode: (v) => Effect.succeed(/* … */),
+  }),
+ ),
+);
+
+// (b) the upstream docs' spelling — { decode: SchemaGetter.transformEffect(...), encode: … }
+const NumberFromString = Schema.String.pipe(
+ Schema.decodeTo(Schema.Number, {
+  decode: SchemaGetter.transformEffect((s) => {
+   const n = Number.parse(s);
+   return n === undefined
+    ? Effect.fail(new SchemaIssue.InvalidValue({ message: "not a number" }, s))
+    : Effect.succeed(n);
+  }),
+  encode: SchemaGetter.String(),
+ }),
+);
+```
+
+Failures come from `effect/SchemaIssue` — `InvalidValue` (ctor), `MissingKey`,
+`Composite`. Signature trap: `InvalidValue` is
+`(annotations?, input?, options?)` (`SchemaIssue.ts:745`) — not
+`new SchemaIssue.InvalidValue(Option.some(s), { message })`: a plain
+annotations object is the first argument, with no `Option` wrapper, and the
+input is retained only under `reportInput: true`. A failed
+`decodeUnknownSync` parse throws a `Schema.SchemaError` whose `.issue` holds the
+`SchemaIssue` and whose `.message` renders it via the default formatter; the
+throwing **constructor/adapter** paths (`X.make`, class `new`, `Schema.asserts`,
+`SchemaParser`'s sync/promise adapters) instead throw a plain `Error` with the
+generic message `"Schema validation failed"` and the issue on `.cause` — format
+it with `SchemaIssue.makeFormatterDefault()(error.cause)`: `X.make` throws a
+plain `Error` whose `.message` is exactly `"Schema validation failed"`, while
+`decodeUnknownSync` throws a `SchemaError` whose `.message` is formatted and
+whose `.issue` is structured.
+
+### String codecs as class statics (`FromString`)
+
+Give every string-shaped domain class a `FromString` codec so the string is the
+encoded form of the *same* schema — round-trips and arbitraries come free:
+
+```ts
+static readonly FromString: Schema.Codec<SemVer, string> = Schema.String.pipe(
+ Schema.decodeTo(
+  SemVer,
+  SchemaTransformation.transformEffect({
+   decode: (input: string) => {
+    const result = parseVersion(input); // pure internal grammar
+    return result.ok
+     ? Effect.succeed(result.value) // To["Encoded"]: plain field record
+     : Effect.fail(new SchemaIssue.InvalidValue({ message: /* … */ }, input));
+   },
+   encode: (parts) => Effect.succeed(formatVersion(parts)),
+  }),
+ ),
+);
+```
+
+- `decode` produces the target schema's **Encoded** form (a plain field
+  record); the class schema then validates and instantiates it.
+- **When `decode` produces class INSTANCES, not the encoded record, make the
+  `decodeTo` target `Schema.instanceOf(Doc)`, not the class schema `Doc`.**
+  A document codec whose `decode` calls `Doc.parse(input)` and returns `Doc`
+  instances cannot use `Schema.decodeTo(Doc, …)` — the class schema expects the
+  encoded struct and the transformation types will not line up. Wrapping the
+  target as `Schema.decodeTo(Schema.instanceOf(Doc), …)` types the
+  transformation against the instance and typechecks. The common `FromString`
+  case above (decode → encoded record, target = the class) is unchanged; this is
+  only for codecs that hand back already-constructed instances.
+- **The explicit `Schema.Codec<Self, string>` annotation is load-bearing**: a
+  static initializer that references its own class (`Schema.decodeTo(SemVer,
+  ...)`) otherwise trips TypeScript's circular-inference error. Annotating with
+  the instance type (not `typeof SemVer`) breaks the cycle.
+- Keep a `parse` static (`Effect.fn("X.parse")`) that raises the concept's own
+  `Schema.TaggedError` with rich payload (`input`, `position`) by calling
+  the same internal grammar directly — `SchemaError` never escapes the package,
+  and the schema path and the parse path cannot drift because both delegate to
+  one implementation.
+
+## Decode/encode: prefer the Effect variants in app code
+
+In Effect/application flows use `Schema.decodeUnknownEffect(S)` /
+`Schema.encodeUnknownEffect(S)` — they surface failures through the typed error
+channel. Reserve `Schema.decodeUnknownSync(S)` (throws) for a genuine sync
+boundary; `decodeUnknownExit` returns an `Exit`. The `*Effect`/`*Exit` naming
+is the whole family; there is no `*Either` variant.
+
+## Don't duplicate schemas — derive
+
+One logical model, multiple encoded forms: reach for a **transformation**, not a
+second schema, when only the *encoding* differs. Derive variants instead of
+retyping fields:
+
+- `struct.mapFields(Struct.pick(["a", "b"]))` / `Struct.omit([...])`
+- `struct.mapFields(Struct.map(Schema.optionalKey))` for a partial
+- `struct.mapFields(Struct.map(Schema.requiredKey))` for the reverse
+
+Duplicate a schema only for a genuine *semantic* difference (creation payload vs
+persisted entity; public contract vs internal model; intentional projection) —
+not to encode the same data two ways.
+
+## Branded & opaque scalars
+
+For nominal domain scalars that are structurally a primitive but must not be
+interchangeable:
+
+```ts
+const UserId = Schema.String.pipe(Schema.brand("UserId")); // nominal refinement
+// Schema.Opaque — opaque schema-backed type, same runtime shape
+```
+
+`Schema.brand` takes one concrete string-literal identifier and composes by applying `brand` again; it is type-only, so the identifier is not stored in AST annotations and does not survive `SchemaRepresentation` or generated schema code.
+
+**Export the branded type as `string & Brand.Brand<"Name">`, not `typeof X.Type`
+— for EVERY exported brand**, whether or not it carries a statics namespace. Both
+forms resolve to the same type, but `typeof X.Type` reads as an opaque alias on
+the public surface while the explicit `string & Brand.Brand<"Name">` is
+self-documenting. The `"Name"` string must match the schema's `Schema.brand("Name")`
+literal exactly. (The statics-namespace case below is one instance of this rule,
+not the only one it applies to.)
+
+**A branded scalar that also needs a statics namespace** (first boundary port):
+a `const` brand schema and a TS `namespace` of the same name **cannot merge** (a
+namespace only merges with a class/function/enum, never a `const`). Attach the
+statics with `Object.assign` instead, and keep two typing rules straight:
+
+```ts
+// leave the brand const type-inferred — an explicit annotation would name the
+// private Schema.filter internals:
+const PackageName = Object.assign(
+ Schema.String.pipe(Schema.brand("PackageName")),
+ { of: (s: string): PackageName => /* … */ } satisfies PackageNameStatics,
+);
+// type the EXPORTED brand so @public doesn't leak the private brand const:
+export type PackageName = string & Brand.Brand<"PackageName">;
+```
+
+- Don't annotate the brand `const` — inference keeps the private `Schema.filter`
+  type out of the public surface; an explicit annotation drags it in.
+- `satisfies` the statics object against an interface so the shape is checked
+  without widening.
+- Export the type as `string & Brand.Brand<"Name">`, not `typeof PackageName`,
+  so the `@public` type is clean.
+
+## Derived tooling — exact names
+
+From any schema (the class included):
+
+- `Arbitrary.schema(S)` from `effect` — the native generator,
+  honoring `.check(...)` bounds. **`Schema.toArbitrary` is `undefined`**
+  (there is no fast-check bridge), and the module has
+  no `oneof`/`constantFrom`/`array` — choice and collections are Schemas. Full
+  surface → `11-generation-and-tooling.md`.
+- `Schema.toEquivalence(S)` — structural equivalence.
+- `Schema.toFormatter(S)` — pretty formatter.
+- `Schema.toStandardSchemaV1(S)` — Standard Schema v1.
+- `Schema.toJsonSchemaDocument(S)` — JSON Schema. **Not `toJsonSchema`** — that
+  export does not exist (`typeof === "undefined"`); reaching for it is a silent
+  trap.
+
+## Custom equality: override BOTH symbols
+
+v4 `Equal.equals` is **deep-structural by default**, so there is no
+`Schema.Data` and you need nothing extra for ordinary structural equality. Override
+the symbols **only** when equality must *ignore* some fields (our SemVer case:
+two versions equal when they differ only in build metadata). And when you do,
+override both, because `Equal.equals` fast-paths on hash inequality — overriding
+`[Equal.symbol]` alone **silently does nothing** when the default structural
+hashes differ:
+
+```ts
+[Equal.symbol](that: unknown): boolean {
+ return that instanceof SemVer && /* semantic equality, e.g. ignore build */;
+}
+[Hash.symbol](): number {
+ return Hash.string(/* canonical form of ONLY the fields equality uses */);
+}
+```
+
+Pin the pair with a regression test: two instances that differ only in ignored
+fields must be `Equal.equals` AND have identical `Hash.hash`.
+
+## Arbitrary-safe field constraints
+
+`Arbitrary.schema` derives generators from `.check(...)` constraints, and
+`it.effect.prop` accepts the class schema directly as an arbitrary. Two traps:
+
+- **`isPattern` regexes: no lookaround, no `i`/`m`/`v` flags, and always
+  the `u` flag.** The native regexp compiler cannot take
+  lookahead/lookbehind, backreferences or the `i`/`m`/`v` flags
+  (`internal/arbitrary/regexp.ts:344,350,832`); it does not throw — the
+  pattern is **silently dropped** from constructive generation and left as a
+  residual filter over random strings, which exhausts (`SampleError` /
+  `Exhausted`) for any selective pattern: `/^(?=.*[0-9])[a-f0-9]{8}$/u`
+  and `/^[a-f]{8}$/iu` both die with `discards: 201`; the lookaround-free
+  `/^[a-f]{8}$/u` control generates. `u` is the flag the compiler supports
+  (`regexp.ts:835` generates full code points under it), and it is the flag
+  JSON Schema export requires: `isPattern` exports `pattern` only when the
+  flags match `/^[dg]*uy?$/` (`Schema.ts:6636`), so
+  `Schema.String.check(Schema.isPattern(/^[a-z]+$/))` exports as a bare
+  `{"type":"string"}` while decoding still enforces the regex. Rewrite
+  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`
+  (`packages/semver/src/SemVer.ts`, `packages/schema-org/src/NodeRef.ts`).
+- **Make the field model canonical or round-trips lie.** If two type-level
+  values print to the same string (e.g. prerelease `"7"` vs `7` both print
+  `-7`), decode(encode(v)) cannot restore the original. Constrain the schema so
+  only the canonical representative is valid (string identifiers must contain a
+  non-digit; all-numeric identifiers are numbers).
+
+Then the property test is one honest line of intent:
+
+```ts
+it.effect.prop("round-trips decode(encode(v))", [SemVer], ([v]) => /* … */);
+```
+
+## Watch the import graph when placing statics
+
+A delegating static (`SemVer.diff` → `VersionDiff.between`) is an import edge. If
+the target module's fields reference the source class (`VersionDiff.from: SemVer`),
+the delegation creates a cycle — `noImportCycles` is an error in this repo.
+Prefer one canonical entry point on the concept that owns the result type
+(`VersionDiff.between(a, b)`) over convenience mirrors.

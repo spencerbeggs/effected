@@ -1,0 +1,265 @@
+# @effected/workspaces
+
+Monorepo tooling as Effect services: workspace root discovery, package enumeration, the dependency graph, package-manager detection, pnpm/bun catalog resolution, lockfile IO, unsatisfied peer-dependency detection, git change detection and point-in-time snapshots. Integrated tier: real runtime deps on the `@pnpm/catalogs.*` quartet (confined to one internal module) plus most of the kit's lower tiers.
+
+## Import
+
+```ts
+import {
+ ChangeDetector,
+ DependencyGraph,
+ PackageManagerDetector,
+ PublishabilityDetector,
+ WorkspaceDiscovery,
+ WorkspaceRoot,
+ Workspaces,
+ WorkspaceSnapshots,
+} from "@effected/workspaces";
+```
+
+**Not single-entrypoint**: the package ships two more exports. `@effected/workspaces/node-sync` holds the Node bindings for the sync escape hatch, so the main entry never imports `node:*`. `@effected/workspaces/testing` holds the repo-shape checks a monorepo runs in its own tests (`WorkspaceLayering`, `SourceBoundary`, `PackedInstall`), so a consumer of `.` never loads them. Neither is re-exported from `.`.
+
+```ts
+// The repo-shape checks — a separate subpath, never re-exported from the main entry.
+import { LayerPolicy, PackedInstall, SourceBoundary, WorkspaceLayering } from "@effected/workspaces/testing";
+
+const offences = SourceBoundary.check("src/a.ts", "const argv = process.argv;", ["process"]);
+console.log(offences.length, typeof LayerPolicy.load, typeof WorkspaceLayering.check, typeof PackedInstall.run);
+// => 1 function function function
+```
+
+```ts
+// Node bindings for the sync escape hatch — a separate subpath, not the main entry.
+import { findWorkspaceRootSync, getWorkspacePackagesSync } from "@effected/workspaces";
+import { nodeSyncOps } from "@effected/workspaces/node-sync";
+
+const root = findWorkspaceRootSync(process.cwd(), nodeSyncOps);
+const packages = root === null ? [] : getWorkspacePackagesSync(root, nodeSyncOps);
+```
+
+The platform-agnostic sync functions (`findWorkspaceRootSync`, `getWorkspacePackagesSync`, and the `WorkspacesSyncOptions`/`SyncFileSystem`/`SyncPath` types they take) live in the MAIN entrypoint — they accept consumer-supplied file/path operations and import no platform module themselves. Only the ready-made Node bindings (`nodeFileSystem`, `nodePath`, and the combined `nodeSyncOps`) live under `./node-sync`. Reach for either where you genuinely cannot run an Effect (a Vitest config is the motivating case); the async `WorkspaceRoot`/`WorkspaceDiscovery` services are the default.
+
+**A version-less manifest is a member on BOTH surfaces.** A root or member `package.json` with no `version` (`{"name":"x","private":true}`) is the ordinary pnpm shape, and discovery treats it as pnpm does: the package is discovered with `WorkspacePackage.version` absent (the field is `optionalKey` — never `"0.0.0"`, never a present `undefined`). `listPackages()` never fails on it and there is no `missingVersion` error kind; a `version` that is present but not a string — or present but empty (`""`) — fails as `invalidShape`. What still fails typed on the Effect surface is a genuinely unusable manifest — unreadable, not JSON, not an object, or nameless — because a member that goes undiscovered with no diagnostic is the failure this package exists to prevent. If you want skip-don't-fail enumeration over THOSE, the sync facade skips them and reports each one through `onSkip`; it is a second, independent reason to choose it beyond "I cannot run an Effect".
+
+**Platform**: you provide `FileSystem` and `Path` at the edge — `@effect/platform-node` or `@effect/platform-bun`. `Workspaces.layerWithGit` and `Workspaces.layerWithConfigDependenciesSubprocess` additionally need `ChildProcessSpawner`; `NodeServices.layer` provides all three in one move.
+
+## Core API
+
+- **`Workspaces.layer(options?)`** / `.layerWithConfigDependencies` / `.layerWithConfigDependenciesSubprocess` / `.layerWithGit` / `.layerWithGitAndConfigDependencies` / `.layerWithGitAndConfigDependenciesSubprocess` / `.layerWithGitAndHooks(hooks)` — composite layers wiring everything (the full set is `WorkspaceRoot | PackageManagerDetector | WorkspaceDiscovery | LockfileReader | WorkspaceCatalogs | PublishabilityDetector`, plus `ChangeDetector | WorkspaceSnapshots | Git` from `.layerWithGit`). **`Workspaces.resolvers`** merges the real implementations of `@effected/npm`'s `CatalogResolver` + `WorkspaceResolver` contracts — provide it wherever `Package.resolve` (from `@effected/package-json`) must turn `catalog:`/`workspace:` specifiers into real versions. **`Workspaces.resolverLayer(options?)`** is the same pair but built fresh (unmemoized) per call — the deliberate exception, so a long-lived tool that changes directory between manifests re-runs root discovery each time. **`Workspaces.resolveManifest(manifest, options?)`** is the one-call path: runs `@effected/npm`'s `Manifest.resolve()` over a fresh `resolverLayer`; check the manifest's own `needsResolution` first to skip catalog assembly entirely when nothing needs it.
+- **`WorkspaceRoot`** — root discovery over `@effected/walker`; markers: `pnpm-workspace.yaml`, then `package.json` with `workspaces`. `WorkspaceRootNotFoundError`.
+- **`WorkspaceDiscovery`** — `listPackages()` enumerates `WorkspacePackage`s (tolerant schema; `pkg.manifest()` bridges to the strict `@effected/package-json` `Package` on demand); also implements the `WorkspaceResolver` contract.
+- **`WorkspacePackage`** — fields: `name`, `version?` (raw string, NOT semver-validated; ABSENT when the manifest declares none — read it as `pkg.version ?? …` or `Option.fromUndefinedOr`), `path`, `packageJsonPath`, `relativePath`, `private`, the four dependency maps, `publishConfig?: PublishConfig`, `manifestRecord` (the as-read `package.json`, `unknown` values, for tolerant access to fields outside the typed slice). Getters: `isRootWorkspace`, `isPublic`, `scope: Option<string>`, `unscopedName`, `allDependencies` (merged, `dependencies` > `devDependencies` > `peerDependencies` > `optionalDependencies` on a name in several). Methods: `hasDependency`/`hasDevDependency`/`hasPeerDependency`/`hasOptionalDependency`/`hasAnyDependencyOn(name)`, `dependencyVersion(name): Option<string>`, `matchesDependency(pattern: GlobPattern | string)` (a raw string is compiled per call — a bad literal is a caller-wiring defect, not a typed error; compile once with `GlobPattern.compile` when testing many packages), `dependencyDiff(other)` → `DependencyDiff` (`added`/`removed`/`changed`, merged across all four kinds), `toWorkspaceManifest()` (projects to `@effected/lockfiles`' `WorkspaceManifest`), `manifest()` (re-reads and decodes the strict `Package`, `Effect<Package, WorkspaceManifestError, FileSystem>`).
+- **`PublishConfig`** — the typed projection of `publishConfig` workspace tooling reads: `access?`, `registry?`, `directory?`, `linkDirectory?` (whether workspace links point into `directory` during local development — pnpm symlinks the publish directory instead of the package root; meaningful only alongside `directory`), `tag?`. Deliberately narrow — `@effected/package-json` keeps the full open record for round-trip fidelity; this is the handful of fields that decide where/whether/as-what a package publishes.
+- **`PublishabilityDetector`** — `Context.Service`; `detect(pkg: WorkspacePackage) => Effect<ReadonlyArray<PublishTarget>>` — an intentionally TOTAL (`never`-erroring) question: empty means "does not publish". `PublishabilityDetector.npm` (a value) implements standard npm semantics (private + no `publishConfig.access` → publishes nowhere; explicit `access` overrides `private`; otherwise public with defaults), reachable as a layer through `.layerNpm`; `.none` / `.layerNone` is the "nothing publishes" policy. An overriding layer with a fallible lookup must degrade to a safe answer or `Effect.die` — it cannot widen the `never` channel. `PublishTarget` — `name`, `registry`, `directory`, `access: "public" | "restricted"`, `provenance` (defaulted).
+- **`DependencyGraph`** — pure value class: `sort`, `sortSubset`, `levels` (deterministic Kahn), `hasCycle`, `dependenciesOf`/`dependentsOf`, `toMermaid()` (total, deterministic `flowchart TD` via core `Graph.toMermaid`); `CyclicDependencyError.cycle` names the actual cycle members (SCC union via core `Graph.stronglyConnectedComponents`), never packages merely downstream of the cycle.
+- **`PackageManagerDetector`** — `"npm" | "pnpm" | "yarn" | "bun"` from lockfile evidence + `packageManager`/`devEngines` fields.
+- **`WorkspaceCatalogs` / `CatalogSet`** — pnpm/bun catalog assembly; `WorkspaceCatalogs.catalogResolver` implements the `CatalogResolver` contract. `releaseAgeGate()` folds the inline `minimumReleaseAge` keys and the hook contributions into one gate. **`peerDependencyRules()`** → `Effect<PeerDependencyRules, CatalogAssemblyFailure>` — the workspace's **effective** `peerDependencyRules`, i.e. pnpm's post-hoc peer-violation suppression policy, obtained by replaying config-dependency pnpmfile hooks the same way catalogs and release-age are; feed the result straight to `PeerCheck.run`'s `peerDependencyRules` option. `PeerDependencyRules` is pnpm's own shape verbatim: `{ allowedVersions: Record<string, string>, ignoreMissing: readonly string[], allowAny: readonly string[] }`. `NoPeerDependencyRules` is the exported "I looked, there are none" value — see the trap below.
+- **`ConfigDependencyHooks`** — the opt-in pnpmfile-replay seam, with **four** layers: `layerNoop` (the default — executes nothing), `layerLive` (in-process `import()`), `layerSubprocess` (a `node` child, the one that survives bundling) and `layerFrom({ "<name>@<version>": pnpmfilePath })` (the hermetic test seam, no resolution, no `FileSystem`). Matching composites live on `WorkspaceCatalogs` (`layerWithHooks(hooks)`) and `Workspaces` (`layerWithGitAndHooks(hooks)`). **Every replaying layer loads the pnpmfile of the version each `configDependencies` entry DECLARES.** `layerLive` and `layerSubprocess` resolve it — `node_modules/.pnpm-config/<name>` when its manifest matches, else the pnpm store's `links/<name>/<version>/*/node_modules/<name>` (the store keeps every version ever installed; `.pnpm-config` entries are symlinks into it), else, under `layerSubprocess` only, a verified fetch into that store, else a typed fail-closed `CatalogAssemblyError` (`source: "hooks"`) whose `message` names the remediation (`pnpm add --config <name>@<version>` in a throwaway workspace — `pnpm store add` does NOT populate `links/`) and whose `reason` is `"notInstalled"`. The fetch is what makes a diff across a config-dependency bump work on a fresh checkout, where the base side declares a version nobody installed. It runs `pnpm install --frozen-lockfile` in a scratch workspace whose lockfile pins the integrity the declaring side recorded: the inline `<version>+<integrity>`, else that side's `pnpm-lock.yaml` env preamble, passed as `inject`'s optional fifth argument `HookReplayContext { lockfile?, ref? }` (`WorkspaceCatalogs` and `WorkspaceSnapshots.at(ref)` pass it for you). Pins that disagree fail `reason: "integrityMismatch"`, no pin fails `"integrityUnavailable"` — nothing is fetched either way — and a failed fetch fails `"fetchFailed"`. Two honest store copies of one version in one store are ambiguous and fail closed too (`reason: "ambiguous"`). `layerFrom` resolves nothing: it looks the declared `"<name>@<version>"` up in the caller's map and fails closed on a miss. `inject` returns one `HookInjection { catalogs, releaseAge, peerDependencyRules, replays }` — one replay, four outputs; `replays` records `{ version, source: "installed" | "store" | "fetched" | "supplied" }` per dependency.
+
+| Layer | What it does | Composite | Requires |
+| --- | --- | --- | --- |
+| `layerNoop` | executes NO config-dependency code (the seed through: `{ catalogs: seed, releaseAge: {}, peerDependencyRules: the rules it was handed }`) | `layer` — the **default** | — |
+| `layerLive` | dynamic `import()` of each pnpmfile **in process**, then replays `updateConfig`, threading all three outputs | `layerWithConfigDependencies` | — |
+| `layerSubprocess` | the same replay, and the same three outputs, in a `node` child process | `layerWithConfigDependenciesSubprocess` | core's `ChildProcessSpawner` |
+
+Every layer answers the **same three-output contract** — `inject` returns one `HookInjection { catalogs, releaseAge, peerDependencyRules }`. A layer that contributed only two would be a different seam, not a lighter one.
+
+**Reach for `layerSubprocess` in any BUNDLED consumer** — a GitHub Action, above all. `layerLive` computes its `import()` target at runtime, and a bundler (rspack) compiles a computed dynamic import into a context module that throws `Cannot find module 'file:///…'`, so `releaseAgeGate()` — the reason to opt into hooks at all — was simply uncallable from a bundled action. `layerSubprocess` moves the computed load out of the bundle graph via a **static** argv script; the two layers are drop-in interchangeable and typed-semantics parity is pinned by an integration test driving both against one fixture. The child prints one JSON envelope line, which the parent decodes with `@effected/commands`' `Run.jsonLine` (never a hand-rolled last-line parse); folding and normalization stay in the parent, and the `..`-segment guard runs **before** any spawn.
+
+- **`ChangeDetector`** — `changedFiles`/`workingChanges` over `@effected/git` (`includeUncommitted` option).
+- **`WorkspaceSnapshots`** — `at(ref)` (git-only, no checkout, cached per `(root, ref)`) and `worktree()` (live tree, uncached), both returning `WorkspaceStateSnapshot` (`versions`, `package(name)`, `resolve(...)`, `hookReplays` (name → declared config-dependency version), snapshot-scoped resolver layers). `at(ref)` requires `ConfigDependencyHooks` in `R` and replays the REF's own `configDependencies` at the versions that ref declares, through the same hooks reference the worktree side uses — so under a replaying composite a hook-only catalog (`effect:peers`) diffs correctly across a config-dependency bump, and under the default composite nothing executes on either side.
+- **`LockfileReader`** — root → PM detection → file read → `Lockfile.parse`.
+- **`PeerCheck`** — unsatisfied peer-dependency detection as a **pure value class**, not a service: no IO, nothing in `R`, no error channel. `PeerCheck.run(lockfile, options?)` reads a parsed `@effected/lockfiles` `Lockfile` — `instanceId`/`resolved`/`peerDependencies` — and past a single `lockfile.format` support gate the traversal is format-free, which is the point: shelling out to each manager's own peer command cannot deliver bun (no such command exists, and its one warning line appears only on the install that changes the tree), so the answer has to come from the resolved graph. Returns `{ supported, unsatisfied, unresolvedImporters, unverified }` plus a `required` getter (the non-optional rows). `UnsatisfiedPeer` — `{ importer, dependency, wanted, found: string | null, optional, parents: PeerParent[] }`; `parents` is *a* route to the declaring package, and a package an importer reaches by several routes yields ONE row, as pnpm reports it. Reach for this over hand-rolling a peer check, or over shelling out to `npm`/`pnpm`/`bun`, for anything asking "is this workspace's peer graph satisfied".
+- **Sync escape hatch (bare consts, NOT a `WorkspacesSync` namespace)** — `findWorkspaceRootSync(cwd, options)` / `getWorkspacePackagesSync(root, options)`, both re-exported from the MAIN entrypoint and platform-agnostic. There is no `WorkspacesSync` namespace object; each is a free-standing const taking the path positionally first, then a required options bag that carries a consumer-supplied `SyncFileSystem`/`SyncPath` — nothing defaults to Node, and nothing reads `process.cwd()` ambiently. Pass `nodeSyncOps` from `@effected/workspaces/node-sync` as shown above. `findWorkspaceRootSync` also takes the Effect surface's `stopAt` ceiling in that bag (`{ ...nodeSyncOps, stopAt: process.cwd() }`) — inclusive, resolved at lookup time — and answers `null` where `WorkspaceRoot.find` would fail `WorkspaceRootNotFoundError`; pass it in a nested checkout so the ascent cannot adopt an enclosing workspace. For config-time discovery that cannot `await` (e.g. a vitest config). Both are **total** — an unenumerable pattern or unreadable manifest is skipped, never raised, and only truncate at a depth/budget bound where the async surface fails typed. That totality makes them the tolerant-enumeration path as well as the sync one (see above). **A skip is never silent**: pass `onSkip` in the options bag and `getWorkspacePackagesSync` reports every manifest it leaves out as a `WorkspaceDiscoverySkip` — `{ root, path, kind, cause }`, where `kind` is `WorkspaceDiscoverySkipKind` (`"read" | "invalidJson" | "invalidShape" | "missingName"`, the `WorkspaceDiscoveryError` vocabulary minus `invalidYaml`). A manifest with no `version` is NOT a skip — it is a member with `version` absent. When an enumeration comes back suspiciously empty, wire `onSkip` before concluding the workspace is empty; it was the silent version-less drop that once made `{ "name": "demo" }` look like "no workspaces configured" (#605).
+
+- **`@effected/workspaces/testing`** — the repo-shape checks, each a static class. `design-patterns`' `carrier-verification.md` is the why: each check pins one property a carrier package (a CLI and an MCP server sharing an engine) must hold to stay portable and layered correctly.
+  - **`SourceBoundary`** — `check(file, text, rules, options?)` (pure, returns `Offence[]`), `referencesProcess`, `importSpecifiers`, `importsNode`, `stripComments`, `scan(options)` over `FileSystem`/`Path` returning a `SourceScan { files, allowed, offences, waived }` with a `violations` getter, and the shipped positive controls `fixtures` / `verifyFixtures()`. Rules (`BoundaryRule`): `"process"`, `"node:process"`, `"stdout-write"` (`stdout.write`, and `stdout.end` with a chunk; a renamed `stdout` receiver is not seen, the `"process"` rule backstops it), `"console"` (any reference to the global `console`), `"console-stdout"` (the same, sparing a member access to a stderr method: `error`, `warn`, `trace`, `assert`; a bare or aliased `console` is still flagged), `{ forbidImports }` (a trailing `*` is a prefix), `{ forbidTokens }` (each entry's exact text in code, as whole text; comments, strings, template text and regex bodies never match). Neither console rule flags core's `Console` service. `ScanOptions.allow` globs exempt a file from every rule (listed in `allowed`); `ScanOptions.allowRules` — keyed by `OffenceRule`, `"forbidImports"` covering every `{ forbidImports }` rule and `"forbidTokens"` every `{ forbidTokens }` rule — exempts a file from one rule only, keeps every other rule in force, and reports each waived offence in `waived` rather than dropping it. Both glob kinds match the relative `/`-separated path; an uncompilable one fails `GlobPatternError`.
+  - **`WorkspaceLayering`** — `check(graph: LayeringGraph, policy)` (pure, returns `LayeringReport`), `edgesOf(packages)` (one `LayerEdge` per declaring field), `checkWorkspace(policy)` over `WorkspaceDiscovery`. `LayeringReport` has `duplicates`, `unclassified`, `offenders` (`{ edge, reason }`, reason `upward` / `sameLayer` / `toolingReachesLayer` / `intoUnconstrained` / `intoUnclassified`), `cycle`, `missingDeclared`, `missingRequiredEdges`, `edgeCount` and a `violations` getter that also flags `edgeCount === 0`.
+  - **`LayerPolicy`** — the `layers.json` schema (`layers`, `tooling`, `unconstrained` globs, optional `fields` and `requiredEdges`; every entry matches a package's `name`, never its `relativePath` — `layers`/`tooling` are exact names, `unconstrained` globs match names, so a root named `okfit` at `.` is written `"okfit"`), with `decode(input, { path?, allowKeys? })` and `load(path, { allowKeys? })` failing `LayerPolicyError` (`read` / `json` / `decode`). Decoding is strict: an unknown key fails `decode` naming it (a typo'd `requiredEdge` would otherwise drop the non-vacuity guard); `$schema` is always accepted, and a file's own keys go in `allowKeys`.
+  - **`PackedInstall`** — `run(options)` packs the carrier and its closure (`"auto"` = transitive runtime workspace deps), installs it into a scratch consumer per available manager, and returns `PackedInstallResult { consumers: InstalledConsumer[], unavailable, tarballs, scratch }` (`scratch` is the realpath'd scratch root, removed with the scope). `overrides` (package name → publish-ready directory or `.tgz`, relative to the workspace root) and `workspaceOverrides: true` (the root `pnpm-workspace.yaml`'s `file:` overrides) supply packages from outside the workspace that replace registry resolution in every consumer, for the closure's transitive references too; `packTimeout` caps each pack (two minutes by default). `PackedInstall.closure(carrier, options?)` returns the names the run packs, in order, from the same planner (needs `WorkspaceDiscovery | FileSystem | Path`). `InstalledConsumer.runBin(name, args?, options?)` runs an installed bin and returns `CommandOutput { stdout, stderr, exitCode }` (needs `ChildProcessSpawner`; fails `BinFailed`); `InstalledConsumer.command(name, args?, options?)` returns the `ChildProcess.StandardCommand` `runBin` builds, stdin left open, for `McpProbe.initialize`; `InstalledConsumer.runCarrierBin(name, args?, options?)` / `carrierCommand(name, args?, options?)` (Effects, need `FileSystem | Path`) run or build `node <file>` for the CARRIER's own bin, resolved through its installed `bin` map whichever package took the `.bin` slot (the consumer's `carrier` field, set by `run`; through `node`, so shebang flags are dropped and the executable bit is not proven); `InstalledConsumer.binProvenance(name)` returns `{ package, target }` for a `.bin` symlink or `undefined` for a pnpm shim, and fails `MissingBin` (no entry, or a dangling link) or `UnownedBin` (a link into no named package inside the consumer) (needs `FileSystem | Path`); `InstalledConsumer.binPath(name)`; `PackedInstall.timeoutBudget({ managers, installTimeout?, packTimeout?, packages, perConsumer? })` (`packages` a count or `closure`'s names; `perConsumer` defaults to one minute, one `runBin` at its default ceiling) returns the `Duration` an outer timeout must cover, and `PackedInstall.timeoutBudgetFor(runOptions, { perConsumer? })` plans and budgets in one Effect from the run's own options; `scrubEnv(env)`. Requires `FileSystem | Path | Scope | ChildProcessSpawner | WorkspaceDiscovery`; fails `PackedInstallError` with a `reason` (`InvalidOverride` for a bad override, `BinConflict` when a packed package other than the carrier declares one of the carrier's bin names, unless `allowSharedBins: true`). `packFrom` defaults to `{ directory: "dist/prod/npm/pkg" }`.
+
+## Usage
+
+Diffing dependency state between two points in time — a released tag and the live working tree:
+
+```ts
+import { WorkspaceSnapshots } from "@effected/workspaces";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+ const snapshots = yield* WorkspaceSnapshots;
+ const before = yield* snapshots.at("v1.2.0");
+ const after = yield* snapshots.worktree();
+ return { before: before.versions, after: after.versions };
+});
+```
+
+`PublishabilityDetector` with a test double — override the shape's `never` error channel per the "degrade or die" contract, and filter a package list down to what actually publishes:
+
+```ts
+import type { WorkspacePackage } from "@effected/workspaces";
+import { PublishabilityDetector, PublishTarget } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+const scopedOnly = Layer.succeed(PublishabilityDetector, {
+ detect: (pkg) =>
+  Effect.succeed(
+   pkg.name.startsWith("@acme/")
+    ? [PublishTarget.make({ name: pkg.name, registry: "https://registry.acme.dev/", directory: ".", access: "restricted" })]
+    : [],
+  ),
+});
+
+const publishableNames = (packages: ReadonlyArray<WorkspacePackage>) =>
+ Effect.gen(function* () {
+  const detector = yield* PublishabilityDetector;
+  const names = new Set<string>();
+  for (const pkg of packages) {
+   const targets = yield* detector.detect(pkg);
+   if (targets.length > 0) names.add(pkg.name);
+  }
+  return names;
+ }).pipe(Effect.provide(scopedOnly));
+```
+
+Composing `Workspaces.layerWithGit` for a downstream service that needs several kit services at once — build the graph ONCE and reuse it, since layers memoize by reference:
+
+```ts
+import type { WorkspaceSnapshotWorktreeFailure } from "@effected/workspaces";
+import { WorkspaceDiscovery, Workspaces, WorkspaceSnapshots } from "@effected/workspaces";
+import { NodeServices } from "@effect/platform-node";
+import { Context, Effect, Layer } from "effect";
+
+class Reporter extends Context.Service<
+ Reporter,
+ { readonly run: () => Effect.Effect<unknown, WorkspaceSnapshotWorktreeFailure> }
+>()("Reporter") {}
+
+// Bind once — calling layerWithGit again mints an independent graph.
+const KitGraph = Workspaces.layerWithGit();
+
+const ReporterLive = Layer.effect(
+ Reporter,
+ Effect.gen(function* () {
+  const discovery = yield* WorkspaceDiscovery;
+  const snapshots = yield* WorkspaceSnapshots;
+  return {
+   run: () =>
+    Effect.gen(function* () {
+     const packages = yield* discovery.listPackages();
+     const state = yield* snapshots.worktree();
+     return { count: packages.length, versions: state.versions };
+    }),
+  };
+ }),
+).pipe(Layer.provide(KitGraph), Layer.provide(NodeServices.layer));
+```
+
+`PeerCheck` gating a build — the predicate that actually means "clean", and threading all three option keys so the report is verified rather than fail-closed:
+
+```ts
+import { LockfileReader, PeerCheck, WorkspaceCatalogs, WorkspaceDiscovery } from "@effected/workspaces";
+import { Effect } from "effect";
+
+const isClean = (report: PeerCheck): boolean =>
+ report.supported && report.unresolvedImporters.length === 0 && report.unverified.length === 0 && report.required.length === 0;
+
+const program = Effect.gen(function* () {
+ const reader = yield* LockfileReader;
+ const catalogs = yield* WorkspaceCatalogs;
+ const discovery = yield* WorkspaceDiscovery;
+ const lockfile = yield* reader.read();
+ const report = PeerCheck.run(lockfile, {
+  peerDependencyRules: yield* catalogs.peerDependencyRules(),
+  workspacePackages: yield* discovery.listPackages(),
+  catalogs: yield* catalogs.set(),
+ });
+ return isClean(report);
+});
+```
+
+The predicate means "proven clean", and under pnpm it is reachable for a monorepo with internal dependencies when the caller supplies `workspacePackages` and `catalogs`. Every `workspace:` dependency is recorded `link:`, and a linked parent's manifest peers are never in the lockfile; `workspacePackages` joins those manifests (the root importer's links included) and judges their peers against the consuming importer's own dependencies, and `catalogs` (`WorkspaceCatalogs.set()`, hook-injected catalogs included) resolves a manifest peer declared as `catalog:<name>` to the range pnpm reports. Omit `workspacePackages`, or leave a link target out of it, and the report keeps `"unresolvedEdge"`; omit `catalogs`, or reference a catalog entry that does not exist, and a catalog-sourced peer with a provider present yields `"peerRangeUnresolved"`. A `link:` target matches a supplied package by its directory or by its publish directory: pnpm links a workspace dependency into `publishConfig.directory` unless `publishConfig.linkDirectory` is `false` (it defaults to true), recording `link:../a/dist`. For such a link pnpm reads the built manifest at the target, while `PeerCheck` reads the source manifest and resolves its `catalog:` ranges through `catalogs`; the two agree when the build emits the ranges the source's specifiers resolve to. Attribution stops at a workspace package: a linked package's manifest peers are judged only for the importer that links it directly, and its own dependencies (registry or linked) only for its own importer, never for a consumer one link further out. Never drop the `unverified` clause from the gate.
+
+### Repo-shape checks in a consumer's own tests
+
+```ts
+// __test__/repo-shape.test.ts, one level below the workspace root
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, layer } from "@effect/vitest";
+import { Workspaces } from "@effected/workspaces";
+import { LayerPolicy, SourceBoundary, WorkspaceLayering } from "@effected/workspaces/testing";
+import { Effect, Layer } from "effect";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer));
+
+describe("repo shape", () => {
+ layer(Live)((it) => {
+  it.effect("the package graph honours layers.json, over real edges", () =>
+   Effect.gen(function* () {
+    const report = yield* WorkspaceLayering.checkWorkspace(yield* LayerPolicy.load(join(ROOT, "layers.json")));
+    assert.deepStrictEqual(report.violations, []);
+    assert.isAbove(report.edgeCount, 0);
+   }),
+  );
+
+  it.effect("the engine's source reads no process and imports no node: module", () =>
+   Effect.gen(function* () {
+    assert.deepStrictEqual(SourceBoundary.verifyFixtures(), []);
+    const scan = yield* SourceBoundary.scan({
+     root: join(ROOT, "packages", "engine", "src"),
+     rules: ["process", { forbidImports: ["node:*", "@effect/platform*"] }],
+    });
+    assert.isNotEmpty(scan.files);
+    assert.deepStrictEqual(scan.violations, []);
+   }),
+  );
+ });
+});
+```
+
+Confine the build-time version define to `version.ts` in the same scan: the `"process"` rule exempts it everywhere, so forbid the token and waive it for that one file, then assert `waived` names it:
+
+```ts
+const scan = yield* SourceBoundary.scan({
+ root: join(ROOT, "packages", "cli", "src"),
+ rules: ["process", { forbidTokens: ["process.env.__PACKAGE_VERSION__"] }],
+ allowRules: { forbidTokens: ["version.ts"] },
+});
+assert.deepStrictEqual(scan.violations, []);
+assert.deepStrictEqual(
+ scan.waived.map((offence) => offence.file),
+ ["version.ts"],
+);
+```
+
+For `PackedInstall`, see the package README's "Packed install" example and `design-patterns`' `carrier-verification.md`. Inside the scope that ran `run`: `consumer.runBin(name, args, { env })` for a CLI bin, with per-run state such as `XDG_DATA_HOME` under `result.scratch`; `consumer.binProvenance(name)` to prove the `.bin` entry is the carrier's (or, under `allowSharedBins`, to record which package won it, with `consumer.runCarrierBin(name)` proving the carrier's shim regardless); and `McpProbe.initialize(consumer.command(name, [], { env }))` for an MCP bin. Size the outer timeout with `PackedInstall.timeoutBudget({ ..., packages: yield* PackedInstall.closure(carrier) })`, computed before the test is declared.
+
+## Testing machinery
+
+No service doubles are exported under `./testing` — that subpath holds the repo-shape checks above, not test doubles. Unit-test consumers with core's `Path.layer` + an `@effected/memfs` volume (`MemoryFileSystem.layerWith(seed)`; `MemoryFileSystem.syncFileSystem(volume)` for the `node-sync` `SyncFileSystem` port) — never a `FileSystem.layerNoop` stub; stub git-backed services with `@effected/git`'s own shipped `Git.layerTest({ … })` (unstubbed members die named — never hand-enumerate `GitShape`, which breaks on every growth of that service) and publishability with `Layer.succeed(PublishabilityDetector, ...)` — no real repo or platform package needed.
+
+## Gotchas
+
+- `PackageManagerName` is structurally identical to `@effected/lockfiles`' `LockfileFormat` but is a different concept — don't conflate them when importing both.
+- `WorkspacePackage` is deliberately tolerant (one bad member must not fail whole-repo discovery); `version` is optional and a version-less member is discovered, not rejected; `pkg.manifest()` — a method call, not a property — opts into the strict decode, and genuinely re-reads the file rather than reusing `manifestRecord`. `WorkspaceResolver.versionOf` fails typed (`DependencyResolutionError`, `reason: "no-version"`) for a member with no version — `none` is reserved for a non-member. Snapshots carry the same absence: `PackageStateSnapshot.version` is optional (never `""`), and `WorkspaceStateSnapshot.versions` lists only members that declared a version — use `package(name)` for membership.
+- Layer factories taking options (`WorkspaceDiscovery.layer({ cwd })`, `WorkspaceSnapshots.layer(...)`) mint a fresh layer per call — bind to a `const`; layers memoize by reference. `Workspaces.resolverLayer` is the deliberate exception: a fresh layer per call IS the feature.
+- `WorkspaceSnapshots.at(ref)` and `worktree()` replay through ONE hooks reference per composite, so they cannot diverge on policy; never provide a different `ConfigDependencyHooks` to each side by hand-composing. Keep `WorkspaceStateSnapshot.crossSeed` in a diff path — under a replaying layer the seed is inert where the ref answers, and under `layerNoop` it is what recovers the declared range.
+- `PublishabilityDetector`'s error channel is `never` by contract — an overriding layer backed by something fallible must fold failures into a safe answer or `Effect.die`; it cannot widen the channel the shape declares.
+- `matchesDependency` compiles a raw string pattern on every call; an uncompilable literal throws as a defect (developer wiring, not untrusted input) rather than a typed error.
+- **`PeerCheck.run` fails closed, and an empty `unsatisfied` is NOT the same as clean.** The real "proven clean" predicate is `supported && !report.unresolvedImporters.length && !report.unverified.length && !report.required.length` — check all four, not just `unsatisfied`. `unverified` is `"peerRulesNotApplied" | "unresolvedEdge" | "peerRangeUnresolved" | "peerVersionUnresolved"`; every reason means fail closed. `"peerRangeUnresolved"` fires when a linked manifest's peer range is a protocol specifier that could not be resolved (`catalog:` with `catalogs` omitted or no matching entry, `workspace:*`) while something resolved for that peer — pass `catalogs: yield* catalogs.set()` to resolve catalog ranges. `"peerVersionUnresolved"` fires when a peer's non-workspace provider resolved through a protocol, so the lockfile carries a specifier where a version belongs: a `file:` directory, tarball or override (`file:…`), or a git or remote-tarball provider that pnpm keys by its URL (`https://…`, `git+https://…`). `pnpm peers check` reports a `file:` provider `bad` even when the target's own version satisfies the range, so the peer is declined, never passed. No option clears it — unlink the `file:` override, or pin a git or tarball provider to a registry version, to get a verified report. `"unresolvedEdge"` also fires for every `link:`-resolved importer dependency whose target the caller supplied no manifest for — under pnpm that is every `workspace:` dependency — so a pnpm workspace with internal dependencies is unverified structurally UNLESS the discovered packages are passed as `workspacePackages`: that joins the linked manifests, names them from the manifest (`probe-a@1.0.0`, not the row's `packages/a@0.0.0`) and judges their peers against the importer's OWN dependency set, which is where pnpm resolves them from. The match covers a link into `publishConfig.directory` (pnpm's default unless `linkDirectory: false`), and only the DIRECT consumer is judged: pnpm never reports a linked package's peers, or its dependencies' peers, on a consumer one link further out.
+- **Presence of the `peerDependencyRules` option key is the assertion, not its contents.** Omitting the key entirely means "nobody looked" and always yields `"peerRulesNotApplied"`; passing `NoPeerDependencyRules` means "I looked, there are none" and yields a verified report. The two are deliberately different results — never normalize an omitted option to `NoPeerDependencyRules` before calling `run`, and never treat the two as equivalent.
+- `PeerCheck` is unsupported for yarn (`supported: false`) — yarn resolves peers virtually and the lockfile does not record which virtual instance satisfied which peer, so the answer is not recoverable rather than merely unimplemented.
+- `PeerCheck.run` applies all three `peerDependencyRules` axes. `allowedVersions` keys are `parent>peer` (parent version ignored) or a bare peer name; `ignoreMissing` and `allowAny` are **`@pnpm/matcher` peer-name patterns** (`*` wildcard, lone `*` matches all, leading `!` negates, an all-negation list matches everything not excluded), NOT `parent>peer` keys — those match nothing on the two list axes. `ignoreMissing` hides only a required peer that resolved to nothing; `allowAny` hides only a peer that resolved outside its range; they never cross. `"peerRulesNotApplied"` fires only when the `peerDependencyRules` option KEY is omitted.
+- **A devDependency-only cycle is invisible** to a `LayerPolicy` whose `fields` are runtime-only: `edgesOf` draws one edge per declaring field and `check` reads only the policy's fields. Pin all-field acyclicity separately with `DependencyGraph.make({ packages }).hasCycle`.
+- **`SourceBoundary` has no scope analysis.** ANY local binding named `process` or `console` — a parameter (`(process: Handle) => process.kill()`), a variable, a label, an unannotated class field `process = 1` — is flagged like the global; an annotated `process: T` reads as a type member and is spared. Prefer renaming the binding; otherwise waive that one rule for the file with an `allowRules` glob (every other rule stays in force) and assert `scan.waived` names exactly it — do not drop the rule, and do not reach for `allow`, which skips every rule. `globalThis["process"]`, `const { process: p } = globalThis`, a regex right after a block-closing `}`, a sloppy-mode variable named `yield` or `await` (read as the keyword), and JSX text are known misses.
+- **`forbidImports: ["node:*"]` misses a bare built-in** (`"fs"`). To mean "no Node built-ins", spread `builtinModules` from `node:module` in the test file: `["node:*", ...builtinModules]` (it also forbids npm packages named like a built-in, e.g. `events`).
+- **The root package must be classified.** Discovery always returns it (`relativePath` `"."`); a policy that forgets it reports it in `unclassified`. Usually an `unconstrained` glob.
+- **Carrier-only bins are recommended; shared bins are a supported choice.** By default a packed package other than the carrier that declares one of the carrier's bin names fails `BinConflict` before any install: under npm, bun and Yarn's flat layouts it could take the `.bin` slot, and the carrier identity (the `--version` suffix) would be lost there. A carrier whose front ends also stand alone passes `allowSharedBins: true` and accepts that cost; then `runBin` may run a front end's bin, so prove the carrier's shim with `runCarrierBin` (see `design-patterns`' `carrier-entry-contract.md`). Only packed packages' `bin` fields are compared: not `directories.bin`, not registry dependencies.
+- **`binProvenance` sees symlinks only.** npm, bun and Yarn (under the `node-modules` linker the run configures) link `.bin` entries; pnpm writes shell shims, and `binProvenance` returns `undefined` for them rather than parsing one — `undefined` means only that. A link into no named package fails `UnownedBin` rather than passing quietly. Assert provenance for the linking managers and skip pnpm.
+- **Size `timeoutBudget` from `PackedInstall.closure`, never a hand count.** It runs the run's own planner, so its names equal `Object.keys(result.tarballs)` in order; pass the run's options object as its second argument when the run sets `closure`, `overrides` or `workspaceOverrides`. The budget is the worst case of the run's own ceilings (two minutes per pack unless `packTimeout` says otherwise), so it runs well above a typical install; set the vitest timeout above it. In a vitest file, await it at module evaluation (a test's timeout is fixed when it is declared), gated on the prod build existing; `design-patterns`' `carrier-verification.md` has the recipe. `timeoutBudgetFor(runOptions, { perConsumer })` does both steps from the one options object when the test does not need the names.
+- **A dogfood-linked dependency needs `overrides` in the scratch consumers.** The workspace's own `pnpm-workspace.yaml` `file:` override does not reach them: they resolve from the registry, where an unreleased surface does not exist. `workspaceOverrides: true` carries those links over; `overrides` names packages explicitly and wins over them. An override naming the carrier or a closure member, a path that is neither a package directory nor a `.tgz`, or a tarball whose manifest has another name fails `InvalidOverride`.
+- **`PackedInstall` is POSIX-only** (`UnsupportedPlatform` otherwise), and its scratch directory lives only as long as the scope: run the installed bins inside the same scope, never after it closes.
+- **Pass `process.env` in** — nothing under `./testing` reads `process`. `consumer.runBin` runs a bin under the environment the install ran under, with `options.env` layered over it after the scrub (an explicit entry such as `CI: "true"` wins; `undefined` removes a variable); a non-zero exit is a result, not a failure. `consumer.command(...)` builds the same spawn for a caller that drives the child itself (`McpProbe`); `PackedInstall.scrubEnv(...)` is the bare scrubbed environment for anything else. Declare every package the consumer's own code imports in `consumerDependencies`: pnpm links only declared dependencies at a project's top level. An entry naming a packed package is written as its `file:` tarball whatever spec you pass (npm fails `EOVERRIDE` on a direct spec that differs from its override), so any range will do.
