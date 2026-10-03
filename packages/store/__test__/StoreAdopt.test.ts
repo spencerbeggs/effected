@@ -9,6 +9,7 @@ import type { Layer } from "effect";
 import { Cause, Context, DateTime, Effect, Exit, Option } from "effect";
 import type { StoreMigration, StoreOptions } from "../src/index.js";
 import { Store, StoreError, StoreMigrationError } from "../src/index.js";
+import { applyPending } from "../src/internal/migrator.js";
 
 const dir = mkdtempSync(join(tmpdir(), "effected-store-adopt-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -309,4 +310,165 @@ describe("Store.layerSqliteAs", () => {
 		assert.isFunction(unrelated);
 		assert.isFunction(wider);
 	});
+});
+
+/** Reversible twins of the fixtures: rollback must be able to drop what adoption claimed. */
+const initialR: StoreMigration = { ...initial, down: (sql) => sql`DROP TABLE notes` };
+const testArtifactsR: StoreMigration = { ...testArtifacts, down: (sql) => sql`DROP TABLE artifacts` };
+
+const marker = (filename: string) =>
+	inspect(filename, (db) => {
+		const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_store_meta'").all();
+		if (exists.length === 0) return [];
+		return db.prepare("SELECT key, value FROM _store_meta").all();
+	}) as unknown as ReadonlyArray<{ key: string; value: string }>;
+
+/** Rewrite one foreign row's created_at, outside any Store, to a value SqliteMigrator would never write. */
+const setForeignCreatedAt = (filename: string, id: number, value: string) => {
+	const db = new DatabaseSync(filename);
+	try {
+		db.prepare("UPDATE effect_sql_migrations SET created_at = ? WHERE migration_id = ?").run(value, id);
+	} finally {
+		db.close();
+	}
+};
+
+describe("Store adoptMigratorLedger is one-shot", () => {
+	it.effect("adopt, rollback(0), reopen: nothing is re-adopted and every migration re-applies from scratch", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			yield* runEffectMigrator(filename, legacyKeys);
+			const options: StoreOptions = { migrations: [initialR, testArtifactsR], adoptMigratorLedger: true };
+
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, options, (store) => store.rollback(0))));
+			// The rollback really unwound the adopted history.
+			assert.notInclude(tables(filename), "notes");
+			assert.notInclude(tables(filename), "artifacts");
+			assert.deepStrictEqual(ownLedger(filename), []);
+			const adoptedMarker = marker(filename);
+			assert.strictEqual(adoptedMarker.length, 1);
+
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, options, () => Effect.void)));
+			// Re-applied, not re-adopted: a re-adoption would record ids 1 and 2
+			// WITHOUT running their `up`, leaving both tables missing.
+			assert.include(tables(filename), "notes");
+			assert.include(tables(filename), "artifacts");
+			assert.deepStrictEqual(
+				ownLedger(filename).map((row) => row.id),
+				[1, 2],
+			);
+			assert.deepStrictEqual(marker(filename), adoptedMarker);
+		}),
+	);
+
+	it.effect("an existing but empty foreign table adopts nothing, applies everything, and records the decision", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			yield* runEffectMigrator(filename, {});
+			assert.include(tables(filename), "effect_sql_migrations");
+			const exit = yield* openStore(
+				filename,
+				{ migrations: [initial, testArtifacts], adoptMigratorLedger: true },
+				() => Effect.void,
+			);
+			assert.isTrue(Exit.isSuccess(exit));
+			assert.deepStrictEqual(
+				ownLedger(filename).map((row) => row.id),
+				[1, 2],
+			);
+			assert.include(tables(filename), "notes");
+			assert.strictEqual(marker(filename).length, 1);
+		}),
+	);
+
+	it.effect("adoption is atomic: a failure on the second row records no row and no marker", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			yield* runEffectMigrator(filename, legacyKeys);
+			// The ledger exactly as Store creates it, plus a trigger that aborts the
+			// SECOND insert. Without the transaction, row 1 would survive.
+			const db = new DatabaseSync(filename);
+			try {
+				db.exec(`
+					CREATE TABLE _store_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL);
+					CREATE TRIGGER abort_second BEFORE INSERT ON _store_migrations
+					WHEN (SELECT COUNT(*) FROM _store_migrations) >= 1
+					BEGIN SELECT RAISE(ABORT, 'second insert refused'); END;
+				`);
+			} finally {
+				db.close();
+			}
+			const exit = yield* openStore(
+				filename,
+				{ migrations: [initial, testArtifacts], adoptMigratorLedger: true },
+				() => Effect.void,
+			);
+			const error = failureOf(exit);
+			assert.instanceOf(error, StoreError);
+			assert.strictEqual((error as StoreError).operation, "adopt");
+			assert.deepStrictEqual(ownLedger(filename), []);
+			assert.deepStrictEqual(marker(filename), []);
+		}),
+	);
+});
+
+describe("Store adoptMigratorLedger created_at", () => {
+	it.effect("a zone-less T timestamp is read as UTC", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			yield* runEffectMigrator(filename, legacyKeys);
+			setForeignCreatedAt(filename, 1, "2026-10-03T12:00:00");
+			const exit = yield* openStore(
+				filename,
+				{ migrations: [initial, testArtifacts], adoptMigratorLedger: true },
+				(store) => store.status,
+			);
+			assert.isTrue(Exit.isSuccess(exit));
+			const first = (Exit.isSuccess(exit) ? exit.value : []).find((entry) => entry.id === 1);
+			assert.strictEqual(
+				first?.appliedAt === undefined ? Number.NaN : DateTime.toEpochMillis(first.appliedAt),
+				Date.UTC(2026, 9, 3, 12, 0, 0),
+			);
+		}),
+	);
+
+	it.effect("an unreadable timestamp fails typed and records nothing", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			yield* runEffectMigrator(filename, legacyKeys);
+			setForeignCreatedAt(filename, 2, "not a date");
+			const exit = yield* openStore(
+				filename,
+				{ migrations: [initial, testArtifacts], adoptMigratorLedger: true },
+				() => Effect.void,
+			);
+			assertAdoptFailure(exit, /migration 2 with an unreadable created_at "not a date"/);
+			assert.deepStrictEqual(ownLedger(filename), []);
+			assert.deepStrictEqual(marker(filename), []);
+		}),
+	);
+});
+
+describe("applying a stale plan (concurrent openers)", () => {
+	it.effect("a planned migration another connection already applied is skipped, not re-run", () =>
+		Effect.gen(function* () {
+			// Another process applied migration 1 between this one's ledger read and
+			// its apply: model it by handing applyPending a plan that is already stale.
+			const filename = freshFile();
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, { migrations: [initial] }, () => Effect.void)));
+			const result = yield* Effect.gen(function* () {
+				const sql = yield* SqliteClient.SqliteClient;
+				return yield* applyPending(sql, "_store_migrations", [initial, testArtifacts]);
+			}).pipe(Effect.provide(SqliteClient.layer({ filename })));
+			// Migration 1 is a bare CREATE TABLE: re-running it would have failed.
+			assert.deepStrictEqual(
+				result.applied.map((record) => record.id),
+				[2],
+			);
+			assert.deepStrictEqual(
+				ownLedger(filename).map((row) => row.id),
+				[1, 2],
+			);
+		}),
+	);
 });

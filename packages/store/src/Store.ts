@@ -75,7 +75,8 @@ export class StoreMigrationStatus extends Schema.Class<StoreMigrationStatus>("St
  * `cause` carries the underlying `SqlError` structurally. A failing user migration raises the more specific
  * {@link StoreMigrationError} instead. With `operation: "adopt"`, `cause` is
  * either the adoption step's `SqlError` or an `Error` whose message names the
- * mismatched migration (see {@link StoreOptions.adoptMigratorLedger}).
+ * mismatched migration, the unreadable timestamp, or the unsupported dialect
+ * (see {@link StoreOptions.adoptMigratorLedger}).
  *
  * @public
  */
@@ -160,13 +161,22 @@ export interface StoreOptions {
 	 * `true` reads the Migrator's default table, `effect_sql_migrations`.
 	 *
 	 * @remarks
-	 * At layer build, after the `_store_migrations` ledger is ensured and
-	 * before pending migrations run, in one transaction: **only** when
-	 * `_store_migrations` is empty **and** the foreign table exists, every
-	 * foreign row (`migration_id`, `name`, `created_at`) is copied into
-	 * `_store_migrations`. The foreign table is read, never written. Every
-	 * later build finds `_store_migrations` non-empty and does nothing, so
-	 * the option is idempotent and safe to leave on.
+	 * **One-shot, decided by the first layer build that has the option on.**
+	 * That build — after the `_store_migrations` ledger is ensured, before
+	 * pending migrations run, in one write-locked transaction — copies every
+	 * foreign row (`migration_id`, `name`, `created_at`) into
+	 * `_store_migrations` **if** `_store_migrations` is empty and the foreign
+	 * table exists, and in every case records that the decision was made in a
+	 * `_store_meta` table, in the same transaction. Every later build sees the
+	 * marker and skips adoption entirely, so leaving the option on is safe —
+	 * including after `rollback(0)`: the marker survives the rollback, so a
+	 * reopen re-applies every migration from scratch rather than re-adopting
+	 * history the rollback unwound. The foreign table is read, never written.
+	 * A failed adoption records nothing, marker included, and is retried on
+	 * the next build.
+	 *
+	 * SQLite only: on any other dialect the option fails the layer with a
+	 * `StoreError` (`operation: "adopt"`).
 	 *
 	 * Matching is exact, and a disagreement fails the layer with a
 	 * `StoreError` whose `operation` is `"adopt"` — never a silent skip:
@@ -182,8 +192,10 @@ export interface StoreOptions {
 	 *   would diverge from the history the database actually has.
 	 *
 	 * Migrations above the adopted ones then apply as usual. `created_at`
-	 * becomes each adopted row's `appliedAt`; SQLite's zone-less
-	 * `current_timestamp` text is read as UTC.
+	 * becomes each adopted row's `appliedAt`; a zone-less value
+	 * (`2026-10-03 12:00:00`, SQLite's `current_timestamp`, or
+	 * `2026-10-03T12:00:00`) is read as UTC, and one that cannot be read as a
+	 * date fails the layer the same typed way.
 	 */
 	readonly adoptMigratorLedger?: true | { readonly table?: string };
 }
@@ -233,6 +245,9 @@ export interface StoreSqliteOptions extends StoreOptions {
 
 const LEDGER_TABLE = "_store_migrations";
 
+/** Store's own bookkeeping beside the ledger; holds the adoption marker. */
+const META_TABLE = "_store_meta";
+
 /** effect/sql's `Migrator` default ledger table. */
 const FOREIGN_LEDGER_TABLE = "effect_sql_migrations";
 
@@ -279,7 +294,7 @@ const make = (
 				options.adoptMigratorLedger === true
 					? FOREIGN_LEDGER_TABLE
 					: (options.adoptMigratorLedger.table ?? FOREIGN_LEDGER_TABLE);
-			yield* adoptForeignLedger(sql, LEDGER_TABLE, foreign, options.migrations).pipe(
+			yield* adoptForeignLedger(sql, LEDGER_TABLE, META_TABLE, foreign, options.migrations).pipe(
 				Effect.mapError(materializeAdopt),
 				Effect.withSpan("Store.adoptMigratorLedger"),
 			);

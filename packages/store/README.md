@@ -137,14 +137,18 @@ const StoreLive = Store.layerSqlite({
 });
 ```
 
-At layer build — after the ledger is ensured, before pending migrations run, in one transaction — and **only** when `_store_migrations` is empty and the foreign table exists, every foreign row is copied into `_store_migrations`. Migrations above the adopted ones then apply as usual. The foreign table is read, never written, and every later build finds `_store_migrations` non-empty and does nothing, so the option is safe to leave on permanently. A database the Migrator never touched builds exactly as it would without the option.
+Adoption is **one-shot, decided by the first layer build that has the option on**. That build — after the ledger is ensured, before pending migrations run, in one write-locked transaction — copies every foreign row into `_store_migrations` **if** `_store_migrations` is empty and the foreign table exists, and in every case records that the decision was made in a `_store_meta` table, in the same transaction. Migrations above the adopted ones then apply as usual. Every later build sees the marker and skips adoption, so the option is safe to leave on — including after `rollback(0)`: the marker survives the rollback, so a reopen re-applies every migration from scratch instead of re-adopting history the rollback unwound. The foreign table is read, never written. A failed adoption records nothing, marker included, and is retried on the next build. A database the Migrator never touched builds exactly as it would without the option, plus the marker.
 
 Matching is exact, and any disagreement fails the layer with `StoreError` (`operation: "adopt"`) before anything is recorded or applied:
 
 - **Every foreign row needs a migration with the same `id` and `name`.** effect/sql's loaders strip the numeric key prefix before recording: `fromRecord`'s `"0001_initial"` is stored as id `1`, name `"initial"`. So the matching `StoreMigration` is `{ id: 1, name: "initial" }` — not `"0001_initial"`.
 - **Every migration at or below the foreign ledger's highest id must have a foreign row.** effect/sql only ever runs ids above its latest, so a lower id it never recorded was never applied; running it now would diverge from the history the database actually has. Renumber it above the high-water mark instead.
 
-Each adopted row's `created_at` becomes its `appliedAt` (SQLite's zone-less `current_timestamp` text is read as UTC). The option lives on `StoreOptions`, so it works through `layer`, `layerSqlite` and `@effected/app`'s `AppStore` layers alike; only SQLite is exercised by this package's tests.
+Each adopted row's `created_at` becomes its `appliedAt`. A zone-less value — SQLite's `current_timestamp` text (`2026-10-03 12:00:00`) or `2026-10-03T12:00:00` — is read as UTC; a value that cannot be read as a date fails the layer with the same typed `StoreError`. The option lives on `StoreOptions`, so it works through `layer`, `layerSqlite` and `@effected/app`'s `AppStore` layers alike, but adoption is **SQLite only**: on any other dialect the option fails the layer with `StoreError` (`operation: "adopt"`).
+
+### Several processes opening one database
+
+Processes that open the same file at once — parallel CLI hooks, a server beside a CLI — each run the pending-migration check, and none of them runs an `up` twice. Each migration commits in its own transaction, and that transaction re-checks the ledger before running `up`. On SQLite the driver starts it with `BEGIN IMMEDIATE`, taking the write lock before the check, so the losing process waits (up to `client.busyTimeout`) and then skips the migration the winner already applied. That guarantee rests on the driver's transaction taking a write lock; it holds for `layerSqlite`, and for `Store.layer` only over a driver whose transactions do the same.
 
 ### Connection settings: WAL and busy timeout
 

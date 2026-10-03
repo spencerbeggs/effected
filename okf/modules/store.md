@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T14:59:58Z
-  body_sha256: 5cf82707539e9787a3ddbe2c4c7a00b4773916d611c51a756ff6cac7ac1152e9
+  at: 2026-10-03T15:18:51Z
+  body_sha256: 5679f08891fa09d0c734a26ef89b83a54328e90b83493dffda8311103821946c
 ---
 
 # store
@@ -140,17 +140,33 @@ treat one without as a floor `rollback(toId)` may never cross.
 `effect/sql/Migrator` without re-running its history. The Migrator's
 ledger is `migration_id`, `name`, `created_at`, and its loaders record
 names with the numeric key prefix stripped — `fromRecord`'s
-`"0001_initial"` is id 1, name `"initial"`. At layer build, after the
-ledger is ensured and before pending migrations run, in one transaction,
-and only when `_store_migrations` is empty and the foreign table exists,
-the foreign rows are copied in; the foreign table is never written, and
-every later build is a no-op. Matching is exact: each foreign row needs
+`"0001_initial"` is id 1, name `"initial"`. Adoption is one-shot,
+decided by the first layer build with the option on: after the ledger is
+ensured and before pending migrations run, in one write-locked
+transaction, the foreign rows are copied in when `_store_migrations` is
+empty and the foreign table exists, and in every case a marker row is
+written to `_store_meta` in the same transaction. Every later build sees
+the marker and skips — which is what keeps `rollback(0)` followed by a
+reopen from re-adopting history the rollback unwound. The foreign table
+is never written, a failed adoption records nothing (marker included),
+an unreadable `created_at` is refused rather than defaulted, and any
+dialect other than SQLite is refused. Matching is exact: each foreign row needs
 a migration with the same id and name, and no migration at or below the
 foreign high-water mark may be missing from the foreign ledger, because
 the Migrator never runs an id at or below its latest and such a
 migration was therefore never applied. Any disagreement is a typed
-`StoreError` with `operation: "adopt"` before anything is recorded. It
-replaced a hand-run SQL seeding recipe once the
+`StoreError` with `operation: "adopt"` before anything is recorded.
+
+**Concurrent openers.** The pending plan is read outside any
+transaction, so each migration's transaction re-checks the ledger before
+running `up` and skips an id another connection already recorded. The
+SQLite driver opens a writable transaction with `BEGIN IMMEDIATE`, so
+that re-check holds the write lock and several processes opening one
+file never run an `up` twice; per-migration commits are unchanged. This
+rests on the driver's lock, so it holds for `layerSqlite` and for the
+abstract `layer` only over a driver that locks the same way.
+
+Adoption replaced a hand-run SQL seeding recipe once the
 [vitest-agent](../consumers/vitest-agent.md) consumer needed to move
 three populated databases whose first migration is a bare `CREATE
 TABLE`.
