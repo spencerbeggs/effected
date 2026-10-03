@@ -1,0 +1,12 @@
+{
+	"version": 1,
+	"hooks": {
+		"SessionStart": [
+			{
+				"type": "command",
+				"bash": "bash \"${PLUGIN_ROOT}/hooks/session-start/orientation.copilot.sh\"",
+				"timeoutSec": 5
+			}
+		]
+	}
+}
