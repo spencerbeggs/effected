@@ -6,9 +6,9 @@ status: stable
 tags:
   - architecture
 generated:
-  by: "claude-code/opus-5"
-  at: 2026-10-01T17:24:58Z
-  body_sha256: 84cc2876023c2daddced1975200fc679655735d0ff9649350080318c868e4599
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: 51489803df199e2db15f8778c5d11aa1391b1efc1f299016049a79b94f202142
 ---
 
 # effected
@@ -86,7 +86,7 @@ The kit's scope is closed by the applications that consume it, surveyed read-onl
 
 Two named applications resolved the "library wearing app clothing" question differently rather than joining the kit outright: `type-registry-effect` stays entirely outside, in its own repo, because it carries `typescript` / `@typescript/vfs` peers the kit refuses; `runtime-resolver`'s library half ships from the kit as `runtimes`, while its CLI ships from the external `runtime-resolver` repo against the published package, so the library's consumers never install `@effect/platform-node`. Further external consumers — `rolldown-pnpm-config`, `rspress-plugin-api-extractor`, and `soda3js/tools` via `@soda3js/config` — take published packages without a register entry of their own in this bundle.
 
-The repository's monorepo tooling and layout are documented in [the workspace module](modules/workspace.md); the two agent plugins, the probe workspace and the docs site each have their own Module: [claude-code-plugin](modules/claude-code-plugin.md), [copilot-plugin](modules/copilot-plugin.md), [scratchpad](modules/scratchpad.md), [website](modules/website.md).
+The repository's monorepo tooling and layout are documented in [the workspace module](modules/workspace.md); the agent plugin, the probe workspace and the docs site each have their own Module: [ai-plugin](modules/ai-plugin.md), [scratchpad](modules/scratchpad.md), [website](modules/website.md).
 
 ## Non-goals / out of scope
 

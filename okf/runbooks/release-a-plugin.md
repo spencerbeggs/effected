@@ -1,52 +1,55 @@
 ---
 type: Runbook
 title: Release a plugin
-description: Cut a version for the Claude Code or Copilot plugin through its private tracking package's changeset, ending in a git tag and GitHub release with no npm publish.
+description: Cut a version of the effected plugin through @effected/ai-plugin's changeset, ending in one git tag and GitHub release for both host builds and no npm publish.
 status: stable
+resource: ../../.changeset/config.json
 tags:
   - release
 sources:
-  - id: plugins-claude-md
-    resource: ../../plugins/CLAUDE.md
+  - id: changeset-config
+    resource: ../../.changeset/config.json
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 5066d82a97bc40e5c41b23a13060e4424205aa8302429a4d75038ee0a1afcde7
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: 6e3a98e6f061c95fda60076b36b7fdbbe90f3b5863e5f080bc56662214e62c5a
 ---
 
 # Release a plugin
 
 ## Trigger
 
-A change under `plugins/claude-code/` or `plugins/copilot/` is ready to
-ship as a new plugin version — a skill, agent or hook change, or the
-Copilot port catching up.
+A change under `plugin/` is ready to ship as a new plugin version — a
+skill, agent, hook or `pluginfinity.config.ts` change, with
+`plugin/builds/` already rebuilt and committed per
+[author the plugin once in plugin/](../conventions/author-the-plugin-once.md).
 
 ## Steps
 
-1. Add a changeset naming the tracking package directly:
-   `@effected/claude-code-plugin` for the Claude Code plugin, or
-   `@effected/copilot-plugin` for the Copilot plugin. A changeset naming
-   any other package does nothing for either plugin — see
-   [each plugin versions via its own private tracking package](../decisions/plugins-version-via-private-tracking-packages.md).
-2. When the release runs, CI bumps the tracking package's `package.json`
-   **and** the plugin manifest it drives in lockstep, through the
-   `.changeset/config.json` `versionFiles` mapping (`plugin.json`'s
-   `$.version` for both plugins).
-3. CI cuts a git tag named `<tracking-package>@<version>` — for example
-   `@effected/copilot-plugin@0.1.0` — and a GitHub release. Neither
-   tracking package has a `publishConfig`, so **no npm publish** happens
-   for either plugin, ever.
-4. For the Claude Code plugin, the `spencerbeggs/bot` marketplace's
-   sha-pinned `git-subdir` entry bumps automatically on release. For the
-   Copilot plugin, the marketplace ref is **not** automated yet — bump it
-   by hand in `spencerbeggs/bot`'s `.github/plugin/marketplace.json`
-   after the tag lands.
+1. Confirm the builds are current: from `plugin/`, run
+   `pnpm exec pluginfinity build --check` and expect empty `added`,
+   `changed` and `removed` lists for both targets.
+2. Add a changeset naming `@effected/ai-plugin`. A changeset naming any
+   other package does nothing for the plugin — see
+   [one tracking package versions both plugin builds](../decisions/ai-plugin-versions-both-builds.md).
+3. When the release runs, CI bumps `plugin/package.json` and both built
+   manifests, `plugin/builds/claude/.claude-plugin/plugin.json` and
+   `plugin/builds/copilot/plugin.json`, in lockstep through the
+   `versionFiles` mapping.[^changeset-config]
+4. CI cuts a git tag named `@effected/ai-plugin@<version>` and a GitHub
+   release. The tracking package has no `publishConfig`, so **no npm
+   publish** happens.
+5. Confirm both `spencerbeggs/bot` marketplace entries now point at the
+   release commit, and at `plugin/builds/claude` and
+   `plugin/builds/copilot` respectively. The marketplace lives in another
+   repository; change it only with the owner's go-ahead.
 
 ## End state
 
-The released plugin's tracking package and manifest carry the new
-version, a git tag and GitHub release exist for it, no npm package was
-published, and (for the Claude Code plugin) the marketplace pin already
-points at the new sha; the Copilot marketplace pin needs the manual bump
-in step 4.
+`plugin/package.json` and both built manifests carry the new version, a
+single `@effected/ai-plugin@<version>` tag and GitHub release exist, no
+npm package was published, and both marketplace entries are pinned to
+the release commit at the matching build path.
+
+[^changeset-config]: `.changeset/config.json` — two `versionFiles` globs
+    under `@effected/ai-plugin`, each at `$.version`.

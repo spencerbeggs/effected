@@ -17,9 +17,9 @@ sources:
     resource: https://github.com/Effect-TS/effect/releases/tag/effect%404.0.0
     title: "effect 4.0.0 release notes: packaging, versioning and stability tags"
 generated:
-  by: "okfit/claude-code"
-  at: 2026-10-01T17:24:58Z
-  body_sha256: 7227a2591d15eb2ad088e17bf5d9b5d2b5ce924b2a43c45554282368a52ee395
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: facd57a5e4af667ac13a666b847c86a90bb8220f661049a6a2e63487c5657c88
 ---
 
 # The effect catalog takes caret ranges on the stable line
@@ -52,7 +52,7 @@ The exact `effect` the kit builds and tests against is the lockfile's resolution
 
 - **Advances follow the lockfile.** One wave per moving lockfile, not one per catalog edit.
   - The orientation hook's `EFFECT_PIN` and the bats `EXPECTED_PIN` move with the lockfile, as does the re-pin of `.repos/effect`.
-  - So do the skill line anchors in `plugins/claude-code/__test__/helpers/skill-anchors.json`.
+  - So do the skill line anchors in `plugin/__test__/helpers/skill-anchors.json`.
   - Procedure: [advance the effect pin](../runbooks/advance-the-effect-pin.md).
 - **An Effect minor can break the kit.** Much of what the kit imports is tagged `@stability unstable` at 4.0.0: most of `cli`, all of `process`, `rpc` and `sql`, and much of `ai` and `http`. A consumer can resolve a newer Effect minor than the kit was tested against, and an unstable API can change shape in it.
   - The kit's own CI catches this only when its lockfile moves.

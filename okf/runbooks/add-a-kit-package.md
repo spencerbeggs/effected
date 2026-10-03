@@ -7,9 +7,9 @@ tags:
   - dx
   - architecture
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 2dc17ea23f8e8eb79ae70214e57400878e81929303d84bbac58310434d9406a0
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: 97ef2299fd4e3c4fbdd930f09574d3e448b3a296ad2ef1182d06c91b894b496c
 ---
 
 # Add a kit package
@@ -37,8 +37,8 @@ that does not yet exist.
    and website docs.
 6. **Distill** lessons into plugin skills. This is the point of the
    cycle: best practices that emerge from a build get recorded in the
-   "effected" Claude Code plugin — see
-   [the claude-code-plugin Module](../modules/claude-code-plugin.md).
+   "effected" agent plugin's source under `plugin/` — see
+   [the ai-plugin Module](../modules/ai-plugin.md).
 7. **Advance** — add the package's row to the package table in the
    [Project concept](../project.md).
 

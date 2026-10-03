@@ -1,5 +1,32 @@
 # Log
 
+## 2026-10-03
+
+* Updated A capability recon pass at package level misses constructs the kit already ships
+* Updated A plugin skill is a lean index over references
+* Updated Add a kit package
+* Updated Advance the effect pin
+* Added Author the plugin once in plugin/, never edit its builds
+* Updated Build a GitHub Action repository to the kit's canonical shape
+* Updated Carrier-only bins are recommended; shared bins are a supported choice
+* Updated Change the Claude Code plugin first, then port to Copilot
+* Updated Climb the evidence ladder in order — renames, then source, then a probe
+* Updated Consumer-facing text states current Effect behaviour, never versions
+* Updated Never hand-edit the construct index — regenerate it
+* Added One tracking package versions both plugin builds
+* Updated Release a plugin
+* Updated The effect catalog takes caret ranges on the stable line
+* Added ai-plugin
+* Updated construct-annotations.json
+* Updated effected
+* Updated workspace
+
+## 2026-10-02
+
+* Updated @effected/schemastore
+* Updated @effected/schemastore-cli
+* Updated The ajv engine lives in the CLI, and the library returns to boundary tier
+
 ## 2026-10-01
 
 * Updated @effected/env
@@ -18,6 +45,29 @@
 * Added The kit sets Ink's colour level on Ink's own chalk, resolved from Ink's location
 * Updated Ink delivers every key in one stdin read before React re-renders
 * Added The ui declarations reference the root's types by the package's own name
+* Added @effected/env is its own boundary package, a required peer of cli
+* Updated @effected/mcp
+* Updated @effected/memfs
+* Updated @effected/workspaces: monorepo tooling
+* Added A live view is a scoped drain of runs, hosted or owned, with no input and the mount permit per run
+* Updated An unsatisfiable effect peer installs clean and fails somewhere else
+* Updated D10: McpToolAudit enforces object-rooted outputs by default
+* Added FORCE_COLOR is honoured, with Node's getColorDepth precedence
+* Updated Keep the tree resolved to one effect copy
+* Added React 19's development build leaks user-timing entries on every render
+* Updated Releases are changeset-driven and scope-agnostic
+* Updated The effected catalog literal
+* Added The live frame is clamped to rows - 1 in height, and its root width is never taken from a hook
+* Added The live view never calls Ink's clear(); a new run re-renders in place or remounts
+* Updated The live view's tick is a scoped Effect schedule, and its frame index comes from Clock
+* Updated Vendored Effect is pinned to the lockfile's tag, not main
+* Updated Vendored repos manifest
+* Added While a live view is mounted, kit logs go through Ink's own stdout and stderr writers
+* Updated claude-code-plugin
+* Updated pnpm-plugin-effect
+* Updated spencerbeggs/okfit
+* Updated spencerbeggs/vitest-agent
+* Added std-osc8's pure core is ported into env, not wrapped
 
 ## 2026-09-30
 

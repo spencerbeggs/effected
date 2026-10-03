@@ -18,10 +18,9 @@
 * [@effected/templates](templates.md) - A managed-section mechanism — delimited BEGIN/END blocks a tool owns inside a file the user otherwise owns.
 * [@effected/workspaces: monorepo tooling](workspaces.md) - The integrated-tier package that finds a workspace root, enumerates its packages, walks the dependency graph, detects the package manager, assembles pnpm catalogs, checks peer dependencies, and reads git-scoped snapshots.
 * [@effected/yaml](yaml.md) - Pure-tier YAML 1.2 parsing, editing, formatting and linting as Effect schemas, with a vendored engine and full per-node comment fidelity.
+* [ai-plugin](ai-plugin.md) - The "effected" agent plugin: one pluginfinity source under plugin/ — skills, three specialist agents and a SessionStart briefing — built into committed Claude Code and GitHub Copilot plugins.
 * [app](app.md) - The thin composition layer wiring xdg, config-file and store into an application control plane -- owns no domain logic, defines no service or error of its own, and re-exports nothing from the packages beneath it.
-* [claude-code-plugin](claude-code-plugin.md) - The "effected" Claude Code plugin: skills, three specialist agents and a SessionStart briefing hook, dogfooded during package work and the source of truth for skill and agent content.
 * [config-file](config-file.md) - Composable config-file loading built around a codec × resolver × strategy pipeline, carrying all four config codecs.
-* [copilot-plugin](copilot-plugin.md) - An experimental GitHub Copilot port of the Claude Code plugin's skills, agents and session-start hook, trailing it downstream rather than an independent product.
 * [git](git.md) - Typed git for the kit — a read tier over a repository's state and a clearly-marked mutating tier, plus a pure git-config document model.
 * [github-actions](github-actions.md) - The GitHub Actions runner runtime — environment, inputs/outputs/state, workflow commands, storage, reporting and the sbom attestation seam.
 * [glob](glob.md) - Full-fidelity glob matching as pure string-to-predicate Effect Schema compilation, vendoring the complete minimatch dialect.

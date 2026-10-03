@@ -3,36 +3,36 @@ type: DataModel
 title: construct-annotations.json
 description: The intent-keyword sidecar the construct-index generator joins against each package's api-extractor doc model to produce one generated table per kit package.
 status: stable
-resource: ../../plugins/claude-code/scripts/construct-annotations.json
+resource: ../../plugin/scripts/construct-annotations.json
 tags:
   - dx
 sources:
   - id: construct-annotations-json
-    resource: ../../plugins/claude-code/scripts/construct-annotations.json
+    resource: ../../plugin/scripts/construct-annotations.json
   - id: generate-constructs-mts
-    resource: ../../plugins/claude-code/scripts/generate-constructs.mts
+    resource: ../../plugin/scripts/generate-constructs.mts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-09-29T01:35:14Z
-  body_sha256: 052bd2b3668d74925a6d1c54ee44ac908a6513a004a2b17e76313b62eaaa71df
+  at: 2026-10-03T04:19:44Z
+  body_sha256: 35a6277e8167226274ae1ad91deee5118286dd3d7fdc0f00cf330cde0075ad80
 ---
 
 # construct-annotations.json
 
 ## Overview
 
-The [claude-code-plugin](../modules/claude-code-plugin.md)'s construct
+The [ai-plugin](../modules/ai-plugin.md)'s construct
 index answers a capability being discoverable only by whoever already
 knows its name: one generated table per kit package, listing every
 exported construct with an agent-authored **intent** column, under
-`plugins/claude-code/skills/effected-packages/references/constructs/<pkg>.md`.
+`plugin/skills/effected-packages/references/constructs/<pkg>.md`.
 Each row is **construct | kind | purpose | intent keywords**, where
 purpose is the TSDoc summary, mechanically extracted, and intent keywords
 are the one part a human or agent authors by hand.
 
 ## Data model and generator
 
-`plugins/claude-code/scripts/construct-annotations.json` is that
+`plugin/scripts/construct-annotations.json` is that
 authored sidecar — plain JSON rather than JSONC so the generator needs no
 parser dependency — keyed package → construct, holding the intent-keyword
 string plus an optional `implements` field.[^construct-annotations-json]
@@ -41,7 +41,7 @@ inverting every `implements` link, so a cross-package contract↔
 implementation pair — for example `ActionsIdentityToken` implementing
 `sbom.IdentityToken` — renders as an explicit row in both packages' files.
 
-The generator, `plugins/claude-code/scripts/generate-constructs.mts`, is
+The generator, `plugin/scripts/generate-constructs.mts`, is
 **dependency-free**: run with bare Node, it parses each package's
 api-extractor doc model as plain JSON rather than through
 `@microsoft/api-extractor-model`, which is only in the tree transitively
@@ -93,7 +93,7 @@ documented discoverability miss on record was a value-level capability.
 
 ## Enforcement
 
-`plugins/claude-code/__test__/construct-index.bats` pins the index:
+`plugin/__test__/construct-index.bats` pins the index:
 fixture tests for the generator, a repo drift test that regenerates the
 committed index into a temp dir and diffs it against the committed one,
 the strict `check --require-intent` test, and fixture tests pinning the
@@ -101,6 +101,14 @@ staleness guard and `--only` with positive and negative controls. A
 `setup_file()` hook self-provisions missing or stale doc models by running
 `pnpm build`, triggered by the generator's exit code 2 or 3, so CI's auto-discovered shell-test check
 needs no custom build step.
+
+The generator writes only the pluginfinity source. pluginfinity copies
+the tables into `plugin/builds/claude/` and `plugin/builds/copilot/`, so
+a regeneration is complete only after `pnpm build --filter
+@effected/ai-plugin`. The pre-push gate, `plugin/scripts/check-construct-index.sh`,
+checks three things when a pushed range touches an index input: the
+annotations, the committed tables against a fresh regeneration, and the
+committed builds against their source via `pluginfinity build --check`.
 
 ## Maintenance
 
@@ -124,9 +132,9 @@ sides of the pair — the contract side and the implementation side — since
 the `implementedBy` inverse is derived rather than independently
 checked.
 
-[^construct-annotations-json]: `plugins/claude-code/scripts/construct-annotations.json` —
+[^construct-annotations-json]: `plugin/scripts/construct-annotations.json` —
     package → construct keyed intent strings, with an optional
     `implements` field per entry.
-[^generate-constructs-mts]: `plugins/claude-code/scripts/generate-constructs.mts` —
+[^generate-constructs-mts]: `plugin/scripts/generate-constructs.mts` —
     the dependency-free generator, CLI `generate` / `check [--require-intent]`
     with `--only <pkg,...>` and the exit-3 staleness guard.

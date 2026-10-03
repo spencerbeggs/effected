@@ -2,20 +2,24 @@
 type: Convention
 title: Change the Claude Code plugin first, then port to Copilot
 description: Author every skill, agent and hook change in plugins/claude-code/ and prove it there before copying and refactoring it into plugins/copilot/'s format, never the reverse.
-status: stable
+status: deprecated
 stale_after: "2027-03-13T00:00:00Z"
 tags:
   - dx
 sources:
   - id: plugins-claude-md
-    resource: ../../plugins/CLAUDE.md
+    resource: https://github.com/spencerbeggs/effected/blob/41327b9656d86db47749ee161e198c716853d391/plugins/CLAUDE.md
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 6d68948c1511202ac67232f2806e89ad236c9d5b71805a09dd08adeec23eb59c
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: a785622a3cab8603648a6317886fa61b1dcc92ba553ec1fcbd26c497e40a31b4
 ---
 
 # Change the Claude Code plugin first, then port to Copilot
+
+**Deprecated.** pluginfinity now builds both hosts from one source; follow
+[author the plugin once in plugin/](author-the-plugin-once.md) instead.
+The rule below described the two hand-maintained trees it replaced.
 
 Claude Code and Copilot have similar but divergent formats for
 `SKILL.md` files and for hooks, so skill and agent content is maintained

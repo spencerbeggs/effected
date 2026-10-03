@@ -9,9 +9,9 @@ tags:
   - architecture
   - dx
 generated:
-  by: "okfit/claude-code"
-  at: 2026-10-01T17:24:58Z
-  body_sha256: 46a33ae841208dbefde0381c6616f086598d006ddaa1569bcf89ffeb79a97e87
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: 8e6d8e04beddec7d287abbcd2a8bc6de6714f4242038ba6556bb0f4382656c5e
 ---
 
 # workspace
@@ -24,8 +24,8 @@ The repository root: the `packages/*` layout, the pnpm workspace and Effect cata
 
 - `packages/*` — one directory per `@effected` library.
 - `packages/pnpm-plugin-effect` — the kit's companion (pnpm catalog/config plugin): published with the kit and installable by consumers, but not a library, so it carries no tier.
-- `plugins/` — the repo's two agent plugins, each a workspace member with its own private tracking package that versions it but never publishes to npm: `plugins/claude-code/` (the "effected" Claude Code plugin, source of truth for skill and agent content) and `plugins/copilot/` (an experimental GitHub Copilot port, trailing it downstream). See [claude-code-plugin](claude-code-plugin.md) and [copilot-plugin](copilot-plugin.md).
-- `.claude/skills/improve` — the project-level self-improvement skill that maintains `plugins/claude-code/skills/`.
+- `plugin/` — the "effected" agent plugin, `@effected/ai-plugin`: a private tracking package that versions it but never publishes to npm, holding one pluginfinity source built into committed Claude Code and Copilot plugins under `plugin/builds/`. See [ai-plugin](ai-plugin.md).
+- `.claude/skills/improve` — the project-level self-improvement skill that maintains `plugin/skills/`.
 - `.repos/` — read-only vendored sources as sparse git submodules; see [Vendored source](#vendored-source).
 - `website/` — the RSPress docs site, with per-package api-extractor models under `website/lib/models/`; see [website](website.md).
 - `scratchpad/` — a private agent-probe workspace member, never published and invisible to CI; see [scratchpad](scratchpad.md).

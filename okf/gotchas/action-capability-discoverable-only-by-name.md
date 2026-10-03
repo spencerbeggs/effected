@@ -3,14 +3,14 @@ type: Gotcha
 title: A capability recon pass at package level misses constructs the kit already ships
 description: Checking "does the kit have a package for X" instead of "does the kit have this exact construct" declares real capabilities absent when they already exist under a different or unexpected name.
 status: stable
-resource: ../../plugins/claude-code/scripts/construct-annotations.json
+resource: ../../plugin/scripts/construct-annotations.json
 stale_after: "2027-03-13T00:00:00Z"
 tags:
   - dx
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 3dde948f1b3bb569bc8aa0426470900a6c8be919c8707199c37ae0fc6c0c6cf8
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: a202f397661dbd07bb297552b30db55b108822e5bfe763d756910e88139cfcdc
 ---
 
 # A capability recon pass at package level misses constructs the kit already ships
@@ -42,7 +42,7 @@ reader is searching against.
 
 Do recon at construct level, verified against the installed kit version
 rather than memory of an earlier one. The plugin's generated construct
-index — `plugins/claude-code/scripts/construct-annotations.json`, produced
+index — `plugin/scripts/construct-annotations.json`, produced
 by `generate-constructs.mts` — is the systemic fix: search it for the
 specific behavior needed before concluding a capability is absent, and
 re-run this recon on every kit bump rather than trusting a prior pass's

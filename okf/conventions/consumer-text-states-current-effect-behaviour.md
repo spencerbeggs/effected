@@ -8,14 +8,12 @@ tags:
   - dx
   - docs
 sources:
-  - id: claude-code-plugin-skills
-    resource: ../../plugins/claude-code/skills
-  - id: copilot-plugin-skills
-    resource: ../../plugins/copilot/skills
+  - id: ai-plugin-skills
+    resource: ../../plugin/skills
 generated:
-  by: "okfit/claude-code"
-  at: 2026-10-01T17:24:58Z
-  body_sha256: fcd5e1e4db16ca2652726465d9b49f9d7b22060ab239d9b8f398fa39e0171c57
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: fa77f73828653786e54ee5d754cb9859ee07b176abcd3c424885d06591e964a5
 ---
 
 # Consumer-facing text states current Effect behaviour, never versions
@@ -25,8 +23,8 @@ Text that a consumer or a consumer's agent reads states what Effect does
 
 The rule covers:
 
-- the plugins, `plugins/claude-code/` and `plugins/copilot/`: skills, their
-  references, agents and hooks;
+- the plugin source under `plugin/`, and so both of its builds: skills,
+  their references, agents and hooks;
 - TSDoc comments in `packages/*/src`, which ship in `.d.ts` files and IDE hovers.
 
 What to write:

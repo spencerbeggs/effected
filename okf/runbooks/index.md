@@ -12,5 +12,5 @@
 * [Regenerate the runtimes bundled offline defaults](regenerate-runtimes-bundled-defaults.md) - Refresh the three offline version snapshots @effected/runtimes falls back to, from the live release feeds.
 * [Regenerate the vendored SPDX datasets](regenerate-spdx-data.md) - The hand-run procedure for refreshing @effected/spdx's license-id, exception and metadata literals after an upstream SPDX release.
 * [Regenerate the vendored schema.org vocabulary table](regenerate-schema-org-vocabulary.md) - The hand-run procedure for refreshing @effected/schema-org's interned vocabulary literals after a schema.org release.
-* [Release a plugin](release-a-plugin.md) - Cut a version for the Claude Code or Copilot plugin through its private tracking package's changeset, ending in a git tag and GitHub release with no npm publish.
+* [Release a plugin](release-a-plugin.md) - Cut a version of the effected plugin through @effected/ai-plugin's changeset, ending in one git tag and GitHub release for both host builds and no npm publish.
 * [Sync the vendored repos](sync-vendored-repos.md) - Materialize the .repos/ submodules' sparse checkouts on a fresh clone, worktree, or CI runner.

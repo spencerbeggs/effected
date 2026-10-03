@@ -8,9 +8,9 @@ tags:
   - compat
   - release
 generated:
-  by: "okfit/claude-code"
-  at: 2026-10-01T17:24:58Z
-  body_sha256: 7572cc416bca747d02ae58634a0556f237fa791b08f1e8035bcb1a6b52eb3f14
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: ce47c37413a24174bfa3352ea2919b4aa9f04a3a6cb60327c4fc6b88bb9546c4
 ---
 
 # Advance the effect pin
@@ -23,8 +23,8 @@ The lockfile's resolved `effect` moves to a release the kit should build on — 
 
 1. **Advance the catalogs and the lockfile.** The user runs `pnpm pnpm:up` (`rolldown-pnpm-config upgrade savvy.build.ts` inside `packages/pnpm-plugin-effect`) followed by `pnpm pnpm:export`, which mutates `pnpm-workspace.yaml`'s `effect` / `effect:peers` catalogs and the lockfile. Agents must not invoke either command directly; only surface them. Read the lockfile's resolved `effect` afterwards — that version, not the catalog literal, is what the next steps follow.
 2. **Re-pin `.repos/effect` to the lockfile's version, in the same commit.** Run `savvy repos pin effect effect@<resolved-version>` (or the `repos_manage` MCP tool with `action:"pin"`) so the vendored source and the installed version move together by construction — never let the pin land in a separate commit from the lockfile move. Review any `staleNoteIds` the pin flags. See [vendored Effect is pinned to the lockfile's tag](../decisions/vendored-effect-pinned-to-catalog-tag.md).
-3. **Move the plugin pins.** Bump `EFFECT_PIN` in both `plugins/claude-code/hooks/session-start/orientation.sh` and `plugins/copilot/hooks/session-start/orientation.sh`, and `EXPECTED_PIN` in both bats files that assert it (`plugins/claude-code/__test__/session-start-orientation.bats` and `plugins/claude-code/__test__/copilot-session-start.bats`).
-4. **Re-derive the skill anchors.** When the vendored tree moves, re-derive `plugins/claude-code/__test__/helpers/skill-anchors.json`, which holds the line anchors the skills cite against `.repos/effect`.
+3. **Move the plugin pins.** Bump `EFFECT_PIN` in both `plugin/hooks/session-start/orientation.sh` and `plugin/hooks/session-start/orientation.copilot.sh`, and `EXPECTED_PIN` in both bats files that assert it (`plugin/__test__/session-start-orientation.bats` and `plugin/__test__/copilot-session-start.bats`), then rebuild with `pnpm build --filter @effected/ai-plugin` so both builds carry the new pin.
+4. **Re-derive the skill anchors.** When the vendored tree moves, re-derive `plugin/__test__/helpers/skill-anchors.json`, which holds the line anchors the skills cite against `.repos/effect`.
 5. **Check the unstable APIs the kit uses.** An API tagged `@stability unstable` may break in a minor release. Search the kit's imports for the modules the release notes mark unstable (most of `cli`, all of `process`, `rpc` and `sql`, much of `ai` and `http` at 4.0.0) and confirm each one the kit uses still has the shape the kit relies on.
 6. **Decide whether a bridge is needed.** Within the stable line it is not: a published closure's `^4.0.0` peer accepts a newer `4.x`. A bridge is needed only when the published closure is on a release candidate or a different major, and then the shape depends on whether that closure still runs on the new `effect`. See [one resolved effect copy](../conventions/one-resolved-effect-copy.md) for both shapes and the diagnostic that picks between them. If one is written, install and confirm it closed what it was meant to close: for an `overrides` bridge, the packages-section-scoped count of the old spec reaches zero; for a `packageExtensions` bridge, no published kit package resolves against the new `effect` while the toolchain still builds on the old one, and the lockfile's `importers:` section is unchanged from the pre-bridge copy.
 7. **Run a full-kit build and test pass** (`pnpm build`, then the workspace test suite) to catch anything the advance did not anticipate before it lands.

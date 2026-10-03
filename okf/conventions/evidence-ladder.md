@@ -10,9 +10,9 @@ sources:
   - id: scratchpad-claude-md
     resource: ../../scratchpad/CLAUDE.md
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-14T02:44:47Z
-  body_sha256: c2f91c061d58e44d293bf5839e2180c9b192e1cd96caf2a98f54e7bf6c326aaf
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: 4a46921e7fca10e7132bafc5802a3198f7317ea6dce942bccb55d92ece13c6dd
 ---
 
 # Climb the evidence ladder in order — renames, then source, then a probe
@@ -20,7 +20,7 @@ generated:
 The `.claude/skills/improve` project-level skill closes the loop the
 plugin's ethos implies: real work falsifies skill claims, and something
 has to turn those falsifications back into skill edits. It is aware of
-`plugins/claude-code/skills/` and edits them; the plugin itself carries
+`plugin/skills/` and edits them; the plugin itself carries
 no self-improvement machinery, because a tool does not grade itself.
 
 - **Harvest** runs at the end of a work cycle. It reads recorded

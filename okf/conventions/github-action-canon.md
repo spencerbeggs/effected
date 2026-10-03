@@ -9,15 +9,15 @@ tags:
   - dx
 sources:
   - id: skill-building
-    resource: ../../plugins/claude-code/skills/building-a-github-action/SKILL.md
+    resource: ../../plugin/skills/building-a-github-action/SKILL.md
   - id: skill-designing
-    resource: ../../plugins/claude-code/skills/designing-an-action/SKILL.md
+    resource: ../../plugin/skills/designing-an-action/SKILL.md
   - id: skill-structuring
-    resource: ../../plugins/claude-code/skills/structuring-an-action/SKILL.md
+    resource: ../../plugin/skills/structuring-an-action/SKILL.md
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-15T15:38:20Z
-  body_sha256: a98a973104a911f51c5fee111c867195c26143a1801730ea57c33f39a0f319ef
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: e7d6fe6502b48423ffa73342cbfe98f480d8d502389f3728074847533c24b8bc
 ---
 
 # Build a GitHub Action repository to the kit's canonical shape
@@ -42,11 +42,11 @@ while actually building:
 | Surface | Owns |
 | --- | --- |
 | This convention | The rules, the rationale, and the resolved decisions. |
-| [`designing-an-action`](../../plugins/claude-code/skills/designing-an-action/SKILL.md) | The build sequence as a process to execute — recon, frozen spec, API dossier, walking skeleton, TDD fill. |
-| [`structuring-an-action`](../../plugins/claude-code/skills/structuring-an-action/SKILL.md) | The repository shape below, taught as an annotated tree with structural standards a consumer-repo reader can apply directly. |
-| [`building-a-github-action`](../../plugins/claude-code/skills/building-a-github-action/SKILL.md) | Capability → package → skill routing; it routes, it does not teach. |
-| The `actions-*` skills ([`actions-inputs-outputs`](../../plugins/claude-code/skills/actions-inputs-outputs/SKILL.md), [`actions-runtime`](../../plugins/claude-code/skills/actions-runtime/SKILL.md), [`actions-state-and-secrets`](../../plugins/claude-code/skills/actions-state-and-secrets/SKILL.md), [`actions-reporting`](../../plugins/claude-code/skills/actions-reporting/SKILL.md), [`actions-cache-and-artifacts`](../../plugins/claude-code/skills/actions-cache-and-artifacts/SKILL.md), [`testing-actions`](../../plugins/claude-code/skills/testing-actions/SKILL.md)) | The per-capability depth. |
-| [`github-app-tokens`](../../plugins/claude-code/skills/github-app-tokens/SKILL.md) | The full App-auth token lifecycle recipe (§B3). |
+| [`designing-an-action`](../../plugin/skills/designing-an-action/SKILL.md) | The build sequence as a process to execute — recon, frozen spec, API dossier, walking skeleton, TDD fill. |
+| [`structuring-an-action`](../../plugin/skills/structuring-an-action/SKILL.md) | The repository shape below, taught as an annotated tree with structural standards a consumer-repo reader can apply directly. |
+| [`building-a-github-action`](../../plugin/skills/building-a-github-action/SKILL.md) | Capability → package → skill routing; it routes, it does not teach. |
+| The `actions-*` skills ([`actions-inputs-outputs`](../../plugin/skills/actions-inputs-outputs/SKILL.md), [`actions-runtime`](../../plugin/skills/actions-runtime/SKILL.md), [`actions-state-and-secrets`](../../plugin/skills/actions-state-and-secrets/SKILL.md), [`actions-reporting`](../../plugin/skills/actions-reporting/SKILL.md), [`actions-cache-and-artifacts`](../../plugin/skills/actions-cache-and-artifacts/SKILL.md), [`testing-actions`](../../plugin/skills/testing-actions/SKILL.md)) | The per-capability depth. |
+| [`github-app-tokens`](../../plugin/skills/github-app-tokens/SKILL.md) | The full App-auth token lifecycle recipe (§B3). |
 
 Keep the two surfaces synchronized in that order: an incident amends this
 convention first, then the skill that teaches the affected step, then the

@@ -18,7 +18,7 @@ sources:
   - id: packed-install-ts
     resource: ../../packages/workspaces/src/PackedInstall.ts
   - id: carrier-entry-contract
-    resource: ../../plugins/claude-code/skills/design-patterns/references/carrier-entry-contract.md
+    resource: ../../plugin/skills/design-patterns/references/carrier-entry-contract.md
   - id: okfit-consumer
     resource: ../consumers/okfit.md
   - id: systems-consumer
@@ -34,9 +34,9 @@ sources:
   - id: packed-install-e2e
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-25T21:24:18Z
-  body_sha256: 40a373a0829945fb786a51006eb33248527943916d949140962196079d621aac
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: d3e754274b901505b2bf6871f6108c4a3810c06c21e6a6834f8c72ec159446e9
 verified:
   - by: human:spencer
     at: 2026-09-25T20:39:50Z
@@ -141,7 +141,7 @@ installs. vitest-agent keeps shared bins.
 [^packed-install-ts]: `packages/workspaces/src/PackedInstall.ts` — the
     `BinConflict` check in `run`, `allowSharedBins`, and
     `InstalledConsumer.runCarrierBin`.
-[^carrier-entry-contract]: `plugins/claude-code/skills/design-patterns/references/carrier-entry-contract.md`
+[^carrier-entry-contract]: `plugin/skills/design-patterns/references/carrier-entry-contract.md`
     — "Who declares a bin".
 [^okfit-consumer]: [okfit consumer](../consumers/okfit.md) — surveyed
     2026-09-25 from its `packages/*/package.json` and

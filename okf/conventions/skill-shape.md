@@ -8,16 +8,16 @@ tags:
   - dx
 sources:
   - id: effected-packages-skill
-    resource: ../../plugins/claude-code/skills/effected-packages
+    resource: ../../plugin/skills/effected-packages
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-24T04:12:55Z
-  body_sha256: dca29f588b97548789f4edb2bfdcd7f1ffe8ff5057d7c952cb9a82fb0affc5ca
+  by: "claude-code/opus-5.5"
+  at: 2026-10-03T04:19:44Z
+  body_sha256: 3d86e42f36d6113367619c652abf8e6247eca3b80cf68c85c32444efa35ee2dd
 ---
 
 # A plugin skill is a lean index over references
 
-Every skill under `plugins/claude-code/skills/` is a lean index over
+Every skill under `plugin/skills/` is a lean index over
 references, not a monolith. A `SKILL.md` carries:
 
 - An intro.
@@ -72,11 +72,11 @@ A skill's frontmatter splits triggering from cataloguing: a trigger-first
 construct-listing prose, plus a separate `when_to_use` catalog of trigger
 phrases. The two together stay under the plugin host's listing cap.
 
-`plugins/claude-code/skills/effected-packages` is a working example of
+`plugin/skills/effected-packages` is a working example of
 the shape at scale: an intro, the per-package routing table, standards,
 footguns, and a `references/` tree including the generated construct
 index.[^effected-packages-skill]
 
-[^effected-packages-skill]: `plugins/claude-code/skills/effected-packages` —
+[^effected-packages-skill]: `plugin/skills/effected-packages` —
     a `SKILL.md` plus `references/`, including the generated
     `references/constructs/` construct index.
