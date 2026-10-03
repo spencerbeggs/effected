@@ -142,6 +142,25 @@ reference). Flag, as findings:
   is `@effected/memfs`, never `FileSystem.layerNoop`"; an "unchanged" proof
   faults the write members with `MemoryFileSystem.die` instead.
 
+CLI code on `@effected/cli` follows `effect-v4-cli`. Flag, as findings:
+
+- any escape sequence reaching an agent audience, a hand-copied "agent gets no
+  colour" rule instead of `CliTheme.forAudience`, or a glyph hand-painted into
+  `Effect.log*` (the logger strips it; `CliLog.status` keeps it painted);
+- a `TextInput` `mask` predicate that matches a giveaway as a prefix
+  (`/^ghp_/`) instead of anywhere in the value, or a `validate` message that
+  echoes the value (drawn unmasked);
+- a hand-written `Screen<boolean>` adapter around `Confirm` (`CliUi.map` is the
+  mapper), or `import()` plumbing around a live view's `render`
+  (`CliUi.lazyView` is the lazy form);
+- a live view on a path an agent or CI runs with no `final` document, which
+  loads Ink and React only to print an unread frame;
+- a bin installed under `node_modules/@effected/` run through
+  `CliRuntime.main` without `env.appModule` — `spans: "app"` is the default and
+  then leaves out the bin's own spans with the kit's;
+- a `CliUiTest.session` layer provided outside a presentation layer whose
+  theme or interactivity it is meant to replace (it is shadowed quietly).
+
 ## Output format
 
 A ranked list of findings, most-severe first: for each, the file:line, the

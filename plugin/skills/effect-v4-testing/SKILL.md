@@ -38,7 +38,7 @@ conversion has its own traps →
 
 **Testing a specific front end or a repo-shape check routes elsewhere first.**
 This skill owns the general `@effect/vitest` mechanics; a front end's own
-testing subpath owns the rest: testing a CLI bin → `effect-v4-cli` (`CliTest`);
+testing subpath owns the rest: testing a CLI bin → `effect-v4-cli` (`CliTest`); an Ink screen, a wizard or a live view → `effect-v4-cli` (`CliUiTest`: its `session` transcript, and its snapshot serializer registered through Vitest's `snapshotSerializers` config, snapshots being the one place a test needs `expect`);
 testing an MCP server → `effect-v4-mcp` (`McpHarness`, `McpProbe`); a
 monorepo's own repo-shape checks (layering, source boundaries, packed
 installs) → `@effected/workspaces/testing` (see `effected-packages`).

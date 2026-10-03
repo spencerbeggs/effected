@@ -37,9 +37,9 @@ pnpm add -D @types/react @types/node
 | `CliInteractive` | reading whether this run may prompt (human audience, terminals on stdin and stdout, `TERM` not `dumb`) |
 | `CliTheme`, `Token`, `Status`, `Glyphs` | painting by token per stream, a typed status vocabulary, Unicode or ASCII glyphs |
 | `CliMessage.success`/`info`/`warning`/`failure`/`status` | one themed outcome line through `Console`, never silenced by a log level |
-| `Doc`, `Doc.print`, `Render.plain`/`ansi`/`markdown`/`githubLog`, `Fmt` | building a report once and rendering it for the audience; sanitised, and neutralized under GitHub Actions |
+| `Doc`, `Doc.print`, `Render.plain`/`ansi`/`markdown`/`githubLog`, `Fmt` | building a report once and rendering it for the audience; sanitised (a status vocabulary's glyphs included), and neutralized under GitHub Actions; a piped human gets no wrap width, `Doc.line(…, { wrap: false })` keeps a line whole, and `Doc.counter`'s `{ one, other }` label reads by `n` (a share headline by its total) |
 | `CliLinks` | file links that open in VS Code or as `file://`, never for an agent |
-| `CliFailure.toDoc`, `CliDoc` | the default failure report as a document, or an error that draws itself |
+| `CliFailure.toDoc`, `CliDoc` | the default failure report as a document, or an error that draws itself; its `in:` span trail is `spans: "app"` by default (kit and Effect spans left out, an `Effect.fn` call and its definition one entry), with `env.spans`, `env.spansEnvVar` and `env.appModule` (a bin installed under `node_modules/@effected/`) on `CliRuntime.main`, and `FailureDetails.lines({ status, spans })` for a custom `render` |
 | `CliLog.layer()` (or `env.log`) | opt-in diagnostics: a level variable, NDJSON for agents and CI, a file sink, components — owning the whole logger set |
 | `CliLog.status(vocab, name, text)` | a diagnostic whose status glyph keeps its colour on the log channel, its text still sanitised |
 | `CliTheme.forAudience(theme, audience)` | painting lines of your own with the kit's rule: an agent gets the colourless theme |
@@ -51,7 +51,7 @@ pnpm add -D @types/react @types/node
 | `CliPrompt.fallback(prompt, { flag, otherwise })` | a flag or argument that prompts with core's `Prompt` only when interactive |
 | `Cancelled`, `NotInteractive` | the one quit error (exit `130`) and the prompt-without-a-person error (exit `64`) |
 | `SchemaIssueRenderer.render(issue)` / `ConfigIssueRenderer.render(error)` | a schema or `@effected/config-file` issue tree as one actionable line per rejected value |
-| `CliUi.prompt`/`fallback`/`run` + `Select`, `TextInput`, `MultiSelect`, `Confirm` | an Ink screen from a handler or as a fallback, with a non-interactive default (`Confirm`'s `otherwise` is a whole `{ confirmed, toggles }`; `CliUi.map(screen, f)` turns it into a boolean for a `--yes` flag) |
+| `CliUi.prompt`/`fallback`/`run` + `Select`, `TextInput`, `MultiSelect`, `Confirm` | an Ink screen from a handler or as a fallback, with a non-interactive default (`Confirm`'s `otherwise` is a whole `{ confirmed, toggles }`; `CliUi.map(screen, f)` turns it into a boolean for a `--yes` flag); `TextInput`'s `mask` (`true`, a string, or a predicate that latches until the value is emptied) draws a secret one mask per grapheme |
 | `CliUi.lazy(() => import("./screen.js"))` | mounting a screen of your own whose module holds the JSX, loaded only when it mounts |
 | `CliUi.live`, `DocView`, `UiProvider` | progress that redraws in place while work runs, drawing the `Doc` IR inside Ink; `render: CliUi.lazyView(() => import("./view.js"))` and a `final` document keep React and Ink off runs that never draw |
 | `KeyTable`, `useKeys`, `KeyHelp`, `Styled`, `Tabs`, `Toggle`, `Viewport` | writing your own screen |

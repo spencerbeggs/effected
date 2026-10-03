@@ -42,8 +42,9 @@ NodeRuntime.runMain(
 | `CliInteractive` | `@effected/cli` | asking whether this run may prompt a person |
 | `CliTheme`, `Token`, `Status`, `Glyphs` | `@effected/cli` | painting by token, a typed status vocabulary, Unicode or ASCII glyphs |
 | `CliMessage` | `@effected/cli` | a one-line themed outcome ("created 3 files") that no log level silences |
+| `CliLog.status`, `CliTheme.forAudience` | `@effected/cli` | a status glyph that keeps its colour on the log channel; painting your own lines by the kit's audience rule |
 | `Doc`, `Render`, `Fmt`, `CliLinks` | `@effected/cli` | building a report once and rendering it plain for agents, ANSI for people, markdown, or a GitHub Actions log |
-| `CliFailure` | `@effected/cli` | drawing a failure as a document, or letting an error draw itself (`CliDoc`) |
+| `CliFailure` | `@effected/cli` | drawing a failure as a document, or letting an error draw itself (`CliDoc`); its `in:` span trail (`spans`, `appModule`) |
 | `CliLog` | `@effected/cli` | opt-in diagnostics: a level variable, NDJSON for agents and CI, a file sink, components |
 | `CliLogger` | `@effected/cli` | the plain, level-routed logger on its own, for a program without `CliLog` |
 | `CliExit` | `@effected/cli` | a findings command (a linter that found problems) exiting non-zero by succeeding, never by failing |
@@ -51,10 +52,11 @@ NodeRuntime.runMain(
 | `CliPrompt.fallback` | `@effected/cli` | a flag or argument that prompts with core's `Prompt` when missing — only when interactive |
 | `CliUi`, `Select`, `TextInput`, `MultiSelect`, `Confirm` | `@effected/cli/ui` | an Ink screen from a handler (`prompt`) or as a fallback (`fallback`), with a non-interactive default |
 | `CliUi.lazy` | `@effected/cli/ui` | mounting a screen of your own whose module holds the JSX, so a non-interactive run never loads React |
+| `CliUi.map` | `@effected/cli/ui` | mapping a screen's answer, e.g. a `Confirm` behind a `--yes` boolean flag |
 | `CliUi.live`, `CliUi.lazyView`, `DocView`, `UiProvider` | `@effected/cli/ui` | progress that redraws in place while work runs, its view loaded lazily and a `final` document for runs nobody watches, drawing the `Doc` IR inside Ink |
 | `KeyTable`, `useKeys`, `KeyHelp`, `Styled`, `Viewport`, `Tabs` | `@effected/cli/ui` | writing your own screen: keys as data, themed text, a scrolling list, tabs |
 | `CliTest`, `TestTerminal` | `@effected/cli/testing` | spawning a built bin hermetically; driving core prompts in a test |
-| `CliUiTest` | `@effected/cli/ui/testing` | driving a screen or live view with keys and reading its frames |
+| `CliUiTest` | `@effected/cli/ui/testing` | driving a screen or live view with keys and reading its frames and the terminal's transcript |
 | `CurrentDistribution`, `distributionSuffix` | `@effected/engine` | a consumer front end's `--version` line needs the carrier it was installed through |
 | `SourceBoundary` | `@effected/workspaces/testing` | pinning which files may read `process` in a CLI's own tests |
 
@@ -70,6 +72,8 @@ NodeRuntime.runMain(
 - Ask for input only through `CliPrompt.fallback`, `CliUi.prompt` or `CliUi.fallback`, each with a non-interactive default.
 - Set `"jsx": "react-jsx"` for a `.tsx` screen, keep each screen in its own module with a default export, and mount it with `CliUi.lazy`, so JSX never loads in the command module.
 - Log through `handle.logConsole` while a live view is drawn, and not at all while a screen is mounted.
+- Paint a status glyph on a diagnostic with `CliLog.status`, and apply the audience rule to your own lines with `CliTheme.forAudience`; never copy the rule or hand-paint a glyph into `Effect.log*` (the logger strips it).
+- Pass `env: { appModule: import.meta.url }` to `CliRuntime.main` from a bin that is installed under `node_modules/@effected/`, so the failure report's span trail keeps its own spans.
 - Give a live view `render: CliUi.lazyView(() => import("./view.js"))` and a `final` document, so `--help`, agent, CI and piped runs never load React or Ink.
 - Report findings by succeeding and calling `CliExit.set(code)`, never by failing or calling `process.exit` in a handler.
 - Set `emitDts: false` in `savvy.build.ts` for a package whose `exports` is `"./package.json"` only.
@@ -94,6 +98,12 @@ NodeRuntime.runMain(
 - Ink delivers a whole stdin read of keys before React re-renders; a handler must step from current state — see `prompts-and-screens.md`.
 - React error boundaries do not catch errors thrown in Ink `useInput`/`usePaste` handlers — see `prompts-and-screens.md`.
 - `CliUiTest`'s `press("y")` dies (send `type("y")` or `press({ char: "y" })`), its waits are real time (`it.live` for a test that sleeps), and under `main` with `env` the session's `interactive` is shadowed by `CliEnv` — see `testing-a-cli.md`.
+- A `TextInput` `mask` predicate latches from its first `true` until the value is emptied; match the giveaway anywhere (`/gh[pousr]_|github_pat_/`), never as a prefix, and never echo the value in a `validate` message, which is drawn unmasked — see `prompts-and-screens.md`.
+- A share headline (`1/3 repos`) reads a `{ one, other }` label by the total, a standalone count by its own `n` — see `presentation.md`.
+- The failure report's span trail defaults to `spans: "app"`, which leaves out spans defined under `node_modules/@effected/` and `node_modules/effect/`; a bin installed there without `appModule` loses its own spans too — see `presentation.md`.
+- A human whose stream is not a terminal (`tool | grep`) gets an unbounded width; to keep one line whole at a narrow terminal, use `Doc.line(content, { wrap: false })` — see `presentation.md`.
+- Keep a live view's `LiveOptions` in a module the view does not import, or Biome's `noImportCycles` flags `CliUi.lazyView`'s dynamic import — see `live-view.md`.
+- `CliUiTest.session`'s `layer` is typed `Layer<CliTheme>` but also supplies the streams and `CliInteractive` as references: provided where a presentation layer shadows it, it falls back quietly to the real streams — see `testing-a-cli.md`.
 - `PubSub.shutdown` and a bare scope close drop a live view's tail; end with `handle.close` or `PubSub.end` — see `live-view.md`.
 - A live view fed a forking stream subscribes late; pass the `PubSub.Subscription` itself — see `live-view.md`.
 - The default logger and `runMain`'s failure report both land on stdout, not stderr — see `output-and-logging.md`.
