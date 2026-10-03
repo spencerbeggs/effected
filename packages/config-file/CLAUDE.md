@@ -125,6 +125,14 @@ and provide that const, or you mint two independent service instances.
 `makeImpl` over them — not a mock; it has no `defaultPath`, so `save`/`update`
 honestly fail with `ConfigDefaultPathMissingError` under it.
 
+Both take the key as `Context.Key<Self, S> & ([ConfigFileShape<A>] extends [S]
+? unknown : never)` with a defaulted `S extends ConfigFileShape<A>` — an
+**exact** pin, not `Context.Key<Self, ConfigFileShape<A>>`. A class key is
+checked structurally and method bivariance makes that covariant, so the plain
+form accepted a key over `ConfigFileShape<A> & { extra }` and handed it a value
+missing `extra`. `S` is defaulted so explicit four-type-argument calls still
+compile; `__test__/ConfigFileKeyTyping.test.ts` pins both directions.
+
 `encode(value, options?)` is the **`--dry-run` primitive**: it returns the exact
 string `write` puts on disk — schema-encode, stringify, header — with no write,
 no event and path-less errors (`ConfigEncodeError = ConfigCodecError |

@@ -682,12 +682,13 @@ const makeImpl = <A, I, RR>(
 };
 
 // Implementation of ConfigFile.layer; the public contract lives on the static.
-const layer = <Self, A, I, RR = never>(
-	tag: Context.Key<Self, ConfigFileShape<A>>,
+const layer = <Self, A, I, RR = never, S extends ConfigFileShape<A> = ConfigFileShape<A>>(
+	tag: Context.Key<Self, S> & ([ConfigFileShape<A>] extends [S] ? unknown : never),
 	options: ConfigFileOptions<A, I, RR>,
 ): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | RR> =>
 	Layer.effect(
-		tag,
+		// The constraint pins S to exactly ConfigFileShape<A>, so the key may be read at it.
+		tag as Context.Key<Self, ConfigFileShape<A>>,
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			// `save` needs `dirname`, so `Path` is required alongside `FileSystem`.
@@ -733,12 +734,13 @@ export interface ConfigFileTestOptions<A, I> {
 }
 
 // Implementation of ConfigFile.testLayer; the public contract lives on the static.
-const testLayer = <Self, A, I>(
-	tag: Context.Key<Self, ConfigFileShape<A>>,
+const testLayer = <Self, A, I, S extends ConfigFileShape<A> = ConfigFileShape<A>>(
+	tag: Context.Key<Self, S> & ([ConfigFileShape<A>] extends [S] ? unknown : never),
 	options: ConfigFileTestOptions<A, I>,
 ): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path> =>
 	Layer.effect(
-		tag,
+		// The constraint pins S to exactly ConfigFileShape<A>, so the key may be read at it.
+		tag as Context.Key<Self, ConfigFileShape<A>>,
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			const path = yield* Path.Path;
@@ -859,6 +861,12 @@ export class ConfigFile {
 	 * and provide that const — do not call `ConfigFile.layer(...)` inline at each
 	 * provide site.
 	 *
+	 * `tag` is a {@link ConfigFile.Service} key — its service type exactly
+	 * `ConfigFileShape<A>` for the schema's `A`. A key over a wider shape
+	 * (`ConfigFileShape<A> & { … }`) is a compile error, reported as an argument
+	 * "not assignable to parameter of type 'never'", because this layer could not
+	 * supply the extra members.
+	 *
 	 * @example
 	 * ```ts
 	 * import { ConfigFile, ConfigResolver, JsonCodec, MergeStrategy } from "@effected/config-file";
@@ -896,6 +904,9 @@ export class ConfigFile {
 	 * The temp directory is removed by a finalizer bound to the layer's own scope,
 	 * so cleanup runs on release without surfacing `Scope` in the layer's
 	 * requirements.
+	 *
+	 * `tag` takes the same exactly-`ConfigFileShape<A>` key as
+	 * {@link ConfigFile.layer}; a wider shape is a compile error.
 	 *
 	 * @example
 	 * ```ts
