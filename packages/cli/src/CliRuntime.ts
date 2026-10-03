@@ -1,7 +1,7 @@
 import type { Audience, TerminalEnv } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
 import type { FileSystem, Path, Stdio, Terminal } from "effect";
-import { Cause, Effect, Layer, MutableRef, Runtime } from "effect";
+import { Cause, Effect, Layer, Logger, MutableRef, Runtime } from "effect";
 import { CliError } from "effect/cli";
 import { CliColor } from "./CliColor.js";
 import type { CliEnvOptions, CliEnvServices } from "./CliEnv.js";
@@ -9,7 +9,7 @@ import { CliEnv } from "./CliEnv.js";
 import { CliExit } from "./CliExit.js";
 import type { CliLogFileOptions, CliLogOptions } from "./CliLog.js";
 import { CliLog, envBuildLogLayer, platformLogLayer } from "./CliLog.js";
-import { CliLogger } from "./CliLogger.js";
+import { CliLogger, makeCliLogger } from "./CliLogger.js";
 import { sanitize } from "./Fmt.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
 import type { FailureTarget } from "./internal/failureTarget.js";
@@ -526,9 +526,18 @@ export class CliRuntime {
 						// Records how a failure is rendered, from the services this layer provides, for the report outside it.
 						Layer.effectDiscard(
 							Effect.gen(function* () {
-								// `env.spans` beats `env.spansEnvVar`, as `log.level` beats `log.envVar`; a bad value warns once.
+								// `env.spans` beats `env.spansEnvVar`, as `log.level` beats `log.envVar`; a bad value warns once,
+								// delivered as `log.envVar`'s is: through a plain `CliLogger` alone, whatever the diagnostics level,
+								// never into the `CliLog` sink.
 								const { spans, invalid } = yield* readSpans(options.env?.spans, options.env?.spansEnvVar);
-								if (invalid !== undefined) yield* Effect.logWarning(invalid);
+								if (invalid !== undefined) {
+									yield* Effect.logWarning(invalid).pipe(
+										Effect.provideService(
+											Logger.CurrentLoggers,
+											new Set<Logger.Logger<unknown, unknown>>([makeCliLogger(envLog?.logger)]),
+										),
+									);
+								}
 								yield* refreshFailureTarget(undefined, {
 									displayPath: options.env?.displayPath,
 									stackFrames: options.env?.stackFrames,

@@ -1,8 +1,9 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, ConfigProvider, Console, Context, Effect, Exit, Layer, Stdio, Terminal } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Cause, ConfigProvider, Console, Context, Effect, Exit, Layer, Path, Stdio, Terminal } from "effect";
 import { Command } from "effect/cli";
-import type { CliFailureOptions, FailureDetails } from "../src/index.js";
+import type { CliFailureOptions, CliLogOptions, FailureDetails } from "../src/index.js";
 import { CliAudience, CliFailure, CliRuntime, Render } from "../src/index.js";
 
 interface Frame {
@@ -270,6 +271,8 @@ describe("CliRuntime.main's env.spans", () => {
 		render?: (error: unknown, details: FailureDetails) => ReadonlyArray<string>,
 		appModule?: string,
 		variable?: { readonly spansEnvVar: string; readonly value?: string },
+		log?: CliLogOptions,
+		extraEnv: Record<string, string> = {},
 	) =>
 		Effect.gen(function* () {
 			const err: Array<string> = [];
@@ -291,6 +294,7 @@ describe("CliRuntime.main's env.spans", () => {
 						...(spans === undefined ? {} : { spans }),
 						...(appModule === undefined ? {} : { appModule }),
 						...(variable === undefined ? {} : { spansEnvVar: variable.spansEnvVar }),
+						...(log === undefined ? {} : { log }),
 					},
 					...(render === undefined ? {} : { render }),
 				},
@@ -298,9 +302,13 @@ describe("CliRuntime.main's env.spans", () => {
 				Effect.exit,
 				Effect.provideService(
 					ConfigProvider.ConfigProvider,
-					ConfigProvider.fromUnknown(variable?.value === undefined ? {} : { [variable.spansEnvVar]: variable.value }),
+					ConfigProvider.fromUnknown(
+						variable?.value === undefined ? extraEnv : { ...extraEnv, [variable.spansEnvVar]: variable.value },
+					),
 				),
 				Effect.provideService(Console.Console, double),
+				// `env.log` types a file sink's FileSystem and Path into main's requirements; none is written here.
+				Effect.provide(Layer.mergeAll(MemoryFileSystem.layer, Path.layer)),
 			);
 			return err.join("\n");
 		});
@@ -364,6 +372,38 @@ describe("CliRuntime.main's env.spans", () => {
 			assert.include(text, "in: sync", "the default applies");
 			assert.notInclude(text, "ConfigFile");
 		}),
+	);
+
+	it.effect(
+		"the invalid-value warning is delivered as log.envVar's is: printed at level None, never into the sink",
+		() =>
+			Effect.gen(function* () {
+				const bad = { spansEnvVar: "TOOL_SPANS", value: "loud" };
+				const warnings = (text: string) => text.split("\n").filter((line) => line.includes("TOOL_SPANS=loud"));
+				const atNone = yield* runTool(undefined, undefined, undefined, bad, { level: "None" });
+				assert.lengthOf(warnings(atNone), 1, `printed at level None: ${atNone}`);
+				// With the sink live (Debug, NDJSON), the warning is still one plain line, and no record carries it.
+				const sinkOn = yield* runTool(undefined, undefined, undefined, bad, { level: "Debug", format: "json" });
+				assert.lengthOf(warnings(sinkOn), 1, sinkOn);
+				assert.isFalse(warnings(sinkOn)[0]?.startsWith("{"), "a plain line, not an NDJSON record");
+				// Side by side with log.envVar's own invalid value: delivered the same way.
+				const both = yield* runTool(
+					undefined,
+					undefined,
+					undefined,
+					bad,
+					{ envVar: "TOOL_LOG", format: "json" },
+					{ TOOL_LOG: "shout" },
+				);
+				const logWarning = both.split("\n").filter((line) => line.includes("TOOL_LOG=shout"));
+				assert.lengthOf(logWarning, 1, both);
+				assert.lengthOf(warnings(both), 1, both);
+				assert.strictEqual(
+					warnings(both)[0]?.startsWith("{"),
+					logWarning[0]?.startsWith("{"),
+					"the two env vars' warnings take the same shape",
+				);
+			}),
 	);
 
 	it.effect("FailureDetails.lines takes spans for its own lines, beside the run's setting", () =>
