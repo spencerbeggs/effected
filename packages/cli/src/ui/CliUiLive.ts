@@ -115,6 +115,10 @@ export interface LiveOptions<E, S> {
 	 *
 	 * An interactive run never calls it, and a `hosted` view never prints either way. It need not match the Ink frame:
 	 * it is what a reader with no terminal gets.
+	 *
+	 * With `final` set, `render` is never called on a run that is not interactive, not even to build a string that would
+	 * go unused: the run's output is `final(state)` alone. (Pinned by `CliUi.live.final.test.ts`, whose watch-mode test
+	 * counts zero `render` calls over three runs.)
 	 */
 	readonly final?: ((state: S) => Cli.Document) | undefined;
 	/**
