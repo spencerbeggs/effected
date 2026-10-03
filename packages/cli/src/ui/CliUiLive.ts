@@ -358,7 +358,7 @@ export const live = <E, S>(
 					// One Ink mount at a time, process-wide, held for this run only: a `CliUi.run` between runs mounts.
 					yield* Effect.acquireRelease(mountPermit.take(1), () => mountPermit.release(1), { interruptible: true });
 					yield* Effect.acquireRelease(
-						Effect.sync(() => overrides.onMount?.()),
+						Effect.sync(() => overrides.onMount?.("live")),
 						() => Effect.sync(() => overrides.onUnmount?.(undefined)),
 					);
 					const { ink, react } = yield* loadInk;
@@ -408,7 +408,8 @@ export const live = <E, S>(
 								interactive: true,
 								exitOnCtrlC: false,
 								patchConsole: false,
-								...(overrides.debug === true ? { debug: true } : {}),
+								// Never Ink's debug mode, even under a harness that renders screens so: a live view writes lines above
+								// its frame, which only the production path lays out as a terminal would.
 								...(overrides.onRender === undefined ? {} : { onRender: overrides.onRender }),
 							});
 							drainPerformance(drain);

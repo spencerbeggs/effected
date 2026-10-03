@@ -54,7 +54,8 @@ plane, `cli` the presentation boundary, and neither imports the other.
 `KeyHelp`) and the theme bridge (`Styled`, `inkProps`, `useTheme`,
 `useGlyphs`, `useTerminalSize`). `./ui/testing` holds `CliUiTest`: `render`
 for one screen, `view` for a display-only element (no `result`), `session`
-for a program that runs several, `live` for a live view, and `chunk` on every handle to send keys in
+for a program that runs several (with a `transcript` and `written` of the terminal, and
+`renderPath: "production"` to observe `clear`), `live` for a live view, and `chunk` on every handle to send keys in
 one read. `okf/modules/cli.md` has the rows.
 
 - **Optional peers `ink` (^7.1.1) and `react` (^19.2.0).** The root never

@@ -132,7 +132,7 @@ const mount = <A>(
 		// The harness's bracket, around everything a run does, so a thunk that throws before Ink draws is a screen too.
 		// Released last: after Ink has exited and the colour level is restored, with the defect the run died of.
 		yield* Effect.acquireRelease(
-			Effect.sync(() => overrides.onMount?.()),
+			Effect.sync(() => overrides.onMount?.("screen")),
 			(_, exit) =>
 				Effect.sync(() => {
 					const died = Exit.isFailure(exit) ? exit.cause.reasons.find(Cause.isDieReason) : undefined;

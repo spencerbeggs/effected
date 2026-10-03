@@ -15,5 +15,6 @@ export {
 	type CliUiTestOptions,
 	type CliUiTestScreen,
 	type CliUiTestSession,
+	type CliUiTestSessionOptions,
 	type CliUiTestView,
 } from "./ui/testing/CliUiTest.js";

@@ -6,15 +6,20 @@ import { Context } from "effect";
  * @internal
  */
 export interface UiRenderOverrides {
-	/** Render every frame in full, unthrottled, as Ink's `debug` mode does; the harness reads frames this way. */
+	/**
+	 * Render a screen's every frame in full, unthrottled, as Ink's `debug` mode does; the harness reads screen frames this
+	 * way unless a session asks for the production path. A live view never renders in debug mode: it always runs on the
+	 * production path, so what it writes above its frame lands as it does on a terminal.
+	 */
 	readonly debug?: boolean;
 	/** Called after each render, just before Ink writes the frame; the harness counts frames with it. */
 	readonly onRender?: () => void;
 	/**
 	 * Called as a screen's run starts mounting, before Ink is loaded and before the screen's thunk is called, so a run
-	 * that crashes before Ink draws still has a capture; the harness starts that screen's capture.
+	 * that crashes before Ink draws still has a capture; the harness starts that screen's capture. `kind` says whether a
+	 * screen (`CliUi.run`) or a live view's run (`CliUi.live`) is mounting, which decides how its writes are read.
 	 */
-	readonly onMount?: () => void;
+	readonly onMount?: (kind: "screen" | "live") => void;
 	/**
 	 * Called once a screen has unmounted, Ink has exited and the colour level is restored, with the defect the run died
 	 * of, if it died (a thunk or a component that threw); the harness marks that screen's capture ended, and crashed.

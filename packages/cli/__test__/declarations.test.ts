@@ -525,6 +525,7 @@ const UI_TESTING_TYPES_AND_VALUES = [
 	"CliUiTestOptions",
 	"CliUiTestScreen",
 	"CliUiTestSession",
+	"CliUiTestSessionOptions",
 	"CliUiTestView",
 ];
 
