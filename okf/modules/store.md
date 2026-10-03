@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T15:32:07Z
-  body_sha256: 62a4e561baa68f6f99ae59aeb983d568d46847089d58b972d6c5473e17208b41
+  at: 2026-10-03T15:41:19Z
+  body_sha256: 0d11dbe4de66935f4ec1f1a480e77616694e8859921bd8b146263e13a36273d3
 ---
 
 # store
@@ -176,8 +176,10 @@ journal to WAL, and SQLite refuses that switch at once under contention
 without waiting out the timeout, so concurrent first openers can die with
 `database is locked`. Once the file is in WAL mode nothing contends. The
 README carries the two mitigations verified against it: create the file
-in WAL from one process first, or retry the layer build on that defect
-with jittered backoff.
+in WAL from one process first, or warm the database up with a scoped
+`Layer.build` retried with jittered backoff on `SQLITE_BUSY` alone
+(`code` `ERR_SQLITE_ERROR`, `errcode` 5), then run the program once,
+unretried.
 
 Adoption replaced a hand-run SQL seeding recipe once the
 [vitest-agent](../consumers/vitest-agent.md) consumer needed to move

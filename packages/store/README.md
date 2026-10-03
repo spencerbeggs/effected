@@ -153,24 +153,34 @@ Processes that open the same file at once — parallel CLI hooks, a server besid
 **One limit sits below `Store`, in the SQLite driver: the very first open of a brand-new file.** `SqliteClient` sets `PRAGMA busy_timeout` and then `PRAGMA journal_mode = WAL` on every connection. Switching a fresh file from its default journal into WAL needs a lock that SQLite refuses at once under contention, without waiting out `busy_timeout`. When several processes create the same file at the same moment, some of them fail with `database is locked`. The driver issues the pragma outside any error channel, so that failure surfaces as a **defect** from the layer build, not as a typed error. Once the file is in WAL mode the pragma has nothing left to switch and never contends, so only the first open is exposed. Two mitigations work today:
 
 - **Create the file in WAL mode once, from a single process,** before anything opens it concurrently — an install or setup step, or whichever command is known to run first. After that, every concurrent opener is safe.
-- **Retry the layer build on that defect, with jittered backoff.** An immediate retry is not enough, because the contenders collide again in lockstep:
+- **Warm the database up first, retrying only that open.** Build the layer once inside its own scope and retry that build on `SQLITE_BUSY`, with jittered backoff — an immediate retry is not enough, because the contenders collide again in lockstep. Then run the program normally:
 
 ```ts
-import { Data, Effect, Schedule } from "effect";
+import { Data, Effect, Layer, Schedule } from "effect";
 
-class DatabaseLocked extends Data.TaggedError("DatabaseLocked")<{ readonly defect: unknown }> {}
-const isLocked = (defect: unknown) => defect instanceof Error && /database is locked/.test(defect.message);
+class DatabaseBusy extends Data.TaggedError("DatabaseBusy")<{ readonly defect: unknown }> {}
 
-const run = program.pipe(
-  Effect.provide(StoreLive),
-  Effect.catchDefect((defect) => (isLocked(defect) ? Effect.fail(new DatabaseLocked({ defect })) : Effect.die(defect))),
+/** SQLITE_BUSY as node:sqlite throws it: a plain Error carrying the extended fields. */
+const isSqliteBusy = (defect: unknown): boolean =>
+  defect instanceof Error &&
+  (defect as { readonly code?: unknown }).code === "ERR_SQLITE_ERROR" &&
+  (defect as { readonly errcode?: unknown }).errcode === 5;
+
+// Open — and close — the database once, retrying ONLY that open.
+const warmUp = Effect.scoped(Layer.build(StoreLive)).pipe(
+  Effect.catchDefect((defect) => (isSqliteBusy(defect) ? Effect.fail(new DatabaseBusy({ defect })) : Effect.die(defect))),
   Effect.retry({
     times: 8,
-    while: (error) => error._tag === "DatabaseLocked",
+    while: (error) => error._tag === "DatabaseBusy",
     schedule: Schedule.jittered(Schedule.exponential("20 millis")),
   }),
 );
+
+// The program runs once, unretried, over its own build of the layer.
+const main = warmUp.pipe(Effect.andThen(program.pipe(Effect.provide(StoreLive))));
 ```
+
+Only the warm-up is retried, so a program that has already done work never re-runs, and only `SQLITE_BUSY` is retried — a failing migration still fails once, typed. The warm-up does **not** stand in for the program's own open: `Effect.provide` builds the layer again, a second connection, because separate provides do not share a memoised build. That second open cannot hit the first-open refusal, since the warm-up left the file in WAL mode. A `SQLITE_BUSY` there means a writer outlasted `busyTimeout`, and it is deliberately not retried.
 
 ### Connection settings: WAL and busy timeout
 
