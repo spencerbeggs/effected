@@ -2,7 +2,7 @@ import type { AudienceShape } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
 import type { Cause } from "effect";
-import { Context, Effect, MutableRef, Option } from "effect";
+import { Config, Context, Effect, MutableRef, Option } from "effect";
 import { CliFailure } from "../CliFailure.js";
 import { CliLinks } from "../CliLinks.js";
 import { CliTheme } from "../CliTheme.js";
@@ -219,3 +219,30 @@ export const plainFailureLines = (
 	status = true,
 	spans?: "app" | "all" | "off",
 ): ReadonlyArray<string> => linesOf(cause, fallbackTarget, status, spans);
+
+const SPAN_SETTINGS: ReadonlyArray<"app" | "all" | "off"> = ["app", "all", "off"];
+
+/**
+ * The span trail setting, as `CliLog`'s level is read: the explicit `spans` when given (the variable is then not read
+ * at all), else the variable named `envVar` through `Config`, case-insensitive, unset or empty meaning the default.
+ * A value that is not a setting is ignored, with the warning to log.
+ *
+ * @internal
+ */
+export const readSpans = (
+	explicit: "app" | "all" | "off" | undefined,
+	envVar: string | undefined,
+): Effect.Effect<{ readonly spans: "app" | "all" | "off" | undefined; readonly invalid: string | undefined }> =>
+	Effect.gen(function* () {
+		if (explicit !== undefined) return { spans: explicit, invalid: undefined };
+		if (envVar === undefined) return { spans: undefined, invalid: undefined };
+		const raw = yield* Config.option(Config.String(envVar)).pipe(Effect.orElseSucceed(() => Option.none<string>()));
+		if (Option.isNone(raw) || raw.value === "") return { spans: undefined, invalid: undefined };
+		const value = raw.value.toLowerCase();
+		const spans = SPAN_SETTINGS.find((setting) => setting === value);
+		if (spans !== undefined) return { spans, invalid: undefined };
+		return {
+			spans: undefined,
+			invalid: `${envVar}=${raw.value} is not a span setting (${SPAN_SETTINGS.join("|")}); ignoring it`,
+		};
+	});

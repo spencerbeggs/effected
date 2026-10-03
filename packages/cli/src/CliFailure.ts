@@ -57,7 +57,8 @@ export interface CliFailureOptions {
 	 * and Effect define themselves: a span whose definition site (an `Effect.fn`'s, or where the span was opened) is a
 	 * file under `node_modules/@effected/` or `node_modules/effect/`. A config that fails to decode under
 	 * `@effected/config-file` then reports no `ConfigFile.loadFrom` trail, while the program's own spans stay. `all`
-	 * shows every span, and `off` drops the trail.
+	 * shows every span, and `off` drops the trail. Under either, an `Effect.fn` call and its definition are one entry,
+	 * `name`, never `name (definition) › name`.
 	 *
 	 * @remarks
 	 * The rule reads file paths, never span names, and it fails open: when it cannot tell, it shows the span. A span
@@ -339,8 +340,9 @@ const spanFile = (frame: { readonly stack: () => string | undefined }): string |
 
 /**
  * `in: outer › inner`, from the span stack the runtime annotates a reason with, or none. With `app`, a span the kit or
- * Effect defined is left out. An `Effect.fn` call carries its definition as its parent (`name (definition)`), and is
- * judged by that definition's site, so a kit function the program calls goes with its definition.
+ * Effect defined is left out. An `Effect.fn` call carries its definition as its parent (`name (definition)`): the two
+ * are one entry, `name`, judged by the definition's site, so a kit function the program calls goes with its
+ * definition.
  */
 const spanBlocks = (
 	reason: CauseType.Reason<unknown>,
@@ -355,7 +357,8 @@ const spanBlocks = (
 		const definition = parent !== undefined && parent.name === `${frame.name} (definition)` ? parent : undefined;
 		const file = (definition === undefined ? undefined : spanFile(definition)) ?? spanFile(frame);
 		if (mode === "all" || file === undefined || isAppFile(file, appDir) || !isKitFile(file)) names.push(frame.name);
-		frame = parent;
+		// A call and its definition are one entry, `X`, never `X (definition) › X`: the definition is skipped.
+		frame = definition === undefined ? parent : definition.parent;
 	}
 	if (names.length === 0) return [];
 	return [Doc.paragraph(Doc.text("in: ", "muted"), Doc.path(...names.reverse()))];

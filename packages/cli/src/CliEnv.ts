@@ -81,6 +81,13 @@ export interface CliEnvOptions {
 	 */
 	readonly spans?: "app" | "all" | "off" | undefined;
 	/**
+	 * The environment variable that sets `spans` at run time (`app`, `all` or `off`, case-insensitive), read through
+	 * `Config`, as `log.envVar` sets the log level: so a user filing a bug can run `TOOL_SPANS=all tool …` without a
+	 * rebuild. `spans` beats it (the variable is then not read at all); unset or empty is the default; a value that is
+	 * not a setting is ignored with one warning. Not read unless named. Only `CliRuntime.main` reads this.
+	 */
+	readonly spansEnvVar?: string | undefined;
+	/**
 	 * A module of the running program itself, as a `file:` URL or an absolute path: pass the bin's `import.meta.url`.
 	 * `spans: "app"` keeps the spans of the package that holds it, even when it is installed under
 	 * `node_modules/@effected/` (a kit companion's bin); see `CliFailureOptions.appModule`. Only `CliRuntime.main`

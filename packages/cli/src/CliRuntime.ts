@@ -20,6 +20,7 @@ import {
 	guardConsumerLines,
 	linesOf,
 	plainFailureLines,
+	readSpans,
 	refreshFailureTarget,
 } from "./internal/failureTarget.js";
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
@@ -524,11 +525,16 @@ export class CliRuntime {
 						CliColor.formatterLayer(options.env?.formatter),
 						// Records how a failure is rendered, from the services this layer provides, for the report outside it.
 						Layer.effectDiscard(
-							refreshFailureTarget(undefined, {
-								displayPath: options.env?.displayPath,
-								stackFrames: options.env?.stackFrames,
-								spans: options.env?.spans,
-								appModule: options.env?.appModule,
+							Effect.gen(function* () {
+								// `env.spans` beats `env.spansEnvVar`, as `log.level` beats `log.envVar`; a bad value warns once.
+								const { spans, invalid } = yield* readSpans(options.env?.spans, options.env?.spansEnvVar);
+								if (invalid !== undefined) yield* Effect.logWarning(invalid);
+								yield* refreshFailureTarget(undefined, {
+									displayPath: options.env?.displayPath,
+									stackFrames: options.env?.stackFrames,
+									spans,
+									appModule: options.env?.appModule,
+								});
 							}),
 						),
 					).pipe(Layer.provideMerge(env));

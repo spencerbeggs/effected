@@ -47,12 +47,12 @@ describe("CliFailure.toDoc: the span trail", () => {
 	it("all is every span, outermost first, as before", () => {
 		assert.strictEqual(
 			trail(chain({ app: APP, kit: KIT }), { spans: "all" }),
-			"in: sync (definition) > sync > ConfigFile.discover (definition) > ConfigFile.discover > ConfigFile.loadFrom (definition) > ConfigFile.loadFrom",
+			"in: sync > ConfigFile.discover > ConfigFile.loadFrom",
 		);
 	});
 
 	it("app, the default, drops spans the kit defined, a kit function the program called included", () => {
-		const expected = "in: sync (definition) > sync";
+		const expected = "in: sync";
 		assert.strictEqual(trail(chain({ app: APP, kit: KIT })), expected);
 		assert.strictEqual(trail(chain({ app: APP, kit: KIT }), { spans: "app" }), expected);
 		assert.strictEqual(trail(chain({ app: APP, kit: PNPM_KIT })), expected, "a pnpm store path is the kit's too");
@@ -88,6 +88,18 @@ describe("CliFailure.toDoc: the span trail", () => {
 		assert.strictEqual(trail(kitOnly, { spans: "all" }), "in: ConfigFile.loadFrom");
 	});
 
+	it("a call and its definition are one entry under all and app alike; a lone definition stays as it is", () => {
+		const lone: Frame = { name: "orphan (definition)", stack: at(APP), parent: undefined };
+		const other: Frame = { name: "inner", stack: at(APP), parent: lone };
+		assert.strictEqual(
+			trail(other, { spans: "all" }),
+			"in: orphan (definition) > inner",
+			"names that differ never pair",
+		);
+		assert.notInclude(trail(chain({ app: APP, kit: KIT }), { spans: "all" }), "(definition)");
+		assert.notInclude(trail(chain({ app: APP, kit: KIT })), "(definition)");
+	});
+
 	it("off drops the trail and keeps the failure", () => {
 		const doc = CliFailure.toDoc(failedUnder(chain({ app: APP, kit: KIT })), { spans: "off" });
 		const text = Render.plain(doc, Render.contextOf({ audience: "agent" }));
@@ -103,8 +115,8 @@ describe("CliFailure.toDoc: the span trail", () => {
 			const exit = yield* Effect.exit(load());
 			if (!Exit.isFailure(exit)) throw new Error("expected a failure");
 			const text = Render.plain(CliFailure.toDoc(exit.cause), Render.contextOf({ audience: "agent" }));
-			assert.include(text, "in: ");
-			assert.include(text, "load");
+			assert.include(text, "in: load");
+			assert.notInclude(text, "(definition)", "a real Effect.fn's call and definition are one entry");
 		}),
 	);
 });
@@ -130,7 +142,7 @@ describe("CliFailure.toDoc: the running program's own package (appModule)", () =
 	};
 
 	it("keeps a kit companion's own spans and still drops the kit packages it uses", () => {
-		const expected = "in: ConfigLoader.load (definition) > ConfigLoader.load";
+		const expected = "in: ConfigLoader.load";
 		assert.strictEqual(trail(companion({ loader: LOADER, kit: HOISTED_KIT }), { appModule: BIN }), expected);
 		assert.strictEqual(
 			trail(companion({ loader: LOADER, kit: NESTED_KIT }), { appModule: BIN }),
@@ -210,6 +222,7 @@ describe("CliRuntime.main's env.spans", () => {
 		spans: "app" | "all" | "off" | undefined,
 		render?: (error: unknown, details: FailureDetails) => ReadonlyArray<string>,
 		appModule?: string,
+		variable?: { readonly spansEnvVar: string; readonly value?: string },
 	) =>
 		Effect.gen(function* () {
 			const err: Array<string> = [];
@@ -227,12 +240,19 @@ describe("CliRuntime.main's env.spans", () => {
 				CliAudience.runWith(tool, { version: "1.0.0" })(["--agent", "go"]).pipe(Effect.provide(NodeServices.layer)),
 				{
 					platform,
-					env: { ...(spans === undefined ? {} : { spans }), ...(appModule === undefined ? {} : { appModule }) },
+					env: {
+						...(spans === undefined ? {} : { spans }),
+						...(appModule === undefined ? {} : { appModule }),
+						...(variable === undefined ? {} : { spansEnvVar: variable.spansEnvVar }),
+					},
 					...(render === undefined ? {} : { render }),
 				},
 			).pipe(
 				Effect.exit,
-				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({})),
+				Effect.provideService(
+					ConfigProvider.ConfigProvider,
+					ConfigProvider.fromUnknown(variable?.value === undefined ? {} : { [variable.spansEnvVar]: variable.value }),
+				),
 				Effect.provideService(Console.Console, double),
 			);
 			return err.join("\n");
@@ -242,7 +262,8 @@ describe("CliRuntime.main's env.spans", () => {
 		Effect.gen(function* () {
 			const byDefault = yield* runTool(undefined);
 			assert.include(byDefault, "Config validation failed");
-			assert.include(byDefault, "in: sync (definition) > sync");
+			assert.include(byDefault, "in: sync");
+			assert.notInclude(byDefault, "(definition)");
 			assert.notInclude(byDefault, "ConfigFile");
 			assert.include(yield* runTool("all"), "ConfigFile.loadFrom", "control: all keeps the kit's spans");
 			const off = yield* runTool("off");
@@ -264,6 +285,40 @@ describe("CliRuntime.main's env.spans", () => {
 		}),
 	);
 
+	it.effect("env.spansEnvVar sets the trail at run time, case-insensitive, as log.envVar sets the level", () =>
+		Effect.gen(function* () {
+			const variable = (value?: string) => ({ spansEnvVar: "TOOL_SPANS", ...(value === undefined ? {} : { value }) });
+			const all = yield* runTool(undefined, undefined, undefined, variable("ALL"));
+			assert.include(all, "ConfigFile.loadFrom", "TOOL_SPANS=ALL shows the kit's spans");
+			const off = yield* runTool(undefined, undefined, undefined, variable("off"));
+			assert.notInclude(off, "in: ");
+			const unset = yield* runTool(undefined, undefined, undefined, variable());
+			assert.include(unset, "in: sync");
+			assert.notInclude(unset, "ConfigFile", "unset: the default, app");
+			const empty = yield* runTool(undefined, undefined, undefined, variable(""));
+			assert.notInclude(empty, "ConfigFile", "empty: the default, app");
+		}),
+	);
+
+	it.effect("env.spans beats env.spansEnvVar, which is then not read at all", () =>
+		Effect.gen(function* () {
+			const text = yield* runTool("off", undefined, undefined, { spansEnvVar: "TOOL_SPANS", value: "loud" });
+			assert.notInclude(text, "in: ", "the explicit setting won");
+			assert.notInclude(text, "TOOL_SPANS", "an invalid value is not even read, so it does not warn");
+		}),
+	);
+
+	it.effect("an invalid value is ignored with one warning naming the variable and the settings", () =>
+		Effect.gen(function* () {
+			const text = yield* runTool(undefined, undefined, undefined, { spansEnvVar: "TOOL_SPANS", value: "loud" });
+			const warnings = text.split("\n").filter((line) => line.includes("TOOL_SPANS=loud"));
+			assert.lengthOf(warnings, 1, text);
+			assert.include(warnings[0], "is not a span setting (app|all|off); ignoring it");
+			assert.include(text, "in: sync", "the default applies");
+			assert.notInclude(text, "ConfigFile");
+		}),
+	);
+
 	it.effect("FailureDetails.lines takes spans for its own lines, beside the run's setting", () =>
 		Effect.gen(function* () {
 			const seen: Array<ReadonlyArray<string>> = [];
@@ -281,7 +336,7 @@ describe("CliRuntime.main's env.spans", () => {
 				"the run's off",
 			);
 			assert.isTrue(all.some((line) => line.includes("ConfigFile.loadFrom")));
-			assert.isTrue(app.some((line) => line === "in: sync (definition) > sync"));
+			assert.isTrue(app.some((line) => line === "in: sync"));
 			assert.notMatch(app[0] ?? "", /^\[FAIL\]/, "status: false still applies beside spans");
 		}),
 	);
