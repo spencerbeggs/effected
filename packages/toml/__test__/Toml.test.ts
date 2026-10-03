@@ -55,6 +55,22 @@ describe("Toml", () => {
 				assert.include(e.message, "DuplicateKey");
 			}),
 		);
+
+		it.effect("renders the message position 1-based while the diagnostic fields stay 0-based", () =>
+			Effect.gen(function* () {
+				const e = yield* Effect.flip(Toml.parse("[table\n"));
+				assert.instanceOf(e, TomlParseError);
+				assert.strictEqual(e.diagnostics[0].code, "ExpectedTableHeaderClose");
+				assert.strictEqual(e.diagnostics[0].line, 0);
+				assert.strictEqual(e.diagnostics[0].character, 6);
+				assert.include(e.message, "ExpectedTableHeaderClose at 1:7 ");
+				assert.notInclude(e.message, "at 0:6");
+				const dup = yield* Effect.flip(Toml.parse("a = 1\na = 2\n"));
+				assert.strictEqual(dup.diagnostics[0].line, 1);
+				assert.strictEqual(dup.diagnostics[0].character, 0);
+				assert.include(dup.message, "DuplicateKey at 2:1 ");
+			}),
+		);
 	});
 
 	describe("stringify", () => {
