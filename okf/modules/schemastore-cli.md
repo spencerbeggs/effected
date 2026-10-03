@@ -35,8 +35,8 @@ sources:
     resource: ../../packages/schemastore-cli/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T16:13:34Z
-  body_sha256: 306ca7bb8fc21ffb24a1b59ab0c6c11fd63b405083f4aa48fba6ed1cec49fcdf
+  at: 2026-10-03T16:26:35Z
+  body_sha256: 29b639d2f1a4134cb561f8a92960ca7ea7a9812587fd915adb447b753c1a6d00
 ---
 
 # @effected/schemastore-cli
