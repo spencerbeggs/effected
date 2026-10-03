@@ -100,6 +100,81 @@ export const ensureLedger = (sql: SqlClient, table: string): Effect.Effect<void,
 	`.pipe(Effect.mapError(ledgerFailure), Effect.asVoid);
 
 /**
+ * Where `Store` keeps its rollback history, and which foreign ledgers a
+ * rollback snapshots. A tombstone (`rollback:<id>` in `meta`) is written on
+ * EVERY rollback, whatever the options: it records, per foreign table, the
+ * `created_at` of that id's row as the rollback left it (`null` = no row).
+ * A later import compares the foreign row against that snapshot — the same
+ * value means the row is stale (Store unwound it; re-run it), a different or
+ * newly present row means an older program re-applied it (import it), and a
+ * table with no snapshot cannot be told apart (refuse). No clock comparison:
+ * `created_at` has one-second resolution, and apply-then-rollback routinely
+ * lands inside one second.
+ */
+export interface RollbackHistory {
+	readonly meta: string;
+	readonly foreignTables: ReadonlyArray<string>;
+}
+
+interface Tombstone {
+	readonly at: string;
+	readonly snapshots: Readonly<Record<string, string | null>>;
+}
+
+const tombstoneKey = (id: number): string => `rollback:${id}`;
+
+/** Whether `name` is a table, on SQLite; elsewhere history is not kept, so `false`. */
+const tableExists = (sql: SqlClient, name: string): Effect.Effect<boolean, SqlError> =>
+	sql.onDialectOrElse({
+		sqlite: () =>
+			Effect.map(
+				sql<{ n: number }>`SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = ${name}`,
+				(rows) => Number(rows[0]?.n ?? 0) > 0,
+			),
+		orElse: () => Effect.succeed(false),
+	});
+
+/** Every tombstone in `meta`, by id; empty when the table does not exist. */
+const readTombstones = (sql: SqlClient, meta: string): Effect.Effect<Map<number, Tombstone>, SqlError> =>
+	Effect.gen(function* () {
+		if (!(yield* tableExists(sql, meta))) return new Map<number, Tombstone>();
+		const rows = yield* sql<{ key: string; value: string }>`
+			SELECT key, value FROM ${sql(meta)} WHERE key LIKE 'rollback:%'
+		`;
+		return new Map(rows.map((row) => [Number(row.key.slice("rollback:".length)), JSON.parse(row.value) as Tombstone]));
+	});
+
+/** Drop an id's tombstone: it has been applied (or legitimately imported) again. */
+const clearTombstone = (sql: SqlClient, meta: string, id: number): Effect.Effect<void, SqlError> =>
+	Effect.gen(function* () {
+		if (yield* tableExists(sql, meta)) {
+			yield* sql`DELETE FROM ${sql(meta)} WHERE key = ${tombstoneKey(id)}`;
+		}
+	});
+
+/**
+ * Judge a foreign row for an id `table` lacks, against its tombstone.
+ * `"import"`: an older program applied it (and, with a tombstone, re-applied
+ * it after Store's rollback). `"stale"`: the row predates Store's rollback of
+ * it — the id is pending and runs again. A string: refused, with the reason.
+ */
+const judgeForeign = (
+	foreignTable: string,
+	row: ForeignRow,
+	tombstone: Tombstone | undefined,
+): "import" | "stale" | { readonly refused: string } => {
+	if (tombstone === undefined) return "import";
+	const id = Number(row.migration_id);
+	if (!(foreignTable in tombstone.snapshots)) {
+		return {
+			refused: `${foreignTable} records migration ${id}, which Store rolled back while not tracking ${foreignTable}; whether it was re-applied since cannot be told`,
+		};
+	}
+	const snapshot = tombstone.snapshots[foreignTable];
+	return snapshot !== null && snapshot === String(row.created_at) ? "stale" : "import";
+};
+
+/**
  * Apply every pending migration in ascending id order. Each migration's `up`
  * and its ledger insert commit atomically: a failing migration leaves prior
  * migrations applied and itself unrecorded.
@@ -117,6 +192,7 @@ export const runPending = (
 	table: string,
 	migrations: ReadonlyArray<MigratorMigration>,
 	mirror?: string,
+	history?: RollbackHistory,
 ): Effect.Effect<MigratorResult, MigratorFailure> =>
 	Effect.gen(function* () {
 		const rows = yield* sql<{ id: number }>`SELECT id FROM ${sql(table)} ORDER BY id ASC`.pipe(
@@ -124,7 +200,7 @@ export const runPending = (
 		);
 		const appliedIds = new Set(rows.map((row) => row.id));
 		const pending = migrations.filter((migration) => !appliedIds.has(migration.id)).sort((a, b) => a.id - b.id);
-		const result = yield* applyPending(sql, table, pending, mirror);
+		const result = yield* applyPending(sql, table, pending, mirror, history);
 
 		// The completion record effect/sql's Migrator emits, with the same
 		// message and annotation keys, so a consumer moving over loses nothing.
@@ -151,6 +227,7 @@ export const applyPending = (
 	table: string,
 	pending: ReadonlyArray<MigratorMigration>,
 	mirror?: string,
+	history?: RollbackHistory,
 ): Effect.Effect<MigratorResult, MigratorFailure> =>
 	Effect.gen(function* () {
 		const applied: Array<MigratorRecord> = [];
@@ -170,7 +247,17 @@ export const applyPending = (
 								SELECT migration_id, name, created_at FROM ${sql(mirror)} WHERE migration_id = ${migration.id}
 							`.withoutTransform.pipe(Effect.mapError(ledgerFailure));
 							const row = foreign[0];
-							if (row !== undefined) {
+							const tombstones =
+								row === undefined || history === undefined
+									? new Map<number, Tombstone>()
+									: yield* readTombstones(sql, history.meta).pipe(Effect.mapError(ledgerFailure));
+							const verdict = row === undefined ? "stale" : judgeForeign(mirror, row, tombstones.get(migration.id));
+							if (typeof verdict === "object") {
+								return yield* Effect.fail<MigratorFailure>({ _tag: "refused", message: verdict.refused });
+							}
+							// A stale row (Store rolled this id back since it was written) is not
+							// history: fall through and run the migration again.
+							if (row !== undefined && verdict === "import") {
 								const imported = importable(mirror, row, migration);
 								if (typeof imported === "string") {
 									return yield* Effect.fail<MigratorFailure>({ _tag: "refused", message: imported });
@@ -179,6 +266,9 @@ export const applyPending = (
 									INSERT INTO ${sql(table)} (id, name, applied_at)
 									VALUES (${migration.id}, ${migration.name}, ${imported.appliedAt})
 								`.pipe(Effect.mapError(ledgerFailure));
+								if (history !== undefined) {
+									yield* clearTombstone(sql, history.meta, migration.id).pipe(Effect.mapError(ledgerFailure));
+								}
 								yield* Effect.logDebug("Imported migration").pipe(
 									Effect.annotateLogs("migration_id", String(migration.id)),
 									Effect.annotateLogs("migration_name", migration.name),
@@ -197,6 +287,10 @@ export const applyPending = (
 						INSERT INTO ${sql(table)} (id, name, applied_at)
 						VALUES (${migration.id}, ${migration.name}, ${appliedAt})
 					`.pipe(Effect.mapError(ledgerFailure));
+						if (history !== undefined) {
+							// Applied again: its rollback is no longer the latest word on it.
+							yield* clearTombstone(sql, history.meta, migration.id).pipe(Effect.mapError(ledgerFailure));
+						}
 						if (mirror !== undefined) {
 							// Same transaction: the mirrored row exists exactly when ours does.
 							yield* sql`
@@ -225,6 +319,7 @@ export const rollbackTo = (
 	migrations: ReadonlyArray<MigratorMigration>,
 	toId: number,
 	mirror?: string,
+	history?: RollbackHistory,
 ): Effect.Effect<MigratorResult, MigratorFailure> =>
 	Effect.gen(function* () {
 		const rows = yield* sql<{ id: number; name: string }>`
@@ -249,6 +344,9 @@ export const rollbackTo = (
 								Effect.mapError(ledgerFailure),
 							);
 						}
+						if (history !== undefined) {
+							yield* recordTombstone(sql, history, row.id).pipe(Effect.mapError(ledgerFailure));
+						}
 					}),
 				)
 				.pipe(Effect.mapError((failure) => (isMigratorFailure(failure) ? failure : ledgerFailure(failure))));
@@ -256,6 +354,41 @@ export const rollbackTo = (
 		}
 
 		return { applied: [], rolledBack };
+	});
+
+/**
+ * Write `id`'s tombstone: the rollback time, and per tracked foreign table the
+ * `created_at` of that id's row as this rollback leaves it (`null` = none).
+ * SQLite only — the only dialect adoption and mirroring run on.
+ */
+const recordTombstone = (sql: SqlClient, history: RollbackHistory, id: number): Effect.Effect<void, SqlError> =>
+	sql.onDialectOrElse({
+		sqlite: () =>
+			Effect.gen(function* () {
+				const snapshots: Record<string, string | null> = {};
+				for (const foreignTable of history.foreignTables) {
+					if (!(yield* tableExists(sql, foreignTable))) {
+						snapshots[foreignTable] = null;
+						continue;
+					}
+					const rows = yield* sql<{ created_at: unknown }>`
+						SELECT created_at FROM ${sql(foreignTable)} WHERE migration_id = ${id}
+					`.withoutTransform;
+					snapshots[foreignTable] = rows[0] === undefined ? null : String(rows[0].created_at);
+				}
+				const at = DateTime.formatIso(yield* DateTime.now);
+				yield* sql`
+					CREATE TABLE IF NOT EXISTS ${sql(history.meta)} (
+						key TEXT PRIMARY KEY,
+						value TEXT NOT NULL
+					)
+				`;
+				yield* sql`
+					INSERT OR REPLACE INTO ${sql(history.meta)} (key, value)
+					VALUES (${tombstoneKey(id)}, ${JSON.stringify({ at, snapshots } satisfies Tombstone)})
+				`;
+			}),
+		orElse: () => Effect.void,
 	});
 
 /**
@@ -271,6 +404,7 @@ export const syncMirror = (
 	table: string,
 	mirror: string,
 	migrations: ReadonlyArray<MigratorMigration>,
+	history?: RollbackHistory,
 ): Effect.Effect<number, AdoptFailure> =>
 	sql
 		.onDialectOrElse({
@@ -296,9 +430,18 @@ export const syncMirror = (
 						const byId = new Map(migrations.map((migration) => [migration.id, migration]));
 						const foreignIds = new Set(foreignRows.map((row) => Number(row.migration_id)));
 						const toImport: Array<{ readonly id: number; readonly name: string; readonly appliedAt: string }> = [];
+						const tombstones =
+							history === undefined ? new Map<number, Tombstone>() : yield* readTombstones(sql, history.meta);
 						for (const row of foreignRows) {
 							const id = Number(row.migration_id);
 							if (own.has(id)) continue;
+							const verdict = judgeForeign(mirror, row, tombstones.get(id));
+							if (typeof verdict === "object") {
+								return yield* Effect.fail<AdoptFailure>({ _tag: "refused", message: verdict.refused });
+							}
+							// Store rolled this id back after the row was written: not history.
+							// It stays pending and runs again.
+							if (verdict === "stale") continue;
 							const migration = byId.get(id);
 							if (migration === undefined) {
 								return yield* Effect.fail<AdoptFailure>({
@@ -331,6 +474,7 @@ export const syncMirror = (
 									INSERT INTO ${sql(table)} (id, name, applied_at)
 									VALUES (${row.id}, ${row.name}, ${row.appliedAt})
 								`;
+								if (history !== undefined) yield* clearTombstone(sql, history.meta, row.id);
 							}
 							yield* Effect.logDebug("Imported migrator ledger rows").pipe(
 								Effect.annotateLogs("migrator_table", mirror),

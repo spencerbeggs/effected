@@ -343,3 +343,123 @@ describe("Store mirrorMigratorLedger is two-way for matching rows", () => {
 		}),
 	);
 });
+
+describe("rollback history keeps the mirror's import honest", () => {
+	const tables = (filename: string) =>
+		inspect(filename, (db) =>
+			(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map(
+				(row) => row.name,
+			),
+		);
+	const typedFailure = (exit: Exit.Exit<unknown, unknown>) => {
+		const cause = Option.getOrThrow(Exit.getCause(exit));
+		assert.isFalse(cause.reasons.some(Cause.isDieReason));
+		return cause.reasons.find(Cause.isFailReason)?.error as StoreError;
+	};
+
+	it.effect(
+		"rollback by a Store WITHOUT the mirror, then reopen with it: the stale row is not imported, the migration re-runs",
+		() =>
+			Effect.gen(function* () {
+				const filename = freshFile();
+				// Applied 1,2 with the mirror on: both ledgers hold 1,2.
+				assert.isTrue(Exit.isSuccess(yield* openStore(filename, mirrored, () => Effect.void)));
+				// A Store without the option rolls 2 back: artifacts dropped, own row
+				// gone, effect_sql_migrations still says 2 (not this opening's ledger).
+				assert.isTrue(
+					Exit.isSuccess(yield* openStore(filename, { migrations: [notes, artifacts] }, (store) => store.rollback(1))),
+				);
+				assert.notInclude(tables(filename), "artifacts");
+				assert.deepStrictEqual(
+					foreignLedger(filename).map((row) => row.migration_id),
+					[1, 2],
+				);
+				// Reopen with the mirror: 2 must NOT come back as applied without its table.
+				assert.isTrue(Exit.isSuccess(yield* openStore(filename, mirrored, () => Effect.void)));
+				assert.include(tables(filename), "artifacts");
+				assert.deepStrictEqual(ownIds(filename), [1, 2]);
+			}),
+	);
+
+	it.effect("the mirror retired, a rollback and a re-apply without it, then re-enabled: consistent both ways", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			const plain: StoreOptions = { migrations: [notes, artifacts] };
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, mirrored, () => Effect.void)));
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, plain, (store) => store.rollback(1))));
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, plain, () => Effect.void)));
+			assert.include(tables(filename), "artifacts");
+			// Re-enabled: nothing to import, nothing re-run, and an older program
+			// still finds the database fully migrated.
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, mirrored, () => Effect.void)));
+			assert.deepStrictEqual(ownIds(filename), [1, 2]);
+			const old = yield* runOldVersion(filename);
+			assert.deepStrictEqual(Exit.isSuccess(old) ? old.value : "failed", []);
+		}),
+	);
+
+	it.effect("an older program re-applying after a mirrored rollback is imported, not re-run", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			// Mirror on throughout: the rollback deletes the foreign row too, so its
+			// tombstone records "no row"; a row present later was re-applied.
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, mirrored, (store) => store.rollback(1))));
+			const old = yield* runOldVersion(filename);
+			assert.deepStrictEqual(Exit.isSuccess(old) ? old.value.map(([id]) => id) : "failed", [2]);
+			// Re-running 2's bare CREATE TABLE would fail: success proves it was imported.
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, mirrored, () => Effect.void)));
+			assert.deepStrictEqual(ownIds(filename), [1, 2]);
+		}),
+	);
+
+	it.effect("a rollback that never saw the mirrored table cannot be judged, and is refused typed", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			const custom: StoreOptions = {
+				migrations: [notes, artifacts],
+				mirrorMigratorLedger: { table: "legacy_migrations" },
+			};
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, custom, () => Effect.void)));
+			// Rolled back by a Store that knows nothing of legacy_migrations.
+			assert.isTrue(
+				Exit.isSuccess(yield* openStore(filename, { migrations: [notes, artifacts] }, (store) => store.rollback(1))),
+			);
+			const error = typedFailure(yield* openStore(filename, custom, () => Effect.void));
+			assert.instanceOf(error, StoreError);
+			assert.strictEqual(error.operation, "setup");
+			assert.match(error.message, /legacy_migrations records migration 2, which Store rolled back while not tracking/);
+		}),
+	);
+
+	it.effect("the gap rule: foreign 1,2,4 against Store migrations 1..4 is refused typed", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			// An older binary whose 0003 never existed: it recorded 1, 2 and 4.
+			yield* runOldVersion(filename, {
+				"0001_initial": legacyRecord["0001_initial"],
+				"0002_test_artifacts": legacyRecord["0002_test_artifacts"],
+				"0004_more": "CREATE TABLE more (id INTEGER PRIMARY KEY)",
+			});
+			const third: StoreMigration = { id: 3, name: "third", up: (sql) => sql`CREATE TABLE third (id INTEGER)` };
+			const fourth: StoreMigration = {
+				id: 4,
+				name: "more",
+				up: (sql) => sql`CREATE TABLE more (id INTEGER PRIMARY KEY)`,
+			};
+			const error = typedFailure(
+				yield* openStore(
+					filename,
+					{ migrations: [notes, artifacts, third, fourth], mirrorMigratorLedger: true },
+					() => Effect.void,
+				),
+			);
+			assert.instanceOf(error, StoreError);
+			assert.match(
+				error.message,
+				/migration 3 "third" is at or below effect_sql_migrations's imported id 4 but was never recorded there/,
+			);
+			assert.deepStrictEqual(ownIds(filename), []);
+			assert.notInclude(tables(filename), "third");
+		}),
+	);
+});

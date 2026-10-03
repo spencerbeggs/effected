@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T15:59:54Z
-  body_sha256: 58bc00bc7fe8bf44663f79d765ba8889c8ea13910d232d75f1249c12992e68d7
+  at: 2026-10-03T16:09:16Z
+  body_sha256: e52717a3fe815d5befc14fd3f174bab2a106eadc8cfe81151d95389750f101d3
 ---
 
 # store
@@ -192,7 +192,12 @@ re-checks the foreign table under the write lock and imports rather than
 re-runs, otherwise inserts, and every rollback deletes the matching row,
 inside the migration's own transaction. Import is validated like
 adoption and refused typed on an unknown id, a name mismatch, an
-unreadable timestamp, or a gap below the imported high-water mark. Paired with adoption, both default to the same table.
+unreadable timestamp, or a gap below the imported high-water mark.
+Every rollback, mirror on or off, tombstones the unwound ids in
+`_store_meta` with a snapshot of each foreign ledger's row, so a later
+import tells a row Store rolled back (unchanged → re-run) from one an
+older program re-applied (changed → import), and refuses a table it never
+snapshotted. Paired with adoption, both default to the same table.
 SQLite only. **Connection hook.** `onConnect` on the SQLite layers runs
 once per build (one connection per build), before the ledger and outside
 any transaction. Foreign keys need no hook: `node:sqlite` enables them on

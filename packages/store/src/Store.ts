@@ -2,7 +2,7 @@ import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import { Context, DateTime, Effect, Layer, Schema } from "effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import type * as SqlError from "effect/sql/SqlError";
-import type { AdoptFailure, MigratorFailure } from "./internal/migrator.js";
+import type { AdoptFailure, MigratorFailure, RollbackHistory } from "./internal/migrator.js";
 import {
 	adoptForeignLedger,
 	ensureLedger,
@@ -162,6 +162,12 @@ export interface StoreShape {
 	 * A migration without a `down` is skipped over — its ledger row is still
 	 * removed. `toId` must be a non-negative integer (`rollback(0)` unwinds
 	 * everything); anything else is developer wiring and dies.
+	 *
+	 * Every rollback also records a small tombstone per unwound id in
+	 * `_store_meta`, whatever the options, so a later mirrored import can tell
+	 * a row Store rolled back from one an older program applied (see
+	 * {@link StoreOptions.mirrorMigratorLedger}). On SQLite only; a database
+	 * never rolled back carries no tombstones and no `_store_meta` table.
 	 */
 	readonly rollback: (toId: number) => Effect.Effect<StoreMigrationResult, StoreError | StoreMigrationError>;
 	/** Project the full migration list with each migration's `appliedAt`. */
@@ -261,6 +267,20 @@ export interface StoreOptions {
 	 *   effect/sql's `Migrator` runs every id above its highest recorded one,
 	 *   so after `rollback(n)` an older program would re-apply what was
 	 *   unwound — the same thing a `Store` reopen does.
+	 * - **Rollbacks leave history**, whether or not this option is on at the
+	 *   time — a Store without it may roll back a database another opening
+	 *   mirrors, which leaves a foreign row behind. Each rollback tombstones
+	 *   the id in `_store_meta` with, per foreign ledger, the `created_at` its
+	 *   row had as the rollback left it (or none). Import then judges a
+	 *   foreign row for a tombstoned id: **unchanged** (the same `created_at`)
+	 *   means stale — it is not imported, and the migration runs again, which
+	 *   is right because its `down` ran; **changed or newly present** means an
+	 *   older program re-applied it after the rollback — imported; and a
+	 *   foreign table the rollback did not snapshot cannot be judged —
+	 *   refused, typed. No clock comparison is involved (`created_at` has
+	 *   one-second resolution). Re-applying or importing an id clears its
+	 *   tombstone. Foreign rows are never deleted by a Store without the
+	 *   option: that ledger belongs to the older program.
 	 * - **With `adoptMigratorLedger`**: both default to the same table, which
 	 *   is the intended pairing — adoption copies the old history in once,
 	 *   mirroring keeps writing it. Adoption runs first.
@@ -417,8 +437,19 @@ const make = (
 				: options.mirrorMigratorLedger === true
 					? FOREIGN_LEDGER_TABLE
 					: (options.mirrorMigratorLedger.table ?? FOREIGN_LEDGER_TABLE);
+		// Rollback history is kept whatever the options — a Store opened without
+		// the mirror may roll back a database another opening mirrors — and it
+		// snapshots every foreign ledger this database could later import from.
+		const adoptTable =
+			options.adoptMigratorLedger === undefined || options.adoptMigratorLedger === true
+				? FOREIGN_LEDGER_TABLE
+				: (options.adoptMigratorLedger.table ?? FOREIGN_LEDGER_TABLE);
+		const history: RollbackHistory = {
+			meta: META_TABLE,
+			foreignTables: [...new Set([FOREIGN_LEDGER_TABLE, adoptTable, ...(mirror === undefined ? [] : [mirror])])],
+		};
 		if (mirror !== undefined) {
-			yield* syncMirror(sql, LEDGER_TABLE, mirror, options.migrations).pipe(
+			yield* syncMirror(sql, LEDGER_TABLE, mirror, options.migrations, history).pipe(
 				Effect.mapError(
 					(failure) =>
 						new StoreError({
@@ -428,9 +459,11 @@ const make = (
 				),
 			);
 		}
-		yield* runPending(sql, LEDGER_TABLE, options.migrations, mirror).pipe(Effect.mapError(materialize("migrate")));
+		yield* runPending(sql, LEDGER_TABLE, options.migrations, mirror, history).pipe(
+			Effect.mapError(materialize("migrate")),
+		);
 
-		const migrate = runPending(sql, LEDGER_TABLE, options.migrations, mirror).pipe(
+		const migrate = runPending(sql, LEDGER_TABLE, options.migrations, mirror, history).pipe(
 			Effect.mapError(materialize("migrate")),
 			Effect.withSpan("Store.migrate"),
 		);
@@ -439,7 +472,7 @@ const make = (
 			if (!Number.isInteger(toId) || toId < 0) {
 				return yield* Effect.die(new Error(`Store.rollback: toId must be a non-negative integer, received ${toId}`));
 			}
-			return yield* rollbackTo(sql, LEDGER_TABLE, options.migrations, toId, mirror).pipe(
+			return yield* rollbackTo(sql, LEDGER_TABLE, options.migrations, toId, mirror, history).pipe(
 				Effect.mapError(materialize("rollback")),
 			);
 		});

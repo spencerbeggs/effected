@@ -320,7 +320,7 @@ const marker = (filename: string) =>
 	inspect(filename, (db) => {
 		const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_store_meta'").all();
 		if (exists.length === 0) return [];
-		return db.prepare("SELECT key, value FROM _store_meta").all();
+		return db.prepare("SELECT key, value FROM _store_meta WHERE key = 'adoptMigratorLedger'").all();
 	}) as unknown as ReadonlyArray<{ key: string; value: string }>;
 
 /** Rewrite one foreign row's created_at, outside any Store, to a value SqliteMigrator would never write. */
