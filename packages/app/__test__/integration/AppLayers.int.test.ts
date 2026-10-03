@@ -1,6 +1,7 @@
 import * as nodeFs from "node:fs/promises";
 import * as nodeOs from "node:os";
 import * as nodePath from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { NodeFileSystem } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import type { CacheShape, StoreMigration, StoreShape } from "@effected/store";
@@ -278,6 +279,77 @@ describe("directory and subdir (integration)", () => {
 				assert.instanceOf(error, AppDirsError);
 				assert.strictEqual((error as AppDirsError).directory, "data");
 				assert.strictEqual((error as AppDirsError).path, nodePath.join(dataDir(tmp), "blocker", "inner"));
+			}),
+		),
+	);
+});
+
+describe("location (integration)", () => {
+	it.effect("resolves the path the layer opens, for defaults and for directory + subdir, creating nothing itself", () =>
+		withTempHome((tmp) =>
+			Effect.gen(function* () {
+				const keyed = {
+					filename: "data.db",
+					directory: "data",
+					subdir: "projects/abc123",
+					migrations: registryMigrations,
+				} as const;
+
+				// location alone: an absolute path, and nothing on disk yet.
+				const before = yield* Effect.all({
+					keyed: AppStore.location(keyed),
+					store: AppStore.location({ migrations: primaryMigrations }),
+					cache: AppCache.location(),
+				}).pipe(Effect.provide(dirsLive(tmp)));
+				for (const file of Object.values(before)) {
+					assert.isTrue(nodePath.isAbsolute(file));
+					assert.isFalse(yield* existsOnDisk(file));
+				}
+				assert.isFalse(yield* existsOnDisk(nodePath.dirname(before.keyed)));
+
+				// The layers then put each file exactly there.
+				yield* Effect.provide(
+					Effect.void,
+					Layer.mergeAll(
+						AppStore.layerAs(RegistryStore, keyed),
+						AppStore.layer({ migrations: primaryMigrations }),
+						AppCache.layer(),
+					).pipe(Layer.provide(dirsLive(tmp))),
+				);
+				assert.strictEqual(before.keyed, nodePath.join(dataDir(tmp), "projects", "abc123", "data.db"));
+				assert.strictEqual(before.store, nodePath.join(stateDir(tmp), "store.db"));
+				assert.strictEqual(before.cache, nodePath.join(cacheDir(tmp), "cache.db"));
+				for (const file of Object.values(before)) assert.isTrue(yield* existsOnDisk(file));
+			}),
+		),
+	);
+});
+
+describe("store options pass through AppStore (integration)", () => {
+	it.effect("onConnect and mirrorMigratorLedger reach Store.layerSqlite", () =>
+		withTempHome((tmp) =>
+			Effect.gen(function* () {
+				const seen: Array<string> = [];
+				yield* Effect.provide(
+					Effect.void,
+					AppStore.layer({
+						migrations: primaryMigrations,
+						mirrorMigratorLedger: true,
+						onConnect: () => Effect.sync(() => seen.push("connected")),
+					}).pipe(Layer.provide(dirsLive(tmp))),
+				);
+				assert.deepStrictEqual(seen, ["connected"]);
+				const file = nodePath.join(stateDir(tmp), "store.db");
+				const db = new DatabaseSync(file, { readOnly: true });
+				try {
+					const rows = db.prepare("SELECT migration_id, name FROM effect_sql_migrations").all();
+					assert.deepStrictEqual(
+						rows.map((row) => [row.migration_id, row.name]),
+						[[1, "create-runs"]],
+					);
+				} finally {
+					db.close();
+				}
 			}),
 		),
 	);

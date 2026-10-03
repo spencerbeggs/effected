@@ -15,8 +15,8 @@ sources:
     resource: ../../packages/app/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T15:22:39Z
-  body_sha256: 93629373b3bdf1006f4243cf25c17577608e1864570a1e606560d413aacc992f
+  at: 2026-10-03T15:50:52Z
+  body_sha256: d28a444843c615d55ba8b4e9f4dd620cd1c8649e0970fd0d86230a22c7a86216
 ---
 
 # app
@@ -92,7 +92,11 @@ recursive `mkdir`, join a `filename`, and hand the path to
 modules carry `FileSystem` in `R`; its failure is mapped onto xdg's
 `AppDirsError` (the directory kind, the full path), whose shape fits
 exactly, so the failure stays typed without this package defining an
-error. An absolute or host-chosen path is deliberately not an option
+error. `AppStore.location` / `AppCache.location` expose that same
+derivation without creating anything (`R` is `AppDirs | Path`). A
+consumer that reports or persists the path therefore gets the file the
+layer opens, never a parallel derivation that could drift. An absolute
+or host-chosen path is deliberately not an option
 here — that is store's `layerSqliteAs` — and every other option
 (`client`, `checkpointOnClose`, `adoptMigratorLedger`) is store's,
 passed through.

@@ -1,10 +1,9 @@
 import type { CacheError, CacheOptions, CacheShape, CacheSqliteOptions } from "@effected/store";
 import { Cache } from "@effected/store";
 import type { AppDirs, AppDirsError } from "@effected/xdg";
-import type { Context, FileSystem } from "effect";
-import { Effect, Layer, Path } from "effect";
-import { badFilename, badSubdir } from "./internal/filename.js";
-import { ensureLocation } from "./internal/location.js";
+import type { Context, FileSystem, Path } from "effect";
+import { Effect, Layer } from "effect";
+import { ensureLocation, resolveLocation } from "./internal/location.js";
 
 /**
  * Options for {@link AppCache.layer} and {@link AppCache.layerAs}.
@@ -17,7 +16,9 @@ import { ensureLocation } from "./internal/location.js";
  *
  * @public
  */
-export interface AppCacheOptions extends CacheOptions, Pick<CacheSqliteOptions, "client" | "checkpointOnClose"> {
+export interface AppCacheOptions
+	extends CacheOptions,
+		Pick<CacheSqliteOptions, "client" | "checkpointOnClose" | "onConnect"> {
 	/**
 	 * File name within the database's directory. Default `"cache.db"` on
 	 * `AppCache.layer`; required on `AppCache.layerAs`.
@@ -55,11 +56,12 @@ export interface AppCacheOptions extends CacheOptions, Pick<CacheSqliteOptions, 
 	readonly subdir?: string;
 }
 
-/**
- * Guard the path options, ensure the location, and hand a resolved
- * `CacheSqliteOptions` to `open`. Shared by `layer` and `layerAs`; `context`
- * names the caller in a guard die.
- */
+/** The one derivation of the file's location, shared by `location` and both layers. */
+const locate = (context: string, options: AppCacheOptions | undefined) => {
+	const { filename = "cache.db", directory = "cache", subdir } = options ?? {};
+	return resolveLocation(context, directory, subdir, filename);
+};
+
 const build = <A, E>(
 	context: string,
 	options: AppCacheOptions | undefined,
@@ -67,15 +69,16 @@ const build = <A, E>(
 ): Layer.Layer<A, E | AppDirsError, AppDirs | Path.Path | FileSystem.FileSystem> =>
 	Layer.unwrap(
 		Effect.gen(function* () {
-			const { filename = "cache.db", directory = "cache", subdir, ...cache } = options ?? {};
-			const invalid = badFilename(context, filename) ?? (subdir === undefined ? undefined : badSubdir(context, subdir));
-			if (invalid !== undefined) return yield* Effect.die(invalid);
-
-			const path = yield* Path.Path;
-			const dir = yield* ensureLocation(directory, subdir);
-			return open({ ...cache, filename: path.join(dir, filename) });
+			const { filename: _filename, directory: _directory, subdir: _subdir, ...rest } = options ?? {};
+			const location = yield* locate(context, options);
+			yield* ensureLocation(location);
+			return open({ ...rest, filename: location.file });
 		}),
 	);
+
+// Implementation of AppCache.location; the public contract lives on the static.
+const location = (options?: AppCacheOptions): Effect.Effect<string, never, AppDirs | Path.Path> =>
+	Effect.map(locate("AppCache.location", options), (resolved) => resolved.file);
 
 // Implementation of AppCache.layer; the public contract lives on the static.
 const layer = (
@@ -161,4 +164,32 @@ export class AppCache {
 	 * ```
 	 */
 	static readonly layerAs = layerAs;
+
+	/**
+	 * Resolve the absolute path of the database file the layers would open for
+	 * these options — `directory`, `subdir` and `filename` — without creating
+	 * anything.
+	 *
+	 * @remarks
+	 * The same derivation `AppCache.layer` and `AppCache.layerAs` use, not a copy of
+	 * it, so the path a consumer reports or persists is the path the layer
+	 * opens. Requires only `AppDirs` and `Path`: nothing is touched on disk.
+	 * `filename` defaults to `"cache.db"` as on `AppCache.layer`; pass the same
+	 * options you pass the layer. A bad `filename` or `subdir` dies, exactly as
+	 * it would at layer construction.
+	 *
+	 * @example
+	 * ```ts
+	 * import { AppCache } from "@effected/app";
+	 * import { Effect } from "effect";
+	 *
+	 * const options = { filename: "registry.db", directory: "data" } as const;
+	 *
+	 * const program = Effect.gen(function* () {
+	 * 	const file = yield* AppCache.location(options); // e.g. ~/.local/share/myapp/registry.db
+	 * 	yield* Effect.log(`database: ${file}`);
+	 * });
+	 * ```
+	 */
+	static readonly location = location;
 }

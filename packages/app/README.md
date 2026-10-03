@@ -268,7 +268,18 @@ Each keyed layer runs the same ensure-before-open glue, in the same default dire
 
 The keyed layers need `AppDirs`, `Path` and `FileSystem`, which is exactly what `App.layerDirs` plus the platform provides — they slot into the per-command shape above unchanged.
 
-Every `AppStore` / `AppCache` option beyond the path is `@effected/store`'s, passed straight through: `client` (driver options such as `busyTimeout` and `disableWAL` — the place for per-connection settings, never a migration), `checkpointOnClose`, and on stores `adoptMigratorLedger`, which moves a database previously migrated by effect/sql's `Migrator` onto `Store` without re-running its history (see `@effected/store`'s README for the matching rules). A database at an absolute or host-chosen path is not an app concern: use `Store.layerSqliteAs` / `Cache.layerSqliteAs` from `@effected/store` directly.
+Every `AppStore` / `AppCache` option beyond the path is `@effected/store`'s, passed straight through: `client` (driver options such as `busyTimeout` and `disableWAL` — the place for per-connection settings, never a migration), `checkpointOnClose`, `onConnect` (a per-connection hook run before the ledger, outside any transaction), and on stores `adoptMigratorLedger` and `mirrorMigratorLedger`, which move a database previously migrated by effect/sql's `Migrator` onto `Store` without re-running its history and keep that ledger current for older versions (see `@effected/store`'s README for the rules). A database at an absolute or host-chosen path is not an app concern: use `Store.layerSqliteAs` / `Cache.layerSqliteAs` from `@effected/store` directly.
+
+### Where is the file?
+
+A program that reports or persists the database path — a `doctor` command, a "your data lives at" line — derives it with `AppStore.location(options)` / `AppCache.location(options)`, passing the same options it passes the layer. It resolves the absolute path from the ambient `AppDirs` without creating anything (`R` is `AppDirs | Path`), and it is the very derivation the layers use, so the reported path and the opened file cannot disagree:
+
+```ts
+const options = { filename: "registry.db", directory: "data", migrations } as const;
+
+const RegistryStoreLive = AppStore.layerAs(RegistryStore, options);
+const where = AppStore.location(options); // Effect<string, never, AppDirs | Path>
+```
 
 ## Testing: one line, no platform package
 

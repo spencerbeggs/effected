@@ -53,10 +53,14 @@ path component (the same wiring-defect rule `xdg` applies to `namespace`), and
 added there once; its test-side mirror is `__test__/filenameGuard.ts`
 (`filenameGuardCases`, `subdirGuardCases`). It is load-bearing, not a helper:
 without it a path option escapes the app's own directory.
-`internal/location.ts` is `ensureLocation(kind, subdir)`: the matching
-`AppDirs.ensure*`, then a recursive `mkdir` of the subdir mapped onto
-`AppDirsError` (directory kind, full path). It is the ensure-before-open half of
-both database modules.
+`internal/location.ts` holds the location's two halves. `resolveLocation`
+guards `filename`/`subdir` and joins `AppDirs.dirs[kind]`, the subdir and the
+filename, creating nothing. It is the ONE derivation behind both the public
+`AppStore.location` / `AppCache.location` and the layers. A consumer reports
+or persists the path the layer opens, so a second derivation would be a drift
+bug; the integration suite asserts equality. `ensureLocation` is the
+ensure-before-open half: the matching `AppDirs.ensure*`, then a recursive
+`mkdir` of the subdir mapped onto `AppDirsError` (directory kind, full path).
 
 `App.ts` imports `AppStore.ts` and `AppCache.ts`. **`App.ts` does not import
 `AppConfig.ts`**, and that is the point: `AppConfig` reaches `xdg` +
@@ -182,6 +186,11 @@ composition defect; do not reorder the two.
 - **`AppOptions` is `AppDirsOptions` pass-through.** `namespace`, `native`,
   `fallbackDir`, `dirs` mean what xdg says they mean, five-level precedence
   ladder included. This package re-documents none of it.
+- **`location` resolves without creating.** `AppStore.location(options)` /
+  `AppCache.location(options?)` return `Effect<string, never, AppDirs | Path>`.
+  `R` deliberately has no `FileSystem`: if it needed one, it would be doing IO
+  the contract says it does not. The same bad-`filename`/`subdir` dies as the
+  layers, with the `.location` context.
 - **`directory` and `subdir` are the location, and the failure stays typed.**
   `AppStoreOptions` / `AppCacheOptions` take `directory: "state" | "data" |
   "cache"` (defaults: state for stores, cache for caches) and a relative

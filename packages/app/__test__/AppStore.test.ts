@@ -149,3 +149,13 @@ describe("AppStore subdir guard", () => {
 		);
 	});
 });
+
+describe("AppStore.location", () => {
+	// The same guard as the layers: location shares their derivation.
+	filenameGuardCases((filename) =>
+		Effect.exit(AppStore.location({ migrations: [], filename }).pipe(Effect.provide(harness))),
+	);
+	subdirGuardCases((subdir) =>
+		Effect.exit(AppStore.location({ migrations: [], subdir }).pipe(Effect.provide(harness))),
+	);
+});

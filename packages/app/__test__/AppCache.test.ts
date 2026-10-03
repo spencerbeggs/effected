@@ -140,3 +140,9 @@ describe("AppCache subdir guard", () => {
 		);
 	});
 });
+
+describe("AppCache.location", () => {
+	// The same guard as the layers: location shares their derivation.
+	filenameGuardCases((filename) => Effect.exit(AppCache.location({ filename }).pipe(Effect.provide(harness))));
+	subdirGuardCases((subdir) => Effect.exit(AppCache.location({ subdir }).pipe(Effect.provide(harness))));
+});
