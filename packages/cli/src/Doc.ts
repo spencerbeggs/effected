@@ -706,12 +706,13 @@ export class Doc {
 	 * @remarks
 	 * A name the vocabulary does not have is a compile error.
 	 *
-	 * @param vocab - the vocabulary the status belongs to
-	 * @param name - a status name in it
 	 * The label is one string, or `{ one, other }` to pluralise by count: `one` is shown when `n` is exactly 1 and `other`
 	 * for every other count, 0 included, in every layout and in the headline's share (`1/3 change`, `2/3 changes`).
 	 *
-	 * @param options - the counter's `key`, `label` and count `n`, and `showZero` to keep it when `n` is zero
+	 * @param vocab - the vocabulary the status belongs to
+	 * @param name - a status name in it
+	 * @param options - the counter's `key`, its `label` (one string, or `{ one, other }`), its count `n`, and `showZero`
+	 * to keep it when `n` is zero
 	 */
 	static counter<N extends string>(
 		vocab: Status<N>,
