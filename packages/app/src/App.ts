@@ -131,6 +131,14 @@ export class App {
 	 * once at module scope, and attach them with `Command.provide` only on the
 	 * commands that use them — see the second example.
 	 *
+	 * A module-scope binding such as `StoreLive` stays ONE connection however
+	 * many composites reuse it inside one provided layer graph —
+	 * `Layer.mergeAll(StoreLive, …)` beside `Repo.pipe(Layer.provide(StoreLive))`
+	 * — because a layer graph memoises by reference, and an `Effect.provide`
+	 * nested inside another reuses what the enclosing one already built.
+	 * Provides that are not nested — one after another, or side by side under a
+	 * common parent — each build it, and so open the database, again.
+	 *
 	 * This is a layer-returning function: bind the result to a `const` once and
 	 * reuse that binding. Calling it inline at two provide sites opens two
 	 * databases — two connections onto one file, two migration ledgers, and two
@@ -173,7 +181,7 @@ export class App {
 	 * 	{ id: 1, name: "runs", up: (sql) => sql`CREATE TABLE runs (id TEXT PRIMARY KEY)` },
 	 * ];
 	 *
-	 * // Module scope, bound once: memoized by reference wherever it is provided.
+	 * // Module scope, bound once: built once per provided layer graph.
 	 * const StoreLive = AppStore.layer({ migrations });
 	 *
 	 * // Opens store.db — only when `history` runs.

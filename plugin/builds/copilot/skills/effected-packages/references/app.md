@@ -75,7 +75,7 @@ const PlatformLive = App.layerDirs({ namespace: "myapp" }).pipe(Layer.provideMer
 NodeRuntime.runMain(CliRuntime.main(Command.run(cli, { version: "1.0.0" }), { platform: PlatformLive }));
 ```
 
-`Command.provide` also takes `(input) => Layer` for a database whose options depend on a flag; keep anything input-independent bound outside that function. Keyed `layerAs` layers slot into the same shape unchanged.
+`Command.provide` also takes `(input) => Layer` for a database whose options depend on a flag; keep anything input-independent bound outside that function. Keyed `layerAs` layers slot into the same shape unchanged. A module-scope binding (`StoreLive`) stays ONE connection however many composites reuse it inside one provided layer graph (`Layer.mergeAll(StoreLive, …)` beside `X.pipe(Layer.provide(StoreLive))`), and an `Effect.provide` nested inside another reuses what the enclosing one built — but provides that are NOT nested (sequential, or siblings under a common parent) each build it again.
 
 ## Testing machinery
 

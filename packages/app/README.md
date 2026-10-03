@@ -216,7 +216,7 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { Command } from "effect/cli";
 
-// Module scope, bound once: memoized by reference wherever it is provided.
+// Module scope, bound once: built once per provided layer graph.
 const StoreLive = AppStore.layer({ migrations });
 
 // Opens store.db — only when `history` runs.
@@ -237,6 +237,8 @@ const PlatformLive = App.layerDirs({ namespace: "myapp" }).pipe(Layer.provideMer
 
 NodeRuntime.runMain(CliRuntime.main(Command.run(cli, { version: "1.0.0" }), { platform: PlatformLive }));
 ```
+
+A module-scope binding such as `StoreLive` stays **one** connection however many composites reuse it inside one provided layer graph — `Layer.mergeAll(StoreLive, …)` beside `Repo.pipe(Layer.provide(StoreLive))` — because a layer graph memoises by reference, and an `Effect.provide` nested inside another reuses what the enclosing one already built. Provides that are not nested — one after another, or side by side under a common parent — each build it, and so open the database, again.
 
 `Command.provide` also accepts a function of the command's parsed input, `(input) => Layer`, for a database whose options depend on a flag. Bind anything that does not depend on the input outside that function — a layer built inside it is a new reference on every call.
 
