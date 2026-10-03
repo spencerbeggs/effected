@@ -24,6 +24,7 @@ import {
 import { ChildProcessSpawner } from "effect/process";
 import { TestConsole } from "effect/testing";
 import type { ProgramDeps } from "../src/cli/program.js";
+import { loggerLayer, program } from "../src/cli/program.js";
 import { mainOptions, run } from "../src/main.js";
 
 const environment = (seed: MemoryFileSystemSeed = {}) =>
@@ -118,6 +119,61 @@ describe("schemastore under CliRuntime.main", () => {
 			assert.match(report, /^✗ DriftError: 1 published schema\(s\) drifted; nothing was written\.$/m, report);
 			assert.include(report, "https://example.com/schemas/basic-1.0.json: contract at published 1.0 → suggest 1.1");
 			assert.match(report, /^in: schemastore\.execute$/m);
+		}),
+	);
+
+	it.effect("drift with a held schema: stdout byte-identical to the program's own, the held line included", () =>
+		Effect.gen(function* () {
+			const wider = Schema.Struct({ name: Schema.String, extra: Schema.String });
+			const two: SchemastoreConfig = defineConfig({
+				name: "test",
+				outputDir: "/repo/schemas",
+				baseUrl: "https://example.com/schemas",
+				schemas: {
+					basic: { schema: Schema.Struct({ name: Schema.String }), layout: "flat", published: true, versions: ["1.0"] },
+					other: { schema: Schema.Struct({ id: Schema.Number }), layout: "flat", published: true, versions: ["1.0"] },
+				},
+			});
+			const text = Result.getOrThrow(
+				Result.getOrThrow(
+					StoreDocument.fromSchemaResult(wider, { $id: "https://example.com/schemas/basic-1.0.json" }),
+				).serializeResult(),
+			);
+			const seed = { [CONFIG_PATH]: "", "/repo/schemas/basic-1.0.json": text };
+			const viaMain = yield* runMain(["build"], seed, { importModule: () => Promise.resolve({ default: two }) });
+			assert.strictEqual(viaMain.code, 1);
+			// The same run through `program` alone, as `cli.test.ts` drives it: the stdout the old bin printed.
+			const before = (yield* TestConsole.logLines).length;
+			yield* Effect.exit(
+				program(["build"], deps({ importModule: () => Promise.resolve({ default: two }) })).pipe(
+					Effect.provide(environment(seed)),
+					Effect.provide(loggerLayer),
+					Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }))),
+				),
+			);
+			const viaProgram = (yield* TestConsole.logLines).slice(before).map(String);
+			assert.isTrue(
+				viaMain.out.some((line) => line.startsWith("held (drift elsewhere) /repo/schemas/other-1.0.json")),
+				viaMain.out.join("\n"),
+			);
+			assert.deepStrictEqual(viaMain.out, viaProgram, "main changes nothing on stdout");
+		}),
+	);
+
+	it.effect("help requested beside a parse error still exits 0: build --bogus --help", () =>
+		Effect.gen(function* () {
+			const { code, err } = yield* runMain(["build", "--bogus", "--help"], {});
+			assert.strictEqual(code, 0);
+			assert.isFalse(err.some((line) => line.startsWith("✗ ")));
+		}),
+	);
+
+	it.effect("--wizard is the kit's gated flag: not interactive, it is a usage error at exit 64", () =>
+		Effect.gen(function* () {
+			const { code } = yield* runMain(["build", "--wizard"], { [CONFIG_PATH]: "" });
+			assert.strictEqual(code, 64, "CliEnv's CliPrompt.gateWizard drops --wizard from a run nobody can answer");
+			const help = yield* runMain(["--help"], {});
+			assert.notInclude(help.out.join("\n"), "--wizard", "and leaves it out of non-interactive help");
 		}),
 	);
 
