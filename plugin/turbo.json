@@ -1,0 +1,10 @@
+{
+	"$schema": "https://turborepo.com/schema.v2.json",
+	"extends": ["//"],
+	"tasks": {
+		"build:dev": {
+			"inputs": ["package.json", "pluginfinity.config.ts", "skills/**", "agents/**", "hooks/**"],
+			"outputs": ["builds/**"]
+		}
+	}
+}

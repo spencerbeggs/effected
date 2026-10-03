@@ -226,6 +226,11 @@ catalogs:
 overrides:
   '@effect/vitest>vitest': ^5.0.1
   '@microsoft/api-extractor>typescript': ^6.0.3
+  pluginfinity: link:../pluginfinity/packages/pluginfinity/dist/prod/npm/pkg
+  '@pluginfinity/cli': link:../pluginfinity/packages/cli/dist/prod/npm/pkg
+  '@pluginfinity/core': link:../pluginfinity/packages/core/dist/prod/npm/pkg
+  '@pluginfinity/engine': link:../pluginfinity/packages/engine/dist/prod/npm/pkg
+  '@pluginfinity/targets': link:../pluginfinity/packages/targets/dist/prod/npm/pkg
   '@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared': 4.0.0-rc.117
   '@effect/platform-node@4.0.0-rc.118>@effect/platform-node-shared': 4.0.0-rc.118
 
@@ -1359,6 +1364,12 @@ importers:
         specifier: catalog:build
         version: 7.0.2
     publishDirectory: dist/dev/pkg
+
+  plugin:
+    devDependencies:
+      pluginfinity:
+        specifier: link:../../pluginfinity/packages/pluginfinity/dist/prod/npm/pkg
+        version: link:../../pluginfinity/packages/pluginfinity/dist/prod/npm/pkg
 
   plugins/claude-code: {}
 

@@ -11,6 +11,18 @@
 					}
 				}
 			}
+		},
+		{
+			"assist": {
+				"enabled": false
+			},
+			"formatter": {
+				"enabled": false
+			},
+			"includes": ["plugin/builds/**"],
+			"linter": {
+				"enabled": false
+			}
 		}
 	],
 	"root": true

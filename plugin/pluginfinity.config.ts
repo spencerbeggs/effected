@@ -1,0 +1,14 @@
+import { defineConfig } from "pluginfinity";
+
+export default defineConfig({
+	name: "effected",
+	description:
+		"Effect v4 development skills, a GitHub Actions and GitHub API suite, specialist subagents (developer, reviewer, action-engineer), and a session briefing, distilled from the @effected packages and the official Effect-TS v4 guides.",
+	author: { name: "C. Spencer Beggs", email: "spencer@beggs.codes", url: "https://spencerbeg.gs" },
+	homepage: "https://github.com/spencerbeggs/effected",
+	repository: "https://github.com/spencerbeggs/effected.git",
+	license: "MIT",
+	keywords: ["effect", "effect-ts", "github", "actions", "typescript"],
+	claude: true,
+	copilot: true,
+});
