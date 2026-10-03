@@ -1121,7 +1121,20 @@ export class CliUiTest {
 	 * tag (a raw or styled frame, or a `Render.ansi` string), but not a log line's lone `[info]` prefix, nor one whose
 	 * only brackets are style tags like `[b]`, which unrelated data uses too. It prints the string as token markup with
 	 * each line's trailing spaces trimmed, so a snapshot reads without escapes and does not churn with the palette.
-	 * Register it with `expect.addSnapshotSerializer`.
+	 *
+	 * @remarks
+	 * Register it in either of two ways. Through the Vitest config, by the module whose default export it is, which
+	 * needs no code in a test file:
+	 *
+	 * ```ts
+	 * // vitest.config.ts
+	 * export default defineConfig({ test: { snapshotSerializers: ["@effected/cli/ui/testing/serializer"] } })
+	 * ```
+	 *
+	 * Or in a test file, with `expect.addSnapshotSerializer(CliUiTest.serializer)`.
+	 *
+	 * Snapshots are the one place a test needs `expect`: `assert` has no snapshot form, so a suite that asserts with
+	 * `assert.*` everywhere else still writes `expect(frame).toMatchInlineSnapshot(...)` for a snapshot.
 	 */
 	static readonly serializer: {
 		readonly test: (value: unknown) => boolean;

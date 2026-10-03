@@ -95,7 +95,7 @@ it.effect("answers a core prompt", () =>
 | `session(options?)` | a program that runs several screens (a wizard): provide its `layer`, fork the program, then `next({ contains? })` for each screen as it mounts; `stdout`/`stderr` are what the program wrote through `Console`, `transcript`/`written` what reached the terminal (a live view's `logConsole` lines included), and `mounts === 0` is the "nothing mounted" assertion. `renderPath: "production"` makes `clear` observable. Worked through below |
 | `live(options)` | a live view on the **production** render path, with `publish(event)`, `end`, `advance(duration)`, `transcript` (what the terminal shows, scrollback included) and `written` (every raw byte, e.g. to assert no scrollback-wiping `ESC[3J`) |
 | `cancelReason(exitOrCause)` | `Option<"escape" \| "interrupt">` from an `Exit` or `Cause`, so a test never walks the cause |
-| `styled(ansi)`, `serializer` | ANSI decoded back to token markup, and a Vitest snapshot serializer printing it |
+| `styled(ansi)`, `serializer` | ANSI decoded back to token markup, and a Vitest snapshot serializer printing it (also the default export of `@effected/cli/ui/testing/serializer`, for `snapshotSerializers`) |
 
 ~~~ts
 import { assert, it } from "@effect/vitest"
@@ -144,20 +144,13 @@ Traps a first screen test trips over:
 
 ### Snapshotting frames: register the serializer
 
-`CliUiTest.serializer` prints a frame as token markup (`[accent]→ a[/accent]`) with trailing spaces trimmed, so a snapshot reads without escapes and does not churn with the palette. Register it once for the project, in the vitest config, from a module whose default export is the serializer:
-
-~~~ts
-// serializer.ts
-import { CliUiTest } from "@effected/cli/ui/testing"
-
-export default CliUiTest.serializer
-~~~
+`CliUiTest.serializer` prints a frame as token markup (`[accent]→ a[/accent]`) with trailing spaces trimmed, so a snapshot reads without escapes and does not churn with the palette. Register it once for the project, in the vitest config. `snapshotSerializers` takes modules whose default export is a serializer, and the kit ships that module, so no shim file is needed:
 
 ~~~ts
 // vitest.config.ts
 import { defineConfig } from "vitest/config"
 
-export default defineConfig({ test: { snapshotSerializers: ["./serializer.ts"] } })
+export default defineConfig({ test: { snapshotSerializers: ["@effected/cli/ui/testing/serializer"] } })
 ~~~
 
 The equivalent in a setup file is `expect.addSnapshotSerializer(CliUiTest.serializer)`. A snapshot is the one assertion `assert` has no form of, so it goes through Vitest's `expect`:
@@ -261,6 +254,7 @@ yield* (yield* session.next({ contains: "Token reference?" })).type("op://vault/
 // ...press enter, join the fiber, then:
 assert.notInclude(yield* session.transcript, "Token reference?")
 ~~~
+
 - **Under `Command.runWith`, a cancel is the handler's typed `Cancelled`.** Through `CliRuntime.main` it becomes the one rendered line and exit `130`: provide the platform with `CliPrompt.gateTerminal.pipe(Layer.provide(terminal.layer))` beside `NodeServices.layer` (a `TestTerminal`'s layer), and map the exit with `Runtime.getErrorExitCode(Cause.squash(exit.cause))`.
 - **A handler that records a code** under `Command.runWith` also needs a fresh `CliExit.layer` provided around it (`CliRuntime.main` provides its own).
 

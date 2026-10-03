@@ -46,7 +46,7 @@ tier and imports only the boundary root, so nothing inherits a tier from `./ui`.
 Same posture as `app`: the two are siblings, not layers — `app` is the control
 plane, `cli` the presentation boundary, and neither imports the other.
 
-## The `./ui` and `./ui/testing` subpaths
+## The `./ui`, `./ui/testing` and `./ui/testing/serializer` subpaths
 
 `./ui` holds the interactive screens: `CliUi` (`run`, `prompt`, `fallback`,
 `lazy`, `map`, `live`, `context`), `DocView`, `UiProvider`, the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
@@ -56,7 +56,10 @@ plane, `cli` the presentation boundary, and neither imports the other.
 for one screen, `view` for a display-only element (no `result`), `session`
 for a program that runs several (with a `transcript` and `written` of the terminal, and
 `renderPath: "production"` to observe `clear`), `live` for a live view, and `chunk` on every handle to send keys in
-one read. `okf/modules/cli.md` has the rows.
+one read. `./ui/testing/serializer` (`src/ui-testing-serializer.ts`)
+default-exports `CliUiTest.serializer` for Vitest's `snapshotSerializers`; the root
+`vitest.config.ts` registers it that way for this package's own project (#909), so a
+snapshot test here uses `expect` for the snapshot alone. `okf/modules/cli.md` has the rows.
 
 - **Optional peers `ink` (^7.1.1) and `react` (^19.2.0).** The root never
   reaches them, and `./ui` imports them only when a screen mounts (`loadInk`),

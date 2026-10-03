@@ -6,7 +6,21 @@ export default async () => {
 	// Scratchpad is a local-only probe venue: discovered as a normal project on
 	// dev machines, invisible to ci:test.
 	const strategy = new DefaultDiscoverStrategy().extend({
-		buildProject: async (input, inherited) => (input.name === "scratchpad" && process.env.CI ? null : inherited),
+		buildProject: async (input, inherited) => {
+			if (input.name === "scratchpad" && process.env.CI) return null;
+			// @effected/cli registers its own snapshot serializer the way a consumer does: through the config, by the
+			// module whose default export it is, never with expect.addSnapshotSerializer (effected#909).
+			if (input.name === "@effected/cli" && inherited !== null) {
+				return {
+					...inherited,
+					test: {
+						...inherited.test,
+						snapshotSerializers: [fileURLToPath(new URL("packages/cli/src/ui-testing-serializer.ts", import.meta.url))],
+					},
+				};
+			}
+			return inherited;
+		},
 	});
 	const { projects, tags } = await AgentPlugin.discover(strategy);
 	return defineConfig({

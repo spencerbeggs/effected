@@ -16,8 +16,8 @@ const readSource: Read = (file) => readFileSync(file, "utf8");
 /** A file's path relative to `root`, with `/` separators. */
 const relativeTo = (root: string, file: string): string => relative(root, file).split(sep).join("/");
 
-/** The `./ui` and `./ui/testing` entry files and everything under `src/ui/`. */
-const isUiModule = (path: string): boolean => /^ui(?:\.ts$|-testing\.ts$|\/)/.test(path);
+/** The `./ui`, `./ui/testing` and `./ui/testing/serializer` entry files and everything under `src/ui/`. */
+const isUiModule = (path: string): boolean => /^ui(?:\.ts$|-testing(?:-serializer)?\.ts$|\/)/.test(path);
 
 /** A specifier naming a package only `./ui` may load: `ink`, `react`, or a subpath of either. */
 const isUiPackage = (specifier: string): boolean => /^(?:ink|react)(?:$|\/)/.test(specifier);
@@ -226,6 +226,13 @@ describe("cli boundary", () => {
 		it("node: imports reachable from ./ui are exactly the licensed ones", () => {
 			assert.deepStrictEqual(nodeImporters("ui.ts"), [...UI_NODE_IMPORTERS]);
 			for (const file of nodeImporters("ui-testing.ts")) assert.isTrue(UI_TESTING_NODE_LICENCE.has(file), file);
+			// The serializer entry is test tooling too: it reaches CliUiTest, and no node: import beyond the testing licence.
+			assert.isTrue(
+				reachableFrom(resolve(SRC, "ui-testing-serializer.ts")).has(resolve(SRC, "ui", "testing", "CliUiTest.ts")),
+			);
+			for (const file of nodeImporters("ui-testing-serializer.ts")) {
+				assert.isTrue(UI_TESTING_NODE_LICENCE.has(file), file);
+			}
 		});
 
 		it("only the Ink loader imports ink or react as a value; every other ./ui file imports types only", () => {
