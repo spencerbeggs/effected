@@ -52,7 +52,10 @@ export interface StreamTheme {
 	readonly glyphs: GlyphSet;
 	/** The colour level of the stream. */
 	readonly color: ColorLevel;
-	/** Render a status from a vocabulary: its glyph, painted with its token, then `text` when given. */
+	/**
+	 * Render a status from a vocabulary: its glyph, sanitised (see `Status.glyph`) and painted with its token, then
+	 * `text` when given, as it is: sanitising `text` is the caller's, as `CliMessage` and `CliLog.status` do.
+	 */
 	readonly status: <N extends string>(vocab: Status<N>, name: N, text?: string) => string;
 }
 
@@ -100,8 +103,8 @@ export const streamThemeAt = (
 		glyphs,
 		color,
 		status: (vocab, name, text) => {
-			const def = vocab.def(name);
-			const glyph = paint(def.token, glyphs.kind === "ascii" ? def.ascii : def.glyph);
+			// The glyph comes sanitised from the vocabulary; only the kit's own paint wraps it.
+			const glyph = paint(vocab.def(name).token, vocab.glyph(name, glyphs));
 			return text === undefined || text === "" ? glyph : `${glyph} ${text}`;
 		},
 	};

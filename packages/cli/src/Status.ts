@@ -1,4 +1,5 @@
 import { Array as Arr, Option } from "effect";
+import { sanitize } from "./Fmt.js";
 import type { GlyphSet } from "./Glyphs.js";
 import type { Style, TokenName } from "./Token.js";
 
@@ -124,14 +125,18 @@ export class Status<Names extends string> {
 	 * that draws it itself (an Ink tree, a reporter).
 	 *
 	 * @remarks
-	 * Throws on an unknown name, as {@link Status.def} does.
+	 * Throws on an unknown name, as {@link Status.def} does. The glyph is sanitised, as text in a document is: escape
+	 * sequences and control characters in a vocabulary's glyph are removed, so a glyph built from data cannot paint the
+	 * terminal, plant a hyperlink or move the cursor. Every kit path that draws a status glyph takes it from here.
 	 *
 	 * @param name - a name in this vocabulary
 	 * @param glyphs - the glyph set, such as `Glyphs.unicode`, `Glyphs.ascii` or a theme's
 	 */
 	glyph(name: Names, glyphs: GlyphSet): string {
 		const def = this.def(name);
-		return glyphs.kind === "ascii" ? def.ascii : def.glyph;
+		// A vocabulary is configuration, but one built from data must not paint the terminal: every path that draws a
+		// status glyph (a theme's `status`, `CliMessage`, `CliLog.status`, a document) takes it sanitised, from here.
+		return sanitize(glyphs.kind === "ascii" ? def.ascii : def.glyph);
 	}
 
 	/**

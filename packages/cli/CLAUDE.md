@@ -15,8 +15,10 @@ document IR (`Doc`, plain frozen nodes), the pure renderers over a
 default failure report is drawn. An agent is never written an escape of any
 kind. Every string that enters a document is sanitised: escape sequences and
 control characters are removed, a tab becomes a space, and line breaks are kept
-as breaks. The glyph strings of a vocabulary or a theme are configuration and
-are not sanitised.
+as breaks. A status vocabulary's glyphs are sanitised too, at one source
+(`Status.glyph`, which a theme's `status`, `CliMessage`, `CliLog.status` and
+`Doc` all draw through), so a glyph built from data cannot inject an escape
+on a trusted line; a theme's glyph set (separators, ellipsis) is configuration.
 `okf/modules/cli.md` has the rows.
 
 **Design doc:** `@./okf/modules/cli.md` — Load when:
