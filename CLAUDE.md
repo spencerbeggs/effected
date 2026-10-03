@@ -20,7 +20,7 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 - Fork pull requests → `okf/runbooks/enable-fork-pull-request-review.md`, `okf/gotchas/unprotected-environment-runs-fork-code-with-secrets.md` — Load when: a PR from a fork shows a waiting or failed `Fork Approval` job, or enabling the gate on a repository.
 - Adding a package → `okf/runbooks/add-a-kit-package.md`, `okf/runbooks/add-a-workspace-package.md` — Load when: starting a new `@effected` library or scaffolding a new workspace package.
 - Format packages (parse/format/edit surface, fidelity guarantee, sync-vs-effectful primitives) → `okf/conventions/format-package-convention.md`, `okf/conventions/sync-primitive-policy.md` — Load when: designing a formatting or parsing entry point, or reasoning about a formatter's fidelity guarantee.
-- Plugins → `okf/modules/claude-code-plugin.md`, `okf/modules/copilot-plugin.md` — Load when: working in `plugins/` on the "effected" Claude Code plugin or its experimental Copilot port.
+- Plugin → `okf/modules/ai-plugin.md`, `okf/conventions/author-the-plugin-once.md` — Load when: working in `plugin/` on the "effected" agent plugin, the one pluginfinity source of its Claude Code and Copilot builds.
 - Consumer-facing text (plugin skills, agents, hooks, TSDoc) names no Effect prerelease version and tells no since-version history → `okf/conventions/consumer-text-states-current-effect-behaviour.md` — Load when: writing or reviewing a skill, agent, hook or TSDoc comment.
 - Construct index → `okf/models/construct-annotations.md`, `okf/conventions/construct-index-is-generated.md` — Load when: adding or annotating an exported construct, or touching `generate-constructs.mts` / `construct-annotations.json`.
 - GitHub Action canon → `okf/conventions/github-action-canon.md` — Load when: building or reviewing a GitHub Action repository on the kit, or editing the Actions skill suite that teaches it.
@@ -46,12 +46,12 @@ The kit is **36 publishable packages**: 34 libraries plus two companions (`pnpm-
 ## Repository Layout
 
 - `packages/` — the workspace packages.
-- `plugins/` — two agent plugins: `claude-code/` ("effected", skills and specialist agents) and the experimental `copilot/` port. Each has a private tracking package — `@effected/claude-code-plugin`, `@effected/copilot-plugin` — that versions and tags it but **never publishes to npm**; a plugin release is a git tag plus a GitHub release. Read `plugins/CLAUDE.md` before working there.
+- `plugin/` — the "effected" agent plugin (skills, specialist agents, a SessionStart briefing): one source that `pluginfinity` builds into committed Claude Code and Copilot plugins under `plugin/builds/`, which are **never hand-edited**. Its private tracking package `@effected/ai-plugin` versions and tags both builds but **never publishes to npm**; a plugin release is a git tag plus a GitHub release. Read `plugin/CLAUDE.md` before working there.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
 - `scratchpad/` — private agent-probe workspace: every kit package at `workspace:*`, three runners, never published, invisible to CI. Read `scratchpad/CLAUDE.md` before working there.
 - `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. Sibling submodules vendor spec inputs for specific packages (the CommonMark/mdast set). **Never write to anything under `.repos/`** — silk's PreToolUse guards deny it. Detail → `okf/modules/workspace.md`, `okf/conventions/no-writes-under-repos.md`.
 - **A generator's data input is a committed file, not a submodule.** `@effected/spdx` and `@effected/schema-org` each read one published document from their own `lib/data/`. Vendoring those as submodules cost every clone and every CI checkout the upstream repos' full history — 1.86 GB and 254 MB — to reach 332 KB and 1.5 MB of JSON, and roughly tripled CI checkout time. Submodule a source repo when the package needs to *read the repo*; commit the file when it needs one file.
-- `.claude/skills/improve` — project-level skill that maintains `plugins/claude-code/skills/`.
+- `.claude/skills/improve` — project-level skill that maintains `plugin/skills/`.
 
 ### Package context files
 

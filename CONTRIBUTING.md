@@ -50,7 +50,8 @@ claude plugin install silk@savvy-web-systems      # commit, changeset, PR-body a
 claude plugin install vitest-agent@spencerbeggs   # test runner MCP and the TDD agent
 claude plugin install okfit@spencerbeggs          # the okf/ knowledge bundle tooling
 claude plugin install api-docs@spencerbeggs       # RSPress docs-site skills
-claude plugin install plugin-bot@spencerbeggs     # only if you are working in plugins/
+claude plugin install plugin-bot@spencerbeggs     # only if you are working in plugin/
+claude plugin install pluginfinity@spencerbeggs   # only if you are working in plugin/
 claude plugin install superpowers@claude-plugins-official
 ```
 
@@ -69,10 +70,11 @@ The Copilot port is new and covers less than the Claude Code plugin — in parti
 
 ### Hacking on the plugin itself
 
-To run Claude Code against the plugin source in this checkout rather than the published copy:
+The plugin's source lives in `plugin/`, and `pluginfinity` builds it into committed Claude Code and Copilot plugins under `plugin/builds/`. After editing the source, rebuild with `pnpm build --filter @effected/ai-plugin`, then run your agent against this checkout's build rather than the published copy:
 
 ```bash
-pnpm claude      # claude --plugin-dir plugins/claude-code
+pnpm claude      # claude --plugin-dir plugin/builds/claude
+pnpm copilot     # copilot --plugin-dir plugin/builds/copilot
 ```
 
 Switch the marketplace copy off first, or both copies load. Override it in `.claude/settings.local.json`, which is git-ignored:
@@ -91,14 +93,14 @@ Switch the marketplace copy off first, or both copies load. Override it in `.cla
 }
 ```
 
-`plugins/CLAUDE.md` covers the plugin's own conventions and release flow.
+`plugin/CLAUDE.md` covers the plugin's own conventions and release flow.
 
 ## Repository layout
 
 - `packages/` — the publishable `@effected/*` libraries. Each has its own `package.json`, `README.md` and `__test__/` directory.
 - `website/` — the RSPress documentation site.
 - `lib/configs/` — shared tool configuration (commitlint, lint-staged, markdownlint).
-- `plugins/` — the `effected` agent plugin: `claude-code/` for Claude Code and an experimental `copilot/` port. Both ship through the `spencerbeggs/bot` marketplaces; see [Working with AI agents](#working-with-ai-agents).
+- `plugin/` — the `effected` agent plugin: one source built into a Claude Code plugin and a GitHub Copilot plugin under `plugin/builds/`. Both ship through the `spencerbeggs/bot` marketplaces; see [Working with AI agents](#working-with-ai-agents).
 
 Dependency versions are shared through pnpm catalogs in `pnpm-workspace.yaml`, so every package builds and tests against the same Effect v4 prerelease.
 

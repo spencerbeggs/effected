@@ -226,11 +226,6 @@ catalogs:
 overrides:
   '@effect/vitest>vitest': ^5.0.1
   '@microsoft/api-extractor>typescript': ^6.0.3
-  pluginfinity: link:../pluginfinity/packages/pluginfinity/dist/prod/npm/pkg
-  '@pluginfinity/cli': link:../pluginfinity/packages/cli/dist/prod/npm/pkg
-  '@pluginfinity/core': link:../pluginfinity/packages/core/dist/prod/npm/pkg
-  '@pluginfinity/engine': link:../pluginfinity/packages/engine/dist/prod/npm/pkg
-  '@pluginfinity/targets': link:../pluginfinity/packages/targets/dist/prod/npm/pkg
   '@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared': 4.0.0-rc.117
   '@effect/platform-node@4.0.0-rc.118>@effect/platform-node-shared': 4.0.0-rc.118
 
@@ -1368,12 +1363,8 @@ importers:
   plugin:
     devDependencies:
       pluginfinity:
-        specifier: link:../../pluginfinity/packages/pluginfinity/dist/prod/npm/pkg
-        version: link:../../pluginfinity/packages/pluginfinity/dist/prod/npm/pkg
-
-  plugins/claude-code: {}
-
-  plugins/copilot: {}
+        specifier: ^0.1.0
+        version: 0.1.0(@effected/config-file@0.14.0(@effected/glob@0.10.0(effect@4.0.0))(@effected/jsonc@0.15.0(effect@4.0.0))(@effected/toml@0.11.0(effect@4.0.0))(@effected/walker@0.15.0(@effected/glob@0.10.0(effect@4.0.0))(effect@4.0.0))(@effected/yaml@0.19.0(effect@4.0.0))(effect@4.0.0))(@types/react@19.3.0)(ink@7.1.1(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(redis@6.3.0)
 
   scratchpad:
     dependencies:
@@ -2693,6 +2684,29 @@ packages:
 
   '@oxc-project/types@0.152.0':
     resolution: {integrity: sha512-oM/5rLBm2tPkg0iBgkH/FOeR3PCDpY19GTgAZjMFM8h9WI9VW7cLgzp6nwtarYKmovavIQZ+Fe/RKX/8C8O/Rw==}
+
+  '@pluginfinity/cli@0.1.0':
+    resolution: {integrity: sha512-nLziyKppBpMFYtTGhs5S0/oFDIKGny/DZQT4ASaw5fgChaDTKbwm6c/RnfCetd2o0UCIrgkTH+6qY0GFxH+s1w==}
+    engines: {node: '>=24.11.0'}
+
+  '@pluginfinity/core@0.1.0':
+    resolution: {integrity: sha512-DJuOyE2H4U0CWamE9V8RP/0DaJMJS9+yS67HelUnb4HQvJtPGCBk0coFDIcOYm2RklGv125+2+2hIu2xO+8PNQ==}
+    engines: {node: '>=24.11.0'}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@pluginfinity/engine@0.1.0':
+    resolution: {integrity: sha512-ihPni0PPKTPjJyCT6F7EdVAT2qxihnw0TGMg6aI7gd1cfm6PvN3arimWa+51sX38syzA5RcmFk7RzlFDf827hQ==}
+    engines: {node: '>=24.11.0'}
+    peerDependencies:
+      '@effect/platform-node': ^4.0.0
+      effect: ^4.0.0
+
+  '@pluginfinity/targets@0.1.0':
+    resolution: {integrity: sha512-TMncHiJdfRp3JswVbz2L+kKoGabLOLd2dGq91tTP1SRslLS161xoD4prGF9vVDaybN3BwtzF5T19LPhPzHvGow==}
+    engines: {node: '>=24.11.0'}
+    peerDependencies:
+      effect: ^4.0.0
 
   '@pnpm/catalogs.config@1100.0.9':
     resolution: {integrity: sha512-bQ4tahJZgVD44s7IkCM+S4ETHcCwr8RDqhpKBD7swreGc6NsBJpyIk5UkyKBSevAJR9QJ/P6fn8C3jB1TgRNuw==}
@@ -5422,6 +5436,11 @@ packages:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
 
+  pluginfinity@0.1.0:
+    resolution: {integrity: sha512-dKnsDRstoCrW0s0BMwe/mHNH8M/BJD53WfxMkGDKxYt6vvUcuvW3NHYs6Wu/eTI8G17Zdhw7cxdkws1zADZglg==}
+    engines: {node: '>=24.11.0'}
+    hasBin: true
+
   postcss@8.5.28:
     resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
     engines: {node: ^10 || ^12 || >=14}
@@ -7456,6 +7475,53 @@ snapshots:
   '@oxc-project/types@0.150.0': {}
 
   '@oxc-project/types@0.152.0': {}
+
+  '@pluginfinity/cli@0.1.0(@effected/config-file@0.14.0(@effected/glob@0.10.0(effect@4.0.0))(@effected/jsonc@0.15.0(effect@4.0.0))(@effected/toml@0.11.0(effect@4.0.0))(@effected/walker@0.15.0(@effected/glob@0.10.0(effect@4.0.0))(effect@4.0.0))(@effected/yaml@0.19.0(effect@4.0.0))(effect@4.0.0))(@types/react@19.3.0)(ink@7.1.1(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(redis@6.3.0)':
+    dependencies:
+      '@effect/platform-node': 4.0.0(effect@4.0.0)(redis@6.3.0)
+      '@effected/cli': 0.11.0(@effected/config-file@0.14.0(@effected/glob@0.10.0(effect@4.0.0))(@effected/jsonc@0.15.0(effect@4.0.0))(@effected/toml@0.11.0(effect@4.0.0))(@effected/walker@0.15.0(@effected/glob@0.10.0(effect@4.0.0))(effect@4.0.0))(@effected/yaml@0.19.0(effect@4.0.0))(effect@4.0.0))(@effected/env@0.1.0(effect@4.0.0))(@effected/glob@0.10.0(effect@4.0.0))(@effected/walker@0.15.0(@effected/glob@0.10.0(effect@4.0.0))(effect@4.0.0))(@types/react@19.3.0)(effect@4.0.0)(ink@7.1.1(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
+      '@effected/commands': 0.11.0(effect@4.0.0)
+      '@effected/engine': 0.3.0(effect@4.0.0)
+      '@effected/env': 0.1.0(effect@4.0.0)
+      '@effected/glob': 0.10.0(effect@4.0.0)
+      '@effected/semver': 0.11.0(effect@4.0.0)
+      '@effected/walker': 0.15.0(@effected/glob@0.10.0(effect@4.0.0))(effect@4.0.0)
+      '@pluginfinity/core': 0.1.0(effect@4.0.0)
+      '@pluginfinity/engine': 0.1.0(@effect/platform-node@4.0.0(effect@4.0.0)(redis@6.3.0))(effect@4.0.0)
+      '@pluginfinity/targets': 0.1.0(effect@4.0.0)
+      effect: 4.0.0
+      jiti: 2.7.0
+    transitivePeerDependencies:
+      - '@effected/config-file'
+      - '@types/react'
+      - bufferutil
+      - ink
+      - react
+      - redis
+      - utf-8-validate
+
+  '@pluginfinity/core@0.1.0(effect@4.0.0)':
+    dependencies:
+      effect: 4.0.0
+
+  '@pluginfinity/engine@0.1.0(@effect/platform-node@4.0.0(effect@4.0.0)(redis@6.3.0))(effect@4.0.0)':
+    dependencies:
+      '@effect/platform-node': 4.0.0(effect@4.0.0)(redis@6.3.0)
+      '@effected/commands': 0.11.0(effect@4.0.0)
+      '@effected/engine': 0.3.0(effect@4.0.0)
+      '@effected/glob': 0.10.0(effect@4.0.0)
+      '@effected/semver': 0.11.0(effect@4.0.0)
+      '@effected/walker': 0.15.0(@effected/glob@0.10.0(effect@4.0.0))(effect@4.0.0)
+      '@effected/yaml': 0.19.0(effect@4.0.0)
+      '@pluginfinity/core': 0.1.0(effect@4.0.0)
+      '@pluginfinity/targets': 0.1.0(effect@4.0.0)
+      effect: 4.0.0
+      jiti: 2.7.0
+
+  '@pluginfinity/targets@0.1.0(effect@4.0.0)':
+    dependencies:
+      '@pluginfinity/core': 0.1.0(effect@4.0.0)
+      effect: 4.0.0
 
   '@pnpm/catalogs.config@1100.0.9':
     dependencies:
@@ -10755,6 +10821,31 @@ snapshots:
   picomatch@2.3.2: {}
 
   picomatch@4.0.7: {}
+
+  pluginfinity@0.1.0(@effected/config-file@0.14.0(@effected/glob@0.10.0(effect@4.0.0))(@effected/jsonc@0.15.0(effect@4.0.0))(@effected/toml@0.11.0(effect@4.0.0))(@effected/walker@0.15.0(@effected/glob@0.10.0(effect@4.0.0))(effect@4.0.0))(@effected/yaml@0.19.0(effect@4.0.0))(effect@4.0.0))(@types/react@19.3.0)(ink@7.1.1(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(redis@6.3.0):
+    dependencies:
+      '@effect/platform-node': 4.0.0(effect@4.0.0)(redis@6.3.0)
+      '@effected/cli': 0.11.0(@effected/config-file@0.14.0(@effected/glob@0.10.0(effect@4.0.0))(@effected/jsonc@0.15.0(effect@4.0.0))(@effected/toml@0.11.0(effect@4.0.0))(@effected/walker@0.15.0(@effected/glob@0.10.0(effect@4.0.0))(effect@4.0.0))(@effected/yaml@0.19.0(effect@4.0.0))(effect@4.0.0))(@effected/env@0.1.0(effect@4.0.0))(@effected/glob@0.10.0(effect@4.0.0))(@effected/walker@0.15.0(@effected/glob@0.10.0(effect@4.0.0))(effect@4.0.0))(@types/react@19.3.0)(effect@4.0.0)(ink@7.1.1(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
+      '@effected/commands': 0.11.0(effect@4.0.0)
+      '@effected/engine': 0.3.0(effect@4.0.0)
+      '@effected/env': 0.1.0(effect@4.0.0)
+      '@effected/glob': 0.10.0(effect@4.0.0)
+      '@effected/semver': 0.11.0(effect@4.0.0)
+      '@effected/walker': 0.15.0(@effected/glob@0.10.0(effect@4.0.0))(effect@4.0.0)
+      '@pluginfinity/cli': 0.1.0(@effected/config-file@0.14.0(@effected/glob@0.10.0(effect@4.0.0))(@effected/jsonc@0.15.0(effect@4.0.0))(@effected/toml@0.11.0(effect@4.0.0))(@effected/walker@0.15.0(@effected/glob@0.10.0(effect@4.0.0))(effect@4.0.0))(@effected/yaml@0.19.0(effect@4.0.0))(effect@4.0.0))(@types/react@19.3.0)(ink@7.1.1(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(redis@6.3.0)
+      '@pluginfinity/core': 0.1.0(effect@4.0.0)
+      '@pluginfinity/engine': 0.1.0(@effect/platform-node@4.0.0(effect@4.0.0)(redis@6.3.0))(effect@4.0.0)
+      '@pluginfinity/targets': 0.1.0(effect@4.0.0)
+      effect: 4.0.0
+      jiti: 2.7.0
+    transitivePeerDependencies:
+      - '@effected/config-file'
+      - '@types/react'
+      - bufferutil
+      - ink
+      - react
+      - redis
+      - utf-8-validate
 
   postcss@8.5.28:
     dependencies:

@@ -32,7 +32,7 @@
 		]
 	],
 	"tooling": ["@effected/pnpm-plugin-effect"],
-	"unconstrained": ["effected", "docs", "scratchpad", "@effected/claude-code-plugin", "@effected/copilot-plugin"],
+	"unconstrained": ["effected", "docs", "scratchpad", "@effected/ai-plugin"],
 	"fields": ["dependencies", "peerDependencies", "optionalDependencies"],
 	"requiredEdges": [
 		"@effected/mcp -> @effected/engine",
