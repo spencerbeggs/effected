@@ -264,46 +264,102 @@ describe("CliUi.lazyView", () => {
 		}).pipe(Effect.scoped),
 	);
 
-	it.effect("a module with no view as its default export fails clearly, naming its exports, and is not retried", () =>
+	/** Two runs of a lazy view whose loader answers `answers[attempt]`; what it drew, warned and how often it loaded. */
+	const twoRunsOf = (answers: ReadonlyArray<() => unknown>) =>
 		Effect.gen(function* () {
 			const { double, lines } = capturing();
 			let attempts = 0;
 			const render = CliUi.lazyView<State>(async () => {
+				const answer = answers[Math.min(attempts, answers.length - 1)] ?? (() => undefined);
 				attempts++;
-				// A named export where a default one was meant: a programming error.
-				return { view: frameOf } as unknown as { readonly default: typeof frameOf };
+				return answer() as typeof frameOf;
 			});
 			const view = yield* CliUiTest.live({ ...base, render, color: "none" }).pipe(
 				Effect.provideService(Console.Console, double),
 			);
 			for (const event of twoRuns) yield* view.publish(event);
 			yield* view.end;
-			assert.strictEqual(attempts, 1, "not tried again");
 			const warnings = lines.filter((line) => line.includes("CliUi.lazyView"));
-			assert.lengthOf(warnings, 2, `one warning per run: ${lines.join(" | ")}`);
-			for (const warning of warnings) {
-				assert.include(warning, "no default export");
-				assert.include(warning, "it exports view");
-				assert.include(warning, "(state, frame) => ReactElement");
-				assert.notInclude(warning, "before its module loaded", "never the misleading not-loaded message");
-			}
-			assert.notInclude(yield* view.transcript, "RUN");
+			return { attempts, warnings, transcript: yield* view.transcript };
+		});
+
+	const assertShapeError = (
+		result: { readonly attempts: number; readonly warnings: ReadonlyArray<string>; readonly transcript: string },
+		received: string,
+	) => {
+		// A failure clears the shared load: the run's mount tries, and its end tries again to print the frame, so each
+		// of the two runs loads twice.
+		assert.strictEqual(result.attempts, 4, "every attempt loads again: nothing cached a failure");
+		assert.lengthOf(result.warnings, 2, `one warning per run: ${result.warnings.join(" | ")}`);
+		for (const warning of result.warnings) {
+			assert.include(warning, received);
+			assert.include(
+				warning,
+				"Expected a view, (state, frame) => ReactElement, or a module whose default export is one",
+			);
+			assert.notInclude(warning, "before its module loaded", "never the misleading not-loaded message");
+			assert.notInclude(warning, "is not a function", "never a raw TypeError from calling a non-view");
+		}
+		assert.notInclude(result.transcript, "RUN");
+	};
+
+	it.effect("a CommonJS double default, { default: { default: view } }, is a clear shape error", () =>
+		Effect.gen(function* () {
+			const result = yield* twoRunsOf([() => ({ default: { default: frameOf } })]);
+			assertShapeError(result, "a module whose default export is an object, not a function");
+			assert.include(result.warnings[0], "default.default");
 		}).pipe(Effect.scoped),
 	);
 
-	it.effect("a load that resolves to neither a view nor a module says what it got", () =>
+	it.effect("a module with a named export and no default names its exports", () =>
 		Effect.gen(function* () {
-			const { double, lines } = capturing();
-			const render = CliUi.lazyView<State>(async () => 42 as unknown as typeof frameOf);
-			const view = yield* CliUiTest.live({ ...base, render, color: "none" }).pipe(
-				Effect.provideService(Console.Console, double),
-			);
-			for (const event of [Start, End]) yield* view.publish(event);
-			yield* view.end;
-			assert.isTrue(
-				lines.some((line) => line.includes("resolved to number")),
-				lines.join(" | "),
-			);
+			const result = yield* twoRunsOf([() => ({ syncView: frameOf })]);
+			assertShapeError(result, "a module with no default export (it exports syncView)");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a load that resolves to undefined (a typo'd named export) says so", () =>
+		Effect.gen(function* () {
+			const result = yield* twoRunsOf([() => undefined]);
+			assertShapeError(result, "resolved to undefined");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a view function that carries a default property is the view: the function wins", () =>
+		Effect.gen(function* () {
+			const viewWithDefault = Object.assign((state: State) => frameOf(state), { default: "not a view" });
+			const result = yield* twoRunsOf([() => viewWithDefault]);
+			assert.deepStrictEqual(result.warnings, []);
+			assert.include(result.transcript, "RUN 2");
+			assert.strictEqual(result.attempts, 1, "loaded once, then shared");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a load that resolves to no view on run 1 and to the view on run 2 draws run 2", () =>
+		Effect.gen(function* () {
+			const result = yield* twoRunsOf([() => undefined, () => ({ default: frameOf })]);
+			// Run 1's mount got no view and degraded, once; its end loaded again, found the view and printed its frame.
+			assert.strictEqual(result.attempts, 2);
+			assert.lengthOf(result.warnings, 1);
+			assert.deepStrictEqual(result.transcript.split("\n"), ["RUN 1", "ended", "RUN 2", "ended"]);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a transient import failure on run 1, then success, draws run 2", () =>
+		Effect.gen(function* () {
+			const result = yield* twoRunsOf([
+				() => Promise.reject(new Error("ECONNRESET loading the chunk")),
+				() => ({ default: frameOf }),
+			]);
+			assert.strictEqual(result.attempts, 2);
+			assert.deepStrictEqual(result.transcript.split("\n"), ["RUN 1", "ended", "RUN 2", "ended"]);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a load that resolves to a number says what it got", () =>
+		Effect.gen(function* () {
+			const result = yield* twoRunsOf([() => 42]);
+			assertShapeError(result, "resolved to number");
 		}).pipe(Effect.scoped),
 	);
 

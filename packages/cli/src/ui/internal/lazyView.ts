@@ -14,22 +14,40 @@ interface Lazy {
 	readonly [LOAD]?: () => Promise<unknown>;
 }
 
-/** What a `load` resolved to that is neither a view nor a module whose default export is one: a programming error. */
+const kindOf = (value: unknown): string =>
+	value === null ? "null" : Array.isArray(value) ? "an array" : typeof value === "object" ? "an object" : typeof value;
+
+const EXPECTED = "a view, (state, frame) => ReactElement, or a module whose default export is one: { default: view }";
+
+/** What a `load` resolved to that is no view: said with what was received and what is expected. */
 const NO_VIEW = (resolved: unknown): string => {
-	const exports =
-		typeof resolved === "object" && resolved !== null ? Object.keys(resolved).filter((key) => key !== "default") : [];
-	const found =
-		typeof resolved === "object" && resolved !== null
-			? `a module with no default export that is a function${exports.length === 0 ? "" : ` (it exports ${exports.join(", ")})`}`
-			: `${resolved === null ? "null" : typeof resolved}`;
-	return `@effected/cli/ui: CliUi.lazyView's load resolved to ${found}; it must resolve to the view, (state, frame) => ReactElement, or to a module whose default export is the view`;
+	if (typeof resolved !== "object" || resolved === null) {
+		return `@effected/cli/ui: CliUi.lazyView's load resolved to ${kindOf(resolved)}. Expected ${EXPECTED}`;
+	}
+	const named = Object.keys(resolved).filter((key) => key !== "default");
+	const exports = named.length === 0 ? "" : ` (it exports ${named.join(", ")})`;
+	const received = Object.hasOwn(resolved, "default")
+		? `a module whose default export is ${kindOf((resolved as { readonly default: unknown }).default)}, not a function${exports}; a CommonJS module imported as ESM nests it one level deeper, as default.default`
+		: `a module with no default export${exports}; resolve to the export itself, as .then((module) => module.name)`;
+	return `@effected/cli/ui: CliUi.lazyView's load resolved to ${received}. Expected ${EXPECTED}`;
+};
+
+/** The view `load` resolved to: the value itself when it is a function (a `default` property on it is ignored), else
+ * its `default` when that is a function; anything else throws, saying what it got. */
+const pick = (resolved: unknown): ((state: never, frame: number) => ReactElement) => {
+	if (typeof resolved === "function") return resolved as (state: never, frame: number) => ReactElement;
+	if (typeof resolved === "object" && resolved !== null) {
+		const fallback = (resolved as { readonly default?: unknown }).default;
+		if (typeof fallback === "function") return fallback as (state: never, frame: number) => ReactElement;
+	}
+	throw new Error(NO_VIEW(resolved));
 };
 
 /**
  * `CliUi.lazyView`: a `render` that draws with what `load` resolves to, loaded on first use: the render itself, or a
- * module whose default export it is. The loader runs once: again after an import that failed, but never after one that
- * resolved to no view, which is a programming error that fails every run the same way. Calling the render before it
- * has loaded is a defect, since only `CliUi.live` knows to load it first.
+ * module whose default export it is. One load is shared until it settles; any failure, an import that rejected or one
+ * that resolved to no view, clears it, so the next run loads again (a shape error, being deterministic, then fails the
+ * same clear way). Calling the render before it has loaded is a defect, since only `CliUi.live` knows to load it first.
  *
  * @internal
  */
@@ -39,24 +57,15 @@ export const lazyView = <S>(
 	let loaded: LiveRender<S> | undefined;
 	let pending: Promise<unknown> | undefined;
 	const ensure = (): Promise<unknown> => {
-		pending ??= load().then(
-			(resolved: unknown) => {
-				const view =
-					typeof resolved === "function"
-						? resolved
-						: typeof resolved === "object" && resolved !== null
-							? (resolved as { readonly default?: unknown }).default
-							: undefined;
-				// Not retried: the module is what it is, so the same clear error stands for every run.
-				if (typeof view !== "function") throw new Error(NO_VIEW(resolved));
-				loaded = view as LiveRender<S>;
-			},
-			(error: unknown) => {
-				// A failed load is tried again by the next run, rather than failing every run after it.
+		pending ??= load()
+			.then((resolved: unknown) => {
+				loaded = pick(resolved) as LiveRender<S>;
+			})
+			.catch((error: unknown) => {
+				// Any failure is the next run's to retry: a rejected import, or a load that resolved to no view.
 				pending = undefined;
 				throw error;
-			},
-		);
+			});
 		return pending;
 	};
 	const render: LiveRender<S> = (state, frame) => {
