@@ -131,7 +131,7 @@ export interface Counter {
  * - `CountsTable`: a table of `Counts` rows, a column per counter key, a `duration` column when some row has one, and
  *   an optional summed total row.
  * - `Lines`: one line per entry; markdown keeps them apart with hard breaks.
- * - `Line`: one line, which `truncate` cuts to the width instead of wrapping.
+ * - `Line`: one line, which `truncate` cuts to the width instead of wrapping, and `wrap: false` keeps whole.
  * - `DiffText`: a unified diff, as given; `truncate` cuts each line to the width.
  * - A `List` may be `compact`, with no blank lines between an item's children (a blank line of an item's own content
  *   keeps the item's indent in plain and `ansi`), and a `Table` may be `style: "pipe"`.
@@ -194,7 +194,12 @@ export type Block =
 			readonly durationHeader?: ReadonlyArray<Inline>;
 	  }
 	| { readonly _tag: "Lines"; readonly lines: ReadonlyArray<ReadonlyArray<Inline>> }
-	| { readonly _tag: "Line"; readonly content: ReadonlyArray<Inline>; readonly truncate?: boolean }
+	| {
+			readonly _tag: "Line";
+			readonly content: ReadonlyArray<Inline>;
+			readonly truncate?: boolean;
+			readonly wrap?: boolean;
+	  }
 	| { readonly _tag: "DiffText"; readonly text: string; readonly cap?: number; readonly truncate?: boolean }
 	| { readonly _tag: "Verbatim"; readonly text: string; readonly indent?: number }
 	| ({ readonly _tag: "Annotation"; readonly message: string } & AnnotationOptions);
@@ -801,20 +806,28 @@ export class Doc {
 	}
 
 	/**
-	 * One line of content; with `truncate`, it is cut to the width with the glyph set's ellipsis instead of wrapping.
+	 * One line of content; with `truncate`, it is cut to the width with the glyph set's ellipsis instead of wrapping,
+	 * and with `wrap: false` it is kept whole on one line whatever the width.
 	 *
 	 * @remarks
-	 * Without `truncate` a line longer than the width wraps. For a single line that must never wrap nor be cut, such
-	 * as a test's full name used as a title, use {@link Doc.verbatim}.
+	 * By default a line longer than the width wraps. `wrap: false` keeps it atomic in every audience and renderer, still
+	 * carrying its status glyphs, theme tokens and links, which {@link Doc.verbatim} (a plain string) cannot: the tool for
+	 * a finding such as `✗ path:line:col  rule  message` that a reader greps or reads line by line, while the prose around
+	 * it still wraps. A line break inside it is still a space. With both `truncate` and `wrap: false`, `truncate` wins:
+	 * the line is cut to the width.
 	 *
 	 * @param content - the line
-	 * @param options - `truncate`
+	 * @param options - `truncate`, to cut it to the width; `wrap: false`, to keep it whole
 	 */
-	static line(content: InlineInput, options?: { readonly truncate?: boolean }): BlockOf<"Line"> {
+	static line(
+		content: InlineInput,
+		options?: { readonly truncate?: boolean; readonly wrap?: boolean },
+	): BlockOf<"Line"> {
 		return freeze({
 			_tag: "Line",
 			content: inlines(content),
 			...(options?.truncate === undefined ? {} : { truncate: options.truncate }),
+			...(options?.wrap === undefined ? {} : { wrap: options.wrap }),
 		});
 	}
 
@@ -915,7 +928,7 @@ export class Doc {
 	 * The context is {@link Render.context} for the stream, so the width, the colour, the links and the audience
 	 * come from the services the program already has, and the text is written with `Console.log` or
 	 * `Console.error`: a test captures it by swapping the `Console`. With `format: "auto"` the renderer follows
-	 * the audience, and the width is unbounded for an agent and a CI.
+	 * the audience, and the width is unbounded for an agent, a CI, and a human whose stream is not a terminal.
 	 *
 	 * An agent is never written an escape of any kind, even with an explicit `format: "ansi"`: its context is
 	 * colourless and its links are off. A document that renders to nothing prints nothing.

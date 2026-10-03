@@ -411,6 +411,8 @@ const blockLines = (walk: Walk, block: Block, width: number, compact = false): R
 		case "Line": {
 			const spans = oneLine(inline(walk, block.content));
 			if (block.truncate === true) return [trimLine(truncateSpans(spans, width, walk.ctx.glyphs.ellipsis))];
+			// Kept atomic: one line whatever the width, so a finding stays greppable.
+			if (block.wrap === false) return [trimLine(spans)];
 			return spans.length === 0 ? [[]] : wrapSpans(spans, width, { hardBreak: false }).map(trimLine);
 		}
 		case "DiffText": {
