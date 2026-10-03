@@ -803,13 +803,13 @@
 		"isValidExpression": "check if a string is a valid spdx license expression"
 	},
 	"store": {
-		"Cache": "cache with ttl and tags, durable local state, tag invalidation and write-order eviction",
+		"Cache": "cache with ttl and tags, durable local state, tag invalidation and write-order eviction, second cache under your own key",
 		"CacheEntry": "a stored cache row, key value bytes, content type, tags and expiry",
 		"CacheError": "handle a cache sql operation failure, get set has invalidate prune failed",
 		"CacheEvent": "a published cache lifecycle event with its timestamp",
 		"CacheEventPayload": "cache hit, miss, set, expired, evicted, invalidated, pruned event shapes",
-		"Store": "durable local state, migrated sqlite database, schema-versioned store",
-		"StoreError": "handle a store sql operation failure, migrate rollback status setup failed",
+		"Store": "durable local state, migrated sqlite database, schema-versioned store, adopt an effect sql migrator ledger, second database under your own key",
+		"StoreError": "handle a store sql operation failure, migrate rollback status setup adopt failed",
 		"StoreMigrationError": "handle a failing user-defined migration, sql error during up or down",
 		"StoreMigrationStatus": "a migration's applied/pending status, when it ran",
 		"Uint8ArrayFromUtf8": "encode text to bytes for a store or cache value, utf-8 codec to uint8array"

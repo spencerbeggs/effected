@@ -127,35 +127,51 @@ Duplicate ids, non-positive-integer ids and a non-integer `toId` are wiring erro
 
 ### Adopting a database migrated by effect's Migrator
 
-`Store` is your schema — migrations create your tables, `client` queries them — but its ledger is its own. A database previously migrated by `effect/sql/Migrator` records what ran in `effect_sql_migrations` (`migration_id`, `name`, `created_at`), which `Store` does not read: on first construction over such a file, `Store` sees an empty `_store_migrations` ledger and re-runs every migration. If your migrations are idempotent (`CREATE TABLE IF NOT EXISTS …`), that re-run is harmless and you can skip all of this. If they are not — a bare `CREATE TABLE`, a seeding `INSERT` — seed the ledger **before** the first `Store` layer is built, because layer construction itself runs pending migrations.
-
-Detect the old ledger:
-
-```sql
-SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations';
-```
-
-Seed `_store_migrations` from it — this is a one-time step against the closed database file, so plain `node:sqlite` is the right tool:
+`Store` keeps its own ledger, `_store_migrations`. A database previously migrated by effect/sql's `Migrator` (`SqliteMigrator.layer` and friends) recorded its history in `effect_sql_migrations` instead, so a `Store` opened over it sees an empty ledger and re-runs every migration — a bare `CREATE TABLE` then fails. Opt in to adopting that history:
 
 ```ts
-import { DatabaseSync } from "node:sqlite";
-
-const db = new DatabaseSync("state.db");
-db.exec(`
-  CREATE TABLE IF NOT EXISTS _store_migrations (
-    id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL,
-    applied_at TEXT NOT NULL
-  );
-  INSERT INTO _store_migrations (id, name, applied_at)
-  SELECT migration_id, name, strftime('%Y-%m-%dT%H:%M:%fZ', created_at)
-  FROM effect_sql_migrations
-  WHERE migration_id NOT IN (SELECT id FROM _store_migrations);
-`);
-db.close();
+const StoreLive = Store.layerSqlite({
+  filename: "data.db",
+  migrations, // { id: 1, name: "initial", up: … }, { id: 2, name: "test_artifacts", up: … }, …
+  adoptMigratorLedger: true, // or { table: "my_migrations" } for a non-default Migrator table
+});
 ```
 
-Two things to hold constant across the adoption: the `id`s in your `StoreMigration` list must equal the `migration_id`s the old Migrator recorded (it derived them from the migration file names), and the migration *contents* must describe the schema the database already has — the seed only tells `Store` "these already ran", it does not verify them. The old `effect_sql_migrations` table can be dropped afterwards or left in place; `Store` never touches it.
+At layer build — after the ledger is ensured, before pending migrations run, in one transaction — and **only** when `_store_migrations` is empty and the foreign table exists, every foreign row is copied into `_store_migrations`. Migrations above the adopted ones then apply as usual. The foreign table is read, never written, and every later build finds `_store_migrations` non-empty and does nothing, so the option is safe to leave on permanently. A database the Migrator never touched builds exactly as it would without the option.
+
+Matching is exact, and any disagreement fails the layer with `StoreError` (`operation: "adopt"`) before anything is recorded or applied:
+
+- **Every foreign row needs a migration with the same `id` and `name`.** effect/sql's loaders strip the numeric key prefix before recording: `fromRecord`'s `"0001_initial"` is stored as id `1`, name `"initial"`. So the matching `StoreMigration` is `{ id: 1, name: "initial" }` — not `"0001_initial"`.
+- **Every migration at or below the foreign ledger's highest id must have a foreign row.** effect/sql only ever runs ids above its latest, so a lower id it never recorded was never applied; running it now would diverge from the history the database actually has. Renumber it above the high-water mark instead.
+
+Each adopted row's `created_at` becomes its `appliedAt` (SQLite's zone-less `current_timestamp` text is read as UTC). The option lives on `StoreOptions`, so it works through `layer`, `layerSqlite` and `@effected/app`'s `AppStore` layers alike; only SQLite is exercised by this package's tests.
+
+### Connection settings: WAL and busy timeout
+
+`SqliteClient` opens one serialized connection per layer build and configures it itself: `journal_mode = WAL` unless `client.disableWAL` is set, and `busy_timeout` from `client.busyTimeout` (default five seconds). Both are per-connection settings, so set them through `client` — never inside a migration, which runs once per database rather than once per connection:
+
+```ts
+const StoreLive = Store.layerSqlite({ filename: "data.db", migrations, client: { busyTimeout: "10 seconds" } });
+```
+
+### More than one database
+
+`Store` and `Cache` are single service tags. An application with a second database declares its own key over the same shape and builds it with `layerSqliteAs`:
+
+```ts
+import { Cache, Store } from "@effected/store";
+import type { CacheShape, StoreShape } from "@effected/store";
+import { Context } from "effect";
+
+class RegistryStore extends Context.Service<RegistryStore, StoreShape>()("myapp/RegistryStore") {}
+class TarballCache extends Context.Service<TarballCache, CacheShape>()("myapp/TarballCache") {}
+
+// Every one bound once, to a const.
+const RegistryStoreLive = Store.layerSqliteAs(RegistryStore, { filename: "/data/registry.db", migrations });
+const TarballCacheLive = Cache.layerSqliteAs(TarballCache, { filename: "/cache/tarballs.db" });
+```
+
+The output is the key alone — the `Store` or `Cache` built inside is never exposed — so a keyed layer composes beside a primary one without shadowing it, each file with its own ledger. The key's service type must be exactly `StoreShape` / `CacheShape`: anything else is a compile error, and a wider shape (`StoreShape & { … }`) reports as an argument not assignable to `never`, since the layer could not supply the extra members.
 
 ## Cache
 
@@ -257,7 +273,7 @@ Every operation publishes to `cache.events`, an unbounded `PubSub<CacheEvent>` �
 
 | Tag | Means | Recovery |
 | --- | --- | --- |
-| `StoreError` | A store operation's own SQL failed — ledger bookkeeping, or the queries around a migration. Carries `operation` and the structural `cause`. | Usually fatal; report the operation and the cause. |
+| `StoreError` | A store operation's own SQL failed — ledger bookkeeping, or the queries around a migration — or (`operation: "adopt"`) an adopted Migrator ledger disagrees with your migration list. Carries `operation` and the structural `cause`. | Usually fatal; report the operation and the cause. An `adopt` failure's cause names the mismatched migration. |
 | `StoreMigrationError` | A user-supplied migration failed with a typed `SqlError`. Carries `direction`, `id`, `name` and the structural `cause`. | Report which migration and which direction; the ledger is left consistent. |
 | `CacheError` | A cache operation's SQL failed. Carries `operation`, an optional `key` and the structural `cause`. | A cache is a cache — falling back to the origin is usually right. |
 
@@ -269,6 +285,8 @@ Defects are not errors here. A throwing migration callback, a throwing `onRemove
 - `Cache` — TTL, tags, bulk invalidation, a `maxEntries` eviction policy and a `CacheEvent` stream, over `key → Uint8Array`.
 - `Cache.degrading` — an opt-in layer combinator that turns a construction failure into a working, empty cache; the `degraded` field on the service tells the two apart.
 - `layer` / `layerSqlite` / `layerTest` on both — driver-agnostic, batteries-included and in-memory, with the same options.
+- `layerSqliteAs` on both — a second database under a service key you define, never shadowing the primary.
+- `adoptMigratorLedger` — move a live database off effect/sql's `Migrator` without re-running its history.
 - `StoreError`, `StoreMigrationError`, `CacheError` — tagged errors carrying the underlying `SqlError` structurally, never a `reason` string.
 - `CacheEntry`, `CacheEntryMeta`, `CacheRemovalResult`, `StoreMigrationStatus` — the returned records; `entries` lists metadata without loading BLOBs.
 - Named spans on every public fallible method (`Store.migrate`, `Cache.get`, …), nesting over the driver's own statement spans.

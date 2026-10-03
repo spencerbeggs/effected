@@ -5,7 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `Cache` | Class | A key → `Uint8Array` cache with TTL, tags, an eviction policy and a `CacheEvent` PubSub. | cache with ttl and tags, durable local state, tag invalidation and write-order eviction |
+| `Cache` | Class | A key → `Uint8Array` cache with TTL, tags, an eviction policy and a `CacheEvent` PubSub. | cache with ttl and tags, durable local state, tag invalidation and write-order eviction, second cache under your own key |
 | `CacheEntry` | Class | A stored cache entry: its key, value and bookkeeping fields. | a stored cache row, key value bytes, content type, tags and expiry |
 | `CacheEntryMeta` | Interface | Metadata for a cache entry, without its stored value. | |
 | `CacheError` | Class | Raised when a cache operation's SQL fails. | handle a cache sql operation failure, get set has invalidate prune failed |
@@ -17,8 +17,8 @@
 | `CacheShape` | Interface | The service shape `Cache` provides. | |
 | `CacheSqliteOptions` | Interface | Options for `Cache.layerSqlite`. | |
 | `CacheThroughOptions` | Interface | Options for `Cache.through` and `Cache.throughVerbose`. | |
-| `Store` | Class | A schema-versioned, migrated SQL client: a managed database connection with a user-defined migration ledger. | durable local state, migrated sqlite database, schema-versioned store |
-| `StoreError` | Class | Raised when a store operation's own SQL fails — ledger bookkeeping or the queries around a migration. | handle a store sql operation failure, migrate rollback status setup failed |
+| `Store` | Class | A schema-versioned, migrated SQL client: a managed database connection with a user-defined migration ledger. | durable local state, migrated sqlite database, schema-versioned store, adopt an effect sql migrator ledger, second database under your own key |
+| `StoreError` | Class | Raised when a store operation's own SQL fails — ledger bookkeeping or the queries around a migration — or when adopting a foreign ledger finds it disagrees with the migration list. | handle a store sql operation failure, migrate rollback status setup adopt failed |
 | `StoreMigration` | Interface | A single user-defined migration, applied in ascending `id` order. | |
 | `StoreMigrationError` | Class | Raised when a user-supplied migration fails with a typed `SqlError`. | handle a failing user-defined migration, sql error during up or down |
 | `StoreMigrationResult` | Interface | What a `StoreShape.migrate` or `StoreShape.rollback` call changed. | |

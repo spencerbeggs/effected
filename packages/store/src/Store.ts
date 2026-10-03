@@ -2,8 +2,15 @@ import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import { Context, DateTime, Effect, Layer, Schema } from "effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import type * as SqlError from "effect/sql/SqlError";
-import type { MigratorFailure } from "./internal/migrator.js";
-import { ensureLedger, rollbackTo, runPending, statusOf, validateMigrations } from "./internal/migrator.js";
+import type { AdoptFailure, MigratorFailure } from "./internal/migrator.js";
+import {
+	adoptForeignLedger,
+	ensureLedger,
+	rollbackTo,
+	runPending,
+	statusOf,
+	validateMigrations,
+} from "./internal/migrator.js";
 import { walCheckpointOnClose } from "./internal/sqlite.js";
 
 /**
@@ -61,17 +68,20 @@ export class StoreMigrationStatus extends Schema.Class<StoreMigrationStatus>("St
 
 /**
  * Raised when a store operation's own SQL fails — ledger bookkeeping or the
- * queries around a migration.
+ * queries around a migration — or when adopting a foreign ledger finds it
+ * disagrees with the migration list.
  *
  * @remarks
  * `cause` carries the underlying `SqlError` structurally. A failing user migration raises the more specific
- * {@link StoreMigrationError} instead.
+ * {@link StoreMigrationError} instead. With `operation: "adopt"`, `cause` is
+ * either the adoption step's `SqlError` or an `Error` whose message names the
+ * mismatched migration (see {@link StoreOptions.adoptMigratorLedger}).
  *
  * @public
  */
 export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
 	/** The store operation that failed. */
-	operation: Schema.Literals(["setup", "migrate", "rollback", "status"]),
+	operation: Schema.Literals(["setup", "adopt", "migrate", "rollback", "status"]),
 	/** The underlying failure, preserved structurally. */
 	cause: Schema.Defect(),
 }) {
@@ -143,6 +153,39 @@ export interface StoreShape {
 export interface StoreOptions {
 	/** The user-defined migration list; ids are positive integers, unique. */
 	readonly migrations: ReadonlyArray<StoreMigration>;
+	/**
+	 * Adopt the history an effect/sql `Migrator` (for example
+	 * `SqliteMigrator.layer`) already recorded in this database, so moving a
+	 * live database onto `Store` does not re-run its migrations. Opt-in;
+	 * `true` reads the Migrator's default table, `effect_sql_migrations`.
+	 *
+	 * @remarks
+	 * At layer build, after the `_store_migrations` ledger is ensured and
+	 * before pending migrations run, in one transaction: **only** when
+	 * `_store_migrations` is empty **and** the foreign table exists, every
+	 * foreign row (`migration_id`, `name`, `created_at`) is copied into
+	 * `_store_migrations`. The foreign table is read, never written. Every
+	 * later build finds `_store_migrations` non-empty and does nothing, so
+	 * the option is idempotent and safe to leave on.
+	 *
+	 * Matching is exact, and a disagreement fails the layer with a
+	 * `StoreError` whose `operation` is `"adopt"` — never a silent skip:
+	 *
+	 * - each foreign row needs a migration with the same `id` **and** `name`.
+	 *   effect/sql's loaders store the key with its numeric prefix stripped —
+	 *   `fromRecord`'s `"0001_initial"` is recorded as id `1`, name
+	 *   `"initial"` — so the matching `StoreMigration` is
+	 *   `{ id: 1, name: "initial" }`;
+	 * - every migration at or below the foreign ledger's highest id must have
+	 *   a foreign row. effect/sql only ever runs ids above its latest, so a
+	 *   lower id it never recorded was never applied, and applying it now
+	 *   would diverge from the history the database actually has.
+	 *
+	 * Migrations above the adopted ones then apply as usual. `created_at`
+	 * becomes each adopted row's `appliedAt`; SQLite's zone-less
+	 * `current_timestamp` text is read as UTC.
+	 */
+	readonly adoptMigratorLedger?: true | { readonly table?: string };
 }
 
 /**
@@ -190,6 +233,15 @@ export interface StoreSqliteOptions extends StoreOptions {
 
 const LEDGER_TABLE = "_store_migrations";
 
+/** effect/sql's `Migrator` default ledger table. */
+const FOREIGN_LEDGER_TABLE = "effect_sql_migrations";
+
+const materializeAdopt = (failure: AdoptFailure): StoreError =>
+	new StoreError({
+		operation: "adopt",
+		cause: failure._tag === "sql" ? failure.cause : new Error(`Store adoptMigratorLedger: ${failure.message}`),
+	});
+
 type StoreOperation = "setup" | "migrate" | "rollback" | "status";
 
 const materialize =
@@ -222,6 +274,16 @@ const make = (
 		const sql = yield* SqlClient.SqlClient;
 
 		yield* ensureLedger(sql, LEDGER_TABLE).pipe(Effect.mapError(materialize("setup")));
+		if (options.adoptMigratorLedger !== undefined) {
+			const foreign =
+				options.adoptMigratorLedger === true
+					? FOREIGN_LEDGER_TABLE
+					: (options.adoptMigratorLedger.table ?? FOREIGN_LEDGER_TABLE);
+			yield* adoptForeignLedger(sql, LEDGER_TABLE, foreign, options.migrations).pipe(
+				Effect.mapError(materializeAdopt),
+				Effect.withSpan("Store.adoptMigratorLedger"),
+			);
+		}
 		yield* runPending(sql, LEDGER_TABLE, options.migrations).pipe(Effect.mapError(materialize("migrate")));
 
 		const migrate = runPending(sql, LEDGER_TABLE, options.migrations).pipe(
@@ -311,6 +373,42 @@ export class Store extends Context.Service<Store, StoreShape>()("@effected/store
 		return options.checkpointOnClose === true
 			? Layer.merge(store, Layer.provide(walCheckpointOnClose(), client))
 			: store;
+	}
+
+	/**
+	 * {@link Store.layerSqlite} provided under a service key the consumer
+	 * defines, for an application that keeps more than one database.
+	 *
+	 * @remarks
+	 * `tag` is a `Context.Service` whose service type is exactly
+	 * {@link StoreShape}, declared as in the example below. Any other shape is a compile error; a wider one (`StoreShape & { … }`)
+	 * reports as an argument "not assignable to parameter of type 'never'",
+	 * because this layer could not supply the extra members. The output is
+	 * `I` alone: the `Store` built internally is provided to the re-tagging
+	 * step and never leaks, so a keyed layer composes beside a primary `Store`
+	 * without either shadowing the other. Each file keeps its own migrations
+	 * and its own ledger.
+	 *
+	 * A layer-returning function, like every factory here: bind the result to
+	 * a `const` once and reuse that binding.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Store } from "@effected/store";
+	 * import type { StoreShape } from "@effected/store";
+	 * import { Context } from "effect";
+	 *
+	 * class RegistryStore extends Context.Service<RegistryStore, StoreShape>()("myapp/RegistryStore") {}
+	 *
+	 * const RegistryStoreLive = Store.layerSqliteAs(RegistryStore, { filename: "/abs/registry.db", migrations: [] });
+	 * ```
+	 */
+	static layerSqliteAs<I, S extends StoreShape>(
+		tag: Context.Key<I, S> & ([StoreShape] extends [S] ? unknown : never),
+		options: StoreSqliteOptions,
+	): Layer.Layer<I, StoreError | StoreMigrationError> {
+		// The constraint pins S to exactly StoreShape, so the key may be read at it.
+		return Layer.effect(tag as Context.Key<I, StoreShape>, Store).pipe(Layer.provide(Store.layerSqlite(options)));
 	}
 
 	/** An in-memory (`:memory:`) `Store` layer for tests; each build is a fresh, empty database. */

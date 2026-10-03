@@ -18,6 +18,8 @@ Consumers of store are tier 3 by [R2](../../okf/conventions/dependency-policy.md
 - **`@effect/sql-sqlite-node` rides Node's built-in `node:sqlite`** — no native compile step, no `better-sqlite3`, no transitive peers. It ships on the same v4 prerelease version train as `effect`.
 - **`SqliteClient.layer` has no error channel.** Driver construction failures — chiefly a `filename` whose parent directory does not exist — are **defects**, not typed failures. That is why `Store.layerSqlite` and `Cache.layerSqlite` publish only the domain error in `E`. Ensuring the directory exists is the caller's job (and will be `@effected/xdg`'s).
 - **`effect/sql/Migrator` is deliberately not used.** It is forward-only: no `down`, no rollback, no status projection. Store's contract carries all three, so `src/internal/migrator.ts` owns its own ledger.
+- **But its ledger can be adopted** (`StoreOptions.adoptMigratorLedger`, `adoptForeignLedger` in the engine). The Migrator ledger is `migration_id`, `name`, `created_at` on every dialect, and its loaders record names **prefix-stripped** (`fromRecord`'s `"0001_initial"` → id 1, name `"initial"`) — read from `.repos/effect/packages/effect/src/sql/Migrator.ts`, and pinned by a fixture that runs the real `SqliteMigrator`. Adoption runs after `ensureLedger` and before `runPending`, in one transaction, only when `_store_migrations` is empty and the foreign table exists; it never writes the foreign table. Matching is **exact** — same id and same name per foreign row, and no migration at or below the foreign high-water mark that the foreign ledger lacks (the Migrator never runs an id ≤ its latest, so such a migration was never applied) — and a disagreement is a typed `StoreError` with `operation: "adopt"`, cause an `Error` naming the migration. Do not loosen it to "skip unknown rows": a silent skip is exactly the re-run the option exists to prevent. The foreign-table existence check is `sqlite_master` on SQLite and `information_schema.tables` otherwise; only SQLite is tested.
+- **Per-connection PRAGMAs are the driver's job, not a hook's.** `SqliteClient` opens one serialized connection per layer build and itself sets `busy_timeout` (`client.busyTimeout`, default 5 s) and `journal_mode = WAL` (unless `client.disableWAL`). Both pass through `client`, so there is no `onConnect` option: a consumer setting them inside a migration (which runs once per database, not per connection) should move them to `client`.
 
 ## The layer trio
 
@@ -26,6 +28,8 @@ Both services expose the same three statics, and the split is load-bearing:
 - `layer(options)` — driver-agnostic; requires an abstract `SqlClient` in `R`. Any Effect SQL driver satisfies it. This is the seam.
 - `layerSqlite(options & { filename })` — batteries included, provides the sqlite driver itself. Also takes `client` (driver-option passthrough — everything but `filename` and the two name-transform options, which would rewrite the ledger queries' result names and break `status`) and `checkpointOnClose` (a best-effort `PRAGMA wal_checkpoint(TRUNCATE)` finalizer that runs before the driver closes; sqlite layers only — the PRAGMA is not driver-agnostic). The checkpoint helper in `src/internal/sqlite.ts` is a per-call factory on purpose: a shared layer const would memoize by reference and checkpoint only the first of two databases.
 - `layerTest(options)` — `layerSqlite` at `:memory:`. Hermetic; what the suites use. Never checkpoints.
+
+Plus `layerSqliteAs(tag, options)` on both: `layerSqlite` re-tagged under a consumer-defined key, for a second database. The inner `Store`/`Cache` is `Layer.provide`d to a `Layer.effect(tag, Store)` and never leaks. The key parameter is `Context.Key<I, S> & ([StoreShape] extends [S] ? unknown : never)` with `S extends StoreShape` — exact, not assignable: a plain `Context.Service<I, StoreShape>` parameter accepts a class key over a *wider* shape (structural check + method bivariance), handing the consumer a value missing members. `@effected/app`'s `AppStore.layerAs` / `AppCache.layerAs` build on these.
 
 The statics are **parameterized factories**, so calling one twice builds two layers: bind the result to a `const` and reuse it, or Layer memoization-by-reference is lost and the database is opened twice.
 
@@ -80,7 +84,7 @@ Every public fallible method is a named span (`Store.migrate`, `Cache.get`, …)
 
 ## Testing and building
 
-Tests live in `__test__/Store.test.ts` and `__test__/Cache.test.ts`, use `@effect/vitest` with the top-level `layer(...)` fixture form (per-block where options differ), and assert with `assert.*` — never `expect`. `Cache` TTL and expiry are driven by `TestClock.adjust`; no real sleeps.
+Tests live in `__test__/Store.test.ts`, `__test__/StoreAdopt.test.ts` (ledger adoption, against fixtures written by the real `SqliteMigrator`; a control proves the fixture re-runs without adoption) and `__test__/Cache.test.ts`, use `@effect/vitest` with the top-level `layer(...)` fixture form (per-block where options differ), and assert with `assert.*` — never `expect`. `Cache` TTL and expiry are driven by `TestClock.adjust`; no real sleeps.
 
 ```bash
 pnpm vitest run packages/store          # from the repo root

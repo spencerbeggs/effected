@@ -194,3 +194,122 @@ export const statusOf = (
 
 const isMigratorFailure = (value: MigratorFailure | SqlError): value is MigratorFailure =>
 	"_tag" in value && (value._tag === "ledger" || value._tag === "migration");
+
+/**
+ * A raw adoption failure: the foreign ledger disagrees with the migration
+ * list, or the adoption step's own SQL failed. The facade materializes both.
+ */
+export type AdoptFailure =
+	| { readonly _tag: "sql"; readonly cause: SqlError }
+	| { readonly _tag: "mismatch"; readonly message: string };
+
+/** The shape of one row of effect/sql's Migrator ledger, every dialect. */
+interface ForeignRow {
+	readonly migration_id: number | bigint;
+	readonly name: string;
+	readonly created_at: unknown;
+}
+
+/**
+ * Normalize a foreign `created_at` to ISO-8601. SQLite's `current_timestamp`
+ * is `YYYY-MM-DD HH:MM:SS` in UTC with no zone marker, which a generic date
+ * parser would read as local time; anything unparseable falls back to `now`.
+ */
+const adoptedAt = (value: unknown, now: string): string => {
+	if (value instanceof Date) return Number.isNaN(value.getTime()) ? now : value.toISOString();
+	if (typeof value === "string") {
+		const sqlite = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/.exec(value);
+		const candidate = sqlite !== null ? `${sqlite[1]}T${sqlite[2]}Z` : value;
+		const parsed = new Date(candidate);
+		return Number.isNaN(parsed.getTime()) ? now : parsed.toISOString();
+	}
+	return now;
+};
+
+/**
+ * Seed `table` from a foreign effect/sql Migrator ledger, once. Runs in one
+ * transaction, and only when `table` is empty and `foreignTable` exists; the
+ * foreign table is read, never written. Every foreign row must match a
+ * migration by id AND name, and every migration at or below the foreign
+ * high-water mark must have a foreign row — effect/sql never runs an id at or
+ * below its latest, so applying one here would diverge from the history the
+ * database actually has.
+ */
+export const adoptForeignLedger = (
+	sql: SqlClient,
+	table: string,
+	foreignTable: string,
+	migrations: ReadonlyArray<MigratorMigration>,
+): Effect.Effect<ReadonlyArray<MigratorRecord>, AdoptFailure> => {
+	const sqlFailure = (cause: SqlError): AdoptFailure => ({ _tag: "sql", cause });
+	const mismatch = (message: string): AdoptFailure => ({ _tag: "mismatch", message });
+
+	const foreignExists = sql
+		.onDialectOrElse({
+			sqlite: () =>
+				sql<{ n: number }>`SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = ${foreignTable}`,
+			orElse: () =>
+				sql<{ n: number }>`SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_name = ${foreignTable}`,
+		})
+		.pipe(Effect.map((rows) => Number(rows[0]?.n ?? 0) > 0));
+
+	const adopt = Effect.gen(function* () {
+		const own = yield* sql<{ n: number }>`SELECT COUNT(*) AS n FROM ${sql(table)}`;
+		if (Number(own[0]?.n ?? 0) > 0) return [];
+		if (!(yield* foreignExists)) return [];
+
+		const rows = yield* sql<ForeignRow>`
+			SELECT migration_id, name, created_at FROM ${sql(foreignTable)} ORDER BY migration_id ASC
+		`.withoutTransform;
+		if (rows.length === 0) return [];
+
+		const byId = new Map(migrations.map((migration) => [migration.id, migration]));
+		const foreignIds = new Set<number>();
+		for (const row of rows) {
+			const id = Number(row.migration_id);
+			foreignIds.add(id);
+			const migration = byId.get(id);
+			if (migration === undefined) {
+				return yield* Effect.fail(
+					mismatch(`${foreignTable} records migration ${id} "${row.name}", which has no migration with that id`),
+				);
+			}
+			if (migration.name !== row.name) {
+				return yield* Effect.fail(
+					mismatch(
+						`${foreignTable} records migration ${id} as "${row.name}", but migration ${id} is named "${migration.name}"`,
+					),
+				);
+			}
+		}
+		const highWater = Math.max(...foreignIds);
+		const skipped = migrations.find((migration) => migration.id <= highWater && !foreignIds.has(migration.id));
+		if (skipped !== undefined) {
+			return yield* Effect.fail(
+				mismatch(
+					`migration ${skipped.id} "${skipped.name}" is at or below ${foreignTable}'s latest id ${highWater} but was never recorded there`,
+				),
+			);
+		}
+
+		const now = DateTime.formatIso(yield* DateTime.now);
+		const adopted: Array<MigratorRecord> = [];
+		for (const row of rows) {
+			const id = Number(row.migration_id);
+			yield* sql`
+				INSERT INTO ${sql(table)} (id, name, applied_at)
+				VALUES (${id}, ${row.name}, ${adoptedAt(row.created_at, now)})
+			`;
+			adopted.push({ id, name: row.name });
+		}
+		return adopted;
+	});
+
+	return sql
+		.withTransaction(adopt)
+		.pipe(
+			Effect.mapError((failure) =>
+				"_tag" in failure && failure._tag === "mismatch" ? failure : sqlFailure(failure as SqlError),
+			),
+		);
+};

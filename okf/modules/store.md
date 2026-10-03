@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
-  body_sha256: 9a9450555b1fa1b4fa1f454ff6494fe214c2dfa07b7ab25c67317b3cbb1bdc84
+  at: 2026-10-03T14:59:58Z
+  body_sha256: 5cf82707539e9787a3ddbe2c4c7a00b4773916d611c51a756ff6cac7ac1152e9
 ---
 
 # store
@@ -90,6 +90,18 @@ Both `Store` and `Cache` publish the same three statics:
 - **`layerTest`** — `layerSqlite` at `:memory:`, hermetic; what the
   suites use.
 
+Both also publish **`layerSqliteAs(tag, options)`**: `layerSqlite`
+provided under a consumer-defined `Context.Service` key, for an
+application with a second database. The inner service is provided to a
+re-tagging `Layer.effect` and never leaks, so a keyed layer composes
+beside the primary. The key parameter pins the service type to exactly
+`StoreShape` / `CacheShape` with a conditional (`Context.Key<I, S> &
+([StoreShape] extends [S] ? unknown : never)`): a plain
+`Context.Service<I, StoreShape>` parameter is checked structurally, and
+method bivariance lets a class key over a *wider* shape through, handing
+its consumer a value missing members. [app](app.md)'s keyed layers build
+on these.
+
 **The memoization trap.** These statics are parameterized factories, not
 layer values: each call builds a new `Layer`, and Effect memoizes layers
 by reference. Calling `Store.layerSqlite({...})` inline at two provide
@@ -102,10 +114,12 @@ where it bites hardest).
 
 Deliberately not done: no `mkdir: true` on `layerSqlite` — directory
 creation is path policy, owned by the caller or [xdg](xdg.md). No
-`Store.adoptLedger(fromTable)` API — adoption from core's own
-`effect/sql/Migrator` ledger is a documented one-time SQL recipe
-in the package README rather than an API, until a consumer's migrations
-are not idempotent enough to run the recipe by hand.
+`onConnect` / PRAGMA hook — `SqliteClient` opens one serialized
+connection per layer build and itself sets `busy_timeout`
+(`client.busyTimeout`, default five seconds) and `journal_mode = WAL`
+(unless `client.disableWAL`), both reachable through the `client`
+passthrough. A consumer setting them inside a migration, which runs
+once per database rather than once per connection, moves them there.
 
 ### Store
 
@@ -120,6 +134,26 @@ without `down` therefore leaves its schema change in place while its
 ledger row disappears**, so a later `migrate` re-runs its `up` against a
 database that still has the table; give every migration a `down`, or
 treat one without as a floor `rollback(toId)` may never cross.
+
+**Adopting a Migrator ledger.** `StoreOptions.adoptMigratorLedger`
+(`true`, or `{ table }`) moves a live database off core's
+`effect/sql/Migrator` without re-running its history. The Migrator's
+ledger is `migration_id`, `name`, `created_at`, and its loaders record
+names with the numeric key prefix stripped — `fromRecord`'s
+`"0001_initial"` is id 1, name `"initial"`. At layer build, after the
+ledger is ensured and before pending migrations run, in one transaction,
+and only when `_store_migrations` is empty and the foreign table exists,
+the foreign rows are copied in; the foreign table is never written, and
+every later build is a no-op. Matching is exact: each foreign row needs
+a migration with the same id and name, and no migration at or below the
+foreign high-water mark may be missing from the foreign ledger, because
+the Migrator never runs an id at or below its latest and such a
+migration was therefore never applied. Any disagreement is a typed
+`StoreError` with `operation: "adopt"` before anything is recorded. It
+replaced a hand-run SQL seeding recipe once the
+[vitest-agent](../consumers/vitest-agent.md) consumer needed to move
+three populated databases whose first migration is a bare `CREATE
+TABLE`.
 
 A migration's `up`/`down` return `Effect<unknown, SqlError>`, not
 `Effect<void, ...>` — a `SqlClient` tagged template resolves to the
@@ -203,6 +237,10 @@ carries the migration's `direction`, `id` and `name`. `SqlError` is
 wrapped, never leaked. No defect laundering: only typed failures map into
 a domain error, and a throwing `onRemoved` or migration callback
 propagates as a defect (`withTransaction` still rolls back on it).
+`StoreError.operation` includes `"adopt"`: an adopted Migrator ledger
+that disagrees with the migration list is data the caller can repair
+(rename or renumber a migration), so it is typed, its `cause` an `Error`
+naming the mismatched migration.
 Wiring errors are construction defects: duplicate or non-positive-integer
 migration ids, a `maxEntries` that is not a positive integer, a
 non-integer or negative rollback target, each guarded

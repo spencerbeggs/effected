@@ -856,6 +856,41 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 			: cache;
 	}
 
+	/**
+	 * {@link Cache.layerSqlite} provided under a service key the consumer
+	 * defines, for an application that keeps more than one cache.
+	 *
+	 * @remarks
+	 * `tag` is a `Context.Service` whose service type is exactly
+	 * {@link CacheShape}. Any other shape is a compile error; a wider one
+	 * (`CacheShape & { … }`) reports as an argument "not assignable to
+	 * parameter of type 'never'", because this layer could not supply the
+	 * extra members. The output is `I` alone: the `Cache` built internally
+	 * never leaks, so a keyed cache composes beside a primary `Cache` — each
+	 * with its own file, bound, TTL default and `CacheEvent` stream.
+	 *
+	 * A layer-returning function, like every factory here: bind the result to
+	 * a `const` once and reuse that binding.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Cache } from "@effected/store";
+	 * import type { CacheShape } from "@effected/store";
+	 * import { Context } from "effect";
+	 *
+	 * class TarballCache extends Context.Service<TarballCache, CacheShape>()("myapp/TarballCache") {}
+	 *
+	 * const TarballCacheLive = Cache.layerSqliteAs(TarballCache, { filename: "/abs/tarballs.db", maxEntries: 200 });
+	 * ```
+	 */
+	static layerSqliteAs<I, S extends CacheShape>(
+		tag: Context.Key<I, S> & ([CacheShape] extends [S] ? unknown : never),
+		options: CacheSqliteOptions,
+	): Layer.Layer<I, CacheError> {
+		// The constraint pins S to exactly CacheShape, so the key may be read at it.
+		return Layer.effect(tag as Context.Key<I, CacheShape>, Cache).pipe(Layer.provide(Cache.layerSqlite(options)));
+	}
+
 	/** An in-memory (`:memory:`) `Cache` layer for tests; each build is a fresh, empty cache. */
 	static layerTest(options?: CacheOptions): Layer.Layer<Cache, CacheError> {
 		return Cache.layerSqlite({ ...(options ?? {}), filename: ":memory:" });
