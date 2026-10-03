@@ -54,7 +54,11 @@ export interface TextInputScreenOptions {
 	/**
 	 * Draw the value masked, so a secret typed or pasted into it is never drawn: one mask per grapheme, so an emoji, a
 	 * flag or a letter with a combining accent is one mask, not one per code unit. `true` masks with `•` (`*` under ASCII
-	 * glyphs); a string masks with that string, its controls removed. Unmasked by default.
+	 * glyphs); a string masks with that string, its controls removed. A predicate, `(value) => boolean`, is asked with
+	 * the real value on every render and masks with `•` while it answers `true`: a field that holds an address (an
+	 * `op://` reference) stays readable while typed, and hides a value the moment it looks like a token. The frames drawn
+	 * before it answered `true` showed the text typed so far, so match on the shortest prefix that gives a secret away
+	 * (`ghp_`), and a paste, which arrives whole, is masked from its first frame. Unmasked by default.
 	 *
 	 * @remarks
 	 * Only the drawing changes: `validate` and the resolved value get the real text, the cursor moves through it as
@@ -65,7 +69,7 @@ export interface TextInputScreenOptions {
 	 * The message `validate` returns is drawn as it is, unmasked: a message that echoes the value (`"ghp_abc is a
 	 * token"`) draws the secret in the frame. Say what is wrong without quoting the value.
 	 */
-	readonly mask?: string | true;
+	readonly mask?: string | true | ((value: string) => boolean);
 }
 
 /**
@@ -343,14 +347,16 @@ export class TextInput {
 			}),
 		);
 		const cursorGlyph = glyphs.kind === "unicode" ? "▏" : "|";
+		// A predicate is asked on every render, so a field masks only while its value looks like a secret.
+		const masking = typeof props.mask === "function" ? props.mask(state.value) : props.mask;
 		const mask =
-			props.mask === undefined
+			masking === undefined || masking === false
 				? undefined
-				: props.mask === true
+				: masking === true
 					? glyphs.kind === "unicode"
 						? "•"
 						: "*"
-					: lineText(props.mask);
+					: lineText(masking);
 		const [shownBefore, shownAfter] =
 			mask === undefined
 				? [state.value.slice(0, state.cursor), state.value.slice(state.cursor)]
