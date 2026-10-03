@@ -92,7 +92,8 @@
 		"**/__test__/**/fixtures/**",
 		"**/__fixtures__/**",
 		"**/skills/*/references/[0-9]*.md",
-		"**/.repos"
+		"**/.repos",
+		"plugin/builds/**"
 	],
 	"noBanner": true,
 	"overrides": [

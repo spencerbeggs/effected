@@ -1,7 +1,8 @@
 ---
 name: effected-packages
 description: The @effected package index — what each of the kit's 36 packages contains and when to reach for it. Use when working in a repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing/editing JSONC/YAML/TOML/Markdown, semver, SPDX, glob matching, an in-memory filesystem for tests, package.json/tsconfig/lockfile/config-file handling, monorepo/workspace introspection, git introspection, runtime-version resolution, running commands, managed sections, JSONL journals, the GitHub REST/GraphQL API and Actions runtime, CLI output, prompts and failure reporting, cross-front-end primitives for a CLI or MCP boundary, serving or testing an MCP server over stdio, SBOM generation and signing, or publishing SchemaStore JSON Schema or schema.org JSON-LD. Also use when choosing dependencies for a new Effect v4 app or library. Rows route; per-package depth lives in references/; per-construct intent search lives in references/constructs/.
-when_to_use: detecting an agent or CI audience, terminal colour level or hyperlinks, neutralizing GitHub Actions workflow commands in log text, interactive prompts, TUI screens, wizards or pickers (Ink) in a CLI, upward path walking, XDG directories, SQLite state/caching, unsatisfied peer-dependency detection, discovering CLI tools, parsing GitHub issue references (Closes #12) out of a commit message or PR body, when a task names an @effected package
+when_to_use: >-
+  detecting an agent or CI audience, terminal colour level or hyperlinks, neutralizing GitHub Actions workflow commands in log text, interactive prompts, TUI screens, wizards or pickers (Ink) in a CLI, upward path walking, XDG directories, SQLite state/caching, unsatisfied peer-dependency detection, discovering CLI tools, parsing GitHub issue references (Closes #12) out of a commit message or PR body, when a task names an @effected package
 targets:
   copilot:
     description: >-
