@@ -2,7 +2,7 @@
 type: Decision
 title: One tracking package versions both plugin builds
 description: "@effected/ai-plugin, a private never-published workspace package, versions the Claude Code and Copilot builds together, so one changeset releases both at one version."
-status: draft
+status: stable
 supersedes: plugins-version-via-private-tracking-packages.md
 tags:
   - release
@@ -15,6 +15,9 @@ generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-03T04:19:44Z
   body_sha256: f792fc75c3637483d64a57fa843854cc2609714b82ef9c4e2c4d925632c776df
+verified:
+  - by: human:spencer
+    at: 2026-10-03T04:58:31Z
 ---
 
 # One tracking package versions both plugin builds
