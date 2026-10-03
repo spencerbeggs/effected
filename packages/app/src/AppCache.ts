@@ -126,11 +126,12 @@ export class AppCache {
 	 * @remarks
 	 * For an application that keeps more than one cache — each with its own
 	 * file, size bound, TTL default and `CacheEvent` stream. `tag` is a
-	 * consumer-defined `Context.Service` whose service type is exactly
-	 * `CacheShape`; a key with any other shape is rejected at compile time —
-	 * a wider shape (`CacheShape & { … }`) as an argument "not assignable to
-	 * parameter of type 'never'", since this layer could not supply the extra
-	 * members. The
+	 * consumer-defined `Context.Service` whose service type is `CacheShape`.
+	 * An incompatible shape is a compile error, and so is one that adds members
+	 * (`CacheShape & { … }`), reported as an argument "not assignable to
+	 * parameter of type 'never'". The check cannot see through method-syntax
+	 * parameter bivariance: a member redeclared as a method with a wider
+	 * parameter still compiles. The
 	 * output is `I` alone: the `Cache` built internally never leaks, so
 	 * `layerAs` composes beside `AppCache.layer` without either shadowing the
 	 * other.

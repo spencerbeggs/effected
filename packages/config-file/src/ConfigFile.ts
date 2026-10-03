@@ -687,7 +687,9 @@ const layer = <Self, A, I, RR = never, S extends ConfigFileShape<A> = ConfigFile
 	options: ConfigFileOptions<A, I, RR>,
 ): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | RR> =>
 	Layer.effect(
-		// The constraint pins S to exactly ConfigFileShape<A>, so the key may be read at it.
+		// The constraint rejects keys whose shape adds members or is incompatible with ConfigFileShape<A>, so the key
+		// is read at ConfigFileShape<A>. It cannot see through method-syntax parameter bivariance: a member redeclared
+		// as a method with a wider parameter still passes.
 		tag as Context.Key<Self, ConfigFileShape<A>>,
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
@@ -739,7 +741,9 @@ const testLayer = <Self, A, I, S extends ConfigFileShape<A> = ConfigFileShape<A>
 	options: ConfigFileTestOptions<A, I>,
 ): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path> =>
 	Layer.effect(
-		// The constraint pins S to exactly ConfigFileShape<A>, so the key may be read at it.
+		// The constraint rejects keys whose shape adds members or is incompatible with ConfigFileShape<A>, so the key
+		// is read at ConfigFileShape<A>. It cannot see through method-syntax parameter bivariance: a member redeclared
+		// as a method with a wider parameter still passes.
 		tag as Context.Key<Self, ConfigFileShape<A>>,
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
@@ -861,11 +865,13 @@ export class ConfigFile {
 	 * and provide that const — do not call `ConfigFile.layer(...)` inline at each
 	 * provide site.
 	 *
-	 * `tag` is a {@link ConfigFile.Service} key — its service type exactly
-	 * `ConfigFileShape<A>` for the schema's `A`. A key over a wider shape
+	 * `tag` is a {@link ConfigFile.Service} key — its service type
+	 * `ConfigFileShape<A>` for the schema's `A`. A key whose shape adds members
 	 * (`ConfigFileShape<A> & { … }`) is a compile error, reported as an argument
 	 * "not assignable to parameter of type 'never'", because this layer could not
-	 * supply the extra members.
+	 * supply them. The check cannot see through method-syntax parameter
+	 * bivariance: a member redeclared as a method with a wider parameter still
+	 * compiles.
 	 *
 	 * @example
 	 * ```ts
@@ -905,8 +911,8 @@ export class ConfigFile {
 	 * so cleanup runs on release without surfacing `Scope` in the layer's
 	 * requirements.
 	 *
-	 * `tag` takes the same exactly-`ConfigFileShape<A>` key as
-	 * {@link ConfigFile.layer}; a wider shape is a compile error.
+	 * `tag` takes the same `ConfigFileShape<A>` key as {@link ConfigFile.layer},
+	 * with the same check: a shape that adds members is a compile error.
 	 *
 	 * @example
 	 * ```ts

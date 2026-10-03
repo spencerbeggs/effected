@@ -209,13 +209,13 @@ layerAs(Wider) // compiles — and the layer hands `Wider` a value with no `extr
 is effectively covariant. A key whose shape adds members passes, and the
 consumer's `yield* Wider` then reads members the layer never supplied.
 
-Pin the shape exactly. Infer it as `S`, then refuse any `S` that is wider:
+Pin the shape. Infer it as `S`, then refuse any `S` that adds members:
 
 ```ts
 declare const layerAs: <I, S extends StoreShape>(
   tag: Context.Key<I, S> & ([StoreShape] extends [S] ? unknown : never),
 ) => Layer.Layer<I>
-// inside: Layer.effect(tag as Context.Key<I, StoreShape>, make) — S is StoreShape by construction
+// inside: Layer.effect(tag as Context.Key<I, StoreShape>, make) — sound up to the limit below
 ```
 
 An unrelated shape still fails with the usual "missing the following
@@ -225,3 +225,13 @@ factory's TSDoc. Classes made by `Context.Service<I, StoreShape>()(id)` and
 function-style keys both still infer `I` cleanly. When the parameter list
 already has explicit-type-argument callers, add `S` last with a default
 (`S extends Shape = Shape`) so those calls keep compiling.
+
+**The limit.** `S extends Shape` plus `[Shape] extends [S]` proves only
+mutual assignability, not identity, and assignability between shapes is still
+subject to method bivariance. A shape that redeclares a member in **method**
+syntax with a wider parameter — `rollback(toId: number | string)` where
+`StoreShape` declares `(toId: number)` — is assignable both ways, so it passes
+the pin, and the consumer may call `rollback("x")` on an implementation that
+only takes numbers. The pin rejects added members and incompatible shapes; it
+cannot see through method-syntax parameter bivariance. Document that limit
+next to the pin rather than calling the key "exactly" the shape.

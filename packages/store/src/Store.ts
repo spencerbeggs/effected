@@ -395,10 +395,14 @@ export class Store extends Context.Service<Store, StoreShape>()("@effected/store
 	 * defines, for an application that keeps more than one database.
 	 *
 	 * @remarks
-	 * `tag` is a `Context.Service` whose service type is exactly
-	 * {@link StoreShape}, declared as in the example below. Any other shape is a compile error; a wider one (`StoreShape & { … }`)
-	 * reports as an argument "not assignable to parameter of type 'never'",
-	 * because this layer could not supply the extra members. The output is
+	 * `tag` is a `Context.Service` whose service type is {@link StoreShape},
+	 * declared as in the example below. A key whose shape is incompatible is a
+	 * compile error, and so is one that adds members (`StoreShape & { … }`),
+	 * reported as an argument "not assignable to parameter of type 'never'"
+	 * because this layer could not supply them. The check cannot see through
+	 * method-syntax parameter bivariance: a shape that redeclares a member as a
+	 * method with a wider parameter (`rollback(toId: number | string)`) still
+	 * compiles. The output is
 	 * `I` alone: the `Store` built internally is provided to the re-tagging
 	 * step and never leaks, so a keyed layer composes beside a primary `Store`
 	 * without either shadowing the other. Each file keeps its own migrations
@@ -422,7 +426,9 @@ export class Store extends Context.Service<Store, StoreShape>()("@effected/store
 		tag: Context.Key<I, S> & ([StoreShape] extends [S] ? unknown : never),
 		options: StoreSqliteOptions,
 	): Layer.Layer<I, StoreError | StoreMigrationError> {
-		// The constraint pins S to exactly StoreShape, so the key may be read at it.
+		// The constraint rejects keys whose shape adds members or is incompatible with StoreShape, so the key
+		// is read at StoreShape. It cannot see through method-syntax parameter bivariance: a member redeclared
+		// as a method with a wider parameter still passes.
 		return Layer.effect(tag as Context.Key<I, StoreShape>, Store).pipe(Layer.provide(Store.layerSqlite(options)));
 	}
 

@@ -15,8 +15,8 @@ sources:
     resource: ../../packages/app/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T15:03:58Z
-  body_sha256: 5ce78c6b89427ddc7a74dc8cf3ac6b961e65c5740c0406d85a10506315415fcd
+  at: 2026-10-03T15:22:39Z
+  body_sha256: 93629373b3bdf1006f4243cf25c17577608e1864570a1e606560d413aacc992f
 ---
 
 # app
@@ -101,7 +101,7 @@ exists — see [The ensure-before-open contract](#the-ensure-before-open-contrac
 
 Each also has a `layerAs(tag, options)` form for an application with more
 than one database: the same glue, provided under a consumer-defined
-`Context.Service` key over exactly `StoreShape` / `CacheShape`, built on
+`Context.Service` key over `StoreShape` / `CacheShape`, built on
 store's `Store.layerSqliteAs` / `Cache.layerSqliteAs`. The inner
 `Store` / `Cache` never leaks, so a keyed layer composes beside the
 primary without shadowing it, each file with its own migrations, ledger
@@ -111,11 +111,14 @@ properties are deliberate:
 - **`filename` is required** on `layerAs`. A defaulted `store.db` /
   `cache.db` would land a keyed layer silently on the primary's file —
   two connections and two migration ledgers on one database.
-- **The key's shape is pinned exactly.** A class key is checked
-  structurally and method bivariance makes that effectively covariant,
-  so the parameter is `Context.Key<I, S> & ([StoreShape] extends [S] ?
-  unknown : never)` with `S extends StoreShape`: an unrelated or a wider
-  shape is a compile error, never a value missing members at runtime.
+- **The key's shape is pinned against wider shapes.** A class key is
+  checked structurally and method bivariance makes that effectively
+  covariant, so the parameter is `Context.Key<I, S> & ([StoreShape]
+  extends [S] ? unknown : never)` with `S extends StoreShape`: an
+  unrelated shape, or one that adds members, is a compile error. The pin
+  proves mutual assignability, not identity, so it cannot see through
+  method-syntax parameter bivariance — a member redeclared as a method
+  with a wider parameter still compiles.
 - **A keyed map was rejected.** `App.layer({ stores: { … } })` would
   re-introduce the eager open below for every store and need an
   app-owned service to hold the map — the one thing this package never

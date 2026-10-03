@@ -263,7 +263,7 @@ const DatabasesLive = Layer.mergeAll(StoreLive, RegistryStoreLive, TarballCacheL
 Each keyed layer runs the same ensure-before-open glue, in the same default directory as its primary — state for stores, cache for caches, unless `directory` / `subdir` say otherwise — and outputs **only its own key**: the `Store` or `Cache` it builds internally never leaks, so it composes beside the primary without shadowing it. Each file has its own migrations and its own ledger.
 
 - **`filename` is required.** A default of `store.db` or `cache.db` would land a keyed layer silently on the primary's file — two connections and two migration ledgers on one database.
-- **The key's service type must be exactly `StoreShape` or `CacheShape`.** Any other shape is a compile error; a wider one (`StoreShape & { … }`) reports as an argument not assignable to `never`, because this layer cannot supply the extra members.
+- **The key's service type must be `StoreShape` or `CacheShape`.** An incompatible shape is a compile error, and so is one that adds members (`StoreShape & { … }`), reported as an argument not assignable to `never` because this layer cannot supply them. The check cannot see through method-syntax parameter bivariance: a member redeclared as a method with a wider parameter still compiles.
 - **Bind every keyed layer to a `const`.** Each `layerAs(…)` call is a new layer, and the memoization trap above applies to each one separately: two inline calls with the same key open the file twice.
 
 The keyed layers need `AppDirs`, `Path` and `FileSystem`, which is exactly what `App.layerDirs` plus the platform provides — they slot into the per-command shape above unchanged.

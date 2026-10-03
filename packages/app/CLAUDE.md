@@ -126,12 +126,13 @@ composition defect; do not reorder the two.
   config loader report a typo'd section or a field the schema deliberately
   removed; `validate` cannot, because it runs after decoding has already dropped
   the excess keys. Absent = core's `"ignore"`, so it is additive.
-- **`AppConfig.layer`'s key is pinned to exactly `ConfigFileShape<A>`**, with
+- **`AppConfig.layer`'s key is pinned against wider shapes**, with
   the same conditional as `layerAs` (`S extends ConfigFileShape<A>`, defaulted,
   so explicit four-argument calls still compile). Before, a class key over
   `ConfigFileShape<A> & { extra }` was accepted. `ConfigFile.Service` keys —
-  every caller in the repo and in reposets — are unaffected. The same hole is
-  still open in `@effected/config-file`'s own `ConfigFile.layer`.
+  every caller in the repo and in reposets — are unaffected.
+  `@effected/config-file`'s own `ConfigFile.layer` / `testLayer` carry the same
+  pin.
 - **The codec stays required** on `AppConfigOptions` — never defaulted, never
   inferred from the filename's extension. Hard-coding a *format* choice into a
   composition layer is exactly what `XdgFullLive` was killed for, and the named
@@ -153,7 +154,7 @@ composition defect; do not reorder the two.
   with a positive control (`App.layer` built and unused DOES create both files).
 - **`layerAs` is the multi-database surface, and its `filename` is required**
   (#97). `AppStore.layerAs(tag, options)` / `AppCache.layerAs(tag, options)` take
-  a consumer-defined `Context.Service` key over exactly `StoreShape` /
+  a consumer-defined `Context.Service` key over `StoreShape` /
   `CacheShape` and output **that key alone**: they resolve the path and hand it
   to `Store.layerSqliteAs` / `Cache.layerSqliteAs`, whose re-tag never leaks the
   inner `Store` / `Cache`, so a keyed layer composes beside the primary without
@@ -161,7 +162,7 @@ composition defect; do not reorder the two.
   no default because a defaulted `store.db` / `cache.db` would land silently on
   the primary's file — two connections and two ledgers on one database. Do not
   give it one.
-- **The key's shape is pinned exactly, not by assignability.** A class key
+- **The key's shape is pinned against wider shapes.** A class key
   is checked against `Context.Key` structurally and method bivariance makes that
   effectively covariant, so a plain `Context.Service<I, StoreShape>` parameter
   accepted a `StoreShape & { extra }` key and handed it a value missing `extra`.
@@ -169,7 +170,11 @@ composition defect; do not reorder the two.
   ([StoreShape] extends [S] ? unknown : never), …)`; the type tests pin
   unrelated, wider and missing-filename as compile errors. The cost is a
   cryptic "not assignable to `never`" for the wider case, documented on the
-  static.
+  static. **The limit:** the pin proves mutual assignability, not identity, so
+  it cannot see through method-syntax parameter bivariance — a shape that
+  redeclares a member as a method with a wider parameter
+  (`rollback(toId: number | string)`) still compiles. Never describe the key as
+  "exactly" the shape.
 - **A keyed map was rejected.** `App.layer({ stores: { registry: … } })` would
   reintroduce #923's eager open for every store and need an app-owned service
   to hold the map — the one thing this package never defines. N stores are N

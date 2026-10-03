@@ -861,11 +861,13 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 	 * defines, for an application that keeps more than one cache.
 	 *
 	 * @remarks
-	 * `tag` is a `Context.Service` whose service type is exactly
-	 * {@link CacheShape}. Any other shape is a compile error; a wider one
-	 * (`CacheShape & { … }`) reports as an argument "not assignable to
-	 * parameter of type 'never'", because this layer could not supply the
-	 * extra members. The output is `I` alone: the `Cache` built internally
+	 * `tag` is a `Context.Service` whose service type is {@link CacheShape}.
+	 * A key whose shape is incompatible is a compile error, and so is one that
+	 * adds members (`CacheShape & { … }`), reported as an argument "not
+	 * assignable to parameter of type 'never'" because this layer could not
+	 * supply them. The check cannot see through method-syntax parameter
+	 * bivariance: a shape that redeclares a member as a method with a wider
+	 * parameter still compiles. The output is `I` alone: the `Cache` built internally
 	 * never leaks, so a keyed cache composes beside a primary `Cache` — each
 	 * with its own file, bound, TTL default and `CacheEvent` stream.
 	 *
@@ -887,7 +889,9 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 		tag: Context.Key<I, S> & ([CacheShape] extends [S] ? unknown : never),
 		options: CacheSqliteOptions,
 	): Layer.Layer<I, CacheError> {
-		// The constraint pins S to exactly CacheShape, so the key may be read at it.
+		// The constraint rejects keys whose shape adds members or is incompatible with CacheShape, so the key
+		// is read at CacheShape. It cannot see through method-syntax parameter bivariance: a member redeclared
+		// as a method with a wider parameter still passes.
 		return Layer.effect(tag as Context.Key<I, CacheShape>, Cache).pipe(Layer.provide(Cache.layerSqlite(options)));
 	}
 

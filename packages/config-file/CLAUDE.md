@@ -126,12 +126,15 @@ and provide that const, or you mint two independent service instances.
 honestly fail with `ConfigDefaultPathMissingError` under it.
 
 Both take the key as `Context.Key<Self, S> & ([ConfigFileShape<A>] extends [S]
-? unknown : never)` with a defaulted `S extends ConfigFileShape<A>` — an
-**exact** pin, not `Context.Key<Self, ConfigFileShape<A>>`. A class key is
+? unknown : never)` with a defaulted `S extends ConfigFileShape<A>` — a pin
+against wider shapes, not `Context.Key<Self, ConfigFileShape<A>>`. A class key is
 checked structurally and method bivariance makes that covariant, so the plain
 form accepted a key over `ConfigFileShape<A> & { extra }` and handed it a value
 missing `extra`. `S` is defaulted so explicit four-type-argument calls still
-compile; `__test__/ConfigFileKeyTyping.test.ts` pins both directions.
+compile; `__test__/ConfigFileKeyTyping.test.ts` pins both directions. The pin
+proves mutual assignability, not identity: it cannot see through method-syntax
+parameter bivariance, so a member redeclared as a method with a wider
+parameter still compiles.
 
 `encode(value, options?)` is the **`--dry-run` primitive**: it returns the exact
 string `write` puts on disk — schema-encode, stringify, header — with no write,

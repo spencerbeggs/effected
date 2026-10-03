@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T15:18:51Z
-  body_sha256: 5679f08891fa09d0c734a26ef89b83a54328e90b83493dffda8311103821946c
+  at: 2026-10-03T15:22:39Z
+  body_sha256: 23348f0d4eb1d9c4c614362a54d31f5bae47258896c3dd19caab35d464d03c90
 ---
 
 # store
@@ -94,12 +94,15 @@ Both also publish **`layerSqliteAs(tag, options)`**: `layerSqlite`
 provided under a consumer-defined `Context.Service` key, for an
 application with a second database. The inner service is provided to a
 re-tagging `Layer.effect` and never leaks, so a keyed layer composes
-beside the primary. The key parameter pins the service type to exactly
+beside the primary. The key parameter rejects a service type wider than
 `StoreShape` / `CacheShape` with a conditional (`Context.Key<I, S> &
 ([StoreShape] extends [S] ? unknown : never)`): a plain
 `Context.Service<I, StoreShape>` parameter is checked structurally, and
 method bivariance lets a class key over a *wider* shape through, handing
-its consumer a value missing members. [app](app.md)'s keyed layers build
+its consumer a value missing members. The pin proves mutual
+assignability, not identity, so it cannot see through method-syntax
+parameter bivariance: a member redeclared as a method with a wider
+parameter still passes. [app](app.md)'s keyed layers build
 on these.
 
 **The memoization trap.** These statics are parameterized factories, not

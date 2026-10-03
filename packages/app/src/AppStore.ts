@@ -131,11 +131,12 @@ export class AppStore {
 	 * @remarks
 	 * For an application that keeps more than one SQLite database — each with
 	 * its own migrations, its own ledger, and its own `directory` / `subdir`. `tag` is a
-	 * consumer-defined `Context.Service` whose service type is exactly
-	 * `StoreShape`; a key with any other shape is rejected at compile time —
-	 * a wider shape (`StoreShape & { … }`) as an argument "not assignable to
-	 * parameter of type 'never'", since this layer could not supply the extra
-	 * members. The
+	 * consumer-defined `Context.Service` whose service type is `StoreShape`.
+	 * An incompatible shape is a compile error, and so is one that adds members
+	 * (`StoreShape & { … }`), reported as an argument "not assignable to
+	 * parameter of type 'never'". The check cannot see through method-syntax
+	 * parameter bivariance: a member redeclared as a method with a wider
+	 * parameter still compiles. The
 	 * output is `I` alone: the `Store` the layer builds internally is provided
 	 * to the re-tagging step and never leaks, so `layerAs` composes beside
 	 * `AppStore.layer` without either shadowing the other.

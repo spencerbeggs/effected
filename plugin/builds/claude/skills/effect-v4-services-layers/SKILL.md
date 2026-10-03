@@ -118,13 +118,15 @@ A class-form key's instance type is `ServiceClass.Shape<Identifier, Shape>`
 and a `Service` member holding the real shape. The interface you want is nested
 one level inside it, which is exactly what both spellings above unwrap.
 
-**Taking a consumer's key over your shape?** Pin the shape exactly. A
+**Taking a consumer's key over your shape?** Pin the shape. A
 parameter typed `Context.Key<I, Shape>` or `Context.Service<I, Shape>`
 accepts a key over a **wider** shape, because class keys compare structurally
 and method bivariance makes that covariant. The fix is
 `Context.Key<I, S> & ([Shape] extends [S] ? unknown : never)` with
-`S extends Shape`; a wider key then errors as "not assignable to parameter of
-type 'never'". See
+`S extends Shape`; a key that adds members then errors as "not assignable to
+parameter of type 'never'". It cannot see through method-syntax parameter
+bivariance (a member redeclared as a method with a wider parameter still
+passes). See
 [references/edge-cases.md](./references/edge-cases.md).
 
 ## Access a service: prefer `yield*`

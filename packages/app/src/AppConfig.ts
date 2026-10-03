@@ -213,7 +213,9 @@ const layer = <Self, A, I, RR = never, S extends ConfigFileShape<A> = ConfigFile
 				...(options.resolversAfter ?? []),
 			];
 
-			// The constraint pins S to exactly ConfigFileShape<A>, so the key may be read at it.
+			// The constraint rejects keys whose shape adds members or is incompatible with ConfigFileShape<A>, so the key
+			// is read at ConfigFileShape<A>. It cannot see through method-syntax parameter bivariance: a member redeclared
+			// as a method with a wider parameter still passes.
 			return ConfigFile.layer(tag as Context.Key<Self, ConfigFileShape<A>>, {
 				schema: options.schema,
 				codec: options.codec,
@@ -266,11 +268,13 @@ export class AppConfig {
 	 * `App.layer` — the two-strings drift where an app passes `"myapp"` to
 	 * `App.layer` and `"my-app"` to its config preset cannot happen.
 	 *
-	 * `tag` is a `ConfigFile.Service` key — its service type exactly
-	 * `ConfigFileShape<A>` for the schema's `A`. A key over a wider shape
+	 * `tag` is a `ConfigFile.Service` key — its service type
+	 * `ConfigFileShape<A>` for the schema's `A`. A key whose shape adds members
 	 * (`ConfigFileShape<A> & { … }`) is a compile error, reported as an argument
 	 * "not assignable to parameter of type 'never'", because this layer could
-	 * not supply the extra members.
+	 * not supply them. The check cannot see through method-syntax parameter
+	 * bivariance: a member redeclared as a method with a wider parameter still
+	 * compiles.
 	 *
 	 * This is a layer-returning function: bind the result to a `const` and reuse
 	 * that binding, or two provide sites mint two independent service instances.

@@ -175,7 +175,7 @@ const RegistryStoreLive = Store.layerSqliteAs(RegistryStore, { filename: "/data/
 const TarballCacheLive = Cache.layerSqliteAs(TarballCache, { filename: "/cache/tarballs.db" });
 ```
 
-The output is the key alone — the `Store` or `Cache` built inside is never exposed — so a keyed layer composes beside a primary one without shadowing it, each file with its own ledger. The key's service type must be exactly `StoreShape` / `CacheShape`: anything else is a compile error, and a wider shape (`StoreShape & { … }`) reports as an argument not assignable to `never`, since the layer could not supply the extra members.
+The output is the key alone — the `Store` or `Cache` built inside is never exposed — so a keyed layer composes beside a primary one without shadowing it, each file with its own ledger. The key's service type must be `StoreShape` / `CacheShape`: an incompatible shape is a compile error, and so is one that adds members (`StoreShape & { … }`), reported as an argument not assignable to `never` since the layer could not supply them. The check cannot see through method-syntax parameter bivariance: a member redeclared as a method with a wider parameter still compiles.
 
 ## Cache
 
