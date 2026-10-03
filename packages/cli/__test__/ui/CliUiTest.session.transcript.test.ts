@@ -50,6 +50,14 @@ describe("CliUiTest.session: transcript and written", () => {
 			assert.isAbove(frame, failed, "the committed frame stays below the lines logged above it");
 			assert.strictEqual(transcript.at(-1), "ended", "the run's final frame is what is left at the bottom");
 			assert.include(yield* session.written, "synced acme/web");
+			// Each stream alone: the report's stdout line on stdout only, its stderr line on stderr only.
+			const out = yield* session.stdoutWritten;
+			const err = yield* session.stderrWritten;
+			assert.include(out, "✓ synced acme/web");
+			assert.notInclude(out, "✗ acme/api: 404", "the stderr line is not on stdout");
+			assert.include(err, "✗ acme/api: 404");
+			assert.notInclude(err, "synced acme/web", "the stdout line is not on stderr");
+			assert.include(out, "RUN 1", "the frame is drawn on stdout");
 			// The program's own Console output is the session's stdout, and the logConsole lines are not.
 			assert.strictEqual(yield* session.stdout, "done\n");
 			assert.strictEqual(yield* session.stderr, "");
@@ -61,6 +69,8 @@ describe("CliUiTest.session: transcript and written", () => {
 			const session = yield* CliUiTest.session();
 			assert.strictEqual(yield* session.transcript, "");
 			assert.strictEqual(yield* session.written, "");
+			assert.strictEqual(yield* session.stdoutWritten, "");
+			assert.strictEqual(yield* session.stderrWritten, "");
 		}).pipe(Effect.scoped),
 	);
 });

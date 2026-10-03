@@ -200,16 +200,24 @@ export interface CliUiTestSession {
 	 * blank lines left out, as {@link CliUiTestLive.transcript} reads it.
 	 *
 	 * @remarks
-	 * It holds the lines a live view writes above its frame through `handle.logConsole` (stdout's and stderr's: the two
-	 * are one stream here, as on a terminal), each run's committed frame, a frame printed as a string, and, with
+	 * It holds the lines a live view writes above its frame through `handle.logConsole` (stdout's and stderr's, merged in the order
+	 * written, as one terminal shows them; `stdoutWritten` and `stderrWritten` keep them apart), each run's committed frame, a frame printed as a string, and, with
 	 * `renderPath: "production"`, each screen's frames as they stay on the terminal, so a screen run with `clear: true`
 	 * leaves nothing. On the default debug path each screen frame is written whole, one after another, so the
 	 * transcript shows every frame a screen drew rather than what a terminal would keep. What the program writes through
 	 * `Console` is not here: that is `stdout` and `stderr`.
 	 */
 	readonly transcript: Effect.Effect<string>;
-	/** Every byte written to the terminal streams, escapes included: what to assert a sequence on. */
+	/** Every byte written to the terminal streams, both of them in the order written, escapes included. */
 	readonly written: Effect.Effect<string>;
+	/**
+	 * Every byte written to the terminal's stdout (`UiStreams.stdout`) alone, escapes included: with
+	 * {@link CliUiTestSession.stderrWritten}, what tells a line on the wrong stream from one on the right, which the
+	 * merged `transcript` and `written` cannot.
+	 */
+	readonly stdoutWritten: Effect.Effect<string>;
+	/** Every byte written to the terminal's stderr (`UiStreams.stderr`) alone, escapes included. */
+	readonly stderrWritten: Effect.Effect<string>;
 }
 
 /**
@@ -505,15 +513,13 @@ const LEADING_MOVES = /^(?:\u001b\[[0-9;?]*[A-Za-ln-z])+/;
  * `screens` is the render path a screen mounts on; a live view always mounts on the production path. On the debug path
  * Ink writes each frame whole and the capture keeps it as written. On the production path Ink runs as it does for real:
  * each render writes its erase moves and the new frame in one write, so the capture keeps that write without its
- * moves; a write of moves alone is Ink clearing the frame for a log line, not a frame. With `terminal`, stderr is the
- * same stream as stdout, as on a terminal, so `written` and the transcript hold both.
+ * moves; a write of moves alone is Ink clearing the frame for a log line, not a frame. stdout and stderr are two
+ * streams, each read alone, and `fake.written` is both in the order written: one terminal, for `written` and the
+ * transcript.
  */
 const makeTerminal = (
 	options: CliUiTestOptions,
-	settings: { readonly screens: "debug" | "production"; readonly terminal: boolean } = {
-		screens: "debug",
-		terminal: false,
-	},
+	settings: { readonly screens: "debug" | "production" } = { screens: "debug" },
 ) => {
 	const columns = options.columns ?? 80;
 	const rows = options.rows ?? 24;
@@ -541,7 +547,8 @@ const makeTerminal = (
 			current.raws.push(text.replace(LEADING_MOVES, "").replace(/\n+$/, ""));
 		},
 	});
-	const streams = settings.terminal ? { ...fake.streams, stderr: fake.streams.stdout } : fake.streams;
+	// The two streams stay apart, so each one's bytes can be read; `fake.written` is both in order, one terminal.
+	const streams = fake.streams;
 	const stream = { isTerminal: true, color, hyperlinks: false, columns: Option.some(columns) };
 	const terminal = TerminalEnv.layerTest({ stdinIsTerminal: true, stdout: stream, stderr: stream });
 	const layer = Layer.mergeAll(
@@ -938,7 +945,7 @@ export class CliUiTest {
 	): Effect.Effect<CliUiTestSession, never, Scope.Scope> =>
 		Effect.map(Console.Console, (ambient) => {
 			const { renderPath, ...terminalOptions } = options;
-			const terminal = makeTerminal(terminalOptions, { screens: renderPath ?? "debug", terminal: true });
+			const terminal = makeTerminal(terminalOptions, { screens: renderPath ?? "debug" });
 			const output = capturingConsole(ambient);
 			let taken = 0;
 			const next = (nextOptions: CliUiTestNextOptions = {}): Effect.Effect<CliUiTestScreen> =>
@@ -974,9 +981,11 @@ export class CliUiTest {
 				stdout: Effect.sync(() => output.out.join("")),
 				stderr: Effect.sync(() => output.err.join("")),
 				transcript: Effect.sync(() =>
-					screenAfter(terminal.fake.stdout(), terminal.fake.streams.stdout.rows).join("\n"),
+					screenAfter(terminal.fake.written(), terminal.fake.streams.stdout.rows).join("\n"),
 				),
-				written: Effect.sync(() => terminal.fake.stdout()),
+				written: Effect.sync(() => terminal.fake.written()),
+				stdoutWritten: Effect.sync(() => terminal.fake.stdout()),
+				stderrWritten: Effect.sync(() => terminal.fake.stderr()),
 			} satisfies CliUiTestSession;
 		});
 
@@ -1040,7 +1049,7 @@ export class CliUiTest {
 					...(glyphs === undefined ? {} : { glyphs }),
 					...(interactive === undefined ? {} : { interactive }),
 				},
-				{ screens: "production", terminal: true },
+				{ screens: "production" },
 			);
 			const queue = yield* Queue.unbounded<E, Cause.Done>();
 			const handle = yield* CliUi.live<E, S>({ ...view, events: Stream.fromQueue(queue) }).pipe(
@@ -1067,9 +1076,9 @@ export class CliUiTest {
 				plainFrame: Effect.sync(() => trimLines(last().replace(ESCAPES, ""))),
 				frames: Effect.sync(() => raws().map((raw) => trimLines(styled(raw)))),
 				transcript: Effect.sync(() =>
-					screenAfter(terminal.fake.stdout(), terminal.fake.streams.stdout.rows).join("\n"),
+					screenAfter(terminal.fake.written(), terminal.fake.streams.stdout.rows).join("\n"),
 				),
-				written: Effect.sync(() => terminal.fake.stdout()),
+				written: Effect.sync(() => terminal.fake.written()),
 				handle,
 			};
 		});
