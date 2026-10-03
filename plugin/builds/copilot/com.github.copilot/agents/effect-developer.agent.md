@@ -85,6 +85,14 @@ beats nothing at all — write the control first and watch it fail.
   zero-warning report. See `effect-api-extractor-bases`.
 + **Front ends**: `effect-v4-cli` for command-line programs, `effect-v4-mcp`
   for MCP servers, `design-patterns` for a tool that ships more than one bin.
++ **Databases** (`@effected/store`, `@effected/app`): bind every store layer
+  once at module scope. In a CLI, provide `App.layerDirs` at the edge and
+  attach database layers with `Command.provide` only where used. A second
+  database is a keyed `layerAs` with its own `filename`, and its path comes
+  from `AppStore.location` rather than a second derivation. Per-connection
+  settings go in `client` / `onConnect`, never a migration. Retry only a
+  warm-up open on `SQLITE_BUSY`, never the program. See the `effected-packages`
+  store and app references.
 + **Filesystem doubles**: a filesystem double is `@effected/memfs`, never
   `FileSystem.layerNoop` or a hand-rolled port stub; pick the form from the
   effect-v4-testing memfs reference (`layerWith` + `Volume` to assert inside

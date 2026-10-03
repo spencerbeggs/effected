@@ -283,6 +283,24 @@ touches the service; and the platform is the host's — code reading
 it (`Effect.provideService(CurrentPlatform, "linux")`). Relative paths resolve
 from `/`: the volume models no cwd.
 
+**A database layer is the sharpest case.** `@effected/store`'s `Store`/`Cache`
+and `@effected/app`'s `AppStore`/`AppCache` open their file through
+`node:sqlite`, which writes to the HOST disk whatever `FileSystem` is
+provided. Two shapes follow:
+
+- **Unit-testing the glue** (path guards, `location`, `subdir` creation): give
+  memfs a `makeDirectory` fault of `MemoryFileSystem.die(...)`, so construction
+  stops at `ensure*` before the binding could open a file on the host, and
+  assert that the defect is not the one under test. `AppStore.location`
+  creates nothing and needs only `AppDirs` and `Path`, so it runs over memfs
+  untouched.
+- **Testing the database end to end**: run against a temp-directory `HOME`
+  (`mkdtemp`) on the real filesystem, drive the XDG variables through
+  `ConfigProvider.layer(ConfigProvider.fromUnknown({ HOME, XDG_STATE_HOME, … }))`
+  rather than mutating `process.env`, and remove the directory in an
+  `Effect.ensuring`. Assert on the file existing at the expected path, not on
+  an echoed option.
+
 `@effected/memfs/node-sync` is the one module that touches the real disk: a
 read-only synchronous `FileSystem` whose read members agree with
 `NodeFileSystem` value for value, and whose every other member is a **defect**,
