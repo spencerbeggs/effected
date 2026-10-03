@@ -632,7 +632,7 @@ describe("Cache.layerSqliteAs", () => {
 		}),
 	);
 
-	it("rejects a key whose service is not exactly CacheShape, and outputs only the key", () => {
+	it("rejects a key whose shape is incompatible or adds members, and outputs only the key", () => {
 		class Wider extends Context.Service<Wider, CacheShape & { readonly extra: string }>()("cache-test/Wider") {}
 		const live = Cache.layerSqliteAs(TarballCache, { filename: ":memory:" });
 		// @ts-expect-error the inner Cache is provided internally, never output

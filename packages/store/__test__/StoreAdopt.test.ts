@@ -295,7 +295,7 @@ describe("Store.layerSqliteAs", () => {
 		}),
 	);
 
-	it("rejects a key whose service is not exactly StoreShape, and outputs only the key", () => {
+	it("rejects a key whose shape is incompatible or adds members, and outputs only the key", () => {
 		class Keyed extends Context.Service<Keyed, Store["Service"]>()("store-test/Keyed") {}
 		class Unrelated extends Context.Service<Unrelated, { readonly name: string }>()("store-test/Unrelated") {}
 		class Wider extends Context.Service<Wider, Store["Service"] & { readonly extra: string }>()("store-test/Wider") {}
@@ -474,34 +474,78 @@ describe("applying a stale plan (concurrent openers)", () => {
 });
 
 describe("Store adoptMigratorLedger records the decision even when nothing is copied", () => {
-	it.effect(
-		"a database Store already migrated, foreign ledger still present: option on, rollback(0), reopen re-applies",
-		() =>
-			Effect.gen(function* () {
-				const filename = freshFile();
-				yield* runEffectMigrator(filename, { "0001_initial": legacyKeys["0001_initial"] });
-				// Era 1: Store WITHOUT the option, over an idempotent migration, so its
-				// own ledger fills while effect_sql_migrations stays behind.
-				const idempotent: StoreMigration = {
-					id: 1,
-					name: "initial",
-					up: (sql) => sql`CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)`,
-					down: (sql) => sql`DROP TABLE notes`,
-				};
-				assert.isTrue(Exit.isSuccess(yield* openStore(filename, { migrations: [idempotent] }, () => Effect.void)));
+	it.effect("the marker, not a tombstone, protects a custom table a later rollback never tracked", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			yield* runEffectMigrator(filename, { "0001_initial": legacyKeys["0001_initial"] }, "legacy_migrations");
+			const idempotent: StoreMigration = {
+				id: 1,
+				name: "initial",
+				up: (sql) => sql`CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)`,
+				down: (sql) => sql`DROP TABLE notes`,
+			};
+			const custom: StoreOptions = { migrations: [idempotent], adoptMigratorLedger: { table: "legacy_migrations" } };
+			// Era 1: Store WITHOUT the option fills its own ledger.
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, { migrations: [idempotent] }, () => Effect.void)));
+			// Era 2: the option is turned on, with a custom table. The own ledger is
+			// non-empty, so nothing is copied, and the decision is recorded (marker 0).
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, custom, () => Effect.void)));
+			assert.strictEqual(marker(filename).length, 1);
+			// A Store WITHOUT the option rolls everything back. Its tombstone snapshots
+			// only the default table, so legacy_migrations cannot be judged from it.
+			assert.isTrue(
+				Exit.isSuccess(yield* openStore(filename, { migrations: [idempotent] }, (store) => store.rollback(0))),
+			);
+			assert.notInclude(tables(filename), "notes");
 
-				// Era 2: the option is turned on. The own ledger is non-empty, so nothing
-				// is copied — but the decision must still be recorded, or the rollback
-				// below empties the ledger and the reopen adopts the stale foreign row.
-				const options: StoreOptions = { migrations: [idempotent], adoptMigratorLedger: true };
-				assert.isTrue(Exit.isSuccess(yield* openStore(filename, options, (store) => store.rollback(0))));
-				assert.notInclude(tables(filename), "notes");
-				assert.isTrue(Exit.isSuccess(yield* openStore(filename, options, () => Effect.void)));
+			// Reopen with the custom-table option. The recorded decision skips
+			// adoption, so migration 1 simply re-applies. Without the marker,
+			// adoption would meet a tombstone that never tracked legacy_migrations
+			// and refuse the build, typed.
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, custom, () => Effect.void)));
+			assert.include(tables(filename), "notes");
+			assert.deepStrictEqual(
+				ownLedger(filename).map((row) => row.id),
+				[1],
+			);
+		}),
+	);
+});
 
-				// Re-applied: an adoption would have recorded id 1 without running `up`.
-				assert.include(tables(filename), "notes");
-				assert.strictEqual(marker(filename).length, 1);
-			}),
+describe("Store adoptMigratorLedger gap rule counts what is adopted", () => {
+	it.effect("a fully rolled-back Migrator history with a hole adopts nothing and builds", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			// A Migrator history of 0001 and 0003 (0002 never existed for it).
+			yield* runEffectMigrator(filename, {
+				"0001_initial": legacyKeys["0001_initial"],
+				"0003_tags": "CREATE TABLE tags (name TEXT PRIMARY KEY)",
+			});
+			const idempotent = (id: number, name: string, table: string): StoreMigration => ({
+				id,
+				name,
+				up: (sql) => sql.unsafe(`CREATE TABLE IF NOT EXISTS ${table} (id INTEGER PRIMARY KEY)`),
+				down: (sql) => sql.unsafe(`DROP TABLE ${table}`),
+			});
+			const migrations = [
+				idempotent(1, "initial", "notes"),
+				idempotent(2, "middle", "middle"),
+				idempotent(3, "tags", "tags"),
+			];
+			// An option-less Store applies 1..3, then rolls all of it back: every
+			// foreign row is now stale.
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, { migrations }, (store) => store.rollback(0))));
+
+			// Nothing is adopted, so the hole at 2 is no gap: everything re-runs.
+			const exit = yield* openStore(filename, { migrations, adoptMigratorLedger: true }, () => Effect.void);
+			assert.isTrue(Exit.isSuccess(exit));
+			assert.deepStrictEqual(
+				ownLedger(filename).map((row) => row.id),
+				[1, 2, 3],
+			);
+			for (const table of ["notes", "middle", "tags"]) assert.include(tables(filename), table);
+			assert.strictEqual(marker(filename).length, 1);
+		}),
 	);
 });
 

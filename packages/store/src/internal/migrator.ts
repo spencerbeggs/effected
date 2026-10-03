@@ -550,7 +550,7 @@ interface ForeignRow {
 }
 
 /** The persisted marker key recording that the adoption decision was made. */
-export const ADOPTION_MARKER = "adoptMigratorLedger";
+const ADOPTION_MARKER = "adoptMigratorLedger";
 
 /**
  * Normalize a foreign `created_at` to ISO-8601, or `undefined` when it cannot
@@ -558,7 +558,7 @@ export const ADOPTION_MARKER = "adoptMigratorLedger";
  * zone marker, and a generic parser reads a zone-less date-time as LOCAL time,
  * so both zone-less spellings (space or `T`) are read as UTC explicitly.
  */
-export const adoptedAt = (value: unknown): string | undefined => {
+const adoptedAt = (value: unknown): string | undefined => {
 	if (value instanceof Date) return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
 	if (typeof value !== "string") return undefined;
 	const zoneless = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/.exec(value);
@@ -682,8 +682,11 @@ export const adoptForeignLedger = (
 			if (verdict === "stale") continue;
 			seeded.push({ id, name: row.name, appliedAt });
 		}
-		if (foreignIds.size > 0) {
-			const highWater = Math.max(...foreignIds);
+		// The gap rule covers what is actually adopted, as the mirror's import
+		// does: a stale row is not adopted and its migration re-runs, so it must
+		// not be the high-water mark that makes an untouched id look skipped.
+		if (seeded.length > 0) {
+			const highWater = Math.max(...seeded.map((row) => row.id));
 			const skipped = migrations.find((migration) => migration.id <= highWater && !foreignIds.has(migration.id));
 			if (skipped !== undefined) {
 				return yield* Effect.fail(
