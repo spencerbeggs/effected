@@ -184,6 +184,7 @@ const mount = <A>(
 					patchConsole: false,
 					...(overrides.debug === true ? { debug: true } : {}),
 					...(overrides.onRender === undefined ? {} : { onRender: overrides.onRender }),
+					...(overrides.maxFps === undefined ? {} : { maxFps: overrides.maxFps }),
 				}),
 			),
 			(instance) =>

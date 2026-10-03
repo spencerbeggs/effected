@@ -570,6 +570,10 @@ const makeTerminal = (
 		Layer.succeed(UiStreams, streams),
 		Layer.succeed(UiRenderOptions, {
 			...(settings.screens === "debug" ? { debug: true } : {}),
+			// Ink throttles the production path to 30 fps, a trailing ~33 ms timer: a frame due after a settle's quiet would
+			// land a throttle period after the harness read the screen, under load. At 1000 fps the throttle is 1 ms, so a
+			// render is written within the settle window, for the kit's tests and every consumer's alike.
+			maxFps: 1000,
 			onRender: () => {
 				frameDue = true;
 			},

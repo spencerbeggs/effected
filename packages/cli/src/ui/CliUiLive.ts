@@ -474,6 +474,7 @@ export const live = <E, S>(
 								// Never Ink's debug mode, even under a harness that renders screens so: a live view writes lines above
 								// its frame, which only the production path lays out as a terminal would.
 								...(overrides.onRender === undefined ? {} : { onRender: overrides.onRender }),
+								...(overrides.maxFps === undefined ? {} : { maxFps: overrides.maxFps }),
 							});
 							drainPerformance(drain);
 							return instance;

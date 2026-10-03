@@ -12,6 +12,11 @@ export interface UiRenderOverrides {
 	 * production path, so what it writes above its frame lands as it does on a terminal.
 	 */
 	readonly debug?: boolean;
+	/**
+	 * Ink's `maxFps`: on the production path Ink throttles renders and writes to it (30 by default, a trailing timer of
+	 * about 33 ms). The harness raises it so a frame lands within its settle window rather than a throttle period later.
+	 */
+	readonly maxFps?: number;
 	/** Called after each render, just before Ink writes the frame; the harness counts frames with it. */
 	readonly onRender?: () => void;
 	/**
