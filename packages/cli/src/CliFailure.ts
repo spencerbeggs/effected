@@ -316,14 +316,24 @@ const packageDirOf = (module: string | undefined): string | undefined => {
 	const path = asPath(module);
 	if (path === undefined) return undefined;
 	// Greedy, so it is the last node_modules in the path: the package the module itself belongs to.
-	return /^(.*[\\/]node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)[\\/]/.exec(path)?.[1];
+	return /^(.*\/node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(comparable(path))?.[1];
 };
+
+/**
+ * A path in the one spelling both sides of a comparison use: `/` separators, and a Windows drive letter lower-cased. A
+ * CommonJS frame on Windows reads `C:\…` where an `import.meta.url` reads `file:///C:/…`, and the drive's case is not
+ * fixed (`c:` and `C:` are one drive). Lexical only: no file system, no realpath.
+ */
+const comparable = (path: string): string =>
+	path.replace(/\\/g, "/").replace(/^([A-Za-z]):/, (_, drive: string) => `${drive.toLowerCase()}:`);
 
 /** Whether `file` is in the program's own package `appDir`, and not in a dependency nested in its `node_modules`. */
 const isAppFile = (file: string, appDir: string | undefined): boolean => {
-	if (appDir === undefined || !file.startsWith(appDir)) return false;
-	const rest = file.slice(appDir.length);
-	return /^[\\/]/.test(rest) && !/[\\/]node_modules[\\/]/.test(rest);
+	if (appDir === undefined) return false;
+	const path = comparable(file);
+	if (!path.startsWith(appDir)) return false;
+	const rest = path.slice(appDir.length);
+	return rest.startsWith("/") && !rest.includes("/node_modules/");
 };
 
 /** The file a span frame's captured stack points at, or `undefined` when it captured none. */

@@ -189,6 +189,53 @@ describe("CliFailure.toDoc: the running program's own package (appModule)", () =
 	});
 });
 
+describe("CliFailure.toDoc: appModule on Windows paths", () => {
+	const ROOT = "C:\\Users\\u\\AppData\\Roaming\\npm\\node_modules";
+	/** A CommonJS frame: a bare Windows path with backslashes, no file: URL. */
+	const raw = (file: string) => () => `at ${file}`;
+	const companion = (loader: string, kit: string): Frame => {
+		const loadDef: Frame = { name: "ConfigLoader.load (definition)", stack: raw(loader), parent: undefined };
+		const load: Frame = { name: "ConfigLoader.load", stack: raw(loader), parent: loadDef };
+		const decodeDef: Frame = { name: "ConfigFile.loadFrom (definition)", stack: raw(kit), parent: load };
+		return { name: "ConfigFile.loadFrom", stack: raw(kit), parent: decodeDef };
+	};
+	const LOADER = `${ROOT}\\@effected\\schemastore-cli\\dist\\ConfigLoader.js:30:9`;
+	const KIT = `${ROOT}\\@effected\\config-file\\dist\\ConfigFile.js:41:7`;
+	const NESTED = `${ROOT}\\@effected\\schemastore-cli\\node_modules\\@effected\\config-file\\dist\\x.js:1:1`;
+	const BIN = "file:///C:/Users/u/AppData/Roaming/npm/node_modules/@effected/schemastore-cli/dist/bin.js";
+
+	it("a backslashed CommonJS frame matches an import.meta.url-derived appModule", () => {
+		assert.strictEqual(trail(companion(LOADER, KIT), { appModule: BIN }), "in: ConfigLoader.load");
+	});
+
+	it("a drive letter in another case is the same drive", () => {
+		assert.strictEqual(trail(companion(LOADER, KIT), { appModule: BIN.replace("C:", "c:") }), "in: ConfigLoader.load");
+		assert.strictEqual(
+			trail(companion(LOADER.replace("C:", "c:"), KIT), { appModule: BIN }),
+			"in: ConfigLoader.load",
+			"either side may carry the lower case",
+		);
+	});
+
+	it("controls: without appModule, or with another package's, the companion's spans go; a nested kit still goes", () => {
+		assert.strictEqual(trail(companion(LOADER, KIT)), "");
+		assert.strictEqual(
+			trail(companion(LOADER, KIT), {
+				appModule: "file:///C:/Users/u/AppData/Roaming/npm/node_modules/reposets/dist/bin.js",
+			}),
+			"",
+		);
+		assert.strictEqual(trail(companion(LOADER, NESTED), { appModule: BIN }), "in: ConfigLoader.load");
+		assert.strictEqual(
+			trail(companion(LOADER, KIT), {
+				appModule: "file:///D:/Users/u/AppData/Roaming/npm/node_modules/@effected/schemastore-cli/dist/bin.js",
+			}),
+			"",
+			"another drive is another install",
+		);
+	});
+});
+
 describe("CliFailure.toDoc: a monorepo's own packages/effect is the program's", () => {
 	const MONOREPO_EFFECT = "/work/monorepo/packages/effect/src/Thing.ts:9:1";
 
