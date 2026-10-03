@@ -19,8 +19,8 @@ sources:
     resource: "npm:pluginfinity"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-03T04:19:44Z
-  body_sha256: 76927fee80ca38e956e9120e194854baa616fe6a3c4a90ab89a3fe95bed3aa0a
+  at: 2026-10-03T04:52:57Z
+  body_sha256: 662e226532033359437d8fda1c891a7b10fb95eac59b9e08e678caab0bd833cb
 ---
 
 # ai-plugin
@@ -67,7 +67,7 @@ to prevent. Lessons from kit work feed back through
 plugin/
   package.json             # @effected/ai-plugin (private, versioning only)
   pluginfinity.config.ts   # manifest fields, hooks, per-target overrides
-  turbo.json               # build:dev uncached
+  turbo.json               # build tasks uncached
   skills/ agents/ hooks/   # the source — the only dirs pluginfinity ships
   scripts/                 # construct-index generator and pre-push gate
   __test__/                # bats suites and their fixtures
@@ -84,10 +84,21 @@ ships to both hosts, so test fixtures for the hook live under
 ## Building
 
 `pnpm build --filter @effected/ai-plugin` runs `pluginfinity build`,
-which rewrites both builds from the source. `plugin/turbo.json` sets
-`build:dev` to `cache: false`, because a turbo cache hit would replay
-outputs over every file in `builds/`.[^turbo-json] Biome and markdownlint
-skip `plugin/builds/`.
+which rewrites both builds from the source. Both `build:dev` and
+`build:prod` run it, so a CI or release build regenerates `builds/`
+before the release bumps the manifests. `plugin/turbo.json` sets both
+tasks to `cache: false` with `builds/**` as their outputs, because a
+turbo cache hit would replay outputs over every file in
+`builds/`.[^turbo-json] Biome and markdownlint skip `plugin/builds/`.
+
+`.github/workflows/silk-update.yml` lists `pluginfinity` among the
+dependencies `silk-update-action` upgrades, so a new pluginfinity
+release reaches `plugin/package.json` through the scheduled update PR.
+That PR's `run` step does not build, so it changes only the manifest and
+lockfile. When the new release changes what pluginfinity emits, the
+committed builds go stale until someone runs
+`pnpm build --filter @effected/ai-plugin` and commits the result;
+`pluginfinity build --check` reports the gap.
 
 From `plugin/`:
 
@@ -266,10 +277,10 @@ plugin is published but not advertised: shipped, unannounced, and
 promoted to end users only when the maintainer is ready.
 
 [^pluginfinity-npm]: `npm:pluginfinity` — `plugin/package.json` declares
-    `"pluginfinity": "^0.1.0"` as its only devDependency.
+    `"pluginfinity": "^0.1.1"` as its only devDependency.
 [^claude-plugin-json]: `plugin/builds/claude/.claude-plugin/plugin.json` —
     `name: "effected"`.
-[^turbo-json]: `plugin/turbo.json` — `build:dev` has `cache: false` and
-    `outputs: ["builds/**"]`.
+[^turbo-json]: `plugin/turbo.json` — `build:dev` and `build:prod` each
+    have `cache: false` and `outputs: ["builds/**"]`.
 [^pluginfinity-config]: `plugin/pluginfinity.config.ts` — the `copilot`
     block's `hooks.SessionStart` names `orientation.copilot.sh`.
