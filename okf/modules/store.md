@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T15:22:39Z
-  body_sha256: 23348f0d4eb1d9c4c614362a54d31f5bae47258896c3dd19caab35d464d03c90
+  at: 2026-10-03T15:32:07Z
+  body_sha256: 62a4e561baa68f6f99ae59aeb983d568d46847089d58b972d6c5473e17208b41
 ---
 
 # store
@@ -153,7 +153,9 @@ the marker and skips — which is what keeps `rollback(0)` followed by a
 reopen from re-adopting history the rollback unwound. The foreign table
 is never written, a failed adoption records nothing (marker included),
 an unreadable `created_at` is refused rather than defaulted, and any
-dialect other than SQLite is refused. Matching is exact: each foreign row needs
+dialect other than SQLite is refused. The option must be on before any
+`rollback(0)` of a database that ran under `Store` without it while a
+foreign ledger remains, or the stale foreign rows are adopted. Matching is exact: each foreign row needs
 a migration with the same id and name, and no migration at or below the
 foreign high-water mark may be missing from the foreign ledger, because
 the Migrator never runs an id at or below its latest and such a
@@ -167,7 +169,15 @@ SQLite driver opens a writable transaction with `BEGIN IMMEDIATE`, so
 that re-check holds the write lock and several processes opening one
 file never run an `up` twice; per-migration commits are unchanged. This
 rests on the driver's lock, so it holds for `layerSqlite` and for the
-abstract `layer` only over a driver that locks the same way.
+abstract `layer` only over a driver that locks the same way. One limit
+sits below the package, in the SQLite driver: the first open of a
+brand-new file. The driver sets `busy_timeout` and then switches the
+journal to WAL, and SQLite refuses that switch at once under contention
+without waiting out the timeout, so concurrent first openers can die with
+`database is locked`. Once the file is in WAL mode nothing contends. The
+README carries the two mitigations verified against it: create the file
+in WAL from one process first, or retry the layer build on that defect
+with jittered backoff.
 
 Adoption replaced a hand-run SQL seeding recipe once the
 [vitest-agent](../consumers/vitest-agent.md) consumer needed to move

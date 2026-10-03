@@ -137,7 +137,7 @@ const StoreLive = Store.layerSqlite({
 });
 ```
 
-Adoption is **one-shot, decided by the first layer build that has the option on**. That build — after the ledger is ensured, before pending migrations run, in one write-locked transaction — copies every foreign row into `_store_migrations` **if** `_store_migrations` is empty and the foreign table exists, and in every case records that the decision was made in a `_store_meta` table, in the same transaction. Migrations above the adopted ones then apply as usual. Every later build sees the marker and skips adoption, so the option is safe to leave on — including after `rollback(0)`: the marker survives the rollback, so a reopen re-applies every migration from scratch instead of re-adopting history the rollback unwound. The foreign table is read, never written. A failed adoption records nothing, marker included, and is retried on the next build. A database the Migrator never touched builds exactly as it would without the option, plus the marker.
+Adoption is **one-shot, decided by the first layer build that has the option on**. That build — after the ledger is ensured, before pending migrations run, in one write-locked transaction — copies every foreign row into `_store_migrations` **if** `_store_migrations` is empty and the foreign table exists, and in every case records that the decision was made in a `_store_meta` table, in the same transaction. Migrations above the adopted ones then apply as usual. Every later build sees the marker and skips adoption, so the option is safe to leave on — including after `rollback(0)`: the marker survives the rollback, so a reopen re-applies every migration from scratch instead of re-adopting history the rollback unwound. The foreign table is read, never written. A failed adoption records nothing, marker included, and is retried on the next build. A database the Migrator never touched builds exactly as it would without the option, plus the marker. Turn the option on **before** any `rollback(0)` of a database that already ran under `Store` without it while `effect_sql_migrations` is still present — otherwise the first build with the option on finds `_store_migrations` emptied by the rollback and adopts the stale foreign rows.
 
 Matching is exact, and any disagreement fails the layer with `StoreError` (`operation: "adopt"`) before anything is recorded or applied:
 
@@ -149,6 +149,28 @@ Each adopted row's `created_at` becomes its `appliedAt`. A zone-less value — S
 ### Several processes opening one database
 
 Processes that open the same file at once — parallel CLI hooks, a server beside a CLI — each run the pending-migration check, and none of them runs an `up` twice. Each migration commits in its own transaction, and that transaction re-checks the ledger before running `up`. On SQLite the driver starts it with `BEGIN IMMEDIATE`, taking the write lock before the check, so the losing process waits (up to `client.busyTimeout`) and then skips the migration the winner already applied. That guarantee rests on the driver's transaction taking a write lock; it holds for `layerSqlite`, and for `Store.layer` only over a driver whose transactions do the same.
+
+**One limit sits below `Store`, in the SQLite driver: the very first open of a brand-new file.** `SqliteClient` sets `PRAGMA busy_timeout` and then `PRAGMA journal_mode = WAL` on every connection. Switching a fresh file from its default journal into WAL needs a lock that SQLite refuses at once under contention, without waiting out `busy_timeout`. When several processes create the same file at the same moment, some of them fail with `database is locked`. The driver issues the pragma outside any error channel, so that failure surfaces as a **defect** from the layer build, not as a typed error. Once the file is in WAL mode the pragma has nothing left to switch and never contends, so only the first open is exposed. Two mitigations work today:
+
+- **Create the file in WAL mode once, from a single process,** before anything opens it concurrently — an install or setup step, or whichever command is known to run first. After that, every concurrent opener is safe.
+- **Retry the layer build on that defect, with jittered backoff.** An immediate retry is not enough, because the contenders collide again in lockstep:
+
+```ts
+import { Data, Effect, Schedule } from "effect";
+
+class DatabaseLocked extends Data.TaggedError("DatabaseLocked")<{ readonly defect: unknown }> {}
+const isLocked = (defect: unknown) => defect instanceof Error && /database is locked/.test(defect.message);
+
+const run = program.pipe(
+  Effect.provide(StoreLive),
+  Effect.catchDefect((defect) => (isLocked(defect) ? Effect.fail(new DatabaseLocked({ defect })) : Effect.die(defect))),
+  Effect.retry({
+    times: 8,
+    while: (error) => error._tag === "DatabaseLocked",
+    schedule: Schedule.jittered(Schedule.exponential("20 millis")),
+  }),
+);
+```
 
 ### Connection settings: WAL and busy timeout
 
