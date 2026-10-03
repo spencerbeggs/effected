@@ -5,7 +5,7 @@ import { AppDirs, Xdg, XdgPaths } from "@effected/xdg";
 import { Cause, Context, Effect, Exit, Layer, Option, Path } from "effect";
 import type { AppStoreOptions } from "../src/index.js";
 import { AppStore } from "../src/index.js";
-import { assertGuardExit, assertNotGuardExit, filenameGuardCases } from "./filenameGuard.js";
+import { assertGuardExit, assertNotGuardExit, filenameGuardCases, subdirGuardCases } from "./filenameGuard.js";
 
 const xdgPaths = XdgPaths.make({
 	home: "/home/test",
@@ -115,5 +115,37 @@ describe("AppStore.layerAs", () => {
 		// @ts-expect-error filename is required — a default would collide with AppStore.layer's file
 		const missing = () => AppStore.layerAs(ExtraStore, { migrations: [] });
 		assert.isFunction(missing);
+	});
+});
+
+describe("AppStore subdir guard", () => {
+	describe("on AppStore.layer", () => {
+		subdirGuardCases((subdir) =>
+			Effect.exit(Effect.provide(Effect.void, AppStore.layer({ migrations: [], subdir }).pipe(Layer.provide(harness)))),
+		);
+
+		it.effect("a nested relative subdir passes the guard", () =>
+			Effect.gen(function* () {
+				assertNotGuardExit(
+					yield* Effect.exit(
+						Effect.provide(
+							Effect.void,
+							AppStore.layer({ migrations: [], subdir: "projects/abc123" }).pipe(Layer.provide(harness)),
+						),
+					),
+				);
+			}),
+		);
+	});
+
+	describe("on AppStore.layerAs", () => {
+		subdirGuardCases((subdir) =>
+			Effect.exit(
+				Effect.provide(
+					Effect.void,
+					AppStore.layerAs(ExtraStore, { migrations: [], filename: "extra.db", subdir }).pipe(Layer.provide(harness)),
+				),
+			),
+		);
 	});
 });

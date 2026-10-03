@@ -5,7 +5,7 @@ import { AppDirs, Xdg, XdgPaths } from "@effected/xdg";
 import { Cause, Context, Effect, Exit, Layer, Option, Path } from "effect";
 import type { AppCacheOptions } from "../src/index.js";
 import { AppCache } from "../src/index.js";
-import { assertGuardExit, assertNotGuardExit, filenameGuardCases } from "./filenameGuard.js";
+import { assertGuardExit, assertNotGuardExit, filenameGuardCases, subdirGuardCases } from "./filenameGuard.js";
 
 const xdgPaths = XdgPaths.make({
 	home: "/home/test",
@@ -109,5 +109,34 @@ describe("AppCache.layerAs", () => {
 		// @ts-expect-error filename is required — a default would collide with AppCache.layer's file
 		const missing = () => AppCache.layerAs(ExtraCache, {});
 		assert.isFunction(missing);
+	});
+});
+
+describe("AppCache subdir guard", () => {
+	describe("on AppCache.layer", () => {
+		subdirGuardCases((subdir) =>
+			Effect.exit(Effect.provide(Effect.void, AppCache.layer({ subdir }).pipe(Layer.provide(harness)))),
+		);
+
+		it.effect("a nested relative subdir passes the guard", () =>
+			Effect.gen(function* () {
+				assertNotGuardExit(
+					yield* Effect.exit(
+						Effect.provide(Effect.void, AppCache.layer({ subdir: "projects/abc123" }).pipe(Layer.provide(harness))),
+					),
+				);
+			}),
+		);
+	});
+
+	describe("on AppCache.layerAs", () => {
+		subdirGuardCases((subdir) =>
+			Effect.exit(
+				Effect.provide(
+					Effect.void,
+					AppCache.layerAs(ExtraCache, { filename: "extra.db", subdir }).pipe(Layer.provide(harness)),
+				),
+			),
+		);
 	});
 });

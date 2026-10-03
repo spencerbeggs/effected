@@ -5,8 +5,8 @@ import { NodeFileSystem } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import type { CacheShape, StoreMigration, StoreShape } from "@effected/store";
 import { Cache, Store } from "@effected/store";
-import { AppDirs, Xdg } from "@effected/xdg";
-import { ConfigProvider, Context, Effect, Layer, Option, Path } from "effect";
+import { AppDirs, AppDirsError, Xdg } from "@effected/xdg";
+import { Cause, ConfigProvider, Context, Effect, Exit, Layer, Option, Path } from "effect";
 import { App, AppCache, AppStore } from "../../src/index.js";
 
 const Platform = Layer.mergeAll(NodeFileSystem.layer, Path.layer);
@@ -24,6 +24,7 @@ const homeEnv = (tmp: string) =>
 			HOME: tmp,
 			XDG_CONFIG_HOME: nodePath.join(tmp, "config-home"),
 			XDG_STATE_HOME: nodePath.join(tmp, "state-home"),
+			XDG_DATA_HOME: nodePath.join(tmp, "data-home"),
 			XDG_CACHE_HOME: nodePath.join(tmp, "cache-home"),
 		}),
 	);
@@ -38,6 +39,7 @@ const existsOnDisk = (target: string): Effect.Effect<boolean> =>
 
 const stateDir = (tmp: string) => nodePath.join(tmp, "state-home", "myapp");
 const cacheDir = (tmp: string) => nodePath.join(tmp, "cache-home", "myapp");
+const dataDir = (tmp: string) => nodePath.join(tmp, "data-home", "myapp");
 
 /** The directories half, closed over a temp HOME and the real platform. */
 const dirsLive = (tmp: string) =>
@@ -208,6 +210,74 @@ describe("AppCache.layerAs (integration)", () => {
 
 				assert.isTrue(yield* existsOnDisk(nodePath.join(cacheDir(tmp), "cache.db")));
 				assert.isTrue(yield* existsOnDisk(nodePath.join(cacheDir(tmp), "tarballs.db")));
+			}),
+		),
+	);
+});
+
+describe("directory and subdir (integration)", () => {
+	it.effect("a keyed store lands in <data dir>/<subdir>/<filename>, creating the subdir", () =>
+		withTempHome((tmp) =>
+			Effect.gen(function* () {
+				const ProjectStoreLive = AppStore.layerAs(RegistryStore, {
+					filename: "data.db",
+					directory: "data",
+					subdir: "projects/abc123",
+					migrations: registryMigrations,
+				});
+				yield* Effect.gen(function* () {
+					const registry = yield* RegistryStore;
+					yield* registry.client`INSERT INTO packages (name) VALUES ('effect')`;
+				}).pipe(Effect.provide(ProjectStoreLive), Effect.provide(dirsLive(tmp)));
+
+				assert.isTrue(yield* existsOnDisk(nodePath.join(dataDir(tmp), "projects", "abc123", "data.db")));
+				// Not in the default state directory.
+				assert.isFalse(yield* existsOnDisk(nodePath.join(stateDir(tmp), "projects")));
+			}),
+		),
+	);
+
+	it.effect("the primary store and cache honor directory too", () =>
+		withTempHome((tmp) =>
+			Effect.gen(function* () {
+				const databases = Layer.mergeAll(
+					AppStore.layer({ migrations: primaryMigrations, directory: "data" }),
+					AppCache.layer({ directory: "state", subdir: "tmp" }),
+				);
+				yield* Effect.provide(Effect.void, databases.pipe(Layer.provide(dirsLive(tmp))));
+				assert.isTrue(yield* existsOnDisk(nodePath.join(dataDir(tmp), "store.db")));
+				assert.isTrue(yield* existsOnDisk(nodePath.join(stateDir(tmp), "tmp", "cache.db")));
+				assert.isFalse(yield* existsOnDisk(nodePath.join(stateDir(tmp), "store.db")));
+				assert.isFalse(yield* existsOnDisk(nodePath.join(cacheDir(tmp), "cache.db")));
+			}),
+		),
+	);
+
+	it.effect("a subdir that cannot be created is a typed AppDirsError, never a die", () =>
+		withTempHome((tmp) =>
+			Effect.gen(function* () {
+				// A FILE where the subdir's first component must go: the data dir
+				// itself is ensured fine, and only the subdir mkdir can fail.
+				yield* Effect.promise(() => nodeFs.mkdir(dataDir(tmp), { recursive: true }));
+				yield* Effect.promise(() => nodeFs.writeFile(nodePath.join(dataDir(tmp), "blocker"), "not a directory"));
+
+				const exit = yield* Effect.exit(
+					Effect.provide(
+						Effect.void,
+						AppStore.layerAs(RegistryStore, {
+							filename: "data.db",
+							directory: "data",
+							subdir: "blocker/inner",
+							migrations: registryMigrations,
+						}).pipe(Layer.provide(dirsLive(tmp))),
+					),
+				);
+				const cause = Option.getOrThrow(Exit.getCause(exit));
+				assert.isFalse(cause.reasons.some(Cause.isDieReason));
+				const error = cause.reasons.find(Cause.isFailReason)?.error;
+				assert.instanceOf(error, AppDirsError);
+				assert.strictEqual((error as AppDirsError).directory, "data");
+				assert.strictEqual((error as AppDirsError).path, nodePath.join(dataDir(tmp), "blocker", "inner"));
 			}),
 		),
 	);

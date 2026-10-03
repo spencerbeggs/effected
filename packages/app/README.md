@@ -111,7 +111,9 @@ Four services, one platform import, one namespace typed once, and every failure 
 
 `AppOptions` is [`@effected/xdg`](../xdg)'s `AppDirsOptions` straight through — `namespace`, `native`, `fallbackDir` and `dirs` mean there exactly what they mean here, five-rung precedence ladder included, and this package re-documents none of it.
 
-Every `filename` takes a **single path component**. An empty name, one containing a separator, or `.` / `..` would escape the namespace directory, so it dies at layer construction: it can only come from code, never from user input.
+`AppStore` and `AppCache` take a `directory` (`"state"`, `"data"` or `"cache"`; defaults as above) and an optional relative `subdir` under it, created with `mkdir -p` before the database opens — so `{ directory: "data", subdir: "projects/abc123", filename: "data.db" }` lands at `~/.local/share/myapp/projects/abc123/data.db`. A `subdir` that cannot be created fails on the same typed `AppDirsError` as the directory itself; because of that `mkdir`, the database layers need `FileSystem` as well as `AppDirs` and `Path`.
+
+Every `filename` takes a **single path component**, and every `subdir` component obeys the same rule (no empty component, no `.` or `..`, no leading `/`, no `\`). An empty name, one containing a separator, or `.` / `..` would escape the namespace directory, so it dies at layer construction: it can only come from code, never from user input.
 
 ## The namespace is typed once
 
@@ -252,13 +254,15 @@ const TarballCacheLive = AppCache.layerAs(TarballCache, { filename: "tarballs.db
 const DatabasesLive = Layer.mergeAll(StoreLive, RegistryStoreLive, TarballCacheLive);
 ```
 
-Each keyed layer runs the same ensure-before-open glue, in the same directory as its primary — `layerAs` stores in the state directory, `layerAs` caches in the cache directory — and outputs **only its own key**: the `Store` or `Cache` it builds internally never leaks, so it composes beside the primary without shadowing it. Each file has its own migrations and its own ledger.
+Each keyed layer runs the same ensure-before-open glue, in the same default directory as its primary — state for stores, cache for caches, unless `directory` / `subdir` say otherwise — and outputs **only its own key**: the `Store` or `Cache` it builds internally never leaks, so it composes beside the primary without shadowing it. Each file has its own migrations and its own ledger.
 
 - **`filename` is required.** A default of `store.db` or `cache.db` would land a keyed layer silently on the primary's file — two connections and two migration ledgers on one database.
 - **The key's service type must be exactly `StoreShape` or `CacheShape`.** Any other shape is a compile error; a wider one (`StoreShape & { … }`) reports as an argument not assignable to `never`, because this layer cannot supply the extra members.
 - **Bind every keyed layer to a `const`.** Each `layerAs(…)` call is a new layer, and the memoization trap above applies to each one separately: two inline calls with the same key open the file twice.
 
-The keyed layers need `AppDirs` and `Path`, which is exactly what `App.layerDirs` plus the platform provides — they slot into the per-command shape above unchanged.
+The keyed layers need `AppDirs`, `Path` and `FileSystem`, which is exactly what `App.layerDirs` plus the platform provides — they slot into the per-command shape above unchanged.
+
+Every `AppStore` / `AppCache` option beyond the path is `@effected/store`'s, passed straight through: `client` (driver options such as `busyTimeout` and `disableWAL` — the place for per-connection settings, never a migration), `checkpointOnClose`, and on stores `adoptMigratorLedger`, which moves a database previously migrated by effect/sql's `Migrator` onto `Store` without re-running its history (see `@effected/store`'s README for the matching rules). A database at an absolute or host-chosen path is not an app concern: use `Store.layerSqliteAs` / `Cache.layerSqliteAs` from `@effected/store` directly.
 
 ## Testing: one line, no platform package
 

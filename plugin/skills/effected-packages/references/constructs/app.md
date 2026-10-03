@@ -6,12 +6,12 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `App` | Class | The application control plane: one layer wiring `Xdg`, `AppDirs`, `Store` and `Cache` to the same namespace. | wire xdg dirs, store and cache together, the application control plane layer, directories-only layer so a cli opens databases per command |
-| `AppCache` | Class | The cache-directory database glue: a TTL `Cache` whose file lives in the ambient `AppDirs` cache directory. | the app's ttl cache database in the xdg cache directory, a second named cache under your own service key |
-| `AppCacheOptions` | Interface | Options for `AppCache.layer`. | |
+| `AppCache` | Class | The cache database glue: a TTL `Cache` whose file lives in one of the ambient `AppDirs` directories — the cache directory unless told otherwise. | the app's ttl cache database in the xdg cache directory, a second named cache under your own service key |
+| `AppCacheOptions` | Interface | Options for `AppCache.layer` and `AppCache.layerAs`. | |
 | `AppConfig` | Class | The xdg-flavored `ConfigFile` preset: discovery through the app's XDG config search path, saves into the app's own config directory. | xdg-namespaced config file preset, load and save app config via config-file |
 | `AppConfigOptions` | Interface | Options for `AppConfig.layer`. | |
 | `AppError` | TypeAlias | Everything that can come out of the control plane, for the application edge's `catchTags` block. | |
 | `AppOptions` | Interface | Options for `App.layer`. | |
-| `AppStore` | Class | The state-directory database glue: a migrated SQLite `Store` whose file lives in the ambient `AppDirs` state directory. | the app's migrated sqlite state database in the xdg state directory, multiple stores each under your own service key |
-| `AppStoreOptions` | Interface | Options for `AppStore.layer`. | |
+| `AppStore` | Class | The database glue: a migrated SQLite `Store` whose file lives in one of the ambient `AppDirs` directories — the state directory unless told otherwise. | the app's migrated sqlite state database in the xdg state directory, multiple stores each under your own service key |
+| `AppStoreOptions` | Interface | Options for `AppStore.layer` and `AppStore.layerAs`. | |
 | `AppTestOptions` | Interface | Options for `App.layerTest`. | |

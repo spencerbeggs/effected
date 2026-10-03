@@ -1,8 +1,8 @@
 import { assert, it } from "@effect/vitest";
 import { Cause, Effect, Exit, Option } from "effect";
 
-/** The guard's own words — what discriminates a filename die from any other die. */
-export const guardMessage = /`filename` must/;
+/** The guards' own words — what discriminates a path-guard die from any other die. */
+export const guardMessage = /`(filename|subdir)` must/;
 
 /** Assert an exit died on the filename guard: a DEFECT, never a typed failure — a bad filename is wiring, not input. */
 export const assertGuardExit = (exit: Exit.Exit<unknown, unknown>): void => {
@@ -41,4 +41,24 @@ export const filenameGuardCases = (build: (filename: string) => Effect.Effect<Ex
 	assertGuardDefect("a filename with a backslash dies at construction", "sub\\file.db");
 	assertGuardDefect("a bare dot filename dies at construction", ".");
 	assertGuardDefect("a traversal filename dies at construction", "..");
+};
+
+/**
+ * The rejected-shape matrix for a `subdir` option, one `it.effect` per case.
+ * A subdirectory is a relative path of single components, so it inherits every
+ * filename case per component and adds the shapes only a path can have.
+ */
+export const subdirGuardCases = (build: (subdir: string) => Effect.Effect<Exit.Exit<unknown, unknown>>): void => {
+	const assertGuardDefect = (name: string, subdir: string) =>
+		it.effect(name, () => Effect.map(build(subdir), assertGuardExit));
+
+	assertGuardDefect("an empty subdir dies at construction", "");
+	assertGuardDefect("an absolute subdir dies at construction", "/etc");
+	assertGuardDefect("a subdir with a backslash dies at construction", "a\\b");
+	assertGuardDefect("a subdir with an empty component dies at construction", "a//b");
+	assertGuardDefect("a subdir with a trailing slash dies at construction", "a/");
+	assertGuardDefect("a bare dot subdir dies at construction", ".");
+	assertGuardDefect("a traversal subdir dies at construction", "..");
+	assertGuardDefect("a subdir with a dot component dies at construction", "./a");
+	assertGuardDefect("a subdir with a nested traversal dies at construction", "a/../../b");
 };

@@ -15,8 +15,8 @@ sources:
     resource: ../../packages/app/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T14:52:37Z
-  body_sha256: 2658fbd73a621fdf5dcb01d1890b9c4dc4b4077156cbbce7554867241eb57769
+  at: 2026-10-03T15:03:58Z
+  body_sha256: 5ce78c6b89427ddc7a74dc8cf3ac6b961e65c5740c0406d85a10506315415fcd
 ---
 
 # app
@@ -57,8 +57,10 @@ devDependency for the real-filesystem integration tests only.
 
 One module per concept under `src/` — `App.ts`, `AppStore.ts`,
 `AppCache.ts`, `AppConfig.ts` — plus `internal/filename.ts` (the
-single-path-component guard). There is no engine here, nothing but
-composition and that one wiring-defect guard.
+path guards for `filename` and `subdir`) and `internal/location.ts`
+(`ensureLocation`: the directory's `ensure*`, then the subdir's recursive
+`mkdir`, both on `AppDirsError`). There is no engine here, nothing but
+composition and those wiring-defect guards.
 
 `AppConfig.ts` must stay a separate module and a free-standing export
 from anything that reaches the sqlite driver: `AppConfig` reaches `xdg`
@@ -82,17 +84,28 @@ its TSDoc in the built declaration file.
 ### AppStore and AppCache — the database glue
 
 Each is a `layer(options)` factory built with `Layer.unwrap`: yield
-`AppDirs`, run `ensure{State,Cache}`, join the directory with a
-`filename`, hand the path to `Store.layerSqlite` / `Cache.layerSqlite`.
+`AppDirs`, run the `ensure*` for the chosen `directory` (`"state"`,
+`"data"` or `"cache"`; state for stores and cache for caches by
+default), create an optional relative `subdir` beneath it with a
+recursive `mkdir`, join a `filename`, and hand the path to
+`Store.layerSqlite` / `Cache.layerSqlite`. The subdir `mkdir` is why both
+modules carry `FileSystem` in `R`; its failure is mapped onto xdg's
+`AppDirsError` (the directory kind, the full path), whose shape fits
+exactly, so the failure stays typed without this package defining an
+error. An absolute or host-chosen path is deliberately not an option
+here — that is store's `layerSqliteAs` — and every other option
+(`client`, `checkpointOnClose`, `adoptMigratorLedger`) is store's,
+passed through.
 This ensure-before-open ordering is the entire reason this package
 exists — see [The ensure-before-open contract](#the-ensure-before-open-contract).
 
 Each also has a `layerAs(tag, options)` form for an application with more
 than one database: the same glue, provided under a consumer-defined
-`Context.Service` key over exactly `StoreShape` / `CacheShape`. The inner
-`Store` / `Cache` is provided to a re-tagging `Layer.effect(tag, Store)`
-and never leaks, so a keyed layer composes beside the primary without
-shadowing it, each file with its own migrations and ledger. Three
+`Context.Service` key over exactly `StoreShape` / `CacheShape`, built on
+store's `Store.layerSqliteAs` / `Cache.layerSqliteAs`. The inner
+`Store` / `Cache` never leaks, so a keyed layer composes beside the
+primary without shadowing it, each file with its own migrations, ledger
+and location. Three
 properties are deliberate:
 
 - **`filename` is required** on `layerAs`. A defaulted `store.db` /
@@ -213,7 +226,8 @@ carries its migration identity, and re-wrapping it would destroy exactly
 the structure the three ports' error redesigns built. **Wiring
 defects**: a `filename` — store's, cache's, config's, or either
 `layerAs` form's — dies at layer construction unless it is a single path
-component. The guard in
+component, and a `subdir` dies unless it is a relative path of such
+components. The guard in
 `internal/filename.ts` rejects the empty string, anything containing a
 separator, and the two traversal names `.` and `..` — weakening it to
 "empty or contains a separator" would miss `".."`, which contains no
