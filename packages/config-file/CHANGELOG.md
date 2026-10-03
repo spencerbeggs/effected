@@ -1,5 +1,18 @@
 # @effected/config-file
 
+## 0.14.2
+
+### Bug Fixes
+
+- `ConfigFile.layer` and `ConfigFile.testLayer` once again infer the config type `A` from the key. Since 0.14.1, a call whose options carried no `A` of their own, such as a bare `MergeStrategy.firstMatch()` strategy, inferred `A` as `unknown`. A correctly shaped `ConfigFile.Service` key then failed with "not assignable to parameter of type `Key<…, ConfigFileShape<unknown>>`". Remove any explicit type arguments you added as a workaround.
+- A key whose shape adds members to `ConfigFileShape<A>` is still a compile error. [#935][#935]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#935]: https://github.com/spencerbeggs/effected/pull/935
+
 ## 0.14.1
 
 ### Bug Fixes

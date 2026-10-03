@@ -1,5 +1,17 @@
 # @effected/ai-plugin
 
+## 0.29.1
+
+### Documentation
+
+- The `effect-v4-services-layers` skill now covers pinning a key over a generic shape such as `ConfigFileShape<A>`. It shows how to intersect the plain `Context.Key<I, Shape<A>>` back in, so that `A` is still inferred from the key. [#935][#935]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#935]: https://github.com/spencerbeggs/effected/pull/935
+
 ## 0.29.0
 
 ### Documentation

@@ -1,5 +1,24 @@
 # @effected/app
 
+## 0.21.1
+
+### Bug Fixes
+
+- `AppConfig.layer` once again infers the config type `A` from the key. A bare `MergeStrategy.firstMatch()` passed as `strategy` no longer causes a correctly shaped `ConfigFile.Service` key to be rejected. A key whose shape adds members to `ConfigFileShape<A>` is still a compile error. [#935][#935]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.14.1 | 0.14.2 |
+| @effected/xdg | dependency | updated | 0.9.0 | 0.9.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#935]: https://github.com/spencerbeggs/effected/pull/935
+
 ## 0.21.0
 
 ### Breaking Changes
