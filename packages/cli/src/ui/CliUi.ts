@@ -527,6 +527,12 @@ export class CliUi {
 	 *
 	 * The returned function is for `CliUi.live`'s `render` alone: called before its module has loaded, it throws.
 	 *
+	 * Keep the `LiveOptions` (the state, the events and the `lazyView` call) in a module the view does not import. The
+	 * view module usually imports the state's types or its fold from somewhere; if that somewhere is the module that
+	 * holds the `import("./view.js")`, the dynamic import closes a cycle, which Biome's `noImportCycles` reports even
+	 * though it is lazy. A layout that stays acyclic: the model (state, events, fold) in one module, the view importing
+	 * the model, and the options (with `lazyView`) in a third that imports the model and loads the view.
+	 *
 	 * ```ts
 	 * // commands/sync.ts: no JSX, no React
 	 * const view = yield* CliUi.live({

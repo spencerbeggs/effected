@@ -166,13 +166,26 @@ export interface CliUiTestNextOptions {
  */
 export interface CliUiTestSession {
 	/**
-	 * Provide it around the program: in-memory terminal streams, the marker-palette `CliTheme`, `CliInteractive`
-	 * from the session's options, frame capture, and a `Console` whose writes the session keeps.
+	 * Provide it around the program: in-memory terminal streams (`UiStreams`), the marker-palette `CliTheme`,
+	 * `CliInteractive` from the session's options, frame capture, and a `Console` whose writes the session keeps. Its
+	 * type names `CliTheme` alone because that is the only one of them a program can require: `UiStreams`,
+	 * `CliInteractive`, the capture and `Console` are `Context.Reference`s with defaults, which never appear in a
+	 * requirement, so a type cannot say that the layer supplies them. Their defaults are the real process streams, a
+	 * run that is not interactive, and the real console, so a session provided where it is shadowed fails quietly
+	 * rather than by a type error. Hence the ordering below.
 	 *
 	 * @remarks
-	 * Anything the program provides closer to the screens wins: under `CliRuntime.main` with `env`, `CliEnv.layer`
-	 * supplies the theme and decides interactivity, as it does for real, and the session keeps only the streams, the
-	 * capture and the console.
+	 * **Where you provide it decides what it supplies.** Anything the program provides closer to the screens wins, so:
+	 *
+	 * - Provided **outside** a layer that supplies the same services, it is shadowed there. Under `CliRuntime.main`
+	 *   with `env`, `CliEnv.layer` (provided inside `main`) supplies the theme and decides interactivity, as it does for
+	 *   real, and the session keeps only the streams, the capture and the console. That is the intended way to test the
+	 *   production wiring.
+	 * - To have the session's own theme and `interactive` option win, provide it **inside** any presentation layer of
+	 *   your own (closest to the program), or drop that layer from the test.
+	 *
+	 * The streams, the capture and the console are the session's wherever it is provided, since nothing else in the kit
+	 * provides them.
 	 */
 	readonly layer: Layer.Layer<Cli.CliTheme>;
 	/**
