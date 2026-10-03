@@ -1,10 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
+import type { ConfigFileShape } from "@effected/config-file";
 import { ConfigFile, ConfigResolver, JsonCodec } from "@effected/config-file";
 import type { MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
 import { AppDirs, CurrentPlatform, Xdg, XdgPaths } from "@effected/xdg";
 import type { FileSystem } from "effect";
-import { Effect, Exit, Layer, Path, Schema } from "effect";
+import { Context, Effect, Exit, Layer, Path, Schema } from "effect";
 import type { AppConfigOptions } from "../src/index.js";
 import { AppConfig } from "../src/index.js";
 import { filenameGuardCases } from "./filenameGuard.js";
@@ -320,5 +321,22 @@ describe("AppConfig.layer", () => {
 				),
 			),
 		);
+	});
+});
+
+describe("AppConfig.layer key typing", () => {
+	class Other extends Schema.Class<Other>("Other")({ name: Schema.String }) {}
+	class WiderConfig extends Context.Service<WiderConfig, ConfigFileShape<Shape> & { readonly extra: string }>()(
+		"app-test/WiderConfig",
+	) {}
+
+	it("accepts a ConfigFile.Service key and rejects a wider or mismatched one", () => {
+		const options = { filename: "c.json", schema: Shape, codec: JsonCodec } as const;
+		const ok = () => AppConfig.layer(TestConfig, options);
+		// @ts-expect-error a key over a WIDER shape would be handed a value missing `extra`
+		const wider = () => AppConfig.layer(WiderConfig, options);
+		// @ts-expect-error the key's config type must match the schema's
+		const mismatched = () => AppConfig.layer(TestConfig, { filename: "c.json", schema: Other, codec: JsonCodec });
+		for (const build of [ok, wider, mismatched]) assert.isFunction(build);
 	});
 });

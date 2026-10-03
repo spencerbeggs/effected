@@ -126,6 +126,12 @@ composition defect; do not reorder the two.
   config loader report a typo'd section or a field the schema deliberately
   removed; `validate` cannot, because it runs after decoding has already dropped
   the excess keys. Absent = core's `"ignore"`, so it is additive.
+- **`AppConfig.layer`'s key is pinned to exactly `ConfigFileShape<A>`**, with
+  the same conditional as `layerAs` (`S extends ConfigFileShape<A>`, defaulted,
+  so explicit four-argument calls still compile). Before, a class key over
+  `ConfigFileShape<A> & { extra }` was accepted. `ConfigFile.Service` keys —
+  every caller in the repo and in reposets — are unaffected. The same hole is
+  still open in `@effected/config-file`'s own `ConfigFile.layer`.
 - **The codec stays required** on `AppConfigOptions` — never defaulted, never
   inferred from the filename's extension. Hard-coding a *format* choice into a
   composition layer is exactly what `XdgFullLive` was killed for, and the named
