@@ -58,9 +58,12 @@ jobs:
       auto-merge: "squash"
       skip-claude-review: false
       # Fails the validation phase when the effected catalog has drifted from
-      # the kit's next release versions. Exit-code only: the gate's own non-zero
-      # exit is the sole failure signal; stderr is not inspected.
-      on-build: pnpm catalog:check
+      # the kit's next release versions, or when the committed plugin builds
+      # lag their source: plugin:check runs pluginfinity build --check, then
+      # diffs plugin/builds, which catches a validation build that already
+      # rewrote them. Exit-code only: the gates' own non-zero exit is the sole
+      # failure signal; stderr is not inspected.
+      on-build: pnpm catalog:check && pnpm plugin:check
       # Fork PRs wait on this environment's required reviewer before any run
       # touches secrets. The environment exists in repo settings; the
       # dispatcher refuses to proceed if it has no required reviewer.

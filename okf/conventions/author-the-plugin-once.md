@@ -9,12 +9,14 @@ tags:
 sources:
   - id: pluginfinity-config
     resource: ../../plugin/pluginfinity.config.ts
+  - id: plugin-check
+    resource: ../../package.json
   - id: check-construct-index-sh
     resource: ../../plugin/scripts/check-construct-index.sh
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-03T04:19:44Z
-  body_sha256: 5a83845765d9c6c0e1393e0100436871b4cfe9c31d0421c690b39a0df1b1cc4a
+  at: 2026-10-03T05:15:26Z
+  body_sha256: cd5eacff4554fa86dc34a54171930464091637f0fba2c17dc7730235e67038b1
 ---
 
 # Author the plugin once in plugin/, never edit its builds
@@ -40,12 +42,19 @@ both host plugins. Follow these rules:
    `plugin/`, not a build. Load a build with `pnpm claude` or
    `pnpm copilot` to dogfood it.
 
-The pre-push construct-index gate fails when `plugin/builds/` is out of
-date after a regeneration,[^check-construct-index-sh] but it fires only
-on construct-index paths. Nothing else stops a stale build from being
-pushed, so rule 2's check is the author's job.
+Two gates enforce rule 2. The pre-push hook runs
+`pluginfinity build --check` on every push outside CI, and CI's
+validation phase runs `pnpm plugin:check` as release.yml's `on-build`
+gate, which a `--no-verify` push cannot skip.[^plugin-check] That script
+runs `pluginfinity build --check` and then
+`git diff --exit-code -- plugin/builds`, because a validation build that
+rewrote the builds in the runner would make `--check` alone pass
+trivially. The construct-index gate also checks the builds after a
+regeneration.[^check-construct-index-sh]
 
 [^pluginfinity-config]: `plugin/pluginfinity.config.ts` — the `copilot`
     block overrides the SessionStart hook for that target only.
+[^plugin-check]: `package.json` — the `plugin:check` script, chained onto
+    `on-build` in `.github/workflows/release.yml`.
 [^check-construct-index-sh]: `plugin/scripts/check-construct-index.sh` —
     check 3 runs `pluginfinity build --check`.

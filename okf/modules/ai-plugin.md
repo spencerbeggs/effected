@@ -19,8 +19,8 @@ sources:
     resource: "npm:pluginfinity"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-03T04:52:57Z
-  body_sha256: 662e226532033359437d8fda1c891a7b10fb95eac59b9e08e678caab0bd833cb
+  at: 2026-10-03T05:15:26Z
+  body_sha256: f539037470e6a60d0526db1f857c631b93dc283e96e571a28c45757e06e1bd9a
 ---
 
 # ai-plugin
@@ -97,13 +97,16 @@ release reaches `plugin/package.json` through the scheduled update PR.
 That PR's `run` step does not build, so it changes only the manifest and
 lockfile. When the new release changes what pluginfinity emits, the
 committed builds go stale until someone runs
-`pnpm build --filter @effected/ai-plugin` and commits the result;
-`pluginfinity build --check` reports the gap.
+`pnpm build --filter @effected/ai-plugin` and commits the result; the
+update PR's `plugin:check` gate fails until then.
 
 From `plugin/`:
 
 - `pnpm exec pluginfinity build --check` exits 1, writing nothing, when
-  either committed build differs from what the source produces.
+  either committed build differs from what the source produces. The
+  pre-push hook runs it on every push, and CI runs it through the root
+  `pnpm plugin:check` script in release.yml's `on-build` gate, which
+  also diffs `plugin/builds/` against the commit.
 - `pnpm exec pluginfinity validate` runs each host's validation over its
   build.
 

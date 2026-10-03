@@ -15,3 +15,13 @@ in_ci() { [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; }
 # models, which are gitignored build output, so a cold check costs a build.
 # `git push --no-verify` still bypasses it, as with every husky hook.
 in_ci || bash "$ROOT/plugin/scripts/check-construct-index.sh" || exit 1
+
+# The committed plugin builds are what the marketplaces install, so a skill,
+# agent or hook edit pushed without a rebuild would ship stale content. The
+# check takes under a second, so it runs on every push; CI repeats it through
+# `pnpm plugin:check` in release.yml's on-build gate.
+if ! in_ci && ! (cd "$ROOT/plugin" && pnpm exec pluginfinity build --check >/dev/null 2>&1); then
+	echo "plugin: plugin/builds is out of date with its source - push blocked." >&2
+	echo "  Rebuild and commit: pnpm build --filter @effected/ai-plugin" >&2
+	exit 1
+fi

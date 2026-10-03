@@ -34,6 +34,7 @@
 		"lint:fix:unsafe": "biome check --write --unsafe --max-diagnostics=none",
 		"lint:md": "markdownlint-cli2 --config './lib/configs/.markdownlint-cli2.jsonc'",
 		"lint:md:fix": "markdownlint-cli2 --config './lib/configs/.markdownlint-cli2.jsonc' --fix",
+		"plugin:check": "pnpm --filter @effected/ai-plugin exec pluginfinity build --check && git diff --exit-code --stat -- plugin/builds",
 		"pnpm:export": "pnpm --filter '@effected/pnpm-plugin-effect' run pnpm:export",
 		"pnpm:preview": "pnpm --filter '@effected/pnpm-plugin-effect' run pnpm:preview",
 		"pnpm:up": "pnpm --filter '@effected/pnpm-plugin-effect' run pnpm:up",
