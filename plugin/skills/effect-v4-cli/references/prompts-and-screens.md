@@ -215,24 +215,20 @@ const create = Effect.gen(function* () {
 
 `otherwise` is the **whole** `ConfirmResult`, never a bare `boolean`: `otherwise: true` does not compile. A non-interactive run returns it as written, so write the toggles the default run should have.
 
-A `Confirm` behind a boolean flag ("confirm, or `--yes`") needs a `Screen<boolean>`, because `Flag.Boolean`'s fallback takes the flag's own type and the kit has no screen mapper. Adapt it by hand:
+A `Confirm` behind a boolean flag ("confirm, or `--yes`") needs a `Screen<boolean>`, because `Flag.Boolean`'s fallback takes the flag's own type. `CliUi.map(screen, f)` turns a `Screen<A>` into a `Screen<B>`: it resolves with `f` of the inner answer and leaves a cancel, the drawing and the keys alone:
 
 ```ts
 import { CliUi, Confirm } from "@effected/cli/ui"
-import type { Screen } from "@effected/cli/ui"
 import { Flag } from "effect/cli"
 
-const yesNo =
-  (message: string): Screen<boolean> =>
-  (control) =>
-    Confirm.screen({ message })({ resolve: (result) => control.resolve(result.confirmed), cancel: control.cancel })
+const overwrite = CliUi.map(Confirm.screen({ message: "Overwrite existing files?" }), (result) => result.confirmed)
 
 const yes = Flag.Boolean("yes").pipe(
-  Flag.withFallbackPrompt(CliUi.fallback(yesNo("Overwrite existing files?"), { flag: "yes", otherwise: false })),
+  Flag.withFallbackPrompt(CliUi.fallback(overwrite, { flag: "yes", otherwise: false })),
 )
 ```
 
-`--yes` skips the prompt; omitted, an interactive run asks and a non-interactive run answers `otherwise`. The adapter forwards `cancel` untouched, so Esc is still the one `Cancelled`.
+`--yes` skips the prompt; omitted, an interactive run asks and a non-interactive run answers `otherwise`, which is the mapped type (`false`), not a `ConfirmResult`. Esc is still the one `Cancelled`. A mapped screen goes wherever a screen goes: `CliUi.run`, `CliUi.prompt`, `CliUi.fallback`, and around (or inside) a `CliUi.lazy` one.
 
 Every string a widget draws from data is sanitised and its line breaks folded to spaces before it is measured, so data cannot paint colour, plant a hyperlink, or add a row the layout did not count.
 

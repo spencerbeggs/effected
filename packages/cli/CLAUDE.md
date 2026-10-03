@@ -49,7 +49,7 @@ plane, `cli` the presentation boundary, and neither imports the other.
 ## The `./ui` and `./ui/testing` subpaths
 
 `./ui` holds the interactive screens: `CliUi` (`run`, `prompt`, `fallback`,
-`lazy`, `live`, `context`), `DocView`, `UiProvider`, the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
+`lazy`, `map`, `live`, `context`), `DocView`, `UiProvider`, the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
 `Toggle`, `Tabs`, `Viewport`), the key layer (`UiKey`, `KeyTable`, `useKeys`,
 `KeyHelp`) and the theme bridge (`Styled`, `inkProps`, `useTheme`,
 `useGlyphs`, `useTerminalSize`). `./ui/testing` holds `CliUiTest`: `render`

@@ -180,6 +180,22 @@ const pickProfile = Select.screen({
 const profile = CliUi.prompt(pickProfile, { otherwise: "library" });
 ```
 
+`CliUi.map(screen, f)` maps a screen's answer and leaves a cancel alone, so a `Confirm` can back a boolean flag ("confirm, or `--yes`"):
+
+```ts
+import { CliUi, Confirm } from "@effected/cli/ui";
+import { Flag } from "effect/cli";
+
+const yes = Flag.Boolean("yes").pipe(
+  Flag.withFallbackPrompt(
+    CliUi.fallback(
+      CliUi.map(Confirm.screen({ message: "Publish?" }), (result) => result.confirmed),
+      { flag: "yes", otherwise: false },
+    ),
+  ),
+);
+```
+
 ## Live views
 
 `CliUi.live` folds a stream or a `PubSub` subscription of events into state, and draws **runs** with Ink while they are going: a run starts at `isStart`, redraws on a tick, and commits its final frame at `isTerminal`. Log lines go above the frame through `handle.logConsole`. End with `handle.close`, which folds everything still queued. When nobody is watching (a pipe, an agent, CI), each run's final frame prints once instead. `DocView` draws a `Doc` document inside a view byte for byte as `Doc.print` would, and `UiProvider` with `CliUi.context` gives an Ink tree you mount yourself the same theme.

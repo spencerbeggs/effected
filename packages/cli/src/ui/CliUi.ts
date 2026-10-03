@@ -500,4 +500,36 @@ export class CliUi {
 		<A>(load: () => Promise<{ readonly default: Screen<A> }>): Screen<A> =>
 		async (control) =>
 			(await load()).default(control);
+
+	/**
+	 * A screen whose answer is `f` of `screen`'s: it mounts `screen` and resolves with `f(value)` when `screen` resolves
+	 * with `value`.
+	 *
+	 * @remarks
+	 * Only the resolve is mapped. A cancel passes through unchanged, as the same `Cancelled`, and so does everything
+	 * else about the screen: what it draws, its keys, a lazy load. `f` runs when the screen resolves; what it throws is
+	 * thrown from the screen's resolve, so it is a defect of the run, as any other throw in a key handler is.
+	 *
+	 * The mapped screen is a `Screen` like any other, so it goes wherever a screen goes: `CliUi.run`, `CliUi.prompt`,
+	 * `CliUi.fallback`, or around a `CliUi.lazy` one. The commonest use is a `Confirm` behind a boolean flag, where the
+	 * fallback needs a `Screen<boolean>` and `Confirm` answers a whole `ConfirmResult`:
+	 *
+	 * ```ts
+	 * const yes = Flag.Boolean("yes").pipe(
+	 *   Flag.withFallbackPrompt(
+	 *     CliUi.fallback(
+	 *       CliUi.map(Confirm.screen({ message: "Publish?" }), (result) => result.confirmed),
+	 *       { flag: "yes", otherwise: false },
+	 *     ),
+	 *   ),
+	 * )
+	 * ```
+	 *
+	 * @param screen - the screen to show
+	 * @param f - turns its answer into the mapped screen's
+	 */
+	static readonly map =
+		<A, B>(screen: Screen<A>, f: (value: A) => B): Screen<B> =>
+		(control) =>
+			screen({ resolve: (value) => control.resolve(f(value)), cancel: control.cancel });
 }
