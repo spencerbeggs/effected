@@ -55,11 +55,28 @@ export interface CliFailureOptions {
 	/**
 	 * Which spans the `in: outer › inner` trail after a failure names. `app`, the default, leaves out the spans the kit
 	 * and Effect define themselves: a span whose definition site (an `Effect.fn`'s, or where the span was opened) is a
-	 * file of an `@effected/*` package or of `effect` under `node_modules`. A config that fails to decode under
-	 * `@effected/config-file` then reports no `ConfigFile.loadFrom` trail, while the program's own spans stay. A span
-	 * whose site is not known (no stack captured) is kept. `all` shows every span, and `off` drops the trail.
+	 * file under `node_modules/@effected/` or `node_modules/effect/`. A config that fails to decode under
+	 * `@effected/config-file` then reports no `ConfigFile.loadFrom` trail, while the program's own spans stay. `all`
+	 * shows every span, and `off` drops the trail.
+	 *
+	 * @remarks
+	 * The rule reads file paths, never span names, and it fails open: when it cannot tell, it shows the span. A span
+	 * with no captured stack is kept. A kit package linked into a workspace (`link:`, `workspace:`) runs from its own
+	 * checkout rather than from `node_modules`, so its spans show as the program's. A bundled program is one file, so
+	 * `app` shows what `all` does, unless the bundle is itself installed under `node_modules/@effected/`. A program that
+	 * is installed under `node_modules/@effected/` (a kit companion's bin) names itself with `appModule`, or its own
+	 * spans are left out with the kit's.
 	 */
 	readonly spans?: "app" | "all" | "off" | undefined;
+	/**
+	 * A module of the running program itself, as a `file:` URL or an absolute path: its bin's `import.meta.url`. With
+	 * `spans: "app"`, a span defined in the installed package that holds this module is the program's, kept even under
+	 * `node_modules/@effected/`, while the packages it depends on (beside it, or nested in its own `node_modules`) are
+	 * still left out. The package is the path through the last `node_modules/<name>` (or `node_modules/@scope/name`)
+	 * in it, read from the path alone with no file system. A module not under `node_modules` changes nothing: the rule
+	 * already keeps its spans. Unset by default.
+	 */
+	readonly appModule?: string | undefined;
 }
 
 /** The deepest an `Error.cause` chain, or a stack, is followed. */
@@ -285,10 +302,28 @@ const failBlocks = (
 	return [...failureBlocks(describe(error)), ...spans];
 };
 
-/** A file of the kit's own packages or of Effect, installed or vendored: a span defined there is not the program's. */
-const isKitFile = (file: string): boolean =>
-	/[\\/]node_modules[\\/](?:@effected[\\/]|effect[\\/])/.test(file) ||
-	/[\\/]packages[\\/]effect[\\/]src[\\/]/.test(file);
+/** A file of the kit's own packages or of Effect, as installed: a span defined there is not the program's. */
+const isKitFile = (file: string): boolean => /[\\/]node_modules[\\/](?:@effected[\\/]|effect[\\/])/.test(file);
+
+/**
+ * The installed package directory that holds `module`: the path through the last `node_modules/<name>` or
+ * `node_modules/@scope/name` in it, or `undefined` when the module is not under `node_modules` (or not a path at all).
+ * Read from the path alone, with no file system.
+ */
+const packageDirOf = (module: string | undefined): string | undefined => {
+	if (module === undefined) return undefined;
+	const path = asPath(module);
+	if (path === undefined) return undefined;
+	// Greedy, so it is the last node_modules in the path: the package the module itself belongs to.
+	return /^(.*[\\/]node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)[\\/]/.exec(path)?.[1];
+};
+
+/** Whether `file` is in the program's own package `appDir`, and not in a dependency nested in its `node_modules`. */
+const isAppFile = (file: string, appDir: string | undefined): boolean => {
+	if (appDir === undefined || !file.startsWith(appDir)) return false;
+	const rest = file.slice(appDir.length);
+	return /^[\\/]/.test(rest) && !/[\\/]node_modules[\\/]/.test(rest);
+};
 
 /** The file a span frame's captured stack points at, or `undefined` when it captured none. */
 const spanFile = (frame: { readonly stack: () => string | undefined }): string | undefined => {
@@ -307,7 +342,11 @@ const spanFile = (frame: { readonly stack: () => string | undefined }): string |
  * Effect defined is left out. An `Effect.fn` call carries its definition as its parent (`name (definition)`), and is
  * judged by that definition's site, so a kit function the program calls goes with its definition.
  */
-const spanBlocks = (reason: CauseType.Reason<unknown>, mode: "app" | "all" | "off"): ReadonlyArray<Block> => {
+const spanBlocks = (
+	reason: CauseType.Reason<unknown>,
+	mode: "app" | "all" | "off",
+	appDir: string | undefined,
+): ReadonlyArray<Block> => {
 	if (mode === "off") return [];
 	const names: Array<string> = [];
 	let frame = Context.getOrUndefined(Cause.reasonAnnotations(reason), Cause.StackTrace);
@@ -315,7 +354,7 @@ const spanBlocks = (reason: CauseType.Reason<unknown>, mode: "app" | "all" | "of
 		const parent = frame.parent;
 		const definition = parent !== undefined && parent.name === `${frame.name} (definition)` ? parent : undefined;
 		const file = (definition === undefined ? undefined : spanFile(definition)) ?? spanFile(frame);
-		if (mode === "all" || file === undefined || !isKitFile(file)) names.push(frame.name);
+		if (mode === "all" || file === undefined || isAppFile(file, appDir) || !isKitFile(file)) names.push(frame.name);
 		frame = parent;
 	}
 	if (names.length === 0) return [];
@@ -362,9 +401,10 @@ export class CliFailure {
 		const displayPath = options?.displayPath ?? ((absolute: string) => absolute);
 		return reasons.flatMap((reason): ReadonlyArray<Block> => {
 			const spans = options?.spans ?? "app";
-			if (Cause.isFailReason(reason)) return failBlocks(reason.error, spanBlocks(reason, spans), options);
+			const appDir = packageDirOf(options?.appModule);
+			if (Cause.isFailReason(reason)) return failBlocks(reason.error, spanBlocks(reason, spans, appDir), options);
 			if (Cause.isDieReason(reason))
-				return dieBlocks(reason.defect, spanBlocks(reason, spans), displayPath, options?.stackFrames ?? "app");
+				return dieBlocks(reason.defect, spanBlocks(reason, spans, appDir), displayPath, options?.stackFrames ?? "app");
 			return [];
 		});
 	};

@@ -27,6 +27,8 @@ export interface FailureTarget {
 	readonly stackFrames?: "app" | "all";
 	/** Which spans the report's `in:` trail names; `app` when absent. */
 	readonly spans?: "app" | "all" | "off";
+	/** A module of the running program, whose package `spans: "app"` keeps. */
+	readonly appModule?: string;
 }
 
 /**
@@ -38,6 +40,7 @@ export interface FailureSettings {
 	readonly displayPath?: ((absolute: string) => string) | undefined;
 	readonly stackFrames?: "app" | "all" | undefined;
 	readonly spans?: "app" | "all" | "off" | undefined;
+	readonly appModule?: string | undefined;
 }
 
 /**
@@ -90,7 +93,7 @@ const build = (audience?: AudienceShape, settings: FailureSettings = {}): Effect
 		if (Option.isNone(theme) || Option.isNone(terminal) || Option.isNone(links)) return undefined;
 		const shape = audience ?? (Option.isSome(current) ? current.value : undefined);
 		if (shape === undefined) return undefined;
-		const { displayPath, stackFrames, spans } = settings;
+		const { displayPath, stackFrames, spans, appModule } = settings;
 		const ctx = yield* Render.context("stderr", displayPath === undefined ? undefined : { displayPath }).pipe(
 			Effect.provideService(CliTheme, theme.value),
 			Effect.provideService(TerminalEnv, terminal.value),
@@ -103,6 +106,7 @@ const build = (audience?: AudienceShape, settings: FailureSettings = {}): Effect
 			format,
 			...(stackFrames === undefined ? {} : { stackFrames }),
 			...(spans === undefined ? {} : { spans }),
+			...(appModule === undefined ? {} : { appModule }),
 		};
 	});
 
@@ -123,6 +127,7 @@ export const refreshFailureTarget = (audience?: AudienceShape, settings?: Failur
 				displayPath: recorded?.ctx.displayPath,
 				stackFrames: recorded?.stackFrames,
 				spans: recorded?.spans,
+				appModule: recorded?.appModule,
 			},
 		);
 		if (target !== undefined) MutableRef.set(cell, target);
@@ -173,6 +178,7 @@ export const linesOf = (
 		displayPath: target.ctx.displayPath,
 		...(target.stackFrames === undefined ? {} : { stackFrames: target.stackFrames }),
 		...(spans === undefined ? {} : { spans }),
+		...(target.appModule === undefined ? {} : { appModule: target.appModule }),
 	});
 	const doc = status ? full : withoutStatus(full);
 	const text = Render[target.format](doc, target.ctx);

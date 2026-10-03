@@ -109,6 +109,88 @@ describe("CliFailure.toDoc: the span trail", () => {
 	);
 });
 
+describe("CliFailure.toDoc: the running program's own package (appModule)", () => {
+	/** schemastore-cli, installed globally beside the kit packages it uses: its own spans are under @effected too. */
+	const GLOBAL = "/usr/local/lib/node_modules";
+	const BIN = `file://${GLOBAL}/@effected/schemastore-cli/dist/bin.js`;
+	const LOADER = `${GLOBAL}/@effected/schemastore-cli/dist/ConfigLoader.js:30:9`;
+	const HOISTED_KIT = `${GLOBAL}/@effected/config-file/dist/ConfigFile.js:41:7`;
+	const NESTED_KIT = `${GLOBAL}/@effected/schemastore-cli/node_modules/@effected/config-file/dist/ConfigFile.js:41:7`;
+	const PNPM_BIN =
+		"file:///store/.pnpm/@effected+schemastore-cli@0.17.0/node_modules/@effected/schemastore-cli/dist/bin.js";
+	const PNPM_LOADER =
+		"/store/.pnpm/@effected+schemastore-cli@0.17.0/node_modules/@effected/schemastore-cli/dist/ConfigLoader.js:30:9";
+	const PNPM_KIT = "/store/.pnpm/@effected+config-file@0.14.0/node_modules/@effected/config-file/dist/index.js:12:3";
+
+	const companion = (sites: { readonly loader: string; readonly kit: string }): Frame => {
+		const loadDef: Frame = { name: "ConfigLoader.load (definition)", stack: at(sites.loader), parent: undefined };
+		const load: Frame = { name: "ConfigLoader.load", stack: at(sites.loader), parent: loadDef };
+		const decodeDef: Frame = { name: "ConfigFile.loadFrom (definition)", stack: at(sites.kit), parent: load };
+		return { name: "ConfigFile.loadFrom", stack: at(sites.kit), parent: decodeDef };
+	};
+
+	it("keeps a kit companion's own spans and still drops the kit packages it uses", () => {
+		const expected = "in: ConfigLoader.load (definition) > ConfigLoader.load";
+		assert.strictEqual(trail(companion({ loader: LOADER, kit: HOISTED_KIT }), { appModule: BIN }), expected);
+		assert.strictEqual(
+			trail(companion({ loader: LOADER, kit: NESTED_KIT }), { appModule: BIN }),
+			expected,
+			"a kit package nested in the program's own node_modules is still the kit's",
+		);
+		assert.strictEqual(
+			trail(companion({ loader: PNPM_LOADER, kit: PNPM_KIT }), { appModule: PNPM_BIN }),
+			expected,
+			"in a pnpm store",
+		);
+		assert.strictEqual(
+			trail(companion({ loader: LOADER, kit: HOISTED_KIT }), {
+				appModule: `${GLOBAL}/@effected/schemastore-cli/dist/bin.js`,
+			}),
+			expected,
+			"a plain path works as well as a file: URL",
+		);
+	});
+
+	it("negative control: without appModule the companion's spans are dropped with the kit's", () => {
+		assert.strictEqual(trail(companion({ loader: LOADER, kit: HOISTED_KIT })), "");
+	});
+
+	it("negative control: another package's appModule does not keep the companion's spans", () => {
+		assert.strictEqual(
+			trail(companion({ loader: LOADER, kit: HOISTED_KIT }), { appModule: `file://${GLOBAL}/reposets/dist/bin.js` }),
+			"",
+		);
+		assert.strictEqual(
+			trail(companion({ loader: LOADER, kit: HOISTED_KIT }), {
+				appModule: `file://${GLOBAL}/@effected/schemastore/dist/index.js`,
+			}),
+			"",
+			"a sibling whose name is a prefix of the companion's is not the companion",
+		);
+	});
+
+	it("an appModule not under node_modules changes nothing", () => {
+		assert.strictEqual(
+			trail(chain({ app: APP, kit: KIT }), { appModule: "file:///repo/src/bin.ts" }),
+			trail(chain({ app: APP, kit: KIT })),
+		);
+	});
+});
+
+describe("CliFailure.toDoc: a monorepo's own packages/effect is the program's", () => {
+	const MONOREPO_EFFECT = "/work/monorepo/packages/effect/src/Thing.ts:9:1";
+
+	it("a span defined under packages/effect/src/ is kept: only node_modules marks Effect's own", () => {
+		const frame: Frame = { name: "Thing.make", stack: at(MONOREPO_EFFECT), parent: undefined };
+		assert.strictEqual(trail(frame), "in: Thing.make");
+	});
+
+	it("negative control: installed effect is still left out", () => {
+		const frame: Frame = { name: "Thing.make", stack: at(EFFECT), parent: undefined };
+		assert.strictEqual(trail(frame), "");
+	});
+});
+
 describe("CliRuntime.main's env.spans", () => {
 	const platform = Layer.mergeAll(
 		Stdio.layerTest({ stdinIsTerminal: Effect.succeed(false), stdoutIsTerminal: Effect.succeed(false) }),
@@ -127,6 +209,7 @@ describe("CliRuntime.main's env.spans", () => {
 	const runTool = (
 		spans: "app" | "all" | "off" | undefined,
 		render?: (error: unknown, details: FailureDetails) => ReadonlyArray<string>,
+		appModule?: string,
 	) =>
 		Effect.gen(function* () {
 			const err: Array<string> = [];
@@ -144,7 +227,7 @@ describe("CliRuntime.main's env.spans", () => {
 				CliAudience.runWith(tool, { version: "1.0.0" })(["--agent", "go"]).pipe(Effect.provide(NodeServices.layer)),
 				{
 					platform,
-					env: spans === undefined ? {} : { spans },
+					env: { ...(spans === undefined ? {} : { spans }), ...(appModule === undefined ? {} : { appModule }) },
 					...(render === undefined ? {} : { render }),
 				},
 			).pipe(
@@ -165,6 +248,19 @@ describe("CliRuntime.main's env.spans", () => {
 			const off = yield* runTool("off");
 			assert.include(off, "Config validation failed");
 			assert.notInclude(off, "in: ");
+		}),
+	);
+
+	it.effect("env.appModule reaches the report: the program's own spans under @effected are kept", () =>
+		Effect.gen(function* () {
+			const kept = yield* runTool(
+				undefined,
+				undefined,
+				`file://${KIT.replace(/dist\/ConfigFile\.js:41:7$/, "dist/bin.js")}`,
+			);
+			assert.include(kept, "ConfigFile.loadFrom", "the bin's own package is config-file's here, so its spans stay");
+			const dropped = yield* runTool(undefined);
+			assert.notInclude(dropped, "ConfigFile", "control: without appModule they are left out");
 		}),
 	);
 

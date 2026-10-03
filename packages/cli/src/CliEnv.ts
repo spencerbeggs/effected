@@ -80,6 +80,13 @@ export interface CliEnvOptions {
 	 * `FailureDetails.defaultLines` and `FailureDetails.lines`. Only `CliRuntime.main` reads this.
 	 */
 	readonly spans?: "app" | "all" | "off" | undefined;
+	/**
+	 * A module of the running program itself, as a `file:` URL or an absolute path: pass the bin's `import.meta.url`.
+	 * `spans: "app"` keeps the spans of the package that holds it, even when it is installed under
+	 * `node_modules/@effected/` (a kit companion's bin); see `CliFailureOptions.appModule`. Only `CliRuntime.main`
+	 * reads this.
+	 */
+	readonly appModule?: string | undefined;
 	/** Whether file links open in an editor; `auto` by default. See {@link CliLinks}. */
 	readonly editorLinks?: EditorLinks | undefined;
 	/** The environment variable that overrides `editorLinks`, read through `Config`. Not read unless named. */

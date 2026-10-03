@@ -55,7 +55,7 @@ Not interactive, `CliEnv` replaces `Terminal` with a gated one: `readLine` fails
 | `log` | `CliLogOptions` (optionally with `file`); `main` installs `CliLog.layer(log)` as the logger set and builds the platform under it. Only `main` reads it |
 | `formatter` | methods of core's `CliOutput.Formatter` to replace in the coloured one `main` installs, e.g. `formatVersion`. Only `main` reads it |
 | `displayPath`, `stackFrames` | how the default failure report shows a defect's frames: a path transform, and `"app"` (default: drop runtime and `node_modules` frames, count them) or `"all"` |
-| `spans` | the `in: outer › inner` trail after a failure: `"app"` (default: drop the spans the kit's `@effected/*` packages and Effect define, judged by each span's definition file under `node_modules`), `"all"`, or `"off"`. `FailureDetails.lines({ spans })` picks it per call |
+| `spans`, `appModule` | the `in: outer › inner` trail after a failure: `"app"` (default: drop the spans the kit's `@effected/*` packages and Effect define, judged by each span's definition file under `node_modules`; fails open, so a linked or bundled kit shows more), `"all"`, or `"off"`. `FailureDetails.lines({ spans })` picks it per call. A bin installed under `node_modules/@effected/` passes `appModule: import.meta.url` to keep its own spans |
 | `editorLinks`, `editorLinksEnvVar` | `"auto" \| "vscode" \| "file" \| "off"` for file links, and a variable that overrides it |
 
 **`main` installs its formatter closer to the program than the platform**, so a formatter the platform sets is shadowed. Under `env`, customise it through `env.formatter`; never also wire `CliColor.formatterLayer` into the platform.

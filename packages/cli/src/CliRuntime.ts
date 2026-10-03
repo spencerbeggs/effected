@@ -528,6 +528,7 @@ export class CliRuntime {
 								displayPath: options.env?.displayPath,
 								stackFrames: options.env?.stackFrames,
 								spans: options.env?.spans,
+								appModule: options.env?.appModule,
 							}),
 						),
 					).pipe(Layer.provideMerge(env));
