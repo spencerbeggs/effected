@@ -6,6 +6,11 @@
 			"cache": false,
 			"inputs": ["package.json", "pluginfinity.config.ts", "skills/**", "agents/**", "hooks/**"],
 			"outputs": ["builds/**"]
+		},
+		"build:prod": {
+			"cache": false,
+			"inputs": ["package.json", "pluginfinity.config.ts", "skills/**", "agents/**", "hooks/**"],
+			"outputs": ["builds/**"]
 		}
 	}
 }

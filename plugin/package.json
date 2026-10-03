@@ -7,10 +7,10 @@
 	"type": "module",
 	"scripts": {
 		"build:dev": "pluginfinity build",
-		"build:prod": "echo 'Skipping build:prod'",
+		"build:prod": "pluginfinity build",
 		"validate": "pluginfinity validate"
 	},
 	"devDependencies": {
-		"pluginfinity": "^0.1.0"
+		"pluginfinity": "^0.1.1"
 	}
 }

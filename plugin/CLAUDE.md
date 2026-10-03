@@ -29,7 +29,7 @@ construct-index bats suites.
   `pnpm build --filter @effected/ai-plugin` from the repo root, and commit
   source and builds together. `pnpm exec pluginfinity build --check` from here
   exits 1 when a build lags its source.
-- **`build:dev` is uncached on purpose** (`turbo.json`): a turbo cache hit would
+- **`build:dev` and `build:prod` are uncached on purpose** (`turbo.json`): a turbo cache hit would
   replay outputs over every file in `builds/`.
 - **pluginfinity ships only `skills/`, `agents/` and `hooks/`, and ships all of
   `hooks/`.** Put tooling in `scripts/` and test fixtures under
