@@ -49,8 +49,20 @@ export interface TextInputScreenOptions {
 	readonly initial?: string;
 	/** Shown, muted, while the value is empty. */
 	readonly placeholder?: string;
-	/** Returns a message when the value cannot be submitted, or `undefined` when it can. */
+	/** Returns a message when the value cannot be submitted, or `undefined` when it can; given the real text. */
 	readonly validate?: (value: string) => string | undefined;
+	/**
+	 * Draw the value masked, so a secret typed or pasted into it is never drawn: one mask per grapheme, so an emoji, a
+	 * flag or a letter with a combining accent is one mask, not one per code unit. `true` masks with `•` (`*` under ASCII
+	 * glyphs); a string masks with that string, its controls removed. Unmasked by default.
+	 *
+	 * @remarks
+	 * Only the drawing changes: `validate` and the resolved value get the real text, the cursor moves through it as
+	 * before, and the placeholder still shows while the value is empty. A masked frame never holds the text, so neither
+	 * does the scrollback; erase the frame as well with `clear: true` on the run when even the mask's length should not
+	 * stay behind.
+	 */
+	readonly mask?: string | true;
 }
 
 /**
@@ -201,6 +213,11 @@ const windowAround = (before: string, after: string, width: number, ellipsis: st
 	return [shownBefore, shownAfter];
 };
 
+const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** `text` drawn with one `mask` per grapheme, so a cluster of code points (an emoji, an accented letter) is one mask. */
+const masked = (text: string, mask: string): string => mask.repeat([...segmenter.segment(text)].length);
+
 /** Shown in the help line only; the input reads every key itself. */
 const HELP: KeyTable<"submit"> = KeyTable.make<"submit">([{ keys: ["enter"], action: "submit", help: "submit" }]);
 
@@ -252,7 +269,8 @@ export class TextInput {
 
 	/**
 	 * Draw the input: the message, the value with the cursor shown as `▏` (`|` under ASCII glyphs, so it stays visible
-	 * without colour), the placeholder while empty, a validation message in the error token, and the key help. Enter
+	 * without colour), or one mask per grapheme in its place with `mask`, the placeholder while empty, a validation
+	 * message in the error token, and the key help. Enter
 	 * submits when `validate` passes; otherwise its message is shown until the next key other than enter, or a paste.
 	 *
 	 * @remarks
@@ -305,9 +323,18 @@ export class TextInput {
 			}),
 		);
 		const cursorGlyph = glyphs.kind === "unicode" ? "▏" : "|";
+		const mask =
+			props.mask === undefined
+				? undefined
+				: props.mask === true
+					? glyphs.kind === "unicode"
+						? "•"
+						: "*"
+					: lineText(props.mask);
+		const shown = (text: string): string => (mask === undefined ? text : masked(text, mask));
 		const [before, after] = windowAround(
-			state.value.slice(0, state.cursor),
-			state.value.slice(state.cursor),
+			shown(state.value.slice(0, state.cursor)),
+			shown(state.value.slice(state.cursor)),
 			columns - Fmt.width(cursorGlyph),
 			glyphs.ellipsis,
 		);
@@ -349,7 +376,15 @@ export class TextInput {
 	/**
 	 * A ready-made screen for `CliUi.run`: the input, resolving with the submitted text.
 	 *
-	 * @param options - the message, the starting text, the placeholder and the validator
+	 * @remarks
+	 * With `mask`, a secret is drawn as one mask per grapheme and never as itself, while the screen still resolves with
+	 * the real text:
+	 *
+	 * ```ts
+	 * const token = CliUi.run(TextInput.screen({ message: "Token reference?", mask: true }), { clear: true })
+	 * ```
+	 *
+	 * @param options - the message, the starting text, the placeholder, the validator and the mask
 	 */
 	static readonly screen =
 		(options: TextInputScreenOptions): Screen<string> =>
