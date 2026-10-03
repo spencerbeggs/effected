@@ -20,6 +20,7 @@
 * Updated construct-annotations.json
 * Updated effected
 * Updated workspace
+* Updated @effected/cli
 
 ## 2026-10-02
 
