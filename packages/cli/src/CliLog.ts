@@ -38,7 +38,20 @@ export interface CliLogStatusOptions {
 	 * `failure`'s rank, `Warn` at or above `warning`'s, and `Info` below that.
 	 */
 	readonly level?: LogLevel.Severity | undefined;
+	/**
+	 * What the line starts with, before the glyph, so an indented report line keeps its place in a block: a number of
+	 * spaces, or a string. A string is sanitised as text is (escapes and controls removed, a tab a space) and its line
+	 * breaks dropped, so the indent can never carry an escape onto the trusted line. None by default.
+	 */
+	readonly indent?: number | string | undefined;
 }
+
+/** An indent as written before the glyph: spaces for a number, a string with nothing in it that is not text. */
+const indentOf = (indent: number | string | undefined): string => {
+	if (indent === undefined) return "";
+	if (typeof indent === "number") return Number.isFinite(indent) && indent > 0 ? " ".repeat(Math.floor(indent)) : "";
+	return sanitize(indent).replace(/\r\n|\r|\n/g, "");
+};
 
 /**
  * Options for `CliLog.layer`.
@@ -522,7 +535,8 @@ export class CliLog {
 	 * sink's pretty line sanitises it (the glyph is drawn bare there), and NDJSON keeps it, JSON-escaped.
 	 *
 	 * The level defaults to the status's rank in `vocab`: `Error` at or above `failure`'s, `Warn` at or above
-	 * `warning`'s, `Info` below, so a custom status follows its own rank. Pass `level` to choose it.
+	 * `warning`'s, `Info` below, so a custom status follows its own rank. Pass `level` to choose it, and `indent` (a
+	 * number of spaces, or a string, sanitised) to start the line inside an indented block: `    ✗ error   x: red`.
 	 *
 	 * @example
 	 * ```ts
@@ -536,7 +550,7 @@ export class CliLog {
 	 * @param vocab - the vocabulary the status belongs to
 	 * @param name - the status
 	 * @param text - the text after the glyph, sanitised
-	 * @param options - the level to log at
+	 * @param options - the level to log at, and the indent before the glyph
 	 */
 	static readonly status = <N extends string>(
 		vocab: Status<N>,
@@ -550,7 +564,7 @@ export class CliLog {
 				(yield* CliTheme).forStream("stderr"),
 				Option.isSome(audience) ? audience.value.kind : undefined,
 			);
-			const line = theme.status(vocab, name, sanitize(text));
+			const line = `${indentOf(options?.indent)}${theme.status(vocab, name, sanitize(text))}`;
 			// Every vocabulary is built from Status.core, so both names are there; the cast only widens the name.
 			const core = vocab as unknown as Status<"warning" | "failure">;
 			const rank = vocab.def(name).rank;

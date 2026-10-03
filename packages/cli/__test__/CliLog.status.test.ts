@@ -118,6 +118,40 @@ describe("CliLog.status", () => {
 		}),
 	);
 
+	it.effect("indent writes spaces or a string before the glyph, so an indented report line keeps its place", () =>
+		Effect.gen(function* () {
+			const { err } = yield* capture(
+				Effect.all(
+					[
+						CliLog.status(Status.core, "failure", "error   x: red", { indent: 4 }),
+						CliLog.status(Status.core, "failure", "y", { indent: "  │ " }),
+						CliLog.status(Status.core, "failure", "z", { indent: -3 }),
+						CliLog.status(Status.core, "failure", "w"),
+					],
+					{ discard: true },
+				),
+				"agent",
+			);
+			assert.deepStrictEqual(err, ["    ✗ error   x: red", "  │ ✗ y", "✗ z", "✗ w"]);
+		}),
+	);
+
+	it.effect("a string indent cannot carry an escape or a line break onto the trusted line", () =>
+		Effect.gen(function* () {
+			for (const audience of ["agent", "human"] as const) {
+				const { err } = yield* capture(
+					CliLog.status(Status.core, "failure", "boom", {
+						indent: `${ESC}[2A${ESC}]8;;https://evil.example${BEL}\n\t>`,
+					}),
+					audience,
+				);
+				const { err: plain } = yield* capture(CliLog.status(Status.core, "failure", "boom"), audience);
+				// Exactly the unindented line behind the indent's text: nothing of the hostile string but " >" is left.
+				assert.strictEqual(err[0], ` >${plain[0] ?? ""}`, audience);
+			}
+		}),
+	);
+
 	it.effect("without an Audience it paints, as for a person, and needs only CliTheme", () =>
 		Effect.gen(function* () {
 			const { err } = yield* capture(CliLog.status(Status.core, "info", "hello"), undefined);
