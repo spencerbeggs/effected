@@ -25,6 +25,8 @@ export interface FailureTarget {
 	readonly assumed?: boolean;
 	/** Which stack frames a defect's report shows; `app` when absent. */
 	readonly stackFrames?: "app" | "all";
+	/** Which spans the report's `in:` trail names; `app` when absent. */
+	readonly spans?: "app" | "all" | "off";
 }
 
 /**
@@ -35,6 +37,7 @@ export interface FailureTarget {
 export interface FailureSettings {
 	readonly displayPath?: ((absolute: string) => string) | undefined;
 	readonly stackFrames?: "app" | "all" | undefined;
+	readonly spans?: "app" | "all" | "off" | undefined;
 }
 
 /**
@@ -87,7 +90,7 @@ const build = (audience?: AudienceShape, settings: FailureSettings = {}): Effect
 		if (Option.isNone(theme) || Option.isNone(terminal) || Option.isNone(links)) return undefined;
 		const shape = audience ?? (Option.isSome(current) ? current.value : undefined);
 		if (shape === undefined) return undefined;
-		const { displayPath, stackFrames } = settings;
+		const { displayPath, stackFrames, spans } = settings;
 		const ctx = yield* Render.context("stderr", displayPath === undefined ? undefined : { displayPath }).pipe(
 			Effect.provideService(CliTheme, theme.value),
 			Effect.provideService(TerminalEnv, terminal.value),
@@ -95,7 +98,12 @@ const build = (audience?: AudienceShape, settings: FailureSettings = {}): Effect
 			Effect.provideService(Audience, shape),
 		);
 		const format = yield* autoFormat(ctx.audience);
-		return stackFrames === undefined ? { ctx, format } : { ctx, format, stackFrames };
+		return {
+			ctx,
+			format,
+			...(stackFrames === undefined ? {} : { stackFrames }),
+			...(spans === undefined ? {} : { spans }),
+		};
 	});
 
 /**
@@ -111,7 +119,11 @@ export const refreshFailureTarget = (audience?: AudienceShape, settings?: Failur
 		const recorded = MutableRef.get(cell);
 		const target = yield* build(
 			audience,
-			settings ?? { displayPath: recorded?.ctx.displayPath, stackFrames: recorded?.stackFrames },
+			settings ?? {
+				displayPath: recorded?.ctx.displayPath,
+				stackFrames: recorded?.stackFrames,
+				spans: recorded?.spans,
+			},
 		);
 		if (target !== undefined) MutableRef.set(cell, target);
 	});
@@ -151,10 +163,16 @@ const withoutStatus = (doc: Document): Document =>
  *
  * @internal
  */
-export const linesOf = (cause: Cause.Cause<unknown>, target: FailureTarget, status = true): ReadonlyArray<string> => {
+export const linesOf = (
+	cause: Cause.Cause<unknown>,
+	target: FailureTarget,
+	status = true,
+	spans: "app" | "all" | "off" | undefined = target.spans,
+): ReadonlyArray<string> => {
 	const full = CliFailure.toDoc(cause, {
 		displayPath: target.ctx.displayPath,
 		...(target.stackFrames === undefined ? {} : { stackFrames: target.stackFrames }),
+		...(spans === undefined ? {} : { spans }),
 	});
 	const doc = status ? full : withoutStatus(full);
 	const text = Render[target.format](doc, target.ctx);
@@ -190,5 +208,8 @@ export const guardConsumerLines = (lines: ReadonlyArray<string>): Effect.Effect<
  *
  * @internal
  */
-export const plainFailureLines = (cause: Cause.Cause<unknown>, status = true): ReadonlyArray<string> =>
-	linesOf(cause, fallbackTarget, status);
+export const plainFailureLines = (
+	cause: Cause.Cause<unknown>,
+	status = true,
+	spans?: "app" | "all" | "off",
+): ReadonlyArray<string> => linesOf(cause, fallbackTarget, status, spans);

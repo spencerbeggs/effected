@@ -21,7 +21,7 @@ import {
 } from "effect";
 import type { FunctionComponent, ReactElement, ReactNode } from "react";
 import { CliInteractive } from "../CliInteractive.js";
-import { CliTheme, themeForAudience } from "../CliTheme.js";
+import { CliTheme } from "../CliTheme.js";
 import { underGithubActions } from "../internal/autoFormat.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
 import type { HolderSlot } from "./internal/Holder.js";
@@ -238,7 +238,7 @@ export const live = <E, S>(
 		// `Render.context` does, both as Ink's colour level and as the theme the tree reads (its `paint`, its colour-none
 		// markers). Read only when provided, so `Audience` stays out of the requirements.
 		const audience = yield* Effect.serviceOption(Audience);
-		const theme = themeForAudience(
+		const theme = CliTheme.forAudience(
 			(yield* CliTheme).forStream("stdout"),
 			Option.isSome(audience) ? audience.value.kind : undefined,
 		);

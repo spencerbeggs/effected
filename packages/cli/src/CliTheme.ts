@@ -107,18 +107,8 @@ export const streamThemeAt = (
 	};
 };
 
-/**
- * The theme an audience sees of `theme`: for an agent, the same theme at colour `none` (`paint` the identity, `sgr`
- * empty, `status` unpainted), whatever the terminal could do, because an agent never gets an escape of any kind; for
- * anyone else, or when the audience is not known, `theme` itself.
- *
- * @remarks
- * The one place that rule is applied to a theme: `Render.context` takes its colour and `paint` from it, and `./ui`
- * gives it to the trees it mounts, so `useTheme`, `Styled` and the widgets' colour-`none` text markers all agree.
- *
- * @internal
- */
-export const themeForAudience = (theme: StreamTheme, audience: AudienceKind | undefined): StreamTheme =>
+/** The audience rule, shared by `CliTheme.forAudience` and the class's own docs. */
+const forAudience = (theme: StreamTheme, audience: AudienceKind | undefined): StreamTheme =>
 	audience === "agent" && theme.color !== "none" ? streamThemeAt(theme.style, theme.glyphs, "none") : theme;
 
 const make = (
@@ -185,6 +175,31 @@ export class CliTheme extends Context.Service<CliTheme, CliThemeShape>()("@effec
 				return make({ stdout: terminal.stdout.color, stderr: terminal.stderr.color }, glyphs, options?.tokens);
 			}),
 		);
+
+	/**
+	 * The theme an audience sees of `theme`: for an agent, the same theme at colour `none` (`paint` the identity, `sgr`
+	 * empty, `status` unpainted), whatever the terminal could do, because an agent never gets an escape of any kind; for
+	 * anyone else, or when the audience is not known, `theme` itself.
+	 *
+	 * @remarks
+	 * The one rule the kit applies wherever it paints for an audience: `Render.context` takes its colour and `paint`
+	 * from it, `CliMessage` and `CliLog.status` paint their glyphs through it, and `./ui` gives it to the trees it
+	 * mounts, so `useTheme`, `Styled` and the widgets' colour-`none` text markers all agree. A program that paints its
+	 * own lines applies the same rule with it rather than re-implementing it:
+	 *
+	 * ```ts
+	 * const line = Effect.gen(function* () {
+	 *   const theme = CliTheme.forAudience((yield* CliTheme).forStream("stdout"), (yield* Audience).kind)
+	 *   return theme.status(Status.core, "success", Fmt.sanitize(name))
+	 * })
+	 * ```
+	 *
+	 * Pure: it reads nothing, so the audience is the caller's to pass, `undefined` when it is not known.
+	 *
+	 * @param theme - a stream's theme, such as `CliTheme.forStream("stdout")`
+	 * @param audience - who the output is for, or `undefined` when that is not known
+	 */
+	static readonly forAudience: (theme: StreamTheme, audience: AudienceKind | undefined) => StreamTheme = forAudience;
 
 	/**
 	 * A fixed theme that needs nothing; `none` colour and Unicode glyphs unless told otherwise.

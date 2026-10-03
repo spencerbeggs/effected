@@ -9,7 +9,7 @@ import { Prompt } from "effect/cli";
 import type { ReactElement, ReactNode } from "react";
 import { Cancelled } from "../Cancelled.js";
 import { CliInteractive } from "../CliInteractive.js";
-import { CliTheme, themeForAudience } from "../CliTheme.js";
+import { CliTheme } from "../CliTheme.js";
 import { underGithubActions } from "../internal/autoFormat.js";
 import { answerWithoutPerson } from "../internal/fallbackAnswer.js";
 import { NotInteractive } from "../NotInteractive.js";
@@ -93,7 +93,7 @@ export type CliUiFallbackOptions<A> = Cli.CliPromptFallbackOptions<A> & {
  */
 const audienceTheme: Effect.Effect<Cli.StreamTheme, never, Cli.CliTheme> = Effect.gen(function* () {
 	const audience = yield* Effect.serviceOption(Audience);
-	return themeForAudience(
+	return CliTheme.forAudience(
 		(yield* CliTheme).forStream("stdout"),
 		Option.isSome(audience) ? audience.value.kind : undefined,
 	);

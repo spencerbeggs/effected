@@ -68,9 +68,15 @@ export interface FailureDetails {
 	 *   details.lines({ status: false }).map((line, i) => (i === 0 ? `prog: ${line}` : line))
 	 * ```
 	 *
-	 * @param options - `status: false` leaves off the leading status
+	 * `spans` chooses the `in:` trail for these lines alone, as `CliFailureOptions.spans` does (`app`, `all` or
+	 * `off`); without it the run's own setting (`env.spans`, `app` by default) applies.
+	 *
+	 * @param options - `status: false` leaves off the leading status; `spans` chooses the span trail
 	 */
-	readonly lines: (options?: { readonly status?: boolean | undefined }) => ReadonlyArray<string>;
+	readonly lines: (options?: {
+		readonly status?: boolean | undefined;
+		readonly spans?: "app" | "all" | "off" | undefined;
+	}) => ReadonlyArray<string>;
 }
 
 /**
@@ -372,12 +378,12 @@ export class CliRuntime {
 						// if that dies too, the message alone, still sanitised and neutralized: the last resort keeps the policy.
 						// The target is built from the services in context when there is no cell: if that dies, the plain fallback.
 						const target = yield* currentTarget.pipe(Effect.catchCause(() => Effect.succeed(fallbackTarget)));
-						const reportLines = (status: boolean): ReadonlyArray<string> => {
+						const reportLines = (status: boolean, spans?: "app" | "all" | "off"): ReadonlyArray<string> => {
 							try {
-								return linesOf(cause, target, status);
+								return linesOf(cause, target, status, spans ?? target.spans);
 							} catch {
 								try {
-									return plainFailureLines(cause, status);
+									return plainFailureLines(cause, status, spans ?? target.spans);
 								} catch {
 									return lastResort(error);
 								}
@@ -389,7 +395,10 @@ export class CliRuntime {
 							cause,
 							isDefect: !Cause.hasFails(cause),
 							defaultLines,
-							lines: (options) => (options?.status === false ? reportLines(false) : defaultLines),
+							lines: (options) =>
+								options?.status === false || options?.spans !== undefined
+									? reportLines(options?.status !== false, options?.spans)
+									: defaultLines,
 						};
 						// Without a `render`, written through the logger, so `--log-level` and its routing apply.
 						const lines =
@@ -518,6 +527,7 @@ export class CliRuntime {
 							refreshFailureTarget(undefined, {
 								displayPath: options.env?.displayPath,
 								stackFrames: options.env?.stackFrames,
+								spans: options.env?.spans,
 							}),
 						),
 					).pipe(Layer.provideMerge(env));

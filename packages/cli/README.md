@@ -132,7 +132,7 @@ Every string that enters a document or a message is sanitised: escape sequences 
 
 ## Failures and exit codes
 
-`CliRuntime.main` reports a failure as a document on stderr, through the audience's renderer: a status line for a typed failure, a tree of rejected values for a schema failure, and a defect's message with a collapsible stack of your own frames (Effect's, Node's and `node_modules` frames hidden). Give an error class a `[CliDoc]()` method to draw itself, or pass a `render` option. Its `details.lines({ status: false })` keeps the run's colour and paths behind your own prefix.
+`CliRuntime.main` reports a failure as a document on stderr, through the audience's renderer: a status line for a typed failure, a tree of rejected values for a schema failure, and a defect's message with a collapsible stack of your own frames (Effect's, Node's and `node_modules` frames hidden). Give an error class a `[CliDoc]()` method to draw itself, or pass a `render` option. Its `details.lines({ status: false })` keeps the run's colour and paths behind your own prefix. The `in: outer › inner` span trail after a failure names only your own spans by default; `env.spans` (`"app"`, `"all"` or `"off"`) chooses, as `env.stackFrames` does for a defect's frames.
 
 - `CliExit.set(code)` records a findings exit code from a handler that still succeeds. Do not provide `CliExit.layer` yourself under `main`, or the code goes to a second, unread cell.
 - `Cancelled` (a prompt quit) exits `130`, and `NotInteractive` (a prompt with nobody to ask) exits `64`, each as one fixed line.
@@ -143,7 +143,7 @@ Every string that enters a document or a message is sanitised: escape sequences 
 
 ## Logging
 
-`CliLogger` writes plain lines, with no timestamp, level or fiber id, and routes every level to stderr by default (`stderrFrom` narrows it), so stdout carries only the program's output. Pass `env.log` to `main` for **`CliLog`**: a diagnostics level of its own (`level`, or `envVar` such as `TOOL_LOG_LEVEL`, with core's `--log-level` beating both), pretty lines for a person and NDJSON for an agent or CI, an optional NDJSON log file, and `CliLog.component(name)` tags.
+`CliLogger` writes plain lines, with no timestamp, level or fiber id, and routes every level to stderr by default (`stderrFrom` narrows it), so stdout carries only the program's output. Pass `env.log` to `main` for **`CliLog`**: a diagnostics level of its own (`level`, or `envVar` such as `TOOL_LOG_LEVEL`, with core's `--log-level` beating both), pretty lines for a person and NDJSON for an agent or CI, an optional NDJSON log file, and `CliLog.component(name)` tags. `CliLog.status(vocab, name, text)` logs a diagnostic with a painted status glyph (its text still sanitised), and `CliTheme.forAudience` applies the kit's "an agent never gets an escape" rule to a theme you paint with yourself.
 
 ## Prompts and screens
 

@@ -4,7 +4,7 @@ import { CommandNeutralizer } from "@effected/github-commands";
 import { Effect } from "effect";
 import type { CliLinksShape } from "./CliLinks.js";
 import { CliLinks } from "./CliLinks.js";
-import { CliTheme, themeForAudience } from "./CliTheme.js";
+import { CliTheme } from "./CliTheme.js";
 import type { Document, LinkTarget } from "./Doc.js";
 import type { GlyphSet } from "./Glyphs.js";
 import { Glyphs } from "./Glyphs.js";
@@ -182,7 +182,7 @@ export class Render {
 			const terminal = yield* TerminalEnv;
 			const { kind } = yield* Audience;
 			const theme = (yield* CliTheme).forStream(stream);
-			const seen = themeForAudience(theme, kind);
+			const seen = CliTheme.forAudience(theme, kind);
 			const links = yield* CliLinks;
 			// Read if the environment has it, as `Doc.print` does: GitHub Actions makes every format unable to inject a
 			// workflow command, whoever the audience is.

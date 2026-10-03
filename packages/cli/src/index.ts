@@ -57,7 +57,13 @@ export {
 	type CliLinksShape,
 	type EditorLinks,
 } from "./CliLinks.js";
-export { CliLog, type CliLogFile, type CliLogFileOptions, type CliLogOptions } from "./CliLog.js";
+export {
+	CliLog,
+	type CliLogFile,
+	type CliLogFileOptions,
+	type CliLogOptions,
+	type CliLogStatusOptions,
+} from "./CliLog.js";
 export { CliLogger, type CliLoggerOptions } from "./CliLogger.js";
 export { CliMessage, type CliMessageOptions } from "./CliMessage.js";
 export {

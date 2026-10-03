@@ -55,6 +55,7 @@ Not interactive, `CliEnv` replaces `Terminal` with a gated one: `readLine` fails
 | `log` | `CliLogOptions` (optionally with `file`); `main` installs `CliLog.layer(log)` as the logger set and builds the platform under it. Only `main` reads it |
 | `formatter` | methods of core's `CliOutput.Formatter` to replace in the coloured one `main` installs, e.g. `formatVersion`. Only `main` reads it |
 | `displayPath`, `stackFrames` | how the default failure report shows a defect's frames: a path transform, and `"app"` (default: drop runtime and `node_modules` frames, count them) or `"all"` |
+| `spans` | the `in: outer › inner` trail after a failure: `"app"` (default: drop the spans the kit's `@effected/*` packages and Effect define, judged by each span's definition file under `node_modules`), `"all"`, or `"off"`. `FailureDetails.lines({ spans })` picks it per call |
 | `editorLinks`, `editorLinksEnvVar` | `"auto" \| "vscode" \| "file" \| "off"` for file links, and a variable that overrides it |
 
 **`main` installs its formatter closer to the program than the platform**, so a formatter the platform sets is shadowed. Under `env`, customise it through `env.formatter`; never also wire `CliColor.formatterLayer` into the platform.
@@ -81,6 +82,8 @@ A test fixes the environment with `Effect.provideService(ConfigProvider.ConfigPr
 ## Messages: `CliMessage`
 
 `CliMessage.success`, `info`, `warning`, `failure` and `status(vocab, name, text, { stream? })` each write **one themed line through `Console`, never the logger**, so no log level silences them. `success` and `info` go to stdout; `warning` and `failure` to stderr; `status` defaults to stderr for a rank at or above `warning`'s. Only the glyph is painted; an agent gets the glyph and plain text. They require `CliTheme | Audience`.
+
+A status line that belongs on the **log channel** (filtered by the level, routed to stderr) is `CliLog.status(vocab, name, text, { level? })`: the logger sanitises every line a program logs, which would strip a glyph painted by hand, so the kit paints the glyph itself and keeps it, still sanitising `text`. The level follows the status's rank (`Error` from `failure`'s, `Warn` from `warning`'s, else `Info`). To paint lines of your own for an audience, apply the kit's rule with `CliTheme.forAudience(theme.forStream(stream), audience.kind)` (an agent gets the colourless theme) rather than re-implementing it.
 
 Pick the channel by what the line is:
 

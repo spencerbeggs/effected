@@ -119,7 +119,7 @@ one read. `okf/modules/cli.md` has the rows.
     straight to `UiStreams` otherwise; any other write tears the frame —
     `@./okf/decisions/live-logs-through-ink.md`.
   - **An agent and the Actions runner:** an agent gets the colourless theme
-    (`themeForAudience`, the same rule `Render.context` uses) in every tree the
+    (`CliTheme.forAudience`, the same public rule `Render.context` and `CliLog.status` use) in every tree the
     kit mounts; under GitHub Actions `DocView` neutralizes workflow commands and a
     printed frame is neutralized whole.
   - **`DocView`** draws the `Doc` IR through `Render.ansi`/`Render.plain` as

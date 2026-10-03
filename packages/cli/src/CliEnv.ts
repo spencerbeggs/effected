@@ -73,6 +73,13 @@ export interface CliEnvOptions {
 	 * `CliRuntime.main` reads this.
 	 */
 	readonly stackFrames?: "app" | "all" | undefined;
+	/**
+	 * Which spans the default failure report's `in: outer › inner` trail names: `app`, the default, leaves out the spans
+	 * the kit's own packages and Effect define (judged by the file of each span's definition site under `node_modules`),
+	 * `all` shows every span, and `off` drops the trail. Applies to the report `main` writes,
+	 * `FailureDetails.defaultLines` and `FailureDetails.lines`. Only `CliRuntime.main` reads this.
+	 */
+	readonly spans?: "app" | "all" | "off" | undefined;
 	/** Whether file links open in an editor; `auto` by default. See {@link CliLinks}. */
 	readonly editorLinks?: EditorLinks | undefined;
 	/** The environment variable that overrides `editorLinks`, read through `Config`. Not read unless named. */
