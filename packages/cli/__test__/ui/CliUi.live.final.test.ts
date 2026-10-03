@@ -112,6 +112,75 @@ describe("CliUi.live final, when not interactive", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect("watch mode: one handle, N runs, post-run events, gives exactly N finals, each printed once", () =>
+		Effect.gen(function* () {
+			let calls = 0;
+			let renders = 0;
+			const view = yield* CliUiTest.live({
+				...base,
+				// vitest-agent's shape: join a run already under way, but never begin one from a post-run event.
+				begins: (event, before, after) => event._tag === "Start" || (before.last === "idle" && after.last !== "idle"),
+				render: (state) => {
+					renders++;
+					return frameOf(state);
+				},
+				final: (state) => {
+					calls++;
+					return final(state);
+				},
+				interactive: false,
+				color: "none",
+			});
+			// Three runs; after each terminal event, events that begin nothing (coverage, a watcher ready), and once a
+			// terminal event with no run going at all.
+			const watch: ReadonlyArray<Ev> = [
+				Start,
+				tick(1),
+				End,
+				tick(90),
+				End,
+				Start,
+				tick(2),
+				End,
+				tick(91),
+				Start,
+				tick(3),
+				End,
+				tick(92),
+			];
+			for (const event of watch) yield* view.publish(event);
+			yield* view.end;
+			assert.strictEqual(calls, 3, "one final per run, none for a post-run event or a terminal with no run");
+			assert.deepStrictEqual((yield* view.transcript).split("\n"), [
+				"final of run 1: ended",
+				"final of run 2: ended",
+				"final of run 3: ended",
+			]);
+			assert.strictEqual(renders, 0, "the Ink render never ran: final replaced the string, it did not add to it");
+			assert.notInclude(yield* view.written, "RUN ");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("render passed directly, with no thunk: final still replaces the string", () =>
+		Effect.gen(function* () {
+			let renders = 0;
+			const view = yield* CliUiTest.live({
+				...base,
+				render: (state) => {
+					renders++;
+					return frameOf(state);
+				},
+				final,
+				interactive: false,
+				color: "none",
+			});
+			for (const event of [Start, End]) yield* view.publish(event);
+			yield* view.end;
+			assert.strictEqual(renders, 0);
+			assert.strictEqual(yield* view.transcript, "final of run 1: ended");
+		}).pipe(Effect.scoped),
+	);
+
 	it.effect("an interactive run never calls final", () =>
 		Effect.gen(function* () {
 			let calls = 0;
@@ -147,6 +216,26 @@ describe("CliUi.lazyView", () => {
 			yield* view.advance("160 millis");
 			yield* view.publish(tick(1));
 			assert.match(yield* view.plainFrame, /^INK done 1 frame \d+$/);
+			yield* view.publish(End);
+			yield* view.end;
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("takes a promise of the view itself, as a named export, and passes it the frame index", () =>
+		Effect.gen(function* () {
+			const seen: Array<readonly [number, number]> = [];
+			const render = CliUi.lazyView<State>(async () => (state: State, frame: number) => {
+				seen.push([state.run, frame]);
+				return frameOf(state);
+			});
+			const view = yield* CliUiTest.live({ ...base, render, color: "none" });
+			yield* view.publish(Start);
+			yield* view.advance("240 millis");
+			assert.include(yield* view.plainFrame, "RUN 1");
+			assert.isTrue(
+				seen.some(([run, frame]) => run === 1 && frame === 3),
+				`the tick's frame index reached the view: ${JSON.stringify(seen)}`,
+			);
 			yield* view.publish(End);
 			yield* view.end;
 		}).pipe(Effect.scoped),

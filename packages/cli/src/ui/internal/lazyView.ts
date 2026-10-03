@@ -15,19 +15,21 @@ interface Lazy {
 }
 
 /**
- * `CliUi.lazyView`: a `render` that draws with the default export of a module loaded on first use. The loader runs
- * once (again after a failure), and calling the render before it has loaded is a defect, since only `CliUi.live`
- * knows to load it first.
+ * `CliUi.lazyView`: a `render` that draws with what `load` resolves to, loaded on first use: the render itself, or a
+ * module whose default export it is. The loader runs once (again after a failure), and calling the render before it
+ * has loaded is a defect, since only `CliUi.live` knows to load it first.
  *
  * @internal
  */
-export const lazyView = <S>(load: () => Promise<{ readonly default: LiveRender<S> }>): LiveRender<S> => {
+export const lazyView = <S>(
+	load: () => Promise<LiveRender<S> | { readonly default: LiveRender<S> }>,
+): LiveRender<S> => {
 	let loaded: LiveRender<S> | undefined;
 	let pending: Promise<unknown> | undefined;
 	const ensure = (): Promise<unknown> => {
 		pending ??= load().then(
-			(module) => {
-				loaded = module.default;
+			(resolved) => {
+				loaded = typeof resolved === "function" ? resolved : resolved.default;
 			},
 			(error: unknown) => {
 				// A failed load is tried again by the next run, rather than failing every run after it.

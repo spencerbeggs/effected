@@ -511,8 +511,13 @@ export class CliUi {
 	 * the view loads neither the view's own code nor React: `CliUi.lazy` for `CliUi.live`.
 	 *
 	 * @remarks
-	 * The module's default export is the view, `(state, frame) => ReactElement`, exactly what `render` takes, so the
-	 * frame index a spinner needs reaches it. `CliUi.live` loads the module before a run mounts with Ink, or before it
+	 * `load` resolves to the view, `(state, frame) => ReactElement`, exactly what `render` takes, so the frame index a
+	 * spinner needs reaches it: either a module whose default export is the view (`() => import("./view.js")`), or the
+	 * view itself (`() => import("./views.js").then((module) => module.syncView)`, for a named export).
+	 *
+	 * It is optional: `render` still takes the view directly, and needs no dynamic import. A view passed directly
+	 * loads with the module that imports it, so it costs React on every run that loads that module; `lazyView` is
+	 * how a command keeps React off the runs that never draw. `CliUi.live` loads the module before a run mounts with Ink, or before it
 	 * prints a run's final frame as a string; a run that is not interactive and has a `final` document never loads it,
 	 * nor Ink, nor React. An import that fails degrades the run, as a render that throws does: one warning, and the next
 	 * run tries the import again.
@@ -532,10 +537,12 @@ export class CliUi {
 	 * })
 	 * ```
 	 *
-	 * @param load - imports the module whose default export is the view
+	 * @param load - resolves to the view, or to a module whose default export is the view
 	 */
 	static readonly lazyView: <S>(
-		load: () => Promise<{ readonly default: (state: S, frame: number) => ReactElement }>,
+		load: () => Promise<
+			((state: S, frame: number) => ReactElement) | { readonly default: (state: S, frame: number) => ReactElement }
+		>,
 	) => (state: S, frame: number) => ReactElement = lazyView;
 
 	/**
