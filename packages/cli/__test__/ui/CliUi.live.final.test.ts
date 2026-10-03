@@ -1,0 +1,182 @@
+import { assert, describe, it } from "@effect/vitest";
+import { Audience } from "@effected/env";
+import { Console, Effect } from "effect";
+import type { Document } from "../../src/index.js";
+import { Doc } from "../../src/index.js";
+import { CliUi } from "../../src/ui.js";
+import { CliUiTest } from "../../src/ui-testing.js";
+import type { Ev, State } from "../helpers/live.js";
+import { End, Start, frameOf, reduce, tick } from "../helpers/live.js";
+
+const ESC = String.fromCharCode(0x1b);
+
+const base = {
+	initial: { run: 0, last: "idle", seen: [] } as State,
+	reduce,
+	render: frameOf,
+	isStart: (event: Ev) => event._tag === "Start",
+	isTerminal: (event: Ev) => event._tag === "End",
+};
+
+const final = (state: State): Document => [
+	Doc.paragraph(Doc.text(`final of run ${state.run}: ${state.last}`, "success")),
+];
+
+const twoRuns = [Start, tick(1), End, Start, tick(2), End];
+
+/** A Console that keeps every line, where the default logger writes a warning. */
+const capturing = () => {
+	const lines: Array<string> = [];
+	const double: Console.Console = Object.assign(Object.create(console) as Console.Console, {
+		log: (...args: ReadonlyArray<unknown>) => lines.push(args.map(String).join(" ")),
+		error: (...args: ReadonlyArray<unknown>) => lines.push(args.map(String).join(" ")),
+		warn: (...args: ReadonlyArray<unknown>) => lines.push(args.map(String).join(" ")),
+	});
+	return { double, lines };
+};
+
+describe("CliUi.live final, when not interactive", () => {
+	it.effect("prints each run's final document once, in place of the Ink frame, never both", () =>
+		Effect.gen(function* () {
+			const view = yield* CliUiTest.live({ ...base, final, interactive: false, color: "none" });
+			for (const event of twoRuns) yield* view.publish(event);
+			yield* view.end;
+			assert.strictEqual(yield* view.transcript, "final of run 1: ended\nfinal of run 2: ended");
+			assert.notInclude(yield* view.written, "RUN 1", "no Ink frame was printed beside it");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("control: without final each run's Ink frame is printed as a string", () =>
+		Effect.gen(function* () {
+			const view = yield* CliUiTest.live({ ...base, interactive: false, color: "none" });
+			for (const event of twoRuns) yield* view.publish(event);
+			yield* view.end;
+			assert.include(yield* view.transcript, "RUN 1");
+			assert.notInclude(yield* view.transcript, "final of run");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a run the events end mid-way prints its final document at the end", () =>
+		Effect.gen(function* () {
+			const view = yield* CliUiTest.live({ ...base, final, interactive: false, color: "none" });
+			yield* view.publish(Start);
+			yield* view.publish(tick(7));
+			yield* view.end;
+			assert.strictEqual(yield* view.transcript, "final of run 1: tick 7");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("hosted prints nothing, final or not", () =>
+		Effect.gen(function* () {
+			const view = yield* CliUiTest.live({ ...base, final, mode: "hosted", interactive: false });
+			for (const event of twoRuns) yield* view.publish(event);
+			yield* view.end;
+			assert.strictEqual(yield* view.written, "");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("an agent gets the plain renderer and no escape; a person, without an audience, is painted", () =>
+		Effect.gen(function* () {
+			const agent = yield* CliUiTest.live({ ...base, final, interactive: false, color: "truecolor" }).pipe(
+				Effect.provide(Audience.layerTest("agent")),
+			);
+			for (const event of [Start, End]) yield* agent.publish(event);
+			yield* agent.end;
+			assert.strictEqual(yield* agent.written, "final of run 1: ended\n");
+			const person = yield* CliUiTest.live({ ...base, final, interactive: false, color: "truecolor" });
+			for (const event of [Start, End]) yield* person.publish(event);
+			yield* person.end;
+			assert.include(yield* person.written, ESC, "control: the same document is painted for a person");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a final that throws degrades that run: one warning, nothing printed, the next run prints", () =>
+		Effect.gen(function* () {
+			const { double, lines } = capturing();
+			let calls = 0;
+			const flaky = (state: State): Document => {
+				calls++;
+				if (calls === 1) throw new Error("no document");
+				return final(state);
+			};
+			const view = yield* CliUiTest.live({ ...base, final: flaky, interactive: false, color: "none" }).pipe(
+				Effect.provideService(Console.Console, double),
+			);
+			for (const event of twoRuns) yield* view.publish(event);
+			yield* view.end;
+			assert.strictEqual(yield* view.transcript, "final of run 2: ended");
+			assert.lengthOf(
+				lines.filter((line) => line.includes("no document")),
+				1,
+			);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("an interactive run never calls final", () =>
+		Effect.gen(function* () {
+			let calls = 0;
+			const view = yield* CliUiTest.live({
+				...base,
+				final: (state) => {
+					calls++;
+					return final(state);
+				},
+				color: "none",
+			});
+			for (const event of [Start, tick(1), End]) yield* view.publish(event);
+			yield* view.end;
+			assert.strictEqual(calls, 0);
+			assert.include(yield* view.transcript, "RUN 1");
+		}).pipe(Effect.scoped),
+	);
+});
+
+describe("CliUi.lazyView", () => {
+	it.effect("draws with the module's default export once loaded, with the frame index", () =>
+		Effect.gen(function* () {
+			const view = yield* CliUiTest.live({
+				initial: { done: 0 },
+				reduce: (state: { readonly done: number }, event: Ev) =>
+					event._tag === "Tick" ? { done: state.done + 1 } : state,
+				render: CliUi.lazyView(() => import("../fixtures/live-view.js")),
+				isStart: (event) => event._tag === "Start",
+				isTerminal: (event) => event._tag === "End",
+				color: "none",
+			});
+			yield* view.publish(Start);
+			yield* view.advance("160 millis");
+			yield* view.publish(tick(1));
+			assert.match(yield* view.plainFrame, /^INK done 1 frame \d+$/);
+			yield* view.publish(End);
+			yield* view.end;
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("an import that fails degrades the run with one warning, and the next run tries again", () =>
+		Effect.gen(function* () {
+			const { double, lines } = capturing();
+			let attempts = 0;
+			const render = CliUi.lazyView<State>(async () => {
+				attempts++;
+				if (attempts === 1) throw new Error("module not found");
+				return { default: frameOf };
+			});
+			const view = yield* CliUiTest.live({ ...base, render, color: "none" }).pipe(
+				Effect.provideService(Console.Console, double),
+			);
+			for (const event of twoRuns) yield* view.publish(event);
+			yield* view.end;
+			assert.strictEqual(attempts, 2);
+			assert.lengthOf(
+				lines.filter((line) => line.includes("module not found")),
+				1,
+			);
+			assert.include(yield* view.transcript, "RUN 2", "the second run loaded the module and drew");
+		}).pipe(Effect.scoped),
+	);
+
+	it("called before its module has loaded, the render throws, naming CliUi.live", () => {
+		const render = CliUi.lazyView<State>(async () => ({ default: frameOf }));
+		assert.throws(() => render({ run: 0, last: "", seen: [] }, 0), /CliUi.live/);
+	});
+});

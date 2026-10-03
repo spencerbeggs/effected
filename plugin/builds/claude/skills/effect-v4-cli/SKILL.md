@@ -52,7 +52,7 @@ NodeRuntime.runMain(
 | `CliPrompt.fallback` | `@effected/cli` | a flag or argument that prompts with core's `Prompt` when missing — only when interactive |
 | `CliUi`, `Select`, `TextInput`, `MultiSelect`, `Confirm` | `@effected/cli/ui` | an Ink screen from a handler (`prompt`) or as a fallback (`fallback`), with a non-interactive default |
 | `CliUi.lazy` | `@effected/cli/ui` | mounting a screen of your own whose module holds the JSX, so a non-interactive run never loads React |
-| `CliUi.live`, `DocView`, `UiProvider` | `@effected/cli/ui` | progress that redraws in place while work runs, drawing the `Doc` IR inside Ink |
+| `CliUi.live`, `CliUi.lazyView`, `DocView`, `UiProvider` | `@effected/cli/ui` | progress that redraws in place while work runs, its view loaded lazily and a `final` document for runs nobody watches, drawing the `Doc` IR inside Ink |
 | `KeyTable`, `useKeys`, `KeyHelp`, `Styled`, `Viewport`, `Tabs` | `@effected/cli/ui` | writing your own screen: keys as data, themed text, a scrolling list, tabs |
 | `CliTest`, `TestTerminal` | `@effected/cli/testing` | spawning a built bin hermetically; driving core prompts in a test |
 | `CliUiTest` | `@effected/cli/ui/testing` | driving a screen or live view with keys and reading its frames |
@@ -71,6 +71,7 @@ NodeRuntime.runMain(
 - Ask for input only through `CliPrompt.fallback`, `CliUi.prompt` or `CliUi.fallback`, each with a non-interactive default.
 - Set `"jsx": "react-jsx"` for a `.tsx` screen, keep each screen in its own module with a default export, and mount it with `CliUi.lazy`, so JSX never loads in the command module.
 - Log through `handle.logConsole` while a live view is drawn, and not at all while a screen is mounted.
+- Give a live view `render: CliUi.lazyView(() => import("./view.js"))` and a `final` document, so `--help`, agent, CI and piped runs never load React or Ink.
 - Report findings by succeeding and calling `CliExit.set(code)`, never by failing or calling `process.exit` in a handler.
 - Set `emitDts: false` in `savvy.build.ts` for a package whose `exports` is `"./package.json"` only.
 - Confine every `process` read (`env`, `argv`, `cwd`, `execPath`, `isTTY`) to `bin.ts`, `main.ts` or `version.ts`; pass it down as a plain value.
@@ -113,7 +114,7 @@ NodeRuntime.runMain(
 
 - [presentation.md](./references/presentation.md) — the one wiring, audience and `CliInteractive`, `CliEnv` and its options, colour precedence, the theme vocabulary, `CliMessage`, the `Doc` IR and renderers, the failure report and `CliLog`. Load when: wiring `main`, deciding which channel a line goes to, rendering a report, or customising the failure report or diagnostics.
 - [prompts-and-screens.md](./references/prompts-and-screens.md) — setup (install line, peers, `jsx: react-jsx`), keeping React off non-interactive runs with `CliUi.lazy`, `CliPrompt.fallback` vs `CliUi`, the widgets and their options, a `Confirm` worked through (whole-`ConfirmResult` default, `CliUi.map` for a boolean flag), writing a screen with `KeyTable`/`useKeys`/`Viewport`/`Tabs`, and the rules that keep a screen from tearing the terminal. Load when: setting up Ink screens, asking a person for input, or writing or reviewing an Ink screen.
-- [live-view.md](./references/live-view.md) — `CliUi.live`: runs, subscribing and ending without losing the tail, `logConsole`, non-interactive modes, `DocView` and `UiProvider`. Load when: drawing progress that updates in place, or hosting an Ink tree the kit did not mount.
+- [live-view.md](./references/live-view.md) — `CliUi.live`: runs, subscribing and ending without losing the tail, `logConsole`, non-interactive modes and the `final` document, a lazy view with `CliUi.lazyView`, `DocView` and `UiProvider`. Load when: drawing progress that updates in place, or hosting an Ink tree the kit did not mount.
 - [core-framework.md](./references/core-framework.md) — the module inventory, PascalCase constructors, `Flag.Boolean`'s missing default, `Command.Environment`, and the two different `Command`s. Load when: writing or reviewing the `Command`/`Flag`/`Argument` declaration itself.
 - [output-and-logging.md](./references/output-and-logging.md) — the three defaults core gets wrong at a terminal, the `CliLogger` implementation facts, exit-code reporting, and `CliColor`. Load when: wiring a logger by hand, or debugging a duplicate or missing failure report.
 - [bin-only-package.md](./references/bin-only-package.md) — `emitDts: false`, the `exports: "./package.json"` shape, and why `Cannot merge zero API models` is not an extractor bug. Load when: building a package whose only surface is a `bin`.

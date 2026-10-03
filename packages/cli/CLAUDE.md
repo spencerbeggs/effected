@@ -49,7 +49,7 @@ plane, `cli` the presentation boundary, and neither imports the other.
 ## The `./ui`, `./ui/testing` and `./ui/testing/serializer` subpaths
 
 `./ui` holds the interactive screens: `CliUi` (`run`, `prompt`, `fallback`,
-`lazy`, `map`, `live`, `context`), `DocView`, `UiProvider`, the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
+`lazy`, `map`, `live`, `lazyView`, `context`), `DocView`, `UiProvider`, the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
 `Toggle`, `Tabs`, `Viewport`), the key layer (`UiKey`, `KeyTable`, `useKeys`,
 `KeyHelp`) and the theme bridge (`Styled`, `inkProps`, `useTheme`,
 `useGlyphs`, `useTerminalSize`). `./ui/testing` holds `CliUiTest`: `render`
@@ -64,8 +64,11 @@ snapshot test here uses `expect` for the snapshot alone. `okf/modules/cli.md` ha
 - **Optional peers `ink` (^7.1.1) and `react` (^19.2.0).** The root never
   reaches them, and `./ui` imports them only when a screen mounts (`loadInk`),
   so importing `./ui` or running a non-interactive program loads neither,
-  except that an owned live view loads them to print its final frame as a
-  string.
+  except that an owned live view without a `final` document loads them to
+  print its final frame as a string. `CliUi.lazyView(load)` defers a live
+  view's own module (and its React) to the first Ink draw, and a `final`
+  document prints through the `Doc` renderers with no Ink at all; both are
+  held by `ui/CliUi.live.reach.test.ts` (#908).
   `src/ui/**` may only `import type` from them: only `ui/internal/ink.ts`
   loads them as values (held by `boundary.test.ts`); a missing peer in an interactive run is a defect
   naming both, never a silent fallback.

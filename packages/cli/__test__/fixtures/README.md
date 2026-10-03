@@ -21,3 +21,9 @@ echoes anything it received on `stdin` back on `stdout` prefixed
 `process.env.HOME` is echoed so a test can assert `CliTest.sandbox`'s `HOME`
 reached the child process, proving the sandbox environment — not the host's —
 was used.
+
+## `live-view.ts`
+
+Hand-written for `ui/CliUi.live.reach.test.ts` and `ui/CliUi.live.final.test.ts`: a live view's own module, as a
+consumer writes one, importing Ink and React as values and counting its loads on `globalThis.liveViewLoads`. It is
+only ever reached through `CliUi.lazyView`, so a test can tell whether a run loaded it, and with it React and Ink.

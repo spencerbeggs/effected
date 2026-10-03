@@ -17,6 +17,7 @@ import type { LiveHandle, LiveOptions } from "./CliUiLive.js";
 import { live } from "./CliUiLive.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
 import { inkModules, loadInk, withInkColour } from "./internal/ink.js";
+import { lazyView } from "./internal/lazyView.js";
 import { mountPermit } from "./internal/mountPermit.js";
 import { UiRenderOptions } from "./internal/renderOptions.js";
 import { useScreenGuard } from "./internal/ScreenContext.js";
@@ -339,7 +340,7 @@ export class CliUi {
 	 * what is published before.
 	 *
 	 * `live` returns its handle at once, before Ink has loaded: it loads Ink when a run first mounts (or, when not
-	 * interactive, when an owned run prints its final frame), and it waits on nothing asynchronous before returning, so
+	 * interactive, when an owned run without a `final` prints its final frame), and it waits on nothing asynchronous before returning, so
 	 * a host outside Effect can take the handle with `Effect.runSync`. The handle works from the start: a `close`
 	 * before any run has mounted folds what is queued and ends the view as the events ending would, waiting for a mount
 	 * already under way, and one with no run to end loads nothing.
@@ -383,8 +384,12 @@ export class CliUi {
 	 * When the run is not interactive, nothing is mounted and Ink is loaded only when a string is due. In the `owned`
 	 * mode (the default) each run's final frame is written once to stdout, as a string laid out at stdout's width (80
 	 * when it reports none) with no height to fit, at its terminal event or when the stream ends. It is escape-free at
-	 * colour `none`, and for an agent audience (`Audience`, when provided) whatever the terminal could do. In the
-	 * `hosted` mode nothing is written.
+	 * colour `none`, and for an agent audience (`Audience`, when provided) whatever the terminal could do. With a
+	 * `final` document, that document is printed instead, once per run, rendered as `Doc.print` renders it, and Ink,
+	 * React and a `CliUi.lazyView` module are never loaded: an agent, CI or piped run of a command with a live view pays
+	 * for none of them. In the `hosted` mode nothing is written.
+	 *
+	 * Keep React off the runs that never draw (`--help`, a usage error) with `render: CliUi.lazyView(() => import(...))`.
 	 *
 	 * No input is mounted: the view reads no keys and never enters raw mode, so Ctrl-C stays the platform's SIGINT,
 	 * which interrupts the program and so closes the scope. Each run holds the process-wide mount permit from its
@@ -500,6 +505,38 @@ export class CliUi {
 		<A>(load: () => Promise<{ readonly default: Screen<A> }>): Screen<A> =>
 		async (control) =>
 			(await load()).default(control);
+
+	/**
+	 * A live view's `render` whose module is loaded only when a run first draws it, so importing the command that uses
+	 * the view loads neither the view's own code nor React: `CliUi.lazy` for `CliUi.live`.
+	 *
+	 * @remarks
+	 * The module's default export is the view, `(state, frame) => ReactElement`, exactly what `render` takes, so the
+	 * frame index a spinner needs reaches it. `CliUi.live` loads the module before a run mounts with Ink, or before it
+	 * prints a run's final frame as a string; a run that is not interactive and has a `final` document never loads it,
+	 * nor Ink, nor React. An import that fails degrades the run, as a render that throws does: one warning, and the next
+	 * run tries the import again.
+	 *
+	 * The returned function is for `CliUi.live`'s `render` alone: called before its module has loaded, it throws.
+	 *
+	 * ```ts
+	 * // commands/sync.ts: no JSX, no React
+	 * const view = yield* CliUi.live({
+	 *   events,
+	 *   initial,
+	 *   reduce,
+	 *   render: CliUi.lazyView(() => import("./sync-view.js")),
+	 *   final: (state) => [Doc.paragraph(`${state.done} synced`)],
+	 *   isStart,
+	 *   isTerminal,
+	 * })
+	 * ```
+	 *
+	 * @param load - imports the module whose default export is the view
+	 */
+	static readonly lazyView: <S>(
+		load: () => Promise<{ readonly default: (state: S, frame: number) => ReactElement }>,
+	) => (state: S, frame: number) => ReactElement = lazyView;
 
 	/**
 	 * A screen whose answer is `f` of `screen`'s: it mounts `screen` and resolves with `f(value)` when `screen` resolves

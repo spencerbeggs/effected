@@ -97,14 +97,21 @@ export const pick = Command.make("pick", {}, () =>
 
 `CliUi.lazy(load)` types the screen from the module's default export, so `otherwise: "x"` against this screen is a compile error. A non-interactive run returns `otherwise` and never evaluates the import. The kit's own widgets (`Select.screen`, `Confirm.screen`, `TextInput.screen`, `MultiSelect.screen`) need no `lazy`: calling one in your command module loads no React, because the kit's modules never import it statically. Only JSX and direct `ink`/`react` imports of your own do.
 
-A live view's `render` is synchronous, so it cannot be lazy. Put the view in its own module and `import()` it before calling `CliUi.live`, on the path that draws:
+A live view's view goes in its own module too, its default export the view itself, `(state, frame) => ReactElement`. Pass it lazily with `CliUi.lazyView`, the live view's `CliUi.lazy`, and give the view a `final` document for the runs nobody watches:
 
 ```ts
-const { renderView } = yield* Effect.promise(() => import("./view.js"))
-const view = yield* CliUi.live<Event, State>({ events, initial, reduce, render: renderView, isStart, isTerminal })
+const view = yield* CliUi.live<Event, State>({
+  events,
+  initial,
+  reduce,
+  render: CliUi.lazyView(() => import("./view.js")),
+  final: (state) => [Doc.paragraph(`${state.done} synced`)],
+  isStart,
+  isTerminal,
+})
 ```
 
-An **owned** live view that is not interactive still loads Ink to print its final frame as a string, so an `--agent` or CI run that draws a view loads React whichever way you import it. The dynamic import saves the load only on runs that draw nothing (`--help`, `--version`, an early usage error) and for a `hosted` view.
+The module loads only when a run first draws with Ink. `--help`, `--version` and an early usage error never load it, and with `final` an `--agent`, CI or piped run never loads it either, nor Ink, nor React: that run prints `final(state)` once per run through the `Doc` renderers. Without `final`, an **owned** view that is not interactive still loads Ink (and the view) to print each run's final frame as a string.
 
 ## A flag or argument that prompts when missing
 
