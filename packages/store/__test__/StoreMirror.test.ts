@@ -463,3 +463,44 @@ describe("rollback history keeps the mirror's import honest", () => {
 		}),
 	);
 });
+
+describe("false turns both ledger options off", () => {
+	it.effect("mirror and adoption set to false create no effect_sql_migrations table", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			const exit = yield* openStore(
+				filename,
+				{ migrations: [notes, artifacts], mirrorMigratorLedger: false, adoptMigratorLedger: false },
+				() => Effect.void,
+			);
+			assert.isTrue(Exit.isSuccess(exit));
+			const tables = inspect(filename, (db) =>
+				(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map(
+					(row) => row.name,
+				),
+			);
+			assert.notInclude(tables, "effect_sql_migrations");
+			assert.notInclude(tables, "_store_meta");
+		}),
+	);
+
+	it.effect("adoptMigratorLedger: false adopts nothing from a legacy ledger", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			yield* runOldVersion(filename, { "0001_initial": legacyRecord["0001_initial"] });
+			// Off means the legacy history is unknown to Store, exactly as when the
+			// option is absent: migration 1 re-runs and its bare CREATE TABLE fails.
+			const exit = yield* openStore(
+				filename,
+				{ migrations: [notes], adoptMigratorLedger: false, mirrorMigratorLedger: false },
+				() => Effect.void,
+			);
+			assert.isTrue(Exit.isFailure(exit));
+			assert.deepStrictEqual(ownIds(filename), []);
+			const meta = inspect(filename, (db) =>
+				db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = '_store_meta'").all(),
+			);
+			assert.deepStrictEqual(meta, []);
+		}),
+	);
+});

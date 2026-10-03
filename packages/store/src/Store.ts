@@ -186,7 +186,8 @@ export interface StoreOptions {
 	 * Adopt the history an effect/sql `Migrator` (for example
 	 * `SqliteMigrator.layer`) already recorded in this database, so moving a
 	 * live database onto `Store` does not re-run its migrations. Opt-in;
-	 * `true` reads the Migrator's default table, `effect_sql_migrations`.
+	 * `true` reads the Migrator's default table, `effect_sql_migrations`;
+	 * `false`, like leaving it out, is off.
 	 *
 	 * @remarks
 	 * **One-shot, decided by the first layer build that has the option on.**
@@ -230,14 +231,15 @@ export interface StoreOptions {
 	 * `2026-10-03T12:00:00`) is read as UTC, and one that cannot be read as a
 	 * date fails the layer the same typed way.
 	 */
-	readonly adoptMigratorLedger?: true | { readonly table?: string };
+	readonly adoptMigratorLedger?: boolean | { readonly table?: string };
 	/**
 	 * Keep effect/sql's `Migrator` ledger in step with `Store`'s own, so an
 	 * older program that still migrates this database through effect/sql's
 	 * `Migrator` (`SqliteMigrator.layer`) sees the migrations `Store` applied
 	 * and runs nothing. Opt-in, for a transition period in which several
 	 * versions of a program share one database; `true` writes the Migrator's
-	 * default table, `effect_sql_migrations`.
+	 * default table, `effect_sql_migrations`; `false`, like leaving it out, is
+	 * off.
 	 *
 	 * @remarks
 	 * **Two-way for matching rows.** An older program may migrate the shared
@@ -291,7 +293,7 @@ export interface StoreOptions {
 	 * SQLite only: on any other dialect the option fails the layer with a
 	 * `StoreError` (`operation: "setup"`).
 	 */
-	readonly mirrorMigratorLedger?: true | { readonly table?: string };
+	readonly mirrorMigratorLedger?: boolean | { readonly table?: string };
 }
 
 /**
@@ -366,6 +368,19 @@ export interface StoreSqliteOptions extends StoreOptions {
 
 const LEDGER_TABLE = "_store_migrations";
 
+/**
+ * The foreign ledger table a ledger option names, or `undefined` when it is
+ * off. `false` and `undefined` are both off — options assembled from data or
+ * plain JavaScript can carry an explicit `false`, which must never read as
+ * "on, default table".
+ */
+const ledgerTable = (option: boolean | { readonly table?: string } | undefined): string | undefined =>
+	option === undefined || option === false
+		? undefined
+		: option === true
+			? FOREIGN_LEDGER_TABLE
+			: (option.table ?? FOREIGN_LEDGER_TABLE);
+
 /** Store's own bookkeeping beside the ledger; holds the adoption marker. */
 const META_TABLE = "_store_meta";
 
@@ -412,11 +427,9 @@ const make = (
 		const sql = yield* SqlClient.SqlClient;
 
 		yield* ensureLedger(sql, LEDGER_TABLE).pipe(Effect.mapError(materialize("setup")));
-		if (options.adoptMigratorLedger !== undefined) {
-			const foreign =
-				options.adoptMigratorLedger === true
-					? FOREIGN_LEDGER_TABLE
-					: (options.adoptMigratorLedger.table ?? FOREIGN_LEDGER_TABLE);
+		const adoptFrom = ledgerTable(options.adoptMigratorLedger);
+		if (adoptFrom !== undefined) {
+			const foreign = adoptFrom;
 			const adopted = yield* adoptForeignLedger(sql, LEDGER_TABLE, META_TABLE, foreign, options.migrations).pipe(
 				Effect.mapError(materializeAdopt),
 				Effect.withSpan("Store.adoptMigratorLedger"),
@@ -431,19 +444,11 @@ const make = (
 				);
 			}
 		}
-		const mirror =
-			options.mirrorMigratorLedger === undefined
-				? undefined
-				: options.mirrorMigratorLedger === true
-					? FOREIGN_LEDGER_TABLE
-					: (options.mirrorMigratorLedger.table ?? FOREIGN_LEDGER_TABLE);
+		const mirror = ledgerTable(options.mirrorMigratorLedger);
 		// Rollback history is kept whatever the options — a Store opened without
 		// the mirror may roll back a database another opening mirrors — and it
 		// snapshots every foreign ledger this database could later import from.
-		const adoptTable =
-			options.adoptMigratorLedger === undefined || options.adoptMigratorLedger === true
-				? FOREIGN_LEDGER_TABLE
-				: (options.adoptMigratorLedger.table ?? FOREIGN_LEDGER_TABLE);
+		const adoptTable = adoptFrom ?? FOREIGN_LEDGER_TABLE;
 		const history: RollbackHistory = {
 			meta: META_TABLE,
 			foreignTables: [...new Set([FOREIGN_LEDGER_TABLE, adoptTable, ...(mirror === undefined ? [] : [mirror])])],
