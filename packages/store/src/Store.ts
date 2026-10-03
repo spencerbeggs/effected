@@ -284,21 +284,26 @@ export interface StoreSqliteOptions extends StoreOptions {
 	/**
 	 * Run once against the freshly opened connection, before the ledger is
 	 * ensured, before adoption and before any migration — and outside any
-	 * transaction. For per-connection settings `client` cannot carry, chiefly
-	 * `PRAGMA foreign_keys = ON`, which SQLite ignores inside a transaction
-	 * and which therefore cannot live in a migration.
+	 * transaction. For per-connection settings `client` cannot carry, such as
+	 * `PRAGMA synchronous` (FULL by default) or `cache_size` — settings that
+	 * a migration cannot hold, since a migration runs once per database, not
+	 * once per connection.
 	 *
 	 * @remarks
 	 * The SQLite driver opens one connection per layer build, so once per
 	 * build is once per connection. A failure fails the layer as a
 	 * `StoreError` with `operation: "setup"`.
 	 *
+	 * Foreign keys need no hook: `node:sqlite` opens every connection with
+	 * `foreign_keys` on, and the driver keeps it.
+	 *
 	 * @example
 	 * ```ts
 	 * const StoreLive = Store.layerSqlite({
 	 * 	filename: "sessions.db",
 	 * 	migrations,
-	 * 	onConnect: (sql) => sql`PRAGMA foreign_keys = ON`,
+	 * 	// FULL (2) by default; NORMAL is the usual choice under WAL.
+	 * 	onConnect: (sql) => sql`PRAGMA synchronous = NORMAL`,
 	 * });
 	 * ```
 	 */
