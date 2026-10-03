@@ -35,7 +35,7 @@
 		"@effected/github-references": "workspace:^",
 		"@effected/semver": "workspace:^",
 		"@octokit/core": "^7.0.6",
-		"@octokit/plugin-paginate-rest": "^15.0.0",
+		"@octokit/plugin-paginate-rest": "^16.0.0",
 		"@octokit/types": "^18.0.0",
 		"blakejs": "1.2.1",
 		"tweetnacl": "1.0.3",
