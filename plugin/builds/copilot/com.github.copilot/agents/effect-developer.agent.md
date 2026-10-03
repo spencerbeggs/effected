@@ -7,24 +7,8 @@ tools:
   - edit
   - search
   - todo
-  - ToolSearch
-  - SendMessage
-  - ReportFindings
-  - TaskCreate
-  - TaskUpdate
-  - TaskList
-  - TaskGet
   - execute
   - web
-  - mcp__plugin_vitest-agent_mcp__run_tests
-  - mcp__plugin_vitest-agent_mcp__test_errors
-  - mcp__plugin_vitest-agent_mcp__test_history
-  - mcp__plugin_vitest-agent_mcp__test_coverage
-  - mcp__plugin_vitest-agent_mcp__file_coverage
-  - mcp__plugin_vitest-agent_mcp__triage_brief
-  - mcp__plugin_silk_savvy-mcp__biome_check
-  - mcp__plugin_silk_savvy-mcp__turbo_inspect
-  - mcp__plugin_silk_savvy-mcp__workspace_info
 ---
 
 # Effect v4 developer
