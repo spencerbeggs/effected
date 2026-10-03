@@ -233,7 +233,11 @@ export class Select {
 	 * Draw the select: the message, the list (the highlighted row in the accent token with the arrow glyph, disabled
 	 * rows muted, and at colour `none` ending in ` (disabled)` instead, every row cut to the width with the glyph set's
 	 * ellipsis), the highlighted choice's detail, and the
-	 * key help. Enter calls `onSubmit` with the value; `q` cancels the screen with `"escape"`.
+	 * key help.
+	 *
+	 * @remarks
+	 * A choice's `detail` is drawn only while that choice is highlighted, as one muted line under the list, so the others'
+	 * details are not on screen until the cursor reaches them. Enter calls `onSubmit` with the value; `q` cancels the screen with `"escape"`.
 	 *
 	 * Single-shot: the choices and the starting choice are read once, when the view mounts, and later changes to them
 	 * are ignored; after a submit it stays as it is. Render a new view (a new screen) to ask again.

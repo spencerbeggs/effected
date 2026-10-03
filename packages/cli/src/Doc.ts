@@ -690,6 +690,11 @@ export class Doc {
 	/**
 	 * Children under an optional title.
 	 *
+	 * @remarks
+	 * The children are separated by blank lines (unless the document is compact); a title sits directly above the first.
+	 * `Doc.section(undefined, blocks)` is the way to space a document's top-level blocks, which are otherwise joined with
+	 * no blank line.
+	 *
 	 * @param title - the title, or `undefined` for none
 	 * @param children - the blocks
 	 */
@@ -936,6 +941,10 @@ export class Doc {
 	 *
 	 * An agent is never written an escape of any kind, even with an explicit `format: "ansi"`: its context is
 	 * colourless and its links are off. A document that renders to nothing prints nothing.
+	 *
+	 * The whole document is written as one `Console.log` (or `Console.error`) call, with its line breaks embedded, so a
+	 * captured `Console` holds one entry per document, not one per line. Top-level blocks are joined with no blank
+	 * line between them; wrap them in `Doc.section(undefined, [...])` to space them.
 	 *
 	 * `CurrentRuntimeEnv` is read if the environment has one and is not required: a `ci` audience prints
 	 * GitHub's log format only when it says GitHub Actions, and plain text otherwise, including when it is

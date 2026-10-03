@@ -245,6 +245,22 @@ it.effect("Esc on the first screen cancels, and the second never mounts", () =>
 - **`stdout` and `stderr`** are what the program wrote through `Console` (`log`, `info` and `debug` to stdout; `error`, `warn` and `trace` to stderr), one line per call.
 - **`transcript` and `written`** are the terminal itself: what the screens and any live view wrote to `UiStreams`, stdout and stderr merged in the order written. **`stdoutWritten` and `stderrWritten`** are each stream alone, as raw bytes: assert on them to catch a line on the wrong stream, which the merged view cannot show. **`stdoutTranscript` and `stderrTranscript`** are those same streams read as `transcript` reads the terminal (erases applied, escapes stripped): assert text per stream on them, since raw bytes split a painted line (`Dry run` from `0/2 repos`) wherever the paint breaks, and a cleared frame is absent from them but present in the raw bytes. A handler that runs `CliUi.live` and reports through `handle.logConsole` puts those lines here (a live view in a session always renders on the production path), never in `stdout`/`stderr`, so assert on `transcript` that they landed above the frame: a test on `stdout` alone passes even when the lines are lost.
 - **Provide `session.layer` closer to the program than any presentation layer whose values you want it to replace.** Its type names only `CliTheme`: `UiStreams`, `CliInteractive` and `Console` are references with defaults, so a session provided where it is shadowed fails quietly (real streams, not interactive), not with a type error. Under `CliRuntime.main` with `env`, `CliEnv.layer` deciding the theme and interactivity is the intended production test.
+- **With `CliEnv.layerTest`, provide `session.layer` inside it.** `layerTest` sets `CliInteractive` from `tty` (false by default) and `session.layer` sets it from the session's `interactive` (true), so whichever is closer to the program wins; with `layerTest` inner, no screen mounts. `layerTest` still supplies the `Audience`, `TerminalEnv` and `CliLinks` a handler reads:
+
+~~~ts
+program.pipe(Effect.provide(session.layer), Effect.provide(CliEnv.layerTest()))
+~~~
+
+- **A session is 80 columns wide unless you say otherwise, and widgets cut every row to fit.** A `contains` on a long path or label fails with no hint that the text was truncated: pass `CliUiTest.session({ columns: 120 })`.
+- **`CliUi.prompt` without `otherwise` keeps `NotInteractive` in its error type**, even in a handler that already checked `CliInteractive`: the type cannot know. Map it to a usage error, which `CliRuntime.main` exits `64` (or `usageExitCode`), and assert that in a non-interactive test (`interactive: false`, `mounts` is `0`):
+
+~~~ts
+CliUi.prompt(screen).pipe(
+  Effect.catchTag("NotInteractive", () => Effect.fail(new CliError.UserError({ cause: "pass --name; no terminal to ask" }))),
+)
+~~~
+
+- **`Doc.print` writes the whole document in one `Console.log`**, so a captured `stdout` has one entry holding embedded newlines, not one entry per line. Split it (`stdout.join("\n").split("\n")`) or assert with `include`.
 - **`clear: true` needs `session({ renderPath: "production" })`.** By default screens render in Ink's debug mode, where `clear` does nothing; on the production path a cleared screen leaves nothing in `transcript`, while `written` still shows it was drawn:
 
 ~~~ts

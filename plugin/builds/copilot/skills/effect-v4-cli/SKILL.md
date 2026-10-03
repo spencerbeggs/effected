@@ -85,6 +85,8 @@ NodeRuntime.runMain(
 - `Flag.Boolean` has no implicit `false`; omission is `MissingOption` — see `core-framework.md`.
 - `CliRuntime.main` without `env` builds no environment: `CliInteractive` stays `false` and nothing ever prompts — see `presentation.md`.
 - `CliAudience.provide` alone misses fallback prompts and the failure report; use `CliAudience.run` — see `presentation.md`.
+- `CliUi.prompt` without `otherwise` keeps `NotInteractive` in its error type; a `CliUiTest.session` is 80 columns and truncates rows; `session.layer` goes inside `CliEnv.layerTest` — see `prompts-and-screens.md`, `testing-a-cli.md`.
+- Top-level `Doc` blocks print with no blank line between them; wrap in `Doc.section(undefined, [...])` — see `presentation.md`.
 - `FORCE_COLOR` beats `NO_COLOR`, and a terminal with no `TERM`/`COLORTERM` gets no colour — see `presentation.md`.
 - `TERM=dumb` is not interactive: it gets what a pipe gets — see `presentation.md`.
 - An agent audience never gets an escape, even from an explicit `Render.ansi` — see `presentation.md`.

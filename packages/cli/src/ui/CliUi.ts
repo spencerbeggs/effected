@@ -419,6 +419,10 @@ export class CliUi {
 	 * naming the peers, never a silent `otherwise`. Screens in sequence make a wizard: discover the defaults first,
 	 * pass each as an `otherwise`, and a non-interactive run returns exactly them.
 	 *
+	 * Without `otherwise`, `NotInteractive` stays in the error type even after the caller checked `CliInteractive`, since
+	 * the type cannot know. Catch the tag and fail with `CliError.UserError` to exit as a usage error (`64` under
+	 * `CliRuntime.main`).
+	 *
 	 * As with `CliUi.run`, do not log while the screen is mounted: a line written to the terminal from elsewhere tears
 	 * the frame.
 	 *

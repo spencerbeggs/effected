@@ -194,6 +194,8 @@ Most widgets are a pure `init`/`step` reducer, a `keys` table, a `View` and a re
 
 Behaviour that surprises a first screen:
 
+- **`Select` draws `detail` only for the highlighted choice** (one muted line under the list), so a test sees each choice's detail only after moving the cursor onto it.
+- **`CliUi.prompt` without `otherwise` fails `NotInteractive`, and that stays in the error type** even after you gated on `CliInteractive`. Give every prompt an `otherwise`, or catch the tag and fail with `CliError.UserError` so the run exits as a usage error (`64`).
 - **`q` cancels `Select`, `MultiSelect` and `Confirm`** with `"escape"`, as Esc does; Ctrl-C cancels with `"interrupt"`. `TextInput` has no `q` binding, since `q` is text.
 - **A screen with nothing to choose dies as a defect**, not a typed failure: `Select.screen` with no enabled choice, a `Confirm` toggle key or a `MultiSelect` item key that repeats, and a `Viewport` item key that repeats.
 - **`CliUi.prompt` takes one screen's answer**, so a wizard is several `prompt` calls in a handler (or several `fallback`s on flags), each with its own `otherwise`.
