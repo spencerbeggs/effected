@@ -98,9 +98,10 @@ export interface Counter {
 	/** A stable identifier, for a caller's total rule. */
 	readonly key: string;
 	/**
-	 * What the counter is called when shown: one label, or a singular and a plural form chosen by `n` (`one` when `n` is
-	 * exactly 1, `other` for any other count, 0 included). A `CountsTable` heads its column with `other`, since the column
-	 * holds every row's count.
+	 * What the counter is called when shown: one label, or a singular and a plural form, `one` for a count of exactly 1
+	 * and `other` for any other, 0 included. The count is the counter's own `n`, except in a share headline
+	 * (`1/3 repos`), which reads by the total. A `CountsTable` heads its column with `other`, since the column holds
+	 * every row's count.
 	 */
 	readonly label: string | { readonly one: string; readonly other: string };
 	/** The count. */
@@ -706,8 +707,10 @@ export class Doc {
 	 * @remarks
 	 * A name the vocabulary does not have is a compile error.
 	 *
-	 * The label is one string, or `{ one, other }` to pluralise by count: `one` is shown when `n` is exactly 1 and `other`
-	 * for every other count, 0 included, in every layout and in the headline's share (`1/3 change`, `2/3 changes`).
+	 * The label is one string, or `{ one, other }` to pluralise by count: `one` when the count is exactly 1 and `other`
+	 * for every other count, 0 included. A count standing alone reads by its own `n` (`1 change`, `2 changes`); a
+	 * headline shown as a share of the total reads by that total, the noun it counts (`1/1 repo`, `1/3 repos`,
+	 * `2/3 repos`).
 	 *
 	 * @param vocab - the vocabulary the status belongs to
 	 * @param name - a status name in it

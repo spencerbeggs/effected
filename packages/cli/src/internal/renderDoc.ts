@@ -285,12 +285,13 @@ const countsLayout = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts
 	const duration = block.durationMs === undefined ? "" : Fmt.duration(block.durationMs);
 	const suffix = block.suffix === undefined ? [] : toned(oneLine(inline(walk, block.suffix)), "muted");
 	// A counter's label is one line, like the block's own label: a line break in it would start a line of its own.
-	const nameOf = (counter: (typeof visible)[number]): string =>
-		sanitize(counterLabel(counter)).replace(/\r\n|\r|\n/g, " ");
-	// The first counter is the headline: it shows its share of the total.
+	const nameOf = (counter: (typeof visible)[number], count?: number): string =>
+		sanitize(counterLabel(counter, count)).replace(/\r\n|\r|\n/g, " ");
+	// The first counter is the headline: it shows its share of the total, and its label reads by that total
+	// ("1/3 repos", not "1/3 repo"), as the noun counts the denominator.
 	const counters = visible.map((counter, index): Line => {
-		const name = nameOf(counter);
 		const share = index === 0 && block.share !== false;
+		const name = nameOf(counter, share ? total : counter.n);
 		return [span(share ? `${counter.n}/${total} ${name}` : `${counter.n} ${name}`, counter.status.def.token)];
 	});
 
