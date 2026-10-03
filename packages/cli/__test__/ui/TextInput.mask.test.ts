@@ -108,38 +108,79 @@ describe("TextInput mask", () => {
 		}),
 	);
 
-	it.effect("a predicate masks only while the value looks like a secret, toggling as it is typed", () =>
+	/** A giveaway anywhere in the value, as the TSDoc advises: never a prefix match. */
+	const looksLikeToken = (value: string): boolean => /gh[pousr]_|github_pat_/.test(value);
+
+	it.effect("a predicate leaves an address readable while it is typed", () =>
 		Effect.gen(function* () {
 			const seen: Array<string> = [];
-			const looksLikeToken = (value: string): boolean => {
-				seen.push(value);
-				return /^gh[pousr]_/.test(value);
-			};
-			const handle = yield* CliUiTest.render(TextInput.screen({ message: "Token reference?", mask: looksLikeToken }), {
+			const handle = yield* CliUiTest.render(
+				TextInput.screen({
+					message: "Token reference?",
+					mask: (value) => {
+						seen.push(value);
+						return looksLikeToken(value);
+					},
+				}),
+				{ color: "none" },
+			);
+			yield* handle.type("op://v/i");
+			assert.strictEqual(valueLine(yield* handle.plainFrame), "op://v/i▏");
+			yield* handle.press("enter");
+			assert.strictEqual(yield* handle.result, "op://v/i");
+			assert.include(seen, "op://v/i", "the predicate is asked with the real value");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("once it answers true the mask latches: home and delete never redraw the rest of a token in clear", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(TextInput.screen({ message: "M", mask: looksLikeToken }), {
 				color: "none",
 			});
-			yield* handle.type("op://v/i");
-			assert.strictEqual(valueLine(yield* handle.plainFrame), "op://v/i▏", "an address stays readable");
-			yield* handle.press("home");
-			for (let i = 0; i < 8; i++) yield* handle.press("delete");
-			yield* handle.type("ghp_");
-			assert.strictEqual(valueLine(yield* handle.plainFrame), "••••▏", "masked the moment it looks like a token");
-			yield* handle.chunk({ char: "abc" });
-			assert.strictEqual(valueLine(yield* handle.plainFrame), "•••••••▏");
-			yield* handle.press("backspace", "backspace", "backspace", "backspace");
-			assert.strictEqual(valueLine(yield* handle.plainFrame), "ghp▏", "unmasked again once it no longer does");
+			yield* handle.chunk({ char: "ghp_SECRET123" });
+			yield* handle.press("home", "delete");
+			assert.strictEqual(valueLine(yield* handle.plainFrame), "▏••••••••••••", "hp_SECRET123 stays masked");
+			for (const frame of yield* handle.frames) assert.notInclude(frame, "SECRET");
 			yield* handle.press("enter");
-			assert.strictEqual(yield* handle.result, "ghp", "the result is the real value");
-			assert.include(seen, "ghp_abc", "the predicate is asked with the real value");
+			assert.strictEqual(yield* handle.result, "hp_SECRET123", "the result is the real value");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a token pasted after an address is masked: the giveaway matches anywhere, not as a prefix", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(TextInput.screen({ message: "M", mask: looksLikeToken }), {
+				color: "none",
+			});
+			yield* handle.type("op://v/");
+			assert.strictEqual(valueLine(yield* handle.plainFrame), "op://v/▏", "control: the address was readable");
+			yield* handle.chunk({ char: "ghp_SECRET123" });
+			assert.strictEqual(valueLine(yield* handle.plainFrame), `${"•".repeat(20)}▏`);
+			const frames = yield* handle.frames;
+			assert.isFalse(
+				frames.some((frame) => frame.includes("SECRET")),
+				"no frame ever drew the token",
+			);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("clearing the value unlatches the mask", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(TextInput.screen({ message: "M", mask: looksLikeToken }), {
+				color: "none",
+			});
+			yield* handle.chunk({ char: "ghp_x" });
+			assert.strictEqual(valueLine(yield* handle.plainFrame), "•••••▏");
+			for (let i = 0; i < 5; i++) yield* handle.press("backspace");
+			yield* handle.type("op://a");
+			assert.strictEqual(valueLine(yield* handle.plainFrame), "op://a▏", "readable again after the clear");
 		}).pipe(Effect.scoped),
 	);
 
 	it.effect("a pasted token is masked from its first frame by a predicate", () =>
 		Effect.gen(function* () {
-			const handle = yield* CliUiTest.render(
-				TextInput.screen({ message: "M", mask: (value) => value.startsWith("ghp_") }),
-				{ color: "none" },
-			);
+			const handle = yield* CliUiTest.render(TextInput.screen({ message: "M", mask: looksLikeToken }), {
+				color: "none",
+			});
 			yield* handle.chunk({ char: "ghp_secret123" });
 			for (const frame of yield* handle.frames) assert.notInclude(frame, "ghp_");
 		}).pipe(Effect.scoped),

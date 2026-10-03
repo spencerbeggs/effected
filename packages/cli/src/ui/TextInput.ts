@@ -55,10 +55,13 @@ export interface TextInputScreenOptions {
 	 * Draw the value masked, so a secret typed or pasted into it is never drawn: one mask per grapheme, so an emoji, a
 	 * flag or a letter with a combining accent is one mask, not one per code unit. `true` masks with `•` (`*` under ASCII
 	 * glyphs); a string masks with that string, its controls removed. A predicate, `(value) => boolean`, is asked with
-	 * the real value on every render and masks with `•` while it answers `true`: a field that holds an address (an
-	 * `op://` reference) stays readable while typed, and hides a value the moment it looks like a token. The frames drawn
-	 * before it answered `true` showed the text typed so far, so match on the shortest prefix that gives a secret away
-	 * (`ghp_`), and a paste, which arrives whole, is masked from its first frame. Unmasked by default.
+	 * the real value and masks with `•` from the first render it answers `true`, and then LATCHES: the value stays masked
+	 * through every edit after (deleting a pasted token's first character never redraws the rest in clear) until the
+	 * value is cleared to empty. So a field that holds an address (an `op://` reference) stays readable while typed and
+	 * hides a value the moment it looks like a token. Match a giveaway ANYWHERE in the value, never as a prefix:
+	 * `(value) => /gh[pousr]_|github_pat_/.test(value)` masks `op://v/` followed by a pasted token, which a prefix
+	 * match never would. Frames drawn before it first answered `true` showed the text typed so far; a paste arrives
+	 * whole, so a pasted token is masked from its first frame. Unmasked by default.
 	 *
 	 * @remarks
 	 * Only the drawing changes: `validate` and the resolved value get the real text, the cursor moves through it as
@@ -347,8 +350,12 @@ export class TextInput {
 			}),
 		);
 		const cursorGlyph = glyphs.kind === "unicode" ? "▏" : "|";
-		// A predicate is asked on every render, so a field masks only while its value looks like a secret.
-		const masking = typeof props.mask === "function" ? props.mask(state.value) : props.mask;
+		// A predicate latches: once it has answered true the value stays masked, whatever is edited after (deleting the
+		// first character of a pasted token must not redraw the rest of it in clear), until the value is cleared.
+		const latched = react.useRef(false);
+		if (state.value === "") latched.current = false;
+		else if (typeof props.mask === "function" && !latched.current && props.mask(state.value)) latched.current = true;
+		const masking = typeof props.mask === "function" ? latched.current : props.mask;
 		const mask =
 			masking === undefined || masking === false
 				? undefined
