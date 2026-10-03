@@ -1,19 +1,19 @@
 ---
 name: constructs
-description: Use when maintaining the generated construct index at plugins/claude-code/skills/effected-packages/references/constructs/ — regenerating it after a package's exports change, authoring intent annotations for new value-kind exports, or repairing a construct-index.bats failure (drift, stale annotation, missing intent). The index is generated; never hand-edit it.
+description: Use when maintaining the generated construct index at plugin/skills/effected-packages/references/constructs/ — regenerating it after a package's exports change, authoring intent annotations for new value-kind exports, or repairing a construct-index.bats failure (drift, stale annotation, missing intent). The index is generated; never hand-edit it.
 ---
 
 # Maintaining the construct index
 
 The construct index (effected#188) is one generated markdown table per kit
-package under `plugins/claude-code/skills/effected-packages/references/constructs/`,
-rendered by `plugins/claude-code/scripts/generate-constructs.mts` from each package's
+package under `plugin/skills/effected-packages/references/constructs/`,
+rendered by `plugin/scripts/generate-constructs.mts` from each package's
 build-emitted doc model (`packages/<dir>/dist/prod/npm/meta/<dir>.api.json`)
-joined with `plugins/claude-code/scripts/construct-annotations.json`. The generated files
+joined with `plugin/scripts/construct-annotations.json`. The generated files
 are never hand-edited — every change flows through the annotations file or the
 source itself, then regeneration.
 
-`plugins/claude-code/__test__/construct-index.bats` enforces three things: the committed
+`plugin/__test__/construct-index.bats` enforces three things: the committed
 files match a fresh regeneration, no annotation names a construct that no
 longer exists, and every value-kind export (Class / Variable / Function /
 Enum) carries an intent annotation. Interfaces and type aliases ride on their
@@ -26,20 +26,23 @@ TSDoc summary; annotating them is optional.
    with exit 2 and a `build first:` message; a model older than any file in
    its package's `src/` fails with exit 3 and a `stale doc model:` message
    naming the package, both timestamps and the rebuild command.
-2. `node plugins/claude-code/scripts/generate-constructs.mts check --require-intent --only <pkg,...>` —
+2. `node plugin/scripts/generate-constructs.mts check --require-intent --only <pkg,...>` —
    lists stale annotations and unannotated value constructs for those
    packages (drop `--only` to check the whole kit; every model must then be
    fresh).
-3. Author what it lists in `plugins/claude-code/scripts/construct-annotations.json`
+3. Author what it lists in `plugin/scripts/construct-annotations.json`
    (shape below). Read the construct's source first — never write intent
    keywords from the name alone.
-4. `node plugins/claude-code/scripts/generate-constructs.mts generate --only <pkg,...>` —
+4. `node plugin/scripts/generate-constructs.mts generate --only <pkg,...>` —
    rewrites only those packages' committed tables, leaving every other table
    byte-identical. Name every package whose table the change touches,
    including the other side of an `implements` link. A bare `generate` reads
    every package's model, so a stale local build of an unrelated package
    would otherwise rewrite its rows (effected#839).
-5. `bats plugins/claude-code/__test__/construct-index.bats` — must be green before commit.
+5. `pnpm build --filter @effected/ai-plugin` — copies the regenerated tables
+   into both committed builds under `plugin/builds/`. The pre-push gate
+   blocks a push whose builds lag the source.
+6. `bats plugin/__test__/construct-index.bats` — must be green before commit.
 
 ## Annotations file shape
 

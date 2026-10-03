@@ -1,0 +1,1092 @@
+{
+	"$comment": "Skill source anchors pinned to their symbols. Checked by plugin/__test__/skill-anchors.bats; see the header of helpers/skill-anchors.mjs for how to add an entry.",
+	"roots": {
+		"effect": ".repos/effect/packages/effect/src",
+		"vitest": ".repos/effect/packages/vitest/src",
+		"repo": "."
+	},
+	"scope": [
+		"effect-v4-testing",
+		"effect-v4-mcp",
+		"effect-v4-cli",
+		"design-patterns",
+		"effected-packages/references/cli.md",
+		"effected-packages/references/mcp.md",
+		"effected-packages/references/engine.md",
+		"effected-packages/references/workspaces.md",
+		"effect-v4-source-lookup"
+	],
+	"anchors": [
+		{
+			"file": "effect-v4-testing/SKILL.md",
+			"anchor": "packages/vitest/src/internal/internal.ts:59",
+			"source": "vitest:internal/internal.ts",
+			"symbols": {
+				"59": "const TestEnv = Layer.mergeAll(TestConsole.layer, TestClock.layer())"
+			}
+		},
+		{
+			"file": "effect-v4-testing/SKILL.md",
+			"anchor": "internal.ts:386",
+			"source": "vitest:internal/internal.ts",
+			"symbols": {
+				"386": "effect: makeTester<Scope.Scope, ExtraContext>(flow(Effect.scoped, Effect.provide(TestEnv))"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "internal/internal.ts:386",
+			"source": "vitest:internal/internal.ts",
+			"symbols": {
+				"386": "effect: makeTester<Scope.Scope, ExtraContext>(flow(Effect.scoped"
+			}
+		},
+		{
+			"file": "effect-v4-testing/SKILL.md",
+			"anchor": "packages/vitest/src/index.ts:65-66",
+			"source": "vitest:index.ts",
+			"symbols": {
+				"65": "skipIf:",
+				"66": "runIf:"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "packages/vitest/src/internal/internal.ts:268,270,272",
+			"source": "vitest:internal/internal.ts",
+			"symbols": {
+				"268": "Layer.makeMemoMap",
+				"270": "Layer.buildWithMemoMap",
+				"272": "Effect.cached"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "packages/vitest/src/index.ts:120-135",
+			"source": "vitest:index.ts",
+			"symbols": {
+				"120": "export interface MethodsNonLive<R = never, ExtraContext = {}>"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "`:249-260`",
+			"source": "vitest:index.ts",
+			"symbols": {
+				"249": "export const layer: <R, E>(",
+				"260": "= internal.layer"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "internal.ts:303-304",
+			"source": "vitest:internal/internal.ts",
+			"symbols": {
+				"303": "memoMap: Layer.forkMemoMapUnsafe(memoMap)",
+				"304": "excludeTestServices"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "packages/vitest/src/internal/internal.ts:89-96",
+			"source": "vitest:internal/internal.ts",
+			"symbols": {
+				"89": "const compileArbitraryInput",
+				"96": "compileArbitraryInput(input)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "`:120`",
+			"source": "vitest:internal/internal.ts",
+			"symbols": {
+				"120": "Arbitrary.checkEffect("
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "internal.ts:92",
+			"source": "vitest:internal/internal.ts",
+			"symbols": {
+				"92": "const makeArbitrary ="
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "packages/vitest/src/index.ts:112,165",
+			"source": "vitest:index.ts",
+			"symbols": {
+				"112": "arbitrary?: Arbitrary.CheckOptions",
+				"165": "arbitrary?: Arbitrary.CheckOptions"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "index.ts:121",
+			"source": "vitest:index.ts",
+			"symbols": {
+				"121": "readonly effect: Vitest.Tester<R | Scope.Scope, ExtraContext>"
+			}
+		},
+		{
+			"file": "effect-v4-testing/SKILL.md",
+			"anchor": "Path.ts:867",
+			"source": "effect:Path.ts",
+			"symbols": {
+				"867": "export const layer: Layer.Layer<Path>"
+			}
+		},
+		{
+			"file": "effect-v4-testing/SKILL.md",
+			"anchor": "FileSystem.ts:765",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"765": "export const layerNoop"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "Path.ts:867",
+			"source": "effect:Path.ts",
+			"symbols": {
+				"867": "export const layer: Layer.Layer<Path>"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "FileSystem.ts:765",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"765": "export const layerNoop"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "FileSystem.ts:765",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"765": "export const layerNoop"
+			}
+		},
+		{
+			"file": "effect-v4-testing/SKILL.md",
+			"anchor": "FileSystem.ts:636",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"636": "export const makeNoop"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "FileSystem.ts:636",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"636": "export const makeNoop"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "`:636`",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"636": "export const makeNoop"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "FileSystem.ts:575",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"575": "const notFound = "
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "`:657`",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"657": "exists() {"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "`:696`",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"696": "remove() {"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "`:663`",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"663": "makeDirectory() {"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "`:676`",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"676": "Effect.die(\"not implemented\")"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "`:511`",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"511": "new TextDecoder(encoding).decode(_)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "`:657`",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"657": "exists() {"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "`:696`",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"696": "remove() {"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "`:663`",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"663": "makeDirectory() {"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "`:676`",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"676": "Effect.die(\"not implemented\")"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "`:511`",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"511": "new TextDecoder(encoding).decode(_)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "FileSystem.ts:508",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"508": "readFileString: (path, encoding) =>"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "FileSystem.ts:508-519",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"508": "readFileString: (path, encoding) =>",
+				"519": "})),"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "Layer.ts:2065",
+			"source": "effect:Layer.ts",
+			"symbols": {
+				"2065": "export const updateService:"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "Layer.ts:2306",
+			"source": "effect:Layer.ts",
+			"symbols": {
+				"2306": "export const mock:"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/fault-injection.md",
+			"anchor": "Layer.ts:2065",
+			"source": "effect:Layer.ts",
+			"symbols": {
+				"2065": "export const updateService:"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/fault-injection.md",
+			"anchor": "Layer.ts:2306",
+			"source": "effect:Layer.ts",
+			"symbols": {
+				"2306": "export const mock:"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/fault-injection.md",
+			"anchor": "Layer.ts:2162",
+			"source": "effect:Layer.ts",
+			"symbols": {
+				"2162": "export const fresh = "
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/env-seam.md",
+			"anchor": "ConfigProvider.ts:342",
+			"source": "effect:ConfigProvider.ts",
+			"symbols": {
+				"342": "export const ConfigProvider: Context.Reference<ConfigProvider>"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/env-seam.md",
+			"anchor": "ConfigProvider.ts:926",
+			"source": "effect:ConfigProvider.ts",
+			"symbols": {
+				"926": "export function fromEnv("
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/env-seam.md",
+			"anchor": "ConfigProvider.ts:667",
+			"source": "effect:ConfigProvider.ts",
+			"symbols": {
+				"667": "export const layer = "
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "Arbitrary.ts:195",
+			"source": "effect:Arbitrary.ts",
+			"symbols": {
+				"195": "export interface CheckOptions"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "Arbitrary.ts:367",
+			"source": "effect:Arbitrary.ts",
+			"symbols": {
+				"367": "export function formatCheckFailure"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "internal/arbitrary/schema.ts:1080-1085",
+			"source": "effect:internal/arbitrary/schema.ts",
+			"symbols": {
+				"1080": "pattern?.minimumLength ?? 0, state.size)",
+				"1085": "Math.min(maximum, currentMaximum)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "`:1298-1299`",
+			"source": "effect:internal/arbitrary/schema.ts",
+			"symbols": {
+				"1298": "required + tail.length, limit)",
+				"1299": "Math.min(maximum, currentMaximum)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "runner.ts:472,615",
+			"source": "effect:internal/arbitrary/runner.ts",
+			"symbols": {
+				"472": "natural(options?.size ?? defaults?.size, 10, \"size\")",
+				"615": "natural(options?.size ?? defaults?.size, 10, \"size\")"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "internal/arbitrary/model.ts:629",
+			"source": "effect:internal/arbitrary/model.ts",
+			"symbols": {
+				"629": "{ minimum: -low, maximum: high }"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "`:570`",
+			"source": "effect:internal/arbitrary/model.ts",
+			"symbols": {
+				"570": "if (minimum === maximum) return () => minimum"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "internal/arbitrary/regexp.ts:344,350,832",
+			"source": "effect:internal/arbitrary/regexp.ts",
+			"symbols": {
+				"344": "if (next === \"=\" || next === \"!\") return undefined",
+				"350": "return undefined",
+				"832": "flags.includes(\"i\") || flags.includes(\"m\") || flags.includes(\"v\")"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "regexp.ts:835",
+			"source": "effect:internal/arbitrary/regexp.ts",
+			"symbols": {
+				"835": "const restricted = flags.includes(\"u\") ? parsed : restrictCharacterCodePoints(parsed, 0xffff)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "Schema.ts:6662",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"6662": "const canExport = /^[dg]*uy?$/.test(flags)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "schema.ts:1051-1052",
+			"source": "effect:internal/arbitrary/schema.ts",
+			"symbols": {
+				"1051": "Regexp.compile(candidate)",
+				"1052": "if (pattern !== undefined) patterns.push(pattern)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/testclock.md",
+			"anchor": "TestClock.ts:257",
+			"source": "effect:testing/TestClock.ts",
+			"symbols": {
+				"257": "let currentTimestamp: number = new Date(0).getTime()"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/testclock.md",
+			"anchor": "Clock.ts:189",
+			"source": "effect:Clock.ts",
+			"symbols": {
+				"189": "export const Clock: Context.Reference<Clock>"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/testclock.md",
+			"anchor": "TestClock.ts:436",
+			"source": "effect:testing/TestClock.ts",
+			"symbols": {
+				"436": "export const layer: "
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/testclock.md",
+			"anchor": "`:507`",
+			"source": "effect:testing/TestClock.ts",
+			"symbols": {
+				"507": "export const adjust = "
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/testclock.md",
+			"anchor": "TestClock.ts:471",
+			"source": "effect:testing/TestClock.ts",
+			"symbols": {
+				"471": "fiber.getRef(Clock.Clock) as TestClock"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/testclock.md",
+			"anchor": "TestClock.ts:254",
+			"source": "effect:testing/TestClock.ts",
+			"symbols": {
+				"254": "const liveClock = "
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/testclock.md",
+			"anchor": "`:278`",
+			"source": "effect:testing/TestClock.ts",
+			"symbols": {
+				"278": "function withLive<"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/test-console.md",
+			"anchor": "Console.ts:83",
+			"source": "effect:Console.ts",
+			"symbols": {
+				"83": "export const Console: Context.Reference<Console> = effect.ConsoleRef"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/test-console.md",
+			"anchor": "testing/TestConsole.ts:294",
+			"source": "effect:testing/TestConsole.ts",
+			"symbols": {
+				"294": "Layer.effect(Console.Console)(make)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/test-console.md",
+			"anchor": "Logger.ts:269",
+			"source": "effect:Logger.ts",
+			"symbols": {
+				"269": "options.fiber.getRef(effect.ConsoleRef)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/test-console.md",
+			"anchor": "`:309`",
+			"source": "effect:Logger.ts",
+			"symbols": {
+				"309": "options.fiber.getRef(effect.ConsoleRef)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/test-console.md",
+			"anchor": "`:363`",
+			"source": "effect:Logger.ts",
+			"symbols": {
+				"363": "options.fiber.getRef(effect.ConsoleRef)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/migrating-a-repo.md",
+			"anchor": "Console.ts:83",
+			"source": "effect:Console.ts",
+			"symbols": {
+				"83": "export const Console: Context.Reference<Console> = effect.ConsoleRef"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/migrating-a-repo.md",
+			"anchor": "testing/TestConsole.ts:294",
+			"source": "effect:testing/TestConsole.ts",
+			"symbols": {
+				"294": "Layer.effect(Console.Console)(make)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/migrating-a-repo.md",
+			"anchor": "Logger.ts:269",
+			"source": "effect:Logger.ts",
+			"symbols": {
+				"269": "options.fiber.getRef(effect.ConsoleRef)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/migrating-a-repo.md",
+			"anchor": "`:309`",
+			"source": "effect:Logger.ts",
+			"symbols": {
+				"309": "options.fiber.getRef(effect.ConsoleRef)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/migrating-a-repo.md",
+			"anchor": "`:363`",
+			"source": "effect:Logger.ts",
+			"symbols": {
+				"363": "options.fiber.getRef(effect.ConsoleRef)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "PubSub.ts:1332",
+			"source": "effect:PubSub.ts",
+			"symbols": {
+				"1332": "export const takeAll = "
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "PubSub.ts:1411",
+			"source": "effect:PubSub.ts",
+			"symbols": {
+				"1411": "export const takeUpTo:"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "PubSub.ts:1217",
+			"source": "effect:PubSub.ts",
+			"symbols": {
+				"1217": "export const subscribe = "
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "Effect.ts:8580",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"8580": "export const forkChild:"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "`:8623`",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"8623": "export const forkIn:"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "`:8666`",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"8666": "export const forkScoped:"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "`:8706`",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"8706": "export const forkDetach:"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "Stream.ts:1139",
+			"source": "effect:Stream.ts",
+			"symbols": {
+				"1139": "export const fromQueue = "
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "Pool.ts:1047",
+			"source": "effect:Pool.ts",
+			"symbols": {
+				"1047": "fiber.getRef(UnhandledLogLevel)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "packages/github-actions/__test__/results.ts:61-71",
+			"source": "repo:packages/github-actions/__test__/results.ts",
+			"symbols": {
+				"61": "const fetch: typeof globalThis.fetch"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "BlobStore.test.ts:212",
+			"source": "repo:packages/github-actions/__test__/BlobStore.test.ts",
+			"symbols": {
+				"212": "new Uint8Array(await new Response(init?.body).arrayBuffer())"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "packages/github-actions/__test__/ActionEnvironment.test.ts:277-303",
+			"source": "repo:packages/github-actions/__test__/ActionEnvironment.test.ts",
+			"symbols": {
+				"277": "const rightApplied = yield* Latch.make()"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "ActionLogger.test.ts:268-270",
+			"source": "repo:packages/github-actions/__test__/ActionLogger.test.ts",
+			"symbols": {
+				"268": "Latch.make()",
+				"270": "Latch.make()"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "packages/github-actions/__test__/DetachedProcess.test.ts:55-63",
+			"source": "repo:packages/github-actions/__test__/DetachedProcess.test.ts",
+			"symbols": {
+				"55": "const withKillSpy = "
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "packages/github-actions/__test__/Action.test.ts:44-54",
+			"source": "repo:packages/github-actions/__test__/Action.test.ts",
+			"symbols": {
+				"44": "const previousExit = process.exitCode"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/false-greens.md",
+			"anchor": "packages/github-actions/src/DetachedProcess.ts:320-326",
+			"source": "repo:packages/github-actions/src/DetachedProcess.ts",
+			"symbols": {
+				"320": "A `ChildProcess` with no `error` listener",
+				"326": "child.on(\"error\", () => {})"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/structural-checks.md",
+			"anchor": "packages/npm/__test__/reachability.test.ts:123-139",
+			"source": "repo:packages/npm/__test__/reachability.test.ts",
+			"symbols": {
+				"123": "it(\"index.ts exports the services by name\""
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/resources.md",
+			"anchor": "ai/McpServer.ts:2556-2576",
+			"source": "effect:ai/McpServer.ts",
+			"symbols": {
+				"2556": "const resolveResourceContent = (",
+				"2576": "}"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/resources.md",
+			"anchor": "ai/McpServer.ts:23",
+			"source": "effect:ai/McpServer.ts",
+			"symbols": {
+				"23": "import * as FindMyWay from \"../http/FindMyWay.ts\""
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/server-wiring.md",
+			"anchor": "Runtime.ts:207-214",
+			"source": "effect:Runtime.ts",
+			"symbols": {
+				"207": "const fiber = options?.disableErrorReporting === true"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/tools.md",
+			"anchor": "ai/McpServer.ts:1876-1889",
+			"source": "effect:ai/McpServer.ts",
+			"symbols": {
+				"1876": "const inputSchema = yield* Schema.decodeUnknownEffect(ToolJson)(",
+				"1889": "const mcpTool = new McpTool({"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/tools.md",
+			"anchor": "ai/Tool.ts:1785",
+			"source": "effect:ai/Tool.ts",
+			"symbols": {
+				"1785": "export class Title extends Context.Service<Title, string>()"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/tools.md",
+			"anchor": "`:1830`",
+			"source": "effect:ai/Tool.ts",
+			"symbols": {
+				"1830": "export const Readonly = Context.Reference<boolean>"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/tools.md",
+			"anchor": "`:1857`",
+			"source": "effect:ai/Tool.ts",
+			"symbols": {
+				"1857": "export const Destructive = Context.Reference<boolean>"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/tools.md",
+			"anchor": "`:1885`",
+			"source": "effect:ai/Tool.ts",
+			"symbols": {
+				"1885": "export const Idempotent = Context.Reference<boolean>"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/tools.md",
+			"anchor": "`:1913`",
+			"source": "effect:ai/Tool.ts",
+			"symbols": {
+				"1913": "export const OpenWorld = Context.Reference<boolean>"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/tools.md",
+			"anchor": "ai/McpServer.ts:1844-1847",
+			"source": "effect:ai/McpServer.ts",
+			"symbols": {
+				"1844": "const decodeOptions: SchemaAST.ParseOptions = {",
+				"1845": "onExcessProperty: strict ? \"error\" : \"ignore\""
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/tools.md",
+			"anchor": "ai/McpServer.ts:1910",
+			"source": "effect:ai/McpServer.ts",
+			"symbols": {
+				"1910": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/tools.md",
+			"anchor": "ai/McpServer.ts:1854-1858",
+			"source": "effect:ai/McpServer.ts",
+			"symbols": {
+				"1854": "const declaredFailureResult = (error: unknown) =>",
+				"1858": "new CallToolResult({ isError: true, content: toolResultContent(encoded) }))"
+			}
+		},
+		{
+			"file": "effected-packages/references/mcp.md",
+			"anchor": "McpServer.ts:1910",
+			"source": "effect:ai/McpServer.ts",
+			"symbols": {
+				"1910": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "cli/Flag.ts:60-449",
+			"source": "effect:cli/Flag.ts",
+			"symbols": {
+				"60": "export const String = (name: string): Flag<string>",
+				"449": "export const Never: Flag<never>"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "Argument.ts:62-308",
+			"source": "effect:cli/Argument.ts",
+			"symbols": {
+				"62": "export const String = (name: string): Argument<string>",
+				"308": "export const Never: Argument<never>"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "Prompt.ts:871-1425",
+			"source": "effect:cli/Prompt.ts",
+			"symbols": {
+				"871": "export const Confirm = ",
+				"1425": "export const Toggle = "
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "GlobalFlag.ts:112,131",
+			"source": "effect:cli/GlobalFlag.ts",
+			"symbols": {
+				"112": "export const Action = <A>(",
+				"131": "export const Setting = <const Id extends string>("
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "cli/Flag.ts:80",
+			"source": "effect:cli/Flag.ts",
+			"symbols": {
+				"80": "export const Boolean = (name: string): Flag<boolean>"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "`:72`",
+			"source": "effect:cli/Flag.ts",
+			"symbols": {
+				"72": "Omission fails unless the flag is made optional or given a fallback."
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "cli/Param.ts:2008",
+			"source": "effect:cli/Param.ts",
+			"symbols": {
+				"2008": "new CliError.MissingOption({ option: name })"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "effect/cli/Command.ts:405",
+			"source": "effect:cli/Command.ts",
+			"symbols": {
+				"405": "export type Environment = FileSystem.FileSystem | Path.Path | Terminal.Terminal | ChildProcessSpawner | Stdio.Stdio"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "Stdio.ts:152",
+			"source": "effect:Stdio.ts",
+			"symbols": {
+				"152": "export const layerTest = "
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "ChildProcess.ts:632,723,758,824,864",
+			"source": "effect:process/ChildProcess.ts",
+			"symbols": {
+				"632": "export const make:",
+				"723": "export const pipeTo:",
+				"758": "export const prefix:",
+				"824": "export const setCwd:",
+				"864": "export const setEnv:"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "ChildProcess.ts:426",
+			"source": "effect:process/ChildProcess.ts",
+			"symbols": {
+				"426": "readonly extendEnv?: boolean"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/core-framework.md",
+			"anchor": "ChildProcessSpawner.ts:262",
+			"source": "effect:process/ChildProcessSpawner.ts",
+			"symbols": {
+				"262": "export class ChildProcessSpawner extends Context.Service<ChildProcessSpawner"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/exit-codes.md",
+			"anchor": "CliError.ts:78",
+			"source": "effect:cli/CliError.ts",
+			"symbols": {
+				"78": "export type CliError ="
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/gotchas.md",
+			"anchor": "cli/Command.ts:1480",
+			"source": "effect:cli/Command.ts",
+			"symbols": {
+				"1480": "export const provide: {"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/gotchas.md",
+			"anchor": "cli/Primitive.ts:516",
+			"source": "effect:cli/Primitive.ts",
+			"symbols": {
+				"516": "if (mustExist === true && !exists) {"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/gotchas.md",
+			"anchor": "cli/Primitive.ts:507",
+			"source": "effect:cli/Primitive.ts",
+			"symbols": {
+				"507": "path.isAbsolute(value) ? value : path.resolve(value)"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/gotchas.md",
+			"anchor": "cli/GlobalFlag.ts:166,190,214,235,263",
+			"source": "effect:cli/GlobalFlag.ts",
+			"symbols": {
+				"166": "Flag.Boolean(\"help\")",
+				"190": "Flag.Boolean(\"version\")",
+				"214": "Flag.Boolean(\"wizard\")",
+				"235": "Flag.Literals(\"completions\"",
+				"263": "Setting(\"log-level\")"
+			}
+		},
+		{
+			"file": "effect-v4-cli/references/gotchas.md",
+			"anchor": "Command.ts:1894",
+			"source": "effect:cli/Command.ts",
+			"symbols": {
+				"1894": "yield* CliConfig.CliConfig"
+			}
+		},
+		{
+			"file": "effect-v4-source-lookup/SKILL.md",
+			"anchor": "index.ts:153",
+			"source": "effect:index.ts",
+			"symbols": {
+				"153": "export * as Differ from \"./Differ.ts\""
+			}
+		},
+		{
+			"file": "effect-v4-source-lookup/SKILL.md",
+			"anchor": "Schema.ts:4502",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"4502": "const ArraySchema: ArrayLambda = Struct_.lambda<ArrayLambda>("
+			}
+		},
+		{
+			"file": "effect-v4-source-lookup/SKILL.md",
+			"anchor": "Schema.ts:4505",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"4505": "export {"
+			}
+		},
+		{
+			"file": "effect-v4-source-lookup/SKILL.md",
+			"anchor": "Schema.ts:4522",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"4522": "ArraySchema as Array"
+			}
+		},
+		{
+			"file": "effect-v4-source-lookup/SKILL.md",
+			"anchor": "Equivalence.ts:620",
+			"source": "effect:Equivalence.ts",
+			"symbols": {
+				"620": "Array_ as Array"
+			}
+		},
+		{
+			"file": "effect-v4-source-lookup/SKILL.md",
+			"anchor": "Order.ts:580",
+			"source": "effect:Order.ts",
+			"symbols": {
+				"580": "Array_ as Array"
+			}
+		},
+		{
+			"file": "effect-v4-source-lookup/SKILL.md",
+			"anchor": "Schema.ts:3867",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"3867": "export function Record<"
+			}
+		},
+		{
+			"file": "effect-v4-source-lookup/SKILL.md",
+			"anchor": "Config.ts:1111",
+			"source": "effect:Config.ts",
+			"symbols": {
+				"1111": "export function Array<"
+			}
+		},
+		{
+			"file": "effect-v4-source-lookup/SKILL.md",
+			"anchor": "Context.ts:64",
+			"source": "effect:Context.ts",
+			"symbols": {
+				"64": "export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>"
+			}
+		},
+		{
+			"file": "effect-v4-source-lookup/SKILL.md",
+			"anchor": "$SRC/packages/effect/src/Context.ts:64",
+			"source": "effect:Context.ts",
+			"symbols": {
+				"64": "export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>"
+			}
+		},
+		{
+			"file": "effect-v4-source-lookup/SKILL.md",
+			"anchor": "$EFFECT_SRC/Context.ts:64",
+			"source": "effect:Context.ts",
+			"symbols": {
+				"64": "export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>"
+			}
+		}
+	],
+	"ignore": [
+		{
+			"file": "effect-v4-cli/references/recipes.md",
+			"anchor": "index.ts:1",
+			"reason": "example scanner output (`index.ts:1:14 process process`), not a source citation"
+		}
+	]
+}

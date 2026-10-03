@@ -1,0 +1,18 @@
+{
+	"metadata": { "toolPackage": "@microsoft/api-extractor" },
+	"name": "@effected/impl",
+	"members": [
+		{
+			"kind": "EntryPoint",
+			"name": "",
+			"members": [
+				{
+					"kind": "Class",
+					"name": "OidcTokenIssuer",
+					"releaseTag": "Public",
+					"docComment": "/**\n * Mints a runner OIDC token.\n *\n * @public\n */\n"
+				}
+			]
+		}
+	]
+}

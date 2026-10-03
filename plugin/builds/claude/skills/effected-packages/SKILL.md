@@ -85,8 +85,8 @@ with its kind, TSDoc purpose, and intent keywords ("validate NTIA compliance",
 Before concluding the kit lacks a capability, grep the index by intent words:
 
 ```bash
-grep -ri "table" plugins/claude-code/skills/effected-packages/references/constructs/
-grep -ri "oidc\|identity token" plugins/claude-code/skills/effected-packages/references/constructs/
+grep -ri "table" plugin/skills/effected-packages/references/constructs/
+grep -ri "oidc\|identity token" plugin/skills/effected-packages/references/constructs/
 ```
 
 (In a consumer repo the plugin's install path replaces `plugin/`.) Rows whose
@@ -240,7 +240,7 @@ teaches the carrier pattern shared between a CLI and an MCP front end that
 
 **Construct-level coverage — does every export get named somewhere in
 `skills/` — is checked, not maintained by hand here.**
-`plugins/claude-code/__test__/construct-index.bats` regenerates the construct index from
+`plugin/__test__/construct-index.bats` regenerates the construct index from
 every package's api-extractor doc model and fails on any drift from the
 committed tables under `references/constructs/`, and its strict mode requires
 an intent annotation for every value-kind export. The generated tables, not

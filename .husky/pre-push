@@ -14,4 +14,4 @@ in_ci() { [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; }
 # Not on pre-commit by design: verifying the tables needs the api-extractor doc
 # models, which are gitignored build output, so a cold check costs a build.
 # `git push --no-verify` still bypasses it, as with every husky hook.
-in_ci || bash "$ROOT/plugins/claude-code/scripts/check-construct-index.sh" || exit 1
+in_ci || bash "$ROOT/plugin/scripts/check-construct-index.sh" || exit 1
