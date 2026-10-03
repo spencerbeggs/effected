@@ -1,7 +1,7 @@
 import type { Block, Document, Inline, LinkTarget } from "../Doc.js";
 import { Fmt, sanitize } from "../Fmt.js";
 import type { RenderContext } from "../Render.js";
-import { countsTableOf, totalOf, visibleCountersOf } from "./counts.js";
+import { counterLabel, countsTableOf, totalOf, visibleCountersOf } from "./counts.js";
 import type { Span } from "./layout.js";
 import { flatten } from "./layout.js";
 import { isAllowedLinkUrl } from "./linkScheme.js";
@@ -257,13 +257,16 @@ const countsMd = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>
 	const qualifier = block.qualifier === undefined ? "" : inlineMd(block.qualifier, ctx, "line").trim();
 	const duration = block.durationMs === undefined ? "" : Fmt.duration(block.durationMs);
 	const suffix = block.suffix === undefined ? "" : inlineMd(block.suffix, ctx, "line").trim();
-	const name = (counter: (typeof visible)[number]): string =>
-		escapeText(sanitize(counter.label).replace(/\r\n|\r|\n/g, " "));
+	const name = (counter: (typeof visible)[number], count?: number): string =>
+		escapeText(sanitize(counterLabel(counter, count)).replace(/\r\n|\r|\n/g, " "));
+	// A share headline's label reads by the total it is a share of: "1/3 repos".
+	const headlineName = (counter: (typeof visible)[number], index: number): string =>
+		index === 0 && block.share !== false ? name(counter, total) : name(counter);
 
 	if (block.layout === "row") {
 		// Every column of the table is named: the counters by their labels and the duration as `duration`. The label,
 		// which names the row rather than a column, goes above it, and the qualifier and suffix below.
-		const header = [...visible.map(name), ...(duration === "" ? [] : ["duration"])];
+		const header = [...visible.map(headlineName), ...(duration === "" ? [] : ["duration"])];
 		const cells = [
 			...visible.map((counter, index) =>
 				index === 0 && block.share !== false ? `${counter.n}/${total}` : String(counter.n),
@@ -303,7 +306,9 @@ const countsMd = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>
 	}
 	const tally = visible
 		.map((counter, index) =>
-			index === 0 && block.share !== false ? `${counter.n}/${total} ${name(counter)}` : `${counter.n} ${name(counter)}`,
+			index === 0 && block.share !== false
+				? `${counter.n}/${total} ${headlineName(counter, index)}`
+				: `${counter.n} ${name(counter)}`,
 		)
 		.join(", ");
 	const head = [label === "" ? "" : `${label}:`, tally].filter((part) => part !== "").join(" ");

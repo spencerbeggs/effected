@@ -154,13 +154,15 @@ Findings come back as values — `ValidationFinding` pointers into the document 
 
 ## Exit codes
 
+A failure is reported on stderr in the `@effected/cli` standard form: a status line naming the error and its message, the message's further lines, and, when the failure happened inside one of the command's spans, an `in: …` line naming them (a missing config, raised before any span, prints none). It is painted at a terminal, plain for an agent, and written for the log under GitHub Actions. Read the exit code, not the line's shape.
+
 | code | meaning |
 | ---- | -------------------------------------------------------------------------- |
 | 0 | success, including drift under `onDrift: warn` |
 | 1 | drift under `onDrift: error` (one line per drifting schema: `$id`, change, current and next version), a gate failure, a missing or mis-identified frozen version, a merged catalog blocked by a URL or name advertised twice or an invalid slice, — for `check` — anything `build` would write or an output nothing claims (an orphaned catalog slice or merged catalog, or an orphaned document at a sibling shape of a derived path), or — for `validate` — a payload that does not conform to the resolved document (one finding per problem, pointer and keyword each) |
 | 2 | config not found, failed to load, failed `defineConfig` validation, a `catalogDir` that is a file or cannot be listed (checked before anything is written), or — for `validate` — a payload that cannot be read or parsed, or a `--schema`/`$schema` reference that is neither an existing file nor an identity any config schema derives, or names a document that cannot be read or parsed |
 | 3 | infrastructure failure (for `validate`, an engine mechanism failure — a document the instance engine cannot compile — included) |
-| 64 | usage error (for `validate`, a payload with no `$schema` and no `--schema` given, included) |
+| 64 | usage error (for `validate`, a payload with no `$schema` and no `--schema` given, included); `--wizard` is the kit's prompt-gated flag, so a run that is not interactive (a pipe, CI, an agent) leaves it out of help and rejects it at `64` (it was accepted at `0` before the command moved onto `CliRuntime.main`) |
 
 ## License
 

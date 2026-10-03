@@ -30,8 +30,8 @@ export interface CliMessageOptions {
  *
  * The text is whatever the caller supplies, so it is sanitised: escape sequences and control characters are removed
  * (a line break is kept as one, a tab becomes a space), as in a document. Under GitHub Actions, where
- * `CurrentRuntimeEnv` says so, a line the runner would read as a workflow command is neutralized as well. The glyphs
- * come from the vocabulary, which is configuration, and are not.
+ * `CurrentRuntimeEnv` says so, a line the runner would read as a workflow command is neutralized as well. The glyph
+ * comes from the vocabulary, sanitised too (`Status.glyph`), so a glyph built from data cannot inject an escape either.
  *
  * @public
  */
@@ -70,12 +70,8 @@ export class CliMessage {
 			const streamTheme = theme.forStream(stream);
 
 			let line: string;
-			if (audience.kind === "agent") {
-				const glyph = streamTheme.glyphs.kind === "ascii" ? def.ascii : def.glyph;
-				line = message === "" ? glyph : `${glyph} ${message}`;
-			} else {
-				line = streamTheme.status(vocab, name, message);
-			}
+			// An agent sees the theme at colour none: the same line, its glyph sanitised and unpainted.
+			line = CliTheme.forAudience(streamTheme, audience.kind).status(vocab, name, message);
 			// The runner reads a log line as a command; this is the one place a message's text reaches it.
 			if (yield* underGithubActions) line = CommandNeutralizer.text(line);
 

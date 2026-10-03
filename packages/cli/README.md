@@ -123,7 +123,7 @@ Colour follows Node's precedence, per stream: `FORCE_COLOR` decides first and be
 ## Output
 
 - **`CliMessage`**: `success`, `info`, `warning`, `failure` and `status(vocab, name, text)`. One themed line each, through `Console` rather than the logger, so no log level silences them. Warnings and failures go to stderr.
-- **`Doc` and `Render`**: a document IR (headings, paragraphs, lists, tables, trees, counts, count tables, collapsibles, callouts, code blocks, diffs, GitHub annotations) and pure `plain`, `ansi`, `markdown` and `githubLog` renderers. `Doc.print` picks the renderer for the audience. `Render.contextOf` renders outside Effect, for example markdown for a step summary.
+- **`Doc` and `Render`**: a document IR (headings, paragraphs, lists, tables, trees, counts, count tables, collapsibles, callouts, code blocks, diffs, GitHub annotations) and pure `plain`, `ansi`, `markdown` and `githubLog` renderers. `Doc.print` picks the renderer for the audience, and lays out at the terminal's width only when the stream is a terminal: piped output (`tool | grep`) never wraps. `Doc.line(content, { wrap: false })` keeps one line whole at any width, glyph and colour included. `Render.contextOf` renders outside Effect, for example markdown for a step summary.
 - **`CliTheme`, `Token`, `Status`, `Glyphs`**: semantic tokens (`success`, `failure`, `warning`, `info`, `error`, `muted`, `accent`, `emphasis`), an extendable status vocabulary with glyphs and ranks, and Unicode or ASCII glyph sets. Override tokens with `env.theme`.
 - **`CliLinks`**: file links that open in VS Code (`vscode://file/…`) or as `file://` URLs, as OSC 8 hyperlinks where the terminal renders them, never for an agent.
 - **`Fmt`**: `sanitize`, `width`, `truncate`, `duration`, `percent` and `plural`.
@@ -132,7 +132,7 @@ Every string that enters a document or a message is sanitised: escape sequences 
 
 ## Failures and exit codes
 
-`CliRuntime.main` reports a failure as a document on stderr, through the audience's renderer: a status line for a typed failure, a tree of rejected values for a schema failure, and a defect's message with a collapsible stack of your own frames (Effect's, Node's and `node_modules` frames hidden). Give an error class a `[CliDoc]()` method to draw itself, or pass a `render` option. Its `details.lines({ status: false })` keeps the run's colour and paths behind your own prefix.
+`CliRuntime.main` reports a failure as a document on stderr, through the audience's renderer: a status line for a typed failure, a tree of rejected values for a schema failure, and a defect's message with a collapsible stack of your own frames (Effect's, Node's and `node_modules` frames hidden). Give an error class a `[CliDoc]()` method to draw itself, or pass a `render` option. Its `details.lines({ status: false })` keeps the run's colour and paths behind your own prefix. The `in: outer › inner` span trail after a failure names only your own spans by default; `env.spans` (`"app"`, `"all"` or `"off"`) chooses, as `env.stackFrames` does for a defect's frames. `"app"` leaves out spans defined in files under `node_modules/@effected/` or `node_modules/effect/`, and fails open: a kit package linked into a workspace, or a bundled program, shows more, never less. A program that is itself installed under `node_modules/@effected/` passes its bin's `import.meta.url` as `env.appModule` to keep its own spans. `env.spansEnvVar` names a variable (say `TOOL_SPANS`) that sets it at run time, as `log.envVar` sets the level. An `Effect.fn` call and its definition are one entry in the trail.
 
 - `CliExit.set(code)` records a findings exit code from a handler that still succeeds. Do not provide `CliExit.layer` yourself under `main`, or the code goes to a second, unread cell.
 - `Cancelled` (a prompt quit) exits `130`, and `NotInteractive` (a prompt with nobody to ask) exits `64`, each as one fixed line.
@@ -143,7 +143,7 @@ Every string that enters a document or a message is sanitised: escape sequences 
 
 ## Logging
 
-`CliLogger` writes plain lines, with no timestamp, level or fiber id, and routes every level to stderr by default (`stderrFrom` narrows it), so stdout carries only the program's output. Pass `env.log` to `main` for **`CliLog`**: a diagnostics level of its own (`level`, or `envVar` such as `TOOL_LOG_LEVEL`, with core's `--log-level` beating both), pretty lines for a person and NDJSON for an agent or CI, an optional NDJSON log file, and `CliLog.component(name)` tags.
+`CliLogger` writes plain lines, with no timestamp, level or fiber id, and routes every level to stderr by default (`stderrFrom` narrows it), so stdout carries only the program's output. Pass `env.log` to `main` for **`CliLog`**: a diagnostics level of its own (`level`, or `envVar` such as `TOOL_LOG_LEVEL`, with core's `--log-level` beating both), pretty lines for a person and NDJSON for an agent or CI, an optional NDJSON log file, and `CliLog.component(name)` tags. `CliLog.status(vocab, name, text)` logs a diagnostic with a painted status glyph (its text still sanitised), and `CliTheme.forAudience` applies the kit's "an agent never gets an escape" rule to a theme you paint with yourself.
 
 ## Prompts and screens
 
@@ -164,7 +164,7 @@ const profile = Flag.String("profile").pipe(
 );
 ```
 
-`@effected/cli/ui` adds Ink screens: `CliUi.run`, `prompt` (with an `otherwise`) and `fallback` (for a flag), over the widgets `Select`, `TextInput`, `MultiSelect`, `Confirm` (with toggles), `Toggle`, `Tabs` and `Viewport`. Your own screens use the key layer (`KeyTable`, `useKeys`, `KeyHelp`) and the theme bridge (`Styled`, `useTheme`, `useGlyphs`, `useTerminalSize`).
+`@effected/cli/ui` adds Ink screens: `CliUi.run`, `prompt` (with an `otherwise`) and `fallback` (for a flag), over the widgets `Select`, `TextInput` (with a `mask` for secrets, always, or from the moment a predicate spots one anywhere in the value, latched until the value is cleared: its `validate` message is drawn unmasked, so never echo the value in it), `MultiSelect`, `Confirm` (with toggles), `Toggle`, `Tabs` and `Viewport`. Your own screens use the key layer (`KeyTable`, `useKeys`, `KeyHelp`) and the theme bridge (`Styled`, `useTheme`, `useGlyphs`, `useTerminalSize`).
 
 ```tsx
 import { CliUi, Select } from "@effected/cli/ui";
@@ -180,14 +180,30 @@ const pickProfile = Select.screen({
 const profile = CliUi.prompt(pickProfile, { otherwise: "library" });
 ```
 
+`CliUi.map(screen, f)` maps a screen's answer and leaves a cancel alone, so a `Confirm` can back a boolean flag ("confirm, or `--yes`"):
+
+```ts
+import { CliUi, Confirm } from "@effected/cli/ui";
+import { Flag } from "effect/cli";
+
+const yes = Flag.Boolean("yes").pipe(
+  Flag.withFallbackPrompt(
+    CliUi.fallback(
+      CliUi.map(Confirm.screen({ message: "Publish?" }), (result) => result.confirmed),
+      { flag: "yes", otherwise: false },
+    ),
+  ),
+);
+```
+
 ## Live views
 
-`CliUi.live` folds a stream or a `PubSub` subscription of events into state, and draws **runs** with Ink while they are going: a run starts at `isStart`, redraws on a tick, and commits its final frame at `isTerminal`. Log lines go above the frame through `handle.logConsole`. End with `handle.close`, which folds everything still queued. When nobody is watching (a pipe, an agent, CI), each run's final frame prints once instead. `DocView` draws a `Doc` document inside a view byte for byte as `Doc.print` would, and `UiProvider` with `CliUi.context` gives an Ink tree you mount yourself the same theme.
+`CliUi.live` folds a stream or a `PubSub` subscription of events into state, and draws **runs** with Ink while they are going: a run starts at `isStart`, redraws on a tick, and commits its final frame at `isTerminal`. Log lines go above the frame through `handle.logConsole`. End with `handle.close`, which folds everything still queued. When nobody is watching (a pipe, an agent, CI), each run's final frame prints once instead: give the view a `final: (state) => Document` and that run prints the document with no Ink or React loaded at all; `render` is then never called on such a run, not even to build an unused string. `render: CliUi.lazyView(() => import("./view.js"))` keeps the view's module, and React, off every run until one draws. `DocView` draws a `Doc` document inside a view byte for byte as `Doc.print` would, and `UiProvider` with `CliUi.context` gives an Ink tree you mount yourself the same theme.
 
 ## Testing
 
 - **`@effected/cli/testing`**: `CliTest.sandbox` and `CliTest.run` spawn a built bin hermetically and return `{ exitCode, stdout, stderr }` as data. `TestTerminal` drives core's prompts.
-- **`@effected/cli/ui/testing`**: `CliUiTest.render` mounts a screen on in-memory streams (`press`, `type`, `chunk`, `frame`, `result`). `view` mounts a display-only element, `session` drives a whole command's screens, and `live` mounts a live view on the production render path with a `TestClock` tick.
+- **`@effected/cli/ui/testing`**: `CliUiTest.render` mounts a screen on in-memory streams (`press`, `type`, `chunk`, `frame`, `result`). `view` mounts a display-only element, `session` drives a whole command's screens (its `transcript` shows what reached the terminal, a live view's `logConsole` lines included, `stdoutWritten`/`stderrWritten` each stream alone as raw bytes, `stdoutTranscript`/`stderrTranscript` each stream alone as plain text, and `renderPath: "production"` makes `clear` observable), and `live` mounts a live view on the production render path with a `TestClock` tick. `CliUiTest.serializer` prints frames as token markup in snapshots: register it in the Vitest config with `snapshotSerializers: ["@effected/cli/ui/testing/serializer"]`, or with `expect.addSnapshotSerializer`. Snapshots are the one place a test needs `expect`, since `assert` has no snapshot form.
 
 In-process, provide `layerTest`s from `@effected/env` and `CliTheme.layerTest`, swap in a capturing `Console`, and assert on both streams. Neither testing entrypoint is reachable from a CLI's runtime imports.
 

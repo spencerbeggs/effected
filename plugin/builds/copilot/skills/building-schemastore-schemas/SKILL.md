@@ -134,6 +134,7 @@ a devDependency.
   unique case-insensitively and schema keys unique across configs, or they
   overwrite each other. See
   [references/multi-config.md](references/multi-config.md).
+- A failure is the `@effected/cli` standard report on stderr (`✗ DriftError: …`, then an `in:` span line when it failed inside a span); gate on the exit code, never on the line's leading characters.
 - A `--format=json` run puts human text on stderr; parse stdout only. See
   [references/ci-gate.md](references/ci-gate.md).
 

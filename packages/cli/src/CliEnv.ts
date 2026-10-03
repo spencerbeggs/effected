@@ -73,6 +73,27 @@ export interface CliEnvOptions {
 	 * `CliRuntime.main` reads this.
 	 */
 	readonly stackFrames?: "app" | "all" | undefined;
+	/**
+	 * Which spans the default failure report's `in: outer › inner` trail names: `app`, the default, leaves out the spans
+	 * the kit's own packages and Effect define (judged by the file of each span's definition site under `node_modules`),
+	 * `all` shows every span, and `off` drops the trail. Applies to the report `main` writes,
+	 * `FailureDetails.defaultLines` and `FailureDetails.lines`. Only `CliRuntime.main` reads this.
+	 */
+	readonly spans?: "app" | "all" | "off" | undefined;
+	/**
+	 * The environment variable that sets `spans` at run time (`app`, `all` or `off`, case-insensitive), read through
+	 * `Config`, as `log.envVar` sets the log level: so a user filing a bug can run `TOOL_SPANS=all tool …` without a
+	 * rebuild. `spans` beats it (the variable is then not read at all); unset or empty is the default; a value that is
+	 * not a setting is ignored with one warning. Not read unless named. Only `CliRuntime.main` reads this.
+	 */
+	readonly spansEnvVar?: string | undefined;
+	/**
+	 * A module of the running program itself, as a `file:` URL or an absolute path: pass the bin's `import.meta.url`.
+	 * `spans: "app"` keeps the spans of the package that holds it, even when it is installed under
+	 * `node_modules/@effected/` (a kit companion's bin); see `CliFailureOptions.appModule`. Only `CliRuntime.main`
+	 * reads this.
+	 */
+	readonly appModule?: string | undefined;
 	/** Whether file links open in an editor; `auto` by default. See {@link CliLinks}. */
 	readonly editorLinks?: EditorLinks | undefined;
 	/** The environment variable that overrides `editorLinks`, read through `Config`. Not read unless named. */

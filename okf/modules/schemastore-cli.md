@@ -35,8 +35,8 @@ sources:
     resource: ../../packages/schemastore-cli/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-02T18:34:24Z
-  body_sha256: acc889593e9a698105bbdf3663d70e2c4ec41550551194ea641b4f6e519ffd25
+  at: 2026-10-03T16:26:35Z
+  body_sha256: 29b639d2f1a4134cb561f8a92960ca7ea7a9812587fd915adb447b753c1a6d00
 ---
 
 # @effected/schemastore-cli
@@ -472,8 +472,16 @@ Exit codes:
 | 0 | success, including drift under `onDrift: warn` |
 | 1 | drift under `onDrift: error`, a gate failure, a missing frozen version (`FrozenVersionMissingError`), a frozen file without its derived `$id` (`FrozenVersionIdMismatchError`), a merged catalog blocked by a URL or name conflict or an invalid slice (`CatalogMergeError`), — for `check` — any document `build` would write (a catalog slice or the merged catalog included), an orphaned slice or merged catalog, or an orphaned document at a sibling shape of a derived path, or — for `validate` — a payload that does not conform to the resolved document (`ValidationFailedError`, one finding per problem, pointer and keyword each) |
 | 2 | config not found, failed to load, failed `SchemastoreConfig` validation, a `catalogDir` that is a file or cannot be listed (`CatalogDirError`, raised before anything is written), or — for `validate` — a payload that cannot be read or parsed (`PayloadError`) or a schema reference that resolves to no readable document (`SchemaResolutionError`) |
-| 3 | infrastructure failure (`CliRuntime.reportFailures` fallback; for `validate`, an engine mechanism failure — `InstanceValidatorError`, a document the instance engine cannot compile — flows here unmarked) |
-| 64 | usage error — `ShowHelp` carrying parse errors, `--force` combined with an explicit non-`allow` `--drift` (`ConflictingFlagsError`), or — for `validate` — a payload with no `$schema` and no `--schema` given (`MissingSchemaRefError`) |
+| 3 | infrastructure failure (`CliRuntime.main`'s `exitCode` fallback; for `validate`, an engine mechanism failure — `InstanceValidatorError`, a document the instance engine cannot compile — flows here unmarked) |
+| 64 | usage error — `ShowHelp` carrying parse errors, `--force` combined with an explicit non-`allow` `--drift` (`ConflictingFlagsError`), or — for `validate` — a payload with no `$schema` and no `--schema` given (`MissingSchemaRefError`); `--wizard` on a run that is not interactive, since `CliEnv.layer` (from `main`'s `env`) installs `CliPrompt.gateWizard`, which drops the flag from that run's help and rejects it (it exited `0` under the old bespoke `reportFailures` wiring) |
+
+The failure report is the kit's standard one: `main.ts` runs the program under `CliRuntime.main` with `exitCode: 3`, the
+program's `loggerLayer`, and `env: { appModule: import.meta.url }`. A failure prints on stderr as a status line naming the
+error and its message (`✗ DriftError: 1 published schema(s) drifted; nothing was written.`), the message's further lines,
+and, when the failure happened inside a span (a missing config, raised before any, prints none), an `in:` trail of the command's own spans, the kit's left out (which `appModule` keeps true once the command is
+installed under `node_modules/@effected/`). It replaced a bespoke `reportFailures` render that printed `error.message`
+alone, so the error-tag prefix (`DriftError:`), the status glyph, the colour for a person, the GitHub log form under Actions and the
+`in:` line (only for a failure raised inside a span) are the visible differences; the exit codes did not change, except that `--wizard` on a non-interactive run is now a usage error at `64` and absent from that run's help.
 
 ## The catalog: slices and the merged file
 

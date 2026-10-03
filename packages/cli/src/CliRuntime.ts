@@ -1,7 +1,7 @@
 import type { Audience, TerminalEnv } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
 import type { FileSystem, Path, Stdio, Terminal } from "effect";
-import { Cause, Effect, Layer, MutableRef, Runtime } from "effect";
+import { Cause, Effect, Layer, Logger, MutableRef, Runtime } from "effect";
 import { CliError } from "effect/cli";
 import { CliColor } from "./CliColor.js";
 import type { CliEnvOptions, CliEnvServices } from "./CliEnv.js";
@@ -9,7 +9,7 @@ import { CliEnv } from "./CliEnv.js";
 import { CliExit } from "./CliExit.js";
 import type { CliLogFileOptions, CliLogOptions } from "./CliLog.js";
 import { CliLog, envBuildLogLayer, platformLogLayer } from "./CliLog.js";
-import { CliLogger } from "./CliLogger.js";
+import { CliLogger, makeCliLogger } from "./CliLogger.js";
 import { sanitize } from "./Fmt.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
 import type { FailureTarget } from "./internal/failureTarget.js";
@@ -20,6 +20,7 @@ import {
 	guardConsumerLines,
 	linesOf,
 	plainFailureLines,
+	readSpans,
 	refreshFailureTarget,
 } from "./internal/failureTarget.js";
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
@@ -68,9 +69,15 @@ export interface FailureDetails {
 	 *   details.lines({ status: false }).map((line, i) => (i === 0 ? `prog: ${line}` : line))
 	 * ```
 	 *
-	 * @param options - `status: false` leaves off the leading status
+	 * `spans` chooses the `in:` trail for these lines alone, as `CliFailureOptions.spans` does (`app`, `all` or
+	 * `off`); without it the run's own setting (`env.spans`, `app` by default) applies.
+	 *
+	 * @param options - `status: false` leaves off the leading status; `spans` chooses the span trail
 	 */
-	readonly lines: (options?: { readonly status?: boolean | undefined }) => ReadonlyArray<string>;
+	readonly lines: (options?: {
+		readonly status?: boolean | undefined;
+		readonly spans?: "app" | "all" | "off" | undefined;
+	}) => ReadonlyArray<string>;
 }
 
 /**
@@ -372,12 +379,12 @@ export class CliRuntime {
 						// if that dies too, the message alone, still sanitised and neutralized: the last resort keeps the policy.
 						// The target is built from the services in context when there is no cell: if that dies, the plain fallback.
 						const target = yield* currentTarget.pipe(Effect.catchCause(() => Effect.succeed(fallbackTarget)));
-						const reportLines = (status: boolean): ReadonlyArray<string> => {
+						const reportLines = (status: boolean, spans?: "app" | "all" | "off"): ReadonlyArray<string> => {
 							try {
-								return linesOf(cause, target, status);
+								return linesOf(cause, target, status, spans ?? target.spans);
 							} catch {
 								try {
-									return plainFailureLines(cause, status);
+									return plainFailureLines(cause, status, spans ?? target.spans);
 								} catch {
 									return lastResort(error);
 								}
@@ -389,7 +396,10 @@ export class CliRuntime {
 							cause,
 							isDefect: !Cause.hasFails(cause),
 							defaultLines,
-							lines: (options) => (options?.status === false ? reportLines(false) : defaultLines),
+							lines: (options) =>
+								options?.status === false || options?.spans !== undefined
+									? reportLines(options?.status !== false, options?.spans)
+									: defaultLines,
 						};
 						// Without a `render`, written through the logger, so `--log-level` and its routing apply.
 						const lines =
@@ -515,9 +525,25 @@ export class CliRuntime {
 						CliColor.formatterLayer(options.env?.formatter),
 						// Records how a failure is rendered, from the services this layer provides, for the report outside it.
 						Layer.effectDiscard(
-							refreshFailureTarget(undefined, {
-								displayPath: options.env?.displayPath,
-								stackFrames: options.env?.stackFrames,
+							Effect.gen(function* () {
+								// `env.spans` beats `env.spansEnvVar`, as `log.level` beats `log.envVar`; a bad value warns once,
+								// delivered as `log.envVar`'s is: through a plain `CliLogger` alone, whatever the diagnostics level,
+								// never into the `CliLog` sink.
+								const { spans, invalid } = yield* readSpans(options.env?.spans, options.env?.spansEnvVar);
+								if (invalid !== undefined) {
+									yield* Effect.logWarning(invalid).pipe(
+										Effect.provideService(
+											Logger.CurrentLoggers,
+											new Set<Logger.Logger<unknown, unknown>>([makeCliLogger(envLog?.logger)]),
+										),
+									);
+								}
+								yield* refreshFailureTarget(undefined, {
+									displayPath: options.env?.displayPath,
+									stackFrames: options.env?.stackFrames,
+									spans,
+									appModule: options.env?.appModule,
+								});
 							}),
 						),
 					).pipe(Layer.provideMerge(env));

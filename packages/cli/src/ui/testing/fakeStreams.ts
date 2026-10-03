@@ -29,6 +29,8 @@ export interface FakeStreams {
 	readonly stdout: () => string;
 	/** Everything written to stderr so far. */
 	readonly stderr: () => string;
+	/** Everything written to stdout and stderr so far, in the order it was written: what one terminal shows. */
+	readonly written: () => string;
 	/** Feed raw bytes to stdin, as a terminal in raw mode would deliver a key. */
 	readonly input: (data: string) => void;
 	/** Resize the terminal: set both outputs' size and emit `resize` on stdout, as a terminal does. */
@@ -38,6 +40,7 @@ export interface FakeStreams {
 const capture = (
 	columns: number,
 	rows: number,
+	both: Array<string>,
 	onWrite?: (chunk: string) => void,
 ): { readonly stream: Writable; readonly text: () => string } => {
 	const chunks: Array<string> = [];
@@ -45,6 +48,7 @@ const capture = (
 		write(chunk: Buffer | string, _encoding, callback) {
 			const text = chunk.toString();
 			chunks.push(text);
+			both.push(text);
 			onWrite?.(text);
 			callback();
 		},
@@ -78,8 +82,9 @@ export const makeFakeStreams = (options: FakeStreamsOptions = {}): FakeStreams =
 		ref: () => stdin,
 		unref: () => stdin,
 	});
-	const stdout = capture(columns, rows, options.onStdoutWrite);
-	const stderr = capture(columns, rows);
+	const both: Array<string> = [];
+	const stdout = capture(columns, rows, both, options.onStdoutWrite);
+	const stderr = capture(columns, rows, both);
 	return {
 		// The fakes carry every member Ink reads; Node's tty stream types also demand a file descriptor they cannot have.
 		streams: {
@@ -90,6 +95,7 @@ export const makeFakeStreams = (options: FakeStreamsOptions = {}): FakeStreams =
 		rawModes,
 		stdout: stdout.text,
 		stderr: stderr.text,
+		written: () => both.join(""),
 		input: (data) => {
 			stdin.write(data);
 		},

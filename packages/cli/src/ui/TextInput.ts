@@ -18,9 +18,9 @@ export interface TextInputState {
 	/** The text. */
 	readonly value: string;
 	/**
-	 * The insertion point, from 0 to the value's length, in UTF-16 code units, always on a code-point boundary: an
-	 * astral character (an emoji) is never split. Editing is by code point, not by grapheme, so a character built
-	 * from several code points (a flag, a family emoji) is still crossed one code point at a time.
+	 * The insertion point, from 0 to the value's length, in UTF-16 code units. Left, right, backspace and delete move
+	 * and delete by grapheme, so a character built from several code points (an emoji, a flag, a letter with a
+	 * combining accent) is crossed and deleted whole, and the cursor never stops inside one it moved over.
 	 */
 	readonly cursor: number;
 	/** Whether enter was pressed; the view submits only when the value also validates. */
@@ -49,8 +49,30 @@ export interface TextInputScreenOptions {
 	readonly initial?: string;
 	/** Shown, muted, while the value is empty. */
 	readonly placeholder?: string;
-	/** Returns a message when the value cannot be submitted, or `undefined` when it can. */
+	/** Returns a message when the value cannot be submitted, or `undefined` when it can; given the real text. */
 	readonly validate?: (value: string) => string | undefined;
+	/**
+	 * Draw the value masked, so a secret typed or pasted into it is never drawn: one mask per grapheme, so an emoji, a
+	 * flag or a letter with a combining accent is one mask, not one per code unit. `true` masks with `•` (`*` under ASCII
+	 * glyphs); a string masks with that string, its controls removed. A predicate, `(value) => boolean`, is asked with
+	 * the real value and masks with `•` from the first render it answers `true`, and then LATCHES: the value stays masked
+	 * through every edit after (deleting a pasted token's first character never redraws the rest in clear) until the
+	 * value is cleared to empty. So a field that holds an address (an `op://` reference) stays readable while typed and
+	 * hides a value the moment it looks like a token. Match a giveaway ANYWHERE in the value, never as a prefix:
+	 * `(value) => /gh[pousr]_|github_pat_/.test(value)` masks `op://v/` followed by a pasted token, which a prefix
+	 * match never would. Frames drawn before it first answered `true` showed the text typed so far; a paste arrives
+	 * whole, so a pasted token is masked from its first frame. Unmasked by default.
+	 *
+	 * @remarks
+	 * Only the drawing changes: `validate` and the resolved value get the real text, the cursor moves through it as
+	 * before, and the placeholder still shows while the value is empty. A masked frame never holds the text, so neither
+	 * does the scrollback; erase the frame as well with `clear: true` on the run when even the mask's length should not
+	 * stay behind.
+	 *
+	 * The message `validate` returns is drawn as it is, unmasked: a message that echoes the value (`"ghp_abc is a
+	 * token"`) draws the secret in the frame. Say what is wrong without quoting the value.
+	 */
+	readonly mask?: string | true | ((value: string) => boolean);
 }
 
 /**
@@ -68,18 +90,26 @@ const init = (options: TextInputInitOptions = {}): TextInputState => {
 	return { value, cursor: value.length, submitted: false };
 };
 
-const isHigh = (code: number): boolean => code >= 0xd800 && code <= 0xdbff;
-const isLow = (code: number): boolean => code >= 0xdc00 && code <= 0xdfff;
+const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-/** The code-point boundary before `at`: one code unit back, two when that would land inside a surrogate pair. */
-const previous = (value: string, at: number): number =>
-	at >= 2 && isLow(value.charCodeAt(at - 1)) && isHigh(value.charCodeAt(at - 2)) ? at - 2 : Math.max(0, at - 1);
+/** The grapheme boundary before `at`: the start of the grapheme `at` is in or just after; 0 at the start. */
+const previous = (value: string, at: number): number => {
+	let boundary = 0;
+	for (const { index } of segmenter.segment(value)) {
+		if (index >= at) break;
+		boundary = index;
+	}
+	return boundary;
+};
 
-/** The code-point boundary after `at`. */
-const following = (value: string, at: number): number =>
-	at + 1 < value.length && isHigh(value.charCodeAt(at)) && isLow(value.charCodeAt(at + 1))
-		? at + 2
-		: Math.min(value.length, at + 1);
+/** The grapheme boundary after `at`: the end of the grapheme that starts at or contains `at`; the length at the end. */
+const following = (value: string, at: number): number => {
+	for (const { index, segment } of segmenter.segment(value)) {
+		const end = index + segment.length;
+		if (end > at) return end;
+	}
+	return value.length;
+};
 
 const insert = (state: TextInputState, text: string): TextInputState => ({
 	value: state.value.slice(0, state.cursor) + text + state.value.slice(state.cursor),
@@ -201,6 +231,20 @@ const windowAround = (before: string, after: string, width: number, ellipsis: st
 	return [shownBefore, shownAfter];
 };
 
+/**
+ * The value masked either side of the cursor, one `mask` per grapheme of the whole value: the graphemes that start
+ * before the cursor, then the rest, so the two always add up to the value's graphemes, wherever the cursor is.
+ */
+const maskedAround = (value: string, cursor: number, mask: string): readonly [string, string] => {
+	let before = 0;
+	let total = 0;
+	for (const { index } of segmenter.segment(value)) {
+		total++;
+		if (index < cursor) before++;
+	}
+	return [mask.repeat(before), mask.repeat(total - before)];
+};
+
 /** Shown in the help line only; the input reads every key itself. */
 const HELP: KeyTable<"submit"> = KeyTable.make<"submit">([{ keys: ["enter"], action: "submit", help: "submit" }]);
 
@@ -242,8 +286,8 @@ export class TextInput {
 
 	/**
 	 * Apply a key: a typed character (any, `q` included) or space is inserted at the cursor; backspace and delete
-	 * remove around it; left, right, home and end move it, clamped to the text; enter marks it submitted. Every other
-	 * key changes nothing.
+	 * remove the grapheme before or after it; left and right move it a grapheme, home and end to either end, clamped
+	 * to the text; enter marks it submitted. Every other key changes nothing.
 	 *
 	 * @param state - where the input is
 	 * @param key - the key pressed
@@ -252,7 +296,8 @@ export class TextInput {
 
 	/**
 	 * Draw the input: the message, the value with the cursor shown as `▏` (`|` under ASCII glyphs, so it stays visible
-	 * without colour), the placeholder while empty, a validation message in the error token, and the key help. Enter
+	 * without colour), or one mask per grapheme in its place with `mask`, the placeholder while empty, a validation
+	 * message in the error token, and the key help. Enter
 	 * submits when `validate` passes; otherwise its message is shown until the next key other than enter, or a paste.
 	 *
 	 * @remarks
@@ -305,12 +350,25 @@ export class TextInput {
 			}),
 		);
 		const cursorGlyph = glyphs.kind === "unicode" ? "▏" : "|";
-		const [before, after] = windowAround(
-			state.value.slice(0, state.cursor),
-			state.value.slice(state.cursor),
-			columns - Fmt.width(cursorGlyph),
-			glyphs.ellipsis,
-		);
+		// A predicate latches: once it has answered true the value stays masked, whatever is edited after (deleting the
+		// first character of a pasted token must not redraw the rest of it in clear), until the value is cleared.
+		const latched = react.useRef(false);
+		if (state.value === "") latched.current = false;
+		else if (typeof props.mask === "function" && !latched.current && props.mask(state.value)) latched.current = true;
+		const masking = typeof props.mask === "function" ? latched.current : props.mask;
+		const mask =
+			masking === undefined || masking === false
+				? undefined
+				: masking === true
+					? glyphs.kind === "unicode"
+						? "•"
+						: "*"
+					: lineText(masking);
+		const [shownBefore, shownAfter] =
+			mask === undefined
+				? [state.value.slice(0, state.cursor), state.value.slice(state.cursor)]
+				: maskedAround(state.value, state.cursor, mask);
+		const [before, after] = windowAround(shownBefore, shownAfter, columns - Fmt.width(cursorGlyph), glyphs.ellipsis);
 		return react.createElement(
 			ink.Box,
 			{ flexDirection: "column" },
@@ -349,7 +407,15 @@ export class TextInput {
 	/**
 	 * A ready-made screen for `CliUi.run`: the input, resolving with the submitted text.
 	 *
-	 * @param options - the message, the starting text, the placeholder and the validator
+	 * @remarks
+	 * With `mask`, a secret is drawn as one mask per grapheme and never as itself, while the screen still resolves with
+	 * the real text:
+	 *
+	 * ```ts
+	 * const token = CliUi.run(TextInput.screen({ message: "Token reference?", mask: true }), { clear: true })
+	 * ```
+	 *
+	 * @param options - the message, the starting text, the placeholder, the validator and the mask
 	 */
 	static readonly screen =
 		(options: TextInputScreenOptions): Screen<string> =>

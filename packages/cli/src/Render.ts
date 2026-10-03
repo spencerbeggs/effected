@@ -4,7 +4,7 @@ import { CommandNeutralizer } from "@effected/github-commands";
 import { Effect } from "effect";
 import type { CliLinksShape } from "./CliLinks.js";
 import { CliLinks } from "./CliLinks.js";
-import { CliTheme, themeForAudience } from "./CliTheme.js";
+import { CliTheme } from "./CliTheme.js";
 import type { Document, LinkTarget } from "./Doc.js";
 import type { GlyphSet } from "./Glyphs.js";
 import { Glyphs } from "./Glyphs.js";
@@ -33,8 +33,9 @@ export interface RenderContext {
 	 *
 	 * @remarks
 	 * `Infinity` is no limit. A renderer clamps what it is given: zero or a negative width is 1, and `NaN` is 80.
-	 * `Render.context` gives a human `TerminalEnv.width()`, which is the terminal's columns as stdout reports them, even
-	 * for a context built for `"stderr"` (core's `Terminal` has one width); pass `width` to override it.
+	 * `Render.context` gives a human writing to a terminal `TerminalEnv.width()`, which is the terminal's columns as
+	 * stdout reports them, even for a context built for `"stderr"` (core's `Terminal` has one width), and gives no limit
+	 * when the stream is not a terminal; pass `width` to override it.
 	 */
 	readonly width: number;
 	/** Who the output is for. */
@@ -120,8 +121,9 @@ const guarded = (text: string, ctx: RenderContext): string =>
  */
 export interface RenderContextOptions {
 	/**
-	 * The display columns to lay out at. By default a human gets `TerminalEnv.width()`, the terminal's columns as
-	 * stdout reports them even when the stream is `"stderr"`, and an agent or a CI gets no limit at all.
+	 * The display columns to lay out at. By default a human writing to a terminal gets `TerminalEnv.width()`, the
+	 * terminal's columns as stdout reports them even when the stream is `"stderr"`; a human whose stream is not a
+	 * terminal (a pipe, a file), an agent and a CI get no limit at all.
 	 */
 	readonly width?: number | undefined;
 	/** Turns an absolute path into its display form, for example relative to the working directory; the identity by default. */
@@ -165,8 +167,9 @@ export class Render {
 	 *   gets an escape and a terminal without OSC 8 gets the label;
 	 * - `neutralizeWorkflowCommands` is set when `CurrentRuntimeEnv` says GitHub Actions (read if present, not
 	 *   required), for every audience, since the runner reads whatever is written there;
-	 * - `width` is the option, else `TerminalEnv.width()` for a human, and **unbounded** (`Infinity`) for an agent
-	 *   or a CI, so nothing a reader needs is truncated or wrapped for a terminal that is not there.
+	 * - `width` is the option, else `TerminalEnv.width()` for a human whose stream is a terminal, and **unbounded**
+	 *   (`Infinity`) for a human whose stream is not one (`tool | grep`, `tool > out.txt`), an agent or a CI, so nothing
+	 *   a reader needs is truncated or wrapped for a terminal that is not there: a pipe has no width to honour.
 	 *
 	 * @param stream - the stream the output is for
 	 * @param options - an explicit width and a path display function
@@ -179,14 +182,17 @@ export class Render {
 			const terminal = yield* TerminalEnv;
 			const { kind } = yield* Audience;
 			const theme = (yield* CliTheme).forStream(stream);
-			const seen = themeForAudience(theme, kind);
+			const seen = CliTheme.forAudience(theme, kind);
 			const links = yield* CliLinks;
 			// Read if the environment has it, as `Doc.print` does: GitHub Actions makes every format unable to inject a
 			// workflow command, whoever the audience is.
 			const underActions = yield* underGithubActions;
 			return {
 				...(underActions ? { neutralizeWorkflowCommands: true } : {}),
-				width: options?.width ?? (kind === "human" ? terminal.width() : Number.POSITIVE_INFINITY),
+				// A pipe or a file has no width to honour: wrapping at a guessed 80 only splits a line someone greps.
+				width:
+					options?.width ??
+					(kind === "human" && terminal[stream].isTerminal ? terminal.width() : Number.POSITIVE_INFINITY),
 				audience: kind,
 				// An agent never gets an escape of any kind, so its context is colourless whatever the terminal says: every
 				// renderer, including an explicit `ansi`, then writes none (the linker already refuses its hyperlinks).

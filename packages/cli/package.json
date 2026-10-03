@@ -26,6 +26,7 @@
 		"./testing": "./src/testing.ts",
 		"./ui": "./src/ui.ts",
 		"./ui/testing": "./src/ui-testing.ts",
+		"./ui/testing/serializer": "./src/ui-testing-serializer.ts",
 		"./package.json": "./package.json"
 	},
 	"scripts": {

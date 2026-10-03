@@ -97,14 +97,21 @@ export const pick = Command.make("pick", {}, () =>
 
 `CliUi.lazy(load)` types the screen from the module's default export, so `otherwise: "x"` against this screen is a compile error. A non-interactive run returns `otherwise` and never evaluates the import. The kit's own widgets (`Select.screen`, `Confirm.screen`, `TextInput.screen`, `MultiSelect.screen`) need no `lazy`: calling one in your command module loads no React, because the kit's modules never import it statically. Only JSX and direct `ink`/`react` imports of your own do.
 
-A live view's `render` is synchronous, so it cannot be lazy. Put the view in its own module and `import()` it before calling `CliUi.live`, on the path that draws:
+A live view's view goes in its own module too, its default export the view itself, `(state, frame) => ReactElement`. Pass it lazily with `CliUi.lazyView`, the live view's `CliUi.lazy`, and give the view a `final` document for the runs nobody watches:
 
 ```ts
-const { renderView } = yield* Effect.promise(() => import("./view.js"))
-const view = yield* CliUi.live<Event, State>({ events, initial, reduce, render: renderView, isStart, isTerminal })
+const view = yield* CliUi.live<Event, State>({
+  events,
+  initial,
+  reduce,
+  render: CliUi.lazyView(() => import("./view.js")),
+  final: (state) => [Doc.paragraph(`${state.done} synced`)],
+  isStart,
+  isTerminal,
+})
 ```
 
-An **owned** live view that is not interactive still loads Ink to print its final frame as a string, so an `--agent` or CI run that draws a view loads React whichever way you import it. The dynamic import saves the load only on runs that draw nothing (`--help`, `--version`, an early usage error) and for a `hosted` view.
+The module loads only when a run first draws with Ink. `--help`, `--version` and an early usage error never load it, and with `final` an `--agent`, CI or piped run never loads it either, nor Ink, nor React: that run prints `final(state)` once per run through the `Doc` renderers. Without `final`, an **owned** view that is not interactive still loads Ink (and the view) to print each run's final frame as a string.
 
 ## A flag or argument that prompts when missing
 
@@ -179,7 +186,7 @@ Most widgets are a pure `init`/`step` reducer, a `keys` table, a `View` and a re
 | Widget | `screen(options)` resolves | Options |
 | --- | --- | --- |
 | `Select` | the chosen `value` | `{ message, choices: [{ label, value, detail?, disabled? }], initial?, height? }`; `initial` is an **index** into `choices` (the first enabled choice at or after it), not a value; disabled choices are skipped |
-| `TextInput` | `string` | `{ message, initial?, placeholder?, validate? }`; `validate` returns an error message or `undefined`, checked on submit: an invalid submit redraws the message and does not resolve |
+| `TextInput` | `string` | `{ message, initial?, placeholder?, validate?, mask? }`; `validate` returns an error message or `undefined`, checked on submit: an invalid submit redraws the message and does not resolve. `mask: true` (or a mask string) draws one `•` per grapheme instead of the text, so a pasted secret is never drawn; `mask: (value) => boolean` leaves an address readable while typed and masks from the first render the predicate answers `true`, then latches until the value is cleared, so editing a pasted token never reveals the rest; match the giveaway anywhere (`/gh[pousr]_\|github_pat_/`), never as a prefix, or `op://v/` plus a pasted token is never masked; `validate` and the result still get the real text. Pair it with `CliUi.run(screen, { clear: true })` to leave not even the mask in the scrollback. A `validate` message is drawn unmasked, so never echo the value in it. The cursor moves and deletes by grapheme |
 | `MultiSelect` | `ReadonlyArray<A>`, in section order | `{ message, sections: [{ title, items: [{ key, label, value, detail?, selected? }] }], height? }`; keys unique across sections; submitting with nothing selected resolves `[]`, not a cancel |
 | `Confirm` | `{ confirmed, toggles }` | `{ message, initial?, toggles?: [{ key, label, value }] }`; the answer starts at **no**; `toggles` is partial by key |
 | `Toggle`, `Tabs` | — | components for your own screen; `Tabs` cycles with Tab and Shift-Tab and jumps with digits |
@@ -215,24 +222,20 @@ const create = Effect.gen(function* () {
 
 `otherwise` is the **whole** `ConfirmResult`, never a bare `boolean`: `otherwise: true` does not compile. A non-interactive run returns it as written, so write the toggles the default run should have.
 
-A `Confirm` behind a boolean flag ("confirm, or `--yes`") needs a `Screen<boolean>`, because `Flag.Boolean`'s fallback takes the flag's own type and the kit has no screen mapper. Adapt it by hand:
+A `Confirm` behind a boolean flag ("confirm, or `--yes`") needs a `Screen<boolean>`, because `Flag.Boolean`'s fallback takes the flag's own type. `CliUi.map(screen, f)` turns a `Screen<A>` into a `Screen<B>`: it resolves with `f` of the inner answer and leaves a cancel, the drawing and the keys alone:
 
 ```ts
 import { CliUi, Confirm } from "@effected/cli/ui"
-import type { Screen } from "@effected/cli/ui"
 import { Flag } from "effect/cli"
 
-const yesNo =
-  (message: string): Screen<boolean> =>
-  (control) =>
-    Confirm.screen({ message })({ resolve: (result) => control.resolve(result.confirmed), cancel: control.cancel })
+const overwrite = CliUi.map(Confirm.screen({ message: "Overwrite existing files?" }), (result) => result.confirmed)
 
 const yes = Flag.Boolean("yes").pipe(
-  Flag.withFallbackPrompt(CliUi.fallback(yesNo("Overwrite existing files?"), { flag: "yes", otherwise: false })),
+  Flag.withFallbackPrompt(CliUi.fallback(overwrite, { flag: "yes", otherwise: false })),
 )
 ```
 
-`--yes` skips the prompt; omitted, an interactive run asks and a non-interactive run answers `otherwise`. The adapter forwards `cancel` untouched, so Esc is still the one `Cancelled`.
+`--yes` skips the prompt; omitted, an interactive run asks and a non-interactive run answers `otherwise`, which is the mapped type (`false`), not a `ConfirmResult`. Esc is still the one `Cancelled`. A mapped screen goes wherever a screen goes: `CliUi.run`, `CliUi.prompt`, `CliUi.fallback`, and around (or inside) a `CliUi.lazy` one.
 
 Every string a widget draws from data is sanitised and its line breaks folded to spaces before it is measured, so data cannot paint colour, plant a hyperlink, or add a row the layout did not count.
 

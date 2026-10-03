@@ -17,13 +17,46 @@ import {
 } from "effect";
 import type { CliLoggerOptions } from "./CliLogger.js";
 import { makeCliLogger } from "./CliLogger.js";
+import { CliTheme } from "./CliTheme.js";
 import { sanitize } from "./Fmt.js";
 import { paintStyle } from "./internal/ansi.js";
 import { Level, passes } from "./internal/diagnostics.js";
 import { makeFileSink } from "./internal/fileSink.js";
-import { neutralizeJson } from "./internal/logSafety.js";
+import { TrustedLine, neutralizeJson } from "./internal/logSafety.js";
 import { scanAudience } from "./internal/scanAudience.js";
+import type { Status } from "./Status.js";
 import type { Style } from "./Token.js";
+
+/**
+ * Options for `CliLog.status`.
+ *
+ * @public
+ */
+export interface CliLogStatusOptions {
+	/**
+	 * The level the line is logged at. By default it follows the status's rank in its vocabulary: `Error` at or above
+	 * `failure`'s rank, `Warn` at or above `warning`'s, and `Info` below that.
+	 */
+	readonly level?: LogLevel.Severity | undefined;
+	/**
+	 * What the line starts with, before the glyph, so an indented report line keeps its place in a block: a number of
+	 * spaces (floored, at most 64; zero, a negative or a non-finite number is none), or a string. A string is sanitised as text is (escapes and controls removed, a tab a space) and its line
+	 * breaks dropped, so the indent can never carry an escape onto the trusted line. None by default.
+	 */
+	readonly indent?: number | string | undefined;
+}
+
+/** The most spaces a numeric `indent` writes. */
+const MAX_INDENT = 64;
+
+/** An indent as written before the glyph: spaces for a number, a string with nothing in it that is not text. */
+const indentOf = (indent: number | string | undefined): string => {
+	if (indent === undefined) return "";
+	// Floored and capped: `indent: 1e12` would make `repeat` throw a RangeError inside the log call.
+	if (typeof indent === "number")
+		return Number.isFinite(indent) && indent > 0 ? " ".repeat(Math.min(MAX_INDENT, Math.floor(indent))) : "";
+	return sanitize(indent).replace(/\r\n|\r|\n/g, "");
+};
 
 /**
  * Options for `CliLog.layer`.
@@ -489,6 +522,62 @@ export class CliLog {
 			}),
 		);
 	}
+
+	/**
+	 * Log a status line: its glyph painted through the theme, then `text`, at a level that follows the status.
+	 *
+	 * @remarks
+	 * The line goes through the logger, so it is a diagnostic like any `Effect.log*` call: filtered by the level in
+	 * force (`--log-level`, `CliLog.Level`), routed by `CliLogger`'s `stderrFrom` (stderr by default) and neutralized
+	 * under GitHub Actions. What differs is the glyph: the logger sanitises every line a program logs, which strips a
+	 * colour a program painted itself, so a glyph on the log channel was always drawn bare. Here the kit paints it and
+	 * marks the line as its own, so the plain `CliLogger` line keeps the colour, while `text` is still sanitised:
+	 * escape sequences and control characters in it are removed, as in every line the kit writes.
+	 *
+	 * The glyph is painted with stderr's theme (where diagnostics go) through {@link CliTheme.forAudience}, so an agent
+	 * gets it unpainted, and an `Audience` is read only when provided, so it stays out of the requirements. ASCII glyphs
+	 * give the status's ASCII form. A diagnostics record carries the line as its message as any record does: the `CliLog`
+	 * sink's pretty line sanitises it (the glyph is drawn bare there), and NDJSON keeps it, JSON-escaped.
+	 *
+	 * The level defaults to the status's rank in `vocab`: `Error` at or above `failure`'s, `Warn` at or above
+	 * `warning`'s, `Info` below, so a custom status follows its own rank. Pass `level` to choose it, and `indent` (a
+	 * number of spaces, or a string, sanitised) to start the line inside an indented block: `    ✗ error   x: red`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { CliLog, Status } from "@effected/cli"
+	 *
+	 * // ✗ in the failure colour, then the message: on stderr, filtered by the log level.
+	 * const reportError = (resource: string, message: string) =>
+	 *   CliLog.status(Status.core, "failure", `${resource}: ${message}`)
+	 * ```
+	 *
+	 * @param vocab - the vocabulary the status belongs to
+	 * @param name - the status
+	 * @param text - the text after the glyph, sanitised
+	 * @param options - the level to log at, and the indent before the glyph
+	 */
+	static readonly status = <N extends string>(
+		vocab: Status<N>,
+		name: N,
+		text: string,
+		options?: CliLogStatusOptions,
+	): Effect.Effect<void, never, CliTheme> =>
+		Effect.gen(function* () {
+			const audience = yield* Effect.serviceOption(Audience);
+			const theme = CliTheme.forAudience(
+				(yield* CliTheme).forStream("stderr"),
+				Option.isSome(audience) ? audience.value.kind : undefined,
+			);
+			const line = `${indentOf(options?.indent)}${theme.status(vocab, name, sanitize(text))}`;
+			// Every vocabulary is built from Status.core, so both names are there; the cast only widens the name.
+			const core = vocab as unknown as Status<"warning" | "failure">;
+			const rank = vocab.def(name).rank;
+			const level: LogLevel.Severity =
+				options?.level ??
+				(rank >= core.def("failure").rank ? "Error" : rank >= core.def("warning").rank ? "Warn" : "Info");
+			yield* Effect.logWithLevel(level)(line).pipe(Effect.provideService(TrustedLine, true));
+		});
 
 	/**
 	 * Mark the log records an effect emits as coming from `name`.

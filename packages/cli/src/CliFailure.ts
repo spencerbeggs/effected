@@ -52,6 +52,32 @@ export interface CliFailureOptions {
 	 * shows every frame, unfiltered.
 	 */
 	readonly stackFrames?: "app" | "all" | undefined;
+	/**
+	 * Which spans the `in: outer › inner` trail after a failure names. `app`, the default, leaves out the spans the kit
+	 * and Effect define themselves: a span whose definition site (an `Effect.fn`'s, or where the span was opened) is a
+	 * file under `node_modules/@effected/` or `node_modules/effect/`. A config that fails to decode under
+	 * `@effected/config-file` then reports no `ConfigFile.loadFrom` trail, while the program's own spans stay. `all`
+	 * shows every span, and `off` drops the trail. Under either, an `Effect.fn` call and its definition are one entry,
+	 * `name`, never `name (definition) › name`.
+	 *
+	 * @remarks
+	 * The rule reads file paths, never span names, and it fails open: when it cannot tell, it shows the span. A span
+	 * with no captured stack is kept. A kit package linked into a workspace (`link:`, `workspace:`) runs from its own
+	 * checkout rather than from `node_modules`, so its spans show as the program's. A bundled program is one file, so
+	 * `app` shows what `all` does, unless the bundle is itself installed under `node_modules/@effected/`. A program that
+	 * is installed under `node_modules/@effected/` (a kit companion's bin) names itself with `appModule`, or its own
+	 * spans are left out with the kit's.
+	 */
+	readonly spans?: "app" | "all" | "off" | undefined;
+	/**
+	 * A module of the running program itself, as a `file:` URL or an absolute path: its bin's `import.meta.url`. With
+	 * `spans: "app"`, a span defined in the installed package that holds this module is the program's, kept even under
+	 * `node_modules/@effected/`, while the packages it depends on (beside it, or nested in its own `node_modules`) are
+	 * still left out. The package is the path through the last `node_modules/<name>` (or `node_modules/@scope/name`)
+	 * in it, read from the path alone with no file system. A module not under `node_modules` changes nothing: the rule
+	 * already keeps its spans. Unset by default.
+	 */
+	readonly appModule?: string | undefined;
 }
 
 /** The deepest an `Error.cause` chain, or a stack, is followed. */
@@ -277,13 +303,72 @@ const failBlocks = (
 	return [...failureBlocks(describe(error)), ...spans];
 };
 
-/** `in: outer › inner`, from the span stack the runtime annotates a reason with, or none. */
-const spanBlocks = (reason: CauseType.Reason<unknown>): ReadonlyArray<Block> => {
+/** A file of the kit's own packages or of Effect, as installed: a span defined there is not the program's. */
+const isKitFile = (file: string): boolean => /[\\/]node_modules[\\/](?:@effected[\\/]|effect[\\/])/.test(file);
+
+/**
+ * The installed package directory that holds `module`: the path through the last `node_modules/<name>` or
+ * `node_modules/@scope/name` in it, or `undefined` when the module is not under `node_modules` (or not a path at all).
+ * Read from the path alone, with no file system.
+ */
+const packageDirOf = (module: string | undefined): string | undefined => {
+	if (module === undefined) return undefined;
+	const path = asPath(module);
+	if (path === undefined) return undefined;
+	// Greedy, so it is the last node_modules in the path: the package the module itself belongs to.
+	return /^(.*\/node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(comparable(path))?.[1];
+};
+
+/**
+ * A path in the one spelling both sides of a comparison use: `/` separators, and a Windows drive letter lower-cased. A
+ * CommonJS frame on Windows reads `C:\…` where an `import.meta.url` reads `file:///C:/…`, and the drive's case is not
+ * fixed (`c:` and `C:` are one drive). Lexical only: no file system, no realpath.
+ */
+const comparable = (path: string): string =>
+	path.replace(/\\/g, "/").replace(/^([A-Za-z]):/, (_, drive: string) => `${drive.toLowerCase()}:`);
+
+/** Whether `file` is in the program's own package `appDir`, and not in a dependency nested in its `node_modules`. */
+const isAppFile = (file: string, appDir: string | undefined): boolean => {
+	if (appDir === undefined) return false;
+	const path = comparable(file);
+	if (!path.startsWith(appDir)) return false;
+	const rest = path.slice(appDir.length);
+	return rest.startsWith("/") && !rest.includes("/node_modules/");
+};
+
+/** The file a span frame's captured stack points at, or `undefined` when it captured none. */
+const spanFile = (frame: { readonly stack: () => string | undefined }): string | undefined => {
+	try {
+		const stack = frame.stack();
+		if (stack === undefined) return undefined;
+		const line = stack.split(/\r\n|\r|\n/).find((candidate) => /^\s*at\s/.test(candidate)) ?? stack;
+		return frameFile(line.trim().startsWith("at ") ? line : `at ${line.trim()}`);
+	} catch {
+		return undefined;
+	}
+};
+
+/**
+ * `in: outer › inner`, from the span stack the runtime annotates a reason with, or none. With `app`, a span the kit or
+ * Effect defined is left out. An `Effect.fn` call carries its definition as its parent (`name (definition)`): the two
+ * are one entry, `name`, judged by the definition's site, so a kit function the program calls goes with its
+ * definition.
+ */
+const spanBlocks = (
+	reason: CauseType.Reason<unknown>,
+	mode: "app" | "all" | "off",
+	appDir: string | undefined,
+): ReadonlyArray<Block> => {
+	if (mode === "off") return [];
 	const names: Array<string> = [];
 	let frame = Context.getOrUndefined(Cause.reasonAnnotations(reason), Cause.StackTrace);
-	while (frame !== undefined && names.length < MAX_SPANS) {
-		names.push(frame.name);
-		frame = frame.parent;
+	for (let seen = 0; frame !== undefined && seen < MAX_SPANS; seen++) {
+		const parent = frame.parent;
+		const definition = parent !== undefined && parent.name === `${frame.name} (definition)` ? parent : undefined;
+		const file = (definition === undefined ? undefined : spanFile(definition)) ?? spanFile(frame);
+		if (mode === "all" || file === undefined || isAppFile(file, appDir) || !isKitFile(file)) names.push(frame.name);
+		// A call and its definition are one entry, `X`, never `X (definition) › X`: the definition is skipped.
+		frame = definition === undefined ? parent : definition.parent;
 	}
 	if (names.length === 0) return [];
 	return [Doc.paragraph(Doc.text("in: ", "muted"), Doc.path(...names.reverse()))];
@@ -306,7 +391,7 @@ const spanBlocks = (reason: CauseType.Reason<unknown>): ReadonlyArray<Block> => 
  * `Error.cause` chain as a tree. When cleaning leaves no frame the stack says
  * `no user frames (N internal frames hidden)`, never an empty block; when frames survive and some were left out, the
  * count follows them as `(+N internal frames hidden)`. A reason that ran under spans is followed by
- * `in: outer › inner`. Interrupts are not rendered beside a real failure, and a cause with only interrupts is the
+ * `in: outer › inner`: by default only the program's own spans, the kit's and Effect's left out (`spans`). Interrupts are not rendered beside a real failure, and a cause with only interrupts is the
  * one line `interrupted`.
  *
  * All text goes through the document, so a control character in a message or a stack frame never reaches the terminal.
@@ -328,9 +413,11 @@ export class CliFailure {
 		if (reasons.length > 0 && reasons.every(Cause.isInterruptReason)) return [Doc.paragraph("interrupted")];
 		const displayPath = options?.displayPath ?? ((absolute: string) => absolute);
 		return reasons.flatMap((reason): ReadonlyArray<Block> => {
-			if (Cause.isFailReason(reason)) return failBlocks(reason.error, spanBlocks(reason), options);
+			const spans = options?.spans ?? "app";
+			const appDir = packageDirOf(options?.appModule);
+			if (Cause.isFailReason(reason)) return failBlocks(reason.error, spanBlocks(reason, spans, appDir), options);
 			if (Cause.isDieReason(reason))
-				return dieBlocks(reason.defect, spanBlocks(reason), displayPath, options?.stackFrames ?? "app");
+				return dieBlocks(reason.defect, spanBlocks(reason, spans, appDir), displayPath, options?.stackFrames ?? "app");
 			return [];
 		});
 	};

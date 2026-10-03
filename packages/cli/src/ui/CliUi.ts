@@ -9,7 +9,7 @@ import { Prompt } from "effect/cli";
 import type { ReactElement, ReactNode } from "react";
 import { Cancelled } from "../Cancelled.js";
 import { CliInteractive } from "../CliInteractive.js";
-import { CliTheme, themeForAudience } from "../CliTheme.js";
+import { CliTheme } from "../CliTheme.js";
 import { underGithubActions } from "../internal/autoFormat.js";
 import { answerWithoutPerson } from "../internal/fallbackAnswer.js";
 import { NotInteractive } from "../NotInteractive.js";
@@ -17,6 +17,7 @@ import type { LiveHandle, LiveOptions } from "./CliUiLive.js";
 import { live } from "./CliUiLive.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
 import { inkModules, loadInk, withInkColour } from "./internal/ink.js";
+import { lazyView } from "./internal/lazyView.js";
 import { mountPermit } from "./internal/mountPermit.js";
 import { UiRenderOptions } from "./internal/renderOptions.js";
 import { useScreenGuard } from "./internal/ScreenContext.js";
@@ -93,7 +94,7 @@ export type CliUiFallbackOptions<A> = Cli.CliPromptFallbackOptions<A> & {
  */
 const audienceTheme: Effect.Effect<Cli.StreamTheme, never, Cli.CliTheme> = Effect.gen(function* () {
 	const audience = yield* Effect.serviceOption(Audience);
-	return themeForAudience(
+	return CliTheme.forAudience(
 		(yield* CliTheme).forStream("stdout"),
 		Option.isSome(audience) ? audience.value.kind : undefined,
 	);
@@ -132,7 +133,7 @@ const mount = <A>(
 		// The harness's bracket, around everything a run does, so a thunk that throws before Ink draws is a screen too.
 		// Released last: after Ink has exited and the colour level is restored, with the defect the run died of.
 		yield* Effect.acquireRelease(
-			Effect.sync(() => overrides.onMount?.()),
+			Effect.sync(() => overrides.onMount?.("screen")),
 			(_, exit) =>
 				Effect.sync(() => {
 					const died = Exit.isFailure(exit) ? exit.cause.reasons.find(Cause.isDieReason) : undefined;
@@ -183,6 +184,7 @@ const mount = <A>(
 					patchConsole: false,
 					...(overrides.debug === true ? { debug: true } : {}),
 					...(overrides.onRender === undefined ? {} : { onRender: overrides.onRender }),
+					...(overrides.maxFps === undefined ? {} : { maxFps: overrides.maxFps }),
 				}),
 			),
 			(instance) =>
@@ -339,7 +341,7 @@ export class CliUi {
 	 * what is published before.
 	 *
 	 * `live` returns its handle at once, before Ink has loaded: it loads Ink when a run first mounts (or, when not
-	 * interactive, when an owned run prints its final frame), and it waits on nothing asynchronous before returning, so
+	 * interactive, when an owned run without a `final` prints its final frame), and it waits on nothing asynchronous before returning, so
 	 * a host outside Effect can take the handle with `Effect.runSync`. The handle works from the start: a `close`
 	 * before any run has mounted folds what is queued and ends the view as the events ending would, waiting for a mount
 	 * already under way, and one with no run to end loads nothing.
@@ -383,8 +385,12 @@ export class CliUi {
 	 * When the run is not interactive, nothing is mounted and Ink is loaded only when a string is due. In the `owned`
 	 * mode (the default) each run's final frame is written once to stdout, as a string laid out at stdout's width (80
 	 * when it reports none) with no height to fit, at its terminal event or when the stream ends. It is escape-free at
-	 * colour `none`, and for an agent audience (`Audience`, when provided) whatever the terminal could do. In the
-	 * `hosted` mode nothing is written.
+	 * colour `none`, and for an agent audience (`Audience`, when provided) whatever the terminal could do. With a
+	 * `final` document, that document is printed instead, once per run, rendered as `Doc.print` renders it, and Ink,
+	 * React and a `CliUi.lazyView` module are never loaded: an agent, CI or piped run of a command with a live view pays
+	 * for none of them. In the `hosted` mode nothing is written.
+	 *
+	 * Keep React off the runs that never draw (`--help`, a usage error) with `render: CliUi.lazyView(() => import(...))`.
 	 *
 	 * No input is mounted: the view reads no keys and never enters raw mode, so Ctrl-C stays the platform's SIGINT,
 	 * which interrupts the program and so closes the scope. Each run holds the process-wide mount permit from its
@@ -500,4 +506,84 @@ export class CliUi {
 		<A>(load: () => Promise<{ readonly default: Screen<A> }>): Screen<A> =>
 		async (control) =>
 			(await load()).default(control);
+
+	/**
+	 * A live view's `render` whose module is loaded only when a run first draws it, so importing the command that uses
+	 * the view loads neither the view's own code nor React: `CliUi.lazy` for `CliUi.live`.
+	 *
+	 * @remarks
+	 * `load` resolves to the view, `(state, frame) => ReactElement`, exactly what `render` takes, so the frame index a
+	 * spinner needs reaches it: either a module whose default export is the view (`() => import("./view.js")`), or the
+	 * view itself (`() => import("./views.js").then((module) => module.syncView)`, for a named export).
+	 *
+	 * It is optional: `render` still takes the view directly, and needs no dynamic import. A view passed directly
+	 * loads with the module that imports it, so it costs React on every run that loads that module; `lazyView` is
+	 * how a command keeps React off the runs that never draw. `CliUi.live` loads the module before a run mounts with Ink, or before it
+	 * prints a run's final frame as a string; a run that is not interactive and has a `final` document never loads it,
+	 * nor Ink, nor React. An import that fails degrades the run, as a render that throws does: one warning, and the next
+	 * run tries the import again. A load that resolves to no view (neither a function nor a module whose `default` is
+	 * one) is a programming error, and deterministic, so it is kept for the view's life: every run degrades without
+	 * loading again, and the view warns once, saying what it received and what is expected, rather than once per run. A
+	 * view function that happens to carry a `default` property is the view.
+	 *
+	 * The returned function is for `CliUi.live`'s `render` alone: called before its module has loaded, it throws.
+	 *
+	 * Keep the `LiveOptions` (the state, the events and the `lazyView` call) in a module the view does not import. The
+	 * view module usually imports the state's types or its fold from somewhere; if that somewhere is the module that
+	 * holds the `import("./view.js")`, the dynamic import closes a cycle, which Biome's `noImportCycles` reports even
+	 * though it is lazy. A layout that stays acyclic: the model (state, events, fold) in one module, the view importing
+	 * the model, and the options (with `lazyView`) in a third that imports the model and loads the view.
+	 *
+	 * ```ts
+	 * // commands/sync.ts: no JSX, no React
+	 * const view = yield* CliUi.live({
+	 *   events,
+	 *   initial,
+	 *   reduce,
+	 *   render: CliUi.lazyView(() => import("./sync-view.js")),
+	 *   final: (state) => [Doc.paragraph(`${state.done} synced`)],
+	 *   isStart,
+	 *   isTerminal,
+	 * })
+	 * ```
+	 *
+	 * @param load - resolves to the view, or to a module whose default export is the view
+	 */
+	static readonly lazyView: <S>(
+		load: () => Promise<
+			((state: S, frame: number) => ReactElement) | { readonly default: (state: S, frame: number) => ReactElement }
+		>,
+	) => (state: S, frame: number) => ReactElement = lazyView;
+
+	/**
+	 * A screen whose answer is `f` of `screen`'s: it mounts `screen` and resolves with `f(value)` when `screen` resolves
+	 * with `value`.
+	 *
+	 * @remarks
+	 * Only the resolve is mapped. A cancel passes through unchanged, as the same `Cancelled`, and so does everything
+	 * else about the screen: what it draws, its keys, a lazy load. `f` runs when the screen resolves; what it throws is
+	 * thrown from the screen's resolve, so it is a defect of the run, as any other throw in a key handler is.
+	 *
+	 * The mapped screen is a `Screen` like any other, so it goes wherever a screen goes: `CliUi.run`, `CliUi.prompt`,
+	 * `CliUi.fallback`, or around a `CliUi.lazy` one. The commonest use is a `Confirm` behind a boolean flag, where the
+	 * fallback needs a `Screen<boolean>` and `Confirm` answers a whole `ConfirmResult`:
+	 *
+	 * ```ts
+	 * const yes = Flag.Boolean("yes").pipe(
+	 *   Flag.withFallbackPrompt(
+	 *     CliUi.fallback(
+	 *       CliUi.map(Confirm.screen({ message: "Publish?" }), (result) => result.confirmed),
+	 *       { flag: "yes", otherwise: false },
+	 *     ),
+	 *   ),
+	 * )
+	 * ```
+	 *
+	 * @param screen - the screen to show
+	 * @param f - turns its answer into the mapped screen's
+	 */
+	static readonly map =
+		<A, B>(screen: Screen<A>, f: (value: A) => B): Screen<B> =>
+		(control) =>
+			screen({ resolve: (value) => control.resolve(f(value)), cancel: control.cancel });
 }

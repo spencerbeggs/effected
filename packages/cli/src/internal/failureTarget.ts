@@ -2,7 +2,7 @@ import type { AudienceShape } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
 import type { Cause } from "effect";
-import { Context, Effect, MutableRef, Option } from "effect";
+import { Config, Context, Effect, MutableRef, Option } from "effect";
 import { CliFailure } from "../CliFailure.js";
 import { CliLinks } from "../CliLinks.js";
 import { CliTheme } from "../CliTheme.js";
@@ -25,6 +25,10 @@ export interface FailureTarget {
 	readonly assumed?: boolean;
 	/** Which stack frames a defect's report shows; `app` when absent. */
 	readonly stackFrames?: "app" | "all";
+	/** Which spans the report's `in:` trail names; `app` when absent. */
+	readonly spans?: "app" | "all" | "off";
+	/** A module of the running program, whose package `spans: "app"` keeps. */
+	readonly appModule?: string;
 }
 
 /**
@@ -35,6 +39,8 @@ export interface FailureTarget {
 export interface FailureSettings {
 	readonly displayPath?: ((absolute: string) => string) | undefined;
 	readonly stackFrames?: "app" | "all" | undefined;
+	readonly spans?: "app" | "all" | "off" | undefined;
+	readonly appModule?: string | undefined;
 }
 
 /**
@@ -87,7 +93,7 @@ const build = (audience?: AudienceShape, settings: FailureSettings = {}): Effect
 		if (Option.isNone(theme) || Option.isNone(terminal) || Option.isNone(links)) return undefined;
 		const shape = audience ?? (Option.isSome(current) ? current.value : undefined);
 		if (shape === undefined) return undefined;
-		const { displayPath, stackFrames } = settings;
+		const { displayPath, stackFrames, spans, appModule } = settings;
 		const ctx = yield* Render.context("stderr", displayPath === undefined ? undefined : { displayPath }).pipe(
 			Effect.provideService(CliTheme, theme.value),
 			Effect.provideService(TerminalEnv, terminal.value),
@@ -95,7 +101,13 @@ const build = (audience?: AudienceShape, settings: FailureSettings = {}): Effect
 			Effect.provideService(Audience, shape),
 		);
 		const format = yield* autoFormat(ctx.audience);
-		return stackFrames === undefined ? { ctx, format } : { ctx, format, stackFrames };
+		return {
+			ctx,
+			format,
+			...(stackFrames === undefined ? {} : { stackFrames }),
+			...(spans === undefined ? {} : { spans }),
+			...(appModule === undefined ? {} : { appModule }),
+		};
 	});
 
 /**
@@ -111,7 +123,12 @@ export const refreshFailureTarget = (audience?: AudienceShape, settings?: Failur
 		const recorded = MutableRef.get(cell);
 		const target = yield* build(
 			audience,
-			settings ?? { displayPath: recorded?.ctx.displayPath, stackFrames: recorded?.stackFrames },
+			settings ?? {
+				displayPath: recorded?.ctx.displayPath,
+				stackFrames: recorded?.stackFrames,
+				spans: recorded?.spans,
+				appModule: recorded?.appModule,
+			},
 		);
 		if (target !== undefined) MutableRef.set(cell, target);
 	});
@@ -151,10 +168,17 @@ const withoutStatus = (doc: Document): Document =>
  *
  * @internal
  */
-export const linesOf = (cause: Cause.Cause<unknown>, target: FailureTarget, status = true): ReadonlyArray<string> => {
+export const linesOf = (
+	cause: Cause.Cause<unknown>,
+	target: FailureTarget,
+	status = true,
+	spans: "app" | "all" | "off" | undefined = target.spans,
+): ReadonlyArray<string> => {
 	const full = CliFailure.toDoc(cause, {
 		displayPath: target.ctx.displayPath,
 		...(target.stackFrames === undefined ? {} : { stackFrames: target.stackFrames }),
+		...(spans === undefined ? {} : { spans }),
+		...(target.appModule === undefined ? {} : { appModule: target.appModule }),
 	});
 	const doc = status ? full : withoutStatus(full);
 	const text = Render[target.format](doc, target.ctx);
@@ -190,5 +214,35 @@ export const guardConsumerLines = (lines: ReadonlyArray<string>): Effect.Effect<
  *
  * @internal
  */
-export const plainFailureLines = (cause: Cause.Cause<unknown>, status = true): ReadonlyArray<string> =>
-	linesOf(cause, fallbackTarget, status);
+export const plainFailureLines = (
+	cause: Cause.Cause<unknown>,
+	status = true,
+	spans?: "app" | "all" | "off",
+): ReadonlyArray<string> => linesOf(cause, fallbackTarget, status, spans);
+
+const SPAN_SETTINGS: ReadonlyArray<"app" | "all" | "off"> = ["app", "all", "off"];
+
+/**
+ * The span trail setting, as `CliLog`'s level is read: the explicit `spans` when given (the variable is then not read
+ * at all), else the variable named `envVar` through `Config`, case-insensitive, unset or empty meaning the default.
+ * A value that is not a setting is ignored, with the warning to log.
+ *
+ * @internal
+ */
+export const readSpans = (
+	explicit: "app" | "all" | "off" | undefined,
+	envVar: string | undefined,
+): Effect.Effect<{ readonly spans: "app" | "all" | "off" | undefined; readonly invalid: string | undefined }> =>
+	Effect.gen(function* () {
+		if (explicit !== undefined) return { spans: explicit, invalid: undefined };
+		if (envVar === undefined) return { spans: undefined, invalid: undefined };
+		const raw = yield* Config.option(Config.String(envVar)).pipe(Effect.orElseSucceed(() => Option.none<string>()));
+		if (Option.isNone(raw) || raw.value === "") return { spans: undefined, invalid: undefined };
+		const value = raw.value.toLowerCase();
+		const spans = SPAN_SETTINGS.find((setting) => setting === value);
+		if (spans !== undefined) return { spans, invalid: undefined };
+		return {
+			spans: undefined,
+			invalid: `${envVar}=${raw.value} is not a span setting (${SPAN_SETTINGS.join("|")}); ignoring it`,
+		};
+	});

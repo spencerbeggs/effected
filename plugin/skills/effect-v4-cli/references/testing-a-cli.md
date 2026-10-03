@@ -92,10 +92,10 @@ it.effect("answers a core prompt", () =>
 | --- | --- |
 | `render(screen, options?)` | one screen: a handle with `press`, `type`, `chunk`, `resize`, `frame`/`rawFrame`/`plainFrame`/`frames`, `rerender` and `result` |
 | `view(element, options?)` | a display-only element (no `result`): a crash surfaces on the next read instead of a silent empty frame |
-| `session(options?)` | a program that runs several screens (a wizard): provide its `layer`, fork the program, then `next({ contains? })` for each screen as it mounts; `stdout`/`stderr` are what the program wrote through `Console`, and `mounts === 0` is the "nothing mounted" assertion. Worked through below |
+| `session(options?)` | a program that runs several screens (a wizard): provide its `layer`, fork the program, then `next({ contains? })` for each screen as it mounts; `stdout`/`stderr` are what the program wrote through `Console`, `stdoutTranscript`/`stderrTranscript` each terminal stream alone as plain text, `transcript`/`written` what reached the terminal (a live view's `logConsole` lines included), and `mounts === 0` is the "nothing mounted" assertion. `renderPath: "production"` makes `clear` observable. Worked through below |
 | `live(options)` | a live view on the **production** render path, with `publish(event)`, `end`, `advance(duration)`, `transcript` (what the terminal shows, scrollback included) and `written` (every raw byte, e.g. to assert no scrollback-wiping `ESC[3J`) |
 | `cancelReason(exitOrCause)` | `Option<"escape" \| "interrupt">` from an `Exit` or `Cause`, so a test never walks the cause |
-| `styled(ansi)`, `serializer` | ANSI decoded back to token markup, and a Vitest snapshot serializer printing it |
+| `styled(ansi)`, `serializer` | ANSI decoded back to token markup, and a Vitest snapshot serializer printing it (also the default export of `@effected/cli/ui/testing/serializer`, for `snapshotSerializers`) |
 
 ~~~ts
 import { assert, it } from "@effect/vitest"
@@ -138,26 +138,20 @@ Traps a first screen test trips over:
 
 - **`press` takes a `KeyName` or `{ char }`, never a letter.** `press("y")` is a type error for a literal and, for a `string` variable, a defect (`"y" is not a key name; send text with type("y") or press({ char: "y" })`). Send a letter as `type("y")` or `press({ char: "y" }, "enter")`.
 - **The harness waits on real time**, through native timers a `TestClock` cannot hold, so `render`, `session` and `next` work under `it.effect` and `it.live` alike. A screen test that itself sleeps, times out or retries on a schedule needs `it.live`: under `it.effect` those run on a `TestClock` that nothing advances while the screen waits on real time. Only `live`'s tick is on the `TestClock`.
+- **The production path is not frame-throttled in the harness.** Ink throttles its production renders to 30 fps (a trailing ~33 ms timer) on a real terminal; `CliUiTest.live` and `session({ renderPath: "production" })` mount at Ink's `maxFps: 1000`, so a frame drawn right after another lands within the settle window instead of after the harness has read the screen. A test reading a stale frame under load is a harness bug to report, not a timing to pad with sleeps.
 - **One screen at a time, process-wide.** A `render` whose scope is still open holds the mount, so a second `render` in the same test waits forever. Give each screen its own `Effect.scoped`; closing the scope is what unmounts it.
 - **A screen thunk that throws is a defect on the next read**, a classic-JSX `React is not defined` included: set `jsx: "react-jsx"` (see `prompts-and-screens.md`, "Setup").
 - **Test colour at `truecolor`, the default.** Only truecolor keeps tokens apart: below it every marker colour collapses to one, so a snapshot taken at `"256"` or `"basic"` cannot tell `accent` from `muted`.
 
 ### Snapshotting frames: register the serializer
 
-`CliUiTest.serializer` prints a frame as token markup (`[accent]→ a[/accent]`) with trailing spaces trimmed, so a snapshot reads without escapes and does not churn with the palette. Register it once for the project, in the vitest config, from a module whose default export is the serializer:
-
-~~~ts
-// serializer.ts
-import { CliUiTest } from "@effected/cli/ui/testing"
-
-export default CliUiTest.serializer
-~~~
+`CliUiTest.serializer` prints a frame as token markup (`[accent]→ a[/accent]`) with trailing spaces trimmed, so a snapshot reads without escapes and does not churn with the palette. Register it once for the project, in the vitest config. `snapshotSerializers` takes modules whose default export is a serializer, and the kit ships that module, so no shim file is needed:
 
 ~~~ts
 // vitest.config.ts
 import { defineConfig } from "vitest/config"
 
-export default defineConfig({ test: { snapshotSerializers: ["./serializer.ts"] } })
+export default defineConfig({ test: { snapshotSerializers: ["@effected/cli/ui/testing/serializer"] } })
 ~~~
 
 The equivalent in a setup file is `expect.addSnapshotSerializer(CliUiTest.serializer)`. A snapshot is the one assertion `assert` has no form of, so it goes through Vitest's `expect`:
@@ -249,6 +243,20 @@ it.effect("Esc on the first screen cancels, and the second never mounts", () =>
 - **`Effect.forkScoped` plus `Fiber.join`** is the whole pattern: `next` and `press` settle as they do on a rendered screen, and joining the fiber gives the program's result (or fails with its failure; `Fiber.await` hands back the `Exit`, which `CliUiTest.cancelReason` reads).
 - **`mounts` counts every screen that began mounting.** Assert it after the program finished: `0` proves a non-interactive run or a flag that skips a prompt mounted nothing, and `1` after an Esc proves the next screen never appeared.
 - **`stdout` and `stderr`** are what the program wrote through `Console` (`log`, `info` and `debug` to stdout; `error`, `warn` and `trace` to stderr), one line per call.
+- **`transcript` and `written`** are the terminal itself: what the screens and any live view wrote to `UiStreams`, stdout and stderr merged in the order written. **`stdoutWritten` and `stderrWritten`** are each stream alone, as raw bytes: assert on them to catch a line on the wrong stream, which the merged view cannot show. **`stdoutTranscript` and `stderrTranscript`** are those same streams read as `transcript` reads the terminal (erases applied, escapes stripped): assert text per stream on them, since raw bytes split a painted line (`Dry run` from `0/2 repos`) wherever the paint breaks, and a cleared frame is absent from them but present in the raw bytes. A handler that runs `CliUi.live` and reports through `handle.logConsole` puts those lines here (a live view in a session always renders on the production path), never in `stdout`/`stderr`, so assert on `transcript` that they landed above the frame: a test on `stdout` alone passes even when the lines are lost.
+- **Provide `session.layer` closer to the program than any presentation layer whose values you want it to replace.** Its type names only `CliTheme`: `UiStreams`, `CliInteractive` and `Console` are references with defaults, so a session provided where it is shadowed fails quietly (real streams, not interactive), not with a type error. Under `CliRuntime.main` with `env`, `CliEnv.layer` deciding the theme and interactivity is the intended production test.
+- **`clear: true` needs `session({ renderPath: "production" })`.** By default screens render in Ink's debug mode, where `clear` does nothing; on the production path a cleared screen leaves nothing in `transcript`, while `written` still shows it was drawn:
+
+~~~ts
+const session = yield* CliUiTest.session({ renderPath: "production", color: "none" })
+const fiber = yield* Effect.forkScoped(
+  CliUi.run(TextInput.screen({ message: "Token reference?", mask: true }), { clear: true }).pipe(Effect.provide(session.layer)),
+)
+yield* (yield* session.next({ contains: "Token reference?" })).type("op://vault/item")
+// ...press enter, join the fiber, then:
+assert.notInclude(yield* session.transcript, "Token reference?")
+~~~
+
 - **Under `Command.runWith`, a cancel is the handler's typed `Cancelled`.** Through `CliRuntime.main` it becomes the one rendered line and exit `130`: provide the platform with `CliPrompt.gateTerminal.pipe(Layer.provide(terminal.layer))` beside `NodeServices.layer` (a `TestTerminal`'s layer), and map the exit with `Runtime.getErrorExitCode(Cause.squash(exit.cause))`.
 - **A handler that records a code** under `Command.runWith` also needs a fresh `CliExit.layer` provided around it (`CliRuntime.main` provides its own).
 

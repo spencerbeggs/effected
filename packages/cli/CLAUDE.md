@@ -15,8 +15,10 @@ document IR (`Doc`, plain frozen nodes), the pure renderers over a
 default failure report is drawn. An agent is never written an escape of any
 kind. Every string that enters a document is sanitised: escape sequences and
 control characters are removed, a tab becomes a space, and line breaks are kept
-as breaks. The glyph strings of a vocabulary or a theme are configuration and
-are not sanitised.
+as breaks. A status vocabulary's glyphs are sanitised too, at one source
+(`Status.glyph`, which a theme's `status`, `CliMessage`, `CliLog.status` and
+`Doc` all draw through), so a glyph built from data cannot inject an escape
+on a trusted line; a theme's glyph set (separators, ellipsis) is configuration.
 `okf/modules/cli.md` has the rows.
 
 **Design doc:** `@./okf/modules/cli.md` — Load when:
@@ -46,22 +48,29 @@ tier and imports only the boundary root, so nothing inherits a tier from `./ui`.
 Same posture as `app`: the two are siblings, not layers — `app` is the control
 plane, `cli` the presentation boundary, and neither imports the other.
 
-## The `./ui` and `./ui/testing` subpaths
+## The `./ui`, `./ui/testing` and `./ui/testing/serializer` subpaths
 
 `./ui` holds the interactive screens: `CliUi` (`run`, `prompt`, `fallback`,
-`lazy`, `live`, `context`), `DocView`, `UiProvider`, the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
+`lazy`, `map`, `live`, `lazyView`, `context`), `DocView`, `UiProvider`, the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
 `Toggle`, `Tabs`, `Viewport`), the key layer (`UiKey`, `KeyTable`, `useKeys`,
 `KeyHelp`) and the theme bridge (`Styled`, `inkProps`, `useTheme`,
 `useGlyphs`, `useTerminalSize`). `./ui/testing` holds `CliUiTest`: `render`
 for one screen, `view` for a display-only element (no `result`), `session`
-for a program that runs several, `live` for a live view, and `chunk` on every handle to send keys in
-one read. `okf/modules/cli.md` has the rows.
+for a program that runs several (with a `transcript` and `written` of the terminal, and
+`renderPath: "production"` to observe `clear`), `live` for a live view, and `chunk` on every handle to send keys in
+one read. `./ui/testing/serializer` (`src/ui-testing-serializer.ts`)
+default-exports `CliUiTest.serializer` for Vitest's `snapshotSerializers`; the root
+`vitest.config.ts` registers it that way for this package's own project (#909), so a
+snapshot test here uses `expect` for the snapshot alone. `okf/modules/cli.md` has the rows.
 
 - **Optional peers `ink` (^7.1.1) and `react` (^19.2.0).** The root never
   reaches them, and `./ui` imports them only when a screen mounts (`loadInk`),
   so importing `./ui` or running a non-interactive program loads neither,
-  except that an owned live view loads them to print its final frame as a
-  string.
+  except that an owned live view without a `final` document loads them to
+  print its final frame as a string. `CliUi.lazyView(load)` defers a live
+  view's own module (and its React) to the first Ink draw, and a `final`
+  document prints through the `Doc` renderers with no Ink at all; both are
+  held by `ui/CliUi.live.reach.test.ts` (#908).
   `src/ui/**` may only `import type` from them: only `ui/internal/ink.ts`
   loads them as values (held by `boundary.test.ts`); a missing peer in an interactive run is a defect
   naming both, never a silent fallback.
@@ -119,7 +128,7 @@ one read. `okf/modules/cli.md` has the rows.
     straight to `UiStreams` otherwise; any other write tears the frame —
     `@./okf/decisions/live-logs-through-ink.md`.
   - **An agent and the Actions runner:** an agent gets the colourless theme
-    (`themeForAudience`, the same rule `Render.context` uses) in every tree the
+    (`CliTheme.forAudience`, the same public rule `Render.context` and `CliLog.status` use) in every tree the
     kit mounts; under GitHub Actions `DocView` neutralizes workflow commands and a
     printed frame is neutralized whole.
   - **`DocView`** draws the `Doc` IR through `Render.ansi`/`Render.plain` as

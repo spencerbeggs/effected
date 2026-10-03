@@ -24,17 +24,18 @@
 | `CliEnvTestServices` | TypeAlias | The services `CliEnv.layerTest` provides. | |
 | `CliExit` | Class | The exit code a successful run wants, for commands whose findings are a result rather than a failure (a linter that found problems, say). | record the highest exit code set during a run for a findings-not-a-failure cli command, read back by CliRuntime.main |
 | `CliExitShape` | Interface | The shape behind `CliExit`. | |
-| `CliFailure` | Class | A failure as a document: what the default report prints, and a building block for a custom one. | draw a failure as a document, schema issues as a tree, app frames only |
+| `CliFailure` | Class | A failure as a document: what the default report prints, and a building block for a custom one. | draw a failure as a document, schema issues as a tree, app frames and spans only |
 | `CliFailureOptions` | Interface | Options for `CliFailure.toDoc`. | |
 | `CliInteractive` | Class | Whether this run may prompt a person: a human audience, with a terminal on both standard input and standard output, and a `TERM` that is not `dumb`. | may this run prompt a person, human audience on a tty, not TERM=dumb |
 | `CliLinks` | Class | Editor-aware links for file targets: where a link to a file opens. | open file links in vscode or as file urls, osc 8, never for agents |
 | `CliLinksLinkerOptions` | Interface | The options of `CliLinks.linker`. | |
 | `CliLinksOptions` | Interface | Options for `CliLinks.layer`. | |
 | `CliLinksShape` | Interface | The shape of the `CliLinks` service: the mode decided, and the URL a link target becomes. | |
-| `CliLog` | Class | Diagnostics kept apart from a program's output: a level, a format and a place to write. | opt-in diagnostics, log level env var, ndjson for agents and CI, file sink |
+| `CliLog` | Class | Diagnostics kept apart from a program's output: a level, a format and a place to write. | opt-in diagnostics, log level env var, ndjson for agents and CI, file sink, a painted status glyph on a log line |
 | `CliLogFile` | TypeAlias | Where the file sink writes: a literal path, or the environment variable that holds it. | |
 | `CliLogFileOptions` | Interface | `CliLogOptions` with a file sink, which is what makes the layer require `FileSystem` and `Path`. | |
 | `CliLogOptions` | Interface | Options for `CliLog.layer`. | |
+| `CliLogStatusOptions` | Interface | Options for `CliLog.status`. | |
 | `CliLogger` | Class | A `Logger` that renders CLI output rather than service logs: no timestamp, level or fiber id, with every level going to stderr by default so stdout carries only what the program writes. | plain-line cli logger, no timestamp or level prefix, every level to stderr by default |
 | `CliLoggerOptions` | Interface | How a log record is turned into a line. | |
 | `CliMessage` | Class | One-line status messages: a glyph and some text, themed for a person and plain for an agent. | print one themed success, info, warning or failure line no log level silences |
@@ -44,11 +45,11 @@
 | `CliPromptTarget` | TypeAlias | Which missing parameter a fallback stands in for, so a non-interactive run can fail with core's own error. | |
 | `CliRuntime` | Class | Report a CLI program's failures through the program's own logger. | report a cli program's failures through its own logger, set exit code |
 | `CliTest` | Class | Spawn a built CLI bin hermetically and read its exit code and streams as data. | from `@effected/cli/testing` — spawn a built cli bin hermetically in a sandboxed temp home, read exit code and stdout/stderr as data |
-| `CliTheme` | Class | The presentation of a CLI: colour tokens, glyphs and statuses, decided once from the terminal. | paint text by semantic token per stream, colour level aware, status glyphs |
+| `CliTheme` | Class | The presentation of a CLI: colour tokens, glyphs and statuses, decided once from the terminal. | paint text by semantic token per stream, colour level aware, status glyphs, the agent-never-gets-an-escape rule |
 | `CliThemeOptions` | Interface | Options for `CliTheme.layer`. | |
 | `CliThemeShape` | Interface | The shape of the `CliTheme` service: a colour level, a glyph set and the functions that use them. | |
 | `CliThemeTestOptions` | Interface | Options for `CliTheme.layerTest`. | |
-| `CliUi` | Class | Interactive screens drawn with Ink, mounted as scoped resources. | from `@effected/cli/ui` — run an ink screen from a handler or flag fallback, live progress view |
+| `CliUi` | Class | Interactive screens drawn with Ink, mounted as scoped resources. | from `@effected/cli/ui` — run an ink screen from a handler or flag fallback, map a screen's answer, live progress view with a lazy view and a final document |
 | `CliUiFallbackOptions` | TypeAlias | Options for `CliUi.fallback`: `CliPrompt.fallback`'s, and whether the screen erases its last frame. | from `@effected/cli/ui` |
 | `CliUiPromptOptions` | Interface | Options for `CliUi.prompt`. | from `@effected/cli/ui` |
 | `CliUiRunOptions` | Interface | Options for `CliUi.run`. | from `@effected/cli/ui` |
@@ -59,6 +60,7 @@
 | `CliUiTestOptions` | Interface | Options for `CliUiTest.render`, `CliUiTest.view` and `CliUiTest.session`, and the terminal's half of `CliUiTest.live`'s. | from `@effected/cli/ui/testing` |
 | `CliUiTestScreen` | Interface | A screen under test: drive it with keys and read its frames. | from `@effected/cli/ui/testing` |
 | `CliUiTestSession` | Interface | A terminal a whole program runs its screens on, from `CliUiTest.session`. | from `@effected/cli/ui/testing` |
+| `CliUiTestSessionOptions` | Interface | Options for `CliUiTest.session`: the terminal's, and the render path its screens mount on. | from `@effected/cli/ui/testing` |
 | `CliUiTestView` | Interface | A display-only element mounted by `CliUiTest.view`: a `CliUiTestScreen` that can be swapped for another element, with no result to wait for. | from `@effected/cli/ui/testing` |
 | `Column` | Interface | One column of a table. | |
 | `ConfigIssueRenderer` | Class | Turns a `@effected/config-file` `ConfigValidationError` into one line per rejected value. | render a @effected/config-file validation error into human-readable lines |
@@ -175,6 +177,7 @@
 | `ViewportState` | Interface | Where a viewport is: the selected item, the first item in view, how many items fit, and how many there are. | from `@effected/cli/ui` |
 | `ViewportViewProps` | Interface | Props of `Viewport.View`. | from `@effected/cli/ui` |
 | `inkProps` | Function | The Ink `Text` props for `style` at `color`. | from `@effected/cli/ui` — map a theme style to ink text props, colourless at colour none |
+| `serializer` | Variable | `CliUiTest.serializer`: it claims a string carrying escapes or token markup and prints it as token markup with each line's trailing spaces trimmed. See `CliUiTest.serializer` for what it claims. | from `@effected/cli/ui/testing/serializer` — register the cli frame snapshot serializer through vitest snapshotSerializers config |
 | `useGlyphs` | Function | The glyph set of the mounted screen, so a component draws Unicode or ASCII glyphs to match the rest of the output. | from `@effected/cli/ui` — read the cli glyph set inside an ink component |
 | `useKeys` | Function | Read the keys of `table` and dispatch the action each one matches; keys the table does not bind are ignored. | from `@effected/cli/ui` — dispatch ink keystrokes through a key table, chunk-safe |
 | `useTerminalSize` | Function | The usable terminal size: the stdout Ink draws on, less one column and one row, re-read on every render and when the terminal resizes; or, under a `UiProvider` given a `size`, that size less one column and one row. | from `@effected/cli/ui` — usable terminal columns and rows inside an ink component |

@@ -49,6 +49,22 @@ export interface CliUiTestOptions {
 }
 
 /**
+ * Options for {@link CliUiTest.session}: the terminal's, and the render path its screens mount on.
+ *
+ * @public
+ */
+export interface CliUiTestSessionOptions extends CliUiTestOptions {
+	/**
+	 * The path the session's screens render on. `"debug"`, the default, is `render`'s: Ink writes every frame whole and
+	 * unthrottled, which is what `next`, `frame` and `frames` read best, and where `clear` does nothing. `"production"`
+	 * renders screens as a real terminal does, erase moves and all, so `CliUi.run`'s `clear: true` is observable in
+	 * {@link CliUiTestSession.transcript}: the cleared frame is gone from it. A live view mounted in a session always
+	 * renders on the production path, whichever this is.
+	 */
+	readonly renderPath?: "debug" | "production";
+}
+
+/**
  * A screen under test: drive it with keys and read its frames.
  *
  * @public
@@ -150,13 +166,26 @@ export interface CliUiTestNextOptions {
  */
 export interface CliUiTestSession {
 	/**
-	 * Provide it around the program: in-memory terminal streams, the marker-palette `CliTheme`, `CliInteractive`
-	 * from the session's options, frame capture, and a `Console` whose writes the session keeps.
+	 * Provide it around the program: in-memory terminal streams (`UiStreams`), the marker-palette `CliTheme`,
+	 * `CliInteractive` from the session's options, frame capture, and a `Console` whose writes the session keeps. Its
+	 * type names `CliTheme` alone because that is the only one of them a program can require: `UiStreams`,
+	 * `CliInteractive`, the capture and `Console` are `Context.Reference`s with defaults, which never appear in a
+	 * requirement, so a type cannot say that the layer supplies them. Their defaults are the real process streams, a
+	 * run that is not interactive, and the real console, so a session provided where it is shadowed fails quietly
+	 * rather than by a type error. Hence the ordering below.
 	 *
 	 * @remarks
-	 * Anything the program provides closer to the screens wins: under `CliRuntime.main` with `env`, `CliEnv.layer`
-	 * supplies the theme and decides interactivity, as it does for real, and the session keeps only the streams, the
-	 * capture and the console.
+	 * **Where you provide it decides what it supplies.** Anything the program provides closer to the screens wins, so:
+	 *
+	 * - Provided **outside** a layer that supplies the same services, it is shadowed there. Under `CliRuntime.main`
+	 *   with `env`, `CliEnv.layer` (provided inside `main`) supplies the theme and decides interactivity, as it does for
+	 *   real, and the session keeps only the streams, the capture and the console. That is the intended way to test the
+	 *   production wiring.
+	 * - To have the session's own theme and `interactive` option win, provide it **inside** any presentation layer of
+	 *   your own (closest to the program), or drop that layer from the test.
+	 *
+	 * The streams, the capture and the console are the session's wherever it is provided, since nothing else in the kit
+	 * provides them.
 	 */
 	readonly layer: Layer.Layer<Cli.CliTheme>;
 	/**
@@ -178,6 +207,43 @@ export interface CliUiTestSession {
 	readonly stdout: Effect.Effect<string>;
 	/** What the program wrote to stderr through `Console` (`error`, `warn`, `trace`), one line per call. */
 	readonly stderr: Effect.Effect<string>;
+	/**
+	 * What the terminal shows now, scrollback included, as plain text: what the session's screens and live views wrote to
+	 * the terminal streams (`UiStreams`), with Ink's erases and clears applied, each line's trailing spaces trimmed and
+	 * blank lines left out, as {@link CliUiTestLive.transcript} reads it.
+	 *
+	 * @remarks
+	 * It holds the lines a live view writes above its frame through `handle.logConsole` (stdout's and stderr's, merged in the order
+	 * written, as one terminal shows them; `stdoutWritten` and `stderrWritten` keep them apart), each run's committed frame, a frame printed as a string, and, with
+	 * `renderPath: "production"`, each screen's frames as they stay on the terminal, so a screen run with `clear: true`
+	 * leaves nothing. On the default debug path each screen frame is written whole, one after another, so the
+	 * transcript shows every frame a screen drew rather than what a terminal would keep. What the program writes through
+	 * `Console` is not here: that is `stdout` and `stderr`.
+	 */
+	readonly transcript: Effect.Effect<string>;
+	/** Every byte written to the terminal streams, both of them in the order written, escapes included. */
+	readonly written: Effect.Effect<string>;
+	/**
+	 * Every byte written to the terminal's stdout (`UiStreams.stdout`) alone, escapes included: with
+	 * {@link CliUiTestSession.stderrWritten}, what tells a line on the wrong stream from one on the right, which the
+	 * merged `transcript` and `written` cannot.
+	 */
+	readonly stdoutWritten: Effect.Effect<string>;
+	/** Every byte written to the terminal's stderr (`UiStreams.stderr`) alone, escapes included. */
+	readonly stderrWritten: Effect.Effect<string>;
+	/**
+	 * What the terminal's stdout alone shows now, as plain text: {@link CliUiTestSession.stdoutWritten} run through the
+	 * same pipeline as {@link CliUiTestSession.transcript} (Ink's erases and clears applied, escapes stripped, trailing
+	 * spaces trimmed, blank lines left out).
+	 *
+	 * @remarks
+	 * Assert text per stream here rather than on the raw bytes, which split a painted line wherever the paint breaks
+	 * (a counter's `Dry run` from its `0/2 repos`). A frame cleared on the production render path is absent from it
+	 * and present in `stdoutWritten`.
+	 */
+	readonly stdoutTranscript: Effect.Effect<string>;
+	/** What the terminal's stderr alone shows now, as plain text: {@link CliUiTestSession.stderrWritten} read as `stdoutTranscript` reads stdout. */
+	readonly stderrTranscript: Effect.Effect<string>;
 }
 
 /**
@@ -447,6 +513,8 @@ const cancelledReason = (value: unknown): "escape" | "interrupt" | undefined => 
 /** One mounted screen's frames, whether it has unmounted, and the defect it died of, if it crashed. */
 interface Capture {
 	readonly raws: Array<string>;
+	/** How this mount's writes are read: whole debug frames, or production writes with their erase moves. */
+	readonly mode: "debug" | "production";
 	ended: boolean;
 	crash: { readonly defect: unknown } | undefined;
 }
@@ -468,12 +536,17 @@ const LEADING_MOVES = /^(?:\u001b\[[0-9;?]*[A-Za-ln-z])+/;
  * with the settle-and-send machinery that drives a screen.
  *
  * @remarks
- * In `"debug"` mode (screens) Ink writes each frame whole and the capture keeps it as written. In `"production"` mode
- * (the live view) Ink runs as it does for real: each render writes its erase moves and the new frame in one write, so
- * the capture keeps that write without its moves; a write of moves alone is Ink clearing the frame for a log line, not
- * a frame. stderr is the same stream as stdout there, as on a terminal, so the transcript holds both.
+ * `screens` is the render path a screen mounts on; a live view always mounts on the production path. On the debug path
+ * Ink writes each frame whole and the capture keeps it as written. On the production path Ink runs as it does for real:
+ * each render writes its erase moves and the new frame in one write, so the capture keeps that write without its
+ * moves; a write of moves alone is Ink clearing the frame for a log line, not a frame. stdout and stderr are two
+ * streams, each read alone, and `fake.written` is both in the order written: one terminal, for `written` and the
+ * transcript.
  */
-const makeTerminal = (options: CliUiTestOptions, mode: "debug" | "production" = "debug") => {
+const makeTerminal = (
+	options: CliUiTestOptions,
+	settings: { readonly screens: "debug" | "production" } = { screens: "debug" },
+) => {
 	const columns = options.columns ?? 80;
 	const rows = options.rows ?? 24;
 	const color = options.color ?? "truecolor";
@@ -488,7 +561,7 @@ const makeTerminal = (options: CliUiTestOptions, mode: "debug" | "production" = 
 			const current = captures.at(-1);
 			// An ended capture takes no more frames: a write after its unmount (a log line, a printed frame) is not one.
 			if (!frameDue || current === undefined || current.ended) return;
-			if (mode === "debug") {
+			if (current.mode === "debug") {
 				frameDue = false;
 				current.raws.push(chunk);
 				return;
@@ -500,7 +573,8 @@ const makeTerminal = (options: CliUiTestOptions, mode: "debug" | "production" = 
 			current.raws.push(text.replace(LEADING_MOVES, "").replace(/\n+$/, ""));
 		},
 	});
-	const streams = mode === "production" ? { ...fake.streams, stderr: fake.streams.stdout } : fake.streams;
+	// The two streams stay apart, so each one's bytes can be read; `fake.written` is both in order, one terminal.
+	const streams = fake.streams;
 	const stream = { isTerminal: true, color, hyperlinks: false, columns: Option.some(columns) };
 	const terminal = TerminalEnv.layerTest({ stdinIsTerminal: true, stdout: stream, stderr: stream });
 	const layer = Layer.mergeAll(
@@ -508,12 +582,17 @@ const makeTerminal = (options: CliUiTestOptions, mode: "debug" | "production" = 
 		CliInteractive.layerTest(options.interactive ?? true),
 		Layer.succeed(UiStreams, streams),
 		Layer.succeed(UiRenderOptions, {
-			...(mode === "debug" ? { debug: true } : {}),
+			...(settings.screens === "debug" ? { debug: true } : {}),
+			// Ink throttles the production path to 30 fps, a trailing ~33 ms timer: a frame due after a settle's quiet would
+			// land a throttle period after the harness read the screen, under load. At 1000 fps the throttle is 1 ms, so a
+			// render is written within the settle window, for the kit's tests and every consumer's alike.
+			maxFps: 1000,
 			onRender: () => {
 				frameDue = true;
 			},
-			onMount: () => {
-				captures.push({ raws: [], ended: false, crash: undefined });
+			onMount: (kind) => {
+				const mode = kind === "live" ? "production" : settings.screens;
+				captures.push({ raws: [], mode, ended: false, crash: undefined });
 			},
 			onUnmount: (crash) => {
 				// The unmount's own final render can leave a frame due that it never wrote: nothing more is a frame.
@@ -783,7 +862,7 @@ export class CliUiTest {
 	 * frames on a real terminal (a screen clear, for instance), nor about the final frame left in the scrollback once
 	 * the screen ends (answered screens stay); a test of that needs the production render path.
 	 * For the same reason `CliUi.run`'s `clear` has no visible effect on a harness frame, since Ink's `clear` does
-	 * nothing in debug mode: test `clear` on the production render path, as the kit's own tests do.
+	 * nothing in debug mode: test `clear` with `session({ renderPath: "production" })` and its `transcript`.
 	 * Unmounting is the scope's close; to draw a different screen, render it in a new scope.
 	 *
 	 * A crash is never swallowed. A screen thunk that throws (a classic-JSX `React is not defined` included) or a
@@ -853,8 +932,11 @@ export class CliUiTest {
 	 * mounted and drawn, `press` and `type` settle as they do on a rendered screen, and joining the program's fiber
 	 * gives its exit. Screens still run one at a time, process-wide, so `next` sees them in the order they mount.
 	 *
-	 * As with `render`, a screen run with `clear` leaves its frames unchanged here, and the final scrollback is not
-	 * captured: Ink renders in debug mode, where its `clear` does nothing, so test `clear` on the production render path.
+	 * By default, as with `render`, a screen run with `clear` leaves its frames unchanged here: Ink renders screens in
+	 * debug mode, where its `clear` does nothing. Pass `renderPath: "production"` to render them as a terminal does, and
+	 * read `transcript` to see what stays on it: a cleared screen leaves nothing there. A live view a handler mounts
+	 * (`CliUi.live`) always renders on the production path, and the lines it writes above its frame through
+	 * `handle.logConsole` are in `transcript` and `written`.
 	 * The waits are real time: a session test that itself sleeps or times out needs `it.live`. To assert that no screen
 	 * mounted (a non-interactive run, a flag that skips a prompt), check that `mounts` is `0` once the program has
 	 * finished.
@@ -886,11 +968,14 @@ export class CliUiTest {
 	 * To exercise `CliRuntime.main` as well (its failure report and exit code), run the program through it with the
 	 * session's layer provided around it instead; `main` provides its own `CliExit`.
 	 *
-	 * @param options - the terminal's size, colour and glyphs, and whether the run is interactive
+	 * @param options - the terminal's size, colour and glyphs, whether the run is interactive, and the screens' render path
 	 */
-	static readonly session = (options: CliUiTestOptions = {}): Effect.Effect<CliUiTestSession, never, Scope.Scope> =>
+	static readonly session = (
+		options: CliUiTestSessionOptions = {},
+	): Effect.Effect<CliUiTestSession, never, Scope.Scope> =>
 		Effect.map(Console.Console, (ambient) => {
-			const terminal = makeTerminal(options);
+			const { renderPath, ...terminalOptions } = options;
+			const terminal = makeTerminal(terminalOptions, { screens: renderPath ?? "debug" });
 			const output = capturingConsole(ambient);
 			let taken = 0;
 			const next = (nextOptions: CliUiTestNextOptions = {}): Effect.Effect<CliUiTestScreen> =>
@@ -925,6 +1010,18 @@ export class CliUiTest {
 				mounts: Effect.sync(() => terminal.captures.length),
 				stdout: Effect.sync(() => output.out.join("")),
 				stderr: Effect.sync(() => output.err.join("")),
+				transcript: Effect.sync(() =>
+					screenAfter(terminal.fake.written(), terminal.fake.streams.stdout.rows).join("\n"),
+				),
+				written: Effect.sync(() => terminal.fake.written()),
+				stdoutWritten: Effect.sync(() => terminal.fake.stdout()),
+				stderrWritten: Effect.sync(() => terminal.fake.stderr()),
+				stdoutTranscript: Effect.sync(() =>
+					screenAfter(terminal.fake.stdout(), terminal.fake.streams.stdout.rows).join("\n"),
+				),
+				stderrTranscript: Effect.sync(() =>
+					screenAfter(terminal.fake.stderr(), terminal.fake.streams.stdout.rows).join("\n"),
+				),
 			} satisfies CliUiTestSession;
 		});
 
@@ -988,7 +1085,7 @@ export class CliUiTest {
 					...(glyphs === undefined ? {} : { glyphs }),
 					...(interactive === undefined ? {} : { interactive }),
 				},
-				"production",
+				{ screens: "production" },
 			);
 			const queue = yield* Queue.unbounded<E, Cause.Done>();
 			const handle = yield* CliUi.live<E, S>({ ...view, events: Stream.fromQueue(queue) }).pipe(
@@ -1015,9 +1112,9 @@ export class CliUiTest {
 				plainFrame: Effect.sync(() => trimLines(last().replace(ESCAPES, ""))),
 				frames: Effect.sync(() => raws().map((raw) => trimLines(styled(raw)))),
 				transcript: Effect.sync(() =>
-					screenAfter(terminal.fake.stdout(), terminal.fake.streams.stdout.rows).join("\n"),
+					screenAfter(terminal.fake.written(), terminal.fake.streams.stdout.rows).join("\n"),
 				),
-				written: Effect.sync(() => terminal.fake.stdout()),
+				written: Effect.sync(() => terminal.fake.written()),
 				handle,
 			};
 		});
@@ -1069,7 +1166,20 @@ export class CliUiTest {
 	 * tag (a raw or styled frame, or a `Render.ansi` string), but not a log line's lone `[info]` prefix, nor one whose
 	 * only brackets are style tags like `[b]`, which unrelated data uses too. It prints the string as token markup with
 	 * each line's trailing spaces trimmed, so a snapshot reads without escapes and does not churn with the palette.
-	 * Register it with `expect.addSnapshotSerializer`.
+	 *
+	 * @remarks
+	 * Register it in either of two ways. Through the Vitest config, by the module whose default export it is, which
+	 * needs no code in a test file:
+	 *
+	 * ```ts
+	 * // vitest.config.ts
+	 * export default defineConfig({ test: { snapshotSerializers: ["@effected/cli/ui/testing/serializer"] } })
+	 * ```
+	 *
+	 * Or in a test file, with `expect.addSnapshotSerializer(CliUiTest.serializer)`.
+	 *
+	 * Snapshots are the one place a test needs `expect`: `assert` has no snapshot form, so a suite that asserts with
+	 * `assert.*` everywhere else still writes `expect(frame).toMatchInlineSnapshot(...)` for a snapshot.
 	 */
 	static readonly serializer: {
 		readonly test: (value: unknown) => boolean;

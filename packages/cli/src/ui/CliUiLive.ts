@@ -1,6 +1,6 @@
 // Root types are named through the package's own name, so the emitted ui.d.ts imports them from "@effected/cli".
 import type * as Cli from "@effected/cli";
-import { Audience } from "@effected/env";
+import { Audience, TerminalEnv } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
 import type { Console } from "effect";
 import {
@@ -21,13 +21,17 @@ import {
 } from "effect";
 import type { FunctionComponent, ReactElement, ReactNode } from "react";
 import { CliInteractive } from "../CliInteractive.js";
-import { CliTheme, themeForAudience } from "../CliTheme.js";
-import { underGithubActions } from "../internal/autoFormat.js";
+import { CliLinks } from "../CliLinks.js";
+import { CliTheme } from "../CliTheme.js";
+import { autoFormat, underGithubActions } from "../internal/autoFormat.js";
+import type { RenderContext } from "../Render.js";
+import { Render } from "../Render.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
 import type { HolderSlot } from "./internal/Holder.js";
 import { holder, holderSlot } from "./internal/Holder.js";
 import { fromReact, inkModules, loadInk, withInkColour } from "./internal/ink.js";
 import { makeInkConsole } from "./internal/inkConsole.js";
+import { LazyViewShapeError, loadView } from "./internal/lazyView.js";
 import { mountPermit } from "./internal/mountPermit.js";
 import { drainPerformance, resolveDrain } from "./internal/perfDrain.js";
 import { UiRenderOptions } from "./internal/renderOptions.js";
@@ -69,6 +73,10 @@ export interface LiveOptions<E, S> {
 	 * `useTerminalSize` work in it. When the final frame is printed as a string (not interactive, or a run that degraded
 	 * before it painted), `useTerminalSize().rows` is `Infinity`, since that frame has no height to fit: a render must
 	 * not allocate per row.
+	 *
+	 * To keep the view's module (its JSX, and so React) off every run that never draws it, pass
+	 * `CliUi.lazyView(() => import("./view.js"))`: the module is loaded only when a run first mounts or prints its frame
+	 * with Ink, so `--help`, a usage error, and, with `final`, a run that is not interactive, never load it.
 	 */
 	readonly render: (state: S, frame: number) => ReactElement;
 	/** Whether an event starts a run: by default, the only event that begins one (see `begins`). */
@@ -91,6 +99,28 @@ export interface LiveOptions<E, S> {
 	 * string; hosted writes nothing, its host having its own output.
 	 */
 	readonly mode?: "owned" | "hosted";
+	/**
+	 * The final frame of a run that is not interactive (an agent, CI, a pipe, `TERM=dumb`), as a document: given, an
+	 * `owned` view prints each run's `final(state)` at the run's end instead of rendering `render` to a string with Ink,
+	 * so such a run loads neither Ink nor React, nor a `CliUi.lazyView` module.
+	 *
+	 * @remarks
+	 * It is called once per run, at the run's terminal event (or when the events end mid-run), with the state then, and
+	 * replaces the string that run would have printed: never both. It is rendered as `Doc.print` renders a document:
+	 * `Render.context("stdout")` when the environment `CliRuntime.main` builds is there (`TerminalEnv`, `Audience` and
+	 * `CliLinks`; otherwise the stdout theme, the `Audience` if any, and no width limit), the renderer the audience gets
+	 * (`ansi` for a person, `plain` for an agent, `githubLog` under GitHub Actions), and an agent gets no escape. It is
+	 * written where the view writes, to `UiStreams` stdout, so a host's capture of the view's output holds it. A document
+	 * that renders to nothing prints nothing. A `final` that throws is the run degrading: one warning, nothing printed.
+	 *
+	 * An interactive run never calls it, and a `hosted` view never prints either way. It need not match the Ink frame:
+	 * it is what a reader with no terminal gets.
+	 *
+	 * With `final` set, `render` is never called on a run that is not interactive, not even to build a string that would
+	 * go unused: the run's output is `final(state)` alone. (Pinned by `CliUi.live.final.test.ts`, whose watch-mode test
+	 * counts zero `render` calls over three runs.)
+	 */
+	readonly final?: ((state: S) => Cli.Document) | undefined;
 	/**
 	 * The frame tick, in milliseconds; 80 by default. While a run is drawn the view redraws on every tick, so a spinner
 	 * turns without events. Anything but a positive, finite number is a defect.
@@ -238,8 +268,9 @@ export const live = <E, S>(
 		// `Render.context` does, both as Ink's colour level and as the theme the tree reads (its `paint`, its colour-none
 		// markers). Read only when provided, so `Audience` stays out of the requirements.
 		const audience = yield* Effect.serviceOption(Audience);
-		const theme = themeForAudience(
-			(yield* CliTheme).forStream("stdout"),
+		const cliTheme = yield* CliTheme;
+		const theme = CliTheme.forAudience(
+			cliTheme.forStream("stdout"),
 			Option.isSome(audience) ? audience.value.kind : undefined,
 		);
 		const colour = theme.color;
@@ -292,12 +323,28 @@ export const live = <E, S>(
 			}),
 		);
 
+		/**
+		 * A lazy view's shape errors already warned about. A shape error is deterministic, and the lazy view keeps one
+		 * error object for it, so a long watch session warns once for it, not once per run; any other failure is a fresh
+		 * object, and warns each time.
+		 */
+		const shapesWarned = new Set<LazyViewShapeError>();
+
+		/** The degraded-run warning, unless it is a shape error this view has already warned about. */
+		const warning = (error: unknown): Effect.Effect<void> => {
+			if (error instanceof LazyViewShapeError) {
+				if (shapesWarned.has(error)) return Effect.void;
+				shapesWarned.add(error);
+			}
+			return Effect.logWarning(DEGRADED(error));
+		};
+
 		/** Stop drawing a run: unmount first, so the one warning never lands inside a frame, then warn. */
 		const degrade = (current: Run<S>, error: unknown): Effect.Effect<void> =>
 			Effect.suspend(() => {
 				if (current.degraded) return unmount(current);
 				current.degraded = true;
-				return Effect.andThen(unmount(current), Effect.logWarning(DEGRADED(error)));
+				return Effect.andThen(unmount(current), warning(error));
 			});
 
 		/** Act on a failure the boundary reported for the run mounted now, if any. */
@@ -307,9 +354,19 @@ export const live = <E, S>(
 			return current === undefined || failed === undefined ? Effect.void : degrade(current, failed.error);
 		});
 
+		/** Say once that a run stopped drawing: already said for a degraded run, and said here for one that never mounted. */
+		const warnOnce = (current: Run<S>, error: unknown): Effect.Effect<void> =>
+			Effect.suspend(() => {
+				if (current.degraded) return Effect.void;
+				current.degraded = true;
+				return warning(error);
+			});
+
 		/** The final frame as a string, at the stdout width (80 when it reports none) and with no height to fit. */
 		const printFrame = (current: Run<S>): Effect.Effect<void> =>
 			Effect.gen(function* () {
+				const viewLoaded = yield* Effect.exit(loadView(options.render));
+				if (Exit.isFailure(viewLoaded)) return yield* warnOnce(current, Cause.squash(viewLoaded.cause));
 				const { ink, react } = yield* loadInk;
 				const frame = yield* frameOf;
 				const reported = streams.stdout.columns;
@@ -331,15 +388,39 @@ export const live = <E, S>(
 					),
 				);
 				drainPerformance(drain);
-				if (failure !== undefined) {
-					// Already said once for a degraded run; a run that never mounted says it here.
-					if (!current.degraded) {
-						current.degraded = true;
-						yield* Effect.logWarning(DEGRADED(failure.error));
-					}
-					return;
-				}
+				if (failure !== undefined) return yield* warnOnce(current, failure.error);
 				bridge.print(neutralize ? CommandNeutralizer.text(text) : text);
+			});
+
+		/** The context `final`'s document is rendered with: `Doc.print`'s when the environment is there. */
+		const finalContext: Effect.Effect<RenderContext> = Effect.gen(function* () {
+			const terminal = yield* Effect.serviceOption(TerminalEnv);
+			const links = yield* Effect.serviceOption(CliLinks);
+			if (Option.isSome(terminal) && Option.isSome(links) && Option.isSome(audience)) {
+				return yield* Render.context("stdout").pipe(
+					Effect.provideService(CliTheme, cliTheme),
+					Effect.provideService(TerminalEnv, terminal.value),
+					Effect.provideService(CliLinks, links.value),
+					Effect.provideService(Audience, audience.value),
+				);
+			}
+			// No environment: what the view already knows. A run with nobody watching has no width to honour.
+			return Render.contextOf({
+				audience: Option.isSome(audience) ? audience.value.kind : "human",
+				color: theme.color,
+				glyphs: theme.glyphs,
+				...(neutralize ? { neutralizeWorkflowCommands: true } : {}),
+			});
+		});
+
+		/** A run's `final` document, printed as `Doc.print` would, to the view's stdout; never Ink. */
+		const printFinal = (current: Run<S>, final: (state: S) => Cli.Document): Effect.Effect<void> =>
+			Effect.gen(function* () {
+				const built = yield* Effect.exit(Effect.try({ try: () => final(state), catch: (error) => error }));
+				if (Exit.isFailure(built)) return yield* warnOnce(current, Cause.squash(built.cause));
+				const ctx = yield* finalContext;
+				const text = Render[yield* autoFormat(ctx.audience)](built.value, ctx);
+				if (text !== "") bridge.print(text);
 			});
 
 		/** Mount a run's view with the current state, its tick beside it; a failure degrades the run. */
@@ -358,10 +439,12 @@ export const live = <E, S>(
 					// One Ink mount at a time, process-wide, held for this run only: a `CliUi.run` between runs mounts.
 					yield* Effect.acquireRelease(mountPermit.take(1), () => mountPermit.release(1), { interruptible: true });
 					yield* Effect.acquireRelease(
-						Effect.sync(() => overrides.onMount?.()),
+						Effect.sync(() => overrides.onMount?.("live")),
 						() => Effect.sync(() => overrides.onUnmount?.(undefined)),
 					);
 					const { ink, react } = yield* loadInk;
+					// A lazy view's module, before the first element is built; a failed import degrades the run.
+					yield* Effect.orDie(loadView(options.render));
 					yield* withInkColour(colour);
 					const frame = yield* frameOf;
 					const initial = elementOf(state, frame);
@@ -408,8 +491,10 @@ export const live = <E, S>(
 								interactive: true,
 								exitOnCtrlC: false,
 								patchConsole: false,
-								...(overrides.debug === true ? { debug: true } : {}),
+								// Never Ink's debug mode, even under a harness that renders screens so: a live view writes lines above
+								// its frame, which only the production path lays out as a terminal would.
 								...(overrides.onRender === undefined ? {} : { onRender: overrides.onRender }),
+								...(overrides.maxFps === undefined ? {} : { maxFps: overrides.maxFps }),
 							});
 							drainPerformance(drain);
 							return instance;
@@ -493,7 +578,10 @@ export const live = <E, S>(
 		/** End the run: unmount, which commits its frame; a degraded run that never painted prints its frame instead. */
 		const endRun: Effect.Effect<void> = Effect.flatMap(takeRun, (current) => {
 			if (current === undefined) return Effect.void;
-			if (!interactive) return options.mode === "hosted" ? Effect.void : printFrame(current);
+			if (!interactive) {
+				if (options.mode === "hosted") return Effect.void;
+				return options.final === undefined ? printFrame(current) : printFinal(current, options.final);
+			}
 			return Effect.suspend(() => {
 				// A frame that threw as the run ended is said here, once, after the unmount, as any other degrade is.
 				const failed = current.failed;

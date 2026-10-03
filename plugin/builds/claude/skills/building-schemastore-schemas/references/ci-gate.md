@@ -71,7 +71,16 @@ schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 | `1` | drift under `--on-drift=error`, a gate failure (lint warning, ajv strict finding), a missing frozen version (`FrozenVersionMissingError`), a merged catalog blocked by a `url` or `name` advertised twice or an invalid slice (`CatalogMergeError`), or — for `check` — any document `build` would write (the slice and merged catalog included) or an orphaned output (a catalog slice no schema declares, a merged catalog with no slice left, a document an `appendVersion` or `layout` rename left behind) |
 | `2` | config not found, failed to load, failed `defineConfig` validation, or a `catalogDir` that is a file or cannot be listed (`CatalogDirError`, before anything is written) |
 | `3` | infrastructure failure |
-| `64` | usage error (an unknown flag, a bad literal) |
+| `64` | usage error (an unknown flag, a bad literal, or `--wizard` on a run that is not interactive: the kit's prompt-gated flag is left out of help and rejected there) |
+
+The failure itself is written to stderr as the kit's standard
+`@effected/cli` report: a status line naming the error and its message
+(`✗ DriftError: 1 published schema(s) drifted; nothing was written.`), the
+message's further lines, and, when the failure happened inside a span, an
+`in: …` line naming the command's own spans
+(the kit's are left out). It is painted for a person at a terminal, plain
+for an agent, and a GitHub Actions log line under Actions. Match on the exit
+code and on the error's text, not on the line's first characters.
 
 A gate failure exits `1` under either `--on-drift` value and is not
 overridable by `--force`. When both a gate failure and drift occur, the gate
