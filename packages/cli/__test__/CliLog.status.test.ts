@@ -136,6 +136,25 @@ describe("CliLog.status", () => {
 		}),
 	);
 
+	it.effect("a numeric indent is floored and capped at 64 spaces, never throwing", () =>
+		Effect.gen(function* () {
+			const { err } = yield* capture(
+				Effect.all(
+					[
+						CliLog.status(Status.core, "info", "a", { indent: 1e12 }),
+						CliLog.status(Status.core, "info", "b", { indent: 2.9 }),
+						CliLog.status(Status.core, "info", "c", { indent: Number.POSITIVE_INFINITY }),
+						CliLog.status(Status.core, "info", "d", { indent: Number.NaN }),
+						CliLog.status(Status.core, "info", "e", { indent: 64 }),
+					],
+					{ discard: true },
+				),
+				"agent",
+			);
+			assert.deepStrictEqual(err, [`${" ".repeat(64)}ℹ a`, "  ℹ b", "ℹ c", "ℹ d", `${" ".repeat(64)}ℹ e`]);
+		}),
+	);
+
 	it.effect("a string indent cannot carry an escape or a line break onto the trusted line", () =>
 		Effect.gen(function* () {
 			for (const audience of ["agent", "human"] as const) {

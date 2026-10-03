@@ -40,16 +40,21 @@ export interface CliLogStatusOptions {
 	readonly level?: LogLevel.Severity | undefined;
 	/**
 	 * What the line starts with, before the glyph, so an indented report line keeps its place in a block: a number of
-	 * spaces, or a string. A string is sanitised as text is (escapes and controls removed, a tab a space) and its line
+	 * spaces (floored, at most 64; zero, a negative or a non-finite number is none), or a string. A string is sanitised as text is (escapes and controls removed, a tab a space) and its line
 	 * breaks dropped, so the indent can never carry an escape onto the trusted line. None by default.
 	 */
 	readonly indent?: number | string | undefined;
 }
 
+/** The most spaces a numeric `indent` writes. */
+const MAX_INDENT = 64;
+
 /** An indent as written before the glyph: spaces for a number, a string with nothing in it that is not text. */
 const indentOf = (indent: number | string | undefined): string => {
 	if (indent === undefined) return "";
-	if (typeof indent === "number") return Number.isFinite(indent) && indent > 0 ? " ".repeat(Math.floor(indent)) : "";
+	// Floored and capped: `indent: 1e12` would make `repeat` throw a RangeError inside the log call.
+	if (typeof indent === "number")
+		return Number.isFinite(indent) && indent > 0 ? " ".repeat(Math.min(MAX_INDENT, Math.floor(indent))) : "";
 	return sanitize(indent).replace(/\r\n|\r|\n/g, "");
 };
 
