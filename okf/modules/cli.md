@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T15:59:05Z
-  body_sha256: ed68fab5199a554780c933a832a75b82f0fe8c64494623502dab2bc64500b4dc
+  at: 2026-10-03T16:07:56Z
+  body_sha256: b287bb5124e56cb8a1a909820a690386cc76be07cff72bca3e10f2c7534a87f6
 ---
 
 # @effected/cli
