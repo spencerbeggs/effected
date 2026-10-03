@@ -32,8 +32,6 @@ const NO_VIEW = (resolved: unknown): string => {
 	return `@effected/cli/ui: CliUi.lazyView's load resolved to ${received}. Expected ${EXPECTED}`;
 };
 
-/** The view `load` resolved to: the value itself when it is a function (a `default` property on it is ignored), else
- * its `default` when that is a function; anything else throws, saying what it got. */
 /**
  * A load that resolved to no view: deterministic, so a lazy view keeps it (one error object for the handle's life) and
  * the live view warns about it once, where a failed import is tried again by the next run.
@@ -42,6 +40,8 @@ const NO_VIEW = (resolved: unknown): string => {
  */
 export class LazyViewShapeError extends Error {}
 
+/** The view `load` resolved to: the value itself when it is a function (a `default` property on it is ignored), else
+ * its `default` when that is a function; anything else throws, saying what it got. */
 const pick = (resolved: unknown): ((state: never, frame: number) => ReactElement) => {
 	if (typeof resolved === "function") return resolved as (state: never, frame: number) => ReactElement;
 	if (typeof resolved === "object" && resolved !== null) {

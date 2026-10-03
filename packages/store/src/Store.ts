@@ -167,7 +167,8 @@ export interface StoreShape {
 	 * `_store_meta`, whatever the options, so a later mirrored import can tell
 	 * a row Store rolled back from one an older program applied (see
 	 * {@link StoreOptions.mirrorMigratorLedger}). On SQLite only; a database
-	 * never rolled back carries no tombstones and no `_store_meta` table.
+	 * never rolled back carries no tombstones, and no `_store_meta` table
+	 * unless `adoptMigratorLedger` has written its marker there.
 	 */
 	readonly rollback: (toId: number) => Effect.Effect<StoreMigrationResult, StoreError | StoreMigrationError>;
 	/** Project the full migration list with each migration's `appliedAt`. */

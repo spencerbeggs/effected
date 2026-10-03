@@ -12,7 +12,7 @@ Several behaviours change in ways a consumer can observe. Check each against you
 * A share headline that read `1/2 change` now reads `1/2 changes`; update any snapshot that pinned the old text
 * `TextInput.step` now moves the cursor and deletes by grapheme rather than by code point
 * A status vocabulary's glyph is sanitised wherever it is drawn, so control sequences in a glyph no longer reach the terminal
-* Inside a `CliUiTest` session, live views never render in Ink debug mode, and the session's stderr shares stdout's stream. The harness mounts at `maxFps` 1000
+* Inside a `CliUiTest` session, live views never render in Ink debug mode. stdout and stderr stay two streams (`stdoutWritten` / `stderrWritten`), merged in write order by `written` and `transcript`, and `CliUiTest.live` no longer aliases stderr to stdout. The harness mounts at `maxFps` 1000
 * The internal `themeForAudience` helper was removed; use `CliTheme.forAudience`
 
 ## Features
