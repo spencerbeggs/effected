@@ -1,5 +1,21 @@
 # @effected/github
 
+## 0.15.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @octokit/plugin-paginate-rest | dependency | updated | ^15.0.0 | ^16.0.0 |
+
+[#933][#933]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#933]: https://github.com/spencerbeggs/effected/pull/933
+
 ## 0.15.0
 
 ### Breaking Changes

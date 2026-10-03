@@ -1,5 +1,17 @@
 # @effected/config-file
 
+## 0.14.1
+
+### Bug Fixes
+
+- `ConfigFile.layer` and `ConfigFile.testLayer` now reject a key whose service shape is wider than `ConfigFileShape` at compile time, instead of accepting it silently. Calls that pass the type arguments explicitly keep compiling. [#933][#933]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#933]: https://github.com/spencerbeggs/effected/pull/933
+
 ## 0.14.0
 
 ### Breaking Changes

@@ -1,5 +1,33 @@
 # @effected/schemastore-cli
 
+## 0.21.0
+
+### Breaking Changes
+
+- The CLI now runs under `CliRuntime.main`. Exit codes and stdout are unchanged, with one exception.
+
+- `--wizard` is hidden from non-interactive help, and `build --wizard` in a non-interactive environment now exits 64 (usage error) instead of 0
+
+### Features
+
+- stderr leads with a glyph and the error tag, for example `✗ DriftError: …`, or `[FAIL]` under `TERM=dumb`
+- When a failure happens inside a span, stderr adds an `in:` span trail
+- stderr output is audience-aware, so humans, agents and CI each get the form suited to them
+- A defect shows the program's own stack frames [#933][#933]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.11.0 | 0.12.0 |
+| @effected/schemastore | dependency | updated | 0.20.0 | 0.21.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#933]: https://github.com/spencerbeggs/effected/pull/933
+
 ## 0.20.0
 
 ### Breaking Changes
