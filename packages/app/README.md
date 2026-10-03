@@ -113,7 +113,13 @@ Four services, one platform import, one namespace typed once, and every failure 
 
 `AppStore` and `AppCache` take a `directory` (`"state"`, `"data"` or `"cache"`; defaults as above) and an optional relative `subdir` under it, created with `mkdir -p` before the database opens — so `{ directory: "data", subdir: "projects/abc123", filename: "data.db" }` lands at `~/.local/share/myapp/projects/abc123/data.db`. A `subdir` that cannot be created fails on the same typed `AppDirsError` as the directory itself; because of that `mkdir`, the database layers need `FileSystem` as well as `AppDirs` and `Path`.
 
-Every `filename` takes a **single path component**, and every `subdir` component obeys the same rule (no empty component, no `.` or `..`, no leading `/`, no `\`). An empty name, one containing a separator, or `.` / `..` would escape the namespace directory, so it dies at layer construction: it can only come from code, never from user input.
+Every `filename` takes a **single path component**, and every `subdir` component obeys the same rule (no empty component, no `.` or `..`, no leading `/`, no `\`). Both are wiring, so a bad one **dies** rather than failing typed. A `subdir` derived from runtime data — a per-project key from a path — must therefore come from a derivation that can only produce valid components, such as a hash:
+
+```ts
+import { createHash } from "node:crypto";
+
+const subdir = createHash("sha256").update(projectRoot).digest("hex").slice(0, 16);
+``` An empty name, one containing a separator, or `.` / `..` would escape the namespace directory, so it dies at layer construction: it can only come from code, never from user input.
 
 ## The namespace is typed once
 

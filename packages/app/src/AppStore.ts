@@ -46,6 +46,12 @@ export interface AppStoreOptions extends StoreOptions, Pick<StoreSqliteOptions, 
 	 * `..`, no leading `/`, no `\`. Anything else would escape the namespace
 	 * directory, so it **dies** at layer construction. A failure to create it
 	 * is a typed `AppDirsError` naming `directory` and the full path.
+	 *
+	 * A subdir derived from runtime data — a project path, a user-supplied
+	 * name — must come from a derivation that can only produce a valid
+	 * component, such as a hash:
+	 * `subdir: createHash("sha256").update(projectRoot).digest("hex").slice(0, 16)`.
+	 * Passed raw, an unexpected value is a defect, not a typed failure.
 	 */
 	readonly subdir?: string;
 }

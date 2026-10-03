@@ -86,6 +86,6 @@ NodeRuntime.runMain(CliRuntime.main(Command.run(cli, { version: "1.0.0" }), { pl
 - The memoization trap at maximum cost: every export is a parameterized layer factory — inline calls at two provide sites open duplicate databases with split event streams. Bind each layer once, including every `layerAs(…)`: two inline calls with the same key open the file twice.
 - N named stores are N bound `layerAs` constants — there is no `App.layer({ stores })` map, by design (it would open every store eagerly).
 - Never pass a namespace to `AppConfig` — it comes solely from `AppDirs` via `App.layer`.
-- `filename` options (including `layerAs`'s) must be a single path component — `.` and `..` die at construction. A `subdir` must be relative with every component obeying the same rule.
+- `filename` options (including `layerAs`'s) must be a single path component — `.` and `..` die at construction. A `subdir` must be relative with every component obeying the same rule. Both DIE on a bad value (wiring, not input), so a runtime-derived subdir must come from a sanitised derivation — hash it: `createHash("sha256").update(projectRoot).digest("hex").slice(0, 16)`.
 - `AppError` is a type-only union alias (`XdgEnvError | AppDirsError | StoreError | StoreMigrationError | CacheError`) for `catchTags` convenience — constituent errors flow through unwrapped.
 - No `App`-level spans exist deliberately — every fallible op is already spanned by its owning package.
