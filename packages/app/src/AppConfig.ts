@@ -174,8 +174,15 @@ export interface AppConfigOptions<A, I, RR = never> {
 }
 
 // Implementation of AppConfig.layer; the public contract lives on the static.
+// `tag` is pinned by three intersected parts. `Context.Key<Self, S>` captures the key's real shape;
+// `Context.Key<Self, ConfigFileShape<A>>` keeps `A` inferable from the key, which a bare
+// `MergeStrategy.firstMatch()` as `strategy` needs; the conditional only checks (`NoInfer`), rejecting a
+// shape wider than ConfigFileShape<A>. It cannot see through method-syntax parameter bivariance: a member
+// redeclared as a method with a wider parameter still passes.
 const layer = <Self, A, I, RR = never, S extends ConfigFileShape<A> = ConfigFileShape<A>>(
-	tag: Context.Key<Self, S> & ([ConfigFileShape<A>] extends [S] ? unknown : never),
+	tag: Context.Key<Self, S> &
+		Context.Key<Self, ConfigFileShape<A>> &
+		([ConfigFileShape<NoInfer<A>>] extends [S] ? unknown : never),
 	options: AppConfigOptions<A, I, RR>,
 ): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | AppDirs | Xdg | RR> =>
 	Layer.unwrap(
@@ -213,10 +220,7 @@ const layer = <Self, A, I, RR = never, S extends ConfigFileShape<A> = ConfigFile
 				...(options.resolversAfter ?? []),
 			];
 
-			// The constraint rejects keys whose shape adds members or is incompatible with ConfigFileShape<A>, so the key
-			// is read at ConfigFileShape<A>. It cannot see through method-syntax parameter bivariance: a member redeclared
-			// as a method with a wider parameter still passes.
-			return ConfigFile.layer(tag as Context.Key<Self, ConfigFileShape<A>>, {
+			return ConfigFile.layer(tag, {
 				schema: options.schema,
 				codec: options.codec,
 				strategy: options.strategy ?? MergeStrategy.firstMatch<A>(),

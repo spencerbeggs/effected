@@ -1,7 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
+import type { FileSystem, Layer, Path } from "effect";
 import { Context, Schema } from "effect";
 import type { ConfigFileShape } from "../src/ConfigFile.js";
 import { ConfigFile } from "../src/ConfigFile.js";
+import { ConfigResolver } from "../src/ConfigResolver.js";
 import { JsonCodec } from "../src/JsonCodec.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
 
@@ -12,6 +14,15 @@ class SettingsFile extends ConfigFile.Service<SettingsFile, Settings>()("key-typ
 class WiderFile extends Context.Service<WiderFile, ConfigFileShape<Settings> & { readonly extra: string }>()(
 	"key-typing/WiderFile",
 ) {}
+
+// The downstream regression shape: optional fields and a bare `firstMatch()`, whose
+// `A` comes only from the call's context. The tag must keep `A` inferable, or it
+// falls to `unknown` and the correctly shaped key below is rejected.
+class Optional extends Schema.Class<Optional>("Optional")({
+	cacheDir: Schema.optional(Schema.String),
+	projectKey: Schema.optional(Schema.String),
+}) {}
+class OptionalFile extends ConfigFile.Service<OptionalFile, Optional>()("key-typing/OptionalFile") {}
 
 const options = { schema: Settings, codec: JsonCodec, strategy: MergeStrategy.firstMatch<Settings>() };
 
@@ -33,5 +44,36 @@ describe("ConfigFile key typing", () => {
 		const testLayer = () => ConfigFile.testLayer(WiderFile, { ...options, files: {} });
 		const accepted = () => ConfigFile.testLayer(SettingsFile, { ...options, files: {} });
 		for (const build of [layer, testLayer, accepted]) assert.isFunction(build);
+	});
+
+	it("layer and testLayer infer A from the key when the strategy is a bare firstMatch()", () => {
+		const layer = ConfigFile.layer(OptionalFile, {
+			schema: Optional,
+			codec: JsonCodec,
+			strategy: MergeStrategy.firstMatch(),
+			resolvers: [ConfigResolver.upwardWalk({ filename: "optional.json" })],
+		});
+		// RR is inferred from the resolvers, so the layer's requirements carry no stray `unknown`.
+		const typed: Layer.Layer<OptionalFile, never, FileSystem.FileSystem | Path.Path> = layer;
+		const testLayer = ConfigFile.testLayer(OptionalFile, {
+			schema: Optional,
+			codec: JsonCodec,
+			strategy: MergeStrategy.firstMatch(),
+			files: {},
+		});
+		assert.isDefined(typed);
+		assert.isDefined(testLayer);
+	});
+
+	it("still rejects a wider key when the strategy is a bare firstMatch()", () => {
+		const build = () =>
+			// @ts-expect-error a wider shape would be handed a value missing `extra`
+			ConfigFile.layer(WiderFile, {
+				schema: Settings,
+				codec: JsonCodec,
+				strategy: MergeStrategy.firstMatch(),
+				resolvers: [],
+			});
+		assert.isFunction(build);
 	});
 });

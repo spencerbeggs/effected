@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { ConfigFileShape } from "@effected/config-file";
-import { ConfigFile, ConfigResolver, JsonCodec } from "@effected/config-file";
+import { ConfigFile, ConfigResolver, JsonCodec, MergeStrategy } from "@effected/config-file";
 import type { MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
 import { AppDirs, CurrentPlatform, Xdg, XdgPaths } from "@effected/xdg";
@@ -338,5 +338,23 @@ describe("AppConfig.layer key typing", () => {
 		// @ts-expect-error the key's config type must match the schema's
 		const mismatched = () => AppConfig.layer(TestConfig, { filename: "c.json", schema: Other, codec: JsonCodec });
 		for (const build of [ok, wider, mismatched]) assert.isFunction(build);
+	});
+
+	it("infers A from the key when the strategy is a bare firstMatch()", () => {
+		class Optional extends Schema.Class<Optional>("Optional")({
+			cacheDir: Schema.optional(Schema.String),
+			projectKey: Schema.optional(Schema.String),
+		}) {}
+		class OptionalConfig extends ConfigFile.Service<OptionalConfig, Optional>()("app-test/OptionalConfig") {}
+		const layer = AppConfig.layer(OptionalConfig, {
+			filename: "optional.json",
+			schema: Optional,
+			codec: JsonCodec,
+			strategy: MergeStrategy.firstMatch(),
+			resolvers: [ConfigResolver.upwardWalk({ filename: "optional.json" })],
+		});
+		// RR is inferred from the resolvers, so the requirements carry no stray `unknown`.
+		const typed: Layer.Layer<OptionalConfig, never, FileSystem.FileSystem | Path.Path | AppDirs | Xdg> = layer;
+		assert.isDefined(typed);
 	});
 });

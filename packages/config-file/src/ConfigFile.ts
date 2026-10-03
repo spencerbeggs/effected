@@ -682,15 +682,19 @@ const makeImpl = <A, I, RR>(
 };
 
 // Implementation of ConfigFile.layer; the public contract lives on the static.
+// `tag` is pinned by three intersected parts. `Context.Key<Self, S>` captures the key's real shape;
+// `Context.Key<Self, ConfigFileShape<A>>` keeps `A` inferable from the key, which a bare
+// `MergeStrategy.firstMatch()` in the options needs; the conditional only checks (`NoInfer`), rejecting a
+// shape wider than ConfigFileShape<A>. It cannot see through method-syntax parameter bivariance: a member
+// redeclared as a method with a wider parameter still passes.
 const layer = <Self, A, I, RR = never, S extends ConfigFileShape<A> = ConfigFileShape<A>>(
-	tag: Context.Key<Self, S> & ([ConfigFileShape<A>] extends [S] ? unknown : never),
+	tag: Context.Key<Self, S> &
+		Context.Key<Self, ConfigFileShape<A>> &
+		([ConfigFileShape<NoInfer<A>>] extends [S] ? unknown : never),
 	options: ConfigFileOptions<A, I, RR>,
 ): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | RR> =>
 	Layer.effect(
-		// The constraint rejects keys whose shape adds members or is incompatible with ConfigFileShape<A>, so the key
-		// is read at ConfigFileShape<A>. It cannot see through method-syntax parameter bivariance: a member redeclared
-		// as a method with a wider parameter still passes.
-		tag as Context.Key<Self, ConfigFileShape<A>>,
+		tag,
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			// `save` needs `dirname`, so `Path` is required alongside `FileSystem`.
@@ -736,15 +740,15 @@ export interface ConfigFileTestOptions<A, I> {
 }
 
 // Implementation of ConfigFile.testLayer; the public contract lives on the static.
+// `tag` is pinned exactly as ConfigFile.layer's is; see the note there.
 const testLayer = <Self, A, I, S extends ConfigFileShape<A> = ConfigFileShape<A>>(
-	tag: Context.Key<Self, S> & ([ConfigFileShape<A>] extends [S] ? unknown : never),
+	tag: Context.Key<Self, S> &
+		Context.Key<Self, ConfigFileShape<A>> &
+		([ConfigFileShape<NoInfer<A>>] extends [S] ? unknown : never),
 	options: ConfigFileTestOptions<A, I>,
 ): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path> =>
 	Layer.effect(
-		// The constraint rejects keys whose shape adds members or is incompatible with ConfigFileShape<A>, so the key
-		// is read at ConfigFileShape<A>. It cannot see through method-syntax parameter bivariance: a member redeclared
-		// as a method with a wider parameter still passes.
-		tag as Context.Key<Self, ConfigFileShape<A>>,
+		tag,
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			const path = yield* Path.Path;

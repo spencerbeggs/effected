@@ -226,6 +226,30 @@ function-style keys both still infer `I` cleanly. When the parameter list
 already has explicit-type-argument callers, add `S` last with a default
 (`S extends Shape = Shape`) so those calls keep compiling.
 
+**A generic shape needs the plain key back.** When the shape mentions a type
+parameter the factory infers, say `A` in `ConfigFileShape<A>`, the bare pin
+removes the key as an inference site for `A`: the key now infers only `S`.
+Any argument that relies on `A` coming from the key then breaks. A bare
+`MergeStrategy.firstMatch()` in the options is one, because it has no `A` of
+its own. `A` falls to `unknown`, and a correctly shaped key fails as "not
+assignable to parameter of type `Key<Self, ConfigFileShape<unknown>>`". Put
+the plain key back into the intersection so `A` is inferred from it again,
+and wrap the conditional's `A` in `NoInfer` so the conditional only checks:
+
+```ts
+declare const layer: <Self, A, I, S extends ConfigFileShape<A> = ConfigFileShape<A>>(
+  tag: Context.Key<Self, S> &
+    Context.Key<Self, ConfigFileShape<A>> &
+    ([ConfigFileShape<NoInfer<A>>] extends [S] ? unknown : never),
+  options: ConfigFileOptions<A, I>,
+) => Layer.Layer<Self>
+// inside: Layer.effect(tag, make) — the plain-key member makes the cast unnecessary
+```
+
+The plain-key member does the work here. `NoInfer` on its own does not
+restore inference, so test the factory with an argument whose type comes only
+from the key.
+
 **The limit.** `S extends Shape` plus `[Shape] extends [S]` proves only
 mutual assignability, not identity, and assignability between shapes is still
 subject to method bivariance. A shape that redeclares a member in **method**

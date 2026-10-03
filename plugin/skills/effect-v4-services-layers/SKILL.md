@@ -126,7 +126,8 @@ and method bivariance makes that covariant. The fix is
 `S extends Shape`; a key that adds members then errors as "not assignable to
 parameter of type 'never'". It cannot see through method-syntax parameter
 bivariance (a member redeclared as a method with a wider parameter still
-passes). See
+passes). If the shape is generic (`Shape<A>`), also intersect
+`Context.Key<I, Shape<A>>`, or `A` is no longer inferred from the key. See
 [references/edge-cases.md](./references/edge-cases.md).
 
 ## Access a service: prefer `yield*`
