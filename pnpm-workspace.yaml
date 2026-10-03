@@ -136,17 +136,12 @@ catalogs:
     "@effected/xdg": ^0.8.0
     "@effected/yaml": ^0.18.0
 configDependencies:
-  "@savvy-web/pnpm-plugin-silk": 0.46.0
+  "@savvy-web/pnpm-plugin-silk": 0.47.0
 loglevel: info
 minimumReleaseAgeExclude:
   - "@effect/*"
   - "@effect/tsgo-*"
   - effect
-  - "@pluginfinity/cli@0.1.0"
-  - "@pluginfinity/core@0.1.0"
-  - "@pluginfinity/engine@0.1.0"
-  - "@pluginfinity/targets@0.1.0"
-  - pluginfinity@0.1.0
 overrides:
   "@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared": 4.0.0-rc.117
   "@effect/platform-node@4.0.0-rc.118>@effect/platform-node-shared": 4.0.0-rc.118
