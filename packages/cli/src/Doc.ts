@@ -97,8 +97,12 @@ export interface Column {
 export interface Counter {
 	/** A stable identifier, for a caller's total rule. */
 	readonly key: string;
-	/** What the counter is called when shown. */
-	readonly label: string;
+	/**
+	 * What the counter is called when shown: one label, or a singular and a plural form chosen by `n` (`one` when `n` is
+	 * exactly 1, `other` for any other count, 0 included). A `CountsTable` heads its column with `other`, since the column
+	 * holds every row's count.
+	 */
+	readonly label: string | { readonly one: string; readonly other: string };
 	/** The count. */
 	readonly n: number;
 	/** The status the count is painted with. */
@@ -396,6 +400,10 @@ const treeNode = (input: TreeInput): TreeNode =>
 const counterOf = (counter: Counter): Counter =>
 	freeze({
 		...counter,
+		label:
+			typeof counter.label === "string"
+				? counter.label
+				: freeze({ one: counter.label.one, other: counter.label.other }),
 		status: freeze({ name: counter.status.name, def: freeze({ ...counter.status.def }) }),
 	});
 
@@ -695,12 +703,20 @@ export class Doc {
 	 *
 	 * @param vocab - the vocabulary the status belongs to
 	 * @param name - a status name in it
+	 * The label is one string, or `{ one, other }` to pluralise by count: `one` is shown when `n` is exactly 1 and `other`
+	 * for every other count, 0 included, in every layout and in the headline's share (`1/3 change`, `2/3 changes`).
+	 *
 	 * @param options - the counter's `key`, `label` and count `n`, and `showZero` to keep it when `n` is zero
 	 */
 	static counter<N extends string>(
 		vocab: Status<N>,
 		name: NoInfer<N>,
-		options: { readonly key: string; readonly label: string; readonly n: number; readonly showZero?: boolean },
+		options: {
+			readonly key: string;
+			readonly label: string | { readonly one: string; readonly other: string };
+			readonly n: number;
+			readonly showZero?: boolean;
+		},
 	): Counter {
 		return counterOf({
 			key: options.key,

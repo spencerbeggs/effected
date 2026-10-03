@@ -2,6 +2,23 @@ import type { BlockOf, Counter, Inline } from "../Doc.js";
 import { Fmt } from "../Fmt.js";
 
 /**
+ * The label a counter shows for its count: its one label, or `one` when `n` is exactly 1 and `other` otherwise.
+ *
+ * @internal
+ */
+export const counterLabel = (counter: Counter): string =>
+	typeof counter.label === "string" ? counter.label : counter.n === 1 ? counter.label.one : counter.label.other;
+
+/**
+ * The label a counter's column is headed with in a `CountsTable`: its one label, or its plural form, since a column
+ * holds every row's count.
+ *
+ * @internal
+ */
+export const columnLabel = (counter: Counter): string =>
+	typeof counter.label === "string" ? counter.label : counter.label.other;
+
+/**
  * The total of a `Counts` block: the caller's rule when it has one, otherwise the sum of `n` over every counter.
  *
  * @remarks
@@ -79,7 +96,7 @@ export const countsTableOf = (block: BlockOf<"CountsTable">): BlockOf<"Table"> =
 		_tag: "Table",
 		columns: [
 			{ header: block.labelHeader ?? [] },
-			...keys.map((key) => ({ header: [text(key.label)] })),
+			...keys.map((key) => ({ header: [text(columnLabel(key))] })),
 			...(timed ? [{ header: block.durationHeader ?? [text("duration")] }] : []),
 		],
 		rows: [...rows, ...total],

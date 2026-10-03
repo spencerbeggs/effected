@@ -1,7 +1,7 @@
 import type { Block, Document, Inline, LinkTarget } from "../Doc.js";
 import { Fmt, sanitize } from "../Fmt.js";
 import type { RenderContext } from "../Render.js";
-import { countsTableOf, totalOf, visibleCountersOf } from "./counts.js";
+import { counterLabel, countsTableOf, totalOf, visibleCountersOf } from "./counts.js";
 import type { Span } from "./layout.js";
 import { flatten } from "./layout.js";
 import { isAllowedLinkUrl } from "./linkScheme.js";
@@ -258,7 +258,7 @@ const countsMd = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>
 	const duration = block.durationMs === undefined ? "" : Fmt.duration(block.durationMs);
 	const suffix = block.suffix === undefined ? "" : inlineMd(block.suffix, ctx, "line").trim();
 	const name = (counter: (typeof visible)[number]): string =>
-		escapeText(sanitize(counter.label).replace(/\r\n|\r|\n/g, " "));
+		escapeText(sanitize(counterLabel(counter)).replace(/\r\n|\r|\n/g, " "));
 
 	if (block.layout === "row") {
 		// Every column of the table is named: the counters by their labels and the duration as `duration`. The label,

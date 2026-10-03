@@ -2,7 +2,7 @@ import type { Block, Document, Inline, LinkTarget } from "../Doc.js";
 import { Fmt, sanitize } from "../Fmt.js";
 import type { RenderContext } from "../Render.js";
 import type { Style, TokenName } from "../Token.js";
-import { countsTableOf, totalOf, visibleCountersOf } from "./counts.js";
+import { counterLabel, countsTableOf, totalOf, visibleCountersOf } from "./counts.js";
 import type { Span } from "./layout.js";
 import { truncateSpans, widthOf, wrapSpans } from "./layout.js";
 
@@ -285,7 +285,8 @@ const countsLayout = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts
 	const duration = block.durationMs === undefined ? "" : Fmt.duration(block.durationMs);
 	const suffix = block.suffix === undefined ? [] : toned(oneLine(inline(walk, block.suffix)), "muted");
 	// A counter's label is one line, like the block's own label: a line break in it would start a line of its own.
-	const nameOf = (counter: (typeof visible)[number]): string => sanitize(counter.label).replace(/\r\n|\r|\n/g, " ");
+	const nameOf = (counter: (typeof visible)[number]): string =>
+		sanitize(counterLabel(counter)).replace(/\r\n|\r|\n/g, " ");
 	// The first counter is the headline: it shows its share of the total.
 	const counters = visible.map((counter, index): Line => {
 		const name = nameOf(counter);
