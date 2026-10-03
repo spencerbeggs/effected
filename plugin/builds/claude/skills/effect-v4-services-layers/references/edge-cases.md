@@ -1,7 +1,7 @@
 # Service and layer edge cases
 
-Three narrow situations that are dead ends until you have seen them once. None
-is day-to-day wiring; each costs a full session the first time.
+Narrow situations that are dead ends until you have seen them once. None is
+day-to-day wiring; each costs a full session the first time.
 
 ## Split graphs: two resolved copies of one package are two services
 
@@ -188,3 +188,40 @@ saying so. Probed from inside `packages/app` (control `Effect.catchAll`
 failed to compile; the bare two-element chain failed on its second element;
 the annotated chain compiled clean). Surfaced by `AppConfig.layer` wrapping
 `ConfigFile.layer` in the `@effected/app` port.
+
+## A "takes your key over shape X" parameter accepts wider shapes
+
+A factory that provides a consumer-defined key — `layerAs(tag, options)`,
+`ConfigFile.layer(tag, options)` — usually types the key as
+`Context.Key<I, Shape>` or `Context.Service<I, Shape>`. Both accept a key over a
+**wider** shape:
+
+```ts
+class Wider extends Context.Service<Wider, StoreShape & { readonly extra: string }>()("app/Wider") {}
+
+declare const layerAs: <I>(tag: Context.Service<I, StoreShape>) => Layer.Layer<I>
+layerAs(Wider) // compiles — and the layer hands `Wider` a value with no `extra`
+```
+
+`Context.Key` declares its shape `out` (covariant), and although `Service` is
+`in out`, a class key is compared to the parameter **structurally**: its
+`of`/`use` members are methods, method parameters are bivariant, so the check
+is effectively covariant. A key whose shape adds members passes, and the
+consumer's `yield* Wider` then reads members the layer never supplied.
+
+Pin the shape exactly. Infer it as `S`, then refuse any `S` that is wider:
+
+```ts
+declare const layerAs: <I, S extends StoreShape>(
+  tag: Context.Key<I, S> & ([StoreShape] extends [S] ? unknown : never),
+) => Layer.Layer<I>
+// inside: Layer.effect(tag as Context.Key<I, StoreShape>, make) — S is StoreShape by construction
+```
+
+An unrelated shape still fails with the usual "missing the following
+properties" message. A wider one fails as `Argument of type 'typeof Wider' is
+not assignable to parameter of type 'never'` — cryptic, so say so in the
+factory's TSDoc. Classes made by `Context.Service<I, StoreShape>()(id)` and
+function-style keys both still infer `I` cleanly. When the parameter list
+already has explicit-type-argument callers, add `S` last with a default
+(`S extends Shape = Shape`) so those calls keep compiling.
