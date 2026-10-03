@@ -45,6 +45,7 @@ export interface MigratorStatusRecord {
  */
 export type MigratorFailure =
 	| { readonly _tag: "ledger"; readonly cause: SqlError }
+	| { readonly _tag: "refused"; readonly message: string }
 	| {
 			readonly _tag: "migration";
 			readonly direction: "up" | "down";
@@ -54,6 +55,10 @@ export type MigratorFailure =
 	  };
 
 const ledgerFailure = (cause: SqlError): MigratorFailure => ({ _tag: "ledger", cause });
+
+/** The structural cause of a failure: the `SqlError`, or an `Error` carrying a refusal's message. */
+export const failureCause = (failure: MigratorFailure): unknown =>
+	failure._tag === "refused" ? new Error(failure.message) : failure.cause;
 
 const migrationFailure = (direction: "up" | "down", migration: MigratorRecord, cause: SqlError): MigratorFailure => ({
 	_tag: "migration",
@@ -157,6 +162,30 @@ export const applyPending = (
 							SELECT id FROM ${sql(table)} WHERE id = ${migration.id}
 						`.pipe(Effect.mapError(ledgerFailure));
 						if (recorded.length > 0) return false;
+						if (mirror !== undefined) {
+							// Under the same write lock: an older program migrating through
+							// effect/sql's Migrator may have applied this id since our plan was
+							// read. Its row in the mirror means applied — import it, never re-run.
+							const foreign = yield* sql<ForeignRow>`
+								SELECT migration_id, name, created_at FROM ${sql(mirror)} WHERE migration_id = ${migration.id}
+							`.withoutTransform.pipe(Effect.mapError(ledgerFailure));
+							const row = foreign[0];
+							if (row !== undefined) {
+								const imported = importable(mirror, row, migration);
+								if (typeof imported === "string") {
+									return yield* Effect.fail<MigratorFailure>({ _tag: "refused", message: imported });
+								}
+								yield* sql`
+									INSERT INTO ${sql(table)} (id, name, applied_at)
+									VALUES (${migration.id}, ${migration.name}, ${imported.appliedAt})
+								`.pipe(Effect.mapError(ledgerFailure));
+								yield* Effect.logDebug("Imported migration").pipe(
+									Effect.annotateLogs("migration_id", String(migration.id)),
+									Effect.annotateLogs("migration_name", migration.name),
+								);
+								return false;
+							}
+						}
 						// effect/sql's Migrator record, message and annotation keys alike.
 						yield* Effect.logDebug("Running migration").pipe(
 							Effect.annotateLogs("migration_id", String(migration.id)),
@@ -237,7 +266,12 @@ export const rollbackTo = (
  * `created_at` is the row's own `applied_at`, rendered in SQLite's
  * `current_timestamp` form. SQLite only.
  */
-export const syncMirror = (sql: SqlClient, table: string, mirror: string): Effect.Effect<number, AdoptFailure> =>
+export const syncMirror = (
+	sql: SqlClient,
+	table: string,
+	mirror: string,
+	migrations: ReadonlyArray<MigratorMigration>,
+): Effect.Effect<number, AdoptFailure> =>
 	sql
 		.onDialectOrElse({
 			sqlite: (): Effect.Effect<number, AdoptFailure | SqlError> =>
@@ -251,6 +285,60 @@ export const syncMirror = (sql: SqlClient, table: string, mirror: string): Effec
 								name VARCHAR(255) NOT NULL
 							)
 						`;
+						// Import first: rows an older program recorded that ours lacks. Each
+						// must match a known migration by id AND name, exactly as adoption
+						// requires, or the sync is refused rather than guessed at.
+						const ownRows = yield* sql<{ id: number }>`SELECT id FROM ${sql(table)}`;
+						const own = new Set(ownRows.map((row) => Number(row.id)));
+						const foreignRows = yield* sql<ForeignRow>`
+							SELECT migration_id, name, created_at FROM ${sql(mirror)} ORDER BY migration_id ASC
+						`.withoutTransform;
+						const byId = new Map(migrations.map((migration) => [migration.id, migration]));
+						const foreignIds = new Set(foreignRows.map((row) => Number(row.migration_id)));
+						const toImport: Array<{ readonly id: number; readonly name: string; readonly appliedAt: string }> = [];
+						for (const row of foreignRows) {
+							const id = Number(row.migration_id);
+							if (own.has(id)) continue;
+							const migration = byId.get(id);
+							if (migration === undefined) {
+								return yield* Effect.fail<AdoptFailure>({
+									_tag: "refused",
+									message: `${mirror} records migration ${id} "${row.name}", which has no migration with that id`,
+								});
+							}
+							const imported = importable(mirror, row, migration);
+							if (typeof imported === "string") {
+								return yield* Effect.fail<AdoptFailure>({ _tag: "refused", message: imported });
+							}
+							toImport.push({ id, name: migration.name, appliedAt: imported.appliedAt });
+						}
+						if (toImport.length > 0) {
+							// The adoption gap rule, on what is imported: effect/sql never runs an
+							// id at or below its latest, so a known migration below the imported
+							// high-water mark that neither ledger records was never applied.
+							const highWater = Math.max(...toImport.map((row) => row.id));
+							const skipped = migrations.find(
+								(migration) => migration.id <= highWater && !own.has(migration.id) && !foreignIds.has(migration.id),
+							);
+							if (skipped !== undefined) {
+								return yield* Effect.fail<AdoptFailure>({
+									_tag: "refused",
+									message: `migration ${skipped.id} "${skipped.name}" is at or below ${mirror}'s imported id ${highWater} but was never recorded there`,
+								});
+							}
+							for (const row of toImport) {
+								yield* sql`
+									INSERT INTO ${sql(table)} (id, name, applied_at)
+									VALUES (${row.id}, ${row.name}, ${row.appliedAt})
+								`;
+							}
+							yield* Effect.logDebug("Imported migrator ledger rows").pipe(
+								Effect.annotateLogs("migrator_table", mirror),
+								Effect.annotateLogs("imported_count", String(toImport.length)),
+							);
+						}
+
+						// Then export: rows ours has that the mirror lacks.
 						const before = yield* sql<{ n: number }>`SELECT COUNT(*) AS n FROM ${sql(mirror)}`;
 						yield* sql`
 							INSERT OR IGNORE INTO ${sql(mirror)} (migration_id, name, created_at)
@@ -298,7 +386,7 @@ export const statusOf = (
 	});
 
 const isMigratorFailure = (value: MigratorFailure | SqlError): value is MigratorFailure =>
-	"_tag" in value && (value._tag === "ledger" || value._tag === "migration");
+	"_tag" in value && (value._tag === "ledger" || value._tag === "migration" || value._tag === "refused");
 
 /**
  * A raw adoption failure: the adoption step's own SQL failed, or adoption was
@@ -333,6 +421,26 @@ export const adoptedAt = (value: unknown): string | undefined => {
 	const candidate = zoneless !== null ? `${zoneless[1]}T${zoneless[2]}Z` : value;
 	const parsed = new Date(candidate);
 	return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+};
+
+/**
+ * Validate one foreign ledger row against the migration with its id, as
+ * adoption does: the names must match and `created_at` must be readable.
+ * Returns the row's ISO `appliedAt`, or the refusal message.
+ */
+const importable = (
+	foreignTable: string,
+	row: ForeignRow,
+	migration: MigratorMigration,
+): { readonly appliedAt: string } | string => {
+	const id = Number(row.migration_id);
+	if (migration.name !== row.name) {
+		return `${foreignTable} records migration ${id} as "${row.name}", but migration ${id} is named "${migration.name}"`;
+	}
+	const appliedAt = adoptedAt(row.created_at);
+	return appliedAt === undefined
+		? `${foreignTable} records migration ${id} with an unreadable created_at ${JSON.stringify(row.created_at)}`
+		: { appliedAt };
 };
 
 /**

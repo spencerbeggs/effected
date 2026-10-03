@@ -71,7 +71,7 @@ describe("StoreError.message carries the cause", () => {
 		}),
 	);
 
-	it.effect("a SQL failure appends the driver's message to the operation", () =>
+	it.effect("a SQL failure carries the database's own text, not the driver's generic summary", () =>
 		Effect.gen(function* () {
 			const exit = yield* Effect.exit(
 				Effect.provide(
@@ -85,10 +85,34 @@ describe("StoreError.message carries the cause", () => {
 			);
 			const error = failureOf(exit) as StoreError;
 			assert.instanceOf(error, StoreError);
-			assert.strictEqual(error.operation, "setup");
-			const causeMessage = (error.cause as Error).message;
-			assert.isAbove(causeMessage.length, 0);
-			assert.strictEqual(error.message, `Store setup failed: ${causeMessage}`);
+			// The direct cause is the SqlError ("Failed to prepare statement"); the
+			// message folds in the innermost node:sqlite text instead.
+			assert.strictEqual((error.cause as Error).message, "Failed to prepare statement");
+			assert.strictEqual(error.message, "Store setup failed: no such table: no_such_table");
+		}),
+	);
+
+	it.effect("a constraint failure names the constraint and never the bound value", () =>
+		Effect.gen(function* () {
+			const secret = 424242;
+			const exit = yield* Effect.exit(
+				Effect.provide(
+					Effect.void,
+					Store.layerSqlite({
+						filename: freshFile(),
+						migrations: [],
+						onConnect: (sql) =>
+							Effect.gen(function* () {
+								yield* sql`CREATE TEMP TABLE t (id INTEGER PRIMARY KEY)`;
+								yield* sql`INSERT INTO t (id) VALUES (${secret})`;
+								yield* sql`INSERT INTO t (id) VALUES (${secret})`;
+							}),
+					}),
+				),
+			);
+			const error = failureOf(exit) as StoreError;
+			assert.strictEqual(error.message, "Store setup failed: UNIQUE constraint failed: t.id");
+			assert.notInclude(error.message, String(secret));
 		}),
 	);
 });

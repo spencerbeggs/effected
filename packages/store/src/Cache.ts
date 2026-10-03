@@ -5,7 +5,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlError from "effect/sql/SqlError";
 import { bytesToUtf8, utf8ToBytes } from "./Bytes.js";
 import type { MigratorMigration } from "./internal/migrator.js";
-import { ensureLedger, runPending } from "./internal/migrator.js";
+import { ensureLedger, failureCause, runPending } from "./internal/migrator.js";
 import { walCheckpointOnClose, withOnConnect } from "./internal/sqlite.js";
 
 /**
@@ -485,9 +485,11 @@ const make = (options: CacheOptions): Effect.Effect<CacheShape, CacheError, SqlC
 		const sql = yield* SqlClient.SqlClient;
 		const pubsub = yield* PubSub.unbounded<CacheEvent>();
 
-		yield* ensureLedger(sql, CACHE_LEDGER_TABLE).pipe(Effect.mapError((failure) => cacheError("setup", failure.cause)));
+		yield* ensureLedger(sql, CACHE_LEDGER_TABLE).pipe(
+			Effect.mapError((failure) => cacheError("setup", failureCause(failure))),
+		);
 		yield* runPending(sql, CACHE_LEDGER_TABLE, cacheMigrations).pipe(
-			Effect.mapError((failure) => cacheError("setup", failure.cause)),
+			Effect.mapError((failure) => cacheError("setup", failureCause(failure))),
 		);
 
 		const emit = (event: CacheEventPayload): Effect.Effect<void> =>

@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T15:50:39Z
-  body_sha256: 883cb15ce9b6d21e4ded6e6c005d255d6ba64978f11f5b7b67bb19cc8bf44e48
+  at: 2026-10-03T15:59:54Z
+  body_sha256: 58bc00bc7fe8bf44663f79d765ba8889c8ea13910d232d75f1249c12992e68d7
 ---
 
 # store
@@ -184,10 +184,15 @@ unretried.
 **Mirroring the Migrator ledger.** `StoreOptions.mirrorMigratorLedger`
 covers the reverse of adoption: an older program still migrating
 through effect/sql's `Migrator` opening a database the new program
-created. Every build creates effect/sql's ledger with its own SQLite DDL
-if absent and backfills it from `_store_migrations`; every apply inserts
-and every rollback deletes the matching row inside the migration's own
-transaction. Paired with adoption, both default to the same table.
+created. It is two-way for matching rows: every build creates
+effect/sql's ledger with its own SQLite DDL if absent, imports foreign
+rows that match a migration by id and name (an older program may have
+migrated forward), then backfills from `_store_migrations`; every apply
+re-checks the foreign table under the write lock and imports rather than
+re-runs, otherwise inserts, and every rollback deletes the matching row,
+inside the migration's own transaction. Import is validated like
+adoption and refused typed on an unknown id, a name mismatch, an
+unreadable timestamp, or a gap below the imported high-water mark. Paired with adoption, both default to the same table.
 SQLite only. **Connection hook.** `onConnect` on the SQLite layers runs
 once per build (one connection per build), before the ledger and outside
 any transaction. Foreign keys need no hook: `node:sqlite` enables them on

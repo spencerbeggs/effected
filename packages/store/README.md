@@ -161,8 +161,11 @@ const StoreLive = Store.layerSqlite({
 });
 ```
 
-- **Every layer build** creates `effect_sql_migrations` with effect/sql's own SQLite DDL if it is absent and copies in every `_store_migrations` row it lacks, so a database whose ledger predates the option is brought level on its first build with it on.
-- **Every apply** inserts the `(migration_id, name)` row in the same transaction as the migration, so the two ledgers cannot disagree; **every rollback** deletes it in the same transaction. effect/sql's `Migrator` runs every id above its highest recorded one, so after `rollback(n)` the older program re-applies what was unwound, just as a `Store` reopen would.
+The mirror is **two-way for matching rows**: an older program may migrate the shared file forward between this program's opens, and what it applied must be imported, never re-run.
+
+- **Every layer build** creates `effect_sql_migrations` with effect/sql's own SQLite DDL if it is absent. It **imports** every foreign row `_store_migrations` lacks that matches a migration by id and name, then copies out every `_store_migrations` row the foreign table lacks, so the two ledgers end equal.
+- **Every apply** first checks the foreign table inside the migration's own write-locked transaction. An id an older program recorded since this one planned is imported, not re-run, so concurrent old and new openers are safe too. Otherwise it inserts the `(migration_id, name)` row in the same transaction as the migration. **Every rollback** deletes the row in the same transaction.
+- **Import follows adoption's rules** and refuses, typed, a foreign row whose id has no migration, a name mismatch, an unreadable `created_at`, or a known migration below the imported high-water mark that neither ledger records. effect/sql's `Migrator` runs every id above its highest recorded one, so after `rollback(n)` the older program re-applies what was unwound, just as a `Store` reopen would.
 - **With adoption**, both options default to the same table, which is the intended pairing: adoption runs first and copies the old history in once; mirroring keeps writing it.
 - **Names** are written as `StoreMigration.name`, the prefix-stripped form effect/sql records. effect/sql itself compares ids only.
 
@@ -350,7 +353,7 @@ Every operation publishes to `cache.events`, an unbounded `PubSub<CacheEvent>` �
 
 | Tag | Means | Recovery |
 | --- | --- | --- |
-| `StoreError` | Its `message` reads `Store <operation> failed: <reason>`, with the cause's message folded in. A store operation's own SQL failed — ledger bookkeeping, or the queries around a migration — or (`operation: "adopt"`) an adopted Migrator ledger disagrees with your migration list. Carries `operation` and the structural `cause`. | Usually fatal; report the operation and the cause. An `adopt` failure's cause names the mismatched migration. |
+| `StoreError` | Its `message` reads `Store <operation> failed: <reason>`, folding in the cause's message — for a SQL failure, the database's own text (`UNIQUE constraint failed: t.id`), never a bound value. A store operation's own SQL failed — ledger bookkeeping, or the queries around a migration — or (`operation: "adopt"`) an adopted Migrator ledger disagrees with your migration list. Carries `operation` and the structural `cause`. | Usually fatal; report the operation and the cause. An `adopt` failure's cause names the mismatched migration. |
 | `StoreMigrationError` | A user-supplied migration failed with a typed `SqlError`. Carries `direction`, `id`, `name` and the structural `cause`. | Report which migration and which direction; the ledger is left consistent. |
 | `CacheError` | A cache operation's SQL failed. Carries `operation`, an optional `key` and the structural `cause`. | A cache is a cache — falling back to the origin is usually right. |
 

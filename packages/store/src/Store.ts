@@ -6,6 +6,7 @@ import type { AdoptFailure, MigratorFailure } from "./internal/migrator.js";
 import {
 	adoptForeignLedger,
 	ensureLedger,
+	failureCause,
 	rollbackTo,
 	runPending,
 	statusOf,
@@ -68,6 +69,25 @@ export class StoreMigrationStatus extends Schema.Class<StoreMigrationStatus>("St
 }) {}
 
 /**
+ * The most specific message in a cause. A `SqlError`'s own message is the
+ * driver's generic summary ("Failed to execute statement"); the database's
+ * text ("UNIQUE constraint failed: t.id") sits at the innermost `cause`, so the
+ * chain is walked to it. SQLite's messages name objects, never bound values.
+ */
+const causeMessage = (cause: unknown): string | undefined => {
+	if (!(cause instanceof Error)) return undefined;
+	let message = cause.message.length > 0 ? cause.message : undefined;
+	if ((cause as { readonly _tag?: unknown })._tag === "SqlError") {
+		let node: unknown = cause.cause;
+		for (let depth = 0; depth < 8 && node instanceof Error; depth++) {
+			if (node.message.length > 0) message = node.message;
+			node = node.cause;
+		}
+	}
+	return message;
+};
+
+/**
  * Raised when a store operation's own SQL fails — ledger bookkeeping or the
  * queries around a migration — or when adopting a foreign ledger finds it
  * disagrees with the migration list.
@@ -88,7 +108,7 @@ export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
 	cause: Schema.Defect(),
 }) {
 	override get message(): string {
-		const detail = this.cause instanceof Error && this.cause.message.length > 0 ? this.cause.message : undefined;
+		const detail = causeMessage(this.cause);
 		return detail === undefined ? `Store ${this.operation} failed` : `Store ${this.operation} failed: ${detail}`;
 	}
 }
@@ -214,15 +234,29 @@ export interface StoreOptions {
 	 * default table, `effect_sql_migrations`.
 	 *
 	 * @remarks
+	 * **Two-way for matching rows.** An older program may migrate the shared
+	 * database forward between this program's opens, so the mirror is read as
+	 * well as written:
+	 *
 	 * - **At every layer build**, after any adoption and before pending
 	 *   migrations run, in one transaction: the foreign table is created with
-	 *   effect/sql's own SQLite DDL if absent, and every `_store_migrations`
-	 *   row it lacks is copied in, with `applied_at` as its `created_at`. A
-	 *   database whose ledger predates the option is therefore brought level
-	 *   on its first build with the option on.
-	 * - **On every apply**, the `(migration_id, name)` row is inserted in the
-	 *   same transaction as the migration and its `_store_migrations` row, so
-	 *   the two ledgers cannot disagree; a row already present is left as is.
+	 *   effect/sql's own SQLite DDL if absent; every foreign row
+	 *   `_store_migrations` lacks is **imported**, if it matches a migration by
+	 *   id and name (its `created_at` becomes `appliedAt`); then every
+	 *   `_store_migrations` row the foreign table lacks is copied out. A
+	 *   database whose ledger predates the option is brought level on its
+	 *   first build with the option on.
+	 * - **On every apply**, the migration's own write-locked transaction first
+	 *   checks the foreign table too: an id an older program recorded since
+	 *   this one planned is imported, never re-run. Otherwise the
+	 *   `(migration_id, name)` row is inserted in the same transaction as the
+	 *   migration and its `_store_migrations` row, so the ledgers cannot
+	 *   disagree.
+	 * - **Import is validated like adoption** and refused typed (`StoreError`
+	 *   `operation: "setup"`, or `"migrate"` when met mid-run): a foreign row
+	 *   whose id has no migration, a name mismatch, an unreadable `created_at`,
+	 *   or a known migration below the imported high-water mark that neither
+	 *   ledger records.
 	 * - **On every rollback**, the row is deleted in the same transaction.
 	 *   effect/sql's `Migrator` runs every id above its highest recorded one,
 	 *   so after `rollback(n)` an older program would re-apply what was
@@ -329,14 +363,16 @@ type StoreOperation = "setup" | "migrate" | "rollback" | "status";
 const materialize =
 	(operation: StoreOperation) =>
 	(failure: MigratorFailure): StoreError | StoreMigrationError =>
-		failure._tag === "migration"
-			? new StoreMigrationError({
-					direction: failure.direction,
-					id: failure.id,
-					name: failure.name,
-					cause: failure.cause,
-				})
-			: new StoreError({ operation, cause: failure.cause });
+		failure._tag === "refused"
+			? new StoreError({ operation, cause: new Error(failure.message) })
+			: failure._tag === "migration"
+				? new StoreMigrationError({
+						direction: failure.direction,
+						id: failure.id,
+						name: failure.name,
+						cause: failure.cause,
+					})
+				: new StoreError({ operation, cause: failure.cause });
 
 const toStatus = (record: { readonly id: number; readonly name: string; readonly appliedAt?: string }) =>
 	StoreMigrationStatus.make({
@@ -382,7 +418,7 @@ const make = (
 					? FOREIGN_LEDGER_TABLE
 					: (options.mirrorMigratorLedger.table ?? FOREIGN_LEDGER_TABLE);
 		if (mirror !== undefined) {
-			yield* syncMirror(sql, LEDGER_TABLE, mirror).pipe(
+			yield* syncMirror(sql, LEDGER_TABLE, mirror, options.migrations).pipe(
 				Effect.mapError(
 					(failure) =>
 						new StoreError({
@@ -410,7 +446,7 @@ const make = (
 
 		// `statusOf` runs no user migration, so its only failure is the ledger's.
 		const status = statusOf(sql, LEDGER_TABLE, options.migrations).pipe(
-			Effect.mapError((failure) => new StoreError({ operation: "status", cause: failure.cause })),
+			Effect.mapError((failure) => new StoreError({ operation: "status", cause: failureCause(failure) })),
 			Effect.map((records) => records.map(toStatus)),
 			Effect.withSpan("Store.status"),
 		);

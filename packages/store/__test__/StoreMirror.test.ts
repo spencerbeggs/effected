@@ -9,6 +9,7 @@ import { Cause, Effect, Exit, Layer, Option } from "effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { StoreMigration, StoreOptions } from "../src/index.js";
 import { Store, StoreError } from "../src/index.js";
+import { applyPending } from "../src/internal/migrator.js";
 
 const dir = mkdtempSync(join(tmpdir(), "effected-store-mirror-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -31,7 +32,10 @@ const runOldVersion = (filename: string, keys: Record<string, string> = legacyRe
 						key,
 						Effect.gen(function* () {
 							const sql = yield* SqliteClient.SqliteClient;
-							yield* sql.unsafe(statement);
+							// One prepared statement each: a multi-statement string would run only its first.
+							for (const part of statement.split(";").map((piece) => piece.trim())) {
+								if (part.length > 0) yield* sql.unsafe(part);
+							}
 						}),
 					]),
 				),
@@ -231,6 +235,111 @@ describe("Store mirrorMigratorLedger outside SQLite", () => {
 			assert.instanceOf(error, StoreError);
 			assert.strictEqual((error as StoreError).operation, "setup");
 			assert.match((error as StoreError).message, /SQLite only/);
+		}),
+	);
+});
+
+describe("Store mirrorMigratorLedger is two-way for matching rows", () => {
+	// Migration 3 inserts a row, so a second run of its `up` is visible as a
+	// duplicate — the data-safety failure, not just a DDL error.
+	const seedKeys = {
+		"0001_initial": "CREATE TABLE notes (id INTEGER PRIMARY KEY)",
+		"0002_test_artifacts": "CREATE TABLE artifacts (id INTEGER PRIMARY KEY)",
+		"0003_seed": "CREATE TABLE IF NOT EXISTS seeds (label TEXT); INSERT INTO seeds (label) VALUES ('three')",
+	};
+	const seed: StoreMigration = {
+		id: 3,
+		name: "seed",
+		up: (sql) =>
+			Effect.gen(function* () {
+				yield* sql`CREATE TABLE IF NOT EXISTS seeds (label TEXT)`;
+				yield* sql`INSERT INTO seeds (label) VALUES ('three')`;
+			}),
+	};
+	const seedCount = (filename: string) =>
+		Number(
+			(inspect(filename, (db) => db.prepare("SELECT COUNT(*) AS n FROM seeds").get()) as { n: number } | undefined)?.n,
+		);
+	const both: Pick<StoreOptions, "adoptMigratorLedger" | "mirrorMigratorLedger"> = {
+		adoptMigratorLedger: true,
+		mirrorMigratorLedger: true,
+	};
+
+	it.effect("an older program migrating forward is imported, not re-run, when the newer one reopens", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			// Legacy database at 0001.
+			yield* runOldVersion(filename, { "0001_initial": seedKeys["0001_initial"] });
+			// B1 knows [1,2]: adopts 1, applies and mirrors 2.
+			assert.isTrue(
+				Exit.isSuccess(yield* openStore(filename, { migrations: [notes, artifacts], ...both }, () => Effect.void)),
+			);
+			// An older binary shipping 0001..0003 migrates forward: it applies 3.
+			const old = yield* runOldVersion(filename, seedKeys);
+			assert.deepStrictEqual(Exit.isSuccess(old) ? old.value.map(([id]) => id) : "failed", [3]);
+			assert.strictEqual(seedCount(filename), 1);
+			// B2 knows [1,2,3]: it must import 3, never run its `up` again.
+			assert.isTrue(
+				Exit.isSuccess(
+					yield* openStore(filename, { migrations: [notes, artifacts, seed], ...both }, () => Effect.void),
+				),
+			);
+			assert.strictEqual(seedCount(filename), 1);
+			assert.deepStrictEqual(ownIds(filename), [1, 2, 3]);
+		}),
+	);
+
+	it.effect("concurrent: a stale plan finds the id in the mirror under the lock and imports it", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			assert.isTrue(
+				Exit.isSuccess(yield* openStore(filename, { migrations: [notes, artifacts], ...both }, () => Effect.void)),
+			);
+			// Another process — an older binary — applies 3 after this one planned it.
+			yield* runOldVersion(filename, seedKeys);
+			assert.strictEqual(seedCount(filename), 1);
+			const result = yield* Effect.gen(function* () {
+				const sql = yield* SqliteClient.SqliteClient;
+				return yield* applyPending(sql, "_store_migrations", [seed], "effect_sql_migrations");
+			}).pipe(Effect.provide(SqliteClient.layer({ filename })));
+			assert.deepStrictEqual(result.applied, []);
+			assert.strictEqual(seedCount(filename), 1);
+			assert.deepStrictEqual(ownIds(filename), [1, 2, 3]);
+		}),
+	);
+
+	it.effect("a foreign row with an id no migration has fails typed, and imports nothing", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			assert.isTrue(
+				Exit.isSuccess(yield* openStore(filename, { migrations: [notes, artifacts], ...both }, () => Effect.void)),
+			);
+			yield* runOldVersion(filename, seedKeys);
+			// The newer program does not know 3 at all.
+			const exit = yield* openStore(filename, { migrations: [notes, artifacts], ...both }, () => Effect.void);
+			const cause = Option.getOrThrow(Exit.getCause(exit));
+			assert.isFalse(cause.reasons.some(Cause.isDieReason));
+			const error = cause.reasons.find(Cause.isFailReason)?.error as StoreError;
+			assert.instanceOf(error, StoreError);
+			assert.strictEqual(error.operation, "setup");
+			assert.match(error.message, /records migration 3 "seed", which has no migration with that id/);
+			assert.deepStrictEqual(ownIds(filename), [1, 2]);
+		}),
+	);
+
+	it.effect("a foreign row whose name disagrees fails typed", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			assert.isTrue(
+				Exit.isSuccess(yield* openStore(filename, { migrations: [notes, artifacts], ...both }, () => Effect.void)),
+			);
+			yield* runOldVersion(filename, seedKeys);
+			const renamed: StoreMigration = { ...seed, name: "0003_seed" };
+			const exit = yield* openStore(filename, { migrations: [notes, artifacts, renamed], ...both }, () => Effect.void);
+			const error = Option.getOrThrow(Exit.getCause(exit)).reasons.find(Cause.isFailReason)?.error as StoreError;
+			assert.instanceOf(error, StoreError);
+			assert.match(error.message, /records migration 3 as "seed", but migration 3 is named "0003_seed"/);
+			assert.strictEqual(seedCount(filename), 1);
 		}),
 	);
 });
