@@ -75,6 +75,57 @@ describe("CliUiTest.session: transcript and written", () => {
 	);
 });
 
+const paint = (code: number, text: string) => `${ESC}[${code}m${text}${ESC}[39m`;
+
+/** A live view whose logConsole prints a painted counter on stdout (paint breaking it mid-line) and a painted line on stderr. */
+const counting = (gate: Deferred.Deferred<void>) =>
+	Effect.scoped(
+		Effect.gen(function* () {
+			const pubsub = yield* PubSub.unbounded<Ev>();
+			const subscription = yield* PubSub.subscribe(pubsub);
+			const handle = yield* CliUi.live(optionsOf(subscription));
+			yield* PubSub.publish(pubsub, Start);
+			yield* Deferred.await(gate);
+			const report = Effect.gen(function* () {
+				yield* Console.log(`Dry run ${paint(32, "0")}/2 ${paint(90, "repos")}`);
+				yield* Console.error(paint(31, "✗ acme/api: 404"));
+			});
+			yield* report.pipe(Effect.provideService(Console.Console, handle.logConsole));
+			yield* PubSub.publish(pubsub, End);
+			yield* handle.close;
+		}),
+	);
+
+describe("CliUiTest.session: per-stream transcripts", () => {
+	it.effect("read each stream as unpainted text, a painted counter as one contiguous string", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session({ color: "none" });
+			const gate = yield* Deferred.make<void>();
+			const fiber = yield* Effect.forkScoped(counting(gate).pipe(Effect.provide(session.layer)));
+			yield* session.next({ contains: "RUN 1" });
+			yield* Deferred.succeed(gate, undefined);
+			yield* Fiber.join(fiber);
+			const out = yield* session.stdoutTranscript;
+			const err = yield* session.stderrTranscript;
+			assert.include(yield* session.stdoutWritten, paint(32, "0"), "control: the raw bytes are painted and split");
+			assert.notInclude(yield* session.stdoutWritten, "Dry run 0/2 repos", "control: raw bytes break the counter");
+			assert.notInclude(out, ESC, "stdoutTranscript carries no escape sequences");
+			assert.notInclude(err, ESC, "stderrTranscript carries no escape sequences");
+			assert.include(out, "Dry run 0/2 repos");
+			assert.notInclude(out, "acme/api", "stdout holds none of stderr's text");
+			assert.strictEqual(err, "✗ acme/api: 404");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("an empty transcript for each stream before anything is drawn", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session();
+			assert.strictEqual(yield* session.stdoutTranscript, "");
+			assert.strictEqual(yield* session.stderrTranscript, "");
+		}).pipe(Effect.scoped),
+	);
+});
+
 const profile = Select.screen({
 	message: "Profile",
 	choices: [
@@ -109,6 +160,17 @@ describe("CliUiTest.session with renderPath: production", () => {
 			assert.include(written, "Profile", "it was drawn: the clear erased it");
 			assert.include(written, `${ESC}[`, "with Ink's erase moves");
 		}),
+	);
+
+	it.effect("a cleared frame is absent from stdoutTranscript and present in stdoutWritten", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session({ renderPath: "production", color: "none" });
+			const fiber = yield* Effect.forkScoped(pick(true).pipe(Effect.provide(session.layer)));
+			yield* (yield* session.next({ contains: "Profile" })).press("down", "enter");
+			yield* Fiber.join(fiber);
+			assert.notInclude(yield* session.stdoutTranscript, "Profile");
+			assert.include(yield* session.stdoutWritten, "Profile");
+		}).pipe(Effect.scoped),
 	);
 
 	it.effect("control: without clear the answered frame stays on the terminal", () =>

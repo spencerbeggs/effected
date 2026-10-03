@@ -231,6 +231,19 @@ export interface CliUiTestSession {
 	readonly stdoutWritten: Effect.Effect<string>;
 	/** Every byte written to the terminal's stderr (`UiStreams.stderr`) alone, escapes included. */
 	readonly stderrWritten: Effect.Effect<string>;
+	/**
+	 * What the terminal's stdout alone shows now, as plain text: {@link CliUiTestSession.stdoutWritten} run through the
+	 * same pipeline as {@link CliUiTestSession.transcript} (Ink's erases and clears applied, escapes stripped, trailing
+	 * spaces trimmed, blank lines left out).
+	 *
+	 * @remarks
+	 * Assert text per stream here rather than on the raw bytes, which split a painted line wherever the paint breaks
+	 * (a counter's `Dry run` from its `0/2 repos`). A frame cleared on the production render path is absent from it
+	 * and present in `stdoutWritten`.
+	 */
+	readonly stdoutTranscript: Effect.Effect<string>;
+	/** What the terminal's stderr alone shows now, as plain text: {@link CliUiTestSession.stderrWritten} read as `stdoutTranscript` reads stdout. */
+	readonly stderrTranscript: Effect.Effect<string>;
 }
 
 /**
@@ -1003,6 +1016,12 @@ export class CliUiTest {
 				written: Effect.sync(() => terminal.fake.written()),
 				stdoutWritten: Effect.sync(() => terminal.fake.stdout()),
 				stderrWritten: Effect.sync(() => terminal.fake.stderr()),
+				stdoutTranscript: Effect.sync(() =>
+					screenAfter(terminal.fake.stdout(), terminal.fake.streams.stdout.rows).join("\n"),
+				),
+				stderrTranscript: Effect.sync(() =>
+					screenAfter(terminal.fake.stderr(), terminal.fake.streams.stdout.rows).join("\n"),
+				),
 			} satisfies CliUiTestSession;
 		});
 
