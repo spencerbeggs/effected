@@ -5,8 +5,8 @@ import { DatabaseSync } from "node:sqlite";
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import * as SqliteMigrator from "@effect/sql-sqlite-node/SqliteMigrator";
 import { afterAll, assert, describe, it } from "@effect/vitest";
-import type { Layer } from "effect";
-import { Cause, Context, DateTime, Effect, Exit, Option } from "effect";
+import { Cause, Context, DateTime, Effect, Exit, Layer, Option } from "effect";
+import * as SqlClient from "effect/sql/SqlClient";
 import type { StoreMigration, StoreOptions } from "../src/index.js";
 import { Store, StoreError, StoreMigrationError } from "../src/index.js";
 import { applyPending } from "../src/internal/migrator.js";
@@ -469,6 +469,76 @@ describe("applying a stale plan (concurrent openers)", () => {
 				ownLedger(filename).map((row) => row.id),
 				[1, 2],
 			);
+		}),
+	);
+});
+
+describe("Store adoptMigratorLedger records the decision even when nothing is copied", () => {
+	it.effect(
+		"a database Store already migrated, foreign ledger still present: option on, rollback(0), reopen re-applies",
+		() =>
+			Effect.gen(function* () {
+				const filename = freshFile();
+				yield* runEffectMigrator(filename, { "0001_initial": legacyKeys["0001_initial"] });
+				// Era 1: Store WITHOUT the option, over an idempotent migration, so its
+				// own ledger fills while effect_sql_migrations stays behind.
+				const idempotent: StoreMigration = {
+					id: 1,
+					name: "initial",
+					up: (sql) => sql`CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)`,
+					down: (sql) => sql`DROP TABLE notes`,
+				};
+				assert.isTrue(Exit.isSuccess(yield* openStore(filename, { migrations: [idempotent] }, () => Effect.void)));
+
+				// Era 2: the option is turned on. The own ledger is non-empty, so nothing
+				// is copied — but the decision must still be recorded, or the rollback
+				// below empties the ledger and the reopen adopts the stale foreign row.
+				const options: StoreOptions = { migrations: [idempotent], adoptMigratorLedger: true };
+				assert.isTrue(Exit.isSuccess(yield* openStore(filename, options, (store) => store.rollback(0))));
+				assert.notInclude(tables(filename), "notes");
+				assert.isTrue(Exit.isSuccess(yield* openStore(filename, options, () => Effect.void)));
+
+				// Re-applied: an adoption would have recorded id 1 without running `up`.
+				assert.include(tables(filename), "notes");
+				assert.strictEqual(marker(filename).length, 1);
+			}),
+	);
+});
+
+describe("Store adoptMigratorLedger outside SQLite", () => {
+	// The real SQLite client, reporting itself as pg: every onDialectOrElse call
+	// takes the pg branch, or the orElse branch when there is none.
+	const PgLike = Layer.effect(
+		SqlClient.SqlClient,
+		Effect.map(
+			SqlClient.SqlClient,
+			(sql) =>
+				new Proxy(sql, {
+					get: (target, key, receiver) =>
+						key === "onDialectOrElse"
+							? (cases: { readonly pg?: () => unknown; readonly orElse: () => unknown }) => (cases.pg ?? cases.orElse)()
+							: Reflect.get(target, key, receiver),
+				}),
+		),
+	).pipe(Layer.provide(SqliteClient.layer({ filename: ":memory:" })));
+
+	const build = (options: StoreOptions) =>
+		Effect.exit(
+			Effect.provide(
+				Effect.flatMap(Store, (store) => store.status),
+				Store.layer(options).pipe(Layer.provide(PgLike)),
+			),
+		);
+
+	it.effect("the option is refused, typed, on a non-SQLite dialect", () =>
+		Effect.gen(function* () {
+			assertAdoptFailure(yield* build({ migrations: [initial], adoptMigratorLedger: true }), /SQLite only/);
+		}),
+	);
+
+	it.effect("control: without the option the same client builds", () =>
+		Effect.gen(function* () {
+			assert.isTrue(Exit.isSuccess(yield* build({ migrations: [initial] })));
 		}),
 	);
 });
