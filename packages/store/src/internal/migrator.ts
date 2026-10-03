@@ -648,6 +648,11 @@ export const adoptForeignLedger = (
 		const byId = new Map(migrations.map((migration) => [migration.id, migration]));
 		const foreignIds = new Set<number>();
 		const seeded: Array<{ readonly id: number; readonly name: string; readonly appliedAt: string }> = [];
+		// Rollback history: a Store that ran WITHOUT adoption may have rolled an id
+		// back since the foreign row was written. The same verdict as the mirror's
+		// import decides each row — stale is not adopted (the id stays pending and
+		// runs again), changed or new is adopted, untracked is refused.
+		const tombstones = yield* readTombstones(sql, metaTable);
 		for (const row of rows) {
 			const id = Number(row.migration_id);
 			foreignIds.add(id);
@@ -672,6 +677,9 @@ export const adoptForeignLedger = (
 					),
 				);
 			}
+			const verdict = judgeForeign(foreignTable, row, tombstones.get(id));
+			if (typeof verdict === "object") return yield* Effect.fail(refused(verdict.refused));
+			if (verdict === "stale") continue;
 			seeded.push({ id, name: row.name, appliedAt });
 		}
 		if (foreignIds.size > 0) {
@@ -687,6 +695,7 @@ export const adoptForeignLedger = (
 		}
 
 		for (const row of seeded) {
+			yield* clearTombstone(sql, metaTable, row.id);
 			yield* sql`
 				INSERT INTO ${sql(table)} (id, name, applied_at)
 				VALUES (${row.id}, ${row.name}, ${row.appliedAt})

@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T16:09:16Z
-  body_sha256: e52717a3fe815d5befc14fd3f174bab2a106eadc8cfe81151d95389750f101d3
+  at: 2026-10-03T16:14:05Z
+  body_sha256: 809f239caadf89392395839b8b092e020a7234c7442715822ed3ac2bbbe923bf
 ---
 
 # store
@@ -153,9 +153,9 @@ the marker and skips — which is what keeps `rollback(0)` followed by a
 reopen from re-adopting history the rollback unwound. The foreign table
 is never written, a failed adoption records nothing (marker included),
 an unreadable `created_at` is refused rather than defaulted, and any
-dialect other than SQLite is refused. The option must be on before any
-`rollback(0)` of a database that ran under `Store` without it while a
-foreign ledger remains, or the stale foreign rows are adopted. Matching is exact: each foreign row needs
+dialect other than SQLite is refused. Adoption honours rollback history: a foreign row unchanged
+since a Store rollback is stale and re-runs instead of being adopted, a
+changed or new one is adopted, and an untracked one is refused. Matching is exact: each foreign row needs
 a migration with the same id and name, and no migration at or below the
 foreign high-water mark may be missing from the foreign ledger, because
 the Migrator never runs an id at or below its latest and such a

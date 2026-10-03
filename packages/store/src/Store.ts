@@ -204,10 +204,13 @@ export interface StoreOptions {
 	 * A failed adoption records nothing, marker included, and is retried on
 	 * the next build.
 	 *
-	 * Turn the option on before any `rollback(0)` of a database that already
-	 * ran under `Store` without it while a foreign ledger is still present:
-	 * otherwise the first build with the option on finds `_store_migrations`
-	 * emptied by the rollback and adopts the stale foreign rows.
+	 * Adoption honours rollback history. A Store that ran without the option
+	 * and rolled back leaves a tombstone per unwound id (see
+	 * `StoreShape.rollback`); each foreign row is judged against it, as the
+	 * mirror's import is. A row unchanged since that rollback is stale: it is
+	 * not adopted, and its migration runs again. A row changed or written
+	 * since is adopted. A row for a foreign table the rollback did not track
+	 * is refused, typed. So enabling the option after such a rollback is safe.
 	 *
 	 * SQLite only: on any other dialect the option fails the layer with a
 	 * `StoreError` (`operation: "adopt"`).

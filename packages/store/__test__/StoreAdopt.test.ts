@@ -542,3 +542,47 @@ describe("Store adoptMigratorLedger outside SQLite", () => {
 		}),
 	);
 });
+
+describe("Store adoptMigratorLedger honours rollback history", () => {
+	it.effect(
+		"legacy DB, Store without options, rollback(0), then adoption: the unwound id is not adopted and re-runs",
+		() =>
+			Effect.gen(function* () {
+				const filename = freshFile();
+				yield* runEffectMigrator(filename, { "0001_initial": legacyKeys["0001_initial"] });
+				// Era 1, no options: an idempotent migration over the legacy file.
+				const idempotent: StoreMigration = {
+					id: 1,
+					name: "initial",
+					up: (sql) => sql`CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)`,
+					down: (sql) => sql`DROP TABLE notes`,
+				};
+				assert.isTrue(
+					Exit.isSuccess(yield* openStore(filename, { migrations: [idempotent] }, (store) => store.rollback(0))),
+				);
+				// The rollback dropped notes and left a tombstone; the foreign ledger
+				// still says 1 — it is the old program's, and nothing rewrote it.
+				assert.notInclude(tables(filename), "notes");
+				assert.deepStrictEqual(
+					foreignLedger(filename).map((row) => row.migration_id),
+					[1],
+				);
+
+				// Era 2: adoption turned on. Row 1 is unchanged since the rollback, so it
+				// is stale history: not adopted, and migration 1 runs again.
+				const exit = yield* openStore(
+					filename,
+					{ migrations: [idempotent], adoptMigratorLedger: true },
+					(store) => store.status,
+				);
+				assert.isTrue(Exit.isSuccess(exit));
+				assert.include(tables(filename), "notes");
+				assert.deepStrictEqual(
+					ownLedger(filename).map((row) => row.id),
+					[1],
+				);
+				// The marker is still written: adoption decided, and adopted nothing.
+				assert.strictEqual(marker(filename).length, 1);
+			}),
+	);
+});
