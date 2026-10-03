@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T15:41:19Z
-  body_sha256: 0d11dbe4de66935f4ec1f1a480e77616694e8859921bd8b146263e13a36273d3
+  at: 2026-10-03T15:50:39Z
+  body_sha256: 883cb15ce9b6d21e4ded6e6c005d255d6ba64978f11f5b7b67bb19cc8bf44e48
 ---
 
 # store
@@ -180,6 +180,21 @@ in WAL from one process first, or warm the database up with a scoped
 `Layer.build` retried with jittered backoff on `SQLITE_BUSY` alone
 (`code` `ERR_SQLITE_ERROR`, `errcode` 5), then run the program once,
 unretried.
+
+**Mirroring the Migrator ledger.** `StoreOptions.mirrorMigratorLedger`
+covers the reverse of adoption: an older program still migrating
+through effect/sql's `Migrator` opening a database the new program
+created. Every build creates effect/sql's ledger with its own SQLite DDL
+if absent and backfills it from `_store_migrations`; every apply inserts
+and every rollback deletes the matching row inside the migration's own
+transaction. Paired with adoption, both default to the same table.
+SQLite only. **Connection hook.** `onConnect` on the SQLite layers runs
+once per build (one connection per build), before the ledger and outside
+any transaction. Foreign keys need no hook: `node:sqlite` enables them on
+every connection by default. **Messages and logs.** `StoreError.message`
+folds in the cause's message, and migration progress is logged at
+`Debug` in effect/sql's `Migrator` record shape (`Running migration`,
+`Migrations complete`), from the shared engine, so `Cache` logs too.
 
 Adoption replaced a hand-run SQL seeding recipe once the
 [vitest-agent](../consumers/vitest-agent.md) consumer needed to move

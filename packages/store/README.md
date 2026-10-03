@@ -125,6 +125,8 @@ const program = Effect.gen(function* () {
 
 Duplicate ids, non-positive-integer ids and a non-integer `toId` are wiring errors, not data conditions: they die at layer construction rather than failing typed. A migration that *throws* stays a defect too, and the surrounding transaction rolls back.
 
+Migration progress is logged at `Debug`, in effect/sql's `Migrator` shape so a program moving over loses nothing: one `Running migration` record per applied migration (annotated `migration_id`, `migration_name`) and one `Migrations complete` record per run (annotated `latest_migration_id`, `latest_migration_name`). Adoption that copies rows adds an `Adopted migrator ledger` record (`migrator_table`, `adopted_count`, `latest_migration_id`, `latest_migration_name`). `Cache` versions its own schema through the same engine, so it emits the same records. Raise the minimum log level to `Debug` to see them.
+
 ### Adopting a database migrated by effect's Migrator
 
 `Store` keeps its own ledger, `_store_migrations`. A database previously migrated by effect/sql's `Migrator` (`SqliteMigrator.layer` and friends) recorded its history in `effect_sql_migrations` instead, so a `Store` opened over it sees an empty ledger and re-runs every migration — a bare `CREATE TABLE` then fails. Opt in to adopting that history:
@@ -145,6 +147,26 @@ Matching is exact, and any disagreement fails the layer with `StoreError` (`oper
 - **Every migration at or below the foreign ledger's highest id must have a foreign row.** effect/sql only ever runs ids above its latest, so a lower id it never recorded was never applied; running it now would diverge from the history the database actually has. Renumber it above the high-water mark instead.
 
 Each adopted row's `created_at` becomes its `appliedAt`. A zone-less value — SQLite's `current_timestamp` text (`2026-10-03 12:00:00`) or `2026-10-03T12:00:00` — is read as UTC; a value that cannot be read as a date fails the layer with the same typed `StoreError`. The option lives on `StoreOptions`, so it works through `layer`, `layerSqlite` and `@effected/app`'s `AppStore` layers alike, but adoption is **SQLite only**: on any other dialect the option fails the layer with `StoreError` (`operation: "adopt"`).
+
+### Several versions sharing one database: mirroring the Migrator ledger
+
+Adoption covers an old database opened by a new program. The reverse needs its own option: when an **older** program that still migrates through effect/sql's `Migrator` opens a database the new program created, it finds `effect_sql_migrations` empty and re-runs its first migration. While several versions share one file, keep both ledgers in step:
+
+```ts
+const StoreLive = Store.layerSqlite({
+  filename: "registry.db",
+  migrations, // { id: 1, name: "initial", up: … } — the prefix-stripped names
+  adoptMigratorLedger: true, // old history in, once
+  mirrorMigratorLedger: true, // new history out, on every apply and rollback
+});
+```
+
+- **Every layer build** creates `effect_sql_migrations` with effect/sql's own SQLite DDL if it is absent and copies in every `_store_migrations` row it lacks, so a database whose ledger predates the option is brought level on its first build with it on.
+- **Every apply** inserts the `(migration_id, name)` row in the same transaction as the migration, so the two ledgers cannot disagree; **every rollback** deletes it in the same transaction. effect/sql's `Migrator` runs every id above its highest recorded one, so after `rollback(n)` the older program re-applies what was unwound, just as a `Store` reopen would.
+- **With adoption**, both options default to the same table, which is the intended pairing: adoption runs first and copies the old history in once; mirroring keeps writing it.
+- **Names** are written as `StoreMigration.name`, the prefix-stripped form effect/sql records. effect/sql itself compares ids only.
+
+SQLite only: on any other dialect the option fails the layer with `StoreError` (`operation: "setup"`).
 
 ### Several processes opening one database
 
@@ -182,12 +204,24 @@ const main = warmUp.pipe(Effect.andThen(program.pipe(Effect.provide(StoreLive)))
 
 Only the warm-up is retried, so a program that has already done work never re-runs, and only `SQLITE_BUSY` is retried — a failing migration still fails once, typed. The warm-up does **not** stand in for the program's own open: `Effect.provide` builds the layer again, a second connection, because separate provides do not share a memoised build. That second open cannot hit the first-open refusal, since the warm-up left the file in WAL mode. A `SQLITE_BUSY` there means a writer outlasted `busyTimeout`, and it is deliberately not retried.
 
-### Connection settings: WAL and busy timeout
+### Connection settings: WAL, busy timeout, foreign keys and `onConnect`
 
 `SqliteClient` opens one serialized connection per layer build and configures it itself: `journal_mode = WAL` unless `client.disableWAL` is set, and `busy_timeout` from `client.busyTimeout` (default five seconds). Both are per-connection settings, so set them through `client` — never inside a migration, which runs once per database rather than once per connection:
 
 ```ts
 const StoreLive = Store.layerSqlite({ filename: "data.db", migrations, client: { busyTimeout: "10 seconds" } });
+```
+
+**Foreign keys are already enforced.** `node:sqlite` opens every connection with `foreign_keys = 1`, and the driver keeps it, so a `REFERENCES … ON DELETE RESTRICT` constraint holds without any setup.
+
+For a per-connection setting `client` cannot carry, pass `onConnect`. It runs once against the freshly opened connection, before the ledger is ensured, before adoption and before any migration, and outside any transaction, which matters for pragmas SQLite ignores inside one. One connection per build means once per build is once per connection. A failure fails the layer as `StoreError` (`operation: "setup"`). `Cache.layerSqlite` takes the same option, failing as `CacheError` (`operation: "setup"`):
+
+```ts
+const StoreLive = Store.layerSqlite({
+  filename: "data.db",
+  migrations,
+  onConnect: (sql) => sql`PRAGMA synchronous = NORMAL`,
+});
 ```
 
 ### More than one database
@@ -205,6 +239,13 @@ class TarballCache extends Context.Service<TarballCache, CacheShape>()("myapp/Ta
 // Every one bound once, to a const.
 const RegistryStoreLive = Store.layerSqliteAs(RegistryStore, { filename: "/data/registry.db", migrations });
 const TarballCacheLive = Cache.layerSqliteAs(TarballCache, { filename: "/cache/tarballs.db" });
+```
+
+Code written against the bare `SqlClient` — an existing repository layer — gets a keyed store's client through `Store.sqlClient(tag)`. Provide it to those layers alone, with `Layer.provide`, since a second `SqlClient` merged beside it would shadow it:
+
+```ts
+const RegistrySql = Store.sqlClient(RegistryStore).pipe(Layer.provide(RegistryStoreLive));
+const RegistryRepo = RegistryRepoLive.pipe(Layer.provide(RegistrySql)); // RegistryRepoLive needs SqlClient
 ```
 
 The output is the key alone — the `Store` or `Cache` built inside is never exposed — so a keyed layer composes beside a primary one without shadowing it, each file with its own ledger. The key's service type must be `StoreShape` / `CacheShape`: an incompatible shape is a compile error, and so is one that adds members (`StoreShape & { … }`), reported as an argument not assignable to `never` since the layer could not supply them. The check cannot see through method-syntax parameter bivariance: a member redeclared as a method with a wider parameter still compiles.
@@ -309,7 +350,7 @@ Every operation publishes to `cache.events`, an unbounded `PubSub<CacheEvent>` �
 
 | Tag | Means | Recovery |
 | --- | --- | --- |
-| `StoreError` | A store operation's own SQL failed — ledger bookkeeping, or the queries around a migration — or (`operation: "adopt"`) an adopted Migrator ledger disagrees with your migration list. Carries `operation` and the structural `cause`. | Usually fatal; report the operation and the cause. An `adopt` failure's cause names the mismatched migration. |
+| `StoreError` | Its `message` reads `Store <operation> failed: <reason>`, with the cause's message folded in. A store operation's own SQL failed — ledger bookkeeping, or the queries around a migration — or (`operation: "adopt"`) an adopted Migrator ledger disagrees with your migration list. Carries `operation` and the structural `cause`. | Usually fatal; report the operation and the cause. An `adopt` failure's cause names the mismatched migration. |
 | `StoreMigrationError` | A user-supplied migration failed with a typed `SqlError`. Carries `direction`, `id`, `name` and the structural `cause`. | Report which migration and which direction; the ledger is left consistent. |
 | `CacheError` | A cache operation's SQL failed. Carries `operation`, an optional `key` and the structural `cause`. | A cache is a cache — falling back to the origin is usually right. |
 
@@ -323,6 +364,9 @@ Defects are not errors here. A throwing migration callback, a throwing `onRemove
 - `layer` / `layerSqlite` / `layerTest` on both — driver-agnostic, batteries-included and in-memory, with the same options.
 - `layerSqliteAs` on both — a second database under a service key you define, never shadowing the primary.
 - `adoptMigratorLedger` — move a live database off effect/sql's `Migrator` without re-running its history.
+- `mirrorMigratorLedger` — keep effect/sql's ledger in step while older versions still open the same database.
+- `onConnect` — a per-connection hook, run before the ledger and outside any transaction.
+- `Store.sqlClient` — a keyed store's client as the bare `SqlClient`.
 - `StoreError`, `StoreMigrationError`, `CacheError` — tagged errors carrying the underlying `SqlError` structurally, never a `reason` string.
 - `CacheEntry`, `CacheEntryMeta`, `CacheRemovalResult`, `StoreMigrationStatus` — the returned records; `entries` lists metadata without loading BLOBs.
 - Named spans on every public fallible method (`Store.migrate`, `Cache.get`, …), nesting over the driver's own statement spans.

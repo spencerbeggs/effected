@@ -111,6 +111,7 @@ export const runPending = (
 	sql: SqlClient,
 	table: string,
 	migrations: ReadonlyArray<MigratorMigration>,
+	mirror?: string,
 ): Effect.Effect<MigratorResult, MigratorFailure> =>
 	Effect.gen(function* () {
 		const rows = yield* sql<{ id: number }>`SELECT id FROM ${sql(table)} ORDER BY id ASC`.pipe(
@@ -118,7 +119,21 @@ export const runPending = (
 		);
 		const appliedIds = new Set(rows.map((row) => row.id));
 		const pending = migrations.filter((migration) => !appliedIds.has(migration.id)).sort((a, b) => a.id - b.id);
-		return yield* applyPending(sql, table, pending);
+		const result = yield* applyPending(sql, table, pending, mirror);
+
+		// The completion record effect/sql's Migrator emits, with the same
+		// message and annotation keys, so a consumer moving over loses nothing.
+		const latest = yield* sql<{ id: number; name: string }>`
+			SELECT id, name FROM ${sql(table)} ORDER BY id DESC LIMIT 1
+		`.pipe(Effect.mapError(ledgerFailure));
+		const top = latest[0];
+		yield* top === undefined
+			? Effect.logDebug("Migrations complete")
+			: Effect.logDebug("Migrations complete").pipe(
+					Effect.annotateLogs("latest_migration_id", String(top.id)),
+					Effect.annotateLogs("latest_migration_name", top.name),
+				);
+		return result;
 	});
 
 /**
@@ -130,6 +145,7 @@ export const applyPending = (
 	sql: SqlClient,
 	table: string,
 	pending: ReadonlyArray<MigratorMigration>,
+	mirror?: string,
 ): Effect.Effect<MigratorResult, MigratorFailure> =>
 	Effect.gen(function* () {
 		const applied: Array<MigratorRecord> = [];
@@ -141,12 +157,24 @@ export const applyPending = (
 							SELECT id FROM ${sql(table)} WHERE id = ${migration.id}
 						`.pipe(Effect.mapError(ledgerFailure));
 						if (recorded.length > 0) return false;
+						// effect/sql's Migrator record, message and annotation keys alike.
+						yield* Effect.logDebug("Running migration").pipe(
+							Effect.annotateLogs("migration_id", String(migration.id)),
+							Effect.annotateLogs("migration_name", migration.name),
+						);
 						yield* migration.up(sql).pipe(Effect.mapError((cause) => migrationFailure("up", migration, cause)));
 						const appliedAt = DateTime.formatIso(yield* DateTime.now);
 						yield* sql`
 						INSERT INTO ${sql(table)} (id, name, applied_at)
 						VALUES (${migration.id}, ${migration.name}, ${appliedAt})
 					`.pipe(Effect.mapError(ledgerFailure));
+						if (mirror !== undefined) {
+							// Same transaction: the mirrored row exists exactly when ours does.
+							yield* sql`
+								INSERT OR IGNORE INTO ${sql(mirror)} (migration_id, name)
+								VALUES (${migration.id}, ${migration.name})
+							`.pipe(Effect.mapError(ledgerFailure));
+						}
 						return true;
 					}),
 				)
@@ -167,6 +195,7 @@ export const rollbackTo = (
 	table: string,
 	migrations: ReadonlyArray<MigratorMigration>,
 	toId: number,
+	mirror?: string,
 ): Effect.Effect<MigratorResult, MigratorFailure> =>
 	Effect.gen(function* () {
 		const rows = yield* sql<{ id: number; name: string }>`
@@ -186,6 +215,11 @@ export const rollbackTo = (
 							yield* migration.down(sql).pipe(Effect.mapError((cause) => migrationFailure("down", migration, cause)));
 						}
 						yield* sql`DELETE FROM ${sql(table)} WHERE id = ${row.id}`.pipe(Effect.mapError(ledgerFailure));
+						if (mirror !== undefined) {
+							yield* sql`DELETE FROM ${sql(mirror)} WHERE migration_id = ${row.id}`.pipe(
+								Effect.mapError(ledgerFailure),
+							);
+						}
 					}),
 				)
 				.pipe(Effect.mapError((failure) => (isMigratorFailure(failure) ? failure : ledgerFailure(failure))));
@@ -194,6 +228,51 @@ export const rollbackTo = (
 
 		return { applied: [], rolledBack };
 	});
+
+/**
+ * Create effect/sql's Migrator ledger with its exact SQLite DDL when absent,
+ * then copy in every row of `table` it lacks, in one transaction. Run at each
+ * layer build with mirroring on, so a database whose own ledger predates the
+ * option is brought level before any later apply or rollback mirrors itself.
+ * `created_at` is the row's own `applied_at`, rendered in SQLite's
+ * `current_timestamp` form. SQLite only.
+ */
+export const syncMirror = (sql: SqlClient, table: string, mirror: string): Effect.Effect<number, AdoptFailure> =>
+	sql
+		.onDialectOrElse({
+			sqlite: (): Effect.Effect<number, AdoptFailure | SqlError> =>
+				sql.withTransaction(
+					Effect.gen(function* () {
+						// effect/sql Migrator.ts, the SQLite branch of ensureMigrationsTable.
+						yield* sql`
+							CREATE TABLE IF NOT EXISTS ${sql(mirror)} (
+								migration_id integer PRIMARY KEY NOT NULL,
+								created_at datetime NOT NULL DEFAULT current_timestamp,
+								name VARCHAR(255) NOT NULL
+							)
+						`;
+						const before = yield* sql<{ n: number }>`SELECT COUNT(*) AS n FROM ${sql(mirror)}`;
+						yield* sql`
+							INSERT OR IGNORE INTO ${sql(mirror)} (migration_id, name, created_at)
+							SELECT id, name, strftime('%Y-%m-%d %H:%M:%S', applied_at) FROM ${sql(table)}
+						`;
+						const after = yield* sql<{ n: number }>`SELECT COUNT(*) AS n FROM ${sql(mirror)}`;
+						return Number(after[0]?.n ?? 0) - Number(before[0]?.n ?? 0);
+					}),
+				),
+			orElse: (): Effect.Effect<number, AdoptFailure | SqlError> =>
+				Effect.fail({
+					_tag: "refused",
+					message: "mirroring is supported on SQLite only; this client's dialect is not SQLite",
+				}),
+		})
+		.pipe(
+			Effect.mapError((failure) =>
+				"_tag" in failure && failure._tag === "refused"
+					? failure
+					: { _tag: "sql" as const, cause: failure as SqlError },
+			),
+		);
 
 /** Project the full migration list against the ledger. */
 export const statusOf = (

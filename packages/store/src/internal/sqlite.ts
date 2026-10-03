@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect";
 import * as SqlClient from "effect/sql/SqlClient";
+import type { SqlError } from "effect/sql/SqlError";
 
 // SQLite-only support shared by the `Store` and `Cache` batteries-included
 // layers. Facade-free like `migrator.ts`: it never imports a facade module.
@@ -28,3 +29,22 @@ export const walCheckpointOnClose = (): Layer.Layer<never, never, SqlClient.SqlC
 			yield* Effect.addFinalizer(() => sql`PRAGMA wal_checkpoint(TRUNCATE)`.pipe(Effect.ignore));
 		}),
 	);
+
+/**
+ * Re-provide `SqlClient` from `client` after running `onConnect` against it,
+ * so the hook completes before anything downstream — the ledger, adoption,
+ * migrations — touches the connection, and outside any transaction. The
+ * driver opens one connection per build, so this runs once per connection.
+ * `toError` maps the hook's `SqlError` onto the calling service's own error.
+ */
+export const withOnConnect = <E1, E2>(
+	client: Layer.Layer<SqlClient.SqlClient, E1>,
+	onConnect: ((sql: SqlClient.SqlClient) => Effect.Effect<unknown, SqlError>) | undefined,
+	toError: (cause: SqlError) => E2,
+): Layer.Layer<SqlClient.SqlClient, E1 | E2> =>
+	onConnect === undefined
+		? client
+		: Layer.effect(
+				SqlClient.SqlClient,
+				Effect.tap(SqlClient.SqlClient, (sql) => onConnect(sql).pipe(Effect.mapError(toError))),
+			).pipe(Layer.provide(client));

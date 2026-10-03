@@ -6,7 +6,7 @@ import * as SqlError from "effect/sql/SqlError";
 import { bytesToUtf8, utf8ToBytes } from "./Bytes.js";
 import type { MigratorMigration } from "./internal/migrator.js";
 import { ensureLedger, runPending } from "./internal/migrator.js";
-import { walCheckpointOnClose } from "./internal/sqlite.js";
+import { walCheckpointOnClose, withOnConnect } from "./internal/sqlite.js";
 
 /**
  * A stored cache entry: its key, value and bookkeeping fields.
@@ -367,6 +367,17 @@ export interface CacheSqliteOptions extends CacheOptions {
 	 * never checkpoints.
 	 */
 	readonly checkpointOnClose?: boolean;
+	/**
+	 * Run once against the freshly opened connection, before the cache's
+	 * schema is ensured and outside any transaction — for per-connection
+	 * settings `client` cannot carry.
+	 *
+	 * @remarks
+	 * The SQLite driver opens one connection per layer build, so once per
+	 * build is once per connection. A failure fails the layer as a
+	 * `CacheError` with `operation: "setup"`.
+	 */
+	readonly onConnect?: (sql: SqlClient.SqlClient) => Effect.Effect<unknown, SqlError.SqlError>;
 }
 
 const CACHE_LEDGER_TABLE = "_cache_migrations";
@@ -850,7 +861,12 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 			...passthrough
 		} = (options.client ?? {}) as Partial<SqliteClient.SqliteClientConfig>;
 		const client = SqliteClient.layer({ ...passthrough, filename: options.filename });
-		const cache = Layer.provide(Cache.layer(options), client);
+		const connected = withOnConnect(
+			client,
+			options.onConnect,
+			(cause) => new CacheError({ operation: "setup", cause }),
+		);
+		const cache = Layer.provide(Cache.layer(options), connected);
 		return options.checkpointOnClose === true
 			? Layer.merge(cache, Layer.provide(walCheckpointOnClose(), client))
 			: cache;

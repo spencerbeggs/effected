@@ -9,9 +9,10 @@ import {
 	rollbackTo,
 	runPending,
 	statusOf,
+	syncMirror,
 	validateMigrations,
 } from "./internal/migrator.js";
-import { walCheckpointOnClose } from "./internal/sqlite.js";
+import { walCheckpointOnClose, withOnConnect } from "./internal/sqlite.js";
 
 /**
  * A single user-defined migration, applied in ascending `id` order.
@@ -87,7 +88,8 @@ export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
 	cause: Schema.Defect(),
 }) {
 	override get message(): string {
-		return `Store ${this.operation} failed`;
+		const detail = this.cause instanceof Error && this.cause.message.length > 0 ? this.cause.message : undefined;
+		return detail === undefined ? `Store ${this.operation} failed` : `Store ${this.operation} failed: ${detail}`;
 	}
 }
 
@@ -203,6 +205,39 @@ export interface StoreOptions {
 	 * date fails the layer the same typed way.
 	 */
 	readonly adoptMigratorLedger?: true | { readonly table?: string };
+	/**
+	 * Keep effect/sql's `Migrator` ledger in step with `Store`'s own, so an
+	 * older program that still migrates this database through effect/sql's
+	 * `Migrator` (`SqliteMigrator.layer`) sees the migrations `Store` applied
+	 * and runs nothing. Opt-in, for a transition period in which several
+	 * versions of a program share one database; `true` writes the Migrator's
+	 * default table, `effect_sql_migrations`.
+	 *
+	 * @remarks
+	 * - **At every layer build**, after any adoption and before pending
+	 *   migrations run, in one transaction: the foreign table is created with
+	 *   effect/sql's own SQLite DDL if absent, and every `_store_migrations`
+	 *   row it lacks is copied in, with `applied_at` as its `created_at`. A
+	 *   database whose ledger predates the option is therefore brought level
+	 *   on its first build with the option on.
+	 * - **On every apply**, the `(migration_id, name)` row is inserted in the
+	 *   same transaction as the migration and its `_store_migrations` row, so
+	 *   the two ledgers cannot disagree; a row already present is left as is.
+	 * - **On every rollback**, the row is deleted in the same transaction.
+	 *   effect/sql's `Migrator` runs every id above its highest recorded one,
+	 *   so after `rollback(n)` an older program would re-apply what was
+	 *   unwound — the same thing a `Store` reopen does.
+	 * - **With `adoptMigratorLedger`**: both default to the same table, which
+	 *   is the intended pairing — adoption copies the old history in once,
+	 *   mirroring keeps writing it. Adoption runs first.
+	 * - **Names** are written as `StoreMigration.name`, which must be the
+	 *   prefix-stripped form effect/sql records (`"initial"` for
+	 *   `"0001_initial"`); effect/sql itself compares ids only.
+	 *
+	 * SQLite only: on any other dialect the option fails the layer with a
+	 * `StoreError` (`operation: "setup"`).
+	 */
+	readonly mirrorMigratorLedger?: true | { readonly table?: string };
 }
 
 /**
@@ -246,6 +281,28 @@ export interface StoreSqliteOptions extends StoreOptions {
 	 * never checkpoints.
 	 */
 	readonly checkpointOnClose?: boolean;
+	/**
+	 * Run once against the freshly opened connection, before the ledger is
+	 * ensured, before adoption and before any migration — and outside any
+	 * transaction. For per-connection settings `client` cannot carry, chiefly
+	 * `PRAGMA foreign_keys = ON`, which SQLite ignores inside a transaction
+	 * and which therefore cannot live in a migration.
+	 *
+	 * @remarks
+	 * The SQLite driver opens one connection per layer build, so once per
+	 * build is once per connection. A failure fails the layer as a
+	 * `StoreError` with `operation: "setup"`.
+	 *
+	 * @example
+	 * ```ts
+	 * const StoreLive = Store.layerSqlite({
+	 * 	filename: "sessions.db",
+	 * 	migrations,
+	 * 	onConnect: (sql) => sql`PRAGMA foreign_keys = ON`,
+	 * });
+	 * ```
+	 */
+	readonly onConnect?: (sql: SqlClient.SqlClient) => Effect.Effect<unknown, SqlError.SqlError>;
 }
 
 const LEDGER_TABLE = "_store_migrations";
@@ -259,7 +316,7 @@ const FOREIGN_LEDGER_TABLE = "effect_sql_migrations";
 const materializeAdopt = (failure: AdoptFailure): StoreError =>
 	new StoreError({
 		operation: "adopt",
-		cause: failure._tag === "sql" ? failure.cause : new Error(`Store adoptMigratorLedger: ${failure.message}`),
+		cause: failure._tag === "sql" ? failure.cause : new Error(failure.message),
 	});
 
 type StoreOperation = "setup" | "migrate" | "rollback" | "status";
@@ -299,14 +356,40 @@ const make = (
 				options.adoptMigratorLedger === true
 					? FOREIGN_LEDGER_TABLE
 					: (options.adoptMigratorLedger.table ?? FOREIGN_LEDGER_TABLE);
-			yield* adoptForeignLedger(sql, LEDGER_TABLE, META_TABLE, foreign, options.migrations).pipe(
+			const adopted = yield* adoptForeignLedger(sql, LEDGER_TABLE, META_TABLE, foreign, options.migrations).pipe(
 				Effect.mapError(materializeAdopt),
 				Effect.withSpan("Store.adoptMigratorLedger"),
 			);
+			if (adopted.length > 0) {
+				const last = adopted[adopted.length - 1];
+				yield* Effect.logDebug("Adopted migrator ledger").pipe(
+					Effect.annotateLogs("migrator_table", foreign),
+					Effect.annotateLogs("adopted_count", String(adopted.length)),
+					Effect.annotateLogs("latest_migration_id", String(last?.id)),
+					Effect.annotateLogs("latest_migration_name", String(last?.name)),
+				);
+			}
 		}
-		yield* runPending(sql, LEDGER_TABLE, options.migrations).pipe(Effect.mapError(materialize("migrate")));
+		const mirror =
+			options.mirrorMigratorLedger === undefined
+				? undefined
+				: options.mirrorMigratorLedger === true
+					? FOREIGN_LEDGER_TABLE
+					: (options.mirrorMigratorLedger.table ?? FOREIGN_LEDGER_TABLE);
+		if (mirror !== undefined) {
+			yield* syncMirror(sql, LEDGER_TABLE, mirror).pipe(
+				Effect.mapError(
+					(failure) =>
+						new StoreError({
+							operation: "setup",
+							cause: failure._tag === "sql" ? failure.cause : new Error(failure.message),
+						}),
+				),
+			);
+		}
+		yield* runPending(sql, LEDGER_TABLE, options.migrations, mirror).pipe(Effect.mapError(materialize("migrate")));
 
-		const migrate = runPending(sql, LEDGER_TABLE, options.migrations).pipe(
+		const migrate = runPending(sql, LEDGER_TABLE, options.migrations, mirror).pipe(
 			Effect.mapError(materialize("migrate")),
 			Effect.withSpan("Store.migrate"),
 		);
@@ -315,7 +398,7 @@ const make = (
 			if (!Number.isInteger(toId) || toId < 0) {
 				return yield* Effect.die(new Error(`Store.rollback: toId must be a non-negative integer, received ${toId}`));
 			}
-			return yield* rollbackTo(sql, LEDGER_TABLE, options.migrations, toId).pipe(
+			return yield* rollbackTo(sql, LEDGER_TABLE, options.migrations, toId, mirror).pipe(
 				Effect.mapError(materialize("rollback")),
 			);
 		});
@@ -389,7 +472,12 @@ export class Store extends Context.Service<Store, StoreShape>()("@effected/store
 			...passthrough
 		} = (options.client ?? {}) as Partial<SqliteClient.SqliteClientConfig>;
 		const client = SqliteClient.layer({ ...passthrough, filename: options.filename });
-		const store = Layer.provide(Store.layer(options), client);
+		const connected = withOnConnect(
+			client,
+			options.onConnect,
+			(cause) => new StoreError({ operation: "setup", cause }),
+		);
+		const store = Layer.provide(Store.layer(options), connected);
 		return options.checkpointOnClose === true
 			? Layer.merge(store, Layer.provide(walCheckpointOnClose(), client))
 			: store;
@@ -435,6 +523,37 @@ export class Store extends Context.Service<Store, StoreShape>()("@effected/store
 		// is read at StoreShape. It cannot see through method-syntax parameter bivariance: a member redeclared
 		// as a method with a wider parameter still passes.
 		return Layer.effect(tag as Context.Key<I, StoreShape>, Store).pipe(Layer.provide(Store.layerSqlite(options)));
+	}
+
+	/**
+	 * Provide the bare `SqlClient` from a keyed store's `client`, for layers
+	 * written against `SqlClient` rather than a `Store` key.
+	 *
+	 * @remarks
+	 * A keyed store (see {@link Store.layerSqliteAs}) provides only its own
+	 * key, so code that queries through the ambient `SqlClient` needs it
+	 * bridged. Provide the result to those layers alone with `Layer.provide`:
+	 * merged into a context that also holds a second database, one `SqlClient`
+	 * would shadow the other. A layer-returning function: bind it once.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Store } from "@effected/store";
+	 * import type { StoreShape } from "@effected/store";
+	 * import { Context, Layer } from "effect";
+	 *
+	 * class SessionStore extends Context.Service<SessionStore, StoreShape>()("myapp/SessionStore") {}
+	 *
+	 * const SessionSql = Store.sqlClient(SessionStore);
+	 * // SessionRepoLive: Layer<SessionRepo, never, SqlClient>
+	 * // const SessionRepo = SessionRepoLive.pipe(Layer.provide(SessionSql), Layer.provide(SessionStoreLive));
+	 * ```
+	 */
+	static sqlClient<I>(tag: Context.Key<I, StoreShape>): Layer.Layer<SqlClient.SqlClient, never, I> {
+		return Layer.effect(
+			SqlClient.SqlClient,
+			Effect.map(tag, (store) => store.client),
+		);
 	}
 
 	/** An in-memory (`:memory:`) `Store` layer for tests; each build is a fresh, empty database. */
