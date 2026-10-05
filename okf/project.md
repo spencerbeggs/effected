@@ -45,7 +45,7 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `git` | boundary | invention; typed git introspection over core's `ChildProcessSpawner` |
 | `spdx` | pure | invention; vendored SPDX license expressions as pure schemas |
 | `app` | integrated | invention; thin composition over `xdg` + `config-file` + `store` |
-| `engine` | pure | invention; platform-free primitives shared across front ends (distribution identity, remediation, launch context) |
+| `engine` | pure | invention; platform-free primitives shared across front ends (distribution identity, remediation, launch context, and transport-neutral process crash guards on the import-free `./guard` subpath) |
 | `env` | boundary | invention; who is running a program and in what terminal (`RuntimeEnv`, `TerminalEnv`, `Audience`, `EnvOverride`) read through `Config`, with no `node:` import; a required peer of `cli`, so an MCP server or engine detects without a CLI dependency |
 | `cli` | boundary (`./ui` integrated on opt-in) | invention; the CLI presentation boundary over `effect/cli`: audience, theme and messages, the document IR and its renderers, links, failure reports, logging and prompts in a React-free root; interactive Ink screens and the live view behind `./ui` (`ink` and `react` optional peers) and their harness behind `./ui/testing` |
 | `mcp` | boundary | invention; the MCP boundary (stdio wiring, tool-failure shaping, strict-input walkers) over `effect/ai`, plus `./testing` clients |

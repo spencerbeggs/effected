@@ -53,6 +53,26 @@ object, which loses TSDoc on its members in the built `.d.ts`.
 | `LaunchContext.projectDir(input)` | static function | `({ argv?, env, keys, cwd }): string`. Resolves in this order: the first `argv` value that is neither empty nor a placeholder, then the first `keys` env value that is neither empty nor a placeholder, then `cwd`. Pure — `env` and `cwd` are passed in, never read from `process`. |
 | `LaunchContext.isUnsubstituted(value)` | static function | `(value: string): boolean`. Detects a literal `${VAR}` that a host such as Claude Code left unsubstituted. |
 | `type ProjectDirInput` | type | The parameter shape `LaunchContext.projectDir` takes. |
+| `ProcessGuard.run(options)` (`./guard`) | static function | `(options: ProcessGuardOptions) => Promise<void>`. Installs `uncaughtException`/`unhandledRejection` listeners on a structural `ProcessGuardHost` (`on`, `emit`, `stderr`, `exit`; Node's `process` satisfies it, pinned by a compile-time test), then awaits `options.load(guard)`. Launches nothing: `load` starts the server on any transport and calls `guard.markConnected()` once serving and `guard.useFormat(fn)` to upgrade the dependency-free formatter. `ProcessGuardPolicy`, a `startup failed` exit 1 on a rejected `load`, and `injectCrash: ProcessGuardInjection` (`at: "load" \| "connected"`, the `"connected"` report raised a tick after `markConnected`) are exactly `McpGuard`'s, which is now this guard plus an MCP launch. |
+
+### Why the guard lives here, on its own subpath
+
+The crash guard was born as `McpGuard.run` in `@effected/mcp/guard`, but
+its guard half (listeners, policy, startup failure, `injectCrash`, the
+formatter) has nothing to do with MCP, and okfit's LSP front end
+(`vscode-languageserver` over stdio) hand-rolled a copy because
+`McpGuard.run` also launches through `McpStdio`. The guard therefore
+belongs where every front end can reach it without a front-end dependency:
+here. It is a subpath, `./guard`, with **no runtime import at all**, so a
+`main.ts` imports it statically and its listeners exist before `effect` or
+the server graph evaluates — the main entry imports `effect`, so it could
+not serve that role. The connected signal is a plain `markConnected()`
+callback rather than an Effect or a `start()` return value: an LSP calls it
+from its own listening path, and `McpGuard` passes it to
+`McpStdio.launch`'s `onReady`, which fires after `load` resolved — a
+`start()`-shaped contract could not express that later moment. `engine`
+stays pure: the host is structural and `setTimeout` is the only global
+touched.
 
 ## Not exported, and why
 
@@ -104,6 +124,12 @@ target directly.
   through to `cwd`.
 - A property test asserting `projectDir` never returns an empty string
   when `cwd` is not empty.
+- `ProcessGuard` against a host double: listeners before `load`, both
+  policies across `markConnected` (including from a non-Effect callback
+  after `load` resolved), `startup failed`, formatter fallback, and every
+  `injectCrash` phase and kind; the `"connected"` report is asserted absent
+  on the `markConnected` tick. `entrypoints.test.ts` pins `./guard`'s
+  source and built graphs to zero packages.
 
 ## See also
 

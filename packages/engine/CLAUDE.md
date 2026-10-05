@@ -1,7 +1,8 @@
 # @effected/engine
 
 Platform-free primitives shared by every front end of an Effect v4 tool:
-distribution identity, remediation, and launch context.
+distribution identity, remediation, launch context, and transport-neutral
+process crash guards (`./guard`).
 
 **Design doc:** `@./okf/modules/engine.md` — Load when: changing the public
 surface, adding a new cross-front-end primitive, or deciding whether a
@@ -33,6 +34,30 @@ One module per concept. `src/index.ts` is the only re-exporting module.
 - `src/LaunchContext.ts` — `LaunchContext` and `ProjectDirInput`: resolves
   where a tool launched by an agent host should treat as its project, from
   caller-supplied `argv`/`env`/`cwd` rather than reading `process` itself.
+- `src/ProcessGuard.ts` — `ProcessGuard` (`run`) plus the
+  `ProcessGuardHost`, `ProcessGuardPolicy`, `ProcessGuardControl`,
+  `ProcessGuardOptions` and `ProcessGuardInjection` types: transport-neutral
+  crash guards. Exported **only** from the `./guard` subpath
+  (`src/guard.ts`), never from `src/index.ts`.
+
+## `./guard` has no runtime import at all
+
+`src/guard.ts` and `src/ProcessGuard.ts` import nothing, not even `effect`
+or a type: the guards must be listening before anything a server's
+`main.ts` loads evaluates. `__test__/entrypoints.test.ts` pins the source
+graph AND the built `dist/dev/pkg/guard.js` graph to `guard` +
+`ProcessGuard` with zero packages; `@effected/mcp`'s own entrypoint test
+re-checks the installed copy, because `McpGuard.ts` statically imports it.
+The host is structural (`on`/`emit`/`stderr`/`exit`), so the purity rule
+holds: `process` is passed in by the caller. `setTimeout` (for
+`injectCrash`) is the only global used.
+
+`ProcessGuard.run` launches nothing. The caller's `load(guard)` starts the
+server and calls `guard.markConnected()` once it is serving (a plain
+callback, so a non-Effect LSP and `McpGuard`'s `McpStdio.launch` `onReady`
+use the same shape) and `guard.useFormat(fn)` to upgrade the fallback
+formatter. Report wording is `McpGuard`'s, unchanged, because `McpGuard.run`
+is now this guard plus an MCP launch.
 
 ## Test and build
 

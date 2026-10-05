@@ -2,7 +2,7 @@
 	"name": "@effected/engine",
 	"version": "0.3.0",
 	"private": true,
-	"description": "Platform-free primitives shared by every front end of an Effect v4 tool: distribution identity, remediation, and launch context",
+	"description": "Platform-free primitives shared by every front end of an Effect v4 tool: distribution identity, remediation, launch context, and transport-neutral process crash guards",
 	"keywords": ["effect", "cli", "mcp", "carrier", "distribution", "effected"],
 	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/engine#readme",
 	"bugs": {
@@ -23,6 +23,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./guard": "./src/guard.ts",
 		"./package.json": "./package.json"
 	},
 	"scripts": {
