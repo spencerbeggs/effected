@@ -25,19 +25,11 @@ import {
 	refreshFailureTarget,
 } from "./internal/failureTarget.js";
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
-import { hostStderrIsTerminal } from "./internal/hostStderr.js";
 import { isExitCode } from "./internal/isExitCode.js";
 import { TrustedLine } from "./internal/logSafety.js";
 import { NotInteractive } from "./NotInteractive.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
-
-/** `env` with stderr's own terminal check filled in from the host when the caller did not pass one. */
-const withHostStderr = (env: CliEnvOptions): CliEnvOptions => {
-	if (env.stderrIsTerminal !== undefined) return env;
-	const host = hostStderrIsTerminal();
-	return host === undefined ? env : { ...env, stderrIsTerminal: host };
-};
 
 /** A `UserError` `Command.runWith` already printed: it sets the mark to `false` after rendering. */
 const isRenderedUserError = (u: unknown): u is CliError.UserError =>
@@ -195,10 +187,11 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 * already ended and its `display` writes nothing. A program that reads piped data must read `Stdio.stdin`, and
 	 * one that writes output must use `Console` or `Stdio`, never `Terminal`.
 	 *
-	 * Stderr's own terminal check is read from the host: when `env.stderrIsTerminal` is not passed and the host has a
-	 * `process.stderr` (Node, Bun), `main` uses its `isTTY`, so a redirected stderr is never painted. On a host with none,
-	 * stderr's colour mirrors stdout's terminal check. Pass `env.stderrIsTerminal` to override either. Core's `Stdio`
-	 * reports only stdout, so the default lives here until upstream Effect-TS/effect#8639 gives core a stderr check.
+	 * Stderr's colour mirrors stdout's terminal check unless `env.stderrIsTerminal` says otherwise, so with stderr
+	 * redirected and stdout a terminal the failure report is painted into the file. On Node, pass the real check from
+	 * the bin's entry, the one place it reads the host: `env: { stderrIsTerminal: Effect.sync(() => process.stderr.isTTY
+	 * === true) }`. Core's `Stdio` reports only stdout (upstream Effect-TS/effect#8639); once core has a stderr check,
+	 * this option reads it and the bin passes nothing.
 	 */
 	readonly env?: CliEnvOptions | undefined;
 	/**
@@ -521,7 +514,7 @@ export class CliRuntime {
 		options: MainOptions<RP, EP>,
 	): Effect.Effect<void, Error, unknown> {
 		// Bound once, so the logger and the program below share one build of it (layers memoize by reference).
-		const env = options.env === undefined ? undefined : CliEnv.layer(withHostStderr(options.env));
+		const env = options.env === undefined ? undefined : CliEnv.layer(options.env);
 		const envLog = options.env?.log;
 		const logger =
 			options.logger ??

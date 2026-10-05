@@ -400,11 +400,7 @@ describe("CliRuntime: the default failure path", () => {
 	) =>
 		Effect.gen(function* () {
 			const { double, err, out } = capturing();
-			const exit = yield* CliRuntime.main(program, {
-				platform: platform(tty),
-				env: { stderrIsTerminal: Effect.succeed(tty) },
-				...options,
-			}).pipe(
+			const exit = yield* CliRuntime.main(program, { platform: platform(tty), env: {}, ...options }).pipe(
 				Effect.exit,
 				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)),
 				Effect.provideService(Console.Console, double),
@@ -547,7 +543,7 @@ describe("CliRuntime: the default failure path", () => {
 						CliAudience.runWith(tool, { version: "1.0.0" })(argv).pipe(Effect.provide(NodeServices.layer)),
 						{
 							platform: platform(true),
-							env: { stderrIsTerminal: Effect.succeed(true) },
+							env: {},
 						},
 					).pipe(
 						Effect.exit,

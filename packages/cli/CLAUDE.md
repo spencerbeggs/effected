@@ -214,7 +214,7 @@ a second provide creates a second, unrelated cell: `CliExit.set` calls made
 against that shadow cell never reach the one `main` reads, and a findings run
 silently exits `0`.
 
-**`CliRuntime.main` defaults `env.stderrIsTerminal` from the host, through the root's one `process` licence.** Core's `Stdio` reports only stdout (Effect-TS/effect#8639), so without it a redirected stderr is painted because it mirrors stdout. `src/internal/hostStderr.ts` reads `globalThis.process.stderr.isTTY` structurally (no Node import; `undefined`, so the mirror, on a host with no `process.stderr`) and `main` fills the option in only when the caller left it unset; `CliEnv.layer` called directly does not. It is the single root file `boundary.test.ts` licenses for `process`, held exact like the `./ui` licence: a second one fails the test. Delete it when core ships the check.
+**The kit never defaults `env.stderrIsTerminal` from the host.** Core's `Stdio` reports only stdout (Effect-TS/effect#8639), so without the option a redirected stderr is painted because it mirrors stdout. Reading `process.stderr.isTTY` inside the root would break the no-`process` rule ([ui-binds-process-streams](../../okf/decisions/ui-binds-process-streams.md)), so the bin's entry passes it, the one place a bin reads its host. Once core has a stderr check, `CliEnv.layer` reads that instead.
 
 **`FailureDetails.isCancelled` / `isNotInteractive` are flags, `isDefect` is not redefined.** A fallback prompt's quit is a defect and a `CliUi.run` quit a typed failure, so `isDefect` cannot say "not a bug"; the flags test the squashed error's class and hold on either channel. `isDefect` stays `!Cause.hasFails(cause)` and no exit code depends on either.
 
