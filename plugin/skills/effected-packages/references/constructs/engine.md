@@ -9,6 +9,12 @@
 | `Distribution` | Variable + TypeAlias | A decoded `(Distribution:variable)`. | the carrier package name and version a tool's bins were installed through |
 | `DistributionField` | Variable | The `distribution` field of a machine-readable envelope: `null` when the front end was installed directly rather than through a carrier. | the nullable distribution field of a machine-readable envelope, null for a direct install |
 | `LaunchContext` | Class | Resolves where a tool launched by an agent host should treat as its project. | resolve a launched tool's project directory from argv, env keys, then cwd, rejecting unsubstituted placeholders |
+| `ProcessGuard` | Class | Transport-neutral crash guards for a server process, installed before the server's module graph loads. Imported from `@effected/engine/guard`. | from `@effected/engine/guard` — transport-neutral crash guards for an lsp or any server process before its graph loads, mark connected yourself, exit only before connect, startup failure exits 1 |
+| `ProcessGuardControl` | Interface | What `ProcessGuardOptions.load` is handed: the two moments only the caller can see. | from `@effected/engine/guard` |
+| `ProcessGuardHost` | Interface | The slice of the host process `ProcessGuard.run` uses. Node's `process` satisfies it. | from `@effected/engine/guard` |
+| `ProcessGuardInjection` | Interface | One crash `ProcessGuardOptions.injectCrash` raises: which event, and when. | from `@effected/engine/guard` |
+| `ProcessGuardOptions` | Interface | Options for `ProcessGuard.run`. | from `@effected/engine/guard` |
+| `ProcessGuardPolicy` | Interface | When a stray exception or rejection ends the process. | from `@effected/engine/guard` |
 | `ProjectDirInput` | Interface | The process-derived facts a front end resolves once, passed in as values. | |
 | `Remediation` | Variable + TypeAlias | A decoded `(Remediation:variable)`. | what a caller, usually an agent, should do after a failure: hint plus optional suggested tool and args |
 | `distributionSuffix` | Function | The `via <name> <version>` suffix (prefixed with a space) a `--version` line or a startup log line appends, or `""` for a direct install. | render the via name version suffix for a --version line or startup log, empty for a direct install |

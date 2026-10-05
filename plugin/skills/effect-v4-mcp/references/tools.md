@@ -250,6 +250,18 @@ units) by default, never splitting a UTF-16 surrogate pair. Pass
 itself produced, such as a path — the wider cap is not automatic, and a call
 that omits it gets `ECHO_LIMIT` regardless of where the value came from.
 
+`failureMode: "return"` does not get structured data through either. Core's
+`registerToolkit` builds every failed call's result with `structuredContent`
+unset and no `_meta` (`ai/McpServer.ts`, the `CallToolResult` built in
+`registerToolkit`'s `handle`), on every revision; under `"return"` the
+whole encoded failure is JSON-stringified into `content[0].text` instead —
+`{"_tag":"NotFound","message":"…","remediation":{…},"id":"missing"}` — so
+the human sentence is buried in JSON a client must parse. That is why
+`ToolRefusal.refuse` takes no data argument: put a valid-names list, a
+searched root or a missing id in the message, or, when an agent must branch
+on the data itself, return the [`ok: false` envelope](#the-ok-false-envelope)
+on the success channel, where `structuredContent` does arrive.
+
 `InvalidParams` (a parameter-validation failure) differs by protocol
 revision, but only for a **known** tool's parameters: on `2024-11-05`,
 `2025-03-26` and `2025-06-18` it is a JSON-RPC error, code `-32602`; on

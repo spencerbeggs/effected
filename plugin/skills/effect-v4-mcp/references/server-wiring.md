@@ -430,11 +430,51 @@ drive the same listener logic the real `process` runs; a double whose
   exits 1; only `onRejection: "log"` goes on to load and serve. The report
   uses the guard's own formatter, since no `format` is loaded yet.
 - `at: "connected"` raises it on a timer just after the server is serving,
-  where `"exitBeforeConnect"` logs and keeps serving.
+  where `"exitBeforeConnect"` logs and keeps serving. **The report is
+  asynchronous**: it lands on a later tick, possibly after the first
+  responses the test reads, so a test that reads `stderrSoFar` once right
+  after its `tools/list` response can see an empty buffer. Wait for it:
+
+~~~ts
+const stderr = yield* server.stderrUntil((text) => text.includes("[injected]"), { timeout: "5 seconds" })
+~~~
+
+  `McpProcess.stderrUntil` re-checks on every stderr chunk, fails
+  `StreamEnded` if the child exits first and `TimedOut` at the real-time
+  timeout, so run the test under `it.live`.
 
 Test both phases under the same `"exitBeforeConnect"` policy: exit 1 at
 `"load"` and a handshake that still succeeds at `"connected"` is the pair
 that proves the policy switches on the connect signal.
+
+### Another transport: `ProcessGuard.run`
+
+`McpGuard.run` is `ProcessGuard.run` from `@effected/engine/guard` with an
+MCP launch in its `load`. A server on another transport, such as an LSP
+over `vscode-languageserver`, takes the engine guard directly: same
+listeners, policy, `startup failed` exit, `injectCrash` and formatter, and
+the same import-free entrypoint, but it launches nothing. `load` receives a
+control with `markConnected()` (the only thing that makes
+`"exitBeforeConnect"` stop exiting) and `useFormat(fn)`:
+
+~~~ts
+import { ProcessGuard } from "@effected/engine/guard"
+
+await ProcessGuard.run({
+  label: "my-lsp",
+  host: process,
+  policy: { onUncaught: "exitBeforeConnect", onRejection: "exitBeforeConnect" },
+  load: async (guard) => {
+    const { startServer } = await import("./server.js")
+    await startServer()
+    guard.markConnected()
+  },
+})
+~~~
+
+The report lines are fixed (`<label>: uncaughtException (<origin>): …`,
+`<label>: unhandledRejection: …`, `<label>: startup failed: …`); only
+`label` is configurable.
 
 ## Project directory
 
