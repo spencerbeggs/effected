@@ -4,6 +4,14 @@
 
 * Added @effected/lsp
 * Updated effected
+* Updated @effected/cli
+* Updated @effected/engine
+* Updated @effected/mcp
+* Updated @effected/workspaces/testing: the repo-shape checks
+* Updated @effected/workspaces: monorepo tooling
+* Updated Store is built on effect's own SQL core and @effect/sql-sqlite-node
+* Updated app
+* Updated store
 
 ## 2026-10-03
 
