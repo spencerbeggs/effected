@@ -30,6 +30,33 @@
 | `--ignore-exit` | ignores `exit` and stops only at stdin EOF, for the stays-open decision |
 | `--noise` | a plain log line on stdout before the first frame |
 | `--fail-initialize` | answers `initialize` with a `-32603` error, then still answers `shutdown` and exits 0 |
+| `--noise-between` | a plain line on stdout right after the `initialize` response, between two frames |
+| `--noise-after` | a plain line on stdout after the last frame, written on `exit` before exiting |
+| `--not-jsonrpc` | answers `initialize` with a well-framed body that is no JSON-RPC message (`[1,2,3]`) |
+| `--truncate` | answers `initialize` with half a frame and exits 4, so stdout ends inside it |
+| `--stderr-late` | writes `late report` to stderr 200 ms after `initialized`, a later tick than any response |
 
 - **Regenerating:** there is nothing to regenerate. Edit by hand, and keep
   one shape per flag.
+
+## `lsp-main.ts` and `ts-resolve.mjs`
+
+- **Producing tool:** none. `lsp-main.ts` is a hand-written `main.ts` for
+  `LspStdio.test.ts`: `NodeRuntime.runMain(LspStdio.launch(program), { teardown: LspStdio.teardown(process) })`
+  over the real process stdio, where `program` is the smallest hand-rolled
+  message loop (answers `initialize` and `shutdown`, records `shutdown`,
+  stops on `exit` or at stdin EOF) provided with `NodeStdio.layer` and a
+  layer that reads the required config `LSP_FIXTURE_HOME`, as a real
+  server's platform layer reads `HOME`. It logs one line once serving.
+- **How it runs:** `node --import ./ts-resolve.mjs lsp-main.ts [flags]`.
+  Node strips the types itself; `ts-resolve.mjs` (copied from
+  `@effected/mcp`'s fixtures) maps a relative `./x.js` import to `./x.ts`
+  when no `.js` file exists, so the sources run unbuilt.
+
+| Flag or env | Shape it pins |
+| --- | --- |
+| no `LSP_FIXTURE_HOME` | a layer that fails to build: the report must reach stderr, never stdout |
+| `--die` | a defect once serving |
+| `--no-host-exit` | the control: the same teardown with a host whose `exit` does nothing, so the process sits after `exit` until stdin closes |
+
+- **Regenerating:** there is nothing to regenerate. Edit by hand.

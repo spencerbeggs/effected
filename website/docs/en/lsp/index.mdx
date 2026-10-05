@@ -1,14 +1,17 @@
 ---
 title: "@effected/lsp"
-description: "Language Server Protocol base-protocol framing for Effect v4, and LspProbe, the packed-install proof that a Language Server bin boots."
+description: "Language Server Protocol base-protocol framing for Effect v4, a stdio launcher that keeps stdout the wire, and test clients that prove a Language Server bin boots and drive it frame by frame."
 ---
 
 # @effected/lsp
 
 Language Server Protocol base-protocol framing for Effect v4 —
 `Content-Length` frames encoded by byte length and decoded incrementally —
-plus a `./testing` subpath whose `LspProbe` proves a Language Server bin
-boots. It is the LSP twin of `@effected/mcp/testing`'s `McpProbe`.
+a stdio launcher, `LspStdio`, that keeps stdout the wire and exits with the
+code the specification requires, and a `./testing` subpath whose
+`LspProbe` proves a Language Server bin boots and whose `LspProcess`
+drives one frame by frame. They are the LSP twins of `@effected/mcp`'s
+`McpStdio`, `McpProbe` and `McpProcess`.
 
 ## Why @effected/lsp
 
@@ -25,6 +28,12 @@ first time a body carries a multi-byte character. And writing every frame
 up front, then closing stdin, proves less than it seems: a server that
 ignores `exit` and stops only when stdin closes passes, though under an
 editor — which never closes the pipe first — it hangs.
+
+A server written in Effect meets a third trap at launch: `runMain` reports
+a failed program on stdout, outside every `Effect.provide` the program
+applies, so a layer that fails to build prints its report onto the wire.
+And a clean `exit` does not end the process while stdin is open.
+`LspStdio` closes both.
 
 ## Install
 
@@ -52,20 +61,28 @@ platform layer at the edge.
   malformed stream, with the rule it broke, the frame's stream position,
   and an excerpt of the frame's start.
 - **`LspMessage`** — the JSON-RPC 2.0 message shape a frame body carries.
+- **`LspStdio`** — `launch` (run a server program with stdout kept the
+  wire), `exitCode` (the specification's exit code for a session) and
+  `teardown` (the `runMain` teardown that ends the process), with the
+  `LspSessionEnd` and `LspExitHost` types.
 - **`@effected/lsp/testing`** — `LspProbe.initialize`, its
-  `LspProbeOptions` and `LspProbeResult`, and `LspTestFailure`.
+  `LspProbeOptions` and `LspProbeResult`; `LspProcess.spawn` and
+  `LspProcessStderrUntilOptions`; and `LspTestFailure`.
 
 ## Reach for it when
 
 - You ship a Language Server bin and need a packed-install test that
   proves it boots and completes the LSP lifecycle.
+- You write a Language Server in Effect and run it over stdio.
+- You test a Language Server bin message by message, or need to prove its
+  stdout carried nothing but frames.
 - You read or write LSP frames anywhere — a test client, a proxy, a log
   replay — and want byte-correct framing with a typed failure.
 
-This is not an LSP server framework: serving the protocol stays with
-whatever you serve it with. `@effected/lsp` is a front end's sibling, like
+This is not an LSP server framework: the message loop and every handler
+stay with whatever you serve the protocol with. `@effected/lsp` is a front end's sibling, like
 `@effected/mcp` and `@effected/cli`, and nothing in the kit may depend on
 it except an application.
 
-See the [Getting Started guide](/lsp/getting-started) for the probe and
-the framing functions.
+See the [Getting Started guide](/lsp/getting-started) for the launcher,
+the test clients and the framing functions.

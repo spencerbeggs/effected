@@ -5,6 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `LspExitHost` | Interface | What `LspStdio.teardown` needs from the host: a way to end the process with a code. Node's `process` satisfies it. | |
 | `LspFrame` | Class | The LSP base protocol's framing: a `Content-Length` header block, a blank line, and a UTF-8 JSON body of exactly that many bytes. | encode an lsp message with a byte-counted content-length header, decode lsp frames from chunked bytes or a stream |
 | `LspFrameDecoded` | Interface | What `LspFrame.decodeResult` decoded from one buffer. | |
 | `LspFrameError` | Class | A byte stream that is not a sequence of LSP base-protocol frames. | malformed or truncated lsp frame, missing or bad content-length, stray stdout log line |
@@ -13,4 +14,8 @@
 | `LspProbe` | Class | The smallest proof that an installed Language Server bin boots: the whole LSP lifecycle over stdio, and exit code 0. | from `@effected/lsp/testing` — smoke-test a built language server bin, initialize then shutdown and exit 0 |
 | `LspProbeOptions` | Interface | Options for `LspProbe.initialize`. | from `@effected/lsp/testing` |
 | `LspProbeResult` | Interface | What `LspProbe.initialize` observed. | from `@effected/lsp/testing` |
-| `LspTestFailure` | Class | Why `LspProbe.initialize` could not prove a Language Server boots. | from `@effected/lsp/testing` — lsp probe failure, stream ended, invalid frame, timeout |
+| `LspProcess` | Class | A spawned Language Server bin a test writes `Content-Length` frames to while it runs — the LSP twin of `@effected/mcp/testing`'s `McpProcess`. | from `@effected/lsp/testing` — drive a spawned language server bin from a test, send content-length frames, read until a response, wait for a stderr report, assert stdout carried only lsp frames |
+| `LspProcessStderrUntilOptions` | Interface | Options for `LspProcess.stderrUntil`. | from `@effected/lsp/testing` |
+| `LspSessionEnd` | Interface | How a Language Server session ended, as the server's own message loop observed it. `LspStdio.exitCode` maps it to the exit code the LSP specification requires. | |
+| `LspStdio` | Class | Run an Effect Language Server over stdio without ever writing a log line or a failure report onto stdout, which is the LSP wire, and exit with the code the LSP specification requires. | launch an effect language server over stdio, keep runMain's failure report off stdout, exit 1 on exit without shutdown, end the process on exit when stdin stays open |
+| `LspTestFailure` | Class | Why `LspProbe.initialize` could not prove a Language Server boots. | from `@effected/lsp/testing` — lsp probe or process failure, stream ended, invalid frame, not json-rpc, timeout |
