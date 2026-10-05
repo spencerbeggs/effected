@@ -179,6 +179,13 @@ export class YamlStringifyOptions extends Schema.Class<YamlStringifyOptions>("Ya
  * `code` field: read the code from the diagnostics —
  * `error.diagnostics[0].code` is the primary failure.
  *
+ * @remarks
+ * The `message` renders each diagnostic's position 1-based
+ * (`line + 1:character + 1`) for human readers — a CLI printing this string
+ * shows the line/column a person counts in their editor. The structured
+ * {@link YamlDiagnostic} `line`/`character` fields stay 0-based (LSP
+ * convention); the offset applies to the rendered message only.
+ *
  * @public
  */
 export class YamlParseError extends Schema.TaggedError<YamlParseError>()("YamlParseError", {
@@ -187,7 +194,7 @@ export class YamlParseError extends Schema.TaggedError<YamlParseError>()("YamlPa
 }) {
 	override get message(): string {
 		const count = this.diagnostics.length;
-		const summary = this.diagnostics.map((d) => `${d.code} at ${d.line}:${d.character}`).join("; ");
+		const summary = this.diagnostics.map((d) => `${d.code} at ${d.line + 1}:${d.character + 1}`).join("; ");
 		return `YAML parse failed with ${count} error${count === 1 ? "" : "s"}: ${summary}`;
 	}
 }

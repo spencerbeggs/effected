@@ -50,6 +50,22 @@ describe("Yaml", () => {
 			}),
 		);
 
+		it.effect("renders the message position 1-based while the diagnostic fields stay 0-based", () =>
+			Effect.gen(function* () {
+				const e = yield* Effect.flip(Yaml.parse("a: *missing"));
+				assert.strictEqual(e.diagnostics[0].code, "UndefinedAlias");
+				assert.strictEqual(e.diagnostics[0].line, 0);
+				assert.strictEqual(e.diagnostics[0].character, 3);
+				assert.include(e.message, "UndefinedAlias at 1:4");
+				assert.notInclude(e.message, "at 0:3");
+				const dup = yield* Effect.flip(Yaml.parse("a: 1\na: 2"));
+				assert.strictEqual(dup.diagnostics[0].code, "DuplicateKey");
+				assert.strictEqual(dup.diagnostics[0].line, 1);
+				assert.strictEqual(dup.diagnostics[0].character, 0);
+				assert.include(dup.message, "DuplicateKey at 2:1");
+			}),
+		);
+
 		it.effect("promotes duplicate keys to failure under the default uniqueKeys", () =>
 			Effect.gen(function* () {
 				const error = yield* Effect.flip(Yaml.parse("a: 1\na: 2"));

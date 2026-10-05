@@ -136,6 +136,20 @@ describe("YamlLint.resolveStrict", () => {
 		}
 	});
 
+	it("renders conflict positions 1-based in the message while the tally fields stay 0-based", () => {
+		const resolved = YamlLint.inferStrict("a: 'x'\nb: \"y\"\n", YamlLint.builtins);
+		if (Result.isSuccess(resolved)) {
+			assert.fail("a mixed-quote corpus must not resolve strictly");
+			return;
+		}
+		const conflict = resolved.failure.conflicts.find((c) => c.rule === "quoted-strings" && c.dimension === "quoteType");
+		const double = conflict?.candidates.find((c) => c.value === "double");
+		assert.strictEqual(double?.line, 1);
+		assert.strictEqual(double?.character, 3);
+		assert.include(resolved.failure.message, '"double" (1×, first at 2:4)');
+		assert.include(resolved.failure.message, '"single" (1×, first at 1:4)');
+	});
+
 	it("an explicit base 'off' outranks inference", () => {
 		const base = YamlLintConfig.make({ rules: { "quoted-strings": "off" } });
 		const resolved = YamlLint.inferStrict("a: 'x'\n", YamlLint.builtins, base);

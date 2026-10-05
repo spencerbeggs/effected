@@ -353,6 +353,11 @@ export class StyleConflict extends Schema.Class<StyleConflict>("StyleConflict")(
  * rule). Unobserved dimensions never conflict: they fall back to the base
  * config's defaults.
  *
+ * @remarks
+ * The `message` renders each candidate's first-seen position 1-based
+ * (`line + 1:character + 1`) for human readers; the structured
+ * {@link StyleVoteTally} `line`/`character` fields stay 0-based.
+ *
  * @public
  */
 export class YamlStyleConflictError extends Schema.TaggedError<YamlStyleConflictError>()("YamlStyleConflictError", {
@@ -363,7 +368,7 @@ export class YamlStyleConflictError extends Schema.TaggedError<YamlStyleConflict
 			.map(
 				(conflict) =>
 					`Conflicting style for ${conflict.rule}.${conflict.dimension}: ${conflict.candidates
-						.map((c) => `${JSON.stringify(c.value)} (${c.count}×, first at ${c.line}:${c.character})`)
+						.map((c) => `${JSON.stringify(c.value)} (${c.count}×, first at ${c.line + 1}:${c.character + 1})`)
 						.join(" vs ")}`,
 			)
 			.join("; ");
