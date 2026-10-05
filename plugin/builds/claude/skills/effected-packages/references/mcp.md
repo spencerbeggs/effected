@@ -29,6 +29,7 @@ Three entrypoints. `./testing` is a separate module so test machinery never ente
 | `McpProbe.initialize(command)` | the MCP half of a packed-install proof: one `initialize`, a clean close, exit 0 |
 | `McpToolAudit.check(tools, policy)` | a pure, server-free policy sweep over what `tools/list` actually serves |
 | `McpGuard.run(options)` (`./guard`) | crash guards for an MCP server's `main.ts`, with an exit-before-connect policy; for an LSP or any other transport use `ProcessGuard.run` from `@effected/engine/guard` |
+| `McpGuard.parseInjectCrash(value)` (`./guard`) | parse a launcher's test-only `<at>:<kind>` crash-injection variable into `injectCrash` (`undefined` for anything else); the same function as `ProcessGuard.parseInjectCrash` |
 | `McpProcess.stderrUntil(predicate, { timeout })` | waiting for a report a spawned server writes on a later tick than its responses, such as `McpGuard`'s `injectCrash: { at: "connected" }` report |
 | `ToolRefusal.refuse(reason, remediation)` | a declared, agent-actionable refusal; structured data on it never reaches the client, so fold it into `reason` or return an `ok: false` envelope |
 

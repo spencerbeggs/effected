@@ -168,6 +168,20 @@ export interface McpGuardRunOptions<ROut, E> {
 export class McpGuard {
 	private constructor() {}
 
+	/**
+	 * Parse a test-only crash-injection setting into {@link McpGuardRunOptions.injectCrash}: `<at>:<kind>`, where `at`
+	 * is `"load"` or `"connected"` and `kind` is `"uncaughtException"` or `"unhandledRejection"`. Anything else, or no
+	 * value, is `undefined`. The same grammar as `ProcessGuard.parseInjectCrash` from `@effected/engine/guard`, which
+	 * this is, so an MCP launcher need not import the engine guard for it.
+	 *
+	 * @example
+	 * ```ts
+	 * McpGuard.parseInjectCrash("load:uncaughtException"); // => { at: "load", kind: "uncaughtException" }
+	 * ```
+	 */
+	static readonly parseInjectCrash: (value: string | undefined) => McpGuardRunOptions<unknown, unknown>["injectCrash"] =
+		ProcessGuard.parseInjectCrash;
+
 	/** Install the guards, load the server, and launch it. Resolves once the server is launched. */
 	static readonly run = <ROut, E>(options: McpGuardRunOptions<ROut, E>): Promise<void> =>
 		ProcessGuard.run({

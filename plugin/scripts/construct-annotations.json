@@ -533,7 +533,7 @@
 		"NodeSyncFileSystem": "read real disk under Effect.runSync, synchronous read-only node filesystem"
 	},
 	"mcp": {
-		"McpGuard": "crash guards before the server graph loads, exit only before connect, startup failure exits 1",
+		"McpGuard": "crash guards before the server graph loads, exit only before connect, startup failure exits 1, parse a crash-injection env value",
 		"McpHarness": "test mcp server in-process, call tools over queue-backed stdio",
 		"McpProbe": "smoke-test a built mcp bin, initialize then clean exit",
 		"McpProcess": "drive a spawned mcp bin, read json-rpc lines, wait for a stderr report with a timeout, never hang on exit",

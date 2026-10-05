@@ -15,6 +15,10 @@
 - `McpProcess.stderrUntil(predicate, { timeout })` waits until the stderr written so far satisfies `predicate`, checking on every chunk, and fails with `StreamEnded` or `TimedOut` instead of hanging. Its options type is `McpProcessStderrUntilOptions`.
 - `McpTestFailure` gains the `"TimedOut"` reason, which widens its reason union. Exhaustive matches on the reason need a new case.
 
+### Crash-injection parsing
+
+- `McpGuard.parseInjectCrash(value)` parses the `<at>:<kind>` crash-injection grammar for `injectCrash`. It is the same function as `ProcessGuard.parseInjectCrash`, so an MCP launcher need not import `@effected/engine/guard` for it.
+
 ## Refactoring
 
 - `McpGuard.run` now runs over `ProcessGuard` from `@effected/engine/guard`. Its public API is unchanged, but `@effected/mcp` now imports `@effected/engine/guard` at runtime, so it needs a release of `@effected/engine` that ships that subpath.

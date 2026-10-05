@@ -7,7 +7,7 @@
 | --- | --- | --- | --- |
 | `FormatUnknownKeysOptions` | Interface | Options for `ToolInputSchema.formatUnknownKeys`. | |
 | `JsonRpcMessage` | Interface | One JSON-RPC 2.0 frame as an MCP test client sees it. | from `@effected/mcp/testing` |
-| `McpGuard` | Class | Crash guards for an MCP server process, installed before the server's module graph is loaded. Imported from `@effected/mcp/guard`. | from `@effected/mcp/guard` — crash guards before the server graph loads, exit only before connect, startup failure exits 1 |
+| `McpGuard` | Class | Crash guards for an MCP server process, installed before the server's module graph is loaded. Imported from `@effected/mcp/guard`. | from `@effected/mcp/guard` — crash guards before the server graph loads, exit only before connect, startup failure exits 1, parse a crash-injection env value |
 | `McpGuardHost` | Interface | The slice of the host process the guard uses. Node's `process` satisfies it. | from `@effected/mcp/guard` |
 | `McpGuardPolicy` | Interface | When a stray exception or rejection ends the process. | from `@effected/mcp/guard` |
 | `McpGuardRunOptions` | Interface | Options for `McpGuard.run`. | from `@effected/mcp/guard` |

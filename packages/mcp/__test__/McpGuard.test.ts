@@ -64,6 +64,17 @@ const stop = (fibers: ReadonlyArray<Fiber.Fiber<never, Error>>) =>
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
+describe("McpGuard.parseInjectCrash", () => {
+	it("is ProcessGuard's parser: one grammar for every launcher", () => {
+		assert.deepStrictEqual(McpGuard.parseInjectCrash("connected:unhandledRejection"), {
+			at: "connected",
+			kind: "unhandledRejection",
+		});
+		for (const value of [undefined, "", "load:boom", "later:uncaughtException", "load:uncaughtException:x"])
+			assert.isUndefined(McpGuard.parseInjectCrash(value), String(value));
+	});
+});
+
 describe("McpGuard.run with a host double", () => {
 	it("installs both listeners before load runs", async () => {
 		const { host, listeners } = fakeHost();

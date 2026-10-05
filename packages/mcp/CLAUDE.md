@@ -47,7 +47,7 @@ that ships `./guard`.
 `UnionToolOptions`, `UnknownKeysLevel` and `FormatUnknownKeysOptions`
 types. `McpToolkit` also carries `unionTool` and `unionHandler`.
 
-`@effected/mcp/guard` (`src/guard.ts`): `McpGuard` (`run`), plus the
+`@effected/mcp/guard` (`src/guard.ts`): `McpGuard` (`run`, and `parseInjectCrash`, which is `ProcessGuard.parseInjectCrash`), plus the
 `McpGuardHost`, `McpGuardPolicy`, `McpGuardedServer` and
 `McpGuardRunOptions` types. **Its only static runtime import is
 `@effected/engine/guard`, which itself imports nothing**: the guards must
