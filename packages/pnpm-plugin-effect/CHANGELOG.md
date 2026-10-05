@@ -1,5 +1,47 @@
 # @effected/pnpm-plugin-effect
 
+## 0.13.5
+
+### Maintenance
+
+#### Updates 27 catalog:effect versions
+
+- `@effect/ai-anthropic` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/ai-openai` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/ai-openai-compat` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/ai-openrouter` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/atom-react` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/atom-solid` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/atom-vue` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/openapi-generator` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/opentelemetry` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/platform-browser` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/platform-bun` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/platform-node` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/platform-node-shared` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/sql-clickhouse` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/sql-d1` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/sql-libsql` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/sql-mssql` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/sql-mysql2` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/sql-pg` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/sql-pglite` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/sql-sqlite-bun` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/sql-sqlite-do` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/sql-sqlite-node` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/sql-sqlite-react-native` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/sql-sqlite-wasm` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `@effect/vitest` ^4.0.0 -> ^4.0.1 (peer ^4.0.0)
+- `effect` ^4.0.0 -> ^4.0.1
+
+#### Updates 1 catalog:effected version
+
+- `@effected/toml` ^0.11.0 -> ^0.11.1 (peer ^0.11.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
 ## 0.13.4
 
 ### Maintenance

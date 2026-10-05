@@ -1,5 +1,17 @@
 # @effected/toml
 
+## 0.11.1
+
+### Bug Fixes
+
+- `TomlParseError.message` now renders the first diagnostic's position 1-based (`line + 1:character + 1`), so a CLI printing the message shows the line and column a person counts in their editor. The structured `TomlDiagnostic` `line`/`character` fields are unchanged and remain 0-based per LSP convention. [#937][#937]
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) for their contributions!
+
+[#937]: https://github.com/spencerbeggs/effected/pull/937
+
 ## 0.11.0
 
 ### Breaking Changes
