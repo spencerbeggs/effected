@@ -2,7 +2,7 @@ import type { CommandOutput } from "@effected/commands";
 import { Run } from "@effected/commands";
 import { Yaml } from "@effected/yaml";
 import type { PlatformError } from "effect";
-import { Duration, Effect, FileSystem, Option, Path, Redacted, Result, Schema, Stream } from "effect";
+import { Config, Duration, Effect, FileSystem, Option, Path, Redacted, Result, Schema, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ChildProcess } from "effect/process";
 import type { PackedManifest } from "./internal/packedInstallPlan.js";
@@ -1128,9 +1128,11 @@ export class PackedInstall {
 	 * skip locally, or fail under CI.
 	 *
 	 * @remarks
-	 * Pure: the environment arrives as a parameter, because the `./testing`
-	 * modules read no `process`. `env.CI` counts as set when it is present and
-	 * not `""`, `"0"` or `"false"` (case-insensitive). Ready is always `"run"`;
+	 * `CI` is read through `Config`, so the ambient `ConfigProvider` decides —
+	 * the process environment at a test file's top level, and whatever a test
+	 * provides in a test; nothing here reads `process`. `CI` counts as set when
+	 * it is present and not `""`, `"0"` or `"false"` (case-insensitive), and an
+	 * unreadable `CI` counts as unset. Ready is always `"run"`;
 	 * missing is `"skip"` off CI and `"fail"` on it, so a CI job that never ran
 	 * the prod build cannot pass by silently skipping the proof. The message
 	 * names every missing path. The test job must run the prod build
@@ -1141,9 +1143,10 @@ export class PackedInstall {
 	 * ```ts
 	 * import { assert, describe, it } from "@effect/vitest";
 	 * import { PackedInstall } from "@effected/workspaces/testing";
+	 * import { Effect } from "effect";
 	 *
 	 * declare const preflight: { readonly ready: boolean; readonly missing: ReadonlyArray<string> };
-	 * const gate = PackedInstall.gate(preflight, process.env);
+	 * const gate = Effect.runSync(PackedInstall.gate(preflight));
 	 *
 	 * describe.runIf(gate.action === "run")("packed install", () => {
 	 *   it("installs", () => {});
@@ -1154,20 +1157,19 @@ export class PackedInstall {
 	 * ```
 	 *
 	 * @param preflight - What {@link PackedInstall.preflight} answered.
-	 * @param env - The environment to read `CI` from, normally `process.env`.
 	 */
-	static readonly gate = (
-		preflight: PackedInstallPreflight,
-		env: Readonly<Record<string, string | undefined>>,
-	): PackedInstallGate => {
-		if (preflight.ready) return { action: "run", message: "" };
-		const ci = env.CI;
-		const underCi = ci !== undefined && !["", "0", "false"].includes(ci.toLowerCase());
-		const message = `the pack source is missing: ${preflight.missing.join(", ")}; run the prod build (build:prod) before the packed-install tests`;
-		return underCi
-			? { action: "fail", message: `${message}; it must not be skipped under CI` }
-			: { action: "skip", message };
-	};
+	static readonly gate = (preflight: PackedInstallPreflight): Effect.Effect<PackedInstallGate> =>
+		Effect.gen(function* () {
+			if (preflight.ready) return { action: "run", message: "" } satisfies PackedInstallGate;
+			const ci = yield* Config.option(Config.String("CI")).pipe(Effect.orElseSucceed(() => Option.none<string>()));
+			const underCi = Option.isSome(ci) && !["", "0", "false"].includes(ci.value.toLowerCase());
+			const message = `the pack source is missing: ${preflight.missing.join(", ")}; run the prod build (build:prod) before the packed-install tests`;
+			return (
+				underCi
+					? { action: "fail", message: `${message}; it must not be skipped under CI` }
+					: { action: "skip", message }
+			) satisfies PackedInstallGate;
+		});
 
 	/** Pack, then install under every available manager. */
 	static readonly run = Effect.fn("PackedInstall.run")(function* (options: PackedInstallOptions) {

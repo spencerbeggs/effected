@@ -390,8 +390,10 @@ const RUN: PackedInstallOptions = {
 
 // Module evaluation, before describe runs: is the prod build there, and what
 // does a missing one mean? Skip off CI, FAIL under CI (see the warning below).
-const PREFLIGHT = await Effect.runPromise(PackedInstall.preflight(RUN).pipe(Effect.provide(Live)))
-const GATE = PackedInstall.gate(PREFLIGHT, process.env)
+// `gate` reads CI through Config, so here the process environment decides.
+const GATE = await Effect.runPromise(
+  PackedInstall.preflight(RUN).pipe(Effect.flatMap(PackedInstall.gate), Effect.provide(Live)),
+)
 // PackedInstall is POSIX-only.
 const RUNNABLE = GATE.action === "run" && process.platform !== "win32"
 
@@ -444,9 +446,10 @@ way. Keep `closure` when the test asserts the tarballs, as it should.
 
 Gate the whole suite on the carrier's production build existing, through
 `PackedInstall.preflight(RUN)` (`{ ready, missing }`: the absolute
-`package.json` paths under `packFrom` that are absent) and the pure
-`PackedInstall.gate(preflight, process.env)` (`"run"`, `"skip"` off CI,
-`"fail"` under CI, with a message naming the missing paths). Do not hand-roll
+`package.json` paths under `packFrom` that are absent) and
+`PackedInstall.gate(preflight)` (`"run"`, `"skip"` off CI, `"fail"` under CI,
+with a message naming the missing paths). `gate` reads `CI` through `Config`,
+so a test stubs it with a `ConfigProvider` instead of touching `process.env`. Do not hand-roll
 an `existsSync` and a plain skip: the recipe above is the whole gate, and it
 needs no vitest wrapper. Manager availability needs no gate of its own:
 `require` above is that policy.

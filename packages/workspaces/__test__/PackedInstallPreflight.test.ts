@@ -1,7 +1,7 @@
 import { assert, describe, it, layer } from "@effect/vitest";
 import { ScriptedSpawner } from "@effected/commands";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, Layer, Path, Redacted, Stream } from "effect";
+import { ConfigProvider, Effect, Layer, Path, Redacted, Stream } from "effect";
 import { WorkspaceDiscovery, WorkspacePackage } from "../src/index.js";
 import { InstalledConsumer, PackedInstall } from "../src/testing.js";
 
@@ -29,6 +29,12 @@ const options = { carrier: "@x/carrier", closure: "auto" } as const;
 const suite = (seed: Record<string, string>) =>
 	layer(Layer.mergeAll(MemoryFileSystem.layerWith(seed), Path.layer, Discovery));
 
+/** Run `self` with `env` as the only configuration, as a test stubs the environment. */
+const withEnv =
+	(env: Record<string, string>) =>
+	<A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+		Effect.provideService(self, ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env));
+
 describe("PackedInstall.preflight and gate", () => {
 	suite({
 		[`/repo/packages/carrier/${PROD}/package.json`]: "{}",
@@ -38,7 +44,10 @@ describe("PackedInstall.preflight and gate", () => {
 			Effect.gen(function* () {
 				const result = yield* PackedInstall.preflight(options);
 				assert.deepStrictEqual(result, { ready: true, missing: [] });
-				assert.deepStrictEqual(PackedInstall.gate(result, { CI: "true" }), { action: "run", message: "" });
+				assert.deepStrictEqual(yield* PackedInstall.gate(result).pipe(withEnv({ CI: "true" })), {
+					action: "run",
+					message: "",
+				});
 			}),
 		);
 	});
@@ -72,20 +81,22 @@ describe("PackedInstall.preflight and gate", () => {
 		);
 	});
 
-	it("gate skips locally and fails under CI when not ready, naming the paths and the build", () => {
-		const missing = { ready: false, missing: ["/a/package.json", "/b/package.json"] };
-		for (const env of [{}, { CI: undefined }, { CI: "" }, { CI: "0" }, { CI: "false" }, { CI: "FALSE" }]) {
-			const gate = PackedInstall.gate(missing, env);
-			assert.strictEqual(gate.action, "skip", JSON.stringify(env));
-			assert.include(gate.message, "/a/package.json, /b/package.json");
-			assert.include(gate.message, "build:prod");
-		}
-		for (const ci of ["true", "1", "yes"]) {
-			const gate = PackedInstall.gate(missing, { CI: ci });
-			assert.strictEqual(gate.action, "fail", ci);
-			assert.include(gate.message, "/a/package.json");
-		}
-	});
+	it.effect("gate skips locally and fails under CI when not ready, naming the paths and the build", () =>
+		Effect.gen(function* () {
+			const missing = { ready: false, missing: ["/a/package.json", "/b/package.json"] };
+			for (const env of [{}, { CI: "" }, { CI: "0" }, { CI: "false" }, { CI: "FALSE" }]) {
+				const gate = yield* PackedInstall.gate(missing).pipe(withEnv(env));
+				assert.strictEqual(gate.action, "skip", JSON.stringify(env));
+				assert.include(gate.message, "/a/package.json, /b/package.json");
+				assert.include(gate.message, "build:prod");
+			}
+			for (const ci of ["true", "1", "yes"]) {
+				const gate = yield* PackedInstall.gate(missing).pipe(withEnv({ CI: ci }));
+				assert.strictEqual(gate.action, "fail", ci);
+				assert.include(gate.message, "/a/package.json");
+			}
+		}),
+	);
 });
 
 describe("InstalledConsumer.runBin stdin", () => {

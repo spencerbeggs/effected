@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { afterAll, assert, layer } from "@effect/vitest";
-import { Effect, Redacted, Stream } from "effect";
+import { Config, Effect, Redacted, Stream } from "effect";
 import { InstalledConsumer } from "../../src/testing.js";
 
 const DIR = realpathSync(mkdtempSync(join(tmpdir(), "run-bin-stdin-")));
@@ -31,28 +31,34 @@ writeFileSync(
 writeFileSync(join(DIR, "node_modules", ".bin", "echo"), ECHO);
 chmodSync(join(DIR, "node_modules", ".bin", "echo"), 0o755);
 
-const consumer = InstalledConsumer.make({
-	manager: "npm",
-	managerVersion: "0.0.0",
-	directory: DIR,
-	carrier: "carrier",
-	env: Redacted.make({ PATH: process.env.PATH ?? "" }),
-});
+/** The consumer over the real PATH, read through `Config` so the ambient provider decides. */
+const consumer = Config.String("PATH").pipe(
+	Config.withDefault(""),
+	Effect.map((path) =>
+		InstalledConsumer.make({
+			manager: "npm",
+			managerVersion: "0.0.0",
+			directory: DIR,
+			carrier: "carrier",
+			env: Redacted.make({ PATH: path }),
+		}),
+	),
+);
 
 layer(NodeServices.layer)("runBin and runCarrierBin stdin, real spawn", (it) => {
 	it.effect("a string is written to the bin's stdin and closed", () =>
 		Effect.gen(function* () {
-			const output = yield* consumer.runBin("echo", [], { stdin: "héllo" });
+			const output = yield* (yield* consumer).runBin("echo", [], { stdin: "héllo" });
 			assert.strictEqual(output.stdout, "got:héllo|6");
 		}),
 	);
 
 	it.effect("bytes and a chunked stream arrive whole", () =>
 		Effect.gen(function* () {
-			const bytes = yield* consumer.runBin("echo", [], { stdin: new Uint8Array([104, 105]) });
+			const bytes = yield* (yield* consumer).runBin("echo", [], { stdin: new Uint8Array([104, 105]) });
 			assert.strictEqual(bytes.stdout, "got:hi|2");
 			const encoder = new TextEncoder();
-			const streamed = yield* consumer.runBin("echo", [], {
+			const streamed = yield* (yield* consumer).runBin("echo", [], {
 				stdin: Stream.make(encoder.encode("ab"), encoder.encode("cd")),
 			});
 			assert.strictEqual(streamed.stdout, "got:abcd|4");
@@ -61,7 +67,7 @@ layer(NodeServices.layer)("runBin and runCarrierBin stdin, real spawn", (it) => 
 
 	it.effect("omitted stdin is end of input at once: the bin exits instead of hanging", () =>
 		Effect.gen(function* () {
-			const output = yield* consumer.runBin("echo", [], { timeout: "10 seconds" });
+			const output = yield* (yield* consumer).runBin("echo", [], { timeout: "10 seconds" });
 			assert.strictEqual(output.stdout, "got:|0");
 			assert.isTrue(output.succeeded);
 		}),
@@ -69,9 +75,9 @@ layer(NodeServices.layer)("runBin and runCarrierBin stdin, real spawn", (it) => 
 
 	it.effect("runCarrierBin takes stdin the same way", () =>
 		Effect.gen(function* () {
-			const output = yield* consumer.runCarrierBin("echo", [], { stdin: "framed" });
+			const output = yield* (yield* consumer).runCarrierBin("echo", [], { stdin: "framed" });
 			assert.strictEqual(output.stdout, "got:framed|6");
-			const bare = yield* consumer.runCarrierBin("echo", [], { timeout: "10 seconds" });
+			const bare = yield* (yield* consumer).runCarrierBin("echo", [], { timeout: "10 seconds" });
 			assert.strictEqual(bare.stdout, "got:|0");
 		}),
 	);

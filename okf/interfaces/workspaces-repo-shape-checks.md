@@ -44,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T08:21:25Z
-  body_sha256: 84d2eda702a221dabc42e010080a3efd348bdd12e2d2e2af2cffcdfa11d85374
+  at: 2026-10-05T18:02:33Z
+  body_sha256: d7d3ef6879e7384ee9c286aed2a603ea8dc9e8579e2d92943d1edd52e515ff58
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -460,12 +460,13 @@ is validated by the planner itself). `packFrom: "source"` checks nothing
 (`pnpm pack` builds none of its own), so it is always ready. It needs
 `WorkspaceDiscovery | FileSystem | Path` and fails as `closure` does, plus `Io`.
 
-`PackedInstall.gate(preflight, env)` is the pure decision over that answer:
-ready is `"run"`; missing is `"skip"` off CI and `"fail"` under CI, with a
-`message` naming every missing path and the prod build to run. `env.CI` counts
-as set when present and not `""`, `"0"` or `"false"` (case-insensitive). The
-environment arrives as a parameter because the `./testing` modules read no
-`process`. The suite wires the decision with `describe.runIf`: one block for
+`PackedInstall.gate(preflight)` is the decision over that answer, an
+`Effect<PackedInstallGate>`: ready is `"run"`; missing is `"skip"` off CI and
+`"fail"` under CI, with a `message` naming every missing path and the prod
+build to run. `CI` is read through `Config` (so the ambient `ConfigProvider`
+decides, and a test stubs it) and counts as set when present and not `""`,
+`"0"` or `"false"` (case-insensitive); an unreadable `CI` counts as unset.
+Nothing reads `process`. The suite wires the decision with `describe.runIf`: one block for
 `"run"`, one whose single test `assert.fail(gate.message)`s for `"fail"`. There
 is deliberately **no vitest-facing wrapper** in the package: a `packedDescribe`
 would make `vitest` a dependency of a subpath that today needs none, for two
