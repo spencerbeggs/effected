@@ -11,7 +11,7 @@ import { Schema } from "effect";
  *   often a log line written to stdout, which is the protocol wire. The
  *   message carries the frame error, excerpt included.
  * - `NotJsonRpc`: a well-framed body that is not a JSON-RPC 2.0 message.
- * - `Timeout`: the exchange outlived `LspProbeOptions.timeout`. The message
+ * - `TimedOut`: the exchange outlived `LspProbeOptions.timeout`. The message
  *   names the step the probe was waiting on and the stderr so far; a server
  *   that ignores `exit` and waits for stdin to close fails here.
  *
@@ -22,7 +22,7 @@ import { Schema } from "effect";
  */
 export class LspTestFailure extends Schema.TaggedError<LspTestFailure>()("LspTestFailure", {
 	/** Which failure occurred; see the list above. */
-	reason: Schema.Literals(["StreamEnded", "InvalidFrame", "NotJsonRpc", "Timeout"]),
+	reason: Schema.Literals(["StreamEnded", "InvalidFrame", "NotJsonRpc", "TimedOut"]),
 	/** A human-readable description of what went wrong. */
 	message: Schema.String,
 }) {}

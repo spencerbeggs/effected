@@ -25,7 +25,7 @@ const concat = (chunks: ReadonlyArray<Uint8Array>): Uint8Array => {
 export interface LspProcessStderrUntilOptions {
 	/**
 	 * How long to wait for the predicate to hold before failing with
-	 * `Timeout`. Real time: under `it.effect`'s `TestClock` it never fires,
+	 * `TimedOut`. Real time: under `it.effect`'s `TestClock` it never fires,
 	 * so a test that waits on stderr runs under `it.live`. Keep it below the
 	 * test runner's own timeout, or the runner kills the test first.
 	 */
@@ -159,7 +159,7 @@ export class LspProcess {
 	 * Event-driven: the predicate is checked against the current text at once,
 	 * then again on every chunk the child writes, never on a polling timer.
 	 * Fails `StreamEnded` when stderr ends (the child exited) without the
-	 * predicate holding, and `Timeout` once `options.timeout` passes; both
+	 * predicate holding, and `TimedOut` once `options.timeout` passes; both
 	 * messages carry the stderr seen so far. Reach for it whenever a report
 	 * lands on a later tick than the messages a test reads, such as a crash
 	 * guard's report once the server is serving. `options.timeout` is real
@@ -316,7 +316,7 @@ export const spawnParts = (
 						Effect.flatMap(stderrSoFar, (text) =>
 							Effect.fail(
 								new LspTestFailure({
-									reason: "Timeout",
+									reason: "TimedOut",
 									message: `the server's stderr did not match within ${Duration.format(Duration.fromInputUnsafe(until.timeout))}; stderr so far: ${truncate(text)}`,
 								}),
 							),

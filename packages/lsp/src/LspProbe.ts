@@ -60,13 +60,13 @@ export interface LspProbeResult {
  *   answered with an error, and the sequence still ends `shutdown`, `exit`.
  * - Stdin stays open after `exit`. The server must terminate itself on
  *   `exit`, as an editor never closes the pipe first; a server that waits
- *   for stdin to close fails with `Timeout` instead of passing.
+ *   for stdin to close fails with `TimedOut` instead of passing.
  * - A request the server sends (`client/registerCapability`, say) is
  *   recorded in `messages` and never answered.
  * - Never hangs: stdout that ends before a response fails `StreamEnded` with
  *   the exit code and stderr; bytes that are not a frame fail `InvalidFrame`;
  *   and the whole exchange runs under `timeout` (30 seconds by default),
- *   which fails `Timeout` naming the step it was waiting on. The child is
+ *   which fails `TimedOut` naming the step it was waiting on. The child is
  *   killed when the probe's scope closes.
  * - The timeout reads `Clock`, so under `it.effect`'s virtual clock it
  *   never fires on its own: run the probe under `it.live`.
@@ -164,7 +164,7 @@ const probe = (command: ChildProcess.Command, options: LspProbeOptions) =>
 					Effect.gen(function* () {
 						const text = yield* server.stderrSoFar;
 						return yield* new LspTestFailure({
-							reason: "Timeout",
+							reason: "TimedOut",
 							message: `timed out waiting for ${yield* Ref.get(stage)}; stderr so far: ${text === "" ? "(empty)" : truncate(text)}`,
 						});
 					}),

@@ -106,7 +106,7 @@ const program = Effect.gen(function* () {
 ```
 
 - `initialize` goes out with `processId` and `rootUri` `null` and empty client capabilities unless `LspProbeOptions` says otherwise.
-- Stdin stays open after `exit`: the server must stop on `exit`, as it must under an editor. A server that waits for stdin to close fails with `Timeout`.
+- Stdin stays open after `exit`: the server must stop on `exit`, as it must under an editor. A server that waits for stdin to close fails with `TimedOut`.
 - Every message the server sent is in `messages`, in order; requests it sends to the client are recorded and never answered.
 - It never hangs: stdout that ends early fails `StreamEnded` with the exit code and stderr, bytes that are not frames fail `InvalidFrame`, and the whole exchange runs under `timeout` (30 seconds by default). Run it under `it.live` — the timeout reads `Clock`.
 
@@ -137,7 +137,7 @@ const program = Effect.gen(function* () {
 
 - `send` frames with `LspFrame.encode`; `sendRaw` writes bytes as given, for a malformed or split frame.
 - `nextMessage` and `readUntilResponse` never hang: stdout that ends fails `StreamEnded` (inside a frame too), bytes that are not a frame fail `InvalidFrame`, and a body that is not JSON-RPC fails `NotJsonRpc`.
-- `stderrUntil(predicate, { timeout })` waits for a report that lands on a later tick, woken by each stderr chunk rather than a polling timer, and fails `StreamEnded` or `Timeout` with the stderr so far. Run it under `it.live`.
+- `stderrUntil(predicate, { timeout })` waits for a report that lands on a later tick, woken by each stderr chunk rather than a polling timer, and fails `StreamEnded` or `TimedOut` with the stderr so far. Run it under `it.live`.
 - `stdoutSoFar` and `stdoutFinal` return the raw bytes; `assertOnlyFrames` waits for stdout to end and fails `InvalidFrame`, naming the offset and quoting the stray bytes, unless every byte belonged to a well-formed frame.
 
 ## License

@@ -142,11 +142,11 @@ describe("LspProcess.stderrUntil", () => {
 		}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 	);
 
-	it.live("fails Timeout when the predicate never holds while the server runs", () =>
+	it.live("fails TimedOut when the predicate never holds while the server runs", () =>
 		Effect.gen(function* () {
 			const server = yield* spawn("--never-answer");
 			const failure = yield* Effect.flip(server.stderrUntil(() => false, { timeout: "300 millis" }));
-			assert.strictEqual(reasonOf(failure), "Timeout");
+			assert.strictEqual(reasonOf(failure), "TimedOut");
 			assert.include(failure.message, "did not match within");
 		}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 	);

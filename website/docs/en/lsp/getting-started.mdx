@@ -107,10 +107,10 @@ Every failure is an `LspTestFailure` with a `reason`:
 | `StreamEnded` | stdout ended before the awaited response — the server exited. The message carries the exit code and stderr. |
 | `InvalidFrame` | stdout carried bytes that are not an LSP frame, most often a log line written to the protocol wire. The message echoes the offending bytes. |
 | `NotJsonRpc` | a frame whose body is not a JSON-RPC 2.0 message. |
-| `Timeout` | the exchange outlived `timeout`. The message names the step it was waiting on. |
+| `TimedOut` | the exchange outlived `timeout`. The message names the step it was waiting on. |
 
 A server that ignores `exit` and waits for stdin to close fails with
-`Timeout`. That is deliberate: an editor never closes the pipe first, so
+`TimedOut`. That is deliberate: an editor never closes the pipe first, so
 that server would hang in use.
 
 ## Drive a server frame by frame
@@ -149,7 +149,7 @@ it.live("answers initialize and keeps stdout clean", () =>
 | `closeStdin` | Ends stdin after every frame already sent: a client disconnect. |
 | `exitCode` | Waits for the child to exit. |
 | `stderrSoFar` / `stderrFinal` | Stderr so far, or all of it once the child exits. |
-| `stderrUntil(predicate, { timeout })` | Waits for a stderr report on a later tick, woken by each chunk; fails `StreamEnded` or `Timeout` with the stderr seen. |
+| `stderrUntil(predicate, { timeout })` | Waits for a stderr report on a later tick, woken by each chunk; fails `StreamEnded` or `TimedOut` with the stderr seen. |
 | `stdoutSoFar` / `stdoutFinal` | Stdout's raw bytes. |
 | `assertOnlyFrames` | Waits for stdout to end and proves it held nothing but frames, returning their messages. A stray byte before, between or after the frames fails `InvalidFrame`, naming the offset and quoting the bytes. |
 

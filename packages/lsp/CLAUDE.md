@@ -91,7 +91,7 @@ the `LspFrameDecoded`, `LspMessage`, `LspSessionEnd` and `LspExitHost` types.
   an error, and the sequence still ends `shutdown`, `exit`.
 - **Stdin stays open after `exit`.** The server must terminate itself on
   `exit`; a probe that closed stdin would pass a server that only stops at
-  EOF, which hangs in an editor. Such a server fails `Timeout`.
+  EOF, which hangs in an editor. Such a server fails `TimedOut`.
 - **Server requests are recorded in `messages`, never answered.**
 - **Never hangs.** Every wait reads a queue the stdout reader ends or
   fails; the exchange sits under one timeout (default 30 seconds) whose

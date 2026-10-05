@@ -9,8 +9,8 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-05T19:01:12Z
-  body_sha256: 2cbdb795efc89bc36e27693a6cf0f5e9c686cd17eeff693bbe56a73ca989568e
+  at: 2026-10-05T19:06:35Z
+  body_sha256: 2e1904869a50639a9b7337cdce2e97371b655a41b04afaac05a0054e754240d1
 ---
 
 # @effected/lsp
@@ -88,7 +88,7 @@ buffering without bound. The body must be valid UTF-8 and valid JSON.
 | `LspProcess.spawn` | `(command: ChildProcess.Command) => Effect<LspProcess, PlatformError, ChildProcessSpawner \| Scope>`. A child for the life of the scope. Instances: `send` (one `LspFrame.encode` frame), `sendRaw` (bytes as given), `nextMessage` and `readUntilResponse(id)` (`{ response, seen }`), `closeStdin` (`Queue.end`), `exitCode`, `stderrSoFar`, `stderrUntil(predicate, { timeout })`, `stderrFinal`, `stdoutSoFar` and `stdoutFinal` (raw bytes), `assertOnlyFrames`. |
 | `LspProcess.assertOnlyFrames` | Waits for stdout to end, then `LspFrame.decodeAllResult` over the raw capture: a stray byte before, between or after the frames, or a stream ending inside one, fails `InvalidFrame` with the offset and an excerpt; a body that is no JSON-RPC message fails `NotJsonRpc`. Returns every message. |
 | `LspProcessStderrUntilOptions` | `timeout`, real time. |
-| `LspTestFailure` | `Schema.TaggedError` with `reason` (`StreamEnded`, `InvalidFrame`, `NotJsonRpc`, `Timeout`) and `message`, mirroring `McpTestFailure` (whose timeout reason is spelled `TimedOut`; this package kept its own `Timeout` rather than add a second spelling). |
+| `LspTestFailure` | `Schema.TaggedError` with `reason` (`StreamEnded`, `InvalidFrame`, `NotJsonRpc`, `TimedOut`) and `message`, mirroring `McpTestFailure`. |
 
 ## Load-bearing decisions
 
@@ -134,7 +134,7 @@ buffering without bound. The body must be valid UTF-8 and valid JSON.
   terminate itself on `exit`; the client is not required to close the
   pipe. A probe that closed stdin would pass a server that ignores `exit`
   and only stops at EOF — which an editor never triggers, so that server
-  hangs in the field. Such a server fails the probe's `Timeout` instead.
+  hangs in the field. Such a server fails the probe's `TimedOut` instead.
 - **Exit code 0 means `shutdown` preceded `exit`.** The specification's
   own rule (1 when `exit` arrives without `shutdown`); the caller asserts
   `exitCode === 0`, `response.error === undefined` and an empty `stderr`.
