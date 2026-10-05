@@ -328,6 +328,32 @@ send a valid request in the same `sendRaw` write after it to prove a
 co-batched frame is still answered. Match replies by `id`, never by
 position: a guard reply can precede core's answer to an earlier line.
 
+### Waiting on stderr: `stderrUntil`
+
+`stderrSoFar` is one read. A report the server writes on a later tick than
+its responses (a crash guard's `injectCrash: { at: "connected" }` report,
+a log line flushed after serving starts) can be missing from a read taken
+right after the first response. `stderrUntil(predicate, { timeout })` waits
+instead: it checks the stderr so far at once, re-checks on every chunk the
+child writes (no polling timer), and returns the text that matched. It fails
+`McpTestFailure` with reason `StreamEnded` as soon as stderr ends without a
+match, and `TimedOut` once `timeout` passes, each message carrying the
+stderr seen so far. The timeout is real time — under `it.effect`'s
+`TestClock` it never fires — so the test runs under `it.live`:
+
+~~~ts
+it.live("a crash once connected is logged and the server keeps answering", () =>
+  Effect.gen(function* () {
+    const server = yield* McpProcess.spawn(command)
+    yield* server.handshake()
+    const stderr = yield* server.stderrUntil((text) => text.includes("[injected]"), { timeout: "5 seconds" })
+    assert.include(stderr, "uncaughtException")
+    yield* server.closeStdin
+    assert.strictEqual(yield* server.exitCode, 0)
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+)
+~~~
+
 ## Packed install proof
 
 `McpProbe.initialize(command)` is the smallest proof that an installed MCP

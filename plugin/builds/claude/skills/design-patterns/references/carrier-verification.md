@@ -211,7 +211,7 @@ import { NodeServices } from "@effect/platform-node"
 import { McpProbe } from "@effected/mcp/testing"
 import { Workspaces } from "@effected/workspaces"
 import { PackedInstall } from "@effected/workspaces/testing"
-import { Duration, Effect, Layer } from "effect"
+import { Config, Duration, Effect, Layer } from "effect"
 
 const MANAGERS = ["npm", "pnpm", "yarn", "bun"] as const
 const INSTALL_TIMEOUT = "2 minutes"
@@ -236,14 +236,16 @@ const BUDGET = PackedInstall.timeoutBudget({
 export const TEST_TIMEOUT_MS = Duration.toMillis(BUDGET) + 60_000
 
 const program = Effect.gen(function* () {
+  // CI provisions every manager, so a missing one fails there; locally it is skipped.
+  const underCi = yield* Config.Boolean("CI").pipe(Config.withDefault(false), Effect.orElseSucceed(() => false))
   const result = yield* PackedInstall.run({
     carrier: "my-tool",
     closure: "auto",
     managers: MANAGERS,
     bins: ["my-tool", "my-tool-mcp"],
+    // The whole host environment, which PackedInstall scrubs; see below.
     env: process.env,
-    // CI provisions every manager, so a missing one fails there; locally it is skipped.
-    require: process.env.CI ? "all" : "any",
+    require: underCi ? "all" : "any",
     installTimeout: INSTALL_TIMEOUT,
     packTimeout: PACK_TIMEOUT,
   })
@@ -334,8 +336,12 @@ other rule here still applies to a real suite built on it:
   has — and pnpm's isolated layout links only the consumer's direct
   dependencies at the top level anyway. A link into no named package fails
   `UnownedBin`, and a dangling one `MissingBin`.
-- Pass `process.env` in explicitly: nothing under `./testing` reads
-  `process` itself. `PackedInstall.scrubEnv(...)` returns the same scrubbed
+- The test file is the edge that supplies the host environment: pass
+  `process.env` as `env`. `PackedInstall` needs the WHOLE environment, which
+  `Config` cannot enumerate, to strip the package-manager trap variables
+  (`npm_*`, `pnpm_config_*`, `yarn_*`) before every install; read single
+  keys such as `CI` through `Config` instead. Nothing under `./testing`
+  reads `process` itself. `PackedInstall.scrubEnv(...)` returns the same scrubbed
   environment for any spawn that goes through neither `runBin` nor
   `command`. Declare every package the consumer's own code imports
   besides the carrier in `consumerDependencies` — pnpm links only declared
@@ -362,22 +368,22 @@ assert that they are:
 
 ```ts
 // __test__/e2e/packed-install.e2e.test.ts, two levels below the workspace root
-import { existsSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { resolve } from "node:path"
 import { NodeServices } from "@effect/platform-node"
-import { assert, describe, layer } from "@effect/vitest"
+import { assert, describe, it, layer } from "@effect/vitest"
 import { McpProbe } from "@effected/mcp/testing"
 import { Workspaces } from "@effected/workspaces"
 import type { PackedInstallOptions } from "@effected/workspaces/testing"
 import { PackedInstall } from "@effected/workspaces/testing"
-import { Duration, Effect, Layer } from "effect"
+import { Config, Duration, Effect, Layer } from "effect"
 
 const ROOT = resolve(import.meta.dirname, "..", "..")
-const BUILT = existsSync(join(ROOT, "packages", "plugin", "dist", "prod", "npm", "pkg", "package.json"))
-// PackedInstall is POSIX-only.
-const RUNNABLE = BUILT && process.platform !== "win32"
-
 const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer))
+
+// Read through Config, so a test can stub it; an unparseable CI counts as unset.
+const UNDER_CI = Effect.runSync(
+  Config.Boolean("CI").pipe(Config.withDefault(false), Effect.orElseSucceed(() => false)),
+)
 
 /** ONE options object: closure plans with it, run installs with it. */
 const RUN: PackedInstallOptions = {
@@ -386,14 +392,23 @@ const RUN: PackedInstallOptions = {
   workspaceOverrides: true, // linked sibling builds reach the scratch consumers too
   managers: ["npm", "pnpm", "yarn", "bun"],
   bins: ["tool", "tool-mcp"],
-  env: process.env,
-  require: process.env.CI ? "all" : "any",
+  env: process.env, // the whole host environment, which PackedInstall scrubs
+  require: UNDER_CI ? "all" : "any",
   installTimeout: "3 minutes",
   packTimeout: "30 seconds",
   // allowSharedBins: true, // only if the front ends deliberately share the bin names
 }
 
-// Module evaluation, before describe runs: the names the run will pack.
+// Module evaluation, before describe runs: is the prod build there, and what
+// does a missing one mean? Skip off CI, FAIL under CI (see the warning below).
+// `gate` reads CI through Config, so here the process environment decides.
+const GATE = await Effect.runPromise(
+  PackedInstall.preflight(RUN).pipe(Effect.flatMap(PackedInstall.gate), Effect.provide(Live)),
+)
+// PackedInstall is POSIX-only.
+const RUNNABLE = GATE.action === "run" && process.platform !== "win32"
+
+// The names the run will pack.
 const PACKED = RUNNABLE ? await Effect.runPromise(PackedInstall.closure(RUN.carrier, RUN).pipe(Effect.provide(Live))) : []
 const BUDGET = PackedInstall.timeoutBudget({
   managers: RUN.managers,
@@ -403,7 +418,12 @@ const BUDGET = PackedInstall.timeoutBudget({
   perConsumer: "3 minutes", // two one-minute bin runs plus a 30-second probe, with headroom
 })
 
-describe.skipIf(!RUNNABLE)("packed install", () => {
+// Under CI a missing prod build is a failure, never a silent skip.
+describe.runIf(GATE.action === "fail")("packed install prod build", () => {
+  it("exists", () => assert.fail(GATE.message))
+})
+
+describe.runIf(RUNNABLE)("packed install", () => {
   layer(Live, { excludeTestServices: true })((it) => {
     it.effect(
       "the carrier's bins work from a packed install under every available manager",
@@ -435,7 +455,32 @@ When the test has no use for the names, `PackedInstall.timeoutBudgetFor(RUN,
 `installTimeout` and `packTimeout` from the same object; await it the same
 way. Keep `closure` when the test asserts the tarballs, as it should.
 
-Gate the whole suite on the carrier's production build existing (skip, not
-fail, when it doesn't — this is an e2e proof layered on a build artifact,
-not a substitute for the build). Manager availability needs no gate of its
-own: `require` above is that policy.
+Gate the whole suite on the carrier's production build existing, through
+`PackedInstall.preflight(RUN)` (`{ ready, missing }`: the absolute
+`package.json` paths under `packFrom` that are absent) and
+`PackedInstall.gate(preflight)` (`"run"`, `"skip"` off CI, `"fail"` under CI,
+with a message naming the missing paths). `gate` reads `CI` through `Config`,
+so a test stubs it with a `ConfigProvider` instead of touching `process.env`. Do not hand-roll
+an `existsSync` and a plain skip: the recipe above is the whole gate, and it
+needs no vitest wrapper. Manager availability needs no gate of its own:
+`require` above is that policy.
+
+**The pull-request test job must run the prod build before the
+packed-install tests.** `PackedInstall` packs `dist/prod/npm/pkg`, and a
+vitest setup or a reusable workflow's test job usually builds only
+`dist/dev`. A plain skip gate then skips in CI for ever and the suite stays
+green having proven nothing (okfit's first version would have done exactly
+that). That is why the gate fails under `CI` rather than skipping: add the
+prod build (`build:prod`, or `pnpm build` of the carrier's closure) as a step
+before the test step, and the fail branch can never fire.
+
+### Driving a bin with input
+
+`consumer.runBin(name, args, { stdin })` and `consumer.runCarrierBin(...)`
+take a string, bytes or a `Stream<Uint8Array>`, write it and close the
+pipe; omitted (or `""`), the bin's stdin is the null device and reads end of
+input at once, so a stdin-reading bin exits instead of hanging. A framed
+language-server session that must end with `shutdown` and `exit` therefore
+needs no hand-built `ChildProcess`: send the whole conversation as `stdin`
+and read `stdout`. A session that must interleave with the bin's replies
+still goes through `command` / `carrierCommand`, which leave stdin open.

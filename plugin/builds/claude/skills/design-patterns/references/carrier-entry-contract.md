@@ -77,6 +77,15 @@ edit would "tidy" back into static ones, and that edit quietly moves every
 startup throw back to Node's default handler, past the policy the server
 chose.
 
+The same applies to any long-lived server front end on stdio, an LSP
+included. The kit ships the guard once: `ProcessGuard.run` from the
+import-free `@effected/engine/guard` subpath installs the listeners and
+awaits a `load` that imports and starts the server on any transport, and
+the server reports `markConnected()` itself; `McpGuard.run` from
+`@effected/mcp/guard` is that guard plus the MCP stdio launch. Neither
+hand-rolled copy (a `fatal(label, error)` plus two `process.on` calls) is
+needed in a carrier's front ends.
+
 A CLI's `main.ts` has no equivalent need — it owns the process the same
 way, and Node's own report of a startup throw (the stack on stderr, exit
 `1`) is already what a person at a terminal needs, so a plain static import

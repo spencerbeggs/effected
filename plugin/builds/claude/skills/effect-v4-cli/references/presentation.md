@@ -50,7 +50,7 @@ Not interactive, `CliEnv` replaces `Terminal` with a gated one: `readLine` fails
 | `CliEnvOptions` | What it does |
 | --- | --- |
 | `audienceEnvVar` | the variable that overrides the audience; an invalid value warns once and is ignored |
-| `stderrIsTerminal` | `Effect<boolean>`; core's `Stdio` reports only stdout, so stderr mirrors it unless a host passes the real answer, e.g. `Effect.sync(() => process.stderr.isTTY === true)` in `main.ts` |
+| `stderrIsTerminal` | `Effect<boolean>`; core's `Stdio` reports only stdout, so `CliEnv.layer` alone mirrors it. Unset, a redirected stderr is painted whenever stdout is a terminal, so a Node bin passes the real check from its entry, the one file that reads the host: `Effect.sync(() => process.stderr.isTTY === true)`, until core's `Stdio` has a stderr check (Effect-TS/effect#8639) |
 | `theme` | `{ tokens?, glyphs? }` for `CliTheme.layer` |
 | `log` | `CliLogOptions` (optionally with `file`); `main` installs `CliLog.layer(log)` as the logger set and builds the platform under it. Only `main` reads it |
 | `formatter` | methods of core's `CliOutput.Formatter` to replace in the coloured one `main` installs, e.g. `formatVersion`. Only `main` reads it |
@@ -136,7 +136,7 @@ export const text: string = Render.plain(report, Render.contextOf({ audience: "a
 
 Under `CliRuntime.main`, an unhandled failure is drawn by `CliFailure.toDoc(cause, options)` and rendered for the run's audience on stderr, still through the logger. An error class can draw itself by implementing the `CliDoc` protocol (`[CliDoc]: () => Document`); otherwise a schema error becomes a tree of rejected values, `Cancelled` and `NotInteractive` print their fixed line, and a defect prints its message plus a collapsible stack of the program's own frames.
 
-To customise it, pass `render(error, details)` to `main`. `details` is `{ cause, isDefect, defaultLines, lines }`: return `defaultLines` for the default report, `lines({ status: false })` for the default without its leading status glyph (to add a program-name prefix), or your own lines. `isDefect` is `!Cause.hasFails(cause)`; never infer "typed" from an `Error` with a string `_tag`, which a defect can carry too. `CliRuntime.defaultRender(error, details)` hands a failure you do not own back to the kit. A `render`'s own lines are text the kit did not build: it sanitises the data it interpolates.
+To customise it, pass `render(error, details)` to `main`. `details` is `{ cause, isDefect, isCancelled, isNotInteractive, defaultLines, lines }`: return `defaultLines` for the default report, `lines({ status: false })` for the default without its leading status glyph (to add a program-name prefix), or your own lines. `isDefect` is `!Cause.hasFails(cause)`; never infer "typed" from an `Error` with a string `_tag`, which a defect can carry too. A cancelled prompt (`Cancelled`) and a prompt in a run that cannot show one (`NotInteractive`) are not bugs, yet a fallback prompt raises them as defects, so a `render` that gives defects a "please report this" footer tests `details.isCancelled` and `details.isNotInteractive` first and returns `details.defaultLines` for either; both flags hold whichever channel the error arrived through, and `isDefect` and the exit code are unchanged. `CliRuntime.defaultRender(error, details)` hands a failure you do not own back to the kit. A `render`'s own lines are text the kit did not build: it sanitises the data it interpolates.
 
 ## Diagnostics: `CliLog`
 

@@ -77,7 +77,10 @@ With `env`, the environment services (`CliEnv.layer(env)`) and a coloured
 formatter are provided beside the platform, inside failure reporting, so a
 failure to build them renders one line too. `helpOnUsageError: "stderr"` moves
 the help core prints alongside a usage error onto stderr (core prints help with
-the same `Console.log` for `--help` and for a usage error).
+the same `Console.log` for `--help` and for a usage error). Customise core's
+`CliOutput.Formatter` (the version line, say) through `env.formatter`: that is the only way the
+routing sees it, so a formatter provided inside the program is invisible to it and help stays
+on stdout.
 
 `CliRuntime.main` makes no platform choice of its own — pass `platform` and
 still call your own runtime's runner:

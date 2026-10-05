@@ -3,7 +3,8 @@
 Pattern: `design-patterns`.
 
 Platform-free primitives shared by every front end of an Effect v4 tool: carrier
-distribution identity, a remediation shape, and launch-context resolution. Pure
+distribution identity, a remediation shape, launch-context resolution, and
+transport-neutral process crash guards (`./guard`). Pure
 tier: `effect` is the only peer, and the only dependency of any kind — no
 `process`, no `node:` import, no platform package, not even as a devDependency
 edge into `src/`. There is no IO here and nothing to provide at the edge.
@@ -18,7 +19,14 @@ layer, both consumed by a front end, never by each other.
 import { CurrentDistribution, Distribution, DistributionField, LaunchContext, Remediation, distributionSuffix } from "@effected/engine";
 ```
 
-Single entrypoint; `src/index.ts` is the only re-exporting module.
+```ts
+import { ProcessGuard } from "@effected/engine/guard";
+```
+
+Two entrypoints. `@effected/engine/guard` has **no runtime import at all** —
+not even `effect` — so a server's `main.ts` can import it statically and its
+listeners are installed before anything else evaluates. The main entry never
+re-exports it.
 
 ## Core API
 
@@ -58,6 +66,23 @@ Single entrypoint; `src/index.ts` is the only re-exporting module.
     the front end's own `main.ts`, which keeps the resolution rule shared and
     testable while the `process` read stays at the one place allowed to make
     it.
+
+- **`ProcessGuard`** (`./guard`) — `ProcessGuard.run(options): Promise<void>`
+  installs `uncaughtException`/`unhandledRejection` listeners on a structural
+  `ProcessGuardHost` (`on`, `emit`, `stderr`, `exit`; Node's `process`
+  satisfies it), then awaits `options.load(guard)`. It launches nothing: `load`
+  imports and starts the server over whatever transport, and calls
+  `guard.markConnected()` once it is serving (an LSP from its listening
+  callback; `McpGuard.run` from `McpStdio.launch`'s `onReady`) and
+  `guard.useFormat(fn)` to upgrade the dependency-free formatter. Policy
+  (`ProcessGuardPolicy`): `onUncaught: "exit" | "exitBeforeConnect"`,
+  `onRejection: "exit" | "exitBeforeConnect" | "log"`, both defaulting to
+  `"exit"`. A rejected `load` is `<label>: startup failed: …` and exit 1 under
+  every policy. `injectCrash: { at: "load" | "connected", kind }` drives
+  either half of a policy from a test; the `"connected"` report lands on a
+  later tick than `markConnected`, so a test waits for it rather than
+  reading stderr once. `@effected/mcp/guard`'s `McpGuard.run` is this guard
+  plus an MCP stdio launch.
 
 ## Usage
 
@@ -154,6 +179,13 @@ unexpanded, it falls through to `MY_TOOL_PROJECT_DIR`, then
 - `CurrentDistribution` is a reference, not a service: `yield* CurrentDistribution`
   works with nothing provided (`Option.none()` default) — do not reach for
   `Layer.succeed` to give it a value; use `Effect.provideService`.
+- `ProcessGuard`'s report lines are fixed: `<label>: uncaughtException
+  (<origin>): …`, `<label>: unhandledRejection: …`, `<label>: startup
+  failed: …`. Only `label` is configurable.
+- `markConnected` is the only thing that makes `"exitBeforeConnect"` stop
+  exiting. `load` resolving is not "connected": a caller that never calls it
+  keeps exiting on every stray crash, and `injectCrash: { at: "connected" }`
+  is never raised.
 - Purity is pinned by the package's own source-boundary test over
   `SourceBoundary.scan` from `@effected/workspaces/testing` (a devDependency;
   engine takes no runtime kit edge).

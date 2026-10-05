@@ -18,10 +18,11 @@
 | `McpProbe` | Class | The smallest proof that an installed MCP bin boots: one initialize, a clean close, and exit 0. | from `@effected/mcp/testing` — smoke-test a built mcp bin, initialize then clean exit |
 | `McpProbeOptions` | Interface | Options for `McpProbe.initialize`. | from `@effected/mcp/testing` |
 | `McpProbeResult` | Interface | What `McpProbe.initialize` observed. | from `@effected/mcp/testing` |
-| `McpProcess` | Class | A spawned MCP server bin a test writes to while it runs. | from `@effected/mcp/testing` — drive a spawned mcp bin, read json-rpc lines, never hang on exit |
+| `McpProcess` | Class | A spawned MCP server bin a test writes to while it runs. | from `@effected/mcp/testing` — drive a spawned mcp bin, read json-rpc lines, wait for a stderr report with a timeout, never hang on exit |
+| `McpProcessStderrUntilOptions` | Interface | Options for `McpProcess.stderrUntil`. | from `@effected/mcp/testing` |
 | `McpStdio` | Class | Serve an MCP server over stdio without ever writing a log line or a failure report onto stdout, which is the JSON-RPC wire. | serve mcp over stdio, keep stdout the json-rpc wire, exit 0 on stdin close |
 | `McpStdioOptions` | Interface | Options for `McpStdio.layer`. | |
-| `McpTestFailure` | Class | Why an MCP test client could not produce what was asked of it. | from `@effected/mcp/testing` — mcp test client failure, stream ended, server stopped |
+| `McpTestFailure` | Class | Why an MCP test client could not produce what was asked of it. | from `@effected/mcp/testing` — mcp test client failure, stream ended, server stopped, timed out |
 | `McpToolAudit` | Class | A pure sweep over a served `tools/list` that returns every policy violation, as `"<tool>: <what>"` strings. | from `@effected/mcp/testing` — lint served tools list, closed inputs, titles, hints, object-rooted outputs |
 | `McpToolAuditPolicy` | Interface | The policy `McpToolAudit.check` enforces. | from `@effected/mcp/testing` |
 | `McpToolkit` | Class | Register a toolkit exactly as core's `McpServer.toolkit` does, except that every tool is strict by default and a `McpToolkit.unionTool` gets its union decoded. | name every unknown tool argument in one InvalidParams, strict by default |
