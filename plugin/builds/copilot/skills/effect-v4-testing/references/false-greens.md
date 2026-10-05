@@ -437,7 +437,7 @@ The first test is its own evidence: the control `logError` line reaches
 `logLines` nor `errorLines`. Outside the test services it is the same — run
 under `Effect.runPromise`, the program prints only the control line on stdout
 and nothing on stderr. `References.UnhandledLogLevel` does not change this:
-core reads it only in `Pool.ts:1047`. A test whose only assertions live in
+core reads it only in `Pool.ts:1039`. A test whose only assertions live in
 code paths that never observe a forked child's outcome is exercising nothing
 about that child. Join it, or route its `Exit` into a `Deferred` the test
 explicitly awaits — never assume a green run means every fiber it started
@@ -500,8 +500,8 @@ Three sharp edges, all clock-adjacent:
   satisfied by the runner. An explicit `Effect.scoped` in the pipeline is
   harmless — it just closes the scope earlier, before the test ends — but it is
   belt-and-braces, not a requirement.
-- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8580`) /
-  `forkIn` (`:8623`) / `forkScoped` (`:8666`) / `forkDetach` (`:8706`). And
+- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8595`) /
+  `forkIn` (`:8638`) / `forkScoped` (`:8681`) / `forkDetach` (`:8721`). And
   `Stream.fromQueue` takes a `Queue.Dequeue`
   (`Stream.ts:1139`), so it rejects a `Subscription`.
 

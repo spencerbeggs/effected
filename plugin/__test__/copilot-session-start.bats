@@ -26,7 +26,7 @@
 PLUGIN_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
 SCRIPT="$PLUGIN_ROOT/hooks/session-start/orientation.copilot.sh"
 
-EXPECTED_PIN="4.0.0"
+EXPECTED_PIN="4.0.1"
 
 # _run_copilot cwd [path_override] — feed a sessionStart envelope naming `cwd`.
 _run_copilot() {

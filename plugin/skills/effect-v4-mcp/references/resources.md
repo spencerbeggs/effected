@@ -32,7 +32,7 @@ A resource read failure is `new McpSchema.InternalError({ message })`.
 
 `content` can return a bare `string`, a `Uint8Array`, or a whole
 `ReadResourceResult` (`{ contents: [{ uri, mimeType, text }] }`). Core's own
-`resolveResourceContent` (`ai/McpServer.ts:2556-2576`) wraps a bare
+`resolveResourceContent` (`ai/McpServer.ts:2565-2585`) wraps a bare
 string as `{ contents: [{ uri, text }] }` — **no `mimeType` field at
 all** — and passes a full `ReadResourceResult` through unchanged. The
 declared `mimeType` option still appears correctly in `resources/list`

@@ -617,34 +617,34 @@
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "Effect.ts:8580",
+			"anchor": "Effect.ts:8595",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"8580": "export const forkChild:"
+				"8595": "export const forkChild:"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "`:8623`",
+			"anchor": "`:8638`",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"8623": "export const forkIn:"
+				"8638": "export const forkIn:"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "`:8666`",
+			"anchor": "`:8681`",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"8666": "export const forkScoped:"
+				"8681": "export const forkScoped:"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "`:8706`",
+			"anchor": "`:8721`",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"8706": "export const forkDetach:"
+				"8721": "export const forkDetach:"
 			}
 		},
 		{
@@ -657,10 +657,10 @@
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "Pool.ts:1047",
+			"anchor": "Pool.ts:1039",
 			"source": "effect:Pool.ts",
 			"symbols": {
-				"1047": "fiber.getRef(UnhandledLogLevel)"
+				"1039": "fiber.getRef(UnhandledLogLevel)"
 			}
 		},
 		{
@@ -731,11 +731,11 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/resources.md",
-			"anchor": "ai/McpServer.ts:2556-2576",
+			"anchor": "ai/McpServer.ts:2565-2585",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"2556": "const resolveResourceContent = (",
-				"2576": "}"
+				"2565": "const resolveResourceContent = (",
+				"2585": "}"
 			}
 		},
 		{
@@ -755,12 +755,20 @@
 			}
 		},
 		{
+			"file": "effect-v4-mcp/references/server-wiring.md",
+			"anchor": "src/internal/effect.ts:6898",
+			"source": "effect:internal/effect.ts",
+			"symbols": {
+				"6898": "const log = fiber.getRef(LogToStderr) ? console.error : console.log"
+			}
+		},
+		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:1876-1889",
+			"anchor": "ai/McpServer.ts:1885-1898",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"1876": "const inputSchema = yield* Schema.decodeUnknownEffect(ToolJson)(",
-				"1889": "const mcpTool = new McpTool({"
+				"1885": "const inputSchema = yield* Schema.decodeUnknownEffect(ToolJson)(",
+				"1898": "const mcpTool = new McpTool({"
 			}
 		},
 		{
@@ -805,36 +813,36 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:1844-1847",
+			"anchor": "ai/McpServer.ts:1853-1856",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"1844": "const decodeOptions: SchemaAST.ParseOptions = {",
-				"1845": "onExcessProperty: strict ? \"error\" : \"ignore\""
+				"1853": "const decodeOptions: SchemaAST.ParseOptions = {",
+				"1854": "onExcessProperty: strict ? \"error\" : \"ignore\""
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:1910",
+			"anchor": "ai/McpServer.ts:1919",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"1910": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
+				"1919": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:1854-1858",
+			"anchor": "ai/McpServer.ts:1863-1867",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"1854": "const declaredFailureResult = (error: unknown) =>",
-				"1858": "new CallToolResult({ isError: true, content: toolResultContent(encoded) }))"
+				"1863": "const declaredFailureResult = (error: unknown) =>",
+				"1867": "new CallToolResult({ isError: true, content: toolResultContent(encoded) }))"
 			}
 		},
 		{
 			"file": "effected-packages/references/mcp.md",
-			"anchor": "McpServer.ts:1910",
+			"anchor": "McpServer.ts:1919",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"1910": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
+				"1919": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
 			}
 		},
 		{
