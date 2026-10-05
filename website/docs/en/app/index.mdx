@@ -9,7 +9,7 @@ The application control plane for Effect. One layer gives an application its nam
 
 ## Why @effected/app
 
-Every application built on this kit writes the same forty lines of wiring, and it is the kind of wiring that looks right and is wrong. [`@effected/xdg`](/xdg) resolves where a namespace's directories are. [`@effected/store`](/store) opens a database at a path. Between them sits an ordering nobody thinks about until it bites: `SqliteClient.layer` has no error channel and **defects** on a missing parent directory, so a database path must have its directory ensured *before* the layer is built, or the failure arrives as a defect that nothing downstream can catch typed.
+Every application built on this kit writes the same forty lines of wiring, and it is the kind of wiring that looks right and is wrong. [`@effected/xdg`](/xdg) resolves where a namespace's directories are. [`@effected/store`](/store) opens a database at a path. Between them sits an ordering nobody thinks about until it bites: the store layer cannot create a missing parent directory, so a database path must have its directory ensured *before* the layer is built, or every first run fails to open its database.
 
 The other half is the namespace itself. An application names it for its directories, then names it again for its config file, and the two strings drift — `"myapp"` here, `"my-app"` there — and now it reads config from a directory nothing else in the process ever writes to.
 
@@ -107,7 +107,7 @@ Its `native` option defaults to **`true`**, which is the opposite of `AppDirsOpt
 
 ## Ensure before open
 
-The one thing this package actually claims. `AppStore.layer` yields `AppDirs`, runs `ensureState`, joins the path, and only then hands it to `Store.layerSqlite`; `AppCache.layer` does the same over `ensureCache`. That ordering converts a defect surface into a typed one — `AppDirs.ensure*` is a `mkdir -p` on a **typed** `AppDirsError` channel, so "the state directory could not be created" arrives as a recoverable boundary failure rather than a die.
+The one thing this package actually claims. `AppStore.layer` yields `AppDirs`, runs `ensureState`, joins the path, and only then hands it to `Store.layerSqlite`; `AppCache.layer` does the same over `ensureCache`. That ordering makes the directory exist before the open — `AppDirs.ensure*` is a `mkdir -p` on a **typed** `AppDirsError` channel, so "the state directory could not be created" arrives as a recoverable boundary failure rather than a die.
 
 Nothing is `orDie`d to make a signature tidier. The v3 predecessor composed the same two things and then discarded the `AppDirsError` to advertise a `never` channel; a regression test here pins an unwritable ancestor to a typed failure, and watches for a die.
 

@@ -6,7 +6,7 @@ import * as SqlError from "effect/sql/SqlError";
 import { bytesToUtf8, utf8ToBytes } from "./Bytes.js";
 import type { MigratorMigration } from "./internal/migrator.js";
 import { ensureLedger, failureCause, runPending } from "./internal/migrator.js";
-import { walCheckpointOnClose, withOnConnect } from "./internal/sqlite.js";
+import { mapSetupError, walCheckpointOnClose, withOnConnect } from "./internal/sqlite.js";
 
 /**
  * A stored cache entry: its key, value and bookkeeping fields.
@@ -337,8 +337,8 @@ export interface CacheSqliteOptions extends CacheOptions {
 	 * The SQLite database file path.
 	 *
 	 * @remarks
-	 * The parent directory must exist — a missing directory is a wiring defect
-	 * from the driver, not a typed failure.
+	 * The parent directory must exist — a missing directory fails the layer
+	 * with a typed `CacheError` (`operation: "setup"`).
 	 */
 	readonly filename: string;
 	/**
@@ -862,7 +862,10 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 			transformQueryNames: _transformQueryNames,
 			...passthrough
 		} = (options.client ?? {}) as Partial<SqliteClient.SqliteClientConfig>;
-		const client = SqliteClient.layer({ ...passthrough, filename: options.filename });
+		const client = mapSetupError(
+			SqliteClient.layer({ ...passthrough, filename: options.filename }),
+			(cause) => new CacheError({ operation: "setup", cause }),
+		);
 		const connected = withOnConnect(
 			client,
 			options.onConnect,
@@ -940,10 +943,10 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 	 * channel widening.
 	 *
 	 * **It catches failures and defects, and deliberately not interruption.**
-	 * Defects matter here specifically: `SqliteClient.layer` reports driver
-	 * construction failures — a `filename` whose parent directory does not
-	 * exist, the common case — as **defects, not typed failures**, so a
-	 * failure-only catch would miss the very case this exists for. Interruption
+	 * `layerSqlite` reports driver setup failures — a `filename` whose parent
+	 * directory does not exist, the common case — as a typed `CacheError`, but
+	 * any `Cache` layer can die during construction, and a failure-only catch
+	 * would let that abort the program this exists to keep running. Interruption
 	 * is not a broken cache: it is the caller shutting down, and swallowing it
 	 * would substitute a working cache for a fiber that was meant to stop.
 	 * A hand-written `Layer.catchCause` gets the defect half right and this

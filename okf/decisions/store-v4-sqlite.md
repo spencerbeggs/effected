@@ -12,8 +12,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
-  body_sha256: f446e5a2d425c545c9f91cad355fa642cf8518a894e2a08e016b4dae7dc5525c
+  at: 2026-10-05T17:44:20Z
+  body_sha256: e4a37e3c8d2b57906a2bd7848c34805d77d322c7213c9e1e87899320208213e0
 ---
 
 # Store is built on effect's own SQL core and @effect/sql-sqlite-node
@@ -38,12 +38,13 @@ peers.[^store-package-json] Two facts are load-bearing:
 - `effect/sql` is an unstable namespace upstream. The whole repo
   pins one catalog version, so surface drift is caught at catalog bumps
   rather than by consumers.
-- `SqliteClient.layer` has no error channel. Driver construction
-  failures — chiefly a `filename` whose parent directory does not exist
-  — arrive as **defects**, not typed failures, which is why
-  `layerSqlite`/`layerTest` publish only the domain error in `E`. A
-  package wiring a database path must ensure the directory exists before
-  the layer is built; see [app](../modules/app.md#the-ensure-before-open-contract)
+- `SqliteClient.layer` fails with a typed `SqlError` when it cannot
+  open, configure or switch the file to WAL — chiefly a `filename`
+  whose parent directory does not exist. `layerSqlite`/`layerTest`
+  re-raise it as the service's own error with `operation: "setup"`, so
+  `E` publishes only the domain error and `SqlError` never leaks. A
+  package wiring a database path must still ensure the directory exists
+  before the layer is built; see [app](../modules/app.md#the-ensure-before-open-contract)
   for where that ordering lives.
 
 Core's own `effect/sql/Migrator` is deliberately **not** used:

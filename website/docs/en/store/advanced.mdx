@@ -245,9 +245,10 @@ const guarded = Effect.gen(function* () {
 );
 ```
 
-Each error wraps the underlying `SqlError` structurally in `cause` rather than flattening it to a string, so the driver's own diagnostics survive the trip. What stays a **defect**, never a domain error:
+Each error wraps the underlying `SqlError` structurally in `cause` rather than flattening it to a string, so the driver's own diagnostics survive the trip. The driver's own setup failures land the same way: a `filename` whose parent directory does not exist fails the layer with `StoreError` / `CacheError` (`operation: "setup"`), so the layers publish only the domain error in their channel. Ensuring the directory is the caller's job ([`@effected/app`](/app) does exactly this before building the layer).
 
-- **A missing parent directory.** `SqliteClient.layer` has no error channel and defects on a `filename` whose directory does not exist — ensuring the directory is the caller's job ([`@effected/app`](/app) does exactly this before building the layer). This is why the `Store` and `Cache` layers publish only the domain error in their channel.
+What stays a **defect**, never a domain error:
+
 - **Wiring mistakes die at construction.** A duplicate or non-positive-integer migration `id`, a `maxEntries` that is not a positive integer, a negative `rollback(toId)` — all developer wiring, all defects, and the guards are `Number.isInteger(n) && n >= 1` shaped so `NaN` never slips through a bare comparison.
 - **A throwing `up` / `down` / `onRemoved`.** A programmer bug, not domain input; the transaction rolls back but the throw is not caught into `StoreError` / `CacheError`.
 

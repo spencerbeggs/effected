@@ -48,3 +48,16 @@ export const withOnConnect = <E1, E2>(
 				SqlClient.SqlClient,
 				Effect.tap(SqlClient.SqlClient, (sql) => onConnect(sql).pipe(Effect.mapError(toError))),
 			).pipe(Layer.provide(client));
+
+/**
+ * Re-raise the driver's own setup failure — opening the file, configuring
+ * it, switching it to WAL — as the calling service's error, so the
+ * batteries-included layers keep their declared error unions. Apply it to the
+ * client layer once and reuse the result: layers memoize by reference, and
+ * the checkpoint layer must share the same connection.
+ */
+export const mapSetupError = <E>(
+	client: Layer.Layer<SqlClient.SqlClient, SqlError>,
+	toError: (cause: SqlError) => E,
+): Layer.Layer<SqlClient.SqlClient, E> =>
+	Layer.catchTag(client, "SqlError", (cause) => Layer.effect(SqlClient.SqlClient, Effect.fail(toError(cause))));

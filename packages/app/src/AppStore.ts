@@ -110,10 +110,10 @@ export class AppStore {
 	 *
 	 * @remarks
 	 * The ensure-before-open ordering is the load-bearing glue.
-	 * `SqliteClient.layer` has no error channel and **defects** on a missing
-	 * parent directory; `AppDirs.ensureState` is a `mkdir -p` on a **typed**
+	 * The store layer cannot create a missing parent directory — it fails setup
+	 * instead; `AppDirs.ensureState` is a `mkdir -p` on a **typed**
 	 * `AppDirsError` channel. Running the ensure inside `Layer.unwrap`, before the
-	 * store layer is built, converts a defect surface into a typed one — "the
+	 * store layer is built, makes the directory exist before the open — "the
 	 * state directory could not be created" is an expected, recoverable boundary
 	 * failure and it stays on `E`. Nothing is `orDie`d. A `subdir` is created
 	 * with a recursive `mkdir` after the directory is ensured — that is why

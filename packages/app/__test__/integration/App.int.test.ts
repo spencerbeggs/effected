@@ -5,7 +5,7 @@ import { NodeFileSystem } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigFile, JsonCodec } from "@effected/config-file";
 import type { StoreMigration } from "@effected/store";
-import { Cache, Store } from "@effected/store";
+import { Cache, Store, StoreError } from "@effected/store";
 import { Cause, ConfigProvider, Effect, Exit, Layer, Option, Path, Schema } from "effect";
 import type { AppOptions } from "../../src/index.js";
 import { App, AppConfig } from "../../src/index.js";
@@ -79,18 +79,20 @@ describe("App.layer (integration)", () => {
 		),
 	);
 
-	it.effect("a fresh namespace with no pre-existing directories builds without a defect", () =>
+	it.effect("a fresh namespace with no pre-existing directories builds", () =>
 		withTempHome((tmp) =>
 			Effect.gen(function* () {
 				// CONTROL, watched failing: the naive composition — layerSqlite with no
-				// ensureState — DEFECTS on the missing parent directory. This is the
+				// ensureState — fails setup on the missing parent directory. This is the
 				// difference between this package and a two-line README snippet.
 				const missing = nodePath.join(tmp, "state-home", "myapp", "store.db");
 				const naive = Store.layerSqlite({ migrations, filename: missing });
 				const naiveExit = yield* Effect.exit(Effect.provide(Effect.void, naive));
 				const naiveCause = Exit.getCause(naiveExit);
 				assert.isTrue(Option.isSome(naiveCause));
-				assert.isTrue(Option.getOrThrow(naiveCause).reasons.some(Cause.isDieReason));
+				const naiveError = Option.getOrThrow(naiveCause).reasons.find(Cause.isFailReason)?.error;
+				assert.instanceOf(naiveError, StoreError);
+				assert.strictEqual((naiveError as StoreError).operation, "setup");
 
 				// The ensure-before-open composition succeeds against the very same
 				// absent directories.

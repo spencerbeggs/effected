@@ -75,7 +75,7 @@ Effect.runPromise(program.pipe(Effect.provide(StoreLive))).then(console.log);
 
 The layer statics are parameterized *factories*, not layers. Calling `Store.layerSqlite(...)` twice builds two layers, and Layer memoization is by reference — bind the result to a const, as above, or the database is opened twice.
 
-The parent directory of `filename` must exist. The SQLite driver's construction has no error channel, so a missing directory arrives as a defect rather than a typed failure; creating it is the caller's job, and [`@effected/xdg`](../xdg) is the package that knows where the directory belongs.
+The parent directory of `filename` must exist. A missing directory fails the layer with a typed `StoreError` (`operation: "setup"`); creating it is the caller's job, and [`@effected/xdg`](../xdg) is the package that knows where the directory belongs.
 
 ## The layer trio
 
@@ -176,37 +176,9 @@ SQLite only: on any other dialect the option fails the layer with `StoreError` (
 
 Processes that open the same file at once — parallel CLI hooks, a server beside a CLI — each run the pending-migration check, and none of them runs an `up` twice. Each migration commits in its own transaction, and that transaction re-checks the ledger before running `up`. On SQLite the driver starts it with `BEGIN IMMEDIATE`, taking the write lock before the check, so the losing process waits (up to `client.busyTimeout`) and then skips the migration the winner already applied. That guarantee rests on the driver's transaction taking a write lock; it holds for `layerSqlite`, and for `Store.layer` only over a driver whose transactions do the same.
 
-**One limit sits below `Store`, in the SQLite driver: the very first open of a brand-new file.** `SqliteClient` sets `PRAGMA busy_timeout` and then `PRAGMA journal_mode = WAL` on every connection. Switching a fresh file from its default journal into WAL needs a lock that SQLite refuses at once under contention, without waiting out `busy_timeout`. When several processes create the same file at the same moment, some of them fail with `database is locked`. The driver issues the pragma outside any error channel, so that failure surfaces as a **defect** from the layer build, not as a typed error. Once the file is in WAL mode the pragma has nothing left to switch and never contends, so only the first open is exposed. Two mitigations work today:
+**The first open of a brand-new file is covered too.** Switching a fresh file from its default journal into WAL needs a lock that SQLite refuses at once under contention, without waiting out `busy_timeout`. The driver retries that switch until `client.busyTimeout` elapses, so several processes creating the same file at the same moment all open it. A switch still refused at the deadline fails the layer with a typed `StoreError` (`operation: "setup"`), never a defect.
 
-- **Create the file in WAL mode once, from a single process,** before anything opens it concurrently — an install or setup step, or whichever command is known to run first. After that, every concurrent opener is safe.
-- **Warm the database up first, retrying only that open.** Build the layer once inside its own scope and retry that build on `SQLITE_BUSY`, with jittered backoff — an immediate retry is not enough, because the contenders collide again in lockstep. Then run the program normally:
-
-```ts
-import { Data, Effect, Layer, Schedule } from "effect";
-
-class DatabaseBusy extends Data.TaggedError("DatabaseBusy")<{ readonly defect: unknown }> {}
-
-/** SQLITE_BUSY as node:sqlite throws it: a plain Error carrying the extended fields. */
-const isSqliteBusy = (defect: unknown): boolean =>
-  defect instanceof Error &&
-  (defect as { readonly code?: unknown }).code === "ERR_SQLITE_ERROR" &&
-  (defect as { readonly errcode?: unknown }).errcode === 5;
-
-// Open — and close — the database once, retrying ONLY that open.
-const warmUp = Effect.scoped(Layer.build(StoreLive)).pipe(
-  Effect.catchDefect((defect) => (isSqliteBusy(defect) ? Effect.fail(new DatabaseBusy({ defect })) : Effect.die(defect))),
-  Effect.retry({
-    times: 8,
-    while: (error) => error._tag === "DatabaseBusy",
-    schedule: Schedule.jittered(Schedule.exponential("20 millis")),
-  }),
-);
-
-// The program runs once, unretried, over its own build of the layer.
-const main = warmUp.pipe(Effect.andThen(program.pipe(Effect.provide(StoreLive))));
-```
-
-Only the warm-up is retried, so a program that has already done work never re-runs, and only `SQLITE_BUSY` is retried — a failing migration still fails once, typed. The warm-up does **not** stand in for the program's own open: `Effect.provide` builds the layer again, a second connection, because separate provides do not share a memoised build. That second open cannot hit the first-open refusal, since the warm-up left the file in WAL mode. A `SQLITE_BUSY` there means a writer outlasted `busyTimeout`, and it is deliberately not retried.
+Do not wrap a whole program in a retry on `SQLITE_BUSY`. The same code also means a writer outlasted `busyTimeout`, and a program that has already done work must not run again.
 
 ### Connection settings: WAL, busy timeout, foreign keys and `onConnect`
 

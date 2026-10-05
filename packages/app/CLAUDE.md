@@ -84,11 +84,12 @@ TSDoc living on the static.
 
 ## The ensure-before-open contract
 
-**The entire reason this package exists.** `SqliteClient.layer` has **no error
-channel** and **defects** on a missing parent directory; `AppDirs.ensure*` is a
-`mkdir -p` on a **typed** `AppDirsError` channel. `AppStore.layer` and
-`AppCache.layer` run the ensure inside `Layer.unwrap`, *before* the store layer
-is built, which converts a defect surface into a typed one.
+**The entire reason this package exists.** The store layers cannot create a
+missing parent directory — opening fails setup (`StoreError`/`CacheError`,
+`operation: "setup"`); `AppDirs.ensure*` is a `mkdir -p` on a **typed**
+`AppDirsError` channel. `AppStore.layer` and `AppCache.layer` run the ensure
+inside `Layer.unwrap`, *before* the store layer is built, so the directory
+exists before the open.
 
 Nothing is `orDie`d — v3's `SqliteStateXdgLive` laundered the `AppDirsError`
 away to advertise a `never` channel. "The state directory could not be created"

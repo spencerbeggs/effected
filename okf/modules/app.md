@@ -15,8 +15,8 @@ sources:
     resource: ../../packages/app/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T15:50:52Z
-  body_sha256: d28a444843c615d55ba8b4e9f4dd620cd1c8649e0970fd0d86230a22c7a86216
+  at: 2026-10-05T17:44:20Z
+  body_sha256: d38fd91cf982038616615ffdde64d6aa3f0bad36a6eaf92da50c08bf00140060
 ---
 
 # app
@@ -212,14 +212,14 @@ wrapper class.
 ## The ensure-before-open contract
 
 **The entire reason this package exists.** [store](../decisions/store-v4-sqlite.md#decision)
-established that `SqliteClient.layer` has no error channel and defects
-on a missing parent directory, so a package wiring a database path is
-responsible for ensuring the directory exists before the layer is built
-— nothing downstream can catch it typed. [xdg](xdg.md#public-surface)
+established that a missing parent directory fails the store layer's
+setup (`StoreError`, `operation: "setup"`): nothing downstream creates the
+directory, so a package wiring a database path is responsible for
+ensuring it exists before the layer is built. [xdg](xdg.md#public-surface)
 supplies the other half: `AppDirs.ensure*` is a `mkdir -p` on a typed
 `AppDirsError` channel. Composing them in that order — `AppStore.layer`
 and `AppCache.layer` run the ensure inside `Layer.unwrap`, before the
-store layer is built — converts a defect surface into a typed one.
+store layer is built — turns a setup failure into a directory that exists.
 Nothing is `orDie`d: "the state directory could not be created" is an
 expected, recoverable boundary failure and it stays on `E`. The
 integration suite watches a naive `Store.layerSqlite`-without-`ensureState`

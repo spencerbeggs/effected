@@ -123,9 +123,9 @@ holds. Not for writing feature code from scratch — that is the developer.
      (`busyTimeout`, `disableWAL`) or `onConnect`; `foreign_keys` is already
      on under `node:sqlite`.
    - a retry wrapped around a **whole program** on `SQLITE_BUSY`: a program
-     that already did work re-runs. Retry only a warm-up
-     `Effect.scoped(Layer.build(layer))`, matched on
-     `code === "ERR_SQLITE_ERROR" && errcode === 5`, with jittered backoff.
+     that already did work re-runs. The driver already waits out
+     `busyTimeout`, including on a fresh file's first switch to WAL; a
+     `SQLITE_BUSY` past it means a writer held the lock too long.
    - a function taking a consumer's service key typed as `Context.Key<I, Shape>`
      or `Context.Service<I, Shape>`: it accepts keys over wider shapes. Ask
      for the pin `Context.Key<I, S> & ([Shape] extends [S] ? unknown : never)`,

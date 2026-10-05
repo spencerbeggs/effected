@@ -7,6 +7,7 @@ import * as SqliteMigrator from "@effect/sql-sqlite-node/SqliteMigrator";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 import { Cause, Context, Effect, Exit, Layer, Logger, Option, References } from "effect";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as SqlError from "effect/sql/SqlError";
 import type { StoreMigration, StoreShape } from "../src/index.js";
 import { Cache, CacheError, Store, StoreError } from "../src/index.js";
 
@@ -295,6 +296,35 @@ describe("onConnect", () => {
 			const error = failureOf(exit);
 			assert.instanceOf(error, CacheError);
 			assert.strictEqual((error as CacheError).operation, "setup");
+		}),
+	);
+});
+
+describe("driver setup failures", () => {
+	// SqliteClient.layer fails with a typed SqlError when the database cannot be
+	// opened, configured or switched to WAL. The batteries-included layers
+	// re-raise it as their own setup error, keeping their declared unions.
+	const unopenable = () => join(dir, "no-such-dir", `db-${++counter}.sqlite`);
+
+	it.effect("Store.layerSqlite reports an unopenable file as StoreError setup, not a defect", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(
+				Effect.provide(Effect.void, Store.layerSqlite({ filename: unopenable(), migrations: [] })),
+			);
+			const error = failureOf(exit);
+			assert.instanceOf(error, StoreError);
+			assert.strictEqual((error as StoreError).operation, "setup");
+			assert.instanceOf((error as StoreError).cause, SqlError.SqlError);
+		}),
+	);
+
+	it.effect("Cache.layerSqlite reports an unopenable file as CacheError setup, not a defect", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(Effect.provide(Effect.void, Cache.layerSqlite({ filename: unopenable() })));
+			const error = failureOf(exit);
+			assert.instanceOf(error, CacheError);
+			assert.strictEqual((error as CacheError).operation, "setup");
+			assert.instanceOf((error as CacheError).cause, SqlError.SqlError);
 		}),
 	);
 });

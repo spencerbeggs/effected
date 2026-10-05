@@ -13,7 +13,7 @@ import {
 	syncMirror,
 	validateMigrations,
 } from "./internal/migrator.js";
-import { walCheckpointOnClose, withOnConnect } from "./internal/sqlite.js";
+import { mapSetupError, walCheckpointOnClose, withOnConnect } from "./internal/sqlite.js";
 
 /**
  * A single user-defined migration, applied in ascending `id` order.
@@ -310,8 +310,8 @@ export interface StoreSqliteOptions extends StoreOptions {
 	 * The SQLite database file path.
 	 *
 	 * @remarks
-	 * The parent directory must exist — a missing directory is a wiring defect
-	 * from the driver, not a typed failure. Path policy (which directory a
+	 * The parent directory must exist — a missing directory fails the layer
+	 * with a typed `StoreError` (`operation: "setup"`). Path policy (which directory a
 	 * store belongs in) is the caller's concern.
 	 */
 	readonly filename: string;
@@ -554,7 +554,10 @@ export class Store extends Context.Service<Store, StoreShape>()("@effected/store
 			transformQueryNames: _transformQueryNames,
 			...passthrough
 		} = (options.client ?? {}) as Partial<SqliteClient.SqliteClientConfig>;
-		const client = SqliteClient.layer({ ...passthrough, filename: options.filename });
+		const client = mapSetupError(
+			SqliteClient.layer({ ...passthrough, filename: options.filename }),
+			(cause) => new StoreError({ operation: "setup", cause }),
+		);
 		const connected = withOnConnect(
 			client,
 			options.onConnect,

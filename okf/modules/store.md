@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T16:14:05Z
-  body_sha256: 809f239caadf89392395839b8b092e020a7234c7442715822ed3ac2bbbe923bf
+  at: 2026-10-05T17:44:20Z
+  body_sha256: 8e31dc64e9e3b427b7f135a38d15a34bdce0d7d2aee04d50860af27645c9faef
 ---
 
 # store
@@ -169,17 +169,14 @@ SQLite driver opens a writable transaction with `BEGIN IMMEDIATE`, so
 that re-check holds the write lock and several processes opening one
 file never run an `up` twice; per-migration commits are unchanged. This
 rests on the driver's lock, so it holds for `layerSqlite` and for the
-abstract `layer` only over a driver that locks the same way. One limit
-sits below the package, in the SQLite driver: the first open of a
-brand-new file. The driver sets `busy_timeout` and then switches the
-journal to WAL, and SQLite refuses that switch at once under contention
-without waiting out the timeout, so concurrent first openers can die with
-`database is locked`. Once the file is in WAL mode nothing contends. The
-README carries the two mitigations verified against it: create the file
-in WAL from one process first, or warm the database up with a scoped
-`Layer.build` retried with jittered backoff on `SQLITE_BUSY` alone
-(`code` `ERR_SQLITE_ERROR`, `errcode` 5), then run the program once,
-unretried.
+abstract `layer` only over a driver that locks the same way. The first open of
+a brand-new file is the driver's to absorb: SQLite refuses the switch to
+WAL at once under contention without waiting out `busy_timeout`, so the
+driver retries that switch until `busyTimeout` elapses, and a switch still
+refused at the deadline is a typed `SqlError` that `layerSqlite` re-raises
+as `StoreError` (`operation: "setup"`). Never retry a whole program on
+`SQLITE_BUSY`: the same code means a writer outlasted the timeout, and a
+program that already did work must not re-run.
 
 **Mirroring the Migrator ledger.** `StoreOptions.mirrorMigratorLedger`
 covers the reverse of adoption: an older program still migrating
@@ -252,10 +249,10 @@ engine discards the value either way.
 - **`Cache.degrading`** is an opt-in combinator over any `Cache` layer: a
   construction failure yields a working, empty cache instead of failing
   the layer, and `CacheShape.degraded` reads `true`. It catches
-  **defects**, because `SqliteClient.layer` reports its most common
-  construction failure — a missing parent directory — as a defect, not a
-  typed failure, so a failure-only catch would miss exactly the case the
-  combinator exists for. It deliberately does **not** catch interruption:
+  **typed failures and defects**: `layerSqlite` reports its most common
+  construction failure — a missing parent directory — as a typed
+  `CacheError`, but any `Cache` layer can die during construction, and a
+  failure-only catch would let that abort the program. It deliberately does **not** catch interruption:
   a shutting-down fiber must not receive a working cache in its place.
   When a cause carries both a failure and an interruption, interruption
   wins and the failure half is dropped from what is re-raised — the

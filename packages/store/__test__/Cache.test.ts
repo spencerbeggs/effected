@@ -529,12 +529,11 @@ describe("Cache", () => {
 });
 
 describe("Cache.degrading", () => {
-	// The case the combinator exists for, and the one a failure-only catch
-	// misses: SqliteClient reports a filename whose parent directory does not
-	// exist as a DEFECT, not a typed failure.
+	// The common construction failure: a filename whose parent directory does
+	// not exist, which layerSqlite reports as a typed CacheError setup failure.
 	const unopenable = Cache.layerSqlite({ filename: join(tmpdir(), "effected-store-no-such-dir-xyz", "cache.db") });
 
-	it.effect("substitutes a working cache when construction fails as a defect", () =>
+	it.effect("substitutes a working cache when construction fails", () =>
 		Effect.gen(function* () {
 			const cache = yield* Cache;
 			assert.isTrue(cache.degraded);
@@ -603,6 +602,13 @@ describe("Cache.degrading", () => {
 				Cache.degrading(Layer.effect(Cache, Effect.fail(new CacheError({ operation: "setup", cause: "boom" })))),
 			),
 		),
+	);
+
+	it.effect("degrades on a defect, which a failure-only catch would miss", () =>
+		Effect.gen(function* () {
+			const cache = yield* Cache;
+			assert.isTrue(cache.degraded);
+		}).pipe(Effect.provide(Cache.degrading(Layer.effect(Cache, Effect.die(new Error("boom")))))),
 	);
 });
 
