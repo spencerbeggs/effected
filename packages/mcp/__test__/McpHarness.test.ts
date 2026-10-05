@@ -87,12 +87,23 @@ describe("McpHarness", () => {
 		}),
 	);
 
-	it.live("closing stdin mid-request fails the pending call with ServerStopped instead of hanging", () =>
+	it.live("closing stdin mid-request drains: the in-flight call still answers", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer());
+			yield* harness.initialize;
+			const pending = yield* harness.startRequest("tools/call", { name: "slow", arguments: {} });
+			yield* harness.close;
+			const response = yield* pending.response.pipe(Effect.timeout("2 seconds"));
+			assert.deepStrictEqual(resultOf(response).structuredContent, { ok: true });
+		}),
+	);
+
+	it.live("stop mid-request fails the pending call with ServerStopped instead of hanging", () =>
 		Effect.gen(function* () {
 			const harness = yield* McpHarness.make(fixtureServer());
 			yield* harness.initialize;
 			const pending = yield* harness.startRequest("tools/call", { name: "hang", arguments: {} });
-			yield* harness.close;
+			yield* harness.stop;
 			const failure = yield* Effect.flip(pending.response).pipe(Effect.timeout("2 seconds"));
 			assert.strictEqual(failure._tag, "McpTestFailure");
 			assert.strictEqual(failure._tag === "McpTestFailure" ? failure.reason : undefined, "ServerStopped");

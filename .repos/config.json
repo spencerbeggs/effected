@@ -45,6 +45,12 @@
 					"date": "2026-10-01",
 					"ref": "effect@4.0.0",
 					"note": "rc.118→4.0.0 GA advance (2026-10-01): zero kit source breaks; the catalog moves from lock (exact prerelease) to lock-minor (^4.0.0), so the installed effect is now the LOCKFILE's resolution, not the catalog literal — re-pin this tree when the lockfile's effect moves. Consumer-visible 4.0.0 changes: Array/Chunk/Effect/Record partition, their separate helpers and Option.partitionMap return [successes, failures] (was [failures, successes]; silent when both sides share a type); Schema.brand takes one identifier and is type-only (no AST annotation, not preserved by SchemaRepresentation); TestSchema.verifyLosslessTransformation is verifyRoundTrip and TestSchema is @stability unstable; Queue.State.takers holds Queue.Taker (entry.resume); Effect.race* interrupts losers still starting; RpcMessage.ExitEncoded interrupt fiberId admits null. Stability: APIs tagged @stability unstable may break in a minor; untagged APIs follow semver. src/unstable no longer exists — modules live at src/<area> (the keyPaths.unstable-modules entry is stale). Published kit stays on rc.118 via its own regular deps (two effect copies by intent); the pnpm-plugin-effect overrides pin platform-node-shared under the rc.117 and rc.118 platform-node parents."
+				},
+				{
+					"id": "n-c0ed",
+					"date": "2026-10-05",
+					"ref": "effect@4.0.1",
+					"note": "4.0.0→4.0.1 advance (2026-10-05): one kit source break — @effect/sql-sqlite-node SqliteClient.layer now fails with a typed SqlError (open, configure, WAL switch; Effect-TS/effect#8708) instead of dying, and retries a contended first WAL switch within busyTimeout (closes effected#932; the store warm-up workaround is retired). Store/Cache.layerSqlite map it via internal/sqlite.ts mapSetupError to their setup error. A missing parent directory is therefore TYPED now, not a defect. Layer has no mapError/fail in v4: re-raise via Layer.catchTag(..., () => Layer.effect(Tag, Effect.fail(e))). Other consumer-visible fixes: Stream.scan emits its initial state for empty streams; Effect.cached/Cache/RcRef treat interruption as abandonment; @effect/vitest deepStrictEqual no longer throws TypeError without a message; RPC stdio drains responses after stdin EOF; MCP optional class-decoded fields encode; ChildProcess honours forceKillAfter after a non-zero leader exit. sql-sqlite-node source is not vendored (sparse tree is packages/effect + vitest) — read it under node_modules/.pnpm."
 				}
 			]
 		},

@@ -313,9 +313,9 @@ const result = yield* McpProbe.initialize(command);
 ```
 
 Stdin stays open until the id-1 response arrives, then closes — closing
-right after writing, as a hand-rolled smoke test typically does, makes an
-Effect server drop the in-flight response and exit `0`, reading as a pass
-with no response at all. Assert `result.response.error === undefined` as
+right after writing, as a hand-rolled smoke test typically does, gets no
+response at all from a server that stops at stdin EOF without answering what
+is in flight, and its exit `0` reads as a pass. Assert `result.response.error === undefined` as
 well: a server that refuses the handshake still answers id 1, exits `0`
 and writes nothing to stderr.
 

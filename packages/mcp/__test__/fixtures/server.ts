@@ -23,6 +23,7 @@ export const Lookup = Tool.make("lookup", {
 export const Boom = Tool.make("boom", { description: "Always dies.", success: Schema.Struct({ ok: Schema.Boolean }) });
 export const Ping = Tool.make("ping", { description: "Takes no parameters.", success: Schema.Struct({ pong: Schema.Boolean }) });
 export const Hang = Tool.make("hang", { description: "Never completes.", success: Schema.Struct({ ok: Schema.Boolean }) });
+export const Slow = Tool.make("slow", { description: "Completes after a short real delay.", success: Schema.Struct({ ok: Schema.Boolean }) });
 export const Garble = Tool.make("garble", {
 	description: "Writes a stray line to stdout.",
 	success: Schema.Struct({ ok: Schema.Boolean }),
@@ -35,7 +36,7 @@ export const Grow = Tool.make("grow", {
 });
 export const Version = Tool.make("version", { description: "Returns a bare string.", success: Schema.String });
 
-export const FixtureKit = Toolkit.make(Echo, Lookup, Boom, Ping, Hang, Garble, Grow, Version);
+export const FixtureKit = Toolkit.make(Echo, Lookup, Boom, Ping, Hang, Slow, Garble, Grow, Version);
 
 export const FixtureResource = McpServer.resource({
 	uri: "fixture://thing",
@@ -54,6 +55,7 @@ export const FixtureHandlers = FixtureKit.toLayer({
 	boom: () => Effect.die(new Error("kaboom")),
 	ping: () => Effect.succeed({ pong: true }),
 	hang: () => Effect.never,
+	slow: () => Effect.as(Effect.sleep("100 millis"), { ok: true }),
 	garble: () =>
 		Effect.gen(function* () {
 			const stdio = yield* Stdio.Stdio;

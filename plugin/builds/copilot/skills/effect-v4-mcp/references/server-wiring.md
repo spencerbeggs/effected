@@ -258,13 +258,13 @@ Evidence: the complete `main.ts` snippet above, run with stdin `/dev/null`,
 exits `0` with empty stdout — closing stdin immediately reproduces the EOF a
 real client's disconnect produces.
 
-Closing stdin while a request is still in flight drops that response
-silently, in either direction: `McpProcess.closeStdin` and `McpHarness.close`
-are both `Queue.end`, never `Queue.shutdown`, precisely so every frame
-already sent is delivered first — but that only protects frames already
-*written*, not a response still in flight when stdin ends. Read the
-response before closing stdin, both in a hand-rolled test client and in
-production usage of a spawned server.
+Closing stdin while a request is still in flight does not drop it: the
+server answers every request it has already read, then stops, and the
+process exits `0`. `McpProcess.closeStdin` and `McpHarness.close` are both
+`Queue.end`, never `Queue.shutdown`, so every frame already sent reaches the
+server before the EOF does. The flip side: a request that never completes
+keeps the server alive after EOF. In a test, `McpHarness.stop` interrupts the
+server instead, failing every pending wait with `ServerStopped`.
 
 ## Protocol ordering
 

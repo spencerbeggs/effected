@@ -57,7 +57,7 @@ server graph evaluates. The server half lives in
 `@effected/mcp/testing` (`src/testing.ts`): `McpHarness` (`make`; instances
 carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `listResources`, `callTool`, `readResource`, `request`,
 `startRequest`, `notify`, `sendRaw`, `awaitOutboundMethod`, `stderrSoFar`,
-`consoleLogSoFar`, `close`), `McpProcess` (`spawn`; instances carry `send`,
+`consoleLogSoFar`, `close`, `stop`), `McpProcess` (`spawn`; instances carry `send`,
 `sendRaw`, `nextLine`, `readUntilResponse`, `handshake`, `closeStdin`,
 `exitCode`, `stderrSoFar`, `stderrFinal`), `McpProbe` (`initialize`),
 `McpTestFailure`, `McpToolAudit` (`check`), plus the `McpHarnessOptions`,
@@ -137,18 +137,29 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   interrupts that fiber when its stdin loop ends
   (`ensuring(forkDetach(Fiber.interrupt(fiber)))`), which closing the
   provide's scope does. Tests serve a server through `McpHarness`.
-- **The harness never hangs.** Every `McpHarness` response wait and
-  `awaitOutboundMethod` races a stop signal and a corruption signal, so a
+- **No harness wait outlives the server.** Every `McpHarness` response wait
+  and `awaitOutboundMethod` races a stop signal and a corruption signal, so a
   server that stops before responding, or writes a non-JSON-RPC line under
-  `strictStdout`, fails or dies the wait instead of hanging the test.
+  `strictStdout`, fails or dies the wait instead of hanging the test. The stop
+  signal fires only after the stdout router has routed every line the server
+  wrote (`Queue.end(stdout)` then `Fiber.await(router)`): a draining server's
+  last responses are written just before it stops, and failing the waits
+  first raced them (the drain test caught it).
+- **Core's stdio server drains at stdin EOF.** In-flight requests still
+  answer, then the server stops and the process exits 0 (pinned against a
+  spawned process in `McpStdio.test.ts` and in-process in
+  `McpHarness.test.ts`). So `McpHarness.close` (stdin EOF) leaves a request
+  that never completes pending forever; `McpHarness.stop` interrupts the
+  server fiber instead, failing every wait with `ServerStopped`.
 - **`closeStdin` (`McpProcess`) and `close` (`McpHarness`) both use
   `Queue.end`, never `Queue.shutdown`.** `end` delivers every frame already
   offered before closing; `shutdown` would drop a frame sent immediately
   before close.
 - **`McpProbe` holds stdin open until the id-1 response arrives, then
   closes it.** Closing stdin right after writing — every hand-rolled smoke
-  test did this — makes an Effect server drop the in-flight response and
-  exit 0, reading as a pass with no response.
+  test did this — proves nothing against a server that stops at EOF without
+  answering what is in flight: it drops the in-flight response, exits
+  0, and reads as a pass with no response.
 - **`McpProcess.handshake` always uses id 1.** A test's own requests should
   start at id 2 or above — the harness does not reserve or check this, so
   reusing id 1 collides with the handshake's own response.

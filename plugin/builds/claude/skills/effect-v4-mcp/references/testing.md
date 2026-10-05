@@ -124,14 +124,14 @@ describe("McpHarness behaviour", () => {
     }),
   )
 
-  it.effect("read the response before close: closing with a request in flight drops it", () =>
+  it.effect("close drains: a request in flight at close still answers", () =>
     Effect.gen(function* () {
       const harness = yield* McpHarness.make(ServerLayer)
       yield* harness.initialize
       const { response } = yield* harness.startRequest("ping")
       yield* harness.close
-      const exit = yield* Effect.exit(response)
-      assert.isTrue(Exit.isFailure(exit))
+      const result = yield* response
+      assert.isUndefined(result.error)
     }),
   )
 
@@ -290,7 +290,7 @@ id `1`, so a test's own requests start at `2` or above — the harness does
 not reserve or check this, so reusing id `1` collides with the handshake's
 own response. `closeStdin` is `Queue.end`, never `Queue.shutdown` — the same
 guarantee `McpHarness.close` makes: a frame already offered still reaches
-the child's stdin. `nextLine` fails typed with `StreamEnded` the moment
+the child's stdin, and the server answers it before it exits. `nextLine` fails typed with `StreamEnded` the moment
 stdout ends, instead of hanging, so a child that exits early fails the test
 rather than timing it out:
 
@@ -334,9 +334,10 @@ position: a guard reply can precede core's answer to an earlier line.
 bin boots: it sends one `initialize` (or `server/discover` on a stateless
 revision) as id `1`, keeps stdin open until that response arrives, closes
 it, and collects stdout, stderr and the exit code. Holding stdin open until
-the response arrives matters: every hand-rolled smoke test that closed stdin
-right after writing made an Effect server drop the in-flight response and
-exit `0`, reading a slow or broken boot as a pass with no response at all.
+the response arrives matters for any server that stops at stdin EOF without
+answering what is in flight: a hand-rolled smoke test that closes stdin right
+after writing gets no response and exit `0`, reading a slow or broken boot as
+a pass with no response at all.
 
 The caller asserts `response.error === undefined`, `stderr === ""` and
 `exitCode === 0`. Checking `stderr` and the exit code alone is not enough —

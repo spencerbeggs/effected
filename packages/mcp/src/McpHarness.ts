@@ -1,5 +1,5 @@
 import type { Cause, Scope } from "effect";
-import { Console, Deferred, Effect, Exit, Layer, Queue, Sink, Stdio, Stream } from "effect";
+import { Console, Deferred, Effect, Exit, Fiber, Layer, Queue, Sink, Stdio, Stream } from "effect";
 import { McpProtocol } from "effect/ai";
 import type { ClientInfo } from "./internal/wire.js";
 import {
@@ -56,6 +56,7 @@ interface HarnessParts {
 	readonly stderrSoFar: Effect.Effect<string>;
 	readonly consoleLogSoFar: Effect.Effect<ReadonlyArray<string>>;
 	readonly close: Effect.Effect<void>;
+	readonly stop: Effect.Effect<void>;
 }
 
 /**
@@ -83,9 +84,11 @@ interface HarnessParts {
  * once and pass `Layer.succeed(Tag, value)`.
  *
  * - Responses are matched by id, so notifications may interleave freely.
- * - No wait can hang: every response wait and `awaitOutboundMethod` fails
- *   with `ServerStopped` when the server stops (stdin closing does that),
- *   and dies when `strictStdout` sees a line that is not JSON-RPC.
+ * - Every response wait and `awaitOutboundMethod` fails with `ServerStopped`
+ *   when the server stops, and dies when `strictStdout` sees a line that is
+ *   not JSON-RPC. `stop` stops the server at once; `close` ends stdin and lets
+ *   in-flight requests answer first, so only `stop` releases a wait on a
+ *   request that never completes.
  * - With `captureLogs`, the server's console is captured: `stderrSoFar`
  *   holds stderr writes and every log line, and `consoleLogSoFar` holds
  *   anything that went through `console.log`, which in a real server is
@@ -168,8 +171,19 @@ export class McpHarness {
 	readonly stderrSoFar: Effect.Effect<string>;
 	/** Every captured `console.log`, `info` or `debug` call. */
 	readonly consoleLogSoFar: Effect.Effect<ReadonlyArray<string>>;
-	/** End stdin, as a client disconnecting does. */
+	/**
+	 * End stdin, as a client disconnecting does. The server drains first:
+	 * requests already in flight still answer, and the server stops once they
+	 * have, so a wait on a request that never completes keeps waiting. Use
+	 * {@link McpHarness.stop} to end the server regardless.
+	 */
 	readonly close: Effect.Effect<void>;
+	/**
+	 * Interrupt the server without draining, as a client killing the process
+	 * does: every pending response wait and `awaitOutboundMethod` fails with
+	 * `ServerStopped`.
+	 */
+	readonly stop: Effect.Effect<void>;
 
 	private constructor(parts: HarnessParts) {
 		this.protocol = parts.protocol;
@@ -189,6 +203,7 @@ export class McpHarness {
 		this.stderrSoFar = parts.stderrSoFar;
 		this.consoleLogSoFar = parts.consoleLogSoFar;
 		this.close = parts.close;
+		this.stop = parts.stop;
 	}
 
 	/** Build `server` over queue-backed stdio and return a client for it; fails with the layer's own error if it cannot build. */
@@ -201,7 +216,7 @@ export class McpHarness {
 			const clientInfo: ClientInfo = options.clientInfo ?? DEFAULT_CLIENT_INFO;
 			const strictStdout = options.strictStdout ?? true;
 			const stdin = yield* Queue.unbounded<Uint8Array, Cause.Done>();
-			const stdout = yield* Queue.unbounded<string | Uint8Array>();
+			const stdout = yield* Queue.unbounded<string | Uint8Array, Cause.Done>();
 			const inbound = yield* Queue.unbounded<JsonRpcMessage>();
 			const retained: Array<JsonRpcMessage> = [];
 			const waiters = new Map<string, Deferred.Deferred<JsonRpcMessage>>();
@@ -271,7 +286,7 @@ export class McpHarness {
 				}
 				return Effect.asVoid(Queue.offer(inbound, parsed));
 			};
-			yield* Stream.fromQueue(stdout).pipe(
+			const router = yield* Stream.fromQueue(stdout).pipe(
 				Stream.map((chunk) => (typeof chunk === "string" ? chunk : stdoutDecoder.decode(chunk, { stream: true }))),
 				Stream.splitLines,
 				Stream.runForEach((line) => (line.length === 0 ? Effect.void : route(line))),
@@ -281,7 +296,7 @@ export class McpHarness {
 			// A fresh memo map, never the ambient one: core's stdio protocol layer is a
 			// module constant, so a build that forks an enclosing memo map (Layer.build
 			// does) would reuse an ambient server's protocol and never read this stdin.
-			yield* Effect.flatMap(Effect.scope, (scope) =>
+			const serverFiber = yield* Effect.flatMap(Effect.scope, (scope) =>
 				Layer.buildWithMemoMap(provided, Layer.makeMemoMapUnsafe(), scope),
 			).pipe(
 				Effect.andThen(Deferred.succeed(ready, undefined)),
@@ -290,9 +305,16 @@ export class McpHarness {
 				Effect.onExit((exit) =>
 					Effect.andThen(
 						Exit.isFailure(exit) ? Deferred.failCause(ready, exit.cause) : Effect.void,
-						Deferred.fail(
-							stopped,
-							new McpTestFailure({ reason: "ServerStopped", message: "the server stopped before it responded" }),
+						// Route everything the server wrote before it stopped — a draining
+						// server's last responses — before any wait sees ServerStopped.
+						Queue.end(stdout).pipe(
+							Effect.andThen(Fiber.await(router)),
+							Effect.andThen(
+								Deferred.fail(
+									stopped,
+									new McpTestFailure({ reason: "ServerStopped", message: "the server stopped before it responded" }),
+								),
+							),
 						),
 					),
 				),
@@ -408,6 +430,7 @@ export class McpHarness {
 				stderrSoFar: Effect.sync(() => stderr.join("")),
 				consoleLogSoFar: Effect.sync(() => [...consoleLog]),
 				close: Effect.asVoid(Queue.end(stdin)),
+				stop: Fiber.interrupt(serverFiber),
 			});
 		});
 }

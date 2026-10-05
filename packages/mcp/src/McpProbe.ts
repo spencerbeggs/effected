@@ -49,8 +49,9 @@ export interface McpProbeResult {
  *
  * @remarks
  * Stdin stays open until the id-1 response has arrived. Closing it right
- * after writing makes an Effect server drop the in-flight response and exit 0, so a slow boot reads as a pass with
- * no response. The caller asserts `response.error === undefined`, `stderr` is
+ * after writing proves nothing against a server that stops at stdin EOF
+ * without answering what is in flight: it replies nothing and exits 0, so a
+ * slow boot reads as a pass with no response. The caller asserts `response.error === undefined`, `stderr` is
  * empty and `exitCode` is 0; this is the MCP half of a packed-install proof.
  * Checking stderr and the exit code alone passes a server that answers
  * the handshake with a JSON-RPC error, exits 0 and writes nothing.

@@ -45,7 +45,7 @@ clients.
 - A pattern-keyed `Schema.Record` parameter is served open unless its key RegExp has the `u` flag, while core still rejects a non-matching key — see [Strict input](./references/tools.md#strict-input).
 - A `Schema.String` success is sent as raw text with no `structuredContent` on the stateful revisions, and as JSON-quoted text plus a string `structuredContent` on `2026-07-28` — see [Failures on the wire](./references/tools.md#failures-on-the-wire).
 - `Schema.Struct({})` is not `Tool.EmptyParams` — it fails server registration outright — see [Defining a tool](./references/tools.md#defining-a-tool).
-- Closing stdin with a request in flight drops that response — see [`McpStdio.teardown`](./references/server-wiring.md).
+- Closing stdin does not cancel requests in flight: the server answers them, then stops — so `McpHarness.close` never releases a wait on a request that never completes; `McpHarness.stop` does — see [`McpStdio.teardown`](./references/server-wiring.md).
 - A bare-string resource `content` loses its `mimeType` on the read itself, even though it still appears in `resources/list` — see [The `mimeType` trap](./references/resources.md#the-mimetype-trap).
 - A resource URI template variable cannot span a slash — an id containing one needs a static resource per id, not a template — see [A template variable cannot span a slash](./references/resources.md#a-template-variable-cannot-span-a-slash).
 - An `Effect.timeout` guard inside `it.effect` never fires — `TestClock` never advances on its own, so the test hangs until vitest's own default timeout kills it instead. Use `it.live` or a real-clock `layer(...)` — see [Timeouts](./references/testing.md#timeouts).

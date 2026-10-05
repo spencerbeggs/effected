@@ -185,6 +185,20 @@ describe("McpStdio.layer over a real process's stdio", () => {
 		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
 	);
 
+	it.live("closing stdin with a request in flight still delivers its response, then exits 0", () =>
+		Effect.gen(function* () {
+			const server = yield* McpProcess.spawn(STDIO_MAIN);
+			yield* server.handshake();
+			yield* server.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "slow", arguments: {} } });
+			yield* server.closeStdin;
+			const { response } = yield* server.readUntilResponse(2);
+			assert.deepStrictEqual((response.result as { readonly structuredContent?: unknown }).structuredContent, {
+				ok: true,
+			});
+			assert.strictEqual(yield* server.exitCode, 0);
+		}).pipe(Effect.timeout("5 seconds"), Effect.provide(NodeServices.layer)),
+	);
+
 	it.live("decodes a UTF-8 character split between two writes", () =>
 		Effect.gen(function* () {
 			const server = yield* McpProcess.spawn(STDIO_MAIN);
