@@ -75,6 +75,15 @@ describe("LspFrame.decodeResult", () => {
 		assert.deepStrictEqual(Result.getOrThrow(LspFrame.decodeResult(input)).messages, [{ x: true }]);
 	});
 
+	it("trims spaces and tabs around the Content-Length value, and only those", () => {
+		const input = bytes(raw('{"x":true}', "Content-Length: \t 10 \t"));
+		assert.deepStrictEqual(Result.getOrThrow(LspFrame.decodeResult(input)).messages, [{ x: true }]);
+		assert.strictEqual(
+			failureOf(LspFrame.decodeResult(bytes(raw("{}", "Content-Length: 2 x")))).code,
+			"InvalidContentLength",
+		);
+	});
+
 	it("reads Content-Length as bytes: a char-counted header swallows the next frame's first bytes", () => {
 		const body = '{"t":"🚀"}';
 		const charCounted = `Content-Length: ${body.length}\r\n\r\n${body}${raw("{}")}`;

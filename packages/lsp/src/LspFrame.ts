@@ -121,6 +121,21 @@ const headerEnd = (bytes: Uint8Array, from: number): number => {
 	return -1;
 };
 
+const isOptionalWhitespace = (code: number): boolean => code === 0x20 || code === 0x09;
+
+/**
+ * `value` without leading and trailing spaces and tabs (a header value's optional whitespace). An index scan, not a
+ * regex: a trailing-whitespace pattern backtracks quadratically over a long run of whitespace followed by anything
+ * else, and header bytes are untrusted input.
+ */
+const trimOptionalWhitespace = (value: string): string => {
+	let start = 0;
+	let end = value.length;
+	while (start < end && isOptionalWhitespace(value.charCodeAt(start))) start++;
+	while (end > start && isOptionalWhitespace(value.charCodeAt(end - 1))) end--;
+	return value.slice(start, end);
+};
+
 /** The `Content-Length` of the header block `bytes[from, to)`, or the code it breaks. */
 const contentLength = (bytes: Uint8Array, from: number, to: number): number | LspFrameErrorCode => {
 	let text = "";
@@ -137,7 +152,7 @@ const contentLength = (bytes: Uint8Array, from: number, to: number): number | Ls
 		const name = line.slice(0, colon);
 		if (!FIELD_NAME.test(name)) return "InvalidHeader";
 		if (name.toLowerCase() !== "content-length") continue;
-		const value = line.slice(colon + 1).replace(/^[ \t]+|[ \t]+$/g, "");
+		const value = trimOptionalWhitespace(line.slice(colon + 1));
 		if (length !== undefined || !DIGITS.test(value)) return "InvalidContentLength";
 		const parsed = Number(value);
 		if (!Number.isSafeInteger(parsed)) return "InvalidContentLength";
