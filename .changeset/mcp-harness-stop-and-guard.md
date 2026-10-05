@@ -23,3 +23,4 @@
 
 - The `ToolRefusal` TSDoc states that structured data attached to a refusal is deliberately unreachable by the client.
 - The `injectCrash` TSDoc states that the `"connected"` report is asynchronous.
+- The `McpStdio.layer` TSDoc warns that `Logger.consoleJson`, `consoleLogFmt` and `consoleStructured` write to stdout whatever `LogToStderr` says, so a stdio server must not install them; wrap a format in `Logger.withConsoleError` instead.
