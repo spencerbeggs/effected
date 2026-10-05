@@ -70,7 +70,8 @@ const codeSpan = (text: string, mode: Mode): string => {
 	const fence = "`".repeat(longest + 1);
 	const padded = /^`|`$/.test(flat) || (/^ .* $/.test(flat) && flat.trim() !== "") || flat === "";
 	// Backslashes in a code span are literal, so they are not escaped: every `|` here follows an even run of them.
-	const body = mode === "cell" ? flat.replace(/\|/g, "\\|") : flat;
+	// Escaping them too would change the code a reader sees; the markdown oracle tests pin this.
+	const body = mode === "cell" ? flat.split("|").join("\\|") : flat;
 	const pad = padded ? " " : "";
 	return `${fence}${pad}${body === "" ? " " : body}${pad}${fence}`;
 };
