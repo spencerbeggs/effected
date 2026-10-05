@@ -264,6 +264,12 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
+						"@effected/lsp": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
 						"@effected/markdown": {
 							range: "^0.15.0",
 							peer: "^0.15.0",
