@@ -9,8 +9,8 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-05T17:44:47Z
-  body_sha256: e4d7748197111b8ebaa1b0bd03b6a4ccd9ca53ec63f35aa7c48d3f1d76084724
+  at: 2026-10-05T18:03:59Z
+  body_sha256: 4ccddf5800231bc8d1281669d3523ecd9938db93880820b257c52ee466da9463
 ---
 
 # @effected/mcp

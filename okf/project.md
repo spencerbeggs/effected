@@ -7,8 +7,8 @@ tags:
   - architecture
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-03T04:19:44Z
-  body_sha256: 51489803df199e2db15f8778c5d11aa1391b1efc1f299016049a79b94f202142
+  at: 2026-10-05T18:03:42Z
+  body_sha256: 7c4ff35968cda86d9c70c4b9bf29c32651ced9afd285e718ba37fce230d106e8
 ---
 
 # effected

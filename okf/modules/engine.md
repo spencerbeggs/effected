@@ -9,8 +9,8 @@ layer: pure
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
-  body_sha256: 7796266d9c54628b5fb105e41234870bfcb183b4fb716a336365165dc8464445
+  at: 2026-10-05T18:03:42Z
+  body_sha256: eb8ac0b78d98cf60bf540c54e52c8ff7477b4dec76da1b00812d917eb0fddd47
 ---
 
 # @effected/engine
