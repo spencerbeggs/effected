@@ -3,6 +3,7 @@ import { CommandNeutralizer } from "@effected/github-commands";
 import type { FileSystem, Path, Stdio, Terminal } from "effect";
 import { Cause, Effect, Layer, Logger, MutableRef, Runtime } from "effect";
 import { CliError } from "effect/cli";
+import { Cancelled } from "./Cancelled.js";
 import { CliColor } from "./CliColor.js";
 import type { CliEnvOptions, CliEnvServices } from "./CliEnv.js";
 import { CliEnv } from "./CliEnv.js";
@@ -24,10 +25,19 @@ import {
 	refreshFailureTarget,
 } from "./internal/failureTarget.js";
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
+import { hostStderrIsTerminal } from "./internal/hostStderr.js";
 import { isExitCode } from "./internal/isExitCode.js";
 import { TrustedLine } from "./internal/logSafety.js";
+import { NotInteractive } from "./NotInteractive.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
+
+/** `env` with stderr's own terminal check filled in from the host when the caller did not pass one. */
+const withHostStderr = (env: CliEnvOptions): CliEnvOptions => {
+	if (env.stderrIsTerminal !== undefined) return env;
+	const host = hostStderrIsTerminal();
+	return host === undefined ? env : { ...env, stderrIsTerminal: host };
+};
 
 /** A `UserError` `Command.runWith` already printed: it sets the mark to `false` after rendering. */
 const isRenderedUserError = (u: unknown): u is CliError.UserError =>
@@ -47,6 +57,24 @@ export interface FailureDetails {
 	 * failure from the error channel.
 	 */
 	readonly isDefect: boolean;
+	/**
+	 * `true` when the squashed `error` is the kit's {@link Cancelled}: the person quit a prompt or screen (Esc, Ctrl-C).
+	 * It is not a bug and there is nothing to report, whichever channel it arrived through.
+	 *
+	 * @remarks
+	 * A cancel from `CliPrompt.fallback` is a defect (`isDefect` is `true`) and one from `CliUi.run` is a typed failure
+	 * (`isDefect` is `false`), so a `render` that gives a defect the "please report this" treatment must test this flag
+	 * first, or Esc prints an issue-report request. `isDefect` keeps its plain meaning, the absence of a typed failure,
+	 * and the exit code is unchanged (`130` for the `interrupt` reason). `defaultLines` and `lines()` already draw it as
+	 * its one fixed line.
+	 */
+	readonly isCancelled: boolean;
+	/**
+	 * `true` when the squashed `error` is the kit's {@link NotInteractive}: the program asked for a prompt or a screen in
+	 * a run that cannot show one (a pipe, an agent, a CI). It is a usage problem, not a bug, whichever channel it
+	 * arrived through; `isDefect` is as for {@link FailureDetails.isCancelled}.
+	 */
+	readonly isNotInteractive: boolean;
 	/**
 	 * The report the kit writes for this failure when there is no `render`: for this run, in this audience, with its
 	 * colour, links and `displayPath`. A `render` that hands a failure back returns these lines unchanged, and the
@@ -167,10 +195,10 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 * already ended and its `display` writes nothing. A program that reads piped data must read `Stdio.stdin`, and
 	 * one that writes output must use `Console` or `Stdio`, never `Terminal`.
 	 *
-	 * Stderr's colour mirrors stdout's terminal check unless `env.stderrIsTerminal` says otherwise, so with stderr
-	 * redirected and stdout a terminal the failure report is painted into the file. On Node, pass the real check:
-	 * `env: { stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true) }` (core's `Stdio` reports only
-	 * stdout; upstream Effect-TS/effect#8639).
+	 * Stderr's own terminal check is read from the host: when `env.stderrIsTerminal` is not passed and the host has a
+	 * `process.stderr` (Node, Bun), `main` uses its `isTTY`, so a redirected stderr is never painted. On a host with none,
+	 * stderr's colour mirrors stdout's terminal check. Pass `env.stderrIsTerminal` to override either. Core's `Stdio`
+	 * reports only stdout, so the default lives here until upstream Effect-TS/effect#8639 gives core a stderr check.
 	 */
 	readonly env?: CliEnvOptions | undefined;
 	/**
@@ -187,8 +215,12 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 *
 	 * Two cases keep help on stdout even under `"stderr"`. A `CliOutput`
 	 * Formatter or a `Console` provided inside `program` is not seen by
-	 * `main`, so its help is not rerouted; provide the Formatter through
-	 * `platform` instead. And with `Command.runWith`'s `renderErrors: false`
+	 * `main`, so its help is not rerouted. To change the Formatter, pass
+	 * `env.formatter` (for example `formatVersion`): `main` installs its own
+	 * Formatter inside the platform, so that is the way in, and a Formatter
+	 * provided inside the program is invisible to the routing. A Formatter
+	 * the platform provides is shadowed by `main`'s, so pass it through
+	 * `env.formatter` as well. And with `Command.runWith`'s `renderErrors: false`
 	 * no errors are printed, so nothing marks the help as a usage error's.
 	 */
 	readonly helpOnUsageError?: "stdout" | "stderr" | undefined;
@@ -395,6 +427,8 @@ export class CliRuntime {
 						const details: FailureDetails = {
 							cause,
 							isDefect: !Cause.hasFails(cause),
+							isCancelled: error instanceof Cancelled,
+							isNotInteractive: error instanceof NotInteractive,
 							defaultLines,
 							lines: (options) =>
 								options?.status === false || options?.spans !== undefined
@@ -487,7 +521,7 @@ export class CliRuntime {
 		options: MainOptions<RP, EP>,
 	): Effect.Effect<void, Error, unknown> {
 		// Bound once, so the logger and the program below share one build of it (layers memoize by reference).
-		const env = options.env === undefined ? undefined : CliEnv.layer(options.env);
+		const env = options.env === undefined ? undefined : CliEnv.layer(withHostStderr(options.env));
 		const envLog = options.env?.log;
 		const logger =
 			options.logger ??

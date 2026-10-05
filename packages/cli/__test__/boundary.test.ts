@@ -107,6 +107,7 @@ const nodeImporters = (entry: string): ReadonlyArray<string> =>
  * - `ui/testing/fakeStreams.ts` (testing only): `forbidImports` of `node:stream` (it needs no `node:events`).
  */
 const NODE_LICENCE: ReadonlyArray<string> = [
+	"internal/hostStderr.ts process process",
 	"ui/internal/inkChalk.ts forbidImports node:fs",
 	"ui/internal/inkChalk.ts forbidImports node:module",
 	"ui/internal/inkChalk.ts forbidImports node:url",
@@ -126,6 +127,9 @@ const UI_NODE_IMPORTERS: ReadonlyArray<string> = ["ui/internal/inkChalk.ts"];
 
 /** The `node:` importers `./ui/testing` may reach. */
 const UI_TESTING_NODE_LICENCE: ReadonlySet<string> = new Set(["ui/internal/inkChalk.ts", "ui/testing/fakeStreams.ts"]);
+
+/** The one root file licensed to read `process`: stderr's own `isTTY`, through a structural `globalThis` probe. */
+const HOST_STDERR = "internal/hostStderr.ts";
 
 const licensedLine = (offence: Offence): string => `${offence.file} ${offence.rule} ${offence.detail}`;
 
@@ -159,7 +163,7 @@ describe("cli boundary", () => {
 						],
 						allowRules: {
 							forbidImports: ["ui.ts", "ui-testing.ts", "ui/**"],
-							process: ["ui/internal/processStreams.ts"],
+							process: ["ui/internal/processStreams.ts", "internal/hostStderr.ts"],
 							"stdout-write": ["ui/internal/inkConsole.ts"],
 						},
 					});
@@ -174,7 +178,8 @@ describe("cli boundary", () => {
 						.filter((offence) => !(offence.rule === "forbidImports" && isUiPackage(offence.detail)))
 						.map(licensedLine);
 					assert.deepStrictEqual([...new Set(licensed)].sort(), [...NODE_LICENCE, ...UI_WRITE_LICENCE].sort());
-					for (const offence of scan.waived) assert.isTrue(isUiModule(offence.file), offence.label);
+					for (const offence of scan.waived)
+						assert.isTrue(isUiModule(offence.file) || offence.file === HOST_STDERR, offence.label);
 				}),
 		);
 
