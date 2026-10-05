@@ -88,6 +88,7 @@
 		"**/dist",
 		"**/CHANGELOG.md",
 		"**/.claude/plans",
+		"**/.claude/worktrees",
 		"**/docs/superpowers",
 		"**/__test__/**/fixtures/**",
 		"**/__fixtures__/**",
