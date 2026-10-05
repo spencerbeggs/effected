@@ -111,6 +111,19 @@ describe("Markdown.parseResult", () => {
 		assert.include(result.failure.message, "NestingDepthExceeded");
 	});
 
+	it("renders the message position 1-based while the diagnostic fields stay 0-based", () => {
+		const result = Markdown.parseResult(`a\n\n${nestingBomb}`);
+		if (Result.isSuccess(result)) {
+			assert.fail("expected the nesting bomb to fail");
+			return;
+		}
+		const { line, character } = result.failure.diagnostic;
+		assert.strictEqual(line, 2);
+		assert.isAbove(character, 0);
+		assert.include(result.failure.message, `NestingDepthExceeded at 3:${character + 1} `);
+		assert.notInclude(result.failure.message, `at ${line}:${character} `);
+	});
+
 	it("rethrows a non-carrier as a defect rather than converting it", () => {
 		// The defect-passthrough invariant: only the engine's own carriers
 		// become typed failures. A programmer error inside a construct — here

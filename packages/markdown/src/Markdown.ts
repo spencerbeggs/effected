@@ -73,6 +73,12 @@ export class MarkdownParseOptions extends Schema.Class<MarkdownParseOptions>("Ma
  * failures. A malformed-looking document parses; a nesting bomb fails here
  * rather than crashing with a `RangeError`.
  *
+ * The `message` renders the diagnostic's position 1-based
+ * (`line + 1:character + 1`) for human readers — a CLI printing this string
+ * shows the line/column a person counts in their editor. The structured
+ * {@link MarkdownDiagnostic} `line`/`character` fields stay 0-based (LSP
+ * convention); the offset applies to the rendered message only.
+ *
  * @public
  */
 export class MarkdownParseError extends Schema.TaggedError<MarkdownParseError>()("MarkdownParseError", {
@@ -80,7 +86,7 @@ export class MarkdownParseError extends Schema.TaggedError<MarkdownParseError>()
 }) {
 	override get message(): string {
 		const { code, line, character, message } = this.diagnostic;
-		return `Markdown parse failed: ${code} at ${line}:${character} ${message}`;
+		return `Markdown parse failed: ${code} at ${line + 1}:${character + 1} ${message}`;
 	}
 }
 
