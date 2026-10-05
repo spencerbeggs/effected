@@ -75,8 +75,9 @@ interface StderrState {
  *   `list_changed`, to the matching id and returns what it saw.
  * - `closeStdin` is `Queue.end`, never `Queue.shutdown`, so every frame
  *   already sent is delivered before stdin closes.
- * - A request in flight when stdin closes is dropped by an Effect server:
- *   read its response first.
+ * - A request in flight when stdin closes still answers from an Effect
+ *   server, which drains before it exits; a server that does not drain
+ *   drops it, so a portable client reads the response first.
  *
  * @example
  * ```ts
