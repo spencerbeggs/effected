@@ -8,6 +8,7 @@
 * [@effected/github-commands](github-commands.md) - The GitHub Actions workflow-command grammar as pure functions: render a command, and neutralize text so the runner cannot read it as one.
 * [@effected/github-references](github-references.md) - GitHub's issue-reference grammar as pure functions, extracted from @effected/github.
 * [@effected/jsonl](jsonl.md) - Append-only, schema-validated JSONL journals exposed as a definable Effect service — the file as a live object, not a text format.
+* [@effected/lsp](lsp.md) - Language Server Protocol base-protocol framing as pure functions (Content-Length encode, an incremental byte decoder and a Stream transform), plus a ./testing subpath whose LspProbe proves a Language Server bin boots — the LSP twin of McpProbe.
 * [@effected/markdown](markdown.md) - CommonMark 0.31.2 + GFM as pure Effect Schema classes; parse, edit, format, modify and project markdown documents.
 * [@effected/mcp](mcp.md) - The boundary-tier MCP front end — stdio server wiring with a JSON-RPC stdin guard, tool-failure shaping, JSON-schema input walkers for Tool.dynamic tools, and strict-by-default toolkit registration — plus an in-process/spawned testing subpath.
 * [@effected/memfs](memfs.md) - An in-memory implementation of core Effect's FileSystem service — an isolated virtual POSIX volume the kit's tests use as their filesystem double.
