@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Hand-written for LspProbe.test.ts; see README.md. Deliberately shares no code
+// Hand-written for LspProbe.test.ts and LspProcess.test.ts; see README.md. Deliberately shares no code
 // with src/: its Content-Length parser and writer are its own, so a framing bug
 // in LspFrame cannot agree with itself here.
 const flags = new Set(process.argv.slice(2));
@@ -49,6 +49,15 @@ function handle(message) {
 	if (flags.has("--never-answer")) return;
 	switch (message.method) {
 		case "initialize":
+			if (flags.has("--truncate")) {
+				// Half a frame, then exit: the stream ends inside it.
+				process.stdout.write("Content-Length: 40\r\n\r\n{\"jsonrpc\":", () => process.exit(4));
+				return;
+			}
+			if (flags.has("--not-jsonrpc")) {
+				write([1, 2, 3]);
+				return;
+			}
 			if (flags.has("--fail-initialize")) {
 				write({ jsonrpc: "2.0", id: message.id, error: { code: -32603, message: "cannot initialize" } });
 				return;
@@ -64,9 +73,12 @@ function handle(message) {
 					echoed: message.params,
 				},
 			});
+			if (flags.has("--noise-between")) process.stdout.write("stray between frames\n");
 			return;
 		case "initialized":
 			initialized = true;
+			// A report on a later tick than any response, for stderrUntil.
+			if (flags.has("--stderr-late")) setTimeout(() => process.stderr.write("late report\n"), 200);
 			// A server-to-client request the probe must record and never answer.
 			write({ jsonrpc: "2.0", id: "register-1", method: "client/registerCapability", params: { registrations: [] } });
 			return;
@@ -81,6 +93,10 @@ function handle(message) {
 			return;
 		case "exit":
 			if (flags.has("--ignore-exit")) return;
+			if (flags.has("--noise-after")) {
+				process.stdout.write("bye\n", () => process.exit(shutdown ? 0 : 1));
+				return;
+			}
 			process.exit(shutdown ? 0 : 1);
 	}
 }

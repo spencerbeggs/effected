@@ -1,13 +1,10 @@
 import type { PlatformError } from "effect";
-import { Cause, Deferred, Duration, Effect, Queue, Ref, Stream } from "effect";
-import type { ChildProcess } from "effect/process";
-import { ChildProcessSpawner } from "effect/process";
-import { LspFrame, LspFrameError } from "./LspFrame.js";
+import { Duration, Effect, Ref } from "effect";
+import type { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { truncate } from "./internal/messages.js";
 import type { LspMessage } from "./LspMessage.js";
+import { spawnParts } from "./LspProcess.js";
 import { LspTestFailure } from "./LspTestFailure.js";
-
-/** How much stderr a failure message echoes. */
-const STDERR_ECHO = 2000;
 
 /**
  * Options for {@link LspProbe.initialize}.
@@ -44,14 +41,6 @@ export interface LspProbeResult {
 	/** The server's exit code; 0 means `exit` arrived after `shutdown`, as the specification requires. */
 	readonly exitCode: number;
 }
-
-const truncate = (text: string): string => (text.length <= STDERR_ECHO ? text : `${text.slice(0, STDERR_ECHO)}…`);
-
-const isLspMessage = (value: unknown): value is LspMessage =>
-	typeof value === "object" &&
-	value !== null &&
-	!Array.isArray(value) &&
-	(value as { readonly jsonrpc?: unknown }).jsonrpc === "2.0";
 
 /**
  * The smallest proof that an installed Language Server bin boots: the whole
@@ -119,101 +108,22 @@ export class LspProbe {
 
 const probe = (command: ChildProcess.Command, options: LspProbeOptions) =>
 	Effect.gen(function* () {
-		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-		const handle = yield* spawner.spawn(command);
-
-		// Stdin: a queue the probe writes frames to. It is never ended — the
-		// server must exit on `exit`, not on EOF. A pump failure (EPIPE once the
-		// child is gone) is recorded for the StreamEnded message, never raised.
-		const stdin = yield* Queue.unbounded<Uint8Array, Cause.Done>();
-		const pumpFailure = yield* Ref.make<string | undefined>(undefined);
-		yield* Stream.run(Stream.fromQueue(stdin), handle.stdin).pipe(
-			Effect.catch((error) => Ref.set(pumpFailure, error.message)),
-			Effect.forkScoped,
-		);
-		const send = (message: unknown) => Effect.asVoid(Queue.offer(stdin, LspFrame.encode(message)));
-
-		// Stdout: decoded frames, in order. The queue ends with the stream, or
-		// fails with the frame or read error, so every wait on it settles.
-		const inbox = yield* Queue.unbounded<unknown, LspFrameError | PlatformError.PlatformError | Cause.Done>();
-		yield* LspFrame.decodeStream(handle.stdout).pipe(
-			Stream.runForEach((message) => Effect.asVoid(Queue.offer(inbox, message))),
-			Effect.matchEffect({
-				onFailure: (error) => Queue.fail(inbox, error),
-				onSuccess: () => Queue.end(inbox),
-			}),
-			Effect.forkScoped,
-		);
-
-		const stderr = yield* Ref.make("");
-		const stderrDone = yield* Deferred.make<void>();
-		yield* Stream.decodeText(handle.stderr).pipe(
-			Stream.runForEach((text) => Ref.update(stderr, (sofar) => sofar + text)),
-			Effect.ignore,
-			Effect.ensuring(Deferred.succeed(stderrDone, undefined)),
-			Effect.forkScoped,
-		);
-		const stderrFinal = Effect.andThen(Deferred.await(stderrDone), Ref.get(stderr));
+		const stage = yield* Ref.make("the id-1 initialize response");
+		// One stdout reader, shared with LspProcess. `settle` folds the exit code
+		// and the whole stderr into StreamEnded, because the caller holds no handle
+		// to read them; the outer timeout bounds that wait. Stdin is never ended:
+		// the server must exit on `exit`, not on EOF.
+		const server = yield* spawnParts(command, { pending: Ref.get(stage), settle: true });
 
 		const messages: Array<LspMessage> = [];
-		const stage = yield* Ref.make("the id-1 initialize response");
-
-		// Once stdout has ended the exit code and stderr are settled; fold them
-		// into the failure, because the caller holds no handle to read them.
-		const ended = (why: string) =>
-			Effect.gen(function* () {
-				const code = yield* Effect.match(handle.exitCode, {
-					onFailure: (error) => `unknown (${error.message})`,
-					onSuccess: (exitCode) => String(Number(exitCode)),
-				});
-				const text = yield* stderrFinal;
-				const pump = yield* Ref.get(pumpFailure);
-				return yield* new LspTestFailure({
-					reason: "StreamEnded",
-					message: `the server's stdout ${why} before ${yield* Ref.get(stage)}; the server exited with code ${code}; stderr: ${
-						text === "" ? "(empty)" : truncate(text)
-					}${pump === undefined ? "" : `; stdin pump failed: ${pump}`}`,
-				});
-			});
-
-		const next: Effect.Effect<LspMessage, LspTestFailure> = Queue.take(inbox).pipe(
-			Effect.catch((error) =>
-				Cause.isDone(error)
-					? ended("ended")
-					: error instanceof LspFrameError
-						? error.code === "Truncated"
-							? ended(`ended inside a frame (${error.message})`)
-							: Effect.fail(
-									new LspTestFailure({
-										reason: "InvalidFrame",
-										message: `the server's stdout is not LSP frames: ${error.message}`,
-									}),
-								)
-						: ended(`failed to read (${error.message})`),
-			),
-			Effect.flatMap((message) =>
-				isLspMessage(message)
-					? Effect.succeed(message)
-					: Effect.fail(
-							new LspTestFailure({
-								reason: "NotJsonRpc",
-								message: `the server sent a frame that is not a JSON-RPC 2.0 message: ${truncate(JSON.stringify(message) ?? String(message))}`,
-							}),
-						),
-			),
-			Effect.tap((message) => Effect.sync(() => messages.push(message))),
-		);
-
 		const responseTo = (id: number) =>
-			Effect.gen(function* () {
-				while (true) {
-					const message = yield* next;
-					if (message.method === undefined && message.id === id) return message;
-				}
+			Effect.map(server.readUntilResponse(id), ({ response, seen }) => {
+				messages.push(...seen);
+				return response;
 			});
 
 		const exchange = Effect.gen(function* () {
-			yield* send({
+			yield* server.send({
 				jsonrpc: "2.0",
 				id: 1,
 				method: "initialize",
@@ -227,24 +137,24 @@ const probe = (command: ChildProcess.Command, options: LspProbeOptions) =>
 				},
 			});
 			const response = yield* responseTo(1);
-			if (response.error === undefined) yield* send({ jsonrpc: "2.0", method: "initialized", params: {} });
+			if (response.error === undefined) yield* server.send({ jsonrpc: "2.0", method: "initialized", params: {} });
 			yield* Ref.set(stage, "the id-2 shutdown response");
-			yield* send({ jsonrpc: "2.0", id: 2, method: "shutdown" });
+			yield* server.send({ jsonrpc: "2.0", id: 2, method: "shutdown" });
 			const shutdown = yield* responseTo(2);
 			yield* Ref.set(stage, "the server's exit after the exit notification");
-			yield* send({ jsonrpc: "2.0", method: "exit" });
-			const exitCode = Number(yield* handle.exitCode);
+			yield* server.send({ jsonrpc: "2.0", method: "exit" });
+			const exitCode = yield* server.exitCode;
 			// Drain what the server wrote before exiting; a frame error now is still a failure.
 			yield* Ref.set(stage, "the end of stdout after the server exited");
 			while (true) {
 				const more = yield* Effect.catchIf(
-					Effect.as(next, true),
+					Effect.map(server.nextMessage, (message) => messages.push(message) > 0),
 					(failure: LspTestFailure) => failure.reason === "StreamEnded",
 					() => Effect.succeed(false),
 				);
 				if (!more) break;
 			}
-			return { response, shutdown, messages, stderr: yield* stderrFinal, exitCode } satisfies LspProbeResult;
+			return { response, shutdown, messages, stderr: yield* server.stderrFinal, exitCode } satisfies LspProbeResult;
 		});
 
 		return yield* exchange.pipe(
@@ -252,7 +162,7 @@ const probe = (command: ChildProcess.Command, options: LspProbeOptions) =>
 				duration: options.timeout ?? Duration.seconds(30),
 				orElse: () =>
 					Effect.gen(function* () {
-						const text = yield* Ref.get(stderr);
+						const text = yield* server.stderrSoFar;
 						return yield* new LspTestFailure({
 							reason: "Timeout",
 							message: `timed out waiting for ${yield* Ref.get(stage)}; stderr so far: ${text === "" ? "(empty)" : truncate(text)}`,
