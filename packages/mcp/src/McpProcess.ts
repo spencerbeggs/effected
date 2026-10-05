@@ -1,5 +1,5 @@
 import type { Cause, PlatformError, Scope } from "effect";
-import { Deferred, Effect, Queue, Ref, Stream } from "effect";
+import { Deferred, Duration, Effect, Option, Queue, Ref, Stream, SubscriptionRef } from "effect";
 import { McpProtocol } from "effect/ai";
 import type { ChildProcess } from "effect/process";
 import { ChildProcessSpawner } from "effect/process";
@@ -31,7 +31,32 @@ interface ProcessParts {
 	readonly closeStdin: Effect.Effect<void>;
 	readonly exitCode: Effect.Effect<number, PlatformError.PlatformError>;
 	readonly stderrSoFar: Effect.Effect<string>;
+	readonly stderrUntil: (
+		predicate: (stderr: string) => boolean,
+		options: McpProcessStderrUntilOptions,
+	) => Effect.Effect<string, McpTestFailure>;
 	readonly stderrFinal: Effect.Effect<string>;
+}
+
+/**
+ * Options for {@link McpProcess.stderrUntil}.
+ *
+ * @public
+ */
+export interface McpProcessStderrUntilOptions {
+	/**
+	 * How long to wait for the predicate to hold before failing with
+	 * `TimedOut`. Real time: under `it.effect`'s `TestClock` it never fires,
+	 * so a test that waits on stderr runs under `it.live`. Keep it below the
+	 * test runner's own timeout, or the runner kills the test first.
+	 */
+	readonly timeout: Duration.Input;
+}
+
+/** What the stderr reader publishes: the text so far, and whether stderr has ended. */
+interface StderrState {
+	readonly text: string;
+	readonly done: boolean;
 }
 
 /**
@@ -110,6 +135,25 @@ export class McpProcess {
 	readonly exitCode: Effect.Effect<number, PlatformError.PlatformError>;
 	/** Everything written to stderr so far. */
 	readonly stderrSoFar: Effect.Effect<string>;
+	/**
+	 * Wait until everything written to stderr so far satisfies `predicate`,
+	 * and return that text.
+	 *
+	 * @remarks
+	 * Event-driven: the predicate is checked against the current text at once,
+	 * then again on every chunk the child writes, never on a polling timer.
+	 * Fails with `StreamEnded` when stderr ends (the child exited) without the
+	 * predicate holding, and with `TimedOut` once `options.timeout` passes;
+	 * both messages carry the stderr seen so far. Reach for it whenever a
+	 * report lands on a later tick than the responses a test reads, such as
+	 * `McpGuard`'s `injectCrash: { at: "connected" }` report, instead of
+	 * reading `stderrSoFar` once. `options.timeout` is real time: run the test
+	 * under `it.live`.
+	 */
+	readonly stderrUntil: (
+		predicate: (stderr: string) => boolean,
+		options: McpProcessStderrUntilOptions,
+	) => Effect.Effect<string, McpTestFailure>;
 	/** Everything written to stderr, once stderr has ended. Waits for the child to exit. */
 	readonly stderrFinal: Effect.Effect<string>;
 
@@ -122,6 +166,7 @@ export class McpProcess {
 		this.closeStdin = parts.closeStdin;
 		this.exitCode = parts.exitCode;
 		this.stderrSoFar = parts.stderrSoFar;
+		this.stderrUntil = parts.stderrUntil;
 		this.stderrFinal = parts.stderrFinal;
 	}
 
@@ -150,13 +195,50 @@ export class McpProcess {
 				Effect.forkScoped,
 			);
 
-			const stderr = yield* Ref.make("");
+			// A SubscriptionRef so stderrUntil wakes on each chunk rather than polling.
+			const stderr = yield* SubscriptionRef.make<StderrState>({ text: "", done: false });
 			const stderrDone = yield* Deferred.make<void>();
 			yield* Stream.decodeText(handle.stderr).pipe(
-				Stream.runForEach((text) => Ref.update(stderr, (sofar) => sofar + text)),
-				Effect.ensuring(Deferred.succeed(stderrDone, undefined)),
+				Stream.runForEach((text) =>
+					SubscriptionRef.update(stderr, (sofar) => ({ text: sofar.text + text, done: false })),
+				),
+				Effect.ensuring(
+					Effect.andThen(
+						SubscriptionRef.update(stderr, (sofar) => ({ text: sofar.text, done: true })),
+						Deferred.succeed(stderrDone, undefined),
+					),
+				),
 				Effect.forkScoped,
 			);
+			const stderrText = Effect.map(SubscriptionRef.get(stderr), (state) => state.text);
+			const stderrUntil = (predicate: (stderr: string) => boolean, options: McpProcessStderrUntilOptions) =>
+				SubscriptionRef.changes(stderr).pipe(
+					Stream.filter((state) => state.done || predicate(state.text)),
+					Stream.runHead,
+					Effect.flatMap((found) => {
+						const state = Option.getOrElse(found, (): StderrState => ({ text: "", done: true }));
+						return predicate(state.text)
+							? Effect.succeed(state.text)
+							: Effect.fail(
+									new McpTestFailure({
+										reason: "StreamEnded",
+										message: `the server's stderr ended before it matched; stderr: ${ToolFailure.truncate(state.text, ToolFailure.ENGINE_ECHO_LIMIT)}`,
+									}),
+								);
+					}),
+					Effect.timeoutOrElse({
+						duration: options.timeout,
+						orElse: () =>
+							Effect.flatMap(stderrText, (text) =>
+								Effect.fail(
+									new McpTestFailure({
+										reason: "TimedOut",
+										message: `the server's stderr did not match within ${Duration.format(Duration.fromInputUnsafe(options.timeout))}; stderr so far: ${ToolFailure.truncate(text, ToolFailure.ENGINE_ECHO_LIMIT)}`,
+									}),
+								),
+							),
+					}),
+				);
 
 			const nextLine = Queue.take(lines).pipe(
 				Effect.catch(() =>
@@ -213,8 +295,9 @@ export class McpProcess {
 				handshake,
 				closeStdin: Effect.asVoid(Queue.end(stdin)),
 				exitCode: Effect.map(handle.exitCode, (code) => Number(code)),
-				stderrSoFar: Ref.get(stderr),
-				stderrFinal: Effect.andThen(Deferred.await(stderrDone), Ref.get(stderr)),
+				stderrSoFar: stderrText,
+				stderrUntil,
+				stderrFinal: Effect.andThen(Deferred.await(stderrDone), stderrText),
 			});
 		});
 }

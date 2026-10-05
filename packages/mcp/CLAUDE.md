@@ -32,7 +32,9 @@ importing it from `src/`.
 
 `@effected/engine` (workspace `^`) and `effect` (`catalog:effect:peers`).
 `Remediation` from `@effected/engine` is the shape `ToolFailure` folds into a
-wire message; nothing else in `@effected/engine` is consumed yet.
+wire message, and `ProcessGuard` from `@effected/engine/guard` is the whole
+guard half of `McpGuard.run`. The peer floor must include an engine version
+that ships `./guard`.
 
 ## Exports
 
@@ -47,11 +49,16 @@ types. `McpToolkit` also carries `unionTool` and `unionHandler`.
 
 `@effected/mcp/guard` (`src/guard.ts`): `McpGuard` (`run`), plus the
 `McpGuardHost`, `McpGuardPolicy`, `McpGuardedServer` and
-`McpGuardRunOptions` types. **It has no static runtime import**, only
-`import type`: the guards must be listening before `effect` or the
-server graph evaluates. The server half lives in
-`src/internal/guardLaunch.ts` behind a dynamic `import()`;
-`entrypoints.test.ts` pins the graph, so a static import added to
+`McpGuardRunOptions` types. **Its only static runtime import is
+`@effected/engine/guard`, which itself imports nothing**: the guards must
+be listening before `effect` or the server graph evaluates. `McpGuard.run`
+is `ProcessGuard.run` (listeners, policy, `startup failed`, `injectCrash`,
+formatter) with an MCP launch in its `load`: it hands the loaded `format`
+to `guard.useFormat` and `guard.markConnected` to `McpStdio.launch`'s
+`onReady`. Behaviour belongs in the engine, not here. The server half
+lives in `src/internal/guardLaunch.ts` behind a dynamic `import()`;
+`entrypoints.test.ts` pins the graph (and walks the installed
+`@effected/engine/guard` to zero packages), so a static import added to
 `McpGuard.ts` fails it.
 
 `@effected/mcp/testing` (`src/testing.ts`): `McpHarness` (`make`; instances
@@ -59,9 +66,9 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
 `startRequest`, `notify`, `sendRaw`, `awaitOutboundMethod`, `stderrSoFar`,
 `consoleLogSoFar`, `close`, `stop`), `McpProcess` (`spawn`; instances carry `send`,
 `sendRaw`, `nextLine`, `readUntilResponse`, `handshake`, `closeStdin`,
-`exitCode`, `stderrSoFar`, `stderrFinal`), `McpProbe` (`initialize`),
+`exitCode`, `stderrSoFar`, `stderrUntil`, `stderrFinal`), `McpProbe` (`initialize`),
 `McpTestFailure`, `McpToolAudit` (`check`), plus the `McpHarnessOptions`,
-`McpProbeOptions`, `McpProbeResult`, `McpToolAuditPolicy`, `JsonRpcMessage`,
+`McpProbeOptions`, `McpProbeResult`, `McpProcessStderrUntilOptions`, `McpToolAuditPolicy`, `JsonRpcMessage`,
 `ServedTool` and `ServedResource` types.
 
 ## Load-bearing decisions

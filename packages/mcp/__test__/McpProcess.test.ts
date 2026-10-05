@@ -164,4 +164,54 @@ describe("McpProcess", () => {
 			assert.include(failure.message, "EPIPE");
 		}).pipe(Effect.timeout("3 seconds")),
 	);
+
+	describe("stderrUntil", () => {
+		it.live("waits across chunks written on later ticks and returns the text that matched", () =>
+			Effect.gen(function* () {
+				const server = yield* McpProcess.spawn(command("--stderr-later"));
+				// Control: nothing is there yet, so a single read would have missed it.
+				assert.strictEqual(yield* server.stderrSoFar, "");
+				const text = yield* server.stderrUntil((sofar) => sofar.includes("part-two"), { timeout: "2 seconds" });
+				assert.strictEqual(text, "report: part-one part-two\n");
+				yield* server.closeStdin;
+				assert.strictEqual(yield* server.exitCode, 0);
+			}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
+		);
+
+		it.live("returns the text already there when the predicate holds at once", () =>
+			Effect.gen(function* () {
+				const server = yield* McpProcess.spawn(command("--stderr-on-start"));
+				const text = yield* server.stderrUntil((sofar) => sofar.includes("booting"), { timeout: "2 seconds" });
+				// Called again once matched, it answers from the current text without waiting for a new chunk.
+				assert.strictEqual(yield* server.stderrUntil((sofar) => sofar === text, { timeout: "100 millis" }), text);
+				yield* server.closeStdin;
+				assert.strictEqual(yield* server.exitCode, 0);
+			}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
+		);
+
+		it.live("fails TimedOut, carrying the stderr so far, when the predicate never holds", () =>
+			Effect.gen(function* () {
+				const server = yield* McpProcess.spawn(command("--stderr-on-start"));
+				const failure = yield* Effect.flip(
+					server.stderrUntil((sofar) => sofar.includes("never written"), { timeout: "300 millis" }),
+				);
+				assert.strictEqual(failure.reason, "TimedOut");
+				assert.include(failure.message, "within 300ms");
+				assert.include(failure.message, "booting");
+				yield* server.closeStdin;
+			}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
+		);
+
+		it.live("fails StreamEnded as soon as the child exits without a match, not at the timeout", () =>
+			Effect.gen(function* () {
+				const server = yield* McpProcess.spawn(command("--exit-early"));
+				yield* server.send(INITIALIZE);
+				const failure = yield* Effect.flip(
+					server.stderrUntil((sofar) => sofar.includes("never written"), { timeout: "30 seconds" }),
+				);
+				assert.strictEqual(failure.reason, "StreamEnded");
+				assert.include(failure.message, "fatal: config missing");
+			}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
+		);
+	});
 });

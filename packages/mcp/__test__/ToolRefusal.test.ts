@@ -17,13 +17,39 @@ const Undeclared = Tool.make("undeclared", {
 	parameters: Schema.Struct({ id: Schema.String }),
 	success: Schema.Struct({ ok: Schema.Boolean }),
 });
-const Kit = Toolkit.make(Declared, Undeclared);
+class RichRefusal extends Schema.TaggedError<RichRefusal>()("RichRefusal", {
+	...ToolFailure.fields,
+	valid: Schema.Array(Schema.String),
+}) {}
+const ReturnMode = Tool.make("return_mode", {
+	description: "Refuses with a structured failure under failureMode return.",
+	parameters: Schema.Struct({ id: Schema.String }),
+	success: Schema.Struct({ ok: Schema.Boolean }),
+	failure: RichRefusal,
+	failureMode: "return",
+});
+const ErrorMode = Tool.make("error_mode", {
+	description: "Refuses with the same structured failure under failureMode error.",
+	parameters: Schema.Struct({ id: Schema.String }),
+	success: Schema.Struct({ ok: Schema.Boolean }),
+	failure: RichRefusal,
+});
+const Succeeds = Tool.make("succeeds", {
+	description: "Succeeds, so structuredContent is observable at all (control).",
+	parameters: Schema.Struct({ id: Schema.String }),
+	success: Schema.Struct({ ok: Schema.Boolean }),
+});
+const rich = () => new RichRefusal({ message: "No run.", remediation, valid: ["a", "b"] });
+const Kit = Toolkit.make(Declared, Undeclared, ReturnMode, ErrorMode, Succeeds);
 const server = McpServer.toolkit(Kit).pipe(
 	Layer.provide(
 		Kit.toLayer({
 			declared: ({ id }) => ToolRefusal.refuse(`No run "${ToolFailure.truncate(id)}".`, remediation),
 			undeclared: ({ id }) =>
 				Effect.fail(ToolRefusal.refuse(`No run "${id}".`, remediation)) as unknown as Effect.Effect<{ ok: boolean }>,
+			return_mode: () => Effect.fail(rich()),
+			error_mode: () => Effect.fail(rich()),
+			succeeds: () => Effect.succeed({ ok: true }),
 		}),
 	),
 	Layer.provideMerge(McpStdio.layer({ name: "refusal", version: "0.0.0" })),
@@ -65,6 +91,29 @@ describe("ToolRefusal", () => {
 				assert.isTrue(result.isError);
 				assert.strictEqual(result.content[0]?.text, 'No run "r1". List the runs first. Try list_runs.');
 				assert.isUndefined(result.structuredContent);
+			}),
+		);
+
+		// Why ToolRefusal.refuse takes no data argument: no failure mode delivers structuredContent.
+		it.effect(`${protocol.protocolVersion}: structured failure data never reaches structuredContent`, () =>
+			Effect.gen(function* () {
+				const harness = yield* McpHarness.make(server, { protocol });
+				yield* harness.initialize;
+				const control = (yield* harness.callTool("succeeds", { id: "r1" })).result as ToolResult;
+				assert.deepStrictEqual(control.structuredContent, { ok: true }, "the harness does see structuredContent");
+				const error = (yield* harness.callTool("error_mode", { id: "r1" })).result as ToolResult;
+				assert.isTrue(error.isError);
+				assert.strictEqual(error.content[0]?.text, "No run.");
+				assert.isUndefined(error.structuredContent);
+				const returned = (yield* harness.callTool("return_mode", { id: "r1" })).result as ToolResult;
+				assert.isTrue(returned.isError);
+				assert.isUndefined(returned.structuredContent);
+				assert.deepStrictEqual(JSON.parse(returned.content[0]?.text ?? "null"), {
+					_tag: "RichRefusal",
+					message: "No run.",
+					remediation,
+					valid: ["a", "b"],
+				});
 			}),
 		);
 

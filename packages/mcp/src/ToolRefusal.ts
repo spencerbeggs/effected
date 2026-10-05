@@ -17,6 +17,19 @@ import { ToolFailure } from "./ToolFailure.js";
  * Audit every throw path of a tool: any failure left undeclared loses its
  * message on the wire, however carefully it was worded.
  *
+ * **Structured data on a refusal is deliberately unreachable: put it in the
+ * message.** Core's `McpServer.registerToolkit` builds every failed call's
+ * result with `structuredContent` unset and no `_meta`, on every protocol
+ * revision. Under the default `failureMode: "error"` a declared `Error`
+ * failure sends `message` as the only text; under `failureMode: "return"`
+ * it sends the whole encoded failure JSON-stringified into the text, still
+ * with no `structuredContent`, which buries the human message in JSON a
+ * client must parse. So `refuse` takes no data argument: a list of valid
+ * names, the root that was searched, the id that was not found all belong
+ * in `reason`, truncated with {@link ToolFailure.truncate}. When an agent
+ * must branch on the data itself, return it on the success channel as an
+ * `ok: false` envelope, where `structuredContent` does reach the client.
+ *
  * @example
  * ```ts
  * import { ToolFailure, ToolRefusal } from "@effected/mcp";

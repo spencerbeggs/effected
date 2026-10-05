@@ -46,6 +46,7 @@
 | `--noise` | a non-JSON-RPC line on stdout before anything else |
 | `--count-on-end` | on stdin EOF, reports the frames it received and their methods, in order |
 | `--stderr-on-start` | writes `booting` to stderr at startup, while it keeps running |
+| `--stderr-later` | writes `report: part-one ` to stderr after 100 ms and `part-two` after 200 ms, while it keeps running |
 
 - **Regenerating:** there is nothing to regenerate. Edit by hand, and keep
   one failure shape per flag.

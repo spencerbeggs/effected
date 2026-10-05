@@ -9,7 +9,10 @@ import { Schema } from "effect";
  *
  * - `StreamEnded` (`McpProcess`, `McpProbe`): the spawned child's stdout
  *   ended first, because the child exited. `McpProbe` folds the exit code
- *   and stderr into the message.
+ *   and stderr into the message. `McpProcess.stderrUntil` raises it when
+ *   stderr ends before its predicate holds.
+ * - `TimedOut` (`McpProcess.stderrUntil`): the predicate did not hold
+ *   within the given timeout. The message carries the stderr seen so far.
  * - `NotJsonRpc` (`McpProcess.readUntilResponse`, `McpProbe`): a spawned
  *   child's stdout line was not a JSON-RPC frame. `McpHarness` never raises
  *   it: under `strictStdout` a non-JSON-RPC line DIES the pending wait as a
@@ -30,7 +33,14 @@ import { Schema } from "effect";
  */
 export class McpTestFailure extends Schema.TaggedError<McpTestFailure>()("McpTestFailure", {
 	/** Which failure occurred; see the list above for which client raises which. */
-	reason: Schema.Literals(["StreamEnded", "ServerStopped", "NotJsonRpc", "NotInitialized", "ErrorResponse"]),
+	reason: Schema.Literals([
+		"StreamEnded",
+		"ServerStopped",
+		"NotJsonRpc",
+		"NotInitialized",
+		"ErrorResponse",
+		"TimedOut",
+	]),
 	/** A human-readable description of what went wrong. */
 	message: Schema.String,
 }) {}

@@ -1,5 +1,8 @@
-// Type-only imports: this module is evaluated before anything a crash guard
-// protects, so it must not load `effect` or the server graph at runtime.
+// This module is evaluated before anything a crash guard protects, so it must
+// not load `effect` or the server graph at runtime: `effect` is a type-only
+// import, and the one runtime import, `@effected/engine/guard`, imports
+// nothing itself (pinned by `entrypoints.test.ts`).
+import { ProcessGuard } from "@effected/engine/guard";
 import type { Effect, Layer, Runtime } from "effect";
 
 /**
@@ -90,6 +93,13 @@ export interface McpGuardRunOptions<ROut, E> {
 	 *   serving, where `"exitBeforeConnect"` logs and keeps serving. A throw
 	 *   from a test double's `exit` there is dropped.
 	 *
+	 * **The `"connected"` report is asynchronous.** It is raised on a later
+	 * tick, a `setTimeout(0)` after the server starts serving, so it can land
+	 * after the first responses a test reads: reading stderr once, right
+	 * after the `initialize` or `tools/list` response, can see an empty
+	 * buffer. Wait for it with `McpProcess.stderrUntil` from
+	 * `@effected/mcp/testing` rather than reading it once.
+	 *
 	 * Either is raised only through `host.emit`, on a `setTimeout(0)` tick,
 	 * never as a real throw or rejection, so the guard's listeners handle it
 	 * the same way under the real `process` and under a test double. Under
@@ -107,36 +117,19 @@ export interface McpGuardRunOptions<ROut, E> {
 		| undefined;
 }
 
-type InjectedKind = "uncaughtException" | "unhandledRejection";
-
-const isInjectedKind = (kind: unknown): kind is InjectedKind =>
-	kind === "uncaughtException" || kind === "unhandledRejection";
-
-/** Emit one injected crash through the host, to the listeners the guard installed there. */
-const emitInjected = (host: McpGuardHost, kind: InjectedKind): void => {
-	const error = new Error(`[injected] ${kind}`);
-	if (kind === "uncaughtException") {
-		host.emit("uncaughtException", error, "uncaughtException");
-		return;
-	}
-	const promise = Promise.reject(error);
-	// Handled, so only the emitted event reaches a listener, never a real unhandled rejection.
-	promise.catch(() => undefined);
-	host.emit("unhandledRejection", error, promise);
-};
-
-const fallbackFormat = (error: unknown): string =>
-	error instanceof Error ? (error.stack ?? error.message) : String(error);
-
 /**
  * Crash guards for an MCP server process, installed before the server's
  * module graph is loaded. Imported from `@effected/mcp/guard`.
  *
  * @remarks
- * {@link McpGuard.run} registers `uncaughtException` and `unhandledRejection`
- * listeners on `host`, then awaits `load()`, then launches the server with
- * `McpStdio.launch` and `McpStdio.teardown` under the `runMain` it returned.
- * This entrypoint has no static runtime import: it loads `effect` and the
+ * {@link McpGuard.run} is `ProcessGuard.run` from `@effected/engine/guard`
+ * with an MCP launch in its `load`: it registers `uncaughtException` and
+ * `unhandledRejection` listeners on `host`, then awaits `load()`, then
+ * launches the server with `McpStdio.launch` and `McpStdio.teardown` under
+ * the `runMain` it returned. A server on another transport (an LSP over
+ * `vscode-languageserver`, say) uses `ProcessGuard.run` directly and calls
+ * its `markConnected` itself. This entrypoint statically imports only
+ * `@effected/engine/guard`, which imports nothing: it loads `effect` and the
  * stdio wiring only after the guards are listening, so a throw while any of
  * it evaluates is still reported on stderr.
  *
@@ -176,71 +169,17 @@ export class McpGuard {
 	private constructor() {}
 
 	/** Install the guards, load the server, and launch it. Resolves once the server is launched. */
-	static readonly run = async <ROut, E>(options: McpGuardRunOptions<ROut, E>): Promise<void> => {
-		const { host, label } = options;
-		const onUncaught = options.policy?.onUncaught ?? "exit";
-		const onRejection = options.policy?.onRejection ?? "exit";
-		let connected = false;
-		let format = fallbackFormat;
-		const describe = (error: unknown): string => {
-			try {
-				return format(error);
-			} catch {
-				try {
-					return fallbackFormat(error);
-				} catch {
-					return "<unformattable error value>";
-				}
-			}
-		};
-		const exits = (mode: "exit" | "exitBeforeConnect" | "log"): boolean =>
-			mode === "exit" || (mode === "exitBeforeConnect" && !connected);
-
-		host.on("uncaughtException", (error, origin) => {
-			host.stderr.write(`${label}: uncaughtException (${origin}): ${describe(error)}\n`);
-			if (exits(onUncaught)) host.exit(1);
+	static readonly run = <ROut, E>(options: McpGuardRunOptions<ROut, E>): Promise<void> =>
+		ProcessGuard.run({
+			label: options.label,
+			host: options.host,
+			policy: options.policy,
+			injectCrash: options.injectCrash,
+			load: async (guard) => {
+				const server = await options.load();
+				if (server.format !== undefined) guard.useFormat(server.format);
+				const { launchGuarded } = await import("./internal/guardLaunch.js");
+				launchGuarded(server, guard.markConnected);
+			},
 		});
-		host.on("unhandledRejection", (reason) => {
-			host.stderr.write(`${label}: unhandledRejection: ${describe(reason)}\n`);
-			if (exits(onRejection)) host.exit(1);
-		});
-
-		const inject = options.injectCrash;
-		const injectKind = isInjectedKind(inject?.kind) ? inject.kind : undefined;
-		if (inject?.at === "load" && injectKind !== undefined) {
-			// Settled either way, so a host whose exit throws can never leave `run` waiting.
-			await new Promise<void>((resolve, reject) => {
-				setTimeout(() => {
-					try {
-						emitInjected(host, injectKind);
-						resolve();
-					} catch (error) {
-						reject(error);
-					}
-				}, 0);
-			});
-		}
-		const onReady = (): void => {
-			connected = true;
-			if (inject?.at === "connected" && injectKind !== undefined) {
-				setTimeout(() => {
-					try {
-						emitInjected(host, injectKind);
-					} catch {
-						// Only a test double's `exit` throws here; a real one never returns.
-					}
-				}, 0);
-			}
-		};
-
-		try {
-			const server = await options.load();
-			if (server.format !== undefined) format = server.format;
-			const { launchGuarded } = await import("./internal/guardLaunch.js");
-			launchGuarded(server, onReady);
-		} catch (error) {
-			host.stderr.write(`${label}: startup failed: ${describe(error)}\n`);
-			host.exit(1);
-		}
-	};
 }

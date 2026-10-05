@@ -9,6 +9,11 @@ const write = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 
 if (flags.has("--noise")) process.stdout.write("this line is not json-rpc\n");
 if (flags.has("--stderr-on-start")) process.stderr.write("booting\n");
+if (flags.has("--stderr-later")) {
+	// Two chunks on later ticks, as a crash report written after serving starts would arrive.
+	setTimeout(() => process.stderr.write("report: part-one "), 100);
+	setTimeout(() => process.stderr.write("part-two\n"), 200);
+}
 
 let buffered = "";
 process.stdin.setEncoding("utf8");

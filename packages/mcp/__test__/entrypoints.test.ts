@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
@@ -47,17 +47,28 @@ const runtimeGraphOf = (entry: string) => {
 		if (file === undefined || modules.has(file)) continue;
 		modules.add(file);
 		for (const specifier of runtimeImportsOf(file)) {
-			if (specifier.startsWith(".")) queue.push(resolve(dirname(file), specifier.replace(/\.js$/, ".ts")));
-			else packages.add(specifier);
+			if (specifier.startsWith(".")) {
+				// A source module imports `./x.js` for `./x.ts`; a built module imports the `.js` itself.
+				const target = resolve(dirname(file), specifier);
+				const source = target.replace(/\.js$/, ".ts");
+				queue.push(existsSync(source) ? source : target);
+			} else packages.add(specifier);
 		}
 	}
 	return { modules, packages };
 };
 
 describe("./guard loads nothing before its guards listen", () => {
-	it("./guard statically reaches only McpGuard, and no package at all", () => {
+	it("./guard statically reaches only McpGuard, and no package but the engine's own import-free guard", () => {
 		const { modules, packages } = runtimeGraphOf(resolve(SRC, "guard.ts"));
 		assert.deepStrictEqual([...modules].map((file) => file.slice(SRC.length + 1)).sort(), ["McpGuard.ts", "guard.ts"]);
+		assert.deepStrictEqual([...packages], ["@effected/engine/guard"]);
+	});
+
+	it("the installed @effected/engine/guard itself loads no package at all", () => {
+		const entry = fileURLToPath(import.meta.resolve("@effected/engine/guard"));
+		const { modules, packages } = runtimeGraphOf(entry);
+		assert.isAtLeast(modules.size, 2, "the walker must reach ProcessGuard behind the entry");
 		assert.deepStrictEqual([...packages], []);
 	});
 

@@ -294,11 +294,9 @@ const guardMain = (...flags: ReadonlyArray<string>) =>
 		{ env: { PATH: process.env.PATH ?? "" } },
 	);
 
-/** Wait until the child's stderr contains `text`. */
+/** Wait until the child's stderr contains `text`: the "connected" report lands on a later tick than the first responses. */
 const stderrShows = (server: McpProcess, text: string) =>
-	Effect.gen(function* () {
-		while (!(yield* server.stderrSoFar).includes(text)) yield* Effect.sleep("20 millis");
-	});
+	server.stderrUntil((stderr) => stderr.includes(text), { timeout: "8 seconds" });
 
 describe("McpGuard.run in a real process", () => {
 	it.live("exitBeforeConnect: an uncaught exception after connect is logged and the server keeps serving", () =>
