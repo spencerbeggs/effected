@@ -8,7 +8,7 @@
 	{
 		"text": "Packages",
 		"link": "/packages",
-		"activeMatch": "^/(pnpm-plugin-effect|github-references|github-commands|github-actions|tsconfig-json|package-json|config-file|schemastore|schema-org|workspaces|lockfiles|templates|commands|markdown|packages|runtimes|github|semver|walker|jsonc|jsonl|memfs|store|glob|sbom|spdx|toml|yaml|app|cli|git|npm|xdg|engine|mcp|env)(/(.*)?)?$",
+		"activeMatch": "^/(pnpm-plugin-effect|github-references|github-commands|github-actions|tsconfig-json|package-json|config-file|schemastore|schema-org|workspaces|lockfiles|templates|commands|markdown|packages|runtimes|github|semver|walker|jsonc|jsonl|memfs|store|glob|sbom|spdx|toml|yaml|app|cli|git|npm|xdg|engine|mcp|lsp|env)(/(.*)?)?$",
 		"position": "right",
 		"items": [
 			{
@@ -85,6 +85,11 @@
 				"text": "@effected/lockfiles",
 				"link": "/lockfiles",
 				"activeMatch": "^/lockfiles/?$"
+			},
+			{
+				"text": "@effected/lsp",
+				"link": "/lsp",
+				"activeMatch": "^/lsp/?$"
 			},
 			{
 				"text": "@effected/markdown",

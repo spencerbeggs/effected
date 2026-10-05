@@ -408,6 +408,13 @@
 		"fromFilename": "detect which lockfile format a conventional filename identifies",
 		"isUnsupportedLockfileVersion": "check if a lockfile parse error means the version is too old"
 	},
+	"lsp": {
+		"LspFrame": "encode an lsp message with a byte-counted content-length header, decode lsp frames from chunked bytes or a stream",
+		"LspFrameError": "malformed or truncated lsp frame, missing or bad content-length, stray stdout log line",
+		"LspFrameErrorCode": "lsp frame error codes, missing content-length, header too large, truncated",
+		"LspProbe": "smoke-test a built language server bin, initialize then shutdown and exit 0",
+		"LspTestFailure": "lsp probe failure, stream ended, invalid frame, timeout"
+	},
 	"markdown": {
 		"Blockquote": "build a blockquote node, construct quoted content, mdast blockquote",
 		"Break": "build a hard line break node, construct a break for stringify",

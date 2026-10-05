@@ -9,7 +9,7 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-05T18:09:03Z
+  at: 2026-10-05T18:01:43Z
   body_sha256: 8865b4af0ee9e4a3f4c884faf5fca6f7938e7d102017d47703d486be1a7330c2
 ---
 

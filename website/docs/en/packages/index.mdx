@@ -1,11 +1,11 @@
 ---
 title: Packages
-description: The 36 packages of the effected kit — 34 Effect v4 libraries plus two companions — grouped by the runtime cost of depending on them.
+description: The 37 packages of the effected kit — 35 Effect v4 libraries plus two companions — grouped by the runtime cost of depending on them.
 ---
 
 # Packages
 
-The kit is **36 publishable packages**: 34 libraries and two companions. They are not a grab bag of
+The kit is **37 publishable packages**: 35 libraries and two companions. They are not a grab bag of
 utilities that happened to end up in the same repo. Scope is closed by five consuming applications, and a
 library earns its place by being something one of those five actually needs — which is why there is a TOML
 parser and a SPDX expression evaluator here, and no HTTP client or ORM.
@@ -45,6 +45,7 @@ north star, and the conventions the rest follow all started there.
 | Test code that touches the filesystem | [memfs](/memfs) |
 | Share carrier identity or launch-context resolution across a CLI and an MCP front end | [engine](/engine) |
 | Serve tools to an agent over MCP, or test such a server | [mcp](/mcp) |
+| Frame LSP messages, or prove a Language Server bin boots | [lsp](/lsp) |
 | Pin every version this kit was tested against | [pnpm-plugin-effect](/pnpm-plugin-effect) |
 
 ## How to read a tier
@@ -106,6 +107,7 @@ IO through Effect core's service contracts, required in `R` and never provided f
 | [@effected/env](/env) | Who is running a program and in what terminal — agent, CI, colour level, hyperlinks, width and audience — read through `Config` and swapped in tests with `layerTest` |
 | [@effected/cli](/cli) | The CLI presentation boundary: audiences, themed messages, a document IR with per-audience renderers, failure reports, diagnostics and prompts; Ink screens and live views behind an optional `./ui` subpath |
 | [@effected/mcp](/mcp) | The MCP boundary: stdio wiring that keeps stdout the wire, remediated tool failures, strict-input walkers, and in-process and spawned test clients |
+| [@effected/lsp](/lsp) | Language Server Protocol framing — byte-counted `Content-Length` frames, decoded incrementally — and `LspProbe`, the packed-install proof that a Language Server bin boots |
 
 [@effected/cli](/cli) is deliberately **not** a CLI framework. Argument parsing belongs to
 `effect/cli` in core; this package owns how a program's output reaches whoever is reading it. Its
@@ -143,8 +145,8 @@ and releases as a fixed pair with `@effected/schemastore`.
 
 ## Versions and stability
 
-Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 36 packages are on npm except
-`@effected/env`, `@effected/github-commands`, `@effected/engine`, `@effected/mcp` and
+Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 37 packages are on npm except
+`@effected/env`, `@effected/github-commands`, `@effected/engine`, `@effected/mcp`, `@effected/lsp` and
 `@effected/schemastore-cli`, which are built and documented but have not cut their first release.
 
 Releases are changeset-driven, so versions move per package rather than in lockstep — a release is

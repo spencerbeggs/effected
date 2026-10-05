@@ -1,5 +1,10 @@
 # Log
 
+## 2026-10-05
+
+* Added @effected/lsp
+* Updated effected
+
 ## 2026-10-03
 
 * Updated A capability recon pass at package level misses constructs the kit already ships
@@ -22,6 +27,8 @@
 * Updated workspace
 * Updated @effected/cli
 * Updated @effected/schemastore-cli
+* Updated app
+* Updated store
 
 ## 2026-10-02
 

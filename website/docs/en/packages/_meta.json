@@ -142,6 +142,11 @@
 		"label": "@effected/mcp"
 	},
 	{
+		"type": "custom-link",
+		"link": "/lsp",
+		"label": "@effected/lsp"
+	},
+	{
 		"type": "section-header",
 		"label": "Integrated"
 	},

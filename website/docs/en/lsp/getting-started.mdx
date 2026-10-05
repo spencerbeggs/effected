@@ -1,0 +1,120 @@
+---
+title: Getting Started
+description: Prove a Language Server bin boots with LspProbe, and encode or decode LSP frames with LspFrame — using only @effected/lsp's real exports.
+---
+
+# Getting Started
+
+## Install
+
+```bash
+npm install @effected/lsp effect
+```
+
+```bash
+pnpm add @effected/lsp effect
+```
+
+## Prove a Language Server boots
+
+`LspProbe.initialize` spawns a command and runs the lifecycle an editor
+runs: `initialize` (id 1), its response, the `initialized` notification,
+`shutdown` (id 2), its response, and the `exit` notification. Then it
+waits for the server to exit, with stdin still open.
+
+```ts
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { assert, it } from "@effect/vitest";
+import { LspProbe } from "@effected/lsp/testing";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/process";
+
+it.live("the installed language server boots", () =>
+  Effect.gen(function* () {
+    const probe = yield* LspProbe.initialize(
+      ChildProcess.make("my-lsp", ["--stdio"], { env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "" } }),
+    );
+    assert.isUndefined(probe.response.error);
+    assert.strictEqual(probe.exitCode, 0);
+    assert.strictEqual(probe.stderr, "");
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+```
+
+Run it under `it.live`. The probe's timeout reads `Clock`, and
+`it.effect`'s virtual clock never advances on its own.
+
+What the result carries:
+
+| Field | Meaning |
+| --- | --- |
+| `response` | The `initialize` response. An error response is returned, not raised: assert `response.error === undefined`. |
+| `shutdown` | The `shutdown` response; a clean server answers `result: null`. |
+| `messages` | Every message the server sent, in order, including requests it sent the client. The probe answers none of them. |
+| `stderr` | Everything the server wrote to stderr. |
+| `exitCode` | 0 when `exit` followed `shutdown`, which the LSP specification requires; 1 otherwise. |
+
+`LspProbeOptions` sets `initialize`'s `rootUri` and `processId` (both
+`null` by default), `capabilities` (`{}`), `initializationOptions`
+(omitted unless given), and `timeout` over the whole exchange (30
+seconds).
+
+### When it fails
+
+Every failure is an `LspTestFailure` with a `reason`:
+
+| Reason | Cause |
+| --- | --- |
+| `StreamEnded` | stdout ended before the awaited response — the server exited. The message carries the exit code and stderr. |
+| `InvalidFrame` | stdout carried bytes that are not an LSP frame, most often a log line written to the protocol wire. The message echoes the offending bytes. |
+| `NotJsonRpc` | a frame whose body is not a JSON-RPC 2.0 message. |
+| `Timeout` | the exchange outlived `timeout`. The message names the step it was waiting on. |
+
+A server that ignores `exit` and waits for stdin to close fails with
+`Timeout`. That is deliberate: an editor never closes the pipe first, so
+that server would hang in use.
+
+## Frame and unframe messages
+
+`LspFrame.encode` writes `Content-Length` as the UTF-8 byte length of the
+body:
+
+```ts
+import { LspFrame } from "@effected/lsp";
+
+const frame = LspFrame.encode({ jsonrpc: "2.0", method: "note", params: { text: "✓" } });
+console.log(new TextDecoder().decode(frame).split("\r\n")[0]);
+// => Content-Length: 57
+```
+
+`LspFrame.decodeAllResult` decodes a collected stdout, a `string` or a
+`Uint8Array`, and fails `Truncated` if it ends inside a frame:
+
+```ts
+import { LspFrame } from "@effected/lsp";
+import { Result } from "effect";
+
+const decoded = LspFrame.decodeAllResult('Content-Length: 2\r\n\r\n{}Content-Length: 5\r\n\r\n"✓"');
+console.log(Result.getOrThrow(decoded));
+// => [ {}, '✓' ]
+```
+
+For bytes that arrive in pieces, `LspFrame.decodeStream` turns a `Stream`
+of chunks into a `Stream` of messages. A chunk may end anywhere — inside a
+header, a body or a multi-byte character — and may carry several frames:
+
+```ts
+import { LspFrame } from "@effected/lsp";
+import { Effect, Stream } from "effect";
+
+const chunks = [new TextEncoder().encode("Content-Len"), new TextEncoder().encode("gth: 2\r\n\r\n{}")];
+const program = Stream.runCollect(LspFrame.decodeStream(Stream.fromIterable(chunks)));
+console.log(await Effect.runPromise(program));
+// => [ {} ]
+```
+
+To decode by hand, `LspFrame.decodeResult(bytes, offset)` returns the
+complete frames and the bytes of an incomplete one as `rest`; prepend
+`rest` to the next chunk. A malformed frame fails with `LspFrameError`,
+whose `code` names the rule, `offset` the frame's stream position, and
+`excerpt` its first bytes.

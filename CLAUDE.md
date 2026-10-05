@@ -37,7 +37,7 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 
 ### Kit composition
 
-The kit is **36 publishable packages**: 34 libraries plus two companions (`pnpm-plugin-effect` and `schemastore-cli`); 31 have published (`schema-org` on 2026-08-26) and `schemastore-cli` awaits its first release, as do `@effected/engine`, `@effected/mcp`, `@effected/env` and `@effected/github-commands`, the two newest libraries. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
+The kit is **37 publishable packages**: 35 libraries plus two companions (`pnpm-plugin-effect` and `schemastore-cli`); 31 have published (`schema-org` on 2026-08-26) and `schemastore-cli` awaits its first release, as do `@effected/engine`, `@effected/mcp`, `@effected/env`, `@effected/github-commands` and `@effected/lsp`, the newest library. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
 
 `@effected/config-file` holds every config **codec**; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — with `ConfigCodec` the interface only. **Never collect them into a namespace object**: it would drag every parsing engine into a JSON-only consumer's bundle, killing tree-shaking silently. Read `okf/modules/config-file.md` and `okf/decisions/codecs-are-free-standing-named-exports.md` before touching it.
 
@@ -55,7 +55,7 @@ The kit is **36 publishable packages**: 34 libraries plus two companions (`pnpm-
 
 ### Package context files
 
-Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 36 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
+Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 37 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
 
 ## Build Pipeline
 
