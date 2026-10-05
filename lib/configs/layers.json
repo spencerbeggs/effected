@@ -1,7 +1,7 @@
 {
 	"layers": [
 		["@effected/app", "@effected/github-actions", "@effected/schemastore-cli"],
-		["@effected/cli", "@effected/mcp", "@effected/sbom", "@effected/workspaces", "@effected/xdg"],
+		["@effected/cli", "@effected/lsp", "@effected/mcp", "@effected/sbom", "@effected/workspaces", "@effected/xdg"],
 		["@effected/config-file", "@effected/lockfiles", "@effected/package-json", "@effected/tsconfig-json"],
 		[
 			"@effected/github",
