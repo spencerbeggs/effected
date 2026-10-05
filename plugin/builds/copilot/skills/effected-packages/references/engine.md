@@ -79,7 +79,10 @@ re-exports it.
   `onRejection: "exit" | "exitBeforeConnect" | "log"`, both defaulting to
   `"exit"`. A rejected `load` is `<label>: startup failed: …` and exit 1 under
   every policy. `injectCrash: { at: "load" | "connected", kind }` drives
-  either half of a policy from a test; the `"connected"` report lands on a
+  either half of a policy from a test (`ProcessGuard.parseInjectCrash(env)`
+  parses the shared `<at>:<kind>` grammar from a variable, `undefined` for
+  anything else); a stdio server is "serving" once its transport is built and
+  reading stdin; the `"connected"` report lands on a
   later tick than `markConnected`, so a test waits for it rather than
   reading stderr once. `@effected/mcp/guard`'s `McpGuard.run` is this guard
   plus an MCP stdio launch.

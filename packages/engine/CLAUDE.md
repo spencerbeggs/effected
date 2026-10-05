@@ -34,7 +34,7 @@ One module per concept. `src/index.ts` is the only re-exporting module.
 - `src/LaunchContext.ts` — `LaunchContext` and `ProjectDirInput`: resolves
   where a tool launched by an agent host should treat as its project, from
   caller-supplied `argv`/`env`/`cwd` rather than reading `process` itself.
-- `src/ProcessGuard.ts` — `ProcessGuard` (`run`) plus the
+- `src/ProcessGuard.ts` — `ProcessGuard` (`run`, `parseInjectCrash`) plus the
   `ProcessGuardHost`, `ProcessGuardPolicy`, `ProcessGuardControl`,
   `ProcessGuardOptions` and `ProcessGuardInjection` types: transport-neutral
   crash guards. Exported **only** from the `./guard` subpath

@@ -76,6 +76,12 @@ export interface ProcessGuardControl {
 	 * Report the server connected: from here on `"exitBeforeConnect"` logs and
 	 * keeps going. Call it once the server is serving. Later calls do nothing.
 	 * Safe to call after `load` has resolved, which is the usual case.
+	 *
+	 * @remarks
+	 * For a server framed over stdio (MCP, LSP), "serving" is the moment its
+	 * transport is built and reading stdin, before the first request arrives:
+	 * from then on a client is attached, and a stray error should be logged,
+	 * not end the session.
 	 */
 	readonly markConnected: () => void;
 	/**
@@ -148,6 +154,9 @@ type InjectedKind = ProcessGuardInjection["kind"];
 const isInjectedKind = (kind: unknown): kind is InjectedKind =>
 	kind === "uncaughtException" || kind === "unhandledRejection";
 
+const INJECT_AT: ReadonlyArray<ProcessGuardInjection["at"]> = ["load", "connected"];
+const INJECT_KIND: ReadonlyArray<ProcessGuardInjection["kind"]> = ["uncaughtException", "unhandledRejection"];
+
 /** Emit one injected crash through the host, to the listeners the guard installed there. */
 const emitInjected = (host: ProcessGuardHost, kind: InjectedKind): void => {
 	const error = new Error(`[injected] ${kind}`);
@@ -206,6 +215,27 @@ const fallbackFormat = (error: unknown): string =>
  */
 export class ProcessGuard {
 	private constructor() {}
+
+	/**
+	 * Parse a test-only crash-injection setting into {@link ProcessGuardOptions.injectCrash}: `<at>:<kind>`, where `at`
+	 * is `"load"` or `"connected"` and `kind` is `"uncaughtException"` or `"unhandledRejection"`. Anything else, or no
+	 * value, is `undefined` (no injection), so a launcher can pass an environment variable straight through and every
+	 * launcher shares one grammar.
+	 *
+	 * @example
+	 * ```ts
+	 * ProcessGuard.parseInjectCrash("connected:unhandledRejection"); // => { at: "connected", kind: "unhandledRejection" }
+	 * ProcessGuard.parseInjectCrash("later:boom"); // => undefined
+	 * ```
+	 */
+	static readonly parseInjectCrash = (value: string | undefined): ProcessGuardInjection | undefined => {
+		if (value === undefined) return undefined;
+		const [at, kind, ...rest] = value.split(":");
+		if (rest.length > 0) return undefined;
+		const validAt = INJECT_AT.find((candidate) => candidate === at);
+		const validKind = INJECT_KIND.find((candidate) => candidate === kind);
+		return validAt === undefined || validKind === undefined ? undefined : { at: validAt, kind: validKind };
+	};
 
 	/** Install the guards, then run `load`. Resolves once `load` has resolved. */
 	static readonly run = async (options: ProcessGuardOptions): Promise<void> => {

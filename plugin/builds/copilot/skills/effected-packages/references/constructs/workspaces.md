@@ -67,7 +67,10 @@
 | `PackedInstallBudget` | Interface | What `PackedInstall.timeoutBudget` adds up. | from `@effected/workspaces/testing` |
 | `PackedInstallClosureOptions` | Interface | What decides the set of packages a packed install packs: the options `PackedInstall.closure` and `PackedInstall.run` share. | from `@effected/workspaces/testing` |
 | `PackedInstallError` | Class | Why a packed install could not be proven. | from `@effected/workspaces/testing` — packed install failure, manager unavailable, unresolved workspace protocol, missing bin, invalid override, bin conflict |
+| `PackedInstallGate` | Interface | What a test suite should do about a `PackedInstallPreflight`. | from `@effected/workspaces/testing` |
 | `PackedInstallOptions` | Interface | Options for `PackedInstall.run`. | from `@effected/workspaces/testing` |
+| `PackedInstallPreflight` | Interface | Whether the pack source a run needs is on disk. | from `@effected/workspaces/testing` |
+| `PackedInstallPreflightOptions` | Interface | Options for `PackedInstall.preflight`: the run's closure and pack source, so the check answers for exactly the run those options describe. | from `@effected/workspaces/testing` |
 | `PackedInstallResult` | Class | What a packed install produced. | from `@effected/workspaces/testing` — installed consumers, unavailable managers, packed tarball paths |
 | `PeerCheck` | Class | The result of checking a lockfile for unsatisfied peer dependencies. | find unsatisfied peer dependencies in a lockfile, replicate pnpm peers check, peer dependency audit |
 | `PeerCheckOptions` | Interface | Options for `PeerCheck.run`. | |

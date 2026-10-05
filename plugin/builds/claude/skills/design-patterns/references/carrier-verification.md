@@ -353,7 +353,10 @@ other rule here still applies to a real suite built on it:
   to install the linked builds in every consumer too, or name them in
   `overrides` (package name to a publish-ready directory or a `.tgz`); both
   steer the closure's transitive references to the supplied tarball under
-  every manager.
+  every manager. Without it the packed suites go red for the whole loop
+  (the packed carrier imports a surface the registry lacks), and leaving it
+  set is harmless afterwards: with no `file:` override in the workspace it
+  installs nothing extra.
 
 ### A vitest file: sizing the timeout from the closure
 

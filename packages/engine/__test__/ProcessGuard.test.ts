@@ -50,6 +50,29 @@ const runGuard = (options: ProcessGuardOptions) =>
 		(error: unknown) => (error instanceof ExitCalled ? ("exited" as const) : Promise.reject(error)),
 	);
 
+describe("ProcessGuard.parseInjectCrash", () => {
+	it("parses every <at>:<kind> pair", () => {
+		for (const at of ["load", "connected"] as const)
+			for (const kind of ["uncaughtException", "unhandledRejection"] as const)
+				assert.deepStrictEqual(ProcessGuard.parseInjectCrash(`${at}:${kind}`), { at, kind });
+	});
+
+	it("is undefined for no value and for anything outside the grammar", () => {
+		for (const value of [
+			undefined,
+			"",
+			"load",
+			"load:",
+			":uncaughtException",
+			"later:uncaughtException",
+			"load:boom",
+			"load:uncaughtException:x",
+			"LOAD:uncaughtException",
+		])
+			assert.isUndefined(ProcessGuard.parseInjectCrash(value), String(value));
+	});
+});
+
 describe("ProcessGuard.run", () => {
 	it("installs both listeners before load runs", async () => {
 		const { host, listeners } = fakeHost();

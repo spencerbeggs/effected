@@ -118,7 +118,7 @@
 		"Distribution": "the carrier package name and version a tool's bins were installed through",
 		"DistributionField": "the nullable distribution field of a machine-readable envelope, null for a direct install",
 		"LaunchContext": "resolve a launched tool's project directory from argv, env keys, then cwd, rejecting unsubstituted placeholders",
-		"ProcessGuard": "transport-neutral crash guards for an lsp or any server process before its graph loads, mark connected yourself, exit only before connect, startup failure exits 1",
+		"ProcessGuard": "transport-neutral crash guards for an lsp or any server process before its graph loads, mark connected yourself, exit only before connect, startup failure exits 1, parse a crash-injection env value",
 		"Remediation": "what a caller, usually an agent, should do after a failure: hint plus optional suggested tool and args",
 		"distributionSuffix": "render the via name version suffix for a --version line or startup log, empty for a direct install"
 	},
