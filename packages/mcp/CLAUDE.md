@@ -88,6 +88,15 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   `Layer.provideMerge`, not `Layer.provide` — so every layer composed WITH
   it logs to stderr too, not only the wiring `McpStdio.layer` builds
   internally.
+- **`LogToStderr` does not reach `Logger.consoleJson`, `consoleLogFmt` or
+  `consoleStructured`.** All three are `Logger.withConsoleLog(format)`,
+  which calls `console.log` unconditionally (vendored
+  `packages/effect/src/Logger.ts:265-271`, the three at `:917`, `:942`,
+  `:965`); only the default logger and `consolePretty` read the reference
+  (`internal/effect.ts:6898` and `:6754`). Under `McpStdio` a server must
+  not install them: stdout is the wire. Wrap a formatter in
+  `Logger.withConsoleError` instead. `McpHarness.test.ts` pins both sides
+  through `consoleLogSoFar`.
 - **`McpStdio.layer` guards the server's stdin.** Core's stdio decoder
   skips a line it cannot use and keeps serving (Effect-TS/effect PR #8541),
   but sends no reply, where JSON-RPC 2.0 requires one; an over-cap line is

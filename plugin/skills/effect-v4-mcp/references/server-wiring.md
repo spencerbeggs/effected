@@ -59,13 +59,22 @@ internally would win over the harness's and talk to the real terminal.
 
 `McpStdio.layer(options)` is `McpServer.layerStdio` (`layerStdio`) with
 `LogToStderr` **merged** into its own output via `Layer.provideMerge`, then
-`Layer.orDie`. Two consequences:
+`Layer.orDie`. Three consequences:
 
 - Every layer composed **with** `McpStdio.layer` inherits the stderr routing.
   A sibling merged in beside it with `Layer.mergeAll` instead of
   `Layer.provideMerge` is not provided *by* it, so that sibling's own build
   still logs through the default logger, which lands on stdout when nothing
   else has set `LogToStderr`.
+- `LogToStderr` only reaches a logger that reads it: Effect's default logger
+  and `Logger.consolePretty`. `Logger.consoleJson`, `Logger.consoleLogFmt`
+  and `Logger.consoleStructured` are built with `Logger.withConsoleLog`,
+  which writes through `console.log` whatever `LogToStderr` says (`effect`'s
+  `src/Logger.ts`: `withConsoleLog` at 265-271, `consoleLogFmt` at 917,
+  `consoleStructured` at 942, `consoleJson` at 965; the default logger reads
+  the reference at `src/internal/effect.ts:6898`). Never install them in an MCP server: every log
+  line lands on stdout, the wire. For JSON logs on stderr, install
+  `Logger.layer([Logger.withConsoleError(Logger.formatJson)])`.
 - A malformed `protocols` list — more than one stateless adapter — is the
   implementer's own defect: `Layer.orDie` turns the `IllegalArgumentError`
   core would otherwise raise into a die, since there is no way to recover

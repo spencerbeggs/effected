@@ -106,6 +106,16 @@ export class McpStdio {
 	 * `Layer.provideMerge(McpStdio.layer(...))`. A sibling merged beside it
 	 * with `Layer.mergeAll` is not provided by it, so its build logs still
 	 * go through `console.log`, onto the wire.
+	
+	 *
+	 * `LogToStderr` only reaches a logger that reads it: Effect's default
+	 * logger and `Logger.consolePretty`. `Logger.consoleJson`,
+	 * `Logger.consoleLogFmt` and `Logger.consoleStructured` are built with
+	 * `Logger.withConsoleLog`, which writes through `console.log` whatever
+	 * `LogToStderr` says, so a server that installs one puts every log line on
+	 * the wire. Never install them under this layer; wrap the formatter in
+	 * `Logger.withConsoleError` instead, as in
+	 * `Logger.layer([Logger.withConsoleError(Logger.formatJson)])`.
 	 *
 	 * The server reads stdin through a guard that frames it exactly as core's
 	 * decoder does: one streaming UTF-8 decoder, a byte-order mark stripped

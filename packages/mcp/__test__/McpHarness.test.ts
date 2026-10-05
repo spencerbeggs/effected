@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Deferred, Effect, Exit, Layer, Result, Stdio, Stream } from "effect";
+import { Cause, Deferred, Effect, Exit, Layer, Logger, Result, Stdio, Stream } from "effect";
 import { McpProtocol } from "effect/ai";
 import { McpStdio } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
@@ -184,6 +184,33 @@ describe("McpHarness", () => {
 				),
 			);
 			assert.include(yield* harness.stderrSoFar, "build-log");
+			assert.deepStrictEqual(yield* harness.consoleLogSoFar, []);
+		}),
+	);
+
+	it.effect("Logger.consoleJson ignores LogToStderr: under McpStdio.layer it still writes through console.log", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(
+				Layer.effectDiscard(Effect.logError("json-log")).pipe(
+					Layer.provide(Logger.layer([Logger.consoleJson])),
+					Layer.provideMerge(McpStdio.layer({ name: "json-log", version: "0.0.0" })),
+				),
+			);
+			// console.log is stdout in a real process: the wire.
+			assert.isTrue((yield* harness.consoleLogSoFar).some((line) => line.includes("json-log")));
+			assert.notInclude(yield* harness.stderrSoFar, "json-log");
+		}),
+	);
+
+	it.effect("control: the same JSON format wrapped in Logger.withConsoleError logs on stderr", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(
+				Layer.effectDiscard(Effect.logError("json-log")).pipe(
+					Layer.provide(Logger.layer([Logger.withConsoleError(Logger.formatJson)])),
+					Layer.provideMerge(McpStdio.layer({ name: "json-err", version: "0.0.0" })),
+				),
+			);
+			assert.include(yield* harness.stderrSoFar, "json-log");
 			assert.deepStrictEqual(yield* harness.consoleLogSoFar, []);
 		}),
 	);

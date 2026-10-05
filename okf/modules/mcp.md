@@ -9,8 +9,8 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-05T18:03:59Z
-  body_sha256: 4ccddf5800231bc8d1281669d3523ecd9938db93880820b257c52ee466da9463
+  at: 2026-10-05T19:06:42Z
+  body_sha256: 66c35dbf56588d896af1760fe3dc53c5eb1790ed0db8dae26270129867ea6207
 ---
 
 # @effected/mcp
@@ -52,6 +52,17 @@ from `cli` to `mcp`, none from `mcp` to `workspaces`.
 
 `Remediation` and `CurrentDistribution` are [`@effected/engine`](engine.md)
 exports this package consumes, not exports of its own.
+
+`LogToStderr`, which `McpStdio.layer` merges into its output, reaches only
+a logger that reads it: Effect's default logger and `Logger.consolePretty`
+(vendored `packages/effect/src/internal/effect.ts:6898` and `:6754`).
+`Logger.consoleJson`, `Logger.consoleLogFmt` and `Logger.consoleStructured`
+are `Logger.withConsoleLog(format)` (`Logger.ts:965`, `:917`, `:942`),
+which calls `console.log` unconditionally (`Logger.ts:265-271`). A server
+that installs one under `McpStdio` writes every log line onto the wire, so
+it must not; `Logger.withConsoleError(Logger.formatJson)` gives the same
+format on stderr. `McpHarness.test.ts` pins both sides through
+`consoleLogSoFar`.
 
 ## `@effected/mcp/testing`
 
