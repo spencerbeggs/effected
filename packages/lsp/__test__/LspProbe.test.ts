@@ -1,17 +1,9 @@
-import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import { Config, Effect } from "effect";
-import { ChildProcess } from "effect/process";
+import { Effect } from "effect";
 import type { LspTestFailure } from "../src/testing.js";
 import { LspProbe } from "../src/testing.js";
-
-const FAKE = join(import.meta.dirname, "fixtures", "fake-lsp.mjs");
-/** The fake server's command, with `PATH` read through `Config` rather than from the environment directly. */
-const command = (...flags: ReadonlyArray<string>) =>
-	Effect.map(Config.String("PATH").pipe(Config.withDefault("")), (path) =>
-		ChildProcess.make(process.execPath, [FAKE, ...flags], { env: { PATH: path } }),
-	);
+import { fakeLspCommand as command } from "./helpers/fakeLsp.js";
 
 const reasonOf = (failure: LspTestFailure | { readonly _tag: string }) =>
 	failure._tag === "LspTestFailure" ? (failure as LspTestFailure).reason : failure._tag;

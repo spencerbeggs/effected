@@ -1,20 +1,13 @@
-import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import { Config, Effect } from "effect";
-import { ChildProcess } from "effect/process";
+import { Effect } from "effect";
 import { LspFrame } from "../src/index.js";
 import type { LspTestFailure } from "../src/testing.js";
 import { LspProcess } from "../src/testing.js";
-
-const FAKE = join(import.meta.dirname, "fixtures", "fake-lsp.mjs");
+import { fakeLspCommand } from "./helpers/fakeLsp.js";
 
 /** Spawn the hand-written fake server with `flags`, for the life of the test's scope. */
-const spawn = (...flags: ReadonlyArray<string>) =>
-	Effect.gen(function* () {
-		const path = yield* Config.String("PATH").pipe(Config.withDefault(""));
-		return yield* LspProcess.spawn(ChildProcess.make(process.execPath, [FAKE, ...flags], { env: { PATH: path } }));
-	});
+const spawn = (...flags: ReadonlyArray<string>) => Effect.flatMap(fakeLspCommand(...flags), LspProcess.spawn);
 
 const INITIALIZE = {
 	jsonrpc: "2.0",
