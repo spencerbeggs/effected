@@ -47,6 +47,23 @@ describe("Jsonc", () => {
 			}),
 		);
 
+		it.effect("renders the message position 1-based while the detail fields stay 0-based", () =>
+			Effect.gen(function* () {
+				const e = yield* Effect.flip(Jsonc.parse('{ "a": }'));
+				assert.instanceOf(e, JsoncParseError);
+				assert.strictEqual(e.errors[0].code, "ValueExpected");
+				assert.strictEqual(e.errors[0].line, 0);
+				assert.strictEqual(e.errors[0].character, 7);
+				assert.include(e.message, "ValueExpected at 1:8");
+				assert.notInclude(e.message, "at 0:7");
+				const multi = yield* Effect.flip(Jsonc.parse('{\n  "a": 1\n  "b": 2\n}'));
+				assert.strictEqual(multi.errors[0].code, "CommaExpected");
+				assert.strictEqual(multi.errors[0].line, 2);
+				assert.strictEqual(multi.errors[0].character, 2);
+				assert.include(multi.message, "CommaExpected at 3:3");
+			}),
+		);
+
 		it.effect("computes line and character across newlines", () =>
 			Effect.gen(function* () {
 				const error = yield* Effect.flip(Jsonc.parse('{\n  "a": 1\n  "b": 2\n}'));

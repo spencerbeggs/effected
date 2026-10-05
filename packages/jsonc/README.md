@@ -71,7 +71,7 @@ import { Effect } from "effect";
 
 Effect.runPromise(Effect.result(Jsonc.parse('{ "a": }'))).then(console.log);
 // Failure with JsoncParseError:
-// "JSONC parse failed with 1 error: ValueExpected at 0:7"
+// "JSONC parse failed with 1 error: ValueExpected at 1:8"
 // The `errors` field carries one JsoncParseErrorDetail per recovered error,
 // each with code, offset, length, line and character.
 ```

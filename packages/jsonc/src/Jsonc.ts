@@ -60,6 +60,13 @@ export class JsoncParseErrorDetail extends Schema.Class<JsoncParseErrorDetail>("
  * {@link Jsonc.parse}, {@link Jsonc.parseTree} and the decode direction of the
  * schema factories.
  *
+ * @remarks
+ * The `message` renders each detail's position 1-based
+ * (`line + 1:character + 1`) for human readers — a CLI printing this string
+ * shows the line/column a person counts in their editor. The structured
+ * {@link JsoncParseErrorDetail} `line`/`character` fields stay 0-based (LSP
+ * convention); the offset applies to the rendered message only.
+ *
  * @public
  */
 export class JsoncParseError extends Schema.TaggedError<JsoncParseError>()("JsoncParseError", {
@@ -68,7 +75,7 @@ export class JsoncParseError extends Schema.TaggedError<JsoncParseError>()("Json
 }) {
 	override get message(): string {
 		const count = this.errors.length;
-		const summary = this.errors.map((e) => `${e.code} at ${e.line}:${e.character}`).join("; ");
+		const summary = this.errors.map((e) => `${e.code} at ${e.line + 1}:${e.character + 1}`).join("; ");
 		return `JSONC parse failed with ${count} error${count === 1 ? "" : "s"}: ${summary}`;
 	}
 }
