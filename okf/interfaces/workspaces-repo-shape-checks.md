@@ -448,6 +448,32 @@ the same object, in one Effect. A vitest test's timeout is fixed when it is
 declared, so a consumer awaits either at module evaluation, gated on its
 prod build existing.[^packed-install-ts]
 
+### Preflight: a missing prod build is a decision, not an error
+
+`PackedInstall.run` packs `dist/prod/npm/pkg` by default, and a test job that
+only ran `build:dev` has none of it: the run fails `PackSourceMissing`.
+`PackedInstall.preflight({ carrier, closure?, overrides?, workspaceOverrides?,
+packFrom? })` answers first, from the run's own planner, with
+`{ ready, missing }`: `missing` is the absolute `package.json` paths under
+`packFrom` that do not exist, in pack order (closure members only: an override
+is validated by the planner itself). `packFrom: "source"` checks nothing
+(`pnpm pack` builds none of its own), so it is always ready. It needs
+`WorkspaceDiscovery | FileSystem | Path` and fails as `closure` does, plus `Io`.
+
+`PackedInstall.gate(preflight, env)` is the pure decision over that answer:
+ready is `"run"`; missing is `"skip"` off CI and `"fail"` under CI, with a
+`message` naming every missing path and the prod build to run. `env.CI` counts
+as set when present and not `""`, `"0"` or `"false"` (case-insensitive). The
+environment arrives as a parameter because the `./testing` modules read no
+`process`. The suite wires the decision with `describe.runIf`: one block for
+`"run"`, one whose single test `assert.fail(gate.message)`s for `"fail"`. There
+is deliberately **no vitest-facing wrapper** in the package: a `packedDescribe`
+would make `vitest` a dependency of a subpath that today needs none, for two
+lines of consumer code, and the recipe in `design-patterns`'
+`carrier-verification.md` carries them. The reason the gate exists: a plain
+skip gate silently skips in a PR job that never ran the prod build, which is
+how okfit's first version would have gone green having proven nothing.
+
 ### Overrides: packages from outside the workspace
 
 A closure member can depend on a package version the registry does not have
@@ -493,7 +519,7 @@ sidesteps npm 12's keyed-by-name `--json` shape.
 `PackedInstall` asserts that each bin exists and is executable, not what it
 does. Run each bin from the test, inside the same scope.
 `InstalledConsumer.runBin(name, args, options?)` spawns it from the consumer
-directory with stdin ignored and returns `{ stdout, stderr, exitCode }`; a
+directory and returns `{ stdout, stderr, exitCode }`; a
 non-zero exit is a result. A spawn failure, an expired ceiling (one minute by
 default) or flooded output fails `BinFailed`. The environment is the one the
 install ran under, which the consumer carries as a redacted `env` field so
@@ -503,6 +529,20 @@ entry wins: `CI: "true"` runs a bin as if under CI. A
 consumer's test therefore needs no direct `@effected/commands` dependency to
 run a bin.[^packed-install-ts]
 
+`RunBinOptions.stdin` (shared by `runBin` and `runCarrierBin`) is what the bin
+reads: a string (UTF-8), bytes or a `Stream<Uint8Array, PlatformError>`, written
+and then closed, matching core's `ChildProcess` `stdin` and `CliTest.run`'s
+text option. **Omitted or `""` the bin's stdin is the null device**
+(`"ignore"`): it reads end of input at once, never an open pipe, so a bin that
+reads stdin exits rather than hanging until the ceiling. That is the
+behaviour `runBin` already had; the option only adds input. Empty bytes or an
+empty stream are sent as given. A conversation that must interleave with the
+bin's output (an LSP session, `McpProbe`) is driven through `command` /
+`carrierCommand`, which leave stdin open. The e2e
+(`__test__/e2e/RunBinStdin.e2e.test.ts`) spawns a real echoing bin to pin all
+of it. A transport probe for an LSP is not part of this package: a separate
+`@effected/lsp` ships it.
+
 `PackedInstallResult.scratch` is the realpath'd scratch root, so per-run
 state such as `XDG_DATA_HOME` can live inside it and be removed with it
 rather than in a second temporary directory.
@@ -511,7 +551,8 @@ For an MCP bin, `McpProbe.initialize` from `@effected/mcp/testing` is the
 proof. `InstalledConsumer.command(name, args?, options?)` returns the
 `ChildProcess` command `runBin` builds, with the same environment layering and
 scrub, and leaves stdin as the spawner's default pipe so the probe can write
-to it; `runBin` spawns that command with stdin ignored. There is no runtime
+to it; `runBin` spawns that command with `options.stdin`, or the null device
+when omitted. There is no runtime
 edge between `workspaces` and `mcp`: the consumer's test passes one to the
 other. The scratch directory is removed when the scope closes.
 
@@ -540,7 +581,7 @@ a front end's. `InstalledConsumer.runCarrierBin(name, args?, options?)` runs
 the carrier's own bin regardless: it reads `node_modules/<carrier>/package.json`
 (the consumer's `carrier` field, which `run` sets), takes `name` from its
 `bin` map, and runs that file with `node` under `runBin`'s environment,
-stdin ignored. Through `node` it assumes a Node script, drops any flags in
+with `options.stdin` (the null device when omitted). Through `node` it assumes a Node script, drops any flags in
 the shim's shebang, and bypasses the executable bit, so it proves the
 carrier's shim runs, not that it is executable. `carrierCommand` returns the same command with stdin open for
 `McpProbe`. A consumer with no carrier, a carrier not installed or not

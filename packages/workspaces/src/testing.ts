@@ -30,7 +30,10 @@ export {
 	type PackedInstallBudget,
 	type PackedInstallClosureOptions,
 	PackedInstallError,
+	type PackedInstallGate,
 	type PackedInstallOptions,
+	type PackedInstallPreflight,
+	type PackedInstallPreflightOptions,
 	PackedInstallResult,
 	type RunBinOptions,
 } from "./PackedInstall.js";

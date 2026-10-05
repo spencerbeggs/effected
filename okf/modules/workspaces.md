@@ -200,10 +200,14 @@ constructor:[^testing-ts]
 - `PackedInstall` (with `PackedInstallError`, `PackedInstallResult`,
   `InstalledConsumer`, `PackSource`, `PackedInstallOptions`,
   `PackedInstallClosureOptions`, `PackedInstallBudget`, `BinCommandOptions`,
-  `RunBinOptions` and `BinProvenance`): packs a carrier, its closure and any `overrides`,
+  `RunBinOptions` (which takes `stdin`; omitted means an immediately ended
+  input) and `BinProvenance`): packs a carrier, its closure and any `overrides`,
   then installs it into a scratch consumer under every available package
-  manager; `closure` names what a run will pack without packing it, and
-  `timeoutBudgetFor` budgets a run from its own options.
+  manager; `closure` names what a run will pack without packing it,
+  `timeoutBudgetFor` budgets a run from its own options, and `preflight` /
+  `gate` (with `PackedInstallPreflight`, `PackedInstallPreflightOptions` and
+  `PackedInstallGate`) decide run, skip or fail when the prod build is
+  missing.
 
 The contracts are
 [the repo-shape checks interface](../interfaces/workspaces-repo-shape-checks.md).

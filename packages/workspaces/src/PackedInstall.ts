@@ -2,7 +2,7 @@ import type { CommandOutput } from "@effected/commands";
 import { Run } from "@effected/commands";
 import { Yaml } from "@effected/yaml";
 import type { PlatformError } from "effect";
-import { Duration, Effect, FileSystem, Option, Path, Redacted, Result, Schema } from "effect";
+import { Duration, Effect, FileSystem, Option, Path, Redacted, Result, Schema, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ChildProcess } from "effect/process";
 import type { PackedManifest } from "./internal/packedInstallPlan.js";
@@ -258,6 +258,22 @@ export interface BinCommandOptions {
 export interface RunBinOptions extends BinCommandOptions {
 	/** Ceiling on the run. Defaults to one minute. Expiry fails `BinFailed` with a message naming the bin and this duration. */
 	readonly timeout?: Duration.Input | undefined;
+	/**
+	 * What to write to the bin's stdin, which is then closed: a string (UTF-8
+	 * encoded), bytes, or a byte stream for input that must arrive in pieces,
+	 * such as a framed LSP session.
+	 *
+	 * @remarks
+	 * Omitted or `""`, the bin's stdin is the null device: it reads end of
+	 * input immediately, never an open pipe, so a bin that reads stdin exits
+	 * instead of hanging until the ceiling. Empty bytes and an empty stream
+	 * are sent as given: the bin sees an ended, empty input. A bin that answers
+	 * only after the input is complete is driven by this option; one that must
+	 * be interleaved with its output is driven through
+	 * {@link InstalledConsumer.command} or {@link InstalledConsumer.carrierCommand},
+	 * which leave stdin open.
+	 */
+	readonly stdin?: string | Uint8Array | Stream.Stream<Uint8Array, PlatformError.PlatformError> | undefined;
 }
 
 const DEFAULT_BIN_TIMEOUT: Duration.Input = "1 minute";
@@ -446,7 +462,9 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	 * Run the installed bin `name` to completion and collect what it wrote.
 	 *
 	 * @remarks
-	 * Spawns {@link InstalledConsumer.command} with stdin ignored: the bin
+	 * Spawns {@link InstalledConsumer.command} with `options.stdin` as its
+	 * input (the null device when omitted, so a bin never waits on an open
+	 * pipe): the bin
 	 * from the consumer's directory, under the install's scrubbed environment
 	 * with `options.env` layered over it after the scrub, and nothing
 	 * inherited beyond that. A
@@ -458,14 +476,14 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	 *
 	 * @param name - The bin, as named in `node_modules/.bin`.
 	 * @param args - Its arguments.
-	 * @param options - Extra environment, working directory and ceiling.
+	 * @param options - Extra environment, working directory, ceiling and stdin.
 	 */
 	runBin(
 		name: string,
 		args: ReadonlyArray<string> = [],
 		options: RunBinOptions = {},
 	): Effect.Effect<CommandOutput, PackedInstallError, ChildProcessSpawner.ChildProcessSpawner> {
-		return collectBin(this.command(name, args, options), this.manager, name, options.timeout);
+		return collectBin(this.command(name, args, options), this.manager, name, options);
 	}
 
 	/**
@@ -550,7 +568,8 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	 * the `node_modules/.bin` slot.
 	 *
 	 * @remarks
-	 * Spawns {@link InstalledConsumer.carrierCommand} with stdin ignored, and
+	 * Spawns {@link InstalledConsumer.carrierCommand} with `options.stdin` as
+	 * its input (the null device when omitted), and
 	 * reports as {@link InstalledConsumer.runBin} does: a non-zero exit is a
 	 * result, and a bin that cannot spawn or outlives `options.timeout` (one
 	 * minute by default) fails `BinFailed`. Use it beside `runBin` under
@@ -561,7 +580,7 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	 *
 	 * @param name - The bin, as the carrier's `bin` map names it.
 	 * @param args - Its arguments.
-	 * @param options - Extra environment, working directory and ceiling.
+	 * @param options - Extra environment, working directory, ceiling and stdin.
 	 */
 	runCarrierBin(
 		name: string,
@@ -574,7 +593,7 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	> {
 		const manager = this.manager;
 		return this.carrierCommand(name, args, options).pipe(
-			Effect.flatMap((command) => collectBin(command, manager, name, options.timeout)),
+			Effect.flatMap((command) => collectBin(command, manager, name, options)),
 		);
 	}
 }
@@ -589,16 +608,26 @@ const layeredEnv = (consumer: InstalledConsumer, options: BinCommandOptions): Re
 	return env;
 };
 
-/** Run a bin's command to completion, stdin ignored, mapping a failed spawn or an expired ceiling to `BinFailed`. */
+/** A bin's stdin as `ChildProcess` takes it: absent or `""` is the null device (immediate end of input), anything else is written and closed. */
+const stdinOf = (stdin: RunBinOptions["stdin"]): ChildProcess.CommandInput => {
+	if (stdin === undefined || stdin === "") return "ignore";
+	if (typeof stdin === "string") return Stream.make(new TextEncoder().encode(stdin));
+	if (stdin instanceof Uint8Array) return Stream.make(stdin);
+	return stdin;
+};
+
+/** Run a bin's command to completion with `options.stdin` as its input (the null device when omitted), mapping a failed spawn or an expired ceiling to `BinFailed`. */
 const collectBin = (
 	command: ChildProcess.StandardCommand,
 	manager: PackageManagerName,
 	name: string,
-	timeout: Duration.Input = DEFAULT_BIN_TIMEOUT,
-): Effect.Effect<CommandOutput, PackedInstallError, ChildProcessSpawner.ChildProcessSpawner> =>
-	Run.collect(ChildProcess.make(command.command, command.args, { ...command.options, stdin: "ignore" }), {
-		timeout,
-	}).pipe(
+	options: RunBinOptions,
+): Effect.Effect<CommandOutput, PackedInstallError, ChildProcessSpawner.ChildProcessSpawner> => {
+	const timeout = options.timeout ?? DEFAULT_BIN_TIMEOUT;
+	return Run.collect(
+		ChildProcess.make(command.command, command.args, { ...command.options, stdin: stdinOf(options.stdin) }),
+		{ timeout },
+	).pipe(
 		Effect.mapError((cause) =>
 			failure(
 				"BinFailed",
@@ -609,6 +638,7 @@ const collectBin = (
 			),
 		),
 	);
+};
 
 /**
  * What a packed install produced.
@@ -656,6 +686,46 @@ export interface PackedInstallBudget {
 	 * `"0 seconds"` for a test that only installs.
 	 */
 	readonly perConsumer?: Duration.Input | undefined;
+}
+
+/**
+ * Options for {@link PackedInstall.preflight}: the run's closure and pack
+ * source, so the check answers for exactly the run those options describe.
+ *
+ * @public
+ */
+export interface PackedInstallPreflightOptions extends PackedInstallClosureOptions {
+	/** The carrier, as the run's `carrier`. */
+	readonly carrier: string;
+	/** Where the run packs from; defaults as the run's does, to `{ directory: "dist/prod/npm/pkg" }`. */
+	readonly packFrom?: PackSource | undefined;
+}
+
+/**
+ * Whether the pack source a run needs is on disk.
+ *
+ * @public
+ */
+export interface PackedInstallPreflight {
+	/** `true` when every package the run packs has its pack source in place. */
+	readonly ready: boolean;
+	/** The absolute `package.json` paths that do not exist, in pack order; empty exactly when `ready`. */
+	readonly missing: ReadonlyArray<string>;
+}
+
+/**
+ * What a test suite should do about a {@link PackedInstallPreflight}.
+ *
+ * @public
+ */
+export interface PackedInstallGate {
+	/**
+	 * `"run"` when the pack source is there; `"skip"` when it is missing and
+	 * the run is not under CI; `"fail"` when it is missing under CI.
+	 */
+	readonly action: "run" | "skip" | "fail";
+	/** Why, naming the missing paths and the build to run. Empty when `action` is `"run"`. */
+	readonly message: string;
 }
 
 // npm-packing the prod output is byte-identical to the published tarball;
@@ -996,6 +1066,108 @@ export class PackedInstall {
 				}),
 			),
 		);
+
+	/**
+	 * Whether the pack source {@link PackedInstall.run} would read is on disk,
+	 * before any package manager is spawned.
+	 *
+	 * @remarks
+	 * Plans the closure as the run does (`PackedInstall.closure`'s planner) and
+	 * checks the `package.json` of each closure package under `packFrom`
+	 * (default `{ directory: "dist/prod/npm/pkg" }`), the same file whose
+	 * absence makes the run fail `PackSourceMissing`. Under `packFrom: "source"`
+	 * the packer builds nothing of its own, so nothing is checked and the
+	 * result is ready. A package a bundler's dev build produced is no
+	 * substitute: the prod output exists only after the prod build, which a
+	 * test job's usual `build:dev` pre-step does not run. Pair it with
+	 * {@link PackedInstall.gate} to skip locally and fail under CI.
+	 *
+	 * Fails as `closure` does, plus `Io` when a path cannot be inspected.
+	 *
+	 * @example
+	 * ```ts
+	 * import { NodeServices } from "@effect/platform-node";
+	 * import { Workspaces } from "@effected/workspaces";
+	 * import { PackedInstall } from "@effected/workspaces/testing";
+	 * import { Effect, Layer } from "effect";
+	 *
+	 * const Live = Workspaces.layer({ cwd: "/repo" }).pipe(Layer.provideMerge(NodeServices.layer));
+	 * const preflight = await Effect.runPromise(
+	 *   PackedInstall.preflight({ carrier: "my-tool", closure: "auto" }).pipe(Effect.provide(Live)),
+	 * );
+	 * console.log(preflight.ready, preflight.missing);
+	 * ```
+	 *
+	 * @param options - The run's carrier, closure, overrides and pack source.
+	 */
+	static readonly preflight: (
+		options: PackedInstallPreflightOptions,
+	) => Effect.Effect<
+		PackedInstallPreflight,
+		PackedInstallError,
+		WorkspaceDiscovery | FileSystem.FileSystem | Path.Path
+	> = Effect.fn("PackedInstall.preflight")(function* (options: PackedInstallPreflightOptions) {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const plan = yield* planClosure(options.carrier, options);
+		const source = options.packFrom ?? DEFAULT_PACK_FROM;
+		if (source === "source") return { ready: true, missing: [] } satisfies PackedInstallPreflight;
+		const missing: Array<string> = [];
+		for (const pkg of plan.closure) {
+			const manifest = path.join(pkg.path, source.directory, "package.json");
+			const present = yield* fs
+				.exists(manifest)
+				.pipe(Effect.mapError((cause) => failure("Io", `could not inspect ${manifest}`, { cause })));
+			if (!present) missing.push(manifest);
+		}
+		return { ready: missing.length === 0, missing } satisfies PackedInstallPreflight;
+	});
+
+	/**
+	 * Turns a {@link PackedInstallPreflight} into the suite's decision: run,
+	 * skip locally, or fail under CI.
+	 *
+	 * @remarks
+	 * Pure: the environment arrives as a parameter, because the `./testing`
+	 * modules read no `process`. `env.CI` counts as set when it is present and
+	 * not `""`, `"0"` or `"false"` (case-insensitive). Ready is always `"run"`;
+	 * missing is `"skip"` off CI and `"fail"` on it, so a CI job that never ran
+	 * the prod build cannot pass by silently skipping the proof. The message
+	 * names every missing path. The test job must run the prod build
+	 * (`build:prod` for a `@savvy-web/bundler` package) before the packed-install
+	 * tests: a dev build leaves `dist/prod` absent.
+	 *
+	 * @example
+	 * ```ts
+	 * import { assert, describe, it } from "@effect/vitest";
+	 * import { PackedInstall } from "@effected/workspaces/testing";
+	 *
+	 * declare const preflight: { readonly ready: boolean; readonly missing: ReadonlyArray<string> };
+	 * const gate = PackedInstall.gate(preflight, process.env);
+	 *
+	 * describe.runIf(gate.action === "run")("packed install", () => {
+	 *   it("installs", () => {});
+	 * });
+	 * describe.runIf(gate.action === "fail")("packed install prod build", () => {
+	 *   it("exists", () => assert.fail(gate.message));
+	 * });
+	 * ```
+	 *
+	 * @param preflight - What {@link PackedInstall.preflight} answered.
+	 * @param env - The environment to read `CI` from, normally `process.env`.
+	 */
+	static readonly gate = (
+		preflight: PackedInstallPreflight,
+		env: Readonly<Record<string, string | undefined>>,
+	): PackedInstallGate => {
+		if (preflight.ready) return { action: "run", message: "" };
+		const ci = env.CI;
+		const underCi = ci !== undefined && !["", "0", "false"].includes(ci.toLowerCase());
+		const message = `the pack source is missing: ${preflight.missing.join(", ")}; run the prod build (build:prod) before the packed-install tests`;
+		return underCi
+			? { action: "fail", message: `${message}; it must not be skipped under CI` }
+			: { action: "skip", message };
+	};
 
 	/** Pack, then install under every available manager. */
 	static readonly run = Effect.fn("PackedInstall.run")(function* (options: PackedInstallOptions) {
