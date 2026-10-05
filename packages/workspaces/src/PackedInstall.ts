@@ -163,7 +163,12 @@ export interface PackedInstallOptions extends PackedInstallClosureOptions {
 	 * `false`, so sharing is an explicit choice.
 	 */
 	readonly allowSharedBins?: boolean | undefined;
-	/** The environment for every spawn: pass `process.env` from the test file. The parent manager's context is stripped. */
+	/**
+	 * The environment for every spawn: pass `process.env` from the test file, the edge that supplies the host
+	 * environment. It is taken whole because the parent manager's context is stripped by prefix (`npm_*`,
+	 * `pnpm_config_*`, `yarn_*`), which `Config`, reading keys by name, cannot enumerate; read single keys such as
+	 * `CI` through `Config`.
+	 */
 	readonly env: Readonly<Record<string, string | undefined>>;
 	/**
 	 * Extra consumer dependencies, name to range or `file:` tarball spec.

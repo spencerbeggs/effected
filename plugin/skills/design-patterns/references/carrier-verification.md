@@ -211,7 +211,7 @@ import { NodeServices } from "@effect/platform-node"
 import { McpProbe } from "@effected/mcp/testing"
 import { Workspaces } from "@effected/workspaces"
 import { PackedInstall } from "@effected/workspaces/testing"
-import { Duration, Effect, Layer } from "effect"
+import { Config, Duration, Effect, Layer } from "effect"
 
 const MANAGERS = ["npm", "pnpm", "yarn", "bun"] as const
 const INSTALL_TIMEOUT = "2 minutes"
@@ -236,14 +236,16 @@ const BUDGET = PackedInstall.timeoutBudget({
 export const TEST_TIMEOUT_MS = Duration.toMillis(BUDGET) + 60_000
 
 const program = Effect.gen(function* () {
+  // CI provisions every manager, so a missing one fails there; locally it is skipped.
+  const underCi = yield* Config.Boolean("CI").pipe(Config.withDefault(false), Effect.orElseSucceed(() => false))
   const result = yield* PackedInstall.run({
     carrier: "my-tool",
     closure: "auto",
     managers: MANAGERS,
     bins: ["my-tool", "my-tool-mcp"],
+    // The whole host environment, which PackedInstall scrubs; see below.
     env: process.env,
-    // CI provisions every manager, so a missing one fails there; locally it is skipped.
-    require: process.env.CI ? "all" : "any",
+    require: underCi ? "all" : "any",
     installTimeout: INSTALL_TIMEOUT,
     packTimeout: PACK_TIMEOUT,
   })
@@ -334,8 +336,12 @@ other rule here still applies to a real suite built on it:
   has — and pnpm's isolated layout links only the consumer's direct
   dependencies at the top level anyway. A link into no named package fails
   `UnownedBin`, and a dangling one `MissingBin`.
-- Pass `process.env` in explicitly: nothing under `./testing` reads
-  `process` itself. `PackedInstall.scrubEnv(...)` returns the same scrubbed
+- The test file is the edge that supplies the host environment: pass
+  `process.env` as `env`. `PackedInstall` needs the WHOLE environment, which
+  `Config` cannot enumerate, to strip the package-manager trap variables
+  (`npm_*`, `pnpm_config_*`, `yarn_*`) before every install; read single
+  keys such as `CI` through `Config` instead. Nothing under `./testing`
+  reads `process` itself. `PackedInstall.scrubEnv(...)` returns the same scrubbed
   environment for any spawn that goes through neither `runBin` nor
   `command`. Declare every package the consumer's own code imports
   besides the carrier in `consumerDependencies` — pnpm links only declared
@@ -369,10 +375,15 @@ import { McpProbe } from "@effected/mcp/testing"
 import { Workspaces } from "@effected/workspaces"
 import type { PackedInstallOptions } from "@effected/workspaces/testing"
 import { PackedInstall } from "@effected/workspaces/testing"
-import { Duration, Effect, Layer } from "effect"
+import { Config, Duration, Effect, Layer } from "effect"
 
 const ROOT = resolve(import.meta.dirname, "..", "..")
 const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer))
+
+// Read through Config, so a test can stub it; an unparseable CI counts as unset.
+const UNDER_CI = Effect.runSync(
+  Config.Boolean("CI").pipe(Config.withDefault(false), Effect.orElseSucceed(() => false)),
+)
 
 /** ONE options object: closure plans with it, run installs with it. */
 const RUN: PackedInstallOptions = {
@@ -381,8 +392,8 @@ const RUN: PackedInstallOptions = {
   workspaceOverrides: true, // linked sibling builds reach the scratch consumers too
   managers: ["npm", "pnpm", "yarn", "bun"],
   bins: ["tool", "tool-mcp"],
-  env: process.env,
-  require: process.env.CI ? "all" : "any",
+  env: process.env, // the whole host environment, which PackedInstall scrubs
+  require: UNDER_CI ? "all" : "any",
   installTimeout: "3 minutes",
   packTimeout: "30 seconds",
   // allowSharedBins: true, // only if the front ends deliberately share the bin names
