@@ -1,5 +1,31 @@
 # @effected/workspaces
 
+## 0.32.0
+
+### Features
+
+#### Standard input for `runBin` and `runCarrierBin`
+
+- `RunBinOptions.stdin` accepts a string, bytes or a byte stream and feeds it to the child process. When omitted, the child sees end of input.
+
+#### `PackedInstall` preflight and gate
+
+- `PackedInstall.preflight(options)` reports `{ ready, missing }` for the build output a packed-install check needs.
+- `PackedInstall.gate(preflight)` turns that report into an effect yielding `{ action, message }`, where `action` is `run`, `skip` or `fail`. It reads CI through `Config` and fails under CI, so a missing production build never silently skips the check. [#944][#944]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.15.0 | 0.15.1 |
+| @effected/yaml | dependency | updated | 0.19.0 | 0.19.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#944]: https://github.com/spencerbeggs/effected/pull/944
+
 ## 0.31.0
 
 ### Breaking Changes

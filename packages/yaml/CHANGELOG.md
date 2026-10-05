@@ -1,5 +1,18 @@
 # @effected/yaml
 
+## 0.19.1
+
+### Bug Fixes
+
+- `YamlParseError.message` now renders each diagnostic's position 1-based (`line + 1:character + 1`), so a CLI printing the message shows the line and column a person counts in their editor. The structured `YamlDiagnostic` `line`/`character` fields are unchanged and remain 0-based per LSP convention.
+- `YamlStyleConflictError.message` renders each candidate's first-seen position 1-based the same way; the structured `StyleVoteTally` fields remain 0-based. [#944][#944]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#944]: https://github.com/spencerbeggs/effected/pull/944
+
 ## 0.19.0
 
 ### Breaking Changes

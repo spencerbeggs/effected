@@ -1,5 +1,24 @@
 # @effected/markdown
 
+## 0.15.1
+
+### Bug Fixes
+
+- `MarkdownParseError.message` now renders the diagnostic's position 1-based (`line + 1:character + 1`), so a CLI printing the message shows the line and column a person counts in their editor. The structured `MarkdownDiagnostic` `line`/`character` fields are unchanged and remain 0-based per LSP convention. [#944][#944]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.15.0 | 0.15.1 |
+| @effected/yaml | dependency | updated | 0.19.0 | 0.19.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#944]: https://github.com/spencerbeggs/effected/pull/944
+
 ## 0.15.0
 
 ### Breaking Changes

@@ -1,5 +1,32 @@
 # @effected/cli
 
+## 0.13.0
+
+### Features
+
+- `FailureDetails` gains the required `isCancelled` and `isNotInteractive` flags, so a render can skip the issue-report footer for a cancelled prompt. Code that builds a `FailureDetails` by hand must now supply both fields.
+
+### Documentation
+
+- The `helpOnUsageError` TSDoc names `env.formatter` as the formatter it uses. [#944][#944]
+
+### Refactoring
+
+- Code-span pipe escaping in table cells is reworked with no change in behaviour.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.14.2 | 0.14.2 |
+| @effected/env | dependency | updated | 0.1.0 | 0.1.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#944]: https://github.com/spencerbeggs/effected/pull/944
+
 ## 0.12.0
 
 ### Breaking Changes

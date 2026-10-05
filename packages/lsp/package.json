@@ -1,6 +1,6 @@
 {
 	"name": "@effected/lsp",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Language Server Protocol base-protocol framing for Effect v4, plus a packed-install initialize probe for a Language Server bin",
 	"keywords": ["effect", "lsp", "language-server-protocol", "json-rpc", "content-length", "effected"],

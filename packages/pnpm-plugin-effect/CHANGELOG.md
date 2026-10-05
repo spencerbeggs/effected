@@ -1,5 +1,35 @@
 # @effected/pnpm-plugin-effect
 
+## 0.13.6
+
+### Features
+
+- The `effected` catalog lists `@effected/lsp` at `^0.1.0`.
+
+### Maintenance
+
+#### Updates 11 catalog:effected versions
+
+- `@effected/app` ^0.21.1 -> ^0.21.2 (peer ^0.21.0)
+- `@effected/cli` ^0.12.0 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/engine` ^0.3.0 -> ^0.4.0 (peer ^0.4.0)
+- `@effected/jsonc` ^0.15.0 -> ^0.15.1 (peer ^0.15.0)
+- `@effected/markdown` ^0.15.0 -> ^0.15.1 (peer ^0.15.0)
+- `@effected/mcp` ^0.4.0 -> ^0.5.0 (peer ^0.5.0)
+- `@effected/schemastore` ^0.21.0 -> ^0.21.1 (peer ^0.21.0)
+- `@effected/schemastore-cli` ^0.21.0 -> ^0.21.1 (peer ^0.21.0)
+- `@effected/store` ^0.13.0 -> ^0.13.1 (peer ^0.13.0)
+- `@effected/workspaces` ^0.31.0 -> ^0.32.0 (peer ^0.32.0)
+- `@effected/yaml` ^0.19.0 -> ^0.19.1 (peer ^0.19.0) [#944][#944]
+
+* The `effect` catalog moves `@effect/tsgo` to `0.48.1` (peer `0.48.0`). [#944][#944]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#944]: https://github.com/spencerbeggs/effected/pull/944
+
 ## 0.13.5
 
 ### Maintenance

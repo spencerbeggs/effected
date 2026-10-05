@@ -1,6 +1,6 @@
 {
 	"name": "@effected/cli",
-	"version": "0.12.0",
+	"version": "0.13.0",
 	"private": true,
 	"description": "The presentation boundary of an effect/cli program: audience-aware output, a document IR and renderers, editor links, failure reports and logging, plus opt-in Ink screens, widgets and a live view",
 	"keywords": ["effect", "cli", "logger", "terminal", "ink", "tui"],

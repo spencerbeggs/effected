@@ -1,5 +1,27 @@
 # @effected/app
 
+## 0.21.2
+
+### Documentation
+
+- The `AppStore` TSDoc now explains that creating the directory before opening the database prevents a setup failure rather than converting a defect into a typed error. [#944][#944]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.14.2 | 0.14.2 |
+| @effected/jsonc | dependency | updated | 0.15.0 | 0.15.1 |
+| @effected/store | dependency | updated | 0.13.0 | 0.13.1 |
+| @effected/xdg | dependency | updated | 0.9.0 | 0.9.0 |
+| @effected/yaml | dependency | updated | 0.19.0 | 0.19.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#944]: https://github.com/spencerbeggs/effected/pull/944
+
 ## 0.21.1
 
 ### Bug Fixes

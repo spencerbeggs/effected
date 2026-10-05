@@ -1,5 +1,17 @@
 # @effected/jsonc
 
+## 0.15.1
+
+### Bug Fixes
+
+- `JsoncParseError.message` now renders each detail's position 1-based (`line + 1:character + 1`), so a CLI printing the message shows the line and column a person counts in their editor. The structured `JsoncParseErrorDetail` `line`/`character` fields are unchanged and remain 0-based per LSP convention. [#944][#944]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#944]: https://github.com/spencerbeggs/effected/pull/944
+
 ## 0.15.0
 
 ### Breaking Changes
