@@ -55,7 +55,7 @@
 		"@types/node": "catalog:build",
 		"@types/react": "catalog:build",
 		"effect": "catalog:effect",
-		"ink": "7.1.1",
+		"ink": "8.0.0",
 		"react": "catalog:build",
 		"string-width": "^8.3.0",
 		"typescript": "catalog:build"
@@ -65,10 +65,10 @@
 		"@effected/env": "workspace:^",
 		"@effected/glob": "workspace:^",
 		"@effected/walker": "workspace:^",
-		"@types/react": "^19.2.0",
+		"@types/react": "^19.3.0",
 		"effect": "catalog:effect:peers",
-		"ink": "^7.1.1",
-		"react": "^19.2.0"
+		"ink": "^8.0.0",
+		"react": "^19.3.0"
 	},
 	"peerDependenciesMeta": {
 		"@effected/config-file": {

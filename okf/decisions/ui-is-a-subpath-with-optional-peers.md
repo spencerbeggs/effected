@@ -16,8 +16,8 @@ sources:
     title: "Issue 250: optional peers re-exported from a root entry broke unbundled consumers"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T03:17:21Z
-  body_sha256: 30cd2af57c947cd5a975d937fa294fc7e74a037dac74efeef954ef7b9aa0bf3c
+  at: 2026-10-07T21:32:23Z
+  body_sha256: 5d771fb96cfe3dbfe12609802476d4be9370aaa7fad9e868da98b80c8c8c90ac
 ---
 
 # The Ink layer is a ./ui subpath of cli, with ink and react as optional peers
@@ -39,7 +39,7 @@ peer is optional only while no shared module reaches it.
 The Ink layer lives in `@effected/cli` behind two subpaths: `./ui` for the
 screens and widgets, and `./ui/testing` for the screen harness.[^cli-package-json]
 
-- `ink` (`^7.1.1`) and `react` (`^19.2.0`) are **optional peers**. Only files
+- `ink` (`^8.0.0`) and `react` (`^19.3.0`) are **optional peers**. Only files
   under `src/ui.ts`, `src/ui-testing.ts` and `src/ui/**` may name them.
 - **The root never reaches `./ui`**, statically or through a lazy
   `import()`. `boundary.test.ts` walks the module graph from `src/index.ts`

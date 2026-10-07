@@ -5,7 +5,7 @@ import { TestConsole } from "effect/testing";
 import { ActionEnvironment, ActionLogger, ActionOutputs } from "../src/index.js";
 import { commandLines, isCommand } from "./helpers/runnerCommands.js";
 
-const ZWSP = String.fromCodePoint(0x200b);
+const MARK = String.fromCodePoint(0x2800);
 
 /** Everything written to `Console.log`, as strings, in order. */
 const lines = Effect.map(TestConsole.logLines, (captured) => captured.map(String));
@@ -45,11 +45,11 @@ describe("ActionLogger neutralizes the plain text it writes", () => {
 		);
 	}
 
-	it.effect("the text is kept: only zero-width spaces are added", () =>
+	it.effect("the text is kept: only the neutralizer's marker is added", () =>
 		Effect.gen(function* () {
 			const captured = yield* logged(Effect.logInfo("ok\n::add-mask::x"));
-			assert.strictEqual(captured.join("\n").replaceAll(ZWSP, ""), "ok\n::add-mask::x");
-			assert.include(captured.join("\n"), ZWSP);
+			assert.strictEqual(captured.join("\n").replaceAll(MARK, ""), "ok\n::add-mask::x");
+			assert.include(captured.join("\n"), MARK);
 		}),
 	);
 
@@ -122,7 +122,7 @@ describe("the buffered transcript and the step line are neutralized too", () => 
 				const captured = yield* lines;
 				assert.isAbove(captured.length, 2);
 				assert.deepStrictEqual(commandLines(captured.join("\n")), []);
-				assert.include(captured.join("\n").replaceAll(ZWSP, ""), "resolving\n::add-mask::secret");
+				assert.include(captured.join("\n").replaceAll(MARK, ""), "resolving\n::add-mask::secret");
 			}),
 		),
 	);

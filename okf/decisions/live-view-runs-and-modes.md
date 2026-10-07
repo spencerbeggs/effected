@@ -9,12 +9,12 @@ sources:
     resource: ../../packages/cli/__test__/ui/CliUi.live.modes.test.ts
     title: "The live-view mode tests: hosted and owned, runs, mounting and the non-interactive final frame"
   - id: ink-render
-    resource: "npm:ink@7.1.1"
-    title: "Ink 7.1.1, build/ink.js:706-708: interactive defaults to !isInCi && stdout.isTTY"
+    resource: "npm:ink@8.0.0"
+    title: "Ink 8.0.0, build/ink.js:419-421: interactive defaults to !isInCi && stdout.isTTY"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T14:11:47Z
-  body_sha256: 2329fc1131614fc5222318f96127e4748e4ef8118f21f26808002b4257538c3a
+  at: 2026-10-07T21:32:23Z
+  body_sha256: a9a7b60c2387ff3cd8ee9f8bec2427547c1fb88857d49c9711e917d471c1b753
 ---
 
 # A live view is a scoped drain of runs, hosted or owned, with no input and the mount permit per run
@@ -90,4 +90,4 @@ stdout.
   which `UiProvider`'s `size` provides.
 
 [^pinned-by]: `packages/cli/__test__/ui/CliUi.live.modes.test.ts` and `CliUi.live.test.ts`, which pin the runs, the two modes and the explicit `interactive`; `UiProvider.test.ts` pins the size override `renderToString` needs. The probes behind the three findings were run once and are not kept.
-[^ink-render]: `npm:ink@7.1.1`, `build/ink.js:706-708`
+[^ink-render]: `npm:ink@8.0.0`, `build/ink.js:419-421`

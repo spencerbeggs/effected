@@ -5,8 +5,10 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "bash",
+						"command": "env",
 						"args": [
+							"PLUGINFINITY_EVENT=SessionStart",
+							"bash",
 							"${CLAUDE_PLUGIN_ROOT}/hooks/session-start/orientation.sh"
 						],
 						"timeout": 5

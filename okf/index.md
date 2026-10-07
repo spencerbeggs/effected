@@ -13,6 +13,7 @@ okf_version: "0.2"
 * [decisions](decisions/index.md)
 * [glossary](glossary/index.md)
 * [gotchas](gotchas/index.md)
+* [incidents](incidents/index.md)
 * [interfaces](interfaces/index.md)
 * [invariants](invariants/index.md)
 * [limitations](limitations/index.md)

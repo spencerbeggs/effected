@@ -7,7 +7,7 @@ import type { Document } from "../src/index.js";
 import { CliFailure, CliLinks, CliRuntime, CliTheme, Doc, Render } from "../src/index.js";
 import { commandLines } from "./helpers/runnerCommands.js";
 
-const ZWSP = String.fromCodePoint(0x200b);
+const MARK = String.fromCodePoint(0x2800);
 const ESC = String.fromCharCode(0x1b);
 
 const HOSTILE = [
@@ -88,18 +88,18 @@ describe("under GitHub Actions no format emits a line the runner would read as a
 		}
 	}
 
-	it("the text itself is otherwise intact: only a zero-width space is added, in front of a command line", () => {
+	it("the text itself is otherwise intact: only the marker is added, in front of a command line", () => {
 		const ctx = contextFor("agent", "github-actions");
 		const out = Render.plain(docOf("keep\n::error::x"), ctx);
-		assert.include(out, `${ZWSP}::error::x`);
+		assert.include(out, `${MARK}::error::x`);
 		assert.include(out, "keep");
-		assert.strictEqual(out.replaceAll(ZWSP, ""), Render.plain(docOf("keep\n::error::x"), contextFor("agent", "none")));
+		assert.strictEqual(out.replaceAll(MARK, ""), Render.plain(docOf("keep\n::error::x"), contextFor("agent", "none")));
 	});
 
 	it("githubLog is not neutralized twice", () => {
 		const out = Render.githubLog(docOf("::error::x"), contextFor("ci", "github-actions"));
-		assert.strictEqual(out.split(ZWSP).length - 1, 1);
-		assert.notInclude(out, `${ZWSP}${ZWSP}`);
+		assert.strictEqual(out.split(MARK).length - 1, 1);
+		assert.notInclude(out, `${MARK}${MARK}`);
 	});
 });
 
@@ -136,25 +136,25 @@ describe("Render.markdown under GitHub Actions", () => {
 		assert.notInclude(out, "##[");
 	});
 
-	it("code, which markdown does not escape, gets the zero-width space under Actions, and only there", () => {
+	it("code, which markdown does not escape, gets the marker under Actions, and only there", () => {
 		const doc: Document = [Doc.paragraph(Doc.code("##[error]x")), Doc.codeBlock("a ##[add-mask]b\n::error::c", "txt")];
 		const under = Render.markdown(doc, contextFor("agent", "github-actions"));
 		assert.deepStrictEqual(commandLines(under), []);
-		assert.include(under, `##${ZWSP}[error]x`);
+		assert.include(under, `##${MARK}[error]x`);
 		const outside = Render.markdown(doc, contextFor("agent", "none"));
 		assert.include(outside, "##[error]x");
-		assert.notInclude(outside, ZWSP);
+		assert.notInclude(outside, MARK);
 	});
 });
 
-describe("outside GitHub Actions the text is left alone: no zero-width noise", () => {
+describe("outside GitHub Actions the text is left alone: no marker noise", () => {
 	it("a command-looking line is untouched for every format and audience", () => {
 		for (const ci of ["generic", "none", "absent"] as const) {
 			for (const audience of ["human", "agent", "ci"] as const) {
 				const ctx = contextFor(audience, ci);
 				for (const format of ["plain", "ansi", "markdown"] as const) {
 					const out = Render[format](docOf("x\r::error::y\n##[error]z"), ctx);
-					assert.notInclude(out, ZWSP, `${audience} ${ci} ${format}`);
+					assert.notInclude(out, MARK, `${audience} ${ci} ${format}`);
 					assert.isAbove(
 						commandLines(out).length,
 						0,
@@ -168,7 +168,7 @@ describe("outside GitHub Actions the text is left alone: no zero-width noise", (
 	it("githubLog still neutralizes, wherever it is chosen explicitly", () => {
 		const out = Render.githubLog(docOf("::error::y"), contextFor("agent", "none"));
 		assert.deepStrictEqual(commandLines(out), []);
-		assert.include(out, ZWSP);
+		assert.include(out, MARK);
 	});
 });
 
@@ -242,10 +242,10 @@ describe("the default failure report", () => {
 		}
 	});
 
-	it.effect("outside GitHub Actions the report is untouched: no zero-width space", () =>
+	it.effect("outside GitHub Actions the report is untouched: no marker", () =>
 		Effect.gen(function* () {
 			const err = yield* report({ AI_AGENT: "x" }, "x\n::error::y");
-			assert.notInclude(err.join("\n"), ZWSP);
+			assert.notInclude(err.join("\n"), MARK);
 		}),
 	);
 });

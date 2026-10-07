@@ -17,7 +17,7 @@ export interface UiRenderOverrides {
 	 * about 33 ms). The harness raises it so a frame lands within its settle window rather than a throttle period later.
 	 */
 	readonly maxFps?: number;
-	/** Called after each render, just before Ink writes the frame; the harness counts frames with it. */
+	/** Called after each render, once Ink has written the frame (or deferred it to its throttle); the harness reads frames with it. */
 	readonly onRender?: () => void;
 	/**
 	 * Called as a screen's run starts mounting, before Ink is loaded and before the screen's thunk is called, so a run

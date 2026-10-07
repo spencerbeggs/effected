@@ -44,7 +44,7 @@ WorkflowCommand.warning("deprecated: 50% of calls\nuse v2", { title: "API: v1" }
 // "::warning title=API%3A v1::deprecated: 50%25 of calls%0Ause v2"
 
 CommandNeutralizer.text("prefix ##[add-mask]secret\n::error::x");
-// a zero-width space inside the ##[ and before the ::, so neither parser reads a command
+// a braille pattern blank (U+2800) inside the ##[ and before the ::, so neither parser reads a command
 ```
 
 - **`WorkflowCommand`**: `render(name, properties, message)` and the `debug`, `notice`, `warning`, `error`, `group`, `endGroup` and `addMask` helpers. Annotation properties use readable names (`startLine`, `startColumn`) and go out as the wire's (`line`, `col`). The message escapes `%`, CR and LF; a property value also escapes `:` and `,`; the `%` goes first so an escape is never escaped twice.

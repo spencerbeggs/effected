@@ -28,7 +28,7 @@ Three rungs, ordered by cost. Each settles a strictly different class of questio
 | 2 | `$SRC/packages/*/src`, or `$EFFECT_SRC` | **Existence and signature** |
 | 3 | A probe compiled and run from inside a package | **Semantics** |
 
-**Rung 2 also tells you how far to trust an API.** A TSDoc `@stability unstable` tag on a module or symbol means it may break in a minor release; an untagged API follows strict semver. Grep the source for the tag (`grep -n "@stability" $SRC/packages/effect/src/<Name>.ts`) before building on an API, and treat an unstable one as a moving target: pin your usage behind one seam and re-verify it when the installed `effect` moves.
+**Rung 2 also tells you how far to trust an API.** Every module and directly importable export carries an explicit TSDoc `@stability` tag: `stable` follows strict semver, `unstable` may break in a minor release — and the unstable set includes the platform contracts `FileSystem`, `Path`, `PlatformError`, `Stdio` and `Terminal` (`effect-v4-module-index` lists the rest). Grep the source for the tag (`grep -n "@stability" $SRC/packages/effect/src/<Name>.ts`) before building on an API, and treat an unstable one as a moving target: pin your usage behind one seam and re-verify it when the installed `effect` moves.
 
 ### Resolving `$SRC` and `$EFFECT_SRC`
 
@@ -187,7 +187,7 @@ So: **a removal is never settled by rung 1.** If the docs are silent on a symbol
 Silence is the *gentler* failure. The migration notes also make positive claims that the tree contradicts, in both directions — and a confident wrong answer costs more than an absent one. Both of these were found in one audit and both still hold:
 
 - **A method that does not exist.** `migration/yieldable.md` documents the `Yieldable` trait as `asEffect(): Effect<A, E, R>` and states the runtime calls `.asEffect()` internally. **`asEffect` has zero occurrences in the entire source tree.** A design built on it fails at the first call.
-- **A removal that did not happen.** `migration/fiberref.md` lists `Differ` as removed alongside `FiberRef` / `FiberRefs` / `FiberRefsPatch`. Those three are genuinely gone; **`Differ` is alive** (`index.ts:153`), and `migration/v3-to-v4.md` even maps `effect/Differ` → `effect/Differ` and documents the surviving interface. The notes contradict themselves.
+- **A removal that did not happen.** `migration/fiberref.md` lists `Differ` as removed alongside `FiberRef` / `FiberRefs` / `FiberRefsPatch`. Those three are genuinely gone; **`Differ` is alive** (`index.ts:189`), and `migration/v3-to-v4.md` even maps `effect/Differ` → `effect/Differ` and documents the surviving interface. The notes contradict themselves.
 
 **Rung 1 settles renames and nothing else.** Not existence, not removal, not trait mechanics — those are rung 2, and behaviour is rung 3. Treat a positive claim in the notes about *what a symbol is or does* exactly as you treat their silence: unsettled until you have read the source.
 
@@ -211,21 +211,21 @@ of the global `Array` type, so core defines the symbol under a private name and
 renames it in an `export {}` block:
 
 ```text
-// Schema.ts:4502 — the real definition, under a name you did not grep for
+// Schema.ts:4638 — the real definition, under a name you did not grep for
 const ArraySchema = Struct_.lambda<ArrayLambda>((schema) => …)
 
-// Schema.ts:4505 — the export, in a block your grep pattern never matches
-export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at :4522
+// Schema.ts:4641 — the export, in a block your grep pattern never matches
+export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at :4659
 ```
 
 `Schema.Array` is real, and `grep 'export const Array' Schema.ts` returns
 nothing. The confirmed occurrences of this pattern (vendored-tree lines) —
-`Schema.ts:4522`, `Equivalence.ts:620`, `Order.ts:580` — are all
+`Schema.ts:4659`, `Equivalence.ts:634`, `Order.ts:596` — are all
 `Array`, but treat the *class* of names as suspect, not just that one:
 `Array`, `Record`, `Map`, `Set`, `Error`, `Date`, `Number`, `String`, `Object`,
 `Symbol`, `Function`, `Boolean`. (Some of them do grep normally —
-`Schema.Record` is a plain `export function Record` at `Schema.ts:3867`, and
-`Config.Array` a plain `export function Array` at `Config.ts:1111` — which
+`Schema.Record` is a plain `export function Record` at `Schema.ts:3993`, and
+`Config.Array` a plain `export function Array` at `Config.ts:1158` — which
 is exactly why the inconsistency catches people.)
 
 **When a built-in-colliding name greps as absent, do not conclude it was
@@ -299,11 +299,11 @@ conclusion.** Picking is how a stale read gets laundered into a verified fact.
 
 ### Worked example: the three rungs disagree
 
-`Context.Key` (`Context.ts:64`):
+`Context.Key` (`Context.ts:68`):
 
 - **Rung 1** — `migration/services.md` never mentions it. Reading harder produces nothing.
 - **A runtime check** says it does not exist: `typeof Context.Key` is `undefined` and `"Key" in Context` is `false`, because it is type-only.
-- **Rung 2** — `$SRC/packages/effect/src/Context.ts:64` settles it:
+- **Rung 2** — `$SRC/packages/effect/src/Context.ts:68` settles it:
 
   ```text
   export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>
@@ -311,7 +311,7 @@ conclusion.** Picking is how a stale read gets laundered into a verified fact.
 
   It exists, it is type-only, and `Shape` is **covariant** — so a `Context.Key` parameter accepts a wider shape than declared, and a design that expected a compile error there will not get one.
 
-  `$EFFECT_SRC/Context.ts:64` is the same declaration, and — for this one
+  `$EFFECT_SRC/Context.ts:68` is the same declaration, and — for this one
   anchor — the same line: `Context.ts` overall carries far more publish-time
   TSDoc in the installed copy than the vendored tag, but the extra lines land
   after this declaration, not before it. Do not generalize that coincidence:

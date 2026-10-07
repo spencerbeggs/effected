@@ -9,9 +9,9 @@ SPDX license identifiers, exceptions and license expressions as Effect schemas. 
 
 ## Why @effected/spdx
 
-Validating a `license` field usually means importing a small CJS parser at runtime and trusting it to keep working across module systems — a foreign dependency for a grammar that changes a few times a year. This package vendors the SPDX datasets as real, committed TypeScript instead: 695 active and 26 deprecated license identifiers plus 66 exceptions, built once from static data with no parsing cost at load time. Validation runs against actual user input, never against the known-good catalog.
+Validating a `license` field usually means importing a small CJS parser at runtime and trusting it to keep working across module systems — a foreign dependency for a grammar that changes a few times a year. This package vendors the SPDX datasets as real, committed TypeScript instead: 708 active and 26 deprecated license identifiers plus 66 exceptions, built once from static data with no parsing cost at load time. Validation runs against actual user input, never against the known-good catalog.
 
-The grammar is hardened the same way. The recursive-descent parser is depth-capped, so a hostile or accidentally-nested expression fails as a typed error rather than a `RangeError`, and a differential test suite checks the engine against the canonical `spdx-expression-parse` package on all 695 known ids — when the two disagree, the rule is to fix this engine, not the test. The package follows the [`@effected/semver`](/semver) north star throughout: the class *is* the schema, construction goes through a validating `parse`, and every failure is a value on the typed error channel.
+The grammar is hardened the same way. The recursive-descent parser is depth-capped, so a hostile or accidentally-nested expression fails as a typed error rather than a `RangeError`, and a differential test suite checks the engine against the canonical `spdx-expression-parse` package on all 708 known ids — when the two disagree, the rule is to fix this engine, not the test. The package follows the [`@effected/semver`](/semver) north star throughout: the class *is* the schema, construction goes through a validating `parse`, and every failure is a value on the typed error channel.
 
 ## Install
 

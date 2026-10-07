@@ -109,23 +109,29 @@ describe("CliUiTest.live: vitest-agent's eight behaviours", () => {
 		}).pipe(Effect.scoped),
 	);
 
-	it.effect("4. React's user-timing entries are drained after every render; without the drain they pile up", () =>
+	it.effect("4. React's user-timing entries never pile up: Ink's reconciler clears each one, drained or not", () =>
 		Effect.gen(function* () {
 			const measures = (drainPerformance: boolean) =>
-				Effect.gen(function* () {
-					performance.clearMeasures();
-					const view = yield* CliUiTest.live({ ...viewOptions, drainPerformance });
-					yield* view.publish(Start);
-					for (let index = 1; index <= 10; index++) yield* view.publish(tick(index));
-					yield* view.advance("400 millis");
-					return performance.getEntriesByType("measure").length;
-				}).pipe(Effect.scoped);
+				Effect.acquireUseRelease(
+					Effect.sync(() => vi.spyOn(performance, "measure")),
+					(spy) =>
+						Effect.gen(function* () {
+							performance.clearMeasures();
+							const view = yield* CliUiTest.live({ ...viewOptions, drainPerformance });
+							yield* view.publish(Start);
+							for (let index = 1; index <= 10; index++) yield* view.publish(tick(index));
+							yield* view.advance("400 millis");
+							return { recorded: spy.mock.calls.length, left: performance.getEntriesByType("measure").length };
+						}).pipe(Effect.scoped),
+					(spy) => Effect.sync(() => spy.mockRestore()),
+				);
 			const undrained = yield* measures(false);
 			const drained = yield* measures(true);
-			// React records a render's passive effects after the commit the drain follows, so up to one render's worth
-			// is left between drains: bounded, where without the drain every render's entries stay.
-			assert.isAbove(undrained, 40, `control: undrained, the entries pile up (${undrained})`);
-			assert.isAtMost(drained, 5, `drained, at most one render's worth is left (${drained})`);
+			// Ink 7's reconciler (react-reconciler 0.33) left about 15 measures per render; 0.34, which Ink 8 requires,
+			// clears each measure right after recording it. The kit's drain is now a no-op on any Ink the peer admits.
+			assert.isAbove(undrained.recorded, 40, `control: React recorded measures (${undrained.recorded})`);
+			assert.strictEqual(undrained.left, 0, "undrained, none are left");
+			assert.strictEqual(drained.left, 0, "drained, none are left");
 		}),
 	);
 
@@ -204,27 +210,34 @@ describe("CliUiTest.live: vitest-agent's eight behaviours", () => {
 });
 
 describe("CliUiTest.live: what the harness can see", () => {
-	it.effect("a scrollback wipe shows: written carries ESC[3J, and the transcript loses what was above the frame", () =>
-		Effect.gen(function* () {
-			// A frame at the clamp's full height, then a height shrink: the one-paint lag the CliUi.live docs describe
-			// makes Ink paint the old height into the shorter terminal, which it answers with a clear-terminal frame.
-			const tall = (state: State): ReactElement =>
-				createElement(
-					Box,
-					{ flexDirection: "column" },
-					...Array.from({ length: 40 }, (_, index) =>
-						createElement(Text, { key: index }, `${state.last} line ${index}`),
-					),
+	it.effect(
+		"a full clear shows: written carries Ink's full-clear sequence, and the transcript keeps what was above",
+		() =>
+			Effect.gen(function* () {
+				// A frame at the clamp's full height, then a height shrink: the one-paint lag the CliUi.live docs describe
+				// makes Ink paint the old height into the shorter terminal, which it answers with a full-clear frame. Ink 8
+				// erases the viewport only (home, erase down) and keeps the scrollback, so the history above stays.
+				const tall = (state: State): ReactElement =>
+					createElement(
+						Box,
+						{ flexDirection: "column" },
+						...Array.from({ length: 40 }, (_, index) =>
+							createElement(Text, { key: index }, `${state.last} line ${index}`),
+						),
+					);
+				const view = yield* CliUiTest.live({ ...viewOptions, render: tall, columns: 40, rows: 10 });
+				view.handle.logConsole.log("HISTORY");
+				yield* view.publish(Start);
+				assert.isTrue(
+					(yield* view.transcript).startsWith("HISTORY"),
+					"control: the history is there before the shrink",
 				);
-			const view = yield* CliUiTest.live({ ...viewOptions, render: tall, columns: 40, rows: 10 });
-			view.handle.logConsole.log("HISTORY");
-			yield* view.publish(Start);
-			assert.isTrue((yield* view.transcript).startsWith("HISTORY"), "control: the history is there before the shrink");
-			yield* view.resize(40, 4);
-			yield* view.publish(tick(1));
-			assert.include(yield* view.written, `${ESC}[3J`, "Ink wiped the scrollback");
-			assert.isFalse((yield* view.transcript).startsWith("HISTORY"), "and the transcript shows it gone");
-		}).pipe(Effect.scoped),
+				yield* view.resize(40, 4);
+				yield* view.publish(tick(1));
+				assert.include(yield* view.written, `${ESC}[1;1H${ESC}[J`, "Ink took its full-clear path");
+				assert.notInclude(yield* view.written, `${ESC}[3J`, "Ink kept the scrollback");
+				assert.isTrue((yield* view.transcript).startsWith("HISTORY"), "and the transcript keeps the history");
+			}).pipe(Effect.scoped),
 	);
 
 	it.effect("a line logged after a run ended is not taken for a frame", () =>

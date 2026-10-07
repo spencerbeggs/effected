@@ -165,7 +165,7 @@ describe("main's env.displayPath is the default report's path display", () => {
 });
 
 describe("a consumer render's output is untrusted text", () => {
-	const ZWSP = String.fromCodePoint(0x200b);
+	const MARK = String.fromCodePoint(0x2800);
 	const BEL = String.fromCharCode(7);
 	const PROBE = [
 		"fine",
@@ -216,7 +216,7 @@ describe("a consumer render's output is untrusted text", () => {
 			assert.notInclude(text, "evil");
 			assert.include(text, "red");
 			// Outside Actions nothing is neutralized, so the command lines are still there.
-			assert.notInclude(text, ZWSP);
+			assert.notInclude(text, MARK);
 		}),
 	);
 
@@ -242,7 +242,7 @@ describe("a consumer render's output is untrusted text", () => {
 			const err = yield* reportWith({ TEST_AUDIENCE: "human", TERM: "xterm-256color" });
 			const text = err.join("\n");
 			assert.include(text, `${ESC}[31mred`, "the consumer's SGR is theirs");
-			assert.notInclude(text, ZWSP);
+			assert.notInclude(text, MARK);
 			assert.strictEqual(commandLines(text).length, 2, "control: the command lines are really there");
 		}),
 	);

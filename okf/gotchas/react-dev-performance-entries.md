@@ -1,7 +1,7 @@
 ---
 type: Gotcha
-title: React 19's development build leaks user-timing entries on every render
-description: "Unless NODE_ENV is exactly production, React 19 records about 15 performance measure entries per rerender and never clears them, so a long-lived Ink view grows the heap (76 MB against 7.7 MB over 20 000 rerenders); an unset NODE_ENV and Vitest's test both leak, a Vitest worker hides it because its console has no timeStamp, and the only drain, clearMeasures(), is global."
+title: React 19's development reconciler leaked user-timing entries on every render, until react-reconciler 0.34
+description: "Unless NODE_ENV is exactly production, react-reconciler 0.33 (Ink 7) recorded about 15 performance measure entries per rerender and never cleared them, growing a long-lived view's heap; 0.34, which Ink 8 requires, clears each measure as it records it, so the kit's global drainPerformance is now a proven no-op, kept for API stability. A Vitest worker hides either behaviour because its console has no timeStamp."
 status: draft
 resource: ../../packages/cli/src/ui/internal/perfDrain.ts
 stale_after: "2027-04-01T00:00:00Z"
@@ -16,13 +16,32 @@ sources:
   - id: react-entry
     resource: "npm:react@19.3.0"
     title: "react/index.js:3 and react-reconciler/index.js:3 pick the development build when NODE_ENV !== production"
+  - id: reconciler-clears
+    resource: "npm:react-reconciler@0.34.0"
+    title: "cjs/react-reconciler.development.js: each of its 8 performance.measure calls is followed by performance.clearMeasures; 0.33.0 has none"
+  - id: ink-pins-reconciler
+    resource: "npm:ink@8.0.0"
+    title: "package.json: react-reconciler ^0.34.0 (Ink 7.1.1 had ^0.33.0)"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T14:11:47Z
-  body_sha256: 634cfaa7a7b12d4bc78bb4a00714a84712eb149c89e11e14d79eae8509ad00cd
+  at: 2026-10-07T21:32:23Z
+  body_sha256: c13cdb104315527370dc649115364cfd52a7d06d243b2d3f78315272425e8973
 ---
 
-# React 19's development build leaks user-timing entries on every render
+# React 19's development reconciler leaked user-timing entries on every render, until react-reconciler 0.34
+
+## Where it stands
+
+react-reconciler 0.34 pairs every `performance.measure` it makes with a
+`performance.clearMeasures` of the same name,[^reconciler-clears] and Ink 8
+depends on `^0.34.0`,[^ink-pins-reconciler] so on any Ink the kit's `^8.0.0`
+peer admits, nothing piles up. A plain-Node probe over 200 rerenders left 804
+measures on Ink 7.1.1 and 0 on Ink 8. The drain test now pins that: a spy shows
+React recording measures and none being left without the drain.[^drain-test]
+`LiveOptions.drainPerformance` stays, a no-op on that path, for API stability;
+removing it is a public-surface change for its own release. What follows is
+the leak as it was on react-reconciler 0.33, which a program bringing its own
+older reconciler could still meet.
 
 ## What you see
 
@@ -66,11 +85,14 @@ marks.
 
 ## What to do
 
-Drain after every rerender, the final unmount and every `renderToString`,
+On Ink 8, nothing: the reconciler clears its own measures. For a reconciler
+that leaks, the drain is the answer: drain after every rerender, the final unmount and every `renderToString`,
 unconditionally rather than gated on `NODE_ENV === "production"`, and
 document the drain as global; clear measures, never marks. Drain long-lived `CliUi.run` screens too, not
 only live views: a screen left open re-renders on every key and resize.
 
 [^drain]: `packages/cli/src/ui/internal/perfDrain.ts`, the drain, with its mode decision (`auto` drains unless `NODE_ENV` is exactly `production`)
-[^drain-test]: `packages/cli/__test__/ui/perfDrain.test.ts`, whose control measured 0 entries in a worker until it installed the gate, then 803 after 200 rerenders
+[^drain-test]: `packages/cli/__test__/ui/perfDrain.test.ts`, which installs the `console.timeStamp` gate a worker lacks, then spies on `performance.measure` to prove React recorded, and asserts none are left
 [^react-entry]: `npm:react@19.3.0`, `index.js:3`, and `npm:react-reconciler`, `index.js:3`
+[^reconciler-clears]: `npm:react-reconciler@0.34.0`, `cjs/react-reconciler.development.js`
+[^ink-pins-reconciler]: `npm:ink@8.0.0`, `package.json`

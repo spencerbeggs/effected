@@ -229,7 +229,7 @@ describe("Render.githubLog: document text cannot become a workflow command", () 
 		assert.strictEqual(out.length, 7);
 		assert.deepStrictEqual(out.filter(isCommand), []);
 		assert.deepStrictEqual(
-			out.map((line) => line.replaceAll("\u200B", "")),
+			out.map((line) => line.replaceAll("\u2800", "")),
 			["a", "::error::x", "##[group]y", "  ::add-mask::z", "plain text", "\u00A0::warning::w", "\u0085::error::n"],
 		);
 		assert.deepStrictEqual(CommandNeutralizer.lines("no command\nhere: ::"), ["no command", "here: ::"]);
@@ -247,9 +247,9 @@ describe("Render.githubLog: document text cannot become a workflow command", () 
 			assert.isTrue(isCommand(line), `the oracle flags it first: ${JSON.stringify(line)}`);
 			const out = CommandNeutralizer.lines(line);
 			assert.deepStrictEqual(out.filter(isCommand), [], JSON.stringify(line));
-			assert.strictEqual(out.join("").replaceAll("\u200B", ""), line, "only a zero-width space is added");
+			assert.strictEqual(out.join("").replaceAll("\u2800", ""), line, "only the marker is added");
 		}
-		assert.strictEqual(CommandNeutralizer.lines("a ##[x] b ##[y]").join(""), "a ##\u200B[x] b ##\u200B[y]");
+		assert.strictEqual(CommandNeutralizer.lines("a ##[x] b ##[y]").join(""), "a ##\u2800[x] b ##\u2800[y]");
 		for (const bare of ["## Heading", "a ## b", "##", "###", "## [link]", "#[x]", "# #[x]", "##x[y]"]) {
 			assert.deepStrictEqual(CommandNeutralizer.lines(bare), [bare], JSON.stringify(bare));
 		}
@@ -262,12 +262,13 @@ describe("Render.githubLog: document text cannot become a workflow command", () 
 		}
 	});
 
-	it("the detector itself: it finds a command behind every .NET whitespace and not behind U+200B or BOM", () => {
+	it("the detector itself: it finds a command behind every .NET whitespace, and behind U+200B or a BOM, which ICU skips", () => {
 		for (const ws of ["", " ", "\t", "\u00A0", "\u0085", "\u2003", "\u3000", "  \u00A0 "]) {
 			assert.isTrue(isCommand(`${ws}::error::x`), JSON.stringify(ws));
 			assert.isTrue(isCommand(`${ws}##[group]x`), JSON.stringify(ws));
 		}
-		for (const prefix of ["\u200B", "\uFEFF", "x", "- "])
+		for (const prefix of ["\u200B", "\uFEFF"]) assert.isTrue(isCommand(`${prefix}::error::x`), JSON.stringify(prefix));
+		for (const prefix of ["\u2800", "x", "- "])
 			assert.isFalse(isCommand(`${prefix}::error::x`), JSON.stringify(prefix));
 		assert.isFalse(isCommand("a :: b"));
 		assert.isFalse(isCommand(": :error"));
@@ -276,7 +277,8 @@ describe("Render.githubLog: document text cannot become a workflow command", () 
 	it("the detector's mutation controls: a mid-line ##[ is flagged, a bare ## and an ## [ are not", () => {
 		assert.isTrue(isCommand("prefix ##[add-mask]secret"));
 		assert.isTrue(isCommand("x##[error]y"));
-		for (const quiet of ["## Heading", "a ## b", "## [x]", "#[x]", "##\u200B[x]"])
+		assert.isTrue(isCommand("##\u200B[x]"), "a zero-width space inside it hides nothing");
+		for (const quiet of ["## Heading", "a ## b", "## [x]", "#[x]", "##\u2800[x]"])
 			assert.isFalse(isCommand(quiet), quiet);
 	});
 

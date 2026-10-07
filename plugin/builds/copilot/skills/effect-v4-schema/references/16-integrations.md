@@ -10,7 +10,7 @@ end-to-end (external modules), so its Effect-side members were checked individua
 corrected inline: `Schema.toJsonSchema` with `{ target, referenceStrategy }` (the entry point is
 `toJsonSchemaDocument`, whose only options are `onExcessProperty` / `generateDescriptions` /
 `includeAnnotationKey` (the option is `onExcessProperty: "ignore" | "error"`, not
-`additionalProperties`, and the default is OPEN — `Schema.ts:15031-15079`); the draft is always 2020-12 and draft-07 is reached afterwards via
+`additionalProperties`, and the default is OPEN — `Schema.ts:15471-15519`); the draft is always 2020-12 and draft-07 is reached afterwards via
 `JsonSchema.toDocumentDraft07`) and `Schema.ValidDate` (does not exist — `Schema.Date` is already the
 valid-date schema). NOT PROBED: the TanStack Form and Elysia integrations were not run.
 -->

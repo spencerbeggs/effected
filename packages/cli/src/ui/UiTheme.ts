@@ -163,7 +163,9 @@ export const useTerminalSize = (): TerminalSize => {
 			stdout.off("resize", redraw);
 		};
 	}, [stdout, followsStdout]);
-	const columns = override?.columns ?? stdout.columns;
-	const rows = override?.rows ?? stdout.rows;
+	// Ink types its stdout as a plain writable stream; a TTY carries `columns` and `rows`, any other stream reads unknown.
+	const reported = stdout as { readonly columns?: number; readonly rows?: number };
+	const columns = override?.columns ?? reported.columns;
+	const rows = override?.rows ?? reported.rows;
 	return { columns: Math.max(1, known(columns, 80) - 1), rows: Math.max(1, known(rows, 24) - 1) };
 };

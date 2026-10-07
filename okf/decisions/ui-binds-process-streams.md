@@ -6,15 +6,15 @@ status: draft
 tags: [architecture, compat]
 sources:
   - id: ink-render
-    resource: "npm:ink@7.1.1"
-    title: "Ink 7.1.1, build/render.js: render() defaults stdout, stdin and stderr to the process streams"
+    resource: "npm:ink@8.0.0"
+    title: "Ink 8.0.0, build/render.js:9: render() defaults stdout, stdin and stderr to the process streams"
   - id: cli-boundary-test
     resource: ../../packages/cli/__test__/boundary.test.ts
     title: The boundary test that holds the waived set exact
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T03:17:21Z
-  body_sha256: 5a8f9c4dd1a7dfceda390530ff82346e4d55c3f48f3c40d1d84df206e09e9113
+  at: 2026-10-07T21:32:23Z
+  body_sha256: c155736e9736399e981aa696783053c7d09c6e145491539862410b958c58a94e
 ---
 
 # Only ./ui may bind Node's process streams, and only in three named files
@@ -27,8 +27,9 @@ reaches the terminal through core's services (`Console`, `Terminal`) and
 
 Ink cannot be written that way. Its `render()` defaults `stdout`, `stdin` and
 `stderr` to the process streams, and every stream it takes must be a Node
-stream: `isTTY`, `columns`, `rows`, `setRawMode`, `ref` and `unref`, and an
-event emitter.[^ink-render] Core's `Stdio` hands out Effect sinks and streams,
+stream, an event emitter it reads `isTTY`, `columns` and `rows` from when they
+are there, and puts in raw mode only when it is a TTY with
+`setRawMode`.[^ink-render] Core's `Stdio` hands out Effect sinks and streams,
 not Node stream objects. Ink has exactly one platform shape, so `./ui` is
 Node-only by nature; Bun is compatible because it provides the same objects.
 
@@ -75,5 +76,5 @@ The licence is the boundary test's waiver list, so widening it is a reviewed
 edit to one test. A consumer on a runtime without Node's stream objects can
 still use the root; it cannot mount a screen.
 
-[^ink-render]: `npm:ink@7.1.1`, `build/render.js`
+[^ink-render]: `npm:ink@8.0.0`, `build/render.js:9`
 [^cli-boundary-test]: `../../packages/cli/__test__/boundary.test.ts`

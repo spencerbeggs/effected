@@ -49,7 +49,7 @@ not per-file.
 The quiet half: `it.effect` starts the `TestClock` at time zero, so anything
 that *reads* the clock computes against **1970-01-01T00:00:00.000Z**. The start
 time is source-visible — `TestClock`'s constructor opens with
-`let currentTimestamp: number = new Date(0).getTime()` (`TestClock.ts:257`), and
+`let currentTimestamp: number = new Date(0).getTime()` (`TestClock.ts:261`), and
 the migration guide describes `TestClock.layer()` as creating an "epoch-based
 test clock" — and the downstream consequence is directly observable
 (`DateTime.now` inside a bare `it.effect` is exactly the epoch). A CLI
@@ -79,13 +79,13 @@ it.effect("a sleeping fiber wakes when the clock advances", () =>
   **`effect/testing`** subpath — `TestClock`, `TestConsole`, `TestSchema`
   (property generation is `Arbitrary`), not `@effect/vitest`.
 - **Do not manually provide `TestClock.layer()` under `it.effect`.** They
-  compose — `Clock` is a `Context.Reference` (`Clock.ts:189`), `TestClock.layer()`
-  merely sets it via `Layer.effect(Clock.Clock)` (`TestClock.ts:436`), and
-  `adjust` (`:507`) resolves its clock through `testClockWith`, which reads
+  compose — `Clock` is a `Context.Reference` (`Clock.ts:192`), `TestClock.layer()`
+  merely sets it via `Layer.effect(Clock.Clock)` (`TestClock.ts:441`), and
+  `adjust` (`:514`) resolves its clock through `testClockWith`, which reads
   whatever is ambient: `fiber.getRef(Clock.Clock) as TestClock`
-  (`TestClock.ts:471`). Nothing breaks, but drop the provide: a nested TestClock
-  captures its `liveClock` at build time (`TestClock.ts:254`), so its "live"
-  clock **is** the outer TestClock — `withLive` (`:278`) returns virtual time
+  (`TestClock.ts:477`). Nothing breaks, but drop the provide: a nested TestClock
+  captures its `liveClock` at build time (`TestClock.ts:258`), so its "live"
+  clock **is** the outer TestClock — `withLive` (`:282`) returns virtual time
   and the too-long-without-advancing warning fiber can never fire.
 - **Never call `TestClock.adjust` under `it.live`** — that `as TestClock` cast is
   unchecked, so it is undefined behavior, not a type error. And **a

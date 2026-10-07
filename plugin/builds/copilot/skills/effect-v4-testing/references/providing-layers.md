@@ -54,7 +54,7 @@ Where state must vary per test, keep the per-test provide, or use **distinct
 keys per test** and flush explicitly before asserting counts.
 
 Other `layer(...)` mechanics (surface checked against
-`packages/vitest/src/index.ts:120-135` and `:249-260`):
+`packages/vitest/src/index.ts:139-154` and `:288-299`):
 
 - The block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`), and
   **`MethodsNonLive` has no `.live`** — a wall-clock test that also needs the
@@ -76,13 +76,13 @@ Other `layer(...)` mechanics (surface checked against
 **`layerNoop`'s unstubbed members answer in THREE different ways, and each way
 is a different bug.** Two half-truths circulate about this and both are wrong:
 "every unstubbed member fails typed `NotFound`" and "every unstubbed member
-dies". `makeNoop` (`FileSystem.ts:636`) splits them:
+dies". `makeNoop` (`FileSystem.ts:642`) splits them:
 
 | members | unstubbed behavior | the trap |
 | --- | --- | --- |
-| `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `NotFound` failure (`FileSystem.ts:575`) | a package reading `NotFound` as domain-level "absent" treats it as a legitimate answer, so the stub silently supplies **empty fixtures** |
-| `exists` → `false`, `remove` → `Effect.void` | **silent success** (`:657`, `:696`) | not a failure at all — a delete that never happened reports done |
-| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` | `Effect.die("not implemented")` (`:663`–`:676`) | a **defect**: `Effect.catch` and every typed handler are blind to it |
+| `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `NotFound` failure (`FileSystem.ts:580`) | a package reading `NotFound` as domain-level "absent" treats it as a legitimate answer, so the stub silently supplies **empty fixtures** |
+| `exists` → `false`, `remove` → `Effect.void` | **silent success** (`:663`, `:702`) | not a failure at all — a delete that never happened reports done |
+| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` | `Effect.die("not implemented")` (`:669`–`:682`) | a **defect**: `Effect.catch` and every typed handler are blind to it |
 
 The consequence the third row buys you: production code that defensively
 absorbs a filesystem failure —
@@ -102,8 +102,8 @@ honestly — a directory really is created, a removal really removes — so
 misbehaviour is injected as a **fault handler**, not as a stub body. The rule
 has no carve-out: a `FileSystem` double is `@effected/memfs`, never
 `FileSystem.layerNoop`. Same tier:
-**`readFileString` strips a leading BOM** (`FileSystem.ts:508` decodes
-`impl.readFile` through `TextDecoder` at `:511`, default `ignoreBOM: false`)
+**`readFileString` strips a leading BOM** (`FileSystem.ts:513` decodes
+`impl.readFile` through `TextDecoder` at `:516`, default `ignoreBOM: false`)
 → [false-greens.md](./false-greens.md).
 
 **A `FileSystem` double is `@effected/memfs` — never a `layerNoop` stub, and
@@ -141,7 +141,7 @@ For "behaves like the real service except this one method fails on demand",
 `layerNoop` is the wrong tool (it stubs everything) and there is still no
 `FileSystem.layerWith` / `Layer.mapService` in the vendored source (no `export const mapService` in `Layer.ts`). The house recipe is
 `Layer.effect` + spread the base + `Layer.provide(base)` — with
-`Layer.updateService` (`Layer.ts:2065`) as the shorter form when the subject is
-itself a layer, and `Layer.mock` (`Layer.ts:2306`) for partial stubs that die
+`Layer.updateService` (`Layer.ts:2109`) as the shorter form when the subject is
+itself a layer, and `Layer.mock` (`Layer.ts:2354`) for partial stubs that die
 loudly. Full scaffold and the three ways to get the spread wrong →
 **[fault-injection.md](./fault-injection.md)**.

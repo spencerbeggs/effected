@@ -1,66 +1,55 @@
 #!/usr/bin/env bash
+# SessionStart hook (no matcher: fires on every start, resume and compact, on
+# both hosts): brief the main agent that the "effected" plugin ships Effect v4
+# skills and three specialist subagents, that its own Effect knowledge is stale
+# by construction, and that the answers are already on disk, so it must
+# delegate or load a skill rather than guess.
+#
+# Also reports the vendored-source posture: whether the session's project
+# vendors Effect v4 source at .repos/effect and whether that pin matches the
+# kit's current pin.
+#
+# One script serves Claude Code and Copilot. The pluginfinity hook library
+# reads the envelope, resolves the session's project and writes each host's
+# response shape (nested hookSpecificOutput on Claude Code, a flat
+# additionalContext on Copilot). Without jq the library makes the hook a
+# silent no-op. Nothing here may write to stdout except the final hook_context.
+
 set -euo pipefail
+# shellcheck source=/dev/null
+. "$(dirname "$0")/../lib/pluginfinity/hook.sh"
 
-# sessionStart hook: brief the main agent that the "effected" plugin ships
-# Effect v4 skills and three specialist subagents, that its own Effect recall is
-# stale by construction, and where the vendored v4 source is (or should be).
-#
-# Contract: reads the sessionStart envelope on stdin and writes a single JSON
-# object to stdout. Copilot's shape is FLAT — `{ additionalContext }` — not
-# Claude Code's `{ hookSpecificOutput: { hookEventName, additionalContext } }`.
-# Do not "align" the two; they are different products' contracts.
-#
-# Copilot exposes NO project-root environment variable (COPILOT_HOME overrides
-# the user hooks directory and is not a project path), so the repo root is
-# derived from the envelope's `cwd` field and walked up to the nearest
-# `.gitmodules`/`.git`. That is why this hook reads stdin rather than draining
-# it.
-#
-# IMPORTANT: nothing here may write to stdout except the final jq call. A stray
-# echo yields two concatenated objects and the whole payload is rejected.
+# The kit's current Effect pin. ONE-LINE MAINTENANCE: bump this whenever the
+# lockfile's resolved effect moves (catalog:effect is a caret range, so the
+# exact version is the lockfile's, not the catalog's). It is
+# deliberately a constant rather than read from the host repo's catalog — the
+# point is to tell a LAGGING repo what it should move to, so comparing against
+# that repo's own (possibly stale) catalog would defeat the check.
+EFFECT_PIN="4.0.2"
 
-# Fail open without jq.
-if ! command -v jq &>/dev/null; then
-	echo "{}"
-	exit 0
-fi
-
-# Capture the envelope; `cwd` is the only field used.
-ENVELOPE="$(cat 2>/dev/null || true)"
-CWD="$(printf '%s' "$ENVELOPE" | jq -r '.cwd // empty' 2>/dev/null || true)"
-[ -n "$CWD" ] && [ -d "$CWD" ] || CWD="$PWD"
-
-# The kit's current Effect pin. ONE-LINE MAINTENANCE: bump whenever the lockfile's
-# resolved effect moves (catalog:effect is a caret range, so the exact version is
-# the lockfile's, not the catalog's). Deliberately a constant
-# rather than read from the host repo's catalog — the point is to tell a LAGGING
-# repo what to move to.
-EFFECT_PIN="4.0.1"
-
-# Walk up from cwd to the repo root (Copilot gives cwd, not the root).
-PROJECT_DIR="$CWD"
-while [ "$PROJECT_DIR" != "/" ]; do
-	if [ -e "$PROJECT_DIR/.gitmodules" ] || [ -e "$PROJECT_DIR/.git" ]; then
-		break
-	fi
-	PROJECT_DIR="$(dirname "$PROJECT_DIR")"
-done
-[ "$PROJECT_DIR" = "/" ] && PROJECT_DIR="$CWD"
-
+# --- vendored-source posture -------------------------------------------------
+# The session's project: CLAUDE_PROJECT_DIR on Claude Code, else the envelope's
+# cwd walked up to its git root (Copilot gives no project-root variable).
+PROJECT_DIR="$(hook_session_dir)"
 VENDOR_NOTE=""
+
 if [ ! -f "$PROJECT_DIR/.gitmodules" ]; then
 	VENDOR_NOTE="This repo has NO .gitmodules, so it vendors nothing — you have no
 authoritative v4 source to read and are one step from guessing. Before doing
-Effect work here, vendor the Effect source at .repos/effect, pinned to
-effect@${EFFECT_PIN}. Offer it to the user before starting; it is a one-time
-cost that pays for itself on the first API question."
+Effect work here, vendor the Effect source at .repos/effect. Use silk's repos
+skill (/silk:repos, or \`savvy repos add\`) — it owns the sparse-checkout and
+read-only discipline; do not hand-roll \`git submodule add\`. Pin it to
+effect@${EFFECT_PIN}. Offer this to the user before starting; it is a
+one-time cost that pays for itself on the first API question."
 elif ! grep -q '\.repos/effect' "$PROJECT_DIR/.gitmodules" 2>/dev/null; then
 	VENDOR_NOTE="This repo has a .gitmodules but NO .repos/effect entry, so Effect v4
-source is not vendored here. Add it, pinned to effect@${EFFECT_PIN}."
+source is not vendored here. Add it with silk's repos skill (/silk:repos, or
+\`savvy repos add\`), pinned to effect@${EFFECT_PIN}. Do not hand-roll
+\`git submodule add\` — the skill owns the sparse-checkout and read-only rules."
 else
 	VENDORED_REF=""
 	if [ -f "$PROJECT_DIR/.repos/config.json" ]; then
-		VENDORED_REF="$(jq -r '.repos.effect.ref // ""' "$PROJECT_DIR/.repos/config.json" 2>/dev/null || echo "")"
+		VENDORED_REF=$(jq -r '.repos.effect.ref // ""' "$PROJECT_DIR/.repos/config.json" 2>/dev/null || echo "")
 	fi
 	if [ "$VENDORED_REF" = "effect@${EFFECT_PIN}" ]; then
 		VENDOR_NOTE="Effect v4 source is vendored at .repos/effect and pinned to
@@ -71,8 +60,10 @@ the authority on what v4 exports. It is READ-ONLY — never write under .repos/.
 \"${VENDORED_REF:-unknown}\" and the kit's current pin is effect@${EFFECT_PIN}.
 A stale vendored pin is worse than none: you will read a source tree that does
 not match the installed effect and reach confident wrong conclusions. You MUST
-re-pin before trusting anything you read there. If the installed effect and the
-vendored source ever disagree, node_modules wins."
+re-pin before trusting anything you read there — use silk's repos skill
+(/silk:repos, or \`savvy repos pin effect effect@${EFFECT_PIN}\`), and fold the
+staged gitlink into the same commit as the version bump. If the installed
+effect and the vendored source ever disagree, node_modules wins."
 	fi
 fi
 
@@ -83,17 +74,36 @@ The "effected" plugin is loaded: Effect v4 development skills plus three
 specialist subagents, distilled from the @effected packages and the official
 Effect-TS v4 guides.
 
-This project is Effect **v4 only**. Effect v4 is a ground-up redesign and, though
-stable, nothing like v3, so whatever you know about Effect
-from training is out of date by construction — modules moved into core, there is
-no Either, and @effect/cli and @effect/sql do not exist as packages. Do NOT write
-Effect from memory: delegate to a specialist below, or load the skill, and verify
-any API against the installed \`effect\` release (a runtime probe beats an hour of
-type-error archaeology).
+<do_not_guess>
+READ THIS BEFORE WRITING ANY EFFECT CODE.
 
-This plugin carries no migration material, by design — that era is over and the
-kit is v4-native. Nothing here, and nothing you write, should carry the older
-API's framing.
+This project is Effect **v4 only**. Effect v4 is a ground-up redesign, not an
+increment on v3, and although it is stable, its API still looks nothing like v3.
+Whatever you know about Effect from training is v3-shaped and is **out of date by
+construction** — not "mostly right", not "close enough to adapt". Modules moved
+into core, Either is gone, @effect/cli and @effect/sql no longer exist as
+packages, and signatures you are confident about have changed.
+
+The answers are already on disk. Guessing burns time and tokens re-deriving
+what this plugin already states, and produces code that type-errors in ways
+that take an hour to unwind. So:
+
+- Do NOT write Effect from memory, and do NOT reason from a v3 API you
+  remember. If you are reaching for a name because it feels familiar, that is
+  the signal to stop and look it up.
+- DELEGATE the work: dispatch effect-developer to write it or effect-reviewer
+  to review and test it. Each arrives with these skills preloaded.
+- If dispatch is unavailable, LOAD THE SKILL instead — effect-v4-module-index
+  to find the right module, effect-v4-idioms and effect-v4-schema for the
+  constructs, effect-v4-source-lookup for the evidence ladder.
+- VERIFY before relying: the vendored source settles what exists and its
+  signature; only a runtime probe settles semantics. A probe beats an hour of
+  type-error archaeology.
+
+This plugin carries no migration material, by design — that era is over and
+the kit is v4-native. Nothing here, and nothing you write, should carry the
+older API's framing.
+</do_not_guess>
 
 <vendored_source>
 ${VENDOR_NOTE}
@@ -113,8 +123,8 @@ Available via the Skill tool (several also auto-load on trigger):
   testing machinery). Consult before building lockfile/config/glob/semver/XDG/
   workspace/git capability the kit already ships.
 - effect-v4-source-lookup — the evidence ladder for confirming a v4 API before
-  relying on it: migration notes settle renames, vendored source settles
-  existence and signature, only a probe settles semantics.
+  relying on it: the vendored source settles existence and signature, only a
+  probe settles semantics.
 - effect-v4-house-style — the cross-cutting house style: module layout and the
   cycle firewall, naming, typed-error taxonomy, TSDoc habits, layer
   conventions, test organization, observability posture.
@@ -217,12 +227,12 @@ the agents are the delivery mechanism. The specialists:
   tasks here.
 </agents>
 
-When a task is substantially "write or review Effect code" or "build
-an action / call the GitHub API," dispatch the matching agent rather than
-doing it inline — when dispatch is permitted;
-otherwise load the same skills and do it inline. Either way what matters is the
-verify-against-installed-effect, typed-error-channel, and hardening disciplines
-they carry, which are easy to drop when working freehand.
+When a task is substantially "write or review Effect code" or "build an action
+/ call the GitHub API," dispatch the matching agent rather than doing it
+inline — when dispatch is permitted; otherwise load the same skills and do it
+inline. Either way what matters is the verify-against-the-installed-release,
+typed-error-channel, and hardening disciplines they carry, which are easy to
+drop when working freehand.
 
 <dogfood_feedback>
 The effected plugin AND the @effected packages are actively dogfooding. Two
@@ -230,8 +240,8 @@ feedback loops, both proactive:
 
 Plugin: if a skill, an agent, or this SessionStart hook gives wrong,
 unhelpful, or confusing guidance, fires at the wrong moment, recommends a v4
-API that does not match the installed \`effect\`, or shows any rough edge
-worth improving, note it as you go.
+API that does not match the installed \`effect\` release, or shows any rough
+edge worth improving, note it as you go.
 
 Packages: if an @effected package has a gap in its services, an API that
 reads awkwardly or could compose more fluently, a capability you had to
@@ -250,4 +260,4 @@ standing permission to file.
 CONTEXT
 )
 
-jq -n --arg additionalContext "$CONTEXT" '{ additionalContext: $additionalContext }'
+hook_context "$CONTEXT"

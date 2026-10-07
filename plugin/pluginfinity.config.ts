@@ -13,11 +13,5 @@ export default defineConfig({
 		SessionStart: [{ script: "hooks/session-start/orientation.sh", timeout: 5 }],
 	},
 	claude: true,
-	copilot: {
-		// Copilot gets its own briefing: it gives no project-root variable, so the
-		// script walks up from the envelope's cwd, and its output is flat.
-		hooks: {
-			SessionStart: [{ script: "hooks/session-start/orientation.copilot.sh", timeout: 5 }],
-		},
-	},
+	copilot: true,
 });

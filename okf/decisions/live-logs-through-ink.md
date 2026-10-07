@@ -9,12 +9,12 @@ sources:
     resource: ../../packages/cli/__test__/ui/inkConsole.test.ts
     title: "The console bridge writes above a live Ink frame on the production path"
   - id: ink-writers
-    resource: "npm:ink@7.1.1"
-    title: "Ink 7.1.1, build/ink.js:433-489 (writeToStdout/writeToStderr, early return when unmounted) and build/render.js:23-35 (the instance has no writers)"
+    resource: "npm:ink@8.0.0"
+    title: "Ink 8.0.0, build/ink.js:698-750 (writeToStdout/writeToStderr, early return when unmounted) and build/render.js:23-36 (the instance has no writers)"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T14:11:47Z
-  body_sha256: 3f49640a467f009d31594c0ce958690470c1ce8940ad8c4bd964f1ec04c07c29
+  at: 2026-10-07T21:32:23Z
+  body_sha256: a417a94bc2de2a1d2b9bea06ced46b3d65d13029922baf3596bb1bcac0e77e92
 ---
 
 # While a live view is mounted, kit logs go through Ink's own stdout and stderr writers
@@ -59,4 +59,4 @@ once unmounted, so a write after unmount is silently lost.[^ink-writers]
 - A degrade warning is written after the unmount, never mid-frame.
 
 [^pinned-by]: `packages/cli/__test__/ui/inkConsole.test.ts`, which asserts the bridged writes land above the frame on the production path. The seven-mechanism probe that chose it was run once and is not kept.
-[^ink-writers]: `npm:ink@7.1.1`, `build/ink.js:433-489` and `build/render.js:23-35`
+[^ink-writers]: `npm:ink@8.0.0`, `build/ink.js:698-750` and `build/render.js:23-36`

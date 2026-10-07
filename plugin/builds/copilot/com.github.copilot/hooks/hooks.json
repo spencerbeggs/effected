@@ -4,7 +4,7 @@
 		"SessionStart": [
 			{
 				"type": "command",
-				"bash": "bash \"${PLUGIN_ROOT}/hooks/session-start/orientation.copilot.sh\"",
+				"bash": "bash \"${PLUGIN_ROOT}/hooks/session-start/orientation.sh\"",
 				"timeoutSec": 5,
 				"env": {
 					"PLUGINFINITY_EVENT": "SessionStart"

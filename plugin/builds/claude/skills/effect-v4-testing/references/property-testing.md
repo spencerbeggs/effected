@@ -34,7 +34,7 @@ it.prop("mixed inputs", { name: Name, n: Schema.Int }, ({ name, n }) => typeof n
 ```
 
 The options bag is **`arbitrary?: Arbitrary.CheckOptions`** on the
-`timeout`/`TestOptions` argument (`packages/vitest/src/index.ts:112,165`):
+`timeout`/`TestOptions` argument (`packages/vitest/src/index.ts:129,184`):
 `{ runs, size, maxDiscards, maxShrinks, seed, replay }` (`Arbitrary.ts:195`).
 There is **no `fastCheck: { numRuns }` option** — `numRuns` is `runs`, `path` is the
 opaque `replay` token, `maxSkipsPerRun` is one absolute `maxDiscards`. A raw
@@ -50,8 +50,8 @@ what a probe settled about **this repo's** thirteen migrated property suites:
 
 - **The `size` clamp silently shrinks a domain.** Every unconstrained string
   and array length is generated up to `min(maxLength, max(minLength, size))`
-  with `size` defaulting to **10** (`internal/arbitrary/schema.ts:1080-1085`,
-  `:1298-1299`; `runner.ts:472,615`), ramping from 0 across the runs. A
+  with `size` defaulting to **10** (`internal/arbitrary/schema.ts:1081-1086`,
+  `:1299-1300`; `runner.ts:472,615`), ramping from 0 across the runs. A
   `Schema.String.check(Schema.isMaxLength(40_000))` input never exceeded 10
   characters at the default and reached 40 000 with `arbitrary: { size: 40_000 }`.
   A byte-budget or long-input property that does not pass `size: <cap>`
@@ -69,8 +69,8 @@ what a probe settled about **this repo's** thirteen migrated property suites:
 - **The generator emits `-0`.** Always for `Schema.Number`/`Finite`, and for
   `Schema.Int` whenever the effective lower bound is `-1` — which an
   **unbounded** `Schema.Int` has during the early small-size runs
-  (`internal/arbitrary/model.ts:629`, where a lower bound of `-1` yields the
-  range `{ minimum: -0 }`, and `:570`, which returns that bound as-is;
+  (`internal/arbitrary/model.ts:652`, where a lower bound of `-1` yields the
+  range `{ minimum: -0 }`, and `:593`, which returns that bound as-is;
   `checkEffect(Arbitrary.schema(Schema.Int), (n) => !Object.is(n, -0))` is
   Falsified within the first ten runs, and `formatCheckFailure` prints the
   shrunk input as `0`, hiding the sign). Both parsers read `-0` back (`JSON.parse("-0")` and
@@ -90,14 +90,14 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   flags, and always carry `u`.** The native regexp compiler returns
   `undefined` for lookahead/lookbehind, backreferences and the `i`/`m`/`v`
   flags (`internal/arbitrary/regexp.ts:344,350,832`), and the string node
-  then **silently drops the pattern** (`schema.ts:1051-1052`) and filters
+  then **silently drops the pattern** (`schema.ts:1052-1053`) and filters
   random strings — which exhausts for any selective pattern
   (`/^(?=.*[0-9])[a-f0-9]{8}$/u` and `/^[a-f]{8}$/iu` both died with
   `discards: 201`). `u` is the flag the compiler supports
   (`regexp.ts:835` generates full code points under it, so a negated class
   or `\S` can yield astral characters), and JSON Schema export needs it:
   `isPattern` exports `pattern` only when the flags match `/^[dg]*uy?$/`
-  (`Schema.ts:6662`), so a flag-free regex exports a bare
+  (`Schema.ts:6876`), so a flag-free regex exports a bare
   `{"type":"string"}` while decoding still enforces it. Rewrite
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`
   (`packages/semver/src/SemVer.ts`, `packages/schema-org/src/NodeRef.ts`). Hostile-unicode input is generated

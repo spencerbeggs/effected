@@ -67,25 +67,25 @@ _edit_manifest() {
 @test "negative control: a manifest line moved off its symbol fails and names the anchor" {
 	local mutated="$BATS_TEST_TMPDIR/manifest.json"
 	_edit_manifest "$mutated" '
-		const e = m.anchors.find((a) => a.file === "effect-v4-testing/SKILL.md" && a.anchor === "FileSystem.ts:636");
-		e.anchor = "FileSystem.ts:636"; e.symbols = { "636": "export const layerNoop" };
+		const e = m.anchors.find((a) => a.file === "effect-v4-testing/SKILL.md" && a.anchor === "FileSystem.ts:642");
+		e.anchor = "FileSystem.ts:642"; e.symbols = { "642": "export const layerNoop" };
 	'
 	run node "$HELPER" --repo "$REPO_ROOT" --manifest "$mutated"
 	echo "$output"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"FAIL effect-v4-testing/SKILL.md: FileSystem.ts:636 -> effect:FileSystem.ts:636 does not contain"* ]]
+	[[ "$output" == *"FAIL effect-v4-testing/SKILL.md: FileSystem.ts:642 -> effect:FileSystem.ts:642 does not contain"* ]]
 }
 
 @test "negative control: a skill anchor rewritten to a stale line fails coverage both ways" {
 	local skills="$BATS_TEST_TMPDIR/skills"
 	_copy_scope "$skills"
-	sed -i.bak 's/`makeNoop` (`FileSystem.ts:636`)/`makeNoop` (`FileSystem.ts:825`)/' "$skills/effect-v4-testing/SKILL.md"
+	sed -i.bak 's/`makeNoop` (`FileSystem.ts:642`)/`makeNoop` (`FileSystem.ts:825`)/' "$skills/effect-v4-testing/SKILL.md"
 	grep -q 'FileSystem.ts:825' "$skills/effect-v4-testing/SKILL.md"
 	run node "$HELPER" --repo "$REPO_ROOT" --skills "$skills"
 	echo "$output"
 	[ "$status" -eq 1 ]
 	[[ "$output" == *"FAIL effect-v4-testing/SKILL.md: anchor FileSystem.ts:825 is not in the manifest"* ]]
-	[[ "$output" == *"FAIL manifest entry effect-v4-testing/SKILL.md: FileSystem.ts:636 does not occur"* ]]
+	[[ "$output" == *"FAIL manifest entry effect-v4-testing/SKILL.md: FileSystem.ts:642 does not occur"* ]]
 }
 
 @test "negative control: an anchor missing from the manifest fails" {

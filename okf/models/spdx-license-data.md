@@ -7,8 +7,8 @@ resource: ../../packages/spdx/lib/data/spdx-licenses.json
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 8bfd8e96446fd7972c2764440caff091994c1333103f62ff3dead082e99a964d
+  at: 2026-10-07T21:32:23Z
+  body_sha256: 104eff34dc6077071243dafdfe6267f74771139bf560e0d3fc8a1ccdae8e546c
 ---
 
 # The committed SPDX license catalog
@@ -21,7 +21,7 @@ consumed as a package or a vendored submodule. It is the source for
 
 ## What an entry holds
 
-The file records `licenseListVersion` (`3.28.0` as vendored) at its top
+The file records `licenseListVersion` (`3.29.0` as vendored) at its top
 level, and a `licenses` array of objects, one per SPDX license id, each
 carrying at minimum `licenseId`, `name`, `reference` (the canonical
 `https://spdx.org/licenses/<id>.html` URL), `isOsiApproved` and

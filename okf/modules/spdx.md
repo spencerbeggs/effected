@@ -8,8 +8,8 @@ resource: ../../packages/spdx
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 867237bd03ff7a2f222d3b91b0d36046239f754a9c8ea7c40a8ef134d1984434
+  at: 2026-10-07T21:32:23Z
+  body_sha256: 78dfea390eda0a86b051d3f9570ee8b8bc7636bcdc724617eb19fe248d49a410
 ---
 
 # @effected/spdx
@@ -129,7 +129,7 @@ rather than the convenient one:
   vendor the field.
 
 The table itself is `[id, name, flags]` tuples, one per id in the
-`licenseIds.ts` catalog — 721 ids. Objects would repeat three keys per
+`licenseIds.ts` catalog — 734 ids. Objects would repeat three keys per
 entry for no information: roughly 20 KB saved by not doing so. Never
 "tidy" them into objects.
 

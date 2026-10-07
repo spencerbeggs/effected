@@ -93,7 +93,7 @@ it.effect("answers a core prompt", () =>
 | `render(screen, options?)` | one screen: a handle with `press`, `type`, `chunk`, `resize`, `frame`/`rawFrame`/`plainFrame`/`frames`, `rerender` and `result` |
 | `view(element, options?)` | a display-only element (no `result`): a crash surfaces on the next read instead of a silent empty frame |
 | `session(options?)` | a program that runs several screens (a wizard): provide its `layer`, fork the program, then `next({ contains? })` for each screen as it mounts; `stdout`/`stderr` are what the program wrote through `Console`, `stdoutTranscript`/`stderrTranscript` each terminal stream alone as plain text, `transcript`/`written` what reached the terminal (a live view's `logConsole` lines included), and `mounts === 0` is the "nothing mounted" assertion. `renderPath: "production"` makes `clear` observable. Worked through below |
-| `live(options)` | a live view on the **production** render path, with `publish(event)`, `end`, `advance(duration)`, `transcript` (what the terminal shows, scrollback included) and `written` (every raw byte, e.g. to assert no scrollback-wiping `ESC[3J`) |
+| `live(options)` | a live view on the **production** render path, with `publish(event)`, `end`, `advance(duration)`, `transcript` (what the terminal shows, scrollback included) and `written` (every raw byte, e.g. to assert a frame never takes Ink's full-clear path, `ESC[1;1H` then `ESC[J`) |
 | `cancelReason(exitOrCause)` | `Option<"escape" \| "interrupt">` from an `Exit` or `Cause`, so a test never walks the cause |
 | `styled(ansi)`, `serializer` | ANSI decoded back to token markup, and a Vitest snapshot serializer printing it (also the default export of `@effected/cli/ui/testing/serializer`, for `snapshotSerializers`) |
 

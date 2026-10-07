@@ -19,8 +19,8 @@ sources:
     resource: "npm:pluginfinity"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-03T05:15:26Z
-  body_sha256: f539037470e6a60d0526db1f857c631b93dc283e96e571a28c45757e06e1bd9a
+  at: 2026-10-07T21:32:23Z
+  body_sha256: bc15ebd9b2caf0af4c8dff815e4df20f04d7728ff9752e7a581a324daa5777a6
 ---
 
 # ai-plugin
@@ -123,11 +123,14 @@ small amount of host-aware markup and nothing else:
 - **Host blocks.** `agents/action-engineer.md` and
   `agents/effect-reviewer.md` wrap their "preloaded skills" lines in
   `<!-- pluginfinity:only claude/copilot -->` host blocks.
-- **The Copilot briefing.** Copilot gets its own SessionStart script,
-  `hooks/session-start/orientation.copilot.sh`, registered as a
-  per-target override in `pluginfinity.config.ts`.[^pluginfinity-config]
-  Copilot exposes no project-root variable, so the script walks up from
-  the envelope's `cwd`, and its output object is flat.
+- **One briefing, two response shapes.** The SessionStart hook is one
+  script on both hosts, with no per-target override in
+  `pluginfinity.config.ts`.[^pluginfinity-config] The pluginfinity hook
+  library it sources writes each host's shape (nested
+  `hookSpecificOutput` on Claude Code, a flat `additionalContext` on
+  Copilot) and resolves the session's project: `CLAUDE_PROJECT_DIR` on
+  Claude Code, the envelope's `cwd` walked up to its git root on
+  Copilot, which has no project-root variable.
 - **Copilot drops what it cannot express.** Claude model aliases and
   `xhigh`/`max` effort stay unresolved, `inherit` is dropped, and `Skill`
   is dropped from an agent's `tools`.
@@ -218,13 +221,19 @@ matching skill already loaded rather than reached for mid-task.
 ## What the bats suite pins
 
 `pnpm test:bats` runs `bats --recursive plugin/__test__`. Every suite
-reads the **source**, not a build, on one shared principle: a claim
-about the plugin's own completeness is pinned by an executable check,
-never by prose a later edit can quietly falsify.
+pins a claim about the plugin's own completeness with an executable
+check, never with prose a later edit can quietly falsify. The hook suite
+runs the **builds**, the way each host runs them; every other suite
+reads the source.
 
-- `session-start-orientation.bats` and `copilot-session-start.bats` —
-  the two briefing scripts: envelope shape, a skill and agent roster
-  derived from the directories on disk, and the vendored-source posture.
+- `session-start-orientation.bats` — the briefing hook on both hosts
+  through pluginfinity's `run_hook`, against `plugin/builds/`: each
+  host's response shape, a briefing byte-identical across hosts, a skill
+  and agent roster derived from the directories on disk, every
+  vendored-source posture against the session's project, and the
+  no-op cases. It reads the pin from the hook's one `EFFECT_PIN` line
+  and checks it against `.repos/config.json` and the lockfile, so the
+  pin is stated nowhere else. Build before running it.
 - `agent-skill-registration.bats` — each agent's frontmatter `skills`
   list, including a membership test naming every Actions skill
   `action-engineer` must list, a check that pins the specialist roster
@@ -255,10 +264,13 @@ for the never-hand-edit rule.
 
 ## SessionStart briefing hook
 
-`pluginfinity.config.ts` registers a `SessionStart` hook running
-`hooks/session-start/orientation.sh`, which sources
-`hooks/lib/hook-output.sh`; the copilot target overrides it with
-`orientation.copilot.sh`. The briefing names the skills and agents the
+`pluginfinity.config.ts` registers one `SessionStart` hook for both
+hosts, `hooks/session-start/orientation.sh`. It sources the hook library
+pluginfinity writes into each build (`hooks/lib/pluginfinity/hook.sh`),
+reports the vendored-source posture against `hook_session_dir`, and
+emits through `hook_context`; the plugin vendors no hook helpers of its
+own. `EFFECT_PIN` in that script is the plugin's only statement of the
+kit's Effect pin. The briefing names the skills and agents the
 plugin ships and tells the main agent to delegate whole write-or-review
 Effect tasks to the matching agent rather than hand-rolling them inline.
 Its `dogfood_feedback` block carries two loops — plugin feedback and
@@ -280,10 +292,11 @@ plugin is published but not advertised: shipped, unannounced, and
 promoted to end users only when the maintainer is ready.
 
 [^pluginfinity-npm]: `npm:pluginfinity` — `plugin/package.json` declares
-    `"pluginfinity": "^0.1.1"` as its only devDependency.
+    `"pluginfinity": "^0.3.0"` as its only devDependency.
 [^claude-plugin-json]: `plugin/builds/claude/.claude-plugin/plugin.json` —
     `name: "effected"`.
 [^turbo-json]: `plugin/turbo.json` — `build:dev` and `build:prod` each
     have `cache: false` and `outputs: ["builds/**"]`.
-[^pluginfinity-config]: `plugin/pluginfinity.config.ts` — the `copilot`
-    block's `hooks.SessionStart` names `orientation.copilot.sh`.
+[^pluginfinity-config]: `plugin/pluginfinity.config.ts` — `hooks.SessionStart`
+    names `hooks/session-start/orientation.sh`, and `copilot: true`
+    carries no override.

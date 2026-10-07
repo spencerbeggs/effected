@@ -1,7 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, CurrentRuntimeEnv } from "@effected/env";
+import { CommandNeutralizer } from "@effected/github-commands";
 import { Effect, Option, Stream } from "effect";
-import { Box, Text } from "ink";
+import { Box, Text, renderToString } from "ink";
 import type { ReactElement } from "react";
 import { createElement } from "react";
 import { vi } from "vitest";
@@ -277,6 +278,21 @@ describe("DocView and the live view under GitHub Actions: no workflow command fr
 			assert.deepStrictEqual(commandLines(out), ["::error::injected from test data", "a ##[warning]legacy one"]);
 		}),
 	);
+
+	it("Ink draws the neutralizer's marker: a neutralized line rendered by Ink is still no command", () => {
+		const hostile = "::add-mask::secret\nnote ##[error]x";
+		const neutralized = CommandNeutralizer.text(hostile);
+		const control = renderToString(createElement(Text, null, hostile), { columns: 80 });
+		assert.deepStrictEqual(
+			commandLines(control),
+			["::add-mask::secret", "note ##[error]x"],
+			"control: Ink keeps commands",
+		);
+		const drawn = renderToString(createElement(Text, null, neutralized), { columns: 80 });
+		assert.strictEqual(drawn, neutralized, "Ink drew every character, the marker included");
+		assert.include(drawn, String.fromCodePoint(0x2800));
+		assert.deepStrictEqual(commandLines(drawn), []);
+	});
 
 	it.effect("a CliUi.run screen's DocView under Actions: its frame carries no command either", () =>
 		Effect.gen(function* () {

@@ -9,12 +9,15 @@ sources:
     resource: "P4 design probe P2, run 2026-09-30 on node 26.10.0 with ink 7.1.1, react 19.3.0 and Ink's own chalk 5.6.2, in pipe and pty venues and under npm and pnpm layouts"
     title: "Probe P2: forcing Ink's colour level"
   - id: ink-colour
-    resource: "npm:ink@7.1.1"
-    title: "Ink 7.1.1: build/colorize.js, components/Text.js and render-border.js import the default chalk instance"
+    resource: "npm:ink@8.0.0"
+    title: "Ink 8.0.0: build/colorize.js, components/Text.js and render-border.js import the default chalk instance (chalk ^6.0.1)"
+  - id: chalk-level
+    resource: "npm:chalk@6.0.1"
+    title: "chalk 6.0.1, source/index.js:17-37: level is a validating accessor over a stored value every style getter reads"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T03:17:21Z
-  body_sha256: 1659db1aee8925de535e2bb2176c6ebc1c1488b8a55f90c40b58c9ff9fba0938
+  at: 2026-10-07T21:32:23Z
+  body_sha256: 4e1c45ba39bdad5b12f25eed1a3838d40db43690e3fb34ca59edef226689e5aa
 ---
 
 # The kit sets Ink's colour level on Ink's own chalk, resolved from Ink's location
@@ -74,6 +77,11 @@ a pipe and on a pty, and under both the npm and pnpm layouts.
 
 ## Consequences
 
+- **The mechanism holds on Ink 8, which nests chalk 6.** Its `level` is an
+  accessor that validates the value and stores it where every style getter
+  reads it, so setting it is still live;[^chalk-level] the kit's colour-level
+  tests pass on Ink 8. Probe P2's measurements were taken on Ink 7 and chalk
+  5 and were not re-run.
 - **The level is process-global while a screen is mounted.** Two concurrent
   screens wanting different levels cannot coexist: the last mount wins.
   Restoring on release bounds it.
@@ -86,5 +94,6 @@ a pipe and on a pty, and under both the npm and pnpm layouts.
   otherwise, and asserts an escape-free frame. That is the positive control
   that keeps this decision honest across Ink bumps.
 
-[^ink-colour]: `npm:ink@7.1.1`, `build/colorize.js`, `build/components/Text.js` and `build/render-border.js`
+[^ink-colour]: `npm:ink@8.0.0`, `build/colorize.js`, `build/components/Text.js` and `build/render-border.js`
+[^chalk-level]: `npm:chalk@6.0.1`, `source/index.js:17-37`
 [^probe-p2]: Probe P2, run 2026-09-30 against ink 7.1.1, react 19.3.0 and chalk 5.6.2.

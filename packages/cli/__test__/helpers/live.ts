@@ -16,6 +16,8 @@ export const ESC = String.fromCharCode(0x1b);
 export const SHOW_CURSOR = `${ESC}[?25h`;
 export const CLEAR_SCROLLBACK = `${ESC}[3J`;
 export const CLEAR_SCREEN = `${ESC}[2J`;
+/** Ink's full-clear path for a frame taller than the terminal: cursor home, then erase down (its `homeAndEraseDown`). */
+export const FULL_CLEAR = `${ESC}[1;1H${ESC}[J`;
 
 export type Ev = { readonly _tag: "Start" } | { readonly _tag: "Tick"; readonly n: number } | { readonly _tag: "End" };
 export const Start: Ev = { _tag: "Start" };

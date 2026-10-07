@@ -6,8 +6,9 @@ const ESC = String.fromCharCode(0x1b);
  *
  * @remarks
  * It applies printable text, line feeds, the erase and cursor moves Ink's log-update writes (erase line, cursor up,
- * cursor to column one), and the clears of Ink's clear-terminal frame: `ESC[2J` blanks the visible screen, `ESC[3J`
- * drops the scrollback above it, `ESC[H` homes the cursor to the screen's top left. The visible screen is the last
+ * down and forward, cursor to a column, cursor to the next line), and the clears of Ink's full-clear frame: `ESC[J`
+ * erases from the cursor to the end of the screen, `ESC[2J` blanks the visible screen, `ESC[3J` drops the scrollback
+ * above it, `ESC[H` homes the cursor to the screen's top left. The visible screen is the last
  * `rows` lines; with `rows` unknown, the whole buffer counts as the screen, so a clear takes everything. Every other
  * escape is ignored. It does not wrap a line wider than the terminal. Shared by `CliUiTest.live`'s transcript and the
  * kit's own production-path tests.
@@ -38,8 +39,16 @@ export const screenAfter = (written: string, rows?: number): ReadonlyArray<strin
 			}
 		} else if (command === "K") lines[row] = "";
 		else if (command === "A") row = Math.max(0, row - Number(params === "" ? 1 : params));
-		else if (command === "G") column = 0;
-		else if (command === "J" && params === "2") {
+		else if (command === "B" || command === "E") {
+			row += Number(params === "" ? 1 : params);
+			if (command === "E") column = 0;
+			while (lines.length <= row) lines.push("");
+		} else if (command === "C") column += Number(params === "" ? 1 : params);
+		else if (command === "G") column = Math.max(0, Number(params === "" ? 1 : params) - 1);
+		else if (command === "J" && (params === "" || params === "0")) {
+			lines[row] = (lines[row] ?? "").slice(0, column);
+			lines.length = row + 1;
+		} else if (command === "J" && params === "2") {
 			for (let index = screenTop(); index < lines.length; index++) lines[index] = "";
 		} else if (command === "J" && params === "3") {
 			const top = screenTop();

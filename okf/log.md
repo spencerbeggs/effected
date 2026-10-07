@@ -1,5 +1,12 @@
 # Log
 
+## 2026-10-07
+
+* Updated @effected/jsonl
+* Updated @effected/jsonl journal service
+* Updated @effected/jsonl read surfaces
+* Updated The jsonl Journal service is a per-registry factory, not a generic key
+
 ## 2026-10-05
 
 * Added @effected/lsp

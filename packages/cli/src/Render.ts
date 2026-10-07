@@ -61,8 +61,8 @@ export interface RenderContext {
 	/**
 	 * Whether the output will be read by the GitHub Actions runner, which has two command parsers: a line is a command
 	 * if, after .NET whitespace, it starts with `::`, or if `##[` occurs ANYWHERE in it (a bare `##` is not one). When
-	 * `true`, `plain`, `ansi` and `markdown` put a zero-width space in front of such a `::` line and between `##` and
-	 * `[` at each `##[`, so a document's text, an error message, say, can never inject a command. Unset or `false`
+	 * `true`, `plain`, `ansi` and `markdown` put a braille pattern blank (U+2800, one blank cell) in front of such a
+	 * `::` line and before the `[` of each `##[`, so a document's text, an error message, say, can never inject a command. Unset or `false`
 	 * leaves their text alone. `Render.githubLog` ignores it and always neutralizes: its output is for the runner by
 	 * definition.
 	 *
@@ -321,7 +321,7 @@ export class Render {
 	 *
 	 * Under GitHub Actions (`neutralizeWorkflowCommands`) the same neutralizing applies, since markdown can be printed
 	 * to the log. Markdown escapes `[` in text, so `##[` cannot appear outside code and the headings are untouched
-	 * (a bare `##` is not a command); code spans and blocks, which are not escaped, get the zero-width space, which can
+	 * (a bare `##` is not a command); code spans and blocks, which are not escaped, get the blank marker, which can
 	 * also land inside code or table text where it would otherwise have formed a command.
 	 *
 	 * GitHub also turns `@user`, `@org/team`, `#123` and commit SHAs in rendered markdown into mentions and references.
@@ -374,8 +374,8 @@ export class Render {
 	 *
 	 * The runner has two command parsers, and a line is a command if either accepts it: after its leading whitespace it
 	 * starts with `::`, or `##[` occurs ANYWHERE in it (a bare `##` is not one). A document's text must not be able to
-	 * do that (`::add-mask::`, `::error::`, `##[error]`), so such a `::` line gets a zero-width space in front, which
-	 * the runner does not treat as whitespace, and every `##[` gets one between the `##` and the `[`. The text is
+	 * do that (`::add-mask::`, `::error::`, `##[error]`), so such a `::` line gets a braille pattern blank (U+2800) in
+	 * front, which the runner neither trims nor skips, and every `##[` gets one before the `[`. The text is
 	 * otherwise unchanged. A
 	 * group's title is a command's data, so its `%`, CR and LF are escaped. Lines are split at CR, LF and CRLF before
 	 * that check, as the runner splits them. There is no ANSI and `paint` and `link` are never called, and the audience

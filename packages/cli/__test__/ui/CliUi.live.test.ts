@@ -15,6 +15,7 @@ import {
 	CLEAR_SCREEN,
 	CLEAR_SCROLLBACK,
 	End,
+	FULL_CLEAR,
 	SHOW_CURSOR,
 	Start,
 	capturing,
@@ -174,7 +175,7 @@ describe("CliUi.live: runs on the production path", () => {
 		}),
 	);
 
-	it.live("a 200-row frame on a 10-row terminal is clamped, so the scrollback is never cleared", () =>
+	it.live("a 200-row frame on a 10-row terminal is clamped, so Ink never takes its full-clear path", () =>
 		Effect.gen(function* () {
 			const fake = makeFakeStreams({ columns: 40, rows: 10 });
 			const tall = Array.from({ length: 200 }, (_, index) => `line ${index}`).join("\n");
@@ -185,6 +186,7 @@ describe("CliUi.live: runs on the production path", () => {
 			yield* handle.done.pipe(Effect.timeout("2 seconds"));
 			const written = fake.stdout();
 			assert.include(written, "line 0", "the frame drew");
+			assert.notInclude(written, FULL_CLEAR);
 			assert.notInclude(written, CLEAR_SCROLLBACK);
 			assert.notInclude(written, CLEAR_SCREEN);
 			assert.isAtMost(screenAfter(written).length, 9, "rows - 1 at most");
@@ -210,7 +212,7 @@ describe("CliUi.live: runs on the production path", () => {
 		}).pipe(Effect.scoped),
 	);
 
-	it.live("control: the same 200 rows rendered unclamped on a 10-row terminal do clear the scrollback", () =>
+	it.live("control: the same 200 rows rendered unclamped on a 10-row terminal take Ink's full-clear path", () =>
 		Effect.gen(function* () {
 			yield* CliUi.context.pipe(Effect.provide(CliTheme.layerTest()));
 			const fake = makeFakeStreams({ columns: 40, rows: 10 });
@@ -225,7 +227,10 @@ describe("CliUi.live: runs on the production path", () => {
 			});
 			instance.unmount();
 			yield* Effect.promise(() => instance.waitUntilExit().catch(() => undefined));
-			assert.include(fake.stdout(), CLEAR_SCROLLBACK);
+			// Ink 8 keeps the scrollback (no ESC[3J) but repaints the viewport whole, so each overflowing frame's top rows
+			// scroll another copy into the history: what the clamp keeps a live frame from.
+			assert.include(fake.stdout(), FULL_CLEAR);
+			assert.notInclude(fake.stdout(), CLEAR_SCROLLBACK);
 		}),
 	);
 

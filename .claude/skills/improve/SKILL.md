@@ -121,7 +121,7 @@ Stop if you catch yourself doing any of these. Each has happened.
 - **Widening a suppression to make a gate green.** The `_base` suppression in each `savvy.build.ts` is narrow and four packages depend on it staying narrow.
 - **Spreading `.repos/effect` across the plugin.** While the plugin is dogfooded from this repo alone, its agents and skills *may* assume the vendored tree — but only **two** files may name the path, for two different reasons, and everything else consults the skill:
   - `plugin/skills/effect-v4-source-lookup/SKILL.md` — resolves the ladder, so it owns the path for *reading*.
-  - `plugin/hooks/session-start/orientation.sh`, with its Copilot twin `orientation.copilot.sh` — reports the vendored-source posture and tells a repo that has no vendored tree where to put one, so it owns the path for *bootstrapping*. A hook that could not name the destination could not do its job.
+  - `plugin/hooks/session-start/orientation.sh`, the one SessionStart script both hosts run — reports the vendored-source posture and tells a repo that has no vendored tree where to put one, so it owns the path for *bootstrapping*. A hook that could not name the destination could not do its job.
 
   Any **third** hardcoded reference is the drift this red flag is about; collapse it into one of those two. See [pre-publish debt](#pre-publish-debt).
 - **Trusting a green build you did not run correctly.** `node savvy.build.ts --target prod` run directly skips `build:dev`, produces no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate. Build with `pnpm build --filter <pkg>` from the repo root.

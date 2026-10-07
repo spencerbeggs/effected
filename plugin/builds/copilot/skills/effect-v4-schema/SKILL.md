@@ -28,7 +28,7 @@ Each row is a hard house default; reasoning and worked code in
 
 Naming trap: `Schema.TaggedErrorClass` and `Schema.ErrorClass` are both
 `undefined` on the `Schema` namespace — the current names are
-`Schema.TaggedError` (`Schema.ts:14864`) and `Schema.Error` (`:14804`), with the same
+`Schema.TaggedError` (`Schema.ts:15593`) and `Schema.Error` (`:15532`), with the same
 curried call shape. Code written against the older names fails with
 "TaggedErrorClass is not a function".
 
@@ -36,30 +36,30 @@ curried call shape. Code written against the older names fails with
 | --- | --- |
 | `Schema.Class` / `TaggedClass` / `TaggedError` for any reusable model, union member, or error | a bare `Schema.Struct` for a domain type — `Struct` is for throwaway inline shapes |
 | `X.make({...})` as the default constructor — EXCEPT `TaggedError`, where failing with the yieldable `yield* new SomeError({...})` is the house idiom (glob, workspaces, walker all construct errors with `new`) | `new X({...})` for models outside a measured hot path (both validate identically) |
-| reach for `{ disableChecks: true }` only to accept *trusted* data that would fail a `.check(...)` | reach for it as a **speed** switch — despite a docstring promising to "skip validation" (`Schema.ts:108`), it gates only the check phase: a failing `.check(...)` is skipped but a *type* error still throws, and the structural re-parse still runs. There is no speed to buy: a depth-20 recursive build measures **sub-millisecond either way**, with or without it — see the retracted exponential-cost claim below for what the numbers were once wrongly believed to be |
+| reach for `{ disableChecks: true }` only to accept *trusted* data that would fail a `.check(...)` | reach for it as a **speed** switch — despite a docstring promising to "skip validation" (`Schema.ts:122`), it gates only the check phase: a failing `.check(...)` is skipped but a *type* error still throws, and the structural re-parse still runs. There is no speed to buy: a depth-20 recursive build measures **sub-millisecond either way**, with or without it — see the retracted exponential-cost claim below for what the numbers were once wrongly believed to be |
 | treat a nested `Schema.Class` field identically whether it is **foreign** or **self-recursive** — both accept a plain literal, deep-validate it, promote it to a real instance, and pass a real instance through **by reference** ([table](#a-nested-schemaclass-field-foreign-and-self-recursive-behave-identically)) | assume the two ever split — that a self-recursive field *rejects* literals, or that a foreign field is re-constructed so `Outer.make({ inner: x }).inner !== x`. A **prototype-forged** instance is accepted unexamined either way |
-| dodge the class factory's reserved static names when designing domain statics — every `Schema.Class`/`TaggedClass`/`TaggedError` base already declares `identifier`, `fields`, `ast`, `pipe`, `rebuild`, `make`, `makeOption`, `makeEffect`, `annotate`, `annotateKey`, `check`, `extend`, `mapFields` (`makeClass`, `Schema.ts:14453`; all thirteen confirmed present by probe, against a control key correctly reported absent) | a domain static reusing one of those names — an incompatible signature is a TS2417 compile error (*static side incorrectly extends base*); the lockfiles port had to rename an approved `LockfileIntegrity.check(lockfile, manifests)` design to `compare` on exactly this |
+| dodge the class factory's reserved static names when designing domain statics — every `Schema.Class`/`TaggedClass`/`TaggedError` base already declares `identifier`, `fields`, `ast`, `pipe`, `rebuild`, `make`, `makeOption`, `makeEffect`, `annotate`, `annotateKey`, `check`, `extend`, `mapFields` (`makeClass`, `Schema.ts:15178`; all thirteen confirmed present by probe, against a control key correctly reported absent) | a domain static reusing one of those names — an incompatible signature is a TS2417 compile error (*static side incorrectly extends base*); the lockfiles port had to rename an approved `LockfileIntegrity.check(lockfile, manifests)` design to `compare` on exactly this |
 | name a validating string constructor `parse` / `parseResult` — **`make` is reserved and cannot be overloaded**, and this pair is the kit-wide shape ([worked example](#the-reserved-make-collision-parse--parseresult-is-the-house-resolution)) | `static make(raw: string)` on a `Schema.Class` — TS2417, every time |
 | conditional-spread an absent optional field | pass an explicit `undefined` for a `Schema.optionalKey` — a *present* `undefined` throws |
-| cross-field validation on a class: pass a **checked Struct** to the factory — `Schema.Class<X>("X")(Schema.Struct(fields).check(...))`; `check` returns `this["Rebuild"]` (`Schema.ts:187`), so a checked `Struct<Fields>` is still a `Struct<Fields>` the factory accepts, and the check sees the whole record (worked precedent: `CacheKey`'s restore-depths bound against its own segment count) | per-field checks that need a sibling's value (a field check sees only its field), or validating cross-field invariants in a `parse` wrapper the direct `make` path never runs |
-| `Schema.optionalKey` for object fields — it yields `field?: T`, the exact-optional contract these `exactOptionalPropertyTypes` repos want ([why](#schemaoptional-is-not-exact-optional)) | `Schema.optional` unless the *value* itself must carry `undefined` — it is documented as "Equivalent to `optionalKey(UndefinedOr(S))`" (`Schema.ts:2476`), so it yields `field?: T \| undefined` and **admits `{ field: undefined }`** |
+| cross-field validation on a class: pass a **checked Struct** to the factory — `Schema.Class<X>("X")(Schema.Struct(fields).check(...))`; `check` returns `this["Rebuild"]` (`Schema.ts:193`), so a checked `Struct<Fields>` is still a `Struct<Fields>` the factory accepts, and the check sees the whole record (worked precedent: `CacheKey`'s restore-depths bound against its own segment count) | per-field checks that need a sibling's value (a field check sees only its field), or validating cross-field invariants in a `parse` wrapper the direct `make` path never runs |
+| `Schema.optionalKey` for object fields — it yields `field?: T`, the exact-optional contract these `exactOptionalPropertyTypes` repos want ([why](#schemaoptional-is-not-exact-optional)) | `Schema.optional` unless the *value* itself must carry `undefined` — it is documented as "Equivalent to `optionalKey(UndefinedOr(S))`" (`Schema.ts:2424`), so it yields `field?: T \| undefined` and **admits `{ field: undefined }`** |
 | `.check(is*)` to constrain, `refine` to narrow, `check(makeFilter(...))` for cross-field | `positive`/`negative`, or the `filter`/`greaterThan` spellings — none of them exist |
 | tagged unions of `TaggedClass` members (`_tag` branching) | untagged unions for domain variants |
 | `Schema.Literals(["a", "b", "c"])` for any multi-literal union (reason fields, enums) | the variadic `Schema.Literal("a", "b", "c")` — v4 `Literal` takes ONE argument; tsgo rejects the variadic call (TS2554), but the **runtime silently keeps only the first literal**, so a suite run before typecheck green-lights a schema that rejects every other member: `Schema.Literal("a","b","c")` accepts `"a"`, rejects `"b"` and `"c"` |
 | `Source.pipe(decodeTo(Target, SchemaTransformation.transform({...})))` | a top-level `Schema.transform` / `transformEffect` — **not callable** — both are `undefined` on the `Schema` namespace |
 | pin `transformEffect`'s type params explicitly when a union codec's members carry instance methods — `SchemaTransformation.transformEffect<(typeof Classified)["Encoded"], string>({...})` | relying on inference after adding an instance method to a `Schema.TaggedClass` union member — `transformEffect` unifies one `T` from decode-out and encode-in, and `decodeTo` pins both to the union's **Encoded** side, which no longer satisfies the method-bearing instance type; the existing codec breaks at the declaration site (hit adding a method to a `DependencySpecifier.FromString` member) |
-| return an **`Effect`** from both `transformEffect` callbacks, failing with `SchemaIssue.InvalidValue({ message }, value)` ([contract](#transformeffects-callback-contract)) | return a `Result` (or a bare value) from a `transformEffect` callback — the signature demands `Effect<T, SchemaIssue.Issue, R>` (`SchemaTransformation.ts:380`); a `Result` is not an Effect and will not bridge itself |
+| return an **`Effect`** from both `transformEffect` callbacks, failing with `SchemaIssue.InvalidValue({ message }, value)` ([contract](#transformeffects-callback-contract)) | return a `Result` (or a bare value) from a `transformEffect` callback — the signature demands `Effect<T, SchemaIssue.Issue, R>` (`SchemaTransformation.ts:389`); a `Result` is not an Effect and will not bridge itself |
 | a `FromString` `Schema.Codec<Self, string>` static (string = the encoded form of the same schema) | a second parser divorced from the schema |
-| `cause: Schema.Defect()` on an error class | `cause: Schema.Defect` — the bare (uncalled) form throws at construction (`Schema.ts:8732` is a *function*; `Schema.ErrorInstance` at `:8656` is the same trap — `Schema.Error` (`:14804`) is the error-**class factory**, not an instance schema — full list of the call-not-value family in **`effect-v4-idioms`**) |
+| `cause: Schema.Defect()` on an error class | `cause: Schema.Defect` — the bare (uncalled) form throws at construction (`Schema.ts:9305` is a *function*; `Schema.ErrorInstance` at `:9227` is the same trap — `Schema.Error` (`:15532`) is the error-**class factory**, not an instance schema — full list of the call-not-value family in **`effect-v4-idioms`**) |
 | `Schema.decodeUnknownEffect` / `encodeUnknownEffect` in Effect flows | `*Sync` outside a genuine sync boundary |
-| `Schema.fromJsonString(S)` (`Schema.ts:9198`) when the encoded form is a JSON **string** — one codec that parses-then-decodes and encodes-then-stringifies (`reviver` / `replacer` / `space` options); for a config or action input, `Config.schema(Schema.fromJsonString(S), "NAME")` (`Config.ts:877`) — behaviour under `withDefault` is probed and written up in **`effect-v4-idioms`** | `JSON.parse` / `JSON.stringify` around `decodeUnknown*` / `encodeUnknown*` — a second parser divorced from the schema, with a throwing host call in the seam that no downstream `Effect.catch` sees (five such sites had accreted in `github-actions` before #769 caught them) |
-| `Schema.DurationFromMillis` / `Schema.DateTimeUtcFromString` (composed with `Schema.fromJsonString` for byte stores) when the value must **serialize** | `Schema.Duration` / `Schema.DateTimeUtc` in a persisted or wire schema — both are `declare` schemas with **no JSON encoding** (`Schema.ts:12016,13415`), so they round-trip in memory and fail at the serialization boundary; the ts-vfs cache metadata hit exactly this |
+| `Schema.fromJsonString(S)` (`Schema.ts:9791`) when the encoded form is a JSON **string** — one codec that parses-then-decodes and encodes-then-stringifies (`reviver` / `replacer` / `space` options); for a config or action input, `Config.schema(Schema.fromJsonString(S), "NAME")` (`Config.ts:849`) — behaviour under `withDefault` is probed and written up in **`effect-v4-idioms`** | `JSON.parse` / `JSON.stringify` around `decodeUnknown*` / `encodeUnknown*` — a second parser divorced from the schema, with a throwing host call in the seam that no downstream `Effect.catch` sees (five such sites had accreted in `github-actions` before #769 caught them) |
+| `Schema.DurationFromMillis` / `Schema.DateTimeUtcFromString` (composed with `Schema.fromJsonString` for byte stores) when the value must **serialize** | `Schema.Duration` / `Schema.DateTimeUtc` in a persisted or wire schema — both are `declare` schemas with **no JSON encoding** (`Schema.ts:13407,11532`), so they round-trip in memory and fail at the serialization boundary; the ts-vfs cache metadata hit exactly this |
 | annotate recursive `Schema.suspend` refs `Schema.Codec<T>` (services default `never`) | `Schema.Schema<T>` as the suspend annotation — it compiles at the declaration but leaves `DecodingServices` `unknown`, so every decode entrypoint rejects the schema (`unknown is not assignable to never`); a schema nobody decodes directly hides the trap until a consumer tries |
 | derive variants via `mapFields(Struct.pick/omit/map(...))` | duplicate a schema to re-encode the same data |
 | attach brand statics with `Object.assign`; export the type as `string & Brand.Brand<"N">` | try to merge a `namespace` into the brand `const` (impossible) |
 | override BOTH `[Equal.symbol]` AND `[Hash.symbol]` when equality ignores fields | override `[Equal.symbol]` alone — the hash fast-path silently defeats it |
-| `Schema.isSchema(x)` (`Schema.ts:2261`) to recognise a schema value at runtime — every schema is a **function** (`typeof === "function"`) ([why](#a-schema-value-is-a-function-at-runtime)) | `typeof x === "object" && x !== null` as a schema guard — it rejects **every** schema, so a config loader that "accepts objects" silently drops all of them |
-| `S extends Schema.ConstraintDecoder<unknown>` as the bound of a helper that wraps `decodeUnknownResult` / `decodeUnknownExit` / `decodeUnknownOption` — that is the bound core's own decode entry points use (`Schema.ts:1668,1540,1606`) | `S extends Schema.Top` — `Top` erases `DecodingServices` to `unknown`, so the helper's call into `decodeUnknownResult` fails to type-check (`unknown` is not assignable to `never`); `Top` is for utilities that never decode (its docstring at `Schema.ts:737` sends decode-only APIs to `ConstraintDecoder`) |
+| `Schema.isSchema(x)` (`Schema.ts:2324`) to recognise a schema value at runtime — every schema is a **function** (`typeof === "function"`) ([why](#a-schema-value-is-a-function-at-runtime)) | `typeof x === "object" && x !== null` as a schema guard — it rejects **every** schema, so a config loader that "accepts objects" silently drops all of them |
+| `S extends Schema.ConstraintDecoder<unknown>` as the bound of a helper that wraps `decodeUnknownResult` / `decodeUnknownExit` / `decodeUnknownOption` — that is the bound core's own decode entry points use (`Schema.ts:1712,1580,1648`) | `S extends Schema.Top` — `Top` erases `DecodingServices` to `unknown`, so the helper's call into `decodeUnknownResult` fails to type-check (`unknown` is not assignable to `never`); `Top` is for utilities that never decode (its docstring at `Schema.ts:754` sends decode-only APIs to `ConstraintDecoder`) |
 | `Schema.toJsonSchemaDocument(S)` | `Schema.toJsonSchema(S)` — that export does not exist. It returns `{ dialect, schema, definitions }`, **not** `$defs` / `properties` |
 | a single-return **ternary chain** in an error's `message` getter | an exhaustive `switch` with no terminal return — tsgo accepts it, but Biome's `useGetterReturn` rejects it (see below) |
 | `Schema.Class` + `Schema.tag("literal")` on an explicitly-named field when the discriminator belongs to a FOREIGN contract | `Schema.TaggedClass` for a foreign discriminator — it hardwires the key `_tag` (see below) |
@@ -128,7 +128,7 @@ The mechanism is in the vendored source — `optional` is `optionalKey` widened
 with `UndefinedOr`:
 
 ```ts
-// Schema.ts:2379 — the docstring at :2357 reads "Equivalent to `optionalKey(UndefinedOr(S))`"
+// Schema.ts:2447 — the docstring at :2424 reads "Equivalent to `optionalKey(UndefinedOr(S))`"
 export const optional = Struct_.lambda<optionalLambda>((self) => {
   const schema = UndefinedOr(self)
   return make(SchemaAST.optional(self.ast), { schema })
@@ -193,7 +193,7 @@ why `yield* someResult` does not work, are owned by `effect-v4-idioms`.)
 
 Both callbacks must return an **`Effect`** — not a `Result`, not a bare value —
 failing with a `SchemaIssue`. The vendored signature
-(`SchemaTransformation.ts:380`):
+(`SchemaTransformation.ts:389`):
 
 ```ts
 export function transformEffect<T, E, RD = never, RE = never>(options: {
@@ -219,12 +219,12 @@ Schema.String.pipe(Schema.decodeTo(Schema.Date,
 ```
 
 Signature trap: `SchemaIssue.InvalidValue`'s constructor is
-`(annotations?, input?, options?)` (`SchemaIssue.ts:745`), not
+`(annotations?, input?, options?)` (`SchemaIssue.ts:766`), not
 `(Option.some(s), { message })` — a plain annotations object is the first
 argument, with no `Option` wrapper. The input is retained on the issue only
-when parse options set `reportInput: true` (`SchemaIssue.ts:167-168`);
+when parse options set `reportInput: true` (`SchemaIssue.ts:172-173`);
 `InvalidType`'s constructor is `(ast, input?, options?)`
-(`SchemaIssue.ts:667`). If your transformation is infallible, use
+(`SchemaIssue.ts:686`). If your transformation is infallible, use
 `SchemaTransformation.transform` (plain values, no Effect) instead; reach for
 `transformEffect` only when it can fail.
 
@@ -444,7 +444,7 @@ package exits 0 without reading the repo config — it is not a check).
 
 `Schema.TaggedClass` hardwires its discriminator key to `_tag` (the vendored
 `TaggedStruct` is `Simplify<{ readonly _tag: tag<Tag> } & Fields>`,
-`Schema.ts:6133`), so it
+`Schema.ts:6331`), so it
 serves only contracts **we** own. When shaping classes to a foreign JSON
 contract whose discriminator has its own name — mdast's `type`, JSON Schema's
 `type`/`$ref`, OpenAPI, LSP — use `Schema.Class` with `Schema.tag("literal")`
@@ -464,7 +464,7 @@ branching, and presence on the encoded side. `@effected/markdown`'s
 spec-valid mdast because the tag field is literally named `type`.
 
 While here, the factory-signature trap between the two
-(`Schema.ts:14686`/`14745`): `Schema.Class<Self>("Identifier")(fields)` takes
+(`Schema.ts:15412`/`15472`): `Schema.Class<Self>("Identifier")(fields)` takes
 the **identifier in the first call** and fields in the second, while
 `Schema.TaggedClass<Self>()("Tag", fields)` takes an **optional identifier
 first** and the tag+fields in the second. Mixing them up produces confusing
@@ -472,7 +472,7 @@ inference errors, not a clear TS message.
 
 For any other field, the general form is `Schema.withConstructorDefault`, and
 its argument is an **Effect**, not a thunk and not an `Option`
-(`defaultValue: Effect.Effect<...>`, `Schema.ts:5651`):
+(`defaultValue: Effect.Effect<...>`, `Schema.ts:5909`):
 `field.pipe(Schema.withConstructorDefault(Effect.succeed(value)))`. Passing a
 thunk like `() => Option.some(value)` typechecks against nothing helpful and
 dies at construction with the unhelpful defect `Fiber.runLoop: Not a valid
@@ -507,7 +507,7 @@ them apart. The consequence bites in two directions:
 ## A schema value is a function at runtime
 
 Every schema — `Schema.String`, a `Struct`, a `Literals`, a `Schema.Class`
-factory result, a `.check(...)`-ed schema — is built by `internal/schema/make.ts:27`
+factory result, a `.check(...)`-ed schema — is built by `internal/schema/make.ts:46`
 as `function Schema() {}` with its prototype swapped to the schema proto, so
 `typeof` reports `"function"`, never `"object"`. Probed against a
 control (`Schema.isSchema(42)` → `false`):
@@ -524,7 +524,7 @@ The trap this replaces: a `typeof value === "object"` guard in a config loader
 that classified every user-supplied schema as "not a schema" and reported a
 config with five schemas as declaring none — a false *negative* the loader's
 own tests could not see because their fixtures were objects too. Use
-`Schema.isSchema` (`Schema.ts:2261`, a `TypeId` brand check), and when a guard
+`Schema.isSchema` (`Schema.ts:2324`, a `TypeId` brand check), and when a guard
 must also accept plain objects, test `isSchema` **first**.
 
 ## Verify against the installed source, not the references

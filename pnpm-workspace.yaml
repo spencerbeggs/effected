@@ -6,34 +6,34 @@ packages:
 autoInstallPeers: true
 catalogs:
   effect:
-    "@effect/ai-anthropic": ^4.0.1
-    "@effect/ai-openai": ^4.0.1
-    "@effect/ai-openai-compat": ^4.0.1
-    "@effect/ai-openrouter": ^4.0.1
-    "@effect/atom-react": ^4.0.1
-    "@effect/atom-solid": ^4.0.1
-    "@effect/atom-vue": ^4.0.1
-    "@effect/openapi-generator": ^4.0.1
-    "@effect/opentelemetry": ^4.0.1
-    "@effect/platform-browser": ^4.0.1
-    "@effect/platform-bun": ^4.0.1
-    "@effect/platform-node": ^4.0.1
-    "@effect/platform-node-shared": ^4.0.1
-    "@effect/sql-clickhouse": ^4.0.1
-    "@effect/sql-d1": ^4.0.1
-    "@effect/sql-libsql": ^4.0.1
-    "@effect/sql-mssql": ^4.0.1
-    "@effect/sql-mysql2": ^4.0.1
-    "@effect/sql-pg": ^4.0.1
-    "@effect/sql-pglite": ^4.0.1
-    "@effect/sql-sqlite-bun": ^4.0.1
-    "@effect/sql-sqlite-do": ^4.0.1
-    "@effect/sql-sqlite-node": ^4.0.1
-    "@effect/sql-sqlite-react-native": ^4.0.1
-    "@effect/sql-sqlite-wasm": ^4.0.1
-    "@effect/tsgo": 0.48.1
-    "@effect/vitest": ^4.0.1
-    effect: ^4.0.1
+    "@effect/ai-anthropic": ^4.0.2
+    "@effect/ai-openai": ^4.0.2
+    "@effect/ai-openai-compat": ^4.0.2
+    "@effect/ai-openrouter": ^4.0.2
+    "@effect/atom-react": ^4.0.2
+    "@effect/atom-solid": ^4.0.2
+    "@effect/atom-vue": ^4.0.2
+    "@effect/openapi-generator": ^4.0.2
+    "@effect/opentelemetry": ^4.0.2
+    "@effect/platform-browser": ^4.0.2
+    "@effect/platform-bun": ^4.0.2
+    "@effect/platform-node": ^4.0.2
+    "@effect/platform-node-shared": ^4.0.2
+    "@effect/sql-clickhouse": ^4.0.2
+    "@effect/sql-d1": ^4.0.2
+    "@effect/sql-libsql": ^4.0.2
+    "@effect/sql-mssql": ^4.0.2
+    "@effect/sql-mysql2": ^4.0.2
+    "@effect/sql-pg": ^4.0.2
+    "@effect/sql-pglite": ^4.0.2
+    "@effect/sql-sqlite-bun": ^4.0.2
+    "@effect/sql-sqlite-do": ^4.0.2
+    "@effect/sql-sqlite-node": ^4.0.2
+    "@effect/sql-sqlite-react-native": ^4.0.2
+    "@effect/sql-sqlite-wasm": ^4.0.2
+    "@effect/tsgo": 0.51.1
+    "@effect/vitest": ^4.0.2
+    effect: ^4.0.2
   effect:peers:
     "@effect/ai-anthropic": ^4.0.0
     "@effect/ai-openai": ^4.0.0
@@ -60,15 +60,15 @@ catalogs:
     "@effect/sql-sqlite-node": ^4.0.0
     "@effect/sql-sqlite-react-native": ^4.0.0
     "@effect/sql-sqlite-wasm": ^4.0.0
-    "@effect/tsgo": 0.48.0
+    "@effect/tsgo": 0.51.0
     "@effect/vitest": ^4.0.0
     effect: ^4.0.0
   effected:
-    "@effected/app": ^0.21.1
-    "@effected/cli": ^0.12.0
+    "@effected/app": ^0.21.2
+    "@effected/cli": ^0.13.0
     "@effected/commands": ^0.11.0
     "@effected/config-file": ^0.14.2
-    "@effected/engine": ^0.3.0
+    "@effected/engine": ^0.4.0
     "@effected/env": ^0.1.0
     "@effected/git": ^0.20.0
     "@effected/github": ^0.15.1
@@ -76,35 +76,36 @@ catalogs:
     "@effected/github-commands": ^0.1.0
     "@effected/github-references": ^0.7.0
     "@effected/glob": ^0.10.0
-    "@effected/jsonc": ^0.15.0
+    "@effected/jsonc": ^0.15.1
     "@effected/jsonl": ^0.9.0
     "@effected/lockfiles": ^0.15.0
-    "@effected/markdown": ^0.15.0
-    "@effected/mcp": ^0.4.0
+    "@effected/lsp": ^0.1.0
+    "@effected/markdown": ^0.15.1
+    "@effected/mcp": ^0.5.0
     "@effected/memfs": ^0.14.0
     "@effected/npm": ^0.20.0
     "@effected/package-json": ^0.20.0
     "@effected/runtimes": ^0.10.0
     "@effected/sbom": ^0.10.0
     "@effected/schema-org": ^0.7.0
-    "@effected/schemastore": ^0.21.0
-    "@effected/schemastore-cli": ^0.21.0
+    "@effected/schemastore": ^0.21.1
+    "@effected/schemastore-cli": ^0.21.1
     "@effected/semver": ^0.11.0
     "@effected/spdx": ^0.11.0
-    "@effected/store": ^0.13.0
+    "@effected/store": ^0.13.1
     "@effected/templates": ^0.10.0
-    "@effected/toml": ^0.11.0
+    "@effected/toml": ^0.11.1
     "@effected/tsconfig-json": ^0.13.0
     "@effected/walker": ^0.15.0
-    "@effected/workspaces": ^0.31.0
+    "@effected/workspaces": ^0.32.0
     "@effected/xdg": ^0.9.0
-    "@effected/yaml": ^0.19.0
+    "@effected/yaml": ^0.19.1
   effected:peers:
     "@effected/app": ^0.21.0
-    "@effected/cli": ^0.12.0
+    "@effected/cli": ^0.13.0
     "@effected/commands": ^0.11.0
     "@effected/config-file": ^0.14.0
-    "@effected/engine": ^0.3.0
+    "@effected/engine": ^0.4.0
     "@effected/env": ^0.1.0
     "@effected/git": ^0.20.0
     "@effected/github": ^0.15.0
@@ -115,8 +116,9 @@ catalogs:
     "@effected/jsonc": ^0.15.0
     "@effected/jsonl": ^0.9.0
     "@effected/lockfiles": ^0.15.0
+    "@effected/lsp": ^0.1.0
     "@effected/markdown": ^0.15.0
-    "@effected/mcp": ^0.4.0
+    "@effected/mcp": ^0.5.0
     "@effected/memfs": ^0.14.0
     "@effected/npm": ^0.20.0
     "@effected/package-json": ^0.20.0
@@ -132,14 +134,13 @@ catalogs:
     "@effected/toml": ^0.11.0
     "@effected/tsconfig-json": ^0.13.0
     "@effected/walker": ^0.15.0
-    "@effected/workspaces": ^0.31.0
+    "@effected/workspaces": ^0.32.0
     "@effected/xdg": ^0.9.0
     "@effected/yaml": ^0.19.0
 configDependencies:
   "@savvy-web/pnpm-plugin-silk": 0.47.0
 loglevel: info
 minimumReleaseAgeExclude:
-  - "@savvy-web/pnpm-plugin-silk"
   - "@effect/*"
   - "@effect/tsgo-*"
   - effect
@@ -148,4 +149,4 @@ overrides:
   "@effect/platform-node@4.0.0-rc.118>@effect/platform-node-shared": 4.0.0-rc.118
 peerDependencyRules:
   allowedVersions:
-    "@effect/tsgo@0.48.1>effect": 4.0.1
+    "@effect/tsgo@0.51.1>effect": 4.0.2

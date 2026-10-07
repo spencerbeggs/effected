@@ -8,8 +8,8 @@ resource: ../../packages/github-commands
 tags: [github, security, bundle]
 generated:
   by: okfit/claude-code
-  at: 2026-10-01T01:56:30Z
-  body_sha256: ec00324a9e2bb4b2908ade3b8697523de66dc5420fdb5933d3cffabc3946c445
+  at: 2026-10-07T21:32:23Z
+  body_sha256: df63a018601200d8bd225c7ef6b39ab3a3b46a1f8d31a4f881ca7ed9cf094ab5
 ---
 
 # @effected/github-commands
@@ -33,11 +33,20 @@ The runner reads a command by two parsers (`actions/runner`,
 is a command if either accepts it:
 
 - **V2:** `TrimStart()` with .NET whitespace (which includes U+0085), then
-  `StartsWith("::")`. The neutralizer puts a zero-width space (U+200B, which
-  .NET does not count as whitespace) in front of such a line.
+  `StartsWith("::")`. The neutralizer puts a braille pattern blank (U+2800,
+  which .NET does not count as whitespace) in front of such a line.
 - **Legacy:** `IndexOf("##[")`, so `##[` is a command wherever it occurs in the
-  line. The neutralizer puts a zero-width space between `##` and `[` at every
+  line. The neutralizer puts a braille pattern blank before the `[` at every
   occurrence.
+
+Both comparisons are culture-sensitive, and the runner runs on ICU (it installs
+libicu; nothing sets invariant globalization), which skips controls, format
+characters, most combining marks and other default-ignorables as if absent. So
+`"\u200b::x"` and `":\u200b:x"` are commands, and a zero-width marker defends
+nothing. The neutralizer matches with those characters skipped, and its marker is
+one ICU weighs. It is also not a default-ignorable code point, which Ink 8 drops
+from a frame. The skipped set was measured on .NET 8, every code point, and the
+test oracle holds it as `ICU_IGNORED`.
 
 A bare `##` with no `[` straight after it is not a command and is left alone, so
 a markdown heading survives. Input is split at CR, LF and CRLF, as the runner

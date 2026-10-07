@@ -17,9 +17,13 @@ vi.hoisted(() => {
 
 const RERENDERS = 200;
 
-/** Mount an Ink frame on fake streams and rerender it `RERENDERS` times, draining (or not) after each; the measures left. */
-const measuresAfterRerenders = (drain: boolean): number => {
+/**
+ * Mount an Ink frame on fake streams and rerender it `RERENDERS` times, draining (or not) after each: the measures
+ * React recorded, and the ones left.
+ */
+const measuresAfterRerenders = (drain: boolean): { readonly recorded: number; readonly left: number } => {
 	performance.clearMeasures();
+	const spy = vi.spyOn(performance, "measure");
 	const fake = makeFakeStreams({ columns: 40, rows: 10 });
 	const instance = render(createElement(Text, null, "tick 0"), {
 		stdin: fake.streams.stdin,
@@ -35,7 +39,9 @@ const measuresAfterRerenders = (drain: boolean): number => {
 	}
 	instance.unmount();
 	drainPerformance(drain);
-	return performance.getEntriesByType("measure").length;
+	const recorded = spy.mock.calls.length;
+	spy.mockRestore();
+	return { recorded, left: performance.getEntriesByType("measure").length };
 };
 
 const withNodeEnv = (value: string | undefined) =>
@@ -45,12 +51,16 @@ const withNodeEnv = (value: string | undefined) =>
 	);
 
 describe("drainPerformance: React's development build leaks user-timing entries (okf/gotchas/react-dev-performance-entries.md)", () => {
-	it("control: without the drain, 200 rerenders leave more than one measure entry per rerender", () => {
-		assert.isAbove(measuresAfterRerenders(false), RERENDERS);
+	// Ink 7's reconciler (react-reconciler 0.33) left about 15 measures per rerender; 0.34, which Ink 8 requires, clears
+	// each measure right after recording it. This pins that: if a reconciler leaks again, the drain is needed again.
+	it("without the drain, React records a measure per rerender and Ink's reconciler leaves none", () => {
+		const { recorded, left } = measuresAfterRerenders(false);
+		assert.isAbove(recorded, RERENDERS, "control: React recorded measures");
+		assert.strictEqual(left, 0);
 	});
 
 	it("with the drain after every rerender and the unmount, none are left", () => {
-		assert.strictEqual(measuresAfterRerenders(true), 0);
+		assert.strictEqual(measuresAfterRerenders(true).left, 0);
 	});
 
 	it("a host's own marks survive the drain: React leaks measures only, so marks are left alone", () => {

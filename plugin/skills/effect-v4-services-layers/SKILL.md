@@ -39,7 +39,7 @@ Argument order is **type params first** via `Context.Service<Self, Shape>()`,
 
 **Tags are Effects.** A service key is a
 first-class Effect — `Context.Key<Identifier, Shape> extends
-Effect<Shape, never, Identifier>` (`Context.ts:64` — line 63 is the
+Effect<Shape, never, Identifier>` (`Context.ts:68` — line 67 is the
 closing comment delimiter, not the declaration) — so
 `yield* Database` works, and combinator-style consumer code like
 `Effect.flatMap(Database, (db) => …)` composes directly with no `.asEffect()`
@@ -95,11 +95,11 @@ function makeOther(dir: string): (typeof RegistryResolver)["Service"] { ... }
 ```
 
 `Context.Service.Shape<T>` is `T extends Key<infer _I, infer S> ? S : never`
-(`Context.ts:410`), and it sits in a namespace whose own doc example is titled
+(`Context.ts:420`), and it sits in a namespace whose own doc example is titled
 "Extracting service types" — core states this as the way to name a service's
 shape, so **prefer it**. The indexed form works for the same reason it reads
 well: `Context.Key<Identifier, Shape>` carries `readonly Service: Shape` as a
-real property (`Context.ts:66`), so `(typeof Tag)["Service"]` is an ordinary
+real property (`Context.ts:70`), so `(typeof Tag)["Service"]` is an ordinary
 lookup rather than a trick. The sibling `Context.Service.Identifier<T>` extracts
 the `R`-channel identifier the same way.
 
@@ -114,7 +114,7 @@ function makeWorkspaceResolver(dir: string): RegistryResolver { ... }
 ```
 
 A class-form key's instance type is `ServiceClass.Shape<Identifier, Shape>`
-(`Context.ts:144`), a three-member wrapper — the `ServiceTypeId` brand, `key`,
+(`Context.ts:151`), a three-member wrapper — the `ServiceTypeId` brand, `key`,
 and a `Service` member holding the real shape. The interface you want is nested
 one level inside it, which is exactly what both spellings above unwrap.
 
@@ -363,17 +363,20 @@ Annotate the collection where it is built —
 
 > **Type helpers are top-level.** `Layer.Success<typeof L>` and
 > `Layer.Error<typeof L>` are module-level type exports (v4 source
-> `Layer.ts:180` / `:165` — resolve the tree via `effect-v4-source-lookup`).
+> `Layer.ts:189` / `:173` — resolve the tree via `effect-v4-source-lookup`).
 > There is no nested `Layer.Layer.Success` spelling to reach for.
 
 ## Platform capabilities: require in R, never own a backend
 
 Effect v4's consolidated core **declares** the platform service contracts —
-`FileSystem`, `Path`, `Terminal`, `Stdio` as stable `effect/*` modules, and
+`FileSystem`, `Path`, `Terminal`, `Stdio` as top-level `effect/*` modules, and
 `ChildProcessSpawner` (subprocesses) under `effect/process` — while the
 **implementations** live in `@effect/platform-*` (Node's `NodeServices.layer`
 provides `ChildProcessSpawner | Crypto | FileSystem | Path | Stdio | Terminal`
-in one layer). That split fixes the house default:
+in one layer). All of these contracts are tagged `@stability unstable` — a
+minor `effect` release may change their shape — which does not change the
+rule below; it means a library re-verifies its usage when the installed
+`effect` moves. That split fixes the house default:
 
 - **A library that needs a platform capability requires the core-declared
   service in its `R` channel** and the application provides the platform layer
@@ -414,8 +417,8 @@ hand-rolled-`Path` recipe and the honest `runSyncExit` unwrap:
 Within one provided layer graph, the same layer *value* is built exactly
 once, however many composites reference it. Across `Effect.provide` calls
 the rule depends on nesting: a provide's build adds its `MemoMap` to the
-context (`Layer.ts:659`), and a provide running **inside** it forks that
-map (`CurrentMemoMap.forkOrCreate`, `Layer.ts:583`), so a nested provide
+context (`Layer.ts:678`), and a provide running **inside** it forks that
+map (`CurrentMemoMap.forkOrCreate`, `Layer.ts:601`), so a nested provide
 reuses what the enclosing one built:
 
 ```ts
@@ -525,16 +528,16 @@ deeper.
 ### `Layer.mock`'s optionality is earned, not given — and one plain member revokes it
 
 `Layer.mock(Service, impl)` takes `PartialEffectful<S>`, not `Partial<S>`
-(`Layer.ts:2304`). That type is not "everything optional" — it splits the shape
+(`Layer.ts:2352`). That type is not "everything optional" — it splits the shape
 on one predicate:
 
 ```ts
-// Layer.ts:2230 — a member is OPTIONAL iff it matches AnyEffectOrStream; else REQUIRED
+// Layer.ts:2277 — a member is OPTIONAL iff it matches AnyEffectOrStream; else REQUIRED
 export type PartialEffectful<A extends object> = Types.Simplify<
   & { [K in keyof A as A[K] extends AnyEffectOrStream ? K : never]?: A[K] }
   & { [K in keyof A as A[K] extends AnyEffectOrStream ? never : K]: A[K] }
 >
-// Layer.ts:2239 — AnyEffectOrStream = Effect | Stream | Channel, or a function returning one
+// Layer.ts:2288 — AnyEffectOrStream = Effect | Stream | Channel, or a function returning one
 ```
 
 So **any non-effectful member is required in every single mock**: a sync

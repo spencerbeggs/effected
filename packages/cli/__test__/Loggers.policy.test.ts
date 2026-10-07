@@ -6,7 +6,7 @@ import { commandLines, isCommand } from "./helpers/runnerCommands.js";
 
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(7);
-const ZWSP = String.fromCodePoint(0x200b);
+const MARK = String.fromCodePoint(0x2800);
 
 const capturing = () => {
 	const out: string[] = [];
@@ -87,16 +87,14 @@ describe("CliLogger sanitises and, under GitHub Actions, neutralizes", () => {
 		}),
 	);
 
-	it.effect(
-		"outside GitHub Actions the text is left alone: no zero-width space, the command lines are still there",
-		() =>
-			Effect.gen(function* () {
-				for (const ci of ["absent", "generic"] as const) {
-					const err = yield* plain(Effect.logError("x\n::error::y ##[z]"), ci);
-					assert.notInclude(err.join("\n"), ZWSP, ci);
-					assert.strictEqual(commandLines(err.join("\n")).length, 1, ci);
-				}
-			}),
+	it.effect("outside GitHub Actions the text is left alone: no marker, the command lines are still there", () =>
+		Effect.gen(function* () {
+			for (const ci of ["absent", "generic"] as const) {
+				const err = yield* plain(Effect.logError("x\n::error::y ##[z]"), ci);
+				assert.notInclude(err.join("\n"), MARK, ci);
+				assert.strictEqual(commandLines(err.join("\n")).length, 1, ci);
+			}
+		}),
 	);
 
 	it.effect("an ordinary line and a bare ## are untouched, even under Actions", () =>
@@ -158,7 +156,7 @@ describe("CliLog's pretty line sanitises and neutralizes", () => {
 	it.effect("outside Actions the pretty text is untouched by neutralizing", () =>
 		Effect.gen(function* () {
 			const err = yield* diagnostics(Effect.logError("x\n::error::y"), "pretty", "generic");
-			assert.notInclude(err.join("\n"), ZWSP);
+			assert.notInclude(err.join("\n"), MARK);
 			assert.isAbove(commandLines(err.join("\n")).length, 0);
 		}),
 	);

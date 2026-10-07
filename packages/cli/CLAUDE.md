@@ -63,7 +63,7 @@ default-exports `CliUiTest.serializer` for Vitest's `snapshotSerializers`; the r
 `vitest.config.ts` registers it that way for this package's own project (#909), so a
 snapshot test here uses `expect` for the snapshot alone. `okf/modules/cli.md` has the rows.
 
-- **Optional peers `ink` (^7.1.1) and `react` (^19.2.0).** The root never
+- **Optional peers `ink` (^8.0.0) and `react` (^19.3.0).** The root never
   reaches them, and `./ui` imports them only when a screen mounts (`loadInk`),
   so importing `./ui` or running a non-interactive program loads neither,
   except that an owned live view without a `final` document loads them to

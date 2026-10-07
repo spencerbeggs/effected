@@ -11,6 +11,8 @@ import { CliUiTest } from "../../src/ui-testing.js";
 
 const ESC = String.fromCharCode(0x1b);
 const CLEAR_SCROLLBACK = `${ESC}[3J`;
+/** Ink's full-clear path for a frame taller than the terminal: cursor home, then erase down. */
+const FULL_CLEAR = `${ESC}[1;1H${ESC}[J`;
 
 type Move = "up" | "down" | "home" | "end" | "pageup" | "pagedown";
 const MOVES: ReadonlyArray<Move> = ["up", "down", "home", "end", "pageup", "pagedown"];
@@ -326,20 +328,24 @@ const production = (screen: Screen<never>, keys: ReadonlyArray<string>) =>
 	});
 
 describe("the production render path (Ink's own output, not debug frames)", () => {
-	it.live("control: an unclamped 200-line Text on a 10-row terminal does clear the scrollback", () =>
+	it.live("control: an unclamped 200-line Text on a 10-row terminal takes Ink's full-clear path", () =>
 		Effect.gen(function* () {
 			const tall = Array.from({ length: 200 }, (_, index) => `line ${index}`).join("\n");
 			const stdout = yield* production(() => createElement(Text, null, tall), []);
-			assert.include(stdout, CLEAR_SCROLLBACK);
+			// Ink 8 keeps the scrollback but repaints the viewport whole, scrolling another copy of the top rows into it.
+			assert.include(stdout, FULL_CLEAR);
 		}),
 	);
 
-	it.live("a 200-row viewport on a 10-row terminal never clears the scrollback, through scrolling and unmount", () =>
-		Effect.gen(function* () {
-			const stdout = yield* production(scrolling(items(200), 50), ["\u001b[B", "\u001b[6~", "\u001b[6~", "\u001b[F"]);
-			assert.include(stdout, "item", "the viewport drew");
-			assert.notInclude(stdout, CLEAR_SCROLLBACK);
-			assert.notInclude(stdout, `${ESC}[2J`);
-		}),
+	it.live(
+		"a 200-row viewport on a 10-row terminal never takes the full-clear path, through scrolling and unmount",
+		() =>
+			Effect.gen(function* () {
+				const stdout = yield* production(scrolling(items(200), 50), ["\u001b[B", "\u001b[6~", "\u001b[6~", "\u001b[F"]);
+				assert.include(stdout, "item", "the viewport drew");
+				assert.notInclude(stdout, FULL_CLEAR);
+				assert.notInclude(stdout, CLEAR_SCROLLBACK);
+				assert.notInclude(stdout, `${ESC}[2J`);
+			}),
 	);
 });

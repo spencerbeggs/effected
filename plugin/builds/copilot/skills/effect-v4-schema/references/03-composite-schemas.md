@@ -1728,6 +1728,14 @@ are considered duplicates — the implementation normalizes numeric literals wit
 
 **Note**. If the tag is the standard `_tag` field, you can use `Schema.TaggedUnion` instead.
 
+#### Reading the Tag Key
+
+The result's `tag` property is the discriminant key you selected (`tagged.tag`
+is `"type"` above; on a `Schema.TaggedUnion` it is `"_tag"`), and
+`discriminants` lists the tag values in flattened member order — read them
+instead of repeating the key as a string literal in code that is generic over
+the union.
+
 #### Accessing Members by Tag
 
 The `cases` property gives direct access to each member schema of the union.

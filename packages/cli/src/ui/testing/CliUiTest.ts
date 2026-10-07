@@ -542,6 +542,10 @@ const LEADING_MOVES = /^(?:\u001b\[[0-9;?]*[A-Za-ln-z])+/;
  * moves; a write of moves alone is Ink clearing the frame for a log line, not a frame. stdout and stderr are two
  * streams, each read alone, and `fake.written` is both in the order written: one terminal, for `written` and the
  * transcript.
+ *
+ * Ink calls `onRender` after it writes a render's frame, in the same synchronous turn, so the frame is the last
+ * frame-like write of that turn. A production render whose write Ink's throttle defers to its trailing timer has
+ * none yet: the next frame-like write is taken instead.
  */
 const makeTerminal = (
 	options: CliUiTestOptions,
@@ -553,26 +557,51 @@ const makeTerminal = (
 	const captures: Array<Capture> = [];
 	let lastWrite = 0;
 	let frameDue = false;
+	// The stdout writes of the current synchronous turn, emptied on the next microtask: where a render's frame lands.
+	let turn: Array<string> = [];
+	/** A chunk read as a frame in `mode`, or `undefined` for one that is not a frame (brackets or moves alone). */
+	const asFrame = (chunk: string, mode: Capture["mode"]): string | undefined => {
+		if (mode === "debug") return chunk;
+		const text = chunk.replace(FRAME_BRACKETS, "");
+		if (text === "" || CONTROLS_ONLY.test(text)) return undefined;
+		return text.replace(LEADING_MOVES, "").replace(/\n+$/, "");
+	};
 	const fake = makeFakeStreams({
 		columns,
 		rows,
 		onStdoutWrite: (chunk) => {
 			lastWrite = Date.now();
+			if (turn.length === 0) {
+				const opened = turn;
+				queueMicrotask(() => {
+					if (turn === opened) turn = [];
+				});
+			}
+			turn.push(chunk);
 			const current = captures.at(-1);
 			// An ended capture takes no more frames: a write after its unmount (a log line, a printed frame) is not one.
 			if (!frameDue || current === undefined || current.ended) return;
-			if (current.mode === "debug") {
-				frameDue = false;
-				current.raws.push(chunk);
-				return;
-			}
-			const text = chunk.replace(FRAME_BRACKETS, "");
-			if (text === "") return;
+			const frame = asFrame(chunk, current.mode);
+			// A production write of brackets or moves alone leaves the frame due; its frame is still to come.
+			if (frame === undefined) return;
 			frameDue = false;
-			if (CONTROLS_ONLY.test(text)) return;
-			current.raws.push(text.replace(LEADING_MOVES, "").replace(/\n+$/, ""));
+			current.raws.push(frame);
 		},
 	});
+	/** Called as Ink reports a render: take the frame it wrote this turn, or wait for the one its throttle defers. */
+	const rendered = (): void => {
+		const current = captures.at(-1);
+		if (current === undefined || current.ended) return;
+		for (let index = turn.length - 1; index >= 0; index--) {
+			const frame = asFrame(turn[index] as string, current.mode);
+			if (frame === undefined) continue;
+			turn = [];
+			frameDue = false;
+			current.raws.push(frame);
+			return;
+		}
+		frameDue = true;
+	};
 	// The two streams stay apart, so each one's bytes can be read; `fake.written` is both in order, one terminal.
 	const streams = fake.streams;
 	const stream = { isTerminal: true, color, hyperlinks: false, columns: Option.some(columns) };
@@ -587,9 +616,7 @@ const makeTerminal = (
 			// land a throttle period after the harness read the screen, under load. At 1000 fps the throttle is 1 ms, so a
 			// render is written within the settle window, for the kit's tests and every consumer's alike.
 			maxFps: 1000,
-			onRender: () => {
-				frameDue = true;
-			},
+			onRender: rendered,
 			onMount: (kind) => {
 				const mode = kind === "live" ? "production" : settings.screens;
 				captures.push({ raws: [], mode, ended: false, crash: undefined });

@@ -19,7 +19,7 @@ describe("vendored spdx data", () => {
 		assert.isTrue(EXCEPTION_IDS.has("Bison-exception-2.2"));
 	});
 	it("matches the upstream counts", () => {
-		assert.strictEqual(LICENSE_IDS.size, 695);
+		assert.strictEqual(LICENSE_IDS.size, 708);
 		assert.strictEqual(DEPRECATED_LICENSE_IDS.size, 26);
 		assert.strictEqual(EXCEPTION_IDS.size, 66);
 	});

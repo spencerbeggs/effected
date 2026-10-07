@@ -2,7 +2,7 @@
 	"repos": {
 		"effect": {
 			"url": "https://github.com/Effect-TS/effect.git",
-			"ref": "effect@4.0.1",
+			"ref": "effect@4.0.2",
 			"purpose": "Read-only Effect v4 source pinned to the tag matching the effect catalog — the authority on what v4 actually exports, plus the v3→v4 migration notes and the @effect/vitest reference implementation. Tracks the main Effect-TS/effect monorepo (v4 development moved back there on 2026-07-19 when the effect-smol repo was archived); vendored at .repos/effect since the 2026-07-24 rename, matching the path a consuming repo would use.",
 			"sparse": [
 				"packages/effect",
@@ -51,6 +51,12 @@
 					"date": "2026-10-05",
 					"ref": "effect@4.0.1",
 					"note": "4.0.0→4.0.1 advance (2026-10-05): one kit source break — @effect/sql-sqlite-node SqliteClient.layer now fails with a typed SqlError (open, configure, WAL switch; Effect-TS/effect#8708) instead of dying, and retries a contended first WAL switch within busyTimeout (closes effected#932; the store warm-up workaround is retired). Store/Cache.layerSqlite map it via internal/sqlite.ts mapSetupError to their setup error. A missing parent directory is therefore TYPED now, not a defect. Layer has no mapError/fail in v4: re-raise via Layer.catchTag(..., () => Layer.effect(Tag, Effect.fail(e))). Other consumer-visible fixes: Stream.scan emits its initial state for empty streams; Effect.cached/Cache/RcRef treat interruption as abandonment; @effect/vitest deepStrictEqual no longer throws TypeError without a message; RPC stdio drains responses after stdin EOF; MCP optional class-decoded fields encode; ChildProcess honours forceKillAfter after a non-zero leader exit. sql-sqlite-node source is not vendored (sparse tree is packages/effect + vitest) — read it under node_modules/.pnpm."
+				},
+				{
+					"id": "n-5f95",
+					"date": "2026-10-07",
+					"ref": "effect@4.0.2",
+					"note": "4.0.1→4.0.2 advance (2026-10-07): zero kit source breaks. Every module and directly importable export now carries an explicit @stability tag (stable = strict semver, unstable = may break in a minor); newly unstable top-level modules include the platform contracts the kit requires in R — FileSystem, Path, PlatformError, Stdio, Terminal — plus Crypto, Graph, ByteSize, ErrorReporter, ExecutionPlan, LayerMap/LayerRef, Newtype, TxChunk, testing/TestConsole and the new Version module; encoding/Base64|Base64Url|Hex|EncodingError are stable. The added tag lines shifted most src line numbers (skill-anchors.json re-derived through the 460272d3..269a7c86 diff). Consumer-visible semantics: Effect.retry no longer retries a cause carrying a defect or interruption; Config.orElse recovers plain failures only and Config parsing preserves provider defects; Config.Record keeps separators inside values; Yaml.parse keep-chomping (|+ >+) and Toml.parse multiline-string CRLF trimming fixed (core parsers used by config-file, markdown frontmatter, lockfiles); Map/Set schema equivalence no longer equates proper subsets; Stream.peel/tapSink/zipLatest/groupBy/slidingSize fixes; Schema.toTaggedUnion/TaggedUnion expose .tag; interrupt-only spans are Unset with effect.fiber.interrupted; Cause.pretty drops the internal stack frame for non-object failures; AI tracing renamed to OTel GenAI (gen_ai.provider.name; WellKnownSystem/BaseAttributes/TokenAttributes removed); RPC span names default to the method; HTTP/SQL/OTLP tracing realigned to OTel conventions; McpServer.layerHttp gains allowSessionTermination."
 				}
 			]
 		},

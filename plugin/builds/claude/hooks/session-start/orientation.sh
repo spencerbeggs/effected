@@ -1,33 +1,23 @@
 #!/usr/bin/env bash
+# SessionStart hook (no matcher: fires on every start, resume and compact, on
+# both hosts): brief the main agent that the "effected" plugin ships Effect v4
+# skills and three specialist subagents, that its own Effect knowledge is stale
+# by construction, and that the answers are already on disk, so it must
+# delegate or load a skill rather than guess.
+#
+# Also reports the vendored-source posture: whether the session's project
+# vendors Effect v4 source at .repos/effect and whether that pin matches the
+# kit's current pin.
+#
+# One script serves Claude Code and Copilot. The pluginfinity hook library
+# reads the envelope, resolves the session's project and writes each host's
+# response shape (nested hookSpecificOutput on Claude Code, a flat
+# additionalContext on Copilot). Without jq the library makes the hook a
+# silent no-op. Nothing here may write to stdout except the final hook_context.
+
 set -euo pipefail
-
-# SessionStart hook (no matcher — fires on all starts including resume/compact):
-# brief the main agent that the "effected" plugin ships Effect v4 skills and
-# three specialist subagents, that its own Effect knowledge is stale by
-# construction, and that the answers are already on disk — so it must delegate
-# or load a skill rather than guess.
-#
-# Also reports the vendored-source posture: whether this repo vendors Effect v4
-# source at .repos/effect and whether that pin matches the kit's current pin.
-#
-# Contract: reads the SessionStart envelope on stdin (drained, unused), writes
-# an additionalContext briefing to stdout as hookSpecificOutput JSON.
-#
-# IMPORTANT: nothing in this script may write to stdout except the single
-# emit_context call at the end. A stray echo produces two concatenated objects
-# and Claude Code rejects the whole payload as invalid JSON.
-
-# shellcheck source=../lib/hook-output.sh
-. "${CLAUDE_PLUGIN_ROOT}/hooks/lib/hook-output.sh"
-
-# Fail open without jq (emit_context builds JSON with jq).
-if ! command -v jq &>/dev/null; then
-	emit_noop
-	exit 0
-fi
-
-# Drain the envelope on stdin; we do not need any field from it.
-cat >/dev/null 2>&1 || true
+# shellcheck source=/dev/null
+. "$(dirname "$0")/../lib/pluginfinity/hook.sh"
 
 # The kit's current Effect pin. ONE-LINE MAINTENANCE: bump this whenever the
 # lockfile's resolved effect moves (catalog:effect is a caret range, so the
@@ -35,12 +25,12 @@ cat >/dev/null 2>&1 || true
 # deliberately a constant rather than read from the host repo's catalog — the
 # point is to tell a LAGGING repo what it should move to, so comparing against
 # that repo's own (possibly stale) catalog would defeat the check.
-EFFECT_PIN="4.0.1"
+EFFECT_PIN="4.0.2"
 
 # --- vendored-source posture -------------------------------------------------
-# Resolve the host repo root. CLAUDE_PROJECT_DIR is set by Claude Code; fall
-# back to the working directory.
-PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
+# The session's project: CLAUDE_PROJECT_DIR on Claude Code, else the envelope's
+# cwd walked up to its git root (Copilot gives no project-root variable).
+PROJECT_DIR="$(hook_session_dir)"
 VENDOR_NOTE=""
 
 if [ ! -f "$PROJECT_DIR/.gitmodules" ]; then
@@ -270,4 +260,4 @@ standing permission to file.
 CONTEXT
 )
 
-emit_context "SessionStart" "$CONTEXT"
+hook_context "$CONTEXT"

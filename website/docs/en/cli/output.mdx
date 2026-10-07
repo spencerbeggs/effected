@@ -35,7 +35,7 @@ Core lists shared flags in every subcommand's help. To keep the four flags out o
 | Diagnostics (`CliLog`, `format: "auto"`) | Pretty lines | NDJSON | NDJSON |
 | Prompts and screens | When the run is interactive | Never | Never |
 
-Two rules hold across all of them. **An agent is never written an escape sequence of any kind**: no colour, no hyperlink, no cursor movement. And **under GitHub Actions every audience's output is neutralized**: a line the runner would read as a workflow command gets a zero-width space that defuses it.
+Two rules hold across all of them. **An agent is never written an escape sequence of any kind**: no colour, no hyperlink, no cursor movement. And **under GitHub Actions every audience's output is neutralized**: a line the runner would read as a workflow command gets a blank marker (U+2800) that defuses it.
 
 ## Colour
 
@@ -323,7 +323,7 @@ A library host that only wants diagnostics, such as an MCP server or a test repo
 
 ## GitHub Actions
 
-When `@effected/env` detects GitHub Actions, the audience is `ci`, and every path that writes text a program did not fully control neutralizes it: `Doc.print`, `CliMessage`, the failure report, `CliLogger`, `CliLog` and the live view. A line the runner would read as a command gets a zero-width space that defuses it, through [`@effected/github-commands`](/github-commands)' `CommandNeutralizer`.
+When `@effected/env` detects GitHub Actions, the audience is `ci`, and every path that writes text a program did not fully control neutralizes it: `Doc.print`, `CliMessage`, the failure report, `CliLogger`, `CliLog` and the live view. A line the runner would read as a command gets a blank marker (U+2800) that defuses it, through [`@effected/github-commands`](/github-commands)' `CommandNeutralizer`.
 
 The kit's own commands are written deliberately. `Doc.print` uses the `githubLog` renderer, so a top-level `Doc.collapsible` becomes a `::group::`, and a `Doc.annotation` becomes an `::error`, `::warning` or `::notice` with a file and position:
 
@@ -335,9 +335,9 @@ const document = [
   Doc.annotation({ level: "error", file: "src/a.ts", line: 3 }, "unused import"),
 ];
 
-console.log(Render.githubLog(document, Render.contextOf({ audience: "ci" })).replaceAll("​", "<ZWSP>"));
+console.log(Render.githubLog(document, Render.contextOf({ audience: "ci" })).replaceAll("\u2800", "<MARK>"));
 // ::group::details
-// <ZWSP>::error::this is data, not a command
+// <MARK>::error::this is data, not a command
 // ::endgroup::
 // ::error file=src/a.ts,line=3::unused import
 ```

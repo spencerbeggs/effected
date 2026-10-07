@@ -21,16 +21,29 @@ anything module-shaped, read how core writes the analogous module.
 
 **Stability split.** A module's stability is an annotation, not a separate
 import path — every module in core imports as `effect/<Name>` or
-`effect/<ns>/<Name>` alike. The namespace modules below (`ai`, `cli`, `http`,
-`http-api`, `sql`, and the rest of the table under "The unstable-stability
-namespaces"), `Arbitrary` and `testing/TestSchema` carry `@stability unstable`:
-the API may break in a minor release. A few symbols in otherwise-stable modules
-carry the tag too (the network-address schemas in `Schema`, for one), and so does
-any API that exposes a third-party dependency's types. `@stability experimental`
-is the weaker still — it may break across patch versions. An API with no tag
-follows strict semver. Read the tag in the vendored source before building on an
-API (`grep -n "@stability" $SRC/packages/effect/src/<Name>.ts`), and keep unstable
+`effect/<ns>/<Name>` alike. Every module and every directly importable export
+carries an explicit `@stability` tag: `stable` follows strict semver,
+`unstable` may break in a minor release. The namespace modules below (`ai`,
+`cli`, `http`, `http-api`, `sql`, and the rest of the table under "The
+unstable-stability namespaces") are `unstable`, and so are these top-level
+modules — **including the platform contracts**: `Arbitrary`, `ByteSize`,
+`ChannelSchema`, `Crypto`, `ErrorReporter`, `ExecutionPlan`, `FileSystem`,
+`Graph`, `HashRing`, `LayerMap`, `LayerRef`, `Newtype`,
+`PartitionedSemaphore`, `Path`, `PlatformError`, `Stdio`, `Terminal`,
+`TxChunk`, `Version`, plus `testing/TestConsole` and `testing/TestSchema`.
+Under `effect/encoding`, `Base64`, `Base64Url`, `EncodingError` and `Hex` are
+`stable`; the rest are `unstable`. A few symbols in otherwise-stable modules
+carry the tag too — the network-address, cookie, header, URL-params, `Graph` and `ByteSize` schemas
+in `Schema`, `Effect.withExecutionPlan`/`withErrorReporting`,
+`Stream.withExecutionPlan`/`limitBytes`, `Config.ByteSize`, `Logger.toFile` —
+and so does any API that exposes a third-party dependency's types. Read the tag
+in the vendored source before building on an API
+(`grep -n "@stability" $SRC/packages/effect/src/<Name>.ts`), and keep unstable
 ones behind one seam of your own so a minor release has a single place to fix.
+Requiring an unstable platform contract such as `FileSystem` in `R` is still
+the house default (`effect-v4-services-layers`); the tag means a minor release
+can change its shape, so re-verify your usage when the installed `effect`
+moves.
 
 ## Routing by task
 
@@ -41,8 +54,8 @@ phrasing and missed on its module name.
 | You want to… | Reach for | Note |
 | --- | --- | --- |
 | **spawn a subprocess / run a command / shell out** | `effect/process` — `ChildProcess` (command values) + `ChildProcessSpawner` (the service) | NOT `cli`'s `Command`, which is the CLI *declaration*. Core declares the contract and ships **no layer**: require `ChildProcessSpawner` in `R`, let the app provide `NodeServices.layer`. Never hand-roll `node:child_process`. |
-| **cache an effectful lookup with a TTL and in-flight de-duplication** | core `Cache` — `Cache.makeWith(lookup, { capacity, timeToLive })`, or `Cache.make` for a fixed TTL | Already does both jobs: it "shares an in-progress lookup when multiple callers request the same missing key" (`Cache.ts:4`) and expires by `timeToLive` (`Cache.ts:116`). Do not build a promise-map de-duplicator beside it — but read the two `Cache` sharp corners below before choosing a TTL. |
-| **write to stdout/stderr, or read argv/stdin, from a library** | core `Stdio` — require `Stdio` in `R` | `Stdio.layerTest(impl)` (`Stdio.ts:152`) takes a `Partial<Stdio>` and lets you echo-test the output **with no platform package installed**. The real implementation still comes from `@effect/platform-*` at the app edge. Do not `console.log` from library code to dodge the wiring. |
+| **cache an effectful lookup with a TTL and in-flight de-duplication** | core `Cache` — `Cache.makeWith(lookup, { capacity, timeToLive })`, or `Cache.make` for a fixed TTL | Already does both jobs: it "shares an in-progress lookup when multiple callers request the same missing key" (`Cache.ts:4`) and expires by `timeToLive` (`Cache.ts:118`). Do not build a promise-map de-duplicator beside it — but read the two `Cache` sharp corners below before choosing a TTL. |
+| **write to stdout/stderr, or read argv/stdin, from a library** | core `Stdio` — require `Stdio` in `R` | `Stdio.layerTest(impl)` (`Stdio.ts:159`) takes a `Partial<Stdio>` and lets you echo-test the output **with no platform package installed**. The real implementation still comes from `@effect/platform-*` at the app edge. Do not `console.log` from library code to dodge the wiring. |
 
 ## Core modules
 
@@ -53,7 +66,7 @@ phrasing and missed on its module name.
 | `BigInt` | helpers over native `bigint`: arithmetic, comparison, safe parsing to `Option` | working with `bigint` values and needing safe parse/aggregate/order |
 | `Boolean` | helpers over `boolean`: logical ops, lazy branching, ordering, reducing | combining booleans or choosing between lazy branches |
 | `Brand` | compile-time nominal tags on structurally-identical values, optionally validating | keeping `Positive`/`UserId`-style values from mixing without runtime cost |
-| `ByteSize` | a branded non-negative `bigint` byte count (`ByteSize.ts:30`) with unit constructors (`bytes`, `kilobytes`/`kibibytes` … `quettabytes`), `fromInput`/`fromInputUnsafe` over `ByteSize.Input = ByteSize \| bigint \| number \| string`, `toBigInt`/`toNumber` (Option)/`toNumberUnsafe`, `sum`/`subtract`/`times`/`divide`, `Order`/`Equivalence`/`between`/`clamp`, `format` | any byte quantity — it **replaces `FileSystem.Size`/`SizeInput`**, which do not exist: `File.Info.size` and `blksize` are `ByteSize` (`FileSystem.ts:962-963`), `FileSystem.stream`'s `bytesToRead`/`offset` are `ByteSize.Input` (`:324-326`), `File.seek` takes a `bigint` and returns one (`:863`), `read`/`write` return `number`, `readAlloc`/`truncate` take `number` (`:866-867`). Reach for `ByteSize.toNumberUnsafe(info.size)` at a `Buffer` boundary, never `Number(info.size)` spelled by hand |
+| `ByteSize` | a branded non-negative `bigint` byte count (`ByteSize.ts:32`) with unit constructors (`bytes`, `kilobytes`/`kibibytes` … `quettabytes`), `fromInput`/`fromInputUnsafe` over `ByteSize.Input = ByteSize \| bigint \| number \| string`, `toBigInt`/`toNumber` (Option)/`toNumberUnsafe`, `sum`/`subtract`/`times`/`divide`, `Order`/`Equivalence`/`between`/`clamp`, `format` | any byte quantity — it **replaces `FileSystem.Size`/`SizeInput`**, which do not exist: `File.Info.size` and `blksize` are `ByteSize` (`FileSystem.ts:978-979`), `FileSystem.stream`'s `bytesToRead`/`offset` are `ByteSize.Input` (`:326-328`), `File.seek` takes a `bigint` and returns one (`:878`), `read`/`write` return `number`, `readAlloc`/`truncate` take `number` (`:881-882`). Reach for `ByteSize.toNumberUnsafe(info.size)` at a `Buffer` boundary, never `Number(info.size)` spelled by hand |
 | `Cache` | concurrent cache of Effect lookup results with capacity/TTL and in-flight sharing (`make` = fixed TTL, `makeWith` = per-entry TTL from the `Exit`) | memoizing an effectful lookup by key with dedupe/expiry — this is the whole feature; do not hand-roll an in-flight promise map |
 | `Cause` | full structured failure record: typed errors, defects, interruptions, annotations | inspecting or formatting why an Effect failed without collapsing it |
 | `Channel` | low-level bidirectional streaming primitive underlying Stream and Sink | implementing custom stream operators; app code uses Stream/Sink instead |
@@ -66,7 +79,7 @@ phrasing and missed on its module name.
 | `Console` | Effect wrapper over console (log/group/count/table/timer) as a swappable service | logging/console side effects you want swappable in tests |
 | `Context` | typed map of service implementations keyed by Service/Reference | building or reading the service environment `R` of effects |
 | `Cron` | recurring calendar schedule from cron expressions or field constraints | matching dates or computing next/previous scheduled occurrences |
-| `Crypto` | platform-independent crypto service contract: secure random bytes/numbers/shuffle, UUIDv4+v7, and a **one-shot** `digest` over `SHA-1/256/384/512` — **and nothing else** (no HMAC, no signing, no key derivation, no incremental hashing; `Crypto.ts:75-153`) | secure random/UUID/hashing of a value already in memory; contract, platform layer provides implementation. For HMAC, signing, or hashing a stream, `node:crypto` or a platform package — see the sharp corner below |
+| `Crypto` | platform-independent crypto service contract: secure random bytes/numbers/shuffle, UUIDv4+v7, and a **one-shot** `digest` over `SHA-1/256/384/512` — **and nothing else** (no HMAC, no signing, no key derivation, no incremental hashing; `Crypto.ts:78-156`) | secure random/UUID/hashing of a value already in memory; contract, platform layer provides implementation. For HMAC, signing, or hashing a stream, `node:crypto` or a platform package — see the sharp corner below |
 | `Data` | constructors for immutable value classes, tagged classes/unions, typed errors | defining `_tag`-carrying domain values and errors with structural equality |
 | `DateTime` | absolute instants plus optional time-zone-aware date-times and arithmetic | zone-aware timestamps, date math, and formatting |
 | `Deferred` | one-time set-once async variable many fibers can await | cross-fiber coordination on a single result/signal |
@@ -74,7 +87,6 @@ phrasing and missed on its module name.
 | `Duration` | immutable time span (finite or infinite) for delays/timeouts/TTL | expressing delays, timeouts, intervals, or TTLs |
 | `Effect` | core `Effect<A,E,R>` type and the main API for building/running workflows | creating, composing, recovering, or running effectful programs |
 | `Effectable` | internal: prototype builder + base class to make custom values act as Effects | rarely — making a domain value yieldable in `Effect.gen` |
-| `Encoding` | Base64/Base64Url/hex encode/decode between strings, UTF-8, and bytes | converting to/from Base64/hex with `Result`-typed decode errors |
 | `Equal` | structural equality (`equals`) plus the Equal interface, guards, adapters | comparing values structurally or implementing custom equality |
 | `Equivalence` | reusable `Equivalence<A>` equality predicates and combinators | defining/combining custom same-type equality for a purpose |
 | `ErrorReporter` | forwards non-interruption `Cause`s to a callback for logging/monitoring | routing Effect failures to external error-tracking systems |
@@ -84,7 +96,7 @@ phrasing and missed on its module name.
 | `FiberHandle` | scope-bound holder of at most one fiber, replacing/interrupting prior | tracking a single swappable background fiber tied to a scope |
 | `FiberMap` | scope-bound map of fibers keyed by K, auto-removed on completion | managing keyed background fibers under one scope |
 | `FiberSet` | scope-bound set of many fibers, all interrupted when scope closes | managing a dynamic group of background fibers under one scope |
-| `FileSystem` | portable file system service (read/write/stream/glob/watch), fails `PlatformError`; sizes are `ByteSize` (see that row), and `File.seek` before the start of the file fails `BadArgument` and leaves the cursor unchanged (`FileSystem.ts:861-863`; the Node implementation is `@effect/platform-node-shared`, which the vendored tree does not carry — `effect-v4-source-lookup` says where to read it) | file IO; contract, platform layer provides implementation |
+| `FileSystem` | portable file system service (read/write/stream/glob/watch), fails `PlatformError`; sizes are `ByteSize` (see that row), and `File.seek` before the start of the file fails `BadArgument` and leaves the cursor unchanged (`FileSystem.ts:871-873`; the Node implementation is `@effect/platform-node-shared`, which the vendored tree does not carry — `effect-v4-source-lookup` says where to read it) | file IO; contract, platform layer provides implementation |
 | `Filter` | composable check returning `Result` (pass/fail) that can also narrow/transform | selective matching/recovery where a predicate must also refine or transform |
 | `Formatter` | renders arbitrary JS values to readable strings with redaction/cycle handling | formatting values for logs, diagnostics, or error messages |
 | `Function` | core composition helpers: `pipe`, `flow`, `dual`, identity/const/memoize | composing functions or writing dual direct/pipe APIs |
@@ -148,7 +160,7 @@ phrasing and missed on its module name.
 | `Scheduler` | controls how runnable fiber tasks are queued, dispatched, and yielded | internal/advanced: tune or disable fiber scheduling and yields — usually skip |
 | `Schema` | validate/decode/encode data shapes with codecs, classes, refinements | the primary entry point for any schema, codec, or data validation |
 | `SchemaAST` | runtime tree representation of schemas (nodes, checks, annotations) | advanced machinery: inspect/build/rewrite schema ASTs programmatically |
-| `Schema.SchemaError` | the error a schema decode/encode fails with: a `SchemaIssue` tree plus a formatted `message`. **Not a module** — it is a class exported from `Schema.ts` (`Schema.ts:1176`), so `import … from "effect/SchemaError"` fails to resolve; there is no `src/SchemaError.ts` and no `./SchemaError` export. Import it as `Schema.SchemaError` | catching/normalizing schema failures at a boundary — `Effect.catchTag("SchemaError", …)`. v4 exposes no `Schema` for the issue tree, so it rides in a domain error as `Schema.Defect()` |
+| `Schema.SchemaError` | the error a schema decode/encode fails with: a `SchemaIssue` tree plus a formatted `message`. **Not a module** — it is a class exported from `Schema.ts` (`Schema.ts:1208`), so `import … from "effect/SchemaError"` fails to resolve; there is no `src/SchemaError.ts` and no `./SchemaError` export. Import it as `Schema.SchemaError` | catching/normalizing schema failures at a boundary — `Effect.catchTag("SchemaError", …)`. v4 exposes no `Schema` for the issue tree, so it rides in a domain error as `Schema.Defect()` |
 | `SchemaGetter` | one-way optional-in/optional-out conversions used inside transformations | consumer-facing when authoring a custom decode/encode direction |
 | `SchemaIssue` | describes and formats decode/encode/check failures with location | consumer-facing: inspect or format schema validation errors |
 | `SchemaParser` | runs a schema against values (decode/encode/validate) in many result styles | consumer-facing: execute a schema returning Effect/Exit/Option/Result/sync |
@@ -186,8 +198,9 @@ phrasing and missed on its module name.
 | `UndefinedOr` | helpers for plain `A \| undefined` values | handle optionality with `undefined` without wrapping in `Option` |
 | `Unify` | type-level unification protocol collapsing unions to public data types | maintainer/advanced type plumbing — skip |
 | `Utils` | internal generator machinery behind `Effect.gen`/HKT | internal — skip |
+| `Version` | the `effect` version string core stamps into telemetry headers, resources and scopes: `getCurrentVersion()` / `setCurrentVersion(v)`. `@stability unstable` | reading or overriding the version an exporter reports — layers already built keep the value they read |
 | `testing/TestClock` | controllable `Clock` service driving virtual time | make sleep/timeout/schedule/retry tests deterministic by advancing time |
-| `testing/TestConsole` | test `Console` capturing log/error calls in memory | assert on console output deterministically in tests |
+| `testing/TestConsole` | test `Console` capturing log/error calls in memory. `@stability unstable` | assert on console output deterministically in tests |
 | `testing/TestSchema` | assertions for one schema: `new TestSchema.Asserts(schema)` with `make`, `decoding()` / `encoding()` (`succeed`/`fail` as Promises, `succeedEffect`/`failEffect` as lazy Effects), `arbitrary()` and `verifyRoundTrip` / `verifyRoundTripEffect`; the property checks run `Arbitrary.checkEffect`. `@stability unstable` | testing that a schema constructs, decodes, encodes and round-trips correctly. The `Effect`-suffixed forms use the calling fiber's services, so they compose inside `it.effect`. **There is no `testing/FastCheck`** — there is no fast-check bridge; property generation is `Arbitrary` |
 
 ## The unstable-stability namespaces (`effect/<ns>`)
@@ -209,7 +222,7 @@ follows from it.
 | `cli` | the v4 CLI framework: `Command`, `Flag`, `Argument`, `Prompt`, completions | building a command-line tool — see `effect-v4-cli` |
 | `cluster` | entity sharding runtime: `Sharding`, `Entity`, runners, message storage | distributing stateful entities across machines |
 | `devtools` | client/server wiring an Effect runtime to the devtools tracer | connecting a program to Effect devtools |
-| `encoding` | channel codecs: `Msgpack`, `Ndjson`, `Sse` | framing streams as NDJSON/MsgPack/server-sent events |
+| `encoding` | `Base64`, `Base64Url`, `Hex` and `EncodingError` (the `stable` ones: encode/decode between strings, UTF-8 and bytes with `Result`-typed decode errors); `Ndjson` and `Sse` channel codecs; `SchemaBinary` (a compact binary codec derived from a Schema's encoded side); `Toml`, `Yaml` and `Ini` parsers | Base64/hex conversion; framing streams as NDJSON or server-sent events; parsing a config document when the `@effected/toml`/`@effected/yaml` fidelity guarantee is not needed |
 | `eventlog` | typed, replicated (optionally encrypted) event journal with SQL backends | event-sourced state that syncs/replicates |
 | `http` | HTTP client + server: `HttpClient`, `FetchHttpClient`, router, middleware | any HTTP work — clients (see runtimes precedent) or servers. Branching on a client failure: see the `reason` trap below; MIME lookup is `http/Mime` (`getType`/`getExtension`/`getAllExtensions`) — there is no `mime` npm dependency |
 | `net` | `IpInterface`, `IpNetwork`, `NetAddress` — pure, canonical IPv4/IPv6 addresses and CIDR prefixes (three modules) | parsing/normalizing an address or network prefix without a third-party `ipaddr`-style library |
@@ -241,7 +254,7 @@ follows from it.
 - **"Core has `Crypto`" is a dependency decision, so read the shape first.**
   The contract covers secure random (`randomBytes`, `random`,
   `randomInt`, `randomShuffle`), UUIDv4/v7 and SHA **digests**
-  (`"SHA-1" | "SHA-256" | "SHA-384" | "SHA-512"`, `Crypto.ts:40`, `Crypto.ts:78-154`) —
+  (`"SHA-1" | "SHA-256" | "SHA-384" | "SHA-512"`, `Crypto.ts:42`, `Crypto.ts:81-157`) —
   and stops there. There is **no HMAC, no signing, no key derivation, no
   `subtle`-style surface**. A design that reads the module name and concludes
   "hashing is handled" is right; one that concludes "crypto is handled" and then
@@ -250,7 +263,7 @@ follows from it.
   package after all — after the tier and peer decisions were already made on the
   wrong premise.
 - **`Crypto.digest` is one-shot, and that is a second dependency decision.** The
-  signature is `digest(algorithm, data: Uint8Array)` (`Crypto.ts:100-103`) — it
+  signature is `digest(algorithm, data: Uint8Array)` (`Crypto.ts:103-106`) — it
   takes the whole payload at once and there is **no incremental/streaming form**,
   no `update`/`digest` accumulator pair. So hashing a file, a tarball or any
   input without a known upper bound means buffering all of it in memory to use
@@ -266,13 +279,13 @@ follows from it.
   the declared error channel) does **not** transfer here. Probed with
   a poisoning control that fired.
 - **…but a default-TTL `Cache` memoizes a FAILED lookup for the process
-  lifetime.** `defaultTimeToLive` is `Duration.infinity` (`Cache.ts:323`), and
+  lifetime.** `defaultTimeToLive` is `Duration.infinity` (`Cache.ts:332`), and
   the cache "stores successful **and failed** lookup results" (`Cache.ts:4`).
   One transient network blip is therefore permanent. Wherever failures are
   transient, make the TTL exit-dependent — the `timeToLive` option takes
-  `(exit, key)` for exactly this (`Cache.ts:198`; the same two-argument shape on
-  the cache's own field at `Cache.ts:116`). Note `Cache.make`'s `timeToLive` is
-  a plain `Duration.Input` with no exit access (`Cache.ts:298`) — the
+  `(exit, key)` for exactly this (`Cache.ts:206`; the same two-argument shape on
+  the cache's own field at `Cache.ts:118`). Note `Cache.make`'s `timeToLive` is
+  a plain `Duration.Input` with no exit access (`Cache.ts:307`) — the
   exit-dependent form requires `makeWith`:
 
   ```ts
@@ -303,7 +316,7 @@ A client failure is one `HttpClientError` whose top-level `_tag` is always
 `"HttpClientError"`, so branch on `error.reason._tag`. The values are the trap.
 The reason type is declared in two layers, and **both layer names are
 themselves unions, so neither ever appears as a `_tag`** (verified against
-`http/HttpClientError.ts:277,285,293`):
+`http/HttpClientError.ts:302,311,320`):
 
 ```ts
 export type RequestError = TransportError | EncodeError | InvalidUrlError
@@ -318,6 +331,6 @@ So `error.reason._tag` is exactly one of **six** values: `"TransportError"`,
 a live-looking branch that is dead code, and green tests will not catch it.
 
 What makes the wrong guess feel confirmed: `ResponseError` *is* a real tagged
-class elsewhere, at `http/HttpServerError.ts:197`. Same name, different
+class elsewhere, at `http/HttpServerError.ts:206`. Same name, different
 module, and it is a server error rather than a client one. Timeouts are separate
 again — `Cause.isTimeoutError`, not a `reason`.

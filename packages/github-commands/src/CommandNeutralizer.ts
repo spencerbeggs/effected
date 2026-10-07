@@ -1,18 +1,35 @@
-/** V2: after leading .NET whitespace, which is JavaScript's `\s` plus U+0085, the line starts with `::`. */
-const V2 = /^[\s\u0085]*::/;
+/**
+ * What the runner's string comparisons skip. The runner matches `::` and `##[` with .NET's culture-sensitive
+ * `StartsWith` and `IndexOf` under ICU, which treat about 960 code points as if absent: controls, format characters,
+ * most combining marks, variation selectors and tag characters. So `":\u200b:"` starts with `::` to the runner and
+ * `"##\u200b["` contains `##[`. This class is a superset of the set ICU ignores (measured on .NET 8, the runner's
+ * runtime, by scanning every code point): every control but the whitespace ones (tab, line breaks, U+0085), every
+ * format character, mark and default-ignorable code point,
+ * plus the five letters and separators ICU also ignores (U+0640, U+07FA, U+180A, U+1CD3, U+FE73). A superset only
+ * neutralizes more lines than strictly needed, never fewer.
+ */
+const IGNORED = String.raw`[\u0000-\u0008\u000E-\u001F\u007F-\u0084\u0086-\u009F\p{Cf}\p{Mn}\p{Me}\p{Mc}\p{Default_Ignorable_Code_Point}\u0640\u07FA\u180A\u1CD3\uFE73]`;
 
-/** Legacy: `##[` anywhere. */
-const LEGACY = /##\[/g;
+/** V2: after leading .NET whitespace (JavaScript's `\s` plus U+0085) and anything ICU skips, the line starts `::`. */
+const V2 = new RegExp(String.raw`^(?:[\s\u0085]|${IGNORED})*:${IGNORED}*:`, "u");
+
+/** Legacy: `##[` anywhere, with anything ICU skips between its three characters. */
+const LEGACY = new RegExp(String.raw`(#${IGNORED}*#${IGNORED}*)\[`, "gu");
 
 /** The runner's line breaks: it splits at a lone CR as well as at LF and CRLF. */
 const LINE_BREAK = /\r\n|\r|\n/;
 
-/** U+200B, written by code point so the source carries no invisible character. */
-const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
+/**
+ * U+2800 BRAILLE PATTERN BLANK, written by code point so the source carries no invisible character. It is not .NET
+ * whitespace (`TrimStart` keeps it), ICU gives it a weight of its own (so `StartsWith("::")` and `IndexOf("##[")` no
+ * longer match across it), it is not a default-ignorable code point (so a renderer that drops those, Ink among them,
+ * keeps it), and it draws as one blank cell.
+ */
+const MARKER = String.fromCodePoint(0x2800);
 
 const neutralize = (line: string): string => {
-	const legacy = line.replace(LEGACY, `##${ZERO_WIDTH_SPACE}[`);
-	return V2.test(legacy) ? `${ZERO_WIDTH_SPACE}${legacy}` : legacy;
+	const legacy = line.replace(LEGACY, `$1${MARKER}[`);
+	return V2.test(legacy) ? `${MARKER}${legacy}` : legacy;
 };
 
 /**
@@ -24,16 +41,22 @@ const neutralize = (line: string): string => {
  * `TryProcessCommand` tries `TryParseV2` and then `TryParse`):
  *
  * - **V2** (`TryParseV2`): `message.TrimStart()` with .NET's whitespace, which includes U+0085, then
- *   `StartsWith("::")`. A line like that gets a zero-width space (U+200B) in front of it, which .NET does not count
- *   as whitespace, so it no longer starts with `::`.
+ *   `StartsWith("::")`. A line like that gets a braille pattern blank (U+2800) in front of it, so it no longer starts
+ *   with `::`.
  * - **Legacy** (`TryParse`): `message.IndexOf("##[")`, so `##[` is a command WHEREVER it occurs in the line, not only
- *   at its start. Every occurrence gets a zero-width space between the `##` and the `[`.
+ *   at its start. Every occurrence gets a braille pattern blank before the `[`.
+ *
+ * Both comparisons are .NET's culture-sensitive ones, and the runner runs on ICU, which skips controls, format
+ * characters, most combining marks and other default-ignorable code points as if they were absent. So a zero-width
+ * space is NO defence: `"\u200b::add-mask::x"` is a command to the runner, and so is `":\u200b:add-mask::x"`. Lines are
+ * matched with those characters skipped, and the marker is a character ICU does weigh. Text that already carries a
+ * zero-width space in front of a command is a command, and is neutralized like any other.
  *
  * A bare `##` with no `[` straight after it is not a command and is left alone, so a markdown heading is untouched.
  * Input is split at CR, LF and CRLF, as the runner splits a stream, so a lone CR starts a line.
  *
  * The result is **idempotent**: a line this has neutralized matches neither rule, so neutralizing it again changes
- * nothing. That is what lets a renderer that neutralizes as it builds and a facade that neutralizes the finished text
+ * nothing. The marker is one blank cell wide: neutralized text is one column wider per marker. That is what lets a renderer that neutralizes as it builds and a facade that neutralizes the finished text
  * both apply it without a second marker.
  *
  * This does not escape a command you mean to write: that is {@link WorkflowCommand}, whose message and property
@@ -46,7 +69,7 @@ const neutralize = (line: string): string => {
  * import { CommandNeutralizer } from "@effected/github-commands";
  *
  * CommandNeutralizer.text("note\n::add-mask::secret\nprefix ##[error]x");
- * // the `::` line starts with a zero-width space and the `##[` has one inside it; "note" is untouched
+ * // the `::` line starts with U+2800 and the `##[` has one before its `[`; "note" is untouched
  * ```
  *
  * @public

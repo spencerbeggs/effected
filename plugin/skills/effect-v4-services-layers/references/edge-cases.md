@@ -23,8 +23,8 @@ package twice IS the diagnosis.
 
 **At runtime, identity is the id string, not the class** — `Context` is a map
 keyed by `key.key`, and `Context.Service` stores the id you passed verbatim
-(`self.key = key`, `Context.ts:253`; lookups go through `lookup(self,
-key.key)`, `Context.ts:915`). Two copies therefore carry the *same* runtime id
+(`self.key = key`, `Context.ts:261`; lookups go through `lookup(self,
+key.key)`, `Context.ts:936`). Two copies therefore carry the *same* runtime id
 and do interoperate if a value ever crosses between them. That is why the split
 graph is a compile-time failure and a duplicated bundle can be silently
 benign — and it is what makes the bundle probe below work.
@@ -77,11 +77,11 @@ provide them per call — do not reach for a Layer:
 
 - `FileSystem.makeNoop({ exists, readFileString })` overrides only the ops the
   pipeline uses; every non-overridden member fails **typed `NotFound`** (core
-  behavior, `FileSystem.ts:825`) — document that asymmetry if your hand-rolled
+  behavior, `FileSystem.ts:834`) — document that asymmetry if your hand-rolled
   counterparts throw defects instead.
 - Core `Path` has **no `makeNoop`/`layerNoop` analog** (`Path.ts` exports
-  `layer` at `:867` and nothing noop-shaped) — hand-roll a
-  `Path.Path` value (`Path.Path.of` with `[Path.TypeId]`, `Path.ts:32`), back
+  `layer` at `:873` and nothing noop-shaped) — hand-roll a
+  `Path.Path` value (`Path.Path.of` with `[Path.TypeId]`, `Path.ts:34`), back
   the members you use with the consumer's ops, and throw an informative defect
   from the rest.
 - Wire with `Effect.provideService` per call. No Layer means no

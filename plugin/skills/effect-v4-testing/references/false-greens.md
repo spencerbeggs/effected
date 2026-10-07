@@ -235,15 +235,15 @@ read" passes against a code path that was only *described*, never run.
 
 **Not one way — and two blanket statements circulate, and both are wrong**:
 "every unstubbed member fails typed `NotFound`" and "every unstubbed member
-dies". `layerNoop` at `FileSystem.ts:765` is
-`Layer.succeed(FileSystem)(makeNoop(fileSystem))`, and `makeNoop` (`:636`)
+dies". `layerNoop` at `FileSystem.ts:772` is
+`Layer.succeed(FileSystem)(makeNoop(fileSystem))`, and `makeNoop` (`:642`)
 splits its members:
 
 | members | behavior | absorbable by `Effect.catch`? |
 | --- | --- | --- |
 | `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `notFound(<method>, path)` — a `PlatformError` | **yes** |
-| `exists` → `false` (`:657`), `remove` → `Effect.void` (`:696`) | silent success | n/a — never fails |
-| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:663`–`:676`) | `Effect.die("not implemented")` — a **defect** | **no** |
+| `exists` → `false` (`:663`), `remove` → `Effect.void` (`:702`) | silent success | n/a — never fails |
+| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:669`–`:682`) | `Effect.die("not implemented")` — a **defect** | **no** |
 
 Three distinct false greens, one per row:
 
@@ -277,7 +277,7 @@ and `MemoryFileSystem.die(defect)` for row three. A `FileSystem` double is `@eff
 
 Companion fact, same tier: **`FileSystem.readFileString` strips a leading BOM.**
 It is `impl.readFile(path)` piped through `new TextDecoder(encoding).decode(_)`
-(`FileSystem.ts:508-519`, the decode itself at `:511`), and `TextDecoder`
+(`FileSystem.ts:513-524`, the decode itself at `:516`), and `TextDecoder`
 defaults to `ignoreBOM: false`,
 which consumes the mark. "Read the file as a string" therefore looks lossless
 and is not. A round-trip test that reads with `readFileString` and writes back
@@ -437,7 +437,7 @@ The first test is its own evidence: the control `logError` line reaches
 `logLines` nor `errorLines`. Outside the test services it is the same — run
 under `Effect.runPromise`, the program prints only the control line on stdout
 and nothing on stderr. `References.UnhandledLogLevel` does not change this:
-core reads it only in `Pool.ts:1039`. A test whose only assertions live in
+core reads it only in `Pool.ts:1052`. A test whose only assertions live in
 code paths that never observe a forked child's outcome is exercising nothing
 about that child. Join it, or route its `Exit` into a `Deferred` the test
 explicitly awaits — never assume a green run means every fiber it started
@@ -488,22 +488,22 @@ is the block-wide equivalent.
 Three sharp edges, all clock-adjacent:
 
 - **`PubSub.takeAll` suspends on an empty subscription.** Its return type is
-  `Effect<NonEmptyArray<A>>` (`PubSub.ts:1332`) — that *is*
+  `Effect<NonEmptyArray<A>>` (`PubSub.ts:1376`) — that *is*
   the proof. Under the virtual clock it hangs to the vitest timeout. Use
-  `PubSub.takeUpTo(sub, n)` (`PubSub.ts:1411`), which returns what is there.
-- **`PubSub.subscribe` requires a `Scope`** (`PubSub.ts:1217`) and there is no
+  `PubSub.takeUpTo(sub, n)` (`PubSub.ts:1466`), which returns what is there.
+- **`PubSub.subscribe` requires a `Scope`** (`PubSub.ts:1259`) and there is no
   `it.scoped` — but you do **not** need one. `it.effect` already runs its body
   through `Effect.scoped`:
   `makeTester<Scope.Scope>(flow(Effect.scoped, Effect.provide(TestEnv)), it)`
   (`@effect/vitest` `internal/internal.ts:386`), and its type is
-  `Tester<R | Scope.Scope>` (`index.ts:121`), so a `Scope` requirement is
+  `Tester<R | Scope.Scope>` (`index.ts:140`), so a `Scope` requirement is
   satisfied by the runner. An explicit `Effect.scoped` in the pipeline is
   harmless — it just closes the scope earlier, before the test ends — but it is
   belt-and-braces, not a requirement.
-- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8595`) /
-  `forkIn` (`:8638`) / `forkScoped` (`:8681`) / `forkDetach` (`:8721`). And
+- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8788`) /
+  `forkIn` (`:8832`) / `forkScoped` (`:8876`) / `forkDetach` (`:8917`). And
   `Stream.fromQueue` takes a `Queue.Dequeue`
-  (`Stream.ts:1139`), so it rejects a `Subscription`.
+  (`Stream.ts:1185`), so it rejects a `Subscription`.
 
 The clock-free drain: subscribe, run the operation, then `takeUpTo`.
 

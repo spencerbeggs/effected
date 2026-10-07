@@ -15,8 +15,8 @@ sources:
     resource: ../../plugin/scripts/check-construct-index.sh
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-03T05:15:26Z
-  body_sha256: cd5eacff4554fa86dc34a54171930464091637f0fba2c17dc7730235e67038b1
+  at: 2026-10-07T21:32:23Z
+  body_sha256: 33551c179777a7629327145dfdbecef5d967765a2210d6b513df63c17b2224e8
 ---
 
 # Author the plugin once in plugin/, never edit its builds
@@ -38,9 +38,10 @@ both host plugins. Follow these rules:
    `<!-- pluginfinity:only <host> -->` host block, or a per-target
    override in `pluginfinity.config.ts`.[^pluginfinity-config] The
    companion `pluginfinity` skill documents all three.
-4. **Prove a change against the source.** The bats suites read
-   `plugin/`, not a build. Load a build with `pnpm claude` or
-   `pnpm copilot` to dogfood it.
+4. **Prove a change with the bats suites.** The hook suite runs the
+   built hook on both hosts with pluginfinity's `run_hook`, so rebuild
+   before running it; the other suites read `plugin/`. Load a build
+   with `pnpm claude` or `pnpm copilot` to dogfood it.
 
 Two gates enforce rule 2. The pre-push hook runs
 `pluginfinity build --check` on every push outside CI, and CI's
@@ -52,8 +53,8 @@ rewrote the builds in the runner would make `--check` alone pass
 trivially. The construct-index gate also checks the builds after a
 regeneration.[^check-construct-index-sh]
 
-[^pluginfinity-config]: `plugin/pluginfinity.config.ts` — the `copilot`
-    block overrides the SessionStart hook for that target only.
+[^pluginfinity-config]: `plugin/pluginfinity.config.ts` — the per-target
+    `claude` and `copilot` blocks; neither overrides anything today.
 [^plugin-check]: `package.json` — the `plugin:check` script, chained onto
     `on-build` in `.github/workflows/release.yml`.
 [^check-construct-index-sh]: `plugin/scripts/check-construct-index.sh` —

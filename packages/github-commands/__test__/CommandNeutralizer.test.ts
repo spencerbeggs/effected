@@ -3,6 +3,8 @@ import { CommandNeutralizer } from "../src/index.js";
 import { LINE_BREAK, commandLines, isCommand } from "./helpers/runnerCommands.js";
 
 const ZWSP = String.fromCodePoint(0x200b);
+/** The marker: U+2800 BRAILLE PATTERN BLANK. */
+const MARK = String.fromCodePoint(0x2800);
 
 /** Every string up to `length` over `alphabet`, as a lazily built list. */
 const strings = (alphabet: ReadonlyArray<string>, length: number): ReadonlyArray<string> => {
@@ -28,22 +30,36 @@ describe("CommandNeutralizer: the runner's two parsers", () => {
 		]) {
 			assert.isTrue(isCommand(command), JSON.stringify(command));
 		}
-		for (const quiet of ["## Heading", "a :: b", ": :x", `${ZWSP}::x`, `##${ZWSP}[x`, "# [x]", "##", "#[x]", "﻿::x"]) {
+		for (const quiet of ["## Heading", "a :: b", ": :x", `${MARK}::x`, `##${MARK}[x`, "# [x]", "##", "#[x]"]) {
 			assert.isFalse(isCommand(quiet), JSON.stringify(quiet));
 		}
 	});
 
-	it("a V2 line gets a zero-width space in front, behind whatever whitespace it had", () => {
+	it("the oracle reads a command through what ICU skips: a zero-width space, a BOM, a control or a tag hides nothing", () => {
+		for (const hidden of [
+			`${ZWSP}::x`,
+			"\uFEFF::x",
+			`:${ZWSP}:add-mask::x`,
+			"\u0001::x",
+			`##${ZWSP}[x`,
+			"#\u0640#[x",
+			"#\u{E0041}#\u200D[x",
+		]) {
+			assert.isTrue(isCommand(hidden), JSON.stringify(hidden));
+		}
+	});
+
+	it("a V2 line gets the marker in front, before whatever whitespace it had", () => {
 		for (const line of ["::error::x", "  ::add-mask::x", "\t::x", " ::x", "\u0085::x", " ::x"]) {
 			const [out] = CommandNeutralizer.lines(line);
-			assert.strictEqual(out, `${ZWSP}${line}`, JSON.stringify(line));
+			assert.strictEqual(out, `${MARK}${line}`, JSON.stringify(line));
 			assert.isFalse(isCommand(out ?? ""), JSON.stringify(line));
 		}
 	});
 
 	it("the legacy form is broken at EVERY occurrence, wherever it sits, and a bare ## is left alone", () => {
-		assert.deepStrictEqual(CommandNeutralizer.lines("a ##[x] b ##[y]"), [`a ##${ZWSP}[x] b ##${ZWSP}[y]`]);
-		assert.deepStrictEqual(CommandNeutralizer.lines("prefix ##[add-mask]secret"), [`prefix ##${ZWSP}[add-mask]secret`]);
+		assert.deepStrictEqual(CommandNeutralizer.lines("a ##[x] b ##[y]"), [`a ##${MARK}[x] b ##${MARK}[y]`]);
+		assert.deepStrictEqual(CommandNeutralizer.lines("prefix ##[add-mask]secret"), [`prefix ##${MARK}[add-mask]secret`]);
 		for (const bare of ["## Heading", "a ## b", "##", "###", "## [link]", "#[x]", "# #[x]", "##x[y]"]) {
 			assert.deepStrictEqual(CommandNeutralizer.lines(bare), [bare], JSON.stringify(bare));
 		}
@@ -57,7 +73,7 @@ describe("CommandNeutralizer: the runner's two parsers", () => {
 	});
 
 	it("text joins the neutralized lines with a line feed", () => {
-		assert.strictEqual(CommandNeutralizer.text("a\r\n::b\rc"), `a\n${ZWSP}::b\nc`);
+		assert.strictEqual(CommandNeutralizer.text("a\r\n::b\rc"), `a\n${MARK}::b\nc`);
 		assert.strictEqual(CommandNeutralizer.text(""), "");
 	});
 
@@ -87,9 +103,9 @@ describe("CommandNeutralizer: exhaustive over a small alphabet, judged by the in
 		}
 	});
 
-	it("only a zero-width space is added: removing it gives back the input's own lines", () => {
+	it("only the marker is added: removing it gives back the input's own lines", () => {
 		for (const text of ALL) {
-			const out = CommandNeutralizer.lines(text).map((line) => line.replaceAll(ZWSP, ""));
+			const out = CommandNeutralizer.lines(text).map((line) => line.replaceAll(MARK, ""));
 			assert.deepStrictEqual(out, text.split(LINE_BREAK), JSON.stringify(text));
 		}
 	});
@@ -111,9 +127,22 @@ describe("CommandNeutralizer: exhaustive over a small alphabet, judged by the in
 		}
 	});
 
-	it("a string that already carries zero-width spaces is still safe", () => {
+	it("a string that already carries zero-width spaces, which the runner skips, is still made safe", () => {
 		for (const text of strings([":", "#", "[", ZWSP, "\n"], 6)) {
 			assert.deepStrictEqual(commandLines(CommandNeutralizer.text(text)), [], JSON.stringify(text));
 		}
+	});
+
+	it("so is one that hides a command behind anything else ICU skips: a BOM, a control, a mark, a tag", () => {
+		for (const text of strings([":", "#", "[", " ", "\uFEFF", "\u0001", "\u0301", "\u{E0041}", "x"], 4)) {
+			const once = CommandNeutralizer.text(text);
+			assert.deepStrictEqual(commandLines(once), [], JSON.stringify(text));
+			assert.strictEqual(CommandNeutralizer.text(once), once, `idempotent: ${JSON.stringify(text)}`);
+		}
+	});
+
+	it("a zero-width-space-prefixed command is neutralized again, not taken as already safe", () => {
+		assert.deepStrictEqual(CommandNeutralizer.lines(`${ZWSP}::add-mask::x`), [`${MARK}${ZWSP}::add-mask::x`]);
+		assert.deepStrictEqual(CommandNeutralizer.lines(`##${ZWSP}[x]`), [`##${ZWSP}${MARK}[x]`]);
 	});
 });

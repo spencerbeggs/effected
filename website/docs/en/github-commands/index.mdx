@@ -40,11 +40,11 @@ console.log(WorkflowCommand.error("build failed", { file: "src/main.ts", startLi
 
 const safe = CommandNeutralizer.text("fetched README:\n::add-mask::\nsee ##[warning]here");
 
-// The zero-width space it inserts is invisible, so show it as <ZWSP>:
-console.log(safe.replaceAll("​", "<ZWSP>"));
+// The marker it inserts draws as a blank cell, so show it as <MARK>:
+console.log(safe.replaceAll("\u2800", "<MARK>"));
 // fetched README:
-// <ZWSP>::add-mask::
-// see ##<ZWSP>[warning]here
+// <MARK>::add-mask::
+// see ##<MARK>[warning]here
 ```
 
 A bare `##` with no `[` after it is not a command, so a markdown heading comes through unchanged.

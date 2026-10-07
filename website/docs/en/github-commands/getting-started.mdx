@@ -103,15 +103,15 @@ import { CommandNeutralizer } from "@effected/github-commands";
 const fetched = "notes:\n  ::error::not really\nsee ##[warning]here\n## Changelog";
 const safe = CommandNeutralizer.text(fetched);
 
-// The zero-width space is invisible, so show it as <ZWSP>:
-console.log(safe.replaceAll("​", "<ZWSP>"));
+// The marker draws as a blank cell, so show it as <MARK>:
+console.log(safe.replaceAll("\u2800", "<MARK>"));
 // notes:
-// <ZWSP>  ::error::not really
-// see ##<ZWSP>[warning]here
+// <MARK>  ::error::not really
+// see ##<MARK>[warning]here
 // ## Changelog
 ```
 
-That covers both parsers. A line that starts with `::` once its leading whitespace is trimmed gets a zero-width space (U+200B) in front of it. The runner does not count that character as whitespace, so the line no longer starts with `::`. Every `##[` gets a zero-width space between the `##` and the `[`, wherever it is in the line. The `## Changelog` heading has no `[` after the `##`, so it is left as it was.
+That covers both parsers. A line that starts with `::` once its leading whitespace is trimmed gets a braille pattern blank (U+2800) in front of it. The runner neither trims that character as whitespace nor skips it in its comparison, so the line no longer starts with `::`. Every `##[` gets one before the `[`, wherever it is in the line. A zero-width space would not do: the runner compares with ICU, which skips it. The `## Changelog` heading has no `[` after the `##`, so it is left as it was.
 
 `lines` returns one entry per line instead of a joined string. It splits at CR, LF and CRLF, as the runner does, so a lone CR also starts a new line:
 

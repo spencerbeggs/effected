@@ -72,7 +72,7 @@ internally would win over the harness's and talk to the real terminal.
   which writes through `console.log` whatever `LogToStderr` says (`effect`'s
   `src/Logger.ts`: `withConsoleLog` at 265-271, `consoleLogFmt` at 917,
   `consoleStructured` at 942, `consoleJson` at 965; the default logger reads
-  the reference at `src/internal/effect.ts:6898`). Never install them in an MCP server: every log
+  the reference at `src/internal/effect.ts:6900`). Never install them in an MCP server: every log
   line lands on stdout, the wire. For JSON logs on stderr, install
   `Logger.layer([Logger.withConsoleError(Logger.formatJson)])`.
 - A malformed `protocols` list — more than one stateless adapter — is the
@@ -235,7 +235,7 @@ A bare `NodeRuntime.runMain(Layer.launch(Main).pipe(Effect.provideService(Refere
 typechecks and serves — and still reports a launch failure on stdout. The
 reason is where `runMain`'s own report happens: `Effect.tapCause`, attached
 by `runMain` itself, **outside** anything the launched program provided
-(`Runtime.ts:207-214`). By the time that cause reaches the tap, the
+(`Runtime.ts:211-218`). By the time that cause reaches the tap, the
 `provideService` scope around the already-failed effect has closed and
 `LogToStderr` is back to its ambient default, so `runMain`'s own
 `Effect.logError` call writes through `console.log`.

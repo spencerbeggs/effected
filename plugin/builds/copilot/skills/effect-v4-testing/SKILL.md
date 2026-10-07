@@ -74,7 +74,7 @@ describe("Jsonc", () => {
   spells the replacement out — `it.scoped(...)` becomes `it.effect(...)`,
   `it.scopedLive(...)` becomes `it.live(...)`). The Tester surface is
   `skip`/`skipIf`/`runIf`/`only`/`each`/`fails`/`prop` — **`it.effect.skipIf`
-  and `it.effect.runIf` exist and are well-typed** (`packages/vitest/src/index.ts:65-66`);
+  and `it.effect.runIf` exist and are well-typed** (`packages/vitest/src/index.ts:82-83`);
   reach for them instead of hand-rolling a conditional `describe`.
 - **`it.live`** (`Tester<Scope.Scope | R>`) opts into the real `Clock` and live
   runtime services. Use only when a test genuinely needs wall-clock behavior.
@@ -237,9 +237,9 @@ A mock service is a `Context.Service` with a test `Layer`, swapped `Live` →
 `Test` at this boundary, never inside test bodies.
 
 **Testing a boundary-tier package that does real IO needs no platform package.**
-`Path.layer` comes from `effect` core (`Path.ts:867`) and the filesystem double
+`Path.layer` comes from `effect` core (`Path.ts:873`) and the filesystem double
 is `@effected/memfs`, a pure package with no `node:*` import — core ships
-**no** `FileSystem.layer`, only the deny-by-default `layerNoop` (`FileSystem.ts:765`),
+**no** `FileSystem.layer`, only the deny-by-default `layerNoop` (`FileSystem.ts:772`),
 which is not a double
 ([references/providing-layers.md](./references/providing-layers.md)). So `@effected/walker` tests filesystem behavior
 with zero `@effect/platform-node` devDependency:
@@ -270,7 +270,7 @@ layer(Volume)("seeded filesystem", (it) => {
 ```
 
 **`layerNoop`'s unstubbed members answer in THREE different ways**
-(`makeNoop` (`FileSystem.ts:636`) splits them) — typed `NotFound`, silent success (`exists` → `false`, `remove` → `Effect.void`), and
+(`makeNoop` (`FileSystem.ts:642`) splits them) — typed `NotFound`, silent success (`exists` → `false`, `remove` → `Effect.void`), and
 `Effect.die` (`makeDirectory`, `makeTemp*`), which `Effect.catch` cannot
 absorb. **None of this is a reason to stub `layerNoop` better — it is the
 argument for `@effected/memfs`.** This repo's rule: a `FileSystem` double is

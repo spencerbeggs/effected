@@ -22,12 +22,12 @@ sources:
     author: "agent:claude-code"
     last_modified: "2026-10-01T05:50:00Z"
   - id: ink-input-parser
-    resource: "npm:ink@7.1.1/build/input-parser.js"
-    last_modified: "2026-10-01T05:17:00Z"
+    resource: "npm:ink@8.0.0/build/input-parser.js"
+    last_modified: "2026-10-07T00:00:00Z"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T06:22:24Z
-  body_sha256: c365f3a18be22403427d24646ec3dda87362d5bc05977eb40b549216b30e3eed
+  at: 2026-10-07T21:32:23Z
+  body_sha256: 83309d85f22c29d94e631905a2408d9b1f73b2989bea4e12754b10a2bebfa4eb
 ---
 
 # Ink delivers every key in one stdin read before React re-renders
@@ -47,8 +47,8 @@ every test, and because React state "is the current state".
 
 ## What is actually true
 
-Ink splits one stdin read into keys (at escape sequences and backspace
-bytes) and dispatches them all synchronously, before React re-renders. A
+Ink splits one stdin read into keys (at escape sequences, backspace bytes
+and Ctrl-C) and dispatches them all synchronously, before React re-renders. A
 second key in the same read runs the same handler closure and sees the
 same captured `index`, so it repeats the first key's move instead of
 continuing from it. A fast typist, a held arrow key or a terminal that
@@ -66,8 +66,8 @@ Two related facts bound the trap:
   reaches `useInput` as a single two-character string rather than as two
   Tab keys[^ink-input-parser]. A probe of single reads found Ink drops
   nothing either: `"yy"`, `"y\r"` and `"\t\t"` each arrive as one input
-  string with no `return` or `tab` flag, and only a backspace byte is
-  split out as its own key[^char-probe]. `useKeys` therefore splits text
+  string with no `return` or `tab` flag, and only a backspace byte (or
+  Ctrl-C) is split out as its own key[^char-probe]. `useKeys` therefore splits text
   of more than one grapheme into a key per grapheme (a decomposed letter
   or a ZWJ emoji is one key; CR, LF or CR LF is one enter; `\t` is tab;
   a space is space) and compares `{ char }` bindings in NFC, so
@@ -106,4 +106,4 @@ cover it with a one-chunk test of two keys: `handle.chunk("right",
 [^tabs-one-chunk-probe]: `__test__/ui/Tabs.test.ts`, "Tabs input in one chunk"
 [^chunk-test]: `__test__/ui/CliUiTest.chunk.test.ts`
 [^char-probe]: `__test__/ui/CliUiTest.chunk.test.ts`, "coalesced characters"; the raw probe recorded `useInput`'s `(input, key)` on fake streams
-[^ink-input-parser]: Ink 7.1.1, `build/input-parser.js`, `splitBackspaceBytes`
+[^ink-input-parser]: Ink 8.0.0, `build/input-parser.js:116-133`, `splitControlBytes`
