@@ -148,7 +148,7 @@ describe("CommandNeutralizer: exhaustive over a small alphabet, judged by the in
 });
 
 describe("CommandNeutralizer: matching is linear, so a hostile line cannot stall the job that logs it", () => {
-	const BOM = "﻿";
+	const BOM = String.fromCodePoint(0xfeff);
 	/** Generous: the linear patterns take milliseconds; a backtracking one takes years on these lengths. */
 	const BUDGET_MS = 1000;
 
@@ -172,7 +172,7 @@ describe("CommandNeutralizer: matching is linear, so a hostile line cannot stall
 	});
 
 	it("so is a run mixing every kind of leading character the V2 rule skips", () => {
-		const text = `${` \t\u0085${BOM}${ZWSP}́`.repeat(2_000)}x`;
+		const text = `${` \t\u0085${BOM}${ZWSP}\u0301`.repeat(2_000)}x`;
 		const { out, ms } = timed(text);
 		assert.strictEqual(out, text);
 		assert.isBelow(ms, BUDGET_MS);
