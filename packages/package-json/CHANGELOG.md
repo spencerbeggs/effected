@@ -1,5 +1,13 @@
 # @effected/package-json
 
+## 0.20.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/spdx | dependency | updated | 0.11.0 | 0.12.0 |
+
 ## 0.20.0
 
 ### Breaking Changes

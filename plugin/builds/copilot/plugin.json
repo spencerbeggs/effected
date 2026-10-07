@@ -1,7 +1,7 @@
 {
 	"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
 	"name": "effected",
-	"version": "0.30.0",
+	"version": "0.31.0",
 	"description": "Effect v4 development skills, a GitHub Actions and GitHub API suite, specialist subagents (developer, reviewer, action-engineer), and a session briefing, distilled from the @effected packages and the official Effect-TS v4 guides.",
 	"author": {
 		"name": "C. Spencer Beggs",

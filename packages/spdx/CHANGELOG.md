@@ -1,5 +1,18 @@
 # @effected/spdx
 
+## 0.12.0
+
+### Features
+
+- The bundled SPDX license list is refreshed to v3.29.0, which adds 13 license ids.
+- `osiApproved` is now `true` for `CDDL-1.1`, `CNRI-Python-GPL-Compatible`, `Python-2.0.1` and `curl`, following the list's update. [#959][#959]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#959]: https://github.com/spencerbeggs/effected/pull/959
+
 ## 0.11.0
 
 ### Breaking Changes

@@ -1,5 +1,32 @@
 # @effected/ai-plugin
 
+## 0.31.0
+
+### Features
+
+- The session-start briefing runs on the pluginfinity 0.3.0 hook library as one script for both hosts. Copilot now receives the same briefing as Claude Code.
+
+### Documentation
+
+- The `effected-packages` skill's `@effected/jsonl` reference is rewritten for the redesigned journal API: the `Journal.Service` factory with a static `layer`, `position` on envelopes, `Slice` with `onInvalid`, and the per-operation error types.
+- The construct index entries for `@effected/jsonl` are regenerated to match, in both the Claude Code and Copilot builds. [#951][#951]
+
+* Skills are updated for Effect 4.0.2: stability tags are corrected, platform modules are marked unstable, and `Effect.retry` no longer retries defect or interrupt causes.
+* The schema skill covers `.tag` on `Schema.TaggedUnion`, about 200 source citations are remapped, the module-index Encoding rows are fixed, and a Version row is added.
+* The `effect-v4-cli` and `effected-packages` skills reflect Ink 8 and the U+2800 neutralizer marker, and the SPDX reference reflects the refreshed license counts.
+
+### Maintenance
+
+- `pluginfinity` is bumped to 0.3.0. [#959][#959]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#951]: https://github.com/spencerbeggs/effected/pull/951
+
+[#959]: https://github.com/spencerbeggs/effected/pull/959
+
 ## 0.30.0
 
 ### Documentation
