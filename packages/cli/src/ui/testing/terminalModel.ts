@@ -46,8 +46,9 @@ export const screenAfter = (written: string, rows?: number): ReadonlyArray<strin
 		} else if (command === "C") column += Number(params === "" ? 1 : params);
 		else if (command === "G") column = Math.max(0, Number(params === "" ? 1 : params) - 1);
 		else if (command === "J" && (params === "" || params === "0")) {
+			// Erase below blanks the rows; it never shrinks the screen, so the screen's top stays where it was.
 			lines[row] = (lines[row] ?? "").slice(0, column);
-			lines.length = row + 1;
+			for (let index = row + 1; index < lines.length; index++) lines[index] = "";
 		} else if (command === "J" && params === "2") {
 			for (let index = screenTop(); index < lines.length; index++) lines[index] = "";
 		} else if (command === "J" && params === "3") {
