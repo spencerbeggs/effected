@@ -8,10 +8,15 @@
  * plus the five letters and separators ICU also ignores (U+0640, U+07FA, U+180A, U+1CD3, U+FE73). A superset only
  * neutralizes more lines than strictly needed, never fewer.
  */
-const IGNORED = String.raw`[\u0000-\u0008\u000E-\u001F\u007F-\u0084\u0086-\u009F\p{Cf}\p{Mn}\p{Me}\p{Mc}\p{Default_Ignorable_Code_Point}\u0640\u07FA\u180A\u1CD3\uFE73]`;
+const IGNORED_SET = String.raw`\u0000-\u0008\u000E-\u001F\u007F-\u0084\u0086-\u009F\p{Cf}\p{Mn}\p{Me}\p{Mc}\p{Default_Ignorable_Code_Point}\u0640\u07FA\u180A\u1CD3\uFE73`;
+const IGNORED = `[${IGNORED_SET}]`;
 
-/** V2: after leading .NET whitespace (JavaScript's `\s` plus U+0085) and anything ICU skips, the line starts `::`. */
-const V2 = new RegExp(String.raw`^(?:[\s\u0085]|${IGNORED})*:${IGNORED}*:`, "u");
+/**
+ * V2: after leading .NET whitespace (JavaScript's `\s` plus U+0085) and anything ICU skips, the line starts `::`. The
+ * leading run is ONE character class, never an alternation of two: U+FEFF is both `\s` and `\p{Cf}`, and
+ * `(?:[\s]|[\p{Cf}])*` over a run of a character both branches accept backtracks exponentially on a failed match.
+ */
+const V2 = new RegExp(String.raw`^[\s\u0085${IGNORED_SET}]*:${IGNORED}*:`, "u");
 
 /** Legacy: `##[` anywhere, with anything ICU skips between its three characters. */
 const LEGACY = new RegExp(String.raw`(#${IGNORED}*#${IGNORED}*)\[`, "gu");
@@ -56,8 +61,14 @@ const neutralize = (line: string): string => {
  * Input is split at CR, LF and CRLF, as the runner splits a stream, so a lone CR starts a line.
  *
  * The result is **idempotent**: a line this has neutralized matches neither rule, so neutralizing it again changes
- * nothing. The marker is one blank cell wide: neutralized text is one column wider per marker. That is what lets a renderer that neutralizes as it builds and a facade that neutralizes the finished text
+ * nothing. That is what lets a renderer that neutralizes as it builds and a facade that neutralizes the finished text
  * both apply it without a second marker.
+ *
+ * The marker is one blank cell wide, so neutralized text is one column wider per marker: a line with a V2 prefix and
+ * two `##[` occurrences gains three.
+ *
+ * Matching is linear in the line's length for any input, so a hostile line (a long run of BOMs, say) cannot stall the
+ * job that logs it.
  *
  * This does not escape a command you mean to write: that is {@link WorkflowCommand}, whose message and property
  * escaping is a different protocol. There is no detector here either, on purpose: a function that decided what is a

@@ -146,3 +146,42 @@ describe("CommandNeutralizer: exhaustive over a small alphabet, judged by the in
 		assert.deepStrictEqual(CommandNeutralizer.lines(`##${ZWSP}[x]`), [`##${ZWSP}${MARK}[x]`]);
 	});
 });
+
+describe("CommandNeutralizer: matching is linear, so a hostile line cannot stall the job that logs it", () => {
+	const BOM = "﻿";
+	/** Generous: the linear patterns take milliseconds; a backtracking one takes years on these lengths. */
+	const BUDGET_MS = 1000;
+
+	const timed = (text: string): { readonly out: string; readonly ms: number } => {
+		const start = performance.now();
+		const out = CommandNeutralizer.text(text);
+		return { out, ms: performance.now() - start };
+	};
+
+	it("a long run of BOMs (both whitespace and a format character) with no command is returned unchanged, fast", () => {
+		const text = `${BOM.repeat(10_000)}x`;
+		const { out, ms } = timed(text);
+		assert.strictEqual(out, text);
+		assert.isBelow(ms, BUDGET_MS);
+	});
+
+	it("the same run in front of a command is neutralized, fast", () => {
+		const { out, ms } = timed(`${BOM.repeat(10_000)}::add-mask::x`);
+		assert.deepStrictEqual(commandLines(out), []);
+		assert.isBelow(ms, BUDGET_MS);
+	});
+
+	it("so is a run mixing every kind of leading character the V2 rule skips", () => {
+		const text = `${` \t\u0085${BOM}${ZWSP}́`.repeat(2_000)}x`;
+		const { out, ms } = timed(text);
+		assert.strictEqual(out, text);
+		assert.isBelow(ms, BUDGET_MS);
+	});
+
+	it("and a long run of #-and-ignorable pairs with no [ is left alone, fast", () => {
+		const text = `#${ZWSP}`.repeat(5_000);
+		const { out, ms } = timed(text);
+		assert.strictEqual(out, text);
+		assert.isBelow(ms, BUDGET_MS);
+	});
+});

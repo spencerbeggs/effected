@@ -15,4 +15,4 @@
 
 ## Breaking Changes
 
-Neutralized text now carries U+2800, which draws as one blank column, where it used to carry an invisible zero-width space. Output is one column wider per neutralized line, and anything that compared against the old U+200B marker must expect U+2800.
+Neutralized text now carries U+2800, which draws as one blank column, where it used to carry an invisible zero-width space. Output is one column wider per marker (one for a line that starts with `::`, plus one for each `##[` in it), and anything that compared against the old U+200B marker must expect U+2800.
