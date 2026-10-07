@@ -1,20 +1,21 @@
-// The bounded tail read.
+// The bounded reads.
 //
-// `latest` and every `lastValid`-backed read go through this: `Line.lastValid`
-// takes whole text, so "just read the file" is the easy wrong move — it makes
-// the cost of answering "what is the current state" grow with the age of the
-// journal, which is the thing this package exists to avoid.
+// Backward: `readTailUntil` answers "what is the current state" by stepping
+// back from the end one window at a time, so the cost tracks the answer, not
+// the age of the journal. Forward: `readLinePages` reads a region in fixed
+// pages, emitting each page's complete lines and carrying the unterminated
+// fragment into the next, so memory tracks the page, not the region.
 //
-// **The scope of that, honestly**: it binds the tail reads. The historical read
-// (`Journal`'s `readFrom`, behind `query` and the replay half of `changes`)
-// currently reads its whole requested region in one allocation bounded by the
-// file's size, and is bounded by the caller's `cursor` rather than by a window.
-// Paging it through `readRangeText` is spencerbeggs/effected#233; until
-// that lands, this module's discipline is a property of the tail reads, not of
-// every read in the service.
+// Every single read here is bounded — a tail window is clamped to `MAX_WINDOW`,
+// a forward read takes at most a page — so no path allocates the file. The one
+// thing allowed past a bound is a single LINE longer than it, because decoding
+// a line needs all of it.
+//
+// Every offset in and out of this module is LOGICAL — post-BOM — except where a
+// name says physical.
 
 import type { FileSystem, PlatformError } from "effect";
-import { ByteSize, Effect, Option } from "effect";
+import { ByteSize, Effect, Option, Stream } from "effect";
 
 /** UTF-8 BOM, as bytes. `U+FEFF` encodes to these three. */
 const BOM = [0xef, 0xbb, 0xbf] as const;
@@ -23,15 +24,30 @@ const BOM = [0xef, 0xbb, 0xbf] as const;
 const LF = 0x0a;
 
 /**
- * The default tail window.
- *
- * Large enough that a snapshot journal's last line is almost always inside it
- * on the first read, small enough that reading it is cheap against a journal of
- * any age. When it misses, {@link readTail} widens rather than failing.
+ * The first tail window. Large enough that a snapshot journal's last line is
+ * almost always inside it, small enough to be cheap against a journal of any
+ * age.
  *
  * @internal
  */
 export const DEFAULT_WINDOW = 8192;
+
+/**
+ * The largest window a single tail read allocates.
+ *
+ * A regression fence: the historical read once sized a "tail" window to its
+ * whole region. A caller needing more than this pages for it.
+ *
+ * @internal
+ */
+export const MAX_WINDOW = 1024 * 1024;
+
+/**
+ * The forward page size of {@link readLinePages}.
+ *
+ * @internal
+ */
+export const PAGE_SIZE = 64 * 1024;
 
 /**
  * A decoded tail window.
@@ -39,121 +55,147 @@ export const DEFAULT_WINDOW = 8192;
  * @internal
  */
 export interface TailWindow {
-	/** The decoded text of the window, starting at a line boundary. */
+	/** The decoded text, starting at a line boundary. */
 	readonly text: string;
-	/**
-	 * The **logical** byte offset the text starts at — that is, post-BOM.
-	 *
-	 * Offsets this package hands out are relative to the post-BOM start of the
-	 * file, so the first line of a BOM'd journal begins at 0 exactly as it does
-	 * in one without. Add this to a `LineSlice.offset` computed over `text` to
-	 * get the offset in the journal.
-	 */
+	/** The logical offset `text` starts at. */
 	readonly start: number;
-	/** Whether the window reaches the start of the file — nothing left to widen into. */
+	/** Whether the window reaches the start of the content — nothing earlier remains. */
 	readonly atFileStart: boolean;
-	/** The journal's logical size in bytes, post-BOM. */
-	readonly size: number;
 }
 
-/** Does the buffer begin with a UTF-8 BOM? */
-const hasBom = (bytes: Uint8Array): boolean =>
-	bytes.length >= 3 && bytes[0] === BOM[0] && bytes[1] === BOM[1] && bytes[2] === BOM[2];
+/**
+ * One forward page of {@link readLinePages}: complete lines, decoded.
+ *
+ * @internal
+ */
+export interface LinePage {
+	/** Whole `\n`-terminated lines, except that the last page may end in the region's unterminated fragment. */
+	readonly text: string;
+	/** The logical offset `text` starts at. */
+	readonly start: number;
+}
+
+const EMPTY: Uint8Array = new Uint8Array(0);
+
+const decoder = new TextDecoder();
+
+/** Join byte chunks with one allocation. */
+const join = (chunks: ReadonlyArray<Uint8Array>): Uint8Array => {
+	if (chunks.length === 1) return chunks[0] as Uint8Array;
+	let length = 0;
+	for (const chunk of chunks) length += chunk.length;
+	const joined = new Uint8Array(length);
+	let at = 0;
+	for (const chunk of chunks) {
+		joined.set(chunk, at);
+		at += chunk.length;
+	}
+	return joined;
+};
+
+/** Read `[from, to)` (physical) from an open handle. */
+const readAt = (
+	file: FileSystem.File,
+	from: number,
+	to: number,
+): Effect.Effect<Uint8Array, PlatformError.PlatformError> =>
+	Effect.gen(function* () {
+		yield* file.seek(BigInt(from), "start");
+		return Option.getOrElse(yield* file.readAlloc(to - from), () => EMPTY);
+	});
 
 /**
  * Probe the first three bytes of a file for a BOM.
  *
- * This is a property of the FILE, so it is read once from the start rather than
- * inferred from whatever window happens to be in hand. Inferring it from window
- * position was a real defect: a BOM'd journal larger than the window never has
- * a window at offset 0, so every offset it emitted was physical — silently off
- * by three against a file the package itself had described as post-BOM.
+ * A property of the FILE, read once from the start — never inferred from a
+ * window's position, which for a journal larger than the window never reaches
+ * offset 0.
  *
  * @internal
  */
 export const probeBomBytes = (
 	fs: FileSystem.FileSystem,
 	path: string,
-): Effect.Effect<number, PlatformError.PlatformError, never> =>
+): Effect.Effect<number, PlatformError.PlatformError> =>
 	Effect.gen(function* () {
 		const file = yield* fs.open(path, { flag: "r" });
-		const head = yield* file.readAlloc(BOM.length);
-		const bytes = Option.getOrElse(head, () => new Uint8Array(0));
-		return hasBom(bytes) ? BOM.length : 0;
+		const head = yield* readAt(file, 0, BOM.length);
+		return head.length >= 3 && head[0] === BOM[0] && head[1] === BOM[1] && head[2] === BOM[2] ? BOM.length : 0;
 	}).pipe(Effect.scoped);
 
 /**
- * Read the last `window` bytes of a journal, decoded from a line boundary.
+ * Read the window of at most {@link MAX_WINDOW} bytes ending at physical `end`,
+ * decoded from a line boundary.
  *
- * Three disciplines, each load-bearing:
- *
- * 1. **Start at a line boundary.** Unless the window reaches offset 0, the
- *    leading partial line is discarded — everything up to and including the
- *    first `\n`. This is also what makes the decode safe across a chunk
- *    boundary: `\n` is `0x0A` and **cannot** appear inside a UTF-8 multi-byte
- *    sequence, so a window that starts just past one starts on a character
- *    boundary too. No separate mid-character guard is needed.
- * 2. **Strip exactly one leading BOM, at the byte level**, and only when the
- *    window genuinely starts at file offset 0. Reads here are offset-based, so
- *    an implicit strip (as `readFileString` performs) would desynchronize every
- *    offset the package emits; doing it explicitly keeps the convention stated.
- *    A `U+FEFF` anywhere else is content and is left alone.
- * 3. **Never read the whole file** unless the file is smaller than the window.
- *
- * **`window` is not clamped**, deliberately. `Journal`'s historical read sizes
- * its window to the region it has to return, so a clamp here would silently
- * truncate that read rather than bound it. The clamp belongs with the paged
- * rewrite of that read — one that emits per window and can therefore honour a
- * maximum — and is carried on spencerbeggs/effected#233, not added underneath
- * it.
- *
- * @internal
+ * Unless the window reaches the start of the content, its leading partial line
+ * is discarded — through the first `\n`, which cannot occur inside a UTF-8
+ * multi-byte sequence, so the decode starts on a character boundary too. A BOM
+ * is excluded by starting the read past it, never by an implicit strip.
  */
-export const readTail = (
-	fs: FileSystem.FileSystem,
-	path: string,
+const readWindow = (
+	file: FileSystem.File,
+	end: number,
 	window: number,
 	bomBytes: number,
-): Effect.Effect<TailWindow, PlatformError.PlatformError, never> =>
+): Effect.Effect<TailWindow, PlatformError.PlatformError> =>
 	Effect.gen(function* () {
-		const info = yield* fs.stat(path);
-		const physicalSize = ByteSize.toNumberUnsafe(info.size);
-		// Every offset below is LOGICAL — post-BOM — on every path, whether or not
-		// this particular window happens to reach the start of the file.
-		const logicalSize = physicalSize - bomBytes;
-		const from = Math.max(bomBytes, physicalSize - window);
-		const file = yield* fs.open(path, { flag: "r" });
-		yield* file.seek(BigInt(from), "start");
-		const read = yield* file.readAlloc(physicalSize - from);
-		const bytes = Option.getOrElse(read, () => new Uint8Array(0));
-
-		// "At file start" means at the start of the CONTENT, i.e. past the BOM.
-		const windowAtFileStart = from === bomBytes;
+		// The clamp is the fence: no caller can turn a tail read into a file read.
+		const from = Math.max(bomBytes, end - Math.min(window, MAX_WINDOW));
+		const bytes = yield* readAt(file, from, end);
+		const atFileStart = from === bomBytes;
 		let cursor = 0;
-		if (!windowAtFileStart) {
-			// Discard the partial first line. If there is no newline in the window
-			// at all, the whole window is one partial line and there is nothing
-			// usable here — the caller widens.
+		if (!atFileStart) {
 			const newline = bytes.indexOf(LF);
 			cursor = newline === -1 ? bytes.length : newline + 1;
 		}
-
-		const text = new TextDecoder().decode(bytes.subarray(cursor));
-		return {
-			text,
-			start: from + cursor - bomBytes,
-			atFileStart: windowAtFileStart,
-			size: logicalSize,
-		};
-	}).pipe(Effect.scoped);
+		return { text: decoder.decode(bytes.subarray(cursor)), start: from + cursor - bomBytes, atFileStart };
+	});
 
 /**
- * Read widening windows until `decode` finds something, or the whole file has
- * been seen.
+ * Read the one line that ends at physical `end`, however long it is, in
+ * clamped steps backward to the newline before it.
  *
- * The widening is what makes the bounded read *correct* rather than merely
- * cheap: a journal whose last line is longer than the initial window would
- * otherwise report "no valid envelope" for a perfectly healthy file.
+ * The escape hatch for a window with no line boundary inside it: the line is
+ * longer than the window, and the clamp forbids asking for a bigger one.
+ */
+const readLineEnding = (
+	file: FileSystem.File,
+	end: number,
+	bomBytes: number,
+): Effect.Effect<TailWindow, PlatformError.PlatformError> =>
+	Effect.gen(function* () {
+		const chunks: Array<Uint8Array> = [];
+		let position = end;
+		for (;;) {
+			const from = Math.max(bomBytes, position - MAX_WINDOW);
+			const bytes = yield* readAt(file, from, position);
+			// The byte at `end - 1` is the line's OWN terminator whenever `end` is a
+			// line boundary; finding it would yield an empty line ending where the
+			// search began, and the caller would never move. A negative `fromIndex`
+			// counts from the end, so an exhausted search is spelled out.
+			const searchFrom = position === end ? bytes.length - 2 : bytes.length - 1;
+			const newline = searchFrom < 0 ? -1 : bytes.lastIndexOf(LF, searchFrom);
+			if (newline !== -1) {
+				chunks.unshift(bytes.subarray(newline + 1));
+				return { text: decoder.decode(join(chunks)), start: from + newline + 1 - bomBytes, atFileStart: false };
+			}
+			chunks.unshift(bytes);
+			if (from === bomBytes) {
+				return { text: decoder.decode(join(chunks)), start: 0, atFileStart: true };
+			}
+			position = from;
+		}
+	});
+
+/**
+ * Search backward from the end of the journal, one window at a time, until
+ * `decode` finds something or the whole file has been seen.
+ *
+ * Each window covers only bytes no earlier one did — it ends at the line
+ * boundary where the previous one began — and the windows grow from
+ * `initialWindow` by fours up to {@link MAX_WINDOW}. `decode` sees each window
+ * on its own: "the last match in this window" is the last match in the file
+ * only because every later window has already answered none.
  *
  * @internal
  */
@@ -163,65 +205,141 @@ export const readTailUntil = <A>(
 	bomBytes: number,
 	decode: (window: TailWindow) => Option.Option<A>,
 	initialWindow = DEFAULT_WINDOW,
-): Effect.Effect<Option.Option<A>, PlatformError.PlatformError, never> =>
+): Effect.Effect<Option.Option<A>, PlatformError.PlatformError> =>
 	Effect.gen(function* () {
+		const file = yield* fs.open(path, { flag: "r" });
+		// One size, sampled once: a line appended mid-search cannot shift the
+		// windows under it.
+		let end = ByteSize.toNumberUnsafe((yield* file.stat).size);
+		// Not clamped here: `readWindow` is the one fence every tail read passes
+		// through, so it is the one that has to hold.
 		let window = initialWindow;
 		for (;;) {
-			const tail = yield* readTail(fs, path, window, bomBytes);
+			let tail = yield* readWindow(file, end, window, bomBytes);
+			if (tail.text === "" && !tail.atFileStart && tail.start + bomBytes === end) {
+				// No line boundary in the window: one line is longer than it.
+				tail = yield* readLineEnding(file, end, bomBytes);
+			}
 			const found = decode(tail);
-			if (Option.isSome(found)) {
+			if (Option.isSome(found) || tail.atFileStart) {
 				return found;
 			}
-			if (tail.atFileStart) {
-				// The window already covered the whole file; widening cannot help.
-				return Option.none<A>();
-			}
-			window *= 4;
+			end = tail.start + bomBytes;
+			window = Math.min(window * 4, MAX_WINDOW);
 		}
-	});
+	}).pipe(Effect.scoped);
+
+/** Where a forward page read stands between pulls. */
+interface PageState {
+	/** The next physical byte to read. */
+	readonly position: number;
+	/** Bytes read but not yet emitted: the start of a line no page has completed. */
+	readonly carry: ReadonlyArray<Uint8Array>;
+	/** The logical offset `carry` starts at. */
+	readonly carryStart: number;
+	/** Still discarding the partial line a mid-line `from` points into. */
+	readonly skipping: boolean;
+}
 
 /**
- * Read a byte range and decode it as text, safely across chunk boundaries.
+ * Read the logical region `[from, end)` forward, in pages, as complete lines.
  *
- * The byte→string seam lives here, in the service layer, because `Line.split`
- * is string-in by design and the pure core must never learn about buffers.
+ * Each pull reads at most `pageSize` bytes, emits every line that page
+ * completes, and carries the trailing unterminated fragment into the next pull
+ * — so a consumer that stops early never pays for the rest, and memory is a
+ * page plus the longest line. Pages are cut at `\n`, so each decodes on its
+ * own: a character a raw read split in two is still whole in the carry by the
+ * time its line is emitted.
  *
- * `TextDecoder` is used in **streaming mode** (`{ stream: true }`) so a
- * multi-byte character split across two reads is reassembled rather than
- * mangled. A naive per-chunk `decode` corrupts any such character — a bug that
- * appears only with non-ASCII payloads at specific sizes, which is exactly the
- * kind that reaches production. The final `decode()` with no argument flushes
- * any trailing partial sequence.
+ * `from` is a line cursor: at a line boundary it is exactly where reading
+ * starts; pointing INTO a line, the straddled line is skipped whole. That is why
+ * reading starts one byte early — a `from` at a line start hands the skip rule
+ * the previous line's terminator and consumes exactly that byte. Whatever
+ * remains at `end` without a terminator is emitted last.
+ *
+ * `end` is the caller's bound, sampled once: bytes appended past it are never
+ * read. A file that shrinks underneath ends the stream at what was readable.
  *
  * @internal
  */
-export const readRangeText = (
+export const readLinePages = (
 	fs: FileSystem.FileSystem,
 	path: string,
 	from: number,
-	length: number,
-): Effect.Effect<string, PlatformError.PlatformError, never> =>
-	Effect.gen(function* () {
-		if (length <= 0) {
-			return "";
-		}
-		const file = yield* fs.open(path, { flag: "r" });
-		yield* file.seek(BigInt(from), "start");
-		const decoder = new TextDecoder();
-		let text = "";
-		let remaining = length;
-		while (remaining > 0) {
-			const chunk = yield* file.readAlloc(Math.min(remaining, CHUNK));
-			if (Option.isNone(chunk) || chunk.value.length === 0) {
-				break;
+	end: number,
+	bomBytes: number,
+	pageSize = PAGE_SIZE,
+): Stream.Stream<LinePage, PlatformError.PlatformError> =>
+	Stream.unwrap(
+		Effect.gen(function* () {
+			if (from >= end) {
+				return Stream.empty;
 			}
-			// `stream: true` carries an incomplete trailing sequence into the next
-			// call instead of emitting U+FFFD for it.
-			text += decoder.decode(chunk.value, { stream: true });
-			remaining -= chunk.value.length;
-		}
-		return text + decoder.decode();
-	}).pipe(Effect.scoped);
-
-/** Read granularity for incremental tail reads. */
-const CHUNK = 64 * 1024;
+			// Held for the stream's lifetime: `Stream.unwrap` gives this effect the
+			// stream's own scope, so the handle closes when the stream does.
+			const file = yield* fs.open(path, { flag: "r" });
+			const stop = end + bomBytes;
+			const flush = (state: PageState): ReadonlyArray<LinePage> =>
+				state.skipping || state.carry.length === 0
+					? []
+					: [{ text: decoder.decode(join(state.carry)), start: state.carryStart }];
+			return Stream.paginate(
+				{
+					position: from === 0 ? bomBytes : from + bomBytes - 1,
+					carry: [],
+					carryStart: from,
+					skipping: from > 0,
+				} satisfies PageState,
+				(
+					state,
+				): Effect.Effect<readonly [ReadonlyArray<LinePage>, Option.Option<PageState>], PlatformError.PlatformError> =>
+					Effect.gen(function* () {
+						const bytes =
+							state.position >= stop
+								? EMPTY
+								: yield* readAt(file, state.position, Math.min(state.position + pageSize, stop));
+						if (bytes.length === 0) {
+							// The region is done — or the file shrank under the read.
+							return [flush(state), Option.none()] as const;
+						}
+						const position = state.position + bytes.length;
+						let fresh = bytes;
+						let carryStart = state.carryStart;
+						if (state.skipping) {
+							const newline = bytes.indexOf(LF);
+							if (newline === -1) {
+								// Still inside the straddled line; nothing here is ours.
+								return [[], Option.some({ ...state, position })] as const;
+							}
+							fresh = bytes.subarray(newline + 1);
+							carryStart = state.position + newline + 1 - bomBytes;
+						}
+						// Search only the fresh bytes: the carry is known to hold no `\n`,
+						// so a line spanning many pages costs one scan per page, not one
+						// scan of everything carried so far.
+						const last = fresh.lastIndexOf(LF);
+						if (last === -1) {
+							const carry = fresh.length === 0 ? state.carry : [...state.carry, fresh];
+							return [[], Option.some({ position, carry, carryStart, skipping: false })] as const;
+						}
+						const page: LinePage = {
+							text: decoder.decode(join([...state.carry, fresh.subarray(0, last + 1)])),
+							start: carryStart,
+						};
+						let carryLength = 0;
+						for (const chunk of state.carry) carryLength += chunk.length;
+						// `slice`, not `subarray`: the carry must not pin the page's buffer.
+						const rest = fresh.slice(last + 1);
+						return [
+							[page],
+							Option.some({
+								position,
+								carry: rest.length === 0 ? [] : [rest],
+								carryStart: carryStart + carryLength + last + 1,
+								skipping: false,
+							}),
+						] as const;
+					}),
+			);
+		}),
+	);

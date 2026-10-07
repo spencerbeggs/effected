@@ -1,11 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Option, Result, Schema } from "effect";
+import type { LineSlice } from "../src/index.js";
 import {
 	InvalidData,
 	JournalClosed,
 	JournalNotFound,
 	JournalResync,
-	LineSlice,
 	MalformedLine,
 	TerminalViolation,
 	UnknownEvent,
@@ -22,7 +22,7 @@ import {
  * crashed recording an error and made a failing test impossible to read.
  */
 
-const slice = new LineSlice({ offset: 12, end: 20, length: 7, text: '{"a":1}', terminated: true });
+const slice: LineSlice = { offset: 12, end: 20, length: 7, text: '{"a":1}', terminated: true };
 
 /** A real `SchemaError`, obtained the way the package obtains one. */
 const schemaError = (() => {
@@ -44,19 +44,39 @@ describe("error messages render", () => {
 		// rendering has to tell them apart, and the branch that does needs a
 		// fixture that reaches it.
 		// Unterminated, so `end` is exactly `offset + length`.
-		const torn = new LineSlice({ offset: 12, end: 15, length: 3, text: '{"a', terminated: false });
+		const torn: LineSlice = { offset: 12, end: 15, length: 3, text: '{"a', terminated: false };
 		const message = new MalformedLine({ line: torn }).message;
 		assert.include(message, "unterminated final line");
 		assert.include(message, "12");
 	});
 
 	it("UnknownEvent", () => {
-		assert.include(new UnknownEvent({ line: slice, event: "ghost", known: ["a"] }).message, "ghost");
+		const message = new UnknownEvent({ line: slice, event: "ghost", known: ["a"] }).message;
+		assert.include(message, "ghost");
+		assert.include(message, "at byte offset 12");
+	});
+
+	it("UnknownEvent with no line (the encode path) invents no offset", () => {
+		const error = new UnknownEvent({ event: "ghost", known: ["a"] });
+		assert.notProperty(error, "line");
+		assert.strictEqual(error.message, 'unknown JSONL event "ghost"');
 	});
 
 	it("InvalidData", () => {
 		const error = new InvalidData({ line: slice, event: Option.some("noted"), error: schemaError });
 		assert.include(error.message, "noted");
+	});
+
+	it("InvalidData locates its line by byte offset", () => {
+		const error = new InvalidData({ line: slice, event: Option.some("noted"), error: schemaError });
+		assert.include(error.message, "at byte offset 12");
+	});
+
+	it("InvalidData with no line (the encode path) invents no offset", () => {
+		const error = new InvalidData({ event: Option.some("noted"), error: schemaError });
+		assert.notProperty(error, "line");
+		assert.notInclude(error.message, "byte offset");
+		assert.isTrue(error.message.startsWith('invalid JSONL payload for event "noted": '), error.message);
 	});
 
 	it("InvalidData with no event names the envelope", () => {
@@ -67,6 +87,15 @@ describe("error messages render", () => {
 	it("UnserializableData", () => {
 		const error = new UnserializableData({ event: "noted", cause: new TypeError("boom") });
 		assert.include(error.message, "noted");
+		assert.include(error.message, "boom", "an Error cause contributes its own message");
+	});
+
+	it("UnserializableData accepts a non-Error cause and keeps it as-is", () => {
+		// `cause` is a `Schema.Defect()`: anything `JSON.stringify` could throw.
+		const cause = { thrown: "not an Error" };
+		const error = new UnserializableData({ event: "noted", cause });
+		assert.strictEqual(error.cause, cause, "carried structurally, not stringified");
+		assert.include(error.message, "value is not JSON-serializable");
 	});
 
 	it("TerminalViolation", () => {

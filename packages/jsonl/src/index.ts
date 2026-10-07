@@ -11,16 +11,18 @@
  *
  * @example
  * ```ts
- * import { Line } from "@effected/jsonl";
- * import { Option } from "effect";
+ * import { Envelope, JsonlEvent } from "@effected/jsonl";
+ * import { Option, Schema } from "effect";
+ *
+ * const events = [JsonlEvent.make("state", { data: Schema.Struct({ round: Schema.Number }) })] as const;
  *
  * declare const sourceText: string;
  *
  * // The whole read path for a snapshot journal, with no runtime.
- * const state = Line.lastValid(sourceText);
- * if (Option.isSome(state)) {
- *   state.value.value; // the decoded JSON of the last valid line
- *   state.value.line.offset; // its byte offset, for a resumable cursor
+ * const current = Envelope.lastValid(events, sourceText);
+ * if (Option.isSome(current)) {
+ *   current.value.data.round; // the decoded payload of the last valid envelope
+ *   current.value.position.end; // a resumable cursor
  * }
  * ```
  *
@@ -29,20 +31,14 @@
  * @packageDocumentation
  */
 
-// `Envelope` and `JsonlEvent` each carry BOTH a value and a type declaration,
-// so one export name covers the factory and the type it produces.
+// `Envelope`, `JsonlEvent` and `LineSlice` each carry BOTH a value and a type
+// declaration, so one export name covers the value and the type.
 export type { EnvelopeOf, EnvelopeUnion, EnvelopeWithTag } from "./Envelope.js";
-export { Envelope, EnvelopeFrame } from "./Envelope.js";
-export type {
-	AppendOptions,
-	JournalClass,
-	JournalConfig,
-	JournalReadError,
-	JournalShape,
-	JournalWriteError,
-} from "./Journal.js";
+export { Envelope } from "./Envelope.js";
+export type { AppendError, AppendOptions, ChangesError, JournalConfig, QueryError } from "./internal/engine.js";
+export type { JournalClass, JournalShape } from "./Journal.js";
 export { Journal } from "./Journal.js";
-export type { JsonlError } from "./JsonlError.js";
+export type { DecodeError, JsonlError } from "./JsonlError.js";
 export {
 	InvalidData,
 	JournalClosed,
@@ -54,7 +50,8 @@ export {
 	UnserializableData,
 } from "./JsonlError.js";
 export type { DataSchema } from "./JsonlEvent.js";
-export { JsonlEvent, JsonlEventTypeId } from "./JsonlEvent.js";
-export { Line, ParsedLine } from "./Line.js";
+export { JsonlEvent } from "./JsonlEvent.js";
+export { Line } from "./Line.js";
+export type { LinePosition } from "./LineSlice.js";
 export { LineSlice } from "./LineSlice.js";
-export type { CursoredSlice, Slice } from "./Slice.js";
+export type { Slice } from "./Slice.js";

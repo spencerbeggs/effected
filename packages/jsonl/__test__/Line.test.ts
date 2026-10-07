@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Exit, Option, Result } from "effect";
-import { Line, LineSlice, MalformedLine, ParsedLine } from "../src/index.js";
+import { Cause, Effect, Exit, Result, Schema } from "effect";
+import { Line, LineSlice, MalformedLine } from "../src/index.js";
 
 /** UTF-8 byte length, computed independently of the implementation under test. */
 const bytes = (text: string): number => new TextEncoder().encode(text).length;
@@ -120,37 +120,34 @@ describe("Line", () => {
 			assert.strictEqual(lines[2]?.offset, 9);
 		});
 
-		it("produces a LineSlice instance", () => {
+		it("produces plain records that satisfy the LineSlice schema", () => {
 			const lines = Line.split("x\n");
-			assert.instanceOf(lines[0], LineSlice);
+			assert.isTrue(Schema.is(LineSlice)(lines[0]));
+			assert.strictEqual(Object.getPrototypeOf(lines[0]), Object.prototype, "a plain record, not a class instance");
 		});
 	});
 
-	describe("consumedOffset", () => {
-		it("is zero for empty input", () => {
-			assert.strictEqual(Line.consumedOffset(""), 0);
+	describe("split with a base offset", () => {
+		it("shifts every offset and end by the base, leaving lengths and text alone", () => {
+			const text = `{"a":"${EMOJI}"}\r\n\n{"b":`;
+			const base = 1000;
+			const shifted = Line.split(text, base);
+			const unshifted = Line.split(text);
+			assert.strictEqual(shifted.length, 3);
+			assert.deepStrictEqual(
+				shifted,
+				unshifted.map((line) => ({ ...line, offset: line.offset + base, end: line.end + base })),
+			);
+			assert.strictEqual(shifted[0]?.offset, base, "the first line starts AT the base, not at zero");
+			assert.strictEqual(shifted.at(-1)?.end, base + bytes(text));
 		});
 
-		it("is the whole length when every line is terminated", () => {
-			const text = '{"a":1}\n{"b":2}\n';
-			assert.strictEqual(Line.consumedOffset(text), bytes(text));
+		it("is the same as no base when the base is zero", () => {
+			assert.deepStrictEqual(Line.split('{"a":1}\n', 0), Line.split('{"a":1}\n'));
 		});
 
-		it("excludes a torn (unterminated) tail so its bytes are not consumed", () => {
-			const text = '{"a":1}\n{"b":';
-			assert.strictEqual(Line.consumedOffset(text), 8);
-			assert.isBelow(Line.consumedOffset(text), bytes(text));
-		});
-
-		it("excludes a torn tail that is itself valid JSON", () => {
-			// A complete-looking final line with no newline may still be mid-write.
-			const text = '{"a":1}\n{"b":2}';
-			assert.strictEqual(Line.consumedOffset(text), 8);
-		});
-
-		it("counts multi-byte terminated lines in bytes", () => {
-			const text = `{"a":"${EMOJI}"}\n`;
-			assert.strictEqual(Line.consumedOffset(text), bytes(text));
+		it("returns no lines for empty input whatever the base", () => {
+			assert.deepStrictEqual(Line.split("", 42), []);
 		});
 	});
 
@@ -161,9 +158,7 @@ describe("Line", () => {
 			const result = Line.parseResult(line);
 			assert.isTrue(Result.isSuccess(result));
 			if (Result.isSuccess(result)) {
-				assert.instanceOf(result.success, ParsedLine);
-				assert.deepStrictEqual(result.success.value, { a: 1 });
-				assert.strictEqual(result.success.line.offset, 0);
+				assert.deepStrictEqual(result.success, { a: 1 }, "the parsed value itself, not a wrapper");
 			}
 		});
 
@@ -217,123 +212,6 @@ describe("Line", () => {
 		});
 	});
 
-	describe("parseAll", () => {
-		it("returns one Result per non-blank line, in source order", () => {
-			const results = Line.parseAll('{"a":1}\n{"b":2}\n');
-			assert.strictEqual(results.length, 2);
-			assert.isTrue(results.every(Result.isSuccess));
-		});
-
-		it("reports a malformed INTERIOR line instead of dropping it", () => {
-			const results = Line.parseAll('{"a":1}\nnot json\n{"b":2}\n');
-			assert.strictEqual(results.length, 3, "the hole is reported, not skipped");
-			assert.deepStrictEqual(results.map(Result.isSuccess), [true, false, true]);
-		});
-
-		it("carries byte offsets that address the malformed line in the source", () => {
-			const source = '{"a":1}\nnot json\n{"b":2}\n';
-			const results = Line.parseAll(source);
-			const failure = results[1];
-			assert.isDefined(failure);
-			assert.isTrue(Result.isFailure(failure));
-			if (Result.isFailure(failure)) {
-				const { offset, length } = failure.failure.line;
-				const encoded = new TextEncoder().encode(source);
-				const slice = new TextDecoder().decode(encoded.slice(offset, offset + length));
-				assert.strictEqual(slice, "not json");
-			}
-		});
-
-		it("skips whitespace-only lines rather than reporting them as corruption", () => {
-			const results = Line.parseAll('{"a":1}\n\n   \n{"b":2}\n');
-			assert.strictEqual(results.length, 2);
-			assert.isTrue(results.every(Result.isSuccess));
-		});
-
-		it("reports an unterminated torn tail as a failure", () => {
-			const results = Line.parseAll('{"a":1}\n{"b":');
-			assert.strictEqual(results.length, 2);
-			assert.deepStrictEqual(results.map(Result.isSuccess), [true, false]);
-		});
-	});
-
-	describe("lastValid", () => {
-		it("is none for empty input", () => {
-			assert.isTrue(Option.isNone(Line.lastValid("")));
-		});
-
-		it("is none when no line parses", () => {
-			assert.isTrue(Option.isNone(Line.lastValid("nope\nalso nope\n")));
-		});
-
-		it("returns the last line of a well-formed journal", () => {
-			const last = Line.lastValid('{"n":1}\n{"n":2}\n{"n":3}\n');
-			assert.isTrue(Option.isSome(last));
-			if (Option.isSome(last)) {
-				assert.deepStrictEqual(last.value.value, { n: 3 });
-			}
-		});
-
-		it("walks back past a torn final line — the killed-writer case", () => {
-			const last = Line.lastValid('{"n":1}\n{"n":2}\n{"n":');
-			assert.isTrue(Option.isSome(last));
-			if (Option.isSome(last)) {
-				assert.deepStrictEqual(last.value.value, { n: 2 });
-				assert.strictEqual(last.value.line.offset, 8);
-				assert.strictEqual(last.value.line.terminated, true);
-			}
-		});
-
-		it("walks back past several malformed trailing lines", () => {
-			const last = Line.lastValid('{"n":1}\nbroken\nalso broken\n{"n"');
-			assert.isTrue(Option.isSome(last));
-			if (Option.isSome(last)) {
-				assert.deepStrictEqual(last.value.value, { n: 1 });
-			}
-		});
-
-		it("ignores trailing blank lines", () => {
-			const last = Line.lastValid('{"n":1}\n\n   \n');
-			assert.isTrue(Option.isSome(last));
-			if (Option.isSome(last)) {
-				assert.deepStrictEqual(last.value.value, { n: 1 });
-			}
-		});
-
-		it("CANNOT detect a torn tail that truncates to valid JSON — a scalar line", () => {
-			// Truncating `42` mid-write leaves `4`, which parses as a DIFFERENT value.
-			// The walk-back has nothing to walk back over, so it returns the fragment.
-			// This is a real limit of the JSON layer, recorded rather than hidden: the
-			// envelope layer closes it, because `4` is not an envelope.
-			const last = Line.lastValid('{"n":1}\n4');
-			assert.isTrue(Option.isSome(last));
-			if (Option.isSome(last)) {
-				assert.strictEqual(last.value.value, 4, "the fragment parses — detection is the envelope layer's job");
-				assert.strictEqual(last.value.line.terminated, false, "but it is flagged unterminated");
-			}
-		});
-
-		it("DOES detect a torn tail that truncates an object, whatever the cut point", () => {
-			const line = '{"event":"unlinked","data":null}';
-			for (let keep = 1; keep < line.length; keep++) {
-				const last = Line.lastValid(`{"n":1}\n${line.slice(0, keep)}`);
-				assert.isTrue(Option.isSome(last), `keep=${keep}`);
-				if (Option.isSome(last)) {
-					assert.deepStrictEqual(last.value.value, { n: 1 }, `keep=${keep}`);
-				}
-			}
-		});
-
-		it("accepts an unterminated final line that does parse", () => {
-			const last = Line.lastValid('{"n":1}\n{"n":2}');
-			assert.isTrue(Option.isSome(last));
-			if (Option.isSome(last)) {
-				assert.deepStrictEqual(last.value.value, { n: 2 });
-				assert.strictEqual(last.value.line.terminated, false);
-			}
-		});
-	});
-
 	describe("hardening", () => {
 		it.effect("fails through the typed channel, never as a defect", () =>
 			Effect.gen(function* () {
@@ -370,10 +248,10 @@ describe("Line", () => {
 				// the label passes straight through and the assertion is dead.
 				let threw: unknown;
 				try {
-					Line.split(shape);
-					Line.parseAll(shape);
-					Line.lastValid(shape);
-					Line.consumedOffset(shape);
+					for (const line of Line.split(shape)) {
+						Line.parseResult(line);
+					}
+					Line.split(shape, 7);
 				} catch (error) {
 					threw = error;
 				}

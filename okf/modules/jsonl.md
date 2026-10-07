@@ -10,8 +10,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T16:41:19Z
-  body_sha256: 1cf2130c954da4654c63883ae0d254924c157a9ee56790dbcbbf57f57a35159a
+  at: 2026-10-07T19:15:53Z
+  body_sha256: 10c6b1dea29d2c89685d24d0726711b0df542a36e3969f72f33857ec1c2e8743
 ---
 
 # `@effected/jsonl`
@@ -103,7 +103,16 @@ derives the union from the registry, so the discriminated union a consumer
 reads is exactly the set it declared with no hand-written union to drift.
 An unrecognized `event` tag on read is a typed error, never a defect: a
 file written by an older or newer version of the same application is
-hostile input in the technical sense.
+hostile input in the technical sense. The write side is the opposite case:
+`append` only admits a registered tag at the type level, so an unregistered
+tag reaching the encoder is a defect, not a typed failure.
+
+A decoded envelope carries one field the line does not: `position`, a
+`LinePosition` of `{ offset, end }` in UTF-8 bytes, where `end` is the resume
+cursor. It keeps no copy of the line's text — the envelope already holds the
+decoded payload, and a raw second copy would double what a buffered stream
+holds. Errors are where the text is evidence, so the decode errors carry the
+full `LineSlice` instead.
 
 A payload schema may not require services: payload schemas are bounded to a
 codec whose decoding and encoding service slots are `never`. This is a
@@ -159,13 +168,27 @@ envelope optional, and an optional envelope is not a contract.
 Module-per-concept, no barrels, no namespace objects. See `packages/jsonl/src/`:
 
 - **The pure core**, synchronous and `Result`-based per the [sync-primitive
-  policy](../conventions/sync-primitive-policy.md): `Line.ts` and
-  `LineSlice.ts` (split text into candidate lines, parse one, walk back to
-  the last valid one, keep byte-offset bookkeeping), plus `Envelope.ts` and
-  `JsonlEvent.ts` (event definitions, the registry, the frame schema, the
-  derived union type, and the sync decode/encode primitives — each `Effect`
-  form defined in terms of its sync twin so the two cannot diverge).
-- **The service**: `Journal.ts` — see the [journal
+  policy](../conventions/sync-primitive-policy.md), with no `Effect` twins:
+  a program that wants one lifts a `Result` with `Effect.fromResult`.
+  - `Line.ts` knows JSON, not envelopes: `byteLength` (the UTF-8 measure
+    every offset uses), `split(text, base)` (candidate lines with byte
+    offsets shifted by where `text` starts in its file) and `parseResult`
+    (one line's parsed value, or `MalformedLine`).
+  - `LineSlice.ts` is the line record — a `Schema.Struct` of plain records
+    rather than a class, because `split` produces one per line of every
+    read and a class instance costs far more on that hot path; the schema
+    exists so errors can carry the line structurally — plus `LinePosition`.
+  - `Envelope.ts` holds `decodeResult`, `decodeAllResult(events, text,
+    base)`, `encodeResult` and `lastValid(events, text, base)`. `lastValid`
+    is *the* definition of a journal's current state: the service seeds
+    `latest` by running it over bounded tail windows, so the runtime-free
+    hook path and the service cannot disagree about what "current" means.
+  - `JsonlEvent.ts` holds `JsonlEvent.make` and the registry types.
+- **The service**: `Journal.ts` is the typed boundary — the static
+  `Journal` class and its `Journal.Service` factory. Beneath it,
+  `internal/engine.ts` is the registry-erased engine (tags as strings,
+  payloads `unknown`) that `Journal` types once, with a single cast, and
+  `internal/tail.ts` holds the bounded reads. See the [journal
   interface](../interfaces/jsonl-journal.md).
 - **The errors**: `JsonlError.ts` — an eight-tag taxonomy (`MalformedLine`,
   `UnknownEvent`, `InvalidData`, `UnserializableData`, `TerminalViolation`,
@@ -177,7 +200,15 @@ Module-per-concept, no barrels, no namespace objects. See `packages/jsonl/src/`:
   refusal (`TerminalViolation`) is a journal-state condition — the recovery
   is an event declared `reopen` — and a truncation-or-replacement breach
   (`JournalResync`) is its own tag because its recovery, discard all
-  cursor-derived state and re-read from zero, matches nothing else.
+  cursor-derived state and re-read, matches nothing else. Each operation
+  declares only the tags it can raise: `AppendError`, `QueryError` and
+  `ChangesError` are per-operation unions (see the [journal
+  interface](../interfaces/jsonl-journal.md#operations)), and `DecodeError`
+  (`MalformedLine | InvalidData | UnknownEvent`) is why one line could not
+  become an envelope. `InvalidData` and `UnknownEvent` carry an optional
+  `line`, absent when the failure came from encoding a payload for append,
+  which has no line yet; `UnserializableData` carries the thrown value
+  structurally as a `Schema.Defect()` `cause`.
 
 Every offset the package emits is a UTF-8 byte offset, never a UTF-16
 index, because these values are cursors into a file: they feed the offset
@@ -186,8 +217,9 @@ offset is correct only for ASCII journals and is the single most likely bug
 in the line module.
 
 `Envelope` and `JsonlEvent` land as a merged `interface` plus `const`, not
-as static classes, because each name is shared with a same-file generic
-interface, and merging a class into one of those is a compile error. The
+as static classes like `Journal` and `Line`, because each name is shared
+with a same-file generic interface, and merging a class into one of those
+is a compile error. The
 accepted cost is that an object literal's member types are inferred in the
 built `.d.ts` and lose their TSDoc, and a bare `{@link}` to either name is
 ambiguous and needs the variable-selector form.
@@ -198,31 +230,49 @@ See [the factory decision](../decisions/jsonl-service-is-a-factory.md) for
 the full rationale. In brief: `Journal` cannot be a `Context.Service`
 generic over the registry, because `Context.Service` binds a concrete shape
 at declaration and the resulting key cannot be parameterized at retrieval.
-The kit's answer, already established in `@effected/config-file`, is a
-per-registry service-class factory plus a layer-returning function:
+The answer is a per-registry service-class factory, with the journal's
+config supplied at the definition site:
 
 ```ts
-class MailJournal extends Journal.Service<MailJournal>()("dogfood/MailJournal", { events: MailEvents }) {}
+class MailJournal extends Journal.Service<MailJournal>()("dogfood/MailJournal", {
+  events: MailEvents,
+  config: { path: ".dogfood/mail.jsonl" },
+}) {}
 
-// Bind the layer ONCE, at module scope, and provide this const everywhere.
-export const layer = MailJournal.layer({ path });
+const program = Effect.gen(function* () {
+  const mail = yield* MailJournal;
+  yield* mail.append("mail-received", { round: 7 });
+}).pipe(Effect.provide(MailJournal.layer));
 ```
 
-The const-binding hazard is inherited with the pattern: layers memoize by
-reference, so calling the layer function at each provide site mints two
-independent journal instances over one file, each with its own semaphore,
-watcher and hub — the appends are no longer serialized against each other,
-the in-process version of the bug the cooperative-writer rules exist to
-prevent. The library's side is a TSDoc warning and a test; the consumer's
-side is the one-line rule above.
+`config` is a plain record or an `Effect` producing one, so a path can come
+from `Config` or another service and resolve when the layer builds; the
+effect's error and requirements flow into the layer's own channels.
+
+The static `layer` is a value, not a function. Layers memoize by reference,
+so a layer *function* called at each provide site would mint two
+independent journals over one file — each with its own semaphore, watcher
+and hub, appends no longer serialized against each other, the in-process
+version of the bug the cooperative-writer rules exist to prevent. With one
+`layer` value per class, providing it twice provides one journal twice;
+that hazard is gone by construction rather than guarded by a rule.
+
+The static `make(config)` serves the remaining case, a path known only at
+run time. Every `make` builds an independent journal, so the consumer wraps
+it once — `Layer.effect(MailJournal, MailJournal.make(config))` — and binds
+that layer to one value; the bind-once discipline survives only on this
+explicitly runtime path.
 
 ## Observability
 
-Per the kit's observability standard: named `Effect.fn` spans on the public
-fallible boundaries only — append, query open, watcher resync — and nothing
-else. A span per decoded line would cost more than the decode itself. The
-library stays telemetry-agnostic; applications compose OpenTelemetry at the
-edge.
+Per the kit's observability standard, spans sit on the file-mutating
+boundaries only, each named from the journal's service id: `${id}.append`
+(with the event tag as an attribute, covering `appendPatch` too, which
+shares the write path), `${id}.create` and `${id}.remove`. The read
+surfaces and the watcher carry no span — neither `query`, `changes` nor
+ingest and resync — and nothing runs per decoded line, since a span per
+line would cost more than the decode itself. The library stays
+telemetry-agnostic; applications compose OpenTelemetry at the edge.
 
 ## Testing
 
@@ -243,7 +293,10 @@ watcher behaviour that does not need a real filesystem runs over an
 `@effected/memfs` volume whose `watch` is replaced, through a faults factory,
 by a manually driven stream (with `open` wrapped for write and read gates),
 so those assertions are deterministic and timer-free while storage, `stat`
-identity and `O_APPEND` stay memfs's own. Three concurrency and ordering tests are structurally
+identity and `O_APPEND` stay memfs's own. The engine's hub is reachable
+from tests through `internal/engine.ts` and from nowhere else: no public
+shape exposes it, so a test that needs to see backpressure or two
+independent hubs builds the engine directly. Three concurrency and ordering tests are structurally
 incapable of testing what they appear to test unless arranged carefully;
 see [what the concurrency tests must
 arrange](../interfaces/jsonl-journal.md#what-the-concurrency-tests-must-actually-arrange).

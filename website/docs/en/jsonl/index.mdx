@@ -29,12 +29,12 @@ Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency, and the onl
 
 ## Quick start
 
-Declare the events, mint a service class for that registry, and bind its layer once. `at` is stamped by the service from the Effect `Clock` — never by the caller — so two writers cannot disagree about ordering, and `TestClock` controls it exactly in tests:
+Declare the events, then define a service class for that registry with the journal's `config` beside it. `at` is stamped by the service from the Effect `Clock` — never by the caller — so two writers cannot disagree about ordering, and `TestClock` controls it exactly in tests:
 
 ```ts
 import { Journal, JsonlEvent } from "@effected/jsonl";
 import { NodeFileSystem } from "@effect/platform-node";
-import { Effect, Option, Schema, SubscriptionRef } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 const Started = JsonlEvent.make("started", {
   data: Schema.Struct({ round: Schema.Number, phase: Schema.String }),
@@ -45,10 +45,10 @@ const MailReceived = JsonlEvent.make("mail-received", {
 
 const events = [Started, MailReceived] as const;
 
-class MailJournal extends Journal.Service<MailJournal>()("docs/MailJournal", { events }) {}
-
-// Bind the layer ONCE and provide this const everywhere.
-const MailJournalLive = MailJournal.layer({ path: ".claude/mailbox.jsonl" });
+class MailJournal extends Journal.Service<MailJournal>()("docs/MailJournal", {
+  events,
+  config: { path: ".claude/mailbox.jsonl" },
+}) {}
 
 const program = Effect.gen(function* () {
   const journal = yield* MailJournal;
@@ -59,25 +59,27 @@ const program = Effect.gen(function* () {
   yield* journal.append("started", { round: 7, phase: "waiting" });
   yield* journal.append("mail-received", { from: "silk", subject: "round 7" }, { scope: "reviewer" });
 
-  const latest = yield* SubscriptionRef.get(journal.latest);
+  const latest = yield* journal.latest;
   return Option.isSome(latest) ? latest.value.event : "(empty journal)";
 });
 
-Effect.runPromise(program.pipe(Effect.provide(MailJournalLive), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(program.pipe(Effect.provide(MailJournal.layer), Effect.provide(NodeFileSystem.layer)));
 // "mail-received"
 ```
 
-Calling `.layer(...)` twice mints two independent journals over the same file — two write permits, two watchers, two sets of subscribers — whose appends are no longer serialized against each other. Layers memoize by reference, so binding the result to a `const` is the whole discipline.
+`MailJournal.layer` is a static value on the class, so providing it in several places provides one journal — one write permit, one watcher, one set of subscribers. `config` can also be an `Effect` that produces the record, for a path read from `Config` or another service when the layer builds; a path known only at run time goes through `MailJournal.make(config)` instead.
 
 ## One slice vocabulary, on every read surface
 
-[`Slice`](/jsonl/api/interface/slice) is `events`, `scopes`, an inclusive `from` and an exclusive `to`; [`CursoredSlice`](/jsonl/api/interface/cursoredslice) adds a `cursor`. The same object filters a historical [`query`](/jsonl/api/interface/journalshape), a live `changes` subscription and a running `projection`, so a consumer who can express a subscription can express a query without translating. Passing a literal `events: ["mail-received"]` narrows the stream's element type to exactly that variant, which makes a projection over a slice exhaustively checkable rather than a cast.
+[`Slice`](/jsonl/api/interface/slice) is `events`, `scopes`, an inclusive `from`, an exclusive `to`, a `cursor` to resume from, and `onInvalid` for lines that cannot be decoded. The same object filters a historical [`query`](/jsonl/api/interface/journalshape), a live `changes` subscription and a running `projection`, so a consumer who can express a subscription can express a query without translating. Passing a literal `events: ["mail-received"]` narrows the stream's element type to exactly that variant, which makes a projection over a slice exhaustively checkable rather than a cast.
 
-Two costs are worth stating exactly rather than leaving to be discovered. `latest` — and every `lastValid`-backed read — is a **bounded tail window** that widens only when it has to, so "what is the current state" never costs the history. A **historical** read is bounded by its `cursor` instead: `query()` with no cursor reads from the start of the file in one allocation, so an unsliced query over a large journal does hold that journal in memory. Persisting an envelope's `line.end` and resuming from it is what keeps the read the size of the remainder — and it is the same value a resumable consumer already keeps.
+Two costs are worth stating exactly rather than leaving to be discovered. `latest` — and every `lastValid`-backed read — is a **bounded tail window** that widens only when it has to, so "what is the current state" never costs the history. A **historical** `query` is **paged**: it reads its region a bounded page at a time and emits each page's matches before reading the next, so memory is a page plus the longest line, whatever the journal's size, and a consumer that stops early stops the reading. A `cursor` — an envelope's `position.end`, persisted — is what keeps the read the size of the remainder rather than the file.
+
+A line that cannot be decoded is **skipped** by default (`onInvalid: "skip"`), so a journal shared with another writer, or with an older or newer version of your own application, stays readable. Pass `onInvalid: "fail"` when a hole in the history must stop the read.
 
 ## The pure core needs no runtime
 
-The read path works without an Effect runtime at all. [`Line`](/jsonl/api/class/line) and [`Envelope`](/jsonl/api/variable/envelope) are synchronous and `Result`-returning, so a `PreToolUse` hook or a shell-adjacent script can walk back to the last valid envelope with no layer graph to build:
+The read path works without an Effect runtime at all. [`Line`](/jsonl/api/class/line) and [`Envelope`](/jsonl/api/variable/envelope) are synchronous and `Result`- or `Option`-returning, so a `PreToolUse` hook or a shell-adjacent script can walk back to the last valid envelope with no layer graph to build:
 
 ```ts
 import { Envelope } from "@effected/jsonl";
@@ -85,12 +87,13 @@ import { Option } from "effect";
 // The same registry the writer declared, exported from your own module.
 import { events } from "./events.js";
 
-declare const tailText: string; // a bounded window read from the end of the file
+declare const tailText: string; // a window read from the end of the file, starting at a line boundary
+declare const tailStart: number; // the byte offset that window starts at in the file
 
-const current = Envelope.lastValidResult(events, tailText);
+const current = Envelope.lastValid(events, tailText, tailStart);
 if (Option.isSome(current)) {
   current.value.event; // the tag
-  current.value.line.end; // its logical byte offset, for a resumable cursor
+  current.value.position.end; // its byte offset in the file, for a resumable cursor
 }
 ```
 
@@ -102,12 +105,12 @@ The service watches the journal file for the life of its layer scope and tracks 
 
 - **The contract is a discipline, not an enforced guarantee.** Every writer sharing a journal issues one `writeAll` of a complete, `\n`-terminated line to a handle opened `{ flag: "a" }` (`O_APPEND`). There are no advisory locks, because a lock would only be honoured by writers who had already agreed to cooperate.
 - **Atomicity is an OS property of `O_APPEND` at reasonable line sizes**, not an API guarantee. Keeping payloads bounded is part of the contract rather than an optimization.
-- **A torn tail is tolerated; truncation or replacement is not repaired.** An unterminated fragment is walked over and the offset holds until the line completes. If the file shrinks or is replaced underneath a reader, that is a broken contract and it surfaces as a typed [`JournalResync`](/jsonl/api/class/journalresync) rather than a silent resync from zero.
+- **A torn tail is tolerated; truncation or replacement is surfaced, not hidden.** An unterminated fragment is walked over and the offset holds until the line completes. If the file shrinks or is replaced underneath a reader, that is a broken contract: every live subscriber's stream ends with a typed [`JournalResync`](/jsonl/api/class/journalresync), and the journal itself re-adopts the file as it now is, so its own `latest` and later appends keep working. Subscribers re-read from the start.
 - **A missing journal is a legal state.** Building a layer over a path that does not exist yet produces a working service that starts watching once the file appears. `create` and `remove` stay explicit, so a typo in a path never materializes a second, empty journal that looks like a working system with no history.
 
 ## Errors
 
-Eight tagged errors, one recovery each, routed with `Effect.catchTag`: [`MalformedLine`](/jsonl/api/class/malformedline), [`UnknownEvent`](/jsonl/api/class/unknownevent), [`InvalidData`](/jsonl/api/class/invaliddata), [`UnserializableData`](/jsonl/api/class/unserializabledata), [`TerminalViolation`](/jsonl/api/class/terminalviolation), [`JournalClosed`](/jsonl/api/class/journalclosed), [`JournalNotFound`](/jsonl/api/class/journalnotfound) and [`JournalResync`](/jsonl/api/class/journalresync). Causes — a schema issue, a `JSON.stringify` throw — are carried structurally rather than stringified, so `error.issue` and `error.cause` keep their shape. Core's `PlatformError` is deliberately not a member of the union: IO failures pass through untranslated.
+Eight tagged errors, one recovery each, routed with `Effect.catchTag`: [`MalformedLine`](/jsonl/api/class/malformedline), [`UnknownEvent`](/jsonl/api/class/unknownevent), [`InvalidData`](/jsonl/api/class/invaliddata), [`UnserializableData`](/jsonl/api/class/unserializabledata), [`TerminalViolation`](/jsonl/api/class/terminalviolation), [`JournalClosed`](/jsonl/api/class/journalclosed), [`JournalNotFound`](/jsonl/api/class/journalnotfound) and [`JournalResync`](/jsonl/api/class/journalresync). Each operation's error channel names only the tags it can raise — [`AppendError`](/jsonl/api/type/appenderror) for `append` and `appendPatch`, [`QueryError`](/jsonl/api/type/queryerror) for `query`, [`ChangesError`](/jsonl/api/type/changeserror) for `changes` and `projection` — so an exhaustive `catchTags` never handles an impossible tag. The three line-level failures, collected as [`DecodeError`](/jsonl/api/type/decodeerror), reach a read only when its slice sets `onInvalid: "fail"`. Causes — a schema issue, a `JSON.stringify` throw — are carried structurally rather than stringified, so `error.issue` and `error.cause` keep their shape. Core's `PlatformError` is deliberately not a member of the union: IO failures pass through untranslated.
 
 ## API reference
 

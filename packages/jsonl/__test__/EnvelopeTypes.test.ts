@@ -1,11 +1,16 @@
 import { assert, describe, it } from "@effect/vitest";
-import type { DateTime, Schema as SchemaNs } from "effect";
+import type { DateTime, Result, Schema as SchemaNs } from "effect";
 import { Schema } from "effect";
 import type {
+	DecodeError,
 	Envelope as EnvelopeType,
 	EnvelopeUnion,
 	EnvelopeWithTag,
+	InvalidData,
 	JsonlEvent as JsonlEventType,
+	LinePosition,
+	MalformedLine,
+	UnknownEvent,
 } from "../src/index.js";
 import { Envelope, Journal, JsonlEvent } from "../src/index.js";
 
@@ -61,9 +66,32 @@ assertType<Equals<JsonlEventType.Tag<Registry>, "mail-received" | "unlinked" | "
 assertType<Equals<JsonlEventType.Data<Registry, "mail-received">, { readonly round: number; readonly from: string }>>();
 assertType<Equals<JsonlEventType.Data<Registry, "unlinked">, void>>();
 
-// terminal / reopen survive onto the derived types
-assertType<Equals<JsonlEventType.TerminalTags<Registry>, "unlinked">>();
-assertType<Equals<JsonlEventType.ReopenTags<Registry>, "relinked">>();
+// terminal / reopen survive onto the definitions as literals
+assertType<Equals<JsonlEventType.WithTag<Registry, "unlinked">["terminal"], true>>();
+assertType<Equals<JsonlEventType.WithTag<Registry, "unlinked">["reopen"], false>>();
+assertType<Equals<JsonlEventType.WithTag<Registry, "relinked">["reopen"], true>>();
+assertType<Equals<JsonlEventType.WithTag<Registry, "mail-received">["terminal"], false>>();
+
+// ── an envelope keeps its line's position, never the line ───────────────────
+
+assertType<Equals<EnvelopeUnion<Registry>["position"], LinePosition>>();
+
+declare const anEnvelope: EnvelopeUnion<Registry>;
+
+/** Never called; it exists so the `@ts-expect-error`s below are type-checked. */
+const envelopeCarriesNoLine = (): void => {
+	// @ts-expect-error — envelopes no longer carry the source `LineSlice`.
+	void anEnvelope.line;
+	// @ts-expect-error — nor the raw line text.
+	void anEnvelope.text;
+};
+
+// ── the decode error channel is exactly DecodeError ─────────────────────────
+
+type DecodeFailure =
+	ReturnType<typeof Envelope.decodeResult<Registry>> extends Result.Result<infer _A, infer E> ? E : never;
+assertType<Equals<DecodeFailure, DecodeError>>();
+assertType<Equals<DecodeError, MalformedLine | InvalidData | UnknownEvent>>();
 
 assertType<
 	Equals<
@@ -95,6 +123,7 @@ describe("Envelope type-level contract", () => {
 		assert.isFunction(boundIsLoadBearing);
 		assert.isFunction(encodeIsTyped);
 		assert.isFunction(assertType);
+		assert.isFunction(envelopeCarriesNoLine);
 	});
 });
 
@@ -153,12 +182,14 @@ void readSurfacesAreNarrowed;
 // runtime in exactly the same shape while no caller can name the error. The
 // assertion has to be a type.
 
-class TypedJournal extends Journal.Service<TypedJournal>()("test/TypedJournal", { events: registry }) {}
+class TypedJournal extends Journal.Service<TypedJournal>()("test/TypedJournal", {
+	events: registry,
+	config: { path: "/never/read.jsonl" },
+}) {}
 
-type LayerError =
-	ReturnType<typeof TypedJournal.layer> extends import("effect").Layer.Layer<infer _Self, infer E, infer _R>
-		? E
-		: never;
+type LayerError = typeof TypedJournal.layer extends import("effect").Layer.Layer<infer _Self, infer E, infer _R>
+	? E
+	: never;
 
 declare const platformError: import("effect").PlatformError.PlatformError;
 

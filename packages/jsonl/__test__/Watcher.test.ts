@@ -1,6 +1,24 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Context, Duration, Effect, Exit, Fiber, Layer, Option, Schema, Scope, Stream, SubscriptionRef } from "effect";
-import { Journal, JournalResync, JsonlEvent } from "../src/index.js";
+import {
+	Cause,
+	Context,
+	Duration,
+	Effect,
+	Exit,
+	Fiber,
+	Layer,
+	Option,
+	PubSub,
+	Result,
+	Schema,
+	Scope,
+	Stream,
+} from "effect";
+import type { JournalConfig } from "../src/index.js";
+import { Journal, JournalResync, JsonlEvent, Line } from "../src/index.js";
+import type { Item } from "../src/internal/engine.js";
+import { makeEngine } from "../src/internal/engine.js";
+import { PAGE_SIZE } from "../src/internal/tail.js";
 import type { MemFs } from "./helpers/memfs.js";
 import { makeMemFs } from "./helpers/memfs.js";
 
@@ -9,7 +27,10 @@ const PATH = "/journal/watch.jsonl";
 const Noted = JsonlEvent.make("noted", { data: Schema.Struct({ round: Schema.Number }) });
 const events = [Noted] as const;
 
-class WatchJournal extends Journal.Service<WatchJournal>()("test/WatchJournal", { events }) {}
+class WatchJournal extends Journal.Service<WatchJournal>()("test/WatchJournal", { events, config: { path: PATH } }) {}
+
+/** A journal over a config only known at run time — `make`, bound once. */
+const layerFor = (config: JournalConfig) => Layer.effect(WatchJournal, WatchJournal.make(config));
 
 const line = (round: number) =>
 	`${JSON.stringify({ at: "2026-01-01T00:00:00.000Z", event: "noted", data: { round } })}\n`;
@@ -32,7 +53,7 @@ const openJournal = (seed?: string) =>
 		// watching it for the creation event possible.
 		memfs.mkdir("/journal");
 		if (seed !== undefined) memfs.write(PATH, seed);
-		const layer = WatchJournal.layer({ path: PATH }).pipe(Layer.provide(memfs.layer));
+		const layer = WatchJournal.layer.pipe(Layer.provide(memfs.layer));
 		const scope = yield* Scope.make();
 		const context = yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
 		// Wait for the forked supervisor to ARM its watch, rather than yielding a
@@ -54,7 +75,7 @@ describe("watcher — external growth", () => {
 			memfs.poke(PATH);
 			yield* Effect.yieldNow;
 
-			const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
+			const current = Option.getOrThrow(yield* journal.latest);
 			assert.deepStrictEqual(current.data, { round: 2 }, "the foreign writer's line was ingested");
 			yield* Scope.close(scope, Exit.void);
 		}),
@@ -92,8 +113,8 @@ describe("watcher — external growth", () => {
 			memfs.poke(PATH);
 			yield* Effect.yieldNow;
 
-			const external = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
-			assert.strictEqual(external.line.offset, local.line.end, "no gap and no overlap at the boundary");
+			const external = Option.getOrThrow(yield* journal.latest);
+			assert.strictEqual(external.position.offset, local.position.end, "no gap and no overlap at the boundary");
 			yield* Scope.close(scope, Exit.void);
 		}),
 	);
@@ -128,11 +149,11 @@ describe("watcher — external growth", () => {
 			const third = yield* journal.append("noted", { round: 3 });
 
 			assert.strictEqual(
-				third.line.offset,
-				first.line.end + foreign.length,
+				third.position.offset,
+				first.position.end + foreign.length,
 				"the offset is where the write actually landed, not where the cursor was",
 			);
-			assert.strictEqual(third.line.end - third.line.offset, third.line.length + 1, "and its end tiles from there");
+			assert.strictEqual(third.position.end, memfs.bytes(PATH)?.length, "and its end is the end of the file");
 
 			for (let attempt = 0; attempt < 100 && delivered.length < 3; attempt++) {
 				yield* Effect.yieldNow;
@@ -169,9 +190,9 @@ describe("watcher — external growth", () => {
 
 	it.effect("an external append LARGER than one read chunk is ingested once, whole", () =>
 		Effect.gen(function* () {
-			// `readRangeText` reads in 64 KiB chunks, so a bigger range exercises its
-			// multi-chunk loop — the path that produces duplicated text and duplicate
-			// publishes if a handle does not advance its own read position.
+			// The watcher's gap read pages through `readLinePages` in 64 KiB pages, so
+			// a bigger line exercises the carry across pages — the path that produces
+			// duplicated text and duplicate publishes if the carry is mishandled.
 			const { memfs, scope, journal } = yield* openJournal("");
 			const local = yield* journal.append("noted", { round: 1 });
 			const padding = "x".repeat(80 * 1024);
@@ -196,8 +217,8 @@ describe("watcher — external growth", () => {
 				[{ round: 2 }, { round: 3 }],
 				"the oversized line was published exactly once",
 			);
-			assert.strictEqual(delivered[0]?.line.offset, local.line.end, "and its offset describes the file");
-			assert.strictEqual(delivered[0]?.line.end, local.line.end + big.length, "over its whole length");
+			assert.strictEqual(delivered[0]?.position.offset, local.position.end, "and its offset describes the file");
+			assert.strictEqual(delivered[0]?.position.end, local.position.end + big.length, "over its whole length");
 			yield* Scope.close(scope, Exit.void);
 		}),
 	);
@@ -213,7 +234,7 @@ describe("watcher — external growth", () => {
 			memfs.poke(PATH);
 			yield* Effect.yieldNow;
 
-			const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
+			const current = Option.getOrThrow(yield* journal.latest);
 			assert.deepStrictEqual(current.data, { round: 7 }, "the line decoded intact");
 			yield* Scope.close(scope, Exit.void);
 		}),
@@ -231,7 +252,7 @@ describe("watcher — torn external tail", () => {
 			memfs.poke(PATH);
 			yield* Effect.yieldNow;
 
-			const during = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
+			const during = Option.getOrThrow(yield* journal.latest);
 			assert.deepStrictEqual(during.data, { round: 1 }, "the torn tail is not consumed");
 
 			// The writer finishes the line.
@@ -239,7 +260,7 @@ describe("watcher — torn external tail", () => {
 			memfs.poke(PATH);
 			yield* Effect.yieldNow;
 
-			const after = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
+			const after = Option.getOrThrow(yield* journal.latest);
 			assert.deepStrictEqual(after.data, { round: 2 }, "and is ingested once complete");
 			yield* Scope.close(scope, Exit.void);
 		}),
@@ -302,7 +323,7 @@ describe("watcher — resync", () => {
 
 			// Raising the error is not enough: a watcher that followed the old inode
 			// would be permanently blind to this second append.
-			const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
+			const current = Option.getOrThrow(yield* journal.latest);
 			assert.deepStrictEqual(current.data, { round: 10 }, "the replacement file is being read");
 			yield* Scope.close(scope, Exit.void);
 		}),
@@ -326,7 +347,7 @@ describe("watcher — activation over a missing file", () => {
 			yield* Effect.yieldNow;
 			yield* Effect.yieldNow;
 
-			const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
+			const current = Option.getOrThrow(yield* journal.latest);
 			assert.deepStrictEqual(current.data, { round: 42 }, "observed without a layer rebuild");
 			yield* Scope.close(scope, Exit.void);
 		}).pipe(Effect.timeout(Duration.seconds(10))),
@@ -352,7 +373,7 @@ describe("watcher — activation over a missing file", () => {
 			externalAppend(memfs, line(43));
 			memfs.poke(PATH);
 			yield* Effect.yieldNow;
-			const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
+			const current = Option.getOrThrow(yield* journal.latest);
 			assert.deepStrictEqual(current.data, { round: 43 }, "an append after activation is observed");
 			yield* Scope.close(scope, Exit.void);
 		}).pipe(Effect.timeout(Duration.seconds(10))),
@@ -369,7 +390,7 @@ describe("watcher — path conventions", () => {
 			const windowsPath = "C:\\journal\\watch.jsonl";
 			const memfs = makeMemFs();
 			memfs.mkdir("C:\\journal");
-			const layer = WatchJournal.layer({ path: windowsPath }).pipe(Layer.provide(memfs.layer));
+			const layer = layerFor({ path: windowsPath }).pipe(Layer.provide(memfs.layer));
 			const scope = yield* Scope.make();
 			const context = yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
 			const journal = Context.get(context, WatchJournal);
@@ -385,7 +406,7 @@ describe("watcher — path conventions", () => {
 				yield* Effect.yieldNow;
 			}
 
-			const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
+			const current = Option.getOrThrow(yield* journal.latest);
 			assert.deepStrictEqual(current.data, { round: 7 }, "the creation event matched on the basename");
 			yield* Scope.close(scope, Exit.void);
 		}).pipe(Effect.timeout(Duration.seconds(10))),
@@ -407,7 +428,7 @@ describe("watcher — path conventions", () => {
 				if (target === PATH) memfs.unlink(PATH);
 			});
 
-			const layer = WatchJournal.layer({ path: PATH }).pipe(Layer.provide(memfs.layer));
+			const layer = WatchJournal.layer.pipe(Layer.provide(memfs.layer));
 			const scope = yield* Scope.make();
 			const context = yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
 			const journal = Context.get(context, WatchJournal);
@@ -424,7 +445,7 @@ describe("watcher — path conventions", () => {
 			// And the journal is still a working one.
 			yield* journal.create;
 			const appended = yield* journal.append("noted", { round: 1 });
-			assert.strictEqual(appended.line.offset, 0, "local appends keep working regardless");
+			assert.strictEqual(appended.position.offset, 0, "local appends keep working regardless");
 			yield* Scope.close(scope, Exit.void);
 		}).pipe(Effect.timeout(Duration.seconds(10))),
 	);
@@ -434,7 +455,7 @@ describe("watcher — path conventions", () => {
 			// The escape hatch for a path whose parent is not a plain prefix of it.
 			const memfs = makeMemFs();
 			memfs.mkdir("/elsewhere");
-			const layer = WatchJournal.layer({ path: PATH, directory: "/elsewhere" }).pipe(Layer.provide(memfs.layer));
+			const layer = layerFor({ path: PATH, directory: "/elsewhere" }).pipe(Layer.provide(memfs.layer));
 			const scope = yield* Scope.make();
 			yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
 			for (let attempt = 0; attempt < 50 && memfs.watcherCount("/elsewhere") === 0; attempt++) {
@@ -472,7 +493,7 @@ describe("watcher — the arming window", () => {
 				}
 			});
 
-			const layer = WatchJournal.layer({ path: PATH }).pipe(Layer.provide(memfs.layer));
+			const layer = WatchJournal.layer.pipe(Layer.provide(memfs.layer));
 			const scope = yield* Scope.make();
 			const context = yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
 			const journal = Context.get(context, WatchJournal);
@@ -482,7 +503,7 @@ describe("watcher — the arming window", () => {
 			}
 			yield* Effect.yieldNow;
 
-			const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
+			const current = Option.getOrThrow(yield* journal.latest);
 			assert.deepStrictEqual(
 				current.data,
 				{ round: 2 },
@@ -515,6 +536,276 @@ describe("watcher — the arming window", () => {
 				[{ round: 2 }, { round: 3 }],
 				"each line published exactly once despite overlapping ingests",
 			);
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+});
+
+/** Spin the scheduler until `done` holds, without a clock. */
+const settle = (done: () => boolean) =>
+	Effect.gen(function* () {
+		for (let turn = 0; turn < 100 && !done(); turn++) {
+			yield* Effect.yieldNow;
+		}
+	});
+
+const roundOf = (current: Option.Option<{ readonly data: unknown }>) =>
+	Option.getOrUndefined(Option.map(current, (envelope) => (envelope.data as { readonly round: number }).round));
+
+describe("watcher — resync RE-SEEDS from the file as it now is", () => {
+	for (const breach of [
+		{
+			reason: "truncated",
+			// Smaller than what was consumed: caught by size.
+			apply: (memfs: MemFs) => memfs.write(PATH, line(5)),
+		},
+		{
+			reason: "replaced",
+			// No smaller, but a new identity: caught by inode.
+			apply: (memfs: MemFs) => memfs.replace(PATH, line(5) + line(5) + line(5)),
+		},
+	] as const) {
+		it.effect(
+			`${breach.reason}: \`latest\` is the NEW file's tail at once, and subscribers end with JournalResync`,
+			() =>
+				Effect.gen(function* () {
+					const { memfs, scope, journal } = yield* openJournal(line(1) + line(2));
+					const subscriber = yield* Effect.forkChild(Effect.exit(Stream.runCollect(journal.changes())));
+					yield* Effect.yieldNow;
+
+					breach.apply(memfs);
+					memfs.poke(PATH);
+					yield* settle(() => subscriber.pollUnsafe() !== undefined);
+
+					const exit = yield* Fiber.join(subscriber);
+					assert.isTrue(Exit.isFailure(exit), "the subscriber ended with the breach");
+					const failed = Exit.isFailure(exit) ? Option.getOrUndefined(Cause.findErrorOption(exit.cause)) : undefined;
+					assert.instanceOf(failed, JournalResync, "typed as JournalResync");
+					assert.strictEqual((failed as JournalResync).reason, breach.reason);
+
+					// Re-seeded from the new file's tail — with NO further append. A reset
+					// to empty, or a stale pre-breach value, both fail here.
+					assert.strictEqual(roundOf(yield* journal.latest), 5, "latest is the replacement's last envelope");
+					yield* Scope.close(scope, Exit.void);
+				}),
+		);
+	}
+
+	it.effect("after a resync, lines already in the file are NOT re-published; new appends are", () =>
+		Effect.gen(function* () {
+			// Recovery from a resync is a re-read (query / cursor), not a replay
+			// through the hub: the engine resumes at the new file's END. Observed on
+			// the engine's hub through a subscription taken BEFORE the breach — a
+			// raw subscription outlives the resync Exit, so it sees everything
+			// published afterwards. A stream subscriber attached after the breach
+			// cannot tell: a reset to offset 0 re-publishes round 5 to nobody.
+			const memfs = makeMemFs();
+			memfs.mkdir("/journal");
+			memfs.write(PATH, line(1) + line(2));
+			const scope = yield* Scope.make();
+			const engine = yield* makeEngine("test/WatchEngine", events, { path: PATH }).pipe(
+				Effect.provideService(Scope.Scope, scope),
+				Effect.provide(memfs.layer),
+			);
+			yield* settle(() => memfs.watcherCount(PATH) > 0);
+			assert.isAbove(memfs.watcherCount(PATH), 0, "the watcher armed");
+			const subscriberScope = yield* Scope.make();
+			const subscription = yield* PubSub.subscribe(engine.hub).pipe(
+				Effect.provideService(Scope.Scope, subscriberScope),
+			);
+
+			memfs.write(PATH, line(5));
+			memfs.poke(PATH);
+			for (let turn = 0; turn < 20; turn++) {
+				yield* Effect.yieldNow;
+			}
+			assert.strictEqual(roundOf(yield* engine.journal.latest), 5, "re-seeded from the new tail");
+
+			externalAppend(memfs, line(6));
+			memfs.poke(PATH);
+			for (let turn = 0; turn < 20; turn++) {
+				yield* Effect.yieldNow;
+			}
+			const ours = yield* engine.journal.append("noted", { round: 7 });
+			for (let turn = 0; turn < 20; turn++) {
+				yield* Effect.yieldNow;
+			}
+
+			const takes = yield* PubSub.takeAll(subscription);
+			assert.isFalse(Array.isArray(takes[0]), "the resync Exit comes first");
+			const resync =
+				Exit.isExit(takes[0]) && Exit.isFailure(takes[0]) ? Cause.findErrorOption(takes[0].cause) : Option.none();
+			assert.isTrue(Option.isSome(resync) && resync.value instanceof JournalResync, "and it is a JournalResync");
+			const rounds = takes.flatMap((take) =>
+				Array.isArray(take)
+					? (take as ReadonlyArray<Item>).map(
+							(item) => (Result.getOrThrow(item).data as { readonly round: number }).round,
+						)
+					: [],
+			);
+			assert.deepStrictEqual(rounds, [6, 7], "only what was appended after the resync — round 5 is not replayed");
+			assert.strictEqual(
+				ours.position.offset,
+				new TextEncoder().encode(line(5) + line(6)).length,
+				"and offsets describe the new file",
+			);
+			yield* Scope.close(subscriberScope, Exit.void);
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+});
+
+describe("watcher — the append-time gap read is paged", () => {
+	it.effect("an un-ingested external gap larger than a page is read in pages, not allocated whole", () =>
+		Effect.gen(function* () {
+			// An append past another writer's un-ingested bytes must publish them
+			// first, so it reads the gap. Sized larger than a page, a one-shot read
+			// would request the whole gap at once; the request sizes show which.
+			const { memfs, scope, journal } = yield* openJournal("");
+			const delivered: Array<number> = [];
+			const running = yield* Effect.forkChild(
+				Stream.runForEach(journal.changes(), (envelope) =>
+					Effect.sync(() => {
+						delivered.push(envelope.data.round);
+					}),
+				),
+			);
+			yield* Effect.yieldNow;
+
+			const foreign = Array.from({ length: 3000 }, (_, index) => line(index + 1)).join("");
+			assert.isAbove(foreign.length, 2 * PAGE_SIZE, "the gap spans several pages");
+			externalAppend(memfs, foreign); // deliberately NOT poked
+			const mark = memfs.readRequests().length;
+			const ours = yield* journal.append("noted", { round: 3001 });
+			const sizes = memfs.readRequests().slice(mark);
+
+			assert.isAbove(sizes.length, 2, "the gap was read in several requests");
+			assert.isAtMost(Math.max(...sizes), PAGE_SIZE, "no single read exceeds a page");
+			assert.strictEqual(ours.position.offset, foreign.length, "our line follows the gap");
+
+			yield* settle(() => delivered.length >= 3001);
+			yield* Fiber.interrupt(running);
+			assert.strictEqual(delivered.length, 3001, "every gap line, then ours, was published");
+			assert.deepStrictEqual(delivered.slice(-3), [2999, 3000, 3001], "in file order, the gap before our line");
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+});
+
+/** A delivered envelope, reduced to what the race tests compare. */
+interface Seen {
+	readonly round: number;
+	readonly offset: number;
+	readonly end: number;
+}
+
+/** Collect every envelope `changes()` delivers, with its position. */
+const collect = (journal: WatchJournal["Service"]) =>
+	Effect.gen(function* () {
+		const seen: Array<Seen> = [];
+		const fiber = yield* Effect.forkChild(
+			Stream.runForEach(journal.changes(), (envelope) =>
+				Effect.sync(() => {
+					seen.push({ round: envelope.data.round, ...envelope.position });
+				}),
+			),
+		);
+		yield* Effect.yieldNow;
+		return { seen, fiber };
+	});
+
+/** The file's lines as positions, the ground truth every assertion is held to. */
+const fileLines = (memfs: MemFs) =>
+	Line.split(new TextDecoder().decode(memfs.bytes(PATH) ?? new Uint8Array(0))).map((slice) => ({
+		round: (JSON.parse(slice.text) as { readonly data: { readonly round: number } }).data.round,
+		offset: slice.offset,
+		end: slice.end,
+	}));
+
+describe("append — another writer racing our write and our fstat", () => {
+	it.effect(
+		"a foreign line landing between write and fstat: our position is TRUE, theirs is published after ours",
+		() =>
+			Effect.gen(function* () {
+				// The window O_APPEND leaves open: the write reports no position, so the
+				// line's end comes from an fstat, and a foreign append landing first
+				// overstates it. Placed exactly by the helper, inside that stat.
+				const { memfs, scope, journal } = yield* openJournal("");
+				const { seen, fiber } = yield* collect(journal);
+				let raced = false;
+				memfs.afterNextWriteStat(() => {
+					raced = true;
+					externalAppend(memfs, line(2));
+				});
+
+				const ours = yield* journal.append("noted", { round: 1 });
+				assert.isTrue(raced, "the foreign line really landed between our write and our fstat");
+				const truth = fileLines(memfs);
+				assert.deepStrictEqual(
+					truth.map((entry) => entry.round),
+					[1, 2],
+					"on disk: ours, then theirs",
+				);
+				assert.deepStrictEqual(
+					ours.position,
+					{ offset: truth[0]?.offset, end: truth[0]?.end },
+					"the returned position is where our line really is",
+				);
+				assert.strictEqual(roundOf(yield* journal.latest), 2, "latest is the file's last envelope — theirs");
+
+				yield* settle(() => seen.length >= 2);
+				const later = yield* journal.append("noted", { round: 3 });
+				yield* settle(() => seen.length >= 3);
+				// Give a duplicate or a late re-publish every chance to arrive.
+				for (let turn = 0; turn < 20; turn++) {
+					yield* Effect.yieldNow;
+				}
+				yield* Fiber.interrupt(fiber);
+
+				const after = fileLines(memfs);
+				assert.deepStrictEqual(seen, after, "every line once, in file order, each at its true position");
+				assert.deepStrictEqual(later.position, { offset: after[2]?.offset, end: after[2]?.end });
+				yield* Scope.close(scope, Exit.void);
+			}),
+	);
+
+	it.effect("foreign lines BEFORE and AFTER ours in one append are published around ours, in file order", () =>
+		Effect.gen(function* () {
+			const { memfs, scope, journal } = yield* openJournal("");
+			const { seen, fiber } = yield* collect(journal);
+			// An un-ingested gap ahead of our write (never poked) …
+			externalAppend(memfs, line(10));
+			// … and a racer behind it, inside our fstat.
+			memfs.afterNextWriteStat(() => externalAppend(memfs, line(12)));
+
+			const ours = yield* journal.append("noted", { round: 11 });
+			const truth = fileLines(memfs);
+			assert.deepStrictEqual(
+				truth.map((entry) => entry.round),
+				[10, 11, 12],
+			);
+			assert.deepStrictEqual(ours.position, { offset: truth[1]?.offset, end: truth[1]?.end });
+			assert.strictEqual(roundOf(yield* journal.latest), 12);
+
+			yield* settle(() => seen.length >= 3);
+			for (let turn = 0; turn < 20; turn++) {
+				yield* Effect.yieldNow;
+			}
+			yield* Fiber.interrupt(fiber);
+			assert.deepStrictEqual(seen, truth, "before → ours → after, nothing skipped or repeated");
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
+	it.effect("the fast path: an append with no foreign bytes reads nothing", () =>
+		Effect.gen(function* () {
+			// The file grew by exactly our line, so no other writer can have touched
+			// it. The scan is for the contended case only.
+			const { memfs, scope, journal } = yield* openJournal(line(1));
+			const mark = memfs.readRequests().length;
+			const ours = yield* journal.append("noted", { round: 2 });
+			assert.deepStrictEqual(memfs.readRequests().slice(mark), [], "no read was issued by the append");
+			assert.deepStrictEqual(ours.position, { offset: fileLines(memfs)[1]?.offset, end: fileLines(memfs)[1]?.end });
 			yield* Scope.close(scope, Exit.void);
 		}),
 	);

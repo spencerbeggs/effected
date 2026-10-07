@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, DateTime, Effect, Exit, Option, Result, Schema } from "effect";
+import { frameResult } from "../src/Envelope.js";
 import type { EnvelopeUnion, EnvelopeWithTag, JsonlEvent as JsonlEventType } from "../src/index.js";
 import {
 	Envelope,
@@ -49,6 +50,12 @@ const some = <A>(option: Option.Option<A>): A => Option.getOrThrow(option);
 const err = <A, E>(result: Result.Result<A, E>): E => {
 	assert.isTrue(Result.isFailure(result), "expected a failure");
 	return (result as Extract<Result.Result<A, E>, { readonly _tag: "Failure" }>).failure;
+};
+/** Asserts an array element exists, then returns it. */
+const nth = <A>(items: ReadonlyArray<A>, index: number): A => {
+	const item = items[index];
+	assert.isDefined(item, `no element at ${index}`);
+	return item as A;
 };
 /** Asserts the envelope carries `tag`, then narrows to that variant. */
 const tagged = <T extends JsonlEventType.Tag<typeof registry>>(
@@ -105,10 +112,10 @@ describe("Envelope registry cache", () => {
 	});
 });
 
-describe("Envelope.frameResult", () => {
+describe("frameResult (internal stage one)", () => {
 	it("decodes the frame WITHOUT decoding the payload", () => {
 		// The payload here would fail its registered schema; the frame does not care.
-		const frame = ok(Envelope.frameResult(line(envelopeText({ data: { round: "not a number" } }))));
+		const frame = ok(frameResult(line(envelopeText({ data: { round: "not a number" } }))));
 		assert.strictEqual(frame.event, "mail-received");
 		assert.deepStrictEqual(frame.data, { round: "not a number" });
 	});
@@ -118,25 +125,25 @@ describe("Envelope.frameResult", () => {
 		// blow the stack; it does not, which is the property filtering relies on.
 		const deep = JSON.parse(`${"[".repeat(200_000)}1${"]".repeat(200_000)}`) as unknown;
 		const text = JSON.stringify({ at: AT, event: "mail-received", data: deep });
-		assert.strictEqual(ok(Envelope.frameResult(line(text))).event, "mail-received");
+		assert.strictEqual(ok(frameResult(line(text))).event, "mail-received");
 	});
 
 	it("decodes `at` through DateTimeUtcFromString into a DateTime.Utc", () => {
-		const frame = ok(Envelope.frameResult(line(envelopeText())));
+		const frame = ok(frameResult(line(envelopeText())));
 		assert.strictEqual(DateTime.formatIso(frame.at), AT);
 	});
 
 	it("omits `scope` when absent and carries it when present", () => {
-		assert.notProperty(ok(Envelope.frameResult(line(envelopeText()))), "scope");
-		assert.strictEqual(ok(Envelope.frameResult(line(envelopeText({ scope: "mailbox-a" })))).scope, "mailbox-a");
+		assert.notProperty(ok(frameResult(line(envelopeText()))), "scope");
+		assert.strictEqual(ok(frameResult(line(envelopeText({ scope: "mailbox-a" })))).scope, "mailbox-a");
 	});
 
 	it("fails MalformedLine when the line is not JSON at all", () => {
-		assert.instanceOf(err(Envelope.frameResult(line("{not json"))), MalformedLine);
+		assert.instanceOf(err(frameResult(line("{not json"))), MalformedLine);
 	});
 
 	it("fails InvalidData with no event when the JSON is not an envelope", () => {
-		const failure = err(Envelope.frameResult(line('{"hello":"world"}')));
+		const failure = err(frameResult(line('{"hello":"world"}')));
 		assert.instanceOf(failure, InvalidData);
 		assert.isTrue(Option.isNone((failure as InvalidData).event));
 	});
@@ -146,7 +153,19 @@ describe("Envelope.decodeResult", () => {
 	it("decodes a well-formed envelope and validates its payload", () => {
 		const envelope = tagged(ok(Envelope.decodeResult(registry, line(envelopeText()))), "mail-received");
 		assert.deepStrictEqual(envelope.data, { round: 7, from: "silk" });
-		assert.strictEqual(envelope.line.offset, 0);
+		assert.strictEqual(envelope.position.offset, 0);
+	});
+
+	it("exposes the line's position and nothing else of the line", () => {
+		const text = `${envelopeText()}\r\n`;
+		const envelope = ok(Envelope.decodeResult(registry, line(text)));
+		assert.deepStrictEqual(envelope.position, { offset: 0, end: Line.byteLength(text) });
+		assert.deepStrictEqual(Object.keys(envelope.position).sort(), ["end", "offset"]);
+		// No raw text rides along: the payload is already decoded, and a second copy
+		// of every line as JSON would double what a buffered stream holds.
+		assert.notProperty(envelope, "line");
+		assert.notProperty(envelope, "text");
+		assert.deepStrictEqual(Object.keys(envelope).sort(), ["at", "data", "event", "position"]);
 	});
 
 	it("narrows the payload type on the discriminant", () => {
@@ -256,7 +275,7 @@ describe("Envelope hostile input", () => {
 				envelopeText({ data: undefined }),
 			];
 			for (const shape of shapes) {
-				const exit = yield* Effect.exit(Envelope.decode(registry, line(shape)));
+				const exit = yield* Effect.exit(Effect.fromResult(Envelope.decodeResult(registry, line(shape))));
 				// Unconditional: every shape MUST fail, and fail typed. An
 				// `if (Exit.isFailure(...))` here would let a shape that wrongly
 				// succeeded slip past unasserted.
@@ -269,11 +288,11 @@ describe("Envelope hostile input", () => {
 	);
 });
 
-describe("Envelope.lastValidResult — the binding walk-back", () => {
+describe("Envelope.lastValid — the binding walk-back", () => {
 	const good = (round: number) => `${envelopeText({ data: { round, from: "silk" } })}\n`;
 
 	it("returns the last valid envelope of a well-formed journal", () => {
-		const last = tagged(some(Envelope.lastValidResult(registry, `${good(1)}${good(2)}${good(3)}`)), "mail-received");
+		const last = tagged(some(Envelope.lastValid(registry, `${good(1)}${good(2)}${good(3)}`)), "mail-received");
 		assert.strictEqual(last.data.round, 3);
 	});
 
@@ -281,27 +300,81 @@ describe("Envelope.lastValidResult — the binding walk-back", () => {
 		// A real mid-write truncation: a complete envelope, cut short of its close.
 		const third = envelopeText({ data: { round: 3, from: "silk" } });
 		const torn = `${good(1)}${good(2)}${third.slice(0, third.length - 12)}`;
-		const last = tagged(some(Envelope.lastValidResult(registry, torn)), "mail-received");
+		const last = tagged(some(Envelope.lastValid(registry, torn)), "mail-received");
 		assert.strictEqual(last.data.round, 2);
 	});
 
 	it("CLOSES THE SCALAR HOLE that the JSON layer cannot", () => {
-		// `Line.lastValid` stops at JSON validity and returns the torn fragment `4`.
-		// The envelope walk-back rejects it, because `4` is not an envelope.
+		// At the JSON layer the torn fragment `4` parses cleanly, as a different
+		// value. The envelope walk-back rejects it, because `4` is not an envelope.
 		const torn = `${good(1)}4`;
-		assert.strictEqual(some(Line.lastValid(torn)).value, 4, "the JSON layer is fooled");
-		const envelopeLevel = tagged(some(Envelope.lastValidResult(registry, torn)), "mail-received");
+		const fragment = Line.split(torn).at(-1);
+		assert.isDefined(fragment);
+		assert.strictEqual(ok(Line.parseResult(fragment)), 4, "the JSON layer is fooled");
+		const envelopeLevel = tagged(some(Envelope.lastValid(registry, torn)), "mail-received");
 		assert.strictEqual(envelopeLevel.data.round, 1, "the envelope layer is not");
 	});
 
 	it("walks back past a line whose tag is unknown to this registry", () => {
 		const foreign = `${good(1)}${envelopeText({ event: "from-the-future" })}\n`;
-		const last = tagged(some(Envelope.lastValidResult(registry, foreign)), "mail-received");
+		const last = tagged(some(Envelope.lastValid(registry, foreign)), "mail-received");
 		assert.strictEqual(last.data.round, 1);
 	});
 
 	it("is none when no line is a valid envelope", () => {
-		assert.isTrue(Option.isNone(Envelope.lastValidResult(registry, "4\nnull\n{}\n")));
+		assert.isTrue(Option.isNone(Envelope.lastValid(registry, "4\nnull\n{}\n")));
+	});
+
+	it("is none for empty input", () => {
+		assert.isTrue(Option.isNone(Envelope.lastValid(registry, "")));
+	});
+
+	it("is none when no line even parses", () => {
+		assert.isTrue(Option.isNone(Envelope.lastValid(registry, "nope\nalso nope\n")));
+	});
+
+	it("locates the walked-back envelope by byte position", () => {
+		const torn = `${good(1)}${good(2)}{"at":`;
+		const last = some(Envelope.lastValid(registry, torn));
+		assert.deepStrictEqual(last.position, { offset: good(1).length, end: good(1).length + good(2).length });
+	});
+
+	it("walks back past several malformed trailing lines", () => {
+		const last = tagged(some(Envelope.lastValid(registry, `${good(1)}broken\nalso broken\n{"at"`)), "mail-received");
+		assert.strictEqual(last.data.round, 1);
+	});
+
+	it("ignores trailing blank lines", () => {
+		const last = tagged(some(Envelope.lastValid(registry, `${good(1)}\n   \n`)), "mail-received");
+		assert.strictEqual(last.data.round, 1);
+	});
+
+	it("detects a torn tail that truncates an envelope, whatever the cut point", () => {
+		const third = envelopeText({ data: { round: 3, from: "silk" } });
+		for (let keep = 1; keep < third.length; keep++) {
+			const last = tagged(some(Envelope.lastValid(registry, `${good(1)}${third.slice(0, keep)}`)), "mail-received");
+			assert.strictEqual(last.data.round, 1, `keep=${keep}`);
+		}
+	});
+
+	it("accepts an unterminated final line that IS a complete envelope", () => {
+		const third = envelopeText({ data: { round: 3, from: "silk" } });
+		const text = `${good(1)}${third}`;
+		const last = tagged(some(Envelope.lastValid(registry, text)), "mail-received");
+		assert.strictEqual(last.data.round, 3);
+		assert.strictEqual(last.position.end, Line.byteLength(text), "an unterminated line ends at its last content byte");
+	});
+
+	it("shifts the position by `base` when the text is a tail of the journal", () => {
+		const text = `${good(1)}${good(2)}`;
+		const base = 4096;
+		const last = some(Envelope.lastValid(registry, text, base));
+		const unshifted = some(Envelope.lastValid(registry, text));
+		assert.deepStrictEqual(last.position, {
+			offset: unshifted.position.offset + base,
+			end: unshifted.position.end + base,
+		});
+		assert.strictEqual(last.position.offset, base + good(1).length);
 	});
 });
 
@@ -310,6 +383,41 @@ describe("Envelope.decodeAllResult", () => {
 		const text = `${envelopeText()}\nnot json\n${envelopeText()}\n`;
 		const results = Envelope.decodeAllResult(registry, text);
 		assert.deepStrictEqual(results.map(Result.isSuccess), [true, false, true]);
+	});
+
+	it("carries byte offsets that address the bad line in the source", () => {
+		const source = `${envelopeText({ data: { round: 1, from: "\u{1F600}" } })}\nnot json\n${envelopeText()}\n`;
+		const failure = err(nth(Envelope.decodeAllResult(registry, source), 1));
+		assert.instanceOf(failure, MalformedLine);
+		const { offset, length } = (failure as MalformedLine).line;
+		const encoded = new TextEncoder().encode(source);
+		assert.strictEqual(new TextDecoder().decode(encoded.slice(offset, offset + length)), "not json");
+	});
+
+	it("skips whitespace-only lines rather than reporting them as corruption", () => {
+		const results = Envelope.decodeAllResult(registry, `${envelopeText()}\n\n   \n${envelopeText()}\n`);
+		assert.deepStrictEqual(results.map(Result.isSuccess), [true, true]);
+	});
+
+	it("reports an unterminated torn tail as a failure", () => {
+		const results = Envelope.decodeAllResult(registry, `${envelopeText()}\n{"at":`);
+		assert.deepStrictEqual(results.map(Result.isSuccess), [true, false]);
+		const torn = err(nth(results, 1));
+		assert.instanceOf(torn, MalformedLine);
+		assert.isFalse((torn as MalformedLine).line.terminated);
+	});
+
+	it("shifts every position and error offset by `base`", () => {
+		const first = `${envelopeText()}\n`;
+		const text = `${first}not json\n${envelopeText()}\n`;
+		const base = 777;
+		const results = Envelope.decodeAllResult(registry, text, base);
+		assert.deepStrictEqual(ok(nth(results, 0)).position, {
+			offset: base,
+			end: base + first.length,
+		});
+		assert.strictEqual((err(nth(results, 1)) as MalformedLine).line.offset, base + first.length);
+		assert.strictEqual(ok(nth(results, 2)).position.end, base + text.length);
 	});
 });
 
@@ -362,6 +470,38 @@ describe("Envelope.encodeResult", () => {
 		});
 		assert.instanceOf(err(result), InvalidData);
 	});
+
+	it("fails InvalidData with NO line and no invented offset — there is no line yet", () => {
+		const failure = err(
+			Envelope.encodeResult(registry, {
+				event: "mail-received",
+				// biome-ignore lint/suspicious/noExplicitAny: deliberately bypassing the type gate to reach the runtime check
+				data: { round: "seven", from: "silk" } as any,
+				at,
+			}),
+		) as InvalidData;
+		assert.instanceOf(failure, InvalidData);
+		assert.notProperty(failure, "line");
+		assert.strictEqual(some(failure.event), "mail-received");
+		assert.notInclude(failure.message, "byte offset");
+		assert.include(failure.message, "mail-received");
+	});
+
+	it("fails UnknownEvent with NO line for a tag outside the registry", () => {
+		const failure = err(
+			Envelope.encodeResult(registry, {
+				// biome-ignore lint/suspicious/noExplicitAny: deliberately bypassing the type gate to reach the runtime check
+				event: "from-the-future" as any,
+				data: undefined,
+				at,
+			}),
+		) as UnknownEvent;
+		assert.instanceOf(failure, UnknownEvent);
+		assert.notProperty(failure, "line");
+		assert.deepStrictEqual([...failure.known], ["mail-received", "unlinked", "relinked"]);
+		assert.notInclude(failure.message, "byte offset");
+		assert.include(failure.message, "from-the-future");
+	});
 });
 
 describe("Envelope.encodeResult — unserializable payloads", () => {
@@ -404,7 +544,7 @@ describe("Envelope.encodeResult — unserializable payloads", () => {
 		// the assertion silently passes. Caught by mutation; written explicitly.
 		let threw: unknown;
 		try {
-			Envelope.encode(Anything, { event: "anything", data: { n: 1n }, at });
+			Effect.fromResult(Envelope.encodeResult(Anything, { event: "anything", data: { n: 1n }, at }));
 		} catch (error) {
 			threw = error;
 		}
@@ -413,7 +553,9 @@ describe("Envelope.encodeResult — unserializable payloads", () => {
 
 	it.effect("surfaces a bigint payload as a typed Exit failure, not a defect", () =>
 		Effect.gen(function* () {
-			const exit = yield* Effect.exit(Envelope.encode(Anything, { event: "anything", data: { n: 1n }, at }));
+			const exit = yield* Effect.exit(
+				Effect.fromResult(Envelope.encodeResult(Anything, { event: "anything", data: { n: 1n }, at })),
+			);
 			assert.isTrue(Exit.isFailure(exit));
 			const cause = (exit as Exit.Failure<never, unknown>).cause;
 			assert.isTrue(Cause.hasFails(cause), "typed failure");
@@ -423,45 +565,13 @@ describe("Envelope.encodeResult — unserializable payloads", () => {
 
 	it.effect("surfaces a circular payload as a typed Exit failure, not a defect", () =>
 		Effect.gen(function* () {
-			const exit = yield* Effect.exit(Envelope.encode(Anything, { event: "anything", data: circular(), at }));
+			const exit = yield* Effect.exit(
+				Effect.fromResult(Envelope.encodeResult(Anything, { event: "anything", data: circular(), at })),
+			);
 			assert.isTrue(Exit.isFailure(exit));
 			const cause = (exit as Exit.Failure<never, unknown>).cause;
 			assert.isTrue(Cause.hasFails(cause), "typed failure");
 			assert.isFalse(Cause.hasDies(cause), "never a defect");
-		}),
-	);
-});
-
-describe("Effect forms", () => {
-	it.effect("decode succeeds where decodeResult succeeds", () =>
-		Effect.gen(function* () {
-			const envelope = yield* Envelope.decode(registry, line(envelopeText()));
-			assert.strictEqual(envelope.event, "mail-received");
-		}),
-	);
-
-	it.effect("decode fails TYPED where decodeResult fails", () =>
-		Effect.gen(function* () {
-			const exit = yield* Effect.exit(Envelope.decode(registry, line("{not json")));
-			assert.isTrue(Exit.isFailure(exit));
-			if (Exit.isFailure(exit)) {
-				assert.isTrue(Cause.hasFails(exit.cause));
-				assert.isFalse(Cause.hasDies(exit.cause));
-			}
-		}),
-	);
-
-	it.effect("encode agrees with encodeResult exactly", () =>
-		Effect.gen(function* () {
-			const viaEffect = yield* Envelope.encode(registry, {
-				event: "mail-received",
-				data: { round: 7, from: "silk" },
-				at,
-			});
-			const viaResult = ok(
-				Envelope.encodeResult(registry, { event: "mail-received", data: { round: 7, from: "silk" }, at }),
-			);
-			assert.strictEqual(viaEffect, viaResult);
 		}),
 	);
 });
@@ -479,11 +589,11 @@ describe("acceptance criterion 2 — the hook path", () => {
 			third.slice(0, third.length - 12), // killed mid-write: no terminator, no closing braces
 		].join("");
 
-		const state = tagged(some(Envelope.lastValidResult(registry, journal)), "mail-received");
+		const state = tagged(some(Envelope.lastValid(registry, journal)), "mail-received");
 
 		assert.strictEqual(state.data.round, 2);
-		assert.strictEqual(state.line.terminated, true);
-		// And the resume cursor for the next incremental read, in bytes.
-		assert.strictEqual(Line.consumedOffset(journal), Line.byteLength(journal.slice(0, journal.lastIndexOf("\n") + 1)));
+		// And the resume cursor for the next incremental read, in bytes: the end of
+		// the last valid envelope, which is where the torn tail begins.
+		assert.strictEqual(state.position.end, Line.byteLength(journal.slice(0, journal.lastIndexOf("\n") + 1)));
 	});
 });

@@ -29,20 +29,6 @@ import type { Schema } from "effect";
 export type DataSchema = Schema.Codec<unknown, unknown, never, never>;
 
 /**
- * Unique type identifier marking a JSONL event definition.
- *
- * @public
- */
-export type JsonlEventTypeId = "~effected/jsonl/JsonlEvent";
-
-/**
- * Runtime type identifier marking a JSONL event definition.
- *
- * @public
- */
-export const JsonlEventTypeId: JsonlEventTypeId = "~effected/jsonl/JsonlEvent";
-
-/**
  * One event definition: a tag, the schema its `data` must satisfy, and the two
  * lifecycle markings.
  *
@@ -59,7 +45,6 @@ export interface JsonlEvent<
 	out Terminal extends boolean = false,
 	out Reopen extends boolean = false,
 > {
-	readonly [JsonlEventTypeId]: JsonlEventTypeId;
 	/** The string tag: the envelope discriminant and the primary filter key. */
 	readonly tag: Tag;
 	/** The schema the envelope's `data` is validated against. */
@@ -91,7 +76,6 @@ export declare namespace JsonlEvent {
 	 * @public
 	 */
 	export interface Any {
-		readonly [JsonlEventTypeId]: JsonlEventTypeId;
 		readonly tag: string;
 		readonly data: DataSchema;
 		readonly terminal: boolean;
@@ -112,12 +96,6 @@ export declare namespace JsonlEvent {
 
 	/** The decoded payload type registered for a given tag. */
 	export type Data<R extends Registry, T extends string> = WithTag<R, T>["data"]["Type"];
-
-	/** The tags marked `terminal` in a registry. */
-	export type TerminalTags<R extends Registry> = Extract<Events<R>, { readonly terminal: true }>["tag"];
-
-	/** The tags marked `reopen` in a registry. */
-	export type ReopenTags<R extends Registry> = Extract<Events<R>, { readonly reopen: true }>["tag"];
 }
 
 /**
@@ -162,7 +140,6 @@ export const JsonlEvent = {
 			readonly reopen?: Reopen | undefined;
 		},
 	): JsonlEvent<Tag, Data, Terminal, Reopen> => ({
-		[JsonlEventTypeId]: JsonlEventTypeId,
 		tag,
 		data: options.data,
 		terminal: (options.terminal ?? false) as Terminal,

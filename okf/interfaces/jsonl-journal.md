@@ -9,8 +9,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T16:41:19Z
-  body_sha256: 8ef0cd60ff92a72dc498d2cfe0c80f4ca75fe77b772c2552a880f23320081f03
+  at: 2026-10-07T19:15:53Z
+  body_sha256: 70e186d65bd4a287da5dff0946cf33eb99176b3c95946991ab45fbc7dfe1fff7
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:37.064Z
@@ -26,11 +26,17 @@ every reader depends on — an appended line is complete, validated against
 its event's schema, ordered against every other writer's, and observable to
 them once it lands.
 
-The service is one class per registry (see the [factory
-decision](../decisions/jsonl-service-is-a-factory.md)); its layer takes a
-config of a path plus three optionals — the activation-watch directory, the
-hub capacity, and the shutdown drain bound — and its lifecycle is scoped.
-The layer's error channel is `PlatformError`: a missing journal constructs
+The service is one class per registry, defined with
+`Journal.Service<Self>()(id, { events, config })` (see the [factory
+decision](../decisions/jsonl-service-is-a-factory.md) and the [module's
+factory section](../modules/jsonl.md#the-service-is-a-factory-not-a-generic-key)).
+The config is a path plus three optionals — the activation-watch directory,
+the hub capacity (default 64), and the shutdown drain bound (default five
+seconds) — given as a record or as an `Effect` producing one. The class's
+static `layer` is a single value built from that config, and its static
+`make(config)` builds a journal over a config known only at run time; both
+have a scoped lifecycle. The layer's error channel is `PlatformError` plus
+whatever the config effect can fail with: a missing journal constructs
 cleanly, an unreadable one fails typed.
 
 ## Operations
@@ -41,7 +47,16 @@ cleanly, an unreadable one fails typed.
   In-process concurrency is serialized by a one-permit semaphore. Appending
   after a terminal event fails typed unless the appended event is declared
   `reopen`, and appending to a journal that does not exist fails typed — an
-  append never creates the file.
+  append never creates the file. The returned envelope is the appender's own
+  line decoded back from its encoded text, so it is exactly the envelope a
+  reader of the file gets. Its error channel is `AppendError`:
+  `JournalClosed`, `JournalNotFound`, `TerminalViolation`, `InvalidData`,
+  `UnserializableData` or a passed-through `PlatformError`. Three failures
+  are defects rather than members, because each is unreachable through the
+  typed surface or a bug in the package: an unregistered tag, and a
+  self-decode that fails as `MalformedLine` or `UnknownEvent`. A self-decode
+  that fails as `InvalidData` stays typed — a payload schema whose encoded
+  form does not decode is the caller's to know about.
 - **`appendPatch`** is inherit-and-patch: read the last valid envelope,
   merge the patch over its payload, validate the result, append. The whole
   read-merge-validate-append sequence is atomic under the append permit,
@@ -59,18 +74,36 @@ cleanly, an unreadable one fails typed.
   domain — cross-prototype, scalar, array or void bases — the patch
   replaces rather than merges, and a partial patch against such a base
   fails typed naming the missing keys.
-- **`latest`** is a subscribable observable (`SubscriptionRef<Option<Envelope>>`)
-  of the current last valid envelope, plus a quiescent signal once a
-  terminal event is the tail. Watching state is the common case, and making
-  it a ref rather than a fold is what keeps the common case one line. It is
-  served by a bounded tail read (see the [slice
+- **`latest`** is a read-only `Effect<Option<Envelope>>` of the current
+  last valid envelope, and **`latestChanges`** is the same value as a
+  stream — the current value, then every change. Watching state is the
+  common case, and a stream of the state rather than a fold is what keeps
+  the common case one line. Neither exposes anything writable: the backing
+  cell is the engine's, and no public shape hands out a ref or the hub. It
+  is seeded by a bounded tail read running `Envelope.lastValid` (see the
+  [slice
   interface](jsonl-slice.md#the-bounded-tail-read-is-the-sanctioned-cheap-read)),
-  never a whole-file read. The quiescent signal is derived from `latest`
-  rather than being a second piece of state, because a separate ref could
-  drift out of agreement with it and a derivation cannot.
+  never a whole-file read, and kept current by local appends and the
+  watcher. **`quiescent`** — whether the tail is a terminal event — is
+  derived from `latest` rather than being a second piece of state, because a
+  separate cell could drift out of agreement with it and a derivation
+  cannot.
+- **`query`**, **`changes`** and **`projection`** are the read surfaces, in
+  the [slice interface](jsonl-slice.md). `query` fails with `QueryError`
+  (`JournalNotFound`, a `DecodeError` only when the slice asks with
+  `onInvalid: "fail"`, or `PlatformError`); `changes` and `projection` fail
+  with `ChangesError`, which adds `JournalResync`.
 - **`create` / `remove`** are explicit file lifecycle, so "the journal does
   not exist yet" is a decision the consumer makes rather than a side effect
-  of the first append.
+  of the first append. `create` always opens the path `O_APPEND` and writes
+  nothing: it creates a missing file and leaves an existing one untouched,
+  and never "touches" with a zero-byte write, which reports `WriteZero` on a
+  file it just created. `remove` is forced, so removing an absent journal
+  succeeds.
+
+`append` (with `appendPatch`, which shares its write path), `create` and
+`remove` each run in a span named from the service id — `${id}.append`,
+`${id}.create`, `${id}.remove`; the read surfaces carry none.
 
 No sidecar index ships. A linear scan is the honest answer: an index is a
 second source of truth that an external writer — which the process model
@@ -103,6 +136,19 @@ so it either wrote the whole buffer or failed — and any `PlatformError` out
 of an append surfaces typed and is treated as a possibly-torn tail that
 readers walk back over.
 
+Where the line landed is located, never assumed. `O_APPEND` lands at the
+real end of the file and reports no position, so after the write the
+appender `fstat`s its own handle. When the file grew by exactly the
+appender's line since the consumed offset, no other writer can have touched
+it and that position is exact — the common case reads nothing. Otherwise
+other writers' bytes are in the file too, on either side of ours: an
+un-ingested gap before it, or an append that landed between our write and
+our `fstat`, which overstates the end. So the appender reads the region from
+its consumed offset to that end and finds its own line in it by exact text.
+Lines ahead of it are published first and lines after it after it, so the
+hub carries the file's order however the bytes interleaved, and the
+consumed offset advances past all of them.
+
 ## The publish stage sits outside the write critical section
 
 The obvious implementation deadlocks by construction: a suspending hub
@@ -111,8 +157,9 @@ wedges every writer, and then wedges scope close too, because the
 finalizer waits to drain the very permit the suspended publish holds. Four
 pins resolve it:
 
-1. The write critical section covers the file write and the ref updates
-   only; a suspending hub publish never sits inside it.
+1. The write critical section covers the file write, the gap read and the
+   state updates only; a read under the permit is legal, but a suspending
+   hub publish never sits inside it.
 2. Publish order equals write order, preserved by a dedicated ordering
    stage whose slot is acquired *under* the write permit and executed
    *outside* it — order is a property of acquisition, not of execution.
@@ -133,22 +180,20 @@ passes the baton on via `ensuring`. A second semaphore acquired under the
 write permit was considered and rejected: when contended it suspends inside
 the critical section, reintroducing the deadlock through a smaller door.
 
-**A residual TOCTOU is named honestly rather than hidden.** An external
-write landing between our write and our size probe has three demonstrated
-consequences: our own line's reported offset is wrong by the length of the
-external write, so every cursor derived from it is off by that much; the
-interleaved external line is silently dropped, because advancing the
-consumed offset to our computed end skips straight past it; and our own
-line is published twice, because the next gap decode re-covers the region
-our append already published. The window is genuinely tiny (between two
-syscalls, both under the write permit), so this is a rare interleaving
-rather than a routine one. Prevention is impossible lock-free — `O_APPEND`
-gives the writer no way to learn where its bytes landed, so nothing short of
-an advisory lock (which the process model rejects, and which a shell
-script's `>>` would not honor anyway) makes the write-and-locate pair
-atomic. Detection is possible lock-free — a read-back verification would
-catch all three, at one extra read per append — and is declined on cost,
-because the append path is the latency-sensitive one.
+**The write-and-locate pair is not atomic, and the locate step does not
+pretend it is.** No lock-free writer can learn where an `O_APPEND` write
+landed, and an advisory lock is rejected by the process model (a shell
+script's `>>` would not honor it anyway). Trusting the `fstat` alone was the
+earlier design, and it was wrong under one interleaving — an external write
+between our write and our `fstat` — in three ways: our line's reported
+offset was off by the external write's length, the external line was
+skipped, and our line could be published twice. Searching the region for
+our own line closes all three, at the cost of one bounded read only when
+another writer's bytes are present. One ambiguity remains, and it is
+content-level, not positional: a byte-identical line from another writer
+(same timestamp, tag, scope and payload) is indistinguishable from ours, and
+the search takes the last such line at or before the `fstat`-derived
+position.
 
 The finalizer captures the publish-chain tail under the write permit — a
 consistent snapshot, since the baton is only mutated under that permit —
@@ -189,16 +234,24 @@ A torn tail is tolerated, because the envelope makes it detectable — a
 writer caught mid-write leaves a partial line, the walk-back skips it, and
 the offset holds until the line completes. Truncation or replacement is a
 contract violation, surfaced not repaired: if the file shrinks or is
-replaced, the service raises a typed resync error rather than silently
-reconciling an inconsistency it cannot reason about, and the recovery is
-uniform — discard cursor-derived state and re-read from zero. No advisory
-locks: the contract other writers must honor is one write of a complete
+replaced, every live subscriber's stream ends with a typed `JournalResync`
+rather than the service silently reconciling an inconsistency it cannot
+reason about on the subscriber's behalf. The journal itself re-seeds: it
+adopts the file as it now is — re-probing the BOM, recapturing the file's
+identity, re-reading `latest` from the new file's tail, and resuming
+ingest at the file's current end — through the same seeding step
+construction uses, so there is one definition of "caught up". It does not
+reset `latest` to empty or re-ingest the new file from offset zero, so
+nothing already in the new file is republished to anyone. The recovery for
+a consumer is uniform: discard cursor-derived state and re-read — a fresh
+`query` or `changes`, with `latest` already describing the new file. No
+advisory locks: the contract other writers must honor is one write of a complete
 line, to a handle opened for append, keeping lines small enough that a
 short write is unlikely to split them — a discipline, not an enforced
 guarantee.
 
-Replacement is detected by inode identity (device and inode captured at
-watcher activation, compared on each poke), which catches a
+Replacement is detected by inode identity (device and inode captured when
+the journal seeds, compared on each poke), which catches a
 same-size-or-larger replacement a size check structurally cannot see.
 Truncation is a size below the consumed offset. The honest limit: the
 inode is optional in the platform's stat, so where it is unreported only
@@ -213,8 +266,9 @@ does not get this from `FileSystem.readFileString`, whose silent strip
 would silently desynchronize every offset the package hands out, since
 journal reads are offset-based. The pure core does not strip; it stays
 byte-honest and reports what it was given. Offsets are logical post-BOM on
-every path — tail reads, full scans, the append cursor seeded at
-construction — determined once, from the start of the file, never inferred
+every path — tail reads, paged reads, the append cursor — with the BOM
+probed from the first bytes of the file each time the journal seeds (at
+construction and again on a resync re-seed), never inferred
 from a window's position, since a bounded tail window does not begin at the
 file start and cannot tell you whether the file opened with a BOM. Exactly
 one leading BOM is stripped; a BOM code point anywhere else in the file is
@@ -227,7 +281,12 @@ missing journal file, since a consumer must be able to wire its layer
 graph before deciding to create the file — that is "missing", not
 "unreadable," and construction *can* fail typed on a journal that is
 present but unreadable, since a permissions fault is a real fault about a
-real file. The watcher activates once the file exists, and the watch is
+real file. "Missing" is decided by one `stat` whose `NotFound` reason maps
+to absence, not by an existence check followed by a separate `stat` that
+the file could vanish between; construction likewise tolerates a file that
+vanishes between that `stat` and the seed read, constructing as if it had
+never existed. The same mapping is how `append` and `query` raise
+`JournalNotFound`. The watcher activates once the file exists, and the watch is
 armed *before* the catch-up read: the invariant is "no window in which the
 file can grow while nothing is watching and nothing will re-read." The
 other order (ingest, then arm) leaves an unguarded sub-5ms window in which
@@ -240,9 +299,14 @@ platform watch exposes no registration signal to wait on: the
 implementation forks the watch consumer and yields a tuned number of times
 before running the catch-up read, and the invariant is guarded by a
 deterministic arming-window test rather than trusted as timing folklore.
-Ingest runs under its own one-permit semaphore, deliberately separate from
-the write permit, so a slow catch-up read of a large file cannot block
-latency-sensitive appends.
+Ingest runs under its own one-permit semaphore, which serializes ingests
+against each other — two overlapping runs would read the same consumed
+offset and publish the same lines twice — so a poke arriving mid-ingest
+waits there rather than on the write permit. The gap read itself is taken
+under the write permit, because an append may have consumed the pending
+bytes while the ingest waited; it reads forward in bounded pages, like
+every region read in the package, and the publish happens after the permit
+is released, under the same ordering baton as an append.
 
 A parent-directory watch was assumed as the activation mechanism, then
 falsified by a probe: on the installed node backend, a directory watch

@@ -1,3 +1,4 @@
+import type { MemoryFileSystemFaultHandler, MemoryFileSystemFaults } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
 import type { Layer, Option, PlatformError } from "effect";
 import { Effect, FileSystem, Queue, Stream } from "effect";
@@ -118,6 +119,13 @@ export interface MemFs {
 	 * empty registry cannot pass as a working watcher.
 	 */
 	readonly watcherCount: (target: string) => number;
+	/**
+	 * The size of every `readAlloc` requested so far, in order.
+	 *
+	 * What makes a bounded-read claim testable: an output assertion cannot tell
+	 * a paged read from one whole-file allocation, but the requested sizes can.
+	 */
+	readonly readRequests: () => ReadonlyArray<number>;
 	readonly existsCalls: () => number;
 	/**
 	 * Give the path a NEW identity, as a rename-over or recreate would: the old
@@ -140,6 +148,15 @@ export interface MemFs {
 	 * the test passes whatever the ordering is.
 	 */
 	readonly beforeWatch: (hook: (target: string) => void) => void;
+	/**
+	 * Run `hook` ONCE, inside the first handle `stat` that follows a `writeAll`
+	 * on that same handle, BEFORE the stat samples the file.
+	 *
+	 * The only way to land a foreign append between an append's write and its
+	 * `fstat` deterministically — the window in which a reported size
+	 * overstates where the write landed. Consumed by the first stat it fires on.
+	 */
+	readonly afterNextWriteStat: (hook: () => void) => void;
 }
 
 /**
@@ -154,12 +171,31 @@ export interface MemFs {
  */
 const lastSeparator = (path: string): number => Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
 
-export const makeMemFs = (): MemFs => {
+/**
+ * Extra faults for one {@link makeMemFs} volume, composed AHEAD of the
+ * helper's own decorations: a handler that returns `undefined` falls through
+ * to them, so a faulted `open` still hands back a gated handle when it
+ * declines, and `exists` is still counted.
+ *
+ * `base` is the unfaulted filesystem, so a handler can delegate and then act —
+ * `stat: (path) => base.stat(path).pipe(Effect.tap(...))` — without re-entering
+ * itself. `open` takes a handler only (no `failTimes`), because the helper
+ * always intercepts it to install the gates.
+ */
+export interface MemFsOptions {
+	readonly faults?: (
+		base: FileSystem.FileSystem,
+	) => Omit<MemoryFileSystemFaults, "open"> & { readonly open?: MemoryFileSystemFaultHandler<"open"> };
+}
+
+export const makeMemFs = (options?: MemFsOptions): MemFs => {
 	let gate: Promise<void> | undefined;
 	let releaseGate: (() => void) | undefined;
 	let gateEntered = false;
 	let existsCallCount = 0;
+	const readSizes: Array<number> = [];
 	let beforeWatchHook: ((target: string) => void) | undefined;
+	let afterWriteStatHook: (() => void) | undefined;
 	/** The read gate: set by {@link MemFs.gateNextRead}, consumed by one `readAlloc`. */
 	let readGate:
 		| { readonly promise: Promise<void>; readonly enter: () => void; readonly sampleFirst: boolean }
@@ -177,88 +213,111 @@ export const makeMemFs = (): MemFs => {
 	 * instance with prototype members, so every member is forwarded explicitly —
 	 * a spread would drop them.
 	 */
-	const gated = (file: FileSystem.File): FileSystem.File => ({
-		[FileSystem.FileTypeId]: FileSystem.FileTypeId,
-		get stat() {
-			return file.stat;
-		},
-		get sync() {
-			return file.sync;
-		},
-		seek: (offset, from) => file.seek(offset, from),
-		read: (buffer) => file.read(buffer),
-		truncate: (length) => file.truncate(length),
-		write: (buffer) => file.write(buffer),
-		readAlloc: (size): Effect.Effect<Option.Option<Uint8Array>, PlatformError.PlatformError> =>
-			Effect.suspend(() => {
-				const held = readGate;
-				if (held === undefined) return file.readAlloc(size);
-				readGate = undefined;
-				const suspend = Effect.promise(() => {
-					held.enter();
-					return held.promise;
+	const gated = (file: FileSystem.File): FileSystem.File => {
+		/** Whether this handle has completed a `writeAll` — what arms {@link MemFs.afterNextWriteStat}. */
+		let wrote = false;
+		return {
+			[FileSystem.FileTypeId]: FileSystem.FileTypeId,
+			get stat() {
+				return Effect.suspend(() => {
+					const hook = afterWriteStatHook;
+					if (wrote && hook !== undefined) {
+						afterWriteStatHook = undefined;
+						hook();
+					}
+					return file.stat;
 				});
-				// `sampleFirst` suspends AFTER the real read; otherwise the read is
-				// taken after the suspension and sees whatever landed inside it, up to
-				// the size requested.
-				return held.sampleFirst
-					? Effect.tap(file.readAlloc(size), () => suspend)
-					: Effect.andThen(suspend, file.readAlloc(size));
-			}),
-		// memfs's own `writeAll` on a `{ flag: "a" }` handle appends at the end
-		// regardless of position — real O_APPEND. The gate only delays it.
-		writeAll: (buffer) =>
-			Effect.suspend(() => {
-				const held = gate;
-				if (held === undefined) return file.writeAll(buffer);
-				gateEntered = true;
-				return Effect.andThen(
-					Effect.promise(() => held),
-					file.writeAll(buffer),
-				);
-			}),
-	});
+			},
+			get sync() {
+				return file.sync;
+			},
+			seek: (offset, from) => file.seek(offset, from),
+			read: (buffer) => file.read(buffer),
+			truncate: (length) => file.truncate(length),
+			write: (buffer) => file.write(buffer),
+			readAlloc: (size): Effect.Effect<Option.Option<Uint8Array>, PlatformError.PlatformError> =>
+				Effect.suspend(() => {
+					readSizes.push(size);
+					const held = readGate;
+					if (held === undefined) return file.readAlloc(size);
+					readGate = undefined;
+					const suspend = Effect.promise(() => {
+						held.enter();
+						return held.promise;
+					});
+					// `sampleFirst` suspends AFTER the real read; otherwise the read is
+					// taken after the suspension and sees whatever landed inside it, up to
+					// the size requested.
+					return held.sampleFirst
+						? Effect.tap(file.readAlloc(size), () => suspend)
+						: Effect.andThen(suspend, file.readAlloc(size));
+				}),
+			// memfs's own `writeAll` on a `{ flag: "a" }` handle appends at the end
+			// regardless of position — real O_APPEND. The gate only delays it.
+			writeAll: (buffer) =>
+				Effect.suspend(() => {
+					const written = Effect.tap(file.writeAll(buffer), () =>
+						Effect.sync(() => {
+							wrote = true;
+						}),
+					);
+					const held = gate;
+					if (held === undefined) return written;
+					gateEntered = true;
+					return Effect.andThen(
+						Effect.promise(() => held),
+						written,
+					);
+				}),
+		};
+	};
 
 	const handle = MemoryFileSystem.makeSync(
 		{},
 		{
-			faults: (base) => ({
-				open: (path, options) => Effect.map(base.open(path, options), gated),
-				exists: () => {
-					existsCallCount += 1;
-					return undefined;
-				},
-				// Stat through the REAL volume OUTSIDE the callback, as the node
-				// backend does: a missing path fails the STREAM typed. Failing inside
-				// `Stream.callback` would not do — that effect is forked, so its
-				// failure never reaches the stream and the watch would hang instead of
-				// ending.
-				watch: (target) =>
-					Stream.unwrap(
-						Effect.gen(function* () {
-							beforeWatchHook?.(target);
-							yield* base.stat(target);
-							return Stream.callback<FileSystem.WatchEvent, PlatformError.PlatformError>((queue) =>
-								Effect.acquireRelease(
-									Effect.sync(() => {
-										const listener = (event: FileSystem.WatchEvent): void => {
-											Queue.offerUnsafe(queue, event);
-										};
-										const set = watchers.get(target) ?? new Set();
-										set.add(listener);
-										watchers.set(target, set);
-										return listener;
-									}),
-									(listener) => Effect.sync(() => watchers.get(target)?.delete(listener)),
-								).pipe(
-									// The callback effect COMPLETING ends the stream, so it must stay
-									// alive for as long as the watch should.
-									Effect.andThen(Effect.never),
-								),
-							);
-						}),
-					),
-			}),
+			faults: (base) => {
+				const extra = options?.faults?.(base) ?? {};
+				const extraExists = extra.exists;
+				return {
+					...extra,
+					open: (path, openOptions) =>
+						extra.open?.(path, openOptions) ?? Effect.map(base.open(path, openOptions), gated),
+					exists: (path) => {
+						existsCallCount += 1;
+						return typeof extraExists === "function" ? extraExists(path) : undefined;
+					},
+					// Stat through the REAL volume OUTSIDE the callback, as the node
+					// backend does: a missing path fails the STREAM typed. Failing inside
+					// `Stream.callback` would not do — that effect is forked, so its
+					// failure never reaches the stream and the watch would hang instead of
+					// ending.
+					watch: (target) =>
+						Stream.unwrap(
+							Effect.gen(function* () {
+								beforeWatchHook?.(target);
+								yield* base.stat(target);
+								return Stream.callback<FileSystem.WatchEvent, PlatformError.PlatformError>((queue) =>
+									Effect.acquireRelease(
+										Effect.sync(() => {
+											const listener = (event: FileSystem.WatchEvent): void => {
+												Queue.offerUnsafe(queue, event);
+											};
+											const set = watchers.get(target) ?? new Set();
+											set.add(listener);
+											watchers.set(target, set);
+											return listener;
+										}),
+										(listener) => Effect.sync(() => watchers.get(target)?.delete(listener)),
+									).pipe(
+										// The callback effect COMPLETING ends the stream, so it must stay
+										// alive for as long as the watch should.
+										Effect.andThen(Effect.never),
+									),
+								);
+							}),
+						),
+				};
+			},
 		},
 	);
 
@@ -303,10 +362,14 @@ export const makeMemFs = (): MemFs => {
 			return { entered, release };
 		},
 		watcherCount: (target) => watchers.get(target)?.size ?? 0,
+		readRequests: () => [...readSizes],
 		existsCalls: () => existsCallCount,
 		mkdir: (path) => handle.mkdir(path),
 		beforeWatch: (hook) => {
 			beforeWatchHook = hook;
+		},
+		afterNextWriteStat: (hook) => {
+			afterWriteStatHook = hook;
 		},
 		replace: (path, bytes) => {
 			if (isFile(path)) handle.remove(path);

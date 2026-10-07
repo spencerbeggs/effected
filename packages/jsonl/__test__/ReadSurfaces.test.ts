@@ -1,7 +1,30 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Context, DateTime, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Stream } from "effect";
-import { Journal, JsonlEvent } from "../src/index.js";
-import type { MemFs } from "./helpers/memfs.js";
+import {
+	Cause,
+	Context,
+	DateTime,
+	Duration,
+	Effect,
+	Exit,
+	Fiber,
+	Layer,
+	Option,
+	PlatformError,
+	Queue,
+	Schema,
+	Scope,
+	Stream,
+} from "effect";
+import {
+	InvalidData,
+	Journal,
+	JournalNotFound,
+	JournalResync,
+	JsonlEvent,
+	MalformedLine,
+	UnknownEvent,
+} from "../src/index.js";
+import type { MemFs, MemFsOptions } from "./helpers/memfs.js";
 import { makeMemFs, textOf } from "./helpers/memfs.js";
 
 const PATH = "/journal/read.jsonl";
@@ -23,9 +46,10 @@ const LoudNeighbour = Schema.declare((_u: unknown): _u is unknown => {
 const Mine = JsonlEvent.make("mine", { data: Schema.Struct({ round: Schema.Number }) });
 const Neighbour = JsonlEvent.make("neighbour", { data: LoudNeighbour });
 const Ended = JsonlEvent.make("ended", { data: Schema.Void, terminal: true });
-const events = [Mine, Neighbour, Ended] as const;
+const Other = JsonlEvent.make("other", { data: Schema.Struct({ n: Schema.Number }) });
+const events = [Mine, Neighbour, Ended, Other] as const;
 
-class ReadJournal extends Journal.Service<ReadJournal>()("test/ReadJournal", { events }) {}
+class ReadJournal extends Journal.Service<ReadJournal>()("test/ReadJournal", { events, config: { path: PATH } }) {}
 
 const iso = (millis: number) => DateTime.formatIso(DateTime.makeUnsafe(millis));
 
@@ -37,10 +61,10 @@ const line = (event: string, data: unknown, options?: { scope?: string; at?: num
 		data,
 	})}\n`;
 
-const harness = (seed: string) => {
-	const memfs = makeMemFs();
+const harness = (seed: string, options?: MemFsOptions) => {
+	const memfs = makeMemFs(options);
 	memfs.write(PATH, seed);
-	return { memfs, layer: ReadJournal.layer({ path: PATH }).pipe(Layer.provide(memfs.layer)) };
+	return { memfs, layer: ReadJournal.layer.pipe(Layer.provide(memfs.layer)) };
 };
 
 /** Append behind the journal's back — a cooperating foreign writer. */
@@ -59,9 +83,9 @@ const externalAppend = (memfs: MemFs, text: string): void => {
  * The join tests need the memfs itself — to gate a read and to poke the
  * watcher — which the `Effect.provide` form deliberately hides.
  */
-const openJournal = (seed: string) =>
+const openJournal = (seed: string, options?: MemFsOptions) =>
 	Effect.gen(function* () {
-		const { memfs, layer } = harness(seed);
+		const { memfs, layer } = harness(seed, options);
 		const scope = yield* Scope.make();
 		const context = yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
 		for (let attempt = 0; attempt < 50 && memfs.watcherCount(PATH) === 0; attempt++) {
@@ -99,9 +123,9 @@ describe("query", () => {
 		withJournal(seed, (journal) =>
 			Effect.gen(function* () {
 				const all = yield* Stream.runCollect(journal.query());
-				assert.strictEqual(all[0]?.line.offset, 0);
+				assert.strictEqual(all[0]?.position.offset, 0);
 				for (let index = 0; index < all.length - 1; index++) {
-					assert.strictEqual(all[index]?.line.end, all[index + 1]?.line.offset, "no gap, no overlap");
+					assert.strictEqual(all[index]?.position.end, all[index + 1]?.position.offset, "no gap, no overlap");
 				}
 			}),
 		),
@@ -111,7 +135,7 @@ describe("query", () => {
 		withJournal(seed, (journal) =>
 			Effect.gen(function* () {
 				const all = yield* Stream.runCollect(journal.query());
-				const cursor = all[0]?.line.end ?? 0;
+				const cursor = all[0]?.position.end ?? 0;
 				const rest = yield* Stream.runCollect(journal.query({ cursor }));
 				assert.deepStrictEqual(
 					rest.map((envelope) => envelope.data),
@@ -127,7 +151,7 @@ describe("query", () => {
 			Effect.gen(function* () {
 				const all = yield* Stream.runCollect(journal.query());
 				// Point INTO the second line rather than at its start.
-				const midLine = (all[1]?.line.offset ?? 0) + 4;
+				const midLine = (all[1]?.position.offset ?? 0) + 4;
 				const rest = yield* Stream.runCollect(journal.query({ cursor: midLine }));
 				assert.deepStrictEqual(
 					rest.map((envelope) => envelope.data),
@@ -136,6 +160,38 @@ describe("query", () => {
 				);
 			}),
 		),
+	);
+
+	it.effect("pages a journal larger than a page instead of allocating it", () =>
+		Effect.gen(function* () {
+			// ~400 KiB: several pages. The old read requested the whole region in
+			// one `readAlloc`; an output assertion cannot see that, the request
+			// sizes can.
+			const rounds = Array.from({ length: 4000 }, (_, round) => line("mine", { round, pad: "p".repeat(64) }));
+			const { memfs, scope, journal } = yield* openJournal(rounds.join(""));
+			const before = memfs.readRequests().length;
+			const all = yield* Stream.runCollect(journal.query({ events: ["mine"] }));
+			assert.strictEqual(all.length, 4000, "every envelope arrives");
+			assert.deepStrictEqual(
+				all.map((envelope) => envelope.data.round),
+				Array.from({ length: 4000 }, (_, round) => round),
+				"in file order, nothing dropped or repeated at a page seam",
+			);
+			const sizes = memfs.readRequests().slice(before);
+			assert.isAbove(sizes.length, 4, "the region was read in pages");
+			assert.isAtMost(Math.max(...sizes), 64 * 1024, "no read is bigger than a page");
+
+			// Stopping early stops the reading.
+			const mark = memfs.readRequests().length;
+			const first = yield* Stream.runCollect(journal.query({ events: ["mine"] }).pipe(Stream.take(1)));
+			assert.strictEqual(first[0]?.data.round, 0);
+			const requested = memfs
+				.readRequests()
+				.slice(mark)
+				.reduce((sum, bytes) => sum + bytes, 0);
+			assert.isAtMost(requested, 2 * 64 * 1024, "take(1) read at most a page or two, not the journal");
+			yield* Scope.close(scope, Exit.void);
+		}),
 	);
 
 	it.effect("an empty events array matches nothing", () =>
@@ -545,5 +601,248 @@ describe("outer-scope subscription", () => {
 				"every completed append arrived before the stream ended",
 			);
 		}).pipe(Effect.timeout(Duration.seconds(10))),
+	);
+});
+
+/** Run a stream to its end, keeping what it delivered AND how it ended. */
+const drain = <A, E>(stream: Stream.Stream<A, E>) =>
+	Effect.gen(function* () {
+		const got: Array<A> = [];
+		const exit = yield* Effect.exit(
+			Stream.runForEach(stream, (element) =>
+				Effect.sync(() => {
+					got.push(element);
+				}),
+			),
+		);
+		return { got, exit };
+	});
+
+/** The typed failure an exit ended with, if any. */
+const errorOf = <A, E>(exit: Exit.Exit<A, E>): E | undefined =>
+	Exit.isFailure(exit) ? Option.getOrUndefined(Cause.findErrorOption(exit.cause)) : undefined;
+
+const roundsOf = (envelopes: ReadonlyArray<{ readonly event: string; readonly data: unknown }>) =>
+	envelopes.map((envelope) => (envelope.data as { readonly round: number }).round);
+
+/** Spin the scheduler until `done` holds, without a clock. */
+const settle = (done: () => boolean) =>
+	Effect.gen(function* () {
+		for (let turn = 0; turn < 100 && !done(); turn++) {
+			yield* Effect.yieldNow;
+		}
+	});
+
+// Every shape of undecodable line, each a distinct DecodeError.
+const alien = line("alien", { from: "a newer writer" }); // UnknownEvent
+const malformed = "{not json\n"; // MalformedLine — no frame at all
+const mineBad = line("mine", { round: "one" }); // InvalidData, frame "mine"
+const otherBad = line("other", { n: "one" }); // InvalidData, frame "other"
+
+describe("onInvalid — query", () => {
+	const mixed = line("mine", { round: 1 }) + alien + malformed + mineBad + otherBad + line("mine", { round: 2 });
+
+	it.effect("SKIPS every undecodable line by default, and reads on past them", () =>
+		withJournal(mixed, (journal) =>
+			Effect.gen(function* () {
+				const { got, exit } = yield* drain(journal.query());
+				assert.isTrue(Exit.isSuccess(exit), "the read completes");
+				assert.deepStrictEqual(roundsOf(got), [1, 2], "only the decodable envelopes, in order");
+				const explicit = yield* drain(journal.query({ onInvalid: "skip" }));
+				assert.deepStrictEqual(roundsOf(explicit.got), [1, 2], "`skip` is what the default means");
+			}),
+		),
+	);
+
+	const failCases = [
+		{ name: "a foreign UNKNOWN tag", bad: alien, tag: UnknownEvent },
+		{ name: "a MALFORMED line", bad: malformed, tag: MalformedLine },
+		{ name: "a payload its schema REJECTS", bad: mineBad, tag: InvalidData },
+	] as const;
+
+	for (const failCase of failCases) {
+		it.effect(`\`fail\` ends the stream at ${failCase.name}, after delivering what preceded it`, () =>
+			withJournal(line("mine", { round: 1 }) + failCase.bad + line("mine", { round: 2 }), (journal) =>
+				Effect.gen(function* () {
+					const { got, exit } = yield* drain(journal.query({ onInvalid: "fail" }));
+					assert.deepStrictEqual(roundsOf(got), [1], "the line before the bad one, and nothing after");
+					assert.isTrue(errorOf(exit) instanceof failCase.tag, `a ${failCase.tag.name}: ${String(errorOf(exit))}`);
+				}),
+			),
+		);
+	}
+
+	it.effect("`fail` is not tripped by a bad line whose FRAME the slice excludes", () =>
+		withJournal(line("mine", { round: 1 }) + alien + otherBad + line("mine", { round: 2 }), (journal) =>
+			Effect.gen(function* () {
+				// An unknown tag and another event's bad payload both have frames the
+				// slice rejects: lines it would never deliver cannot fail it.
+				const { got, exit } = yield* drain(journal.query({ events: ["mine"], onInvalid: "fail" }));
+				assert.isTrue(Exit.isSuccess(exit), `not failed: ${String(exit)}`);
+				assert.deepStrictEqual(roundsOf(got), [1, 2]);
+			}),
+		),
+	);
+
+	it.effect("`fail` IS tripped by a frameless line whatever the slice — it could have been anything", () =>
+		withJournal(line("mine", { round: 1 }) + malformed + line("mine", { round: 2 }), (journal) =>
+			Effect.gen(function* () {
+				const { got, exit } = yield* drain(journal.query({ events: ["mine"], onInvalid: "fail" }));
+				assert.deepStrictEqual(roundsOf(got), [1]);
+				assert.instanceOf(errorOf(exit), MalformedLine);
+			}),
+		),
+	);
+
+	it.effect("`fail` IS tripped by a bad payload on an event the slice selects", () =>
+		withJournal(line("mine", { round: 1 }) + mineBad, (journal) =>
+			Effect.gen(function* () {
+				const { exit } = yield* drain(journal.query({ events: ["mine"], onInvalid: "fail" }));
+				assert.instanceOf(errorOf(exit), InvalidData);
+			}),
+		),
+	);
+});
+
+describe("onInvalid — live changes", () => {
+	it.effect("by default a live subscriber skips undecodable foreign lines and keeps running", () =>
+		Effect.gen(function* () {
+			const { memfs, scope, journal } = yield* openJournal("");
+			const delivered: Array<number> = [];
+			const running = yield* Effect.forkChild(
+				Stream.runForEach(journal.changes(), (envelope) =>
+					Effect.sync(() => {
+						delivered.push((envelope.data as { readonly round: number }).round);
+					}),
+				),
+			);
+			yield* Effect.yieldNow;
+			externalAppend(memfs, alien + malformed + mineBad);
+			memfs.poke(PATH);
+			yield* Effect.yieldNow;
+			yield* journal.append("mine", { round: 1 });
+			yield* settle(() => delivered.length > 0);
+			assert.deepStrictEqual(delivered, [1]);
+			assert.isUndefined(running.pollUnsafe(), "still subscribed: nothing failed it");
+			yield* Fiber.interrupt(running);
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
+	for (const failCase of [
+		{ name: "an UNKNOWN tag", bad: alien, tag: UnknownEvent },
+		{ name: "a MALFORMED line", bad: malformed, tag: MalformedLine },
+	] as const) {
+		it.effect(`\`fail\` ends a LIVE subscriber at ${failCase.name} another writer appended`, () =>
+			Effect.gen(function* () {
+				// Rejections travel through the hub, so a live subscriber can apply
+				// the same policy a query does.
+				const { memfs, scope, journal } = yield* openJournal("");
+				const running = yield* Effect.forkChild(drain(journal.changes({ onInvalid: "fail" })));
+				yield* Effect.yieldNow;
+				yield* journal.append("mine", { round: 1 });
+				externalAppend(memfs, failCase.bad);
+				memfs.poke(PATH);
+				yield* settle(() => running.pollUnsafe() !== undefined);
+				assert.isDefined(running.pollUnsafe(), "the subscriber ended rather than skipping");
+				const { got, exit } = yield* Fiber.join(running);
+				assert.deepStrictEqual(roundsOf(got), [1], "what preceded the bad line was delivered");
+				assert.isTrue(errorOf(exit) instanceof failCase.tag, `a ${failCase.tag.name}: ${String(errorOf(exit))}`);
+				yield* Scope.close(scope, Exit.void);
+			}),
+		);
+	}
+
+	it.effect("a live rejection counts against a slice only when its frame MATCHES it", () =>
+		Effect.gen(function* () {
+			// Live lines are decoded once for every subscriber, so the slice cannot
+			// filter them before the decode the way a query does; the rejection
+			// keeps its frame so the slice can still disown it.
+			const { memfs, scope, journal } = yield* openJournal("");
+			const delivered: Array<number> = [];
+			const running = yield* Effect.forkChild(
+				Effect.exit(
+					Stream.runForEach(journal.changes({ events: ["mine"], onInvalid: "fail" }), (envelope) =>
+						Effect.sync(() => {
+							delivered.push(envelope.data.round);
+						}),
+					),
+				),
+			);
+			yield* Effect.yieldNow;
+			externalAppend(memfs, alien + otherBad);
+			memfs.poke(PATH);
+			yield* Effect.yieldNow;
+			yield* journal.append("mine", { round: 1 });
+			yield* settle(() => delivered.length > 0);
+			assert.deepStrictEqual(delivered, [1], "lines the slice excludes did not fail it");
+			assert.isUndefined(running.pollUnsafe(), "and it is still running");
+
+			externalAppend(memfs, mineBad);
+			memfs.poke(PATH);
+			yield* settle(() => running.pollUnsafe() !== undefined);
+			const exit = yield* Fiber.join(running);
+			assert.instanceOf(errorOf(exit), InvalidData, "a bad line the slice selects does fail it");
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+});
+
+describe("query — a missing or unreadable journal", () => {
+	const statFault = (armed: () => boolean, tag: "NotFound" | "PermissionDenied"): MemFsOptions => ({
+		faults: () => ({
+			stat: (path) =>
+				armed() && path === PATH
+					? Effect.fail(
+							PlatformError.systemError({ _tag: tag, module: "FileSystem", method: "stat", pathOrDescriptor: PATH }),
+						)
+					: undefined,
+		}),
+	});
+
+	it.effect("a journal removed after construction fails the query with JournalNotFound", () =>
+		Effect.gen(function* () {
+			const { memfs, scope, journal } = yield* openJournal(line("mine", { round: 1 }));
+			memfs.unlink(PATH);
+			const { exit } = yield* drain(journal.query());
+			const failed = errorOf(exit);
+			assert.instanceOf(failed, JournalNotFound);
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
+	it.effect("a PermissionDenied `stat` is NOT mistaken for absence — it passes through untranslated", () =>
+		Effect.gen(function* () {
+			let armed = false;
+			const { scope, journal } = yield* openJournal(
+				line("mine", { round: 1 }),
+				statFault(() => armed, "PermissionDenied"),
+			);
+			armed = true;
+			const { exit } = yield* drain(journal.query());
+			const failed = errorOf(exit);
+			assert.isFalse(failed instanceof JournalNotFound, "an unreadable journal is not a missing one");
+			assert.isTrue(PlatformError.isPlatformError(failed), `a PlatformError: ${String(failed)}`);
+			assert.strictEqual((failed as PlatformError.PlatformError).reason._tag, "PermissionDenied");
+			armed = false;
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
+	it.effect("the same holds for the replay half of changes", () =>
+		Effect.gen(function* () {
+			let armed = false;
+			const { scope, journal } = yield* openJournal(
+				line("mine", { round: 1 }),
+				statFault(() => armed, "PermissionDenied"),
+			);
+			armed = true;
+			const { exit } = yield* drain(journal.changes({ cursor: 0 }));
+			const failed = errorOf(exit);
+			assert.isTrue(PlatformError.isPlatformError(failed));
+			assert.isFalse(failed instanceof JournalResync);
+			armed = false;
+			yield* Scope.close(scope, Exit.void);
+		}),
 	);
 });

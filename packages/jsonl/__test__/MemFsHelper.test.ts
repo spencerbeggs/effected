@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Duration, Effect, Fiber, FileSystem, Option } from "effect";
+import { Duration, Effect, Fiber, FileSystem, Option, PlatformError } from "effect";
 import { makeMemFs } from "./helpers/memfs.js";
 
 const PATH = "/gate/file.txt";
@@ -42,6 +42,60 @@ describe("gateNextRead", () => {
 	it.effect("sampleFirst: false samples after the suspension, so the read observes the write", () =>
 		Effect.gen(function* () {
 			assert.strictEqual(yield* gatedRead(false), "abcdef", "the write inside the gate is observed");
+		}),
+	);
+});
+
+describe("makeMemFs faults", () => {
+	const denied = PlatformError.systemError({
+		_tag: "PermissionDenied",
+		module: "FileSystem",
+		method: "open",
+		pathOrDescriptor: PATH,
+	});
+
+	it.effect("an extra fault runs AHEAD of the helper's decorations", () =>
+		Effect.gen(function* () {
+			let calls = 0;
+			const memfs = makeMemFs({
+				faults: () => ({
+					open: () => {
+						calls += 1;
+						return Effect.fail(denied);
+					},
+				}),
+			});
+			memfs.write(PATH, "abc");
+			const failed = yield* Effect.flip(
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					return yield* fs.open(PATH, { flag: "r" });
+				}).pipe(Effect.scoped, Effect.provide(memfs.layer)),
+			);
+			assert.strictEqual(calls, 1);
+			assert.strictEqual(failed.reason._tag, "PermissionDenied");
+		}),
+	);
+
+	it.effect("a DECLINING extra fault still gets the helper's gated handle", () =>
+		Effect.gen(function* () {
+			let calls = 0;
+			const memfs = makeMemFs({
+				faults: () => ({
+					open: () => {
+						calls += 1;
+						return undefined;
+					},
+				}),
+			});
+			memfs.write(PATH, "abc");
+			yield* Effect.gen(function* () {
+				const fs = yield* FileSystem.FileSystem;
+				const file = yield* fs.open(PATH, { flag: "r" });
+				yield* file.readAlloc(3);
+			}).pipe(Effect.scoped, Effect.provide(memfs.layer));
+			assert.strictEqual(calls, 1, "the extra handler was consulted");
+			assert.deepStrictEqual(memfs.readRequests(), [3], "and the read went through the instrumented handle");
 		}),
 	);
 });

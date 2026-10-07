@@ -26,72 +26,63 @@ read path **untranslated** rather than being wrapped.
 
 ## Module map (one concept per module)
 
-- **`Line`** — the pure, synchronous line layer: `split` (byte-exact offsets,
-  CRLF-aware, no phantom trailing empty line), `parseResult` (one line's JSON,
-  never throws), `parseAll`, `consumedOffset` and `lastValid` (walk back to the
-  last line that parses as JSON). Knows JSON, not envelopes — a malformed
-  *envelope* and a malformed *line* stay distinguishable failures one layer up.
-- **`LineSlice`** — one candidate line's text plus its **UTF-8 byte** offsets
-  (`offset`, `end`, `length`, `terminated`). Every cursor this package hands
-  out is in this unit, never `String.length`, because these values persist
-  across process restarts as `FileSystem.stream`'s `offset` option.
-- **`internal/utf8.ts`** — the UTF-8 byte-length primitive `LineSlice`/`Line`
-  build on; not exported.
-- **`Envelope`** / **`EnvelopeFrame`** — the envelope layer, in two decode
-  stages: `EnvelopeFrame` (a `Schema.Struct`, `data` left as `Schema.Unknown`)
-  is stage one and is what every filter reads; stage two
-  (`completeResult`, internal) runs the registry's payload schema only for
-  frames a `Slice` has already selected. `Envelope.decodeResult` /
-  `encodeResult` / `lastValidResult` are the sync primitives; `Envelope.decode`
-  / `encode` are one-line `Effect.fromResult` lifts of the same code, so the
-  two forms cannot drift. **`Envelope.lastValidResult` — not `Line.lastValid`
-  — is the binding definition of "the journal's current state"**: a torn
-  *scalar* tail (`42` cut mid-write leaves `4`) parses as valid, different
-  JSON, and only the envelope contract (every envelope is an object) catches
-  it.
-- **`JsonlEvent`** — `JsonlEvent.make(tag, { data, terminal?, reopen? })` and
-  the `JsonlEvent.Registry`/`Tag`/`Data`/`TerminalTags`/`ReopenTags` type-level
-  helpers a registry's array literal carries. `DataSchema` bounds a payload to
-  `Schema.Codec<unknown, unknown, never, never>` — no services in either
-  direction — so a schema needing a service fails at **registration**, not at
-  some later call site, and the pure core's synchronous codecs stay possible.
-- **`Slice`** / `CursoredSlice` — the one filter shape every read surface
-  takes: `events?`, `scopes?`, `from?` (inclusive), `to?` (exclusive, so
-  adjacent windows tile without double-delivery), plus `cursor?` for resuming.
-  `matchesFrame` (`@internal`) takes the **frame**, never a decoded envelope —
-  that is the type-level enforcement of filter-before-decode.
-- **`JsonlError`** — the eight-tag error taxonomy (below).
-- **`Journal`** — the one service, generic over a registry:
-  `Journal.Service<Self>()(id, { events })` produces a per-registry class whose
-  `.layer(config)` builds a scoped
-  `Layer<Self, PlatformError, FileSystem.FileSystem>` — a **missing** journal
-  constructs cleanly (decision 10), an **unreadable** one fails typed.
-  Exposes `append`, `appendPatch`, `latest` (`SubscriptionRef` of
-  `Option<Envelope>`), `quiescent`, `query`, `changes`, `projection`, `create`,
-  `remove`. **Bind `.layer(...)`'s result to a const and provide that const** —
-  calling it twice mints two independent journals (two semaphores, two hubs,
-  two `latest` refs) over the same file, unserialized against each other.
-  `JournalShape.hub` is **published but unsupported**: an `@internal` tag is
-  decorative on an interface member (API Extractor honours release tags on
-  top-level declarations only), so it ships in the `.d.ts` deliberately as the
-  seam the read surfaces are built on — not as consumer API.
+- **`Line`** — the pure, synchronous line layer: `byteLength`, `split(text,
+  base = 0)` (byte-exact offsets shifted by `base`, CRLF-aware, no phantom
+  trailing empty line), `parseResult` (one line's JSON, never throws). Knows
+  JSON, not envelopes. `isBlank` is an internal export.
+- **`LineSlice`** — a `Schema.Struct` of one candidate line's text plus its
+  **UTF-8 byte** offsets (`offset`, `end`, `length`, `terminated`). Plain
+  records, not class instances: `split` makes one per line of every read, and a
+  `Schema.Class` instance costs ~40x a plain object. `LinePosition` (`offset`,
+  `end`) is all an **envelope** keeps of its line; errors keep the full slice
+  because there the text is the evidence.
+- **`internal/utf8.ts`** — the UTF-8 byte-length primitive; not exported.
+- **`Envelope`** — the envelope layer, in two decode stages: the frame
+  (`at`/`event`/`scope`, `data` left raw; internal `frameResult`) and the
+  registered payload schema (internal `completeResult`), which runs only for
+  frames a slice has selected. Public: `decodeResult`, `decodeAllResult(events,
+  text, base)`, `lastValid(events, text, base)`, `encodeResult` — all
+  synchronous, `Result`/`Option`-based; lift with `Effect.fromResult`.
+  **`Envelope.lastValid` is the binding definition of "the journal's current
+  state"**: a torn *scalar* tail (`42` cut mid-write leaves `4`) parses as
+  valid, different JSON, and only the envelope contract catches it.
+- **`JsonlEvent`** — `JsonlEvent.make(tag, { data, terminal?, reopen? })` plus
+  the `Registry`/`Tag`/`Data` type helpers. `DataSchema` bounds a payload to
+  `Schema.Codec<unknown, unknown, never, never>`, so a schema needing a service
+  fails at **registration**.
+- **`Slice`** — the one filter shape every read takes: `events?`, `scopes?`,
+  `from?` (inclusive), `to?` (exclusive), `cursor?`, and `onInvalid?: "skip" |
+  "fail"` (default skip) for undecodable lines, honoured by `query` and
+  `changes` alike. `matchesFrame` (internal) takes the structural frame fields,
+  so an envelope or a raw frame both match without being rebuilt.
+- **`JsonlError`** — the eight-tag error taxonomy (below) plus `DecodeError`.
+- **`Journal`** — a static class: `Journal.Service<Self>()(id, { events,
+  config })`, where `config` is a `JournalConfig` or an `Effect` producing one.
+  The class carries a static **`layer` value** (one journal however often it is
+  provided) and `make(config)` for runtime-only paths. Per-operation error types
+  `AppendError` / `QueryError` / `ChangesError` live in `internal/engine.ts` and
+  are re-exported. `latest` is a read-only `Effect`; `latestChanges` streams it.
+- **`internal/engine.ts`** — the registry-erased engine (`makeEngine(id,
+  events, config)` → `{ journal, hub }`): write path, publish baton, hub,
+  watcher, shutdown. Typed once at the service boundary with one cast. The hub
+  is exposed to tests only. Decoded lines travel as `Item = Result<Envelope,
+  Rejected>`, so a live subscriber with `onInvalid: "fail"` sees bad lines too.
+  Resync **re-seeds** (BOM, identity, `latest` from the new tail, resume at the
+  current end) — the same `seed` construction uses.
 - **`internal/merge.ts`** — `appendPatch`'s **shallow** merge, ported from
-  `@effected/config-file`'s `internal/deepMerge.ts` recipe minus the
-  recursion. Same prototype-pollution discipline: `Object.defineProperty`
-  only, never assignment or `Object.assign`, `__proto__`/`constructor`/
-  `prototype` filtered from both sides. `canMerge` is **asymmetric** (unlike
-  config-file's symmetric version): the patch is a caller-supplied partial
-  literal even when the base is a decoded `Schema.Class` instance, so a
-  same-prototype requirement would reject the case that matters most.
-- **`internal/tail.ts`** — bounded-window file reads (`readTail`,
-  `readTailUntil`, `readRangeText`, `probeBomBytes`): the mechanism that keeps
-  **`latest` and the `lastValid`-backed reads** costing the size of the answer,
-  not the age of the journal. Never exported. **`query` and the replay half of
-  `changes` are NOT window-bounded as built** — `Journal`'s `readFrom` reads its
-  whole requested region (`cursor` to end of file) in one allocation and buffers
-  the matches, so an unsliced `query()` over a large journal does hold it in
-  memory. That is stated in the TSDoc rather than implied away; paging it is
-  spencerbeggs/effected#233, not a claim the package currently makes.
+  `@effected/config-file`'s recipe minus the recursion. Same prototype-pollution
+  discipline: `Object.defineProperty` only, `__proto__`/`constructor`/
+  `prototype` filtered from both sides. `canMerge` is **asymmetric**: the patch
+  is a partial literal even when the base is a decoded `Schema.Class` instance.
+- **`internal/tail.ts`** — the bounded reads. Backward: `readTailUntil` steps
+  from the end one window at a time (each window covers only bytes no earlier
+  one did), so `latest` costs the size of the answer. Forward: `readLinePages`
+  reads a region in 64 KiB pages, emitting each page's complete lines and
+  carrying the unterminated fragment — `query`, the replay half of `changes`,
+  and the watcher's gap read all go through it, so **no read allocates a
+  region**. Every tail window is clamped to `MAX_WINDOW` (1 MiB) in the one
+  private `readWindow` primitive; only a single line longer than a bound may
+  exceed it.
 
 ## The envelope contract
 
@@ -115,20 +106,20 @@ underneath a reader is **not** repaired — it fails typed as `JournalResync`
 (`reason: "truncated" | "replaced"`), because silently resyncing from zero
 would paper over a real operational fault. **"Last valid line" always means
 the last valid *envelope*, never merely the last valid JSON** — see
-`Envelope.lastValidResult` above.
+`Envelope.lastValid` above.
 
 ## The error taxonomy (eight tags)
 
 `MalformedLine`, `UnknownEvent`, `InvalidData`, `UnserializableData`,
 `TerminalViolation`, `JournalClosed`, `JournalNotFound`, `JournalResync`. Every
-tag names a distinct recovery; causes (a `SchemaError`, a `JSON.stringify`
-throw) are carried **structurally**, never stringified — `error.issue` and
-`error.cause` keep their shape. `PlatformError` is deliberately **not** a
-member: IO failures pass through untranslated. `JournalClosed` (scope closing,
-a lifecycle fact) and `TerminalViolation` (a terminal tag reached, a
-reversible state) are separate tags because their recoveries share nothing.
-`JournalResync` is one tag with a `reason` field, not two tags, because
-truncation and replacement share the same recovery.
+tag names a distinct recovery; causes are carried **structurally** —
+`error.issue` keeps its shape, `UnserializableData.cause` is `Schema.Defect()`.
+`InvalidData`/`UnknownEvent` carry `line` only when there is one (absent on the
+encode path). `PlatformError` is deliberately **not** a member: IO failures pass
+through untranslated, and a missing file is recognised by `stat` failing with
+reason `NotFound` (`Effect.catchReason`), never by a racy `exists` first.
+Operations expose only the tags they can raise (`AppendError`, `QueryError`,
+`ChangesError`); an unregistered tag passed to `append` is a defect.
 
 ## Testing
 
@@ -151,17 +142,16 @@ the next session does not rediscover them:
   vitest-agent MCP `run_tests` tool.** From inside the package vitest does not
   load the root config: `--project` fails with `No projects matched the
   filter` and a positional filter finds no test files.
-- **Exit codes lie; only the `Tests:` summary line (or the MCP's structured
-  `run_tests` result) is evidence.** A subset run skips the suite's global
-  coverage thresholds (the plugin prints `Coverage thresholds skipped:
-  partial run`); a test
-  that hangs past its timeout can crash the reporter process itself rather
-  than reporting a clean failure — and never a grep for `✗`/`FAIL` in console
-  output: the format varies by reporter, so a killed mutant reads as a
-  survivor.
+- **Prefer the MCP's structured `run_tests` result; from a shell, no single
+  signal is evidence.** The exit code can be lost (piped through `tail`, or a
+  hang past its timeout crashing the reporter) and the `Tests:` line can read
+  `0/0 passed` for a filter that matched nothing — require a non-zero count AND
+  a clean exit. A subset run skips the suite's coverage thresholds (`Coverage
+  thresholds skipped: partial run`). Never grep for `✗`/`FAIL`: the format
+  varies by reporter, so a killed mutant reads as a survivor.
 - **A stale `issues.json` looks identical to a fresh one on `warnings`/
   `errors`.** The tell is the `suppressed` count: this package's prod build
-  suppresses exactly 10 `ae-forgotten-export` entries (one `_base` symbol per
+  suppresses exactly 8 `ae-forgotten-export` entries (one `_base` symbol per
   `Schema.Class`/`Schema.TaggedError` factory). A lower count on a build
   you did not just run cold is a stale artifact, not a clean one — force a
   rebuild (`rm -rf dist .turbo && pnpm build --filter @effected/jsonl --force`)

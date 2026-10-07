@@ -25,12 +25,12 @@ Here is a concrete goal. A build tool runs tasks, and you want a file that recor
 
 A journal's schema is its **registry**: a list of [`JsonlEvent`](/jsonl/api/namespace/jsonlevent) definitions, each a tag plus the schema its `data` must satisfy. `data` is required rather than defaulted — a payload-less event says so explicitly with `Schema.Void` — because a silent default would make a typo in the options object look like a deliberate void payload. An event marked `terminal` declares that the journal is over once it reaches the tail.
 
-[`Journal.Service<Self>()(id, { events })`](/jsonl/api/variable/journal) mints a service class for that registry, and its `.layer({ path })` is a scoped layer over `FileSystem`. Bind that layer to a `const`: layers memoize by reference, so calling `.layer(...)` twice mints two independent journals over one file whose appends are not serialized against each other.
+[`Journal.Service<Self>()(id, { events, config })`](/jsonl/api/class/journal) defines a service class for that registry, with the journal's [`JournalConfig`](/jsonl/api/interface/journalconfig) beside it. The class carries a static `layer` — a scoped layer over `FileSystem` — and because it is one value, providing it in several places provides one journal, never two unsynchronized journals over the same file.
 
 ```ts with-api
 import { Journal, JsonlEvent } from "@effected/jsonl";
 import { NodeFileSystem } from "@effect/platform-node";
-import { Effect, Option, Schema, SubscriptionRef } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 // 1. Declare the events this journal may carry.
 const TaskStarted = JsonlEvent.make("task-started", {
@@ -43,11 +43,11 @@ const RunClosed = JsonlEvent.make("run-closed", { data: Schema.Void, terminal: t
 
 const events = [TaskStarted, TaskFinished, RunClosed] as const;
 
-// 2. Mint a service class for that registry.
-class RunJournal extends Journal.Service<RunJournal>()("docs/RunJournal", { events }) {}
-
-// Bind the layer ONCE, at module scope, and provide this const everywhere.
-const RunJournalLive = RunJournal.layer({ path: ".cache/run.jsonl" });
+// 2. Define a service class for that registry, with its config.
+class RunJournal extends Journal.Service<RunJournal>()("docs/RunJournal", {
+  events,
+  config: { path: ".cache/run.jsonl" },
+}) {}
 
 // 3. Write and read.
 const program = Effect.gen(function* () {
@@ -59,20 +59,37 @@ const program = Effect.gen(function* () {
   yield* journal.append("task-started", { task: "build" }, { scope: "build" });
   yield* journal.append("task-finished", { task: "build", ok: true }, { scope: "build" });
 
-  // The current state is the last valid envelope, as an observable Option.
-  const latest = yield* SubscriptionRef.get(journal.latest);
+  // The current state is the last valid envelope, as an Option.
+  const latest = yield* journal.latest;
   return Option.map(latest, (envelope) => envelope.event);
 });
 
-Effect.runPromise(program.pipe(Effect.provide(RunJournalLive), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(program.pipe(Effect.provide(RunJournal.layer), Effect.provide(NodeFileSystem.layer)));
 // Option.some("task-finished")
+```
+
+`config` can also be an `Effect` that produces the record — read the path from `Config`, or from another service, and it resolves when the layer builds; the service's requirements then show up in `RunJournal.layer`'s type. When the path is known only at run time, build a layer from it with `RunJournal.make`:
+
+```ts with-api
+import { Journal, JsonlEvent } from "@effected/jsonl";
+import { Layer, Schema } from "effect";
+
+const events = [JsonlEvent.make("task-started", { data: Schema.Struct({ task: Schema.String }) })] as const;
+
+class RunJournal extends Journal.Service<RunJournal>()("docs/RunJournal", {
+  events,
+  config: { path: ".cache/run.jsonl" },
+}) {}
+
+// Every build of a `make` layer is an independent journal: bind it once per path.
+const forRun = (runId: string) => Layer.effect(RunJournal, RunJournal.make({ path: `.cache/runs/${runId}.jsonl` }));
 ```
 
 Three details in that program are the package's opinions rather than incidental style. The envelope's `at` is stamped by the service from the Effect `Clock`, never by the caller, so two writers cannot disagree about ordering and `TestClock` controls it exactly in a test. The `scope` is a partition key with no further semantics — it exists so several concerns can share one file and each read only its own lines. And `create` is explicit because a missing journal is a legal state: a typo in a path fails typed with [`JournalNotFound`](/jsonl/api/class/journalnotfound) rather than quietly materializing a second, empty journal that looks like a working system with no history.
 
 ## Reading a journal
 
-Three read surfaces, one filter vocabulary. A [`Slice`](/jsonl/api/interface/slice) restricts by `events`, `scopes`, and a `from`/`to` window over `at` — inclusive lower bound, exclusive upper, so adjacent windows tile without double-delivering an envelope on the seam. A [`CursoredSlice`](/jsonl/api/interface/cursoredslice) adds `cursor`, a logical byte offset to resume from.
+Three read surfaces, one filter vocabulary. A [`Slice`](/jsonl/api/interface/slice) restricts by `events`, `scopes`, and a `from`/`to` window over `at` — inclusive lower bound, exclusive upper, so adjacent windows tile without double-delivering an envelope on the seam. Its `cursor` is a byte offset to resume from, and `onInvalid` decides what happens to a line that cannot be decoded: `"skip"` (the default) leaves it out and keeps reading, `"fail"` ends the stream with the typed error.
 
 ### Query the history
 
@@ -88,8 +105,10 @@ const TaskFinished = JsonlEvent.make("task-finished", {
 });
 const events = [TaskFinished] as const;
 
-class RunJournal extends Journal.Service<RunJournal>()("docs/RunJournal", { events }) {}
-const RunJournalLive = RunJournal.layer({ path: ".cache/run.jsonl" });
+class RunJournal extends Journal.Service<RunJournal>()("docs/RunJournal", {
+  events,
+  config: { path: ".cache/run.jsonl" },
+}) {}
 
 const failures = Effect.gen(function* () {
   const journal = yield* RunJournal;
@@ -100,10 +119,10 @@ const failures = Effect.gen(function* () {
   return finished.filter((envelope) => !envelope.data.ok).map((envelope) => envelope.data.task);
 });
 
-Effect.runPromise(failures.pipe(Effect.provide(RunJournalLive), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(failures.pipe(Effect.provide(RunJournal.layer), Effect.provide(NodeFileSystem.layer)));
 ```
 
-Because `events: ["task-finished"]` is a literal array, the stream's element type narrows to that one variant — which is why `envelope.data.ok` typechecks without a cast. One cost to know before you lean on it: `query()` with no `cursor` reads from the start of the file in one allocation, so an unsliced query over a large journal does hold that journal in memory. Passing a cursor is what bounds the read.
+Because `events: ["task-finished"]` is a literal array, the stream's element type narrows to that one variant — which is why `envelope.data.ok` typechecks without a cast. The read is **paged**: the file is read a bounded page at a time and each page's matches are emitted before the next page is read, so memory is a page plus the longest line however large the journal grows, and a consumer that stops early — `Stream.take`, `Stream.runHead` — stops the reading too. `Stream.runCollect` above does gather every match; stream them instead when the result set is large.
 
 ### Subscribe to the live tail
 
@@ -119,8 +138,10 @@ const MailReceived = JsonlEvent.make("mail-received", {
 });
 const events = [MailReceived] as const;
 
-class MailJournal extends Journal.Service<MailJournal>()("docs/MailJournal", { events }) {}
-const MailJournalLive = MailJournal.layer({ path: ".claude/mailbox.jsonl" });
+class MailJournal extends Journal.Service<MailJournal>()("docs/MailJournal", {
+  events,
+  config: { path: ".claude/mailbox.jsonl" },
+}) {}
 
 const watch = Effect.gen(function* () {
   const journal = yield* MailJournal;
@@ -135,7 +156,7 @@ const watch = Effect.gen(function* () {
     );
 });
 
-Effect.runPromise(watch.pipe(Effect.provide(MailJournalLive), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(watch.pipe(Effect.provide(MailJournal.layer), Effect.provide(NodeFileSystem.layer)));
 ```
 
 The stream **ends** rather than hanging when the journal becomes quiescent — a `terminal` event reaches the tail — or when its scope closes. That holds even for a slice that excludes the terminal event, and for a subscriber that attached after the fact.
@@ -154,8 +175,10 @@ const TaskFinished = JsonlEvent.make("task-finished", {
 });
 const events = [TaskFinished] as const;
 
-class RunJournal extends Journal.Service<RunJournal>()("docs/RunJournal", { events }) {}
-const RunJournalLive = RunJournal.layer({ path: ".cache/run.jsonl" });
+class RunJournal extends Journal.Service<RunJournal>()("docs/RunJournal", {
+  events,
+  config: { path: ".cache/run.jsonl" },
+}) {}
 
 const tally = Effect.gen(function* () {
   const journal = yield* RunJournal;
@@ -170,12 +193,12 @@ const tally = Effect.gen(function* () {
   return yield* Stream.runLast(counts);
 });
 
-Effect.runPromise(tally.pipe(Effect.provide(RunJournalLive), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(tally.pipe(Effect.provide(RunJournal.layer), Effect.provide(NodeFileSystem.layer)));
 ```
 
 ## Reading with no runtime at all
 
-A hook script wants one answer — what is the current state — and should not build an Effect runtime to get it. [`Line`](/jsonl/api/class/line) and [`Envelope`](/jsonl/api/variable/envelope) are synchronous and `Result`-returning, so the whole read is a string in and an `Option` out. Feed them a bounded window read from the end of the file rather than the whole file, and the read costs the size of the answer:
+A hook script wants one answer — what is the current state — and should not build an Effect runtime to get it. [`Line`](/jsonl/api/class/line) and [`Envelope`](/jsonl/api/variable/envelope) are synchronous and `Result`-returning, so the whole read is a string in and an `Option` out. Feed them a bounded window read from the end of the file rather than the whole file, and the read costs the size of the answer — pass the byte offset the window starts at as the third argument, and every `position` it reports is an offset into the file rather than into the window:
 
 ```ts with-api
 import { Envelope, JsonlEvent } from "@effected/jsonl";
@@ -193,17 +216,17 @@ const tail = [
   '{"at":"2026-01-01T00:00:02.000Z","event":"pro',
 ].join("\n");
 
-const current = Envelope.lastValidResult(events, tail);
+const current = Envelope.lastValid(events, tail);
 
 console.log(Option.isSome(current) ? current.value.data.done : "no valid envelope");
 // 2
 ```
 
-"Last valid" always means the last valid **envelope**, never merely the last valid JSON — and that is what makes the torn tail above detectable. Every strict prefix of an object's text is invalid JSON, but a torn *scalar* (`42` cut mid-write leaves `4`) parses cleanly as a different value, which only the envelope contract catches. An `Option.none()` means no valid envelope was found *in the text you supplied*: widen the window and read again before concluding the journal is empty.
+"Last valid" always means the last valid **envelope**, never merely the last valid JSON — and that is what makes the torn tail above detectable. Every strict prefix of an object's text is invalid JSON, but a torn *scalar* (`42` cut mid-write leaves `4`) parses cleanly as a different value, which only the envelope contract catches. An `Option.none()` means no valid envelope was found *in the text you supplied*: widen the window and read again before concluding the journal is empty. For a whole-text decode that reports every hole rather than skipping it, `Envelope.decodeAllResult` returns one `Result` per non-blank line.
 
 ## Handling errors
 
-Every failure arrives on the typed `E` channel as one of eight tagged errors, each naming a distinct recovery. Route them with `Effect.catchTag`:
+Every failure arrives on the typed `E` channel as a tagged error naming a distinct recovery, and each operation's channel lists only the tags it can raise: [`AppendError`](/jsonl/api/type/appenderror) for `append` and `appendPatch`, [`QueryError`](/jsonl/api/type/queryerror) for `query`, [`ChangesError`](/jsonl/api/type/changeserror) for `changes` and `projection`. Route them with `Effect.catchTag`:
 
 ```ts with-api
 import { Journal, JsonlEvent } from "@effected/jsonl";
@@ -214,8 +237,10 @@ const Started = JsonlEvent.make("started", { data: Schema.Void });
 const Closed = JsonlEvent.make("closed", { data: Schema.Void, terminal: true });
 const events = [Started, Closed] as const;
 
-class RunJournal extends Journal.Service<RunJournal>()("docs/RunJournal", { events }) {}
-const RunJournalLive = RunJournal.layer({ path: ".cache/run.jsonl" });
+class RunJournal extends Journal.Service<RunJournal>()("docs/RunJournal", {
+  events,
+  config: { path: ".cache/run.jsonl" },
+}) {}
 
 const program = Effect.gen(function* () {
   const journal = yield* RunJournal;
@@ -229,14 +254,14 @@ const program = Effect.gen(function* () {
   Effect.catchTag("TerminalViolation", () => Effect.log("run already closed")),
 );
 
-Effect.runPromise(program.pipe(Effect.provide(RunJournalLive), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(program.pipe(Effect.provide(RunJournal.layer), Effect.provide(NodeFileSystem.layer)));
 ```
 
-The tags divide by recovery, not by layer. [`MalformedLine`](/jsonl/api/class/malformedline) means a line is not parseable JSON — most often a tail caught mid-write, so read the last valid envelope instead. [`UnknownEvent`](/jsonl/api/class/unknownevent) means the line's tag is not in this registry, which is what an older version of your own application's journal looks like. [`InvalidData`](/jsonl/api/class/invaliddata) carries the structured schema issue. [`UnserializableData`](/jsonl/api/class/unserializabledata) means `JSON.stringify` threw on a payload that satisfied its schema, and nothing was written. [`JournalClosed`](/jsonl/api/class/journalclosed) is a lifecycle fact — the layer's scope began closing — rather than a data one. [`JournalResync`](/jsonl/api/class/journalresync) means the file was truncated or replaced under a live reader: discard every cursor-derived state and surface the breach, because something violated the append-only contract.
+The tags divide by recovery, not by layer. The three line-level ones — together the [`DecodeError`](/jsonl/api/type/decodeerror) union — reach a read only when its slice sets `onInvalid: "fail"`; by default a read skips the line. [`MalformedLine`](/jsonl/api/class/malformedline) means a line is not parseable JSON — most often a tail caught mid-write, so read the last valid envelope instead. [`UnknownEvent`](/jsonl/api/class/unknownevent) means the line's tag is not in this registry, which is what an older version of your own application's journal looks like. [`InvalidData`](/jsonl/api/class/invaliddata) carries the structured schema issue. [`UnserializableData`](/jsonl/api/class/unserializabledata) means `JSON.stringify` threw on a payload that satisfied its schema, and nothing was written. [`JournalClosed`](/jsonl/api/class/journalclosed) is a lifecycle fact — the layer's scope began closing — rather than a data one. [`JournalResync`](/jsonl/api/class/journalresync) ends a live `changes` stream when the file was truncated or replaced beneath it: the journal re-adopts the file as it now is, and the subscriber discards every cursor-derived state, re-reads, and surfaces the breach, because something violated the append-only contract.
 
 Core's `PlatformError` rides through untranslated rather than being wrapped, so an `EACCES` stays exactly the error the platform reported. One rider is worth internalizing: **any `PlatformError` out of an append must be treated as a possibly-torn tail**, because `writeAll` reports no byte count and a failure therefore cannot be read as "nothing was written".
 
 ## Next steps
 
 - Ready for snapshot journals with `appendPatch`, resumable cursors, quiescence and the cooperative-writer process model? See the [advanced guide](/jsonl/advanced).
-- Every export, with full signatures, lives in the [API reference](/jsonl/api) — start with [`Journal`](/jsonl/api/variable/journal), its [`JournalShape`](/jsonl/api/interface/journalshape) and [`JournalConfig`](/jsonl/api/interface/journalconfig).
+- Every export, with full signatures, lives in the [API reference](/jsonl/api) — start with [`Journal`](/jsonl/api/class/journal), its [`JournalShape`](/jsonl/api/interface/journalshape) and [`JournalConfig`](/jsonl/api/interface/journalconfig).

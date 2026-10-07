@@ -5,106 +5,112 @@ Append-only, schema-validated JSONL journals as a definable Effect service: an e
 ## Import
 
 ```ts
-import { Journal, JsonlEvent, Line, Envelope } from "@effected/jsonl";
+import { Envelope, Journal, JsonlEvent, Line } from "@effected/jsonl";
 ```
 
-**Platform**: `Journal.layer` does real IO — provide `FileSystem` once at the edge (`NodeFileSystem.layer` or the Bun equivalent). `Line` and `Envelope` are the pure core: synchronous, `Result`-based, no service to provide, usable from a hook script with no Effect runtime at all.
+**Platform**: a journal layer does real IO — provide `FileSystem` once at the edge (`NodeFileSystem.layer` or the Bun equivalent). `Line` and `Envelope` are the pure core: synchronous, `Result`-based, no service to provide, usable from a hook script with no Effect runtime at all.
 
 ## Core API
 
-- **`JsonlEvent.make(tag, { data, terminal?, reopen? })`** — defines one event: a string tag, the payload schema (`data` bounded to `Schema.Codec<unknown, unknown, never, never>` — no services in either direction, so a schema needing one fails at registration), and two lifecycle flags. `terminal: true` marks the event quiescent — once it is the tail, further appends fail `TerminalViolation` unless the appending event is `reopen: true`. A `const` array of definitions is the registry (`JsonlEvent.Registry`); the derived envelope union comes from it, never a hand-written `Schema.Union`.
-- **`Journal.Service<Self>()(id, { events })`** — a per-registry `Context.Service` class factory (mirrors `ConfigFile.Service<Self, A>()(id)`). Extend it for identity: `class MailJournal extends Journal.Service<MailJournal>()("app/MailJournal", { events }) {}`. Its static `.layer(config: { path, directory?, capacity?, shutdownPublishTimeout? })` builds a scoped `Layer<Self, PlatformError, FileSystem.FileSystem>` — a *missing* journal constructs cleanly, but one that exists and cannot be read fails typed rather than as an uncatchable defect. **Bind the layer to a `const` and provide that const** — calling `.layer(...)` twice mints two independent journals (two semaphores, two hubs, two `latest` refs) over the same file, unserialized against each other; layers memoize by reference, not by config equality.
-- **`JournalShape`** (the service surface) — `append(event, data, { scope? })` (validates, encodes, one atomic `writeAll` of the complete line, serialized by a one-permit semaphore; `at` is stamped from the Effect `Clock`, never caller-supplied); `appendPatch(event, patch, { scope? })` (read the last valid envelope, **shallow**-merge `patch` over its `data` under the same write lock, validate, append — the `journal-append.sh` inherit-and-patch idiom as a typed API); `latest: SubscriptionRef<Option<Envelope>>` (the current last valid envelope); `quiescent: Effect<boolean>` (derived from `latest`, never tracked separately); `query(slice?)` (historical, finite `Stream`); `changes(slice?)` (live `Stream`, replay-from-`cursor` plus tail as one seam, ends on a terminal event or scope close); `projection(initial, fold, slice?)` (a running fold, scoped to its own slice); `create` / `remove` (explicit file lifecycle — a missing journal is legal; nothing materializes it implicitly).
-- **`Slice<R, T>` / `CursoredSlice<R, T>`** — the one filter shape every read surface takes: `events?` (narrows the stream's element type to those tag variants), `scopes?`, `from?` (**inclusive**), `to?` (**exclusive** — half-open, so adjacent time windows tile without double-delivering an envelope on the seam), plus `cursor?` (a `CursoredSlice`) to resume from a logical byte offset. All fields combine with AND; an omitted field does not filter, an empty `events: []` or `scopes: []` matches nothing.
-- **The eight-tag error taxonomy** (`JsonlError`) — every tag names a distinct recovery, causes carried structurally (never stringified), `PlatformError` passes through untranslated rather than joining the union.
+- **`JsonlEvent.make(tag, { data, terminal?, reopen? })`** — defines one event: a string tag, the payload schema (`data` bounded to `Schema.Codec<unknown, unknown, never, never>` — no services in either direction, so a schema needing one fails at registration), and two lifecycle flags. `terminal: true` marks the event quiescent — once it is the tail, further appends fail `TerminalViolation` unless the appending event is `reopen: true`. A `const` array of definitions is the registry; the envelope union is derived from it.
+- **`Journal.Service<Self>()(id, { events, config })`** — a per-registry service class. `config` is `{ path, directory?, capacity?, shutdownPublishTimeout? }`, or an `Effect` producing one (resolve a path from `Config` or another service when the layer builds). The class carries a static **`layer` value** — provide it as often as you like, it is one journal — and **`make(config)`** for a path known only at run time: `Layer.effect(Class, Class.make(config))`, bound once, since every build is an independent journal. A *missing* journal constructs cleanly; one that exists and cannot be read fails with `PlatformError`.
+- **`JournalShape`** (the service surface):
+  - `append(event, data, { scope? })` — validates, encodes, one `writeAll` of the complete line to an `O_APPEND` handle; `at` is stamped from the Effect `Clock`, never caller-supplied.
+  - `appendPatch(event, patch, { scope? })` — **shallow**-merge `patch` over the current state's `data`, validate, append; read and write under one lock.
+  - `latest: Effect<Option<Envelope>>` — the last valid envelope; `latestChanges: Stream<Option<Envelope>>` — the current value, then every change.
+  - `quiescent: Effect<boolean>` — the tail is a terminal event.
+  - `query(slice?)` — historical, finite, **paged** `Stream`: memory is a page plus the longest line, and stopping early stops the reading.
+  - `changes(slice?)` — live `Stream`; with a `cursor`, replay and tail are one seam (no gap, no duplicate). Ends on a terminal event or scope close; fails `JournalResync` if the file is truncated or replaced.
+  - `projection(initial, fold, slice?)` — `changes` folded with `Stream.scan`.
+  - `create` / `remove` — explicit file lifecycle; nothing materializes the file implicitly.
+- **Envelopes** carry `at`, `event`, `scope?`, `data` and **`position: { offset, end }`** — UTF-8 byte offsets. `position.end` is the resume cursor. The raw line text is not kept on an envelope; errors carry the full `LineSlice`.
+- **`Slice<R, T>`** — the one filter shape every read surface takes: `events?` (narrows the stream's element type to those variants), `scopes?`, `from?` (**inclusive**), `to?` (**exclusive**, so adjacent windows tile), `cursor?` (resume from a byte offset; a cursor inside a line skips that line), and **`onInvalid?: "skip" | "fail"`** (default `"skip"`) for lines that cannot be decoded. A line whose frame does not match the slice is never decoded further and cannot fail it; one that cannot be framed counts against every slice.
+- **Error types per operation** — `AppendError`, `QueryError`, `ChangesError`, so an exhaustive `catchTags` never handles an impossible tag. `DecodeError` (`MalformedLine | InvalidData | UnknownEvent`) reaches a read only with `onInvalid: "fail"`. An unregistered tag passed to `append` is a defect, not an error — the typed surface rules it out.
 
 | Tag | Recovery |
 | --- | --- |
-| `MalformedLine` | Not valid JSON. Check `line.terminated`: `false` means an unterminated fragment — only completion of the same interrupted write can make it valid, not a later append (which starts after the partial bytes); if the writer never returns, it is a permanent malformed tail. `true` means a permanent hole. |
-| `UnknownEvent` | A tag this registry doesn't define — treat as hostile/foreign-writer input, skip forward, do not crash the reader. |
-| `InvalidData` | JSON but not an envelope, or an envelope whose `data` failed its registered schema. `error` carries the full `SchemaError` issue tree. |
-| `UnserializableData` | Payload validated but `JSON.stringify` threw (a `bigint` or reference cycle) — the caller must change the payload *shape*, not the value. |
-| `TerminalViolation` | Append attempted after a terminal tag, by an event not marked `reopen`. |
-| `JournalClosed` | Append refused because the layer's scope is closing/closed — a lifecycle fact, not a recoverable state. |
-| `JournalNotFound` | Operation against a journal that doesn't exist yet — call `create` first. |
-| `JournalResync` | The file was truncated or replaced beneath a reader (`reason` distinguishes them; recovery is the same either way) — discard cursor-derived state and re-read. |
+| `MalformedLine` | Not valid JSON. `line.terminated === false` is a torn tail a writer may still complete; `true` is a permanent hole. |
+| `UnknownEvent` | A tag this registry doesn't define — foreign or other-version input; skip forward. |
+| `InvalidData` | JSON but not an envelope, or a payload its schema rejects. `error` carries the full `SchemaError`; `line` is absent when the failure came from encoding an append. |
+| `UnserializableData` | Payload validated but `JSON.stringify` threw (a `bigint` or a cycle) — change the payload's *shape*. |
+| `TerminalViolation` | Append after a terminal tag by an event not marked `reopen`. |
+| `JournalClosed` | Append refused because the layer's scope is closing. |
+| `JournalNotFound` | The journal file does not exist — call `create` first. |
+| `JournalResync` | The file was truncated or replaced beneath a reader. Discard cursor-derived state and re-read; the journal itself re-adopts the file as it now is. |
 
-- **The pure core** (`Line`, `LineSlice`, `Envelope`, `EnvelopeFrame`) — no `FileSystem`, no `Effect` in the primitive signatures. `Line.split`/`parseResult`/`parseAll`/`lastValid` know JSON, not envelopes. `Envelope.lastValidResult(events, text)` — not `Line.lastValid` — is the binding definition of "the journal's current state": a torn *scalar* tail (`42` cut mid-write leaves `4`) parses as valid, different JSON, and only the envelope contract (every envelope is an object) catches it. `Envelope.decodeResult`/`encodeResult` are the sync primitives; `Envelope.decode`/`encode` are one-line `Effect.fromResult` lifts of the same code, so the two forms cannot drift.
+- **The pure core** — `Line.split(text, base?)` (byte-exact offsets, CRLF-aware, shifted by `base` when the text starts mid-file), `Line.parseResult`, `Line.byteLength`; `Envelope.decodeResult`, `decodeAllResult(events, text, base?)`, `lastValid(events, text, base?)`, `encodeResult`. **`Envelope.lastValid` is the definition of "the journal's current state"**: validity is judged at the envelope, so a torn *scalar* tail (`42` cut to `4`) — valid JSON, wrong value — is stepped over. Lift any of them with `Effect.fromResult` where a program wants an `Effect`.
 
 ## Usage
-
-Define a registry, build the journal layer once, append and read the current state:
 
 ```ts
 import { Journal, JsonlEvent } from "@effected/jsonl";
 import { NodeFileSystem } from "@effect/platform-node";
-import { Effect, Schema, SubscriptionRef } from "effect";
+import { Effect, Schema } from "effect";
 
 const MailReceived = JsonlEvent.make("mail-received", { data: Schema.Struct({ round: Schema.Number }) });
 const Unlinked = JsonlEvent.make("unlinked", { data: Schema.Void, terminal: true });
 const events = [MailReceived, Unlinked] as const;
 
-class MailJournal extends Journal.Service<MailJournal>()("dogfood/MailJournal", { events }) {}
-
-// Bind ONCE — a second call mints an unserialized second journal over the same file.
-const MailJournalLive = MailJournal.layer({ path: ".claude/dogfood/silk.jsonl" });
+class MailJournal extends Journal.Service<MailJournal>()("app/MailJournal", {
+  events,
+  config: { path: ".claude/dogfood/silk.jsonl" },
+}) {}
 
 const program = Effect.gen(function* () {
   const journal = yield* MailJournal;
   yield* journal.create;
   yield* journal.append("mail-received", { round: 7 }, { scope: "silk-runtime-action" });
-  // `latest` IS the ref, not an effect that yields one: read it with the
-  // standalone accessor.
-  return yield* SubscriptionRef.get(journal.latest); // Option<Envelope>
-
-}).pipe(Effect.scoped, Effect.provide(MailJournalLive), Effect.provide(NodeFileSystem.layer));
+  return yield* journal.latest; // Option<Envelope>
+}).pipe(Effect.provide(MailJournal.layer), Effect.provide(NodeFileSystem.layer));
 ```
 
-Slice-filtered subscription — a consumer sharing the file with a noisy neighbour pays nothing for the neighbour's payloads, because filtering runs on the envelope frame strictly before the registered payload schema decodes `data`:
+A slice-filtered subscription — a consumer sharing the file with a noisy neighbour pays nothing for the neighbour's payloads, because filtering runs on the envelope frame before the payload schema decodes `data`:
 
 ```ts
 import { Stream } from "effect";
 
 const changes = journal.changes({ events: ["mail-received"], scopes: ["mailbox-a"] });
 
-// Lossless — an auditor or projection where a missed envelope is a bug.
+// Lossless — a missed envelope is a bug.
 yield* Stream.runForEach(changes, (envelope) => Effect.log(envelope.data));
 
-// Latest-wins — a status display where only the current state matters.
+// Latest-wins — only the current state matters.
 const queue = yield* Stream.toQueue(changes, { capacity: 16, strategy: "sliding" });
-
-// Batch-draining — amortize work across a burst with a bounded queue plus takeAll.
-const batched = yield* Stream.toQueue(changes, { capacity: 64, strategy: "suspend" });
 ```
 
-The pure-core, runtime-free read path — the whole point of acceptance criterion 2: a `PreToolUse` hook script reads the current state with no Effect runtime, just a bounded tail read and `Envelope.lastValidResult`:
+Resuming across restarts — persist `position.end`, pass it back as `cursor`:
+
+```ts
+const rest = journal.query({ cursor: savedCursor, events: ["mail-received"] });
+```
+
+The runtime-free read path — a hook script reads the current state with no Effect runtime, from the whole file or a tail of it that starts at a line boundary:
 
 ```ts
 import { Envelope } from "@effected/jsonl";
 import { Option } from "effect";
 
-declare const tailText: string; // e.g. the last few KB of the file, read with node:fs
+declare const tailText: string; // e.g. the last few KB of the file, from its first full line
+declare const tailStart: number; // the byte offset tailText starts at
 
-const state = Envelope.lastValidResult(events, tailText);
+const state = Envelope.lastValid(events, tailText, tailStart);
 if (Option.isSome(state)) {
-  state.value.data;       // the decoded payload of the last valid envelope
-  state.value.line.end;   // its byte offset, for a resumable cursor
+  state.value.data;         // the decoded payload of the last valid envelope
+  state.value.position.end; // a resumable cursor
 }
 ```
 
 ## Testing machinery
 
-No exported test layer — `Journal.layer` requires a real `FileSystem.FileSystem`, so unit tests double it directly rather than through a package-provided fake. The package's own `__test__/helpers/memfs.ts` is the pattern to copy: an `@effected/memfs` handle (`MemoryFileSystem.makeSync`) whose storage, inodes and `O_APPEND` are memfs's own, with a faults factory over `open`/`exists`/`watch` that adds the test seams — the real `watch` is replaced by a manual registry, giving a deterministic `poke(path)` to drive watch events explicitly instead of racing a real filesystem, `closeGate`/`openGate`/`gateWasEntered` to assert write-ordering without wall-clock timing, and `replace`/`mkdir` to model inode-identity changes and pre-existing-directory activation. Real-filesystem behavior (`O_APPEND` atomicity under concurrency, actual `fs.watch`) is deliberately NOT simulated — that lives in `__test__/integration/` against real temp directories (`makeTempDirectoryScoped`) with `@effect/platform-node`, the only suite with a real platform layer. The flagship integration test is two `Journal` layers over one file cross-observing each other's appends through the watcher.
+No exported test layer — a journal requires a real `FileSystem`, so tests provide `@effected/memfs`. The package's own `__test__/helpers/memfs.ts` is the pattern to copy: an `@effected/memfs` handle whose storage, inodes and `O_APPEND` are memfs's own, with faults layered on for the seams a journal test needs — the real `watch` replaced by a manual registry (`poke(path)` drives watch events deterministically), write and read gates to assert ordering without wall-clock timing, `replace` to model a new inode, and `readRequests()` to assert read sizes. Fault handlers (`failTimes`, per-method interception) model `NotFound`, `PermissionDenied` and a file vanishing mid-operation. Real-filesystem behavior (`O_APPEND` under concurrency, an actual `fs.watch`) belongs in an integration suite against real temp directories.
 
-There is no `WatchBackend` service seam in `R` — the design considered one (a `FileSystem.WatchBackend`-style registration point pluggable per backend) but the shipped `Journal` engine calls `fs.watch` directly; that idea is flagged in `Journal.ts` as a future ruling, not something a consumer can substitute today.
-
-**A consumer testing under `TestClock` must advance the clock for graceful shutdown to complete.** Scope close bounds its wait on the outstanding publish chain with `Effect.timeout` (`shutdownPublishTimeout`, default five seconds); under a virtual clock that timeout never elapses on its own, so a test exercising shutdown must `TestClock.adjust` past the bound or the finalizer hangs for the real wall-clock duration.
+**Under `TestClock`, advance the clock for graceful shutdown to complete.** Scope close bounds its wait on outstanding publishes with `shutdownPublishTimeout` (default five seconds); a virtual clock never elapses it on its own.
 
 ## Gotchas
 
-- `Journal.Service<Self>()(id, { events }).layer(...)` returns the layer from a function call — bind it to a `const` before providing, exactly like `ConfigFile.layer`/`Store.layerSqlite`.
-- `appendPatch`'s merge is **shallow only** — a nested object in the patch replaces the one beneath it rather than merging into it. Deep merge is explicitly out of scope; it is a design amendment, not a local choice, if a real need appears.
-- `data` is required on the wire even for a payload-less event: `Schema.Void` still emits `"data":null` (`JSON.stringify` drops `undefined`-valued keys, and JSON has no `undefined` — `null` is its spelling of absence).
-- "Last valid line" always means the last valid **envelope**, never merely the last valid JSON — `Line.lastValid` stops at JSON validity, which a torn scalar tail can satisfy with corrupted data; use `Envelope.lastValidResult` (or `Journal`'s `latest`) for the real contract.
-- A missing journal file is a legal, quiet state: `Journal.layer` construction never fails on one, and the watcher activates once the file appears. `append`/`query`/`latest` fail typed `JournalNotFound` rather than materializing the file implicitly — call `create` first.
-- Truncation or replacement underneath a reader is surfaced as `JournalResync`, never silently repaired by re-reading from zero — that would paper over a real operational fault (a rotating log shipper, a `>` where `>>` was meant).
+- `appendPatch`'s merge is **shallow only** — a nested object in the patch replaces the one beneath it.
+- `data` is required on the wire even for a payload-less event: `Schema.Void` emits `"data":null`.
+- "Current state" means the last valid **envelope**, never merely the last valid JSON — use `Envelope.lastValid` or the journal's `latest`.
+- A missing journal file is a legal, quiet state: construction never fails on one, and the watcher activates once the file appears. `append` and `query` fail `JournalNotFound` rather than materializing it.
+- `query` **skips** undecodable lines by default. Pass `onInvalid: "fail"` when a hole in the history must stop the read.
+- Truncation or replacement underneath a reader is surfaced as `JournalResync`, never silently repaired.

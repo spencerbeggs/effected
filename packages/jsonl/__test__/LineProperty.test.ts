@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Arbitrary, Effect, Option, Result, Schema } from "effect";
-import { Line } from "../src/index.js";
+import { Envelope, JsonlEvent, Line } from "../src/index.js";
 
 // Array form ONLY: the named-record form of it.effect.prop silently discards
 // Schema conversion (see packages/glob/__test__/compliance.test.ts).
@@ -24,17 +24,6 @@ const payload = Schema.Literals([
 	"42",
 	'"a bare string"',
 	"[1,2,3]",
-	"{}",
-]);
-
-/**
- * Object payloads only. Every strict prefix of a JSON object text fails to
- * parse, which is what makes a mid-line truncation detectable at this layer.
- */
-const objectPayload = Schema.Literals([
-	'{"at":"2026-08-03T00:00:00Z","event":"mail-received","data":{}}',
-	'{"note":"line1\\nline2"}',
-	'{"emoji":"\u{1F600}","snow":"☃"}',
 	"{}",
 ]);
 
@@ -103,6 +92,31 @@ const anyText = oneOf<string>(
 /** Any non-negative 32-bit integer — the cut position, taken modulo the tail length. */
 const nat = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 0x7fffffff }));
 
+/**
+ * The registry the envelope-level properties decode against. `mail-received`
+ * admits the one envelope in `payload`; `round` carries a number so a torn
+ * tail can be told apart from the line before it.
+ */
+const registry = [
+	JsonlEvent.make("mail-received", { data: Schema.Struct({}) }),
+	JsonlEvent.make("round", { data: Schema.Struct({ round: Schema.Number }) }),
+] as const;
+
+/** A complete `round` envelope line, without its terminator. */
+const roundEnvelope = (round: number): string =>
+	JSON.stringify({ at: "2026-08-03T00:00:00.000Z", event: "round", data: { round } });
+
+/** Payloads that are valid JSON but not envelopes — scalars included, whose prefixes still parse. */
+const nonEnvelope = Schema.Literals([
+	'{"note":"line1\\nline2"}',
+	"null",
+	"42",
+	"12345",
+	'"a bare string"',
+	"[1,2,3]",
+	"{}",
+]);
+
 describe("Line properties", () => {
 	it.effect.prop("byteLength agrees with TextEncoder for any string", [codeUnitText], ([text]) =>
 		Effect.sync(() => {
@@ -138,92 +152,99 @@ describe("Line properties", () => {
 		}),
 	);
 
-	it.effect.prop("no non-blank line is ever silently dropped", [anyText], ([text]) =>
+	it.effect.prop("split with a base is split without one, shifted by the base", [anyText, nat], ([text, base]) =>
+		Effect.sync(() => {
+			const shifted = Line.split(text, base);
+			const unshifted = Line.split(text);
+			assert.strictEqual(shifted.length, unshifted.length);
+			unshifted.forEach((line, i) => {
+				const moved = shifted[i];
+				assert.strictEqual(moved?.offset, line.offset + base, "offset shifted");
+				assert.strictEqual(moved?.end, line.end + base, "end shifted");
+				assert.strictEqual(moved?.length, line.length, "length is not a position");
+				assert.strictEqual(moved?.text, line.text);
+				assert.strictEqual(moved?.terminated, line.terminated);
+			});
+		}),
+	);
+
+	it.effect.prop("no non-blank line is ever silently dropped by decodeAllResult", [anyText], ([text]) =>
 		Effect.sync(() => {
 			const nonBlank = Line.split(text).filter((line) => line.text.trim() !== "");
-			assert.strictEqual(Line.parseAll(text).length, nonBlank.length);
+			assert.strictEqual(Envelope.decodeAllResult(registry, text).length, nonBlank.length);
 		}),
 	);
 
-	it.effect.prop("consumedOffset never consumes an unterminated tail's bytes", [anyText], ([text]) =>
+	it.effect.prop("Envelope.lastValid is exactly the last success of decodeAllResult", [anyText, nat], ([text, base]) =>
 		Effect.sync(() => {
-			const lines = Line.split(text);
-			const consumed = Line.consumedOffset(text);
-			assert.isAtLeast(consumed, 0);
-			assert.isAtMost(consumed, byteLength(text));
-			const last = lines.at(-1);
-			if (last !== undefined && !last.terminated) {
-				assert.strictEqual(consumed, last.offset, "a torn tail is left for the next read");
-			} else {
-				assert.strictEqual(consumed, byteLength(text));
-			}
-		}),
-	);
-
-	it.effect.prop("lastValid is exactly the last success of parseAll", [anyText], ([text]) =>
-		Effect.sync(() => {
-			const successes = Line.parseAll(text).filter(Result.isSuccess);
-			const last = Line.lastValid(text);
-			if (successes.length === 0) {
+			const successes = Envelope.decodeAllResult(registry, text, base).filter(Result.isSuccess);
+			const last = Envelope.lastValid(registry, text, base);
+			const expected = successes.at(-1);
+			if (expected === undefined) {
 				assert.isTrue(Option.isNone(last));
 				return;
 			}
-			assert.isTrue(Option.isSome(last));
-			if (Option.isSome(last)) {
-				assert.strictEqual(last.value.line.offset, successes.at(-1)?.success.line.offset);
-			}
+			assert.deepStrictEqual(Option.getOrThrow(last).position, expected.success.position);
 		}),
 	);
 
 	it.effect.prop(
-		"appending a well-formed terminated line makes it the last valid line",
-		[anyText, payload],
-		([prefix, line]) =>
+		"appending a well-formed terminated envelope makes it the last valid one",
+		[anyText, nat],
+		([prefix, round]) =>
 			Effect.sync(() => {
 				// A torn prefix is superseded by the next complete append, exactly as
 				// the dogfood journal's correction-by-append rule requires.
-				const source = `${prefix}${prefix === "" || prefix.endsWith("\n") ? "" : "\n"}${line}\n`;
-				const last = Line.lastValid(source);
-				assert.isTrue(Option.isSome(last));
-				if (Option.isSome(last)) {
-					assert.deepStrictEqual(last.value.value, JSON.parse(line));
-				}
+				const head = `${prefix}${prefix === "" || prefix.endsWith("\n") ? "" : "\n"}`;
+				const source = `${head}${roundEnvelope(round)}\n`;
+				const last = Option.getOrThrow(Envelope.lastValid(registry, source));
+				assert.strictEqual(last.event, "round");
+				assert.deepStrictEqual(last.data, { round });
+				assert.deepStrictEqual(last.position, { offset: byteLength(head), end: byteLength(source) });
 			}),
 	);
 
 	it.effect.prop(
-		"truncating a journal mid-final-line walks back to the previous line",
-		[Schema.Array(objectPayload).check(Schema.isBetweenLength(2, 8)), nat],
-		([payloads, cut]) =>
+		"truncating a journal mid-final-envelope walks back to the previous envelope",
+		[Schema.Array(nat).check(Schema.isBetweenLength(2, 8)), nat],
+		([rounds, cut]) =>
 			Effect.sync(() => {
-				// OBJECT payloads only, and the reason is a real property of JSONL: every
-				// strict prefix of a JSON object text is unparseable, but a strict prefix
-				// of a SCALAR is not — truncating `42` yields `4`, which parses fine as a
-				// different value. See the "torn scalar" test in Line.test.ts; closing
-				// that hole is the envelope layer's job, not this one's.
-				const head = payloads
+				// Every strict prefix of an envelope is either unparseable or not an
+				// envelope, so the cut can fall anywhere in the final line.
+				const head = rounds
 					.slice(0, -1)
-					.map((p) => `${p}\n`)
+					.map((round) => `${roundEnvelope(round)}\n`)
 					.join("");
-				const tail = payloads.at(-1) ?? "{}";
+				const tail = roundEnvelope(rounds.at(-1) ?? 0);
 				const keep = 1 + (cut % (tail.length - 1));
-				const torn = `${head}${tail.slice(0, keep)}`;
-				const last = Line.lastValid(torn);
-				const expected = payloads.at(-2);
-				assert.isTrue(Option.isSome(last));
-				if (Option.isSome(last) && expected !== undefined) {
-					assert.deepStrictEqual(last.value.value, JSON.parse(expected));
-				}
+				const last = Option.getOrThrow(Envelope.lastValid(registry, `${head}${tail.slice(0, keep)}`));
+				assert.deepStrictEqual(last.data, { round: rounds.at(-2) });
+			}),
+	);
+
+	it.effect.prop(
+		"a torn tail of ANY JSON value — scalars included — never displaces the last envelope",
+		[Schema.Array(nat).check(Schema.isBetweenLength(1, 6)), nonEnvelope, nat],
+		([rounds, fragment, cut]) =>
+			Effect.sync(() => {
+				// The JSON layer cannot close this hole: truncating `42` leaves `4`,
+				// which parses as a different value. The envelope layer can, because a
+				// scalar — whole or torn — is never an envelope.
+				const head = rounds.map((round) => `${roundEnvelope(round)}\n`).join("");
+				const keep = 1 + (cut % fragment.length);
+				const last = Option.getOrThrow(Envelope.lastValid(registry, `${head}${fragment.slice(0, keep)}`));
+				assert.deepStrictEqual(last.data, { round: rounds.at(-1) });
 			}),
 	);
 
 	it.effect.prop("is total: no input throws", [anyText], ([text]) =>
 		Effect.sync(() => {
 			assert.doesNotThrow(() => {
-				Line.split(text);
-				Line.parseAll(text);
-				Line.lastValid(text);
-				Line.consumedOffset(text);
+				for (const line of Line.split(text, 3)) {
+					Line.parseResult(line);
+				}
+				Envelope.decodeAllResult(registry, text);
+				Envelope.lastValid(registry, text);
 				Line.byteLength(text);
 			});
 		}),
