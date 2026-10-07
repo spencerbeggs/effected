@@ -957,6 +957,65 @@ describe("review fixes — torn tails and the ingest stat race", () => {
 		}),
 	);
 
+	it.effect("a line another writer lands between the seed's two reads is still ingested", () =>
+		Effect.gen(function* () {
+			// Seeding opens the file for reading three times: the BOM probe, the
+			// resume-point walk, then the `latest` walk. Land a foreign line just
+			// before the third, so it falls between the two walks.
+			let readOpens = 0;
+			let volume: MemFs | undefined;
+			const memfs = makeMemFs({
+				faults: () => ({
+					open: (path, options) => {
+						if (path === PATH && options?.flag === "r" && ++readOpens === 3 && volume !== undefined) {
+							externalAppend(volume, line(2));
+						}
+						return undefined;
+					},
+				}),
+			});
+			volume = memfs;
+			const { scope, journal } = yield* openOver(memfs, line(1));
+			memfs.poke(PATH);
+			for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+
+			assert.isAtLeast(readOpens, 3, "the foreign line was injected during seeding");
+			assert.deepStrictEqual(
+				Option.getOrThrow(yield* journal.latest).data,
+				{ round: 2 },
+				"`latest` reflects the line — not stranded behind a resume point already past it",
+			);
+			const next = yield* journal.append("noted", { round: 3 });
+			assert.strictEqual(next.position.offset, new TextEncoder().encode(line(1) + line(2)).length);
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
+	it.effect("an in-place truncation just before a local append is still surfaced", () =>
+		Effect.gen(function* () {
+			// A long seed line, so the append that follows the truncation is
+			// shorter than what was consumed: the file ends up smaller than the
+			// consumed offset, which is the only way a same-inode truncation shows.
+			const { memfs, scope, journal } = yield* openJournal(line(123456789));
+			const running = yield* Effect.forkChild(Stream.runCollect(journal.changes()));
+			for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+
+			memfs.write(PATH, "");
+			yield* journal.append("noted", { round: 2 });
+			memfs.poke(PATH);
+			for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+
+			const exit = running.pollUnsafe();
+			assert.isDefined(exit, "the subscriber ended instead of waiting on a journal it no longer describes");
+			const failure = exit !== undefined && Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : Option.none();
+			assert.isTrue(
+				Option.isSome(failure) && failure.value instanceof JournalResync && failure.value.reason === "truncated",
+				`ended with a truncation resync: ${String(exit)}`,
+			);
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
 	it.effect("query leaves an unterminated tail out rather than rejecting it", () =>
 		Effect.gen(function* () {
 			const { scope, journal } = yield* openJournal(line(1) + torn);

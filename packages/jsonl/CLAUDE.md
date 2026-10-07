@@ -67,8 +67,10 @@ read path **untranslated** rather than being wrapped.
   watcher, shutdown. Typed once at the service boundary with one cast. The hub
   is exposed to tests only. Decoded lines travel as `Item = Result<Envelope,
   Rejected>`, so a live subscriber with `onInvalid: "fail"` sees bad lines too.
-  Resync **re-seeds** (BOM, identity, `latest` from the new tail, resume at the
-  current end) — the same `seed` construction uses.
+  Resync **re-seeds** (BOM, identity, resume at the end of the last complete
+  line, then `latest` from the new tail — in that order, so a line landing
+  between the two reads is still ingested) — the same `seed` construction
+  uses. Outside a resync `consumed` never decreases.
 - **`internal/merge.ts`** — `appendPatch`'s **shallow** merge, ported from
   `@effected/config-file`'s recipe minus the recursion. Same prototype-pollution
   discipline: `Object.defineProperty` only, `__proto__`/`constructor`/

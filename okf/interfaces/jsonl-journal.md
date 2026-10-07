@@ -9,8 +9,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-07T19:15:53Z
-  body_sha256: 70e186d65bd4a287da5dff0946cf33eb99176b3c95946991ab45fbc7dfe1fff7
+  at: 2026-10-07T19:56:54Z
+  body_sha256: 3391c5e52241b4bd19869d968d8df8e2579d79c1f1c856a16b7658d53c8aba94
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:37.064Z
@@ -238,8 +238,10 @@ replaced, every live subscriber's stream ends with a typed `JournalResync`
 rather than the service silently reconciling an inconsistency it cannot
 reason about on the subscriber's behalf. The journal itself re-seeds: it
 adopts the file as it now is — re-probing the BOM, recapturing the file's
-identity, re-reading `latest` from the new file's tail, and resuming
-ingest at the file's current end — through the same seeding step
+identity, resuming ingest at the end of its last complete line (never past
+a torn tail a writer may still finish), and then re-reading `latest` from
+its tail, in that order so a line landing between the two reads is still
+ingested — through the same seeding step
 construction uses, so there is one definition of "caught up". It does not
 reset `latest` to empty or re-ingest the new file from offset zero, so
 nothing already in the new file is republished to anyone. The recovery for

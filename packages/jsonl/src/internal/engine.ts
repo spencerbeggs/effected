@@ -396,20 +396,20 @@ export const makeEngine = (
 
 		/**
 		 * Adopt the file as it is now: its BOM, its identity, its current state,
-		 * and its end as the resume point. Construction and recovery from a
-		 * resync both start here, so there is one definition of "caught up".
+		 * and the end of its last complete line as the resume point. Construction
+		 * and recovery from a resync both start here, so there is one definition
+		 * of "caught up".
 		 */
 		const seed = (info: FileSystem.File.Info) =>
 			Effect.gen(function* () {
 				bomBytes = yield* probeBomBytes(fs, path);
 				identity = identityOf(info);
-				const found = yield* readTailUntil(fs, path, bomBytes, (window) =>
-					Envelope.lastValid(events, window.text, window.start),
-				);
-				yield* SubscriptionRef.set(latest, found);
 				// Resume where the last COMPLETE line ends, not at the file's size: a
 				// torn tail may be a writer mid-append, and resuming past it would read
-				// only the second half of that line once it completes.
+				// only the second half of that line once it completes. Read BEFORE
+				// `latest`: the two walks each sample the file, so a line another writer
+				// lands between them is then past `consumed` and the watcher publishes
+				// it — read after, it would be skipped for good and `latest` left stale.
 				const resume = yield* readTailUntil(fs, path, bomBytes, (window) => {
 					const lines = Line.split(window.text, window.start);
 					for (let index = lines.length - 1; index >= 0; index--) {
@@ -419,6 +419,10 @@ export const makeEngine = (
 					return Option.none();
 				});
 				consumed = Option.getOrElse(resume, () => 0);
+				const found = yield* readTailUntil(fs, path, bomBytes, (window) =>
+					Envelope.lastValid(events, window.text, window.start),
+				);
+				yield* SubscriptionRef.set(latest, found);
 			});
 
 		/**
@@ -496,7 +500,11 @@ export const makeEngine = (
 								before = toItems(scan.lines);
 							}
 						}
-						consumed = end;
+						// Never lowered here: only a resync moves `consumed` back. When our
+						// line was not found, the file shrank or was replaced beneath the
+						// write, and keeping the higher offset is what lets the next ingest
+						// see the size fall below it and surface the breach.
+						consumed = Math.max(consumed, end);
 
 						// Decode our own line back, so the envelope returned is exactly the
 						// one a reader of the file gets.
@@ -581,8 +589,9 @@ export const makeEngine = (
 				// permit, which this does not hold, so one can finish while the stat is
 				// in flight; comparing a size sampled before that append with the
 				// `consumed` after it would report a truncation that did not happen.
-				// Outside a resync `consumed` only grows, and only this ingest — under
-				// `ingestPermit` — resyncs, so a size below this floor is a real one.
+				// Outside a resync `consumed` never decreases (appends only raise it),
+				// and only this ingest — under `ingestPermit` — resyncs, so a size below
+				// this floor is a real one.
 				const floor = consumed;
 				const stat = yield* statOrMissing;
 				if (Option.isNone(stat)) {
