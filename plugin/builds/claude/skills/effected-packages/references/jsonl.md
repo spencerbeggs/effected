@@ -112,5 +112,6 @@ No exported test layer — a journal requires a real `FileSystem`, so tests prov
 - `data` is required on the wire even for a payload-less event: `Schema.Void` emits `"data":null`.
 - "Current state" means the last valid **envelope**, never merely the last valid JSON — use `Envelope.lastValid` or the journal's `latest`.
 - A missing journal file is a legal, quiet state: construction never fails on one, and the watcher activates once the file appears. `append` and `query` fail `JournalNotFound` rather than materializing it.
+- A line counts once its `\n` lands: `query` and `changes` leave an unterminated tail out (it may be a writer mid-append) and deliver it when it completes.
 - `query` **skips** undecodable lines by default. Pass `onInvalid: "fail"` when a hole in the history must stop the read.
 - Truncation or replacement underneath a reader is surfaced as `JournalResync`, never silently repaired.

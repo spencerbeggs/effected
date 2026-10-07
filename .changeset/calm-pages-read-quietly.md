@@ -53,4 +53,6 @@ class Audit extends Journal.Service<Audit>()("app/Audit", {
 - The watcher's gap read pages as well, so no read allocates a whole region.
 - A resync re-seeds the journal from the file as it now stands instead of replaying it.
 - A missing file is detected by a `stat` NotFound rather than an exists-then-stat pair.
+- Reads leave an unterminated tail out until its `\n` lands. A line torn mid-append no longer fails a read, and a journal built over one picks the line up when it completes.
+- A local append finishing while the watcher's `stat` is in flight no longer reports a false truncation; a re-seed resumes from the file as it is, so it cannot republish an append.
 - An external append landing between our write and our `fstat` no longer corrupts the returned position, skips the foreign line, or publishes our own line twice.

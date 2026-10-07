@@ -320,7 +320,11 @@ export const makeEngine = (
 		const itemsOf = (page: LinePage, slice: AnySlice | undefined): ReadonlyArray<Item> => {
 			const items: Array<Item> = [];
 			for (const line of Line.split(page.text, page.start)) {
-				if (isBlank(line)) continue;
+				// A line exists once its `\n` lands. An unterminated tail may be a
+				// writer mid-append: reading it now would reject a line that is about to
+				// be valid — and move the replay's de-duplication boundary past it, so
+				// the completed line would then be dropped from the live half.
+				if (!line.terminated || isBlank(line)) continue;
 				const item = itemOf(line, slice);
 				if (item !== undefined) items.push(item);
 			}
@@ -403,7 +407,18 @@ export const makeEngine = (
 					Envelope.lastValid(events, window.text, window.start),
 				);
 				yield* SubscriptionRef.set(latest, found);
-				consumed = logicalSize(info);
+				// Resume where the last COMPLETE line ends, not at the file's size: a
+				// torn tail may be a writer mid-append, and resuming past it would read
+				// only the second half of that line once it completes.
+				const resume = yield* readTailUntil(fs, path, bomBytes, (window) => {
+					const lines = Line.split(window.text, window.start);
+					for (let index = lines.length - 1; index >= 0; index--) {
+						const line = lines[index] as LineSlice;
+						if (line.terminated) return Option.some(line.end);
+					}
+					return Option.none();
+				});
+				consumed = Option.getOrElse(resume, () => 0);
 			});
 
 		/**
@@ -562,6 +577,13 @@ export const makeEngine = (
 		 */
 		const ingest = ingestPermit.withPermits(1)(
 			Effect.gen(function* () {
+				// Captured BEFORE the stat. Appends raise `consumed` under the write
+				// permit, which this does not hold, so one can finish while the stat is
+				// in flight; comparing a size sampled before that append with the
+				// `consumed` after it would report a truncation that did not happen.
+				// Outside a resync `consumed` only grows, and only this ingest — under
+				// `ingestPermit` — resyncs, so a size below this floor is a real one.
+				const floor = consumed;
 				const stat = yield* statOrMissing;
 				if (Option.isNone(stat)) {
 					return;
@@ -571,17 +593,37 @@ export const makeEngine = (
 				const size = logicalSize(info);
 				const replaced =
 					Option.isSome(identity) && Option.isSome(currentIdentity) && identity.value !== currentIdentity.value;
-				if (replaced || size < consumed) {
+				if (replaced || size < floor) {
 					// A contract breach: surfaced, never silently reconciled. Subscribers
 					// end with it; the journal re-adopts the file as it now is — a node
 					// watcher follows the inode, so without this the journal goes blind.
 					const failure = new JournalResync({
 						path,
 						reason: replaced ? "replaced" : "truncated",
-						expected: consumed,
+						expected: floor,
 						actual: size,
 					});
-					yield* writePermit.withPermits(1)(seed(info));
+					// Re-seed under the permit, from a fresh stat: the seed must adopt the
+					// file as it is with appends excluded. Its resume point is read from
+					// the file itself, so an append that landed after the stat above is
+					// not rewound past and published twice; the fresh stat keeps identity
+					// current and turns a file removed meanwhile into a clean reset.
+					yield* writePermit.withPermits(1)(
+						Effect.flatMap(statOrMissing, (current) =>
+							Option.match(current, {
+								onSome: seed,
+								onNone: () =>
+									Effect.andThen(
+										Effect.sync(() => {
+											identity = Option.none();
+											bomBytes = 0;
+											consumed = 0;
+										}),
+										SubscriptionRef.set(latest, Option.none()),
+									),
+							}),
+						),
+					);
 					yield* PubSub.publish(hub, Exit.fail(failure));
 					return;
 				}

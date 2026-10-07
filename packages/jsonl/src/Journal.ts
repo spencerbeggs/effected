@@ -70,7 +70,9 @@ export interface JournalShape<R extends JsonlEvent.Registry> {
 	 * The read is paged: the region from `cursor` to the end of the file as of
 	 * the call is read a bounded page at a time, each page's matches emitted
 	 * before the next is read. Memory is a page plus the longest line, and a
-	 * consumer that stops early stops the reading.
+	 * consumer that stops early stops the reading. A line is read once its `\n`
+	 * lands: an unterminated tail may be a writer mid-append, so it is left out
+	 * rather than rejected.
 	 */
 	readonly query: <T extends JsonlEvent.Tag<R> = JsonlEvent.Tag<R>>(
 		slice?: Slice<R, T> | undefined,

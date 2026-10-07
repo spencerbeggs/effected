@@ -810,3 +810,231 @@ describe("append — another writer racing our write and our fstat", () => {
 		}),
 	);
 });
+
+describe("review fixes — torn tails and the ingest stat race", () => {
+	/** Like {@link openJournal}, over a memfs the test configured itself. */
+	const openOver = (memfs: MemFs, seed: string) =>
+		Effect.gen(function* () {
+			memfs.mkdir("/journal");
+			memfs.write(PATH, seed);
+			const scope = yield* Scope.make();
+			const context = yield* Layer.build(WatchJournal.layer.pipe(Layer.provide(memfs.layer))).pipe(
+				Effect.provideService(Scope.Scope, scope),
+			);
+			for (let attempt = 0; attempt < 50 && memfs.watcherCount(PATH) === 0; attempt++) {
+				yield* Effect.yieldNow;
+			}
+			assert.isAbove(memfs.watcherCount(PATH), 0, "the watcher armed");
+			return { scope, journal: Context.get(context, WatchJournal) };
+		});
+
+	const torn = line(2).slice(0, 20);
+	const rest = line(2).slice(20);
+
+	it.effect("a line torn when the replay reads it is delivered once its writer completes it", () =>
+		Effect.gen(function* () {
+			const { memfs, scope, journal } = yield* openJournal(line(1));
+			// The fragment arrives AFTER construction, through the watcher, which
+			// holds its resume point at the fragment's start.
+			externalAppend(memfs, torn);
+			memfs.poke(PATH);
+			yield* Effect.yieldNow;
+
+			const running = yield* Effect.forkChild(
+				Stream.runCollect(journal.changes({ cursor: 0, onInvalid: "fail" }).pipe(Stream.take(2))),
+			);
+			for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+			externalAppend(memfs, rest);
+			memfs.poke(PATH);
+			yield* Effect.yieldNow;
+			yield* journal.append("noted", { round: 3 });
+
+			const delivered = yield* Fiber.join(running);
+			assert.deepStrictEqual(
+				delivered.map((envelope) => envelope.data),
+				[{ round: 1 }, { round: 2 }],
+				"the completed line arrives; a torn tail neither fails `onInvalid: fail` nor is skipped for good",
+			);
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
+	it.effect("under the default skip, a line torn during replay is not lost to the de-duplication boundary", () =>
+		Effect.gen(function* () {
+			const { memfs, scope, journal } = yield* openJournal(line(1));
+			externalAppend(memfs, torn);
+			memfs.poke(PATH);
+			yield* Effect.yieldNow;
+
+			const running = yield* Effect.forkChild(Stream.runCollect(journal.changes({ cursor: 0 }).pipe(Stream.take(2))));
+			for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+			externalAppend(memfs, rest);
+			memfs.poke(PATH);
+			yield* Effect.yieldNow;
+			yield* journal.append("noted", { round: 3 });
+
+			const delivered = yield* Fiber.join(running);
+			assert.deepStrictEqual(
+				delivered.map((envelope) => envelope.data),
+				[{ round: 1 }, { round: 2 }],
+				"round 2 arrives — not skipped as torn and then filtered out as already replayed",
+			);
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
+	it.effect("a resync re-seeds from the file as it is once appends are excluded", () =>
+		Effect.gen(function* () {
+			let armed = false;
+			let enter: () => void = () => {};
+			const entered = new Promise<void>((resolve) => {
+				enter = resolve;
+			});
+			let release: () => void = () => {};
+			const held = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			const memfs = makeMemFs({
+				faults: (base) => ({
+					stat: (path) => {
+						if (!armed || path !== PATH) return undefined;
+						armed = false;
+						return base.stat(path).pipe(
+							Effect.tap(() =>
+								Effect.promise(() => {
+									enter();
+									return held;
+								}),
+							),
+						);
+					},
+				}),
+			});
+			memfs.mkdir("/journal");
+			memfs.write(PATH, line(1));
+			const scope = yield* Scope.make();
+			const engine = yield* makeEngine("test/WatchEngine", events, { path: PATH }).pipe(
+				Effect.provideService(Scope.Scope, scope),
+				Effect.provide(memfs.layer),
+			);
+			yield* settle(() => memfs.watcherCount(PATH) > 0);
+			// Subscribed BEFORE the breach: a duplicate re-ingest happens within a few
+			// scheduler turns, before any subscriber attached afterwards could see it.
+			const subscriberScope = yield* Scope.make();
+			const subscription = yield* PubSub.subscribe(engine.hub).pipe(
+				Effect.provideService(Scope.Scope, subscriberScope),
+			);
+
+			// Truncate in place, then hold ingest's stat on the empty file while a
+			// local append lands, so the stat the breach is detected from is stale.
+			memfs.write(PATH, "");
+			armed = true;
+			memfs.poke(PATH);
+			yield* Effect.promise(() => entered);
+			yield* engine.journal.append("noted", { round: 2 });
+			release();
+			for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+			memfs.poke(PATH);
+			for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+			yield* engine.journal.append("noted", { round: 3 });
+			for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+
+			const takes = yield* PubSub.takeAll(subscription);
+			assert.isTrue(
+				takes.some((take) => Exit.isExit(take) && Exit.isFailure(take)),
+				"the truncation was surfaced as a resync",
+			);
+			const rounds = takes.flatMap((take) =>
+				Array.isArray(take)
+					? (take as ReadonlyArray<Item>).map(
+							(item) => (Result.getOrThrow(item).data as { readonly round: number }).round,
+						)
+					: [],
+			);
+			assert.deepStrictEqual(rounds, [2, 3], "round 2 was published once — the re-seed did not rewind past it");
+			yield* Scope.close(subscriberScope, Exit.void);
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
+	it.effect("query leaves an unterminated tail out rather than rejecting it", () =>
+		Effect.gen(function* () {
+			const { scope, journal } = yield* openJournal(line(1) + torn);
+			const all = yield* Stream.runCollect(journal.query({ onInvalid: "fail" }));
+			assert.deepStrictEqual(
+				all.map((envelope) => envelope.data),
+				[{ round: 1 }],
+			);
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
+	it.effect("a journal built over a torn tail picks the line up once it completes", () =>
+		Effect.gen(function* () {
+			const { memfs, scope, journal } = yield* openJournal(line(1) + torn);
+			const running = yield* Effect.forkChild(Stream.runCollect(journal.changes().pipe(Stream.take(1))));
+			for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+			externalAppend(memfs, rest);
+			memfs.poke(PATH);
+
+			const delivered = yield* Fiber.join(running);
+			assert.deepStrictEqual(delivered[0]?.data, { round: 2 }, "the seed resumed at the fragment's start");
+			assert.deepStrictEqual(Option.getOrThrow(yield* journal.latest).data, { round: 2 });
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
+	it.effect("a local append finishing while ingest's stat is in flight is not a truncation", () =>
+		Effect.gen(function* () {
+			let armed = false;
+			let enter: () => void = () => {};
+			const entered = new Promise<void>((resolve) => {
+				enter = resolve;
+			});
+			let release: () => void = () => {};
+			const held = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			const memfs = makeMemFs({
+				faults: (base) => ({
+					// Sample the real size, THEN hold: the stat reports the file as it was
+					// before the append that lands while it is held.
+					stat: (path) => {
+						if (!armed || path !== PATH) return undefined;
+						armed = false;
+						return base.stat(path).pipe(
+							Effect.tap(() =>
+								Effect.promise(() => {
+									enter();
+									return held;
+								}),
+							),
+						);
+					},
+				}),
+			});
+			const { scope, journal } = yield* openOver(memfs, line(1));
+			const running = yield* Effect.forkChild(Stream.runCollect(journal.changes().pipe(Stream.take(2))));
+			for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+
+			armed = true;
+			memfs.poke(PATH);
+			yield* Effect.promise(() => entered);
+			yield* journal.append("noted", { round: 2 });
+			release();
+			for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+			yield* journal.append("noted", { round: 3 });
+
+			const exit = yield* Fiber.await(running);
+			assert.isTrue(Exit.isSuccess(exit), `no JournalResync reached the subscriber: ${String(exit)}`);
+			if (Exit.isSuccess(exit)) {
+				assert.deepStrictEqual(
+					exit.value.map((envelope) => envelope.data),
+					[{ round: 2 }, { round: 3 }],
+					"each local append delivered exactly once",
+				);
+			}
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+});
