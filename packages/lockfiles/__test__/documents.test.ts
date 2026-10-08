@@ -16,16 +16,13 @@
 // package.json (effected#845) and for a workspace whose first install failed.
 // It reads as an empty model only when the caller asserts `configOnly`.
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { Lockfile, LockfileFramingError, LockfileParseError } from "../src/Lockfile.js";
 import type { LockfileFormat } from "../src/LockfileFormat.js";
 import { PnpmEnvLockfile } from "../src/PnpmEnvLockfile.js";
 import { isUnsupportedLockfileVersion } from "../src/UnsupportedLockfileVersion.js";
-
-const fixture = (relative: string): string => readFileSync(join(import.meta.dirname, "fixtures", relative), "utf8");
+import { fixture } from "./helpers/fixtures.js";
 
 /** Flip a failing parse and hand back the typed framing error. */
 const framingError = (content: string, format: LockfileFormat) =>

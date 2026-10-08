@@ -1,6 +1,11 @@
 # Lockfile fixtures
 
-One directory per fixture, grouped by format: `<format>/<name>/<lockfile>`.
+One directory per fixture, grouped by format: `<format>/<name>/<lockfile>.fixture`.
+The `.fixture` suffix keeps GitHub's dependency graph from reading real manager
+output as a manifest and raising Dependabot alerts on the packages it pins.
+Tests name a fixture by its logical path (`pnpm/v2/pnpm-lock.yaml`) through
+`fixture()` in `../helpers/fixtures.ts`, and `fixtureNames.test.ts` fails on a
+file stored under its real name.
 Unless an entry below says otherwise, each file is a package manager's own
 output, committed verbatim. Do not reformat or hand-edit a real fixture: the
 byte shape is part of what the parser is tested against.

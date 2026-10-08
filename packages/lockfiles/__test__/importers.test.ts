@@ -5,14 +5,12 @@
 // only (the resolved version lives on package entries); yarn records no
 // importers at all.
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option } from "effect";
 import { Lockfile } from "../src/Lockfile.js";
 import type { LockfileFormat } from "../src/LockfileFormat.js";
+import { fixture } from "./helpers/fixtures.js";
 
-const fixture = (relative: string): string => readFileSync(join(import.meta.dirname, "fixtures", relative), "utf8");
 const parseFixture = (relative: string, format: LockfileFormat) => Lockfile.parse(fixture(relative), { format });
 
 describe("Lockfile.importers", () => {

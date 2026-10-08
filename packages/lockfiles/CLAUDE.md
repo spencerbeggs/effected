@@ -17,6 +17,7 @@ Durable knowledge about this package lives in `okf/`, not here. Load the concept
 - `src/index.ts` is the only re-exporting module; read it for the public surface rather than any prose listing. Internals under `src/internal/` import only the leaf model modules, never `Lockfile.ts` (`noImportCycles`), and fail with a raw `ParseFailure = { stage, cause }` that `materializeFailure` (in `Lockfile.ts`) turns into `LockfileParseError` or `LockfileFramingError` — the one mapping both `Lockfile.parse` and `PnpmEnvLockfile.packageManager` use; never map a `ParseFailure` a second way.
 - `LockfileParseError.cause` stays `Schema.Defect`; narrow the version-gate case with `isUnsupportedLockfileVersion`, never by parsing prose.
 - Malformed input **always** exits typed (`stage: "syntax"` or `"validation"`) — never a defect. Key-bearing intermediates are `Map`/`Set`, records are built with `Object.fromEntries`.
+- Fixtures are stored as `<lockfile>.fixture`, never under the real lockfile name (a real name is a Dependabot manifest), and read with `fixture()` from `__test__/helpers/fixtures.ts`.
 - Fixtures: a directory named `unsupported-*` is input the parser must reject, and the version-gate guard enumerates the fixtures directory to skip exactly those — never re-hard-code the list. A pnpm fixture's `packages.length` is an *instance* count; expect it to move when peer variants are added.
 
 ## Testing and building

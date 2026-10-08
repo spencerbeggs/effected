@@ -19,8 +19,6 @@
 // lock (the positive control), then break exactly one edge per test — so each
 // failure is the mutation's doing, not a broken builder.
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option } from "effect";
 import { ConfigDependencyLock } from "../src/ConfigDependencyLock.js";
@@ -28,9 +26,9 @@ import { LockfileFramingError, LockfileParseError } from "../src/Lockfile.js";
 import { PackageManagerLock } from "../src/PackageManagerLock.js";
 import { PnpmEnvLockfile } from "../src/PnpmEnvLockfile.js";
 import { isUnsupportedLockfileVersion } from "../src/UnsupportedLockfileVersion.js";
+import { fixture as readFixture } from "./helpers/fixtures.js";
 
-const fixture = (relative: string): string =>
-	readFileSync(join(import.meta.dirname, "fixtures", "pnpm", relative, "pnpm-lock.yaml"), "utf8");
+const fixture = (relative: string): string => readFixture(`pnpm/${relative}/pnpm-lock.yaml`);
 
 const PNPM_12_SRI = "sha512-PvaPlRyxEawgS0paFvCy3fDaVqluBBPoHYVdnwtV75JnFHCQKOHNAMQFwsX7e56OxNxGd3yAXQNzwvL/AP0g7A==";
 const PNPM_11_SRI = "sha512-qB1MIbmwmksK6/kO9eUn1CYr3aMi0mCCl4y1SQI6xtnK/Jixn/+qXHHbQ4pl9wIk7beNcxEYeGH/lkgNHNyiPA==";
