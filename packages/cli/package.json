@@ -55,7 +55,7 @@
 		"@types/node": "catalog:build",
 		"@types/react": "catalog:build",
 		"effect": "catalog:effect",
-		"ink": "8.0.0",
+		"ink": "catalog:silk",
 		"react": "catalog:build",
 		"string-width": "^8.3.0",
 		"typescript": "catalog:build"
@@ -65,10 +65,10 @@
 		"@effected/env": "workspace:^",
 		"@effected/glob": "workspace:^",
 		"@effected/walker": "workspace:^",
-		"@types/react": "^19.3.0",
+		"@types/react": "catalog:silk:peers",
 		"effect": "catalog:effect:peers",
-		"ink": "^8.0.0",
-		"react": "^19.3.0"
+		"ink": "catalog:silk:peers",
+		"react": "catalog:silk:peers"
 	},
 	"peerDependenciesMeta": {
 		"@effected/config-file": {
