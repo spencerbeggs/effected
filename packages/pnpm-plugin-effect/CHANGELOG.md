@@ -1,5 +1,17 @@
 # @effected/pnpm-plugin-effect
 
+## 0.13.9
+
+### Maintenance
+
+#### Updates 1 catalog:effected version
+
+- `@effected/jsonl` ^0.10.0 -> ^0.11.0 (peer ^0.11.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
 ## 0.13.8
 
 ### Maintenance

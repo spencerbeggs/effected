@@ -1,5 +1,18 @@
 # @effected/ai-plugin
 
+## 0.33.0
+
+### Documentation
+
+- The `effected-packages` skill's `@effected/jsonl` reference documents the new `JournalWatcher` service and `NodeJournalWatcher.layer` from `@effected/jsonl/node`, and the updated provide pattern for journal layers.
+- The construct index entries for `@effected/jsonl` are regenerated to match, in both the Claude Code and Copilot builds. [#971][#971]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#971]: https://github.com/spencerbeggs/effected/pull/971
+
 ## 0.32.0
 
 ### Documentation
