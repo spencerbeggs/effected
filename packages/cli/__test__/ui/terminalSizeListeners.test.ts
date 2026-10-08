@@ -11,42 +11,70 @@ import { CliUi, DocView, UiProvider, Viewport, useTerminalSize } from "../../src
 /** Rows past Node's default `maxListeners` of 10, twice over. */
 const MANY = 25;
 
+/** Let pending timers and effects run. */
+const settle = (millis: number) => Effect.promise(() => new Promise((resolve) => setTimeout(resolve, millis)));
+
+/**
+ * Collect every process `warning` while `use` runs. The listener is removed by a finalizer, so a failure part way
+ * through cannot leave it attached for a later test.
+ */
+const collectingWarnings = <A, E, R>(use: (warnings: ReadonlyArray<Error>) => Effect.Effect<A, E, R>) =>
+	Effect.acquireUseRelease(
+		Effect.sync(() => {
+			const warnings: Array<Error> = [];
+			const onWarning = (warning: Error): void => {
+				warnings.push(warning);
+			};
+			process.on("warning", onWarning);
+			return { warnings, onWarning };
+		}),
+		({ warnings }) => use(warnings),
+		({ onWarning }) => Effect.sync(() => process.off("warning", onWarning)),
+	);
+
 /**
  * Mount `tree` with Ink's own `render` on fake streams, read stdout's `resize` listener count while it is mounted,
- * resize, unmount, and collect any process `warning` raised along the way.
+ * resize, unmount, and collect any process `warning` raised along the way. The instance is unmounted by a finalizer
+ * too, so a failure part way through cannot leave it mounted.
  */
 const mount = (tree: ReactNode) =>
-	Effect.gen(function* () {
-		const warnings: Array<Error> = [];
-		const onWarning = (warning: Error): void => {
-			warnings.push(warning);
-		};
-		process.on("warning", onWarning);
-		const fake = makeFakeStreams({ columns: 80, rows: 40 });
-		const stdout = fake.streams.stdout;
-		const instance = render(tree, {
-			stdin: fake.streams.stdin,
-			stdout,
-			stderr: fake.streams.stderr,
-			debug: true,
-			patchConsole: false,
-			exitOnCtrlC: false,
-			interactive: true,
-		});
-		// Effects run after the commit; let them subscribe before counting.
-		yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 20)));
-		const mounted = stdout.listenerCount("resize");
-		fake.resize(60, 40);
-		yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 20)));
-		const resized = fake.stdout();
-		instance.unmount();
-		yield* Effect.promise(() => instance.waitUntilExit());
-		const unmounted = stdout.listenerCount("resize");
-		// Node emits the warning on the next tick after the listener that crossed the limit.
-		yield* Effect.promise(() => new Promise((resolve) => setImmediate(resolve)));
-		process.off("warning", onWarning);
-		return { mounted, unmounted, resized, warnings };
-	});
+	collectingWarnings((warnings) =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 80, rows: 40 });
+			const stdout = fake.streams.stdout;
+			const { mounted, resized } = yield* Effect.acquireUseRelease(
+				Effect.sync(() =>
+					render(tree, {
+						stdin: fake.streams.stdin,
+						stdout,
+						stderr: fake.streams.stderr,
+						debug: true,
+						patchConsole: false,
+						exitOnCtrlC: false,
+						interactive: true,
+					}),
+				),
+				() =>
+					Effect.gen(function* () {
+						// Effects run after the commit; let them subscribe before counting.
+						yield* settle(20);
+						const mounted = stdout.listenerCount("resize");
+						fake.resize(60, 40);
+						yield* settle(20);
+						return { mounted, resized: fake.stdout() };
+					}),
+				(instance) =>
+					Effect.promise(() => {
+						instance.unmount();
+						return instance.waitUntilExit().catch(() => undefined);
+					}),
+			);
+			const unmounted = stdout.listenerCount("resize");
+			// Node emits the warning on the next tick after the listener that crossed the limit.
+			yield* Effect.promise(() => new Promise((resolve) => setImmediate(resolve)));
+			return { mounted, unmounted, resized, warnings: [...warnings] };
+		}),
+	);
 
 const column = (...children: ReadonlyArray<ReactElement>): ReactElement =>
 	createElement(Box, { flexDirection: "column" }, ...children);
