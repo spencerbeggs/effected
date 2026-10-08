@@ -14,30 +14,35 @@ const MANY = 25;
 /** Let pending timers and effects run. */
 const settle = (millis: number) => Effect.promise(() => new Promise((resolve) => setTimeout(resolve, millis)));
 
+type WarningListener = ((warning: Error) => void) & { readonly listener?: (warning: Error) => void };
+
 /**
  * Collect every process `warning` while `use` runs. Node's default stderr printer is held back meanwhile so the
  * control's deliberate `MaxListenersExceededWarning` is asserted rather than printed; any other warning is still
  * forwarded to it. The finalizer restores the original listeners, so a failure part way through cannot leave the
- * printer detached for a later test.
+ * printer detached for a later test. `rawListeners` keeps a `once` registration's wrapper, so it is restored as a
+ * `once` — unless a forwarded warning already spent it.
  */
 const collectingWarnings = <A, E, R>(use: (warnings: ReadonlyArray<Error>) => Effect.Effect<A, E, R>) =>
 	Effect.acquireUseRelease(
 		Effect.sync(() => {
 			const warnings: Array<Error> = [];
-			const printers = process.listeners("warning");
+			let printers = process.rawListeners("warning") as Array<WarningListener>;
 			const onWarning = (warning: Error): void => {
 				warnings.push(warning);
-				if (warning.name !== "MaxListenersExceededWarning") for (const print of printers) print(warning);
+				if (warning.name === "MaxListenersExceededWarning") return;
+				for (const print of printers) (print.listener ?? print).call(process, warning);
+				printers = printers.filter((print) => print.listener === undefined);
 			};
 			process.removeAllListeners("warning");
 			process.on("warning", onWarning);
-			return { warnings, printers, onWarning };
+			return { warnings, printers: () => printers, onWarning };
 		}),
 		({ warnings }) => use(warnings),
 		({ printers, onWarning }) =>
 			Effect.sync(() => {
 				process.off("warning", onWarning);
-				for (const print of printers) process.on("warning", print);
+				for (const print of printers()) process.on("warning", print);
 			}),
 	);
 

@@ -96,7 +96,10 @@ to the root's `JournalWatcher` instead of carrying a copy.
   catch up → follow** by construction (`followJournal`); activation arms the
   directory watch **before** checking existence (`awaitCreation`), so a
   journal created in between is seen by one or the other. Each cycle owns its
-  watch's scope.
+  watch's scope. A **file** watch's stream ends once the path is removed or
+  renamed over — Node's `fs.watch` follows the old inode and never closes on
+  its own, so `NodeJournalWatcher` re-checks `dev:ino` per event — which is
+  what lets `supervise` re-arm on the replacement.
 - **`internal/merge.ts`** — `appendPatch`'s **shallow** merge, ported from
   `@effected/config-file`'s recipe minus the recursion. Same prototype-pollution
   discipline: `Object.defineProperty` only, `__proto__`/`constructor`/
@@ -161,7 +164,8 @@ layers over one file cross-observing each other's appends through the watcher.
 `__test__/helpers/memfs.ts`'s `layer` provides `FileSystem` **and** a
 manually driven `JournalWatcher` double that honours the arm-before-success
 contract (stat through the unfaulted volume, then register). Drive it with
-`poke`/`pokeParent`; `holdNextWatch(target)` suspends a watch between its
+`poke`/`pokeParent`; `replace`/`unlink` end that file's watches after one
+final poke, as the Node backend does; `holdNextWatch(target)` suspends a watch between its
 stat and its registration — the only deterministic way to land a write in
 the arming window. A test bringing its own filesystem layer provides
 `idleWatcher`. `it.effect` does not constrain `R`, so a missing

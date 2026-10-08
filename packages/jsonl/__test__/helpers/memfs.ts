@@ -132,7 +132,8 @@ export interface MemFs {
 	readonly existsCalls: () => number;
 	/**
 	 * Give the path a NEW identity, as a rename-over or recreate would: the old
-	 * file is unlinked and a fresh one written, so memfs mints a new inode.
+	 * file is unlinked and a fresh one written, so memfs mints a new inode. Every
+	 * watch of the old file ends, as a real backend's does.
 	 */
 	readonly replace: (path: string, bytes: Uint8Array | string) => void;
 	/**
@@ -224,6 +225,17 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 		| undefined;
 
 	const watchers = new Map<string, Set<(event: FileSystem.WatchEvent) => void>>();
+	/**
+	 * How to end each FILE watch, by path. A platform watch follows the inode it
+	 * was armed on, so removing or replacing the file ends it — and a double whose
+	 * watch outlived its file would keep delivering pokes no real backend sends,
+	 * hiding a journal that never re-arms on the replacement.
+	 */
+	const fileWatchEnds = new Map<string, Set<() => void>>();
+	const endFileWatches = (path: string): void => {
+		for (const end of fileWatchEnds.get(path) ?? []) end();
+		fileWatchEnds.delete(path);
+	};
 	const notify = (target: string, event: FileSystem.WatchEvent): void => {
 		for (const listener of watchers.get(target) ?? []) {
 			listener(event);
@@ -321,7 +333,7 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 			Effect.gen(function* () {
 				beforeWatchHook?.(target);
 				if (unfaulted === undefined) return yield* Effect.die("the memfs faults factory never ran");
-				yield* unfaulted.stat(target);
+				const info = yield* unfaulted.stat(target);
 				const held = watchHold?.target === target ? watchHold : undefined;
 				if (held !== undefined) {
 					watchHold = undefined;
@@ -336,12 +348,28 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 						const listener = (event: FileSystem.WatchEvent): void => {
 							Queue.offerUnsafe(queue, event.path);
 						};
+						// The way the node backend ends: the event that names the change is
+						// delivered first, then the stream ends.
+						const end = (): void => {
+							watchers.get(target)?.delete(listener);
+							Queue.offerUnsafe(queue, target);
+							Queue.endUnsafe(queue);
+						};
 						const set = watchers.get(target) ?? new Set();
 						set.add(listener);
 						watchers.set(target, set);
-						return listener;
+						if (info.type !== "Directory") {
+							const ends = fileWatchEnds.get(target) ?? new Set();
+							ends.add(end);
+							fileWatchEnds.set(target, ends);
+						}
+						return { listener, end };
 					}),
-					(listener) => Effect.sync(() => watchers.get(target)?.delete(listener)),
+					({ listener, end }) =>
+						Effect.sync(() => {
+							watchers.get(target)?.delete(listener);
+							fileWatchEnds.get(target)?.delete(end);
+						}),
 				);
 				return Stream.fromQueue(queue);
 			}),
@@ -409,11 +437,15 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 		},
 		replace: (path, bytes) => {
 			if (isFile(path)) handle.remove(path);
+			endFileWatches(path);
 			handle.write(path, bytes);
 		},
 		bytes: (path) => handle.volume.bytes(path),
 		write: (path, bytes) => handle.write(path, bytes),
-		unlink: (path) => handle.remove(path),
+		unlink: (path) => {
+			handle.remove(path);
+			endFileWatches(path);
+		},
 		has: isFile,
 		paths: () => handle.volume.paths(),
 	};

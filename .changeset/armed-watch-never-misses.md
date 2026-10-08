@@ -28,3 +28,4 @@ A new root export, `JournalWatcher` (with its `JournalWatcherShape`), describes 
 
 * A journal no longer misses an append that lands while its file watch is being set up. The watch used to be armed by yielding to the scheduler a few times before the catch-up read, so under load the catch-up could run before the platform watch registered. Two journal layers over one file now reliably observe each other's appends.
 * A journal file created while the directory watch was being set up is no longer missed on activation.
+* A journal whose file is replaced by a rename over it (an atomic `mv tmp journal`) now follows the new file. The Node watch stayed attached to the old inode and never ended, so every append after the replacement went unseen.

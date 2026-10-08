@@ -15,8 +15,12 @@ export interface JournalWatcherShape {
 	 * ordering is the whole contract — the journal arms a watch, then reads
 	 * what it missed, then follows the stream, and a change landing between a
 	 * watch that was merely requested and one that was registered would be
-	 * lost. The watch lives until the enclosing scope closes; the stream ends
-	 * when the watched entry goes away.
+	 * lost. The watch lives until the enclosing scope closes. Watching a file,
+	 * the stream ends once the path is removed or names a different file (a
+	 * rename over it), because a platform watch follows the inode it was armed
+	 * on and would otherwise go blind; the journal then re-arms on whatever the
+	 * path names now. Watching a directory, it does not end for a child
+	 * appearing or vanishing.
 	 *
 	 * Each element is the name the platform reports for the change, which may
 	 * be a bare basename and may be absent. The journal treats every element as

@@ -9,8 +9,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-08T06:11:30Z
-  body_sha256: a595c8c0c3e99e640ed1b535cdeb990b8f6f37a9bc15e2cf99331fd996a9d62a
+  at: 2026-10-08T06:34:41Z
+  body_sha256: 63edcad93bcfb661f1f642f1fe22dd9677fa6f8ecb87af8d0e8c14eb7b53deb9
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:37.064Z
@@ -340,7 +340,11 @@ element whose basename matches the journal filename, or that carries no
 name at all, is an untyped poke meaning "go re-stat yourself"; never use an
 element's name to open or read anything, on any watch; re-arm the file watch after a resync, since node
 watchers follow the inode and a replaced file leaves the old watch attached
-to nothing; and the directory watch is activation-only and must end once
+to nothing — and Node emits neither `close` nor `error` when that happens,
+so a file watch's stream must END by itself once the path is removed or
+names a different file (`NodeJournalWatcher` re-checks `dev:ino` on every
+event and ends after delivering it), or the supervisor never re-arms; and
+the directory watch is activation-only and must end once
 the file exists, since a non-recursive directory watch does not reliably
 report a child file's content appends.
 
@@ -348,7 +352,10 @@ The deterministic test seam is the `JournalWatcher` itself: the
 unit suites provide a manually driven double over an `@effected/memfs`
 volume that stats its target and then registers synchronously, with a
 before-watch hook and a `holdNextWatch` that suspends one watch between its
-stat and its registration. That is what covers offset bookkeeping, the
+stat and its registration. Its `replace` and `unlink` end every watch of
+that file after one final poke, as the node backend does — a double whose
+file watch outlived its file kept the re-arm test green while the real
+backend stayed blind. That is what covers offset bookkeeping, the
 re-arm path, the resync path and both arming windows without racing a real
 filesystem or sleeping.
 

@@ -10,13 +10,18 @@ import { colorDepth, colorKeys } from "../src/internal/colorDepth.js";
  * warning is still forwarded to it, and the printer is restored afterwards.
  */
 const ORACLE_WARNING = "The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.";
-let printers: Array<(warning: Error) => void> = [];
+type WarningListener = ((warning: Error) => void) & { readonly listener?: (warning: Error) => void };
+// `rawListeners` keeps a `once` registration's wrapper, so it is restored as a `once` — unless a forwarded warning
+// already spent it.
+let printers: Array<WarningListener> = [];
 const onWarning = (warning: Error): void => {
-	if (warning.message !== ORACLE_WARNING) for (const print of printers) print(warning);
+	if (warning.message === ORACLE_WARNING) return;
+	for (const print of printers) (print.listener ?? print).call(process, warning);
+	printers = printers.filter((print) => print.listener === undefined);
 };
 
 beforeAll(() => {
-	printers = process.listeners("warning");
+	printers = process.rawListeners("warning") as Array<WarningListener>;
 	process.removeAllListeners("warning");
 	process.on("warning", onWarning);
 });
