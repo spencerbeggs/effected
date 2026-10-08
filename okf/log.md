@@ -4,6 +4,7 @@
 
 * Updated @effected/cli
 * Updated React 19's development reconciler leaked user-timing entries on every render, until react-reconciler 0.34
+* Updated lockfiles
 
 ## 2026-10-07
 
