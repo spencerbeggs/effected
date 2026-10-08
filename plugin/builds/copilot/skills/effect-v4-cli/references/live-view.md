@@ -81,7 +81,6 @@ const program = Effect.scoped(
 | `begins(event, before, after)` | optional: begin a run on something other than a start, for a program that joins a stream mid-run |
 | `mode` | `"owned"` (default) or `"hosted"` (drawn inside a host such as a test reporter); they differ only when not interactive |
 | `tickMillis` | redraw interval while a run is drawn, `80` by default; must be positive and finite |
-| `drainPerformance` | clear React's development-build user-timing entries after each render; `"auto"` unless `NODE_ENV` is `production` |
 
 `LiveHandle<S>` is `state`, `logConsole`, `done` (completes when the events have ended and the last frame is committed; dies with what the view died of) and `close`.
 

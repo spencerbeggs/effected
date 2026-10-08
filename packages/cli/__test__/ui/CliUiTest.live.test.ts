@@ -109,30 +109,31 @@ describe("CliUiTest.live: vitest-agent's eight behaviours", () => {
 		}).pipe(Effect.scoped),
 	);
 
-	it.effect("4. React's user-timing entries never pile up: Ink's reconciler clears each one, drained or not", () =>
-		Effect.gen(function* () {
-			const measures = (drainPerformance: boolean) =>
-				Effect.acquireUseRelease(
-					Effect.sync(() => vi.spyOn(performance, "measure")),
-					(spy) =>
-						Effect.gen(function* () {
-							performance.clearMeasures();
-							const view = yield* CliUiTest.live({ ...viewOptions, drainPerformance });
-							yield* view.publish(Start);
-							for (let index = 1; index <= 10; index++) yield* view.publish(tick(index));
-							yield* view.advance("400 millis");
-							return { recorded: spy.mock.calls.length, left: performance.getEntriesByType("measure").length };
-						}).pipe(Effect.scoped),
-					(spy) => Effect.sync(() => spy.mockRestore()),
-				);
-			const undrained = yield* measures(false);
-			const drained = yield* measures(true);
-			// Ink 7's reconciler (react-reconciler 0.33) left about 15 measures per render; 0.34, which Ink 8 requires,
-			// clears each measure right after recording it. The kit's drain is now a no-op on any Ink the peer admits.
-			assert.isAbove(undrained.recorded, 40, `control: React recorded measures (${undrained.recorded})`);
-			assert.strictEqual(undrained.left, 0, "undrained, none are left");
-			assert.strictEqual(drained.left, 0, "drained, none are left");
-		}),
+	it.effect("4. React's user-timing entries never pile up, and a program's own measures are left alone", () =>
+		Effect.acquireUseRelease(
+			Effect.sync(() => vi.spyOn(performance, "measure")),
+			(spy) =>
+				Effect.gen(function* () {
+					performance.clearMeasures();
+					performance.measure("host-measure");
+					const view = yield* CliUiTest.live(viewOptions);
+					yield* view.publish(Start);
+					for (let index = 1; index <= 10; index++) yield* view.publish(tick(index));
+					yield* view.advance("400 millis");
+					yield* view.publish(End);
+					const recorded = spy.mock.calls.length;
+					// Ink 7's reconciler (react-reconciler 0.33) left about 15 measures per render; 0.34, which Ink 8 requires,
+					// clears each measure right after recording it, so the kit clears nothing and a program's own measure stays.
+					assert.isAbove(recorded, 40, `control: React recorded measures (${recorded})`);
+					const left = performance.getEntriesByType("measure").map((entry) => entry.name);
+					assert.deepStrictEqual(left, ["host-measure"]);
+				}).pipe(Effect.scoped),
+			(spy) =>
+				Effect.sync(() => {
+					spy.mockRestore();
+					performance.clearMeasures("host-measure");
+				}),
+		),
 	);
 
 	it.effect("5. a render that throws degrades the run: one warning, the last frame kept, the fold going on", () =>

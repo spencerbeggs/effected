@@ -2,6 +2,14 @@
 "@effected/cli": minor
 ---
 
+## Breaking Changes
+
+### `LiveOptions.drainPerformance` is removed
+
+The option cleared React's development-build user-timing entries after every render. Ink 8, which the `ink` peer requires, brings `react-reconciler` 0.34, and that reconciler clears each measure as it records it, so the drain no longer did anything. It was also harmful: its `performance.clearMeasures()` was process-wide and wiped a program's own measures along with React's. `CliUi.live` now clears nothing.
+
+Migration: delete `drainPerformance` from any `CliUi.live` or `CliUiTest.live` options. Nothing replaces it, and nothing is needed.
+
 ## Features
 
 ### Truncate and wrap options on `Doc.lines`

@@ -33,7 +33,6 @@ import { fromReact, inkModules, loadInk, withInkColour } from "./internal/ink.js
 import { makeInkConsole } from "./internal/inkConsole.js";
 import { LazyViewShapeError, loadView } from "./internal/lazyView.js";
 import { mountPermit } from "./internal/mountPermit.js";
-import { drainPerformance, resolveDrain } from "./internal/perfDrain.js";
 import { UiRenderOptions } from "./internal/renderOptions.js";
 import { uiProviders } from "./internal/UiProviders.js";
 import { UiStreams } from "./UiStreams.js";
@@ -126,13 +125,6 @@ export interface LiveOptions<E, S> {
 	 * turns without events. Anything but a positive, finite number is a defect.
 	 */
 	readonly tickMillis?: number;
-	/**
-	 * Clear React's user-timing entries after every render: `true`, `false`, or `"auto"` (the default), which clears
-	 * unless `NODE_ENV` is exactly `"production"`. React's development build records them on every render and never
-	 * clears them. The clear is process-wide: it removes every `measure` entry, a program's own included; marks are left
-	 * alone.
-	 */
-	readonly drainPerformance?: boolean | "auto";
 }
 
 /**
@@ -281,7 +273,6 @@ export const live = <E, S>(
 		const interactive = yield* CliInteractive;
 		const streams = yield* UiStreams;
 		const overrides = yield* UiRenderOptions;
-		const drain = yield* resolveDrain(options.drainPerformance ?? "auto");
 		const bridge = yield* makeInkConsole;
 		const inbox = yield* Queue.unbounded<Message<E, S>>();
 		const source = options.events;
@@ -387,7 +378,6 @@ export const live = <E, S>(
 						Effect.sync(() => ink.renderToString(tree, { columns })),
 					),
 				);
-				drainPerformance(drain);
 				if (failure !== undefined) return yield* warnOnce(current, failure.error);
 				bridge.print(neutralize ? CommandNeutralizer.text(text) : text);
 			});
@@ -496,7 +486,6 @@ export const live = <E, S>(
 								...(overrides.onRender === undefined ? {} : { onRender: overrides.onRender }),
 								...(overrides.maxFps === undefined ? {} : { maxFps: overrides.maxFps }),
 							});
-							drainPerformance(drain);
 							return instance;
 						}),
 						(instance) =>
@@ -508,7 +497,6 @@ export const live = <E, S>(
 								const exited = instance.waitUntilExit();
 								// Ink's own unmount commits the last frame to the terminal; `clear()` is never called.
 								instance.unmount();
-								drainPerformance(drain);
 								await exited.catch(() => undefined);
 							}),
 					);
@@ -564,7 +552,6 @@ export const live = <E, S>(
 						// releases a waiter before the boundary hears of a frame that threw (`componentDidCatch` comes later in it).
 						mounted.slot.swap(elementOf(shown, frame), () => queueMicrotask(() => resume(Effect.void)));
 					});
-					drainPerformance(drain);
 					current.frame = frame;
 					if (current.failed === undefined) {
 						current.painted = true;

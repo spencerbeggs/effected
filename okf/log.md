@@ -6,6 +6,21 @@
 * Updated @effected/jsonl journal service
 * Updated @effected/jsonl read surfaces
 * Updated The jsonl Journal service is a per-registry factory, not a generic key
+* Updated @effected/github-commands
+* Updated @effected/spdx
+* Updated A live view is a scoped drain of runs, hosted or owned, with no input and the mount permit per run
+* Added A zero-width space never stopped the Actions runner reading a workflow command
+* Updated Advance the effect pin
+* Updated Author the plugin once in plugin/, never edit its builds
+* Updated Ink delivers every key in one stdin read before React re-renders
+* Updated Only ./ui may bind Node's process streams, and only in three named files
+* Updated The Ink layer is a ./ui subpath of cli, with ink and react as optional peers
+* Updated The committed SPDX license catalog
+* Updated The kit sets Ink's colour level on Ink's own chalk, resolved from Ink's location
+* Updated The live frame is clamped to rows - 1 in height, and its root width is never taken from a hook
+* Updated The live view never calls Ink's clear(); a new run re-renders in place or remounts
+* Updated While a live view is mounted, kit logs go through Ink's own stdout and stderr writers
+* Updated ai-plugin
 
 ## 2026-10-05
 
