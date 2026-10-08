@@ -1,5 +1,17 @@
 # @effected/ai-plugin
 
+## 0.32.0
+
+### Documentation
+
+- The `effect-v4-cli` skill's live-view reference no longer lists `drainPerformance` among the `CliUi.live` options, which `@effected/cli` 0.15.0 removes. [#960][#960]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#960]: https://github.com/spencerbeggs/effected/pull/960
+
 ## 0.31.0
 
 ### Features
