@@ -1,6 +1,6 @@
 # @effected/jsonl
 
-Append-only, schema-validated JSONL journals as a definable Effect service: an event registry plus an envelope contract (`at`/`event`/`scope`/`data`), a pure synchronous core for runtime-free readers, and one `Journal` service whose scoped layer watches the file so cooperating writers cross-observe each other's appends. Boundary tier: `FileSystem` required in `R` (`Path` deliberately not — paths are opaque strings), zero external runtime dependencies, zero `@effected/*` edges.
+Append-only, schema-validated JSONL journals as a definable Effect service: an event registry plus an envelope contract (`at`/`event`/`scope`/`data`), a pure synchronous core for runtime-free readers, and one `Journal` service whose scoped layer watches the file so cooperating writers cross-observe each other's appends. Boundary tier: `FileSystem` and `JournalWatcher` required in `R` (`Path` deliberately not — paths are opaque strings), zero external runtime dependencies, zero `@effected/*` edges. The root never imports `node:*`; the Node backend is the opt-in `@effected/jsonl/node` subpath.
 
 ## Import
 
@@ -8,7 +8,7 @@ Append-only, schema-validated JSONL journals as a definable Effect service: an e
 import { Envelope, Journal, JsonlEvent, Line } from "@effected/jsonl";
 ```
 
-**Platform**: a journal layer does real IO — provide `FileSystem` once at the edge (`NodeFileSystem.layer` or the Bun equivalent). `Line` and `Envelope` are the pure core: synchronous, `Result`-based, no service to provide, usable from a hook script with no Effect runtime at all.
+**Platform**: a journal layer does real IO — provide `FileSystem` and a `JournalWatcher` once at the edge. On Node that is `NodeFileSystem.layer` plus `NodeJournalWatcher.layer` from `@effected/jsonl/node`. `JournalWatcher.watch(path)` must succeed only once the watch is **registered** — the journal arms, then reads what it missed, then follows, so a watch that is merely requested loses any append landing before it goes live. That is why core's `FileSystem.watch` (which registers in a forked fiber and never says when) is not the seam; on another runtime, implement `JournalWatcherShape` over its native watch with the same arm-before-success guarantee. `Line` and `Envelope` are the pure core: synchronous, `Result`-based, no service to provide, usable from a hook script with no Effect runtime at all.
 
 ## Core API
 
@@ -44,6 +44,7 @@ import { Envelope, Journal, JsonlEvent, Line } from "@effected/jsonl";
 
 ```ts
 import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeJournalWatcher } from "@effected/jsonl/node";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Effect, Schema } from "effect";
 
@@ -61,7 +62,7 @@ const program = Effect.gen(function* () {
   yield* journal.create;
   yield* journal.append("mail-received", { round: 7 }, { scope: "silk-runtime-action" });
   return yield* journal.latest; // Option<Envelope>
-}).pipe(Effect.provide(MailJournal.layer), Effect.provide(NodeFileSystem.layer));
+}).pipe(Effect.provide(MailJournal.layer), Effect.provide([NodeFileSystem.layer, NodeJournalWatcher.layer]));
 ```
 
 A slice-filtered subscription — a consumer sharing the file with a noisy neighbour pays nothing for the neighbour's payloads, because filtering runs on the envelope frame before the payload schema decodes `data`:
@@ -102,7 +103,7 @@ if (Option.isSome(state)) {
 
 ## Testing machinery
 
-No exported test layer — a journal requires a real `FileSystem`, so tests provide `@effected/memfs`. The package's own `__test__/helpers/memfs.ts` is the pattern to copy: an `@effected/memfs` handle whose storage, inodes and `O_APPEND` are memfs's own, with faults layered on for the seams a journal test needs — the real `watch` replaced by a manual registry (`poke(path)` drives watch events deterministically), write and read gates to assert ordering without wall-clock timing, `replace` to model a new inode, and `readRequests()` to assert read sizes. Fault handlers (`failTimes`, per-method interception) model `NotFound`, `PermissionDenied` and a file vanishing mid-operation. Real-filesystem behavior (`O_APPEND` under concurrency, an actual `fs.watch`) belongs in an integration suite against real temp directories.
+No exported test layer — a journal requires a real `FileSystem`, so tests provide `@effected/memfs`. The package's own `__test__/helpers/memfs.ts` is the pattern to copy: an `@effected/memfs` handle whose storage, inodes and `O_APPEND` are memfs's own, with faults layered on for the seams a journal test needs — a `JournalWatcher` double over a manual registry provided alongside it (`poke(path)` drives watch events deterministically; `holdNextWatch(target)` holds a watch between its `stat` and its registration, to land a write in the arming window), write and read gates to assert ordering without wall-clock timing, `replace` to model a new inode, and `readRequests()` to assert read sizes. Fault handlers (`failTimes`, per-method interception) model `NotFound`, `PermissionDenied` and a file vanishing mid-operation. Real-filesystem behavior (`O_APPEND` under concurrency, an actual `fs.watch`) belongs in an integration suite against real temp directories, with `NodeJournalWatcher.layer` provided.
 
 **Under `TestClock`, advance the clock for graceful shutdown to complete.** Scope close bounds its wait on outstanding publishes with `shutdownPublishTimeout` (default five seconds); a virtual clock never elapses it on its own.
 

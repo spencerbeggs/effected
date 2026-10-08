@@ -9,11 +9,13 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-07T19:56:54Z
-  body_sha256: 3391c5e52241b4bd19869d968d8df8e2579d79c1f1c856a16b7658d53c8aba94
+  at: 2026-10-08T06:11:30Z
+  body_sha256: a595c8c0c3e99e640ed1b535cdeb990b8f6f37a9bc15e2cf99331fd996a9d62a
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:37.064Z
+  - by: human:spencer
+    at: 2026-10-08T06:10:55Z
 ---
 
 # `@effected/jsonl` journal service
@@ -288,19 +290,36 @@ to absence, not by an existence check followed by a separate `stat` that
 the file could vanish between; construction likewise tolerates a file that
 vanishes between that `stat` and the seed read, constructing as if it had
 never existed. The same mapping is how `append` and `query` raise
-`JournalNotFound`. The watcher activates once the file exists, and the watch is
-armed *before* the catch-up read: the invariant is "no window in which the
-file can grow while nothing is watching and nothing will re-read." The
-other order (ingest, then arm) leaves an unguarded sub-5ms window in which
-a written line is invisible until some later filesystem event triggers a
-re-read — measured at 1.5s of undelivered staleness in one probe, arriving
-only when the *next* append's event fired.
+`JournalNotFound`.
 
-The ordering is achieved by scheduling, not synchronization, because the
-platform watch exposes no registration signal to wait on: the
-implementation forks the watch consumer and yields a tuned number of times
-before running the catch-up read, and the invariant is guarded by a
-deterministic arming-window test rather than trusted as timing folklore.
+The layer requires a `JournalWatcher` beside `FileSystem`, and that service
+carries the contract the watcher's correctness rests on: `watch(path)`
+succeeds only once the watch is **registered**, every change after success
+is on its stream, the watch lives until its scope closes, and a missing path
+fails `PlatformError` with reason `NotFound`. On Node the consumer provides
+`NodeJournalWatcher.layer` from `@effected/jsonl/node`; on any other
+platform, an implementation over that platform's watch that honours the
+same contract. Core's `FileSystem.watch` is not used: it registers in a
+forked fiber after an asynchronous `stat` and signals neither, which is the
+window the [arm-before-success
+decision](../decisions/jsonl-watch-arms-before-success.md) closes.
+
+Both paths run arm, then catch up, then follow, in that order by
+construction, each cycle in its own scope so a watch the loop moves past is
+released. Once the file exists, the journal arms a watch on it, runs the
+catch-up read, then ingests on every element of the stream. While the file
+is missing, it arms the directory watch *first* and checks existence
+second, so a journal created in between is either seen by the check or
+reported by the watch; a check made before the watch is registered is
+already stale, and the journal would wait on its directory forever. The
+invariant is "no window in which the file can grow while nothing is
+watching and nothing will re-read." The other order (ingest, then arm)
+leaves a window in which a written line is invisible until some later
+filesystem event triggers a re-read — measured at 1.5s of undelivered
+staleness in one probe, arriving only when the *next* append's event fired.
+Arming on a scheduler heuristic instead of on registration left the same
+window open under load. Deterministic arming-window tests guard both paths.
+
 Ingest runs under its own one-permit semaphore, which serializes ingests
 against each other — two overlapping runs would read the same consumed
 offset and publish the same lines twice — so a poke arriving mid-ingest
@@ -315,23 +334,23 @@ falsified by a probe: on the installed node backend, a directory watch
 reports both file creation and append as removal, and the event's path is a
 bare relative basename that resolves against the process working directory
 rather than the watched one — an upstream defect. Four constraints bind
-activation as a result: never branch on the event tag (any directory event
-whose path basename matches the journal filename is an untyped poke
-meaning "go re-stat yourself"); never use the event's path to open or read
-anything, on any watch; re-arm the file watch after a resync, since node
+activation as a result: never branch on an event kind — `JournalWatcher`'s
+elements carry none, only the name the platform reported, and any directory
+element whose basename matches the journal filename, or that carries no
+name at all, is an untyped poke meaning "go re-stat yourself"; never use an
+element's name to open or read anything, on any watch; re-arm the file watch after a resync, since node
 watchers follow the inode and a replaced file leaves the old watch attached
 to nothing; and the directory watch is activation-only and must end once
 the file exists, since a non-recursive directory watch does not reliably
 report a child file's content appends.
 
-The package does not use core's `WatchBackend`: it calls `watch` through
-the `FileSystem` service, so the deterministic test seam is the
-`watch` member of the test filesystem (an `@effected/memfs` volume with
-`watch` faulted to a manually driven stream) and its before-watch hook — this is what
-covers offset bookkeeping, the re-arm path and the resync path without
-racing a real filesystem or sleeping. `WatchBackend` remains this design's
-named upgrade for synchronous registration, considered and deferred rather
-than used.
+The deterministic test seam is the `JournalWatcher` itself: the
+unit suites provide a manually driven double over an `@effected/memfs`
+volume that stats its target and then registers synchronously, with a
+before-watch hook and a `holdNextWatch` that suspends one watch between its
+stat and its registration. That is what covers offset bookkeeping, the
+re-arm path, the resync path and both arming windows without racing a real
+filesystem or sleeping.
 
 ## What the concurrency tests must actually arrange
 
@@ -353,7 +372,14 @@ they appear to test unless arranged deliberately:
   object is transient, so the observable output is always clean while the
   hazard is real.
 
-The arming-window test earns a place beside them: its write must land
+The arming-window tests earn a place beside them. Each must land its write
 *after* construction, inside the window itself; placed before construction,
 the seeding read covers it and the test passes against the very bug it
-exists for.
+exists for. A write placed before the watch is *requested* is not enough
+either: the window that failed under load is between request and
+registration, so the test holds the watch there (`holdNextWatch`), yields
+turns so a catch-up that does not wait for registration has every chance to
+run, then writes and releases. The activation test does the same with a
+file created behind the journal's back and never announced, since a watch
+that was not live would not have reported it. Each test is proven by a
+mutant that restores the old order.

@@ -17,7 +17,7 @@ npm install @effected/jsonl effect
 pnpm add @effected/jsonl effect
 ```
 
-Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency, and the only dependency of any kind. `FileSystem` comes from `effect` core, so you provide it once at the edge — `NodeFileSystem.layer` from `@effect/platform-node` on Node. `Path` is deliberately not required: journal paths are opaque strings handed straight to `FileSystem`.
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency, and the only dependency of any kind. `FileSystem` comes from `effect` core, so you provide it once at the edge — `NodeFileSystem.layer` from `@effect/platform-node` on Node. The journal also needs a `JournalWatcher` — a file watch that reports when it is armed, so an append cannot land unseen while the watch is being set up; on Node that is `NodeJournalWatcher.layer` from the `@effected/jsonl/node` subpath, the only part of the package that touches `node:*`. `Path` is deliberately not required: journal paths are opaque strings handed straight to `FileSystem`.
 
 ## Your first journal: the run log of a build tool
 
@@ -29,6 +29,7 @@ A journal's schema is its **registry**: a list of [`JsonlEvent`](/jsonl/api/name
 
 ```ts with-api
 import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeJournalWatcher } from "@effected/jsonl/node";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Effect, Option, Schema } from "effect";
 
@@ -64,7 +65,7 @@ const program = Effect.gen(function* () {
   return Option.map(latest, (envelope) => envelope.event);
 });
 
-Effect.runPromise(program.pipe(Effect.provide(RunJournal.layer), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(program.pipe(Effect.provide(RunJournal.layer), Effect.provide([NodeFileSystem.layer, NodeJournalWatcher.layer])));
 // Option.some("task-finished")
 ```
 
@@ -97,6 +98,7 @@ Three read surfaces, one filter vocabulary. A [`Slice`](/jsonl/api/interface/sli
 
 ```ts with-api
 import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeJournalWatcher } from "@effected/jsonl/node";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Effect, Schema, Stream } from "effect";
 
@@ -119,7 +121,7 @@ const failures = Effect.gen(function* () {
   return finished.filter((envelope) => !envelope.data.ok).map((envelope) => envelope.data.task);
 });
 
-Effect.runPromise(failures.pipe(Effect.provide(RunJournal.layer), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(failures.pipe(Effect.provide(RunJournal.layer), Effect.provide([NodeFileSystem.layer, NodeJournalWatcher.layer])));
 ```
 
 Because `events: ["task-finished"]` is a literal array, the stream's element type narrows to that one variant — which is why `envelope.data.ok` typechecks without a cast. The read is **paged**: the file is read a bounded page at a time and each page's matches are emitted before the next page is read, so memory is a page plus the longest line however large the journal grows, and a consumer that stops early — `Stream.take`, `Stream.runHead` — stops the reading too. `Stream.runCollect` above does gather every match; stream them instead when the result set is large.
@@ -130,6 +132,7 @@ Because `events: ["task-finished"]` is a literal array, the stream's element typ
 
 ```ts with-api
 import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeJournalWatcher } from "@effected/jsonl/node";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Effect, Schema, Stream } from "effect";
 
@@ -156,7 +159,7 @@ const watch = Effect.gen(function* () {
     );
 });
 
-Effect.runPromise(watch.pipe(Effect.provide(MailJournal.layer), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(watch.pipe(Effect.provide(MailJournal.layer), Effect.provide([NodeFileSystem.layer, NodeJournalWatcher.layer])));
 ```
 
 The stream **ends** rather than hanging when the journal becomes quiescent — a `terminal` event reaches the tail — or when its scope closes. That holds even for a slice that excludes the terminal event, and for a subscriber that attached after the fact.
@@ -167,6 +170,7 @@ The stream **ends** rather than hanging when the journal becomes quiescent — a
 
 ```ts with-api
 import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeJournalWatcher } from "@effected/jsonl/node";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Effect, Schema, Stream } from "effect";
 
@@ -193,7 +197,7 @@ const tally = Effect.gen(function* () {
   return yield* Stream.runLast(counts);
 });
 
-Effect.runPromise(tally.pipe(Effect.provide(RunJournal.layer), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(tally.pipe(Effect.provide(RunJournal.layer), Effect.provide([NodeFileSystem.layer, NodeJournalWatcher.layer])));
 ```
 
 ## Reading with no runtime at all
@@ -230,6 +234,7 @@ Every failure arrives on the typed `E` channel as a tagged error naming a distin
 
 ```ts with-api
 import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeJournalWatcher } from "@effected/jsonl/node";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Effect, Schema } from "effect";
 
@@ -254,7 +259,7 @@ const program = Effect.gen(function* () {
   Effect.catchTag("TerminalViolation", () => Effect.log("run already closed")),
 );
 
-Effect.runPromise(program.pipe(Effect.provide(RunJournal.layer), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(program.pipe(Effect.provide(RunJournal.layer), Effect.provide([NodeFileSystem.layer, NodeJournalWatcher.layer])));
 ```
 
 The tags divide by recovery, not by layer. The three line-level ones — together the [`DecodeError`](/jsonl/api/type/decodeerror) union — reach a read only when its slice sets `onInvalid: "fail"`; by default a read skips the line. [`MalformedLine`](/jsonl/api/class/malformedline) means a line is not parseable JSON — most often a tail caught mid-write, so read the last valid envelope instead. [`UnknownEvent`](/jsonl/api/class/unknownevent) means the line's tag is not in this registry, which is what an older version of your own application's journal looks like. [`InvalidData`](/jsonl/api/class/invaliddata) carries the structured schema issue. [`UnserializableData`](/jsonl/api/class/unserializabledata) means `JSON.stringify` threw on a payload that satisfied its schema, and nothing was written. [`JournalClosed`](/jsonl/api/class/journalclosed) is a lifecycle fact — the layer's scope began closing — rather than a data one. [`JournalResync`](/jsonl/api/class/journalresync) ends a live `changes` stream when the file was truncated or replaced beneath it: the journal re-adopts the file as it now is, and the subscriber discards every cursor-derived state, re-reads, and surfaces the breach, because something violated the append-only contract.

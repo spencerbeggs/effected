@@ -32,7 +32,7 @@ import {
 import type { AnyEnvelope, Item } from "../src/internal/engine.js";
 import { makeEngine } from "../src/internal/engine.js";
 import type { MemFs } from "./helpers/memfs.js";
-import { makeMemFs, textOf } from "./helpers/memfs.js";
+import { idleWatcher, makeMemFs, textOf } from "./helpers/memfs.js";
 
 const PATH = "/journal/mail.jsonl";
 
@@ -169,7 +169,7 @@ describe("Journal — layer and lifecycle", () => {
 				{ [PATH]: "" },
 				{ faults: { open: () => Effect.fail(failure("open", "PermissionDenied")) } },
 			);
-			const layer = MailJournal.layer.pipe(Layer.provide(denied));
+			const layer = MailJournal.layer.pipe(Layer.provide([denied, idleWatcher]));
 			const scope = yield* Scope.make();
 			const exit = yield* Effect.exit(Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope)));
 			assert.isTrue(Exit.isFailure(exit), "construction fails rather than presenting an empty journal");

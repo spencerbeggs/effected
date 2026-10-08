@@ -1,8 +1,32 @@
 import { readFileSync } from "node:fs";
 import * as tty from "node:tty";
 import { fileURLToPath } from "node:url";
-import { assert, describe, it } from "@effect/vitest";
+import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { colorDepth, colorKeys } from "../src/internal/colorDepth.js";
+
+/**
+ * The oracle is fed `{ FORCE_COLOR, NO_COLOR }` on purpose, and Node answers it with a one-time "The 'NO_COLOR' env
+ * is ignored" process warning. That one warning is held back from Node's stderr printer for this file; every other
+ * warning is still forwarded to it, and the printer is restored afterwards.
+ */
+const ORACLE_WARNING = "The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.";
+let printers: Array<(warning: Error) => void> = [];
+const onWarning = (warning: Error): void => {
+	if (warning.message !== ORACLE_WARNING) for (const print of printers) print(warning);
+};
+
+beforeAll(() => {
+	printers = process.listeners("warning");
+	process.removeAllListeners("warning");
+	process.on("warning", onWarning);
+});
+
+afterAll(async () => {
+	// Node dispatches the warning asynchronously; let it arrive before the printer comes back.
+	await new Promise((resolve) => setImmediate(resolve));
+	process.off("warning", onWarning);
+	for (const print of printers) process.on("warning", print);
+});
 
 const nodeDepth = (env: Record<string, string>): string => {
 	const bits = tty.WriteStream.prototype.getColorDepth.call(undefined, env);

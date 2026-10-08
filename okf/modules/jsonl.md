@@ -10,8 +10,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-07T19:15:53Z
-  body_sha256: 10c6b1dea29d2c89685d24d0726711b0df542a36e3969f72f33857ec1c2e8743
+  at: 2026-10-08T06:11:30Z
+  body_sha256: 5a9646fb2bd50a9323b8042437513366646724b4c30a72c91e780215a1e97994
 ---
 
 # `@effected/jsonl`
@@ -48,8 +48,8 @@ one of them.
 
 ## Kit positioning
 
-**Boundary tier.** `FileSystem` is required in `R`, and `Path` deliberately
-is not: the package takes journal paths as given and never joins, resolves
+**Boundary tier at the root.** `FileSystem` and the package's own
+`JournalWatcher` are required in `R`, and `Path` deliberately is not: the package takes journal paths as given and never joins, resolves
 or normalizes one, so requiring `Path` would charge every consumer for a
 service it does not use. The one sanctioned piece of path arithmetic —
 deriving an activation-watch directory from the journal path — is
@@ -57,9 +57,18 @@ separator-agnostic string work on a comparison-and-watch-target only, and
 buys no `Path` requirement (see the [journal
 interface](../interfaces/jsonl-journal.md#the-watcher-and-activation)).
 
-It owns no IO backend and never imports `node:*`. Zero external runtime
-dependencies and zero `@effected/*` edges: the envelope is Effect Schema
-over `JSON.parse`, which core already provides.
+`JournalWatcher` is how a journal learns its file changed: a watch whose
+effect succeeds only once the platform watch is registered, which core's
+`FileSystem.watch` cannot promise (see the [arm-before-success
+decision](../decisions/jsonl-watch-arms-before-success.md)). The root owns
+no backend for it and never imports `node:*`. The Node backend,
+`NodeJournalWatcher.layer` over `node:fs` `watch`, ships behind the
+`@effected/jsonl/node` subpath — the package's one platform-bound surface,
+taken on opt-in only and read per entrypoint the way [cli's
+`./ui`](../decisions/ui-tier-is-integrated-on-opt-in.md) is. It imports
+only the `node:fs` built-in, so it adds no install. Zero external runtime
+dependencies and zero `@effected/*` edges either way: the envelope is
+Effect Schema over `JSON.parse`, which core already provides.
 
 It is not a format package: `jsonc`, `yaml` and `toml` are pure-tier
 parse/edit/format packages whose subject is text and whose obligation is
@@ -190,6 +199,18 @@ Module-per-concept, no barrels, no namespace objects. See `packages/jsonl/src/`:
   payloads `unknown`) that `Journal` types once, with a single cast, and
   `internal/tail.ts` holds the bounded reads. See the [journal
   interface](../interfaces/jsonl-journal.md).
+- **The watch seam**: `JournalWatcher.ts` is the `Context.Service`
+  (`JournalWatcherShape`, one `watch` member) the engine requires. The
+  `./node` entry, `node.ts`, re-exports `NodeJournalWatcher` and nothing
+  else; `NodeJournalWatcher.ts` is the one module that imports `node:*`.
+  `node.ts` names root types through `import type * as Jsonl from
+  "@effected/jsonl"`, and `savvy.build.ts` keeps that import external in the
+  declarations (`dtsExternals`) and suppresses `ae-forgotten-export` for the
+  `node.d.ts` entry point only — the same arrangement as [cli's ui
+  declarations](../decisions/ui-declarations-reference-the-root-by-name.md).
+  The prod build's `_base` suppression now covers nine entries, one of them
+  `JournalWatcher_base`, and the one "could not harvest per-module source
+  locations" warning for `node` is accepted, as cli's are.
 - **The errors**: `JsonlError.ts` — an eight-tag taxonomy (`MalformedLine`,
   `UnknownEvent`, `InvalidData`, `UnserializableData`, `TerminalViolation`,
   `JournalClosed`, `JournalNotFound`, `JournalResync`), each tag naming a
@@ -288,12 +309,22 @@ guarantees are tested as types, not behaviour: a payload schema requiring
 services is a compile error at registration, and a slice's event list
 narrows the element type — a runtime-only test would pass while either was
 broken. Integration tests run the watcher against real temporary
-directories and are the only tests that provide a platform layer (`@effect/platform-node`);
-watcher behaviour that does not need a real filesystem runs over an
-`@effected/memfs` volume whose `watch` is replaced, through a faults factory,
-by a manually driven stream (with `open` wrapped for write and read gates),
-so those assertions are deterministic and timer-free while storage, `stat`
-identity and `O_APPEND` stay memfs's own. The engine's hub is reachable
+directories and are the only tests that provide a platform layer
+(`@effect/platform-node` plus `NodeJournalWatcher.layer`); watcher
+behaviour that does not need a real filesystem runs over an
+`@effected/memfs` volume (with `open` wrapped, through a faults factory,
+for write and read gates) and a manually driven `JournalWatcher` double
+that stats its target through the unfaulted volume and then registers
+synchronously, as the Node backend does. The engine never calls
+`FileSystem.watch`, so memfs's own `watch` is not faulted. The helper's
+`holdNextWatch(target)` suspends one watch between its stat and its
+registration, the window the arming tests land a write and a creation in,
+and `idleWatcher` is a watcher that arms and never reports, for a test that
+brings its own filesystem. Those assertions are deterministic and
+timer-free while storage, `stat` identity and `O_APPEND` stay memfs's own.
+`__test__/entrypoints.test.ts` walks the import graph from each entry to
+pin that the root never reaches `node:*` or the Node watcher, with a
+positive control on `./node`. The engine's hub is reachable
 from tests through `internal/engine.ts` and from nowhere else: no public
 shape exposes it, so a test that needs to see backpressure or two
 independent hubs builds the engine directly. Three concurrency and ordering tests are structurally

@@ -15,21 +15,30 @@ const MANY = 25;
 const settle = (millis: number) => Effect.promise(() => new Promise((resolve) => setTimeout(resolve, millis)));
 
 /**
- * Collect every process `warning` while `use` runs. The listener is removed by a finalizer, so a failure part way
- * through cannot leave it attached for a later test.
+ * Collect every process `warning` while `use` runs. Node's default stderr printer is held back meanwhile so the
+ * control's deliberate `MaxListenersExceededWarning` is asserted rather than printed; any other warning is still
+ * forwarded to it. The finalizer restores the original listeners, so a failure part way through cannot leave the
+ * printer detached for a later test.
  */
 const collectingWarnings = <A, E, R>(use: (warnings: ReadonlyArray<Error>) => Effect.Effect<A, E, R>) =>
 	Effect.acquireUseRelease(
 		Effect.sync(() => {
 			const warnings: Array<Error> = [];
+			const printers = process.listeners("warning");
 			const onWarning = (warning: Error): void => {
 				warnings.push(warning);
+				if (warning.name !== "MaxListenersExceededWarning") for (const print of printers) print(warning);
 			};
+			process.removeAllListeners("warning");
 			process.on("warning", onWarning);
-			return { warnings, onWarning };
+			return { warnings, printers, onWarning };
 		}),
 		({ warnings }) => use(warnings),
-		({ onWarning }) => Effect.sync(() => process.off("warning", onWarning)),
+		({ printers, onWarning }) =>
+			Effect.sync(() => {
+				process.off("warning", onWarning);
+				for (const print of printers) process.on("warning", print);
+			}),
 	);
 
 /**

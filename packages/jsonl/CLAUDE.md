@@ -18,11 +18,22 @@ entry point to two children:
 ## Tier: boundary
 
 `effect` is the only peer. **Zero runtime dependencies, zero `@effected/*`
-edges.** `FileSystem` is required in `R`; `Path` is not — paths are opaque
-strings handed straight to `FileSystem`, and this package never joins,
-resolves or splits one. `@effect/platform-node` is a devDependency, for the
-integration suite only. Core `PlatformError` passes through every write and
-read path **untranslated** rather than being wrapped.
+edges.** `FileSystem` and `JournalWatcher` are required in `R`; `Path` is not —
+paths are opaque strings handed straight to `FileSystem`, and this package
+never joins, resolves or splits one. `@effect/platform-node` is a
+devDependency, for the integration suite only. Core `PlatformError` passes
+through every write and read path **untranslated** rather than being wrapped.
+
+**The root never imports `node:*`.** The one platform surface is the
+`./node` subpath (`src/node.ts` → `NodeJournalWatcher`): Node-only, read
+per entrypoint like `@effected/cli`'s `./ui`. It adds no package — only the
+`node:fs` built-in — so it does not make the package integrated by
+`okf/glossary/library-tier.md`; it does make that entry unusable off Node.
+`__test__/entrypoints.test.ts` holds the boundary: nothing reachable from
+`src/index.ts` imports `node:*` or the Node watcher, with positive controls.
+`node.ts` names root types through `import type * as Jsonl from
+"@effected/jsonl"` and imports root values relatively, so `node.d.ts` refers
+to the root's `JournalWatcher` instead of carrying a copy.
 
 ## Module map (one concept per module)
 
@@ -56,6 +67,17 @@ read path **untranslated** rather than being wrapped.
   `changes` alike. `matchesFrame` (internal) takes the structural frame fields,
   so an envelope or a raw frame both match without being rebuilt.
 - **`JsonlError`** — the eight-tag error taxonomy (below) plus `DecodeError`.
+- **`JournalWatcher`** — the watch seam the engine requires in `R`:
+  `watch(path)` succeeds only once the watch is **registered**, then streams
+  untyped pokes (a possibly-bare name, never opened). Core's
+  `FileSystem.watch` cannot serve: its stream registers in a forked fiber
+  after an async `stat` and never says when, which lost appends under load
+  (the "TWO journal layers" integration timeout). **Do not reintroduce a
+  scheduler-turn heuristic, and `FileSystem.WatchBackend` does not fix it** —
+  `register` returns the same opaque lazy stream, and no Node layer for it
+  exists.
+- **`NodeJournalWatcher`** (`./node`) — `JournalWatcher` over `node:fs`
+  `watch`, registered synchronously inside an `acquireRelease`.
 - **`Journal`** — a static class: `Journal.Service<Self>()(id, { events,
   config })`, where `config` is a `JournalConfig` or an `Effect` producing one.
   The class carries a static **`layer` value** (one journal however often it is
@@ -70,7 +92,11 @@ read path **untranslated** rather than being wrapped.
   Resync **re-seeds** (BOM, identity, resume at the end of the last complete
   line, then `latest` from the new tail — in that order, so a line landing
   between the two reads is still ingested) — the same `seed` construction
-  uses. Outside a resync `consumed` never decreases.
+  uses. Outside a resync `consumed` never decreases. The watcher is **arm →
+  catch up → follow** by construction (`followJournal`); activation arms the
+  directory watch **before** checking existence (`awaitCreation`), so a
+  journal created in between is seen by one or the other. Each cycle owns its
+  watch's scope.
 - **`internal/merge.ts`** — `appendPatch`'s **shallow** merge, ported from
   `@effected/config-file`'s recipe minus the recursion. Same prototype-pollution
   discipline: `Object.defineProperty` only, `__proto__`/`constructor`/
@@ -128,9 +154,18 @@ Operations expose only the tags they can raise (`AppendError`, `QueryError`,
 `@effect/vitest`, `assert.*` — **never** `expect`. Tests live in `__test__/`
 (never co-located in `src/`); integration tests live under
 `__test__/integration/` and are the only suite that provides a real platform
-layer (`@effect/platform-node`, temp dirs via `makeTempDirectoryScoped`). The
-flagship integration test is two `Journal` layers over one file
-cross-observing each other's appends through the watcher.
+layer (`@effect/platform-node` plus `NodeJournalWatcher.layer`, temp dirs via
+`makeTempDirectoryScoped`). The flagship integration test is two `Journal`
+layers over one file cross-observing each other's appends through the watcher.
+
+`__test__/helpers/memfs.ts`'s `layer` provides `FileSystem` **and** a
+manually driven `JournalWatcher` double that honours the arm-before-success
+contract (stat through the unfaulted volume, then register). Drive it with
+`poke`/`pokeParent`; `holdNextWatch(target)` suspends a watch between its
+stat and its registration — the only deterministic way to land a write in
+the arming window. A test bringing its own filesystem layer provides
+`idleWatcher`. `it.effect` does not constrain `R`, so a missing
+`JournalWatcher` surfaces as `Service not found` at run time, not in `tsc`.
 
 ```bash
 pnpm vitest run packages/jsonl        # from the repo root
@@ -153,8 +188,8 @@ the next session does not rediscover them:
   varies by reporter, so a killed mutant reads as a survivor.
 - **A stale `issues.json` looks identical to a fresh one on `warnings`/
   `errors`.** The tell is the `suppressed` count: this package's prod build
-  suppresses exactly 8 `ae-forgotten-export` entries (one `_base` symbol per
-  `Schema.Class`/`Schema.TaggedError` factory). A lower count on a build
+  suppresses exactly 9 `ae-forgotten-export` entries (one `_base` symbol per
+  `Schema.Class`/`Schema.TaggedError`/`Context.Service` factory). A lower count on a build
   you did not just run cold is a stale artifact, not a clean one — force a
   rebuild (`rm -rf dist .turbo && pnpm build --filter @effected/jsonl --force`)
   before trusting it.
@@ -170,7 +205,12 @@ the next session does not rediscover them:
 `savvy.build.ts` carries the narrow `{ messageId: "ae-forgotten-export",
 pattern: "_base" }` suppression for the synthesized `Schema.Class` /
 `Schema.TaggedError` heritage types. **Never widen it** — an internal type
-named on a public signature is a different symbol and stays un-masked.
+named on a public signature is a different symbol and stays un-masked. A
+second suppression is scoped to `entry point node\.d\.ts$` only: API
+Extractor follows `./node`'s self-referencing `@effected/jsonl` import into the
+root and reports every root type as forgotten there. The one remaining
+warning, "could not harvest per-module source locations for node", is that
+same self-reference and is accepted, as `@effected/cli`'s are.
 
 Gate on `pnpm build --filter @effected/jsonl`, never the raw
 `node savvy.build.ts` script, and read `dist/prod/issues.json` rather than

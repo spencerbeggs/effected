@@ -5,6 +5,7 @@ import { Context, Effect, Layer } from "effect";
 import type { EnvelopeUnion, EnvelopeWithTag } from "./Envelope.js";
 import type { AppendError, AppendOptions, ChangesError, JournalConfig, QueryError } from "./internal/engine.js";
 import { makeEngine } from "./internal/engine.js";
+import type { JournalWatcher } from "./JournalWatcher.js";
 import type { JsonlEvent } from "./JsonlEvent.js";
 import type { Slice } from "./Slice.js";
 
@@ -133,7 +134,7 @@ export interface JournalClass<Self, Id extends string, R extends JsonlEvent.Regi
 	 * A journal file that does not exist yet is legal and constructs cleanly; one
 	 * that exists and cannot be read fails with `PlatformError`.
 	 */
-	readonly layer: Layer.Layer<Self, PlatformError.PlatformError | E, FileSystem.FileSystem | RC>;
+	readonly layer: Layer.Layer<Self, PlatformError.PlatformError | E, FileSystem.FileSystem | JournalWatcher | RC>;
 	/**
 	 * Build a journal over an explicit config, for a path only known at run
 	 * time. Wrap it in `Layer.effect(Class, Class.make(config))` and bind that
@@ -141,7 +142,11 @@ export interface JournalClass<Self, Id extends string, R extends JsonlEvent.Regi
 	 */
 	readonly make: (
 		config: JournalConfig,
-	) => Effect.Effect<JournalShape<R>, PlatformError.PlatformError, FileSystem.FileSystem | Scope.Scope>;
+	) => Effect.Effect<
+		JournalShape<R>,
+		PlatformError.PlatformError,
+		FileSystem.FileSystem | JournalWatcher | Scope.Scope
+	>;
 }
 
 /**
@@ -163,6 +168,7 @@ export class Journal {
 	 * @example
 	 * ```ts
 	 * import { Journal, JsonlEvent } from "@effected/jsonl";
+	 * import { NodeJournalWatcher } from "@effected/jsonl/node";
 	 * import { NodeFileSystem } from "@effect/platform-node";
 	 * import { Effect, Schema } from "effect";
 	 *
@@ -176,7 +182,10 @@ export class Journal {
 	 * const program = Effect.gen(function* () {
 	 *   const mail = yield* Mail;
 	 *   yield* mail.append("mail", { round: 1 });
-	 * }).pipe(Effect.provide(Mail.layer), Effect.provide(NodeFileSystem.layer));
+	 * }).pipe(
+	 *   Effect.provide(Mail.layer),
+	 *   Effect.provide([NodeFileSystem.layer, NodeJournalWatcher.layer]),
+	 * );
 	 * ```
 	 */
 	static Service<Self>() {

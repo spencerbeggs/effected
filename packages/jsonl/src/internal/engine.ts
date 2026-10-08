@@ -13,7 +13,6 @@ import {
 	Duration,
 	Effect,
 	Exit,
-	Fiber,
 	FileSystem,
 	Option,
 	PubSub,
@@ -24,6 +23,7 @@ import {
 } from "effect";
 import type { EnvelopeUnion, Frame } from "../Envelope.js";
 import { Envelope, completeResult, frameResult } from "../Envelope.js";
+import { JournalWatcher } from "../JournalWatcher.js";
 import type { DecodeError, InvalidData, MalformedLine, UnknownEvent, UnserializableData } from "../JsonlError.js";
 import { JournalClosed, JournalNotFound, JournalResync, TerminalViolation } from "../JsonlError.js";
 import type { JsonlEvent } from "../JsonlEvent.js";
@@ -176,15 +176,6 @@ const SHUTDOWN_PUBLISH_TIMEOUT = Duration.seconds(5);
  */
 const MAX_IMMEDIATE_REARMS = 8;
 
-/**
- * Scheduler turns yielded to a freshly-forked watch consumer before the
- * catch-up read. `fs.watch` exposes no "registered" signal, so arming is
- * ordered ahead of catch-up by scheduling, not synchronisation — empirically
- * sufficient, not a proof. The airtight primitive would be
- * `FileSystem.WatchBackend.register`, at the cost of `WatchBackend` in `R`.
- */
-const ARM_YIELDS = 3;
-
 const encoder = new TextEncoder();
 
 /**
@@ -237,9 +228,10 @@ export const makeEngine = (
 	id: string,
 	events: JsonlEvent.Registry,
 	config: JournalConfig,
-): Effect.Effect<Engine, PlatformError.PlatformError, FileSystem.FileSystem | Scope.Scope> =>
+): Effect.Effect<Engine, PlatformError.PlatformError, FileSystem.FileSystem | JournalWatcher | Scope.Scope> =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
+		const watcher = yield* JournalWatcher;
 		const { path } = config;
 		const terminalTags = new Set(events.filter((event) => event.terminal).map((event) => event.tag));
 		const reopenTags = new Set(events.filter((event) => event.reopen).map((event) => event.tag));
@@ -697,30 +689,52 @@ export const makeEngine = (
 		 *
 		 * - **The journal itself**, once it exists: one event per append.
 		 * - **The parent directory**, while the journal does not exist yet. Its
-		 *   tags are NOT trustworthy (a node backend reports creation and append
-		 *   alike as `Remove`, with a bare relative path), so any event whose
+		 *   events are NOT trustworthy (a node watch reports creation and append
+		 *   alike as `rename`, with a bare relative name), so any event whose
 		 *   basename matches is an untyped poke: "re-stat the journal yourself".
 		 *   It ends once the journal exists — a non-recursive directory watch
 		 *   reports creation, not a child's appends.
 		 *
-		 * `event.path` is never opened or read: it can be a bare basename that
-		 * resolves against the process CWD. No timer anywhere.
+		 * The name an event carries is never opened or read: it can be a bare
+		 * basename that resolves against the process CWD. No timer anywhere.
 		 */
 		const basename = basenameOf(path);
 		const directory = config.directory ?? parentOf(path);
 
-		const watchJournal = fs.watch(path).pipe(
-			Stream.runForEach(() => ingest),
-			Effect.ignore,
+		/** A directory event names the journal, or names nothing and might. */
+		const namesJournal = (name: string | undefined): boolean => name === undefined || basenameOf(name) === basename;
+
+		/*
+		 * ARM, THEN CATCH UP, THEN FOLLOW — in that order, by construction. The
+		 * watch is registered when `watcher.watch` succeeds, so anything appended
+		 * before that is on disk for the catch-up read and anything after it is
+		 * on the stream. The reverse leaves a window in which the file grows while
+		 * nothing watches and nothing will re-read. Each cycle owns its watch's
+		 * scope, so a watch the loop moves past is released, not leaked.
+		 */
+		const followJournal = Effect.scoped(
+			Effect.gen(function* () {
+				const changes = yield* watcher.watch(path);
+				yield* ingest;
+				yield* Stream.runForEach(changes, () => ingest);
+			}),
 		);
 
-		const watchForCreation = fs.watch(directory).pipe(
-			Stream.filter((event) => basenameOf(event.path) === basename),
-			// The element that ends the watch is still emitted, so the creation
-			// event that ends it also catches the journal up.
-			Stream.takeUntilEffect(() => fs.exists(path)),
-			Stream.runForEach(() => ingest),
-			Effect.ignore,
+		// The same order guards activation: the directory watch is armed BEFORE
+		// the existence check, so a journal created in between is either seen
+		// by the check or reported by the watch.
+		const awaitCreation = Effect.scoped(
+			Effect.gen(function* () {
+				const changes = yield* watcher.watch(directory);
+				if (yield* fs.exists(path)) return;
+				yield* changes.pipe(
+					Stream.filter(namesJournal),
+					// The element that ends the watch is still emitted, so the creation
+					// event that ends it also catches the journal up.
+					Stream.takeUntilEffect(() => fs.exists(path)),
+					Stream.runForEach(() => ingest),
+				);
+			}),
 		);
 
 		const supervise = Effect.gen(function* () {
@@ -728,19 +742,12 @@ export const makeEngine = (
 			for (;;) {
 				const startedAt = consumed;
 				if (yield* fs.exists(path)) {
-					// ARM FIRST, THEN CATCH UP. The reverse leaves a window in which the
-					// file grows while nothing watches and nothing will re-read.
-					const armed = yield* Effect.forkChild(watchJournal);
-					for (let turn = 0; turn < ARM_YIELDS; turn++) {
-						yield* Effect.yieldNow;
-					}
-					yield* ingest;
-					yield* Fiber.join(armed);
+					yield* Effect.ignore(followJournal);
 					// The watch ended — the file was replaced or removed. Ingest, then
 					// loop back and re-arm against whatever the path names now.
 					yield* ingest;
 				} else {
-					yield* watchForCreation;
+					yield* Effect.ignore(awaitCreation);
 				}
 				immediateCompletions = consumed === startedAt ? immediateCompletions + 1 : 0;
 				if (immediateCompletions > MAX_IMMEDIATE_REARMS) {

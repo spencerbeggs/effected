@@ -19,6 +19,7 @@ Its error channel carries `PlatformError` because a journal that does not exist 
 
 ```ts with-api
 import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeJournalWatcher } from "@effected/jsonl/node";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 
@@ -40,7 +41,7 @@ class StateJournal extends Journal.Service<StateJournal>()("docs/StateJournal", 
 
 // Each journal's layer is composed as-is; the platform edge is provided once.
 export const JournalsLive = Layer.mergeAll(MailJournal.layer, StateJournal.layer).pipe(
-  Layer.provide(NodeFileSystem.layer),
+  Layer.provide([NodeFileSystem.layer, NodeJournalWatcher.layer]),
 );
 
 const program = Effect.gen(function* () {
@@ -64,6 +65,7 @@ A snapshot journal is one where each line is a *complete* state and most transit
 
 ```ts with-api
 import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeJournalWatcher } from "@effected/jsonl/node";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Effect, Schema } from "effect";
 
@@ -89,7 +91,7 @@ const program = Effect.gen(function* () {
   return yield* journal.appendPatch("snapshot", { round: 2 });
 });
 
-Effect.runPromise(program.pipe(Effect.provide(StateJournal.layer), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(program.pipe(Effect.provide(StateJournal.layer), Effect.provide([NodeFileSystem.layer, NodeJournalWatcher.layer])));
 // { round: 2, phase: "implementing" } — a complete line, not a diff
 ```
 
@@ -103,6 +105,7 @@ Every envelope carries its own position. `envelope.position` is a [`LinePosition
 
 ```ts with-api
 import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeJournalWatcher } from "@effected/jsonl/node";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Effect, Schema, Stream } from "effect";
 
@@ -136,7 +139,7 @@ const drainInbox = Effect.gen(function* () {
   );
 });
 
-Effect.runPromise(drainInbox.pipe(Effect.provide(MailJournal.layer), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(drainInbox.pipe(Effect.provide(MailJournal.layer), Effect.provide([NodeFileSystem.layer, NodeJournalWatcher.layer])));
 ```
 
 Those offsets are **UTF-8 byte** offsets, logical and post-BOM, never `String.length` — they persist across process restarts and are handed back to the filesystem as a read offset, so any other unit would be wrong the moment a line contains a non-ASCII character. If you do offset arithmetic yourself, measure with [`Line.byteLength`](/jsonl/api/class/line) rather than `.length`: `"\u{1F600}".length` is `2` and its byte length is `4`.
@@ -149,6 +152,7 @@ An event marked `terminal` declares that reaching the tail ends the journal. Onc
 
 ```ts with-api
 import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeJournalWatcher } from "@effected/jsonl/node";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Effect, Schema } from "effect";
 
@@ -174,7 +178,7 @@ const program = Effect.gen(function* () {
   return [over, yield* journal.quiescent] as const;
 });
 
-Effect.runPromise(program.pipe(Effect.provide(LoopJournal.layer), Effect.provide(NodeFileSystem.layer)));
+Effect.runPromise(program.pipe(Effect.provide(LoopJournal.layer), Effect.provide([NodeFileSystem.layer, NodeJournalWatcher.layer])));
 // [true, false]
 ```
 

@@ -16,6 +16,7 @@ import {
 	Stream,
 } from "effect";
 import { Envelope, Journal, JsonlEvent, Line } from "../../src/index.js";
+import { NodeJournalWatcher } from "../../src/node.js";
 
 /**
  * The only tests that provide a platform layer — the boundary discipline made
@@ -42,7 +43,7 @@ class TmpJournal extends Journal.Service<TmpJournal>()("test/TmpJournal", {
 /** The journal at `file`. Each BUILD of it is its own journal, as a separate process's would be. */
 const journalAt = (file: string) => TmpJournal.layer.pipe(Layer.provide(Layer.succeed(TmpPath, file)));
 
-const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, NodeJournalWatcher.layer);
 
 /** Run `body` against a real journal file in a scoped temp directory. */
 const withJournal = <A, E>(

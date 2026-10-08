@@ -22,12 +22,15 @@
 | `JournalNotFound` | Class | An operation against a journal file that does not exist. | handle an operation against a journal file that does not exist yet |
 | `JournalResync` | Class | The journal file was truncated or replaced beneath a reader. | handle a journal file truncated or replaced beneath a reader |
 | `JournalShape` | Interface | The shape of a `Journal`, typed by its registry. | |
+| `JournalWatcher` | Class | How a journal is told its file changed underneath it: a watch that reports when it is armed. | watch a journal file or its directory with a watch that succeeds only once registered, so no append lands unseen while arming |
+| `JournalWatcherShape` | Interface | The service shape behind `JournalWatcher`. | |
 | `JsonlError` | TypeAlias | Every error this package raises from the pure core and the journal service. | |
 | `JsonlEvent` | Variable + Namespace + Interface | One event definition: a tag, the schema its `data` must satisfy, and the two lifecycle markings. | define a journal event tag and payload schema, register into typed registry |
 | `Line` | Class | Splitting and parsing JSONL text. | split jsonl text into utf-8 byte-offset lines, parse one line's json |
 | `LinePosition` | Interface | Where an envelope's line sits in the journal, in UTF-8 bytes. | an envelope's byte offset and end in the journal, the resume cursor |
 | `LineSlice` | Variable + TypeAlias | A single candidate line: its text, and where it lives in the source in bytes. | one candidate jsonl line located in the source by utf-8 byte offset |
 | `MalformedLine` | Class | A journal line that is not valid JSON. | a malformed journal line: not valid json, torn tail vs corrupt hole |
+| `NodeJournalWatcher` | Class | The Node implementation of `Jsonl.JournalWatcher`, over `node:fs`'s `watch`. | from `@effected/jsonl/node` — provide the journal watcher on node over fs.watch, from the @effected/jsonl/node subpath |
 | `QueryError` | TypeAlias | Why a historical read failed. A `DecodeError` only arrives when the slice asks for it with `onInvalid: "fail"`. | |
 | `Slice` | Interface | A filter over envelope fields, plus where to resume and what to do with a line that cannot be decoded. | filter journal reads by event, scope and time, resume from a cursor, skip or fail on bad lines |
 | `TerminalViolation` | Class | An append attempted after a terminal event, by an event not marked `reopen`. | handle an append attempted after a terminal event without a reopen-marked event |

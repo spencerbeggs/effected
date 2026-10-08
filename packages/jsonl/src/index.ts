@@ -38,6 +38,8 @@ export { Envelope } from "./Envelope.js";
 export type { AppendError, AppendOptions, ChangesError, JournalConfig, QueryError } from "./internal/engine.js";
 export type { JournalClass, JournalShape } from "./Journal.js";
 export { Journal } from "./Journal.js";
+export type { JournalWatcherShape } from "./JournalWatcher.js";
+export { JournalWatcher } from "./JournalWatcher.js";
 export type { DecodeError, JsonlError } from "./JsonlError.js";
 export {
 	InvalidData,

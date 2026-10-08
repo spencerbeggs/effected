@@ -513,6 +513,80 @@ describe("watcher — the arming window", () => {
 		}),
 	);
 
+	it.effect("a write landed while the watch is REQUESTED but not yet registered is delivered with NO poke", () =>
+		Effect.gen(function* () {
+			// The race the integration suite hit under load: a backend whose watch
+			// registers only after an asynchronous `stat` leaves a window in which
+			// the watch has been asked for but is not live. An engine that catches up
+			// on a schedule rather than on registration reads the file inside that
+			// window, then the write lands, then the watch goes live having seen
+			// nothing — and the line is lost until some later write.
+			//
+			// The hold places the write in exactly that window. Turns are yielded
+			// first so a catch-up that does not wait for registration has every
+			// chance to run before the write; one that waits cannot run at all.
+			const memfs = makeMemFs();
+			memfs.mkdir("/journal");
+			memfs.write(PATH, line(1));
+			const hold = memfs.holdNextWatch(PATH);
+
+			const layer = WatchJournal.layer.pipe(Layer.provide(memfs.layer));
+			const scope = yield* Scope.make();
+			const context = yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
+			const journal = Context.get(context, WatchJournal);
+
+			yield* Effect.promise(() => hold.entered);
+			for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+			externalAppend(memfs, line(2));
+			hold.release();
+
+			for (let attempt = 0; attempt < 50 && memfs.watcherCount(PATH) === 0; attempt++) {
+				yield* Effect.yieldNow;
+			}
+			assert.isAbove(memfs.watcherCount(PATH), 0, "the held watch registered once released");
+			for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+
+			const current = Option.getOrThrow(yield* journal.latest);
+			assert.deepStrictEqual(current.data, { round: 2 }, "the write inside the arming window was caught up");
+			yield* Scope.close(scope, Exit.void);
+		}).pipe(Effect.timeout(Duration.seconds(10))),
+	);
+
+	it.effect("a journal CREATED while the activation watch is not yet registered is still found", () =>
+		Effect.gen(function* () {
+			// The same window on the activation path: the journal is missing, the
+			// directory watch is asked for, and the file appears before that watch
+			// is live. The directory watch reports nothing, so only an existence
+			// check AFTER it registers can see the file — one made before it is
+			// already stale, and the journal would wait on its directory forever.
+			const memfs = makeMemFs();
+			memfs.mkdir("/journal");
+			const hold = memfs.holdNextWatch("/journal");
+
+			const layer = WatchJournal.layer.pipe(Layer.provide(memfs.layer));
+			const scope = yield* Scope.make();
+			const context = yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
+			const journal = Context.get(context, WatchJournal);
+
+			yield* Effect.promise(() => hold.entered);
+			for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+			// Created behind the journal's back, and deliberately NOT announced
+			// with `pokeParent`: the watch was not live to report it.
+			memfs.write(PATH, line(1));
+			hold.release();
+
+			for (let attempt = 0; attempt < 50 && memfs.watcherCount(PATH) === 0; attempt++) {
+				yield* Effect.yieldNow;
+			}
+			assert.isAbove(memfs.watcherCount(PATH), 0, "the journal is being watched once it exists");
+			for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+
+			const current = Option.getOrThrow(yield* journal.latest);
+			assert.deepStrictEqual(current.data, { round: 1 }, "the journal created inside the window was ingested");
+			yield* Scope.close(scope, Exit.void);
+		}).pipe(Effect.timeout(Duration.seconds(10))),
+	);
+
 	it.effect("overlapping ingests do NOT double-publish", () =>
 		Effect.gen(function* () {
 			// `ingest` reads `consumed`, then writes it only after publishing, so two

@@ -1,7 +1,8 @@
 import type { MemoryFileSystemFaultHandler, MemoryFileSystemFaults } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import type { Layer, Option, PlatformError } from "effect";
-import { Effect, FileSystem, Queue, Stream } from "effect";
+import type { Cause, Option, PlatformError } from "effect";
+import { Effect, FileSystem, Layer, Queue, Stream } from "effect";
+import { JournalWatcher } from "../../src/index.js";
 
 /**
  * The journal's test filesystem: a real `@effected/memfs` volume, with the
@@ -11,25 +12,27 @@ import { Effect, FileSystem, Queue, Stream } from "effect";
  * Storage, `stat` (size, `dev`/`ino` identity), `exists`, `remove`, and `open`
  * with its positional reads and `O_APPEND` `writeAll` are memfs's own, so an
  * unseeded path fails typed `NotFound` exactly as a real filesystem does — a
- * missing parent directory included. Three members are decorated through the
+ * missing parent directory included. Two members are decorated through the
  * faults factory, delegate-by-default:
  *
  * - `open` wraps the returned handle so a write gate and a read gate can hold a
  *   `writeAll` / `readAlloc` open;
- * - `exists` counts calls, then delegates;
- * - `watch` is REPLACED by a manually driven stream. memfs's real watch emits
- *   its own events on every write, which would race the explicit
- *   {@link MemFs.poke} / {@link MemFs.pokeParent} design these tests are built
- *   on — offset bookkeeping, resync and activation stay timer-free only while
- *   the test alone decides when an event arrives. The replacement still
- *   `stat`s the target first through the real volume, so a missing path fails
- *   the watch typed, as the node backend does.
+ * - `exists` counts calls, then delegates.
+ *
+ * The layer also provides the journal's `JournalWatcher` as a manually driven
+ * double. memfs's own watch emits events on every write, which would race the
+ * explicit {@link MemFs.poke} / {@link MemFs.pokeParent} design these tests are
+ * built on — offset bookkeeping, resync and activation stay timer-free only
+ * while the test alone decides when an event arrives. The double honours the
+ * service's contract exactly as the node backend does: it `stat`s the target
+ * through the real volume (so a missing path fails typed), then registers its
+ * listener before the watch effect succeeds.
  *
  * Real-filesystem behavior (concurrent appends across processes, the node
  * watcher's event shapes) belongs in `__test__/integration/`.
  */
 export interface MemFs {
-	readonly layer: Layer.Layer<FileSystem.FileSystem>;
+	readonly layer: Layer.Layer<FileSystem.FileSystem | JournalWatcher>;
 	/**
 	 * Block every `writeAll` until {@link MemFs.openGate} is called.
 	 *
@@ -149,6 +152,22 @@ export interface MemFs {
 	 */
 	readonly beforeWatch: (hook: (target: string) => void) => void;
 	/**
+	 * Suspend the next watch of `target` AFTER its `stat` and BEFORE it
+	 * registers — where the node backend's watch is requested but not yet live.
+	 *
+	 * The only deterministic way to land a write in that window: an engine that
+	 * catches up before the watch is registered reads the file while it is held,
+	 * so a write landed in the hold is neither read nor reported. An engine that
+	 * waits for the watch to arm cannot catch up until it is released.
+	 *
+	 * @returns `entered`, which resolves once the watch is held, and `release`,
+	 *   which lets it register.
+	 */
+	readonly holdNextWatch: (target: string) => {
+		readonly entered: Promise<void>;
+		readonly release: () => void;
+	};
+	/**
 	 * Run `hook` ONCE, inside the first handle `stat` that follows a `writeAll`
 	 * on that same handle, BEFORE the stat samples the file.
 	 *
@@ -195,6 +214,9 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 	let existsCallCount = 0;
 	const readSizes: Array<number> = [];
 	let beforeWatchHook: ((target: string) => void) | undefined;
+	let watchHold: { readonly target: string; readonly promise: Promise<void>; readonly enter: () => void } | undefined;
+	/** The volume without the helper's decorations or a test's faults — what the watch double stats through. */
+	let unfaulted: FileSystem.FileSystem | undefined;
 	let afterWriteStatHook: (() => void) | undefined;
 	/** The read gate: set by {@link MemFs.gateNextRead}, consumed by one `readAlloc`. */
 	let readGate:
@@ -276,6 +298,7 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 		{},
 		{
 			faults: (base) => {
+				unfaulted = base;
 				const extra = options?.faults?.(base) ?? {};
 				const extraExists = extra.exists;
 				return {
@@ -286,36 +309,6 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 						existsCallCount += 1;
 						return typeof extraExists === "function" ? extraExists(path) : undefined;
 					},
-					// Stat through the REAL volume OUTSIDE the callback, as the node
-					// backend does: a missing path fails the STREAM typed. Failing inside
-					// `Stream.callback` would not do — that effect is forked, so its
-					// failure never reaches the stream and the watch would hang instead of
-					// ending.
-					watch: (target) =>
-						Stream.unwrap(
-							Effect.gen(function* () {
-								beforeWatchHook?.(target);
-								yield* base.stat(target);
-								return Stream.callback<FileSystem.WatchEvent, PlatformError.PlatformError>((queue) =>
-									Effect.acquireRelease(
-										Effect.sync(() => {
-											const listener = (event: FileSystem.WatchEvent): void => {
-												Queue.offerUnsafe(queue, event);
-											};
-											const set = watchers.get(target) ?? new Set();
-											set.add(listener);
-											watchers.set(target, set);
-											return listener;
-										}),
-										(listener) => Effect.sync(() => watchers.get(target)?.delete(listener)),
-									).pipe(
-										// The callback effect COMPLETING ends the stream, so it must stay
-										// alive for as long as the watch should.
-										Effect.andThen(Effect.never),
-									),
-								);
-							}),
-						),
 				};
 			},
 		},
@@ -323,8 +316,39 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 
 	const isFile = (path: string): boolean => handle.volume.bytes(path) !== undefined;
 
+	const watcher = Layer.succeed(JournalWatcher, {
+		watch: (target) =>
+			Effect.gen(function* () {
+				beforeWatchHook?.(target);
+				if (unfaulted === undefined) return yield* Effect.die("the memfs faults factory never ran");
+				yield* unfaulted.stat(target);
+				const held = watchHold?.target === target ? watchHold : undefined;
+				if (held !== undefined) {
+					watchHold = undefined;
+					yield* Effect.promise(() => {
+						held.enter();
+						return held.promise;
+					});
+				}
+				const queue = yield* Queue.unbounded<string | undefined, PlatformError.PlatformError | Cause.Done>();
+				yield* Effect.acquireRelease(
+					Effect.sync(() => {
+						const listener = (event: FileSystem.WatchEvent): void => {
+							Queue.offerUnsafe(queue, event.path);
+						};
+						const set = watchers.get(target) ?? new Set();
+						set.add(listener);
+						watchers.set(target, set);
+						return listener;
+					}),
+					(listener) => Effect.sync(() => watchers.get(target)?.delete(listener)),
+				);
+				return Stream.fromQueue(queue);
+			}),
+	});
+
 	return {
-		layer: handle.layer,
+		layer: Layer.merge(handle.layer, watcher),
 		closeGate: () => {
 			gateEntered = false;
 			gate = new Promise<void>((resolve) => {
@@ -368,6 +392,18 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 		beforeWatch: (hook) => {
 			beforeWatchHook = hook;
 		},
+		holdNextWatch: (target) => {
+			let enter: () => void = () => {};
+			const entered = new Promise<void>((resolve) => {
+				enter = resolve;
+			});
+			let release: () => void = () => {};
+			const promise = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			watchHold = { target, promise, enter };
+			return { entered, release };
+		},
 		afterNextWriteStat: (hook) => {
 			afterWriteStatHook = hook;
 		},
@@ -382,6 +418,14 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 		paths: () => handle.volume.paths(),
 	};
 };
+
+/**
+ * A `JournalWatcher` whose watches arm and never report, for a test that
+ * brings its own filesystem layer and never drives the watcher.
+ */
+export const idleWatcher: Layer.Layer<JournalWatcher> = Layer.succeed(JournalWatcher, {
+	watch: () => Effect.succeed(Stream.never),
+});
 
 /** Decode a stored file back to text, for assertions. */
 export const textOf = (memfs: MemFs, path: string): string => {
