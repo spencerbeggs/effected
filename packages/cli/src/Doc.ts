@@ -194,7 +194,12 @@ export type Block =
 			readonly labelHeader?: ReadonlyArray<Inline>;
 			readonly durationHeader?: ReadonlyArray<Inline>;
 	  }
-	| { readonly _tag: "Lines"; readonly lines: ReadonlyArray<ReadonlyArray<Inline>> }
+	| {
+			readonly _tag: "Lines";
+			readonly lines: ReadonlyArray<ReadonlyArray<Inline>>;
+			readonly truncate?: boolean;
+			readonly wrap?: boolean;
+	  }
 	| {
 			readonly _tag: "Line";
 			readonly content: ReadonlyArray<Inline>;
@@ -808,10 +813,23 @@ export class Doc {
 	/**
 	 * Lines, one per entry, in every renderer: markdown joins them with hard breaks so they never collapse into one.
 	 *
+	 * @remarks
+	 * `truncate` and `wrap: false` hold for every entry as they do for {@link Doc.line}: each entry is cut to the width,
+	 * or kept whole on one line, rather than wrapped. Markdown keeps every entry whole either way.
+	 *
 	 * @param lines - the entries; each takes a string, an inline or an array of either
+	 * @param options - `truncate`, to cut each entry to the width; `wrap: false`, to keep each whole
 	 */
-	static lines(lines: ReadonlyArray<InlineInput>): BlockOf<"Lines"> {
-		return freeze({ _tag: "Lines", lines: frozenArray(lines.map(inlines)) });
+	static lines(
+		lines: ReadonlyArray<InlineInput>,
+		options?: { readonly truncate?: boolean; readonly wrap?: boolean },
+	): BlockOf<"Lines"> {
+		return freeze({
+			_tag: "Lines",
+			lines: frozenArray(lines.map(inlines)),
+			...(options?.truncate === undefined ? {} : { truncate: options.truncate }),
+			...(options?.wrap === undefined ? {} : { wrap: options.wrap }),
+		});
 	}
 
 	/**

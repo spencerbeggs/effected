@@ -125,6 +125,45 @@ export const Styled = (props: StyledProps): ReactElement => {
 const known = (reported: number | undefined, fallback: number): number =>
 	reported !== undefined && reported > 0 ? reported : fallback;
 
+/** A stream that emits `resize`, as a TTY stdout does. */
+interface ResizeSource {
+	on(event: "resize", listener: () => void): unknown;
+	off(event: "resize", listener: () => void): unknown;
+}
+
+/** The redraws following each stream's size, and the one `resize` listener that calls them all. */
+const resizeFollowers = new WeakMap<
+	ResizeSource,
+	{ readonly redraws: Set<() => void>; readonly onResize: () => void }
+>();
+
+/**
+ * Follow `stdout`'s size with `redraw`, returning the unfollow. However many components follow one stream, it holds
+ * one `resize` listener, added with the first and removed with the last: one per component passed Node's default
+ * limit of 10 on any list of `DocView` rows and printed a `MaxListenersExceededWarning` into the frame.
+ */
+const followResize = (stdout: ResizeSource, redraw: () => void): (() => void) => {
+	let entry = resizeFollowers.get(stdout);
+	if (entry === undefined) {
+		const redraws = new Set<() => void>();
+		const onResize = (): void => {
+			for (const each of redraws) each();
+		};
+		entry = { redraws, onResize };
+		resizeFollowers.set(stdout, entry);
+		stdout.on("resize", onResize);
+	}
+	const { redraws, onResize } = entry;
+	redraws.add(redraw);
+	return () => {
+		redraws.delete(redraw);
+		if (redraws.size === 0 && resizeFollowers.get(stdout) === entry) {
+			resizeFollowers.delete(stdout);
+			stdout.off("resize", onResize);
+		}
+	};
+};
+
 /**
  * The usable terminal size: the stdout Ink draws on, less one column and one row, re-read on every render and when
  * the terminal resizes; or, under a `UiProvider` given a `size`, that size less one column and one row.
@@ -145,6 +184,9 @@ const known = (reported: number | undefined, fallback: number): number =>
  * same paint, so give a long row Ink's `wrap: "truncate-end"` too: on a shrink Ink then clips it rather than letting
  * the terminal wrap it.
  *
+ * Every component following one stdout shares a single `resize` listener on it, so a screen of many rows (a
+ * `Viewport` of `DocView`s) holds one listener, not one per row.
+ *
  * A React hook: call it from a component rendered inside an Ink tree; it needs no screen, but reads a `UiProvider`'s
  * size when there is one.
  *
@@ -156,13 +198,7 @@ export const useTerminalSize = (): TerminalSize => {
 	const override = react.useContext(screenContext())?.size;
 	const [, redraw] = react.useReducer((count: number) => count + 1, 0);
 	const followsStdout = override === undefined;
-	react.useEffect(() => {
-		if (!followsStdout) return undefined;
-		stdout.on("resize", redraw);
-		return () => {
-			stdout.off("resize", redraw);
-		};
-	}, [stdout, followsStdout]);
+	react.useEffect(() => (followsStdout ? followResize(stdout, redraw) : undefined), [stdout, followsStdout]);
 	// Ink types its stdout as a plain writable stream; a TTY carries `columns` and `rows`, any other stream reads unknown.
 	const reported = stdout as { readonly columns?: number; readonly rows?: number };
 	const columns = override?.columns ?? reported.columns;

@@ -1,8 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Console, Effect, Exit, Fiber } from "effect";
+import { Cause, Console, Effect, Exit, Fiber, Stream } from "effect";
 import { NotInteractive } from "../../src/index.js";
 import { CliUi, Select, TextInput } from "../../src/ui.js";
 import { CliUiTest } from "../../src/ui-testing.js";
+import { End, Start, optionsOf, tick } from "../helpers/live.js";
 
 const profile = Select.screen({
 	message: "Profile",
@@ -42,6 +43,25 @@ describe("CliUiTest.session", () => {
 			assert.strictEqual(yield* session.stdout, "library|docs/x\n");
 			assert.strictEqual(yield* session.stderr, "done\n");
 			assert.include(yield* first.plainFrame, "library", "an ended screen keeps its last frame");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a live view's run counts as a mount: a progress phase before the first screen takes its own next", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session();
+			const program = Effect.gen(function* () {
+				yield* Effect.scoped(
+					Effect.flatMap(CliUi.live(optionsOf(Stream.make(Start, tick(1), End))), (handle) => handle.done),
+				);
+				return yield* CliUi.run(profile);
+			});
+			const fiber = yield* Effect.forkScoped(program.pipe(Effect.provide(session.layer)));
+			const live = yield* session.next({ contains: "RUN 1" });
+			assert.notInclude(yield* live.plainFrame, "Profile");
+			const screen = yield* session.next({ contains: "Profile" });
+			yield* screen.press("enter");
+			assert.strictEqual(yield* Fiber.join(fiber), "software-project");
+			assert.strictEqual(yield* session.mounts, 2);
 		}).pipe(Effect.scoped),
 	);
 

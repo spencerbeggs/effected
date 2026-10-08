@@ -196,11 +196,14 @@ export interface CliUiTestSession {
 	 * before the call is not missed. It waits at most 2 s, then dies naming the screen's number, the text it waited
 	 * for and how many screens had mounted. The returned screen's frames start at its own mount. A screen that crashed
 	 * makes `next` die with the crash instead.
+	 *
+	 * A `CliUi.live` run counts as a mount too, each run of the view one of its own: a program that draws a live
+	 * progress view before its first screen takes one `next` per run before the screen's.
 	 */
 	readonly next: (options?: CliUiTestNextOptions) => Effect.Effect<CliUiTestScreen>;
 	/**
 	 * How many screens have mounted so far: every run that started mounting, one whose thunk threw before Ink drew
-	 * included.
+	 * included, and every run of a `CliUi.live` view.
 	 */
 	readonly mounts: Effect.Effect<number>;
 	/** What the program wrote to stdout through `Console` (`log`, `info`, `debug`), one line per call. */

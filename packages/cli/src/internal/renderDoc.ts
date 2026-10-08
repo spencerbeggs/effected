@@ -331,6 +331,20 @@ const countsLayout = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts
 	];
 };
 
+/** One `Line`, or one entry of a `Lines`: cut with `truncate`, kept whole with `wrap: false`, wrapped otherwise. */
+const lineOf = (
+	walk: Walk,
+	content: ReadonlyArray<Inline>,
+	options: { readonly truncate?: boolean; readonly wrap?: boolean },
+	width: number,
+): ReadonlyArray<Line> => {
+	const spans = oneLine(inline(walk, content));
+	if (options.truncate === true) return [trimLine(truncateSpans(spans, width, walk.ctx.glyphs.ellipsis))];
+	// Kept atomic: one line whatever the width, so a finding stays greppable.
+	if (options.wrap === false) return [trimLine(spans)];
+	return spans.length === 0 ? [[]] : wrapSpans(spans, width, { hardBreak: false }).map(trimLine);
+};
+
 /**
  * A block as lines. `compact` is set on a compact list's item: a section there joins its title and children with no
  * blank lines between them.
@@ -406,16 +420,12 @@ const blockLines = (walk: Walk, block: Block, width: number, compact = false): R
 			return tableLines(walk, countsTableOf(block), width);
 		case "Lines":
 			return block.lines.flatMap((entry): ReadonlyArray<Line> => {
+				if (block.truncate === true || block.wrap === false) return lineOf(walk, entry, block, width);
 				const spans = inline(walk, entry);
 				return spans.length === 0 ? [[]] : wrapSpans(spans, width, { hardBreak: false }).map(trimLine);
 			});
-		case "Line": {
-			const spans = oneLine(inline(walk, block.content));
-			if (block.truncate === true) return [trimLine(truncateSpans(spans, width, walk.ctx.glyphs.ellipsis))];
-			// Kept atomic: one line whatever the width, so a finding stays greppable.
-			if (block.wrap === false) return [trimLine(spans)];
-			return spans.length === 0 ? [[]] : wrapSpans(spans, width, { hardBreak: false }).map(trimLine);
-		}
+		case "Line":
+			return lineOf(walk, block.content, block, width);
 		case "DiffText": {
 			const cap = capOf(block.cap);
 			const lines = textLines(block.text);
