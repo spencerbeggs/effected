@@ -190,9 +190,15 @@ const make = (options: JwksResolverOptions) =>
 			options.minRefetchInterval ?? Duration.seconds(30),
 		);
 		const fetchTimeoutMillis = yield* positiveMillis("fetchTimeout", options.fetchTimeout ?? Duration.seconds(10));
-		// Per issuer: when a fetch was last attempted, and what it returned. The
-		// last result also serves misses from a store that has lost it.
-		const attempts = yield* Ref.make(new Map<string, { readonly atMillis: number; readonly jwks: Jwks | undefined }>());
+		// Per issuer, two separate clocks:
+		// - `lastAttemptMillis` gates refetches and moves on every attempt, failed
+		//   or not;
+		// - `last` is the most recent *successful* fetch, aged by its own
+		//   `fetchedAtMillis`. It serves misses from a store that lost it, and a
+		//   failed refetch never touches it, so it cannot outlive the TTL.
+		const issuers = yield* Ref.make(
+			new Map<string, { readonly lastAttemptMillis: number; readonly last: CachedJwks | undefined }>(),
+		);
 		const locks = new Map<string, Semaphore.Semaphore>();
 		const lockFor = (issuer: string) => {
 			let lock = locks.get(issuer);
@@ -254,27 +260,30 @@ const make = (options: JwksResolverOptions) =>
 				// Another fiber may have refreshed while this one waited for the lock.
 				const now = yield* Clock.currentTimeMillis;
 				const stored = yield* storedFor(issuer, now);
-				const attempt = (yield* Ref.get(attempts)).get(issuer);
-				// The last fetch serves a store that failed to keep it, but only
-				// within the TTL: past it, a key the issuer removed must not verify.
-				const fallback = attempt !== undefined && now - attempt.atMillis < ttlMillis ? attempt.jwks : undefined;
+				const state = (yield* Ref.get(issuers)).get(issuer);
+				// The last successful fetch serves a store that failed to keep it,
+				// but only within the TTL of that fetch: past it, a key the issuer
+				// removed must not verify, however many refetches have failed since.
+				const last = state?.last;
+				const fallback = last !== undefined && now - last.fetchedAtMillis < ttlMillis ? last.jwks : undefined;
 				const known = Option.isSome(stored) ? stored.value.jwks : fallback;
 				const match = known === undefined ? Option.none<Jwk>() : select(known, header);
 				if (Option.isSome(match)) return yield* importFor(match.value, header);
 
-				const last = Math.max(
-					attempt?.atMillis ?? Number.NEGATIVE_INFINITY,
+				const lastAttempt = Math.max(
+					state?.lastAttemptMillis ?? Number.NEGATIVE_INFINITY,
 					Option.isSome(stored) ? stored.value.fetchedAtMillis : Number.NEGATIVE_INFINITY,
 				);
-				if (now - last < minRefetchMillis) {
+				if (now - lastAttempt < minRefetchMillis) {
 					return yield* known === undefined
 						? fetchFailed("the JWKS could not be fetched, and the refetch interval has not passed")
 						: unknownKid(header);
 				}
-				yield* Ref.update(attempts, (map) => new Map(map).set(issuer, { atMillis: now, jwks: attempt?.jwks }));
+				yield* Ref.update(issuers, (map) => new Map(map).set(issuer, { lastAttemptMillis: now, last }));
 				const jwks = yield* fetchJwks(issuer);
-				yield* Ref.update(attempts, (map) => new Map(map).set(issuer, { atMillis: now, jwks }));
-				yield* swallow(store.set(issuer, { jwks, fetchedAtMillis: now }, ttl), undefined);
+				const fetched: CachedJwks = { jwks, fetchedAtMillis: now };
+				yield* Ref.update(issuers, (map) => new Map(map).set(issuer, { lastAttemptMillis: now, last: fetched }));
+				yield* swallow(store.set(issuer, fetched, ttl), undefined);
 				const fresh = select(jwks, header);
 				return Option.isSome(fresh) ? yield* importFor(fresh.value, header) : yield* unknownKid(header);
 			});

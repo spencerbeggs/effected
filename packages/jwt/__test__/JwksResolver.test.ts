@@ -315,6 +315,47 @@ describe("JwksResolver freshness and bounds", () => {
 		);
 	}
 
+	for (const [name, store] of [
+		["the memory store", () => JwksStore.layerMemory],
+		[
+			"a dying store (the resolver's own fallback)",
+			() => Layer.succeed(JwksStore, { get: () => Effect.die("down"), set: () => Effect.die("down") }),
+		],
+		["a store that ignores the TTL", staleForever],
+	] as const) {
+		it.effect(`failing refetches never extend a revoked key past the TTL, with ${name}`, () =>
+			Effect.gen(function* () {
+				const a = yield* generate("a");
+				let status = 200;
+				let published: ReadonlyArray<unknown> = [a.jwk];
+				const http = stub((url) =>
+					url === DISCOVERY ? discovery : url === JWKS_URI ? { status, body: { keys: published } } : { status: 404 },
+				);
+				const token = yield* Jws.sign({}, a.signing);
+				const program = Effect.gen(function* () {
+					yield* verify(token); // fetchedAt = 0, ttl = 60s
+					status = 500;
+					published = [];
+					// Before the TTL the cached set still serves; refetches are not needed.
+					yield* TestClock.adjust(Duration.seconds(45));
+					yield* verify(token);
+					// Step past the TTL in increments, across several failed refetch windows.
+					yield* TestClock.adjust(Duration.seconds(15));
+					const outcomes: Array<string> = [];
+					for (let step = 0; step < 16; step++) {
+						const exit = yield* Effect.exit(verify(token));
+						outcomes.push(Exit.isSuccess(exit) ? "success" : (Cause.squash(exit.cause) as JwtError).reason);
+						yield* TestClock.adjust(Duration.seconds(25));
+					}
+					assert.notInclude(outcomes, "success", outcomes.join(","));
+					for (const reason of outcomes) assert.include(["unknownKid", "jwksFetch"], reason);
+					assert.isAbove(http.count(JWKS_URI), 2, "refetches were attempted, and failed");
+				});
+				yield* Effect.provide(program, ttlLayer(http.layer, store()));
+			}),
+		);
+	}
+
 	it.effect("a fetch that never answers is jwksFetch after the fetch timeout", () =>
 		Effect.gen(function* () {
 			const a = yield* generate("a");
