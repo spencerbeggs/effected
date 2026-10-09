@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Deferred, Duration, Effect, Fiber, Layer, Option, Schema } from "effect";
+import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { TestClock } from "effect/testing";
 import { Jwks } from "../src/Jwk.js";
@@ -19,6 +19,8 @@ interface Route {
 	readonly raw?: string;
 	/** Hold the response until this latch opens. */
 	readonly gate?: Deferred.Deferred<void>;
+	/** The final URL the response reports, as after a redirect. */
+	readonly finalUrl?: string;
 }
 
 /** A scripted `HttpClient` counting requests per URL. */
@@ -33,7 +35,9 @@ const stub = (route: (url: string) => Route) => {
 				const result = route(key);
 				if (result.gate !== undefined) yield* Deferred.await(result.gate);
 				const body = result.raw ?? JSON.stringify(result.body ?? {});
-				return HttpClientResponse.fromWeb(request, new Response(body, { status: result.status ?? 200 }));
+				const response = new Response(body, { status: result.status ?? 200 });
+				if (result.finalUrl !== undefined) Object.defineProperty(response, "url", { value: result.finalUrl });
+				return HttpClientResponse.fromWeb(request, response);
 			}),
 		),
 	);
@@ -262,6 +266,127 @@ describe("JwksResolver", () => {
 			yield* Effect.provide(verify(yield* Jws.sign({}, a.signing)), layer);
 			assert.strictEqual(http.count(DISCOVERY), 0);
 			assert.strictEqual(http.count(JWKS_URI), 1);
+		}),
+	);
+});
+
+describe("JwksResolver freshness and bounds", () => {
+	const ttlLayer = (client: Layer.Layer<HttpClient.HttpClient>, store: Layer.Layer<JwksStore>) =>
+		JwksResolver.layerWith({ ttl: "1 minute" }).pipe(Layer.provide(Layer.mergeAll(client, store)));
+
+	const staleForever = (): Layer.Layer<JwksStore> => {
+		let held: Option.Option<{ readonly jwks: Jwks; readonly fetchedAtMillis: number }> = Option.none();
+		return Layer.succeed(JwksStore, {
+			get: () => Effect.succeed(held),
+			set: (_issuer, value) =>
+				Effect.sync(() => {
+					held = Option.some(value);
+				}),
+		});
+	};
+
+	for (const [name, store] of [
+		["the memory store", () => JwksStore.layerMemory],
+		[
+			"a dying store (the resolver's own fallback)",
+			() => Layer.succeed(JwksStore, { get: () => Effect.die("down"), set: () => Effect.die("down") }),
+		],
+		["a store that ignores the TTL", staleForever],
+	] as const) {
+		it.effect(`a key the issuer removes stops verifying after the TTL, with ${name}`, () =>
+			Effect.gen(function* () {
+				const a = yield* generate("a");
+				let published: ReadonlyArray<unknown> = [a.jwk];
+				const http = stub(issuerRoutes(() => published));
+				const token = yield* Jws.sign({}, a.signing);
+				const program = Effect.gen(function* () {
+					yield* verify(token);
+					yield* TestClock.adjust(Duration.seconds(59));
+					yield* verify(token);
+					assert.strictEqual(http.count(JWKS_URI), 1, "within the TTL the cached set serves");
+					published = [];
+					yield* TestClock.adjust(Duration.seconds(1));
+					const reason = yield* reasonOf(verify(token));
+					assert.strictEqual(reason, "unknownKid");
+					assert.strictEqual(http.count(JWKS_URI), 2, "past the TTL the set is refetched");
+				});
+				yield* Effect.provide(program, ttlLayer(http.layer, store()));
+			}),
+		);
+	}
+
+	it.effect("a fetch that never answers is jwksFetch after the fetch timeout", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			const never = yield* Deferred.make<void>();
+			const http = stub(issuerRoutes(() => [a.jwk], { gate: never }));
+			const token = yield* Jws.sign({}, a.signing);
+			const program = Effect.gen(function* () {
+				const fiber = yield* Effect.forkChild(Effect.flip(verify(token)));
+				for (let i = 0; i < 10; i++) yield* Effect.yieldNow;
+				yield* TestClock.adjust(Duration.seconds(10));
+				const error = yield* Fiber.join(fiber);
+				assert.strictEqual(error.reason, "jwksFetch");
+				assert.include(error.detail, "within 10000 ms");
+			});
+			yield* Effect.provide(program, resolverLayer(http.layer));
+		}),
+	);
+
+	it.effect("a discovery document or JWKS redirected off https is jwksFetch", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			const token = yield* Jws.sign({}, a.signing);
+			const jwksDowngrade = stub(issuerRoutes(() => [a.jwk], { finalUrl: "http://issuer.example/keys" }));
+			const error = yield* Effect.flip(Effect.provide(verify(token), resolverLayer(jwksDowngrade.layer)));
+			assert.strictEqual(error.reason, "jwksFetch");
+			assert.include(error.detail, "redirected off https");
+			const discoveryDowngrade = stub((url) =>
+				url === DISCOVERY
+					? { ...discovery, finalUrl: "http://issuer.example/.well-known/openid-configuration" }
+					: { body: { keys: [a.jwk] } },
+			);
+			assert.strictEqual(
+				yield* reasonOf(Effect.provide(verify(token), resolverLayer(discoveryDowngrade.layer))),
+				"jwksFetch",
+			);
+			assert.strictEqual(discoveryDowngrade.count(JWKS_URI), 0);
+			// control: a redirect that stays on https is fine
+			const sideways = stub(issuerRoutes(() => [a.jwk], { finalUrl: "https://cdn.issuer.example/keys" }));
+			yield* Effect.provide(verify(token), resolverLayer(sideways.layer));
+		}),
+	);
+
+	it.effect("an http issuer other than localhost is jwksFetch, and discovery is never requested", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			const token = yield* Jws.sign({}, a.signing);
+			const http = stub(() => ({ body: { issuer: "http://idp.example", jwks_uri: "https://idp.example/keys" } }));
+			const error = yield* Effect.flip(
+				Effect.provide(Jws.verify(token, JwksResolver.forIssuer("http://idp.example")), resolverLayer(http.layer)),
+			);
+			assert.strictEqual(error.reason, "jwksFetch");
+			assert.strictEqual(http.count("http://idp.example/.well-known/openid-configuration"), 0);
+		}),
+	);
+
+	it.effect("a non-positive or non-finite ttl, minRefetchInterval or fetchTimeout dies building the layer", () =>
+		Effect.gen(function* () {
+			const http = stub(() => ({ status: 404 }));
+			for (const name of ["ttl", "minRefetchInterval", "fetchTimeout"] as const) {
+				for (const value of [0, -1, Number.NaN, Duration.infinity, Duration.seconds(-5)]) {
+					const layer = JwksResolver.layerWith({ [name]: value }).pipe(
+						Layer.provide(Layer.mergeAll(http.layer, JwksStore.layerMemory)),
+					);
+					const exit = yield* Effect.exit(Effect.provide(Effect.service(JwksResolver), layer));
+					assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause), `${name}=${String(value)}`);
+					if (Exit.isFailure(exit)) assert.include(String(Cause.squash(exit.cause)), name);
+				}
+			}
+			const ok = JwksResolver.layerWith({ ttl: "5 minutes", minRefetchInterval: 1, fetchTimeout: "2 seconds" }).pipe(
+				Layer.provide(Layer.mergeAll(http.layer, JwksStore.layerMemory)),
+			);
+			yield* Effect.provide(Effect.service(JwksResolver), ok);
 		}),
 	);
 });

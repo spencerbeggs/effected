@@ -22,6 +22,8 @@ export interface JwksResolverOptions {
 	readonly ttl?: Duration.Input;
 	/** The least time between two fetches for one issuer; 30 seconds by default. */
 	readonly minRefetchInterval?: Duration.Input;
+	/** The deadline for one fetch, discovery and JWKS together; 10 seconds by default. */
+	readonly fetchTimeout?: Duration.Input;
 	/**
 	 * The JWKS URL for an issuer. By default it is discovered from
 	 * `<issuer>/.well-known/openid-configuration`.
@@ -81,6 +83,20 @@ const readCapped = (response: HttpClientResponse.HttpClientResponse, what: strin
 	);
 };
 
+// A fetch-backed client follows redirects natively, and core offers no
+// portable way to turn that off, so the response's final URL is checked
+// instead: an https request must not end on plain http.
+const checkFinalUrl = (
+	response: HttpClientResponse.HttpClientResponse,
+	requested: string,
+	what: string,
+): Effect.Effect<HttpClientResponse.HttpClientResponse, JwtError> => {
+	if (response.url === "" || !requested.startsWith("https:")) return Effect.succeed(response);
+	return protocolOf(response.url) === "https:"
+		? Effect.succeed(response)
+		: Effect.fail(fetchFailed(`the ${what} request was redirected off https`));
+};
+
 const getJson = <S extends Schema.Constraint & { readonly DecodingServices: never }>(
 	client: HttpClient.HttpClient,
 	url: string,
@@ -89,6 +105,7 @@ const getJson = <S extends Schema.Constraint & { readonly DecodingServices: neve
 ): Effect.Effect<S["Type"], JwtError> =>
 	client.get(url).pipe(
 		Effect.mapError((cause) => fetchFailed(`the ${what} could not be fetched`, cause)),
+		Effect.flatMap((response) => checkFinalUrl(response, url, what)),
 		Effect.flatMap((response) => readCapped(response, what)),
 		Effect.flatMap((text) =>
 			Effect.mapError(Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(text), (cause) =>
@@ -96,6 +113,14 @@ const getJson = <S extends Schema.Constraint & { readonly DecodingServices: neve
 			),
 		),
 	);
+
+const protocolOf = (url: string): string | undefined => {
+	try {
+		return new URL(url).protocol;
+	} catch {
+		return undefined;
+	}
+};
 
 const isLocalIssuer = (issuer: string): boolean => {
 	try {
@@ -110,6 +135,11 @@ const isLocalIssuer = (issuer: string): boolean => {
 // its `issuer` to equal the one requested exactly.
 const discoverJwksUri = (client: HttpClient.HttpClient, issuer: string): Effect.Effect<string, JwtError> =>
 	Effect.gen(function* () {
+		// Discovery over plain http would let a network attacker name any
+		// jwks_uri, so the issuer is held to the same scheme rule.
+		if (protocolOf(issuer) !== "https:" && !isLocalIssuer(issuer)) {
+			return yield* fetchFailed(`the issuer ${quote(issuer)} is not an https URL`);
+		}
 		const url = `${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`;
 		const document = yield* getJson(client, url, Discovery, "discovery document");
 		if (document.issuer !== issuer) {
@@ -137,12 +167,29 @@ const select = (jwks: Jwks, header: JoseHeader): Option.Option<Jwk> => {
 	return Option.fromUndefinedOr(jwks.keys.find((key) => key.kid === header.kid && compatible(key)));
 };
 
+// Static configuration: a bad value is a programming error, so it dies at
+// layer construction with a message naming the option. `NaN` is checked
+// first because core's `Duration.fromInput(NaN)` is zero, not `None`.
+const positiveMillis = (name: string, input: Duration.Input): Effect.Effect<number> => {
+	const duration =
+		typeof input === "number" && !Number.isFinite(input) ? undefined : Option.getOrUndefined(Duration.fromInput(input));
+	const millis = duration === undefined ? Number.NaN : Duration.toMillis(duration);
+	return Number.isFinite(millis) && millis > 0
+		? Effect.succeed(millis)
+		: Effect.die(new Error(`JwksResolver: ${name} must be a finite, positive duration`));
+};
+
 const make = (options: JwksResolverOptions) =>
 	Effect.gen(function* () {
 		const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient);
 		const store = yield* JwksStore;
-		const ttl = Duration.fromInputUnsafe(options.ttl ?? Duration.hours(1));
-		const minRefetchMillis = Duration.toMillis(options.minRefetchInterval ?? Duration.seconds(30));
+		const ttlMillis = yield* positiveMillis("ttl", options.ttl ?? Duration.hours(1));
+		const ttl = Duration.millis(ttlMillis);
+		const minRefetchMillis = yield* positiveMillis(
+			"minRefetchInterval",
+			options.minRefetchInterval ?? Duration.seconds(30),
+		);
+		const fetchTimeoutMillis = yield* positiveMillis("fetchTimeout", options.fetchTimeout ?? Duration.seconds(10));
 		// Per issuer: when a fetch was last attempted, and what it returned. The
 		// last result also serves misses from a store that has lost it.
 		const attempts = yield* Ref.make(new Map<string, { readonly atMillis: number; readonly jwks: Jwks | undefined }>());
@@ -162,7 +209,12 @@ const make = (options: JwksResolverOptions) =>
 			Effect.catchCause(effect, (cause) =>
 				Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : Effect.succeed(fallback),
 			);
-		const storedFor = (issuer: string) => swallow(store.get(issuer), Option.none<CachedJwks>());
+		// Freshness is checked here too, so a store that ignores `ttl` cannot
+		// keep a revoked key trusted.
+		const storedFor = (issuer: string, now: number) =>
+			Effect.map(swallow(store.get(issuer), Option.none<CachedJwks>()), (cached) =>
+				Option.filter(cached, (entry) => now - entry.fetchedAtMillis < ttlMillis),
+			);
 
 		const fetchJwks = (issuer: string) =>
 			Effect.gen(function* () {
@@ -177,7 +229,13 @@ const make = (options: JwksResolverOptions) =>
 				}
 				yield* Effect.annotateCurrentSpan({ "jwt.jwks.keys": jwks.keys.length, "jwt.jwks.dropped": dropped });
 				return jwks;
-			}).pipe(Effect.withSpan("JwksResolver.fetch", { attributes: { "jwt.issuer": issuer } }));
+			}).pipe(
+				Effect.timeoutOrElse({
+					duration: Duration.millis(fetchTimeoutMillis),
+					orElse: () => Effect.fail(fetchFailed(`the JWKS was not fetched within ${fetchTimeoutMillis} ms`)),
+				}),
+				Effect.withSpan("JwksResolver.fetch", { attributes: { "jwt.issuer": issuer } }),
+			);
 
 		const importFor = (jwk: Jwk, header: JoseHeader) =>
 			isAlgorithm(header.alg) ? JwtKey.fromJwk(jwk, { alg: header.alg }) : JwtKey.fromJwk(jwk);
@@ -194,13 +252,16 @@ const make = (options: JwksResolverOptions) =>
 		const refresh = (issuer: string, header: JoseHeader) =>
 			Effect.gen(function* () {
 				// Another fiber may have refreshed while this one waited for the lock.
-				const stored = yield* storedFor(issuer);
+				const now = yield* Clock.currentTimeMillis;
+				const stored = yield* storedFor(issuer, now);
 				const attempt = (yield* Ref.get(attempts)).get(issuer);
-				const known = Option.isSome(stored) ? stored.value.jwks : attempt?.jwks;
+				// The last fetch serves a store that failed to keep it, but only
+				// within the TTL: past it, a key the issuer removed must not verify.
+				const fallback = attempt !== undefined && now - attempt.atMillis < ttlMillis ? attempt.jwks : undefined;
+				const known = Option.isSome(stored) ? stored.value.jwks : fallback;
 				const match = known === undefined ? Option.none<Jwk>() : select(known, header);
 				if (Option.isSome(match)) return yield* importFor(match.value, header);
 
-				const now = yield* Clock.currentTimeMillis;
 				const last = Math.max(
 					attempt?.atMillis ?? Number.NEGATIVE_INFINITY,
 					Option.isSome(stored) ? stored.value.fetchedAtMillis : Number.NEGATIVE_INFINITY,
@@ -225,7 +286,7 @@ const make = (options: JwksResolverOptions) =>
 					`the token claims ${quote(header.alg)}; only RS256 and ES256 are accepted`,
 				);
 			}
-			const stored = yield* storedFor(issuer);
+			const stored = yield* storedFor(issuer, yield* Clock.currentTimeMillis);
 			const hit = Option.flatMap(stored, (cached) => select(cached.jwks, header));
 			if (Option.isSome(hit)) return yield* importFor(hit.value, header);
 			// One refresh per issuer at a time, so concurrent misses share a fetch.
@@ -241,7 +302,8 @@ const make = (options: JwksResolverOptions) =>
  * @remarks
  * The key set is found by OIDC discovery (the discovery document's `issuer`
  * must equal the requested issuer exactly, and its `jwks_uri` must be
- * `https:` unless the issuer is `http://localhost` or `http://127.0.0.1`) or
+ * `https:` unless the issuer is `http://localhost` or `http://127.0.0.1`,
+ * as must the issuer itself and the final URL after any redirect) or
  * by {@link JwksResolverOptions.jwksUri}, and cached in the
  * {@link JwksStore}. A token whose `kid` the cached set lacks triggers one
  * refetch, at most once per `minRefetchInterval` per issuer, so a key
@@ -250,9 +312,13 @@ const make = (options: JwksResolverOptions) =>
  * set, and a key naming a different `alg` never matches.
  *
  * Failures: no matching key is `unknownKid`; a matching key that does not
- * import is `key`; an unreachable, oversized (over 1 MiB) or malformed
+ * import is `key`; an unreachable, slow (over `fetchTimeout`, 10 seconds by
+ * default), oversized (over 1 MiB) or malformed
  * document, a discovery mismatch, or a set whose every key is unsupported is
- * `jwksFetch`.
+ * `jwksFetch`. A cached set, and the resolver's own copy of the last fetch,
+ * are trusted only within `ttl`, so a key the issuer removes stops verifying
+ * once the TTL passes. `ttl`, `minRefetchInterval` and `fetchTimeout` must be
+ * finite and positive; anything else is a defect when the layer is built.
  *
  * @public
  */
