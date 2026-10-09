@@ -10,8 +10,8 @@ import { counting, fixture } from "./helpers.js";
 const KEY = "b".repeat(64);
 const PNG = fixture("png.png");
 
-// The type-level contract: this line compiles only while store's CacheShape satisfies ImageBackendSource.
-const storeBacked = ImageBackend.layerFrom(Cache).pipe(Layer.provide(Cache.layerTest()));
+// The compile-time contract: this line compiles only while store's CacheShape satisfies ImageBackendSource.
+export const storeBacked = ImageBackend.layerFrom(Cache).pipe(Layer.provide(Cache.layerTest()));
 
 const getFailure = new CacheError({ operation: "get", cause: new Error("disk gone") });
 const setFailure = new CacheError({ operation: "set", cause: new Error("disk full") });
@@ -61,10 +61,6 @@ describe("ImageBackend.layerFrom(Cache) - the store contract", () => {
 			assert.strictEqual(error.cause, setFailure);
 		}).pipe(Effect.provide(failing)),
 	);
-
-	it("the store-backed layer value is constructible", () => {
-		assert.isDefined(storeBacked);
-	});
 });
 
 describe("ImageCache over store's Cache", () => {

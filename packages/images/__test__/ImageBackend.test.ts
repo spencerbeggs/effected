@@ -88,6 +88,10 @@ describe("ImageBackend.layerDirectory", () => {
 				const written = yield* Effect.exit(images.set({ key: bad, value: PNG, contentType: "image/png" }));
 				assert.isTrue(Exit.isFailure(written) && Cause.hasDies(written.cause), `set ${bad}`);
 			}
+			// A rejected key must die BEFORE any write: nothing was created, not the directory and not an escaped file.
+			const fs = yield* FileSystem.FileSystem;
+			assert.isFalse(yield* fs.exists(DIR));
+			assert.isFalse(yield* fs.exists("/cache/escape.png"));
 		}).pipe(Effect.provide(backend())),
 	);
 

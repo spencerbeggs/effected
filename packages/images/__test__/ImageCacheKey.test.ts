@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, layer } from "@effect/vitest";
-import { Crypto, Effect, Layer, PlatformError, Schema } from "effect";
+import { Crypto, Effect, Layer, PlatformError, Schema, SchemaTransformation } from "effect";
 import { ImageCacheKey, ImageCacheKeyError } from "../src/cache.js";
 
 const Params = Schema.Struct({
@@ -60,6 +60,24 @@ layer(NodeCrypto.layer)("ImageCacheKey.fromParams", (it) => {
 			);
 			const viaString = yield* ImageCacheKey.fromParams(Schema.Struct({ n: Schema.String }), { n: "5" }, OPTIONS);
 			assert.strictEqual(viaNumber.digest, viaString.digest);
+		}),
+	);
+
+	it.effect("an effectful encoding is supported and hashes like the equivalent sync schema", () =>
+		Effect.gen(function* () {
+			// The encode runs through an Effect (a yield), so it is not expressible as a sync encode.
+			const AsyncNumber = Schema.String.pipe(
+				Schema.decodeTo(
+					Schema.Number,
+					SchemaTransformation.transformEffect<number, string>({
+						decode: (s) => Effect.succeed(Number(s)),
+						encode: (n) => Effect.yieldNow.pipe(Effect.as(String(n))),
+					}),
+				),
+			);
+			const viaEffectful = yield* ImageCacheKey.fromParams(Schema.Struct({ n: AsyncNumber }), { n: 5 }, OPTIONS);
+			const viaSync = yield* ImageCacheKey.fromParams(Schema.Struct({ n: Schema.NumberFromString }), { n: 5 }, OPTIONS);
+			assert.strictEqual(viaEffectful.digest, viaSync.digest);
 		}),
 	);
 
