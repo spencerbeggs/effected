@@ -5,7 +5,7 @@ description: The @effected package index — what each kit package contains and 
 
 # The @effected package index
 
-`@effected/*` is an Effect v4-first app kit: 37 packages (35 libraries plus
+`@effected/*` is an Effect v4-first app kit: 38 packages (36 libraries plus
 the `pnpm-plugin-effect` and `schemastore-cli` companions) designed against the
 v4 line, released together, with every
 `effect` dependency drawn from one pnpm catalog range (`^4.0.0`, `lock-minor`). Before
@@ -41,6 +41,7 @@ against its services, or test code that uses it.
 | `@effected/tsconfig-json` | tsconfig schemas, tsc-parity `extends` resolution, nearest-config discovery | loading/resolving/discovering tsconfig files | boundary | [tsconfig-json.md](./references/tsconfig-json.md) |
 | `@effected/config-file` | codec × resolver × strategy config loading, 4 codecs, encryption/migration decorators, one-shot `ConfigFile.read(path, { schema, codec })` | any app/tool config-file loading | boundary | [config-file.md](./references/config-file.md) |
 | `@effected/engine` | platform-free primitives shared across a tool's front ends: `Distribution`/`DistributionField`/`CurrentDistribution`/`distributionSuffix` (carrier identity), `Remediation` (what a caller should do after a failure), `LaunchContext.projectDir` (resolving an agent-launched project directory from caller-supplied `argv`/`env`/`cwd` — no `process` read inside), and `ProcessGuard` on the import-free `./guard` subpath (crash guards on a structural host, installed before a server's graph loads, for any transport) | sharing carrier-distribution identity, a remediation shape, or launch-context resolution between a CLI and an MCP server front end, or guarding an LSP or other non-MCP server process against stray crashes — pattern: `design-patterns` | pure | [engine.md](./references/engine.md) |
+| `@effected/images` | image facts from bytes: `ImageFacts` (format, MIME type, width, height; sync `fromBytesResult`, Effect `fromBytes`) for PNG/JPEG/GIF/WebP/AVIF with one typed `ImageParseError`, and the `./cache` generated-image cache (`ImageCacheKey.fromParams`, `ImageCache.getOrGenerate`, `ImageBackend` directory backend or any structurally matching store) | reading image dimensions or MIME type without an image library, or skipping re-rendering of a generated image such as an Open Graph card | boundary (`./cache` needs `FileSystem`, `Path`, `Crypto`) | [images.md](./references/images.md) |
 | `@effected/jsonl` | append-only, schema-validated JSONL journals as a definable service: an event registry + envelope contract (`at`/`event`/`scope`/`data`), a pure sync core for runtime-free readers, `Slice`-filtered `query`/`changes`/`projection`, and a watcher so cooperating writers cross-observe each other's appends | an append-only journal/event log on disk, agent-state files, or watching a JSONL file another process appends to | boundary (`./node` is Node-only) | [jsonl.md](./references/jsonl.md) |
 | `@effected/walker` | upward directory traversal (`ascend`, `firstMatch`, `findUpward`, `findRoot`) | find-nearest-file/marker-based root discovery | boundary | [walker.md](./references/walker.md) |
 | `@effected/xdg` | XDG Base Directory resolution: `Xdg`, `AppDirs`, native dirs, config resolvers | platform-correct config/data/cache/state paths | boundary | [xdg.md](./references/xdg.md) |

@@ -7,8 +7,8 @@ tags:
   - architecture
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-05T18:09:34Z
-  body_sha256: 739e7470d009ee808999904826fbdf578d0a51c43f95f389f3af8e815a8c428e
+  at: 2026-10-09T15:43:22Z
+  body_sha256: 8841d806145ad8d9203ae9fbff0a992482ba2d7d572a71fd0a82f36a0894222e
 ---
 
 # effected
@@ -63,9 +63,10 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `schemastore-cli` | companion — no tier | invention; the `schemastore` bin over `@effected/schemastore`: build/check a `schemastore.config.ts` under a per-schema published flag and a drift policy; also exports `AjvValidator`, the one shipped validation engine |
 | `schema-org` | pure | invention; schema.org vocabulary as Effect Schema classes |
 | `jsonl` | boundary | invention; append-only schema-validated JSONL journals |
+| `images` | boundary | invention; image facts (format, MIME, dimensions) from bytes and a generated-image cache behind a backend port store satisfies structurally |
 | `pnpm-plugin-effect` | companion — no tier | invention; publishes the Effect catalogs the kit pins against |
 
-The roster is **37 packages**: 35 libraries and two companions (`pnpm-plugin-effect` and `schemastore-cli`). 31 have published; `env`, `github-commands`, `engine`, `mcp`, `lsp` and `schemastore-cli` await their first release.
+The roster is **38 packages**: 36 libraries and two companions (`pnpm-plugin-effect` and `schemastore-cli`). 31 have published; `env`, `github-commands`, `engine`, `mcp`, `lsp`, `images` and `schemastore-cli` await their first release.
 
 ### Consumers
 
