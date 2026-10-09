@@ -72,14 +72,32 @@ export const splitCompact = (token: string): Result.Result<CompactParts, JwtErro
 	);
 };
 
+// `JSON.stringify` throws on a BigInt or a cycle, and returns `undefined`
+// (not a string) for `undefined`, a function or a symbol; each is a typed
+// failure here, never a defect.
+const jsonSegment = (name: string, value: unknown): Result.Result<string, JwtError> => {
+	try {
+		const json: string | undefined = JSON.stringify(value);
+		return json === undefined
+			? Result.fail(JwtError.of("malformed", `the ${name} is not representable as JSON`))
+			: Result.succeed(Base64Url.encode(json));
+	} catch (cause) {
+		return Result.fail(JwtError.of("malformed", `the ${name} is not representable as JSON`, { cause }));
+	}
+};
+
 /**
  * Encode a header and payload into the signing input `header.payload`.
  *
  * @internal
  */
-export const joinCompact = (header: unknown, payload: unknown): { readonly signingInput: string } => ({
-	signingInput: `${Base64Url.encode(JSON.stringify(header))}.${Base64Url.encode(JSON.stringify(payload))}`,
-});
+export const joinCompact = (
+	header: unknown,
+	payload: unknown,
+): Result.Result<{ readonly signingInput: string }, JwtError> =>
+	Result.flatMap(jsonSegment("header", header), (h) =>
+		Result.map(jsonSegment("payload", payload), (p) => ({ signingInput: `${h}.${p}` })),
+	);
 
 /**
  * Complete a compact JWS by appending the base64url signature.

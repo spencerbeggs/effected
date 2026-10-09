@@ -10,9 +10,11 @@ const reasonOf = (token: string): string | undefined => {
 
 const json = (value: unknown): string => Base64Url.encode(JSON.stringify(value));
 
+const joinOrThrow = (header: unknown, payload: unknown) => Result.getOrThrow(joinCompact(header, payload));
+
 describe("segments", () => {
 	it("round-trips header and payload", () => {
-		const { signingInput } = joinCompact({ alg: "RS256", typ: "JWT" }, { sub: "a-_b?>" });
+		const { signingInput } = joinOrThrow({ alg: "RS256", typ: "JWT" }, { sub: "a-_b?>" });
 		const token = appendSignature(signingInput, new Uint8Array([1, 2, 3]));
 		const parsed = splitCompact(token);
 		assert.isTrue(Result.isSuccess(parsed));
@@ -29,7 +31,7 @@ describe("segments", () => {
 		// characters; the asserts below prove they do, so the case cannot pass vacuously.
 		const payload = { sub: "~~~???>>>" };
 		const signature = new Uint8Array([0xfb, 0xff, 0xbf]);
-		const { signingInput } = joinCompact({ alg: "ES256" }, payload);
+		const { signingInput } = joinOrThrow({ alg: "ES256" }, payload);
 		const token = appendSignature(signingInput, signature);
 		const [, payloadSegment, signatureSegment] = token.split(".");
 		assert.isTrue(/[-_]/.test(payloadSegment ?? ""), `payload segment ${payloadSegment} lacks - or _`);
@@ -79,7 +81,7 @@ describe("segments", () => {
 	});
 
 	it("rejects a signature respelled with set trailing bits as malformed", () => {
-		const { signingInput } = joinCompact({ alg: "RS256" }, { sub: "x" });
+		const { signingInput } = joinOrThrow({ alg: "RS256" }, { sub: "x" });
 		const token = appendSignature(signingInput, new Uint8Array([1]));
 		assert.isTrue(token.endsWith(".AQ"));
 		assert.isUndefined(reasonOf(token));
@@ -100,5 +102,16 @@ describe("segments", () => {
 			assert.strictEqual(parsed.failure.reason, "malformed");
 			assert.include(parsed.failure.detail, "is not base64url");
 		}
+	});
+
+	it("fails joinCompact as malformed, never a defect, for a value JSON cannot represent", () => {
+		const cycle: Record<string, unknown> = {};
+		cycle["self"] = cycle;
+		for (const payload of [{ n: 1n }, cycle, undefined, () => 1, Symbol("s")]) {
+			const joined = joinCompact({ alg: "RS256" }, payload);
+			assert.isTrue(Result.isFailure(joined) && joined.failure.reason === "malformed", String(typeof payload));
+		}
+		const header = joinCompact({ n: 1n }, {});
+		assert.isTrue(Result.isFailure(header) && header.failure.detail.includes("header"));
 	});
 });

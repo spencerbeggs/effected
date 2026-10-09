@@ -1,4 +1,5 @@
 import { Effect, Redacted, Result } from "effect";
+import { generateParams, importParams, isAlgorithm } from "./internal/algorithms.js";
 import { pemBody, wrapPkcs1 } from "./internal/der.js";
 import { subtle, toArrayBuffer } from "./internal/subtle.js";
 import type { Jwk } from "./Jwk.js";
@@ -12,17 +13,7 @@ import { JwtError } from "./JwtError.js";
  */
 export type JwtAlgorithm = "RS256" | "ES256";
 
-const algorithms: ReadonlyArray<string> = ["RS256", "ES256"];
-
-const isJwtAlgorithm = (alg: string): alg is JwtAlgorithm => algorithms.includes(alg);
-
-// Only `Crypto`, `CryptoKey` and `SubtleCrypto` are global on every runtime's
-// type lib, so the WebCrypto dictionaries below are written structurally
-// rather than named (`JsonWebKey`, `RsaHashedImportParams`, ...).
-const importParams = (alg: JwtAlgorithm) =>
-	alg === "RS256" ? { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" } : { name: "ECDSA", namedCurve: "P-256" };
-
-/** The public JWK members WebCrypto's `importKey("jwk", ...)` is given. */
+/** The public JWK members WebCrypto's `importKey("jwk", ...)` is given; structural, as `JsonWebKey` is not global everywhere. */
 interface PublicJwk {
 	readonly kty: "RSA" | "EC";
 	readonly n?: string;
@@ -160,7 +151,7 @@ const fromJwk = Effect.fn("JwtKey.fromJwk")(function* (jwk: Jwk, options?: { rea
 	if (keyOps !== undefined && !(Array.isArray(keyOps) && keyOps.includes("verify"))) {
 		return yield* JwtError.of("key", "the JWK's key_ops does not include verify", extra);
 	}
-	if (jwk.alg !== undefined && !isJwtAlgorithm(jwk.alg)) {
+	if (jwk.alg !== undefined && !isAlgorithm(jwk.alg)) {
 		return yield* JwtError.of(
 			"unsupportedAlgorithm",
 			`the JWK names ${jwk.alg}; only RS256 and ES256 are supported`,
@@ -180,11 +171,6 @@ const fromJwk = Effect.fn("JwtKey.fromJwk")(function* (jwk: Jwk, options?: { rea
 	const key = yield* importKey({ format: "jwk", data: material }, alg, "verify");
 	return VerificationKey.make(alg, jwk.kid, key);
 });
-
-const generateParams = (alg: JwtAlgorithm) =>
-	alg === "RS256"
-		? { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: Uint8Array.of(1, 0, 1), hash: "SHA-256" }
-		: { name: "ECDSA", namedCurve: "P-256" };
 
 const generate = Effect.fn("JwtKey.generate")(function* (alg: JwtAlgorithm, options?: { readonly kid?: string }) {
 	const crypto = yield* subtle;
