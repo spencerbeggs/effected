@@ -56,8 +56,10 @@ export interface AppCredentials {
 	 * Both PKCS#1 (`-----BEGIN RSA PRIVATE KEY-----`, which is what github.com
 	 * hands you) and PKCS#8 (`-----BEGIN PRIVATE KEY-----`) are accepted on every
 	 * runtime with WebCrypto, Node and workerd alike: a PKCS#1 key is wrapped to
-	 * PKCS#8 in-process, so no conversion step is needed. The key must be RSA of
-	 * at least 2048 bits; anything else fails with a `kind: "jwt"` error.
+	 * PKCS#8 in-process, so no conversion step is needed. Newlines may also
+	 * arrive escaped as the two characters backslash and `n`, the one-line form
+	 * an environment variable carries. The key must be RSA of at least 2048
+	 * bits; anything else fails with a `kind: "jwt"` error.
 	 */
 	readonly privateKey: Redacted.Redacted<string>;
 }
@@ -396,7 +398,7 @@ const mintJwt = (
 		const exp = now + 9 * 60;
 		const token = yield* Jwt.sign({ iat: now - 60, exp, iss: credentials.appId }, key);
 		return { jwt: Redacted.make(token), expiresAtMillis: exp * 1000 };
-	}).pipe(Effect.catchTag("JwtError", (error) => Effect.fail(GitHubAppError.of("jwt", error.message, error))));
+	}).pipe(Effect.catchTag("JwtError", (error) => Effect.fail(GitHubAppError.of("jwt", error.detail, error))));
 
 /** A client speaking as the app itself. */
 const asApp = (

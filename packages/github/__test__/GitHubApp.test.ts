@@ -1,5 +1,6 @@
 import { generateKeyPairSync, verify } from "node:crypto";
 import { assert, describe, it } from "@effect/vitest";
+import { JwtError } from "@effected/jwt";
 import { DateTime, Duration, Effect, Option, Redacted, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { AppIdentity, BotIdentity, GitHubApp, InstallationToken } from "../src/GitHubApp.js";
@@ -202,6 +203,64 @@ describe("GitHubApp.token", () => {
 					assert.strictEqual(claims.iat, nowMillis / 1000 - 60);
 				}),
 			);
+		}),
+	);
+
+	it.effect("signs with a key whose newlines arrive escaped, as from an environment variable", () =>
+		Effect.gen(function* () {
+			const pkcs1 = generateKeyPairSync("rsa", {
+				modulusLength: 2048,
+				privateKeyEncoding: { type: "pkcs1", format: "pem" },
+				publicKeyEncoding: { type: "spki", format: "pem" },
+			});
+			const escaped = pkcs1.privateKey.replace(/\n/g, "\\n");
+			// The control: one line, every newline spelled as backslash-n.
+			assert.notInclude(escaped, "\n");
+			yield* withApp([tokenReply()], (app, script) =>
+				Effect.gen(function* () {
+					yield* app.token({ appId: "Iv1.escaped", privateKey: Redacted.make(escaped), installationId: 42 });
+					const authorization = script.calls[0]?.headers.authorization ?? "";
+					const [header = "", payload = "", signature = ""] = authorization.slice("bearer ".length).split(".");
+					const signed = verify(
+						"RSA-SHA256",
+						Buffer.from(`${header}.${payload}`),
+						pkcs1.publicKey,
+						Buffer.from(signature, "base64url"),
+					);
+					assert.isTrue(signed, "the JWT signature verifies against the public key");
+				}),
+			);
+		}),
+	);
+
+	it.effect("refuses an RSA key under 2048 bits and a P-256 key as a jwt failure caused by a key error", () =>
+		Effect.gen(function* () {
+			const weak = generateKeyPairSync("rsa", {
+				modulusLength: 1024,
+				privateKeyEncoding: { type: "pkcs1", format: "pem" },
+				publicKeyEncoding: { type: "spki", format: "pem" },
+			}).privateKey;
+			const ec = generateKeyPairSync("ec", {
+				namedCurve: "P-256",
+				privateKeyEncoding: { type: "pkcs8", format: "pem" },
+				publicKeyEncoding: { type: "spki", format: "pem" },
+			}).privateKey;
+			for (const [name, pem] of [
+				["1024-bit PKCS#1", weak],
+				["P-256 PKCS#8", ec],
+			] as const) {
+				const error = yield* withApp([tokenReply()], (app) =>
+					Effect.flip(app.token({ appId: "x", privateKey: Redacted.make(pem), installationId: 1 })),
+				);
+				assert.strictEqual(error.kind, "jwt", name);
+				const cause = error.cause;
+				assert.instanceOf(cause, JwtError, name);
+				if (cause instanceof JwtError) {
+					assert.strictEqual(cause.reason, "key", name);
+					// The reason carries the detail alone, with no "JWT key:" prefix stuttered into it.
+					assert.strictEqual(error.reason, cause.detail, name);
+				}
+			}
 		}),
 	);
 });
