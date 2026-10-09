@@ -10,6 +10,9 @@
 * Updated Author the plugin once in plugin/, never edit its builds
 * Updated ai-plugin
 * Updated Each plugin versions via its own private tracking package
+* Updated @effected/cli
+* Updated @effected/schemastore-cli
+* Added The schemastore CLI writes tab-indented, fully expanded JSON only
 
 ## 2026-10-08
 
