@@ -1,0 +1,115 @@
+import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Cause, Effect, Exit, FileSystem, Layer, Option, Path, PlatformError } from "effect";
+import { ImageBackend, ImageBackendError } from "../src/cache.js";
+import { fixture } from "./helpers.js";
+
+const DIR = "/cache/og";
+const KEY = "a".repeat(64);
+const PNG = fixture("png.png");
+const JPEG = fixture("baseline.jpg");
+
+const backend = (faults?: Parameters<typeof MemoryFileSystem.layerWith>[1]) =>
+	ImageBackend.layerDirectory({ directory: DIR }).pipe(
+		Layer.provideMerge(Layer.mergeAll(MemoryFileSystem.layerWith({}, faults ?? {}), Path.layer)),
+	);
+
+describe("ImageBackend.layerDirectory", () => {
+	it.effect("round-trips bytes and content type, creating the directory", () =>
+		Effect.gen(function* () {
+			const images = yield* ImageBackend;
+			assert.isTrue(Option.isNone(yield* images.get(KEY)));
+			yield* images.set({ key: KEY, value: PNG, contentType: "image/png", tags: ["og"] });
+			const stored = yield* images.get(KEY);
+			assert.isTrue(Option.isSome(stored));
+			if (Option.isSome(stored)) {
+				assert.deepStrictEqual(stored.value.value, PNG);
+				assert.strictEqual(stored.value.contentType, "image/png");
+			}
+			const fs = yield* FileSystem.FileSystem;
+			assert.deepStrictEqual(yield* fs.readDirectory(DIR), [`${KEY}.png`]);
+		}).pipe(Effect.provide(backend())),
+	);
+
+	it.effect("a rewrite under a different format replaces the old file", () =>
+		Effect.gen(function* () {
+			const images = yield* ImageBackend;
+			yield* images.set({ key: KEY, value: PNG, contentType: "image/png" });
+			yield* images.set({ key: KEY, value: JPEG, contentType: "image/jpeg" });
+			const stored = yield* images.get(KEY);
+			assert.isTrue(Option.isSome(stored) && stored.value.contentType === "image/jpeg");
+			const fs = yield* FileSystem.FileSystem;
+			assert.deepStrictEqual(yield* fs.readDirectory(DIR), [`${KEY}.jpg`]);
+		}).pipe(Effect.provide(backend())),
+	);
+
+	it.effect("a rename failing mid-write leaves no hit and no temp file", () =>
+		Effect.gen(function* () {
+			const images = yield* ImageBackend;
+			const error = yield* Effect.flip(images.set({ key: KEY, value: PNG, contentType: "image/png" }));
+			assert.instanceOf(error, ImageBackendError);
+			assert.strictEqual(error.operation, "set");
+			assert.isTrue(Option.isNone(yield* images.get(KEY)));
+			const fs = yield* FileSystem.FileSystem;
+			assert.deepStrictEqual(yield* fs.readDirectory(DIR), []);
+		}).pipe(
+			Effect.provide(
+				backend({
+					faults: {
+						rename: () =>
+							Effect.fail(
+								PlatformError.systemError({
+									_tag: "PermissionDenied",
+									module: "FileSystem",
+									method: "rename",
+									pathOrDescriptor: DIR,
+								}),
+							),
+					},
+				}),
+			),
+		),
+	);
+
+	it.effect("an unsupported content type is a typed set failure", () =>
+		Effect.gen(function* () {
+			const images = yield* ImageBackend;
+			const error = yield* Effect.flip(images.set({ key: KEY, value: PNG, contentType: "image/svg+xml" }));
+			assert.strictEqual(error.operation, "set");
+		}).pipe(Effect.provide(backend())),
+	);
+
+	it.effect("a key that is not a digest dies — it can never become a path", () =>
+		Effect.gen(function* () {
+			const images = yield* ImageBackend;
+			for (const bad of ["../escape", "A".repeat(64), "a".repeat(63)]) {
+				const exit = yield* Effect.exit(images.get(bad));
+				assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause), bad);
+			}
+		}).pipe(Effect.provide(backend())),
+	);
+
+	it.effect("a read error other than NotFound surfaces as a typed get failure", () =>
+		Effect.gen(function* () {
+			const images = yield* ImageBackend;
+			const error = yield* Effect.flip(images.get(KEY));
+			assert.strictEqual(error.operation, "get");
+		}).pipe(
+			Effect.provide(
+				backend({
+					faults: {
+						readFile: (path) =>
+							Effect.fail(
+								PlatformError.systemError({
+									_tag: "PermissionDenied",
+									module: "FileSystem",
+									method: "readFile",
+									pathOrDescriptor: path,
+								}),
+							),
+					},
+				}),
+			),
+		),
+	);
+});

@@ -4,6 +4,9 @@
  * @packageDocumentation
  */
 
+export type { ImageBackendSetParams, ImageBackendShape, StoredImage } from "./ImageBackend.js";
+export { ImageBackend } from "./ImageBackend.js";
+export { ImageBackendError } from "./ImageBackendError.js";
 export type { ImageCacheKeyOptions } from "./ImageCacheKey.js";
 export { ImageCacheKey } from "./ImageCacheKey.js";
 export { ImageCacheKeyError } from "./ImageCacheKeyError.js";
