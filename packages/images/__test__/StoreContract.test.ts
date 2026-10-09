@@ -1,8 +1,10 @@
+import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import type { CacheShape } from "@effected/store";
 import { Cache, CacheError } from "@effected/store";
-import { Effect, Layer, Option } from "effect";
-import { ImageBackend, ImageBackendError } from "../src/cache.js";
+import { Duration, Effect, Layer, Option, Schema } from "effect";
+import { TestClock } from "effect/testing";
+import { ImageBackend, ImageBackendError, ImageCache, ImageCacheKey } from "../src/cache.js";
 import { fixture } from "./helpers.js";
 
 const KEY = "b".repeat(64);
@@ -63,4 +65,34 @@ describe("ImageBackend.layerFrom(Cache) - the store contract", () => {
 	it("the store-backed layer value is constructible", () => {
 		assert.isDefined(storeBacked);
 	});
+});
+
+describe("ImageCache over store's Cache", () => {
+	const layer = ImageCache.layer.pipe(
+		Layer.provide(ImageBackend.layerFrom(Cache)),
+		Layer.provide(Cache.layerTest({ defaultTtl: Duration.minutes(5) })),
+		Layer.merge(NodeCrypto.layer),
+	);
+
+	it.effect("hits within the TTL and regenerates after it expires", () =>
+		Effect.gen(function* () {
+			const cache = yield* ImageCache;
+			const key = yield* ImageCacheKey.fromParams(
+				Schema.Struct({ name: Schema.String }),
+				{ name: "pkg" },
+				{ salt: "og-v1", namespace: "og" },
+			);
+			let calls = 0;
+			const generate = () =>
+				Effect.sync(() => {
+					calls++;
+					return PNG;
+				});
+			assert.isFalse((yield* cache.getOrGenerate(key, generate)).hit);
+			assert.isTrue((yield* cache.getOrGenerate(key, generate)).hit);
+			yield* TestClock.adjust(Duration.minutes(6));
+			assert.isFalse((yield* cache.getOrGenerate(key, generate)).hit);
+			assert.strictEqual(calls, 2);
+		}).pipe(Effect.provide(layer)),
+	);
 });
