@@ -128,3 +128,29 @@ describe("ImageBackend.layerDirectory", () => {
 		),
 	);
 });
+
+describe("ImageBackend directory concurrency (review focus 4)", () => {
+	it.effect("two concurrent writers for one key leave one writer's complete bytes", () =>
+		Effect.gen(function* () {
+			const images = yield* ImageBackend;
+			yield* Effect.all(
+				[
+					images.set({ key: KEY, value: PNG, contentType: "image/png" }),
+					images.set({ key: KEY, value: JPEG, contentType: "image/jpeg" }),
+				],
+				{ concurrency: 2 },
+			);
+			const stored = yield* images.get(KEY);
+			assert.isTrue(Option.isSome(stored));
+			if (Option.isSome(stored)) {
+				const bytes = stored.value.value;
+				assert.isTrue(
+					(stored.value.contentType === "image/png" && bytes.length === PNG.length) ||
+						(stored.value.contentType === "image/jpeg" && bytes.length === JPEG.length),
+				);
+			}
+			const fs = yield* FileSystem.FileSystem;
+			assert.isFalse((yield* fs.readDirectory(DIR)).some((name) => name.endsWith(".tmp")));
+		}).pipe(Effect.provide(backend())),
+	);
+});

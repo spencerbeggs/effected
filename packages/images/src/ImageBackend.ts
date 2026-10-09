@@ -27,13 +27,28 @@ export interface ImageBackendSetParams {
  * The port an image cache stores through.
  *
  * @remarks
- * `@effected/store`'s `Cache` satisfies this shape structurally.
+ * Failures are {@link ImageBackendError}. the store package's `Cache` is adapted through
+ * `ImageBackend.layerFrom`, which {@link ImageBackendSource} describes structurally.
  *
  * @public
  */
 export interface ImageBackendShape {
 	readonly get: (key: string) => Effect.Effect<Option.Option<StoredImage>, ImageBackendError>;
 	readonly set: (params: ImageBackendSetParams) => Effect.Effect<void, ImageBackendError>;
+}
+
+/**
+ * Any service whose shape can stand behind the image cache.
+ *
+ * @remarks
+ * the store package's `CacheShape` satisfies it: its `get` yields a wider `CacheEntry`, and its `set` accepts these
+ * params plus a `ttl`. Failures may be of any type; `ImageBackend.layerFrom` wraps them.
+ *
+ * @public
+ */
+export interface ImageBackendSource {
+	readonly get: (key: string) => Effect.Effect<Option.Option<StoredImage>, unknown>;
+	readonly set: (params: ImageBackendSetParams) => Effect.Effect<void, unknown>;
 }
 
 const EXTENSIONS: Readonly<Record<string, string>> = {
@@ -128,6 +143,34 @@ export class ImageBackend extends Context.Service<ImageBackend, ImageBackendShap
 
 				return { get, set };
 			}),
+		);
+	}
+
+	/**
+	 * Adapt any structurally matching service, the store package's `Cache` being the intended one, as the backend.
+	 *
+	 * @remarks
+	 * `ImageBackend.layerFrom(Cache)` gives the image cache store's TTL, eviction and tag invalidation. Every source
+	 * failure is wrapped as {@link ImageBackendError} with the original as `cause`.
+	 *
+	 * Each call mints a fresh layer; bind the result to a `const` or the backend builds twice.
+	 */
+	static layerFrom<I>(key: Context.Key<I, ImageBackendSource>): Layer.Layer<ImageBackend, never, I> {
+		return Layer.effect(
+			ImageBackend,
+			Effect.map(key, (source) => ({
+				get: (k: string) =>
+					source.get(k).pipe(
+						Effect.map(Option.map((entry) => ({ value: entry.value, contentType: entry.contentType }))),
+						Effect.mapError((cause) => new ImageBackendError({ operation: "get", key: k, cause })),
+						Effect.withSpan("ImageBackend.get"),
+					),
+				set: (params: ImageBackendSetParams) =>
+					source.set(params).pipe(
+						Effect.mapError((cause) => new ImageBackendError({ operation: "set", key: params.key, cause })),
+						Effect.withSpan("ImageBackend.set"),
+					),
+			})),
 		);
 	}
 }
