@@ -62,6 +62,19 @@ describe("Jwt.verify time claims", () => {
 		}),
 	);
 
+	it.effect("a negative, infinite or unparseable clock tolerance is claims", () =>
+		Effect.gen(function* () {
+			const pair = yield* setup;
+			const token = yield* Jwt.sign({ sub: "a", exp: NOW + 600 }, pair.signing);
+			for (const clockTolerance of [Duration.seconds(-1), Duration.infinity, "a while" as Duration.Input, Number.NaN]) {
+				const reason = yield* reasonOf(Jwt.verify(token, { key: pair.verification, claims: Claims, clockTolerance }));
+				assert.strictEqual(reason, "claims", String(clockTolerance));
+			}
+			yield* Jwt.verify(token, { key: pair.verification, claims: Claims, clockTolerance: "5 seconds" });
+			yield* Jwt.verify(token, { key: pair.verification, claims: Claims, clockTolerance: 0 });
+		}),
+	);
+
 	it.effect("nbf at now + 61s is notYetValid and at now + 60s passes", () =>
 		Effect.gen(function* () {
 			const pair = yield* setup;

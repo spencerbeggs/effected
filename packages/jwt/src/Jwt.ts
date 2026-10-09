@@ -1,4 +1,4 @@
-import { Clock, Duration, Effect, Schema } from "effect";
+import { Clock, Duration, Effect, Option, Schema } from "effect";
 import { quote } from "./internal/quote.js";
 import type { DecodedJws, JoseHeader } from "./Jws.js";
 import { Jws } from "./Jws.js";
@@ -59,11 +59,28 @@ export interface VerifyOptions<S extends Schema.Constraint, R = never> {
 	readonly key: VerificationKey | ((header: JoseHeader) => Effect.Effect<VerificationKey, JwtError, R>);
 	/** The schema the payload is decoded with once every check has passed. */
 	readonly claims: S;
-	/** The accepted issuer, or any of several; `iss` must equal one. */
+	/**
+	 * The accepted issuer, or any of several; `iss` must equal one.
+	 *
+	 * @remarks
+	 * Omitted, `iss` is not checked, and a token from any issuer the key
+	 * serves is accepted.
+	 */
 	readonly issuer?: string | ReadonlyArray<string>;
-	/** The accepted audience, or any of several; `aud` must contain one. */
+	/**
+	 * The accepted audience, or any of several; `aud` must contain one.
+	 *
+	 * @remarks
+	 * Omitted, `aud` is not checked, and a token minted for any audience the
+	 * key serves is accepted. That is dangerous with a shared issuer such as
+	 * GitHub Actions OIDC, whose one JWKS signs tokens for every relying
+	 * party: always pass the audience you expect.
+	 */
 	readonly audience?: string | ReadonlyArray<string>;
-	/** Allowed clock skew for `exp`, `nbf` and `iat`; 60 seconds by default. */
+	/**
+	 * Allowed clock skew for `exp`, `nbf` and `iat`; 60 seconds by default.
+	 * A negative, infinite or unparseable tolerance fails as `claims`.
+	 */
 	readonly clockTolerance?: Duration.Input;
 	/** Whether a token without `exp` is refused (as `claims`); `true` by default. */
 	readonly requireExpiry?: boolean;
@@ -76,13 +93,28 @@ const decodeRegistered = Schema.decodeUnknownEffect(RegisteredClaims);
 const asList = (value: string | ReadonlyArray<string>): ReadonlyArray<string> =>
 	typeof value === "string" ? [value] : value;
 
+// A tolerance must be a finite, non-negative duration; anything else would
+// silently disable (infinite) or tighten past zero (negative) the time checks.
+// Core's `Duration.fromInput(NaN)` is zero, not `None`, so a raw number is
+// checked for finiteness first.
+const toleranceSeconds = (input: Duration.Input | undefined): number | undefined => {
+	if (typeof input === "number" && !Number.isFinite(input)) return undefined;
+	const duration = Option.getOrUndefined(Duration.fromInput(input ?? defaultTolerance));
+	if (duration === undefined) return undefined;
+	const millis = Duration.toMillis(duration);
+	return Number.isFinite(millis) && millis >= 0 ? millis / 1000 : undefined;
+};
+
 const checkClaims = (
 	claims: RegisteredClaims,
 	nowSeconds: number,
 	options: VerifyOptions<Schema.Constraint, unknown>,
 	extra: { readonly kid?: string } | undefined,
 ): Effect.Effect<void, JwtError> => {
-	const tolerance = Math.max(0, Duration.toMillis(options.clockTolerance ?? defaultTolerance) / 1000);
+	const tolerance = toleranceSeconds(options.clockTolerance);
+	if (tolerance === undefined) {
+		return Effect.fail(JwtError.of("claims", "the clock tolerance is not a finite, non-negative duration", extra));
+	}
 	if (claims.exp === undefined) {
 		if (options.requireExpiry ?? true) return Effect.fail(JwtError.of("claims", "the token has no exp", extra));
 	} else if (nowSeconds - tolerance >= claims.exp) {
@@ -149,7 +181,7 @@ export const Jwt: {
 	 * JWT name.
 	 */
 	readonly sign: (
-		claims: object,
+		claims: Readonly<Record<string, unknown>>,
 		key: SigningKey,
 		header?: Readonly<Record<string, unknown>>,
 	) => Effect.Effect<string, JwtError>;
