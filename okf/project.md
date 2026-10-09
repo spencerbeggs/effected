@@ -7,8 +7,8 @@ tags:
   - architecture
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-09T15:43:22Z
-  body_sha256: 8841d806145ad8d9203ae9fbff0a992482ba2d7d572a71fd0a82f36a0894222e
+  at: 2026-10-09T20:48:21Z
+  body_sha256: 706a55748ea9cfd639426f32665bed1758bf86e2262f363ee7e9be284d8854ea
 ---
 
 # effected
@@ -66,7 +66,7 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `images` | boundary | invention; image facts (format, MIME, dimensions) from bytes and a generated-image cache behind a backend port store satisfies structurally |
 | `pnpm-plugin-effect` | companion — no tier | invention; publishes the Effect catalogs the kit pins against |
 
-The roster is **38 packages**: 36 libraries and two companions (`pnpm-plugin-effect` and `schemastore-cli`). 31 have published; `env`, `github-commands`, `engine`, `mcp`, `lsp`, `images` and `schemastore-cli` await their first release.
+The roster is **38 packages**: 36 libraries and two companions (`pnpm-plugin-effect` and `schemastore-cli`). All 38 have published.
 
 ### Consumers
 

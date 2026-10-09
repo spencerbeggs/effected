@@ -14,8 +14,8 @@ sources:
     resource: https://github.com/spencerbeggs/effected/blob/41327b9656d86db47749ee161e198c716853d391/plugins/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: f32557198fd122fe96ce9cda39b07d14198aa10e2a43c30764c9438fd4d8d655
+  at: 2026-10-09T20:48:21Z
+  body_sha256: b603c53d84c20bfb090f550076c95e207fef825bd35d2baf4942ae606e6a87bd
 verified:
   - by: human:spencer
     at: 2026-10-03T04:58:49Z
@@ -68,7 +68,7 @@ never waits on one.
 - **Version both plugins from one shared tracking package.** Rejected:
   the two plugins release on different cadences and through different
   marketplace automation (see
-  [copilot-plugin](../modules/copilot-plugin.md)'s hand-bumped ref versus
+  the retired `copilot-plugin` module's hand-bumped ref versus
   the Claude Code plugin's automatic one), so a shared package would
   force one release to carry the other's changes.
 

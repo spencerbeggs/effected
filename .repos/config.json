@@ -57,6 +57,12 @@
 					"date": "2026-10-07",
 					"ref": "effect@4.0.2",
 					"note": "4.0.1→4.0.2 advance (2026-10-07): zero kit source breaks. Every module and directly importable export now carries an explicit @stability tag (stable = strict semver, unstable = may break in a minor); newly unstable top-level modules include the platform contracts the kit requires in R — FileSystem, Path, PlatformError, Stdio, Terminal — plus Crypto, Graph, ByteSize, ErrorReporter, ExecutionPlan, LayerMap/LayerRef, Newtype, TxChunk, testing/TestConsole and the new Version module; encoding/Base64|Base64Url|Hex|EncodingError are stable. The added tag lines shifted most src line numbers (skill-anchors.json re-derived through the 460272d3..269a7c86 diff). Consumer-visible semantics: Effect.retry no longer retries a cause carrying a defect or interruption; Config.orElse recovers plain failures only and Config parsing preserves provider defects; Config.Record keeps separators inside values; Yaml.parse keep-chomping (|+ >+) and Toml.parse multiline-string CRLF trimming fixed (core parsers used by config-file, markdown frontmatter, lockfiles); Map/Set schema equivalence no longer equates proper subsets; Stream.peel/tapSink/zipLatest/groupBy/slidingSize fixes; Schema.toTaggedUnion/TaggedUnion expose .tag; interrupt-only spans are Unset with effect.fiber.interrupted; Cause.pretty drops the internal stack frame for non-object failures; AI tracing renamed to OTel GenAI (gen_ai.provider.name; WellKnownSystem/BaseAttributes/TokenAttributes removed); RPC span names default to the method; HTTP/SQL/OTLP tracing realigned to OTel conventions; McpServer.layerHttp gains allowSessionTermination."
+				},
+				{
+					"id": "n-504f",
+					"date": "2026-10-09",
+					"ref": "effect@4.0.2",
+					"note": "Supersedes n-36d8's stability line (\"untagged APIs follow semver\"): since 4.0.2 there are no untagged exports — every module and directly importable export carries an explicit @stability (stable = strict semver, unstable = may break in a minor; see n-5f95). Read the tag on the export itself, never infer stability from its absence. n-36d8's other facts (partition order, Schema.brand, lock-minor re-pin rule) still hold."
 				}
 			]
 		},

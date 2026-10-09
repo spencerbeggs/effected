@@ -7,6 +7,9 @@
 * Updated effected
 * Updated @effected/images
 * Added A package that names its own root types shows one warning or none, depending on whether the second pass crashes
+* Updated Author the plugin once in plugin/, never edit its builds
+* Updated ai-plugin
+* Updated Each plugin versions via its own private tracking package
 
 ## 2026-10-08
 
