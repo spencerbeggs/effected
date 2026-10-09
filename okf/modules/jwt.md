@@ -10,10 +10,13 @@ tags:
   - architecture
   - security
   - bundle
+sources:
+  - id: build
+    resource: ../../packages/jwt/savvy.build.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T22:29:55Z
-  body_sha256: 08604814e92cfa390bfa6c02515716179501525b0a15473a0d32d5340cb74ae6
+  at: 2026-10-09T23:30:35Z
+  body_sha256: 769c915ccdd553b22519123d365652d6aedd4c8951c98526358f6bed1a4f8ced
 ---
 
 # `@effected/jwt`
@@ -60,8 +63,19 @@ The package follows the [module-per-concept layout](../conventions/module-per-co
 
 ## The testing entrypoint
 
-`./testing` exports `TestIssuer`, a generated key pair with a signer and a JWKS document for tests. It names root types through a type-only self-reference, the `cli` and `jsonl` pattern, with `dtsExternals` set. The bundler's second API Extractor pass resolves that self-reference into `src`, so the build carries narrow suppressions and an accepted warning; the same shape is described for [`@effected/images`](images.md) and in [the self-reference gotcha](../gotchas/self-reference-api-extractor-pass-looks-clean-when-it-crashes.md). The exact suppression list is settled when the entrypoint is built. Whether a second entrypoint is warranted follows [the measured-cost rule](../decisions/second-published-entrypoint.md).
+`./testing` exports `TestIssuer`: a generated key pair with a signer, and an in-memory `HttpClient` serving the issuer's discovery document and JWKS, so a consumer test verifies through the real `JwksResolver` with no network. `TestIssuer.rotate` adds a key under a new `kid`, served alongside the earlier ones; the resolver's refetch interval still applies, so a test under `TestClock` advances it before verifying with the new key. The issuer must be `https:` or a localhost `http:` URL, because the resolver refuses any other.
+
+`src/TestIssuer.ts` names root types through a type-only `import type * as Root from "@effected/jwt"` self-reference and imports runtime values relatively, the [`@effected/images`](images.md) pattern, with `dtsExternals` set. The build emits one module per source file, so `TestIssuer` uses the root's own classes rather than copies. The bundler's second API Extractor pass resolves the self-reference into `src`, and the build settles as images does, per [the self-reference gotcha](../gotchas/self-reference-api-extractor-pass-looks-clean-when-it-crashes.md): one accepted `ae-wrong-input-file-type` warning, left unsuppressed.[^build]
+
+The suppression list in `savvy.build.ts` is exactly two entries, both `ae-forgotten-export`:
+
+- the house `_base` pattern, for the heritage types Effect's class factories synthesize;
+- the self-reference names, matched only for `testing.d.ts`: `Root` itself and the sixteen root symbols `TestIssuer`'s signatures reach transitively (`CachedJwks`, `DecodedJws`, `JoseHeader`, `Jwk`, `Jwks`, `JwksResolver`, `JwksResolverOptions`, `JwksResolverShape`, `JwksStore`, `JwksStoreShape`, `JwtAlgorithm`, `JwtError`, `JwtErrorReason`, `SigningKey`, `VerificationKey`, `VerifyOptions`), every one exported by the root entry point.
+
+Dropping any name from the second pattern brings its warning back, so a genuinely forgotten export from either entry point still fails the build. Whether a second entrypoint is warranted follows [the measured-cost rule](../decisions/second-published-entrypoint.md).
 
 ## Consumers
 
 [`@effected/github`](github.md) takes a regular dependency on this package for GitHub App authentication and Actions OIDC verification. The first external consumer is savvy-web/silk-app. The issues driving the work are 768 (the two JWT halves), 970 (the installation token store), 975 (additive `Installation` fields) and 827 (`GitHubError.fromResponse`).
+
+[^build]: `packages/jwt/savvy.build.ts`, whose comments state the suppression's scope; the warning itself is in `packages/jwt/dist/prod/issues.json` after a build.
