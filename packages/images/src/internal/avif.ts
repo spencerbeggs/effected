@@ -38,13 +38,18 @@ export const isAvifBrand = (b: Uint8Array): boolean => {
 	return false;
 };
 
-const readBox = (b: Uint8Array, offset: number, parentEnd: number): BoxResult => {
-	if (offset + 8 > b.length) return fail("truncated", "ended inside a box header");
+/**
+ * Only a top-level box can be cut short by the end of the bytes: below it the parent has already been
+ * verified to end inside the buffer, so more bytes could never complete a child that overruns it.
+ */
+const readBox = (b: Uint8Array, offset: number, parentEnd: number, topLevel: boolean): BoxResult => {
+	const short = (detail: string) => fail(topLevel ? "truncated" : "malformed", detail);
+	if (offset + 8 > b.length) return short("ended inside a box header");
 	let size = u32be(b, offset);
 	const type = ascii(b, offset + 4, 4);
 	let header = 8;
 	if (size === 1) {
-		if (offset + 16 > b.length) return fail("truncated", "ended inside a largesize header");
+		if (offset + 16 > b.length) return short("ended inside a largesize header");
 		if (u32be(b, offset + 8) !== 0) return fail("malformed", `box ${JSON.stringify(type)} largesize exceeds 32 bits`);
 		size = u32be(b, offset + 12);
 		header = 16;
@@ -53,7 +58,8 @@ const readBox = (b: Uint8Array, offset: number, parentEnd: number): BoxResult =>
 	}
 	if (size < header) return fail("malformed", `box ${JSON.stringify(type)} size ${size} is below its header`);
 	const end = offset + size;
-	if (end > b.length) return fail("truncated", `box ${JSON.stringify(type)} runs past the end of the bytes`);
+	if (topLevel && end > b.length)
+		return fail("truncated", `box ${JSON.stringify(type)} runs past the end of the bytes`);
 	if (end > parentEnd) return fail("malformed", `box ${JSON.stringify(type)} overruns its parent`);
 	return Result.succeed({ type, start: offset + header, end });
 };
@@ -68,7 +74,7 @@ const children = (
 	const out: Array<Box> = [];
 	for (let offset = start; offset < end; ) {
 		if (--budget.remaining < 0) return fail("malformed", "box walk exceeded its budget");
-		const box = readBox(b, offset, end);
+		const box = readBox(b, offset, end, false);
 		if (Result.isFailure(box)) return Result.fail(box.failure);
 		out.push(box.success);
 		offset = box.success.end;
@@ -87,7 +93,7 @@ const child = (
 ): BoxResult => {
 	for (let offset = start; offset < end; ) {
 		if (--budget.remaining < 0) return fail("malformed", "box walk exceeded its budget");
-		const box = readBox(b, offset, end);
+		const box = readBox(b, offset, end, topLevel);
 		if (Result.isFailure(box)) return Result.fail(box.failure);
 		if (box.success.type === type) return box;
 		offset = box.success.end;

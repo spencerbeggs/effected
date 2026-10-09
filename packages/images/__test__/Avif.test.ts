@@ -61,6 +61,11 @@ describe("readAvif", () => {
 		assert.isTrue(isReason(readAvif(concat(ftyp, meta, box("free", new Array(300).fill(0)))), "malformed"));
 	});
 
+	it("a nested box that overruns the buffer too is malformed, not truncated", () => {
+		const meta = [...u32be(8 + 4 + 8), ...ascii("meta"), 0, 0, 0, 0, ...u32be(0xfffffff0), ...ascii("iprp")];
+		assert.isTrue(isReason(readAvif(concat(ftyp, meta)), "malformed"));
+	});
+
 	it("bytes that end before meta are truncated", () => {
 		assert.isTrue(isReason(readAvif(concat(ftyp)), "truncated"));
 	});
