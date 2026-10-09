@@ -416,6 +416,50 @@ describe("GitHubApp.clientLayer", () => {
 		}),
 	);
 
+	it.effect("rotates once when concurrent requests find the token spent, revoking only the old one", () =>
+		Effect.gen(function* () {
+			const mints: Array<string> = [];
+			const revoked: Array<string> = [];
+			const used: Array<string> = [];
+			const json = (status: number, body: unknown) =>
+				new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+			const fetch: typeof globalThis.fetch = async (input, init) => {
+				const request = new Request(input as string, init);
+				const authorization = request.headers.get("authorization") ?? "";
+				if (request.url.includes("/access_tokens")) {
+					const token = `ghs_${mints.length + 1}`;
+					mints.push(token);
+					// A real delay, so every waiting fiber is parked while the mint is in flight.
+					await new Promise((resolve) => setTimeout(resolve, 5));
+					const expires_at = mints.length === 1 ? "1970-01-01T00:00:00Z" : "2099-01-01T00:00:00Z";
+					return json(201, { token, expires_at, permissions: {} });
+				}
+				if (request.method === "DELETE") {
+					revoked.push(authorization.replace(/^token /, ""));
+					return new Response(null, { status: 204 });
+				}
+				used.push(authorization.replace(/^token /, ""));
+				return json(200, { default_branch: "main" });
+			};
+			yield* Effect.provide(
+				Effect.gen(function* () {
+					const client = yield* GitHubClient;
+					// The eager token expired at the epoch, where the TestClock starts.
+					yield* TestClock.adjust(Duration.seconds(1));
+					yield* Effect.all(
+						Array.from({ length: 3 }, () => client.request("GET /repos/{owner}/{repo}", { owner: "o", repo: "r" })),
+						{ concurrency: "unbounded" },
+					);
+					assert.deepStrictEqual(mints, ["ghs_1", "ghs_2"], "the eager mint plus exactly one rotation");
+					assert.deepStrictEqual(revoked, ["ghs_1"], "only the spent token is revoked while the layer is open");
+					assert.deepStrictEqual(used, ["ghs_2", "ghs_2", "ghs_2"], "no request uses a revoked token");
+				}),
+				GitHubApp.clientLayer({ ...CREDENTIALS, installationId: 42 }, { fetch, retry: NO_RETRY }),
+			);
+			assert.deepStrictEqual(revoked, ["ghs_1", "ghs_2"], "release revokes the last token");
+		}),
+	);
+
 	it.effect("fails layer construction with a GitHubAppError when credentials are bad", () =>
 		Effect.gen(function* () {
 			const script = scriptedFetch([{ status: 401, body: { message: "Bad credentials" } }]);

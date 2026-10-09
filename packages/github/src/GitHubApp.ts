@@ -1,6 +1,19 @@
 import { Jwt, JwtKey } from "@effected/jwt";
 import type { Scope } from "effect";
-import { Clock, Context, DateTime, Duration, Effect, Layer, Option, Redacted, Ref, Schema, Stream } from "effect";
+import {
+	Clock,
+	Context,
+	DateTime,
+	Duration,
+	Effect,
+	Layer,
+	Option,
+	Redacted,
+	Ref,
+	Schema,
+	Semaphore,
+	Stream,
+} from "effect";
 import type { GitHubClientShape } from "./GitHubClient.js";
 import { GitHubClient, makeClientShape } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
@@ -121,7 +134,7 @@ export class InstallationToken extends Schema.Class<InstallationToken>("Installa
 	 * rather than answering 401 mid-request.
 	 */
 	isExpired(nowMillis: number, skew: Duration.Duration = DEFAULT_SKEW): boolean {
-		return DateTime.toEpochMillis(this.expiresAt) - Duration.toMillis(skew) <= nowMillis;
+		return isSpent(DateTime.toEpochMillis(this.expiresAt), nowMillis, skew);
 	}
 
 	/** The committer identity a commit made with this token should carry. */
@@ -137,6 +150,10 @@ export class InstallationToken extends Schema.Class<InstallationToken>("Installa
 
 /** Re-mint a minute before GitHub would start refusing the token. */
 const DEFAULT_SKEW = Duration.seconds(60);
+
+/** Whether a credential expiring at `expiresAtMillis` should be replaced at `nowMillis`. */
+const isSpent = (expiresAtMillis: number, nowMillis: number, skew: Duration.Duration = DEFAULT_SKEW): boolean =>
+	expiresAtMillis - Duration.toMillis(skew) <= nowMillis;
 
 /**
  * Who a bot commits as.
@@ -339,11 +356,14 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 	 * A {@link GitHubClient} authenticated as the app itself, with an App JWT.
 	 *
 	 * @remarks
-	 * An App JWT reaches only the app-level routes: `/app` and everything under
-	 * `/app/*` (the app's installations and their token mint, its webhook
-	 * configuration and deliveries). Every repository or
-	 * organization route answers 401 to it; reach those through
-	 * {@link GitHubApp.clientLayer} with an installation token instead.
+	 * An App JWT authenticates only the app-level routes: `/app` and everything
+	 * under `/app/*` (the app's installations and their token mint, its webhook
+	 * configuration and deliveries), plus the three installation lookups that
+	 * require a JWT: `GET /repos/{owner}/{repo}/installation`,
+	 * `GET /orgs/{org}/installation` and `GET /users/{username}/installation`.
+	 * Installation-scoped routes (a repository's contents, issues, pulls and the
+	 * rest) answer 401 to it; reach those through {@link GitHubApp.clientLayer}
+	 * with an installation token instead.
 	 *
 	 * The motivating use is a webhook redelivery sweep, which lists recent
 	 * deliveries with `GET /app/hook/deliveries` and redelivers a failed one
@@ -639,15 +659,29 @@ const makeRotatingClient = (
 		yield* rotate;
 		yield* Effect.addFinalizer(() => revokeHeld);
 
-		/** The live client, re-minting first if the held token is spent. */
-		const fresh: Effect.Effect<GitHubClientShape, GitHubAppError> = Effect.gen(function* () {
+		const live: Effect.Effect<Option.Option<GitHubClientShape>> = Effect.gen(function* () {
 			const now = yield* Clock.currentTimeMillis;
 			const state = yield* Ref.get(held);
-			if (Option.isSome(state) && state.value.credential.expiresAtMillis - Duration.toMillis(DEFAULT_SKEW) > now) {
-				return state.value.client;
-			}
-			return yield* rotate;
+			return Option.isSome(state) && !isSpent(state.value.credential.expiresAtMillis, now)
+				? Option.some(state.value.client)
+				: Option.none();
 		});
+
+		// One rotation at a time. Without the lock, N fibers that find the
+		// credential spent together each mint, overwriting (and so leaking) all
+		// but the last replacement, and one fiber's release can revoke the token
+		// another has just installed and is using. A fiber that waited re-checks
+		// after acquiring, so the first rotation serves every waiter.
+		const lock = yield* Semaphore.make(1);
+
+		/** The live client, re-minting first if the held credential is spent. */
+		const fresh: Effect.Effect<GitHubClientShape, GitHubAppError> = Effect.flatMap(live, (current) =>
+			Option.isSome(current)
+				? Effect.succeed(current.value)
+				: lock.withPermit(
+						Effect.flatMap(live, (rechecked) => (Option.isSome(rechecked) ? Effect.succeed(rechecked.value) : rotate)),
+					),
+		);
 
 		// A credential failure is reported in the channel the caller is already
 		// handling: "could not authenticate" IS an authorization failure from a

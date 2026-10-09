@@ -2,8 +2,10 @@ import { generateKeyPairSync } from "node:crypto";
 import { assert, describe, it } from "@effect/vitest";
 import { Duration, Effect, Redacted } from "effect";
 import { TestClock } from "effect/testing";
+import { afterEach, vi } from "vitest";
 import { GitHubApp } from "../src/GitHubApp.js";
 import { GitHubClient } from "../src/GitHubClient.js";
+import { GitHubError } from "../src/GitHubError.js";
 import { RetryPolicy } from "../src/Resilience.js";
 import type { Reply } from "./fixtures.js";
 import { scriptedFetch } from "./fixtures.js";
@@ -60,6 +62,10 @@ const claimsOf = (jwt: string): { iss: string; iat: number; exp: number } =>
 	JSON.parse(Buffer.from(jwt.split(".")[1] ?? "", "base64url").toString("utf8"));
 
 describe("GitHubApp.appClientLayer", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
 	it.effect("authenticates an app-level route with a bearer JWT issued by the app", () =>
 		withAppClient([DELIVERIES], (client, script) =>
 			Effect.gen(function* () {
@@ -122,5 +128,41 @@ describe("GitHubApp.appClientLayer", () => {
 			);
 			assert.strictEqual(script.count(), 1, "only the request itself; nothing on release");
 		}),
+	);
+
+	it.effect("concurrent requests on a spent JWT all carry the one replacement", () =>
+		withAppClient([DELIVERIES], (client, script) =>
+			Effect.gen(function* () {
+				yield* client.request("GET /app/hook/deliveries", {});
+				yield* TestClock.adjust(Duration.minutes(9));
+				yield* Effect.all(
+					Array.from({ length: 3 }, () => client.request("GET /app/hook/deliveries", {})),
+					{ concurrency: "unbounded" },
+				);
+				const first = bearerOf(script, 0);
+				const rotated = [1, 2, 3].map((index) => bearerOf(script, index));
+				for (const jwt of rotated) assert.notStrictEqual(jwt, first);
+				assert.strictEqual(new Set(rotated).size, 1, "one replacement JWT, shared by every waiter");
+			}),
+		),
+	);
+
+	it.effect("reports a signing failure after construction as an unauthorized GitHubError naming the layer", () =>
+		withAppClient([DELIVERIES], (client) =>
+			Effect.gen(function* () {
+				yield* client.request("GET /app/hook/deliveries", {});
+				yield* TestClock.adjust(Duration.minutes(9));
+				// Re-signing now needs WebCrypto, which this runtime no longer has.
+				vi.stubGlobal("crypto", undefined);
+				const error = yield* Effect.flip(client.request("GET /app/hook/deliveries", {}));
+				vi.unstubAllGlobals();
+				assert.instanceOf(error, GitHubError);
+				assert.strictEqual(error.kind, "unauthorized");
+				assert.strictEqual(error.operation, "GitHubApp.appClientLayer");
+				const cause = error.cause as { _tag?: string; kind?: string } | undefined;
+				assert.strictEqual(cause?._tag, "GitHubAppError");
+				assert.strictEqual(cause?.kind, "jwt");
+			}),
+		),
 	);
 });
