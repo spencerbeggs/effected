@@ -11,6 +11,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-10-09T14:42:08Z
   body_sha256: cf09eccc51fb6ed0f3198edb18e0f547bc2f02b8973f44d90259ac55180771c2
+verified:
+  - by: human:spencer
+    at: 2026-10-09T17:05:48Z
 ---
 
 # Image formats are read by in-house header readers
