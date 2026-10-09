@@ -1,9 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
+import type { ImageFormat } from "../src/index.js";
 import { ImageFacts, ImageParseError } from "../src/index.js";
 import { EXPECTED, fixture } from "./helpers.js";
 
-const MIME: Record<string, string> = {
+const MIME: Record<ImageFormat, string> = {
 	png: "image/png",
 	jpeg: "image/jpeg",
 	gif: "image/gif",
@@ -11,7 +12,7 @@ const MIME: Record<string, string> = {
 	avif: "image/avif",
 };
 /** Bytes a format needs before its signature is recognized. */
-const SIGNATURE_LENGTH: Record<string, number> = { png: 8, jpeg: 3, gif: 6, webp: 12, avif: 12 };
+const SIGNATURE_LENGTH: Record<ImageFormat, number> = { png: 8, jpeg: 3, gif: 6, webp: 12, avif: 12 };
 const factsOf = (facts: ImageFacts) => ({ format: facts.format, width: facts.width, height: facts.height });
 
 describe("ImageFacts", () => {
@@ -97,9 +98,14 @@ describe("ImageFacts", () => {
 		}),
 	);
 
-	it.prop("never throws on arbitrary bytes", [Schema.Uint8Array], ([bytes]) => {
-		ImageFacts.fromBytesResult(bytes);
-	});
+	it.prop(
+		"never throws on arbitrary bytes",
+		[Schema.Uint8Array],
+		([bytes]) => {
+			ImageFacts.fromBytesResult(bytes);
+		},
+		{ arbitrary: { size: 256 } },
+	);
 
 	const SIGNATURES: ReadonlyArray<ReadonlyArray<number>> = [
 		[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
@@ -118,5 +124,6 @@ describe("ImageFacts", () => {
 			bytes.set(tail, signature.length);
 			ImageFacts.fromBytesResult(bytes);
 		},
+		{ arbitrary: { size: 256 } },
 	);
 });

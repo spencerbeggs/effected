@@ -2,9 +2,9 @@ import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Data, Effect, Layer, Option, Path, Schema } from "effect";
-import type { ImageBackendSetParams } from "../src/cache.js";
+import type { ImageBackendSetParams, ImageBackendShape } from "../src/cache.js";
 import { ImageBackend, ImageBackendError, ImageCache, ImageCacheKey, ImageGenerateError } from "../src/cache.js";
-import { fixture } from "./helpers.js";
+import { counting, fixture } from "./helpers.js";
 
 class RenderError extends Data.TaggedError("RenderError")<{ readonly why: string }> {}
 
@@ -20,18 +20,9 @@ const live = () =>
 		Layer.provideMerge(Layer.mergeAll(MemoryFileSystem.layerWith({}), Path.layer, NodeCrypto.layer)),
 	);
 
-/** A generator that counts its calls. */
-const counting = (bytes: Uint8Array) => {
-	let calls = 0;
-	return {
-		generate: () =>
-			Effect.sync(() => {
-				calls++;
-				return bytes;
-			}),
-		calls: () => calls,
-	};
-};
+/** The cache over a hand-written backend double. */
+const over = (backend: ImageBackendShape) =>
+	ImageCache.layer.pipe(Layer.provide(Layer.succeed(ImageBackend)(backend)), Layer.merge(NodeCrypto.layer));
 
 describe("ImageCache.getOrGenerate", () => {
 	it.effect("misses, generates, stores; then hits without generating", () =>
@@ -61,7 +52,7 @@ describe("ImageCache.getOrGenerate", () => {
 
 	it.effect("hands the backend the digest, the facts' content type and the namespace tag", () => {
 		const captured: Array<ImageBackendSetParams> = [];
-		const recording = Layer.succeed(ImageBackend)({
+		const recording = over({
 			get: () => Effect.succeedNone,
 			set: (params) =>
 				Effect.sync(() => {
@@ -76,7 +67,7 @@ describe("ImageCache.getOrGenerate", () => {
 			assert.strictEqual(captured[0]?.key, key.digest);
 			assert.strictEqual(captured[0]?.contentType, "image/gif");
 			assert.deepStrictEqual(captured[0]?.tags, [key.namespace]);
-		}).pipe(Effect.provide(ImageCache.layer.pipe(Layer.provide(recording), Layer.merge(NodeCrypto.layer))));
+		}).pipe(Effect.provide(recording));
 	});
 
 	it.effect("a backend set failure is surfaced, not swallowed", () =>
@@ -90,16 +81,11 @@ describe("ImageCache.getOrGenerate", () => {
 			assert.strictEqual(gen.calls(), 1);
 		}).pipe(
 			Effect.provide(
-				ImageCache.layer.pipe(
-					Layer.provide(
-						Layer.succeed(ImageBackend)({
-							get: () => Effect.succeedNone,
-							set: (params) =>
-								Effect.fail(new ImageBackendError({ operation: "set", key: params.key, cause: new Error("full") })),
-						}),
-					),
-					Layer.merge(NodeCrypto.layer),
-				),
+				over({
+					get: () => Effect.succeedNone,
+					set: (params) =>
+						Effect.fail(new ImageBackendError({ operation: "set", key: params.key, cause: new Error("full") })),
+				}),
 			),
 		),
 	);
@@ -180,15 +166,10 @@ describe("ImageCache.getOrGenerate", () => {
 			assert.strictEqual(gen.calls(), 0);
 		}).pipe(
 			Effect.provide(
-				ImageCache.layer.pipe(
-					Layer.provide(
-						Layer.succeed(ImageBackend)({
-							get: (key) => Effect.fail(new ImageBackendError({ operation: "get", key, cause: new Error("down") })),
-							set: () => Effect.void,
-						}),
-					),
-					Layer.merge(NodeCrypto.layer),
-				),
+				over({
+					get: (key) => Effect.fail(new ImageBackendError({ operation: "get", key, cause: new Error("down") })),
+					set: () => Effect.void,
+				}),
 			),
 		),
 	);

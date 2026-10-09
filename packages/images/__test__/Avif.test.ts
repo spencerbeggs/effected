@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Result } from "effect";
 import { AVIF_BOX_BUDGET, isAvifBrand, readAvif } from "../src/internal/avif.js";
-import { ascii, concat, fixture, u32be } from "./helpers.js";
+import { ascii, concat, fixture, isReason, u32be } from "./helpers.js";
 
 const box = (type: string, ...payload: ReadonlyArray<ReadonlyArray<number>>) => {
 	const body = payload.flat();
@@ -12,8 +12,6 @@ const ftyp = box("ftyp", ascii("avif"), u32be(0), ascii("avifmif1miaf"));
 const ispe = (w: number, h: number) => fullBox("ispe", u32be(w), u32be(h));
 const avif = (...ipcoChildren: ReadonlyArray<ReadonlyArray<number>>) =>
 	concat(ftyp, fullBox("meta", box("hdlr", [0]), box("iprp", box("ipco", ...ipcoChildren))));
-const isReason = (result: ReturnType<typeof readAvif>, reason: string) =>
-	Result.isFailure(result) && result.failure.reason === reason;
 
 describe("readAvif", () => {
 	it("reads the fixture", () => {

@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Result } from "effect";
 import { readGif } from "../src/internal/gif.js";
-import { ascii, concat, fixture, u16le } from "./helpers.js";
+import { ascii, concat, fixture, isReason, u16le } from "./helpers.js";
 
 describe("readGif", () => {
 	it("reads the fixture's logical screen descriptor", () => {
@@ -16,12 +16,10 @@ describe("readGif", () => {
 	});
 
 	it("rejects a zero dimension as malformed", () => {
-		const result = readGif(concat(ascii("GIF89a"), u16le(0), u16le(2)));
-		assert.isTrue(Result.isFailure(result) && result.failure.reason === "malformed");
+		assert.isTrue(isReason(readGif(concat(ascii("GIF89a"), u16le(0), u16le(2))), "malformed"));
 	});
 
 	it("reports a descriptor cut short as truncated", () => {
-		const result = readGif(concat(ascii("GIF89a"), u16le(9), [5]));
-		assert.isTrue(Result.isFailure(result) && result.failure.reason === "truncated");
+		assert.isTrue(isReason(readGif(concat(ascii("GIF89a"), u16le(9), [5])), "truncated"));
 	});
 });

@@ -5,7 +5,7 @@ import { Cache, CacheError } from "@effected/store";
 import { Duration, Effect, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { ImageBackend, ImageBackendError, ImageCache, ImageCacheKey } from "../src/cache.js";
-import { fixture } from "./helpers.js";
+import { counting, fixture } from "./helpers.js";
 
 const KEY = "b".repeat(64);
 const PNG = fixture("png.png");
@@ -82,17 +82,12 @@ describe("ImageCache over store's Cache", () => {
 				{ name: "pkg" },
 				{ salt: "og-v1", namespace: "og" },
 			);
-			let calls = 0;
-			const generate = () =>
-				Effect.sync(() => {
-					calls++;
-					return PNG;
-				});
-			assert.isFalse((yield* cache.getOrGenerate(key, generate)).hit);
-			assert.isTrue((yield* cache.getOrGenerate(key, generate)).hit);
+			const gen = counting(PNG);
+			assert.isFalse((yield* cache.getOrGenerate(key, gen.generate)).hit);
+			assert.isTrue((yield* cache.getOrGenerate(key, gen.generate)).hit);
 			yield* TestClock.adjust(Duration.minutes(6));
-			assert.isFalse((yield* cache.getOrGenerate(key, generate)).hit);
-			assert.strictEqual(calls, 2);
+			assert.isFalse((yield* cache.getOrGenerate(key, gen.generate)).hit);
+			assert.strictEqual(gen.calls(), 2);
 		}).pipe(Effect.provide(layer)),
 	);
 });

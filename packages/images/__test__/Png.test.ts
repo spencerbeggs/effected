@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Result } from "effect";
 import { readPng } from "../src/internal/png.js";
-import { ascii, concat, fixture, u32be } from "./helpers.js";
+import { ascii, concat, fixture, isReason, u32be } from "./helpers.js";
 
 const SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const ihdr = (width: number, height: number, length = 13, type = "IHDR") =>
@@ -17,27 +17,22 @@ describe("readPng", () => {
 	});
 
 	it("rejects 2^31 as malformed", () => {
-		const result = readPng(ihdr(0x80000000, 1));
-		assert.isTrue(Result.isFailure(result) && result.failure.reason === "malformed");
+		assert.isTrue(isReason(readPng(ihdr(0x80000000, 1)), "malformed"));
 	});
 
 	it("rejects a zero dimension as malformed", () => {
-		const result = readPng(ihdr(0, 4));
-		assert.isTrue(Result.isFailure(result) && result.failure.reason === "malformed");
+		assert.isTrue(isReason(readPng(ihdr(0, 4)), "malformed"));
 	});
 
 	it("rejects a first chunk that is not IHDR", () => {
-		const result = readPng(ihdr(3, 2, 13, "IDAT"));
-		assert.isTrue(Result.isFailure(result) && result.failure.reason === "malformed");
+		assert.isTrue(isReason(readPng(ihdr(3, 2, 13, "IDAT")), "malformed"));
 	});
 
 	it("rejects an IHDR whose length is not 13", () => {
-		const result = readPng(ihdr(3, 2, 12));
-		assert.isTrue(Result.isFailure(result) && result.failure.reason === "malformed");
+		assert.isTrue(isReason(readPng(ihdr(3, 2, 12)), "malformed"));
 	});
 
 	it("reports a header cut before the dimensions as truncated", () => {
-		const result = readPng(ihdr(3, 2).subarray(0, 20));
-		assert.isTrue(Result.isFailure(result) && result.failure.reason === "truncated");
+		assert.isTrue(isReason(readPng(ihdr(3, 2).subarray(0, 20)), "truncated"));
 	});
 });

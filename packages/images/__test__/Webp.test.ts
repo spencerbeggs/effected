@@ -1,13 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Result } from "effect";
 import { readWebp } from "../src/internal/webp.js";
-import { ascii, concat, fixture, u16le, u24le, u32le } from "./helpers.js";
+import { ascii, concat, fixture, isReason, u16le, u24le, u32le } from "./helpers.js";
 
 const riff = (fourcc: string, payload: ReadonlyArray<number>) =>
 	concat(ascii("RIFF"), u32le(4 + 8 + payload.length), ascii("WEBP"), ascii(fourcc), u32le(payload.length), payload);
-
-const isReason = (result: ReturnType<typeof readWebp>, reason: string) =>
-	Result.isFailure(result) && result.failure.reason === reason;
 
 describe("readWebp", () => {
 	it("reads all three fixture variants", () => {
