@@ -2,6 +2,7 @@ import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Data, Effect, Layer, Option, Path, Schema } from "effect";
+import type { ImageBackendSetParams } from "../src/cache.js";
 import { ImageBackend, ImageBackendError, ImageCache, ImageCacheKey, ImageGenerateError } from "../src/cache.js";
 import { fixture } from "./helpers.js";
 
@@ -48,7 +49,7 @@ describe("ImageCache.getOrGenerate", () => {
 		}).pipe(Effect.provide(live())),
 	);
 
-	it.effect("stores under the digest with the facts' content type and the namespace tag", () =>
+	it.effect("stores a png under the digest as image/png", () =>
 		Effect.gen(function* () {
 			const cache = yield* ImageCache;
 			const key = yield* keyFor("tagged");
@@ -56,6 +57,51 @@ describe("ImageCache.getOrGenerate", () => {
 			const stored = yield* (yield* ImageBackend).get(key.digest);
 			assert.isTrue(Option.isSome(stored) && stored.value.contentType === "image/png");
 		}).pipe(Effect.provide(live())),
+	);
+
+	it.effect("hands the backend the digest, the facts' content type and the namespace tag", () => {
+		const captured: Array<ImageBackendSetParams> = [];
+		const recording = Layer.succeed(ImageBackend)({
+			get: () => Effect.succeedNone,
+			set: (params) =>
+				Effect.sync(() => {
+					captured.push(params);
+				}),
+		});
+		return Effect.gen(function* () {
+			const cache = yield* ImageCache;
+			const key = yield* keyFor("recorded");
+			yield* cache.getOrGenerate(key, () => Effect.succeed(GIF));
+			assert.strictEqual(captured.length, 1);
+			assert.strictEqual(captured[0]?.key, key.digest);
+			assert.strictEqual(captured[0]?.contentType, "image/gif");
+			assert.deepStrictEqual(captured[0]?.tags, [key.namespace]);
+		}).pipe(Effect.provide(ImageCache.layer.pipe(Layer.provide(recording), Layer.merge(NodeCrypto.layer))));
+	});
+
+	it.effect("a backend set failure is surfaced, not swallowed", () =>
+		Effect.gen(function* () {
+			const cache = yield* ImageCache;
+			const key = yield* keyFor("set-fails");
+			const gen = counting(PNG);
+			const error = yield* Effect.flip(cache.getOrGenerate(key, gen.generate));
+			assert.instanceOf(error, ImageBackendError);
+			if (error instanceof ImageBackendError) assert.strictEqual(error.operation, "set");
+			assert.strictEqual(gen.calls(), 1);
+		}).pipe(
+			Effect.provide(
+				ImageCache.layer.pipe(
+					Layer.provide(
+						Layer.succeed(ImageBackend)({
+							get: () => Effect.succeedNone,
+							set: (params) =>
+								Effect.fail(new ImageBackendError({ operation: "set", key: params.key, cause: new Error("full") })),
+						}),
+					),
+					Layer.merge(NodeCrypto.layer),
+				),
+			),
+		),
 	);
 
 	it.effect("corrupt stored bytes are a miss and are overwritten", () =>
