@@ -2,7 +2,9 @@ import { createPublicKey, generateKeyPairSync, verify } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Redacted, Schema } from "effect";
+import type { Algorithm } from "../src/internal/algorithms.js";
 import { Jwk, Jwks } from "../src/Jwk.js";
+import type { JwtAlgorithm } from "../src/JwtKey.js";
 import { JwtKey } from "../src/JwtKey.js";
 
 const data = new TextEncoder().encode("header.payload");
@@ -290,4 +292,11 @@ describe("JwtKey.generate", () => {
 			assert.isTrue(verify("sha256", data, spki, signature));
 		}),
 	);
+});
+
+describe("JwtAlgorithm", () => {
+	it("is the same union as the internal Algorithm (a type-level check; types:check fails on drift)", () => {
+		const same: [Algorithm] extends [JwtAlgorithm] ? ([JwtAlgorithm] extends [Algorithm] ? true : never) : never = true;
+		assert.isTrue(same);
+	});
 });

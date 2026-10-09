@@ -6,7 +6,12 @@
 // serialization forbids both, so a segment is first held to the bare
 // url-safe alphabet. The decoder also ignores set trailing bits (`AQ`, `AR`,
 // `AS`, `AT` all decode to one byte), so a decoded segment must re-encode to
-// itself. Together these keep one signature to exactly one token spelling.
+// itself. Together these give one encoding per signature byte string.
+//
+// That is a property of the encoding, not of the token: an ES256 signature is
+// malleable at the crypto layer (`(r, n - s)` verifies wherever `(r, s)`
+// does), so one signed message can have two valid token strings. See the
+// `Jws.verify` remarks.
 
 import { Result } from "effect";
 import * as Base64Url from "effect/encoding/Base64Url";

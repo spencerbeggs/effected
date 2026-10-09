@@ -289,3 +289,51 @@ describe("Jws.decodeUnverified", () => {
 		}),
 	);
 });
+
+describe("Jws documented edges", () => {
+	// P-256 group order.
+	const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+	const toBig = (bytes: Uint8Array): bigint => BigInt(`0x${Buffer.from(bytes).toString("hex")}`);
+	const toBytes32 = (value: bigint): Uint8Array =>
+		Uint8Array.from(Buffer.from(value.toString(16).padStart(64, "0"), "hex"));
+
+	it.effect("an ES256 signature is malleable: (r, n - s) also verifies, so a token string is not an identifier", () =>
+		Effect.gen(function* () {
+			const pair = yield* JwtKey.generate("ES256");
+			const token = yield* Jws.sign({ jti: "once" }, pair.signing);
+			const [h, p, s] = parts(token);
+			const signature = Result.getOrThrow(Base64Url.decode(s));
+			const flipped = new Uint8Array(64);
+			flipped.set(signature.subarray(0, 32), 0);
+			flipped.set(toBytes32(n - toBig(signature.subarray(32))), 32);
+			const respelled = `${h}.${p}.${Base64Url.encode(flipped)}`;
+			assert.notStrictEqual(respelled, token);
+			// Documented and expected (see Jws.verify remarks): both spellings verify.
+			assert.deepStrictEqual((yield* Jws.verify(respelled, pair.verification)).payload, { jti: "once" });
+			assert.deepStrictEqual((yield* Jws.verify(token, pair.verification)).payload, { jti: "once" });
+		}),
+	);
+
+	it.effect("accepts a structurally identical key object, as a second package copy would build", () =>
+		Effect.gen(function* () {
+			const pair = yield* JwtKey.generate("RS256", { kid: "copy" });
+			const token = yield* Jws.sign({ sub: "x" }, pair.signing);
+			const foreign = { alg: pair.verification.alg, kid: pair.verification.kid, key: pair.verification.key };
+			assert.deepStrictEqual((yield* Jws.verify(token, foreign)).payload, { sub: "x" });
+		}),
+	);
+
+	it.effect("quotes and caps an attacker-supplied alg in the error detail", () =>
+		Effect.gen(function* () {
+			const pair = yield* JwtKey.generate("RS256");
+			const alg = `\u001b[31m${"A".repeat(10_000)}\n`;
+			const token = `${segment({ alg })}.${segment({ sub: "x" })}.AA`;
+			const error = yield* Effect.flip(Jws.verify(token, pair.verification));
+			assert.strictEqual(error.reason, "unsupportedAlgorithm");
+			assert.isBelow(error.detail.length, 120);
+			assert.isBelow(error.message.length, 160);
+			assert.notInclude(error.detail, "\u001b");
+			assert.notInclude(error.detail, "\n");
+		}),
+	);
+});

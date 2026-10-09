@@ -1,6 +1,7 @@
 import { Effect, Redacted, Result } from "effect";
 import { generateParams, importParams, isAlgorithm } from "./internal/algorithms.js";
 import { pemBody, wrapPkcs1 } from "./internal/der.js";
+import { quote } from "./internal/quote.js";
 import { subtle, toArrayBuffer } from "./internal/subtle.js";
 import type { Jwk } from "./Jwk.js";
 import { JwtError } from "./JwtError.js";
@@ -145,7 +146,7 @@ const publicJwk = (jwk: Jwk, alg: JwtAlgorithm): Result.Result<PublicJwk, JwtErr
 const fromJwk = Effect.fn("JwtKey.fromJwk")(function* (jwk: Jwk, options?: { readonly alg?: JwtAlgorithm }) {
 	const extra = jwk.kid !== undefined ? { kid: jwk.kid } : undefined;
 	if (jwk.use !== undefined && jwk.use !== "sig") {
-		return yield* JwtError.of("key", `the JWK is for use "${jwk.use}", not "sig"`, extra);
+		return yield* JwtError.of("key", `the JWK is for use ${quote(jwk.use)}, not "sig"`, extra);
 	}
 	const keyOps = jwk.key_ops;
 	if (keyOps !== undefined && !(Array.isArray(keyOps) && keyOps.includes("verify"))) {
@@ -154,7 +155,7 @@ const fromJwk = Effect.fn("JwtKey.fromJwk")(function* (jwk: Jwk, options?: { rea
 	if (jwk.alg !== undefined && !isAlgorithm(jwk.alg)) {
 		return yield* JwtError.of(
 			"unsupportedAlgorithm",
-			`the JWK names ${jwk.alg}; only RS256 and ES256 are supported`,
+			`the JWK names ${quote(jwk.alg)}; only RS256 and ES256 are supported`,
 			extra,
 		);
 	}

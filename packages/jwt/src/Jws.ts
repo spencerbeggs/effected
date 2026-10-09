@@ -1,10 +1,10 @@
 import { Effect, Result, Schema } from "effect";
 import { isAlgorithm, signParams } from "./internal/algorithms.js";
+import { quote } from "./internal/quote.js";
 import { appendSignature, joinCompact, splitCompact } from "./internal/segments.js";
 import { subtle, toArrayBuffer } from "./internal/subtle.js";
 import { JwtError } from "./JwtError.js";
-import type { SigningKey } from "./JwtKey.js";
-import { VerificationKey } from "./JwtKey.js";
+import type { SigningKey, VerificationKey } from "./JwtKey.js";
 
 /**
  * A JOSE header (RFC 7515 §4) as this package reads it.
@@ -101,10 +101,12 @@ const verify = <R = never>(
 		if (!isAlgorithm(header.alg)) {
 			return yield* JwtError.of(
 				"unsupportedAlgorithm",
-				`the token claims ${header.alg}; only RS256 and ES256 are accepted`,
+				`the token claims ${quote(header.alg)}; only RS256 and ES256 are accepted`,
 			);
 		}
-		const resolved = key instanceof VerificationKey ? key : yield* key(header);
+		// `typeof`, not `instanceof`: a key built by a second copy of this
+		// package (a duplicated dependency) is still a key, not a function.
+		const resolved = typeof key === "function" ? yield* key(header) : key;
 		const extra = resolved.kid !== undefined ? { kid: resolved.kid } : undefined;
 		// The algorithm is the key's; the header's is only compared against it,
 		// so an HS256 or other foreign header never selects a different check.
@@ -163,6 +165,13 @@ export const Jws: {
 	 * (`algorithmMismatch`, and no other algorithm is tried);
 	 * the signature must verify (`badSignature`). The algorithm is always the
 	 * key's, never the header's.
+	 *
+	 * A token string is not a unique identifier. ES256 signatures are
+	 * malleable: wherever `(r, s)` verifies, `(r, n - s)` does too, so one
+	 * signed payload has two valid token strings, and rejecting either would
+	 * break interop with ES256 issuers. Key replay detection, deduplication
+	 * and revocation on verified claims (`jti`, or `iss` with `sub` and
+	 * `iat`), never on the token text.
 	 */
 	readonly verify: <R = never>(
 		token: string,
