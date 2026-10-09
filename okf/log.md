@@ -5,6 +5,10 @@
 * Updated @effected/cli
 * Updated React 19's development reconciler leaked user-timing entries on every render, until react-reconciler 0.34
 * Updated lockfiles
+* Updated @effected/jsonl
+* Updated @effected/jsonl journal service
+* Updated A flaky jsonl watcher is probably an arming-order window, not an unreliable platform watch
+* Added jsonl's watch is a service in R that succeeds only once registered, with a Node backend behind ./node
 
 ## 2026-10-07
 
