@@ -11,6 +11,17 @@ const PNG = fixture("png.png");
 // The type-level contract: this line compiles only while store's CacheShape satisfies ImageBackendSource.
 const storeBacked = ImageBackend.layerFrom(Cache).pipe(Layer.provide(Cache.layerTest()));
 
+const getFailure = new CacheError({ operation: "get", cause: new Error("disk gone") });
+const setFailure = new CacheError({ operation: "set", cause: new Error("disk full") });
+const failing = ImageBackend.layerFrom(Cache).pipe(
+	Layer.provide(
+		Layer.succeed(Cache, {
+			get: () => Effect.fail(getFailure),
+			set: () => Effect.fail(setFailure),
+		} as unknown as CacheShape),
+	),
+);
+
 describe("ImageBackend.layerFrom(Cache) - the store contract", () => {
 	it.effect("round-trips through a real store Cache, recording the tag", () =>
 		Effect.gen(function* () {
@@ -27,24 +38,26 @@ describe("ImageBackend.layerFrom(Cache) - the store contract", () => {
 		}).pipe(Effect.provide(Layer.provideMerge(ImageBackend.layerFrom(Cache), Cache.layerTest()))),
 	);
 
-	it.effect("wraps a source failure as ImageBackendError, preserving the cause", () =>
+	it.effect("wraps a get failure as ImageBackendError, preserving the cause instance and key", () =>
 		Effect.gen(function* () {
 			const images = yield* ImageBackend;
 			const error = yield* Effect.flip(images.get(KEY));
 			assert.instanceOf(error, ImageBackendError);
 			assert.strictEqual(error.operation, "get");
-			assert.instanceOf(error.cause, CacheError);
-		}).pipe(
-			Effect.provide(
-				ImageBackend.layerFrom(Cache).pipe(
-					Layer.provide(
-						Layer.succeed(Cache, {
-							get: () => Effect.fail(new CacheError({ operation: "get", cause: new Error("disk gone") })),
-						} as unknown as CacheShape),
-					),
-				),
-			),
-		),
+			assert.strictEqual(error.key, KEY);
+			assert.strictEqual(error.cause, getFailure);
+		}).pipe(Effect.provide(failing)),
+	);
+
+	it.effect("wraps a set failure as ImageBackendError, preserving the cause instance and key", () =>
+		Effect.gen(function* () {
+			const images = yield* ImageBackend;
+			const error = yield* Effect.flip(images.set({ key: KEY, value: PNG, contentType: "image/png" }));
+			assert.instanceOf(error, ImageBackendError);
+			assert.strictEqual(error.operation, "set");
+			assert.strictEqual(error.key, KEY);
+			assert.strictEqual(error.cause, setFailure);
+		}).pipe(Effect.provide(failing)),
 	);
 
 	it("the store-backed layer value is constructible", () => {

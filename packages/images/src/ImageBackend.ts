@@ -27,7 +27,7 @@ export interface ImageBackendSetParams {
  * The port an image cache stores through.
  *
  * @remarks
- * Failures are {@link ImageBackendError}. the store package's `Cache` is adapted through
+ * Failures are {@link ImageBackendError}. `@effected/store`'s `Cache` is adapted through
  * `ImageBackend.layerFrom`, which {@link ImageBackendSource} describes structurally.
  *
  * @public
@@ -41,7 +41,7 @@ export interface ImageBackendShape {
  * Any service whose shape can stand behind the image cache.
  *
  * @remarks
- * the store package's `CacheShape` satisfies it: its `get` yields a wider `CacheEntry`, and its `set` accepts these
+ * `@effected/store`'s `CacheShape` satisfies it: its `get` yields a wider `CacheEntry`, and its `set` accepts these
  * params plus a `ttl`. Failures may be of any type; `ImageBackend.layerFrom` wraps them.
  *
  * @public
@@ -147,7 +147,7 @@ export class ImageBackend extends Context.Service<ImageBackend, ImageBackendShap
 	}
 
 	/**
-	 * Adapt any structurally matching service, the store package's `Cache` being the intended one, as the backend.
+	 * Adapt any structurally matching service, `@effected/store`'s `Cache` being the intended one, as the backend.
 	 *
 	 * @remarks
 	 * `ImageBackend.layerFrom(Cache)` gives the image cache store's TTL, eviction and tag invalidation. Every source

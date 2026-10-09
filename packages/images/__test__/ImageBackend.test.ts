@@ -129,6 +129,16 @@ describe("ImageBackend.layerDirectory", () => {
 	);
 });
 
+// memfs is synchronous, so two writers would otherwise run strictly in sequence. Yielding before every write-path
+// operation forces the writers into lockstep, which is the schedule where a remove-after-rename order loses both files.
+const interleavedBackend = backend({
+	faults: (base) => ({
+		writeFile: (path, data, options) => Effect.andThen(Effect.yieldNow, base.writeFile(path, data, options)),
+		remove: (path, options) => Effect.andThen(Effect.yieldNow, base.remove(path, options)),
+		rename: (from, to) => Effect.andThen(Effect.yieldNow, base.rename(from, to)),
+	}),
+});
+
 describe("ImageBackend directory concurrency (review focus 4)", () => {
 	it.effect("two concurrent writers for one key leave one writer's complete bytes", () =>
 		Effect.gen(function* () {
@@ -151,6 +161,6 @@ describe("ImageBackend directory concurrency (review focus 4)", () => {
 			}
 			const fs = yield* FileSystem.FileSystem;
 			assert.isFalse((yield* fs.readDirectory(DIR)).some((name) => name.endsWith(".tmp")));
-		}).pipe(Effect.provide(backend())),
+		}).pipe(Effect.provide(interleavedBackend)),
 	);
 });
