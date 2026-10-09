@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Result } from "effect";
 import { JPEG_STEP_BUDGET, readJpeg } from "../src/internal/jpeg.js";
-import { concat, fixture, u16be } from "./helpers.js";
+import { concat, fixture, isReason, u16be } from "./helpers.js";
 
 const SOI = [0xff, 0xd8];
 const sof = (marker: number, width: number, height: number) => [
@@ -22,8 +22,6 @@ const segment = (marker: number, payload: ReadonlyArray<number>) => [
 	...u16be(payload.length + 2),
 	...payload,
 ];
-const isReason = (result: ReturnType<typeof readJpeg>, reason: string) =>
-	Result.isFailure(result) && result.failure.reason === reason;
 
 describe("readJpeg", () => {
 	it("reads baseline (SOF0) and progressive (SOF2) fixtures", () => {
@@ -72,6 +70,11 @@ describe("readJpeg", () => {
 
 	it("a zero height (DNL-deferred) is malformed", () => {
 		assert.isTrue(isReason(readJpeg(concat(SOI, sof(0xc0, 5, 0))), "malformed"));
+	});
+
+	it("a frame header declaring a length below 11 is malformed", () => {
+		const bytes = concat(SOI, [0xff, 0xc0, ...u16be(2), 8, ...u16be(3), ...u16be(5), 1, 1, 0x11, 0]);
+		assert.isTrue(isReason(readJpeg(bytes), "malformed"));
 	});
 
 	it("a frame header cut short is truncated", () => {

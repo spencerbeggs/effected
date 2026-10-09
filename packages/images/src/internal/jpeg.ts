@@ -34,7 +34,8 @@ export const readJpeg = (b: Uint8Array): ReadResult => {
 		const length = u16be(b, offset);
 		if (length < 2) return malformed(`segment length ${length} is below 2`);
 		if (isFrameHeader(marker)) {
-			// length(2) precision(1) height(2) width(2)
+			// length(2) precision(1) height(2) width(2) components(1), then at least one 3-byte component
+			if (length < 11) return malformed(`frame header length ${length} is below 11`);
 			if (offset + 7 > b.length) return truncated("ended inside the frame header");
 			return dimensions(u16be(b, offset + 5), u16be(b, offset + 3));
 		}
