@@ -130,7 +130,7 @@ describe("GitHubApp.appClientLayer", () => {
 		}),
 	);
 
-	it.effect("concurrent requests on a spent JWT all carry the one replacement", () =>
+	it.effect("concurrent requests on a spent JWT all carry the same replacement", () =>
 		withAppClient([DELIVERIES], (client, script) =>
 			Effect.gen(function* () {
 				yield* client.request("GET /app/hook/deliveries", {});
@@ -142,7 +142,11 @@ describe("GitHubApp.appClientLayer", () => {
 				const first = bearerOf(script, 0);
 				const rotated = [1, 2, 3].map((index) => bearerOf(script, index));
 				for (const jwt of rotated) assert.notStrictEqual(jwt, first);
-				assert.strictEqual(new Set(rotated).size, 1, "one replacement JWT, shared by every waiter");
+				// Consistency only: RS256 is deterministic and every waiter signs the same
+				// claims at the same TestClock instant, so one re-sign and three put
+				// identical bytes on the wire. Single rotation is pinned on the
+				// installation path, which shares the rotation code.
+				assert.strictEqual(new Set(rotated).size, 1, "every concurrent request carries the same JWT");
 			}),
 		),
 	);
