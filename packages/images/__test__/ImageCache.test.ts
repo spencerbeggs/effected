@@ -49,6 +49,37 @@ describe("ImageCache.getOrGenerate", () => {
 		}).pipe(Effect.provide(live())),
 	);
 
+	it.effect("the consumer shapes: an as-const accept constant narrows, a plain ImageFormat[] variable stays wide", () =>
+		Effect.gen(function* () {
+			const cache = yield* ImageCache;
+			const ACCEPT = ["png", "jpeg", "webp"] as const satisfies ReadonlyArray<ImageFormat>;
+			const constant = yield* cache.getOrGenerate(yield* keyFor("const-accept"), () => Effect.succeed(PNG), {
+				accept: ACCEPT,
+			});
+			const constantExactly: Equals<typeof constant.facts.format, "png" | "jpeg" | "webp"> = true;
+			const formats: Array<ImageFormat> = ["png", "gif"];
+			const variable = yield* cache.getOrGenerate(yield* keyFor("var-accept"), () => Effect.succeed(GIF), {
+				accept: formats,
+			});
+			const variableExactly: Equals<typeof variable.facts.format, ImageFormat> = true;
+			assert.isTrue(constantExactly && variableExactly);
+			assert.strictEqual(constant.facts.format, "png");
+			assert.strictEqual(variable.facts.format, "gif");
+		}).pipe(Effect.provide(live())),
+	);
+
+	it.effect("an explicit format type argument without accept cannot narrow the result", () =>
+		Effect.gen(function* () {
+			const cache = yield* ImageCache;
+			// Without accept the cache admits every format, so a caller-chosen F would be a lie: a gif typed "png".
+			// @ts-expect-error: no overload takes a format type argument without an accept list.
+			const forced = yield* cache.getOrGenerate<never, never, "png">(yield* keyFor("forced"), () =>
+				Effect.succeed(GIF),
+			);
+			assert.strictEqual(forced.facts.format, "gif");
+		}).pipe(Effect.provide(live())),
+	);
+
 	it.effect("over ImageBackend.layerNone the generator runs every time and nothing is ever a hit", () =>
 		Effect.gen(function* () {
 			const cache = yield* ImageCache;
