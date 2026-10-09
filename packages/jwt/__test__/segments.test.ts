@@ -77,4 +77,28 @@ describe("segments", () => {
 		assert.strictEqual(reasonOf(`${header}.${payload}.AQ\nID`), "malformed");
 		assert.isUndefined(reasonOf(`${header}.${payload}.AQ`));
 	});
+
+	it("rejects a signature respelled with set trailing bits as malformed", () => {
+		const { signingInput } = joinCompact({ alg: "RS256" }, { sub: "x" });
+		const token = appendSignature(signingInput, new Uint8Array([1]));
+		assert.isTrue(token.endsWith(".AQ"));
+		assert.isUndefined(reasonOf(token));
+		assert.strictEqual(reasonOf(`${token.slice(0, -1)}R`), "malformed");
+	});
+
+	it("rejects invalid UTF-8 in the header as malformed", () => {
+		// `"<0xff>"` is a valid JSON string once a lossy decoder substitutes U+FFFD,
+		// so only a fatal decoder makes this malformed.
+		const token = `${Base64Url.encode(new Uint8Array([0x22, 0xff, 0x22]))}.${json({ sub: "x" })}.AQ`;
+		assert.strictEqual(reasonOf(token), "malformed");
+	});
+
+	it("rejects a segment whose length is 1 mod 4 as malformed", () => {
+		const parsed = splitCompact(`${json({ alg: "RS256" })}.${json({ sub: "x" })}.AQIDB`);
+		assert.isTrue(Result.isFailure(parsed));
+		if (Result.isFailure(parsed)) {
+			assert.strictEqual(parsed.failure.reason, "malformed");
+			assert.include(parsed.failure.detail, "is not base64url");
+		}
+	});
 });
