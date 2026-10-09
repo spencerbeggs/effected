@@ -19,6 +19,7 @@
 			"@effected/github-commands",
 			"@effected/github-references",
 			"@effected/glob",
+			"@effected/images",
 			"@effected/jsonc",
 			"@effected/jsonl",
 			"@effected/memfs",
