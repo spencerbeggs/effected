@@ -23,6 +23,18 @@ const StoreBacked = ImageBackend.layerFrom(Cache);
 
 A store-backed cache gets the store's expiry for free, which the directory backend does not have. The cache hands the backend a `contentType` and `tags` with each `set`; the directory backend accepts and ignores `tags`.
 
+## Switching the cache off
+
+`ImageBackend.layerNone` is the backend that stores nothing: `get` always misses and `set` discards the bytes. It needs nothing in its requirements and never fails. Provide it when caching is disabled and keep the same `getOrGenerate` call; every call runs the generator, checks its output against `accept`, and returns `hit: false`.
+
+```ts
+import { ImageBackend } from "@effected/images/cache";
+
+declare const cachingEnabled: boolean;
+
+const backend = cachingEnabled ? ImageBackend.layerDirectory({ directory: ".cache/og" }) : ImageBackend.layerNone;
+```
+
 ## What the directory backend guarantees
 
 `layerDirectory` writes through a temporary file and an atomic rename, so a reader never sees a half-written entry. The file name is the key, and a key that is not 64 lowercase hex digits is treated as a defect, so a key can never become a path traversal. There is no eviction: the directory grows until you clear it.
@@ -36,7 +48,7 @@ Four tagged errors, one recovery each, routed with `Effect.catchTag`:
 - [`ImageBackendError`](/images/api/class/imagebackenderror): the storage backend failed. These are surfaced, never swallowed.
 - [`ImageGenerateError`](/images/api/class/imagegenerateerror): the generator returned bytes that are empty, unparseable or outside `accept`. Nothing is stored.
 
-The generator's own error type passes through `getOrGenerate` untouched, so a failing renderer is never relabelled.
+The generator's own error type passes through `getOrGenerate` untouched, so a failing renderer is never relabelled. That holds only if the generator keeps it: wrap a Promise-returning renderer as `Effect.tryPromise({ try: () => render(info), catch: (cause) => cause })`, because the one-argument `Effect.tryPromise` wraps the rejection in `UnknownError`, losing the generator's own error.
 
 ## Keeping keys stable
 

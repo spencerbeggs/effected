@@ -342,14 +342,16 @@
 		"GlobSet": "match a path against multiple include and exclude glob patterns, negated exclusion"
 	},
 	"images": {
-		"ImageFacts": "image width height and format from bytes, mime type of an image, image dimensions without image-size, sync image header read",
+		"ImageFacts": "image width height and format from bytes, mime type of an image, image dimensions without image-size, sync image header read, file extension for an image (jpg for jpeg)",
+		"ImageExtension": "file extension union for an image format, png jpg gif webp avif",
+		"ImageMimeType": "image media type union, image/png image/jpeg image/gif image/webp image/avif",
 		"ImageFormat": "supported image formats png jpeg gif webp avif",
 		"ImageParseError": "typed failure for unreadable image bytes, truncated or malformed header",
 		"ImageCacheKey": "cache key for a generated image from schema-encoded parameters via fromParams, content-addressed sha-256 of params and salt via core Crypto",
 		"ImageCacheKeyError": "cache key derivation failed, params rejected by schema or not json",
-		"ImageBackend": "storage port for cached images, directory backend, adapt store cache as image backend",
+		"ImageBackend": "storage port for cached images, directory backend, adapt store cache as image backend, layerNone no-op backend to switch the image cache off",
 		"ImageBackendError": "image cache storage read or write failed",
-		"ImageCache": "get or generate an image once, skip re-rendering an open graph image, cache satori output",
+		"ImageCache": "get or generate an image once, skip re-rendering an open graph image, cache satori output, accept list narrows the result format",
 		"ImageGenerateError": "generator returned empty, unreadable or wrong-format image bytes"
 	},
 	"jsonc": {

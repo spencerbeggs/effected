@@ -47,6 +47,7 @@ declare const bytes: Uint8Array;
 const result = ImageFacts.fromBytesResult(bytes);
 if (Result.isSuccess(result)) {
   const { format, mimeType, width, height } = result.success; // "png", "image/png", 1200, 630
+  const file = `card.${result.success.extension}`; // "card.png"; a JPEG is written ".jpg"
 }
 
 // Effect: fails with ImageParseError.
@@ -54,6 +55,8 @@ const facts = ImageFacts.fromBytes(bytes).pipe(
   Effect.catchTag("ImageParseError", (e) => Effect.logWarning(`not an image: ${e.reason}`)),
 );
 ```
+
+`mimeType` is one of the five media types (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, `image/avif`), and `extension` is the conventional file extension: `jpg` for `jpeg`, the format name otherwise. `extension` is a getter derived from `format`, so it is not part of the encoded form.
 
 `ImageParseError.reason` is `unrecognized` (no known signature), `truncated` (a recognized file cut short) or `malformed` (a header that contradicts itself). Readers never throw on any input, bounds-check every length before reading it, and bound the JPEG and AVIF walks with a step budget.
 
@@ -89,7 +92,33 @@ const program = Effect.gen(function* () {
 }).pipe(Effect.provide(CacheLive), Effect.provide(NodeServices.layer));
 ```
 
-`getOrGenerate` returns the bytes, their `ImageFacts` and whether it was a `hit`. A stored entry that no longer parses, or whose format is outside `accept`, is treated as a miss and overwritten. A generator result that is empty, unparseable or outside `accept` fails with `ImageGenerateError` and is never stored. Backend failures surface as `ImageBackendError`; the generator's own error passes through untouched.
+`getOrGenerate` returns the bytes, their `ImageFacts` and whether it was a `hit`. With `accept`, the result's `facts.format` is typed as the accepted formats, so `["png", "jpeg", "webp"]` gives `"png" | "jpeg" | "webp"`; without it, every format. A stored entry that no longer parses, or whose format is outside `accept`, is treated as a miss and overwritten. A generator result that is empty, unparseable or outside `accept` fails with `ImageGenerateError` and is never stored. Backend failures surface as `ImageBackendError`; the generator's own error passes through untouched.
+
+### A Promise-returning renderer
+
+When the renderer returns a Promise, wrap it with both `try` and `catch` so its own error reaches the caller:
+
+```ts
+import { Effect } from "effect";
+
+declare const render: (info: { readonly title: string }) => Promise<Uint8Array>;
+declare const info: { readonly title: string };
+
+const generate = () => Effect.tryPromise({ try: () => render(info), catch: (cause) => cause });
+```
+
+The one-argument `Effect.tryPromise(() => render(info))` wraps a rejection in `UnknownError`, so the generator's own error is lost.
+
+### Switching the cache off
+
+`ImageBackend.layerNone` stores nothing: `get` always misses and `set` discards. Provide it when caching is disabled and keep the same `getOrGenerate` call; every call runs the generator and returns `hit: false`.
+
+```ts
+import { ImageBackend } from "@effected/images/cache";
+
+declare const cachingEnabled: boolean;
+const backend = cachingEnabled ? ImageBackend.layerDirectory({ directory: ".cache/og" }) : ImageBackend.layerNone;
+```
 
 The key digest uses core `Crypto`, and the directory backend uses `FileSystem` and `Path`. On Node, `NodeServices.layer` from `@effect/platform-node` provides all three.
 
@@ -108,12 +137,13 @@ The directory backend stores `<directory>/<key>.<ext>` through a temp file and a
 
 ## Features
 
-- `ImageFacts` — format, MIME type and pixel dimensions as stored in the file; sync `fromBytesResult` and Effect `fromBytes`.
+- `ImageFacts` — format, MIME type, file extension and pixel dimensions as stored in the file; sync `fromBytesResult` and Effect `fromBytes`.
+- `ImageExtension` / `ImageMimeType` — the extension and media-type unions.
 - `ImageFormat` — the literal union `png | jpeg | gif | webp | avif`.
 - `ImageParseError` — the one parse failure, with a `reason` and, once a signature matched, the `format`.
 - `ImageCacheKey` / `ImageCacheKeyError` — content-addressed keys from schema-encoded parameters; failure reasons `encode`, `non-json` and `digest`.
-- `ImageBackend` / `ImageBackendError` — the storage port, a directory backend and a structural adapter.
-- `ImageCache` / `ImageGenerateError` — `getOrGenerate` with an optional `accept` format list.
+- `ImageBackend` / `ImageBackendError` — the storage port, a directory backend, a no-store backend and a structural adapter.
+- `ImageCache` / `ImageGenerateError` — `getOrGenerate` with an optional `accept` format list that narrows the result's format.
 
 SVG, BMP, ICO, TIFF, HEIC, JPEG XL, EXIF orientation, image transformation and cache eviction are out of scope.
 

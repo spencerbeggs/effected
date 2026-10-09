@@ -20,7 +20,7 @@ const READERS: Readonly<Record<ImageFormat, (bytes: Uint8Array) => ReadResult>> 
 const Dimension = Schema.Int.check(Schema.isGreaterThan(0));
 
 /**
- * One of the five media types `ImageFacts.mimeType` holds, one per {@link (ImageFormat:type)}.
+ * One of the five media types `ImageFacts.mimeType` holds, one per `ImageFormat`.
  *
  * @public
  */

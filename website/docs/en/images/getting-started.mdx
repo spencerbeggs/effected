@@ -21,7 +21,7 @@ Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency. For the cac
 
 ## Step 1: read image facts
 
-[`ImageFacts`](/images/api/class/imagefacts) is a schema class with `format`, `mimeType` and positive-integer `width` and `height`, as stored in the file. The synchronous engine is `fromBytesResult`; `fromBytes` derives the `Effect` form from it.
+[`ImageFacts`](/images/api/class/imagefacts) is a schema class with `format`, `mimeType` and positive-integer `width` and `height`, as stored in the file. `mimeType` is one of five media types, and the `extension` getter gives the conventional file extension: `jpg` for `jpeg`, the format name otherwise. The synchronous engine is `fromBytesResult`; `fromBytes` derives the `Effect` form from it.
 
 ```ts with-api
 import { ImageFacts } from "@effected/images";
@@ -103,7 +103,20 @@ const program = Effect.gen(function* () {
 }).pipe(Effect.provide(CacheLive), Effect.provide(NodeServices.layer));
 ```
 
-The first run generates and stores the card and returns `hit: false`; later runs with the same parameters and salt return the stored bytes with `hit: true` and never call `renderCard`. `accept` is optional. When given, a stored entry outside it is treated as a miss and overwritten, and a generator result outside it fails with [`ImageGenerateError`](/images/api/class/imagegenerateerror) instead of being stored.
+The first run generates and stores the card and returns `hit: false`; later runs with the same parameters and salt return the stored bytes with `hit: true` and never call `renderCard`. `accept` is optional. When given, a stored entry outside it is treated as a miss and overwritten, and a generator result outside it fails with [`ImageGenerateError`](/images/api/class/imagegenerateerror) instead of being stored. With `accept`, the result's `facts.format` is typed as the accepted formats, so `facts.extension` and a table keyed by those formats need no cast.
+
+When your renderer returns a Promise, wrap it with both `try` and `catch`:
+
+```ts
+import { Effect } from "effect";
+
+declare const render: (info: { readonly title: string }) => Promise<Uint8Array>;
+declare const info: { readonly title: string };
+
+const generate = () => Effect.tryPromise({ try: () => render(info), catch: (cause) => cause });
+```
+
+The one-argument `Effect.tryPromise(() => render(info))` wraps the rejection in `UnknownError`, losing the generator's own error.
 
 ## Next steps
 

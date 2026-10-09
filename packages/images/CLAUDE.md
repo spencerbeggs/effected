@@ -19,7 +19,11 @@ with `Crypto.Crypto` in `R`; never `node:crypto`, never a hand-rolled hash.
 
 ## Subpaths
 
-- `.` — `ImageFacts`, `ImageFormat`, `ImageParseError`. Pure, no IO.
+- `.` — `ImageFacts`, `ImageFormat`, `ImageParseError`, and the types
+  `ImageExtension` and `ImageMimeType`. Pure, no IO. `src/ImageFormat.ts` holds
+  the two internal tables, `EXTENSIONS` and `MIME_TYPES`; every extension and
+  media type in the package, `ImageFacts.mimeType`'s schema and
+  `layerDirectory`'s file names included, is read from them.
 - `./cache` — `ImageCache`, `ImageCacheKey`, `ImageCacheKeyError`,
   `ImageBackend`, `ImageBackendError`, `ImageGenerateError`. Needs `FileSystem`,
   `Path` and `Crypto` in `R`; a Node app provides all three with `NodeServices.layer`.
@@ -53,6 +57,8 @@ file is ever reported `malformed` (a short prefix is `truncated`).
 - The directory backend writes a temp file then renames (atomic); a key that is
   not 64 lowercase hex digits is a defect so a key can never traverse a path.
 - The directory backend accepts and ignores `tags`.
+- `ImageBackend.layerNone` stores nothing: `get` misses, `set` discards.
+- `getOrGenerate` is generic in `const F`; the runtime is the same for every `F`.
 - Keys are digest-only: SHA-256 hex of `salt + NUL + canonical JSON of the encoded params`;
   `namespace` becomes the backend tag and is not hashed.
 
@@ -62,7 +68,7 @@ file is ever reported `malformed` (a short prefix is `truncated`).
 "@effected/images"`, and `savvy.build.ts` sets `dtsExternals:
 ["@effected/images"]` so `cache.d.ts` refers to the root's types instead of
 copying them (the `cli`/`jsonl` pattern). The `_base` suppression is the narrow
-house one; never widen it. A second suppression matches only the three messages `The symbol "Images" needs`, `ImageFacts` and `ImageParseError`: the type-only self-reference namespace and the two root types it reaches, reported against `cache.d.ts`. It is not a blanket `cache.d.ts` suppression. **Known upstream issue:** `dist/prod/issues.json`
+house one; never widen it. A second suppression matches only the three messages `The symbol "Images" needs`, `ImageFacts` and `ImageParseError`: the type-only self-reference namespace and the two root types it reaches, reported against `cache.d.ts`. It is not a blanket `cache.d.ts` suppression. A new named root type that a cache signature, or a member of `ImageFacts`, reaches would surface as a fourth message: write it structurally or derive it (`ImageExtension` is `ImageFacts["extension"]`, and the getter spells out its union) instead of widening the pattern. **Known upstream issue:** `dist/prod/issues.json`
 carries one accepted `ae-wrong-input-file-type` warning, a defect in
 `@savvy-web/tsdown-plugins`' self-reference resolution — do not try to fix or suppress it here.
 

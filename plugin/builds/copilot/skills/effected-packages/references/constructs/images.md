@@ -6,19 +6,21 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `GetOrGenerateOptions` | Interface | Options for `ImageCacheShape.getOrGenerate`. | from `@effected/images/cache` |
-| `ImageBackend` | Class | The storage port behind `ImageCache`. | from `@effected/images/cache` — storage port for cached images, directory backend, adapt store cache as image backend |
+| `ImageBackend` | Class | The storage port behind `ImageCache`. | from `@effected/images/cache` — storage port for cached images, directory backend, adapt store cache as image backend, layerNone no-op backend to switch the image cache off |
 | `ImageBackendError` | Class | An image backend read or write failed. | from `@effected/images/cache` — image cache storage read or write failed |
 | `ImageBackendSetParams` | Interface | What `ImageBackendShape.set` writes. | from `@effected/images/cache` |
 | `ImageBackendShape` | Interface | The port an image cache stores through. | from `@effected/images/cache` |
 | `ImageBackendSource` | Interface | Any service whose shape can stand behind the image cache. | from `@effected/images/cache` |
-| `ImageCache` | Class | A cache for generated images, keyed by `ImageCacheKey`, stored through `ImageBackend`. | from `@effected/images/cache` — get or generate an image once, skip re-rendering an open graph image, cache satori output |
+| `ImageCache` | Class | A cache for generated images, keyed by `ImageCacheKey`, stored through `ImageBackend`. | from `@effected/images/cache` — get or generate an image once, skip re-rendering an open graph image, cache satori output, accept list narrows the result format |
 | `ImageCacheKey` | Class | The identity of one generated image: a SHA-256 digest of the salt and the schema-encoded parameters. | from `@effected/images/cache` — cache key for a generated image from schema-encoded parameters via fromParams, content-addressed sha-256 of params and salt via core Crypto |
 | `ImageCacheKeyError` | Class | Cache-key parameters that could not be turned into a key. | from `@effected/images/cache` — cache key derivation failed, params rejected by schema or not json |
 | `ImageCacheKeyOptions` | Interface | Options for `ImageCacheKey.fromParams`. | from `@effected/images/cache` |
 | `ImageCacheResult` | Interface | What `ImageCacheShape.getOrGenerate` returns. | from `@effected/images/cache` |
 | `ImageCacheShape` | Interface | The image cache service. | from `@effected/images/cache` |
-| `ImageFacts` | Class | What an image's header says about it: format, MIME type and stored pixel dimensions. | image width height and format from bytes, mime type of an image, image dimensions without image-size, sync image header read |
+| `ImageExtension` | TypeAlias | The conventional file extension for an image format, without the dot: `jpeg` is written `jpg`, the others keep their format name. The type of `ImageFacts#extension`. | file extension union for an image format, png jpg gif webp avif |
+| `ImageFacts` | Class | What an image's header says about it: format, MIME type and stored pixel dimensions. | image width height and format from bytes, mime type of an image, image dimensions without image-size, sync image header read, file extension for an image (jpg for jpeg) |
 | `ImageFormat` | Variable + TypeAlias | One of the image formats `@effected/images` reads. | supported image formats png jpeg gif webp avif |
 | `ImageGenerateError` | Class | A generator produced bytes the cache will not store. | from `@effected/images/cache` — generator returned empty, unreadable or wrong-format image bytes |
+| `ImageMimeType` | TypeAlias | One of the five media types `ImageFacts.mimeType` holds, one per `ImageFormat`. | image media type union, image/png image/jpeg image/gif image/webp image/avif |
 | `ImageParseError` | Class | Bytes that could not be read as an image header. | typed failure for unreadable image bytes, truncated or malformed header |
 | `StoredImage` | Interface | Bytes and media type a backend holds for one key. | from `@effected/images/cache` |
