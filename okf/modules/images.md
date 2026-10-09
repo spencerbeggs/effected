@@ -11,8 +11,8 @@ tags:
   - performance
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T14:42:08Z
-  body_sha256: be16f5b009d3076563ac891420b320c0304847ec5f08bd8370878c6cb19b9a4c
+  at: 2026-10-09T15:07:46Z
+  body_sha256: bf175045a1aa760d444770c76f9197c398d8f3cfbf517ed575a46cd46a224add
 ---
 
 # `@effected/images`
@@ -37,13 +37,13 @@ The package follows the [module-per-concept layout](../conventions/module-per-co
 - `ImageFormat` is the literal union `png | jpeg | gif | webp | avif`.
 - `ImageFacts` is a `Schema.Class` with `format`, `mimeType` (derived from `format` by the readers, stored so it survives encode and decode), and positive-integer `width` and `height` as stored in the file. `ImageFacts.fromBytesResult` is the engine and `ImageFacts.fromBytes` is derived from it.
 - `ImageParseError` is a tagged error with `reason` of `unrecognized`, `truncated` or `malformed` and an optional `format` once a signature matched. A consumer expresses its policy as one `catchTag`.
-- `ImageCacheKey.make(schema, params, { salt, namespace })` encodes `params` through the schema, serializes them canonically (keys sorted recursively), and digests `salt`, a NUL byte and the canonical text. The key carries `digest`, `salt` and `namespace`; the namespace becomes the backend tag and is not part of the digest. `salt` is the caller's generator identity, so a template change bumps it and every old key misses. `ImageCacheKeyError.reason` is `encode`, `non-json` or `digest`.
+- `ImageCacheKey.fromParams(schema, params, { salt, namespace })` encodes `params` through the schema, serializes them canonically (keys sorted recursively), and digests `salt`, a NUL byte and the canonical text. The key carries `digest`, `salt` and `namespace`; the namespace becomes the backend tag and is not part of the digest. `salt` is the caller's generator identity, so a template change bumps it and every old key misses. `ImageCacheKeyError.reason` is `encode`, `non-json` or `digest`.
 - `ImageBackend` is the port: `get(key)` and `set({ key, value, contentType?, tags? })`, failing with `ImageBackendError`. `layerDirectory` stores `<directory>/<key>.<ext>` through a temp file and rename, accepts and ignores `tags`, and treats a key that is not 64 lowercase hex digits as a defect so a key can never become a path traversal. `layerFrom` adapts any structurally matching service.
 - `ImageCache.getOrGenerate(key, generate, { accept? })` returns `{ bytes, facts, hit }`. A hit whose stored bytes no longer parse, or whose format is outside `accept`, is treated as a miss and overwritten. A generator result that is empty, unparseable or outside `accept` fails with `ImageGenerateError` and nothing is stored. Backend errors are surfaced, never swallowed, and the generator's own error passes through untouched.
 
 ## The sync rule
 
-Every surface that does no IO ships a `*Result` sync primitive and derives its `Effect` form from it, adding only the span; surfaces that do IO are `Effect` only. This is the [sync-primitive policy](../conventions/sync-primitive-policy.md) applied package-wide, named `*Result` and never `*Sync`. `ImageBackend` and `ImageCache` cannot be sync because the platform `FileSystem` is async underneath. `ImageCacheKey.make` is `Effect`-only with `Crypto.Crypto` in `R`, which is outside the rule by the policy's own test, and no sync caller is lost since a key exists only to be handed to `getOrGenerate`.
+Every surface that does no IO ships a `*Result` sync primitive and derives its `Effect` form from it, adding only the span; surfaces that do IO are `Effect` only. This is the [sync-primitive policy](../conventions/sync-primitive-policy.md) applied package-wide, named `*Result` and never `*Sync`. `ImageBackend` and `ImageCache` cannot be sync because the platform `FileSystem` is async underneath. `ImageCacheKey.fromParams` is `Effect`-only with `Crypto.Crypto` in `R`, which is outside the rule by the policy's own test, and no sync caller is lost since a key exists only to be handed to `getOrGenerate`.
 
 ## Core primitives
 
