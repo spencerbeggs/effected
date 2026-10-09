@@ -45,6 +45,45 @@ Locally, `schema:build` regenerates and you commit the result; in CI,
 that reports `would write` means someone changed a schema and did not run
 the build; it fails with ``N document(s) are stale; run `schemastore build` and commit the result.`` at exit `1`. An orphaned output (a catalog slice no schema declares, a merged catalog with no slice left, a document an `appendVersion` or `layout` rename left behind) fails the same way, but its line reads `N orphaned output(s) must be deleted by hand; build never will.` — a build does not clear it.
 
+## Make the formatter agree with the writer
+
+The CLI writes every document and catalog in one canonical layout: tab
+indentation, every array element and object member on its own line. Biome's
+JSON default (`expand: "auto"`) keeps those objects expanded but collapses
+any array that fits the line width — `"required": ["name", "version"]`, a
+`fileMatch` list, a short `enum` — so a CI job that runs `lint` after
+`schema:build` fails on any document the build just rewrote. lint-staged
+hides it locally, because it reformats the file at commit.
+
+`check` is not the problem: it compares parsed content, so a file your
+formatter reflowed never reads as drift and is never rewritten for that
+alone. Only the layout of a freshly written file disagrees.
+
+Scope `expand: "always"` to the generated files in `biome.json`. Under it,
+with a tab indent (silk's preset and Biome's default), Biome's output is
+byte-identical to what the CLI writes, so nothing is reformatted and the
+files stay linted:
+
+```json
+{
+  "overrides": [
+    {
+      "includes": ["schemas/**/*.json", "catalog.json"],
+      "json": { "formatter": { "expand": "always" } }
+    }
+  ]
+}
+```
+
+Match `includes` to your `outputDir` and catalog location. Do not reach for
+Biome-ignoring the folder instead; that drops lint coverage to fix a layout
+mismatch the override removes.
+
+The CLI has no indent option, so a repository that formats JSON with spaces
+cannot make the two agree. There, format after the build instead —
+`"schema:build": "schemastore build && biome format --write schemas"` — and
+`check` stays green because it compares content, not bytes.
+
 ## Commands and flags
 
 ```text

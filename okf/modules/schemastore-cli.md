@@ -35,8 +35,8 @@ sources:
     resource: ../../packages/schemastore-cli/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-03T16:26:35Z
-  body_sha256: 29b639d2f1a4134cb561f8a92960ca7ea7a9812587fd915adb447b753c1a6d00
+  at: 2026-10-09T20:53:33Z
+  body_sha256: 807dd7ddb75785896d706c2da0ba844472e5577f3d1e8b9cc21d9980e197b059
 ---
 
 # @effected/schemastore-cli
@@ -482,6 +482,24 @@ and, when the failure happened inside a span (a missing config, raised before an
 installed under `node_modules/@effected/`). It replaced a bespoke `reportFailures` render that printed `error.message`
 alone, so the error-tag prefix (`DriftError:`), the status glyph, the colour for a person, the GitHub log form under Actions and the
 `in:` line (only for a failure raised inside a span) are the visible differences; the exit codes did not change, except that `--wizard` on a non-interactive run is now a usage error at `64` and absent from that run's help.
+
+## Output layout and the repository's formatter
+
+Every file the CLI writes is the library's canonical layout, tab-indented,
+with every array element and object member on its own line; the CLI has no
+indent or layout option.[^runner] Writes and `check` compare parsed content,
+so a formatter that reflows a generated file never causes a rewrite or a
+stale report. A freshly written file, though, is in the canonical layout
+rather than the formatter's, and Biome's default `expand: "auto"` collapses
+arrays that fit the line, so a CI job that lints after `schema:build` fails.
+The wiring that closes it is a Biome override scoping
+`json.formatter.expand: "always"` to the output directory and catalog
+files: Biome's output under that override is byte-identical to the CLI's for
+a tab-indented repository. A space-indented repository formats after the
+build instead — see
+[the tab-only limitation](../limitations/schemastore-cli-writes-tab-indented-json-only.md).
+The consumer-facing wiring lives in the `building-schemastore-schemas`
+skill's `ci-gate.md`.
 
 ## The catalog: slices and the merged file
 

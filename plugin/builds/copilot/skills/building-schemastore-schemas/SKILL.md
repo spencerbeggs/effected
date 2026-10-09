@@ -117,6 +117,11 @@ a devDependency.
 - Gate failures (lint warnings, ajv strict findings) exit `1` under either
   `--on-drift` value; `--force` does not touch them. See
   [references/drift-and-versioning.md](references/drift-and-versioning.md).
+- A document the build rewrites is in the canonical layout (every array
+  expanded), which Biome's default collapses — so `lint` after `schema:build`
+  fails in CI while `check` stays green. Scope Biome's `expand: "always"` to
+  the generated files. See
+  [references/ci-gate.md](references/ci-gate.md#make-the-formatter-agree-with-the-writer).
 - `1`, `1.0` and `1.0.0` are one version — `defineConfig` rejects two
   spellings of it under one name — and a bare-major label enumerates ahead of
   every dotted key in the catalog's `versions` map (cosmetic; SchemaStore reads
@@ -165,9 +170,10 @@ a devDependency.
   reading an `UndeclaredAnnotationKeyError`, or asking whether an edit costs
   a version.
 - [references/ci-gate.md](references/ci-gate.md) — scripts, turbo wiring,
-  exit codes, the JSON report shape, the GitHub step summary, the
+  the Biome override that makes the formatter agree with the writer, exit
+  codes, the JSON report shape, the GitHub step summary, the
   dependency-bump posture, local vs CI. Load when: wiring `schema:check` into
-  a workflow or parsing its output.
+  a workflow, parsing its output, or `lint` fails on a freshly built schema.
 - [references/multi-config.md](references/multi-config.md) — several
   `schemastore.config.ts` files publishing into one shared folder and one
   merged `catalog.json`: the worked layout, the convergence rules, removing

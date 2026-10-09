@@ -164,12 +164,18 @@ stricter of the two, and that is the contract consumers hold.
 
 The writer parses both sides and compares structure, so a formatter that
 reflows the generated file (a lint-staged Biome pass, say) does not provoke
-a rewrite on the next run, and `unchanged` is reachable. Generated files need
-no formatter carve-out. An on-disk file that no longer parses is classified
+a rewrite on the next run, and `unchanged` is reachable; `check` compares the
+same way, so a reformatted file never reads as drift. The writer's *layout*
+is a separate question: a file it does write is in the canonical layout, not
+your formatter's, so a CI job that lints after `schema:build` fails until the
+formatter agrees — see
+[ci-gate.md](ci-gate.md#make-the-formatter-agree-with-the-writer) for the one
+override that makes it. An on-disk file that no longer parses is classified
 as a contract change and repaired rather than failed, so a corrupted
 generated file stays regenerable — under a published label that repair needs
 `--force`.
 
-Emitted JSON uses tab indentation, LF line endings, one trailing newline and
-insertion-order keys; a non-JSON value in an annotation fails typed instead
+Emitted JSON uses tab indentation, every array element and object member on
+its own line, LF line endings, one trailing newline and insertion-order keys;
+a non-JSON value in an annotation fails typed instead
 of being silently dropped.
