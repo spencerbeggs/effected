@@ -67,6 +67,7 @@ import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 
 const CardParams = Schema.Struct({ title: Schema.String, theme: Schema.String });
+declare const renderCard: () => Effect.Effect<Uint8Array>; // your renderer
 
 const CacheLive = ImageCache.layer.pipe(
   Layer.provide(ImageBackend.layerDirectory({ directory: ".cache/og" })),
@@ -81,7 +82,7 @@ const program = Effect.gen(function* () {
   );
   const { bytes, facts, hit } = yield* cache.getOrGenerate(
     key,
-    renderCard, // Effect<Uint8Array, E, R> - runs only on a miss
+    renderCard, // () => Effect<Uint8Array, E, R> - runs only on a miss
     { accept: ["png"] },
   );
   return { bytes, width: facts.width, hit };
