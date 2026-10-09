@@ -8,8 +8,9 @@ attestations, and the configuration-write six (secrets, variables, rulesets,
 deployment environments, security toggles, code scanning). It also owns GitHub
 App authentication and the libsodium sealed-box crypto pair GitHub's secrets
 API demands. **Integrated tier** — it holds `@octokit/core`,
-`@octokit/plugin-paginate-rest`, `universal-github-app-jwt`, `tweetnacl` and
-`blakejs` so nothing downstream has to; `@octokit/rest` and `@octokit/auth-app`
+`@octokit/plugin-paginate-rest`, `tweetnacl` and `blakejs` so nothing
+downstream has to, and signs the App JWT with `@effected/jwt` (WebCrypto, so
+App auth runs on Workers too); `@octokit/rest` and `@octokit/auth-app`
 are deliberately absent and must never be reintroduced. Its pure edges are
 `@effected/semver` (for `GitTag.latestSemver`) and `@effected/github-references`
 (a droppable compat re-export of six moved names).
@@ -234,7 +235,7 @@ A recorded `GitHubError` **is** the failure.
 
 - **Never add an import from `GitHubClient.ts` to `GitHubApp.ts`.** A
   reachability suite asserts `GitHubClient` does not reach
-  `universal-github-app-jwt` while `GitHubApp` does; statics on one class share
+  `@effected/jwt` while `GitHubApp` does; statics on one class share
   a module, which is why `clientLayer` lives where it does. The same suite pins
   the crypto pair to `RepositorySecret` alone, and asserts every module in
   `src/` is re-exported from `src/index.ts`.
