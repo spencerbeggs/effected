@@ -10,6 +10,8 @@ const MIME: Record<string, string> = {
 	webp: "image/webp",
 	avif: "image/avif",
 };
+/** Bytes a format needs before its signature is recognized. */
+const SIGNATURE_LENGTH: Record<string, number> = { png: 8, jpeg: 3, gif: 6, webp: 12, avif: 12 };
 const factsOf = (facts: ImageFacts) => ({ format: facts.format, width: facts.width, height: facts.height });
 
 describe("ImageFacts", () => {
@@ -23,18 +25,26 @@ describe("ImageFacts", () => {
 			}
 		});
 
-		it(`${name}: every prefix is a typed failure or the full facts, never malformed, never a throw`, () => {
+		it(`${name}: every prefix is unrecognized before its signature, truncated after, or the full facts`, () => {
 			const bytes = fixture(name);
 			for (let n = 0; n < bytes.length; n++) {
 				const result = ImageFacts.fromBytesResult(bytes.subarray(0, n));
 				if (Result.isSuccess(result)) {
 					assert.deepStrictEqual(factsOf(result.success), expected, `${name} prefix ${n}`);
-				} else {
-					assert.notStrictEqual(
+				} else if (n < SIGNATURE_LENGTH[expected.format]) {
+					assert.strictEqual(
 						result.failure.reason,
-						"malformed",
-						`${name} prefix ${n}: a prefix of a valid file is never malformed`,
+						"unrecognized",
+						`${name} prefix ${n}: a partial signature is unrecognized`,
 					);
+					assert.isFalse("format" in result.failure, `${name} prefix ${n}: no format before the signature completes`);
+				} else {
+					assert.strictEqual(
+						result.failure.reason,
+						"truncated",
+						`${name} prefix ${n}: past the signature a prefix is truncated`,
+					);
+					assert.strictEqual(result.failure.format, expected.format, `${name} prefix ${n}`);
 				}
 			}
 		});
