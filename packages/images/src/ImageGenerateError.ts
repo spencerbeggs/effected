@@ -1,5 +1,5 @@
-import { ImageFormat } from "@effected/images";
 import { Schema } from "effect";
+import { ImageFormat } from "./ImageFormat.js";
 
 /**
  * A generator produced bytes the cache will not store.

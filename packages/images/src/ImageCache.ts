@@ -1,9 +1,11 @@
-import type { ImageFormat } from "@effected/images";
-import { ImageFacts } from "@effected/images";
+// Root types are named through the package's own name, so the emitted cache.d.ts imports them from "@effected/images"
+// (kept external by dtsExternals) instead of carrying copies.
+import type * as Images from "@effected/images";
 import { Context, Effect, Layer, Option, Result } from "effect";
 import { ImageBackend } from "./ImageBackend.js";
 import type { ImageBackendError } from "./ImageBackendError.js";
 import type { ImageCacheKey } from "./ImageCacheKey.js";
+import { ImageFacts } from "./ImageFacts.js";
 import { ImageGenerateError } from "./ImageGenerateError.js";
 
 /**
@@ -13,7 +15,7 @@ import { ImageGenerateError } from "./ImageGenerateError.js";
  */
 export interface GetOrGenerateOptions {
 	/** Formats the caller will use. A stored image outside it is a miss; a generated one outside it fails. */
-	readonly accept?: ReadonlyArray<ImageFormat>;
+	readonly accept?: ReadonlyArray<Images.ImageFormat>;
 }
 
 /**
@@ -25,7 +27,7 @@ export interface ImageCacheResult {
 	/** The image bytes. */
 	readonly bytes: Uint8Array;
 	/** The facts read from those bytes. */
-	readonly facts: ImageFacts;
+	readonly facts: Images.ImageFacts;
 	/** True when the bytes came from the backend rather than the generator. */
 	readonly hit: boolean;
 }
@@ -51,7 +53,7 @@ export interface ImageCacheShape {
 	) => Effect.Effect<ImageCacheResult, ImageGenerateError | ImageBackendError | E, R>;
 }
 
-const accepted = (facts: ImageFacts, accept: ReadonlyArray<ImageFormat> | undefined): boolean =>
+const accepted = (facts: Images.ImageFacts, accept: ReadonlyArray<Images.ImageFormat> | undefined): boolean =>
 	accept === undefined || accept.includes(facts.format);
 
 /**
