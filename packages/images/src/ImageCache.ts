@@ -82,6 +82,8 @@ export class ImageCache extends Context.Service<ImageCache, ImageCacheShape>()("
 							return { bytes: stored.value.value, facts: facts.success, hit: true };
 						}
 					}
+					// Annotated as soon as each fact is known, so a miss that fails later still carries it.
+					yield* Effect.annotateCurrentSpan("hit", false);
 					const bytes = yield* generate();
 					if (bytes.byteLength === 0) return yield* new ImageGenerateError({ reason: "empty" });
 					const parsed = ImageFacts.fromBytesResult(bytes);
@@ -89,6 +91,7 @@ export class ImageCache extends Context.Service<ImageCache, ImageCacheShape>()("
 						return yield* new ImageGenerateError({ reason: "unparseable", cause: parsed.failure });
 					}
 					const facts = parsed.success;
+					yield* Effect.annotateCurrentSpan("format", facts.format);
 					if (!accepted(facts, accept)) {
 						return yield* new ImageGenerateError({
 							reason: "rejected-format",
@@ -97,7 +100,6 @@ export class ImageCache extends Context.Service<ImageCache, ImageCacheShape>()("
 						});
 					}
 					yield* backend.set({ key: key.digest, value: bytes, contentType: facts.mimeType, tags: [key.namespace] });
-					yield* Effect.annotateCurrentSpan({ hit: false, format: facts.format });
 					return { bytes, facts, hit: false };
 				}).pipe(Effect.withSpan("ImageCache.getOrGenerate", { attributes: { namespace: key.namespace } }));
 			return { getOrGenerate };
