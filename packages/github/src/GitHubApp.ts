@@ -322,8 +322,81 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 	): Layer.Layer<GitHubClient, GitHubAppError> =>
 		Layer.effect(
 			GitHubClient,
-			Effect.flatMap(GitHubApp, (app) => makeRotatingClient(app, request, options)),
+			Effect.flatMap(GitHubApp, (app) =>
+				makeRotatingClient(
+					Effect.map(app.token(request), (minted) => ({
+						token: minted.token,
+						expiresAtMillis: DateTime.toEpochMillis(minted.expiresAt),
+					})),
+					app.revoke,
+					options,
+					"GitHubApp.clientLayer",
+				),
+			),
 		).pipe(Layer.provide(GitHubApp.layerWith(options)));
+
+	/**
+	 * A {@link GitHubClient} authenticated as the app itself, with an App JWT.
+	 *
+	 * @remarks
+	 * An App JWT reaches only the app-level routes: `/app` and everything under
+	 * `/app/*` (the app's installations and their token mint, its webhook
+	 * configuration and deliveries). Every repository or
+	 * organization route answers 401 to it; reach those through
+	 * {@link GitHubApp.clientLayer} with an installation token instead.
+	 *
+	 * The motivating use is a webhook redelivery sweep, which lists recent
+	 * deliveries with `GET /app/hook/deliveries` and redelivers a failed one
+	 * with `POST /app/hook/deliveries/{delivery_id}/attempts`.
+	 *
+	 * The JWT is signed locally, never fetched, so building the layer makes no
+	 * request; a key that will not sign fails construction with
+	 * `GitHubAppError { kind: "jwt" }`. A JWT lives nine minutes and is
+	 * re-signed a minute before it expires, so a long-running sweep keeps
+	 * authenticating; calls in between reuse it. It cannot be revoked, so
+	 * release does nothing. A later signing failure surfaces to the caller as
+	 * `GitHubError { kind: "unauthorized" }` carrying the `GitHubAppError` as
+	 * its cause, as with {@link GitHubApp.clientLayer}.
+	 *
+	 * @example
+	 * ```ts
+	 * import { GitHubApp, GitHubClient } from "@effected/github";
+	 * import { Effect, Redacted } from "effect";
+	 *
+	 * const sweep = Effect.gen(function* () {
+	 *   const client = yield* GitHubClient;
+	 *   const deliveries = yield* client.request("GET /app/hook/deliveries", { per_page: 100 });
+	 *   for (const delivery of deliveries) {
+	 *     if (delivery.status_code >= 400) {
+	 *       yield* client.request("POST /app/hook/deliveries/{delivery_id}/attempts", {
+	 *         // octokit types a delivery id as number | bigint; the route takes a number.
+	 *         delivery_id: Number(delivery.id),
+	 *       });
+	 *     }
+	 *   }
+	 * });
+	 *
+	 * const layer = GitHubApp.appClientLayer({
+	 *   appId: "12345",
+	 *   privateKey: Redacted.make("-----BEGIN RSA PRIVATE KEY-----\n..."),
+	 * });
+	 *
+	 * Effect.runPromise(Effect.provide(sweep, layer));
+	 * ```
+	 */
+	static readonly appClientLayer = (
+		credentials: AppCredentials,
+		options: GitHubAppOptions = {},
+	): Layer.Layer<GitHubClient, GitHubAppError> =>
+		Layer.effect(
+			GitHubClient,
+			makeRotatingClient(
+				Effect.map(mintJwt(credentials), ({ jwt, expiresAtMillis }) => ({ token: jwt, expiresAtMillis })),
+				() => Effect.void,
+				options,
+				"GitHubApp.appClientLayer",
+			),
+		);
 
 	/** An in-memory double; unstubbed members die naming themselves. */
 	static readonly makeTest = (overrides: Partial<GitHubAppShape> = {}): GitHubAppShape => ({
@@ -521,32 +594,42 @@ const normalizePermissions = (raw: unknown): Record<string, string> => {
 	return out;
 };
 
+/** A credential a rotating client holds: the bearer value and when it stops working. */
+interface RotatingCredential {
+	readonly token: Redacted.Redacted<string>;
+	readonly expiresAtMillis: number;
+}
+
 /**
- * A client shape that re-mints its installation token before it expires.
+ * A client shape that re-mints its credential before it expires.
  *
  * @remarks
  * The rotation is invisible to a caller: each member resolves the current
  * client first, and "current" means "minted, and not within a minute of
- * expiry". Rotating revokes the token it replaces, so at most one live token
- * exists at a time and the scope's release revokes the last of them.
+ * expiry" (the same skew as {@link InstallationToken.isExpired}). Rotating
+ * releases the credential it replaces, so at most one live credential exists
+ * at a time and the scope's release releases the last of them. An
+ * installation token is released by revoking it; an App JWT has nothing to
+ * release.
  */
 const makeRotatingClient = (
-	app: GitHubAppShape,
-	request: TokenRequest,
+	mint: Effect.Effect<RotatingCredential, GitHubAppError>,
+	release: (token: Redacted.Redacted<string>) => Effect.Effect<void, GitHubAppError>,
 	options: GitHubAppOptions,
+	operation: string,
 ): Effect.Effect<GitHubClientShape, GitHubAppError, Scope.Scope> =>
 	Effect.gen(function* () {
-		const held = yield* Ref.make(Option.none<{ token: InstallationToken; client: GitHubClientShape }>());
+		const held = yield* Ref.make(Option.none<{ credential: RotatingCredential; client: GitHubClientShape }>());
 
 		const revokeHeld = Effect.flatMap(Ref.get(held), (current) =>
-			Option.isSome(current) ? Effect.ignore(app.revoke(current.value.token.token)) : Effect.void,
+			Option.isSome(current) ? Effect.ignore(release(current.value.credential.token)) : Effect.void,
 		);
 
 		const rotate = Effect.gen(function* () {
 			yield* revokeHeld;
-			const minted = yield* app.token(request);
+			const minted = yield* mint;
 			const client = yield* makeClientShape({ ...options, token: minted.token });
-			yield* Ref.set(held, Option.some({ token: minted, client }));
+			yield* Ref.set(held, Option.some({ credential: minted, client }));
 			return client;
 		});
 
@@ -560,7 +643,9 @@ const makeRotatingClient = (
 		const fresh: Effect.Effect<GitHubClientShape, GitHubAppError> = Effect.gen(function* () {
 			const now = yield* Clock.currentTimeMillis;
 			const state = yield* Ref.get(held);
-			if (Option.isSome(state) && !state.value.token.isExpired(now)) return state.value.client;
+			if (Option.isSome(state) && state.value.credential.expiresAtMillis - Duration.toMillis(DEFAULT_SKEW) > now) {
+				return state.value.client;
+			}
 			return yield* rotate;
 		});
 
@@ -574,7 +659,7 @@ const makeRotatingClient = (
 				Effect.fail(
 					new GitHubError({
 						kind: "unauthorized",
-						operation: "GitHubApp.clientLayer",
+						operation,
 						reason: error.reason,
 						cause: error,
 					}),
@@ -587,7 +672,7 @@ const makeRotatingClient = (
 				Effect.fail(
 					new GitHubGraphQLError({
 						kind: "unauthorized",
-						operation: "GitHubApp.clientLayer",
+						operation,
 						reason: error.reason,
 						errors: [],
 						cause: error,
