@@ -120,21 +120,46 @@ describe("Jws.verify refusals", () => {
 		}),
 	);
 
-	it.effect("Review Focus 1: an HS256 token keyed with the RSA public key is algorithmMismatch, HMAC never tried", () =>
+	it.effect(
+		"Review Focus 1: an HS256 token keyed with the RSA public key is unsupportedAlgorithm, no key resolved",
+		() =>
+			Effect.gen(function* () {
+				const pair = yield* JwtKey.generate("RS256");
+				const spki = new Uint8Array(
+					yield* Effect.promise(() => globalThis.crypto.subtle.exportKey("spki", pair.verification.key)),
+				);
+				const pem = createPublicKey({ key: Buffer.from(spki), format: "der", type: "spki" })
+					.export({ format: "pem", type: "spki" })
+					.toString();
+				const input = `${segment({ alg: "HS256", typ: "JWT" })}.${segment({ sub: "admin" })}`;
+				let resolutions = 0;
+				const resolver = () => {
+					resolutions += 1;
+					return Effect.succeed(pair.verification);
+				};
+				for (const secret of [Buffer.from(spki), Buffer.from(pem)]) {
+					const mac = createHmac("sha256", secret).update(input).digest();
+					const token = `${input}.${Base64Url.encode(mac)}`;
+					assert.strictEqual(yield* reasonOf(Jws.verify(token, pair.verification)), "unsupportedAlgorithm");
+					assert.strictEqual(yield* reasonOf(Jws.verify(token, resolver)), "unsupportedAlgorithm");
+				}
+				assert.strictEqual(resolutions, 0, "the key resolver must never be called for an unsupported alg");
+			}),
+	);
+
+	it.effect("any header alg outside RS256 and ES256 is unsupportedAlgorithm without resolving a key", () =>
 		Effect.gen(function* () {
 			const pair = yield* JwtKey.generate("RS256");
-			const spki = new Uint8Array(
-				yield* Effect.promise(() => globalThis.crypto.subtle.exportKey("spki", pair.verification.key)),
-			);
-			const pem = createPublicKey({ key: Buffer.from(spki), format: "der", type: "spki" })
-				.export({ format: "pem", type: "spki" })
-				.toString();
-			const input = `${segment({ alg: "HS256", typ: "JWT" })}.${segment({ sub: "admin" })}`;
-			for (const secret of [Buffer.from(spki), Buffer.from(pem)]) {
-				const mac = createHmac("sha256", secret).update(input).digest();
-				const error = yield* Effect.flip(Jws.verify(`${input}.${Base64Url.encode(mac)}`, pair.verification));
-				assert.strictEqual(error.reason, "algorithmMismatch");
+			let resolutions = 0;
+			const resolver = () => {
+				resolutions += 1;
+				return Effect.succeed(pair.verification);
+			};
+			for (const alg of ["none", "HS256", "RS384", "PS256", "EdDSA", "rs256", ""]) {
+				const token = `${segment({ alg })}.${segment({ sub: "x" })}.AA`;
+				assert.strictEqual(yield* reasonOf(Jws.verify(token, resolver)), "unsupportedAlgorithm", alg);
 			}
+			assert.strictEqual(resolutions, 0);
 		}),
 	);
 

@@ -1,5 +1,5 @@
 import { Effect, Result, Schema } from "effect";
-import { signParams } from "./internal/algorithms.js";
+import { isAlgorithm, signParams } from "./internal/algorithms.js";
 import { appendSignature, joinCompact, splitCompact } from "./internal/segments.js";
 import { subtle, toArrayBuffer } from "./internal/subtle.js";
 import { JwtError } from "./JwtError.js";
@@ -95,8 +95,14 @@ const verify = <R = never>(
 	Effect.gen(function* () {
 		const parts = yield* Effect.fromResult(splitCompact(token));
 		const header = yield* Effect.fromResult(headerOf(parts.header));
-		if (header.alg === "none") {
-			return yield* JwtError.of("unsupportedAlgorithm", "alg none is never accepted");
+		// Decided before any key is resolved, so a token naming an algorithm
+		// this package does not implement (none, HS256, ...) never triggers a
+		// key lookup such as a JWKS fetch.
+		if (!isAlgorithm(header.alg)) {
+			return yield* JwtError.of(
+				"unsupportedAlgorithm",
+				`the token claims ${header.alg}; only RS256 and ES256 are accepted`,
+			);
 		}
 		const resolved = key instanceof VerificationKey ? key : yield* key(header);
 		const extra = resolved.kid !== undefined ? { kid: resolved.kid } : undefined;
@@ -151,9 +157,10 @@ export const Jws: {
 	 * @remarks
 	 * `key` is a {@link VerificationKey} or a function from the decoded header
 	 * to one (for a JWKS lookup by `kid`). The checks run in order: the token
-	 * splits and its header decodes (`malformed`); `alg: "none"` is
-	 * `unsupportedAlgorithm` and no key is resolved; the header's `alg` must
-	 * equal the key's (`algorithmMismatch`, and no other algorithm is tried);
+	 * splits and its header decodes (`malformed`); a header `alg` other than
+	 * `RS256` or `ES256` (`none`, `HS256`, ...) is `unsupportedAlgorithm` and no
+	 * key is resolved; the header's `alg` must equal the key's
+	 * (`algorithmMismatch`, and no other algorithm is tried);
 	 * the signature must verify (`badSignature`). The algorithm is always the
 	 * key's, never the header's.
 	 */
