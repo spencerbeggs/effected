@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Option, Schema, SchemaGetter } from "effect";
 
 /**
  * A JSON Web Key (RFC 7517) for an RSA or EC key.
@@ -9,9 +9,14 @@ import { Schema } from "effect";
  * from a JWKS can be handed on without losing anything. Symmetric keys
  * (`kty: "oct"`) are out of scope and fail to decode.
  *
- * The private exponent `d` decodes to a `Redacted` string, so a decoded
- * private JWK never prints its secret; encoding unwraps it back to the
- * JSON string.
+ * Every private member, `d` and the RSA CRT members `p`, `q`, `dp`, `dq`
+ * and `qi`, decodes to a `Redacted` string, so a decoded private JWK never
+ * prints its secret; encoding unwraps them back to JSON strings. Multi-prime
+ * RSA keys (`oth`) are out of scope and fail to decode.
+ *
+ * The open index signature also applies at the type level: a misspelled
+ * member such as `kd` for `kid` still typechecks, so do not rely on the type
+ * to catch one.
  *
  * @public
  */
@@ -37,6 +42,18 @@ export const Jwk = Schema.StructWithRest(
 		y: Schema.optionalKey(Schema.String),
 		/** Private exponent (RSA) or scalar (EC), base64url; redacted once decoded. */
 		d: Schema.optionalKey(Schema.RedactedFromValue(Schema.String, { label: "jwk.d" })),
+		/** RSA first prime factor, base64url; redacted once decoded. */
+		p: Schema.optionalKey(Schema.RedactedFromValue(Schema.String, { label: "jwk.p" })),
+		/** RSA second prime factor, base64url; redacted once decoded. */
+		q: Schema.optionalKey(Schema.RedactedFromValue(Schema.String, { label: "jwk.q" })),
+		/** RSA first factor CRT exponent, base64url; redacted once decoded. */
+		dp: Schema.optionalKey(Schema.RedactedFromValue(Schema.String, { label: "jwk.dp" })),
+		/** RSA second factor CRT exponent, base64url; redacted once decoded. */
+		dq: Schema.optionalKey(Schema.RedactedFromValue(Schema.String, { label: "jwk.dq" })),
+		/** RSA first CRT coefficient, base64url; redacted once decoded. */
+		qi: Schema.optionalKey(Schema.RedactedFromValue(Schema.String, { label: "jwk.qi" })),
+		/** Multi-prime RSA factors; out of scope, so any value fails to decode. */
+		oth: Schema.optionalKey(Schema.Never),
 	}),
 	[Schema.Record(Schema.String, Schema.Unknown)],
 );
@@ -48,14 +65,27 @@ export const Jwk = Schema.StructWithRest(
  */
 export type Jwk = typeof Jwk.Type;
 
+const isSupported = (key: unknown): key is typeof Jwk.Encoded => Option.isSome(Schema.decodeUnknownOption(Jwk)(key));
+
 /**
  * A JSON Web Key Set: the document a JWKS endpoint serves.
+ *
+ * @remarks
+ * Decoding keeps only the keys that decode as a {@link (Jwk:variable)} and
+ * drops the rest (an unknown `kty`, a symmetric `oct` key, a malformed
+ * member), as RFC 7517 §5 asks, so one unsupported key never fails the whole
+ * set. A dropped key is gone: encoding round-trips the supported keys only.
  *
  * @public
  */
 export const Jwks = Schema.Struct({
-	/** The keys in the set. */
-	keys: Schema.Array(Jwk),
+	/** The supported keys in the set. */
+	keys: Schema.Array(Schema.Unknown).pipe(
+		Schema.decodeTo(Schema.Array(Jwk), {
+			decode: SchemaGetter.transform((keys) => keys.filter(isSupported)),
+			encode: SchemaGetter.passthroughSubtype(),
+		}),
+	),
 });
 
 /**

@@ -62,4 +62,52 @@ describe("Jwk private member", () => {
 			assert.deepStrictEqual(yield* Schema.encodeEffect(Jwk)(key), input);
 		}),
 	);
+
+	it.effect("redacts every RSA private member and rejects multi-prime oth", () =>
+		Effect.gen(function* () {
+			const secrets = {
+				d: "U0VDUkVURA",
+				p: "U0VDUkVUUA",
+				q: "U0VDUkVUUQ",
+				dp: "U0VDUkVURFA",
+				dq: "U0VDUkVURFE",
+				qi: "U0VDUkVUUUk",
+			};
+			const input = { kty: "RSA", n: "AQAB", e: "AQAB", ...secrets } as const;
+			const key = yield* Schema.decodeUnknownEffect(Jwk)(input);
+			const printed = JSON.stringify(key);
+			for (const secret of Object.values(secrets)) assert.notInclude(printed, secret);
+			assert.deepStrictEqual(yield* Schema.encodeEffect(Jwk)(key), input);
+			const error = yield* Effect.flip(
+				Schema.decodeUnknownEffect(Jwk)({ ...input, oth: [{ r: "AQ", d: "AQ", t: "AQ" }] }),
+			);
+			assert.strictEqual(error._tag, "SchemaError");
+		}),
+	);
+});
+
+describe("Jwks", () => {
+	it.effect("keeps only the supported keys of a mixed set", () =>
+		Effect.gen(function* () {
+			const rsa = { kty: "RSA", kid: "r1", n: "AQAB", e: "AQAB" } as const;
+			const jwks = yield* Schema.decodeUnknownEffect(Jwks)({
+				keys: [
+					rsa,
+					{ kty: "OKP", crv: "Ed25519", x: "AA" },
+					{ kty: "oct", k: "b2N0LXNlY3JldC1tYXRlcmlhbA" },
+					{ kty: "EC", crv: 7 },
+				],
+			});
+			assert.deepStrictEqual(jwks.keys, [rsa]);
+			assert.notInclude(JSON.stringify(jwks), "b2N0LXNlY3JldC1tYXRlcmlhbA");
+			assert.deepStrictEqual(yield* Schema.encodeEffect(Jwks)(jwks), { keys: [rsa] });
+		}),
+	);
+
+	it.effect("still requires keys to be an array", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(Schema.decodeUnknownEffect(Jwks)({ keys: {} }));
+			assert.strictEqual(error._tag, "SchemaError");
+		}),
+	);
 });
