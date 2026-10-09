@@ -2,13 +2,16 @@
 type: Decision
 title: ConfigCodec is exempt from the sync primitive policy
 description: A ConfigCodec's Effect-returning members are not required to carry a synchronous Result twin, because their Effect return type expresses interface polymorphism, not a wrapped span.
-status: draft
+status: stable
 tags:
   - architecture
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 1425675059278747031db7071c0142af7e1dbd8f26f2d9f1740eb1fdab37a840
+verified:
+  - by: human:spencer
+    at: 2026-10-09T17:01:48Z
 ---
 
 # ConfigCodec is exempt from the sync primitive policy

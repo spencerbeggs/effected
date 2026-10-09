@@ -2,7 +2,7 @@
 type: Decision
 title: app is a composition layer, not an umbrella package
 description: app defines no service, schema or error of its own and re-exports nothing from xdg, store or config-file -- a consumer wanting one of them alone takes that package alone.
-status: draft
+status: stable
 tags:
   - architecture
 sources:
@@ -12,6 +12,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 77d2edc458574fd24e9838ba72e3dd1cab516c29efa8202cc5bda74dd27ae5e0
+verified:
+  - by: human:spencer
+    at: 2026-10-09T16:29:07Z
 ---
 
 # app is a composition layer, not an umbrella package

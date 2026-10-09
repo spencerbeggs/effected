@@ -2,12 +2,15 @@
 type: Decision
 title: The document IR is plain frozen data, not Schema classes
 description: "The cli document IR is an immutable union of plain objects discriminated by _tag, built by constructors and rendered by pure (doc, context) => string functions, rather than Schema classes or React elements."
-status: draft
+status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T22:58:53Z
   body_sha256: 0f1a229fdc56d0bcfa267660fa6879fce626dc25e3e62413d7ec49b127ce70a2
+verified:
+  - by: human:spencer
+    at: 2026-10-09T17:01:48Z
 ---
 
 # The document IR is plain frozen data, not Schema classes

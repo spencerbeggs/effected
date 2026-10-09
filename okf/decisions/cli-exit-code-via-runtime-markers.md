@@ -2,12 +2,15 @@
 type: Decision
 title: "cli sets the exit code through core's own Runtime markers"
 description: Why CliRuntime.reportFailures reads and writes Runtime.errorExitCode / Runtime.errorReported instead of touching process.exitCode.
-status: draft
+status: stable
 tags: [dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 603a9476d847d8f0894d899d85f9790fff2bc440e783706ec20c7b03df8e49d5
+verified:
+  - by: human:spencer
+    at: 2026-10-09T16:29:07Z
 ---
 
 # cli sets the exit code through core's own Runtime markers

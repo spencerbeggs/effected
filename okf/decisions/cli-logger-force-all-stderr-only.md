@@ -2,12 +2,15 @@
 type: Decision
 title: "CliLogger honours LogToStderr only as a force-all override"
 description: Why the public LogToStderr reference can only push every level to stderr, never move one level back to stdout.
-status: draft
+status: stable
 tags: [dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 3052b9a418e53b9f1e47c58898e0e864b264f00162148074b2e2860e555ed1c9
+verified:
+  - by: human:spencer
+    at: 2026-10-09T17:01:48Z
 ---
 
 # CliLogger honours LogToStderr only as a force-all override

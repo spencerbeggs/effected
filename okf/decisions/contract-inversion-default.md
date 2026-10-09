@@ -2,7 +2,7 @@
 type: Decision
 title: Contract inversion is the default answer to a tier-dragging edge
 description: When package A needs behaviour only package B can implement, A declares the narrow contract and B ships the layer implementing it, rather than A taking a direct dependency edge on B — the pattern now runs three times across the kit.
-status: draft
+status: stable
 tags:
   - architecture
 sources:
@@ -16,6 +16,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 4a5c0ef34e155a7b54dfa9687645912d059b5754a5614ef3baae8356a423247d
+verified:
+  - by: human:spencer
+    at: 2026-10-09T17:01:48Z
 ---
 
 # Contract inversion is the default answer to a tier-dragging edge

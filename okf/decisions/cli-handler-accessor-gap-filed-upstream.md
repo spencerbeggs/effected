@@ -2,12 +2,15 @@
 type: Decision
 title: "cli files the Command handler-accessor gap upstream rather than shimming it"
 description: Why a missing accessor on effect/cli's Command type is reported to core instead of patched locally.
-status: draft
+status: stable
 tags: [dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-28T18:00:23Z
   body_sha256: 74f947a296868ceb7ece2156eedc0024a93291c690afed2825dc95797edab464
+verified:
+  - by: human:spencer
+    at: 2026-10-09T16:29:07Z
 ---
 
 # cli files the Command handler-accessor gap upstream rather than shimming it

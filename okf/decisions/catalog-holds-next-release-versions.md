@@ -2,7 +2,7 @@
 type: Decision
 title: The effected catalog holds next-release versions, and the publish order follows
 description: The effected catalog literal resolves each package's next published version rather than its current registry version, which imposes the publish order changesets → catalog:sync → publish and is enforced by a workflow that triggers on pull requests to changeset-release/main.
-status: draft
+status: stable
 tags:
   - release
   - ci
@@ -15,6 +15,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 7cbb286165ad1386fadecd650d41b3f7b4a3cbfd47ce0579cfae2cf67a5f6211
+verified:
+  - by: human:spencer
+    at: 2026-10-09T16:29:07Z
 ---
 
 # The effected catalog holds next-release versions, and the publish order follows

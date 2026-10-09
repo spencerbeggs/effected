@@ -2,7 +2,7 @@
 type: Decision
 title: "@effected/cli grows a presentation layer and interactive UI"
 description: "@effected/cli takes on audience, interactivity, theme, status vocabulary, messages, the document IR, failure rendering and logging composition in its React-free root, and interactive screens behind ./ui, replacing the not-a-framework limitation's ban on prompts and spinners."
-status: draft
+status: stable
 supersedes: ../limitations/cli-is-not-a-framework.md
 tags: [architecture, dx]
 sources:
@@ -13,6 +13,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-30T20:33:06Z
   body_sha256: 8292533ae4f0be2ff46c0e69f5a82e99446bbba7015354cbbd2af2ebced7ff8d
+verified:
+  - by: human:spencer
+    at: 2026-10-09T16:29:07Z
 ---
 
 # @effected/cli grows a presentation layer and interactive UI

@@ -2,7 +2,7 @@
 type: Decision
 title: "The config companion is named @effected/plugin, not built yet"
 description: A future silk-pattern companion package will ship config JSON files and peer-depend on the mcp/cli tools so a consumer's Claude Code plugin and tooling stay on the same versions; the name @effected/plugin is decided, @effected/config is rejected as confusable with @effected/config-file, and the package itself is unbuilt.
-status: draft
+status: stable
 tags:
   - dx
 sources:
@@ -14,6 +14,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: f96390bfa6f119f68f3db354d64c56905aa85cfacbe829dc68c29c15f75d384e
+verified:
+  - by: human:spencer
+    at: 2026-10-09T17:01:48Z
 ---
 
 # The config companion is named @effected/plugin, not built yet

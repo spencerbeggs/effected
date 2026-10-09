@@ -2,7 +2,7 @@
 type: Decision
 title: The ascend ceiling compares resolved paths and rejects a relative stopAt as a defect
 description: Walker's ascend ceiling normalizes both sides before comparing and dies on a relative stopAt, closing a fail-open bug where an unnormalized ceiling silently let the scan reach the filesystem root.
-status: draft
+status: stable
 tags:
   - architecture
 sources:
@@ -12,6 +12,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 73b16b9eff4ed81108cd8ba9bb30c7f24df197966eb7eb329f9cc23dcc3f7e6c
+verified:
+  - by: human:spencer
+    at: 2026-10-09T16:29:07Z
 ---
 
 # The ascend ceiling compares resolved paths and rejects a relative stopAt as a defect

@@ -2,12 +2,15 @@
 type: Decision
 title: CliLinks finds the editor directory with its own bounded ascent
 description: "CliLinks walks up to find a .vscode directory with an inline Path.dirname loop over FileSystem.exists, rather than depending on @effected/walker, which would add @effected/glob to every cli consumer's closure."
-status: draft
+status: stable
 tags: [architecture, bundle, deps]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T23:56:58Z
   body_sha256: 44c56e989071df0baf9e9b3b05634a691e1755f235fd6bb82b6db1bc289bb981
+verified:
+  - by: human:spencer
+    at: 2026-10-09T17:01:48Z
 ---
 
 # CliLinks finds the editor directory with its own bounded ascent

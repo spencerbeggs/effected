@@ -2,7 +2,7 @@
 type: Decision
 title: config-file's codecs are free-standing named exports, never a namespace object
 description: JsonCodec, JsoncCodec, YamlCodec and TomlCodec are four independent module-level exports rather than members of one collecting object.
-status: draft
+status: stable
 tags:
   - bundle
   - dx
@@ -10,6 +10,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: fb4a1c4ef2b26e871610c7f0826605b373dcc30ca410eac118b1708c1cc49c45
+verified:
+  - by: human:spencer
+    at: 2026-10-09T17:01:48Z
 ---
 
 # config-file's codecs are free-standing named exports, never a namespace object

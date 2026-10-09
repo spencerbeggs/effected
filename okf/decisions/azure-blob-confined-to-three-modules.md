@@ -2,7 +2,7 @@
 type: Decision
 title: Azure is confined to three modules, not two
 description: The Azure blob client may only be imported by ActionCache, Artifact and BlobStore.githubCache — not by any shared internal helper.
-status: draft
+status: stable
 tags:
   - bundle
   - architecture
@@ -10,6 +10,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: e04e7165d8d74c4ef00c3ae09daafe8e957930422e18a3c06f506e6cea983bc2
+verified:
+  - by: human:spencer
+    at: 2026-10-09T16:29:07Z
 ---
 
 # Azure is confined to three modules, not two

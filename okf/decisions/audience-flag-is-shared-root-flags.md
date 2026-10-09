@@ -2,7 +2,7 @@
 type: Decision
 title: The audience flag is four shared root flags resolved into env's Audience
 description: CliAudience declares --audience, --human, --agent and --ci as shared flags on the root command, each counted with Flag.atLeast(0), and resolves them with Command.provideEffect into env's Audience with source flag; more than one occurrence is a usage error.
-status: draft
+status: stable
 tags: [architecture, dx]
 sources:
   - id: core-param
@@ -24,6 +24,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-10-01T14:11:47Z
   body_sha256: e277224bfe5607a42622b1501bd86248275033b395a1c2414495076131899eb9
+verified:
+  - by: human:spencer
+    at: 2026-10-09T16:29:07Z
 ---
 
 # The audience flag is four shared root flags resolved into env's Audience

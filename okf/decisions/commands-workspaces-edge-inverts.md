@@ -2,12 +2,15 @@
 type: Decision
 title: "commands' workspaces edge inverts rather than dragging four packages integrated"
 description: Why @effected/commands declares LocalExec instead of depending on @effected/workspaces directly.
-status: draft
+status: stable
 tags: [bundle, architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 3016bd9c75b8daf44d61d79804e95461a97f0390cc5f50d410e5efa9c4ee36c5
+verified:
+  - by: human:spencer
+    at: 2026-10-09T17:01:48Z
 ---
 
 # commands' workspaces edge inverts rather than dragging four packages integrated
