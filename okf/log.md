@@ -5,6 +5,8 @@
 * Added Image formats are read by in-house header readers
 * Added The image cache backend is a structural port, not a store dependency
 * Updated effected
+* Updated @effected/images
+* Added A package that names its own root types shows one warning or none, depending on whether the second pass crashes
 
 ## 2026-10-08
 
