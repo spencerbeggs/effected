@@ -97,7 +97,25 @@ const importKey = (
 					: crypto.importKey("pkcs8", material.data, importParams(alg), false, [usage]),
 			catch: (cause) => JwtError.of("key", `the key does not import as an ${alg} ${material.format} key`, { cause }),
 		}),
-	);
+	).pipe(Effect.flatMap((key) => checkStrength(key, alg)));
+
+/** RFC 7518 §3.3: an RS256 key MUST be 2048 bits or larger. */
+const minimumRsaModulusLength = 2048;
+
+// Both importers pass through here, so neither can bind a short RSA key.
+// WebCrypto reports an RSA key's size on `algorithm.modulusLength`.
+const checkStrength = (key: CryptoKey, alg: JwtAlgorithm): Effect.Effect<CryptoKey, JwtError> => {
+	if (alg !== "RS256") return Effect.succeed(key);
+	const { modulusLength } = key.algorithm as { readonly modulusLength?: unknown };
+	return typeof modulusLength === "number" && modulusLength >= minimumRsaModulusLength
+		? Effect.succeed(key)
+		: Effect.fail(
+				JwtError.of(
+					"key",
+					`RS256 needs an RSA key of at least ${minimumRsaModulusLength} bits, got ${String(modulusLength)}`,
+				),
+			);
+};
 
 const fromPkcs8Pem = Effect.fn("JwtKey.fromPkcs8Pem")(function* (
 	pem: Redacted.Redacted<string>,
@@ -137,6 +155,10 @@ const fromJwk = Effect.fn("JwtKey.fromJwk")(function* (jwk: Jwk, options?: { rea
 	const extra = jwk.kid !== undefined ? { kid: jwk.kid } : undefined;
 	if (jwk.use !== undefined && jwk.use !== "sig") {
 		return yield* JwtError.of("key", `the JWK is for use "${jwk.use}", not "sig"`, extra);
+	}
+	const keyOps = jwk.key_ops;
+	if (keyOps !== undefined && !(Array.isArray(keyOps) && keyOps.includes("verify"))) {
+		return yield* JwtError.of("key", "the JWK's key_ops does not include verify", extra);
 	}
 	if (jwk.alg !== undefined && !isJwtAlgorithm(jwk.alg)) {
 		return yield* JwtError.of(
@@ -213,8 +235,8 @@ export const JwtKey: {
 	 * Accepts PKCS#8 (`BEGIN PRIVATE KEY`) for either algorithm, and PKCS#1
 	 * (`BEGIN RSA PRIVATE KEY`, what github.com hands out for App keys) for
 	 * `RS256`, which is wrapped to PKCS#8 in-process so it imports on any
-	 * WebCrypto runtime. Anything else, or a body that does not import, is
-	 * `key`. The PEM is unwrapped here and nowhere else.
+	 * WebCrypto runtime. Anything else, an RSA key under 2048 bits, or a body
+	 * that does not import is `key`. The PEM is unwrapped here and nowhere else.
 	 */
 	readonly fromPkcs8Pem: (
 		pem: Redacted.Redacted<string>,
@@ -228,8 +250,9 @@ export const JwtKey: {
 	 * An `alg` other than `RS256` or `ES256` is `unsupportedAlgorithm`, and a
 	 * JWK `alg` that differs from `options.alg` is `algorithmMismatch`. A JWK
 	 * whose type cannot carry the algorithm (an RSA key for `ES256`, a curve
-	 * other than P-256), whose `use` is not `sig`, or that does not import is
-	 * `key`. Private members are ignored, never unwrapped.
+	 * other than P-256), whose `use` is not `sig`, whose `key_ops` does not
+	 * include `verify`, that is an RSA key under 2048 bits, or that does not
+	 * import is `key`. Private members are ignored, never unwrapped.
 	 */
 	readonly fromJwk: (jwk: Jwk, options?: { readonly alg?: JwtAlgorithm }) => Effect.Effect<VerificationKey, JwtError>;
 	/**

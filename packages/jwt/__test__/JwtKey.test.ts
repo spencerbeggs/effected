@@ -7,9 +7,9 @@ import { JwtKey } from "../src/JwtKey.js";
 
 const data = new TextEncoder().encode("header.payload");
 
-const rsaPair = (privateType: "pkcs1" | "pkcs8") =>
+const rsaPair = (privateType: "pkcs1" | "pkcs8", modulusLength = 2048) =>
 	generateKeyPairSync("rsa", {
-		modulusLength: 2048,
+		modulusLength,
 		privateKeyEncoding: { type: privateType, format: "pem" },
 		publicKeyEncoding: { type: "spki", format: "pem" },
 	});
@@ -102,6 +102,36 @@ describe("JwtKey.fromPkcs8Pem", () => {
 	);
 });
 
+describe("RSA key strength", () => {
+	it.effect("refuses a 1024-bit PKCS#8 or PKCS#1 PEM as key, and accepts 2048 bits", () =>
+		Effect.gen(function* () {
+			for (const type of ["pkcs8", "pkcs1"] as const) {
+				const error = yield* Effect.flip(
+					JwtKey.fromPkcs8Pem(Redacted.make(rsaPair(type, 1024).privateKey), { alg: "RS256" }),
+				);
+				assert.strictEqual(error.reason, "key", type);
+				assert.include(error.detail, "at least 2048 bits, got 1024");
+				const ok = yield* JwtKey.fromPkcs8Pem(Redacted.make(rsaPair(type, 2048).privateKey), { alg: "RS256" });
+				assert.strictEqual(ok.alg, "RS256");
+			}
+		}),
+	);
+
+	it.effect("refuses a 1024-bit public JWK as key, and accepts 2048 bits", () =>
+		Effect.gen(function* () {
+			const jwkOf = (modulusLength: number) =>
+				Schema.decodeUnknownSync(Jwk)({
+					...generateKeyPairSync("rsa", { modulusLength }).publicKey.export({ format: "jwk" }),
+					alg: "RS256",
+				});
+			const error = yield* Effect.flip(JwtKey.fromJwk(jwkOf(1024)));
+			assert.strictEqual(error.reason, "key");
+			assert.include(error.detail, "at least 2048 bits, got 1024");
+			assert.strictEqual((yield* JwtKey.fromJwk(jwkOf(2048))).alg, "RS256");
+		}),
+	);
+});
+
 describe("JwtKey.fromPkcs8Pem labels", () => {
 	it.effect("refuses a SEC1 EC PRIVATE KEY block as key", () =>
 		Effect.gen(function* () {
@@ -188,6 +218,20 @@ describe("JwtKey.fromJwk", () => {
 		Effect.gen(function* () {
 			assert.strictEqual(yield* reasonOf(JwtKey.fromJwk({ ...firstActionsKey, use: "enc" })), "key");
 			const key = yield* JwtKey.fromJwk({ ...firstActionsKey, use: "sig" });
+			assert.strictEqual(key.alg, "RS256");
+		}),
+	);
+
+	it.effect("rejects a key whose key_ops does not include verify as key", () =>
+		Effect.gen(function* () {
+			for (const keyOps of [["sign"], [], "verify", ["encrypt", "decrypt"]]) {
+				assert.strictEqual(
+					yield* reasonOf(JwtKey.fromJwk({ ...firstActionsKey, key_ops: keyOps })),
+					"key",
+					JSON.stringify(keyOps),
+				);
+			}
+			const key = yield* JwtKey.fromJwk({ ...firstActionsKey, key_ops: ["sign", "verify"] });
 			assert.strictEqual(key.alg, "RS256");
 		}),
 	);
