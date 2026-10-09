@@ -6,6 +6,7 @@ import { dimensions, malformed, truncated } from "./result.js";
 export const readPng = (b: Uint8Array): ReadResult => {
 	if (b.length < 24) return truncated(`need 24 bytes for IHDR dimensions, have ${b.length}`);
 	if (ascii(b, 12, 4) !== "IHDR") return malformed("first chunk is not IHDR");
-	if (u32be(b, 8) !== 13) return malformed(`IHDR length ${u32be(b, 8)} is not 13`);
+	const length = u32be(b, 8);
+	if (length !== 13) return malformed(`IHDR length ${length} is not 13`);
 	return dimensions(u32be(b, 16), u32be(b, 20));
 };

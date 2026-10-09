@@ -14,8 +14,10 @@ export type ReadResult = Result.Result<Dimensions, ReadFailure>;
 
 export const MAX_DIMENSION = 0x7fffffff;
 
-export const truncated = (detail: string): ReadResult => Result.fail({ reason: "truncated", detail });
-export const malformed = (detail: string): ReadResult => Result.fail({ reason: "malformed", detail });
+export const truncated = (detail: string): Result.Result<never, ReadFailure> =>
+	Result.fail({ reason: "truncated", detail });
+export const malformed = (detail: string): Result.Result<never, ReadFailure> =>
+	Result.fail({ reason: "malformed", detail });
 
 const legal = (n: number): boolean => Number.isInteger(n) && n >= 1 && n <= MAX_DIMENSION;
 

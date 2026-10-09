@@ -52,7 +52,7 @@ export class ImageFacts extends Schema.Class<ImageFacts>("ImageFacts")({
 			return Result.fail(new ImageParseError({ reason: read.failure.reason, format, detail: read.failure.detail }));
 		}
 		return Result.succeed(
-			new ImageFacts({ format, mimeType: MIME_TYPES[format], width: read.success.width, height: read.success.height }),
+			ImageFacts.make({ format, mimeType: MIME_TYPES[format], width: read.success.width, height: read.success.height }),
 		);
 	}
 
