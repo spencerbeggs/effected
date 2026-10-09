@@ -1,5 +1,11 @@
 # Log
 
+## 2026-10-09
+
+* Added Image formats are read by in-house header readers
+* Added The image cache backend is a structural port, not a store dependency
+* Updated effected
+
 ## 2026-10-08
 
 * Updated @effected/cli

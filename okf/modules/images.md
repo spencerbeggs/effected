@@ -11,8 +11,8 @@ tags:
   - performance
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T15:07:46Z
-  body_sha256: bf175045a1aa760d444770c76f9197c398d8f3cfbf517ed575a46cd46a224add
+  at: 2026-10-09T16:03:02Z
+  body_sha256: a285ddd58202735f921e28d0ff365dafde66866ddd7fd6fe630cdf8b4cfd18e3
 ---
 
 # `@effected/images`
@@ -49,9 +49,13 @@ Every surface that does no IO ships a `*Result` sync primitive and derives its `
 
 Verdict at the site, per [the require-in-R default](../conventions/require-in-r-default.md): the key digest adopts core `Crypto.digest("SHA-256", ...)` with `Crypto.Crypto` in `R`, and `effect/encoding/Hex` for the hex form. It passes the three shape checks. It is not a sync site, because its only consumer, `getOrGenerate`, is effectful. It is not a stream, because the input is a short canonical string. Hex is only encoded, never decoded. `NodeServices.layer` provides `Crypto` alongside `FileSystem` and `Path`, so a Node application wires the whole `./cache` surface with one layer. Core `Crypto` is marked `@stability unstable`, so a change to it surfaces at an Effect advance. Canonical JSON stays in-house in `src/internal/canonical.ts` because core has none and `@effected/schemastore`'s `CanonicalJson` is a file formatter that preserves insertion order and never sorts keys. A hand-rolled SHA-256, `node:crypto` and Effect's `Hash` were rejected.
 
+## Build and the self-reference
+
+Cache-side modules name root types through a type-only `import type * as Images from "@effected/images"` and import runtime values relatively, the `cli` and `jsonl` pattern, with `dtsExternals` set so `cache.d.ts` refers to the root's types. The bundler's second API Extractor pass resolves that self-reference into `src`, leaving one accepted `ae-wrong-input-file-type` warning; see [the gotcha](../gotchas/self-reference-api-extractor-pass-looks-clean-when-it-crashes.md). No suppression is added.
+
 ## Hardening
 
-Per the [input-hardening standards](../conventions/input-hardening-standards.md), readers bounds-check every offset and length, never throw, carry a step budget on the JPEG segment walk and the AVIF box walk, and allocate nothing in proportion to a length read from the input.
+Per the [input-hardening standards](../conventions/input-hardening-standards.md), readers bounds-check every offset and length, never throw, carry a step budget on the JPEG segment walk and the AVIF box walk, and allocate nothing in proportion to a length read from the input. In the AVIF reader only a top-level box may be `truncated`; a nested box that overruns its complete parent is `malformed`. The directory backend rejects inherited object keys as content types with `Object.hasOwn`.
 
 ## Excluded
 
