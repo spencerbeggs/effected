@@ -230,12 +230,35 @@ export class AppIdentity extends Schema.Class<AppIdentity>("AppIdentity")({
 	}
 }
 
+/** `suspended_at` as GitHub sends it: an ISO string, or `null` while active. */
+const SuspendedAt = Schema.OptionFromNullOr(Schema.DateTimeUtcFromString);
+
+/**
+ * One optional field read leniently: `{ [key]: decoded }` when the response
+ * carried the key and it decodes, `{}` otherwise. An unreadable field is
+ * omitted rather than failing the installation, which is how these fields
+ * behaved before they were read at all.
+ */
+const readField = <K extends string, S extends Schema.Top & { readonly DecodingServices: never }>(
+	key: K,
+	schema: S,
+	present: boolean,
+	value: unknown,
+): { readonly [P in K]?: S["Type"] } => {
+	if (!present) return {};
+	const decoded = Schema.decodeUnknownOption(schema)(value);
+	return Option.isSome(decoded) ? ({ [key]: decoded.value } as { readonly [P in K]?: S["Type"] }) : {};
+};
+
 /**
  * One installation of the app.
  *
  * @remarks
- * Every field but `id` is filled only when GitHub's response carries it, so a
- * test double built with `Installation.make({ id })` stays valid. Encodable:
+ * Every field but `id` is filled only when GitHub's response carries it and
+ * it reads cleanly; an unreadable field is omitted rather than failing the
+ * listing. A test double built with `Installation.make({ id })` stays valid.
+ * An enterprise account carries `accountId` and `accountType` without a
+ * login `account`. Encodable:
  * the dates encode to ISO strings and `suspendedAt` to an ISO string or
  * `null`, the same shape GitHub sends.
  *
@@ -248,10 +271,17 @@ export class Installation extends Schema.Class<Installation>("Installation")({
 	account: Schema.optionalKey(Schema.String),
 	/** The account kind, e.g. "Organization" or "User"; open-ended, because GitHub adds kinds. */
 	accountType: Schema.optionalKey(Schema.String),
-	/** The account's numeric id. */
+	/**
+	 * The account's numeric id.
+	 *
+	 * @remarks
+	 * Not paired with `account`: an enterprise installation carries
+	 * `accountId` (and may carry `accountType`) but has no login, so `account`
+	 * is absent.
+	 */
 	accountId: Schema.optionalKey(Schema.Int),
 	/** When the installation was suspended; `Option.none()` when it is active. */
-	suspendedAt: Schema.optionalKey(Schema.OptionFromNullOr(Schema.DateTimeUtcFromString)),
+	suspendedAt: Schema.optionalKey(SuspendedAt),
 	/** When GitHub last changed the installation. */
 	updatedAt: Schema.optionalKey(Schema.DateTimeUtcFromString),
 }) {}
@@ -528,23 +558,22 @@ function makeApp(options: GitHubAppOptions): Effect.Effect<GitHubAppShape> {
 		const installations = Effect.fn("GitHubApp.installations")(function* (credentials: AppCredentials) {
 			const client = yield* asApp(credentials, options);
 			const raw = yield* client.paginate("GET /app/installations", {}).pipe(Effect.catch(appFailure("installation")));
-			return yield* Effect.forEach(raw, (entry) => {
-				const account = entry.account ?? undefined;
-				return Schema.decodeUnknownEffect(Installation)({
+			return raw.map((entry) => {
+				const account: Record<string, unknown> | undefined = entry.account ?? undefined;
+				return Installation.make({
 					id: numericId(entry.id),
-					...(account !== undefined && "login" in account ? { account: account.login } : {}),
-					...(account !== undefined && "type" in account && typeof account.type === "string"
-						? { accountType: account.type }
-						: {}),
-					...(account !== undefined && account.id !== undefined ? { accountId: numericId(account.id) } : {}),
-					...("suspended_at" in entry ? { suspendedAt: entry.suspended_at } : {}),
-					...("updated_at" in entry ? { updatedAt: entry.updated_at } : {}),
+					...(account !== undefined && typeof account.login === "string" ? { account: account.login } : {}),
+					...readField("accountType", Schema.String, account !== undefined && "type" in account, account?.type),
+					...readField(
+						"accountId",
+						Schema.Int,
+						account !== undefined && "id" in account,
+						typeof account?.id === "bigint" ? numericId(account.id) : account?.id,
+					),
+					...readField("suspendedAt", SuspendedAt, "suspended_at" in entry, entry.suspended_at),
+					...readField("updatedAt", Schema.DateTimeUtcFromString, "updated_at" in entry, entry.updated_at),
 				});
-			}).pipe(
-				Effect.catchTag("SchemaError", (error) =>
-					Effect.fail(GitHubAppError.of("installation", "GitHub returned an unexpected installation payload", error)),
-				),
-			);
+			});
 		});
 
 		const resolveInstallationId = (request: TokenRequest): Effect.Effect<number, GitHubAppError> =>

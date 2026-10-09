@@ -612,6 +612,17 @@ describe("Option is not needed to read a missing installation account", () => {
 	);
 });
 
+/** Two installations, the first with an unreadable date, timestamp and account id. */
+const LENIENT_PAGE = [
+	{
+		id: 4,
+		suspended_at: "garbage",
+		updated_at: 12,
+		account: { login: "acme", type: "Organization", id: "not-a-number" },
+	},
+	{ id: 5, suspended_at: null, account: { login: "other", type: "User", id: 7 } },
+];
+
 describe("Installation suspension, account type and id", () => {
 	it.effect("decodes suspended_at, updated_at and the account's type and id", () =>
 		withApp(
@@ -669,11 +680,32 @@ describe("Installation suspension, account type and id", () => {
 		),
 	);
 
-	it.effect("fails as an installation error when GitHub sends an unreadable date", () =>
-		withApp([{ status: 200, body: [{ id: 4, suspended_at: "not a date", account: null }] }], (app) =>
+	it.effect("omits an unreadable field from its installation and still returns every installation", () =>
+		withApp([{ status: 200, body: LENIENT_PAGE }], (app) =>
 			Effect.gen(function* () {
-				const error = yield* Effect.flip(app.installations(CREDENTIALS));
-				assert.strictEqual(error.kind, "installation");
+				const all = yield* app.installations(CREDENTIALS);
+				assert.deepStrictEqual(
+					all.map((entry) => entry.id),
+					[4, 5],
+				);
+				const [garbled, healthy] = all;
+				assert.isFalse(garbled !== undefined && "suspendedAt" in garbled, "the garbage date is omitted");
+				assert.isFalse(garbled !== undefined && "updatedAt" in garbled);
+				assert.isFalse(garbled !== undefined && "accountId" in garbled, "a non-integer account id is omitted");
+				// The fields that did read survive on the same entry.
+				assert.strictEqual(garbled?.account, "acme");
+				assert.strictEqual(garbled?.accountType, "Organization");
+				assert.isTrue(healthy?.suspendedAt !== undefined && Option.isNone(healthy.suspendedAt));
+			}),
+		),
+	);
+
+	it.effect("still mints for an owner when an installation carries an unreadable field", () =>
+		withApp([{ status: 200, body: LENIENT_PAGE }, tokenReply()], (app, script) =>
+			Effect.gen(function* () {
+				const token = yield* app.token({ ...CREDENTIALS, owner: "acme" });
+				assert.strictEqual(token.installationId, 4);
+				assert.include(script.calls[1]?.url ?? "", "/app/installations/4/access_tokens");
 			}),
 		),
 	);
