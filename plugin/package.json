@@ -1,6 +1,6 @@
 {
 	"name": "@effected/ai-plugin",
-	"version": "0.33.0",
+	"version": "0.34.0",
 	"private": true,
 	"description": "The effected agent plugin, built by pluginfinity from one source into Claude Code and GitHub Copilot formats. Does not publish to npm.",
 	"license": "MIT",

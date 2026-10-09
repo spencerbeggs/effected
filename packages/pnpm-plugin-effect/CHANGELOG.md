@@ -1,5 +1,17 @@
 # @effected/pnpm-plugin-effect
 
+## 0.13.11
+
+### Features
+
+- The `effected` catalog lists `@effected/images` at `^0.1.0`. [#977][#977]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#977]: https://github.com/spencerbeggs/effected/pull/977
+
 ## 0.13.10
 
 ### Maintenance
