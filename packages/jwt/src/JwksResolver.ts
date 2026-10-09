@@ -1,0 +1,282 @@
+import { Cause, Clock, Context, Duration, Effect, Layer, Option, Ref, Schema, Semaphore, Stream } from "effect";
+import type { HttpClientResponse } from "effect/http";
+import { HttpClient } from "effect/http";
+import { isAlgorithm } from "./internal/algorithms.js";
+import { quote } from "./internal/quote.js";
+import type { Jwk } from "./Jwk.js";
+import { Jwks } from "./Jwk.js";
+import type { CachedJwks } from "./JwksStore.js";
+import { JwksStore } from "./JwksStore.js";
+import type { JoseHeader } from "./Jws.js";
+import { JwtError } from "./JwtError.js";
+import type { VerificationKey } from "./JwtKey.js";
+import { JwtKey } from "./JwtKey.js";
+
+/**
+ * Options for {@link (JwksResolver:class).layerWith}.
+ *
+ * @public
+ */
+export interface JwksResolverOptions {
+	/** How long a fetched key set is cached; 1 hour by default. */
+	readonly ttl?: Duration.Input;
+	/** The least time between two fetches for one issuer; 30 seconds by default. */
+	readonly minRefetchInterval?: Duration.Input;
+	/**
+	 * The JWKS URL for an issuer. By default it is discovered from
+	 * `<issuer>/.well-known/openid-configuration`.
+	 */
+	readonly jwksUri?: (issuer: string) => string;
+}
+
+/**
+ * The operations of a {@link (JwksResolver:class)}.
+ *
+ * @public
+ */
+export interface JwksResolverShape {
+	/** The verification key `issuer` publishes for the token whose header is `header`. */
+	readonly key: (issuer: string, header: JoseHeader) => Effect.Effect<VerificationKey, JwtError>;
+}
+
+/** The largest discovery document or JWKS read, in bytes. */
+const maxBodyBytes = 1024 * 1024;
+
+const Discovery = Schema.Struct({ issuer: Schema.String, jwks_uri: Schema.String });
+const RawKeys = Schema.Struct({ keys: Schema.Array(Schema.Unknown) });
+
+const fetchFailed = (detail: string, cause?: unknown) =>
+	JwtError.of("jwksFetch", detail, cause === undefined ? undefined : { cause });
+
+// Core's client reads a response body whole (`json`, `text`) with no limit,
+// so the body is read from the stream and refused past `maxBodyBytes`.
+const readCapped = (response: HttpClientResponse.HttpClientResponse, what: string): Effect.Effect<string, JwtError> => {
+	const declared = Number(response.headers["content-length"]);
+	if (Number.isFinite(declared) && declared > maxBodyBytes) {
+		return Effect.fail(fetchFailed(`the ${what} is larger than ${maxBodyBytes} bytes`));
+	}
+	return Stream.runFoldEffect(
+		Stream.mapError(response.stream, (cause) => fetchFailed(`the ${what} body could not be read`, cause)),
+		() => ({ chunks: [] as Array<Uint8Array>, size: 0 }),
+		(acc, chunk) => {
+			const size = acc.size + chunk.byteLength;
+			if (size > maxBodyBytes) return Effect.fail(fetchFailed(`the ${what} is larger than ${maxBodyBytes} bytes`));
+			acc.chunks.push(chunk);
+			return Effect.succeed({ chunks: acc.chunks, size });
+		},
+	).pipe(
+		Effect.flatMap(({ chunks, size }) => {
+			const bytes = new Uint8Array(size);
+			let offset = 0;
+			for (const chunk of chunks) {
+				bytes.set(chunk, offset);
+				offset += chunk.byteLength;
+			}
+			try {
+				return Effect.succeed(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+			} catch (cause) {
+				return Effect.fail(fetchFailed(`the ${what} is not UTF-8`, cause));
+			}
+		}),
+	);
+};
+
+const getJson = <S extends Schema.Constraint & { readonly DecodingServices: never }>(
+	client: HttpClient.HttpClient,
+	url: string,
+	schema: S,
+	what: string,
+): Effect.Effect<S["Type"], JwtError> =>
+	client.get(url).pipe(
+		Effect.mapError((cause) => fetchFailed(`the ${what} could not be fetched`, cause)),
+		Effect.flatMap((response) => readCapped(response, what)),
+		Effect.flatMap((text) =>
+			Effect.mapError(Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(text), (cause) =>
+				fetchFailed(`the ${what} is not the expected JSON`, cause),
+			),
+		),
+	);
+
+const isLocalIssuer = (issuer: string): boolean => {
+	try {
+		const url = new URL(issuer);
+		return url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+	} catch {
+		return false;
+	}
+};
+
+// OIDC Discovery §4: the document lives under the issuer, and §4.3 requires
+// its `issuer` to equal the one requested exactly.
+const discoverJwksUri = (client: HttpClient.HttpClient, issuer: string): Effect.Effect<string, JwtError> =>
+	Effect.gen(function* () {
+		const url = `${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`;
+		const document = yield* getJson(client, url, Discovery, "discovery document");
+		if (document.issuer !== issuer) {
+			return yield* fetchFailed(`the discovery document names issuer ${quote(document.issuer)}, not the one requested`);
+		}
+		let jwksUri: URL;
+		try {
+			jwksUri = new URL(document.jwks_uri);
+		} catch (cause) {
+			return yield* fetchFailed("the discovered jwks_uri is not a URL", cause);
+		}
+		if (jwksUri.protocol !== "https:" && !(jwksUri.protocol === "http:" && isLocalIssuer(issuer))) {
+			return yield* fetchFailed(`the discovered jwks_uri is not https: (${quote(jwksUri.protocol)})`);
+		}
+		return jwksUri.toString();
+	});
+
+const select = (jwks: Jwks, header: JoseHeader): Option.Option<Jwk> => {
+	// A key naming a different algorithm is not a match for this token.
+	const compatible = (key: Jwk) => key.alg === undefined || key.alg === header.alg;
+	if (header.kid === undefined) {
+		const [only] = jwks.keys;
+		return jwks.keys.length === 1 && only !== undefined && compatible(only) ? Option.some(only) : Option.none();
+	}
+	return Option.fromUndefinedOr(jwks.keys.find((key) => key.kid === header.kid && compatible(key)));
+};
+
+const make = (options: JwksResolverOptions) =>
+	Effect.gen(function* () {
+		const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient);
+		const store = yield* JwksStore;
+		const ttl = Duration.fromInputUnsafe(options.ttl ?? Duration.hours(1));
+		const minRefetchMillis = Duration.toMillis(options.minRefetchInterval ?? Duration.seconds(30));
+		// Per issuer: when a fetch was last attempted, and what it returned. The
+		// last result also serves misses from a store that has lost it.
+		const attempts = yield* Ref.make(new Map<string, { readonly atMillis: number; readonly jwks: Jwks | undefined }>());
+		const locks = new Map<string, Semaphore.Semaphore>();
+		const lockFor = (issuer: string) => {
+			let lock = locks.get(issuer);
+			if (lock === undefined) {
+				lock = Semaphore.makeUnsafe(1);
+				locks.set(issuer, lock);
+			}
+			return lock;
+		};
+
+		// A cache never fails a verification: a store that fails or dies is a
+		// miss on read and ignored on write. Interruption still propagates.
+		const swallow = <A>(effect: Effect.Effect<A>, fallback: A): Effect.Effect<A> =>
+			Effect.catchCause(effect, (cause) =>
+				Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : Effect.succeed(fallback),
+			);
+		const storedFor = (issuer: string) => swallow(store.get(issuer), Option.none<CachedJwks>());
+
+		const fetchJwks = (issuer: string) =>
+			Effect.gen(function* () {
+				const uri = options.jwksUri !== undefined ? options.jwksUri(issuer) : yield* discoverJwksUri(client, issuer);
+				const raw = yield* getJson(client, uri, RawKeys, "JWKS");
+				const jwks = yield* Effect.mapError(Schema.decodeUnknownEffect(Jwks)(raw), (cause) =>
+					fetchFailed("the JWKS is not a key set", cause),
+				);
+				const dropped = raw.keys.length - jwks.keys.length;
+				if (raw.keys.length > 0 && jwks.keys.length === 0) {
+					return yield* fetchFailed(`the JWKS holds ${raw.keys.length} keys but no supported keys (RSA or P-256 EC)`);
+				}
+				yield* Effect.annotateCurrentSpan({ "jwt.jwks.keys": jwks.keys.length, "jwt.jwks.dropped": dropped });
+				return jwks;
+			}).pipe(Effect.withSpan("JwksResolver.fetch", { attributes: { "jwt.issuer": issuer } }));
+
+		const importFor = (jwk: Jwk, header: JoseHeader) =>
+			isAlgorithm(header.alg) ? JwtKey.fromJwk(jwk, { alg: header.alg }) : JwtKey.fromJwk(jwk);
+
+		const unknownKid = (header: JoseHeader) =>
+			JwtError.of(
+				"unknownKid",
+				header.kid === undefined
+					? "the token names no kid and the JWKS does not hold exactly one matching key"
+					: `the JWKS holds no ${header.alg} key with kid ${quote(header.kid)}`,
+				header.kid === undefined ? undefined : { kid: header.kid },
+			);
+
+		const refresh = (issuer: string, header: JoseHeader) =>
+			Effect.gen(function* () {
+				// Another fiber may have refreshed while this one waited for the lock.
+				const stored = yield* storedFor(issuer);
+				const attempt = (yield* Ref.get(attempts)).get(issuer);
+				const known = Option.isSome(stored) ? stored.value.jwks : attempt?.jwks;
+				const match = known === undefined ? Option.none<Jwk>() : select(known, header);
+				if (Option.isSome(match)) return yield* importFor(match.value, header);
+
+				const now = yield* Clock.currentTimeMillis;
+				const last = Math.max(
+					attempt?.atMillis ?? Number.NEGATIVE_INFINITY,
+					Option.isSome(stored) ? stored.value.fetchedAtMillis : Number.NEGATIVE_INFINITY,
+				);
+				if (now - last < minRefetchMillis) {
+					return yield* known === undefined
+						? fetchFailed("the JWKS could not be fetched, and the refetch interval has not passed")
+						: unknownKid(header);
+				}
+				yield* Ref.update(attempts, (map) => new Map(map).set(issuer, { atMillis: now, jwks: attempt?.jwks }));
+				const jwks = yield* fetchJwks(issuer);
+				yield* Ref.update(attempts, (map) => new Map(map).set(issuer, { atMillis: now, jwks }));
+				yield* swallow(store.set(issuer, { jwks, fetchedAtMillis: now }, ttl), undefined);
+				const fresh = select(jwks, header);
+				return Option.isSome(fresh) ? yield* importFor(fresh.value, header) : yield* unknownKid(header);
+			});
+
+		const key = Effect.fn("JwksResolver.key")(function* (issuer: string, header: JoseHeader) {
+			if (!isAlgorithm(header.alg)) {
+				return yield* JwtError.of(
+					"unsupportedAlgorithm",
+					`the token claims ${quote(header.alg)}; only RS256 and ES256 are accepted`,
+				);
+			}
+			const stored = yield* storedFor(issuer);
+			const hit = Option.flatMap(stored, (cached) => select(cached.jwks, header));
+			if (Option.isSome(hit)) return yield* importFor(hit.value, header);
+			// One refresh per issuer at a time, so concurrent misses share a fetch.
+			return yield* lockFor(issuer).withPermit(refresh(issuer, header));
+		});
+
+		return { key } satisfies JwksResolverShape;
+	});
+
+/**
+ * Resolves the verification key for a token from its issuer's JWKS.
+ *
+ * @remarks
+ * The key set is found by OIDC discovery (the discovery document's `issuer`
+ * must equal the requested issuer exactly, and its `jwks_uri` must be
+ * `https:` unless the issuer is `http://localhost` or `http://127.0.0.1`) or
+ * by {@link JwksResolverOptions.jwksUri}, and cached in the
+ * {@link JwksStore}. A token whose `kid` the cached set lacks triggers one
+ * refetch, at most once per `minRefetchInterval` per issuer, so a key
+ * rotation is picked up while a flood of made-up `kid`s is not; concurrent
+ * misses share that fetch. A header without `kid` matches only a single-key
+ * set, and a key naming a different `alg` never matches.
+ *
+ * Failures: no matching key is `unknownKid`; a matching key that does not
+ * import is `key`; an unreachable, oversized (over 1 MiB) or malformed
+ * document, a discovery mismatch, or a set whose every key is unsupported is
+ * `jwksFetch`.
+ *
+ * @public
+ */
+export class JwksResolver extends Context.Service<JwksResolver, JwksResolverShape>()("@effected/jwt/JwksResolver") {
+	/** A resolver with the given options, over an `HttpClient` and a {@link JwksStore}. */
+	static readonly layerWith = (
+		options: JwksResolverOptions,
+	): Layer.Layer<JwksResolver, never, HttpClient.HttpClient | JwksStore> => Layer.effect(JwksResolver, make(options));
+
+	/** A resolver with the default options: discovery, a 1 hour TTL and a 30 second refetch interval. */
+	static readonly layer: Layer.Layer<JwksResolver, never, HttpClient.HttpClient | JwksStore> = Layer.effect(
+		this,
+		make({}),
+	);
+
+	/**
+	 * A key resolver for `issuer`, for `Jws.verify` and `Jwt.verify`'s `key`.
+	 *
+	 * @remarks
+	 * Always pass the issuer you expect, never one read from the token: the
+	 * issuer chooses which keys are trusted.
+	 */
+	static readonly forIssuer =
+		(issuer: string) =>
+		(header: JoseHeader): Effect.Effect<VerificationKey, JwtError, JwksResolver> =>
+			Effect.flatMap(Effect.service(JwksResolver), (resolver) => resolver.key(issuer, header));
+}
