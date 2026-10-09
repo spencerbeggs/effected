@@ -167,12 +167,17 @@ export interface LiveHandle<S> {
 	 * so the answer is never stale: a separate "is a frame mounted" query could be answered by one run and acted on in
 	 * the gap before the next. Synchronous, like `logConsole`, so a Node stream's `write` callback can call it.
 	 *
+	 * `true` means Ink's writer accepted the line, not that it reached the terminal: while a render has handed the
+	 * terminal to a child process (`useApp().suspendTerminal`), Ink drops what its writers are handed, and so does
+	 * `logConsole`.
+	 *
 	 * The line is written as given: no formatting, no group indent, and no sanitising. A line break inside `line` is
-	 * kept, and each of its lines lands above the frame.
+	 * kept, and each of its lines lands above the frame. A cursor movement inside it (a `\r`, a cursor-up, an erase
+	 * line, as a child's own progress bar writes) moves the cursor Ink repaints the frame from, and tears the frame.
 	 *
 	 * @param stream - the stream the line belongs on: Ink's stdout writer or its stderr writer
 	 * @param line - the text to print, without a trailing line break
-	 * @returns `true` if the line was written above a mounted frame; `false`, with nothing written, otherwise
+	 * @returns `true` if Ink's writer above a mounted frame took the line; `false`, with nothing written, otherwise
 	 */
 	readonly printAbove: (stream: "stdout" | "stderr", line: string) => boolean;
 	/**

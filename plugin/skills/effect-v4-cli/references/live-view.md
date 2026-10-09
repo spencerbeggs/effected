@@ -95,14 +95,19 @@ const program = Effect.scoped(
 
 A line written to the terminal while a run is drawn tears the frame. `handle.logConsole` is a `Console` whose every method writes **above** the frame while a run is mounted (split to stdout and stderr as Node's console splits them), and straight to the stream otherwise. **`Console.Console` is the seam**: `CliLogger`, `CliLog` and `Effect.log*` all write through the fiber's `Console`, so providing `logConsole` around the work routes every log line correctly with no reference to the view. Output that bypasses Effect's `Console` (a library's own `process.stderr` writes) still tears the frame.
 
-**A host forwarding output it did not write uses `handle.printAbove(stream, line)`.** It is synchronous (callable from a Node stream's `write` callback) and returns `true` once the line went above a mounted frame, or `false` having written nothing: no frame is mounted before the first run, between runs, after `close`, in a degraded run, and never when the view is not interactive. Check and write are one step, so the answer is never stale. Use it to capture a child process's stderr or a test runner's streams: on `false`, send the line wherever it would have gone anyway. There is deliberately no separate "is a frame mounted" query: one run could answer it and the line land after that run's unmount.
+**A host forwarding output it did not write uses `handle.printAbove(stream, line)`.** It is synchronous (callable from a Node stream's `write` callback) and returns `true` once the line went above a mounted frame, or `false` having written nothing: no frame is mounted before the first run, between runs, after `close`, in a degraded run, and never when the view is not interactive. Check and write are one step, so the answer is never stale about the frame; `true` means Ink took the line, which it drops while a render has suspended the terminal (`useApp().suspendTerminal`). Use it to capture a child process's stderr or a test runner's streams: on `false`, send the line wherever it would have gone anyway. There is deliberately no separate "is a frame mounted" query: one run could answer it and the line land after that run's unmount.
+
+A `data` chunk is not a line: it can end mid-line, so read lines with `node:readline`, which buffers the partial tail, keeps blank lines and takes the `\r` off a `\r\n` ending:
 
 ```ts
-child.stderr.on("data", (chunk: Buffer) => {
-  for (const line of chunk.toString().split("\n").filter(Boolean))
-    if (!handle.printAbove("stderr", line)) process.stderr.write(`${line}\n`)
+import { createInterface } from "node:readline"
+
+createInterface({ input: child.stderr, crlfDelay: Infinity }).on("line", (line) => {
+  if (!handle.printAbove("stderr", line)) process.stderr.write(`${line}\n`)
 })
 ```
+
+`printAbove` writes the line as given. A child's own cursor movements (a progress bar's lone `\r`, a cursor-up, an erase-line) still tear the frame through it, because they move the cursor Ink repaints from: strip them, or run the child with its progress output off.
 
 ## Not interactive: `owned` vs `hosted`
 

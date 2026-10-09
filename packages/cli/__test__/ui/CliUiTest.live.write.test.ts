@@ -9,7 +9,7 @@ import type { ReactElement } from "react";
 import { createElement } from "react";
 import { CliUiTest } from "../../src/ui-testing.js";
 import type { Ev, State } from "../helpers/live.js";
-import { End, Start, reduce } from "../helpers/live.js";
+import { End, Start, reduce, tick } from "../helpers/live.js";
 
 const withFrame = (state: State, frame: number): ReactElement =>
 	createElement(
@@ -81,6 +81,42 @@ describe("LiveHandle.printAbove", () => {
 			yield* view.publish(End);
 			const transcript = yield* view.transcript;
 			assert.strictEqual(transcript, "FROM STDERR\nFROM STDOUT\nRUN 1\nended frame 1");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("routes each stream to Ink's writer for that stream: stderr to stderr, stdout to stdout", () =>
+		Effect.gen(function* () {
+			const view = yield* CliUiTest.live(viewOptions);
+			yield* view.publish(Start);
+			assert.isTrue(view.handle.printAbove("stderr", "TO STDERR"));
+			assert.isTrue(view.handle.printAbove("stdout", "TO STDOUT"));
+			const stderr = yield* view.stderrWritten;
+			const stdout = yield* view.stdoutWritten;
+			assert.include(stderr, "TO STDERR\n", "the stderr line went to stderr");
+			assert.notInclude(stdout, "TO STDERR", "and not to stdout, where Ink repaints the frame around it");
+			assert.include(stdout, "TO STDOUT\n", "the stdout line went to stdout");
+			assert.notInclude(stderr, "TO STDOUT", "and not to stderr");
+			yield* view.publish(End);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("answers false, writing nothing, once a render that throws has degraded the run", () =>
+		Effect.gen(function* () {
+			const view = yield* CliUiTest.live({
+				...viewOptions,
+				render: (state: State, frame: number): ReactElement => {
+					if (state.last.startsWith("tick")) throw new Error("render threw");
+					return withFrame(state, frame);
+				},
+			});
+			yield* view.publish(Start);
+			assert.isTrue(view.handle.printAbove("stdout", "BEFORE THE THROW"), "control: the run's frame is mounted");
+			yield* view.publish(tick(1));
+			assert.isFalse(view.handle.printAbove("stdout", "DEGRADED"), "the degraded run has unmounted");
+			yield* view.publish(End);
+			const written = yield* view.written;
+			assert.include(written, "BEFORE THE THROW");
+			assert.notInclude(written, "DEGRADED");
 		}).pipe(Effect.scoped),
 	);
 

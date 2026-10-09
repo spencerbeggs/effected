@@ -282,8 +282,7 @@ export interface CliUiTestLive<E, S> {
 	 * cursor the raw line moved, and so leaves the frame's top row stranded in the scrollback above it. That is the
 	 * failure to reproduce before proving a fix routes the line through `handle.printAbove` or `handle.logConsole`.
 	 *
-	 * Write whole lines (end `bytes` with `
-`) to model a line landing under the frame. A write made while a frame is
+	 * Write whole lines (end `bytes` with `\n`) to model a line landing under the frame. A write made while a frame is
 	 * still due from Ink's throttle can be read as that frame by `frame` and `frames`, which are best-effort;
 	 * `transcript` and `written` are the authority.
 	 *
@@ -322,6 +321,17 @@ export interface CliUiTestLive<E, S> {
 	 * (a scrollback wipe) anywhere in a run.
 	 */
 	readonly written: Effect.Effect<string>;
+	/**
+	 * Every byte written to the terminal's stdout alone, escapes included: {@link CliUiTestLive.written} without stderr.
+	 *
+	 * @remarks
+	 * With {@link CliUiTestLive.stderrWritten}, what to assert a line's stream on. Ink draws the frame, and erases and
+	 * repaints it around a line logged above it, on stdout whichever stream the line is for, so a line routed to stderr
+	 * shows in `stderrWritten` and never here.
+	 */
+	readonly stdoutWritten: Effect.Effect<string>;
+	/** Every byte written to the terminal's stderr alone, escapes included: {@link CliUiTestLive.written} without stdout. */
+	readonly stderrWritten: Effect.Effect<string>;
 	/** The view's own handle: its `state`, its `logConsole`, `printAbove`, `done` and `close`. */
 	readonly handle: LiveHandle<S>;
 }
@@ -1169,6 +1179,8 @@ export class CliUiTest {
 					screenAfter(terminal.fake.written(), terminal.fake.streams.stdout.rows).join("\n"),
 				),
 				written: Effect.sync(() => terminal.fake.written()),
+				stdoutWritten: Effect.sync(() => terminal.fake.stdout()),
+				stderrWritten: Effect.sync(() => terminal.fake.stderr()),
 				handle,
 			};
 		});
