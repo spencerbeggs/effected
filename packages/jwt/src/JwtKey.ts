@@ -223,7 +223,9 @@ export const JwtKey: {
 	 * (`BEGIN RSA PRIVATE KEY`, what github.com hands out for App keys) for
 	 * `RS256`, which is wrapped to PKCS#8 in-process so it imports on any
 	 * WebCrypto runtime. Anything else, an RSA key under 2048 bits, or a body
-	 * that does not import is `key`. The PEM is unwrapped here and nowhere else.
+	 * that does not import is `key`. Newlines may arrive escaped as the two
+	 * characters backslash and `n`, the one-line form an environment variable
+	 * carries. The PEM is unwrapped here and nowhere else.
 	 */
 	readonly fromPkcs8Pem: (
 		pem: Redacted.Redacted<string>,

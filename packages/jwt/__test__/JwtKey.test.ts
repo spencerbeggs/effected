@@ -56,6 +56,23 @@ describe("JwtKey.fromPkcs8Pem", () => {
 		}),
 	);
 
+	it.effect("imports PKCS#1 and PKCS#8 keys whose newlines arrive escaped, as from an environment variable", () =>
+		Effect.gen(function* () {
+			for (const type of ["pkcs1", "pkcs8"] as const) {
+				const { privateKey, publicKey } = rsaPair(type);
+				const escaped = privateKey.replace(/\n/g, "\\n");
+				// control: the escaped form really is one line with no newline in it
+				assert.notInclude(escaped, "\n", type);
+				assert.include(escaped, "\\n", type);
+				const signing = yield* JwtKey.fromPkcs8Pem(Redacted.make(escaped), { alg: "RS256" });
+				const signature = new Uint8Array(
+					yield* Effect.promise(() => globalThis.crypto.subtle.sign("RSASSA-PKCS1-v1_5", signing.key, data)),
+				);
+				assert.isTrue(verify("sha256", data, publicKey, signature), type);
+			}
+		}),
+	);
+
 	it.effect("imports a P-256 PKCS#8 key for ES256", () =>
 		Effect.gen(function* () {
 			const { privateKey, publicKey } = generateKeyPairSync("ec", {

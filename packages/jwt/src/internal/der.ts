@@ -75,12 +75,16 @@ const armour = /^-----BEGIN ([A-Z0-9 ]+)-----\r?\n([A-Za-z0-9+/=\s]+?)\r?\n-----
  *
  * @remarks
  * Exactly one block, nothing before it; whitespace inside the body is
- * ignored. Every failure is `key` and carries no part of the input.
+ * ignored. A two-character escaped newline (backslash, `n`) is read as a
+ * newline first, because keys are often carried in a one-line environment
+ * variable; a backslash cannot occur in PEM armour or base64, so the
+ * rewrite never changes a well-formed key. Every failure is `key` and
+ * carries no part of the input.
  *
  * @internal
  */
 export const pemBody = (pem: string): Result.Result<{ readonly label: string; readonly der: Uint8Array }, JwtError> => {
-	const match = armour.exec(pem.trim());
+	const match = armour.exec(pem.replace(/\\n/g, "\n").trim());
 	if (match === null) return Result.fail(JwtError.of("key", "the key is not a single PEM block"));
 	const [, label = "", body = ""] = match;
 	const der = Base64.decode(body.replace(/\s+/g, ""));
