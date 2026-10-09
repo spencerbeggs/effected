@@ -4,7 +4,11 @@ import { MemoryFileSystem } from "@effected/memfs";
 import { Data, Effect, Layer, Option, Path, Schema } from "effect";
 import type { ImageBackendSetParams, ImageBackendShape } from "../src/cache.js";
 import { ImageBackend, ImageBackendError, ImageCache, ImageCacheKey, ImageGenerateError } from "../src/cache.js";
+import type { ImageFormat } from "../src/index.js";
 import { counting, fixture } from "./helpers.js";
+
+/** True only when `A` and `B` are the same type, so a narrowing and its absence are both pinned. */
+type Equals<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
 class RenderError extends Data.TaggedError("RenderError")<{ readonly why: string }> {}
 
@@ -20,11 +24,46 @@ const live = () =>
 		Layer.provideMerge(Layer.mergeAll(MemoryFileSystem.layerWith({}), Path.layer, NodeCrypto.layer)),
 	);
 
+/** "The cache is off": the no-store backend, which needs nothing provided. */
+const cacheOff: Layer.Layer<ImageBackend> = ImageBackend.layerNone;
+
 /** The cache over a hand-written backend double. */
 const over = (backend: ImageBackendShape) =>
 	ImageCache.layer.pipe(Layer.provide(Layer.succeed(ImageBackend)(backend)), Layer.merge(NodeCrypto.layer));
 
 describe("ImageCache.getOrGenerate", () => {
+	it.effect("accept narrows facts.format to the listed formats; without accept it stays the full union", () =>
+		Effect.gen(function* () {
+			const cache = yield* ImageCache;
+			const narrowed = yield* cache.getOrGenerate(yield* keyFor("narrow"), () => Effect.succeed(PNG), {
+				accept: ["png", "jpeg", "webp"],
+			});
+			// Compiles only when the result's format is narrowed by accept: a table with no gif or avif key is indexable.
+			const extensions: Record<"png" | "jpeg" | "webp", string> = { png: "png", jpeg: "jpg", webp: "webp" };
+			assert.strictEqual(extensions[narrowed.facts.format], "png");
+			const narrowedExactly: Equals<typeof narrowed.facts.format, "png" | "jpeg" | "webp"> = true;
+			const wide = yield* cache.getOrGenerate(yield* keyFor("wide"), () => Effect.succeed(GIF));
+			const wideExactly: Equals<typeof wide.facts.format, ImageFormat> = true;
+			assert.isTrue(narrowedExactly && wideExactly);
+			assert.strictEqual(wide.facts.format, "gif");
+		}).pipe(Effect.provide(live())),
+	);
+
+	it.effect("over ImageBackend.layerNone the generator runs every time and nothing is ever a hit", () =>
+		Effect.gen(function* () {
+			const cache = yield* ImageCache;
+			const key = yield* keyFor("off");
+			const gen = counting(PNG);
+			const first = yield* cache.getOrGenerate(key, gen.generate);
+			const second = yield* cache.getOrGenerate(key, gen.generate);
+			assert.isFalse(first.hit);
+			assert.isFalse(second.hit);
+			assert.strictEqual(gen.calls(), 2);
+			assert.deepStrictEqual(second.bytes, PNG);
+			assert.isTrue(Option.isNone(yield* (yield* ImageBackend).get(key.digest)));
+		}).pipe(Effect.provide(ImageCache.layer.pipe(Layer.provideMerge(cacheOff), Layer.merge(NodeCrypto.layer)))),
+	);
+
 	it.effect("misses, generates, stores; then hits without generating", () =>
 		Effect.gen(function* () {
 			const cache = yield* ImageCache;
