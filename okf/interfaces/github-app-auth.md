@@ -8,8 +8,8 @@ resource: ../../packages/github/src/GitHubApp.ts
 tags: [bundle, security]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 6c7a6bc94313aeb951a2966f407c75e82b477932643878e71e5eb277057b633a
+  at: 2026-10-09T23:37:27Z
+  body_sha256: 4fc516f3385f00fa5a188b3d4b78b48bf24f59f0a2a7a505101aff8e618d9fd7
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:25.629Z
@@ -18,7 +18,7 @@ verified:
 # @effected/github App authentication
 
 App authentication is the third way to get a client: an RS256 App JWT signed
-by a zero-dependency leaf, installation tokens minted through the same typed
+by `@effected/jwt` over WebCrypto, installation tokens minted through the same typed
 route table as every other call, and a lifecycle that enriches, expires,
 re-mints and revokes them. Bot identity and the DCO signoff trailer it
 renders come with it, because they are projections of the same token.

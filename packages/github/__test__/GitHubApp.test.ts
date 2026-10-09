@@ -1,4 +1,4 @@
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, verify } from "node:crypto";
 import { assert, describe, it } from "@effect/vitest";
 import { DateTime, Duration, Effect, Option, Redacted, Schema } from "effect";
 import { TestClock } from "effect/testing";
@@ -164,6 +164,45 @@ describe("GitHubApp.token", () => {
 				assert.strictEqual(error.kind, "jwt");
 			}),
 		),
+	);
+
+	it.effect("signs with a PKCS#1 key, the format github.com hands out, and the JWT verifies", () =>
+		Effect.gen(function* () {
+			const pkcs1 = generateKeyPairSync("rsa", {
+				modulusLength: 2048,
+				privateKeyEncoding: { type: "pkcs1", format: "pem" },
+				publicKeyEncoding: { type: "spki", format: "pem" },
+			});
+			// The control: this really is the PKCS#1 armour, not PKCS#8 under another name.
+			assert.isTrue(pkcs1.privateKey.startsWith("-----BEGIN RSA PRIVATE KEY-----"));
+			const nowMillis = 1_800_000_000_000;
+			yield* TestClock.setTime(nowMillis);
+			yield* withApp([tokenReply()], (app, script) =>
+				Effect.gen(function* () {
+					yield* app.token({ appId: "Iv1.pkcs1", privateKey: Redacted.make(pkcs1.privateKey), installationId: 42 });
+					const authorization = script.calls[0]?.headers.authorization ?? "";
+					assert.isTrue(authorization.startsWith("bearer "), authorization);
+					const [header = "", payload = "", signature = ""] = authorization.slice("bearer ".length).split(".");
+					const signed = verify(
+						"RSA-SHA256",
+						Buffer.from(`${header}.${payload}`),
+						pkcs1.publicKey,
+						Buffer.from(signature, "base64url"),
+					);
+					assert.isTrue(signed, "the JWT signature verifies against the public key");
+					assert.strictEqual(JSON.parse(Buffer.from(header, "base64url").toString("utf8")).alg, "RS256");
+					const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+						iss: string;
+						iat: number;
+						exp: number;
+					};
+					assert.strictEqual(claims.iss, "Iv1.pkcs1");
+					assert.strictEqual(claims.exp - claims.iat, 600);
+					// Time comes from Clock, so TestClock drives it: iat is backdated 60 s.
+					assert.strictEqual(claims.iat, nowMillis / 1000 - 60);
+				}),
+			);
+		}),
 	);
 });
 

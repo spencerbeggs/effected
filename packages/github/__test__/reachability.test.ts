@@ -76,7 +76,7 @@ const reachableBareImports = (entry: string): ReadonlySet<string> => {
 	return bare;
 };
 
-const SIGNER = "universal-github-app-jwt";
+const SIGNER = "@effected/jwt";
 const SEALED_BOX = ["tweetnacl", "blakejs"] as const;
 
 describe("bundle reachability", () => {

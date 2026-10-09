@@ -505,6 +505,9 @@ importers:
       '@effected/github-references':
         specifier: workspace:^
         version: link:../github-references/dist/dev/pkg
+      '@effected/jwt':
+        specifier: workspace:^
+        version: link:../jwt/dist/dev/pkg
       '@effected/semver':
         specifier: workspace:^
         version: link:../semver/dist/dev/pkg
@@ -523,9 +526,6 @@ importers:
       tweetnacl:
         specifier: 1.0.3
         version: 1.0.3
-      universal-github-app-jwt:
-        specifier: ^2.2.2
-        version: 2.2.2
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect

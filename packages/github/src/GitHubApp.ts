@@ -1,6 +1,6 @@
+import { Jwt, JwtKey } from "@effected/jwt";
 import type { Scope } from "effect";
 import { Clock, Context, DateTime, Duration, Effect, Layer, Option, Redacted, Ref, Schema, Stream } from "effect";
-import githubAppJwt from "universal-github-app-jwt";
 import type { GitHubClientShape } from "./GitHubClient.js";
 import { GitHubClient, makeClientShape } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
@@ -53,12 +53,11 @@ export interface AppCredentials {
 	 * The app's private key, in PEM.
 	 *
 	 * @remarks
-	 * PKCS#1 (`-----BEGIN RSA PRIVATE KEY-----`, which is what github.com hands
-	 * you) is converted to PKCS#8 automatically **on Node**. On a runtime without
-	 * `node:crypto` a PKCS#1 key fails with an explicit `kind: "jwt"` error, and
-	 * the fix is to convert the key once with
-	 * `openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt`. This constraint is
-	 * inherited from the JWT signer and is identical to `@octokit/auth-app`'s.
+	 * Both PKCS#1 (`-----BEGIN RSA PRIVATE KEY-----`, which is what github.com
+	 * hands you) and PKCS#8 (`-----BEGIN PRIVATE KEY-----`) are accepted on every
+	 * runtime with WebCrypto, Node and workerd alike: a PKCS#1 key is wrapped to
+	 * PKCS#8 in-process, so no conversion step is needed. The key must be RSA of
+	 * at least 2048 bits; anything else fails with a `kind: "jwt"` error.
 	 */
 	readonly privateKey: Redacted.Redacted<string>;
 }
@@ -256,8 +255,8 @@ export interface GitHubAppOptions {
  * already — `@effected/workspaces` ships `localExecLayer`, which builds
  * `@effected/commands`' service, for the same reason.
  *
- * The JWT signer is `universal-github-app-jwt` — zero dependencies, and
- * `@octokit/auth-app`'s own JWT dependency.
+ * The JWT signer is `@effected/jwt` — WebCrypto RS256 with no runtime
+ * dependencies, so App auth runs on any runtime that has `crypto.subtle`.
  *
  * @example
  * ```ts
@@ -387,20 +386,24 @@ const unstubbed = (member: string): never => {
 	throw new Error(`GitHubApp.makeTest: ${member}() was called but not stubbed — pass an override.`);
 };
 
-/** Mint an app JWT. The only cryptography in this package, and it is a leaf call. */
-const mintJwt = (credentials: AppCredentials): Effect.Effect<Redacted.Redacted<string>, GitHubAppError> =>
-	Effect.tryPromise({
-		try: () => githubAppJwt({ id: credentials.appId, privateKey: Redacted.value(credentials.privateKey) }),
-		catch: (error) =>
-			GitHubAppError.of("jwt", error instanceof Error ? error.message : "could not sign the app JWT", error),
-	}).pipe(Effect.map((result) => Redacted.make(result.token)));
+/** Mint an app JWT: iat 60 s in the past (clock drift), exp 9 minutes after now (GitHub caps at 10). */
+const mintJwt = (
+	credentials: AppCredentials,
+): Effect.Effect<{ jwt: Redacted.Redacted<string>; expiresAtMillis: number }, GitHubAppError> =>
+	Effect.gen(function* () {
+		const key = yield* JwtKey.fromPkcs8Pem(credentials.privateKey, { alg: "RS256" });
+		const now = Math.floor((yield* Clock.currentTimeMillis) / 1000);
+		const exp = now + 9 * 60;
+		const token = yield* Jwt.sign({ iat: now - 60, exp, iss: credentials.appId }, key);
+		return { jwt: Redacted.make(token), expiresAtMillis: exp * 1000 };
+	}).pipe(Effect.catchTag("JwtError", (error) => Effect.fail(GitHubAppError.of("jwt", error.message, error))));
 
 /** A client speaking as the app itself. */
 const asApp = (
 	credentials: AppCredentials,
 	options: GitHubAppOptions,
 ): Effect.Effect<GitHubClientShape, GitHubAppError> =>
-	Effect.flatMap(mintJwt(credentials), (jwt) => makeClientShape({ ...options, token: jwt }));
+	Effect.flatMap(mintJwt(credentials), ({ jwt }) => makeClientShape({ ...options, token: jwt }));
 
 /** A client speaking as a holder of `token`, or as nobody when there is none. */
 const asBearer = (

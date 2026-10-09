@@ -8,8 +8,8 @@ resource: ../../packages/github/src/GitHubError.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T18:10:58Z
-  body_sha256: f472634e381f3ce86f0de3a977df375c9f3b2f3fd1fa5701c6064b0a98ad56e9
+  at: 2026-10-09T23:37:27Z
+  body_sha256: 7d72ad4df91c759783d3ae7d72a34d2e7e3e005a295ae77b0e4c0c289c50a936
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:34.761Z
@@ -73,10 +73,10 @@ structured field a consumer reads and because GraphQL genuinely returns a
 list, and its operation field names the document rather than a literal
 string standing in for every call. The App error's `kind` distinguishes
 JWT, token, revoke, identity and installation failures — the JWT arm
-exists because the JWT signer converts a PKCS#1 private key (which is what
-GitHub hands you) to PKCS#8 only under the Node export condition, so on
-another runtime a PKCS#1 key fails explicitly rather than as a wrapped
-defect.
+carries any `JwtError` from signing (an unreadable PEM, an RSA key under
+2048 bits, a runtime without WebCrypto) as a typed failure rather than a
+defect. PKCS#1 keys, which is what GitHub hands you, and PKCS#8 keys both
+sign on every runtime: the signer wraps PKCS#1 to PKCS#8 in-process.
 
 ## One retry policy, driven by GitHub's own headers
 

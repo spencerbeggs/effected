@@ -6,8 +6,8 @@ status: draft
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: d32bbeffe27fba2baa13cb663ebc969cc76f092958dfd60071224f361db4f301
+  at: 2026-10-09T23:37:27Z
+  body_sha256: 32ed72acdd8cc618196deeee95ec61211c7ebefa24e1318812708567a5483b51
 ---
 
 # @effected/github owns the octokit runtime
@@ -30,8 +30,8 @@ non-octokit runtime dependencies a sealed box requires: `tweetnacl` and
 nonce derived as `blake2b(ephemeral_pk ‖ recipient_pk, 24)`
 (`packages/github/src/internal/crypto.ts`); Node ships neither X25519
 `crypto_box` nor blake2b, so the alternative was a full libsodium build, not
-`node:crypto`. `universal-github-app-jwt` signs the App JWT and is the same
-zero-dependency leaf the official GitHub auth package uses internally.
+`node:crypto`. The kit's own `@effected/jwt` signs the App JWT over
+WebCrypto, with no runtime dependencies.
 
 This makes `@effected/github` integrated tier by the kit's dependency
 policy: it owns a heavy runtime rather than merely consuming one. That is
