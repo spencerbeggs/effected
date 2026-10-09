@@ -1,0 +1,63 @@
+---
+title: "@effected/images"
+description: "Read an image's format, MIME type and pixel size from its bytes, and cache generated images under a key derived from the parameters that produced them."
+---
+
+# @effected/images
+
+Image facts from bytes, and a cache for generated images. [`ImageFacts`](/images/api/class/imagefacts) reads the format, MIME type and pixel dimensions of a PNG, JPEG, GIF, WebP or AVIF file straight from its header, with one typed failure for bytes that are not a readable image. [`ImageCache`](/images/api/class/imagecache) answers "have I already generated an image from these parameters?", so a build stops re-running an expensive renderer, such as an Open Graph card generator, on every run.
+
+## Why @effected/images
+
+Two small jobs keep getting reimplemented next to each other. The first is asking a buffer what it is: how wide, how tall, which format. Pulling that out of a general image library drags in far more than a header read needs, and the failure modes (a file cut short, a header that contradicts itself) end up as thrown strings. Here the readers are in-house, never throw, bounds-check every length before reading it, and bound the JPEG and AVIF walks with a step budget. Every failure is one [`ImageParseError`](/images/api/class/imageparseerror) with a `reason` you route with a single `catchTag`.
+
+The second is not regenerating what you already generated. A cache key is the parameters that produced the image, encoded through your `Schema`, serialized canonically, and digested together with a `salt`: the identity of your generator, bumped when its template changes so every old entry misses. A stale or foreign entry is never trusted blindly either: a hit whose stored bytes no longer parse, or whose format you did not accept, is treated as a miss and overwritten.
+
+## Install
+
+```bash
+npm install @effected/images effect
+```
+
+```bash
+pnpm add @effected/images effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency, and the only dependency of any kind. The package has two entry points: the root is pure, and `@effected/images/cache` does IO.
+
+The cache needs three services from `effect` core: `Crypto` to digest the key, and `FileSystem` and `Path` for the directory backend. On Node, `NodeServices.layer` from `@effect/platform-node` provides all three at once.
+
+## Quick start
+
+`ImageFacts.fromBytesResult` is the synchronous engine: it returns a `Result` and never throws, so it works from a script with no Effect runtime. `ImageFacts.fromBytes` is the same read as an `Effect` that fails with `ImageParseError`.
+
+```ts with-api
+import { ImageFacts } from "@effected/images";
+import { Result } from "effect";
+
+declare const bytes: Uint8Array;
+
+const result = ImageFacts.fromBytesResult(bytes);
+if (Result.isSuccess(result)) {
+  const { format, mimeType, width, height } = result.success;
+  console.log(format, mimeType, width, height); // "png" "image/png" 1200 630
+}
+```
+
+## The generated-image cache
+
+[`ImageCacheKey.fromParams`](/images/api/class/imagecachekey) builds a key from a schema and the parameters to encode. [`ImageCache.getOrGenerate`](/images/api/class/imagecache) takes the key and a `generate` function that returns the effect to run on a miss, and returns the bytes, their `ImageFacts` and whether it was a `hit`. The constructor is `fromParams`; there is no `make`.
+
+The key's `namespace` becomes the backend tag and is not part of the digest. A generator result that is empty, unparseable or outside `accept` fails with [`ImageGenerateError`](/images/api/class/imagegenerateerror) and is never stored; backend errors are surfaced, never swallowed, and the generator's own error passes through untouched.
+
+The [Getting Started](/images/getting-started) guide builds this end to end.
+
+## Where to go next
+
+- [Getting Started](/images/getting-started): read image facts, then cache a generated card.
+- [Advanced](/images/advanced): bring your own store, the failure model and key stability.
+- [API reference](/images/api): every export, with full signatures.
+
+## Out of scope
+
+SVG, BMP, ICO, TIFF, HEIC, JPEG XL, EXIF orientation, any image transformation, and cache eviction or TTL in the directory backend.

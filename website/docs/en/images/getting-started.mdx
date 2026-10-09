@@ -1,0 +1,111 @@
+---
+title: Getting Started
+description: Read an image's format and pixel size from its bytes, then cache a generated Open Graph card on disk with @effected/images.
+---
+
+# Getting Started
+
+Reach for `@effected/images` when a build produces images and then needs to know two things about them: what they are, and whether they were already made. This guide reads facts from bytes first, then wires a directory-backed cache around a generator.
+
+## Install
+
+```bash
+npm install @effected/images effect
+```
+
+```bash
+pnpm add @effected/images effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency. For the cache on Node, add `@effect/platform-node`, whose `NodeServices.layer` provides `Crypto`, `FileSystem` and `Path`.
+
+## Step 1: read image facts
+
+[`ImageFacts`](/images/api/class/imagefacts) is a schema class with `format`, `mimeType` and positive-integer `width` and `height`, as stored in the file. The synchronous engine is `fromBytesResult`; `fromBytes` derives the `Effect` form from it.
+
+```ts with-api
+import { ImageFacts } from "@effected/images";
+import { Result } from "effect";
+
+declare const bytes: Uint8Array;
+
+// Synchronous: a Result, never a throw.
+const result = ImageFacts.fromBytesResult(bytes);
+
+if (Result.isSuccess(result)) {
+  console.log(result.success.width, result.success.height);
+} else {
+  console.log(result.failure.reason); // "unrecognized" | "truncated" | "malformed"
+}
+```
+
+The Effect form fails with [`ImageParseError`](/images/api/class/imageparseerror), so a consumer expresses its policy as one `catchTag`:
+
+```ts with-api
+import { ImageFacts } from "@effected/images";
+import { Effect } from "effect";
+
+declare const bytes: Uint8Array;
+
+const facts = ImageFacts.fromBytes(bytes).pipe(
+  Effect.catchTag("ImageParseError", (e) => Effect.logWarning(`not an image: ${e.reason}`)),
+);
+```
+
+`reason` is `unrecognized` (no known signature), `truncated` (a recognized file cut short) or `malformed` (a header that contradicts itself). Once a signature matched, the error also carries the `format`.
+
+## Step 2: derive a cache key
+
+A key is a pure function of the parameters that produced the image plus your generator's identity. [`ImageCacheKey.fromParams`](/images/api/class/imagecachekey) encodes `params` through a `Schema`, serializes them canonically (keys sorted recursively, so property order never changes the key), and digests the `salt` with the result.
+
+```ts with-api
+import { ImageCacheKey } from "@effected/images/cache";
+import { Effect, Schema } from "effect";
+
+const CardParams = Schema.Struct({ title: Schema.String, theme: Schema.String });
+
+const makeKey = ImageCacheKey.fromParams(
+  CardParams,
+  { title: "Hello", theme: "dark" },
+  { salt: "og-card-v3", namespace: "og" },
+);
+```
+
+`salt` is the identity of your template. Bump it when the template changes and every old key misses. `makeKey` needs core `Crypto` in its requirements, so it is an `Effect` rather than a plain function.
+
+## Step 3: cache the generator
+
+`ImageBackend.layerDirectory({ directory })` stores each entry as `<directory>/<key>.<ext>`. `ImageCache.layer` builds the cache over whichever backend is in the graph.
+
+```ts with-api
+import { ImageBackend, ImageCache, ImageCacheKey } from "@effected/images/cache";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+
+const CardParams = Schema.Struct({ title: Schema.String, theme: Schema.String });
+
+// The expensive renderer. It runs only on a miss.
+declare const renderCard: () => Effect.Effect<Uint8Array>;
+
+const CacheLive = ImageCache.layer.pipe(
+  Layer.provide(ImageBackend.layerDirectory({ directory: ".cache/og" })),
+);
+
+const program = Effect.gen(function* () {
+  const cache = yield* ImageCache;
+  const key = yield* ImageCacheKey.fromParams(
+    CardParams,
+    { title: "Hello", theme: "dark" },
+    { salt: "og-card-v3", namespace: "og" },
+  );
+  const { bytes, facts, hit } = yield* cache.getOrGenerate(key, renderCard, { accept: ["png"] });
+  return { size: bytes.length, width: facts.width, hit };
+}).pipe(Effect.provide(CacheLive), Effect.provide(NodeServices.layer));
+```
+
+The first run generates and stores the card and returns `hit: false`; later runs with the same parameters and salt return the stored bytes with `hit: true` and never call `renderCard`. `accept` is optional. When given, a stored entry outside it is treated as a miss and overwritten, and a generator result outside it fails with [`ImageGenerateError`](/images/api/class/imagegenerateerror) instead of being stored.
+
+## Next steps
+
+- [Advanced](/images/advanced): back the cache with `@effected/store`, and the failure model in full.
+- [API reference](/images/api): every export, with full signatures.

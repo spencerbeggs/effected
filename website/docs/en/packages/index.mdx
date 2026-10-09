@@ -1,11 +1,11 @@
 ---
 title: Packages
-description: The 37 packages of the effected kit — 35 Effect v4 libraries plus two companions — grouped by the runtime cost of depending on them.
+description: The 38 packages of the effected kit — 36 Effect v4 libraries plus two companions — grouped by the runtime cost of depending on them.
 ---
 
 # Packages
 
-The kit is **37 publishable packages**: 35 libraries and two companions. They are not a grab bag of
+The kit is **38 publishable packages**: 36 libraries and two companions. They are not a grab bag of
 utilities that happened to end up in the same repo. Scope is closed by five consuming applications, and a
 library earns its place by being something one of those five actually needs — which is why there is a TOML
 parser and a SPDX expression evaluator here, and no HTTP client or ORM.
@@ -40,6 +40,7 @@ north star, and the conventions the rest follow all started there.
 | Keep durable local state or a cache | [store](/store), [app](/app) |
 | Write to files a human also edits | [templates](/templates) |
 | Keep an append-only event log | [jsonl](/jsonl) |
+| Read an image's size and format, or cache generated images | [images](/images) |
 | Publish or consume JSON Schema documents | [schemastore](/schemastore), [schema-org](/schema-org) |
 | Check a license expression | [spdx](/spdx) |
 | Test code that touches the filesystem | [memfs](/memfs) |
@@ -103,6 +104,7 @@ IO through Effect core's service contracts, required in `R` and never provided f
 | [@effected/git](/git) | Typed git introspection with a clearly-marked mutating tier, a pure config core, and argv redaction on every error |
 | [@effected/templates](/templates) | Managed `BEGIN`/`END` sections in files whose surrounding content belongs to the user |
 | [@effected/jsonl](/jsonl) | Append-only, schema-validated JSONL journals as a definable service, with filtered reads that never materialize the file |
+| [@effected/images](/images) | Image format, MIME type and pixel dimensions from bytes with one typed parse failure, plus a cache for generated images keyed by a Schema-encoded parameter object |
 | [@effected/runtimes](/runtimes) | Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot |
 | [@effected/env](/env) | Who is running a program and in what terminal — agent, CI, colour level, hyperlinks, width and audience — read through `Config` and swapped in tests with `layerTest` |
 | [@effected/cli](/cli) | The CLI presentation boundary: audiences, themed messages, a document IR with per-audience renderers, failure reports, diagnostics and prompts; Ink screens and live views behind an optional `./ui` subpath |
@@ -145,8 +147,8 @@ and releases as a fixed pair with `@effected/schemastore`.
 
 ## Versions and stability
 
-Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 37 packages are on npm except
-`@effected/env`, `@effected/github-commands`, `@effected/engine`, `@effected/mcp`, `@effected/lsp` and
+Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 38 packages are on npm except
+`@effected/env`, `@effected/images`, `@effected/github-commands`, `@effected/engine`, `@effected/mcp`, `@effected/lsp` and
 `@effected/schemastore-cli`, which are built and documented but have not cut their first release.
 
 Releases are changeset-driven, so versions move per package rather than in lockstep — a release is

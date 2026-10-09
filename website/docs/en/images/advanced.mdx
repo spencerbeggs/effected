@@ -1,0 +1,48 @@
+---
+title: Advanced
+description: Back the image cache with any structurally matching store, and the failure model and key stability rules of @effected/images.
+---
+
+# Advanced
+
+This page covers what the guide leaves out: replacing the directory backend, which errors come from where, and what keeps a key stable.
+
+## Bring your own store
+
+[`ImageBackend`](/images/api/class/imagebackend) is a port, not a dependency. It has two operations: `get(key)` and `set({ key, value, contentType?, tags? })`, both failing with [`ImageBackendError`](/images/api/class/imagebackenderror). `ImageBackend.layerFrom` adapts any service whose `get` and `set` match structurally, so there is no dependency edge between this package and the store.
+
+The `Cache` service from `@effected/store` is one such service:
+
+```ts
+import { ImageBackend } from "@effected/images/cache";
+import { Cache } from "@effected/store";
+
+// Provide the store's Cache layer underneath this one.
+const StoreBacked = ImageBackend.layerFrom(Cache);
+```
+
+A store-backed cache gets the store's expiry for free, which the directory backend does not have. The cache hands the backend a `contentType` and `tags` with each `set`; the directory backend accepts and ignores `tags`.
+
+## What the directory backend guarantees
+
+`layerDirectory` writes through a temporary file and an atomic rename, so a reader never sees a half-written entry. The file name is the key, and a key that is not 64 lowercase hex digits is treated as a defect, so a key can never become a path traversal. There is no eviction: the directory grows until you clear it.
+
+## Errors
+
+Four tagged errors, one recovery each, routed with `Effect.catchTag`:
+
+- [`ImageParseError`](/images/api/class/imageparseerror): the bytes are not a readable image. `reason` is `unrecognized`, `truncated` or `malformed`.
+- [`ImageCacheKeyError`](/images/api/class/imagecachekeyerror): the key could not be built. `reason` is `encode` (the schema rejected the params), `non-json` (the encoded form is not JSON-representable) or `digest` (the `Crypto` service failed).
+- [`ImageBackendError`](/images/api/class/imagebackenderror): the storage backend failed. These are surfaced, never swallowed.
+- [`ImageGenerateError`](/images/api/class/imagegenerateerror): the generator returned bytes that are empty, unparseable or outside `accept`. Nothing is stored.
+
+The generator's own error type passes through `getOrGenerate` untouched, so a failing renderer is never relabelled.
+
+## Keeping keys stable
+
+The digest covers `salt`, a NUL byte and the canonical text of the encoded parameters. The `namespace` is deliberately outside it: it labels the backend entry and does not change the key. Because the encoded form is what is digested, a schema transformation that changes the encoding changes the key, so treat a schema change like a template change and bump the salt with it.
+
+## Next steps
+
+- [Getting Started](/images/getting-started): the end-to-end walkthrough.
+- [API reference](/images/api): every export, with full signatures.

@@ -128,6 +128,11 @@
 	},
 	{
 		"type": "custom-link",
+		"link": "/images",
+		"label": "@effected/images"
+	},
+	{
+		"type": "custom-link",
 		"link": "/runtimes",
 		"label": "@effected/runtimes"
 	},

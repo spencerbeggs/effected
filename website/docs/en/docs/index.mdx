@@ -14,8 +14,8 @@ place by being something one of those five actually needs.
 
 ## How this ships
 
-The kit is **37 publishable packages**: 35 libraries plus two companions. All of them are on npm except
-`@effected/env`, `@effected/github-commands`, `@effected/engine`, `@effected/mcp`, `@effected/lsp` and
+The kit is **38 publishable packages**: 36 libraries plus two companions. All of them are on npm except
+`@effected/env`, `@effected/images`, `@effected/github-commands`, `@effected/engine`, `@effected/mcp`, `@effected/lsp` and
 `@effected/schemastore-cli`, which are built and documented but have not cut their first release yet.
 [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) and `@effected/schemastore-cli` are the companions —
 neither is a library, so the tier taxonomy does not describe them, but both are public packages and
@@ -83,6 +83,7 @@ optional for the kit, since it is what holds a consumer's versions where the lib
 | [@effected/git](/git) | boundary | Typed git introspection over Effect core's `ChildProcessSpawner`, with a clearly-marked mutating tier |
 | [@effected/templates](/templates) | boundary | Managed-section blocks in user-editable files: parse, reconcile, sync and check delimited regions |
 | [@effected/jsonl](/jsonl) | boundary | Append-only, schema-validated JSONL journals as a definable Effect service |
+| [@effected/images](/images) | boundary | Image format, MIME type and pixel dimensions from bytes, plus a cache for generated images |
 | [@effected/runtimes](/runtimes) | boundary | Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot |
 | [@effected/cli](/cli) | boundary | The CLI boundary: a plain-line logger, a runtime that reports failures through the program's own logger and sets the exit code, and the issue renderers |
 | [@effected/store](/store) | integrated | Durable local state on SQLite: a schema-versioned migrated store and a TTL cache with eviction, over one shared migration ledger |

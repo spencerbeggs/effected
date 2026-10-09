@@ -8,7 +8,7 @@
 	{
 		"text": "Packages",
 		"link": "/packages",
-		"activeMatch": "^/(pnpm-plugin-effect|github-references|github-commands|github-actions|tsconfig-json|package-json|config-file|schemastore|schema-org|workspaces|lockfiles|templates|commands|markdown|packages|runtimes|github|semver|walker|jsonc|jsonl|memfs|store|glob|sbom|spdx|toml|yaml|app|cli|git|npm|xdg|engine|mcp|lsp|env)(/(.*)?)?$",
+		"activeMatch": "^/(pnpm-plugin-effect|github-references|github-commands|github-actions|tsconfig-json|package-json|config-file|schemastore|schema-org|workspaces|lockfiles|templates|commands|markdown|packages|runtimes|github|semver|walker|jsonc|jsonl|memfs|store|glob|images|sbom|spdx|toml|yaml|app|cli|git|npm|xdg|engine|mcp|lsp|env)(/(.*)?)?$",
 		"position": "right",
 		"items": [
 			{
@@ -70,6 +70,11 @@
 				"text": "@effected/glob",
 				"link": "/glob",
 				"activeMatch": "^/glob/?$"
+			},
+			{
+				"text": "@effected/images",
+				"link": "/images",
+				"activeMatch": "^/images/?$"
 			},
 			{
 				"text": "@effected/jsonc",
