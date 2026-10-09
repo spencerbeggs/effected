@@ -85,7 +85,22 @@ describe("ImageBackend.layerDirectory", () => {
 			for (const bad of ["../escape", "A".repeat(64), "a".repeat(63)]) {
 				const exit = yield* Effect.exit(images.get(bad));
 				assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause), bad);
+				const written = yield* Effect.exit(images.set({ key: bad, value: PNG, contentType: "image/png" }));
+				assert.isTrue(Exit.isFailure(written) && Cause.hasDies(written.cause), `set ${bad}`);
 			}
+		}).pipe(Effect.provide(backend())),
+	);
+
+	it.effect("inherited object keys are not content types", () =>
+		Effect.gen(function* () {
+			const images = yield* ImageBackend;
+			const fs = yield* FileSystem.FileSystem;
+			for (const contentType of ["constructor", "toString", "__proto__"]) {
+				const error = yield* Effect.flip(images.set({ key: KEY, value: PNG, contentType }));
+				assert.strictEqual(error.operation, "set", contentType);
+			}
+			const listing = yield* Effect.result(fs.readDirectory(DIR));
+			assert.isTrue(listing._tag === "Failure" || listing.success.length === 0);
 		}).pipe(Effect.provide(backend())),
 	);
 

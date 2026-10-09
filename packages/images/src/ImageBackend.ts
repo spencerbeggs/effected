@@ -95,7 +95,10 @@ export class ImageBackend extends Context.Service<ImageBackend, ImageBackendShap
 				const set = (params: ImageBackendSetParams): Effect.Effect<void, ImageBackendError> =>
 					Effect.gen(function* () {
 						yield* assertDigest(params.key);
-						const ext = params.contentType === undefined ? undefined : EXTENSIONS[params.contentType];
+						const ext =
+							params.contentType !== undefined && Object.hasOwn(EXTENSIONS, params.contentType)
+								? EXTENSIONS[params.contentType]
+								: undefined;
 						if (ext === undefined) {
 							return yield* new ImageBackendError({
 								operation: "set",
