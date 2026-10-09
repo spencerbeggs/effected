@@ -151,6 +151,31 @@ export interface LiveHandle<S> {
 	 */
 	readonly logConsole: Console.Console;
 	/**
+	 * Print one line above the frame if a run's frame is mounted now, and say whether it did: `true` when `line` and a
+	 * line break went through Ink's writer for `stream`, above the frame, and `false`, having written nothing, when no
+	 * frame is mounted.
+	 *
+	 * @remarks
+	 * For a host that forwards output it did not write itself (a child process's stderr, a test runner's captured
+	 * streams) and must know where it went. `logConsole` answers the same question silently, writing to `UiStreams`
+	 * when no frame is mounted; `printAbove` leaves that case to the caller, who may have somewhere better to send the
+	 * line, or may already be writing to the stream it would land on.
+	 *
+	 * A frame is mounted only during an interactive run: from the run's mount until just before its unmount. Between
+	 * runs, before the first, after `close`, in a degraded run, and always when the view is not interactive (an agent,
+	 * CI, a pipe, `TERM=dumb`, which never mounts), it returns `false`. The check and the write are one synchronous step,
+	 * so the answer is never stale: a separate "is a frame mounted" query could be answered by one run and acted on in
+	 * the gap before the next. Synchronous, like `logConsole`, so a Node stream's `write` callback can call it.
+	 *
+	 * The line is written as given: no formatting, no group indent, and no sanitising. A line break inside `line` is
+	 * kept, and each of its lines lands above the frame.
+	 *
+	 * @param stream - the stream the line belongs on: Ink's stdout writer or its stderr writer
+	 * @param line - the text to print, without a trailing line break
+	 * @returns `true` if the line was written above a mounted frame; `false`, with nothing written, otherwise
+	 */
+	readonly printAbove: (stream: "stdout" | "stderr", line: string) => boolean;
+	/**
 	 * Completes once the events have ended (the stream ended, the subscription's `PubSub` was ended with `PubSub.end` or
 	 * shut down, or `close` ended them) and the last run's frame is committed. Dies with what the view died of: a `reduce` that threw, or a
 	 * stream that died.
@@ -795,6 +820,7 @@ export const live = <E, S>(
 		return {
 			state: Effect.sync(() => state),
 			logConsole: bridge.writer,
+			printAbove: bridge.printAbove,
 			done,
 			close: Effect.andThen(ending, settled),
 		};

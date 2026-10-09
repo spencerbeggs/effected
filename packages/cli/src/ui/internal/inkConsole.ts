@@ -27,6 +27,12 @@ export interface InkConsole {
 	 * For a frame drawn as a string.
 	 */
 	readonly print: (text: string) => void;
+	/**
+	 * Write `text` and a line break through Ink's own writer for `stream` and return `true` while a `Bridge` is mounted
+	 * and attached; otherwise write nothing and return `false`. As given, like `print`: no formatting and no group
+	 * indent. The check and the write are one synchronous step, so the answer is what happened to this line.
+	 */
+	readonly printAbove: (stream: "stdout" | "stderr", text: string) => boolean;
 	/** Mounted inside the Ink tree, it hands Ink's writers to `writer`, and renders its children. */
 	readonly Bridge: FunctionComponent<{ readonly children?: ReactNode }>;
 	/** Write straight to the streams from now on, until a `Bridge` mounts again; call it before Ink's `unmount()`. */
@@ -173,6 +179,11 @@ export const makeInkConsole: Effect.Effect<InkConsole> = Effect.gen(function* ()
 			const data = `${text}\n`;
 			if (attached !== undefined) attached.out(data);
 			else streams.stdout.write(data);
+		},
+		printAbove: (stream, text) => {
+			if (attached === undefined) return false;
+			(stream === "stdout" ? attached.out : attached.err)(`${text}\n`);
+			return true;
 		},
 		Bridge,
 		detach: () => {

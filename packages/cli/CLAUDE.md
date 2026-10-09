@@ -126,7 +126,10 @@ snapshot test here uses `expect` for the snapshot alone. `okf/modules/cli.md` ha
   - **Logging while drawn goes through `handle.logConsole`**, which writes every
     `Console` method through Ink's own writers so lines land above the frame, and
     straight to `UiStreams` otherwise; any other write tears the frame —
-    `@./okf/decisions/live-logs-through-ink.md`.
+    `@./okf/decisions/live-logs-through-ink.md`. A host forwarding output it
+    did not write calls `handle.printAbove(stream, line)`: `true` once the line
+    went above a mounted frame, `false` and nothing written otherwise (check and
+    write are one synchronous step; there is no separate "is mounted" query).
   - **An agent and the Actions runner:** an agent gets the colourless theme
     (`CliTheme.forAudience`, the same public rule `Render.context` and `CliLog.status` use) in every tree the
     kit mounts; under GitHub Actions `DocView` neutralizes workflow commands and a
@@ -136,7 +139,9 @@ snapshot test here uses `expect` for the snapshot alone. `okf/modules/cli.md` ha
     tree the kit did not mount the same context (value from `CliUi.context`).
   - **`CliUiTest.live`** drives a view on the production render path under
     `it.effect` (`advance` moves the `TestClock`); `transcript` models the
-    terminal, `written` is every raw byte.
+    terminal, `written` is every raw byte, and `write(stream, bytes)` puts raw
+    bytes under the frame: the control that shows a foreign line stranding the
+    frame's top row at the next redraw.
 - **Ink hands every key of one stdin read over before React re-renders.** A
   key handler must step from current state (a functional update, a reducer
   or a ref), never render-closure state; test it with `chunk` —

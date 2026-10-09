@@ -567,6 +567,7 @@ describe("the reviewed ./ui and ./ui/testing surfaces", () => {
 			"static readonly root",
 			"static readonly prompt",
 			"static readonly fallback",
+			"readonly printAbove:",
 		]) {
 			assert.include(ui, member, member);
 		}
@@ -577,6 +578,7 @@ describe("the reviewed ./ui and ./ui/testing surfaces", () => {
 			"readonly chunk:",
 			"readonly next:",
 			"readonly mounts:",
+			"readonly write:",
 		]) {
 			assert.include(testing, member, member);
 		}

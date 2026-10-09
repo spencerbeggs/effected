@@ -71,7 +71,7 @@ NodeRuntime.runMain(
 - Build a report as a `Doc` and let the audience pick the renderer; reach for `Render.markdown` only for a file or a step summary.
 - Ask for input only through `CliPrompt.fallback`, `CliUi.prompt` or `CliUi.fallback`, each with a non-interactive default.
 - Set `"jsx": "react-jsx"` for a `.tsx` screen, keep each screen in its own module with a default export, and mount it with `CliUi.lazy`, so JSX never loads in the command module.
-- Log through `handle.logConsole` while a live view is drawn, and not at all while a screen is mounted.
+- Log through `handle.logConsole` while a live view is drawn, and not at all while a screen is mounted. Forward foreign output (a child's stderr) with `handle.printAbove(stream, line)`, which returns `false`, writing nothing, when no frame is mounted.
 - Paint a status glyph on a diagnostic with `CliLog.status`, and apply the audience rule to your own lines with `CliTheme.forAudience`; never copy the rule or hand-paint a glyph into `Effect.log*` (the logger strips it).
 - Pass `env: { appModule: import.meta.url }` to `CliRuntime.main` from a bin that is installed under `node_modules/@effected/`, so the failure report's span trail keeps its own spans.
 - Give a live view `render: CliUi.lazyView(() => import("./view.js"))` and a `final` document, so `--help`, agent, CI and piped runs never load React or Ink.

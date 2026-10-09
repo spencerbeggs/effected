@@ -93,7 +93,7 @@ it.effect("answers a core prompt", () =>
 | `render(screen, options?)` | one screen: a handle with `press`, `type`, `chunk`, `resize`, `frame`/`rawFrame`/`plainFrame`/`frames`, `rerender` and `result` |
 | `view(element, options?)` | a display-only element (no `result`): a crash surfaces on the next read instead of a silent empty frame |
 | `session(options?)` | a program that runs several screens (a wizard): provide its `layer`, fork the program, then `next({ contains? })` for each screen as it mounts; `stdout`/`stderr` are what the program wrote through `Console`, `stdoutTranscript`/`stderrTranscript` each terminal stream alone as plain text, `transcript`/`written` what reached the terminal (a live view's `logConsole` lines included), and `mounts === 0` is the "nothing mounted" assertion. `renderPath: "production"` makes `clear` observable. Worked through below |
-| `live(options)` | a live view on the **production** render path, with `publish(event)`, `end`, `advance(duration)`, `transcript` (what the terminal shows, scrollback included) and `written` (every raw byte, e.g. to assert a frame never takes Ink's full-clear path, `ESC[1;1H` then `ESC[J`) |
+| `live(options)` | a live view on the **production** render path, with `publish(event)`, `end`, `advance(duration)`, `write(stream, bytes)` (raw bytes under the frame, past Ink), `transcript` (what the terminal shows, scrollback included) and `written` (every raw byte, e.g. to assert a frame never takes Ink's full-clear path, `ESC[1;1H` then `ESC[J`) |
 | `cancelReason(exitOrCause)` | `Option<"escape" \| "interrupt">` from an `Exit` or `Cause`, so a test never walks the cause |
 | `styled(ansi)`, `serializer` | ANSI decoded back to token markup, and a Vitest snapshot serializer printing it (also the default export of `@effected/cli/ui/testing/serializer`, for `snapshotSerializers`) |
 
@@ -132,6 +132,7 @@ it.effect("Esc cancels", () =>
 - **`press` sends one key per stdin read; `chunk` sends them all in one read.** Ink hands every key of one read to the handler before React re-renders, so only `chunk` catches a handler reading stale render-closure state.
 - **A live test is `it.effect`.** The run's tick runs on the `TestClock`, so `advance("160 millis")` moves it frame by frame; under `it.live` `advance` dies. A plain-Vitest consumer provides `TestClock.layer()` (from `effect/testing`) itself.
 - **`frames` are best-effort; `transcript` and `written` are authoritative.** With `interactive: false`, the printed frame shows only there.
+- **Prove a fix for foreign output with `view.write` as the control.** `write("stderr", "line\n")` puts bytes under the mounted frame as a child process would; at the next redraw (`advance`, `publish`) Ink erases the frame's height counted from the moved cursor, so `transcript` shows the frame's top row twice and the line gone. The same line through `handle.printAbove` or `handle.logConsole` shows once, above the frame. Assert both: the control is what proves the test can fail.
 - **A crash is never swallowed**: a component that throws makes `result` (or the next read, key or resize) die with it.
 
 Traps a first screen test trips over:

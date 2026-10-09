@@ -82,7 +82,7 @@ const program = Effect.scoped(
 | `mode` | `"owned"` (default) or `"hosted"` (drawn inside a host such as a test reporter); they differ only when not interactive |
 | `tickMillis` | redraw interval while a run is drawn, `80` by default; must be positive and finite |
 
-`LiveHandle<S>` is `state`, `logConsole`, `done` (completes when the events have ended and the last frame is committed; dies with what the view died of) and `close`.
+`LiveHandle<S>` is `state`, `logConsole`, `printAbove`, `done` (completes when the events have ended and the last frame is committed; dies with what the view died of) and `close`.
 
 ## Subscribe first, then end without losing the tail
 
@@ -94,6 +94,15 @@ const program = Effect.scoped(
 ## Logging while drawn: `logConsole`
 
 A line written to the terminal while a run is drawn tears the frame. `handle.logConsole` is a `Console` whose every method writes **above** the frame while a run is mounted (split to stdout and stderr as Node's console splits them), and straight to the stream otherwise. **`Console.Console` is the seam**: `CliLogger`, `CliLog` and `Effect.log*` all write through the fiber's `Console`, so providing `logConsole` around the work routes every log line correctly with no reference to the view. Output that bypasses Effect's `Console` (a library's own `process.stderr` writes) still tears the frame.
+
+**A host forwarding output it did not write uses `handle.printAbove(stream, line)`.** It is synchronous (callable from a Node stream's `write` callback) and returns `true` once the line went above a mounted frame, or `false` having written nothing: no frame is mounted before the first run, between runs, after `close`, in a degraded run, and never when the view is not interactive. Check and write are one step, so the answer is never stale. Use it to capture a child process's stderr or a test runner's streams: on `false`, send the line wherever it would have gone anyway. There is deliberately no separate "is a frame mounted" query: one run could answer it and the line land after that run's unmount.
+
+```ts
+child.stderr.on("data", (chunk: Buffer) => {
+  for (const line of chunk.toString().split("\n").filter(Boolean))
+    if (!handle.printAbove("stderr", line)) process.stderr.write(`${line}\n`)
+})
+```
 
 ## Not interactive: `owned` vs `hosted`
 

@@ -397,7 +397,8 @@ export class CliUi {
 	 * mount to its end, so a `CliUi.run` during a run waits for the run to end, and one between runs mounts at once.
 	 *
 	 * While a run is drawn, write logs through `logConsole`, provided around the work the view reports on: its lines
-	 * land above the frame. A line written to the terminal any other way tears the frame.
+	 * land above the frame. A line written to the terminal any other way tears the frame. A host forwarding output it
+	 * did not write itself prints it with `printAbove`, which says whether a frame was mounted to print it above.
 	 *
 	 * The view draws on stdout (`UiStreams`), at stdout's colour level and glyphs, and mounts only when the run is
 	 * interactive (`CliInteractive`).
