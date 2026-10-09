@@ -15,7 +15,9 @@ await build({
 				// API Extractor follows it back into the root's source and reports exactly three symbols as forgotten from
 				// cache.d.ts: the `Images` namespace itself and the two root types ImageCache's signatures name, ImageFacts and
 				// ImageParseError. All three are exported by the root entry point. This matches those three messages only, not
-				// other cache.d.ts entries, so a genuinely forgotten cache export still fails the build.
+				// other cache.d.ts entries, so a genuinely forgotten cache export still fails the build. ImageFacts and
+				// ImageParseError come from the self-reference pass with no file or line, and once suppressed they are not
+				// listed in issues.json's `suppressed` array: narrowing this to `Images` alone turns both into ciFatal warnings.
 				{ messageId: "ae-forgotten-export", pattern: 'The symbol "(Images|ImageFacts|ImageParseError)" needs' },
 			],
 		},

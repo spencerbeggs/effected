@@ -11,8 +11,8 @@ tags:
   - performance
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T16:45:21Z
-  body_sha256: 450cbd0048c870e0bf3d2d43c80fbe29666cf411e0fa23d6d9831f787b909e01
+  at: 2026-10-09T16:54:22Z
+  body_sha256: 6e5fe0721ed91f898ff1db25fc86237c865a28f812eb58adb2e92c1ece6f60c7
 ---
 
 # `@effected/images`
@@ -51,7 +51,7 @@ Verdict at the site, per [the require-in-R default](../conventions/require-in-r-
 
 ## Build and the self-reference
 
-Cache-side modules name root types through a type-only `import type * as Images from "@effected/images"` and import runtime values relatively, the `cli` and `jsonl` pattern, with `dtsExternals` set so `cache.d.ts` refers to the root's types. The bundler's second API Extractor pass resolves that self-reference into `src`, leaving one accepted `ae-wrong-input-file-type` warning; see [the gotcha](../gotchas/self-reference-api-extractor-pass-looks-clean-when-it-crashes.md). `savvy.build.ts` carries one narrow suppression for it besides the house `_base` one: `ae-forgotten-export` for exactly three messages, the `Images` namespace and the two root types the self-reference reaches, `ImageFacts` and `ImageParseError`, reported against `cache.d.ts`. A new named root type reachable from `./cache` would surface as a fourth; keep such types structural or derived rather than widening the pattern.
+Cache-side modules name root types through a type-only `import type * as Images from "@effected/images"` and import runtime values relatively, the `cli` and `jsonl` pattern, with `dtsExternals` set so `cache.d.ts` refers to the root's types. The bundler's second API Extractor pass resolves that self-reference into `src`, leaving one accepted `ae-wrong-input-file-type` warning; see [the gotcha](../gotchas/self-reference-api-extractor-pass-looks-clean-when-it-crashes.md). `savvy.build.ts` carries one narrow suppression for it besides the house `_base` one: `ae-forgotten-export` for exactly three messages, the `Images` namespace and the two root types the self-reference reaches, `ImageFacts` and `ImageParseError`, reported against `cache.d.ts`. Only the `Images` entry appears in `issues.json`'s `suppressed` array; the other two carry no file or line and are not listed once suppressed, yet a cold build with the pattern narrowed to `Images` reports both as ciFatal warnings, so all three alternatives are load-bearing. A new named root type reachable from `./cache` would surface as a fourth; keep such types structural or derived rather than widening the pattern.
 
 ## Hardening
 

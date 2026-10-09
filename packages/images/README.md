@@ -56,7 +56,7 @@ const facts = ImageFacts.fromBytes(bytes).pipe(
 );
 ```
 
-`mimeType` is one of the five media types (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, `image/avif`), and `extension` is the conventional file extension: `jpg` for `jpeg`, the format name otherwise. `extension` is a getter derived from `format`, so it is not part of the encoded form.
+`mimeType` is one of the five media types (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, `image/avif`), and `extension` is the conventional file extension: `jpg` for `jpeg`, the format name otherwise. `extension` is a getter derived from `format`, so it is not part of the encoded form, and a spread such as `{ ...facts }` drops it.
 
 `ImageParseError.reason` is `unrecognized` (no known signature), `truncated` (a recognized file cut short) or `malformed` (a header that contradicts itself). Readers never throw on any input, bounds-check every length before reading it, and bound the JPEG and AVIF walks with a step budget.
 
