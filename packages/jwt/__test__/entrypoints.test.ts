@@ -5,9 +5,16 @@ import { assert, describe, it } from "@effect/vitest";
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 
+/**
+ * Every import specifier in a source text: `import ... from "x"` and
+ * `export ... from "x"`, a bare side-effect `import "x"`, and a dynamic
+ * `import("x")`.
+ */
+const specifiersIn = (source: string): ReadonlyArray<string> =>
+	[...source.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g)].map((match) => match[1] ?? "");
+
 /** Every import specifier in a module. */
-const specifiersOf = (file: string): ReadonlyArray<string> =>
-	[...readFileSync(file, "utf8").matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1] ?? "");
+const specifiersOf = (file: string): ReadonlyArray<string> => specifiersIn(readFileSync(file, "utf8"));
 
 /** Every module reachable from an entrypoint through relative imports, transitively. */
 const reachableFrom = (entry: string): ReadonlySet<string> => {
@@ -51,7 +58,11 @@ describe("root entrypoint", () => {
 	});
 
 	it("reaches every module and no node: import, so it runs on workerd", () => {
-		const reachable = reachableFrom(resolve(SRC, "index.ts"));
+		const reachable = new Set([
+			...reachableFrom(resolve(SRC, "index.ts")),
+			...reachableFrom(resolve(SRC, "testing.ts")),
+		]);
+		assert.isTrue([...reachable].some((file) => file.endsWith("testing.ts")));
 		// positive control: the walker resolves through to the internal engines
 		assert.isTrue([...reachable].some((file) => file.endsWith("internal/der.ts")));
 		assert.isTrue([...reachable].some((file) => file.endsWith("JwksResolver.ts")));
@@ -63,7 +74,21 @@ describe("root entrypoint", () => {
 		assert.deepStrictEqual(nodeImports, []);
 	});
 
-	it("the walker sees a node: import when there is one", () => {
+	it("the walker sees a node: import in every import form", () => {
 		assert.include(specifiersOf(fileURLToPath(import.meta.url)), "node:fs");
+		const fixture = [
+			'import "node:side-effect";',
+			"import 'node:single-quoted';",
+			'const lazy = await import("node:dynamic");',
+			'export { thing } from "node:reexport";',
+			'import type { T } from "node:type-only";',
+		].join("\n");
+		assert.deepStrictEqual([...specifiersIn(fixture)].sort(), [
+			"node:dynamic",
+			"node:reexport",
+			"node:side-effect",
+			"node:single-quoted",
+			"node:type-only",
+		]);
 	});
 });
