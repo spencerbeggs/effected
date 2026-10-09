@@ -189,15 +189,19 @@ export const Jwt: {
 	 * Verify a JWT and decode its payload with `options.claims`.
 	 *
 	 * @remarks
-	 * The signature is checked first ({@link (Jws:variable).verify}); then, in
-	 * order: the payload decodes as {@link (RegisteredClaims:variable)}
-	 * (`claims`); `exp` is present unless `requireExpiry` is `false`
-	 * (`claims`) and `now - tolerance < exp` (`expired`); `now + tolerance >=
-	 * nbf` and `>= iat` (`notYetValid`); `iss` is an accepted issuer
-	 * (`wrongIssuer`); `aud` contains an accepted audience, a missing `aud`
-	 * failing when one is expected (`wrongAudience`); and finally the payload
-	 * decodes with `options.claims` (`claims`). Time is `Clock`'s, in seconds,
-	 * so `TestClock` drives it; the tolerance is 60 seconds by default.
+	 * The signature is checked first ({@link (Jws:variable).verify}), then
+	 * the claims, in this order:
+	 *
+	 * - the payload decodes as {@link (RegisteredClaims:variable)}, else `claims`;
+	 * - `exp` is present unless `requireExpiry` is `false`, else `claims`;
+	 * - the token has not expired (`now - tolerance < exp`), else `expired`;
+	 * - `nbf` and `iat` are not in the future (`now + tolerance >= nbf`), else `notYetValid`;
+	 * - `iss` is an accepted issuer, else `wrongIssuer`;
+	 * - `aud` contains an accepted audience, else `wrongAudience` (a missing `aud` fails when one is expected);
+	 * - the payload decodes with `options.claims`, else `claims`.
+	 *
+	 * Time is `Clock`'s, in seconds, so `TestClock` drives it; the tolerance
+	 * is 60 seconds by default.
 	 *
 	 * A token string is not a unique identifier: ES256 signatures are
 	 * malleable, so one signed payload can have two valid token strings. Key
