@@ -233,13 +233,27 @@ export class AppIdentity extends Schema.Class<AppIdentity>("AppIdentity")({
 /**
  * One installation of the app.
  *
+ * @remarks
+ * Every field but `id` is filled only when GitHub's response carries it, so a
+ * test double built with `Installation.make({ id })` stays valid. Encodable:
+ * the dates encode to ISO strings and `suspendedAt` to an ISO string or
+ * `null`, the same shape GitHub sends.
+ *
  * @public
  */
 export class Installation extends Schema.Class<Installation>("Installation")({
 	/** The installation id, which is what a token is minted against. */
 	id: Schema.Int,
-	/** The account the app is installed on, when GitHub reported one. */
+	/** The account the app is installed on (its login), when GitHub reported one. */
 	account: Schema.optionalKey(Schema.String),
+	/** The account kind, e.g. "Organization" or "User"; open-ended, because GitHub adds kinds. */
+	accountType: Schema.optionalKey(Schema.String),
+	/** The account's numeric id. */
+	accountId: Schema.optionalKey(Schema.Int),
+	/** When the installation was suspended; `Option.none()` when it is active. */
+	suspendedAt: Schema.optionalKey(Schema.OptionFromNullOr(Schema.DateTimeUtcFromString)),
+	/** When GitHub last changed the installation. */
+	updatedAt: Schema.optionalKey(Schema.DateTimeUtcFromString),
 }) {}
 
 /**
@@ -514,13 +528,22 @@ function makeApp(options: GitHubAppOptions): Effect.Effect<GitHubAppShape> {
 		const installations = Effect.fn("GitHubApp.installations")(function* (credentials: AppCredentials) {
 			const client = yield* asApp(credentials, options);
 			const raw = yield* client.paginate("GET /app/installations", {}).pipe(Effect.catch(appFailure("installation")));
-			return raw.map((entry) =>
-				Installation.make({
+			return yield* Effect.forEach(raw, (entry) => {
+				const account = entry.account ?? undefined;
+				return Schema.decodeUnknownEffect(Installation)({
 					id: numericId(entry.id),
-					...(entry.account !== null && entry.account !== undefined && "login" in entry.account
-						? { account: entry.account.login }
+					...(account !== undefined && "login" in account ? { account: account.login } : {}),
+					...(account !== undefined && "type" in account && typeof account.type === "string"
+						? { accountType: account.type }
 						: {}),
-				}),
+					...(account !== undefined && account.id !== undefined ? { accountId: numericId(account.id) } : {}),
+					...("suspended_at" in entry ? { suspendedAt: entry.suspended_at } : {}),
+					...("updated_at" in entry ? { updatedAt: entry.updated_at } : {}),
+				});
+			}).pipe(
+				Effect.catchTag("SchemaError", (error) =>
+					Effect.fail(GitHubAppError.of("installation", "GitHub returned an unexpected installation payload", error)),
+				),
 			);
 		});
 

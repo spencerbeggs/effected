@@ -3,7 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { JwtError } from "@effected/jwt";
 import { DateTime, Duration, Effect, Option, Redacted, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { AppIdentity, BotIdentity, GitHubApp, InstallationToken } from "../src/GitHubApp.js";
+import { AppIdentity, BotIdentity, GitHubApp, Installation, InstallationToken } from "../src/GitHubApp.js";
 import { GitHubClient } from "../src/GitHubClient.js";
 import { RetryPolicy } from "../src/Resilience.js";
 import type { Reply } from "./fixtures.js";
@@ -609,5 +609,96 @@ describe("Option is not needed to read a missing installation account", () => {
 				assert.isTrue(Option.isNone(Option.fromUndefinedOr(all[0]?.account)));
 			}),
 		),
+	);
+});
+
+describe("Installation suspension, account type and id", () => {
+	it.effect("decodes suspended_at, updated_at and the account's type and id", () =>
+		withApp(
+			[
+				{
+					status: 200,
+					body: [
+						{
+							id: 1,
+							suspended_at: "2026-10-01T00:00:00Z",
+							updated_at: "2026-10-02T12:30:00Z",
+							account: { login: "acme", type: "Organization", id: 42 },
+						},
+						{ id: 2, suspended_at: null, updated_at: "2026-09-01T00:00:00Z", account: null },
+					],
+				},
+			],
+			(app) =>
+				Effect.gen(function* () {
+					const [suspended, active] = yield* app.installations(CREDENTIALS);
+					assert.isDefined(suspended);
+					assert.isDefined(active);
+					if (suspended === undefined || active === undefined) return;
+
+					assert.strictEqual(suspended.account, "acme", "account stays the login string");
+					assert.strictEqual(suspended.accountType, "Organization");
+					assert.strictEqual(suspended.accountId, 42);
+					assert.isTrue(suspended.suspendedAt !== undefined && Option.isSome(suspended.suspendedAt));
+					if (suspended.suspendedAt !== undefined && Option.isSome(suspended.suspendedAt)) {
+						assert.isTrue(DateTime.isDateTime(suspended.suspendedAt.value));
+						assert.strictEqual(DateTime.formatIso(suspended.suspendedAt.value), "2026-10-01T00:00:00.000Z");
+					}
+					assert.isDefined(suspended.updatedAt);
+					if (suspended.updatedAt !== undefined) {
+						assert.strictEqual(DateTime.formatIso(suspended.updatedAt), "2026-10-02T12:30:00.000Z");
+					}
+
+					// suspended_at: null is an active installation, not an absent field.
+					assert.isTrue(active.suspendedAt !== undefined && Option.isNone(active.suspendedAt));
+					assert.strictEqual(active.account, undefined);
+					assert.strictEqual(active.accountType, undefined);
+					assert.strictEqual(active.accountId, undefined);
+				}),
+		),
+	);
+
+	it.effect("leaves suspendedAt and updatedAt absent when the response carries neither key", () =>
+		withApp([{ status: 200, body: [{ id: 3, account: null }] }], (app) =>
+			Effect.gen(function* () {
+				const [only] = yield* app.installations(CREDENTIALS);
+				assert.isDefined(only);
+				assert.isFalse(only !== undefined && "suspendedAt" in only);
+				assert.isFalse(only !== undefined && "updatedAt" in only);
+			}),
+		),
+	);
+
+	it.effect("fails as an installation error when GitHub sends an unreadable date", () =>
+		withApp([{ status: 200, body: [{ id: 4, suspended_at: "not a date", account: null }] }], (app) =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(app.installations(CREDENTIALS));
+				assert.strictEqual(error.kind, "installation");
+			}),
+		),
+	);
+
+	it("still builds a test double from an id alone", () => {
+		const double = Installation.make({ id: 7 });
+		assert.strictEqual(double.id, 7);
+		assert.strictEqual(double.suspendedAt, undefined);
+	});
+
+	it.effect("round-trips through JSON with suspendedAt encoded as an ISO string or null", () =>
+		Effect.gen(function* () {
+			const decoded = yield* Schema.decodeUnknownEffect(Installation)({
+				id: 1,
+				suspendedAt: "2026-10-01T00:00:00.000Z",
+				updatedAt: "2026-10-02T00:00:00.000Z",
+			});
+			const encoded = yield* Schema.encodeUnknownEffect(Installation)(decoded);
+			assert.deepStrictEqual(encoded, {
+				id: 1,
+				suspendedAt: "2026-10-01T00:00:00.000Z",
+				updatedAt: "2026-10-02T00:00:00.000Z",
+			});
+			const active = yield* Schema.decodeUnknownEffect(Installation)({ id: 2, suspendedAt: null });
+			assert.deepStrictEqual(yield* Schema.encodeUnknownEffect(Installation)(active), { id: 2, suspendedAt: null });
+		}),
 	);
 });
