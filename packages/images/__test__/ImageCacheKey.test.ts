@@ -68,6 +68,7 @@ layer(NodeCrypto.layer)("ImageCacheKey.fromParams", (it) => {
 			const error = yield* Effect.flip(ImageCacheKey.fromParams(Params, { name: 7 } as never, OPTIONS));
 			assert.instanceOf(error, ImageCacheKeyError);
 			assert.strictEqual(error.reason, "encode");
+			assert.instanceOf(error.cause, Schema.SchemaError);
 		}),
 	);
 
@@ -95,7 +96,8 @@ describe("ImageCacheKey.fromParams with a failing Crypto", () => {
 			Effect.gen(function* () {
 				const error = yield* Effect.flip(ImageCacheKey.fromParams(Params, { name: "pkg", version: "1" }, OPTIONS));
 				assert.strictEqual(error.reason, "digest");
-				assert.isDefined(error.cause);
+				assert.instanceOf(error.cause, PlatformError.PlatformError);
+				assert.strictEqual((error.cause as PlatformError.PlatformError).reason._tag, "BadArgument");
 			}),
 		);
 	});
