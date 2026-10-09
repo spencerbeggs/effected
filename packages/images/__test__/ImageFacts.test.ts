@@ -1,10 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
-import type { ImageFormat } from "../src/index.js";
+import type { EXTENSIONS } from "../src/ImageFormat.js";
+import type { ImageExtension, ImageFormat, ImageMimeType } from "../src/index.js";
 import { ImageFacts, ImageParseError } from "../src/index.js";
 import { EXPECTED, fixture } from "./helpers.js";
 
-const MIME: Record<ImageFormat, string> = {
+const MIME: Record<ImageFormat, ImageMimeType> = {
 	png: "image/png",
 	jpeg: "image/jpeg",
 	gif: "image/gif",
@@ -62,6 +63,53 @@ describe("ImageFacts", () => {
 			}),
 		);
 	}
+
+	const EXTENSION: Record<ImageFormat, ImageExtension> = {
+		png: "png",
+		jpeg: "jpg",
+		gif: "gif",
+		webp: "webp",
+		avif: "avif",
+	};
+	it("the declared extension union is exactly the extension table's values", () => {
+		// Compiles only when ImageExtension and the internal table agree in both directions: the getter's declared return
+		// type checks table-within-union, this checks union-within-table.
+		const exact: [ImageExtension] extends [(typeof EXTENSIONS)[ImageFormat]] ? true : false = true;
+		assert.isTrue(exact);
+	});
+
+	for (const [name, expected] of Object.entries(EXPECTED)) {
+		it(`${name}: extension is the conventional file extension for its format`, () => {
+			const result = ImageFacts.fromBytesResult(fixture(name));
+			assert.isTrue(Result.isSuccess(result));
+			if (Result.isSuccess(result)) {
+				const extension: ImageExtension = result.success.extension;
+				assert.strictEqual(extension, EXTENSION[expected.format]);
+			}
+		});
+	}
+
+	it("extension is a getter, not a field: absent from the encoded form, present again after decode", () => {
+		const result = ImageFacts.fromBytesResult(fixture("baseline.jpg"));
+		assert.isTrue(Result.isSuccess(result));
+		if (Result.isSuccess(result)) {
+			const encoded = Schema.encodeUnknownSync(ImageFacts)(result.success);
+			assert.deepStrictEqual<unknown>(encoded, { format: "jpeg", mimeType: "image/jpeg", width: 5, height: 3 });
+			assert.isFalse(Object.hasOwn(encoded as object, "extension"));
+			const decoded = Schema.decodeUnknownSync(ImageFacts)(encoded);
+			assert.strictEqual(decoded.extension, "jpg");
+			assert.strictEqual(
+				ImageFacts.make({ format: "avif", mimeType: "image/avif", width: 1, height: 1 }).extension,
+				"avif",
+			);
+		}
+	});
+
+	it("mimeType is one of the five media types: decode rejects any other string", () => {
+		const decode = Schema.decodeUnknownResult(ImageFacts);
+		assert.isTrue(Result.isSuccess(decode({ format: "png", mimeType: "image/png", width: 1, height: 1 })));
+		assert.isTrue(Result.isFailure(decode({ format: "png", mimeType: "image/svg+xml", width: 1, height: 1 })));
+	});
 
 	it("reads a subarray view with a non-zero byteOffset (review focus 3)", () => {
 		const png = fixture("png.png");

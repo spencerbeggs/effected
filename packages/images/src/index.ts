@@ -4,6 +4,7 @@
  * @packageDocumentation
  */
 
+export type { ImageExtension, ImageMimeType } from "./ImageFacts.js";
 export { ImageFacts } from "./ImageFacts.js";
 export { ImageFormat } from "./ImageFormat.js";
 export { ImageParseError } from "./ImageParseError.js";
