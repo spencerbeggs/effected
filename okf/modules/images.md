@@ -11,8 +11,8 @@ tags:
   - performance
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T16:03:02Z
-  body_sha256: a285ddd58202735f921e28d0ff365dafde66866ddd7fd6fe630cdf8b4cfd18e3
+  at: 2026-10-09T16:21:59Z
+  body_sha256: d7f0d90903476b2f131d04fe5f0003d4148f5d89ae5278f40076070bd21fe397
 ---
 
 # `@effected/images`
@@ -47,7 +47,7 @@ Every surface that does no IO ships a `*Result` sync primitive and derives its `
 
 ## Core primitives
 
-Verdict at the site, per [the require-in-R default](../conventions/require-in-r-default.md): the key digest adopts core `Crypto.digest("SHA-256", ...)` with `Crypto.Crypto` in `R`, and `effect/encoding/Hex` for the hex form. It passes the three shape checks. It is not a sync site, because its only consumer, `getOrGenerate`, is effectful. It is not a stream, because the input is a short canonical string. Hex is only encoded, never decoded. `NodeServices.layer` provides `Crypto` alongside `FileSystem` and `Path`, so a Node application wires the whole `./cache` surface with one layer. Core `Crypto` is marked `@stability unstable`, so a change to it surfaces at an Effect advance. Canonical JSON stays in-house in `src/internal/canonical.ts` because core has none and `@effected/schemastore`'s `CanonicalJson` is a file formatter that preserves insertion order and never sorts keys. A hand-rolled SHA-256, `node:crypto` and Effect's `Hash` were rejected.
+Verdict at the site, per [the require-in-R default](../conventions/require-in-r-default.md): the key digest adopts core `Crypto.digest("SHA-256", ...)` with `Crypto.Crypto` in `R`, and `effect/encoding/Hex` for the hex form. It passes the three shape checks. It is not a sync site, because its only consumer, `getOrGenerate`, is effectful. It is not a stream, because the input is a short canonical string. Hex is only encoded, never decoded. `NodeServices.layer` provides `Crypto` alongside `FileSystem` and `Path`, so a Node application wires the whole `./cache` surface with one layer. Core `Crypto` is marked `@stability unstable`, so a change to it surfaces at an Effect advance. Canonical JSON stays in-house in `src/internal/canonical.ts` because core has none and `@effected/schemastore`'s `CanonicalJson` is a file formatter that preserves insertion order and never sorts keys. A hand-rolled SHA-256, `node:crypto` and Effect's `Hash` were rejected. Core `PersistedCache` and `KeyValueStore` were also considered as the storage backend and rejected; see [the backend decision](../decisions/image-backend-is-a-structural-port.md).
 
 ## Build and the self-reference
 

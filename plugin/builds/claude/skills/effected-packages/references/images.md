@@ -33,7 +33,7 @@ const facts = ImageFacts.fromBytesResult(bytes);
 
 // Cached generation.
 const CardParams = Schema.Struct({ title: Schema.String });
-declare const renderCard: Effect.Effect<Uint8Array>;
+declare const renderCard: () => Effect.Effect<Uint8Array>;
 
 const CacheLive = ImageCache.layer.pipe(Layer.provide(ImageBackend.layerDirectory({ directory: ".cache/og" })));
 

@@ -8,8 +8,8 @@ tags:
   - deps
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T14:42:08Z
-  body_sha256: 1dffcf08513a7e9e84380fefbdea319a34cb72da5801b5ff190fd4709f61f094
+  at: 2026-10-09T16:21:59Z
+  body_sha256: f0a00e33a520b171b929d4af297746d1517b9e40a01daf6414a24b074078f39f
 ---
 
 # The image cache backend is a structural port, not a store dependency
@@ -26,6 +26,10 @@ The backend is a port the package defines itself: `ImageBackend`, a service with
 
 - **Store as a devDependency used in the public types.** A published `.d.ts` that names a store type hands a consumer without store unresolved types. Store is a devDependency only to power a contract test that asserts its `CacheShape` is accepted by `layerFrom`, so a drift in store's shape turns the build red.
 - **A direct store dependency.** It makes images integrated tier and the tier propagates to every kit dependent under R2, for a capability (a persistent byte cache) that a directory backend already covers for the first consumers.
+- **Core `effect/persistence` `PersistedCache`.** It stores the lookup `Exit` as serialised JSON, failures included, which breaks the rule that a generated failure is never stored, and every image would have to be encoded into that JSON as text.
+- **Core `effect/persistence` `KeyValueStore`.** Its filesystem layer writes with a plain `writeFile` or `writeFileString` in `set`, never through a temp file and rename. `ImageCache` re-checks only the header on a hit, so a torn write whose header survived would be served as a hit; the in-package temp-and-rename write in `layerDirectory` is load-bearing. The interface also carries no tags, so Tags therefore have nowhere to go.
+
+A possible follow-on, not built: an `ImageBackend.layerFromKeyValueStore` adapter would let memory, SQL or browser `KeyValueStore` backends serve the image cache, accepting that tags are dropped and that atomicity becomes the store's concern.
 
 ## Consequences
 
