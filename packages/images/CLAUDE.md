@@ -62,7 +62,7 @@ file is ever reported `malformed` (a short prefix is `truncated`).
 "@effected/images"`, and `savvy.build.ts` sets `dtsExternals:
 ["@effected/images"]` so `cache.d.ts` refers to the root's types instead of
 copying them (the `cli`/`jsonl` pattern). The `_base` suppression is the narrow
-house one; never widen it. **Known upstream issue:** `dist/prod/issues.json`
+house one; never widen it. A second suppression matches only the three messages `The symbol "Images" needs`, `ImageFacts` and `ImageParseError`: the type-only self-reference namespace and the two root types it reaches, reported against `cache.d.ts`. It is not a blanket `cache.d.ts` suppression. **Known upstream issue:** `dist/prod/issues.json`
 carries one accepted `ae-wrong-input-file-type` warning, a defect in
 `@savvy-web/tsdown-plugins`' self-reference resolution — do not try to fix or suppress it here.
 

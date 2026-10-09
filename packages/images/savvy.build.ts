@@ -11,9 +11,12 @@ await build({
 			// (Schema.Class, TaggedError, Context.Service). Scoped to `_base` ONLY — never widen it.
 			suppressWarnings: [
 				{ messageId: "ae-forgotten-export", pattern: "_base" },
-				// API Extractor follows ./cache's self-referencing "@effected/images" import back into the root's source and
-				// reports every root type as forgotten from cache.d.ts. Scoped to that one entry.
-				{ messageId: "ae-forgotten-export", pattern: "entry point cache\\.d\\.ts$" },
+				// ./cache names root types through the type-only `import type * as Images from "@effected/images"` self-reference.
+				// API Extractor follows it back into the root's source and reports exactly three symbols as forgotten from
+				// cache.d.ts: the `Images` namespace itself and the two root types ImageCache's signatures name, ImageFacts and
+				// ImageParseError. All three are exported by the root entry point. This matches those three messages only, not
+				// other cache.d.ts entries, so a genuinely forgotten cache export still fails the build.
+				{ messageId: "ae-forgotten-export", pattern: 'The symbol "(Images|ImageFacts|ImageParseError)" needs' },
 			],
 		},
 	},
