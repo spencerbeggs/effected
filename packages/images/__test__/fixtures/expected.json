@@ -1,0 +1,42 @@
+{
+	"png.png": {
+		"format": "png",
+		"width": 3,
+		"height": 2
+	},
+	"baseline.jpg": {
+		"format": "jpeg",
+		"width": 5,
+		"height": 3
+	},
+	"progressive.jpg": {
+		"format": "jpeg",
+		"width": 7,
+		"height": 4
+	},
+	"gif.gif": {
+		"format": "gif",
+		"width": 9,
+		"height": 5
+	},
+	"lossy.webp": {
+		"format": "webp",
+		"width": 11,
+		"height": 6
+	},
+	"lossless.webp": {
+		"format": "webp",
+		"width": 13,
+		"height": 7
+	},
+	"alpha.webp": {
+		"format": "webp",
+		"width": 15,
+		"height": 8
+	},
+	"avif.avif": {
+		"format": "avif",
+		"width": 17,
+		"height": 9
+	}
+}
