@@ -1546,3 +1546,213 @@ describe("WorkflowDispatch.cancelRun", () => {
 		assert.throws(() => WorkflowDispatch.makeTest().cancelRun(1), /cancelRun\(\) was called but not stubbed/);
 	});
 });
+
+describe("WorkflowDispatch.dispatchWithRun", () => {
+	const ROUTE = "POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches";
+	const DETAILS = {
+		workflow_run_id: 9001,
+		run_url: "https://api.github.com/repos/acme/widget/actions/runs/9001",
+		html_url: "https://github.com/acme/widget/actions/runs/9001",
+	};
+
+	it.effect("a 200 is Some run, and the request carries return_run_details with ref and inputs", () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* viaFixtures(
+				{ request: { [ROUTE]: DETAILS } },
+				WorkflowDispatch,
+				WorkflowDispatch,
+				(w) => w.dispatchWithRun("release.yml", "main", { dryRun: "false" }),
+			);
+			assert.isTrue(Option.isSome(value));
+			if (Option.isSome(value)) {
+				assert.strictEqual(value.value.runId, 9001);
+				assert.strictEqual(value.value.runUrl, DETAILS.run_url);
+				assert.strictEqual(value.value.htmlUrl, DETAILS.html_url);
+			}
+			assert.lengthOf(requested, 1);
+			assert.strictEqual(requested[0]?.route, ROUTE);
+			assert.strictEqual(requested[0]?.params.workflow_id, "release.yml");
+			assert.strictEqual(requested[0]?.params.ref, "main");
+			assert.deepStrictEqual(requested[0]?.params.inputs, { dryRun: "false" });
+			assert.strictEqual(requested[0]?.params.return_run_details, true);
+		}),
+	);
+
+	it.effect("puts return_run_details on the wire through the real client", () =>
+		Effect.gen(function* () {
+			const { value, script } = yield* drive(
+				[{ status: 200, body: DETAILS }],
+				WorkflowDispatch,
+				WorkflowDispatch,
+				(w) => w.dispatchWithRun("release.yml", "main", { dryRun: "false" }),
+			);
+			assert.isTrue(Option.isSome(value));
+			assert.strictEqual(script.calls[0]?.method, "POST");
+			assert.strictEqual(script.calls[0]?.path, "/repos/acme/widget/actions/workflows/release.yml/dispatches");
+			assert.deepStrictEqual(JSON.parse(script.calls[0]?.body ?? "null"), {
+				ref: "main",
+				inputs: { dryRun: "false" },
+				return_run_details: true,
+			});
+		}),
+	);
+
+	it.effect("a 204 with no body is None, not a failure", () =>
+		Effect.gen(function* () {
+			// What a GitHub Enterprise Server predating the field answers: driven
+			// through the real client so octokit's own 204 handling is what is read.
+			const { value, script } = yield* drive([{ status: 204 }], WorkflowDispatch, WorkflowDispatch, (w) =>
+				w.dispatchWithRun("release.yml", "main"),
+			);
+			assert.isTrue(Option.isNone(value));
+			assert.strictEqual(script.count(), 1);
+		}),
+	);
+
+	it.effect("a 200 whose body is not run details fails decode", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				drive(
+					[{ status: 200, body: { workflow_run_id: "nine", run_url: DETAILS.run_url } }],
+					WorkflowDispatch,
+					WorkflowDispatch,
+					(w) => w.dispatchWithRun("release.yml", "main"),
+				),
+			);
+			assert.strictEqual(error._tag, "GitHubError");
+			assert.strictEqual(error.kind, "decode");
+			assert.strictEqual(error.operation, "WorkflowDispatch.dispatchWithRun");
+		}),
+	);
+
+	it.effect("a 404 or 422 passes through as the client classified it", () =>
+		Effect.gen(function* () {
+			for (const [status, kind] of [
+				[404, "notFound"],
+				[422, "rejected"],
+			] as const) {
+				const error = yield* Effect.flip(
+					viaFixtures(
+						{ request: { [ROUTE]: GitHubFixtures.failure({ status, body: { message: "nope" } }) } },
+						WorkflowDispatch,
+						WorkflowDispatch,
+						(w) => w.dispatchWithRun("release.yml", "main"),
+					),
+				);
+				if (error._tag !== "GitHubError") return assert.fail(`expected a GitHubError, got ${error._tag}`);
+				assert.strictEqual(error.kind, kind, String(status));
+				assert.strictEqual(error.status, status);
+			}
+		}),
+	);
+
+	it.effect("plain dispatch does not send return_run_details", () =>
+		Effect.gen(function* () {
+			const { script } = yield* drive([{ status: 204 }], WorkflowDispatch, WorkflowDispatch, (w) =>
+				w.dispatch("release.yml", "main", { dryRun: "false" }),
+			);
+			assert.deepStrictEqual(JSON.parse(script.calls[0]?.body ?? "null"), {
+				ref: "main",
+				inputs: { dryRun: "false" },
+			});
+		}),
+	);
+
+	it("makeTest names dispatchWithRun when it is unstubbed", () => {
+		assert.throws(
+			() => WorkflowDispatch.makeTest().dispatchWithRun("a.yml", "main"),
+			/dispatchWithRun\(\) was called but not stubbed/,
+		);
+	});
+});
+
+describe("WorkflowDispatch.dispatchAndWait run identity", () => {
+	const runById = (status: string, conclusion?: string) => ({
+		status: 200,
+		body: {
+			id: 9001,
+			status,
+			html_url: "https://github.com/acme/widget/actions/runs/9001",
+			...(conclusion !== undefined ? { conclusion } : {}),
+		},
+	});
+
+	it.effect("polls exactly the run GitHub reported, never the run list", () =>
+		Effect.gen(function* () {
+			const { script, base } = harness([
+				{
+					status: 200,
+					body: {
+						workflow_run_id: 9001,
+						run_url: "https://api.github.com/repos/acme/widget/actions/runs/9001",
+						html_url: "https://github.com/acme/widget/actions/runs/9001",
+					},
+				},
+				runById("queued"),
+				runById("in_progress"),
+				runById("completed", "success"),
+			]);
+			const fiber = yield* Effect.forkChild(
+				Effect.provide(
+					Effect.flatMap(WorkflowDispatch, (workflows) =>
+						workflows.dispatchAndWait("ci.yml", "main", {
+							poll: { interval: Duration.seconds(1), timeout: Duration.seconds(30) },
+						}),
+					),
+					WorkflowDispatch.layer.pipe(Layer.provideMerge(base)),
+				),
+			);
+			// Past the whole poll window, so a regression that polls the wrong route
+			// fails on the assertions below instead of hanging.
+			yield* TestClock.adjust(Duration.seconds(60));
+			const status = yield* Fiber.join(fiber);
+			assert.strictEqual(status.id, 9001);
+			assert.strictEqual(status.conclusion, "success");
+			const polls = script.calls.slice(1);
+			assert.lengthOf(polls, 3);
+			for (const call of polls) {
+				assert.strictEqual(call.method, "GET");
+				assert.strictEqual(call.path, "/repos/acme/widget/actions/runs/9001");
+			}
+		}),
+	);
+
+	it.effect("falls back to the run list when the dispatch answers 204", () =>
+		Effect.gen(function* () {
+			const { script, base } = harness([
+				{ status: 204 },
+				{
+					status: 200,
+					body: {
+						total_count: 1,
+						workflow_runs: [
+							{
+								id: 5,
+								status: "completed",
+								conclusion: "success",
+								html_url: "https://x/5",
+								path: ".github/workflows/ci.yml",
+							},
+						],
+					},
+				},
+			]);
+			const fiber = yield* Effect.forkChild(
+				Effect.provide(
+					Effect.flatMap(WorkflowDispatch, (workflows) =>
+						workflows.dispatchAndWait("ci.yml", "main", {
+							poll: { interval: Duration.seconds(1), timeout: Duration.seconds(30) },
+						}),
+					),
+					WorkflowDispatch.layer.pipe(Layer.provideMerge(base)),
+				),
+			);
+			yield* TestClock.adjust(Duration.seconds(10));
+			const status = yield* Fiber.join(fiber);
+			assert.strictEqual(status.id, 5);
+			assert.strictEqual(script.calls[1]?.path, "/repos/acme/widget/actions/runs");
+			assert.strictEqual(script.queryOf(1).get("branch"), "main");
+			assert.isTrue(script.queryOf(1).get("created")?.startsWith(">=") ?? false);
+		}),
+	);
+});

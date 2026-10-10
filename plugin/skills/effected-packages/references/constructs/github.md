@@ -44,6 +44,7 @@
 | `DeploymentEnvironment` | Class | Create or update, list and delete a repository's deployment environments. | create update list and delete a deployment environment, environment protection rules |
 | `DeploymentEnvironmentInfo` | Interface | A deployment environment, as listing returns it. | |
 | `DeploymentEnvironmentShape` | Interface | Create or update, list and delete a repository's deployment environments. | |
+| `DispatchedRun` | Class | The run a `workflow_dispatch` created, as GitHub reports it when asked. | the run id and urls github returns when a workflow dispatch is asked for run details |
 | `ExtraPermission` | Class | A permission the token has and did not need. | a permission a token was granted beyond what was required |
 | `FileChange` | Variable + TypeAlias | One change in a commit. | a file content write or deletion to include in a commit's tree |
 | `FileContent` | Class | A file to write in a commit. | a file to write in a commit, path content and blob mode |
@@ -144,7 +145,7 @@
 | `UpsertedPullRequest` | Interface | What `PullRequestShape.upsert` did. | |
 | `VariableInfo` | Interface | A variable's name and value, as listing returns it. | |
 | `VersionFromTag` | TypeAlias | Read a version out of a tag name. | |
-| `WorkflowDispatch` | Class | Dispatch workflows, wait for the run they start, and list the repository's workflows. | trigger a workflow dispatch event, poll a dispatched run until it finishes, cancel a run |
+| `WorkflowDispatch` | Class | Dispatch workflows, wait for the run they start, and list the repository's workflows. | trigger a workflow dispatch event and get back the run it created, poll a dispatched run until it finishes, cancel a run |
 | `WorkflowDispatchShape` | Interface | Dispatch workflows, wait for the run they start, and list the repository's workflows. | |
 | `WorkflowInfo` | Interface | One workflow defined in the repository. | |
 | `WorkflowRunStatus` | Class | Where a workflow run has got to. | a workflow run's id status and conclusion, whether a dispatched run has finished |

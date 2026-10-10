@@ -167,6 +167,7 @@ export {
 	TokenPermissions,
 } from "./TokenPermissions.js";
 export {
+	DispatchedRun,
 	type PollOptions,
 	WorkflowDispatch,
 	type WorkflowDispatchShape,
