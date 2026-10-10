@@ -188,18 +188,40 @@ export class GitHubError extends Schema.TaggedError<GitHubError>()("GitHubError"
 	 * under test.
 	 */
 	static fromOctokit(operation: string, error: unknown, nowMillis: number): GitHubError {
-		const facts = readThrowable(error);
-		const retryAfterMillis = retryAfterMillisFrom(facts.headers, nowMillis);
-		const kind = classify(facts, retryAfterMillis);
-		return new GitHubError({
-			kind,
+		return fromFacts(operation, readThrowable(error), nowMillis, error);
+	}
+
+	/**
+	 * Classify a raw HTTP response: a status, its headers and its JSON body.
+	 *
+	 * @remarks
+	 * For a response that never went through octokit, such as one a test
+	 * records with `GitHubFixtures.failure` or one a consumer fetched itself. It
+	 * reads the same facts {@link GitHubError.fromOctokit} reads (`reason` from
+	 * `body.message`, else `HTTP <status>`, sanitized the same way; `validation`
+	 * from `body.errors`) and runs the same classifier, so a raw response and
+	 * the octokit error for it classify identically.
+	 *
+	 * Header names are matched in any case. `nowMillis` turns an absolute
+	 * rate-limit reset into a delay, as in {@link GitHubError.fromOctokit}.
+	 */
+	static fromResponse(
+		operation: string,
+		response: {
+			readonly status: number;
+			readonly headers?: Readonly<Record<string, string>> | undefined;
+			readonly body?: unknown;
+		},
+		nowMillis = 0,
+	): GitHubError {
+		const body = asRecord(response.body);
+		const message = typeof body?.message === "string" ? body.message : `HTTP ${response.status}`;
+		return fromFacts(
 			operation,
-			reason: facts.reason,
-			...(facts.status !== undefined ? { status: facts.status } : {}),
-			...(retryAfterMillis !== undefined ? { retryAfterMillis } : {}),
-			...(facts.validation.length > 0 ? { validation: facts.validation } : {}),
-			cause: error,
-		});
+			factsFrom(response.status, lowercaseKeys(response.headers), message, body),
+			nowMillis,
+			undefined,
+		);
 	}
 
 	/**
@@ -274,15 +296,53 @@ const readThrowable = (error: unknown): Throwable => {
 	}
 	const record = error as Record<string, unknown>;
 	const response = asRecord(record.response);
-	const headers = asRecord(response?.headers);
-	const data = asRecord(response?.data);
-	return {
-		status: typeof record.status === "number" ? record.status : undefined,
-		headers,
-		reason: sanitizeReason(typeof record.message === "string" ? record.message : String(error)),
-		validation: readValidation(data),
-	};
+	return factsFrom(
+		typeof record.status === "number" ? record.status : undefined,
+		asRecord(response?.headers),
+		typeof record.message === "string" ? record.message : String(error),
+		asRecord(response?.data),
+	);
 };
+
+/**
+ * The classification facts from a response's parts: the half shared by
+ * {@link GitHubError.fromOctokit} and {@link GitHubError.fromResponse}.
+ * `headers` must already be lowercase-keyed.
+ */
+const factsFrom = (
+	status: number | undefined,
+	headers: Readonly<Record<string, unknown>> | undefined,
+	message: string,
+	data: Record<string, unknown> | undefined,
+): Throwable => ({
+	status,
+	headers,
+	reason: sanitizeReason(message),
+	validation: readValidation(data),
+});
+
+/** Classify `facts` and build the error: the one place a `GitHubError` is classified. */
+const fromFacts = (operation: string, facts: Throwable, nowMillis: number, cause: unknown): GitHubError => {
+	const retryAfterMillis = retryAfterMillisFrom(facts.headers, nowMillis);
+	const kind = classify(facts, retryAfterMillis);
+	return new GitHubError({
+		kind,
+		operation,
+		reason: facts.reason,
+		...(facts.status !== undefined ? { status: facts.status } : {}),
+		...(retryAfterMillis !== undefined ? { retryAfterMillis } : {}),
+		...(facts.validation.length > 0 ? { validation: facts.validation } : {}),
+		...(cause !== undefined ? { cause } : {}),
+	});
+};
+
+/** Header names as octokit delivers them: lowercase. A caller may write `Retry-After`. */
+const lowercaseKeys = (
+	headers: Readonly<Record<string, string>> | undefined,
+): Readonly<Record<string, string>> | undefined =>
+	headers === undefined
+		? undefined
+		: Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
 	typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;

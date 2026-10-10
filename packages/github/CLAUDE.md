@@ -53,5 +53,6 @@ Durable knowledge lives in the bundle, not here. Start at
 - Import `blakejs` as a default import only, and keep `internal/crypto.ts`
   imported by `RepositorySecret` and nothing else.
 - Wrap a `static readonly layer` factory in an arrow; classify status codes
-  only in `GitHubError.fromOctokit`; narrow ids only through
-  `internal/ids.ts`; paginate every list read.
+  only through `GitHubError`'s shared `classify` (`fromOctokit` /
+  `fromResponse`); narrow ids only through `internal/ids.ts`; paginate
+  every list read.

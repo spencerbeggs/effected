@@ -335,3 +335,79 @@ describe("readRateLimitHeaders", () => {
 		);
 	});
 });
+
+describe("GitHubError.fromResponse", () => {
+	/** The #823 body: a duplicate release, which carries the code and no prose. */
+	const DUPLICATE_RELEASE = {
+		message: "Validation Failed",
+		errors: [{ resource: "Release", code: "already_exists", field: "tag_name" }],
+	};
+
+	it("classifies raw responses through the same table as fromOctokit", () => {
+		const cases: ReadonlyArray<{
+			status: number;
+			headers?: Record<string, string>;
+			body?: unknown;
+			kind: string;
+			retryAfterMillis?: number;
+		}> = [
+			{ status: 503, kind: "transport" },
+			{ status: 429, kind: "rateLimited" },
+			{ status: 403, headers: { "retry-after": "30" }, kind: "rateLimited", retryAfterMillis: 30_000 },
+			{ status: 403, kind: "unauthorized" },
+			{ status: 404, kind: "notFound" },
+			{ status: 422, body: DUPLICATE_RELEASE, kind: "alreadyExists" },
+			{ status: 422, body: { message: "Validation Failed", errors: [{ code: "invalid" }] }, kind: "rejected" },
+		];
+		for (const entry of cases) {
+			const error = GitHubError.fromResponse("op", entry, NOW);
+			const label = `${entry.status} ${JSON.stringify(entry.headers ?? {})}`;
+			assert.strictEqual(error.kind, entry.kind, label);
+			assert.strictEqual(error.status, entry.status, label);
+			assert.strictEqual(error.operation, "op", label);
+			assert.strictEqual(error.retryAfterMillis, entry.retryAfterMillis, label);
+			// The same facts through octokit's shape classify identically: one classifier.
+			const viaOctokit = GitHubError.fromOctokit(
+				"op",
+				{
+					status: entry.status,
+					message: "x",
+					response: { headers: entry.headers ?? {}, data: entry.body ?? {} },
+				},
+				NOW,
+			);
+			assert.strictEqual(viaOctokit.kind, error.kind, `${label} matches fromOctokit`);
+		}
+	});
+
+	it("reads the reason from body.message, else the status, and keeps the validation entries", () => {
+		const duplicate = GitHubError.fromResponse("op", { status: 422, body: DUPLICATE_RELEASE });
+		assert.strictEqual(duplicate.reason, "Validation Failed");
+		assert.deepStrictEqual(
+			duplicate.validation?.map((entry) => ({ ...entry })),
+			[{ resource: "Release", code: "already_exists", field: "tag_name" }],
+		);
+		assert.strictEqual(GitHubError.fromResponse("op", { status: 502 }).reason, "HTTP 502");
+		assert.strictEqual(GitHubError.fromResponse("op", { status: 502, body: "<html>oops</html>" }).reason, "HTTP 502");
+	});
+
+	it("sanitizes the body message exactly as fromOctokit sanitizes octokit's", () => {
+		const html = GitHubError.fromResponse("op", { status: 500, body: { message: "<!DOCTYPE html><p>down</p>" } });
+		assert.strictEqual(html.reason, "GitHub returned an HTML error page instead of a JSON response");
+		const long = GitHubError.fromResponse("op", { status: 500, body: { message: "x".repeat(2000) } });
+		assert.isBelow(long.reason.length, 600);
+	});
+
+	it("reads headers in any case", () => {
+		const titled = GitHubError.fromResponse("op", { status: 403, headers: { "Retry-After": "5" } }, NOW);
+		assert.strictEqual(titled.kind, "rateLimited");
+		assert.strictEqual(titled.retryAfterMillis, 5_000);
+		const reset = GitHubError.fromResponse(
+			"op",
+			{ status: 403, headers: { "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": String(NOW / 1000 + 60) } },
+			NOW,
+		);
+		assert.strictEqual(reset.kind, "rateLimited");
+		assert.strictEqual(reset.retryAfterMillis, 60_000);
+	});
+});

@@ -1,9 +1,12 @@
 import { assert, describe, it } from "@effect/vitest";
-import { ConfigProvider, Duration, Effect, Exit, Option, Redacted, Schema, Stream } from "effect";
+import { ConfigProvider, Duration, Effect, Exit, Layer, Option, Redacted, Schema, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import type { RecordedCall } from "../src/GitHubClient.js";
-import { GitHubClient } from "../src/GitHubClient.js";
+import { GitHubClient, GitHubFixtures } from "../src/GitHubClient.js";
 import { GitHubError } from "../src/GitHubError.js";
+import { GitHubRelease } from "../src/GitHubRelease.js";
 import { GraphQLDocument } from "../src/GraphQL.js";
+import { Repo } from "../src/Repo.js";
 import { RateLimitSnapshot, RetryPolicy } from "../src/Resilience.js";
 import { PageOptions } from "../src/Rest.js";
 import type { Reply } from "./fixtures.js";
@@ -763,6 +766,76 @@ describe("GitHubClient.layerFixture", () => {
 				GitHubClient.layerFixture({ rateLimit: snapshot }),
 			);
 			assert.deepStrictEqual(observed, Option.some(snapshot));
+		}),
+	);
+});
+
+describe("GitHubFixtures.failure", () => {
+	const DUPLICATE_RELEASE = {
+		message: "Validation Failed",
+		errors: [{ resource: "Release", code: "already_exists", field: "tag_name" }],
+	};
+
+	it.effect("surfaces a recorded raw 422 through GitHubRelease.create as alreadyExists (#823)", () =>
+		Effect.gen(function* () {
+			const fixture = GitHubClient.layerFixture({
+				request: {
+					"POST /repos/{owner}/{repo}/releases": GitHubFixtures.failure({ status: 422, body: DUPLICATE_RELEASE }),
+				},
+			});
+			const error = yield* Effect.flip(
+				Effect.flatMap(GitHubRelease, (releases) => releases.create({ tag: "v1.0.0" })).pipe(
+					Effect.provide(Layer.mergeAll(GitHubRelease.layer.pipe(Layer.provide(fixture)), Repo.layerFromSlug("o/r"))),
+				),
+			);
+			assert.instanceOf(error, GitHubError);
+			assert.strictEqual(error.kind, "alreadyExists");
+			assert.strictEqual(error.status, 422);
+		}),
+	);
+
+	it.effect("fails request, requestDecoded and paginate, classified at call time on Clock", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(1_800_000_000_000);
+			const resetIn60s = GitHubFixtures.failure({
+				status: 403,
+				headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(1_800_000_000 + 60) },
+			});
+			const layer = GitHubClient.layerFixture({
+				request: { "GET /repos/{owner}/{repo}": resetIn60s, "GET /rate_limit": resetIn60s },
+				paginate: { "GET /repos/{owner}/{repo}/pulls": GitHubFixtures.failure({ status: 404 }) },
+			});
+			yield* Effect.provide(
+				Effect.gen(function* () {
+					const client = yield* GitHubClient;
+					const viaRequest = yield* Effect.flip(client.request("GET /repos/{owner}/{repo}", { owner: "o", repo: "r" }));
+					assert.strictEqual(viaRequest.kind, "rateLimited");
+					assert.strictEqual(viaRequest.retryAfterMillis, 60_000, "relative to TestClock, not the epoch");
+					yield* TestClock.adjust(Duration.seconds(20));
+					const decoded = yield* Effect.flip(client.requestDecoded("GET /rate_limit", {}, Schema.Unknown));
+					assert.strictEqual(decoded.kind, "rateLimited");
+					assert.strictEqual(decoded.retryAfterMillis, 40_000, "classified per call, not once at layer build");
+					const paged = yield* Effect.flip(
+						client.paginate("GET /repos/{owner}/{repo}/pulls", { owner: "o", repo: "r" }),
+					);
+					assert.strictEqual(paged.kind, "notFound");
+					assert.strictEqual(paged.operation, "GET /repos/{owner}/{repo}/pulls");
+				}),
+				layer,
+			);
+		}),
+	);
+
+	it.effect("never mistakes a same-shaped plain value for a failure", () =>
+		Effect.gen(function* () {
+			const lookalike = { status: 422, body: DUPLICATE_RELEASE };
+			const data = yield* Effect.provide(
+				Effect.flatMap(GitHubClient, (client) =>
+					client.request("GET /repos/{owner}/{repo}", { owner: "o", repo: "r" }),
+				),
+				GitHubClient.layerFixture({ request: { "GET /repos/{owner}/{repo}": lookalike } }),
+			);
+			assert.strictEqual(data as unknown, lookalike, "a plain object is data, served as-is");
 		}),
 	);
 });

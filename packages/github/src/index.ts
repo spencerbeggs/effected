@@ -86,7 +86,8 @@ export {
 	GitHubClient,
 	type GitHubClientOptions,
 	type GitHubClientShape,
-	type GitHubFixtures,
+	GitHubFixtures,
+	RawFailure,
 	type RecordedCall,
 } from "./GitHubClient.js";
 export {
