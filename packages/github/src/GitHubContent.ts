@@ -24,6 +24,12 @@ export interface GitHubContentShape {
 	 * Fails `notFound` when the path does not exist, and `rejected` when it is a
 	 * directory, is not a regular file, or is too large for the contents API
 	 * (which answers an empty body above roughly a megabyte).
+	 *
+	 * Fails `decode` when the payload is not valid base64. Only **standard,
+	 * padded** base64 is accepted, which is what the contents API sends; the
+	 * line breaks it wraps the payload with are ignored. Unpadded or URL-safe
+	 * (`-`/`_`) input is rejected rather than guessed at. The bytes decode as
+	 * UTF-8, keeping a leading BOM as content.
 	 */
 	readonly getFile: (
 		path: string,
