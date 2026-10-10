@@ -1,6 +1,6 @@
 {
 	"name": "@effected/github-commands",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"private": true,
 	"description": "The GitHub Actions workflow-command grammar as pure functions: render a command, and neutralize text so the runner cannot read it as one.",
 	"keywords": ["github", "github-actions", "workflow-command", "grammar", "neutralize", "effected"],

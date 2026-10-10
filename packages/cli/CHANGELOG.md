@@ -1,5 +1,25 @@
 # @effected/cli
 
+## 0.16.1
+
+### Bug Fixes
+
+- `Render.githubLog` now neutralizes legacy `##[` workflow commands inside `Doc.annotation` messages, titles and file names, and inside collapsible group titles, the same way it already did for plain lines. Text a bundle author or pull request controls can no longer inject `##[group]`, `##[endgroup]` or similar into an annotation line. Closes #980.
+- `@effected/cli/ui/testing` no longer leaks a cursor-show escape (`ESC[?25h`) to the test runner's real stderr when a test mounts an Ink view on the fake streams. Closes #983. [#986][#986]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/env | dependency | updated | 0.1.0 | 0.1.1 |
+| @effected/github-commands | dependency | updated | 0.2.0 | 0.2.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#986]: https://github.com/spencerbeggs/effected/pull/986
+
 ## 0.16.0
 
 ### Features

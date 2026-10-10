@@ -1,6 +1,6 @@
 {
 	"name": "@effected/images",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"private": true,
 	"description": "Image facts (format, MIME type, dimensions) from bytes, and a generated-image cache, for Effect.",
 	"keywords": ["image", "dimensions", "png", "jpeg", "webp", "avif", "cache", "effect", "effected"],

@@ -1,5 +1,17 @@
 # @effected/env
 
+## 0.1.1
+
+### Maintenance
+
+- Republished to re-verify the package's npm trusted publishing setup. No code changes. [#986][#986]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#986]: https://github.com/spencerbeggs/effected/pull/986
+
 ## 0.1.0
 
 ### Breaking Changes
