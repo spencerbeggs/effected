@@ -111,9 +111,14 @@ export interface CachedTokenRequest extends TokenRequest {
 	 */
 	readonly installationId: number;
 	/**
-	 * How long before its expiry a stored token stops being served, and so the
-	 * minimum lifetime a caller can count on. Defaults to five minutes; must be
-	 * finite and not negative.
+	 * How long before its expiry a stored token stops being served. Defaults to
+	 * five minutes; must be finite and not negative.
+	 *
+	 * @remarks
+	 * A served token has at least `margin` left to live unless GitHub issued it
+	 * with less than that, in which case it is returned once and not stored.
+	 * GitHub issues installation tokens for an hour, so a margin of an hour or
+	 * more guarantees that case: every call mints and nothing is cached.
 	 */
 	readonly margin?: Duration.Input | undefined;
 }
@@ -534,8 +539,14 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 	 * `GitHubApp` and an `InstallationTokenStore` provided once at the edge.
 	 * Unlike {@link GitHubApp.clientLayer} it **never revokes** the token, not
 	 * even on release, because the token is shared through the store, and it
-	 * does not rotate: the token it holds is good for at least `margin`, so set
-	 * `margin` longer than the scope's work can take.
+	 * does not rotate, so set `margin` longer than the scope's work can take;
+	 * the token is good for at least `margin` unless GitHub issued it with less
+	 * (see {@link CachedTokenRequest.margin}).
+	 *
+	 * `options` configures this client's transport only, not the mint: the
+	 * token is minted by whichever `GitHubApp` the edge provides. On GitHub
+	 * Enterprise, build that with the same API root, for example
+	 * `GitHubApp.layerWith({ baseUrl })`, or the mint goes to github.com.
 	 *
 	 * @example
 	 * ```ts
@@ -555,7 +566,7 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 	 *     ),
 	 *   );
 	 *
-	 * // Once, at the edge.
+	 * // Once, at the edge. On GitHub Enterprise, use GitHubApp.layerWith({ baseUrl }).
 	 * const Live = Layer.mergeAll(GitHubApp.layer, InstallationTokenStore.layerMemory);
 	 *
 	 * Effect.runPromise(Effect.provide(handle(42), Live));
