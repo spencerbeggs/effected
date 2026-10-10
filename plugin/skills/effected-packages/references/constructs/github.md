@@ -38,6 +38,7 @@
 | `CommitFile` | Class | One changed file. | one file's path status additions deletions from a commit or comparison |
 | `CommitRef` | Class | A commit, projected to the three fields callers actually use. | a commit's sha, tree sha, and parent shas for building a tree |
 | `CommitSummary` | Class | A commit, projected to what callers read. | a commit projected to sha message author and parents |
+| `CompleteCheckRunOptions` | Interface | Options for `CheckRunShape.complete`. | |
 | `ConcludeCheckRun` | TypeAlias | Conclude the surrounding `CheckRunShape.withCheckRun` explicitly. | |
 | `CreateCheckRunOptions` | Interface | Options for `CheckRunShape.create`. | |
 | `DeploymentEnvironment` | Class | Create or update, list and delete a repository's deployment environments. | create update list and delete a deployment environment, environment protection rules |

@@ -17,6 +17,15 @@ export class InvalidRepoRefError extends Schema.TaggedError<InvalidRepoRefError>
 /**
  * Which repository an operation acts on.
  *
+ * @remarks
+ * **`RepoRef.make` validates at construction and throws** on an empty `owner`
+ * or `repo`, so inside an `Effect` a bad value dies rather than failing. That
+ * is right for a coordinate the program itself spells out, and wrong for one
+ * built from data: for a slug read from a database row, a config file or a
+ * webhook, use {@link RepoRef.parse}, which fails with a typed
+ * {@link InvalidRepoRefError} instead (or {@link RepoRef.parseResult}
+ * outside an `Effect`).
+ *
  * @public
  */
 export class RepoRef extends Schema.Class<RepoRef>("RepoRef")({
@@ -42,7 +51,13 @@ export class RepoRef extends Schema.Class<RepoRef>("RepoRef")({
 		return Result.succeed(RepoRef.make({ owner, repo }));
 	}
 
-	/** Parse `"owner/repo"`. */
+	/**
+	 * Parse `"owner/repo"`, failing with a typed {@link InvalidRepoRefError}.
+	 *
+	 * @remarks
+	 * The typed path for building a `Repo` from stored data, such as a stored
+	 * `full_name`: a malformed value fails here, where `make` would die.
+	 */
 	static readonly parse = Effect.fn("RepoRef.parse")((slug: string) => Effect.fromResult(RepoRef.parseResult(slug)));
 
 	/** `"owner/repo"`. */

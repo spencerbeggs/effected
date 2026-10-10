@@ -115,10 +115,10 @@ the bracket's scope, or when the run outlives the effect that created it.
 
 | Member | Signature | Note |
 | --- | --- | --- |
-| `create(name, headSha)` | `Effect<CheckRunRef, GitHubError, Repo>` | Starts `in_progress` |
+| `create(name, headSha, options?)` | `Effect<CheckRunRef, GitHubError, Repo>` | Starts `in_progress`; `options` can queue it and set `externalId` / `detailsUrl` |
 | `get(id)` | `Effect<CheckRunRef, GitHubError, Repo>` | |
-| `update(id, output)` | `Effect<void, GitHubError, Repo>` | Output truncated on the way out |
-| `complete(id, conclusion, output?)` | `Effect<void, GitHubError, Repo>` | `output` optional; truncated when present |
+| `update(id, output?, options?)` | `Effect<void, GitHubError, Repo>` | Output truncated on the way out; omit it (`undefined`) to send no `output` key and change only `status` / `detailsUrl` |
+| `complete(id, conclusion, output?, options?)` | `Effect<void, GitHubError, Repo>` | `output` optional, truncated when present; `options.detailsUrl` links the finished run |
 
 `CheckRunRef` is `{ id, name, url, status }`; `url` falls back to `""` when
 GitHub's `html_url` is absent.

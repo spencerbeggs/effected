@@ -415,7 +415,14 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 	 * `perPage` and `maxPages` cannot behave differently here than in production.
 	 *
 	 * `fixtures.requested` is appended to as the test runs, so a suite can assert
-	 * which routes were walked and at what page size.
+	 * which routes were walked, with what params and at what page size.
+	 *
+	 * **It records every call it serves, including one that fails.** A call
+	 * answered by a recorded `GitHubError` or a
+	 * {@link (GitHubFixtures:variable).failure} is recorded before it fails, so
+	 * one fixture both records the calls and classifies a raw failure the way
+	 * the live client would; there is no need to classify by hand inside a
+	 * {@link GitHubClient.layerTest} handler.
 	 */
 	static readonly layerFixture = (fixtures: GitHubFixtures): Layer.Layer<GitHubClient> =>
 		Layer.succeed(GitHubClient, makeFixture(fixtures));

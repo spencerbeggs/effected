@@ -33,7 +33,7 @@ only the instance specific to `@effected/github-actions`, `@effected/github`,
 
 Three parts of the contract matter, and code written against an older shape is wrong rather than merely dated. Check the fixture's behaviour, not a version number.
 
-**`requested` records every call, with params.** It is `Array<RecordedCall>` — `{ kind: "request" | "requestDecoded" | "paginate" | "graphql", route, params, perPage? }` — not a `{ route, perPage }` pair — and it covers `request` calls too, so a suite can assert what each call sent, not only its route. Assert the whole entry:
+**`requested` records every call, with params.** It is `Array<RecordedCall>` — `{ kind: "request" | "requestDecoded" | "paginate" | "graphql", route, params, perPage? }` — not a `{ route, perPage }` pair — and it covers `request` calls too, so a suite can assert what each call sent, not only its route. A call that a recorded `GitHubError` or `GitHubFixtures.failure(...)` fails is recorded too, so one fixture both records and classifies; never classify by hand inside a `layerTest` handler. Assert the whole entry:
 
 ~~~ts
 assert.deepStrictEqual(requested[0], {

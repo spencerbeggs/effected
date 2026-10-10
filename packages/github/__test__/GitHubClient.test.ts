@@ -826,6 +826,46 @@ describe("GitHubFixtures.failure", () => {
 		}),
 	);
 
+	it.effect("records a call that a failure fixture failed, so one fixture both records and classifies", () =>
+		Effect.gen(function* () {
+			const requested: Array<RecordedCall> = [];
+			const layer = GitHubClient.layerFixture({
+				request: {
+					"PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}": GitHubFixtures.failure({ status: 403 }),
+				},
+				paginate: { "GET /repos/{owner}/{repo}/pulls": GitHubFixtures.failure({ status: 404 }) },
+				requested,
+			});
+			const [patched, paged] = yield* Effect.provide(
+				Effect.gen(function* () {
+					const client = yield* GitHubClient;
+					return [
+						yield* Effect.flip(
+							client.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
+								owner: "o",
+								repo: "r",
+								check_run_id: 7,
+								status: "in_progress",
+							}),
+						),
+						yield* Effect.flip(client.paginate("GET /repos/{owner}/{repo}/pulls", { owner: "o", repo: "r" })),
+					] as const;
+				}),
+				layer,
+			);
+			assert.strictEqual(patched.kind, "unauthorized");
+			assert.strictEqual(paged.kind, "notFound");
+			assert.deepStrictEqual(
+				requested.map((call) => [call.kind, call.route]),
+				[
+					["request", "PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}"],
+					["paginate", "GET /repos/{owner}/{repo}/pulls"],
+				],
+			);
+			assert.strictEqual(requested[0]?.params.status, "in_progress", "the params of the failed call");
+		}),
+	);
+
 	it.effect("recognizes a failure made by another copy of the package", () =>
 		Effect.gen(function* () {
 			// Two resolved copies of @effected/github mean two RawFailure classes, so

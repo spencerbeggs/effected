@@ -188,13 +188,14 @@ Uses `CheckRunOutput` (pure class — see `SKILL.md`) for the rendered body.
 
 | Member | Signature | Notes |
 | --- | --- | --- |
-| `create` | `(name, headSha) => Effect<CheckRunRef>` | Starts `in_progress` |
+| `create` | `(name, headSha, options?) => Effect<CheckRunRef>` | Starts `in_progress`, unless `options.status` queues it; `options` also sets `externalId` / `detailsUrl` |
 | `get` | `(id) => Effect<CheckRunRef>` | |
-| `update` | `(id, output: CheckRunOutput) => Effect<void>` | Output is truncated to GitHub's byte budget before the request goes out |
-| `complete` | `(id, conclusion, output?) => Effect<void>` | |
-| `withCheckRun` | `<A,E,R>(name, headSha, use: (id) => Effect<A,E,R>) => Effect<A, E\|GitHubError, R\|Repo>` | Bracket: completes `success` on the use effect's success, `failure` on its error (best-effort, ignored). `use` keeps its own `R` and its own `A` |
+| `update` | `(id, output?, options?) => Effect<void>` | Output is truncated to GitHub's byte budget before the request goes out; omitted, no `output` key is sent, so `options` alone moves `status` / `detailsUrl` |
+| `complete` | `(id, conclusion, output?, options?) => Effect<void>` | Stamps `completed_at` from `Clock`; `options.detailsUrl` links the finished run |
+| `withCheckRun` | `<A,E,R>(name, headSha, use: (id, conclude) => Effect<A,E,R>) => Effect<A, E\|GitHubError, R\|Repo>` | Bracket: concludes `success` on success, `failure` on a typed failure or defect, `cancelled` on an interrupt; a verdict recorded through `conclude` wins on every path. `use` keeps its own `R` and its own `A` |
 
-`CheckRunRef = {id, name, url, status}`. For the full bracket contract
+`CheckRunRef = {id, name, url, status, externalId?}`, decoded from the
+response: a response missing a field fails with a `decode` `GitHubError`. For the full bracket contract
 (reachable conclusions, the exit-aware finalizer, output truncation
 mechanics) see `actions-reporting`'s reference.
 

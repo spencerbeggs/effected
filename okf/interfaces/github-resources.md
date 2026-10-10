@@ -8,8 +8,8 @@ resource: ../../packages/github/src
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T00:53:24Z
-  body_sha256: 9753f0dc954f10adf80646b75d15608f8df95731907cfeb6552ec7840ad12483
+  at: 2026-10-10T01:56:46Z
+  body_sha256: d9cf42a873837a69ef7465fe8346128fb81ba780b0c8698438ae290d2735e5d9
 ---
 
 # @effected/github resource services
@@ -221,9 +221,21 @@ Outside the bracket, the run's surface is additive over the original
 - `create`'s options queue a run instead (a queued run carries no
   `started_at`) and set `external_id` and `details_url`; an empty external id
   is not sent, because no lookup can match it.
-- `update`'s options move the status between queued and in progress and set
-  `details_url`; completing stays on `complete`, which records the
-  conclusion.
+- `update(id, output?, options?)` takes the output as optional: omitted, no
+  `output` key is sent and the run keeps the output it has, so a queued run
+  moves to in progress with only `status` and `details_url`. Its options move
+  the status between queued and in progress and set `details_url`;
+  completing stays on `complete`, which records the conclusion. `update(id)`
+  with neither still sends one PATCH carrying only the coordinates: every
+  call is exactly one request, never a silent skip.
+- `complete(id, conclusion, output?, options?)` takes a `detailsUrl` option,
+  sent as `details_url` only when given, so a finished run can link to the
+  workflow run behind it without losing the `completed_at` stamp or the
+  output byte cap.
+- Every member that answers a run (`create`, `get`, `findByExternalId`)
+  **decodes** the response into `CheckRunRef` rather than constructing it, so
+  a response missing a field fails with a typed `decode` error naming the
+  operation instead of dying.
 - `findByExternalId(headSha, name, externalId)` lists every run of the
   commit filtered by name — `filter: "all"`, since GitHub's default returns
   only the newest run per name and would hide an older match — paginates,
@@ -242,7 +254,10 @@ testable with no client at all. Stripping one trailing replacement
 character after slicing the byte buffer is not enough — a split four-byte
 code point can produce more than one — so the trim runs until the tail is
 clean; a property test asserts the result is valid UTF-8 within budget for
-arbitrary input.
+arbitrary input. The arithmetic runs on `TextEncoder`/`TextDecoder`, never
+the Node `Buffer` global, so it runs on a Worker without `nodejs_compat`; a
+structural test fails on any `Buffer` named under `src/`, and file contents
+decode through core `Base64` for the same reason.
 
 ## The permission comparator is not a service
 
