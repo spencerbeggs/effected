@@ -71,6 +71,8 @@ export {
 	type AppCredentials,
 	AppIdentity,
 	BotIdentity,
+	type CachedToken,
+	type CachedTokenRequest,
 	GitHubApp,
 	GitHubAppError,
 	type GitHubAppOptions,
@@ -121,6 +123,7 @@ export {
 	versionFromTag,
 } from "./GitTag.js";
 export { GitHubGraphQLError, GraphQLDocument, GraphQLErrorEntry } from "./GraphQL.js";
+export { InstallationTokenStore, type InstallationTokenStoreShape } from "./InstallationTokenStore.js";
 export {
 	MergeMethod,
 	PullRequest,

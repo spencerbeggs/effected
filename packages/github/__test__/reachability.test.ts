@@ -55,22 +55,27 @@ const runtimeSpecifiers = (source: string): ReadonlyArray<string> => {
 	return specifiers;
 };
 
-/** Every bare (non-relative) specifier reachable at runtime from `entry`. */
-const reachableBareImports = (entry: string): ReadonlySet<string> => {
+/** Every `src` file reachable at runtime from `entry`, `entry` included. */
+const walk = (entry: string): ReadonlySet<string> => {
 	const seen = new Set<string>();
-	const bare = new Set<string>();
 	const queue = [resolve(SRC, entry)];
 	while (queue.length > 0) {
 		const file = queue.pop();
 		if (file === undefined || seen.has(file)) continue;
 		seen.add(file);
-		const source = readFileSync(file, "utf8");
-		for (const specifier of runtimeSpecifiers(source)) {
-			if (specifier.startsWith(".")) {
-				queue.push(resolve(dirname(file), specifier.replace(/\.js$/, ".ts")));
-			} else {
-				bare.add(specifier);
-			}
+		for (const specifier of runtimeSpecifiers(readFileSync(file, "utf8"))) {
+			if (specifier.startsWith(".")) queue.push(resolve(dirname(file), specifier.replace(/\.js$/, ".ts")));
+		}
+	}
+	return seen;
+};
+
+/** Every bare (non-relative) specifier reachable at runtime from `entry`. */
+const reachableBareImports = (entry: string): ReadonlySet<string> => {
+	const bare = new Set<string>();
+	for (const file of walk(entry)) {
+		for (const specifier of runtimeSpecifiers(readFileSync(file, "utf8"))) {
+			if (!specifier.startsWith(".")) bare.add(specifier);
 		}
 	}
 	return bare;
@@ -146,6 +151,24 @@ describe("bundle reachability", () => {
 			`GitHubClient reaches ${SIGNER} — layerFromApp's dependency has leaked into the token path`,
 		);
 		assert.isTrue(reachable.has("@octokit/core"), "but it does reach the transport it needs");
+	});
+
+	it("the installation token store reaches neither the JWT signer nor the App module", () => {
+		// A store implementation (KV, a Durable Object, D1) imports this module to
+		// implement the seam; it must not drag in the signer to do so. The App
+		// module reaching the store is the control: it proves the walker sees the
+		// edge between the two, so the absence below is not a broken walker.
+		assert.isTrue(
+			[...walk("GitHubApp.ts")].some((file) => file.endsWith("InstallationTokenStore.ts")),
+			"control: GitHubApp imports the store",
+		);
+		assert.isFalse(reachableBareImports("InstallationTokenStore.ts").has(SIGNER));
+		const reached = walk("InstallationTokenStore.ts");
+		assert.isFalse(
+			[...reached].some((file) => file.endsWith("GitHubApp.ts")),
+			"InstallationTokenStore reaches GitHubApp.ts",
+		);
+		assert.deepStrictEqual([...reachableBareImports("InstallationTokenStore.ts")].sort(), ["effect"]);
 	});
 
 	it("the octokit type packages are reachable only as types", () => {

@@ -1,6 +1,7 @@
 import { Jwt, JwtKey } from "@effected/jwt";
 import type { Scope } from "effect";
 import {
+	Cause,
 	Clock,
 	Context,
 	DateTime,
@@ -18,6 +19,7 @@ import type { GitHubClientShape } from "./GitHubClient.js";
 import { GitHubClient, makeClientShape } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
 import { GitHubGraphQLError } from "./GraphQL.js";
+import { InstallationTokenStore } from "./InstallationTokenStore.js";
 import { numericId } from "./internal/ids.js";
 import type { RetryPolicy } from "./Resilience.js";
 
@@ -95,6 +97,38 @@ export interface TokenRequest extends AppCredentials {
 	 * failure names them.
 	 */
 	readonly owner?: string | undefined;
+}
+
+/**
+ * What to fetch a cached installation token for.
+ *
+ * @public
+ */
+export interface CachedTokenRequest extends TokenRequest {
+	/**
+	 * The installation. Required here: discovering it on every request would
+	 * cost a JWT mint and a paginated walk, which defeats the cache.
+	 */
+	readonly installationId: number;
+	/**
+	 * How long before its expiry a stored token stops being served, and so the
+	 * minimum lifetime a caller can count on. Defaults to five minutes; must be
+	 * finite and not negative.
+	 */
+	readonly margin?: Duration.Input | undefined;
+}
+
+/**
+ * An installation token from {@link GitHubApp.cachedToken}, and where it came
+ * from.
+ *
+ * @public
+ */
+export interface CachedToken {
+	/** The token. */
+	readonly token: InstallationToken;
+	/** `"cached"` when it was read from the store, `"minted"` when GitHub issued it just now. */
+	readonly source: "cached" | "minted";
 }
 
 /**
@@ -462,6 +496,81 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 			),
 		);
 
+	/**
+	 * An installation token, reused from an {@link InstallationTokenStore}
+	 * while it has `margin` (five minutes by default) left to live.
+	 *
+	 * @remarks
+	 * For a program that authenticates per request scope (a Worker handling a
+	 * webhook, say) and would otherwise mint a fresh token every time. The store
+	 * is keyed by installation id. A stored value that will not decode, or a
+	 * token within `margin` of expiry, is a miss: the token is minted with
+	 * {@link GitHubAppShape.token} and written back with a TTL of its expiry
+	 * minus `margin`. A token minted with less than `margin` to live is returned
+	 * but not stored.
+	 *
+	 * The store never fails this call: a `get` that fails or dies is a miss and
+	 * a `set` that fails or dies is ignored. Only interruption propagates.
+	 *
+	 * **A cached token is never revoked**: another scope or isolate may be using
+	 * it. It expires on its own, within the hour.
+	 *
+	 * Two concurrent calls that both miss will both mint, and the later write
+	 * wins. That is expected: the store may span isolates, so the kit cannot
+	 * lock it, and an extra token costs one call and expires on its own.
+	 *
+	 * The encoded value written to the store contains the raw token, so
+	 * encrypting it at rest is the store's job.
+	 */
+	static readonly cachedToken = (
+		request: CachedTokenRequest,
+	): Effect.Effect<CachedToken, GitHubAppError, GitHubApp | InstallationTokenStore> => cachedTokenFor(request);
+
+	/**
+	 * A {@link GitHubClient} authenticated with {@link GitHubApp.cachedToken}.
+	 *
+	 * @remarks
+	 * Built per request scope: provide it where the request is handled, over a
+	 * `GitHubApp` and an `InstallationTokenStore` provided once at the edge.
+	 * Unlike {@link GitHubApp.clientLayer} it **never revokes** the token, not
+	 * even on release, because the token is shared through the store, and it
+	 * does not rotate: the token it holds is good for at least `margin`, so set
+	 * `margin` longer than the scope's work can take.
+	 *
+	 * @example
+	 * ```ts
+	 * import { GitHubApp, GitHubClient, InstallationTokenStore } from "@effected/github";
+	 * import { Effect, Layer, Redacted } from "effect";
+	 *
+	 * const handle = (installationId: number) =>
+	 *   Effect.flatMap(GitHubClient, (client) =>
+	 *     client.request("GET /repos/{owner}/{repo}", { owner: "acme", repo: "widgets" }),
+	 *   ).pipe(
+	 *     Effect.provide(
+	 *       GitHubApp.cachedClientLayer({
+	 *         appId: "12345",
+	 *         privateKey: Redacted.make("-----BEGIN RSA PRIVATE KEY-----\n..."),
+	 *         installationId,
+	 *       }),
+	 *     ),
+	 *   );
+	 *
+	 * // Once, at the edge.
+	 * const Live = Layer.mergeAll(GitHubApp.layer, InstallationTokenStore.layerMemory);
+	 *
+	 * Effect.runPromise(Effect.provide(handle(42), Live));
+	 * ```
+	 */
+	static readonly cachedClientLayer = (
+		request: CachedTokenRequest,
+		options: GitHubAppOptions = {},
+	): Layer.Layer<GitHubClient, GitHubAppError, GitHubApp | InstallationTokenStore> =>
+		Layer.unwrap(
+			Effect.map(cachedTokenFor(request), (cached) =>
+				GitHubClient.layerFromToken({ ...options, token: cached.token.token }),
+			),
+		);
+
 	/** An in-memory double; unstubbed members die naming themselves. */
 	static readonly makeTest = (overrides: Partial<GitHubAppShape> = {}): GitHubAppShape => ({
 		token: overrides.token ?? (() => unstubbed("token")),
@@ -520,6 +629,56 @@ export interface GitHubAppShape {
 	/** Every installation of the app. */
 	readonly installations: (credentials: AppCredentials) => Effect.Effect<ReadonlyArray<Installation>, GitHubAppError>;
 }
+
+/** The cached-token margin when a request names none. */
+const DEFAULT_CACHE_MARGIN = Duration.minutes(5);
+
+/** `InstallationToken` as the JSON string an {@link InstallationTokenStore} holds. */
+const StoredToken = Schema.fromJsonString(InstallationToken);
+
+/** A store call that can never fail its caller: failures and defects become `fallback`; interruption propagates. */
+const swallowStore = <A>(effect: Effect.Effect<A>, fallback: A): Effect.Effect<A> =>
+	Effect.catchCause(effect, (cause) =>
+		Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : Effect.succeed(fallback),
+	);
+
+const cachedTokenFor = Effect.fn("GitHubApp.cachedToken")(function* (request: CachedTokenRequest) {
+	const margin = Option.filter(
+		Duration.fromInput(request.margin ?? DEFAULT_CACHE_MARGIN),
+		(duration) => Duration.isFinite(duration) && !Duration.isNegative(duration),
+	);
+	if (Option.isNone(margin)) {
+		return yield* GitHubAppError.of("token", "the cache margin must be a finite, non-negative duration");
+	}
+	const app = yield* GitHubApp;
+	const store = yield* InstallationTokenStore;
+
+	const stored = yield* swallowStore(store.get(request.installationId), Option.none<string>());
+	if (Option.isSome(stored)) {
+		const decoded = yield* Effect.option(Schema.decodeUnknownEffect(StoredToken)(stored.value));
+		const now = yield* Clock.currentTimeMillis;
+		if (
+			Option.isSome(decoded) &&
+			decoded.value.installationId === request.installationId &&
+			!decoded.value.isExpired(now, margin.value)
+		) {
+			return { token: decoded.value, source: "cached" } satisfies CachedToken;
+		}
+	}
+
+	const minted = yield* app.token(request);
+	const now = yield* Clock.currentTimeMillis;
+	const ttlMillis = DateTime.toEpochMillis(minted.expiresAt) - Duration.toMillis(margin.value) - now;
+	// A token that will not outlive the margin is served once but never stored:
+	// a zero or negative TTL means nothing a store can honour.
+	if (ttlMillis > 0) {
+		const encoded = yield* Effect.option(Schema.encodeUnknownEffect(StoredToken)(minted));
+		if (Option.isSome(encoded)) {
+			yield* swallowStore(store.set(request.installationId, encoded.value, Duration.millis(ttlMillis)), undefined);
+		}
+	}
+	return { token: minted, source: "minted" } satisfies CachedToken;
+});
 
 const unstubbed = (member: string): never => {
 	throw new Error(`GitHubApp.makeTest: ${member}() was called but not stubbed — pass an override.`);
