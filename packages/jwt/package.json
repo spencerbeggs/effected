@@ -1,6 +1,6 @@
 {
 	"name": "@effected/jwt",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "JWS, JWT, JWK and JWKS sign and verify over WebCrypto for Effect v4, safe for Workers.",
 	"keywords": ["jwt", "jws", "jwk", "jwks", "webcrypto", "workers", "effect", "effected"],

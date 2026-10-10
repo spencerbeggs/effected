@@ -1,5 +1,13 @@
 # @effected/github-actions
 
+## 0.20.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github | dependency | updated | 0.15.1 | 0.16.0 |
+
 ## 0.20.1
 
 ### Bug Fixes

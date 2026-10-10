@@ -1,5 +1,24 @@
 # @effected/pnpm-plugin-effect
 
+## 0.13.13
+
+### Features
+
+- The `effected` catalog lists `@effected/jwt` at `^0.1.0`. [#984][#984]
+
+### Maintenance
+
+#### Updates 2 catalog:effected versions
+
+- `@effected/github` ^0.15.1 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/github-actions` ^0.20.1 -> ^0.20.2 (peer ^0.20.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) and [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
+[#984]: https://github.com/spencerbeggs/effected/pull/984
+
 ## 0.13.12
 
 ### Maintenance
