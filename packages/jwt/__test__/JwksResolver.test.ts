@@ -356,6 +356,79 @@ describe("JwksResolver freshness and bounds", () => {
 		);
 	}
 
+	it.effect("a lagging store does not shadow the resolver's newer fetch after a rotation", () =>
+		Effect.gen(function* () {
+			const [k1, k2] = [yield* generate("k1"), yield* generate("k2")];
+			const http = stub(issuerRoutes(() => [k1.jwk, k2.jwk]));
+			// An eventually consistent store (KV read through an edge cache): every
+			// write is lost, and every read returns the pre-rotation set, fetched
+			// 40 seconds ago and still inside the TTL.
+			const preRotation = Schema.decodeUnknownSync(Jwks)({ keys: [k1.jwk] });
+			const lagging = Layer.succeed(JwksStore, {
+				get: () => Effect.succeed(Option.some({ jwks: preRotation, fetchedAtMillis: 60_000 })),
+				set: () => Effect.void,
+			});
+			const token = yield* Jws.sign({}, k2.signing);
+			const program = Effect.gen(function* () {
+				yield* TestClock.adjust(Duration.seconds(100));
+				yield* verify(token);
+				assert.strictEqual(http.count(JWKS_URI), 1, "the unknown kid refetched once");
+				yield* verify(token);
+				yield* verify(yield* Jws.sign({}, k1.signing));
+				assert.strictEqual(http.count(JWKS_URI), 1, "the resolver's own fetch serves the second verification");
+			});
+			yield* Effect.provide(program, resolverLayer(http.layer, lagging));
+		}),
+	);
+
+	it.effect("a store that retains nothing does not serialize known-key verifications behind a refetch", () =>
+		Effect.gen(function* () {
+			const [a, c] = [yield* generate("a"), yield* generate("c")];
+			let gate: Deferred.Deferred<void> | undefined;
+			const http = stub((url) => {
+				const base = issuerRoutes(() => [a.jwk])(url);
+				return url === JWKS_URI && gate !== undefined ? { ...base, gate } : base;
+			});
+			const forgetful = Layer.succeed(JwksStore, { get: () => Effect.succeed(Option.none()), set: () => Effect.void });
+			const token = yield* Jws.sign({}, a.signing);
+			const program = Effect.gen(function* () {
+				yield* verify(token);
+				yield* TestClock.adjust(Duration.seconds(31));
+				gate = yield* Deferred.make<void>();
+				// An unknown kid holds the issuer's lock across a refetch that does not answer.
+				const miss = yield* Effect.forkChild(Effect.flip(verify(yield* Jws.sign({}, c.signing))));
+				for (let i = 0; i < 20; i++) yield* Effect.yieldNow;
+				const known = yield* Effect.forkChild(verify(token));
+				for (let i = 0; i < 20; i++) yield* Effect.yieldNow;
+				assert.isDefined(known.pollUnsafe(), "the known kid verified while the refetch was in flight");
+				yield* Deferred.succeed(gate, undefined);
+				assert.strictEqual((yield* Fiber.join(miss)).reason, "unknownKid");
+				yield* Fiber.join(known);
+			});
+			yield* Effect.provide(program, resolverLayer(http.layer, forgetful));
+		}),
+	);
+
+	it.effect("an attacker-chosen kid is capped before it reaches JwtError.kid", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			const long = yield* generate("x".repeat(10_000));
+			const http = stub(issuerRoutes(() => [a.jwk]));
+			const error = yield* Effect.flip(
+				Effect.provide(verify(yield* Jws.sign({}, long.signing)), resolverLayer(http.layer)),
+			);
+			assert.strictEqual(error.reason, "unknownKid");
+			assert.strictEqual(error.kid, `${"x".repeat(32)}…`);
+			assert.isBelow(error.detail.length, 200);
+			// control: a kid inside the bound is carried whole
+			const short = yield* generate("k".repeat(32));
+			const shortError = yield* Effect.flip(
+				Effect.provide(verify(yield* Jws.sign({}, short.signing)), resolverLayer(http.layer)),
+			);
+			assert.strictEqual(shortError.kid, "k".repeat(32));
+		}),
+	);
+
 	it.effect("a fetch that never answers is jwksFetch after the fetch timeout", () =>
 		Effect.gen(function* () {
 			const a = yield* generate("a");

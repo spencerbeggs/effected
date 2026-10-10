@@ -80,6 +80,7 @@ const importKey = (
 		| { readonly format: "jwk"; readonly data: PublicJwk },
 	alg: JwtAlgorithm,
 	usage: "sign" | "verify",
+	extra: { readonly kid: string } | undefined,
 ): Effect.Effect<CryptoKey, JwtError> =>
 	Effect.flatMap(subtle, (crypto) =>
 		Effect.tryPromise({
@@ -87,16 +88,21 @@ const importKey = (
 				material.format === "jwk"
 					? crypto.importKey("jwk", material.data, importParams(alg), true, [usage])
 					: crypto.importKey("pkcs8", material.data, importParams(alg), false, [usage]),
-			catch: (cause) => JwtError.of("key", `the key does not import as an ${alg} ${material.format} key`, { cause }),
+			catch: (cause) =>
+				JwtError.of("key", `the key does not import as an ${alg} ${material.format} key`, { ...extra, cause }),
 		}),
-	).pipe(Effect.flatMap((key) => checkStrength(key, alg)));
+	).pipe(Effect.flatMap((key) => checkStrength(key, alg, extra)));
 
 /** RFC 7518 §3.3: an RS256 key MUST be 2048 bits or larger. */
 const minimumRsaModulusLength = 2048;
 
 // Both importers pass through here, so neither can bind a short RSA key.
 // WebCrypto reports an RSA key's size on `algorithm.modulusLength`.
-const checkStrength = (key: CryptoKey, alg: JwtAlgorithm): Effect.Effect<CryptoKey, JwtError> => {
+const checkStrength = (
+	key: CryptoKey,
+	alg: JwtAlgorithm,
+	extra: { readonly kid: string } | undefined,
+): Effect.Effect<CryptoKey, JwtError> => {
 	if (alg !== "RS256") return Effect.succeed(key);
 	const { modulusLength } = key.algorithm as { readonly modulusLength?: unknown };
 	return typeof modulusLength === "number" && modulusLength >= minimumRsaModulusLength
@@ -105,6 +111,7 @@ const checkStrength = (key: CryptoKey, alg: JwtAlgorithm): Effect.Effect<CryptoK
 				JwtError.of(
 					"key",
 					`RS256 needs an RSA key of at least ${minimumRsaModulusLength} bits, got ${String(modulusLength)}`,
+					extra,
 				),
 			);
 };
@@ -122,7 +129,12 @@ const fromPkcs8Pem = Effect.fn("JwtKey.fromPkcs8Pem")(function* (
 	} else {
 		return yield* JwtError.of("key", `a ${label} PEM block cannot be imported as an ${options.alg} signing key`);
 	}
-	const key = yield* importKey({ format: "pkcs8", data: toArrayBuffer(pkcs8) }, options.alg, "sign");
+	const key = yield* importKey(
+		{ format: "pkcs8", data: toArrayBuffer(pkcs8) },
+		options.alg,
+		"sign",
+		options.kid !== undefined ? { kid: options.kid } : undefined,
+	);
 	return SigningKey.make(options.alg, options.kid, key);
 });
 
@@ -168,7 +180,7 @@ const fromJwk = Effect.fn("JwtKey.fromJwk")(function* (jwk: Jwk, options?: { rea
 	const alg = jwk.alg ?? options?.alg;
 	if (alg === undefined) return yield* JwtError.of("key", "the JWK names no algorithm", extra);
 	const material = yield* Effect.fromResult(publicJwk(jwk, alg, extra));
-	const key = yield* importKey({ format: "jwk", data: material }, alg, "verify");
+	const key = yield* importKey({ format: "jwk", data: material }, alg, "verify", extra);
 	return VerificationKey.make(alg, jwk.kid, key);
 });
 

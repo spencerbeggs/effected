@@ -5,7 +5,7 @@ import { isAlgorithm, unsupportedAlgorithm } from "./internal/algorithms.js";
 import { concat, fatalUtf8 } from "./internal/bytes.js";
 import { finiteMillis } from "./internal/duration.js";
 import { isAcceptedIssuer, isLocalIssuer, protocolOf } from "./internal/issuer.js";
-import { quote } from "./internal/quote.js";
+import { capped, quote } from "./internal/quote.js";
 import type { Jwk } from "./Jwk.js";
 import { Jwks } from "./Jwk.js";
 import type { CachedJwks } from "./JwksStore.js";
@@ -222,14 +222,43 @@ const make = (options: JwksResolverOptions) =>
 		const importFor = (jwk: Jwk, header: JoseHeader) =>
 			isAlgorithm(header.alg) ? JwtKey.fromJwk(jwk, { alg: header.alg }) : JwtKey.fromJwk(jwk);
 
+		// The header's `kid` is attacker-chosen and is read before any signature
+		// check, so the copy on the error is capped as the detail's is.
 		const unknownKid = (header: JoseHeader) =>
 			JwtError.of(
 				"unknownKid",
 				header.kid === undefined
 					? "the token names no kid and the JWKS does not hold exactly one matching key"
 					: `the JWKS holds no ${header.alg} key with kid ${quote(header.kid)}`,
-				header.kid === undefined ? undefined : { kid: header.kid },
+				header.kid === undefined ? undefined : { kid: capped(header.kid) },
 			);
+
+		// The resolver's own last successful fetch, if still inside its TTL. A
+		// failed refetch never re-dates it, so it cannot outlive the TTL however
+		// many refetches have failed since.
+		const lastFor = (issuer: string, now: number): CachedJwks | undefined => {
+			const last = issuers.get(issuer)?.last;
+			return last !== undefined && now - last.fetchedAtMillis < ttlMillis ? last : undefined;
+		};
+
+		// The store and the resolver's own copy are both consulted, each already
+		// TTL-checked, newest first: a lagging store (an edge-cached KV read)
+		// must not shadow a rotation this resolver has already fetched, and a
+		// store that retains nothing must not hide the last fetch either.
+		const matchIn = (
+			stored: Option.Option<CachedJwks>,
+			last: CachedJwks | undefined,
+			header: JoseHeader,
+		): Option.Option<Jwk> => {
+			const sources = [...Option.toArray(stored), ...(last === undefined ? [] : [last])].sort(
+				(a, b) => b.fetchedAtMillis - a.fetchedAtMillis,
+			);
+			for (const source of sources) {
+				const match = select(source.jwks, header);
+				if (Option.isSome(match)) return match;
+			}
+			return Option.none();
+		};
 
 		const refresh = (issuer: string, header: JoseHeader) =>
 			Effect.gen(function* () {
@@ -237,13 +266,8 @@ const make = (options: JwksResolverOptions) =>
 				const now = yield* Clock.currentTimeMillis;
 				const stored = yield* storedFor(issuer, now);
 				const state = issuers.get(issuer);
-				// The last successful fetch serves a store that failed to keep it,
-				// but only within the TTL of that fetch: past it, a key the issuer
-				// removed must not verify, however many refetches have failed since.
-				const last = state?.last;
-				const fallback = last !== undefined && now - last.fetchedAtMillis < ttlMillis ? last.jwks : undefined;
-				const known = Option.isSome(stored) ? stored.value.jwks : fallback;
-				const match = known === undefined ? Option.none<Jwk>() : select(known, header);
+				const last = lastFor(issuer, now);
+				const match = matchIn(stored, last, header);
 				if (Option.isSome(match)) return yield* importFor(match.value, header);
 
 				const lastAttempt = Math.max(
@@ -251,11 +275,11 @@ const make = (options: JwksResolverOptions) =>
 					Option.isSome(stored) ? stored.value.fetchedAtMillis : Number.NEGATIVE_INFINITY,
 				);
 				if (now - lastAttempt < minRefetchMillis) {
-					return yield* known === undefined
+					return yield* Option.isNone(stored) && last === undefined
 						? fetchFailed("the JWKS could not be fetched, and the refetch interval has not passed")
 						: unknownKid(header);
 				}
-				issuers.set(issuer, { lastAttemptMillis: now, last });
+				issuers.set(issuer, { lastAttemptMillis: now, last: state?.last });
 				const jwks = yield* fetchJwks(issuer);
 				const fetched: CachedJwks = { jwks, fetchedAtMillis: now };
 				issuers.set(issuer, { lastAttemptMillis: now, last: fetched });
@@ -266,8 +290,13 @@ const make = (options: JwksResolverOptions) =>
 
 		const key = Effect.fn("JwksResolver.key")(function* (issuer: string, header: JoseHeader) {
 			if (!isAlgorithm(header.alg)) return yield* unsupportedAlgorithm(header.alg);
-			const stored = yield* storedFor(issuer, yield* Clock.currentTimeMillis);
-			const hit = Option.flatMap(stored, (cached) => select(cached.jwks, header));
+			const now = yield* Clock.currentTimeMillis;
+			const stored = yield* storedFor(issuer, now);
+			// Read outside the lock, which is safe: the entry is an immutable
+			// snapshot replaced whole, `last` only ever moves to a newer
+			// successful fetch, and this read decides a match, never a write or a
+			// refetch. A miss here is re-checked under the lock.
+			const hit = matchIn(stored, lastFor(issuer, now), header);
 			if (Option.isSome(hit)) return yield* importFor(hit.value, header);
 			// One refresh per issuer at a time, so concurrent misses share a fetch.
 			return yield* lockFor(issuer).withPermit(refresh(issuer, header));

@@ -1,10 +1,12 @@
-// Untrusted strings (a token header's `alg`, a remote JWK's `use`) reach
-// `JwtError.detail` and, through `message`, logs. Quote them as JSON so
-// newlines and terminal escapes are escaped, and cap their length so a
-// megabyte header cannot flood a log line.
+// Untrusted strings (a token header's `alg` or `kid`, a remote JWK's `use`)
+// reach `JwtError.detail` and `JwtError.kid` and, through them, logs. Cap
+// their length so a megabyte header cannot flood a log line, and quote them
+// as JSON in prose so newlines and terminal escapes are escaped.
 
 const limit = 32;
 
+/** An untrusted string cut to at most 32 characters plus an ellipsis. @internal */
+export const capped = (value: string): string => (value.length > limit ? `${value.slice(0, limit)}…` : value);
+
 /** A JSON-quoted, length-capped rendering of an untrusted string. @internal */
-export const quote = (value: string): string =>
-	JSON.stringify(value.length > limit ? `${value.slice(0, limit)}…` : value);
+export const quote = (value: string): string => JSON.stringify(capped(value));

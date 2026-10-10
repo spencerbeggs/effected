@@ -151,6 +151,39 @@ describe("RSA key strength", () => {
 	);
 });
 
+describe("kid on import and strength failures", () => {
+	it.effect("carries the kid when a key fails to import or is too weak", () =>
+		Effect.gen(function* () {
+			const weakJwk = Schema.decodeUnknownSync(Jwk)({
+				...generateKeyPairSync("rsa", { modulusLength: 1024 }).publicKey.export({ format: "jwk" }),
+				alg: "RS256",
+				kid: "weak",
+			});
+			const weak = yield* Effect.flip(JwtKey.fromJwk(weakJwk));
+			assert.include(weak.detail, "at least 2048 bits");
+			assert.strictEqual(weak.kid, "weak");
+
+			const offCurve = Schema.decodeUnknownSync(Jwk)({
+				kty: "EC",
+				crv: "P-256",
+				alg: "ES256",
+				kid: "bent",
+				x: "AAAA",
+				y: "AAAA",
+			});
+			const unimportable = yield* Effect.flip(JwtKey.fromJwk(offCurve));
+			assert.include(unimportable.detail, "does not import");
+			assert.strictEqual(unimportable.kid, "bent");
+
+			const weakPem = yield* Effect.flip(
+				JwtKey.fromPkcs8Pem(Redacted.make(rsaPair("pkcs8", 1024).privateKey), { alg: "RS256", kid: "signer" }),
+			);
+			assert.include(weakPem.detail, "at least 2048 bits");
+			assert.strictEqual(weakPem.kid, "signer");
+		}),
+	);
+});
+
 describe("JwtKey.fromPkcs8Pem labels", () => {
 	it.effect("refuses a SEC1 EC PRIVATE KEY block as key", () =>
 		Effect.gen(function* () {
