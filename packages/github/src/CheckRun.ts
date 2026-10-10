@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Exit, Layer, Option, Ref, Schema } from "effect";
+import { Cause, Clock, Context, Effect, Exit, Layer, Option, Ref, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
 import { numericId } from "./internal/ids.js";
@@ -129,7 +129,11 @@ export interface CreateCheckRunOptions {
 	 * Completing a run goes through {@link CheckRunShape.complete}.
 	 */
 	readonly status?: "queued" | "in_progress" | undefined;
-	/** Your own id for the run (wire `external_id`), for {@link CheckRunShape.findByExternalId}. */
+	/**
+	 * Your own id for the run (wire `external_id`), for
+	 * {@link CheckRunShape.findByExternalId}. An empty string is treated as no
+	 * id and not sent, since that lookup never matches `""`.
+	 */
 	readonly externalId?: string | undefined;
 	/** Where the integrator's full details live (wire `details_url`). */
 	readonly detailsUrl?: string | undefined;
@@ -202,8 +206,10 @@ export interface CheckRunShape {
 	 * `externalId`; none when there is no such run.
 	 *
 	 * @remarks
-	 * Lists the commit's runs filtered by name on GitHub's side, paging through
-	 * all of them, then matches `external_id` here; "newest" is the highest id.
+	 * Lists every run of the commit filtered by name on GitHub's side
+	 * (`filter: "all"`, not GitHub's default of only the latest run per name),
+	 * paging through all of them, then matches `external_id` here; "newest" is
+	 * the highest id.
 	 * An empty `externalId` is none without a request: GitHub reports a run
 	 * created without an external id as `""`, so matching on it would find
 	 * every such run.
@@ -411,6 +417,9 @@ const refOf = (raw: {
 			: {}),
 	});
 
+/** The current time as GitHub's ISO 8601 timestamp, from `Clock` so `TestClock` drives it. */
+const isoNow = Effect.map(Clock.currentTimeMillis, (millis) => new Date(millis).toISOString());
+
 const make = (client: GitHubClient["Service"]): CheckRunShape => {
 	const create = Effect.fn("CheckRun.create")(function* (
 		name: string,
@@ -426,8 +435,10 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 			name,
 			head_sha: headSha,
 			status,
-			...(status === "in_progress" ? { started_at: new Date().toISOString() } : {}),
-			...(options?.externalId !== undefined ? { external_id: options.externalId } : {}),
+			...(status === "in_progress" ? { started_at: yield* isoNow } : {}),
+			// An empty id is no id: findByExternalId never matches "", so sending one
+			// would create a run that lookup can never find.
+			...(options?.externalId !== undefined && options.externalId !== "" ? { external_id: options.externalId } : {}),
 			...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
 		});
 		return refOf(created);
@@ -446,7 +457,7 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 			check_run_id: id,
 			status: "completed",
 			conclusion,
-			completed_at: new Date().toISOString(),
+			completed_at: yield* isoNow,
 			...(output !== undefined ? { output: wireOutput(output) } : {}),
 		});
 	});
@@ -496,6 +507,9 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 				repo,
 				ref: headSha,
 				check_name: name,
+				// The default, `latest`, returns only the newest run per name, which
+				// hides an older run that carries the wanted external id.
+				filter: "all",
 			});
 			let newest: (typeof runs)[number] | undefined;
 			for (const run of runs) {

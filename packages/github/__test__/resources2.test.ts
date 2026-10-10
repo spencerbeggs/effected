@@ -1188,6 +1188,42 @@ describe("CheckRun create and update options", () => {
 		}),
 	);
 
+	it.effect("stamps started_at and completed_at from Clock", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(1_800_000_000_000);
+			const { requested } = yield* viaFixtures(
+				{
+					request: {
+						"POST /repos/{owner}/{repo}/check-runs": CREATED,
+						"PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}": CREATED,
+					},
+				},
+				CheckRun,
+				CheckRun,
+				(check) =>
+					Effect.gen(function* () {
+						yield* check.create("lint", "abc");
+						yield* TestClock.adjust(Duration.minutes(2));
+						yield* check.complete(7, "success");
+					}),
+			);
+			assert.strictEqual(requested[0]?.params.started_at, new Date(1_800_000_000_000).toISOString());
+			assert.strictEqual(requested[1]?.params.completed_at, new Date(1_800_000_120_000).toISOString());
+		}),
+	);
+
+	it.effect("omits an empty externalId rather than sending one no lookup can find", () =>
+		Effect.gen(function* () {
+			const { requested } = yield* viaFixtures(
+				{ request: { "POST /repos/{owner}/{repo}/check-runs": CREATED } },
+				CheckRun,
+				CheckRun,
+				(check) => check.create("lint", "abc", { externalId: "" }),
+			);
+			assert.isFalse("external_id" in (requested[0]?.params ?? {}));
+		}),
+	);
+
 	it.effect("update sends a status and details_url alongside the output", () =>
 		Effect.gen(function* () {
 			const { requested } = yield* viaFixtures(
@@ -1240,6 +1276,9 @@ describe("CheckRun.findByExternalId", () => {
 			}
 			assert.strictEqual(requested[0]?.params.ref, "abc");
 			assert.strictEqual(requested[0]?.params.check_name, "lint");
+			// GitHub's default filter=latest returns only the newest run per name,
+			// which would hide an older run carrying the wanted external id.
+			assert.strictEqual(requested[0]?.params.filter, "all");
 		}),
 	);
 
