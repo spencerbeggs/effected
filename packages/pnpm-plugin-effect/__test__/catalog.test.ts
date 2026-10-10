@@ -125,10 +125,56 @@ describe("effected catalog", () => {
 	});
 });
 
+describe("effect catalog", () => {
+	/**
+	 * The `effect` catalog's own entry is an unquoted key, which the shared
+	 * reader skips, so it is read here by name.
+	 */
+	function effectEntry(): string {
+		const source = readFileSync(join(PACKAGE_ROOT, "savvy.build.ts"), "utf8");
+		const match = /\n\t+effect: (\{[^}]*\})/.exec(source.slice(source.indexOf("effect: {\n\t\t\t\t\tpackages: {")));
+		assert.isNotNull(match, "the effect catalog declares no `effect` entry");
+		return match?.[1] ?? "";
+	}
+
+	const entries = () => new Map([...readCatalogEntries("effect"), ["effect", effectEntry()]]);
+
+	it("finds effect and its satellites, so an empty catalog cannot pass silently", () => {
+		assert.isAtLeast(entries().size, 20);
+		assert.isTrue(entries().has("@effect/platform-node"));
+	});
+
+	// A caret on any entry lets a fresh resolve pair a 4.0.3 satellite with core
+	// 4.0.2, which dies at import, and `lock` keeps whatever operator the range has.
+	it("locks every entry to an exact version with an identical peer", () => {
+		for (const [name, spec] of entries()) {
+			const range = /\brange:\s*"([^"]+)"/.exec(spec)?.[1];
+			const peer = /\bpeer:\s*"([^"]+)"/.exec(spec)?.[1];
+			assert.match(range ?? "", /^\d+\.\d+\.\d+$/, `${name} range is not exact`);
+			assert.strictEqual(peer, range, `${name} peer differs from its range`);
+			assert.match(spec, /strategy:\s*"lock"/, `${name} is not on strategy lock`);
+		}
+	});
+
+	it("holds every 4.x entry at the same version as effect itself", () => {
+		const effect = /\brange:\s*"([^"]+)"/.exec(effectEntry())?.[1];
+		for (const [name, spec] of entries()) {
+			if (name === "@effect/tsgo") continue;
+			assert.strictEqual(/\brange:\s*"([^"]+)"/.exec(spec)?.[1], effect, name);
+		}
+	});
+});
+
 describe("platform-node-shared overrides", () => {
 	const RC117 = "@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared";
 	const RC118 = "@effect/platform-node@4.0.0-rc.118>@effect/platform-node-shared";
-	const PINS = { [RC117]: "4.0.0-rc.117", [RC118]: "4.0.0-rc.118" };
+	/** The effect 4.0.2 hold (Effect-TS/effect#8994): `effect` and every satellite on the 4.x line. */
+	const HOLD = Object.fromEntries(
+		[...readCatalogEntries("effect").keys(), "effect"]
+			.filter((name) => name !== "@effect/tsgo")
+			.map((name) => [`${name}@^4.0.0`, "4.0.2"]),
+	);
+	const PINS = { ...HOLD, [RC117]: "4.0.0-rc.117", [RC118]: "4.0.0-rc.118" };
 	const PNPMFILE = join(PACKAGE_ROOT, "dist/dev/pkg/pnpmfile.mjs");
 
 	/**
