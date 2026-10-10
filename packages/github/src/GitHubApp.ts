@@ -864,7 +864,12 @@ function makeApp(options: GitHubAppOptions): Effect.Effect<GitHubAppShape> {
 			const user = yield* client
 				.request("GET /users/{username}", { username: `${request.slug}[bot]` })
 				.pipe(Effect.catch(appFailure("identity")));
-			return yield* Schema.decodeUnknownEffect(BotUser)({ id: numericId(user.id), login: user.login }).pipe(
+			// A body that is not an object goes to the decoder as it is, so it fails
+			// identity-kind rather than throwing while `id` is read.
+			const raw: unknown = user;
+			return yield* Schema.decodeUnknownEffect(BotUser)(
+				typeof raw === "object" && raw !== null ? { id: numericId(user.id), login: user.login } : raw,
+			).pipe(
 				Effect.catchTag("SchemaError", (error) =>
 					Effect.fail(GitHubAppError.of("identity", "GitHub returned an unexpected bot user", error)),
 				),

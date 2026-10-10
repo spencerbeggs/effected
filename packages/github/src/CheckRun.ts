@@ -182,7 +182,8 @@ export class ReportedCheckRunOutput extends Schema.Class<ReportedCheckRunOutput>
  * A check run as GitHub reports it.
  *
  * @remarks
- * Every field beyond the first five is optional so a test double built with
+ * Every field beyond the original five (the four required ones and
+ * `externalId`) is optional, so a test double built with
  * `CheckRunRef.make({ id, name, url, status })` stays valid; a run decoded
  * from a GitHub response carries all of them, because GitHub always sends
  * them. A nullable field is `null` when GitHub reported `null`.
@@ -683,38 +684,44 @@ const nested = (value: unknown, project: (record: Record<string, unknown>) => un
  * string to a caller's exhaustive switch.
  */
 const refOf = (operation: string, raw: RawCheckRun): Effect.Effect<CheckRunRef, GitHubError> =>
-	decodeRef({
-		id: numericId(raw.id),
-		name: raw.name,
-		url: raw.html_url ?? "",
-		status: raw.status,
-		// null, absent and "" all mean the run has no external id.
-		...(raw.external_id ? { externalId: raw.external_id } : {}),
-		...(raw.head_sha !== undefined ? { headSha: raw.head_sha } : {}),
-		...(raw.node_id !== undefined ? { nodeId: raw.node_id } : {}),
-		...(raw.conclusion !== undefined ? { conclusion: raw.conclusion } : {}),
-		...(raw.started_at !== undefined ? { startedAt: raw.started_at } : {}),
-		...(raw.completed_at !== undefined ? { completedAt: raw.completed_at } : {}),
-		...(raw.details_url !== undefined ? { detailsUrl: raw.details_url } : {}),
-		...(raw.html_url !== undefined ? { htmlUrl: raw.html_url } : {}),
-		...(raw.url !== undefined ? { apiUrl: raw.url } : {}),
-		...(raw.check_suite !== undefined
-			? {
-					checkSuiteId: nested(raw.check_suite, (suite) =>
-						typeof suite.id === "number" || typeof suite.id === "bigint" ? numericId(suite.id) : suite.id,
-					),
-				}
-			: {}),
-		...(raw.output !== undefined
-			? {
-					output: nested(raw.output, (output) => ({
-						title: output.title,
-						summary: output.summary,
-						annotationsCount: output.annotations_count,
-					})),
-				}
-			: {}),
-	}).pipe(
+	// A run that is not an object (a `null` list item, say) goes to the decoder
+	// as it is, so it fails typed rather than throwing while `id` is read.
+	decodeRef(
+		!isRecord(raw as unknown)
+			? raw
+			: {
+					id: numericId(raw.id),
+					name: raw.name,
+					url: raw.html_url ?? "",
+					status: raw.status,
+					// null, absent and "" all mean the run has no external id.
+					...(raw.external_id ? { externalId: raw.external_id } : {}),
+					...(raw.head_sha !== undefined ? { headSha: raw.head_sha } : {}),
+					...(raw.node_id !== undefined ? { nodeId: raw.node_id } : {}),
+					...(raw.conclusion !== undefined ? { conclusion: raw.conclusion } : {}),
+					...(raw.started_at !== undefined ? { startedAt: raw.started_at } : {}),
+					...(raw.completed_at !== undefined ? { completedAt: raw.completed_at } : {}),
+					...(raw.details_url !== undefined ? { detailsUrl: raw.details_url } : {}),
+					...(raw.html_url !== undefined ? { htmlUrl: raw.html_url } : {}),
+					...(raw.url !== undefined ? { apiUrl: raw.url } : {}),
+					...(raw.check_suite !== undefined
+						? {
+								checkSuiteId: nested(raw.check_suite, (suite) =>
+									typeof suite.id === "number" || typeof suite.id === "bigint" ? numericId(suite.id) : suite.id,
+								),
+							}
+						: {}),
+					...(raw.output !== undefined
+						? {
+								output: nested(raw.output, (output) => ({
+									title: output.title,
+									summary: output.summary,
+									annotationsCount: output.annotations_count,
+								})),
+							}
+						: {}),
+				},
+	).pipe(
 		Effect.catchTag("SchemaError", (error) =>
 			Effect.fail(GitHubError.decode(operation, "GitHub returned an unexpected check run", error)),
 		),

@@ -158,6 +158,15 @@ describe("CheckRunRef projection of a malformed output", () => {
 		}),
 	);
 
+	it.effect("list fails with a decode error on a null run", () =>
+		Effect.gen(function* () {
+			const { value } = yield* drive([{ status: 200, body: { total_count: 1, check_runs: [null] } }], (check) =>
+				Effect.flip(check.list("abc")),
+			);
+			assert.deepStrictEqual([value.kind, value.operation], ["decode", "CheckRun.list"]);
+		}),
+	);
+
 	it.effect("an output that is not an object fails typed too", () =>
 		Effect.gen(function* () {
 			const { value } = yield* drive([{ status: 200, body: wireRun({ output: "oops" }) }], (check) =>

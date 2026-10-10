@@ -368,6 +368,15 @@ describe("GitHubApp.botUser", () => {
 		),
 	);
 
+	it.effect("a null body fails with kind identity instead of dying", () =>
+		withApp([{ status: 200, body: null }], (app) =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(app.botUser({ slug: "my-app" }));
+				assert.strictEqual(error.kind, "identity");
+			}),
+		),
+	);
+
 	// identity() degrades the same 403 to a missing userId; botUser must not.
 	it.effect("fails with kind identity instead of degrading", () =>
 		withApp([{ status: 403, body: { message: "rate limited" } }], (app) =>

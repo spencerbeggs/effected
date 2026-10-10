@@ -20,10 +20,10 @@
 | `AttestationListEntry` | Class | One entry from an attestation listing. | one attestation bundle url and predicate type from a listing |
 | `AttestationRecord` | Class | A stored attestation. | a stored attestation's id and url after upload |
 | `AttestationShape` | Interface | The attestation REST surface. | |
-| `AuthenticatedApp` | Class | The app-level REST surface: the app's own record, its webhook delivery log and redelivery, and uninstalling. | app-level rest with an app jwt: read the app itself, list webhook deliveries, redeliver a failed delivery, uninstall an installation |
+| `AuthenticatedApp` | Class | The app-level REST surface: the app's own record, its webhook delivery log and redelivery, and uninstalling. | app jwt surface: read the app, webhook deliveries, redeliver, uninstall an installation |
 | `AuthenticatedAppShape` | Interface | The app-level REST surface: the app's own record, its webhook deliveries and removing an installation. | |
 | `BotIdentity` | Class | Who a bot commits as. | committer name and email for a bot commit, dco signoff trailer, github-actions bot identity |
-| `BotUser` | Class | An app's bot user: the account its installation tokens act as. | a github app bot user's numeric id and login, compare against an event actor id |
+| `BotUser` | Class | An app's bot user: the account its installation tokens act as. | a github app bot user's id and login, matched against event actor ids |
 | `BotUserRequest` | Interface | What `GitHubAppShape.botUser` looks up. | |
 | `BranchOutcome` | TypeAlias | What `GitBranchShape.upsert` did. | |
 | `CachedToken` | Interface | An installation token from `GitHubApp.cachedToken`, and where it came from. | |
@@ -31,9 +31,9 @@
 | `CheckConclusion` | Variable | How a check run finished. | success failure neutral cancelled timed_out action_required skipped, how a check run finished |
 | `CheckRun` | Class | Create, update and conclude GitHub check runs, including the `CheckRunShape.withCheckRun` bracket that always reaches a terminal state. | report a job's verdict on a commit, create update complete a run, find a run by external id |
 | `CheckRunOutput` | Class | A check run's rendered output. | check run title summary and annotations, truncate to github's 65535 byte limit |
-| `CheckRunRef` | Class | A check run as GitHub reports it. | a check run as github reports it: id name status conclusion head sha urls timestamps check suite and output |
+| `CheckRunRef` | Class | A check run as GitHub reports it. | a check run as github reports it: status, conclusion, head sha, urls, timestamps, output |
 | `CheckRunShape` | Interface | Create, update and conclude GitHub check runs on a commit, including a bracket that always concludes the run. | |
-| `CheckRunStatus` | Variable | The phase of its lifecycle a check run is in, as GitHub reports it. | queued in_progress completed waiting requested pending, a check run's lifecycle phase as reported |
+| `CheckRunStatus` | Variable | The phase of its lifecycle a check run is in, as GitHub reports it. | queued `in_progress` completed waiting requested pending, a check run's reported lifecycle phase |
 | `CodeScanning` | Class | Configure CodeQL default setup and read the languages GitHub detects in a repository. | configure codeql default setup, detect repository languages for codeql, enable codeql scanning |
 | `CodeScanningSetup` | Interface | A CodeQL default-setup configuration. | |
 | `CodeScanningShape` | Interface | CodeQL default setup, and the language detection that gates it. | |
@@ -48,7 +48,7 @@
 | `ConcludeCheckRun` | TypeAlias | Conclude the surrounding `CheckRunShape.withCheckRun` explicitly. | |
 | `CreateCheckRunOptions` | Interface | Options for `CheckRunShape.create`. | |
 | `DeliveriesOptions` | Interface | Options for `AuthenticatedAppShape.deliveries`. | |
-| `DeliveryAttempt` | Class | One delivery of the app's webhook, as `GET /app/hook/deliveries` lists it. | one webhook delivery from the app's delivery log: id guid status code event action installation |
+| `DeliveryAttempt` | Class | One delivery of the app's webhook, as `GET /app/hook/deliveries` lists it. | one webhook delivery attempt: id guid status code event action installation |
 | `DeploymentEnvironment` | Class | Create or update, list and delete a repository's deployment environments. | create update list and delete a deployment environment, environment protection rules |
 | `DeploymentEnvironmentInfo` | Interface | A deployment environment, as listing returns it. | |
 | `DeploymentEnvironmentShape` | Interface | Create or update, list and delete a repository's deployment environments. | |
