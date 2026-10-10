@@ -20,6 +20,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-10-03T04:19:44Z
   body_sha256: facd57a5e4af667ac13a666b847c86a90bb8220f661049a6a2e63487c5657c88
+verified:
+  - by: human:spencer
+    at: 2026-10-10T23:15:48Z
 ---
 
 # The effect catalog takes caret ranges on the stable line

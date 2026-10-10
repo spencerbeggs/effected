@@ -2,7 +2,7 @@
 type: Decision
 title: The effect catalog locks every entry to an exact version, held by overrides
 description: "Every effect catalog entry (effect, its satellites and @effect/tsgo) carries an exact range with an identical peer under strategy lock, and the plugin publishes version-scoped overrides holding effect and every satellite at 4.0.2 until effect@4.0.3 reaches npm."
-status: draft
+status: stable
 supersedes: effect-catalog-tracks-stable-minor.md
 tags:
   - deps
@@ -29,6 +29,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-10-10T23:08:17Z
   body_sha256: 892339734e50129667132dd10d34c345f6dbd6c10d40632f90818736f5020891
+verified:
+  - by: human:spencer
+    at: 2026-10-10T23:15:36Z
 ---
 
 # The effect catalog locks every entry to an exact version, held by overrides
