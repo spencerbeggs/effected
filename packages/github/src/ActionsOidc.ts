@@ -163,8 +163,16 @@ const testClaims = (overrides: Readonly<Record<string, unknown>> = {}): Record<s
  * `reason` (`wrongAudience`, `expired`, `claims`, ...), never on its message.
  *
  * Authorizing the caller is still yours: a verified token proves who is
- * calling, not that they may. Check `repository`, `workflowRef` or
- * `jobWorkflowRef` against what you allow.
+ * calling, not that they may. Pin the **immutable ids**, `repositoryId` or
+ * `repositoryOwnerId`, together with `jobWorkflowRef` (or `workflowRef`),
+ * never the `repository` or `repositoryOwner` name alone: a deleted
+ * repository's or account's name can be registered again by someone else,
+ * whose workflows then mint tokens carrying the old name.
+ *
+ * Only the github.com issuer is accepted. A GitHub Enterprise Cloud
+ * enterprise's unique issuer (`https://token.actions.githubusercontent.com/<enterprise>`)
+ * and a GitHub Enterprise Server issuer (`https://<host>/_services/token`)
+ * are refused as `wrongIssuer`.
  *
  * This module does not reach octokit: a service that only verifies tokens
  * links `@effected/jwt` and nothing else from this package.
@@ -173,12 +181,20 @@ const testClaims = (overrides: Readonly<Record<string, unknown>> = {}): Record<s
  * ```ts
  * import { JwksResolver } from "@effected/jwt";
  * import { ActionsOidc } from "@effected/github";
- * import { Effect } from "effect";
+ * import { Data, Effect } from "effect";
+ *
+ * class Forbidden extends Data.TaggedError("Forbidden")<{ readonly repositoryId: number }> {}
+ *
+ * // Pinned by id, which survives a rename and cannot be re-registered.
+ * const ALLOWED_REPOSITORY_ID = 123456789;
+ * const ALLOWED_WORKFLOW = "octo-org/octo-repo/.github/workflows/deploy.yml@refs/heads/main";
  *
  * const authorize = (bearer: string) =>
  *   Effect.gen(function* () {
  *     const claims = yield* ActionsOidc.verify(bearer, { audience: "https://my-service.example" });
- *     if (claims.repository !== "octo-org/octo-repo") return yield* Effect.fail("forbidden" as const);
+ *     if (claims.repositoryId !== ALLOWED_REPOSITORY_ID || claims.jobWorkflowRef !== ALLOWED_WORKFLOW) {
+ *       return yield* new Forbidden({ repositoryId: claims.repositoryId });
+ *     }
  *     return claims;
  *   });
  *

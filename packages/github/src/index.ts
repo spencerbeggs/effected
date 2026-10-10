@@ -29,6 +29,8 @@
  * @packageDocumentation
  */
 
+// Six issue-reference names from `@effected/github-references` are re-exported
+// here for existing consumers; the closing-list dialect is deliberately not.
 export {
 	type BareLineReference,
 	CLOSING_KEYWORDS,
@@ -37,8 +39,6 @@ export {
 	harvestIssueReferences,
 	parseBareLineReference,
 } from "@effected/github-references";
-// Six issue-reference names from `@effected/github-references` are re-exported
-// here for existing consumers; the closing-list dialect is deliberately not.
 export { ActionsOidc, ActionsOidcClaims, type ActionsOidcVerifyOptions } from "./ActionsOidc.js";
 export { ArtifactMetadata, type ArtifactMetadataShape, StorageRecordInput } from "./ArtifactMetadata.js";
 export { Attestation, AttestationListEntry, AttestationRecord, type AttestationShape } from "./Attestation.js";
