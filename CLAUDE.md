@@ -105,7 +105,7 @@ Biome, commitlint, lint-staged and markdownlint take their presets from `@savvy-
 
 Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml`, managed via `packages/pnpm-plugin-effect`. Catalog detail and the expected peer-warning class → `okf/modules/pnpm-plugin-effect.md`, `okf/conventions/peer-dependency-discipline.md`, `okf/gotchas/expected-peers-check-occupant.md`.
 
-**`catalog:effect` uses the `lock-minor` strategy: caret ranges on the stable line (`^4.0.0`), so the exact `effect` the kit builds and tests against is the lockfile's resolution, not the catalog literal.** `.repos/effect`, the authority on what v4 exports, is pinned to the tag matching that resolution; re-pin it whenever the lockfile's `effect` moves, or the vendored source and the installed package drift apart silently.
+**`catalog:effect` pins every entry to one exact version under `lock`, and plugin `overrides` hold `effect` and its satellites at 4.0.2 until `effect@4.0.3` reaches npm** — a caret paired a 4.0.3 satellite with core 4.0.2, which dies at import. Why and when the hold lifts → `okf/decisions/effect-catalog-locked-exact.md`. `.repos/effect`, the authority on what v4 exports, is pinned to the tag matching the lockfile's `effect`; re-pin it whenever that moves, or the vendored source and the installed package drift apart silently.
 
 **Always check the lockfile diff after an install** — a plain `pnpm install` can strip turbo/biome/tsgo platform binaries from it.
 

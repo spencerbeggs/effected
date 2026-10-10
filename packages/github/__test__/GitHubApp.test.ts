@@ -3,7 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { JwtError } from "@effected/jwt";
 import { DateTime, Duration, Effect, Option, Redacted, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { AppIdentity, BotIdentity, GitHubApp, Installation, InstallationToken } from "../src/GitHubApp.js";
+import { AppIdentity, BotIdentity, BotUser, GitHubApp, Installation, InstallationToken } from "../src/GitHubApp.js";
 import { GitHubClient } from "../src/GitHubClient.js";
 import { RetryPolicy } from "../src/Resilience.js";
 import type { Reply } from "./fixtures.js";
@@ -341,6 +341,47 @@ describe("GitHubApp.identity", () => {
 		withApp([{ status: 401, body: { message: "Bad credentials" } }], (app) =>
 			Effect.gen(function* () {
 				const error = yield* Effect.flip(app.identity(CREDENTIALS));
+				assert.strictEqual(error.kind, "identity");
+			}),
+		),
+	);
+});
+
+describe("GitHubApp.botUser", () => {
+	it.effect("reads <slug>[bot] bearing the installation token", () =>
+		withApp([{ status: 200, body: { id: 987654, login: "my-app[bot]", type: "Bot" } }], (app, script) =>
+			Effect.gen(function* () {
+				const user = yield* app.botUser({ slug: "my-app", installationToken: Redacted.make("ghs_x") });
+				assert.deepStrictEqual(user, BotUser.make({ id: 987654, login: "my-app[bot]" }));
+				assert.strictEqual(script.calls[0]?.path, "/users/my-app[bot]");
+				assert.strictEqual(script.calls[0]?.headers.authorization, "token ghs_x");
+			}),
+		),
+	);
+
+	it.effect("runs unauthenticated without a token", () =>
+		withApp([{ status: 200, body: { id: 1, login: "my-app[bot]" } }], (app, script) =>
+			Effect.gen(function* () {
+				yield* app.botUser({ slug: "my-app" });
+				assert.isUndefined(script.calls[0]?.headers.authorization);
+			}),
+		),
+	);
+
+	it.effect("a null body fails with kind identity instead of dying", () =>
+		withApp([{ status: 200, body: null }], (app) =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(app.botUser({ slug: "my-app" }));
+				assert.strictEqual(error.kind, "identity");
+			}),
+		),
+	);
+
+	// identity() degrades the same 403 to a missing userId; botUser must not.
+	it.effect("fails with kind identity instead of degrading", () =>
+		withApp([{ status: 403, body: { message: "rate limited" } }], (app) =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(app.botUser({ slug: "my-app" }));
 				assert.strictEqual(error.kind, "identity");
 			}),
 		),

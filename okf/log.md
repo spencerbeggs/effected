@@ -1,5 +1,29 @@
 # Log
 
+## 2026-10-10
+
+* Updated @effected/github
+* Updated @effected/github errors and retry
+* Updated @effected/github owns the octokit runtime
+* Added @effected/jwt
+* Added App auth, OIDC verify and the token store land in @effected/github
+* Updated Only ./ui may bind Node's process streams, and only in three named files
+* Added The JWT algorithm comes from the key, never the token header
+* Updated effected
+* Updated @effected/github App authentication
+* Updated @effected/github resource services
+* Updated Advance the effect pin
+* Updated An unsatisfiable effect peer installs clean and fails somewhere else
+* Updated Consumer-facing text states current Effect behaviour, never versions
+* Updated Keep the tree resolved to one effect copy
+* Updated Releases are changeset-driven and scope-agnostic
+* Added The effect catalog locks every entry to an exact version, held by overrides
+* Updated The effected catalog literal
+* Added The plugin's catalog paired 4.0.3 satellites with core effect 4.0.2
+* Updated Vendored Effect is pinned to the lockfile's tag, not main
+* Updated pnpm-plugin-effect
+* Updated workspace
+
 ## 2026-10-09
 
 * Added Image formats are read by in-house header readers

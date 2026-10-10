@@ -39,7 +39,8 @@ transport is `fetch`.
 | `GitBranch`, `GitTag`, `GitCommit` | git-data plumbing — refs, trees, commits, committing files through the API without a checkout |
 | `GitHubCommit`, `GitHubContent` | reading commit summaries, comparisons and changed files; reading a file at a ref |
 | `PullRequest`, `PullRequestComment`, `GitHubIssue` | PR/issue lifecycle, marker-keyed comments, linked issues, auto-merge |
-| `CheckRun` | reporting a job's verdict on a commit, ideally through the `withCheckRun` bracket |
+| `CheckRun` | reporting a job's verdict on a commit, ideally through the `withCheckRun` bracket; reading the runs on a commit |
+| `AuthenticatedApp` | the app itself (`GET /app`), its webhook delivery log and redelivery, uninstalling — over `GitHubApp.appClientLayer` |
 | `GitHubRelease` | creating/updating releases and uploading assets |
 | `WorkflowDispatch` | triggering a workflow and polling the run it started |
 | `Attestation`, `ArtifactMetadata` | uploading a Sigstore bundle to GitHub, listing attestations for a subject digest |
@@ -116,7 +117,7 @@ tempted to reach for `as`.
   read in the package paginates, and a first-page-only read is a bug class here,
   not a shortcut.
 - **`GitHubApp`** — `token(request)` and `scopedToken(request)` (the scoped form
-  revokes on scope close), `revoke`, `identity`, `installations`. `TokenRequest`
+  revokes on scope close), `revoke`, `identity`, `botUser({ slug, installationToken? })` → `BotUser { id, login }` (the strict read: it fails where `identity` omits the id), `installations`. `TokenRequest`
   is `{ appId, privateKey: Redacted } & { installationId?, owner? }`;
   `InstallationToken` carries `permissions`, `isExpired(nowMillis, skew?)` and
   `botIdentity()`. Three client layers:
@@ -127,8 +128,13 @@ tempted to reach for `as`.
     the app itself with an App JWT (signed locally, re-signed a minute before
     its nine-minute expiry, nothing to revoke). It reaches only `/app`, `/app/*`
     and the three JWT-only `…/installation` lookups — a webhook redelivery
-    sweep (`GET /app/hook/deliveries`, `POST
-    /app/hook/deliveries/{delivery_id}/attempts`) is the motivating use.
+    sweep is the motivating use, typed by the `AuthenticatedApp` service:
+    `layer` over this client gives `get()` → `AppInfo` (`id`, `slug?`,
+    `name`), `deliveries({ status?, page? })` → a lazy
+    `Stream<DeliveryAttempt>` (stop it early with `Stream.takeWhile`),
+    `delivery(id)`, `redeliver(id)` and `uninstall(installationId)`. Ids are
+    decoded as safe integers, so one past 2^53 fails the read instead of
+    rounding.
   - **`GitHubApp.cachedClientLayer(request, options?)`** — over
     `GitHubApp.cachedToken(request)`, for a program that authenticates per
     request scope (a Worker handling a webhook). The token lives in an
@@ -222,7 +228,11 @@ tempted to reach for `as`.
 - **`CheckRun`** — `create(name, headSha, { status?, externalId?, detailsUrl? }?)`
   (in progress by default, or `"queued"`), `get`, `update(id, output, { status?,
   detailsUrl? }?)` (completing stays on `complete`),
-  `complete(id, conclusion, output?)`, `findByExternalId(headSha, name,
+  `complete(id, conclusion, output?)`, `updateRef` / `completeRef` (the same
+  PATCH, answering the decoded `CheckRunRef`; `update` and `complete` discard
+  the response), `list(ref, { checkName?, appId?, status?, filter?, page? }?)`
+  → `CheckRunRef[]` (GitHub's default `filter` is `latest`, newest per name),
+  `findByExternalId(headSha, name,
   externalId)` → `Option<CheckRunRef>` (every run of the commit by name,
   newest by id; `""` is none), and **`withCheckRun(name, headSha, use)`**,
   a bracket handing `use` an `id` and a `conclude` callback. `conclude`
@@ -230,6 +240,11 @@ tempted to reach for `as`.
   on whichever path `use` leaves by, so an explicit conclusion survives a later
   failure or an interrupt. Its error channel is `never`. `CheckRunOutput` is
   pure, with `LIMIT_BYTES = 65535`, `MAX_ANNOTATIONS = 50` and `truncated()`.
+  `CheckRunRef` reports `status` and `conclusion` as literal sets (the
+  conclusion adds `stale`, which only GitHub sets), `headSha`, `nodeId`,
+  `startedAt`, `completedAt`, `checkSuiteId` and `output` (title, summary,
+  annotation count). `url` is the **web** URL; `apiUrl` is the REST one and
+  `htmlUrl` keeps GitHub's `null`.
 - **`GitHubRelease`** — `create`, `getByTag`/`getByTagOption`, `list`, `update`,
   `uploadAsset(release, { name, data, contentType, label? })` (a hand-written
   route with two URI-template spellings, because an absent `label` would expand

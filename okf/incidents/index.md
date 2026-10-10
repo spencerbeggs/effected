@@ -1,3 +1,4 @@
 # Incident
 
 * [A zero-width space never stopped the Actions runner reading a workflow command](zero-width-neutralizer-never-defeated-the-runner.md) - CommandNeutralizer shipped putting U+200B before a :: line and inside ##\[, but the runner matches with culture-sensitive .NET comparisons under ICU, which skip zero-width characters, so every neutralized line was still a command; it now matches through what ICU skips and marks with U+2800.
+* [The plugin's catalog paired 4.0.3 satellites with core effect 4.0.2](effect-satellites-published-without-core.md) - pnpm-plugin-effect 0.13.15 shipped an effect catalog with the @effect/\* satellites at ^4.0.3 and effect at ^4.0.2, after upstream published every 4.0.3 satellite but not core; a fresh resolve died at import, and the catalog now locks exact versions behind version-scoped overrides.

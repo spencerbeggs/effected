@@ -10,8 +10,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T17:24:58Z
-  body_sha256: 60f21558afeb84e5bb7d9f5534521e23f19d6f4e42a7aef36b50534d349c5035
+  at: 2026-10-10T23:08:17Z
+  body_sha256: e6a911b02075343f6251f54cd910a98bef17283844946896127dd9839b74e842
 ---
 
 # pnpm-plugin-effect
@@ -30,7 +30,7 @@ so one installed config dependency pins both halves of what a consumer
 builds against.
 
 Four catalogs, and this is the whole set: `effect` (every `effect` /
-`@effect/*` package on the v4 line, at a caret range on the stable line),
+`@effect/*` package on the v4 line, each at one exact version),
 `effect:peers` (the same set as the advertised peer range), `effected`
 (the kit's own packages, at the version each will next publish) and
 `effected:peers` (the same set as the advertised peer range). Every name
@@ -58,16 +58,19 @@ Memberships, versions and strategies all live in that one file. See
 [the effected catalog literal](../models/effected-catalog-literal.md) for
 its shape and load-bearing constraints.
 
-The `effect` (v4) catalog gives `effect` and every `@effect/*` satellite
-the caret range `^4.0.0` and uses the `lock-minor` strategy, as the
-[stable-line decision](../decisions/effect-catalog-tracks-stable-minor.md)
-rules. `range` (what a workspace installs) and `peer` (the input to the
-floor computation) are separate fields, and for these entries both read
-`^4.0.0`, so `effect:peers` advertises the same caret. The catalog literal
-does not fix the exact `effect`: the lockfile does, and `.repos/effect` is
-pinned to the tag matching that resolution. `@effect/tsgo` versions on its
-own line, so its entry differs: `range` is exact (`0.47.2`) and `peer`
-is its floor (`0.47.0`).
+The `effect` (v4) catalog gives every entry an exact `range` with an
+identical `peer` under the `lock` strategy, as
+[the exact-lock decision](../decisions/effect-catalog-locked-exact.md)
+rules: `effect` and its 26 satellites at `4.0.2`, and `@effect/tsgo`,
+which versions on its own line, at `0.51.1`. `lock` emits the peer
+verbatim, so `catalog:effect` and `catalog:effect:peers` both carry the
+exact version; `lock-minor` would floor the peer patch to a caret. A caret
+here let a fresh resolve pair a 4.0.3 satellite with core 4.0.2, which
+dies at import — see
+[the incident](../incidents/effect-satellites-published-without-core.md).
+`__test__/catalog.test.ts` asserts every entry is exact on `lock` and that
+every 4.x entry holds `effect`'s own version, so a registry `upgrade` bump
+that moves the satellites alone fails the suite.
 
 `src/index.ts` and `src/pnpmfile.ts` are one-line re-exports over
 `rolldown-pnpm-config` virtual modules; all real configuration lives in
@@ -120,11 +123,9 @@ catalog and the peer each rule targets, and `rolldown-pnpm-config export`
 emits the rules into the workspace file. It emits a rule **only for an
 entry whose `range` is an exact version**, because a rule is a
 version-qualified parent selector (`"<satellite>@<its pin>>effect"`) and a
-caret range has no single version to qualify. With the `effect` catalog
-on `^4.0.0`, that leaves one rule: `@effect/tsgo`'s, whose exact `range`
-is its own line (`"@effect/tsgo@0.47.2>effect": 4.0.0`). Every other
-satellite peers on `effect` with a caret that the installed copy
-satisfies, so the stable line needs no table for them.
+caret range has no single version to qualify. Every `effect` catalog
+entry is exact, so every satellite gets a rule
+(`"@effect/platform-node@4.0.2>effect": 4.0.2`), `@effect/tsgo` included.
 
 Rules are never blanket and never name-only, so pnpm applies a qualified
 rule only when the actual parent instance's version satisfies the
@@ -146,8 +147,19 @@ package does not solve.
 ## The scoped platform-node-shared overrides
 
 The plugin also publishes a pnpm `overrides` block, which a consumer's
-install applies. It holds two entries, one per release candidate whose
-`@effect/platform-node` is still in use by built tools:
+install applies. A consumer's own value for the same selector wins.
+
+It first holds `effect` and every satellite at 4.0.2 with one
+`"<name>@^4.0.0": "4.0.2"` entry each, until `effect@4.0.3` reaches npm.
+The overrides reach transitive satellite requests that no catalog
+governs. They also survive the registry `upgrade` CLI, which rewrites
+catalogs only. Each selector is scoped to `^4.0.0`, so a release
+candidate's own `effect` sits outside it and is untouched. Why, and the
+removal condition:
+[the exact-lock decision](../decisions/effect-catalog-locked-exact.md).
+
+It also holds two release-candidate entries, one per release candidate
+whose `@effect/platform-node` is still in use by built tools:
 
 - `@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared`:
   `4.0.0-rc.117`

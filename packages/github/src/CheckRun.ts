@@ -3,6 +3,7 @@ import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
 import { numericId } from "./internal/ids.js";
 import { Repo } from "./Repo.js";
+import type { PageOptions } from "./Rest.js";
 
 /** How a check run finished. @public */
 export const CheckConclusion = Schema.Literals([
@@ -13,6 +14,50 @@ export const CheckConclusion = Schema.Literals([
 	"timed_out",
 	"action_required",
 	"skipped",
+]);
+
+/**
+ * The phase of its lifecycle a check run is in, as GitHub reports it.
+ *
+ * @remarks
+ * `"waiting"`, `"requested"` and `"pending"` are reserved for GitHub Actions
+ * runs; an integrator can only write `"queued"`, `"in_progress"` and, through
+ * {@link CheckRunShape.complete}, `"completed"`.
+ *
+ * @public
+ */
+export const CheckRunStatus = Schema.Literals([
+	"queued",
+	"in_progress",
+	"completed",
+	"waiting",
+	"requested",
+	"pending",
+]);
+
+/**
+ * How a check run finished, as GitHub reports it: every
+ * {@link CheckConclusion} plus `"stale"`.
+ *
+ * @remarks
+ * GitHub's check-run response schema omits `"stale"`, but its update
+ * endpoint documents it: *"You cannot change a check run conclusion to
+ * `stale`, only GitHub can set this."* GitHub sets it on a run left
+ * incomplete too long, so a read that refused it would fail on any commit
+ * carrying one. It is read-only, which is why {@link CheckConclusion}, the
+ * write set, does not include it.
+ *
+ * @public
+ */
+export const ReportedCheckConclusion = Schema.Literals([
+	"success",
+	"failure",
+	"neutral",
+	"cancelled",
+	"timed_out",
+	"action_required",
+	"skipped",
+	"stale",
 ]);
 
 /** How serious an annotation is. @public */
@@ -113,22 +158,77 @@ const capBytes = (value: string): string => {
 };
 
 /**
+ * The rendered output a check run reports: its title and summary, and how
+ * many annotations it carries.
+ *
+ * @remarks
+ * The read-side counterpart of {@link CheckRunOutput}. It leaves out the
+ * long-form `text` deliberately: it can run to 65535 bytes, and a caller
+ * listing a commit's runs rarely wants it. Read the run's full output through
+ * the typed request surface when you do.
+ *
+ * @public
+ */
+export class ReportedCheckRunOutput extends Schema.Class<ReportedCheckRunOutput>("ReportedCheckRunOutput")({
+	/** The output's title; `null` when the run has none. */
+	title: Schema.NullOr(Schema.String),
+	/** The output's markdown summary; `null` when the run has none. */
+	summary: Schema.NullOr(Schema.String),
+	/** How many annotations the run carries (wire `annotations_count`). */
+	annotationsCount: Schema.Int,
+}) {}
+
+/**
  * A check run as GitHub reports it.
+ *
+ * @remarks
+ * Every field beyond the original five (the four required ones and
+ * `externalId`) is optional, so a test double built with
+ * `CheckRunRef.make({ id, name, url, status })` stays valid; a run decoded
+ * from a GitHub response carries all of them, because GitHub always sends
+ * them. A nullable field is `null` when GitHub reported `null`.
+ *
+ * **Three URLs, named apart.** `url` is the **web** URL (wire `html_url`, or
+ * `""` when GitHub reported none), kept under that name so existing callers
+ * read what they always read. `htmlUrl` is the same wire field with its
+ * `null` preserved, `apiUrl` is the REST URL (wire `url`), and `detailsUrl`
+ * is the integrator's own link (wire `details_url`).
  *
  * @public
  */
 export class CheckRunRef extends Schema.Class<CheckRunRef>("CheckRunRef")({
 	id: Schema.Int,
 	name: Schema.String,
-	/** The web URL. */
+	/** The web URL (wire `html_url`), or `""` when GitHub reported none. See also `htmlUrl`. */
 	url: Schema.String,
-	status: Schema.String,
+	/** The run's lifecycle phase. */
+	status: CheckRunStatus,
 	/**
 	 * The integrator's own id for the run (wire `external_id`), when it has
 	 * one. GitHub reports a run created without one as `null` or `""`; both
 	 * leave this absent.
 	 */
 	externalId: Schema.optionalKey(Schema.String),
+	/** The commit the run checks (wire `head_sha`). */
+	headSha: Schema.optionalKey(Schema.String),
+	/** The run's GraphQL node id (wire `node_id`). */
+	nodeId: Schema.optionalKey(Schema.String),
+	/** How the run finished; `null` until it completes. */
+	conclusion: Schema.optionalKey(Schema.NullOr(ReportedCheckConclusion)),
+	/** When the run started, as GitHub's ISO 8601 string; `null` for a run that has not. */
+	startedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	/** When the run completed, as GitHub's ISO 8601 string; `null` for a run that has not. */
+	completedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	/** The integrator's link for the run (wire `details_url`). */
+	detailsUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	/** The web URL (wire `html_url`), `null` preserved. */
+	htmlUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	/** The run's REST API URL (wire `url`). */
+	apiUrl: Schema.optionalKey(Schema.String),
+	/** The check suite the run belongs to (wire `check_suite.id`); `null` when GitHub reported none. */
+	checkSuiteId: Schema.optionalKey(Schema.NullOr(Schema.Int)),
+	/** The run's title, summary and annotation count. */
+	output: Schema.optionalKey(ReportedCheckRunOutput),
 }) {}
 
 /**
@@ -168,6 +268,30 @@ export interface UpdateCheckRunOptions {
 	readonly status?: "queued" | "in_progress" | undefined;
 	/** Where the integrator's full details live (wire `details_url`). */
 	readonly detailsUrl?: string | undefined;
+}
+
+/**
+ * Options for {@link CheckRunShape.list}.
+ *
+ * @public
+ */
+export interface ListCheckRunsOptions {
+	/** Only runs with this name (wire `check_name`). */
+	readonly checkName?: string | undefined;
+	/** Only runs created by this GitHub App (wire `app_id`). */
+	readonly appId?: number | undefined;
+	/**
+	 * Only runs in this phase. GitHub filters on these three only; the
+	 * Actions-reserved phases are not a filter it accepts.
+	 */
+	readonly status?: "queued" | "in_progress" | "completed" | undefined;
+	/**
+	 * `"latest"` (GitHub's default) answers only the newest run per name;
+	 * `"all"` answers every run, re-runs included.
+	 */
+	readonly filter?: "latest" | "all" | undefined;
+	/** How far to page. Unset, every page is read, 100 runs at a time. */
+	readonly page?: PageOptions | undefined;
 }
 
 /**
@@ -245,6 +369,35 @@ export interface CheckRunShape {
 		options?: UpdateCheckRunOptions,
 	) => Effect.Effect<void, GitHubError, Repo>;
 	/**
+	 * {@link CheckRunShape.update}, answering the run as GitHub reports it
+	 * after the PATCH.
+	 *
+	 * @remarks
+	 * The same single request, with the same omission rules; the difference is
+	 * only that GitHub's response is decoded into a {@link CheckRunRef} rather
+	 * than discarded. A separate member rather than a new return type on
+	 * `update`, so a test double that stubs `update` with `Effect.void` keeps
+	 * compiling.
+	 */
+	readonly updateRef: (
+		id: number,
+		output?: CheckRunOutput,
+		options?: UpdateCheckRunOptions,
+	) => Effect.Effect<CheckRunRef, GitHubError, Repo>;
+	/**
+	 * The check runs on a commit, newest per name unless `options.filter` is
+	 * `"all"`.
+	 *
+	 * @remarks
+	 * `ref` is a commit SHA, a branch name or a tag name. Every page is read
+	 * unless `options.page` bounds the walk, so a filter that matches past
+	 * page one is still answered in full.
+	 */
+	readonly list: (
+		ref: string,
+		options?: ListCheckRunsOptions,
+	) => Effect.Effect<ReadonlyArray<CheckRunRef>, GitHubError, Repo>;
+	/**
 	 * The newest run on `headSha` named `name` whose external id is
 	 * `externalId`; none when there is no such run.
 	 *
@@ -277,6 +430,22 @@ export interface CheckRunShape {
 		output?: CheckRunOutput,
 		options?: CompleteCheckRunOptions,
 	) => Effect.Effect<void, GitHubError, Repo>;
+	/**
+	 * {@link CheckRunShape.complete}, answering the finished run as GitHub
+	 * reports it after the PATCH.
+	 *
+	 * @remarks
+	 * The same single request, with the same `completed_at` stamp and output
+	 * byte cap; GitHub's response is decoded into a {@link CheckRunRef} rather
+	 * than discarded. A separate member for the same reason as
+	 * {@link CheckRunShape.updateRef}.
+	 */
+	readonly completeRef: (
+		id: number,
+		conclusion: (typeof CheckConclusion.literals)[number],
+		output?: CheckRunOutput,
+		options?: CompleteCheckRunOptions,
+	) => Effect.Effect<CheckRunRef, GitHubError, Repo>;
 	/**
 	 * Run `use` inside a check run, concluding it however `use` exits.
 	 *
@@ -353,8 +522,11 @@ export class CheckRun extends Context.Service<CheckRun, CheckRunShape>()("@effec
 		create: overrides.create ?? (() => unstubbed("create")),
 		get: overrides.get ?? (() => unstubbed("get")),
 		update: overrides.update ?? (() => unstubbed("update")),
+		updateRef: overrides.updateRef ?? (() => unstubbed("updateRef")),
+		list: overrides.list ?? (() => unstubbed("list")),
 		findByExternalId: overrides.findByExternalId ?? (() => unstubbed("findByExternalId")),
 		complete: overrides.complete ?? (() => unstubbed("complete")),
+		completeRef: overrides.completeRef ?? (() => unstubbed("completeRef")),
 		withCheckRun: overrides.withCheckRun ?? (() => unstubbed("withCheckRun")),
 	});
 
@@ -455,32 +627,101 @@ const concludeFor = <A, E>(
 const decodeRef = Schema.decodeUnknownEffect(CheckRunRef);
 
 /**
+ * The fields of GitHub's check-run payload this package projects.
+ *
+ * @remarks
+ * Structural rather than octokit's generated type, so every route that
+ * answers a run (create, get, PATCH, and an item of the commit listing)
+ * satisfies it without a cast. Fields are optional here because a
+ * hand-written fixture may omit them; whatever is present is decoded.
+ */
+interface RawCheckRun {
+	readonly id: number | bigint;
+	readonly name: string;
+	readonly status: string;
+	readonly html_url?: string | null;
+	readonly external_id?: string | null;
+	readonly head_sha?: string;
+	readonly node_id?: string;
+	readonly url?: string;
+	readonly details_url?: string | null;
+	readonly conclusion?: string | null;
+	readonly started_at?: string | null;
+	readonly completed_at?: string | null;
+	readonly check_suite?: { readonly id: number | bigint } | null;
+	readonly output?: {
+		readonly title?: string | null;
+		readonly summary?: string | null;
+		readonly annotations_count?: number;
+	} | null;
+}
+
+/** Whether a wire value is an object whose fields can be read. */
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+
+/**
+ * A nested wire object's fields, renamed for the schema, or the value itself
+ * when it is not an object.
+ *
+ * @remarks
+ * Handing the raw value through is what keeps a malformed response typed: a
+ * `null` `output` (which GitHub's schema forbids) reaches the decoder and fails
+ * as `decode` instead of throwing a `TypeError` while its fields are read,
+ * which would be a defect escaping every `GitHubError` handler.
+ */
+const nested = (value: unknown, project: (record: Record<string, unknown>) => unknown): unknown =>
+	isRecord(value) ? project(value) : value;
+
+/**
  * Project a check-run response onto {@link CheckRunRef}, **decoding** it.
  *
  * @remarks
  * Decoded rather than built with `make`, which throws: a response missing a
  * field (a hand-written double, or GitHub changing shape) is input, and input
  * failures are a typed `decode` `GitHubError` naming the operation rather than
- * a defect.
+ * a defect. That includes a status or conclusion outside the literal sets:
+ * GitHub adding one fails the read loudly instead of passing an unknown
+ * string to a caller's exhaustive switch.
  */
-const refOf = (
-	operation: string,
-	raw: {
-		id: number | bigint;
-		name: string;
-		html_url?: string | null;
-		status: string;
-		external_id?: string | null;
-	},
-): Effect.Effect<CheckRunRef, GitHubError> =>
-	decodeRef({
-		id: numericId(raw.id),
-		name: raw.name,
-		url: raw.html_url ?? "",
-		status: raw.status,
-		// null, absent and "" all mean the run has no external id.
-		...(raw.external_id ? { externalId: raw.external_id } : {}),
-	}).pipe(
+const refOf = (operation: string, raw: RawCheckRun): Effect.Effect<CheckRunRef, GitHubError> =>
+	// A run that is not an object (a `null` list item, say) goes to the decoder
+	// as it is, so it fails typed rather than throwing while `id` is read.
+	decodeRef(
+		!isRecord(raw as unknown)
+			? raw
+			: {
+					id: numericId(raw.id),
+					name: raw.name,
+					url: raw.html_url ?? "",
+					status: raw.status,
+					// null, absent and "" all mean the run has no external id.
+					...(raw.external_id ? { externalId: raw.external_id } : {}),
+					...(raw.head_sha !== undefined ? { headSha: raw.head_sha } : {}),
+					...(raw.node_id !== undefined ? { nodeId: raw.node_id } : {}),
+					...(raw.conclusion !== undefined ? { conclusion: raw.conclusion } : {}),
+					...(raw.started_at !== undefined ? { startedAt: raw.started_at } : {}),
+					...(raw.completed_at !== undefined ? { completedAt: raw.completed_at } : {}),
+					...(raw.details_url !== undefined ? { detailsUrl: raw.details_url } : {}),
+					...(raw.html_url !== undefined ? { htmlUrl: raw.html_url } : {}),
+					...(raw.url !== undefined ? { apiUrl: raw.url } : {}),
+					...(raw.check_suite !== undefined
+						? {
+								checkSuiteId: nested(raw.check_suite, (suite) =>
+									typeof suite.id === "number" || typeof suite.id === "bigint" ? numericId(suite.id) : suite.id,
+								),
+							}
+						: {}),
+					...(raw.output !== undefined
+						? {
+								output: nested(raw.output, (output) => ({
+									title: output.title,
+									summary: output.summary,
+									annotationsCount: output.annotations_count,
+								})),
+							}
+						: {}),
+				},
+	).pipe(
 		Effect.catchTag("SchemaError", (error) =>
 			Effect.fail(GitHubError.decode(operation, "GitHub returned an unexpected check run", error)),
 		),
@@ -513,25 +754,71 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 		return yield* refOf("CheckRun.create", created);
 	});
 
+	/**
+	 * The completing PATCH, answering GitHub's raw response.
+	 *
+	 * @remarks
+	 * Shared by `complete`, which discards the response, and `completeRef`,
+	 * which decodes it. Only the second can fail on an unexpected response:
+	 * `complete` runs inside the bracket's finalizer, and a run GitHub has
+	 * already concluded must not fail the program over a field it did not ask
+	 * to read.
+	 */
+	const completePatch = (
+		id: number,
+		conclusion: (typeof CheckConclusion.literals)[number],
+		output: CheckRunOutput | undefined,
+		options: CompleteCheckRunOptions | undefined,
+	) =>
+		Effect.gen(function* () {
+			const { owner, repo } = yield* Repo;
+			yield* Effect.annotateCurrentSpan({ owner, repo, id, conclusion });
+			return yield* client.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
+				owner,
+				repo,
+				check_run_id: id,
+				status: "completed",
+				conclusion,
+				completed_at: yield* isoNow,
+				...(output !== undefined ? { output: wireOutput(output) } : {}),
+				...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
+			});
+		});
+
 	const complete = Effect.fn("CheckRun.complete")(function* (
 		id: number,
 		conclusion: (typeof CheckConclusion.literals)[number],
 		output?: CheckRunOutput,
 		options?: CompleteCheckRunOptions,
 	) {
-		const { owner, repo } = yield* Repo;
-		yield* Effect.annotateCurrentSpan({ owner, repo, id, conclusion });
-		yield* client.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
-			owner,
-			repo,
-			check_run_id: id,
-			status: "completed",
-			conclusion,
-			completed_at: yield* isoNow,
-			...(output !== undefined ? { output: wireOutput(output) } : {}),
-			...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
-		});
+		yield* completePatch(id, conclusion, output, options);
 	});
+
+	const completeRef = Effect.fn("CheckRun.completeRef")(function* (
+		id: number,
+		conclusion: (typeof CheckConclusion.literals)[number],
+		output?: CheckRunOutput,
+		options?: CompleteCheckRunOptions,
+	) {
+		return yield* refOf("CheckRun.completeRef", yield* completePatch(id, conclusion, output, options));
+	});
+
+	/** The updating PATCH, answering GitHub's raw response; see `completePatch` for why it is shared. */
+	const updatePatch = (id: number, output: CheckRunOutput | undefined, options: UpdateCheckRunOptions | undefined) =>
+		Effect.gen(function* () {
+			const { owner, repo } = yield* Repo;
+			yield* Effect.annotateCurrentSpan({ owner, repo, id });
+			return yield* client.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
+				owner,
+				repo,
+				check_run_id: id,
+				// Omitted, not sent: the run keeps the output it already has.
+				...(output !== undefined ? { output: wireOutput(output) } : {}),
+				...(options?.status !== undefined ? { status: options.status } : {}),
+				...(options?.status === "in_progress" ? { started_at: yield* isoNow } : {}),
+				...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
+			});
+		});
 
 	return {
 		create,
@@ -553,18 +840,36 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 			output?: CheckRunOutput,
 			options?: UpdateCheckRunOptions,
 		) {
+			yield* updatePatch(id, output, options);
+		}),
+
+		updateRef: Effect.fn("CheckRun.updateRef")(function* (
+			id: number,
+			output?: CheckRunOutput,
+			options?: UpdateCheckRunOptions,
+		) {
+			return yield* refOf("CheckRun.updateRef", yield* updatePatch(id, output, options));
+		}),
+
+		completeRef,
+
+		list: Effect.fn("CheckRun.list")(function* (ref: string, options?: ListCheckRunsOptions) {
 			const { owner, repo } = yield* Repo;
-			yield* Effect.annotateCurrentSpan({ owner, repo, id });
-			yield* client.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
-				owner,
-				repo,
-				check_run_id: id,
-				// Omitted, not sent: the run keeps the output it already has.
-				...(output !== undefined ? { output: wireOutput(output) } : {}),
-				...(options?.status !== undefined ? { status: options.status } : {}),
-				...(options?.status === "in_progress" ? { started_at: yield* isoNow } : {}),
-				...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
-			});
+			yield* Effect.annotateCurrentSpan({ owner, repo, ref });
+			const runs = yield* client.paginate(
+				"GET /repos/{owner}/{repo}/commits/{ref}/check-runs",
+				{
+					owner,
+					repo,
+					ref,
+					...(options?.checkName !== undefined ? { check_name: options.checkName } : {}),
+					...(options?.appId !== undefined ? { app_id: options.appId } : {}),
+					...(options?.status !== undefined ? { status: options.status } : {}),
+					...(options?.filter !== undefined ? { filter: options.filter } : {}),
+				},
+				options?.page,
+			);
+			return yield* Effect.forEach(runs, (run) => refOf("CheckRun.list", run));
 		}),
 
 		findByExternalId: Effect.fn("CheckRun.findByExternalId")(function* (
