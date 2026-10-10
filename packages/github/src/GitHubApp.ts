@@ -647,10 +647,16 @@ const swallowStore = <A>(effect: Effect.Effect<A>, fallback: A): Effect.Effect<A
 	);
 
 const cachedTokenFor = Effect.fn("GitHubApp.cachedToken")(function* (request: CachedTokenRequest) {
-	const margin = Option.filter(
-		Duration.fromInput(request.margin ?? DEFAULT_CACHE_MARGIN),
-		(duration) => Duration.isFinite(duration) && !Duration.isNegative(duration),
-	);
+	// `Duration.fromInput(NaN)` is zero, not `None`, so a raw non-finite
+	// number is refused before the conversion.
+	const input = request.margin ?? DEFAULT_CACHE_MARGIN;
+	const margin =
+		typeof input === "number" && !Number.isFinite(input)
+			? Option.none<Duration.Duration>()
+			: Option.filter(
+					Duration.fromInput(input),
+					(duration) => Duration.isFinite(duration) && !Duration.isNegative(duration),
+				);
 	if (Option.isNone(margin)) {
 		return yield* GitHubAppError.of("token", "the cache margin must be a finite, non-negative duration");
 	}

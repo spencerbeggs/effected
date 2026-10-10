@@ -1212,6 +1212,34 @@ describe("CheckRun create and update options", () => {
 		}),
 	);
 
+	it.effect("update to in_progress stamps started_at from Clock; other updates do not", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(1_800_000_000_000);
+			const { requested } = yield* viaFixtures(
+				{
+					request: {
+						"POST /repos/{owner}/{repo}/check-runs": CREATED,
+						"PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}": CREATED,
+					},
+				},
+				CheckRun,
+				CheckRun,
+				(check) =>
+					Effect.gen(function* () {
+						yield* check.create("lint", "abc", { status: "queued" });
+						yield* TestClock.adjust(Duration.minutes(3));
+						yield* check.update(7, CheckRunOutput.make({ title: "t", summary: "s" }), { status: "in_progress" });
+						yield* check.update(7, CheckRunOutput.make({ title: "t", summary: "s" }));
+						yield* check.update(7, CheckRunOutput.make({ title: "t", summary: "s" }), { status: "queued" });
+					}),
+			);
+			assert.isFalse("started_at" in (requested[0]?.params ?? {}), "a queued run has not started");
+			assert.strictEqual(requested[1]?.params.started_at, new Date(1_800_000_180_000).toISOString());
+			assert.isFalse("started_at" in (requested[2]?.params ?? {}), "an output-only update leaves started_at");
+			assert.isFalse("started_at" in (requested[3]?.params ?? {}), "a queued update has not started");
+		}),
+	);
+
 	it.effect("omits an empty externalId rather than sending one no lookup can find", () =>
 		Effect.gen(function* () {
 			const { requested } = yield* viaFixtures(

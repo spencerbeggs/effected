@@ -146,8 +146,10 @@ export interface CreateCheckRunOptions {
  */
 export interface UpdateCheckRunOptions {
 	/**
-	 * Move the run to `"queued"` or `"in_progress"`. Completing it goes through
-	 * {@link CheckRunShape.complete}, which also records the conclusion.
+	 * Move the run to `"queued"` or `"in_progress"`; `"in_progress"` also
+	 * stamps `started_at`, as {@link CheckRunShape.create} does. Completing it
+	 * goes through {@link CheckRunShape.complete}, which also records the
+	 * conclusion.
 	 */
 	readonly status?: "queued" | "in_progress" | undefined;
 	/** Where the integrator's full details live (wire `details_url`). */
@@ -489,6 +491,7 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 				check_run_id: id,
 				output: wireOutput(output),
 				...(options?.status !== undefined ? { status: options.status } : {}),
+				...(options?.status === "in_progress" ? { started_at: yield* isoNow } : {}),
 				...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
 			});
 		}),

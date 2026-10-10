@@ -155,6 +155,29 @@ describe("GitHubApp.cachedToken", () => {
 		}),
 	);
 
+	it.effect("refuses a non-finite raw-number margin rather than reading NaN as zero", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(NOW_MILLIS);
+			const app = yield* countingApp();
+			for (const margin of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+				const error = yield* Effect.flip(
+					Effect.provide(
+						GitHubApp.cachedToken({ ...REQUEST, margin }),
+						Layer.mergeAll(app.layer, InstallationTokenStore.layerMemory),
+					),
+				);
+				assert.strictEqual(error._tag, "GitHubAppError", String(margin));
+			}
+			assert.strictEqual(yield* Ref.get(app.minted), 0, "nothing is minted on a refused margin");
+			// control: a finite raw number of milliseconds is a margin
+			yield* Effect.provide(
+				GitHubApp.cachedToken({ ...REQUEST, margin: 1_000 }),
+				Layer.mergeAll(app.layer, InstallationTokenStore.layerMemory),
+			);
+			assert.strictEqual(yield* Ref.get(app.minted), 1);
+		}),
+	);
+
 	it.effect("never fails on a store that dies: a dying get is a miss, a dying set is ignored", () =>
 		Effect.gen(function* () {
 			yield* TestClock.setTime(NOW_MILLIS);
