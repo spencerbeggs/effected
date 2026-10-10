@@ -826,6 +826,28 @@ describe("GitHubFixtures.failure", () => {
 		}),
 	);
 
+	it.effect("recognizes a failure made by another copy of the package", () =>
+		Effect.gen(function* () {
+			// Two resolved copies of @effected/github mean two RawFailure classes, so
+			// instanceof alone would serve the other copy's failure as data. The
+			// brand is a registered symbol, shared across copies.
+			const foreign = Object.assign(Object.create({ [Symbol.for("@effected/github/RawFailure")]: true }), {
+				status: 404,
+				headers: undefined,
+				body: { message: "Not Found" },
+			});
+			const error = yield* Effect.flip(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						client.request("GET /repos/{owner}/{repo}", { owner: "o", repo: "r" }),
+					),
+					GitHubClient.layerFixture({ request: { "GET /repos/{owner}/{repo}": foreign } }),
+				),
+			);
+			assert.strictEqual(error.kind, "notFound");
+		}),
+	);
+
 	it.effect("never mistakes a same-shaped plain value for a failure", () =>
 		Effect.gen(function* () {
 			const lookalike = { status: 422, body: DUPLICATE_RELEASE };

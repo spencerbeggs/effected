@@ -358,6 +358,8 @@ describe("GitHubError.fromResponse", () => {
 			{ status: 404, kind: "notFound" },
 			{ status: 422, body: DUPLICATE_RELEASE, kind: "alreadyExists" },
 			{ status: 422, body: { message: "Validation Failed", errors: [{ code: "invalid" }] }, kind: "rejected" },
+			// Prose only: /git/refs says so in words, with no structured code.
+			{ status: 422, body: { message: "Reference already exists" }, kind: "alreadyExists" },
 		];
 		for (const entry of cases) {
 			const error = GitHubError.fromResponse("op", entry, NOW);
@@ -371,7 +373,8 @@ describe("GitHubError.fromResponse", () => {
 				"op",
 				{
 					status: entry.status,
-					message: "x",
+					// octokit's message is the body's message, which the prose check reads.
+					message: (entry.body as { message?: string } | undefined)?.message ?? "x",
 					response: { headers: entry.headers ?? {}, data: entry.body ?? {} },
 				},
 				NOW,
@@ -381,20 +384,23 @@ describe("GitHubError.fromResponse", () => {
 	});
 
 	it("reads the reason from body.message, else the status, and keeps the validation entries", () => {
-		const duplicate = GitHubError.fromResponse("op", { status: 422, body: DUPLICATE_RELEASE });
+		const duplicate = GitHubError.fromResponse("op", { status: 422, body: DUPLICATE_RELEASE }, NOW);
 		assert.strictEqual(duplicate.reason, "Validation Failed");
 		assert.deepStrictEqual(
 			duplicate.validation?.map((entry) => ({ ...entry })),
 			[{ resource: "Release", code: "already_exists", field: "tag_name" }],
 		);
-		assert.strictEqual(GitHubError.fromResponse("op", { status: 502 }).reason, "HTTP 502");
-		assert.strictEqual(GitHubError.fromResponse("op", { status: 502, body: "<html>oops</html>" }).reason, "HTTP 502");
+		assert.strictEqual(GitHubError.fromResponse("op", { status: 502 }, NOW).reason, "HTTP 502");
+		assert.strictEqual(
+			GitHubError.fromResponse("op", { status: 502, body: "<html>oops</html>" }, NOW).reason,
+			"HTTP 502",
+		);
 	});
 
 	it("sanitizes the body message exactly as fromOctokit sanitizes octokit's", () => {
-		const html = GitHubError.fromResponse("op", { status: 500, body: { message: "<!DOCTYPE html><p>down</p>" } });
+		const html = GitHubError.fromResponse("op", { status: 500, body: { message: "<!DOCTYPE html><p>down</p>" } }, NOW);
 		assert.strictEqual(html.reason, "GitHub returned an HTML error page instead of a JSON response");
-		const long = GitHubError.fromResponse("op", { status: 500, body: { message: "x".repeat(2000) } });
+		const long = GitHubError.fromResponse("op", { status: 500, body: { message: "x".repeat(2000) } }, NOW);
 		assert.isBelow(long.reason.length, 600);
 	});
 
@@ -409,5 +415,26 @@ describe("GitHubError.fromResponse", () => {
 		);
 		assert.strictEqual(reset.kind, "rateLimited");
 		assert.strictEqual(reset.retryAfterMillis, 60_000);
+	});
+
+	it("turns a rate-limit reset into a delay relative to the now it is given", () => {
+		// An absolute epoch-second reset, 90 s after NOW. Measured from the epoch
+		// instead, it would be a delay of decades.
+		const error = GitHubError.fromResponse(
+			"op",
+			{ status: 403, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(NOW / 1000 + 90) } },
+			NOW,
+		);
+		assert.strictEqual(error.kind, "rateLimited");
+		assert.strictEqual(error.retryAfterMillis, 90_000);
+		const later = GitHubError.fromResponse(
+			"op",
+			{ status: 403, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(NOW / 1000 + 90) } },
+			NOW + 30_000,
+		);
+		assert.strictEqual(later.retryAfterMillis, 60_000);
+		// `now` is required, so a call that forgets it does not type-check.
+		// @ts-expect-error -- nowMillis is required
+		assert.strictEqual(GitHubError.fromResponse("op", { status: 404 }).kind, "notFound");
 	});
 });

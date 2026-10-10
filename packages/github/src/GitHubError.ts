@@ -202,8 +202,10 @@ export class GitHubError extends Schema.TaggedError<GitHubError>()("GitHubError"
 	 * from `body.errors`) and runs the same classifier, so a raw response and
 	 * the octokit error for it classify identically.
 	 *
-	 * Header names are matched in any case. `nowMillis` turns an absolute
-	 * rate-limit reset into a delay, as in {@link GitHubError.fromOctokit}.
+	 * Header names are matched in any case. `nowMillis` is required, as in
+	 * {@link GitHubError.fromOctokit}: it turns an absolute rate-limit reset
+	 * (an epoch second) into a delay, so it must be the real current time,
+	 * usually `Clock.currentTimeMillis`. A zero would make the delay decades.
 	 */
 	static fromResponse(
 		operation: string,
@@ -212,7 +214,7 @@ export class GitHubError extends Schema.TaggedError<GitHubError>()("GitHubError"
 			readonly headers?: Readonly<Record<string, string>> | undefined;
 			readonly body?: unknown;
 		},
-		nowMillis = 0,
+		nowMillis: number,
 	): GitHubError {
 		const body = asRecord(response.body);
 		const message = typeof body?.message === "string" ? body.message : `HTTP ${response.status}`;

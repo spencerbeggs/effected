@@ -154,9 +154,11 @@ export interface RecordedCall {
  * {@link (GitHubFixtures:variable).failure}.
  *
  * @remarks
- * A class rather than a plain object so a fixture's data payload that happens
- * to have a `status` and a `body` is never mistaken for a failure: only a
- * value built by `GitHubFixtures.failure` fails the call.
+ * Branded, so a fixture's data payload that happens to have a `status` and a
+ * `body` is never mistaken for a failure: only a value built by
+ * `GitHubFixtures.failure` fails the call. The brand is a registered symbol
+ * rather than the class identity, so a failure built by another resolved copy
+ * of this package is still recognized.
  *
  * @public
  */
@@ -179,6 +181,15 @@ export class RawFailure {
 		this.body = response.body;
 	}
 }
+
+/** The brand every {@link RawFailure} carries; registered, so it is shared across package copies. */
+const RawFailureBrand: unique symbol = Symbol.for("@effected/github/RawFailure") as never;
+
+Object.defineProperty(RawFailure.prototype, RawFailureBrand, { value: true });
+
+/** Whether `value` is a {@link RawFailure}, from this copy of the package or another. */
+const isRawFailure = (value: unknown): value is RawFailure =>
+	typeof value === "object" && value !== null && (value as { [RawFailureBrand]?: unknown })[RawFailureBrand] === true;
 
 /**
  * Builders for {@link (GitHubFixtures:interface)} entries.
@@ -520,7 +531,7 @@ const makeFixture = (fixtures: GitHubFixtures): GitHubClientShape => {
 
 		const recorded = fixtures.paginate?.[route];
 		if (recorded instanceof GitHubError) return Stream.fail(recorded);
-		if (recorded instanceof RawFailure) return Stream.fromEffect(failWith(route, recorded));
+		if (isRawFailure(recorded)) return Stream.fromEffect(failWith(route, recorded));
 		const items = recorded;
 		if (items === undefined) {
 			switch (fixtures.unstubbed ?? "die") {
@@ -558,7 +569,7 @@ const makeFixture = (fixtures: GitHubFixtures): GitHubClientShape => {
 			if (data === undefined) return missing<Rest.Data<R>>("GitHubClient.request", route);
 			// A recorded GitHubError IS the response: this is how a suite stubs a
 			// 404 deliberately, rather than relying on a route's absence.
-			if (data instanceof RawFailure) return failWith(route, data);
+			if (isRawFailure(data)) return failWith(route, data);
 			return data instanceof GitHubError ? Effect.fail(data) : Effect.succeed(data as Rest.Data<R>);
 		},
 		requestDecoded: <A, I>(route: string, params: Record<string, unknown>, schema: Schema.Codec<A, I>) => {
@@ -566,7 +577,7 @@ const makeFixture = (fixtures: GitHubFixtures): GitHubClientShape => {
 			const data = fixtures.request?.[route];
 			if (data === undefined) return missing<A>("GitHubClient.requestDecoded", route);
 			if (data instanceof GitHubError) return Effect.fail(data);
-			if (data instanceof RawFailure) return failWith(route, data);
+			if (isRawFailure(data)) return failWith(route, data);
 			return Schema.decodeUnknownEffect(schema)(data).pipe(
 				Effect.catchTag("SchemaError", (error) =>
 					Effect.fail(GitHubError.decode(route, "fixture did not match its schema", error)),
