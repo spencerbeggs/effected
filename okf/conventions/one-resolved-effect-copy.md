@@ -1,7 +1,7 @@
 ---
 type: Convention
 title: Keep the tree resolved to one effect copy
-description: The whole workspace and its build toolchain must resolve to exactly one installed copy of effect, the one the lockfile resolves from the catalogs' stable-line range.
+description: The whole workspace and its build toolchain must resolve to exactly one installed copy of effect, the exact version the catalogs pin.
 status: stable
 stale_after: 2027-03-13T00:00:00Z
 tags:
@@ -9,8 +9,8 @@ tags:
   - compat
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T17:24:58Z
-  body_sha256: 991f9ddc08247ca1350ae8d15d802a1f9131b65dde54a31027f9b7f73ccfb1db
+  at: 2026-10-10T23:08:17Z
+  body_sha256: 91182e311a98ec60f447a0cc2d051313ff3f675d774470a5da4649963a8522e1
 ---
 
 # Keep the tree resolved to one effect copy
@@ -19,10 +19,10 @@ Always treat a second resolved `effect` copy anywhere in the tree — this works
 
 This is a correctness requirement, not hygiene. A `Context.Service` tag is an identity: two resolved copies of the same package are two distinct tags, so a layer built from one copy does not satisfy a requirement expressed against the other, and the type system is right to reject it even though the diagnostic rarely says so in those terms. A duplicated `effect` inside one Schema decode pipeline has crashed every package's build with a type error surfacing deep inside a parser (`TypeError: text.charCodeAt is not a function`), and a stale caret across a consumer's own packages has produced `Layer<…> is not assignable to Layer<…>` diagnostics that read like a signature change but are duplicate identity — checking the `.d.ts` diff first (finding it clean) is what points at duplication instead. Never chase this class of error as an API signature bug before ruling out a second resolved copy: the tell is a stack or a lockfile entry naming two different `effect@…` paths.
 
-**Decide whether an `effect` advance strands anything before you make it.** A release of an `@effected/*` package built on the stable line advertises a caret peer (`^4.0.0`); a release built on a release candidate advertises that candidate's exact version. So the answer depends on where the previously-published closure sits:
+**Decide whether an `effect` advance strands anything before you make it.** Under [the exact-lock decision](../decisions/effect-catalog-locked-exact.md), a release of an `@effected/*` package advertises the exact `effect` it was built against (`4.0.2`), as a release built on a release candidate always did. Releases published earlier on the stable line advertise the caret `^4.0.0`. So the answer depends on where the previously-published closure sits:
 
-- **A stable-line advance within `^4` strands nothing.** The lockfile's resolved `effect` moves to a newer `4.x`, a closure published on the stable line still accepts it through its `^4.0.0` peer, and the tree stays one copy. No bridge is needed. The risk that remains is a `@stability unstable` API the kit imports changing in a minor release; the advance's own rebuild and retest is the guard (see [the stable-line decision](../decisions/effect-catalog-tracks-stable-minor.md)).
-- **A bridge is needed only when the published closure is on a release candidate or a different major.** A release candidate's exact peer cannot be satisfied by the stable line (the first move onto `4.0.0` strands every release published before it), and a different major breaks the caret. In that case pick the bridge shape by asking one question: does the previously-published `@effected/*` closure still run on the new `effect`?
+- **A closure with a caret peer is not stranded by a stable-line advance.** It still accepts the newer `4.x` through its `^4.0.0` peer. The risk that remains is a `@stability unstable` API the kit imports changing in a minor release; the advance's own rebuild and retest is the guard.
+- **A closure with an exact peer is stranded by any advance.** That covers every release since the exact lock and every release-candidate release. The new `effect` cannot satisfy its peer, so a toolchain that consumes it resolves a second copy until it republishes. The first move onto `4.0.0` stranded every release-candidate release this way, and a different major breaks a caret too. In that case pick the bridge shape by asking one question: does the previously-published `@effected/*` closure still run on the new `effect`?
   - **Runtime-compatible:** bridge old→new with a `pnpm-workspace.yaml` `overrides` block, one entry per stranded package (`effect`, and any platform packages such as `@effect/platform-node` / `@effect/sql-sqlite-node` also stranded at the old spec), rewriting the old spec to the new one. This collapses the tree back to one copy immediately. The plugin ships a scoped example: its `platform-node-shared` overrides, one per release-candidate parent (see [the scoped overrides](../modules/pnpm-plugin-effect.md#the-scoped-platform-node-shared-overrides)).
   - **Runtime-incompatible:** an `overrides` block would run old-pin-built code against the new `effect` and crash at module initialization if the new version removed or renamed an API the published closure calls at import time. Bridge instead with a `packageExtensions` block that pins the **toolchain's own peers** (the `@effected/*` packages the toolchain takes as peers, e.g. via `@savvy-web/tsdown-plugins`) to regular dependencies on the toolchain's still-old `effect`, so the toolchain runs a homogeneous old-pin world while it compiles new-pin source it never executes. Accept two `effect` copies in the lockfile for this window — the tree does not collapse to one until the toolchain republishes.
 

@@ -2,7 +2,7 @@
 type: Decision
 title: The effect catalog takes caret ranges on the stable line
 description: "With Effect v4 stable, the effect and effect:peers catalogs give effect and every @effect/* package a caret range under lock-minor; the lockfile, not the catalog literal, fixes the exact version, and .repos/effect follows the lockfile."
-status: draft
+status: deprecated
 supersedes: effect-catalog-exact-pins.md
 tags:
   - architecture
@@ -17,7 +17,7 @@ sources:
     resource: https://github.com/Effect-TS/effect/releases/tag/effect%404.0.0
     title: "effect 4.0.0 release notes: packaging, versioning and stability tags"
 generated:
-  by: "claude-code/opus-5.5"
+  by: "okfit/claude-code"
   at: 2026-10-03T04:19:44Z
   body_sha256: facd57a5e4af667ac13a666b847c86a90bb8220f661049a6a2e63487c5657c88
 ---

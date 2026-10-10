@@ -1,5 +1,5 @@
 ---
-"@effected/pnpm-plugin-effect": patch
+"@effected/pnpm-plugin-effect": minor
 ---
 
 ## Bug Fixes

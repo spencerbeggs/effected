@@ -14,8 +14,8 @@ sources:
     resource: ../../packages/github-actions/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T17:24:58Z
-  body_sha256: 5181bf0ec118d337d2ed83390d8f5c98294185a5ec17b0d99e5a97934acbb17e
+  at: 2026-10-10T23:08:17Z
+  body_sha256: 84353eade286eafd9f9ee9dab00e519fedf8a6d71e9e380e0669b20f819310ad
 ---
 
 # Releases are changeset-driven and scope-agnostic
@@ -45,9 +45,9 @@ current — see [the catalog holds next-release versions](catalog-holds-next-rel
 
 Version and stability are kept as separate axes. Every package stays
 below `1.0.0` until the kit chooses to graduate. Effect v4's stable
-release makes that possible, not automatic: the kit builds on `^4.0.0`
-(see [the effect catalog takes caret ranges on the stable
-line](effect-catalog-tracks-stable-minor.md)) and still ships `0.x`.
+release makes that possible, not automatic: the kit builds on one exact
+Effect release (see [the effect catalog locks every entry to an exact
+version](effect-catalog-locked-exact.md)) and still ships `0.x`.
 Independently, every package carries the same `unstable` status
 regardless of version number, so consumers are expected to pin the kit's
 packages to a minor (a caret on `0.x` does exactly that) and read the

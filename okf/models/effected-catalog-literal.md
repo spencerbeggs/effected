@@ -9,8 +9,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T17:24:58Z
-  body_sha256: f092917f1218385a397a999c4ecafb2fb732e4b4d55ed4a8a9fcf104cf927b9d
+  at: 2026-10-10T23:08:17Z
+  body_sha256: d344f6149aed50c4d8dd6f4c3ccd85f642e72501f166ef2239a0521bb5f6d31c
 ---
 
 # The effected catalog literal
@@ -26,16 +26,18 @@ package name, and every entry is an object of the same three fields:
 `range` (the version this catalog installs, or for `effected` the
 package's next-release version), `peer` (the input the peer-floor
 computation reads, which becomes the `:peers` twin's value) and
-`strategy`. Both catalogs use `"lock-minor"`, so `range` and `peer` are
-separate fields in both. For `effect` and every `@effect/*` satellite they
-read the same caret, `^4.0.0`. `@effect/tsgo` versions on its own line, so
-its `range` is exact (`0.47.2`) and its `peer` is the floor (`0.47.0`).
+`strategy`. The `effect` catalog uses `"lock"`: every entry's `range` is
+an exact version and its `peer` is identical, `4.0.2` for `effect` and
+every `@effect/*` satellite and `0.51.1` for `@effect/tsgo`, which versions
+on its own line. `lock` emits the peer verbatim, operator included. The
+`effected` catalog uses `"lock-minor"`, which floors each peer's patch.
 `effected` entries additionally carry `source: "workspace"`, telling the
 upgrade CLI to resolve the version from this workspace rather than
 treating `range` as an already-final value.
 
-The literal also carries an `overrides` block of scoped `platform-node-shared`
-pins; see [the scoped overrides](../modules/pnpm-plugin-effect.md#the-scoped-platform-node-shared-overrides).
+The literal also carries an `overrides` block: the HOLD entries
+(`"<name>@^4.0.0": "4.0.2"` for `effect` and every satellite) and the
+scoped release-candidate `platform-node-shared` pins; see [the scoped overrides](../modules/pnpm-plugin-effect.md#the-scoped-platform-node-shared-overrides).
 
 A `peerDependencyRules.allowedVersionsFromCatalogs` block sits alongside
 `catalogs`, naming the source catalog (`effect`) and the peer each rule
@@ -50,7 +52,10 @@ table](../modules/pnpm-plugin-effect.md#the-generated-allowed-versions-table).
 upgrade` (the CLI behind [`catalog:sync` /
 `catalog:check`](../interfaces/catalog-sync-cli.md)) reads and rewrites
 the `effected` catalog's entries in place, resolving each `source:
-"workspace"` package's next-release version. The published npm package's
+"workspace"` package's next-release version. Run over the `effect`
+catalog (`pnpm pnpm:up`, or the registry bot), it moves each entry to its
+latest release, keeping an exact operator exact. It never rewrites
+`overrides`. The published npm package's
 `catalogs` and `hooks` virtual modules — what a consumer's pnpm actually
 installs as `catalog:effect`, `catalog:effected`, and so on — are built
 from this same literal.
@@ -59,13 +64,15 @@ from this same literal.
 
 An entry with the wrong `range` or `peer` under the `effect` catalog moves
 every `@effected/*` package's devDependency range or advertised peer
-away from the stable line the kit builds and tests against, and a `range`
-that resolves outside the line `.repos/effect` is pinned to lets the
-vendored source describe a surface that is not installed — see [the
-effect catalog takes caret ranges on the stable
-line](../decisions/effect-catalog-tracks-stable-minor.md). An exact
-`range` also changes the allowed-versions table: the generator emits a
-rule only for an exact entry. An entry missing
+away from the release the kit builds and tests against, and a `range`
+that resolves outside the tag `.repos/effect` is pinned to lets the
+vendored source describe a surface that is not installed. A satellite
+`range` ahead of `effect`'s own pairs a satellite with a core it was not
+built for, which dies at import; `__test__/catalog.test.ts` fails when any
+4.x entry differs from `effect` — see [the effect catalog locks every
+entry to an exact version](../decisions/effect-catalog-locked-exact.md).
+A non-exact `range` also changes the allowed-versions table: the
+generator emits a rule only for an exact entry. An entry missing
 from the `effected` catalog entirely is invisible to `rolldown-pnpm-config
 upgrade`, which walks the literal and can only report on packages it
 already names — see [the catalog:sync / catalog:check

@@ -11,9 +11,9 @@ sources:
   - id: ai-plugin-skills
     resource: ../../plugin/skills
 generated:
-  by: "claude-code/opus-5.5"
-  at: 2026-10-03T04:19:44Z
-  body_sha256: fa77f73828653786e54ee5d754cb9859ee07b176abcd3c424885d06591e964a5
+  by: "okfit/claude-code"
+  at: 2026-10-10T23:08:17Z
+  body_sha256: 1e6c5251264a565ba217d6643ed0af5916c3dc8edf1e9cc47d165ce039a166c1
 ---
 
 # Consumer-facing text states current Effect behaviour, never versions
@@ -38,8 +38,8 @@ What to write:
 
 A version may appear only when the text is about versioning itself. Examples
 are an `@effected/*` package's own semver, a package-manager major in a support
-policy, and a `catalog:` range or pinned-version example such as the caret
-`^4.0.0` a catalog gives the stable line. Even there, never name a prerelease
+policy, and a `catalog:` range or pinned-version example such as the exact
+`4.0.2` the `effect` catalog pins. Even there, never name a prerelease
 number as the Effect version the text describes. A version inside example data whose format is the subject also
 counts, such as a lockfile specifier `4.0.0-rc.109(effect@4.0.0-rc.109)` in a
 parser's TSDoc. Plain `//` comments in `packages/*/src` do not ship, but they
