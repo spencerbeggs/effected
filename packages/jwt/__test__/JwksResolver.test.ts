@@ -381,6 +381,27 @@ describe("JwksResolver freshness and bounds", () => {
 		}),
 	);
 
+	it.effect("a newer store set without the kid is not overridden by the resolver's older fetch", () =>
+		Effect.gen(function* () {
+			const [k1, k2] = [yield* generate("k1"), yield* generate("k2")];
+			const http = stub(issuerRoutes(() => [k1.jwk]));
+			// Another isolate fetches after this one and writes a set that dropped k1.
+			let held: Option.Option<{ readonly jwks: Jwks; readonly fetchedAtMillis: number }> = Option.none();
+			const shared = Layer.succeed(JwksStore, { get: () => Effect.sync(() => held), set: () => Effect.void });
+			const token = yield* Jws.sign({}, k1.signing);
+			const program = Effect.gen(function* () {
+				yield* verify(token);
+				assert.strictEqual(http.count(JWKS_URI), 1);
+				yield* TestClock.adjust(Duration.seconds(10));
+				held = Option.some({ jwks: Schema.decodeUnknownSync(Jwks)({ keys: [k2.jwk] }), fetchedAtMillis: 10_000 });
+				yield* TestClock.adjust(Duration.seconds(10));
+				assert.strictEqual(yield* reasonOf(verify(token)), "unknownKid");
+				assert.strictEqual(http.count(JWKS_URI), 1, "inside the refetch interval, no fetch");
+			});
+			yield* Effect.provide(program, resolverLayer(http.layer, shared));
+		}),
+	);
+
 	it.effect("a store that retains nothing does not serialize known-key verifications behind a refetch", () =>
 		Effect.gen(function* () {
 			const [a, c] = [yield* generate("a"), yield* generate("c")];
@@ -418,14 +439,21 @@ describe("JwksResolver freshness and bounds", () => {
 				Effect.provide(verify(yield* Jws.sign({}, long.signing)), resolverLayer(http.layer)),
 			);
 			assert.strictEqual(error.reason, "unknownKid");
-			assert.strictEqual(error.kid, `${"x".repeat(32)}…`);
-			assert.isBelow(error.detail.length, 200);
+			assert.strictEqual(error.kid, `${"x".repeat(128)}…`);
+			assert.isBelow(error.detail.length, 300);
+			// a GitHub-shaped 36-character kid appears whole in both
+			const uuid = yield* generate("cc413527-173f-5a05-976e-9c52b1d7b431");
+			const uuidError = yield* Effect.flip(
+				Effect.provide(verify(yield* Jws.sign({}, uuid.signing)), resolverLayer(http.layer)),
+			);
+			assert.strictEqual(uuidError.kid, "cc413527-173f-5a05-976e-9c52b1d7b431");
+			assert.include(uuidError.detail, '"cc413527-173f-5a05-976e-9c52b1d7b431"');
 			// control: a kid inside the bound is carried whole
-			const short = yield* generate("k".repeat(32));
+			const short = yield* generate("k".repeat(128));
 			const shortError = yield* Effect.flip(
 				Effect.provide(verify(yield* Jws.sign({}, short.signing)), resolverLayer(http.layer)),
 			);
-			assert.strictEqual(shortError.kid, "k".repeat(32));
+			assert.strictEqual(shortError.kid, "k".repeat(128));
 		}),
 	);
 

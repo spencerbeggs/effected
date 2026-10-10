@@ -5,7 +5,7 @@ import { isAlgorithm, unsupportedAlgorithm } from "./internal/algorithms.js";
 import { concat, fatalUtf8 } from "./internal/bytes.js";
 import { finiteMillis } from "./internal/duration.js";
 import { isAcceptedIssuer, isLocalIssuer, protocolOf } from "./internal/issuer.js";
-import { capped, quote } from "./internal/quote.js";
+import { capped, kidLimit, quote } from "./internal/quote.js";
 import type { Jwk } from "./Jwk.js";
 import { Jwks } from "./Jwk.js";
 import type { CachedJwks } from "./JwksStore.js";
@@ -223,14 +223,14 @@ const make = (options: JwksResolverOptions) =>
 			isAlgorithm(header.alg) ? JwtKey.fromJwk(jwk, { alg: header.alg }) : JwtKey.fromJwk(jwk);
 
 		// The header's `kid` is attacker-chosen and is read before any signature
-		// check, so the copy on the error is capped as the detail's is.
+		// check, so it is capped, in the detail and on the error alike.
 		const unknownKid = (header: JoseHeader) =>
 			JwtError.of(
 				"unknownKid",
 				header.kid === undefined
 					? "the token names no kid and the JWKS does not hold exactly one matching key"
-					: `the JWKS holds no ${header.alg} key with kid ${quote(header.kid)}`,
-				header.kid === undefined ? undefined : { kid: capped(header.kid) },
+					: `the JWKS holds no ${header.alg} key with kid ${quote(header.kid, kidLimit)}`,
+				header.kid === undefined ? undefined : { kid: capped(header.kid, kidLimit) },
 			);
 
 		// The resolver's own last successful fetch, if still inside its TTL. A
@@ -241,23 +241,25 @@ const make = (options: JwksResolverOptions) =>
 			return last !== undefined && now - last.fetchedAtMillis < ttlMillis ? last : undefined;
 		};
 
-		// The store and the resolver's own copy are both consulted, each already
-		// TTL-checked, newest first: a lagging store (an edge-cached KV read)
-		// must not shadow a rotation this resolver has already fetched, and a
-		// store that retains nothing must not hide the last fetch either.
+		// Of the store and the resolver's own copy, each already TTL-checked,
+		// only the newer is consulted: a lagging store (an edge-cached KV read)
+		// must not shadow a rotation this resolver has already fetched, a store
+		// that retains nothing must not hide the last fetch, and an older set
+		// must never re-admit a key a newer one dropped. A miss in the newest
+		// set goes to the refetch path, never to the older set.
 		const matchIn = (
 			stored: Option.Option<CachedJwks>,
 			last: CachedJwks | undefined,
 			header: JoseHeader,
 		): Option.Option<Jwk> => {
-			const sources = [...Option.toArray(stored), ...(last === undefined ? [] : [last])].sort(
-				(a, b) => b.fetchedAtMillis - a.fetchedAtMillis,
-			);
-			for (const source of sources) {
-				const match = select(source.jwks, header);
-				if (Option.isSome(match)) return match;
-			}
-			return Option.none();
+			const fromStore = Option.getOrUndefined(stored);
+			const newest =
+				fromStore === undefined
+					? last
+					: last === undefined || fromStore.fetchedAtMillis > last.fetchedAtMillis
+						? fromStore
+						: last;
+			return newest === undefined ? Option.none() : select(newest.jwks, header);
 		};
 
 		const refresh = (issuer: string, header: JoseHeader) =>
