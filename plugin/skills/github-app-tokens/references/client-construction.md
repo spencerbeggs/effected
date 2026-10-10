@@ -4,13 +4,15 @@ Load when: choosing between the three `GitHubClient` constructors, wiring
 `GitHubApp` directly (outside the `GitHubToken` bridge), or auditing why
 `@effected/github` doesn't depend on `@octokit/rest`/`@octokit/auth-app`.
 
-## Three ways to get a `GitHubClient`, in two modules
+## Five ways to get a `GitHubClient`, in two modules
 
 | Constructor | Module | Needs | Error |
 | --- | --- | --- | --- |
 | `GitHubClient.layerFromToken({ token, ... })` | `GitHubClient` | a `Redacted<string>` you already hold | none |
 | `GitHubClient.layerFromConfig({ name?, ... })` | `GitHubClient` | `Config.Redacted("GITHUB_TOKEN")` via the ambient `ConfigProvider` | `ConfigError` |
-| `GitHubApp.clientLayer(request, options?)` | `GitHubApp` | an app id and a PEM private key | `GitHubAppError` |
+| `GitHubApp.clientLayer(request, options?)` | `GitHubApp` | an app id, a PEM private key, an installation | `GitHubAppError` |
+| `GitHubApp.appClientLayer(credentials, options?)` | `GitHubApp` | an app id and a PEM private key; speaks as the app (App JWT), so only `/app`, `/app/*` and the `…/installation` lookups | `GitHubAppError` |
+| `GitHubApp.cachedClientLayer(request, options?)` | `GitHubApp` | the above plus `installationId`, with `GitHubApp` and an `InstallationTokenStore` in `R`; reuses a stored token, never revokes | `GitHubAppError` |
 
 `layerFromConfig` reads a token through the ambient `ConfigProvider` rather
 than `process.env.GITHUB_TOKEN` directly, so a missing token fails as an
@@ -19,7 +21,8 @@ needing a `Layer.orDie` justified by a comment explaining that the wire-shaped
 error type didn't really mean "no token configured."
 
 **`GitHubApp.clientLayer` lives on `GitHubApp`, not as a third static on
-`GitHubClient`.** This follows the general rule for layer-family statics: a
+`GitHubClient`** (and so do `appClientLayer` and `cachedClientLayer`). This
+follows the general rule for layer-family statics: a
 layer-family static belongs to the module that owns the dependency it
 needs, not the module that declares the service. `GitHubApp`'s module is the
 only one in the package importing the JWT-signing library that mints an app
@@ -41,8 +44,8 @@ asserts `GitHubApp`'s module *does* reach the JWT signer (the control) and
   plugin's own generated interface.
 - `@octokit/auth-app` re-exports OAuth app/user/device-flow machinery far
   larger than what minting an installation token actually needs — an RS256
-  app JWT plus one typed route call. A small, zero-dependency JWT-signing
-  library covers exactly that, at a fraction of the weight.
+  app JWT plus one typed route call. The kit's own `@effected/jwt` covers
+  exactly that, over WebCrypto and with no runtime dependency.
 
 Do not reintroduce either dependency; a design change that genuinely needs
 one back is worth re-litigating explicitly, not a quiet re-add.
@@ -60,14 +63,17 @@ export interface GitHubAppShape {
 }
 ```
 
-- Minting the app JWT is the only cryptography in the package, and it is a
-  leaf call into the JWT-signing library — never a re-implementation.
+- Minting the app JWT is a leaf call into `@effected/jwt` (WebCrypto RS256),
+  never a re-implementation. The private key may be PKCS#1 (what github.com
+  hands out) or PKCS#8, on every runtime including Cloudflare workerd, and
+  may carry escaped `\n` newlines from a one-line environment variable.
 - `token` discovers the installation from `owner` when `installationId` is
   omitted, walking the installations list through the client's real
   paginator rather than a hand-rolled `Link:` header regex.
 - **`GitHubApp.clientLayer`'s rotation is invisible to the caller**: each
   member resolves the current client first, re-minting when the held token
-  is inside a short skew window of expiry. Rotating **revokes the token it
+  is inside a short skew window of expiry; concurrent requests that find it
+  spent wait on one rotation rather than each minting. Rotating **revokes the token it
   replaces** before minting the next one, so at most one live token exists
   at a time, and the layer's scope finalizer revokes the last of them on
   release. A credential failure surfaces as `GitHubError { kind:

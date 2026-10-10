@@ -92,8 +92,13 @@ exhausted-budget case correctly.
 
 `GitHubErrorKind` is a closed literal union: `notFound`, `alreadyExists`,
 `rejected`, `unauthorized`, `rateLimited`, `transport`, `decode`.
-Classification happens once, in `GitHubError.fromOctokit(operation, error,
-nowMillis)` — nothing else in the package inspects a status code.
+Classification happens once, in `GitHubError`'s shared classifier, reached
+through `GitHubError.fromOctokit(operation, error, nowMillis)` for an octokit
+throwable or `GitHubError.fromResponse(operation, { status, headers?, body? },
+nowMillis)` for a raw response — nothing else in the package inspects a status
+code. In a test, record a raw response with `GitHubFixtures.failure({ status,
+headers?, body? })` on `GitHubClient.layerFixture` and it is classified the same
+way at call time.
 `retryable` is a derived getter over `kind`, not a stored field.
 
 Ergonomic statics cover every hand-construction site: `GitHubError.notFound(operation,

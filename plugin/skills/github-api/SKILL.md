@@ -60,7 +60,7 @@ routing index, not the catalogue.
   proactive rate limiter — read `client.rateLimit` and pace yourself if you
   need to.
 - **Catch on `GitHubError.kind`, never a resource-specific tag.** One
-  taxonomy, classified once in `GitHubError.fromOctokit` — a
+  taxonomy, classified once by `GitHubError`'s shared classifier (`fromOctokit` / `fromResponse`) — a
   resource-specific error class has no successor to catch, and a real
   survey of consumers found a resource-specific tag matched almost never.
 - **Prefer `GitBranch.upsert`/`GitTag.upsert` over a hand-rolled

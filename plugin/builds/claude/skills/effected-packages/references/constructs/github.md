@@ -5,6 +5,9 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `ActionsOidc` | Variable | Verify GitHub Actions OIDC tokens: a workflow proving to your service which repository, workflow and run it is. | verify a github actions oidc token from a workflow, authorize a ci caller by repository id |
+| `ActionsOidcClaims` | Class | The claims of a verified GitHub Actions OIDC token. | typed claims of a verified actions oidc token, repository id, run id, job workflow ref |
+| `ActionsOidcVerifyOptions` | Interface | Options for `ActionsOidc.verify`. | |
 | `Annotation` | Class | One annotation on a check run. | one file annotation on a check run, notice or warning at a line range |
 | `AnnotationLevel` | Variable | How serious an annotation is. | notice warning failure severity for a check run annotation |
 | `AppCredentials` | Interface | The credentials that identify a GitHub App. | |
@@ -18,8 +21,10 @@
 | `AttestationShape` | Interface | The attestation REST surface. | |
 | `BotIdentity` | Class | Who a bot commits as. | committer name and email for a bot commit, dco signoff trailer, github-actions bot identity |
 | `BranchOutcome` | TypeAlias | What `GitBranchShape.upsert` did. | |
+| `CachedToken` | Interface | An installation token from `GitHubApp.cachedToken`, and where it came from. | |
+| `CachedTokenRequest` | Interface | What to fetch a cached installation token for. | |
 | `CheckConclusion` | Variable | How a check run finished. | success failure neutral cancelled timed_out action_required skipped, how a check run finished |
-| `CheckRun` | Class | Create, update and conclude GitHub check runs, including the `CheckRunShape.withCheckRun` bracket that always reaches a terminal state. | report a job's verdict on a commit, create update complete a run |
+| `CheckRun` | Class | Create, update and conclude GitHub check runs, including the `CheckRunShape.withCheckRun` bracket that always reaches a terminal state. | report a job's verdict on a commit, create update complete a run, find a run by external id |
 | `CheckRunOutput` | Class | A check run's rendered output. | check run title summary and annotations, truncate to github's 65535 byte limit |
 | `CheckRunRef` | Class | A check run as GitHub reports it. | a check run's id name url and status as github reports it |
 | `CheckRunShape` | Interface | Create, update and conclude GitHub check runs on a commit, including a bracket that always concludes the run. | |
@@ -34,6 +39,7 @@
 | `CommitRef` | Class | A commit, projected to the three fields callers actually use. | a commit's sha, tree sha, and parent shas for building a tree |
 | `CommitSummary` | Class | A commit, projected to what callers read. | a commit projected to sha message author and parents |
 | `ConcludeCheckRun` | TypeAlias | Conclude the surrounding `CheckRunShape.withCheckRun` explicitly. | |
+| `CreateCheckRunOptions` | Interface | Options for `CheckRunShape.create`. | |
 | `DeploymentEnvironment` | Class | Create or update, list and delete a repository's deployment environments. | create update list and delete a deployment environment, environment protection rules |
 | `DeploymentEnvironmentInfo` | Interface | A deployment environment, as listing returns it. | |
 | `DeploymentEnvironmentShape` | Interface | Create or update, list and delete a repository's deployment environments. | |
@@ -48,7 +54,7 @@
 | `GitBranchShape` | Interface | Branch refs in GitHub's Git Database API. | |
 | `GitCommit` | Class | Read commits and build trees and commits through GitHub's Git Database API, including a one-call "commit these files onto a branch". | build a git tree and commit files onto a branch |
 | `GitCommitShape` | Interface | Commits and trees in GitHub's Git Database API. | |
-| `GitHubApp` | Class | GitHub App authentication: mint, revoke and identify. | mint scope and revoke a github app installation token, app authentication, jwt signing |
+| `GitHubApp` | Class | GitHub App authentication: mint, revoke and identify. | mint scope revoke installation tokens, client as the app via jwt, cache tokens across requests |
 | `GitHubAppError` | Class | A GitHub App call failed. | a github app authentication call failed, jwt token revoke identity or installation lookup failure |
 | `GitHubAppOptions` | Interface | Transport settings for the app's own API calls. | |
 | `GitHubAppShape` | Interface | The app-authentication surface. | |
@@ -59,9 +65,9 @@
 | `GitHubCommitShape` | Interface | Read commits, list them, compare two refs and list the files a commit touched. | |
 | `GitHubContent` | Class | Read a text file out of a repository at a ref, with absence as an `Option` when you want it. | read a text file's contents out of a repository at a ref |
 | `GitHubContentShape` | Interface | Read a text file out of a repository at a ref. | |
-| `GitHubError` | Class | Every REST failure this package produces, from every resource. | every rest api failure this package produces, classify notFound alreadyExists rateLimited |
+| `GitHubError` | Class | Every REST failure this package produces, from every resource. | rest api failure taxonomy, classify notFound alreadyExists rateLimited, classify a raw http response |
 | `GitHubErrorKind` | Variable | Why a GitHub call failed, as a value you can branch on. | notFound alreadyExists rejected unauthorized rateLimited transport decode, structural routing for a github rest failure |
-| `GitHubFixtures` | Interface | A recorded response table for `GitHubClient.layerFixture`. | |
+| `GitHubFixtures` | Variable + Interface | A recorded response table for `GitHubClient.layerFixture`. | recorded github responses for a fixture client, record a raw failure status headers body |
 | `GitHubGraphQLError` | Class | A GraphQL call failed. | classify a failed github graphql call, errors array in a 200 response |
 | `GitHubIssue` | Class | Read, list, close and comment on issues, and resolve the issues a pull request closes. | get list close and comment on an issue, post a marked comment |
 | `GitHubIssueShape` | Interface | Read, list, close and comment on issues, and resolve the issues a pull request closes. | |
@@ -77,6 +83,8 @@
 | `GraphQLErrorEntry` | Class | One entry from a GraphQL response's `errors` array. | one entry from a graphql response's errors array, message and github's error type |
 | `Installation` | Class | One installation of the app. | one installation of a github app, installation id and account |
 | `InstallationToken` | Class | An installation access token and what GitHub said about it. | a minted app installation token, expiry and permissions, re-mint before it expires |
+| `InstallationTokenStore` | Class | Where `GitHubApp.cachedToken` keeps installation tokens between request scopes. | cache installation tokens across requests or worker isolates, kv-backed token store seam |
+| `InstallationTokenStoreShape` | Interface | The operations of an `InstallationTokenStore`. | |
 | `InvalidRepoRefError` | Class | A repository slug was not `owner/repo`. | a repository slug was not owner/repo, malformed repo ref parse failure |
 | `IssueInfo` | Class | An issue, projected to what callers read. | an issue's number title state labels and node id, projected for callers |
 | `LatestSemverOptions` | Interface | How to pick the newest version-shaped tag. | |
@@ -94,7 +102,8 @@
 | `PullRequestInfo` | Class | A pull request, projected to what callers read. | a pull request's number head base sha state and merge status, projected for callers |
 | `PullRequestShape` | Interface | Read, list, create, update, merge and label pull requests, and control auto-merge. | |
 | `RateLimitSnapshot` | Class | What GitHub's rate-limit headers said on the most recent REST response. | what github's rate-limit headers said on the last response, remaining requests and reset time |
-| `RecordedCall` | Interface | One call served by `GitHubClient.layerFixture`, as recorded in `GitHubFixtures.requested`. | |
+| `RawFailure` | Class | A raw HTTP failure recorded for `GitHubClient.layerFixture`, made by `(GitHubFixtures:variable).failure`. | a raw github error response recorded in a fixture, classified at call time |
+| `RecordedCall` | Interface | One call served by `GitHubClient.layerFixture`, as recorded in `(GitHubFixtures:interface).requested`. | |
 | `ReleaseAsset` | Class | A file attached to a release. | a file attached to a release, its download url and size |
 | `ReleaseInfo` | Class | A release, projected to the fields callers read. | a release's tag name body draft/prerelease flags and upload url |
 | `Repo` | Class | The repository the surrounding program acts on. | which repository the surrounding program acts on, provide a repo coordinate |
@@ -130,10 +139,11 @@
 | `TokenPermissionError` | Class | A token asked for access it does not have, or has access it did not ask for. | a token lacks access it needs, or holds access it never requested |
 | `TokenPermissions` | Class | The permissions a token was granted, and what they satisfy. | compare a token's granted permissions against a requirement, assert sufficient scopes |
 | `TokenRequest` | Interface | What to mint an installation token for. | |
+| `UpdateCheckRunOptions` | Interface | Options for `CheckRunShape.update`. | |
 | `UpsertedPullRequest` | Interface | What `PullRequestShape.upsert` did. | |
 | `VariableInfo` | Interface | A variable's name and value, as listing returns it. | |
 | `VersionFromTag` | TypeAlias | Read a version out of a tag name. | |
-| `WorkflowDispatch` | Class | Dispatch workflows, wait for the run they start, and list the repository's workflows. | trigger a workflow_dispatch event, poll a dispatched run until it finishes |
+| `WorkflowDispatch` | Class | Dispatch workflows, wait for the run they start, and list the repository's workflows. | trigger a workflow dispatch event, poll a dispatched run until it finishes, cancel a run |
 | `WorkflowDispatchShape` | Interface | Dispatch workflows, wait for the run they start, and list the repository's workflows. | |
 | `WorkflowInfo` | Interface | One workflow defined in the repository. | |
 | `WorkflowRunStatus` | Class | Where a workflow run has got to. | a workflow run's id status and conclusion, whether a dispatched run has finished |

@@ -32,7 +32,9 @@ transport is `fetch`.
 | --- | --- |
 | `GitHubClient` | any route at all, including ones no resource service wraps — `request`, `paginate`, `paginateStream`, `graphql` |
 | `Repo` | naming which repository a call targets; every resource method carries it in `R`, resolved per call |
-| `GitHubApp` | minting, scoping and revoking installation tokens from App credentials, or building a client from them |
+| `GitHubApp` | minting, scoping and revoking installation tokens from App credentials, or building a client from them (as an installation, as the app itself, or from a token cached across request scopes) |
+| `InstallationTokenStore` | the seam that keeps installation tokens between request scopes (a Worker's KV, a Durable Object), for `GitHubApp.cachedToken` |
+| `ActionsOidc`, `ActionsOidcClaims` | verifying a GitHub Actions OIDC token a workflow presents to your service, into typed claims |
 | `GitHubRepository` | repository settings: read, patch, apply a config blob, default branch, node id, owner type |
 | `GitBranch`, `GitTag`, `GitCommit` | git-data plumbing — refs, trees, commits, committing files through the API without a checkout |
 | `GitHubCommit`, `GitHubContent` | reading commit summaries, comparisons and changed files; reading a file at a ref |
@@ -93,8 +95,12 @@ tempted to reach for `as`.
 - **`GitHubError`** — one error for every REST resource: `kind` (`notFound |
   alreadyExists | rejected | unauthorized | rateLimited | transport | decode`),
   `operation`, `reason`, optional `status`, `retryAfterMillis`, `validation`,
-  `cause`. Classification happens **once**, in `GitHubError.fromOctokit`;
-  nothing else in the package reads a status code. `GitHubError.hasKind(...kinds)`
+  `cause`. Classification happens **once**, in `GitHubError`'s shared
+  classifier, reached through `GitHubError.fromOctokit` (an octokit throwable)
+  or `GitHubError.fromResponse(operation, { status, headers?, body? }, nowMillis)`
+  (a raw response: header names in any case, `nowMillis` required because it
+  turns a rate-limit reset into a delay); nothing else in the package reads a
+  status code. `GitHubError.hasKind(...kinds)`
   builds a predicate for `Effect.catchIf`, and
   `GitHubError.hasValidationCode(...codes)` does the same over a 422's
   `validation` entries (`GitHubValidationEntry`, codes named by
@@ -113,8 +119,44 @@ tempted to reach for `as`.
   revokes on scope close), `revoke`, `identity`, `installations`. `TokenRequest`
   is `{ appId, privateKey: Redacted } & { installationId?, owner? }`;
   `InstallationToken` carries `permissions`, `isExpired(nowMillis, skew?)` and
-  `botIdentity()`. **`GitHubApp.clientLayer(request, options?)`** is how you get
-  an App-authenticated `GitHubClient`.
+  `botIdentity()`. Three client layers:
+  - **`GitHubApp.clientLayer(request, options?)`** — authenticated as an
+    installation; mints on build, re-mints a minute before expiry, revokes on
+    release.
+  - **`GitHubApp.appClientLayer(credentials, options?)`** — authenticated as
+    the app itself with an App JWT (signed locally, re-signed a minute before
+    its nine-minute expiry, nothing to revoke). It reaches only `/app`, `/app/*`
+    and the three JWT-only `…/installation` lookups — a webhook redelivery
+    sweep (`GET /app/hook/deliveries`, `POST
+    /app/hook/deliveries/{delivery_id}/attempts`) is the motivating use.
+  - **`GitHubApp.cachedClientLayer(request, options?)`** — over
+    `GitHubApp.cachedToken(request)`, for a program that authenticates per
+    request scope (a Worker handling a webhook). The token lives in an
+    `InstallationTokenStore` keyed by installation id (`installationId` is
+    required), is reused while it has `margin` (five minutes by default) to
+    live, and is **never revoked** — another scope may be using it. A store
+    failure never fails the call; an undecodable stored value is a miss. Two
+    concurrent misses may both mint. The stored value holds the raw token, so
+    encryption is the store's job. `options` configure the client, not the
+    mint: on GHES provide `GitHubApp.layerWith({ baseUrl })` at the edge.
+
+  Concurrent requests on a spent credential rotate once. `AppCredentials.privateKey`
+  takes PKCS#1 (what github.com hands out) or PKCS#8 on every runtime, and
+  escaped `\n` newlines from a one-line environment variable. `Installation`
+  carries `account` (login), `accountType`, `accountId`, `suspendedAt`
+  (`Option`) and `updatedAt` when GitHub sends them; an unreadable optional
+  field is omitted, never a failure.
+- **`ActionsOidc`** — `ActionsOidc.verify(token, { audience, clockTolerance? })`
+  → `Effect<ActionsOidcClaims, JwtError, JwksResolver>` (from `@effected/jwt`;
+  provide `JwksResolver.layer` at the edge). It verifies against GitHub's JWKS
+  for the github.com Actions issuer only (GHE.com and GHES issuers are
+  `wrongIssuer`), with a **mandatory, non-empty audience**, then decodes
+  camelCase claims with numeric ids (`repositoryId`, `runId`, ...). **Authorize
+  on immutable ids** — `repositoryId` or `repositoryOwnerId` plus
+  `jobWorkflowRef` — never the `repository` name: a deleted repository's name
+  can be registered again by someone else. `ActionsOidc.testClaims(overrides?)`
+  is a wire-shaped payload for tests, signed with `@effected/jwt/testing`'s
+  `TestIssuer`. The module does not reach octokit.
 - **`BotIdentity`** — `forApp({ appSlug, appUserId? })`, `githubActions`, and
   `signoff`, which renders the DCO trailer. A commit made through the Git Data
   API bypasses `git commit -s`, and a hand-built trailer fails late as a red DCO
@@ -177,8 +219,12 @@ tempted to reach for `as`.
   is cross-referenced from the moment the PR named it, so that check is already
   `true` before anything has been said. The remaining race (two runs both miss
   the marker, both post) is named, not designed away.
-- **`CheckRun`** — `create(name, headSha)`, `get`, `update(id, output)`,
-  `complete(id, conclusion, output?)`, and **`withCheckRun(name, headSha, use)`**,
+- **`CheckRun`** — `create(name, headSha, { status?, externalId?, detailsUrl? }?)`
+  (in progress by default, or `"queued"`), `get`, `update(id, output, { status?,
+  detailsUrl? }?)` (completing stays on `complete`),
+  `complete(id, conclusion, output?)`, `findByExternalId(headSha, name,
+  externalId)` → `Option<CheckRunRef>` (every run of the commit by name,
+  newest by id; `""` is none), and **`withCheckRun(name, headSha, use)`**,
   a bracket handing `use` an `id` and a `conclude` callback. `conclude`
   **records, it does not send**: the finalizer writes the verdict exactly once,
   on whichever path `use` leaves by, so an explicit conclusion survives a later
@@ -189,6 +235,8 @@ tempted to reach for `as`.
   route with two URI-template spellings, because an absent `label` would expand
   to a dangling `&`), `listAssets`.
 - **`WorkflowDispatch`** — `dispatch(workflow, ref, inputs?)`, `runStatus`,
+  `cancelRun(runId)` → `"cancelled" | "alreadyCompleted"` (GitHub's 409 for a
+  finished run is not a failure),
   `list`, `dispatchAndWait(workflow, ref, { inputs?, poll? })` with
   `PollOptions { interval?, timeout? }`. `list` reports GitHub's state string
   **without interpreting it** — whether a disabled workflow "counts" is a
@@ -229,7 +277,10 @@ builds a `PageSource` over the recorded arrays and hands it to the same
 behave differently in a test than in production. `fixtures.unstubbed` chooses
 `"die" | "fail" | "empty"`; `fixtures.requested` is appended to as the run
 proceeds, so a suite can assert which routes were walked and at what page size.
-A recorded `GitHubError` **is** the failure.
+A recorded `GitHubError` **is** the failure; so is
+`GitHubFixtures.failure({ status, headers?, body? })`, a branded raw response
+classified at call time by the real classifier (against `Clock`), which is the
+better choice when the test is about what GitHub actually answers.
 
 ## Gotchas
 
