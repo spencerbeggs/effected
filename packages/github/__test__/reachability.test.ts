@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
 
@@ -221,6 +221,26 @@ describe("bundle reachability", () => {
 			.filter((specifier) => specifier.startsWith("node:"))
 			.sort();
 		assert.deepStrictEqual(builtins, []);
+	});
+
+	it("names no Node Buffer anywhere in src, so it runs on a Worker without nodejs_compat", () => {
+		// `Buffer` is a Node global, not an import, so neither the bare-import
+		// walk nor the node: check above can see it. A Worker without the
+		// nodejs_compat flag throws a ReferenceError the first time such a line
+		// runs, which for CheckRun's byte cap was the first update or complete.
+		// The fixture is the positive control: it proves the pattern finds a real
+		// use and ignores one that only exists in a comment.
+		const usesBuffer = (source: string): boolean =>
+			/\bBuffer\b/.test(source.replace(/(^|\n)\s*\/\/.*/g, "$1").replace(/\/\*[\s\S]*?\*\//g, ""));
+		assert.isTrue(usesBuffer('const n = Buffer.byteLength(value, "utf8");'), "control: a real use is found");
+		assert.isFalse(usesBuffer("/** Unlike Buffer, this is portable. */\n// Buffer\nconst n = 1;"), "prose is not");
+		const files = readdirSync(SRC, { recursive: true, encoding: "utf8" })
+			.filter((name) => name.endsWith(".ts"))
+			.sort();
+		assert.isAbove(files.length, 20, "control: the walk sees the source tree, internal/ included");
+		assert.include(files, join("internal", "ids.ts"));
+		const offenders = files.filter((name) => usesBuffer(readFileSync(resolve(SRC, name), "utf8")));
+		assert.deepStrictEqual(offenders, [], "src module(s) that name the Node Buffer global");
 	});
 
 	it("every module in src/ is reachable from the entrypoint", () => {

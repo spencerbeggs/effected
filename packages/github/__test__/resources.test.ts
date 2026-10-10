@@ -309,6 +309,40 @@ describe("GitHubContent", () => {
 		}),
 	);
 
+	it.effect("decodes GitHub's line-wrapped base64 to UTF-8, keeping a leading BOM and multi-byte text", () =>
+		Effect.gen(function* () {
+			const text = "﻿# 中文 🦋\n".repeat(20);
+			// GitHub wraps the payload at 60 columns with "\n".
+			const wrapped = (
+				Buffer.from(text)
+					.toString("base64")
+					.match(/.{1,60}/g) ?? []
+			).join("\n");
+			const { value } = yield* drive(
+				[{ status: 200, body: { type: "file", encoding: "base64", content: wrapped, name: "f", path: "f" } }],
+				GitHubContent,
+				GitHubContent,
+				(content) => content.getFile("README.md"),
+			);
+			assert.strictEqual(value, text, "the BOM is file content, not something to strip");
+		}),
+	);
+
+	it.effect("fails typed on content that is not valid base64", () =>
+		Effect.gen(function* () {
+			const { base } = harness([
+				{ status: 200, body: { type: "file", encoding: "base64", content: "not*base64!", name: "f", path: "f" } },
+			]);
+			const error = yield* Effect.flip(
+				Effect.provide(
+					Effect.flatMap(GitHubContent, (content) => content.getFile("f")),
+					GitHubContent.layer.pipe(Layer.provideMerge(base)),
+				),
+			);
+			assert.strictEqual(error.kind, "decode");
+		}),
+	);
+
 	it.effect("passes a ref through", () =>
 		Effect.gen(function* () {
 			const { script } = yield* drive([file("x")], GitHubContent, GitHubContent, (content) =>
