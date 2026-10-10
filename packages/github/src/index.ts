@@ -50,6 +50,7 @@ export {
 	CheckRunOutput,
 	CheckRunRef,
 	type CheckRunShape,
+	type CompleteCheckRunOptions,
 	type ConcludeCheckRun,
 	type CreateCheckRunOptions,
 	type UpdateCheckRunOptions,

@@ -1,6 +1,6 @@
 import { Cause, Context, DateTime, Effect, Exit, Layer, Option, Ref, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
-import type { GitHubError } from "./GitHubError.js";
+import { GitHubError } from "./GitHubError.js";
 import { numericId } from "./internal/ids.js";
 import { Repo } from "./Repo.js";
 
@@ -82,6 +82,16 @@ export class CheckRunOutput extends Schema.Class<CheckRunOutput>("CheckRunOutput
 	}
 }
 
+/** UTF-8 encoder for the byte arithmetic; portable, unlike Node's `Buffer`. */
+const utf8 = new TextEncoder();
+
+/**
+ * UTF-8 decoder for the cut. Non-fatal, so a code point split by the cut decodes
+ * to U+FFFD for the trim loop to drop rather than throwing; `ignoreBOM` keeps a
+ * leading BOM as content, as `Buffer` did.
+ */
+const utf8Lenient = new TextDecoder("utf-8", { fatal: false, ignoreBOM: true });
+
 /**
  * Cut `value` to GitHub's byte budget without leaving a broken code point.
  *
@@ -89,12 +99,16 @@ export class CheckRunOutput extends Schema.Class<CheckRunOutput>("CheckRunOutput
  * Slicing a UTF-8 buffer mid-character decodes to U+FFFD. Splitting a four-byte
  * code point can produce **more than one** replacement character, so the trim
  * loops rather than dropping a single one.
+ *
+ * `TextEncoder`/`TextDecoder` rather than `Buffer`, which is a Node global: a
+ * Worker without `nodejs_compat` would throw a `ReferenceError` here.
  */
 const capBytes = (value: string): string => {
-	if (Buffer.byteLength(value, "utf8") <= CheckRunOutput.LIMIT_BYTES) return value;
-	const budget = CheckRunOutput.LIMIT_BYTES - Buffer.byteLength(CheckRunOutput.NOTICE, "utf8");
-	let cut = Buffer.from(value, "utf8").subarray(0, budget).toString("utf8");
-	while (cut.endsWith("�")) cut = cut.slice(0, -1);
+	const bytes = utf8.encode(value);
+	if (bytes.length <= CheckRunOutput.LIMIT_BYTES) return value;
+	const budget = CheckRunOutput.LIMIT_BYTES - utf8.encode(CheckRunOutput.NOTICE).length;
+	let cut = utf8Lenient.decode(bytes.subarray(0, budget));
+	while (cut.endsWith("\uFFFD")) cut = cut.slice(0, -1);
 	return `${cut}${CheckRunOutput.NOTICE}`;
 };
 
@@ -157,6 +171,20 @@ export interface UpdateCheckRunOptions {
 }
 
 /**
+ * Options for {@link CheckRunShape.complete}.
+ *
+ * @public
+ */
+export interface CompleteCheckRunOptions {
+	/**
+	 * Where the integrator's full details live (wire `details_url`) — for
+	 * instance the workflow run that produced the verdict. Omitted, the run
+	 * keeps whatever details URL it already had.
+	 */
+	readonly detailsUrl?: string | undefined;
+}
+
+/**
  * Conclude the surrounding {@link CheckRunShape.withCheckRun} explicitly.
  *
  * @remarks
@@ -197,10 +225,23 @@ export interface CheckRunShape {
 		options?: CreateCheckRunOptions,
 	) => Effect.Effect<CheckRunRef, GitHubError, Repo>;
 	readonly get: (id: number) => Effect.Effect<CheckRunRef, GitHubError, Repo>;
-	/** Update an in-flight run's output, and optionally its status and details URL. */
+	/**
+	 * Update an in-flight run: its output, its status, its details URL, or any
+	 * combination.
+	 *
+	 * @remarks
+	 * Omit `output` (pass `undefined`) to change only the status or details
+	 * URL: no `output` key is sent, so the run keeps the output it has. That is
+	 * how a queued run moves to `"in_progress"` without rewriting its output.
+	 *
+	 * `update(id)` with neither still sends **one** PATCH, carrying nothing but
+	 * the run's coordinates. GitHub accepts it and changes nothing; it is not
+	 * skipped, so every call is exactly one request and a caller's error
+	 * handling sees a missing run or a revoked token the same way either way.
+	 */
 	readonly update: (
 		id: number,
-		output: CheckRunOutput,
+		output?: CheckRunOutput,
 		options?: UpdateCheckRunOptions,
 	) => Effect.Effect<void, GitHubError, Repo>;
 	/**
@@ -221,11 +262,20 @@ export interface CheckRunShape {
 		name: string,
 		externalId: string,
 	) => Effect.Effect<Option.Option<CheckRunRef>, GitHubError, Repo>;
-	/** Finish a run. */
+	/**
+	 * Finish a run, stamping `completed_at` from `Clock`.
+	 *
+	 * @remarks
+	 * Omit `output` (pass `undefined`) to conclude without touching the run's
+	 * rendered output; a given output is cut to GitHub's byte limits first.
+	 * `options.detailsUrl` points the finished run somewhere, such as the
+	 * workflow run that produced it.
+	 */
 	readonly complete: (
 		id: number,
 		conclusion: (typeof CheckConclusion.literals)[number],
 		output?: CheckRunOutput,
+		options?: CompleteCheckRunOptions,
 	) => Effect.Effect<void, GitHubError, Repo>;
 	/**
 	 * Run `use` inside a check run, concluding it however `use` exits.
@@ -402,21 +452,39 @@ const concludeFor = <A, E>(
 	return Exit.isSuccess(exit) ? write : Effect.ignore(write);
 };
 
-const refOf = (raw: {
-	id: number | bigint;
-	name: string;
-	html_url?: string | null;
-	status: string;
-	external_id?: string | null;
-}): CheckRunRef =>
-	CheckRunRef.make({
+const decodeRef = Schema.decodeUnknownEffect(CheckRunRef);
+
+/**
+ * Project a check-run response onto {@link CheckRunRef}, **decoding** it.
+ *
+ * @remarks
+ * Decoded rather than built with `make`, which throws: a response missing a
+ * field (a hand-written double, or GitHub changing shape) is input, and input
+ * failures are a typed `decode` `GitHubError` naming the operation rather than
+ * a defect.
+ */
+const refOf = (
+	operation: string,
+	raw: {
+		id: number | bigint;
+		name: string;
+		html_url?: string | null;
+		status: string;
+		external_id?: string | null;
+	},
+): Effect.Effect<CheckRunRef, GitHubError> =>
+	decodeRef({
 		id: numericId(raw.id),
 		name: raw.name,
 		url: raw.html_url ?? "",
 		status: raw.status,
 		// null, absent and "" all mean the run has no external id.
 		...(raw.external_id ? { externalId: raw.external_id } : {}),
-	});
+	}).pipe(
+		Effect.catchTag("SchemaError", (error) =>
+			Effect.fail(GitHubError.decode(operation, "GitHub returned an unexpected check run", error)),
+		),
+	);
 
 /** The current time as GitHub's ISO 8601 timestamp, from `Clock` so `TestClock` drives it. */
 const isoNow = Effect.map(DateTime.now, DateTime.formatIso);
@@ -442,13 +510,14 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 			...(options?.externalId ? { external_id: options.externalId } : {}),
 			...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
 		});
-		return refOf(created);
+		return yield* refOf("CheckRun.create", created);
 	});
 
 	const complete = Effect.fn("CheckRun.complete")(function* (
 		id: number,
 		conclusion: (typeof CheckConclusion.literals)[number],
 		output?: CheckRunOutput,
+		options?: CompleteCheckRunOptions,
 	) {
 		const { owner, repo } = yield* Repo;
 		yield* Effect.annotateCurrentSpan({ owner, repo, id, conclusion });
@@ -460,6 +529,7 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 			conclusion,
 			completed_at: yield* isoNow,
 			...(output !== undefined ? { output: wireOutput(output) } : {}),
+			...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
 		});
 	});
 
@@ -475,12 +545,12 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 				repo,
 				check_run_id: id,
 			});
-			return refOf(raw);
+			return yield* refOf("CheckRun.get", raw);
 		}),
 
 		update: Effect.fn("CheckRun.update")(function* (
 			id: number,
-			output: CheckRunOutput,
+			output?: CheckRunOutput,
 			options?: UpdateCheckRunOptions,
 		) {
 			const { owner, repo } = yield* Repo;
@@ -489,7 +559,8 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 				owner,
 				repo,
 				check_run_id: id,
-				output: wireOutput(output),
+				// Omitted, not sent: the run keeps the output it already has.
+				...(output !== undefined ? { output: wireOutput(output) } : {}),
 				...(options?.status !== undefined ? { status: options.status } : {}),
 				...(options?.status === "in_progress" ? { started_at: yield* isoNow } : {}),
 				...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
@@ -518,7 +589,9 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 				if (run.external_id !== externalId) continue;
 				if (newest === undefined || numericId(run.id) > numericId(newest.id)) newest = run;
 			}
-			return newest === undefined ? Option.none<CheckRunRef>() : Option.some(refOf(newest));
+			return newest === undefined
+				? Option.none<CheckRunRef>()
+				: Option.some(yield* refOf("CheckRun.findByExternalId", newest));
 		}),
 
 		withCheckRun: <A, E, R>(

@@ -1,10 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Arbitrary, Duration, Effect, Exit, Fiber, Latch, Layer, Option, Schema } from "effect";
+import { Arbitrary, Duration, Effect, Exit, Fiber, Latch, Layer, Option, Result, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { Attestation } from "../src/Attestation.js";
 import { Annotation, CheckRun, CheckRunOutput } from "../src/CheckRun.js";
 import type { RecordedCall } from "../src/GitHubClient.js";
 import { GitHubClient, GitHubFixtures } from "../src/GitHubClient.js";
+import { GitHubError } from "../src/GitHubError.js";
 import { GitHubIssue } from "../src/GitHubIssue.js";
 import { GitHubRelease, ReleaseInfo } from "../src/GitHubRelease.js";
 import { PullRequest, PullRequestInfo } from "../src/PullRequest.js";
@@ -56,6 +57,49 @@ describe("CheckRunOutput byte budgeting", () => {
 		assert.notInclude(cut.slice(0, -CheckRunOutput.NOTICE.length), "�");
 	});
 
+	// The pre-TextEncoder implementation, kept here as the oracle the portable
+	// one must match byte for byte. Tests may use Node's Buffer; src may not.
+	const bufferCap = (value: string): string => {
+		if (Buffer.byteLength(value, "utf8") <= CheckRunOutput.LIMIT_BYTES) return value;
+		const budget = CheckRunOutput.LIMIT_BYTES - Buffer.byteLength(CheckRunOutput.NOTICE, "utf8");
+		let cut = Buffer.from(value, "utf8").subarray(0, budget).toString("utf8");
+		while (cut.endsWith("�")) cut = cut.slice(0, -1);
+		return `${cut}${CheckRunOutput.NOTICE}`;
+	};
+	const budget = CheckRunOutput.LIMIT_BYTES - new TextEncoder().encode(CheckRunOutput.NOTICE).length;
+
+	for (const [label, character, offset] of [
+		["a three-byte CJK character", "中", 1],
+		["a three-byte CJK character, one byte later", "中", 2],
+		["a four-byte emoji", "🦋", 1],
+		["a four-byte emoji, two bytes later", "🦋", 3],
+	] as const) {
+		it(`cuts cleanly when the budget lands inside ${label}`, () => {
+			// `offset` bytes of the first multi-byte character fit; the rest do not.
+			const summary = `${"a".repeat(budget - offset)}${character.repeat(200)}`;
+			assert.isAbove(new TextEncoder().encode(summary).length, CheckRunOutput.LIMIT_BYTES, "control: it must be cut");
+			const cut = CheckRunOutput.make({ title: "t", summary }).truncated().summary;
+			const bytes = new TextEncoder().encode(cut);
+			assert.isAtMost(bytes.length, CheckRunOutput.LIMIT_BYTES);
+			assert.strictEqual(new TextDecoder("utf-8", { fatal: true }).decode(bytes), cut, "valid UTF-8");
+			assert.notInclude(cut, "�", "no replacement character at the cut");
+			assert.strictEqual(cut, `${"a".repeat(budget - offset)}${CheckRunOutput.NOTICE}`);
+			assert.strictEqual(cut, bufferCap(summary), "byte-identical to the Buffer implementation");
+		});
+	}
+
+	it("matches the Buffer implementation for ASCII, a leading BOM and mixed text", () => {
+		for (const summary of [
+			"short",
+			"a".repeat(70_000),
+			`﻿${"b".repeat(70_000)}`,
+			"│ ✅ 中文 🦋 ".repeat(8_000),
+			`${"x".repeat(budget - 1)}\uD800${"y".repeat(10)}`,
+		]) {
+			assert.strictEqual(CheckRunOutput.make({ title: "t", summary }).truncated().summary, bufferCap(summary));
+		}
+	});
+
 	it("caps text as well as summary", () => {
 		const output = CheckRunOutput.make({ title: "t", summary: "s", text: "b".repeat(70_000) });
 		assert.isAtMost(Buffer.byteLength(output.truncated().text ?? "", "utf8"), CheckRunOutput.LIMIT_BYTES);
@@ -92,7 +136,7 @@ describe("CheckRunOutput byte budgeting", () => {
 			// Round-tripping through UTF-8 is lossless exactly when nothing is broken
 			// beyond what the input already contained.
 			const noNewDamage = (cut.match(/�/g) ?? []).length <= (summary.match(/�/g) ?? []).length + 1;
-			return withinBudget && noNewDamage;
+			return withinBudget && noNewDamage && cut === bufferCap(summary);
 		},
 		// `size: 40_000` is load-bearing: at 20_000 no run ever crosses the
 		// 65 535-byte budget (0/100 probed), at 40_000 about one in five does.
@@ -1270,6 +1314,102 @@ describe("CheckRun create and update options", () => {
 			assert.strictEqual(requested[0]?.params.status, "in_progress");
 			assert.strictEqual(requested[0]?.params.details_url, "https://ci/2");
 			assert.isFalse("status" in (requested[1]?.params ?? {}), "no options, no status change");
+			assert.deepStrictEqual(requested[1]?.params.output, { title: "t", summary: "s" }, "an output still goes out");
+		}),
+	);
+
+	it.effect("update with no output sends a status and details_url and no output key", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(1_800_000_000_000);
+			const { requested } = yield* viaFixtures(
+				{ request: { "PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}": CREATED } },
+				CheckRun,
+				CheckRun,
+				(check) => check.update(7, undefined, { status: "in_progress", detailsUrl: "https://ci/3" }),
+			);
+			const params = requested[0]?.params ?? {};
+			assert.isFalse("output" in params, "an omitted output sends no output key");
+			assert.strictEqual(params.status, "in_progress");
+			assert.strictEqual(params.details_url, "https://ci/3");
+			assert.strictEqual(params.started_at, new Date(1_800_000_000_000).toISOString());
+		}),
+	);
+
+	it.effect("update with neither output nor options still sends one PATCH that changes nothing", () =>
+		Effect.gen(function* () {
+			const { requested } = yield* viaFixtures(
+				{ request: { "PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}": CREATED } },
+				CheckRun,
+				CheckRun,
+				(check) => check.update(7),
+			);
+			assert.lengthOf(requested, 1);
+			assert.deepStrictEqual(requested[0]?.params, { owner: "o", repo: "r", check_run_id: 7 });
+		}),
+	);
+
+	it.effect("complete sends details_url when given, keeping the Clock stamp and the byte cap", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(1_800_000_000_000);
+			const { requested } = yield* viaFixtures(
+				{ request: { "PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}": CREATED } },
+				CheckRun,
+				CheckRun,
+				(check) =>
+					Effect.gen(function* () {
+						yield* check.complete(7, "success", CheckRunOutput.make({ title: "t", summary: "x".repeat(70_000) }), {
+							detailsUrl: "https://ci/run/9",
+						});
+						yield* check.complete(7, "failure", undefined, { detailsUrl: "https://ci/run/10" });
+						yield* check.complete(7, "neutral");
+					}),
+			);
+			const [withOutput, withoutOutput, plain] = requested.map((call) => call.params);
+			assert.strictEqual(withOutput?.details_url, "https://ci/run/9");
+			assert.strictEqual(withOutput?.completed_at, new Date(1_800_000_000_000).toISOString());
+			assert.strictEqual(withOutput?.status, "completed");
+			const summary = (withOutput?.output as { summary: string } | undefined)?.summary ?? "";
+			assert.isAtMost(new TextEncoder().encode(summary).length, CheckRunOutput.LIMIT_BYTES);
+			assert.strictEqual(withoutOutput?.details_url, "https://ci/run/10");
+			assert.isFalse("output" in (withoutOutput ?? {}));
+			assert.isFalse("details_url" in (plain ?? {}), "no option, no details_url");
+		}),
+	);
+
+	it.effect("decodes a response missing name into a typed decode failure", () =>
+		Effect.gen(function* () {
+			const { name: _name, ...nameless } = CREATED;
+			const result = yield* Effect.result(
+				viaFixtures(
+					{
+						request: {
+							"GET /repos/{owner}/{repo}/check-runs/{check_run_id}": nameless,
+							"POST /repos/{owner}/{repo}/check-runs": nameless,
+						},
+						paginate: { "GET /repos/{owner}/{repo}/commits/{ref}/check-runs": [nameless] },
+					},
+					CheckRun,
+					CheckRun,
+					(check) =>
+						Effect.all([
+							Effect.flip(check.get(7)),
+							Effect.flip(check.create("lint", "abc")),
+							Effect.flip(check.findByExternalId("abc", "lint", "d1")),
+						]),
+				),
+			);
+			assert.isTrue(Result.isSuccess(result), "every member fails typed rather than dying");
+			if (Result.isSuccess(result)) {
+				assert.deepStrictEqual(
+					result.success.value.map((error) => [error.kind, error.operation]),
+					[
+						["decode", "CheckRun.get"],
+						["decode", "CheckRun.create"],
+						["decode", "CheckRun.findByExternalId"],
+					],
+				);
+				for (const error of result.success.value) assert.instanceOf(error, GitHubError);
+			}
 		}),
 	);
 });
