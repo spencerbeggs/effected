@@ -12,6 +12,17 @@
 * Updated effected
 * Updated @effected/github App authentication
 * Updated @effected/github resource services
+* Updated Advance the effect pin
+* Updated An unsatisfiable effect peer installs clean and fails somewhere else
+* Updated Consumer-facing text states current Effect behaviour, never versions
+* Updated Keep the tree resolved to one effect copy
+* Updated Releases are changeset-driven and scope-agnostic
+* Added The effect catalog locks every entry to an exact version, held by overrides
+* Updated The effected catalog literal
+* Added The plugin's catalog paired 4.0.3 satellites with core effect 4.0.2
+* Updated Vendored Effect is pinned to the lockfile's tag, not main
+* Updated pnpm-plugin-effect
+* Updated workspace
 
 ## 2026-10-09
 
