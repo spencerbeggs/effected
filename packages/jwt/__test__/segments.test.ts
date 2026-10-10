@@ -106,7 +106,7 @@ describe("segments", () => {
 
 	it("fails joinCompact as malformed, never a defect, for a value JSON cannot represent", () => {
 		const cycle: Record<string, unknown> = {};
-		cycle["self"] = cycle;
+		cycle.self = cycle;
 		for (const payload of [{ n: 1n }, cycle, undefined, () => 1, Symbol("s")]) {
 			const joined = joinCompact({ alg: "RS256" }, payload);
 			assert.isTrue(Result.isFailure(joined) && joined.failure.reason === "malformed", String(typeof payload));
