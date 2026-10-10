@@ -104,7 +104,8 @@ const nodeImporters = (entry: string): ReadonlyArray<string> =>
  *
  * - `ui/internal/processStreams.ts`: `process` (reads the three process streams);
  * - `ui/internal/inkChalk.ts`: `forbidImports` of `node:module`, `node:url`, `node:fs`;
- * - `ui/testing/fakeStreams.ts` (testing only): `forbidImports` of `node:stream` (it needs no `node:events`).
+ * - `ui/testing/fakeStreams.ts` (testing only): `forbidImports` of `node:stream` (it needs no `node:events`), and
+ *   `process`, to disarm the real-terminal cursor restore a fake TTY arms (#983); it touches no stream.
  */
 const NODE_LICENCE: ReadonlyArray<string> = [
 	"ui/internal/inkChalk.ts forbidImports node:fs",
@@ -112,6 +113,7 @@ const NODE_LICENCE: ReadonlyArray<string> = [
 	"ui/internal/inkChalk.ts forbidImports node:url",
 	"ui/internal/processStreams.ts process process",
 	"ui/testing/fakeStreams.ts forbidImports node:stream",
+	"ui/testing/fakeStreams.ts process process",
 ];
 
 /**
@@ -159,7 +161,7 @@ describe("cli boundary", () => {
 						],
 						allowRules: {
 							forbidImports: ["ui.ts", "ui-testing.ts", "ui/**"],
-							process: ["ui/internal/processStreams.ts"],
+							process: ["ui/internal/processStreams.ts", "ui/testing/fakeStreams.ts"],
 							"stdout-write": ["ui/internal/inkConsole.ts"],
 						},
 					});

@@ -152,5 +152,11 @@ export const isCommand = (line: string): boolean => {
 	return asCompared(line.slice(i)).startsWith("::") || asCompared(line).includes("##[");
 };
 
+/**
+ * Would the runner's legacy parser read this one line as a command: `##[` anywhere in it, as ICU compares. The V2
+ * test alone, for a line that is meant to be a command, whose data must still carry no legacy one.
+ */
+export const hasLegacyCommand = (line: string): boolean => asCompared(line).includes("##[");
+
 /** The lines of `text` the runner would read as a command. */
 export const commandLines = (text: string): ReadonlyArray<string> => text.split(LINE_BREAK).filter(isCommand);

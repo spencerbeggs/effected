@@ -368,7 +368,8 @@ export class Render {
 	 * body, `::endgroup::`. An annotation is a command at the top level, as a top-level section's child, and as a direct
 	 * child of a group's body; anywhere deeper (inside a list, a callout, or a section within a group) it is nothing,
 	 * as in plain. Its message and properties are escaped, so no text can end
-	 * the command or start another, and the kit's own command is never neutralized. That is a top-level collapsible, or one that is a direct child of a
+	 * the command or start another, and the kit's own command is never neutralized, though a `##[` in its message,
+	 * title or file is. That is a top-level collapsible, or one that is a direct child of a
 	 * top-level section. GitHub does not nest groups, so a collapsible inside a group, or inside a list or callout
 	 * (where it would not start a line), keeps plain's rendering: its title on a line and its body indented.
 	 *
@@ -377,7 +378,7 @@ export class Render {
 	 * do that (`::add-mask::`, `::error::`, `##[error]`), so such a `::` line gets a braille pattern blank (U+2800) in
 	 * front, which the runner neither trims nor skips, and every `##[` gets one before the `[`. The text is
 	 * otherwise unchanged. A
-	 * group's title is a command's data, so its `%`, CR and LF are escaped. Lines are split at CR, LF and CRLF before
+	 * group's title is a command's data, so its `%`, CR and LF are escaped and a `##[` in it is neutralized. Lines are split at CR, LF and CRLF before
 	 * that check, as the runner splits them. There is no ANSI and `paint` and `link` are never called, and the audience
 	 * is treated as `agent`, as `plain` does.
 	 *

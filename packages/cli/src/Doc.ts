@@ -906,8 +906,9 @@ export class Doc {
 	 * and every other renderer writes nothing.
 	 *
 	 * @remarks
-	 * It is the kit's own command, so `githubLog` does not neutralize it; its message and properties are escaped, so
-	 * no text in them can end the command or start another. It is a command where a line starts: at the top level, as a
+	 * It is the kit's own command, so `githubLog` does not neutralize the command itself; its message and properties are
+	 * escaped, so no text in them can end the command or start another, and a `##[` in its message, title or file gets
+	 * a braille pattern blank (U+2800) before the `[`, as in plain text. It is a command where a line starts: at the top level, as a
 	 * top-level section's child, or as a direct child of a group's body. Nested deeper, it is dropped.
 	 *
 	 * @param options - the level, and the optional file, position and title

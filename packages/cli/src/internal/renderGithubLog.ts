@@ -8,11 +8,28 @@ import { plainInline, renderPlainLines } from "./renderPlain.js";
 const plainLines = (blocks: ReadonlyArray<Block>, ctx: RenderContext): ReadonlyArray<string> =>
 	renderPlainLines(blocks, ctx).flatMap((line) => CommandNeutralizer.lines(line));
 
-/** An annotation as the kit's own command, on the trusted path: escaped by `WorkflowCommand`, never neutralized. */
+/**
+ * A command's data, with every `##[` neutralized and its line breaks kept as they were. `WorkflowCommand` escapes the
+ * breaks, so the command stays one line, but the runner's legacy parser reads `##[` ANYWHERE in a line, including in
+ * a command's message and property values (it is tried when the V2 parser rejects the line), so each `##[` gets the
+ * neutralizer's marker before its `[`. The V2 rule does not apply: no part of the data starts a line of the log, so
+ * each part is neutralized behind a one-character lead that cannot start a command and is cut off again, which keeps
+ * a part that begins `::` as it was. The command itself is not neutralized: only the data that goes into it.
+ */
+const commandData = (text: string): string =>
+	text
+		.split(/(\r\n|\r|\n)/)
+		.map((part, index) => (index % 2 === 0 ? CommandNeutralizer.text(`.${part}`).slice(1) : part))
+		.join("");
+
+/**
+ * An annotation as the kit's own command, on the trusted path: escaped by `WorkflowCommand`, and its message, title
+ * and file neutralized as data (the line and the columns are numbers, which carry nothing).
+ */
 const annotationLine = (block: Extract<Block, { readonly _tag: "Annotation" }>): string =>
-	WorkflowCommand[block.level](sanitize(block.message), {
-		...(block.title === undefined ? {} : { title: sanitize(block.title) }),
-		...(block.file === undefined ? {} : { file: sanitize(block.file) }),
+	WorkflowCommand[block.level](commandData(sanitize(block.message)), {
+		...(block.title === undefined ? {} : { title: commandData(sanitize(block.title)) }),
+		...(block.file === undefined ? {} : { file: commandData(sanitize(block.file)) }),
 		...(block.line === undefined ? {} : { startLine: block.line }),
 		...(block.endLine === undefined ? {} : { endLine: block.endLine }),
 		...(block.col === undefined ? {} : { startColumn: block.col }),
@@ -28,10 +45,13 @@ const blockLines = (block: Block, ctx: RenderContext): ReadonlyArray<string> => 
 		case "Annotation":
 			return [annotationLine(block)];
 		case "Collapsible": {
-			// The title is a command's data, so its line breaks are escaped: a raw one would end the command.
-			const title = plainInline(block.title, ctx)
-				.map((span) => span.text)
-				.join("");
+			// The title is a command's data, so its line breaks are escaped (a raw one would end the command) and a `##[`
+			// in it is neutralized, as in an annotation's message.
+			const title = commandData(
+				plainInline(block.title, ctx)
+					.map((span) => span.text)
+					.join(""),
+			);
 			// Groups do not nest: inside this one a collapsible is plain text, its title and its indented body.
 			return [WorkflowCommand.group(title), ...bodyLines(block.body, ctx), WorkflowCommand.endGroup()];
 		}

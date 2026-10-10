@@ -37,6 +37,43 @@ export interface FakeStreams {
 	readonly resize: (columns: number, rows: number) => void;
 }
 
+/** The listener list of `signal-exit` 3's process-wide emitter, which is all of it this reads. */
+interface SignalExitEmitter {
+	readonly listeners: (event: string) => ReadonlyArray<(...args: ReadonlyArray<unknown>) => void>;
+	readonly removeListener: (event: string, listener: (...args: ReadonlyArray<unknown>) => void) => unknown;
+}
+
+/** The hide-cursor escape `cli-cursor` writes to a TTY stream as it arms the restore. */
+const HIDE_CURSOR = `${String.fromCharCode(0x1b)}[?25l`;
+
+/** A cursor-show escape in a listener's source, as `restore-cursor` writes it (`'\u001B[?25h'`) or as the raw byte. */
+const CURSOR_SHOW = /\[\?25h/;
+
+/**
+ * Disarm the real terminal's cursor restore that a fake TTY arms, so no byte of a run on the fakes reaches the
+ * process's own streams (#983). The fake streams call it as the hide escape is written to them.
+ *
+ * @remarks
+ * Ink's frame writer hides the cursor through `cli-cursor` on its first render, and `cli-cursor` does it only for a
+ * stream that says it is a TTY, which the fakes do. Hiding it also arms `restore-cursor`, once per loaded copy of it
+ * (once per test file where the runner isolates modules): a `signal-exit` hook (`alwaysLast`, so on the `afterexit`
+ * event) that writes the cursor-show escape to the REAL `process.stderr` when the process exits or is signalled,
+ * whatever stream Ink was given and whether or not stderr is a terminal. Nothing on the fakes hid the real cursor, so
+ * that restore is only ever a stray byte in the test runner's output: this removes every `afterexit` listener that
+ * writes a cursor-show escape, right after the copy that armed it wrote its hide escape. The emitter is `signal-exit` 3's process-wide one, the version `restore-cursor` 4
+ * (the one Ink 8's `cli-cursor` takes) loads; without one there is nothing to disarm.
+ *
+ * The one read of `process` in the testing fakes, under the process-streams licence: it touches no stream.
+ */
+const disarmCursorRestore = (): void => {
+	const emitter = (process as unknown as { readonly __signal_exit_emitter__?: SignalExitEmitter })
+		.__signal_exit_emitter__;
+	if (emitter === undefined) return;
+	for (const listener of emitter.listeners("afterexit")) {
+		if (CURSOR_SHOW.test(String(listener))) emitter.removeListener("afterexit", listener);
+	}
+};
+
 const capture = (
 	columns: number,
 	rows: number,
@@ -47,6 +84,8 @@ const capture = (
 	const stream = new Writable({
 		write(chunk: Buffer | string, _encoding, callback) {
 			const text = chunk.toString();
+			// `cli-cursor` arms the real terminal's cursor restore just before it writes the hide escape here.
+			if (text.includes(HIDE_CURSOR)) disarmCursorRestore();
 			chunks.push(text);
 			both.push(text);
 			onWrite?.(text);

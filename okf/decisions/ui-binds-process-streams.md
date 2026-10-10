@@ -13,8 +13,8 @@ sources:
     title: The boundary test that holds the waived set exact
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-07T21:32:23Z
-  body_sha256: c155736e9736399e981aa696783053c7d09c6e145491539862410b958c58a94e
+  at: 2026-10-10T04:44:07Z
+  body_sha256: 15222b880b7522b98278e4e10c382eeb998c212a176b6e3827aad4ab82df897d
 ---
 
 # Only ./ui may bind Node's process streams, and only in three named files
@@ -45,7 +45,13 @@ its own argument, and it is scoped to three named files:
   ([why](ink-colour-via-inks-own-chalk.md)).
 - `src/ui/testing/fakeStreams.ts` is **testing-only** and reachable only from
   `./ui/testing`. It may import `node:events` and `node:stream`, to build the
-  in-memory TTY streams the screen harness drives.
+  in-memory TTY streams the screen harness drives. It may also read
+  `process`, for one thing that touches no stream: when Ink's `cli-cursor`
+  hides the cursor on a fake TTY, it arms `restore-cursor`'s exit hook, which
+  writes `ESC[?25h` to the real `process.stderr` at exit. The fakes remove
+  that hook from `signal-exit`'s process-wide emitter as the hide escape
+  reaches them (#983), so a run on the fakes leaves the process's own
+  streams untouched.
 
 Every other file under `src/ui/` is held to the root's rules. Each file joins
 the boundary test's exact waiver list when it lands, so a waiver that waives

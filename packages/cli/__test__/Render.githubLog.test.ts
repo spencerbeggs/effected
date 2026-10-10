@@ -5,7 +5,7 @@ import type { Block, RenderContext } from "../src/index.js";
 import { Doc, Render, Status } from "../src/index.js";
 import { ESC, composite } from "./helpers/hostileDoc.js";
 import { contextOf } from "./helpers/renderContext.js";
-import { LINE_BREAK, isCommand } from "./helpers/runnerCommands.js";
+import { LINE_BREAK, hasLegacyCommand, isCommand } from "./helpers/runnerCommands.js";
 
 const log = (doc: ReadonlyArray<Block>, overrides: Partial<RenderContext> = {}) =>
 	Effect.map(contextOf(overrides), (ctx) => Render.githubLog(doc, ctx));
@@ -290,6 +290,9 @@ describe("Render.githubLog: document text cannot become a workflow command", () 
 	);
 });
 
+/** The neutralizer's marker, U+2800, by code point. */
+const MARKER = String.fromCodePoint(0x2800);
+
 describe("Render.githubLog: annotations (okfit's trial)", () => {
 	/** The documented wire grammar, read independently of the renderer. */
 	const decode = (command: string) => {
@@ -331,9 +334,49 @@ describe("Render.githubLog: annotations (okfit's trial)", () => {
 			assert.lengthOf(commands(out), 1, out);
 			assert.lengthOf(out.split(LINE_BREAK), 1, "one line");
 			const decoded = decode(out);
-			assert.strictEqual(decoded?.message, message);
+			// Intact but for the neutralizer's markers: the `##[warning]` in the message gets one (#980).
+			assert.strictEqual(decoded?.message.replaceAll(MARKER, ""), message);
 			assert.strictEqual(decoded?.properties["title"], title);
 			assert.strictEqual(decoded?.properties["file"], "a,b:c.ts");
+		}),
+	);
+
+	it.effect("a ##[ in an annotation's message, title or file carries no legacy command (#980)", () =>
+		Effect.gen(function* () {
+			const carriers = ["y ##[group] m", "##[endgroup]", "a #\u200b#[group] b"];
+			for (const text of carriers) {
+				for (const options of [
+					{ message: text },
+					{ title: text, message: "m" },
+					{ file: text, message: "m" },
+				] as const) {
+					const { message, ...rest } = options;
+					const out = yield* log([Doc.annotation({ level: "warning", line: 1, col: 1, ...rest }, message)]);
+					assert.lengthOf(out.split(LINE_BREAK), 1, out);
+					assert.isFalse(hasLegacyCommand(out), JSON.stringify(out));
+					const decoded = decode(out);
+					assert.strictEqual(decoded?.level, "warning", out);
+					// The text is intact but for the markers, and the kit's own command is not neutralized.
+					const field =
+						"title" in rest
+							? decoded?.properties["title"]
+							: "file" in rest
+								? decoded?.properties["file"]
+								: decoded?.message;
+					assert.strictEqual(field?.replaceAll(MARKER, ""), text);
+				}
+			}
+		}),
+	);
+
+	it.effect("a ##[ in a group's title carries no legacy command, and the group is still a group (#980)", () =>
+		Effect.gen(function* () {
+			const out = (yield* log([Doc.collapsible("G ##[endgroup] x", [Doc.paragraph("a")])])).split(LINE_BREAK);
+			assert.lengthOf(out, 3, out.join("\n"));
+			assert.isTrue((out[0] as string).startsWith("::group::"), out[0]);
+			assert.isFalse(hasLegacyCommand(out[0] as string), out[0]);
+			assert.strictEqual((out[0] as string).replaceAll(MARKER, ""), "::group::G ##[endgroup] x");
+			assert.strictEqual(out[2], "::endgroup::");
 		}),
 	);
 
