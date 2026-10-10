@@ -51,7 +51,7 @@
 		"@effected/walker": "workspace:*",
 		"@effected/workspaces": "workspace:*",
 		"@effected/yaml": "workspace:*",
-		"@savvy-web/bundler": "^2.5.0",
+		"@savvy-web/bundler": "^2.5.1",
 		"@types/node": "catalog:build",
 		"@types/react": "catalog:build",
 		"effect": "catalog:effect",

@@ -38,7 +38,7 @@
 		"@effect/vitest": "catalog:effect",
 		"@effected/engine": "workspace:*",
 		"@effected/workspaces": "workspace:*",
-		"@savvy-web/bundler": "^2.5.0",
+		"@savvy-web/bundler": "^2.5.1",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
