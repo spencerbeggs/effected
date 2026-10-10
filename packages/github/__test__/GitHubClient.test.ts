@@ -826,44 +826,69 @@ describe("GitHubFixtures.failure", () => {
 		}),
 	);
 
-	it.effect("records a call that a failure fixture failed, so one fixture both records and classifies", () =>
-		Effect.gen(function* () {
-			const requested: Array<RecordedCall> = [];
-			const layer = GitHubClient.layerFixture({
-				request: {
-					"PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}": GitHubFixtures.failure({ status: 403 }),
-				},
-				paginate: { "GET /repos/{owner}/{repo}/pulls": GitHubFixtures.failure({ status: 404 }) },
-				requested,
-			});
-			const [patched, paged] = yield* Effect.provide(
-				Effect.gen(function* () {
-					const client = yield* GitHubClient;
-					return [
-						yield* Effect.flip(
-							client.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
-								owner: "o",
-								repo: "r",
-								check_run_id: 7,
-								status: "in_progress",
-							}),
-						),
-						yield* Effect.flip(client.paginate("GET /repos/{owner}/{repo}/pulls", { owner: "o", repo: "r" })),
-					] as const;
-				}),
-				layer,
-			);
-			assert.strictEqual(patched.kind, "unauthorized");
-			assert.strictEqual(paged.kind, "notFound");
-			assert.deepStrictEqual(
-				requested.map((call) => [call.kind, call.route]),
-				[
-					["request", "PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}"],
-					["paginate", "GET /repos/{owner}/{repo}/pulls"],
-				],
-			);
-			assert.strictEqual(requested[0]?.params.status, "in_progress", "the params of the failed call");
-		}),
+	it.effect(
+		"records every call a recorded failure fails, on every surface, so one fixture both records and classifies",
+		() =>
+			Effect.gen(function* () {
+				const requested: Array<RecordedCall> = [];
+				const recorded = GitHubError.notFound("GET /repos/{owner}/{repo}", "repo");
+				const layer = GitHubClient.layerFixture({
+					request: {
+						// A raw failure, classified at call time.
+						"PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}": GitHubFixtures.failure({ status: 403 }),
+						// A recorded GitHubError, served as the response.
+						"GET /repos/{owner}/{repo}": recorded,
+						"GET /rate_limit": GitHubFixtures.failure({ status: 404 }),
+						"GET /meta": recorded,
+					},
+					paginate: {
+						"GET /repos/{owner}/{repo}/pulls": GitHubFixtures.failure({ status: 404 }),
+						"GET /repos/{owner}/{repo}/issues": recorded,
+					},
+					requested,
+				});
+				const errors = yield* Effect.provide(
+					Effect.gen(function* () {
+						const client = yield* GitHubClient;
+						return [
+							yield* Effect.flip(
+								client.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
+									owner: "o",
+									repo: "r",
+									check_run_id: 7,
+									status: "in_progress",
+								}),
+							),
+							yield* Effect.flip(client.request("GET /repos/{owner}/{repo}", { owner: "o", repo: "r" })),
+							yield* Effect.flip(client.requestDecoded("GET /rate_limit", { probe: 1 }, Schema.Unknown)),
+							yield* Effect.flip(client.requestDecoded("GET /meta", {}, Schema.Unknown)),
+							yield* Effect.flip(client.paginate("GET /repos/{owner}/{repo}/pulls", { owner: "o", repo: "r" })),
+							yield* Effect.flip(client.paginate("GET /repos/{owner}/{repo}/issues", { owner: "o", repo: "r" })),
+						];
+					}),
+					layer,
+				);
+				assert.deepStrictEqual(
+					errors.map((error) => error.kind),
+					["unauthorized", "notFound", "notFound", "notFound", "notFound", "notFound"],
+				);
+				assert.strictEqual(errors[1], recorded, "a recorded GitHubError is served as is");
+				assert.strictEqual(errors[3], recorded);
+				assert.strictEqual(errors[5], recorded);
+				assert.deepStrictEqual(
+					requested.map((call) => [call.kind, call.route]),
+					[
+						["request", "PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}"],
+						["request", "GET /repos/{owner}/{repo}"],
+						["requestDecoded", "GET /rate_limit"],
+						["requestDecoded", "GET /meta"],
+						["paginate", "GET /repos/{owner}/{repo}/pulls"],
+						["paginate", "GET /repos/{owner}/{repo}/issues"],
+					],
+				);
+				assert.strictEqual(requested[0]?.params.status, "in_progress", "the params of the failed call");
+				assert.strictEqual(requested[2]?.params.probe, 1);
+			}),
 	);
 
 	it.effect("recognizes a failure made by another copy of the package", () =>

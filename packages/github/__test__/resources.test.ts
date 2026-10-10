@@ -328,18 +328,21 @@ describe("GitHubContent", () => {
 		}),
 	);
 
-	it.effect("fails typed on content that is not valid base64", () =>
+	it.effect("fails typed on content that is not standard padded base64", () =>
 		Effect.gen(function* () {
-			const { base } = harness([
-				{ status: 200, body: { type: "file", encoding: "base64", content: "not*base64!", name: "f", path: "f" } },
-			]);
-			const error = yield* Effect.flip(
-				Effect.provide(
-					Effect.flatMap(GitHubContent, (content) => content.getFile("f")),
-					GitHubContent.layer.pipe(Layer.provideMerge(base)),
-				),
-			);
-			assert.strictEqual(error.kind, "decode");
+			// "aGk=" is valid; dropping its padding or using the URL-safe alphabet is not.
+			for (const content of ["not*base64!", "aGk", "-_8="]) {
+				const { base } = harness([
+					{ status: 200, body: { type: "file", encoding: "base64", content, name: "f", path: "f" } },
+				]);
+				const error = yield* Effect.flip(
+					Effect.provide(
+						Effect.flatMap(GitHubContent, (files) => files.getFile("f")),
+						GitHubContent.layer.pipe(Layer.provideMerge(base)),
+					),
+				);
+				assert.strictEqual(error.kind, "decode", content);
+			}
 		}),
 	);
 
