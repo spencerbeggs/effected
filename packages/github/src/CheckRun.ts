@@ -1,4 +1,4 @@
-import { Cause, Clock, Context, Effect, Exit, Layer, Option, Ref, Schema } from "effect";
+import { Cause, Context, DateTime, Effect, Exit, Layer, Option, Ref, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
 import { numericId } from "./internal/ids.js";
@@ -412,13 +412,12 @@ const refOf = (raw: {
 		name: raw.name,
 		url: raw.html_url ?? "",
 		status: raw.status,
-		...(raw.external_id !== null && raw.external_id !== undefined && raw.external_id !== ""
-			? { externalId: raw.external_id }
-			: {}),
+		// null, absent and "" all mean the run has no external id.
+		...(raw.external_id ? { externalId: raw.external_id } : {}),
 	});
 
 /** The current time as GitHub's ISO 8601 timestamp, from `Clock` so `TestClock` drives it. */
-const isoNow = Effect.map(Clock.currentTimeMillis, (millis) => new Date(millis).toISOString());
+const isoNow = Effect.map(DateTime.now, DateTime.formatIso);
 
 const make = (client: GitHubClient["Service"]): CheckRunShape => {
 	const create = Effect.fn("CheckRun.create")(function* (
@@ -438,7 +437,7 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 			...(status === "in_progress" ? { started_at: yield* isoNow } : {}),
 			// An empty id is no id: findByExternalId never matches "", so sending one
 			// would create a run that lookup can never find.
-			...(options?.externalId !== undefined && options.externalId !== "" ? { external_id: options.externalId } : {}),
+			...(options?.externalId ? { external_id: options.externalId } : {}),
 			...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
 		});
 		return refOf(created);

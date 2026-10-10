@@ -11,10 +11,7 @@ const ISSUER = "https://token.actions.githubusercontent.com";
  * fraction, an exponent, surrounding space) does not decode.
  */
 const IdFromString = Schema.String.check(Schema.isPattern(/^\d+$/)).pipe(
-	Schema.decodeTo(
-		Schema.Int,
-		SchemaTransformation.transform({ decode: (digits: string) => Number(digits), encode: (id: number) => String(id) }),
-	),
+	Schema.decodeTo(Schema.Int, SchemaTransformation.numberFromString),
 );
 
 /**

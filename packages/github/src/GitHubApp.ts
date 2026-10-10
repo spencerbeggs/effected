@@ -273,18 +273,16 @@ export class AppIdentity extends Schema.Class<AppIdentity>("AppIdentity")({
 const SuspendedAt = Schema.OptionFromNullOr(Schema.DateTimeUtcFromString);
 
 /**
- * One optional field read leniently: `{ [key]: decoded }` when the response
- * carried the key and it decodes, `{}` otherwise. An unreadable field is
- * omitted rather than failing the installation, which is how these fields
- * behaved before they were read at all.
+ * One optional field read leniently: `{ [key]: decoded }` when the value
+ * decodes, `{}` otherwise. An absent key reads as `undefined`, which none of
+ * the schemas this is called with accepts, so absence and an unreadable value
+ * alike omit the field rather than failing the installation.
  */
 const readField = <K extends string, S extends Schema.Top & { readonly DecodingServices: never }>(
 	key: K,
 	schema: S,
-	present: boolean,
 	value: unknown,
 ): { readonly [P in K]?: S["Type"] } => {
-	if (!present) return {};
 	const decoded = Schema.decodeUnknownOption(schema)(value);
 	return Option.isSome(decoded) ? ({ [key]: decoded.value } as { readonly [P in K]?: S["Type"] }) : {};
 };
@@ -493,12 +491,7 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 	): Layer.Layer<GitHubClient, GitHubAppError> =>
 		Layer.effect(
 			GitHubClient,
-			makeRotatingClient(
-				Effect.map(mintJwt(credentials), ({ jwt, expiresAtMillis }) => ({ token: jwt, expiresAtMillis })),
-				() => Effect.void,
-				options,
-				"GitHubApp.appClientLayer",
-			),
+			makeRotatingClient(mintJwt(credentials), () => Effect.void, options, "GitHubApp.appClientLayer"),
 		);
 
 	/**
@@ -696,15 +689,13 @@ const unstubbed = (member: string): never => {
 };
 
 /** Mint an app JWT: iat 60 s in the past (clock drift), exp 9 minutes after now (GitHub caps at 10). */
-const mintJwt = (
-	credentials: AppCredentials,
-): Effect.Effect<{ jwt: Redacted.Redacted<string>; expiresAtMillis: number }, GitHubAppError> =>
+const mintJwt = (credentials: AppCredentials): Effect.Effect<RotatingCredential, GitHubAppError> =>
 	Effect.gen(function* () {
 		const key = yield* JwtKey.fromPkcs8Pem(credentials.privateKey, { alg: "RS256" });
 		const now = Math.floor((yield* Clock.currentTimeMillis) / 1000);
 		const exp = now + 9 * 60;
 		const token = yield* Jwt.sign({ iat: now - 60, exp, iss: credentials.appId }, key);
-		return { jwt: Redacted.make(token), expiresAtMillis: exp * 1000 };
+		return { token: Redacted.make(token), expiresAtMillis: exp * 1000 };
 	}).pipe(Effect.catchTag("JwtError", (error) => Effect.fail(GitHubAppError.of("jwt", error.detail, error))));
 
 /** A client speaking as the app itself. */
@@ -712,7 +703,7 @@ const asApp = (
 	credentials: AppCredentials,
 	options: GitHubAppOptions,
 ): Effect.Effect<GitHubClientShape, GitHubAppError> =>
-	Effect.flatMap(mintJwt(credentials), ({ jwt }) => makeClientShape({ ...options, token: jwt }));
+	Effect.flatMap(mintJwt(credentials), ({ token }) => makeClientShape({ ...options, token }));
 
 /** A client speaking as a holder of `token`, or as nobody when there is none. */
 const asBearer = (
@@ -733,15 +724,10 @@ function makeApp(options: GitHubAppOptions): Effect.Effect<GitHubAppShape> {
 				return Installation.make({
 					id: numericId(entry.id),
 					...(account !== undefined && typeof account.login === "string" ? { account: account.login } : {}),
-					...readField("accountType", Schema.String, account !== undefined && "type" in account, account?.type),
-					...readField(
-						"accountId",
-						Schema.Int,
-						account !== undefined && "id" in account,
-						typeof account?.id === "bigint" ? numericId(account.id) : account?.id,
-					),
-					...readField("suspendedAt", SuspendedAt, "suspended_at" in entry, entry.suspended_at),
-					...readField("updatedAt", Schema.DateTimeUtcFromString, "updated_at" in entry, entry.updated_at),
+					...readField("accountType", Schema.String, account?.type),
+					...readField("accountId", Schema.Int, typeof account?.id === "bigint" ? numericId(account.id) : account?.id),
+					...readField("suspendedAt", SuspendedAt, entry.suspended_at),
+					...readField("updatedAt", Schema.DateTimeUtcFromString, entry.updated_at),
 				});
 			});
 		});
