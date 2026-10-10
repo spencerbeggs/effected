@@ -234,11 +234,14 @@ tempted to reach for `as`.
   `uploadAsset(release, { name, data, contentType, label? })` (a hand-written
   route with two URI-template spellings, because an absent `label` would expand
   to a dangling `&`), `listAssets`.
-- **`WorkflowDispatch`** — `dispatch(workflow, ref, inputs?)`, `runStatus`,
+- **`WorkflowDispatch`** — `dispatch(workflow, ref, inputs?)`,
+  `dispatchWithRun(workflow, ref, inputs?)` → `Option<DispatchedRun>` (`None` on
+  a 204 from a server that ignores `return_run_details`), `runStatus`,
   `cancelRun(runId)` → `"cancelled" | "alreadyCompleted"` (GitHub's 409 for a
   finished run is not a failure),
   `list`, `dispatchAndWait(workflow, ref, { inputs?, poll? })` with
-  `PollOptions { interval?, timeout? }`. `list` reports GitHub's state string
+  `PollOptions { interval?, timeout? }` (polls the reported run; the
+  creation-time search is only the 204 fallback). `list` reports GitHub's state string
   **without interpreting it** — whether a disabled workflow "counts" is a
   server-side rule this package cannot test.
 - **`Attestation` / `ArtifactMetadata`** — `upload(bundle: unknown)` →

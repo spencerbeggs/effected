@@ -1609,6 +1609,18 @@ describe("WorkflowDispatch.dispatchWithRun", () => {
 		}),
 	);
 
+	it.effect("a fixture stubbed with null, the no-body convention, is None too", () =>
+		Effect.gen(function* () {
+			const { value } = yield* viaFixtures(
+				{ request: { "POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches": null } },
+				WorkflowDispatch,
+				WorkflowDispatch,
+				(w) => w.dispatchWithRun("release.yml", "main"),
+			);
+			assert.isTrue(Option.isNone(value));
+		}),
+	);
+
 	it.effect("a 200 whose body is not run details fails decode", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(

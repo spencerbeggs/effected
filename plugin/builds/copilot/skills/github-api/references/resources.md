@@ -203,9 +203,10 @@ mechanics) see `actions-reporting`'s reference.
 
 | Member | Signature | Notes |
 | --- | --- | --- |
-| `dispatch` | `(workflow, ref, inputs?) => Effect<void>` | GitHub answers 204, no run id |
+| `dispatch` | `(workflow, ref, inputs?) => Effect<void>` | GitHub answers 204, no run id; use `dispatchWithRun` when the id is needed |
+| `dispatchWithRun` | `(workflow, ref, inputs?) => Effect<Option<DispatchedRun>>` | Sends `return_run_details`; a 200 is `Some({runId, runUrl, htmlUrl})`, a 204 (a GitHub Enterprise Server predating the field) is `None`, not a failure; a 200 that does not decode fails `kind: "decode"`. Stub the 204 under `layerFixture` with `null` |
 | `runStatus` | `(runId) => Effect<WorkflowRunStatus>` | |
-| `dispatchAndWait` | `(workflow, ref, options?: {inputs?, poll?: PollOptions}) => Effect<WorkflowRunStatus>` | Dispatches, then finds the run by creation time and polls; `PollOptions = {interval? = 10s, timeout? = 5m}`. The wait is `Effect.repeat` with a `while` predicate over the success value, not a sentinel error for "not done yet" — a genuine timeout fails `kind: "rejected"`, status 408 |
+| `dispatchAndWait` | `(workflow, ref, options?: {inputs?, poll?: PollOptions}) => Effect<WorkflowRunStatus>` | Dispatches with run details and polls exactly the reported run; only on a 204 does it fall back to finding the run by creation time, where concurrent dispatches of one workflow on one ref can be confused; `PollOptions = {interval? = 10s, timeout? = 5m}`. The wait is `Effect.repeat` with a `while` predicate over the success value, not a sentinel error for "not done yet" — a genuine timeout fails `kind: "rejected"`, status 408 |
 
 `WorkflowRunStatus = {id, status, conclusion?, url}`, `.isDone` true once
 `status === "completed"`.

@@ -113,9 +113,9 @@ export interface WorkflowDispatchShape {
 	 * still dispatches — so it is **not a failure**: the workflow was dispatched,
 	 * the server just did not say which run it created.
 	 *
-	 * Under `GitHubClient.layerFixture`, stub the 204 by answering the dispatch
-	 * route with `""` (what octokit hands back for an empty body); `null` fails
-	 * to decode as run details.
+	 * Under `GitHubClient.layerFixture`, stub the 204 the way every other
+	 * no-body route is stubbed: answer the dispatch route with `null`. `""`
+	 * (what octokit itself hands back for an empty body) works too.
 	 *
 	 * Every failure of the request itself (a 404 for an unknown workflow, a 422
 	 * for a workflow without a `workflow_dispatch` trigger, …) is the
@@ -296,7 +296,9 @@ const make = (client: GitHubClient["Service"]): WorkflowDispatchShape => {
 		// The client hands back only `data`. octokit answers a 204 (or 205) by
 		// returning before it reads the body, leaving `data` at its initial `""`;
 		// any 2xx with a body is parsed. So `""` is exactly "no run details".
-		if (data === "") return Option.none<DispatchedRun>();
+		// `null` is the fixture convention for a no-body route; a real 200 body
+		// never parses to a bare `null`, so accepting it costs nothing.
+		if (data === "" || data === null) return Option.none<DispatchedRun>();
 		const run = yield* decodeDispatchResponse(data).pipe(
 			Effect.flatMap((raw) =>
 				decodeDispatchedRun({
