@@ -27,7 +27,6 @@
 ## Breaking Changes
 
 * `CheckRunShape` changed: the `update` output is optional, `complete` takes options, and `findByExternalId` is new. `WorkflowDispatchShape` gained `cancelRun`. Hand-written implementations of these shapes must be updated; calls through `CheckRun` and `WorkflowDispatch` are source-compatible.
-* `GitHubError.fromResponse` now requires `nowMillis`; pass the current time in milliseconds.
 * RSA App private keys under 2048 bits are refused with a `GitHubAppError` of `kind` `"jwt"`.
 * `getFile` fails with a typed `decode` error when the content is not standard padded base64, and a check-run response missing required fields fails as a typed `decode` error.
 

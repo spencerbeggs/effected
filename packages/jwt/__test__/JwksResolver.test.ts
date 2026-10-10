@@ -419,12 +419,15 @@ describe("JwksResolver freshness and bounds", () => {
 				// An unknown kid holds the issuer's lock across a refetch that does not answer.
 				const miss = yield* Effect.forkChild(Effect.flip(verify(yield* Jws.sign({}, c.signing))));
 				for (let i = 0; i < 20; i++) yield* Effect.yieldNow;
-				const known = yield* Effect.forkChild(verify(token));
-				for (let i = 0; i < 20; i++) yield* Effect.yieldNow;
-				assert.isDefined(known.pollUnsafe(), "the known kid verified while the refetch was in flight");
+				// The known kid must verify while the refetch is still parked on the
+				// gate. Joining before the gate opens makes that the assertion: were the
+				// verification serialized behind the lock, this join would never return
+				// and the test would time out. Polling after a fixed number of yields was
+				// flaky, because verification awaits a real WebCrypto promise.
+				yield* verify(token);
+				assert.isUndefined(miss.pollUnsafe(), "the refetch was still in flight");
 				yield* Deferred.succeed(gate, undefined);
 				assert.strictEqual((yield* Fiber.join(miss)).reason, "unknownKid");
-				yield* Fiber.join(known);
 			});
 			yield* Effect.provide(program, resolverLayer(http.layer, forgetful));
 		}),
