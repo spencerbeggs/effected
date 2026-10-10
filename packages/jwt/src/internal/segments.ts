@@ -16,6 +16,7 @@
 import { Result } from "effect";
 import * as Base64Url from "effect/encoding/Base64Url";
 import { JwtError } from "../JwtError.js";
+import { fatalUtf8 } from "./bytes.js";
 
 /** A parsed compact JWS, signature unchecked. @internal */
 export interface CompactParts {
@@ -28,7 +29,6 @@ export interface CompactParts {
 
 const urlSafe = /^[A-Za-z0-9_-]+$/;
 const encoder = new TextEncoder();
-const decoder = new TextDecoder("utf-8", { fatal: true });
 
 const bytesOf = (name: string, segment: string): Result.Result<Uint8Array, JwtError> => {
 	if (!urlSafe.test(segment)) {
@@ -48,7 +48,7 @@ const bytesOf = (name: string, segment: string): Result.Result<Uint8Array, JwtEr
 const jsonOf = (name: string, segment: string): Result.Result<unknown, JwtError> =>
 	Result.flatMap(bytesOf(name, segment), (bytes) => {
 		try {
-			return Result.succeed(JSON.parse(decoder.decode(bytes)) as unknown);
+			return Result.succeed(JSON.parse(fatalUtf8.decode(bytes)) as unknown);
 		} catch (cause) {
 			return Result.fail(JwtError.of("malformed", `the ${name} segment is not base64url JSON`, { cause }));
 		}

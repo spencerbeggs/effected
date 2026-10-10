@@ -11,6 +11,7 @@
 import { Result } from "effect";
 import * as Base64 from "effect/encoding/Base64";
 import { JwtError } from "../JwtError.js";
+import { concat } from "./bytes.js";
 
 /**
  * A DER definite length: one byte below 128, else `0x80 | n` followed by
@@ -25,18 +26,8 @@ export const derLength = (length: number): Uint8Array => {
 	return Uint8Array.of(0x80 | bytes.length, ...bytes);
 };
 
-const concat = (...parts: ReadonlyArray<Uint8Array>): Uint8Array => {
-	const out = new Uint8Array(parts.reduce((total, part) => total + part.byteLength, 0));
-	let offset = 0;
-	for (const part of parts) {
-		out.set(part, offset);
-		offset += part.byteLength;
-	}
-	return out;
-};
-
 const tlv = (tag: number, value: Uint8Array): Uint8Array =>
-	concat(Uint8Array.of(tag), derLength(value.byteLength), value);
+	concat([Uint8Array.of(tag), derLength(value.byteLength), value]);
 
 // INTEGER 0 — the PrivateKeyInfo version.
 const version = Uint8Array.of(0x02, 0x01, 0x00);
@@ -66,7 +57,7 @@ const rsaAlgorithmIdentifier = Uint8Array.of(
  * @internal
  */
 export const wrapPkcs1 = (pkcs1: Uint8Array): Uint8Array =>
-	tlv(0x30, concat(version, rsaAlgorithmIdentifier, tlv(0x04, pkcs1)));
+	tlv(0x30, concat([version, rsaAlgorithmIdentifier, tlv(0x04, pkcs1)]));
 
 const armour = /^-----BEGIN ([A-Z0-9 ]+)-----\r?\n([A-Za-z0-9+/=\s]+?)\r?\n-----END \1-----\s*$/;
 

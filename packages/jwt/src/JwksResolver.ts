@@ -1,7 +1,10 @@
-import { Cause, Clock, Context, Duration, Effect, Layer, Option, Ref, Schema, Semaphore, Stream } from "effect";
+import { Cause, Clock, Context, Duration, Effect, Layer, Option, Schema, Semaphore, Stream } from "effect";
 import type { HttpClientResponse } from "effect/http";
 import { HttpClient } from "effect/http";
-import { isAlgorithm } from "./internal/algorithms.js";
+import { isAlgorithm, unsupportedAlgorithm } from "./internal/algorithms.js";
+import { concat, fatalUtf8 } from "./internal/bytes.js";
+import { finiteMillis } from "./internal/duration.js";
+import { isAcceptedIssuer, isLocalIssuer, protocolOf } from "./internal/issuer.js";
 import { quote } from "./internal/quote.js";
 import type { Jwk } from "./Jwk.js";
 import { Jwks } from "./Jwk.js";
@@ -67,15 +70,9 @@ const readCapped = (response: HttpClientResponse.HttpClientResponse, what: strin
 			return Effect.succeed({ chunks: acc.chunks, size });
 		},
 	).pipe(
-		Effect.flatMap(({ chunks, size }) => {
-			const bytes = new Uint8Array(size);
-			let offset = 0;
-			for (const chunk of chunks) {
-				bytes.set(chunk, offset);
-				offset += chunk.byteLength;
-			}
+		Effect.flatMap(({ chunks }) => {
 			try {
-				return Effect.succeed(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+				return Effect.succeed(fatalUtf8.decode(concat(chunks)));
 			} catch (cause) {
 				return Effect.fail(fetchFailed(`the ${what} is not UTF-8`, cause));
 			}
@@ -114,30 +111,13 @@ const getJson = <S extends Schema.Constraint & { readonly DecodingServices: neve
 		),
 	);
 
-const protocolOf = (url: string): string | undefined => {
-	try {
-		return new URL(url).protocol;
-	} catch {
-		return undefined;
-	}
-};
-
-const isLocalIssuer = (issuer: string): boolean => {
-	try {
-		const url = new URL(issuer);
-		return url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
-	} catch {
-		return false;
-	}
-};
-
 // OIDC Discovery §4: the document lives under the issuer, and §4.3 requires
 // its `issuer` to equal the one requested exactly.
 const discoverJwksUri = (client: HttpClient.HttpClient, issuer: string): Effect.Effect<string, JwtError> =>
 	Effect.gen(function* () {
 		// Discovery over plain http would let a network attacker name any
 		// jwks_uri, so the issuer is held to the same scheme rule.
-		if (protocolOf(issuer) !== "https:" && !isLocalIssuer(issuer)) {
+		if (!isAcceptedIssuer(issuer)) {
 			return yield* fetchFailed(`the issuer ${quote(issuer)} is not an https URL`);
 		}
 		const url = `${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`;
@@ -168,13 +148,10 @@ const select = (jwks: Jwks, header: JoseHeader): Option.Option<Jwk> => {
 };
 
 // Static configuration: a bad value is a programming error, so it dies at
-// layer construction with a message naming the option. `NaN` is checked
-// first because core's `Duration.fromInput(NaN)` is zero, not `None`.
+// layer construction with a message naming the option.
 const positiveMillis = (name: string, input: Duration.Input): Effect.Effect<number> => {
-	const duration =
-		typeof input === "number" && !Number.isFinite(input) ? undefined : Option.getOrUndefined(Duration.fromInput(input));
-	const millis = duration === undefined ? Number.NaN : Duration.toMillis(duration);
-	return Number.isFinite(millis) && millis > 0
+	const millis = finiteMillis(input);
+	return millis !== undefined && millis > 0
 		? Effect.succeed(millis)
 		: Effect.die(new Error(`JwksResolver: ${name} must be a finite, positive duration`));
 };
@@ -196,9 +173,8 @@ const make = (options: JwksResolverOptions) =>
 		// - `last` is the most recent *successful* fetch, aged by its own
 		//   `fetchedAtMillis`. It serves misses from a store that lost it, and a
 		//   failed refetch never touches it, so it cannot outlive the TTL.
-		const issuers = yield* Ref.make(
-			new Map<string, { readonly lastAttemptMillis: number; readonly last: CachedJwks | undefined }>(),
-		);
+		// Each issuer's entry is read and written only under that issuer's lock.
+		const issuers = new Map<string, { readonly lastAttemptMillis: number; readonly last: CachedJwks | undefined }>();
 		const locks = new Map<string, Semaphore.Semaphore>();
 		const lockFor = (issuer: string) => {
 			let lock = locks.get(issuer);
@@ -260,7 +236,7 @@ const make = (options: JwksResolverOptions) =>
 				// Another fiber may have refreshed while this one waited for the lock.
 				const now = yield* Clock.currentTimeMillis;
 				const stored = yield* storedFor(issuer, now);
-				const state = (yield* Ref.get(issuers)).get(issuer);
+				const state = issuers.get(issuer);
 				// The last successful fetch serves a store that failed to keep it,
 				// but only within the TTL of that fetch: past it, a key the issuer
 				// removed must not verify, however many refetches have failed since.
@@ -279,22 +255,17 @@ const make = (options: JwksResolverOptions) =>
 						? fetchFailed("the JWKS could not be fetched, and the refetch interval has not passed")
 						: unknownKid(header);
 				}
-				yield* Ref.update(issuers, (map) => new Map(map).set(issuer, { lastAttemptMillis: now, last }));
+				issuers.set(issuer, { lastAttemptMillis: now, last });
 				const jwks = yield* fetchJwks(issuer);
 				const fetched: CachedJwks = { jwks, fetchedAtMillis: now };
-				yield* Ref.update(issuers, (map) => new Map(map).set(issuer, { lastAttemptMillis: now, last: fetched }));
+				issuers.set(issuer, { lastAttemptMillis: now, last: fetched });
 				yield* swallow(store.set(issuer, fetched, ttl), undefined);
 				const fresh = select(jwks, header);
 				return Option.isSome(fresh) ? yield* importFor(fresh.value, header) : yield* unknownKid(header);
 			});
 
 		const key = Effect.fn("JwksResolver.key")(function* (issuer: string, header: JoseHeader) {
-			if (!isAlgorithm(header.alg)) {
-				return yield* JwtError.of(
-					"unsupportedAlgorithm",
-					`the token claims ${quote(header.alg)}; only RS256 and ES256 are accepted`,
-				);
-			}
+			if (!isAlgorithm(header.alg)) return yield* unsupportedAlgorithm(header.alg);
 			const stored = yield* storedFor(issuer, yield* Clock.currentTimeMillis);
 			const hit = Option.flatMap(stored, (cached) => select(cached.jwks, header));
 			if (Option.isSome(hit)) return yield* importFor(hit.value, header);

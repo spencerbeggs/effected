@@ -129,17 +129,20 @@ const fromPkcs8Pem = Effect.fn("JwtKey.fromPkcs8Pem")(function* (
 // The public members WebCrypto needs, and nothing else: private members are
 // `Redacted` in `Jwk` and are never unwrapped here, and members such as
 // `key_ops` or `ext` could make an otherwise valid import fail.
-const publicJwk = (jwk: Jwk, alg: JwtAlgorithm): Result.Result<PublicJwk, JwtError> => {
+const publicJwk = (
+	jwk: Jwk,
+	alg: JwtAlgorithm,
+	extra: { readonly kid: string } | undefined,
+): Result.Result<PublicJwk, JwtError> => {
+	const fail = (detail: string) => Result.fail(JwtError.of("key", detail, extra));
 	if (alg === "RS256") {
-		if (jwk.kty !== "RSA") return Result.fail(JwtError.of("key", `an ${jwk.kty} JWK cannot carry RS256`));
-		if (jwk.n === undefined || jwk.e === undefined) {
-			return Result.fail(JwtError.of("key", "the RSA JWK lacks n or e"));
-		}
+		if (jwk.kty !== "RSA") return fail(`an ${jwk.kty} JWK cannot carry RS256`);
+		if (jwk.n === undefined || jwk.e === undefined) return fail("the RSA JWK lacks n or e");
 		return Result.succeed({ kty: "RSA", n: jwk.n, e: jwk.e });
 	}
-	if (jwk.kty !== "EC") return Result.fail(JwtError.of("key", `an ${jwk.kty} JWK cannot carry ES256`));
-	if (jwk.crv !== "P-256") return Result.fail(JwtError.of("key", "ES256 needs a P-256 JWK"));
-	if (jwk.x === undefined || jwk.y === undefined) return Result.fail(JwtError.of("key", "the EC JWK lacks x or y"));
+	if (jwk.kty !== "EC") return fail(`an ${jwk.kty} JWK cannot carry ES256`);
+	if (jwk.crv !== "P-256") return fail("ES256 needs a P-256 JWK");
+	if (jwk.x === undefined || jwk.y === undefined) return fail("the EC JWK lacks x or y");
 	return Result.succeed({ kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y });
 };
 
@@ -164,11 +167,7 @@ const fromJwk = Effect.fn("JwtKey.fromJwk")(function* (jwk: Jwk, options?: { rea
 	}
 	const alg = jwk.alg ?? options?.alg;
 	if (alg === undefined) return yield* JwtError.of("key", "the JWK names no algorithm", extra);
-	const material = yield* Effect.fromResult(
-		Result.mapError(publicJwk(jwk, alg), (error) =>
-			extra === undefined ? error : JwtError.of(error.reason, error.detail, extra),
-		),
-	);
+	const material = yield* Effect.fromResult(publicJwk(jwk, alg, extra));
 	const key = yield* importKey({ format: "jwk", data: material }, alg, "verify");
 	return VerificationKey.make(alg, jwk.kid, key);
 });

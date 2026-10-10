@@ -4,6 +4,7 @@
 import type * as Root from "@effected/jwt";
 import { Clock, Effect, Layer } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
+import { isAcceptedIssuer } from "./internal/issuer.js";
 import { JwksResolver } from "./JwksResolver.js";
 import { JwksStore } from "./JwksStore.js";
 import { Jwt } from "./Jwt.js";
@@ -61,18 +62,6 @@ interface IssuerState {
 
 const states = new WeakMap<TestIssuerShape, IssuerState>();
 
-const isUsableIssuer = (issuer: string): boolean => {
-	try {
-		const url = new URL(issuer);
-		return (
-			url.protocol === "https:" ||
-			(url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1"))
-		);
-	} catch {
-		return false;
-	}
-};
-
 const json = (request: Parameters<typeof HttpClientResponse.fromWeb>[0], status: number, body: unknown) =>
 	HttpClientResponse.fromWeb(
 		request,
@@ -120,7 +109,7 @@ const make = (options: {
 	readonly kid?: string;
 }): Effect.Effect<TestIssuerShape, Root.JwtError> =>
 	Effect.gen(function* () {
-		if (!isUsableIssuer(options.issuer)) {
+		if (!isAcceptedIssuer(options.issuer)) {
 			return yield* Effect.die(
 				new Error(
 					`TestIssuer: ${options.issuer} is not an https issuer (or http://localhost / http://127.0.0.1), which JwksResolver refuses`,

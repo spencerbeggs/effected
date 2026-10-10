@@ -1,4 +1,5 @@
-import { Clock, Duration, Effect, Option, Schema } from "effect";
+import { Clock, Duration, Effect, Schema } from "effect";
+import { finiteMillis } from "./internal/duration.js";
 import { quote } from "./internal/quote.js";
 import type { DecodedJws, JoseHeader } from "./Jws.js";
 import { Jws } from "./Jws.js";
@@ -95,14 +96,9 @@ const asList = (value: string | ReadonlyArray<string>): ReadonlyArray<string> =>
 
 // A tolerance must be a finite, non-negative duration; anything else would
 // silently disable (infinite) or tighten past zero (negative) the time checks.
-// Core's `Duration.fromInput(NaN)` is zero, not `None`, so a raw number is
-// checked for finiteness first.
 const toleranceSeconds = (input: Duration.Input | undefined): number | undefined => {
-	if (typeof input === "number" && !Number.isFinite(input)) return undefined;
-	const duration = Option.getOrUndefined(Duration.fromInput(input ?? defaultTolerance));
-	if (duration === undefined) return undefined;
-	const millis = Duration.toMillis(duration);
-	return Number.isFinite(millis) && millis >= 0 ? millis / 1000 : undefined;
+	const millis = finiteMillis(input ?? defaultTolerance);
+	return millis !== undefined && millis >= 0 ? millis / 1000 : undefined;
 };
 
 const checkClaims = (
@@ -213,6 +209,6 @@ export const Jwt: {
 		options: VerifyOptions<S, R>,
 	) => Effect.Effect<S["Type"], JwtError, R | S["DecodingServices"]>;
 } = {
-	sign: (claims, key, header) => Jws.sign(claims, key, header),
+	sign: Jws.sign,
 	verify,
 };

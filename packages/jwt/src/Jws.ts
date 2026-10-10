@@ -1,6 +1,5 @@
 import { Effect, Result, Schema } from "effect";
-import { isAlgorithm, signParams } from "./internal/algorithms.js";
-import { quote } from "./internal/quote.js";
+import { isAlgorithm, signParams, unsupportedAlgorithm } from "./internal/algorithms.js";
 import { appendSignature, joinCompact, splitCompact } from "./internal/segments.js";
 import { subtle, toArrayBuffer } from "./internal/subtle.js";
 import { JwtError } from "./JwtError.js";
@@ -98,12 +97,7 @@ const verify = <R = never>(
 		// Decided before any key is resolved, so a token naming an algorithm
 		// this package does not implement (none, HS256, ...) never triggers a
 		// key lookup such as a JWKS fetch.
-		if (!isAlgorithm(header.alg)) {
-			return yield* JwtError.of(
-				"unsupportedAlgorithm",
-				`the token claims ${quote(header.alg)}; only RS256 and ES256 are accepted`,
-			);
-		}
+		if (!isAlgorithm(header.alg)) return yield* unsupportedAlgorithm(header.alg);
 		// `typeof`, not `instanceof`: a key built by a second copy of this
 		// package (a duplicated dependency) is still a key, not a function.
 		const resolved = typeof key === "function" ? yield* key(header) : key;
