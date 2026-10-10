@@ -125,6 +125,49 @@ describe("CheckRunRef projection", () => {
 	);
 });
 
+describe("CheckRunRef projection of a malformed output", () => {
+	// GitHub's schema makes `output` a required object. A null one is malformed
+	// input and must fail typed: a defect here escapes every GitHubError handler,
+	// including the bracket's finalizer.
+	for (const operation of ["get", "updateRef", "completeRef", "create"] as const) {
+		it.effect(`${operation} fails with a decode error on output: null`, () =>
+			Effect.gen(function* () {
+				const { value } = yield* drive([{ status: 200, body: wireRun({ output: null }) }], (check) =>
+					Effect.flip(
+						operation === "get"
+							? check.get(4)
+							: operation === "updateRef"
+								? check.updateRef(4)
+								: operation === "completeRef"
+									? check.completeRef(4, "success")
+									: check.create("n", "sha"),
+					),
+				);
+				assert.deepStrictEqual([value.kind, value.operation], ["decode", `CheckRun.${operation}`]);
+			}),
+		);
+	}
+
+	it.effect("list fails with a decode error on a run whose output is null", () =>
+		Effect.gen(function* () {
+			const { value } = yield* drive(
+				[{ status: 200, body: { total_count: 1, check_runs: [wireRun({ output: null })] } }],
+				(check) => Effect.flip(check.list("abc")),
+			);
+			assert.deepStrictEqual([value.kind, value.operation], ["decode", "CheckRun.list"]);
+		}),
+	);
+
+	it.effect("an output that is not an object fails typed too", () =>
+		Effect.gen(function* () {
+			const { value } = yield* drive([{ status: 200, body: wireRun({ output: "oops" }) }], (check) =>
+				Effect.flip(check.get(4)),
+			);
+			assert.strictEqual(value.kind, "decode");
+		}),
+	);
+});
+
 describe("CheckRun.updateRef / completeRef", () => {
 	it.effect("updateRef answers the PATCH response and sends what update sends", () =>
 		Effect.gen(function* () {

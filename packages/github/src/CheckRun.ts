@@ -652,8 +652,24 @@ interface RawCheckRun {
 		readonly title?: string | null;
 		readonly summary?: string | null;
 		readonly annotations_count?: number;
-	};
+	} | null;
 }
+
+/** Whether a wire value is an object whose fields can be read. */
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+
+/**
+ * A nested wire object's fields, renamed for the schema, or the value itself
+ * when it is not an object.
+ *
+ * @remarks
+ * Handing the raw value through is what keeps a malformed response typed: a
+ * `null` `output` (which GitHub's schema forbids) reaches the decoder and fails
+ * as `decode` instead of throwing a `TypeError` while its fields are read,
+ * which would be a defect escaping every `GitHubError` handler.
+ */
+const nested = (value: unknown, project: (record: Record<string, unknown>) => unknown): unknown =>
+	isRecord(value) ? project(value) : value;
 
 /**
  * Project a check-run response onto {@link CheckRunRef}, **decoding** it.
@@ -683,15 +699,19 @@ const refOf = (operation: string, raw: RawCheckRun): Effect.Effect<CheckRunRef, 
 		...(raw.html_url !== undefined ? { htmlUrl: raw.html_url } : {}),
 		...(raw.url !== undefined ? { apiUrl: raw.url } : {}),
 		...(raw.check_suite !== undefined
-			? { checkSuiteId: raw.check_suite === null ? null : numericId(raw.check_suite.id) }
+			? {
+					checkSuiteId: nested(raw.check_suite, (suite) =>
+						typeof suite.id === "number" || typeof suite.id === "bigint" ? numericId(suite.id) : suite.id,
+					),
+				}
 			: {}),
 		...(raw.output !== undefined
 			? {
-					output: {
-						title: raw.output.title,
-						summary: raw.output.summary,
-						annotationsCount: raw.output.annotations_count,
-					},
+					output: nested(raw.output, (output) => ({
+						title: output.title,
+						summary: output.summary,
+						annotationsCount: output.annotations_count,
+					})),
 				}
 			: {}),
 	}).pipe(

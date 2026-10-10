@@ -240,20 +240,26 @@ const decodeApp = Schema.decodeUnknownEffect(AppInfo);
 const nullableId = (id: number | bigint | null): number | null => (id === null ? null : numericId(id));
 
 const deliveryOf = (operation: string, raw: RawDelivery): Effect.Effect<DeliveryAttempt, GitHubError> =>
-	decodeDelivery({
-		id: numericId(raw.id),
-		guid: raw.guid,
-		deliveredAt: raw.delivered_at,
-		redelivery: raw.redelivery,
-		duration: raw.duration,
-		status: raw.status,
-		statusCode: raw.status_code,
-		event: raw.event,
-		action: raw.action,
-		installationId: nullableId(raw.installation_id),
-		repositoryId: nullableId(raw.repository_id),
-		...(raw.throttled_at !== undefined ? { throttledAt: raw.throttled_at } : {}),
-	}).pipe(
+	// A delivery that is not an object goes to the decoder as it is, so it fails
+	// typed rather than throwing while its fields are read.
+	decodeDelivery(
+		typeof raw !== "object" || raw === null
+			? raw
+			: {
+					id: numericId(raw.id),
+					guid: raw.guid,
+					deliveredAt: raw.delivered_at,
+					redelivery: raw.redelivery,
+					duration: raw.duration,
+					status: raw.status,
+					statusCode: raw.status_code,
+					event: raw.event,
+					action: raw.action,
+					installationId: nullableId(raw.installation_id),
+					repositoryId: nullableId(raw.repository_id),
+					...(raw.throttled_at !== undefined ? { throttledAt: raw.throttled_at } : {}),
+				},
+	).pipe(
 		Effect.catchTag("SchemaError", (error) =>
 			Effect.fail(GitHubError.decode(operation, "GitHub returned an unexpected webhook delivery", error)),
 		),

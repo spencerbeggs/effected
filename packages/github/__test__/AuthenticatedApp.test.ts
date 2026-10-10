@@ -158,6 +158,15 @@ describe("AuthenticatedApp.deliveries", () => {
 		}),
 	);
 
+	it.effect("a null delivery fails typed instead of dying", () =>
+		Effect.gen(function* () {
+			const { value } = yield* drive([{ status: 200, body: [null] }], (app) =>
+				Effect.flip(Stream.runCollect(app.deliveries())),
+			);
+			assert.deepStrictEqual([value.kind, value.operation], ["decode", "AuthenticatedApp.deliveries"]);
+		}),
+	);
+
 	it.effect("refuses an id beyond 2^53 rather than rounding it", () =>
 		Effect.gen(function* () {
 			const { value } = yield* drive([{ status: 200, body: [wireDelivery({ id: 2 ** 53 + 2 })] }], (app) =>
