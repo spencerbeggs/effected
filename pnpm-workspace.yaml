@@ -147,6 +147,7 @@ loglevel: info
 minimumReleaseAgeExclude:
   - "@effect/*"
   - "@effect/tsgo-*"
+  - "@savvy-web/pnpm-plugin-silk"
   - effect
 overrides:
   "@effect/ai-anthropic@^4.0.0": 4.0.2

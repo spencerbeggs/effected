@@ -405,6 +405,12 @@ await build({
 					},
 				},
 			},
+			local: {
+				minimumReleaseAgeExclude: {
+					value: ["@savvy-web/pnpm-plugin-silk"],
+					strategy: "union",
+				},
+			},
 			minimumReleaseAgeExclude: ["effect", "@effect/*", "@effect/tsgo-*"],
 			// Tools still built on an Effect release candidate depend on that candidate's
 			// @effect/platform-node, which takes @effect/platform-node-shared with a caret.
