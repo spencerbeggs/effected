@@ -102,11 +102,7 @@ const REQUEST_URL = "ACTIONS_ID_TOKEN_REQUEST_URL";
 const readClaims = (token: string): Effect.Effect<OidcClaims, OidcTokenError> =>
 	Effect.gen(function* () {
 		const decoded = yield* Effect.fromResult(payloadOf(token)).pipe(
-			Effect.mapError((failure) =>
-				failure.kind === "segments"
-					? new OidcTokenError({ reason: "malformedToken", detail: failure.detail })
-					: new OidcTokenError({ reason: "malformedToken", detail: failure.detail, cause: failure.cause }),
-			),
+			Effect.mapError((failure) => new OidcTokenError({ reason: "malformedToken", ...failure })),
 		);
 		return yield* Schema.decodeUnknownEffect(OidcClaims)(decoded).pipe(
 			Effect.mapError((cause) => new OidcTokenError({ reason: "missingClaims", cause })),

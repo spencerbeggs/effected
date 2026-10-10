@@ -14,10 +14,13 @@
 import { Result } from "effect";
 import * as Base64Url from "effect/encoding/Base64Url";
 
-/** Why a token's payload could not be read. @internal */
-export type JwtPayloadFailure =
-	| { readonly kind: "segments"; readonly detail: string }
-	| { readonly kind: "payload"; readonly detail: string; readonly cause: unknown };
+/**
+ * Why a token's payload could not be read: a one-line `detail`, plus the
+ * underlying `cause` when a decoder raised one.
+ *
+ * @internal
+ */
+export type JwtPayloadFailure = { readonly detail: string } | { readonly detail: string; readonly cause: unknown };
 
 /**
  * The decoded payload of `token` — the middle segment, base64url JSON —
@@ -29,16 +32,16 @@ export const payloadOf = (token: string): Result.Result<unknown, JwtPayloadFailu
 	const segments = token.split(".");
 	const payload = segments[1];
 	if (segments.length !== 3 || payload === undefined || payload === "") {
-		return Result.fail({ kind: "segments", detail: `expected three segments, got ${segments.length}` });
+		return Result.fail({ detail: `expected three segments, got ${segments.length}` });
 	}
 	const json = Base64Url.decodeString(payload);
 	if (Result.isFailure(json)) {
-		return Result.fail({ kind: "payload", detail: "the payload is not base64url JSON", cause: json.failure });
+		return Result.fail({ detail: "the payload is not base64url JSON", cause: json.failure });
 	}
 	try {
 		return Result.succeed(JSON.parse(json.success) as unknown);
 	} catch (cause) {
-		return Result.fail({ kind: "payload", detail: "the payload is not base64url JSON", cause });
+		return Result.fail({ detail: "the payload is not base64url JSON", cause });
 	}
 };
 
