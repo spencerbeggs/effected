@@ -7,8 +7,8 @@ tags:
   - architecture
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-09T20:48:21Z
-  body_sha256: 706a55748ea9cfd639426f32665bed1758bf86e2262f363ee7e9be284d8854ea
+  at: 2026-10-10T00:41:10Z
+  body_sha256: 194b6c28209836a6bb48e1200eec45231fc8258c5ec1d549a32b29fb98ddcfcd
 ---
 
 # effected
@@ -64,9 +64,10 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `schema-org` | pure | invention; schema.org vocabulary as Effect Schema classes |
 | `jsonl` | boundary | invention; append-only schema-validated JSONL journals |
 | `images` | boundary | invention; image facts (format, MIME, dimensions) from bytes and a generated-image cache behind a backend port store satisfies structurally |
+| `jwt` | boundary | invention; JWS, JWT, JWK and JWKS sign and verify over WebCrypto, with no `node:` import and no runtime dependency, so it runs on Cloudflare workerd; the signer under `github`'s App auth and its Actions OIDC verifier |
 | `pnpm-plugin-effect` | companion — no tier | invention; publishes the Effect catalogs the kit pins against |
 
-The roster is **38 packages**: 36 libraries and two companions (`pnpm-plugin-effect` and `schemastore-cli`). All 38 have published.
+The roster is **39 packages**: 37 libraries and two companions (`pnpm-plugin-effect` and `schemastore-cli`). All but `jwt`, the newest, have published.
 
 ### Consumers
 

@@ -258,6 +258,12 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
+						"@effected/jwt": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
 						"@effected/jsonl": {
 							range: "^0.11.0",
 							peer: "^0.11.0",
