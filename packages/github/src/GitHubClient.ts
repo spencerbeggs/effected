@@ -249,6 +249,9 @@ export interface GitHubFixtures {
 	 * wiring mistake and {@link (GitHubFixtures:interface).unstubbed} treats it as
 	 * such. A {@link RawFailure} from {@link (GitHubFixtures:variable).failure}
 	 * fails it too, classified from GitHub's raw response.
+	 *
+	 * A value of `undefined` counts as unstubbed, so stub a route that answers
+	 * with no body (a 204) with `null`.
 	 */
 	readonly request?: Readonly<Record<string, unknown>> | undefined;
 	/**
