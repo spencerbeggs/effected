@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Exit, Layer, Ref, Schema } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Option, Ref, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
 import { numericId } from "./internal/ids.js";
@@ -109,7 +109,46 @@ export class CheckRunRef extends Schema.Class<CheckRunRef>("CheckRunRef")({
 	/** The web URL. */
 	url: Schema.String,
 	status: Schema.String,
+	/**
+	 * The integrator's own id for the run (wire `external_id`), when it has
+	 * one. GitHub reports a run created without one as `null` or `""`; both
+	 * leave this absent.
+	 */
+	externalId: Schema.optionalKey(Schema.String),
 }) {}
+
+/**
+ * Options for {@link CheckRunShape.create}.
+ *
+ * @public
+ */
+export interface CreateCheckRunOptions {
+	/**
+	 * The run's initial state. Defaults to `"in_progress"`, which also stamps
+	 * `started_at`; a `"queued"` run has not started, so it carries none.
+	 * Completing a run goes through {@link CheckRunShape.complete}.
+	 */
+	readonly status?: "queued" | "in_progress" | undefined;
+	/** Your own id for the run (wire `external_id`), for {@link CheckRunShape.findByExternalId}. */
+	readonly externalId?: string | undefined;
+	/** Where the integrator's full details live (wire `details_url`). */
+	readonly detailsUrl?: string | undefined;
+}
+
+/**
+ * Options for {@link CheckRunShape.update}.
+ *
+ * @public
+ */
+export interface UpdateCheckRunOptions {
+	/**
+	 * Move the run to `"queued"` or `"in_progress"`. Completing it goes through
+	 * {@link CheckRunShape.complete}, which also records the conclusion.
+	 */
+	readonly status?: "queued" | "in_progress" | undefined;
+	/** Where the integrator's full details live (wire `details_url`). */
+	readonly detailsUrl?: string | undefined;
+}
 
 /**
  * Conclude the surrounding {@link CheckRunShape.withCheckRun} explicitly.
@@ -145,11 +184,35 @@ export type ConcludeCheckRun = (
  * @public
  */
 export interface CheckRunShape {
-	/** Start an in-progress check run against a commit. */
-	readonly create: (name: string, headSha: string) => Effect.Effect<CheckRunRef, GitHubError, Repo>;
+	/** Start a check run against a commit: in progress, unless `options.status` queues it. */
+	readonly create: (
+		name: string,
+		headSha: string,
+		options?: CreateCheckRunOptions,
+	) => Effect.Effect<CheckRunRef, GitHubError, Repo>;
 	readonly get: (id: number) => Effect.Effect<CheckRunRef, GitHubError, Repo>;
-	/** Update an in-flight run's output. */
-	readonly update: (id: number, output: CheckRunOutput) => Effect.Effect<void, GitHubError, Repo>;
+	/** Update an in-flight run's output, and optionally its status and details URL. */
+	readonly update: (
+		id: number,
+		output: CheckRunOutput,
+		options?: UpdateCheckRunOptions,
+	) => Effect.Effect<void, GitHubError, Repo>;
+	/**
+	 * The newest run on `headSha` named `name` whose external id is
+	 * `externalId`; none when there is no such run.
+	 *
+	 * @remarks
+	 * Lists the commit's runs filtered by name on GitHub's side, paging through
+	 * all of them, then matches `external_id` here; "newest" is the highest id.
+	 * An empty `externalId` is none without a request: GitHub reports a run
+	 * created without an external id as `""`, so matching on it would find
+	 * every such run.
+	 */
+	readonly findByExternalId: (
+		headSha: string,
+		name: string,
+		externalId: string,
+	) => Effect.Effect<Option.Option<CheckRunRef>, GitHubError, Repo>;
 	/** Finish a run. */
 	readonly complete: (
 		id: number,
@@ -232,6 +295,7 @@ export class CheckRun extends Context.Service<CheckRun, CheckRunShape>()("@effec
 		create: overrides.create ?? (() => unstubbed("create")),
 		get: overrides.get ?? (() => unstubbed("get")),
 		update: overrides.update ?? (() => unstubbed("update")),
+		findByExternalId: overrides.findByExternalId ?? (() => unstubbed("findByExternalId")),
 		complete: overrides.complete ?? (() => unstubbed("complete")),
 		withCheckRun: overrides.withCheckRun ?? (() => unstubbed("withCheckRun")),
 	});
@@ -330,20 +394,41 @@ const concludeFor = <A, E>(
 	return Exit.isSuccess(exit) ? write : Effect.ignore(write);
 };
 
-const refOf = (raw: { id: number | bigint; name: string; html_url?: string | null; status: string }): CheckRunRef =>
-	CheckRunRef.make({ id: numericId(raw.id), name: raw.name, url: raw.html_url ?? "", status: raw.status });
+const refOf = (raw: {
+	id: number | bigint;
+	name: string;
+	html_url?: string | null;
+	status: string;
+	external_id?: string | null;
+}): CheckRunRef =>
+	CheckRunRef.make({
+		id: numericId(raw.id),
+		name: raw.name,
+		url: raw.html_url ?? "",
+		status: raw.status,
+		...(raw.external_id !== null && raw.external_id !== undefined && raw.external_id !== ""
+			? { externalId: raw.external_id }
+			: {}),
+	});
 
 const make = (client: GitHubClient["Service"]): CheckRunShape => {
-	const create = Effect.fn("CheckRun.create")(function* (name: string, headSha: string) {
+	const create = Effect.fn("CheckRun.create")(function* (
+		name: string,
+		headSha: string,
+		options?: CreateCheckRunOptions,
+	) {
 		const { owner, repo } = yield* Repo;
-		yield* Effect.annotateCurrentSpan({ owner, repo, name, headSha });
+		const status = options?.status ?? "in_progress";
+		yield* Effect.annotateCurrentSpan({ owner, repo, name, headSha, status });
 		const created = yield* client.request("POST /repos/{owner}/{repo}/check-runs", {
 			owner,
 			repo,
 			name,
 			head_sha: headSha,
-			status: "in_progress",
-			started_at: new Date().toISOString(),
+			status,
+			...(status === "in_progress" ? { started_at: new Date().toISOString() } : {}),
+			...(options?.externalId !== undefined ? { external_id: options.externalId } : {}),
+			...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
 		});
 		return refOf(created);
 	});
@@ -381,7 +466,11 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 			return refOf(raw);
 		}),
 
-		update: Effect.fn("CheckRun.update")(function* (id: number, output: CheckRunOutput) {
+		update: Effect.fn("CheckRun.update")(function* (
+			id: number,
+			output: CheckRunOutput,
+			options?: UpdateCheckRunOptions,
+		) {
 			const { owner, repo } = yield* Repo;
 			yield* Effect.annotateCurrentSpan({ owner, repo, id });
 			yield* client.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
@@ -389,7 +478,31 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 				repo,
 				check_run_id: id,
 				output: wireOutput(output),
+				...(options?.status !== undefined ? { status: options.status } : {}),
+				...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
 			});
+		}),
+
+		findByExternalId: Effect.fn("CheckRun.findByExternalId")(function* (
+			headSha: string,
+			name: string,
+			externalId: string,
+		) {
+			if (externalId === "") return Option.none<CheckRunRef>();
+			const { owner, repo } = yield* Repo;
+			yield* Effect.annotateCurrentSpan({ owner, repo, headSha, name, externalId });
+			const runs = yield* client.paginate("GET /repos/{owner}/{repo}/commits/{ref}/check-runs", {
+				owner,
+				repo,
+				ref: headSha,
+				check_name: name,
+			});
+			let newest: (typeof runs)[number] | undefined;
+			for (const run of runs) {
+				if (run.external_id !== externalId) continue;
+				if (newest === undefined || numericId(run.id) > numericId(newest.id)) newest = run;
+			}
+			return newest === undefined ? Option.none<CheckRunRef>() : Option.some(refOf(newest));
 		}),
 
 		withCheckRun: <A, E, R>(

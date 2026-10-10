@@ -3,12 +3,13 @@ import { Arbitrary, Duration, Effect, Exit, Fiber, Latch, Layer, Option, Schema 
 import { TestClock } from "effect/testing";
 import { Attestation } from "../src/Attestation.js";
 import { Annotation, CheckRun, CheckRunOutput } from "../src/CheckRun.js";
-import type { GitHubClient } from "../src/GitHubClient.js";
+import type { RecordedCall } from "../src/GitHubClient.js";
+import { GitHubClient, GitHubFixtures } from "../src/GitHubClient.js";
 import { GitHubIssue } from "../src/GitHubIssue.js";
 import { GitHubRelease, ReleaseInfo } from "../src/GitHubRelease.js";
 import { PullRequest, PullRequestInfo } from "../src/PullRequest.js";
 import { CommentMarker, PullRequestComment } from "../src/PullRequestComment.js";
-import type { Repo } from "../src/Repo.js";
+import { Repo } from "../src/Repo.js";
 import { PageOptions } from "../src/Rest.js";
 import { WorkflowDispatch } from "../src/WorkflowDispatch.js";
 import type { Reply } from "./fixtures.js";
@@ -1128,4 +1129,213 @@ describe("Attestation", () => {
 			assert.strictEqual(value[0]?.predicateType, "https://slsa.dev/provenance/v1");
 		}),
 	);
+});
+
+/** Drive a resource over a fixture client, recording every call it makes. */
+const viaFixtures = <I, S, A, E>(
+	fixtures: Omit<Parameters<typeof GitHubClient.layerFixture>[0], "requested">,
+	service: { readonly layer: Layer.Layer<I, never, GitHubClient> },
+	tag: Effect.Effect<S, never, I>,
+	use: (resource: S) => Effect.Effect<A, E, Repo>,
+) =>
+	Effect.gen(function* () {
+		const requested: Array<RecordedCall> = [];
+		const client = GitHubClient.layerFixture({ ...fixtures, requested });
+		const value = yield* Effect.provide(
+			Effect.flatMap(tag, use),
+			Layer.mergeAll(service.layer.pipe(Layer.provide(client)), Repo.layerFromSlug("o/r")),
+		);
+		return { value, requested };
+	});
+
+const CREATED = { id: 7, name: "lint", html_url: "https://x/7", status: "queued", external_id: "d1" };
+
+describe("CheckRun create and update options", () => {
+	it.effect("create sends status, external_id and details_url when given", () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* viaFixtures(
+				{ request: { "POST /repos/{owner}/{repo}/check-runs": CREATED } },
+				CheckRun,
+				CheckRun,
+				(check) => check.create("lint", "abc", { status: "queued", externalId: "d1", detailsUrl: "https://ci/1" }),
+			);
+			const params = requested[0]?.params ?? {};
+			assert.strictEqual(params.status, "queued");
+			assert.strictEqual(params.external_id, "d1");
+			assert.strictEqual(params.details_url, "https://ci/1");
+			assert.isUndefined(params.started_at, "a queued run has not started");
+			assert.strictEqual(value.externalId, "d1");
+		}),
+	);
+
+	it.effect("create with no options still starts an in-progress run", () =>
+		Effect.gen(function* () {
+			const { requested } = yield* viaFixtures(
+				{
+					request: {
+						"POST /repos/{owner}/{repo}/check-runs": { ...CREATED, external_id: null, status: "in_progress" },
+					},
+				},
+				CheckRun,
+				CheckRun,
+				(check) => check.create("lint", "abc"),
+			);
+			const params = requested[0]?.params ?? {};
+			assert.strictEqual(params.status, "in_progress");
+			assert.isString(params.started_at);
+			assert.isFalse("external_id" in params);
+			assert.isFalse("details_url" in params);
+		}),
+	);
+
+	it.effect("update sends a status and details_url alongside the output", () =>
+		Effect.gen(function* () {
+			const { requested } = yield* viaFixtures(
+				{ request: { "PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}": CREATED } },
+				CheckRun,
+				CheckRun,
+				(check) =>
+					Effect.gen(function* () {
+						yield* check.update(7, CheckRunOutput.make({ title: "t", summary: "s" }), {
+							status: "in_progress",
+							detailsUrl: "https://ci/2",
+						});
+						yield* check.update(7, CheckRunOutput.make({ title: "t", summary: "s" }));
+					}),
+			);
+			assert.strictEqual(requested[0]?.params.status, "in_progress");
+			assert.strictEqual(requested[0]?.params.details_url, "https://ci/2");
+			assert.isFalse("status" in (requested[1]?.params ?? {}), "no options, no status change");
+		}),
+	);
+});
+
+describe("CheckRun.findByExternalId", () => {
+	const ROUTE = "GET /repos/{owner}/{repo}/commits/{ref}/check-runs";
+	const runAt = (id: number, externalId: string | null) => ({
+		id,
+		name: "lint",
+		html_url: `https://x/${id}`,
+		status: "completed",
+		external_id: externalId,
+	});
+	// 150 runs: the default page holds 100, so a match at the end is on page 2.
+	const runs = [
+		...Array.from({ length: 140 }, (_, index) => runAt(index + 1, `other-${index}`)),
+		runAt(500, "wanted"),
+		runAt(900, "wanted"),
+		runAt(700, "wanted"),
+		...Array.from({ length: 7 }, (_, index) => runAt(1000 + index, null)),
+	];
+
+	it.effect("pages to the newest run with the external id, filtered by check name", () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* viaFixtures({ paginate: { [ROUTE]: runs } }, CheckRun, CheckRun, (check) =>
+				check.findByExternalId("abc", "lint", "wanted"),
+			);
+			assert.isTrue(Option.isSome(value));
+			if (Option.isSome(value)) {
+				assert.strictEqual(value.value.id, 900, "the newest by id, wherever it sits");
+				assert.strictEqual(value.value.externalId, "wanted");
+			}
+			assert.strictEqual(requested[0]?.params.ref, "abc");
+			assert.strictEqual(requested[0]?.params.check_name, "lint");
+		}),
+	);
+
+	it.effect("is none when no run carries the external id", () =>
+		Effect.gen(function* () {
+			const { value } = yield* viaFixtures({ paginate: { [ROUTE]: runs } }, CheckRun, CheckRun, (check) =>
+				check.findByExternalId("abc", "lint", "missing"),
+			);
+			assert.isTrue(Option.isNone(value));
+		}),
+	);
+
+	it.effect("is none for an empty external id, without asking GitHub", () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* viaFixtures({ paginate: { [ROUTE]: runs } }, CheckRun, CheckRun, (check) =>
+				check.findByExternalId("abc", "lint", ""),
+			);
+			assert.isTrue(Option.isNone(value));
+			assert.lengthOf(requested, 0);
+		}),
+	);
+
+	it.effect("decodes a null external_id as an absent externalId", () =>
+		Effect.gen(function* () {
+			const { value } = yield* viaFixtures(
+				{ request: { "GET /repos/{owner}/{repo}/check-runs/{check_run_id}": runAt(3, null) } },
+				CheckRun,
+				CheckRun,
+				(check) => check.get(3),
+			);
+			assert.isFalse("externalId" in value);
+		}),
+	);
+
+	it("makeTest names the new members when they are unstubbed", () => {
+		const double = CheckRun.makeTest();
+		assert.throws(() => double.findByExternalId("a", "b", "c"), /findByExternalId\(\) was called but not stubbed/);
+	});
+});
+
+describe("WorkflowDispatch.cancelRun", () => {
+	const ROUTE = "POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel";
+
+	it.effect("is cancelled on a 202", () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* viaFixtures(
+				{ request: { [ROUTE]: {} } },
+				WorkflowDispatch,
+				WorkflowDispatch,
+				(w) => w.cancelRun(42),
+			);
+			assert.strictEqual(value, "cancelled");
+			assert.strictEqual(requested[0]?.params.run_id, 42);
+		}),
+	);
+
+	it.effect("is alreadyCompleted on a 409", () =>
+		Effect.gen(function* () {
+			const { value } = yield* viaFixtures(
+				{
+					request: {
+						[ROUTE]: GitHubFixtures.failure({
+							status: 409,
+							body: { message: "Cannot cancel a workflow run that is completed." },
+						}),
+					},
+				},
+				WorkflowDispatch,
+				WorkflowDispatch,
+				(w) => w.cancelRun(42),
+			);
+			assert.strictEqual(value, "alreadyCompleted");
+		}),
+	);
+
+	it.effect("fails notFound on a 404, and any other failure stays a GitHubError", () =>
+		Effect.gen(function* () {
+			for (const [status, kind] of [
+				[404, "notFound"],
+				[422, "rejected"],
+			] as const) {
+				const error = yield* Effect.flip(
+					viaFixtures(
+						{ request: { [ROUTE]: GitHubFixtures.failure({ status, body: { message: "nope" } }) } },
+						WorkflowDispatch,
+						WorkflowDispatch,
+						(w) => w.cancelRun(42),
+					),
+				);
+				assert.strictEqual(error._tag, "GitHubError");
+				if (error._tag === "GitHubError") assert.strictEqual(error.kind, kind, String(status));
+			}
+		}),
+	);
+
+	it("makeTest names cancelRun when it is unstubbed", () => {
+		assert.throws(() => WorkflowDispatch.makeTest().cancelRun(1), /cancelRun\(\) was called but not stubbed/);
+	});
 });

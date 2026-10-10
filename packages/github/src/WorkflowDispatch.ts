@@ -80,6 +80,17 @@ export interface WorkflowDispatchShape {
 	/** Read one workflow run's status. */
 	readonly runStatus: (runId: number) => Effect.Effect<WorkflowRunStatus, GitHubError, Repo>;
 	/**
+	 * Cancel a workflow run.
+	 *
+	 * @remarks
+	 * `"cancelled"` when GitHub accepted the cancellation (202; the run stops
+	 * shortly after, not necessarily before this returns). GitHub answers 409
+	 * when the run has already finished, which is `"alreadyCompleted"` rather
+	 * than a failure: the run is not running either way. Any other failure,
+	 * such as a 404 for an unknown run, is a `GitHubError`.
+	 */
+	readonly cancelRun: (runId: number) => Effect.Effect<"cancelled" | "alreadyCompleted", GitHubError, Repo>;
+	/**
 	 * Every workflow defined in the repository.
 	 *
 	 * @remarks
@@ -150,6 +161,7 @@ export class WorkflowDispatch extends Context.Service<WorkflowDispatch, Workflow
 	static readonly makeTest = (overrides: Partial<WorkflowDispatchShape> = {}): WorkflowDispatchShape => ({
 		dispatch: overrides.dispatch ?? (() => unstubbed("dispatch")),
 		runStatus: overrides.runStatus ?? (() => unstubbed("runStatus")),
+		cancelRun: overrides.cancelRun ?? (() => unstubbed("cancelRun")),
 		// A value member, so the stub has to defer: `unstubbed()` throws, and
 		// throwing while BUILDING the double would fail every test that provides
 		// it rather than the ones that actually read `list`.
@@ -224,9 +236,25 @@ const make = (client: GitHubClient["Service"]): WorkflowDispatchShape => {
 		);
 	});
 
+	const cancelRun = Effect.fn("WorkflowDispatch.cancelRun")(function* (runId: number) {
+		const { owner, repo } = yield* Repo;
+		yield* Effect.annotateCurrentSpan({ owner, repo, runId });
+		return yield* client
+			.request("POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel", { owner, repo, run_id: runId })
+			.pipe(
+				Effect.as("cancelled" as const),
+				// 409 is GitHub's answer for a run that already finished.
+				Effect.catchIf(
+					(error) => error.status === 409,
+					() => Effect.succeed("alreadyCompleted" as const),
+				),
+			);
+	});
+
 	return {
 		dispatch,
 		runStatus,
+		cancelRun,
 		list: list(),
 
 		dispatchAndWait: Effect.fn("WorkflowDispatch.dispatchAndWait")(function* (

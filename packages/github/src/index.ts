@@ -51,6 +51,8 @@ export {
 	CheckRunRef,
 	type CheckRunShape,
 	type ConcludeCheckRun,
+	type CreateCheckRunOptions,
+	type UpdateCheckRunOptions,
 } from "./CheckRun.js";
 export { CodeScanning, type CodeScanningSetup, type CodeScanningShape } from "./CodeScanning.js";
 export {
