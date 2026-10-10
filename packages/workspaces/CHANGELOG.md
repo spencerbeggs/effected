@@ -1,5 +1,34 @@
 # @effected/workspaces
 
+## 0.32.1
+
+### Bug Fixes
+
+- Republished with every `effect` and `@effect/*` version pinned exactly to `4.0.2`, both peer and dependency ranges.
+
+- On 2026-10-10, every `@effect/*` package published at `4.0.3`, but `effect@4.0.3` itself never reached npm (Effect-TS/effect#8994). The 4.0.3 packages require `effect ^4.0.3`. A caret range on any of them therefore resolves a 4.0.3 package next to `effect@4.0.2`, and the program crashes when it imports them. Exact pins keep a fresh install of any kit package on a matched set until `effect@4.0.3` is available. [#997][#997]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.11.0 | 0.11.1 |
+| @effected/git | dependency | updated | 0.20.0 | 0.20.1 |
+| @effected/glob | dependency | updated | 0.10.0 | 0.10.1 |
+| @effected/jsonc | dependency | updated | 0.15.1 | 0.15.2 |
+| @effected/lockfiles | dependency | updated | 0.15.0 | 0.15.1 |
+| @effected/npm | dependency | updated | 0.20.0 | 0.20.1 |
+| @effected/package-json | dependency | updated | 0.20.1 | 0.20.2 |
+| @effected/semver | dependency | updated | 0.11.0 | 0.11.1 |
+| @effected/walker | dependency | updated | 0.15.0 | 0.15.1 |
+| @effected/yaml | dependency | updated | 0.19.1 | 0.19.2 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#997]: https://github.com/spencerbeggs/effected/pull/997
+
 ## 0.32.0
 
 ### Features
