@@ -11,12 +11,15 @@ sources:
     resource: conversation with the repository owner
     author: human:spencerbeggs
     last_modified: 2026-10-09T00:00:00Z
-  - id: core-crypto
-    resource: ../../.repos/effect/packages/effect/src/Crypto.ts
-    title: "Core Crypto: random bytes, digests and ids, and no sign, verify or importKey"
-  - id: eventlog-session-auth
-    resource: ../../.repos/effect/packages/effect/src/eventlog/EventLogSessionAuth.ts
-    title: "Core's precedent for reading globalThis.crypto.subtle and failing when it is absent"
+  - id: rfc8725
+    resource: https://www.rfc-editor.org/rfc/rfc8725
+    title: "RFC 8725, JSON Web Token Best Current Practices: perform algorithm verification, use a key with exactly one algorithm, never accept none"
+  - id: rfc7515
+    resource: https://www.rfc-editor.org/rfc/rfc7515
+    title: "RFC 7515, JSON Web Signature: the protected header's alg and the compact serialization"
+  - id: rfc7518
+    resource: https://www.rfc-editor.org/rfc/rfc7518
+    title: "RFC 7518, JSON Web Algorithms: RS256, ES256 and the unsecured none algorithm"
 generated:
   by: "okfit/claude-code"
   at: 2026-10-09T22:29:55Z

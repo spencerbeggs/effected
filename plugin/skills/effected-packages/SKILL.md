@@ -12,9 +12,9 @@ targets:
       package.json/tsconfig/lockfile/config-file handling, monorepo/workspace introspection, git introspection,
       runtime-version resolution, running commands, managed sections, JSONL journals, the GitHub REST/GraphQL API
       and Actions runtime, CLI output, prompts, TUI screens and wizards (Ink), failure reporting, cross-front-end
-      primitives for a CLI or MCP boundary, serving or testing an MCP server over stdio, SBOM generation and signing, or publishing SchemaStore JSON Schema or schema.org JSON-LD. Also use when choosing dependencies for
-      a new Effect v4 app or library. Rows route; per-package depth lives in references/; per-construct intent
-      search lives in references/constructs/.
+      primitives for a CLI or MCP boundary, serving or testing an MCP server over stdio, JWT and OIDC sign/verify
+      against a JWKS (Node or Workers), GitHub App and Actions OIDC tokens, SBOM generation and signing, or publishing SchemaStore JSON Schema or schema.org JSON-LD. Also for choosing dependencies of
+      a new Effect v4 app or library. Per-package depth and construct search live in references/.
 ---
 
 # The @effected package index

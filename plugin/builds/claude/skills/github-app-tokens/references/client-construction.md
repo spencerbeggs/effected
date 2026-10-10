@@ -1,6 +1,6 @@
 # Client construction and the App surface
 
-Load when: choosing between the three `GitHubClient` constructors, wiring
+Load when: choosing between the five `GitHubClient` constructors, wiring
 `GitHubApp` directly (outside the `GitHubToken` bridge), or auditing why
 `@effected/github` doesn't depend on `@octokit/rest`/`@octokit/auth-app`.
 

@@ -15,12 +15,12 @@ place by being something one of those five actually needs.
 ## How this ships
 
 The kit is **39 publishable packages**: 37 libraries plus two companions. All of them are on npm except
-`@effected/env`, `@effected/images`, `@effected/jwt`, `@effected/github-commands`, `@effected/engine`, `@effected/mcp`, `@effected/lsp` and
-`@effected/schemastore-cli`, which are built and documented but have not cut their first release yet.
+`@effected/jwt`, the newest, which is built and documented but has not cut its first release yet.
 [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) and `@effected/schemastore-cli` are the companions —
 neither is a library, so the tier taxonomy does not describe them, but both are public packages and
 publish like the rest. Everything is
-`0.x` and unstable; `1.0.0` waits for Effect v4 GA.
+`0.x` and unstable. Effect v4 is stable, which makes a kit `1.0.0` possible rather than automatic: the kit
+takes it when it chooses to.
 
 Releases are changeset-driven. CI releases whatever the pending changesets name, which is sometimes the
 whole kit and sometimes one package on its own — both are ordinary, and versions move per package rather
