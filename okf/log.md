@@ -1,5 +1,16 @@
 # Log
 
+## 2026-10-10
+
+* Updated @effected/github
+* Updated @effected/github errors and retry
+* Updated @effected/github owns the octokit runtime
+* Added @effected/jwt
+* Added App auth, OIDC verify and the token store land in @effected/github
+* Updated Only ./ui may bind Node's process streams, and only in three named files
+* Added The JWT algorithm comes from the key, never the token header
+* Updated effected
+
 ## 2026-10-09
 
 * Added Image formats are read by in-house header readers

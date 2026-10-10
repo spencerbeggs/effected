@@ -12,6 +12,7 @@
 | `AnnotationLevel` | Variable | How serious an annotation is. | notice warning failure severity for a check run annotation |
 | `AppCredentials` | Interface | The credentials that identify a GitHub App. | |
 | `AppIdentity` | Class | What GitHub knows about the app itself. | resolve the github app's slug name and bot user id |
+| `AppInfo` | Class | The GitHub App itself, as `GET /app` reports it. | the github app's own id slug name and node id from GET /app |
 | `AppliedSettings` | Interface | What `GitHubRepositoryShape.applySettings` actually sent. | |
 | `ArtifactMetadata` | Class | Records where published artifacts are stored, at the organization level. | record where a published package artifact lives, org-level storage record, supply chain provenance |
 | `ArtifactMetadataShape` | Interface | Organization-level artifact metadata. | |
@@ -19,15 +20,20 @@
 | `AttestationListEntry` | Class | One entry from an attestation listing. | one attestation bundle url and predicate type from a listing |
 | `AttestationRecord` | Class | A stored attestation. | a stored attestation's id and url after upload |
 | `AttestationShape` | Interface | The attestation REST surface. | |
+| `AuthenticatedApp` | Class | The app-level REST surface: the app's own record, its webhook delivery log and redelivery, and uninstalling. | app-level rest with an app jwt: read the app itself, list webhook deliveries, redeliver a failed delivery, uninstall an installation |
+| `AuthenticatedAppShape` | Interface | The app-level REST surface: the app's own record, its webhook deliveries and removing an installation. | |
 | `BotIdentity` | Class | Who a bot commits as. | committer name and email for a bot commit, dco signoff trailer, github-actions bot identity |
+| `BotUser` | Class | An app's bot user: the account its installation tokens act as. | a github app bot user's numeric id and login, compare against an event actor id |
+| `BotUserRequest` | Interface | What `GitHubAppShape.botUser` looks up. | |
 | `BranchOutcome` | TypeAlias | What `GitBranchShape.upsert` did. | |
 | `CachedToken` | Interface | An installation token from `GitHubApp.cachedToken`, and where it came from. | |
 | `CachedTokenRequest` | Interface | What to fetch a cached installation token for. | |
 | `CheckConclusion` | Variable | How a check run finished. | success failure neutral cancelled timed_out action_required skipped, how a check run finished |
 | `CheckRun` | Class | Create, update and conclude GitHub check runs, including the `CheckRunShape.withCheckRun` bracket that always reaches a terminal state. | report a job's verdict on a commit, create update complete a run, find a run by external id |
 | `CheckRunOutput` | Class | A check run's rendered output. | check run title summary and annotations, truncate to github's 65535 byte limit |
-| `CheckRunRef` | Class | A check run as GitHub reports it. | a check run's id name url and status as github reports it |
+| `CheckRunRef` | Class | A check run as GitHub reports it. | a check run as github reports it: id name status conclusion head sha urls timestamps check suite and output |
 | `CheckRunShape` | Interface | Create, update and conclude GitHub check runs on a commit, including a bracket that always concludes the run. | |
+| `CheckRunStatus` | Variable | The phase of its lifecycle a check run is in, as GitHub reports it. | queued in_progress completed waiting requested pending, a check run's lifecycle phase as reported |
 | `CodeScanning` | Class | Configure CodeQL default setup and read the languages GitHub detects in a repository. | configure codeql default setup, detect repository languages for codeql, enable codeql scanning |
 | `CodeScanningSetup` | Interface | A CodeQL default-setup configuration. | |
 | `CodeScanningShape` | Interface | CodeQL default setup, and the language detection that gates it. | |
@@ -41,6 +47,8 @@
 | `CompleteCheckRunOptions` | Interface | Options for `CheckRunShape.complete`. | |
 | `ConcludeCheckRun` | TypeAlias | Conclude the surrounding `CheckRunShape.withCheckRun` explicitly. | |
 | `CreateCheckRunOptions` | Interface | Options for `CheckRunShape.create`. | |
+| `DeliveriesOptions` | Interface | Options for `AuthenticatedAppShape.deliveries`. | |
+| `DeliveryAttempt` | Class | One delivery of the app's webhook, as `GET /app/hook/deliveries` lists it. | one webhook delivery from the app's delivery log: id guid status code event action installation |
 | `DeploymentEnvironment` | Class | Create or update, list and delete a repository's deployment environments. | create update list and delete a deployment environment, environment protection rules |
 | `DeploymentEnvironmentInfo` | Interface | A deployment environment, as listing returns it. | |
 | `DeploymentEnvironmentShape` | Interface | Create or update, list and delete a repository's deployment environments. | |
@@ -91,6 +99,7 @@
 | `IssueInfo` | Class | An issue, projected to what callers read. | an issue's number title state labels and node id, projected for callers |
 | `LatestSemverOptions` | Interface | How to pick the newest version-shaped tag. | |
 | `LinkedIssue` | Class | An issue a pull request closes. | an issue a pull request closes, whether linked manually or github-inferred |
+| `ListCheckRunsOptions` | Interface | Options for `CheckRunShape.list`. | |
 | `MergeMethod` | Variable | How a pull request is merged. | merge squash rebase, how a pull request is merged |
 | `OwnerType` | TypeAlias | Whether an account is a user or an organization. | |
 | `PageOptions` | Class | How far a paginated read should go. | how many items per page and how many pages to walk |
@@ -110,6 +119,8 @@
 | `ReleaseInfo` | Class | A release, projected to the fields callers read. | a release's tag name body draft/prerelease flags and upload url |
 | `Repo` | Class | The repository the surrounding program acts on. | which repository the surrounding program acts on, provide a repo coordinate |
 | `RepoRef` | Class | Which repository an operation acts on. | parse an owner/repo slug into owner and repo, the pure repository coordinate value |
+| `ReportedCheckConclusion` | Variable | How a check run finished, as GitHub reports it: every `CheckConclusion` plus `"stale"`. | how a check run finished as github reports it, including stale |
+| `ReportedCheckRunOutput` | Class | The rendered output a check run reports: its title and summary, and how many annotations it carries. | a check run's reported output title summary and annotation count |
 | `RepositoryPatch` | TypeAlias | The fields `PATCH /repos/{owner}/{repo}` accepts, minus the coordinate. | |
 | `RepositoryPatchDraft` | TypeAlias | A `RepositoryPatch` under construction, where an absent field may be spelled as an explicit `undefined`. | |
 | `RepositorySecret` | Class | Write, list and delete repository and environment secrets, encrypted client-side before they leave the process. | encrypt and write a repository or environment secret via sealed box |

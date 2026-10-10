@@ -9,7 +9,8 @@
  * `PullRequest`, `GitHubRelease` and others) turn multi-call sequences into one
  * call, and a configuration tier writes secrets, variables, rulesets,
  * deployment environments and security settings. `GitHubApp` mints and revokes
- * installation tokens.
+ * installation tokens, and `AuthenticatedApp` reads the app itself and its
+ * webhook deliveries.
  *
  * @example
  * ```ts
@@ -43,6 +44,13 @@ export { ActionsOidc, ActionsOidcClaims, type ActionsOidcVerifyOptions } from ".
 export { ArtifactMetadata, type ArtifactMetadataShape, StorageRecordInput } from "./ArtifactMetadata.js";
 export { Attestation, AttestationListEntry, AttestationRecord, type AttestationShape } from "./Attestation.js";
 export {
+	AppInfo,
+	AuthenticatedApp,
+	type AuthenticatedAppShape,
+	type DeliveriesOptions,
+	DeliveryAttempt,
+} from "./AuthenticatedApp.js";
+export {
 	Annotation,
 	AnnotationLevel,
 	CheckConclusion,
@@ -50,9 +58,13 @@ export {
 	CheckRunOutput,
 	CheckRunRef,
 	type CheckRunShape,
+	CheckRunStatus,
 	type CompleteCheckRunOptions,
 	type ConcludeCheckRun,
 	type CreateCheckRunOptions,
+	type ListCheckRunsOptions,
+	ReportedCheckConclusion,
+	ReportedCheckRunOutput,
 	type UpdateCheckRunOptions,
 } from "./CheckRun.js";
 export { CodeScanning, type CodeScanningSetup, type CodeScanningShape } from "./CodeScanning.js";
@@ -75,6 +87,8 @@ export {
 	type AppCredentials,
 	AppIdentity,
 	BotIdentity,
+	BotUser,
+	type BotUserRequest,
 	type CachedToken,
 	type CachedTokenRequest,
 	GitHubApp,

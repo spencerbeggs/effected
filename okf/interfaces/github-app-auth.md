@@ -8,8 +8,8 @@ resource: ../../packages/github/src/GitHubApp.ts
 tags: [bundle, security]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T00:53:24Z
-  body_sha256: e0a1e9b95386c11684f3f3d884b5d0cbfb9bca5ef53d79140e7b110e415b609c
+  at: 2026-10-10T22:41:04Z
+  body_sha256: aee28ce846137bc5c1cbdef15d3eec62ae586e163e1307092b72f1341961d00c
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:25.629Z
@@ -74,7 +74,8 @@ failure carrying the `JwtError` as its cause.
   `/app`, `/app/*` and the three JWT-only installation lookups
   (`/repos/{owner}/{repo}/installation`, `/orgs/{org}/installation`,
   `/users/{username}/installation`); installation-scoped routes answer 401.
-  The motivating consumer is a webhook redelivery sweep.
+  The motivating consumer is a webhook redelivery sweep, which the
+  `AuthenticatedApp` resource service types over this layer.
 - **From a cached token** (`GitHubApp.cachedClientLayer`, over
   `GitHubApp.cachedToken`): see below.
 
@@ -159,6 +160,10 @@ Five deliberate shapes:
   otherwise runs unauthenticated at GitHub's anonymous rate limit. That is
   GitHub's behaviour, not a defect, and it surfaces as an identity-kind
   failure rather than a silent degrade.
+  The identity member treats the bot user as optional enrichment and
+  omits its id when the lookup fails; the bot-user member is the strict
+  read, failing identity-kind instead, for a caller that authorizes on the
+  bot's id — a missing id there is an error, not a degraded answer.
 - **Revocation stays best-effort and keeps its exact authorization scheme**,
   which GitHub is specific about.
 

@@ -8,8 +8,8 @@ resource: ../../packages/github/src
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T01:56:46Z
-  body_sha256: d9cf42a873837a69ef7465fe8346128fb81ba780b0c8698438ae290d2735e5d9
+  at: 2026-10-10T22:41:04Z
+  body_sha256: 241e4c1e25ebc19a6cf19eee33e703efa1eb60870f946b98d7e461d02547793e
 ---
 
 # @effected/github resource services
@@ -243,6 +243,45 @@ Outside the bracket, the run's surface is additive over the original
   external id is none without a request.
 - Times (`started_at`, `completed_at`) come from `Clock`, so `TestClock`
   drives them.
+- `CheckRunRef` carries the whole read model, every addition an optional
+  key so a double built from the original four fields stays valid: head
+  sha, node id, the status and conclusion as literal sets, start and
+  completion times, the check-suite id, and the output's title, summary and
+  annotation count — never the long-form text. `url` keeps meaning the
+  web URL, `""` when GitHub sent none; `htmlUrl` is the same field with
+  its `null` kept and `apiUrl` is the REST URL, so the two are never
+  confused under one name.
+- The reported conclusion set is the write set plus `stale`. GitHub's
+  check-run response schema omits it, but its update endpoint documents
+  that only GitHub can set it, so a read refusing it would fail on any
+  commit with an abandoned run. A status or conclusion outside the sets is
+  a typed decode failure, not an unknown string.
+- `updateRef` and `completeRef` answer the PATCH response decoded; `update`
+  and `complete` still discard it. They are separate members rather than a
+  new return type because consumers stub `complete` with a void effect in
+  test doubles, and because `complete` runs in the bracket's finalizer,
+  where a run GitHub already concluded must not fail over a field nobody
+  asked to read. Both pairs share one request builder, so their wire
+  bodies cannot drift.
+- `list(ref, options?)` reads the runs on a commit, filtered by name, app
+  and status on GitHub's side, every page unless bounded. Its `filter`
+  defaults to GitHub's own `latest`, unlike `findByExternalId`, which
+  needs `all`.
+
+## The app-level surface needs no repository
+
+`AuthenticatedApp` is the one resource without a repo coordinate: the
+app's own record, its webhook delivery log, redelivery and uninstalling
+are app-level routes, authenticated with an App JWT from the App client
+layer. Its module imports no signer — the credential is the client's —
+so it stays outside the reachability edge the App module owns.
+
+The delivery log is a lazy stream: GitHub pages it by cursor, the walk
+follows the `Link` header, and a sweep that stops at the edge of its time
+window fetches no further page. Delivery, installation and repository ids
+are int64 on GitHub's side; each is decoded as a safe integer, so an id
+past 2^53, already rounded by `JSON.parse`, fails the read rather than
+naming a different delivery.
 
 ## Byte budgeting is a pure method
 

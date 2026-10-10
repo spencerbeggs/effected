@@ -20,7 +20,7 @@ guarantees it dies exactly once. For the request surface itself
 | --- | --- | --- |
 | `GitHubClient.layerFromToken` | `import { GitHubClient } from "@effected/github"` | You already hold a `Redacted<string>` token |
 | `GitHubClient.layerFromConfig` | `@effected/github` | The workflow's own runner-issued token is enough |
-| `GitHubApp` (`.token`, `.scopedToken`, `.revoke`, `.identity`, `.installations`, `.clientLayer`, `.appClientLayer`, `.cachedToken`, `.cachedClientLayer`) | `@effected/github` | Minting/revoking an installation token directly, outside an Action's process boundary; speaking as the app itself; reusing a token across request scopes through an `InstallationTokenStore` |
+| `GitHubApp` (`.token`, `.scopedToken`, `.revoke`, `.identity`, `.botUser`, `.installations`, `.clientLayer`, `.appClientLayer`, `.cachedToken`, `.cachedClientLayer`) | `@effected/github` | Minting/revoking an installation token directly, outside an Action's process boundary; speaking as the app itself; reusing a token across request scopes through an `InstallationTokenStore` |
 | `TokenPermissions` | `@effected/github` | Comparing a token's granted scopes against what a program requires |
 | `BotIdentity` | `@effected/github` | Rendering a DCO trailer, or naming the bot identity behind a token |
 | `GitHubToken` (`.provision`, `.read`, `.botIdentity`, `.clientLayer`, `.dispose`) | `import { GitHubToken } from "@effected/github-actions"` | Bridging an App-minted token across an Action's `pre`/`main`/`post` process boundary |

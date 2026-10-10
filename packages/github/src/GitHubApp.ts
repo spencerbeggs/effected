@@ -269,6 +269,38 @@ export class AppIdentity extends Schema.Class<AppIdentity>("AppIdentity")({
 	}
 }
 
+/**
+ * An app's bot user: the account its installation tokens act as.
+ *
+ * @remarks
+ * `id` is what to compare against an actor id on an event, such as
+ * `workflow_run.triggering_actor.id`: a login can be renamed, an id cannot.
+ *
+ * @public
+ */
+export class BotUser extends Schema.Class<BotUser>("BotUser")({
+	/** The bot user's numeric id. */
+	id: Schema.Int,
+	/** The bot user's login, `<slug>[bot]`. */
+	login: Schema.String,
+}) {}
+
+/**
+ * What {@link GitHubAppShape.botUser} looks up.
+ *
+ * @public
+ */
+export interface BotUserRequest {
+	/** The app's slug; the bot user is `<slug>[bot]`. */
+	readonly slug: string;
+	/**
+	 * An installation token to authenticate the lookup with. Without one the
+	 * lookup runs unauthenticated, at GitHub's 60-requests-per-hour-per-IP
+	 * limit: `GET /users/{username}` rejects an App JWT.
+	 */
+	readonly installationToken?: Redacted.Redacted<string> | undefined;
+}
+
 /** `suspended_at` as GitHub sends it: an ISO string, or `null` while active. */
 const SuspendedAt = Schema.OptionFromNullOr(Schema.DateTimeUtcFromString);
 
@@ -581,6 +613,7 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 		scopedToken: overrides.scopedToken ?? (() => unstubbed("scopedToken")),
 		revoke: overrides.revoke ?? (() => unstubbed("revoke")),
 		identity: overrides.identity ?? (() => unstubbed("identity")),
+		botUser: overrides.botUser ?? (() => unstubbed("botUser")),
 		installations: overrides.installations ?? (() => unstubbed("installations")),
 	});
 
@@ -630,6 +663,17 @@ export interface GitHubAppShape {
 	readonly identity: (
 		request: AppCredentials & { readonly installationToken?: Redacted.Redacted<string> | undefined },
 	) => Effect.Effect<AppIdentity, GitHubAppError>;
+	/**
+	 * The app's bot user, `GET /users/{slug}[bot]`.
+	 *
+	 * @remarks
+	 * Unlike {@link GitHubAppShape.identity}, which treats the bot user as
+	 * optional enrichment and omits it when the lookup fails, this fails with
+	 * `kind: "identity"` — for a caller that authorizes on the bot's id, a
+	 * missing id is an error, not a degraded answer. Get the slug from
+	 * `identity` or from `AuthenticatedApp.get`.
+	 */
+	readonly botUser: (request: BotUserRequest) => Effect.Effect<BotUser, GitHubAppError>;
 	/** Every installation of the app. */
 	readonly installations: (credentials: AppCredentials) => Effect.Effect<ReadonlyArray<Installation>, GitHubAppError>;
 }
@@ -814,7 +858,20 @@ function makeApp(options: GitHubAppOptions): Effect.Effect<GitHubAppShape> {
 			});
 		});
 
-		return { token, scopedToken, revoke, identity, installations };
+		const botUser = Effect.fn("GitHubApp.botUser")(function* (request: BotUserRequest) {
+			yield* Effect.annotateCurrentSpan({ slug: request.slug });
+			const client = yield* asBearer(request.installationToken, options);
+			const user = yield* client
+				.request("GET /users/{username}", { username: `${request.slug}[bot]` })
+				.pipe(Effect.catch(appFailure("identity")));
+			return yield* Schema.decodeUnknownEffect(BotUser)({ id: numericId(user.id), login: user.login }).pipe(
+				Effect.catchTag("SchemaError", (error) =>
+					Effect.fail(GitHubAppError.of("identity", "GitHub returned an unexpected bot user", error)),
+				),
+			);
+		});
+
+		return { token, scopedToken, revoke, identity, botUser, installations };
 	});
 }
 
