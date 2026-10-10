@@ -1,0 +1,87 @@
+---
+title: Getting Started
+description: Sign a JWT with an imported key, then verify one against an issuer's published JWKS with @effected/jwt.
+---
+
+# Getting Started
+
+This guide signs a token with a PEM key, then verifies a token the way a service verifies an OIDC token: against the keys its issuer publishes.
+
+## Install
+
+```bash
+npm install @effected/jwt effect
+```
+
+```bash
+pnpm add @effected/jwt effect
+```
+
+## Step 1: import a key and sign
+
+[`JwtKey.fromPkcs8Pem`](/jwt/api/variable/jwtkey) takes the PEM as a `Redacted<string>` and the algorithm to use it for. It accepts PKCS#8 (`BEGIN PRIVATE KEY`) for either algorithm and PKCS#1 (`BEGIN RSA PRIVATE KEY`) for `RS256`; a PEM whose newlines arrive escaped as `\n`, the one-line form an environment variable carries, is accepted too. An RSA key under 2048 bits, or one that does not import, fails as `key`.
+
+```ts with-api
+import { Jwt, JwtKey } from "@effected/jwt";
+import { Clock, Effect, Redacted } from "effect";
+
+declare const pem: Redacted.Redacted<string>;
+
+const signed = Effect.gen(function* () {
+  const key = yield* JwtKey.fromPkcs8Pem(pem, { alg: "RS256", kid: "2026-10" });
+  const now = Math.floor((yield* Clock.currentTimeMillis) / 1000);
+  // The header's alg and kid come from the key.
+  return yield* Jwt.sign({ iss: "my-service", sub: "job-42", iat: now, exp: now + 600 }, key);
+});
+```
+
+## Step 2: verify against an issuer's JWKS
+
+[`JwksResolver.forIssuer`](/jwt/api/class/jwksresolver) turns an issuer into the `key` function `Jwt.verify` accepts: it reads the token's header, discovers the issuer's JWKS from `<issuer>/.well-known/openid-configuration`, caches it, and returns the key for the token's `kid`. Pass the issuer you expect, never one read from the token, and always pass the `audience` you expect.
+
+```ts with-api
+import { JwksResolver, JwksStore, Jwt } from "@effected/jwt";
+import { Effect, Layer, Schema } from "effect";
+import { FetchHttpClient } from "effect/http";
+
+const ISSUER = "https://issuer.example";
+
+const Claims = Schema.Struct({ sub: Schema.String, scope: Schema.String });
+
+const verify = (token: string) =>
+  Jwt.verify(token, {
+    key: JwksResolver.forIssuer(ISSUER),
+    claims: Claims,
+    issuer: ISSUER,
+    audience: "https://my-service.example",
+  });
+
+// Once, at the edge.
+const Live = JwksResolver.layer.pipe(Layer.provide(Layer.merge(FetchHttpClient.layer, JwksStore.layerMemory)));
+
+export const program = verify("eyJ...").pipe(Effect.provide(Live));
+```
+
+## Step 3: route the failures
+
+Every failure is a [`JwtError`](/jwt/api/class/jwterror). Route on `reason`, never on the message:
+
+```ts with-api
+import type { JwtError } from "@effected/jwt";
+import { Effect } from "effect";
+
+declare const verified: Effect.Effect<{ readonly sub: string }, JwtError>;
+
+const orAnonymous = verified.pipe(
+  Effect.catchTag("JwtError", (error) =>
+    error.reason === "expired" || error.reason === "notYetValid"
+      ? Effect.succeed({ sub: "anonymous" })
+      : Effect.fail(error),
+  ),
+);
+```
+
+## Next steps
+
+- [Advanced](/jwt/advanced): rotation, the store on Workers, and testing.
+- [API reference](/jwt/api): every export, with full signatures.

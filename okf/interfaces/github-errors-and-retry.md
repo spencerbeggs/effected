@@ -8,8 +8,8 @@ resource: ../../packages/github/src/GitHubError.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T23:37:27Z
-  body_sha256: 7d72ad4df91c759783d3ae7d72a34d2e7e3e005a295ae77b0e4c0c289c50a936
+  at: 2026-10-10T00:53:24Z
+  body_sha256: c889156044774fc058084e12a9adfbe65ab904cfa3e1eba9d8f6c9a75688d905
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:34.761Z
@@ -34,9 +34,17 @@ discriminant; package-wide framing is in
 The package declares one error for the REST surface, one for GraphQL, one
 for App authentication and one raised by the pure permission comparator
 (`packages/github/src/GitHubError.ts` and its siblings). Classification
-happens in exactly one place, the boundary mapper that turns an unknown
-octokit throwable into a classified error (`GitHubError.fromOctokit`);
-nothing else in the package inspects a status code or a message.
+happens in exactly one place, the shared classifier, reached through two
+boundary mappers that read the same facts: `GitHubError.fromOctokit` turns
+an unknown octokit throwable into a classified error, and
+`GitHubError.fromResponse(operation, { status, headers?, body? }, nowMillis)`
+does the same for a raw HTTP response (header names in any case; the body's
+`message` sanitized the same way; `nowMillis` required, because it turns an
+absolute rate-limit reset into a delay). Nothing else in the package
+inspects a status code or a message. A test records a raw response with
+`GitHubFixtures.failure(...)` on the fixture client, which classifies it at
+call time against `Clock`, so a test about GitHub's actual answer runs the
+real classifier rather than a hand-built error.
 
 The load-bearing field is `kind`: not-found, already-exists, rejected,
 unauthorized, rate-limited, transport, decode

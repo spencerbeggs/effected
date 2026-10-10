@@ -8,8 +8,8 @@ resource: ../../packages/github/src/GitHubApp.ts
 tags: [bundle, security]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T23:37:27Z
-  body_sha256: 4fc516f3385f00fa5a188b3d4b78b48bf24f59f0a2a7a505101aff8e618d9fd7
+  at: 2026-10-10T00:53:24Z
+  body_sha256: e0a1e9b95386c11684f3f3d884b5d0cbfb9bca5ef53d79140e7b110e415b609c
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:25.629Z
@@ -37,8 +37,9 @@ Actions-side.
 
 The house convention is a `layer` static on the service class, with variants
 as suffixed statics. That convention and the reachability invariant collide
-exactly once: the client has three constructors, one of which needs the JWT
-signer, and statics on one class must share one module. Putting the
+exactly once: the client has five constructors, three of which need the JWT
+signer (installation, app-itself and cached-token), and statics on one class
+must share one module. Putting the
 App-authenticated client layer on the client class would make every
 token-only consumer's import reach the signer.
 
@@ -49,6 +50,78 @@ The naming rule that generalizes: a cross-service layer static belongs to
 the module that owns the dependency the layer needs, not to the module that
 declares the service, because a static cannot cross a module boundary and a
 heavy dependency must not.
+
+## The private key
+
+`AppCredentials.privateKey` is a `Redacted` PEM, read only at the import call
+inside `@effected/jwt`. PKCS#1 (`BEGIN RSA PRIVATE KEY`, what github.com
+hands out) and PKCS#8 are both accepted on every runtime with WebCrypto,
+Cloudflare workerd included: a PKCS#1 key is wrapped to PKCS#8 in-process, so
+no `openssl` conversion step exists any more. A key whose newlines arrive
+escaped as the two characters backslash and `n` — the one-line form an
+environment variable carries — is accepted, matching the signer it replaced.
+The key must be RSA of at least 2048 bits; anything else is a `jwt`-kind
+failure carrying the `JwtError` as its cause.
+
+## Three client layers
+
+- **As an installation** (`GitHubApp.clientLayer`): mints on build, so a
+  misconfigured app fails construction; re-mints a minute before expiry and
+  revokes the token it replaces; revokes the last on release.
+- **As the app itself** (`GitHubApp.appClientLayer`): an App JWT, signed
+  locally (building the layer makes no request), lives nine minutes and is
+  re-signed a minute before expiry; nothing to revoke. It authenticates only
+  `/app`, `/app/*` and the three JWT-only installation lookups
+  (`/repos/{owner}/{repo}/installation`, `/orgs/{org}/installation`,
+  `/users/{username}/installation`); installation-scoped routes answer 401.
+  The motivating consumer is a webhook redelivery sweep.
+- **From a cached token** (`GitHubApp.cachedClientLayer`, over
+  `GitHubApp.cachedToken`): see below.
+
+Both rotating layers share one engine, and concurrent requests that find the
+credential spent rotate **once**: a one-permit lock with a re-check after
+acquiring, so N waiters cause one mint and no fiber's in-use token is
+revoked by another's rotation.
+
+## Tokens across request scopes
+
+A program that authenticates per request scope — a Cloudflare Worker
+handling a webhook — would mint a fresh installation token every time.
+`GitHubApp.cachedToken(request)` reads an `InstallationTokenStore` first:
+
+- The store is a `Context.Service` seam keyed by **installation id, never
+  token text**, holding the token's JSON encoding. That encoding contains the
+  raw token, so encryption at rest is the store's job. `layerMemory` keeps it
+  in process; a Worker backs it with KV, a Durable Object or D1. The store's
+  module imports nothing but `effect`, so an implementation never links the
+  JWT signer.
+- `installationId` is required: discovery per request would defeat the
+  cache. A stored value that will not decode, or a token within `margin`
+  (five minutes by default) of expiry, is a miss; the token is minted and
+  written back with a TTL of its expiry minus `margin`. A token issued with
+  less than `margin` to live is returned once and not stored.
+- A store that fails or dies never fails the call (a miss on `get`, ignored
+  on `set`); only interruption propagates.
+- **A cached token is never revoked**, not even on release — another scope
+  or isolate may be using it. Two concurrent misses may both mint; the store
+  may span isolates, so the kit cannot lock it, and that is accepted.
+- `cachedClientLayer`'s transport options configure the client, not the
+  mint: the edge's `GitHubApp` layer mints, so on GHES it must be built with
+  the same `baseUrl`.
+
+## Verifying Actions OIDC tokens
+
+`ActionsOidc.verify(token, { audience })` is the inbound half: a workflow
+proving to your service which repository, workflow and run it is. It
+verifies against GitHub's JWKS for the github.com Actions issuer through
+`@effected/jwt`'s `JwksResolver` (keyed on the configured issuer, never the
+token's `iss`), with a **mandatory, non-empty audience** because one JWKS
+signs tokens for every relying party, and decodes camelCase claims with
+numeric ids. Authorize on immutable ids (`repositoryId`,
+`repositoryOwnerId`) plus `jobWorkflowRef`, never on a repository name,
+which can be registered again after deletion. GHE.com enterprise issuers and
+GHES issuers are refused. The module reaches `@effected/jwt` and not
+octokit.
 
 ## The token lifecycle
 

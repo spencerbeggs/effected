@@ -133,6 +133,11 @@
 	},
 	{
 		"type": "custom-link",
+		"link": "/jwt",
+		"label": "@effected/jwt"
+	},
+	{
+		"type": "custom-link",
 		"link": "/runtimes",
 		"label": "@effected/runtimes"
 	},

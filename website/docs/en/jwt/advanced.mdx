@@ -1,0 +1,70 @@
+---
+title: Advanced
+description: Key rotation, a JWKS store shared across Worker isolates, the failure model, and network-free tests with TestIssuer.
+---
+
+# Advanced
+
+## Key rotation and refetching
+
+`JwksResolver` caches an issuer's key set for an hour by default. A token whose `kid` the cached set lacks triggers **one** refetch, at most once per 30 seconds per issuer, so a rotation is picked up promptly while a flood of tokens with made-up key ids cannot turn the resolver into a request amplifier; concurrent misses share that fetch. A second unknown `kid` inside the interval fails as `unknownKid` without another request. `JwksResolver.layerWith({ ttl, minRefetchInterval, fetchTimeout, jwksUri })` tunes all of it, and `jwksUri` skips discovery for an issuer that publishes no discovery document.
+
+Issuers, JWKS URLs and the final URL after any redirect must be `https:`; `http://localhost` and `http://127.0.0.1` are the only exceptions, for tests.
+
+## The store on Cloudflare Workers
+
+Workers isolates do not share memory, so `JwksStore.layerMemory` caches per isolate. To share one fetched key set across isolates, provide your own [`JwksStore`](/jwt/api/class/jwksstore) backed by KV or the Cache API. The seam is two members, `get(issuer)` and `set(issuer, value, ttl)`. A store should swallow its own failures (a miss on `get`, a no-op on `set`); the resolver guards against one that fails or dies anyway, because a cache must never fail a verification. The resolver also re-checks freshness itself, so a store that ignores `ttl` cannot keep a rotated-out key trusted.
+
+## The failure model
+
+[`JwtError`](/jwt/api/class/jwterror) carries a `reason` from a closed set and a human-readable `detail`:
+
+| `reason` | Meaning |
+| --- | --- |
+| `malformed` | not a compact JWS, or a segment does not decode |
+| `unsupportedAlgorithm` | an algorithm other than `RS256` or `ES256` |
+| `algorithmMismatch` | the header's `alg` is not the key's |
+| `badSignature` | the signature does not verify |
+| `unknownKid` | the issuer publishes no key with the token's `kid` |
+| `expired`, `notYetValid` | outside `exp`, or before `nbf`/`iat`, beyond the tolerance |
+| `wrongIssuer`, `wrongAudience` | `iss` or `aud` is not one you accept |
+| `claims` | a claim is missing or does not decode with your schema |
+| `key` | a key could not be imported or is too weak |
+| `jwksFetch` | discovery or the JWKS could not be fetched |
+| `unsupportedRuntime` | the runtime has no `crypto.subtle` |
+
+No error ever carries key material.
+
+## Tokens are not identities
+
+ES256 signatures are malleable: one signed payload can have two valid token strings. Key replay detection, deduplication and revocation on verified claims, `jti` or `iss` with `sub` and `iat`, never on the token text.
+
+## Testing without a network
+
+`@effected/jwt/testing` exports [`TestIssuer`](/jwt/api). `TestIssuer.make({ issuer })` generates a key pair and gives you `sign(claims)`, which stamps `iss`, `iat` and a ten-minute `exp` from `Clock` unless you supply them, and `resolverLayer`, the real `JwksResolver` over an in-memory `HttpClient` that serves the issuer's discovery document and JWKS. Tokens it signs verify through exactly the code production runs.
+
+```ts with-api
+import { Jwt, JwksResolver } from "@effected/jwt";
+import { TestIssuer } from "@effected/jwt/testing";
+import { Effect, Schema } from "effect";
+
+const ISSUER = "https://issuer.test";
+
+export const verifiesInTests = Effect.gen(function* () {
+  const issuer = yield* TestIssuer.make({ issuer: ISSUER });
+  const token = yield* issuer.sign({ sub: "user-1", aud: "my-service" });
+  return yield* Jwt.verify(token, {
+    key: JwksResolver.forIssuer(ISSUER),
+    claims: Schema.Struct({ sub: Schema.String }),
+    issuer: ISSUER,
+    audience: "my-service",
+  }).pipe(Effect.provide(issuer.resolverLayer));
+});
+```
+
+Provide `resolverLayer` once around the whole test when it relies on caching or on a rotation; each provide builds a fresh resolver and store. `TestIssuer.rotate(issuer, kid)` adds a key under a new `kid`, and the refetch interval still applies, so advance the `TestClock` past it before verifying with the new key.
+
+## Next steps
+
+- [Getting Started](/jwt/getting-started): the end-to-end walkthrough.
+- [API reference](/jwt/api): every export, with full signatures.

@@ -8,8 +8,8 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T23:37:27Z
-  body_sha256: 4a2af318b589f4190119b73605f9d59ab31042d70a54eaf37257000be32ea568
+  at: 2026-10-10T00:53:24Z
+  body_sha256: d30fc9c6077fc670b4237a3b77ea22376d573ee173ea02696c459a9878e7668d
 ---
 
 # @effected/github
@@ -106,7 +106,9 @@ The tree-shakability invariant is measured:
 | A consumer that imports… | links | does **not** link |
 | --- | --- | --- |
 | the client, the repo coordinate, the route vocabulary, any resource service but `RepositorySecret` | octokit core and the paginator | the JWT signer, the crypto pair |
-| the App service or its client layer | the above plus the JWT signer | the crypto pair |
+| the App service or any of its client layers | the above plus the JWT signer | the crypto pair |
+| the Actions OIDC verifier (`ActionsOidc`) | `@effected/jwt` and nothing else | all octokit, the crypto pair |
+| the installation token store seam (`InstallationTokenStore`) | nothing but `effect` | the JWT signer, all octokit |
 | `RepositorySecret` | the above plus `tweetnacl` and `blakejs` | the JWT signer |
 | the pure classes | nothing but `effect` | all octokit |
 
@@ -134,8 +136,11 @@ This invariant gets a test rather than a promise:
 `packages/github/__test__/reachability.test.ts` walks the runtime import
 graph of `src` statically (type-only imports skipped, since they are erased),
 asserting the token-only client does not reach the JWT signer and that the
-App module does, and that `RepositorySecret` reaches the crypto pair while no
-other resource service does. It constrains the import graph, not the
+App module does, that `ActionsOidc` reaches `@effected/jwt` but not
+octokit, that `InstallationTokenStore` reaches nothing but `effect` (neither
+the signer nor the App module), and that `RepositorySecret` reaches the
+crypto pair while no other resource service does. Each "does not reach"
+assertion has a positive control beside it. It constrains the import graph, not the
 resolver graph: the claim is "no edge exists, so a tree-shaking bundler can
 drop it," not "it is absent from any particular consumer's bundle."
 

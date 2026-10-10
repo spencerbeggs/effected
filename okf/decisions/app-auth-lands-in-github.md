@@ -7,10 +7,21 @@ tags:
   - architecture
   - github
   - bundle
+sources:
+  - id: owner
+    resource: conversation with the repository owner
+    author: human:spencerbeggs
+    last_modified: 2026-10-09T00:00:00Z
+  - id: core-crypto
+    resource: ../../.repos/effect/packages/effect/src/Crypto.ts
+    title: "Core Crypto: random bytes, digests and ids, and no sign, verify or importKey"
+  - id: eventlog-session-auth
+    resource: ../../.repos/effect/packages/effect/src/eventlog/EventLogSessionAuth.ts
+    title: "Core's precedent for reading globalThis.crypto.subtle and failing when it is absent"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T22:29:55Z
-  body_sha256: fe2fb1a46caee955185089fb0b633a5f53ea314bbdfc00188c495cdd6645ea92
+  at: 2026-10-10T00:53:24Z
+  body_sha256: bd31b82a5e714c9e2d71728dd13282f13baf2e73d7f6ca84a7f83951b8f64cc1
 ---
 
 # App auth, OIDC verify and the token store land in @effected/github
@@ -25,7 +36,7 @@ App auth (`GitHubApp`), OIDC verification (`ActionsOidc.verify` and `ActionsOidc
 
 ## Alternatives rejected
 
-- **A `github-app` package.** Its one-minor re-export from `github` is a `github` to `github-app` cycle, and static root re-exports to a separate package broke unbundled consumers before: the optional-peers change in issue 250 was reverted for that reason. See [the root boundary is reachability decision](root-boundary-is-reachability.md).
+- **A `github-app` package.** Its one-minor re-export from `github` is a `github` to `github-app` cycle, and static root re-exports to a separate package broke unbundled consumers before: the optional-peers change in issue 250 was reverted for that reason; see [the `./ui` subpath with optional peers decision](ui-is-a-subpath-with-optional-peers.md).
 - **JWT inside `github`.** It would keep issue 768's two JWT halves, signing and verifying, without a shared vocabulary, and would leave `github` owning primitives that nothing GitHub-specific constrains.
 
 ## Consequences

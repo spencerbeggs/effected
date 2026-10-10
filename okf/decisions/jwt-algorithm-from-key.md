@@ -6,6 +6,17 @@ status: draft
 tags:
   - security
   - architecture
+sources:
+  - id: owner
+    resource: conversation with the repository owner
+    author: human:spencerbeggs
+    last_modified: 2026-10-09T00:00:00Z
+  - id: core-crypto
+    resource: ../../.repos/effect/packages/effect/src/Crypto.ts
+    title: "Core Crypto: random bytes, digests and ids, and no sign, verify or importKey"
+  - id: eventlog-session-auth
+    resource: ../../.repos/effect/packages/effect/src/eventlog/EventLogSessionAuth.ts
+    title: "Core's precedent for reading globalThis.crypto.subtle and failing when it is absent"
 generated:
   by: "okfit/claude-code"
   at: 2026-10-09T22:29:55Z

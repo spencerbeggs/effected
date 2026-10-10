@@ -1,0 +1,62 @@
+---
+title: "@effected/jwt"
+description: "Sign and verify JWTs, import keys and resolve an issuer's JWKS over WebCrypto, on Node and Cloudflare Workers alike."
+---
+
+# @effected/jwt
+
+Signed-token primitives over WebCrypto. [`Jwt`](/jwt/api/variable/jwt) signs a JWT and verifies one, checking the signature and then `exp`, `nbf`, `iat`, `iss` and `aud` before decoding the payload with your schema. [`JwtKey`](/jwt/api/variable/jwtkey) imports keys, including the PKCS#1 PEM that github.com hands out for an App, and [`JwksResolver`](/jwt/api/class/jwksresolver) finds a verification key in an issuer's published JWKS, caches it, and picks up a key rotation without letting a flood of made-up key ids through.
+
+## Why @effected/jwt
+
+The usual JWT libraries reach for `node:crypto`, and Cloudflare workerd has none, so a Worker that signs a GitHub App JWT or verifies an OIDC token has to bring a second library or a conversion step. This package reads `crypto.subtle` from the runtime and nothing else: no `node:` import, no runtime dependency, `effect` the only peer. It runs wherever WebCrypto does.
+
+It is also deliberately narrow about algorithms. `RS256` and `ES256` (P-256) are the only two, `alg: "none"` is never accepted, and the algorithm comes from the **key**, never from the token's header: a header that names a different algorithm fails as `algorithmMismatch` and nothing else is tried. That closes the classic key-confusion attack, an `HS256` token verified against an RSA public key, by construction.
+
+Every failure is one [`JwtError`](/jwt/api/class/jwterror) whose `reason` you route on: `expired`, `wrongAudience`, `badSignature`, `unknownKid` and the rest.
+
+## Install
+
+```bash
+npm install @effected/jwt effect
+```
+
+```bash
+pnpm add @effected/jwt effect
+```
+
+`effect` v4 is the only peer dependency, and the only dependency of any kind. `JwksResolver` needs an `HttpClient` and a [`JwksStore`](/jwt/api/class/jwksstore) in `R`; signing and verifying with a key you already hold need nothing.
+
+## Quick start
+
+```ts with-api
+import { Jwt, JwtKey } from "@effected/jwt";
+import { Effect, Redacted, Schema } from "effect";
+
+declare const pem: string;
+
+const program = Effect.gen(function* () {
+  const pair = yield* JwtKey.generate("ES256");
+  const token = yield* Jwt.sign({ sub: "user-1", exp: 2_000_000_000 }, pair.signing);
+  const claims = yield* Jwt.verify(token, {
+    key: pair.verification,
+    claims: Schema.Struct({ sub: Schema.String }),
+  });
+  return claims.sub; // "user-1"
+});
+
+// A PEM private key, PKCS#8 or PKCS#1, stays Redacted until it is imported.
+const signingKey = JwtKey.fromPkcs8Pem(Redacted.make(pem), { alg: "RS256" });
+```
+
+## Where to go next
+
+- [Getting Started](/jwt/getting-started): sign a token, then verify one against an issuer's JWKS.
+- [Advanced](/jwt/advanced): key rotation, the store seam on Workers, the failure model, and testing with `TestIssuer`.
+- [API reference](/jwt/api): every export, with full signatures.
+
+For GitHub's own tokens, `@effected/github` builds on this package: `GitHubApp` signs the App JWT with it, and `ActionsOidc` verifies GitHub Actions OIDC tokens through it.
+
+## Out of scope
+
+HMAC (`HS*`), `PS*` and `EdDSA` algorithms, encrypted tokens (JWE), and signing with a private JWK.

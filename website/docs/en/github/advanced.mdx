@@ -184,7 +184,7 @@ Above `updateSettings` sits `applySettings`, which takes an open map, routes eac
 [`GitHubApp.clientLayer`](/github/api/class/githubapp) builds a `GitHubClient` authenticated as an app installation. The token's lifetime is the layer's scope: minted on build, **re-minted a minute before it expires**, and revoked on release, best-effort, so a workflow does not leave live credentials behind.
 
 ```ts with-api
-import { GitHubApp, GitHubRepository } from "@effected/github";
+import { GitHubApp, GitHubRepository, Repo, RepoRef } from "@effected/github";
 import { Effect, Layer, Redacted } from "effect";
 
 declare const privateKeyPem: string;
@@ -196,7 +196,10 @@ const AppClient = GitHubApp.clientLayer({
   owner: "acme", // discovers the installation; supplying installationId is cheaper
 });
 
-const Live = GitHubRepository.layer.pipe(Layer.provide(AppClient));
+const Live = Layer.mergeAll(
+  GitHubRepository.layer.pipe(Layer.provide(AppClient)),
+  Repo.layer(RepoRef.make({ owner: "acme", repo: "api" })),
+);
 
 const program = Effect.gen(function* () {
   const repository = yield* GitHubRepository;
@@ -208,7 +211,92 @@ Effect.runPromise(program.pipe(Effect.provide(Live)));
 
 Three properties matter in production. Installation **discovery** costs a JWT mint plus a paginated walk of `GET /app/installations`, so passing `installationId` instead of `owner` is strictly cheaper. A **PKCS#1** private key — the format github.com hands you — works as-is on every runtime with WebCrypto, Node and Cloudflare Workers alike, because it is wrapped to PKCS#8 in-process; so does PKCS#8, and so does a key whose newlines arrive escaped as `\n` from a one-line environment variable. A key that is not RSA of at least 2048 bits fails with an explicit `kind: "jwt"` error. And a failure to obtain credentials surfaces to the caller as a `GitHubError` with `kind: "unauthorized"` carrying the [`GitHubAppError`](/github/api/class/githubapperror) as its cause, so it routes with every other client failure rather than needing its own arm.
 
-This module is also the **only** one in the package that imports a JWT signer, and a reachability test asserts it. That is why `clientLayer` lives on `GitHubApp` rather than as a third static on `GitHubClient`: statics on one class share one module, so putting it there would make every token-only consumer link the signer.
+Only `GitHubApp` and `ActionsOidc` reach [`@effected/jwt`](/jwt), and a reachability test asserts that the token-only client does not. That is why `clientLayer` and its siblings live on `GitHubApp` rather than as statics on `GitHubClient`: statics on one class share one module, so putting them there would make every token-only consumer link the signer.
+
+When several requests find the token spent at once, they wait on **one** rotation: no second token is minted and no request's token is revoked under it.
+
+### Speaking as the app itself
+
+Some routes take the App JWT, not an installation token: everything under `/app`, and the three installation lookups (`/repos/{owner}/{repo}/installation`, `/orgs/{org}/installation`, `/users/{username}/installation`). [`GitHubApp.appClientLayer`](/github/api/class/githubapp) builds a client authenticated with the JWT itself. It is signed locally, so building the layer makes no request; it lives nine minutes and is re-signed a minute before it expires, and there is nothing to revoke. Installation-scoped routes answer 401 to it. A webhook redelivery sweep is the motivating use:
+
+```ts with-api
+import { GitHubApp, GitHubClient } from "@effected/github";
+import { Effect, Redacted } from "effect";
+
+declare const privateKeyPem: string;
+
+const sweep = Effect.gen(function* () {
+  const client = yield* GitHubClient;
+  const deliveries = yield* client.request("GET /app/hook/deliveries", { per_page: 100 });
+  for (const delivery of deliveries) {
+    if (delivery.status_code >= 400) {
+      // octokit types a delivery id as number | bigint; the route takes a number.
+      yield* client.request("POST /app/hook/deliveries/{delivery_id}/attempts", { delivery_id: Number(delivery.id) });
+    }
+  }
+});
+
+const AppJwtClient = GitHubApp.appClientLayer({ appId: "123456", privateKey: Redacted.make(privateKeyPem) });
+
+Effect.runPromise(sweep.pipe(Effect.provide(AppJwtClient)));
+```
+
+### Reusing a token across requests
+
+A program that authenticates per request scope, such as a Cloudflare Worker handling a webhook, would mint a fresh installation token every time. [`GitHubApp.cachedToken`](/github/api/class/githubapp) reads an [`InstallationTokenStore`](/github/api/class/installationtokenstore) first, and [`GitHubApp.cachedClientLayer`](/github/api/class/githubapp) builds a client from whatever it returns. The store is keyed by installation id, so `installationId` is required here: discovering it per request would defeat the cache.
+
+```ts with-api
+import { GitHubApp, GitHubClient, InstallationTokenStore } from "@effected/github";
+import { Effect, Layer, Redacted } from "effect";
+
+declare const privateKeyPem: string;
+
+const handle = (installationId: number) =>
+  Effect.flatMap(GitHubClient, (client) =>
+    client.request("GET /repos/{owner}/{repo}", { owner: "acme", repo: "widgets" }),
+  ).pipe(
+    Effect.provide(
+      GitHubApp.cachedClientLayer({ appId: "123456", privateKey: Redacted.make(privateKeyPem), installationId }),
+    ),
+  );
+
+// Once, at the edge. On GitHub Enterprise Server, use GitHubApp.layerWith({ baseUrl }).
+const Live = Layer.mergeAll(GitHubApp.layer, InstallationTokenStore.layerMemory);
+
+Effect.runPromise(handle(42).pipe(Effect.provide(Live)));
+```
+
+A stored token is served while it has `margin` (five minutes by default) left to live; one that will not decode, or is within the margin, is a miss and is minted and written back with a TTL of its expiry minus the margin. A cached token is **never revoked**, not even on release, because another request or isolate may be using it, and the client does not rotate, so set `margin` longer than a request's work. The store never fails the call: a store that fails or dies is a miss on read and ignored on write. Two concurrent misses may both mint; a store spanning isolates cannot be locked, and the extra token simply expires. On Workers, back the store with KV or a Durable Object instead of `layerMemory`. Its value is the token's JSON, which contains the raw token, so encrypting it at rest is the store's job.
+
+### Verifying Actions OIDC tokens
+
+The inbound direction: a workflow proves to your service which repository, workflow and run it is by presenting a GitHub Actions OIDC token. [`ActionsOidc.verify`](/github/api/variable/actionsoidc) checks it against GitHub's published keys through [`@effected/jwt`](/jwt), with a **mandatory audience**, because one JWKS signs tokens for every service any workflow talks to, and decodes the claims into [`ActionsOidcClaims`](/github/api/class/actionsoidcclaims) with numeric ids.
+
+```ts with-api
+import { ActionsOidc } from "@effected/github";
+import { JwksResolver } from "@effected/jwt";
+import { Data, Effect } from "effect";
+
+class Forbidden extends Data.TaggedError("Forbidden")<{ readonly repositoryId: number }> {}
+
+// Pinned by id, which survives a rename and cannot be registered again by someone else.
+const ALLOWED_REPOSITORY_ID = 123456789;
+const ALLOWED_WORKFLOW = "acme/widgets/.github/workflows/deploy.yml@refs/heads/main";
+
+const authorize = (bearer: string) =>
+  Effect.gen(function* () {
+    const claims = yield* ActionsOidc.verify(bearer, { audience: "https://deploy.acme.example" });
+    if (claims.repositoryId !== ALLOWED_REPOSITORY_ID || claims.jobWorkflowRef !== ALLOWED_WORKFLOW) {
+      return yield* new Forbidden({ repositoryId: claims.repositoryId });
+    }
+    return claims;
+  });
+
+// JwksResolver.layer needs an HttpClient and a JwksStore, provided once at the edge.
+export const program = authorize("eyJ...").pipe(Effect.provide(JwksResolver.layer));
+```
+
+**Authorize on immutable ids**, `repositoryId` or `repositoryOwnerId` together with `jobWorkflowRef`, never on the `repository` name: a deleted repository's name can be registered again by someone else, whose workflows would then mint tokens carrying it. Only the github.com issuer is accepted; tokens from a GitHub Enterprise Cloud enterprise issuer or a GitHub Enterprise Server fail as `wrongIssuer`. Every failure is a `JwtError` routed on `reason`. In tests, sign `ActionsOidc.testClaims()` with `TestIssuer` from `@effected/jwt/testing` and provide its `resolverLayer`.
 
 ## The typed escape hatch, and streaming a long walk
 
@@ -341,7 +429,7 @@ describe("ruleset sync", () => {
 });
 ```
 
-Three contract details are worth knowing before you write against the fixture client. **An unstubbed route dies by default** — a missing fixture is test wiring rather than a domain outcome, and a typed failure would only be loud in code that does not catch; `unstubbed: "fail"` restores a typed not-found, and `"empty"` serves an empty value for a suite whose subject is decisions. **A recorded `GitHubError` value *is* the response**, which is how a suite stubs a 404, a 422 or a rate limit deliberately. And **`fixtures.requested` records every call** as a [`RecordedCall`](/github/api/interface/recordedcall) carrying the surface `kind`, the `route` (the document name for GraphQL), the `params`, and `perPage` for a paginated read.
+Three contract details are worth knowing before you write against the fixture client. **An unstubbed route dies by default** — a missing fixture is test wiring rather than a domain outcome, and a typed failure would only be loud in code that does not catch; `unstubbed: "fail"` restores a typed not-found, and `"empty"` serves an empty value for a suite whose subject is decisions. **A recorded `GitHubError` value *is* the response**, which is how a suite stubs a 404, a 422 or a rate limit deliberately; when the test is about what GitHub actually answers, record [`GitHubFixtures.failure({ status, headers?, body? })`](/github/api/variable/githubfixtures) instead, and the raw response is classified at call time by the same classifier the live client uses (`GitHubError.fromResponse`, against the `TestClock`). And **`fixtures.requested` records every call** as a [`RecordedCall`](/github/api/interface/recordedcall) carrying the surface `kind`, the `route` (the document name for GraphQL), the `params`, and `perPage` for a paginated read.
 
 Assert with `assert.*`, never `expect`. The package's own suite drives the **real** client through octokit's documented `fetch` option rather than a double of its own service, which is why classification, header capture, retry and Link-following pagination are all genuinely exercised — the same seam is available to you through `GitHubClientOptions.fetch` when you want to test against canned HTTP responses.
 
