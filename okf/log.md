@@ -10,6 +10,8 @@
 * Updated Only ./ui may bind Node's process streams, and only in three named files
 * Added The JWT algorithm comes from the key, never the token header
 * Updated effected
+* Updated @effected/github App authentication
+* Updated @effected/github resource services
 
 ## 2026-10-09
 
