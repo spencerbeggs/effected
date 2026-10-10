@@ -27,8 +27,8 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-05T17:55:16Z
-  body_sha256: cb09e590b56e0e0e6a1a94ee7a0bf1f3659fabcabacb4db849d4b60749f36672
+  at: 2026-10-10T19:04:38Z
+  body_sha256: f77f0442be6a60953ada7b9dffb3481554749d65e326ec8913393b462e2c8030
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -182,7 +182,7 @@ with unaffected call syntax.
 ## The `./testing` subpath
 
 `@effected/workspaces/testing` is the third entry point, beside `.` and
-`./node-sync`. It holds three repo-shape checks consumer repositories used to
+`./node-sync`. It holds four repo-shape checks consumer repositories used to
 hand-roll, each a static class with a private
 constructor:[^testing-ts]
 
@@ -193,6 +193,14 @@ constructor:[^testing-ts]
   stdout (`console-stdout`), with pure `check` and `referencesProcess`, a
   `scan` over `FileSystem` with whole-file `allow` and per-rule `allowRules`
   exemptions, and shipped positive controls behind `verifyFixtures`.
+- `ImportGraph` (with `ReachabilityScan`, `ReachOffence`, `UnresolvedImport`,
+  `ReachabilityOptions`, `NoEntriesError`, `EntryNotFoundError`,
+  `UndeclaredScan`, `UndeclaredImport` and `UndeclaredOptions`): the two
+  guards that belong to the import graph rather than to one file —
+  `reachability` walks from entries through relative imports and reports a
+  forbidden specifier with the chain that reaches it (`followPackage` is the
+  workspace-package extension point), and `undeclared` reports every runtime
+  import its package's `dependencies`/`peerDependencies` do not declare.
 - `WorkspaceLayering` (with `LayerPolicy`, `LayerPolicyError`, `LayerEdge`,
   `LayeringGraph` and `LayeringReport`): a pure check of a per-field edge
   graph against a committed layer policy, plus `checkWorkspace` over

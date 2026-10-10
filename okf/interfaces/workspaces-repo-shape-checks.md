@@ -1,7 +1,7 @@
 ---
 type: Interface
 title: "@effected/workspaces/testing: the repo-shape checks"
-description: SourceBoundary, WorkspaceLayering and PackedInstall, the three checks a monorepo runs in its own test suite to keep source boundaries, the package graph and the packed install honest.
+description: SourceBoundary, ImportGraph, WorkspaceLayering and PackedInstall, the four checks a monorepo runs in its own test suite to keep source boundaries, the import graph, the package graph and the packed install honest.
 status: draft
 kind: api
 resource: ../../packages/workspaces/src/testing.ts
@@ -14,6 +14,10 @@ sources:
     resource: ../../packages/workspaces/src/SourceBoundary.ts
   - id: source-text-ts
     resource: ../../packages/workspaces/src/internal/sourceText.ts
+  - id: source-walk-ts
+    resource: ../../packages/workspaces/src/internal/sourceWalk.ts
+  - id: import-graph-ts
+    resource: ../../packages/workspaces/src/ImportGraph.ts
   - id: workspace-layering-ts
     resource: ../../packages/workspaces/src/WorkspaceLayering.ts
   - id: layer-policy-ts
@@ -44,16 +48,19 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-05T18:02:33Z
-  body_sha256: d7d3ef6879e7384ee9c286aed2a603ea8dc9e8579e2d92943d1edd52e515ff58
+  at: 2026-10-10T19:04:38Z
+  body_sha256: 6e92aba3c73ec3071ccde3ef2ab2bcc5525cfe446f5deff0ccaa1e9ea1f8d31c
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
 
 `@effected/workspaces/testing` is the package's third entry point. It holds
-three checks a monorepo runs against itself, inside its own test suite:
+four checks a monorepo runs against itself, inside its own test suite:
 `SourceBoundary` keeps `process`, `node:` imports and console writes out of
-modules meant to be free of them; `WorkspaceLayering` holds the package graph
+modules meant to be free of them; `ImportGraph` answers the two questions
+that belong to the import graph rather than to any one file — whether the
+entries reach a forbidden import at all, and whether every runtime import is
+declared; `WorkspaceLayering` holds the package graph
 to a committed `LayerPolicy`; and `PackedInstall` proves a carrier's bins
 install from packed tarballs under every available package
 manager.[^testing-ts] `src/index.ts` never re-exports it. Why these live here
@@ -61,9 +68,10 @@ rather than in a package of their own is
 [D5](../decisions/repo-shape-checks-live-in-workspaces-testing.md).
 
 Every check refuses to pass vacuously. A scan reports the files it read, a
-layering report counts the edges it checked, and a packed install reports
-which managers it skipped. The assertion a consumer writes pairs "nothing
-wrong" with "something was checked".
+reachability walk reports the files it reached and the links it could not
+resolve, a layering report counts the edges it checked, and a packed install
+reports which managers it skipped. The assertion a consumer writes pairs
+"nothing wrong" with "something was checked".
 
 ## SourceBoundary
 
@@ -204,7 +212,9 @@ a linked directory is not read twice. `node_modules` is never entered, and
 declaration files are skipped. Every path comes back relative to the root and
 `/`-separated, whatever the platform's separator, and `allow` globs match
 against that same form. A missing root fails the scan; it never scans
-nothing.[^source-boundary-ts]
+nothing.[^source-boundary-ts] The walker is shared with `ImportGraph`
+(`internal/sourceWalk.ts`), so the two can never disagree about a symlink
+loop, `node_modules` or what counts as a source file.[^source-walk-ts]
 
 Two kinds of exemption exist. An `allow` glob exempts a file from every rule.
 An `allowRules` glob, keyed by an `OffenceRule`, exempts a file from that one
@@ -239,6 +249,119 @@ import { SourceBoundary } from "@effected/workspaces/testing";
 const offences = SourceBoundary.check("src/a.ts", "const { env } = process;", ["process"]);
 console.log(offences.map((offence) => offence.label), SourceBoundary.verifyFixtures());
 // => [ 'src/a.ts:1:17 process process' ] []
+```
+
+## ImportGraph
+
+Two guards consumers want are properties of the import graph rather than of
+one file, so no per-file rule can express them. `ImportGraph` answers both
+over the same lexer `SourceBoundary` uses, so a specifier in a comment, a
+string, template text or a regex body is never an
+import.[^import-graph-ts]
+
+### Reachability and the directory-rule hole
+
+"Nothing reachable from entry X imports Y". A directory rule ("only files
+under `src/ink/` may import ink") approximates it, but a refactor that adds a
+new static path from the root entry into the allowed directory still passes:
+the rule checks where an import sits, not what reaches it.
+`ImportGraph.reachability` walks the real edges: breadth-first from `entries`
+through relative imports, reporting every forbidden specifier a reached file
+imports with the chain that reached it. The matching is `forbidImports`'
+own — exact, subpath, trailing `*` — because the walk runs
+`SourceBoundary.check` on each file: one matcher, not a copy.
+
+The walk visits each file once through its `realPath`, so a symlink loop
+terminates and a diamond reports one chain, the shortest. It is conservative
+in the safe direction: it follows every literal specifier, type-only imports
+included, so a forbidden import only a type reaches is still reported.
+
+Non-vacuity handles, in the house shape:
+
+- `files`: every file the walk reached. Assert it is non-empty.
+- `unresolved`: every relative specifier no candidate resolved, one per
+  file-and-specifier pair. The graph behind an unresolved link is unproven,
+  so assert it is empty or exactly the generated files you expect; it is
+  never dropped silently.
+- Typed failure rather than an empty success: an entry that resolves to no
+  file fails `EntryNotFoundError`, and an empty entry list fails
+  `NoEntriesError`.
+
+A relative specifier resolves as itself, as its stem under each extension
+(`.js` → `.ts`) and as each extension's index (a directory import);
+declaration files are never a candidate.
+
+A bare specifier is checked against `forbid` but never walked into by
+default. `followPackage` is the extension point for workspace-package
+traversal: called with each bare specifier, it answers the file to continue
+from (relative to the root or absolute, resolved like an entry) or
+`undefined` to stop there. A stale mapping lands in `unresolved`, not in a
+silent hole.
+
+### Undeclared imports and what hoisting hides
+
+A runtime import of a package the manifest never declared resolves fine
+inside the workspace — hoisting provides it — and only a packed install
+catches that today, far too slow for the edit loop. `ImportGraph.undeclared`
+is the cheap static form: for each discovered package, every literal
+specifier in its runtime sources is checked against the package's own
+`dependencies` and `peerDependencies`. A `devDependency` or an
+`optionalDependency` never declares: an import of one from a runtime source
+is exactly the bug. Each report names the package, the file and the
+specifier.
+
+What is never flagged:
+
+- a relative or absolute specifier, or a `#` subpath import: not a package
+  import;
+- a `node:` specifier: always a built-in;
+- a bare built-in on the caller's `builtins` list. No list ships with the
+  subpath, because one would drift with Node releases: spread
+  `builtinModules` from `node:module` in the test file, the same convention
+  `forbidImports: ["node:*", ...builtinModules]` uses;
+- a package's own name: a self-reference through `exports` is declared by
+  definition;
+- a type-only import (`import type { X } from`, `export type * from`): the
+  compiler erases it. An `import { type X } from` is NOT type-only — the
+  statement still loads at runtime.
+
+`include` globs (default `src/**`, matched against the package-relative
+path) name the runtime sources. Each package is walked from each glob's
+static prefix, so the default never walks a build output or a test directory
+at all, and test files importing devDependencies are out of scope by design:
+the check compares against the runtime fields.
+
+### Static-only
+
+Both checks read literal specifiers: static imports, re-exports, and
+`import()`/`require()` whose argument is one string literal. A computed
+specifier (`import("./ui/" + name)`) is invisible. There is no
+dynamic-import guarantee, and `PackedInstall` remains the proof of what
+actually resolves at runtime.
+
+```ts
+import { builtinModules } from "node:module";
+import { NodeServices } from "@effect/platform-node";
+import { Workspaces } from "@effected/workspaces";
+import { ImportGraph } from "@effected/workspaces/testing";
+import { Effect, Layer } from "effect";
+
+// Nothing reachable from the root entry may load ink or react.
+const walk = yield* ImportGraph.reachability({
+  root: "/repo/packages/ui/src",
+  entries: ["index.ts"],
+  forbid: ["ink", "react"],
+});
+assert.isNotEmpty(walk.files);
+assert.deepStrictEqual(walk.unresolved, []);
+assert.deepStrictEqual(walk.violations, []);
+
+// Every runtime import is declared.
+const declared = yield* ImportGraph.undeclared({ builtins: builtinModules }).pipe(
+  Effect.provide(Workspaces.layer({ cwd: "/repo" }).pipe(Layer.provideMerge(NodeServices.layer))),
+);
+assert.isNotEmpty(declared.files);
+assert.deepStrictEqual(declared.violations, []);
 ```
 
 ## WorkspaceLayering
@@ -619,6 +742,11 @@ under npm and bun, and `undefined` under pnpm, against real installs.[^packed-in
     rules, the exemption, the documented misses and `scan`.
 [^source-text-ts]: `packages/workspaces/src/internal/sourceText.ts` —
     `LexedSource` and `lex`.
+[^source-walk-ts]: `packages/workspaces/src/internal/sourceWalk.ts` —
+    the shared source-tree walker.
+[^import-graph-ts]: `packages/workspaces/src/ImportGraph.ts` — the
+    reachability walk, the undeclared-import check and their resolution
+    rules.
 [^cli-logger-ts]: `packages/cli/src/CliLogger.ts:104` — the local `console`
     binding.
 [^node-console]: <https://nodejs.org/api/console.html> — the global

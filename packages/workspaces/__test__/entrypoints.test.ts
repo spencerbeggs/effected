@@ -26,7 +26,7 @@ const reachableFrom = (entry: string): ReadonlySet<string> => {
 };
 
 const TESTING_ONLY =
-	/src\/(testing|SourceBoundary|LayerPolicy|WorkspaceLayering|PackedInstall|internal\/sourceText|internal\/packedInstallPlan)\.ts$/;
+	/src\/(testing|SourceBoundary|ImportGraph|LayerPolicy|WorkspaceLayering|PackedInstall|internal\/sourceText|internal\/sourceWalk|internal\/packedInstallPlan)\.ts$/;
 
 describe("entrypoint boundary", () => {
 	it("nothing reachable from `.` belongs to ./testing", () => {
@@ -44,7 +44,9 @@ describe("entrypoint boundary", () => {
 		assert.isAbove(reachable.length, 1, "the walker must actually resolve imports");
 		for (const module of [
 			"SourceBoundary",
+			"ImportGraph",
 			"internal/sourceText",
+			"internal/sourceWalk",
 			"LayerPolicy",
 			"WorkspaceLayering",
 			"PackedInstall",

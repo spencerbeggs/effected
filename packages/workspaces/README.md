@@ -272,7 +272,7 @@ Windows correctness is therefore the operations you pass, and nothing else. Both
 
 ## Repo-shape checks (`@effected/workspaces/testing`)
 
-A monorepo's shape drifts in ways no unit test sees: a package that should stay platform-free starts reading `process`, a low-level package grows an edge up into an application, or a bin resolves fine inside the workspace and is missing once installed from its tarball. The `@effected/workspaces/testing` subpath holds three checks you run from your own test suite to catch each one. The main entry never re-exports it, so a consumer of `.` never loads a scanner or package-manager orchestration it does not use.
+A monorepo's shape drifts in ways no unit test sees: a package that should stay platform-free starts reading `process`, a root entry grows a static path into a module it must never load, an import resolves only because the workspace hoists it, a low-level package grows an edge up into an application, or a bin resolves fine inside the workspace and is missing once installed from its tarball. The `@effected/workspaces/testing` subpath holds four checks you run from your own test suite to catch each one. The main entry never re-exports it, so a consumer of `.` never loads a scanner or package-manager orchestration it does not use.
 
 Every check refuses to pass vacuously, so every example below pairs "nothing wrong" with "something was checked".
 
@@ -407,6 +407,58 @@ The scanner is a lexer, not a type checker. Its known limits:
 - A variable named `yield` or `await` in a sloppy-mode script reads as the keyword, so a `/` after it opens a regex. Module and strict code reserve both words, so a module never hits this.
 - JSX text reads as code, which is why `.tsx` and `.jsx` are not scanned by default.
 - `forbidImports: ["node:*"]` matches only the `node:` spelling, not a bare `"fs"`. To forbid both, spread Node's list in the test file: `{ forbidImports: ["node:*", ...builtinModules] }`, with `builtinModules` from `node:module`. That also forbids npm packages named like a built-in (`events`, `buffer`).
+
+### Import graph
+
+Two guards are properties of the import graph rather than of one file, so no per-file rule can express them. `ImportGraph.reachability` walks from entry files through relative imports and reports every forbidden specifier a reached file imports, with the chain of files that reaches it. A directory rule approximates reachability, but a refactor that keeps the rule and adds a new static path from the root entry into the allowed directory passes it; the walk follows the real edges. `ImportGraph.undeclared` reports every runtime import whose package the owning package's manifest does not declare in `dependencies` or `peerDependencies` — what workspace hoisting hides and only a packed install caught before, far too slow for the edit loop.
+
+```ts
+// __test__/graph.test.ts, one level below the workspace root
+import { builtinModules } from "node:module";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, layer } from "@effect/vitest";
+import { Workspaces } from "@effected/workspaces";
+import { ImportGraph } from "@effected/workspaces/testing";
+import { Effect, Layer } from "effect";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer));
+
+describe("import graph", () => {
+  layer(Live)((it) => {
+    it.effect("nothing reachable from the root entry loads ink or react", () =>
+      Effect.gen(function* () {
+        const walk = yield* ImportGraph.reachability({
+          root: join(ROOT, "packages/ui/src"),
+          entries: ["index.ts"],
+          forbid: ["ink", "react"],
+        });
+        assert.isNotEmpty(walk.files, "the walk reached the tree");
+        assert.deepStrictEqual(walk.unresolved, [], "every relative import resolved");
+        assert.deepStrictEqual(walk.violations, []);
+      }),
+    );
+
+    it.effect("every runtime import is declared", () =>
+      Effect.gen(function* () {
+        const scan = yield* ImportGraph.undeclared({ builtins: builtinModules });
+        assert.isNotEmpty(scan.files, "the check read sources");
+        assert.deepStrictEqual(scan.violations, []);
+      }),
+    );
+  });
+});
+```
+
+A violation names the path that reaches it: `src/ui/ink.ts:1:24 ink via index.ts -> ui/shell.ts -> src/ui/ink.ts`. An undeclared import names the package, the file and the specifier: `@my-org/app src/main.ts:7:21 undeclared left-pad`.
+
+The walk is breadth-first, visits each file once through its realpath — a symlink loop terminates, a diamond reports one shortest chain — and it is conservative: it follows every literal specifier, type-only imports included, so a forbidden import only a type reaches is still reported. A relative import that resolves to no file lands in `unresolved`, never dropped silently: the graph behind it is unproven, so assert `unresolved` is empty or exactly the generated files you expect. An entry that resolves to no file fails `EntryNotFoundError`, and an empty entry list fails `NoEntriesError`: the walk never proves nothing silently. `followPackage` is the extension point for workspace-package traversal: it is called with each bare specifier and answers the file to continue from, or `undefined` to stop there; a stale mapping lands in `unresolved` too.
+
+The undeclared check counts `dependencies` and `peerDependencies` as declared, and never `devDependencies` or `optionalDependencies`: an import of one from a runtime source is exactly the bug. It never flags a `node:` specifier, a relative or absolute specifier, a `#` subpath import, or a package's self-reference through its own name. A bare built-in is flagged unless the caller lists it: spread `builtinModules` from `node:module` in the test file, since no built-in list ships here — one would drift with Node releases, the same convention `forbidImports` uses. Type-only imports are erased by the compiler and never flagged. `include` globs (default `src/**`, matched against the package-relative path) name the runtime sources; each package is walked from each glob's static prefix, so a build output or a test directory is never walked under the default, and test files importing devDependencies are out of scope by design.
+
+Both checks are static analysis of literal specifiers — there is no dynamic-import guarantee: a computed specifier (`import("./ui/" + name)`) is invisible — and `PackedInstall` remains the proof of what actually resolves at runtime. Both reuse the `SourceBoundary` lexer, so a specifier in a comment, a string, template text or a regex body is never an import.
 
 ### Packed install
 
@@ -563,7 +615,7 @@ A name miss in the derived `getPackage` fails with the service's own typed `Pack
 - `ReleaseTag` / `TrackingTag` — release-tag formatting (`ReleaseTag.single` / `.scoped`, strict SemVer by default with no `v` prefix) and the floating major/minor alias derivation GitHub Actions-style consumers expect (`v1`, `v1.2`), plus `classifyTag` to tell a release tag from a tracking alias.
 - `VersioningStrategy` — classify a workspace as `single`, `fixed-group` or `independent` from package names and fixed groups, or detect it live against `PublishabilityDetector`, and produce the release tags for a batch with `tagsFor`.
 - `findWorkspaceRootSync` / `getWorkspacePackagesSync` — the synchronous escape hatch for config-time callers that cannot await, over file and path operations you supply.
-- `@effected/workspaces/testing` — a third entry point holding the repo-shape checks: `WorkspaceLayering` and `LayerPolicy` (the package graph against a committed `layers.json`), `SourceBoundary` (a lexer-backed scanner for `process` reads, forbidden imports and console writes, with shipped positive controls) and `PackedInstall` (the carrier's bins installed from packed tarballs under every available package manager).
+- `@effected/workspaces/testing` — a third entry point holding the repo-shape checks: `WorkspaceLayering` and `LayerPolicy` (the package graph against a committed `layers.json`), `SourceBoundary` (a lexer-backed scanner for `process` reads, forbidden imports and console writes, with shipped positive controls), `ImportGraph` (the two import-graph checks: reachability from entry files to a forbidden specifier, with the chain that reaches it, and undeclared runtime imports against each package's manifest) and `PackedInstall` (the carrier's bins installed from packed tarballs under every available package manager).
 - `@effected/workspaces/node-sync` — a second entry point holding the Node bindings for those operations (`nodeFileSystem`, `nodePath` and the `nodeSyncOps` bag), kept off the main entry so `node:*` never reaches a consumer that supplies its own. `nodeFileSystem` implements the optional `readDirectoryWithTypes` fast path, so the bindings enumerate a workspace in one `readdirSync` per directory.
 
 ## License

@@ -1,7 +1,8 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: the shipped fixtures are source text, and a template substitution inside one is the point
 import { GlobSet } from "@effected/glob";
-import { Effect, FileSystem, Option, Path, Schema } from "effect";
+import { Effect, FileSystem, Schema } from "effect";
 import { isIdentifierChar, lex, locate, references, specifierLiterals } from "./internal/sourceText.js";
+import { DEFAULT_EXTENSIONS, walkSources } from "./internal/sourceWalk.js";
 
 /**
  * One rule a source file must keep.
@@ -180,8 +181,6 @@ export interface ScanOptions extends ReferenceOptions {
 	readonly extensions?: ReadonlyArray<string> | undefined;
 }
 
-const DEFAULT_EXTENSIONS: ReadonlyArray<string> = [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"];
-const DECLARATION = /\.d\.[cm]?ts$/;
 const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const byPosition = (a: Offence, b: Offence): number =>
 	byCodeUnit(a.file, b.file) || a.line - b.line || a.column - b.column;
@@ -613,9 +612,10 @@ export class SourceBoundary {
 	 * Check every source file under `root` against `rules`.
 	 *
 	 * @remarks
-	 * Walks with an explicit stack, visiting each real directory once (via
+	 * Walks with the shared source walker (`internal/sourceWalk.ts`, which the
+	 * `ImportGraph` checks also use): each real directory is visited once (via
 	 * `realPath`), so a symlink loop terminates and a linked directory is not
-	 * scanned twice. `node_modules` is never entered. Paths come back relative
+	 * scanned twice, and `node_modules` is never entered. Paths come back relative
 	 * and `/`-separated whatever the platform's separator, and that is also
 	 * what `allow` globs match against. A missing root fails; it never scans
 	 * nothing. A dangling symlink under the root is skipped, having nothing to
@@ -635,63 +635,32 @@ export class SourceBoundary {
 	 */
 	static readonly scan = Effect.fn("SourceBoundary.scan")(function* (options: ScanOptions) {
 		const fs = yield* FileSystem.FileSystem;
-		const path = yield* Path.Path;
 		const allow = yield* GlobSet.compile(options.allow ?? []);
 		const allowRules = new Map<string, GlobSet>();
 		for (const [rule, patterns] of Object.entries(options.allowRules ?? {})) {
 			if (patterns !== undefined) allowRules.set(rule, yield* GlobSet.compile(patterns));
 		}
-		const extensions = options.extensions ?? DEFAULT_EXTENSIONS;
-		const posix = (relative: string): string => relative.split(path.sep).join("/");
+		const walked = yield* walkSources({
+			root: options.root,
+			extensions: options.extensions ?? DEFAULT_EXTENSIONS,
+		});
 		const files: Array<string> = [];
 		const allowed: Array<string> = [];
 		const offences: Array<Offence> = [];
 		const waived: Array<Offence> = [];
-		const visited = new Set<string>();
-		const pending: Array<string> = [options.root];
-		while (pending.length > 0) {
-			const directory = pending.pop();
-			if (directory === undefined) break;
-			const real = yield* fs.realPath(directory);
-			if (visited.has(real)) continue;
-			visited.add(real);
-			for (const name of yield* fs.readDirectory(directory)) {
-				const full = path.join(directory, name);
-				// stat follows links, so a dangling one fails NotFound; it has nothing to scan, so skip it.
-				// A NotFound on an entry that is not a link still fails: nothing may drop out of the scan silently.
-				const found = yield* fs.stat(full).pipe(
-					Effect.map(Option.some),
-					Effect.catch((error) =>
-						error.reason._tag === "NotFound"
-							? fs.readLink(full).pipe(
-									Effect.as(Option.none<FileSystem.File.Info>()),
-									Effect.mapError(() => error),
-								)
-							: Effect.fail(error),
-					),
-				);
-				if (Option.isNone(found)) continue;
-				const info = found.value;
-				if (info.type === "Directory") {
-					if (name !== "node_modules") pending.push(full);
-					continue;
-				}
-				if (
-					info.type !== "File" ||
-					DECLARATION.test(name) ||
-					!extensions.some((extension) => name.endsWith(extension))
-				) {
-					continue;
-				}
-				const file = posix(path.relative(options.root, full));
-				files.push(file);
-				if (allow.matches(file)) {
-					allowed.push(file);
-					continue;
-				}
-				for (const offence of SourceBoundary.check(file, yield* fs.readFileString(full), options.rules, options)) {
-					(allowRules.get(offence.rule)?.matches(file) === true ? waived : offences).push(offence);
-				}
+		for (const source of walked) {
+			files.push(source.file);
+			if (allow.matches(source.file)) {
+				allowed.push(source.file);
+				continue;
+			}
+			for (const offence of SourceBoundary.check(
+				source.file,
+				yield* fs.readFileString(source.path),
+				options.rules,
+				options,
+			)) {
+				(allowRules.get(offence.rule)?.matches(source.file) === true ? waived : offences).push(offence);
 			}
 		}
 		return SourceScan.make({

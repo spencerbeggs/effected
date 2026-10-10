@@ -364,7 +364,7 @@ export const references = (code: string, name: string): ReadonlyArray<number> =>
 };
 
 /** The identifier ending at or before `end` (skipping whitespace); `""` when it is itself a member access. */
-const wordEndingAt = (code: string, end: number): string => {
+export const wordEndingAt = (code: string, end: number): string => {
 	let j = end;
 	while (j >= 0 && SPACE.test(code[j] ?? "")) j--;
 	let start = j;

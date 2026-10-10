@@ -1,7 +1,10 @@
 /**
  * Repo-shape checks for a monorepo's own test suite: `SourceBoundary` keeps
  * `process`, `node:` imports and console writes out of modules meant to be
- * free of them, `WorkspaceLayering` holds the package graph to a committed
+ * free of them, `ImportGraph` answers the two questions that belong to the
+ * import graph rather than to any one file — whether the entries reach a
+ * forbidden import at all, and whether every runtime import is declared —
+ * `WorkspaceLayering` holds the package graph to a committed
  * `LayerPolicy`, and `PackedInstall` proves a carrier's bins install from its
  * packed tarballs under every available package manager.
  *
@@ -15,10 +18,23 @@
 
 // This module is an ENTRY POINT: api-extractor models it as its own surface,
 // so every kit type its signatures name is re-exported here. That includes
-// the discovery closure WorkspaceLayering's signatures reach (edgesOf's
-// parameter, checkWorkspace's requirement and error channel): the
-// WorkspaceDiscovery service's shape, options and failures, the WorkspaceRoot
-// service its layer requires, and WorkspacePackage's field and method types.
+// the discovery closure WorkspaceLayering's and ImportGraph's signatures
+// reach (edgesOf's parameter, checkWorkspace's and undeclared's requirement
+// and error channel): the WorkspaceDiscovery service's shape, options and
+// failures, the WorkspaceRoot service its layer requires, and
+// WorkspacePackage's field and method types.
+export {
+	EntryNotFoundError,
+	ImportGraph,
+	NoEntriesError,
+	ReachOffence,
+	type ReachabilityOptions,
+	ReachabilityScan,
+	UndeclaredImport,
+	type UndeclaredOptions,
+	UndeclaredScan,
+	UnresolvedImport,
+} from "./ImportGraph.js";
 export { LayerPolicy, LayerPolicyError } from "./LayerPolicy.js";
 export { PackageManagerName } from "./PackageManagerName.js";
 export {
