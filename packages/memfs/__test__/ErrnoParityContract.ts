@@ -14,13 +14,17 @@
 //   are still asserted, so a change on either side fails here and forces the
 //   decision to be revisited.
 //
+// It also pins the BEHAVIOUR of `FileSystem` options the pinned upstream engine
+// predates (`open` noFollow, positional `read`/`readAlloc`): a success case
+// carries a `check`, so a silently ignored option fails here on the memfs run.
+//
 // `pathOrDescriptor` is deliberately not asserted: node's adapter reports the
 // FIRST path argument of a two-path operation (rename, copy, copyFile, link,
 // symlink), memfs the one the conflict concerns.
 
 import { assert, describe, layer } from "@effect/vitest";
 import type { Layer, Scope } from "effect";
-import { Cause, Effect, Exit, Result, Stream } from "effect";
+import { Cause, Effect, Exit, Option, Result, Stream } from "effect";
 import * as FileSystem from "effect/FileSystem";
 import type * as PlatformError from "effect/PlatformError";
 
@@ -68,6 +72,8 @@ const resolveExpectation = (expectation: Expectation, implementation: Implementa
 };
 
 const bytes = new Uint8Array([1, 2, 3, 4]);
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 const withHandle = (
 	fs: FileSystem.FileSystem,
@@ -435,6 +441,122 @@ const cases: ReadonlyArray<Case> = [
 		name: "stat a closed handle",
 		run: (fs, p) => Effect.flatMap(closedHandle(fs, p("file")), (h) => h.stat),
 		expect: fail("Unknown", "stat", "EBADF"),
+	},
+
+	// open with noFollow: O_NOFOLLOW refuses a symbolic link as the FINAL path
+	// component with ELOOP (dangling or not, with or without O_CREAT), while a
+	// link earlier in the path is still followed. O_EXCL is checked first, so an
+	// exclusive create onto a link is EEXIST as it would be without noFollow.
+	{
+		name: "open with noFollow a symlink to a file",
+		run: (fs, p) => fs.open(p("filesym"), { noFollow: true }),
+		expect: fail("BadResource", "open", "ELOOP"),
+	},
+	{
+		name: "open with noFollow a dangling symlink",
+		run: (fs, p) => fs.open(p("dangling"), { noFollow: true }),
+		expect: fail("BadResource", "open", "ELOOP"),
+	},
+	{
+		name: "open with noFollow a symlink to a directory",
+		run: (fs, p) => fs.open(p("dirsym"), { noFollow: true }),
+		expect: fail("BadResource", "open", "ELOOP"),
+	},
+	{
+		name: "open with noFollow a symlink to a file for writing",
+		run: (fs, p) => fs.open(p("filesym"), { flag: "w", noFollow: true }),
+		expect: fail("BadResource", "open", "ELOOP"),
+		check: (_, fs, p) => Effect.map(fs.readFileString(p("file")), (text) => assert.strictEqual(text, "x")),
+	},
+	{
+		name: "open with noFollow a dangling symlink for appending",
+		run: (fs, p) => fs.open(p("dangling"), { flag: "a", noFollow: true }),
+		expect: fail("BadResource", "open", "ELOOP"),
+	},
+	{
+		name: "open with noFollow a symlink for exclusive creation",
+		run: (fs, p) => fs.open(p("filesym"), { flag: "wx", noFollow: true }),
+		expect: fail("AlreadyExists", "open", "EEXIST"),
+	},
+	{
+		name: "open with noFollow a regular file",
+		run: (fs, p) => Effect.flatMap(fs.open(p("file"), { noFollow: true }), (h) => h.readAlloc(4)),
+		expect: "success",
+		check: (value) => Effect.sync(() => assert.deepStrictEqual(value, Option.some(encoder.encode("x")))),
+	},
+	{
+		name: "open with noFollow a file beneath a symlinked directory",
+		run: (fs, p) =>
+			Effect.andThen(fs.writeFileString(p("dir", "f"), "f"), fs.open(p("dirsym", "f"), { noFollow: true })),
+		expect: "success",
+	},
+	{
+		name: "open with noFollow creates a missing file",
+		run: (fs, p) => fs.open(p("created"), { flag: "w", noFollow: true }),
+		expect: "success",
+		check: (_, fs, p) => Effect.map(fs.exists(p("created")), (exists) => assert.isTrue(exists)),
+	},
+
+	// read/readAlloc with a position: the read happens at the given offset and
+	// the handle's cursor is left where it was; at or past EOF nothing is read.
+	{
+		name: "read and readAlloc at a position leave the cursor unchanged",
+		run: (fs, p) =>
+			Effect.andThen(
+				fs.writeFileString(p("digits"), "0123456789"),
+				withHandle(fs, p("digits"), "r", (h) =>
+					Effect.gen(function* () {
+						yield* h.seek(BigInt(2), "start");
+						const buffer = new Uint8Array(3);
+						const positional = yield* h.read(buffer, { position: BigInt(6) });
+						const cursorRead = yield* h.readAlloc(2);
+						const positionalAlloc = yield* h.readAlloc(3, { position: BigInt(8) });
+						const atEof = yield* h.read(new Uint8Array(2), { position: BigInt(10) });
+						const pastEof = yield* h.readAlloc(2, { position: BigInt(11) });
+						const cursor = yield* h.seek(BigInt(0), "current");
+						const rest = yield* h.readAlloc(16);
+						return {
+							positional,
+							buffer: decoder.decode(buffer),
+							cursorRead: Option.map(cursorRead, (b) => decoder.decode(b)),
+							positionalAlloc: Option.map(positionalAlloc, (b) => decoder.decode(b)),
+							atEof,
+							pastEof,
+							cursor,
+							rest: Option.map(rest, (b) => decoder.decode(b)),
+						};
+					}),
+				),
+			),
+		expect: "success",
+		check: (value) =>
+			Effect.sync(() =>
+				assert.deepStrictEqual(value, {
+					positional: 3,
+					buffer: "678",
+					cursorRead: Option.some("23"),
+					positionalAlloc: Option.some("89"),
+					atEof: 0,
+					pastEof: Option.none(),
+					cursor: BigInt(4),
+					rest: Option.some("456789"),
+				}),
+			),
+	},
+	{
+		name: "read at a negative position",
+		run: (fs, p) => withHandle(fs, p("file"), "r", (h) => h.read(new Uint8Array(1), { position: BigInt(-1) })),
+		expect: fail("BadArgument", "read"),
+	},
+	{
+		name: "readAlloc at a negative position",
+		run: (fs, p) => withHandle(fs, p("file"), "r", (h) => h.readAlloc(1, { position: BigInt(-1) })),
+		expect: fail("BadArgument", "readAlloc"),
+	},
+	{
+		name: "read at a position from a write-only handle",
+		run: (fs, p) => withHandle(fs, p("file"), "w", (h) => h.read(new Uint8Array(1), { position: BigInt(0) })),
+		expect: fail("Unknown", "read", "EBADF"),
 	},
 
 	// link and symlink

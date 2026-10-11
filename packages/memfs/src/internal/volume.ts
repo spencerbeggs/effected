@@ -39,6 +39,10 @@
 //   of any directory, ENOTEMPTY, EBADF, fs.cp codes, trailing slashes, NUL
 //   bytes, glob roots, negative truncate).
 // - Case folding: State.caseSensitive, lookupEntry, case-only rename.
+// - Newer `FileSystem` options the pinned upstream predates: `open` honors
+//   `noFollow` (ELOOP on a final-component symlink, as O_NOFOLLOW does) and
+//   the handle's `read`/`readAlloc` honor `File.ReadOptions.position` (read at
+//   the offset, cursor untouched, negative is BadArgument).
 
 import type { Cause } from "effect";
 import {
@@ -627,6 +631,7 @@ interface OpenMode {
 interface OpenOptions {
 	readonly flag?: FileSystem.OpenFlag | undefined;
 	readonly mode?: number | undefined;
+	readonly noFollow?: boolean | undefined;
 }
 
 // =============================================================================
@@ -1611,6 +1616,13 @@ const openDescriptorUnlocked: (
 				if (mode.exclusive) {
 					return yield* alreadyExists("open", path);
 				}
+				// KIT EXTENSION (FileSystem.open noFollow): O_NOFOLLOW refuses a
+				// symbolic link as the final component with ELOOP, dangling or not,
+				// with or without O_CREAT; O_EXCL is checked first (EEXIST above),
+				// and a link earlier in the path is still followed.
+				if (options?.noFollow === true && unresolved.success.entry._tag === "SymbolicLink") {
+					return yield* badResource("open", path, "ELOOP", "Too many symbolic links");
+				}
 				const resolved = yield* Effect.result(resolve(nextState, candidatePath, { method: "open" }));
 				if (resolved._tag === "Failure") {
 					if (
@@ -1769,11 +1781,16 @@ const fileInfo = (entry: InodeEntry): FileSystem.File.Info => ({
 	blocks: Option.none(),
 });
 
+// `explicit` is `File.ReadOptions.position`: the read happens at that offset
+// and the cursor is left where it was (node reads the descriptor with a
+// position and skips the cursor update); without it the read happens at the
+// cursor and advances it.
 const readDescriptorUnlocked = Effect.fnUntraced(function* (
 	state: State,
 	fd: FileDescriptor,
 	length: number,
 	method: string,
+	explicit?: bigint | undefined,
 ) {
 	const [descriptor, entry] = yield* getOpenFile(state, fd, method, "readable");
 	if (length === 0) {
@@ -1783,7 +1800,7 @@ const readDescriptorUnlocked = Effect.fnUntraced(function* (
 			size: 0,
 		};
 	}
-	const position = Number(descriptor.position);
+	const position = Number(explicit ?? descriptor.position);
 	if (!Number.isSafeInteger(position) || position < 0) {
 		return yield* volumeLimit(method, fd, "Invalid file position");
 	}
@@ -1792,10 +1809,13 @@ const readDescriptorUnlocked = Effect.fnUntraced(function* (
 	return {
 		state: {
 			...state,
-			descriptors: HashMap.set(state.descriptors, fd, {
-				...descriptor,
-				position: BigInt(position + bytesRead),
-			}),
+			descriptors:
+				explicit === undefined
+					? HashMap.set(state.descriptors, fd, {
+							...descriptor,
+							position: BigInt(position + bytesRead),
+						})
+					: state.descriptors,
 			inodes: HashMap.set(state.inodes, entry.ino, { ...entry, atime: now }),
 		},
 		bytes: entry.data.subarray(position, position + bytesRead),
@@ -1803,13 +1823,29 @@ const readDescriptorUnlocked = Effect.fnUntraced(function* (
 	};
 });
 
-const readDescriptor = (volume: Volume, fd: FileDescriptor, buffer: Uint8Array, method: string) =>
-	volume.mutate((state) =>
-		Effect.map(readDescriptorUnlocked(state, fd, buffer.length, method), (result) => {
+// node validates a negative position before touching the descriptor, as a
+// BadArgument with the node adapter's own description.
+const negativePosition = (method: string): PlatformError =>
+	argumentError(method, "Cannot read before the start of the file");
+
+const readDescriptor = (
+	volume: Volume,
+	fd: FileDescriptor,
+	buffer: Uint8Array,
+	method: string,
+	options?: FileSystem.File.ReadOptions,
+) => {
+	const explicit = options?.position;
+	if (explicit !== undefined && explicit < BigInt(0)) {
+		return Effect.fail(negativePosition(method));
+	}
+	return volume.mutate((state) =>
+		Effect.map(readDescriptorUnlocked(state, fd, buffer.length, method, explicit), (result) => {
 			buffer.set(result.bytes);
 			return transitionResult(result.state, result.size);
 		}),
 	);
+};
 
 const writeDescriptorUnlocked = Effect.fnUntraced(function* (
 	state: State,
@@ -1919,16 +1955,19 @@ class MemoryFile implements FileSystem.File {
 		);
 	}
 
-	read(buffer: Uint8Array): Effect.Effect<number, PlatformError> {
-		return readDescriptor(this.volume, this.fd, buffer, "read");
+	read(buffer: Uint8Array, options?: FileSystem.File.ReadOptions): Effect.Effect<number, PlatformError> {
+		return readDescriptor(this.volume, this.fd, buffer, "read", options);
 	}
 
-	readAlloc(size: number): Effect.Effect<Option.Option<Uint8Array>, PlatformError> {
+	readAlloc(
+		size: number,
+		options?: FileSystem.File.ReadOptions,
+	): Effect.Effect<Option.Option<Uint8Array>, PlatformError> {
 		if (!Number.isSafeInteger(size) || size < 0) {
 			return Effect.fail(argumentError("readAlloc", "size must be a non-negative safe integer"));
 		}
 		return Effect.flatMap(allocateBytes(size, this.fd, "readAlloc"), (buffer) =>
-			Effect.map(readDescriptor(this.volume, this.fd, buffer, "readAlloc"), (bytesRead) =>
+			Effect.map(readDescriptor(this.volume, this.fd, buffer, "readAlloc", options), (bytesRead) =>
 				bytesRead === 0 ? Option.none() : Option.some(bytesRead === size ? buffer : buffer.slice(0, bytesRead)),
 			),
 		);

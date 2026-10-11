@@ -20,8 +20,8 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T14:11:47Z
-  body_sha256: 522749f07160ad72f495733e32583596fe8ae9a84c0ffd8e30b293f953a987ba
+  at: 2026-10-11T17:00:26Z
+  body_sha256: b41bb355003a7332683903ec2d7a780980f93f5902a23a6a537ed8e7dad81272
 ---
 
 # @effected/memfs
@@ -630,6 +630,25 @@ authoritative list.
     failure, because the call that follows walks the same component and
     reports node's own errno and syscall. `integration/ports.int.test.ts`
     pins the handle's `mkdir` against real `mkdirSync`.
+14. **`FileSystem` options the pinned upstream predates** (#996) — core's
+    interface grew `open({ noFollow })` and `File.ReadOptions.position` on
+    `read`/`readAlloc`. The engine's one-argument signatures still
+    typechecked, so both were silently ignored: a positional read read at
+    the cursor and advanced it, and `noFollow` followed the link. Both now
+    match the node adapter, probed through the differential suite on
+    macOS: `noFollow` refuses a symbolic link as the **final** component
+    with `BadResource` `ELOOP` (dangling or not, with or without a create
+    flag; `wx` is still `EEXIST` because O_EXCL is checked first) while a
+    link earlier in the path is followed, and a positional read happens at
+    the offset, leaves the cursor where it was, reads nothing at or past
+    EOF, and fails `BadArgument` on a negative position (the adapter's own
+    description, before the descriptor is consulted). The fenced
+    `KIT EXTENSION (FileSystem.open noFollow)` lives in
+    `openDescriptorUnlocked`; `readDescriptorUnlocked` takes the explicit
+    position and skips the cursor update. `ErrnoParityContract.ts` pins
+    both against the real layer, so a further option the interface grows
+    shows up there first — re-diff the interface against `OpenOptions` and
+    the handle on every Effect advance.
 
 ## Superseded: opt-in `Volume`, no type widening
 
