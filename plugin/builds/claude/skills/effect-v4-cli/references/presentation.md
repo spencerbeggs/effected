@@ -50,7 +50,7 @@ Not interactive, `CliEnv` replaces `Terminal` with a gated one: `readLine` fails
 | `CliEnvOptions` | What it does |
 | --- | --- |
 | `audienceEnvVar` | the variable that overrides the audience; an invalid value warns once and is ignored |
-| `stderrIsTerminal` | `Effect<boolean>`; core's `Stdio` reports only stdout, so `CliEnv.layer` alone mirrors it. Unset, a redirected stderr is painted whenever stdout is a terminal, so a Node bin passes the real check from its entry, the one file that reads the host: `Effect.sync(() => process.stderr.isTTY === true)`, until core's `Stdio` has a stderr check (Effect-TS/effect#8639) |
+| `stderrIsTerminal` | `Effect<boolean>`; an override of core's `Stdio.stderrIsTerminal`, which `CliEnv.layer` reads by default and the platform `Stdio` answers from the host, so a redirected stderr is unpainted with nothing passed. Pass it only for a host whose `Stdio` cannot say (`Stdio.make` without the field answers `false`); a bin never reads `process.stderr.isTTY` for it |
 | `theme` | `{ tokens?, glyphs? }` for `CliTheme.layer` |
 | `log` | `CliLogOptions` (optionally with `file`); `main` installs `CliLog.layer(log)` as the logger set and builds the platform under it. Only `main` reads it |
 | `formatter` | methods of core's `CliOutput.Formatter` to replace in the coloured one `main` installs, e.g. `formatVersion`. Only `main` reads it |

@@ -25,7 +25,7 @@ set -euo pipefail
 # deliberately a constant rather than read from the host repo's catalog — the
 # point is to tell a LAGGING repo what it should move to, so comparing against
 # that repo's own (possibly stale) catalog would defeat the check.
-EFFECT_PIN="4.0.2"
+EFFECT_PIN="4.0.3"
 
 # --- vendored-source posture -------------------------------------------------
 # The session's project: CLAUDE_PROJECT_DIR on Claude Code, else the envelope's

@@ -238,7 +238,7 @@ behavior with `Argument.Path` — both kinds route through the same
 ## The built-in global flags are on by default, program-wide, not per command
 
 `--help`, `--version`, `--wizard`, `--completions` and `--log-level`
-(`cli/GlobalFlag.ts:166,190,214,235,263`) are registered on every
+(`cli/GlobalFlag.ts:166,190,214,235,271`) are registered on every
 command tree by default — a subcommand cannot "not have" `--help` on its own.
 Trim them program-wide with `CliConfig.layer({ builtIns: [] })`
 (`cli/CliConfig.ts`), read by `Command.runWith` when it collects the

@@ -28,7 +28,7 @@ type).
 
 Every `Flag`, `Argument`, `Prompt` and `GlobalFlag` constructor is a
 PascalCase name (`cli/Flag.ts:60-449`, `Argument.ts:62-308`,
-`Prompt.ts:871-1425`, `GlobalFlag.ts:112,131`). The lowercase spellings are
+`Prompt.ts:888-1442`, `GlobalFlag.ts:112,131`). The lowercase spellings are
 **`undefined`** on the namespace — a call type-errors, and a lookup probe
 that prints `typeof Flag.string` and concludes "no string flag" is the
 expensive misread. The roster:
@@ -93,8 +93,8 @@ almost none of them for Node:**
 | service | what core actually ships |
 | --- | --- |
 | `Path` | `Path.layer` — a real implementation (posix), `Path.ts:873` |
-| `FileSystem` | only `FileSystem.layerNoop(partial)` — a deny-by-default **stub factory** (`FileSystem.ts:772`); never use it as a test double: a test's `FileSystem` is `@effected/memfs`'s `MemoryFileSystem.layer` |
-| `Stdio` | `Stdio.layerTest(partial)` — **test-only**, by its name and its shape (`Stdio.ts:159`) |
+| `FileSystem` | only `FileSystem.layerNoop(partial)` — a deny-by-default **stub factory** (`FileSystem.ts:777`); never use it as a test double: a test's `FileSystem` is `@effected/memfs`'s `MemoryFileSystem.layer` |
+| `Stdio` | `Stdio.layerTest(partial)` — **test-only**, by its name and its shape (`Stdio.ts:166`) |
 | `Terminal` | **no layer at all** — `Terminal.ts` declares no `layer` export |
 | `ChildProcessSpawner` | the contract and the `ChildProcess` command values, but **no layer** — see below |
 

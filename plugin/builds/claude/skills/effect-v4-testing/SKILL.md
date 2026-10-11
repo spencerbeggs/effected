@@ -240,7 +240,7 @@ A mock service is a `Context.Service` with a test `Layer`, swapped `Live` →
 **Testing a boundary-tier package that does real IO needs no platform package.**
 `Path.layer` comes from `effect` core (`Path.ts:873`) and the filesystem double
 is `@effected/memfs`, a pure package with no `node:*` import — core ships
-**no** `FileSystem.layer`, only the deny-by-default `layerNoop` (`FileSystem.ts:772`),
+**no** `FileSystem.layer`, only the deny-by-default `layerNoop` (`FileSystem.ts:777`),
 which is not a double
 ([references/providing-layers.md](./references/providing-layers.md)). So `@effected/walker` tests filesystem behavior
 with zero `@effect/platform-node` devDependency:
@@ -271,7 +271,7 @@ layer(Volume)("seeded filesystem", (it) => {
 ```
 
 **`layerNoop`'s unstubbed members answer in THREE different ways**
-(`makeNoop` (`FileSystem.ts:642`) splits them) — typed `NotFound`, silent success (`exists` → `false`, `remove` → `Effect.void`), and
+(`makeNoop` (`FileSystem.ts:647`) splits them) — typed `NotFound`, silent success (`exists` → `false`, `remove` → `Effect.void`), and
 `Effect.die` (`makeDirectory`, `makeTemp*`), which `Effect.catch` cannot
 absorb. **None of this is a reason to stub `layerNoop` better — it is the
 argument for `@effected/memfs`.** This repo's rule: a `FileSystem` double is

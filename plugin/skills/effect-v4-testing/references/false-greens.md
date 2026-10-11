@@ -235,15 +235,15 @@ read" passes against a code path that was only *described*, never run.
 
 **Not one way — and two blanket statements circulate, and both are wrong**:
 "every unstubbed member fails typed `NotFound`" and "every unstubbed member
-dies". `layerNoop` at `FileSystem.ts:772` is
-`Layer.succeed(FileSystem)(makeNoop(fileSystem))`, and `makeNoop` (`:642`)
+dies". `layerNoop` at `FileSystem.ts:777` is
+`Layer.succeed(FileSystem)(makeNoop(fileSystem))`, and `makeNoop` (`:647`)
 splits its members:
 
 | members | behavior | absorbable by `Effect.catch`? |
 | --- | --- | --- |
 | `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `notFound(<method>, path)` — a `PlatformError` | **yes** |
-| `exists` → `false` (`:663`), `remove` → `Effect.void` (`:702`) | silent success | n/a — never fails |
-| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:669`–`:682`) | `Effect.die("not implemented")` — a **defect** | **no** |
+| `exists` → `false` (`:668`), `remove` → `Effect.void` (`:707`) | silent success | n/a — never fails |
+| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:674`–`:681`) | `Effect.die("not implemented")` — a **defect** | **no** |
 
 Three distinct false greens, one per row:
 
@@ -277,7 +277,7 @@ and `MemoryFileSystem.die(defect)` for row three. A `FileSystem` double is `@eff
 
 Companion fact, same tier: **`FileSystem.readFileString` strips a leading BOM.**
 It is `impl.readFile(path)` piped through `new TextDecoder(encoding).decode(_)`
-(`FileSystem.ts:513-524`, the decode itself at `:516`), and `TextDecoder`
+(`FileSystem.ts:518-529`, the decode itself at `:521`), and `TextDecoder`
 defaults to `ignoreBOM: false`,
 which consumes the mark. "Read the file as a string" therefore looks lossless
 and is not. A round-trip test that reads with `readFileString` and writes back
