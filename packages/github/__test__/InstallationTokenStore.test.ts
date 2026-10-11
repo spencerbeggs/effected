@@ -408,6 +408,49 @@ describe("GitHubApp.cachedToken single-flight", () => {
 		}),
 	);
 
+	it.effect("a leader interrupted as its store miss resolves leaves no key behind: the next miss still mints", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(NOW_MILLIS);
+			const app = yield* gatedApp(freshToken("ghs_1"));
+			// A store whose miss interrupts the leader on the way back, so the interrupt is
+			// pending exactly when the leader would register its key and fork the mint.
+			const leaderRef = yield* Ref.make(Option.none<Fiber.Fiber<unknown, unknown>>());
+			const gets = yield* Ref.make(0);
+			const store = Layer.succeed(InstallationTokenStore, {
+				get: () =>
+					Effect.gen(function* () {
+						const n = yield* Ref.updateAndGet(gets, (count) => count + 1);
+						if (n === 1) {
+							const leader = yield* Ref.get(leaderRef);
+							if (Option.isSome(leader)) yield* Effect.forkDetach(Fiber.interrupt(leader.value));
+						}
+						return Option.none<string>();
+					}),
+				set: () => Effect.void,
+			});
+			const layers = Layer.mergeAll(app.layer, store);
+			const leader = yield* Effect.forkChild(Effect.provide(GitHubApp.cachedToken(REQUEST), layers));
+			yield* Ref.set(leaderRef, Option.some(leader));
+			const leaderExit = yield* Fiber.await(leader);
+			assert.isTrue(
+				Exit.isFailure(leaderExit) && Cause.hasInterruptsOnly(leaderExit.cause),
+				"the leader is interrupted",
+			);
+			// Whether the leader died before or after registering, nothing may be left
+			// in flight without a mint behind it: a fresh miss must complete. The runtime
+			// processes this interrupt before the generator resumes, so the set-then-fork
+			// gap itself is not reached here; the gap is closed by the uninterruptible
+			// step in makeCachedToken, and this pins the invariant that step protects.
+			yield* Latch.open(app.gate);
+			const next = yield* Effect.provide(GitHubApp.cachedToken(REQUEST), layers).pipe(
+				Effect.timeoutOption(Duration.seconds(5)),
+			);
+			assert.isTrue(Option.isSome(next), "the next miss hung on a stranded key");
+			if (Option.isSome(next)) assert.strictEqual(Redacted.value(next.value.token.token), "ghs_1");
+			assert.isAtLeast(yield* Ref.get(app.minted), 1);
+		}),
+	);
+
 	it.effect("a stubbed cachedToken on the double is honoured", () =>
 		Effect.gen(function* () {
 			const token = yield* freshToken("ghs_stub");

@@ -786,8 +786,6 @@ const makeCachedToken = (token: GitHubAppShape["token"]): GitHubAppShape["cached
 			return { token: yield* Deferred.await(joined), source: "joined" } satisfies CachedToken;
 		}
 		const deferred = Deferred.makeUnsafe<InstallationToken, GitHubAppError>();
-		inFlight.set(request.installationId, deferred);
-
 		const mint = Effect.gen(function* () {
 			const minted = yield* token(request);
 			const now = yield* Clock.currentTimeMillis;
@@ -809,7 +807,16 @@ const makeCachedToken = (token: GitHubAppShape["token"]): GitHubAppShape["cached
 				),
 			),
 		);
-		yield* Effect.forkDetach(mint);
+		// Registering the key and forking the mint happen in one uninterruptible step:
+		// once the key is in the map, the mint's onExit is guaranteed to run and clear
+		// it. An interrupt landing between the two would otherwise leave a key that
+		// nothing completes, and every later miss for the installation would hang.
+		yield* Effect.uninterruptible(
+			Effect.suspend(() => {
+				inFlight.set(request.installationId, deferred);
+				return Effect.forkDetach(mint);
+			}),
+		);
 		return { token: yield* Deferred.await(deferred), source: "minted" } satisfies CachedToken;
 	});
 };
