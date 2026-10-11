@@ -1,5 +1,68 @@
 # @effected/pnpm-plugin-effect
 
+## 0.14.0
+
+### Bug Fixes
+
+#### Hold every Effect package at exactly 4.0.2
+
+- 0\.13.15 catalogued the `@effect/*` packages at `^4.0.3` while `effect` stayed at `^4.0.2`. `effect@4.0.3` never reached npm (Effect-TS/effect#8994), so a project that adopted 0.13.15 resolved 4.0.3 packages next to `effect@4.0.2`, and the program crashed when it imported them.
+
+- Every entry in the `effect` catalog is now an exact version (`4.0.2`, and `0.51.1` for `@effect/tsgo`) with `strategy: "lock"`, so `catalog:effect` and `catalog:effect:peers` both resolve exactly that version.
+
+- New `overrides` pin `effect` and all 26 `@effect/*` packages to `4.0.2` for any `^4.0.0` request anywhere in the dependency graph. They also cover packages pulled in by other packages, which a catalog cannot reach. They are scoped to the 4.x line, so a tool still built on an Effect release candidate keeps its own version.
+
+- The overrides will be removed once `effect@4.0.3` is on npm. [#997][#997]
+
+### Maintenance
+
+#### Updates 38 catalog:effected versions
+
+- `@effected/app` ^0.21.2 -> ^0.21.3 (peer ^0.21.0)
+- `@effected/cli` ^0.16.1 -> ^0.16.2 (peer ^0.16.0)
+- `@effected/commands` ^0.11.0 -> ^0.11.1 (peer ^0.11.0)
+- `@effected/config-file` ^0.14.2 -> ^0.14.3 (peer ^0.14.0)
+- `@effected/engine` ^0.4.0 -> ^0.4.1 (peer ^0.4.0)
+- `@effected/env` ^0.1.1 -> ^0.1.2 (peer ^0.1.0)
+- `@effected/git` ^0.20.0 -> ^0.20.1 (peer ^0.20.0)
+- `@effected/github` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/github-actions` ^0.20.3 -> ^0.20.4 (peer ^0.20.0)
+- `@effected/github-commands` ^0.2.1 -> ^0.2.2 (peer ^0.2.0)
+- `@effected/github-references` ^0.7.0 -> ^0.7.1 (peer ^0.7.0)
+- `@effected/glob` ^0.10.0 -> ^0.10.1 (peer ^0.10.0)
+- `@effected/images` ^0.1.1 -> ^0.1.2 (peer ^0.1.0)
+- `@effected/jsonc` ^0.15.1 -> ^0.15.2 (peer ^0.15.0)
+- `@effected/jsonl` ^0.11.0 -> ^0.11.1 (peer ^0.11.0)
+- `@effected/jwt` ^0.1.0 -> ^0.1.1 (peer ^0.1.0)
+- `@effected/lockfiles` ^0.15.0 -> ^0.15.1 (peer ^0.15.0)
+- `@effected/lsp` ^0.1.1 -> ^0.1.2 (peer ^0.1.0)
+- `@effected/markdown` ^0.15.1 -> ^0.15.2 (peer ^0.15.0)
+- `@effected/mcp` ^0.5.0 -> ^0.5.1 (peer ^0.5.0)
+- `@effected/memfs` ^0.14.0 -> ^0.14.1 (peer ^0.14.0)
+- `@effected/npm` ^0.20.0 -> ^0.20.1 (peer ^0.20.0)
+- `@effected/package-json` ^0.20.1 -> ^0.20.2 (peer ^0.20.0)
+- `@effected/runtimes` ^0.10.2 -> ^0.10.3 (peer ^0.10.0)
+- `@effected/sbom` ^0.10.1 -> ^0.10.2 (peer ^0.10.0)
+- `@effected/schema-org` ^0.7.0 -> ^0.7.1 (peer ^0.7.0)
+- `@effected/schemastore` ^0.21.4 -> ^0.21.5 (peer ^0.21.0)
+- `@effected/schemastore-cli` ^0.21.4 -> ^0.21.5 (peer ^0.21.0)
+- `@effected/semver` ^0.11.0 -> ^0.11.1 (peer ^0.11.0)
+- `@effected/spdx` ^0.12.0 -> ^0.12.1 (peer ^0.12.0)
+- `@effected/store` ^0.13.1 -> ^0.13.2 (peer ^0.13.0)
+- `@effected/templates` ^0.10.0 -> ^0.10.1 (peer ^0.10.0)
+- `@effected/toml` ^0.11.1 -> ^0.11.2 (peer ^0.11.0)
+- `@effected/tsconfig-json` ^0.13.0 -> ^0.13.1 (peer ^0.13.0)
+- `@effected/walker` ^0.15.0 -> ^0.15.1 (peer ^0.15.0)
+- `@effected/workspaces` ^0.32.0 -> ^0.32.1 (peer ^0.32.0)
+- `@effected/xdg` ^0.9.0 -> ^0.9.1 (peer ^0.9.0)
+- `@effected/yaml` ^0.19.1 -> ^0.19.2 (peer ^0.19.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) and [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
+[#997]: https://github.com/spencerbeggs/effected/pull/997
+
 ## 0.13.15
 
 ### Maintenance

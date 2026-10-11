@@ -1,5 +1,18 @@
 # @effected/ai-plugin
 
+## 0.37.0
+
+### Documentation
+
+- The `effected-packages` github reference and the `github-app-tokens` skill now cover the widened `CheckRunRef`, `CheckRun.updateRef`, `completeRef` and `list`, the new `AuthenticatedApp` service, and `GitHubApp.botUser`.
+- The construct index lists the new `@effected/github` exports. [#997][#997]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#997]: https://github.com/spencerbeggs/effected/pull/997
+
 ## 0.36.0
 
 ### Documentation
