@@ -9,19 +9,19 @@ tags:
   - release
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T23:08:17Z
-  body_sha256: 330ee8f0caac2b63633cb64c3f4eecc666af11449a9022cc2b4b2529b3191c84
+  at: 2026-10-11T16:59:56Z
+  body_sha256: 494596952acdba6745431f62ff485354349870ead732684010badd7939d36f1c
 ---
 
 # Advance the effect pin
 
 ## Trigger
 
-A new `4.x` the kit should build on has published — `effect` core and every satellite, not the satellites alone. The `effect` and `effect:peers` catalogs hold exact versions under `lock`, so the advance moves the catalog literal, the lockfile and the plugin's HOLD overrides together. Only a human runs this procedure's catalog-mutating steps — agents surface the commands and let the user run them. Why the catalog is exact and held by overrides: [the effect catalog locks every entry to an exact version](../decisions/effect-catalog-locked-exact.md).
+A new `4.x` the kit should build on has published — `effect` core and every satellite, not the satellites alone. The plugin's `overridesFromCatalogs` directive derives the graph-wide family pins from the catalog literal, so the advance moves the catalog literal and the lockfile together and the pins follow by construction; there is no override block to move by hand. Only a human runs this procedure's catalog-mutating steps — agents surface the commands and let the user run them. Why the pins are derived and graph-wide: [the effect family is pinned by overrides derived from the catalog](../decisions/effect-overrides-derived-from-catalog.md).
 
 ## Steps
 
-1. **Confirm core published, then lift the hold.** Check that `effect@<new-version>` itself resolves on npm, not only its satellites — a satellite paired with an older core dies at import ([the incident](../incidents/effect-satellites-published-without-core.md)). Then remove the HOLD block (`"<name>@^4.0.0": "4.0.2"`) from `overrides` in `packages/pnpm-plugin-effect/savvy.build.ts` and its `HOLD` map in `__test__/catalog.test.ts`, or move both to the new version if the hold is to stay; the upgrade CLI never rewrites overrides. For the 4.0.3 advance, effected issue 996 carries the full checklist.
+1. **Confirm core published.** Check that `effect@<new-version>` itself resolves on npm, not only its satellites — a satellite paired with an older core dies at import ([the incident](../incidents/effect-satellites-published-without-core.md)). If only the satellites are out, stop: the derived pins will ask for a core npm does not have and every consumer install fails loudly until it does.
 2. **Advance the catalogs and the lockfile.** The user runs `pnpm pnpm:up` (`rolldown-pnpm-config upgrade savvy.build.ts` inside `packages/pnpm-plugin-effect`) followed by `pnpm pnpm:export`, which mutates `pnpm-workspace.yaml`'s `effect` / `effect:peers` catalogs and the lockfile. Agents must not invoke either command directly; only surface them. Read the lockfile's resolved `effect` afterwards — that version, not the catalog literal, is what the next steps follow.
 3. **Re-pin `.repos/effect` to the lockfile's version, in the same commit.** Run `savvy repos pin effect effect@<resolved-version>` (or the `repos_manage` MCP tool with `action:"pin"`) so the vendored source and the installed version move together by construction — never let the pin land in a separate commit from the lockfile move. Review any `staleNoteIds` the pin flags. See [vendored Effect is pinned to the lockfile's tag](../decisions/vendored-effect-pinned-to-catalog-tag.md).
 4. **Move the plugin pin.** Bump `EFFECT_PIN` in `plugin/hooks/session-start/orientation.sh`, the one script both hosts run and the only place the plugin states the pin, then rebuild with `pnpm build --filter @effected/ai-plugin` so both builds carry it. The bats suite (`plugin/__test__/session-start-orientation.bats`) reads the pin from that line and fails until it matches `.repos/config.json`'s effect ref and a lockfile-resolved `effect`, so there is no test literal to bump.
@@ -33,4 +33,4 @@ A new `4.x` the kit should build on has published — `effect` core and every sa
 
 ## Observable end state
 
-The lockfile's resolved `effect`, `.repos/effect`'s pinned tag, and `EFFECT_PIN` in the orientation hook all name the same release; `pnpm test:bats` passes; and `skill-anchors.json` was derived from that vendored tree. The catalogs read the new exact version, and the HOLD overrides are gone or name that same version. A bridge (`overrides` or `packageExtensions`) is present only if the published closure genuinely needs it, is scoped to exactly the stranded packages, and has its removal condition recorded. A full-kit build and test run passes.
+The lockfile's resolved `effect`, `.repos/effect`'s pinned tag, and `EFFECT_PIN` in the orientation hook all name the same release; `pnpm test:bats` passes; and `skill-anchors.json` was derived from that vendored tree. The catalogs read the new version under `lock-minor` carets, and the built pnpmfile's derived family pins name that same version (`__test__/catalog.test.ts` compares the two). A bridge (`overrides` or `packageExtensions`) is present only if the published closure genuinely needs it, is scoped to exactly the stranded packages, and has its removal condition recorded. A full-kit build and test run passes.

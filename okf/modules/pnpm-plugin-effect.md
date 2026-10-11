@@ -10,8 +10,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T23:08:17Z
-  body_sha256: e6a911b02075343f6251f54cd910a98bef17283844946896127dd9839b74e842
+  at: 2026-10-11T16:59:56Z
+  body_sha256: c22b93d9a57cd9882b075c4f8e86303594cc424610d76b3dabe72d3bbf48c27d
 ---
 
 # pnpm-plugin-effect
@@ -58,19 +58,15 @@ Memberships, versions and strategies all live in that one file. See
 [the effected catalog literal](../models/effected-catalog-literal.md) for
 its shape and load-bearing constraints.
 
-The `effect` (v4) catalog gives every entry an exact `range` with an
-identical `peer` under the `lock` strategy, as
-[the exact-lock decision](../decisions/effect-catalog-locked-exact.md)
-rules: `effect` and its 26 satellites at `4.0.2`, and `@effect/tsgo`,
-which versions on its own line, at `0.51.1`. `lock` emits the peer
-verbatim, so `catalog:effect` and `catalog:effect:peers` both carry the
-exact version; `lock-minor` would floor the peer patch to a caret. A caret
-here let a fresh resolve pair a 4.0.3 satellite with core 4.0.2, which
-dies at import — see
-[the incident](../incidents/effect-satellites-published-without-core.md).
-`__test__/catalog.test.ts` asserts every entry is exact on `lock` and that
-every 4.x entry holds `effect`'s own version, so a registry `upgrade` bump
-that moves the satellites alone fails the suite.
+The `effect` (v4) catalog gives `effect` and its 26 satellites a caret
+`range` under `lock-minor` with the peer floored to the minor (`^4.0.3`
+over `^4.0.0` today), and `@effect/tsgo`, which versions on its own line,
+an exact `0.51.1`. The catalog range is not what keeps a satellite from
+pairing with an older core; the derived override layer below is, as
+[the derived-overrides decision](../decisions/effect-overrides-derived-from-catalog.md)
+rules. `__test__/catalog.test.ts` asserts every entry is a caret on
+`lock-minor` and that every 4.x entry names `effect`'s own version, so a
+registry `upgrade` bump that moves the satellites alone fails the suite.
 
 `src/index.ts` and `src/pnpmfile.ts` are one-line re-exports over
 `rolldown-pnpm-config` virtual modules; all real configuration lives in
@@ -144,21 +140,23 @@ pipeline and crashed every build — so keeping the workspace and toolchain
 resolved to one `effect` copy remains the invariant this table's own
 package does not solve.
 
-## The scoped platform-node-shared overrides
+## The derived family pins and the scoped platform-node-shared overrides
 
 The plugin also publishes a pnpm `overrides` block, which a consumer's
 install applies. A consumer's own value for the same selector wins.
 
-It first holds `effect` and every satellite at 4.0.2 with one
-`"<name>@^4.0.0": "4.0.2"` entry each, until `effect@4.0.3` reaches npm.
-The overrides reach transitive satellite requests that no catalog
-governs. They also survive the registry `upgrade` CLI, which rewrites
-catalogs only. Each selector is scoped to `^4.0.0`, so a release
-candidate's own `effect` sits outside it and is untouched. Why, and the
-removal condition:
-[the exact-lock decision](../decisions/effect-catalog-locked-exact.md).
+Most of it is derived, not authored: the `overridesFromCatalogs:
+{ catalog: "effect", exclude: ["@effect/tsgo"] }` directive makes
+`rolldown-pnpm-config` emit one `"<name>@^4.0.0": "<catalog version>"`
+entry for `effect` and every satellite at build time, so the pins move
+with the catalog literal and survive the registry `upgrade` CLI, which
+rewrites catalogs only. They reach transitive satellite requests that no
+catalog governs and hold the whole consumer graph on one `effect`. Each
+selector is scoped to `^4.0.0`, so a release candidate's own `effect`
+sits outside it and is untouched. Why this shape and what it costs:
+[the derived-overrides decision](../decisions/effect-overrides-derived-from-catalog.md).
 
-It also holds two release-candidate entries, one per release candidate
+The authored part holds two release-candidate entries, one per release candidate
 whose `@effect/platform-node` is still in use by built tools:
 
 - `@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared`:

@@ -9,8 +9,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T23:08:17Z
-  body_sha256: d344f6149aed50c4d8dd6f4c3ccd85f642e72501f166ef2239a0521bb5f6d31c
+  at: 2026-10-11T16:59:56Z
+  body_sha256: 802aa3a7f2588c3e37d03873bd0fd0f51c31c5bb76c53d78275be66198088603
 ---
 
 # The effected catalog literal
@@ -26,18 +26,21 @@ package name, and every entry is an object of the same three fields:
 `range` (the version this catalog installs, or for `effected` the
 package's next-release version), `peer` (the input the peer-floor
 computation reads, which becomes the `:peers` twin's value) and
-`strategy`. The `effect` catalog uses `"lock"`: every entry's `range` is
-an exact version and its `peer` is identical, `4.0.2` for `effect` and
-every `@effect/*` satellite and `0.51.1` for `@effect/tsgo`, which versions
-on its own line. `lock` emits the peer verbatim, operator included. The
-`effected` catalog uses `"lock-minor"`, which floors each peer's patch.
+`strategy`. The `effect` catalog uses `"lock-minor"`: every `effect` and
+`@effect/*` entry's `range` is a caret on the current release and its
+`peer` is floored to the minor (`^4.0.3` over `^4.0.0` today), while
+`@effect/tsgo`, which versions on its own line, stays an exact `0.51.1` so
+the allowed-versions generator still names it. The `effected` catalog also
+uses `"lock-minor"`, which floors each peer's patch.
 `effected` entries additionally carry `source: "workspace"`, telling the
 upgrade CLI to resolve the version from this workspace rather than
 treating `range` as an already-final value.
 
-The literal also carries an `overrides` block: the HOLD entries
-(`"<name>@^4.0.0": "4.0.2"` for `effect` and every satellite) and the
-scoped release-candidate `platform-node-shared` pins; see [the scoped overrides](../modules/pnpm-plugin-effect.md#the-scoped-platform-node-shared-overrides).
+The literal also carries an `overridesFromCatalogs` directive, from which
+the build derives the family pins (`"<name>@^4.0.0": "<catalog version>"`
+for `effect` and every satellite, `@effect/tsgo` excluded), and an
+authored `overrides` block holding only the scoped release-candidate
+`platform-node-shared` pins; see [the derived pins and scoped overrides](../modules/pnpm-plugin-effect.md#the-derived-family-pins-and-the-scoped-platform-node-shared-overrides).
 
 A `peerDependencyRules.allowedVersionsFromCatalogs` block sits alongside
 `catalogs`, naming the source catalog (`effect`) and the peer each rule
@@ -69,8 +72,9 @@ that resolves outside the tag `.repos/effect` is pinned to lets the
 vendored source describe a surface that is not installed. A satellite
 `range` ahead of `effect`'s own pairs a satellite with a core it was not
 built for, which dies at import; `__test__/catalog.test.ts` fails when any
-4.x entry differs from `effect` — see [the effect catalog locks every
-entry to an exact version](../decisions/effect-catalog-locked-exact.md).
+4.x entry differs from `effect`, and the derived family pins hold every
+consumer graph to that one version — see [the effect family is pinned by
+overrides derived from the catalog](../decisions/effect-overrides-derived-from-catalog.md).
 A non-exact `range` also changes the allowed-versions table: the
 generator emits a rule only for an exact entry. An entry missing
 from the `effected` catalog entirely is invisible to `rolldown-pnpm-config

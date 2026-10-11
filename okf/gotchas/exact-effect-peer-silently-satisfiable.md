@@ -16,8 +16,8 @@ sources:
     title: "The effect catalog locks every entry to an exact version, held by overrides"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T23:08:17Z
-  body_sha256: c88bb1d92aa10970787423364b4103d4e35bcc03e9edca2e62b0b96400479968
+  at: 2026-10-11T16:59:56Z
+  body_sha256: 4926d86954f78dc88213031c1f5d511869b83787e8c5b1d22bd0d1b585d5ccd8
 ---
 
 # An unsatisfiable effect peer installs clean and fails somewhere else
@@ -47,13 +47,14 @@ import — and that the fix is there.
 ## What is actually true
 
 Every published `@effected/*` package advertises an `effect` peer taken
-from the `effect:peers` catalog.[^pnpm-workspace] On every release built
-under [the exact lock](../decisions/effect-catalog-locked-exact.md), that
-peer is the exact version the package was built against,
-`4.0.2`.[^exact-lock]
-Releases published before it on the stable line advertise the caret
-`^4.0.0`, and release-candidate releases advertise their candidate's exact
-version (`"effect": "4.0.0-rc.115"`).
+from the `effect:peers` catalog.[^pnpm-workspace] On the releases built
+under [the exact lock](../decisions/effect-catalog-locked-exact.md) (the
+2026-10-10 and 2026-10-11 releases), that peer is the exact version the
+package was built against, `4.0.2`.[^exact-lock] Releases published before
+it on the stable line, and every release since the catalog returned to
+carets under [the derived-overrides decision](../decisions/effect-overrides-derived-from-catalog.md),
+advertise the caret `^4.0.0`; release-candidate releases advertise their
+candidate's exact version (`"effect": "4.0.0-rc.115"`).
 
 The shape of the peer does not change the trap. Under pnpm's common
 `autoInstallPeers: true` default, a peer the installed `effect` cannot
@@ -80,8 +81,8 @@ bound to its own copy. Whether that then fails at runtime depends on
 whether the consumer's `effect` lacks something the package uses. The warning
 alone does not say, so it cannot be dismissed as noise. A consumer that
 installs `@effected/pnpm-plugin-effect` avoids the mismatch: its catalog
-and its HOLD overrides resolve `effect` and every satellite to the version
-the kit peers on.
+and its derived family pins resolve `effect` and every satellite to the
+version the kit peers on.
 
 A satellite resolved against a core it was not built for is a related
 failure with a different signal: a missing `effect/dist/...` file at

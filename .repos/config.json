@@ -2,7 +2,7 @@
 	"repos": {
 		"effect": {
 			"url": "https://github.com/Effect-TS/effect.git",
-			"ref": "effect@4.0.2",
+			"ref": "effect@4.0.3",
 			"purpose": "Read-only Effect v4 source pinned to the tag matching the effect catalog — the authority on what v4 actually exports, plus the v3→v4 migration notes and the @effect/vitest reference implementation. Tracks the main Effect-TS/effect monorepo (v4 development moved back there on 2026-07-19 when the effect-smol repo was archived); vendored at .repos/effect since the 2026-07-24 rename, matching the path a consuming repo would use.",
 			"sparse": [
 				"packages/effect",
@@ -63,6 +63,12 @@
 					"date": "2026-10-09",
 					"ref": "effect@4.0.2",
 					"note": "Supersedes n-36d8's stability line (\"untagged APIs follow semver\"): since 4.0.2 there are no untagged exports — every module and directly importable export carries an explicit @stability (stable = strict semver, unstable = may break in a minor; see n-5f95). Read the tag on the export itself, never infer stability from its absence. n-36d8's other facts (partition order, Schema.brand, lock-minor re-pin rule) still hold."
+				},
+				{
+					"id": "n-c0e4",
+					"date": "2026-10-11",
+					"ref": "effect@4.0.3",
+					"note": "4.0.2→4.0.3 advance (2026-10-11): zero kit TYPE breaks (forced workspace typecheck clean), but core published a day after its satellites (Effect-TS/effect#8994) and the kit now guards that permanently: pnpm-plugin-effect derives graph-wide `\"<name>@^4.0.0\": \"<catalog version>\"` overrides from the catalog via rolldown-pnpm-config's overridesFromCatalogs, so a missing core fails every consumer install loudly instead of pairing at import time. Kit changes the release forced or enabled: FileSystem File.read/readAlloc take { position?: bigint } and FileSystem.open takes noFollow (memfs implements both; the ReadOptions interface is tagged @since 4.1.0 in the 4.0.3 source yet already present); Stdio.stderrIsTerminal exists on the interface but the real TTY detection lives in @effect/platform-node-shared's NodeStdio.layer, Stdio.make defaults it to false (env TerminalEnv now reads it; the process.stderr.isTTY option is an override only); Prompt.Theme carries colors: boolean read by the wizard, filled by Ansi.detectColors() = stdout.isTTY && !NO_COLOR, which ignores FORCE_COLOR/TERM=dumb/agent audience, so cli's promptTheme sets it from the kit's own decision; Esc-cancels-a-prompt is NOT in 4.0.3 despite release notes suggesting it (zero escape handling in cli/Prompt.ts); Crypto.randomUUIDv4/v7 are now calls with optional { format: \"hex\" | \"bytes\" }; Schema.Int emits safe-integer min/max in JSON Schema (composed bounds via allOf, consumers with published schemas will see DRIFT); SchemaError toJSON/inspect is compact { _tag, message }; TestCrypto.layer(seed) requires a base Crypto and keeps its digest; CliOutput.displayWidth disagrees with the kit's oracle on OSC-8 links and 8k astral code points, so cli keeps its own table. The Node FileSystem/Stdio implementations are still not vendored (sparse tree) — read @effect/platform-node-shared under node_modules."
 				}
 			]
 		},

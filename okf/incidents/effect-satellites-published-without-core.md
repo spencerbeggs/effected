@@ -30,8 +30,8 @@ sources:
     title: "The exact effect catalog and the HOLD overrides"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T23:08:17Z
-  body_sha256: d87b25169bdfbbaf9189901eee0253614891d914d2bc1996592ec7edefa8ddc8
+  at: 2026-10-11T16:59:56Z
+  body_sha256: 02bd4ca8564a0d391c9384fbb044d373c13244405f4ef4456e202e4dbbaaacf1
 ---
 
 # The plugin's catalog paired 4.0.3 satellites with core effect 4.0.2
@@ -60,7 +60,9 @@ The upstream partial publish broke the guarantee that Effect releases its whole 
 - The plugin publishes the overrides `"<name>@^4.0.0": "4.0.2"` for `effect` and every satellite. They reach transitive requests and survive the upgrade bot, which rewrites catalogs only.
 - `__test__/catalog.test.ts` asserts that every 4.x entry holds `effect`'s own version. The next bot bump to 4.0.3 satellites fails that check before it can ship.
 
-The whole kit is patch-released on this fix so published manifests carry the exact pins. Before that release, a human runs `pnpm pnpm:export`. Once `effect@4.0.3` resolves on npm, the hold comes out per [advance the effect pin](../runbooks/advance-the-effect-pin.md).
+The whole kit is patch-released on this fix so published manifests carry the exact pins. Before that release, a human runs `pnpm pnpm:export`.
+
+Core `effect@4.0.3` published on 2026-10-11. The hold then became permanent in a derived form: the catalog returned to carets and the plugin now declares `overridesFromCatalogs`, which emits the same `"<name>@^4.0.0": "<catalog version>"` pins from the catalog literal at build time, so the guard moves with every advance instead of being hand-edited. Why that shape, and the probe that ruled out the parent-scoped alternative: [the effect family is pinned by overrides derived from the catalog](../decisions/effect-overrides-derived-from-catalog.md). A repeat of this incident now fails every consumer install loudly, because the pins ask for a core npm does not have.
 
 [^upstream-8994]: <https://github.com/Effect-TS/effect/issues/8994>
 [^registry-check]: The npm registry for `effect`, checked 2026-10-10 at 22:55 UTC.
