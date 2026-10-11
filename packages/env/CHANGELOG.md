@@ -1,5 +1,23 @@
 # @effected/env
 
+## 0.2.0
+
+### Features
+
+- `TerminalEnv.layer` now reads core's `Stdio.stderrIsTerminal` by default instead of mirroring stdout. The `stderrIsTerminal` option stays as an override. Consumers that relied on the stdout mirror see stderr's own terminal state. [#1000][#1000]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| effect | peerDependency | updated | 4.0.2 | ^4.0.3 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1000]: https://github.com/spencerbeggs/effected/pull/1000
+
 ## 0.1.2
 
 ### Bug Fixes

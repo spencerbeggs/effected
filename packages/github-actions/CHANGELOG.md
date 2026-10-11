@@ -1,5 +1,30 @@
 # @effected/github-actions
 
+## 0.21.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/github-commands | dependency | updated | 0.2.2 | 0.3.0 |
+| @effected/glob | dependency | updated | 0.10.1 | 0.11.0 |
+| @effected/markdown | dependency | updated | 0.15.2 | 0.16.0 |
+| @effected/npm | dependency | updated | 0.20.1 | 0.21.0 |
+| @effected/sbom | dependency | updated | 0.10.2 | 0.11.0 |
+| @effected/semver | dependency | updated | 0.11.1 | 0.12.0 |
+| @effected/templates | dependency | updated | 0.10.1 | 0.11.0 |
+| @effected/walker | dependency | updated | 0.15.1 | 0.16.0 |
+| effect | peerDependency | updated | 4.0.2 | ^4.0.3 |
+
+- Effect 4.0.3 advance: the `effect` peer and catalog move from the exact `4.0.2` hold back to `^4.0.3`. No API change. [#1000][#1000]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1000]: https://github.com/spencerbeggs/effected/pull/1000
+
 ## 0.20.4
 
 ### Bug Fixes

@@ -1,5 +1,23 @@
 # @effected/sbom
 
+## 0.11.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/package-json | dependency | updated | 0.20.2 | 0.21.0 |
+| @effected/spdx | dependency | updated | 0.12.1 | 0.13.0 |
+| effect | peerDependency | updated | 4.0.2 | ^4.0.3 |
+
+- Effect 4.0.3 advance: the `effect` peer and catalog move from the exact `4.0.2` hold back to `^4.0.3`. No API change. [#1000][#1000]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1000]: https://github.com/spencerbeggs/effected/pull/1000
+
 ## 0.10.2
 
 ### Bug Fixes

@@ -1,5 +1,36 @@
 # @effected/cli
 
+## 0.17.0
+
+### Features
+
+- `CliTheme.promptTheme` sets core `Prompt.Theme` `colors` from the kit's own colour decision, so prompts and the wizard are byte-clean at colour level `none` and never re-read `process`.
+
+### Documentation
+
+- `CliEnv` and `CliRuntime` TSDoc no longer tell bins to pass `process.stderr.isTTY`; the option is an override.
+
+### Tests
+
+- New tests prove core's deferred terminal-input acquisition. `gateTerminal` and `gateWizard` are kept. [#1000][#1000]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.14.3 | 0.15.0 |
+| @effected/env | dependency | updated | 0.1.2 | 0.2.0 |
+| @effected/github-commands | dependency | updated | 0.2.2 | 0.3.0 |
+| @effected/glob | dependency | updated | 0.10.1 | 0.11.0 |
+| @effected/walker | dependency | updated | 0.15.1 | 0.16.0 |
+| effect | peerDependency | updated | 4.0.2 | ^4.0.3 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1000]: https://github.com/spencerbeggs/effected/pull/1000
+
 ## 0.16.2
 
 ### Bug Fixes

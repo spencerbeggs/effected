@@ -1,5 +1,21 @@
 # @effected/semver
 
+## 0.12.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| effect | peerDependency | updated | 4.0.2 | ^4.0.3 |
+
+- Effect 4.0.3 advance: the `effect` peer and catalog move from the exact `4.0.2` hold back to `^4.0.3`. No API change. [#1000][#1000]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1000]: https://github.com/spencerbeggs/effected/pull/1000
+
 ## 0.11.1
 
 ### Bug Fixes

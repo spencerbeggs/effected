@@ -1,5 +1,25 @@
 # @effected/package-json
 
+## 0.21.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.15.2 | 0.16.0 |
+| @effected/npm | dependency | updated | 0.20.1 | 0.21.0 |
+| @effected/semver | dependency | updated | 0.11.1 | 0.12.0 |
+| @effected/spdx | dependency | updated | 0.12.1 | 0.13.0 |
+| effect | peerDependency | updated | 4.0.2 | ^4.0.3 |
+
+- Effect 4.0.3 advance: the `effect` peer and catalog move from the exact `4.0.2` hold back to `^4.0.3`. No API change. [#1000][#1000]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1000]: https://github.com/spencerbeggs/effected/pull/1000
+
 ## 0.20.2
 
 ### Bug Fixes

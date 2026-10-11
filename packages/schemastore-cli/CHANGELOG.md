@@ -1,5 +1,26 @@
 # @effected/schemastore-cli
 
+## 0.22.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.16.2 | 0.17.0 |
+| @effected/env | dependency | updated | 0.1.2 | 0.2.0 |
+| @effected/glob | dependency | updated | 0.10.1 | 0.11.0 |
+| @effected/schemastore | dependency | updated | 0.21.5 | 0.22.0 |
+| @effected/walker | dependency | updated | 0.15.1 | 0.16.0 |
+| effect | peerDependency | updated | 4.0.2 | ^4.0.3 |
+
+- Effect 4.0.3 advance: the `effect` peer and catalog move from the exact `4.0.2` hold back to `^4.0.3`. No API change. [#1000][#1000]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1000]: https://github.com/spencerbeggs/effected/pull/1000
+
 ## 0.21.5
 
 ### Bug Fixes

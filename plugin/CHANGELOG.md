@@ -1,5 +1,19 @@
 # @effected/ai-plugin
 
+## 0.38.0
+
+### Documentation
+
+- The vendored-source pin and SessionStart briefing move to effect 4.0.3, and the skill anchors are re-derived.
+- The `effect-v4-module-index` Crypto row covers the `randomUUIDv4`/`randomUUIDv7` call form, ULID and `TestCrypto.layer`.
+- The CLI skill and the `effected-packages` env reference no longer tell bins to pass `process.stderr.isTTY`. [#1000][#1000]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1000]: https://github.com/spencerbeggs/effected/pull/1000
+
 ## 0.37.0
 
 ### Documentation

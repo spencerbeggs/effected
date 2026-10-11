@@ -1,5 +1,36 @@
 # @effected/github
 
+## 0.19.0
+
+### Features
+
+#### Single-flight installation tokens
+
+- `GitHubApp.cachedToken` now single-flights concurrent misses per installation within one process, through a new `GitHubAppShape.cachedToken` member built with the layer (`makeTest` honours an override). Closes #999.
+
+- Joiners receive the new `CachedToken.source` value `"joined"`; the union is now `"cached" | "minted" | "joined"`.
+
+- A failed mint fails every waiter with the same `GitHubAppError` and releases the key.
+
+- Interrupting the leader leaves the mint running for waiters.
+
+- The key is the installation id only. Cross-isolate double-minting remains accepted. [#1000][#1000]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github-references | dependency | updated | 0.7.1 | 0.8.0 |
+| @effected/jwt | dependency | updated | 0.1.1 | 0.2.0 |
+| @effected/semver | dependency | updated | 0.11.1 | 0.12.0 |
+| effect | peerDependency | updated | 4.0.2 | ^4.0.3 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1000]: https://github.com/spencerbeggs/effected/pull/1000
+
 ## 0.18.0
 
 ### Breaking Changes

@@ -1,5 +1,70 @@
 # @effected/pnpm-plugin-effect
 
+## 0.15.0
+
+### Features
+
+#### Catalog-derived Effect overrides
+
+- The hand-written 27-entry hold override block is replaced by `overridesFromCatalogs: { catalog: "effect" }`. At build time it derives one line-scoped `"<name>@^4.0.0": "<catalog version>"` override per family member, and `"@effect/tsgo@^0.51.0": "0.51.1"` for tsgo on its own 0.x line, so the pins move with the catalog. The whole 4.x graph, devDependencies and their closures included, resolves to the catalog's `effect`, and a missing core now fails the install loudly.
+
+- The `effect` catalog returns to carets under `lock-minor` (`@effect/tsgo` stays exact), now at `^4.0.3`. The two platform-node-shared bridge entries stay. [#1000][#1000]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| rolldown-pnpm-config | devDependency | updated | ^2.0.3 | ^2.1.0 |
+
+### Maintenance
+
+#### Updates 38 catalog:effected versions
+
+- `@effected/app` ^0.21.3 -> ^0.22.0 (peer ^0.22.0)
+- `@effected/cli` ^0.16.2 -> ^0.17.0 (peer ^0.17.0)
+- `@effected/commands` ^0.11.1 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/config-file` ^0.14.3 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/engine` ^0.4.1 -> ^0.5.0 (peer ^0.5.0)
+- `@effected/env` ^0.1.2 -> ^0.2.0 (peer ^0.2.0)
+- `@effected/git` ^0.20.1 -> ^0.21.0 (peer ^0.21.0)
+- `@effected/github` ^0.18.0 -> ^0.19.0 (peer ^0.19.0)
+- `@effected/github-actions` ^0.20.4 -> ^0.21.0 (peer ^0.21.0)
+- `@effected/github-commands` ^0.2.2 -> ^0.3.0 (peer ^0.3.0)
+- `@effected/github-references` ^0.7.1 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/glob` ^0.10.1 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/images` ^0.1.2 -> ^0.2.0 (peer ^0.2.0)
+- `@effected/jsonc` ^0.15.2 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/jsonl` ^0.11.1 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/jwt` ^0.1.1 -> ^0.2.0 (peer ^0.2.0)
+- `@effected/lockfiles` ^0.15.1 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/lsp` ^0.1.2 -> ^0.2.0 (peer ^0.2.0)
+- `@effected/markdown` ^0.15.2 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/mcp` ^0.5.1 -> ^0.6.0 (peer ^0.6.0)
+- `@effected/memfs` ^0.14.1 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/npm` ^0.20.1 -> ^0.21.0 (peer ^0.21.0)
+- `@effected/package-json` ^0.20.2 -> ^0.21.0 (peer ^0.21.0)
+- `@effected/runtimes` ^0.10.3 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/sbom` ^0.10.2 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/schema-org` ^0.7.1 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/schemastore` ^0.21.5 -> ^0.22.0 (peer ^0.22.0)
+- `@effected/schemastore-cli` ^0.21.5 -> ^0.22.0 (peer ^0.22.0)
+- `@effected/semver` ^0.11.1 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/spdx` ^0.12.1 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/store` ^0.13.2 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/templates` ^0.10.1 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/toml` ^0.11.2 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/tsconfig-json` ^0.13.1 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/walker` ^0.15.1 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/workspaces` ^0.32.1 -> ^0.33.0 (peer ^0.33.0)
+- `@effected/xdg` ^0.9.1 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/yaml` ^0.19.2 -> ^0.20.0 (peer ^0.20.0) [#1000][#1000]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1000]: https://github.com/spencerbeggs/effected/pull/1000
+
 ## 0.14.0
 
 ### Bug Fixes

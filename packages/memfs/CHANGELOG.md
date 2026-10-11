@@ -1,5 +1,28 @@
 # @effected/memfs
 
+## 0.15.0
+
+### Features
+
+- `FileSystem.open` honours `noFollow`: a final-component symlink fails with `BadResource` (`ELOOP`), matching Node. `wx` on a link stays `EEXIST`, and parent links are still followed.
+- `File.read` and `File.readAlloc` honour `{ position }`: they read at the offset and leave the cursor untouched. A negative position fails with `BadArgument`.
+
+### Tests
+
+- 13 new differential cases run against the real Node layer. [#1000][#1000]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| effect | peerDependency | updated | 4.0.2 | ^4.0.3 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1000]: https://github.com/spencerbeggs/effected/pull/1000
+
 ## 0.14.1
 
 ### Bug Fixes
