@@ -5,6 +5,7 @@ import {
 	Clock,
 	Context,
 	DateTime,
+	Deferred,
 	Duration,
 	Effect,
 	Layer,
@@ -132,8 +133,17 @@ export interface CachedTokenRequest extends TokenRequest {
 export interface CachedToken {
 	/** The token. */
 	readonly token: InstallationToken;
-	/** `"cached"` when it was read from the store, `"minted"` when GitHub issued it just now. */
-	readonly source: "cached" | "minted";
+	/**
+	 * `"cached"` when it was read from the store, `"minted"` when GitHub
+	 * issued it to this call just now, `"joined"` when this call missed the
+	 * store but another call in the same process was already minting for the
+	 * installation and this one took that token instead of minting its own.
+	 *
+	 * @remarks
+	 * A `"joined"` token is as fresh as a `"minted"` one; the label exists so
+	 * a caller counting mints against GitHub can tell the two apart.
+	 */
+	readonly source: "cached" | "minted" | "joined";
 }
 
 /**
@@ -545,16 +555,26 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 	 * **A cached token is never revoked**: another scope or isolate may be using
 	 * it. It expires on its own, within the hour.
 	 *
-	 * Two concurrent calls that both miss will both mint, and the later write
-	 * wins. That is expected: the store may span isolates, so the kit cannot
-	 * lock it, and an extra token costs one call and expires on its own.
+	 * Within one process, concurrent misses for one installation are
+	 * **single-flight**: the first caller mints and the others wait for that
+	 * mint and return the same token with `source: "joined"`, so a batch that
+	 * fans out over one installation on a cold store costs one mint, not one
+	 * per fiber. The in-flight record lives with the `GitHubApp` service and is
+	 * released when the mint settles, however it settles: a failed mint fails
+	 * every waiter with the same `GitHubAppError`, and the next call mints
+	 * again. Interrupting the leader does not strand the waiters: the mint runs
+	 * in its own fiber and completes for them. Across isolates, two misses
+	 * still both mint and the later write wins. That is expected: the store may
+	 * span isolates, so the kit cannot lock it, and an extra token costs one
+	 * call and expires on its own.
 	 *
 	 * The encoded value written to the store contains the raw token, so
 	 * encrypting it at rest is the store's job.
 	 */
 	static readonly cachedToken = (
 		request: CachedTokenRequest,
-	): Effect.Effect<CachedToken, GitHubAppError, GitHubApp | InstallationTokenStore> => cachedTokenFor(request);
+	): Effect.Effect<CachedToken, GitHubAppError, GitHubApp | InstallationTokenStore> =>
+		Effect.flatMap(GitHubApp, (app) => app.cachedToken(request));
 
 	/**
 	 * A {@link GitHubClient} authenticated with {@link GitHubApp.cachedToken}.
@@ -602,20 +622,26 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 		options: GitHubAppOptions = {},
 	): Layer.Layer<GitHubClient, GitHubAppError, GitHubApp | InstallationTokenStore> =>
 		Layer.unwrap(
-			Effect.map(cachedTokenFor(request), (cached) =>
+			Effect.map(GitHubApp.cachedToken(request), (cached) =>
 				GitHubClient.layerFromToken({ ...options, token: cached.token.token }),
 			),
 		);
 
 	/** An in-memory double; unstubbed members die naming themselves. */
-	static readonly makeTest = (overrides: Partial<GitHubAppShape> = {}): GitHubAppShape => ({
-		token: overrides.token ?? (() => unstubbed("token")),
-		scopedToken: overrides.scopedToken ?? (() => unstubbed("scopedToken")),
-		revoke: overrides.revoke ?? (() => unstubbed("revoke")),
-		identity: overrides.identity ?? (() => unstubbed("identity")),
-		botUser: overrides.botUser ?? (() => unstubbed("botUser")),
-		installations: overrides.installations ?? (() => unstubbed("installations")),
-	});
+	static readonly makeTest = (overrides: Partial<GitHubAppShape> = {}): GitHubAppShape => {
+		const token = overrides.token ?? (() => unstubbed("token"));
+		return {
+			token,
+			scopedToken: overrides.scopedToken ?? (() => unstubbed("scopedToken")),
+			revoke: overrides.revoke ?? (() => unstubbed("revoke")),
+			identity: overrides.identity ?? (() => unstubbed("identity")),
+			botUser: overrides.botUser ?? (() => unstubbed("botUser")),
+			installations: overrides.installations ?? (() => unstubbed("installations")),
+			// The real caching over the double's `token`, so a test that stubs
+			// `token` exercises the store and the single-flight path for real.
+			cachedToken: overrides.cachedToken ?? makeCachedToken(token),
+		};
+	};
 
 	/** {@link GitHubApp.makeTest} behind a `Layer`. */
 	static readonly layerTest = (overrides: Partial<GitHubAppShape> = {}): Layer.Layer<GitHubApp> =>
@@ -676,6 +702,21 @@ export interface GitHubAppShape {
 	readonly botUser: (request: BotUserRequest) => Effect.Effect<BotUser, GitHubAppError>;
 	/** Every installation of the app. */
 	readonly installations: (credentials: AppCredentials) => Effect.Effect<ReadonlyArray<Installation>, GitHubAppError>;
+	/**
+	 * An installation token, reused from the {@link InstallationTokenStore}
+	 * while it has `margin` left to live; {@link GitHubApp.cachedToken} is this
+	 * member on the provided service.
+	 *
+	 * @remarks
+	 * A member rather than a free function because the in-process
+	 * single-flight record for concurrent misses lives with the service: it is
+	 * created with the layer and shared by every call through it.
+	 * {@link GitHubApp.makeTest} builds it over the double's `token`, so a test
+	 * that stubs `token` gets the real caching and single-flight behaviour.
+	 */
+	readonly cachedToken: (
+		request: CachedTokenRequest,
+	) => Effect.Effect<CachedToken, GitHubAppError, InstallationTokenStore>;
 }
 
 /** The cached-token margin when a request names none. */
@@ -690,49 +731,88 @@ const swallowStore = <A>(effect: Effect.Effect<A>, fallback: A): Effect.Effect<A
 		Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : Effect.succeed(fallback),
 	);
 
-const cachedTokenFor = Effect.fn("GitHubApp.cachedToken")(function* (request: CachedTokenRequest) {
-	// `Duration.fromInput(NaN)` is zero, not `None`, so a raw non-finite
-	// number is refused before the conversion.
-	const input = request.margin ?? DEFAULT_CACHE_MARGIN;
-	const margin =
-		typeof input === "number" && !Number.isFinite(input)
-			? Option.none<Duration.Duration>()
-			: Option.filter(
-					Duration.fromInput(input),
-					(duration) => Duration.isFinite(duration) && !Duration.isNegative(duration),
-				);
-	if (Option.isNone(margin)) {
-		return yield* GitHubAppError.of("token", "the cache margin must be a finite, non-negative duration");
-	}
-	const app = yield* GitHubApp;
-	const store = yield* InstallationTokenStore;
-
-	const stored = yield* swallowStore(store.get(request.installationId), Option.none<string>());
-	if (Option.isSome(stored)) {
-		const decoded = yield* Effect.option(Schema.decodeUnknownEffect(StoredToken)(stored.value));
-		const now = yield* Clock.currentTimeMillis;
-		if (
-			Option.isSome(decoded) &&
-			decoded.value.installationId === request.installationId &&
-			!decoded.value.isExpired(now, margin.value)
-		) {
-			return { token: decoded.value, source: "cached" } satisfies CachedToken;
+/**
+ * The caching read over `token`, with one in-flight mint per installation.
+ *
+ * @remarks
+ * The map is the single-flight record. A key is present exactly while a mint
+ * for that installation is running in this process; the first miss creates it
+ * and forks the mint, later misses await the same `Deferred`, and the mint's
+ * exit finalizer deletes the key before completing the `Deferred` with
+ * whatever exit the mint produced, so a failed mint fails every waiter with the
+ * same error and never pins the key. The mint is forked detached from the
+ * leader, so the leader being interrupted does not interrupt the mint the
+ * waiters depend on; the leader itself just stops waiting. The key is the
+ * installation id alone because that is also the store's key: a `TokenRequest`
+ * cannot narrow a token, so two requests for one installation ask for the same
+ * token.
+ */
+const makeCachedToken = (token: GitHubAppShape["token"]): GitHubAppShape["cachedToken"] => {
+	const inFlight = new Map<number, Deferred.Deferred<InstallationToken, GitHubAppError>>();
+	return Effect.fn("GitHubApp.cachedToken")(function* (request: CachedTokenRequest) {
+		// `Duration.fromInput(NaN)` is zero, not `None`, so a raw non-finite
+		// number is refused before the conversion; an infinite input converts to
+		// an infinite duration and is refused after it.
+		const input = request.margin ?? DEFAULT_CACHE_MARGIN;
+		const margin =
+			typeof input === "number" && !Number.isFinite(input)
+				? Option.none<Duration.Duration>()
+				: Option.filter(
+						Duration.fromInput(input),
+						(duration) => Duration.isFinite(duration) && !Duration.isNegative(duration),
+					);
+		if (Option.isNone(margin)) {
+			return yield* GitHubAppError.of("token", "the cache margin must be a finite, non-negative duration");
 		}
-	}
+		const store = yield* InstallationTokenStore;
 
-	const minted = yield* app.token(request);
-	const now = yield* Clock.currentTimeMillis;
-	const ttlMillis = DateTime.toEpochMillis(minted.expiresAt) - Duration.toMillis(margin.value) - now;
-	// A token that will not outlive the margin is served once but never stored:
-	// a zero or negative TTL means nothing a store can honour.
-	if (ttlMillis > 0) {
-		const encoded = yield* Effect.option(Schema.encodeUnknownEffect(StoredToken)(minted));
-		if (Option.isSome(encoded)) {
-			yield* swallowStore(store.set(request.installationId, encoded.value, Duration.millis(ttlMillis)), undefined);
+		const stored = yield* swallowStore(store.get(request.installationId), Option.none<string>());
+		if (Option.isSome(stored)) {
+			const decoded = yield* Effect.option(Schema.decodeUnknownEffect(StoredToken)(stored.value));
+			const now = yield* Clock.currentTimeMillis;
+			if (
+				Option.isSome(decoded) &&
+				decoded.value.installationId === request.installationId &&
+				!decoded.value.isExpired(now, margin.value)
+			) {
+				return { token: decoded.value, source: "cached" } satisfies CachedToken;
+			}
 		}
-	}
-	return { token: minted, source: "minted" } satisfies CachedToken;
-});
+
+		// A miss. Nothing yields between the lookup and the insert below, so two
+		// fibers cannot both find the key absent.
+		const joined = inFlight.get(request.installationId);
+		if (joined !== undefined) {
+			return { token: yield* Deferred.await(joined), source: "joined" } satisfies CachedToken;
+		}
+		const deferred = Deferred.makeUnsafe<InstallationToken, GitHubAppError>();
+		inFlight.set(request.installationId, deferred);
+
+		const mint = Effect.gen(function* () {
+			const minted = yield* token(request);
+			const now = yield* Clock.currentTimeMillis;
+			const ttlMillis = DateTime.toEpochMillis(minted.expiresAt) - Duration.toMillis(margin.value) - now;
+			// A token that will not outlive the margin is served once but never stored:
+			// a zero or negative TTL means nothing a store can honour.
+			if (ttlMillis > 0) {
+				const encoded = yield* Effect.option(Schema.encodeUnknownEffect(StoredToken)(minted));
+				if (Option.isSome(encoded)) {
+					yield* swallowStore(store.set(request.installationId, encoded.value, Duration.millis(ttlMillis)), undefined);
+				}
+			}
+			return minted;
+		}).pipe(
+			Effect.onExit((exit) =>
+				Effect.andThen(
+					Effect.sync(() => inFlight.delete(request.installationId)),
+					Deferred.done(deferred, exit),
+				),
+			),
+		);
+		yield* Effect.forkDetach(mint);
+		return { token: yield* Deferred.await(deferred), source: "minted" } satisfies CachedToken;
+	});
+};
 
 const unstubbed = (member: string): never => {
 	throw new Error(`GitHubApp.makeTest: ${member}() was called but not stubbed — pass an override.`);
@@ -876,7 +956,7 @@ function makeApp(options: GitHubAppOptions): Effect.Effect<GitHubAppShape> {
 			);
 		});
 
-		return { token, scopedToken, revoke, identity, botUser, installations };
+		return { token, scopedToken, revoke, identity, botUser, installations, cachedToken: makeCachedToken(token) };
 	});
 }
 

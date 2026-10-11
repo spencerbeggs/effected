@@ -8,8 +8,8 @@ resource: ../../packages/github/src/GitHubApp.ts
 tags: [bundle, security]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T22:41:04Z
-  body_sha256: aee28ce846137bc5c1cbdef15d3eec62ae586e163e1307092b72f1341961d00c
+  at: 2026-10-11T17:00:41Z
+  body_sha256: a52b881f6339995d915432dd7b44b5bcc493325ed770eb3fbff5133cd4385383
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:25.629Z
@@ -104,8 +104,10 @@ handling a webhook — would mint a fresh installation token every time.
 - A store that fails or dies never fails the call (a miss on `get`, ignored
   on `set`); only interruption propagates.
 - **A cached token is never revoked**, not even on release — another scope
-  or isolate may be using it. Two concurrent misses may both mint; the store
-  may span isolates, so the kit cannot lock it, and that is accepted.
+  or isolate may be using it. Within one process, concurrent misses for one
+  installation are single-flight: one mint, and the waiters get
+  `source: "joined"`. Across isolates two misses may still both mint; the
+  store may span isolates, so the kit cannot lock it, and that is accepted.
 - `cachedClientLayer`'s transport options configure the client, not the
   mint: the edge's `GitHubApp` layer mints, so on GHES it must be built with
   the same `baseUrl`.

@@ -1,9 +1,9 @@
 import { generateKeyPairSync } from "node:crypto";
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, DateTime, Duration, Effect, Exit, Layer, Option, Redacted, Ref, Schema } from "effect";
+import { Cause, DateTime, Duration, Effect, Exit, Fiber, Latch, Layer, Option, Redacted, Ref, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import type { CachedTokenRequest } from "../src/GitHubApp.js";
-import { GitHubApp, InstallationToken } from "../src/GitHubApp.js";
+import { GitHubApp, GitHubAppError, InstallationToken } from "../src/GitHubApp.js";
 import { GitHubClient } from "../src/GitHubClient.js";
 import type { InstallationTokenStoreShape } from "../src/InstallationTokenStore.js";
 import { InstallationTokenStore } from "../src/InstallationTokenStore.js";
@@ -204,6 +204,222 @@ describe("GitHubApp.cachedToken", () => {
 			assert.isTrue(Exit.isFailure(exit));
 			if (Exit.isFailure(exit)) assert.isTrue(Cause.hasInterruptsOnly(exit.cause));
 			assert.strictEqual(yield* Ref.get(app.minted), 0);
+		}),
+	);
+});
+
+/** A store whose `get` always misses and whose `set` is a no-op, counting both. */
+const coldStore = () =>
+	Effect.gen(function* () {
+		const gets = yield* Ref.make(0);
+		const sets = yield* Ref.make(0);
+		const layer = Layer.succeed(InstallationTokenStore, {
+			get: () =>
+				Effect.as(
+					Ref.update(gets, (n) => n + 1),
+					Option.none<string>(),
+				),
+			set: () => Ref.update(sets, (n) => n + 1),
+		});
+		return { gets, sets, layer };
+	});
+
+/**
+ * A GitHubApp double whose `token` counts its calls, opens `entered` on the
+ * first, then holds every call at `gate` and answers with `outcome` once it
+ * opens.
+ */
+const gatedApp = (outcome: Effect.Effect<InstallationToken, GitHubAppError>) =>
+	Effect.gen(function* () {
+		const minted = yield* Ref.make(0);
+		const entered = yield* Latch.make(false);
+		const gate = yield* Latch.make(false);
+		const layer = GitHubApp.layerTest({
+			token: () =>
+				Effect.gen(function* () {
+					yield* Ref.update(minted, (n) => n + 1);
+					yield* Latch.open(entered);
+					yield* gate.await;
+					return yield* outcome;
+				}),
+		});
+		return { minted, entered, gate, layer };
+	});
+
+const freshToken = (text: string, installationId = REQUEST.installationId) =>
+	Effect.map(DateTime.now, (now) =>
+		InstallationToken.make({
+			token: Redacted.make(text),
+			expiresAt: DateTime.addDuration(now, Duration.minutes(60)),
+			installationId,
+			permissions: { contents: "read" },
+		}),
+	);
+
+/** Yield to the scheduler until `condition` holds, or fail after `limit` yields. */
+const yieldUntil = (condition: Effect.Effect<boolean>, limit = 100) =>
+	Effect.gen(function* () {
+		for (let i = 0; i < limit; i++) {
+			if (yield* condition) return;
+			yield* Effect.yieldNow;
+		}
+		assert.fail(`condition did not hold within ${limit} yields`);
+	});
+
+describe("GitHubApp.cachedToken single-flight", () => {
+	const N = 4;
+
+	it.effect("collapses N overlapping misses for one installation into one mint", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(NOW_MILLIS);
+			const app = yield* gatedApp(freshToken("ghs_1"));
+			const store = yield* coldStore();
+			const layers = Layer.mergeAll(app.layer, store.layer);
+			const fiber = yield* Effect.forkChild(
+				Effect.provide(
+					Effect.all(
+						Array.from({ length: N }, () => GitHubApp.cachedToken(REQUEST)),
+						{ concurrency: "unbounded" },
+					),
+					layers,
+				),
+			);
+			// Overlap, proven: every caller has read the store and missed while the
+			// leader's mint is still held at the gate.
+			yield* app.entered.await;
+			yield* yieldUntil(Effect.map(Ref.get(store.gets), (n) => n === N));
+			assert.strictEqual(yield* Ref.get(app.minted), 1, "one mint entered while all N calls were pending");
+			yield* Latch.open(app.gate);
+			const results = yield* Fiber.join(fiber);
+			assert.lengthOf(results, N);
+			assert.strictEqual(yield* Ref.get(app.minted), 1, "the gate opened one mint, not N");
+			assert.deepStrictEqual(results.map((result) => result.source).sort(), ["joined", "joined", "joined", "minted"]);
+			for (const result of results) assert.strictEqual(Redacted.value(result.token.token), "ghs_1");
+			assert.strictEqual(yield* Ref.get(store.sets), 1, "one write for one mint");
+		}),
+	);
+
+	it.effect("fails every waiter with the leader's error and releases the key for the next call", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(NOW_MILLIS);
+			const failure = GitHubAppError.of("token", "GitHub said no");
+			const app = yield* gatedApp(Effect.fail(failure));
+			const store = yield* coldStore();
+			const layers = Layer.mergeAll(app.layer, store.layer);
+			const fiber = yield* Effect.forkChild(
+				Effect.all(
+					Array.from({ length: N }, () => Effect.flip(Effect.provide(GitHubApp.cachedToken(REQUEST), layers))),
+					{ concurrency: "unbounded" },
+				),
+			);
+			yield* app.entered.await;
+			yield* yieldUntil(Effect.map(Ref.get(store.gets), (n) => n === N));
+			yield* Latch.open(app.gate);
+			const errors = yield* Fiber.join(fiber);
+			assert.lengthOf(errors, N);
+			for (const error of errors) {
+				assert.strictEqual(error, failure, "every waiter sees the leader's error, the same value");
+			}
+			assert.strictEqual(yield* Ref.get(app.minted), 1);
+			// The key was released: a later call mints again (and fails again, the
+			// double is scripted to), rather than joining a settled flight.
+			const again = yield* Effect.flip(Effect.provide(GitHubApp.cachedToken(REQUEST), layers));
+			assert.strictEqual(again, failure);
+			assert.strictEqual(yield* Ref.get(app.minted), 2, "the second round minted");
+			assert.strictEqual(yield* Ref.get(store.sets), 0, "a failed mint writes nothing");
+		}),
+	);
+
+	it.effect("keeps flights per installation: two installations mint twice", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(NOW_MILLIS);
+			const minted = yield* Ref.make(0);
+			const gate = yield* Latch.make(false);
+			const app = GitHubApp.layerTest({
+				token: (request) =>
+					Effect.gen(function* () {
+						yield* Ref.update(minted, (n) => n + 1);
+						yield* gate.await;
+						return yield* freshToken(`ghs_${request.installationId}`, request.installationId);
+					}),
+			});
+			const store = yield* coldStore();
+			const layers = Layer.mergeAll(app, store.layer);
+			const requests = [REQUEST, REQUEST, { ...REQUEST, installationId: 43 }, { ...REQUEST, installationId: 43 }];
+			const fiber = yield* Effect.forkChild(
+				Effect.provide(
+					Effect.all(
+						requests.map((request) => GitHubApp.cachedToken(request)),
+						{ concurrency: "unbounded" },
+					),
+					layers,
+				),
+			);
+			yield* yieldUntil(Effect.map(Ref.get(store.gets), (n) => n === requests.length));
+			// Both flights are forked detached, so they enter a tick after the misses.
+			yield* yieldUntil(Effect.map(Ref.get(minted), (n) => n === 2));
+			assert.strictEqual(yield* Ref.get(minted), 2, "one flight per installation while all four are pending");
+			yield* Latch.open(gate);
+			const results = yield* Fiber.join(fiber);
+			assert.deepStrictEqual(
+				results.map((result) => [result.token.installationId, result.source]),
+				[
+					[42, "minted"],
+					[42, "joined"],
+					[43, "minted"],
+					[43, "joined"],
+				],
+			);
+			assert.strictEqual(Redacted.value(results[1]?.token.token ?? Redacted.make("")), "ghs_42");
+			assert.strictEqual(Redacted.value(results[3]?.token.token ?? Redacted.make("")), "ghs_43");
+		}),
+	);
+
+	it.effect("interrupting the leader does not strand the waiters: the mint completes for them", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(NOW_MILLIS);
+			const app = yield* gatedApp(freshToken("ghs_1"));
+			const store = yield* coldStore();
+			const layers = Layer.mergeAll(app.layer, store.layer);
+			const leader = yield* Effect.forkChild(Effect.provide(GitHubApp.cachedToken(REQUEST), layers));
+			yield* app.entered.await;
+			const waiters = yield* Effect.forkChild(
+				Effect.all(
+					Array.from({ length: N - 1 }, () => Effect.provide(GitHubApp.cachedToken(REQUEST), layers)),
+					{ concurrency: "unbounded" },
+				),
+			);
+			yield* yieldUntil(Effect.map(Ref.get(store.gets), (n) => n === N));
+			yield* Fiber.interrupt(leader);
+			const leaderExit = yield* Fiber.await(leader);
+			assert.isTrue(
+				Exit.isFailure(leaderExit) && Cause.hasInterruptsOnly(leaderExit.cause),
+				"the leader is interrupted",
+			);
+			yield* Latch.open(app.gate);
+			const results = yield* Fiber.join(waiters);
+			assert.lengthOf(results, N - 1);
+			for (const result of results) {
+				assert.strictEqual(result.source, "joined");
+				assert.strictEqual(Redacted.value(result.token.token), "ghs_1");
+			}
+			assert.strictEqual(yield* Ref.get(app.minted), 1, "the waiters did not have to re-mint");
+			assert.strictEqual(yield* Ref.get(store.sets), 1, "the detached mint still wrote the store");
+		}),
+	);
+
+	it.effect("a stubbed cachedToken on the double is honoured", () =>
+		Effect.gen(function* () {
+			const token = yield* freshToken("ghs_stub");
+			const result = yield* Effect.provide(
+				GitHubApp.cachedToken(REQUEST),
+				Layer.mergeAll(
+					GitHubApp.layerTest({ cachedToken: () => Effect.succeed({ token, source: "cached" }) }),
+					InstallationTokenStore.layerTest(),
+				),
+			);
+			assert.strictEqual(result.source, "cached");
+			assert.strictEqual(Redacted.value(result.token.token), "ghs_stub");
 		}),
 	);
 });
