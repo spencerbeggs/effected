@@ -152,7 +152,7 @@ await build({
 						},
 						"@effect/tsgo": {
 							range: "0.51.1",
-							peer: "0.51.1",
+							peer: "0.51.0",
 							strategy: "lock-minor",
 						},
 						effect: {

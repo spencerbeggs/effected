@@ -60,7 +60,7 @@ catalogs:
     "@effect/sql-sqlite-node": ^4.0.0
     "@effect/sql-sqlite-react-native": ^4.0.0
     "@effect/sql-sqlite-wasm": ^4.0.0
-    "@effect/tsgo": 0.51.1
+    "@effect/tsgo": 0.51.0
     "@effect/vitest": ^4.0.0
     effect: ^4.0.0
   effected:
@@ -177,6 +177,7 @@ overrides:
   "@effect/sql-sqlite-node@^4.0.0": 4.0.3
   "@effect/sql-sqlite-react-native@^4.0.0": 4.0.3
   "@effect/sql-sqlite-wasm@^4.0.0": 4.0.3
+  "@effect/tsgo@^0.51.0": 0.51.1
   "@effect/vitest@^4.0.0": 4.0.3
   effect@^4.0.0: 4.0.3
 peerDependencyRules:
