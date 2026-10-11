@@ -10,8 +10,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-11T16:59:56Z
-  body_sha256: c22b93d9a57cd9882b075c4f8e86303594cc424610d76b3dabe72d3bbf48c27d
+  at: 2026-10-11T17:06:53Z
+  body_sha256: 05c0f23793a53f09b72c33b77f980ffffb14760e1d1be009fdf990ee623c3f1d
 ---
 
 # pnpm-plugin-effect
@@ -146,9 +146,10 @@ The plugin also publishes a pnpm `overrides` block, which a consumer's
 install applies. A consumer's own value for the same selector wins.
 
 Most of it is derived, not authored: the `overridesFromCatalogs:
-{ catalog: "effect", exclude: ["@effect/tsgo"] }` directive makes
-`rolldown-pnpm-config` emit one `"<name>@^4.0.0": "<catalog version>"`
-entry for `effect` and every satellite at build time, so the pins move
+{ catalog: "effect" }` directive makes `rolldown-pnpm-config` emit one
+`"<name>@^4.0.0": "<catalog version>"` entry for `effect` and every
+satellite, and `"@effect/tsgo@^0.<minor>.0"` for tsgo on its own 0.x line,
+at build time, so the pins move
 with the catalog literal and survive the registry `upgrade` CLI, which
 rewrites catalogs only. They reach transitive satellite requests that no
 catalog governs and hold the whole consumer graph on one `effect`. Each

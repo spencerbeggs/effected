@@ -9,8 +9,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-11T16:59:56Z
-  body_sha256: 802aa3a7f2588c3e37d03873bd0fd0f51c31c5bb76c53d78275be66198088603
+  at: 2026-10-11T17:06:53Z
+  body_sha256: 6ba34b01264fd426a86c932ca60d25367c5bcba5b7995301f4f47534be777490
 ---
 
 # The effected catalog literal
@@ -38,7 +38,7 @@ treating `range` as an already-final value.
 
 The literal also carries an `overridesFromCatalogs` directive, from which
 the build derives the family pins (`"<name>@^4.0.0": "<catalog version>"`
-for `effect` and every satellite, `@effect/tsgo` excluded), and an
+for `effect` and every satellite, and `@effect/tsgo` pinned on its own 0.x line), and an
 authored `overrides` block holding only the scoped release-candidate
 `platform-node-shared` pins; see [the derived pins and scoped overrides](../modules/pnpm-plugin-effect.md#the-derived-family-pins-and-the-scoped-platform-node-shared-overrides).
 

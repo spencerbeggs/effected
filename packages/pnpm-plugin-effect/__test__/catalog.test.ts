@@ -183,10 +183,11 @@ describe("overrides", () => {
 	const RC117 = "@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared";
 	const RC118 = "@effect/platform-node@4.0.0-rc.118>@effect/platform-node-shared";
 	/**
-	 * The family pin `overridesFromCatalogs` derives: `effect` and every satellite
-	 * on the 4.x line at the catalog's own version. Derived here from the catalog
-	 * literal the same way, so the test moves with the catalog and only a
-	 * disagreement between the literal and the built hook can fail it.
+	 * The pins `overridesFromCatalogs` derives: `effect` and every satellite on
+	 * the 4.x line at the catalog's own version, plus `@effect/tsgo` on its own
+	 * 0.x line. Derived here from the catalog literal the same way, so the test
+	 * moves with the catalog and only a disagreement between the literal and the
+	 * built hook can fail it.
 	 */
 	function familyPins(): Record<string, string> {
 		const source = readFileSync(join(PACKAGE_ROOT, "savvy.build.ts"), "utf8");
@@ -195,11 +196,16 @@ describe("overrides", () => {
 		)?.[1];
 		assert.isString(effect);
 		assert.match(effect ?? "", /^4\.\d+\.\d+$/, "the effect catalog's own entry is not a plain 4.x version");
-		return Object.fromEntries(
-			[...readCatalogEntries("effect").keys(), "effect"]
+		const entries = readCatalogEntries("effect");
+		const tsgo = /\brange:\s*"(\d+)\.(\d+)\.(\d+)"/.exec(entries.get("@effect/tsgo") ?? "");
+		assert.isNotNull(tsgo, "the effect catalog's tsgo entry is not a plain version");
+		const pins = Object.fromEntries(
+			[...entries.keys(), "effect"]
 				.filter((name) => name !== "@effect/tsgo")
 				.map((name) => [`${name}@^4.0.0`, effect as string]),
 		);
+		pins[`@effect/tsgo@^0.${tsgo?.[2]}.0`] = `${tsgo?.[1]}.${tsgo?.[2]}.${tsgo?.[3]}`;
+		return pins;
 	}
 	const PINS = { ...familyPins(), [RC117]: "4.0.0-rc.117", [RC118]: "4.0.0-rc.118" };
 	const PNPMFILE = join(PACKAGE_ROOT, "dist/dev/pkg/pnpmfile.mjs");
@@ -223,9 +229,9 @@ describe("overrides", () => {
 		const { overrides } = await updateConfig({});
 		assert.deepStrictEqual(overrides, PINS);
 		// Positive control on the derivation: the family is more than the two rc entries,
-		// and tsgo rides the catalog without being pinned.
-		assert.isAtLeast(Object.keys(PINS).length, 22);
-		assert.notProperty(overrides, "@effect/tsgo@^0.51.0");
+		// and tsgo is pinned on its own 0.x line rather than the 4.x one.
+		assert.isAtLeast(Object.keys(PINS).length, 23);
+		assert.notProperty(overrides, "@effect/tsgo@^4.0.0");
 	});
 
 	it("keeps a consumer's own overrides", async () => {

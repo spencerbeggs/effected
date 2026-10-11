@@ -27,8 +27,8 @@ sources:
     title: "The effect catalog describe and the derived family pins in the overrides describe"
 generated:
   by: okfit/claude-code
-  at: 2026-10-11T16:59:56Z
-  body_sha256: 3e9dff3ed73df33e8e30866b160653370319e7dde20267eb1f4f4f62ada674ef
+  at: 2026-10-11T17:06:53Z
+  body_sha256: a495154c83d83eb7895929a3bb6d8478d267ec5eb8d09a93aea5acbf9a601f70
 ---
 
 # The effect family is pinned graph-wide by overrides derived from the catalog
@@ -41,9 +41,9 @@ Once core published, the owner asked whether the explicit overriding should stay
 
 ## Decision
 
-`rolldown-pnpm-config` 2.1.0 adds `overridesFromCatalogs`, a build-time directive resolved in `freeze` so the pnpmfile, `export` and `preview` all carry it.[^directive] The plugin declares `overridesFromCatalogs: { catalog: "effect", exclude: ["@effect/tsgo"] }` and keeps only the two release-candidate `platform-node-shared` bridge entries in its authored `overrides`.[^savvy-build] For every family member the directive emits `"<name>@^4.0.0": "<catalog version>"`, so the pins move with the catalog literal and the upgrade bot cannot leave them behind.
+`rolldown-pnpm-config` 2.1.0 adds `overridesFromCatalogs`, a build-time directive resolved in `freeze` so the pnpmfile, `export` and `preview` all carry it.[^directive] The plugin declares `overridesFromCatalogs: { catalog: "effect" }` and keeps only the two release-candidate `platform-node-shared` bridge entries in its authored `overrides`.[^savvy-build] For every family member the directive emits `"<name>@^4.0.0": "<catalog version>"`, so the pins move with the catalog literal and the upgrade bot cannot leave them behind.
 
-The catalog itself returns to carets under `lock-minor`, which the stable-line decision had chosen before the incident: the override layer, not the catalog range, is now what stops a satellite from pairing with an older core. `@effect/tsgo` rides the catalog but is not part of the release family, so it stays exact and is excluded from the pins.
+The catalog itself returns to carets under `lock-minor`, which the stable-line decision had chosen before the incident: the override layer, not the catalog range, is now what stops a satellite from pairing with an older core. `@effect/tsgo` versions on its own 0.x line and stays exact in the catalog; the directive pins it on that line (`"@effect/tsgo@^0.51.0": "0.51.1"` today), so one tsgo serves the graph as well.
 
 `__test__/catalog.test.ts` pins both halves: every entry is a caret on `lock-minor` with a peer floored to its minor, every 4.x entry names `effect`'s own version, and the built pnpmfile's `overrides` equal the pins derived from the catalog literal plus the two bridge entries.[^catalog-test]
 

@@ -420,9 +420,9 @@ await build({
 			// day before core, and the pairing dies at import), and a catalog never reaches a
 			// dependency's own dependencies (@effected/store and @effected/schemastore-cli depend
 			// on satellites directly). The line scope leaves a tool still built on a release
-			// candidate alone: 4.0.0-rc.118 sits outside ^4.0.0. @effect/tsgo rides the catalog
-			// but is not part of the release family, so it keeps its own range.
-			overridesFromCatalogs: { catalog: "effect", exclude: ["@effect/tsgo"] },
+			// candidate alone: 4.0.0-rc.118 sits outside ^4.0.0. @effect/tsgo versions on its
+			// own 0.x line and gets its own line-scoped pin, so one tsgo serves the graph too.
+			overridesFromCatalogs: { catalog: "effect" },
 			// Tools still built on an Effect release candidate depend on that candidate's
 			// @effect/platform-node, which takes @effect/platform-node-shared with a caret.
 			// A fresh resolve pairs it with the newest shared package, built against a
