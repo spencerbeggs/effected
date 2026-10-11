@@ -1,9 +1,11 @@
+import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { TerminalEnv } from "@effected/env";
-import { ConfigProvider, Effect } from "effect";
+import { ConfigProvider, Effect, Layer } from "effect";
 import { Prompt } from "effect/cli";
 import type { Style, TokenName } from "../src/index.js";
 import { CliTheme, Status, Token } from "../src/index.js";
+import { TestTerminal } from "../src/testing.js";
 
 const env = (color: "none" | "basic" | "256" | "truecolor") => TerminalEnv.layerTest({ stdout: { color } });
 
@@ -139,6 +141,36 @@ describe("CliTheme.promptTheme", () => {
 			assert.strictEqual(theme.successColor, "\x1b[32m");
 			assert.strictEqual(theme.errorColor, "\x1b[1m\x1b[31m");
 			assert.strictEqual(theme.mutedColor, "\x1b[2m");
+		}),
+	);
+
+	it.effect("hands core the theme's own colour decision: `colors` is false at none and true otherwise", () =>
+		Effect.gen(function* () {
+			assert.strictEqual((yield* promptThemeUnder("none")).colors, false);
+			assert.strictEqual((yield* promptThemeUnder("basic")).colors, true);
+		}),
+	);
+
+	it.effect("a colourless theme runs core's prompt with no colour or style escape at all, not even a reset", () =>
+		Effect.gen(function* () {
+			const output = (color: "none" | "basic") =>
+				Effect.gen(function* () {
+					const terminal = yield* TestTerminal.make();
+					yield* terminal.input([{ name: "enter" }]);
+					yield* Prompt.run(Prompt.Select({ message: "Pick", choices: [{ title: "a", value: "a" }] })).pipe(
+						Effect.provide(
+							Layer.mergeAll(NodeServices.layer, terminal.layer).pipe(Layer.provideMerge(NodeServices.layer)),
+						),
+					);
+					return yield* terminal.output;
+				}).pipe(Effect.provide(CliTheme.promptTheme), Effect.provide(CliTheme.layerTest({ color })));
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: an SGR sequence is what is asserted absent
+			const sgr = /\x1b\[[0-9;]*m/;
+			const plain = yield* output("none");
+			assert.include(plain, "Pick");
+			assert.notMatch(plain, sgr);
+			// Control: at basic the same prompt is painted, so the pattern can fire.
+			assert.match(yield* output("basic"), sgr);
 		}),
 	);
 

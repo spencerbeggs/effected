@@ -20,13 +20,13 @@ export interface CliEnvOptions {
 	/** The environment variable that overrides the audience, read through `Config`; see `Audience.layer`. */
 	readonly audienceEnvVar?: string | undefined;
 	/**
-	 * Overrides the stderr terminal check; `Stdio` reports only stdout, so stderr mirrors it otherwise.
+	 * Overrides the stderr terminal check; omitted, core's `Stdio.stderrIsTerminal` answers.
 	 *
 	 * @remarks
-	 * Mirroring means a program whose stdout is a terminal but whose stderr is redirected to a file still paints
-	 * stderr (a failure report, a warning) with colour escapes. A Node host that redirects stderr passes the real
-	 * answer: `env: { stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true) }`. Core's `Stdio` has no
-	 * stderr terminal check to read instead; that gap is tracked upstream as Effect-TS/effect#8639.
+	 * The platform `Stdio` reads the host (`process.stderr.isTTY` on Node), so a program whose stdout is a terminal
+	 * but whose stderr is redirected to a file writes its failure report and warnings there unpainted, with nothing
+	 * passed here. A `Stdio` built with `Stdio.make` without the field answers `false`; pass this only for a host
+	 * whose `Stdio` cannot say.
 	 */
 	readonly stderrIsTerminal?: Effect.Effect<boolean> | undefined;
 	/** Options for the theme; see {@link CliThemeOptions}. */

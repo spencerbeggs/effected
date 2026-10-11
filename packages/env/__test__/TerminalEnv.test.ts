@@ -7,10 +7,12 @@ import { TerminalEnv } from "../src/TerminalEnv.js";
 
 const withEnv = (env: Env) => Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env));
 
-const stdio = (opts: { readonly stdin?: boolean; readonly stdout: boolean }) =>
+/** A `Stdio` double; `stderr` left out is core's own default for the field, `false`. */
+const stdio = (opts: { readonly stdin?: boolean; readonly stdout: boolean; readonly stderr?: boolean }) =>
 	Stdio.layerTest({
 		stdinIsTerminal: Effect.succeed(opts.stdin ?? opts.stdout),
 		stdoutIsTerminal: Effect.succeed(opts.stdout),
+		...(opts.stderr === undefined ? {} : { stderrIsTerminal: Effect.succeed(opts.stderr) }),
 	});
 
 const terminal = (columns: number) =>
@@ -28,7 +30,7 @@ const terminal = (columns: number) =>
 /** Provide the platform doubles and the environment, build `TerminalEnv.layer`, and read the service. */
 const read = <A>(
 	env: Env,
-	io: { readonly stdin?: boolean; readonly stdout: boolean; readonly columns?: number },
+	io: { readonly stdin?: boolean; readonly stdout: boolean; readonly stderr?: boolean; readonly columns?: number },
 	use: (terminalEnv: TerminalEnv["Service"]) => A,
 	options?: Parameters<typeof TerminalEnv.layer>[0],
 ) =>
@@ -73,14 +75,23 @@ describe("TerminalEnv.layer", () => {
 		),
 	);
 
-	it.effect("stderr mirrors stdout when stderrIsTerminal is omitted", () =>
-		Effect.map(
-			read({ TERM: "xterm-256color" }, { stdout: true }, (t) => t.stderr),
-			(stderr) => {
-				assert.strictEqual(stderr.isTerminal, true);
-				assert.strictEqual(stderr.color, "256");
-			},
-		),
+	it.effect("stderr reads Stdio's own stderr check when stderrIsTerminal is omitted, never stdout's", () =>
+		Effect.gen(function* () {
+			// stdout a terminal, stderr redirected: stderr is unpainted while stdout keeps its colour.
+			const redirected = yield* read({ TERM: "xterm-256color" }, { stdout: true, stderr: false }, (t) => t);
+			assert.strictEqual(redirected.stdout.color, "256");
+			assert.strictEqual(redirected.stderr.isTerminal, false);
+			assert.strictEqual(redirected.stderr.color, "none");
+			// The inverse: stdout piped, stderr still on the terminal, so a failure report is painted.
+			const piped = yield* read({ TERM: "xterm-256color" }, { stdout: false, stderr: true }, (t) => t);
+			assert.strictEqual(piped.stdout.color, "none");
+			assert.strictEqual(piped.stderr.isTerminal, true);
+			assert.strictEqual(piped.stderr.color, "256");
+			// A Stdio that leaves the field out answers core's default, false: stderr no longer mirrors stdout.
+			const unsaid = yield* read({ TERM: "xterm-256color" }, { stdout: true }, (t) => t.stderr);
+			assert.strictEqual(unsaid.isTerminal, false);
+			assert.strictEqual(unsaid.color, "none");
+		}),
 	);
 
 	it.effect("stderrIsTerminal false gives stderr no colour while stdout keeps it", () =>

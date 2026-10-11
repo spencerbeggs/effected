@@ -194,6 +194,27 @@ describe("CliPrompt.fallback otherwise", () => {
 	);
 });
 
+describe("core's prompt runner (what fallback relies on)", () => {
+	const under = (terminal: TestTerminalHandle) =>
+		Effect.provide(Layer.mergeAll(NodeServices.layer, terminal.layer).pipe(Layer.provideMerge(NodeServices.layer)));
+
+	it.effect("an answered prompt never subscribes the terminal's input, with no gate in place", () =>
+		Effect.gen(function* () {
+			const terminal = yield* TestTerminal.make();
+			yield* terminal.input([{ name: "enter" }]);
+			const answer = yield* Prompt.run(Prompt.succeed("x")).pipe(under(terminal));
+			assert.strictEqual(answer, "x");
+			// Nothing attached to the input: on a real terminal that is what leaves piped stdin untouched.
+			assert.deepStrictEqual(yield* terminal.reads, { keys: 0, lines: 0, subscriptions: 0 });
+			assert.strictEqual(yield* terminal.pending, 1);
+			// Control: a prompt that needs a key subscribes once and takes it.
+			const chosen = yield* Prompt.run(select).pipe(under(terminal));
+			assert.strictEqual(chosen, "software-project");
+			assert.deepStrictEqual(yield* terminal.reads, { keys: 1, lines: 0, subscriptions: 1 });
+		}),
+	);
+});
+
 describe("CliPrompt.gateTerminal", () => {
 	const gated = (interactive: boolean, terminal: TestTerminalHandle) =>
 		Effect.gen(function* () {

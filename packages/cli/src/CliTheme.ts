@@ -223,9 +223,10 @@ export class CliTheme extends Context.Service<CliTheme, CliThemeShape>()("@effec
 	 * Sets core's `Prompt.Theme` from the tokens, so built-in prompts match the rest of the output.
 	 *
 	 * @remarks
-	 * The colour fields are raw SGR openers and are empty strings when colour is `none`. Under ASCII glyphs the
-	 * prompt symbols fall back to ASCII too. A colourless theme is not byte-clean: core's `Ansi.annotate`
-	 * appends a `\x1b[0m` reset, and prompts write cursor and underline codes, whatever the theme says.
+	 * The colour fields are raw SGR openers and are empty strings when colour is `none`, and `colors` is the theme's
+	 * own decision (`false` at `none`), so core's prompts and its command wizard write no colour or style escape, not
+	 * even a reset, and core never re-reads the host for `NO_COLOR` or a TTY. Cursor and redraw controls are still
+	 * written, whatever the theme says. Under ASCII glyphs the prompt symbols fall back to ASCII too.
 	 */
 	static readonly promptTheme: Layer.Layer<never, never, CliTheme> = Layer.effect(
 		Prompt.Theme,
@@ -235,6 +236,9 @@ export class CliTheme extends Context.Service<CliTheme, CliThemeShape>()("@effec
 			return Prompt.makeTheme({
 				...(theme.glyphs.kind === "ascii" ? ASCII_PROMPT_GLYPHS : {}),
 				ellipsis: theme.glyphs.ellipsis,
+				// The kit's decision (NO_COLOR, FORCE_COLOR, TERM=dumb, the audience) stands in for core's own detection,
+				// which would read `process` directly.
+				colors: theme.color !== "none",
 				primaryColor: open("accent"),
 				mutedColor: open("muted"),
 				successColor: open("success"),

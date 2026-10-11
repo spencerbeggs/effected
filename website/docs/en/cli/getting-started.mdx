@@ -48,10 +48,7 @@ const root = Command.make("tool").pipe(Command.withSharedFlags(CliAudience.flags
 NodeRuntime.runMain(
   CliRuntime.main(CliAudience.run(root, { version: "1.0.0" }), {
     platform: NodeServices.layer,
-    env: {
-      audienceEnvVar: "TOOL_AUDIENCE",
-      stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true),
-    },
+    env: { audienceEnvVar: "TOOL_AUDIENCE" },
   }),
 );
 ```
@@ -70,7 +67,7 @@ Each piece of that wiring does a specific job:
 - **`CliRuntime.main(program, options)`** assembles the whole program: the platform layer, failure reporting, a fresh exit-code cell and the logger, in the one order that reports every failure well.
 - **`env`** tells `main` to build the environment services: who is running the program (from [`@effected/env`](/env)), what the terminal can do, the audience, the theme and editor links. Leave it out and nothing is themed, and the program never prompts.
 - **`audienceEnvVar`** names a variable a user can set (`TOOL_AUDIENCE=human`) to override detection, for example a person working inside an agent's shell.
-- **`stderrIsTerminal`** gives the real stderr TTY check. Core's `Stdio` reports only stdout, so without it stderr's colour mirrors stdout's.
+- Each stream's terminal check comes from core's `Stdio`, so `tool 2> err.log` writes the failure report plain while stdout keeps its colour; `env.stderrIsTerminal` overrides stderr's only for a host whose `Stdio` cannot say.
 
 The audience is decided once: a flag first, then the override variable, then an agent detected from the environment, then CI, else a human. The [audiences and output guide](/cli/output) covers each rule.
 

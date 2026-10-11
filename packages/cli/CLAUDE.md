@@ -219,7 +219,7 @@ a second provide creates a second, unrelated cell: `CliExit.set` calls made
 against that shadow cell never reach the one `main` reads, and a findings run
 silently exits `0`.
 
-**The kit never defaults `env.stderrIsTerminal` from the host.** Core's `Stdio` reports only stdout (Effect-TS/effect#8639), so without the option a redirected stderr is painted because it mirrors stdout. Reading `process.stderr.isTTY` inside the root would break the no-`process` rule ([ui-binds-process-streams](../../okf/decisions/ui-binds-process-streams.md)), so the bin's entry passes it, the one place a bin reads its host. Once core has a stderr check, `CliEnv.layer` reads that instead.
+**The kit never reads the host for stderr's terminal check.** `CliEnv.layer` takes it from core's `Stdio.stderrIsTerminal`, which the platform `Stdio` answers from the host (`process.stderr.isTTY` on Node), so a redirected stderr is unpainted with nothing passed. `env.stderrIsTerminal` is an override for a host whose `Stdio` cannot say (`Stdio.make` without the field answers `false`), never a default a bin must supply; reading `process.stderr.isTTY` inside the root would break the no-`process` rule ([ui-binds-process-streams](../../okf/decisions/ui-binds-process-streams.md)).
 
 **`FailureDetails.isCancelled` / `isNotInteractive` are flags, `isDefect` is not redefined.** A fallback prompt's quit is a defect and a `CliUi.run` quit a typed failure, so `isDefect` cannot say "not a bug"; the flags test the squashed error's class and hold on either channel. `isDefect` stays `!Cause.hasFails(cause)` and no exit code depends on either.
 

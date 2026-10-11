@@ -43,7 +43,13 @@ export interface StreamEnv {
  * @public
  */
 export interface TerminalEnvOptions {
-	/** Overrides the stderr TTY check; `Stdio` reports only stdout, so stderr mirrors stdout when this is omitted. */
+	/**
+	 * Overrides the stderr terminal check; omitted, `Stdio.stderrIsTerminal` answers.
+	 *
+	 * @remarks
+	 * The platform `Stdio` layers answer from the host (`process.stderr.isTTY` on Node), and a `Stdio` built with
+	 * `Stdio.make` without the field answers `false`. Pass this only for a host whose `Stdio` cannot say.
+	 */
 	readonly stderrIsTerminal?: Effect.Effect<boolean>;
 }
 
@@ -106,7 +112,7 @@ const snapshot = (
 		const stdio = yield* Stdio.Stdio;
 		const stdin = yield* stdio.stdinIsTerminal;
 		const stdout = yield* stdio.stdoutIsTerminal;
-		const stderr = yield* options?.stderrIsTerminal ?? Effect.succeed(stdout);
+		const stderr = yield* options?.stderrIsTerminal ?? stdio.stderrIsTerminal;
 		const env = yield* readEnv([...allKeys, "COLUMNS"]);
 		return make(env, { stdin, stdout, stderr }, columns);
 	});
@@ -140,7 +146,7 @@ export class TerminalEnv extends Context.Service<TerminalEnv, TerminalEnvShape>(
 	 * Build the snapshot from `Stdio`, `Terminal` and the ambient `ConfigProvider`.
 	 *
 	 * @remarks
-	 * `Stdio` reports only stdout, so stderr mirrors it unless `options.stderrIsTerminal` supplies its own answer.
+	 * Every stream's terminal check comes from `Stdio`; `options.stderrIsTerminal` replaces stderr's alone.
 	 * A layer-returning function mints a fresh layer per call: call it once and bind the result to a constant.
 	 *
 	 * @param options - `stderrIsTerminal` overrides the stderr TTY check
@@ -200,7 +206,7 @@ export class TerminalEnv extends Context.Service<TerminalEnv, TerminalEnvShape>(
 	 * requires only `Stdio`, never `Terminal` or `TerminalEnv`, so a caller that only decides colour (a CLI's
 	 * output formatter) keeps a `Stdio`-only requirement.
 	 *
-	 * @param _stream - the stream to decide for; only `stdout` is available, since `Stdio` reports no other
+	 * @param _stream - the stream to decide for; only `stdout` is offered, the stream an output formatter paints
 	 */
 	static colorLevel(_stream: "stdout"): Effect.Effect<ColorLevel, never, StdioModule.Stdio> {
 		return Effect.gen(function* () {

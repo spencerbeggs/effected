@@ -22,10 +22,15 @@ const capturing = () => {
 const platform = (io: {
 	readonly stdin: boolean;
 	readonly stdout: boolean;
+	readonly stderr?: boolean;
 	readonly columns?: Effect.Effect<number>;
 }) =>
 	Layer.mergeAll(
-		Stdio.layerTest({ stdinIsTerminal: Effect.succeed(io.stdin), stdoutIsTerminal: Effect.succeed(io.stdout) }),
+		Stdio.layerTest({
+			stdinIsTerminal: Effect.succeed(io.stdin),
+			stdoutIsTerminal: Effect.succeed(io.stdout),
+			...(io.stderr === undefined ? {} : { stderrIsTerminal: Effect.succeed(io.stderr) }),
+		}),
 		Layer.succeed(
 			Terminal.Terminal,
 			Terminal.make({
@@ -417,6 +422,33 @@ describe("CliRuntime.main with the env option", () => {
 			assert.deepStrictEqual(seen[0], all);
 			assert.strictEqual(seen[1]?.length, all.length - 1);
 			assert.isFalse(seen[1]?.includes(GlobalFlag.Wizard));
+		}),
+	);
+
+	it.effect("stderr's colour follows Stdio's own stderr check, and env.stderrIsTerminal replaces it", () =>
+		Effect.gen(function* () {
+			const coloursUnder = (io: Layer.Layer<Stdio.Stdio | Terminal.Terminal>, options?: CliEnvOptions) =>
+				Effect.gen(function* () {
+					const theme = yield* CliTheme;
+					return [theme.forStream("stdout").color, theme.forStream("stderr").color];
+				}).pipe(
+					Effect.provide(CliEnv.layer(options)),
+					Effect.provide(io),
+					Effect.provideService(ConfigProvider.ConfigProvider, withEnv({ TERM: "xterm-256color" })),
+				);
+			// `tool 2> err.log`: stdout painted, the failure report in the file plain.
+			const redirected = platform({ stdin: true, stdout: true, stderr: false });
+			assert.deepStrictEqual(yield* coloursUnder(redirected), ["256", "none"]);
+			// `tool | jq`: stdout plain, stderr still on the terminal and painted.
+			assert.deepStrictEqual(yield* coloursUnder(platform({ stdin: false, stdout: false, stderr: true })), [
+				"none",
+				"256",
+			]);
+			// The option is an override of Stdio's answer, not a default for it.
+			assert.deepStrictEqual(yield* coloursUnder(redirected, { stderrIsTerminal: Effect.succeed(true) }), [
+				"256",
+				"256",
+			]);
 		}),
 	);
 

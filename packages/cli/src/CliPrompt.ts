@@ -51,10 +51,9 @@ export class CliPrompt {
 	 * `CliRuntime.reportFailures`) renders it as one line with exit `130`; under a bare `runMain` it prints a
 	 * stack.
 	 *
-	 * Pair it with `CliPrompt.gateTerminal`, which `CliEnv.layer` installs: core still runs `Prompt.run` on the
-	 * answered prompt it is handed, and `Prompt.run` subscribes the terminal's input, which on a real terminal
-	 * attaches a reader to stdin and drops piped input. The gate makes that subscription harmless when the run is
-	 * not interactive.
+	 * Core runs `Prompt.run` on the answered prompt it is handed, and an answered prompt never reads the terminal's
+	 * input (core acquires it only when a prompt needs a key), so piped stdin is left untouched without any gate.
+	 * `CliPrompt.gateTerminal`, which `CliEnv.layer` installs, covers the prompts this function does not wrap.
 	 *
 	 * @param prompt - the prompt to show
 	 * @param options - the parameter it stands in for, and the non-interactive default
@@ -77,12 +76,12 @@ export class CliPrompt {
 	 * Gates core's `Terminal` on `CliInteractive`, so a run that is not interactive never touches the real one.
 	 *
 	 * @remarks
-	 * Core's prompt runner subscribes the terminal's input even for a prompt that is already answered, and the
-	 * real Node terminal then attaches a readline to stdin, which drops piped input and puts a TTY stdin into raw
-	 * mode. Not interactive, this terminal's input is an already-ended queue, its `readLine` fails as quit and its
-	 * `display` writes nothing, so any prompt, the wizard included, is quit at once and the real terminal is never
-	 * read. Its `columns` and `rows` always come from the real one, so layout keeps working. Interactive, every
-	 * call passes through to the real terminal.
+	 * A prompt that needs a key reads the terminal's input, and the real Node terminal then attaches a readline to
+	 * stdin, which drops piped input and puts a TTY stdin into raw mode. Core's `withFallbackPrompt`, a `Prompt.run`
+	 * in a handler and the command wizard all do so whether or not anyone is there to answer. Not interactive, this
+	 * terminal's input is an already-ended queue, its `readLine` fails as quit and its `display` writes nothing, so
+	 * any such prompt is quit at once and the real terminal is never read. Its `columns` and `rows` always come
+	 * from the real one, so layout keeps working. Interactive, every call passes through to the real terminal.
 	 *
 	 * The decision is made on every call, not when the layer is built, so a scope that narrows `CliInteractive`
 	 * later, such as an audience flag under `CliAudience.runWith`, gates it too.

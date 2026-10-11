@@ -367,9 +367,14 @@ describe("CliFailure.toDoc: hostile text", () => {
 });
 
 describe("CliRuntime: the default failure path", () => {
-	const platform = (stdout: boolean) =>
+	/** Every stream on a terminal, or none: the report goes to stderr, whose own check decides its colour. */
+	const platform = (tty: boolean) =>
 		Layer.mergeAll(
-			Stdio.layerTest({ stdinIsTerminal: Effect.succeed(stdout), stdoutIsTerminal: Effect.succeed(stdout) }),
+			Stdio.layerTest({
+				stdinIsTerminal: Effect.succeed(tty),
+				stdoutIsTerminal: Effect.succeed(tty),
+				stderrIsTerminal: Effect.succeed(tty),
+			}),
 			Layer.succeed(
 				Terminal.Terminal,
 				Terminal.make({

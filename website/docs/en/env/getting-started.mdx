@@ -85,14 +85,7 @@ Effect.runPromise(describe.pipe(Effect.provide(TerminalEnv.layer()), Effect.prov
 
 `width(fallback)` is what to lay output out at: the terminal's columns, else a positive integer in `COLUMNS`, else the fallback, which defaults to 80.
 
-Core's `Stdio` reports only whether stdout is a terminal, so stderr mirrors stdout unless you say otherwise. On Node, pass the real answer:
-
-```ts
-import { TerminalEnv } from "@effected/env";
-import { Effect } from "effect";
-
-const TerminalLive = TerminalEnv.layer({ stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true) });
-```
+Each stream's terminal check comes from core's `Stdio`, which the platform layer answers from the host. `TerminalEnv.layer({ stderrIsTerminal })` overrides stderr's only for a `Stdio` that cannot say, such as one built with `Stdio.make` without the field, which answers `false`.
 
 Building the platform `Terminal` has a cost in a long-lived host: `NodeTerminal` listens on `process.stdin`. Use `TerminalEnv.layerStdio()` there instead. It needs only `Stdio` and reports no columns, so `width()` falls back to `COLUMNS` and then to the fallback.
 
