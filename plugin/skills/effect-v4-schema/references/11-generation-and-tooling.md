@@ -21,7 +21,7 @@ fast-check bridge (`Schema.toArbitrary`, `effect/testing/FastCheck`, the
 is `onExcessProperty: "ignore" | "error"`, defaulting OPEN — every object blob below shows
 `"additionalProperties": true`, which is what a bare `toJsonSchemaDocument` emits (probed;
 `{ onExcessProperty: "error" }` gives `false`, and the retired `additionalProperties: false` option is
-silently ignored at runtime — only the type-checker catches the stale spelling). The JSON Schema output blobs were otherwise NOT re-probed.
+silently ignored at runtime — only the type-checker catches the stale spelling). Every JSON Schema output blob below was re-probed against the installed package.
 -->
 
 # Schema Generation and Tooling
@@ -36,7 +36,7 @@ By default, a schema produces a draft-2020-12 JSON Schema.
 
 The result is a data structure including:
 
-- the source of the JSON Schema (e.g. `draft-2020-12`, `draft-07`, etc...)
+- the dialect of the JSON Schema (e.g. `draft-2020-12`, `draft-07`, etc...), under the `dialect` key
 - the JSON Schema itself
 - any definitions referenced by `$ref` (if any)
 
@@ -55,7 +55,7 @@ console.log(JSON.stringify(document, null, 2))
 /*
 Output:
 {
-  "source": "draft-2020-12",
+  "dialect": "draft-2020-12",
   "schema": {
     "type": "array",
     "prefixItems": [
@@ -90,7 +90,7 @@ console.log(JSON.stringify(doc07, null, 2))
 /*
 Output:
 {
-  "source": "draft-07",
+  "dialect": "draft-07",
   "schema": {
     "type": "array",
     "maxItems": 2,
@@ -137,20 +137,16 @@ const document = Schema.toJsonSchemaDocument(schema)
 console.log(JSON.stringify(document, null, 2))
 /*
 {
-  "source": "draft-2020-12",
+  "dialect": "draft-2020-12",
   "schema": {
     "type": "string",
-    "allOf": [
-      {
-        "minLength": 1,
-        "title": "Username",
-        "description": "A non-empty user name string",
-        "default": "anonymous",
-        "examples": [
-          "alice",
-          "bob"
-        ]
-      }
+    "minLength": 1,
+    "title": "Username",
+    "description": "A non-empty user name string",
+    "default": "anonymous",
+    "examples": [
+      "alice",
+      "bob"
     ]
   },
   "definitions": {}
@@ -232,7 +228,7 @@ const document = Schema.toJsonSchemaDocument(schema)
 console.log(JSON.stringify(document, null, 2))
 /*
 {
-  "source": "draft-2020-12",
+  "dialect": "draft-2020-12",
   "schema": {
     "type": "object",
     "properties": {
@@ -263,7 +259,7 @@ const document = Schema.toJsonSchemaDocument(schema)
 console.log(JSON.stringify(document, null, 2))
 /*
 {
-  "source": "draft-2020-12",
+  "dialect": "draft-2020-12",
   "schema": {
     "type": "object",
     "properties": {
@@ -383,19 +379,17 @@ const document = Schema.toJsonSchemaDocument(schema)
 console.log(JSON.stringify(document, null, 2))
 /*
 {
-  "source": "draft-2020-12",
+  "dialect": "draft-2020-12",
   "schema": {
     "type": "string",
-    "allOf": [
-      {
-        "minLength": 1
-      }
-    ]
+    "minLength": 1
   },
   "definitions": {}
 }
 */
 ```
+
+A single check, together with its annotations, is inlined on the schema node. When a second check cannot collapse into the first, it is emitted in `allOf` with its own annotations.
 
 **Example** (Multiple filters)
 
@@ -412,14 +406,12 @@ const document = Schema.toJsonSchemaDocument(schema)
 console.log(JSON.stringify(document, null, 2))
 /*
 {
-  "source": "draft-2020-12",
+  "dialect": "draft-2020-12",
   "schema": {
     "type": "string",
+    "minLength": 1,
+    "description": "description1",
     "allOf": [
-      {
-        "minLength": 1,
-        "description": "description1"
-      },
       {
         "maxLength": 2,
         "description": "description2"
@@ -431,11 +423,13 @@ console.log(JSON.stringify(document, null, 2))
 */
 ```
 
+Colliding bounds tighten in place rather than stacking. `Schema.Natural` exports `{"type":"integer","minimum":0,"maximum":9007199254740991}`, and `Schema.Int.check(Schema.isGreaterThan(0))` exports `"exclusiveMinimum": 0` with the safe-integer `maximum` and no `minimum`.
+
 #### The fromJsonString combinator
 
-With `fromJsonString`, the generated schema uses `contentSchema` to embed the JSON Schema of the decoded value.
+With `fromJsonString`, the generated schema describes the encoded side: a string marked with `contentMediaType: "application/json"`. The JSON Schema of the decoded value is not embedded.
 
-**Example** (Embedding `contentSchema` for JSON string content)
+**Example** (JSON string content)
 
 ```ts
 import { Schema } from "effect"
@@ -452,22 +446,10 @@ const document = Schema.toJsonSchemaDocument(schema)
 console.log(JSON.stringify(document, null, 2))
 /*
 {
-  "source": "draft-2020-12",
+  "dialect": "draft-2020-12",
   "schema": {
     "type": "string",
-    "contentMediaType": "application/json",
-    "contentSchema": {
-      "type": "object",
-      "properties": {
-        "a": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "a"
-      ],
-      "additionalProperties": true
-    }
+    "contentMediaType": "application/json"
   },
   "definitions": {}
 }

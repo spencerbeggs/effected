@@ -72,7 +72,7 @@ internally would win over the harness's and talk to the real terminal.
   which writes through `console.log` whatever `LogToStderr` says (`effect`'s
   `src/Logger.ts`: `withConsoleLog` at 265-271, `consoleLogFmt` at 917,
   `consoleStructured` at 942, `consoleJson` at 965; the default logger reads
-  the reference at `src/internal/effect.ts:6902`). Never install them in an MCP server: every log
+  the reference at `src/internal/effect.ts:6907`). Never install them in an MCP server: every log
   line lands on stdout, the wire. For JSON logs on stderr, install
   `Logger.layer([Logger.withConsoleError(Logger.formatJson)])`.
 - A malformed `protocols` list — more than one stateless adapter — is the

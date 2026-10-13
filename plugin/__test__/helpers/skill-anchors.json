@@ -440,10 +440,10 @@
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "Schema.ts:6888",
+			"anchor": "Schema.ts:6896",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"6888": "const canExport = /^[dg]*uy?$/.test(flags)"
+				"6896": "const canExport = /^[dg]*uy?$/.test(flags)"
 			}
 		},
 		{
@@ -731,11 +731,11 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/resources.md",
-			"anchor": "ai/McpServer.ts:2676-2696",
+			"anchor": "ai/McpServer.ts:2830-2850",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"2676": "const resolveResourceContent = (",
-				"2696": "}"
+				"2830": "const resolveResourceContent = (",
+				"2850": "}"
 			}
 		},
 		{
@@ -756,19 +756,19 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/server-wiring.md",
-			"anchor": "src/internal/effect.ts:6902",
+			"anchor": "src/internal/effect.ts:6907",
 			"source": "effect:internal/effect.ts",
 			"symbols": {
-				"6902": "const log = fiber.getRef(LogToStderr) ? console.error : console.log"
+				"6907": "const log = fiber.getRef(LogToStderr) ? console.error : console.log"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:1972-1985",
+			"anchor": "ai/McpServer.ts:2126-2139",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"1972": "const inputSchema = yield* Schema.decodeUnknownEffect(ToolJson)(",
-				"1985": "const mcpTool = new McpTool({"
+				"2126": "const inputSchema = yield* Schema.decodeUnknownEffect(ToolJson)(",
+				"2139": "const mcpTool = new McpTool({"
 			}
 		},
 		{
@@ -813,36 +813,36 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:1940-1943",
+			"anchor": "ai/McpServer.ts:2094-2097",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"1940": "const decodeOptions: SchemaAST.ParseOptions = {",
-				"1941": "onExcessProperty: strict ? \"error\" : \"ignore\""
+				"2094": "const decodeOptions: SchemaAST.ParseOptions = {",
+				"2095": "onExcessProperty: strict ? \"error\" : \"ignore\""
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:2006",
+			"anchor": "ai/McpServer.ts:2160",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"2006": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
+				"2160": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:1950-1954",
+			"anchor": "ai/McpServer.ts:2104-2108",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"1950": "const declaredFailureResult = (error: unknown) =>",
-				"1954": "new CallToolResult({ isError: true, content: toolResultContent(encoded) }))"
+				"2104": "const declaredFailureResult = (error: unknown) =>",
+				"2108": "new CallToolResult({ isError: true, content: toolResultContent(encoded) }))"
 			}
 		},
 		{
 			"file": "effected-packages/references/mcp.md",
-			"anchor": "McpServer.ts:2006",
+			"anchor": "McpServer.ts:2160",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"2006": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
+				"2160": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
 			}
 		},
 		{
@@ -1011,26 +1011,26 @@
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Schema.ts:4650",
+			"anchor": "Schema.ts:4658",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"4650": "const ArraySchema: ArrayLambda = Struct_.lambda<ArrayLambda>("
+				"4658": "const ArraySchema: ArrayLambda = Struct_.lambda<ArrayLambda>("
 			}
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Schema.ts:4653",
+			"anchor": "Schema.ts:4661",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"4653": "export {"
+				"4661": "export {"
 			}
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Schema.ts:4671",
+			"anchor": "Schema.ts:4679",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"4671": "ArraySchema as Array"
+				"4679": "ArraySchema as Array"
 			}
 		},
 		{

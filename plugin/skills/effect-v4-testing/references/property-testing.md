@@ -97,7 +97,7 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   (`regexp.ts:835` generates full code points under it, so a negated class
   or `\S` can yield astral characters), and JSON Schema export needs it:
   `isPattern` exports `pattern` only when the flags match `/^[dg]*uy?$/`
-  (`Schema.ts:6888`), so a flag-free regex exports a bare
+  (`Schema.ts:6896`), so a flag-free regex exports a bare
   `{"type":"string"}` while decoding still enforces it. Rewrite
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`
   (`packages/semver/src/SemVer.ts`, `packages/schema-org/src/NodeRef.ts`). Hostile-unicode input is generated
