@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-10T23:08:17Z
-  body_sha256: cfc902643edd37064f09d8b75c57ee358f883f448de7ec183fac53ba91043550
+integrity:
+  generated:
+    body: cfc902643edd3706
 ---
 
 # Vendored Effect is pinned to the lockfile's tag, not main

@@ -11,7 +11,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: cc805f7098a6eba88652ae002a44bdc44c4d48e85e65d4f2d1a93a821c8a91b5
+integrity:
+  generated:
+    body: cc805f7098a6eba8
 ---
 
 # Ghost workspace

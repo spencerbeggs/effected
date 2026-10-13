@@ -9,7 +9,9 @@ sources:
 generated:
   by: "claude-code/opus-5"
   at: 2026-09-14T04:45:45Z
-  body_sha256: 6afbdcd93b2227732d7214090ffbb94fe9e2c26064dafa95669f6c3c24f05e5f
+integrity:
+  generated:
+    body: 6afbdcd93b222773
 ---
 
 # No shipped templates/ directory

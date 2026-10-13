@@ -8,10 +8,12 @@ tags: [ci, dx]
 generated:
   by: okfit/claude-code
   at: 2026-09-13T05:33:04Z
-  body_sha256: d3150a6f9995eca0b3424184ec6b32a11def308335f939efdcface610dd210da
 sources:
   - id: repo
     resource: "https://github.com/savvy-web/silk-router-action"
+integrity:
+  generated:
+    body: d3150a6f9995eca0
 ---
 
 # silk-router-action

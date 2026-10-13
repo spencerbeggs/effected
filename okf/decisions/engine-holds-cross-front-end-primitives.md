@@ -7,10 +7,18 @@ tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
-  body_sha256: 6e6ce95b3d182d9845cffbb4dde0a7445e2aeb0943f4fbeb83875c49c1a3f508
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 6e6ce95b3d182d98
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: d486266e3f0fafe4
 ---
 
 # D1: `@effected/engine` exists and holds `Distribution`, `Remediation` and `LaunchContext`

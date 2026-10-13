@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 487b1546d262f025ed8b51a3af9ce851d2500ed1d244e181b00b42d6e7b6ddc8
+integrity:
+  generated:
+    body: 487b1546d262f025
 ---
 
 # The numeric-enum codec is data, not a typescript dependency

@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-17T04:41:11Z
-  body_sha256: f488352de4f6e9e771763a643d09af5b222626bab268fbf14cadd588dfdeb3f3
+integrity:
+  generated:
+    body: f488352de4f6e9e7
 ---
 
 # "Wait for the kit" leaves raw spawns and duplicated regex behind

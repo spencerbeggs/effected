@@ -9,10 +9,18 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: a85ef16fe4b58c22def458e1aaafc87c157ac2e85f14072bc15bfd8e954a850e
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: a85ef16fe4b58c22
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 516ad1c4fb2e4dd6
 ---
 
 # Each runtimes resolver exposes three lazy layer constants, not one configurable layer

@@ -7,10 +7,18 @@ tags: [dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 3052b9a418e53b9f1e47c58898e0e864b264f00162148074b2e2860e555ed1c9
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 3052b9a418e53b9f
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 7f4246f93b55fcdd
 ---
 
 # CliLogger honours LogToStderr only as a force-all override

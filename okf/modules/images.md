@@ -12,7 +12,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-09T16:54:22Z
-  body_sha256: 6e5fe0721ed91f898ff1db25fc86237c865a28f812eb58adb2e92c1ece6f60c7
+integrity:
+  generated:
+    body: 6e5fe0721ed91f89
 ---
 
 # `@effected/images`

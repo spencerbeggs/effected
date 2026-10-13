@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 6db5be5d6f184a2b4b63d717d63c34abe54b0bd3d76b046b36a4888bf4d8e170
+integrity:
+  generated:
+    body: 6db5be5d6f184a2b
 ---
 
 # A missing PublishabilityDetector fails far from where it was wired

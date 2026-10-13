@@ -11,7 +11,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: cbc868d3fa576166d95b17aee97f192f51293f8058fbfa09be945f16b4058646
+integrity:
+  generated:
+    body: cbc868d3fa576166
 ---
 
 # @effected/vfs is deferred until a second consumer materializes

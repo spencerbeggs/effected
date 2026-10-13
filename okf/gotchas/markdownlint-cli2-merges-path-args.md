@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 1ae9754c88a621c9103573676aca5387d9815ffb5b3999c58e230497f5b949ac
+integrity:
+  generated:
+    body: 1ae9754c88a621c9
 ---
 
 # Explicit markdownlint-cli2 path arguments do not narrow the scan

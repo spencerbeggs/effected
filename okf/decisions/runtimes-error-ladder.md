@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 3ff971ca116bd58b0a9963d1e3a825855b2df15387584bcb77426d60919375f2
+integrity:
+  generated:
+    body: 3ff971ca116bd58b
 ---
 
 # runtimes' error ladder keeps four distinctions the pipeline must not collapse

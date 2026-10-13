@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-14T02:44:47Z
-  body_sha256: 799fa69250a71cd8be2031eee03ab042b754c6418749a1483e7b632180b4b963
+integrity:
+  generated:
+    body: 799fa69250a71cd8
 ---
 
 # catalog:build is missing from pnpm-workspace.yaml because it is injected

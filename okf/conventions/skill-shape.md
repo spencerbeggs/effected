@@ -12,7 +12,9 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-03T04:19:44Z
-  body_sha256: 3d86e42f36d6113367619c652abf8e6247eca3b80cf68c85c32444efa35ee2dd
+integrity:
+  generated:
+    body: 3d86e42f36d61133
 ---
 
 # A plugin skill is a lean index over references

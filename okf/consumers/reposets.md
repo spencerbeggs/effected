@@ -8,7 +8,9 @@ tags: [bundle, dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: fd2f89b8740220fed513c7d26b8a71dcc8eb8b20035eb5715a81df974cb747ad
+integrity:
+  generated:
+    body: fd2f89b8740220fe
 ---
 
 # spencerbeggs/reposets

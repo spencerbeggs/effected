@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: f4d5c915eb582945e999d13ab4d782360b0b5fb71cc3f302e89a20998bf4ebb6
+integrity:
+  generated:
+    body: f4d5c915eb582945
 ---
 
 # Every git constructor and error path carries the redaction mask

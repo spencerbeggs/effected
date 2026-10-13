@@ -15,7 +15,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: f7e7713dc3f2891d76d08b6488fd78d0b00bf813844ba00a1f9618ea6119911e
+integrity:
+  generated:
+    body: f7e7713dc3f2891d
 ---
 
 # PackageManager's version and integrity fields ARE the schemas their owning packages export

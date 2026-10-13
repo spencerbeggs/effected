@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 0a64a974e9c86d1518f1145a45dfce6db0d0b8657ece9f2eedba973abae964fb
+integrity:
+  generated:
+    body: 0a64a974e9c86d15
 ---
 
 # WorkspacesSync is a `*Sync` escape hatch, not a `*Result` pure form

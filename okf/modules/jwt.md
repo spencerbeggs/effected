@@ -26,7 +26,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-09T23:30:35Z
-  body_sha256: 769c915ccdd553b22519123d365652d6aedd4c8951c98526358f6bed1a4f8ced
+integrity:
+  generated:
+    body: 769c915ccdd553b2
 ---
 
 # `@effected/jwt`

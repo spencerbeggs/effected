@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 4ed83c46f2ec08f1a28dcedd54ea283101ec34653b7bb5ff8fb657289cc33c29
+integrity:
+  generated:
+    body: 4ed83c46f2ec08f1
 ---
 
 # toml

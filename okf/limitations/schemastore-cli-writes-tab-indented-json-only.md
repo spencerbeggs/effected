@@ -19,7 +19,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-09T20:53:33Z
-  body_sha256: 0c0678a39af541ce9314fdc4fe653678be12d7c13846d4243a9a64b0d9b0b00b
+integrity:
+  generated:
+    body: 0c0678a39af541ce
 ---
 
 # The schemastore CLI writes tab-indented, fully expanded JSON only

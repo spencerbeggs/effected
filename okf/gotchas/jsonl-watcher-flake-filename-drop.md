@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-08T06:11:30Z
-  body_sha256: 0cf3ca0d2224720ccd004bf8c8c98a0e8c6d143f3b3962569545ef7bb6c88f4f
+integrity:
+  generated:
+    body: 0cf3ca0d2224720c
 ---
 
 # A flaky `jsonl` watcher is probably an arming-order window, not an unreliable platform watch

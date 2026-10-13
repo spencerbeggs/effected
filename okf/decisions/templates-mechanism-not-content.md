@@ -7,7 +7,9 @@ tags: [dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: e09427cf7ba1cda607fcea943d3b75b397fa1b7329e9c4bb4553b019be008714
+integrity:
+  generated:
+    body: e09427cf7ba1cda6
 ---
 
 # templates owns the mechanism, never the content

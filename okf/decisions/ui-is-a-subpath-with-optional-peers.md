@@ -17,7 +17,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T21:32:23Z
-  body_sha256: 5d771fb96cfe3dbfe12609802476d4be9370aaa7fad9e868da98b80c8c8c90ac
+integrity:
+  generated:
+    body: 5d771fb96cfe3dbf
 ---
 
 # The Ink layer is a ./ui subpath of cli, with ink and react as optional peers

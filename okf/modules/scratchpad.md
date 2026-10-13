@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-24T05:32:50Z
-  body_sha256: 040423d47e5cd536d1cae7ceaedf56065d88aba4807765cb858b9dcbbd4168c5
+integrity:
+  generated:
+    body: 040423d47e5cd536
 ---
 
 # scratchpad

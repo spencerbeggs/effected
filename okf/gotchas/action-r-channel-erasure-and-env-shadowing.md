@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 889d84e7905c0f6ca832645d868e62128b57bf64d785de48bea2977da0710982
+integrity:
+  generated:
+    body: 889d84e7905c0f6c
 ---
 
 # An `as never` cast and a second process.env read both compile clean and fail at runtime

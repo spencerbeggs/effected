@@ -8,7 +8,9 @@ tags: [bundle, dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-25T21:15:01Z
-  body_sha256: 597254c8eab76cef28e93ff1c17d9302cbdfec4c4602cedc7a4b78d6931593c7
+integrity:
+  generated:
+    body: 597254c8eab76cef
 ---
 
 # savvy-web/systems

@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: b1ff13e3758640d2218a7acb63309b2be0e114684f6934565274b2ce1f60e75d
+integrity:
+  generated:
+    body: b1ff13e3758640d2
 ---
 
 # sbom owns its own CycloneDX emitter, declining the object-model library

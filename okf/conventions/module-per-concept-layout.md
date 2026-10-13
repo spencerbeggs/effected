@@ -15,7 +15,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T01:39:09Z
-  body_sha256: e55e59088f8ea0b3ce51bb00b09ee49e2e70546b124d1a6361e044b5fb16486a
+integrity:
+  generated:
+    body: e55e59088f8ea0b3
 ---
 
 # Module layout is module-per-concept, not kind-based folders

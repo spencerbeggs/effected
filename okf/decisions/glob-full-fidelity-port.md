@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: cdd2764a005bb8e3087b263860cab92c8f3a2779e8a1339bd547418e93642cf8
+integrity:
+  generated:
+    body: cdd2764a005bb8e3
 ---
 
 # glob is a full-fidelity vendored port, not a minimal runtime dependency

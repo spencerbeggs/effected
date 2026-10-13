@@ -15,10 +15,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 4a5c0ef34e155a7b54dfa9687645912d059b5754a5614ef3baae8356a423247d
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 4a5c0ef34e155a7b
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 3b44c7137980bce3
 ---
 
 # Contract inversion is the default answer to a tier-dragging edge

@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-14T02:44:47Z
-  body_sha256: 1006743e20584b40465fbb23ce57d4f7e03fd6c388bacb6fc0c82dbee819fbac
+integrity:
+  generated:
+    body: 1006743e20584b40
 ---
 
 # A turbo cache hit reads exactly like a fresh build in the log

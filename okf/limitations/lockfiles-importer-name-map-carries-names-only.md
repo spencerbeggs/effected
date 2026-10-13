@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 1c99fe44582c83f5251d2c6751c34a12d0c4a23eb0e2ccf690e4e153049ac926
+integrity:
+  generated:
+    body: 1c99fe44582c83f5
 ---
 
 # The importer-name map carries names only

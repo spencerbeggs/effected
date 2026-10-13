@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 6ec4277386a1c7b44dc8d3c516cccdfda3cc899d0e7d26e4c1acf0a4df78af42
+integrity:
+  generated:
+    body: 6ec4277386a1c7b4
 ---
 
 # The NTIA minimum-elements report is a report, not a gate

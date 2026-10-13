@@ -9,7 +9,9 @@ tags: [github, security, bundle]
 generated:
   by: okfit/claude-code
   at: 2026-10-07T21:32:23Z
-  body_sha256: df63a018601200d8bd225c7ef6b39ab3a3b46a1f8d31a4f881ca7ed9cf094ab5
+integrity:
+  generated:
+    body: df63a018601200d8
 ---
 
 # @effected/github-commands

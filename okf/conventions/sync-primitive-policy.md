@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: eec01eebdbcaf466a5ea059f81c63f1681b34db30f4edc8258c69a023b580168
+integrity:
+  generated:
+    body: eec01eebdbcaf466
 ---
 
 # Sync-primitive policy

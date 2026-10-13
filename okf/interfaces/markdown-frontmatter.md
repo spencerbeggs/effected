@@ -10,10 +10,18 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 19b597f45e46ef74068cee189c30d760160566ed21147f04c8854344a0a556c9
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:41.636Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 19b597f45e46ef74
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 42f1765d2ad1813e
 ---
 
 # `@effected/markdown` frontmatter

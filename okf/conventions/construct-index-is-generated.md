@@ -12,7 +12,9 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-03T04:19:44Z
-  body_sha256: 944b4d04fb0e039cb2a3af475ac5bcf2f73b38953da54a2fc56f4f06a59c9b10
+integrity:
+  generated:
+    body: 944b4d04fb0e039c
 ---
 
 # Never hand-edit the construct index — regenerate it

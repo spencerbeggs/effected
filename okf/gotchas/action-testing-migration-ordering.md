@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 750e790e6bb4c6b2b7bda9934a968287da4237c26432354af039bd3238b48b45
+integrity:
+  generated:
+    body: 750e790e6bb4c6b2
 ---
 
 # Converting doubles and the test runner together rewrites the gate alongside what it gates

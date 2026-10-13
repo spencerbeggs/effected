@@ -7,10 +7,12 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-28T18:00:23Z
-  body_sha256: edc87da649c7f90debe548e2514cf3f37b795bfcb06de15dd00e280729c882ab
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
+integrity:
+  generated:
+    body: edc87da649c7f90d
 ---
 
 # D2: strict MCP input is upstream-first

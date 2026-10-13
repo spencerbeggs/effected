@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: e455653ed4287cb95e3ca64e1e475c2de2e73ebaee15f4a21e4c768a2b85f97a
+integrity:
+  generated:
+    body: e455653ed4287cb9
 ---
 
 # glob

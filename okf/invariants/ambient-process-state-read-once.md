@@ -15,7 +15,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 22862c66bc5d9d71bea9c9e522aa8dd56b53dc8f57b3b98148d8f830822aad56
+integrity:
+  generated:
+    body: 22862c66bc5d9d71
 ---
 
 # ActionEnvironment is the only reader of ambient process state

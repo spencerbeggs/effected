@@ -12,7 +12,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: fa67ebb7dcbac1d9c0a936349d216a1a88a266daa0ec1271ffc34ed5b9857fe8
+integrity:
+  generated:
+    body: fa67ebb7dcbac1d9
 ---
 
 # Git.configSet cannot write a value that begins with a dash

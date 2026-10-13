@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 887857fff3784460c2922eb879d7cf5cc37bc57ec9617136ee9845512e9135ff
+integrity:
+  generated:
+    body: 887857fff3784460
 ---
 
 # A scope-qualified filter, a version-only sort, and a plain Redacted all fail silently

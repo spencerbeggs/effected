@@ -8,10 +8,12 @@ tags: [ci]
 generated:
   by: okfit/claude-code
   at: 2026-09-13T05:33:04Z
-  body_sha256: 04f3a1f8318fc8665f8f1fb7f4a08970634823078af3fdc5145de75f36b2fd3a
 sources:
   - id: repo
     resource: "https://github.com/spencerbeggs/claude-code-marketplace-manager"
+integrity:
+  generated:
+    body: 04f3a1f8318fc866
 ---
 
 # claude-code-marketplace-manager

@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 8f7302f75ba397230a8ac80359445cb1e86fe10fca464f4ad764251836099d4a
+integrity:
+  generated:
+    body: 8f7302f75ba39723
 ---
 
 # Bun's package-tuple integrity position is assumed, not documented

@@ -18,7 +18,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-28T18:00:23Z
-  body_sha256: 8d8d95fc2e7882368a878e457d3b0c89558f6188686eec7ddfa237ac7fc2f89a
+integrity:
+  generated:
+    body: 8d8d95fc2e788236
 ---
 
 # Require the consolidated core's contract in R; never re-implement or re-declare it

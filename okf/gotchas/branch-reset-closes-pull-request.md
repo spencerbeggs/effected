@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 6375701b67552d797f3d5698eb9228f5fab97bbe52f925a93ebe5b8a51498403
+integrity:
+  generated:
+    body: 6375701b67552d79
 ---
 
 # Resetting a branch to its pull request's base closes that pull request

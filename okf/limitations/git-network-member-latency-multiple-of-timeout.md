@@ -12,7 +12,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: aad7fa63e446cd2d882cff369f41acb4822bd869e2ea87ab3abb0ea987a68228
+integrity:
+  generated:
+    body: aad7fa63e446cd2d
 ---
 
 # A network-touching Git member's worst-case latency is a multiple of GIT_TIMEOUT

@@ -15,7 +15,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: aa362b8282d96bfe2306d475c50d8fd1596260d1118d4cb4ac9ff5af05663cdc
+integrity:
+  generated:
+    body: aa362b8282d96bfe
 ---
 
 # Secret.ts is the only place a Redacted becomes a string

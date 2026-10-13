@@ -12,7 +12,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: a0461b517a65951e12d9c95fa0244a0e3cb4d6671724ae85bced4abb8aef25e3
+integrity:
+  generated:
+    body: a0461b517a65951e
 ---
 
 # A package that commits fixtures commits a provenance README beside them

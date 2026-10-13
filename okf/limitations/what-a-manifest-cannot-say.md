@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: feb2bb797da65bbb94d93f8670ce7c2edf8813883ac05cfe43ebc169b6df0362
+integrity:
+  generated:
+    body: feb2bb797da65bbb
 ---
 
 # A package manifest cannot say who supplied it, who assembled the BOM, or when

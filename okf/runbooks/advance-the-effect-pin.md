@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-11T16:59:56Z
-  body_sha256: 494596952acdba6745431f62ff485354349870ead732684010badd7939d36f1c
+integrity:
+  generated:
+    body: 494596952acdba67
 ---
 
 # Advance the effect pin

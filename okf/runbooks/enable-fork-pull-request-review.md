@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T22:30:14Z
-  body_sha256: c2aee865987bef15d4d45af952c4559427bfebac6bf6f379a54245b9e5ed848c
+integrity:
+  generated:
+    body: c2aee865987bef15
 ---
 
 # Enable fork pull-request review on a repository

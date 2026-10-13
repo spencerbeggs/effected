@@ -28,10 +28,12 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-10T23:08:17Z
-  body_sha256: 892339734e50129667132dd10d34c345f6dbd6c10d40632f90818736f5020891
 verified:
   - by: human:spencer
     at: 2026-10-10T23:15:36Z
+integrity:
+  generated:
+    body: '892339734e501296'
 ---
 
 # The effect catalog locks every entry to an exact version, held by overrides

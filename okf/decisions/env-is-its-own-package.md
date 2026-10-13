@@ -11,7 +11,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-01T14:11:47Z
-  body_sha256: 8a9f77cf139801b1714904d05b57f259fb2b9a0a14bf4d24f34332a742ca2bbe
+integrity:
+  generated:
+    body: 8a9f77cf139801b1
 ---
 
 # @effected/env is its own boundary package, a required peer of cli

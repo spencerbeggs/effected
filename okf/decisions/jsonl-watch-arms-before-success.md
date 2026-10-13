@@ -37,10 +37,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-08T06:11:30Z
-  body_sha256: ecc261bac9035d396b8e79806542ad67accd88f70f668d896a9b6cd5f39beaeb
 verified:
   - by: human:spencer
     at: 2026-10-08T06:10:41Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: ecc261bac9035d39
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 5779437dc045156c
 ---
 
 # jsonl's watch is a service in R that succeeds only once registered, with a Node backend behind `./node`

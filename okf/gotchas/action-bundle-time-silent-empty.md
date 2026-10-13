@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 9842caa5abd81ad536e10067d41e4cef5b7f1ff7703ee23bd6baa6c88698ad48
+integrity:
+  generated:
+    body: 9842caa5abd81ad5
 ---
 
 # A degraded build-time decode failure reports a truthful-sounding empty result

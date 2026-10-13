@@ -15,10 +15,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 2b3d0dab707e641baf242da95fb9d8129a4c11f70a7b7c9d0605cbf4008b8d82
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:21.362Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 2b3d0dab707e641b
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: b407e924b193ed83
 ---
 
 # The package-json entry-point resolver

@@ -19,7 +19,9 @@ sources:
 generated:
   by: "claude-code/opus-5"
   at: 2026-09-14T04:45:45Z
-  body_sha256: 090ba28df190507bea0b7b35a79d3ed652cf06b4f5dc41f49425ea315eae3bc6
+integrity:
+  generated:
+    body: 090ba28df190507b
 ---
 
 # A bare-major version key enumerates ahead of every dotted one

@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-14T02:44:47Z
-  body_sha256: 1e7fbd776dd4d4eef2ee0cc27855358226ca79dc5b7f2f1646b5769e2a8a0541
+integrity:
+  generated:
+    body: 1e7fbd776dd4d4ee
 ---
 
 # Node detects only some of a CommonJS dependency's named exports, not all or none

@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 72a725d0fc21d10c17726402b079e87647f731b4c6b9ad3a95d84119d8c559f7
+integrity:
+  generated:
+    body: 72a725d0fc21d10c
 ---
 
 # The github-split (program name)

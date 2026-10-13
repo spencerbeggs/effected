@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-28T18:00:23Z
-  body_sha256: a4e1d54883623705d3d6d901df7fa58e039bcbd8cd233844a7e32fe017172b26
+integrity:
+  generated:
+    body: a4e1d54883623705
 ---
 
 # runtimes

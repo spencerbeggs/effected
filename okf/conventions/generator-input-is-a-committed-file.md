@@ -8,7 +8,9 @@ tags: [architecture, ci]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 4e7a43bd298bbf4e964297c04b5b70fefb7735d98637e27c63753e4dd27872e2
+integrity:
+  generated:
+    body: 4e7a43bd298bbf4e
 ---
 
 # A generator's data input is a committed file, not a submodule

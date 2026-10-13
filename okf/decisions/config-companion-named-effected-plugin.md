@@ -13,10 +13,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: f96390bfa6f119f68f3db354d64c56905aa85cfacbe829dc68c29c15f75d384e
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: f96390bfa6f119f6
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 87bdcce26a33c520
 ---
 
 # The config companion is named @effected/plugin, not built yet

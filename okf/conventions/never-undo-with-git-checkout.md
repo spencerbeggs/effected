@@ -12,7 +12,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: a4f3d0f7d1284aba10e9cefd8a0a2b4e22c78c3e19a7397a191130f8be934604
+integrity:
+  generated:
+    body: a4f3d0f7d1284aba
 ---
 
 # Never undo unexpected working-tree changes with git checkout, restore, or stash

@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 27f8711760d663d0d86e3324d1ab64e3554fbb314afed5f31ab8baf0e5c06661
+integrity:
+  generated:
+    body: 27f8711760d663d0
 ---
 
 # A declared-family key must be a name ajv can register, and its payload cannot carry an $id

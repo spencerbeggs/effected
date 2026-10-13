@@ -9,7 +9,9 @@ tags: [dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-11T17:00:33Z
-  body_sha256: 67e1a915115e393ee349976a5ba705021111b8fde6b64e130e1cbabf13347a09
+integrity:
+  generated:
+    body: 67e1a915115e393e
 ---
 
 # @effected/cli

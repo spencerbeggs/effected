@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-10T23:08:17Z
-  body_sha256: 1e6c5251264a565ba217d6643ed0af5916c3dc8edf1e9cc47d165ce039a166c1
+integrity:
+  generated:
+    body: 1e6c5251264a565b
 ---
 
 # Consumer-facing text states current Effect behaviour, never versions

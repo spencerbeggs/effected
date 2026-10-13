@@ -8,7 +8,9 @@ tags: [dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-28T18:00:23Z
-  body_sha256: 465a1831be713ee1eb863d9b9b360d2a53d578e1dc188624851e1d5b67f97d93
+integrity:
+  generated:
+    body: 465a1831be713ee1
 ---
 
 # @effected/cli is not a CLI framework

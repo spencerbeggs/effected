@@ -8,10 +8,12 @@ tags: [ci, bundle]
 generated:
   by: okfit/claude-code
   at: 2026-09-13T05:33:04Z
-  body_sha256: 7aed87adf66b9640cde0a4c50bc3758f66812bc7db46690e610abdb3a5edc596
 sources:
   - id: repo
     resource: "https://github.com/savvy-web/silk-sync-action"
+integrity:
+  generated:
+    body: 7aed87adf66b9640
 ---
 
 # silk-sync-action

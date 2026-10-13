@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 06d54d9d910e41882f3fb390a199ff59aa08120f0a3124f2af6c6b8392abcbb1
+integrity:
+  generated:
+    body: 06d54d9d910e4188
 ---
 
 # Run.text trims output that depends on fixed columns

@@ -9,7 +9,9 @@ tags:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-03T04:19:44Z
-  body_sha256: 97ef2299fd4e3c4fbdd930f09574d3e448b3a296ad2ef1182d06c91b894b496c
+integrity:
+  generated:
+    body: 97ef2299fd4e3c4f
 ---
 
 # Add a kit package

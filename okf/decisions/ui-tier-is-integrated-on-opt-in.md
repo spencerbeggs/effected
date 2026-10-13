@@ -23,7 +23,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-01T03:23:20Z
-  body_sha256: 5951dba03d70fc3c782c2a7c72cacf5d9aacc2496fdbe9d9f50124912f8382b5
+integrity:
+  generated:
+    body: 5951dba03d70fc3c
 ---
 
 # The cli root stays boundary, and ./ui is integrated only for consumers who opt in

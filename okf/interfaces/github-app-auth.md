@@ -9,10 +9,18 @@ tags: [bundle, security]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-11T17:00:41Z
-  body_sha256: a52b881f6339995d915432dd7b44b5bcc493325ed770eb3fbff5133cd4385383
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:25.629Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: a52b881f6339995d
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: a99cb0b208f2d0df
 ---
 
 # @effected/github App authentication

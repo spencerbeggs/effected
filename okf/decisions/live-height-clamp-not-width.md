@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T21:32:23Z
-  body_sha256: f3fabbeeae9cd252adff349ccb65de3ebaf09bb47d3624c6202f2371e7eab957
+integrity:
+  generated:
+    body: f3fabbeeae9cd252
 ---
 
 # The live frame is clamped to rows - 1 in height, and its root width is never taken from a hook

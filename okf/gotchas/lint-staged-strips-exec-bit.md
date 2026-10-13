@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 50fdd6b4e8fe27f5ca5510c475b41aa6d6393618fead6b7026abb2ec5ef15cef
+integrity:
+  generated:
+    body: 50fdd6b4e8fe27f5
 ---
 
 # lint-staged normalizes every committed shell script back to 644

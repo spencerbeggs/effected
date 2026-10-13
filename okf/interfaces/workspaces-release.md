@@ -18,10 +18,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 60ef126d7f84c6a06c5c56d58fad461629a46665f613f4b07a77916270a9e7a5
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:03.300Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 60ef126d7f84c6a0
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: e479f1f687f6c2dd
 ---
 
 # @effected/workspaces release surface

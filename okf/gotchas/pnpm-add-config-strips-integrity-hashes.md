@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: e7114462b4f124023e7d6360243c608cfeabfddcbc5458a03506ac91be373d7e
+integrity:
+  generated:
+    body: e7114462b4f12402
 ---
 
 # `pnpm add --config` silently strips integrity hashes from every config dependency

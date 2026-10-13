@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-10T04:44:07Z
-  body_sha256: 15222b880b7522b98278e4e10c382eeb998c212a176b6e3827aad4ab82df897d
+integrity:
+  generated:
+    body: 15222b880b7522b9
 ---
 
 # Only ./ui may bind Node's process streams, and only in three named files

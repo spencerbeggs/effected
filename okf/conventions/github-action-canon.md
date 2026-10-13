@@ -17,7 +17,9 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-03T04:19:44Z
-  body_sha256: e7d6fe6502b48423ffa73342cbfe98f480d8d502389f3728074847533c24b8bc
+integrity:
+  generated:
+    body: e7d6fe6502b48423
 ---
 
 # Build a GitHub Action repository to the kit's canonical shape

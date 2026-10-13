@@ -25,12 +25,14 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-28T18:00:23Z
-  body_sha256: 4a505291456fbd27f3e583511ca5711133ecc39c8c04e83ef9720f47575d2e2e
 verified:
   - by: human:spencer
     at: 2026-09-28T17:11:35Z
   - by: human:spencer
     at: 2026-09-28T17:52:49Z
+integrity:
+  generated:
+    body: 4a505291456fbd27
 ---
 
 # Strict MCP input is reported by core; McpToolkit appends the accepted params instead of pre-checking

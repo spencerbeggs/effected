@@ -16,7 +16,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 8de5398de96add599d22dafc7f889b133dc90c2af1d1ce60bad2213f8bbbda94
+integrity:
+  generated:
+    body: 8de5398de96add59
 ---
 
 # ae-forgotten-export on _base looks like a real export bug; it is a synthesized, un-nameable symbol

@@ -9,10 +9,18 @@ tags: [bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 7c0d5ffdea01896739e02244ae40a8bfda26bb5113e844ce1fa2939d44afb403
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:33.163Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 7c0d5ffdea018967
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: eb007f76ed8ad6b4
 ---
 
 # @effected/github REST client

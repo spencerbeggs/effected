@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 634055a16759f1e41a127b0f41d4688a7f788351cd08d01042c937f232484e7a
+integrity:
+  generated:
+    body: 634055a16759f1e4
 ---
 
 # Markdown editing is offset-splice, not a lossless CST

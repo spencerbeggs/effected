@@ -12,7 +12,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 5ff0da77a9939006babaeeeb47672f5d458bf676a0422a603a0c2001c95569d1
+integrity:
+  generated:
+    body: 5ff0da77a9939006
 ---
 
 # NpmRegistry does not cache repeated packument reads

@@ -1,5 +1,22 @@
 # Log
 
+## 2026-10-11
+
+* Updated @effected/cli
+* Updated @effected/env
+* Updated @effected/github App authentication
+* Updated @effected/memfs
+* Updated @effected/workspaces/testing: the repo-shape checks
+* Updated @effected/workspaces: monorepo tooling
+* Updated Advance the effect pin
+* Updated An unsatisfiable effect peer installs clean and fails somewhere else
+* Updated Keep the tree resolved to one effect copy
+* Added The effect family is pinned graph-wide by overrides derived from the catalog
+* Updated The effected catalog literal
+* Updated The plugin's catalog paired 4.0.3 satellites with core effect 4.0.2
+* Updated pnpm-plugin-effect
+* Updated workspace
+
 ## 2026-10-10
 
 * Updated @effected/github

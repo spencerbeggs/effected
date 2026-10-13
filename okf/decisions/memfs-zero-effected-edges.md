@@ -11,7 +11,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 28423255f580c733f30672fffde8642f4b45b8f008ddd2ce2637750d23626b26
+integrity:
+  generated:
+    body: 28423255f580c733
 ---
 
 # memfs takes zero @effected/* edges, ever

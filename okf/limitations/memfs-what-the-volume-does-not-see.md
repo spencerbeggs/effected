@@ -16,7 +16,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T01:39:09Z
-  body_sha256: df9deeaa159f483d07e90ac192c16ec5af98481229275f573ff8d583e426884b
+integrity:
+  generated:
+    body: df9deeaa159f483d
 ---
 
 # memfs's volume is invisible to anything that does not ask for the FileSystem service

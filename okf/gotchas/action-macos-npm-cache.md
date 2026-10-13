@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 92877ebeaee2e336732e6fdba084f1b61634f4b3398b2f5a7c0305f49779e784
+integrity:
+  generated:
+    body: 92877ebeaee2e336
 ---
 
 # A macOS Actions runner's npm cache is partly root-owned

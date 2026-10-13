@@ -16,7 +16,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 317606648df48a488b3eacf2d84a139ed33ac7fd093e53f46f730dd58d32c50a
+integrity:
+  generated:
+    body: 317606648df48a48
 ---
 
 # The npm and bun resolution walk is deepest-first

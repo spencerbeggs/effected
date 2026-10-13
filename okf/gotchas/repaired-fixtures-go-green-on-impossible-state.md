@@ -16,7 +16,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: e2ed083690c46ea68f49aa50e77b7a504ac67fc05eb650cef9bec5c70f81095a
+integrity:
+  generated:
+    body: e2ed083690c46ea6
 ---
 
 # A mechanically repaired fixture set goes green while describing a state GitHub cannot produce

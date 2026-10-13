@@ -20,7 +20,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-01T03:23:20Z
-  body_sha256: a5ae698a88b1a16f29096daae1ba2f0e8ea0fcea3a8c068b0691988d65d8ce83
+integrity:
+  generated:
+    body: a5ae698a88b1a16f
 ---
 
 # The cli root boundary is a module-graph walk, not a per-file scan

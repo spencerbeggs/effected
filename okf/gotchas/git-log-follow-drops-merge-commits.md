@@ -12,7 +12,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 4c6fda2e4d1aac27c286fae412fe717d34bc04b802f3dbc734f044c945532dd7
+integrity:
+  generated:
+    body: 4c6fda2e4d1aac27
 ---
 
 # git log --follow is not the unfollowed walk plus more

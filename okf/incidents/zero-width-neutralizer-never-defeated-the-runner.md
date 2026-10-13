@@ -30,7 +30,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T21:32:23Z
-  body_sha256: 001e3ff40387a2590352d1eec3154c3cb0ebcf68fcbca0b7bc9b6b18eb2887f3
+integrity:
+  generated:
+    body: 001e3ff40387a259
 ---
 
 # A zero-width space never stopped the Actions runner reading a workflow command

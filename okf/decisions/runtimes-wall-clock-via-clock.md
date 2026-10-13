@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 381efef842ec8198702daff837af89a8a375362c2809856ff880ddddfc0fc36d
+integrity:
+  generated:
+    body: 381efef842ec8198
 ---
 
 # Every default reference time comes from Clock, never `new Date()`

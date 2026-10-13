@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-24T05:32:50Z
-  body_sha256: 7874cb63abd9e16ecd2fbb9575cd0f17aa11b79c3405ae4efdc408c5bd887fa3
+integrity:
+  generated:
+    body: 7874cb63abd9e16e
 ---
 
 # A vitest positional filter is a substring match, and a run from inside a package never loads the root config

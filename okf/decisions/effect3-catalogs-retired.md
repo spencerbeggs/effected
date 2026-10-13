@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 9e620f04a9283674c4eb4a937d84b469a98f05bb0f6f5ae6e9b58c6018c5b3ee
+integrity:
+  generated:
+    body: 9e620f04a9283674
 ---
 
 # There is no Effect v3 catalog and no camelCase catalog alias

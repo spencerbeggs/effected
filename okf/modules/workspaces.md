@@ -28,7 +28,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-11T15:53:27Z
-  body_sha256: 8c73f0f4c49c83c3e952e8f671725e68d094be8197064d7bf38a93c1f032a597
+integrity:
+  generated:
+    body: 8c73f0f4c49c83c3
 ---
 
 # @effected/workspaces: monorepo tooling

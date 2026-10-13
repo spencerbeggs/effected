@@ -11,7 +11,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 7823558286293c1a5ab2a68d15bb03b39195cefca12ecd828852a41b620e9c32
+integrity:
+  generated:
+    body: 7823558286293c1a
 ---
 
 # Store is named for its primitive, not its backend

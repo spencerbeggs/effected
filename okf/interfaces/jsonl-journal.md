@@ -10,12 +10,20 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-08T06:34:41Z
-  body_sha256: 63edcad93bcfb661f1f642f1fe22dd9677fa6f8ecb87af8d0e8c14eb7b53deb9
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:37.064Z
   - by: human:spencer
     at: 2026-10-08T06:10:55Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 63edcad93bcfb661
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 7a4f74df0f73efde
 ---
 
 # `@effected/jsonl` journal service

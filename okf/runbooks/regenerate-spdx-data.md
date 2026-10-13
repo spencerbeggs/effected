@@ -8,7 +8,9 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 5a60ec30e7cfc63ea6be31697125ca16e566e6883fa65929c9ab4f6e73eefca0
+integrity:
+  generated:
+    body: 5a60ec30e7cfc63e
 ---
 
 # Regenerate the vendored SPDX datasets

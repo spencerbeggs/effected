@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 9a9966b582e8f2db71f0f0ae3597e123d464d05c27da1ba523e429e8fca2c959
+integrity:
+  generated:
+    body: 9a9966b582e8f2db
 ---
 
 # Format-package naming is `*Format`, not `*Unvalidated`

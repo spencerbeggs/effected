@@ -48,8 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T19:04:38Z
-  body_sha256: 6e92aba3c73ec3071ccde3ef2ab2bcc5525cfe446f5deff0ccaa1e9ea1f8d31c
+  at: 2026-10-11T18:18:21Z
+integrity:
+  generated:
+    body: f6a6581821bab26e
 ---
 
 # @effected/workspaces/testing: the repo-shape checks

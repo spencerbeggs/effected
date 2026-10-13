@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-11T16:59:56Z
-  body_sha256: 4765fc76eddaef428c3ddbb24424eea9cd65cc951f4293d2c25cacb61b36d75e
+integrity:
+  generated:
+    body: 4765fc76eddaef42
 ---
 
 # Keep the tree resolved to one effect copy

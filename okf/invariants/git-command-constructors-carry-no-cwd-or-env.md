@@ -17,7 +17,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: b0b5e2ad1cf8c2d51cdfb63b91805020b05747613768d2e6d36ff621979d60af
+integrity:
+  generated:
+    body: b0b5e2ad1cf8c2d5
 ---
 
 # A GitCommand constructor carries no cwd and no environment

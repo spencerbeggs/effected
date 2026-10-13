@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 66ffbc89629b5f9f96a28296e6d2129c1bf81b77cdf3b32d1ef1a689aec3dc9c
+integrity:
+  generated:
+    body: 66ffbc89629b5f9f
 ---
 
 # sbom

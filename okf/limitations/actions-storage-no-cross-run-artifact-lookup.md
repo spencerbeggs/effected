@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 065e7c258e797312088f051a948439a968cdb3dbd4a05de1a70a9298980b8334
+integrity:
+  generated:
+    body: 065e7c258e797312
 ---
 
 # There is no cross-run artifact lookup

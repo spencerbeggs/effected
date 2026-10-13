@@ -9,7 +9,9 @@ tags: [bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-10T22:41:04Z
-  body_sha256: 241e4c1e25ebc19a6cf19eee33e703efa1eb60870f946b98d7e461d02547793e
+integrity:
+  generated:
+    body: 241e4c1e25ebc19a
 ---
 
 # @effected/github resource services

@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 4e471246dd991c95a7d7a4a775c1ff2b678bc472b82549790d42d4f072be312e
+integrity:
+  generated:
+    body: 4e471246dd991c95
 ---
 
 # npm and bun rows never populate unresolvedEdges

@@ -7,7 +7,9 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T22:22:55Z
-  body_sha256: e966e2b28fed6e13bc4b45090448c5f6c7d3b99b6217d0e0333420498701c9cd
+integrity:
+  generated:
+    body: e966e2b28fed6e13
 ---
 
 # D: strict MCP input default for Claude Code

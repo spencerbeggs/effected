@@ -14,10 +14,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 7cbb286165ad1386fadecd650d41b3f7b4a3cbfd47ce0579cfae2cf67a5f6211
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 7cbb286165ad1386
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 9c22c04702a3feb0
 ---
 
 # The effected catalog holds next-release versions, and the publish order follows

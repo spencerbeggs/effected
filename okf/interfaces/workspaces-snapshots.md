@@ -17,10 +17,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-27T21:58:29Z
-  body_sha256: a7e78afb2c024f71276234e6843cd63005ae82397bc105cf5dc4fc146bc6d0fe
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:06.249Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: a7e78afb2c024f71
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: d6826ea84f673efd
 ---
 
 # @effected/workspaces snapshots

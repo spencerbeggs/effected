@@ -8,7 +8,9 @@ tags: [dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 82fc754f13a97d503e74cc5c9d8165648376f8dc7ddc62175cd567afd3619c4e
+integrity:
+  generated:
+    body: 82fc754f13a97d50
 ---
 
 # Treat line endings as a first-class invariant in any file-rewriting code

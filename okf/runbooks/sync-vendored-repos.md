@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: c9a00ac54ca095f5519abc243ac0424a1b9f37ca7ffea228225c75b6ea24e44c
+integrity:
+  generated:
+    body: c9a00ac54ca095f5
 ---
 
 # Sync the vendored repos

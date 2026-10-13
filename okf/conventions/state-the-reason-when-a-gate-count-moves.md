@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-24T05:36:02Z
-  body_sha256: 64149521eea6ed5655aeb5288c1858c2a5a8f028764674a2621eaba44da270a5
+integrity:
+  generated:
+    body: 64149521eea6ed56
 ---
 
 # State which count moved and why, whenever a gate's number changes

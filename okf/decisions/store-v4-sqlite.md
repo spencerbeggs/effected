@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-05T17:44:20Z
-  body_sha256: e4a37e3c8d2b57906a2bd7848c34805d77d322c7213c9e1e87899320208213e0
+integrity:
+  generated:
+    body: e4a37e3c8d2b5790
 ---
 
 # Store is built on effect's own SQL core and @effect/sql-sqlite-node

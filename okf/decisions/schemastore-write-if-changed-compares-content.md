@@ -9,7 +9,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: d104b633e85f2f42a80c704b75b60c1704a3c7675d7c9b87488b820f4e96c486
+integrity:
+  generated:
+    body: d104b633e85f2f42
 ---
 
 # SchemaFile's write-if-changed compares parsed content, not bytes

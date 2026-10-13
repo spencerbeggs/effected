@@ -15,7 +15,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 34b360c986fec3e21129ca358e4ed78fb507b90a9a462561b9bc1466a3b26c54
+integrity:
+  generated:
+    body: 34b360c986fec3e2
 ---
 
 # Only entrypoint files re-export; never a barrel or a namespace object

@@ -10,7 +10,9 @@ tags:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-03T04:19:44Z
-  body_sha256: a202f397661dbd07bb297552b30db55b108822e5bfe763d756910e88139cfcdc
+integrity:
+  generated:
+    body: a202f397661dbd07
 ---
 
 # A capability recon pass at package level misses constructs the kit already ships

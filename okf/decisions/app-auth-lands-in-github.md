@@ -21,7 +21,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-10T00:53:24Z
-  body_sha256: bd31b82a5e714c9e2d71728dd13282f13baf2e73d7f6ca84a7f83951b8f64cc1
+integrity:
+  generated:
+    body: bd31b82a5e714c9e
 ---
 
 # App auth, OIDC verify and the token store land in @effected/github

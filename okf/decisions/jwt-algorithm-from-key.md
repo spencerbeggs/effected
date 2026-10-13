@@ -23,7 +23,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-09T22:29:55Z
-  body_sha256: 56d709858af72b69b75d2530d5fced176e7e53e388ea4648ae46d6f14246ae03
+integrity:
+  generated:
+    body: 56d709858af72b69
 ---
 
 # The JWT algorithm comes from the key, never the token header

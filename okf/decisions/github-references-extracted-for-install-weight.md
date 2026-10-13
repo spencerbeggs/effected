@@ -7,7 +7,9 @@ tags: [bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 5c2c3c1d90b759e9e5326a162d50c9eeb72f8911bae6304f4274b650cb2c7367
+integrity:
+  generated:
+    body: 5c2c3c1d90b759e9
 ---
 
 # github-references was extracted from github for install weight

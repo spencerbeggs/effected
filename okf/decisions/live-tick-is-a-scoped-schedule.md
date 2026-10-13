@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-01T17:24:58Z
-  body_sha256: ad7dd6c483353d93abc529cafe09152a64d66b3c24afaab534d8d4165a05c483
+integrity:
+  generated:
+    body: ad7dd6c483353d93
 ---
 
 # The live view's tick is a scoped Effect schedule, and its frame index comes from Clock

@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: c67baf056fdfce5086953597c62145b10f764aed7883d06ff36074c46bdc7ae3
+integrity:
+  generated:
+    body: c67baf056fdfce50
 ---
 
 # Never write under .repos/

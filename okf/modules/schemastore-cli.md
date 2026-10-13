@@ -36,7 +36,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-09T20:53:33Z
-  body_sha256: 807dd7ddb75785896d706c2da0ba844472e5577f3d1e8b9cc21d9980e197b059
+integrity:
+  generated:
+    body: 807dd7ddb7578589
 ---
 
 # @effected/schemastore-cli

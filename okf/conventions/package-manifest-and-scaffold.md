@@ -15,7 +15,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 5f5187a9e430b8d69695a20311a9c46f647bc1d3c6c3621031fe9b5c1235a4d0
+integrity:
+  generated:
+    body: 5f5187a9e430b8d6
 ---
 
 # Every package carries the same manifest shape and file set

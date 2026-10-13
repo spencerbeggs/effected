@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 3c586552d1d8e844ef81152ca55154edf9eee61b8ac77a2b6f658330821765f0
+integrity:
+  generated:
+    body: 3c586552d1d8e844
 ---
 
 # SectionId keys render into markers exactly as constructed, with no normalization

@@ -15,7 +15,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-14T02:44:47Z
-  body_sha256: d3ba71f4783de297076dd1f9ac6ffae48c3b82915db19e69f8ce966f300cc036
+integrity:
+  generated:
+    body: d3ba71f4783de297
 ---
 
 # Build through turbo, never by invoking the bundler script directly

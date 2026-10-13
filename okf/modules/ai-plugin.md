@@ -20,7 +20,9 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-09T19:40:15Z
-  body_sha256: 79e92680e6ae1f36739534654946a4ea63421b5fcf779990107bb2448970edc6
+integrity:
+  generated:
+    body: 79e92680e6ae1f36
 ---
 
 # ai-plugin

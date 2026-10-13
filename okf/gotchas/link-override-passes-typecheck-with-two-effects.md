@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: fa030ebc70079066ae0d5967c8a10d6632d8248a5837fcef5494ed30c9428c23
+integrity:
+  generated:
+    body: fa030ebc70079066
 ---
 
 # A green typecheck after linking an unreleased kit build hides a second effect instance

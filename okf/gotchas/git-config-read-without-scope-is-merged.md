@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 5e4ea3f339ab72ee1f4079acfb6008ffba75d308e02492d2afb66d667768cb2b
+integrity:
+  generated:
+    body: 5e4ea3f339ab72ee
 ---
 
 # A Git config read with no scope is the merged view, not the checkout's own

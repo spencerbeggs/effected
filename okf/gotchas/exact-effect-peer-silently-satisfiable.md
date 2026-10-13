@@ -17,7 +17,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-11T16:59:56Z
-  body_sha256: 4926d86954f78dc88213031c1f5d511869b83787e8c5b1d22bd0d1b585d5ccd8
+integrity:
+  generated:
+    body: 4926d86954f78dc8
 ---
 
 # An unsatisfiable effect peer installs clean and fails somewhere else

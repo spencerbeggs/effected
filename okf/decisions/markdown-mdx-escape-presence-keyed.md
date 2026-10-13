@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 5cc451799c6528e0251feb9793e37b4797cc2170b4c70f08e54da76fd56de181
+integrity:
+  generated:
+    body: 5cc451799c6528e0
 ---
 
 # The MDX brace escape is presence-keyed, never a stringify option

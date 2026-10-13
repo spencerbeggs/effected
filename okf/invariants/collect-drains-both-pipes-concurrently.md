@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 096bab8ff379cbfb0950990338b7bef180e9323b3588cb1ccb176b39141edd12
+integrity:
+  generated:
+    body: 096bab8ff379cbfb
 ---
 
 # Run.collect drains stdout, stderr and the exit code concurrently

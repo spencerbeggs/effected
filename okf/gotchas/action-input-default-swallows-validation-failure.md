@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: e15d4a54dcdeaeb21328a53dc99f3cf76260dff1bdc53a5f3c56b205aaa6ba7a
+integrity:
+  generated:
+    body: e15d4a54dcdeaeb2
 ---
 
 # A validation failure on an absent input silently resolves to the default

@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: b71add744643e74d9ac238ee8bf1ae1578528772b6851ffb99ee03c078124fa1
+integrity:
+  generated:
+    body: b71add744643e74d
 ---
 
 # Each format package keeps its own options type

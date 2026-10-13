@@ -9,7 +9,9 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: e14925180b5cd2808a76fde469700ef658f6daa414bd293daa5f72770e49aac9
+integrity:
+  generated:
+    body: e14925180b5cd280
 ---
 
 # A plausible schema.org property on the wrong type serializes cleanly and gets silently ignored

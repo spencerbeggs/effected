@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-17T04:41:11Z
-  body_sha256: f012f8aca114d1d5e35b1f5e80e80ead56a7f3f51ff8c7fdeeeee092d8a9a6a3
+integrity:
+  generated:
+    body: f012f8aca114d1d5
 ---
 
 # Regenerate the GitHub Action template repository

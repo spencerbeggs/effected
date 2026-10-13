@@ -8,10 +8,18 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 1425675059278747031db7071c0142af7e1dbd8f26f2d9f1740eb1fdab37a840
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: '1425675059278747'
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 70d2abbd82dfc6c3
 ---
 
 # ConfigCodec is exempt from the sync primitive policy

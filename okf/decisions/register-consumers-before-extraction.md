@@ -7,10 +7,18 @@ tags: [architecture, docs]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
-  body_sha256: 84635f8e7ed9548281b311f8cdfd1825a79401f79545185ede9bbe27237f3848
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 84635f8e7ed95482
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 8747d490f88e33ee
 ---
 
 # D4: okfit and vitest-agent are registered as consumers before extraction

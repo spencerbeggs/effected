@@ -11,7 +11,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T22:58:53Z
-  body_sha256: 23e0fbe404491f7ffaa594c1b66a67051b76185d4b08d5b257725bd0e98dcbee
+integrity:
+  generated:
+    body: 23e0fbe404491f7f
 ---
 
 # The cli renderers have no JSON output

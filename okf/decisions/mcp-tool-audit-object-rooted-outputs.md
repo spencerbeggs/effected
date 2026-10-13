@@ -7,10 +7,18 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-01T14:11:47Z
-  body_sha256: 55dc10bfcc41a019ea96fd0bb5504f7e38c0a86df932bc2429198841a0de5de9
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 55dc10bfcc41a019
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 596e950c3ccafbc3
 ---
 
 # D10: `McpToolAudit` enforces object-rooted outputs by default

@@ -27,7 +27,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T21:32:23Z
-  body_sha256: 83309d85f22c29d94e631905a2408d9b1f73b2989bea4e12754b10a2bebfa4eb
+integrity:
+  generated:
+    body: 83309d85f22c29d9
 ---
 
 # Ink delivers every key in one stdin read before React re-renders

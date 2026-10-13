@@ -20,7 +20,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-01T04:10:06Z
-  body_sha256: d61b911ace21e180dc7a3e0ca049efe73187e330e192b4d811899bfcc3e66a3d
+integrity:
+  generated:
+    body: d61b911ace21e180
 ---
 
 # The ui declarations reference the root's types by the package's own name

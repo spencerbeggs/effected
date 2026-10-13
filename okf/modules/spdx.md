@@ -9,7 +9,9 @@ tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T21:32:23Z
-  body_sha256: 78dfea390eda0a86b051d3f9570ee8b8bc7636bcdc724617eb19fe248d49a410
+integrity:
+  generated:
+    body: 78dfea390eda0a86
 ---
 
 # @effected/spdx

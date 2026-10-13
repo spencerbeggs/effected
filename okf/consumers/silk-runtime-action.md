@@ -8,10 +8,12 @@ tags: [ci, performance]
 generated:
   by: okfit/claude-code
   at: 2026-09-13T05:33:04Z
-  body_sha256: 4f46c3f1264b3b9586c5a900de5eb553e17fdf48f611963af2a906ac81e030d6
 sources:
   - id: repo
     resource: "https://github.com/savvy-web/silk-runtime-action"
+integrity:
+  generated:
+    body: 4f46c3f1264b3b95
 ---
 
 # silk-runtime-action

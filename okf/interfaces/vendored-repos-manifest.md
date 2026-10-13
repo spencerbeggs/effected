@@ -11,10 +11,18 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-01T17:24:58Z
-  body_sha256: dd378ac5e27f5d63abfc82d3c2c5a36728a0e3647d92662f43f22342aaff9c49
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:22.388Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: dd378ac5e27f5d63
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 34473666081e3ed6
 ---
 
 # Vendored repos manifest

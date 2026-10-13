@@ -9,7 +9,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: c8648f6e60cbc6154474de022f8880cf687013a4369941f735c8fef59951bf35
+integrity:
+  generated:
+    body: c8648f6e60cbc615
 ---
 
 # SchemaStore's own coverage tool is not reimplemented

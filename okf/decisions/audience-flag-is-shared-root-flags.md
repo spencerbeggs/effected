@@ -23,10 +23,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-01T14:11:47Z
-  body_sha256: e277224bfe5607a42622b1501bd86248275033b395a1c2414495076131899eb9
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: e277224bfe5607a4
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: ef6d72a377de0d00
 ---
 
 # The audience flag is four shared root flags resolved into env's Audience

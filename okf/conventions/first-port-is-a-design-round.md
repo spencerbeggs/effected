@@ -15,7 +15,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: e166e7823ee54a4782f19f2a8af5855c2663e33f47d382c7dad15bf1609136e0
+integrity:
+  generated:
+    body: e166e7823ee54a47
 ---
 
 # Plan a surface's first consumer port as a design round

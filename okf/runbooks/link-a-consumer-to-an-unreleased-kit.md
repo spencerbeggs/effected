@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: e214a3d0f315b375f2bc8177d8ca3554b8350886e0d5355a951a780872e33bc4
+integrity:
+  generated:
+    body: e214a3d0f315b375
 ---
 
 # Link a consumer to an unreleased kit build

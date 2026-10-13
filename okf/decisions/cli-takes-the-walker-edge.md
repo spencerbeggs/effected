@@ -8,10 +8,18 @@ tags: [architecture, deps]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T23:56:58Z
-  body_sha256: fce59e2454cf60bdd33087dee1957d93a05e29802991eb0890899a334c604ce5
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: fce59e2454cf60bd
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 8101a4689a16f574
 ---
 
 # CliLinks finds the project root with @effected/walker

@@ -7,7 +7,9 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 8f9a4cb5d4fc60ef844222d712af18d9f3c291f135657f396dda8b3141ce47ff
+integrity:
+  generated:
+    body: 8f9a4cb5d4fc60ef
 ---
 
 # primaryLicense returns none for an AND expression rather than guessing a term

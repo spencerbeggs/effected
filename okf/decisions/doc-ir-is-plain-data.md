@@ -7,10 +7,18 @@ tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T22:58:53Z
-  body_sha256: 0f1a229fdc56d0bcfa267660fa6879fce626dc25e3e62413d7ec49b127ce70a2
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 0f1a229fdc56d0bc
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: c4f8a1f042297664
 ---
 
 # The document IR is plain frozen data, not Schema classes

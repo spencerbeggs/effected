@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 5dd67157593d7ef393d0722d1fc142b600a58641329556a622adeff4e8aa8b29
+integrity:
+  generated:
+    body: 5dd67157593d7ef3
 ---
 
 # config-file has no file-watching capability

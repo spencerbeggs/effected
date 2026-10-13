@@ -25,7 +25,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-19T02:46:28Z
-  body_sha256: b9c198fd6cdf454ec365f654401600105568e75edac67bb338dbef4cfe331015
+integrity:
+  generated:
+    body: b9c198fd6cdf454e
 ---
 
 # Support the current major and one back of every package manager

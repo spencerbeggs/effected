@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: a50d619628bdabd233daae3c2beeb8ef57827049fddac45e1bd12a1ebbfe0af8
+integrity:
+  generated:
+    body: a50d619628bdabd2
 ---
 
 # Every commit follows the conventional-commit and DCO contract

@@ -16,7 +16,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-27T21:38:36Z
-  body_sha256: 5e3f480d91f2191709cf47d71363fae26e6ad7529fca9fa5bfc96e81ac513b2c
+integrity:
+  generated:
+    body: 5e3f480d91f21917
 ---
 
 # @effected/workspaces peer-dependency checking

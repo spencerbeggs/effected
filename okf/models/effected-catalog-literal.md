@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-11T17:06:53Z
-  body_sha256: 6ba34b01264fd426a86c932ca60d25367c5bcba5b7995301f4f47534be777490
+integrity:
+  generated:
+    body: 6ba34b01264fd426
 ---
 
 # The effected catalog literal

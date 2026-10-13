@@ -15,7 +15,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 25d4881fadbc4ba8cb9bf71ca9df5c62802ee0b2e480d783d1d583e19603fecb
+integrity:
+  generated:
+    body: 25d4881fadbc4ba8
 ---
 
 # No @effected/* package imports typescript

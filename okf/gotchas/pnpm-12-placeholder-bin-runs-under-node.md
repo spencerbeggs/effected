@@ -16,7 +16,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-17T21:24:06Z
-  body_sha256: 435d7e4d837104e76479195c43a4fa261d75d1ba4f56f9ce187787818cfd22f3
+integrity:
+  generated:
+    body: 435d7e4d837104e7
 ---
 
 # pnpm 12's placeholder bin dies as a SyntaxError when shimmed under node

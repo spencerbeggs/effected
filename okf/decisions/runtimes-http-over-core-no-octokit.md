@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-28T18:00:23Z
-  body_sha256: 6d253355e54940b9353f5135e8e6b86a64869ae150261a46dd667f2c9b8388ac
+integrity:
+  generated:
+    body: 6d253355e54940b9
 ---
 
 # runtimes reads GitHub over core HttpClient, never Octokit

@@ -20,7 +20,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 7cb3ef41db1128c98e22cdf9098dfb827c765b37bbb2c5a440e81092039abe60
+integrity:
+  generated:
+    body: 7cb3ef41db1128c9
 ---
 
 # Services and layers standards

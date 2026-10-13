@@ -12,7 +12,9 @@ sources:
 generated:
   by: "claude-code/opus-5"
   at: 2026-09-14T04:45:45Z
-  body_sha256: 44b97f69b6614168783b609cf2f8bdeb6d46bad64df8c8c609957aee124a256f
+integrity:
+  generated:
+    body: 44b97f69b6614168
 ---
 
 # Library tier (pure / boundary / integrated)

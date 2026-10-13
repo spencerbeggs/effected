@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: e53a27c2c61da3276ac3529ea5b4811b88e2ecdc4abeb0d9fd1e5f08b05f0121
+integrity:
+  generated:
+    body: e53a27c2c61da327
 ---
 
 # The pnpm root importer is not represented as a package row

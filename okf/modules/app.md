@@ -16,7 +16,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-05T17:44:20Z
-  body_sha256: d38fd91cf982038616615ffdde64d6aa3f0bad36a6eaf92da50c08bf00140060
+integrity:
+  generated:
+    body: d38fd91cf9820386
 ---
 
 # app

@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: f27d0accda740fbb6b79af0f0a7b3837928e3ea1e1732d1ae3fe7269d28211c1
+integrity:
+  generated:
+    body: f27d0accda740fbb
 ---
 
 # The config-driven GitHub auth layer reads `Config`, never `process.env`

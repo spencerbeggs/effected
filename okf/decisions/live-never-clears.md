@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T21:32:23Z
-  body_sha256: 409d3284f07e4f1f3a7a2c5b59588e393d96702515647e0ad2d29d934af52c84
+integrity:
+  generated:
+    body: 409d3284f07e4f1f
 ---
 
 # The live view never calls Ink's clear(); a new run re-renders in place or remounts

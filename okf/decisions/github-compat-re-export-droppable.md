@@ -7,7 +7,9 @@ tags: [bundle, compat]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: ea48fe796670ea49cf425419dfea3f8ff02fbb1ec93f5962fb86e29d533f7117
+integrity:
+  generated:
+    body: ea48fe796670ea49
 ---
 
 # github's github-references compat re-export is droppable, not breaking

@@ -14,10 +14,18 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-03T04:19:44Z
-  body_sha256: f792fc75c3637483d64a57fa843854cc2609714b82ef9c4e2c4d925632c776df
 verified:
   - by: human:spencer
     at: 2026-10-03T04:58:31Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: f792fc75c3637483
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 9ae24e7d97c7bd11
 ---
 
 # One tracking package versions both plugin builds

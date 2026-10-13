@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: e711180080bbff3ca1f91b3937df0815d6fd5ce598dd9e5c922e52dbb51c83a5
+integrity:
+  generated:
+    body: e711180080bbff3c
 ---
 
 # Format entry points never return `Effect`

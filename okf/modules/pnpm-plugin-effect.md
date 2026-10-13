@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-11T17:06:53Z
-  body_sha256: 05c0f23793a53f09b72c33b77f980ffffb14760e1d1be009fdf990ee623c3f1d
+integrity:
+  generated:
+    body: 05c0f23793a53f09
 ---
 
 # pnpm-plugin-effect

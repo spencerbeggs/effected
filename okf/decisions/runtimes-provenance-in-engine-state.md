@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 7fcbe154fcac79c8ad15b084893d9da19103fb5a7a7dd968b780faf1a14d3bd0
+integrity:
+  generated:
+    body: 7fcbe154fcac79c8
 ---
 
 # Provenance lives in the engine state, and is never hardcoded

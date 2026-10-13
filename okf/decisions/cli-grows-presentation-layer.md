@@ -12,10 +12,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T20:33:06Z
-  body_sha256: 8292533ae4f0be2ff46c0e69f5a82e99446bbba7015354cbbd2af2ebced7ff8d
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 8292533ae4f0be2f
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 95a2ebdc1dbb56f2
 ---
 
 # @effected/cli grows a presentation layer and interactive UI

@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: ba8f14d35475b82afdbb55a55554c72f7d344c9330ac561eaacc08a277a87c97
+integrity:
+  generated:
+    body: ba8f14d35475b82a
 ---
 
 # Agents never run pnpm:up, pnpm:preview, or pnpm:export

@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 15253645f3fd41663ae77f2247846ebd08daa89dba0c2a46db5dd5ff6a1ac2b0
+integrity:
+  generated:
+    body: 15253645f3fd4166
 ---
 
 # jsonc's engine/facade split is a cycle firewall

@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: d4a8b6200e587a5972a4acdf0aee12869e2f7e08c26e35fd28713eb4ab01b344
+integrity:
+  generated:
+    body: d4a8b6200e587a59
 ---
 
 # A renamed field typed never turns a silent conditional-spread drop into a compile error

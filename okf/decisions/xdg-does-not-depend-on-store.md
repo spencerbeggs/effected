@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 2f3ad05f60ac7fd5f2bf030e5e9954523de5f00222e47dfe0505547c8fdecee1
+integrity:
+  generated:
+    body: 2f3ad05f60ac7fd5
 ---
 
 # xdg does not depend on store

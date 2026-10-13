@@ -20,7 +20,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 8e522784e9b602de1133e716b381c331fc214cc4d985554777a3cd8393fe3e88
+integrity:
+  generated:
+    body: 8e522784e9b602de
 ---
 
 # A red markdown tripwire test may mean you fixed something, not broke it

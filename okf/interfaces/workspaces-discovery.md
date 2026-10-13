@@ -29,10 +29,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-27T21:58:29Z
-  body_sha256: 35047509871c75e88a7db5e3c7d92fb06db9faf90957065dfac99af882e625f5
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 35047509871c75e8
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: b274b6fd7212efbd
 ---
 
 # @effected/workspaces discovery and detection

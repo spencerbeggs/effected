@@ -9,7 +9,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 2412fa6249fb6c386de61a5d5d725912c296c572e5b9f0cbf83b3d9e4e2cecb2
+integrity:
+  generated:
+    body: 2412fa6249fb6c38
 ---
 
 # The Draft-07 meta-schema constant keeps its trailing hash

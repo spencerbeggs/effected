@@ -12,7 +12,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 4025479c90c2fda340c0d5300931adae4e0ca6297a0d5bd33014d595dc00f08d
+integrity:
+  generated:
+    body: 4025479c90c2fda3
 ---
 
 # @effect/platform-node is a required peer in exactly one package

@@ -8,7 +8,9 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: b4af426b107a58c1245af04c2e5f420a1cf9d7844419402fa42f7bcb277ceb56
+integrity:
+  generated:
+    body: b4af426b107a58c1
 ---
 
 # A block-mapping key longer than 1024 rendered characters spills to explicit-key form

@@ -14,7 +14,9 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-03T04:19:44Z
-  body_sha256: 35a6277e8167226274ae1ad91deee5118286dd3d7fdc0f00cf330cde0075ad80
+integrity:
+  generated:
+    body: 35a6277e81672262
 ---
 
 # construct-annotations.json

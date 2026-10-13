@@ -7,10 +7,18 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-28T18:00:23Z
-  body_sha256: 247251351c87397e7abc1a1f54555a51dfcd51baa1dc2e2ebee2ae14fdac2e47
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 247251351c87397e
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 2950eb53ce7844ba
 ---
 
 # D7: `usageExitCode` defaults to 64 (BSD `EX_USAGE`)

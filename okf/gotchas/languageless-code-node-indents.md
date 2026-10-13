@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: d5148fbe654dfaf36a8f06c8e75ed8c5b014e3132d44723948759e69ac19df67
+integrity:
+  generated:
+    body: d5148fbe654dfaf3
 ---
 
 # A language-less Code node stringifies as an indented block, not a fenced one

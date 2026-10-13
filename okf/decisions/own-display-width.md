@@ -11,7 +11,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T20:33:06Z
-  body_sha256: 4a2886bba07afc93376d99c04e571bc0a7bfa644381cc4f535c345272e2745dd
+integrity:
+  generated:
+    body: 4a2886bba07afc93
 ---
 
 # The cli package owns its display-width function

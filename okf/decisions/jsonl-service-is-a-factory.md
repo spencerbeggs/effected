@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T19:15:53Z
-  body_sha256: 54c9ae1c05edb0ee1518117582344a523c1e5eb65f7e40829c480a354be847fd
+integrity:
+  generated:
+    body: 54c9ae1c05edb0ee
 ---
 
 # The jsonl `Journal` service is a per-registry factory, not a generic key

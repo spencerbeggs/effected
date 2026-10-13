@@ -26,7 +26,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-27T07:39:04Z
-  body_sha256: 6448337dd46b05bfe8ef28a056528d838dca14189442241ff9c962a8ad0dac8a
+integrity:
+  generated:
+    body: 6448337dd46b05bf
 ---
 
 # @effected/workspaces catalogs and the config-dependency seam

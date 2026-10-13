@@ -9,7 +9,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 8fd0f27ea3fa36e808535895439afb70604b45c1178aecc0054df39efc268009
+integrity:
+  generated:
+    body: 8fd0f27ea3fa36e8
 ---
 
 # No SchemaVersioning.plan surface

@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 8bcc893847e97d52efb89566584f29bf0815125bfc64de44e8d8c54dba42fcb5
+integrity:
+  generated:
+    body: 8bcc893847e97d52
 ---
 
 # ReleaseTag defaults to strict SemVer with no version prefix

@@ -9,10 +9,18 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: ed917dc3b3464f0209032fa7234e8028d917930b116f951881be977e89ade4cc
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:12.812Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: ed917dc3b3464f02
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 96be3a3e54c0670d
 ---
 
 # @effected/yaml stringify options

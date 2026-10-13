@@ -7,7 +7,9 @@ tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-09T23:37:27Z
-  body_sha256: 32ed72acdd8cc618196deeee95ec61211c7ebefa24e1318812708567a5483b51
+integrity:
+  generated:
+    body: 32ed72acdd8cc618
 ---
 
 # @effected/github owns the octokit runtime

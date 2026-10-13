@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: f31adb581c56a323eac4a389c4c6da6e5d32d72a99cf15ad61791edb080230f5
+integrity:
+  generated:
+    body: f31adb581c56a323
 ---
 
 # jsonl terminal and quiescent semantics are journal-wide, not per-scope

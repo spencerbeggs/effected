@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-01T14:11:47Z
-  body_sha256: b98ff37bcaec6a81a9838c2d82be9ed9c13772f58c079e3178de652ed3450028
+integrity:
+  generated:
+    body: b98ff37bcaec6a81
 ---
 
 # std-osc8's pure core is ported into env, not wrapped

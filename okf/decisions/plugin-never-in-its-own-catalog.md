@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: b3586e06fcd0240c318f8fa262859ae0074e4fed287afff520bf3bbd4b374fb3
+integrity:
+  generated:
+    body: b3586e06fcd0240c
 ---
 
 # `pnpm-plugin-effect` is deliberately absent from its own `effected` catalog

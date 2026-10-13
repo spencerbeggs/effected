@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 4c414480882dda4cf96ada0804c1343d2809c6a6bcccaa9b933e9515fdc6875e
+integrity:
+  generated:
+    body: 4c414480882dda4c
 ---
 
 # jsonc

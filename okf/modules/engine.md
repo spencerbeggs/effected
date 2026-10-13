@@ -10,7 +10,9 @@ tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-05T18:45:07Z
-  body_sha256: ffaae022b8259b50898acb2e599a17a084deba54030137951ad9631c6eb7f584
+integrity:
+  generated:
+    body: ffaae022b8259b50
 ---
 
 # @effected/engine

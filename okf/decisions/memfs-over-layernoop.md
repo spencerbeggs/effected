@@ -15,7 +15,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T01:39:09Z
-  body_sha256: d4632c9697e6dfed46c26fdc4172a049fab79b78fd40135ed322394cf4e38d30
+integrity:
+  generated:
+    body: d4632c9697e6dfed
 ---
 
 # A test needing FileSystem uses memfs, never a hand-rolled layerNoop stub

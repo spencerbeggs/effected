@@ -7,10 +7,18 @@ tags: [dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-28T18:00:23Z
-  body_sha256: 74f947a296868ceb7ece2156eedc0024a93291c690afed2825dc95797edab464
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 74f947a296868ceb
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: f921259167d5031a
 ---
 
 # cli files the Command handler-accessor gap upstream rather than shimming it

@@ -11,7 +11,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-15T15:38:20Z
-  body_sha256: 5154436eecf28a8f8706d09ea00880543f7d71f6a520e12e8d8e580699cfca73
+integrity:
+  generated:
+    body: 5154436eecf28a8f
 ---
 
 # Schemastore retiers from boundary to integrated for a direct ajv dependency

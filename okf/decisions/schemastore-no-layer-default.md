@@ -11,7 +11,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-15T15:38:20Z
-  body_sha256: 4a7f537556e351c2ef70e917c8c825ae415302720b37895b31a5f7e0582eb143
+integrity:
+  generated:
+    body: 4a7f537556e351c2
 ---
 
 # No layerDefault on SchemaValidator or SchemaFile

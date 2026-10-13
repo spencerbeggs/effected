@@ -9,10 +9,12 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-09T16:21:59Z
-  body_sha256: f0a00e33a520b171b929d4af297746d1517b9e40a01daf6414a24b074078f39f
 verified:
   - by: human:spencer
     at: 2026-10-09T17:05:47Z
+integrity:
+  generated:
+    body: f0a00e33a520b171
 ---
 
 # The image cache backend is a structural port, not a store dependency

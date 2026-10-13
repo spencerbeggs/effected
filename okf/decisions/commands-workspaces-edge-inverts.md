@@ -7,10 +7,18 @@ tags: [bundle, architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 3016bd9c75b8daf44d61d79804e95461a97f0390cc5f50d410e5efa9c4ee36c5
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 3016bd9c75b8daf4
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: c4e561bd3d0c019e
 ---
 
 # commands' workspaces edge inverts rather than dragging four packages integrated

@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: dc43de583223b579b38d30f4b6a7950aae2d5d569e547110903ccd797f791d2a
+integrity:
+  generated:
+    body: dc43de583223b579
 ---
 
 # The Node schedule is keyed by release line, not by major

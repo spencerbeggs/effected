@@ -11,7 +11,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: cc228ae313d759235a96576be3c4de99536ec1cd6be3ec4d4517802df84d2665
+integrity:
+  generated:
+    body: cc228ae313d75923
 ---
 
 # The typechecker: tsc, not tsgo

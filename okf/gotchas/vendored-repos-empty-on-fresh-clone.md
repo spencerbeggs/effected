@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 3a4c9c8a6247fd5eb6d028de1c1a2f1c466e7044e1563ba73687ae9c5e691f6f
+integrity:
+  generated:
+    body: 3a4c9c8a6247fd5e
 ---
 
 # Vendored repos are empty on a fresh clone

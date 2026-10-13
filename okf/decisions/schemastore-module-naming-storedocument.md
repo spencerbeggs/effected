@@ -9,7 +9,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 0960fd02615bfbbcd026af0c3ef85ded2482ca53a70eae40a789a104f68bc567
+integrity:
+  generated:
+    body: 0960fd02615bfbbc
 ---
 
 # The assembly module is named StoreDocument, not SchemaDocument

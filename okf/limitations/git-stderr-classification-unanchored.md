@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: c26da2ba09b0ab211229634c853ee12a0778e16e061d0f720a07be7954000540
+integrity:
+  generated:
+    body: c26da2ba09b0ab21
 ---
 
 # Git error classification uses unanchored substring matching on stderr

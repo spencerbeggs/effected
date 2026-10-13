@@ -11,7 +11,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 53a9038465693d4df88dbece9024d1e5305ba948f6c58fcd3836948a57847bd6
+integrity:
+  generated:
+    body: 53a9038465693d4d
 ---
 
 # Add a workspace package

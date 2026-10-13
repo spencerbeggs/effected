@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: af148b8dd8dbc5bde3932164635b4d098fb09b971a666ae482b99ace3471e110
+integrity:
+  generated:
+    body: af148b8dd8dbc5bd
 ---
 
 # A clean issue tracker on a scaffold is not evidence it works

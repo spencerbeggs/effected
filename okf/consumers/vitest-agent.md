@@ -8,7 +8,9 @@ tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-01T14:18:02Z
-  body_sha256: ac6fabcae16f470f1e61dbb698811a17b594d3fa4d83952c90a909a8d203bea6
+integrity:
+  generated:
+    body: ac6fabcae16f470f
 ---
 
 # spencerbeggs/vitest-agent

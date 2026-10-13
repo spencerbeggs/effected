@@ -28,7 +28,9 @@ sources:
 generated:
   by: okfit/claude-code
   at: 2026-10-11T17:06:53Z
-  body_sha256: a495154c83d83eb7895929a3bb6d8478d267ec5eb8d09a93aea5acbf9a601f70
+integrity:
+  generated:
+    body: a495154c83d83eb7
 ---
 
 # The effect family is pinned graph-wide by overrides derived from the catalog

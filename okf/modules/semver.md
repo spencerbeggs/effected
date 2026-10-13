@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: f3b1091e81939728aa07b86fe07f1a590577d72b90bf9ac820a8379b028efd6b
+integrity:
+  generated:
+    body: f3b1091e81939728
 ---
 
 # semver

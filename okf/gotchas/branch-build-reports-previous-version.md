@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 184731f30a07ccc8f2023d84d55fb7ec15967ccb0b9f577897fc81063e123699
+integrity:
+  generated:
+    body: 184731f30a07ccc8
 ---
 
 # A branch build's dist/ carries the previous release's version

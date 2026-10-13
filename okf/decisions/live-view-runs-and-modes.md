@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T21:32:23Z
-  body_sha256: a9a7b60c2387ff3cd8ee9f8bec2427547c1fb88857d49c9711e917d471c1b753
+integrity:
+  generated:
+    body: a9a7b60c2387ff3c
 ---
 
 # A live view is a scoped drain of runs, hosted or owned, with no input and the mount permit per run

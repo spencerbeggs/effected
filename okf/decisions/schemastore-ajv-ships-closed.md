@@ -9,7 +9,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-15T15:38:20Z
-  body_sha256: 0ac05b1440426f9ce91e20ae75982e899c69dcf876bfef904db0240a113c1ee3
+integrity:
+  generated:
+    body: 0ac05b1440426f9c
 ---
 
 # The validation gate ships a real ajv engine, closed by default

@@ -9,7 +9,9 @@ tags: [bundle, architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-10T00:53:24Z
-  body_sha256: d30fc9c6077fc670b4237a3b77ea22376d573ee173ea02696c459a9878e7668d
+integrity:
+  generated:
+    body: d30fc9c6077fc670
 ---
 
 # @effected/github

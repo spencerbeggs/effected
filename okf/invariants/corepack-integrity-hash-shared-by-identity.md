@@ -17,7 +17,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 73b4e393c33e48cebcb211af82af6b52e49fff93a324939b96091aac2c78e89a
+integrity:
+  generated:
+    body: 73b4e393c33e48ce
 ---
 
 # CorepackIntegrityHash is consumed by identity, and only a runtime identity assertion can see a re-fork

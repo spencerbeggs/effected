@@ -16,7 +16,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: d270cf0dc6bd08115dd5c529c75242fe7abc70cb8925e070b211cd9c075c544b
+integrity:
+  generated:
+    body: d270cf0dc6bd0811
 ---
 
 # A yarn Berry lockfile has no devDependencies section

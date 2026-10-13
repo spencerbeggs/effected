@@ -7,7 +7,9 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 695d5298e6d46b8d86f8f41e3b25b4f6163b61bad17a2fb55f4b6fadc195a968
+integrity:
+  generated:
+    body: 695d5298e6d46b8d
 ---
 
 # A schema.org property gets one fixed arity, chosen toward many when uncertain

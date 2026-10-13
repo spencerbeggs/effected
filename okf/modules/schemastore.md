@@ -29,7 +29,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-02T18:34:24Z
-  body_sha256: 2b4627f02f43971bec1e05595623c66c69c6f37edc2fd89145e35f3e9bbf34f4
+integrity:
+  generated:
+    body: 2b4627f02f43971b
 ---
 
 # @effected/schemastore

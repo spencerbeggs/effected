@@ -36,7 +36,6 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-03T04:19:44Z
-  body_sha256: d3e754274b901505b2bf6871f6108c4a3810c06c21e6a6834f8c72ec159446e9
 verified:
   - by: human:spencer
     at: 2026-09-25T20:39:50Z
@@ -46,6 +45,15 @@ verified:
     at: 2026-09-25T21:18:59Z
   - by: human:spencer
     at: 2026-09-25T21:26:12Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: d3e754274b901505
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 0614d184b58d3e5b
 ---
 
 # Carrier-only bins are recommended; shared bins are a supported choice

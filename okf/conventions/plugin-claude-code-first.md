@@ -12,7 +12,9 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-03T04:19:44Z
-  body_sha256: a785622a3cab8603648a6317886fa61b1dcc92ba553ec1fcbd26c497e40a31b4
+integrity:
+  generated:
+    body: a785622a3cab8603
 ---
 
 # Change the Claude Code plugin first, then port to Copilot

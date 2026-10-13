@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 007cda72f962dbf881a13a91a3f638f0ba1dd45885bc1a2c86d0e1996662fb13
+integrity:
+  generated:
+    body: 007cda72f962dbf8
 ---
 
 # package-json delegates SPDX license validity to @effected/spdx

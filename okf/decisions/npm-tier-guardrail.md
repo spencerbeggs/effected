@@ -16,7 +16,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 4bcf6f7e1a7fc827657b9b11aea8ffcbc85d43b4daa0c94c31834063f5cccfed
+integrity:
+  generated:
+    body: 4bcf6f7e1a7fc827
 ---
 
 # The npm tier guardrail — a non-core runtime dependency in a service escalates the whole package

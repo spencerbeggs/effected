@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: e816aafe3e82278bdf05c926cd7a8d44e3b3fc048451f5a52f1d89be41b40761
+integrity:
+  generated:
+    body: e816aafe3e82278b
 ---
 
 # Only `package-json` needs a tolerant formatting seam

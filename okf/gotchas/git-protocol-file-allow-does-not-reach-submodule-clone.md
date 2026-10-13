@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 64844684013111be805260ef86118306d932b7bd1e31b0dd466fbbe0b230d3ec
+integrity:
+  generated:
+    body: 64844684013111be
 ---
 
 # A repo-local protocol.file.allow does not reach a submodule add's internal clone

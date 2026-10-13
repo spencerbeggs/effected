@@ -7,10 +7,18 @@ tags: [architecture, docs]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
-  body_sha256: 298f14aec759fdbcfd351c66c1f76c15cbfde418ee775d7a30da34f7ed598448
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 298f14aec759fdbc
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: e8f4510fe2d560d3
 ---
 
 # D6: CLI and MCP knowledge stays in separate skills, linked from `design-patterns`

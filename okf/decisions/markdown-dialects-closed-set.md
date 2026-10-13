@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 580ffba2579d513cf52a084e9715ee482503bcf43611771b6c4cca6f4ac0ffb7
+integrity:
+  generated:
+    body: 580ffba2579d513c
 ---
 
 # Markdown dialects are a closed set with no public extension API

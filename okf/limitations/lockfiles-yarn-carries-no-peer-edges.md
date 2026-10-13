@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: ffabc534129c2b4a2d126bb238e9184689e316dc5973301f782bbda80d4a50d1
+integrity:
+  generated:
+    body: ffabc534129c2b4a
 ---
 
 # Yarn carries no resolved peer edges

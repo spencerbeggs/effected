@@ -11,7 +11,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T20:33:06Z
-  body_sha256: 1b4e92a2fd1eb2260f3f2ed58be8df745e6deef9e30c8f6cb74be83c69482898
+integrity:
+  generated:
+    body: 1b4e92a2fd1eb226
 ---
 
 # Two prompt engines raise one Cancelled error

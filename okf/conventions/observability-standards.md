@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: c51b0b5aa8d16cda7f19e02fe73cded286f4ae4fe6b17053ecfcb4f4ac2629f2
+integrity:
+  generated:
+    body: c51b0b5aa8d16cda
 ---
 
 # Observability standards

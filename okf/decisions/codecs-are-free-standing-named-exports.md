@@ -9,10 +9,18 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: fb4a1c4ef2b26e871610c7f0826605b373dcc30ca410eac118b1708c1cc49c45
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: fb4a1c4ef2b26e87
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 4f0c6f8fe9a833a4
 ---
 
 # config-file's codecs are free-standing named exports, never a namespace object

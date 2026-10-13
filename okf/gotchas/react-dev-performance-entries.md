@@ -23,7 +23,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-08T02:48:10Z
-  body_sha256: 192effed63b6b216c2f3068ed4e0ef84a50f9778ab6eb2292f23faa6d25ba47e
+integrity:
+  generated:
+    body: 192effed63b6b216
 ---
 
 # React 19's development reconciler leaked user-timing entries on every render, until react-reconciler 0.34

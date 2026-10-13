@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 236e5812d5dcaaab4e1f757e43967c7110da5a5951a5a453a0285849ee6a25c0
+integrity:
+  generated:
+    body: 236e5812d5dcaaab
 ---
 
 # tsconfig-json enum mapping tables

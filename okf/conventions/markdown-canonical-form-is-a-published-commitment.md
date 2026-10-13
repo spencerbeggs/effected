@@ -17,7 +17,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-27T21:38:36Z
-  body_sha256: 1ca4e0d7e7243e4298caba3a08b46bd463b511d83854711a15fe998e77173f59
+integrity:
+  generated:
+    body: 1ca4e0d7e7243e42
 ---
 
 # The markdown canonical form is a published commitment — a row that moves is a breaking change

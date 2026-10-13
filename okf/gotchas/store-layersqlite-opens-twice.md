@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: e7972d5cb8d426278241914c88262cedf5f4dbd8e2f5c6f028782104be8c4c08
+integrity:
+  generated:
+    body: e7972d5cb8d42627
 ---
 
 # Calling Store.layerSqlite inline at two provide sites opens the database twice

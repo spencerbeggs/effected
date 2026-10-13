@@ -9,10 +9,18 @@ tags: [bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-10T00:53:24Z
-  body_sha256: c889156044774fc058084e12a9adfbe65ab904cfa3e1eba9d8f6c9a75688d905
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:34.761Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: c889156044774fc0
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 4095cd1de10ba7d6
 ---
 
 # @effected/github errors and retry

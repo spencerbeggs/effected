@@ -12,7 +12,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-27T06:20:52Z
-  body_sha256: 21e1be218e5ce5d647b4b1376786d89244cfe9dd17c09d97c50d0af711ce8aa0
+integrity:
+  generated:
+    body: 21e1be218e5ce5d6
 ---
 
 # Under the no-op hooks layer, a hook-injected catalog's range bump between two refs is invisible to a snapshot diff

@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 067bc6f52b4db9bf3eb3386dd635dd1db9c537caac05316a638bf9760fc8ebd6
+integrity:
+  generated:
+    body: 067bc6f52b4db9bf
 ---
 
 # The git ssh BatchMode pin is appended to what git would have used, and declines rather than substitutes

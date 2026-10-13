@@ -13,7 +13,9 @@ sources:
 generated:
   by: "claude-code/opus-5"
   at: 2026-10-01T17:24:58Z
-  body_sha256: 9a582e015902bf84783059915ecb13514b21ccc1ee5217d287afe79fef90e16f
+integrity:
+  generated:
+    body: 9a582e015902bf84
 ---
 
 # Peer-dependency discipline

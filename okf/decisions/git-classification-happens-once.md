@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 8e9b17588c6e738162490101484e51aa2488a6aa92f4cb1eec6e382c5bada4c1
+integrity:
+  generated:
+    body: 8e9b17588c6e7381
 ---
 
 # Git failure classification happens once, in one private function

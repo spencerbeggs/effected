@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: bb6ceb5588205d48702108cb591413e1ef67feff6ae73f4bd72e18030b307a2c
+integrity:
+  generated:
+    body: bb6ceb5588205d48
 ---
 
 # The release index is Ref-backed with a single atomic load

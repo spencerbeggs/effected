@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 7d8f5e1c0b8dbe0bef2106855d97ce697b9b92ab6ede5e883a2d332b01b219ca
+integrity:
+  generated:
+    body: 7d8f5e1c0b8dbe0b
 ---
 
 # The Catalog Sync check goes RED when it found and fixed drift

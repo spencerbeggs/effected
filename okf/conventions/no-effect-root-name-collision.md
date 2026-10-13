@@ -15,7 +15,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 0af03290b34516351f92042009648ab27650ac4e8ac0a2313c1e1d3f1cca883d
+integrity:
+  generated:
+    body: 0af03290b3451635
 ---
 
 # A public name must not collide with an effect root export

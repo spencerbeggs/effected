@@ -9,7 +9,9 @@ tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 9ec6c412f1b7af6af71e8122035e5a6ec4278125553bd67c0635f23fbc2e9f5e
+integrity:
+  generated:
+    body: 9ec6c412f1b7af6a
 ---
 
 # A new stringify option added to one adapter silently no-ops on the other two

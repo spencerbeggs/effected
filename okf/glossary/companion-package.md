@@ -12,7 +12,9 @@ sources:
 generated:
   by: "claude-code/opus-5"
   at: 2026-09-15T15:38:20Z
-  body_sha256: 611b1e2c22dca247c5192c679ba116e4c375965f2f5754eb8be9d1fc4a7b79f6
+integrity:
+  generated:
+    body: 611b1e2c22dca247
 ---
 
 # Companion package

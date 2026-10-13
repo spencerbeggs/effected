@@ -15,10 +15,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-24T01:41:28Z
-  body_sha256: ef87325e7e10c928a1f7b1e441585c70d41832b2f31ed8cae55e052d24cee096
 verified:
   - by: human:spencer
     at: 2026-09-24T06:10:09Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: ef87325e7e10c928
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 937dd4000d3eea6b
 ---
 
 # The kit's layering check forbids runtime edges only

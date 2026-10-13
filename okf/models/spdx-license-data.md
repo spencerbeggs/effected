@@ -8,7 +8,9 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T21:32:23Z
-  body_sha256: 104eff34dc6077071243dafdfe6267f74771139bf560e0d3fc8a1ccdae8e546c
+integrity:
+  generated:
+    body: 104eff34dc607707
 ---
 
 # The committed SPDX license catalog

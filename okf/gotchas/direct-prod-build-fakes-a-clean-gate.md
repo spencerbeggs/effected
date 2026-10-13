@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-14T02:44:47Z
-  body_sha256: cf8e173e3ceb758ea49419d9c14af4986b0cdcd8d6d3ab108bcf56434a40926d
+integrity:
+  generated:
+    body: cf8e173e3ceb758e
 ---
 
 # Running the bundler script directly fakes a clean build gate

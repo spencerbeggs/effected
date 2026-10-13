@@ -16,7 +16,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
-  body_sha256: 27829666840392226abeecbdd0b569eaa3f98a01854d5ba1ed00b3e0170c6b71
+integrity:
+  generated:
+    body: '2782966684039222'
 ---
 
 # Calling ajv-formats' default import is a TS2349, and the one-hop `.default` is not a bug

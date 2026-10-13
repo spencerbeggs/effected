@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: a18301e55e3af27dfc1caaeab9e200d660f1f9a7440d6cadc68091a5a1db285a
+integrity:
+  generated:
+    body: a18301e55e3af27d
 ---
 
 # A plain pnpm install can silently strip platform binaries from the lockfile

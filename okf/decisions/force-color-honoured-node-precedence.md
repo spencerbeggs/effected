@@ -12,7 +12,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-01T15:30:50Z
-  body_sha256: f592932ed3c63fce4e1d5a78425dea3418dc4998feb16481480eef48510039ff
+integrity:
+  generated:
+    body: f592932ed3c63fce
 ---
 
 # FORCE_COLOR is honoured, with Node's getColorDepth precedence

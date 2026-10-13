@@ -8,7 +8,9 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 376f250526560eb27a9a60a8ab76597b881972c3164ac97c652f0a0bc1c85d18
+integrity:
+  generated:
+    body: 376f250526560eb2
 ---
 
 # Decoding a JsonLdDocument silently drops the additional catch-all

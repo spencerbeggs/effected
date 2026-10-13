@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 016d270274695b2fa2524e82c76db2c92880e57f6bd3440d40b4478bc03645ca
+integrity:
+  generated:
+    body: 016d270274695b2f
 ---
 
 # `MarkdownFormat.modify` refuses frontmatter, list items, table rows and the root

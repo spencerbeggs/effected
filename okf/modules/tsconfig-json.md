@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 847a622f1c35a1f50ddeaf0a3174a2be4b94f6964ccb8329be4eab6fcd3fa6c1
+integrity:
+  generated:
+    body: 847a622f1c35a1f5
 ---
 
 # tsconfig-json

@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-09T16:03:02Z
-  body_sha256: a81d40af12dd3a51552b52e076ef16ff0ffd2cfb234f62be39c7d579cffdfe72
+integrity:
+  generated:
+    body: a81d40af12dd3a51
 ---
 
 # A package that names its own root types shows one warning or none, depending on whether the second pass crashes

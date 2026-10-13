@@ -7,10 +7,18 @@ tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
-  body_sha256: bb9181596967206b0392eaf6f8fb97a07df5af8fbcc9e3f492e3356185d85984
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: bb9181596967206b
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 0744bdcc09167a4b
 ---
 
 # D3: `CliLogger` default `stderrFrom` flips to `"All"`

@@ -8,7 +8,9 @@ tags: [bundle, architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 99a0b75f7d7a528ca01a61d7ba76d674b64135e64fcfa465f15759e0bf287ed3
+integrity:
+  generated:
+    body: 99a0b75f7d7a528c
 ---
 
 # @effected/github does not own every GraphQL document

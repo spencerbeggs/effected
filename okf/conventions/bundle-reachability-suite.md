@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 70812bcecfba9d7e681b52adecbe16a6e42a0fa56ecba66c53c81aefea8395a9
+integrity:
+  generated:
+    body: 70812bcecfba9d7e
 ---
 
 # Pin heavy-dependency confinement with a reachability suite that has a positive control

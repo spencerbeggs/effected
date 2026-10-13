@@ -8,10 +8,12 @@ tags: [ci, dx]
 generated:
   by: okfit/claude-code
   at: 2026-09-27T19:57:47Z
-  body_sha256: de1e5d9611cc8fe3bea57c7a6d91f8a9d68a10c26577c0b9898e5018e8b98434
 sources:
   - id: repo
     resource: "https://github.com/savvy-web/silk-update-action"
+integrity:
+  generated:
+    body: de1e5d9611cc8fe3
 ---
 
 # silk-update-action

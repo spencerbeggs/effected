@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: aa5914e7f9b1be5adfb736488ccdb1173129993f7d182907ffda758723eaaee4
+integrity:
+  generated:
+    body: aa5914e7f9b1be5a
 ---
 
 # The runtimes bundled offline defaults

@@ -17,7 +17,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: b28611ec4df704c0fbad178bf015cc1acde3fc4e1d12b292d469114395e8952f
+integrity:
+  generated:
+    body: b28611ec4df704c0
 ---
 
 # Input-hardening standards

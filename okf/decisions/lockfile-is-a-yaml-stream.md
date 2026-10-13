@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-27T22:15:57Z
-  body_sha256: 79dc6db6e2824ae1274076bfc3343ff3c7596dccfebce61bff9371e039234ff1
+integrity:
+  generated:
+    body: 79dc6db6e2824ae1
 ---
 
 # A lockfile is a YAML stream, not always one document

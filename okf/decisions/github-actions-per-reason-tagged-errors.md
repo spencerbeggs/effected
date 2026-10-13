@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: d43c9a5b235b78c95e56b636cbf88bb2f33ad747d48028aee52dac1de7159cf4
+integrity:
+  generated:
+    body: d43c9a5b235b78c9
 ---
 
 # github-actions errors are per-reason tagged unions, not one class with a reason field

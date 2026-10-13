@@ -16,7 +16,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-29T06:16:45Z
-  body_sha256: 1ba613bb7d2f79897bf2e1e47e1fe55a57fc14c46430a47764437626686b2d80
+integrity:
+  generated:
+    body: 1ba613bb7d2f7989
 ---
 
 # walker

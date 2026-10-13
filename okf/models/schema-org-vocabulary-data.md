@@ -8,7 +8,9 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 378637bde3c8454837ca02043654a29dfc613356e973f60789fb2c71e2daa69c
+integrity:
+  generated:
+    body: 378637bde3c84548
 ---
 
 # The committed schema.org vocabulary document

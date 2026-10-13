@@ -11,10 +11,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 77d2edc458574fd24e9838ba72e3dd1cab516c29efa8202cc5bda74dd27ae5e0
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 77d2edc458574fd2
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 4519dc8ae697b00d
 ---
 
 # app is a composition layer, not an umbrella package

@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: d7880b82e76fc9caafc1991e64454690da90baf49800e522f6758a908b504c1f
+integrity:
+  generated:
+    body: d7880b82e76fc9ca
 ---
 
 # A cursor-less `jsonl` query reads the whole file into memory

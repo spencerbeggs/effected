@@ -9,7 +9,9 @@ tags:
 generated:
   by: "claude-code/opus-5"
   at: 2026-09-14T04:45:45Z
-  body_sha256: aee51355b9da9099a212e5be9fef3067aff8e35971ef46aa1ff2dffefe64adc5
+integrity:
+  generated:
+    body: aee51355b9da9099
 ---
 
 # A single embedded NUL byte makes grep silently skip a text file

@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-17T04:41:11Z
-  body_sha256: 9820e305410881b5b80dd651385035f507875bd91cbb96f78b4e0646b62e1c56
+integrity:
+  generated:
+    body: 9820e305410881b5
 ---
 
 # Design a GitHub Action repository on the kit

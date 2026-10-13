@@ -9,7 +9,9 @@ tags:
 generated:
   by: okfit/claude-code
   at: 2026-09-28T23:39:57Z
-  body_sha256: 0ee68c028d4b65efdad62c730d59f117e9af74a8df71135f73b3d09533c7dead
+integrity:
+  generated:
+    body: 0ee68c028d4b65ef
 ---
 
 # A schemastore outputDir is never exclusively the CLI's

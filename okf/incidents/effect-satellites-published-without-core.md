@@ -31,7 +31,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-11T16:59:56Z
-  body_sha256: 02bd4ca8564a0d391c9384fbb044d373c13244405f4ef4456e202e4dbbaaacf1
+integrity:
+  generated:
+    body: 02bd4ca8564a0d39
 ---
 
 # The plugin's catalog paired 4.0.3 satellites with core effect 4.0.2

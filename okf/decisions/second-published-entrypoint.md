@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 71d7706757a9d4d1ac10e2c8106ac1b0ad77b4948ac9147ce6d3676ec7956dcd
+integrity:
+  generated:
+    body: 71d7706757a9d4d1
 ---
 
 # A second published entrypoint is a measured cost, not a convenience

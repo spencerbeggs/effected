@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 8f3c8e2771980cd9f1f6f8d348d26719e945ff4074f5f0937c2dc9bbb44804f3
+integrity:
+  generated:
+    body: 8f3c8e2771980cd9
 ---
 
 # Close a catalog membership gap

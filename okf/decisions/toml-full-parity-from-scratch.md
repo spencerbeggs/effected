@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: d7020d91b87c85f3076c568559b215abe165007ed9d40058f54ea7d89b1a7a9d
+integrity:
+  generated:
+    body: d7020d91b87c85f3
 ---
 
 # toml is a full-parity package built from scratch

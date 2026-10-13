@@ -7,7 +7,9 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: c90b8afb533af2b29119b0554d27f4af5bec0476545098c662cd14668f1b58d1
+integrity:
+  generated:
+    body: c90b8afb533af2b2
 ---
 
 # The yaml lint system stays inside the pure tier

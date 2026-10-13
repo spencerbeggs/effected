@@ -9,10 +9,18 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: e04e7165d8d74c4ef00c3ae09daafe8e957930422e18a3c06f506e6cea983bc2
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: e04e7165d8d74c4e
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 0cf4f49e7f64cfe5
 ---
 
 # Azure is confined to three modules, not two

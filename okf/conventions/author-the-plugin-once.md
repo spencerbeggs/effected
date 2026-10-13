@@ -16,7 +16,9 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-09T19:40:15Z
-  body_sha256: f7dcfe56e0aef21afe88adae8fd350fafe0df0626d9f3cdc111cde58f5a681eb
+integrity:
+  generated:
+    body: f7dcfe56e0aef21a
 ---
 
 # Author the plugin once in plugin/, never edit its builds

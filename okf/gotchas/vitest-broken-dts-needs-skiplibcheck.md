@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 07452ac0e629cf14d6931a65e2a9f4cf6a7b02ccbba5a97abffce4f572fbe91a
+integrity:
+  generated:
+    body: 07452ac0e629cf14
 ---
 
 # The root tsconfig's skipLibCheck override exists only to work around one vitest .d.ts

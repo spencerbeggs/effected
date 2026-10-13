@@ -11,10 +11,18 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T19:15:53Z
-  body_sha256: 608e36f2eec9b4c61963e476375e9854f58db358ce4ee19ed84953ae70bd2f18
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:38.223Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 608e36f2eec9b4c6
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: dccb6022933a5d96
 ---
 
 # `@effected/jsonl` read surfaces

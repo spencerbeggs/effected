@@ -7,10 +7,12 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-28T18:00:23Z
-  body_sha256: 27128e6290b1601dfd4fb959f2cf10612681836da867075d7b9ab2985b182e08
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
+integrity:
+  generated:
+    body: 27128e6290b1601d
 ---
 
 # D8: `FORCE_COLOR` is ignored, matching core

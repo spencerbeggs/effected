@@ -15,7 +15,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 457227d4dcda10381ee7510ff2306e6fb56c77247e00fed97217d2d72f41385e
+integrity:
+  generated:
+    body: 457227d4dcda1038
 ---
 
 # Read publishability from publishConfig.access, never from private

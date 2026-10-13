@@ -7,10 +7,18 @@ tags: [architecture, testing, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
-  body_sha256: bc110660511c8e01ff43c08a31f4f2ef9cff053ab2ac97fae5b1a953ad99c609
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: bc110660511c8e01
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 502ff5dad789fc73
 ---
 
 # D9: `CliTest` uses core `ChildProcess`, with no peer on `@effected/commands`

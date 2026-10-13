@@ -17,7 +17,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T21:32:23Z
-  body_sha256: 4e1c45ba39bdad5b12f25eed1a3838d40db43690e3fb34ca59edef226689e5aa
+integrity:
+  generated:
+    body: 4e1c45ba39bdad5b
 ---
 
 # The kit sets Ink's colour level on Ink's own chalk, resolved from Ink's location

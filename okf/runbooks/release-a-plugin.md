@@ -12,7 +12,9 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-03T04:19:44Z
-  body_sha256: 6e3a98e6f061c95fda60076b36b7fdbbe90f3b5863e5f080bc56662214e62c5a
+integrity:
+  generated:
+    body: 6e3a98e6f061c95f
 ---
 
 # Release a plugin

@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-11T17:00:33Z
-  body_sha256: 59587f47fb635f9a06203c21e298c541e575098a4c70f365749184eccc8d311c
+integrity:
+  generated:
+    body: 59587f47fb635f9a
 ---
 
 # @effected/env

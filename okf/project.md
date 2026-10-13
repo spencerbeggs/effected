@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-10T23:08:17Z
-  body_sha256: 57304b1aea69a30cf68d207a8dd491c072c9fd8c9e27671b04805710bfa97cd3
+integrity:
+  generated:
+    body: 57304b1aea69a30c
 ---
 
 # effected

@@ -7,10 +7,18 @@ tags: [architecture, bundle, deps]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T23:56:58Z
-  body_sha256: 44c56e989071df0baf9e9b3b05634a691e1755f235fd6bb82b6db1bc289bb981
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 44c56e989071df0b
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 6cd0f235d63cf3fe
 ---
 
 # CliLinks finds the editor directory with its own bounded ascent

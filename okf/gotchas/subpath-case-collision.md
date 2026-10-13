@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 2526db8ee65aafbecccae2e02f194644cab1334630d02aa4603c9c40c8073293
+integrity:
+  generated:
+    body: 2526db8ee65aafbe
 ---
 
 # A subpath entrypoint named after its own concept module fails at two layers

@@ -7,10 +7,18 @@ tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
-  body_sha256: 8da4d7914038a1d96aad16f1fc000d790e8c2cc87d9a22898ee06347feed7d2a
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: 8da4d7914038a1d9
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 9e88d6257e27e7a2
 ---
 
 # D5: the layering, packed-install and boundary checks live in `@effected/workspaces/testing`

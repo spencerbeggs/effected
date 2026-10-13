@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: c65e47ccb4e089530afeac86f9d9e122e376dc26e1a2b1f5cbe791d95ccb9ab2
+integrity:
+  generated:
+    body: c65e47ccb4e08953
 ---
 
 # The fidelity obligation and how it is tested

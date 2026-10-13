@@ -21,7 +21,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-11T17:00:26Z
-  body_sha256: b41bb355003a7332683903ec2d7a780980f93f5902a23a6a537ed8e7dad81272
+integrity:
+  generated:
+    body: b41bb355003a7332
 ---
 
 # @effected/memfs

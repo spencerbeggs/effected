@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 28629ae00cfaf810862f74d6f1cfe48d1593717b7d643d55c300b854a386ecf8
+integrity:
+  generated:
+    body: 28629ae00cfaf810
 ---
 
 # semver's parse and intersect Results are the primitive

@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-08T03:52:57Z
-  body_sha256: ed3778019cb6e0a5616dc34e7d1a16c89b40a0feae67456391d3b70cbd08c8e4
+integrity:
+  generated:
+    body: ed3778019cb6e0a5
 ---
 
 # lockfiles

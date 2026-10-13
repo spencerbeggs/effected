@@ -7,7 +7,9 @@ tags: [architecture, deps, security]
 generated:
   by: okfit/claude-code
   at: 2026-10-01T01:56:30Z
-  body_sha256: 41d764a9a33e21895b928e63021aca642ac44fcb754b1409cb2608e6c7536fbc
+integrity:
+  generated:
+    body: 41d764a9a33e2189
 ---
 
 # The workflow-command grammar left github-actions for its own pure package

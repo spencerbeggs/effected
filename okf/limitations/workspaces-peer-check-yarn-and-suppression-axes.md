@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-20T05:03:32Z
-  body_sha256: 4ca5bf92c71eccf0ed6a74f2ae4e4895434bbadec6ab25c657b075c11fb65a7b
+integrity:
+  generated:
+    body: 4ca5bf92c71eccf0
 ---
 
 # PeerCheck cannot answer yarn

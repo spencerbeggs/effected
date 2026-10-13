@@ -11,7 +11,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 7aba7384e283f656889b8d344182f78fb872df37f7b41414eaec2ee762b0b44e
+integrity:
+  generated:
+    body: 7aba7384e283f656
 ---
 
 # npm run silently claims flags meant for the script

@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T22:04:49Z
-  body_sha256: f6993f1c304568c9d659482bb14e3d1048915e30e34c22a60f6d6284ee82a5fe
+integrity:
+  generated:
+    body: f6993f1c304568c9
 ---
 
 # An unprotected environment runs fork code with secrets

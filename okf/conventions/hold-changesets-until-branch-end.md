@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 930cc944e549bb94e9380f8053ed524f593542e36c97a92cedbcf4a410f526ff
+integrity:
+  generated:
+    body: 930cc944e549bb94
 ---
 
 # Write changesets once, at branch finalization, never per round

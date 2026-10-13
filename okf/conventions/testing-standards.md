@@ -18,7 +18,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-30T01:39:09Z
-  body_sha256: 0c8fb2856835b9ef2052d58921835a5aa9db3f4fa5b497d093afb478eb482498
+integrity:
+  generated:
+    body: 0c8fb2856835b9ef
 ---
 
 # Testing standards

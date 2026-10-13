@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 53744903cc1e476aac52cab446147c5fc0a223e67f898a3a6b2deb519002d218
+integrity:
+  generated:
+    body: 53744903cc1e476a
 ---
 
 # The sync form is named `*Result`, never `*Sync`

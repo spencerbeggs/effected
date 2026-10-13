@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-07T21:32:23Z
-  body_sha256: a417a94bc2de2a1d2b9bea06ced46b3d65d13029922baf3596bb1bcac0e77e92
+integrity:
+  generated:
+    body: a417a94bc2de2a1d
 ---
 
 # While a live view is mounted, kit logs go through Ink's own stdout and stderr writers

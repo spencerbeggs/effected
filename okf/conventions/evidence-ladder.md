@@ -12,7 +12,9 @@ sources:
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-10-03T04:19:44Z
-  body_sha256: 4a46921e7fca10e7132bafc5802a3198f7317ea6dce942bccb55d92ece13c6dd
+integrity:
+  generated:
+    body: 4a46921e7fca10e7
 ---
 
 # Climb the evidence ladder in order — renames, then source, then a probe

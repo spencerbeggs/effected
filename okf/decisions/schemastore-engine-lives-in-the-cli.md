@@ -26,7 +26,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-02T18:12:26Z
-  body_sha256: 800700e1f8070ef5522b790261e37ff303fd1ef57bce0543477b6d6b2f769d5b
+integrity:
+  generated:
+    body: 800700e1f8070ef5
 ---
 
 # The ajv engine lives in the CLI, and the library returns to boundary tier

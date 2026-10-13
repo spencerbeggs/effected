@@ -18,7 +18,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-19T02:46:28Z
-  body_sha256: 7ba215d12f3da92c3ca5f77b61b220b26754fa650aadf08b4de6fbac52005fd0
+integrity:
+  generated:
+    body: 7ba215d12f3da92c
 ---
 
 # npm 12's pack --json is an object keyed by name, not an array

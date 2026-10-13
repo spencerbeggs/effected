@@ -13,7 +13,9 @@ sources:
 generated:
   by: "claude-code/opus-5"
   at: 2026-09-14T00:42:15Z
-  body_sha256: 0515417eae285b4e60b08ee9e949eddba25748591a5139bc52de168502d6b8af
+integrity:
+  generated:
+    body: 0515417eae285b4e
 ---
 
 # No bin on the library — the CLI is a fixed-version companion package

@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 0581cb4db00fb4aa5395bad0dc069fe547aeac9dca02e7c5437928ffe47faf4e
+integrity:
+  generated:
+    body: 0581cb4db00fb4aa
 ---
 
 # tsconfig-json is one package, not a pure-schema/boundary-IO split

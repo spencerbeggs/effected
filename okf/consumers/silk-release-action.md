@@ -8,10 +8,12 @@ tags: [ci, release]
 generated:
   by: okfit/claude-code
   at: 2026-09-13T05:33:04Z
-  body_sha256: da7576ca3f0478072cbbe7b58a96cf3c1810092af2923b81e318496e338319ed
 sources:
   - id: repo
     resource: "https://github.com/savvy-web/silk-release-action"
+integrity:
+  generated:
+    body: da7576ca3f047807
 ---
 
 # silk-release-action

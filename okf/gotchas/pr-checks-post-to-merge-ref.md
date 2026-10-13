@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 00b4ab357af1d8c1b3aad294085e32fbbfad6a216590f0ba91d933d7f7d461ce
+integrity:
+  generated:
+    body: 00b4ab357af1d8c1
 ---
 
 # A PR's check runs post to the merge ref, not the head SHA

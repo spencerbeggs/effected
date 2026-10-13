@@ -15,10 +15,12 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-10-09T20:48:21Z
-  body_sha256: b603c53d84c20bfb090f550076c95e207fef825bd35d2baf4942ae606e6a87bd
 verified:
   - by: human:spencer
     at: 2026-10-03T04:58:49Z
+integrity:
+  generated:
+    body: b603c53d84c20bfb
 ---
 
 # Each plugin versions via its own private tracking package

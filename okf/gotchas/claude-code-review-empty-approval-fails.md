@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 7c92b4ac9998ab2265c10d9a6e12cbabc4d9a14c46d2f01c78fee932b1dac1b1
+integrity:
+  generated:
+    body: 7c92b4ac9998ab22
 ---
 
 # The required Claude Code Review check fails on an empty-body approval

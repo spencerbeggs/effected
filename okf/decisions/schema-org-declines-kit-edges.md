@@ -7,7 +7,9 @@ tags: [compat, architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 4d71df942c08b36eed7aacdbda605169e32c5cd55b27a35a5d01e61980560e14
+integrity:
+  generated:
+    body: 4d71df942c08b36e
 ---
 
 # @effected/schema-org declines both available @effected edges

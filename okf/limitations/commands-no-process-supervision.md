@@ -8,7 +8,9 @@ tags: [bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: d0c735290241fa38dec255c5118816939af61c313421c352bcec422fc3b62e5a
+integrity:
+  generated:
+    body: d0c735290241fa38
 ---
 
 # @effected/commands does not supervise or archive processes

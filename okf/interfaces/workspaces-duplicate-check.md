@@ -20,10 +20,18 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T16:45:41Z
-  body_sha256: dc9d9bdd2a38278b149304bcbb89d56a00707bf0df41aaf3fe79ddec60b1b1a0
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:50.663Z
+  - by: human:spencer
+    at: 2026-10-13T21:42:59Z
+integrity:
+  generated:
+    body: dc9d9bdd2a38278b
+  verified:
+    by: human:spencer
+    at: 2026-10-13T21:42:59Z
+    content: 5cf9b751087f2b5d
 ---
 
 # @effected/workspaces duplicate-copy checking

@@ -9,7 +9,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: d10f51785c760ff8a9ecb170360ebb62e05da1b5ec4e3d4bec29211cbcab8e33
+integrity:
+  generated:
+    body: d10f51785c760ff8
 ---
 
 # A CLAUDE.md that reads confidently can be citing a tree that no longer exists

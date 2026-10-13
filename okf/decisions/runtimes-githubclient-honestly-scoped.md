@@ -8,7 +8,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: b23c8600b71b6159a1d067b58bcdcbfaebedcf0d56f850218796893411437188
+integrity:
+  generated:
+    body: b23c8600b71b6159
 ---
 
 # `GitHubClient` keeps only the authenticated REST reads Bun and Deno need

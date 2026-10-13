@@ -8,7 +8,9 @@ tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 2feffa80397fa8a68b06a5e0383a4f9bf6a0e071c4c5be55d06fb70254ccb024
+integrity:
+  generated:
+    body: 2feffa80397fa8a6
 ---
 
 # Regenerate the vendored schema.org vocabulary table

@@ -10,7 +10,9 @@ tags:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 5fd20b4f2585ad1943358d7074b9ab6aa046ddd4a270e98e8df2ff9850b9bbd9
+integrity:
+  generated:
+    body: 5fd20b4f2585ad19
 ---
 
 # Writing frontmatter re-serializes the whole block and can drop untracked data

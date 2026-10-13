@@ -14,7 +14,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 580fc8c3f680a8caeac0c3810417811c6f28af8d90ae9977ef350652c60944a4
+integrity:
+  generated:
+    body: 580fc8c3f680a8ca
 ---
 
 # package-json reads the same document through five tolerance tiers

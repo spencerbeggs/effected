@@ -13,7 +13,9 @@ sources:
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
-  body_sha256: 269716f90fdc58fa641986808dc8f3d019f47dbb7b676615733468bd2af9c3f1
+integrity:
+  generated:
+    body: 269716f90fdc58fa
 ---
 
 # Decided against: a shared @effected/errors package
