@@ -1,5 +1,27 @@
 # @effected/cli
 
+## 0.18.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.15.0 | 0.16.0 |
+| @effected/env | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/github-commands | dependency | updated | 0.3.0 | 0.4.0 |
+| @effected/glob | dependency | updated | 0.11.0 | 0.12.0 |
+| @effected/walker | dependency | updated | 0.16.0 | 0.17.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.4 [#1008][#1008]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1008]: https://github.com/spencerbeggs/effected/pull/1008
+
 ## 0.17.0
 
 ### Features

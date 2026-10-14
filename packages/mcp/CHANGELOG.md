@@ -1,5 +1,23 @@
 # @effected/mcp
 
+## 0.7.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/engine | dependency | updated | 0.5.0 | 0.6.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.4 [#1008][#1008]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1008]: https://github.com/spencerbeggs/effected/pull/1008
+
 ## 0.6.0
 
 ### Dependencies

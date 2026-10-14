@@ -1,5 +1,27 @@
 # @effected/config-file
 
+## 0.16.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.11.0 | 0.12.0 |
+| @effected/jsonc | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/toml | dependency | updated | 0.12.0 | 0.13.0 |
+| @effected/walker | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/yaml | dependency | updated | 0.20.0 | 0.21.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.4 [#1008][#1008]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1008]: https://github.com/spencerbeggs/effected/pull/1008
+
 ## 0.15.0
 
 ### Dependencies
