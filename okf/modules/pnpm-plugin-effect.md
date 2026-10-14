@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-11T17:06:53Z
+  at: 2026-10-14T00:17:26Z
 integrity:
   generated:
-    body: 05c0f23793a53f09
+    body: de3206eb0c710405
 ---
 
 # pnpm-plugin-effect
@@ -61,9 +61,9 @@ Memberships, versions and strategies all live in that one file. See
 its shape and load-bearing constraints.
 
 The `effect` (v4) catalog gives `effect` and its 26 satellites a caret
-`range` under `lock-minor` with the peer floored to the minor (`^4.0.3`
-over `^4.0.0` today), and `@effect/tsgo`, which versions on its own line,
-an exact `0.51.1`. The catalog range is not what keeps a satellite from
+`range` on the current release under `lock-minor`, with the peer floored to
+the minor (`^4.0.0`), and `@effect/tsgo`, which versions on its own line, a
+caret on that line under the same `lock-minor` strategy. The catalog range is not what keeps a satellite from
 pairing with an older core; the derived override layer below is, as
 [the derived-overrides decision](../decisions/effect-overrides-derived-from-catalog.md)
 rules. `__test__/catalog.test.ts` asserts every entry is a caret on

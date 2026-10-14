@@ -9,10 +9,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-11T17:06:53Z
+  at: 2026-10-14T00:17:26Z
 integrity:
   generated:
-    body: 6ba34b01264fd426
+    body: 284eaae1bd098e8b
 ---
 
 # The effected catalog literal
@@ -30,9 +30,9 @@ package's next-release version), `peer` (the input the peer-floor
 computation reads, which becomes the `:peers` twin's value) and
 `strategy`. The `effect` catalog uses `"lock-minor"`: every `effect` and
 `@effect/*` entry's `range` is a caret on the current release and its
-`peer` is floored to the minor (`^4.0.3` over `^4.0.0` today), while
-`@effect/tsgo`, which versions on its own line, stays an exact `0.51.1` so
-the allowed-versions generator still names it. The `effected` catalog also
+`peer` is floored to the minor (`^4.0.0`), while `@effect/tsgo`, which
+versions on its own line, takes a caret on that line under the same
+`lock-minor` strategy. The `effected` catalog also
 uses `"lock-minor"`, which floors each peer's patch.
 `effected` entries additionally carry `source: "workspace"`, telling the
 upgrade CLI to resolve the version from this workspace rather than
