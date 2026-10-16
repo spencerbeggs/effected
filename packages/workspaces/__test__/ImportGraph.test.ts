@@ -595,4 +595,44 @@ describe("ImportGraph.undeclared", () => {
 			}),
 		);
 	});
+
+	// The same shape with the package list reversed: `listPackages` promises no
+	// order, and `app` sits directly under the root, where
+	// `path.relative("/repo/app", "/repo")` answers `..`.
+	const NESTED_TREE = {
+		"/repo/src/index.ts": 'import { join } from "path";\nexport const i = join;\n',
+		"/repo/app/src/main.ts": 'import { pad } from "left-pad";\nexport const m = pad;\n',
+		"/repo/app/src/local.ts": "export const x = 1;\n",
+	};
+	const NESTED_PACKAGES = [pkg("@repo/app", "app"), pkg("repo", ".")];
+
+	layer(
+		Layer.mergeAll(
+			MemoryFileSystem.layerWith(NESTED_TREE),
+			Path.layer,
+			WorkspaceDiscovery.layerTest({ listPackages: () => Effect.succeed(NESTED_PACKAGES) }),
+		),
+		LIVE_CLOCK,
+	)((it) => {
+		it.effect("the innermost package owns a nested file whichever order listPackages answers in", () =>
+			Effect.gen(function* () {
+				const scan = yield* ImportGraph.undeclared({ builtins: builtinModules, include: ["**/*.ts"] });
+				// The root walks the whole repository here. Every file it meets
+				// below `/repo/app` belongs to `app`, so the root reports none.
+				assert.deepStrictEqual(
+					scan.undeclared.filter((entry) => entry.package === "repo"),
+					[],
+				);
+				// No file is listed twice, and `app`'s own violation is
+				// reported under `app`'s name.
+				assert.strictEqual(new Set(scan.files).size, scan.files.length);
+				assert.include(
+					scan.undeclared.map((entry) => entry.label),
+					"@repo/app src/main.ts:1:21 undeclared left-pad",
+				);
+				// The root still owns and checks its own file.
+				assert.include(scan.files, "src/index.ts");
+			}).pipe(Effect.timeout("3 seconds")),
+		);
+	});
 });

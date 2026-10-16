@@ -573,12 +573,14 @@ export class ImportGraph {
 		const packages = yield* discovery.listPackages();
 		/**
 		 * Whether `file` sits under the directory `dir`: the relative path from
-		 * `dir` to `file` stays inside it. A drive or root mismatch surfaces as
-		 * an absolute relative path and reads as not under.
+		 * `dir` to `file` stays inside it, so `dir` itself is not under it, and
+		 * neither is `dir`'s direct parent, which `path.relative` answers as
+		 * `..` rather than a `..${sep}` prefix. A drive or root mismatch
+		 * surfaces as an absolute relative path and reads as not under.
 		 */
 		const under = (file: string, dir: string): boolean => {
 			const rel = path.relative(dir, file);
-			return rel !== "" && rel !== "." && !path.isAbsolute(rel) && !rel.startsWith(`..${path.sep}`);
+			return rel !== "" && rel !== "." && rel !== ".." && !path.isAbsolute(rel) && !rel.startsWith(`..${path.sep}`);
 		};
 		/**
 		 * The innermost package owning `file`, or `undefined` when no package
