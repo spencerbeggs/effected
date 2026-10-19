@@ -1,5 +1,24 @@
 # @effected/ai-plugin
 
+## 0.40.0
+
+### Documentation
+
+- The `TestClock` reference no longer says that a nested `TestClock.layer()` reads virtual time from `withLive`. A nested clock resolves the real clock behind the outer one, and `TestClock.layer()` also provides its own `Scheduler`.
+- The schema reference now says that `Schema.toTaggedUnion` rejects duplicate discriminants at compile time. It also still throws at runtime when member types are widened.
+- The jsonl reference now describes `FileSystem.watch`'s `onReady` callback when it explains the `JournalWatcher` seam.
+- Corrects stale `FileSystem.ts` line citations in the module index, and re-derives skill source anchors against the new vendored tree. [#1019][#1019]
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.5 [#1019][#1019]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1019]: https://github.com/spencerbeggs/effected/pull/1019
+
 ## 0.39.0
 
 ### Maintenance

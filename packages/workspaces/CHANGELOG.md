@@ -1,5 +1,40 @@
 # @effected/workspaces
 
+## 0.35.0
+
+### Bug Fixes
+
+#### `ImportGraph.undeclared` gives a nested file to its innermost package in every order
+
+- `ownerOf` decides which package owns a file. It asked whether the file sits under a package directory, and it answered with a `..${sep}` prefix test on `path.relative`. The direct parent case answers exactly `..`, and that test read it as inside. A parent package listed after a package nested in it therefore took that package's files. A root-wide `include` then checked a nested package's files against the root manifest. The test now rejects `..` as well. Fixes a review finding on #995. [#1017][#1017]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.13.0 | 0.14.0 |
+| @effected/git | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/glob | dependency | updated | 0.12.0 | 0.13.0 |
+| @effected/jsonc | dependency | updated | 0.17.0 | 0.18.0 |
+| @effected/lockfiles | dependency | updated | 0.17.0 | 0.18.0 |
+| @effected/npm | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/package-json | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/semver | dependency | updated | 0.13.0 | 0.14.0 |
+| @effected/walker | dependency | updated | 0.17.0 | 0.18.0 |
+| @effected/yaml | dependency | updated | 0.21.0 | 0.22.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.5 [#1019][#1019]
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) and [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1017]: https://github.com/spencerbeggs/effected/pull/1017
+
+[#1019]: https://github.com/spencerbeggs/effected/pull/1019
+
 ## 0.34.0
 
 ### Dependencies

@@ -1,5 +1,25 @@
 # @effected/github
 
+## 0.21.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github-references | dependency | updated | 0.9.0 | 0.10.0 |
+| @effected/jwt | dependency | updated | 0.3.0 | 0.4.0 |
+| @effected/semver | dependency | updated | 0.13.0 | 0.14.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.5 [#1019][#1019]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1019]: https://github.com/spencerbeggs/effected/pull/1019
+
 ## 0.20.0
 
 ### Dependencies

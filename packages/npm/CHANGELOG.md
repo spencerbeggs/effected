@@ -1,5 +1,24 @@
 # @effected/npm
 
+## 0.23.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.13.0 | 0.14.0 |
+| @effected/semver | dependency | updated | 0.13.0 | 0.14.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.5 [#1019][#1019]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1019]: https://github.com/spencerbeggs/effected/pull/1019
+
 ## 0.22.0
 
 ### Dependencies
