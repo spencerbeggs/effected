@@ -2864,7 +2864,10 @@ const watch = (volume: Volume) => (path: string, options?: FileSystem.WatchOptio
 							volume.watchers.delete(subscription);
 						}),
 					),
-			),
+				// KIT EXTENSION (watch onReady): registered means buffering — `pending`
+				// holds matching events until the stream's queue attaches — which is
+				// core's contract for calling `onReady`.
+			).pipe(Effect.tap(() => Effect.sync(() => options?.onReady?.()))),
 			(subscription) =>
 				Stream.callback<FileSystem.WatchEvent, PlatformError>((queue) =>
 					Effect.sync(() => {

@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-11T17:00:26Z
+  at: 2026-10-19T14:33:59Z
 integrity:
   generated:
-    body: b41bb355003a7332
+    body: b35ebbdce08d2c4c
 ---
 
 # @effected/memfs
@@ -651,6 +651,17 @@ authoritative list.
     both against the real layer, so a further option the interface grows
     shows up there first — re-diff the interface against `OpenOptions` and
     the handle on every Effect advance.
+15. **`WatchOptions.onReady`**, which the pinned upstream predates — core
+    grew the callback and requires a custom watch backend to call it once
+    the watcher is installed and can buffer events. The engine calls it
+    once, right after `acquireRelease` adds the subscription to
+    `volume.watchers`: from there `pending` holds matching events until the
+    stream's queue attaches, so a write made after `onReady` is never lost.
+    A watch whose path fails to resolve never calls it. The fenced
+    `KIT EXTENSION (watch onReady)` lives in `watch`; `WatchReady.test.ts`
+    pins both halves. The ported tests and the kit helpers still order
+    their mutations with `Effect.yieldNow`, which stays correct and keeps
+    the ported bodies upstream's.
 
 ## Superseded: opt-in `Volume`, no type widening
 
