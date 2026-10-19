@@ -27,10 +27,10 @@ sources:
     title: "The effect catalog describe and the derived family pins in the overrides describe"
 generated:
   by: okfit/claude-code
-  at: 2026-10-11T17:06:53Z
+  at: 2026-10-19T14:28:38Z
 integrity:
   generated:
-    body: a495154c83d83eb7
+    body: 80a4aca8a0ee1ea1
 ---
 
 # The effect family is pinned graph-wide by overrides derived from the catalog
@@ -45,7 +45,7 @@ Once core published, the owner asked whether the explicit overriding should stay
 
 `rolldown-pnpm-config` 2.1.0 adds `overridesFromCatalogs`, a build-time directive resolved in `freeze` so the pnpmfile, `export` and `preview` all carry it.[^directive] The plugin declares `overridesFromCatalogs: { catalog: "effect" }` and keeps only the two release-candidate `platform-node-shared` bridge entries in its authored `overrides`.[^savvy-build] For every family member the directive emits `"<name>@^4.0.0": "<catalog version>"`, so the pins move with the catalog literal and the upgrade bot cannot leave them behind.
 
-The catalog itself returns to carets under `lock-minor`, which the stable-line decision had chosen before the incident: the override layer, not the catalog range, is now what stops a satellite from pairing with an older core. `@effect/tsgo` versions on its own 0.x line and stays exact in the catalog; the directive pins it on that line (`"@effect/tsgo@^0.51.0": "0.51.1"` today), so one tsgo serves the graph as well.
+The catalog itself returns to carets under `lock-minor`, which the stable-line decision had chosen before the incident: the override layer, not the catalog range, is now what stops a satellite from pairing with an older core. `@effect/tsgo` versions on its own 0.x line and stays exact in the catalog; the directive pins it on that line (a `"@effect/tsgo@^0.<minor>.0"` selector naming the catalog version), so one tsgo serves the graph as well.
 
 `__test__/catalog.test.ts` pins both halves: every entry is a caret on `lock-minor` with a peer floored to its minor, every 4.x entry names `effect`'s own version, and the built pnpmfile's `overrides` equal the pins derived from the catalog literal plus the two bridge entries.[^catalog-test]
 

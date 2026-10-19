@@ -1,5 +1,10 @@
 # Log
 
+## 2026-10-14
+
+* Updated The effected catalog literal
+* Updated pnpm-plugin-effect
+
 ## 2026-10-11
 
 * Updated @effected/cli

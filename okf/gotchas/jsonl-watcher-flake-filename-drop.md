@@ -9,10 +9,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-08T06:11:30Z
+  at: 2026-10-19T14:28:38Z
 integrity:
   generated:
-    body: 0cf3ca0d2224720c
+    body: 32c95d790aef02b1
 ---
 
 # A flaky `jsonl` watcher is probably an arming-order window, not an unreliable platform watch
@@ -37,8 +37,11 @@ first was catch-up before arming: the read ran, then the watch was armed,
 and a line landing in between waited for the next append. The second was
 arming that was only *requested*: the engine forked core's
 `FileSystem.watch` and yielded a few scheduler turns, but on Node that
-watch runs an asynchronous `stat` and registers in a forked fiber with no
-signal, so under load the catch-up read still ran before registration. The
+watch runs an asynchronous `stat` and registers in a forked fiber, and the
+engine had no signal for when that happened, so under load the catch-up read
+still ran before registration. (Core now reports installation through the
+`WatchOptions.onReady` callback; the effect that forks the stream still
+succeeds before it.) The
 file watch itself delivered every event once it was live. The fix is the
 `JournalWatcher` contract — a watch effect that succeeds only once
 registered — and the arm, catch-up, follow order on both the file and the
