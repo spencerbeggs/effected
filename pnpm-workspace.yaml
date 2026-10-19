@@ -142,7 +142,7 @@ catalogs:
     "@effected/xdg": ^0.11.0
     "@effected/yaml": ^0.21.0
 configDependencies:
-  "@savvy-web/pnpm-plugin-silk": 0.48.0
+  "@savvy-web/pnpm-plugin-silk": 0.49.0
 loglevel: info
 minimumReleaseAgeExclude:
   - "@effect/*"
