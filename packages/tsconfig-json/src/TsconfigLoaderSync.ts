@@ -120,6 +120,7 @@ const makePathService = (path: SyncPath): Path.Path =>
 		parse: () => unsupported("parse"),
 		relative: () => unsupported("relative"),
 		resolve: (...segments: ReadonlyArray<string>) => path.resolve(...segments),
+		resolveWithin: () => unsupported("resolveWithin"),
 		toFileUrl: () => unsupported("toFileUrl"),
 		toNamespacedPath: () => unsupported("toNamespacedPath"),
 	});

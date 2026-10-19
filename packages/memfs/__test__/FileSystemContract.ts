@@ -1092,10 +1092,10 @@ export const suite = (name: string, fsLayer: Layer.Layer<FileSystem.FileSystem, 
 						assert.strictEqual(sourceInfo.ino.value, linkedInfo.ino.value);
 					}
 					if (Option.isSome(sourceInfo.nlink)) {
-						assert.strictEqual(sourceInfo.nlink.value, 2);
+						assert.strictEqual(sourceInfo.nlink.value, 2n);
 					}
 					if (Option.isSome(linkedInfo.nlink)) {
-						assert.strictEqual(linkedInfo.nlink.value, 2);
+						assert.strictEqual(linkedInfo.nlink.value, 2n);
 					}
 				}),
 			);
@@ -1115,7 +1115,7 @@ export const suite = (name: string, fsLayer: Layer.Layer<FileSystem.FileSystem, 
 					assert.strictEqual(yield* fs.readFileString(alias), "original");
 					const linkedInfo = yield* fs.stat(alias);
 					if (Option.isSome(linkedInfo.nlink)) {
-						assert.strictEqual(linkedInfo.nlink.value, 1);
+						assert.strictEqual(linkedInfo.nlink.value, 1n);
 					}
 
 					yield* fs.remove(alias);
