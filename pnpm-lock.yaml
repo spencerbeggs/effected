@@ -211,17 +211,17 @@ catalogs:
       version: 1.0.3
   effect:
     '@effect/platform-node':
-      specifier: ^4.0.4
-      version: 4.0.4
+      specifier: ^4.0.5
+      version: 4.0.5
     '@effect/sql-sqlite-node':
-      specifier: ^4.0.4
-      version: 4.0.4
+      specifier: ^4.0.5
+      version: 4.0.5
     '@effect/vitest':
-      specifier: ^4.0.4
-      version: 4.0.4
+      specifier: ^4.0.5
+      version: 4.0.5
     effect:
-      specifier: ^4.0.4
-      version: 4.0.4
+      specifier: ^4.0.5
+      version: 4.0.5
   silk:
     ink:
       specifier: ^8.0.0
@@ -281,10 +281,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/config-file':
         specifier: workspace:*
         version: link:../config-file/dist/dev/pkg
@@ -320,7 +320,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -334,10 +334,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/config-file':
         specifier: workspace:*
         version: link:../config-file/dist/dev/pkg
@@ -379,7 +379,7 @@ importers:
         version: 19.3.0
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       ink:
         specifier: catalog:silk
         version: 8.0.0(@types/react@19.3.0)(react@19.3.0)
@@ -398,10 +398,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -410,7 +410,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -420,10 +420,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob/dist/dev/pkg
@@ -450,7 +450,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -460,10 +460,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/workspaces':
         specifier: workspace:*
         version: link:../workspaces/dist/dev/pkg
@@ -475,7 +475,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -485,10 +485,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/workspaces':
         specifier: workspace:*
         version: link:../workspaces/dist/dev/pkg
@@ -500,7 +500,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -510,10 +510,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -522,7 +522,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -557,10 +557,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -569,7 +569,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -610,10 +610,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -625,7 +625,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -635,7 +635,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -644,7 +644,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -654,7 +654,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -663,7 +663,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -673,7 +673,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -682,7 +682,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       minimatch:
         specifier: 10.2.6
         version: 10.2.6
@@ -695,10 +695,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -713,7 +713,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -723,7 +723,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -732,7 +732,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -742,10 +742,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -757,7 +757,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -767,10 +767,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -779,7 +779,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -789,7 +789,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
@@ -810,7 +810,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -820,10 +820,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/workspaces':
         specifier: workspace:*
         version: link:../workspaces/dist/dev/pkg
@@ -835,7 +835,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -845,7 +845,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
@@ -866,7 +866,7 @@ importers:
         version: 0.31.2
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -876,10 +876,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/engine':
         specifier: workspace:*
         version: link:../engine/dist/dev/pkg
@@ -894,7 +894,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -904,10 +904,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -916,7 +916,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -930,7 +930,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -945,7 +945,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -968,10 +968,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -980,7 +980,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1010,7 +1010,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -1019,10 +1019,10 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       oxc-parser:
-        specifier: ^0.153.0
-        version: 0.153.0
+        specifier: ^0.154.0
+        version: 0.154.0
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1045,10 +1045,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -1057,7 +1057,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1067,7 +1067,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -1076,10 +1076,10 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       oxc-parser:
-        specifier: ^0.153.0
-        version: 0.153.0
+        specifier: ^0.154.0
+        version: 0.154.0
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1093,10 +1093,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -1108,7 +1108,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1118,7 +1118,7 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effected/cli':
         specifier: workspace:^
         version: link:../cli/dist/dev/pkg
@@ -1143,7 +1143,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -1158,7 +1158,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1168,7 +1168,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -1177,7 +1177,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1187,7 +1187,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -1196,10 +1196,10 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       oxc-parser:
-        specifier: ^0.153.0
-        version: 0.153.0
+        specifier: ^0.154.0
+        version: 0.154.0
       spdx-exceptions:
         specifier: 2.5.0
         version: 2.5.0
@@ -1218,11 +1218,11 @@ importers:
     dependencies:
       '@effect/sql-sqlite-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)
+        version: 4.0.5(effect@4.0.5)
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -1231,7 +1231,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1241,10 +1241,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -1256,7 +1256,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1266,7 +1266,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -1275,10 +1275,10 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       smol-toml:
-        specifier: 1.9.0
-        version: 1.9.0
+        specifier: 1.9.1
+        version: 1.9.1
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1288,7 +1288,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob/dist/dev/pkg
@@ -1309,7 +1309,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1319,7 +1319,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob/dist/dev/pkg
@@ -1334,7 +1334,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1387,10 +1387,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -1402,7 +1402,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1412,7 +1412,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@effected/config-file':
         specifier: workspace:*
         version: link:../config-file/dist/dev/pkg
@@ -1442,7 +1442,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1452,7 +1452,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@savvy-web/bundler':
         specifier: ^2.5.3
         version: 2.5.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.3.0)(tsx@4.23.15)(typescript@7.0.2)
@@ -1461,7 +1461,7 @@ importers:
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1583,16 +1583,16 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+        version: 4.0.5(effect@4.0.5)(vitest@5.0.4)
       '@types/node':
         specifier: catalog:build
         version: 26.6.5
       effect:
         specifier: catalog:effect
-        version: 4.0.4
+        version: 4.0.5
       tsx:
         specifier: ^4.23.12
         version: 4.23.15
@@ -1951,13 +1951,25 @@ packages:
       effect: 4.0.4
       redis: '>=5.0.0 <7.0.0'
 
+  '@effect/platform-node@4.0.5':
+    resolution: {integrity: sha512-v4KD5fWvEUa4QmWFpZFbBsRhmfnTP6ETCME2r9ifyXVDPjhfpxpTZl41prjgQFMqZBHdWWCl7YC5ImbXv5ui5g==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      effect: 4.0.4
+      redis: '>=5.0.0 <7.0.0'
+
   '@effect/sql-sqlite-node@4.0.4':
     resolution: {integrity: sha512-dKPaiab7UpRvD+CfkcT2qavV83h9k2Vz5cjvNvwa7DyxZWuf10LQiSl8tJDtXMcz69BMLdy7skUUFFnlXVNROw==}
     peerDependencies:
       effect: 4.0.4
 
-  '@effect/vitest@4.0.4':
-    resolution: {integrity: sha512-l5KN46RbDVpqZxWzwXZtX6FVQiyzd+/hTYqL543uSDRo7hC0m19IeICh6O9U/nqCtfersqsNZnBjgHFfkuHsBw==}
+  '@effect/sql-sqlite-node@4.0.5':
+    resolution: {integrity: sha512-SHza5qNwiI4dRtUk45wvUfvZq7vB950DW2wD6npzt2aH/tesFfPlZJSDBIvwhazoK+gvDknBOONfKyFZsIF+tg==}
+    peerDependencies:
+      effect: 4.0.4
+
+  '@effect/vitest@4.0.5':
+    resolution: {integrity: sha512-q64paZ/i4V2NiRhTyqCmT2KiDbFjlxc2EZrZca8GGt+Nf8844946HyJM5bPk/q+YeRkFSxIrlCs+J+LSfky/wA==}
     peerDependencies:
       effect: 4.0.4
       vitest: ^5.0.1
@@ -2554,22 +2566,10 @@ packages:
       '@okfit/core': ^0.11.1
       effect: 4.0.4
 
-  '@oxc-parser/binding-android-arm-eabi@0.153.0':
-    resolution: {integrity: sha512-BcWu25dMwMjHpaDCEidmpAi7rGg1qZoihJeUUH9bD55pVZ0z4Wa5CQgqSTo0R41H81oozisQKW3WqvAN2m77IQ==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [arm]
-    os: [android]
-
   '@oxc-parser/binding-android-arm-eabi@0.154.0':
     resolution: {integrity: sha512-sDdEtDl7vKdCvf54j72RJbowE3jCmyRz/+oOB6IAwQxAHZ0eI+Dcj4hvVnm0b9Dy31plUkdmfds9C+/Zt895Tg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm]
-    os: [android]
-
-  '@oxc-parser/binding-android-arm64@0.153.0':
-    resolution: {integrity: sha512-9l5rdp2DhRqVriBHsNpu5cEf+hizZ4B58rt93HzyQEBUgZiC6qe2oFpaAAnXGCxHGnQExI1s7S2G0QhFacUZ6w==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [arm64]
     os: [android]
 
   '@oxc-parser/binding-android-arm64@0.154.0':
@@ -2578,22 +2578,10 @@ packages:
     cpu: [arm64]
     os: [android]
 
-  '@oxc-parser/binding-darwin-arm64@0.153.0':
-    resolution: {integrity: sha512-EcpsyRXHhENDpekpG4QNaSZj2F/BAz4Gh4o89zZwNss86R8KyRSQ6sXbAj74Xyeb4z3j/yBZZ6joQZhraIWyfw==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [arm64]
-    os: [darwin]
-
   '@oxc-parser/binding-darwin-arm64@0.154.0':
     resolution: {integrity: sha512-mokYzajOSXxtSRDWCdHARGdntrKH+rZZ24Jzo8AtafyNzz0NARmpMm26Tc5B6qiGrr6UliWibHCOif1qRN2vaA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
-    os: [darwin]
-
-  '@oxc-parser/binding-darwin-x64@0.153.0':
-    resolution: {integrity: sha512-hlj80HUQy07/2lYp6rmxH+3u+H2ik3rjLR52CUdPApxmZCNxASDUf/+ykTzAHS/fehftmVMATKvPaWmuLHuasg==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [x64]
     os: [darwin]
 
   '@oxc-parser/binding-darwin-x64@0.154.0':
@@ -2602,32 +2590,14 @@ packages:
     cpu: [x64]
     os: [darwin]
 
-  '@oxc-parser/binding-freebsd-x64@0.153.0':
-    resolution: {integrity: sha512-fWRcv2pMSh1qtez46MOu8vuUJ5fiaQZPHSphbWulbL7SHBMKfRgZl2PzjXZYQJbq7NEXyXbgIuIuUm+/Rmkv8w==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [x64]
-    os: [freebsd]
-
   '@oxc-parser/binding-freebsd-x64@0.154.0':
     resolution: {integrity: sha512-YooHZSLawOe2fqm+lDdG8oAaQh2NYV/RMYTYzWRLy72stm2BgE9O/8Al6kFENjkmzyyBccDLLBirGxVtpzQfrw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [freebsd]
 
-  '@oxc-parser/binding-linux-arm-gnueabihf@0.153.0':
-    resolution: {integrity: sha512-paZeUK1GXShl/bOJQET1/8AQxayFeuN4SIWAkgTRxE7ZQwv9uYSB2n0648smygP22N7jcI3zxAm0Z+ALNiIKxg==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [arm]
-    os: [linux]
-
   '@oxc-parser/binding-linux-arm-gnueabihf@0.154.0':
     resolution: {integrity: sha512-hKOwhZbrXdTwc4bGVfbLCXl9f2swl6zWdISocLQSNX9MgPmwHE3qGzOUkCrkuGpwdCVHPnkfOwsqTuYsrP5uNg==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [arm]
-    os: [linux]
-
-  '@oxc-parser/binding-linux-arm-musleabihf@0.153.0':
-    resolution: {integrity: sha512-qFPp5NwMf4K1C0O+DCVGmcbOaYyYAq98Rvv9p4VSfb777iUwlJCqMUxf6QG9N5f5ls4TEX6LitOZHi+6GL6rYQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm]
     os: [linux]
@@ -2638,26 +2608,12 @@ packages:
     cpu: [arm]
     os: [linux]
 
-  '@oxc-parser/binding-linux-arm64-gnu@0.153.0':
-    resolution: {integrity: sha512-oufEhZCX7saeo27Logra8cvBR1jQ/yw2zUI2hHmWw3qA/XYqEW31FOvLQBv7DWN32NjVdlcaP11WBBZTJo4k9g==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
   '@oxc-parser/binding-linux-arm64-gnu@0.154.0':
     resolution: {integrity: sha512-Cao2kj+8d7BT6XJU1gV9eVQjV+Cr+e8vQm3tddDRZiM2hHrMDxwy3j6t+ofaSl0idyuPPCZ4AlpmQoj8yOT1QA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
-
-  '@oxc-parser/binding-linux-arm64-musl@0.153.0':
-    resolution: {integrity: sha512-zXYzuAqng85h6+LI3iRm0zeMLX1/K2z41ZAMWxVRgt0D10VvZUaV5q+TEB46KDhoKBpdexoTLC6QoB/EiP2oqQ==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [arm64]
-    os: [linux]
-    libc: [musl]
 
   '@oxc-parser/binding-linux-arm64-musl@0.154.0':
     resolution: {integrity: sha512-uiwA0V3q8llWA7/8r+a9BBjk4j5YMDmi6wfOsyQfGOJMQSLHEiZ3HI8ulea766ykUa9wJFWk9XWEl4uJrZLQqw==}
@@ -2666,24 +2622,10 @@ packages:
     os: [linux]
     libc: [musl]
 
-  '@oxc-parser/binding-linux-ppc64-gnu@0.153.0':
-    resolution: {integrity: sha512-J7+NLwLEzdkKM9cKyPHH/AjXXstWOs98KYgLrPPnO4N9MO8EZRBfPNnBcS3S67uMOBkRpUmCl2FhRnWdQ5CbBA==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [ppc64]
-    os: [linux]
-    libc: [glibc]
-
   '@oxc-parser/binding-linux-ppc64-gnu@0.154.0':
     resolution: {integrity: sha512-LICfN0Xs4Zdko+bJy6eOAEQojDuIR26suF2JtOsMaXjgbCrpRSH7/NCvJhY13YvYBx12V6hnwrL8n0lk0rbNJQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [ppc64]
-    os: [linux]
-    libc: [glibc]
-
-  '@oxc-parser/binding-linux-riscv64-gnu@0.153.0':
-    resolution: {integrity: sha512-sD0K11GQTLWylln54nPMMTtgmBbQrR5It/vMpZpy/fogiw8O2AvIE+9LuWUXddrWk9zvFIHGRcSgFn4IHOfoYg==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [riscv64]
     os: [linux]
     libc: [glibc]
 
@@ -2694,13 +2636,6 @@ packages:
     os: [linux]
     libc: [glibc]
 
-  '@oxc-parser/binding-linux-riscv64-musl@0.153.0':
-    resolution: {integrity: sha512-7L66uql2BhvSz51LwfExjOdn6et/ydTiQxl23VApdKzJhTc3TczA1Qt6VR/UcvlQrL2ZbytIJb447vh7p5wmUw==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [riscv64]
-    os: [linux]
-    libc: [musl]
-
   '@oxc-parser/binding-linux-riscv64-musl@0.154.0':
     resolution: {integrity: sha512-nSnRYYDLCcRVjSQzF3g6rKqCNYwo5o+aQgnn8BBXfe+ofCgMGlGqkfRyvXm6ptZvoxNkkWtLlqM8W7Xc3j6ZnQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -2708,24 +2643,10 @@ packages:
     os: [linux]
     libc: [musl]
 
-  '@oxc-parser/binding-linux-s390x-gnu@0.153.0':
-    resolution: {integrity: sha512-hXV3T7mNyrPR19rbPYkglkQJtoM/UNo/xwbZeeqdAxEg8PXgb4LXXuxPpGgI4bzRRCWwLUxdDSS58xIyC2u1TA==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [s390x]
-    os: [linux]
-    libc: [glibc]
-
   '@oxc-parser/binding-linux-s390x-gnu@0.154.0':
     resolution: {integrity: sha512-BxBQoJKtzRQgZEKQIt6CDUm8RGKC5T8Qo4576yDa5/xgc10X3fBDItMbRabzLtbUBfTqKLl+8AVr/H6CF7W22g==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [s390x]
-    os: [linux]
-    libc: [glibc]
-
-  '@oxc-parser/binding-linux-x64-gnu@0.153.0':
-    resolution: {integrity: sha512-Da8Vqs1xdtoDYtEjmozD7wGgJeLBQkMbR0WUBECOSxodyX5DXy8ySlvJWbukyO2Q0+TM9EK+4LT6tbq0jCg4hQ==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [x64]
     os: [linux]
     libc: [glibc]
 
@@ -2736,13 +2657,6 @@ packages:
     os: [linux]
     libc: [glibc]
 
-  '@oxc-parser/binding-linux-x64-musl@0.153.0':
-    resolution: {integrity: sha512-zGAPxNTIIw6X5WyTRscIFE/oDjpdNtrrl32ing6NOXdGjzRucadnxBilexLdeYQ9YxixF93GujpXyQ0jw7ddSg==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [x64]
-    os: [linux]
-    libc: [musl]
-
   '@oxc-parser/binding-linux-x64-musl@0.154.0':
     resolution: {integrity: sha512-EXURTyW9riw4B/kZnnE+58emAtw6+3VEszQfXUZkRqGaKIcmWDYkZtKB+xY/blHvuZ+Qy/fDclc31nmUCgtkSA==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -2750,23 +2664,11 @@ packages:
     os: [linux]
     libc: [musl]
 
-  '@oxc-parser/binding-openharmony-arm64@0.153.0':
-    resolution: {integrity: sha512-GoHzpqP5XyPIp9DHokoEdCp+K4UPl/h1neFj1uXnUB3pJYyOQ7NOhFVOttNUgCGcj2eywAvu5cRivTOSq4S10g==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [arm64]
-    os: [openharmony]
-
   '@oxc-parser/binding-openharmony-arm64@0.154.0':
     resolution: {integrity: sha512-ZRFooyH3qsR6vuR4jFGlG3XM36490SvvXtNaUahBK4zHpooMdTHNaOMtGGJI0EW38m5hi4rOco9kw7ZwCIp28w==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [openharmony]
-
-  '@oxc-parser/binding-win32-arm64-msvc@0.153.0':
-    resolution: {integrity: sha512-xGcy12tO9k7zFbeyQzEuilfWfQpyRq23/fLPfN3wjSWuWv58k46fQT1hsO1KFNykZuVGW9xSJE/z592TmAoSDA==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [arm64]
-    os: [win32]
 
   '@oxc-parser/binding-win32-arm64-msvc@0.154.0':
     resolution: {integrity: sha512-U0Vp+4lvwUa/PnOCJTZOjydj1rX2+VLHz4Y2vSFqlN8/7LTiURgD7z4uQ9yNv9O/NlU3mELBnPDlu7aaSYG1zQ==}
@@ -2774,22 +2676,10 @@ packages:
     cpu: [arm64]
     os: [win32]
 
-  '@oxc-parser/binding-win32-ia32-msvc@0.153.0':
-    resolution: {integrity: sha512-o1ykUjWncvXX6N5a4KebgLjtD8zRui+f1llMhSGoSC9oP2KOqapRpdwmZ3NcNG0axFouwVKmhGBjd+IhA8BksA==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [ia32]
-    os: [win32]
-
   '@oxc-parser/binding-win32-ia32-msvc@0.154.0':
     resolution: {integrity: sha512-Hc8QgsFY5eUUP25we8TISUruibG2cDt0H4IcPG9RKdabb6odkCzIqjV6Gk9beGWGuOwMVCr81H/Su1q363LCCg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [ia32]
-    os: [win32]
-
-  '@oxc-parser/binding-win32-x64-msvc@0.153.0':
-    resolution: {integrity: sha512-gxQz7G96Up136fd+2zWrP+o6FYGs9NO4Dyv55IoeJFJUDwLFHcLYY11hhA5wQKs0HoM57Q8esQ3nEVhnCdsjAQ==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [x64]
     os: [win32]
 
   '@oxc-parser/binding-win32-x64-msvc@0.154.0':
@@ -4371,6 +4261,9 @@ packages:
   effect@4.0.4:
     resolution: {integrity: sha512-Sr50OeVSC3M5UkoUYUhFf3EULryhGaZZUf6OzDHTvaznOw7HRlxOKdF3/4nvQXHL22StOyMG3Cvo8Bt7xUp+Ng==}
 
+  effect@4.0.5:
+    resolution: {integrity: sha512-BY4/28NlpOd99yzmV741xbVGmp+1U7tks4oB7F/Png64bTa5tm5eCA6W0RiXsnuLDDoJpjfVSo4Dnq4BZb/89Q==}
+
   electron-to-chromium@1.5.453:
     resolution: {integrity: sha512-9r/nz9akllr3SZsHUhfK10ktUH6j0Dbo3cKdh91khw0FvR6HhXGnATmOq5X8ena2aq4GXLQ1koh3nvKaQJaNmQ==}
 
@@ -5410,10 +5303,6 @@ packages:
     resolution: {integrity: sha512-++Zlftm0kVLPmzC06t6epuWmcRMDbI4z5P3NNX979WA/k23+NtSOynEGzsVfZwguKw2mi5umVgnBlJQMwRz4Pg==}
     engines: {node: '>=20'}
 
-  oxc-parser@0.153.0:
-    resolution: {integrity: sha512-cEnpyyV1OJRXv++SFNw0z8i+2o/cr88rVLaOYJafELDoHM5yHvCAbwGRLvxuany6SNLcbblSMUyZaGzH+quSYg==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-
   oxc-parser@0.154.0:
     resolution: {integrity: sha512-Gr/6fkjZwi937c4Tsz8y0iO4U0FLPkZI6JSVucLAIvQyqh379px7RS8ORIc0HOORbFjXZ6zyqWLl53qxhSeofw==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -5804,8 +5693,8 @@ packages:
     resolution: {integrity: sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==}
     engines: {node: '>= 18'}
 
-  smol-toml@1.9.0:
-    resolution: {integrity: sha512-hpd+HLON7HdZXqYchMM/+LaTTbdK0AU3NngIJ4KVyWbY9bfQqdL9cD+4yf6dUoU2Ap4VsU0JkQi6FxAI1B2mXQ==}
+  smol-toml@1.9.1:
+    resolution: {integrity: sha512-j7WyPdf0CJoutMzMoPLF/bVXHtKZIT9Rb4eGeEbWw8X2t5oirjPgpL+OpaENZrILYaXqYwnVH+qgUwVbl+pUJQ==}
     engines: {node: '>= 18'}
 
   socks-proxy-agent@10.1.0:
@@ -6775,6 +6664,15 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@effect/platform-node-shared@4.0.4(effect@4.0.5)':
+    dependencies:
+      '@types/ws': 8.18.2
+      effect: 4.0.5
+      ws: 8.22.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@effect/platform-node@4.0.4(effect@4.0.4)(redis@6.3.0)':
     dependencies:
       '@effect/platform-node-shared': 4.0.4(effect@4.0.4)
@@ -6785,13 +6683,27 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@effect/platform-node@4.0.5(effect@4.0.5)(redis@6.3.0)':
+    dependencies:
+      '@effect/platform-node-shared': 4.0.4(effect@4.0.5)
+      effect: 4.0.5
+      redis: 6.3.0
+      undici: 8.11.2
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@effect/sql-sqlite-node@4.0.4(effect@4.0.4)':
     dependencies:
       effect: 4.0.4
 
-  '@effect/vitest@4.0.4(effect@4.0.4)(vitest@5.0.4)':
+  '@effect/sql-sqlite-node@4.0.5(effect@4.0.5)':
     dependencies:
-      effect: 4.0.4
+      effect: 4.0.5
+
+  '@effect/vitest@4.0.5(effect@4.0.5)(vitest@5.0.4)':
+    dependencies:
+      effect: 4.0.5
       vitest: 5.0.4(@types/node@26.6.5)(@vitest/coverage-istanbul@5.0.4)(@vitest/coverage-v8@5.0.4)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
   '@effected/app@0.23.0(ebad7dfb3b0799307622b1225be015e8)':
@@ -7415,115 +7327,58 @@ snapshots:
       '@okfit/core': 0.11.1(@effected/config-file@0.16.0(@effected/glob@0.12.0(effect@4.0.4))(@effected/jsonc@0.17.0(effect@4.0.4))(@effected/toml@0.13.0(effect@4.0.4))(@effected/walker@0.17.0(@effected/glob@0.12.0(effect@4.0.4))(effect@4.0.4))(@effected/yaml@0.21.0(effect@4.0.4))(effect@4.0.4))(@effected/glob@0.12.0(effect@4.0.4))(@effected/jsonc@0.17.0(effect@4.0.4))(@effected/markdown@0.17.0(@effected/jsonc@0.17.0(effect@4.0.4))(@effected/toml@0.13.0(effect@4.0.4))(@effected/yaml@0.21.0(effect@4.0.4))(effect@4.0.4))(@effected/schemastore@0.23.0(effect@4.0.4))(@effected/toml@0.13.0(effect@4.0.4))(@effected/walker@0.17.0(@effected/glob@0.12.0(effect@4.0.4))(effect@4.0.4))(@effected/yaml@0.21.0(effect@4.0.4))(effect@4.0.4)
       effect: 4.0.4
 
-  '@oxc-parser/binding-android-arm-eabi@0.153.0':
-    optional: true
-
   '@oxc-parser/binding-android-arm-eabi@0.154.0':
-    optional: true
-
-  '@oxc-parser/binding-android-arm64@0.153.0':
     optional: true
 
   '@oxc-parser/binding-android-arm64@0.154.0':
     optional: true
 
-  '@oxc-parser/binding-darwin-arm64@0.153.0':
-    optional: true
-
   '@oxc-parser/binding-darwin-arm64@0.154.0':
-    optional: true
-
-  '@oxc-parser/binding-darwin-x64@0.153.0':
     optional: true
 
   '@oxc-parser/binding-darwin-x64@0.154.0':
     optional: true
 
-  '@oxc-parser/binding-freebsd-x64@0.153.0':
-    optional: true
-
   '@oxc-parser/binding-freebsd-x64@0.154.0':
-    optional: true
-
-  '@oxc-parser/binding-linux-arm-gnueabihf@0.153.0':
     optional: true
 
   '@oxc-parser/binding-linux-arm-gnueabihf@0.154.0':
     optional: true
 
-  '@oxc-parser/binding-linux-arm-musleabihf@0.153.0':
-    optional: true
-
   '@oxc-parser/binding-linux-arm-musleabihf@0.154.0':
-    optional: true
-
-  '@oxc-parser/binding-linux-arm64-gnu@0.153.0':
     optional: true
 
   '@oxc-parser/binding-linux-arm64-gnu@0.154.0':
     optional: true
 
-  '@oxc-parser/binding-linux-arm64-musl@0.153.0':
-    optional: true
-
   '@oxc-parser/binding-linux-arm64-musl@0.154.0':
-    optional: true
-
-  '@oxc-parser/binding-linux-ppc64-gnu@0.153.0':
     optional: true
 
   '@oxc-parser/binding-linux-ppc64-gnu@0.154.0':
     optional: true
 
-  '@oxc-parser/binding-linux-riscv64-gnu@0.153.0':
-    optional: true
-
   '@oxc-parser/binding-linux-riscv64-gnu@0.154.0':
-    optional: true
-
-  '@oxc-parser/binding-linux-riscv64-musl@0.153.0':
     optional: true
 
   '@oxc-parser/binding-linux-riscv64-musl@0.154.0':
     optional: true
 
-  '@oxc-parser/binding-linux-s390x-gnu@0.153.0':
-    optional: true
-
   '@oxc-parser/binding-linux-s390x-gnu@0.154.0':
-    optional: true
-
-  '@oxc-parser/binding-linux-x64-gnu@0.153.0':
     optional: true
 
   '@oxc-parser/binding-linux-x64-gnu@0.154.0':
     optional: true
 
-  '@oxc-parser/binding-linux-x64-musl@0.153.0':
-    optional: true
-
   '@oxc-parser/binding-linux-x64-musl@0.154.0':
-    optional: true
-
-  '@oxc-parser/binding-openharmony-arm64@0.153.0':
     optional: true
 
   '@oxc-parser/binding-openharmony-arm64@0.154.0':
     optional: true
 
-  '@oxc-parser/binding-win32-arm64-msvc@0.153.0':
-    optional: true
-
   '@oxc-parser/binding-win32-arm64-msvc@0.154.0':
     optional: true
 
-  '@oxc-parser/binding-win32-ia32-msvc@0.153.0':
-    optional: true
-
   '@oxc-parser/binding-win32-ia32-msvc@0.154.0':
-    optional: true
-
-  '@oxc-parser/binding-win32-x64-msvc@0.153.0':
     optional: true
 
   '@oxc-parser/binding-win32-x64-msvc@0.154.0':
@@ -9194,6 +9049,8 @@ snapshots:
 
   effect@4.0.4: {}
 
+  effect@4.0.5: {}
+
   electron-to-chromium@1.5.453: {}
 
   elkjs@0.9.3: {}
@@ -10253,18 +10110,18 @@ snapshots:
       micromark-util-character: 2.1.1
       micromark-util-sanitize-uri: 2.0.1
       micromark-util-symbol: 2.0.1
-      micromark-util-types: 2.0.3
+      micromark-util-types: 2.0.2
 
   micromark-extension-gfm-footnote@2.1.0:
     dependencies:
       devlop: 1.1.0
-      micromark-core-commonmark: 2.0.4
+      micromark-core-commonmark: 2.0.3
       micromark-factory-space: 2.1.0
       micromark-util-character: 2.1.1
       micromark-util-normalize-identifier: 2.0.1
       micromark-util-sanitize-uri: 2.0.1
       micromark-util-symbol: 2.0.1
-      micromark-util-types: 2.0.3
+      micromark-util-types: 2.0.2
 
   micromark-extension-gfm-strikethrough@2.1.0:
     dependencies:
@@ -10385,7 +10242,7 @@ snapshots:
     dependencies:
       micromark-util-character: 2.1.1
       micromark-util-symbol: 2.0.1
-      micromark-util-types: 2.0.3
+      micromark-util-types: 2.0.2
 
   micromark-factory-label@1.1.0:
     dependencies:
@@ -10399,7 +10256,7 @@ snapshots:
       devlop: 1.1.0
       micromark-util-character: 2.1.1
       micromark-util-symbol: 2.0.1
-      micromark-util-types: 2.0.3
+      micromark-util-types: 2.0.2
 
   micromark-factory-mdx-expression@2.0.3:
     dependencies:
@@ -10421,7 +10278,7 @@ snapshots:
   micromark-factory-space@2.1.0:
     dependencies:
       micromark-util-character: 2.1.1
-      micromark-util-types: 2.0.3
+      micromark-util-types: 2.0.2
 
   micromark-factory-title@1.1.0:
     dependencies:
@@ -10435,7 +10292,7 @@ snapshots:
       micromark-factory-space: 2.1.0
       micromark-util-character: 2.1.1
       micromark-util-symbol: 2.0.1
-      micromark-util-types: 2.0.3
+      micromark-util-types: 2.0.2
 
   micromark-factory-whitespace@1.1.0:
     dependencies:
@@ -10449,7 +10306,7 @@ snapshots:
       micromark-factory-space: 2.1.0
       micromark-util-character: 2.1.1
       micromark-util-symbol: 2.0.1
-      micromark-util-types: 2.0.3
+      micromark-util-types: 2.0.2
 
   micromark-util-character@1.2.0:
     dependencies:
@@ -10459,7 +10316,7 @@ snapshots:
   micromark-util-character@2.1.1:
     dependencies:
       micromark-util-symbol: 2.0.1
-      micromark-util-types: 2.0.3
+      micromark-util-types: 2.0.2
 
   micromark-util-chunked@1.1.0:
     dependencies:
@@ -10479,7 +10336,7 @@ snapshots:
     dependencies:
       micromark-util-character: 2.1.1
       micromark-util-symbol: 2.0.1
-      micromark-util-types: 2.0.3
+      micromark-util-types: 2.0.2
 
   micromark-util-combine-extensions@1.1.0:
     dependencies:
@@ -10489,7 +10346,7 @@ snapshots:
   micromark-util-combine-extensions@2.0.1:
     dependencies:
       micromark-util-chunked: 2.0.1
-      micromark-util-types: 2.0.3
+      micromark-util-types: 2.0.2
 
   micromark-util-decode-numeric-character-reference@1.1.0:
     dependencies:
@@ -10549,7 +10406,7 @@ snapshots:
 
   micromark-util-resolve-all@2.0.1:
     dependencies:
-      micromark-util-types: 2.0.3
+      micromark-util-types: 2.0.2
 
   micromark-util-sanitize-uri@1.2.0:
     dependencies:
@@ -10575,7 +10432,7 @@ snapshots:
       devlop: 1.1.0
       micromark-util-chunked: 2.0.1
       micromark-util-symbol: 2.0.1
-      micromark-util-types: 2.0.3
+      micromark-util-types: 2.0.2
 
   micromark-util-symbol@1.1.0: {}
 
@@ -10745,30 +10602,6 @@ snapshots:
       is-inside-container: 1.0.0
       powershell-utils: 0.2.1
       wsl-utils: 1.0.1
-
-  oxc-parser@0.153.0:
-    dependencies:
-      '@oxc-project/types': 0.153.0
-    optionalDependencies:
-      '@oxc-parser/binding-android-arm-eabi': 0.153.0
-      '@oxc-parser/binding-android-arm64': 0.153.0
-      '@oxc-parser/binding-darwin-arm64': 0.153.0
-      '@oxc-parser/binding-darwin-x64': 0.153.0
-      '@oxc-parser/binding-freebsd-x64': 0.153.0
-      '@oxc-parser/binding-linux-arm-gnueabihf': 0.153.0
-      '@oxc-parser/binding-linux-arm-musleabihf': 0.153.0
-      '@oxc-parser/binding-linux-arm64-gnu': 0.153.0
-      '@oxc-parser/binding-linux-arm64-musl': 0.153.0
-      '@oxc-parser/binding-linux-ppc64-gnu': 0.153.0
-      '@oxc-parser/binding-linux-riscv64-gnu': 0.153.0
-      '@oxc-parser/binding-linux-riscv64-musl': 0.153.0
-      '@oxc-parser/binding-linux-s390x-gnu': 0.153.0
-      '@oxc-parser/binding-linux-x64-gnu': 0.153.0
-      '@oxc-parser/binding-linux-x64-musl': 0.153.0
-      '@oxc-parser/binding-openharmony-arm64': 0.153.0
-      '@oxc-parser/binding-win32-arm64-msvc': 0.153.0
-      '@oxc-parser/binding-win32-ia32-msvc': 0.153.0
-      '@oxc-parser/binding-win32-x64-msvc': 0.153.0
 
   oxc-parser@0.154.0:
     dependencies:
@@ -11346,7 +11179,7 @@ snapshots:
 
   smol-toml@1.8.0: {}
 
-  smol-toml@1.9.0: {}
+  smol-toml@1.9.1: {}
 
   socks-proxy-agent@10.1.0(supports-color@8.1.1):
     dependencies:

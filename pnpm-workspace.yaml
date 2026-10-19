@@ -17,8 +17,8 @@ catalogs:
     "@effect/opentelemetry": ^4.0.4
     "@effect/platform-browser": ^4.0.4
     "@effect/platform-bun": ^4.0.4
-    "@effect/platform-node": ^4.0.4
-    "@effect/platform-node-shared": ^4.0.4
+    "@effect/platform-node": ^4.0.5
+    "@effect/platform-node-shared": ^4.0.5
     "@effect/sql-clickhouse": ^4.0.4
     "@effect/sql-d1": ^4.0.4
     "@effect/sql-libsql": ^4.0.4
@@ -28,12 +28,12 @@ catalogs:
     "@effect/sql-pglite": ^4.0.4
     "@effect/sql-sqlite-bun": ^4.0.4
     "@effect/sql-sqlite-do": ^4.0.4
-    "@effect/sql-sqlite-node": ^4.0.4
+    "@effect/sql-sqlite-node": ^4.0.5
     "@effect/sql-sqlite-react-native": ^4.0.4
     "@effect/sql-sqlite-wasm": ^4.0.4
-    "@effect/tsgo": ^0.52.0
-    "@effect/vitest": ^4.0.4
-    effect: ^4.0.4
+    "@effect/tsgo": ^0.53.1
+    "@effect/vitest": ^4.0.5
+    effect: ^4.0.5
   effect:peers:
     "@effect/ai-anthropic": ^4.0.0
     "@effect/ai-openai": ^4.0.0
@@ -60,7 +60,7 @@ catalogs:
     "@effect/sql-sqlite-node": ^4.0.0
     "@effect/sql-sqlite-react-native": ^4.0.0
     "@effect/sql-sqlite-wasm": ^4.0.0
-    "@effect/tsgo": ^0.52.0
+    "@effect/tsgo": ^0.53.1
     "@effect/vitest": ^4.0.0
     effect: ^4.0.0
   effected:
