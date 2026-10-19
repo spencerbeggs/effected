@@ -1,0 +1,46 @@
+---
+"@effected/pnpm-plugin-effect": patch
+---
+
+## Maintenance
+
+### Updates 38 catalog:effected versions
+
+- `@effected/app` ^0.23.0 -> ^0.24.0 (peer ^0.24.0)
+- `@effected/cli` ^0.18.0 -> ^0.19.0 (peer ^0.19.0)
+- `@effected/commands` ^0.13.0 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/config-file` ^0.16.0 -> ^0.17.0 (peer ^0.17.0)
+- `@effected/engine` ^0.6.0 -> ^0.7.0 (peer ^0.7.0)
+- `@effected/env` ^0.3.0 -> ^0.4.0 (peer ^0.4.0)
+- `@effected/git` ^0.22.0 -> ^0.23.0 (peer ^0.23.0)
+- `@effected/github` ^0.20.0 -> ^0.21.0 (peer ^0.21.0)
+- `@effected/github-actions` ^0.22.0 -> ^0.23.0 (peer ^0.23.0)
+- `@effected/github-commands` ^0.4.0 -> ^0.5.0 (peer ^0.5.0)
+- `@effected/github-references` ^0.9.0 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/glob` ^0.12.0 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/images` ^0.3.0 -> ^0.4.0 (peer ^0.4.0)
+- `@effected/jsonc` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/jsonl` ^0.13.0 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/jwt` ^0.3.0 -> ^0.4.0 (peer ^0.4.0)
+- `@effected/lockfiles` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/lsp` ^0.3.0 -> ^0.4.0 (peer ^0.4.0)
+- `@effected/markdown` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/mcp` ^0.7.0 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/memfs` ^0.16.0 -> ^0.17.0 (peer ^0.17.0)
+- `@effected/npm` ^0.22.0 -> ^0.23.0 (peer ^0.23.0)
+- `@effected/package-json` ^0.22.0 -> ^0.23.0 (peer ^0.23.0)
+- `@effected/runtimes` ^0.12.1 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/sbom` ^0.12.0 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/schema-org` ^0.9.0 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/schemastore` ^0.23.0 -> ^0.24.0 (peer ^0.24.0)
+- `@effected/schemastore-cli` ^0.23.0 -> ^0.24.0 (peer ^0.24.0)
+- `@effected/semver` ^0.13.0 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/spdx` ^0.14.0 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/store` ^0.15.0 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/templates` ^0.12.0 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/toml` ^0.13.0 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/tsconfig-json` ^0.15.0 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/walker` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/workspaces` ^0.34.1 -> ^0.35.0 (peer ^0.35.0)
+- `@effected/xdg` ^0.11.0 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/yaml` ^0.21.0 -> ^0.22.0 (peer ^0.22.0)
