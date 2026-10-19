@@ -238,7 +238,7 @@ A mock service is a `Context.Service` with a test `Layer`, swapped `Live` →
 `Test` at this boundary, never inside test bodies.
 
 **Testing a boundary-tier package that does real IO needs no platform package.**
-`Path.layer` comes from `effect` core (`Path.ts:873`) and the filesystem double
+`Path.layer` comes from `effect` core (`Path.ts:918`) and the filesystem double
 is `@effected/memfs`, a pure package with no `node:*` import — core ships
 **no** `FileSystem.layer`, only the deny-by-default `layerNoop` (`FileSystem.ts:777`),
 which is not a double

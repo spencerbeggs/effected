@@ -58,7 +58,7 @@ is `Param.Boolean(Param.flagKind, name)` with no fallback (`cli/Flag.ts:80`;
 its own docstring at `:72` says *"Omission fails unless the flag is made
 optional or given a fallback"*), and the shared flag parser fails with
 `CliError.MissingOption({ option: name })` the moment the flag is absent from
-the parsed args (`cli/Param.ts:2008`) — the primitive's type never
+the parsed args (`cli/Param.ts:2052`) — the primitive's type never
 enters into it. So a bare `Flag.Boolean("force")` turns every invocation that
 *omits* `--force` into a usage error, which is the opposite of what a
 boolean flag is for. Spell the default:
@@ -92,7 +92,7 @@ almost none of them for Node:**
 
 | service | what core actually ships |
 | --- | --- |
-| `Path` | `Path.layer` — a real implementation (posix), `Path.ts:873` |
+| `Path` | `Path.layer` — a real implementation (posix), `Path.ts:918` |
 | `FileSystem` | only `FileSystem.layerNoop(partial)` — a deny-by-default **stub factory** (`FileSystem.ts:777`); never use it as a test double: a test's `FileSystem` is `@effected/memfs`'s `MemoryFileSystem.layer` |
 | `Stdio` | `Stdio.layerTest(partial)` — **test-only**, by its name and its shape (`Stdio.ts:166`) |
 | `Terminal` | **no layer at all** — `Terminal.ts` declares no `layer` export |

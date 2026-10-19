@@ -130,10 +130,10 @@
 		},
 		{
 			"file": "effect-v4-testing/SKILL.md",
-			"anchor": "Path.ts:873",
+			"anchor": "Path.ts:918",
 			"source": "effect:Path.ts",
 			"symbols": {
-				"873": "export const layer: Layer.Layer<Path>"
+				"918": "export const layer: Layer.Layer<Path>"
 			}
 		},
 		{
@@ -146,10 +146,10 @@
 		},
 		{
 			"file": "effect-v4-cli/references/core-framework.md",
-			"anchor": "Path.ts:873",
+			"anchor": "Path.ts:918",
 			"source": "effect:Path.ts",
 			"symbols": {
-				"873": "export const layer: Layer.Layer<Path>"
+				"918": "export const layer: Layer.Layer<Path>"
 			}
 		},
 		{
@@ -440,10 +440,10 @@
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "Schema.ts:6896",
+			"anchor": "Schema.ts:6909",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"6896": "const canExport = /^[dg]*uy?$/.test(flags)"
+				"6909": "const canExport = /^[dg]*uy?$/.test(flags)"
 			}
 		},
 		{
@@ -457,10 +457,10 @@
 		},
 		{
 			"file": "effect-v4-testing/references/testclock.md",
-			"anchor": "TestClock.ts:261",
+			"anchor": "TestClock.ts:292",
 			"source": "effect:testing/TestClock.ts",
 			"symbols": {
-				"261": "let currentTimestamp: number = new Date(0).getTime()"
+				"292": "let currentTimestamp: number = new Date(0).getTime()"
 			}
 		},
 		{
@@ -473,42 +473,42 @@
 		},
 		{
 			"file": "effect-v4-testing/references/testclock.md",
-			"anchor": "TestClock.ts:441",
+			"anchor": "TestClock.ts:553",
 			"source": "effect:testing/TestClock.ts",
 			"symbols": {
-				"441": "export const layer: "
+				"553": "export const layer = "
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/testclock.md",
-			"anchor": "`:514`",
+			"anchor": "`:629`",
 			"source": "effect:testing/TestClock.ts",
 			"symbols": {
-				"514": "export const adjust = "
+				"629": "export const adjust = "
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/testclock.md",
-			"anchor": "TestClock.ts:477",
+			"anchor": "TestClock.ts:592",
 			"source": "effect:testing/TestClock.ts",
 			"symbols": {
-				"477": "fiber.getRef(Clock.Clock) as TestClock"
+				"592": "fiber.getRef(Clock.Clock) as TestClock"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/testclock.md",
-			"anchor": "TestClock.ts:258",
+			"anchor": "TestClock.ts:288",
 			"source": "effect:testing/TestClock.ts",
 			"symbols": {
-				"258": "const liveClock = "
+				"288": "const liveClock = "
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/testclock.md",
-			"anchor": "`:282`",
+			"anchor": "`:313`",
 			"source": "effect:testing/TestClock.ts",
 			"symbols": {
-				"282": "function withLive<"
+				"313": "function withLive<"
 			}
 		},
 		{
@@ -731,11 +731,11 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/resources.md",
-			"anchor": "ai/McpServer.ts:2830-2850",
+			"anchor": "ai/McpServer.ts:2810-2830",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"2830": "const resolveResourceContent = (",
-				"2850": "}"
+				"2810": "const resolveResourceContent = (",
+				"2830": "}"
 			}
 		},
 		{
@@ -756,10 +756,10 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/server-wiring.md",
-			"anchor": "src/internal/effect.ts:6907",
+			"anchor": "src/internal/effect.ts:6908",
 			"source": "effect:internal/effect.ts",
 			"symbols": {
-				"6907": "const log = fiber.getRef(LogToStderr) ? console.error : console.log"
+				"6908": "const log = fiber.getRef(LogToStderr) ? console.error : console.log"
 			}
 		},
 		{
@@ -899,10 +899,10 @@
 		},
 		{
 			"file": "effect-v4-cli/references/core-framework.md",
-			"anchor": "cli/Param.ts:2008",
+			"anchor": "cli/Param.ts:2052",
 			"source": "effect:cli/Param.ts",
 			"symbols": {
-				"2008": "new CliError.MissingOption({ option: name })"
+				"2052": "new CliError.MissingOption({ option: name })"
 			}
 		},
 		{
@@ -1011,26 +1011,26 @@
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Schema.ts:4658",
+			"anchor": "Schema.ts:4659",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"4658": "const ArraySchema: ArrayLambda = Struct_.lambda<ArrayLambda>("
+				"4659": "const ArraySchema: ArrayLambda = Struct_.lambda<ArrayLambda>("
 			}
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Schema.ts:4661",
+			"anchor": "Schema.ts:4662",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"4661": "export {"
+				"4662": "export {"
 			}
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Schema.ts:4679",
+			"anchor": "Schema.ts:4680",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"4679": "ArraySchema as Array"
+				"4680": "ArraySchema as Array"
 			}
 		},
 		{
@@ -1051,10 +1051,10 @@
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Schema.ts:4005",
+			"anchor": "Schema.ts:4006",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"4005": "export function Record<"
+				"4006": "export function Record<"
 			}
 		},
 		{
