@@ -75,6 +75,12 @@
 					"date": "2026-10-13",
 					"ref": "effect@4.0.4",
 					"note": "4.0.3→4.0.4 advance (2026-10-13): zero kit source breaks, no kit workaround retired (Effect-TS/effect#8499 Eof is still open, so @effected/mcp's StdinFrames guard stays). Consumer-visible: JSON Schema export tightens colliding bounds in place instead of allOf (Schema.Natural → minimum 0; Int.check(isGreaterThan(0)) → exclusiveMinimum 0 with no safe-integer minimum); Sink.takeUntil/takeUntilEffect stop at the match and return the rest as leftovers (Stream.takeUntil unchanged); Stream.toReadableStreamWith takes a `signal`; new experimental effect/graphql; McpServer.layerHttpRequestScoped (sessionless adapters only) for serverless hosts; HttpClient.retryTransient honours Retry-After. Not a bug, despite looking like one: string isMinLength(n) exports minLength ceil(n/2) (UTF-16 units vs code points; #6336/#8358). New ai/McpServer.ts code shifted its line anchors by +154."
+				},
+				{
+					"id": "n-092b",
+					"date": "2026-10-19",
+					"ref": "effect@4.0.5",
+					"note": "4.0.4→4.0.5 advance (2026-10-19): two kit TYPE breaks, both contract shape. (1) FileSystem.File.Info dev/ino/rdev/nlink/blocks are bigint (dev bigint, rest Option<bigint>); memfs's volume and NodeSyncFileSystem build them as bigint, the node-sync adapter mirrors core's toUint64 (BigInt.asUintN(64, …): Node's BigInt64Array reports values ≥2^63 negative), mode/uid/gid stay number. (2) Path gains resolveWithin(root, input): Option<string>; Path.make derives it, but a hand-built Path.Path.of value (tsconfig-json TsconfigLoaderSync's adapter) must supply it. Also: FileSystem.WatchOptions.onReady is new and core says custom watch backends MUST call it after installation — memfs's watch does not yet; core's watch now prefers a caller-provided WatchBackend service. TestClock.layer now provides its own Scheduler alongside Clock, and a nested TestClock resolves the REAL clock behind the outer one as liveClock (probe: nested withLive returned 0 on 4.0.4, wall time on 4.0.5) — the testclock skill said the opposite. Schema.toTaggedUnion rejects duplicate discriminants at compile time AND still throws at runtime (probed). Kept: StdinFrames @effect/rpc/ guard (Effect-TS/effect#8499 still open). Not a bug: the ae-wrong-input-file-type / harvest warnings in images/jwt/jsonl/cli issues.json come from the bundler's per-module AE pass resolving a package's self-name import to src, not from this advance (okf decision ui-declarations-reference-the-root-by-name)."
 				}
 			]
 		},
