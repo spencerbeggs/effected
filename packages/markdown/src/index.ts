@@ -16,7 +16,8 @@
  * `MarkdownFormat` computes marker-normalization and surgical-replacement
  * edits over it. {@link Mdast} is the remark-ecosystem interop boundary:
  * projection to plain mdast JSON and checked decoding back;
- * {@link MarkdownVisitor} streams a tree walk; and the document's navigation
+ * {@link MarkdownVisitor} streams a tree walk; {@link MarkdownTransform}
+ * maps, re-levels and sections trees without source text; and the document's navigation
  * accessors (headings, sections, links) serve outline and link extraction.
  *
  * @packageDocumentation
@@ -136,8 +137,17 @@ export {
 	ThematicBreak,
 	ThematicBreakChar,
 } from "./MarkdownNode.js";
+export type {
+	MarkdownPhrasingOnlyType,
+	MarkdownTransformHandlers,
+	MarkdownTransformResult,
+	SectionSpan,
+	SectionSpanOptions,
+	ShiftHeadingsOptions,
+} from "./MarkdownTransform.js";
+export { MarkdownTransform } from "./MarkdownTransform.js";
 export { MarkdownVisitor, MarkdownVisitorEvent } from "./MarkdownVisitor.js";
-export type { MdastNode } from "./Mdast.js";
+export type { MdastNode, MdastToTextOptions } from "./Mdast.js";
 export { Mdast, MdastDecodeError } from "./Mdast.js";
 export { TomlFrontmatter } from "./TomlFrontmatter.js";
 export { YamlFrontmatter } from "./YamlFrontmatter.js";

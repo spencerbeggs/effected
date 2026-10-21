@@ -11,6 +11,7 @@ import { scanFrontmatter } from "./internal/blocks/frontmatter.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { preprocessLines } from "./internal/preprocess.js";
 import { normalizeLabelText } from "./internal/references.js";
+import { rootHeadingBounds } from "./internal/sectionBounds.js";
 import type { MarkdownParseError, MarkdownParseOptions } from "./Markdown.js";
 import { parsePassResult } from "./Markdown.js";
 import { MarkdownDiagnostic } from "./MarkdownDiagnostic.js";
@@ -400,47 +401,11 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	get sections(): ReadonlyArray<DocumentSection> {
 		const blocks = this.root.children;
 		const sections: Array<DocumentSection> = [];
-		const headings: Array<{ readonly index: number; readonly node: Heading }> = [];
-		for (let index = 0; index < blocks.length; index += 1) {
-			const block = blocks[index];
-			if (block !== undefined && block.type === "heading") {
-				headings.push({ index, node: block });
-			}
-		}
-		// `sections` boundaries are defined by ROOT headings only. Building that
-		// index once lets the boundary pass scan heading-to-heading instead of
-		// re-walking non-heading blocks for every section.
-		const nextByDepth: Array<number | undefined> = [
-			undefined,
-			undefined,
-			undefined,
-			undefined,
-			undefined,
-			undefined,
-			undefined,
-		];
-		const boundaryByHeading = new Array<number | undefined>(headings.length);
-		for (let index = headings.length - 1; index >= 0; index -= 1) {
-			const current = headings[index]?.node;
-			if (current === undefined) continue;
-			let boundary: number | undefined;
-			for (let depth = 1; depth <= current.depth; depth += 1) {
-				const candidate = nextByDepth[depth];
-				if (candidate !== undefined && (boundary === undefined || candidate < boundary)) {
-					boundary = candidate;
-				}
-			}
-			boundaryByHeading[index] = boundary;
-			nextByDepth[current.depth] = index;
-		}
-		for (let index = 0; index < headings.length; index += 1) {
-			const current = headings[index];
-			if (current === undefined) continue;
-			const block = current.node;
-			const boundaryHeading = boundaryByHeading[index];
-			const boundaryNode = boundaryHeading === undefined ? undefined : headings[boundaryHeading]?.node;
+		// `sections` boundaries are defined by ROOT headings only; the shared
+		// helper owns that rule so `MarkdownTransform.sections` cannot drift.
+		for (const { heading: block, index, end } of rootHeadingBounds(blocks)) {
+			const boundaryNode = blocks[end];
 			const boundary = boundaryNode === undefined ? this.source.length : boundaryNode.position.start.offset;
-			const end = boundaryHeading === undefined ? blocks.length : (headings[boundaryHeading]?.index ?? blocks.length);
 			const start = block.position.start.offset;
 			const bodyStart = block.position.end.offset;
 			sections.push(
@@ -449,7 +414,7 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 					depth: block.depth,
 					range: MarkdownRange.make({ offset: start, length: boundary - start }),
 					children: blocks
-						.slice(current.index + 1, end)
+						.slice(index + 1, end)
 						// Navigation is prose-oriented: the frontmatter block and MDX
 						// ESM statements are metadata, not section content, so both
 						// are excluded — which is also what keeps this predicate's

@@ -1,33 +1,59 @@
 ---
 type: Module
 title: "@effected/markdown"
-description: CommonMark 0.31.2 + GFM as pure Effect Schema classes; parse, edit, format, modify and project markdown documents.
+description: CommonMark 0.31.2 + GFM as pure Effect Schema classes; parse, edit, format, modify, transform and project markdown documents.
 status: stable
 kind: package
 resource: ../../packages/markdown
 layer: L1
 tags:
   - architecture
+sources:
+  - id: transform-src
+    resource: ../../packages/markdown/src/MarkdownTransform.ts
+  - id: section-bounds
+    resource: ../../packages/markdown/src/internal/sectionBounds.ts
+  - id: stringify-facade
+    resource: ../../packages/markdown/src/Markdown.ts
+  - id: stringify-blocks
+    resource: ../../packages/markdown/src/internal/stringify.ts
+  - id: mdast-totext
+    resource: ../../packages/markdown/src/Mdast.ts
+  - id: transform-tests
+    resource: ../../packages/markdown/__test__/transform.test.ts
+  - id: totext-tests
+    resource: ../../packages/markdown/__test__/mdast-to-text.test.ts
+  - id: stringify-node-tests
+    resource: ../../packages/markdown/__test__/stringify-node.test.ts
+  - id: issue-485
+    resource: https://github.com/spencerbeggs/effected/issues/485
+  - id: systems-804
+    resource: https://github.com/savvy-web/systems/issues/804
+  - id: issue-1029
+    resource: https://github.com/spencerbeggs/effected/issues/1029
+  - id: issue-1030
+    resource: https://github.com/spencerbeggs/effected/issues/1030
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T21:36:12Z
+  at: 2026-10-21T17:30:17Z
 integrity:
   generated:
-    body: 7b11a62f42f79424
+    body: 61d5fbd921c71fd7
 ---
 
 # `@effected/markdown`
 
 `@effected/markdown` is CommonMark 0.31.2 plus GFM expressed as pure Effect
 Schema classes: parse into mdast-shaped nodes carrying byte offsets, compute
-offset-splice edits, format, modify by node, project to and from plain mdast,
+offset-splice edits, format, modify by node, rewrite trees with typed
+transforms, project to and from plain mdast,
 walk the tree as a `Stream`, and read and write frontmatter through
 free-standing codecs. It also carries the MDX node vocabulary (construction
 and serialization only), a phrasing-level parse entry point, and a
 string-level frontmatter split/join facade. It carries the full-parity
 ambition of its format siblings — parse, edit, format and a shared surface
 contract, not a read-only projection — and is second in size only to
-`@effected/yaml` at roughly 13,000 lines of `src` across 15 public modules
+`@effected/yaml` at roughly 14,000 lines of `src` across 15 public modules
 plus the `src/internal/` engine.
 
 Markdown→HTML and HTML→markdown conversion are permanently out of scope as
@@ -187,6 +213,17 @@ purpose, because an intraword `*` can open emphasis. The MDX presence-keyed
 `{` escape is documented separately in the [MDX
 interface](../interfaces/markdown-mdx.md).
 
+`Markdown.stringify` and `Markdown.stringifyResult` accept `Root |
+FlowContent`. A lone flow node serializes as the one-block list `[node]`
+through the same internal path a root's children take
+(`stringifyBlocks`), so its output is byte-identical to a one-child root's:
+the same canonical choices and the same trailing newline, with no wrapper
+node built and so nothing that can fail a schema
+constructor[^stringify-facade][^stringify-blocks]. `Frontmatter` and
+`MdxjsEsm` are not admitted alone, since each means something only at a
+document's root; a caller wraps them in a `Root`. The single-node suite pins
+the equivalence[^stringify-node-tests].
+
 A `Text` node carrying `escapeStyle: "literal"` opts out of that escaping:
 the caller vouches the value is already safe markdown, and the emitter
 drops every escape aimed at the inline phase while keeping every escape
@@ -303,13 +340,91 @@ Depth is equality, not a maximum, so "the first H2 section" cannot silently
 return the H1 title. The body is untrimmed, exactly the bytes the body range
 describes, so the string and offsets can never disagree.
 
+### Tree rewrites: `MarkdownTransform`
+
+`MarkdownTransform` is the tree-rewrite surface, beside `MarkdownVisitor`
+(reads) and `MarkdownEdit` (source splices). It works on a tree, never on
+source text, so its output composes with `Markdown.stringify` and with
+itself. Every method is total with no error channel, so each returns a plain
+value with no `Result`/`Effect` twin and no span; a handler that throws
+propagates its exception unchanged[^transform-src].
+
+- **`map` has two overloads.** The first covers every node whose handler
+  cannot change its type (a `Root`, any flow node, a list item, a table row
+  or cell, an `html` node) and returns `N` itself, so a generic caller
+  constrained to `Root | FlowContent` gets its own type back. The second
+  takes any node; for a lone phrasing-only node its result widens to
+  `PhrasingContent` (`MarkdownTransformResult<N>`).
+- **The walk is post-order, children left to right, as a contract.** A
+  handler sees its node with its children already transformed, and handlers
+  run in the document order of nodes' closing positions, so a stateful
+  handler (dedupe keeping the first occurrence, remember the last paragraph)
+  can rely on it. The input node is visited last.
+- **Unchanged subtrees are shared.** A subtree no handler changed comes back
+  as the same instance, so `map(node, {})` returns `node`.
+- **A changed parent is rebuilt with only `children` swapped**, through its
+  own constructor with `disableChecks`. That skips refinement checks only,
+  which handler typing makes redundant; the constructor still parses the
+  node's structural fields shallowly, with class instances passing by
+  reference.
+- **A rebuilt parent keeps its original `position`**: offsets into the
+  pre-transform source, which no longer describe the transformed tree.
+- **Phrasing-only handlers may change type** (`MarkdownPhrasingOnlyType`):
+  a `link` handler may return a `linkReference`, because every parent of a
+  phrasing node holds phrasing children. Every other handler returns its own
+  type, which keeps `map` total. `html` is excluded from the type-changing
+  set because it belongs to both the phrasing and the flow unions, so an
+  `html` node can sit in a `Root`, `Blockquote` or `ListItem` where only
+  flow content is valid. A type-level test pins that `html` is the only
+  overlap between the two unions, so a new class that joins both breaks the
+  suite rather than the typing's soundness[^transform-tests].
+- **`shiftHeadings` clamps.** The new depth is `clamp(depth + by, min ?? 1,
+  max ?? 6)`, and a heading whose new depth exceeds 2 drops `headingStyle:
+  "setext"` (setext spells only depths 1 and 2), so it serializes as ATX. A
+  heading whose depth and style do not change keeps its identity. A
+  non-integer `by` or an invalid bound throws `RangeError` as a wiring
+  error.
+- **`sections` returns child-index spans** (`heading`, `headingIndex`,
+  exclusive `end`) over an in-memory `Root`, so it works on a tree `map` has
+  reshaped, where `MarkdownDocument.sections` needs source text. It takes an
+  exact depth and an optional `[start, end)` window, which is how a caller
+  nests: depth-2 blocks first, then depth-3 sections inside one block's
+  `[headingIndex + 1, end)`. Both finders share one boundary helper, so
+  they cannot drift: a section ends at the next root-level heading of equal
+  or shallower depth[^section-bounds]. A stray shallower heading therefore
+  ends a section too: querying depth 2 over `## Features`, a list, `# Top`
+  and another list yields one span ending at `# Top`. That is the outline
+  reading. A caller slicing a changelog by entry, where a stray H1 is
+  content, takes each body's end from the next span's `headingIndex` (or
+  the window's end for the last span) instead.
+- **No depth guard.** `map`, `shiftHeadings` and `Mdast.toText` recurse
+  once per nesting level. Every tree `Markdown.parse` or `Mdast.fromMdast`
+  produces stays within `MAX_NESTING_DEPTH`, but a hand-built tree nested
+  far deeper than parse output can overflow the call stack.
+
+### Plain text: `Mdast.toText`
+
+`Mdast.toText` is `mdast-util-to-string` semantics applied over the
+`toMdast` projection, with the same `includeImageAlt` and `includeHtml`
+options. The one value the projection changes is a code node's: a parsed
+`Code.value` keeps its final line ending and plain mdast does not, so
+`toText` strips it, giving `"let x"` rather than `"let x\n"` for a one-line
+fenced block[^mdast-totext]. This is the remark-ecosystem derivation, for
+matching what remark tooling computes (slugs, search indexes). It is
+distinct from the display text on `DocumentHeading.text` and
+`DocumentSection.text`, which render a hard break as a space and drop raw
+HTML.
+
 ## Hardening
 
 `packages/markdown/src/internal/limits.ts` is the zero-dependency leaf
 carrying the cross-package depth constant (`MAX_NESTING_DEPTH = 256`),
-guarding every recursive surface — container nesting in the block pass, the
-delimiter and bracket stacks in the inline pass, stringify recursion and the
-visitor walk. Iterative surfaces are deliberately unguarded. The cmark
+guarding the recursive surfaces that take untrusted input — container
+nesting in the block pass, the delimiter and bracket stacks in the inline
+pass, stringify recursion and the visitor walk. Iterative surfaces are
+deliberately unguarded, and so are the tree-to-tree recursions
+(`MarkdownTransform` and `Mdast.toText`), which see only trees the guarded
+surfaces already admitted or that a caller built by hand. The cmark
 pathological suite pins the linear-time guarantee against Markdown's
 quadratic emphasis and link-blowup DoS vector, calibrated against a
 same-code-path baseline rather than raw milliseconds so v8 coverage
@@ -386,6 +501,21 @@ throws, node positions span valid offsets, splice idempotence, stringify∘parse
 re-parse equivalence, and frontmatter round-trip through all three real
 codecs.
 
+`Mdast.toText` fixtures must come from parsed trees, not only hand-built
+nodes: parsed nodes carry engine conventions a hand-built node lacks, and a
+hand-built `Code` node with no trailing newline is exactly what hid the
+final-line-ending defect. Two layers pin it[^totext-tests]. A projection
+oracle reproduces the upstream `mdast-util-to-string` algorithm verbatim
+over plain JSON, runs it on `toMdast(root)` for every conformance-corpus
+example, and compares it against `toText` on every node of the parsed tree
+walked in parallel. A fixture table covers every node kind under both option
+flags, building code rows by parsing and hand-building only the kinds the
+parser never produces (MDX, frontmatter). The real library is not a
+devDependency; `commonmark` stays the package's one exact-pinned oracle.
+`MarkdownTransform`'s traversal coverage uses a constructed tree holding
+every node class with a `children` array, each with a `Text` leaf, because
+the corpus has no footnote definitions and no MDX[^transform-tests].
+
 ## Consumer seam
 
 The `Mdast` projection is the remark-ecosystem interop boundary; the
@@ -402,6 +532,15 @@ largest packages, that consumer confines it to one module and pins the
 confinement with a bundle-reachability test; a pure format package that a
 consumer must ration is a reasonable outcome of its size, not a defect to
 fix here.
+
+`MarkdownTransform`, `Mdast.toText` and single-node stringify answer
+effected#485[^issue-485] and savvy-web/systems#804[^systems-804], worked
+through the `markdown-transform` dogfood loop with savvy-web/systems.
+
+Two issues remain open against this surface. `Mdast.fromMdastResult` throws
+rather than failing typed on foreign mdast nested 1000 or more levels
+deep[^issue-1029]. A markdownlint-compatible lint shape, so a rule is
+defined once over kit trees, is under design[^issue-1030].
 
 ## Parity notes
 
@@ -442,3 +581,16 @@ Standard package-scaffold mechanics, with the narrow
 `pnpm build --filter @effected/markdown`. The `commonmark` oracle package is
 an exact-pinned devDependency — never in `dependencies`, and never drifting
 from the ported CommonMark version.
+
+[^transform-src]: `packages/markdown/src/MarkdownTransform.ts` — `map` overloads, walk order, structural sharing, `shiftHeadings`, `sections`.
+[^section-bounds]: `packages/markdown/src/internal/sectionBounds.ts` — `rootHeadingBounds`, shared by `MarkdownDocument.sections` and `MarkdownTransform.sections`.
+[^stringify-facade]: `packages/markdown/src/Markdown.ts` — `stringifyResult` / `stringify` over `Root | FlowContent`.
+[^stringify-blocks]: `packages/markdown/src/internal/stringify.ts` — `stringifyBlocks`, the one path behind a root and a lone node.
+[^mdast-totext]: `packages/markdown/src/Mdast.ts` — `Mdast.toText` and `MdastToTextOptions`.
+[^transform-tests]: `packages/markdown/__test__/transform.test.ts` — the html-only-overlap type test and the every-container traversal tree.
+[^totext-tests]: `packages/markdown/__test__/mdast-to-text.test.ts` — the projection oracle and the parsed-fixture table.
+[^stringify-node-tests]: `packages/markdown/__test__/stringify-node.test.ts` — "Markdown.stringify on a single flow node".
+[^issue-485]: <https://github.com/spencerbeggs/effected/issues/485>
+[^systems-804]: <https://github.com/savvy-web/systems/issues/804>
+[^issue-1029]: <https://github.com/spencerbeggs/effected/issues/1029>
+[^issue-1030]: <https://github.com/spencerbeggs/effected/issues/1030>

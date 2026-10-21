@@ -11,7 +11,7 @@
 * [@effected/jsonl](jsonl.md) - Append-only, schema-validated JSONL journals exposed as a definable Effect service — the file as a live object, not a text format.
 * [@effected/jwt](jwt.md) - Signed-token primitives (JWS, JWT, JWK, JWKS) over WebCrypto that run anywhere WebCrypto does, including Cloudflare workerd.
 * [@effected/lsp](lsp.md) - Language Server Protocol base-protocol framing as pure functions (Content-Length encode, an incremental byte decoder and a Stream transform), an LspStdio launcher that keeps stdout the wire and exits with the specification's code, plus a ./testing subpath whose LspProbe proves a Language Server bin boots and whose LspProcess drives one frame by frame — the LSP twins of McpStdio, McpProbe and McpProcess.
-* [@effected/markdown](markdown.md) - CommonMark 0.31.2 + GFM as pure Effect Schema classes; parse, edit, format, modify and project markdown documents.
+* [@effected/markdown](markdown.md) - CommonMark 0.31.2 + GFM as pure Effect Schema classes; parse, edit, format, modify, transform and project markdown documents.
 * [@effected/mcp](mcp.md) - The boundary-tier MCP front end — stdio server wiring with a JSON-RPC stdin guard, tool-failure shaping, JSON-schema input walkers for Tool.dynamic tools, and strict-by-default toolkit registration — plus an in-process/spawned testing subpath.
 * [@effected/memfs](memfs.md) - An in-memory implementation of core Effect's FileSystem service — an isolated virtual POSIX volume the kit's tests use as their filesystem double.
 * [@effected/schema-org](schema-org.md) - The schema.org vocabulary as pure Effect Schema classes, a JsonLdDocument graph assembler with a script-safe serializer, and offline conformance validation over the vendored vocabulary.

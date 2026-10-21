@@ -32,6 +32,18 @@ export interface MdastNode {
 }
 
 /**
+ * Options for {@link Mdast.toText}, matching `mdast-util-to-string`'s.
+ *
+ * @public
+ */
+export interface MdastToTextOptions {
+	/** Whether an `image` or `imageReference` contributes its `alt` text. Defaults to `true`. */
+	readonly includeImageAlt?: boolean;
+	/** Whether an `html` node contributes its raw value. Defaults to `true`. */
+	readonly includeHtml?: boolean;
+}
+
+/**
  * Indicates that foreign mdast input failed to decode into the package's
  * node classes.
  *
@@ -537,4 +549,60 @@ export class Mdast {
 	static readonly fromMdast = Effect.fn("Mdast.fromMdast")((input: unknown) =>
 		Effect.fromResult(Mdast.fromMdastResult(input)),
 	);
+
+	/**
+	 * The plain-text content of a node, defined as `mdast-util-to-string`
+	 * applied to the node's {@link Mdast.toMdast} projection.
+	 *
+	 * @remarks
+	 * A node carrying a string `value` yields it (an `html` node only when
+	 * `includeHtml`); an `image` or `imageReference` yields its non-empty
+	 * `alt` when `includeImageAlt`; a node with children yields the
+	 * concatenation of its children's text; anything else — a `break`, a
+	 * `thematicBreak`, a `definition` — yields `""`. Both options default to
+	 * `true`. Pure and total.
+	 *
+	 * **Values are read as the projection spells them.** The one value the
+	 * projection changes is a `code` node's: this package keeps the final line
+	 * ending of a code block's content, plain mdast does not, so `toText`
+	 * strips it exactly as {@link Mdast.toMdast} does — `"let x"`, not
+	 * `"let x\n"`, for a fenced block holding one line.
+	 *
+	 * This is the remark-ecosystem derivation, and it deliberately differs
+	 * from the display derivation behind `DocumentHeading.text` and
+	 * `DocumentSection.text`, which render a hard break as a space and drop
+	 * raw HTML. Reach for `toText` when matching what remark tooling computes
+	 * (slugs, search indexes); reach for the document accessors for display.
+	 *
+	 * The walk recurses once per nesting level. Every tree `Markdown.parse` or
+	 * `Mdast.fromMdast` produces stays within the package's nesting cap, but a
+	 * hand-built tree nested far deeper than that can overflow the call stack.
+	 *
+	 * @param node - The node to flatten.
+	 * @param options - Optional {@link MdastToTextOptions}.
+	 * @returns The node's text content.
+	 */
+	static toText(node: MarkdownNode, options?: MdastToTextOptions): string {
+		return nodeText(node, options?.includeImageAlt ?? true, options?.includeHtml ?? true);
+	}
+}
+
+/** `mdast-util-to-string`'s `one`, over the node classes as `toMdast` projects them. */
+function nodeText(node: MarkdownNode, includeImageAlt: boolean, includeHtml: boolean): string {
+	if ("value" in node) {
+		if (node.type === "html") return includeHtml ? node.value : "";
+		// Read the value as `toMdast` projects it — the one value it changes.
+		return node.type === "code" ? stripFinalLineEnding(node.value) : node.value;
+	}
+	if (includeImageAlt && "alt" in node && node.alt) {
+		return node.alt;
+	}
+	if ("children" in node) {
+		let text = "";
+		for (const child of node.children as ReadonlyArray<MarkdownNode>) {
+			text += nodeText(child, includeImageAlt, includeHtml);
+		}
+		return text;
+	}
+	return "";
 }

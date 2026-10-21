@@ -1242,8 +1242,19 @@ const serializeBlocks = (children: ReadonlyArray<Block>, state: StringifyState, 
  * `MAX_NESTING_DEPTH`; the facade materializes the typed error. Output is
  * empty for an empty root and ends with exactly one newline otherwise.
  */
-export const stringifyTree = (root: Root): string => {
-	const state: StringifyState = { depth: 0, jsxDepth: 0, mdx: treeContainsMdx(root) };
-	const body = serializeBlocks(root.children, state);
+export const stringifyTree = (root: Root): string => stringifyBlocks(root.children);
+
+/**
+ * Serialize a root-level block list — the one path behind both a whole
+ * `Root` and a lone flow node (`[node]`), so the two cannot diverge. Builds
+ * no wrapper node, so nothing here can fail a schema constructor.
+ */
+export const stringifyBlocks = (children: Root["children"]): string => {
+	const state: StringifyState = {
+		depth: 0,
+		jsxDepth: 0,
+		mdx: children.some((child) => treeContainsMdx(child)),
+	};
+	const body = serializeBlocks(children, state);
 	return body === "" ? "" : `${body}\n`;
 };

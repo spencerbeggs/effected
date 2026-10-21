@@ -16,9 +16,9 @@ import type { BlockPassResult } from "./internal/blockParser.js";
 import { parseBlocks } from "./internal/blockParser.js";
 import { isGuardExceeded, isRawMarkdownError } from "./internal/carriers.js";
 import { parsePhrasingText } from "./internal/phrasing.js";
-import { stringifyTree } from "./internal/stringify.js";
+import { stringifyBlocks } from "./internal/stringify.js";
 import { MarkdownDiagnostic } from "./MarkdownDiagnostic.js";
-import type { PhrasingContent } from "./MarkdownNode.js";
+import type { FlowContent, PhrasingContent } from "./MarkdownNode.js";
 import { Root } from "./MarkdownNode.js";
 
 /**
@@ -316,11 +316,20 @@ export class Markdown {
 	);
 
 	/**
-	 * Serialize a {@link Root} tree to canonical markdown, synchronously, as a
-	 * `Result`. The pure primitive twin of {@link Markdown.stringify}, on the
-	 * same terms as {@link Markdown.parseResult}.
+	 * Serialize a {@link Root} tree, or a single {@link (FlowContent:type)} node, to
+	 * canonical markdown, synchronously, as a `Result`. The pure primitive twin
+	 * of {@link Markdown.stringify}, on the same terms as
+	 * {@link Markdown.parseResult}.
 	 *
 	 * @remarks
+	 * **A single flow node is defined as its one-child document**: passing
+	 * `node` is exactly `stringifyResult(Root.make({ children: [node] }))` —
+	 * the same code path, the same trailing `\n`, the same canonical choices.
+	 * This lets a caller serialize one block (a table, a section's paragraph,
+	 * an MDX flow element) without building the wrapper by hand.
+	 * `Frontmatter` and `MdxjsEsm` are deliberately not admitted alone — each
+	 * is meaningful only at a document's root — so wrap them in a `Root`.
+	 *
 	 * Canonical serialization: fidelity fields (marker characters, fence
 	 * style, heading spelling) win when present; documented canonical
 	 * defaults apply when absent. One default surprises: a language-less
@@ -403,13 +412,16 @@ export class Markdown {
 	 * trip on a tree nesting past the depth cap fails, and only synthesized
 	 * or decoded trees can nest that far.
 	 *
-	 * @param root - The document tree to serialize.
+	 * @param node - The document tree, or a single flow node, to serialize.
 	 * @returns A `Result` succeeding with markdown source, or failing with
 	 *   {@link MarkdownStringifyError}.
 	 */
-	static stringifyResult(root: Root): Result.Result<string, MarkdownStringifyError> {
+	static stringifyResult(node: Root | FlowContent): Result.Result<string, MarkdownStringifyError> {
 		try {
-			return Result.succeed(stringifyTree(root));
+			// One path: a lone flow node is serialized as the one-block list a
+			// `Root` holding it would carry. No wrapper is constructed, so a node
+			// fails or succeeds here exactly as it would inside a `Root`.
+			return Result.succeed(stringifyBlocks(node.type === "root" ? node.children : [node]));
 		} catch (caught) {
 			if (isGuardExceeded(caught)) {
 				return Result.fail(
@@ -430,9 +442,9 @@ export class Markdown {
 	}
 
 	/**
-	 * Serialize a {@link Root} tree to canonical markdown. Defined in terms of
-	 * {@link Markdown.stringifyResult} — synchronous callers can use that
-	 * variant directly.
+	 * Serialize a {@link Root} tree, or a single {@link (FlowContent:type)} node, to
+	 * canonical markdown. Defined in terms of {@link Markdown.stringifyResult}
+	 * — synchronous callers can use that variant directly.
 	 *
 	 * @remarks
 	 * The canonical form is a **stability commitment** and safe to assert
@@ -448,12 +460,15 @@ export class Markdown {
 	 * `escapeStyle`, an emitter instruction rather than a source spelling,
 	 * which the boundary admits.
 	 *
-	 * @param root - The document tree to serialize.
+	 * A single flow node serializes exactly as its one-child document does;
+	 * see {@link Markdown.stringifyResult}.
+	 *
+	 * @param node - The document tree, or a single flow node, to serialize.
 	 * @returns An `Effect` that succeeds with markdown source, or fails with
 	 *   {@link MarkdownStringifyError}.
 	 */
-	static readonly stringify = Effect.fn("Markdown.stringify")((root: Root) =>
-		Effect.fromResult(Markdown.stringifyResult(root)),
+	static readonly stringify = Effect.fn("Markdown.stringify")((node: Root | FlowContent) =>
+		Effect.fromResult(Markdown.stringifyResult(node)),
 	);
 
 	/**
