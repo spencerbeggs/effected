@@ -1,5 +1,11 @@
 # Log
 
+## 2026-10-19
+
+* Updated @effected/memfs
+* Updated A flaky jsonl watcher is probably an arming-order window, not an unreliable platform watch
+* Updated The effect family is pinned graph-wide by overrides derived from the catalog
+
 ## 2026-10-14
 
 * Updated The effected catalog literal
