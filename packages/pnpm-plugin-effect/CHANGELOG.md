@@ -1,5 +1,18 @@
 # @effected/pnpm-plugin-effect
 
+## 0.17.2
+
+### Maintenance
+
+#### Updates 2 catalog:effected versions
+
+- `@effected/github-actions` ^0.23.0 -> ^0.23.1 (peer ^0.23.0)
+- `@effected/markdown` ^0.18.0 -> ^0.19.0 (peer ^0.19.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
 ## 0.17.1
 
 ### Maintenance
