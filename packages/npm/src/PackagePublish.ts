@@ -28,6 +28,29 @@ const authKey = (registry: string, credential: RegistryCredential): string => {
 	return `${withSlash}:${credential.kind === "token" ? "_authToken" : "_auth"}`;
 };
 
+/**
+ * Replaces the first line keyed `key` with `line` and drops later duplicates.
+ *
+ * @remarks
+ * Returns `undefined` when no line matches, so the caller falls back to the
+ * append path. Lines split on `\n` only, so every untouched line (including a
+ * trailing `\r`) survives byte for byte; a replaced line keeps its `\r`.
+ */
+const replaceKey = (text: string, key: string, line: string): string | undefined => {
+	const out: Array<string> = [];
+	let found = false;
+	for (const raw of text.split("\n")) {
+		const eq = raw.indexOf("=");
+		if (eq !== -1 && raw.slice(0, eq).trim() === key) {
+			if (!found) out.push(raw.endsWith("\r") ? `${line}\r` : line);
+			found = true;
+		} else {
+			out.push(raw);
+		}
+	}
+	return found ? out.join("\n") : undefined;
+};
+
 /** What `npm pack --json` reports for one tarball. */
 const PackJsonEntry = Schema.Struct({
 	name: Schema.String,
@@ -173,7 +196,13 @@ export interface PackagePublishShape {
 	 * the token in a CI log is the **caller's** job; this package takes a
 	 * `Redacted` and has no opinion about log output.
 	 *
-	 * An existing npmrc is appended to, never replaced. A missing file
+	 * By default (`mode: "append"`) an existing npmrc is appended to, never
+	 * replaced, so a second call for the same registry leaves two keys and npm
+	 * reads the first. With `mode: "upsert"` every existing line whose key (the
+	 * text before the first `=`, trimmed) equals the key this call writes is
+	 * replaced in place: the first match takes the new line, any further matches
+	 * are removed, and every other line is left byte for byte in its original
+	 * order. With no match, upsert appends exactly as append does. A missing file
 	 * (`NotFound`) starts empty; any other read failure — an unreadable file, a
 	 * directory at the path — fails `PublishError` with kind `"auth"` and leaves
 	 * the file untouched, rather than overwriting config it could not read.
@@ -182,6 +211,8 @@ export interface PackagePublishShape {
 		readonly registry: string;
 		readonly credential: RegistryCredential;
 		readonly npmrcPath: string;
+		/** `"append"` (default) adds a line; `"upsert"` replaces any line with the same key. */
+		readonly mode?: "append" | "upsert" | undefined;
 	}) => Effect.Effect<void, PublishError>;
 	/** `npm pack --json` — writes the tarball and reports both digests. */
 	readonly pack: (packageDir: string, options?: PackOptions) => Effect.Effect<PackedTarball, PublishError>;
@@ -286,10 +317,13 @@ const make = Effect.fnUntraced(function* () {
 		readonly registry: string;
 		readonly credential: RegistryCredential;
 		readonly npmrcPath: string;
+		readonly mode?: "append" | "upsert" | undefined;
 	}) {
+		const mode = options.mode ?? "append";
 		yield* Effect.annotateCurrentSpan({
 			registry: options.registry,
 			npmrc: options.npmrcPath,
+			mode,
 			// The KIND is safe to annotate and worth annotating; the value is not.
 			credential: options.credential.kind,
 		});
@@ -308,10 +342,12 @@ const make = Effect.fnUntraced(function* () {
 				),
 			);
 		const secret = options.credential.kind === "token" ? options.credential.token : options.credential.encoded;
-		const line = `${authKey(options.registry, options.credential)}=${Red.value(secret)}`;
+		const key = authKey(options.registry, options.credential);
+		const line = `${key}=${Red.value(secret)}`;
+		const upserted = mode === "upsert" ? replaceKey(existing, key, line) : undefined;
 		const separator = existing === "" || existing.endsWith("\n") ? "" : "\n";
 		yield* fs
-			.writeFileString(options.npmrcPath, `${existing}${separator}${line}\n`)
+			.writeFileString(options.npmrcPath, upserted ?? `${existing}${separator}${line}\n`)
 			.pipe(
 				Effect.catch((cause) => Effect.fail(new PublishError({ kind: "auth", registry: options.registry, cause }))),
 			);

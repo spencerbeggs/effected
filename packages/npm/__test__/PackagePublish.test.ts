@@ -6,6 +6,7 @@ import { Effect, Exit, Layer, PlatformError, Redacted } from "effect";
 import { NpmExecutor } from "../src/NpmExecutor.js";
 import { PackagePublish, PackedTarball } from "../src/PackagePublish.js";
 import { PublishError } from "../src/PublishError.js";
+import type { RegistryCredential } from "../src/RegistryCredential.js";
 import { basicCredentialFromPair } from "../src/RegistryCredential.js";
 import type { ScriptResult } from "./publish-fixtures.js";
 import { fakeCrypto, scripted } from "./publish-fixtures.js";
@@ -626,6 +627,89 @@ describe("PackagePublish.setupAuth with basic auth", () => {
 				),
 			);
 			assert.include(npmrcOf(h), "//example.com/artifactory/api/npm/repo/:_auth=YWJj");
+		}),
+	);
+});
+
+describe("PackagePublish.setupAuth upsert mode", () => {
+	const HOST = "https://registry.npmjs.org";
+	const KEY = "//registry.npmjs.org/:_authToken";
+	const run = (
+		h: Harness,
+		options: { mode?: "append" | "upsert"; registry?: string; credential?: RegistryCredential } = {},
+	) =>
+		h.run(
+			Effect.flatMap(publisher, (p) =>
+				p.setupAuth({
+					registry: options.registry ?? HOST,
+					credential: options.credential ?? TOKEN_CREDENTIAL,
+					npmrcPath: NPMRC,
+					...(options.mode === undefined ? {} : { mode: options.mode }),
+				}),
+			),
+		);
+
+	it.effect("replaces an existing token line in place, keeping the other lines and their order", () =>
+		Effect.gen(function* () {
+			const h = harness({ files: { [NPMRC]: `a=1\n${KEY}=old\n; note\nb = 2\n` } });
+			yield* run(h, { mode: "upsert" });
+			assert.strictEqual(npmrcOf(h), `a=1\n${KEY}=s3cr3t-token\n; note\nb = 2\n`);
+		}),
+	);
+
+	it.effect("appends when no line matches", () =>
+		Effect.gen(function* () {
+			const h = harness({ files: { [NPMRC]: "a=1\nno-newline=2" } });
+			yield* run(h, { mode: "upsert" });
+			assert.strictEqual(npmrcOf(h), `a=1\nno-newline=2\n${KEY}=s3cr3t-token\n`);
+		}),
+	);
+
+	it.effect("collapses duplicates into the first position", () =>
+		Effect.gen(function* () {
+			const h = harness({ files: { [NPMRC]: `${KEY}=one\nx=1\n ${KEY} = two\ny=2\n${KEY}=three\n` } });
+			yield* run(h, { mode: "upsert" });
+			assert.strictEqual(npmrcOf(h), `${KEY}=s3cr3t-token\nx=1\ny=2\n`);
+		}),
+	);
+
+	it.effect("does not touch a line for a different registry host", () =>
+		Effect.gen(function* () {
+			const other = "//npm.pkg.github.com/:_authToken=keep-me";
+			const h = harness({ files: { [NPMRC]: `${other}\n${KEY}=old\n` } });
+			yield* run(h, { mode: "upsert" });
+			assert.strictEqual(npmrcOf(h), `${other}\n${KEY}=s3cr3t-token\n`);
+		}),
+	);
+
+	it.effect("append mode (the default) still duplicates the key", () =>
+		Effect.gen(function* () {
+			const h = harness({ files: { [NPMRC]: `${KEY}=old\n` } });
+			yield* run(h);
+			yield* run(h, { mode: "append" });
+			assert.strictEqual(npmrcOf(h), `${KEY}=old\n${KEY}=s3cr3t-token\n${KEY}=s3cr3t-token\n`);
+		}),
+	);
+
+	it.effect("replaces only the exact key: no trailing slash, no other scheme key", () =>
+		Effect.gen(function* () {
+			const lines = [
+				"//registry.npmjs.org:_authToken=no-slash",
+				"//registry.npmjs.org/:_auth=basic-blob",
+				"//registry.npmjs.org/x/:_authToken=other-path",
+				"registry.npmjs.org/:_authToken=no-nerf",
+			];
+			const h = harness({ files: { [NPMRC]: `${lines.join("\n")}\n` } });
+			yield* run(h, { mode: "upsert" });
+			assert.strictEqual(npmrcOf(h), `${lines.join("\n")}\n${KEY}=s3cr3t-token\n`);
+		}),
+	);
+
+	it.effect("a basic credential replaces _auth and leaves _authToken alone", () =>
+		Effect.gen(function* () {
+			const h = harness({ files: { [NPMRC]: `${KEY}=tok\n//registry.npmjs.org/:_auth=old\n` } });
+			yield* run(h, { mode: "upsert", credential: { kind: "basic", encoded: Redacted.make("YWJj") } });
+			assert.strictEqual(npmrcOf(h), `${KEY}=tok\n//registry.npmjs.org/:_auth=YWJj\n`);
 		}),
 	);
 });
