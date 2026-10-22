@@ -1,5 +1,10 @@
 # Log
 
+## 2026-10-21
+
+* Updated @effected/markdown
+* Updated The live view never calls Ink's clear(); a new run re-renders in place or remounts
+
 ## 2026-10-19
 
 * Updated @effected/memfs

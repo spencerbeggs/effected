@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-19T14:33:59Z
+  at: 2026-10-22T22:20:33Z
 integrity:
   generated:
-    body: b35ebbdce08d2c4c
+    body: 95ce21e6eb389bb6
 ---
 
 # @effected/memfs
@@ -363,6 +363,11 @@ re-exporting module.
   opening (without a create flag) any unseeded path fails typed with
   reason `NotFound`; nothing in the package can fabricate content for a
   path nothing arranged.
+- **`lstat` reports a final symbolic link itself**, as node's does: a
+  link (dangling included) answers `type: "SymbolicLink"`, while links
+  earlier in the path are still followed. The volume, `NodeSyncFileSystem`
+  (`lstatSync`) and the fault wrapper all carry it, so a fault keyed on
+  `lstat` fires; the shared contract pins it against the node adapter.
 - **Error normalization**: every failure is core's `PlatformError` —
   `systemError` with a truthful `_tag`/`method`/`pathOrDescriptor`, or
   `badArgument` for malformed caller input. Malformed input never
@@ -372,8 +377,11 @@ re-exporting module.
   every failure the real platform raises carries node's errno as
   `reason.cause.code`, and the `_tag` is derived from that code by the
   switch `@effect/platform-node`'s `handleErrnoException` uses —
-  `ENOENT` → `NotFound`, `EEXIST` → `AlreadyExists`,
-  `EISDIR`/`ENOTDIR`/`ELOOP` → `BadResource`, anything else → `Unknown`.
+  `ENOENT` → `NotFound`, `EACCES`/`EPERM` → `PermissionDenied`,
+  `EEXIST` → `AlreadyExists`, `EISDIR`/`ENOTDIR`/`ELOOP` → `BadResource`,
+  `EBUSY` → `Busy`, anything else → `Unknown`. When the adapter's switch
+  moves, `errnoTag` moves with it, and the node run of the errno-parity
+  contract is what notices.
   A site names the errno node raises, never a tag, so tag parity holds
   by construction. Unlike node's `ErrnoException`, the `cause` carries
   only `code` (and `path` for a path operation) — no `errno` number, no
@@ -514,7 +522,7 @@ authoritative list.
     | `rename` a directory into itself | `BadResource` | `Unknown` `EINVAL` | |
     | `rename` onto a non-empty directory | `BadResource` | `Unknown` `ENOTEMPTY` | errno 66 macOS, 39 Linux; the code is the same |
     | `rename`/`copyFile`/`link`/`symlink` other kind conflicts | `BadResource` | `BadResource` + `ENOTDIR`/`EISDIR` | a file onto `dir/` is `ENOTDIR` on Linux, `EISDIR` on macOS; `EISDIR` modelled |
-    | `link` to a directory | `PermissionDenied` | `Unknown` `EPERM` | |
+    | `link` to a directory | `PermissionDenied` | `PermissionDenied` `EPERM` | the adapter mapped `EPERM` to `Unknown` until it joined `EACCES` |
     | `copy` onto itself or its own hard link | success no-op, or `AlreadyExists`/`BadResource` | `Unknown` `ERR_FS_CP_EINVAL` | checked before `overwrite` |
     | `copy` into itself | `BadResource` | `Unknown` `ERR_FS_CP_EINVAL` | |
     | `copy` kind mismatch (top-level or nested, any `overwrite`) | `AlreadyExists`/`BadResource` | `Unknown` `ERR_FS_CP_DIR_TO_NON_DIR`/`ERR_FS_CP_NON_DIR_TO_DIR` | |
