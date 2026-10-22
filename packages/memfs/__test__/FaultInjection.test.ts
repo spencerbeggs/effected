@@ -167,6 +167,19 @@ describe("MemoryFileSystem.layerFaulty", () => {
 			}),
 	);
 
+	it.effect("lstat is interceptable — a handler faults it while stat still delegates", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const error = yield* Effect.flip(fs.lstat("/repos/blocked/src/a.ts"));
+			assert.strictEqual(error.reason._tag, "PermissionDenied");
+			assert.strictEqual((yield* fs.stat("/repos/blocked/src/a.ts")).type, "File");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWith(tree, { faults: { lstat: (path) => Effect.fail(denied("lstat", path)) } }),
+			),
+		),
+	);
+
 	it.effect("watch is interceptable — a handler can replace or delegate the event stream", () =>
 		Effect.gen(function* () {
 			const base = yield* MemoryFileSystem.makeWith({ "/watched/real.txt": "x" });

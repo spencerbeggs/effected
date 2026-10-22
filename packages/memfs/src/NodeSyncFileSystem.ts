@@ -110,6 +110,21 @@ const fileInfo = (stat: NFS.BigIntStats): FileSystem.File.Info => ({
 const readOnly = (member: string) => new Error(`NodeSyncFileSystem is read-only: ${member} is not supported`);
 const unsupported = (member: string) => () => Effect.die(readOnly(member));
 
+// The adapter's `statFactory`: `stat` and `lstat` differ only in the node call
+// and the method an error names.
+const statWith =
+	(method: "stat" | "lstat", nodeStat: (path: string, options: { bigint: true }) => NFS.BigIntStats) =>
+	(path: string) =>
+		Effect.flatMap(
+			attempt(method, path, () => nodeStat(path, { bigint: true })),
+			(stat) =>
+				Effect.try({
+					try: () => fileInfo(stat),
+					catch: (err) =>
+						PlatformError.badArgument({ module: "FileSystem", method, description: (err as Error).message }),
+				}),
+		);
+
 const make: FileSystem.FileSystem = FileSystem.make({
 	access: (path, options) =>
 		attempt("access", path, () => {
@@ -118,16 +133,8 @@ const make: FileSystem.FileSystem = FileSystem.make({
 			if (options?.writable) mode |= NFS.constants.W_OK;
 			NFS.accessSync(path, mode);
 		}),
-	stat: (path) =>
-		Effect.flatMap(
-			attempt("stat", path, () => NFS.statSync(path, { bigint: true })),
-			(stat) =>
-				Effect.try({
-					try: () => fileInfo(stat),
-					catch: (err) =>
-						PlatformError.badArgument({ module: "FileSystem", method: "stat", description: (err as Error).message }),
-				}),
-		),
+	lstat: statWith("lstat", NFS.lstatSync),
+	stat: statWith("stat", NFS.statSync),
 	// The adapter's own value: node's Buffer (a Uint8Array), not a copy. A
 	// non-string path never reaches `readFileSync`, which would read it as a
 	// file DESCRIPTOR; the adapter's async `readFile` rejects it in its callback,

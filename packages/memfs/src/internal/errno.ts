@@ -60,6 +60,7 @@ export const errnoTag = (code: string | undefined): SystemErrorTag => {
 		case "ENOENT":
 			return "NotFound";
 		case "EACCES":
+		case "EPERM":
 			return "PermissionDenied";
 		case "EEXIST":
 			return "AlreadyExists";

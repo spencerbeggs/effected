@@ -1043,6 +1043,7 @@ export const suite = (name: string, fsLayer: Layer.Layer<FileSystem.FileSystem, 
 						["copy", fs.copy(missing, destination)],
 						["copyFile", fs.copyFile(missing, destination)],
 						["link", fs.link(missing, destination)],
+						["lstat", fs.lstat(missing)],
 						["readDirectory", fs.readDirectory(missing)],
 						["readLink", fs.readLink(missing)],
 						["realPath", fs.realPath(missing)],
@@ -1126,6 +1127,33 @@ export const suite = (name: string, fsLayer: Layer.Layer<FileSystem.FileSystem, 
 					assert.strictEqual(yield* fs.readFileString(source), "replacement");
 					yield* handle.seek(BigInt(0), "start");
 					assert.strictEqual(decoder.decode(yield* readAllocUpTo(handle, 8)), "retained");
+				}),
+			);
+
+			// Kit addition, mirroring upstream's "lstat does not follow symbolic links"
+			// (FileSystem.test-utils.ts) and extending it to dangling links and links
+			// earlier in the path.
+			it.effect("should report a final symbolic link itself from lstat", () =>
+				Effect.gen(function* () {
+					const { fs, path } = yield* makeTestContext;
+					const target = path("lstat-target.txt");
+					const link = path("lstat-link.txt");
+					const dangling = path("lstat-dangling.txt");
+					const directoryLink = path("lstat-directory-link");
+					yield* fs.writeFileString(target, "");
+					yield* fs.makeDirectory(path("lstat-directory"));
+					yield* fs.writeFileString(path("lstat-directory", "inner.txt"), "");
+
+					yield* fs.symlink(target, link);
+					yield* fs.symlink(path("lstat-missing.txt"), dangling);
+					yield* fs.symlink(path("lstat-directory"), directoryLink);
+
+					assert.strictEqual((yield* fs.stat(link)).type, "File");
+					assert.strictEqual((yield* fs.lstat(link)).type, "SymbolicLink");
+					assert.strictEqual((yield* fs.lstat(target)).type, "File");
+					assert.strictEqual((yield* fs.lstat(dangling)).type, "SymbolicLink");
+					assertSystemError(yield* Effect.flip(fs.stat(dangling)), { tag: "NotFound", method: "stat" });
+					assert.strictEqual((yield* fs.lstat(path("lstat-directory-link", "inner.txt"))).type, "File");
 				}),
 			);
 

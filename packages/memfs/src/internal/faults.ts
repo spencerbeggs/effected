@@ -113,6 +113,7 @@ export const wrapFaulty = (
 		copyFile: intercept("copyFile", base.copyFile),
 		glob: intercept("glob", base.glob),
 		link: intercept("link", base.link),
+		lstat: intercept("lstat", base.lstat),
 		makeDirectory: intercept("makeDirectory", base.makeDirectory),
 		makeTempDirectory: intercept("makeTempDirectory", base.makeTempDirectory),
 		makeTempDirectoryScoped: intercept("makeTempDirectoryScoped", base.makeTempDirectoryScoped),

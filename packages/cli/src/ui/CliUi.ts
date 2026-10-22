@@ -289,7 +289,13 @@ export class CliUi {
 			const crashed = crash.current;
 			const interrupted = Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause);
 			if (crashed === undefined || interrupted) return yield* exit;
-			const dies = Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isDieReason) : [];
+			// The cancel the crash beat is not one of those defects: when a finalizer dies beside a typed failure, core
+			// demotes the failure to a defect, so the screen's own `Cancelled` can arrive here as a `Die`.
+			const dies = Exit.isFailure(exit)
+				? exit.cause.reasons.filter(
+						(reason): reason is Cause.Die => Cause.isDieReason(reason) && !(reason.defect instanceof Cancelled),
+					)
+				: [];
 			// A run that died of the crash keeps its whole cause, a failing finalizer's defect included.
 			if (dies.some((reason) => reason.defect === crashed.defect)) return yield* exit;
 			// Otherwise the crash replaces the end it beat, and any defect already there (a kit finalizer that failed)
