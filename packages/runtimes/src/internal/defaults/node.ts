@@ -917,5 +917,5 @@ export const nodeScheduleDefaults: RawSchedule = {
 	v24: { start: "2025-05-06", lts: "2025-10-28", maintenance: "2026-10-20", end: "2028-04-30", codename: "Krypton" },
 	v25: { start: "2025-10-15", maintenance: "2026-04-01", end: "2026-06-01" },
 	v26: { start: "2026-05-05", lts: "2026-10-28", maintenance: "2027-10-20", end: "2029-04-30", codename: "" },
-	v27: { start: "2027-04-22", maintenance: "2027-10-20", end: "2030-04-30", codename: "" },
+	v27: { start: "2027-04-22", lts: "2027-10-20", end: "2030-04-30", codename: "" },
 };
