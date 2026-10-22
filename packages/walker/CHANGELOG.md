@@ -1,5 +1,23 @@
 # @effected/walker
 
+## 0.19.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.13.0 | 0.14.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.6 [#1039][#1039]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1039]: https://github.com/spencerbeggs/effected/pull/1039
+
 ## 0.18.0
 
 ### Dependencies

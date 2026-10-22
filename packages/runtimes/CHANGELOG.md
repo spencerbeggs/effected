@@ -1,5 +1,27 @@
 # @effected/runtimes
 
+## 0.14.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/semver | dependency | updated | 0.14.0 | 0.15.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.6 [#1039][#1039]
+
+* Refreshed the bundled Node.js, Bun and Deno version defaults from the upstream release feeds [#1036][#1036]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1036]: https://github.com/spencerbeggs/effected/pull/1036
+
+[#1039]: https://github.com/spencerbeggs/effected/pull/1039
+
 ## 0.13.1
 
 ### Maintenance

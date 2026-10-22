@@ -1,5 +1,58 @@
 # @effected/pnpm-plugin-effect
 
+## 0.18.0
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.6 [#1039][#1039]
+
+#### Updates 38 catalog:effected versions
+
+- `@effected/app` ^0.24.0 -> ^0.25.0 (peer ^0.25.0)
+- `@effected/cli` ^0.19.0 -> ^0.20.0 (peer ^0.20.0)
+- `@effected/commands` ^0.14.0 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/config-file` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/engine` ^0.7.0 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/env` ^0.4.0 -> ^0.5.0 (peer ^0.5.0)
+- `@effected/git` ^0.23.0 -> ^0.24.0 (peer ^0.24.0)
+- `@effected/github` ^0.21.0 -> ^0.22.0 (peer ^0.22.0)
+- `@effected/github-actions` ^0.23.1 -> ^0.24.0 (peer ^0.24.0)
+- `@effected/github-commands` ^0.5.0 -> ^0.6.0 (peer ^0.6.0)
+- `@effected/github-references` ^0.10.0 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/glob` ^0.13.0 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/images` ^0.4.0 -> ^0.5.0 (peer ^0.5.0)
+- `@effected/jsonc` ^0.18.0 -> ^0.19.0 (peer ^0.19.0)
+- `@effected/jsonl` ^0.14.0 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/jwt` ^0.4.0 -> ^0.5.0 (peer ^0.5.0)
+- `@effected/lockfiles` ^0.18.0 -> ^0.19.0 (peer ^0.19.0)
+- `@effected/lsp` ^0.4.0 -> ^0.5.0 (peer ^0.5.0)
+- `@effected/markdown` ^0.19.0 -> ^0.20.0 (peer ^0.20.0)
+- `@effected/mcp` ^0.8.0 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/memfs` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/npm` ^0.23.0 -> ^0.24.0 (peer ^0.24.0)
+- `@effected/package-json` ^0.23.0 -> ^0.24.0 (peer ^0.24.0)
+- `@effected/runtimes` ^0.13.1 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/sbom` ^0.13.0 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/schema-org` ^0.10.0 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/schemastore` ^0.24.0 -> ^0.25.0 (peer ^0.25.0)
+- `@effected/schemastore-cli` ^0.24.0 -> ^0.25.0 (peer ^0.25.0)
+- `@effected/semver` ^0.14.0 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/spdx` ^0.15.0 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/store` ^0.16.0 -> ^0.17.0 (peer ^0.17.0)
+- `@effected/templates` ^0.13.0 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/toml` ^0.14.0 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/tsconfig-json` ^0.16.0 -> ^0.17.0 (peer ^0.17.0)
+- `@effected/walker` ^0.18.0 -> ^0.19.0 (peer ^0.19.0)
+- `@effected/workspaces` ^0.35.0 -> ^0.36.0 (peer ^0.36.0)
+- `@effected/xdg` ^0.12.0 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/yaml` ^0.22.0 -> ^0.23.0 (peer ^0.23.0) [#1039][#1039]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1039]: https://github.com/spencerbeggs/effected/pull/1039
+
 ## 0.17.2
 
 ### Maintenance
