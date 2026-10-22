@@ -663,13 +663,13 @@ construction throw or a service that was never provided:
 
 | Write | Not | Source |
 | --- | --- | --- |
-| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9013` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
-| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9233` — same shape, same optional-`options` trap, one page away in the same module. |
-| `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:444` — a *function* returning a Layer, unlike almost every other `layer` in core. |
+| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9349` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
+| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9271` — same shape, same optional-`options` trap, one page away in the same module. |
+| `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:556` — a *function* returning a Layer, unlike almost every other `layer` in core. |
 | `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5004` — takes ONE array argument. |
 
 **The discriminator is the optional argument.** `Schema.Cause(e, d)`
-(`Schema.ts:11239`) and `Schema.Exit(...)` (`:13608`) are factories too, but their
+(`Schema.ts:11239`) and `Schema.Exit(...)` (`:14356`) are factories too, but their
 arguments are required, so forgetting to call them is an immediate type error.
 Only the zero-or-optional-arg factories type-check uncalled.
 

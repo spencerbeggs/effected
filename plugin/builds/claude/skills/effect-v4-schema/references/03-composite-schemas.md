@@ -1720,7 +1720,7 @@ This helper has some advantages over a dedicated constructor:
 - You can choose among multiple possible tag fields if present.
 - It supports unions that include nested unions.
 
-Each member must have a unique discriminant property key. The check is a
+Each member must have a unique discriminant value. The check is a
 runtime one only: a duplicate, including one inside a nested union, typechecks
 and then throws `Error: Duplicate discriminant: <value>` when `toTaggedUnion`
 runs, so a test that builds the union is what catches it. Numeric and string

@@ -495,14 +495,14 @@ The public surface (`Arbitrary.ts`):
 | --- | --- |
 | `Arbitrary.schema(S, { shrink? })` (`:416`) | derive a generator of `S["Type"]` — decoded values, so `NumberFromString` yields numbers. Derivation is eager and **throws** for a Schema it cannot compile (no finite path through a recursion, a declaration with no representation) |
 | `Arbitrary.Constant(value)` (`:439`) | always that value, no shrinking; the branch value inside `flatMap` |
-| `Arbitrary.array(item, options?)` (`:435`) | a variable-length array generator over an existing `Arbitrary`, independent of Schema — bound its length with `ArrayOptions`; use `Arbitrary.schema` when the shape is described by a Schema instead |
+| `Arbitrary.array(item, options?)` (`:490`) | a variable-length array generator over an existing `Arbitrary`, independent of Schema — bound its length with `ArrayOptions`; use `Arbitrary.schema` when the shape is described by a Schema instead |
 | `map` / `filter` / `filterMap` (`:504`–`:551`) | transform, keep, or transform-and-reject generated values (and their shrinks); rejections spend `maxDiscards` |
-| `flatMap` (`:524`) | dependent generation — a generated value chooses the next `Arbitrary` |
-| `all(tuple \| iterable \| record)` (`:551`) | independent members combined shape-for-shape |
-| `sampleEffect(arb, { count, size, maxDiscards, seed })` (`:576`) | `Effect<ReadonlyArray<A>, SampleError>` — fails typed when discards exhaust the budget |
+| `flatMap` (`:583`) | dependent generation — a generated value chooses the next `Arbitrary` |
+| `all(tuple \| iterable \| record)` (`:611`) | independent members combined shape-for-shape |
+| `sampleEffect(arb, { count, size, maxDiscards, seed })` (`:637`) | `Effect<ReadonlyArray<A>, SampleError>` — fails typed when discards exhaust the budget |
 | `checkEffect(arb, property, CheckOptions)` (`:671`) | runs a pure or Effectful property and returns a **`CheckResult`** (`Passed \| Falsified \| Exhausted \| ReplayMismatch`) — it never throws for an ordinary falsification |
 | `formatCheckFailure(result)` (`:367`) | the string `@effect/vitest` dies with: runs, shrinks, shrunk input, failure, **replay token** |
-| `isArbitrary`, `CheckOptions`, `SampleOptions`, `Replay` | guard, option bags (`{ runs, size, maxDiscards, maxShrinks, seed, replay }` at `:182`), the opaque replay token |
+| `isArbitrary`, `CheckOptions`, `SampleOptions`, `Replay` | guard, option bags (`{ runs, size, maxDiscards, maxShrinks, seed, replay }` at `:195`), the opaque replay token |
 
 **What it otherwise does NOT have, so stop looking:** no `oneof`,
 `constantFrom`, `record`, `string`, `integer`, `option`,
@@ -546,7 +546,7 @@ magnitude `size²` (`schema.ts:1130`).
 Generated values are always validated by the schema's checks before they are
 returned. Built-in checks (`isBetween`, `isMinLength`/`isMaxLength`/
 `isBetweenLength`, `isPattern`, `isUnique`, `isInt`, …) carry an
-`arbitraryConstraint` annotation (over twenty `arbitraryConstraint:` sites in `Schema.ts`, e.g. `isBetween` at `:7798`; `isPattern` delegates to `SchemaAST.isPattern`), so the compiler generates
+`arbitraryConstraint` annotation (over twenty `arbitraryConstraint:` sites in `Schema.ts`, e.g. `isBetween` at `:7837`; `isPattern` delegates to `SchemaAST.isPattern`), so the compiler generates
 matching values **constructively**. Any other check is a *residual filter*:
 values are generated without it and rejected when they fail. Rejections are
 budgeted (`maxDiscards`, default `max(100, count * 10)` / `max(100, runs * 10)`),
