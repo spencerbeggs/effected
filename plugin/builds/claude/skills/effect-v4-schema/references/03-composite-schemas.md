@@ -1720,13 +1720,12 @@ This helper has some advantages over a dedicated constructor:
 - You can choose among multiple possible tag fields if present.
 - It supports unions that include nested unions.
 
-Each member must have a unique discriminant property key. A duplicate is a
-compile error — the `toTaggedUnion` call does not typecheck, including a
-duplicate inside a nested union — and a union whose member types are widened
-past that check still throws `Error: Duplicate discriminant: <value>` at
-runtime. Numeric and string values that resolve to the same property key, such
-as `1` and `"1"`, are duplicates: both checks normalize numeric literals with
-`String(literal)`.
+Each member must have a unique discriminant property key. The check is a
+runtime one only: a duplicate, including one inside a nested union, typechecks
+and then throws `Error: Duplicate discriminant: <value>` when `toTaggedUnion`
+runs, so a test that builds the union is what catches it. Numeric and string
+values that resolve to the same property key, such as `1` and `"1"`, are
+duplicates: the check normalizes numeric literals with `String(literal)`.
 
 **Note**. If the tag is the standard `_tag` field, you can use `Schema.TaggedUnion` instead.
 

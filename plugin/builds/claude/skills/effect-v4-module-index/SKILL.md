@@ -26,11 +26,11 @@ carries an explicit `@stability` tag: `stable` follows strict semver,
 `unstable` may break in a minor release. The namespace modules below (`ai`,
 `cli`, `http`, `http-api`, `sql`, and the rest of the table under "The
 unstable-stability namespaces") are `unstable`, and so are these top-level
-modules — **including the platform contracts**: `Arbitrary`, `ByteSize`,
+modules — **including the platform contracts**: `Arbitrary`, `ByteSize`, `Bytes`,
 `ChannelSchema`, `Crypto`, `ErrorReporter`, `ExecutionPlan`, `FileSystem`,
 `Graph`, `HashRing`, `LayerMap`, `LayerRef`, `Newtype`,
-`PartitionedSemaphore`, `Path`, `PlatformError`, `Stdio`, `Terminal`,
-`TxChunk`, `Version`, plus `testing/TestConsole` and `testing/TestSchema`.
+`PartitionedSemaphore`, `Path`, `PlatformError`, `SemVer`, `SemVerRange`,
+`Stdio`, `Terminal`, `TxChunk`, `Version`, `TextDiff` (`experimental`), plus `testing/TestConsole` and `testing/TestSchema`.
 Under `effect/encoding`, `Base64`, `Base64Url`, `EncodingError` and `Hex` are
 `stable`; the rest are `unstable`. A few symbols in otherwise-stable modules
 carry the tag too — the network-address, cookie, header, URL-params, `Graph` and `ByteSize` schemas
@@ -66,7 +66,8 @@ phrasing and missed on its module name.
 | `BigInt` | helpers over native `bigint`: arithmetic, comparison, safe parsing to `Option` | working with `bigint` values and needing safe parse/aggregate/order |
 | `Boolean` | helpers over `boolean`: logical ops, lazy branching, ordering, reducing | combining booleans or choosing between lazy branches |
 | `Brand` | compile-time nominal tags on structurally-identical values, optionally validating | keeping `Positive`/`UserId`-style values from mixing without runtime cost |
-| `ByteSize` | a branded non-negative `bigint` byte count (`ByteSize.ts:32`) with unit constructors (`bytes`, `kilobytes`/`kibibytes` … `quettabytes`), `fromInput`/`fromInputUnsafe` over `ByteSize.Input = ByteSize \| bigint \| number \| string`, `toBigInt`/`toNumber` (Option)/`toNumberUnsafe`, `sum`/`subtract`/`times`/`divide`, `Order`/`Equivalence`/`between`/`clamp`, `format` | any byte quantity — it **replaces `FileSystem.Size`/`SizeInput`**, which do not exist: `File.Info.size` and `blksize` are `ByteSize` (`FileSystem.ts:1032-1033`), `FileSystem.stream`'s `bytesToRead`/`offset` are `ByteSize.Input` (`:331-333`), `File.seek` takes a `bigint` and returns one (`:887`), `read`/`write` return `number` (`:893`, `:904`), `readAlloc`/`truncate` take `number` (`:899-903`). Reach for `ByteSize.toNumberUnsafe(info.size)` at a `Buffer` boundary, never `Number(info.size)` spelled by hand |
+| `ByteSize` | a branded non-negative `bigint` byte count (`ByteSize.ts:32`) with unit constructors (`bytes`, `kilobytes`/`kibibytes` … `quettabytes`), `fromInput`/`fromInputUnsafe` over `ByteSize.Input = ByteSize \| bigint \| number \| string`, `toBigInt`/`toNumber` (Option)/`toNumberUnsafe`, `sum`/`subtract`/`times`/`divide`, `Order`/`Equivalence`/`between`/`clamp`, `format` | any byte quantity — it **replaces `FileSystem.Size`/`SizeInput`**, which do not exist: `File.Info.size` and `blksize` are `ByteSize` (`FileSystem.ts:1042-1043`), `FileSystem.stream`'s `bytesToRead`/`offset` are `ByteSize.Input` (`:331-333`), `File.seek` takes a `bigint` and returns one (`:887`), `read`/`write` return `number` (`:893`, `:904`), `readAlloc`/`truncate` take `number` (`:899-903`). Reach for `ByteSize.toNumberUnsafe(info.size)` at a `Buffer` boundary, never `Number(info.size)` spelled by hand |
+| `Bytes` | helpers over `Uint8Array`: `concat`, `Equivalence`, `Order` | joining or comparing byte arrays without a `Buffer` dependency |
 | `Cache` | concurrent cache of Effect lookup results with capacity/TTL and in-flight sharing (`make` = fixed TTL, `makeWith` = per-entry TTL from the `Exit`) | memoizing an effectful lookup by key with dedupe/expiry — this is the whole feature; do not hand-roll an in-flight promise map |
 | `Cause` | full structured failure record: typed errors, defects, interruptions, annotations | inspecting or formatting why an Effect failed without collapsing it |
 | `Channel` | low-level bidirectional streaming primitive underlying Stream and Sink | implementing custom stream operators; app code uses Stream/Sink instead |
@@ -96,7 +97,7 @@ phrasing and missed on its module name.
 | `FiberHandle` | scope-bound holder of at most one fiber, replacing/interrupting prior | tracking a single swappable background fiber tied to a scope |
 | `FiberMap` | scope-bound map of fibers keyed by K, auto-removed on completion | managing keyed background fibers under one scope |
 | `FiberSet` | scope-bound set of many fibers, all interrupted when scope closes | managing a dynamic group of background fibers under one scope |
-| `FileSystem` | portable file system service (read/write/stream/glob/watch), fails `PlatformError`; sizes are `ByteSize` (see that row), and `File.seek` before the start of the file fails `BadArgument` and leaves the cursor unchanged (`FileSystem.ts:871-873`; the Node implementation is `@effect/platform-node-shared`, which the vendored tree does not carry — `effect-v4-source-lookup` says where to read it) | file IO; contract, platform layer provides implementation |
+| `FileSystem` | portable file system service (read/write/stream/glob/watch), fails `PlatformError`; sizes are `ByteSize` (see that row), and `File.seek` before the start of the file fails `BadArgument` and leaves the cursor unchanged (`FileSystem.ts:881-883`; the Node implementation is `@effect/platform-node-shared`, which the vendored tree does not carry — `effect-v4-source-lookup` says where to read it) | file IO; contract, platform layer provides implementation |
 | `Filter` | composable check returning `Result` (pass/fail) that can also narrow/transform | selective matching/recovery where a predicate must also refine or transform |
 | `Formatter` | renders arbitrary JS values to readable strings with redaction/cycle handling | formatting values for logs, diagnostics, or error messages |
 | `Function` | core composition helpers: `pipe`, `flow`, `dual`, identity/const/memoize | composing functions or writing dual direct/pipe APIs |
@@ -160,12 +161,14 @@ phrasing and missed on its module name.
 | `Scheduler` | controls how runnable fiber tasks are queued, dispatched, and yielded | internal/advanced: tune or disable fiber scheduling and yields — usually skip |
 | `Schema` | validate/decode/encode data shapes with codecs, classes, refinements | the primary entry point for any schema, codec, or data validation |
 | `SchemaAST` | runtime tree representation of schemas (nodes, checks, annotations) | advanced machinery: inspect/build/rewrite schema ASTs programmatically |
-| `Schema.SchemaError` | the error a schema decode/encode fails with: a `SchemaIssue` tree plus a formatted `message`. **Not a module** — it is a class exported from `Schema.ts` (`Schema.ts:1208`), so `import … from "effect/SchemaError"` fails to resolve; there is no `src/SchemaError.ts` and no `./SchemaError` export. Import it as `Schema.SchemaError` | catching/normalizing schema failures at a boundary — `Effect.catchTag("SchemaError", …)`. v4 exposes no `Schema` for the issue tree, so it rides in a domain error as `Schema.Defect()` |
+| `Schema.SchemaError` | the error a schema decode/encode fails with: a `SchemaIssue` tree plus a formatted `message`. **Not a module** — it is a class exported from `Schema.ts` (`Schema.ts:1211`), so `import … from "effect/SchemaError"` fails to resolve; there is no `src/SchemaError.ts` and no `./SchemaError` export. Import it as `Schema.SchemaError` | catching/normalizing schema failures at a boundary — `Effect.catchTag("SchemaError", …)`. v4 exposes no `Schema` for the issue tree, so it rides in a domain error as `Schema.Defect()` |
 | `SchemaGetter` | one-way optional-in/optional-out conversions used inside transformations | consumer-facing when authoring a custom decode/encode direction |
 | `SchemaIssue` | describes and formats decode/encode/check failures with location | consumer-facing: inspect or format schema validation errors |
 | `SchemaParser` | runs a schema against values (decode/encode/validate) in many result styles | consumer-facing: execute a schema returning Effect/Exit/Option/Result/sync |
 | `SchemaRepresentation` | JSON-serializable descriptions of schemas plus TS-codegen | machinery: serialize schemas, convert to/from JSON Schema, generate code |
 | `SchemaTransformation` | two-way encode/decode conversions connecting two representations | consumer-facing when building a custom bidirectional codec |
+| `SemVer` | strict Semantic Versioning 2.0.0 values: `parse`/`fromInput`, `format`, comparison (`isGreaterThan`, `between`, `clamp`, `Order`/`Equivalence`), `bump*` (major/minor/patch/pre*), `isPrerelease`, `difference`, plus schemas and string codecs | parsing, comparing or bumping a version string — do not hand-roll a semver regex |
+| `SemVerRange` | npm-style ranges: `parse`, `matches`, `caret`/`tilde`/`exact`/`any`/comparators, `maxSatisfying`/`minSatisfying` | asking whether a version satisfies a range, or picking the best match from a list |
 | `Scope` | lifetime boundary collecting finalizers run with an `Exit` on close | directly create/fork/close scopes; most code uses `Effect.scoped`/`Layer` |
 | `ScopedCache` | cache whose entries own scopes, releasing resources on eviction | cache resource-backed values with per-entry cleanup and expiry |
 | `ScopedRef` | current value plus the scope owning it; swaps acquire/release atomically | hold a swappable resource handle (client/connection) with clean replacement |
@@ -180,6 +183,7 @@ phrasing and missed on its module name.
 | `SynchronizedRef` | `Ref` whose updates run one-at-a-time, safe for effectful transitions | serialize state updates when the next value is computed by an effect |
 | `Take` | stored representation of one stream pull: batch, failure, or done | low-level stream plumbing: inspecting buffered pull results |
 | `Terminal` | interactive terminal service (size, line/key input, output) | terminal capabilities; contract, platform layer provides |
+| `TextDiff` | `experimental` edit scripts over arrays, lines or code points: `diff`/`diffWith`, `apply`/`applyText`, `invert`, `unified` formatting, `maxEdits` to bound search | computing a diff or a unified patch — do not pull in a diff library |
 | `Tracer` | low-level span/tracing model and tracer service | define/inspect spans or a custom tracer; usually via higher-level tracing APIs |
 | `Trie` | immutable string-keyed prefix tree for prefix/longest-match lookup | autocomplete, route tables, dictionaries, prefix-based key lookup |
 | `Tuple` | immutable helpers over fixed-length arrays preserving element positions | build/transform positional tuples and derive tuple comparisons |
@@ -217,19 +221,19 @@ follows from it.
 
 | Namespace | What it is | When to reach for it |
 | --- | --- | --- |
-| `ai` | provider-neutral AI: `LanguageModel`, `Chat`, `Tool`/`Toolkit`, MCP schema/server | building AI features against a provider-agnostic surface (`@effect/ai-*` provides) |
+| `ai` | provider-neutral AI: `LanguageModel`, `Chat`, `Tool`/`Toolkit`, MCP schema/server, and an `experimental` scoped MCP **client** (`McpClient.layerStdio`/`layerHttp`, `McpClient.toolkit`) | building AI features against a provider-agnostic surface (`@effect/ai-*` provides) |
 | `arbitrary` | the native property-testing engine, one module `Arbitrary`: `schema`, `Constant`, `map`/`filter`/`filterMap`/`flatMap`/`all`, `sampleEffect`, `checkEffect`, `formatCheckFailure`, `CheckOptions` | deriving generators from a Schema for `it.prop`/`it.effect.prop`, or running a property outside vitest — replaced `effect/testing/FastCheck` and `Schema.toArbitrary`. It has **no** `oneof`/`constantFrom`; choice and collections are Schemas — see `effect-v4-schema/references/11-generation-and-tooling.md` for the one collection combinator (`Arbitrary.array`) that does exist independent of Schema. Traps and translations → `effect-v4-testing`, surface → `effect-v4-schema/references/11-generation-and-tooling.md` |
-| `cli` | the v4 CLI framework: `Command`, `Flag`, `Argument`, `Prompt`, completions | building a command-line tool — see `effect-v4-cli` |
+| `cli` | the v4 CLI framework: `Command`, `Flag`, `Argument`, `Prompt`, completions, `TerminalCapabilities` (the colour/TTY reference built-in help follows) | building a command-line tool — see `effect-v4-cli` |
 | `cluster` | entity sharding runtime: `Sharding`, `Entity`, runners, message storage | distributing stateful entities across machines |
 | `devtools` | client/server wiring an Effect runtime to the devtools tracer | connecting a program to Effect devtools |
-| `encoding` | `Base64`, `Base64Url`, `Hex` and `EncodingError` (the `stable` ones: encode/decode between strings, UTF-8 and bytes with `Result`-typed decode errors); `Ndjson` and `Sse` channel codecs; `SchemaBinary` (a compact binary codec derived from a Schema's encoded side); `Toml`, `Yaml` and `Ini` parsers | Base64/hex conversion; framing streams as NDJSON or server-sent events; parsing a config document when the `@effected/toml`/`@effected/yaml` fidelity guarantee is not needed |
-| `eventlog` | typed, replicated (optionally encrypted) event journal with SQL backends | event-sourced state that syncs/replicates |
+| `encoding` | `Base64`, `Base64Url`, `Hex` and `EncodingError` (the `stable` ones: encode/decode between strings, UTF-8 and bytes with `Result`-typed decode errors); `Ndjson` and `Sse` channel codecs; `SchemaBinary` (a compact binary codec derived from a Schema's encoded side); `Toml`, `Yaml` and `Ini` parsers; streaming archive and document codecs: `Tar` (unstable), `Zip` and `Xml` (`experimental`), and `JsonArray` (one JSON array as a stream of elements, optionally by JSON Pointer) | Base64/hex conversion; framing streams as NDJSON or server-sent events; parsing a config document when the `@effected/toml`/`@effected/yaml` fidelity guarantee is not needed |
+| `eventlog` | typed, replicated (optionally encrypted) event journal with SQL backends; `EventRow` for convergent row `set`/`patch`/`remove` events | event-sourced state that syncs/replicates |
 | `graphql` | typed GraphQL operations: `GraphQL`, `GraphQLGroup`, `GraphQLResolver`, `GraphQLClient`, `GraphQLMiddleware`, `GraphQLProtocol` (HTTP and subscription transports, partial results, serializable errors, cursor pagination). `@stability experimental` | calling a GraphQL API from Effect — the module is client-side (operations, a client, its transports and batching resolvers); it does not serve one. **Talking to GitHub's GraphQL API is `@effected/github`'s job**, not this module's |
 | `http` | HTTP client + server: `HttpClient`, `FetchHttpClient`, router, middleware | any HTTP work — clients (see runtimes precedent) or servers. Branching on a client failure: see the `reason` trap below; MIME lookup is `http/Mime` (`getType`/`getExtension`/`getAllExtensions`) — there is no `mime` npm dependency |
 | `net` | `IpInterface`, `IpNetwork`, `NetAddress` — pure, canonical IPv4/IPv6 addresses and CIDR prefixes (`NetAddress.loopbackAddresses` names both loopbacks); `Host` — host names and unresolved `host:port` endpoints, plus `toFullyQualified`/`toRelative` and a pure `parseHostsFile`; `Dns` and `AddressResolver` — resolution services a runtime package provides | parsing/normalizing an address, network prefix, host name or hosts file without a third-party `ipaddr`-style library; require `Dns`/`AddressResolver` in `R` when the program must resolve names |
 | `http-api` | schema-first declarative HTTP APIs with OpenAPI/Swagger output | defining a typed HTTP API contract shared by server and client |
 | `observability` | OTLP + Prometheus exporters for traces/metrics/logs | exporting telemetry without the `@effect/opentelemetry` SDK |
-| `persistence` | `KeyValueStore` (memory/fs/SQL), `PersistedCache`/`PersistedQueue`, `RateLimiter` | durable KV, request-level durable caching, rate limiting |
+| `persistence` | `KeyValueStore` (memory/fs/SQL), `PersistedCache`/`PersistedQueue`, `RateLimiter`, `UserDirectories` (home/config/data/cache/state directories by XDG and platform convention; `layerPlatform`) | durable KV, request-level durable caching, rate limiting |
 | `process` | `ChildProcess` Command values + `ChildProcessSpawner` service | spawning subprocesses (`@effected/git` is the house example; require in `R`) |
 | `reactivity` | atom-based reactive state (`Atom`, `AtomRegistry`, hydration) | framework-facing reactive state (`@effect/atom-*` binds it) |
 | `rpc` | schema-backed RPC: groups, client/server, serialization, worker transport | typed request/response between processes without hand-rolling HTTP |
@@ -297,7 +301,7 @@ follows from it.
   ```
 
 - `HttpClientRequest.bearerToken` accepts a **`Redacted` directly**
-  (`token: string | Redacted.Redacted`, `http/HttpClientRequest.ts:396`;
+  (`token: string | Redacted.Redacted`, `http/HttpClientRequest.ts:397`;
   `basicAuth` likewise). A runtime token flows into request construction with **no
   declassification step at all** — which is what lets a package keep its
   secret-handling seam to one module instead of granting every request builder an
@@ -332,6 +336,6 @@ So `error.reason._tag` is exactly one of **six** values: `"TransportError"`,
 a live-looking branch that is dead code, and green tests will not catch it.
 
 What makes the wrong guess feel confirmed: `ResponseError` *is* a real tagged
-class elsewhere, at `http/HttpServerError.ts:206`. Same name, different
+class elsewhere, at `http/HttpServerError.ts:209`. Same name, different
 module, and it is a server error rather than a client one. Timeouts are separate
 again — `Cause.isTimeoutError`, not a `reason`.

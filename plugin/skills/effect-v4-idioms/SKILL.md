@@ -101,7 +101,7 @@ The idiomatic recoveries:
   `catchTag` also accepts a non-empty tag ARRAY sharing one handler —
   `Effect.catchTag(["UnknownRefError", "GitCommandError"], () => fallback)` —
   which obviates `catchTags` boilerplate when several tags route to the same
-  recovery (`Effect.ts:2813` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
+  recovery (`Effect.ts:2860` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
 - **`Effect.catch(handler)`** — recover from any typed failure; there is no
   `catchAll`. **`Effect.catchCause(handler)`** for full-cause infra handling,
   **`Effect.catchDefect(handler)`** for defects.
@@ -166,7 +166,7 @@ a `BadArgument` (rejected caller input) or a `SystemError` (a host failure,
 carrying a normalized `SystemErrorTag`), `PlatformError.ts:39,114,163`.
 
 **`fs.exists` already absorbs `NotFound` — anything else is a real failure.**
-Core derives `exists` from `access` in `FileSystem.make` (`FileSystem.ts:504`):
+Core derives `exists` from `access` in `FileSystem.make` (`FileSystem.ts:511`):
 `access(path)` mapped to `true`, with a `PlatformError` whose `reason._tag` is
 `"NotFound"` mapped to `false` and **every other reason re-failed**
 (`EACCES`, `ENOTDIR`, `EIO`). So `fs.exists(p)` answers the question "is it
@@ -234,13 +234,13 @@ Result.succeed(42)` dies
 `Effect.succeed` control that returned normally. Note the **success**
 cases die too: this is not "errors need a bridge", it is "these are not Effects
 at all". Their `[Symbol.iterator]` yields the value itself, and the fiber loop
-rejects anything carrying no `evaluate` (`internal/effect.ts:653`).
+rejects anything carrying no `evaluate` (`internal/effect.ts:692`).
 
 The bridge is a module function on `Effect`, one per type:
 
 ```ts
-const u = yield* Effect.fromOption(maybeUser)              // Effect.ts:1917 — fails NoSuchElementError
-const v = yield* Effect.fromResult(Fmt.parseResult(text))  // Effect.ts:1877 — fails typed with the Result's E
+const u = yield* Effect.fromOption(maybeUser)              // Effect.ts:1947 — fails NoSuchElementError
+const v = yield* Effect.fromResult(Fmt.parseResult(text))  // Effect.ts:1905 — fails typed with the Result's E
 ```
 
 `Effect.fromOption` takes an optional second argument for the failure
@@ -297,7 +297,7 @@ interchangeable with it dies. Two more `Config` facts worth carrying:
   into `Option.none()`, but a **provider-source failure survives** — a present,
   unparseable value still fails. It is not `Effect<Option<A>, never>`, and a test
   that only exercises the absent-key path will "prove" that it is.
-- **A structured input is `Config.schema(codec, "NAME")` (`Config.ts:849`), and a
+- **A structured input is `Config.schema(codec, "NAME")` (`Config.ts:854`), and a
   JSON-string input is `Config.schema(Schema.fromJsonString(S), "NAME")`** — not
   `Config.String` + `JSON.parse` + `decodeUnknown*`, which re-derives the codec by
   hand and puts a throwing host call in the seam. `withDefault` covers **absent
@@ -375,6 +375,27 @@ if (Cause.hasInterrupts(cause)) { /* was interrupted */ }
 
 The idiom to internalize is *iterate `reasons`, switch on `_tag`*.
 
+### A defect beside a typed failure turns the failure into a defect
+
+When the runtime combines a typed failure with a defect — a finalizer that dies
+while a `Fail` is unwinding through its scope, or a sibling that dies — defects
+take precedence and the typed failure is **demoted to a `Die`** carrying the
+same value:
+
+```ts
+const program = Effect.scoped(Effect.gen(function* () {
+  yield* Effect.addFinalizer(() => Effect.die(new Error("finalizer failed")))
+  return yield* Effect.fail(new Cancelled())
+}))
+// reasons: Die(Cancelled), Die(Error: finalizer failed) — no Fail left
+```
+
+So `Effect.catchTag("Cancelled", ...)` does not run, which is the point: typed
+recovery cannot swallow a crash. Code that sorts a cause by reason kind must
+expect its own error class among the `Die` reasons. Filter it out by class when
+"the other defects" is what you mean, and look for it in `Die` reasons too when
+asking "was this cancelled".
+
 ### Probing `catchCause` — the obvious experiment lies
 
 `Effect.catchCause`'s handler **does not run** when a fiber suspended in
@@ -447,9 +468,9 @@ into the taxonomy, not exposed as a parameter.
 
 A poll loop written as `const go = Effect.gen(function*() { ...; yield* Effect.sleep(d); return yield* go })`
 re-derives a schedule by hand and hides the stop condition in control flow.
-`Effect.repeat` (`Effect.ts:7841`) takes either a `Schedule` or an **options
+`Effect.repeat` (`Effect.ts:7975`) takes either a `Schedule` or an **options
 object** — `{ schedule?, times?, while?, until? }` — that
-`internal/schedule.ts:229` (`buildFromOptions`) folds into one schedule; `while`
+`internal/schedule.ts:210` (`buildFromOptions`) folds into one schedule; `while`
 and `until` may return a `boolean` or an `Effect<boolean>`, and they see the
 effect's **result**. `Effect.retry` takes the same option shape keyed on the
 failure instead, and it retries **only a plain typed failure**: a cause that
@@ -470,7 +491,7 @@ Three facts, each a trap for a hand-rolled loop:
   produces **three** runs (the doc's own gotcha, confirmed: a counter read 3);
   `times` counts repetitions, not executions.
 - **The value is the last result**, and an `until` written as a type guard
-  narrows it — `Repeat.Return` (`Effect.ts:7688`) picks the refined type, so the
+  narrows it — `Repeat.Return` (`Effect.ts:7818`) picks the refined type, so the
   example above types as `"done"`, not `"pending" | "done"`. `while` with a
   refinement narrows to the *excluded* branch.
 - **`until` alone with no `schedule` spins with no delay** (`passthroughForever`
@@ -642,13 +663,13 @@ construction throw or a service that was never provided:
 
 | Write | Not | Source |
 | --- | --- | --- |
-| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9007` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
-| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9227` — same shape, same optional-`options` trap, one page away in the same module. |
-| `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:441` — a *function* returning a Layer, unlike almost every other `layer` in core. |
-| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5001` — takes ONE array argument. |
+| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9013` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
+| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9233` — same shape, same optional-`options` trap, one page away in the same module. |
+| `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:444` — a *function* returning a Layer, unlike almost every other `layer` in core. |
+| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5004` — takes ONE array argument. |
 
 **The discriminator is the optional argument.** `Schema.Cause(e, d)`
-(`Schema.ts:11231`) and `Schema.Exit(...)` (`:13608`) are factories too, but their
+(`Schema.ts:11239`) and `Schema.Exit(...)` (`:13608`) are factories too, but their
 arguments are required, so forgetting to call them is an immediate type error.
 Only the zero-or-optional-arg factories type-check uncalled.
 

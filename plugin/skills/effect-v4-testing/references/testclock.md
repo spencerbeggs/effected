@@ -49,7 +49,7 @@ not per-file.
 The quiet half: `it.effect` starts the `TestClock` at time zero, so anything
 that *reads* the clock computes against **1970-01-01T00:00:00.000Z**. The start
 time is source-visible — `TestClock`'s constructor opens with
-`let currentTimestamp: number = new Date(0).getTime()` (`TestClock.ts:292`), and
+`let currentTimestamp: number = new Date(0).getTime()` (`TestClock.ts:294`), and
 the migration guide describes `TestClock.layer()` as creating an "epoch-based
 test clock" — and the downstream consequence is directly observable
 (`DateTime.now` inside a bare `it.effect` is exactly the epoch). A CLI
@@ -80,12 +80,12 @@ it.effect("a sleeping fiber wakes when the clock advances", () =>
   (property generation is `Arbitrary`), not `@effect/vitest`.
 - **Do not manually provide `TestClock.layer()` under `it.effect`.** They
   compose — `Clock` is a `Context.Reference` (`Clock.ts:192`), `TestClock.layer()`
-  provides it together with the clock's own `Scheduler` (`TestClock.ts:553`),
-  and `adjust` (`:629`) resolves its clock through `testClockWith`, which reads
+  provides it together with the clock's own `Scheduler` (`TestClock.ts:556`),
+  and `adjust` (`:632`) resolves its clock through `testClockWith`, which reads
   whatever is ambient: `fiber.getRef(Clock.Clock) as TestClock`
-  (`TestClock.ts:592`). Nothing breaks — a nested TestClock even resolves the
-  real clock behind the outer one as its `liveClock` (`TestClock.ts:288`), so
-  `withLive` (`:313`) still reads wall time — but the provide only shadows
+  (`TestClock.ts:595`). Nothing breaks — a nested TestClock even resolves the
+  real clock behind the outer one as its `liveClock` (`TestClock.ts:289`), so
+  `withLive` (`:315`) still reads wall time — but the provide only shadows
   `it.effect`'s clock with a second, independent one. Drop it.
 - **Never call `TestClock.adjust` under `it.live`** — that `as TestClock` cast is
   unchecked, so it is undefined behavior, not a type error. And **a

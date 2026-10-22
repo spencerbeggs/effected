@@ -68,6 +68,8 @@ Every colour decision is `@effected/env`'s `TerminalEnv`, read through `Config`,
 2. Otherwise a stream that is not a terminal has none.
 3. Otherwise Node's terminal table: a non-empty `NO_COLOR` or `NODE_DISABLE_COLORS`, or `TERM=dumb`, is none (an empty `NO_COLOR=""` is not); then CI, `TERM_PROGRAM`, `COLORTERM` and `TERM` decide the depth. **A terminal with none of those set gets no colour.**
 
+Core's built-in help, version and error output uses an installed `CliOutput.Formatter` when there is one, and otherwise core's own `TerminalCapabilities` reference, whose rule differs: there a non-empty `NO_COLOR` beats `FORCE_COLOR`. `main` and `CliColor.formatterLayer` install the formatter, so help follows the rule above; a program that installs neither gets core's rule for its help and this one for everything else, and with both variables set the two disagree.
+
 `ColorLevel` is `"none" | "basic" | "256" | "truecolor"`, per stream: `TerminalEnv.stdout.color` and `TerminalEnv.stderr.color`. `CliColor.enabled` (`Effect<boolean, never, Stdio>`) is the same decision for stdout as a plain boolean, and `CliColor.formatterLayer(overrides?)` builds core's formatter from it, for a program that does not use `env`. **An agent audience never receives an escape of any kind** — no colour, no hyperlink — whatever the colour level says, and even from an explicit `Render.ansi`.
 
 A test fixes the environment with `Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ FORCE_COLOR: "0" }))` or fixes the answer outright with `TerminalEnv.layerTest({ stdout: { color: "none" } })`; never mutate `process.env`.

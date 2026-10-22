@@ -8,7 +8,7 @@ chosen.
 ## `layer()` memoizes; plain `Effect.provide` does NOT. That asymmetry is the whole decision
 
 The top-level `layer` builds its layer once per group through a `MemoMap` and an
-`Effect.cached` build (`packages/vitest/src/internal/internal.ts:268,270,272`),
+`Effect.cached` build (`packages/vitest/src/internal/internal.ts:333,335,337`),
 keeps the scope open for the group, and closes it in `afterAll`. A per-test
 `.pipe(Effect.provide(L))` carries no memo map and rebuilds per test.
 
@@ -54,7 +54,7 @@ Where state must vary per test, keep the per-test provide, or use **distinct
 keys per test** and flush explicitly before asserting counts.
 
 Other `layer(...)` mechanics (surface checked against
-`packages/vitest/src/index.ts:139-154` and `:288-299`):
+`packages/vitest/src/index.ts:139-154` and `:318-329`):
 
 - The block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`), and
   **`MethodsNonLive` has no `.live`** — a wall-clock test that also needs the
@@ -63,7 +63,7 @@ Other `layer(...)` mechanics (surface checked against
 - Nest extra deps with `it.layer(BarLayer)("nested", (it) => { … })` — the
   nested form takes **`concurrent` and `timeout` only** (no `memoMap`, no
   `excludeTestServices`), forks the parent's memo map and inherits the parent's
-  `excludeTestServices` setting (`internal.ts:303-304`).
+  `excludeTestServices` setting (`internal.ts:368-369`).
 - `layer(L, { excludeTestServices: true })` runs the group **without** the
   `TestClock`/`TestConsole` overrides — the block-wide alternative when every
   test in the group needs the real clock, rather than pulling one wall-clock
@@ -76,13 +76,13 @@ Other `layer(...)` mechanics (surface checked against
 **`layerNoop`'s unstubbed members answer in THREE different ways, and each way
 is a different bug.** Two half-truths circulate about this and both are wrong:
 "every unstubbed member fails typed `NotFound`" and "every unstubbed member
-dies". `makeNoop` (`FileSystem.ts:647`) splits them:
+dies". `makeNoop` (`FileSystem.ts:654`) splits them:
 
 | members | unstubbed behavior | the trap |
 | --- | --- | --- |
-| `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `NotFound` failure (`FileSystem.ts:585`) | a package reading `NotFound` as domain-level "absent" treats it as a legitimate answer, so the stub silently supplies **empty fixtures** |
-| `exists` → `false`, `remove` → `Effect.void` | **silent success** (`:668`, `:707`) | not a failure at all — a delete that never happened reports done |
-| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` | `Effect.die("not implemented")` (`:674`–`:681`) | a **defect**: `Effect.catch` and every typed handler are blind to it |
+| `readFile`, `readFileString`, `readDirectory`, `stat`, `lstat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `NotFound` failure (`FileSystem.ts:592`) | a package reading `NotFound` as domain-level "absent" treats it as a legitimate answer, so the stub silently supplies **empty fixtures** |
+| `exists` → `false`, `remove` → `Effect.void` | **silent success** (`:675`, `:717`) | not a failure at all — a delete that never happened reports done |
+| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` | `Effect.die("not implemented")` (`:684`–`:697`) | a **defect**: `Effect.catch` and every typed handler are blind to it |
 
 The consequence the third row buys you: production code that defensively
 absorbs a filesystem failure —
@@ -102,8 +102,8 @@ honestly — a directory really is created, a removal really removes — so
 misbehaviour is injected as a **fault handler**, not as a stub body. The rule
 has no carve-out: a `FileSystem` double is `@effected/memfs`, never
 `FileSystem.layerNoop`. Same tier:
-**`readFileString` strips a leading BOM** (`FileSystem.ts:518` decodes
-`impl.readFile` through `TextDecoder` at `:521`, default `ignoreBOM: false`)
+**`readFileString` strips a leading BOM** (`FileSystem.ts:525` decodes
+`impl.readFile` through `TextDecoder` at `:528`, default `ignoreBOM: false`)
 → [false-greens.md](./false-greens.md).
 
 **A `FileSystem` double is `@effected/memfs` — never a `layerNoop` stub, and

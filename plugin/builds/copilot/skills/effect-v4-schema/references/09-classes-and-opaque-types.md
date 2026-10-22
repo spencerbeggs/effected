@@ -554,7 +554,7 @@ Effect.runPromiseExit(program).then((exit) => console.log(JSON.stringify(exit, n
   "_tag": "Failure",
   "cause": {
     "_id": "Cause",
-    "failures": [
+    "reasons": [
       {
         "_tag": "Fail",
         "error": {
@@ -582,7 +582,7 @@ Two traps in this example, both corrected above — the upstream prose carries t
 uncorrected form:
 
 - **`serialization: { json: ... }` is not an annotation key.** `instanceOf`'s
-  second parameter is an `Annotations.Declaration` (`Schema.ts:16632`), whose
+  second parameter is an `Annotations.Declaration` (`Schema.ts:17000`), whose
   serialization hooks are `toCodec`, `toCodecJson`, `toCodecStringTree` and
   `toCodecIso`. There is no `serialization` key anywhere in `Schema.ts`. The
   earlier `Person` examples in this file already use the correct `toCodecJson`
@@ -655,7 +655,7 @@ Annotation trap: upstream writes this filter as
 `Schema.makeFilter(({ a, b }) => a === b, { title: "a === b" })` and still
 claims the output `"Expected a === b"`. It is not — **the default formatter
 reads the `expected` annotation, not `title`**, falling back to the literal
-string `<filter>` (`SchemaIssue.ts:1375-1381`). Probed: the `title`
+string `<filter>` (`SchemaIssue.ts:1377-1383`). Probed: the `title`
 spelling prints `"Expected <filter>"` from both the `make` path and
 `decodeUnknownSync`. The example above is corrected to `expected`. Returning a
 `string` from the predicate is the other way to get a real message and needs no

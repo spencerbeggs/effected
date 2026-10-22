@@ -58,7 +58,7 @@ is `Param.Boolean(Param.flagKind, name)` with no fallback (`cli/Flag.ts:80`;
 its own docstring at `:72` says *"Omission fails unless the flag is made
 optional or given a fallback"*), and the shared flag parser fails with
 `CliError.MissingOption({ option: name })` the moment the flag is absent from
-the parsed args (`cli/Param.ts:2052`) — the primitive's type never
+the parsed args (`cli/Param.ts:2126`) — the primitive's type never
 enters into it. So a bare `Flag.Boolean("force")` turns every invocation that
 *omits* `--force` into a usage error, which is the opposite of what a
 boolean flag is for. Spell the default:
@@ -77,6 +77,38 @@ default and shipped a CLI whose happy path — no flags at all — failed with
 `MissingOption`. The test that pins it is the one that runs the command with
 **no** flags and expects success.
 
+A boolean flag also accepts `--no-<name>`. `Flag.withNegation("skip-cache")`
+renames that form (`--skip-cache` sets the flag `false`, and `--no-cache` is
+then an unrecognized flag), and `Flag.withoutNegation` removes it; both apply
+to parsing and to shell completions.
+
+## Rules across flags — `Command.validate`, not the handler
+
+A rule that spans parsed inputs, such as two mutually exclusive flags, belongs
+in `Command.validate`, which runs on the parsed input before the handler. A
+failure is a `CliError.ValidationError`, reported like a parse error: the
+command fails with `ShowHelp` carrying the message, so the help is shown and
+the run exits as a usage error.
+
+~~~ts
+import { Effect } from "effect"
+import { CliError, Command, Flag } from "effect/cli"
+
+const download = Command.make("download", {
+  useApi: Flag.Boolean("use-api").pipe(Flag.withDefault(false)),
+  useDocker: Flag.Boolean("use-docker").pipe(Flag.withDefault(false)),
+}, () => Effect.void).pipe(
+  Command.validate(({ useApi, useDocker }) =>
+    useApi && useDocker
+      ? Effect.fail(new CliError.ValidationError({ message: "--use-api and --use-docker are mutually exclusive" }))
+      : Effect.void),
+)
+// ["--use-api", "--use-docker"] → fails ShowHelp: "--use-api and --use-docker are mutually exclusive"
+~~~
+
+A check inside the handler runs after the command has started, and its failure
+is the handler's error, not a usage error.
+
 ## `Command.Environment` — the fact that decides your package tier
 
 ~~~ts
@@ -92,8 +124,8 @@ almost none of them for Node:**
 
 | service | what core actually ships |
 | --- | --- |
-| `Path` | `Path.layer` — a real implementation (posix), `Path.ts:918` |
-| `FileSystem` | only `FileSystem.layerNoop(partial)` — a deny-by-default **stub factory** (`FileSystem.ts:777`); never use it as a test double: a test's `FileSystem` is `@effected/memfs`'s `MemoryFileSystem.layer` |
+| `Path` | `Path.layer` — a real implementation (posix), `Path.ts:926` |
+| `FileSystem` | only `FileSystem.layerNoop(partial)` — a deny-by-default **stub factory** (`FileSystem.ts:787`); never use it as a test double: a test's `FileSystem` is `@effected/memfs`'s `MemoryFileSystem.layer` |
 | `Stdio` | `Stdio.layerTest(partial)` — **test-only**, by its name and its shape (`Stdio.ts:166`) |
 | `Terminal` | **no layer at all** — `Terminal.ts` declares no `layer` export |
 | `ChildProcessSpawner` | the contract and the `ChildProcess` command values, but **no layer** — see below |
@@ -117,7 +149,7 @@ modules (`process/index.ts`):
 
 | you want | v4 |
 | --- | --- |
-| `@effect/platform/Command` (build a command value) | **`effect/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:632,723,758,824,864`). **Warning:** `setEnv` never sets `extendEnv` — it merges into `options.env` and leaves `extendEnv` untouched, so the child's env is ONLY what you pass; it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`, where `extendEnv` is a real option at `ChildProcess.ts:426`) |
+| `@effect/platform/Command` (build a command value) | **`effect/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:633,724,759,825,865`). **Warning:** `setEnv` never sets `extendEnv` — it merges into `options.env` and leaves `extendEnv` untouched, so the child's env is ONLY what you pass; it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`, where `extendEnv` is a real option at `ChildProcess.ts:427`) |
 | `@effect/platform/CommandExecutor` (run it) | **`effect/process` `ChildProcessSpawner`** — a `Context.Service` with `spawn` / `exitCode` / `string` / `lines` / `streamString` / `streamLines` (`ChildProcessSpawner.ts:262`) |
 
 > **Do not hand-roll a `node:child_process` layer or a parallel

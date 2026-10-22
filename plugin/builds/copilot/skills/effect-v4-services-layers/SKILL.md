@@ -498,7 +498,12 @@ license to skip composition. Compose explicitly, provide once.
 independent resource pools):
 
 - `Layer.fresh(layer)` — always builds with a fresh memo map, bypassing the
-  shared cache.
+  shared cache. It isolates only where it wraps: composed layers
+  (`Layer.provide`, `provideMerge`, `mergeAll`) are memoized by identity too,
+  so a composed `const` referenced twice is built once, and a `Layer.fresh`
+  dependency **inside** it is shared with it (probed: 1 build, where
+  `Layer.mergeAll(composed, Layer.fresh(composed))` builds 2). Wrap the
+  composed layer, not its dependency, when each site needs its own copy.
 - `Effect.provide(layer, { local: true })` — builds the layer and its
   sublayers from a **local** memo map, isolated from other provides.
 

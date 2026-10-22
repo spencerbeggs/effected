@@ -12,7 +12,7 @@ Everything follows from that one fact:
 
 `CliError.UserError` is the general-purpose failure for "the user asked for
 something invalid". The full `CliError` union is nine members
-(`CliError.ts:78`): `UnrecognizedOption`, `DuplicateOption`, `MissingOption`,
+(`CliError.ts:79`): `UnrecognizedOption`, `DuplicateOption`, `MissingOption`,
 `MissingArgument`, `UnexpectedArgument`, `InvalidValue`, `UnknownSubcommand`,
 `ShowHelp`, `UserError`. An exhaustive `catchTags` or `Match` that omits any
 one of these nine will not compile — write the exhaustive check against the

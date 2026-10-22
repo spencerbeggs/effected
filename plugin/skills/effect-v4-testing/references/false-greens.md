@@ -235,15 +235,15 @@ read" passes against a code path that was only *described*, never run.
 
 **Not one way — and two blanket statements circulate, and both are wrong**:
 "every unstubbed member fails typed `NotFound`" and "every unstubbed member
-dies". `layerNoop` at `FileSystem.ts:777` is
-`Layer.succeed(FileSystem)(makeNoop(fileSystem))`, and `makeNoop` (`:647`)
+dies". `layerNoop` at `FileSystem.ts:787` is
+`Layer.succeed(FileSystem)(makeNoop(fileSystem))`, and `makeNoop` (`:654`)
 splits its members:
 
 | members | behavior | absorbable by `Effect.catch`? |
 | --- | --- | --- |
-| `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `notFound(<method>, path)` — a `PlatformError` | **yes** |
-| `exists` → `false` (`:668`), `remove` → `Effect.void` (`:707`) | silent success | n/a — never fails |
-| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:674`–`:681`) | `Effect.die("not implemented")` — a **defect** | **no** |
+| `readFile`, `readFileString`, `readDirectory`, `stat`, `lstat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `notFound(<method>, path)` — a `PlatformError` | **yes** |
+| `exists` → `false` (`:675`), `remove` → `Effect.void` (`:717`) | silent success | n/a — never fails |
+| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:684`–`:697`) | `Effect.die("not implemented")` — a **defect** | **no** |
 
 Three distinct false greens, one per row:
 
@@ -277,7 +277,7 @@ and `MemoryFileSystem.die(defect)` for row three. A `FileSystem` double is `@eff
 
 Companion fact, same tier: **`FileSystem.readFileString` strips a leading BOM.**
 It is `impl.readFile(path)` piped through `new TextDecoder(encoding).decode(_)`
-(`FileSystem.ts:518-529`, the decode itself at `:521`), and `TextDecoder`
+(`FileSystem.ts:525-536`, the decode itself at `:528`), and `TextDecoder`
 defaults to `ignoreBOM: false`,
 which consumes the mark. "Read the file as a string" therefore looks lossless
 and is not. A round-trip test that reads with `readFileString` and writes back
@@ -495,15 +495,15 @@ Three sharp edges, all clock-adjacent:
   `it.scoped` — but you do **not** need one. `it.effect` already runs its body
   through `Effect.scoped`:
   `makeTester<Scope.Scope>(flow(Effect.scoped, Effect.provide(TestEnv)), it)`
-  (`@effect/vitest` `internal/internal.ts:386`), and its type is
+  (`@effect/vitest` `internal/internal.ts:451`), and its type is
   `Tester<R | Scope.Scope>` (`index.ts:140`), so a `Scope` requirement is
   satisfied by the runner. An explicit `Effect.scoped` in the pipeline is
   harmless — it just closes the scope earlier, before the test ends — but it is
   belt-and-braces, not a requirement.
-- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8788`) /
-  `forkIn` (`:8832`) / `forkScoped` (`:8876`) / `forkDetach` (`:8917`). And
+- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8929`) /
+  `forkIn` (`:8973`) / `forkScoped` (`:9017`) / `forkDetach` (`:9063`). And
   `Stream.fromQueue` takes a `Queue.Dequeue`
-  (`Stream.ts:1185`), so it rejects a `Subscription`.
+  (`Stream.ts:1190`), so it rejects a `Subscription`.
 
 The clock-free drain: subscribe, run the operation, then `takeUpTo`.
 

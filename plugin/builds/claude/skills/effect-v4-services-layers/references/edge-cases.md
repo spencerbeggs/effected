@@ -77,7 +77,7 @@ provide them per call — do not reach for a Layer:
 
 - `FileSystem.makeNoop({ exists, readFileString })` overrides only the ops the
   pipeline uses; every non-overridden member fails **typed `NotFound`** (core
-  behavior, `FileSystem.ts:834`) — document that asymmetry if your hand-rolled
+  behavior, `FileSystem.ts:844`) — document that asymmetry if your hand-rolled
   counterparts throw defects instead.
 - Core `Path` has **no `makeNoop`/`layerNoop` analog** (`Path.ts` exports
   `layer` at `:873` and nothing noop-shaped) — hand-roll a

@@ -85,8 +85,8 @@ member) so the instance type advertises it.
 ### `disableChecks` skips checks, not validation — and buys no speed
 
 `MakeOptions.disableChecks` reads like an escape hatch from validation. Its own
-docstring says "skip validation when you trust the data" (`Schema.ts:122`) and
-"skips constructor validation" (`Schema.ts:15369`). Both are misleading, and the
+docstring says "skip validation when you trust the data" (`Schema.ts:124`) and
+"skips constructor validation" (`Schema.ts:15540`). Both are misleading, and the
 vendored cluster code leans on it as the trusted-construction idiom
 (`cluster/EntityAddress.ts:100`, `RunnerAddress.ts:121`, `Runner.ts:140`),
 so it looks blessed. What it actually does:
@@ -192,7 +192,7 @@ Three distinct tools — pick by intent:
   ```
 
 - **Inline predicates** → `Schema.check(Schema.makeFilter(pred))`
-  (`Schema.ts:6742`). `makeFilter`'s return shape is rich —
+  (`Schema.ts:6738`). `makeFilter`'s return shape is rich —
   this is the tool for cross-field validation:
 
   | return | meaning |
@@ -221,7 +221,7 @@ Three distinct tools — pick by intent:
   `expected`, not `title`.** `makeFilter`'s second argument is an
   `Annotations.Filter`, and the formatter's `formatCheck` reads
   `check.annotations?.expected`, falling back to the literal string `<filter>`
-  (`SchemaIssue.ts:1375-1381`). Probed:
+  (`SchemaIssue.ts:1377-1383`). Probed:
 
   ```text
   makeFilter(pred, { title: "a === b" })     -> "Expected <filter>"   <-- the trap
@@ -484,7 +484,7 @@ fields must be `Equal.equals` AND have identical `Hash.hash`.
   `/^[a-f]{8}$/u` control generates. `u` is the flag the compiler supports
   (`regexp.ts:835` generates full code points under it), and it is the flag
   JSON Schema export requires: `isPattern` exports `pattern` only when the
-  flags match `/^[dg]*uy?$/` (`Schema.ts:6849`), so
+  flags match `/^[dg]*uy?$/` (`Schema.ts:6845`), so
   `Schema.String.check(Schema.isPattern(/^[a-z]+$/))` exports as a bare
   `{"type":"string"}` while decoding still enforces the regex. Rewrite
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`
