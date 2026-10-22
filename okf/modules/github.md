@@ -7,11 +7,11 @@ kind: package
 resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
-  by: "okfit/claude-code"
-  at: 2026-10-10T00:53:24Z
+  by: "claude-code/opus-5.5"
+  at: 2026-10-22T23:55:11Z
 integrity:
   generated:
-    body: d30fc9c6077fc670
+    body: 6ad9f9c6f8a333a1
 ---
 
 # @effected/github
@@ -109,7 +109,7 @@ The tree-shakability invariant is measured:
 | --- | --- | --- |
 | the client, the repo coordinate, the route vocabulary, any resource service but `RepositorySecret` | octokit core and the paginator | the JWT signer, the crypto pair |
 | the App service or any of its client layers | the above plus the JWT signer | the crypto pair |
-| the Actions OIDC verifier (`ActionsOidc`) | `@effected/jwt` and nothing else | all octokit, the crypto pair |
+| the Actions OIDC verifier (`ActionsOidc`) | `@effected/oidc` and `@effected/jwt`, nothing else | all octokit, the crypto pair |
 | the installation token store seam (`InstallationTokenStore`) | nothing but `effect` | the JWT signer, all octokit |
 | `RepositorySecret` | the above plus `tweetnacl` and `blakejs` | the JWT signer |
 | the pure classes | nothing but `effect` | all octokit |
@@ -138,8 +138,8 @@ This invariant gets a test rather than a promise:
 `packages/github/__test__/reachability.test.ts` walks the runtime import
 graph of `src` statically (type-only imports skipped, since they are erased),
 asserting the token-only client does not reach the JWT signer and that the
-App module does, that `ActionsOidc` reaches `@effected/jwt` but not
-octokit, that `InstallationTokenStore` reaches nothing but `effect` (neither
+App module does, that `ActionsOidc` reaches `@effected/oidc` and
+`@effected/jwt` but not octokit, that `InstallationTokenStore` reaches nothing but `effect` (neither
 the signer nor the App module), and that `RepositorySecret` reaches the
 crypto pair while no other resource service does. Each "does not reach"
 assertion has a positive control beside it. It constrains the import graph, not the

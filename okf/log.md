@@ -1,5 +1,9 @@
 # Log
 
+## 2026-10-22
+
+* Updated @effected/memfs
+
 ## 2026-10-21
 
 * Updated @effected/markdown

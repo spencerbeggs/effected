@@ -9,11 +9,11 @@ tags:
   - architecture
   - bundle
 generated:
-  by: "okfit/claude-code"
-  at: 2026-10-01T01:56:30Z
+  by: "claude-code/opus-5.5"
+  at: 2026-10-22T23:55:11Z
 integrity:
   generated:
-    body: f10e59943a6f5480
+    body: 087997e089e1124f
 ---
 
 # github-actions
@@ -49,11 +49,15 @@ Two consequences follow from that tier that the rest of the kit does not
 get: a direct `node:` import is sanctioned here, and the platform layer is
 composed here rather than left to the consumer, which is the point of
 `Action.run`. **Sanctioned is not unlimited** — the list is closed and
-small. `node:crypto` in `internal/digest.ts` (every `createHash`, spelled
-once, including the streamed file digest a multi-gigabyte archive needs)
-and `internal/sigv4.ts` (the HMAC core's `Crypto` does not offer — core
-exposes random primitives, UUIDs and SHA digests, no HMAC or key
-derivation); `node:child_process` and `node:fs` in `DetachedProcess.ts`
+small. `node:crypto` lives in `internal/digest.ts` alone (every
+`createHash`, spelled once), for two kinds of call site core's
+`Crypto.digest` cannot serve: the streamed file digest a
+multi-gigabyte archive needs, since no core or WebCrypto primitive
+hashes a stream, and the synchronous digests behind `CacheKey`, which
+would become effectful with `Crypto` in `R` if moved. Those are the
+recorded per-site verdicts of effected#767. HMAC is no longer here: the
+S3 blob store signs through [`crypto`](crypto.md)'s `SigV4`;
+`node:child_process` and `node:fs` in `DetachedProcess.ts`
 for the fd-level detached spawn, plus `process.kill` for reaping a bare
 pid. Everything else goes through a core contract: `ToolInstaller`
 downloads over `HttpClient` and extracts over `ChildProcessSpawner` in
@@ -213,7 +217,12 @@ The doubles worth knowing before writing a test:
   directory, since a write needs its parent.
 - `OidcTokenIssuer.layerFor(claims)` answers a **real, decodable**
   unsigned JWT built from the same claims `claims()` reports, which is
-  what makes the provenance path reachable under test.
+  what makes the provenance path reachable under test. The claims are
+  [`github`](github.md)'s `ActionsOidcClaims`, the one Actions claims
+  class (see [one Actions OIDC claims class](../decisions/actions-oidc-claims.md)),
+  and the token is read back through [`oidc`](oidc.md)'s
+  `Oidc.decodeUnverified`, which replaced this package's private JWT
+  segment codec.
 - `BlobStore.layerMemory` runs the real envelope framing, so a round trip
   through it proves metadata survives storage rather than asserting the
   double.

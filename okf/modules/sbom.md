@@ -9,11 +9,11 @@ tags:
   - architecture
   - bundle
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  by: "claude-code/opus-5.5"
+  at: 2026-10-22T23:55:11Z
 integrity:
   generated:
-    body: 66ffbc89629b5f9f
+    body: 34203a4adbba217c
 ---
 
 # sbom
@@ -80,7 +80,6 @@ the same encoder.
 | `SlsaProvenance.ts` | the typed SLSA Provenance v1 predicate and its GitHub-workflow constructor | — |
 | `SigstoreBundle.ts` | the DSSE bundle value and its media types; imports nothing from `@sigstore/*` | — |
 | `SigstoreSigner.ts` | the only module importing `@sigstore/*`: the signer service, its layers, `SigningError` | `@sigstore/*` |
-| `IdentityToken.ts` | the inverted OIDC contract and its static/test layers | — |
 
 `Sbom` and `SbomMetadataSource` are static classes with a private
 constructor, not `as const` namespace objects, because an `as const`
@@ -161,9 +160,12 @@ knowledge. `IdentityToken` is an inverted contract: OIDC token issuance
 belongs to the Actions runtime, and this package must not depend on
 [`github-actions`](github-actions.md), since that package is integrated
 with a required `@effect/platform-node` peer and taking the edge would
-drag a platform peer into every SBOM consumer. This package declares the
-narrow contract and ships `layerStatic` for a consumer that already holds
-a token; `github-actions` ships the implementing layer,
+drag a platform peer into every SBOM consumer. The contract is declared
+in [`oidc`](oidc.md), the kit's OIDC home (see
+[the oidc package scope](../decisions/oidc-package-scope.md)), whose
+`IdentityToken.ts` imports nothing but `effect`, so this package links
+no JWT code by requiring it. `layerStatic` serves a consumer that already
+holds a token; `github-actions` ships the implementing layer,
 `ActionsIdentityToken` (see
 [`actions-attestation`](../interfaces/actions-attestation.md)).
 

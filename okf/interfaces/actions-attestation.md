@@ -9,8 +9,8 @@ tags:
   - architecture
   - security
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  by: "claude-code/opus-5.5"
+  at: 2026-10-22T23:55:11Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:24.796Z
@@ -18,7 +18,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: e9e837ea5565f667
+    body: 56c02fde70796c36
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -30,8 +30,9 @@ integrity:
 ## Contract
 
 Three modules: the runner's OIDC token issuer, and two adapters —
-`ActionsIdentityToken` and `ActionsProvenance` — that close
-[`sbom`](../modules/sbom.md)'s inverted contracts. What lives here is the
+`ActionsIdentityToken` and `ActionsProvenance` — that close the inverted
+contracts [`sbom`](../modules/sbom.md) requires: the identity contract
+declared in [`oidc`](../modules/oidc.md), and the provenance source. What lives here is the
 runner-shaped half only: reading the token-request variables a workflow
 grants itself with `id-token: write`, and handing the resulting identity
 and workflow facts to a package that must not know it is running inside an
@@ -49,7 +50,10 @@ Lives here because it reads the runner's token-request variables, which
 exist only when a workflow declares `id-token: write`. Its surface is the
 token and the token's decoded claims — a typed value, not a nullable
 hand-parse at the call site, which is what keeps the provenance path
-testable with a synthetic decodable double.
+testable with a synthetic decodable double. The claims are
+[`github`](../modules/github.md)'s `ActionsOidcClaims`, decoded through
+`Oidc.decodeUnverified` (see
+[one Actions OIDC claims class](../decisions/actions-oidc-claims.md)).
 
 The decode deliberately does **not** verify the JWT signature: the token
 comes from the runner's own token-service endpoint over TLS, so the
@@ -70,8 +74,9 @@ a token.
 
 The projection from the runner's OIDC claims to `sbom`'s SLSA provenance
 predicate. The predicate constructor is total and takes camelCase fields;
-the only input a workflow holds is the runner's snake_case claims, and the
-rename is eleven all-string fields, so transposing the repository id and
+the claims arrive as `ActionsOidcClaims`, camelCase with integer ids, so
+the projection renders the ids back to the strings the predicate carries.
+The fields are close cousins, so transposing the repository id and
 the repository-owner id compiles, typechecks and produces a validly
 signed attestation asserting the wrong provenance — owning that rename
 once is the module's whole point.
