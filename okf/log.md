@@ -3,6 +3,18 @@
 ## 2026-10-22
 
 * Updated @effected/memfs
+* Added @effected/crypto
+* Updated @effected/github
+* Added @effected/oidc
+* Added @effected/oidc is a thin package that owns the IdentityToken contract
+* Added @effected/webhooks
+* Added ConstantTime.equal is best-effort constant time
+* Added HMAC comes from WebCrypto, digests from core Crypto required in R
+* Added One GitHub Actions OIDC claims class, ActionsOidcClaims in @effected/github
+* Updated actions-attestation
+* Updated github-actions
+* Updated npm
+* Updated sbom
 
 ## 2026-10-21
 

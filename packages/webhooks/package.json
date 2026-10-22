@@ -1,0 +1,61 @@
+{
+	"name": "@effected/webhooks",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Inbound webhook signature verification for Effect v4: Standard Webhooks, GitHub, Stripe, Sanity, HMAC header and shared-secret presets.",
+	"keywords": ["webhooks", "signature", "hmac", "svix", "standard-webhooks", "stripe", "github", "effect", "effected"],
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/webhooks#readme",
+	"bugs": {
+		"url": "https://github.com/spencerbeggs/effected/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/spencerbeggs/effected.git",
+		"directory": "packages/webhooks"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "C. Spencer Beggs",
+		"email": "spencer@beggs.codes",
+		"url": "https://spencerbeg.gs"
+	},
+	"sideEffects": false,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build:dev": "node savvy.build.ts --target dev",
+		"build:prod": "node savvy.build.ts --target prod",
+		"prepare": "turbo run build:dev",
+		"types:check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@effected/crypto": "workspace:^"
+	},
+	"devDependencies": {
+		"@effect/platform-node": "catalog:effect",
+		"@effect/vitest": "catalog:effect",
+		"@savvy-web/bundler": "^2.5.4",
+		"@types/node": "catalog:build",
+		"effect": "catalog:effect",
+		"stripe": "^23.0.0",
+		"svix": "^2.8.0",
+		"typescript": "catalog:build"
+	},
+	"peerDependencies": {
+		"effect": "catalog:effect:peers"
+	},
+	"engines": {
+		"node": ">=24.11.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"directory": "dist/dev/pkg",
+		"linkDirectory": true,
+		"targets": {
+			"npm": true
+		}
+	}
+}
