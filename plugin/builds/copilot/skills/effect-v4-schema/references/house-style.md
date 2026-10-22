@@ -277,7 +277,7 @@ const BooleanFromString = Schema.Literals(["on", "off"]).pipe(
 
 Fallible transform — **both spellings are valid**
 (`SchemaTransformation.transformEffect` at `SchemaTransformation.ts:389`,
-`SchemaGetter.transformEffect` at `SchemaGetter.ts:761`, and `SchemaGetter.String`
+`SchemaGetter.transformEffect` at `SchemaGetter.ts:763`, and `SchemaGetter.String`
 at `:919`); know both, because both spellings occur in the wild:
 
 ```ts
