@@ -100,9 +100,13 @@ export class Secret {
 	 * Declassify one secret for an in-process use that needs the raw bytes.
 	 *
 	 * @remarks
-	 * Request signing is the case this exists for: an HMAC cannot be computed
-	 * over a `Redacted`, so a signing key has to become a string somewhere, and
-	 * the point of this module is that "somewhere" is here and nowhere else.
+	 * For a consumer that must hand the raw key to code taking a plain string,
+	 * such as a third-party signing library. A signer that takes a `Redacted`
+	 * needs no declassification at all: `@effected/crypto`'s `SigV4` and `Hmac`
+	 * unwrap the key only where they compute, so a caller of those (this
+	 * package's own S3 `BlobStore` is one) registers the value with
+	 * {@link Secret.mask} and passes the `Redacted` on. No module in this
+	 * package calls this member any more.
 	 *
 	 * Signing named the member; it does not gate it. **Any in-process use that
 	 * needs the raw value without writing it to a runner file is this
@@ -127,9 +131,9 @@ export class Secret {
 	 * `::add-mask::` command only masks when the runner parses this process's
 	 * stdout; a detached worker's stdout is a log file no runner parses, so
 	 * there the command masks nothing *and* spells the plaintext into the log.
-	 * A worker that signs (an S3-style `BlobStore` is the canonical case) must compose
-	 * `ActionOutputs.layerDetached`, under which this member still returns the
-	 * raw key for the HMAC but the mask is a documented no-op; the masking
+	 * A worker that signs must compose `ActionOutputs.layerDetached`, under
+	 * which this member still returns the raw key but the mask is a
+	 * documented no-op; the masking
 	 * itself is the **parent's** job, done before the spawn via
 	 * {@link Secret.forChildEnv} under the real layer.
 	 */

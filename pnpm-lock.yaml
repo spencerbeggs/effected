@@ -605,6 +605,9 @@ importers:
       '@azure/storage-blob':
         specifier: ^12.33.0
         version: 12.34.0(supports-color@8.1.1)
+      '@effected/crypto':
+        specifier: workspace:^
+        version: link:../crypto/dist/dev/pkg
       '@effected/github':
         specifier: workspace:^
         version: link:../github/dist/dev/pkg

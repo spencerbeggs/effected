@@ -171,7 +171,9 @@ App module DOES reach the JWT signer*.
 The temptation once a structural test is in place is to widen it — allow this
 one file to call the forbidden thing. Prefer growing the seam a named entry
 that satisfies the invariant honestly: when `@effected/github-actions` needed a
-raw secret for HMAC signing, `Secret.forSigning` masks at layer construction
-(once per credential, itself test-asserted) rather than taking an exemption
-from the scan. The structural test then keeps covering every path nobody
+raw secret for HMAC signing, it grew `Secret.forSigning`, which masks at layer
+construction (once per credential, itself test-asserted), rather than taking an
+exemption from the scan. Once signing moved to a `Redacted`-taking signer, the
+store switched to the register-only `Secret.mask`, and the seam held without
+change. The structural test then keeps covering every path nobody
 audited.

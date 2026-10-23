@@ -33,6 +33,7 @@
 	},
 	"dependencies": {
 		"@azure/storage-blob": "^12.33.0",
+		"@effected/crypto": "workspace:^",
 		"@effected/github": "workspace:^",
 		"@effected/github-commands": "workspace:^",
 		"@effected/glob": "workspace:^",

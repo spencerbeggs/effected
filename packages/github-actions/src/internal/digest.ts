@@ -1,11 +1,13 @@
 // The sanctioned `node:crypto` digests, spelled once.
 //
-// Core `Crypto` offers one-shot SHA digests over bytes already in memory, but
-// no HMAC and no incremental hasher, so this package's licence for a `node:`
-// import covers hashing. Keeping every
-// `createHash` behind this module is what makes that licence auditable in one
-// place rather than six, and keeps the streamed file digest — the shape a
-// multi-gigabyte toolchain archive needs — from being re-derived per caller.
+// This module is the package's only `node:crypto` import, for two kinds of call
+// site core `Crypto.digest` cannot serve (the recorded verdicts of #767): the
+// streamed `digestFile` a multi-gigabyte toolchain archive needs, since nothing
+// in core or WebCrypto hashes a stream, and the synchronous digests behind
+// `CacheKey`, which moving onto core `Crypto` would make effectful with
+// `Crypto` in `R`. HMAC is not here: the S3 blob store signs through
+// `@effected/crypto`'s `SigV4`. Keeping every `createHash` behind this module
+// makes the licence auditable in one place.
 
 import { createHash } from "node:crypto";
 import type { FileSystem, PlatformError } from "effect";

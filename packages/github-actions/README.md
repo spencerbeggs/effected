@@ -309,7 +309,7 @@ const TestOutputs = ActionOutputs.layerTest({
 - `CheckState` / `projectCheckState` — the kit's check vocabulary, wider than GitHub's conclusions, and its projection onto the check-run wire form.
 - `CheckDocument` — the debounced check-to-document reconciler: report states as they change, and one write lands carrying the final one. `stamp` plus a readable sink lets two runs share one document, dropping a strictly older run's pass instead of clobbering the newer one; `flush` reports `written`, `unchanged` or `stale`.
 - `ToolInstaller` — download, extract and cache a toolchain in the runner's tool cache, with no `@actions/tool-cache` dependency; `ToolInstallerError` always names its `subject`.
-- `BlobStore` — durable `get`/`put`/`has` over `StoredBlob<A>` values (bytes plus caller-schema metadata; the type was named `Blob<A>` before, which collided with the global), backed by `layerS3` (SigV4-signed, no `@aws-sdk/*` dependency) or `GitHubCacheBlobStore.layer` (the runner's own cache); `layerMemory` runs the real envelope framing for tests.
+- `BlobStore` — durable `get`/`put`/`has` over `StoredBlob<A>` values (bytes plus caller-schema metadata; the type was named `Blob<A>` before, which collided with the global), backed by `layerS3` (SigV4-signed through `@effected/crypto`, so it needs core `Crypto` in `R`; no `@aws-sdk/*` dependency) or `GitHubCacheBlobStore.layer` (the runner's own cache); `layerMemory` runs the real envelope framing for tests.
 
 ## License
 

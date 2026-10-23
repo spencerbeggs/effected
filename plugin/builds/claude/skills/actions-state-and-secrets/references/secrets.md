@@ -28,15 +28,18 @@ Four members, one seam:
   `Secret.forChildEnv({ VAR_NAME: theSecret })`, the same call with a
   one-entry record, not a signal that a narrower member is missing. Reach
   for `forSigning` only when the caller genuinely needs the raw string
-  in-process (an HMAC, a signature) rather than an environment entry to
-  hand a child.
+  in-process (a library that takes a plain-string key) rather than an
+  environment entry to hand a child.
 - **`forRunnerFile`** — declassify one secret for `GITHUB_STATE` or
   `GITHUB_OUTPUT`. Both are plaintext by GitHub's protocol regardless; the
   mask is the only defense available.
 - **`forSigning`** — declassify one secret for an in-process use that
-  needs raw bytes, e.g. an HMAC. It is `forRunnerFile` under a different
-  name — same mask-then-return contract, distinct only in *why* the caller
-  needed a string.
+  needs the raw string, e.g. a third-party signer taking a plain key. It is
+  `forRunnerFile` under a different name — same mask-then-return contract,
+  distinct only in *why* the caller needed a string. A signer that takes a
+  `Redacted` (`@effected/crypto`'s `SigV4` and `Hmac`) needs no
+  declassification: `mask` the value and pass the `Redacted` on, as
+  `BlobStore.layerS3` does.
 - **`adopt`** — the far side of a handoff: re-wrap a plaintext environment
   variable as `Redacted` via `Config.Redacted`. A `Config`, so a missing or
   empty handoff is an honest `ConfigError` naming the variable, rather than

@@ -13,7 +13,7 @@
 // `"sideEffects": false` (asserted below) plus the module-per-file output the
 // builder emits. What it does prove is the part we control: no edge exists.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
@@ -105,7 +105,6 @@ const LIGHT_MODULES = [
 	"internal/fsProbe.ts",
 	"internal/runner.ts",
 	"internal/runnerFile.ts",
-	"internal/sigv4.ts",
 	"internal/spawn.ts",
 	"internal/twirp.ts",
 	"internal/unstubbed.ts",
@@ -159,8 +158,9 @@ describe("bundle reachability", () => {
 			"effect",
 		]);
 		assert.deepStrictEqual([...reachableBareImports("BlobEnvelope.ts")].sort(), ["effect"]);
-		// `node:crypto` is the sanctioned import, and it is here because core
-		// `Crypto` is RNG-only at beta.101 — no digest, no HMAC.
+		// `node:crypto` arrives through `internal/digest.ts`, its one sanctioned
+		// home: `CacheKey`'s digests are synchronous, and moving them onto core
+		// `Crypto.digest` would make them effectful with `Crypto` in `R`.
 		// `@effected/walker` is the file walker under `matchingFiles`; its own
 		// graph is `effect` and `@effected/glob`, both already here.
 		assert.deepStrictEqual([...reachableBareImports("CacheKey.ts")].sort(), [
@@ -170,12 +170,13 @@ describe("bundle reachability", () => {
 			"effect/encoding/Hex",
 			"node:crypto",
 		]);
+		// SigV4 is `@effected/crypto`'s (HMAC over WebCrypto, digests through core
+		// `Crypto` in `R`), so the S3 store reaches no `node:crypto` at all.
 		assert.deepStrictEqual([...reachableBareImports("BlobStore.ts")].sort(), [
+			"@effected/crypto",
 			"@effected/github-commands",
 			"effect",
-			"effect/encoding/Hex",
 			"effect/http",
-			"node:crypto",
 		]);
 		// The workflow-command protocol is not in this package any more: it lives in the pure
 		// `@effected/github-commands` (which imports nothing, not even `effect`), and this package takes it as a peer. The
@@ -312,6 +313,20 @@ describe("bundle reachability", () => {
 			reachableBareImports("ActionsIdentityToken.ts").has("@effected/sbom"),
 			"ActionsIdentityToken reaches @effected/sbom: the identity contract is oidc's",
 		);
+	});
+
+	it("node:crypto is imported by internal/digest.ts and nothing else", () => {
+		// The recorded verdicts of #767: `node:crypto` stays for the streamed
+		// `digestFile` (nothing in core or WebCrypto hashes a stream) and for the
+		// synchronous `CacheKey` digests (core `Crypto.digest` would make them
+		// effectful). HMAC moved to `@effected/crypto`. Every `createHash` lives
+		// in one module so that licence is auditable in one place.
+		const importers = (readdirSync(SRC, { recursive: true }) as Array<string>)
+			.filter((file) => file.endsWith(".ts"))
+			.filter((file) => runtimeSpecifiers(readFileSync(resolve(SRC, file), "utf8")).includes("node:crypto"))
+			.map((file) => file.split("\\").join("/"))
+			.sort();
+		assert.deepStrictEqual(importers, ["internal/digest.ts"]);
 	});
 
 	it("the entry point reaches Azure, and that is correct", () => {

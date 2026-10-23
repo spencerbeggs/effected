@@ -10,11 +10,11 @@ sources:
     resource: ../../packages/npm/src/index.ts
   - id: commands-local-exec
     resource: ../../packages/commands/src/LocalExec.ts
-  - id: sbom-identity-token
-    resource: ../../packages/sbom/src/IdentityToken.ts
+  - id: oidc-identity-token
+    resource: ../../packages/oidc/src/IdentityToken.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T00:26:52Z
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
@@ -22,7 +22,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 4a5c0ef34e155a7b
+    body: 3cbee52bf2795ff9
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -61,7 +61,8 @@ This pattern now runs three times across the kit:
   `@effected/workspaces` ships that layer too, for the same reason: only
   `workspaces` knows how to resolve a locally installed tool inside a
   discovered monorepo.
-- `@effected/sbom` declares the `IdentityToken` contract;[^sbom-identity-token]
+- `@effected/oidc` declares the `IdentityToken` contract that
+  `@effected/sbom`'s signer needs;[^oidc-identity-token]
   `@effected/github-actions` ships the layer that implements it against a
   live OIDC token issuer, because only the Actions runtime has a runner
   to ask.
@@ -100,8 +101,8 @@ it at the higher one, never invert that.
 [^commands-local-exec]: `packages/commands/src/LocalExec.ts:13` — "the
     `@effected/workspaces` contributes, through `LocalExec`" — the
     contract `commands` declares and `workspaces` implements.
-[^sbom-identity-token]: `packages/sbom/src/IdentityToken.ts:13-14` — "…
+[^oidc-identity-token]: `packages/oidc/src/IdentityToken.ts:11-13` — "…
     implements it (`ActionsIdentityToken.layer`, over its
     `OidcTokenIssuer`), and a consumer already holding a token uses
-    `IdentityToken.layerStatic`" — the contract `sbom` declares and
-    `github-actions` implements.
+    `IdentityToken.layerStatic`" — the contract `oidc` declares,
+    `github-actions` implements and `sbom` consumes.

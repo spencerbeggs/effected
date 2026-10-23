@@ -1,9 +1,10 @@
+import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer, Option, Redacted, Schema } from "effect";
-import { FetchHttpClient } from "effect/http";
+import { Crypto, Effect, Layer, Option, PlatformError, Redacted, Schema } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/http";
+import { TestClock } from "effect/testing";
 import type { S3Config } from "../src/index.js";
 import { ActionOutputs, BlobStore, BlobStoreError, NotABlobEnvelopeError } from "../src/index.js";
-import { canonicalize, digestHex, sign, signingKey, uriEncode } from "../src/internal/sigv4.js";
 
 class Meta extends Schema.Class<Meta>("Meta")({ tag: Schema.String, durationMs: Schema.Number }) {}
 
@@ -28,99 +29,38 @@ const recordingOutputs = () => {
 	return { masked, layer };
 };
 
-const s3 = (fake: typeof globalThis.fetch, config: S3Config = CONFIG, outputs = recordingOutputs()) =>
+// The signing algorithm itself is `@effected/crypto`'s, pinned there against
+// AWS's published vectors. What is tested here is the store's use of it: what
+// it signs, with which clock, and what it sends.
+const s3 = (
+	fake: typeof globalThis.fetch,
+	config: S3Config = CONFIG,
+	outputs = recordingOutputs(),
+	crypto: Layer.Layer<Crypto.Crypto> = NodeCrypto.layer,
+) =>
 	BlobStore.layerS3(config).pipe(
 		Layer.provide(
 			Layer.mergeAll(
 				outputs.layer,
+				crypto,
 				FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fake))),
 			),
 		),
 	);
 
-describe("SigV4", () => {
-	// The oracle is AWS's own published examples, not this implementation's
-	// output. That distinction was load-bearing: the first draft was checked
-	// against a remembered signature constant that turned out to belong to a
-	// different example, and only reproducing a value AWS publishes settled which
-	// side was wrong.
-	it("reproduces AWS's documented canonical request for GET Object", () => {
-		const { canonicalRequest } = canonicalize(
-			{
-				method: "GET",
-				// AWS's example is virtual-host addressed (the bucket is in the host),
-				// so the canonical path is just the key. The signer is agnostic — it
-				// signs whatever path it is given, which is what lets this same code
-				// serve the path-style addressing R2 and MinIO need.
-				path: "test.txt",
-				host: "examplebucket.s3.amazonaws.com",
-				headers: { range: "bytes=0-9" },
-				body: new Uint8Array(0),
-				now: new Date("2013-05-24T00:00:00.000Z"),
-			},
-			{
-				accessKeyId: "AKIAIOSFODNN7EXAMPLE",
-				secretAccessKey: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-				region: "us-east-1",
-				service: "s3",
-			},
-		);
-		// AWS documents this exact hash for the GET Object example.
-		assert.strictEqual(digestHex(canonicalRequest), "7344ae5b7ee6c3e7e6b0fe0640412a37625d1fbfff95c48bbb2dc43964946972");
-	});
-
-	it("reproduces AWS's documented signing-key derivation", () => {
-		const key = signingKey("wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY", "20120215", "us-east-1", "iam");
-		assert.strictEqual(
-			Buffer.from(key).toString("hex"),
-			"f4780e2d9f65fa895f9c67b32ce1baf0b0d8a43505a000a1a9e090d414db404d",
-		);
-	});
-
-	it("encodes the characters encodeURIComponent leaves alone", () => {
-		// `!'()*` are unreserved to encodeURIComponent and reserved to AWS. A key
-		// containing one signs one string and requests another, and the server says
-		// only `SignatureDoesNotMatch`.
-		assert.strictEqual(uriEncode("a!b'c(d)e*f"), "a%21b%27c%28d%29e%2Af");
-		assert.strictEqual(uriEncode("plain-file_name.tar~gz"), "plain-file_name.tar~gz");
-	});
-
-	it("signs the headers it returns, so nothing is sent unsigned", () => {
-		const headers = sign(
-			{
-				method: "PUT",
-				path: "bucket/key",
-				host: "example.test",
-				headers: {},
-				body: new Uint8Array([1, 2, 3]),
-				now: new Date("2024-01-01T00:00:00.000Z"),
-			},
-			{ accessKeyId: "AK", secretAccessKey: "SK", region: "us-east-1", service: "s3", sessionToken: "ST" },
-		);
-		const signedHeaders = /SignedHeaders=([^,]+)/.exec(headers.authorization ?? "")?.[1]?.split(";") ?? [];
-		const sent = Object.keys(headers)
-			.filter((name) => name !== "authorization")
-			.sort();
-		assert.deepStrictEqual([...signedHeaders].sort(), sent, "every header sent must be a header signed");
-		assert.include(signedHeaders, "x-amz-security-token", "a session token must be signed, not merely sent");
-	});
-
-	it("sorts canonical headers regardless of insertion order", () => {
-		const request = {
-			method: "GET" as const,
-			path: "bucket/key",
-			host: "example.test",
-			body: new Uint8Array(0),
-			now: new Date("2024-01-01T00:00:00.000Z"),
-		};
-		const credentials = { accessKeyId: "AK", secretAccessKey: "SK", region: "us-east-1", service: "s3" };
-		const first = canonicalize({ ...request, headers: { "z-last": "1", "a-first": "2" } }, credentials);
-		const second = canonicalize({ ...request, headers: { "a-first": "2", "z-last": "1" } }, credentials);
-		// The signature covers this exact string, so an order-dependent canonical
-		// form produces a valid-looking signature the server rejects.
-		assert.strictEqual(first.canonicalRequest, second.canonicalRequest);
-	});
-});
+/** Every request the fake store saw: url, method and headers, names lower-cased. */
+const recordingFetch = () => {
+	const seen: Array<{ url: string; method: string; headers: Record<string, string> }> = [];
+	const fake: typeof globalThis.fetch = async (input, init) => {
+		seen.push({
+			url: String(input),
+			method: init?.method ?? "GET",
+			headers: Object.fromEntries(new Headers(init?.headers).entries()),
+		});
+		return new Response(null, { status: 200 });
+	};
+	return { seen, fake };
+};
 
 describe("BlobStore", () => {
 	describe("the S3 backend", () => {
@@ -259,6 +199,87 @@ describe("BlobStore", () => {
 				}).pipe(Effect.provide(layer));
 				// Both credentials masked; once each, not once per request.
 				assert.deepStrictEqual(outputs.masked, ["secret-key", "session"]);
+			}),
+		);
+	});
+
+	describe("signing", () => {
+		it.effect("sends exactly the headers it signed, session token included", () =>
+			Effect.gen(function* () {
+				const { seen, fake } = recordingFetch();
+				yield* Effect.flatMap(BlobStore, (store) =>
+					store.put("k", { metadata: Meta.make({ tag: "x", durationMs: 1 }), body: new Uint8Array([7]) }, Meta),
+				).pipe(Effect.provide(s3(fake, { ...CONFIG, sessionToken: Redacted.make("session") })));
+				const headers = seen[0]?.headers ?? {};
+				const signed = /SignedHeaders=([^,]+)/.exec(headers.authorization ?? "")?.[1]?.split(";") ?? [];
+				// The HTTP client adds headers after signing (`content-type` for the
+				// body, trace propagation), which SigV4 permits unsigned. What it does
+				// not permit is an unsigned `host` or `x-amz-*`, or a signed header
+				// that is never sent.
+				const mustSign = Object.keys(headers)
+					.filter((name) => name === "host" || name.startsWith("x-amz-"))
+					.sort();
+				assert.deepStrictEqual([...signed].sort(), mustSign, "every host and x-amz-* header sent must be signed");
+				for (const name of signed) assert.property(headers, name, `${name} is signed but not sent`);
+				assert.include(signed, "x-amz-security-token");
+				assert.strictEqual(headers["x-amz-security-token"], "session");
+				assert.strictEqual(headers.host, "account.r2.cloudflarestorage.com");
+			}),
+		);
+
+		it.effect("sends the store no trace context", () =>
+			Effect.gen(function* () {
+				const { seen, fake } = recordingFetch();
+				const transport = FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fake)));
+				// The control: the same client, used directly, does propagate, so the
+				// fake observes these headers when they are sent.
+				yield* HttpClient.get("https://elsewhere.example/").pipe(Effect.provide(transport));
+				assert.property(seen[0]?.headers, "traceparent");
+				assert.property(seen[0]?.headers, "b3");
+				yield* Effect.flatMap(BlobStore, (store) => store.has("k")).pipe(Effect.provide(s3(fake)));
+				assert.strictEqual(seen.length, 2);
+				assert.notProperty(seen[1]?.headers, "traceparent");
+				assert.notProperty(seen[1]?.headers, "b3");
+			}),
+		);
+
+		it.effect("signs at the Clock's instant, not the wall clock's", () =>
+			Effect.gen(function* () {
+				yield* TestClock.setTime(Date.UTC(2024, 0, 2, 3, 4, 5));
+				const { seen, fake } = recordingFetch();
+				yield* Effect.flatMap(BlobStore, (store) => store.has("k")).pipe(Effect.provide(s3(fake)));
+				assert.strictEqual(seen[0]?.headers["x-amz-date"], "20240102T030405Z");
+				assert.include(seen[0]?.headers.authorization ?? "", "Credential=AKIAEXAMPLE/20240102/auto/s3/aws4_request");
+			}),
+		);
+
+		it.effect("requests the path it signed, encoding the characters encodeURIComponent leaves alone", () =>
+			Effect.gen(function* () {
+				const { seen, fake } = recordingFetch();
+				yield* Effect.flatMap(BlobStore, (store) => store.has("it's (a)*!")).pipe(Effect.provide(s3(fake)));
+				assert.strictEqual(seen[0]?.url, "https://account.r2.cloudflarestorage.com/cache/it%27s%20%28a%29%2A%21");
+			}),
+		);
+
+		it.effect("fails as misconfigured, naming the key, when the request cannot be signed", () =>
+			Effect.gen(function* () {
+				const { seen, fake } = recordingFetch();
+				const failure = PlatformError.badArgument({ module: "Crypto", method: "digest", description: "no SHA-256" });
+				const broken = Layer.succeed(
+					Crypto.Crypto,
+					Crypto.make({ randomBytes: (size) => new Uint8Array(size), digest: () => Effect.fail(failure) }),
+				);
+				const error = yield* Effect.flip(
+					Effect.flatMap(BlobStore, (store) => store.has("k")).pipe(
+						Effect.provide(s3(fake, CONFIG, recordingOutputs(), broken)),
+					),
+				);
+				assert.instanceOf(error, BlobStoreError);
+				assert.strictEqual(error.reason, "misconfigured");
+				assert.strictEqual(error.key, "k");
+				assert.strictEqual(error.cause, failure);
+				// Nothing unsigned leaves the process.
+				assert.strictEqual(seen.length, 0);
 			}),
 		);
 	});

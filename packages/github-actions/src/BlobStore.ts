@@ -1,10 +1,10 @@
+import { SigV4 } from "@effected/crypto";
 import type { Redacted } from "effect";
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Crypto, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import type { ActionOutputs } from "./ActionOutputs.js";
 import type { BlobEnvelopeError } from "./BlobEnvelope.js";
 import { BlobEnvelope } from "./BlobEnvelope.js";
-import { sign } from "./internal/sigv4.js";
 import { unstubbed } from "./internal/unstubbed.js";
 import { Secret } from "./Secret.js";
 
@@ -17,7 +17,8 @@ export class BlobStoreError extends Schema.TaggedError<BlobStoreError>()("BlobSt
 	/**
 	 * `unreachable` — the store could not be contacted. `refused` — it answered,
 	 * unhappily; `status` says how. `misconfigured` — the layer was built with
-	 * settings the store cannot use.
+	 * settings the store cannot use, or a request could not be signed with them
+	 * (no WebCrypto in the runtime, or key material it refuses).
 	 */
 	reason: Schema.Literals(["unreachable", "refused", "misconfigured"]),
 	/** The key involved. A stable identifier, never a value. */
@@ -149,16 +150,22 @@ export class BlobStore extends Context.Service<BlobStore, BlobStoreShape>()("@ef
 	 * An S3-compatible backend, signed with SigV4.
 	 *
 	 * @remarks
-	 * No `@aws-sdk/*` dependency: signing is a specified algorithm over strings
-	 * and HMACs, and this package already has `node:crypto`. The SDK's weight is
-	 * in credential management, retries and a service catalogue none of which
-	 * this needs.
+	 * No `@aws-sdk/*` dependency: signing is `@effected/crypto`'s `SigV4`, a
+	 * specified algorithm over strings and HMACs. The SDK's weight is in
+	 * credential management, retries and a service catalogue none of which this
+	 * needs.
+	 *
+	 * Requires core `Crypto` for the SHA-256 digests signing takes, resolved
+	 * once when the layer is built; `NodeServices.layer` supplies it. A request
+	 * that cannot be signed fails as {@link BlobStoreError} `misconfigured`.
 	 *
 	 * A parameterized layer factory mints a fresh layer per call and layers
 	 * memoize by reference — bind it to a `const` rather than calling it at each
 	 * composition site.
 	 */
-	static readonly layerS3 = (config: S3Config): Layer.Layer<BlobStore, never, HttpClient.HttpClient | ActionOutputs> =>
+	static readonly layerS3 = (
+		config: S3Config,
+	): Layer.Layer<BlobStore, never, HttpClient.HttpClient | ActionOutputs | Crypto.Crypto> =>
 		Layer.effect(BlobStore, makeS3(config));
 
 	/** A test double. Unstubbed members die rather than reporting a miss. */
@@ -205,9 +212,18 @@ export class BlobStore extends Context.Service<BlobStore, BlobStoreShape>()("@ef
 
 const dies = unstubbed("BlobStore.makeTest");
 
-const makeS3 = (config: S3Config): Effect.Effect<BlobStoreShape, never, HttpClient.HttpClient | ActionOutputs> =>
+const makeS3 = (
+	config: S3Config,
+): Effect.Effect<BlobStoreShape, never, HttpClient.HttpClient | ActionOutputs | Crypto.Crypto> =>
 	Effect.gen(function* () {
-		const http = yield* HttpClient.HttpClient;
+		// Trace context stays inside the process: the store is a third party, and
+		// `b3`/`traceparent` would hand it this run's trace and span ids on every
+		// request. The client span is still recorded locally.
+		const http = HttpClient.transform(yield* HttpClient.HttpClient, (effect) =>
+			Effect.provideService(effect, HttpClient.TracerPropagationEnabled, false),
+		);
+		// Resolved once, so every member's `R` stays `never`.
+		const crypto = yield* Crypto.Crypto;
 		// Trailing slashes stripped without a regex: the anchored `/\/+$/` form
 		// backtracks quadratically on slash runs (CodeQL js/polynomial-redos).
 		let endpoint = config.endpoint ?? `https://s3.${config.region}.amazonaws.com`;
@@ -216,41 +232,60 @@ const makeS3 = (config: S3Config): Effect.Effect<BlobStoreShape, never, HttpClie
 		}
 		const host = new URL(endpoint).host;
 
-		// Declassified ONCE, here, through the package's only declassification
-		// seam — which also registers both values with the runner's log filter.
-		// Doing it per request would emit a workflow command per object.
-		const secretAccessKey = yield* Secret.forSigning(config.secretAccessKey);
-		const sessionToken = config.sessionToken === undefined ? undefined : yield* Secret.forSigning(config.sessionToken);
+		// Registered with the runner's log filter ONCE, here, and never
+		// declassified: the signer takes the `Redacted` values and unwraps them
+		// only where it signs, so no plaintext is held by this module. Masking
+		// per request would emit a workflow command per object.
+		yield* Secret.mask(config.secretAccessKey);
+		if (config.sessionToken !== undefined) {
+			yield* Secret.mask(config.sessionToken);
+		}
+		const credentials = {
+			accessKeyId: config.accessKeyId,
+			secretAccessKey: config.secretAccessKey,
+			...(config.sessionToken === undefined ? {} : { sessionToken: config.sessionToken }),
+			region: config.region,
+			service: "s3",
+		};
 
 		const objectPath = (key: string): string =>
 			[config.bucket, ...(config.prefix === undefined ? [] : [config.prefix]), key]
 				.join("/")
 				.replaceAll(/\/{2,}/g, "/");
 
-		const request = (method: string, key: string, body: Uint8Array) => {
-			const path = objectPath(key);
-			const headers = sign(
-				{ method, path, host, headers: {}, body, now: new Date() },
-				{
-					accessKeyId: config.accessKeyId,
-					secretAccessKey,
-					...(sessionToken === undefined ? {} : { sessionToken }),
-					region: config.region,
-					service: "s3",
-				},
-			);
-			return { url: `${endpoint}/${path}`, headers };
-		};
+		const request = (method: string, key: string, body: Uint8Array) =>
+			Effect.gen(function* () {
+				const path = objectPath(key);
+				// The signing instant comes from `Clock`, so `TestClock` drives it.
+				const now = yield* DateTime.now;
+				const headers = yield* SigV4.sign({ method, path, host, body, now }, credentials).pipe(
+					Effect.provideService(Crypto.Crypto, crypto),
+					Effect.mapError(
+						(cause) =>
+							new BlobStoreError({
+								reason: "misconfigured",
+								key,
+								detail: "the request could not be signed",
+								cause,
+							}),
+					),
+				);
+				// The URL carries the path exactly as it was signed: encoded per
+				// segment, `!'()*` included, or the store answers SignatureDoesNotMatch.
+				return { url: `${endpoint}/${SigV4.encodePath(path)}`, headers };
+			});
 
 		const send = (method: "GET" | "PUT" | "HEAD", key: string, body: Uint8Array) =>
-			Effect.suspend(() => {
-				const { url, headers } = request(method, key, body);
-				const base = HttpClientRequest.make(method)(url, { headers });
-				const built = body.length === 0 ? base : HttpClientRequest.bodyUint8Array(base, body);
-				return http
-					.execute(built)
-					.pipe(Effect.mapError((cause) => new BlobStoreError({ reason: "unreachable", key, cause })));
-			});
+			Effect.suspend(() =>
+				Effect.gen(function* () {
+					const { url, headers } = yield* request(method, key, body);
+					const base = HttpClientRequest.make(method)(url, { headers });
+					const built = body.length === 0 ? base : HttpClientRequest.bodyUint8Array(base, body);
+					return yield* http
+						.execute(built)
+						.pipe(Effect.mapError((cause) => new BlobStoreError({ reason: "unreachable", key, cause })));
+				}),
+			);
 
 		/** Anything outside 2xx is the store refusing; a caller reads `404` first where a miss is an answer. */
 		const accepted = (key: string, status: number): Effect.Effect<void, BlobStoreError> =>
