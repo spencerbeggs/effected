@@ -11,8 +11,10 @@
 			"@effected/schemastore",
 			"@effected/walker"
 		],
+		["@effected/oidc", "@effected/webhooks"],
 		[
 			"@effected/commands",
+			"@effected/crypto",
 			"@effected/engine",
 			"@effected/env",
 			"@effected/git",
