@@ -1,4 +1,4 @@
-import { JsonPointer, Schema } from "effect";
+import { JsonPointer, Predicate, Schema } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { KeywordFamilies } from "./KeywordFamilies.js";
 import type { StoreDocument } from "./StoreDocument.js";
@@ -80,9 +80,6 @@ interface LintContext {
 	readonly findings: Array<DocumentLintFinding>;
 }
 
-const isSchemaObject = (node: unknown): node is Record<string, unknown> =>
-	typeof node === "object" && node !== null && !Array.isArray(node);
-
 // The pointer a local `$ref` names, decoded exactly the way ajv resolves
 // it: split on `/`, then percent-decode and pointer-unescape each token.
 // That covers every token core emits (`encodeURI(escapeToken(name))`, e.g.
@@ -154,7 +151,7 @@ const describedNode = (
 	}
 	const name = pointer[1] as string;
 	const entry = Object.hasOwn(document.defs, name) ? document.defs[name] : undefined;
-	return isSchemaObject(entry) ? { node: entry, path: `/$defs/${JsonPointer.escapeToken(name)}` } : undefined;
+	return Predicate.isObject(entry) ? { node: entry, path: `/$defs/${JsonPointer.escapeToken(name)}` } : undefined;
 };
 
 // Walks one schema node, keyword-position aware: descends only into
@@ -162,7 +159,7 @@ const describedNode = (
 // schema arrays), so property NAMES and data-position values (`enum`,
 // `const`, `default`, `examples`) are never mistaken for keywords.
 const lintSchema = (node: unknown, path: string, depth: number, context: LintContext): void => {
-	if (!isSchemaObject(node)) {
+	if (!Predicate.isObject(node)) {
 		// Draft-07 boolean schemas (`true`/`false`) are legal leaves.
 		return;
 	}
@@ -198,7 +195,7 @@ const lintSchema = (node: unknown, path: string, depth: number, context: LintCon
 			case "patternProperties":
 			case "$defs":
 			case "definitions": {
-				if (isSchemaObject(value)) {
+				if (Predicate.isObject(value)) {
 					for (const [name, subschema] of Object.entries(value)) {
 						lintSchema(subschema, `${keyPath}/${JsonPointer.escapeToken(name)}`, depth + 1, context);
 					}
@@ -207,7 +204,7 @@ const lintSchema = (node: unknown, path: string, depth: number, context: LintCon
 			}
 			case "dependencies": {
 				// Values are either schemas or arrays of property names.
-				if (isSchemaObject(value)) {
+				if (Predicate.isObject(value)) {
 					for (const [name, dependency] of Object.entries(value)) {
 						if (!Array.isArray(dependency)) {
 							lintSchema(dependency, `${keyPath}/${JsonPointer.escapeToken(name)}`, depth + 1, context);
