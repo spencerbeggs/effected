@@ -141,7 +141,7 @@ const verify = Effect.fn("ActionsOidc.verify")(function* (token: string, options
 		issuer: ISSUER,
 		audience: options.audience,
 		claims: ActionsOidcClaimsFromWire,
-		...(options.clockTolerance !== undefined ? { clockTolerance: options.clockTolerance } : {}),
+		clockTolerance: options.clockTolerance,
 	});
 });
 

@@ -256,6 +256,32 @@ layer(NodeCrypto.layer)("SigV4 merged behaviour", (it) => {
 		}),
 	);
 
+	it.effect("hashes an empty body without a digest call, as EMPTY_PAYLOAD_HASH", () =>
+		Effect.gen(function* () {
+			const seen: Array<number> = [];
+			const counting = Crypto.make({
+				randomBytes: (size) => new Uint8Array(size),
+				digest: (_algorithm, data) =>
+					Effect.sync(() => {
+						seen.push(data.byteLength);
+						return new Uint8Array(32);
+					}),
+			});
+			const payloadHashOf = (body: Uint8Array | string) =>
+				SigV4.canonicalize({ ...base, body }, credentials).pipe(
+					Effect.provideService(Crypto.Crypto, counting),
+					Effect.map((canonical) => canonical.payloadHash),
+				);
+			for (const empty of [new Uint8Array(0), ""]) {
+				assert.strictEqual(yield* payloadHashOf(empty), SigV4.EMPTY_PAYLOAD_HASH);
+			}
+			assert.deepStrictEqual(seen, [], "an empty body must not reach Crypto.digest");
+			// The control: the same fake does see a non-empty body.
+			assert.strictEqual(yield* payloadHashOf(new Uint8Array([1])), "0".repeat(64));
+			assert.deepStrictEqual(seen, [1]);
+		}),
+	);
+
 	it.effect("takes every digest from the Crypto service in R", () =>
 		Effect.gen(function* () {
 			const zero = Crypto.make({

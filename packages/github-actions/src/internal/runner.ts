@@ -41,30 +41,21 @@ export const toolCacheRoot = (env: ActionEnvironmentShape, path: Path.Path): Eff
 		Option.getOrElse(found, () => path.join("/tmp", "runner-tool-cache")),
 	);
 
-/**
- * A `RUNNER_ARCH` value (`X86`, `X64`, `ARM`, `ARM64`) in Node's `process.arch`
- * spelling (`ia32`, `x64`, `arm`, `arm64`); anything else passes through.
- *
- * @internal
- */
-export const archFromRunner = (runnerArch: string): string => {
-	switch (runnerArch.toLowerCase()) {
-		case "x86":
-			return "ia32";
-		case "x64":
-			return "x64";
-		case "arm":
-			return "arm";
-		case "arm64":
-			return "arm64";
-		default:
-			return runnerArch;
-	}
-};
+/** `RUNNER_ARCH`'s spellings (`X86`, `X64`, `ARM`, `ARM64`), lower-cased, in Node's `process.arch` spelling. */
+// A Map, not an object literal: an environment value such as `constructor` must not find an inherited member.
+const NODE_ARCH: ReadonlyMap<string, string> = new Map([
+	["x86", "ia32"],
+	["x64", "x64"],
+	["arm", "arm"],
+	["arm64", "arm64"],
+]);
+
+/** A `RUNNER_ARCH` value in Node's spelling; anything unrecognised passes through. */
+const archFromRunner = (runnerArch: string): string => NODE_ARCH.get(runnerArch.toLowerCase()) ?? runnerArch;
 
 /**
  * The host architecture in Node's spelling: `RUNNER_ARCH` mapped through
- * {@link archFromRunner}, or `process.arch` off a runner, where the variable is
+ * `archFromRunner`, or `process.arch` off a runner, where the variable is
  * absent and the host's own answer is the honest fallback.
  *
  * @internal

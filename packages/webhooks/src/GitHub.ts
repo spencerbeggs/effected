@@ -1,6 +1,5 @@
-import { ConstantTime, Hmac } from "@effected/crypto";
 import { Effect } from "effect";
-import { annotateOutcome, readHeader, reject } from "./internal/verify.js";
+import { annotateOutcome, matchesAny, readHeader, reject } from "./internal/verify.js";
 import type { WebhookRequest } from "./WebhookRequest.js";
 import type { WebhookVerificationError } from "./WebhookVerificationError.js";
 
@@ -13,13 +12,9 @@ const verify = Effect.fn("GitHub.verify")(function* (request: WebhookRequest) {
 	if (header === undefined) return yield* reject(PRESET, "missing_signature");
 	const received = SIGNATURE.exec(header)?.[1];
 	if (received === undefined) return yield* reject(PRESET, "bad_signature", "not sha256=<hex>");
-	const expected = yield* Hmac.sign({
-		algorithm: "SHA-256",
-		key: request.secret,
-		message: request.body,
-		encoding: "hex",
-	}).pipe(Effect.orDie);
-	if (!ConstantTime.equal(expected, received)) return yield* reject(PRESET, "bad_signature");
+	if (!(yield* matchesAny(request.secret, request.body, "hex", [received]))) {
+		return yield* reject(PRESET, "bad_signature");
+	}
 }, annotateOutcome(PRESET));
 
 /**

@@ -1,7 +1,7 @@
-import { ConstantTime, Hmac } from "@effected/crypto";
-import { DateTime, Effect, Redacted, Result } from "effect";
+import type { DateTime } from "effect";
+import { Effect, Redacted, Result } from "effect";
 import * as Base64 from "effect/encoding/Base64";
-import { annotateOutcome, checkFresh, readHeader, reject, signedContent } from "./internal/verify.js";
+import { annotateOutcome, checkFresh, matchesAny, readHeader, reject, signedContent } from "./internal/verify.js";
 import type { FreshnessOptions, WebhookRequest } from "./WebhookRequest.js";
 import type { WebhookVerificationError } from "./WebhookVerificationError.js";
 
@@ -67,19 +67,14 @@ const verify = Effect.fn("StandardWebhooks.verify")(function* (request: WebhookR
 	const candidates = v1Signatures(signature);
 	if (candidates.length === 0) return yield* reject(PRESET, "bad_signature", "no v1 signature");
 	const seconds = Number(timestamp);
-	// Signed over the timestamp as an integer, so a zero-padded header still matches, as the reference does.
-	const expected = yield* Hmac.sign({
-		algorithm: "SHA-256",
-		key,
-		message: signedContent(`${id}.${String(seconds)}.`, request.body),
-		encoding: "base64",
-	}).pipe(Effect.orDie);
-	// Any v1 may match: the sender signs with every active secret during a rotation.
-	if (!candidates.some((candidate) => ConstantTime.equal(expected, candidate))) {
+	// Signed over the timestamp as an integer, so a zero-padded header still matches, as the reference does. Any v1
+	// may match: the sender signs with every active secret during a rotation.
+	const signed = signedContent(`${id}.${String(seconds)}.`, request.body);
+	if (!(yield* matchesAny(key, signed, "base64", candidates))) {
 		return yield* reject(PRESET, "bad_signature");
 	}
-	yield* checkFresh(PRESET, seconds * 1000, request.receivedAt, options);
-	const verified: StandardWebhooksVerified = { id, timestamp: DateTime.makeUnsafe(seconds * 1000) };
+	const verifiedAt = yield* checkFresh(PRESET, seconds * 1000, request.receivedAt, options);
+	const verified: StandardWebhooksVerified = { id, timestamp: verifiedAt };
 	return verified;
 }, annotateOutcome(PRESET));
 

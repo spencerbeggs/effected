@@ -19,16 +19,22 @@ export const subtle: Effect.Effect<SubtleCrypto, CryptoError> = Effect.suspend((
 });
 
 /**
- * A fresh `ArrayBuffer` holding exactly `bytes`.
+ * An `ArrayBuffer` holding exactly `bytes`.
  *
  * @remarks
  * WebCrypto's `BufferSource` typing rejects a `Uint8Array` over a
- * `SharedArrayBuffer`, and a view's `.buffer` may be larger than the view.
- * Copying sidesteps both.
+ * `SharedArrayBuffer`, and a view's `.buffer` may be larger than the view. A
+ * view that already spans a whole plain `ArrayBuffer` passes that buffer
+ * through, uncopied (WebCrypto copies its input when called); any other view
+ * is copied into a fresh one.
  *
  * @internal
  */
 export const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
+	const { buffer } = bytes;
+	if (buffer instanceof ArrayBuffer && bytes.byteOffset === 0 && bytes.byteLength === buffer.byteLength) {
+		return buffer;
+	}
 	const copy = new Uint8Array(bytes.byteLength);
 	copy.set(bytes);
 	return copy.buffer;

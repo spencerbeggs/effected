@@ -1,6 +1,6 @@
-import { ConstantTime, Hmac } from "@effected/crypto";
-import { DateTime, Effect } from "effect";
-import { annotateOutcome, checkFresh, readHeader, reject, signedContent } from "./internal/verify.js";
+import type { DateTime } from "effect";
+import { Effect } from "effect";
+import { annotateOutcome, checkFresh, matchesAny, readHeader, reject, signedContent } from "./internal/verify.js";
 import type { FreshnessOptions, WebhookRequest } from "./WebhookRequest.js";
 import type { WebhookVerificationError } from "./WebhookVerificationError.js";
 
@@ -38,17 +38,13 @@ const verify = Effect.fn("Stripe.verify")(function* (request: WebhookRequest, op
 	const { t, v1 } = parse(header);
 	if (t === undefined) return yield* reject(PRESET, "bad_signature", "no t=<unix seconds>");
 	if (v1.length === 0) return yield* reject(PRESET, "bad_signature", "no v1 signature");
-	// The whsec_ secret is the key as a literal string; Stripe never decodes it.
-	const expected = yield* Hmac.sign({
-		algorithm: "SHA-256",
-		key: request.secret,
-		message: signedContent(`${t}.`, request.body),
-		encoding: "hex",
-	}).pipe(Effect.orDie);
-	// Any v1 may match: during a secret roll Stripe signs with both the old and the new secret.
-	if (!v1.some((candidate) => ConstantTime.equal(expected, candidate))) return yield* reject(PRESET, "bad_signature");
-	yield* checkFresh(PRESET, Number(t) * 1000, request.receivedAt, options);
-	const verified: StripeVerified = { timestamp: DateTime.makeUnsafe(Number(t) * 1000) };
+	// The whsec_ secret is the key as a literal string; Stripe never decodes it. Any v1 may match: during a secret
+	// roll Stripe signs with both the old and the new secret.
+	if (!(yield* matchesAny(request.secret, signedContent(`${t}.`, request.body), "hex", v1))) {
+		return yield* reject(PRESET, "bad_signature");
+	}
+	const timestamp = yield* checkFresh(PRESET, Number(t) * 1000, request.receivedAt, options);
+	const verified: StripeVerified = { timestamp };
 	return verified;
 }, annotateOutcome(PRESET));
 

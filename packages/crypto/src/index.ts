@@ -12,9 +12,11 @@ export { CryptoError, CryptoErrorReason } from "./CryptoError.js";
 export type {
 	HmacAlgorithm,
 	HmacEncoding,
+	HmacInput,
 	HmacKey,
-	HmacOutput,
+	HmacSignBytesOptions,
 	HmacSignOptions,
+	HmacSignStringOptions,
 	HmacStringEncoding,
 	HmacVerifyBytesOptions,
 	HmacVerifyOptions,

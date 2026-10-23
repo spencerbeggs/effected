@@ -276,16 +276,14 @@ const makeS3 = (
 			});
 
 		const send = (method: "GET" | "PUT" | "HEAD", key: string, body: Uint8Array) =>
-			Effect.suspend(() =>
-				Effect.gen(function* () {
-					const { url, headers } = yield* request(method, key, body);
-					const base = HttpClientRequest.make(method)(url, { headers });
-					const built = body.length === 0 ? base : HttpClientRequest.bodyUint8Array(base, body);
-					return yield* http
-						.execute(built)
-						.pipe(Effect.mapError((cause) => new BlobStoreError({ reason: "unreachable", key, cause })));
-				}),
-			);
+			Effect.gen(function* () {
+				const { url, headers } = yield* request(method, key, body);
+				const base = HttpClientRequest.make(method)(url, { headers });
+				const built = body.length === 0 ? base : HttpClientRequest.bodyUint8Array(base, body);
+				return yield* http
+					.execute(built)
+					.pipe(Effect.mapError((cause) => new BlobStoreError({ reason: "unreachable", key, cause })));
+			});
 
 		/** Anything outside 2xx is the store refusing; a caller reads `404` first where a miss is an answer. */
 		const accepted = (key: string, status: number): Effect.Effect<void, BlobStoreError> =>

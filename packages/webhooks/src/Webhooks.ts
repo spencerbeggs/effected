@@ -1,6 +1,6 @@
 import type { Duration } from "effect";
 import { DateTime, Effect } from "effect";
-import { DEFAULT_TOLERANCE, isFresh, reject } from "./internal/verify.js";
+import { DEFAULT_TOLERANCE, checkFresh } from "./internal/verify.js";
 import type { WebhookPreset, WebhookVerificationError } from "./WebhookVerificationError.js";
 
 const checkFreshness = (
@@ -9,11 +9,8 @@ const checkFreshness = (
 	tolerance: Duration.Input,
 	preset: WebhookPreset = "HmacHeader",
 ): Effect.Effect<void, WebhookVerificationError> =>
-	Effect.suspend(() =>
-		isFresh(DateTime.toEpochMillis(timestamp), receivedAt, tolerance)
-			? Effect.void
-			: reject(preset, "stale_timestamp", "the timestamp is outside the tolerance"),
-	);
+	// Suspended so an unusable tolerance surfaces when the effect runs, not when it is built.
+	Effect.suspend(() => Effect.asVoid(checkFresh(preset, DateTime.toEpochMillis(timestamp), receivedAt, { tolerance })));
 
 /**
  * Helpers shared across presets.

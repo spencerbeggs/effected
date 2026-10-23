@@ -1,5 +1,6 @@
 import type { Layer, Redacted } from "effect";
 import { Config, ConfigProvider, Context, Effect, Schema, SchemaIssue } from "effect";
+import { decodeJson } from "./internal/json.js";
 
 /**
  * The variable name the runner publishes an input under.
@@ -43,9 +44,6 @@ const configError = (message: string, actual: unknown, cause?: Schema.SchemaErro
 		),
 	);
 };
-
-/** A JSON text, parsed to an unknown value. */
-const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 
 /** The JSON-array form of {@link ActionInput.list}. */
 const decodeStringArray = Schema.decodeUnknownEffect(Schema.Array(Schema.String));

@@ -1,6 +1,6 @@
-import { ConstantTime, Hmac } from "@effected/crypto";
-import { DateTime, Effect } from "effect";
-import { annotateOutcome, checkFresh, readHeader, reject, signedContent } from "./internal/verify.js";
+import type { DateTime } from "effect";
+import { Effect } from "effect";
+import { annotateOutcome, checkFresh, matchesAny, readHeader, reject, signedContent } from "./internal/verify.js";
 import type { FreshnessOptions, WebhookRequest } from "./WebhookRequest.js";
 import type { WebhookVerificationError } from "./WebhookVerificationError.js";
 
@@ -25,16 +25,12 @@ const verify = Effect.fn("Sanity.verify")(function* (request: WebhookRequest, op
 	const t = match?.[1];
 	const signature = match?.[2];
 	if (t === undefined || signature === undefined) return yield* reject(PRESET, "bad_signature", "not t=<ms>,v1=<sig>");
-	const expected = yield* Hmac.sign({
-		algorithm: "SHA-256",
-		key: request.secret,
-		message: signedContent(`${t}.`, request.body),
-		encoding: "base64url",
-	}).pipe(Effect.orDie);
-	if (!ConstantTime.equal(expected, signature)) return yield* reject(PRESET, "bad_signature");
-	// `t` is milliseconds. Only a fresh `t` reaches the DateTime, so an absurd one cannot throw here.
-	yield* checkFresh(PRESET, Number(t), request.receivedAt, options);
-	const verified: SanityVerified = { timestamp: DateTime.makeUnsafe(Number(t)) };
+	if (!(yield* matchesAny(request.secret, signedContent(`${t}.`, request.body), "base64url", [signature]))) {
+		return yield* reject(PRESET, "bad_signature");
+	}
+	// `t` is milliseconds.
+	const timestamp = yield* checkFresh(PRESET, Number(t), request.receivedAt, options);
+	const verified: SanityVerified = { timestamp };
 	return verified;
 }, annotateOutcome(PRESET));
 

@@ -1,6 +1,8 @@
 // Shared mechanics for every preset: header reads, signed-content assembly,
 // freshness arithmetic and the span's outcome annotation.
 
+import type { HmacKey, HmacStringEncoding } from "@effected/crypto";
+import { ConstantTime, Hmac } from "@effected/crypto";
 import { DateTime, Duration, Effect, Option } from "effect";
 import type { FreshnessOptions, WebhookRequest } from "../WebhookRequest.js";
 import type { WebhookPreset, WebhookVerificationReason } from "../WebhookVerificationError.js";
@@ -50,26 +52,52 @@ export const reject = (
 ): Effect.Effect<never, WebhookVerificationError> => Effect.fail(WebhookVerificationError.of(preset, reason, detail));
 
 /**
- * Whether `timestampMillis` sits within `tolerance` of `receivedAt`, either way; the boundary is fresh.
+ * Whether the HMAC-SHA256 of `message` under `key`, encoded as `encoding`, equals any of `candidates`.
  *
  * @remarks
- * The timestamp is sender-supplied, so one no `DateTime` can represent (out of
- * range, or not a number) is stale rather than a defect.
+ * Compared as encoded strings in constant time, so a candidate in another spelling (upper-case hex, say) does not
+ * match: GitHub and Stripe send lower-case hex only. A `CryptoError` is a defect here: the presets' keys are
+ * well-formed by the time they reach this, so one would be a wiring mistake, not a bad delivery.
  *
  * @internal
  */
-export const isFresh = (timestampMillis: number, receivedAt: DateTime.Utc, tolerance: Duration.Input): boolean =>
-	Option.match(DateTime.make(timestampMillis), {
-		onNone: () => false,
-		onSome: (signedAt) =>
-			Duration.isLessThanOrEqualTo(
-				Duration.abs(DateTime.distance(receivedAt, signedAt)),
-				Duration.fromInputUnsafe(tolerance),
-			),
-	});
+export const matchesAny = (
+	key: HmacKey,
+	message: Uint8Array | string,
+	encoding: HmacStringEncoding,
+	candidates: ReadonlyArray<string>,
+): Effect.Effect<boolean> =>
+	Hmac.sign({ algorithm: "SHA-256", key, message, encoding }).pipe(
+		Effect.orDie,
+		Effect.map((expected) => {
+			// Encoded once, not once per candidate.
+			const expectedBytes = encoder.encode(expected);
+			return candidates.some((candidate) => ConstantTime.equal(expectedBytes, candidate));
+		}),
+	);
 
 /**
- * The freshness check every timestamped preset runs, after the signature.
+ * The timestamp as a `DateTime`, when it sits within `tolerance` of `receivedAt` either way; the boundary is fresh.
+ * `None` when it is stale, or when the sender-supplied value is one no `DateTime` can represent (out of range, or
+ * not a number), which is stale rather than a defect.
+ *
+ * @internal
+ */
+const freshAt = (
+	timestampMillis: number,
+	receivedAt: DateTime.Utc,
+	tolerance: Duration.Input,
+): Option.Option<DateTime.Utc> =>
+	Option.filter(DateTime.make(timestampMillis), (signedAt) =>
+		Duration.isLessThanOrEqualTo(
+			Duration.abs(DateTime.distance(receivedAt, signedAt)),
+			Duration.fromInputUnsafe(tolerance),
+		),
+	);
+
+/**
+ * The freshness check: the validated timestamp, or `stale_timestamp`. Every timestamped preset runs it after the
+ * signature, and `Webhooks.checkFreshness` is it under a public name.
  *
  * @internal
  */
@@ -78,10 +106,11 @@ export const checkFresh = (
 	timestampMillis: number,
 	receivedAt: DateTime.Utc,
 	options: FreshnessOptions | undefined,
-): Effect.Effect<void, WebhookVerificationError> =>
-	isFresh(timestampMillis, receivedAt, options?.tolerance ?? DEFAULT_TOLERANCE)
-		? Effect.void
-		: reject(preset, "stale_timestamp", "the signed timestamp is outside the tolerance");
+): Effect.Effect<DateTime.Utc, WebhookVerificationError> =>
+	Option.match(freshAt(timestampMillis, receivedAt, options?.tolerance ?? DEFAULT_TOLERANCE), {
+		onNone: () => reject(preset, "stale_timestamp", "the timestamp is outside the tolerance"),
+		onSome: Effect.succeed,
+	});
 
 /**
  * Annotate the current span with the preset and the outcome: `verified`, or the failure reason. Applied as an

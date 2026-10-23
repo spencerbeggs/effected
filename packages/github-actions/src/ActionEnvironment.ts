@@ -1,7 +1,5 @@
 import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect";
-
-/** The event payload: any JSON value, parsed. */
-const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+import { decodeJson } from "./internal/json.js";
 
 /**
  * Raised when the runner environment does not say what an action needs.

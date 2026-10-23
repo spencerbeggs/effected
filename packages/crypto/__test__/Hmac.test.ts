@@ -159,3 +159,21 @@ describe("Hmac failures", () => {
 		}),
 	);
 });
+
+describe("Hmac.sign over byte views", () => {
+	it.effect("signs exactly a view's bytes, whether it spans its buffer or sits at an offset inside one", () =>
+		Effect.gen(function* () {
+			const key = Redacted.make("view-key");
+			const whole = new Uint8Array([1, 2, 3, 4]);
+			// The same four bytes, as a window into a larger buffer: a pass-through of
+			// `.buffer` here would sign all eight bytes instead.
+			const backing = new Uint8Array([9, 9, 1, 2, 3, 4, 9, 9]);
+			const window = backing.subarray(2, 6);
+			const fromWhole = yield* Hmac.sign({ algorithm: "SHA-256", key, message: whole, encoding: "hex" });
+			const fromWindow = yield* Hmac.sign({ algorithm: "SHA-256", key, message: window, encoding: "hex" });
+			const fromBacking = yield* Hmac.sign({ algorithm: "SHA-256", key, message: backing, encoding: "hex" });
+			assert.strictEqual(fromWindow, fromWhole);
+			assert.notStrictEqual(fromBacking, fromWhole, "the control: the whole backing buffer signs differently");
+		}),
+	);
+});

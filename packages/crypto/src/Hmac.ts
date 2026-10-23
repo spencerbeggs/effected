@@ -44,41 +44,52 @@ export type HmacStringEncoding = Exclude<HmacEncoding, "bytes">;
 export type HmacKey = Uint8Array | Redacted.Redacted<string>;
 
 /**
- * What {@link Hmac.sign} returns for an encoding: bytes for `bytes`, a
- * string otherwise.
+ * What every HMAC operation takes: the hash, the key and the message.
  *
  * @public
  */
-export type HmacOutput<E extends HmacEncoding> = E extends "bytes" ? Uint8Array : string;
+export interface HmacInput {
+	/** The hash the HMAC is computed over. */
+	readonly algorithm: HmacAlgorithm;
+	/** The key. A `Redacted` is read only when the key is imported. */
+	readonly key: HmacKey;
+	/** The message; a string is signed as its UTF-8 bytes. */
+	readonly message: Uint8Array | string;
+}
+
+/**
+ * The input to {@link Hmac.sign} for a raw-bytes HMAC.
+ *
+ * @public
+ */
+export interface HmacSignBytesOptions extends HmacInput {
+	/** `bytes`, the default. */
+	readonly encoding?: "bytes";
+}
+
+/**
+ * The input to {@link Hmac.sign} for an encoded-string HMAC.
+ *
+ * @public
+ */
+export interface HmacSignStringOptions extends HmacInput {
+	/** The output encoding. */
+	readonly encoding: HmacStringEncoding;
+}
 
 /**
  * The input to {@link Hmac.sign}.
  *
  * @public
  */
-export interface HmacSignOptions<E extends HmacEncoding = HmacEncoding> {
-	/** The hash the HMAC is computed over. */
-	readonly algorithm: HmacAlgorithm;
-	/** The key. A `Redacted` is read only when the key is imported. */
-	readonly key: HmacKey;
-	/** The message; a string is signed as its UTF-8 bytes. */
-	readonly message: Uint8Array | string;
-	/** The output encoding; `bytes` when omitted. */
-	readonly encoding?: E;
-}
+export type HmacSignOptions = HmacSignBytesOptions | HmacSignStringOptions;
 
 /**
  * The input to {@link Hmac.verify} for a signature held as raw bytes.
  *
  * @public
  */
-export interface HmacVerifyBytesOptions {
-	/** The hash the HMAC is computed over. */
-	readonly algorithm: HmacAlgorithm;
-	/** The key. A `Redacted` is read only when the key is imported. */
-	readonly key: HmacKey;
-	/** The message; a string is signed as its UTF-8 bytes. */
-	readonly message: Uint8Array | string;
+export interface HmacVerifyBytesOptions extends HmacInput {
 	/** The received signature. */
 	readonly signature: Uint8Array;
 }
@@ -88,13 +99,7 @@ export interface HmacVerifyBytesOptions {
  *
  * @public
  */
-export interface HmacVerifyStringOptions {
-	/** The hash the HMAC is computed over. */
-	readonly algorithm: HmacAlgorithm;
-	/** The key. A `Redacted` is read only when the key is imported. */
-	readonly key: HmacKey;
-	/** The message; a string is signed as its UTF-8 bytes. */
-	readonly message: Uint8Array | string;
+export interface HmacVerifyStringOptions extends HmacInput {
 	/** The received signature, encoded as `encoding` says. */
 	readonly signature: string;
 	/** How `signature` is encoded. */
@@ -132,18 +137,24 @@ const decode = (value: string, encoding: HmacStringEncoding): Result.Result<Uint
 	}
 };
 
-const sign = Effect.fn("Hmac.sign")(function* (options: HmacSignOptions) {
+const signAny = Effect.fn("Hmac.sign")(function* (options: HmacSignOptions) {
 	yield* Effect.annotateCurrentSpan("algorithm", options.algorithm);
 	const mac = yield* hmacBytes(options.algorithm, secretBytes(options.key), utf8(options.message));
 	return encode(mac, options.encoding ?? "bytes");
 });
 
+function sign(options: HmacSignBytesOptions): Effect.Effect<Uint8Array, CryptoError>;
+function sign(options: HmacSignStringOptions): Effect.Effect<string, CryptoError>;
+function sign(options: HmacSignOptions): Effect.Effect<Uint8Array | string, CryptoError> {
+	return signAny(options);
+}
+
 const verify = Effect.fn("Hmac.verify")(function* (options: HmacVerifyOptions) {
 	yield* Effect.annotateCurrentSpan("algorithm", options.algorithm);
 	const expected = yield* hmacBytes(options.algorithm, secretBytes(options.key), utf8(options.message));
-	if (typeof options.signature !== "string") return ConstantTime.equal(expected, options.signature);
+	if (!("encoding" in options)) return ConstantTime.equal(expected, options.signature);
 	// A signature that does not decode is a wrong signature, not an error.
-	const received = decode(options.signature, (options as HmacVerifyStringOptions).encoding);
+	const received = decode(options.signature, options.encoding);
 	return Result.isSuccess(received) && ConstantTime.equal(expected, received.success);
 });
 
@@ -170,9 +181,10 @@ export class Hmac {
 	 *
 	 * @public
 	 */
-	static readonly sign: <E extends HmacEncoding = "bytes">(
-		options: HmacSignOptions<E>,
-	) => Effect.Effect<HmacOutput<E>, CryptoError> = sign as never;
+	static readonly sign: {
+		(options: HmacSignBytesOptions): Effect.Effect<Uint8Array, CryptoError>;
+		(options: HmacSignStringOptions): Effect.Effect<string, CryptoError>;
+	} = sign;
 
 	/**
 	 * Whether `signature` is the HMAC of `message` under `key`.
