@@ -96,7 +96,8 @@ Two conveniences sit on top: `Workspaces.resolverLayer(options?)` pre-wires
 both resolvers over the config-dependency path, and is deliberately a
 parameterized layer function whose fresh, unmemoized layer per call is the
 feature — layers memoize by reference, so each call re-runs root discovery
-(including a per-call ambient-cwd read when none is given); a consumer that
+(including a per-call resolution of `"."` through core `Path` when no cwd
+is given); a consumer that
 wants sharing binds one call's result to a `const`.
 `Workspaces.resolveManifest` is the one-shot path over a fresh resolver
 layer per call, and consumers processing many manifests should check
@@ -122,6 +123,12 @@ finding no evidence answers `None` (the detector refused to guess, which is
 the same honest absence); and a manifest that exists but cannot be read or
 parsed is a typed error, because that is not absence but damage. All three
 rows are mutation-pinned in both directions in the package's own test suite.
+An omitted `cwd`, here and on every root-consuming layer, is `"."`,
+resolved by `WorkspaceRoot.find` through the injected core `Path` on each
+call: the package reads no ambient working directory itself, a test swaps
+`Path` to move the default, and because core's `Path.resolve` takes the
+directory from `process.cwd()`, the default needs a host that exposes
+`process` (pass `cwd` anywhere else).
 The resulting context's directory is the resolved **workspace root**, never
 the caller's cwd, and every argv prefix comes from `@effected/commands`'
 own table — this layer never hard-codes an exec, dlx, or script-runner
@@ -377,12 +384,14 @@ Layer construction is O(1); the heavy first-call IO (root find, manager
 detect, read, parse) is memoized, with init errors surfacing from each
 method's own error channel, so a test reporter that builds the layer per
 call site pays nothing. The memo is not bare `Effect.cached`, because
-`cached` memoizes the first `Exit` including an interrupt — an init
-interrupted by an unrelated timeout or a racing sibling would permanently
-poison the layer with a cause outside its declared error channel. The init
-memo is success-only, via an infinite-TTL cache with an exit hook that
-invalidates on any non-success: success is computed once across sequential
-and concurrent observers, and a failure or interrupt retries on the next
+`cached` keeps the first failed `Exit` forever — a transient init failure
+(a file mid-write, a lockfile racing an install) would poison the layer for
+every later call, and a caller's `Effect.retry` would replay the cached
+failure without re-running the init. (An interrupted run is never cached:
+core treats interruption as abandonment and the next caller starts fresh.)
+The init memo is success-only, via an infinite-TTL cache with an exit hook
+that invalidates on any non-success: success is computed once across
+sequential and concurrent observers, and a failure retries on the next
 call.
 
 ## Observability
@@ -402,8 +411,18 @@ still an untrusted, potentially cyclic input, and the package parses text:
 - Cycle detection is iterative — an explicit stack, no stack-overflow
   surface — using core's `stronglyConnectedComponents`, which is stack-safe
   by its own construction (Kosaraju over explicit stacks).
-- YAML and JSON parsing fail typed: every `JSON.parse` is wrapped at the
-  point it can throw.
+- YAML and JSON parsing fail typed. package.json text is read through
+  `@effected/package-json`'s `PackageJsonFormat.parseObjectResult`, never a
+  bare `JSON.parse`: it keeps "not JSON" (`invalid-json`) apart from "valid
+  JSON that is not an object" (`not-an-object`), and each site maps the two
+  onto its own vocabulary — discovery's `invalidJson` versus
+  `invalidShape`, a miss for `WorkspaceRoot` and the lockfile name read,
+  a skip for the packed-install bin walk and `patterns`, and `UNVERSIONED`
+  for a config dependency's manifest. A `null` manifest therefore never
+  reaches a property read. The cause carried on each error is the
+  `PackageJsonSyntaxError`, whose message keeps the JSON position. The
+  layer-policy file and the replay script's embedded parser are the two
+  `JSON.parse` sites that stay: neither reads a package.json.
 - Malformed input fails typed, never a defect.
 - Developer wiring errors (an uncompilable pattern literal, a fractional
   depth cap) stay defects.

@@ -3,6 +3,8 @@
 // project looks like, and how each spells "skip lifecycle scripts". Pure, so
 // every per-manager trap is pinned without spawning one.
 
+import type { PackageJsonSyntaxError } from "@effected/package-json";
+import { PackageJsonFormat } from "@effected/package-json";
 import { Predicate, Result } from "effect";
 import type { PackageManagerName } from "../PackageManagerName.js";
 import type { WorkspacePackage } from "../WorkspacePackage.js";
@@ -212,17 +214,11 @@ export interface PackedManifest {
 	readonly bins: ReadonlyArray<string>;
 }
 
-/** Parse a packed manifest into the facts the run checks; the failure is the parse error or a non-object. */
-export const readPackedManifest = (manifestJson: string): Result.Result<PackedManifest, unknown> => {
-	let manifest: unknown;
-	try {
-		manifest = JSON.parse(manifestJson);
-	} catch (cause) {
-		return Result.fail(cause);
-	}
-	if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest))
-		return Result.fail(new Error("package.json is not an object"));
-	const record = manifest as Record<string, unknown>;
+/** Parse a packed manifest into the facts the run checks; the failure says whether it was not JSON or not an object. */
+export const readPackedManifest = (manifestJson: string): Result.Result<PackedManifest, PackageJsonSyntaxError> =>
+	Result.map(PackageJsonFormat.parseObjectResult(manifestJson), factsOf);
+
+const factsOf = (record: Record<string, unknown>): PackedManifest => {
 	const name = typeof record.name === "string" ? record.name : undefined;
 	const unresolved = RUNTIME_DEPENDENCY_FIELDS.flatMap((field) => {
 		const block = record[field];
@@ -237,10 +233,10 @@ export const readPackedManifest = (manifestJson: string): Result.Result<PackedMa
 			? name === undefined
 				? []
 				: [name.replace(/^@[^/]+\//, "")]
-			: typeof bin === "object" && bin !== null && !Array.isArray(bin)
+			: Predicate.isObject(bin)
 				? Object.keys(bin)
 				: [];
-	return Result.succeed({ name, unresolved, bins });
+	return { name, unresolved, bins };
 };
 
 /**
@@ -249,24 +245,22 @@ export const readPackedManifest = (manifestJson: string): Result.Result<PackedMa
  * the manifest is not a JSON object or declares no such bin.
  */
 export const binTargetOf = (manifestJson: string, name: string): string | undefined => {
-	let manifest: unknown;
-	try {
-		manifest = JSON.parse(manifestJson);
-	} catch {
-		return undefined;
-	}
-	if (!Predicate.isObject(manifest) || Array.isArray(manifest)) return undefined;
+	const parsed = PackageJsonFormat.parseObjectResult(manifestJson);
+	if (Result.isFailure(parsed)) return undefined;
+	const manifest = parsed.success;
 	const bin = manifest.bin;
 	if (typeof bin === "string") {
 		return typeof manifest.name === "string" && manifest.name.replace(/^@[^/]+\//, "") === name ? bin : undefined;
 	}
-	if (!Predicate.isObject(bin) || Array.isArray(bin)) return undefined;
-	const target = (bin as Record<string, unknown>)[name];
+	if (!Predicate.isObject(bin)) return undefined;
+	const target = bin[name];
 	return typeof target === "string" && Object.hasOwn(bin, name) ? target : undefined;
 };
 
 /** Every specifier in a packed manifest's runtime maps that only the workspace could resolve (see `UNRESOLVABLE`). */
-export const unresolvedSpecifiers = (manifestJson: string): Result.Result<ReadonlyArray<string>, unknown> =>
+export const unresolvedSpecifiers = (
+	manifestJson: string,
+): Result.Result<ReadonlyArray<string>, PackageJsonSyntaxError> =>
 	Result.map(readPackedManifest(manifestJson), (manifest) => manifest.unresolved);
 
 /**
@@ -301,8 +295,7 @@ const BARE_NAME = /^(?:@[^/@\s>]+\/)?[^/@\s>]+$/;
  */
 export const fileOverridesOf = (document: unknown): Record<string, string> => {
 	const out: Record<string, string> = Object.create(null);
-	if (!Predicate.isObject(document) || !Predicate.isObject(document.overrides) || Array.isArray(document.overrides))
-		return out;
+	if (!Predicate.isObject(document) || !Predicate.isObject(document.overrides)) return out;
 	for (const [name, spec] of Object.entries(document.overrides)) {
 		if (name === "__proto__") continue;
 		if (typeof spec === "string" && spec.startsWith("file:") && BARE_NAME.test(name)) out[name] = spec.slice(5);

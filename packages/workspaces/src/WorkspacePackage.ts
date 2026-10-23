@@ -9,7 +9,7 @@
 
 import { GlobPattern } from "@effected/glob";
 import { WorkspaceManifest } from "@effected/lockfiles";
-import { Package } from "@effected/package-json";
+import { Package, PackageJsonFormat } from "@effected/package-json";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Schema } from "effect";
 
@@ -359,10 +359,15 @@ export class WorkspacePackage extends Schema.Class<WorkspacePackage>("WorkspaceP
 						new WorkspaceManifestError({ packageJsonPath: self.packageJsonPath, kind: "read", cause }),
 				),
 			);
-		const raw = yield* Effect.try({
-			try: () => JSON.parse(content) as unknown,
-			catch: (cause) => new WorkspaceManifestError({ packageJsonPath: self.packageJsonPath, kind: "decode", cause }),
-		});
+		// Parse first, then decode: the cause stays a domain error either way —
+		// a `PackageJsonSyntaxError` (carrying the SyntaxError) for bad text, a
+		// `PackageDecodeError` for a bad manifest — rather than one SchemaError
+		// that drops the JSON position.
+		const raw = yield* Effect.fromResult(PackageJsonFormat.parseObjectResult(content)).pipe(
+			Effect.mapError(
+				(cause) => new WorkspaceManifestError({ packageJsonPath: self.packageJsonPath, kind: "decode", cause }),
+			),
+		);
 		return yield* Package.decode(raw).pipe(
 			Effect.mapError(
 				(cause) => new WorkspaceManifestError({ packageJsonPath: self.packageJsonPath, kind: "decode", cause }),

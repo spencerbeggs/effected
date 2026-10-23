@@ -14,8 +14,21 @@ import {
 	PartialReleaseAgeGate,
 	ReleaseAgeGate,
 } from "@effected/npm";
+import { PackageJsonFormat } from "@effected/package-json";
 import { Yaml } from "@effected/yaml";
-import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, PlatformError, Schema } from "effect";
+import {
+	Context,
+	Duration,
+	Effect,
+	Exit,
+	FileSystem,
+	Layer,
+	Option,
+	Path,
+	PlatformError,
+	Predicate,
+	Schema,
+} from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import type {
 	ConfigDependencyHooksShape,
@@ -27,6 +40,7 @@ import type {
 import { ConfigDependencyHooks, NoPeerDependencyRules } from "./ConfigDependencyHooks.js";
 import type { Catalogs } from "./internal/catalogs.js";
 import { inlineCatalogs, merge, normalize, rangeOf } from "./internal/catalogs.js";
+import { isStringRecord } from "./internal/guards.js";
 import { importerVersionsOf } from "./internal/importerVersions.js";
 import { findLayerRoot } from "./internal/layerRoot.js";
 import { configDependenciesOf, inlinePeerDependencyRules } from "./internal/workspaceYaml.js";
@@ -134,9 +148,9 @@ export class CatalogSet extends Schema.Class<CatalogSet>("CatalogSet")({
 	 */
 	static fromBunBlocks(blocks: { readonly catalog?: unknown; readonly catalogs?: unknown }): CatalogSet {
 		const raw: Record<string, unknown> = {};
-		if (isObject(blocks.catalogs)) Object.assign(raw, blocks.catalogs);
-		if (isObject(blocks.catalog)) {
-			raw.default = { ...(isObject(raw.default) ? raw.default : {}), ...blocks.catalog };
+		if (Predicate.isObject(blocks.catalogs)) Object.assign(raw, blocks.catalogs);
+		if (Predicate.isObject(blocks.catalog)) {
+			raw.default = { ...(Predicate.isObject(raw.default) ? raw.default : {}), ...blocks.catalog };
 		}
 		return CatalogSet.fromCatalogs(raw);
 	}
@@ -159,19 +173,11 @@ export class CatalogSet extends Schema.Class<CatalogSet>("CatalogSet")({
 	 * @param text - The raw root `package.json` text.
 	 */
 	static readonly fromManifestWorkspaces = Effect.fn("CatalogSet.fromManifestWorkspaces")(function* (text: string) {
-		const manifest = yield* Effect.try({
-			try: () => JSON.parse(text) as unknown,
-			catch: (cause) => new CatalogAssemblyError({ source: "manifest", path: "package.json", cause }),
-		});
-		if (!isObject(manifest)) {
-			return yield* Effect.fail(
-				new CatalogAssemblyError({
-					source: "manifest",
-					path: "package.json",
-					cause: new Error("package.json is not a JSON object"),
-				}),
-			);
-		}
+		// The cause is the PackageJsonSyntaxError, whose message carries the
+		// SyntaxError's JSON position — this error's message splices it in.
+		const manifest = yield* Effect.fromResult(PackageJsonFormat.parseObjectResult(text)).pipe(
+			Effect.mapError((cause) => new CatalogAssemblyError({ source: "manifest", path: "package.json", cause })),
+		);
 		const blocks = yield* manifestCatalogBlocks(manifest.workspaces);
 		return CatalogSet.fromBunBlocks(blocks);
 	});
@@ -216,14 +222,6 @@ export class CatalogSet extends Schema.Class<CatalogSet>("CatalogSet")({
 	}
 }
 
-/** Whether `value` is a non-null, non-array object. */
-const isObject = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
-/** Whether every value in an object is a string — a usable `dependency → range` catalog. */
-const isStringRecord = (value: unknown): value is Record<string, string> =>
-	isObject(value) && Object.values(value).every((entry) => typeof entry === "string");
-
 /** The `catalog` / `catalogs` blocks of a parsed pnpm-workspace document. */
 const catalogBlocksOf = (
 	document: unknown,
@@ -259,7 +257,7 @@ const catalogBlocksOf = (
  * authority, exactly as on the hook path.
  */
 const inlineReleaseAge = (document: unknown): Effect.Effect<PartialReleaseAgeGate, CatalogAssemblyError> => {
-	if (!isObject(document)) return Effect.succeed({});
+	if (!Predicate.isObject(document)) return Effect.succeed({});
 	const raw: Record<string, unknown> = {};
 	if (document.minimumReleaseAge !== undefined && document.minimumReleaseAge !== null) {
 		raw.ageMinutes = document.minimumReleaseAge;
@@ -312,7 +310,7 @@ const validatedCatalogBlocks = (
 
 	let validCatalogs: Record<string, Record<string, string>> | undefined;
 	if (catalogs !== undefined && catalogs !== null) {
-		if (!isObject(catalogs)) {
+		if (!Predicate.isObject(catalogs)) {
 			return Effect.fail(
 				malformed("catalog", labels.catalogs, `"${labels.catalogs}" must map catalog names to catalogs`),
 			);
@@ -361,7 +359,7 @@ const manifestCatalogBlocks = (
 > => {
 	// Absent, explicitly null, or the npm/yarn array form: nothing to misread.
 	if (workspaces === undefined || workspaces === null || Array.isArray(workspaces)) return Effect.succeed({});
-	if (!isObject(workspaces)) {
+	if (!Predicate.isObject(workspaces)) {
 		return Effect.fail(
 			malformed("manifest", "package.json", `"workspaces" must be an array or object, got ${typeof workspaces}`),
 		);
@@ -394,7 +392,7 @@ const manifestCatalogBlocks = (
  * `inlineCatalogs` path.
  */
 const validatePnpmWorkspaceCatalogs = (document: unknown): Effect.Effect<void, CatalogAssemblyError> => {
-	if (!isObject(document)) return Effect.void;
+	if (!Predicate.isObject(document)) return Effect.void;
 	return Effect.asVoid(
 		validatedCatalogBlocks(document.catalog, document.catalogs, { catalog: "catalog", catalogs: "catalogs" }),
 	);
@@ -551,7 +549,8 @@ export interface WorkspaceCatalogsOptions {
 	/**
 	 * The directory the workspace root is resolved from.
 	 *
-	 * @defaultValue `process.cwd()`, read lazily on first use.
+	 * @defaultValue `"."`, resolved through the injected core `Path` on each
+	 *   use (the working directory on a host that exposes `process`).
 	 */
 	readonly cwd?: string;
 	/**

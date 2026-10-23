@@ -13,8 +13,10 @@
 // `packages/**` means the same thing in both worlds.
 
 import { GlobSet } from "@effected/glob";
+import { PackageJsonFormat } from "@effected/package-json";
 import { Yaml } from "@effected/yaml";
-import { Effect, Exit, Schema } from "effect";
+import { Effect, Exit, Result, Schema } from "effect";
+import { isStringRecord } from "./internal/guards.js";
 import { MAX_ENUMERATION_DEPTH } from "./internal/limits.js";
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
 import { Traversal, badMaxDepthMessage, isPruned, isValidMaxDepth, joinRelative } from "./internal/traverse.js";
@@ -230,17 +232,13 @@ const readManifest = (fileSystem: SyncFileSystem, file: string): ManifestRead =>
 	} catch (cause) {
 		return { kind: "read", cause };
 	}
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(text);
-	} catch (cause) {
-		return { kind: "invalidJson", cause };
-	}
 	// `JSON.parse` returns `null` / a number / a string for VALID input; only a
-	// non-null, non-array object is a manifest.
-	return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-		? { raw: parsed as Record<string, unknown> }
-		: { kind: "invalidShape", cause: new Error("package.json is not a JSON object") };
+	// non-null, non-array object is a manifest. The cause is the same
+	// `PackageJsonSyntaxError` `WorkspaceDiscovery` attaches, so a skip and a
+	// failure read one vocabulary.
+	const parsed = PackageJsonFormat.parseObjectResult(text);
+	if (Result.isSuccess(parsed)) return { raw: parsed.success };
+	return { kind: parsed.failure.reason === "invalid-json" ? "invalidJson" : "invalidShape", cause: parsed.failure };
 };
 
 /**
@@ -256,15 +254,13 @@ const readManifest = (fileSystem: SyncFileSystem, file: string): ManifestRead =>
  * syntax error — an unusable manifest either way.
  */
 const readJson = (fileSystem: SyncFileSystem, file: string): Record<string, unknown> | undefined => {
-	let parsed: unknown;
+	let text: string;
 	try {
-		parsed = JSON.parse(fileSystem.readFile(file));
+		text = fileSystem.readFile(file);
 	} catch {
 		return undefined;
 	}
-	return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-		? (parsed as Record<string, unknown>)
-		: undefined;
+	return Result.getOrUndefined(PackageJsonFormat.parseObjectResult(text));
 };
 
 /** Whether `dir` is a directory. Never throws — a throwing consumer op reads as `false`. */
@@ -495,12 +491,7 @@ const readPackageSync = (
 	}
 
 	const stringRecord = (value: unknown): Record<string, string> | undefined =>
-		value !== null &&
-		typeof value === "object" &&
-		!Array.isArray(value) &&
-		Object.values(value as Record<string, unknown>).every((entry) => typeof entry === "string")
-			? (value as Record<string, string>)
-			: undefined;
+		isStringRecord(value) ? value : undefined;
 
 	const publishConfig = raw.publishConfig;
 	const config =

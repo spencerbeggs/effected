@@ -11,7 +11,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CatalogAssemblyError } from "@effected/npm";
-import { Effect, Option, Predicate } from "effect";
+import { PackageJsonFormat } from "@effected/package-json";
+import { Effect, Option, Predicate, Result } from "effect";
 import type { HookReplayContext } from "../ConfigDependencyHooks.js";
 
 /** The typed `hooks`-source failure every rung of the ladder reports through. */
@@ -76,16 +77,18 @@ export const manifestVersion = (name: string, dir: string): Effect.Effect<Manife
 	ioOrNone(name, () => readFile(join(dir, "package.json"), "utf8")).pipe(
 		Effect.flatMap((text) => {
 			if (Option.isNone(text)) return Effect.succeed(ABSENT);
-			return Effect.try({
-				try: () => JSON.parse(text.value) as unknown,
-				catch: (cause) => hooksError(name, cause),
-			}).pipe(
-				Effect.map(
-					(parsed): ManifestVersion =>
-						Predicate.isObject(parsed) && typeof parsed.version === "string" && parsed.version !== ""
-							? { _tag: "version", version: parsed.version }
-							: UNVERSIONED,
-				),
+			// Only unparseable text fails. Valid JSON that is not an object (`null`,
+			// an array, a scalar) carries no version, so it is UNVERSIONED — not
+			// an error.
+			const parsed = PackageJsonFormat.parseObjectResult(text.value);
+			if (Result.isFailure(parsed)) {
+				return parsed.failure.reason === "invalid-json"
+					? Effect.fail(hooksError(name, parsed.failure))
+					: Effect.succeed(UNVERSIONED);
+			}
+			const version = parsed.success.version;
+			return Effect.succeed<ManifestVersion>(
+				typeof version === "string" && version !== "" ? { _tag: "version", version } : UNVERSIONED,
 			);
 		}),
 	);

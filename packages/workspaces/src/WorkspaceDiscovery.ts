@@ -9,9 +9,11 @@
 
 import { GlobSet } from "@effected/glob";
 import { DependencyResolutionError, WorkspaceResolver } from "@effected/npm";
+import { PackageJsonFormat } from "@effected/package-json";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, Schema } from "effect";
 import type { EnumerationFailureKind } from "./internal/enumerate.js";
 import { enumerate } from "./internal/enumerate.js";
+import { isStringRecord } from "./internal/guards.js";
 import { findLayerRoot } from "./internal/layerRoot.js";
 import { readPatterns } from "./internal/patterns.js";
 import { WorkspacePackage } from "./WorkspacePackage.js";
@@ -143,9 +145,10 @@ export interface WorkspaceDiscoveryOptions {
 	/**
 	 * The directory the workspace root is resolved from.
 	 *
-	 * @defaultValue `process.cwd()`, read lazily on first use — so a
-	 *   `process.chdir` between providing the layer and the first call is
-	 *   honoured.
+	 * @defaultValue `"."`, resolved through the injected core `Path` on each
+	 *   use — so a `process.chdir` between providing the layer and the first
+	 *   call is honoured. `Path.resolve` reads `process.cwd()`, so the default
+	 *   needs a host that exposes `process`.
 	 */
 	readonly cwd?: string;
 	/**
@@ -318,29 +321,22 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 								(cause) => new WorkspaceDiscoveryError({ root, path: packageJsonPath, kind: "read", cause }),
 							),
 						);
-					const parsed = yield* Effect.try({
-						try: () => JSON.parse(content) as unknown,
-						catch: (cause) => new WorkspaceDiscoveryError({ root, path: packageJsonPath, kind: "invalidJson", cause }),
-					});
-
-					// `JSON.parse` never returns `undefined`, so a guard on `undefined`
-					// alone does not cover a manifest whose entire content is `null`, `42`
-					// or `"x"` — all of which parse fine. Reading `.name` off `null` would
-					// throw a TypeError, i.e. malformed input escaping as a DEFECT.
-					//
-					// This is `invalidShape`, NOT `invalidJson`: the text is perfectly valid
-					// JSON. What is wrong is that it does not denote an object.
-					if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-						return yield* Effect.fail(
-							new WorkspaceDiscoveryError({
-								root,
-								path: packageJsonPath,
-								kind: "invalidShape",
-								cause: new Error("package.json is not a JSON object"),
-							}),
-						);
-					}
-					const raw = parsed as Record<string, unknown>;
+					// The two syntactic failures keep distinct kinds. `invalidShape`, NOT
+					// `invalidJson`, covers a manifest whose entire content is `null`,
+					// `42` or `"x"`: the text is perfectly valid JSON, it just does not
+					// denote an object. (Reading `.name` off `null` would otherwise throw
+					// a TypeError — malformed input escaping as a defect.)
+					const raw = yield* Effect.fromResult(PackageJsonFormat.parseObjectResult(content)).pipe(
+						Effect.mapError(
+							(cause) =>
+								new WorkspaceDiscoveryError({
+									root,
+									path: packageJsonPath,
+									kind: cause.reason === "invalid-json" ? "invalidJson" : "invalidShape",
+									cause,
+								}),
+						),
+					);
 
 					const name = raw.name;
 					if (typeof name !== "string" || name.length === 0) {
@@ -899,9 +895,3 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 		}),
 	);
 }
-
-const isStringRecord = (value: unknown): value is Record<string, string> =>
-	value !== null &&
-	typeof value === "object" &&
-	!Array.isArray(value) &&
-	Object.values(value as Record<string, unknown>).every((entry) => typeof entry === "string");

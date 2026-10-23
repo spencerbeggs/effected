@@ -4,8 +4,9 @@
 // root package.json `workspaces` field (array form, or the legacy
 // `{ packages: [...] }` object form). The YAML is parsed with `@effected/yaml`.
 
+import { PackageJsonFormat } from "@effected/package-json";
 import { Yaml } from "@effected/yaml";
-import { Effect, FileSystem, Path } from "effect";
+import { Effect, FileSystem, Path, Result } from "effect";
 
 /** The reason a pattern read failed, with the file it failed on. */
 export interface PatternReadFailure {
@@ -74,9 +75,11 @@ export const readPatterns = (
 		const content = yield* fs
 			.readFileString(manifestPath)
 			.pipe(Effect.mapError((cause): PatternReadFailure => ({ path: manifestPath, kind: "read", cause })));
-		const manifest = yield* Effect.try({
-			try: () => JSON.parse(content) as unknown,
-			catch: (cause): PatternReadFailure => ({ path: manifestPath, kind: "invalidJson", cause }),
-		});
-		return manifestPatternsOf(manifest);
+		// Only unparseable text fails. Valid JSON that is not an object (`null`,
+		// an array, a scalar) declares no patterns — the same empty list
+		// `manifestPatternsOf` gives any non-object — so it is not an error here.
+		const manifest = PackageJsonFormat.parseObjectResult(content);
+		if (Result.isSuccess(manifest)) return manifestPatternsOf(manifest.success);
+		if (manifest.failure.reason === "not-an-object") return [];
+		return yield* Effect.fail<PatternReadFailure>({ path: manifestPath, kind: "invalidJson", cause: manifest.failure });
 	});

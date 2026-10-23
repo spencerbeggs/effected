@@ -7,8 +7,8 @@
 // parse), and because `@effected/package-json` already exports a
 // `PackageManager` class for the corepack `pnpm@10.33.0` field.
 
-import { PackageManager } from "@effected/package-json";
-import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { PackageJsonFormat, PackageManager } from "@effected/package-json";
+import { Context, Effect, FileSystem, Layer, Option, Path, Predicate, Schema } from "effect";
 import { WorkspaceManifestError } from "./WorkspacePackage.js";
 
 /**
@@ -111,10 +111,6 @@ interface ManagerHint {
 	readonly version: Option.Option<string>;
 }
 
-/** Whether `value` is a non-null, non-array object — corepack's own shape test. */
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
 /**
  * The exact version a `name` + `version` pair denotes, or none when the version
  * is not an exact version.
@@ -140,10 +136,10 @@ const exactVersionOf = (name: string, version: string): Option.Option<string> =>
  */
 const devEnginesHint = (manifest: Record<string, unknown>): Option.Option<ManagerHint> => {
 	const devEngines = manifest.devEngines;
-	if (!isPlainObject(devEngines)) return Option.none();
+	if (!Predicate.isObject(devEngines)) return Option.none();
 
 	const slot = devEngines.packageManager;
-	if (!isPlainObject(slot)) return Option.none();
+	if (!Predicate.isObject(slot)) return Option.none();
 
 	const name = slot.name;
 	if (typeof name !== "string" || name === "" || name.includes("@")) return Option.none();
@@ -290,20 +286,11 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 					.readFileString(packageJsonPath)
 					.pipe(Effect.mapError((cause) => new WorkspaceManifestError({ packageJsonPath, kind: "read", cause })));
 
-				const parsed = yield* Effect.try({
-					try: () => JSON.parse(content) as unknown,
-					catch: (cause) => new WorkspaceManifestError({ packageJsonPath, kind: "decode", cause }),
-				});
-
-				if (!isPlainObject(parsed)) {
-					return yield* Effect.fail(
-						new WorkspaceManifestError({
-							packageJsonPath,
-							kind: "decode",
-							cause: new Error("package.json is not a JSON object"),
-						}),
-					);
-				}
+				// Both syntactic failures — not JSON, or JSON that is not an object —
+				// are a corrupt manifest: kind "decode", the reason on the cause.
+				const parsed = yield* Effect.fromResult(PackageJsonFormat.parseObjectResult(content)).pipe(
+					Effect.mapError((cause) => new WorkspaceManifestError({ packageJsonPath, kind: "decode", cause })),
+				);
 				return Option.some(parsed);
 			});
 
