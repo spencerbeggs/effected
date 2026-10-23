@@ -6,6 +6,7 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `BasicCredential` | Interface | HTTP basic auth — npm's `_auth`, carried as the **already-encoded** blob. | |
+| `BasicCredentialError` | Class | A username and password could not be encoded as a `BasicCredential`. | handle a username and password that cannot become basic auth, colon in username |
 | `CachingPackageManager` | Variable + TypeAlias | The union of managers the default-cache table covers. | list of package managers with a known cache dir |
 | `CatalogAssemblyError` | Class | Raised when a workspace's catalogs cannot be assembled — a `pnpm-workspace.yaml` that is unreadable or not valid YAML, a root `package.json` `workspaces` field whose shape or catalog blocks are malformed in a way pnpm itself rejects (including the default catalog declared twice), or a config dependency whose `pnpmfile.cjs` cannot be loaded or replayed. | handle unreadable or malformed pnpm-workspace.yaml, bad catalog block, broken pnpmfile config dependency |
 | `CatalogResolver` | Class | Contract for resolving pnpm `catalog:` dependency specifiers to concrete version ranges. | resolve a catalog: specifier to a version range, catalog contract, noop default layer — implemented by `WorkspaceCatalogs` in `@effected/workspaces` |
@@ -40,12 +41,14 @@
 | `PackageManagerCache` | Class | Where each package manager caches by default — a facts table, one documented authority per row. | look up a package manager's default cache directory for a platform |
 | `PackageManagerPin` | Class | A corepack package-manager pin: the `<name>@<version>[+<integrity>]` triple (e.g. `pnpm@11.17.0+sha512.abc…`), independent of any `package.json` field. | parse and print a corepack packageManager pin string, name@version+integrity |
 | `PackageManagerPinName` | Variable + TypeAlias | The decoded type of `(PackageManagerPinName:variable)`: `"npm" \| "pnpm" \| "yarn" \| "bun"`. | the four package managers a corepack pin can name: npm, pnpm, yarn, bun |
-| `PackagePublish` | Class | Packs, dry-runs and publishes npm tarballs, and writes registry auth into an npmrc, by running `npm` through `@effected/commands`. | pack a package into a tarball, publish to a registry, dry-run pack, write or replace an npmrc auth token |
+| `PackagePublish` | Class | Packs, dry-runs and publishes npm tarballs, and writes registry auth into an npmrc, by running `npm` through `@effected/commands`. | pack tarball, publish to registry, write npmrc auth token, recording test double |
 | `PackagePublishShape` | Interface | The `PackagePublish` service shape. | |
 | `PackageTarball` | Class | Fetch, verify and extract a published tarball. | download, verify and extract a published tarball by integrity |
 | `PackageTarballShape` | Interface | The `PackageTarball` service shape. | |
 | `PackedTarball` | Class | A packed tarball and the two digests that describe it. | the tarball path, digests and size npm pack produced |
 | `PartialReleaseAgeGate` | Variable + TypeAlias | One source's partial contribution to a release-age gate. All fields optional. | one config source's contribution to a pnpm minimumReleaseAge gate before merging |
+| `PublishAuthPath` | TypeAlias | Which credential a successful publish authenticated with. | |
+| `PublishCredential` | TypeAlias | Every credential `PackagePublish.setupAuth` can write into an npmrc. | |
 | `PublishError` | Class | A publish-workflow step failed. | handle an npm publish step failure: auth, pack, publish, output parse, digest |
 | `PublishOptions` | Interface | Options for uploading a tarball. | |
 | `PublishOutcome` | Interface | What one publish produced. | |
@@ -53,9 +56,11 @@
 | `PublishedVersion` | Class | One published version of one package, on one registry. | one package version's registry metadata: name, version, integrity, tarball url |
 | `RangeSpecifier` | Class | A plain semver range or exact version (e.g. `^1.2.3`, `1.x`, `>=1 <2`). | represent a plain semver range or exact version dependency specifier |
 | `RawSpecifier` | Class | The honest fallback for `file:` / `link:` / `portal:` / git / URL / `npm:` forms this concept does not further interpret. | fallback classification for file:/link:/portal:/git/url/npm: specifiers this package does not further interpret |
+| `RecordedSetupAuth` | Interface | One `setupAuth` call a `PackagePublish.recording` double observed. | |
+| `RecordingPackagePublish` | Interface | What `PackagePublish.recording` returns: the layer to provide and the calls it observed. | |
 | `RegistryCredential` | TypeAlias | How to authenticate to a registry. | |
 | `RegistryKind` | Variable + TypeAlias | The decoded type of `(RegistryKind:variable)`. | classify a registry url as npm, github-packages, jsr, or custom |
-| `RegistryReadError` | Class | A registry read failed. | handle a failed registry http read: transport failure, bad status, undecodable body |
+| `RegistryReadError` | Class | A registry read failed. | handle failed registry http read: transport error, bad status, undecodable body, refused workload credential |
 | `RegistrySeed` | Interface | A whole fake registry world, keyed the way real reads are. | |
 | `RegistryTarget` | Interface | Which registry to read from, and how to authenticate. | |
 | `ReleaseAgeGate` | Class | pnpm's publish-time release-age gate: the number of minutes a published version must age before it is eligible, and the set of package-name patterns exempt from the gate. Mirrors pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` config so a resolver can drop too-young candidate versions before picking, avoiding `ERR_PNPM_NO_MATURE_MATCHING_VERSION`. | enforce pnpm minimumReleaseAge, filter candidate versions younger than the cutoff, match exclude patterns |
@@ -64,12 +69,14 @@
 | `TarballError` | Class | Raised when a published tarball cannot be fetched, verified or extracted. | handle a tarball that could not be fetched, verified or extracted, integrity mismatch |
 | `TokenCredential` | Interface | A bearer token — npm's `_authToken`, and the form every modern registry documents first. | |
 | `UnresolvedDependencyError` | Class | Raised when a `catalog:` or `workspace:` specifier in a manifest resolves to nothing: the catalog has no entry for the dependency, or no workspace package carries its name. Distinct from `DependencyResolutionError` — the resolution *mechanism* worked; the answer was `Option.none()`, which at the manifest level means the manifest cannot be projected to concrete ranges. | handle a catalog or workspace specifier that resolves to no entry |
+| `WorkloadCredential` | Interface | A short-lived registry token minted from a CI workload identity — written to npm's `_authToken`, and accepted by `PackagePublish.setupAuth` only. | |
 | `WorkspaceResolver` | Class | Contract for resolving pnpm `workspace:` dependency specifiers to concrete versions. | resolve a workspace: specifier to a concrete package version, workspace contract, noop default layer — implemented by `WorkspaceDiscovery` in `@effected/workspaces` |
 | `WorkspaceSpecifier` | Class | A `workspace:` reference. `range` carries the part after `workspace:` — a range modifier (`*`, `^`, `~`), a concrete range, or an alias form. | represent a parsed workspace: dependency reference and its range modifier |
-| `basicCredentialFromPair` | Function | A `BasicCredential` from a username and password, encoding for you. | build a basic-auth registry credential from a username and password, base64 encode |
+| `basicCredentialFromPairResult` | Function | A `BasicCredential` from a username and password, encoding for you. | build basic-auth registry credential from username and password, base64 encode, result not throw |
 | `classifyRegistry` | Function | Classify a registry URL. | determine which well-known registry a url points at |
 | `isValidDependencySpecifier` | Function | Whether a string is a recognized dependency specifier: a semver range, exact version, dist-tag, URL, git ref, GitHub shorthand, file path, or an `npm:` / `catalog:` / `workspace:` protocol. | check if a string is a recognized dependency version specifier |
 | `isValidIntegrityHash` | Function | Whether a string is a valid integrity hash in the SRI (`<algo>-<base64>`), corepack (`<algo>.<hex>`) or yarn (`<cachekey>/<hex>`) form. | check if a string is a valid integrity hash in any supported form |
 | `registryDisplayName` | Function | A human-readable display name for a registry: `npm`, `GitHub Packages`, `JSR`, or the host. | human-readable registry name for prose: npm, GitHub Packages, JSR, or host |
 | `registryHost` | Function | The host of a registry URL, for use as a label. | extract the host portion of a registry url or bare host string |
 | `registryShortLabel` | Function | A compact label for a registry: `npm`, `github`, `jsr`, or the host. | compact registry label for a log or table: npm, github, jsr, or host |
+| `workloadCredential` | Function | A `WorkloadCredential` from a workload identity token and the registry's prefix. | build publish-only registry token from ci oidc identity token and registry prefix |
