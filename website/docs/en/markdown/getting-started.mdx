@@ -31,7 +31,7 @@ The document arrives as a string, so the first move is to parse it. `MarkdownDoc
 
 ```ts with-api
 import { MarkdownDocument } from "@effected/markdown";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 const changelog = `# Changelog
 
@@ -48,24 +48,28 @@ const program = Effect.gen(function* () {
   // 1. Parse the file. The dialect defaults to gfm; nothing to configure.
   const document = yield* MarkdownDocument.parse(changelog);
 
-  // 2. The newest release is the first second-level section.
+  // 2. The newest release is the first second-level section — an Option,
+  //    because a changelog with no releases yet has none.
   const newest = document.firstSection({ depth: 2 });
 
   // 3. Its body is the section without its heading — untrimmed, on purpose.
-  return newest === undefined ? "no releases yet" : `${newest.text}: ${newest.body.trim()}`;
+  return Option.match(newest, {
+    onNone: () => "no releases yet",
+    onSome: (section) => `${section.text}: ${section.body.trim()}`,
+  });
 });
 
 Effect.runPromise(program).then(console.log);
 // 1.2.3: Fixed a bug in the table parser.
 ```
 
-Three things are worth pausing on. `firstSection` and its sibling `sectionByHeading` are *finders* over `sections`, so you never scan an array of children yourself, and `{ depth: 2 }` restricts the search to one heading level rather than matching a `###` sub-heading by accident. A `DocumentSection` carries the heading, its `text`, and a `range` that spans the section's subsections too — which is exactly what the edit layer needs to splice a whole release out later. And `body` is deliberately untrimmed: it is exactly the bytes `bodyRange` describes, so the string and its offsets can never disagree. Call `.trim()` when you want the tidy form.
+Three things are worth pausing on. `firstSection` and its sibling `sectionByHeading` are *finders* over `sections`, so you never scan an array of children yourself; like every lookup in the kit they return an `Option`, so the no-match case is a value you handle rather than an `undefined` you forget, and `{ depth: 2 }` restricts the search to one heading level rather than matching a `###` sub-heading by accident. A `DocumentSection` carries the heading, its `text`, and a `range` that spans the section's subsections too — which is exactly what the edit layer needs to splice a whole release out later. And `body` is deliberately untrimmed: it is exactly the bytes `bodyRange` describes, so the string and its offsets can never disagree. Call `.trim()` when you want the tidy form.
 
 To address a *named* release rather than the newest one, swap in `sectionByHeading`. It matches the exact trimmed heading text, a `RegExp`, or a predicate — exact, never a substring, so asking for `1.2.3` can never hand you `## 1.2.30`:
 
 ```ts with-api
 import { MarkdownDocument } from "@effected/markdown";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 const changelog = `# Changelog
 
@@ -80,7 +84,10 @@ Fixed a bug in the table parser.
 
 const program = Effect.gen(function* () {
   const document = yield* MarkdownDocument.parse(changelog);
-  return document.sectionByHeading("1.2.3", { depth: 2 })?.body.trim();
+  return Option.match(document.sectionByHeading("1.2.3", { depth: 2 }), {
+    onNone: () => "no such release",
+    onSome: (section) => section.body.trim(),
+  });
 });
 
 Effect.runPromise(program).then(console.log);
@@ -133,7 +140,7 @@ For everything the accessors do not cover, `find` and `findAll` walk the whole t
 
 ```ts with-api
 import { MarkdownDocument } from "@effected/markdown";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 const source = `# Fixtures
 
@@ -150,7 +157,7 @@ const program = Effect.gen(function* () {
   const document = yield* MarkdownDocument.parse(source);
   const table = document.find("table");
   const fences = document.findAll("code").map((code) => code.lang);
-  return { rows: table?.children.length ?? 0, fences };
+  return { rows: Option.match(table, { onNone: () => 0, onSome: (node) => node.children.length }), fences };
 });
 
 Effect.runPromise(program).then(console.log);
@@ -193,7 +200,7 @@ Effect.runPromise(program).then(console.log);
 
 ```ts with-api
 import { MarkdownDocument, MarkdownFormat } from "@effected/markdown";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 const source = `# Release notes
 
@@ -202,9 +209,10 @@ See the [changelog](./CHANGELOG.md).
 
 const program = Effect.gen(function* () {
   const document = yield* MarkdownDocument.parse(source);
-  const heading = document.find("heading");
-  const title = heading?.children[0];
-  return title === undefined ? source : yield* MarkdownFormat.modifyToString(document, title, "Release notes (2026)");
+  const title = document.find("heading").pipe(Option.flatMap((heading) => Option.fromUndefinedOr(heading.children[0])));
+  return Option.isNone(title)
+    ? source
+    : yield* MarkdownFormat.modifyToString(document, title.value, "Release notes (2026)");
 });
 
 Effect.runPromise(program).then(console.log);

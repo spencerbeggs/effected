@@ -6,7 +6,7 @@
 // spans, so the interop corpus's exact-emission contract is untouched.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import { Markdown } from "../src/Markdown.js";
 import { MarkdownDocument } from "../src/MarkdownDocument.js";
 import { MarkdownFormat } from "../src/MarkdownFormat.js";
@@ -91,8 +91,7 @@ describe("synthesized trees flow through the render surfaces", () => {
 	it.effect("modify accepts a one-line synthesized fragment", () =>
 		Effect.gen(function* () {
 			const document = parseDoc("# Old\n\nbody\n");
-			const heading = document.find("heading");
-			assert.isDefined(heading);
+			const heading = Option.getOrThrow(document.find("heading"));
 			const out = yield* MarkdownFormat.modifyToString(
 				document,
 				heading,
@@ -111,8 +110,7 @@ describe("the default is make-only (controls)", () => {
 
 	it("parsed trees still carry real spans, never the sentinel", () => {
 		const document = parseDoc("# Hi\n");
-		const heading = document.find("heading");
-		assert.isDefined(heading);
+		const heading = Option.getOrThrow(document.find("heading"));
 		assert.notStrictEqual(heading.position, Position.synthetic);
 		assert.strictEqual(heading.position.start.offset, 0);
 		assert.strictEqual(heading.position.end.offset, 4);

@@ -47,7 +47,7 @@ integrity:
 Schema classes: parse into mdast-shaped nodes carrying byte offsets, compute
 offset-splice edits, format, modify by node, rewrite trees with typed
 transforms, project to and from plain mdast,
-walk the tree as a `Stream`, and read and write frontmatter through
+walk the tree synchronously or as a `Stream`, and read and write frontmatter through
 free-standing codecs. It also carries the MDX node vocabulary (construction
 and serialization only), a phrasing-level parse entry point, and a
 string-level frontmatter split/join facade. It carries the full-parity
@@ -306,13 +306,18 @@ where the error channel is real, `Stream` for the visitor.
 The visitor is a tagged-enum event union walking the already-parsed tree
 rather than text — the one deliberate divergence from the `yaml`/`toml`
 text-visitor convention, possible because parse and walk are separable
-surfaces here. The stream is lazy per subscription, and a foreign-tree depth
-trip yields exactly one terminal error event. Navigation accessors are
+surfaces here. `MarkdownVisitor.walk` is the synchronous primitive — a lazy,
+re-iterable `Iterable` that walks afresh on every iteration — and
+`MarkdownVisitor.visit` is the `Stream` defined in terms of it, so the two
+yield identical events; `walk` exists for callers that cannot suspend, such
+as a lint rule a host calls synchronously[^issue-1030]. Either way a
+foreign-tree depth trip yields exactly one terminal error event. Navigation
+accessors are
 derived getters using a plain sync walk whose depth guard is a thrown
 defect, since getters have no error channel, and every one of them
 recomputes per access — a caller checking repeatedly binds the result
 once. `find`/`findAll` take a node-type tag (narrowing the result through
-`MarkdownNodeOfType`, so `find("heading")` is `Heading | undefined`), a
+`MarkdownNodeOfType`, so `find("heading")` is `Option<Heading>`), a
 type-guard, or a plain predicate; they walk in pre-order — the same order
 the visitor enters nodes, starting at the root — and return matches by
 identity, so a match feeds `MarkdownFormat.modify` directly. Headings list
@@ -321,6 +326,21 @@ spanning their subsections so the edit layer can splice whole sections;
 links pass URL strings through unmodified, with reference forms resolved
 through the definition index and an unresolvable foreign reference leaving
 the URL genuinely absent.
+
+Every lookup that can miss returns `Option`: `find`, `firstSection`,
+`sectionByHeading` and the `frontmatter` getter, matching the sibling format
+packages' tree lookups (`JsoncNode.find`, `YamlNode.find`). A derived getter
+counts as a lookup, not a data field, because it recomputes from the tree on
+each access; the optional fields of the node classes themselves keep mdast's
+`T | undefined` shape, since they are data.
+
+The frontmatter fence grammar is the kit's own closed set — `---` yaml, `+++`
+toml, `---json` json, each fence line exact — and it does not match
+markdownlint's `frontMatterRe`: markdownlint also strips a bare `{ … }` JSON
+block and fences with trailing whitespace, and does not strip `---json`. A
+consumer bridging kit trees to markdownlint must parse the same text
+markdownlint parsed (its `frontMatterLines` plus `lines`) rather than assume
+the two agree on where the body starts.
 
 The synthetic zero-width position sentinel is public, and position carries
 it as a make-only constructor default: decode still requires a real position

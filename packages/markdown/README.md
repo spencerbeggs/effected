@@ -85,7 +85,7 @@ Every parse has a synchronous twin — `MarkdownDocument.parseResult` and `Markd
 
 ```ts
 import { MarkdownDocument, MarkdownFormat } from "@effected/markdown";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 const source = `# Release notes
 
@@ -94,7 +94,7 @@ See the [changelog](./CHANGELOG.md).
 
 const program = Effect.gen(function* () {
   const doc = yield* MarkdownDocument.parse(source);
-  const label = doc.find("text")!;
+  const label = Option.getOrThrow(doc.find("text"));
   return yield* MarkdownFormat.modifyToString(doc, label, "Release notes (2026)");
 });
 
@@ -104,7 +104,7 @@ Effect.runPromise(program).then(console.log);
 // See the [changelog](./CHANGELOG.md).
 ```
 
-`find` walks the tree in document pre-order and returns the document's own node, so the match feeds `modify` by identity. Replacements are literal strings or node fragments, and both render through the canonical stringifier, so a modified document re-parses cleanly by construction — you cannot splice in raw markdown that reopens a fence or breaks a table.
+`find` walks the tree in document pre-order and returns the document's own node inside an `Option` — `Option.none()` when nothing matches — so the match feeds `modify` by identity. Replacements are literal strings or node fragments, and both render through the canonical stringifier, so a modified document re-parses cleanly by construction — you cannot splice in raw markdown that reopens a fence or breaks a table.
 
 `MarkdownFormat.format` handles the other half: conservative marker normalization, never content rewriting. It converts heading style, bullet character, emphasis marker, fence character, thematic-break character and code-block style, and skips any conversion that would not be safe rather than attempting it cleverly:
 
@@ -198,11 +198,11 @@ Effect.runPromise(program).then(console.log);
 // [ "./CHANGELOG.md", "https://example.com/docs" ]
 ```
 
-`headings` lists every heading wherever it sits, including inside blockquotes and list items. `sections` are delimited by root-level headings only, and each section's range spans its subsections, so the edit layer can splice a whole section out in one edit. `firstSection` and `sectionByHeading` find one `DocumentSection` without scanning `sections` yourself — the second matches on an exact trimmed heading string, a `RegExp`, or a predicate, and both accept `{ depth }` to restrict to one heading level:
+`headings` lists every heading wherever it sits, including inside blockquotes and list items. `sections` are delimited by root-level headings only, and each section's range spans its subsections, so the edit layer can splice a whole section out in one edit. `firstSection` and `sectionByHeading` find one `DocumentSection` without scanning `sections` yourself — the second matches on an exact trimmed heading string, a `RegExp`, or a predicate, and both accept `{ depth }` to restrict to one heading level. Both return an `Option`, as every lookup in the kit does (the `frontmatter` accessor and `find` too):
 
 ```ts
 import { MarkdownDocument } from "@effected/markdown";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 const source = `# Changelog
 
@@ -217,7 +217,10 @@ Initial release.
 
 const program = Effect.gen(function* () {
   const doc = yield* MarkdownDocument.parse(source);
-  return doc.sectionByHeading("1.2.3", { depth: 2 })?.body.trim();
+  return Option.match(doc.sectionByHeading("1.2.3", { depth: 2 }), {
+    onNone: () => "no such release",
+    onSome: (section) => section.body.trim(),
+  });
 });
 
 Effect.runPromise(program).then(console.log);
@@ -226,7 +229,7 @@ Effect.runPromise(program).then(console.log);
 
 `DocumentSection.body` is the section without its heading, and it is deliberately untrimmed — exactly the bytes `bodyRange` describes — so callers write `.body.trim()` when they want the tidy form.
 
-For anything the accessors do not cover, `find` and `findAll` walk the whole tree in document pre-order. A string selector matches the node's `type` and narrows the result — `doc.findAll("heading")` is `ReadonlyArray<Heading>`, `doc.find("table")` is `Table | undefined` — and a type-guard predicate narrows the same way. The nodes come back by identity, so `doc.findAll("heading")[1]` addresses the second heading for `MarkdownFormat.modify` without raw child indexing.
+For anything the accessors do not cover, `find` and `findAll` walk the whole tree in document pre-order. A string selector matches the node's `type` and narrows the result — `doc.findAll("heading")` is `ReadonlyArray<Heading>`, `doc.find("table")` is `Option<Table>` — and a type-guard predicate narrows the same way. The nodes come back by identity, so `doc.findAll("heading")[1]` addresses the second heading for `MarkdownFormat.modify` without raw child indexing.
 
 `MarkdownVisitor.visit` streams the same walk as `Enter`/`Exit` events carrying the node, its child-index path and its depth:
 
@@ -244,6 +247,21 @@ Effect.runPromise(program).then(console.log);
 // [ "Enter:root", "Enter:heading", "Enter:text", "Exit:text", "Exit:heading",
 //   "Enter:paragraph", "Enter:text", "Exit:text", "Enter:emphasis", "Enter:text",
 //   "Exit:text", "Exit:emphasis", "Enter:text", "Exit:text", "Exit:paragraph", "Exit:root" ]
+```
+
+`MarkdownVisitor.walk` is the same walk as a synchronous, lazy `Iterable` — the primitive `visit` is defined in terms of — for code that cannot suspend, such as a lint rule a host calls synchronously. Each iteration walks afresh from the root, and a `for…of` that `break`s stops the walk:
+
+```ts
+import { Markdown, MarkdownVisitor } from "@effected/markdown";
+import { Result } from "effect";
+
+const root = Result.getOrThrow(Markdown.parseResult("# Title\n\nA *b* c\n"));
+const headings: Array<number> = [];
+for (const event of MarkdownVisitor.walk(root)) {
+  if (event._tag === "Enter" && event.node.type === "heading") headings.push(event.node.depth);
+}
+console.log(headings);
+// [ 1 ]
 ```
 
 ## mdast interop
@@ -364,7 +382,7 @@ To *normalize* an existing document to different choices, use `MarkdownFormat` w
 - `FrontmatterSource` — string-level frontmatter `split`/`join` over the same closed fence grammar, byte-exact boundaries, no parsing of value or body; for bodies the CommonMark engine should not touch.
 - `MarkdownEdit` / `MarkdownRange` (with `applyAll`) — the non-mutating text-edit vocabulary, field-identical to `@effected/jsonc`'s, `@effected/yaml`'s and `@effected/toml`'s.
 - `MarkdownFormat` — `format`/`formatToString` compute conservative marker-normalization edits; `modify`/`modifyToString` replace a node by identity through the canonical stringifier.
-- `MarkdownVisitor` — walk a parsed tree as a lazy `Stream` of `Enter`/`Exit` events with child-index paths and depth.
+- `MarkdownVisitor` — walk a parsed tree as `Enter`/`Exit` events with child-index paths and depth: synchronously as a lazy `Iterable` (`walk`), or as a `Stream` (`visit`).
 - `Mdast` — `toMdast` projects to plain mdast JSON; `fromMdast`/`fromMdastResult` admit a foreign mdast tree with validation.
 - `MarkdownFrontmatter.schema` plus the `YamlFrontmatter`, `TomlFrontmatter` and `JsonFrontmatter` codecs — typed frontmatter decoding over optional per-format peers, with four separately catchable failure modes and a `FrontmatterMissingReason` on the absent one.
 - `SchemaResolver` — classify a frontmatter `$schema` declaration into `ByUrl`/`ByPath`/`Inline`/`ByName` and resolve names against a registry, with no IO and no dependencies.

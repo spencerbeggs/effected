@@ -11,7 +11,7 @@
 // heading is a parsed node or it is not one.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Result } from "effect";
+import { Option, Result } from "effect";
 import { MarkdownDocument } from "../src/MarkdownDocument.js";
 
 const parse = (source: string): MarkdownDocument => {
@@ -76,9 +76,7 @@ describe("DocumentSection.text", () => {
 describe("DocumentSection — source and body", () => {
 	/** Address sections by heading text, never by index — indices drift. */
 	const sectionNamed = (source: string, text: string) => {
-		const found = parse(source).sectionByHeading(text);
-		assert.isDefined(found);
-		return found;
+		return Option.getOrThrow(parse(source).sectionByHeading(text));
 	};
 
 	it("`source` is the whole section, heading included", () => {
@@ -136,39 +134,39 @@ describe("DocumentSection — source and body", () => {
 
 describe("MarkdownDocument.firstSection", () => {
 	it("returns the first section in document order", () => {
-		assert.strictEqual(parse(changelog).firstSection()?.text, "my-package");
+		assert.strictEqual(Option.getOrThrow(parse(changelog).firstSection()).text, "my-package");
 	});
 
 	it("restricted by depth, finds the first H2 — the newest release entry", () => {
-		const section = parse(changelog).firstSection({ depth: 2 });
-		assert.strictEqual(section?.text, "1.2.30");
-		assert.include(section?.body ?? "", "- newest entry");
+		const section = Option.getOrThrow(parse(changelog).firstSection({ depth: 2 }));
+		assert.strictEqual(section.text, "1.2.30");
+		assert.include(section.body, "- newest entry");
 	});
 
 	it("a section runs THROUGH its deeper subsections", () => {
 		// The H3 inside the newest entry must not terminate it: `### Patch changes`
 		// is part of that release's notes, and cutting there is the classic
 		// changelog-extraction bug.
-		const body = parse(changelog).firstSection({ depth: 2 })?.body ?? "";
+		const body = Option.getOrThrow(parse(changelog).firstSection({ depth: 2 })).body;
 		assert.include(body, "### Patch changes");
 		assert.include(body, "a nested subsection that must NOT terminate its release");
 		assert.notInclude(body, "- older entry");
 	});
 
-	it("is undefined when no section matches the depth", () => {
-		assert.isUndefined(parse(changelog).firstSection({ depth: 5 }));
+	it("is Option.none when no section matches the depth", () => {
+		assert.isTrue(Option.isNone(parse(changelog).firstSection({ depth: 5 })));
 	});
 
 	it("is undefined on a document with no headings at all", () => {
-		assert.isUndefined(parse("just a paragraph\n").firstSection());
+		assert.isTrue(Option.isNone(parse("just a paragraph\n").firstSection()));
 	});
 });
 
 describe("MarkdownDocument.sectionByHeading", () => {
 	it("matches a string EXACTLY against the trimmed heading text", () => {
-		const section = parse(changelog).sectionByHeading("1.2.3");
-		assert.strictEqual(section?.text, "1.2.3");
-		assert.include(section?.body ?? "", "- older entry");
+		const section = Option.getOrThrow(parse(changelog).sectionByHeading("1.2.3"));
+		assert.strictEqual(section.text, "1.2.3");
+		assert.include(section.body, "- older entry");
 	});
 
 	it("`1.2.3` does NOT match `1.2.30` — the wrong-release hazard", () => {
@@ -176,16 +174,16 @@ describe("MarkdownDocument.sectionByHeading", () => {
 		// return the 1.2.30 section here and publish the wrong release notes,
 		// silently. `1.2.30` sits EARLIER in the document than `1.2.3`, so a
 		// substring implementation returns it first.
-		const section = parse(changelog).sectionByHeading("1.2.3");
-		assert.strictEqual(section?.text, "1.2.3");
-		assert.notInclude(section?.body ?? "", "- newest entry");
+		const section = Option.getOrThrow(parse(changelog).sectionByHeading("1.2.3"));
+		assert.strictEqual(section.text, "1.2.3");
+		assert.notInclude(section.body, "- newest entry");
 	});
 
 	it("accepts a RegExp for the tagged-monorepo heading shape", () => {
 		// Real changelogs carry either `## 1.2.3` or `## @scope/pkg@1.2.3`.
 		const source = "# pkg\n\n## @scope/pkg@0.9.5\n\n- scoped entry\n";
-		const section = parse(source).sectionByHeading(/@0\.9\.5$/);
-		assert.strictEqual(section?.text, "@scope/pkg@0.9.5");
+		const section = Option.getOrThrow(parse(source).sectionByHeading(/@0\.9\.5$/));
+		assert.strictEqual(section.text, "@scope/pkg@0.9.5");
 	});
 
 	it("a /g/ RegExp is not derailed by its own lastIndex", () => {
@@ -195,29 +193,29 @@ describe("MarkdownDocument.sectionByHeading", () => {
 		// the reset has to live here rather than in a caveat.
 		const pattern = /\d+\.\d+\.\d+/g;
 		const document = parse(changelog);
-		assert.strictEqual(document.sectionByHeading(pattern)?.text, "1.2.30");
-		assert.strictEqual(document.sectionByHeading(pattern)?.text, "1.2.30");
+		assert.strictEqual(Option.getOrThrow(document.sectionByHeading(pattern)).text, "1.2.30");
+		assert.strictEqual(Option.getOrThrow(document.sectionByHeading(pattern)).text, "1.2.30");
 	});
 
 	it("accepts a predicate over the text and the section", () => {
-		const section = parse(changelog).sectionByHeading(
-			(text, candidate) => candidate.depth === 2 && text.endsWith(".0"),
+		const section = Option.getOrThrow(
+			parse(changelog).sectionByHeading((text, candidate) => candidate.depth === 2 && text.endsWith(".0")),
 		);
-		assert.strictEqual(section?.text, "1.0.0");
+		assert.strictEqual(section.text, "1.0.0");
 	});
 
 	it("honours the depth restriction", () => {
 		const source = "# 1.0.0\n\ntop\n\n## 1.0.0\n\nnested\n";
-		assert.strictEqual(parse(source).sectionByHeading("1.0.0", { depth: 2 })?.body.trim(), "nested");
+		assert.strictEqual(Option.getOrThrow(parse(source).sectionByHeading("1.0.0", { depth: 2 })).body.trim(), "nested");
 	});
 
-	it("is undefined when nothing matches", () => {
-		assert.isUndefined(parse(changelog).sectionByHeading("9.9.9"));
+	it("is Option.none when nothing matches", () => {
+		assert.isTrue(Option.isNone(parse(changelog).sectionByHeading("9.9.9")));
 	});
 
 	it("returns the FIRST match in document order", () => {
 		const source = "## dup\n\nfirst\n\n## dup\n\nsecond\n";
-		assert.strictEqual(parse(source).sectionByHeading("dup")?.body.trim(), "first");
+		assert.strictEqual(Option.getOrThrow(parse(source).sectionByHeading("dup")).body.trim(), "first");
 	});
 });
 
@@ -246,9 +244,9 @@ describe("section extraction — the line-scan regressions", () => {
 			document.sections.map((section) => section.text),
 			["Title", "1.0.0"],
 		);
-		const release = document.firstSection({ depth: 2 });
-		assert.include(release?.body ?? "", "## not a heading");
-		assert.include(release?.body ?? "", "- real content");
+		const release = Option.getOrThrow(document.firstSection({ depth: 2 }));
+		assert.include(release.body, "## not a heading");
+		assert.include(release.body, "- real content");
 	});
 
 	it("an INDENTED code block's `## ` is not a section either", () => {
@@ -271,7 +269,7 @@ describe("section extraction — the line-scan regressions", () => {
 				[2, "1.0.0"],
 			],
 		);
-		assert.strictEqual(document.firstSection({ depth: 2 })?.body.trim(), "- setext content");
+		assert.strictEqual(Option.getOrThrow(document.firstSection({ depth: 2 })).body.trim(), "- setext content");
 	});
 
 	it("a heading inside a blockquote does not open a section", () => {
