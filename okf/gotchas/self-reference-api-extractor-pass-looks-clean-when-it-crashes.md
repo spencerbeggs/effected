@@ -46,7 +46,8 @@ the build to 0.[^jsonl-build]
 
 The second pass still reports every root type a self-referencing entry names
 as `ae-forgotten-export` against that entry, which is why `images`, `cli` and
-`jsonl` each keep one narrow suppression scoped to their second entry point.
+`jsonl` each keep one narrow suppression scoped to their non-root entry
+points (`cli` covers two: `./ui` and `./ui/testing`).
 That suppression is checked: a clean `issues.json` from the second pass is a
 real result, not an unchecked one.
 

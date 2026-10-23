@@ -50,7 +50,7 @@ describe("TSDoc links in the ui sources", () => {
 	const ui = new Set([...entryExports("ui.ts"), ...entryExports("ui-testing.ts")]);
 	const root = new Set(entryExports("index.ts"));
 
-	it("name an export of ./ui or ./ui/testing bare, a root export package-qualified, or a known external", () => {
+	it("name an export of ./ui or ./ui/testing (optionally selector-wrapped) or a known external; root-only names are code spans", () => {
 		const files = (readdirSync(SRC, { recursive: true }) as ReadonlyArray<string>)
 			.map((file) => file.split(sep).join("/"))
 			.filter((file) => file.endsWith(".ts") && /^ui(?:\.ts$|-testing\.ts$|\/)/.test(file));

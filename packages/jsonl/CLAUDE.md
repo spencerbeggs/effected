@@ -210,11 +210,11 @@ the next session does not rediscover them:
 pattern: "_base" }` suppression for the synthesized `Schema.Class` /
 `Schema.TaggedError` heritage types. **Never widen it** — an internal type
 named on a public signature is a different symbol and stays un-masked. A
-second suppression is scoped to `entry point node\.d\.ts$` only: API
-Extractor follows `./node`'s self-referencing `@effected/jsonl` import into the
-root and reports every root type as forgotten there. The one remaining
-warning, "could not harvest per-module source locations for node", is that
-same self-reference and is accepted, as `@effected/cli`'s are.
+second suppression is scoped to `entry point node\.d\.ts$` only: the second
+API Extractor pass resolves `./node`'s self-referencing `@effected/jsonl`
+import to the built root declarations, but still reports every root type it
+reaches as `ae-forgotten-export` against `node.d.ts`, so the scoped
+suppression stays. A clean build reports 0 warnings.
 
 Gate on `pnpm build --filter @effected/jsonl`, never the raw
 `node savvy.build.ts` script, and read `dist/prod/issues.json` rather than

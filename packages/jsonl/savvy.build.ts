@@ -17,8 +17,8 @@ await build({
 			// different symbol and stays un-masked.
 			suppressWarnings: [
 				{ messageId: "ae-forgotten-export", pattern: "_base" },
-				// API Extractor follows ./node's self-referencing "@effected/jsonl" import back into the root's source and
-				// reports every root type as forgotten from node.d.ts. Scoped to that one entry: the root entry keeps the
+				// The second API Extractor pass resolves ./node's self-referencing "@effected/jsonl" import to the built root
+				// declarations, but still reports every root type it reaches as forgotten from node.d.ts. Scoped to that one entry: the root entry keeps the
 				// full check, and node.ts exports its one class and names nothing of its own on a public signature.
 				{ messageId: "ae-forgotten-export", pattern: "entry point node\\.d\\.ts$" },
 			],

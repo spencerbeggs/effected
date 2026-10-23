@@ -10,8 +10,8 @@ await build({
 		tsdoc: {
 			suppressWarnings: [
 				{ messageId: "ae-forgotten-export", pattern: "_base" },
-				// API Extractor follows ./ui's self-referencing "@effected/cli" import back into the root's source and
-				// reports every root type as forgotten. Scoped to the two ui entries only. What it would hide (a ui-local
+				// The second API Extractor pass resolves ./ui's self-referencing "@effected/cli" import to the built root
+				// declarations, but still reports every root type it reaches as forgotten. Scoped to the two ui entries only. What it would hide (a ui-local
 				// declaration left unexported) is pinned by __test__/declarations.test.ts over the built ui.d.ts.
 				{ messageId: "ae-forgotten-export", pattern: "entry point ui(?:-testing)?\\.d\\.ts$" },
 			],
