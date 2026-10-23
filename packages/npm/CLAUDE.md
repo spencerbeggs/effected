@@ -36,8 +36,10 @@ Everything durable about this package lives in `okf/`, not here. Start at
   (`RegistryTarget.token` is a `never` tripwire — never alias or delete it
   early), `okf/gotchas/npm-12-pack-json-is-keyed-by-name.md` (`pack --json`
   is an array on npm 11 and a name-keyed object on npm 12),
-  `okf/gotchas/action-macos-npm-cache.md` (why `withCacheDir` exists) —
-  Load when: a publish or pack fails on a runner, or a caller loses auth.
+  `okf/gotchas/action-macos-npm-cache.md` (why `withCacheDir` exists),
+  `okf/gotchas/npm-oidc-auth-path-is-verbose-only.md` (why `publishTarball`
+  runs at `--loglevel=silly` and `PublishOutcome.auth` is read from stderr)
+  — Load when: a publish or pack fails on a runner, or a caller loses auth.
 - Known edge → `okf/limitations/npm-no-packument-caching.md`.
 - Package-manager support window (which npm majors `PackagePublish` must
   decode) → `okf/conventions/package-manager-support-policy.md`.
