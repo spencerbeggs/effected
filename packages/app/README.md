@@ -308,7 +308,7 @@ The documented limit, stated up front so nobody finds it in a debugger: code pat
 
 | Tag | Raised by | Means |
 | --- | --------- | ----- |
-| `XdgEnvError` | [`@effected/xdg`](../xdg) | `$HOME` is not set — the one environment failure there is. |
+| `XdgEnvError` | [`@effected/xdg`](../xdg) | The home directory is not set (`$HOME`, or on Windows `%USERPROFILE%` then `$HOME`) — the one environment failure there is. |
 | `AppDirsError` | [`@effected/xdg`](../xdg) | A directory could not be created. Check permissions. |
 | `StoreError` | [`@effected/store`](../store) | The state database's own SQL failed — ledger bookkeeping, or the queries around a migration. |
 | `StoreMigrationError` | [`@effected/store`](../store) | One of your migrations failed. Carries `direction`, `id` and `name`. |
