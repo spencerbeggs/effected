@@ -23,6 +23,7 @@
 | `GitConfigSection` | Class | One section of a git-config document. | one [section] or [section "subsection"] block of a parsed git-config document |
 | `GitInvocation` | Interface | A pure `git` invocation: the spawnable command plus the diagnostic argv the error taxonomy is allowed to persist. | |
 | `GitShape` | Interface | The `Git` service shape. | |
+| `GitUntrackedFilesMode` | TypeAlias | The untracked-files mode of `git status` — git's `--untracked-files` flag. | |
 | `Gitmodules` | Class | The typed view over a `.gitmodules` document: the decoded submodule entries, in first-appearance order. | typed view over a .gitmodules document, parse .gitmodules, decoded submodule entries |
 | `GitmodulesDecodeError` | Class | A `[submodule]` section could not be decoded into a `GitmodulesEntry`. | a [submodule] section in .gitmodules failed to decode, missing path or url |
 | `GitmodulesEntry` | Class | One `[submodule "<name>"]` entry of a `.gitmodules` document, decoded into typed fields. | one decoded submodule entry from .gitmodules: name path url branch shallow update ignore |
