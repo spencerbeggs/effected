@@ -46,6 +46,7 @@ describe("ImageBackend.layerFrom(Cache) - the store contract", () => {
 			const error = yield* Effect.flip(images.get(KEY));
 			assert.instanceOf(error, ImageBackendError);
 			assert.strictEqual(error.operation, "get");
+			assert.strictEqual(error.reason, "backend");
 			assert.strictEqual(error.key, KEY);
 			assert.strictEqual(error.cause, getFailure);
 		}).pipe(Effect.provide(failing)),
@@ -57,6 +58,7 @@ describe("ImageBackend.layerFrom(Cache) - the store contract", () => {
 			const error = yield* Effect.flip(images.set({ key: KEY, value: PNG, contentType: "image/png" }));
 			assert.instanceOf(error, ImageBackendError);
 			assert.strictEqual(error.operation, "set");
+			assert.strictEqual(error.reason, "backend");
 			assert.strictEqual(error.key, KEY);
 			assert.strictEqual(error.cause, setFailure);
 		}).pipe(Effect.provide(failing)),

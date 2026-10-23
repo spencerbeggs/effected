@@ -154,7 +154,9 @@ describe("ImageCache.getOrGenerate", () => {
 				over({
 					get: () => Effect.succeedNone,
 					set: (params) =>
-						Effect.fail(new ImageBackendError({ operation: "set", key: params.key, cause: new Error("full") })),
+						Effect.fail(
+							new ImageBackendError({ operation: "set", reason: "backend", key: params.key, cause: new Error("full") }),
+						),
 				}),
 			),
 		),
@@ -237,7 +239,8 @@ describe("ImageCache.getOrGenerate", () => {
 		}).pipe(
 			Effect.provide(
 				over({
-					get: (key) => Effect.fail(new ImageBackendError({ operation: "get", key, cause: new Error("down") })),
+					get: (key) =>
+						Effect.fail(new ImageBackendError({ operation: "get", reason: "backend", key, cause: new Error("down") })),
 					set: () => Effect.void,
 				}),
 			),

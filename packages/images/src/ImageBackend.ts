@@ -114,7 +114,7 @@ export class ImageBackend extends Context.Service<ImageBackend, ImageBackendShap
 						const bytes = yield* fs.readFile(fileFor(key, ext)).pipe(
 							Effect.map(Option.some),
 							Effect.catchReason("PlatformError", "NotFound", () => Effect.succeedNone),
-							Effect.mapError((cause) => new ImageBackendError({ operation: "get", key, cause })),
+							Effect.mapError((cause) => new ImageBackendError({ operation: "get", reason: "backend", key, cause })),
 						);
 						if (Option.isSome(bytes)) return Option.some<StoredImage>({ value: bytes.value, contentType });
 					}
@@ -130,6 +130,7 @@ export class ImageBackend extends Context.Service<ImageBackend, ImageBackendShap
 					if (ext === undefined) {
 						return yield* new ImageBackendError({
 							operation: "set",
+							reason: "unsupported-content-type",
 							key: params.key,
 							cause: new Error(`unsupported content type ${JSON.stringify(params.contentType ?? null)}`),
 						});
@@ -150,7 +151,9 @@ export class ImageBackend extends Context.Service<ImageBackend, ImageBackendShap
 					});
 					yield* write.pipe(
 						Effect.onError(() => fs.remove(temp, { force: true }).pipe(Effect.ignore)),
-						Effect.mapError((cause) => new ImageBackendError({ operation: "set", key: params.key, cause })),
+						Effect.mapError(
+							(cause) => new ImageBackendError({ operation: "set", reason: "backend", key: params.key, cause }),
+						),
 					);
 				});
 
@@ -175,12 +178,14 @@ export class ImageBackend extends Context.Service<ImageBackend, ImageBackendShap
 				get: (k: string) =>
 					source.get(k).pipe(
 						Effect.map(Option.map((entry) => ({ value: entry.value, contentType: entry.contentType }))),
-						Effect.mapError((cause) => new ImageBackendError({ operation: "get", key: k, cause })),
+						Effect.mapError((cause) => new ImageBackendError({ operation: "get", reason: "backend", key: k, cause })),
 						Effect.withSpan("ImageBackend.get"),
 					),
 				set: (params: ImageBackendSetParams) =>
 					source.set(params).pipe(
-						Effect.mapError((cause) => new ImageBackendError({ operation: "set", key: params.key, cause })),
+						Effect.mapError(
+							(cause) => new ImageBackendError({ operation: "set", reason: "backend", key: params.key, cause }),
+						),
 						Effect.withSpan("ImageBackend.set"),
 					),
 			})),
