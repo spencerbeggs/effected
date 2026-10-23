@@ -16,11 +16,13 @@ const segment = (value: unknown): string => Buffer.from(JSON.stringify(value)).t
  * A runtime token shaped like the one the runner injects: a three-segment JWT
  * whose `scp` claim carries the `Actions.Results:<run>:<job>` scope.
  *
- * The signature segment is nonsense on purpose — nothing verifies it, and a
- * fixture that looked signed would suggest something does.
+ * The signature is nonsense on purpose — nothing verifies it, and a fixture
+ * that looked signed would suggest something does. It is still canonical
+ * base64url, as every real token's is: the decoder (`Jws.decodeUnverified`)
+ * holds all three segments to the compact serialization.
  */
 export const runtimeToken = (scope = "Actions.Results:run-1:job-1"): string =>
-	`${segment({ alg: "HS256", typ: "JWT" })}.${segment({ scp: scope })}.not-a-signature`;
+	`${segment({ alg: "HS256", typ: "JWT" })}.${segment({ scp: scope })}.${segment("not-a-signature")}`;
 
 /** The two variables the runner injects into `uses:` steps, and nothing else. */
 export const RESULTS_ENV: Readonly<Record<string, string>> = {

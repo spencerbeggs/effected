@@ -1,15 +1,15 @@
-import { IdentityToken, IdentityTokenError } from "@effected/sbom";
+import { IdentityToken, IdentityTokenError } from "@effected/oidc";
 import { Effect, Layer } from "effect";
 import { OidcTokenIssuer } from "./OidcTokenIssuer.js";
 
 /**
- * Serves `@effected/sbom`'s `IdentityToken` contract from the runner's own OIDC
+ * Serves `@effected/oidc`'s `IdentityToken` contract from the runner's own OIDC
  * token service, so signing an SBOM inside a workflow needs no further wiring.
  *
  * @remarks
- * `@effected/sbom` declares `IdentityToken` — one method, one audience,
- * one redacted token — precisely so that signing does not drag the Actions
- * runtime into every consumer that only wants to emit an SBOM. This is the
+ * `@effected/oidc` declares `IdentityToken` — one method, one audience,
+ * one redacted token — precisely so that a consumer of a token, such as
+ * `@effected/sbom`'s signer, does not drag the Actions runtime in. This is the
  * layer that closes the inversion from the other side: it serves that contract
  * from the runner's own OIDC token service ({@link OidcTokenIssuer}), the same
  * arrangement as `@effected/workspaces` implementing `@effected/commands`'

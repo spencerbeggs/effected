@@ -1,32 +1,44 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer, Redacted } from "effect";
+import { ActionsOidcClaims, ActionsOidcClaimsFromWire } from "@effected/github";
+import { Effect, Layer, Redacted, Schema } from "effect";
 import { FetchHttpClient } from "effect/http";
-import { ActionEnvironment, OidcClaims, OidcTokenIssuer } from "../src/index.js";
+import { ActionEnvironment, OidcTokenIssuer } from "../src/index.js";
 
 const TOKEN_ENV = {
 	ACTIONS_ID_TOKEN_REQUEST_TOKEN: "runner-bearer",
 	ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.example/?api-version=2.0",
 };
 
-const CLAIMS = OidcClaims.make({
+const CLAIMS = ActionsOidcClaims.make({
 	iss: "https://token.actions.githubusercontent.com",
+	sub: "repo:acme/example:ref:refs/heads/main",
+	aud: "sigstore",
+	exp: 1_800_000_600,
+	iat: 1_800_000_000,
 	ref: "refs/heads/main",
 	sha: "0000000000000000000000000000000000000000",
 	repository: "acme/example",
-	event_name: "push",
-	job_workflow_ref: "acme/example/.github/workflows/release.yml@refs/heads/main",
-	workflow_ref: "acme/example/.github/workflows/release.yml@refs/heads/main",
-	repository_id: "1",
-	repository_owner_id: "2",
-	runner_environment: "github-hosted",
-	run_id: "3",
-	run_attempt: "1",
+	eventName: "push",
+	jobWorkflowRef: "acme/example/.github/workflows/release.yml@refs/heads/main",
+	workflowRef: "acme/example/.github/workflows/release.yml@refs/heads/main",
+	repositoryId: 1,
+	repositoryOwner: "acme",
+	repositoryOwnerId: 2,
+	runnerEnvironment: "github-hosted",
+	runId: 3,
+	runAttempt: 1,
+	actor: "octocat",
+	actorId: 583231,
 });
 
-/** A JWT whose payload is `claims`, built the way the runner would. */
+/** The claims as the runner's token carries them: snake_case keys, string ids. */
+const wire = (claims: ActionsOidcClaims): unknown => Schema.encodeSync(ActionsOidcClaimsFromWire)(claims);
+
+/** A JWT whose payload is `claims` (wire-shaped when a class instance), built the way the runner would. */
 const jwtFor = (claims: unknown, signature = "sig"): string => {
 	const segment = (value: unknown): string => Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
-	return `${segment({ alg: "RS256", typ: "JWT" })}.${segment(claims)}.${signature}`;
+	const payload = claims instanceof ActionsOidcClaims ? wire(claims) : claims;
+	return `${segment({ alg: "RS256", typ: "JWT" })}.${segment(payload)}.${signature}`;
 };
 
 const json = (body: unknown, init: ResponseInit = {}): Response =>
@@ -221,7 +233,7 @@ describe("OidcTokenIssuer", () => {
 				// characters base64url swaps. A real GitHub token hits them constantly;
 				// a corpus that never does would keep passing under a decoder that
 				// rejects them.
-				const urlSafe = OidcClaims.make({ ...CLAIMS, ref: "refs/heads/~~~??>>>" });
+				const urlSafe = ActionsOidcClaims.make({ ...CLAIMS, ref: "refs/heads/~~~??>>>" });
 				const token = jwtFor(urlSafe);
 				assert.match(token.split(".")[1] ?? "", /[-_]/, "the fixture must actually exercise the url alphabet");
 				const fake: typeof globalThis.fetch = async () => json({ value: token });
@@ -236,12 +248,12 @@ describe("OidcTokenIssuer", () => {
 			Effect.gen(function* () {
 				// Segment lengths that are not a multiple of four are the common case,
 				// and a decoder that demands padding fails on most real tokens.
-				const padded = OidcClaims.make({ ...CLAIMS, run_id: "31415926535" });
+				const padded = ActionsOidcClaims.make({ ...CLAIMS, runId: 31415926535 });
 				const fake: typeof globalThis.fetch = async () => json({ value: jwtFor(padded) });
 				const claims = yield* Effect.gen(function* () {
 					return yield* (yield* OidcTokenIssuer).claims();
 				}).pipe(Effect.provide(live(fake)));
-				assert.strictEqual(claims.run_id, "31415926535");
+				assert.strictEqual(claims.runId, 31415926535);
 			}),
 		);
 	});
@@ -259,7 +271,7 @@ describe("OidcTokenIssuer", () => {
 				const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
 					job_workflow_ref?: string;
 				};
-				assert.strictEqual(decoded.job_workflow_ref, CLAIMS.job_workflow_ref);
+				assert.strictEqual(decoded.job_workflow_ref, CLAIMS.jobWorkflowRef);
 				assert.deepStrictEqual(yield* issuer.claims(), CLAIMS);
 			}).pipe(Effect.provide(OidcTokenIssuer.layerFor(CLAIMS))),
 		);

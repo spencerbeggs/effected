@@ -49,7 +49,10 @@ runtime (a platform HTTP client reading `ACTIONS_ID_TOKEN_REQUEST_URL`),
 which lives in `@effected/github-actions` — an integrated package with a
 **required** `@effect/platform-node` peer. `@effected/sbom` must not take
 that edge, so the dependency is inverted, joining `@effected/npm`'s
-`CatalogResolver` and `@effected/commands`' `LocalExec`:
+`CatalogResolver` and `@effected/commands`' `LocalExec`. The contract lives
+in `@effected/oidc` (import `IdentityToken` from there; `sbom` does not
+re-export it), in a module that imports nothing but `effect`, so the signer
+links no JWT code through it:
 
 ```ts
 export interface IdentityTokenShape {
@@ -57,7 +60,7 @@ export interface IdentityTokenShape {
 }
 ```
 
-`sbom` declares the contract; `github-actions` ships `OidcTokenIssuer`,
+`oidc` declares the contract and `sbom`'s signer consumes it; `github-actions` ships `OidcTokenIssuer`,
 whose runner half reads the request token/URL pair and decodes claims. **The
 adapter ships — do not hand-roll it:**
 

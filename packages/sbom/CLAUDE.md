@@ -77,7 +77,8 @@ stayed within each file — no new imports, so the reachability wall holds.
   **nothing** from `@sigstore/*`.
 - `SigstoreSigner.ts` — the service, its layers, `SigningError`. The **only**
   module importing `@sigstore/*`.
-- `IdentityToken.ts` — the inverted OIDC contract.
+- The inverted OIDC contract, `IdentityToken`, lives in `@effected/oidc` and is
+  **not** re-exported here; the signer imports it from there.
 
 ## The things that will bite you
 

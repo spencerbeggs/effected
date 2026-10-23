@@ -78,7 +78,6 @@ const PURE_MODULES = [
 	"InTotoStatement.ts",
 	"SlsaProvenance.ts",
 	"SigstoreBundle.ts",
-	"IdentityToken.ts",
 ];
 
 describe("bundle reachability", () => {
@@ -117,11 +116,21 @@ describe("bundle reachability", () => {
 	});
 
 	it("the bundle VALUE is reachable without the signer", () => {
-		// `SigstoreBundle` and `IdentityToken` are their own modules precisely so a
-		// verifier — or anything that merely stores or forwards a bundle — can name
-		// the shape without loading Fulcio's transport.
+		// `SigstoreBundle` is its own module precisely so a verifier — or anything
+		// that merely stores or forwards a bundle — can name the shape without
+		// loading Fulcio's transport.
 		assert.deepStrictEqual([...reachableBareImports("SigstoreBundle.ts")].sort(), ["effect"]);
-		assert.deepStrictEqual([...reachableBareImports("IdentityToken.ts")].sort(), ["effect"]);
+	});
+
+	it("only the signer reaches the identity contract, and it is @effected/oidc's", () => {
+		// `IdentityToken` lives in `@effected/oidc`, whose `IdentityToken.ts` reaches
+		// nothing but `effect` (pinned by oidc's own reachability suite), so the
+		// signer links no JWT code through it. The pure half must not reach oidc
+		// at all.
+		assert.isTrue(reachableBareImports("SigstoreSigner.ts").has("@effected/oidc"));
+		for (const entry of PURE_MODULES) {
+			assert.isFalse(reachableBareImports(entry).has("@effected/oidc"), `${entry} reaches @effected/oidc`);
+		}
 	});
 
 	it("the SBOM half reaches only effect and the kit packages it derives from", () => {

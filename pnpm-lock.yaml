@@ -558,6 +558,9 @@ importers:
       '@effected/jwt':
         specifier: workspace:^
         version: link:../jwt/dist/dev/pkg
+      '@effected/oidc':
+        specifier: workspace:^
+        version: link:../oidc/dist/dev/pkg
       '@effected/semver':
         specifier: workspace:^
         version: link:../semver/dist/dev/pkg
@@ -611,12 +614,18 @@ importers:
       '@effected/glob':
         specifier: workspace:^
         version: link:../glob/dist/dev/pkg
+      '@effected/jwt':
+        specifier: workspace:^
+        version: link:../jwt/dist/dev/pkg
       '@effected/markdown':
         specifier: workspace:^
         version: link:../markdown/dist/dev/pkg
       '@effected/npm':
         specifier: workspace:^
         version: link:../npm/dist/dev/pkg
+      '@effected/oidc':
+        specifier: workspace:^
+        version: link:../oidc/dist/dev/pkg
       '@effected/sbom':
         specifier: workspace:^
         version: link:../sbom/dist/dev/pkg
@@ -1078,6 +1087,9 @@ importers:
 
   packages/sbom:
     dependencies:
+      '@effected/oidc':
+        specifier: workspace:^
+        version: link:../oidc/dist/dev/pkg
       '@effected/package-json':
         specifier: workspace:^
         version: link:../package-json/dist/dev/pkg

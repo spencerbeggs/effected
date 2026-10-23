@@ -21,12 +21,14 @@ const DEFAULT_SERVER_URL = "https://github.com";
  *
  * @remarks
  * `SlsaProvenance.forGitHubWorkflow` is total and does the real work, but it
- * takes a camelCase input record — and the only input anyone inside a workflow
- * actually holds is the runner's own OIDC claims, spelled in GitHub's
- * snake_case claim names. The rename between the two is eleven all-string
- * fields, so transposing `repository_id` and `repository_owner_id` compiles,
- * passes every type check, and produces a validly signed attestation asserting
- * the **wrong** provenance. This module owns that rename once, on the same
+ * takes an all-string input record — and the only input anyone inside a
+ * workflow actually holds is the runner's own OIDC claims, decoded as
+ * `@effected/github`'s `ActionsOidcClaims` with integer ids. The projection
+ * between the two is eleven close-cousin fields, so transposing `repositoryId`
+ * and `repositoryOwnerId` compiles, passes every type check, and produces a
+ * validly signed attestation asserting the **wrong** provenance. This module
+ * owns that projection once, rendering the ids back to the decimal strings the
+ * token carried, on the same
  * `github-actions` ↔ `sbom` seam as {@link ActionsIdentityToken}: `sbom` must
  * not depend on the Actions runtime, so the adapter lives here, beside the
  * services it reads.
@@ -57,7 +59,7 @@ export class ActionsProvenance {
 	 *
 	 * @remarks
 	 * Every field `GitHubWorkflowProvenance` declares is populated from
-	 * {@link OidcClaims}, except `serverUrl`, which is read from
+	 * the runner's `ActionsOidcClaims`, except `serverUrl`, which is read from
 	 * `GITHUB_SERVER_URL` through {@link ActionEnvironment}'s `getOptional`
 	 * with `https://github.com` as the default — **not** through the
 	 * `GitHubContext` projection. The projection fails typed when a `GITHUB_*`
@@ -94,14 +96,17 @@ export class ActionsProvenance {
 			repository: claims.repository,
 			ref: claims.ref,
 			sha: claims.sha,
-			eventName: claims.event_name,
-			workflowRef: claims.workflow_ref,
-			jobWorkflowRef: claims.job_workflow_ref,
-			repositoryId: claims.repository_id,
-			repositoryOwnerId: claims.repository_owner_id,
-			runnerEnvironment: claims.runner_environment,
-			runId: claims.run_id,
-			runAttempt: claims.run_attempt,
+			eventName: claims.eventName,
+			workflowRef: claims.workflowRef,
+			jobWorkflowRef: claims.jobWorkflowRef,
+			// The token carries the ids as decimal strings and the predicate does
+			// too; they decoded to safe integers, so `String` renders them back
+			// exactly.
+			repositoryId: String(claims.repositoryId),
+			repositoryOwnerId: String(claims.repositoryOwnerId),
+			runnerEnvironment: claims.runnerEnvironment,
+			runId: String(claims.runId),
+			runAttempt: String(claims.runAttempt),
 		});
 	});
 }

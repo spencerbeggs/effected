@@ -9,13 +9,13 @@
 // the four `kind` values say which step failed, so no cause-chain flattening
 // into a message string is needed.
 
+import type { IdentityTokenShape } from "@effected/oidc";
+import { IdentityToken } from "@effected/oidc";
 import type { Bundle, SerializedBundle } from "@sigstore/bundle";
 import { bundleToJSON } from "@sigstore/bundle";
 import type { IdentityProvider, Signer, Witness } from "@sigstore/sign";
 import { DSSEBundleBuilder, FulcioSigner, RekorWitness } from "@sigstore/sign";
 import { Context, Effect, Layer, Redacted, Schema } from "effect";
-import type { IdentityTokenShape } from "./IdentityToken.js";
-import { IdentityToken } from "./IdentityToken.js";
 import type { InTotoStatement } from "./InTotoStatement.js";
 import { IN_TOTO_PAYLOAD_TYPE, SigstoreBundle } from "./SigstoreBundle.js";
 
@@ -178,12 +178,13 @@ const unstubbed = (): never => {
  *
  * @remarks
  * Fails with {@link SigningError}. The live {@link (SigstoreSigner:class).layer}
- * requires {@link IdentityToken} in `R`.
+ * requires `@effected/oidc`'s `IdentityToken` in `R`.
  *
  * @example
  * ```ts
  * import type { InTotoStatement } from "@effected/sbom";
- * import { IdentityToken, SigstoreSigner } from "@effected/sbom";
+ * import { IdentityToken } from "@effected/oidc";
+ * import { SigstoreSigner } from "@effected/sbom";
  * import { Effect, Layer, Redacted } from "effect";
  *
  * const sign = (statement: InTotoStatement) =>

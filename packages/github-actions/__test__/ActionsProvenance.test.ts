@@ -1,8 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
+import { ActionsOidcClaims } from "@effected/github";
 import { MemoryFileSystem } from "@effected/memfs";
 import { SlsaProvenance } from "@effected/sbom";
 import { Effect, Layer } from "effect";
-import { ActionEnvironment, ActionsProvenance, OidcClaims, OidcTokenError, OidcTokenIssuer } from "../src/index.js";
+import { ActionEnvironment, ActionsProvenance, OidcTokenError, OidcTokenIssuer } from "../src/index.js";
 
 // Every value distinct, and `workflow_ref` ≠ `job_workflow_ref` (a reusable
 // workflow in another repository) — sbom's own fixture keeps them different
@@ -10,19 +11,26 @@ import { ActionEnvironment, ActionsProvenance, OidcClaims, OidcTokenError, OidcT
 // the other, and a constructor that confuses them passes everything when they
 // are equal. A survived mutant found exactly that; do not collapse them here
 // either.
-const CLAIMS = new OidcClaims({
+const CLAIMS = ActionsOidcClaims.make({
 	iss: "https://token.actions.githubusercontent.com",
+	sub: "repo:acme/widgets:ref:refs/heads/release",
+	aud: "sigstore",
+	exp: 1_800_000_600,
+	iat: 1_800_000_000,
 	ref: "refs/heads/release",
 	sha: "d34db33fd34db33fd34db33fd34db33fd34db33f",
 	repository: "acme/widgets",
-	event_name: "workflow_dispatch",
-	job_workflow_ref: "acme/reusable/.github/workflows/publish.yml@refs/tags/v2",
-	workflow_ref: "acme/widgets/.github/workflows/release.yml@refs/heads/release",
-	repository_id: "1111",
-	repository_owner_id: "2222",
-	runner_environment: "github-hosted",
-	run_id: "777",
-	run_attempt: "3",
+	eventName: "workflow_dispatch",
+	jobWorkflowRef: "acme/reusable/.github/workflows/publish.yml@refs/tags/v2",
+	workflowRef: "acme/widgets/.github/workflows/release.yml@refs/heads/release",
+	repositoryId: 1111,
+	repositoryOwner: "acme",
+	repositoryOwnerId: 2222,
+	runnerEnvironment: "github-hosted",
+	runId: 777,
+	runAttempt: 3,
+	actor: "octocat",
+	actorId: 583231,
 });
 
 const provided = <A, E>(

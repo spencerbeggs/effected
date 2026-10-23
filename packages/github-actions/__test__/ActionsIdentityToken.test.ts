@@ -1,21 +1,29 @@
 import { assert, describe, it } from "@effect/vitest";
-import { IdentityToken, IdentityTokenError } from "@effected/sbom";
+import { ActionsOidcClaims } from "@effected/github";
+import { IdentityToken, IdentityTokenError } from "@effected/oidc";
 import { Cause, Effect, Equal, Exit, Layer, Redacted } from "effect";
-import { ActionsIdentityToken, OidcClaims, OidcTokenError, OidcTokenIssuer } from "../src/index.js";
+import { ActionsIdentityToken, OidcTokenError, OidcTokenIssuer } from "../src/index.js";
 
-const CLAIMS = new OidcClaims({
+const CLAIMS = ActionsOidcClaims.make({
 	iss: "https://token.actions.githubusercontent.com",
+	sub: "repo:owner/repo:ref:refs/heads/main",
+	aud: "sigstore",
+	exp: 1_800_000_600,
+	iat: 1_800_000_000,
 	ref: "refs/heads/main",
 	sha: "abc123",
 	repository: "owner/repo",
-	event_name: "push",
-	job_workflow_ref: "owner/repo/.github/workflows/release.yml@refs/heads/main",
-	workflow_ref: "owner/repo/.github/workflows/release.yml@refs/heads/main",
-	repository_id: "1",
-	repository_owner_id: "2",
-	runner_environment: "github-hosted",
-	run_id: "3",
-	run_attempt: "1",
+	eventName: "push",
+	jobWorkflowRef: "owner/repo/.github/workflows/release.yml@refs/heads/main",
+	workflowRef: "owner/repo/.github/workflows/release.yml@refs/heads/main",
+	repositoryId: 1,
+	repositoryOwner: "owner",
+	repositoryOwnerId: 2,
+	runnerEnvironment: "github-hosted",
+	runId: 3,
+	runAttempt: 1,
+	actor: "octocat",
+	actorId: 583231,
 });
 
 const provided = <A, E>(program: Effect.Effect<A, E, IdentityToken>, issuer: Layer.Layer<OidcTokenIssuer>) =>

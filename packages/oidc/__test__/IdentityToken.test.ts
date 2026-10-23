@@ -1,9 +1,9 @@
 // The inverted OIDC contract.
 //
 // The whole point of declaring this here rather than importing an issuer is
-// that the signing path becomes testable with no Actions runtime, no HTTP
+// that a signing path becomes testable with no Actions runtime, no HTTP
 // client and no platform peer — which is what every test in this file, and the
-// signer's whole suite, relies on.
+// consumer's suite, relies on.
 
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Redacted } from "effect";
@@ -25,7 +25,7 @@ describe("IdentityToken.layerStatic", () => {
 		Effect.gen(function* () {
 			// Identity, not equality: the layer must hand back the very value it was
 			// given. A `Redacted.value` round trip through a string would compare
-			// equal and would be a declassification this package promises not to do.
+			// equal and would be a declassification the contract promises not to do.
 			const identity = yield* IdentityToken;
 			assert.strictEqual(yield* identity.token("sigstore"), HELD);
 		}).pipe(Effect.provide(IdentityToken.layerStatic(HELD))),

@@ -34,6 +34,7 @@
 	"dependencies": {
 		"@effected/github-references": "workspace:^",
 		"@effected/jwt": "workspace:^",
+		"@effected/oidc": "workspace:^",
 		"@effected/semver": "workspace:^",
 		"@octokit/core": "^7.0.6",
 		"@octokit/plugin-paginate-rest": "^16.0.0",

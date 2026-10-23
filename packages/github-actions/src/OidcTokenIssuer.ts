@@ -1,8 +1,11 @@
+import type { ActionsOidcClaims } from "@effected/github";
+import { ActionsOidcClaimsFromWire } from "@effected/github";
+import { Oidc } from "@effected/oidc";
 import { Context, Effect, Layer, Redacted, Schema } from "effect";
+import * as Base64Url from "effect/encoding/Base64Url";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { ActionEnvironment } from "./ActionEnvironment.js";
-import { payloadOf, unsignedJwt } from "./internal/jwt.js";
 import { unstubbed } from "./internal/unstubbed.js";
 
 /**
@@ -44,45 +47,6 @@ export class OidcTokenError extends Schema.TaggedError<OidcTokenError>()("OidcTo
 	}
 }
 
-/**
- * The claims a GitHub Actions OIDC token carries about the workflow that ran.
- *
- * @remarks
- * The field names are GitHub's own JWT claim names, kept verbatim rather than
- * translated to the kit's casing. They are an **external vocabulary** — the
- * same strings that appear in a SLSA provenance predicate and in every
- * published example of an Actions OIDC policy — and renaming them would put a
- * translation layer between a consumer and the specification they are reading.
- *
- * @public
- */
-export class OidcClaims extends Schema.Class<OidcClaims>("OidcClaims")({
-	/** The issuer, e.g. `https://token.actions.githubusercontent.com`. */
-	iss: Schema.String,
-	/** The full ref the workflow ran on. */
-	ref: Schema.String,
-	/** The commit. */
-	sha: Schema.String,
-	/** `owner/repo`. */
-	repository: Schema.String,
-	/** The event that triggered the run. */
-	event_name: Schema.String,
-	/** The reusable-workflow ref, which is what a verifier pins against. */
-	job_workflow_ref: Schema.String,
-	/** The calling workflow's ref. */
-	workflow_ref: Schema.String,
-	/** The numeric repository id, as a string. */
-	repository_id: Schema.String,
-	/** The numeric owner id, as a string. */
-	repository_owner_id: Schema.String,
-	/** `github-hosted` or `self-hosted`. */
-	runner_environment: Schema.String,
-	/** The run id, as a string. */
-	run_id: Schema.String,
-	/** The run attempt, as a string. */
-	run_attempt: Schema.String,
-}) {}
-
 /** The token envelope the runner's token service answers with. */
 const TokenEnvelope = Schema.Struct({
 	value: Schema.String,
@@ -99,15 +63,26 @@ const REQUEST_URL = "ACTIONS_ID_TOKEN_REQUEST_URL";
  * The absence of verification is deliberate and is documented on
  * {@link OidcTokenIssuerShape.claims}; do not "fix" it here.
  */
-const readClaims = (token: string): Effect.Effect<OidcClaims, OidcTokenError> =>
-	Effect.gen(function* () {
-		const decoded = yield* Effect.fromResult(payloadOf(token)).pipe(
-			Effect.mapError((failure) => new OidcTokenError({ reason: "malformedToken", ...failure })),
-		);
-		return yield* Schema.decodeUnknownEffect(OidcClaims)(decoded).pipe(
-			Effect.mapError((cause) => new OidcTokenError({ reason: "missingClaims", cause })),
-		);
-	});
+const readClaims = (token: string): Effect.Effect<ActionsOidcClaims, OidcTokenError> =>
+	Oidc.decodeUnverified(token, ActionsOidcClaimsFromWire).pipe(
+		Effect.mapError((error) =>
+			// `claims` is the one reason that means the token decoded and its
+			// payload did not; every other reason is a token that is not a JWS.
+			error.reason === "claims"
+				? new OidcTokenError({ reason: "missingClaims", cause: error.cause ?? error })
+				: new OidcTokenError({ reason: "malformedToken", detail: error.detail, cause: error }),
+		),
+	);
+
+/**
+ * An **unsigned** JWT: `header.payload.unsigned`, each JSON segment
+ * base64url-encoded. For test doubles only; the signature segment is a
+ * placeholder, so the token fails any verifier.
+ */
+const unsignedJwt = (header: unknown, payload: unknown): string => {
+	const segment = (value: unknown): string => Base64Url.encode(JSON.stringify(value));
+	return `${segment(header)}.${segment(payload)}.unsigned`;
+};
 
 /**
  * The members of the {@link OidcTokenIssuer} service: request an ID `token`
@@ -126,7 +101,8 @@ export interface OidcTokenIssuerShape {
 	 */
 	readonly token: (audience?: string) => Effect.Effect<Redacted.Redacted<string>, OidcTokenError>;
 	/**
-	 * The token's claims, decoded.
+	 * The token's claims, decoded into `@effected/github`'s `ActionsOidcClaims`,
+	 * the same class `ActionsOidc.verify` returns.
 	 *
 	 * @remarks
 	 * **The signature is deliberately not verified**, for three reasons that are
@@ -151,7 +127,7 @@ export interface OidcTokenIssuerShape {
 	 * a test cannot silently skip the path under test because the double
 	 * returned a token that is not a JWT.
 	 */
-	readonly claims: (audience?: string) => Effect.Effect<OidcClaims, OidcTokenError>;
+	readonly claims: (audience?: string) => Effect.Effect<ActionsOidcClaims, OidcTokenError>;
 }
 
 const make = Effect.gen(function* () {
@@ -219,7 +195,7 @@ const dies = unstubbed("OidcTokenIssuer.makeTest");
  * const program = Effect.gen(function* () {
  *   const issuer = yield* OidcTokenIssuer;
  *   const claims = yield* issuer.claims("sigstore");
- *   return claims.job_workflow_ref;
+ *   return claims.jobWorkflowRef;
  * });
  * ```
  *
@@ -249,8 +225,8 @@ export class OidcTokenIssuer extends Context.Service<OidcTokenIssuer, OidcTokenI
 	 * double returning a synthetic non-JWT would make the provenance path
 	 * structurally unreachable in a test.
 	 */
-	static readonly unsignedTokenFor = (claims: OidcClaims): Redacted.Redacted<string> =>
-		Redacted.make(unsignedJwt({ alg: "RS256", typ: "JWT" }, Schema.encodeUnknownSync(OidcClaims)(claims)));
+	static readonly unsignedTokenFor = (claims: ActionsOidcClaims): Redacted.Redacted<string> =>
+		Redacted.make(unsignedJwt({ alg: "RS256", typ: "JWT" }, Schema.encodeSync(ActionsOidcClaimsFromWire)(claims)));
 
 	/** A test double. Unstubbed members die rather than answering with a non-token. */
 	static readonly makeTest = (overrides: Partial<OidcTokenIssuerShape> = {}): OidcTokenIssuerShape => ({
@@ -273,7 +249,7 @@ export class OidcTokenIssuer extends Context.Service<OidcTokenIssuer, OidcTokenI
 	 * members can disagree is how a test proves a path works while production
 	 * takes the other one.
 	 */
-	static readonly layerFor = (claims: OidcClaims): Layer.Layer<OidcTokenIssuer> =>
+	static readonly layerFor = (claims: ActionsOidcClaims): Layer.Layer<OidcTokenIssuer> =>
 		Layer.succeed(OidcTokenIssuer, {
 			token: () => Effect.succeed(OidcTokenIssuer.unsignedTokenFor(claims)),
 			claims: () => Effect.succeed(claims),

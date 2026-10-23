@@ -137,7 +137,7 @@ export {
 	type ReadOptions,
 } from "./GitHubToken.js";
 export { ManagedDocument, ManagedDocumentError, type ManagedDocumentSource } from "./ManagedDocument.js";
-export { OidcClaims, OidcTokenError, OidcTokenIssuer, type OidcTokenIssuerShape } from "./OidcTokenIssuer.js";
+export { OidcTokenError, OidcTokenIssuer, type OidcTokenIssuerShape } from "./OidcTokenIssuer.js";
 export {
 	AmbientPackageManager,
 	CachedPackageManager,

@@ -153,14 +153,16 @@ describe("bundle reachability", () => {
 		assert.isTrue(reachable.has("@octokit/core"), "but it does reach the transport it needs");
 	});
 
-	it("the Actions OIDC verifier reaches @effected/jwt but not octokit", () => {
+	it("the Actions OIDC verifier reaches @effected/oidc but not octokit", () => {
 		// A service that only verifies runner tokens must not link the REST
 		// client. The first assertion is the control: it proves the walker sees
 		// this module's edges, so the absence after it is not a broken walker.
+		// `@effected/jwt` is reached through `@effected/oidc` (a regular
+		// dependency of it); this module names jwt's types only, which erase.
 		const reachable = reachableBareImports("ActionsOidc.ts");
-		assert.isTrue(reachable.has(SIGNER), "ActionsOidc reaches @effected/jwt");
+		assert.isTrue(reachable.has("@effected/oidc"), "ActionsOidc reaches @effected/oidc");
 		assert.isFalse(reachable.has("@octokit/core"), "ActionsOidc reaches @octokit/core");
-		assert.deepStrictEqual([...reachable].sort(), [SIGNER, "effect"]);
+		assert.deepStrictEqual([...reachable].sort(), ["@effected/oidc", "effect"]);
 	});
 
 	it("the installation token store reaches neither the JWT signer nor the App module", () => {

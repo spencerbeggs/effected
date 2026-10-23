@@ -72,7 +72,7 @@ This table routes a capability to the package and skill that own it; it does not
 | sign an artifact and attest a build | `SigstoreSigner`, `SlsaProvenance`, `Attestation.upload` | `supply-chain-attestation` |
 | get an OIDC token from the runner | `OidcTokenIssuer` | `supply-chain-attestation` |
 | capture SLSA provenance from the runner's claims | `ActionsProvenance.capture` | `supply-chain-attestation` |
-| serve `sbom`'s identity contract from the runner | `ActionsIdentityToken.layer` | `supply-chain-attestation` |
+| serve `oidc`'s identity contract (what `sbom`'s signer needs) from the runner | `ActionsIdentityToken.layer` | `supply-chain-attestation` |
 | test any of the above | `makeTest` / `layerTest` on every service | `testing-actions` |
 
 ## Call sequences — when the capability is a chain, not one service

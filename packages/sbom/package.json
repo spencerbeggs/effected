@@ -32,6 +32,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effected/oidc": "workspace:^",
 		"@effected/package-json": "workspace:^",
 		"@effected/spdx": "workspace:^",
 		"@sigstore/bundle": "^5.0.0",

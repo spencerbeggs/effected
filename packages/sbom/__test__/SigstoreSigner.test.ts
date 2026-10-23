@@ -8,14 +8,13 @@
 // transparency log are.
 
 import { assert, describe, it } from "@effect/vitest";
+import { IdentityToken, IdentityTokenError } from "@effected/oidc";
 import { BUNDLE_V03_MEDIA_TYPE } from "@sigstore/bundle";
 import type { Signer, Witness } from "@sigstore/sign";
 import { Effect, Layer, Redacted } from "effect";
 import type { Sha256Digest } from "../src/index.js";
 import {
 	IN_TOTO_PAYLOAD_TYPE,
-	IdentityToken,
-	IdentityTokenError,
 	InTotoStatement,
 	SIGSTORE_BUNDLE_V0_3_MEDIA_TYPE,
 	SigningError,

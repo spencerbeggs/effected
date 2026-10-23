@@ -96,7 +96,7 @@ reason:
 | `ActionLogger.layerTest` | defaults to silent | so a suite doesn't have to stub every log call to avoid a death |
 | `DryRun.makeTest` | defaults to rehearsing (`true`) | the safe direction; the members are the real `make(true)`, so the double cannot drift from production logic |
 | `LocalExec.makeTest` (`@effected/commands`) | answers `Option.none()` | *is* the honest global-only wiring, not a fabrication |
-| `IdentityToken.makeTest` (`@effected/sbom`) | answers a real token | a fabricated OIDC token is a real answer to "give me a token" |
+| `IdentityToken.makeTest` (`@effected/oidc`) | answers a real token | a fabricated OIDC token is a real answer to "give me a token" |
 | `SigstoreSigner.makeTest().sign` (`@effected/sbom`) | **dies** | the opposite judgement on the same test: a fabricated bundle is a signature-shaped lie |
 
 `IdentityToken` and `SigstoreSigner` sit on either side of the same line on

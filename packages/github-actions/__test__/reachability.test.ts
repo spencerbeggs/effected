@@ -103,7 +103,6 @@ const LIGHT_MODULES = [
 	"internal/cacheService.ts",
 	"internal/digest.ts",
 	"internal/fsProbe.ts",
-	"internal/jwt.ts",
 	"internal/runner.ts",
 	"internal/runnerFile.ts",
 	"internal/sigv4.ts",
@@ -260,10 +259,7 @@ describe("bundle reachability", () => {
 		// heavy modules share a Twirp client and a results-backend reader, and
 		// hoisting their fifteen lines of Azure into either one would put the
 		// client on the graph of everything that speaks the protocol.
-		assert.deepStrictEqual([...reachableBareImports("internal/actionsResults.ts")].sort(), [
-			"effect",
-			"effect/encoding/Base64Url",
-		]);
+		assert.deepStrictEqual([...reachableBareImports("internal/actionsResults.ts")].sort(), ["@effected/jwt", "effect"]);
 		assert.deepStrictEqual(
 			[...reachableBareImports("internal/twirp.ts")].sort(),
 			["effect", "effect/http"],
@@ -287,13 +283,35 @@ describe("bundle reachability", () => {
 			"node:crypto",
 		]);
 		assert.deepStrictEqual([...reachableBareImports("internal/fsProbe.ts")].sort(), ["effect"]);
-		assert.deepStrictEqual([...reachableBareImports("internal/jwt.ts")].sort(), [
-			"effect",
-			"effect/encoding/Base64Url",
-		]);
 		assert.deepStrictEqual([...reachableBareImports("internal/runner.ts")].sort(), ["effect"]);
 		assert.deepStrictEqual([...reachableBareImports("internal/runnerFile.ts")], []);
 		assert.deepStrictEqual([...reachableBareImports("internal/unstubbed.ts")].sort(), ["effect"]);
+	});
+
+	it("the OIDC modules reach @effected/oidc and @effected/github's claims, not a JWT codec of their own", () => {
+		// The token issuer reads claims through `Oidc.decodeUnverified` and
+		// `ActionsOidcClaims`' wire codec; the identity adapter closes oidc's
+		// `IdentityToken`. The first assertion is the control: it proves the
+		// walker sees these modules' package edges at all.
+		assert.deepStrictEqual([...reachableBareImports("OidcTokenIssuer.ts")].sort(), [
+			"@effected/github",
+			"@effected/oidc",
+			"effect",
+			"effect/encoding/Base64Url",
+			"effect/http",
+			"effect/http/HttpClientResponse",
+		]);
+		for (const entry of ["ActionsIdentityToken.ts", "ActionsProvenance.ts"]) {
+			assert.isTrue(reachableBareImports(entry).has("@effected/oidc"), `${entry} does not reach @effected/oidc`);
+		}
+		// The identity contract comes from oidc now, never from sbom. The
+		// provenance adapter still reaches sbom (its `SlsaProvenance`), which is
+		// the control that the walker sees the sbom edge at all.
+		assert.isTrue(reachableBareImports("ActionsProvenance.ts").has("@effected/sbom"));
+		assert.isFalse(
+			reachableBareImports("ActionsIdentityToken.ts").has("@effected/sbom"),
+			"ActionsIdentityToken reaches @effected/sbom: the identity contract is oidc's",
+		);
 	});
 
 	it("the entry point reaches Azure, and that is correct", () => {

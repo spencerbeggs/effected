@@ -35,7 +35,7 @@ declaring `@effected/package-json` itself.
 | `NtiaReport` | checking a document against the seven NTIA minimum elements before publishing it |
 | `InTotoStatement`, `InTotoSubject`, `Sha256Digest` | wrapping a predicate (provenance, a BOM, your own) around a content-addressed subject |
 | `SlsaProvenance` | building the SLSA Provenance v1 predicate for a GitHub Actions build |
-| `SigstoreSigner`, `IdentityToken`, `SigstoreBundle` | signing a statement into a DSSE bundle, and supplying the OIDC token that makes it possible |
+| `SigstoreSigner`, `SigstoreBundle` | signing a statement into a DSSE bundle; the OIDC token it needs comes from `@effected/oidc`'s `IdentityToken` |
 | the constants (`CYCLONEDX_BOM_PREDICATE`, `IN_TOTO_STATEMENT_V1`, `IN_TOTO_PAYLOAD_TYPE`, `SLSA_PROVENANCE_V1`, `GITHUB_BUILD_TYPE`, `SIGSTORE_BUNDLE_V0_3_MEDIA_TYPE`, `SIGSTORE_OIDC_AUDIENCE`) | naming a predicate, payload or media type on the wire |
 
 `supply-chain-attestation` teaches the pipeline task-by-task — generate, sign,
@@ -111,7 +111,7 @@ upload; this file is the surface map. Uploading a bundle is
   test that sets them equal.
 - **`SigstoreSigner`** — `Context.Service` with one member,
   `sign(statement: InTotoStatement)` → `Effect<SigstoreBundle, SigningError>`.
-  `SigstoreSigner.layer` requires `IdentityToken` and signs against the
+  `SigstoreSigner.layer` requires `@effected/oidc`'s `IdentityToken` and signs against the
   public-good Fulcio and Rekor; `layerWith({ fulcioBaseUrl?, rekorBaseUrl?,
   signer?, witnesses? })` swaps the endpoints (Sigstore **staging**) or replaces
   the signer/witness pair outright. The identity token is fetched, declassified
@@ -124,7 +124,8 @@ upload; this file is the surface map. Uploading a bundle is
   Rekor, `bundle` is everything else. The `kind` is read off Sigstore's own
   `InternalError.code` (`CA_*`, `TLOG_*`, `TSA_*`, `IDENTITY_TOKEN_*`); an
   unattributable failure is `bundle` rather than guessed into a step.
-- **`IdentityToken`** — the inverted OIDC contract, one method:
+- **`IdentityToken`** (from `@effected/oidc`, not re-exported here) — the
+  inverted OIDC contract, one method:
   `token(audience)` → `Effect<Redacted<string>, IdentityTokenError>`.
   `IdentityToken.layerStatic(token)` answers with a token the caller already
   holds and **ignores the audience** — minting it for the right audience is the
@@ -142,7 +143,7 @@ would be a signature-shaped lie, which is exactly the failure an attestation
 exists to prevent; the strongest case in the kit for the die-loudly default. A
 test that wants a real bundle without a network drives the **real**
 `DSSEBundleBuilder` through `SigstoreSigner.layerWith({ signer, witnesses })`.
-**`IdentityToken.makeTest` answers** — a fabricated OIDC token is a real answer
+**`IdentityToken.makeTest`** (`@effected/oidc`) **answers** — a fabricated OIDC token is a real answer
 to "give me a token". Both also ship `layerTest(overrides?)`.
 
 ## Gotchas

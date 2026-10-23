@@ -1,17 +1,19 @@
-// The inverted OIDC contract.
+// The inverted OIDC issuer contract.
 //
-// Signing needs a workload identity token. Issuing one needs the Actions
-// runtime — `ACTIONS_ID_TOKEN_REQUEST_URL`, the runner's token service, a
-// platform HTTP client — which lives in `@effected/github-actions`, an
-// integrated package with a required `@effect/platform-node` peer. Taking that
-// edge would drag a platform peer into every consumer that only wanted to emit
-// an SBOM.
+// Signing needs a workload identity token. Issuing one needs a runtime — in
+// GitHub Actions, `ACTIONS_ID_TOKEN_REQUEST_URL`, the runner's token service and
+// a platform HTTP client — which lives in `@effected/github-actions`, an
+// integrated package with a required `@effect/platform-node` peer. A consumer
+// that only needs *a* token must not take that edge.
 //
 // So the dependency is inverted, as with `@effected/npm`'s `CatalogResolver`
-// and `@effected/commands`' `LocalExec`: this package declares the narrow
-// contract it needs, github-actions ships the layer that implements it
+// and `@effected/commands`' `LocalExec`: this module declares the narrow
+// contract, github-actions ships the layer that implements it
 // (`ActionsIdentityToken.layer`, over its `OidcTokenIssuer`), and a consumer
 // already holding a token uses `IdentityToken.layerStatic`.
+//
+// This module imports nothing but `effect`, so `@effected/sbom`, which needs
+// only the contract, links no JWT code. `__test__/reachability.test.ts` pins it.
 
 import { Context, Effect, Layer, Redacted, Schema } from "effect";
 
@@ -41,7 +43,7 @@ export class IdentityTokenError extends Schema.TaggedError<IdentityTokenError>()
  *
  * @remarks
  * Deliberately smaller than any issuer's own surface. An implementation may
- * cache, may decode claims, may do neither — none of that is this package's
+ * cache, may decode claims, may do neither — none of that is the contract's
  * business, and a wider contract would make github-actions' issuer the only
  * thing that could satisfy it.
  *
@@ -56,8 +58,9 @@ export interface IdentityTokenShape {
 const TEST_TOKEN = "test-identity-token";
 
 /**
- * A source of workload identity tokens (OIDC), the input `SigstoreSigner` needs
- * to obtain a signing certificate.
+ * A source of workload identity tokens (OIDC): the input `@effected/sbom`'s
+ * `SigstoreSigner` needs to obtain a signing certificate, and any other
+ * consumer needs to present a workload identity.
  *
  * @remarks
  * In GitHub Actions, provide `ActionsIdentityToken.layer` from
@@ -67,7 +70,8 @@ const TEST_TOKEN = "test-identity-token";
  *
  * @example
  * ```ts
- * import { IdentityToken, SigstoreSigner } from "@effected/sbom";
+ * import { IdentityToken } from "@effected/oidc";
+ * import { SigstoreSigner } from "@effected/sbom";
  * import { Layer } from "effect";
  *
  * const token = process.env.OIDC_TOKEN ?? "";
@@ -77,7 +81,7 @@ const TEST_TOKEN = "test-identity-token";
  * @public
  */
 export class IdentityToken extends Context.Service<IdentityToken, IdentityTokenShape>()(
-	"@effected/sbom/IdentityToken",
+	"@effected/oidc/IdentityToken",
 ) {
 	/**
 	 * A layer answering with a token the caller already holds.
@@ -98,7 +102,7 @@ export class IdentityToken extends Context.Service<IdentityToken, IdentityTokenS
 	 * An in-memory double.
 	 *
 	 * @remarks
-	 * Unlike {@link (SigstoreSigner:class).makeTest}, this one **answers** rather than
+	 * Unlike `@effected/sbom`'s `SigstoreSigner.makeTest`, this one **answers** rather than
 	 * dying: a fabricated OIDC token is a real answer to "give me a token" in a
 	 * test, where a fabricated signature would be a lie about cryptography.
 	 */

@@ -175,8 +175,8 @@
 		"ActionState": "persist and read state across pre/main/post phase boundary, GITHUB_STATE file",
 		"ActionStateError": "handle action state save or read failure across the phase boundary",
 		"ActionsIdentityToken": {
-			"intent": "serve @effected/sbom's IdentityToken contract from the runner's OIDC issuer, sign with runner identity",
-			"implements": "sbom.IdentityToken"
+			"intent": "serve @effected/oidc's IdentityToken contract from the runner's OIDC issuer, sign with runner identity",
+			"implements": "oidc.IdentityToken"
 		},
 		"ActionsProvenance": "build SLSA provenance from the runner's OIDC claims, attest a GitHub Actions workflow run",
 		"AmbientPackageManager": "a package manager already on PATH from the runner's toolchain, no tool-cache entry",
@@ -216,7 +216,6 @@
 		"ManagedDocument": "marker-delimited document with named regions a tool owns inside human-edited text",
 		"ManagedDocumentError": "handle a corrupt or ambiguous managed document region structure",
 		"NotABlobEnvelopeError": "handle bytes that are not a recognizable blob envelope, legacy unframed blob",
-		"OidcClaims": "claims carried by a GitHub Actions OIDC token: repository, ref, sha, job",
 		"OidcTokenError": "handle an OIDC token that could not be minted or decoded, missing id-token permission",
 		"OidcTokenIssuer": "mint a runner OIDC token, request an identity token, decode unverified JWT claims",
 		"OutputEncodeError": "handle a value that did not satisfy its schema while publishing a JSON output",
@@ -256,6 +255,7 @@
 	"github": {
 		"ActionsOidc": "verify a github actions oidc token from a workflow, authorize a ci caller by repository id",
 		"ActionsOidcClaims": "typed claims of a verified actions oidc token, repository id, run id, job workflow ref",
+		"ActionsOidcClaimsFromWire": "decode or encode actions oidc claims as the token carries them, snake_case keys and string ids",
 		"Annotation": "one file annotation on a check run, notice or warning at a line range",
 		"AnnotationLevel": "notice warning failure severity for a check run annotation",
 		"AppIdentity": "resolve the github app's slug name and bot user id",
@@ -641,6 +641,12 @@
 		"registryHost": "extract the host portion of a registry url or bare host string",
 		"registryShortLabel": "compact registry label for a log or table: npm, github, jsr, or host"
 	},
+	"oidc": {
+		"IdTokenClaims": "standard openid connect id token claims, azp nonce auth_time acr amr over the jwt registered claims",
+		"IdentityToken": "oidc identity token contract, get a workload token to sign with sigstore or present a workload identity",
+		"IdentityTokenError": "handle failure obtaining an oidc identity token for an audience",
+		"Oidc": "verify an openid connect id token against its issuer's discovered jwks, decode a trusted token's claims unverified"
+	},
 	"package-json": {
 		"BinField": "bin field shape, string path or name-to-path map",
 		"Bugs": "bugs field model, issue tracker url or email, shorthand fidelity",
@@ -732,8 +738,6 @@
 		"GITHUB_BUILD_TYPE": "slsa build type uri for a github actions workflow/v1 build",
 		"IN_TOTO_PAYLOAD_TYPE": "dsse payload type for an in-toto statement, github attestations media type",
 		"IN_TOTO_STATEMENT_V1": "in-toto statement v1 type uri stamped onto every statement",
-		"IdentityToken": "oidc identity token contract, get a workload token to sign with sigstore",
-		"IdentityTokenError": "handle failure obtaining an oidc identity token for an audience",
 		"InTotoStatement": "build an in-toto attestation statement, wrap a subject and predicate for signing",
 		"InTotoSubject": "the artifact an attestation is about, name plus algorithm-to-digest map",
 		"InvalidSha256DigestError": "handle malformed sha-256 digest input, typed digest validation failure",

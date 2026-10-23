@@ -11,7 +11,6 @@
  */
 
 export { Package, Person, Repository } from "@effected/package-json";
-export { IdentityToken, IdentityTokenError, type IdentityTokenShape } from "./IdentityToken.js";
 export {
 	CYCLONEDX_BOM_PREDICATE,
 	IN_TOTO_STATEMENT_V1,

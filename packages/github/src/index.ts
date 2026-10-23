@@ -40,7 +40,12 @@ export {
 	harvestIssueReferences,
 	parseBareLineReference,
 } from "@effected/github-references";
-export { ActionsOidc, ActionsOidcClaims, type ActionsOidcVerifyOptions } from "./ActionsOidc.js";
+export {
+	ActionsOidc,
+	ActionsOidcClaims,
+	ActionsOidcClaimsFromWire,
+	type ActionsOidcVerifyOptions,
+} from "./ActionsOidc.js";
 export { ArtifactMetadata, type ArtifactMetadataShape, StorageRecordInput } from "./ArtifactMetadata.js";
 export { Attestation, AttestationListEntry, AttestationRecord, type AttestationShape } from "./Attestation.js";
 export {

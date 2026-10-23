@@ -6,9 +6,9 @@
 // a heavy import leaks into a light module's graph, so the one piece those
 // three modules share is the piece with no dependencies.
 
+import { Jws } from "@effected/jwt";
 import { Effect, Option, Redacted, Result } from "effect";
 import type { ActionEnvironmentShape } from "../ActionEnvironment.js";
-import { payloadOf } from "./jwt.js";
 
 /**
  * The run/job identifiers the artifact protocol scopes every call to.
@@ -77,13 +77,17 @@ export const misconfiguredDetail = (variable: string, service: string): string =
  * @internal
  */
 export const backendIdsFrom = (token: string): Result.Result<BackendIds, string> => {
-	// No signature verification (`internal/jwt.ts` says why): the claim read
-	// here scopes a request rather than authorizing one.
-	const payload = payloadOf(token);
-	if (Result.isFailure(payload)) {
-		return Result.fail(`the runtime token is not a readable JWT: ${payload.failure.detail}`);
+	// No signature verification, deliberately: the runner handed this process
+	// the token, and the claim read here scopes a request rather than
+	// authorizing one. `Jws.decodeUnverified` rather than `Oidc.decodeUnverified`
+	// because this is a synchronous `Result` path and the one claim is checked
+	// by hand below.
+	const decoded = Jws.decodeUnverified(token);
+	if (Result.isFailure(decoded)) {
+		return Result.fail(`the runtime token is not a readable JWT: ${decoded.failure.detail}`);
 	}
-	const scope = (payload.success as Record<string, unknown> | null)?.scp;
+	const payload = decoded.success.payload;
+	const scope = typeof payload === "object" && payload !== null ? (payload as Record<string, unknown>).scp : undefined;
 	if (typeof scope !== "string") {
 		return Result.fail("the runtime token carries no `scp` claim");
 	}

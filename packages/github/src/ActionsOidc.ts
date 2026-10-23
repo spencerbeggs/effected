@@ -1,4 +1,5 @@
-import { JwksResolver, Jwt, JwtError } from "@effected/jwt";
+import type { JwksResolver, JwtError } from "@effected/jwt";
+import { Oidc } from "@effected/oidc";
 import type { Duration } from "effect";
 import { Effect, Schema, SchemaTransformation } from "effect";
 
@@ -26,6 +27,10 @@ const IdFromString = Schema.String.check(Schema.isPattern(/^\d+$/)).pipe(
  * `claims`.
  *
  * Claims GitHub adds that are not modelled here are dropped on decode.
+ *
+ * To decode a payload as it arrives in the token (snake_case keys, string
+ * ids), use {@link ActionsOidcClaimsFromWire}; this class itself decodes the
+ * camelCase form.
  *
  * @public
  */
@@ -76,8 +81,28 @@ export class ActionsOidcClaims extends Schema.Class<ActionsOidcClaims>("ActionsO
 	runnerEnvironment: Schema.String,
 }) {}
 
-/** The claims as they arrive in the token: snake_case keys, decoding to {@link ActionsOidcClaims}. */
-const ClaimsFromWire = ActionsOidcClaims.pipe(
+/**
+ * {@link ActionsOidcClaims} as the claims arrive in the token: snake_case
+ * keys and string ids, decoding to the class and encoding back to the wire.
+ *
+ * @remarks
+ * The codec {@link ActionsOidc.verify} decodes a verified payload with.
+ * Exported for reading a token this process already trusts, such as one the
+ * runner's own token service just issued, and for building one: encoding an
+ * instance yields the exact payload GitHub would sign.
+ *
+ * @example
+ * ```ts
+ * import { ActionsOidcClaimsFromWire } from "@effected/github";
+ * import { Oidc } from "@effected/oidc";
+ *
+ * // Unverified: only for a token handed over by a trusted runtime.
+ * const read = (token: string) => Oidc.decodeUnverified(token, ActionsOidcClaimsFromWire);
+ * ```
+ *
+ * @public
+ */
+export const ActionsOidcClaimsFromWire = ActionsOidcClaims.pipe(
 	Schema.encodeKeys({
 		repositoryId: "repository_id",
 		repositoryOwner: "repository_owner",
@@ -109,20 +134,13 @@ export interface ActionsOidcVerifyOptions {
 	readonly clockTolerance?: Duration.Input | undefined;
 }
 
+// `Oidc.verify` refuses an empty audience before reading the token, and looks
+// the key up for the Actions issuer, never for the token's own `iss`.
 const verify = Effect.fn("ActionsOidc.verify")(function* (token: string, options: ActionsOidcVerifyOptions) {
-	if (options.audience.length === 0) {
-		return yield* new JwtError({
-			reason: "wrongAudience",
-			detail: "no audience was given; an Actions OIDC token is never verified without one",
-		});
-	}
-	return yield* Jwt.verify(token, {
-		// The key is always looked up for the Actions issuer, never for the
-		// token's own `iss`: the issuer decides which keys are trusted.
-		key: JwksResolver.forIssuer(ISSUER),
-		claims: ClaimsFromWire,
+	return yield* Oidc.verify(token, {
 		issuer: ISSUER,
 		audience: options.audience,
+		claims: ActionsOidcClaimsFromWire,
 		...(options.clockTolerance !== undefined ? { clockTolerance: options.clockTolerance } : {}),
 	});
 });
@@ -153,8 +171,9 @@ const testClaims = (overrides: Readonly<Record<string, unknown>> = {}): Record<s
  * repository, workflow and run it is.
  *
  * @remarks
- * {@link ActionsOidc.verify} checks the signature against GitHub's published
- * JWKS (through `@effected/jwt`'s `JwksResolver`, which caches it), then `iss`,
+ * {@link ActionsOidc.verify} is `@effected/oidc`'s `Oidc.verify` pinned to the
+ * Actions issuer: it checks the signature against GitHub's published JWKS
+ * (through `@effected/jwt`'s `JwksResolver`, which caches it), then `iss`,
  * `aud`, `exp`, `nbf` and `iat`, then decodes the payload into
  * {@link ActionsOidcClaims}. Every failure is a `JwtError`; route on its
  * `reason` (`wrongAudience`, `expired`, `claims`, ...), never on its message.
@@ -172,7 +191,8 @@ const testClaims = (overrides: Readonly<Record<string, unknown>> = {}): Record<s
  * are refused as `wrongIssuer`.
  *
  * This module does not reach octokit: a service that only verifies tokens
- * links `@effected/jwt` and nothing else from this package.
+ * links `@effected/oidc` and `@effected/jwt` and nothing else from this
+ * package.
  *
  * @example
  * ```ts

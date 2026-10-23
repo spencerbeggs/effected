@@ -30,7 +30,7 @@ and vice versa.
 | `InTotoStatement`, `InTotoSubject`, `Sha256Digest` | `@effected/sbom` | Building an in-toto statement over a validated subject digest |
 | `SlsaProvenance` | `@effected/sbom` | Building the SLSA provenance predicate |
 | `ActionsProvenance` | `import { ActionsProvenance } from "@effected/github-actions"` | Capturing SLSA provenance from the runner's OIDC claims |
-| `IdentityToken`, `ActionsIdentityToken`, `OidcTokenIssuer` | `@effected/sbom` / `@effected/github-actions` | Wiring the workload identity token a signer needs |
+| `IdentityToken`, `ActionsIdentityToken`, `OidcTokenIssuer` | `@effected/oidc` / `@effected/github-actions` | Wiring the workload identity token a signer needs |
 | `SigstoreSigner` | `@effected/sbom` | Signing a statement into a Sigstore DSSE bundle |
 | `Attestation.upload` | `import { Attestation } from "@effected/github"` | Uploading a signed bundle to GitHub |
 

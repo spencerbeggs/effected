@@ -155,7 +155,7 @@ Two decisions make that safe for any segment value, with no prefix reasoning at 
 
 `CacheKey.hashFiles` is byte-compatible with `@actions/glob`'s `hashFiles`, and `OidcTokenIssuer.claims` decodes the runner's OIDC token for a SLSA provenance predicate without verifying its signature — the token arrived over TLS from the runner's own token service, so the transport is the trust boundary and nothing here branches on the claims for authorization.
 
-`ActionsProvenance.capture` turns those claims into an `@effected/sbom` `SlsaProvenance` predicate, and `ActionsIdentityToken.layer` serves that package's narrow `IdentityToken` contract from the same issuer — the inversion that keeps the Actions runtime out of every consumer that only wants to emit an SBOM:
+`ActionsProvenance.capture` turns those claims into an `@effected/sbom` `SlsaProvenance` predicate, and `ActionsIdentityToken.layer` serves `@effected/oidc`'s narrow `IdentityToken` contract, which that package's signer consumes, from the same issuer — the inversion that keeps the Actions runtime out of every consumer that only wants to emit an SBOM:
 
 ```ts
 import { ActionsIdentityToken, ActionsProvenance, OidcTokenIssuer } from "@effected/github-actions";
@@ -303,7 +303,7 @@ const TestOutputs = ActionOutputs.layerTest({
 - `ActionCache` / `Artifact` — the runner's cache and artifact protocols over Twirp v2, excluded from the default runtime so a consumer that skips them never links Azure.
 - `CacheKey` — cache keys and their restore-key ladder, `withNamespace(segment)` for a bust token or a shared-runner prefix, plus `hashFiles`/`matchingFiles`/`hashMatching` byte-compatible with `@actions/glob`.
 - `OidcTokenIssuer` — the runner's OIDC token service, with unverified claim decoding for provenance predicates.
-- `ActionsIdentityToken` / `ActionsProvenance` — the `@effected/sbom` seam: `layer` serves that package's `IdentityToken` contract from the runner's issuer, and `capture` builds a `SlsaProvenance` predicate out of the runner's OIDC claims.
+- `ActionsIdentityToken` / `ActionsProvenance` — the `@effected/sbom` seam: `layer` serves `@effected/oidc`'s `IdentityToken` contract from the runner's issuer, and `capture` builds a `SlsaProvenance` predicate out of the runner's OIDC claims.
 - `GitHubMarkdown` — the escaping-safe writer for GitHub surfaces: `table`, `tableFor(schema)`, `heading`, `link`, `code`, `codeBlock`, `list`, `details` and `raw`, and the package's only importer of `@effected/markdown`.
 - `ManagedDocument` — marker-delimited named regions in text a human also edits, for a sticky comment or a managed pull request description; content outside the regions survives byte-for-byte, and each region can carry marker metadata that round-trips through `entry(key)` without ever addressing the region.
 - `CheckState` / `projectCheckState` — the kit's check vocabulary, wider than GitHub's conclusions, and its projection onto the check-run wire form.
