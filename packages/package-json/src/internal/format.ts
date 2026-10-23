@@ -5,6 +5,8 @@
 //
 // Private implementation module — never re-exported from `index.ts`.
 
+import { Predicate } from "effect";
+
 /**
  * Canonical top-level key order — `sort-package-json@4.0.0`'s default
  * `sortOrder`, taken verbatim so the kit's formatter byte-agrees with the
@@ -166,9 +168,6 @@ const sortMapEntries = (value: Record<string, unknown>): Record<string, unknown>
 	return result;
 };
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-	value !== null && typeof value === "object" && !Array.isArray(value);
-
 /**
  * Order top-level keys canonically (known keys by {@link KEY_ORDER}, then
  * unknown public keys alphabetically, then unknown `_`-prefixed keys
@@ -192,7 +191,7 @@ export const sortKeys = (obj: Record<string, unknown>): Record<string, unknown> 
 
 	const result: Record<string, unknown> = {};
 	for (const [key, value] of [...known, ...restPublic, ...restPrivate]) {
-		result[key] = SORTED_MAP_KEYS.has(key) && isPlainObject(value) ? sortMapEntries(value) : value;
+		result[key] = SORTED_MAP_KEYS.has(key) && Predicate.isObject(value) ? sortMapEntries(value) : value;
 	}
 	return result;
 };
@@ -213,7 +212,7 @@ export const stripEmptyDependencyMaps = (raw: Record<string, unknown>): Record<s
 	const result = { ...raw };
 	for (const key of STRIP_EMPTY_KEYS) {
 		const value = result[key];
-		if (isPlainObject(value) && Object.keys(value).length === 0) {
+		if (Predicate.isObject(value) && Object.keys(value).length === 0) {
 			delete result[key];
 		}
 	}

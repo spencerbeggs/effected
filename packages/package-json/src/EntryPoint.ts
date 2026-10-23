@@ -1,4 +1,4 @@
-import { Result, Schema } from "effect";
+import { Predicate, Result, Schema } from "effect";
 
 /**
  * Options for {@link resolveEntryPoint}.
@@ -77,10 +77,6 @@ export interface EntryPointManifest {
 
 const DEFAULT_CONDITIONS: ReadonlyArray<string> = ["import", "default"];
 
-/** A plain object — not an array, not `null`. */
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
 /**
  * Is this `exports` object a conditions map rather than a subpath map?
  *
@@ -111,7 +107,7 @@ const resolveConditions = (
 		if (typeof matched === "string") {
 			return matched;
 		}
-		if (isPlainObject(matched)) {
+		if (Predicate.isObject(matched)) {
 			const nested = resolveConditions(matched, conditions);
 			if (nested !== undefined) {
 				return nested;
@@ -185,7 +181,7 @@ export const resolveEntryPoint = (
 		return Result.succeed(exportsField);
 	}
 
-	if (isPlainObject(exportsField)) {
+	if (Predicate.isObject(exportsField)) {
 		if (isRootConditions(exportsField)) {
 			const resolved = resolveConditions(exportsField, conditions);
 			return resolved === undefined
@@ -196,7 +192,7 @@ export const resolveEntryPoint = (
 		if (typeof dot === "string") {
 			return Result.succeed(dot);
 		}
-		if (isPlainObject(dot)) {
+		if (Predicate.isObject(dot)) {
 			const resolved = resolveConditions(dot, conditions);
 			return resolved === undefined
 				? Result.fail(new UnresolvedEntryPointError({ reason: "noConditionMatched", conditions }))
