@@ -184,8 +184,10 @@ fill it even if the answer is "none."**
     anti-pattern.
   - **Log format:** structured values (`Effect.logInfo("msg", { key })`), never
     concatenated strings, and only at boundaries.
-  - **OTel:** at the app edge only (`@effect/opentelemetry` in one top-level
-    layer). The service stays agnostic; libraries never import it.
+  - **OTel:** at the app edge only (core's `Otlp` layers from
+    `effect/observability`, or the optional `@effect/opentelemetry` SDK bridge,
+    in one top-level layer). The service stays agnostic; libraries never import
+    an exporter.
   - **PubSub / events:** only when the feature is genuinely event-driven or
     fan-out. Default is **no**. If yes, it is a `PubSub`/`Queue` design decision —
     see `effect-resource`.

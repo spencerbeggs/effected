@@ -1,5 +1,6 @@
 import { LocalExec, Run } from "@effected/commands";
 import { Context, Crypto, Effect, FileSystem, Layer, Option, Redacted as Red, Schema } from "effect";
+import * as Hex from "effect/encoding/Hex";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { IntegrityHash } from "./IntegrityHash.js";
 import { NpmExecutor } from "./NpmExecutor.js";
@@ -82,6 +83,8 @@ const PackJsonEntry = Schema.Struct({
  * single-package pack is one entry either way.
  */
 const PackJson = Schema.Union([Schema.Array(PackJsonEntry), Schema.Record(Schema.String, PackJsonEntry)]);
+
+const decodePackJson = Schema.decodeUnknownEffect(Schema.fromJsonString(PackJson));
 
 /**
  * A packed tarball and the two digests that describe it.
@@ -266,11 +269,6 @@ const make = Effect.fnUntraced(function* () {
 			Effect.provideService(LocalExec, local),
 		);
 
-	const hex = (bytes: Uint8Array): string =>
-		Array.from(bytes)
-			.map((byte) => byte.toString(16).padStart(2, "0"))
-			.join("");
-
 	/** Runs an npm invocation, mapping a command failure onto `kind`. */
 	const npm = (
 		args: ReadonlyArray<string>,
@@ -305,16 +303,11 @@ const make = Effect.fnUntraced(function* () {
 			),
 		);
 
+	// One decode, JSON text to entries: the union covers npm 11's array and
+	// npm 12's name-keyed object, and either failure is `output`.
 	const parsePackJson = (stdout: string, subject: string) =>
-		Effect.try({
-			try: () => JSON.parse(stdout) as unknown,
-			catch: (cause) => new PublishError({ kind: "output", subject, cause }),
-		}).pipe(
-			Effect.flatMap((parsed) =>
-				Schema.decodeUnknownEffect(PackJson)(parsed).pipe(
-					Effect.catch((cause) => Effect.fail(new PublishError({ kind: "output", subject, cause }))),
-				),
-			),
+		decodePackJson(stdout).pipe(
+			Effect.mapError((cause) => new PublishError({ kind: "output", subject, cause })),
 			Effect.flatMap((decoded) => {
 				// Annotated on purpose: `Array.isArray`'s `arg is any[]` cannot narrow
 				// the union's `ReadonlyArray` member, so the true branch degrades to
@@ -413,7 +406,7 @@ const make = Effect.fnUntraced(function* () {
 			name: entry.name,
 			version: entry.version,
 			...integrityField(entry.integrity),
-			sha256Hex: hex(digest),
+			sha256Hex: Hex.encode(digest),
 			...(entry.size === undefined ? {} : { packedSize: entry.size }),
 			...(entry.unpackedSize === undefined ? {} : { unpackedSize: entry.unpackedSize }),
 			...(entry.entryCount === undefined ? {} : { fileCount: entry.entryCount }),

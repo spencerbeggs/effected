@@ -8,6 +8,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Option, Sink, Stream } from "effect";
 import { FetchHttpClient } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
+import { TestClock } from "effect/testing";
 import type { FileBlobTransfer } from "../src/index.js";
 import { Artifact, ArtifactError, BlobTransferError } from "../src/index.js";
 import { json, resultsEnv, runtimeToken, twirpFetch } from "./results.js";
@@ -353,6 +354,7 @@ describe("Artifact", () => {
 	it.effect("carries a retention as an expiry the backend understands", () =>
 		withScratch((root) =>
 			Effect.gen(function* () {
+				yield* TestClock.setTime(Date.UTC(2026, 0, 1, 12));
 				writeFileSync(join(root, "a.txt"), "x");
 				const { transfer } = fileTransfer();
 				const { calls, fetch } = twirpFetch(uploadable);
@@ -360,8 +362,9 @@ describe("Artifact", () => {
 					artifacts.upload("logs", [join(root, "a.txt")], root, { retentionDays: 7 }),
 				).pipe(Effect.provide(live(fetch, transfer)));
 				const expiry = calls.find((call) => call.method === "FinalizeArtifact")?.body.expiresAt;
-				assert.isString(expiry);
-				assert.isAbove(Date.parse(String(expiry)), Date.now());
+				// Pinned under TestClock: the expiry is the Clock's now plus the
+				// retention, in the ISO form the backend parses.
+				assert.strictEqual(expiry, "2026-01-08T12:00:00.000Z");
 			}),
 		),
 	);

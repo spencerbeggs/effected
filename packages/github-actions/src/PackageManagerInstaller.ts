@@ -6,11 +6,34 @@ import { ActionEnvironment } from "./ActionEnvironment.js";
 import { digestFileHex } from "./internal/digest.js";
 import { typeAt } from "./internal/fsProbe.js";
 import { PNPM_EXE_PREFIX, detectMusl, isNodeScript, pnpmExeTarget, strongestSri } from "./internal/pnpmExe.js";
-import { isWindowsRunner } from "./internal/runner.js";
+import { isWindowsRunner, runnerArch } from "./internal/runner.js";
 import { cmdShim, gitBashShim, posixShim } from "./internal/shim.js";
 import { unstubbed } from "./internal/unstubbed.js";
 import type { ToolInstallerError } from "./ToolInstaller.js";
 import { ToolInstaller } from "./ToolInstaller.js";
+
+/**
+ * The two `package.json` members the installer reads, as JSON text decoded to
+ * an object. Both stay `unknown`: they are attacker-supplied, and their own
+ * normalizers decide what survives.
+ */
+const decodeManifest = Schema.decodeUnknownEffect(
+	Schema.fromJsonString(
+		Schema.Struct({
+			bin: Schema.optionalKey(Schema.Unknown),
+			optionalDependencies: Schema.optionalKey(Schema.Unknown),
+		}),
+	),
+);
+
+/** A packument's `dist.integrity`, left `unknown` for `expectedFromSri` to judge. */
+const decodePackument = Schema.decodeUnknownEffect(
+	Schema.fromJsonString(
+		Schema.Struct({
+			dist: Schema.optionalKey(Schema.Struct({ integrity: Schema.optionalKey(Schema.Unknown) })),
+		}),
+	),
+);
 
 /**
  * Raised when a package manager cannot be provisioned on the runner.
@@ -365,12 +388,6 @@ const normalizeBins = (bin: unknown, fallbackName: string): Option.Option<Record
 	return Object.keys(entries).length === 0 ? Option.none() : Option.some(entries);
 };
 
-/** Map a `RUNNER_ARCH` value (`X64`, `ARM64`) onto the Node arch spelling. */
-const archFromRunner = (runnerArch: string): string => {
-	const lowered = runnerArch.toLowerCase();
-	return lowered === "x64" || lowered === "arm64" ? lowered : runnerArch;
-};
-
 const make = Effect.gen(function* () {
 	const env = yield* ActionEnvironment;
 	const fs = yield* FileSystem.FileSystem;
@@ -386,9 +403,7 @@ const make = Effect.gen(function* () {
 	// honest fallback; that read exists only for the fallback, everything else
 	// routes through ActionEnvironment.
 	const runnerOs = yield* Effect.map(env.getOptional("RUNNER_OS"), (found) => Option.getOrElse(found, () => ""));
-	const arch = yield* Effect.map(env.getOptional("RUNNER_ARCH"), (found) =>
-		Option.match(found, { onNone: () => process.arch as string, onSome: archFromRunner }),
-	);
+	const arch = yield* runnerArch(env);
 	const windows = yield* isWindowsRunner(env);
 	// The host libc, read once here beside the platform: it decides between
 	// pnpm's glibc and musl native binaries on linux and nothing else.
@@ -522,10 +537,13 @@ const make = Effect.gen(function* () {
 				.pipe(
 					Effect.mapError((cause) => errorFor(pin)({ reason: "layoutUnexpected", subject: "no package.json", cause })),
 				);
-			const manifest = yield* Effect.try({
-				try: () => JSON.parse(raw) as { readonly bin?: unknown; readonly optionalDependencies?: unknown },
-				catch: (cause) => errorFor(pin)({ reason: "layoutUnexpected", subject: "unparseable package.json", cause }),
-			});
+			// Not JSON, or JSON that is not an object (`null` included), is one
+			// failure: there is no manifest to read a bin from.
+			const manifest = yield* decodeManifest(raw).pipe(
+				Effect.mapError((cause) =>
+					errorFor(pin)({ reason: "layoutUnexpected", subject: "unparseable package.json", cause }),
+				),
+			);
 			const bins = Option.getOrUndefined(normalizeBins(manifest.bin, pin.name));
 			if (bins === undefined) {
 				return yield* Effect.fail(errorFor(pin)({ reason: "layoutUnexpected", subject: "package.json names no bin" }));
@@ -745,12 +763,7 @@ const make = Effect.gen(function* () {
 				errorFor(pin)({ reason: "integrityMismatch", subject: packumentUrl, cause });
 			const packument = yield* fs.readFileString(packumentFile).pipe(
 				Effect.mapError(unverifiable),
-				Effect.flatMap((raw) =>
-					Effect.try({
-						try: () => JSON.parse(raw) as { readonly dist?: { readonly integrity?: unknown } },
-						catch: unverifiable,
-					}),
-				),
+				Effect.flatMap((raw) => decodePackument(raw).pipe(Effect.mapError(unverifiable))),
 			);
 			return yield* expectedFromSri(pin, packument.dist?.integrity, packumentUrl);
 		});

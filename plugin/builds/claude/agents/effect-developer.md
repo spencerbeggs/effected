@@ -119,7 +119,8 @@ beats nothing at all — write the control first and watch it fail.
   for named spans. See
   `effect-v4-idioms`.
 + **Observability**: instrument public *fallible* boundaries only; libraries
-  stay telemetry-agnostic (apps compose `@effect/opentelemetry` at the edge).
+  stay telemetry-agnostic (apps compose an exporter at the edge: core's `Otlp`
+  layers, or the optional `@effect/opentelemetry` bridge).
   See `effect-v4-observability`.
 + **API surface**: write every Schema class factory inline; no internal type
   on a `@public` method signature. In repos that gate on API Extractor,

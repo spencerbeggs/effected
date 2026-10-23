@@ -1,5 +1,5 @@
 import type { HmacAlgorithm } from "@effected/crypto";
-import { ConstantTime, Hmac } from "@effected/crypto";
+import { Hmac } from "@effected/crypto";
 import { Effect } from "effect";
 import { annotateOutcome, readHeader, reject } from "./internal/verify.js";
 import type { WebhookRequest } from "./WebhookRequest.js";
@@ -28,15 +28,16 @@ const verify = Effect.fn("HmacHeader.verify")(function* (request: WebhookRequest
 	if (header === undefined) return yield* reject(PRESET, "missing_signature");
 	const prefix = options.prefix ?? "";
 	if (!header.startsWith(prefix)) return yield* reject(PRESET, "bad_signature", "the signature prefix is missing");
-	const raw = header.slice(prefix.length);
-	const received = options.encoding === "hex" ? raw.toLowerCase() : raw;
-	const expected = yield* Hmac.sign({
+	// Compared as bytes: the signature is decoded and checked against the MAC in
+	// constant time, so any spelling that decodes to the right MAC is accepted.
+	const verified = yield* Hmac.verify({
 		algorithm: options.algorithm ?? "SHA-256",
 		key: request.secret,
 		message: request.body,
+		signature: header.slice(prefix.length),
 		encoding: options.encoding,
 	}).pipe(Effect.orDie);
-	if (!ConstantTime.equal(expected, received)) return yield* reject(PRESET, "bad_signature");
+	if (!verified) return yield* reject(PRESET, "bad_signature");
 }, annotateOutcome(PRESET));
 
 /**
@@ -57,7 +58,9 @@ export class HmacHeader {
 	 *
 	 * @remarks
 	 * `missing_signature` without the header; `bad_signature` when the prefix is missing or the signature does not
-	 * match. Hex is compared case-insensitively; base64 exactly.
+	 * match. The signature is decoded and compared as bytes with `@effected/crypto`'s `Hmac.verify`, so any spelling
+	 * that decodes to the right MAC verifies: hex in either case, and padded base64 even when it is not the canonical
+	 * spelling. One that does not decode, unpadded base64 included, is `bad_signature`.
 	 *
 	 * @public
 	 */

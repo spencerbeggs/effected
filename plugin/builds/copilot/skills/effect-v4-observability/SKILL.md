@@ -1,23 +1,24 @@
 ---
 name: effect-v4-observability
-description: Use when adding logging, metrics, tracing/spans, or OpenTelemetry to Effect v4 code — covers Effect.fn named spans, the Effect.log* family, custom loggers (Logger.make for the format, Logger.withConsoleLog/withConsoleError for the route — never a hand-written Console.log call), Metric counters/gauges/histograms with Metric.withAttributes (NOT the removed Metric.tagged), and wiring @effect/opentelemetry at the app edge. Encodes the house rule that pure-tier libraries instrument public fallible boundaries only and stay telemetry-agnostic, while apps compose OTel at the infrastructure layer.
+description: Use when adding logging, metrics, tracing/spans, or OpenTelemetry to Effect v4 code — covers Effect.fn named spans, the Effect.log* family, custom loggers (Logger.make for the format, Logger.withConsoleLog/withConsoleError for the route — never a hand-written Console.log call), Metric counters/gauges/histograms with Metric.withAttributes (NOT the removed Metric.tagged), and wiring OpenTelemetry export at the app edge (core OTLP layers in effect/observability, Tracer.externalSpan and HttpTraceContext for inbound context, HttpClient.TracerPropagationEnabled for outbound, @effect/opentelemetry only as an optional SDK bridge). Encodes the house rule that pure-tier libraries instrument public fallible boundaries only and stay telemetry-agnostic, while apps compose OTel at the infrastructure layer.
 ---
 
 # Effect v4 observability
 
 Every Effect-core name below was verified to exist against the vendored
 Effect source, and every claimed absence verified absent there.
-`@effect/opentelemetry` is **not installed** in this monorepo — every
-`@effect/opentelemetry` example is *shape per the official guide; verify against
-the installed package when first adopted*. The v4 release line moves fast; when an API is not
-listed here, probe it (`typeof`) before writing code. Module routing (what
+Core's own OTLP exporters (`effect/observability`) are verified the same way.
+`@effect/opentelemetry` is **not installed** in this monorepo, so this skill
+names none of its members; verify any you use against the installed package.
+When an API is not listed here, confirm it against the source or a
+type-checked probe before writing code. Module routing (what
 `Tracer`, `Logger`, `References` are) lives in `effect-v4-module-index`.
 
 ## The house rule (this is the whole point)
 
 > Observability is composed **once, at the infrastructure/edge layer**. Domain
-> operations stay telemetry-agnostic. Libraries never import
-> `@effect/opentelemetry`.
+> operations stay telemetry-agnostic. Libraries never import an exporter —
+> neither `effect/observability` nor `@effect/opentelemetry`.
 
 The official Effect observability guide endorses this exactly: "business code
 stays observability-agnostic; OpenTelemetry is introduced at the infrastructure
@@ -26,8 +27,8 @@ yaml) are a *specialization* of that guide, not a deviation.
 
 **Our specialization for pure-tier parser/engine libraries:** instrument
 **public fallible boundaries only** with named `Effect.fn("Name.op")` spans.
-**No per-node / hot-path spans.** No metrics on internal helpers. Apps compose
-`@effect/opentelemetry` at their edge and get traces/metrics/logs from the
+**No per-node / hot-path spans.** No metrics on internal helpers. Apps compose an
+exporter (core's `Otlp` layers) at their edge and get traces/metrics/logs from the
 library for free — because the library only emits named spans at the operations
 a user actually calls.
 
@@ -193,41 +194,80 @@ repository ops, external-API calls, retries — never on every internal helper. 
 pure-tier libraries the honest default is **no metrics at all**; let the app meter
 its call to the library.
 
-## OpenTelemetry — at the app edge only (UNVERIFIED shapes)
+## OpenTelemetry — at the app edge only
 
-> Everything in this section is **shape per the official guide; verify against
-> the installed `@effect/opentelemetry` when first adopted.** The package is not
-> in this monorepo. Confirm the version compatible with
-> the installed `effect` and the exact option names before shipping.
+Libraries never touch this. An **application** composes one telemetry layer at
+its top level.
 
-Libraries never touch this. An **application** composes one telemetry layer at its
-top level:
+### Core OTLP export (`effect/observability`)
+
+Core ships vendor-neutral OTLP exporters, so most apps need no SDK at all.
+`Otlp.layer` installs the OTLP logger, metrics exporter and tracer exporter from
+one configuration, posting to `/v1/logs`, `/v1/metrics` and `/v1/traces` under
+`baseUrl`. It needs an `HttpClient`, and an `OtlpSerialization` that
+`layerJson` / `layerProtobuf` already provide:
 
 ```ts
-// SHAPE PER THE GUIDE — verify option names against the installed package.
-const TelemetryLayer = NodeSdk.layer(() => ({
-  resource: { serviceName: "todo-service", serviceVersion: "1.0.0" },
-  spanProcessor: mySpanProcessor,
-  metricReader: myMetricReader,        // temporality: "cumulative" | "delta"
-  logRecordProcessor: myLogProcessor
-}))
+import { Layer } from "effect"
+import { FetchHttpClient } from "effect/http"
+import { Otlp, OtlpSerialization } from "effect/observability"
 
-const AppLayer = Layer.mergeAll(DomainLayer, HttpLayer).pipe(
-  Layer.provide(TelemetryLayer)
+// Explicit endpoint, JSON encoding.
+const TelemetryLayer = Otlp.layerJson({
+  baseUrl: "http://localhost:4318",
+  resource: { serviceName: "todo-service", serviceVersion: "1.0.0" }
+}).pipe(Layer.provide(FetchHttpClient.layer))
+
+// Or from the standard OTEL_* environment (OTEL_SDK_DISABLED,
+// OTEL_EXPORTER_OTLP_*, OTEL_BSP_*); this form takes the serialization explicitly.
+const TelemetryFromEnv = Otlp.layerFromConfig({ resource: { serviceName: "todo-service" } }).pipe(
+  Layer.provide(OtlpSerialization.layerJson),
+  Layer.provide(FetchHttpClient.layer)
 )
+
+const AppLayer = Layer.mergeAll(DomainLayer, HttpLayer).pipe(Layer.provide(TelemetryLayer))
 ```
 
-- `NodeSdk.layer` merges resource + `Tracer.layer` + `Metrics.layer` +
-  `Logger.layer` and owns provider lifecycle via scoped acquire/release — **never
-  call provider shutdown from business code.**
-- `Logger.layer({ mergeWithExisting })` maps Effect levels → OTel severities and
-  emits fiber ID, span context, annotations, log-span timing. Prefer merging.
-- Bridge external trace context at inbound edges only — `Tracer.makeExternalSpan`,
-  `Tracer.currentOtelSpan`, `Effect.withParentSpan` in HTTP/RPC/queue adapters.
+- `layer` / `layerJson` / `layerProtobuf` / `layerFromConfig` are the four
+  entry points; the per-signal modules (`OtlpTracer`, `OtlpLogger`,
+  `OtlpMetrics`) exist for an app exporting only one signal.
+- The layers own export batching and shutdown (`shutdownTimeout`) — **never
+  flush or shut an exporter down from business code.**
 
-**Anti-patterns:** constructing OTel SDK clients inside services; wiring exporters
-in domain code; scattering shutdown logic; per-subsystem telemetry config instead
-of one top-level layer.
+### Bridging trace context
+
+- **Inbound**, at the HTTP/RPC/queue adapter only: `HttpTraceContext.fromHeaders`
+  (`effect/http`) reads `traceparent`/`b3` into an `Option<Tracer.ExternalSpan>`;
+  for any other carrier build one with `Tracer.externalSpan({ spanId, traceId })`.
+  Parent the handler on it with `Effect.withSpan(name, { parent })` or
+  `Effect.withParentSpan(span)`.
+- **Outbound**, core's `HttpClient` writes `b3` and `traceparent` on every
+  request by default. That is right inside your own system and wrong toward a
+  third party, which then receives your trace and span ids. Turn it off per
+  client with the `HttpClient.TracerPropagationEnabled` reference; the client
+  span is still recorded locally:
+
+  ```ts
+  const http = HttpClient.transform(yield* HttpClient.HttpClient, (effect) =>
+    Effect.provideService(effect, HttpClient.TracerPropagationEnabled, false)
+  )
+  ```
+
+  The kit's example is `@effected/github-actions`' S3 `BlobStore`, which signs
+  requests to a third-party object store and sends it no trace context.
+
+### `@effect/opentelemetry` (optional SDK bridge)
+
+Reach for it only when the app must run the OpenTelemetry JS SDK itself (its
+span processors, an exporter core does not ship, or another library already
+instrumented through the SDK). It is not vendored in this kit, so **verify
+every name against the installed package** before writing it; do not take one
+from memory or from older guides.
+
+**Anti-patterns:** constructing OTel SDK clients inside services; wiring
+exporters in domain code; scattering shutdown logic; per-subsystem telemetry
+config instead of one top-level layer; propagating trace headers to a
+third-party API.
 
 ## How to verify quickly
 

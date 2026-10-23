@@ -14,7 +14,7 @@
 //
 // @see https://www.ntia.gov/files/ntia/publications/sbom_minimum_elements_report.pdf
 
-import { Schema } from "effect";
+import { DateTime, Option, Schema } from "effect";
 import type { SbomDocument } from "./SbomDocument.js";
 
 /**
@@ -135,7 +135,7 @@ const sbomAuthor = (document: SbomDocument): NtiaElement => {
  */
 const timestamp = (document: SbomDocument): NtiaElement => {
 	const stamped = present(document.metadata?.timestamp);
-	return element("timestamp", stamped !== undefined && !Number.isNaN(Date.parse(stamped)) ? stamped : undefined);
+	return element("timestamp", stamped !== undefined && Option.isSome(DateTime.make(stamped)) ? stamped : undefined);
 };
 
 /**

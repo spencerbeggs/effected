@@ -22,10 +22,10 @@ sources:
     title: "InboundRequest and the verification-failure status mapping"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T00:18:32Z
+  at: 2026-10-23T00:42:56Z
 integrity:
   generated:
-    body: 4ec3fd6bd72262e4
+    body: 0618fad4119d1ca9
 ---
 
 # `@effected/webhooks`
@@ -65,6 +65,8 @@ Secret handling follows the vendor exactly, because getting it wrong produces a 
 Linear signs with a bare hex HMAC over the body, which `HmacHeader` covers, but carries its timestamp inside the JSON body (`webhookTimestamp`, milliseconds). So `Webhooks.checkFreshness(timestamp, receivedAt, tolerance)` is exported on its own, and the caller applies it after decoding the body.
 
 `SharedSecret` compares with `ConstantTime.secretsEqual`, so the secret's length does not leak; it covers Cloudflare's `cf-webhook-auth` and a path secret delivered as a header.
+
+`HmacHeader` verifies with `crypto`'s `Hmac.verify`, which decodes the signature and compares bytes, so any spelling that decodes to the right MAC is accepted: hex in either case, and padded base64 that is not the canonical spelling. Core's base64 decoder requires padding, so unpadded base64 does not decode and is `bad_signature`. `GitHub`, `Stripe`, `Sanity` and `StandardWebhooks` compare their encoded signature strings.
 
 ## Ordering
 

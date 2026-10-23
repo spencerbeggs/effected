@@ -156,16 +156,6 @@ const ALLOWED: ReadonlyArray<readonly [string, string, string]> = [
 		"the `base` default — the one sanctioned ambient fallback, same class as ActionInput.provider's",
 	],
 	[
-		"PackageManagerInstaller.ts",
-		"Option.match(found, { onNone: () => process.arch as string, onSome: archFromRunner }),",
-		"the off-runner fallback for RUNNER_ARCH, selecting the native-binary target",
-	],
-	[
-		"ToolInstaller.ts",
-		"ToolInstaller.cachePath({ root, tool, version, arch: process.arch });",
-		"the tool-cache layout's arch segment is Node's spelling by contract with the runner",
-	],
-	[
 		"ToolInstaller.ts",
 		'const testRoot = (): string => process.env.RUNNER_TOOL_CACHE ?? "/tmp/runner-tool-cache";',
 		"makeTest's cachePath default root — test-double only, a double has no ActionEnvironment to ask",
@@ -174,6 +164,11 @@ const ALLOWED: ReadonlyArray<readonly [string, string, string]> = [
 		"ToolInstaller.ts",
 		"cachePath: (tool, version) => ToolInstaller.cachePath({ root: testRoot(), tool, version, arch: process.arch }),",
 		"makeTest's cachePath default — the same arch segment `make` writes, for the same reason",
+	],
+	[
+		"internal/runner.ts",
+		"Option.match(found, { onNone: () => process.arch as string, onSome: archFromRunner }),",
+		"runnerArch's off-runner fallback for RUNNER_ARCH, shared by ToolInstaller's cache path and PackageManagerInstaller's native target",
 	],
 	[
 		"internal/pnpmExe.ts",

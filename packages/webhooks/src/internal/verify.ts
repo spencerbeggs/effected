@@ -52,10 +52,21 @@ export const reject = (
 /**
  * Whether `timestampMillis` sits within `tolerance` of `receivedAt`, either way; the boundary is fresh.
  *
+ * @remarks
+ * The timestamp is sender-supplied, so one no `DateTime` can represent (out of
+ * range, or not a number) is stale rather than a defect.
+ *
  * @internal
  */
 export const isFresh = (timestampMillis: number, receivedAt: DateTime.Utc, tolerance: Duration.Input): boolean =>
-	Math.abs(DateTime.toEpochMillis(receivedAt) - timestampMillis) <= Duration.toMillis(tolerance);
+	Option.match(DateTime.make(timestampMillis), {
+		onNone: () => false,
+		onSome: (signedAt) =>
+			Duration.isLessThanOrEqualTo(
+				Duration.abs(DateTime.distance(receivedAt, signedAt)),
+				Duration.fromInputUnsafe(tolerance),
+			),
+	});
 
 /**
  * The freshness check every timestamped preset runs, after the signature.

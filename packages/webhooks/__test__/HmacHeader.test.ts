@@ -32,6 +32,21 @@ describe("HmacHeader.verify", () => {
 		}),
 	);
 
+	it.effect("accepts a non-canonical base64 spelling of the right MAC, since the signature is compared as bytes", () =>
+		Effect.gen(function* () {
+			// A SHA-256 MAC is 32 bytes, so its base64 ends in one "=" and the
+			// character before it carries two unused bits. Setting one spells the
+			// same bytes differently: a string compare refused it, a byte compare
+			// accepts it.
+			const base64 = hmac(LINEAR_SECRET, [BODY], "base64");
+			const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+			const last = base64.length - 2;
+			const variant = `${base64.slice(0, last)}${ALPHABET[ALPHABET.indexOf(base64[last] ?? "") ^ 1]}=`;
+			assert.notStrictEqual(variant, base64, "the fixture must differ from the canonical spelling");
+			yield* verify({ "x-sig": `sig=${variant}` }, { header: "x-sig", encoding: "base64", prefix: "sig=" });
+		}),
+	);
+
 	describe("every part wrong in exactly one way is bad_signature", () => {
 		const prefixed: HmacHeaderOptions = { header: "x-sig", encoding: "base64", prefix: "sig=" };
 		const base64 = hmac(LINEAR_SECRET, [BODY], "base64");
@@ -46,7 +61,11 @@ describe("HmacHeader.verify", () => {
 			],
 			["the prefix: missing", { "x-sig": base64 }, prefixed],
 			["the prefix: wrong", { "x-sig": `sha=${base64}` }, prefixed],
+			["the base64: not base64 at all", { "x-sig": "sig=%%%not-base64%%%" }, prefixed],
+			// Core's base64 decoder requires padding, so an unpadded spelling does
+			// not decode and is refused like any other undecodable signature.
 			["the base64: unpadded", { "x-sig": `sig=${base64.replace(/=+$/, "")}` }, prefixed],
+			["the hex: not hex at all", { "linear-signature": "zz".repeat(32) }, linear],
 		];
 		for (const [part, head, options] of cases) {
 			it.effect(part, () =>

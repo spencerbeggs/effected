@@ -9,11 +9,11 @@ import { Schema } from "effect";
  * Every claim is optional, so the schema decodes any provider's token, and
  * the schema is open: claims it does not name survive the decode. A
  * provider's own claims belong in a caller-supplied schema passed to
- * {@link (Oidc:variable).verify} or {@link (Oidc:variable).decodeUnverified},
+ * {@link (Oidc:class).verify} or {@link (Oidc:class).decodeUnverified},
  * not in a subclass here. `@effected/github`'s `ActionsOidcClaims` is one.
  *
  * Optional here does not mean optional in a verified token:
- * {@link (Oidc:variable).verify} still requires `exp` and checks `iss`, `aud`,
+ * {@link (Oidc:class).verify} still requires `exp` and checks `iss`, `aud`,
  * `nbf` and `iat` whatever schema the payload is then decoded with.
  *
  * @public

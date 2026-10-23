@@ -30,8 +30,25 @@ export const inputVariable = (name: string): string => `INPUT_${name.replaceAll(
  * mutations the author meant to rehearse. `actual` carries the offending value
  * so the rendered error names it.
  */
-const configError = (message: string, actual: unknown): Config.ConfigError =>
-	new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue({ message }, actual)));
+/**
+ * A `ConfigError` carrying `message` as its first issue and, when a decode
+ * failed, that decode's own issue beside it, so the cause is structured
+ * rather than flattened into the message.
+ */
+const configError = (message: string, actual: unknown, cause?: Schema.SchemaError): Config.ConfigError => {
+	const stated = new SchemaIssue.InvalidValue({ message }, actual);
+	return new Config.ConfigError(
+		new Schema.SchemaError(
+			cause === undefined ? stated : new SchemaIssue.Composite(Schema.Unknown.ast, [stated, cause.issue], actual),
+		),
+	);
+};
+
+/** A JSON text, parsed to an unknown value. */
+const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+
+/** The JSON-array form of {@link ActionInput.list}. */
+const decodeStringArray = Schema.decodeUnknownEffect(Schema.Array(Schema.String));
 
 /** YAML 1.2 core-schema booleans, which is what the runner documents. */
 const TRUE = new Set(["true", "True", "TRUE"]);
@@ -318,15 +335,18 @@ export class ActionInput {
 					return Effect.succeed<ReadonlyArray<string>>([]);
 				}
 				if (trimmed.startsWith("[")) {
-					try {
-						const parsed: unknown = JSON.parse(trimmed);
-						if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
-							return Effect.succeed<ReadonlyArray<string>>(parsed as ReadonlyArray<string>);
-						}
-						return Effect.fail(configError(`Input "${name}" is a JSON array but not an array of strings`, raw));
-					} catch {
-						return Effect.fail(configError(`Input "${name}" looks like JSON but could not be parsed`, raw));
-					}
+					return decodeJson(trimmed).pipe(
+						Effect.mapError((cause) =>
+							configError(`Input "${name}" looks like JSON but could not be parsed`, raw, cause),
+						),
+						Effect.flatMap((parsed) =>
+							decodeStringArray(parsed).pipe(
+								Effect.mapError((cause) =>
+									configError(`Input "${name}" is a JSON array but not an array of strings`, raw, cause),
+								),
+							),
+						),
+					);
 				}
 				const entries = trimmed
 					.split(/[\n,]/)
@@ -408,17 +428,16 @@ export class ActionInput {
 	 */
 	static schema<A, I>(name: string, schema: Schema.Codec<A, I>): Config.Config<A> {
 		return Config.String(inputVariable(name)).pipe(
-			Config.mapEffect((raw) => {
-				let parsed: unknown;
-				try {
-					parsed = JSON.parse(raw);
-				} catch {
-					return Effect.fail(configError(`Input "${name}" is not valid JSON`, raw));
-				}
-				return Schema.decodeUnknownEffect(schema)(parsed).pipe(
-					Effect.mapError(() => configError(`Input "${name}" did not satisfy its schema`, parsed)),
-				);
-			}),
+			Config.mapEffect((raw) =>
+				decodeJson(raw).pipe(
+					Effect.mapError((cause) => configError(`Input "${name}" is not valid JSON`, raw, cause)),
+					Effect.flatMap((parsed) =>
+						Schema.decodeUnknownEffect(schema)(parsed).pipe(
+							Effect.mapError((cause) => configError(`Input "${name}" did not satisfy its schema`, parsed, cause)),
+						),
+					),
+				),
+			),
 		);
 	}
 

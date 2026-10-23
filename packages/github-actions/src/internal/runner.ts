@@ -40,3 +40,36 @@ export const toolCacheRoot = (env: ActionEnvironmentShape, path: Path.Path): Eff
 	Effect.map(env.getOptional("RUNNER_TOOL_CACHE"), (found) =>
 		Option.getOrElse(found, () => path.join("/tmp", "runner-tool-cache")),
 	);
+
+/**
+ * A `RUNNER_ARCH` value (`X86`, `X64`, `ARM`, `ARM64`) in Node's `process.arch`
+ * spelling (`ia32`, `x64`, `arm`, `arm64`); anything else passes through.
+ *
+ * @internal
+ */
+export const archFromRunner = (runnerArch: string): string => {
+	switch (runnerArch.toLowerCase()) {
+		case "x86":
+			return "ia32";
+		case "x64":
+			return "x64";
+		case "arm":
+			return "arm";
+		case "arm64":
+			return "arm64";
+		default:
+			return runnerArch;
+	}
+};
+
+/**
+ * The host architecture in Node's spelling: `RUNNER_ARCH` mapped through
+ * {@link archFromRunner}, or `process.arch` off a runner, where the variable is
+ * absent and the host's own answer is the honest fallback.
+ *
+ * @internal
+ */
+export const runnerArch = (env: ActionEnvironmentShape): Effect.Effect<string> =>
+	Effect.map(env.getOptional("RUNNER_ARCH"), (found) =>
+		Option.match(found, { onNone: () => process.arch as string, onSome: archFromRunner }),
+	);

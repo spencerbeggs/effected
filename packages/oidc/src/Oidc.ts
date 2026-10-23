@@ -3,7 +3,7 @@ import type { Duration } from "effect";
 import { Effect, Schema } from "effect";
 
 /**
- * Options for {@link (Oidc:variable).verify}.
+ * Options for {@link (Oidc:class).verify}.
  *
  * @typeParam S - The schema the verified payload is decoded with.
  *
@@ -94,7 +94,9 @@ const verify = Effect.fn("Oidc.verify")(function* <S extends Schema.Constraint>(
  *
  * @public
  */
-export const Oidc: {
+export class Oidc {
+	private constructor() {}
+
 	/**
 	 * Decode a token's payload with `claims` **without verifying it**.
 	 *
@@ -106,11 +108,14 @@ export const Oidc: {
 	 *
 	 * Fails as `malformed` when the token is not a compact JWS with a JOSE
 	 * header, and as `claims` when the payload does not decode.
+	 *
+	 * @public
 	 */
-	readonly decodeUnverified: <S extends Schema.Constraint>(
+	static readonly decodeUnverified: <S extends Schema.Constraint>(
 		token: string,
 		claims: S,
-	) => Effect.Effect<S["Type"], JwtError, S["DecodingServices"]>;
+	) => Effect.Effect<S["Type"], JwtError, S["DecodingServices"]> = decodeUnverified;
+
 	/**
 	 * Verify an ID token from `options.issuer` and decode its payload with
 	 * `options.claims`.
@@ -125,9 +130,11 @@ export const Oidc: {
 	 * The key is always looked up for the configured issuer, never for the
 	 * token's own `iss`, so a token naming another issuer is never checked
 	 * against that issuer's keys.
+	 *
+	 * @public
 	 */
-	readonly verify: <S extends Schema.Constraint>(
+	static readonly verify: <S extends Schema.Constraint>(
 		token: string,
 		options: OidcVerifyOptions<S>,
-	) => Effect.Effect<S["Type"], JwtError, JwksResolver | S["DecodingServices"]>;
-} = { decodeUnverified, verify };
+	) => Effect.Effect<S["Type"], JwtError, JwksResolver | S["DecodingServices"]> = verify;
+}

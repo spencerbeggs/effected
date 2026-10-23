@@ -1,5 +1,8 @@
 import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect";
 
+/** The event payload: any JSON value, parsed. */
+const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+
 /**
  * Raised when the runner environment does not say what an action needs.
  *
@@ -253,15 +256,16 @@ const make = (
 							}),
 					),
 				);
-				return yield* Effect.try({
-					try: () => JSON.parse(raw) as unknown,
-					catch: (cause) =>
-						new ActionEnvironmentError({
-							reason: "malformed",
-							name: "GITHUB_EVENT_PATH",
-							detail: `not valid JSON: ${String(cause)}`,
-						}),
-				});
+				return yield* decodeJson(raw).pipe(
+					Effect.mapError(
+						(cause) =>
+							new ActionEnvironmentError({
+								reason: "malformed",
+								name: "GITHUB_EVENT_PATH",
+								detail: `not valid JSON: ${cause.message}`,
+							}),
+					),
+				);
 			}),
 
 			withEnv: (overrides, effect) =>

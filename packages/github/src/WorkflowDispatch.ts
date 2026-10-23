@@ -1,4 +1,4 @@
-import { Clock, Context, Duration, Effect, Layer, Option, Schedule, Schema } from "effect";
+import { Context, DateTime, Duration, Effect, Layer, Option, Schedule, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
 import { numericId } from "./internal/ids.js";
@@ -380,7 +380,7 @@ const make = (client: GitHubClient["Service"]): WorkflowDispatchShape => {
 			// `dispatchedAt` is read before the dispatch so that, on the 204 fallback
 			// where the run has to be found by when it was created, a run created in
 			// the same second is not missed.
-			const dispatchedAt = new Date(yield* Clock.currentTimeMillis).toISOString();
+			const dispatchedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
 			const dispatched = yield* dispatchWithRun(workflow, ref, options?.inputs);
 
 			const findRun: Effect.Effect<Option.Option<WorkflowRunStatus>, GitHubError, Repo> = Option.isSome(dispatched)

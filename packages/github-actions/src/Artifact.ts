@@ -1,5 +1,5 @@
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
-import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
+import { Context, DateTime, Duration, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
 import { HttpClient } from "effect/http";
 import type { ChildProcess } from "effect/process";
 import { ChildProcessSpawner } from "effect/process";
@@ -453,15 +453,18 @@ const make = (
 							.stat(packed)
 							.pipe(Effect.mapError((cause) => new ArtifactError({ reason: "archiveFailed", artifact: name, cause })));
 						const digest = yield* digestOf(packed, name);
+						// From `Clock`, so `TestClock` drives the expiry.
+						const expiresAt =
+							options?.retentionDays === undefined
+								? undefined
+								: DateTime.formatIso(DateTime.addDuration(yield* DateTime.now, Duration.days(options.retentionDays)));
 						const finalized = yield* call(
 							"FinalizeArtifact",
 							() => ({
 								name,
 								size: String(size.size),
 								hash: `sha256:${digest}`,
-								...(options?.retentionDays === undefined
-									? {}
-									: { expiresAt: new Date(Date.now() + options.retentionDays * 86_400_000).toISOString() }),
+								...(expiresAt === undefined ? {} : { expiresAt }),
 							}),
 							name,
 						);

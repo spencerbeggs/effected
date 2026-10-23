@@ -28,7 +28,9 @@
 // integrity) is its first consumer.
 
 import type { Brand } from "effect";
-import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import * as Base64 from "effect/encoding/Base64";
+import * as Hex from "effect/encoding/Hex";
 
 /**
  * A supported integrity hash algorithm.
@@ -210,7 +212,7 @@ export const SriIntegrityHash: Schema.brand<Schema.String, "IntegrityHash"> = sr
 // hand-rolls it re-decides the same edge cases (quoted JSON tokens, non-sha512
 // algorithms, sloppy base64), so the bridge lives here, once, as a codec.
 
-// Why this is hand-rolled rather than core's `effect/encoding/Base64`, which this package
+// Why the decoder is hand-rolled rather than core's `effect/encoding/Base64`, which this package
 // already uses elsewhere (`PackageTarball`, `RegistryCredential`): the two
 // disagree in both directions, and for an integrity value the disagreement is
 // load-bearing:
@@ -225,7 +227,9 @@ export const SriIntegrityHash: Schema.brand<Schema.String, "IntegrityHash"> = sr
 // two `integrity` strings that differ as text can decode to identical bytes —
 // precisely the ambiguity an integrity check exists to deny. Core is also
 // *stricter* where this codec is deliberately lenient: it rejects the unpadded
-// form. Neither direction is a drop-in. Do not "fix" this to `Base64`.
+// form. Neither direction is a drop-in. Do not "fix" this to `Base64.decode`.
+// Only the DECODER is hand-rolled: encoding goes through core's `Base64.encode`
+// and `Hex`, which write the canonical form this decoder accepts.
 //
 // Canonical base64 alphabet; index = 6-bit value.
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -273,34 +277,6 @@ const decodeBase64 = (value: string): ReadonlyArray<number> | undefined => {
 	return bytes;
 };
 
-// Canonical (padded) base64 of a byte sequence — the exact inverse of
-// `decodeBase64`, used by the codec's encode direction.
-const encodeBase64 = (bytes: ReadonlyArray<number>): string => {
-	let out = "";
-	for (let index = 0; index < bytes.length; index += 3) {
-		const b0 = bytes[index] ?? 0;
-		const b1 = bytes[index + 1];
-		const b2 = bytes[index + 2];
-		const buffer = (b0 << 16) | ((b1 ?? 0) << 8) | (b2 ?? 0);
-		out += BASE64_ALPHABET.charAt((buffer >>> 18) & 0x3f);
-		out += BASE64_ALPHABET.charAt((buffer >>> 12) & 0x3f);
-		out += b1 === undefined ? "=" : BASE64_ALPHABET.charAt((buffer >>> 6) & 0x3f);
-		out += b2 === undefined ? "=" : BASE64_ALPHABET.charAt(buffer & 0x3f);
-	}
-	return out;
-};
-
-const hexOfBytes = (bytes: ReadonlyArray<number>): string =>
-	bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
-
-const bytesOfHex = (hex: string): ReadonlyArray<number> => {
-	const bytes: Array<number> = [];
-	for (let index = 0; index < hex.length; index += 2) {
-		bytes.push(Number.parseInt(hex.slice(index, index + 2), 16));
-	}
-	return bytes;
-};
-
 const SHA512_SRI_PREFIX = "sha512-";
 const SHA512_COREPACK_PREFIX = "sha512.";
 // A sha512 digest is always 64 bytes. An SRI value with any other payload
@@ -324,15 +300,18 @@ const corepackOfSri = (input: string): string | undefined => {
 	if (!value.startsWith(SHA512_SRI_PREFIX)) return undefined;
 	const bytes = decodeBase64(value.slice(SHA512_SRI_PREFIX.length));
 	if (bytes === undefined || bytes.length !== SHA512_DIGEST_BYTES) return undefined;
-	return `${SHA512_COREPACK_PREFIX}${hexOfBytes(bytes)}`;
+	return `${SHA512_COREPACK_PREFIX}${Hex.encode(Uint8Array.from(bytes))}`;
 };
 
 // corepack `sha512.<128-hex>` → canonical SRI `sha512-<base64>`. `undefined`
-// for the corepack forms SRI cannot carry (sha224, a truncated digest).
-const sriOfCorepack = (value: string): string | undefined =>
-	COREPACK_SHA512_RE.test(value)
-		? `${SHA512_SRI_PREFIX}${encodeBase64(bytesOfHex(value.slice(SHA512_COREPACK_PREFIX.length)))}`
-		: undefined;
+// for the corepack forms SRI cannot carry (sha224, a truncated digest). Core's
+// encoder writes canonical padded base64, the exact inverse of `decodeBase64`;
+// only the DECODE side is hand-rolled, for the strictness core's lacks.
+const sriOfCorepack = (value: string): string | undefined => {
+	if (!COREPACK_SHA512_RE.test(value)) return undefined;
+	const bytes = Hex.decode(value.slice(SHA512_COREPACK_PREFIX.length));
+	return Result.isSuccess(bytes) ? `${SHA512_SRI_PREFIX}${Base64.encode(bytes.success)}` : undefined;
+};
 
 // The codec: decode converts and then validates through the corepack-restricted
 // schema, so the result carries the same brand every other integrity field

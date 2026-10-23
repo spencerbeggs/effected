@@ -6,7 +6,7 @@ import { ChildProcessSpawner } from "effect/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import { tarExtractCommand, unzipCommand } from "./internal/archiveCommands.js";
 import { isErrno, typeAt } from "./internal/fsProbe.js";
-import { isWindowsRunner, toolCacheRoot } from "./internal/runner.js";
+import { isWindowsRunner, runnerArch, toolCacheRoot } from "./internal/runner.js";
 import { spawnOnce } from "./internal/spawn.js";
 import { unstubbed } from "./internal/unstubbed.js";
 
@@ -248,9 +248,11 @@ const make = Effect.gen(function* () {
 	// Resolved once, at construction (`internal/runner.ts` says why not at import).
 	const root = yield* toolCacheRoot(env, path);
 	const windows = yield* isWindowsRunner(env);
+	// `RUNNER_ARCH` in Node's spelling, the cache layout's contract with the
+	// runner; `process.arch` only off a runner.
+	const arch = yield* runnerArch(env);
 
-	const cachePath = (tool: string, version: string): string =>
-		ToolInstaller.cachePath({ root, tool, version, arch: process.arch });
+	const cachePath = (tool: string, version: string): string => ToolInstaller.cachePath({ root, tool, version, arch });
 
 	const destinationFor = (options: ExtractOptions | undefined): Effect.Effect<string, ToolInstallerError> => {
 		const requested = options?.destination;
