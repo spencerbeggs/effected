@@ -1,5 +1,28 @@
 # @effected/sbom
 
+## 0.15.0
+
+### Breaking Changes
+
+- `IdentityToken`, `IdentityTokenError` and `IdentityTokenShape` are no longer exported from `@effected/sbom`. They moved to `@effected/oidc`, which now owns the OIDC identity-token contract; `SigstoreSigner` still consumes it. Change the import: [#1051][#1051]
+
+```ts
+import { IdentityToken, IdentityTokenError } from "@effected/oidc";
+```
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/oidc | dependency | updated | 0.0.0 | 0.1.0 |
+| @effected/package-json | dependency | updated | 0.24.0 | 0.24.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1051]: https://github.com/spencerbeggs/effected/pull/1051
+
 ## 0.14.0
 
 ### Dependencies

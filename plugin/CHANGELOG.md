@@ -1,5 +1,18 @@
 # @effected/ai-plugin
 
+## 0.42.0
+
+### Documentation
+
+- `effected-packages` indexes `@effected/crypto`, `@effected/webhooks` and `@effected/oidc`, each with its own reference, and updates the `sbom`, `github` and `github-actions` references for the moved identity-token contract and the shared OIDC claims.
+- `effect-v4-observability` teaches core's Otlp layers, `Tracer.externalSpan` and `TracerPropagationEnabled`. [#1051][#1051]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1051]: https://github.com/spencerbeggs/effected/pull/1051
+
 ## 0.41.0
 
 ### Documentation

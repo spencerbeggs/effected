@@ -1,5 +1,49 @@
 # @effected/github-actions
 
+## 0.25.0
+
+### Breaking Changes
+
+#### `OidcClaims` is removed
+
+- `OidcTokenIssuer.claims`, `OidcTokenIssuer.layerFor` and `OidcTokenIssuer.unsignedTokenFor` now use `ActionsOidcClaims` from `@effected/github`, the same class `ActionsOidc.verify` returns. Replace `OidcClaims` with `ActionsOidcClaims`; its fields are camel-cased (`jobWorkflowRef` where `job_workflow_ref` was) and its ids (`repositoryId`, `runId`, `runAttempt` and the rest) are integers rather than strings. A test double built with `layerFor` must now also supply `sub`, `aud`, `actor`, `actorId`, `repositoryOwner`, `exp` and `iat`.
+
+#### `BlobStore.layerS3` requires core `Crypto`
+
+- The S3 store now signs requests with `@effected/crypto`'s SigV4 and the package's private signer is gone. `layerS3` therefore needs core `Crypto` in its requirements; provide the platform's `Crypto` layer.
+
+#### `BlobStoreError` gains `invalidKey`
+
+- A key with a `.` or `..` path segment cannot be sent as signed, because every URL parser collapses those segments, so the S3 store now refuses it before sending with reason `invalidKey`. Code that switches exhaustively on `BlobStoreError.reason` must handle the new case.
+
+### Bug Fixes
+
+- A `BlobStore.layerS3` key containing `!'()*` is now requested at its encoded path: the store sends exactly the path and query that SigV4 signed, so they match what S3 sees.
+- `ToolInstaller` reads the runner architecture from `RUNNER_ARCH`, mapping X86 to `ia32` and ARM to `arm`, instead of the process architecture.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.0.0 | 0.1.0 |
+| @effected/github | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/npm | dependency | updated | 0.24.0 | 0.25.0 |
+| @effected/oidc | dependency | updated | 0.0.0 | 0.1.0 |
+| @effected/sbom | dependency | updated | 0.14.0 | 0.15.0 |
+
+### Maintenance
+
+- S3 credentials pass through `Secret.mask`, and no trace headers are sent to the S3 store.
+- Artifact expiry follows `Clock`, so a test clock controls it.
+- Action inputs and external JSON are decoded with Schema.
+- `node:crypto` is confined to `internal/digest.ts`, which closes #767. [#1051][#1051]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1051]: https://github.com/spencerbeggs/effected/pull/1051
+
 ## 0.24.0
 
 ### Dependencies

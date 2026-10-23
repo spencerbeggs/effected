@@ -1,6 +1,6 @@
 {
 	"name": "@effected/webhooks",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Inbound webhook signature verification for Effect v4: Standard Webhooks, GitHub, Stripe, Sanity, HMAC header and shared-secret presets.",
 	"keywords": ["webhooks", "signature", "hmac", "svix", "standard-webhooks", "stripe", "github", "effect", "effected"],
