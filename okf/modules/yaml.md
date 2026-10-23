@@ -312,6 +312,16 @@ CST) and per-node `make` validation is exactly the hot-path cost the
 observability posture already refuses to pay. All public surface, tests and
 doc examples use `make`.
 
+The twins cover the document and format layers too: `YamlDocument.parseResult`,
+`parseAllResult` and the instance `stringifyResult`, and
+`YamlFormat.modifyResult` / `modifyToStringResult`. Every stringify path
+— value, document and `modify` — maps the stringifier's internal throws
+through one shared `stringifyDefectToError` triage. `modify` lowers the
+caller's value counting depth from the target's own path depth, because the
+stringifier counts from the document root; a value that fits at `[]` can
+fail `NestingDepthExceeded` a few keys down, and it fails typed, never as a
+defect.
+
 `new` on a v4 tagged class still validates structurally — explicit
 `undefined` for an `optionalKey` field throws even with
 `{ disableChecks: true }`, which only skips refinement checks. The engine's

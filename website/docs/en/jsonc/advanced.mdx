@@ -234,7 +234,7 @@ Effect.runPromise(program).then(console.log);
 
 **Know the parse-option defaults.** `allowTrailingComma` defaults to `true` — the JSONC convention, and deliberately different from Microsoft's parser, which defaults to `false`. Set `disallowComments: true` when you want to reject comments outright (parsing settings that must round-trip as strict JSON, for example). All of `JsoncParseOptions` is omissible.
 
-**Structural-edit failures carry data, not prose.** When `JsoncModifier.modify` cannot navigate a path — a segment expects an object but finds a scalar — it fails with a `JsoncModificationError` whose `path`, `expected` (`"object"` or `"array"`) and `depth` fields tell you exactly where and why. Route it with `Effect.catchTag("JsoncModificationError", …)` and read the fields; there is no `reason: string` to parse.
+**Structural-edit failures carry data, not prose.** When `JsoncModifier.modify` cannot navigate a path — a segment expects an object but finds a scalar — it fails with a `JsoncModificationError` whose `path`, `expected` (`"object"` or `"array"`) and `depth` fields tell you exactly where and why. Route it with `Effect.catchTag("JsoncModificationError", …)` and read the fields; there is no `reason: string` to parse. A value with no JSON representation — a circular structure, a `bigint`, or a function or symbol where a value is written — fails `modify` with the same `JsoncStringifyError` that `Jsonc.stringify` raises for it, carrying a `code` but no `path`. A synchronous caller can use `JsoncModifier.modifyResult`, which returns the same edits or failure as a `Result`.
 
 ## Testing with @effect/vitest
 
