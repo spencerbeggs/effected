@@ -101,7 +101,7 @@ The idiomatic recoveries:
   `catchTag` also accepts a non-empty tag ARRAY sharing one handler —
   `Effect.catchTag(["UnknownRefError", "GitCommandError"], () => fallback)` —
   which obviates `catchTags` boilerplate when several tags route to the same
-  recovery (`Effect.ts:2860` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
+  recovery (`Effect.ts:2861` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
 - **`Effect.catch(handler)`** — recover from any typed failure; there is no
   `catchAll`. **`Effect.catchCause(handler)`** for full-cause infra handling,
   **`Effect.catchDefect(handler)`** for defects.
@@ -138,7 +138,7 @@ you covered.
 
 Core `FileSystem` / `Path` operations fail with `PlatformError`, and its shape
 is not guessable: `effect` re-exports the module **as a namespace**
-(`export * as PlatformError from "./PlatformError.ts"`, index.ts:495) and the
+(`export * as PlatformError from "./PlatformError.ts"`, index.ts:501) and the
 error **class** is declared inside it (PlatformError.ts:163, a
 `Data.TaggedError("PlatformError")`). So the type you write is the doubled
 `PlatformError.PlatformError`:
@@ -166,7 +166,7 @@ a `BadArgument` (rejected caller input) or a `SystemError` (a host failure,
 carrying a normalized `SystemErrorTag`), `PlatformError.ts:39,114,163`.
 
 **`fs.exists` already absorbs `NotFound` — anything else is a real failure.**
-Core derives `exists` from `access` in `FileSystem.make` (`FileSystem.ts:511`):
+Core derives `exists` from `access` in `FileSystem.make` (`FileSystem.ts:516`):
 `access(path)` mapped to `true`, with a `PlatformError` whose `reason._tag` is
 `"NotFound"` mapped to `false` and **every other reason re-failed**
 (`EACCES`, `ENOTDIR`, `EIO`). So `fs.exists(p)` answers the question "is it
@@ -234,7 +234,7 @@ Result.succeed(42)` dies
 `Effect.succeed` control that returned normally. Note the **success**
 cases die too: this is not "errors need a bridge", it is "these are not Effects
 at all". Their `[Symbol.iterator]` yields the value itself, and the fiber loop
-rejects anything carrying no `evaluate` (`internal/effect.ts:692`).
+rejects anything carrying no `evaluate` (`internal/effect.ts:708`).
 
 The bridge is a module function on `Effect`, one per type:
 
@@ -666,10 +666,10 @@ construction throw or a service that was never provided:
 | `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9349` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
 | `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9271` — same shape, same optional-`options` trap, one page away in the same module. |
 | `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:556` — a *function* returning a Layer, unlike almost every other `layer` in core. |
-| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5004` — takes ONE array argument. |
+| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5025` — takes ONE array argument. |
 
 **The discriminator is the optional argument.** `Schema.Cause(e, d)`
-(`Schema.ts:11239`) and `Schema.Exit(...)` (`:14356`) are factories too, but their
+(`Schema.ts:11277`) and `Schema.Exit(...)` (`:14356`) are factories too, but their
 arguments are required, so forgetting to call them is an immediate type error.
 Only the zero-or-optional-arg factories type-check uncalled.
 

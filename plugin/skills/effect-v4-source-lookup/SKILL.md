@@ -222,7 +222,7 @@ renames it in an `export {}` block:
 const ArraySchema = Struct_.lambda<ArrayLambda>((schema) => …)
 
 // Schema.ts:4665 — the export, in a block your grep pattern never matches
-export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at :4683
+export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at Schema.ts:4683
 ```
 
 `Schema.Array` is real, and `grep 'export const Array' Schema.ts` returns

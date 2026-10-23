@@ -259,7 +259,7 @@ follows from it.
 - **"Core has `Crypto`" is a dependency decision, so read the shape first.**
   The contract covers secure random (`randomBytes`, `random`,
   `randomInt`, `randomShuffle`), UUIDv4/v7 and SHA **digests**
-  (`"SHA-1" | "SHA-256" | "SHA-384" | "SHA-512"`, `Crypto.ts:42`, `Crypto.ts:81-157`) —
+  (`"SHA-1" | "SHA-256" | "SHA-384" | "SHA-512"`, `Crypto.ts:42`, `Crypto.ts:81-202`) —
   and stops there. There is **no HMAC, no signing, no key derivation, no
   `subtle`-style surface**. A design that reads the module name and concludes
   "hashing is handled" is right; one that concludes "crypto is handled" and then
@@ -300,7 +300,7 @@ follows from it.
   ```
 
 - `HttpClientRequest.bearerToken` accepts a **`Redacted` directly**
-  (`token: string | Redacted.Redacted`, `http/HttpClientRequest.ts:397`;
+  (`token: string | Redacted.Redacted`, `http/HttpClientRequest.ts:441`;
   `basicAuth` likewise). A runtime token flows into request construction with **no
   declassification step at all** — which is what lets a package keep its
   secret-handling seam to one module instead of granting every request builder an
@@ -320,7 +320,7 @@ A client failure is one `HttpClientError` whose top-level `_tag` is always
 `"HttpClientError"`, so branch on `error.reason._tag`. The values are the trap.
 The reason type is declared in two layers, and **both layer names are
 themselves unions, so neither ever appears as a `_tag`** (verified against
-`http/HttpClientError.ts:302,311,320`):
+`http/HttpClientError.ts:306,315,324`):
 
 ```ts
 export type RequestError = TransportError | EncodeError | InvalidUrlError
@@ -335,6 +335,6 @@ So `error.reason._tag` is exactly one of **six** values: `"TransportError"`,
 a live-looking branch that is dead code, and green tests will not catch it.
 
 What makes the wrong guess feel confirmed: `ResponseError` *is* a real tagged
-class elsewhere, at `http/HttpServerError.ts:209`. Same name, different
+class elsewhere, at `http/HttpServerError.ts:210`. Same name, different
 module, and it is a server error rather than a client one. Timeouts are separate
 again — `Cause.isTimeoutError`, not a `reason`.
