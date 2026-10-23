@@ -770,3 +770,137 @@ describe("Git surface — repository identity across worktrees (commonDir)", () 
 		),
 	);
 });
+
+describe("Git surface — status untracked-files modes (#1061)", () => {
+	let dir: string;
+
+	/**
+	 * The changesets pre-mode shape that broke silk-release-action: a committed
+	 * changeset deleted from the working tree, and a new wholly-untracked
+	 * `.changeset/pre/` directory holding two files and one gitignored file.
+	 * Beside it, `vendor/inner` is an untracked nested repository.
+	 */
+	beforeAll(async () => {
+		dir = await mkdtemp(join(tmpdir(), "effected-git-surface-status-"));
+		await Effect.runPromise(
+			run(
+				Effect.gen(function* () {
+					const raw = (args: ReadonlyArray<string>) => runFixtureGit(dir, args);
+
+					yield* raw(["-c", "init.defaultBranch=main", "init"]);
+					yield* raw(["config", "user.email", "git-integration@example.com"]);
+					yield* raw(["config", "user.name", "Git Integration"]);
+
+					yield* Effect.promise(() => mkdir(join(dir, ".changeset"), { recursive: true }));
+					yield* Effect.promise(() => writeFile(join(dir, ".changeset", "beta-wave.md"), "beta\n"));
+					yield* Effect.promise(() => writeFile(join(dir, ".gitignore"), "*.log\n"));
+					yield* raw(["add", "-A"]);
+					yield* raw(["-c", "commit.gpgsign=false", "commit", "-m", "commit1"]);
+
+					yield* Effect.promise(() => rm(join(dir, ".changeset", "beta-wave.md")));
+					yield* Effect.promise(() => mkdir(join(dir, ".changeset", "pre", "nested"), { recursive: true }));
+					yield* Effect.promise(() => writeFile(join(dir, ".changeset", "pre", "a.md"), "a\n"));
+					yield* Effect.promise(() => writeFile(join(dir, ".changeset", "pre", "nested", "b.md"), "b\n"));
+					yield* Effect.promise(() => writeFile(join(dir, ".changeset", "pre", "ignored.log"), "noise\n"));
+
+					const inner = join(dir, "vendor", "inner");
+					yield* Effect.promise(() => mkdir(inner, { recursive: true }));
+					yield* runFixtureGit(inner, ["-c", "init.defaultBranch=main", "init"]);
+					yield* Effect.promise(() => writeFile(join(inner, "inner.txt"), "inner\n"));
+				}),
+			),
+		);
+	}, 30_000);
+
+	afterAll(async () => {
+		if (dir) await rm(dir, { recursive: true, force: true });
+	});
+
+	const untrackedPaths = (entries: ReadonlyArray<{ readonly x: string; readonly y: string; readonly path: string }>) =>
+		entries
+			.filter((entry) => entry.x === "?" && entry.y === "?")
+			.map((entry) => entry.path)
+			.sort();
+
+	it.effect("the default lists each untracked file, skips ignored files, and keeps the deletion", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const entries = yield* git.status(dir);
+
+				assert.deepStrictEqual(untrackedPaths(entries), [
+					".changeset/pre/a.md",
+					".changeset/pre/nested/b.md",
+					"vendor/inner/",
+				]);
+				const deleted = entries.find((entry) => entry.path === ".changeset/beta-wave.md");
+				assert.isDefined(deleted);
+				assert.strictEqual(deleted?.y, "D");
+				// An explicit "all" is the same listing as the default.
+				assert.deepStrictEqual(yield* git.status(dir, { untrackedFiles: "all" }), entries);
+			}),
+		),
+	);
+
+	it.effect("normal collapses each wholly-untracked directory to one `dir/` entry", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const entries = yield* git.status(dir, { untrackedFiles: "normal" });
+				// The negative control: the fixture really does collapse, and a
+				// directory holding a nested repository collapses at the OUTER level.
+				assert.deepStrictEqual(untrackedPaths(entries), [".changeset/pre/", "vendor/"]);
+			}),
+		),
+	);
+
+	it.effect("no omits every untracked entry", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const entries = yield* git.status(dir, { untrackedFiles: "no" });
+				assert.deepStrictEqual(untrackedPaths(entries), []);
+				assert.isTrue(entries.some((entry) => entry.path === ".changeset/beta-wave.md"));
+			}),
+		),
+	);
+
+	// Writes repository-local config into the shared fixture, so it is scoped:
+	// acquireUseRelease unsets the key however the body exits, and no other test
+	// in this block sees it whatever order the suite runs in.
+	it.effect("the listing ignores the caller's status.showUntrackedFiles config", () =>
+		run(
+			Effect.acquireUseRelease(
+				runFixtureGit(dir, ["config", "status.showUntrackedFiles", "no"]),
+				() =>
+					Effect.gen(function* () {
+						// Control: with no flag, git honours the config and lists no untracked file.
+						const bare = yield* runFixtureGit(dir, ["status", "--porcelain", "-z"]);
+						assert.notInclude(bare, "??");
+
+						const git = yield* Git;
+						assert.deepStrictEqual(untrackedPaths(yield* git.status(dir)), [
+							".changeset/pre/a.md",
+							".changeset/pre/nested/b.md",
+							"vendor/inner/",
+						]);
+						assert.deepStrictEqual(untrackedPaths(yield* git.status(dir, { untrackedFiles: "normal" })), [
+							".changeset/pre/",
+							"vendor/",
+						]);
+					}),
+				() => runFixtureGit(dir, ["config", "--unset", "status.showUntrackedFiles"]),
+			),
+		),
+	);
+
+	it.effect("the fixture carries no status.showUntrackedFiles config after the config test", () =>
+		run(
+			Effect.gen(function* () {
+				// Bare git honours its own default ("normal") again: the untracked entries are back.
+				const bare = yield* runFixtureGit(dir, ["status", "--porcelain", "-z"]);
+				assert.include(bare, "?? .changeset/pre/");
+			}),
+		),
+	);
+});

@@ -314,8 +314,28 @@ const configGet = (key: string, scope?: GitConfigScope): GitInvocation =>
 // Implementation of GitCommand.remoteUrl; the public contract lives on the static.
 const remoteUrl = (remote = "origin"): GitInvocation => git(["remote", "get-url", remote]);
 
+/**
+ * The untracked-files mode of `git status` — git's `--untracked-files` flag.
+ *
+ * @remarks
+ * - `"all"` lists every untracked file individually, honouring `.gitignore`.
+ *   The one `??` path that still ends in `/` under it is an untracked nested
+ *   repository (`vendor/inner/`), which git never descends into.
+ * - `"normal"` is git's own default: a directory holding only untracked files
+ *   collapses to ONE `?? dir/` entry, so a `??` path ending in `/` is a
+ *   directory, never a file.
+ * - `"no"` reports no untracked files at all.
+ *
+ * Commit builders want `"all"`: a collapsed `dir/` entry read as a file fails
+ * the read that follows it.
+ *
+ * @public
+ */
+export type GitUntrackedFilesMode = "normal" | "all" | "no";
+
 // Implementation of GitCommand.status; the public contract lives on the static.
-const status = (): GitInvocation => git(["status", "--porcelain", "-z"]);
+const status = (untrackedFiles: GitUntrackedFilesMode = "all"): GitInvocation =>
+	git(["status", "--porcelain", "-z", `--untracked-files=${untrackedFiles}`]);
 
 // Implementation of GitCommand.submoduleStatus; the public contract lives on the static.
 const submoduleStatus = (paths: ReadonlyArray<string> = [], recursive = false): GitInvocation =>
@@ -958,13 +978,21 @@ export class GitCommand {
 	static readonly remoteUrl = remoteUrl;
 
 	/**
-	 * `git status --porcelain -z` — the porcelain (stable, machine-readable) short
-	 * status of every modified file in the working tree, NUL-terminated.
+	 * `git status --porcelain -z --untracked-files=<mode>` — the porcelain
+	 * (stable, machine-readable) short status of every modified file in the
+	 * working tree, NUL-terminated. `untrackedFiles` defaults to `"all"`.
 	 *
 	 * @remarks
 	 * `-z` is load-bearing here too, for the same reason as
 	 * {@link GitCommand.lsTree}: split the output on `"\0"`, never on `"\n"`.
 	 * Each entry is a pair of status codes followed by a space and the path.
+	 *
+	 * The untracked-files flag is always explicit, `"all"` included, so the
+	 * argv states what runs: omitted, git falls back to the caller's
+	 * `status.showUntrackedFiles` config, and a `no` there silently drops every
+	 * untracked file from the listing. Only the untracked axis is pinned —
+	 * other config, such as `status.renames`, still shapes the output. See
+	 * {@link GitUntrackedFilesMode} for what each mode lists.
 	 */
 	static readonly status = status;
 

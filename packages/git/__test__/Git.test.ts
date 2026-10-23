@@ -1064,7 +1064,7 @@ describe("Git", () => {
 					"?? untracked.txt",
 				].join("\0");
 				const result = yield* run(program, (args) => {
-					assert.deepStrictEqual(args, ["status", "--porcelain", "-z"]);
+					assert.deepStrictEqual(args, ["status", "--porcelain", "-z", "--untracked-files=all"]);
 					return { stdout: `${output}\0`, exit: 0 };
 				});
 				assert.deepStrictEqual(result, [
@@ -1073,6 +1073,67 @@ describe("Git", () => {
 					StatusEntry.make({ x: "R", y: " ", path: "renamed.txt", origPath: "sub/c.txt" }),
 					StatusEntry.make({ x: "A", y: " ", path: "staged.txt" }),
 					StatusEntry.make({ x: "?", y: "?", path: "untracked.txt" }),
+				]);
+			}),
+		);
+
+		it.effect("passes options.untrackedFiles through to the argv", () =>
+			Effect.gen(function* () {
+				const spawned: Array<ReadonlyArray<string>> = [];
+				for (const mode of ["normal", "no", "all"] as const) {
+					const program = Effect.gen(function* () {
+						const git = yield* Git;
+						return yield* git.status(cwd, { untrackedFiles: mode });
+					});
+					yield* run(program, (args) => {
+						spawned.push(args);
+						return { stdout: "", exit: 0 };
+					});
+				}
+				assert.deepStrictEqual(spawned, [
+					["status", "--porcelain", "-z", "--untracked-files=normal"],
+					["status", "--porcelain", "-z", "--untracked-files=no"],
+					["status", "--porcelain", "-z", "--untracked-files=all"],
+				]);
+			}),
+		);
+
+		it.effect("under all, each untracked file is its own `??` entry and a nested repository keeps `dir/inner/`", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.status(cwd, { untrackedFiles: "all" });
+				});
+				const output = [
+					" D .changeset/beta-wave.md",
+					"?? .changeset/pre/a.md",
+					"?? .changeset/pre/nested/b.md",
+					"?? vendor/inner/",
+				].join("\0");
+				const result = yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["status", "--porcelain", "-z", "--untracked-files=all"]);
+					return { stdout: `${output}\0`, exit: 0 };
+				});
+				assert.deepStrictEqual(result, [
+					StatusEntry.make({ x: " ", y: "D", path: ".changeset/beta-wave.md" }),
+					StatusEntry.make({ x: "?", y: "?", path: ".changeset/pre/a.md" }),
+					StatusEntry.make({ x: "?", y: "?", path: ".changeset/pre/nested/b.md" }),
+					StatusEntry.make({ x: "?", y: "?", path: "vendor/inner/" }),
+				]);
+			}),
+		);
+
+		it.effect("a collapsed `?? dir/` entry keeps its trailing slash — the parser never rewrites it", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.status(cwd, { untrackedFiles: "normal" });
+				});
+				const output = [" D .changeset/beta-wave.md", "?? .changeset/pre/"].join("\0");
+				const result = yield* run(program, () => ({ stdout: `${output}\0`, exit: 0 }));
+				assert.deepStrictEqual(result, [
+					StatusEntry.make({ x: " ", y: "D", path: ".changeset/beta-wave.md" }),
+					StatusEntry.make({ x: "?", y: "?", path: ".changeset/pre/" }),
 				]);
 			}),
 		);

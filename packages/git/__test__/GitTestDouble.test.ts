@@ -16,6 +16,22 @@ describe("Git.makeTest", () => {
 		}),
 	);
 
+	it.effect("a status override receives the caller's untrackedFiles option", () =>
+		Effect.gen(function* () {
+			const seen: Array<unknown> = [];
+			const double = Git.makeTest({
+				status: (_cwd, options) =>
+					Effect.sync(() => {
+						seen.push(options?.untrackedFiles);
+						return [];
+					}),
+			});
+			yield* double.status(cwd, { untrackedFiles: "normal" });
+			yield* double.status(cwd);
+			assert.deepStrictEqual(seen, ["normal", undefined]);
+		}),
+	);
+
 	it.effect("an unstubbed method DIES with a defect naming the method", () =>
 		Effect.gen(function* () {
 			// No honest default exists for any of the twenty-six methods — a

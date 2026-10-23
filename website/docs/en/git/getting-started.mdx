@@ -224,6 +224,14 @@ const program = Effect.gen(function* () {
 Effect.runPromise(program.pipe(Effect.provide(GitLive))).then(console.log);
 ```
 
+By default every untracked file gets its own `??` entry. Pass
+`{ untrackedFiles: "normal" }` for git's own listing, where a directory
+holding only untracked files collapses to one `?? dir/` entry, or `"no"` to
+omit untracked files. A `??` path ending in `/` is a directory, never a file:
+under the default it appears only for an untracked nested repository. The
+option is always sent to git, so a `status.showUntrackedFiles` setting in the
+caller's git config does not change the listing.
+
 ## Handling errors
 
 Every method fails through exactly three tagged errors, and route each with
