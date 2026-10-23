@@ -3,7 +3,7 @@
 // provides a platform implementation (`@effect/platform-node`) at the edge.
 // Mirrors `@effected/package-json`'s `PackageJsonFile` pattern.
 
-import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
+import { Context, Effect, FileSystem, Layer, Path, Result, Schema } from "effect";
 import type { CanonicalJsonError, CanonicalJsonOptions } from "./CanonicalJson.js";
 import type { SchemaChange } from "./DocumentDiff.js";
 import { DocumentDiff } from "./DocumentDiff.js";
@@ -197,6 +197,10 @@ export interface SchemaFileShape {
 	) => Effect.Effect<CheckResult, CanonicalJsonError | SchemaFileReadError>;
 }
 
+// JSON text to an untyped value, failing typed instead of throwing. Bound
+// once at module level: each `decodeUnknownResult` call derives a decoder.
+const decodeJson = Schema.decodeUnknownResult(Schema.fromJsonString(Schema.Unknown));
+
 /**
  * Reads and writes emitted schema documents over core `FileSystem` /
  * `Path` — the package's one IO surface. The layer requires those
@@ -283,11 +287,12 @@ export class SchemaFile extends Context.Service<SchemaFile, SchemaFileShape>()("
 			// the write repair it. (Failing typed here would leave a
 			// hand-corrupted generated file un-regenerable, which is worse.)
 			const classify = (existing: string, text: string): SchemaChange => {
-				try {
-					return DocumentDiff.classify(JSON.parse(existing), JSON.parse(text));
-				} catch {
-					return "contract";
-				}
+				const before = decodeJson(existing);
+				const after = decodeJson(text);
+				// Only the parses can fail: `DocumentDiff.classify` is total.
+				return Result.isSuccess(before) && Result.isSuccess(after)
+					? DocumentDiff.classify(before.success, after.success)
+					: "contract";
 			};
 
 			// The one comparison both `write` and `check` answer from, so the

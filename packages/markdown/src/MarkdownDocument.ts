@@ -6,7 +6,7 @@
 // bare-tree entry points agree exactly on what is a typed failure and what is
 // a defect.
 
-import { Effect, Result, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import { scanFrontmatter } from "./internal/blocks/frontmatter.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { preprocessLines } from "./internal/preprocess.js";
@@ -325,19 +325,26 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	definitions: Schema.ReadonlyMap(Schema.String, Definition),
 }) {
 	/**
-	 * The document's frontmatter capture, or `undefined` when there is none.
+	 * The document's frontmatter capture, or `Option.none()` when there is
+	 * none.
 	 *
 	 * @remarks
 	 * Derived from the tree rather than stored: a {@link Frontmatter} node can
 	 * only ever sit at the head of `root.children` (the capture fires at most
 	 * once, at offset 0), so the tree is the single source of truth and the
-	 * accessor can never disagree with it. `undefined` covers both a document
-	 * with no frontmatter block and one parsed with the capture toggle off —
-	 * {@link MarkdownDocument.hasFrontmatterBlock} tells the two apart.
+	 * accessor can never disagree with it. `Option.none()` covers both a
+	 * document with no frontmatter block and one parsed with the capture toggle
+	 * off — {@link MarkdownDocument.hasFrontmatterBlock} tells the two apart.
+	 *
+	 * An `Option` rather than `Frontmatter | undefined` because this is a
+	 * lookup that can miss, and the kit's lookups return `Option` — the same
+	 * shape as the sibling format packages' tree lookups (`JsoncNode.find`,
+	 * `YamlNode.find`). A derived getter is a lookup, not a data field: it
+	 * recomputes from the tree on every access.
 	 */
-	get frontmatter(): Frontmatter | undefined {
+	get frontmatter(): Option.Option<Frontmatter> {
 		const head = this.root.children[0];
-		return head !== undefined && head.type === "frontmatter" ? head : undefined;
+		return head !== undefined && head.type === "frontmatter" ? Option.some(head) : Option.none();
 	}
 
 	/**
@@ -346,10 +353,10 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 *
 	 * @remarks
 	 * The structural signal that disambiguates the `frontmatter` accessor's
-	 * `undefined`: capture is opt-in (`MarkdownParseOptions.frontmatter`
+	 * `Option.none()`: capture is opt-in (`MarkdownParseOptions.frontmatter`
 	 * defaults off), so a document whose source visibly starts with `---` can
 	 * still carry no capture node — spec-correct CommonMark reads the fences as
-	 * a thematic break plus content. `frontmatter === undefined` with
+	 * a thematic break plus content. An empty `frontmatter` with
 	 * `hasFrontmatterBlock === true` means exactly "parsed with capture off";
 	 * with `false` it means the source genuinely has no block.
 	 *
@@ -443,11 +450,12 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 * document repeatedly should bind `document.sections` once instead.
 	 *
 	 * @param options - Depth restriction.
-	 * @returns The first matching section, or `undefined`.
+	 * @returns The first matching section, or `Option.none()` when no section
+	 *   matches.
 	 */
-	firstSection(options?: SectionQueryOptions): DocumentSection | undefined {
+	firstSection(options?: SectionQueryOptions): Option.Option<DocumentSection> {
 		const depth = options?.depth;
-		return this.sections.find((section) => depth === undefined || section.depth === depth);
+		return Option.fromUndefinedOr(this.sections.find((section) => depth === undefined || section.depth === depth));
 	}
 
 	/**
@@ -465,9 +473,10 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 *
 	 * @param match - A string, a RegExp, or a predicate.
 	 * @param options - Depth restriction, applied before matching.
-	 * @returns The first matching section, or `undefined`.
+	 * @returns The first matching section, or `Option.none()` when no section
+	 *   matches.
 	 */
-	sectionByHeading(match: SectionHeadingMatch, options?: SectionQueryOptions): DocumentSection | undefined {
+	sectionByHeading(match: SectionHeadingMatch, options?: SectionQueryOptions): Option.Option<DocumentSection> {
 		const depth = options?.depth;
 		const matches: (section: DocumentSection) => boolean =
 			typeof match === "string"
@@ -481,7 +490,9 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 							return match.test(section.text.trim());
 						}
 					: (section) => match(section.text, section);
-		return this.sections.find((section) => (depth === undefined || section.depth === depth) && matches(section));
+		return Option.fromUndefinedOr(
+			this.sections.find((section) => (depth === undefined || section.depth === depth) && matches(section)),
+		);
 	}
 
 	/**
@@ -527,7 +538,7 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 *
 	 * @remarks
 	 * A string selector matches on the node's `type` tag and narrows the
-	 * result (`find("heading")` is `Heading | undefined`); a type-guard
+	 * result (`find("heading")` is `Option<Heading>`); a type-guard
 	 * predicate narrows the same way, and a plain predicate returns the wide
 	 * `MarkdownNode` union. The returned node is the document's own — matched
 	 * and returnable by identity, so it feeds `MarkdownFormat.modify`
@@ -536,13 +547,14 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 * hand-built or foreign decoded tree) is a thrown defect.
 	 *
 	 * @param selector - A node `type` tag or a predicate over nodes.
-	 * @returns The first matching node in document order, or `undefined`.
+	 * @returns The first matching node in document order, or `Option.none()`
+	 *   when none matches.
 	 */
-	find<T extends MarkdownNodeType>(selector: T): MarkdownNodeOfType<T> | undefined;
-	find<T extends MarkdownNode>(selector: (node: MarkdownNode) => node is T): T | undefined;
-	find(selector: (node: MarkdownNode) => boolean): MarkdownNode | undefined;
-	find(selector: MarkdownNodeType | ((node: MarkdownNode) => boolean)): MarkdownNode | undefined {
-		return findInTree(this.root, 0, selectorPredicate(selector));
+	find<T extends MarkdownNodeType>(selector: T): Option.Option<MarkdownNodeOfType<T>>;
+	find<T extends MarkdownNode>(selector: (node: MarkdownNode) => node is T): Option.Option<T>;
+	find(selector: (node: MarkdownNode) => boolean): Option.Option<MarkdownNode>;
+	find(selector: MarkdownNodeType | ((node: MarkdownNode) => boolean)): Option.Option<MarkdownNode> {
+		return Option.fromUndefinedOr(findInTree(this.root, 0, selectorPredicate(selector)));
 	}
 
 	/**

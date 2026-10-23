@@ -21,7 +21,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Jsonc } from "@effected/jsonc";
 import { Toml } from "@effected/toml";
 import { Yaml } from "@effected/yaml";
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { FrontmatterMissingError, FrontmatterValidationError, MarkdownFrontmatter } from "../src/Frontmatter.js";
 import { JsonFrontmatter } from "../src/JsonFrontmatter.js";
 import { MarkdownParseOptions } from "../src/Markdown.js";
@@ -131,28 +131,27 @@ describe("MarkdownDocument.frontmatter", () => {
 	it.effect("returns the captured node when frontmatter was parsed", () =>
 		Effect.gen(function* () {
 			const document = yield* parseDoc("---\ntitle: Hello\n---\n\nbody\n");
-			const node = document.frontmatter;
-			assert.isDefined(node);
-			assert.strictEqual(node?.type, "frontmatter");
-			assert.strictEqual(node?.format, "yaml");
+			const node = Option.getOrThrow(document.frontmatter);
+			assert.strictEqual(node.type, "frontmatter");
+			assert.strictEqual(node.format, "yaml");
 			// Task 1 pinned capture semantics: the value carries the raw text
 			// between the fences without the final line terminator.
-			assert.strictEqual(node?.value, "title: Hello");
+			assert.strictEqual(node.value, "title: Hello");
 			assert.strictEqual(node, document.root.children[0]);
 		}),
 	);
 
-	it.effect("is undefined when the document has no frontmatter", () =>
+	it.effect("is Option.none when the document has no frontmatter", () =>
 		Effect.gen(function* () {
 			const document = yield* parseDoc("# Heading\n");
-			assert.isUndefined(document.frontmatter);
+			assert.isTrue(Option.isNone(document.frontmatter));
 		}),
 	);
 
-	it.effect("is undefined for a fenced document parsed with capture off", () =>
+	it.effect("is Option.none for a fenced document parsed with capture off", () =>
 		Effect.gen(function* () {
 			const document = yield* MarkdownDocument.parse("---\ntitle: Hello\n---\n");
-			assert.isUndefined(document.frontmatter);
+			assert.isTrue(Option.isNone(document.frontmatter));
 		}),
 	);
 });
@@ -163,7 +162,7 @@ describe("MarkdownDocument.hasFrontmatterBlock", () => {
 			const document = yield* MarkdownDocument.parse("---\ntitle: Hello\n---\n\nbody\n");
 			// The pair the accessor alone cannot distinguish: no capture node,
 			// but the source structurally opens with a frontmatter block.
-			assert.isUndefined(document.frontmatter);
+			assert.isTrue(Option.isNone(document.frontmatter));
 			assert.isTrue(document.hasFrontmatterBlock);
 		}),
 	);
@@ -171,7 +170,7 @@ describe("MarkdownDocument.hasFrontmatterBlock", () => {
 	it.effect("is true when the block was captured too — it reads the source, not the parse options", () =>
 		Effect.gen(function* () {
 			const document = yield* parseDoc("---\ntitle: Hello\n---\n\nbody\n");
-			assert.isDefined(document.frontmatter);
+			assert.isTrue(Option.isSome(document.frontmatter));
 			assert.isTrue(document.hasFrontmatterBlock);
 		}),
 	);

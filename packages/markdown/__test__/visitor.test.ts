@@ -13,11 +13,12 @@
 // here as the posture link.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Equal, Result, Stream } from "effect";
+import { Arbitrary, Effect, Equal, Result, Schema, Stream } from "effect";
 import { Markdown } from "../src/Markdown.js";
 import { Blockquote, Paragraph, Point, Position, Root, Text } from "../src/MarkdownNode.js";
 import { MarkdownVisitor, MarkdownVisitorEvent } from "../src/MarkdownVisitor.js";
 import { Mdast, MdastDecodeError } from "../src/Mdast.js";
+import { loadSpecExamples } from "./e2e/support/corpus.js";
 
 const parse = (text: string, options?: Parameters<typeof Markdown.parseResult>[1]) => {
 	const result = Markdown.parseResult(text, options);
@@ -214,5 +215,175 @@ describe("MarkdownVisitor", () => {
 		const events = collect(root);
 		assert.strictEqual(events.length, 2 * (1 + 10 + 1 + 1));
 		assert.isFalse(events.some((event) => event._tag === "Error"));
+	});
+});
+
+// `walk` is the synchronous primitive `visit` is derived from. The contract it
+// owes callers: document pre-order (checked against an independent oracle, not
+// against `visit`, which is defined from `walk` and so cannot disagree with it),
+// produced lazily, and a fresh walk per iteration.
+describe("MarkdownVisitor.walk", () => {
+	const shapeOf = (event: MarkdownVisitorEvent): string =>
+		event._tag === "Error" ? "Error" : `${event._tag}:${event.node.type}@${event.depth}[${event.path.join(".")}]`;
+
+	/** Markdown-ish lines drawn from the construct vocabulary, so the trees are not all one paragraph. */
+	const markdownish = Arbitrary.schema(
+		Schema.Array(
+			Schema.Union([
+				Schema.Literals([
+					"# heading",
+					"setext",
+					"-------",
+					"- item",
+					"1. item",
+					"> quote",
+					">> deep",
+					"    indented code",
+					"```js",
+					"```",
+					"| a | b |",
+					"| - | - |",
+					"- [x] task",
+					"*em* and **strong**",
+					"[link](/url) and ![img](/src)",
+					"[^f] and ~~gone~~",
+					"[^f]: note",
+					"",
+				]),
+				Schema.String.check(Schema.isMaxLength(12)),
+			]),
+		).check(Schema.isMaxLength(12)),
+	).pipe(Arbitrary.map((lines) => `${lines.join("\n")}\n`));
+
+	/**
+	 * An independent oracle for the walk: an eager, hand-written recursive
+	 * pre-order over `children`, sharing no code with `MarkdownVisitor`. It
+	 * covers trees inside the depth cap only — every parsed tree is.
+	 */
+	interface OracleEvent {
+		readonly tag: "Enter" | "Exit";
+		readonly node: unknown;
+		readonly path: ReadonlyArray<number>;
+		readonly depth: number;
+	}
+	const oracle = (node: unknown, path: ReadonlyArray<number> = [], depth = 0): Array<OracleEvent> => {
+		const children = (node as { readonly children?: unknown }).children;
+		const inner = Array.isArray(children)
+			? children.flatMap((child, index) => oracle(child, [...path, index], depth + 1))
+			: [];
+		return [{ tag: "Enter", node, path, depth }, ...inner, { tag: "Exit", node, path, depth }];
+	};
+
+	/** Compare a walk to the oracle event-for-event: tag, node identity, path, depth. */
+	const assertMatchesOracle = (root: Root, label: string): void => {
+		const walked = [...MarkdownVisitor.walk(root)];
+		const expected = oracle(root);
+		assert.strictEqual(walked.length, expected.length, `${label}: event count`);
+		walked.forEach((event, index) => {
+			const want = expected[index] as OracleEvent;
+			if (event._tag === "Error") {
+				assert.fail(`${label}: unexpected Error event at ${index}`);
+			} else {
+				assert.strictEqual(event._tag, want.tag, `${label}: tag at ${index}`);
+				assert.strictEqual(event.node, want.node, `${label}: node identity at ${index}`);
+				assert.deepStrictEqual(event.path, want.path, `${label}: path at ${index}`);
+				assert.strictEqual(event.depth, want.depth, `${label}: depth at ${index}`);
+			}
+		});
+	};
+
+	it("matches an independent recursive pre-order over the whole CommonMark corpus", () => {
+		const examples = loadSpecExamples();
+		// Silently-empty-walk guard: a corpus that failed to load must fail here.
+		assert.strictEqual(examples.length, 652);
+		for (const example of examples) {
+			assertMatchesOracle(parse(example.markdown), `example ${example.example}`);
+		}
+	});
+
+	it.prop(
+		"matches an independent recursive pre-order on generated markdown",
+		[markdownish],
+		([markdown]) => {
+			const result = Markdown.parseResult(markdown);
+			if (Result.isFailure(result)) {
+				// A hardening-guard trip has no tree to walk.
+				return true;
+			}
+			assertMatchesOracle(result.success, JSON.stringify(markdown));
+			return true;
+		},
+		{ arbitrary: { runs: 200, size: 12 } },
+	);
+
+	it.effect("visit delivers the walk's events through the Stream unchanged", () =>
+		Effect.gen(function* () {
+			const root = parse("# t\n\n> *a* **b**\n\n- x\n- y\n");
+			const streamed = yield* Stream.runCollect(MarkdownVisitor.visit(root));
+			assert.deepStrictEqual([...streamed].map(shapeOf), [...MarkdownVisitor.walk(root)].map(shapeOf));
+			assert.isAbove(streamed.length, 10);
+		}),
+	);
+
+	it("is lazy: breaking out never touches the rest of the tree", () => {
+		const first = Paragraph.make({ children: [Text.make({ value: "a" })] });
+		const second = Paragraph.make({ children: [Text.make({ value: "b" })] });
+		// A tripwire: any read of the second paragraph's children throws. An
+		// eager walk materializes every event before handing out the first, so
+		// it trips the wire even though the loop below stops long before.
+		Object.defineProperty(second, "children", {
+			get() {
+				throw new Error("the walk read past the point the consumer stopped at");
+			},
+		});
+		const root = Root.make({ children: [first, second] });
+		const seen: Array<string> = [];
+		for (const event of MarkdownVisitor.walk(root)) {
+			seen.push(shapeOf(event));
+			if (event._tag === "Exit" && event.node === first) {
+				break;
+			}
+		}
+		assert.deepStrictEqual(seen, [
+			"Enter:root@0[]",
+			"Enter:paragraph@1[0]",
+			"Enter:text@2[0.0]",
+			"Exit:text@2[0.0]",
+			"Exit:paragraph@1[0]",
+		]);
+	});
+
+	it("is re-iterable: every iteration is a fresh walk from the root", () => {
+		const root = parse("a\n\nb\n");
+		const events = MarkdownVisitor.walk(root);
+		// A partial first pass must not consume anything the second pass sees.
+		for (const _ of events) {
+			break;
+		}
+		const firstPass = [...events];
+		const secondPass = [...events];
+		assert.strictEqual(firstPass.length, 10);
+		assert.deepStrictEqual(firstPass, secondPass);
+		assert.deepStrictEqual(firstPass.map(shapeOf)[0], "Enter:root@0[]");
+	});
+
+	it("ends an over-deep hand-built tree with exactly one terminal Error event", () => {
+		let node: Blockquote | Paragraph = Paragraph.make({
+			children: [Text.make({ value: "x", position: syntheticPosition })],
+			position: syntheticPosition,
+		});
+		for (let i = 0; i < 300; i++) {
+			node = Blockquote.make({ children: [node], position: syntheticPosition });
+		}
+		const tree = Root.make({ children: [node], position: syntheticPosition });
+		const events = [...MarkdownVisitor.walk(tree)];
+		const errors = events.filter((event) => event._tag === "Error");
+		assert.strictEqual(errors.length, 1);
+		const last = events.at(-1);
+		if (last?._tag === "Error") {
+			assert.strictEqual(last.diagnostic.code, "NestingDepthExceeded");
+		} else {
+			assert.fail("expected the walk to end on its Error event");
+		}
 	});
 });

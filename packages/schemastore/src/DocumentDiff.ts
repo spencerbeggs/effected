@@ -7,6 +7,7 @@
 // Pure — no IO. `SchemaFile` consumes it to answer what changed alongside
 // whether it wrote.
 
+import { Predicate } from "effect";
 import { CanonicalJson } from "./CanonicalJson.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { KeywordFamilies } from "./KeywordFamilies.js";
@@ -59,9 +60,6 @@ const SCHEMA_KEYWORDS = new Set([
 	"not",
 ]);
 
-const isSchemaObject = (node: unknown): node is Record<string, unknown> =>
-	typeof node === "object" && node !== null && !Array.isArray(node);
-
 // `"contract"` dominates `"annotations"` dominates `"none"`.
 const worst = (left: SchemaChange, right: SchemaChange): SchemaChange => {
 	if (left === "contract" || right === "contract") {
@@ -87,7 +85,7 @@ const compareSchema = (a: unknown, b: unknown, depth: number): SchemaChange => {
 		// kind below here reads as a contract change (the safe direction).
 		return CanonicalJson.equals(a, b) ? "none" : "contract";
 	}
-	if (!isSchemaObject(a) || !isSchemaObject(b)) {
+	if (!Predicate.isObject(a) || !Predicate.isObject(b)) {
 		// Draft-07 boolean schemas and any non-object leaf.
 		return CanonicalJson.equals(a, b) ? "none" : "contract";
 	}
@@ -140,7 +138,7 @@ const compareSchema = (a: unknown, b: unknown, depth: number): SchemaChange => {
 };
 
 const compareSchemaMap = (a: unknown, b: unknown, depth: number): SchemaChange => {
-	if (!isSchemaObject(a) || !isSchemaObject(b)) {
+	if (!Predicate.isObject(a) || !Predicate.isObject(b)) {
 		return CanonicalJson.equals(a, b) ? "none" : "contract";
 	}
 	let change: SchemaChange = "none";
@@ -176,7 +174,7 @@ const compareSchemaArray = (a: unknown, b: unknown, depth: number): SchemaChange
 // Draft-07 `dependencies` values are either a schema or an array of
 // property names; the array form is data.
 const compareDependencies = (a: unknown, b: unknown, depth: number): SchemaChange => {
-	if (!isSchemaObject(a) || !isSchemaObject(b)) {
+	if (!Predicate.isObject(a) || !Predicate.isObject(b)) {
 		return CanonicalJson.equals(a, b) ? "none" : "contract";
 	}
 	let change: SchemaChange = "none";

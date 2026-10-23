@@ -5,11 +5,11 @@
 // thrown-defect posture on an over-deep foreign tree.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Result, Stream } from "effect";
+import { Effect, Option, Result, Stream } from "effect";
 import { MAX_NESTING_DEPTH } from "../src/internal/limits.js";
 import { MarkdownDocument } from "../src/MarkdownDocument.js";
 import { MarkdownFormat } from "../src/MarkdownFormat.js";
-import type { FlowContent } from "../src/MarkdownNode.js";
+import type { FlowContent, MarkdownNode } from "../src/MarkdownNode.js";
 import { Blockquote, Heading, List, Paragraph, Root, Table, Text } from "../src/MarkdownNode.js";
 import { MarkdownVisitor } from "../src/MarkdownVisitor.js";
 
@@ -17,6 +17,23 @@ const parseDoc = (text: string) => {
 	const result = MarkdownDocument.parseResult(text);
 	assert.isTrue(Result.isSuccess(result));
 	return Result.getOrThrow(result);
+};
+
+// Type-level contract: `find` returns `Option` and every overload still
+// narrows. Checked by `types:check` (the test tree is in the program); the
+// runtime suite only proves the module loaded.
+type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+const assertType = <_Expected extends true>(): void => {};
+declare const typedDocument: MarkdownDocument;
+/** Never called: the assertions inside are compile-time only. */
+const findOverloadsNarrow = (): void => {
+	const byTag = typedDocument.find("table");
+	assertType<Equals<typeof byTag, Option.Option<Table>>>();
+	const byGuard = typedDocument.find((node): node is Heading => node.type === "heading");
+	assertType<Equals<typeof byGuard, Option.Option<Heading>>>();
+	// A predicate TypeScript cannot infer a type guard from stays wide.
+	const byPredicate = typedDocument.find((node) => node.position.start.line > 1);
+	assertType<Equals<typeof byPredicate, Option.Option<MarkdownNode>>>();
 };
 
 const source = [
@@ -40,43 +57,38 @@ const source = [
 describe("MarkdownDocument.find", () => {
 	it("finds the first node of a type, narrowed through the type tag", () => {
 		const document = parseDoc(source);
-		const heading = document.find("heading");
-		assert.isDefined(heading);
+		const heading = Option.getOrThrow(document.find("heading"));
 		assert.instanceOf(heading, Heading);
 		// The narrowed static type exposes `depth` without a cast.
 		assert.strictEqual(heading.depth, 1);
+		assert.isFunction(findOverloadsNarrow);
 	});
 
 	it("matches by identity against the document's own tree", () => {
 		const document = parseDoc(source);
-		assert.strictEqual(document.find("heading"), document.root.children[0]);
+		assert.strictEqual(Option.getOrThrow(document.find("heading")), document.root.children[0]);
 		// The root itself is in the walk, so the widest query returns it first.
-		assert.strictEqual(
-			document.find(() => true),
-			document.root,
-		);
-		assert.strictEqual(document.find("root"), document.root);
+		assert.strictEqual(Option.getOrThrow(document.find(() => true)), document.root);
+		assert.strictEqual(Option.getOrThrow(document.find("root")), document.root);
 	});
 
 	it("accepts a plain predicate and returns the wide node union", () => {
 		const document = parseDoc(source);
-		const found = document.find((node) => node.type === "heading" && node.depth === 2);
-		assert.isDefined(found);
+		const found = Option.getOrThrow(document.find((node) => node.type === "heading" && node.depth === 2));
 		assert.instanceOf(found, Heading);
 	});
 
 	it("narrows through a type-guard predicate", () => {
 		const document = parseDoc(source);
-		const table = document.find((node): node is Table => node.type === "table");
-		assert.isDefined(table);
+		const table = Option.getOrThrow(document.find((node): node is Table => node.type === "table"));
 		assert.instanceOf(table, Table);
 		assert.isDefined(table.align);
 	});
 
-	it("returns undefined when nothing matches", () => {
+	it("returns Option.none when nothing matches", () => {
 		const document = parseDoc(source);
-		assert.isUndefined(document.find("footnoteDefinition"));
-		assert.isUndefined(document.find(() => false));
+		assert.isTrue(Option.isNone(document.find("footnoteDefinition")));
+		assert.isTrue(Option.isNone(document.find(() => false)));
 	});
 });
 
@@ -161,6 +173,6 @@ describe("guard posture", () => {
 
 	it("returns early without visiting the deep region when a shallow node matches", () => {
 		const document = overDeepDocument();
-		assert.strictEqual(document.find("root"), document.root);
+		assert.strictEqual(Option.getOrThrow(document.find("root")), document.root);
 	});
 });

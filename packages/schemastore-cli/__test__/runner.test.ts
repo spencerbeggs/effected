@@ -569,6 +569,35 @@ describe("Runner.run", () => {
 		),
 	);
 
+	it.effect("a frozen file whose JSON is not an object with a string $id declares none", () =>
+		Effect.gen(function* () {
+			const config = defineConfig({
+				name: "test",
+				outputDir: "/repo/schemas",
+				baseUrl: BASE,
+				schemas: { pinned: { schema: Config, versions: ["1.0.0", "2.0.0", "3.0.0", "4.0.0"], published: true } },
+			});
+			const error = yield* Effect.flip(Runner.run(config, options("check")));
+			assert.instanceOf(error, FrozenVersionIdMismatchError);
+			assert.deepStrictEqual(
+				error.mismatched.map((entry) => [entry.version, entry.reason]),
+				[
+					["1.0.0", "absent"],
+					["2.0.0", "absent"],
+					["3.0.0", "absent"],
+				],
+			);
+		}).pipe(
+			Effect.provide(
+				layers({
+					"/repo/schemas/1.0.0/pinned-1.0.0.json": `[{ "$id": "${BASE}/1.0.0/pinned-1.0.0.json" }]`,
+					"/repo/schemas/2.0.0/pinned-2.0.0.json": "{}",
+					"/repo/schemas/3.0.0/pinned-3.0.0.json": '{ "$id": 1 }',
+				}),
+			),
+		),
+	);
+
 	it.effect("a missing frozen file is reported as missing, never as an $id mismatch", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(Runner.run(twoSchemas(), options("build")));
@@ -882,6 +911,18 @@ describe("Runner.run catalog slices", () => {
 				yield* urlsIn(MERGED),
 				[`${BASE}/alpha.json`, `${BASE}/mid.json`, `${BASE}/zeta.json`],
 				"the merged catalog is sorted by url",
+			);
+		}).pipe(Effect.provide(layers({}))),
+	);
+
+	it.effect("the merged catalog sorts by UTF-16 code unit, never by locale", () =>
+		Effect.gen(function* () {
+			// Upper case before lower, then U+00E9, then the U+1F600 surrogate pair:
+			// code-unit order. A localeCompare sort interleaves case and accents.
+			yield* Runner.run(cataloged("a", ["\u00e9", "b", "Z", "\u{1F600}", "a"]), options("build"));
+			assert.deepStrictEqual(
+				yield* urlsIn(MERGED),
+				["Z", "a", "b", "\u00e9", "\u{1F600}"].map((key) => `${BASE}/${key}.json`),
 			);
 		}).pipe(Effect.provide(layers({}))),
 	);

@@ -33,8 +33,9 @@ import type {
 } from "@effected/schemastore";
 import { CanonicalJson, CatalogEntry, DriftPolicy, SchemaPipeline, SchemaVersioning } from "@effected/schemastore";
 import type { PlatformError } from "effect";
-import { Effect, FileSystem, Option, Path, Result, Schema } from "effect";
+import { Effect, FileSystem, Option, Order, Path, Predicate, Result, Schema } from "effect";
 import { ConfigLoader } from "./ConfigLoader.js";
+import { decodeJson, flattenSchemaError } from "./internal/decode.js";
 
 /**
  * Indicates that one or more schemas advertise a version label (via
@@ -398,22 +399,18 @@ const pendingOutcome = (wouldWrite: boolean, refused: boolean): "held" | "would-
 // The `$id` a frozen file declares, or why it cannot be read: a document
 // with no string `$id` (or that is not an object) declares none.
 const declaredId = (text: string): { reason: "ok"; $id: string } | { reason: "absent" | "unparseable" } => {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(text);
-	} catch {
+	const parsed = decodeJson(text);
+	if (Result.isFailure(parsed)) {
 		return { reason: "unparseable" };
 	}
-	const $id = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>).$id : undefined;
+	const $id = Predicate.isObject(parsed.success) ? parsed.success.$id : undefined;
 	return typeof $id === "string" ? { reason: "ok", $id } : { reason: "absent" };
 };
 
 const parsesEqual = (existing: string, text: string): boolean => {
-	try {
-		return CanonicalJson.equals(JSON.parse(existing), JSON.parse(text));
-	} catch {
-		return false;
-	}
+	const before = decodeJson(existing);
+	const after = decodeJson(text);
+	return Result.isSuccess(before) && Result.isSuccess(after) && CanonicalJson.equals(before.success, after.success);
 };
 
 const CatalogEntries = Schema.Array(CatalogEntry);
@@ -425,20 +422,20 @@ const CatalogEntries = Schema.Array(CatalogEntry);
 // decode that stripped it would publish a merged entry that differs from its
 // slice.
 const decodeSlice = (text: string): Result.Result<ReadonlyArray<CatalogEntry>, string> => {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(text);
-	} catch {
+	const parsed = decodeJson(text);
+	if (Result.isFailure(parsed)) {
 		return Result.fail("not JSON");
 	}
-	return Schema.decodeUnknownResult(CatalogEntries)(parsed, { onExcessProperty: "error", errors: "all" }).pipe(
-		Result.mapError((error) => error.message.replace(/\n\s+at /g, " at ").replace(/\n/g, "; ")),
+	return Schema.decodeUnknownResult(CatalogEntries)(parsed.success, { onExcessProperty: "error", errors: "all" }).pipe(
+		Result.mapError(flattenSchemaError),
 	);
 };
 
-// Code-unit order, not `localeCompare`: the merged file must be byte-stable
-// across machines and locales.
-const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+// Every merge sort is `Order.String` — code-unit order, never `localeCompare`:
+// the merged file must be byte-stable across machines and locales.
+const bySlice = Order.mapInput(Order.String, (source: { readonly slice: string }) => source.slice);
+const byUrl = Order.mapInput(Order.String, (entry: CatalogEntry) => entry.url);
+const byClaimedValue = Order.mapInput(Order.String, ([value]: readonly [string, ReadonlyArray<string>]) => value);
 
 // Compare a canonical text with the file on disk in ONE read — a missing
 // file is "different" (a build creates it), and so is text that does not
@@ -529,7 +526,7 @@ const syncCatalog = Effect.fn("Runner.syncCatalog")(function* (
 	// entries, and every config converges on one merged file.
 	const sources: Array<{ readonly slice: string; readonly entries: ReadonlyArray<CatalogEntry> }> = [];
 	const invalid: Array<InvalidSlice> = [];
-	for (const name of [...names].sort(byCodeUnit)) {
+	for (const name of [...names].sort(Order.String)) {
 		const file = path.normalize(path.join(config.catalogDir, name));
 		if (!name.endsWith(".json") || (name === ownOnDisk && own.length > 0)) {
 			continue;
@@ -567,7 +564,7 @@ const syncCatalog = Effect.fn("Runner.syncCatalog")(function* (
 	if (own.length > 0) {
 		sources.push({ slice: slicePath, entries: own });
 	}
-	sources.sort((a, b) => byCodeUnit(a.slice, b.slice));
+	sources.sort(bySlice);
 
 	let merged: MergedCatalogReport | undefined;
 	if (sources.length === 0 && invalid.length === 0) {
@@ -600,13 +597,13 @@ const syncCatalog = Effect.fn("Runner.syncCatalog")(function* (
 		const repeated = (claimed: Map<string, Array<string>>) =>
 			[...claimed]
 				.filter(([, slices]) => slices.length > 1)
-				.sort(([a], [b]) => byCodeUnit(a, b))
-				.map(([value, slices]) => ({ value, slices: [...slices].sort(byCodeUnit) }));
+				.sort(byClaimedValue)
+				.map(([value, slices]) => ({ value, slices: [...slices].sort(Order.String) }));
 		const conflicts: Array<CatalogConflict> = [
 			...repeated(claims).map(({ value, slices }) => ({ kind: "url" as const, url: value, slices })),
 			...repeated(nameClaims).map(({ value, slices }) => ({ kind: "name" as const, name: value, slices })),
 		];
-		union.sort((a, b) => byCodeUnit(a.url, b.url));
+		union.sort(byUrl);
 		const outcome =
 			conflicts.length > 0 || invalid.length > 0
 				? "blocked"

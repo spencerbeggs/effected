@@ -49,6 +49,7 @@ describe("ImageBackend.layerDirectory", () => {
 			const error = yield* Effect.flip(images.set({ key: KEY, value: PNG, contentType: "image/png" }));
 			assert.instanceOf(error, ImageBackendError);
 			assert.strictEqual(error.operation, "set");
+			assert.strictEqual(error.reason, "backend");
 			assert.isTrue(Option.isNone(yield* images.get(KEY)));
 			const fs = yield* FileSystem.FileSystem;
 			assert.deepStrictEqual(yield* fs.readDirectory(DIR), []);
@@ -76,6 +77,9 @@ describe("ImageBackend.layerDirectory", () => {
 			const images = yield* ImageBackend;
 			const error = yield* Effect.flip(images.set({ key: KEY, value: PNG, contentType: "image/svg+xml" }));
 			assert.strictEqual(error.operation, "set");
+			// Matchable without reading the message, and the message names it too.
+			assert.strictEqual(error.reason, "unsupported-content-type");
+			assert.include(error.message, "(unsupported-content-type)");
 		}).pipe(Effect.provide(backend())),
 	);
 

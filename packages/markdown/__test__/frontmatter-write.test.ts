@@ -16,7 +16,7 @@
 // rightly treats as the closing fence — fence semantics, not a codec defect.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import {
 	FrontmatterEncodeError,
 	FrontmatterFormatMismatchError,
@@ -85,14 +85,13 @@ describe("MarkdownFrontmatter.set", () => {
 		Effect.gen(function* () {
 			const source = "---\ntitle: Old\ncount: 1\n---\n\n# Body\n\ntext after the block\n";
 			const document = yield* parseDoc(source);
-			const node = document.frontmatter;
-			assert.isDefined(node);
+			const node = Option.getOrThrow(document.frontmatter);
 			const edits = yield* MarkdownFrontmatter.set(Meta, YamlFrontmatter)(document, { title: "New", count: 2 });
 			assert.strictEqual(edits.length, 1);
 			assert.strictEqual(edits[0]?.offset, 0);
 			const updated = MarkdownEdit.applyAll(source, edits);
 			// Everything after the closing fence survives byte-identical.
-			assert.isTrue(updated.endsWith(source.slice(node?.position.end.offset ?? 0)));
+			assert.isTrue(updated.endsWith(source.slice(node.position.end.offset)));
 			// The re-parsed document decodes the new data with the same tree shape.
 			const reparsed = yield* parseDoc(updated);
 			const data = yield* MarkdownFrontmatter.schema(Meta, YamlFrontmatter)(reparsed);

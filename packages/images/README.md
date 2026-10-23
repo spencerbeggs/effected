@@ -142,7 +142,7 @@ The directory backend stores `<directory>/<key>.<ext>` through a temp file and a
 - `ImageFormat` — the literal union `png | jpeg | gif | webp | avif`.
 - `ImageParseError` — the one parse failure, with a `reason` and, once a signature matched, the `format`.
 - `ImageCacheKey` / `ImageCacheKeyError` — content-addressed keys from schema-encoded parameters; failure reasons `encode`, `non-json` and `digest`.
-- `ImageBackend` / `ImageBackendError` — the storage port, a directory backend, a no-store backend and a structural adapter.
+- `ImageBackend` / `ImageBackendError` — the storage port, a directory backend, a no-store backend and a structural adapter; failure reasons `backend` and `unsupported-content-type`.
 - `ImageCache` / `ImageGenerateError` — `getOrGenerate` with an optional `accept` format list that narrows the result's format.
 
 SVG, BMP, ICO, TIFF, HEIC, JPEG XL, EXIF orientation, image transformation and cache eviction are out of scope.

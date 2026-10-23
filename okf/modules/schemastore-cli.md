@@ -166,9 +166,18 @@ schema name. `defineConfig` lives in `@effected/schemastore` (module
 `SchemastoreConfig`), is pure, and validates the whole input before
 assembling it, so a malformed file fails typed at load rather than with a
 `TypeError` deep in the pipeline. The loader also re-checks the shapes a
-forged brand could carry past `defineConfig` — a malformed schema target,
-or a `frozen` entry missing `version`/`path`/`$id`/`url` — and fails them
-as `ConfigLoadError` (exit `2`) before any path is resolved:
+forged brand could carry past `defineConfig`, by decoding the export against
+one Schema struct of every field the pipeline and the drift policy
+dereference — `name`, `outputDir`, `onDrift` (`"error"`/`"warn"`),
+`catalogDir`, and per schema its target (a real Effect Schema via
+`Schema.isSchema`), `frozen` entries, a `drift` tolerance literal and an
+optional catalog entry decoded as a full `CatalogEntry` (a present
+`catalog: undefined` is rejected, and so is a `fileMatch` or `versions`
+value that is not a string, which the older field-by-field check never
+read). The decode only validates; the module's own export, brand intact, is what loads.
+Every issue is reported at once as `ConfigLoadError` (exit `2`) before any
+path is resolved, each flattened to `<message> at <path>` and joined by
+semicolons — the same spelling an invalid catalog slice reports:
 
 ```ts
 import { defineConfig } from "@effected/schemastore";

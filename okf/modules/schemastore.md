@@ -444,7 +444,10 @@ The getters are the resolved identity — `$id`, `url`, `fileName` for the
 current document, `idBase`, `catalogBase`, `resolvedLayout`,
 `resolvedVersions`, `resolvedCurrent` — and `idFor(v)`, `urlFor(v)`,
 `fileNameFor(v)` answer the same for any advertised label. `$id` and `url`
-differ only under `"schemastore"`. One private `resolve` walk backs both
+differ only under `"schemastore"`. `resolvedCurrent` is an
+`Option<SchemaVersion>`, `Option.none()` for an unversioned schema, because
+the kit's lookups return `Option`; the `idFor` family keeps its optional
+`version` argument, where an omitted version names the unversioned document. One private `resolve` walk backs both
 the class check and every getter, so what the check admits is exactly what
 the getters read.
 

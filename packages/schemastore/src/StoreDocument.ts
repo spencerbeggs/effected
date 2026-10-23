@@ -1,4 +1,4 @@
-import { Effect, JsonPointer, JsonSchema, Result, Schema } from "effect";
+import { Effect, JsonPointer, JsonSchema, Predicate, Result, Schema } from "effect";
 import type { CanonicalJsonError, CanonicalJsonOptions } from "./CanonicalJson.js";
 import { CanonicalJson } from "./CanonicalJson.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
@@ -218,8 +218,7 @@ const applyRootAnnotations = (
 	const ref = keys.length === 1 && keys[0] === "$ref" ? root.$ref : undefined;
 	const path = typeof ref === "string" ? JsonPointer.parseUriFragment(ref) : undefined;
 	const pool = path !== undefined && path.length === 2 && path[0] === "$defs" ? defs[path[1]] : undefined;
-	const entry =
-		typeof pool === "object" && pool !== null && !Array.isArray(pool) ? (pool as Record<string, unknown>) : undefined;
+	const entry = Predicate.isObject(pool) ? pool : undefined;
 	const shared = entry !== undefined && typeof ref === "string" && countRefs(defs, ref) > 0;
 	if (shared) {
 		delete root.$ref;
@@ -335,11 +334,8 @@ const SCHEMA_MAP_KEYWORDS: ReadonlySet<string> = new Set([
 	"dependencies",
 ]);
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
 const collapseSchemaMap = (node: unknown, depth: number): unknown => {
-	if (!isPlainObject(node)) {
+	if (!Predicate.isObject(node)) {
 		return node;
 	}
 	// Null-prototype accumulator: the same `__proto__` hardening as
@@ -347,7 +343,7 @@ const collapseSchemaMap = (node: unknown, depth: number): unknown => {
 	const out: Record<string, unknown> = Object.create(null);
 	for (const [key, value] of Object.entries(node)) {
 		// `dependencies` values may be property-name arrays; only a schema is walked.
-		out[key] = isPlainObject(value) ? collapseUniformTuples(value, depth + 1) : value;
+		out[key] = Predicate.isObject(value) ? collapseUniformTuples(value, depth + 1) : value;
 	}
 	return out;
 };
@@ -356,7 +352,7 @@ const collapseUniformTuples = (node: unknown, depth: number): unknown => {
 	if (depth >= MAX_NESTING_DEPTH) {
 		throw new RewriteDepthExceeded();
 	}
-	if (!isPlainObject(node)) {
+	if (!Predicate.isObject(node)) {
 		return node;
 	}
 	const out: Record<string, unknown> = Object.create(null);
@@ -378,7 +374,7 @@ const collapseUniformTuples = (node: unknown, depth: number): unknown => {
 	if (
 		Array.isArray(tuple) &&
 		tuple.length > 0 &&
-		isPlainObject(rest) &&
+		Predicate.isObject(rest) &&
 		tuple.every((element) => CanonicalJson.equals(element, rest))
 	) {
 		// `minItems` stays exactly as core emitted it: a Draft-07 tuple asserts

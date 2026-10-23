@@ -13,7 +13,7 @@
 // yaml and toml engines into their bundle (the config-file tree-shaking
 // rule, applied verbatim).
 
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import type { MarkdownDocument } from "./MarkdownDocument.js";
 import { MarkdownEdit } from "./MarkdownEdit.js";
 import type { Frontmatter as FrontmatterNode } from "./MarkdownNode.js";
@@ -313,7 +313,7 @@ export class MarkdownFrontmatter {
 		codec: FrontmatterCodec,
 	): (document: MarkdownDocument) => Effect.Effect<T, FrontmatterSchemaError, RD> {
 		return (document) => {
-			const node = document.frontmatter;
+			const node = Option.getOrUndefined(document.frontmatter);
 			return node === undefined
 				? // The discriminant is the document's own structural signal: a source
 					// that opens with a capturable block but carries no capture node was
@@ -382,7 +382,7 @@ export class MarkdownFrontmatter {
 		codec: FrontmatterCodec,
 	): (document: MarkdownDocument, data: T) => Effect.Effect<ReadonlyArray<MarkdownEdit>, FrontmatterWriteError, RE> {
 		return (document, data) => {
-			const node = document.frontmatter;
+			const node = Option.getOrUndefined(document.frontmatter);
 			if (node !== undefined && node.format !== codec.format) {
 				return Effect.fail(new FrontmatterFormatMismatchError({ expected: codec.format, actual: node.format }));
 			}

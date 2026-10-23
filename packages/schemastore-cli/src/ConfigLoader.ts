@@ -1,7 +1,8 @@
 import type { SchemastoreConfig } from "@effected/schemastore";
-import { SchemaVersioning, isSchemastoreConfig } from "@effected/schemastore";
-import { Effect, FileSystem, Path, Predicate, Schema } from "effect";
+import { CatalogEntry, SchemaVersioning, isSchemastoreConfig } from "@effected/schemastore";
+import { Effect, FileSystem, Path, Result, Schema } from "effect";
 import { createJiti } from "jiti";
+import { flattenSchemaError } from "./internal/decode.js";
 
 /**
  * No `schemastore.config.*` was found — by upward discovery from the working
@@ -21,9 +22,13 @@ export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>
 /**
  * The config file exists but could not be turned into a `SchemastoreConfig`:
  * the module threw on import, its default export is not a `defineConfig(...)`
- * value, `name` is not a simple file base name, `outputDir`/`catalogDir` is
- * not a string, a `schemas` element is not resolved-schema-shaped (or its
- * `target`, `catalog`, or a `frozen` entry is not shaped), two outputs
+ * value, a field the pipeline reads is malformed (`name` not a simple file
+ * base name, `outputDir`/`catalogDir` not a string, `onDrift` or a schema's
+ * `drift` outside its literal set, a `schemas` element, its `target`,
+ * `catalog` or a `frozen` entry not shaped — the catalog decoded as a whole
+ * `CatalogEntry`, so a non-string `fileMatch` element or `versions` value
+ * fails too — every such issue reported at once, each as
+ * `<message> at <path>`), two outputs
  * resolve to one absolute path, a document resolves into `catalogDir`, or
  * `catalogDir` resolves to `outputDir` or to the merged catalog's path.
  *
@@ -84,64 +89,51 @@ const describeCause = (cause: unknown): string =>
 
 // `defineConfig` validates every field it can check by shape, but a
 // hand-rolled module can forge the brand directly, skipping `defineConfig`
-// entirely. The loader re-checks the fields the pipeline and the drift
-// policy dereference. (A v4 Schema value is callable — `typeof` says
-// "function" — hence `isSchema`.)
-const isTargetShaped = (target: unknown): boolean =>
-	Predicate.isObject(target) &&
-	Schema.isSchema(target.schema) &&
-	typeof target.$id === "string" &&
-	typeof target.path === "string" &&
-	typeof target.published === "boolean";
+// entirely. The loader re-checks every field the pipeline and the drift
+// policy dereference — `onDrift` and each schema's `drift` included, since a
+// missing or bogus value there would quietly switch the drift gate off. A v4
+// Schema value is callable (`typeof` says "function"), hence the
+// `Schema.isSchema` declaration rather than an object check.
+//
+// The decode only VALIDATES: its output is discarded and the loaded config is
+// the module's own export, because decoding would strip the symbol brand
+// `isSchemastoreConfig` reads. Unknown keys are ignored (the default), so a
+// live Schema value and the brand pass through untouched.
+const ForgedConfigShape = Schema.Struct({
+	name: Schema.String.check(
+		Schema.makeFilter((name) => SchemaVersioning.isSimpleName(name) || "not a simple file base name"),
+	),
+	outputDir: Schema.String,
+	onDrift: Schema.Literals(["error", "warn"]),
+	catalogDir: Schema.String,
+	schemas: Schema.Array(
+		Schema.Struct({
+			name: Schema.String,
+			target: Schema.Struct({
+				schema: Schema.declare(Schema.isSchema, { expected: "an Effect Schema" }),
+				$id: Schema.String,
+				path: Schema.String,
+				published: Schema.Boolean,
+			}),
+			frozen: Schema.Array(
+				Schema.Struct({ version: Schema.String, path: Schema.String, $id: Schema.String, url: Schema.String }),
+			),
+			drift: Schema.Literals(["strict", "semantic", "allow"]),
+			// `optionalKey`, deliberately: a PRESENT `catalog: undefined` is
+			// rejected along with every other non-entry value. `defineConfig`
+			// never produces one, so only a forged config can.
+			catalog: Schema.optionalKey(Schema.Struct(CatalogEntry.fields)),
+		}),
+	),
+});
 
-const isCatalogEntryShaped = (catalog: unknown): boolean =>
-	Predicate.isObject(catalog) &&
-	typeof catalog.name === "string" &&
-	typeof catalog.description === "string" &&
-	Array.isArray(catalog.fileMatch) &&
-	typeof catalog.url === "string";
+const validateForgedShape = Schema.decodeUnknownResult(ForgedConfigShape);
 
+// Every issue at once, each as `<message> at <path>`, so a forged config is
+// repaired in one pass rather than one field per run.
 const describeMalformed = (config: SchemastoreConfig): string | undefined => {
-	if (typeof config.name !== "string" || !SchemaVersioning.isSimpleName(config.name)) {
-		return "name is not a simple file base name";
-	}
-	if (typeof config.outputDir !== "string") {
-		return "outputDir is not a string";
-	}
-	if (typeof config.catalogDir !== "string") {
-		return "catalogDir is not a string";
-	}
-	if (!Array.isArray(config.schemas)) {
-		return "schemas is not an array";
-	}
-	for (const [index, schema] of (config.schemas as ReadonlyArray<unknown>).entries()) {
-		if (
-			!Predicate.isObject(schema) ||
-			typeof schema.name !== "string" ||
-			!Array.isArray(schema.frozen) ||
-			typeof schema.drift !== "string"
-		) {
-			return `schemas[${index}] is not a resolved schema (missing name/target/frozen/drift)`;
-		}
-		if (!isTargetShaped(schema.target)) {
-			return `schemas[${index}].target is not a SchemaTarget (missing schema/$id/path/published)`;
-		}
-		if (schema.catalog !== undefined && !isCatalogEntryShaped(schema.catalog)) {
-			return `schemas[${index}].catalog is not a catalog entry (missing name/description/fileMatch/url)`;
-		}
-		for (const [j, frozen] of (schema.frozen as ReadonlyArray<unknown>).entries()) {
-			if (
-				!Predicate.isObject(frozen) ||
-				typeof frozen.version !== "string" ||
-				typeof frozen.path !== "string" ||
-				typeof frozen.$id !== "string" ||
-				typeof frozen.url !== "string"
-			) {
-				return `schemas[${index}].frozen[${j}] is not a frozen version (missing version/path/$id/url)`;
-			}
-		}
-	}
-	return undefined;
+	const checked = validateForgedShape(config, { errors: "all" });
+	return Result.isFailure(checked) ? flattenSchemaError(checked.failure) : undefined;
 };
 
 // `defineConfig` already rejects duplicate output paths lexically; two

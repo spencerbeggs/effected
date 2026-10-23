@@ -2,7 +2,7 @@
 // node classes and plain mdast JSON. The emission conventions are documented on
 // the exported `Mdast` class.
 
-import { Effect, Result, Schema, SchemaIssue } from "effect";
+import { Effect, Predicate, Result, Schema, SchemaIssue } from "effect";
 import { GuardExceeded, isGuardExceeded } from "./internal/carriers.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { unescapeString } from "./internal/unescape.js";
@@ -320,17 +320,14 @@ const admittedFields: Readonly<Record<string, ReadonlyArray<string>>> = {
 	mdxjsEsm: ["value"],
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
 const completePoint = (value: unknown): boolean =>
-	isRecord(value) &&
+	Predicate.isObject(value) &&
 	typeof value.line === "number" &&
 	typeof value.column === "number" &&
 	typeof value.offset === "number";
 
 const normalizePosition = (value: unknown): Record<string, unknown> => {
-	if (isRecord(value) && completePoint(value.start) && completePoint(value.end)) {
+	if (Predicate.isObject(value) && completePoint(value.start) && completePoint(value.end)) {
 		const start = value.start as Record<string, unknown>;
 		const end = value.end as Record<string, unknown>;
 		return {
@@ -350,7 +347,7 @@ const normalizePosition = (value: unknown): Record<string, unknown> => {
 // stack, and `fromMdastResult` materializes it as a typed failure. Foreign
 // input carries no trustworthy source offset, so the carrier records 0.
 const normalizeNode = (value: unknown, depth: number = 0): unknown => {
-	if (!isRecord(value) || typeof value.type !== "string") {
+	if (!Predicate.isObject(value) || typeof value.type !== "string") {
 		return value;
 	}
 	if (depth > MAX_NESTING_DEPTH) {
@@ -415,7 +412,7 @@ const normalizeNode = (value: unknown, depth: number = 0): unknown => {
 // a string/null value passed through (both spellings are the contract), a
 // value-expression object rebuilt with only its contract fields.
 const normalizeMdxAttribute = (value: unknown): unknown => {
-	if (!isRecord(value) || typeof value.type !== "string") {
+	if (!Predicate.isObject(value) || typeof value.type !== "string") {
 		return value;
 	}
 	if (value.type === "mdxJsxExpressionAttribute") {
@@ -434,7 +431,7 @@ const normalizeMdxAttribute = (value: unknown): unknown => {
 		};
 		if (raw !== undefined) {
 			normalized.value =
-				isRecord(raw) && raw.type === "mdxJsxAttributeValueExpression"
+				Predicate.isObject(raw) && raw.type === "mdxJsxAttributeValueExpression"
 					? {
 							type: "mdxJsxAttributeValueExpression",
 							value: raw.value,
