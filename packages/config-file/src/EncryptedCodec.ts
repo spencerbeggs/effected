@@ -99,9 +99,17 @@ const keyEffect = (keySource: EncryptedCodecKey): Effect.Effect<CryptoKey, Confi
  * the remainder is the ciphertext, and the plaintext is handed to the inner
  * codec's `parse`.
  *
+ * The envelope is decoded with core's `effect/encoding/Base64`. Whitespace
+ * around it (a trailing newline, a BOM) is tolerated; whitespace inside it, or
+ * missing padding, fails with phase `"encoding"`. `stringify` never produces
+ * either.
+ *
  * The error channel **widens** to `E | ConfigEncryptionError` rather than
  * flattening — the inner codec's failures stay distinguishable from
- * cryptographic ones.
+ * cryptographic ones. The result plugs straight into `ConfigFile.layer`,
+ * `ConfigFile.testLayer` and `ConfigFile.read`, whose error unions widen with
+ * it; a `ConfigFile.Service` key names the widened error as its third type
+ * argument.
  *
  * @example
  * ```ts
@@ -162,10 +170,10 @@ export function EncryptedCodec<E>(
 				const serialized = yield* inner.stringify(value);
 
 				const encoded = new TextEncoder().encode(serialized);
-				const iv = randomIv();
+				const iv = yield* Effect.mapError(randomIv, toPublic);
 				const ciphertext = yield* Effect.mapError(encrypt(key, iv, encoded), toPublic);
 
-				return yield* Effect.mapError(toBase64(iv, ciphertext), toPublic);
+				return toBase64(iv, ciphertext);
 			}),
 	};
 }

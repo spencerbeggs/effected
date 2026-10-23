@@ -305,3 +305,82 @@ describe("EncryptedCodec", () => {
 		}),
 	);
 });
+
+describe("EncryptedCodec envelope encoding", () => {
+	/** Fails the test unless `parse` failed typed with phase `encoding`, and never as a defect. */
+	const assertEncodingFailure = (input: string) =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(EncryptedCodec(JsonCodec, key()).parse(input));
+			if (Exit.isSuccess(exit)) return assert.fail(`expected ${JSON.stringify(input)} to be rejected`);
+			assert.isFalse(Cause.hasDies(exit.cause));
+			const error = Cause.findErrorOption(exit.cause);
+			assert.isTrue(Option.isSome(error));
+			if (Option.isSome(error)) {
+				assert.instanceOf(error.value, ConfigEncryptionError);
+				assert.strictEqual((error.value as ConfigEncryptionError).phase, "encoding");
+			}
+		});
+
+	it.effect("tolerates whitespace around the envelope, a BOM included", () =>
+		Effect.gen(function* () {
+			const codec = EncryptedCodec(JsonCodec, key());
+			const ciphertext = yield* codec.stringify({ port: 8080 });
+			assert.deepStrictEqual(yield* codec.parse(`\n  ${ciphertext}  \n`), { port: 8080 });
+			assert.deepStrictEqual(yield* codec.parse(`\uFEFF${ciphertext}\t`), { port: 8080 });
+		}),
+	);
+
+	it.effect("rejects whitespace inside the envelope with phase encoding", () =>
+		Effect.gen(function* () {
+			const ciphertext = yield* EncryptedCodec(JsonCodec, key()).stringify({ port: 8080 });
+			const middle = Math.floor(ciphertext.length / 2);
+			yield* assertEncodingFailure(`${ciphertext.slice(0, middle)} ${ciphertext.slice(middle)}`);
+			yield* assertEncodingFailure(`${ciphertext.slice(0, middle)}\t${ciphertext.slice(middle)}`);
+		}),
+	);
+
+	it.effect("rejects an envelope whose padding was stripped, with phase encoding", () =>
+		Effect.gen(function* () {
+			// `{"port":1}` is 10 bytes; with the 12-byte IV and 16-byte tag the
+			// envelope is 38 bytes, which base64 must pad.
+			const ciphertext = yield* EncryptedCodec(JsonCodec, key()).stringify({ port: 1 });
+			assert.isTrue(ciphertext.endsWith("="), "the fixture must carry padding for this test to mean anything");
+			yield* assertEncodingFailure(ciphertext.replace(/=+$/, ""));
+		}),
+	);
+
+	it.effect("still decrypts an envelope written by the earlier btoa encoder", () =>
+		Effect.gen(function* () {
+			// Written by the previous hand-rolled `btoa` envelope encoder, before the
+			// move to core's Base64. Files on disk from that version must keep reading.
+			const legacySalt = new TextEncoder().encode("fixture-salt-0001");
+			const codec = EncryptedCodec(JsonCodec, EncryptedCodecKey.fromPassphrase("legacy-btoa-fixture", legacySalt));
+			const legacy = "JtqcET1um1R2IxhkU3zxRkemVCHcztK0raVjIlJdTfwhoO4CUMEpyn7Hd9/Nxzh1Dz/bPiXFmwtNse/IomG4xw4T";
+			assert.deepStrictEqual(yield* codec.parse(legacy), { port: 4242, name: "legacy" });
+		}),
+	);
+});
+
+describe("EncryptedCodec IV generation", () => {
+	it.effect("a runtime without WebCrypto randomness fails typed with phase encrypt, not as a defect", () =>
+		Effect.gen(function* () {
+			// Resolve the key while WebCrypto is still present, so the only
+			// missing piece at `stringify` time is the IV's random source.
+			const cryptoKey = yield* generateKeyForTest();
+			const codec = EncryptedCodec(JsonCodec, EncryptedCodecKey.fromCryptoKey(Effect.succeed(cryptoKey)));
+			const exit = yield* Effect.acquireUseRelease(
+				Effect.sync(() => vi.stubGlobal("crypto", undefined)),
+				() => Effect.exit(codec.stringify({ port: 1 })),
+				() => Effect.sync(() => vi.unstubAllGlobals()),
+			);
+			if (Exit.isSuccess(exit)) return assert.fail("expected stringify to fail without globalThis.crypto");
+			assert.isFalse(Cause.hasDies(exit.cause));
+			const error = Cause.findErrorOption(exit.cause);
+			assert.isTrue(Option.isSome(error));
+			if (Option.isSome(error)) {
+				assert.instanceOf(error.value, ConfigEncryptionError);
+				assert.strictEqual((error.value as ConfigEncryptionError).phase, "encrypt");
+			}
+		}),
+	);
+});

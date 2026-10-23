@@ -1,6 +1,6 @@
 import { Walker } from "@effected/walker";
 import type { PlatformError } from "effect";
-import { Effect, FileSystem, Option, Path } from "effect";
+import { Effect, FileSystem, Option, Path, Schema } from "effect";
 
 /**
  * A composable config file resolver: one lookup strategy.
@@ -338,6 +338,21 @@ const isGitRoot = (
 		return yield* fs.exists(path.join(dir, ".git"));
 	});
 
+/**
+ * Decode a `package.json` text to `Some` exactly when it is a JSON object
+ * carrying a `workspaces` key, whatever that key's value (`null` included).
+ *
+ * @remarks
+ * Field presence is all a root check needs, so the struct is
+ * `{ workspaces: Unknown }` rather than a `package-json` dependency. It is
+ * built once at module scope; `decodeUnknownOption` never throws, which is
+ * what keeps a malformed manifest from leaking a defect through a predicate
+ * whose error channel is `PlatformError`.
+ */
+const decodeWorkspacesManifest = Schema.decodeUnknownOption(
+	Schema.fromJsonString(Schema.Struct({ workspaces: Schema.Unknown })),
+);
+
 /** A workspace root is marked by `pnpm-workspace.yaml`, or a `package.json` with a `workspaces` field. */
 const isWorkspaceRoot = (
 	dir: string,
@@ -348,13 +363,9 @@ const isWorkspaceRoot = (
 		if (yield* fs.exists(path.join(dir, "pnpm-workspace.yaml"))) return true;
 		const pkgPath = path.join(dir, "package.json");
 		if (yield* fs.exists(pkgPath)) {
-			const content = yield* fs.readFileString(pkgPath);
-			try {
-				const pkg = JSON.parse(content) as Record<string, unknown>;
-				if ("workspaces" in pkg) return true;
-			} catch {
-				// Not valid JSON, skip.
-			}
+			// A typed decode that never throws: invalid JSON, a non-object value
+			// (`null`, `42`, `[]`) or a missing key is `None`, never a defect.
+			return Option.isSome(decodeWorkspacesManifest(yield* fs.readFileString(pkgPath)));
 		}
 		return false;
 	});
