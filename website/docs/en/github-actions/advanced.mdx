@@ -79,6 +79,25 @@ await Action.run(program, { layer: OidcTokenIssuer.layer });
 
 The inverse direction is [`ActionsIdentityToken`](/github-actions/api/class/actionsidentitytoken). `@effected/sbom` must not depend on the Actions runtime — an SBOM emitter has no business linking a runner client — so the adapter that closes its narrow `IdentityToken` contract lives here, and a signer composes it as a layer.
 
+The same identity can authenticate a publish. Some registries accept a workload's identity token directly, behind a registry-specific prefix, instead of a long-lived token. [`ActionsRegistryCredential.workload`](/github-actions/api/class/actionsregistrycredential) mints a token for the registry's audience, masks both the bare token and the prefixed value before anything can print them, and returns `@effected/npm`'s publish-only `WorkloadCredential`, ready for `PackagePublish.setupAuth`:
+
+```ts
+import { ActionsRegistryCredential } from "@effected/github-actions";
+import { PackagePublish } from "@effected/npm";
+import { Effect } from "effect";
+
+const authenticate = Effect.gen(function* () {
+  const credential = yield* ActionsRegistryCredential.workload({
+    audience: "https://registry.example",
+    prefix: "example_workload_",
+  });
+  const publish = yield* PackagePublish;
+  yield* publish.setupAuth({ registry: "https://registry.example/npm", credential, npmrcPath: "/home/runner/.npmrc" });
+});
+```
+
+A mint failure stays an `OidcTokenError`, distinct from a `PublishError` raised while writing the npmrc, so the two failures can be reported apart. The code never holds either value as plaintext. A read cannot spend the credential: `NpmRegistry` refuses it at compile time and again at runtime.
+
 ## Report onto a surface a human also edits
 
 [`GitHubMarkdown`](/github-actions/api/class/githubmarkdown) writes the body. Every member takes pre-rendered markdown and returns a string, but the structure around it goes through `@effected/markdown`'s serializer rather than string joining — so a cell carrying `>=1 || <2` escapes its pipes instead of shifting every column after it. `tableFor` goes further and takes the table's whole shape from a row schema:

@@ -115,9 +115,22 @@ the package** — the read probe's `RegistryTarget.credential` and
 The basic arm holds the **already-encoded** blob rather than a
 username/password pair, because npm assigns an `_auth` value straight to the
 `Authorization` header with no decode step, and registry configuration in
-the wild already stores one. `basicCredentialFromPair(username, password)`
-is the convenience on top; it throws a `RangeError` on a colon in the
-username rather than minting a credential that re-splits on the server.
+the wild already stores one. `basicCredentialFromPairResult(username,
+password)` is the convenience on top; it returns a `Result` that fails with
+`BasicCredentialError` (reason `"colon-in-username"`) rather than minting a
+credential that re-splits on the server. Bridge it with `Effect.fromResult`.
+
+`setupAuth` takes one more arm, publish-only: **`WorkloadCredential`**,
+`{ kind: "workload", audience, token }` — a CI identity token behind a
+registry-specific prefix, written under `_authToken`. Its parameter type is
+`PublishCredential` (all three arms); `RegistryTarget.credential` stays
+`RegistryCredential`, so handing a workload credential to a read fails to
+compile, and a cast past the type fails `RegistryReadError` with kind
+`"credential"` before any request. Build one with the pure
+`workloadCredential({ audience, prefix, identityToken })`; on GitHub Actions,
+`ActionsRegistryCredential.workload({ audience, prefix })` from
+`@effected/github-actions` mints the token, masks the bare and the prefixed
+value, and builds it — never hand-roll it with `Secret.forSigning`.
 
 One union on both halves is load-bearing: a probe and a publish that
 disagreed about the scheme would authenticate differently against one
@@ -178,11 +191,31 @@ verifiable attestation subject (see `supply-chain-attestation`). Getting
 the two swapped is a silent attestation mismatch, not a type error: both
 are strings.
 
-`publishTarball` returns `PublishOutcome`, whose one field is
-`provenanceUrl?: string | undefined` — a plain optional, not an `Option`:
-npm's Sigstore transparency-log URL when it published provenance, scraped
-from npm's own output, absent for GitHub Packages, custom registries and
-provenance-off runs.
+`publishTarball` returns `PublishOutcome`, with two fields:
+
+- `provenanceUrl?: string | undefined` — a plain optional, not an `Option`:
+  npm's Sigstore transparency-log URL when it published provenance, scraped
+  from npm's own output, absent for GitHub Packages, custom registries and
+  provenance-off runs.
+- `auth: "oidc-exchange" | "configured-credential" | "unknown"` —
+  **required** — which credential npm actually authenticated with, read from
+  npm's own log lines on positive evidence only. npm names its auth path only
+  below its default level, so the publish runs at `--loglevel=silly`, which
+  overrides a `loglevel` in an npmrc or the environment; only a `--loglevel`
+  in the executor's `extraArgs` comes later and wins (that run reports
+  `"unknown"`). A failure's `PublishError.output` is filtered back to npm's
+  default levels. `"unknown"` is common and honest: outside CI, with an npm
+  that has no trusted publishing (the runner's bundled npm through
+  `NpmExecutor.ambient`), or with a custom empty heading.
+
+Two npm behaviours the field exposes, both easy to get backwards: an
+exchanged OIDC token **beats** a configured `_authToken`, and a **failed**
+exchange falls back silently to the configured credential — it does not fail
+the publish. `tokenAuth: true` therefore exists to stop an exchange from
+replacing the configured credential: it blanks `NPM_ID_TOKEN` (npm's first
+identity-token source) and both Actions token-service variables, reports
+`"configured-credential"`, and drops `--provenance`, which on GitHub Actions
+needs the token service it blanks.
 
 **A failed `dryRun` is a result, not an error** (`DryRunOutcome.ok:
 boolean`). `npm pack --dry-run` never contacts a registry, so `ok: true`

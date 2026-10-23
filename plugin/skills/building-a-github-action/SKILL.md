@@ -27,7 +27,7 @@ This table routes a capability to the package and skill that own it; it does not
 | set an output, export a variable, add to PATH | `ActionOutputs` | `actions-inputs-outputs` |
 | emit a machine-readable output contract | `ActionOutputs.setJson` + the same `Schema` codec | `actions-inputs-outputs` |
 | publish and drift-test that contract's JSON Schema | `HostedSchema` beside the schema, `defineConfig` in `lib/scripts/schemastore.config.ts`, `schemastore build` / `check` | `actions-inputs-outputs` |
-| make the run log readable | `ActionLogger` (`group`, `withBuffer`, `notice`, `annotated`) | `actions-reporting` |
+| make the run log readable | `ActionLogger` (`group`, nesting-aware; `withBuffer`, `notice`, `annotated`) | `actions-reporting` |
 | write the job summary | `ActionOutputs.summary` | `actions-reporting` |
 | read a published package's contents before installing it | `PackageTarball.extract` (scoped) + `resolveEntryPoint` | `release-and-publish` |
 | create a check run or annotate a PR | `CheckRun`, `CheckRun.withCheckRun` | `actions-reporting` |
@@ -71,6 +71,7 @@ This table routes a capability to the package and skill that own it; it does not
 | emit an SBOM | `Sbom.generate` / `toJson` / `write` | `supply-chain-attestation` |
 | sign an artifact and attest a build | `SigstoreSigner`, `SlsaProvenance`, `Attestation.upload` | `supply-chain-attestation` |
 | get an OIDC token from the runner | `OidcTokenIssuer` | `supply-chain-attestation` |
+| publish with a workload credential minted from the runner's identity | `ActionsRegistryCredential.workload` → `PackagePublish.setupAuth` | `release-and-publish` |
 | capture SLSA provenance from the runner's claims | `ActionsProvenance.capture` | `supply-chain-attestation` |
 | serve `oidc`'s identity contract (what `sbom`'s signer needs) from the runner | `ActionsIdentityToken.layer` | `supply-chain-attestation` |
 | test any of the above | `makeTest` / `layerTest` on every service | `testing-actions` |
