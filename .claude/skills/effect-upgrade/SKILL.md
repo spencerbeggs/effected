@@ -40,8 +40,8 @@ Target version: `$ARGUMENTS`. Read `okf/runbooks/advance-the-effect-pin.md` firs
    - Run `pnpm build`, the workspace tests, and `pnpm catalog:check`.
    - A turbo cache hit replays old output, so check `dist/*/issues.json` `generatedAt`.
 6. **Plugin**
-   - Run `node .claude/skills/effect-upgrade/scripts/rederive-anchors.mjs`, then again with `--write` once the dry run shows no `STILL BAD`. Then `node plugin/__test__/helpers/skill-anchors.mjs` must report 0 failures.
-   - Grep the skills for bare `:N` and `File.ts:N` mentions the manifest doesn't cover, and fix those by hand.
+   - Run `node plugin/scripts/rederive-anchors.mjs`. It relocates every manifest anchor by its symbol and prints each `MOVED` line with the text it landed on; read those. It refuses with `MISSING` (the symbol is gone: re-read the source and rewrite the citation and its manifest entry), `AMBIGUOUS` (add an `after` naming the nearest enclosing member line) or `COLLISION`, and then writes nothing. Once the dry run refuses nothing, run it again with `--write`.
+   - Then `node plugin/__test__/helpers/skill-anchors.mjs` must report 0 failures. It covers every skill file, so a citation the manifest lacks, or a bare `:NNN` with no file, fails there rather than needing a hand grep.
    - For each changelog item, grep `plugin/skills` and `plugin/agents`. Re-probe any skill example whose output a changed module produces; JSON Schema output (`effect-v4-schema/references/11-generation-and-tooling.md`) drifts most.
    - Add new modules or namespaces to `effect-v4-module-index`.
    - Skill text states current behaviour only: no version numbers and no "since" history.

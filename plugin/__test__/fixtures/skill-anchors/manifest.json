@@ -1,0 +1,78 @@
+{
+	"$comment": "Fixture manifest for the rederive controls in skill-anchors.bats.",
+	"roots": {
+		"src": "src"
+	},
+	"scope": [
+		"."
+	],
+	"anchors": [
+		{
+			"file": "demo/SKILL.md",
+			"anchor": "Mod.ts:10",
+			"source": "src:Mod.ts",
+			"symbols": {
+				"10": "export const alpha"
+			}
+		},
+		{
+			"file": "demo/SKILL.md",
+			"anchor": "Mod.ts:20",
+			"source": "src:Mod.ts",
+			"symbols": {
+				"20": "export const beta"
+			}
+		},
+		{
+			"file": "demo/SKILL.md",
+			"anchor": "Mod.ts:30",
+			"source": "src:Mod.ts",
+			"symbols": {
+				"30": "export function gamma()"
+			}
+		},
+		{
+			"file": "demo/SKILL.md",
+			"anchor": "Mod.ts:30-36",
+			"source": "src:Mod.ts",
+			"symbols": {
+				"30": "export function gamma()",
+				"36": "^}$"
+			}
+		},
+		{
+			"file": "demo/SKILL.md",
+			"anchor": "Mod.ts:40",
+			"source": "src:Mod.ts",
+			"symbols": {
+				"40": "export const delta"
+			}
+		},
+		{
+			"file": "demo/SKILL.md",
+			"anchor": "Mod.ts:50",
+			"source": "src:Mod.ts",
+			"symbols": {
+				"50": "export const epsilon"
+			}
+		},
+		{
+			"file": "demo/SKILL.md",
+			"anchor": "Mod.ts:60",
+			"source": "src:Mod.ts",
+			"symbols": {
+				"60": "export const layer"
+			}
+		},
+		{
+			"file": "demo/SKILL.md",
+			"anchor": "Mod.ts:84",
+			"source": "src:Mod.ts",
+			"symbols": {
+				"84": "return die(\"not implemented\")"
+			},
+			"after": "fifth() {"
+		}
+	],
+	"ignore": []
+}
