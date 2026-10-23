@@ -125,3 +125,46 @@ describe("ConfigResolver — an unreadable ancestor must not abort root discover
 		}).pipe(Effect.provide(Layer.mergeAll(flakyFs, Path.layer))),
 	);
 });
+
+describe("ConfigResolver.workspaceRoot — which package.json marks a root", () => {
+	/**
+	 * A real root at `/repo` and a candidate at `/repo/pkg`, each holding the
+	 * config file. A candidate wrongly judged a root resolves `/repo/pkg/.apprc`;
+	 * one correctly passed over keeps ascending to `/repo/.apprc`.
+	 */
+	const resolveFrom = (candidateManifest: string) =>
+		ConfigResolver.workspaceRoot({ filename: ".apprc", cwd: "/repo/pkg" }).resolve.pipe(
+			Effect.provide(
+				Layer.mergeAll(
+					MemoryFileSystem.layerWith({
+						"/repo/package.json": `{"workspaces":["pkg"]}`,
+						"/repo/.apprc": "{}",
+						"/repo/pkg/package.json": candidateManifest,
+						"/repo/pkg/.apprc": "{}",
+					}),
+					TestPath,
+				),
+			),
+		);
+
+	for (const [label, manifest] of [
+		["null", "null"],
+		["a string", `"str"`],
+		["a number", "42"],
+		["an array", "[]"],
+		["an object without workspaces", `{"name":"pkg"}`],
+		["invalid JSON", "{ not json"],
+	] as const) {
+		it.effect(`a package.json holding ${label} is not a root, and the walk keeps ascending`, () =>
+			Effect.gen(function* () {
+				assert.deepStrictEqual(yield* resolveFrom(manifest), Option.some("/repo/.apprc"));
+			}),
+		);
+	}
+
+	it.effect("a package.json whose workspaces key is null still marks a root", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* resolveFrom(`{"workspaces":null}`), Option.some("/repo/pkg/.apprc"));
+		}),
+	);
+});

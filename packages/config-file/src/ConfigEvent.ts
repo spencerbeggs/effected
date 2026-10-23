@@ -30,6 +30,13 @@ export const ConfigSourceRef = Schema.Struct({
  * `reason` string, so every field a subscriber might branch on survives; a
  * subscriber that wants prose can read `error.message`.
  *
+ * `error` is typed `unknown` (`Schema.Defect()`) on purpose. `ParseFailed` and
+ * `StringifyFailed` carry whatever the service's codec failed with, and under
+ * a decorated codec that is not always a `ConfigCodecError`: an
+ * `EncryptedCodec` failure arrives as `ConfigEncryptionError`, a migration
+ * failure as `ConfigMigrationError`. Narrow by `_tag` or `instanceof`, never
+ * by assuming the codec error.
+ *
  * @public
  */
 export const ConfigEventPayload = Schema.Union([

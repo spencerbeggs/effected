@@ -10,9 +10,11 @@ dependencies**. `@effected/*` peers do not change that (tier does not propagate,
 R3), but an *external* format parser or crypto library would make it
 **integrated** — hence the codecs wrap `@effected/{jsonc,yaml,toml}` and
 `internal/crypto.ts` is hand-rolled over **WebCrypto**: `globalThis.crypto.subtle`
-for PBKDF2 derivation and AES-GCM, `globalThis.crypto.getRandomValues` for salts
-and nonces. **There is no `node:crypto` import, and adding one is a regression** —
-the platform global keeps the module runtime-agnostic as well as dependency-free.
+for PBKDF2 derivation and AES-GCM, `globalThis.crypto.getRandomValues` for the
+AES-GCM nonces (IVs) only — the PBKDF2 salt is always the caller's. Base64 is
+NOT hand-rolled: it is core's `effect/encoding/Base64`. **There is no
+`node:crypto` import, and adding one is a regression** — the platform global
+keeps the module runtime-agnostic as well as dependency-free.
 
 **Design doc:** `@./okf/modules/config-file.md` — load
 when changing the pipeline seams, the error set, or the codec boundaries.
@@ -66,6 +68,14 @@ Three orthogonal seams, composed by `ConfigFile.layer`:
 - **Codec** — bytes ⇄ document. Error-generic (`ConfigCodec<E>`) so decorators
   *widen* rather than flatten: `EncryptedCodec` and `ConfigMigration.make` each
   wrap a codec and return one, so encryption + migrations + format compose.
+  The loader carries the widening: `ConfigFileOptions`, `ConfigFileTestOptions`,
+  `ConfigReadOptions` and `ConfigMigrationOptions` are generic over the codec
+  error `CE` (inferred, default `ConfigCodecError`), and so are
+  `ConfigFileShape` and every per-method union. **Never type an options
+  `codec` field as the bare `ConfigCodec` again** — that was the defect that
+  kept both decorators out of the loader (TS2322).
+  `__test__/DecoratedCodecComposition.test.ts` pins it, including that a
+  key declared without `CE` rejects a decorated codec.
 - **Resolver** — where the file is. `resolve`'s error channel is `never` **by
   contract**: `absorb` catches every filesystem failure into `Option.none()`, so
   one unreadable tier never aborts the chain. `resolveMatch` is the same lookup
@@ -182,17 +192,35 @@ Read the comments before touching these; each shape is load-bearing.
   `__proto__` / `constructor` / `prototype` are filtered from **both** sides.
   Two values merge only if both are record-like **and share a prototype**, so a
   decoded `Schema.Class` survives a merge as a real instance.
-- **`isWorkspaceRoot`'s `try`/`catch` around `JSON.parse`** (`ConfigResolver.ts`)
-  is load-bearing. A parse throw is a defect, not a failure; `Walker.firstMatch`
+- **`isWorkspaceRoot` decodes with a module-level, never-throwing decoder**
+  (`ConfigResolver.ts`: `decodeUnknownOption(fromJsonString(Struct({ workspaces:
+  Unknown })))`). A parse throw is a defect, not a failure; `Walker.firstMatch`
   (which `findRoot` calls into) absorbs failures with `Effect.catch`, which does
-  **not** catch defects. Without the `try`/`catch`, a malformed `package.json`
-  would leak a defect through a predicate whose error channel is typed
-  `PlatformError.PlatformError`, not `never`. Removing it is a regression, not a
-  simplification.
+  **not** catch defects, so a throwing parse would leak a defect through a
+  predicate typed `PlatformError.PlatformError`. Do not reintroduce
+  `JSON.parse` there. Keep `workspaces` a **required** `Unknown`: an
+  `optionalKey` makes every JSON object a root (mutation-checked).
 - **`internal/crypto.ts`** uses PBKDF2 at **600,000** iterations (OWASP) and
   imports **nothing** from the package — it defines its own `CryptoFailure` union
   so Biome's error-level `noImportCycles` stays satisfied. `EncryptedCodec` lifts
   it into `ConfigEncryptionError`.
+- **The envelope is trimmed before `Base64.decode`.** Core strips only CR and
+  LF, so whitespace around a hand-edited envelope would otherwise fail; inside
+  the envelope, whitespace and missing padding fail with phase `encoding` by
+  design. `__test__/EncryptedCodec.test.ts` pins a frozen envelope fixture
+  (btoa and core's encoder emit identical text, so it pins the format, not
+  the encoder).
+- **Never pass core's `EncodingError` through as the `cause`.** It stores the
+  whole input as `input`, so a plaintext config handed to an encrypted codec
+  would put every secret in it into `ConfigEncryptionError.cause`, the
+  `ParseFailed` event and any inspected or serialized log. `fromBase64`
+  rebuilds it as a plain `Error` carrying only the message; a test asserts
+  the secret appears in neither `inspect` nor `JSON.stringify` of the error.
+- **The IV stays on `globalThis.crypto.getRandomValues`, never core
+  `Crypto.randomBytes` in `R`** — a recorded, security-motivated exception to
+  require-in-R: a swappable random source can repeat a GCM nonce
+  (`Crypto.make`'s doc example zero-fills). `randomIv` is an `Effect.try`
+  mapped to phase `encrypt`, so a runtime without WebCrypto fails typed.
 
 ## The codecs: free-standing exports, never a namespace object
 

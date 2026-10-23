@@ -130,7 +130,7 @@ const upgraded = migratingCodec.parse(`{"version":1,"repo":"https://custom.examp
 
 Steps run in ascending `version` order, and only those newer than the document's current version apply, so re-running is idempotent. As with encryption, the error channel widens — to `ConfigCodecError | ConfigMigrationError` — and `ConfigMigrationError.phase` (`"read-version" | "apply" | "write-version"`) plus its `name` and `version` fields pinpoint the failing step instead of collapsing into a prose string.
 
-> **Composition note.** `EncryptedCodec` and `ConfigMigration.make` each return a `ConfigCodec` and stack — encryption on the outside, migration within — so a migrating, encrypted codec is `EncryptedCodec(ConfigMigration.make({ codec: JsonCodec, migrations }), key)`. Today these decorated codecs are best used directly (`parse`/`stringify`, as above) for reading and writing secret or versioned payloads; see the *Known limitation* at the end of this page before wiring a widened codec straight into `ConfigFile.layer`.
+> **Composition note.** `EncryptedCodec` and `ConfigMigration.make` each return a `ConfigCodec` and stack — encryption on the outside, migration within — so a migrating, encrypted codec is `EncryptedCodec(ConfigMigration.make({ codec: JsonCodec, migrations }), key)`. A decorated codec plugs into `ConfigFile.layer`, `ConfigFile.testLayer` and `ConfigFile.read` directly; see *Decorated codecs in the loader* below.
 
 ## Pattern: bridging into Effect's ConfigProvider
 
@@ -220,9 +220,29 @@ it.effect("loads the highest-priority seeded file", () =>
 
 Two things to remember under `testLayer`: it synthesizes one `staticDir` resolver per seeded file in insertion order, so the first key wins under `firstMatch`; and it has **no** `defaultPath`, so `save` and `update` honestly fail with `ConfigDefaultPathMissingError` — the honest answer, since nothing in a temp directory is a defensible default write target. Exercise the write path against `ConfigFile.layer` with a real `defaultPath` instead. (Assert with `assert.*`, never `expect`; `it.effect` installs a virtual `TestClock`, so any `Effect.sleep` or `timeout` must be advanced explicitly.)
 
-## Known limitation
+## Decorated codecs in the loader
 
-`EncryptedCodec` and `ConfigMigration.make` return codecs whose error channel is *widened* (`ConfigCodec<ConfigCodecError | ConfigEncryptionError>` and `ConfigCodec<ConfigCodecError | ConfigMigrationError>`), but `ConfigFile.layer`'s `codec` option is typed as the narrow `ConfigCodec<ConfigCodecError>`. A widened codec therefore does not currently type-check into the loader, so the decorator patterns above are shown reading and writing directly through the codec. Use them that way for encrypted or versioned payloads until the loader accepts a widened codec.
+`EncryptedCodec` and `ConfigMigration.make` return codecs whose error channel is *widened* — `ConfigCodec<ConfigCodecError | ConfigEncryptionError>` and `ConfigCodec<ConfigCodecError | ConfigMigrationError>`. Every loader options type is generic over that codec error, so the widened codec goes straight in and the error unions widen with it: `ConfigFile.read` with an encrypted codec fails with `ConfigReadError<ConfigCodecError | ConfigEncryptionError>`, and a service's `load` with `ConfigLoadError<…>` of the same codec error.
+
+A `ConfigFile.Service` key is declared before the codec is chosen, so it names the codec error as its third type argument:
+
+```ts
+import type { ConfigCodecError, ConfigEncryptionError } from "@effected/config-file";
+import { ConfigFile, ConfigResolver, MergeStrategy } from "@effected/config-file";
+
+class Secrets extends ConfigFile.Service<Secrets, ReleaseConfig, ConfigCodecError | ConfigEncryptionError>()(
+  "shipit/Secrets",
+) {}
+
+const SecretsLive = ConfigFile.layer(Secrets, {
+  schema: ReleaseConfig,
+  codec: secretsCodec,
+  resolvers: [ConfigResolver.explicitPath(".shipit/secrets.enc")],
+  strategy: MergeStrategy.firstMatch<ReleaseConfig>(),
+});
+```
+
+Leave the third type argument off and the `ConfigFile.layer` call does not compile: that service's methods would fail with a `ConfigEncryptionError` their type never names. Event subscribers see the decorator's failure as-is too — `ParseFailed` and `StringifyFailed` carry a `ConfigEncryptionError` or `ConfigMigrationError` when that is what the codec failed with, so narrow `error` by `_tag`.
 
 ## Learn more
 

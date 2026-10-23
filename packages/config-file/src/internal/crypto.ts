@@ -1,5 +1,6 @@
 /**
- * AES-GCM primitives over WebCrypto.
+ * AES-GCM primitives over WebCrypto, with base64 from core's
+ * `effect/encoding/Base64`.
  *
  * @remarks
  * This module imports nothing from the rest of the package. `EncryptedCodec.ts`
@@ -13,6 +14,7 @@
  * @internal
  */
 import { Effect } from "effect";
+import * as Base64 from "effect/encoding/Base64";
 
 /** AES-GCM's standard IV length, in bytes. @internal */
 export const IV_LENGTH = 12;
@@ -79,44 +81,60 @@ export const deriveKey = (passphrase: string, salt: Uint8Array): Effect.Effect<C
 	});
 
 /**
- * Decode base64 into bytes.
+ * Decode the base64 envelope into bytes.
  *
  * @remarks
- * `atob` is available in all modern environments (Node 20+, Bun, Deno).
+ * Delegates to core's `effect/encoding/Base64` rather than hand-rolling
+ * `atob` and a char-code loop. Core is stricter than `atob`: it strips only
+ * CR and LF, so an embedded space or tab, or missing padding, fails here with
+ * phase `"encoding"`. The text is trimmed first, so whitespace AROUND the
+ * envelope — the realistic residue of a hand edit or an editor's trailing
+ * newline — is still tolerated, and `trim` also drops a leading BOM or NBSP,
+ * which `atob` rejected. `EncryptedCodec` itself always writes padded,
+ * whitespace-free output, so being strict inside the text costs nothing.
+ *
+ * The decoded view is backed by a plain `ArrayBuffer`; callers that hand a
+ * slice of it to WebCrypto get an `ArrayBuffer`-backed view from `slice`.
  *
  * @internal
  */
-export const fromBase64 = (raw: string): Effect.Effect<Uint8Array<ArrayBuffer>, CryptoFailure> =>
-	Effect.try({
-		try: () => {
-			const binary = atob(raw);
-			const buf = new ArrayBuffer(binary.length);
-			const bytes = new Uint8Array(buf);
-			for (let i = 0; i < binary.length; i++) {
-				bytes[i] = binary.charCodeAt(i);
-			}
-			return bytes;
-		},
-		catch: fail("encoding"),
-	});
+export const fromBase64 = (raw: string): Effect.Effect<Uint8Array, CryptoFailure> =>
+	Effect.mapError(Effect.fromResult(Base64.decode(raw.trim())), (error) => fail("encoding")(withoutInput(error)));
+
+/**
+ * Rebuild core's `EncodingError` as a plain `Error` that keeps only its message.
+ *
+ * @remarks
+ * Core's `EncodingError` stores the whole stripped input as `input`, and the
+ * public `ConfigEncryptionError` keeps its cause by identity. Passed through
+ * as is, a PLAINTEXT config handed to an encrypted codec (a file that was
+ * never encrypted, or a resolver pointing at the wrong file) would carry
+ * every secret in it into the typed error, the `ParseFailed` event payload,
+ * and any log that inspects or serializes the error. Core's messages name at
+ * most one offending character, never the input.
+ */
+const withoutInput = (error: { readonly _tag: string; readonly message: string }): Error => {
+	const cause = new Error(error.message);
+	cause.name = error._tag;
+	return cause;
+};
 
 /**
  * Prepend the IV to the ciphertext and base64-encode the envelope.
  *
+ * @remarks
+ * Synchronous and total: encoding bytes to base64 cannot fail, so there is no
+ * error channel to carry.
+ *
  * @internal
  */
-export const toBase64 = (iv: Uint8Array, ciphertext: ArrayBuffer): Effect.Effect<string, CryptoFailure> =>
-	Effect.try({
-		try: () => {
-			const ciphertextBytes = new Uint8Array(ciphertext);
-			const resultBuf = new ArrayBuffer(IV_LENGTH + ciphertextBytes.length);
-			const result = new Uint8Array(resultBuf);
-			result.set(iv, 0);
-			result.set(ciphertextBytes, IV_LENGTH);
-			return btoa(Array.from(result, (b) => String.fromCharCode(b)).join(""));
-		},
-		catch: fail("encoding"),
-	});
+export const toBase64 = (iv: Uint8Array, ciphertext: ArrayBuffer): string => {
+	const ciphertextBytes = new Uint8Array(ciphertext);
+	const result = new Uint8Array(IV_LENGTH + ciphertextBytes.length);
+	result.set(iv, 0);
+	result.set(ciphertextBytes, IV_LENGTH);
+	return Base64.encode(result);
+};
 
 /** Decrypt AES-GCM ciphertext under `iv`. @internal */
 export const decrypt = (
@@ -140,6 +158,26 @@ export const encrypt = (
 		catch: fail("encrypt"),
 	});
 
-/** A fresh cryptographically random 12-byte IV. @internal */
-export const randomIv = (): Uint8Array<ArrayBuffer> =>
-	globalThis.crypto.getRandomValues(new Uint8Array(new ArrayBuffer(IV_LENGTH)));
+/**
+ * A fresh cryptographically random 12-byte IV, drawn from WebCrypto.
+ *
+ * @remarks
+ * Deliberately NOT core's `Crypto.randomBytes` in `R`, which is otherwise the
+ * kit's rule for any contract core declares. The IV is an AES-GCM nonce:
+ * repeating one under the same key destroys GCM's confidentiality and
+ * integrity. A swappable random source makes that a wiring accident away —
+ * `Crypto.make`'s own documentation example returns zero-filled bytes, and a
+ * seeded `TestCrypto` layer that reached production would repeat IVs. The
+ * `ConfigCodec` seam also has no `R` channel to carry the service. This is a
+ * recorded, security-motivated exception, not a precedent for other
+ * randomness.
+ *
+ * A runtime without `globalThis.crypto` fails typed with phase `"encrypt"`,
+ * like the neighbouring WebCrypto steps, rather than escaping as a defect.
+ *
+ * @internal
+ */
+export const randomIv: Effect.Effect<Uint8Array<ArrayBuffer>, CryptoFailure> = Effect.try({
+	try: () => globalThis.crypto.getRandomValues(new Uint8Array(new ArrayBuffer(IV_LENGTH))),
+	catch: fail("encrypt"),
+});

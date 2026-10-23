@@ -187,11 +187,20 @@ Four codecs ship in the package, each a free-standing named export:
 
 One install covers every format, and you still pay only for the parser you name. The codecs are free-standing exports rather than properties of a namespace object, so importing `TomlCodec` never references the YAML or JSONC bindings, their parsing engines are unreachable from your entrypoint and a bundler drops them. A JSON-only application ships no parser at all.
 
-Codecs compose. `EncryptedCodec` wraps any codec with AES-GCM, and `ConfigMigration.make` wraps any codec so parsed content is brought up to the latest version. Each *widens* the error channel rather than flattening its failures into the inner codec's error:
+Codecs compose. `EncryptedCodec` wraps any codec with AES-GCM, and `ConfigMigration.make` wraps any codec so parsed content is brought up to the latest version. Each *widens* the error channel rather than flattening its failures into the inner codec's error, and a decorated codec plugs into `ConfigFile.layer`, `ConfigFile.testLayer` and `ConfigFile.read` like any other: their error unions widen with it. A service key names the widened error as its third type argument:
 
 ```ts
-import { ConfigMigration, EncryptedCodec, EncryptedCodecKey, JsonCodec } from "@effected/config-file";
-import { Effect } from "effect";
+import type { ConfigCodecError, ConfigEncryptionError, ConfigMigrationError } from "@effected/config-file";
+import {
+  ConfigFile,
+  ConfigMigration,
+  ConfigResolver,
+  EncryptedCodec,
+  EncryptedCodecKey,
+  JsonCodec,
+  MergeStrategy,
+} from "@effected/config-file";
+import { Effect, Schema } from "effect";
 
 const migrating = ConfigMigration.make({
   codec: JsonCodec,
@@ -206,7 +215,23 @@ const migrating = ConfigMigration.make({
 
 // `parse` now fails with ConfigCodecError | ConfigMigrationError | ConfigEncryptionError.
 export const secret = EncryptedCodec(migrating, EncryptedCodecKey.fromPassphrase("hunter2", new Uint8Array(16)));
+
+const Settings = Schema.Struct({ port: Schema.Number });
+type SecretError = ConfigCodecError | ConfigMigrationError | ConfigEncryptionError;
+
+class SecretSettings extends ConfigFile.Service<SecretSettings, typeof Settings.Type, SecretError>()(
+  "app/SecretSettings",
+) {}
+
+export const SecretSettingsLive = ConfigFile.layer(SecretSettings, {
+  schema: Settings,
+  codec: secret,
+  resolvers: [ConfigResolver.explicitPath("./settings.enc")],
+  strategy: MergeStrategy.firstMatch(),
+});
 ```
+
+Leave the third type argument off and the `ConfigFile.layer` call is a compile error: that service's methods would fail with a `ConfigEncryptionError` its type never names. The envelope's base64 is decoded by core's `effect/encoding/Base64`, so whitespace around it is tolerated while whitespace inside it, or missing padding, fails with `ConfigEncryptionError` phase `"encoding"`.
 
 ## Features
 
