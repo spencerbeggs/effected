@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { Duration } from "effect";
 import { Doc, Fmt, Render } from "../src/index.js";
 
 describe("Fmt.duration", () => {
@@ -38,6 +39,28 @@ describe("Fmt.duration", () => {
 
 	it("a fractional millisecond that rounds to 1000 is a second, not 1000ms", () => {
 		assert.strictEqual(Fmt.duration(999.6), "1s");
+	});
+
+	it("a number is milliseconds used as given, never rounded through a Duration's nanoseconds", () => {
+		// Duration rounds 999.4999999ms to 999_499_999.9 → 999_500_000ns, which would round up to "1s".
+		assert.strictEqual(Fmt.duration(999.4999999), "999ms");
+		assert.strictEqual(Fmt.duration(59_949.4999999), "59.9s");
+	});
+
+	it("accepts any Duration.Input", () => {
+		assert.strictEqual(Fmt.duration(Duration.seconds(63)), "1m 3s");
+		assert.strictEqual(Fmt.duration(Duration.millis(250)), "250ms");
+		assert.strictEqual(Fmt.duration("2 seconds"), "2s");
+		assert.strictEqual(Fmt.duration({ minutes: 1, seconds: 3 }), "1m 3s");
+		assert.strictEqual(Fmt.duration([1, 500_000_000]), "1.5s");
+		assert.strictEqual(Fmt.duration(1_500_000_000n), "1.5s"); // a bigint is nanoseconds
+	});
+
+	it("an infinite, negative or invalid Duration.Input is 0ms and never throws", () => {
+		assert.strictEqual(Fmt.duration(Duration.infinity), "0ms");
+		assert.strictEqual(Fmt.duration("-5 seconds"), "0ms");
+		assert.strictEqual(Fmt.duration({ seconds: -3 }), "0ms");
+		assert.strictEqual(Fmt.duration("bogus" as unknown as Duration.Input), "0ms");
 	});
 });
 
