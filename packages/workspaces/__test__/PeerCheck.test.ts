@@ -359,6 +359,37 @@ describe("PeerCheck.run", () => {
 		}),
 	);
 
+	it.effect("judges a peer range written with operator whitespace (`>= 18`) instead of skipping it", () =>
+		Effect.gen(function* () {
+			// `engines`-style spacing is common in real metadata. Before the semver
+			// grammar accepted whitespace after an operator, `>= 18` failed to
+			// parse and the row was silently treated as satisfied.
+			const lock = (wanted: string, found: string) =>
+				JSON.stringify({
+					name: "root",
+					version: "1.0.0",
+					lockfileVersion: 3,
+					requires: true,
+					packages: {
+						"": { name: "root", version: "1.0.0", workspaces: ["packages/*"] },
+						"node_modules/@x/lib": { resolved: "packages/lib", link: true },
+						"node_modules/node-ish": { version: found },
+						"packages/lib": { name: "@x/lib", version: "1.0.0", peerDependencies: { "node-ish": wanted } },
+					},
+				});
+			const unmet = PeerCheck.run(yield* Lockfile.parse(lock(">= 18", "16.0.0"), { format: "npm" }));
+			const row = unmet.required.find((r) => r.importer === "packages/lib" && r.dependency === "node-ish");
+			assert.isDefined(row, "a `>= 18` peer against 16.0.0 must be reported unsatisfied");
+			assert.strictEqual(row?.wanted, ">= 18");
+			assert.strictEqual(row?.found, "16.0.0");
+
+			// Control: the same spaced range against a satisfying version is clean,
+			// so the row above is about the version, not about the spelling.
+			const met = PeerCheck.run(yield* Lockfile.parse(lock(">= 18", "18.1.0"), { format: "npm" }));
+			assert.isUndefined(met.required.find((r) => r.dependency === "node-ish"));
+		}),
+	);
+
 	it.effect("cannot answer for yarn, and says so rather than returning an empty pass", () =>
 		Effect.gen(function* () {
 			// yarn resolves peers virtually and records no peer edges, so a bare

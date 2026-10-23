@@ -29,6 +29,7 @@ import nodePath, { join } from "node:path";
 import { afterAll, afterEach, assert, beforeAll, describe, it, vi } from "@effect/vitest";
 import type { MemoryFileSystemHandle } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
+import { PackageJsonSyntaxError } from "@effected/package-json";
 import { Effect, Layer } from "effect";
 import type { SyncFileSystem, WorkspacePackage, WorkspacesSyncOptions } from "../src/index.js";
 import {
@@ -662,12 +663,16 @@ describe("getWorkspacePackagesSync — version-less manifests and skip reporting
 			// a skip and a consumer reading a failure read one vocabulary.
 			assert.strictEqual(messageAt("/repo/packages/bad-version/package.json"), "version must be a string, got number");
 			assert.strictEqual(messageAt("/repo/packages/empty/package.json"), "version must be a non-empty string");
-			assert.strictEqual(messageAt("/repo/packages/scalar/package.json"), "package.json is not a JSON object");
+			assert.strictEqual(messageAt("/repo/packages/scalar/package.json"), "package.json text is not a JSON object");
 			// `missingName` is the one kind with nothing to attach — the field is
 			// simply absent, and there is no originating throwable.
 			assert.strictEqual(causes.get("/repo/packages/nameless/package.json"), undefined);
-			// Discriminating control: `invalidJson` carries the thrown SyntaxError.
-			assert.instanceOf(causes.get("/repo/packages/broken/package.json"), SyntaxError);
+			// Discriminating control: `invalidJson` carries the PackageJsonSyntaxError
+			// wrapping the thrown SyntaxError, whose position rides on its message.
+			const broken = causes.get("/repo/packages/broken/package.json");
+			assert.instanceOf(broken, PackageJsonSyntaxError);
+			assert.strictEqual((broken as PackageJsonSyntaxError).reason, "invalid-json");
+			assert.instanceOf((broken as PackageJsonSyntaxError).cause, SyntaxError);
 		}),
 	);
 

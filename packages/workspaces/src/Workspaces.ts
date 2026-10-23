@@ -49,7 +49,8 @@ export interface WorkspacesOptions extends WorkspaceDiscoveryOptions, LockfileRe
 	 * The directory every root-consuming service resolves the workspace root
 	 * from — one explicit concern, applied uniformly.
 	 *
-	 * @defaultValue `process.cwd()`, read lazily on first use.
+	 * @defaultValue `"."`, resolved through the injected core `Path` on
+	 * first use — the working directory on a host that exposes `process`.
 	 */
 	readonly cwd?: string;
 	/**
@@ -250,11 +251,11 @@ const localExecLayer = (options?: {
 			const detector = yield* PackageManagerDetector;
 
 			const context = Effect.gen(function* () {
-				// `Effect.suspend` inside `find` is not enough — the ambient read has
-				// to happen per call, not at layer construction, so a `process.chdir`
-				// between provide and first use is honoured. The house `{ cwd }`
-				// convention, applied here too.
-				const cwd = options?.cwd ?? globalThis.process?.cwd?.() ?? "/";
+				// An omitted cwd is `"."`, resolved by `find` through the injected
+				// core `Path` per call — never at layer construction — so a
+				// `process.chdir` between provide and first use is honoured, and
+				// this layer reads no `process` itself.
+				const cwd = options?.cwd ?? ".";
 				const stopAt = options?.stopAt;
 
 				// A ceiling that finds no root is the ordinary None case, like any
@@ -526,6 +527,13 @@ export class Workspaces {
 	 * ceiling with no root at or below it is the same `Option.none()` as no
 	 * root at all.
 	 *
+	 * An omitted `cwd` is `"."`, which `WorkspaceRoot.find` resolves through
+	 * the injected core `Path` on every call — this layer reads no `process`
+	 * itself. Core's `Path.resolve` takes the working directory from
+	 * `process.cwd()`, so the default needs a host that exposes `process`. On
+	 * a host without one, an omitted `cwd` is a defect (core `Path.resolve`
+	 * throws), not a typed failure, so pass `cwd` explicitly there.
+	 *
 	 * A consumer with no monorepo never needs this layer, and therefore never
 	 * installs this package — `LocalExec.layerNone` and `LocalExec.layerFor`
 	 * are one-liners in `@effected/commands`.
@@ -564,7 +572,8 @@ export class Workspaces {
 	 * @remarks
 	 * Composes `manifest.resolve()` with a fresh {@link Workspaces.resolverLayer}
 	 * per call, so the workspace root is re-discovered from `options.cwd` (or
-	 * the current `process.cwd()`) on every invocation. Consumers processing
+	 * `"."`, the current working directory resolved through `Path`) on every
+	 * invocation. Consumers processing
 	 * many manifests should check `manifest.needsResolution` first and skip
 	 * the call entirely when no dependency field carries a
 	 * `catalog:`/`workspace:` specifier — that predicate is pure and avoids
@@ -599,7 +608,8 @@ export class Workspaces {
 	 * This is deliberately a **parameterized layer function, and the fresh
 	 * layer per call is the feature**: layers memoize by reference, so each
 	 * call mints an unmemoized layer whose root discovery re-runs — including
-	 * a per-call `process.cwd()` read when `options.cwd` is omitted. A build
+	 * a per-call resolution of `"."` through `Path` when `options.cwd` is
+	 * omitted. A build
 	 * tool that changes directory between manifests gets a correct
 	 * re-discovery each time precisely because nothing is shared across
 	 * calls. When you *want* sharing, bind one call's result to a `const` and

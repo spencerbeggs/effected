@@ -160,9 +160,13 @@ export interface PackageJsonFileShape {
 	 * which is what keeps a one-field change reviewable in someone else's
 	 * repository. Succeeds with the file's final text.
 	 *
-	 * Invalid JSON at `path` fails as `PackageJsonParseError` — the same tag
-	 * `read` uses for it — and an unnavigable edit path as
-	 * `PackageJsonModifyError`.
+	 * Invalid JSON at `path` (or JSON that is not an object) fails as
+	 * `PackageJsonParseError` — the same tag `read` uses for it. An edit that
+	 * cannot be applied fails as `PackageJsonModifyError`, whether its path
+	 * cannot be navigated or its value cannot be serialized (a `bigint`, a
+	 * circular structure, a function or symbol); the `@effected/jsonc` error
+	 * that says which is preserved on its `cause`. Nothing is written when an
+	 * edit fails.
 	 */
 	readonly modify: (
 		path: string,

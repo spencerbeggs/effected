@@ -5,8 +5,9 @@
 // absorption is load-bearing — one unreadable ancestor must not hide a valid
 // root above it.
 
+import { PackageJsonFormat } from "@effected/package-json";
 import { Walker } from "@effected/walker";
-import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
 
 /**
  * The marker filenames {@link WorkspaceRoot} probes for, in priority order.
@@ -112,15 +113,12 @@ const isWorkspaceRoot = (dir: string): Effect.Effect<boolean, never, FileSystem.
 		if (!hasManifest) return false;
 
 		const content = yield* fs.readFileString(packageJson).pipe(Effect.orElseSucceed(() => "{}"));
-		// JSON.parse throws; inside a `never`-channelled effect that would be a
-		// defect, so it is wrapped at the point it can throw rather than trusted
-		// to a catch further out.
-		const parsed = yield* Effect.try({
-			try: () => JSON.parse(content) as Record<string, unknown>,
-			catch: () => undefined,
-		}).pipe(Effect.orElseSucceed(() => ({}) as Record<string, unknown>));
-
-		return parsed.workspaces !== undefined && parsed.workspaces !== null;
+		// Unparseable text and valid JSON that is not an object (`null`, an
+		// array, a scalar) both mean "not a root". A bare `JSON.parse` lets
+		// `null` through, and reading `.workspaces` off it would throw a
+		// TypeError — a defect inside this never-failing effect.
+		const parsed = PackageJsonFormat.parseObjectResult(content);
+		return Result.isSuccess(parsed) && parsed.success.workspaces !== undefined && parsed.success.workspaces !== null;
 	});
 
 /**
@@ -274,7 +272,9 @@ export class WorkspaceRoot extends Context.Service<WorkspaceRoot, WorkspaceRootS
 					options?.stopAt !== undefined && !isAtOrBelow(root, path.resolve(options.stopAt))
 						? Effect.fail(
 								new WorkspaceRootNotFoundError({
-									searchPath: cwd,
+									// Resolved like the live service's `start`: the layer-bound
+									// readers pass `"."` for an omitted cwd.
+									searchPath: path.resolve(cwd),
 									markers: WORKSPACE_MARKERS,
 									stopAt: options.stopAt,
 								}),

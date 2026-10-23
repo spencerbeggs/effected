@@ -9,7 +9,8 @@
 
 import type { Lockfile, LockfileFramingError, LockfileParseError, ResolvedPackage } from "@effected/lockfiles";
 import { LockfileFormat, LockfileIntegrity, Lockfile as LockfileModel, filenameFor } from "@effected/lockfiles";
-import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { PackageJsonFormat } from "@effected/package-json";
+import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
 import { findLayerRoot } from "./internal/layerRoot.js";
 import type { PackageManagerDetectionFailure } from "./PackageManagerName.js";
 import { PackageManagerDetector } from "./PackageManagerName.js";
@@ -100,7 +101,8 @@ export interface LockfileReaderOptions {
 	/**
 	 * The directory the workspace root is resolved from.
 	 *
-	 * @defaultValue `process.cwd()`, read lazily on first use.
+	 * @defaultValue `"."`, resolved through the injected core `Path` on each
+	 *   use (the working directory on a host that exposes `process`).
 	 */
 	readonly cwd?: string;
 	/**
@@ -232,16 +234,13 @@ export class LockfileReader extends Context.Service<LockfileReader, LockfileRead
 				Effect.gen(function* () {
 					const content = yield* fs.readFileString(manifestPath).pipe(Effect.orElseSucceed(() => ""));
 					if (content === "") return Option.none<string>();
-					// `JSON.parse` returns `undefined` for nothing: a manifest of `null`
-					// parses to `null`, and reading `.name` off it would throw a TypeError
-					// as an unhandled DEFECT. Narrow to a plain object before touching it.
-					const parsed = yield* Effect.try({
-						try: () => JSON.parse(content) as unknown,
-						catch: () => undefined,
-					}).pipe(Effect.orElseSucceed(() => undefined as unknown));
-					if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return Option.none<string>();
-					const name = (parsed as Record<string, unknown>).name;
-					return typeof name === "string" && name.length > 0 ? Option.some(name) : Option.none<string>();
+					// Unparseable text and valid non-object JSON (`null`, an array, a
+					// scalar) are both a miss: reading `.name` off `null` would throw a
+					// TypeError as an unhandled defect.
+					return Option.flatMap(Result.getSuccess(PackageJsonFormat.parseObjectResult(content)), (parsed) => {
+						const name = parsed.name;
+						return typeof name === "string" && name.length > 0 ? Option.some(name) : Option.none<string>();
+					});
 				});
 
 			const [resolveOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(init, Duration.infinity);

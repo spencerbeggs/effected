@@ -21,9 +21,10 @@ package roster. Load the concept a task needs:
   between `Package`, `PackageManifest`, `LenientManifest`, npm's `Manifest`
   and the text path, or adding a tier.
 - `okf/interfaces/package-json-text.md` — Load when: working on the decode-free
-  text path — `PackageJsonFormat`'s canonical key order, `PackageIndent` /
-  `"preserve"`, the surgical `modify` mutator, or re-baselining the
-  `sort-package-json` fixtures.
+  text path — `PackageJsonFormat.parseObjectResult` (the text-to-object
+  parse other packages read package.json through), the canonical key order,
+  `PackageIndent` / `"preserve"`, the surgical `modify` mutators and their
+  `*Result` twins, or re-baselining the `sort-package-json` fixtures.
 - `okf/interfaces/package-json-entry-point.md` — Load when: touching
   `resolveEntryPoint`, its condition policy, or the `exports`-encapsulation
   rule.

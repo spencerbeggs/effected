@@ -14,9 +14,10 @@
 //   @effected/npm Manifest — shape-blind outside the four dependency fields.
 //   PackageJsonFormat — decode-free text path.
 
-import { Cause, Effect, Exit, Result, Schema } from "effect";
+import { Cause, Effect, Exit, Predicate, Result, Schema } from "effect";
 import { ExportsField, PackageDecodeError, PublishConfigField } from "./Package.js";
-import { PackageJsonSyntaxError } from "./PackageJsonFormat.js";
+import type { PackageJsonSyntaxError } from "./PackageJsonFormat.js";
+import { PackageJsonFormat } from "./PackageJsonFormat.js";
 
 // ── Issue reporting ─────────────────────────────────────────────────────────
 
@@ -56,13 +57,11 @@ const StringOrRecord = Schema.Union([Schema.String, UnknownRecord]);
 
 const isString = (value: unknown): value is string => typeof value === "string";
 const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
-const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 const isStringRecord = (value: unknown): value is Record<string, string> =>
-	isPlainRecord(value) && Object.values(value).every(isString);
+	Predicate.isObject(value) && Object.values(value).every(isString);
 const isStringArray = (value: unknown): value is ReadonlyArray<string> => Array.isArray(value) && value.every(isString);
 const isStringOrRecord = (value: unknown): value is string | Record<string, unknown> =>
-	isString(value) || isPlainRecord(value);
+	isString(value) || Predicate.isObject(value);
 const isStringOrRecordArray = (value: unknown): value is ReadonlyArray<string | Record<string, unknown>> =>
 	Array.isArray(value) && value.every(isStringOrRecord);
 
@@ -74,7 +73,7 @@ interface FieldGuard {
 const stringGuard: FieldGuard = { expected: "a string", test: isString };
 const stringRecordGuard: FieldGuard = { expected: "an object of string values", test: isStringRecord };
 const stringOrRecordGuard: FieldGuard = { expected: "a string or an object", test: isStringOrRecord };
-const recordGuard: FieldGuard = { expected: "an object", test: isPlainRecord };
+const recordGuard: FieldGuard = { expected: "an object", test: Predicate.isObject };
 
 // A Map, not a plain object: a manifest key like `"toString"` or
 // `"constructor"` must miss, not hit `Object.prototype`.
@@ -274,16 +273,7 @@ export class LenientManifest extends Schema.Class<LenientManifest>("LenientManif
 	 * never per-syntax
 	 */
 	static parseResult(text: string): Result.Result<LenientManifest, PackageJsonSyntaxError> {
-		let raw: unknown;
-		try {
-			raw = JSON.parse(text) as unknown;
-		} catch (cause) {
-			return Result.fail(new PackageJsonSyntaxError({ reason: "invalid-json", cause }));
-		}
-		if (!isPlainRecord(raw)) {
-			return Result.fail(new PackageJsonSyntaxError({ reason: "not-an-object" }));
-		}
-		return Result.succeed(sift(raw));
+		return Result.map(PackageJsonFormat.parseObjectResult(text), sift);
 	}
 
 	/**

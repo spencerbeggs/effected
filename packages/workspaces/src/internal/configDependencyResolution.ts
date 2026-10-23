@@ -31,7 +31,7 @@ import { PnpmEnvLockfile } from "@effected/lockfiles";
 import type { CatalogAssemblyError } from "@effected/npm";
 import { PackageManagerCache } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
-import { Array as Arr, Duration, Effect, Exit, Option, Predicate, Result } from "effect";
+import { Array as Arr, Config, Duration, Effect, Exit, Option, Predicate, Result } from "effect";
 import type { HookReplayContext, HookReplaySource } from "../ConfigDependencyHooks.js";
 import type { FetchConfigDependency, FetchFailure, RecordedLocks } from "./configDependencyFetch.js";
 import type { ManifestVersion } from "./configDependencyShared.js";
@@ -175,6 +175,47 @@ const storesFromLinks = (root: string): Effect.Effect<ReadonlyArray<string>, Cat
 	});
 
 /**
+ * An environment variable through `Config`, as an `Option`. Unset and empty
+ * are both none: core's env provider already maps `""` to missing, and the
+ * explicit filter keeps that true under any provider (`if (env.X)` treated
+ * `""` as unset, and `join("", "store")` would be a cwd-relative path). A
+ * provider failure is absorbed too — store discovery is best-effort.
+ */
+const envVar = (name: string): Effect.Effect<Option.Option<string>> =>
+	Config.option(Config.String(name)).pipe(
+		Effect.map(Option.filter((value) => value !== "")),
+		Effect.orElseSucceed(() => Option.none<string>()),
+	);
+
+/**
+ * The conventional store ROOTS rung 3 searches, in order — before any of them
+ * is expanded to its `v*` subdirectories. The environment is read through
+ * `Config`, so a test swaps `ConfigProvider` instead of mutating
+ * `process.env`; the platform and home directory stay ambient (this module is
+ * Node-coupled by design, see the header).
+ *
+ * @internal
+ */
+export const environmentStoreRoots: Effect.Effect<ReadonlyArray<string>> = Effect.gen(function* () {
+	const pnpmHome = yield* envVar("PNPM_HOME");
+	const xdgDataHome = yield* envVar("XDG_DATA_HOME");
+	const localAppData = yield* envVar("LOCALAPPDATA");
+	const platform = process.platform;
+	const roots: Array<string> = [];
+	if (Option.isSome(pnpmHome)) roots.push(join(pnpmHome.value, "store"));
+	if (Option.isSome(xdgDataHome)) roots.push(join(xdgDataHome.value, "pnpm", "store"));
+	if (platform === "win32" && Option.isSome(localAppData)) roots.push(join(localAppData.value, "pnpm", "store"));
+	const home = homedir();
+	roots.push(PackageManagerCache.defaultDirectory("pnpm", { platform, home }));
+	// The XDG path is also searched off-platform: a pnpm installed through its
+	// standalone script sets `PNPM_HOME` to `~/.local/share/pnpm` on macOS too,
+	// and a shell that did not export it (CI, a login-less runner) would
+	// otherwise miss a store that is really there.
+	if (platform !== "win32") roots.push(join(home, ".local", "share", "pnpm", "store"));
+	return roots;
+});
+
+/**
  * Rung 3 of store discovery: the conventional store roots — `$PNPM_HOME/store`,
  * `$XDG_DATA_HOME/pnpm/store`, `%LOCALAPPDATA%\pnpm\store` on Windows, then
  * the platform default from `@effected/npm`'s cache table — each expanded to
@@ -183,19 +224,7 @@ const storesFromLinks = (root: string): Effect.Effect<ReadonlyArray<string>, Cat
  */
 const storesFromEnvironment = (root: string): Effect.Effect<ReadonlyArray<string>, CatalogAssemblyError> =>
 	Effect.gen(function* () {
-		const env = process.env;
-		const platform = process.platform;
-		const roots: Array<string> = [];
-		if (env.PNPM_HOME) roots.push(join(env.PNPM_HOME, "store"));
-		if (env.XDG_DATA_HOME) roots.push(join(env.XDG_DATA_HOME, "pnpm", "store"));
-		if (platform === "win32" && env.LOCALAPPDATA) roots.push(join(env.LOCALAPPDATA, "pnpm", "store"));
-		const home = homedir();
-		roots.push(PackageManagerCache.defaultDirectory("pnpm", { platform, home }));
-		// The XDG path is also searched off-platform: a pnpm installed through its
-		// standalone script sets `PNPM_HOME` to `~/.local/share/pnpm` on macOS too,
-		// and a shell that did not export it (CI, a login-less runner) would
-		// otherwise miss a store that is really there.
-		if (platform !== "win32") roots.push(join(home, ".local", "share", "pnpm", "store"));
+		const roots = yield* environmentStoreRoots;
 		const stores: Array<string> = [];
 		for (const storeRoot of roots) {
 			// NEWEST store format first — and numerically, not lexically: a plain

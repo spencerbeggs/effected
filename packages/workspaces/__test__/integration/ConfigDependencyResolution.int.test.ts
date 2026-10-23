@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { CatalogAssemblyError } from "@effected/npm";
-import { Effect, Layer, Option } from "effect";
+import { ConfigProvider, Effect, Layer, Option } from "effect";
 import { ConfigDependencyHooks, WorkspaceCatalogs, Workspaces } from "../../src/index.js";
 import type { Tree } from "../fixtures.js";
 import { manifest, platform } from "../fixtures.js";
@@ -67,6 +67,19 @@ let bareRoot: string;
 let envHome: string;
 /** A root whose `.modules.yaml` names `store` through a SYMLINK spelling, beside a `.pnpm-config` symlink that realpaths into it. */
 let aliasRoot: string;
+
+/**
+ * Run `effect` with `$PNPM_HOME` set to the fake home — through the
+ * `ConfigProvider` the store discovery reads, never by mutating `process.env`
+ * (the default provider snapshots the environment once, so a mutation after
+ * that is invisible, and it would leak into neighbouring tests besides).
+ */
+const withPnpmHome = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+	Effect.provide(effect, ConfigProvider.layer(ConfigProvider.fromEnv({ env: { PNPM_HOME: envHome } })));
+
+/** Run `effect` with no `$PNPM_HOME` at all, whatever the developer's shell exports. */
+const withoutPnpmHome = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+	Effect.provide(effect, ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })));
 
 const Spawner = NodeChildProcessSpawner.layer.pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)));
 const HooksSubprocess = ConfigDependencyHooks.layerSubprocess.pipe(Layer.provide(Spawner));
@@ -369,57 +382,36 @@ const ladderCases = (label: string, hooksLayer: Layer.Layer<ConfigDependencyHook
 		it.effect("a version held by two distinct stores resolves from the FIRST in discovery order", () =>
 			Effect.gen(function* () {
 				const hooks = yield* ConfigDependencyHooks;
-				const previous = process.env.PNPM_HOME;
-				process.env.PNPM_HOME = envHome;
-				try {
-					// `root` names `store` in .modules.yaml (rung 1); $PNPM_HOME adds a
-					// second store (rung 3) that also holds TWO_STORES@1.0.0. Not
-					// ambiguous — the workspace's own store wins, and its pnpmfile ran.
-					const result = yield* hooks.inject(root, { [TWO_STORES]: "1.0.0" }, SEED);
-					assert.strictEqual(hooked(result), "^3.0.0");
-				} finally {
-					if (previous === undefined) delete process.env.PNPM_HOME;
-					else process.env.PNPM_HOME = previous;
-				}
+				// `root` names `store` in .modules.yaml (rung 1); $PNPM_HOME adds a
+				// second store (rung 3) that also holds TWO_STORES@1.0.0. Not
+				// ambiguous — the workspace's own store wins, and its pnpmfile ran.
+				const result = yield* withPnpmHome(hooks.inject(root, { [TWO_STORES]: "1.0.0" }, SEED));
+				assert.strictEqual(hooked(result), "^3.0.0");
 			}).pipe(Effect.provide(hooksLayer)),
 		);
 
 		it.effect("store formats are consulted NEWEST first, numerically — v11 beats v10 beats v9", () =>
 			Effect.gen(function* () {
 				const hooks = yield* ConfigDependencyHooks;
-				const previous = process.env.PNPM_HOME;
-				process.env.PNPM_HOME = envHome;
-				try {
-					// A lexical sort would put v10 first (and v9 last); the newest
-					// format must answer, or a pnpm upgrade that left the old store
-					// behind replays the stale copy.
-					const result = yield* hooks.inject(bareRoot, { [FORMATS]: "1.0.0" }, SEED);
-					assert.strictEqual(hooked(result), "^11.0.0");
-				} finally {
-					if (previous === undefined) delete process.env.PNPM_HOME;
-					else process.env.PNPM_HOME = previous;
-				}
+				// A lexical sort would put v10 first (and v9 last); the newest
+				// format must answer, or a pnpm upgrade that left the old store
+				// behind replays the stale copy.
+				const result = yield* withPnpmHome(hooks.inject(bareRoot, { [FORMATS]: "1.0.0" }, SEED));
+				assert.strictEqual(hooked(result), "^11.0.0");
 			}).pipe(Effect.provide(hooksLayer)),
 		);
 
 		it.effect("rung 3: a store named only by $PNPM_HOME is found when .modules.yaml and .pnpm-config say nothing", () =>
 			Effect.gen(function* () {
 				const hooks = yield* ConfigDependencyHooks;
-				const previous = process.env.PNPM_HOME;
-				process.env.PNPM_HOME = envHome;
-				try {
-					// bareRoot has no node_modules at all, so rungs 1 and 2 contribute
-					// no store; only the environment rung can answer.
-					const result = yield* hooks.inject(bareRoot, { [ENV_ONLY]: "1.0.0" }, SEED);
-					assert.strictEqual(hooked(result), "^8.0.0");
-					assert.deepStrictEqual(result.replays, { [ENV_ONLY]: { version: "1.0.0", source: "store" } });
-				} finally {
-					if (previous === undefined) delete process.env.PNPM_HOME;
-					else process.env.PNPM_HOME = previous;
-				}
+				// bareRoot has no node_modules at all, so rungs 1 and 2 contribute
+				// no store; only the environment rung can answer.
+				const result = yield* withPnpmHome(hooks.inject(bareRoot, { [ENV_ONLY]: "1.0.0" }, SEED));
+				assert.strictEqual(hooked(result), "^8.0.0");
+				assert.deepStrictEqual(result.replays, { [ENV_ONLY]: { version: "1.0.0", source: "store" } });
 				// The control: without the variable the same declaration fails closed
 				// and the message shows the env store was NOT among those searched.
-				const error = yield* Effect.flip(hooks.inject(bareRoot, { [ENV_ONLY]: "1.0.0" }, SEED));
+				const error = yield* Effect.flip(withoutPnpmHome(hooks.inject(bareRoot, { [ENV_ONLY]: "1.0.0" }, SEED)));
 				assert.instanceOf(error, CatalogAssemblyError);
 				assert.notInclude((error.cause as Error).message, envHome);
 			}).pipe(Effect.provide(hooksLayer)),

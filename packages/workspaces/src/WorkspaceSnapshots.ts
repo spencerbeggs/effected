@@ -17,10 +17,12 @@ import { Git } from "@effected/git";
 import { GlobSet } from "@effected/glob";
 import { Lockfile as LockfileModel, filenameFor } from "@effected/lockfiles";
 import { CatalogAssemblyError } from "@effected/npm";
+import { PackageJsonFormat } from "@effected/package-json";
 import { Yaml } from "@effected/yaml";
-import { Context, Duration, Effect, Exit, Layer, Option } from "effect";
+import { Context, Duration, Effect, Exit, Layer, Option, Predicate, Result } from "effect";
 import type { HookReplay } from "./ConfigDependencyHooks.js";
 import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
+import { isStringRecord } from "./internal/guards.js";
 import { importerVersionsOf } from "./internal/importerVersions.js";
 import { findLayerRoot } from "./internal/layerRoot.js";
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
@@ -75,9 +77,10 @@ export interface WorkspaceSnapshotsOptions {
 	/**
 	 * The directory `at(ref)` resolves the workspace root from.
 	 *
-	 * @defaultValue `process.cwd()`, read lazily on first use inside
-	 *   `Effect.suspend`, so a `process.chdir` between providing the layer and the
-	 *   first call is honoured.
+	 * @defaultValue `"."`, resolved through the injected core `Path` on each
+	 *   use, so a `process.chdir` between providing the layer and the first call
+	 *   is honoured. `Path.resolve` reads `process.cwd()`, so the default needs
+	 *   a host that exposes `process`.
 	 */
 	readonly cwd?: string;
 	/**
@@ -160,27 +163,13 @@ const hookVersionsOf = (replays: Readonly<Record<string, HookReplay>>): Record<s
 	return versions;
 };
 
-/** Whether `value` is a non-null, non-array object. */
-const isObject = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
-/** Whether every value in a record is a string — a usable dependency map. */
-const isStringRecord = (value: unknown): value is Record<string, string> =>
-	isObject(value) && Object.values(value).every((entry) => typeof entry === "string");
-
 /**
  * Parse JSON tolerantly into a plain object. At-ref content is not ours to fix:
  * a corrupt or non-object manifest degrades to `{}` rather than failing the
  * whole snapshot, matching the tolerant projection discovery already uses.
  */
-const parseJsonObject = (text: string): Record<string, unknown> => {
-	try {
-		const parsed = JSON.parse(text) as unknown;
-		return isObject(parsed) ? parsed : {};
-	} catch {
-		return {};
-	}
-};
+const parseJsonObject = (text: string): Record<string, unknown> =>
+	Result.getOrElse(PackageJsonFormat.parseObjectResult(text), () => ({}));
 
 /**
  * Project one `package.json` text (as read at a ref) into a
@@ -218,7 +207,7 @@ const snapshotOf = (content: Option.Option<string>, relativePath: string): Optio
  */
 const bunInlineCatalogs = (manifest: Record<string, unknown>): CatalogSet => {
 	const workspaces = manifest.workspaces;
-	if (!isObject(workspaces)) return CatalogSet.empty();
+	if (!Predicate.isObject(workspaces)) return CatalogSet.empty();
 	return CatalogSet.fromBunBlocks({ catalog: workspaces.catalog, catalogs: workspaces.catalogs });
 };
 
@@ -474,7 +463,8 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 			const atCaches = new Map<string, Effect.Effect<WorkspaceStateSnapshot, WorkspaceSnapshotAtFailure>>();
 
 			const at = Effect.fn("WorkspaceSnapshots.at")(function* (ref: string) {
-				// The ambient cwd is read at call time, not layer build (`findLayerRoot` suspends).
+				// An omitted cwd is ".", which the live WorkspaceRoot.find resolves
+				// through Path when it runs: at call time, not at layer build.
 				const root = yield* findLayerRoot(roots, options);
 				// NUL-separated — a NUL can occur in neither a path nor a ref, so keys
 				// cannot collide. Kept as the `\0` escape deliberately: a literal NUL

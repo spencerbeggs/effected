@@ -6,8 +6,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result } from "effect";
 import { Package } from "../src/Package.js";
-import type { PackageJsonSyntaxError } from "../src/PackageJsonFormat.js";
-import { PackageJsonFormat } from "../src/PackageJsonFormat.js";
+import { PackageJsonFormat, PackageJsonSyntaxError } from "../src/PackageJsonFormat.js";
 
 const format = (source: string, options?: Parameters<typeof PackageJsonFormat.formatToString>[1]): string => {
 	const result = PackageJsonFormat.formatToString(source, options);
@@ -216,7 +215,19 @@ describe("PackageJsonFormat.formatToString syntactic failures", () => {
 		assert.strictEqual(error._tag, "PackageJsonSyntaxError");
 		assert.strictEqual(error.reason, "invalid-json");
 		assert.isDefined(error.cause);
-		assert.strictEqual(error.message, "package.json text is not valid JSON");
+		// The SyntaxError's own text — with the JSON position — rides on the
+		// message, so callers that splice it into their own keep it.
+		assert.isTrue(error.message.startsWith("package.json text is not valid JSON: "), error.message);
+		assert.include(error.message, (error.cause as SyntaxError).message);
+	});
+
+	it("keeps the bare message when the invalid-json cause carries no text", () => {
+		const bare = new PackageJsonSyntaxError({ reason: "invalid-json" });
+		assert.strictEqual(bare.message, "package.json text is not valid JSON");
+		assert.strictEqual(
+			new PackageJsonSyntaxError({ reason: "not-an-object" }).message,
+			"package.json text is not a JSON object",
+		);
 	});
 
 	it("fails not-an-object on a JSON array, scalar or null", () => {
@@ -231,4 +242,63 @@ describe("PackageJsonFormat.formatToString syntactic failures", () => {
 			Effect.runSync(Effect.fromResult(PackageJsonFormat.formatToString('{"name": "p"}'))),
 			'{\n  "name": "p"\n}\n',
 		));
+});
+
+// The one text→object primitive every text-path static (and
+// @effected/workspaces) reads package.json through. The table is the contract:
+// "not JSON" and "not an object" stay distinguishable by reason, never by
+// message text.
+describe("PackageJsonFormat.parseObjectResult", () => {
+	const parseFailure = (text: string): PackageJsonSyntaxError => {
+		const result = PackageJsonFormat.parseObjectResult(text);
+		if (Result.isSuccess(result)) return assert.fail(`expected ${text} to fail`);
+		return result.failure;
+	};
+
+	it("succeeds with the parsed object for an empty object", () => {
+		const result = PackageJsonFormat.parseObjectResult("{}");
+		if (Result.isFailure(result)) return assert.fail("expected {} to parse");
+		assert.deepStrictEqual(result.success, {});
+	});
+
+	it("succeeds with the parsed object for a manifest", () => {
+		const result = PackageJsonFormat.parseObjectResult('{"name": "p", "private": true}');
+		if (Result.isFailure(result)) return assert.fail("expected a manifest to parse");
+		assert.deepStrictEqual(result.success, { name: "p", private: true });
+	});
+
+	it("fails invalid-json, carrying the SyntaxError, on malformed text", () => {
+		const error = parseFailure("{bad");
+		assert.strictEqual(error.reason, "invalid-json");
+		assert.instanceOf(error.cause, SyntaxError);
+		assert.include(error.message, "position");
+	});
+
+	it("fails not-an-object, with no cause, for every valid non-object JSON value", () => {
+		for (const text of ["null", "[]", "42", '"x"', "true"]) {
+			const error = parseFailure(text);
+			assert.strictEqual(error.reason, "not-an-object", `expected ${text} to be not-an-object`);
+			assert.isUndefined(error.cause, `expected no cause for ${text}`);
+		}
+	});
+
+	it("keeps an own __proto__ key as data and pollutes no prototype", () => {
+		const result = PackageJsonFormat.parseObjectResult('{"__proto__": {"polluted": 1}, "name": "p"}');
+		if (Result.isFailure(result)) return assert.fail("expected the object to parse");
+		const parsed = result.success;
+		assert.isTrue(Object.hasOwn(parsed, "__proto__"));
+		assert.deepStrictEqual(Object.getOwnPropertyDescriptor(parsed, "__proto__")?.value, { polluted: 1 });
+		assert.strictEqual(Object.getPrototypeOf(parsed), Object.prototype);
+		assert.isUndefined(({} as { polluted?: unknown }).polluted);
+	});
+
+	it.effect("parseObject mirrors the Result in an Effect", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* PackageJsonFormat.parseObject('{"a": 1}'), { a: 1 });
+			const invalid = yield* Effect.flip(PackageJsonFormat.parseObject("{bad"));
+			assert.strictEqual(invalid.reason, "invalid-json");
+			const notObject = yield* Effect.flip(PackageJsonFormat.parseObject("[]"));
+			assert.strictEqual(notObject.reason, "not-an-object");
+		}),
+	);
 });

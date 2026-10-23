@@ -40,20 +40,32 @@ produces, and surgical mutation, which changes one field and leaves
 every other byte alone. Both exist because the strict `Package.decode`
 path hard-fails on legal input — `{"private": true}` and version-less
 roots are both valid manifests the strict decode rejects — which makes
-the strict path unusable as a lint or single-field-edit handler. Four
-statics form the stable contract:
+the strict path unusable as a lint or single-field-edit handler. The
+stable contract:
 
+- **`parseObjectResult`** / **`parseObject`** — text→plain object, the
+  syntactic precondition every other text static checks first. It keeps
+  two failures apart on `PackageJsonSyntaxError.reason`: `"invalid-json"`
+  (the `SyntaxError` on `cause`, its text, position included, appended to
+  the message) and `"not-an-object"` (`null`, an array, a scalar). Other
+  kit packages read package.json text through it rather than a bare
+  `JSON.parse`, which lets `null` through to a property read that throws.
 - **`sortValue`** — value→value, total, returns its input type `T`. Only
   ever reorders keys; it never adds or removes one, and this is
   type-enforced — a key-removing option there is a compile error. A
   non-object input (array, scalar, `null`) returns unchanged rather than
   mangled.
 - **`formatToString`** — text→text, `Result<string, PackageJsonSyntaxError>`.
-- **`modify`** / **`modifyToString`** — the surgical mutators, taking an
-  ordered list of field edits (`{ path, value }`, where `value: undefined`
-  deletes) applied through `@effected/jsonc`'s scanner-based edit surface,
-  so every byte outside the edited spans — key order, indentation, line
-  endings, trailing newline — survives.
+- **`modifyResult`** / **`modifyToStringResult`** — the surgical
+  mutators' sync primitives, one `{ path, value }` edit (`value:
+  undefined` deletes) applied through `@effected/jsonc`'s scanner-based
+  edit surface, so every byte outside the edited span — key order,
+  indentation, line endings, trailing newline — survives.
+  **`modify`** / **`modifyToString`** are their spanned `Effect` forms.
+  Both jsonc failures, a path that cannot be navigated and a value that
+  cannot be serialized (a `bigint`, a circular structure, a function or
+  symbol), surface as `PackageJsonModifyError` with the jsonc error on
+  `cause`; a navigation failure wins when both apply.
 
 `PackageJsonFile.modify` is the same surgical operation read-modify-write
 against a path, skipping the write entirely when the result is
@@ -104,11 +116,15 @@ does not accept comments in a manifest, and neither does this path.
 
 ## The return-type split, and why it is Result on the text side
 
-The text path returns `Result`, not `Effect`, because lint hosts are
+The text path's primitives return `Result`, not `Effect`, because lint hosts are
 synchronous and an `Effect` return would force every one of them to build
 a runtime just to format a file. Effect hosts lift with
 `Effect.fromResult` in one call, so the `Result` form serves both
-audiences. The options type for the text path is deliberately separate
+audiences. Where an `Effect` twin exists it is derived from the `Result`
+primitive and adds only the tracing span; those primitives carry the
+`*Result` suffix (`parseObjectResult`, `modifyResult`,
+`modifyToStringResult`), while `formatToString` has no twin and no
+suffix. The options type for the text path is deliberately separate
 from the strict path's — a source-text option is meaningless when the
 text already *is* the source.
 [^internal-format]: `packages/package-json/src/internal/format.ts:11-19`

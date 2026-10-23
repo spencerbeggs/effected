@@ -218,4 +218,23 @@ describe("Workspaces.localExecLayer — cwd", () => {
 			assert.deepStrictEqual(seen, ["/somewhere/else"]);
 		}),
 	);
+
+	it.effect('an omitted cwd reaches root resolution as ".", never a process read', () =>
+		Effect.gen(function* () {
+			const seen: Array<string> = [];
+			const recordingRoot = Layer.succeed(WorkspaceRoot, {
+				find: (cwd: string) =>
+					Effect.suspend(() => {
+						seen.push(cwd);
+						return Effect.succeed("/repo");
+					}),
+			});
+			yield* Effect.flatMap(LocalExec, (local) => local.context).pipe(
+				Effect.provide(Workspaces.localExecLayer().pipe(Layer.provide(Layer.mergeAll(recordingRoot, detects("npm"))))),
+			);
+			// The live WorkspaceRoot resolves "." through the injected Path; an
+			// ambient `process.cwd()` here would record an absolute path instead.
+			assert.deepStrictEqual(seen, ["."]);
+		}),
+	);
 });

@@ -1,5 +1,6 @@
 import type { CommandOutput } from "@effected/commands";
 import { Run } from "@effected/commands";
+import { PackageJsonFormat } from "@effected/package-json";
 import { Yaml } from "@effected/yaml";
 import type { PlatformError } from "effect";
 import { Config, Duration, Effect, FileSystem, Option, Path, Redacted, Result, Schema, Stream } from "effect";
@@ -406,12 +407,14 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 				const manifest = path.join(dir, "package.json");
 				if (!(yield* fs.exists(manifest).pipe(Effect.mapError(io(`could not inspect ${manifest}`))))) continue;
 				const text = yield* fs.readFileString(manifest).pipe(Effect.mapError(io(`could not read ${manifest}`)));
-				const parsed: unknown = yield* Effect.try({
-					try: () => JSON.parse(text),
-					catch: io(`${manifest} is not JSON`),
-				});
-				const named =
-					typeof parsed === "object" && parsed !== null ? (parsed as { readonly name?: unknown }).name : undefined;
+				// Only unparseable text fails. A manifest that is valid JSON but not
+				// an object names no package, so the walk continues to the parent.
+				const parsed = PackageJsonFormat.parseObjectResult(text);
+				if (Result.isFailure(parsed)) {
+					if (parsed.failure.reason === "invalid-json") return yield* io(`${manifest} is not JSON`)(parsed.failure);
+					continue;
+				}
+				const named = parsed.success.name;
 				if (typeof named === "string") return { package: named, target };
 			}
 			return yield* failure(

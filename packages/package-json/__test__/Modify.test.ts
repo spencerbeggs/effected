@@ -9,7 +9,7 @@
 // there); these fixtures can.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import { PackageJsonFormat, PackageJsonModifyError, PackageJsonSyntaxError } from "../src/PackageJsonFormat.js";
 
 // Keys deliberately out of canonical order: dependencies before name,
@@ -156,4 +156,88 @@ describe("PackageJsonFormat.modify", () => {
 			assert.strictEqual(UNSORTED.slice(edit.offset, edit.offset + edit.length), '"pnpm@11.2.0"');
 		}),
 	);
+});
+
+// Serialization failures: since @effected/jsonc's modify reports an
+// unserializable value as JsoncStringifyError (it used to die), the package
+// absorbs it into its own PackageJsonModifyError rather than letting a jsonc
+// tag leak into its channel.
+describe("PackageJsonFormat.modify serialization failures", () => {
+	const modifyFailure = (value: unknown, path: ReadonlyArray<string> = ["extra"]) =>
+		Effect.flip(PackageJsonFormat.modify(UNSORTED, path, value));
+
+	it.effect("fails PackageJsonModifyError carrying a BigIntValue JsoncStringifyError for a bigint", () =>
+		Effect.gen(function* () {
+			const error = yield* modifyFailure(10n);
+			if (!(error instanceof PackageJsonModifyError)) {
+				return assert.fail(`expected PackageJsonModifyError, got ${error._tag}`);
+			}
+			assert.deepStrictEqual(error.path, ["extra"]);
+			const cause = error.cause as { readonly _tag?: string; readonly code?: string };
+			assert.strictEqual(cause._tag, "JsoncStringifyError");
+			assert.strictEqual(cause.code, "BigIntValue");
+			// The message names the path and appends the jsonc detail.
+			assert.isTrue(error.message.startsWith("Failed to modify package.json at path [extra]: "), error.message);
+			assert.include(error.message, "BigIntValue");
+		}),
+	);
+
+	it.effect("fails PackageJsonModifyError for a circular value at an existing key", () =>
+		Effect.gen(function* () {
+			const circular: Record<string, unknown> = {};
+			circular.self = circular;
+			const error = yield* modifyFailure(circular, ["name"]);
+			if (!(error instanceof PackageJsonModifyError)) {
+				return assert.fail(`expected PackageJsonModifyError, got ${error._tag}`);
+			}
+			assert.strictEqual((error.cause as { readonly code?: string }).code, "CircularReference");
+		}),
+	);
+
+	it.effect("reports the navigation cause when the path is also unnavigable", () =>
+		Effect.gen(function* () {
+			// `name` is a string, so ["name", "sub"] cannot be navigated; the
+			// bigint is never serialized.
+			const error = yield* modifyFailure(10n, ["name", "sub"]);
+			if (!(error instanceof PackageJsonModifyError)) {
+				return assert.fail(`expected PackageJsonModifyError, got ${error._tag}`);
+			}
+			assert.strictEqual((error.cause as { readonly _tag?: string })._tag, "JsoncModificationError");
+		}),
+	);
+});
+
+// The sync primitives the Effect forms are derived from. Parity is asserted
+// per outcome — success, syntax failure, modify failure — against the Effect
+// form, plus the applied text against modifyToString.
+describe("PackageJsonFormat modify Result twins", () => {
+	it.effect("modifyResult and modify agree on the edits", () =>
+		Effect.gen(function* () {
+			const result = PackageJsonFormat.modifyResult(UNSORTED, ["packageManager"], "pnpm@11.3.0");
+			if (Result.isFailure(result)) return assert.fail("expected modifyResult to succeed");
+			const edits = yield* PackageJsonFormat.modify(UNSORTED, ["packageManager"], "pnpm@11.3.0");
+			assert.deepStrictEqual(result.success, edits);
+		}),
+	);
+
+	it.effect("modifyToStringResult and modifyToString agree on the text", () =>
+		Effect.gen(function* () {
+			const result = PackageJsonFormat.modifyToStringResult(UNSORTED, ["scripts", "c"], "three");
+			if (Result.isFailure(result)) return assert.fail("expected modifyToStringResult to succeed");
+			assert.strictEqual(result.success, yield* PackageJsonFormat.modifyToString(UNSORTED, ["scripts", "c"], "three"));
+			assert.include(result.success, '"c": "three"');
+		}),
+	);
+
+	it("modifyToStringResult fails PackageJsonSyntaxError for a non-object source", () => {
+		const result = PackageJsonFormat.modifyToStringResult("[]", ["name"], "p");
+		if (Result.isSuccess(result)) return assert.fail("expected a non-object source to fail");
+		assert.instanceOf(result.failure, PackageJsonSyntaxError);
+	});
+
+	it("modifyResult fails PackageJsonModifyError for a bigint, without throwing", () => {
+		const result = PackageJsonFormat.modifyResult(UNSORTED, ["extra"], 1n);
+		if (Result.isSuccess(result)) return assert.fail("expected a bigint value to fail");
+		assert.instanceOf(result.failure, PackageJsonModifyError);
+	});
 });

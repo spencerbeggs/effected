@@ -23,16 +23,12 @@ const TESTING_MODULES = new Set([
 ]);
 
 /**
- * The modules that legitimately read `process`: each derives a default the
- * caller did not pass (the cwd, the environment). Four reads across three
- * files: the four root-resolving services share `internal/layerRoot.ts`'s one
- * ambient-cwd read.
+ * The modules that legitimately read `process`. One read in one file: store
+ * discovery's `process.platform`. The cwd default is `"."` resolved through
+ * core `Path` (so `internal/layerRoot.ts` and `Workspaces.ts` no longer read
+ * it), and the store environment variables are read through `Config`.
  */
-const PROCESS_READERS: ReadonlyArray<string> = [
-	"Workspaces.ts",
-	"internal/configDependencyResolution.ts",
-	"internal/layerRoot.ts",
-];
+const PROCESS_READERS: ReadonlyArray<string> = ["internal/configDependencyResolution.ts"];
 
 describe("@effected/workspaces, scanned by SourceBoundary", () => {
 	layer(Platform)((it) => {
@@ -41,7 +37,7 @@ describe("@effected/workspaces, scanned by SourceBoundary", () => {
 				const scan = yield* SourceBoundary.scan({ root: SRC, rules: ["process"] });
 				assert.include(scan.files, "ConfigDependencyHooks.ts", "the embedded script's module was read");
 				assert.deepStrictEqual([...new Set(scan.offences.map((offence) => offence.file))], [...PROCESS_READERS]);
-				assert.strictEqual(scan.offences.length, 4);
+				assert.strictEqual(scan.offences.length, 1);
 			}),
 		);
 
