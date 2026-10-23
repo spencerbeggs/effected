@@ -1,7 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Latch, Layer, References } from "effect";
+import { Console, Effect, Fiber, Latch, Layer, References } from "effect";
 import { TestConsole } from "effect/testing";
 import { ActionEnvironment, ActionLogger } from "../src/index.js";
+import { commandLines, isCommand } from "./helpers/runnerCommands.js";
 
 /** Everything written to `Console.log`, as strings, in order. */
 const lines = Effect.map(TestConsole.logLines, (captured) => captured.map(String));
@@ -465,4 +466,136 @@ describe("ActionLogger", () => {
 			}),
 		);
 	});
+});
+
+describe("ActionLogger group nesting", () => {
+	// The runner does not nest groups: a second `::group::` implicitly ends the
+	// first. So exactly one group/endgroup pair may reach the log, and a nested
+	// call degrades to a header line inside it.
+	const groupCommands = (captured: ReadonlyArray<string>) =>
+		captured.filter((line) => line.startsWith("::group::") || line === "::endgroup::");
+
+	it.effect("a nested group writes a header inside the outer group, not a second group command", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* logger.group("Outer", logger.group("Inner", Console.log("body")));
+				assert.deepStrictEqual(yield* lines, ["::group::Outer", "▸ Inner", "body", "::endgroup::"]);
+			}),
+		),
+	);
+
+	it.effect("three levels deep is still one group pair, with a header per nested level", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* logger.group("L1", logger.group("L2", logger.group("L3", Console.log("deep"))));
+				assert.deepStrictEqual(yield* lines, ["::group::L1", "▸ L2", "▸ L3", "deep", "::endgroup::"]);
+			}),
+		),
+	);
+
+	it.effect("sequential top-level groups each open a real group: depth resets when a group closes", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* logger.group("A", Effect.void);
+				yield* logger.group("B", Effect.void);
+				assert.deepStrictEqual(yield* lines, ["::group::A", "::endgroup::", "::group::B", "::endgroup::"]);
+			}),
+		),
+	);
+
+	it.effect("a failing nested group closes once, last, and the next top-level group is real again", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* Effect.flip(logger.group("F", logger.group("G", Effect.fail("boom"))));
+				assert.deepStrictEqual(yield* lines, ["::group::F", "▸ G", "::endgroup::"]);
+				yield* logger.group("After", Effect.void);
+				assert.deepStrictEqual((yield* lines).slice(3), ["::group::After", "::endgroup::"]);
+			}),
+		),
+	);
+
+	it.effect("a failure inside a nested group flushes the active buffer before the single endgroup", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* Effect.flip(
+					logger.withBuffer(
+						"install",
+						logger.group(
+							"Outer",
+							logger.group("Inner", Effect.andThen(Effect.logInfo("resolving"), Effect.fail("boom"))),
+						),
+					),
+				);
+				const captured = yield* lines;
+				assert.deepStrictEqual(groupCommands(captured), ["::group::Outer", "::endgroup::"]);
+				const flushed = captured.findIndex((line) => line.includes('Buffered output for "install"'));
+				assert.isAbove(flushed, captured.indexOf("▸ Inner"));
+				assert.isBelow(flushed, captured.indexOf("::endgroup::"), "the transcript belongs inside the group");
+				assert.deepStrictEqual(bufferedFor("install", captured), ["resolving"]);
+			}),
+		),
+	);
+
+	it.effect("a hostile nested name is one header line that is not a command", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* logger.group("Outer", logger.group("x\n::add-mask::s ##[error]y", Effect.void));
+				const captured = yield* lines;
+				assert.lengthOf(captured, 3, "the name's line break must not split the header");
+				const header = captured[1] ?? "";
+				assert.isTrue(header.startsWith("▸ x "));
+				assert.isFalse(isCommand(header), header);
+				assert.deepStrictEqual(commandLines(captured.join("\n")), ["::group::Outer", "::endgroup::"]);
+			}),
+		),
+	);
+
+	it.effect("a child fiber forked and joined inside a group inherits the depth", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* logger.group(
+					"Outer",
+					Effect.flatMap(Effect.forkChild(logger.group("Child", Console.log("child"))), Fiber.join),
+				);
+				assert.deepStrictEqual(yield* lines, ["::group::Outer", "▸ Child", "child", "::endgroup::"]);
+			}),
+		),
+	);
+
+	it.effect("the nested header survives a green withStep, which discards its transcript", () =>
+		// Routed through Console like the group command it replaces, never into
+		// the buffer a green step throws away.
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* logger.group("Outer", logger.withStep("s", logger.group("Inner", Effect.logInfo("x"))));
+				const captured = yield* lines;
+				assert.include(captured, "▸ Inner");
+				assert.deepStrictEqual(groupCommands(captured), ["::group::Outer", "::endgroup::"]);
+			}).pipe(Effect.provide(ActionLogger.layerLogger)),
+		),
+	);
+
+	it.effect("interrupting a fiber inside a nested group still closes the outer group", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				const inside = yield* Latch.make();
+				const fiber = yield* Effect.forkChild(
+					logger.group("Outer", logger.group("Inner", Effect.andThen(inside.open, Effect.never))),
+				);
+				yield* inside.await;
+				yield* Fiber.interrupt(fiber);
+				const captured = yield* lines;
+				assert.deepStrictEqual(captured, ["::group::Outer", "▸ Inner", "::endgroup::"]);
+			}),
+		),
+	);
 });

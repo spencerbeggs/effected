@@ -45,10 +45,13 @@ export interface RegistryTarget {
 	 * How to authenticate, for a registry that requires auth to read.
 	 *
 	 * @remarks
-	 * The same union `PackagePublish.setupAuth` writes into an npmrc, so the
-	 * read probe and the publish cannot disagree about the scheme for one
-	 * registry — a bearer probe against a basic-auth registry answers 401 and
-	 * reads as "not published".
+	 * The same token/basic union `PackagePublish.setupAuth` writes into an
+	 * npmrc, so the read probe and the publish cannot disagree about the
+	 * scheme for one registry — a bearer probe against a basic-auth registry
+	 * answers 401 and reads as "not published". The publish-only
+	 * `WorkloadCredential` is deliberately not accepted here: it fails to
+	 * compile, and a read that is handed one through a cast fails
+	 * {@link RegistryReadError} with kind `"credential"` before any request.
 	 */
 	readonly credential?: RegistryCredential | undefined;
 }
@@ -94,15 +97,16 @@ export class PublishTime extends Schema.Class<PublishTime>("PublishTime")({
  * `kind` is the routing surface: `"transport"` (the request never produced a
  * response), `"status"` (the registry answered, unsuccessfully — `status`
  * carries the code), `"decode"` (the body was not what the registry protocol
- * says it is). **A 404 is not here**: an absent package or version is
- * `Option.none()`, extending the `None`-is-success convention this package's
- * resolver contracts already use.
+ * says it is), `"credential"` (the target carried a publish-only workload
+ * credential, refused before any request was sent). **A 404 is not here**:
+ * an absent package or version is `Option.none()`, extending the
+ * `None`-is-success convention this package's resolver contracts already use.
  *
  * @public
  */
 export class RegistryReadError extends Schema.TaggedError<RegistryReadError>()("RegistryReadError", {
 	/** Why the read failed. */
-	kind: Schema.Literals(["transport", "status", "decode"]),
+	kind: Schema.Literals(["transport", "status", "decode", "credential"]),
 	/** The package that was being read. */
 	package: Schema.String,
 	/** The registry that was being read from. */
@@ -114,14 +118,15 @@ export class RegistryReadError extends Schema.TaggedError<RegistryReadError>()("
 }) {
 	override get message(): string {
 		const where = `${this.package} on ${this.registry}`;
-		switch (this.kind) {
-			case "transport":
-				return `Could not reach the registry for ${where}`;
-			case "status":
-				return `Registry read for ${where} failed with status ${this.status ?? "unknown"}`;
-			default:
-				return `Registry read for ${where} returned an unreadable body`;
-		}
+		// One arm per kind, no catch-all: a new kind must get its own text rather
+		// than silently reading as the last arm's.
+		return this.kind === "transport"
+			? `Could not reach the registry for ${where}`
+			: this.kind === "status"
+				? `Registry read for ${where} failed with status ${this.status ?? "unknown"}`
+				: this.kind === "decode"
+					? `Registry read for ${where} returned an unreadable body`
+					: `Registry read for ${where} refused a workload credential: it is publish-only, pass a token or basic credential to read`;
 	}
 }
 
@@ -135,9 +140,33 @@ export class RegistryReadError extends Schema.TaggedError<RegistryReadError>()("
  */
 const authorizationHeader = (credential: RegistryCredential | undefined): Record<string, string> => {
 	if (credential === undefined) return {};
-	return credential.kind === "token"
-		? { authorization: `Bearer ${Redacted.value(credential.token)}` }
-		: { authorization: `Basic ${Redacted.value(credential.encoded)}` };
+	switch (credential.kind) {
+		case "token":
+			return { authorization: `Bearer ${Redacted.value(credential.token)}` };
+		case "basic":
+			return { authorization: `Basic ${Redacted.value(credential.encoded)}` };
+	}
+};
+
+/**
+ * Fails a read whose target carries a workload credential, before any request.
+ *
+ * @remarks
+ * The type already refuses one — `RegistryTarget.credential` is the
+ * token/basic union — so this is for a caller that cast past it or is not
+ * type-checked. The kind is widened to `string` on purpose: compared at its
+ * declared type, `"workload"` has no overlap and the check would not compile.
+ * Shared by the live service and the seeded double, so the two cannot diverge.
+ */
+const refuseWorkload = (
+	target: RegistryTarget | undefined,
+	name: string,
+	registry: string,
+): Effect.Effect<void, RegistryReadError> => {
+	const kind: string | undefined = target?.credential?.kind;
+	return kind === "workload"
+		? Effect.fail(new RegistryReadError({ kind: "credential", package: name, registry }))
+		: Effect.void;
 };
 
 /** The version-manifest fields this package reads. Unknown keys are ignored. */
@@ -234,6 +263,21 @@ const make = Effect.fnUntraced(function* () {
 	 * than by matching the wording of a CLI's stderr.
 	 */
 	const read = <A, I>(
+		schema: Schema.Codec<A, I>,
+		url: string,
+		name: string,
+		registry: string,
+		target: RegistryTarget | undefined,
+	): Effect.Effect<Option.Option<A>, RegistryReadError> =>
+		Effect.andThen(
+			refuseWorkload(target, name, registry),
+			// Lazily, after the refusal: the header is built from the credential,
+			// and a refused credential must never reach a request.
+			() => fetchDocument(schema, url, name, registry, target),
+		);
+
+	/** The request and its mapping, for a target `read` has already vetted. */
+	const fetchDocument = <A, I>(
 		schema: Schema.Codec<A, I>,
 		url: string,
 		name: string,
@@ -476,11 +520,15 @@ export class NpmRegistry extends Context.Service<NpmRegistry, NpmRegistryShape>(
 	static readonly makeSeeded = (seed: RegistrySeed): NpmRegistryShape => {
 		const at = (target: RegistryTarget | undefined): Record<string, Record<string, SeededVersion>> =>
 			seed.registries[target?.registry ?? DEFAULT_REGISTRY] ?? {};
+		// Every seeded member refuses a workload credential exactly as the live
+		// `read` does, so a double cannot pass a read that production refuses.
+		const guarded = <A>(name: string, target: RegistryTarget | undefined, answer: () => A) =>
+			Effect.map(refuseWorkload(target, name, target?.registry ?? DEFAULT_REGISTRY), () => answer());
 		return {
-			version: (name, version, target) => {
-				const found = at(target)[name]?.[version];
-				return Effect.succeed(
-					found === undefined
+			version: (name, version, target) =>
+				guarded(name, target, () => {
+					const found = at(target)[name]?.[version];
+					return found === undefined
 						? Option.none()
 						: Option.some(
 								PublishedVersion.make({
@@ -489,13 +537,12 @@ export class NpmRegistry extends Context.Service<NpmRegistry, NpmRegistryShape>(
 									...integrityField(found.integrity),
 									...(found.tarball === undefined ? {} : { tarball: found.tarball }),
 								}),
-							),
-				);
-			},
-			versions: (name, target) => Effect.succeed(Object.keys(at(target)[name] ?? {})),
-			distTags: (name) => Effect.succeed({ ...(seed.distTags?.[name] ?? {}) }),
+							);
+				}),
+			versions: (name, target) => guarded(name, target, () => Object.keys(at(target)[name] ?? {})),
+			distTags: (name, target) => guarded(name, target, () => ({ ...(seed.distTags?.[name] ?? {}) })),
 			publishTimes: (name, target) =>
-				Effect.succeed(
+				guarded(name, target, () =>
 					Object.entries(at(target)[name] ?? {}).flatMap(([version, facts]) => {
 						if (facts.publishedAt === undefined) return [];
 						const parsed = DateTime.make(facts.publishedAt);

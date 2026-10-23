@@ -215,6 +215,10 @@ The doubles worth knowing before writing a test:
   re-seeding `layer*` form, per memfs's isolation contract) so the
   assertions read the volume the run wrote to, and seed the runner-file
   directory, since a write needs its parent.
+- `OidcTokenIssuer.recording(claims)` answers like `layerFor` and
+  journals every audience a call asked for — the double for asserting
+  that `ActionsRegistryCredential.workload` forwarded the registry's
+  audience verbatim.
 - `OidcTokenIssuer.layerFor(claims)` answers a **real, decodable**
   unsigned JWT built from the same claims `claims()` reports, which is
   what makes the provenance path reachable under test. The claims are

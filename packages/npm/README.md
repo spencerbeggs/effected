@@ -141,7 +141,7 @@ Effect.runPromise(program.pipe(Effect.provide(NpmRegistry.layer), Effect.provide
 
 A `github-packages` target reads through the packument instead: that registry answers the per-version endpoint with a 405 whatever the credentials, so `version` routes there up front — and any other registry that answers 405 falls back the same way, so "is this version published" gives the same answer everywhere.
 
-`PackagePublish` runs the rest of a release through `@effected/commands`' `Run`: `pack` writes the tarball and reports both its npm integrity and a local sha256 (the attestation subject), `publishTarball` uploads bytes packed earlier, and `dryRun` reports packability without contacting a registry. Every step fails typed as `PublishError`, routed by `kind`, rather than throwing on a non-zero npm exit. `NpmExecutor.ambient` runs the runner's own npm; `NpmExecutor.dlx("npm@11")` fetches a pinned one through the project's launcher, which is what OIDC trusted publishing needs on runners that still ship npm 10.x.
+`PackagePublish` runs the rest of a release through `@effected/commands`' `Run`: `pack` writes the tarball and reports both its npm integrity and a local sha256 (the attestation subject), `publishTarball` uploads bytes packed earlier, and `dryRun` reports packability without contacting a registry. `publishTarball`'s `PublishOutcome` reports `auth` — `"oidc-exchange"`, `"configured-credential"` or `"unknown"` — read from npm's own log lines. npm names its auth path only below its default log level, so the publish runs at `--loglevel=silly`, which overrides a `loglevel` set in an npmrc or the environment (only a `--loglevel` in the executor's `extraArgs` comes later and wins, and that run reports `"unknown"`); a failure's `PublishError.output` is filtered back to npm's default levels. `tokenAuth: true` blanks `NPM_ID_TOKEN` and the Actions token-service variables so npm publishes with the npmrc credential, and drops `--provenance`, which on GitHub Actions needs that token service. Every step fails typed as `PublishError`, routed by `kind`, rather than throwing on a non-zero npm exit. `NpmExecutor.ambient` runs the runner's own npm; `NpmExecutor.dlx("npm@11")` fetches a pinned one through the project's launcher, which is what OIDC trusted publishing needs on runners that still ship npm 10.x.
 
 `NpmExecutor` is a value you copy rather than a flag bag: `withCacheDir(dir)` redirects npm's cache — worth doing on a runner whose `$HOME` is not writable, or where the cache belongs on the same volume as the workspace — and `withExtraArgs(args)` is the generic vent for a flag this package has not named. Both return a new executor, and `withExtraArgs` replaces rather than accumulates, so a copy is a complete statement of its own flags. `--cache` outranks both `npm_config_cache` and an npmrc `cache`, so `withCacheDir` overrides a cache someone configured deliberately — the combinator stays dumb about ambient state, and checking for one is the caller's call.
 
@@ -158,24 +158,30 @@ const executor = NpmExecutor.dlx("npm@11").withCacheDir(`${runnerTemp}/npm-cache
 
 ## How a registry is authenticated
 
-`RegistryCredential` is the closed union both halves of the registry surface speak — `{ kind: "token", token }` for npm's `_authToken`, and `{ kind: "basic", encoded }` for its `_auth`, carried already base64-encoded because that is what npm stores and what registry configuration in the wild already contains. `basicCredentialFromPair(username, password)` encodes for a caller that genuinely holds a pair; the secret is `Redacted` on both sides of it.
+`RegistryCredential` is the closed union both halves of the registry surface speak — `{ kind: "token", token }` for npm's `_authToken`, and `{ kind: "basic", encoded }` for its `_auth`, carried already base64-encoded because that is what npm stores and what registry configuration in the wild already contains. `basicCredentialFromPairResult(username, password)` encodes for a caller that genuinely holds a pair, returning a `Result` that fails with `BasicCredentialError` (reason `"colon-in-username"`) rather than throwing; the secret is `Redacted` on both sides of it.
 
 ```ts
-import { PackagePublish, basicCredentialFromPair } from "@effected/npm";
+import { PackagePublish, basicCredentialFromPairResult } from "@effected/npm";
 import { Effect, Redacted } from "effect";
 
 declare const password: Redacted.Redacted<string>;
 
 const program = Effect.gen(function* () {
+  const credential = yield* Effect.fromResult(basicCredentialFromPairResult("ci", password));
   const publish = yield* PackagePublish;
   yield* publish.setupAuth({
     registry: "https://npm.internal.example",
-    credential: basicCredentialFromPair("ci", password),
+    credential,
     npmrcPath: "/tmp/.npmrc",
   });
 });
 // appends `//npm.internal.example/:_auth=<encoded>` to the npmrc, creating it when absent
+// Failure: BasicCredentialError when the username contains a colon
 ```
+
+`basicCredentialFromPairResult` replaces the throwing `basicCredentialFromPair`; the rename is the migration signal, because a same-named function whose return type changed would still compile at a loosely typed call site.
+
+`setupAuth` also takes a third, publish-only arm: `WorkloadCredential`, `{ kind: "workload", audience, token }`, for a registry that accepts a CI workload's identity token behind a registry-specific prefix. The pure `workloadCredential({ audience, prefix, identityToken })` builds one without the caller holding the plaintext, and `setupAuth` writes it under `_authToken`. `setupAuth`'s parameter type is `PublishCredential`, the union of all three; `RegistryTarget.credential` stays `RegistryCredential`, so passing a workload credential to a read fails to compile, and a read handed one through a cast fails `RegistryReadError` with kind `"credential"` before any request goes out. Minting and masking the identity token are the caller's job; on GitHub Actions, `ActionsRegistryCredential.workload` from `@effected/github-actions` does both.
 
 One union rather than two spellings is the point: `NpmRegistry`'s per-call `RegistryTarget` takes the same `credential`, so a read probe and a publish cannot disagree about the scheme for one registry. A bearer probe against a basic-auth registry answers 401, `version` reads that as "not published", and a publish flow acting on it republishes a version that already exists.
 
@@ -250,9 +256,9 @@ Effect.runPromise(CorepackIntegrityHash.fromSri(npmIntegrity)).then(console.log)
 - `CorepackIntegrityHash` — the corepack-form narrowing a `packageManager` pin needs, plus the one-way SRI bridge: the `FromSri` codec, the `fromSri` effect over it, and `InvalidSriIntegrityHashError` carrying the input that would not convert.
 - `ReleaseAgeGate` / `PartialReleaseAgeGate` — pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` gate as pure vocabulary: `combine` merges contributions from multiple config sources strictest-age-wins, and `filterVersions` / `isExcluded` drop candidate versions younger than the cutoff against a caller-supplied clock, so a resolver never picks a version pnpm would reject. `matchesExclude` is pnpm's flat-`*` matcher, deliberately not `@effected/glob`'s dialect. `PartialReleaseAgeGate` is the permissive inbound form each source contributes.
 - `NpmRegistry` — registry reads over `HttpClient`: `version`, `versions`, `distTags` and `publishTimes`, each taking a per-call `RegistryTarget` carrying the registry and an optional `credential`, with `version` reading a GitHub Packages target through the packument; `layerTest` and the fully-working `layerSeeded` are the test doubles.
-- `PackagePublish` — the pack/publish workflow over `@effected/commands`: `setupAuth` (taking a `RegistryCredential`), `pack`, `publishTarball` and `dryRun`, with `PackedTarball` carrying both npm's integrity and a local sha256 digest.
+- `PackagePublish` — the pack/publish workflow over `@effected/commands`: `setupAuth` (taking a `PublishCredential`), `pack`, `publishTarball` (reporting `PublishOutcome.auth`) and `dryRun`, with `PackedTarball` carrying both npm's integrity and a local sha256 digest, and a `recording()` double that journals `setupAuth` calls.
 - `PackageTarball` — fetch, verify and extract a published tarball as a scoped resource, with `TarballError` routed by `reason: notFound | http | integrityMismatch | extractFailed`.
-- `RegistryCredential` — the closed auth union both `setupAuth` and `RegistryTarget` take (`token` for npm's `_authToken`, `basic` for its `_auth`), plus `basicCredentialFromPair` for a caller holding a username and password.
+- `RegistryCredential` — the closed auth union both `setupAuth` and `RegistryTarget` take (`token` for npm's `_authToken`, `basic` for its `_auth`), plus `basicCredentialFromPairResult` for a caller holding a username and password; `WorkloadCredential` and `workloadCredential` for the publish-only workload arm, and `PublishCredential` for the union `setupAuth` takes.
 - `NpmExecutor` — `ambient` or `dlx(spec)`, the launcher choice a pinned, OIDC-capable npm needs on runners that ship an older one, plus the copying `withCacheDir(dir)` and `withExtraArgs(args)`.
 - `PublishError` — the publish-workflow failure, routed by `kind: auth | pack | publish | output | digest | executor`.
 - `RegistryKind` / `classifyRegistry` — classify a registry URL as `npm`, `github-packages`, `jsr` or `custom`, since provenance and auth differ by kind, with `registryShortLabel`, `registryDisplayName` and `registryHost` rendering one for a log line, prose or a bare host.

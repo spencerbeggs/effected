@@ -85,16 +85,23 @@ export {
 	PackagePublish,
 	type PackagePublishShape,
 	PackedTarball,
+	type PublishAuthPath,
 	type PublishOptions,
 	type PublishOutcome,
+	type RecordedSetupAuth,
+	type RecordingPackagePublish,
 } from "./PackagePublish.js";
 export { PackageTarball, type PackageTarballShape, TarballError } from "./PackageTarball.js";
 export { PublishError } from "./PublishError.js";
 export {
 	type BasicCredential,
+	BasicCredentialError,
+	type PublishCredential,
 	type RegistryCredential,
 	type TokenCredential,
-	basicCredentialFromPair,
+	type WorkloadCredential,
+	basicCredentialFromPairResult,
+	workloadCredential,
 } from "./RegistryCredential.js";
 export {
 	RegistryKind,

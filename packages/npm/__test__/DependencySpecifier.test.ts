@@ -89,6 +89,19 @@ describe("DependencySpecifier.protocolOf", () => {
 		assert.isFalse(DependencySpecifier.isValid("!!garbage"));
 	});
 
+	it.effect("an operator separated from its version by a space is a range, not an invalid specifier", () =>
+		// Real npm metadata writes `>= 1.0.0` (engines, peer ranges). Before
+		// semver accepted operator whitespace this classified as `unknown` and
+		// failed to decode at all.
+		Effect.gen(function* () {
+			assert.strictEqual(DependencySpecifier.protocolOf(">= 1.0.0"), "range");
+			assert.isTrue(DependencySpecifier.isRange(">= 1.0.0"));
+			const classified = yield* Schema.decodeUnknownEffect(DependencySpecifier.FromString)(">= 1.0.0");
+			assert.instanceOf(classified, RangeSpecifier);
+			assert.strictEqual(classified.raw, ">= 1.0.0");
+		}),
+	);
+
 	it("isRange decodes ranges purely (no tag, no protocol)", () => {
 		assert.isTrue(DependencySpecifier.isRange("^1.0.0"));
 		assert.isTrue(DependencySpecifier.isRange(">=1.0.0 <2.0.0"));

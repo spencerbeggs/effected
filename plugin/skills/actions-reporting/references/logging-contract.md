@@ -34,7 +34,18 @@ const program = Effect.gen(function* () {
   closes with `::endgroup::` via a bracket. On a failing cause it flushes
   whatever buffer is currently active *before* the group closes, so a failed
   step's transcript lands inside the collapsed section it belongs to rather
-  than after it.
+  than after it. **The runner cannot nest groups** — a second `::group::`
+  implicitly closes the first — so `group` is nesting-aware: only the
+  outermost call writes the command pair, and a `group` called inside it
+  writes one `▸ <name>` header line (line breaks collapsed, the text
+  neutralized) through `Console`, so the header survives a green
+  `withStep`/`withBuffer` that discards its transcript. The depth is
+  fiber-scoped: concurrent sibling groups on separate fibers still
+  interleave, a fiber forked inside a group keeps the depth it was forked at,
+  and a group opened outside `ActionLogger.group` (a raw
+  `WorkflowCommand.group`, a `Render.githubLog` collapsible) is invisible to
+  the count. The test doubles pass the effect through and do not model
+  nesting.
 - **`withBuffer(label, effect, options?)`** — the quiet-green / verbose-red
   mechanism. `Warn` and `Error` entries still go out live, rendered the same
   way as the installed logger; everything `Info` and below is held and

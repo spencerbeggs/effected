@@ -126,6 +126,34 @@ const ActiveBuffer = Context.Reference<BufferState | null>("@effected/github-act
 	defaultValue: () => null,
 });
 
+/**
+ * How many {@link ActionLoggerShape.group} calls the current fiber is inside.
+ *
+ * @remarks
+ * The runner does not nest groups: a second `::group::` implicitly ends the
+ * first, leaving an empty outer header and a stray `::endgroup::`. So only
+ * depth 0 writes the group commands, and a nested call writes a plain header
+ * line instead. Fiber-scoped for the same reason as {@link ActiveBuffer}: a
+ * `Context.Reference` is provided around the body, so it unwinds on every
+ * exit path with nothing to restore.
+ *
+ * @internal
+ */
+const GroupDepth = Context.Reference<number>("@effected/github-actions/GroupDepth", {
+	defaultValue: () => 0,
+});
+
+/**
+ * The line a nested group writes in place of a second `::group::`.
+ *
+ * @remarks
+ * Line breaks collapse to spaces so the header stays one line — the
+ * top-level form escapes them into one command — and the result is
+ * neutralized, because a group name is caller text and a `::` or `##[` in it
+ * would otherwise be a command.
+ */
+const nestedHeader = (name: string): string => CommandNeutralizer.text(`▸ ${name.replace(/\r\n|\r|\n/g, " ")}`);
+
 /** Drop a transcript without writing it, so a green step stays quiet. */
 const discard = (state: BufferState): Effect.Effect<void> =>
 	Effect.sync(() => {
@@ -190,7 +218,38 @@ export interface WithStepOptions {
  * @public
  */
 export interface ActionLoggerShape {
-	/** Run an effect inside a collapsible log group. */
+	/**
+	 * Run an effect inside a collapsible log group.
+	 *
+	 * @remarks
+	 * The runner cannot nest groups — a second `::group::` implicitly closes the
+	 * first — so this is nesting-aware: the outermost call writes the
+	 * `::group::` / `::endgroup::` pair, and a call made inside it writes one
+	 * `▸ <name>` header line inside the open group instead (line breaks
+	 * collapsed to spaces, the text neutralized so it cannot be a command). The
+	 * header goes out through `Console` like the group command it replaces, so
+	 * it is never captured into, or discarded with, an enclosing `withBuffer`
+	 * or `withStep` transcript. A failure at any depth flushes the active
+	 * buffer before the group closes. That ordering is visible in a failed
+	 * run's log: the replayed transcript lands BELOW every nested header that
+	 * was written live, including lines that were logged before the header.
+	 *
+	 * The depth is fiber-scoped, which leaves four edges:
+	 *
+	 * 1. **Concurrent sibling groups interleave.** Two top-level groups on
+	 *    separate fibers each write a `::group::`, and their output shares one
+	 *    log stream; that is the runner's limitation, not one a depth can fix.
+	 * 2. **A fiber forked inside a group keeps the depth it was forked at.** A
+	 *    `forkChild` joined inside the group nests correctly; a detached fiber
+	 *    that outlives the group still writes headers rather than a group.
+	 * 3. **Only groups opened here are counted.** A raw
+	 *    `WorkflowCommand.group(...)`, a document rendered by `@effected/cli`'s
+	 *    `Render.githubLog` with a top-level collapsible, or a consumer's own
+	 *    wrapper opens a group this member cannot see, and a group opened
+	 *    inside one still nests at the runner.
+	 * 4. **The test doubles do not model nesting.** `makeTest`, `layerTest` and
+	 *    `layerSilent` pass the effect through unchanged.
+	 */
 	readonly group: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
 	/**
 	 * Run an effect with its verbose output captured and replayed on exit.
@@ -316,15 +375,20 @@ const make = Effect.gen(function* () {
 
 	return {
 		group: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) =>
-			Effect.acquireUseRelease(
-				Console.log(WorkflowCommand.group(name)),
-				() =>
-					// Flush the enclosing buffer before the group closes, so a failed
-					// step's transcript lands inside the collapsed section it belongs to
-					// rather than after it.
-					Effect.tapCause(effect, () => flushActive),
-				() => Console.log(WorkflowCommand.endGroup()),
-			),
+			Effect.flatMap(GroupDepth, (depth) => {
+				// Flush the enclosing buffer before the group closes, so a failed
+				// step's transcript lands inside the collapsed section it belongs to
+				// rather than after it. At every depth: a flush clears what it wrote,
+				// so the outer group's flush after an inner one is a no-op.
+				const body = Effect.tapCause(Effect.provideService(effect, GroupDepth, depth + 1), () => flushActive);
+				return depth === 0
+					? Effect.acquireUseRelease(
+							Console.log(WorkflowCommand.group(name)),
+							() => body,
+							() => Console.log(WorkflowCommand.endGroup()),
+						)
+					: Effect.andThen(Console.log(nestedHeader(name)), body);
+			}),
 
 		withBuffer,
 
@@ -417,7 +481,8 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 	 * {@link ActionEnvironment.makeTest}. A logger that dies when a suite logs
 	 * would make every double unusable, and silence is the honest default for a
 	 * service whose whole job is output. Group and buffer wrappers pass their
-	 * effect through unchanged.
+	 * effect through unchanged, so the double does not model group nesting:
+	 * a test of nested-group output needs the live {@link ActionLogger.layer}.
 	 */
 	static readonly makeTest = (overrides: Partial<ActionLoggerShape> = {}): ActionLoggerShape => ({
 		group: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,

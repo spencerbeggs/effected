@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
 import { DateTime, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
+import type { NpmRegistryShape, RegistryTarget } from "../src/NpmRegistry.js";
 import { NpmRegistry, PublishedVersion, RegistryReadError } from "../src/NpmRegistry.js";
+import type { RegistryCredential } from "../src/RegistryCredential.js";
+import { workloadCredential } from "../src/RegistryCredential.js";
 
 /** One scripted HTTP outcome. */
 type Route = { readonly status: number; readonly body?: unknown; readonly raw?: string } | { readonly fail: true };
@@ -514,4 +517,85 @@ describe("NpmRegistry test doubles", () => {
 			),
 		),
 	);
+});
+
+describe("NpmRegistry refuses a workload credential", () => {
+	const workload = workloadCredential({
+		audience: "https://registry.example",
+		prefix: "p_",
+		identityToken: Redacted.make("hdr.payload.sig"),
+	});
+	// A cast past the type, standing in for an untyped caller: the type refuses
+	// a workload credential (pinned below), so this is the runtime's job.
+	const castTarget = { registry: "https://registry.example", credential: workload as unknown as RegistryCredential };
+	const tokenTarget: RegistryTarget = {
+		registry: "https://registry.example",
+		credential: { kind: "token", token: Redacted.make("tok") },
+	};
+
+	it("the type refuses a workload credential at a read site, and accepts token and basic", () => {
+		// @ts-expect-error — a WorkloadCredential is publish-only.
+		const refused: RegistryTarget = { credential: workload };
+		const token: RegistryTarget = { credential: { kind: "token", token: Redacted.make("t") } };
+		const basic: RegistryTarget = { credential: { kind: "basic", encoded: Redacted.make("YQ==") } };
+		assert.lengthOf([refused, token, basic], 3);
+	});
+
+	const members: ReadonlyArray<
+		readonly [string, (r: NpmRegistryShape, target: RegistryTarget) => Effect.Effect<unknown, RegistryReadError>]
+	> = [
+		["version", (r, target) => r.version("pkg", "1.1.0", target)],
+		["versions", (r, target) => r.versions("pkg", target)],
+		["distTags", (r, target) => r.distTags("pkg", target)],
+		["publishTimes", (r, target) => r.publishTimes("pkg", target)],
+	];
+
+	for (const [member, call] of members) {
+		it.effect(`${member} fails kind 'credential' and sends no request`, () =>
+			Effect.gen(function* () {
+				const client = stub(() => ({ status: 200, body: { ...packument, ...versionManifest } }));
+				const error = yield* Effect.flip(
+					run(
+						Effect.flatMap(registry, (r) => call(r, castTarget)),
+						client,
+					),
+				);
+				assert.strictEqual(error.kind, "credential");
+				assert.strictEqual(error.registry, "https://registry.example");
+				assert.lengthOf(client.requests, 0, "a refused credential must never reach a request");
+			}),
+		);
+
+		it.effect(`${member} with a token credential still sends its Bearer header (control)`, () =>
+			Effect.gen(function* () {
+				const client = stub(() => ({ status: 200, body: { ...packument, ...versionManifest } }));
+				yield* run(
+					Effect.flatMap(registry, (r) => call(r, tokenTarget)),
+					client,
+				);
+				assert.isAbove(client.requests.length, 0);
+				assert.strictEqual(client.requests[0]?.authorization, "Bearer tok");
+			}),
+		);
+
+		it.effect(`layerSeeded ${member} refuses it the same way`, () =>
+			Effect.gen(function* () {
+				const seeded = NpmRegistry.makeSeeded({
+					registries: { "https://registry.example": { pkg: { "1.1.0": { publishedAt: "2022-06-01T12:00:00.000Z" } } } },
+					distTags: { pkg: { latest: "1.1.0" } },
+				});
+				const error = yield* Effect.flip(call(seeded, castTarget));
+				assert.strictEqual(error.kind, "credential");
+				// Control: the same seeded member answers a token target.
+				yield* call(seeded, tokenTarget);
+			}),
+		);
+	}
+
+	it("names the refusal in its own message, not as an unreadable body", () => {
+		const error = new RegistryReadError({ kind: "credential", package: "pkg", registry: "https://r.example" });
+		assert.include(error.message, "workload credential");
+		assert.include(error.message, "publish-only");
+		assert.notInclude(error.message, "unreadable body");
+	});
 });

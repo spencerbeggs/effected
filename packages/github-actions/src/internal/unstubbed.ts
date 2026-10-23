@@ -18,6 +18,8 @@ import { Effect } from "effect";
 export const unstubbed =
 	(double: string) =>
 	(member: string): Effect.Effect<never> =>
-		Effect.sync(() => {
-			throw new Error(`${double}: ${member}() was called but not stubbed — pass a \`${member}\` override.`);
-		});
+		// `Effect.die`, not a throw inside `Effect.sync`: the outcome is the same
+		// defect, but stated as one rather than produced by an exception the
+		// runtime has to catch. No test can tell the two forms apart (both exit
+		// with the same Die), so this choice is deliberate but unpinned.
+		Effect.die(new Error(`${double}: ${member}() was called but not stubbed — pass a \`${member}\` override.`));
