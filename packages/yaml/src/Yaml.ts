@@ -264,10 +264,14 @@ const aliasCountExceededError = (message: string, text: string): YamlParseError 
 /**
  * Map an internal stringifier throw to its typed {@link YamlStringifyError},
  * or return `undefined` for any other defect (which the caller re-throws).
- * Shared by the Effect and synchronous stringify paths so both surface the
- * hardening guards (circular reference, nesting-depth cap) identically.
+ * Shared by every stringify path — `Yaml.stringify`/`stringifyResult`, the
+ * schema encoders, `YamlDocument#stringifyResult` and `YamlFormat.modify`'s
+ * backstop — so all of them surface the hardening guards (circular
+ * reference, nesting-depth cap) identically.
+ *
+ * @internal
  */
-const stringifyDefectToError = (defect: unknown, value: unknown): YamlStringifyError | undefined => {
+export const stringifyDefectToError = (defect: unknown, value: unknown): YamlStringifyError | undefined => {
 	if (defect instanceof StringifyFailure) {
 		return new YamlStringifyError({
 			diagnostics: [
@@ -319,14 +323,13 @@ const parseResultImpl = (text: string, options?: YamlParseOptions): Result.Resul
 	// An empty map lets nodeToJsValue register anchors incrementally, so aliases
 	// resolve to the most recent anchor at the point of use.
 	const anchors = new Map<string, YamlNode>();
-	try {
-		return Result.succeed(nodeToJsValue(doc.contents, anchors, options?.maxAliasCount ?? 100));
-	} catch (defect) {
-		if (defect instanceof AliasExpansionBudgetExceeded) {
-			return Result.fail(aliasCountExceededError(defect.message, text));
-		}
-		throw defect;
-	}
+	return Result.try({
+		try: () => nodeToJsValue(doc.contents, anchors, options?.maxAliasCount ?? 100),
+		catch: (defect) => {
+			if (defect instanceof AliasExpansionBudgetExceeded) return aliasCountExceededError(defect.message, text);
+			throw defect;
+		},
+	});
 };
 
 /**
@@ -383,15 +386,15 @@ const parseAllResultImpl = (
 const stringifyResultImpl = (
 	value: unknown,
 	options?: YamlStringifyOptions,
-): Result.Result<string, YamlStringifyError> => {
-	try {
-		return Result.succeed(stringifyValue(value, toStringifyInput(options)));
-	} catch (defect) {
-		const error = stringifyDefectToError(defect, value);
-		if (error !== undefined) return Result.fail(error);
-		throw defect;
-	}
-};
+): Result.Result<string, YamlStringifyError> =>
+	Result.try({
+		try: () => stringifyValue(value, toStringifyInput(options)),
+		catch: (defect) => {
+			const error = stringifyDefectToError(defect, value);
+			if (error !== undefined) return error;
+			throw defect;
+		},
+	});
 
 /**
  * Collect the raw diagnostics that make a composed document a parse failure:
@@ -404,16 +407,6 @@ const failureRecords = (doc: RawYamlDocument, uniqueKeys: boolean): ReadonlyArra
 	if (fatal.length > 0) return fatal;
 	return uniqueKeys ? doc.warnings.filter((w) => w.code === "DuplicateKey") : [];
 };
-
-const stringifyOrFail = (value: unknown, options?: YamlStringifyOptions): Effect.Effect<string, YamlStringifyError> =>
-	Effect.try({
-		try: () => stringifyValue(value, toStringifyInput(options)),
-		catch: (defect) => {
-			const error = stringifyDefectToError(defect, value);
-			if (error !== undefined) return error;
-			throw defect;
-		},
-	});
 
 // ── Bound codec ─────────────────────────────────────────────────────────────
 
@@ -532,9 +525,9 @@ export class Yaml {
 	 * @returns An `Effect` that succeeds with the YAML text, or fails with
 	 *   {@link YamlStringifyError}.
 	 */
-	static readonly stringify = Effect.fn("Yaml.stringify")(function* (value: unknown, options?: YamlStringifyOptions) {
-		return yield* stringifyOrFail(value, options);
-	});
+	static readonly stringify = Effect.fn("Yaml.stringify")((value: unknown, options?: YamlStringifyOptions) =>
+		Effect.fromResult(stringifyResultImpl(value, options)),
+	);
 
 	/**
 	 * Synchronous single-document parse, returning a `Result` instead of
@@ -771,7 +764,7 @@ export class Yaml {
 							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, input)),
 						),
 					encode: (value: unknown) =>
-						stringifyOrFail(value).pipe(
+						Effect.fromResult(stringifyResultImpl(value)).pipe(
 							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, value)),
 						),
 				}),
@@ -808,7 +801,7 @@ export class Yaml {
 							if (values.length === 0) return "";
 							const parts: Array<string> = [];
 							for (let index = 0; index < values.length; index++) {
-								const yaml = yield* stringifyOrFail(values[index]).pipe(
+								const yaml = yield* Effect.fromResult(stringifyResultImpl(values[index])).pipe(
 									Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, values)),
 								);
 								parts.push(index > 0 ? `---\n${yaml}` : yaml);
