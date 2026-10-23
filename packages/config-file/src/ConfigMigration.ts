@@ -70,10 +70,19 @@ const defaultVersionAccess: VersionAccess = {
 /** Reads and writes a top-level `version` field. @public */
 export const VersionAccess = { default: defaultVersionAccess } as const;
 
-/** Options for {@link ConfigMigration.make}. @public */
-export interface ConfigMigrationOptions {
-	/** The codec being wrapped. */
-	readonly codec: ConfigCodec;
+/**
+ * Options for {@link ConfigMigration.make}.
+ *
+ * @remarks
+ * `CE` is the wrapped codec's error channel, inferred from `codec`. It
+ * defaults to `ConfigCodecError`; wrapping an already-decorated codec carries
+ * its widened error through.
+ *
+ * @public
+ */
+export interface ConfigMigrationOptions<CE = ConfigCodecError> {
+	/** The codec being wrapped — any `ConfigCodec<CE>`, decorated ones included. */
+	readonly codec: ConfigCodec<CE>;
 	/** The migration steps; they run in ascending `version` order. */
 	readonly migrations: ReadonlyArray<ConfigFileMigration>;
 	/** How the version is read and written; defaults to {@link (VersionAccess:variable).default}, a top-level `version` field. */
@@ -101,7 +110,7 @@ const runPhase = <A>(
 	Effect.suspend(run).pipe(Effect.mapError((cause) => new ConfigMigrationError({ version, name, phase, cause })));
 
 // Implementation of ConfigMigration.make; the public contract lives on the static.
-const make = (options: ConfigMigrationOptions): ConfigCodec<ConfigCodecError | ConfigMigrationError> => {
+const make = <CE = ConfigCodecError>(options: ConfigMigrationOptions<CE>): ConfigCodec<CE | ConfigMigrationError> => {
 	const access = options.versionAccess ?? VersionAccess.default;
 	const sorted = [...options.migrations].sort((a, b) => a.version - b.version);
 
@@ -137,7 +146,11 @@ export class ConfigMigration {
 	 * The returned codec's error channel **widens** to include
 	 * {@link ConfigMigrationError} rather than flattening migration failures into
 	 * the inner codec's error — the reason the {@link (ConfigCodec:interface)} seam is generic
-	 * in its error type.
+	 * in its error type. The inner codec's own error type is kept as-is, so
+	 * wrapping an `EncryptedCodec` yields
+	 * `ConfigCodec<ConfigCodecError | ConfigEncryptionError | ConfigMigrationError>`,
+	 * and the result goes straight into `ConfigFile.layer`, `testLayer` or
+	 * `read`.
 	 *
 	 * @example
 	 * ```ts

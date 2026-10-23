@@ -127,9 +127,20 @@ export class ConfigValidationError extends Schema.TaggedError<ConfigValidationEr
 /**
  * The failure modes of the full discovery-and-load path.
  *
+ * @remarks
+ * `CE` is the codec's error channel. It defaults to {@link ConfigCodecError},
+ * the error of the four built-in codecs; a decorated codec widens it. Under
+ * `EncryptedCodec(JsonCodec, key)` it is
+ * `ConfigCodecError | ConfigEncryptionError`, and the union widens with it
+ * rather than flattening the decorator's failure into a codec error.
+ *
  * @public
  */
-export type ConfigLoadError = ConfigFileNotFoundError | ConfigFileReadError | ConfigCodecError | ConfigValidationError;
+export type ConfigLoadError<CE = ConfigCodecError> =
+	| ConfigFileNotFoundError
+	| ConfigFileReadError
+	| CE
+	| ConfigValidationError;
 
 /**
  * The failure modes of reading one known path.
@@ -137,10 +148,11 @@ export type ConfigLoadError = ConfigFileNotFoundError | ConfigFileReadError | Co
  * @remarks
  * Deliberately excludes {@link ConfigFileNotFoundError}: every method typed with
  * this union either takes an explicit path or treats "nothing found" as success.
+ * `CE` is the codec's error channel, as on {@link ConfigLoadError}.
  *
  * @public
  */
-export type ConfigReadError = ConfigFileReadError | ConfigCodecError | ConfigValidationError;
+export type ConfigReadError<CE = ConfigCodecError> = ConfigFileReadError | CE | ConfigValidationError;
 
 /**
  * The failure modes of encoding and writing one known path.
@@ -148,11 +160,12 @@ export type ConfigReadError = ConfigFileReadError | ConfigCodecError | ConfigVal
  * @remarks
  * Deliberately excludes {@link ConfigFileNotFoundError} — the path is explicit,
  * so there is nothing to discover — and {@link ConfigDefaultPathMissingError},
- * because no default path is consulted.
+ * because no default path is consulted. `CE` is the codec's error channel, as
+ * on {@link ConfigLoadError}.
  *
  * @public
  */
-export type ConfigWriteError = ConfigFileWriteError | ConfigCodecError | ConfigValidationError;
+export type ConfigWriteError<CE = ConfigCodecError> = ConfigFileWriteError | CE | ConfigValidationError;
 
 /**
  * The failure modes of {@link ConfigFileShape.encode}: everything on the write
@@ -161,10 +174,11 @@ export type ConfigWriteError = ConfigFileWriteError | ConfigCodecError | ConfigV
  * @remarks
  * Deliberately excludes {@link ConfigFileWriteError} — nothing touches the
  * filesystem — so a `--dry-run` caller's error channel is honest about that.
+ * `CE` is the codec's error channel, as on {@link ConfigLoadError}.
  *
  * @public
  */
-export type ConfigEncodeError = ConfigCodecError | ConfigValidationError;
+export type ConfigEncodeError<CE = ConfigCodecError> = CE | ConfigValidationError;
 
 /**
  * Options shared by {@link ConfigFileShape.encode} and {@link ConfigFileShape.write}.
@@ -189,34 +203,45 @@ export interface ConfigEncodeOptions {
 }
 
 /**
- * The failure modes of {@link ConfigFileShape.save}.
+ * The failure modes of {@link ConfigFileShape.save}. `CE` is the codec's error
+ * channel, as on {@link ConfigLoadError}.
  *
  * @public
  */
-export type ConfigSaveError = ConfigWriteError | ConfigDefaultPathMissingError;
+export type ConfigSaveError<CE = ConfigCodecError> = ConfigWriteError<CE> | ConfigDefaultPathMissingError;
 
 /**
- * The failure modes of {@link ConfigFileShape.update}, which loads and then saves.
+ * The failure modes of {@link ConfigFileShape.update}, which loads and then
+ * saves. `CE` is the codec's error channel, as on {@link ConfigLoadError}.
  *
  * @public
  */
-export type ConfigUpdateError = ConfigLoadError | ConfigFileWriteError | ConfigDefaultPathMissingError;
+export type ConfigUpdateError<CE = ConfigCodecError> =
+	| ConfigLoadError<CE>
+	| ConfigFileWriteError
+	| ConfigDefaultPathMissingError;
 
 /**
- * The config file service, generic over the decoded config type `A`.
+ * The config file service, generic over the decoded config type `A` and the
+ * codec's error channel `CE`.
  *
  * @remarks
  * Error unions are narrowed per method: `loadOrDefault` cannot fail with
  * {@link ConfigFileNotFoundError} because that is the branch it handles, and
  * `discover` treats an empty result as success.
  *
+ * `CE` defaults to {@link ConfigCodecError}, so a service over a built-in
+ * codec never names it. A service over a decorated codec —
+ * `EncryptedCodec(...)`, `ConfigMigration.make(...)` — names the decorator's
+ * widened error here, and every codec-facing method carries it.
+ *
  * @public
  */
-export interface ConfigFileShape<A> {
+export interface ConfigFileShape<A, CE = ConfigCodecError> {
 	/** Discover, decode and merge the highest-priority config source. */
-	readonly load: Effect.Effect<A, ConfigLoadError>;
+	readonly load: Effect.Effect<A, ConfigLoadError<CE>>;
 	/** Read, decode and validate one explicit path. */
-	readonly loadFrom: (path: string) => Effect.Effect<A, ConfigReadError>;
+	readonly loadFrom: (path: string) => Effect.Effect<A, ConfigReadError<CE>>;
 	/**
 	 * Every source the resolver chain found, in priority order. Empty is success.
 	 *
@@ -225,7 +250,7 @@ export interface ConfigFileShape<A> {
 	 * being silently skipped: silently skipping a corrupt file would mean running
 	 * on the wrong config. This is deliberate.
 	 */
-	readonly discover: Effect.Effect<ReadonlyArray<ConfigSource<A>>, ConfigReadError>;
+	readonly discover: Effect.Effect<ReadonlyArray<ConfigSource<A>>, ConfigReadError<CE>>;
 	/**
 	 * Like {@link ConfigFileShape.load}, but yields `defaultValue` when nothing is found.
 	 *
@@ -233,7 +258,7 @@ export interface ConfigFileShape<A> {
 	 * `defaultValue` is returned as-is: neither the schema nor `options.validate`
 	 * is applied to it. It is trusted caller input, not a discovered document.
 	 */
-	readonly loadOrDefault: (defaultValue: A) => Effect.Effect<A, ConfigReadError>;
+	readonly loadOrDefault: (defaultValue: A) => Effect.Effect<A, ConfigReadError<CE>>;
 	/** Decode and validate an in-memory value. */
 	readonly validate: (value: unknown) => Effect.Effect<A, ConfigValidationError>;
 	/**
@@ -246,7 +271,7 @@ export interface ConfigFileShape<A> {
 	 * `path`, and a validation failure's `path` is `Option.none()`: there is no
 	 * file to name.
 	 */
-	readonly encode: (value: A, options?: ConfigEncodeOptions) => Effect.Effect<string, ConfigEncodeError>;
+	readonly encode: (value: A, options?: ConfigEncodeOptions) => Effect.Effect<string, ConfigEncodeError<CE>>;
 	/**
 	 * Encode `value` and write it to an explicit `path`.
 	 *
@@ -256,12 +281,12 @@ export interface ConfigFileShape<A> {
 	 * `write` targets a path the caller already vouched for. `options` are the
 	 * same as {@link ConfigFileShape.encode}'s, so the two stay in lockstep.
 	 */
-	readonly write: (value: A, path: string, options?: ConfigEncodeOptions) => Effect.Effect<void, ConfigWriteError>;
+	readonly write: (value: A, path: string, options?: ConfigEncodeOptions) => Effect.Effect<void, ConfigWriteError<CE>>;
 	/**
 	 * Resolve `defaultPath`, `mkdir -p` its parent, encode `value` into it, and
 	 * return the path written.
 	 */
-	readonly save: (value: A) => Effect.Effect<string, ConfigSaveError>;
+	readonly save: (value: A) => Effect.Effect<string, ConfigSaveError<CE>>;
 	/**
 	 * Load the current value, apply `fn`, {@link ConfigFileShape.save} the result
 	 * and return it.
@@ -270,7 +295,7 @@ export interface ConfigFileShape<A> {
 	 * With `defaultValue` the load cannot fail with
 	 * {@link ConfigFileNotFoundError}; without it, it can.
 	 */
-	readonly update: (fn: (current: A) => A, defaultValue?: A) => Effect.Effect<A, ConfigUpdateError>;
+	readonly update: (fn: (current: A) => A, defaultValue?: A) => Effect.Effect<A, ConfigUpdateError<CE>>;
 }
 
 /**
@@ -280,9 +305,13 @@ export interface ConfigFileShape<A> {
  * `RR` is the union of the resolvers' requirements. It flows into the layer's
  * `R` rather than being cast away.
  *
+ * `CE` is the codec's error channel, inferred from `codec`. It defaults to
+ * {@link ConfigCodecError}; a decorated codec widens it, and the service's
+ * error unions widen with it.
+ *
  * @public
  */
-export interface ConfigFileOptions<A, I, RR> {
+export interface ConfigFileOptions<A, I, RR, CE = ConfigCodecError> {
 	/**
 	 * The schema every discovered document is decoded through.
 	 *
@@ -293,8 +322,15 @@ export interface ConfigFileOptions<A, I, RR> {
 	 * requirements.
 	 */
 	readonly schema: Schema.Codec<A, I>;
-	/** How file content becomes an unknown document, and back. */
-	readonly codec: ConfigCodec;
+	/**
+	 * How file content becomes an unknown document, and back.
+	 *
+	 * @remarks
+	 * Any `ConfigCodec<CE>`, decorated ones included: an
+	 * `EncryptedCodec(JsonCodec, key)` or a `ConfigMigration.make(...)` codec
+	 * goes here directly.
+	 */
+	readonly codec: ConfigCodec<CE>;
 	/** The resolver chain, in priority order. */
 	readonly resolvers: ReadonlyArray<ConfigResolver<RR>>;
 	/** How several discovered sources become one value. */
@@ -350,9 +386,9 @@ export interface ConfigFileOptions<A, I, RR> {
 
 // Implementation of ConfigFile.Service; the public contract lives on the static.
 const Service =
-	<Self, A>() =>
+	<Self, A, CE = ConfigCodecError>() =>
 	<const Id extends string>(id: Id) =>
-		Context.Service<Self, ConfigFileShape<A>>()(id);
+		Context.Service<Self, ConfigFileShape<A, CE>>()(id);
 
 /**
  * Re-raise a codec failure with the file it came from attached.
@@ -385,12 +421,12 @@ const withCodecPath = <E>(error: E, target: string): E =>
 const prependHeader = (document: string, header: string | undefined): string =>
 	header === undefined ? document : header.endsWith("\n") ? `${header}${document}` : `${header}\n${document}`;
 
-const makeImpl = <A, I, RR>(
-	options: ConfigFileOptions<A, I, RR>,
+const makeImpl = <A, I, RR, CE>(
+	options: ConfigFileOptions<A, I, RR, CE>,
 	fs: FileSystem.FileSystem,
 	path: Path.Path,
 	resolverEnv: Context.Context<RR>,
-): ConfigFileShape<A> => {
+): ConfigFileShape<A, CE> => {
 	/**
 	 * Publish one event, or nothing at all.
 	 *
@@ -549,12 +585,18 @@ const makeImpl = <A, I, RR>(
 	 * `target` is the file this text is destined for, when there is one. It is
 	 * only ever used to NAME the file in an error — `encode` passes `none` and
 	 * its errors honestly carry no path.
+	 *
+	 * `onCodecFailure` observes a failure of the codec's `stringify` step and
+	 * nothing else. The codec's error type is the caller's `CE`, which may be a
+	 * decorator's widened union, so a codec failure cannot be recognized by tag
+	 * after the fact — it is observed where it happens.
 	 */
 	const encodeTo = (
 		value: A,
 		target: Option.Option<string>,
-		encodeOptions?: ConfigEncodeOptions,
-	): Effect.Effect<string, ConfigEncodeError> =>
+		encodeOptions: ConfigEncodeOptions | undefined,
+		onCodecFailure: (error: CE) => Effect.Effect<void>,
+	): Effect.Effect<string, ConfigEncodeError<CE>> =>
 		Effect.gen(function* () {
 			const encoded = yield* Schema.encodeEffect(options.schema)(value).pipe(
 				// Same normalization as `decode`: carry the structured issue, never stringify.
@@ -562,13 +604,12 @@ const makeImpl = <A, I, RR>(
 					Effect.fail(new ConfigValidationError({ path: target, issue: error.issue })),
 				),
 			);
-			const serialized = yield* options.codec
-				.stringify(encoded)
-				.pipe(
-					Effect.mapError((error) =>
-						Option.match(target, { onNone: () => error, onSome: (file) => withCodecPath(error, file) }),
-					),
-				);
+			const serialized = yield* options.codec.stringify(encoded).pipe(
+				Effect.mapError((error) =>
+					Option.match(target, { onNone: () => error, onSome: (file) => withCodecPath(error, file) }),
+				),
+				Effect.tapError(onCodecFailure),
+			);
 			return prependHeader(serialized, encodeOptions?.header);
 		});
 
@@ -583,14 +624,10 @@ const makeImpl = <A, I, RR>(
 		value: A,
 		target: string,
 		encodeOptions?: ConfigEncodeOptions,
-	): Effect.Effect<void, ConfigWriteError> =>
+	): Effect.Effect<void, ConfigWriteError<CE>> =>
 		Effect.gen(function* () {
-			const serialized = yield* encodeTo(value, Option.some(target), encodeOptions).pipe(
-				Effect.tapError((error) =>
-					error._tag === "ConfigCodecError"
-						? emit({ _tag: "StringifyFailed", codec: options.codec.name, error })
-						: Effect.void,
-				),
+			const serialized = yield* encodeTo(value, Option.some(target), encodeOptions, (error) =>
+				emit({ _tag: "StringifyFailed", codec: options.codec.name, error }),
 			);
 			yield* fs
 				.writeFileString(target, serialized)
@@ -599,7 +636,7 @@ const makeImpl = <A, I, RR>(
 
 	// No event: nothing was written.
 	const encode = Effect.fn("ConfigFile.encode")(function* (value: A, encodeOptions?: ConfigEncodeOptions) {
-		return yield* encodeTo(value, Option.none(), encodeOptions);
+		return yield* encodeTo(value, Option.none(), encodeOptions, () => Effect.void);
 	});
 
 	/**
@@ -611,7 +648,7 @@ const makeImpl = <A, I, RR>(
 	 * emitting boundary sits in the public method, never in the shared internals
 	 * it delegates to.
 	 */
-	const saveTo = (value: A): Effect.Effect<string, ConfigSaveError> =>
+	const saveTo = (value: A): Effect.Effect<string, ConfigSaveError<CE>> =>
 		Effect.gen(function* () {
 			const configured = options.defaultPath;
 			if (configured === undefined) return yield* Effect.fail(new ConfigDefaultPathMissingError({}));
@@ -687,11 +724,18 @@ const makeImpl = <A, I, RR>(
 // `MergeStrategy.firstMatch()` in the options needs; the conditional only checks (`NoInfer`), rejecting a
 // shape wider than ConfigFileShape<A>. It cannot see through method-syntax parameter bivariance: a member
 // redeclared as a method with a wider parameter still passes.
-const layer = <Self, A, I, RR = never, S extends ConfigFileShape<A> = ConfigFileShape<A>>(
+const layer = <
+	Self,
+	A,
+	I,
+	RR = never,
+	CE = ConfigCodecError,
+	S extends ConfigFileShape<A, CE> = ConfigFileShape<A, CE>,
+>(
 	tag: Context.Key<Self, S> &
-		Context.Key<Self, ConfigFileShape<A>> &
-		([ConfigFileShape<NoInfer<A>>] extends [S] ? unknown : never),
-	options: ConfigFileOptions<A, I, RR>,
+		Context.Key<Self, ConfigFileShape<A, CE>> &
+		([ConfigFileShape<NoInfer<A>, NoInfer<CE>>] extends [S] ? unknown : never),
+	options: ConfigFileOptions<A, I, RR, CE>,
 ): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | RR> =>
 	Layer.effect(
 		tag,
@@ -718,13 +762,21 @@ const layer = <Self, A, I, RR = never, S extends ConfigFileShape<A> = ConfigFile
  * {@link ConfigDefaultPathMissingError} under this layer — the honest answer.
  * Exercise the write path with {@link ConfigFile.layer} instead.
  *
+ * `CE` is the codec's error channel, as on {@link ConfigFileOptions}.
+ *
  * @public
  */
-export interface ConfigFileTestOptions<A, I> {
+export interface ConfigFileTestOptions<A, I, CE = ConfigCodecError> {
 	/** The schema every seeded document is decoded through. */
 	readonly schema: Schema.Codec<A, I>;
-	/** How file content becomes an unknown document, and back. */
-	readonly codec: ConfigCodec;
+	/**
+	 * How file content becomes an unknown document, and back.
+	 *
+	 * @remarks
+	 * Any `ConfigCodec<CE>`, decorated ones included, exactly as on
+	 * {@link ConfigFileOptions.codec}.
+	 */
+	readonly codec: ConfigCodec<CE>;
 	/** How several discovered sources become one value. */
 	readonly strategy: MergeStrategy<A>;
 	/**
@@ -741,11 +793,11 @@ export interface ConfigFileTestOptions<A, I> {
 
 // Implementation of ConfigFile.testLayer; the public contract lives on the static.
 // `tag` is pinned exactly as ConfigFile.layer's is; see the note there.
-const testLayer = <Self, A, I, S extends ConfigFileShape<A> = ConfigFileShape<A>>(
+const testLayer = <Self, A, I, CE = ConfigCodecError, S extends ConfigFileShape<A, CE> = ConfigFileShape<A, CE>>(
 	tag: Context.Key<Self, S> &
-		Context.Key<Self, ConfigFileShape<A>> &
-		([ConfigFileShape<NoInfer<A>>] extends [S] ? unknown : never),
-	options: ConfigFileTestOptions<A, I>,
+		Context.Key<Self, ConfigFileShape<A, CE>> &
+		([ConfigFileShape<NoInfer<A>, NoInfer<CE>>] extends [S] ? unknown : never),
+	options: ConfigFileTestOptions<A, I, CE>,
 ): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path> =>
 	Layer.effect(
 		tag,
@@ -788,9 +840,13 @@ const testLayer = <Self, A, I, S extends ConfigFileShape<A> = ConfigFileShape<A>
 /**
  * Options for {@link ConfigFile.read}.
  *
+ * @remarks
+ * `CE` is the codec's error channel, inferred from `codec`, as on
+ * {@link ConfigFileOptions}.
+ *
  * @public
  */
-export interface ConfigReadOptions<A, I> {
+export interface ConfigReadOptions<A, I, CE = ConfigCodecError> {
 	/** The schema the document is decoded through. */
 	readonly schema: Schema.Codec<A, I>;
 	/**
@@ -802,8 +858,11 @@ export interface ConfigReadOptions<A, I> {
 	 * free-standing-codec tree-shaking guarantee: a consumer that only ever
 	 * passes `JsonCodec` never references the JSONC, YAML or TOML modules, so
 	 * their engines stay out of the bundle.
+	 *
+	 * A decorated codec (`EncryptedCodec`, `ConfigMigration.make`) is accepted,
+	 * and `read`'s error channel widens to its error.
 	 */
-	readonly codec: ConfigCodec;
+	readonly codec: ConfigCodec<CE>;
 	/**
 	 * Parse options for the decode, chiefly `onExcessProperty`.
 	 *
@@ -815,10 +874,10 @@ export interface ConfigReadOptions<A, I> {
 }
 
 // Implementation of ConfigFile.read; the public contract lives on the static.
-const read = <A, I>(
+const read = <A, I, CE = ConfigCodecError>(
 	path: string,
-	options: ConfigReadOptions<A, I>,
-): Effect.Effect<A, ConfigReadError, FileSystem.FileSystem> =>
+	options: ConfigReadOptions<A, I, CE>,
+): Effect.Effect<A, ConfigReadError<CE>, FileSystem.FileSystem> =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 
@@ -849,9 +908,23 @@ export class ConfigFile {
 	/**
 	 * Create a uniquely-keyed service class for one config schema.
 	 *
+	 * @remarks
+	 * The optional third type argument is the codec's error channel. Omit it
+	 * for the built-in codecs. A service over a decorated codec names the
+	 * decorator's widened error, because the key is declared before the codec
+	 * is chosen and cannot infer it: wiring `EncryptedCodec(JsonCodec, key)`
+	 * into a key declared without it is a compile error, since that service's
+	 * methods would fail with a `ConfigEncryptionError` its type never mentions.
+	 *
 	 * @example
 	 * ```ts
 	 * class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("app/Config") {}
+	 *
+	 * class Secrets extends ConfigFile.Service<
+	 * 	Secrets,
+	 * 	SecretsShape,
+	 * 	ConfigCodecError | ConfigEncryptionError
+	 * >()("app/Secrets") {}
 	 * ```
 	 */
 	static readonly Service = Service;

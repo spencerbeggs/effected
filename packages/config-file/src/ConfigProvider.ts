@@ -1,5 +1,6 @@
 import type { Context, Layer } from "effect";
 import { ConfigProvider, Effect } from "effect";
+import type { ConfigCodecError } from "./ConfigCodec.js";
 import type { ConfigFileShape, ConfigLoadError } from "./ConfigFile.js";
 
 /**
@@ -43,6 +44,9 @@ import type { ConfigFileShape, ConfigLoadError } from "./ConfigFile.js";
  * Descent by own property is also why a prototype getter and `__proto__` are
  * both unreachable through the returned provider.
  *
+ * `CE` is the service's codec error, so a service over a decorated codec
+ * keeps its widened failure in this effect's error channel.
+ *
  * @example
  * ```ts
  * import { asConfigProvider } from "@effected/config-file";
@@ -57,9 +61,9 @@ import type { ConfigFileShape, ConfigLoadError } from "./ConfigFile.js";
  *
  * @public
  */
-export const asConfigProvider = <A>(
-	service: ConfigFileShape<A>,
-): Effect.Effect<ConfigProvider.ConfigProvider, ConfigLoadError> =>
+export const asConfigProvider = <A, CE = ConfigCodecError>(
+	service: ConfigFileShape<A, CE>,
+): Effect.Effect<ConfigProvider.ConfigProvider, ConfigLoadError<CE>> =>
 	Effect.map(service.load, (value) => ConfigProvider.fromUnknown(value));
 
 /**
@@ -95,7 +99,8 @@ export interface LayerConfigProviderOptions {
  *
  * The load happens when the layer is built, and a {@link ConfigFileNotFoundError}
  * surfaces in the layer's error channel rather than degrading to an empty
- * provider — the same honesty {@link asConfigProvider} keeps.
+ * provider — the same honesty {@link asConfigProvider} keeps. A service over a
+ * decorated codec carries its widened codec error `CE` there too.
  *
  * @example
  * ```ts
@@ -104,10 +109,10 @@ export interface LayerConfigProviderOptions {
  *
  * @public
  */
-export const layerConfigProvider = <Self, A>(
-	tag: Context.Key<Self, ConfigFileShape<A>>,
+export const layerConfigProvider = <Self, A, CE = ConfigCodecError>(
+	tag: Context.Key<Self, ConfigFileShape<A, CE>>,
 	options?: LayerConfigProviderOptions,
-): Layer.Layer<never, ConfigLoadError, Self> => {
+): Layer.Layer<never, ConfigLoadError<CE>, Self> => {
 	// A `Context.Key` *is* an `Effect<Shape, never, Identifier>`, so the service
 	// lookup needs no `asEffect`, and `Self` flows straight into the layer's `R`.
 	const provider = Effect.flatMap(tag, asConfigProvider);
