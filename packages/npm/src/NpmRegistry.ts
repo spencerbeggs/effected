@@ -98,9 +98,9 @@ export class PublishTime extends Schema.Class<PublishTime>("PublishTime")({
  * response), `"status"` (the registry answered, unsuccessfully — `status`
  * carries the code), `"decode"` (the body was not what the registry protocol
  * says it is), `"credential"` (the target carried a publish-only workload
- * credential, refused before any request was sent). **A 404 is not here**: an absent package or version is
- * `Option.none()`, extending the `None`-is-success convention this package's
- * resolver contracts already use.
+ * credential, refused before any request was sent). **A 404 is not here**:
+ * an absent package or version is `Option.none()`, extending the
+ * `None`-is-success convention this package's resolver contracts already use.
  *
  * @public
  */

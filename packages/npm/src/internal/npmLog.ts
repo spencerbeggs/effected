@@ -6,8 +6,7 @@
 // `<heading> <level> [<title>] <message>`, the heading `npm` unless the user
 // configured another; under colour each part is wrapped in SGR escapes.
 
-/** The auth path a publish took, as far as npm's own output can prove it. */
-export type PublishAuthPathValue = "oidc-exchange" | "configured-credential" | "unknown";
+import type { PublishAuthPath } from "../PackagePublish.js";
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: matching the ESC byte is the point.
 const SGR = /\u001b\[[0-9;]*m/g;
@@ -47,7 +46,7 @@ const NOT_EXCHANGED = /^\S+ (?:verbose|silly) oidc (?:Failed|Failure|Skipped)\b/
  *
  * @internal
  */
-export const classifyPublishAuth = (stderr: string, tokenAuth: boolean): PublishAuthPathValue => {
+export const classifyPublishAuth = (stderr: string, tokenAuth: boolean): PublishAuthPath => {
 	const plain = stripAnsi(stderr);
 	if (EXCHANGED.test(plain)) return "oidc-exchange";
 	if (tokenAuth) return "configured-credential";

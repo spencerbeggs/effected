@@ -230,7 +230,9 @@ export interface ActionLoggerShape {
 	 * header goes out through `Console` like the group command it replaces, so
 	 * it is never captured into, or discarded with, an enclosing `withBuffer`
 	 * or `withStep` transcript. A failure at any depth flushes the active
-	 * buffer before the group closes.
+	 * buffer before the group closes. That ordering is visible in a failed
+	 * run's log: the replayed transcript lands BELOW every nested header that
+	 * was written live, including lines that were logged before the header.
 	 *
 	 * The depth is fiber-scoped, which leaves four edges:
 	 *
