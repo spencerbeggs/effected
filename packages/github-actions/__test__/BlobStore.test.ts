@@ -1,6 +1,6 @@
 import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { SigV4 } from "@effected/crypto";
+import { SigV4, SigV4PathError } from "@effected/crypto";
 import { Crypto, DateTime, Effect, Layer, Option, PlatformError, Redacted, Schema } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/http";
 import { TestClock } from "effect/testing";
@@ -299,6 +299,15 @@ describe("BlobStore", () => {
 					assert.strictEqual(error.key, key);
 					assert.match(error.detail ?? "", /"\.\.?" segment/, key);
 					assert.include(error.message, `"${key}"`);
+					// The cause is crypto's own typed refusal, carrying the signed path and the segment.
+					assert.instanceOf(error.cause, SigV4PathError, key);
+					if (error.cause instanceof SigV4PathError) {
+						assert.strictEqual(error.cause.path, `cache/${key}`, key);
+						assert.strictEqual(
+							error.cause.segment,
+							key.split("/").find((part) => part === "." || part === ".."),
+						);
+					}
 					assert.strictEqual(seen.length, 0, `${key}: nothing leaves the process`);
 				}
 			}),

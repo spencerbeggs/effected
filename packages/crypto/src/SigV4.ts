@@ -1,9 +1,10 @@
 import type { PlatformError } from "effect";
 import { Crypto, DateTime, Effect, Redacted } from "effect";
 import * as Hex from "effect/encoding/Hex";
-import { CryptoError } from "./CryptoError.js";
+import type { CryptoError } from "./CryptoError.js";
 import { utf8 } from "./internal/bytes.js";
 import { hmacBytes } from "./internal/hmac.js";
+import { SigV4PathError } from "./SigV4PathError.js";
 
 const ALGORITHM = "AWS4-HMAC-SHA256";
 
@@ -40,7 +41,7 @@ export interface SigV4Request {
 	 * {@link SigV4.encodePath}; send the request to the same encoded path.
 	 * One leading `/` is optional; empty segments are kept, as S3 does. A
 	 * segment that is exactly `.` or `..` is refused with
-	 * `CryptoError` reason `path`: every URL parser collapses it, so the
+	 * {@link SigV4PathError}: every URL parser collapses it, so the
 	 * request would reach another path than the one signed.
 	 */
 	readonly path: string;
@@ -113,16 +114,9 @@ const encodePath = (path: string): string => path.split("/").map(encodeComponent
  * The unencoded path's segments, refusing a `.` or `..` one. Only the exact
  * segments: a literal `%2e` is encoded to `%252e`, which no URL collapses.
  */
-const checkSegments = (path: string): Effect.Effect<void, CryptoError> => {
+const checkSegments = (path: string): Effect.Effect<void, SigV4PathError> => {
 	const segment = path.split("/").find((part) => part === "." || part === "..");
-	return segment === undefined
-		? Effect.void
-		: Effect.fail(
-				CryptoError.of(
-					"path",
-					`the path has a "${segment}" segment, which a URL collapses, so it cannot be sent as signed`,
-				),
-			);
+	return segment === undefined ? Effect.void : Effect.fail(new SigV4PathError({ path, segment }));
 };
 
 const timestamps = (now: Date | DateTime.DateTime): { readonly amzDate: string; readonly dateStamp: string } => {
@@ -160,7 +154,7 @@ const sha256Hex = (data: Uint8Array): Effect.Effect<string, PlatformError.Platfo
 const canonicalize = (
 	request: SigV4Request,
 	credentials: SigV4Credentials,
-): Effect.Effect<SigV4Canonical, CryptoError | PlatformError.PlatformError, Crypto.Crypto> =>
+): Effect.Effect<SigV4Canonical, SigV4PathError | PlatformError.PlatformError, Crypto.Crypto> =>
 	Effect.gen(function* () {
 		// Before anything is hashed: a path no URL can carry is never signed.
 		yield* checkSegments(request.path);
@@ -278,7 +272,8 @@ export class SigV4 {
 	 *
 	 * Pure, and it does not normalise: `.` and `..` segments are unreserved,
 	 * so they pass through unchanged, and a URL parser then collapses them.
-	 * {@link SigV4.canonicalize} and {@link SigV4.sign} refuse such a path.
+	 * {@link SigV4.canonicalize} and {@link SigV4.sign} refuse such a path
+	 * with {@link SigV4PathError}.
 	 *
 	 * @public
 	 */
@@ -292,14 +287,15 @@ export class SigV4 {
 	 * requests. The path is encoded per segment, the query encoded and sorted
 	 * by name then value, and the payload hash is `payloadHash` when given or
 	 * the SHA-256 of the body otherwise. A path with a `.` or `..` segment
-	 * fails with `CryptoError` reason `path` before anything is hashed.
+	 * fails with {@link SigV4PathError} before anything is hashed. No HMAC is
+	 * taken here, so it never fails with `CryptoError`.
 	 *
 	 * @public
 	 */
 	static readonly canonicalize: (
 		request: SigV4Request,
 		credentials: SigV4Credentials,
-	) => Effect.Effect<SigV4Canonical, CryptoError | PlatformError.PlatformError, Crypto.Crypto> = canonicalize;
+	) => Effect.Effect<SigV4Canonical, SigV4PathError | PlatformError.PlatformError, Crypto.Crypto> = canonicalize;
 
 	/**
 	 * Derive the signing key: four nested HMAC-SHA256s over the date, region,
@@ -329,10 +325,11 @@ export class SigV4 {
 	 * canonical query string (no leading `?`, empty when there is none), so
 	 * the caller sends `${endpoint}${path}`, plus `?${query}` when non-empty,
 	 * and exactly what was signed reaches the wire. A path with a segment
-	 * that is exactly `.` or `..` fails with `CryptoError` reason `path`
-	 * before signing: every URL parser collapses it, so the request would
-	 * reach another path than the one signed. The span carries the
-	 * region and service, never a key or the signature.
+	 * that is exactly `.` or `..` fails with {@link SigV4PathError} before
+	 * signing: every URL parser collapses it, so the request would reach
+	 * another path than the one signed. That is caller input; `CryptoError`
+	 * is a wiring defect (no WebCrypto, or a refused key). The span carries
+	 * the region and service, never a key or the signature.
 	 *
 	 * WebCrypto's HMAC is truly asynchronous: a test that forks a signature
 	 * and then adjusts `TestClock` can race or hang; await it or use a latch.
@@ -342,5 +339,5 @@ export class SigV4 {
 	static readonly sign: (
 		request: SigV4Request,
 		credentials: SigV4Credentials,
-	) => Effect.Effect<SigV4Signed, CryptoError | PlatformError.PlatformError, Crypto.Crypto> = sign;
+	) => Effect.Effect<SigV4Signed, SigV4PathError | CryptoError | PlatformError.PlatformError, Crypto.Crypto> = sign;
 }

@@ -1114,9 +1114,10 @@
 	"crypto": {
 		"ConstantTime": "constant-time compare bytes or strings, timing-safe secret or mac equality",
 		"CryptoError": "handle hmac failure, missing webcrypto subtle, rejected key material",
-		"CryptoErrorReason": "why an hmac or sigv4 operation failed, unsupported runtime, bad key or unsendable dot-segment path",
+		"CryptoErrorReason": "why an hmac operation failed, unsupported runtime or bad key",
 		"Hmac": "compute or verify hmac-sha256 or sha512, hex base64 base64url output, webcrypto",
-		"SigV4": "sign an aws or s3-compatible request, sigv4 authorization header, signing key"
+		"SigV4": "sign an aws or s3-compatible request, sigv4 authorization header, signing key",
+		"SigV4PathError": "handle an s3 key or sigv4 path with a dot segment that a url would collapse"
 	},
 	"webhooks": {
 		"GitHub": "verify a github webhook delivery, x-hub-signature-256 sha256 hmac",

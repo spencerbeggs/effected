@@ -29,10 +29,10 @@ sources:
     title: "Intake's HMAC helpers and its hashed secretsEqual"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T01:39:30Z
+  at: 2026-10-23T01:52:48Z
 integrity:
   generated:
-    body: 0a43f98ca71174a5
+    body: 1b936f3db9f1f10e
 ---
 
 # `@effected/crypto`
@@ -51,7 +51,8 @@ Core `Crypto` at 4.0.6 offers random bytes, random numbers, UUIDv4/v7, ULID and 
 
 | File | Responsibility |
 | --- | --- |
-| `src/CryptoError.ts` | the one tagged error, `reason` `unsupportedRuntime`, `key` or `path` |
+| `src/CryptoError.ts` | the wiring-defect tagged error, `reason` `unsupportedRuntime` or `key` |
+| `src/SigV4PathError.ts` | the caller-input tagged error for a SigV4 path with a `.` or `..` segment, carrying `path` and `segment` |
 | `src/internal/subtle.ts` | `globalThis.crypto?.subtle` acquisition and the `unsupportedRuntime` failure, as in `jwt` |
 | `src/Hmac.ts` | `Hmac.sign` and `Hmac.verify` for SHA-256 and SHA-512 |
 | `src/ConstantTime.ts` | `ConstantTime.equal` and `ConstantTime.secretsEqual` |
@@ -65,13 +66,13 @@ The package follows the [module-per-concept layout](../conventions/module-per-co
 - **`Hmac`.** The key is raw bytes or a `Redacted<string>` (UTF-8 encoded at import, and `Redacted.value` read only there). The message is bytes, a string, or a list of those parts joined as bytes in order, so a prefix plus a raw body needs no caller-built buffer. Output is selected by an `encoding` option: `bytes`, `hex` (lower case), `base64` (padded) or `base64url` (unpadded). The last is what Sanity signs with. `Hmac.verify` recomputes and compares with `ConstantTime.equal`, so a caller never writes the comparison by hand. Both return an `Effect`, because WebCrypto's `sign` is asynchronous; that is the cost of running on workerd, and every caller absorbs it.
 - **`ConstantTime.equal(a, b)`** compares two byte arrays or two strings with an XOR accumulator over the full length and no early return on a mismatched byte. A length mismatch returns `false`. Its guarantee is best-effort, recorded in [the constant-time limitation](../limitations/constant-time-compare.md).
 - **`ConstantTime.secretsEqual(expected, received)`** MACs both sides with HMAC-SHA256 under a fresh, non-extractable key from WebCrypto's `generateKey` and compares the MACs, so neither the secret's length nor a prefix match leaks. It is the comparison for a shared-secret header. It is keyed, so it sits on the WebCrypto side of [the backend split](../decisions/crypto-backends.md): nothing in `R`, and `CryptoError` as its only failure.
-- **`SigV4`** is the union of both earlier copies. From `github-actions`: the optional session token as `x-amz-security-token`, per-segment path encoding that also escapes `!'()*` (which `encodeURIComponent` leaves alone and AWS does not), and the signing instant passed in. From intake: a canonical query string (key then value sorted, both RFC 3986 encoded), and a payload hash the caller may supply, so `UNSIGNED-PAYLOAD` and the precomputed empty-body hash work. `sign` returns `SigV4Signed`: the caller's headers plus every header signing added, the encoded canonical path and the canonical query string, so the caller sends `${endpoint}${path}` (and `?${query}` when non-empty) with those headers and nothing re-encodes. Every URL parser collapses a `.` or `..` segment, `%2e` spellings included, so a path holding one cannot reach the store as signed; encoding cannot fix that, since both are unreserved. So `canonicalize` and `sign` refuse a path with a segment that is exactly `.` or `..`, with `CryptoError` reason `path`, before anything is hashed, and every caller inherits the refusal. Only the exact segments are refused: the path is unencoded, so a literal `%2e` is encoded to `%252e`, which no parser collapses. `encodePath` stays pure and does not normalise. `canonicalize` and `signingKey` are exported so tests pin them against AWS's own documented examples rather than against this implementation.
+- **`SigV4`** is the union of both earlier copies. From `github-actions`: the optional session token as `x-amz-security-token`, per-segment path encoding that also escapes `!'()*` (which `encodeURIComponent` leaves alone and AWS does not), and the signing instant passed in. From intake: a canonical query string (key then value sorted, both RFC 3986 encoded), and a payload hash the caller may supply, so `UNSIGNED-PAYLOAD` and the precomputed empty-body hash work. `sign` returns `SigV4Signed`: the caller's headers plus every header signing added, the encoded canonical path and the canonical query string, so the caller sends `${endpoint}${path}` (and `?${query}` when non-empty) with those headers and nothing re-encodes. Every URL parser collapses a `.` or `..` segment, `%2e` spellings included, so a path holding one cannot reach the store as signed; encoding cannot fix that, since both are unreserved. So `canonicalize` and `sign` refuse a path with a segment that is exactly `.` or `..`, with `SigV4PathError` (carrying the `path` and the offending `segment`), before anything is hashed, and every caller inherits the refusal. `canonicalize` takes no HMAC, so its error channel is `SigV4PathError | PlatformError` with no `CryptoError`; `sign` adds `CryptoError`. Only the exact segments are refused: the path is unencoded, so a literal `%2e` is encoded to `%252e`, which no parser collapses. `encodePath` stays pure and does not normalise. `canonicalize` and `signingKey` are exported so tests pin them against AWS's own documented examples rather than against this implementation.
 
 - **Asynchrony.** Every WebCrypto call is truly asynchronous: a test that forks `Hmac.sign`, `Hmac.verify`, `secretsEqual` or `SigV4.sign` and then adjusts `TestClock` can race or hang, and needs a latch or an `Effect.yieldNow` loop.
 
 ## Errors
 
-`CryptoError` has `reason` `unsupportedRuntime` (no `crypto.subtle`), `key` (WebCrypto refused the key material) or `path` (a SigV4 path with a `.` or `..` segment, which is caller input rather than a wiring defect). Calling code branches on `reason`; the `message` names the runtime, the algorithm or the offending segment, never the key. Malformed input to a verifier is not this package's error: `Hmac.verify` answers `false`, and the [`webhooks`](webhooks.md) presets turn that into their own typed reasons.
+`CryptoError` has `reason` `unsupportedRuntime` (no `crypto.subtle`) or `key` (WebCrypto refused the key material). Both are wiring defects, which a caller turns into a defect with `orDie`; the `message` names the runtime or the algorithm, never the key. A SigV4 path with a `.` or `..` segment is caller input, which a caller plausibly recovers from on its own, so it is its own tag, `SigV4PathError`, with required `path` and `segment` fields that its `message` names, per [per-reason tagged errors](../decisions/github-actions-per-reason-tagged-errors.md): a caller recovers with `catchTag("SigV4PathError", ...)` and lets `CryptoError` die without branching on `reason`. Malformed input to a verifier is not this package's error: `Hmac.verify` answers `false`, and the [`webhooks`](webhooks.md) presets turn that into their own typed reasons.
 
 ## Observability
 

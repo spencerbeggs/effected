@@ -1,4 +1,4 @@
-import { CryptoError, SigV4 } from "@effected/crypto";
+import { SigV4 } from "@effected/crypto";
 import type { Redacted } from "effect";
 import { Context, Crypto, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
@@ -261,6 +261,9 @@ const makeS3 = (
 				.join("/")
 				.replaceAll(/\/{2,}/g, "/");
 
+		const unsignable = (key: string, cause: unknown): BlobStoreError =>
+			new BlobStoreError({ reason: "misconfigured", key, detail: "the request could not be signed", cause });
+
 		const request = (method: string, key: string, body: Uint8Array) =>
 			Effect.gen(function* () {
 				const path = objectPath(key);
@@ -268,17 +271,20 @@ const makeS3 = (
 				const now = yield* DateTime.now;
 				const signed = yield* SigV4.sign({ method, path, host, body, now }, credentials).pipe(
 					Effect.provideService(Crypto.Crypto, crypto),
-					Effect.mapError((cause) =>
+					Effect.catchTags({
 						// A path SigV4 refuses is the caller's key, not the layer's settings.
-						cause instanceof CryptoError && cause.reason === "path"
-							? new BlobStoreError({ reason: "invalidKey", key, detail: cause.detail, cause })
-							: new BlobStoreError({
-									reason: "misconfigured",
+						SigV4PathError: (cause) =>
+							Effect.fail(
+								new BlobStoreError({
+									reason: "invalidKey",
 									key,
-									detail: "the request could not be signed",
+									detail: `the path has a "${cause.segment}" segment, which a URL collapses, so it cannot be sent as signed`,
 									cause,
 								}),
-					),
+							),
+						CryptoError: (cause) => Effect.fail(unsignable(key, cause)),
+						PlatformError: (cause) => Effect.fail(unsignable(key, cause)),
+					}),
 				);
 				// The URL carries the target exactly as it was signed, never re-encoded:
 				// `!'()*` included, or the store answers SignatureDoesNotMatch. SigV4

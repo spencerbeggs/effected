@@ -8,15 +8,17 @@ import { Schema } from "effect";
  *
  * - `unsupportedRuntime` — the runtime has no WebCrypto `subtle`.
  * - `key` — WebCrypto refused the key material (for example an empty HMAC key).
- * - `path` — a SigV4 request path holds a `.` or `..` segment, which no URL can
- *   carry as signed. Caller input, not a wiring defect.
+ *
+ * Both are wiring defects, not caller input: a caller usually dies on them
+ * with `Effect.orDie`. A SigV4 path no URL can carry is caller input, so it
+ * is its own tag, {@link SigV4PathError}.
  *
  * A digest failure is not one of these: digests come from core `Crypto`, so
  * they fail with core's own `PlatformError`.
  *
  * @public
  */
-export const CryptoErrorReason = Schema.Literals(["unsupportedRuntime", "key", "path"]);
+export const CryptoErrorReason = Schema.Literals(["unsupportedRuntime", "key"]);
 
 /**
  * The reason union carried by {@link CryptoError}.
@@ -26,11 +28,13 @@ export const CryptoErrorReason = Schema.Literals(["unsupportedRuntime", "key", "
 export type CryptoErrorReason = typeof CryptoErrorReason.Type;
 
 /**
- * The one error `@effected/crypto` fails with.
+ * The wiring-defect error `@effected/crypto` fails with: no WebCrypto, or key
+ * material it refuses.
  *
  * @remarks
- * `reason` is the routing key; `detail` is human-readable, names the runtime,
- * the algorithm or the offending path segment and never the key, and may change between releases.
+ * `reason` is the routing key; `detail` is human-readable, names the runtime
+ * or the algorithm and never the key, and may change between releases. Caller
+ * input that SigV4 cannot sign fails with {@link SigV4PathError} instead.
  *
  * @public
  */

@@ -6,8 +6,8 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `ConstantTime` | Class | Comparison whose running time does not depend on where two values differ. | constant-time compare bytes or strings, timing-safe secret or mac equality |
-| `CryptoError` | Class | The one error `@effected/crypto` fails with. | handle hmac failure, missing webcrypto subtle, rejected key material |
-| `CryptoErrorReason` | Variable + TypeAlias | The reason union carried by `CryptoError`. | why an hmac or sigv4 operation failed, unsupported runtime, bad key or unsendable dot-segment path |
+| `CryptoError` | Class | The wiring-defect error `@effected/crypto` fails with: no WebCrypto, or key material it refuses. | handle hmac failure, missing webcrypto subtle, rejected key material |
+| `CryptoErrorReason` | Variable + TypeAlias | The reason union carried by `CryptoError`. | why an hmac operation failed, unsupported runtime or bad key |
 | `Hmac` | Class | HMAC sign and verify (RFC 2104) over WebCrypto, with SHA-256 or SHA-512. | compute or verify hmac-sha256 or sha512, hex base64 base64url output, webcrypto |
 | `HmacAlgorithm` | TypeAlias | The hash an HMAC is computed over. | |
 | `HmacEncoding` | TypeAlias | How an HMAC is returned, or how a received one is encoded. | |
@@ -25,5 +25,6 @@
 | `SigV4` | Class | AWS Signature Version 4 request signing, for S3 and S3-compatible stores such as R2, MinIO and Spaces. | sign an aws or s3-compatible request, sigv4 authorization header, signing key |
 | `SigV4Canonical` | Interface | The canonical form of a request, as `SigV4.canonicalize` returns it. | |
 | `SigV4Credentials` | Interface | The access key, optional session token and scope a signature needs. | |
+| `SigV4PathError` | Class | A SigV4 request path holds a segment that is exactly `.` or `..`, so it cannot be sent as signed. | handle an s3 key or sigv4 path with a dot segment that a url would collapse |
 | `SigV4Request` | Interface | One request to sign. | |
 | `SigV4Signed` | Interface | What `SigV4.sign` returns: the headers to send and the request target they were signed for. | |

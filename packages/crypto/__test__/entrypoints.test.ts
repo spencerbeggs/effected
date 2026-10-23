@@ -40,6 +40,7 @@ describe("root entrypoint", () => {
 			"CryptoErrorReason",
 			"Hmac",
 			"SigV4",
+			"SigV4PathError",
 		]);
 		const reexported = specifiersOf(resolve(SRC, "index.ts"));
 		assert.isTrue(reexported.length > 0);

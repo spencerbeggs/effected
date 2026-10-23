@@ -4,6 +4,7 @@ import { assert, describe, it, layer } from "@effect/vitest";
 import { Crypto, DateTime, Effect, Redacted } from "effect";
 import type { SigV4Credentials, SigV4Request } from "../src/SigV4.js";
 import { SigV4 } from "../src/SigV4.js";
+import { SigV4PathError } from "../src/SigV4PathError.js";
 
 // The oracle is AWS's own published examples, never this implementation's
 // output. "Authenticating Requests: Using the Authorization Header (AWS
@@ -350,11 +351,15 @@ layer(NodeCrypto.layer)("SigV4.sign's request target", (it) => {
 			for (const path of ["a/../b", "/bucket/./key", "..", ".", "bucket/key/..", "/./"]) {
 				const fromSign = yield* Effect.flip(SigV4.sign({ ...base, path }, credentials));
 				const fromCanonicalize = yield* Effect.flip(SigV4.canonicalize({ ...base, path }, credentials));
+				const segment = path.split("/").find((part) => part === "." || part === "..");
 				for (const error of [fromSign, fromCanonicalize]) {
-					assert.strictEqual(error._tag, "CryptoError", path);
-					if (error._tag === "CryptoError") {
-						assert.strictEqual(error.reason, "path", path);
-						assert.match(error.detail, /"\.\.?" segment/, path);
+					assert.instanceOf(error, SigV4PathError, path);
+					assert.strictEqual(error._tag, "SigV4PathError", path);
+					if (error._tag === "SigV4PathError") {
+						assert.strictEqual(error.path, path);
+						assert.strictEqual(error.segment, segment, path);
+						assert.include(error.message, `"${path}"`);
+						assert.include(error.message, `"${segment}" segment`);
 					}
 				}
 			}
