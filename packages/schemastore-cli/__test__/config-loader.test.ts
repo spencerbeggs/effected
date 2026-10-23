@@ -125,7 +125,7 @@ describe("ConfigLoader.load", () => {
 				}),
 			);
 			assert.instanceOf(error, ConfigLoadError);
-			assert.strictEqual(error.reason, "outputDir is not a string");
+			assert.strictEqual(error.reason, 'Expected string at ["outputDir"]');
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
@@ -145,16 +145,21 @@ describe("ConfigLoader.load", () => {
 		Effect.gen(function* () {
 			const error = yield* loadForged({ catalogDir: 123 });
 			assert.instanceOf(error, ConfigLoadError);
-			assert.strictEqual(error.reason, "catalogDir is not a string");
+			assert.strictEqual(error.reason, 'Expected string at ["catalogDir"]');
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
 	it.effect("fails typed when name is missing or not a simple file base name (forged brand)", () =>
 		Effect.gen(function* () {
-			for (const name of [undefined, 123, "", "a/b", "a b"]) {
+			for (const name of [undefined, 123]) {
 				const error = yield* loadForged({ name });
 				assert.instanceOf(error, ConfigLoadError);
-				assert.strictEqual(error.reason, "name is not a simple file base name", String(name));
+				assert.strictEqual(error.reason, 'Expected string at ["name"]', String(name));
+			}
+			for (const name of ["", "a/b", "a b"]) {
+				const error = yield* loadForged({ name });
+				assert.instanceOf(error, ConfigLoadError);
+				assert.strictEqual(error.reason, 'not a simple file base name at ["name"]', name);
 			}
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
@@ -200,7 +205,7 @@ describe("ConfigLoader.load", () => {
 				}),
 			);
 			assert.instanceOf(error, ConfigLoadError);
-			assert.strictEqual(error.reason, "schemas is not an array");
+			assert.strictEqual(error.reason, 'Expected array at ["schemas"]');
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
@@ -217,7 +222,7 @@ describe("ConfigLoader.load", () => {
 				}),
 			);
 			assert.instanceOf(error, ConfigLoadError);
-			assert.strictEqual(error.reason, "schemas[0] is not a resolved schema (missing name/target/frozen/drift)");
+			assert.strictEqual(error.reason, 'Expected string at ["schemas"][0]["name"]');
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
@@ -234,7 +239,10 @@ describe("ConfigLoader.load", () => {
 				}),
 			);
 			assert.instanceOf(error, ConfigLoadError);
-			assert.strictEqual(error.reason, "schemas[0].target is not a SchemaTarget (missing schema/$id/path/published)");
+			// errors: "all" — every missing target field is named, not just the first.
+			assert.include(error.reason, 'Missing key at ["schemas"][0]["target"]["schema"]');
+			assert.include(error.reason, 'Missing key at ["schemas"][0]["target"]["path"]');
+			assert.include(error.reason, 'Missing key at ["schemas"][0]["target"]["published"]');
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
@@ -251,7 +259,8 @@ describe("ConfigLoader.load", () => {
 				}),
 			);
 			assert.instanceOf(error, ConfigLoadError);
-			assert.strictEqual(error.reason, "schemas[0].frozen[0] is not a frozen version (missing version/path/$id/url)");
+			assert.include(error.reason, 'Missing key at ["schemas"][0]["frozen"][0]["path"]');
+			assert.include(error.reason, 'Missing key at ["schemas"][0]["frozen"][0]["url"]');
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
@@ -268,10 +277,7 @@ describe("ConfigLoader.load", () => {
 				}),
 			);
 			assert.instanceOf(error, ConfigLoadError);
-			assert.strictEqual(
-				error.reason,
-				"schemas[0].catalog is not a catalog entry (missing name/description/fileMatch/url)",
-			);
+			assert.strictEqual(error.reason, 'Expected object at ["schemas"][0]["catalog"]');
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
@@ -288,10 +294,70 @@ describe("ConfigLoader.load", () => {
 				}),
 			);
 			assert.instanceOf(error, ConfigLoadError);
-			assert.strictEqual(
-				error.reason,
-				"schemas[0].catalog is not a catalog entry (missing name/description/fileMatch/url)",
-			);
+			assert.include(error.reason, 'Missing key at ["schemas"][0]["catalog"]["description"]');
+			assert.include(error.reason, 'Missing key at ["schemas"][0]["catalog"]["url"]');
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	// The cases the field-by-field checker let through or never looked at.
+	const schemaWith = (overrides: Record<string, unknown>) => ({
+		schemas: [Object.assign({}, config.schemas[0], overrides)],
+	});
+
+	it.effect("reports every fault at once, not only the first (errors: all)", () =>
+		Effect.gen(function* () {
+			const error = yield* loadForged({
+				outputDir: 1,
+				schemas: [{ ...config.schemas[0], frozen: [{ ...config.schemas[0]?.frozen[0], $id: 2 }] }],
+			});
+			assert.instanceOf(error, ConfigLoadError);
+			assert.include(error.reason, 'Expected string at ["outputDir"]');
+			// The non-first fault: a decode stopping at the first issue never reports it.
+			assert.include(error.reason, 'Expected string at ["schemas"][0]["frozen"][0]["$id"]');
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("fails typed when onDrift is missing or bogus — the drift gate must not switch off silently", () =>
+		Effect.gen(function* () {
+			const missing = yield* loadForged({ onDrift: undefined });
+			assert.instanceOf(missing, ConfigLoadError);
+			assert.include(missing.reason, '["onDrift"]');
+			const bogus = yield* loadForged({ onDrift: "ignore" });
+			assert.instanceOf(bogus, ConfigLoadError);
+			assert.include(bogus.reason, '["onDrift"]');
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("fails typed when a schema's drift is not a drift tolerance", () =>
+		Effect.gen(function* () {
+			const error = yield* loadForged(schemaWith({ drift: "loose" }));
+			assert.instanceOf(error, ConfigLoadError);
+			assert.include(error.reason, 'at ["schemas"][0]["drift"]');
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("rejects a PRESENT catalog: undefined — only a forged config can carry one", () =>
+		Effect.gen(function* () {
+			const error = yield* loadForged(schemaWith({ catalog: undefined }));
+			assert.instanceOf(error, ConfigLoadError);
+			assert.include(error.reason, '["schemas"][0]["catalog"]');
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("rejects a catalog whose fileMatch holds a non-string", () =>
+		Effect.gen(function* () {
+			const catalog = { name: "a", description: "a", fileMatch: [1], url: "https://x/s/a.json" };
+			const error = yield* loadForged(schemaWith({ catalog }));
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(error.reason, 'Expected string at ["schemas"][0]["catalog"]["fileMatch"][0]');
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("rejects a target.schema that is not an Effect Schema", () =>
+		Effect.gen(function* () {
+			const error = yield* loadForged(schemaWith({ target: { ...config.schemas[0]?.target, schema: "Config" } }));
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(error.reason, 'Expected an Effect Schema at ["schemas"][0]["target"]["schema"]');
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
