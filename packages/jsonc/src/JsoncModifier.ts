@@ -2,10 +2,13 @@
 // delete a value at a path, without mutating the source.
 //
 // Navigation goes through the scanner-based `internal/navigate.ts`; this
-// module owns only edit synthesis and the `JsoncModificationError` it raises on a navigation miss.
+// module owns only edit synthesis and the `JsoncModificationError` it raises on a
+// navigation miss; value serialization goes through `Jsonc.stringifyResult`.
 
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { navigate } from "./internal/navigate.js";
+import type { JsoncStringifyError } from "./Jsonc.js";
+import { Jsonc } from "./Jsonc.js";
 import type { JsoncFormattingOptionsLike } from "./JsoncEdit.js";
 import { JsoncEdit } from "./JsoncEdit.js";
 import type { JsoncPath } from "./JsoncNode.js";
@@ -85,56 +88,98 @@ export class JsoncModifier {
 	private constructor() {}
 
 	/**
-	 * Compute the edits that set, replace or delete `value` at `path` in `text`.
+	 * Compute the edits that set, replace or delete `value` at `path` in `text`,
+	 * synchronously. This is the primitive {@link JsoncModifier.modify} is
+	 * defined in terms of — a synchronous host (a lint-staged task, a config
+	 * file) can call it without an Effect runtime.
 	 *
 	 * Passing `value === undefined` deletes the target property or element
 	 * (including its surrounding comma). A missing insertion target appends after
-	 * the last property/element. Fails with {@link JsoncModificationError} on a
-	 * structural mismatch.
+	 * the last property/element. Any other value is serialized through
+	 * {@link Jsonc.stringifyResult} with the indentation of `formattingOptions`.
+	 *
+	 * @remarks
+	 * The error channel carries two failure kinds, kept apart deliberately:
+	 * {@link JsoncModificationError} when `path` cannot be navigated, and
+	 * {@link JsoncStringifyError} when `value` has no JSON representation (a
+	 * circular structure, a `bigint`, or a function or symbol where a value is
+	 * written). `JsoncStringifyError` carries no `path` — it is the same error
+	 * `Jsonc.stringify` raises for the same value — so a caller that needs the
+	 * failing path re-attaches the one it passed.
+	 *
+	 * Navigation runs before serialization: a path that cannot be navigated
+	 * fails with `JsoncModificationError` even when `value` is also
+	 * unserializable. A delete (`value === undefined`) never serializes.
+	 *
+	 * Before serialization was routed through `Jsonc.stringifyResult`, a raw
+	 * `JSON.stringify` here died on a circular or `bigint` value, and inserting
+	 * a function or symbol under a new key silently wrote the literal text
+	 * `"key": undefined` — invalid JSON reported as success.
+	 *
+	 * @example
+	 * ```ts
+	 * import { JsoncEdit, JsoncModifier } from "@effected/jsonc";
+	 * import { Result } from "effect";
+	 *
+	 * const text = '{ "port": 3000 }';
+	 * const result = JsoncModifier.modifyResult(text, ["port"], 8080);
+	 * if (Result.isSuccess(result)) {
+	 *   console.log(JsoncEdit.applyAll(text, result.success)); // => '{ "port": 8080 }'
+	 * }
+	 * ```
 	 *
 	 * @param text - The JSONC source to modify.
 	 * @param path - The location to set, replace or delete; `[]` replaces the
 	 *   whole document.
-	 * @param value - The plain JavaScript value to write, serialized with
-	 *   `JSON.stringify`; `undefined` deletes the target instead.
+	 * @param value - The plain JavaScript value to write; `undefined` deletes
+	 *   the target instead.
 	 * @param options - Optional {@link JsoncModifyOptions} controlling
 	 *   formatting of generated content.
-	 * @returns An `Effect` that succeeds with the edits to apply (via
-	 *   `JsoncEdit.applyAll`), or fails with {@link JsoncModificationError} when
-	 *   `path` cannot be navigated.
+	 * @returns A `Result` succeeding with the edits to apply (via
+	 *   `JsoncEdit.applyAll`), or failing with {@link JsoncModificationError} or
+	 *   {@link JsoncStringifyError}.
 	 */
-	static readonly modify = Effect.fn("JsoncModifier.modify")(function* (
+	static modifyResult(
 		text: string,
 		path: JsoncPath,
 		value: unknown,
 		options?: JsoncModifyOptions,
-	) {
+	): Result.Result<ReadonlyArray<JsoncEdit>, JsoncModificationError | JsoncStringifyError> {
 		const fmt = options?.formattingOptions;
 		const tabSize = fmt?.tabSize ?? 2;
 		const insertSpaces = fmt?.insertSpaces ?? true;
 		const eol = fmt?.eol ?? "\n";
 		const indentUnit = insertSpaces ? " ".repeat(tabSize) : "\t";
-		// JSON.stringify accepts a string indent — pass the tab unit through so
-		// insertSpaces: false is honored in generated content, not just gaps.
-		const jsonIndent: string | number = insertSpaces ? tabSize : "\t";
+		// Serialize per branch, after navigation, so a navigation mismatch wins
+		// over an unserializable value and a delete never serializes at all.
+		// stringifyResult maps insertSpaces: false to a tab indent, so the tab
+		// unit is honored in generated content, not just in the gaps.
+		const serialize = (v: unknown) => Jsonc.stringifyResult(v, { tabSize, insertSpaces });
+		const single = (edit: JsoncEdit): ReadonlyArray<JsoncEdit> => [edit];
 
 		if (path.length === 0) {
-			const content = value === undefined ? "" : JSON.stringify(value, null, jsonIndent);
-			return [JsoncEdit.make({ offset: 0, length: text.length, content })] as ReadonlyArray<JsoncEdit>;
+			if (value === undefined) {
+				return Result.succeed(single(JsoncEdit.make({ offset: 0, length: text.length, content: "" })));
+			}
+			return Result.map(serialize(value), (content) =>
+				single(JsoncEdit.make({ offset: 0, length: text.length, content })),
+			);
 		}
 
 		const result = navigate(text, path);
 
 		switch (result._tag) {
 			case "Mismatch":
-				return yield* new JsoncModificationError({
-					path,
-					expected: result.expected,
-					depth: result.depth,
-				});
+				return Result.fail(
+					new JsoncModificationError({
+						path,
+						expected: result.expected,
+						depth: result.depth,
+					}),
+				);
 
 			case "NoOp":
-				return [] as ReadonlyArray<JsoncEdit>;
+				return Result.succeed([]);
 
 			case "Located": {
 				if (value === undefined) {
@@ -147,39 +192,74 @@ export class JsoncModifier {
 					} else if (result.commaAfter !== undefined) {
 						removeEnd = result.commaAfter + 1;
 					}
-					return [
-						JsoncEdit.make({ offset: removeStart, length: removeEnd - removeStart, content: "" }),
-					] as ReadonlyArray<JsoncEdit>;
+					return Result.succeed(
+						single(JsoncEdit.make({ offset: removeStart, length: removeEnd - removeStart, content: "" })),
+					);
 				}
-				const serialized = JSON.stringify(value, null, jsonIndent);
-				return [
-					JsoncEdit.make({
-						offset: result.valueStart,
-						length: result.valueEnd - result.valueStart,
-						content: serialized,
-					}),
-				] as ReadonlyArray<JsoncEdit>;
+				return Result.map(serialize(value), (content) =>
+					single(
+						JsoncEdit.make({
+							offset: result.valueStart,
+							length: result.valueEnd - result.valueStart,
+							content,
+						}),
+					),
+				);
 			}
 
 			case "Insert": {
 				if (value === undefined) {
-					return [] as ReadonlyArray<JsoncEdit>;
+					return Result.succeed([]);
 				}
-				const serialized = JSON.stringify(value, null, jsonIndent);
-				const indent = indentUnit.repeat(result.depth);
-				const outdent = indentUnit.repeat(result.depth - 1);
-				if (result.container === "object") {
-					const key = JSON.stringify(String(path[path.length - 1]));
+				return Result.map(serialize(value), (serialized) => {
+					const indent = indentUnit.repeat(result.depth);
+					const outdent = indentUnit.repeat(result.depth - 1);
+					if (result.container === "object") {
+						const key = JSON.stringify(String(path[path.length - 1]));
+						const insertText = result.isFirst
+							? `${eol}${indent}${key}: ${serialized}${eol}${outdent}`
+							: `,${eol}${indent}${key}: ${serialized}`;
+						return single(JsoncEdit.make({ offset: result.at, length: 0, content: insertText }));
+					}
 					const insertText = result.isFirst
-						? `${eol}${indent}${key}: ${serialized}${eol}${outdent}`
-						: `,${eol}${indent}${key}: ${serialized}`;
-					return [JsoncEdit.make({ offset: result.at, length: 0, content: insertText })] as ReadonlyArray<JsoncEdit>;
-				}
-				const insertText = result.isFirst
-					? `${eol}${indent}${serialized}${eol}${outdent}`
-					: `,${eol}${indent}${serialized}`;
-				return [JsoncEdit.make({ offset: result.at, length: 0, content: insertText })] as ReadonlyArray<JsoncEdit>;
+						? `${eol}${indent}${serialized}${eol}${outdent}`
+						: `,${eol}${indent}${serialized}`;
+					return single(JsoncEdit.make({ offset: result.at, length: 0, content: insertText }));
+				});
 			}
 		}
-	});
+	}
+
+	/**
+	 * Compute the edits that set, replace or delete `value` at `path` in `text`.
+	 *
+	 * Passing `value === undefined` deletes the target property or element
+	 * (including its surrounding comma). A missing insertion target appends after
+	 * the last property/element. Fails with {@link JsoncModificationError} on a
+	 * structural mismatch, and with {@link JsoncStringifyError} when `value` has
+	 * no JSON representation. Defined in terms of
+	 * {@link JsoncModifier.modifyResult} — synchronous callers can use that
+	 * variant directly.
+	 *
+	 * @remarks
+	 * `JsoncStringifyError` carries no `path`; see
+	 * {@link JsoncModifier.modifyResult} for the failure precedence and why the
+	 * two errors stay separate.
+	 *
+	 * @param text - The JSONC source to modify.
+	 * @param path - The location to set, replace or delete; `[]` replaces the
+	 *   whole document.
+	 * @param value - The plain JavaScript value to write, serialized through
+	 *   `Jsonc.stringifyResult`; `undefined` deletes the target instead.
+	 * @param options - Optional {@link JsoncModifyOptions} controlling
+	 *   formatting of generated content.
+	 * @returns An `Effect` that succeeds with the edits to apply (via
+	 *   `JsoncEdit.applyAll`), or fails with {@link JsoncModificationError} when
+	 *   `path` cannot be navigated or {@link JsoncStringifyError} when `value`
+	 *   cannot be serialized.
+	 */
+	static readonly modify = Effect.fn("JsoncModifier.modify")(
+		(text: string, path: JsoncPath, value: unknown, options?: JsoncModifyOptions) =>
+			Effect.fromResult(JsoncModifier.modifyResult(text, path, value, options)),
+	);
 }
