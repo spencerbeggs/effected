@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { afterEach, assert, describe, it, vi } from "@effect/vitest";
 import { Cause, Effect, Exit, Option } from "effect";
 import type { ConfigCodec } from "../src/ConfigCodec.js";
@@ -349,10 +350,32 @@ describe("EncryptedCodec envelope encoding", () => {
 		}),
 	);
 
-	it.effect("still decrypts an envelope written by the earlier btoa encoder", () =>
+	it.effect("a plaintext file handed to the codec does not leak its contents into the error", () =>
 		Effect.gen(function* () {
-			// Written by the previous hand-rolled `btoa` envelope encoder, before the
-			// move to core's Base64. Files on disk from that version must keep reading.
+			// Core's EncodingError keeps the whole input; the cause must not. Two
+			// shapes: one whose length fails the multiple-of-4 check, and one of
+			// length 28 that reaches the character scan.
+			const secret = "npm_SECRETVALUE";
+			for (const plaintext of [`{"token":"${secret}"}`, `{"token":"${secret}1"}`]) {
+				const exit = yield* Effect.exit(EncryptedCodec(JsonCodec, key()).parse(plaintext));
+				if (Exit.isSuccess(exit)) return assert.fail("expected a plaintext envelope to be rejected");
+				const error = Cause.findErrorOption(exit.cause);
+				if (Option.isNone(error)) return assert.fail("expected a typed failure");
+				assert.strictEqual((error.value as ConfigEncryptionError).phase, "encoding");
+				assert.notInclude(inspect(error.value, { depth: Infinity }), secret);
+				assert.notInclude(JSON.stringify(error.value), secret);
+				assert.notInclude(Cause.pretty(exit.cause), secret);
+			}
+		}),
+	);
+
+	it.effect("decrypts a frozen envelope fixture", () =>
+		Effect.gen(function* () {
+			// A fixed ciphertext pinning the envelope format: PBKDF2 over this
+			// passphrase and salt, then IV followed by ciphertext, base64-encoded.
+			// It was written by the earlier btoa encoder, but btoa and core's
+			// Base64.encode emit identical padded RFC 4648 text for the same bytes,
+			// so this pins the format and the decrypt path, not which encoder ran.
 			const legacySalt = new TextEncoder().encode("fixture-salt-0001");
 			const codec = EncryptedCodec(JsonCodec, EncryptedCodecKey.fromPassphrase("legacy-btoa-fixture", legacySalt));
 			const legacy = "JtqcET1um1R2IxhkU3zxRkemVCHcztK0raVjIlJdTfwhoO4CUMEpyn7Hd9/Nxzh1Dz/bPiXFmwtNse/IomG4xw4T";

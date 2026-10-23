@@ -207,8 +207,15 @@ Read the comments before touching these; each shape is load-bearing.
 - **The envelope is trimmed before `Base64.decode`.** Core strips only CR and
   LF, so whitespace around a hand-edited envelope would otherwise fail; inside
   the envelope, whitespace and missing padding fail with phase `encoding` by
-  design. `__test__/EncryptedCodec.test.ts` pins a ciphertext written by the
-  old `btoa` encoder, so files on disk keep reading.
+  design. `__test__/EncryptedCodec.test.ts` pins a frozen envelope fixture
+  (btoa and core's encoder emit identical text, so it pins the format, not
+  the encoder).
+- **Never pass core's `EncodingError` through as the `cause`.** It stores the
+  whole input as `input`, so a plaintext config handed to an encrypted codec
+  would put every secret in it into `ConfigEncryptionError.cause`, the
+  `ParseFailed` event and any inspected or serialized log. `fromBase64`
+  rebuilds it as a plain `Error` carrying only the message; a test asserts
+  the secret appears in neither `inspect` nor `JSON.stringify` of the error.
 - **The IV stays on `globalThis.crypto.getRandomValues`, never core
   `Crypto.randomBytes` in `R`** — a recorded, security-motivated exception to
   require-in-R: a swappable random source can repeat a GCM nonce

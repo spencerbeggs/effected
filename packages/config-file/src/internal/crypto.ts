@@ -99,7 +99,25 @@ export const deriveKey = (passphrase: string, salt: Uint8Array): Effect.Effect<C
  * @internal
  */
 export const fromBase64 = (raw: string): Effect.Effect<Uint8Array, CryptoFailure> =>
-	Effect.mapError(Effect.fromResult(Base64.decode(raw.trim())), fail("encoding"));
+	Effect.mapError(Effect.fromResult(Base64.decode(raw.trim())), (error) => fail("encoding")(withoutInput(error)));
+
+/**
+ * Rebuild core's `EncodingError` as a plain `Error` that keeps only its message.
+ *
+ * @remarks
+ * Core's `EncodingError` stores the whole stripped input as `input`, and the
+ * public `ConfigEncryptionError` keeps its cause by identity. Passed through
+ * as is, a PLAINTEXT config handed to an encrypted codec (a file that was
+ * never encrypted, or a resolver pointing at the wrong file) would carry
+ * every secret in it into the typed error, the `ParseFailed` event payload,
+ * and any log that inspects or serializes the error. Core's messages name at
+ * most one offending character, never the input.
+ */
+const withoutInput = (error: { readonly _tag: string; readonly message: string }): Error => {
+	const cause = new Error(error.message);
+	cause.name = error._tag;
+	return cause;
+};
 
 /**
  * Prepend the IV to the ciphertext and base64-encode the envelope.
