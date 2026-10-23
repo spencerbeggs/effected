@@ -198,6 +198,12 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
+						"@effected/crypto": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
 						"@effected/engine": {
 							range: "^0.8.0",
 							peer: "^0.8.0",
@@ -306,6 +312,12 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
+						"@effected/oidc": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
 						"@effected/package-json": {
 							range: "^0.24.0",
 							peer: "^0.24.0",
@@ -381,6 +393,12 @@ await build({
 						"@effected/walker": {
 							range: "^0.19.0",
 							peer: "^0.19.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/webhooks": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},

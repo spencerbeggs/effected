@@ -19,8 +19,8 @@ sources:
     resource: ../../.repos/effect/packages/effect/src/Crypto.ts
     title: "Core Crypto at 4.0.6: random bytes, random numbers, UUIDs, ULID and a one-shot digest; no HMAC, no key import"
   - id: actions-sigv4
-    resource: ../../packages/github-actions/src/internal/sigv4.ts
-    title: "The github-actions SigV4 copy: session token, per-segment path encoding, explicit now, node:crypto createHmac"
+    resource: https://github.com/spencerbeggs/effected/blob/e8990d4f/packages/github-actions/src/internal/sigv4.ts
+    title: "The retired github-actions SigV4 copy: session token, per-segment path encoding, explicit now, node:crypto createHmac"
   - id: intake-sigv4
     resource: https://github.com/savvy-web/build/blob/main/intake/src/s3/SigV4.ts
     title: "The intake SigV4 copy: canonical query, caller-supplied payload hash, EMPTY_PAYLOAD_HASH, encodeRfc3986Path"
@@ -29,10 +29,10 @@ sources:
     title: "Intake's HMAC helpers and its hashed secretsEqual"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-22T23:55:11Z
+  at: 2026-10-23T00:20:13Z
 integrity:
   generated:
-    body: 690ec1b5e97b7de6
+    body: d7c87794a169e45a
 ---
 
 # `@effected/crypto`
@@ -87,6 +87,6 @@ SigV4 is pinned to the AWS documented worked examples (the `AKIAIOSFODNN7EXAMPLE
 
 [^owner]: conversation with the repository owner
 [^core-crypto]: `../../.repos/effect/packages/effect/src/Crypto.ts`
-[^actions-sigv4]: `../../packages/github-actions/src/internal/sigv4.ts`
+[^actions-sigv4]: <https://github.com/spencerbeggs/effected/blob/e8990d4f/packages/github-actions/src/internal/sigv4.ts>
 [^intake-sigv4]: <https://github.com/savvy-web/build/blob/main/intake/src/s3/SigV4.ts>
 [^intake-hmac]: <https://github.com/savvy-web/build/blob/main/intake/src/vendors/hmac.ts>

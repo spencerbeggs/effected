@@ -16,8 +16,8 @@ sources:
     author: human:spencerbeggs
     last_modified: 2026-10-22T00:00:00Z
   - id: identity-token
-    resource: ../../packages/sbom/src/IdentityToken.ts
-    title: "The inverted issuer contract as it lived in sbom"
+    resource: ../../packages/oidc/src/IdentityToken.ts
+    title: "The inverted issuer contract, moved here from sbom"
   - id: actions-oidc
     resource: ../../packages/github/src/ActionsOidc.ts
     title: "The GitHub Actions verifier, with its empty-audience guard"
@@ -26,10 +26,10 @@ sources:
     title: "jwt already performs issuer discovery and JWKS resolution"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-22T23:55:11Z
+  at: 2026-10-23T00:20:13Z
 integrity:
   generated:
-    body: 4eef9a72ccca62d3
+    body: 5254f4564f885b06
 ---
 
 # `@effected/oidc`
@@ -71,6 +71,6 @@ Named `Effect.fn` spans on `Oidc.verify` and `Oidc.decodeUnverified`, annotated 
 `Oidc.verify` is tested through `jwt`'s `TestIssuer`, so discovery and JWKS resolution run for real with no network. `IdentityToken` keeps its test layers.
 
 [^owner]: conversation with the repository owner
-[^identity-token]: `../../packages/sbom/src/IdentityToken.ts`
+[^identity-token]: `../../packages/oidc/src/IdentityToken.ts`
 [^actions-oidc]: `../../packages/github/src/ActionsOidc.ts`
 [^jwt-resolver]: `../../packages/jwt/src/JwksResolver.ts`

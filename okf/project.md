@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T23:08:17Z
+  at: 2026-10-23T00:20:13Z
 integrity:
   generated:
-    body: 57304b1aea69a30c
+    body: ba193af819eb31fe
 ---
 
 # effected
@@ -67,9 +67,12 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `jsonl` | boundary | invention; append-only schema-validated JSONL journals |
 | `images` | boundary | invention; image facts (format, MIME, dimensions) from bytes and a generated-image cache behind a backend port store satisfies structurally |
 | `jwt` | boundary | invention; JWS, JWT, JWK and JWKS sign and verify over WebCrypto, with no `node:` import and no runtime dependency, so it runs on Cloudflare workerd; the signer under `github`'s App auth and its Actions OIDC verifier |
+| `oidc` | boundary | invention; the OIDC vocabulary over `jwt`: the `IdentityToken` issuer contract (moved from `sbom`), ID-token claims, an unverified decode and an audience-guarded verify |
+| `crypto` | boundary | extraction from `github-actions` and `savvy-web/build` intake; HMAC, constant-time comparison and AWS SigV4 over WebCrypto, digests through core `Crypto` in `R`, no `node:` import |
+| `webhooks` | boundary | extraction from `savvy-web/build` intake; inbound webhook signature verification presets (Standard Webhooks, GitHub, Stripe, Sanity, HMAC header, shared secret) over `crypto` |
 | `pnpm-plugin-effect` | companion — no tier | invention; publishes the Effect catalogs the kit pins against |
 
-The roster is **39 packages**: 37 libraries and two companions (`pnpm-plugin-effect` and `schemastore-cli`). All but `jwt`, the newest, have published.
+The roster is **42 packages**: 40 libraries and two companions (`pnpm-plugin-effect` and `schemastore-cli`). All but `crypto`, `oidc` and `webhooks`, the newest, have published.
 
 ### Consumers
 
