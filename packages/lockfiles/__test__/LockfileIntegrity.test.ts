@@ -217,6 +217,28 @@ describe("LockfileIntegrity.compare", () => {
 		assert.deepStrictEqual(report.unsatisfiedConstraints, []);
 	});
 
+	// `@effected/semver` once rejected whitespace after an operator, so a
+	// constraint written `>= 18` (common in real npm metadata) hit the
+	// unparseable-row skip above and the lockfile reported valid. It is now
+	// judged like `>=18`.
+	it("judges a constraint written with whitespace after its operator", () => {
+		const lockfile = lockfileWith([workspace("@acme/core", "packages/core"), registry("node-thing", "16.0.0")]);
+		const manifests = [WorkspaceManifest.make({ name: "@acme/core", dependencies: { "node-thing": ">= 18" } })];
+
+		const report = LockfileIntegrity.compare(lockfile, manifests);
+
+		assert.isFalse(report.valid);
+		assert.deepStrictEqual(report.unsatisfiedConstraints, [
+			{
+				workspace: "@acme/core",
+				dependency: "node-thing",
+				constraint: ">= 18",
+				resolved: "16.0.0",
+				depType: "dependencies",
+			},
+		]);
+	});
+
 	it("handles an empty manifest set and an empty lockfile", () => {
 		const emptyLockfile = lockfileWith([]);
 		assert.isTrue(LockfileIntegrity.compare(emptyLockfile, []).valid);
