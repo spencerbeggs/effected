@@ -35,10 +35,10 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/1030
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-21T17:30:17Z
+  at: 2026-10-23T20:30:30Z
 integrity:
   generated:
-    body: 61d5fbd921c71fd7
+    body: 2cb3e3ab3595ffc4
 ---
 
 # `@effected/markdown`

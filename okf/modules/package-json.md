@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T06:20:52Z
+  at: 2026-10-23T21:11:48Z
 integrity:
   generated:
-    body: 68ab8d3520cae816
+    body: aab57f05d80ec7f3
 ---
 
 # package-json

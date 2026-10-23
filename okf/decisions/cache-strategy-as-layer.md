@@ -8,7 +8,7 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T20:25:49Z
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: a85ef16fe4b58c22
+    body: e73e2603595f2e39
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z

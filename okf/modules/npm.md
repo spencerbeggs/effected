@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T00:54:09Z
+  at: 2026-10-23T21:09:05Z
 integrity:
   generated:
-    body: 4dbdfb1baf073383
+    body: fb3785edf42e820d
 ---
 
 # npm

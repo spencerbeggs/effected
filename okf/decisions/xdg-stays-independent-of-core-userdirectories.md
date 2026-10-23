@@ -18,6 +18,10 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/1041
 generated:
   by: "okfit/claude-code"
+  at: 2026-10-23T20:32:35Z
+integrity:
+  generated:
+    body: 94b0d0cf18824d62
 ---
 
 # xdg stays independent of core UserDirectories

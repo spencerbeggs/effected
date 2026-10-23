@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/xdg/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T20:38:57Z
 integrity:
   generated:
-    body: 15fba8ccf7420cd8
+    body: 9f246f99ca18b5ab
 ---
 
 # xdg

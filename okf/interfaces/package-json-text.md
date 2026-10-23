@@ -14,7 +14,7 @@ sources:
     resource: ../../packages/package-json/__test__/fixtures
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T21:11:48Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:16.643Z
@@ -22,7 +22,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 2111dfd4fc6dd84e
+    body: dabb8c7acf8b8d00
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z

@@ -17,10 +17,10 @@ sources:
     title: "Core Crypto at 4.0.6: a one-shot digest and random primitives, no HMAC"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T01:39:30Z
+  at: 2026-10-23T20:34:34Z
 integrity:
   generated:
-    body: 3e1bfd09f9be7055
+    body: ad6a1fe13a64908a
   verified:
     by: human:spencer
     at: 2026-10-23T04:05:21Z

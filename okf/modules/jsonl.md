@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-08T06:11:30Z
+  at: 2026-10-23T20:28:29Z
 integrity:
   generated:
-    body: 5a9646fb2bd50a93
+    body: bc78d301fefaa39c
 ---
 
 # `@effected/jsonl`

@@ -8,10 +8,10 @@ resource: ../../packages/yaml
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T20:36:18Z
 integrity:
   generated:
-    body: a4131429d3083c63
+    body: 5a757964ce250071
 ---
 
 # @effected/yaml

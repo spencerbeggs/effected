@@ -8,7 +8,7 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T20:38:47Z
+  at: 2026-10-23T20:50:04Z
 sources:
   - id: issue-1040
     resource: https://github.com/spencerbeggs/effected/issues/1040
@@ -20,7 +20,7 @@ sources:
     resource: ../../packages/semver/__test__/core-parity.test.ts
 integrity:
   generated:
-    body: 04928fead4b874c7
+    body: aa20ff1aa174facc
 ---
 
 # @effected/semver stays independent of core SemVer and SemVerRange

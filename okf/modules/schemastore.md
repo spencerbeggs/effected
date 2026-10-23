@@ -28,10 +28,10 @@ sources:
     resource: ../../packages/schemastore/src/StoreDocument.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-02T18:34:24Z
+  at: 2026-10-23T20:33:17Z
 integrity:
   generated:
-    body: 2b4627f02f43971b
+    body: 355db491e116777c
 ---
 
 # @effected/schemastore

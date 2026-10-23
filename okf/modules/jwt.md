@@ -25,10 +25,10 @@ sources:
     resource: ../../packages/jwt/savvy.build.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T23:30:35Z
+  at: 2026-10-23T20:35:52Z
 integrity:
   generated:
-    body: 769c915ccdd553b2
+    body: d3580c7d1078f934
 ---
 
 # `@effected/jwt`

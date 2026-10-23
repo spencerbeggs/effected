@@ -20,10 +20,10 @@ sources:
     title: "The node.d.ts ae-forgotten-export suppression the control emptied"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T21:37:50Z
+  at: 2026-10-23T21:46:56Z
 integrity:
   generated:
-    body: 36643f29d02f7cae
+    body: 02e4c041e96b76ba
 ---
 
 # A package that names its own root types once showed one warning or none, until the bundler resolved the self-reference to declarations

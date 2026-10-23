@@ -35,10 +35,10 @@ sources:
     resource: ../../packages/schemastore-cli/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T20:53:33Z
+  at: 2026-10-23T20:49:39Z
 integrity:
   generated:
-    body: 807dd7ddb7578589
+    body: 9eed20e9992ac709
 ---
 
 # @effected/schemastore-cli

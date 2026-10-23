@@ -10,7 +10,7 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T01:56:30Z
+  at: 2026-10-23T21:09:05Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:31.377Z
@@ -18,7 +18,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 6f14830f05c4f2fa
+    body: 541a63bc142e1775
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z

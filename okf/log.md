@@ -8,6 +8,53 @@
 * Updated Contract inversion is the default answer to a tier-dragging edge
 * Updated effected
 * Updated npm
+* Updated @effected/cli
+* Updated @effected/commands
+* Updated @effected/images
+* Updated @effected/jsonl
+* Updated @effected/jwt
+* Updated @effected/markdown
+* Updated @effected/mcp
+* Updated @effected/schemastore
+* Updated @effected/schemastore-cli
+* Updated @effected/semver stays independent of core SemVer and SemVerRange
+* Updated @effected/workspaces catalogs and the config-dependency seam
+* Updated @effected/workspaces/testing: the repo-shape checks
+* Updated @effected/workspaces: monorepo tooling
+* Updated @effected/yaml
+* Updated @effected/yaml stringify options
+* Updated A package that names its own root types once showed one warning or none, until the bundler resolved the self-reference to declarations
+* Updated A plugin skill is a lean index over references
+* Updated A public lookup that can miss returns Option, never T | undefined
+* Updated A renamed field typed never turns a silent conditional-spread drop into a compile error
+* Updated Advance the effect pin
+* Added ConstantTime.equal is best-effort constant time
+* Updated Each runtimes resolver exposes three lazy layer constants, not one configurable layer
+* Updated Error handling standards
+* Updated Format-package convention
+* Updated Format-package naming is `*Format`, not `*Unvalidated`
+* Updated Input-hardening standards
+* Updated Keyed operations come from WebCrypto, payload digests from core Crypto required in R
+* Updated Observability standards
+* Updated Only entrypoint files re-export; never a barrel or a namespace object
+* Updated Sync-primitive policy
+* Updated The Draft-07 meta-schema constant keeps its trailing hash
+* Updated The package-json decode-free text path
+* Updated The sync form is named `*Result`, never `*Sync`
+* Updated actions-runtime
+* Updated actions-storage
+* Updated ai-plugin
+* Updated config-file
+* Updated git
+* Updated github-actions
+* Updated jsonc
+* Added npm names its publish auth path only below its default log level
+* Updated package-json
+* Updated runtimes
+* Updated semver
+* Updated toml
+* Updated xdg
+* Added xdg stays independent of core UserDirectories
 
 ## 2026-10-22
 

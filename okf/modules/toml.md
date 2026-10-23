@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T20:36:18Z
 integrity:
   generated:
-    body: 4ed83c46f2ec08f1
+    body: 4f86170ea706c26a
 ---
 
 # toml

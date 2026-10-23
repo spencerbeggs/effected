@@ -13,10 +13,10 @@ sources:
     resource: ../../packages/commands/__test__/ScriptedSpawner.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
+  at: 2026-10-23T20:33:57Z
 integrity:
   generated:
-    body: 2e14f18a97026241
+    body: e38bce5f1c694f5c
 ---
 
 # @effected/commands

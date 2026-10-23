@@ -25,10 +25,10 @@ sources:
     resource: ../../packages/workspaces/src/internal/configDependencySpecGrammar.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T07:39:04Z
+  at: 2026-10-23T21:12:01Z
 integrity:
   generated:
-    body: 6448337dd46b05bf
+    body: f2533ac83aa9718f
 ---
 
 # @effected/workspaces catalogs and the config-dependency seam
