@@ -10,7 +10,7 @@
 // Resolution is EXACT version-segment equality. Prefix resolution (`skill@2`
 // selecting the highest registered `2.y.z`) is not offered.
 
-import { Effect, Result, Schema } from "effect";
+import { Effect, Predicate, Result, Schema } from "effect";
 
 /**
  * A `$schema` declaration referencing a schema by URL — any string containing
@@ -225,9 +225,6 @@ const parseVersionSegments = (version: string): ReadonlyArray<number> | undefine
 	return version.split(".").map((segment) => Number.parseInt(segment, 10));
 };
 
-const isMapping = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
 /**
  * The `$schema` declaration classifier and the package's one built-in
  * resolver implementation.
@@ -279,7 +276,7 @@ export class SchemaResolver {
 			}
 			return Result.succeed(new SchemaDeclarationByName({ name, version }));
 		}
-		if (isMapping(value)) {
+		if (Predicate.isObject(value)) {
 			return Result.succeed(new SchemaDeclarationInline({ document: value }));
 		}
 		return Result.fail(
@@ -306,7 +303,7 @@ export class SchemaResolver {
 		data: unknown,
 		options?: { readonly requireDeclaration?: boolean },
 	): Result.Result<SchemaDeclaration | undefined, SchemaDeclarationInvalidError | SchemaDeclarationMissingError> {
-		if (!isMapping(data) || !Object.hasOwn(data, "$schema")) {
+		if (!Predicate.isObject(data) || !Object.hasOwn(data, "$schema")) {
 			return options?.requireDeclaration === true
 				? Result.fail(new SchemaDeclarationMissingError())
 				: Result.succeed(undefined);
