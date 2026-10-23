@@ -24,7 +24,7 @@
 | `ActionState` | Class | State that survives the `pre` → `main` → `post` phase boundary. | persist and read state across pre/main/post phase boundary, GITHUB_STATE file |
 | `ActionStateError` | Class | Raised when action state cannot be saved, read or decoded across the phase boundary. | handle action state save or read failure across the phase boundary |
 | `ActionStateShape` | Interface | The members of the `ActionState` service: save and read values, and persist secrets, across the `pre` → `main` → `post` boundary. | |
-| `ActionsIdentityToken` | Class | Serves `@effected/sbom`'s `IdentityToken` contract from the runner's own OIDC token service, so signing an SBOM inside a workflow needs no further wiring. | serve @effected/sbom's IdentityToken contract from the runner's OIDC issuer, sign with runner identity — implements `IdentityToken` from `@effected/sbom` |
+| `ActionsIdentityToken` | Class | Serves `@effected/oidc`'s `IdentityToken` contract from the runner's own OIDC token service, so signing an SBOM inside a workflow needs no further wiring. | serve @effected/oidc's IdentityToken contract from the runner's OIDC issuer, sign with runner identity — implements `IdentityToken` from `@effected/oidc` |
 | `ActionsProvenance` | Class | Builds the current run's SLSA provenance from the runner's OIDC claims: the Actions side of `@effected/sbom`'s `SlsaProvenance.forGitHubWorkflow`. | build SLSA provenance from the runner's OIDC claims, attest a GitHub Actions workflow run |
 | `AmbientPackageManager` | Class | A package manager the runner's own toolchain already had: nothing was downloaded and nothing was cached, so there is no directory to publish. | a package manager already on PATH from the runner's toolchain, no tool-cache entry |
 | `Artifact` | Class | Upload, list, download and delete GitHub Actions artifacts. | upload, list, download and delete GitHub Actions artifacts |
@@ -36,8 +36,8 @@
 | `BlobEnvelopeError` | TypeAlias | Anything that can go wrong reading or writing a blob envelope. | |
 | `BlobMetadataDecodeError` | Class | Raised when well-framed metadata does not satisfy the caller's schema. | handle blob metadata that does not satisfy the caller's schema |
 | `BlobMetadataEncodeError` | Class | Raised when the value being stored does not satisfy its schema. | handle a value that will not encode into blob metadata |
-| `BlobStore` | Class | Durable blob storage with a metadata channel. | get/put/has durable blob storage with a metadata channel, S3-compatible or in-memory backend |
-| `BlobStoreError` | Class | Raised when a blob cannot be stored or retrieved. | handle a blob store read or write failure, unreachable or refused backend |
+| `BlobStore` | Class | Durable blob storage with a metadata channel. | get/put/has durable blob storage with a metadata channel, sigv4-signed s3-compatible or in-memory backend |
+| `BlobStoreError` | Class | Raised when a blob cannot be stored or retrieved. | handle a blob store read or write failure, unreachable or refused backend, request signing failure |
 | `BlobStoreShape` | Interface | The members of the `BlobStore` service: `get`, `put` and `has` over blobs that carry the caller's own metadata. | |
 | `BlobTransferError` | Class | Raised when bytes could not be moved to or from a signed blob url. | handle a signed blob url upload or download failure |
 | `CacheKey` | Class | A GitHub Actions cache key and the restore-key ladder that goes with it. | build a GitHub Actions cache key, restore-key fallback ladder, hash files |
@@ -95,9 +95,8 @@
 | `ManagedDocumentError` | Class | Raised when a managed document cannot be read or regenerated without guessing. | handle a corrupt or ambiguous managed document region structure |
 | `ManagedDocumentSource` | Interface | Options identifying a managed document inside a text that may not carry one yet. | |
 | `NotABlobEnvelopeError` | Class | Raised when bytes cannot be read as an envelope. | handle bytes that are not a recognizable blob envelope, legacy unframed blob |
-| `OidcClaims` | Class | The claims a GitHub Actions OIDC token carries about the workflow that ran. | claims carried by a GitHub Actions OIDC token: repository, ref, sha, job |
 | `OidcTokenError` | Class | Raised when an OIDC token cannot be issued or read. | handle an OIDC token that could not be minted or decoded, missing id-token permission |
-| `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint a runner OIDC token, request an identity token, decode unverified JWT claims |
+| `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint a runner oidc token for an audience, read its claims unverified as ActionsOidcClaims |
 | `OidcTokenIssuerShape` | Interface | The members of the `OidcTokenIssuer` service: request an ID `token` and read its decoded `claims`, both failing with `OidcTokenError`. | |
 | `OutputEncodeError` | Class | Raised when a value did not satisfy its schema. | handle a value that did not satisfy its schema while publishing a JSON output |
 | `PackageManagerInstallOptions` | Interface | How `PackageManagerInstallerShape.install` should behave. | |
@@ -120,7 +119,7 @@
 | `RunnerFileUnavailableError` | Class | Raised when an action cannot publish an output. | handle a runner file (GITHUB_OUTPUT/STATE/ENV/PATH) that is not available |
 | `RunnerFileWriteError` | Class | Raised when a runner file exists but could not be appended to. | handle a runner file that exists but could not be appended to |
 | `S3Config` | Interface | How to reach an S3-compatible object store. | |
-| `Secret` | Class | The declassification seam: the **only** place in this package where a `Redacted` value becomes a plain string. | declassify a Redacted value into plaintext, mask before it crosses a runner boundary |
+| `Secret` | Class | The declassification seam: the **only** place in this package where a `Redacted` value becomes a plain string. | mask a Redacted value in runner logs, declassify only for a plain-string api |
 | `StoredBlob` | Interface | A stored value: the caller's metadata beside the bytes it describes. | |
 | `ToolDownloadOptions` | Interface | How a `ToolInstallerShape.download` should behave. | |
 | `ToolInstaller` | Class | Download, extract and cache a toolchain in the runner's tool cache. | download, extract and cache a toolchain binary in the runner's tool cache |

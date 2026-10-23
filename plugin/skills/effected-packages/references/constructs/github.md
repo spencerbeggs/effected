@@ -7,6 +7,7 @@
 | --- | --- | --- | --- |
 | `ActionsOidc` | Variable | Verify GitHub Actions OIDC tokens: a workflow proving to your service which repository, workflow and run it is. | verify a github actions oidc token from a workflow, authorize a ci caller by repository id |
 | `ActionsOidcClaims` | Class | The claims of a verified GitHub Actions OIDC token. | typed claims of a verified actions oidc token, repository id, run id, job workflow ref |
+| `ActionsOidcClaimsFromWire` | Variable | `ActionsOidcClaims` as the claims arrive in the token: snake_case keys and string ids, decoding to the class and encoding back to the wire. | decode or encode actions oidc claims as the token carries them, `snake_case` keys and string ids |
 | `ActionsOidcVerifyOptions` | Interface | Options for `ActionsOidc.verify`. | |
 | `Annotation` | Class | One annotation on a check run. | one file annotation on a check run, notice or warning at a line range |
 | `AnnotationLevel` | Variable | How serious an annotation is. | notice warning failure severity for a check run annotation |

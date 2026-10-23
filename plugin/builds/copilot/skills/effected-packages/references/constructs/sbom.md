@@ -17,9 +17,6 @@
 | `GitHubWorkflowProvenance` | Interface | The claims and runner facts a GitHub Actions provenance predicate is built from. | |
 | `IN_TOTO_PAYLOAD_TYPE` | Variable | The DSSE payload type for an in-toto statement, per the GitHub attestations specification. | dsse payload type for an in-toto statement, github attestations media type |
 | `IN_TOTO_STATEMENT_V1` | Variable | The in-toto Statement v1 type URI, stamped onto every statement this package emits. | in-toto statement v1 type uri stamped onto every statement |
-| `IdentityToken` | Class | A source of workload identity tokens (OIDC), the input `SigstoreSigner` needs to obtain a signing certificate. | oidc identity token contract, get a workload token to sign with sigstore — implemented by `ActionsIdentityToken` in `@effected/github-actions` |
-| `IdentityTokenError` | Class | Raised when an identity token cannot be obtained. | handle failure obtaining an oidc identity token for an audience |
-| `IdentityTokenShape` | Interface | The contract: one method, one audience, one redacted token. | |
 | `InTotoStatement` | Class | An in-toto Statement v1. | build an in-toto attestation statement, wrap a subject and predicate for signing |
 | `InTotoStatementInput` | Interface | Input to `(InTotoStatement:class).of`. | |
 | `InTotoSubject` | Class | A content-addressed artifact an attestation is about. | the artifact an attestation is about, name plus algorithm-to-digest map |

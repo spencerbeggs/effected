@@ -185,8 +185,8 @@
 		"BlobEnvelope": "frame bytes with a versioned metadata header, pure encode/decode a stored blob",
 		"BlobMetadataDecodeError": "handle blob metadata that does not satisfy the caller's schema",
 		"BlobMetadataEncodeError": "handle a value that will not encode into blob metadata",
-		"BlobStore": "get/put/has durable blob storage with a metadata channel, S3-compatible or in-memory backend",
-		"BlobStoreError": "handle a blob store read or write failure, unreachable or refused backend",
+		"BlobStore": "get/put/has durable blob storage with a metadata channel, sigv4-signed s3-compatible or in-memory backend",
+		"BlobStoreError": "handle a blob store read or write failure, unreachable or refused backend, request signing failure",
 		"BlobTransferError": "handle a signed blob url upload or download failure",
 		"CacheKey": "build a GitHub Actions cache key, restore-key fallback ladder, hash files",
 		"CacheKeyBadPatternError": "handle a glob pattern that will not compile while deriving a cache key",
@@ -217,7 +217,7 @@
 		"ManagedDocumentError": "handle a corrupt or ambiguous managed document region structure",
 		"NotABlobEnvelopeError": "handle bytes that are not a recognizable blob envelope, legacy unframed blob",
 		"OidcTokenError": "handle an OIDC token that could not be minted or decoded, missing id-token permission",
-		"OidcTokenIssuer": "mint a runner OIDC token, request an identity token, decode unverified JWT claims",
+		"OidcTokenIssuer": "mint a runner oidc token for an audience, read its claims unverified as ActionsOidcClaims",
 		"OutputEncodeError": "handle a value that did not satisfy its schema while publishing a JSON output",
 		"PackageManagerInstaller": "provision an exact npm/pnpm/yarn/bun version from a corepack pin onto the runner",
 		"PackageManagerInstallerError": "handle a package manager provisioning failure: integrity mismatch, unsupported platform",
@@ -226,7 +226,7 @@
 		"RunnerContext": "RUNNER_* context: os, arch, temp directory, tool cache root",
 		"RunnerFileUnavailableError": "handle a runner file (GITHUB_OUTPUT/STATE/ENV/PATH) that is not available",
 		"RunnerFileWriteError": "handle a runner file that exists but could not be appended to",
-		"Secret": "declassify a Redacted value into plaintext, mask before it crosses a runner boundary",
+		"Secret": "mask a Redacted value in runner logs, declassify only for a plain-string api",
 		"ToolInstaller": "download, extract and cache a toolchain binary in the runner's tool cache",
 		"ToolInstallerError": "handle a tool download, extract or tool-cache write failure, retryable download status",
 		"TruncatedBlobEnvelopeError": "handle a blob envelope frame that ends mid-header or mid-metadata",
@@ -255,7 +255,7 @@
 	"github": {
 		"ActionsOidc": "verify a github actions oidc token from a workflow, authorize a ci caller by repository id",
 		"ActionsOidcClaims": "typed claims of a verified actions oidc token, repository id, run id, job workflow ref",
-		"ActionsOidcClaimsFromWire": "decode or encode actions oidc claims as the token carries them, snake_case keys and string ids",
+		"ActionsOidcClaimsFromWire": "decode or encode actions oidc claims as the token carries them, `snake_case` keys and string ids",
 		"Annotation": "one file annotation on a check run, notice or warning at a line range",
 		"AnnotationLevel": "notice warning failure severity for a check run annotation",
 		"AppIdentity": "resolve the github app's slug name and bot user id",
@@ -616,7 +616,7 @@
 		"PackageManagerCache": "look up a package manager's default cache directory for a platform",
 		"PackageManagerPin": "parse and print a corepack packageManager pin string, name@version+integrity",
 		"PackageManagerPinName": "the four package managers a corepack pin can name: npm, pnpm, yarn, bun",
-		"PackagePublish": "pack a package into a tarball, publish to a registry, dry-run pack",
+		"PackagePublish": "pack a package into a tarball, publish to a registry, dry-run pack, write or replace an npmrc auth token",
 		"PackageTarball": "download, verify and extract a published tarball by integrity",
 		"PackedTarball": "the tarball path, digests and size npm pack produced",
 		"PartialReleaseAgeGate": "one config source's contribution to a pnpm minimumReleaseAge gate before merging",
@@ -642,7 +642,7 @@
 		"registryShortLabel": "compact registry label for a log or table: npm, github, jsr, or host"
 	},
 	"oidc": {
-		"IdTokenClaims": "standard openid connect id token claims, azp nonce auth_time acr amr over the jwt registered claims",
+		"IdTokenClaims": "standard openid connect id token claims, azp nonce `auth_time` acr amr over the jwt registered claims",
 		"IdentityToken": "oidc identity token contract, get a workload token to sign with sigstore or present a workload identity",
 		"IdentityTokenError": "handle failure obtaining an oidc identity token for an audience",
 		"Oidc": "verify an openid connect id token against its issuer's discovered jwks, decode a trusted token's claims unverified"
@@ -1110,5 +1110,24 @@
 		"YamlTokens": "tokenize yaml text into a public token stream",
 		"YamlVisitor": "walk a yaml ast with sax-style visitor events",
 		"YamlVisitorEvent": "discriminated union of yaml ast visitor events, begin/end with path and depth"
+	},
+	"crypto": {
+		"ConstantTime": "constant-time compare bytes or strings, timing-safe secret or mac equality",
+		"CryptoError": "handle hmac failure, missing webcrypto subtle, rejected key material",
+		"CryptoErrorReason": "why an hmac operation failed, unsupported runtime or bad key",
+		"Hmac": "compute or verify hmac-sha256 or sha512, hex base64 base64url output, webcrypto",
+		"SigV4": "sign an aws or s3-compatible request, sigv4 authorization header, signing key"
+	},
+	"webhooks": {
+		"GitHub": "verify a github webhook delivery, x-hub-signature-256 sha256 hmac",
+		"HmacHeader": "verify a generic hmac signature header, hex or base64, linear webhooks",
+		"Sanity": "verify a sanity webhook signature, millisecond timestamp, base64url hmac",
+		"SharedSecret": "verify a shared-secret header, cloudflare or path secret, constant-time",
+		"StandardWebhooks": "verify svix or standard webhooks signature, whsec secret, rotated v1 keys",
+		"Stripe": "verify a stripe-signature header, timestamped v1 hmac, replay tolerance",
+		"WebhookPreset": "which webhook verification preset produced a result or failure",
+		"WebhookVerificationError": "handle webhook verification failure, missing or bad signature, stale timestamp",
+		"WebhookVerificationReason": "route a webhook rejection to 401 or 400 by reason",
+		"Webhooks": "check webhook timestamp freshness against receive time, default replay tolerance"
 	}
 }

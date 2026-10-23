@@ -40,7 +40,7 @@
 | `PackageManagerCache` | Class | Where each package manager caches by default — a facts table, one documented authority per row. | look up a package manager's default cache directory for a platform |
 | `PackageManagerPin` | Class | A corepack package-manager pin: the `<name>@<version>[+<integrity>]` triple (e.g. `pnpm@11.17.0+sha512.abc…`), independent of any `package.json` field. | parse and print a corepack packageManager pin string, name@version+integrity |
 | `PackageManagerPinName` | Variable + TypeAlias | The decoded type of `(PackageManagerPinName:variable)`: `"npm" \| "pnpm" \| "yarn" \| "bun"`. | the four package managers a corepack pin can name: npm, pnpm, yarn, bun |
-| `PackagePublish` | Class | Packs, dry-runs and publishes npm tarballs, and writes registry auth into an npmrc, by running `npm` through `@effected/commands`. | pack a package into a tarball, publish to a registry, dry-run pack |
+| `PackagePublish` | Class | Packs, dry-runs and publishes npm tarballs, and writes registry auth into an npmrc, by running `npm` through `@effected/commands`. | pack a package into a tarball, publish to a registry, dry-run pack, write or replace an npmrc auth token |
 | `PackagePublishShape` | Interface | The `PackagePublish` service shape. | |
 | `PackageTarball` | Class | Fetch, verify and extract a published tarball. | download, verify and extract a published tarball by integrity |
 | `PackageTarballShape` | Interface | The `PackageTarball` service shape. | |
