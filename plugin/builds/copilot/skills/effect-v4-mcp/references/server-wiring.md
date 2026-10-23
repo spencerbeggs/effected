@@ -70,8 +70,8 @@ internally would win over the harness's and talk to the real terminal.
   and `Logger.consolePretty`. `Logger.consoleJson`, `Logger.consoleLogFmt`
   and `Logger.consoleStructured` are built with `Logger.withConsoleLog`,
   which writes through `console.log` whatever `LogToStderr` says (`effect`'s
-  `src/Logger.ts`: `withConsoleLog` at 265-271, `consoleLogFmt` at 917,
-  `consoleStructured` at 942, `consoleJson` at 965; the default logger reads
+  `src/Logger.ts:273-279` is `withConsoleLog`; `consoleLogFmt` is `:942`,
+  `consoleStructured` `:968` and `consoleJson` `:992`; the default logger reads
   the reference at `src/internal/effect.ts:6944`). Never install them in an MCP server: every log
   line lands on stdout, the wire. For JSON logs on stderr, install
   `Logger.layer([Logger.withConsoleError(Logger.formatJson)])`.

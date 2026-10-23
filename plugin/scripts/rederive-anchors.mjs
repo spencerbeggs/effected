@@ -10,9 +10,12 @@
 //   - A cited line (a single line, or a range start) resolves to the one line
 //     in its source that carries its symbol, word-bounded. When the entry has
 //     "after" (a string for every line, or an object keyed by cited line), the
-//     search starts below the one line carrying that text and takes the first
-//     match: name the nearest enclosing member (`makeTempFileScoped() {`) to
-//     pick one of five identical `Effect.die("not implemented")` lines.
+//     search runs only inside the block opened by the one line carrying that
+//     text and takes the first match there: name the nearest enclosing member
+//     (`makeTempFileScoped() {`) to pick one of five identical
+//     `Effect.die("not implemented")` lines. The block ends at the next sibling
+//     (see blockOf), so a member that loses its symbol is refused as MISSING
+//     rather than relocated onto the same text in the member below it.
 //   - A range's inner and end lines resolve in order, each to the first match
 //     after the line before it, so the end follows its own symbol when the
 //     block grows or shrinks.
@@ -34,6 +37,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	formatManifest,
+	isCommentLine,
 	key,
 	loadManifest,
 	parseSpec,
@@ -65,6 +69,38 @@ const matchesOf = (lines, text, from = 1) => {
 	return found;
 };
 
+const indentOf = (line) => line.length - line.trimStart().length;
+const isCloser = (line) => /^[}\])]/.test(line.trimStart());
+
+/**
+ * The block an `after` line opens, as 1-based { from, to }: the lines below it
+ * up to the first non-blank line that is indented less, or indented the same
+ * and not a closer (`}`, `)`, `]`), so `},` and `} else {` stay inside while
+ * the next sibling member ends it. An `after` line inside a doc comment stands
+ * for the declaration that comment documents: the block starts at that
+ * declaration and runs to the declaration's own end. A symbol must sit inside
+ * this block, so a member that loses its symbol is refused instead of
+ * relocated onto a sibling below it.
+ */
+const blockOf = (lines, fence) => {
+	let head = fence;
+	let from = fence + 1;
+	if (isCommentLine(lines[fence - 1])) {
+		while (head <= lines.length && (isCommentLine(lines[head - 1]) || lines[head - 1].trim() === "")) head++;
+		from = head;
+	}
+	const base = indentOf(lines[head - 1] ?? "");
+	let to = head;
+	for (let n = head + 1; n <= lines.length; n++) {
+		const line = lines[n - 1];
+		if (line.trim() === "") continue;
+		const indent = indentOf(line);
+		if (indent < base || (indent === base && !isCloser(line))) break;
+		to = n;
+	}
+	return { from, to };
+};
+
 /** Relocate one entry; returns { anchor, symbols, after } or undefined on refusal. */
 const relocate = (entry) => {
 	const where = `${entry.file}: ${entry.anchor}`;
@@ -93,11 +129,15 @@ const relocate = (entry) => {
 				);
 				return undefined;
 			}
-			at = matchesOf(lines, symbol, fences[0] + 1)[0];
-			if (at === undefined) {
-				refuse(`MISSING ${where} -> ${JSON.stringify(symbol)} not found after line ${fences[0]}`);
+			const block = blockOf(lines, fences[0]);
+			const inside = matchesOf(lines, symbol, block.from).filter((n) => n <= block.to);
+			if (inside.length === 0) {
+				refuse(
+					`MISSING ${where} -> ${JSON.stringify(symbol)} not found in the block of line ${fences[0]} (lines ${block.from}-${block.to})`,
+				);
 				return undefined;
 			}
+			at = inside[0];
 		} else {
 			const candidates = matchesOf(lines, symbol);
 			if (candidates.length !== 1) {

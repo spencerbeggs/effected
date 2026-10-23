@@ -433,7 +433,7 @@
 				"832": "flags.includes(\"i\") || flags.includes(\"m\") || flags.includes(\"v\")"
 			},
 			"after": {
-				"350": "if (next === \"=\" || next === \"!\") return undefined"
+				"350": "if (this.peek() === \":\") {"
 			}
 		},
 		{
@@ -775,6 +775,39 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/server-wiring.md",
+			"anchor": "src/Logger.ts:273-279",
+			"source": "effect:Logger.ts",
+			"symbols": {
+				"273": "export const withConsoleLog",
+				"279": "^  })$"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/server-wiring.md",
+			"anchor": "`:942`",
+			"source": "effect:Logger.ts",
+			"symbols": {
+				"942": "export const consoleLogFmt"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/server-wiring.md",
+			"anchor": "`:968`",
+			"source": "effect:Logger.ts",
+			"symbols": {
+				"968": "export const consoleStructured"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/server-wiring.md",
+			"anchor": "`:992`",
+			"source": "effect:Logger.ts",
+			"symbols": {
+				"992": "export const consoleJson"
+			}
+		},
+		{
+			"file": "effect-v4-mcp/references/server-wiring.md",
 			"anchor": "src/internal/effect.ts:6944",
 			"source": "effect:internal/effect.ts",
 			"symbols": {
@@ -789,7 +822,8 @@
 			"symbols": {
 				"2117": "const inputSchema = yield* Schema.decodeUnknownEffect(ToolJson)(",
 				"2130": "const mcpTool = new McpTool({"
-			}
+			},
+			"occurrences": 2
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
@@ -1057,7 +1091,8 @@
 			"source": "effect:Schema.ts",
 			"symbols": {
 				"4683": "ArraySchema as Array"
-			}
+			},
+			"occurrences": 2
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
@@ -1174,7 +1209,8 @@
 			"source": "effect:Config.ts",
 			"symbols": {
 				"113": "export interface Config<out T> extends Effect.Effect<T, ConfigError>"
-			}
+			},
+			"occurrences": 2
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
@@ -1347,7 +1383,8 @@
 			"symbols": {
 				"4": "shares an in-progress"
 			},
-			"comment": true
+			"comment": true,
+			"occurrences": 2
 		},
 		{
 			"file": "effect-v4-module-index/SKILL.md",
@@ -1355,7 +1392,8 @@
 			"source": "effect:Cache.ts",
 			"symbols": {
 				"118": "readonly timeToLive: (exit: Exit.Exit<A, E>, key: Key) => Duration.Duration"
-			}
+			},
+			"occurrences": 2
 		},
 		{
 			"file": "effect-v4-module-index/SKILL.md",
@@ -1431,7 +1469,8 @@
 			"symbols": {
 				"81": "export interface Crypto {",
 				"202": "^}"
-			}
+			},
+			"occurrences": 2
 		},
 		{
 			"file": "effect-v4-module-index/SKILL.md",
@@ -1566,7 +1605,8 @@
 			"source": "effect:Schema.ts",
 			"symbols": {
 				"16585": "export const Error: {"
-			}
+			},
+			"occurrences": 2
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
@@ -1600,7 +1640,8 @@
 			"symbols": {
 				"2440": "Equivalent to `optionalKey(UndefinedOr(S))`."
 			},
-			"comment": true
+			"comment": true,
+			"occurrences": 2
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
@@ -1608,7 +1649,8 @@
 			"source": "effect:SchemaTransformation.ts",
 			"symbols": {
 				"389": "export function transformEffect<T, E, RD = never, RE = never>("
-			}
+			},
+			"occurrences": 2
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
@@ -1657,7 +1699,8 @@
 			"source": "effect:Schema.ts",
 			"symbols": {
 				"2340": "export function isSchema(u: unknown): u is Top"
-			}
+			},
+			"occurrences": 2
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
@@ -1919,7 +1962,7 @@
 				"350": "^        return undefined"
 			},
 			"after": {
-				"350": "if (next === \"=\" || next === \"!\") return undefined"
+				"350": "if (this.peek() === \":\") {"
 			}
 		},
 		{
@@ -2099,7 +2142,7 @@
 				"832": "if (flags.includes(\"i\") || flags.includes(\"m\") || flags.includes(\"v\")) return undefined"
 			},
 			"after": {
-				"350": "if (next === \"=\" || next === \"!\") return undefined"
+				"350": "if (this.peek() === \":\") {"
 			}
 		},
 		{

@@ -11,8 +11,12 @@
 //      listed under "anchors" or under "ignore". An anchor nobody listed fails,
 //      so a new citation cannot land unchecked. The scope is ["."], the whole
 //      skills tree.
-//   2. No orphans. Every listed entry still occurs in its skill file. A
-//      citation that was rewritten fails until the manifest follows it.
+//   2. No orphans, no extras. Every listed entry occurs in its skill file
+//      exactly "occurrences" times (default 1), so a second citation of the
+//      same token, which may claim something else, cannot ride on the first
+//      one's entry. A citation that was rewritten fails until the manifest
+//      follows it. A path-qualified token must also be a path suffix of its
+//      entry's "source".
 //   3. Symbols. Every cited line, and both ends of every range, carries the
 //      "symbols" text recorded for it (word-bounded; see symbolMatches in
 //      plugin/scripts/skill-anchors-core.mjs).
@@ -20,7 +24,10 @@
 //      the entry sets "comment": true. Most rotten citations pointed a line or
 //      four into the doc comment above the declaration they named.
 //   5. No bare citations. A `:NNN` written outside a code span and outside a
-//      `File.ts:N` token names no file, so nothing can check it.
+//      `File.ts:N` token names no file, so nothing can check it. Nor can a
+//      prose citation (`` `src/Logger.ts` ``: `withConsoleLog` at 273): a
+//      line number after "at", "line" or "lines" beside a file named without
+//      one fails too. Every line citation is written as a `File.ts:N` token.
 //
 // Tokens and the shared rules live in plugin/scripts/skill-anchors-core.mjs.
 // A token is keyed with any trailing `,` `-` or `–` stripped, so
@@ -45,7 +52,8 @@
 //   that occurs once in the file, so plugin/scripts/rederive-anchors.mjs can
 //   relocate it after an advance. When the text repeats, add
 //   "after": "<text of the nearest enclosing member line>", and the symbol
-//   resolves to its first match after that unique line. A range end resolves
+//   resolves to its first match inside the block that unique line opens
+//   (never past the next sibling member). A range end resolves
 //   to the first match after its start; a symbol that begins with `^`
 //   must start the line, indentation included (`"^}"`, `"^\t});"`), which is
 //   how a closing brace is named. A bare `` `:N` `` token is keyed by its own text in its file, so
@@ -69,6 +77,7 @@ import {
 	loadManifest,
 	markdownUnder,
 	parseSpec,
+	proseCitationsIn,
 	sourceReader,
 	specOf,
 	symbolMatches,
@@ -111,13 +120,23 @@ const seen = new Set();
 for (const path of inScope) {
 	const file = relative(skills, path);
 	const text = readFileSync(path, "utf8");
-	for (const token of new Set(tokensIn(text).map((t) => t.token))) {
+	const counts = new Map();
+	for (const { token } of tokensIn(text)) counts.set(token, (counts.get(token) ?? 0) + 1);
+	for (const [token, count] of counts) {
 		const k = key(file, token);
 		seen.add(k);
-		if (!listed.has(k) && !ignored.has(k)) fail(`${file}: anchor ${token} is not in the manifest`);
+		const entry = listed.get(k);
+		if (entry === undefined && !ignored.has(k)) fail(`${file}: anchor ${token} is not in the manifest`);
+		else if (entry !== undefined && count !== (entry.occurrences ?? 1))
+			fail(
+				`${file}: anchor ${token} occurs ${count} times but the manifest declares ${entry.occurrences ?? 1}; check what each occurrence claims, then set "occurrences"`,
+			);
 	}
 	for (const bare of bareCitationsIn(text)) {
 		fail(`${file}:${bare.line}: bare citation ${bare.text} names no file; write it as a File.ts:N token`);
+	}
+	for (const prose of proseCitationsIn(text)) {
+		fail(`${file}:${prose.line}: prose citation "${prose.text}" is unchecked; write it as a File.ts:N token`);
 	}
 }
 for (const k of [...listed.keys(), ...ignored]) {
@@ -129,6 +148,18 @@ const sourceLines = sourceReader(repo, manifest);
 let checked = 0;
 for (const entry of manifest.anchors) {
 	const where = `${entry.file}: ${entry.anchor}`;
+	// A path-qualified token must name the file its entry checks.
+	if (!entry.anchor.startsWith("`")) {
+		// A leading `$VAR/` is a placeholder (`$EFFECT_SRC/Context.ts`), and a
+		// root's own name may stand as a package prefix (`effect/cli/Command.ts`).
+		const cited = entry.anchor.slice(0, entry.anchor.lastIndexOf(":"));
+		const [root, ...rest] = entry.source.split(":");
+		const resolved = `/${join(manifest.roots[root] ?? root, rest.join(":"))}`;
+		const bare = cited.replace(/^\$[A-Z_]+\//, "");
+		const unprefixed = bare.startsWith(`${root}/`) ? bare.slice(root.length + 1) : bare;
+		if (!resolved.endsWith(`/${bare}`) && !resolved.endsWith(`/${unprefixed}`))
+			fail(`${where} -> the token names ${cited}, but the entry checks ${entry.source}`);
+	}
 	const lines = sourceLines(entry.source);
 	if (lines === undefined) {
 		fail(`${where} -> source ${entry.source} not found`);

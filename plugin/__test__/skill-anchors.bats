@@ -191,13 +191,57 @@ _set_line() {
 	[[ "$output" == *"FAIL effect-v4-idioms/SKILL.md:"*": bare citation :2424 names no file"* ]]
 }
 
+@test "negative control: a prose line citation beside a named file fails" {
+	local skills="$BATS_TEST_TMPDIR/skills"
+	_copy_skills "$skills"
+	printf '\nIn `src/Logger.ts`, `consoleJson` is at 992.\n' >>"$skills/effect-v4-idioms/SKILL.md"
+	run node "$HELPER" --repo "$REPO_ROOT" --skills "$skills"
+	echo "$output"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'FAIL effect-v4-idioms/SKILL.md:'*': prose citation "at 992" is unchecked'* ]]
+}
+
+@test "negative control: a second occurrence of a listed token fails until the manifest counts it" {
+	local skills="$BATS_TEST_TMPDIR/skills"
+	_copy_skills "$skills"
+	# index.ts:195 is listed once for this file; a new, false claim reuses it.
+	[ "$(grep -o 'index.ts:195' "$skills/effect-v4-source-lookup/SKILL.md" | wc -l | tr -d ' ')" -eq 1 ]
+	printf '\nThe vitest `layer` helper is declared at `index.ts:195`.\n' >>"$skills/effect-v4-source-lookup/SKILL.md"
+	run node "$HELPER" --repo "$REPO_ROOT" --skills "$skills"
+	echo "$output"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"FAIL effect-v4-source-lookup/SKILL.md: anchor index.ts:195 occurs 2 times but the manifest declares 1"* ]]
+}
+
+@test "negative control: a token whose path is not its entry's source fails" {
+	local mutated="$BATS_TEST_TMPDIR/manifest.json"
+	_edit_manifest "$MANIFEST" "$mutated" '
+		m.anchors.find((a) => a.anchor === "Runtime.ts:211-217").source = "effect:Layer.ts";
+	'
+	run node "$HELPER" --repo "$REPO_ROOT" --manifest "$mutated"
+	echo "$output"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"FAIL effect-v4-mcp/references/server-wiring.md: Runtime.ts:211-217 -> the token names Runtime.ts, but the entry checks effect:Layer.ts"* ]]
+}
+
 @test "a trailing comma does not make a second token: X.ts:163, and X.ts:163 share one entry" {
 	local skills="$BATS_TEST_TMPDIR/skills"
 	_copy_skills "$skills"
 	# The real tree writes the comma form; add the bare form beside it.
 	grep -q 'PlatformError.ts:163,' "$skills/effect-v4-idioms/SKILL.md"
 	printf '\nAgain: `PlatformError.ts:163`.\n' >>"$skills/effect-v4-idioms/SKILL.md"
+	# Both spellings count against the one entry: the bare form is a second
+	# occurrence of it, not an unlisted token of its own.
 	run node "$HELPER" --repo "$REPO_ROOT" --skills "$skills"
+	echo "$output"
+	[[ "$output" == *"FAIL effect-v4-idioms/SKILL.md: anchor PlatformError.ts:163 occurs 2 times but the manifest declares 1"* ]]
+	[[ "$output" != *"is not in the manifest"* ]]
+	# Once the manifest counts both, the tree is clean.
+	local mutated="$BATS_TEST_TMPDIR/manifest.json"
+	_edit_manifest "$MANIFEST" "$mutated" '
+		m.anchors.find((a) => a.file === "effect-v4-idioms/SKILL.md" && a.anchor === "PlatformError.ts:163").occurrences = 2;
+	'
+	run node "$HELPER" --repo "$REPO_ROOT" --skills "$skills" --manifest "$mutated"
 	echo "$output"
 	[ "$status" -eq 0 ]
 	[[ "$output" == *", 0 failures"* ]]
@@ -308,5 +352,40 @@ _set_line() {
 	_rederive
 	[ "$status" -eq 1 ]
 	[[ "$output" == *'MISSING demo/SKILL.md: Mod.ts:60 -> "export const layer" not found'* ]]
+	[[ "$output" != *"MOVED demo/SKILL.md: Mod.ts:60"* ]]
+}
+
+@test "rederive fixture: a guarded stub that loses its symbol is refused, not moved onto its sibling" {
+	_fixture
+	printf 'The third stub is `Mod.ts:78`.\n' >>"$FX/skills/demo/SKILL.md"
+	_edit_manifest "$FX/manifest.json" "$FX/manifest.json" '
+		m.anchors.push({ file: "demo/SKILL.md", anchor: "Mod.ts:78", source: "src:Mod.ts", symbols: { "78": "return die(\"not implemented\")" }, after: "third() {" });
+	'
+	_rederive
+	[ "$status" -eq 0 ]
+	# The third member stops dying; the fourth, below it, still carries the text.
+	_set_line 78 '		return succeed(undefined)'
+	cp "$FX/skills/demo/SKILL.md" "$BATS_TEST_TMPDIR/skill.before"
+	_rederive --write
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'MISSING demo/SKILL.md: Mod.ts:78 -> "return die(\"not implemented\")" not found in the block of line 77'* ]]
+	[[ "$output" != *"MOVED demo/SKILL.md: Mod.ts:78"* ]]
+	cmp "$FX/skills/demo/SKILL.md" "$BATS_TEST_TMPDIR/skill.before"
+}
+
+@test "rederive fixture: a symbol is not matched mid-word on its left" {
+	_fixture
+	_edit_manifest "$FX/manifest.json" "$FX/manifest.json" '
+		m.anchors.find((a) => a.anchor === "Mod.ts:60").symbols = { "60": "layer = 3" };
+	'
+	# Only the leading word bound tells `layer = 3` from `sublayer = 3`.
+	_set_line 64 'export const sublayer = 3'
+	_rederive
+	[ "$status" -eq 0 ]
+	[[ "$output" == "0 moved, 0 refused" ]]
+	_set_line 60 '// filler'
+	_rederive
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'MISSING demo/SKILL.md: Mod.ts:60 -> "layer = 3" not found'* ]]
 	[[ "$output" != *"MOVED demo/SKILL.md: Mod.ts:60"* ]]
 }

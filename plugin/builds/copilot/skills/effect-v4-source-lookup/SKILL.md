@@ -219,7 +219,7 @@ renames it in an `export {}` block:
 
 ```text
 // Schema.ts:4662 — the real definition, under a name you did not grep for
-const ArraySchema = Struct_.lambda<ArrayLambda>((schema) => …)
+const ArraySchema: ArrayLambda = Struct_.lambda<ArrayLambda>((schema) => …)
 
 // Schema.ts:4665 — the export, in a block your grep pattern never matches
 export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at Schema.ts:4683

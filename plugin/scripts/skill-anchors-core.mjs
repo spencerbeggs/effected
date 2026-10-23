@@ -47,6 +47,29 @@ export const bareCitationsIn = (text) =>
 		return [...masked.matchAll(BARE)].map((match) => ({ line: i + 1, column: match.index + 1, text: match[1] }));
 	});
 
+/**
+ * A prose line citation: `at 917`, `line 942`, `lines 265-271`, written beside
+ * a file named in a code span with no line number (`` `src/Logger.ts` ``) on
+ * the same or the previous line. The tokenizer cannot see it, so it would rot
+ * unchecked; write it as a token instead (`Logger.ts:942`, or `` `:942` ``
+ * after one). A range whose end is not above its start (`at 2020-12`, a JSON
+ * Schema dialect) is not a line range.
+ */
+export const PROSE = /\b(?:at|line|lines)\s+([0-9]{3,})(?:\s*[-–]\s*([0-9]+))?(?![0-9-])/g;
+const NAMED_FILE = /`[^`\s]*\.(?:ts|mts|js)`/;
+
+/** Prose line citations in `text`, as `{ line, column, text }`. */
+export const proseCitationsIn = (text) => {
+	const lines = text.split("\n");
+	return lines.flatMap((line, i) =>
+		NAMED_FILE.test(`${lines[i - 1] ?? ""} ${line}`)
+			? [...line.matchAll(PROSE)]
+					.filter((match) => match[2] === undefined || Number(match[2]) > Number(match[1]))
+					.map((match) => ({ line: i + 1, column: match.index + 1, text: match[0] }))
+			: [],
+	);
+};
+
 /** The `N` part of a token: `Schema.ts:12,40-44` -> "12,40-44". */
 export const specOf = (token) => token.replace(/`/g, "").split(":").pop();
 

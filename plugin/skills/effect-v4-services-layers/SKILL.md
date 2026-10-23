@@ -39,8 +39,7 @@ Argument order is **type params first** via `Context.Service<Self, Shape>()`,
 
 **Tags are Effects.** A service key is a
 first-class Effect — `Context.Key<Identifier, Shape> extends
-Effect<Shape, never, Identifier>` (`Context.ts:68` — line 67 is the
-closing comment delimiter, not the declaration) — so
+Effect<Shape, never, Identifier>` (`Context.ts:68`) — so
 `yield* Database` works, and combinator-style consumer code like
 `Effect.flatMap(Database, (db) => …)` composes directly with no `.asEffect()`
 or unwrap step. Related gotcha when hunting the source: the module is
