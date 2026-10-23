@@ -1,5 +1,19 @@
 # @effected/pnpm-plugin-effect
 
+## 0.18.2
+
+### Maintenance
+
+#### Updates 3 catalog:effected versions
+
+- `@effected/crypto` ^0.1.0 -> ^0.1.1 (peer ^0.1.0)
+- `@effected/oidc` ^0.1.0 -> ^0.1.1 (peer ^0.1.0)
+- `@effected/webhooks` ^0.1.0 -> ^0.1.1 (peer ^0.1.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.18.1
 
 ### Maintenance

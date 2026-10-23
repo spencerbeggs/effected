@@ -1,6 +1,6 @@
 {
 	"name": "@effected/oidc",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"private": true,
 	"description": "OpenID Connect for Effect v4: the IdentityToken issuer contract, ID-token claims, and a discovery-backed verify over @effected/jwt.",
 	"keywords": ["oidc", "openid-connect", "id-token", "jwt", "jwks", "effect", "effected"],

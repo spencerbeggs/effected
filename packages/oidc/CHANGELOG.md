@@ -1,5 +1,15 @@
 # @effected/oidc
 
+## 0.1.1
+
+### Other
+
+- Patch release to verify OIDC publishing with GitHub.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.1.0
 
 ### Features

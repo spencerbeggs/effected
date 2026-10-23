@@ -1,6 +1,6 @@
 {
 	"name": "@effected/crypto",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"private": true,
 	"description": "HMAC, constant-time comparison and AWS SigV4 request signing over WebCrypto for Effect v4, safe for Workers.",
 	"keywords": ["hmac", "sigv4", "aws", "constant-time", "webcrypto", "workers", "effect", "effected"],
