@@ -97,7 +97,7 @@
 | `ManagedDocumentSource` | Interface | Options identifying a managed document inside a text that may not carry one yet. | |
 | `NotABlobEnvelopeError` | Class | Raised when bytes cannot be read as an envelope. | handle bytes that are not a recognizable blob envelope, legacy unframed blob |
 | `OidcTokenError` | Class | Raised when an OIDC token cannot be issued or read. | handle an OIDC token that could not be minted or decoded, missing id-token permission |
-| `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint runner oidc token for an audience, read claims unverified, recording test double |
+| `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint runner oidc token for audience, read claims unverified as ActionsOidcClaims, recording test double |
 | `OidcTokenIssuerShape` | Interface | The members of the `OidcTokenIssuer` service: request an ID `token` and read its decoded `claims`, both failing with `OidcTokenError`. | |
 | `OutputEncodeError` | Class | Raised when a value did not satisfy its schema. | handle a value that did not satisfy its schema while publishing a JSON output |
 | `PackageManagerInstallOptions` | Interface | How `PackageManagerInstallerShape.install` should behave. | |

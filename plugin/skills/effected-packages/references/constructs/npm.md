@@ -60,7 +60,7 @@
 | `RecordingPackagePublish` | Interface | What `PackagePublish.recording` returns: the layer to provide and the calls it observed. | |
 | `RegistryCredential` | TypeAlias | How to authenticate to a registry. | |
 | `RegistryKind` | Variable + TypeAlias | The decoded type of `(RegistryKind:variable)`. | classify a registry url as npm, github-packages, jsr, or custom |
-| `RegistryReadError` | Class | A registry read failed. | handle a failed registry http read: transport failure, bad status, undecodable body |
+| `RegistryReadError` | Class | A registry read failed. | handle failed registry http read: transport error, bad status, undecodable body, refused workload credential |
 | `RegistrySeed` | Interface | A whole fake registry world, keyed the way real reads are. | |
 | `RegistryTarget` | Interface | Which registry to read from, and how to authenticate. | |
 | `ReleaseAgeGate` | Class | pnpm's publish-time release-age gate: the number of minutes a published version must age before it is eligible, and the set of package-name patterns exempt from the gate. Mirrors pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` config so a resolver can drop too-young candidate versions before picking, avoiding `ERR_PNPM_NO_MATURE_MATCHING_VERSION`. | enforce pnpm minimumReleaseAge, filter candidate versions younger than the cutoff, match exclude patterns |

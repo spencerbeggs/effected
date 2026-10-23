@@ -7,7 +7,7 @@
 | --- | --- | --- | --- |
 | `GetOrGenerateOptions` | Interface | Options for `ImageCacheShape.getOrGenerate`. | from `@effected/images/cache` |
 | `ImageBackend` | Class | The storage port behind `ImageCache`. | from `@effected/images/cache` — storage port for cached images, directory backend, adapt store cache as image backend, layerNone no-op backend to switch the image cache off |
-| `ImageBackendError` | Class | An image backend read or write failed. | from `@effected/images/cache` — image cache storage read or write failed |
+| `ImageBackendError` | Class | An image backend read or write failed. | from `@effected/images/cache` — image cache storage read or write failed, unsupported content type |
 | `ImageBackendSetParams` | Interface | What `ImageBackendShape.set` writes. | from `@effected/images/cache` |
 | `ImageBackendShape` | Interface | The port an image cache stores through. | from `@effected/images/cache` |
 | `ImageBackendSource` | Interface | Any service whose shape can stand behind the image cache. | from `@effected/images/cache` |
