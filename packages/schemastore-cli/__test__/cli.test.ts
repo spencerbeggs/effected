@@ -947,6 +947,24 @@ describe("schemastore CLI", () => {
 			),
 		);
 
+		it.effect("a --schema document that is a JSON array, not an object, fails at exit 2", () =>
+			run(
+				Effect.gen(function* () {
+					const bareDeps: ProgramDeps = { cwd: "/repo", version: "0.0.0" };
+					const error = yield* Effect.flip(
+						program(["validate", "payload.json", "--schema", "local/array.schema.json"], bareDeps),
+					);
+					assert.instanceOf(error, SchemaResolutionError);
+					assert.strictEqual(exitCodeOf(error), 2);
+					assert.include(error.message, "is not a JSON object");
+				}),
+				{
+					"/repo/local/array.schema.json": `${JSON.stringify([{ type: "object" }])}\n`,
+					[PAYLOAD_PATH]: `${JSON.stringify({ name: "x" })}\n`,
+				},
+			),
+		);
+
 		it.effect("an unresolvable $schema fails at exit 2", () =>
 			run(
 				Effect.gen(function* () {

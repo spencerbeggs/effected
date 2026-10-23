@@ -190,9 +190,7 @@ const jsonReport = (payload: string, $ref: string, source: string, findings: Rea
 // JSON object. Anything else (absent, non-string, non-object payload) means
 // "names nothing" and defers to `--schema` or the usage error.
 const schemaPropertyOf = (payload: unknown): string | undefined =>
-	Predicate.isObject(payload) && !Array.isArray(payload) && typeof payload.$schema === "string"
-		? payload.$schema
-		: undefined;
+	Predicate.isObject(payload) && typeof payload.$schema === "string" ? payload.$schema : undefined;
 
 // Resolve one local `#/$defs/<name>` pointer against the document's pool,
 // decoding the token the same way the kit's document lint decodes refs
@@ -218,11 +216,11 @@ const defsTarget = (document: Record<string, unknown>, ref: string): Record<stri
 		return undefined;
 	}
 	const defs = document.$defs;
-	if (!Predicate.isObject(defs) || Array.isArray(defs) || !Object.hasOwn(defs, name)) {
+	if (!Predicate.isObject(defs) || !Object.hasOwn(defs, name)) {
 		return undefined;
 	}
 	const entry = defs[name];
-	return Predicate.isObject(entry) && !Array.isArray(entry) ? (entry as Record<string, unknown>) : undefined;
+	return Predicate.isObject(entry) ? entry : undefined;
 };
 
 // Does the resolved document declare `$schema` as a root property? The
@@ -240,7 +238,7 @@ const defsTarget = (document: Record<string, unknown>, ref: string): Record<stri
 const declaresSchemaProperty = (document: Record<string, unknown>): boolean => {
 	const declares = (node: Record<string, unknown>): boolean => {
 		const properties = node.properties;
-		return Predicate.isObject(properties) && !Array.isArray(properties) && "$schema" in properties;
+		return Predicate.isObject(properties) && "$schema" in properties;
 	};
 	const seen = new Set<string>();
 	const queue: Array<Record<string, unknown>> = [document];
@@ -257,8 +255,8 @@ const declaresSchemaProperty = (document: Record<string, unknown>): boolean => {
 		}
 		if (Array.isArray(node.allOf)) {
 			for (const member of node.allOf) {
-				if (Predicate.isObject(member) && !Array.isArray(member)) {
-					queue.push(member as Record<string, unknown>);
+				if (Predicate.isObject(member)) {
+					queue.push(member);
 				}
 			}
 		}
@@ -322,7 +320,7 @@ export const runValidate = Effect.fn("schemastore.validate")(function* (input: V
 	}
 	const resolved = yield* resolveDocument($ref, input, deps);
 	const document = resolved.parsed;
-	if (!Predicate.isObject(document) || Array.isArray(document)) {
+	if (!Predicate.isObject(document)) {
 		return yield* Effect.fail(
 			CliRuntime.reported(new SchemaResolutionError({ $ref, reason: `${resolved.source} is not a JSON object` }), 2),
 		);
