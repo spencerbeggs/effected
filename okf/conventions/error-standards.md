@@ -1,7 +1,7 @@
 ---
 type: Convention
 title: Error handling standards
-description: The error-type preference order, where errors are defined, the Failure/Defect/Interrupt distinction, and the rule that every declared error channel must be demonstrated fireable.
+description: The error-type preference order, where errors are defined, the Failure/Defect/Interrupt distinction, the rule that every declared error channel must be demonstrated fireable, and Effect.try in place of a hand-written try/catch inside Effect code.
 status: stable
 stale_after: "2027-03-13T00:00:00Z"
 tags:
@@ -11,12 +11,16 @@ sources:
     resource: ../../.repos/effect/packages/effect/src/Schema.ts
   - id: config-file-file
     resource: ../../packages/config-file/src/ConfigFile.ts
+  - id: effect-try
+    resource: ../../.repos/effect/packages/effect/src/Effect.ts
+  - id: result-try
+    resource: ../../.repos/effect/packages/effect/src/Result.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T20:35:54Z
 integrity:
   generated:
-    body: 59f4bba2dcf2ce24
+    body: 75c0c233e1a77f62
 ---
 
 # Error handling standards
@@ -40,7 +44,8 @@ integrity:
   when the failure is validated as unrecoverable, and never to silence a
   type error.
 - Wrap a foreign (third-party or runtime) error in a typed schema-backed
-  error with a `cause: Schema.Defect` field; never leak a raw `Error` as
+  error with a `cause: Schema.Defect()` field (the call, not the bare
+  `Schema.Defect`, which throws at construction); never leak a raw `Error` as
   part of a public contract.
 - Normalize `SchemaError` to a domain error at the boundary via
   `Effect.catchTag("SchemaError", ...)`; never let `SchemaError` leak
@@ -63,8 +68,34 @@ that removed the library whose failures the channel used to model. Treat
 an error case with no failing test as a defect to fix, not a case to
 leave documented for a future caller.
 
+## A throwing call inside Effect code goes through `Effect.try({ try, catch })`
+
+When Effect code calls something that can throw (a fatal `TextDecoder`,
+`new URL(...)`, `JSON.parse`), wrap the call in
+`Effect.try({ try: () => ..., catch: (cause) => typedError(cause) })`.
+Do not write a try/catch block that assigns to a `let` and then yields a
+failure from the catch. `Effect.try` puts the throw straight into the
+typed `E` channel, keeps the cause, and reads as one expression in a
+`pipe` or a `yield*`.[^effect-try]
+
+- Always pass the `{ try, catch }` form. The bare `Effect.try(thunk)`
+  fails with `Cause.UnknownError`, which leaks an untyped error into the
+  public channel.
+- In pure code that already returns a `Result`, `Result.try` is the
+  equivalent.[^result-try] Use it only where it reads better than the
+  plain try/catch that builds `Result.fail` or `Result.succeed`. Leaving
+  such a pure helper as it is is fine.
+- For JSON text, decode through a Schema rather than wrapping
+  `JSON.parse` (see the
+  [input-hardening standards](input-hardening-standards.md#json-text-is-decoded-through-a-schema-never-parsed-and-cast)).
+
 [^effect-schema]: `.repos/effect/packages/effect/src/Schema.ts` —
-    `TaggedError` (line ~14201) and `Error` (line ~14141) constructors.
+    `TaggedError` (line ~16646) and `Error` (line ~16585) constructors.
 [^config-file-file]: `packages/config-file/src/ConfigFile.ts:21-103` —
     five `Schema.TaggedError` classes defined in the same module as the
     `ConfigFile` service.
+[^effect-try]: `.repos/effect/packages/effect/src/Effect.ts` — `try_`,
+    exported as `try`: the bare-thunk overload fails with
+    `Cause.UnknownError`; the `{ try, catch }` overload gives `Effect<A, E>`.
+[^result-try]: `.repos/effect/packages/effect/src/Result.ts` — `try_`,
+    exported as `try`, the synchronous `Result` equivalent.

@@ -1,7 +1,7 @@
 ---
 type: Convention
 title: Input-hardening standards
-description: Untrusted input and recursive walks fail through the typed error channel, never as a stack-overflow defect; nesting depth and reference-expansion are both capped and bounded.
+description: Untrusted input and recursive walks fail through the typed error channel, never as a stack-overflow defect; nesting depth and reference-expansion are both capped and bounded, and JSON text is decoded through a module-level Schema decoder, never parsed and cast.
 status: stable
 stale_after: "2027-03-13T00:00:00Z"
 tags:
@@ -14,12 +14,16 @@ sources:
     resource: ../../packages/yaml/src/Yaml.ts
   - id: yaml-stringifier
     resource: ../../packages/yaml/src/internal/stringifier.ts
+  - id: effect-schema-json
+    resource: ../../.repos/effect/packages/effect/src/Schema.ts
+  - id: github-actions-json
+    resource: ../../packages/github-actions/src/internal/json.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T20:35:54Z
 integrity:
   generated:
-    body: b28611ec4df704c0
+    body: 37163ca67646721f
 ---
 
 # Input-hardening standards
@@ -76,6 +80,36 @@ materialization, budget the materialization itself, not just the input's
 static depth — a document that is shallow on paper can still be
 exponential once references are followed.
 
+## JSON text is decoded through a Schema, never parsed and cast
+
+Text that claims to be JSON is untrusted input like any other. Decode it
+with `Schema.fromJsonString(S)`, which parses and checks the shape in one
+step and fails typed on either. Never write `JSON.parse(text) as T`, and
+never wrap `JSON.parse` in a hand-written try/catch that returns the
+untyped result: both give the caller a value whose shape nothing checked.
+
+- **Build the decoder once, at module level, in the package that reads the
+  text.** For example, `const decodeJson =
+  Schema.decodeUnknownResult(Schema.fromJsonString(S))` at the top of the
+  module, then call it. `@effected/github-actions` holds the Effect-form
+  instance of the same pattern, built with
+  `decodeUnknownEffect`.[^github-actions-json] Use `decodeUnknownOption`
+  when the caller only needs to know whether the text decoded, and
+  `decodeUnknownResult` (or `decodeUnknownEffect`) when it reports why.
+  There is no cross-package helper for this. Each package writes its own
+  one-liner, so decoding JSON never adds an in-kit dependency edge.
+- **Never use `Schema.UnknownFromJsonString`.** It is marked `@internal`
+  in Effect. Spell the untyped case as
+  `Schema.fromJsonString(Schema.Unknown)`, which is
+  stable.[^effect-schema-json]
+- **Decode in two steps only when the caller must tell "not JSON" apart
+  from "wrong shape".** First `fromJsonString(Schema.Unknown)`, then the
+  shape schema on the result. A one-step decode separates the two failures
+  only by the issue's internal tag, and that is fragile to branch on. For
+  `package.json` text, use the typed parser that `@effected/package-json`
+  is gaining to keep this split, rather than re-deriving it. `@effected/config-file` keeps its own one-line
+  decoder instead, so it takes no package-json edge.
+
 [^jsonc-limits]: `packages/jsonc/src/internal/limits.ts:22` —
     `MAX_NESTING_DEPTH = 256`, imported by every recursive surface in
     `@effected/jsonc`.
@@ -85,3 +119,10 @@ exponential once references are followed.
 [^yaml-stringifier]: `packages/yaml/src/internal/stringifier.ts` — the
     stringify-side `MAX_NESTING_DEPTH` guard and `StringifyDepthExceeded`
     internal throw, caught and re-surfaced as a typed error.
+[^effect-schema-json]: `.repos/effect/packages/effect/src/Schema.ts` —
+    `fromJsonString` is `@stability stable`; `UnknownFromJsonString`,
+    defined just below it, is `@internal`.
+[^github-actions-json]: `packages/github-actions/src/internal/json.ts` —
+    one module-level `decodeJson` built from
+    `Schema.fromJsonString(Schema.Unknown)`, shared by the package's
+    untyped reads.

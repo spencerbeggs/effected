@@ -12,12 +12,28 @@ sources:
     resource: ../../packages/config-file/src/index.ts
   - id: config-file-codec
     resource: ../../packages/config-file/src/ConfigCodec.ts
+  - id: owner-ruling
+    resource: conversation with the repository owner
+    author: human:spencer
+    last_modified: "2026-10-23T00:00:00Z"
+  - id: merge-strategy
+    resource: ../../packages/config-file/src/MergeStrategy.ts
+  - id: config-migration
+    resource: ../../packages/config-file/src/ConfigMigration.ts
+  - id: encrypted-codec
+    resource: ../../packages/config-file/src/EncryptedCodec.ts
+  - id: jsonl-envelope
+    resource: ../../packages/jsonl/src/Envelope.ts
+  - id: jsonl-event
+    resource: ../../packages/jsonl/src/JsonlEvent.ts
+  - id: spdx-expression
+    resource: ../../packages/spdx/src/SpdxExpression.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T20:35:54Z
 integrity:
   generated:
-    body: 34b360c986fec3e2
+    body: ebd5965ae60d8d8c
 ---
 
 # Only entrypoint files re-export; never a barrel or a namespace object
@@ -101,8 +117,68 @@ not be collapsed into one another: the namespace-object ban is about
 *what* may be grouped and is load-bearing for bundle weight; this is
 about *how* the sanctioned group is spelled and is load-bearing for docs.
 
+### Six `as const` containers are sanctioned name-collision holdouts
+
+Six containers share their name with a type, and stay `as const` objects
+by ruling:[^owner-ruling]
+
+| Container | Collides with | Module |
+| --- | --- | --- |
+| `MergeStrategy` | generic `interface MergeStrategy<A>` | `@effected/config-file`[^merge-strategy] |
+| `VersionAccess` | `interface VersionAccess` | `@effected/config-file`[^config-migration] |
+| `EncryptedCodecKey` | `type EncryptedCodecKey` | `@effected/config-file`[^encrypted-codec] |
+| `Envelope` | generic `interface Envelope<Tag, Data>` | `@effected/jsonl`[^jsonl-envelope] |
+| `JsonlEvent` | generic `interface JsonlEvent<...>` | `@effected/jsonl`[^jsonl-event] |
+| `SpdxExpression` | `type SpdxExpression` | `@effected/spdx`[^spdx-expression] |
+
+The collisions are not all equally hard:
+
+- **A type alias blocks the class form outright.** A class cannot share
+  its name with a `type` alias; the compiler reports a duplicate
+  identifier. `EncryptedCodecKey` and `SpdxExpression` cannot become
+  classes without renaming one side.
+- **An interface does not block it, but converting means declaration
+  merging.** A class can merge with a same-named interface, generic ones
+  included, provided the class declares the same type parameters (same
+  count and names, no conflicting defaults); repeating the variance
+  annotations is optional but keeps the two declarations visibly in step. Biome flags that merge
+  as `noUnsafeDeclarationMerging`, so it needs a `biome-ignore` with a
+  reason, as `ResolvedTsconfig` in `@effected/tsconfig-json` carries.
+  `MergeStrategy`, `VersionAccess`, `Envelope` and `JsonlEvent` could
+  convert that way. They stay `as const` because the merge would put a
+  behaviour interface's members on a statics-only class's instance type,
+  and the kit has not chosen to take that on for them.
+
+Do not put these six in a sweep that converts grouped statics to the class
+form. Such a sweep covers the explicitly typed
+`export const X: { ... } = { ... }` containers, which have no collision.
+Adding a seventh holdout, or converting one of the four interface
+collisions, is a change to this table first.
+
 [^config-file-index]: `packages/config-file/src/index.ts:33-38` —
     `JsonCodec`, `JsoncCodec`, `TomlCodec` and `YamlCodec` exported as
     separate named bindings, one import per line.
 [^config-file-codec]: `packages/config-file/src/ConfigCodec.ts:55-56` —
     the four codecs "are free-standing named exports, one per module."
+[^merge-strategy]: `packages/config-file/src/MergeStrategy.ts` —
+    `export interface MergeStrategy<A>` and
+    `export const MergeStrategy = { firstMatch, layeredMerge } as const`.
+[^config-migration]: `packages/config-file/src/ConfigMigration.ts` —
+    `export interface VersionAccess` and
+    `export const VersionAccess = { default: defaultVersionAccess } as const`.
+[^encrypted-codec]: `packages/config-file/src/EncryptedCodec.ts` —
+    `export type EncryptedCodecKey` and the `as const` container of the
+    same name.
+[^jsonl-envelope]: `packages/jsonl/src/Envelope.ts` —
+    `export interface Envelope<out Tag extends string, out Data>` and the
+    `as const` container of the same name.
+[^jsonl-event]: `packages/jsonl/src/JsonlEvent.ts` — the generic
+    `export interface JsonlEvent` and the `as const` container of the
+    same name.
+[^spdx-expression]: `packages/spdx/src/SpdxExpression.ts` —
+    `export type SpdxExpression` (the AST union) and the `as const`
+    container of the same name.
+[^owner-ruling]: conversation with the repository owner, 2026-10-23 —
+    ruling 15 of the breaking kit wave: the six `as const` sites are
+    sanctioned name-collision holdouts, and the grouped-statics sweep
+    covers only the typed-const containers.
