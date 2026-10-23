@@ -1,4 +1,4 @@
-import { Cache, Context, Duration, Effect, Exit, Layer, Option, Schema } from "effect";
+import { Cache, Context, Duration, Effect, Exit, Layer, Option, Predicate, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { LocalExecError } from "./LocalExec.js";
 import { ExecContext, LocalExec } from "./LocalExec.js";
@@ -168,6 +168,31 @@ class EvidenceKey extends Schema.Class<EvidenceKey>("EvidenceKey")({
 const probeArgs = (probe: VersionProbe): ReadonlyArray<string> =>
 	probe._tag === "VersionNone" ? ["--version"] : probe.flag.split(/\s+/).filter((part) => part.length > 0);
 
+/**
+ * Decodes a probe's stdout as JSON text, `None` when it is not JSON.
+ *
+ * @remarks
+ * Schema's own JSON codec in place of a `JSON.parse` in a `try`: the outcome is
+ * a value rather than a control-flow exception, and it agrees with
+ * `JSON.parse` on every input (surrounding whitespace accepted; empty text,
+ * trailing garbage and a leading BOM rejected).
+ */
+const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
+
+/**
+ * Steps one dotted-path segment into a decoded JSON value.
+ *
+ * @remarks
+ * Objects and arrays are both stepped into (`versions.0` indexes an array), and
+ * only an OWN property is followed: a plain index read resolves inherited
+ * members, so a string planted on `Object.prototype` would be reported as the
+ * version of any tool whose JSON lacks the key.
+ */
+const step = (current: unknown, key: string): Option.Option<unknown> =>
+	Predicate.isObjectOrArray(current) && Object.hasOwn(current, key)
+		? Option.some((current as Readonly<Record<string, unknown>>)[key])
+		: Option.none();
+
 /** Reads a version out of one probe's captured stdout. */
 const extractVersion = (probe: VersionProbe, stdout: string): Option.Option<string> => {
 	if (probe._tag === "VersionNone") return Option.none();
@@ -177,16 +202,17 @@ const extractVersion = (probe: VersionProbe, stdout: string): Option.Option<stri
 		// Group 1 when the pattern captures, else the whole match.
 		return Option.fromUndefinedOr(match?.[1] ?? match?.[0]);
 	}
-	try {
-		let current: unknown = JSON.parse(stdout);
-		for (const key of probe.path.split(".")) {
-			if (current === null || typeof current !== "object") return Option.none();
-			current = (current as Record<string, unknown>)[key];
-		}
-		return typeof current === "string" ? Option.some(current) : Option.none();
-	} catch {
-		return Option.none();
-	}
+	return decodeJson(stdout).pipe(
+		Option.flatMap((root) =>
+			probe.path
+				.split(".")
+				.reduce<Option.Option<unknown>>(
+					(current, key) => Option.flatMap(current, (value) => step(value, key)),
+					Option.some(root),
+				),
+		),
+		Option.filter(Predicate.isString),
+	);
 };
 
 /**

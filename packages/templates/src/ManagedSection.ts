@@ -219,9 +219,14 @@ const make = (options: ManagedSectionOptions = {}): Effect.Effect<ManagedSection
 		} satisfies ManagedSectionShape;
 	});
 
-const unimplemented = (member: string): never => {
-	throw new Error(`ManagedSection.makeTest: ${member}() was called but not stubbed — pass a \`${member}\` override.`);
-};
+/**
+ * An unstubbed `makeTest` member: dies when its effect runs, never when it is
+ * called, so building the effect outside a generator cannot throw.
+ */
+const unstubbed = (member: string) => (): Effect.Effect<never> =>
+	Effect.die(
+		new Error(`ManagedSection.makeTest: ${member}() was called but not stubbed — pass a \`${member}\` override.`),
+	);
 
 /**
  * Managed sections in files: read, compare, sync and remove delimited blocks
@@ -281,18 +286,19 @@ export class ManagedSection extends Context.Service<ManagedSection, ManagedSecti
 	): Layer.Layer<ManagedSection, never, FileSystem.FileSystem> => Layer.effect(ManagedSection, make(options));
 
 	/**
-	 * A test double. Members a suite does not stub **die when called**, rather
-	 * than returning a plausible-looking answer that makes a wrong test pass.
+	 * A test double. Members a suite does not stub **die when run** (calling
+	 * one only builds the effect), rather than returning a plausible-looking
+	 * answer that makes a wrong test pass.
 	 */
 	static readonly makeTest = (overrides: Partial<ManagedSectionShape> = {}): ManagedSectionShape => ({
-		read: () => Effect.sync(() => unimplemented("read")),
-		readAll: () => Effect.sync(() => unimplemented("readAll")),
-		isManaged: () => Effect.sync(() => unimplemented("isManaged")),
-		sync: () => Effect.sync(() => unimplemented("sync")),
-		syncAll: () => Effect.sync(() => unimplemented("syncAll")),
-		check: () => Effect.sync(() => unimplemented("check")),
-		checkAll: () => Effect.sync(() => unimplemented("checkAll")),
-		remove: () => Effect.sync(() => unimplemented("remove")),
+		read: unstubbed("read"),
+		readAll: unstubbed("readAll"),
+		isManaged: unstubbed("isManaged"),
+		sync: unstubbed("sync"),
+		syncAll: unstubbed("syncAll"),
+		check: unstubbed("check"),
+		checkAll: unstubbed("checkAll"),
+		remove: unstubbed("remove"),
 		...overrides,
 	});
 

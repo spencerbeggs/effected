@@ -67,7 +67,11 @@ export class VersionFlag extends Schema.TaggedClass<VersionFlag>()("VersionFlag"
 export class VersionJson extends Schema.TaggedClass<VersionJson>()("VersionJson", {
 	/** The flag(s) to pass, e.g. `"info --json"`. Split on spaces into argv. */
 	flag: Schema.String,
-	/** Dotted path to the version, e.g. `"deno.version"`. */
+	/**
+	 * Dotted path to the version, e.g. `"deno.version"`; a numeric segment
+	 * indexes an array (`"versions.0"`). Only own properties are followed, and
+	 * a leaf that is not a string, or stdout that is not JSON, is no version.
+	 */
 	path: Schema.String,
 }) {}
 

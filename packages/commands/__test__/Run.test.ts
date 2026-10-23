@@ -357,6 +357,8 @@ describe("Run.jsonLine", () => {
 				assert.strictEqual(error.kind, "notJson");
 				assert.strictEqual(error.exitCode, 0);
 				assert.strictEqual(error.stdout, "definitely not json\nnor this\n");
+				// The host parse error rides as the cause, its position intact.
+				assert.instanceOf(error.cause, SyntaxError);
 			}
 		}),
 	);

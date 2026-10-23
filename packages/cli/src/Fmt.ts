@@ -1,3 +1,4 @@
+import { Duration, Option } from "effect";
 import { displayWidth, graphemes, stripAnsi } from "./internal/displayWidth.js";
 
 /**
@@ -109,18 +110,27 @@ export class Fmt {
 	};
 
 	/**
-	 * A duration in milliseconds as short human text: `250ms`, `1.2s`, `2s`, `1m 3s`, `2m`, `1h 2m`, `2h`.
+	 * A duration as short human text: `250ms`, `1.2s`, `2s`, `1m 3s`, `2m`, `1h 2m`, `2h`.
 	 *
 	 * @remarks
 	 * Under a second it is whole milliseconds; under a minute, seconds to one decimal with a trailing `.0`
 	 * dropped; under an hour, minutes and whole seconds, with the seconds dropped when zero; from an hour, hours and
 	 * whole minutes, the seconds dropped. A value that rounds up to the next unit (`999.6` to a second, `59999` to a
 	 * minute, `3599999` to an hour) is written in that unit, so `1000ms`, `60s` and `60m` never appear. There is no
-	 * days unit. A negative or non-finite input is `0ms`.
+	 * days unit. The format is bespoke: core's `Duration.format` renders differently.
 	 *
-	 * @param ms - the duration in milliseconds
+	 * The input is anything `Duration.Input` admits. A plain number is milliseconds and is used as given, never
+	 * converted through a `Duration`, which rounds a fractional millisecond to whole nanoseconds and would move a value
+	 * such as `999.4999999` across the rounding boundary. A `bigint` is nanoseconds, as in core. A negative, infinite
+	 * or invalid input (a string `Duration.Input` cannot parse) is `0ms`: a formatter in a render path never throws.
+	 *
+	 * @param input - the duration; a number is milliseconds
 	 */
-	static readonly duration = (ms: number): string => {
+	static readonly duration = (input: Duration.Input): string => {
+		const ms =
+			typeof input === "number"
+				? input
+				: Option.match(Duration.fromInput(input), { onNone: () => 0, onSome: Duration.toMillis });
 		const value = Number.isFinite(ms) ? Math.max(0, ms) : 0;
 		const whole = Math.round(value);
 		if (whole < 1000) return `${whole}ms`;
