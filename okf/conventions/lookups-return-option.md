@@ -27,6 +27,10 @@ sources:
     resource: ../../packages/cli/src/ui/UiKey.ts
 generated:
   by: "okfit/claude-code"
+  at: 2026-10-23T20:27:26Z
+integrity:
+  generated:
+    body: bf36b3e681d54d3d
 ---
 
 # A public lookup that can miss returns Option, never T | undefined

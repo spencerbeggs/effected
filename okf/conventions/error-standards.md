@@ -17,10 +17,10 @@ sources:
     resource: ../../.repos/effect/packages/effect/src/Result.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T20:27:09Z
 integrity:
   generated:
-    body: 59f4bba2dcf2ce24
+    body: 2cc23d2642d2c0ba
 ---
 
 # Error handling standards
