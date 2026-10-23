@@ -61,7 +61,7 @@ const Live = JwksResolver.layer.pipe(Layer.provide(Layer.merge(FetchHttpClient.l
 
 ## Where it is used
 
-`@effected/github` signs its App JWT with `JwtKey.fromPkcs8Pem` + `Jwt.sign`, and `ActionsOidc.verify` verifies GitHub Actions OIDC tokens through `Jwt.verify` and `JwksResolver.forIssuer`. Reach for those first when the token is GitHub's.
+`@effected/github` signs its App JWT with `JwtKey.fromPkcs8Pem` + `Jwt.sign`, and `ActionsOidc.verify` verifies GitHub Actions OIDC tokens through `Jwt.verify` and `JwksResolver.forIssuer`. Reach for those first when the token is GitHub's. `@effected/oidc` builds its `Oidc.verify` on `Jwt.verify` and `JwksResolver.forIssuer`; reach for it for an OIDC ID token from any issuer.
 
 ## Not included
 

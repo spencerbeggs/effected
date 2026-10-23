@@ -154,7 +154,8 @@ tempted to reach for `as`.
   field is omitted, never a failure.
 - **`ActionsOidc`** — `ActionsOidc.verify(token, { audience, clockTolerance? })`
   → `Effect<ActionsOidcClaims, JwtError, JwksResolver>` (from `@effected/jwt`;
-  provide `JwksResolver.layer` at the edge). It verifies against GitHub's JWKS
+  provide `JwksResolver.layer` at the edge). It is `@effected/oidc`'s `Oidc.verify`
+  pinned to GitHub's issuer. It verifies against GitHub's JWKS
   for the github.com Actions issuer only (GHE.com and GHES issuers are
   `wrongIssuer`), with a **mandatory, non-empty audience**, then decodes
   camelCase claims with numeric ids (`repositoryId`, `runId`, ...). **Authorize
