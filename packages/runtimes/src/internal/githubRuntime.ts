@@ -54,9 +54,10 @@ export interface GitHubRuntimeSpec<Self, R extends { readonly version: SemVer }>
  * Acquisition performs no IO: it builds the empty index, captures the
  * strategy's requirements from the layer scope, and gates the strategy behind
  * a run-once memo (see `internal/once.ts`). The first `resolve` runs the
- * population; concurrent first resolves share it; success is memoized for the
- * layer's lifetime while a failure (only the fresh strategy can produce one)
- * is retried by the next resolve.
+ * population; concurrent first resolves share it and its outcome; success is
+ * memoized for the layer's lifetime, while a failure (only the fresh strategy
+ * can produce one) reaches every resolve waiting on that run and is retried
+ * by the next resolve.
  *
  * The strategy's requirements still flow out into the layer's (`layerOffline`
  * requires no `GitHubClient`), and its error channel flows into `resolve`'s —

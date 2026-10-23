@@ -104,6 +104,8 @@ export class NodeResolver extends Context.Service<
 	 * Lazy: building the layer performs no IO, so unreachable feeds surface as
 	 * a `FreshnessError` from `resolve`, not from layer acquisition. A failed
 	 * fetch is not memoized — the next `resolve` retries; a successful one is.
+	 * Resolves running concurrently share one fetch and its outcome, so when
+	 * that fetch fails, every one of them fails with its `FreshnessError`.
 	 */
 	static readonly layerFresh: Layer.Layer<NodeResolver, never, HttpClient.HttpClient> = build(this, (index, live) =>
 		populateFresh(index, "node", live),
@@ -155,9 +157,10 @@ interface NodeResolverShape {
  * Acquisition performs no IO: it builds the empty index, captures the
  * strategy's requirements from the layer scope, and gates the strategy behind
  * a run-once memo (see `internal/once.ts`). The first `resolve` runs the
- * population; concurrent first resolves share it; success is memoized for the
- * layer's lifetime while a failure (only the fresh strategy can produce one)
- * is retried by the next resolve.
+ * population; concurrent first resolves share it and its outcome; success is
+ * memoized for the layer's lifetime, while a failure (only the fresh strategy
+ * can produce one) reaches every resolve waiting on that run and is retried
+ * by the next resolve.
  *
  * The strategy's requirement channel still flows straight out into the
  * layer's, so `layerOffline` genuinely requires nothing, and its error channel
