@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Exit, Result } from "effect";
+import { Cause, Effect, Exit, Result } from "effect";
 import { Yaml, YamlDocument, YamlFormat, YamlModificationError, YamlScalar, YamlSeq } from "../src/index.js";
 
 // Every Result twin must agree with its Effect form on BOTH channels: the
@@ -188,6 +188,7 @@ describe("YamlDocument Result twins", () => {
 			// depth cap — still typed, never a stack overflow.
 			if (!Result.isFailure(result)) return assert.fail("expected a typed failure");
 			assert.strictEqual(result.failure._tag, "YamlStringifyError");
+			assert.strictEqual(result.failure.diagnostics[0]?.code, "NestingDepthExceeded");
 			yield* agrees(doc.stringify(), result);
 		}),
 	);
@@ -201,6 +202,29 @@ describe("Yaml.stringify after the stringifyOrFail removal", () => {
 			if (!Result.isFailure(result)) return assert.fail("expected CircularReference");
 			assert.strictEqual(result.failure.diagnostics[0]?.code, "CircularReference");
 			yield* agrees(Yaml.stringify(value), result);
+		}),
+	);
+});
+
+describe("YamlDocument#stringify defers its work until run", () => {
+	it.effect("a forged instance returns an Effect that dies inside the span, not a call-time throw", () =>
+		Effect.gen(function* () {
+			const seq = YamlSeq.make({ items: [], style: "block", offset: 0, length: 0 });
+			// Instances are not frozen: a forged non-iterable item list is a
+			// defect the facade cannot map to a YamlStringifyError, so it must
+			// die when run.
+			(seq as unknown as { items: unknown }).items = 42;
+			const doc = YamlDocument.make({ contents: seq, errors: [], warnings: [], directives: [] });
+			let effect: Effect.Effect<string, unknown>;
+			try {
+				effect = doc.stringify();
+			} catch (defect) {
+				return assert.fail(`stringify() threw at call time: ${String(defect)}`);
+			}
+			const exit = yield* Effect.exit(effect);
+			if (!Exit.isFailure(exit)) return assert.fail("expected a defect, but the effect succeeded");
+			assert.isTrue(Cause.hasDies(exit.cause));
+			assert.isFalse(Cause.hasFails(exit.cause));
 		}),
 	);
 });

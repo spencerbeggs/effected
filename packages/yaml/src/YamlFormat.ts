@@ -1009,7 +1009,9 @@ export class YamlFormat {
 		} catch (defect) {
 			// Backstop: lowering already guards cycles and depth from the target's
 			// own depth, so this should not fire — but a stringifier throw here
-			// must still surface typed, never as a defect out of a Result.
+			// must still surface typed, never as a defect out of a Result. Kept as
+			// defence in depth and unpinned by construction: with the depth-aware
+			// lowering in place no test input can reach it.
 			const error = stringifyDefectToError(defect, value);
 			if (error === undefined) throw defect;
 			return fail(error.diagnostics);

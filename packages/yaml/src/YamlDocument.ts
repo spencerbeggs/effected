@@ -219,11 +219,13 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 
 	/**
 	 * Stringify this document (contents, directives and framing) as YAML.
-	 * Fails with {@link YamlStringifyError} on circular references introduced
-	 * into a synthetic AST (`CircularReference`) or on a synthetic AST nested
-	 * deeper than the stringifier's recursion budget (`NestingDepthExceeded`)
-	 * — both surface through the typed error channel rather than as an
-	 * unhandled stack-overflow defect.
+	 * Fails with {@link YamlStringifyError} (`NestingDepthExceeded`) on a
+	 * synthetic AST nested deeper than the stringifier's recursion budget. A
+	 * cycle introduced into a synthetic AST fails the same way: the node path
+	 * keeps no ancestor set, so the cycle is caught by the depth cap rather
+	 * than reported as `CircularReference`. Either way the failure surfaces
+	 * through the typed error channel, never as an unhandled stack-overflow
+	 * defect.
 	 * Defined in terms of {@link YamlDocument.stringifyResult} behind a
 	 * `YamlDocument.stringify` span — synchronous callers can use that variant
 	 * directly.
@@ -245,7 +247,12 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	 *   {@link YamlStringifyError}.
 	 */
 	stringify(options?: YamlStringifyOptions): Effect.Effect<string, YamlStringifyError> {
-		return Effect.fromResult(this.stringifyResult(options)).pipe(Effect.withSpan("YamlDocument.stringify"));
+		// Suspended so the stringify runs inside the span when the Effect runs,
+		// not when `stringify()` is called — an unmapped stringifier defect then
+		// dies inside the span rather than throwing out of the method call.
+		return Effect.suspend(() => Effect.fromResult(this.stringifyResult(options))).pipe(
+			Effect.withSpan("YamlDocument.stringify"),
+		);
 	}
 
 	/**
@@ -253,10 +260,11 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	 * primitive {@link YamlDocument.stringify} is defined in terms of, so a
 	 * synchronous host can round-trip a document parsed with
 	 * {@link YamlDocument.parseResult} without an Effect runtime. Fails with
-	 * {@link YamlStringifyError} exactly where `stringify` does: a circular
-	 * reference in a synthetic AST (`CircularReference`) or a synthetic AST
-	 * nested deeper than the stringifier's recursion budget
-	 * (`NestingDepthExceeded`).
+	 * {@link YamlStringifyError} exactly where `stringify` does: a synthetic
+	 * AST nested deeper than the stringifier's recursion budget, or one
+	 * containing a cycle, both as `NestingDepthExceeded` (the node path keeps
+	 * no ancestor set, so a cycle is caught by the depth cap, not reported as
+	 * `CircularReference`).
 	 *
 	 * @remarks
 	 * `YamlStringifyOptions.lineWidth` is not honored here, for the reason
