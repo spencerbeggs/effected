@@ -212,6 +212,71 @@ describe("ToolDiscovery.resolve — version extraction", () => {
 		}),
 	);
 
+	const jsonVersion = (path: string, stdout: string) =>
+		Effect.gen(function* () {
+			const tool = Tool.named("deno", { version: VersionJson.make({ flag: "info --json", path }) });
+			return yield* run(resolve(tool), () => ({ stdout, exit: 0 })).effect;
+		});
+
+	it.effect("JSON stdout with a trailing newline still decodes", () =>
+		Effect.gen(function* () {
+			const resolved = yield* jsonVersion("deno.version", '{"deno":{"version":"2.1.0"}}\n');
+			assert.deepStrictEqual(resolved.version, Option.some("2.1.0"));
+		}),
+	);
+
+	it.effect("non-JSON stdout yields no version, and the tool is still found", () =>
+		Effect.gen(function* () {
+			const resolved = yield* jsonVersion("deno.version", "deno 2.1.0 (not json)");
+			assert.isTrue(Option.isNone(resolved.version));
+			assert.instanceOf(resolved, ResolvedTool);
+		}),
+	);
+
+	it.effect("a leaf that is not a string yields no version", () =>
+		Effect.gen(function* () {
+			const resolved = yield* jsonVersion("deno.version", '{"deno":{"version":2}}');
+			assert.isTrue(Option.isNone(resolved.version));
+		}),
+	);
+
+	it.effect("a top-level JSON scalar yields no version", () =>
+		Effect.gen(function* () {
+			const resolved = yield* jsonVersion("deno.version", '"2.1.0"');
+			assert.isTrue(Option.isNone(resolved.version));
+		}),
+	);
+
+	it.effect("a path steps through an array index", () =>
+		Effect.gen(function* () {
+			const resolved = yield* jsonVersion("versions.1", '{"versions":["1.0.0","2.0.0"]}');
+			assert.deepStrictEqual(resolved.version, Option.some("2.0.0"));
+		}),
+	);
+
+	it.effect("a path never resolves an inherited member", () =>
+		// A polluted Object.prototype is the one way an inherited member of a
+		// decoded JSON value can be a string; a plain index read would report
+		// it as the tool's version. Released even when an assertion fails.
+		Effect.acquireUseRelease(
+			Effect.sync(() =>
+				Object.defineProperty(Object.prototype, "pollutedVersion", {
+					value: "6.6.6",
+					configurable: true,
+					writable: true,
+				}),
+			),
+			() =>
+				Effect.gen(function* () {
+					const control = yield* jsonVersion("pollutedVersion", '{"pollutedVersion":"1.0.0"}');
+					assert.deepStrictEqual(control.version, Option.some("1.0.0"));
+					const resolved = yield* jsonVersion("pollutedVersion", "{}");
+					assert.isTrue(Option.isNone(resolved.version));
+				}),
+			() => Effect.sync(() => delete (Object.prototype as Record<string, unknown>).pollutedVersion),
+		),
+	);
+
 	it.effect("a tool that reports no parseable version still resolves, with no version", () =>
 		Effect.gen(function* () {
 			const resolved = yield* run(resolve(Tool.named("tar")), () => ({ stdout: "bsdtar (unknown)", exit: 0 })).effect;

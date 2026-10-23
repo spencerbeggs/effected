@@ -293,8 +293,7 @@ policy (`source`, `onMismatch`) is the caller's.
   caller's policy decision.
 - **Core `Cache`, not a bare `Ref`,** for in-flight de-duplication: two
   fibers resolving one tool concurrently produce one probe. Core `Cache`
-  does not share `Effect.cached`'s interrupt-poisoning property, but it
-  does memoize failures for the entry's TTL, which is why the
+  memoizes a failed lookup for the entry's TTL, which is why the
   `timeToLive` function is load-bearing.
 - **Only a positive result is memoized forever.** "Not found" is a
   successful lookup carrying negative evidence, and memoizing it would

@@ -412,14 +412,16 @@ const jsonLine = Effect.fn("Run.jsonLine")(function* <A, I>(
 	for (let index = candidates.length - 1; index >= 0; index--) {
 		const candidate = candidates[index];
 		if (candidate === undefined) continue;
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(candidate) as unknown;
-		} catch (cause) {
-			notJsonCause ??= cause;
+		// `Result.try`, not Schema's JSON codec: the codec drops the host
+		// SyntaxError for a bare "a valid JSON string", and the parse error's
+		// position is the near-miss evidence a "notJson" cause exists to carry
+		// (the same cause Run.json's Effect.try keeps).
+		const parsed = Result.try(() => JSON.parse(candidate) as unknown);
+		if (Result.isFailure(parsed)) {
+			notJsonCause ??= parsed.failure;
 			continue;
 		}
-		const decoded = yield* Effect.result(Schema.decodeUnknownEffect(schema)(parsed));
+		const decoded = yield* Effect.result(Schema.decodeUnknownEffect(schema)(parsed.success));
 		if (Result.isSuccess(decoded)) return decoded.success;
 		schemaCause ??= decoded.failure;
 	}
