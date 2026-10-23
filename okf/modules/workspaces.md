@@ -128,7 +128,8 @@ resolved by `WorkspaceRoot.find` through the injected core `Path` on each
 call: the package reads no ambient working directory itself, a test swaps
 `Path` to move the default, and because core's `Path.resolve` takes the
 directory from `process.cwd()`, the default needs a host that exposes
-`process` (pass `cwd` anywhere else).
+`process`. On a host without one, an omitted `cwd` is a defect (core
+`Path.resolve` throws), not a typed failure, so pass `cwd` explicitly there.
 The resulting context's directory is the resolved **workspace root**, never
 the caller's cwd, and every argv prefix comes from `@effected/commands`'
 own table — this layer never hard-codes an exec, dlx, or script-runner

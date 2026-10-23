@@ -463,7 +463,8 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 			const atCaches = new Map<string, Effect.Effect<WorkspaceStateSnapshot, WorkspaceSnapshotAtFailure>>();
 
 			const at = Effect.fn("WorkspaceSnapshots.at")(function* (ref: string) {
-				// The ambient cwd is read at call time, not layer build (`findLayerRoot` suspends).
+				// An omitted cwd is ".", which the live WorkspaceRoot.find resolves
+				// through Path when it runs: at call time, not at layer build.
 				const root = yield* findLayerRoot(roots, options);
 				// NUL-separated — a NUL can occur in neither a path nor a ref, so keys
 				// cannot collide. Kept as the `\0` escape deliberately: a literal NUL

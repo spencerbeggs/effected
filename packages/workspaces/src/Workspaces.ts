@@ -530,9 +530,9 @@ export class Workspaces {
 	 * An omitted `cwd` is `"."`, which `WorkspaceRoot.find` resolves through
 	 * the injected core `Path` on every call — this layer reads no `process`
 	 * itself. Core's `Path.resolve` takes the working directory from
-	 * `process.cwd()`, so the default needs a host that exposes `process`;
-	 * pass `cwd` explicitly anywhere else. (The default once fell back to `"/"`
-	 * on a host with no `process`; it no longer does.)
+	 * `process.cwd()`, so the default needs a host that exposes `process`. On
+	 * a host without one, an omitted `cwd` is a defect (core `Path.resolve`
+	 * throws), not a typed failure, so pass `cwd` explicitly there.
 	 *
 	 * A consumer with no monorepo never needs this layer, and therefore never
 	 * installs this package — `LocalExec.layerNone` and `LocalExec.layerFor`

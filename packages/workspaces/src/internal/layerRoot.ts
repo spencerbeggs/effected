@@ -23,7 +23,9 @@ export interface LayerRootOptions {
  * no `process` read happens here, a `process.chdir` between provide and first
  * use is honoured, and a test can swap `Path` to control the default. Core's
  * `Path.resolve` reads the working directory from `process.cwd()`, so the
- * default still needs a host that exposes `process`.
+ * default still needs a host that exposes `process`: on a host without one,
+ * an omitted `cwd` is a defect (core `Path.resolve` throws), not a typed
+ * failure — pass `cwd` explicitly there.
  */
 export const findLayerRoot = (
 	roots: WorkspaceRootShape,

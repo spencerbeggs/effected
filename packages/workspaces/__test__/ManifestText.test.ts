@@ -215,8 +215,10 @@ describe("manifestVersion — the version state of a config dependency's package
 // ── store discovery reads the environment through Config ────────────────────
 
 describe("environmentStoreRoots", () => {
-	const rootsUnder = (env: Record<string, string>) =>
-		environmentStoreRoots.pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))));
+	const rootsUnder = (env: Record<string, string>, preserveEmptyStrings = false) =>
+		environmentStoreRoots.pipe(
+			Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env, preserveEmptyStrings }))),
+		);
 
 	it.effect("puts $PNPM_HOME/store first when PNPM_HOME is set", () =>
 		Effect.gen(function* () {
@@ -225,9 +227,11 @@ describe("environmentStoreRoots", () => {
 		}),
 	);
 
-	it.effect("treats an empty PNPM_HOME as unset, never a cwd-relative store", () =>
+	it.effect("treats an empty PNPM_HOME as unset even under a provider that preserves empty strings", () =>
 		Effect.gen(function* () {
-			const roots = yield* rootsUnder({ PNPM_HOME: "" });
+			// preserveEmptyStrings makes the provider hand "" through as present, so
+			// only envVar's own filter keeps it from becoming a cwd-relative store.
+			const roots = yield* rootsUnder({ PNPM_HOME: "" }, true);
 			assert.notInclude(roots, "store");
 			assert.isTrue(
 				roots.every((root) => root.startsWith("/") || /^[A-Za-z]:/.test(root)),

@@ -273,9 +273,9 @@ export interface WorkspaceDiscoveryShape {
  * the lifetime of the layer. A Vitest reporter that builds the layer per call
  * site and never queries it pays nothing.
  *
- * The memo is **success-only**: a failure or interrupt is not cached, so an
- * init interrupted by an unrelated timeout cannot brick the layer, and the next
- * call retries.
+ * The memo is **success-only**: a failure is not cached, so the next call
+ * re-runs the init. A cached failure would replay forever, and a caller's
+ * `Effect.retry` could never re-run it.
  *
  * @example
  * ```ts
@@ -488,14 +488,15 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 				{ readonly info: WorkspaceInfo; readonly packages: ReadonlyArray<WorkspacePackage> },
 				WorkspaceDiscoveryFailure
 			> = Effect.gen(function* () {
-				// The ambient cwd is read at first use, not at layer construction
-				// (`findLayerRoot` suspends).
+				// An omitted cwd is ".", which the live WorkspaceRoot.find resolves
+				// through Path when it runs: at first use, not at layer build.
 				const root = yield* findLayerRoot(roots, options);
 				return yield* discoverAt(root);
 			});
 
 			// Success-only memoization. See the class remarks: a bare `Effect.cached`
-			// would memoize an interrupt and permanently brick the layer.
+			// would cache a failure, which replays forever, so `Effect.retry` could
+			// never re-run the init.
 			const [resolveOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(discover, Duration.infinity);
 			const memo = Effect.onExit(resolveOnce, (exit) => (Exit.isSuccess(exit) ? Effect.void : invalidate));
 
