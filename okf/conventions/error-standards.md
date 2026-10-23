@@ -44,7 +44,8 @@ integrity:
   when the failure is validated as unrecoverable, and never to silence a
   type error.
 - Wrap a foreign (third-party or runtime) error in a typed schema-backed
-  error with a `cause: Schema.Defect` field; never leak a raw `Error` as
+  error with a `cause: Schema.Defect()` field (the call, not the bare
+  `Schema.Defect`, which throws at construction); never leak a raw `Error` as
   part of a public contract.
 - Normalize `SchemaError` to a domain error at the boundary via
   `Effect.catchTag("SchemaError", ...)`; never let `SchemaError` leak
@@ -89,7 +90,7 @@ typed `E` channel, keeps the cause, and reads as one expression in a
   [input-hardening standards](input-hardening-standards.md#json-text-is-decoded-through-a-schema-never-parsed-and-cast)).
 
 [^effect-schema]: `.repos/effect/packages/effect/src/Schema.ts` —
-    `TaggedError` (line ~14201) and `Error` (line ~14141) constructors.
+    `TaggedError` (line ~16646) and `Error` (line ~16585) constructors.
 [^config-file-file]: `packages/config-file/src/ConfigFile.ts:21-103` —
     five `Schema.TaggedError` classes defined in the same module as the
     `ConfigFile` service.

@@ -91,7 +91,9 @@ untyped result: both give the caller a value whose shape nothing checked.
 - **Build the decoder once, at module level, in the package that reads the
   text.** For example, `const decodeJson =
   Schema.decodeUnknownResult(Schema.fromJsonString(S))` at the top of the
-  module, then call it.[^github-actions-json] Use `decodeUnknownOption`
+  module, then call it. `@effected/github-actions` holds the Effect-form
+  instance of the same pattern, built with
+  `decodeUnknownEffect`.[^github-actions-json] Use `decodeUnknownOption`
   when the caller only needs to know whether the text decoded, and
   `decodeUnknownResult` (or `decodeUnknownEffect`) when it reports why.
   There is no cross-package helper for this. Each package writes its own
@@ -104,9 +106,8 @@ untyped result: both give the caller a value whose shape nothing checked.
   from "wrong shape".** First `fromJsonString(Schema.Unknown)`, then the
   shape schema on the result. A one-step decode separates the two failures
   only by the issue's internal tag, and that is fragile to branch on. For
-  `package.json` text, use the typed parser in `@effected/package-json`
-  that keeps this split (`PackageJsonFormat.parseObjectResult`) rather
-  than re-deriving it. `@effected/config-file` keeps its own one-line
+  `package.json` text, use the typed parser that `@effected/package-json`
+  is gaining to keep this split, rather than re-deriving it. `@effected/config-file` keeps its own one-line
   decoder instead, so it takes no package-json edge.
 
 [^jsonc-limits]: `packages/jsonc/src/internal/limits.ts:22` —

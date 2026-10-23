@@ -55,7 +55,11 @@ argument can produce one by accident, and the receiving code cannot tell
 that from a real miss. `Option` makes the miss a value the caller has to
 handle, and it composes with `Option.map`, `Option.match` and
 `Effect.fromOption`. The same argument settled
-[the ascend ceiling](../decisions/physical-ceiling-is-a-separate-static.md).
+[the ascend ceiling](../decisions/physical-ceiling-is-a-separate-static.md),
+though there it was applied to a parameter, where a stray `undefined`
+would have changed behaviour (an unbounded walk). That precedent does not
+reach argument-side optionality in general; see the scope section
+below.
 
 ## A derived getter is a lookup
 
@@ -85,9 +89,10 @@ the rule.
    shape that is optional in the data itself, including mdast-shaped node
    fields. This is the data's own optionality. Wrapping it in `Option`
    would make the type disagree with what is on the wire.
-2. **Decline callbacks.** A callback or fault handler that the caller
-   supplies, where returning `undefined` means "decline, fall through to
-   the default". Examples are memfs fault handlers, `ImportGraph`'s
+2. **Caller-supplied callbacks.** A callback or fault handler that the
+   caller supplies, whose `undefined` answer is part of the callback's own
+   contract: decline, pass through, or no objection. Examples are memfs
+   fault handlers, `ImportGraph`'s
    `followPackage`,[^import-graph] and `TextInput`'s `validate`. The kit
    reads these results; it does not hand them out.
 3. **Non-Effect host adapters.** An adapter at a boundary that has no
@@ -111,7 +116,9 @@ The rule governs what a lookup **returns**. It says nothing about
 parameters. A method that takes an optional argument, such as
 `HostedSchema.idFor(version?: string)`, where omitting the version means
 "the unversioned id", stays as it is.[^hosted-schema] Do not cite this
-rule against it. A caller holding an `Option` result passes it on with
+rule against it. The ascend-ceiling decision is no counter-precedent:
+there an omitted ceiling would have meant an unbounded walk, while
+`idFor`'s omitted version is a documented default. A caller holding an `Option` result passes it on with
 `Option.getOrUndefined`.
 
 [^owner-ruling]: conversation with the repository owner, 2026-10-23 —

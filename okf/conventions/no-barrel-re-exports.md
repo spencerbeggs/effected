@@ -139,8 +139,9 @@ The collisions are not all equally hard:
   classes without renaming one side.
 - **An interface does not block it, but converting means declaration
   merging.** A class can merge with a same-named interface, generic ones
-  included, provided the class repeats the interface's type parameters
-  exactly (variance annotations and defaults too). Biome flags that merge
+  included, provided the class declares the same type parameters (same
+  count and names, no conflicting defaults); repeating the variance
+  annotations is optional but keeps the two declarations visibly in step. Biome flags that merge
   as `noUnsafeDeclarationMerging`, so it needs a `biome-ignore` with a
   reason, as `ResolvedTsconfig` in `@effected/tsconfig-json` carries.
   `MergeStrategy`, `VersionAccess`, `Envelope` and `JsonlEvent` could
