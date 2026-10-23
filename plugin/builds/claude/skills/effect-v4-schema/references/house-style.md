@@ -84,9 +84,11 @@ member) so the instance type advertises it.
 
 ### `disableChecks` skips checks, not validation — and buys no speed
 
-`MakeOptions.disableChecks` reads like an escape hatch from validation. Its own
-docstring says "skip validation when you trust the data" (`Schema.ts:124`) and
-"skips constructor validation" (`Schema.ts:15540`). Both are misleading, and the
+`MakeOptions.disableChecks` reads like an escape hatch from validation. Its
+docstrings say what it really does — "skip filters and checks while still
+parsing types and structure" (`Schema.ts:128`) and "skips filters and checks,
+not parsing of types and structure" (`Schema.ts:16420`) — but the name still
+reads as a validation switch, and the
 vendored cluster code leans on it as the trusted-construction idiom
 (`cluster/EntityAddress.ts:100`, `RunnerAddress.ts:121`, `Runner.ts:140`),
 so it looks blessed. What it actually does:
@@ -192,7 +194,7 @@ Three distinct tools — pick by intent:
   ```
 
 - **Inline predicates** → `Schema.check(Schema.makeFilter(pred))`
-  (`Schema.ts:6738`). `makeFilter`'s return shape is rich —
+  (`Schema.ts:6771`). `makeFilter`'s return shape is rich —
   this is the tool for cross-field validation:
 
   | return | meaning |
@@ -308,7 +310,7 @@ const NumberFromString = Schema.String.pipe(
 
 Failures come from `effect/SchemaIssue` — `InvalidValue` (ctor), `MissingKey`,
 `Composite`. Signature trap: `InvalidValue` is
-`(annotations?, input?, options?)` (`SchemaIssue.ts:766`) — not
+`(annotations?, input?, options?)` (`SchemaIssue.ts:768`) — not
 `new SchemaIssue.InvalidValue(Option.some(s), { message })`: a plain
 annotations object is the first argument, with no `Option` wrapper, and the
 input is retained only under `reportInput: true`. A failed
@@ -484,7 +486,7 @@ fields must be `Equal.equals` AND have identical `Hash.hash`.
   `/^[a-f]{8}$/u` control generates. `u` is the flag the compiler supports
   (`regexp.ts:835` generates full code points under it), and it is the flag
   JSON Schema export requires: `isPattern` exports `pattern` only when the
-  flags match `/^[dg]*uy?$/` (`Schema.ts:6845`), so
+  flags match `/^[dg]*uy?$/` (`Schema.ts:6905`), so
   `Schema.String.check(Schema.isPattern(/^[a-z]+$/))` exports as a bare
   `{"type":"string"}` while decoding still enforces the regex. Rewrite
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`

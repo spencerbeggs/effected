@@ -17,11 +17,11 @@ Single entrypoint; no subpaths.
 
 - **`Markdown`** (facade) — `parseResult(text, options?)` → `Result<Root, MarkdownParseError>` and `parse` (the Effect form); `stringifyResult(root)` → `Result<string, MarkdownStringifyError>` and `stringify` (the Effect form); the `MarkdownFromString` codec. Both directions ship the sync `Result` primitive alongside the `Effect` per the house formatter convention.
 - **The 28 node classes** (`MarkdownNode.ts`) — `Root Paragraph Heading Text Emphasis Strong Delete InlineCode Code Html Break Link LinkReference Image ImageReference Definition Footnote{Reference,Definition} List ListItem Blockquote ThematicBreak Table TableRow TableCell Frontmatter Point Position`. Every one is a `Schema.Class`, so `new Heading({ depth: 2, children: [...] })` validates on construction. Plus the supporting literal unions: `HeadingDepth`, `HeadingStyle`, `BulletChar`, `FenceChar`, `EmphasisChar`, `BreakStyle`, `ListDelimiter`, `TableAlign`, `ReferenceType`, `FrontmatterFormat`, and the content-set types `FlowContent` / `PhrasingContent` / `ListContent` / `TableContent` / `RowContent`.
-- **`MarkdownDocument`** — the lossless document: `parseResult` / `parse`, `source`, `body`, `diagnostics`, plus the navigation accessors `headings`, `sections`, `links`, `frontmatter` and `hasFrontmatterBlock`. Section finders: `firstSection`, `sectionByHeading` (`SectionQueryOptions`, `SectionHeadingMatch`), each `DocumentSection` carrying `range` / `bodyRange` / `children`.
+- **`MarkdownDocument`** — the lossless document: `parseResult` / `parse`, `source`, `body`, `diagnostics`, plus the navigation accessors `headings`, `sections`, `links`, `frontmatter` and `hasFrontmatterBlock`. Every lookup that can miss — `frontmatter`, `find`, `firstSection`, `sectionByHeading` — returns an `Option`. Section finders: `firstSection`, `sectionByHeading` (`SectionQueryOptions`, `SectionHeadingMatch`), each `DocumentSection` carrying `range` / `bodyRange` / `children`.
 - **`MarkdownEdit`** + `MarkdownRange` + `applyAll` — the offset-splice edit vocabulary, parity-identical in shape to jsonc/yaml/toml.
 - **`MarkdownFormat`** — marker normalization and surgical replacement. `MarkdownFormattingOptions` carries the knobs, including **`codeBlockStyle`** (`CodeBlockStyle` = `"fenced" | "indented"`), the opt-in that converts between the two code-block spellings. Absent it, a language-less block keeps whatever it had.
 - **`Mdast`** — the remark-ecosystem interop boundary: project to plain mdast JSON and decode back, checked. Markdown→HTML and HTML→markdown are **permanently out of scope**; project via `Mdast` and hand the plain tree to a renderer.
-- **`MarkdownVisitor`** — `Stream` tree walk.
+- **`MarkdownVisitor`** — tree walk as `Enter`/`Exit` events: `walk` (synchronous, lazy, re-iterable `Iterable` — the primitive) and `visit` (the `Stream` derived from it).
 - **Frontmatter** — `MarkdownFrontmatter` plus the three free-standing codecs `YamlFrontmatter` / `TomlFrontmatter` / `JsonFrontmatter` (never a namespace object; each drags only its own format package). `FrontmatterResolver` / `SchemaResolver` resolve a declared schema by name, path, URL or inline.
 - **`MarkdownDiagnostic`** — `code` (`MarkdownParseErrorCode`), message, offsets, line/character.
 
@@ -67,7 +67,7 @@ import { Effect } from "effect";
 
 const program = Effect.gen(function* () {
  const document = yield* MarkdownDocument.parse("# Title\n\n## Install\n\nRun it.\n");
- const section = document.sectionByHeading("Install");
+ const section = document.sectionByHeading("Install"); // Option<DocumentSection>
  return { headings: document.headings.map((h) => h.text), section };
 });
 ```
@@ -80,7 +80,7 @@ None exported. The conformance harness (652 CommonMark examples, the GFM extensi
 
 - **Canonical text escaping has one opt-out: `escapeStyle: "literal"` on a `Text` node.** `~0.2.1` in a cell emits as `\~0.2.1` by default; with literal it emits verbatim. Only inline-syntax escapes are dropped — a cell's unescaped `|`, newlines in cells and headings, a heading's trailing `#` run, and line-start block openers stay escaped. A literal value that *parses* as markdown (`*a*`) does not round-trip; that is the caller's promise. `Mdast.fromMdast` admits the field on a plain `text` node — the one fidelity field that crosses that boundary — so set it on the plain tree; every other fidelity field (`fenceChar`, `headingStyle`, ...) is stripped there and must go on the decoded tree.
 - **The node classes are the builder API.** Reaching for `remark`/`mdast-util-to-markdown` to *emit* markdown from this repo is re-implementing a surface the package already ships.
-- **`Frontmatter` is captured behind a parse toggle**, and absence is ambiguous without help: `FrontmatterMissingError.reason` (`FrontmatterMissingReason` = `"absent" | "captureDisabled"`) distinguishes "the source had no block" from "you parsed with capture off," and `MarkdownDocument.hasFrontmatterBlock` is the non-failing form of the same question. Reading `frontmatter === undefined` alone conflates the two.
+- **`Frontmatter` is captured behind a parse toggle**, and absence is ambiguous without help: `FrontmatterMissingError.reason` (`FrontmatterMissingReason` = `"absent" | "captureDisabled"`) distinguishes "the source had no block" from "you parsed with capture off," and `MarkdownDocument.hasFrontmatterBlock` is the non-failing form of the same question. Reading an empty `frontmatter` (`Option.none()`) alone conflates the two.
 - **Frontmatter codecs are free-standing named exports**, deliberately never collected into a namespace object — touching one would otherwise reach every format engine.
 - **A constructed node needs no `position`.** Every node class defaults it to `Position.synthetic`, which is what makes `new Heading({ depth, children })` ergonomic — but it also means a synthesized node's position is a shared sentinel. Never assert one by reference.
 - Definitions and references are kept **unresolved** (a deliberate port delta from commonmark-js); resolve them yourself from `document.definitions` if you need link targets.

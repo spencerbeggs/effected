@@ -45,7 +45,7 @@ Two remedies, and the second is often the better one:
   and return a leaf placeholder instead of recursing. Pair `enter`/`exit` in
   `try/finally` at every collection entry.
 - **Remove the recursion.** `navigate.skipValue` skips a value by counting
-  bracket depth over the flat token stream (`navigate.ts:85`). Being
+  bracket depth over the flat token stream (`navigate.ts:101`). Being
   non-recursive it *cannot* overflow, so `navigate` and `JsoncModifier` need no
   cap — and no test can regress one they don't have. Prefer this wherever the
   walk is a skip or a scan rather than a transform.

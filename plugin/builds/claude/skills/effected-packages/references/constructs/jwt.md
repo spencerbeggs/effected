@@ -15,15 +15,15 @@
 | `JwksResolverShape` | Interface | The operations of a `(JwksResolver:class)`. | |
 | `JwksStore` | Class | Where `(JwksResolver:class)` caches each issuer's key set. | cache seam for fetched jwks, kv or in-memory, share keys across worker isolates |
 | `JwksStoreShape` | Interface | The operations of a `JwksStore`. | |
-| `Jws` | Variable | Sign and verify compact JWS (RFC 7515) with `RS256` or `ES256`. | sign or verify a compact jws, decode a token's header unverified |
-| `Jwt` | Variable | Sign and verify JWTs (RFC 7519): a `(Jws:variable)` whose payload is a claims object, verified against the clock and the expected issuer and audience. | sign a jwt, verify a jwt's signature and exp nbf iss aud claims |
+| `Jws` | Class | Sign and verify compact JWS (RFC 7515) with `RS256` or `ES256`. | sign or verify a compact jws, decode a token's header unverified |
+| `Jwt` | Class | Sign and verify JWTs (RFC 7519): a `(Jws:class)` whose payload is a claims object, verified against the clock and the expected issuer and audience. | sign a jwt, verify a jwt's signature and exp nbf iss aud claims |
 | `JwtAlgorithm` | TypeAlias | The signature algorithms this package supports: RSASSA-PKCS1-v1_5 with SHA-256, and ECDSA over P-256 with SHA-256. `none` is not representable. | |
 | `JwtError` | Class | The one error `@effected/jwt` fails with. | typed jwt failure routed by reason, expired, bad signature, wrong audience |
 | `JwtErrorReason` | Variable + TypeAlias | The reason union carried by `JwtError`. | every reason a jwt operation fails, for routing on reason |
-| `JwtKey` | Variable | Importers and a generator for `SigningKey` and `VerificationKey`. | import a pem private key pkcs1 or pkcs8, import a jwk, generate a test key pair |
+| `JwtKey` | Class | Importers and a generator for `SigningKey` and `VerificationKey`. | import a pem private key pkcs1 or pkcs8, import a jwk, generate a test key pair |
 | `RegisteredClaims` | Variable + TypeAlias | A decoded `(RegisteredClaims:variable)`. | standard jwt claims iss sub aud exp nbf iat jti |
 | `SigningKey` | Class | A private key that signs, bound to the one algorithm it was imported for. | an imported private key with its algorithm, for signing |
-| `TestIssuer` | Variable | A network-free OIDC issuer for consumer tests: sign tokens with `TestIssuerShape.sign`, and verify them through the real `JwksResolver` by providing `TestIssuerShape.resolverLayer`. | from `@effected/jwt/testing` — network-free test oidc issuer, sign test tokens verified through the real resolver |
+| `TestIssuer` | Class | A network-free OIDC issuer for consumer tests: sign tokens with `TestIssuerShape.sign`, and verify them through the real `JwksResolver` by providing `TestIssuerShape.resolverLayer`. | from `@effected/jwt/testing` — network-free test oidc issuer, sign test tokens verified through the real resolver |
 | `TestIssuerShape` | Interface | A test issuer: a generated key pair, its JWKS and discovery document served by an in-memory `HttpClient`, and a signer. | from `@effected/jwt/testing` |
 | `VerificationKey` | Class | A public key that verifies, bound to the one algorithm it was imported for. | an imported public key with its algorithm, for verifying |
-| `VerifyOptions` | Interface | Options for `(Jwt:variable).verify`. | |
+| `VerifyOptions` | Interface | Options for `(Jwt:class).verify`. | |

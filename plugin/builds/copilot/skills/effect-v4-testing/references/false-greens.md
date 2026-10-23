@@ -669,7 +669,7 @@ runs.
 `Effect.sleep` used to stage an interleaving hangs to the vitest timeout rather
 than interleaving. Three-way variants scale the same way — one latch per
 ordering constraint, each named for the constraint it enforces
-(`ActionLogger.test.ts:268-270` runs three).
+(`ActionLogger.test.ts:269-271` runs three).
 
 ## A spy restored in `try`/`finally` inside `Effect.gen` LEAKS
 

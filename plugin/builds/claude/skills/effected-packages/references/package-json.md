@@ -24,7 +24,10 @@ Single entrypoint; no subpaths.
 | `Package.addDependency` / `removeDependency` (+ dev/peer/optional variants) / `setScript` / `removeScript` | immutable, dual-signature (data-first, curried, or piped) map edits |
 | `Package.resolve(pkg)` | turn `catalog:`/`workspace:` specifiers into concrete ranges across all four maps |
 | `Package.toJsonString(options?)` | serialize with canonical key order, dependency-map sorting, empty-map stripping |
-| `PackageJsonFile.read` / `.write` | the one IO service, over core `FileSystem`/`Path` |
+| `PackageJsonFormat.parseObjectResult(text)` / `parseObject` | turn package.json text into a plain object without decoding, keeping "not JSON" (`invalid-json`) apart from "not an object" (`not-an-object`) on `PackageJsonSyntaxError.reason` — use it instead of a bare `JSON.parse`, which lets `null` through |
+| `PackageJsonFormat.formatToString` / `sortValue` | canonical sort and format without decoding (a lint-hook handler) |
+| `PackageJsonFormat.modifyResult` / `modifyToStringResult` (Effect forms `modify` / `modifyToString`) | one byte-preserving field edit; an unnavigable path or an unserializable value (`bigint`, circular, function) fails `PackageJsonModifyError` with the jsonc error on `cause` |
+| `PackageJsonFile.read` / `.write` / `.modify` | the one IO service, over core `FileSystem`/`Path` |
 | `PackageValidator.validate` | aggregate rule-based checks into one `PackageValidationError` |
 | `PackageName`, `SpdxLicense`, `PackageManager`, `Person` | leaf schemas for the corresponding raw-string fields |
 

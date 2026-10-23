@@ -533,11 +533,11 @@ deeper.
 ### `Layer.mock`'s optionality is earned, not given — and one plain member revokes it
 
 `Layer.mock(Service, impl)` takes `PartialEffectful<S>`, not `Partial<S>`
-(`Layer.ts:2352`). That type is not "everything optional" — it splits the shape
+(`Layer.ts:2354`). That type is not "everything optional" — it splits the shape
 on one predicate:
 
 ```ts
-// Layer.ts:2277 — a member is OPTIONAL iff it matches AnyEffectOrStream; else REQUIRED
+// Layer.ts:2279 — a member is OPTIONAL iff it matches AnyEffectOrStream; else REQUIRED
 export type PartialEffectful<A extends object> = Types.Simplify<
   & { [K in keyof A as A[K] extends AnyEffectOrStream ? K : never]?: A[K] }
   & { [K in keyof A as A[K] extends AnyEffectOrStream ? never : K]: A[K] }

@@ -167,8 +167,8 @@ phrasing and missed on its module name.
 | `SchemaParser` | runs a schema against values (decode/encode/validate) in many result styles | consumer-facing: execute a schema returning Effect/Exit/Option/Result/sync |
 | `SchemaRepresentation` | JSON-serializable descriptions of schemas plus TS-codegen | machinery: serialize schemas, convert to/from JSON Schema, generate code |
 | `SchemaTransformation` | two-way encode/decode conversions connecting two representations | consumer-facing when building a custom bidirectional codec |
-| `SemVer` | strict Semantic Versioning 2.0.0 values: `parse`/`fromInput`, `format`, comparison (`isGreaterThan`, `between`, `clamp`, `Order`/`Equivalence`), `bump*` (major/minor/patch/pre*), `isPrerelease`, `difference`, plus schemas and string codecs | parsing, comparing or bumping a version string — do not hand-roll a semver regex |
-| `SemVerRange` | npm-style ranges: `parse`, `matches`, `caret`/`tilde`/`exact`/`any`/comparators, `maxSatisfying`/`minSatisfying` | asking whether a version satisfies a range, or picking the best match from a list |
+| `SemVer` | strict Semantic Versioning 2.0.0 values: `parse`/`fromInput`, `format`, comparison (`isGreaterThan`, `between`, `clamp`, `Order`/`Equivalence`), `bump*` (major/minor/patch/pre*), `isPrerelease`, `difference`, plus schemas and string codecs | parsing, comparing or bumping a version string — do not hand-roll a semver regex. Core is enough for a plain compare or bump in code with no kit edge; reach for kit `@effected/semver` when the value crosses a kit API or you need a `FromString` codec, an error carrying `input` and `position`, or a `Result` twin (`parseResult`). Never mix kit and core values in one `HashSet`/`HashMap`: kit equality ignores build metadata |
+| `SemVerRange` | npm-style ranges: `parse`, `matches`, `caret`/`tilde`/`exact`/`any`/comparators, `maxSatisfying`/`minSatisfying` | asking whether a version satisfies a range, or picking the best match from a list. Core is enough for a plain match; reach for kit `@effected/semver`'s `Range` for range algebra (`intersect`, `isSubset`, `simplify`), parse errors with a position, or a `Result` twin |
 | `Scope` | lifetime boundary collecting finalizers run with an `Exit` on close | directly create/fork/close scopes; most code uses `Effect.scoped`/`Layer` |
 | `ScopedCache` | cache whose entries own scopes, releasing resources on eviction | cache resource-backed values with per-entry cleanup and expiry |
 | `ScopedRef` | current value plus the scope owning it; swaps acquire/release atomically | hold a swappable resource handle (client/connection) with clean replacement |
@@ -233,7 +233,7 @@ follows from it.
 | `net` | `IpInterface`, `IpNetwork`, `NetAddress` — pure, canonical IPv4/IPv6 addresses and CIDR prefixes (`NetAddress.loopbackAddresses` names both loopbacks); `Host` — host names and unresolved `host:port` endpoints, plus `toFullyQualified`/`toRelative` and a pure `parseHostsFile`; `Dns` and `AddressResolver` — resolution services a runtime package provides | parsing/normalizing an address, network prefix, host name or hosts file without a third-party `ipaddr`-style library; require `Dns`/`AddressResolver` in `R` when the program must resolve names |
 | `http-api` | schema-first declarative HTTP APIs with OpenAPI/Swagger output | defining a typed HTTP API contract shared by server and client |
 | `observability` | OTLP + Prometheus exporters for traces/metrics/logs | exporting telemetry without the `@effect/opentelemetry` SDK |
-| `persistence` | `KeyValueStore` (memory/fs/SQL), `PersistedCache`/`PersistedQueue`, `RateLimiter`, `UserDirectories` (home/config/data/cache/state directories by XDG and platform convention; `layerPlatform`) | durable KV, request-level durable caching, rate limiting |
+| `persistence` | `KeyValueStore` (memory/fs/SQL), `PersistedCache`/`PersistedQueue`, `RateLimiter`, `UserDirectories` (home/config/data/cache/state directories by XDG and platform convention; `layerPlatform`) | durable KV, request-level durable caching, rate limiting. For per-application directories, `UserDirectories` folds the XDG variable and the native directory into one answer per kind; reach for kit `@effected/xdg` when you need XDG search paths (`XDG_CONFIG_DIRS`/`XDG_DATA_DIRS`), the runtime directory, or the native directories kept separate from XDG |
 | `process` | `ChildProcess` Command values + `ChildProcessSpawner` service | spawning subprocesses (`@effected/git` is the house example; require in `R`) |
 | `reactivity` | atom-based reactive state (`Atom`, `AtomRegistry`, hydration) | framework-facing reactive state (`@effect/atom-*` binds it) |
 | `rpc` | schema-backed RPC: groups, client/server, serialization, worker transport | typed request/response between processes without hand-rolling HTTP |
@@ -259,7 +259,7 @@ follows from it.
 - **"Core has `Crypto`" is a dependency decision, so read the shape first.**
   The contract covers secure random (`randomBytes`, `random`,
   `randomInt`, `randomShuffle`), UUIDv4/v7 and SHA **digests**
-  (`"SHA-1" | "SHA-256" | "SHA-384" | "SHA-512"`, `Crypto.ts:42`, `Crypto.ts:81-157`) —
+  (`"SHA-1" | "SHA-256" | "SHA-384" | "SHA-512"`, `Crypto.ts:42`, `Crypto.ts:81-202`) —
   and stops there. There is **no HMAC, no signing, no key derivation, no
   `subtle`-style surface**. A design that reads the module name and concludes
   "hashing is handled" is right; one that concludes "crypto is handled" and then
@@ -277,12 +277,11 @@ follows from it.
   digesting an artifact is not. In the kit this is exactly why
   `github-actions`' `Artifact` and `PackageManagerInstaller` stay on
   `node:crypto` — both fold a `Stream` chunk-by-chunk on purpose.
-- **Core `Cache` is interrupt-clean, unlike `Effect.cached`.** Interrupting the
+- **Core `Cache` is interrupt-clean, like `Effect.cached`.** Interrupting the
   only awaiter **discards** the in-flight entry and the next `get` re-runs the
-  lookup; concurrent gets still de-dupe to one lookup. So the `Effect.cached`
-  poisoning trap (a memoized `Exit` carrying an interrupt, permanently outside
-  the declared error channel) does **not** transfer here. Probed with
-  a poisoning control that fired.
+  lookup; concurrent gets still de-dupe to one lookup. Probed with a
+  poisoning control that fired. Neither primitive stores an interrupt, so the
+  hazard they share is the failed lookup, below.
 - **…but a default-TTL `Cache` memoizes a FAILED lookup for the process
   lifetime.** `defaultTimeToLive` is `Duration.infinity` (`Cache.ts:332`), and
   the cache "stores successful **and failed** lookup results" (`Cache.ts:4`).
@@ -301,7 +300,7 @@ follows from it.
   ```
 
 - `HttpClientRequest.bearerToken` accepts a **`Redacted` directly**
-  (`token: string | Redacted.Redacted`, `http/HttpClientRequest.ts:397`;
+  (`token: string | Redacted.Redacted`, `http/HttpClientRequest.ts:441`;
   `basicAuth` likewise). A runtime token flows into request construction with **no
   declassification step at all** — which is what lets a package keep its
   secret-handling seam to one module instead of granting every request builder an
@@ -321,7 +320,7 @@ A client failure is one `HttpClientError` whose top-level `_tag` is always
 `"HttpClientError"`, so branch on `error.reason._tag`. The values are the trap.
 The reason type is declared in two layers, and **both layer names are
 themselves unions, so neither ever appears as a `_tag`** (verified against
-`http/HttpClientError.ts:302,311,320`):
+`http/HttpClientError.ts:306,315,324`):
 
 ```ts
 export type RequestError = TransportError | EncodeError | InvalidUrlError
@@ -336,6 +335,6 @@ So `error.reason._tag` is exactly one of **six** values: `"TransportError"`,
 a live-looking branch that is dead code, and green tests will not catch it.
 
 What makes the wrong guess feel confirmed: `ResponseError` *is* a real tagged
-class elsewhere, at `http/HttpServerError.ts:209`. Same name, different
+class elsewhere, at `http/HttpServerError.ts:210`. Same name, different
 module, and it is a server error rather than a client one. Timeouts are separate
 again — `Cause.isTimeoutError`, not a `reason`.

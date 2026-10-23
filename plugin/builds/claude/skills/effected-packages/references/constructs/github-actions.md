@@ -26,6 +26,7 @@
 | `ActionStateShape` | Interface | The members of the `ActionState` service: save and read values, and persist secrets, across the `pre` → `main` → `post` boundary. | |
 | `ActionsIdentityToken` | Class | Serves `@effected/oidc`'s `IdentityToken` contract from the runner's own OIDC token service, so signing an SBOM inside a workflow needs no further wiring. | serve @effected/oidc's IdentityToken contract from the runner's OIDC issuer, sign with runner identity — implements `IdentityToken` from `@effected/oidc` |
 | `ActionsProvenance` | Class | Builds the current run's SLSA provenance from the runner's OIDC claims: the Actions side of `@effected/sbom`'s `SlsaProvenance.forGitHubWorkflow`. | build SLSA provenance from the runner's OIDC claims, attest a GitHub Actions workflow run |
+| `ActionsRegistryCredential` | Class | Registry credentials minted from the runner's own workload identity. | mint runner oidc token for registry audience, mask it, build npm workload publish credential |
 | `AmbientPackageManager` | Class | A package manager the runner's own toolchain already had: nothing was downloaded and nothing was cached, so there is no directory to publish. | a package manager already on PATH from the runner's toolchain, no tool-cache entry |
 | `Artifact` | Class | Upload, list, download and delete GitHub Actions artifacts. | upload, list, download and delete GitHub Actions artifacts |
 | `ArtifactError` | Class | Raised when an artifact cannot be uploaded, listed, downloaded or deleted. | handle an artifact upload, list, download or delete failure |
@@ -96,7 +97,7 @@
 | `ManagedDocumentSource` | Interface | Options identifying a managed document inside a text that may not carry one yet. | |
 | `NotABlobEnvelopeError` | Class | Raised when bytes cannot be read as an envelope. | handle bytes that are not a recognizable blob envelope, legacy unframed blob |
 | `OidcTokenError` | Class | Raised when an OIDC token cannot be issued or read. | handle an OIDC token that could not be minted or decoded, missing id-token permission |
-| `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint a runner oidc token for an audience, read its claims unverified as ActionsOidcClaims |
+| `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint runner oidc token for audience, read claims unverified as ActionsOidcClaims, recording test double |
 | `OidcTokenIssuerShape` | Interface | The members of the `OidcTokenIssuer` service: request an ID `token` and read its decoded `claims`, both failing with `OidcTokenError`. | |
 | `OutputEncodeError` | Class | Raised when a value did not satisfy its schema. | handle a value that did not satisfy its schema while publishing a JSON output |
 | `PackageManagerInstallOptions` | Interface | How `PackageManagerInstallerShape.install` should behave. | |
@@ -114,6 +115,7 @@
 | `ReadinessOptions` | Interface | How long to wait for a child to become ready. | |
 | `RecordedOutput` | Class | One call an `ActionOutputs.recording` double observed. | assert what an action published under a recording double: member, name, encoded value |
 | `RecordedOutputMember` | TypeAlias | The member names a `RecordedOutput` can carry. | |
+| `RecordingOidcTokenIssuer` | Interface | What `OidcTokenIssuer.recording` returns: the layer to provide and the audiences it was asked for. | |
 | `RecordingOutputs` | Interface | What `ActionOutputs.recording` returns: the layer to provide and the journal it fills. | |
 | `RunnerContext` | Class | The runner's own context, projected from the `RUNNER_*` variables. | RUNNER_* context: os, arch, temp directory, tool cache root |
 | `RunnerFileUnavailableError` | Class | Raised when an action cannot publish an output. | handle a runner file (GITHUB_OUTPUT/STATE/ENV/PATH) that is not available |

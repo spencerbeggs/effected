@@ -603,7 +603,7 @@ the house examples. Named groups (`(?<h>…)`) and non-capturing groups compile 
 it (`regexp.ts:835`: without `u` generation is held to code points up to
 `0xffff`; with it a negated class or `\S` can yield astral characters), and
 JSON Schema export requires it: `isPattern` exports `pattern` only when the
-flags match `/^[dg]*uy?$/` (`Schema.ts:6845`). A flag-free
+flags match `/^[dg]*uy?$/` (`Schema.ts:6905`). A flag-free
 `Schema.String.check(Schema.isPattern(/^[a-z]+$/))` exports as a bare
 `{"type":"string"}` — decoding still enforces the regex, but every published
 JSON Schema (a config schema, an MCP tool's `inputSchema`, schemastore output)

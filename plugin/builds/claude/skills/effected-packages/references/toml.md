@@ -14,9 +14,9 @@ Single entrypoint; no subpaths.
 
 ## Core API
 
-- **`Toml`** (facade) — `parse(text)` → `Effect<unknown, TomlParseError>`; `stringify(value, options?)` → `Effect<string, TomlStringifyError>`; schema factories `Toml.schema(target)`, `Toml.fromString`, and the `Toml.TomlFromString` singleton. `TomlStringifyOptions` has exactly one knob (`newline`); there is NO `TomlParseOptions` — TOML 1.1.0 parsing has no knobs (`src/Toml.ts:163`).
-- **`TomlDocument`** — the lossless document: `parse`, `schema()`, `toValue()`, `stringify()`; carries `source`, `expressions`, `diagnostics`.
-- **`TomlEdit`** + `applyAll`, **`TomlFormat`** (`format`/`formatToString` pure and total; `modify`/`modifyToString` → `Effect<_, TomlParseError | TomlModificationError>`) — edit vocabulary parity-identical in shape to jsonc/yaml.
+- **`Toml`** (facade) — `parse(text)` → `Effect<unknown, TomlParseError>`; `stringify(value, options?)` → `Effect<string, TomlStringifyError>`; schema factories `Toml.schema(target)`, `Toml.fromString`, and the `Toml.TomlFromString` singleton. `TomlStringifyOptions` has exactly one knob (`newline`); there is NO `TomlParseOptions` — TOML 1.1.0 parsing has no knobs (`src/Toml.ts:189`).
+- **`TomlDocument`** — the lossless document: `parse` (sync twin `parseResult`), `schema()`, `toValue()` (sync twin `toValueResult()`), `stringify()`; carries `source`, `expressions`, `diagnostics`.
+- **`TomlEdit`** + `applyAll`, **`TomlFormat`** (`format`/`formatToString` pure and total; `modify`/`modifyToString` → `Effect<_, TomlParseError | TomlModificationError>`, with `modifyResult`/`modifyToStringResult` sync twins) — edit vocabulary parity-identical in shape to jsonc/yaml.
 - **`TomlVisitor`** — `Stream<TomlVisitorEvent, TomlParseError>` (`TableStart`/`ArrayTableStart`/`KeyValue`/`Comment`).
 - **Date-time value objects** — `TomlLocalDate`, `TomlLocalTime`, `TomlLocalDateTime`, `TomlOffsetDateTime`: four `Schema.Class`es with real Gregorian validation; none subclasses JS `Date`.
 - **`TomlDiagnostic`** — `code`, `message`, `offset`/`length`, `line`/`character`, five staged error-code unions.

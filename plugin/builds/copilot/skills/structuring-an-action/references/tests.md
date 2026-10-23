@@ -22,7 +22,7 @@ Either way, gate a scoped test run on the reported test *count*, never the exit 
 | `__test__/integration/fixtures/…/probe.test.ts` | **yes** |
 | `__test__/integration/utils/…/probe.test.ts` | **yes** |
 
-The mechanism is one missing glob segment. The plugin builds its exclude list in `utils/discover-strategy.js:123`, and two entries sit adjacent in that same array with different shapes:
+The mechanism is one missing glob segment. The plugin builds its exclude list in `utils/discover-strategy.js`, and two entries sit adjacent in that same array with different shapes:
 
 ```js
 // non-discoverable dirs — "**" BEFORE the name ⇒ any depth

@@ -20,7 +20,7 @@
 | `ConfigFileNotFoundError` | Class | Indicates that the resolver chain produced no configuration source. | handle no config file found anywhere in the resolver chain |
 | `ConfigFileOptions` | Interface | Options for `ConfigFile.layer`. | |
 | `ConfigFileReadError` | Class | Indicates that a config file could not be read from the filesystem. | handle a config file that could not be read from disk |
-| `ConfigFileShape` | Interface | The config file service, generic over the decoded config type `A`. | |
+| `ConfigFileShape` | Interface | The config file service, generic over the decoded config type `A` and the codec's error channel `CE`. | |
 | `ConfigFileTestOptions` | Interface | Options for `ConfigFile.testLayer`. | |
 | `ConfigFileWriteError` | Class | Indicates that a config file could not be written to the filesystem. | handle a config file that could not be written to disk |
 | `ConfigLoadError` | TypeAlias | The failure modes of the full discovery-and-load path. | |
@@ -32,10 +32,10 @@
 | `ConfigReadError` | TypeAlias | The failure modes of reading one known path. | |
 | `ConfigReadOptions` | Interface | Options for `ConfigFile.read`. | |
 | `ConfigResolver` | Class + Interface | Built-in resolvers, in the order a typical chain uses them. | find a config file: explicit path, static dir, upward walk, or /etc |
-| `ConfigSaveError` | TypeAlias | The failure modes of `ConfigFileShape.save`. | |
+| `ConfigSaveError` | TypeAlias | The failure modes of `ConfigFileShape.save`. `CE` is the codec's error channel, as on `ConfigLoadError`. | |
 | `ConfigSource` | Interface | A single configuration source discovered during a resolver-chain pass. | |
 | `ConfigSourceRef` | Variable | A reference to one configuration source that contributed to a load. | path and resolver name that contributed a config value |
-| `ConfigUpdateError` | TypeAlias | The failure modes of `ConfigFileShape.update`, which loads and then saves. | |
+| `ConfigUpdateError` | TypeAlias | The failure modes of `ConfigFileShape.update`, which loads and then saves. `CE` is the codec's error channel, as on `ConfigLoadError`. | |
 | `ConfigValidationError` | Class | Indicates that parsed config content did not satisfy the schema, or that a caller-supplied `validate` rejected it. | handle a config document failing schema validation or a custom check |
 | `ConfigWriteError` | TypeAlias | The failure modes of encoding and writing one known path. | |
 | `EncryptedCodec` | Function | Wrap any `(ConfigCodec:interface)` with AES-GCM encryption. | wrap a config codec with aes-gcm encryption at rest |

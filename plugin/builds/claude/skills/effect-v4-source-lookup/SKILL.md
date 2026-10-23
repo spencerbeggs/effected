@@ -59,12 +59,19 @@ path breaks the moment you do.
   semantic has to be *copied* from the platform layer, that file is rung 2 for it;
   the vendored tree is silent, not authoritative.
   **At the same version, `$EFFECT_SRC` and `$SRC` still disagree on line
-  numbers**: npm's published `effect` carries publish-time TSDoc the vendored
-  tag does not, so a declaration sits at a different line in each tree even
-  when both resolve the identical release. A `Module.ts:line` anchor in this
-  plugin always names the **vendored tag** (`$SRC`); a consumer reading
-  `node_modules` finds the same declaration by symbol name instead of by
-  line — `grep -n "export const layerStdio" "$EFFECT_SRC/ai/McpServer.ts"`.
+  numbers**: npm's published `effect/src` is reformatted at publish time. It
+  carries TSDoc the vendored tag does not, and its signatures are reflowed
+  (a multi-line overload in the tag is joined onto one line in the published
+  copy). A declaration therefore sits at a different line in each tree even
+  where its code is identical and both resolve the same release. A
+  `Module.ts:line` anchor in this plugin always names the **vendored tag**
+  (`$SRC`). Search `node_modules` by symbol name instead of by line —
+  `grep -n "export const layerStdio" "$EFFECT_SRC/ai/McpServer.ts"`. The
+  plugin's source repository pins every cited line to its symbol text in
+  `plugin/__test__/helpers/skill-anchors.json`; that manifest is the place
+  to read which symbol an anchor means. Grep for the declaration's name,
+  never for a fragment of a wrapped signature, because the reflow joins
+  lines the tag splits.
 
 Resolve both before you trust any lookup. The bottom of the ladder is a hard failure,
 never a fallback to memory — a wrong answer from v3 memory is indistinguishable from
@@ -98,8 +105,8 @@ diff <(node -p 'require("'"$SRC"'/packages/effect/package.json").version') \
 
 **The version-string `diff` above cannot see a second, quieter drift**: even
 when the two trees report the identical version, npm's publish step adds
-TSDoc the vendored tag never carries, so a symbol's line number can still
-differ between them. A version match is not a line-number match — check that
+TSDoc the vendored tag never carries and reflows signatures, so a symbol's
+line number can still differ between them. A version match is not a line-number match — check that
 separately, against a symbol, never a line count alone:
 
 ```bash
@@ -215,7 +222,7 @@ renames it in an `export {}` block:
 const ArraySchema = Struct_.lambda<ArrayLambda>((schema) => …)
 
 // Schema.ts:4665 — the export, in a block your grep pattern never matches
-export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at :4683
+export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at Schema.ts:4683
 ```
 
 `Schema.Array` is real, and `grep 'export const Array' Schema.ts` returns
@@ -324,7 +331,7 @@ Three answers, one truth, and the cheap rungs are the ones that lie.
 
 Existence and signature do not tell you what a function *does*. Real examples where the signature was innocent and the behaviour was not:
 
-- `Effect.cached` memoizes the `Exit` **including interrupts** — an interrupted first caller permanently bricks the cached effect with a cause outside its declared error channel.
+- `Effect.cached` memoizes the first **failure** as well as the first success, so an `Effect.retry` around the memo replays the cached failure and never re-runs the source. Interruption is the opposite: it is never cached, and an abandoned run is restarted by the next caller.
 - `it.effect` **always** installs a virtual `TestClock`, so `Effect.sleep` / `delay` / `timeout` hang silently to the vitest timeout.
 - `Effect.catchCause` swallows interrupts. A probe built on it reports success exactly where real code hangs. When the exposure is a defect, use `catchDefect`.
 

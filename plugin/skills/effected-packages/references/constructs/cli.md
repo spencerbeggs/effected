@@ -90,7 +90,7 @@
 | `GlyphSelectOptions` | Interface | Options for `Glyphs.select`. | |
 | `GlyphSet` | Interface | The symbols a theme draws with. | |
 | `Glyphs` | Class | The two glyph sets: Unicode, and a plain-ASCII fallback for terminals that cannot draw it. | unicode or ascii status glyphs, spinner frames, tree segments, ascii under TERM=dumb |
-| `InkTextProps` | Interface | The styling props of an Ink `Text` that a `@effected/cli!Style` maps to. | from `@effected/cli/ui` |
+| `InkTextProps` | Interface | The styling props of an Ink `Text` that a `Style` (from `@effected/cli`) maps to. | from `@effected/cli/ui` |
 | `Inline` | TypeAlias | Content that flows inside a line. | |
 | `InlineInput` | TypeAlias | What a constructor accepts for content: a string, one `Inline`, or an array of either. | |
 | `InlineOf` | TypeAlias | The inline node with a given `_tag`, so a constructor can return its precise type. | |

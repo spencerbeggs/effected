@@ -101,7 +101,7 @@ The idiomatic recoveries:
   `catchTag` also accepts a non-empty tag ARRAY sharing one handler —
   `Effect.catchTag(["UnknownRefError", "GitCommandError"], () => fallback)` —
   which obviates `catchTags` boilerplate when several tags route to the same
-  recovery (`Effect.ts:2860` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
+  recovery (`Effect.ts:2861` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
 - **`Effect.catch(handler)`** — recover from any typed failure; there is no
   `catchAll`. **`Effect.catchCause(handler)`** for full-cause infra handling,
   **`Effect.catchDefect(handler)`** for defects.
@@ -138,7 +138,7 @@ you covered.
 
 Core `FileSystem` / `Path` operations fail with `PlatformError`, and its shape
 is not guessable: `effect` re-exports the module **as a namespace**
-(`export * as PlatformError from "./PlatformError.ts"`, index.ts:495) and the
+(`export * as PlatformError from "./PlatformError.ts"`, index.ts:501) and the
 error **class** is declared inside it (PlatformError.ts:163, a
 `Data.TaggedError("PlatformError")`). So the type you write is the doubled
 `PlatformError.PlatformError`:
@@ -166,7 +166,7 @@ a `BadArgument` (rejected caller input) or a `SystemError` (a host failure,
 carrying a normalized `SystemErrorTag`), `PlatformError.ts:39,114,163`.
 
 **`fs.exists` already absorbs `NotFound` — anything else is a real failure.**
-Core derives `exists` from `access` in `FileSystem.make` (`FileSystem.ts:511`):
+Core derives `exists` from `access` in `FileSystem.make` (`FileSystem.ts:516`):
 `access(path)` mapped to `true`, with a `PlatformError` whose `reason._tag` is
 `"NotFound"` mapped to `false` and **every other reason re-failed**
 (`EACCES`, `ENOTDIR`, `EIO`). So `fs.exists(p)` answers the question "is it
@@ -234,7 +234,7 @@ Result.succeed(42)` dies
 `Effect.succeed` control that returned normally. Note the **success**
 cases die too: this is not "errors need a bridge", it is "these are not Effects
 at all". Their `[Symbol.iterator]` yields the value itself, and the fiber loop
-rejects anything carrying no `evaluate` (`internal/effect.ts:692`).
+rejects anything carrying no `evaluate` (`internal/effect.ts:708`).
 
 The bridge is a module function on `Effect`, one per type:
 
@@ -406,41 +406,41 @@ Probe with `Effect.interrupt.pipe(Effect.catchCause(h))` — the handler runs,
 `Cause.hasInterrupts(c)` is `true`, and the effect **succeeds**. It swallows
 interruption. That is almost never what you want.
 
-## `Effect.cached` memoizes the `Exit` — failures *and interrupts*
+## `Effect.cached` memoizes the first `Exit` — failures included, interrupts never
 
 `Effect.cached(self)` returns `Effect<Effect<A, E, R>>` whose inner effect
-replays the **first `Exit`**, whatever it was. Not just the success. A failure is
-cached. **An interrupt is cached.**
+replays the **first completed `Exit`**, whether it was a success or a failure. A
+failure is cached for the life of the memo.
 
-That last one is the trap, because interruption is not a property of the effect
-at all — it is a property of whichever fiber happens to touch it first. An
-`Effect.timeout`, an `Effect.race`, a cancelled request, or a sibling failing
-under `Effect.all` will permanently poison the memo for every later caller. The
-replayed cause is an *interrupt*, which sits outside the effect's declared `E`
-channel and is not recoverable with `Effect.catch` — so a memoized value's
-declared error type becomes **unsound**.
+Interruption is the exception: it is never cached. Core treats it as
+abandonment (`makeCachedUnsafe` in `internal/effect.ts`). Concurrent callers
+share one in-flight run, and when every caller has left (each one interrupted by
+an `Effect.timeout`, an `Effect.race` or a cancelled request) the run is
+interrupted and detached, and the next caller starts a fresh one. A source that
+interrupts itself is not stored either, so the next call re-runs it. Probed: an
+interrupted sole first caller, then a second call, ran the source twice and the
+second call succeeded. The control was a failing source, which ran once across
+two calls.
 
-Failure caching is its own footgun: a caller reaching for the natural spelling,
-`Effect.retry(useTheMemo(), policy)`, silently no-ops — each retry replays the
-cached `Exit` without re-running the underlying effect. Library-side failure
-caching *destroys* the caller's ability to own the retry policy.
+Failure caching is the trap. A caller reaching for the natural spelling,
+`Effect.retry(useTheMemo(), policy)`, silently does nothing: each retry replays
+the cached `Exit` without re-running the underlying effect. Library-side failure
+caching takes away the caller's ability to own the retry policy.
 
-**For success-only memoization**, invalidate on any non-success exit:
+**For success-only memoization**, give `Effect.cachedWithTTL` a TTL keyed on
+the exit:
 
 ```ts
-const [resolve, invalidate] = Effect.runSync(
-  Effect.cachedInvalidateWithTTL(expensiveEffect, Duration.infinity),
-)
-const memo = Effect.onExit(resolve, (exit) =>
-  Exit.isSuccess(exit) ? Effect.void : invalidate,
+const memo = yield* Effect.cachedWithTTL(expensiveEffect, (exit) =>
+  Exit.isSuccess(exit) ? Duration.infinity : Duration.zero,
 )
 ```
 
 Success is computed once, across sequential and concurrent observers. A failure
-or interrupt is retried on the next call, and callers bound their own retries by
-wrapping the *inner* effect. Reach for bare `Effect.cached` only when you
-genuinely want a terminal failure — and say so in the TSDoc, including the
-interrupt behavior, because no consumer will guess it.
+expires as soon as it is written, so the next call re-runs the source, and
+callers bound their own retries by wrapping the *inner* effect. Use bare
+`Effect.cached` only when you want a terminal failure, and say so in the TSDoc,
+because a consumer will not guess it.
 
 ## The `Effect.timeout` family — three forms, and timing out interrupts
 
@@ -666,10 +666,10 @@ construction throw or a service that was never provided:
 | `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9349` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
 | `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9271` — same shape, same optional-`options` trap, one page away in the same module. |
 | `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:556` — a *function* returning a Layer, unlike almost every other `layer` in core. |
-| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5004` — takes ONE array argument. |
+| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5025` — takes ONE array argument. |
 
 **The discriminator is the optional argument.** `Schema.Cause(e, d)`
-(`Schema.ts:11239`) and `Schema.Exit(...)` (`:14356`) are factories too, but their
+(`Schema.ts:11277`) and `Schema.Exit(...)` (`:14356`) are factories too, but their
 arguments are required, so forgetting to call them is an immediate type error.
 Only the zero-or-optional-arg factories type-check uncalled.
 
