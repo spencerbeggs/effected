@@ -70,13 +70,12 @@ const readCapped = (response: HttpClientResponse.HttpClientResponse, what: strin
 			return Effect.succeed({ chunks: acc.chunks, size });
 		},
 	).pipe(
-		Effect.flatMap(({ chunks }) => {
-			try {
-				return Effect.succeed(fatalUtf8.decode(concat(chunks)));
-			} catch (cause) {
-				return Effect.fail(fetchFailed(`the ${what} is not UTF-8`, cause));
-			}
-		}),
+		Effect.flatMap(({ chunks }) =>
+			Effect.try({
+				try: () => fatalUtf8.decode(concat(chunks)),
+				catch: (cause) => fetchFailed(`the ${what} is not UTF-8`, cause),
+			}),
+		),
 	);
 };
 
@@ -125,12 +124,10 @@ const discoverJwksUri = (client: HttpClient.HttpClient, issuer: string): Effect.
 		if (document.issuer !== issuer) {
 			return yield* fetchFailed(`the discovery document names issuer ${quote(document.issuer)}, not the one requested`);
 		}
-		let jwksUri: URL;
-		try {
-			jwksUri = new URL(document.jwks_uri);
-		} catch (cause) {
-			return yield* fetchFailed("the discovered jwks_uri is not a URL", cause);
-		}
+		const jwksUri = yield* Effect.try({
+			try: () => new URL(document.jwks_uri),
+			catch: (cause) => fetchFailed("the discovered jwks_uri is not a URL", cause),
+		});
 		if (jwksUri.protocol !== "https:" && !(jwksUri.protocol === "http:" && isLocalIssuer(issuer))) {
 			return yield* fetchFailed(`the discovered jwks_uri is not https: (${quote(jwksUri.protocol)})`);
 		}

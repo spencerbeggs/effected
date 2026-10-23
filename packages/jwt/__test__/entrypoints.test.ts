@@ -57,6 +57,31 @@ describe("root entrypoint", () => {
 		);
 	});
 
+	it("the grouped-statics containers are classes whose statics are enumerable and complete", async () => {
+		const main = await import("../src/index.js");
+		const testing = await import("../src/testing.js");
+		const containers = {
+			Jws: [main.Jws, ["decodeUnverified", "sign", "verify"]],
+			Jwt: [main.Jwt, ["sign", "verify"]],
+			JwtKey: [main.JwtKey, ["fromJwk", "fromPkcs8Pem", "generate"]],
+			TestIssuer: [testing.TestIssuer, ["make", "rotate"]],
+		} as const;
+		for (const [name, [container, members]] of Object.entries(containers)) {
+			// the house form for a grouped-statics container is a class, never an object
+			assert.strictEqual(typeof container, "function", name);
+			assert.deepStrictEqual(Object.keys(container).sort(), [...members], name);
+			for (const member of members) {
+				assert.strictEqual(
+					typeof (container as unknown as Record<string, unknown>)[member],
+					"function",
+					`${name}.${member}`,
+				);
+			}
+		}
+		// Jwt.sign is Jws.sign under the JWT name, not a second implementation
+		assert.strictEqual(main.Jwt.sign, main.Jws.sign);
+	});
+
 	it("reaches every module and no node: import, so it runs on workerd", () => {
 		const reachable = new Set([
 			...reachableFrom(resolve(SRC, "index.ts")),

@@ -10,7 +10,7 @@ import type { SigningKey, VerificationKey } from "./JwtKey.js";
 const NumericDate = Schema.Finite;
 
 /**
- * The registered claims of RFC 7519 §4.1, as {@link (Jwt:variable).verify}
+ * The registered claims of RFC 7519 §4.1, as {@link (Jwt:class).verify}
  * checks them.
  *
  * @remarks
@@ -48,7 +48,7 @@ export const RegisteredClaims = Schema.StructWithRest(
 export type RegisteredClaims = typeof RegisteredClaims.Type;
 
 /**
- * Options for {@link (Jwt:variable).verify}.
+ * Options for {@link (Jwt:class).verify}.
  *
  * @typeParam S - The schema the verified payload is decoded with.
  * @typeParam R - Services the key resolver requires.
@@ -165,27 +165,32 @@ const verify = <S extends Schema.Constraint, R = never>(
 	}).pipe(Effect.withSpan("Jwt.verify"));
 
 /**
- * Sign and verify JWTs (RFC 7519): a {@link (Jws:variable)} whose payload is
+ * Sign and verify JWTs (RFC 7519): a {@link (Jws:class)} whose payload is
  * a claims object, verified against the clock and the expected issuer and
  * audience.
  *
  * @public
  */
-export const Jwt: {
+export class Jwt {
+	private constructor() {}
+
 	/**
-	 * Sign a claims object as a JWT; {@link (Jws:variable).sign} under the
+	 * Sign a claims object as a JWT; {@link (Jws:class).sign} under the
 	 * JWT name.
+	 *
+	 * @public
 	 */
-	readonly sign: (
+	static readonly sign: (
 		claims: Readonly<Record<string, unknown>>,
 		key: SigningKey,
 		header?: Readonly<Record<string, unknown>>,
-	) => Effect.Effect<string, JwtError>;
+	) => Effect.Effect<string, JwtError> = Jws.sign;
+
 	/**
 	 * Verify a JWT and decode its payload with `options.claims`.
 	 *
 	 * @remarks
-	 * The signature is checked first ({@link (Jws:variable).verify}), then
+	 * The signature is checked first ({@link (Jws:class).verify}), then
 	 * the claims, in this order:
 	 *
 	 * - the payload decodes as {@link (RegisteredClaims:variable)}, else `claims`;
@@ -203,12 +208,11 @@ export const Jwt: {
 	 * malleable, so one signed payload can have two valid token strings. Key
 	 * replay detection, deduplication and revocation on verified claims
 	 * (`jti`, or `iss` with `sub` and `iat`), never on the token text.
+	 *
+	 * @public
 	 */
-	readonly verify: <S extends Schema.Constraint, R = never>(
+	static readonly verify: <S extends Schema.Constraint, R = never>(
 		token: string,
 		options: VerifyOptions<S, R>,
-	) => Effect.Effect<S["Type"], JwtError, R | S["DecodingServices"]>;
-} = {
-	sign: Jws.sign,
-	verify,
-};
+	) => Effect.Effect<S["Type"], JwtError, R | S["DecodingServices"]> = verify;
+}

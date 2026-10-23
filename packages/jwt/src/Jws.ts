@@ -131,7 +131,9 @@ const verify = <R = never>(
  *
  * @public
  */
-export const Jws: {
+export class Jws {
+	private constructor() {}
+
 	/**
 	 * Sign `payload` as a compact JWS.
 	 *
@@ -141,12 +143,15 @@ export const Jws: {
 	 * `kid` set from the key when it has one. A header `verify` would refuse
 	 * (a `crit`, a non-string `typ` or `kid`) or a payload JSON cannot
 	 * represent (a BigInt, a cycle, `undefined`) is `malformed`.
+	 *
+	 * @public
 	 */
-	readonly sign: (
+	static readonly sign: (
 		payload: unknown,
 		key: SigningKey,
 		header?: Readonly<Record<string, unknown>>,
-	) => Effect.Effect<string, JwtError>;
+	) => Effect.Effect<string, JwtError> = sign;
+
 	/**
 	 * Verify a compact JWS and return its header and payload.
 	 *
@@ -166,19 +171,24 @@ export const Jws: {
 	 * break interop with ES256 issuers. Key replay detection, deduplication
 	 * and revocation on verified claims (`jti`, or `iss` with `sub` and
 	 * `iat`), never on the token text.
+	 *
+	 * @public
 	 */
-	readonly verify: <R = never>(
+	static readonly verify: <R = never>(
 		token: string,
 		key: VerificationKey | ((header: JoseHeader) => Effect.Effect<VerificationKey, JwtError, R>),
-	) => Effect.Effect<DecodedJws, JwtError, R>;
+	) => Effect.Effect<DecodedJws, JwtError, R> = verify;
+
 	/**
 	 * Decode a compact JWS's header and payload **without verifying it**.
 	 *
 	 * @remarks
 	 * For routing only: reading `iss` or `kid` to decide which key or issuer
 	 * to verify against. The result is attacker-controlled and authorizes
-	 * nothing; pass the token to {@link (Jws:variable).verify} before acting
+	 * nothing; pass the token to {@link (Jws:class).verify} before acting
 	 * on any claim.
+	 *
+	 * @public
 	 */
-	readonly decodeUnverified: (token: string) => Result.Result<DecodedJws, JwtError>;
-} = { sign, verify, decodeUnverified };
+	static readonly decodeUnverified: (token: string) => Result.Result<DecodedJws, JwtError> = decodeUnverified;
+}

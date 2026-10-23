@@ -16,7 +16,7 @@ const JWKS_URI = `${ISSUER}/keys`;
 interface Route {
 	readonly status?: number;
 	readonly body?: unknown;
-	readonly raw?: string;
+	readonly raw?: string | Uint8Array;
 	/** Hold the response until this latch opens. */
 	readonly gate?: Deferred.Deferred<void>;
 	/** The final URL the response reports, as after a redirect. */
@@ -226,6 +226,36 @@ describe("JwksResolver", () => {
 				yield* Effect.provide(Jws.verify(token, JwksResolver.forIssuer(local)), resolverLayer(localHttp.layer));
 				assert.strictEqual(localHttp.count(`${local}/keys`), 1);
 			}
+		}),
+	);
+
+	it.effect("a discovered jwks_uri that is not a URL is jwksFetch, with the URL error as its cause", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			const http = stub((url) =>
+				url === DISCOVERY ? { body: { issuer: ISSUER, jwks_uri: "not a url" } } : { body: { keys: [a.jwk] } },
+			);
+			const error = yield* Effect.flip(
+				Effect.provide(verify(yield* Jws.sign({}, a.signing)), resolverLayer(http.layer)),
+			);
+			assert.strictEqual(error.reason, "jwksFetch");
+			assert.include(error.detail, "the discovered jwks_uri is not a URL");
+			assert.instanceOf(error.cause, TypeError);
+		}),
+	);
+
+	it.effect("a JWKS body that is not UTF-8 is jwksFetch, with the decoder error as its cause", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			// `{`, a lone 0xff byte, `}`: never valid UTF-8, and a non-fatal
+			// decoder would turn it into U+FFFD and fail later as bad JSON.
+			const http = stub(issuerRoutes(() => [a.jwk], { raw: new Uint8Array([0x7b, 0xff, 0x7d]) }));
+			const error = yield* Effect.flip(
+				Effect.provide(verify(yield* Jws.sign({}, a.signing)), resolverLayer(http.layer)),
+			);
+			assert.strictEqual(error.reason, "jwksFetch");
+			assert.include(error.detail, "the JWKS is not UTF-8");
+			assert.instanceOf(error.cause, TypeError);
 		}),
 	);
 

@@ -28,7 +28,7 @@ interface PublicJwk {
  * A private key that signs, bound to the one algorithm it was imported for.
  *
  * @remarks
- * Created only by {@link (JwtKey:variable)}. The `CryptoKey` is not
+ * Created only by {@link (JwtKey:class)}. The `CryptoKey` is not
  * extractable, so the key material cannot be read back out.
  *
  * @public
@@ -53,7 +53,7 @@ export class SigningKey {
  * A public key that verifies, bound to the one algorithm it was imported for.
  *
  * @remarks
- * Created only by {@link (JwtKey:variable)}. Verification takes the
+ * Created only by {@link (JwtKey:class)}. Verification takes the
  * algorithm from this key, never from the token header.
  *
  * @public
@@ -225,7 +225,9 @@ const generate = Effect.fn("JwtKey.generate")(function* (alg: JwtAlgorithm, opti
  *
  * @public
  */
-export const JwtKey: {
+export class JwtKey {
+	private constructor() {}
+
 	/**
 	 * Import a PEM private key as a signing key for `alg`.
 	 *
@@ -237,11 +239,14 @@ export const JwtKey: {
 	 * that does not import is `key`. Newlines may arrive escaped as the two
 	 * characters backslash and `n`, the one-line form an environment variable
 	 * carries. The PEM is unwrapped here and nowhere else.
+	 *
+	 * @public
 	 */
-	readonly fromPkcs8Pem: (
+	static readonly fromPkcs8Pem: (
 		pem: Redacted.Redacted<string>,
 		options: { readonly alg: JwtAlgorithm; readonly kid?: string },
-	) => Effect.Effect<SigningKey, JwtError>;
+	) => Effect.Effect<SigningKey, JwtError> = fromPkcs8Pem;
+
 	/**
 	 * Import the public half of a JWK as a verification key.
 	 *
@@ -253,20 +258,28 @@ export const JwtKey: {
 	 * other than P-256), whose `use` is not `sig`, whose `key_ops` does not
 	 * include `verify`, that is an RSA key under 2048 bits, or that does not
 	 * import is `key`. Private members are ignored, never unwrapped.
+	 *
+	 * @public
 	 */
-	readonly fromJwk: (jwk: Jwk, options?: { readonly alg?: JwtAlgorithm }) => Effect.Effect<VerificationKey, JwtError>;
+	static readonly fromJwk: (
+		jwk: Jwk,
+		options?: { readonly alg?: JwtAlgorithm },
+	) => Effect.Effect<VerificationKey, JwtError> = fromJwk;
+
 	/**
 	 * Generate a fresh key pair and its public JWK; for tests.
 	 *
 	 * @remarks
 	 * The private key is not extractable. RSA keys are 2048-bit with
 	 * exponent 65537.
+	 *
+	 * @public
 	 */
-	readonly generate: (
+	static readonly generate: (
 		alg: JwtAlgorithm,
 		options?: { readonly kid?: string },
 	) => Effect.Effect<
 		{ readonly signing: SigningKey; readonly verification: VerificationKey; readonly jwk: Jwk },
 		JwtError
-	>;
-} = { fromPkcs8Pem, fromJwk, generate };
+	> = generate;
+}
