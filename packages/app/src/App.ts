@@ -219,7 +219,8 @@ export class App {
 	 * `AppDirs` requirement of `AppStore.layer`, `AppStore.layerAs`,
 	 * `AppCache.layer`, `AppCache.layerAs` and `AppConfig.layer`.
 	 *
-	 * The error channel is `XdgEnvError` alone — an unset `HOME` — and `R` is
+	 * The error channel is `XdgEnvError` alone — an unset home directory (`HOME`,
+	 * or on `win32` `USERPROFILE` then `HOME`) — and `R` is
 	 * the `FileSystem` and `Path` a platform layer supplies once. `options` is
 	 * `AppDirsOptions` pass-through: `namespace`, `native`, `fallbackDir` and
 	 * `dirs` mean exactly what `@effected/xdg` documents.

@@ -41,6 +41,10 @@ export class NativeDirs extends Schema.Class<NativeDirs>("NativeDirs")({
 	 *   convention, so there is no override to apply; returning `none` rather than
 	 *   a duplicate of the XDG answer is what lets a precedence ladder skip the
 	 *   rung cleanly instead of shadowing the rung below it.
+	 *
+	 * `paths` is used as given. From `Xdg.layer` its `appData` and `localAppData`
+	 * are already absolute, because a relative value is ignored there; a
+	 * hand-built `XdgPaths` passed through `Xdg.layerFrom` is trusted.
 	 */
 	static resolve(input: {
 		readonly platform: XdgPlatform;

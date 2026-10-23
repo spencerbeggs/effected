@@ -39,7 +39,7 @@ const AppDirsLive = AppDirs.layer({ namespace: "todo", native: true });
 
 ### 2. Provide the environment and the platform
 
-`AppDirs` resolves against two things: the `Xdg` environment (`$HOME` and the XDG variables, read once at layer construction) and a `FileSystem` / `Path` implementation for creating directories. Wire `Xdg.layer` and the Node platform layers underneath it:
+`AppDirs` resolves against two things: the `Xdg` environment (the home directory and the XDG variables, read once at layer construction) and a `FileSystem` / `Path` implementation for creating directories. Wire `Xdg.layer` and the Node platform layers underneath it:
 
 ```ts
 import { AppDirs, Xdg } from "@effected/xdg";
@@ -204,7 +204,7 @@ Order matters: put `resolver` before `nativeResolver` so an existing `~/.config/
 
 There are exactly two typed errors, because path resolution is not IO — only creating a directory is. Both are tagged errors carrying their cause structurally, so you route on the tag with `Effect.catchTag`:
 
-- **`XdgEnvError`** — the environment cannot satisfy resolution. It is raised for one thing only: `$HOME` is not set. Every other XDG variable is optional by construction, so its absence is a resolved default, not a failure. Because resolution happens when the layer is built, this surfaces the moment you provide the layer, before any `AppDirs` exists.
+- **`XdgEnvError`** — the environment cannot satisfy resolution. It is raised for one thing only: the home directory is not set (`$HOME`, or on Windows `%USERPROFILE%` then `$HOME`). Every other XDG variable is optional by construction, so its absence is a resolved default, not a failure. Because resolution happens when the layer is built, this surfaces the moment you provide the layer, before any `AppDirs` exists.
 - **`AppDirsError`** — a directory could not be created. It carries `directory` (which kind), `path` (where), and the structural `cause`. It is the *only* way `AppDirs` fails, because resolution already succeeded; reaching it means the `mkdir -p` itself did not work.
 
 ```ts
@@ -221,7 +221,7 @@ const program = Effect.gen(function* () {
   return yield* app.ensureConfig;
 }).pipe(
   Effect.provide(AppDirsLive),
-  // The environment was unusable: $HOME is unset.
+  // The environment was unusable: the home directory is unset.
   Effect.catchTag("XdgEnvError", (error: XdgEnvError) => Effect.succeed(`env error: ${error.variable} is not set`)),
   // The directory could not be created — report which kind and where.
   Effect.catchTag("AppDirsError", (error: AppDirsError) =>
@@ -232,7 +232,7 @@ const program = Effect.gen(function* () {
 Effect.runPromise(program).then(console.log);
 ```
 
-One case is deliberately *not* a typed error: a namespace that is empty, contains a path separator, or is exactly `.` or `..` is a **defect** at layer construction, not a failure in the error channel. It can only come from your own code — `namespace: "../.."` would resolve the app's directories outside `$HOME` entirely — so it dies loudly rather than routing quietly. Give `AppDirs.layer` a single, well-formed path component and it never happens.
+One case is deliberately *not* a typed error: a namespace that is empty, contains a path separator, or is exactly `.` or `..` is a **defect** at layer construction, not a failure in the error channel. It can only come from your own code — `namespace: "../.."` would resolve the app's directories outside the home directory entirely — so it dies loudly rather than routing quietly. Give `AppDirs.layer` a single, well-formed path component and it never happens.
 
 ## Next steps
 
