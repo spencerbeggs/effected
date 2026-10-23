@@ -172,5 +172,23 @@ describe("Range edge semantics", () => {
 			const simplified = Range.simplify(range(">* || ^1"));
 			assert.strictEqual(simplified.toString(), ">=1.0.0 <2.0.0-0");
 		});
+
+		it("simplify(>* || <*) keeps exactly one match-nothing set", () => {
+			assert.strictEqual(Range.simplify(range(">* || <*")).toString(), "<0.0.0-0");
+		});
+	});
+
+	describe("simplify keeps the first of mutually-subset sets", () => {
+		// Both copies of a duplicated set are subsets of each other; dropping
+		// every member of the pair lost ^1 entirely.
+		it("^1 || ^1 || ^2 keeps ^1 and still matches 1.5.0", () => {
+			const simplified = Range.simplify(range("^1 || ^1 || ^2"));
+			assert.strictEqual(simplified.toString(), ">=1.0.0 <2.0.0-0 || >=2.0.0 <3.0.0-0");
+			assert.isTrue(simplified.test(version("1.5.0")));
+		});
+
+		it("two spellings of one set collapse to the first spelling", () => {
+			assert.strictEqual(Range.simplify(range("^1.0.0 || >=1.0.0 <2.0.0-0")).sets.length, 1);
+		});
 	});
 });

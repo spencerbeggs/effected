@@ -342,13 +342,21 @@ export class Range extends Schema.Class<Range>("Range")({
 	/**
 	 * Remove redundant comparator sets: a set is redundant when it is a
 	 * subset of another set in the range (every version it matches already
-	 * matches that broader set, so the union gains nothing by keeping it). A
-	 * set that matches nothing is therefore dropped: `>* || ^1.0.0` simplifies
-	 * to `>=1.0.0 <2.0.0-0`.
+	 * matches that broader set, so the union gains nothing by keeping it).
+	 *
+	 * @remarks
+	 * Sets that are subsets of each other (duplicates, or two spellings of
+	 * one set) keep their FIRST occurrence: dropping every member of such a
+	 * group would lose the versions they match, so `^1 || ^1 || ^2` keeps
+	 * `^1`. A set that matches nothing is a subset of every set, so it is
+	 * dropped when another set remains: `>* || ^1.0.0` simplifies to
+	 * `>=1.0.0 <2.0.0-0`, while `>* || <*` keeps one match-nothing set.
 	 */
 	static simplify(range: Range): Range {
 		const sets = range.sets.filter((set, i) => {
-			return !range.sets.some((other, j) => i !== j && isComparatorSetSubset(set, other));
+			return !range.sets.some(
+				(other, j) => i !== j && isComparatorSetSubset(set, other) && (j < i || !isComparatorSetSubset(other, set)),
+			);
 		});
 
 		if (sets.length === 0) return range;
