@@ -111,11 +111,6 @@ export class JsoncModifier {
 	 * fails with `JsoncModificationError` even when `value` is also
 	 * unserializable. A delete (`value === undefined`) never serializes.
 	 *
-	 * Before serialization was routed through `Jsonc.stringifyResult`, a raw
-	 * `JSON.stringify` here died on a circular or `bigint` value, and inserting
-	 * a function or symbol under a new key silently wrote the literal text
-	 * `"key": undefined` — invalid JSON reported as success.
-	 *
 	 * @example
 	 * ```ts
 	 * import { JsoncEdit, JsoncModifier } from "@effected/jsonc";

@@ -1094,7 +1094,7 @@ export class YamlFormat {
 	 *
 	 * @remarks
 	 * Defined in terms of {@link YamlFormat.modifyToStringResult}; it opens its
-	 * own span and no longer a nested `YamlFormat.modify` child span.
+	 * own span, with no nested `YamlFormat.modify` child span.
 	 */
 	static readonly modifyToString = Effect.fn("YamlFormat.modifyToString")(
 		(text: string, path: YamlPath, value: unknown, options?: YamlStringifyOptions) =>

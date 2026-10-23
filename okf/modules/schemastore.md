@@ -28,10 +28,10 @@ sources:
     resource: ../../packages/schemastore/src/StoreDocument.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:33:17Z
+  at: 2026-10-23T22:43:13Z
 integrity:
   generated:
-    body: 355db491e116777c
+    body: 075e863c25dd570f
 ---
 
 # @effected/schemastore
@@ -446,7 +446,7 @@ current document, `idBase`, `catalogBase`, `resolvedLayout`,
 `fileNameFor(v)` answer the same for any advertised label. `$id` and `url`
 differ only under `"schemastore"`. `resolvedCurrent` is an
 `Option<SchemaVersion>`, `Option.none()` for an unversioned schema, because
-the kit's lookups return `Option`; the `idFor` family keeps its optional
+the kit's [lookups return `Option`](../conventions/lookups-return-option.md); the `idFor` family keeps its optional
 `version` argument, where an omitted version names the unversioned document. One private `resolve` walk backs both
 the class check and every getter, so what the check admits is exactly what
 the getters read.

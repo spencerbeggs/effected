@@ -35,10 +35,10 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/1030
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:30:30Z
+  at: 2026-10-23T22:43:13Z
 integrity:
   generated:
-    body: 2cb3e3ab3595ffc4
+    body: c44c9aa4db6c7484
 ---
 
 # `@effected/markdown`
@@ -327,7 +327,8 @@ links pass URL strings through unmodified, with reference forms resolved
 through the definition index and an unresolvable foreign reference leaving
 the URL genuinely absent.
 
-Every lookup that can miss returns `Option`: `find`, `firstSection`,
+Every lookup that can miss returns `Option`
+([lookups return Option](../conventions/lookups-return-option.md)): `find`, `firstSection`,
 `sectionByHeading` and the `frontmatter` getter, matching the sibling format
 packages' tree lookups (`JsoncNode.find`, `YamlNode.find`). A derived getter
 counts as a lookup, not a data field, because it recomputes from the tree on
