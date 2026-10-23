@@ -589,6 +589,34 @@ function overflow(component: "major" | "minor" | "patch" | "prerelease", cause: 
 	);
 }
 
+// Raised when `SemVerBump.prerelease` is handed an identifier that is not a
+// valid SemVer prerelease identifier. Identifiers are programmer-written
+// literals, so a malformed one is a contract violation — a thrown defect, as
+// core `SemVer.bumpPrerelease` throws — never a typed failure every call site
+// would have to handle. Its message names the identifier, never overflow.
+function malformedPrereleaseIdentifier(id: string): never {
+	throw new Error(
+		`SemVerBump.prerelease: malformed prerelease identifier ${JSON.stringify(id)} — expected a non-empty [0-9A-Za-z-] identifier whose numeric form has no leading zeros`,
+	);
+}
+
+// Validate and normalize a caller-supplied prerelease identifier the way the
+// grammar would read it: an all-digit identifier is a number (no leading
+// zeros, a safe integer), anything else must be a non-empty [0-9A-Za-z-] run.
+const normalizePrereleaseIdentifier = (id: string): string | number => {
+	if (/^[0-9]+$/u.test(id)) {
+		const value = Number(id);
+		if ((id.length > 1 && id[0] === "0") || !Number.isSafeInteger(value)) {
+			return malformedPrereleaseIdentifier(id);
+		}
+		return value;
+	}
+	if (!/^[0-9A-Za-z-]+$/u.test(id)) {
+		return malformedPrereleaseIdentifier(id);
+	}
+	return id;
+};
+
 /**
  * Grouped bump operations returned by the {@link SemVer.bump} accessor
  * (`v.bump.minor()`) — `bump` is an instance **getter**, not a static, so it
@@ -655,10 +683,26 @@ export class SemVerBump {
 	 * (`1.0.0` → `1.0.1-0`), switching identifiers resets the counter, and a
 	 * trailing numeric identifier increments.
 	 *
+	 * @remarks
+	 * The identifier is read the way the grammar reads one: an all-digit `id`
+	 * is a numeric identifier, so `"1"` is the number `1` and compares equal
+	 * to a receiver whose first prerelease identifier is `1` — `1.2.3-1.0`
+	 * bumped with `"1"` is `1.2.3-1.1`, and `1.2.3-0` bumped with `"0"` is
+	 * `1.2.3-1`, matching core `SemVer.bumpPrerelease`.
+	 *
+	 * A malformed `id` — empty, containing a character outside
+	 * `[0-9A-Za-z-]` (so `"a.b"` is rejected: pass one identifier), or
+	 * numeric with a leading zero (`"01"`) — throws an `Error` naming the
+	 * identifier. It is a programmer error, not input to recover from, so it
+	 * is a defect rather than a typed failure.
+	 *
 	 * @param id - the prerelease identifier prefix (e.g. `"rc"`); when omitted, only the trailing numeric counter is bumped
 	 * @returns the bumped {@link SemVer}
 	 */
 	prerelease(id?: string): SemVer {
+		// Validate before any arithmetic, so a malformed identifier is never
+		// misreported as a MAX_SAFE_INTEGER overflow.
+		const normalized = id === undefined ? undefined : normalizePrereleaseIdentifier(id);
 		const { major, minor, patch } = this.v;
 		const pre = this.v.prerelease;
 
@@ -668,7 +712,7 @@ export class SemVerBump {
 					major,
 					minor,
 					patch: patch + 1,
-					prerelease: id !== undefined ? [id, 0] : [0],
+					prerelease: normalized !== undefined ? [normalized, 0] : [0],
 					build: [],
 				});
 			} catch (cause) {
@@ -676,11 +720,8 @@ export class SemVerBump {
 			}
 		}
 
-		if (id !== undefined) {
-			const currentPrefix = typeof pre[0] === "string" ? pre[0] : null;
-			if (currentPrefix !== id) {
-				return SemVer.make({ major, minor, patch, prerelease: [id, 0], build: [] });
-			}
+		if (normalized !== undefined && pre[0] !== normalized) {
+			return SemVer.make({ major, minor, patch, prerelease: [normalized, 0], build: [] });
 		}
 
 		const last = pre[pre.length - 1];

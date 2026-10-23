@@ -172,6 +172,39 @@ describe("SemVer", () => {
 			assert.strictEqual(SemVer.of(1, 0, 1, ["alpha"]).bump.prerelease().toString(), "1.0.1-alpha.0");
 		});
 
+		it("reads an all-digit identifier as numeric, so the bump still increases", () => {
+			// A string-only prefix comparison saw "1" !== 1, restarted at [1, 0]
+			// and returned the receiver unchanged — a bump that did not bump.
+			const receiver = SemVer.of(1, 2, 3, [1, 0]);
+			const bumped = receiver.bump.prerelease("1");
+			assert.strictEqual(bumped.toString(), "1.2.3-1.1");
+			assert.isTrue(bumped.gt(receiver));
+			assert.strictEqual(SemVer.of(1, 2, 3, [0]).bump.prerelease("0").toString(), "1.2.3-1");
+			assert.strictEqual(SemVer.of(1, 2, 3).bump.prerelease("1").toString(), "1.2.4-1.0");
+			assert.deepStrictEqual([...SemVer.of(1, 2, 3).bump.prerelease("1").prerelease], [1, 0]);
+		});
+
+		it("switching from a numeric to a different numeric identifier restarts at it", () => {
+			assert.strictEqual(SemVer.of(1, 2, 3, [1, 4]).bump.prerelease("2").toString(), "1.2.3-2.0");
+		});
+
+		it("a malformed identifier throws naming the identifier, not overflow", () => {
+			for (const id of ["a.b", "", "01", "rc+1", "9007199254740992"]) {
+				for (const receiver of [SemVer.of(1, 2, 3), SemVer.of(1, 2, 3, ["rc", 0])]) {
+					try {
+						receiver.bump.prerelease(id);
+						assert.fail(`expected bump.prerelease(${JSON.stringify(id)}) to throw`);
+					} catch (e) {
+						assert.instanceOf(e, Error);
+						const message = (e as Error).message;
+						assert.include(message, "malformed prerelease identifier");
+						assert.include(message, JSON.stringify(id));
+						assert.notInclude(message, "MAX_SAFE_INTEGER");
+					}
+				}
+			}
+		});
+
 		it("release strips prerelease and build", () => {
 			assert.strictEqual(SemVer.of(1, 2, 3, ["rc", 1], ["meta"]).bump.release().toString(), "1.2.3");
 		});
