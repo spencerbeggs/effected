@@ -98,8 +98,12 @@ core's `FileSystem | Crypto | ChildProcessSpawner` plus `@effected/commands`'
 extends `PackOptions`), `dryRun(packageDir, options?: PackOptions)`.
 
 **The credential goes to a caller-supplied npmrc path, never argv.**
-`setupAuth({ registry, credential, npmrcPath })` appends it in nerf-dart key
-format — trailing slash **required** or the entry silently never applies.
+`setupAuth({ registry, credential, npmrcPath })` writes it in nerf-dart key
+format — trailing slash **required** or the entry silently never applies — and
+always upserts: it replaces the first line with that key, drops later
+duplicates and the same registry's other-scheme key, and appends only when
+none exists. npm reads the first matching key, so a duplicate would silently
+shadow the new credential; calling it again for a re-minted token is safe.
 
 **Auth is a `RegistryCredential`, and it is the SAME union on both halves of
 the package** — the read probe's `RegistryTarget.credential` and

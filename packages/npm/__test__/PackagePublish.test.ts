@@ -631,20 +631,16 @@ describe("PackagePublish.setupAuth with basic auth", () => {
 	);
 });
 
-describe("PackagePublish.setupAuth upsert mode", () => {
+describe("PackagePublish.setupAuth replaces its own key", () => {
 	const HOST = "https://registry.npmjs.org";
 	const KEY = "//registry.npmjs.org/:_authToken";
-	const run = (
-		h: Harness,
-		options: { mode?: "append" | "upsert"; registry?: string; credential?: RegistryCredential } = {},
-	) =>
+	const run = (h: Harness, options: { registry?: string; credential?: RegistryCredential } = {}) =>
 		h.run(
 			Effect.flatMap(publisher, (p) =>
 				p.setupAuth({
 					registry: options.registry ?? HOST,
 					credential: options.credential ?? TOKEN_CREDENTIAL,
 					npmrcPath: NPMRC,
-					...(options.mode === undefined ? {} : { mode: options.mode }),
 				}),
 			),
 		);
@@ -652,7 +648,7 @@ describe("PackagePublish.setupAuth upsert mode", () => {
 	it.effect("replaces an existing token line in place, keeping the other lines and their order", () =>
 		Effect.gen(function* () {
 			const h = harness({ files: { [NPMRC]: `a=1\n${KEY}=old\n; note\nb = 2\n` } });
-			yield* run(h, { mode: "upsert" });
+			yield* run(h);
 			assert.strictEqual(npmrcOf(h), `a=1\n${KEY}=s3cr3t-token\n; note\nb = 2\n`);
 		}),
 	);
@@ -660,7 +656,7 @@ describe("PackagePublish.setupAuth upsert mode", () => {
 	it.effect("appends when no line matches", () =>
 		Effect.gen(function* () {
 			const h = harness({ files: { [NPMRC]: "a=1\nno-newline=2" } });
-			yield* run(h, { mode: "upsert" });
+			yield* run(h);
 			assert.strictEqual(npmrcOf(h), `a=1\nno-newline=2\n${KEY}=s3cr3t-token\n`);
 		}),
 	);
@@ -668,7 +664,7 @@ describe("PackagePublish.setupAuth upsert mode", () => {
 	it.effect("collapses duplicates into the first position", () =>
 		Effect.gen(function* () {
 			const h = harness({ files: { [NPMRC]: `${KEY}=one\nx=1\n ${KEY} = two\ny=2\n${KEY}=three\n` } });
-			yield* run(h, { mode: "upsert" });
+			yield* run(h);
 			assert.strictEqual(npmrcOf(h), `${KEY}=s3cr3t-token\nx=1\ny=2\n`);
 		}),
 	);
@@ -677,17 +673,19 @@ describe("PackagePublish.setupAuth upsert mode", () => {
 		Effect.gen(function* () {
 			const other = "//npm.pkg.github.com/:_authToken=keep-me";
 			const h = harness({ files: { [NPMRC]: `${other}\n${KEY}=old\n` } });
-			yield* run(h, { mode: "upsert" });
+			yield* run(h);
 			assert.strictEqual(npmrcOf(h), `${other}\n${KEY}=s3cr3t-token\n`);
 		}),
 	);
 
-	it.effect("append mode (the default) still duplicates the key", () =>
+	it.effect("a second call for the same registry leaves exactly one key, holding the newer credential", () =>
 		Effect.gen(function* () {
-			const h = harness({ files: { [NPMRC]: `${KEY}=old\n` } });
+			// npm reads the first matching key, so an appended second line would be
+			// shadowed by the first and the re-minted credential never used.
+			const h = harness();
 			yield* run(h);
-			yield* run(h, { mode: "append" });
-			assert.strictEqual(npmrcOf(h), `${KEY}=old\n${KEY}=s3cr3t-token\n${KEY}=s3cr3t-token\n`);
+			yield* run(h, { credential: { kind: "token", token: Redacted.make("re-minted") } });
+			assert.strictEqual(npmrcOf(h), `${KEY}=re-minted\n`);
 		}),
 	);
 
@@ -700,7 +698,7 @@ describe("PackagePublish.setupAuth upsert mode", () => {
 				"registry.npmjs.org/:_authToken=no-nerf",
 			];
 			const h = harness({ files: { [NPMRC]: `${lines.join("\n")}\n` } });
-			yield* run(h, { mode: "upsert" });
+			yield* run(h);
 			assert.strictEqual(npmrcOf(h), `${lines.join("\n")}\n${KEY}=s3cr3t-token\n`);
 		}),
 	);
@@ -708,7 +706,7 @@ describe("PackagePublish.setupAuth upsert mode", () => {
 	it.effect("a basic credential replaces _auth and clears the same registry's _authToken, which npm reads first", () =>
 		Effect.gen(function* () {
 			const h = harness({ files: { [NPMRC]: `${KEY}=tok\n//registry.npmjs.org/:_auth=old\nx=1\n` } });
-			yield* run(h, { mode: "upsert", credential: { kind: "basic", encoded: Redacted.make("YWJj") } });
+			yield* run(h, { credential: { kind: "basic", encoded: Redacted.make("YWJj") } });
 			assert.strictEqual(npmrcOf(h), "//registry.npmjs.org/:_auth=YWJj\nx=1\n");
 		}),
 	);
@@ -716,7 +714,7 @@ describe("PackagePublish.setupAuth upsert mode", () => {
 	it.effect("a token credential clears the same registry's _auth even when it has to append", () =>
 		Effect.gen(function* () {
 			const h = harness({ files: { [NPMRC]: "a=1\n//registry.npmjs.org/:_auth=old\nb=2\n" } });
-			yield* run(h, { mode: "upsert" });
+			yield* run(h);
 			assert.strictEqual(npmrcOf(h), `a=1\nb=2\n${KEY}=s3cr3t-token\n`);
 		}),
 	);
@@ -726,7 +724,7 @@ describe("PackagePublish.setupAuth upsert mode", () => {
 			const scoped = "//registry.savvyweb.systems/npm/:_authToken";
 			const sibling = "//registry.savvyweb.systems/other/:_authToken=keep-me";
 			const h = harness({ files: { [NPMRC]: `${sibling}\n${scoped}=old\n` } });
-			yield* run(h, { mode: "upsert", registry: "https://registry.savvyweb.systems/npm" });
+			yield* run(h, { registry: "https://registry.savvyweb.systems/npm" });
 			assert.strictEqual(npmrcOf(h), `${sibling}\n${scoped}=s3cr3t-token\n`);
 		}),
 	);

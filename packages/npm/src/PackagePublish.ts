@@ -210,16 +210,17 @@ export interface PackagePublishShape {
 	 * the token in a CI log is the **caller's** job; this package takes a
 	 * `Redacted` and has no opinion about log output.
 	 *
-	 * By default (`mode: "append"`) an existing npmrc is appended to, never
-	 * replaced, so a second call for the same registry leaves two keys and npm
-	 * reads the first. With `mode: "upsert"` every existing line whose key (the
-	 * text before the first `=`, trimmed) equals the key this call writes is
-	 * replaced in place: the first match takes the new line, any further matches
-	 * are removed, and every other line is left byte for byte in its original
-	 * order. Upsert also removes the same registry's other-scheme key (`_auth`
-	 * when writing a token, `_authToken` when writing a basic credential),
-	 * because npm checks `_authToken` first and a leftover would shadow or
-	 * outlive the credential just written. With no match, upsert appends. The
+	 * Every call upserts, because npm reads the **first** line with a matching
+	 * key: a second line for the same registry, appended below the first, would
+	 * be silently shadowed, and a re-minted short-lived credential would never
+	 * take effect. So the first existing line whose key (the text before the
+	 * first `=`, trimmed) equals the key this call writes is replaced in place,
+	 * any later lines with that key are removed, and every other line is left
+	 * byte for byte in its original order. The same registry's other-scheme key
+	 * (`_auth` when writing a token, `_authToken` when writing a basic
+	 * credential) is removed too, because npm checks `_authToken` first and a
+	 * leftover would shadow or outlive the credential just written. With no
+	 * matching line, the new one is appended. The
 	 * registry path is part of the key, and a missing trailing slash on
 	 * `registry` is added, so `https://host/npm` and `https://host/npm/` write
 	 * the same key. A missing file
@@ -231,8 +232,6 @@ export interface PackagePublishShape {
 		readonly registry: string;
 		readonly credential: RegistryCredential;
 		readonly npmrcPath: string;
-		/** `"append"` (default) adds a line; `"upsert"` replaces any line with the same key. */
-		readonly mode?: "append" | "upsert" | undefined;
 	}) => Effect.Effect<void, PublishError>;
 	/** `npm pack --json` — writes the tarball and reports both digests. */
 	readonly pack: (packageDir: string, options?: PackOptions) => Effect.Effect<PackedTarball, PublishError>;
@@ -327,13 +326,10 @@ const make = Effect.fnUntraced(function* () {
 		readonly registry: string;
 		readonly credential: RegistryCredential;
 		readonly npmrcPath: string;
-		readonly mode?: "append" | "upsert" | undefined;
 	}) {
-		const mode = options.mode ?? "append";
 		yield* Effect.annotateCurrentSpan({
 			registry: options.registry,
 			npmrc: options.npmrcPath,
-			mode,
 			// The KIND is safe to annotate and worth annotating; the value is not.
 			credential: options.credential.kind,
 		});
@@ -354,15 +350,12 @@ const make = Effect.fnUntraced(function* () {
 		const secret = options.credential.kind === "token" ? options.credential.token : options.credential.encoded;
 		const key = authKey(options.registry, options.credential.kind);
 		const line = `${key}=${Red.value(secret)}`;
-		const upserted =
-			mode === "upsert"
-				? replaceKey(
-						existing,
-						key,
-						authKey(options.registry, options.credential.kind === "token" ? "basic" : "token"),
-						line,
-					)
-				: { text: existing, replaced: false };
+		const upserted = replaceKey(
+			existing,
+			key,
+			authKey(options.registry, options.credential.kind === "token" ? "basic" : "token"),
+			line,
+		);
 		const base = upserted.text;
 		const separator = base === "" || base.endsWith("\n") ? "" : "\n";
 		yield* fs
