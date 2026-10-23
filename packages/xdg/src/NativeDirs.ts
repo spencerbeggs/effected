@@ -37,6 +37,10 @@ export class NativeDirs extends Schema.Class<NativeDirs>("NativeDirs")({
 	 *   `%LOCALAPPDATA%/<ns>/Cache`; `state` under `%LOCALAPPDATA%/<ns>`. When the
 	 *   variables are unset, `%APPDATA%` falls back to `<home>/AppData/Roaming` and
 	 *   `%LOCALAPPDATA%` to `<home>/AppData/Local`.
+	 *
+	 * `paths` is used as given. From `Xdg.layer` its `appData` and `localAppData`
+	 * are already absolute, because a relative value is ignored there; a
+	 * hand-built `XdgPaths` passed through `Xdg.layerFrom` is trusted.
 	 * - **everything else** — `Option.none()`. On Linux, XDG *is* the native
 	 *   convention, so there is no override to apply; returning `none` rather than
 	 *   a duplicate of the XDG answer is what lets a precedence ladder skip the

@@ -7,8 +7,9 @@ XDG Base Directory resolution. Eleventh migration, and the XDG half of the
 
 ## Tier: boundary
 
-`effect`, `@effected/walker` and `@effected/config-file` are the peers; there are
-**no runtime dependencies**. IO goes through `effect`-core `FileSystem` and
+`effect`, `@effected/walker` and `@effected/config-file` are the peers, plus
+`@effected/glob`, `@effected/jsonc`, `@effected/toml` and `@effected/yaml`, which
+those two bring into the closure; there are **no runtime dependencies**. IO goes through `effect`-core `FileSystem` and
 `Path`, arriving via the `R` channel. Both workspace edges are boundary→boundary,
 and tier 2 does not propagate (R3), so xdg's consumers pay nothing for them.
 
@@ -29,8 +30,9 @@ Three consequences, and they are why the design holds together:
 
 - Reading a path cannot fail. The only fallible members are the `ensure*` ones,
   which touch the filesystem.
-- `AppDirs.layer`'s error channel is `never`. The one resolution failure — `HOME`
-  unset — surfaces on `Xdg.layer` as `XdgEnvError`, before an `AppDirs` exists.
+- `AppDirs.layer`'s error channel is `never`. The one resolution failure — the
+  home directory unset (`HOME`, or on win32 `USERPROFILE` then `HOME`) —
+  surfaces on `Xdg.layer` as `XdgEnvError`, before an `AppDirs` exists.
 - `XdgConfig.savePath` gets a `never` channel, which is the **only** way it fits
   config-file's `defaultPath?: Effect<string, never, RR>` slot without an
   `orDie`. v3 recomputed all eight env reads on every property access, so this
@@ -39,10 +41,21 @@ Three consequences, and they are why the design holds together:
 ## Invariants
 
 - **The five-level precedence** per directory kind: explicit override → XDG env
-  var namespaced → native dir (`native: true` only) → `$HOME/<fallbackDir>` →
-  `$HOME/.<namespace>`. Rungs 4 and 5 are deliberately **not** the XDG spec's
+  var namespaced → native dir (`native: true` only) → `<home>/<fallbackDir>` →
+  `<home>/.<namespace>`. Rungs 4 and 5 are deliberately **not** the XDG spec's
   per-kind defaults (`~/.config`, `~/.local/share`); that is inherited v3
   behaviour, and a caller wanting spec defaults passes them as `dirs` overrides.
+- **A relative XDG value is ignored**, per the spec: `Xdg.layer` drops a relative
+  `XDG_*_HOME`, `XDG_RUNTIME_DIR` or `*_DIRS` entry as though unset (an emptied
+  `*_DIRS` takes the spec default). `XDG_*` uses the platform's absolute rule;
+  `APPDATA`/`LOCALAPPDATA` always the win32 rule, so the answer never depends on
+  the host. On win32 `*_DIRS` split on `;`. Home is deliberately not validated,
+  and a missing home still fails the layer eagerly.
+- **The win32 home is `USERPROFILE`, then `HOME`.** `XdgEnvError.variable` is
+  `"USERPROFILE"` there, meaning neither was set.
+- **xdg stays independent of core `UserDirectories`** (`effect/persistence`,
+  unstable) — see `okf/decisions/xdg-stays-independent-of-core-userdirectories.md`.
+  `__test__/CoreParity.test.ts` pins the agreed subset as an oracle.
 - **The runtime directory has no fallback ladder.** An override, or
   `$XDG_RUNTIME_DIR` namespaced, or nothing. It must be user-owned and mode 0700,
   so inventing a fallback would be a lie — the key is simply absent.
@@ -52,11 +65,13 @@ Three consequences, and they are why the design holds together:
 - **The platform is a `Context.Reference`, never a global read.** `CurrentPlatform`
   defaults to `process.platform`. This is what makes the darwin/win32 matrix
   testable with no platform IO — do not reintroduce `globalThis.process.platform`
-  inside the resolution code, which is what v3 did in two places.
+  inside the resolution code, which is what v3 did in two places. Three sites
+  read it — `Xdg.layer`, `AppDirs.layer` and `XdgConfig.nativeResolver` — so an
+  override is provided once, at the edge, beneath all three.
 - **A namespace is one path component.** Empty, or containing `/` or `\`, or
   `..` — all are **defects** at layer construction, not typed errors. It can only
   come from code, and `namespace: "../.."` would resolve the app's directories
-  outside `$HOME`.
+  outside the home directory.
 - **Every join goes through `Path.Path`**, never string interpolation. v3 built
   every path with `${home}/Library/...`, which emits forward slashes on Windows.
 
@@ -83,7 +98,7 @@ would be a one-element loop and the walker edge would be ceremony.
 
 ## Testing and building
 
-51 tests in `__test__/`, `@effect/vitest`, `assert.*` — never `expect`.
+74 tests in `__test__/`, `@effect/vitest`, `assert.*` — never `expect`.
 
 ```bash
 pnpm vitest run packages/xdg

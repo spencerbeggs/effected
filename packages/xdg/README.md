@@ -80,14 +80,24 @@ Each of `config`, `data`, `cache` and `state` resolves through five rungs, first
 1. an explicit `dirs.<kind>` override — an absolute path, and it wins outright;
 2. the XDG variable, namespaced: `$XDG_CONFIG_HOME/<namespace>`;
 3. the OS-native directory, when `native: true` and the platform has one;
-4. `$HOME/<fallbackDir>` — all four kinds collapse into that one directory;
-5. `$HOME/.<namespace>`.
+4. `<home>/<fallbackDir>` — all four kinds collapse into that one directory;
+5. `<home>/.<namespace>`.
+
+`<home>` is `$HOME`, or on Windows `%USERPROFILE%` then `$HOME`.
 
 Rungs 4 and 5 are deliberately not the spec's per-kind defaults (`~/.config`, `~/.local/share`): an application that wants those passes them as `dirs` overrides. The runtime directory skips the ladder entirely — an override, or `$XDG_RUNTIME_DIR/<namespace>`, or nothing.
 
 `NativeDirs.resolve` is pure — platform, namespace, environment and `Path` all arrive as parameters — so the whole matrix is testable with no filesystem and no `process.platform` read. On macOS `config`, `data` and `state` collapse to `~/Library/Application Support/<ns>` while `cache` stays under `~/Library/Caches/<ns>`; on Windows they split across `%APPDATA%` and `%LOCALAPPDATA%`. Everywhere else it returns `Option.none()`, because on Linux XDG *is* the native convention and there is nothing to override.
 
-The platform is a `Context.Reference`, never a global read. Pin it in a test with `Layer.succeed(CurrentPlatform, "win32")` and exercise the Windows paths on a Mac.
+The platform is a `Context.Reference`, never a global read. Pin it in a test with `Layer.succeed(CurrentPlatform, "win32")` and exercise the Windows paths on a Mac. `Xdg.layer`, `AppDirs.layer` and `XdgConfig.nativeResolver` all read it, so an application that overrides it provides it once, at the edge.
+
+## Relative values and Windows
+
+- **A relative XDG value is ignored**, as the XDG Base Directory specification requires: `XDG_CONFIG_HOME=rel/cfg` reads as unset and resolution falls to the next rung, instead of a directory under the working directory. The same goes for every `XDG_*_HOME`, `XDG_RUNTIME_DIR`, and each entry of `XDG_CONFIG_DIRS` / `XDG_DATA_DIRS`; a search path left empty takes the spec default.
+- **Absolute is judged per platform** for `XDG_*` (a leading `/`; on Windows a drive or a rooted path), and always by the Windows rule for `APPDATA` / `LOCALAPPDATA`. On Windows the `*_DIRS` lists split on `;`.
+- **On Windows the home directory is `%USERPROFILE%`, then `$HOME`.** The home directory itself is not validated.
+
+`@effected/xdg` does not build on Effect's own `UserDirectories` (`effect/persistence`, unstable): that service merges the XDG and native answers into one path per kind and has no search paths or runtime directory, so the ladder above cannot sit on it.
 
 ## Config files
 
@@ -123,10 +133,10 @@ Order matters: put `resolver` before `nativeResolver` so an existing `~/.config/
 
 | Tag | Means | Recovery |
 | --- | --- | --- |
-| `XdgEnvError` | `$HOME` is not set. Carries `variable` and the structural `cause` — the underlying `ConfigError`. | The one environment failure there is. Every other XDG variable is optional by construction, and its absence is a resolved default rather than an error. |
+| `XdgEnvError` | The home directory is not set: `$HOME`, or on Windows both `%USERPROFILE%` and `$HOME` (then `variable` is `"USERPROFILE"`). Carries `variable` and the structural `cause` — the underlying `ConfigError`. | The one environment failure there is. Every other XDG variable is optional by construction, and its absence is a resolved default rather than an error. |
 | `AppDirsError` | A directory could not be created. Carries `directory` (which kind), `path` and the structural `cause`. | The only way `AppDirs` fails, because resolution already happened. Check permissions. |
 
-A namespace that is empty, or contains a path separator, or is exactly `.` or `..`, is a **defect** at layer construction rather than a typed error. It can only come from code, and `namespace: "../.."` would resolve the application's directories outside `$HOME` entirely.
+A namespace that is empty, or contains a path separator, or is exactly `.` or `..`, is a **defect** at layer construction rather than a typed error. It can only come from code, and `namespace: "../.."` would resolve the application's directories outside the home directory entirely.
 
 ## Testing
 

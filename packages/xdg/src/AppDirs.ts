@@ -113,7 +113,7 @@ export interface AppDirsOptions {
 	 *
 	 * @remarks
 	 * Must be non-empty and free of path separators. A namespace containing `..`
-	 * or `/` would resolve the app's directories outside `$HOME` entirely, so it
+	 * or `/` would resolve the app's directories outside the home directory, so it
 	 * is rejected as a **defect** at layer construction: it can only come from
 	 * code, never from user input.
 	 */
@@ -127,10 +127,11 @@ export interface AppDirsOptions {
 	 */
 	readonly native?: boolean;
 	/**
-	 * A single dot-directory under `$HOME` that all four kinds collapse to.
+	 * A single dot-directory under the home directory that all four kinds collapse to.
 	 *
 	 * @remarks
-	 * Relative to `$HOME`: `fallbackDir: ".myapp"` gives `$HOME/.myapp`.
+	 * Relative to the home directory (`XdgPaths.home`: `$HOME`, or on `win32`
+	 * `%USERPROFILE%` then `$HOME`): `fallbackDir: ".myapp"` gives `<home>/.myapp`.
 	 */
 	readonly fallbackDir?: string;
 	/** Absolute per-kind overrides. */
@@ -177,10 +178,13 @@ export interface AppDirsShape {
  * Resolve one directory kind through the five-level precedence.
  *
  * 1. an explicit `dirs.<kind>` override;
- * 2. the XDG environment variable, namespaced (`$XDG_CONFIG_HOME/<ns>`);
+ * 2. the XDG environment variable, namespaced (`$XDG_CONFIG_HOME/<ns>`) — only
+ *    ever absolute, because `Xdg.layer` ignores a relative value;
  * 3. the native directory, when `native: true` and the platform has one;
- * 4. `$HOME/<fallbackDir>` — all four kinds collapse to the one directory;
- * 5. `$HOME/.<namespace>`.
+ * 4. `<home>/<fallbackDir>` — all four kinds collapse to the one directory;
+ * 5. `<home>/.<namespace>`.
+ *
+ * `<home>` is `XdgPaths.home`: `$HOME`, or on `win32` `%USERPROFILE%` then `$HOME`.
  *
  * Rungs 4 and 5 are deliberately **not** the XDG spec's per-kind defaults
  * (`~/.config`, `~/.local/share`, …): a CLI wanting spec defaults passes them as
@@ -297,8 +301,12 @@ export class AppDirs extends Context.Service<AppDirs, AppDirsShape>()("@effected
 	 *
 	 * @remarks
 	 * The error channel is `never`. The one failure that could happen during
-	 * resolution — an unset `HOME` — surfaces on {@link Xdg.layer} as an
+	 * resolution — an unset home directory (`HOME`, or on `win32` both
+	 * `USERPROFILE` and `HOME`) — surfaces on {@link Xdg.layer} as an
 	 * `XdgEnvError`, before an `AppDirs` exists at all.
+	 *
+	 * The native rung reads {@link CurrentPlatform}, as {@link Xdg.layer} does;
+	 * provide any override once at the edge so both see the same platform.
 	 */
 	static layer(options: AppDirsOptions): Layer.Layer<AppDirs, never, Xdg | FileSystem.FileSystem | Path.Path> {
 		return Layer.effect(

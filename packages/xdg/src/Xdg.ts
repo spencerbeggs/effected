@@ -42,11 +42,20 @@ const detectPlatform = (): XdgPlatform => {
  * The platform every native-directory decision is taken against.
  *
  * @remarks
- * A `Context.Reference`, not a global read. It
- * defaults to `process.platform`, so production behaviour is what you expect;
- * a test pins macOS or Windows semantics with
- * `Layer.succeed(CurrentPlatform, "win32")` and exercises the whole native-path
- * matrix without touching a real filesystem or the real platform.
+ * A `Context.Reference`, not a global read. Its default is the package's one
+ * sanctioned ambient read — `globalThis.process?.platform`, falling back to
+ * `"linux"` where there is no `process` — and every caller can override it, so
+ * production behaviour is what you expect while a test pins macOS or Windows
+ * semantics with `Layer.succeed(CurrentPlatform, "win32")` and exercises the
+ * whole native-path matrix without touching a real filesystem or the real
+ * platform.
+ *
+ * Three sites read it: {@link Xdg.layer} (the home variable, the absolute-path
+ * rule and the `*_DIRS` delimiter), `AppDirs.layer` (the native rung) and
+ * `XdgConfig.nativeResolver`. They must see the same platform, so an
+ * application that overrides it provides it **once, at the edge**, beneath all
+ * three — never per layer, where two builds could disagree about which
+ * operating system they are on.
  *
  * @public
  */
@@ -59,20 +68,30 @@ export const CurrentPlatform: Context.Reference<XdgPlatform> = Context.Reference
  * Indicates that the environment cannot satisfy XDG directory resolution.
  *
  * @remarks
- * Raised only for `HOME`: every other XDG variable is optional by construction,
- * and its absence is a resolved default rather than a failure. `cause` carries
- * the underlying `ConfigError` structurally.
+ * Raised only for the home directory: every other XDG variable is optional by
+ * construction, and its absence is a resolved default rather than a failure.
+ * `cause` carries the underlying `ConfigError` structurally.
+ *
+ * `variable` is `"HOME"` on every platform but Windows. On `win32` the home
+ * directory is read from `USERPROFILE`, falling back to `HOME`, and `variable`
+ * is `"USERPROFILE"` — a stable discriminator meaning **neither** variable was
+ * set, which the message spells out.
  *
  * @public
  */
 export class XdgEnvError extends Schema.TaggedError<XdgEnvError>()("XdgEnvError", {
-	/** The environment variable that was required and not found. */
+	/**
+	 * The environment variable that was required and not found: `"HOME"`, or
+	 * `"USERPROFILE"` on `win32`, where it means neither `USERPROFILE` nor `HOME`.
+	 */
 	variable: Schema.String,
 	/** The underlying failure, preserved structurally. */
 	cause: Schema.Defect(),
 }) {
 	override get message(): string {
-		return `The ${this.variable} environment variable is not set`;
+		return this.variable === "USERPROFILE"
+			? "Neither the USERPROFILE nor the HOME environment variable is set"
+			: `The ${this.variable} environment variable is not set`;
 	}
 }
 
@@ -84,15 +103,24 @@ export class XdgEnvError extends Schema.TaggedError<XdgEnvError>()("XdgEnvError"
  * `Schema.optionalKey`, so an unset variable is an **absent key** and the read
  * is `paths.configHome ?? fallback`.
  *
- * `configDirs` and `dataDirs` are the colon-separated system search paths, split
- * and defaulted per the spec (`/etc/xdg` and `/usr/local/share:/usr/share`).
- * They are what make a config lookup a genuine ordered search rather than a
- * single stat.
+ * `configDirs` and `dataDirs` are the system search paths, split and defaulted
+ * per the spec (`/etc/xdg` and `/usr/local/share:/usr/share`). They are what
+ * make a config lookup a genuine ordered search rather than a single stat.
+ *
+ * Built by {@link Xdg.layer}, every optional path is **pre-validated
+ * absolute**: the XDG Base Directory specification says a relative path in an
+ * `XDG_*` variable is invalid and must be ignored, so a relative value reads as
+ * an absent key, never as a directory under the current working directory.
+ * `home` is the exception and is deliberately not validated. A value passed to
+ * {@link Xdg.layerFrom} is trusted as given — it is the test escape hatch.
  *
  * @public
  */
 export class XdgPaths extends Schema.Class<XdgPaths>("XdgPaths")({
-	/** `$HOME`. The one variable that must be set. */
+	/**
+	 * The home directory: `$HOME`, or on `win32` `%USERPROFILE%` falling back to
+	 * `$HOME`. The one value that must be set. Not validated as absolute.
+	 */
 	home: Schema.String,
 	/** `$XDG_CONFIG_HOME`. */
 	configHome: Schema.optionalKey(Schema.String),
@@ -108,22 +136,55 @@ export class XdgPaths extends Schema.Class<XdgPaths>("XdgPaths")({
 	appData: Schema.optionalKey(Schema.String),
 	/** `%LOCALAPPDATA%`, on Windows. */
 	localAppData: Schema.optionalKey(Schema.String),
-	/** `$XDG_CONFIG_DIRS`, split on `:`. Defaults to `["/etc/xdg"]`. */
+	/**
+	 * `$XDG_CONFIG_DIRS`, split on `:` (`;` on `win32`), relative entries
+	 * dropped. Defaults to `["/etc/xdg"]`.
+	 */
 	configDirs: Schema.Array(Schema.String),
-	/** `$XDG_DATA_DIRS`, split on `:`. Defaults to `["/usr/local/share", "/usr/share"]`. */
+	/**
+	 * `$XDG_DATA_DIRS`, split on `:` (`;` on `win32`), relative entries dropped.
+	 * Defaults to `["/usr/local/share", "/usr/share"]`.
+	 */
 	dataDirs: Schema.Array(Schema.String),
 }) {}
 
+/** A Windows absolute path: an optional drive letter, then a separator. Core's own rule. */
+const WIN32_ABSOLUTE = /^([a-zA-Z]:)?[\\/]/;
+
 /**
- * Split a `PATH`-style variable, dropping empty entries.
+ * Whether `value` is an absolute path on `platform`.
+ *
+ * @remarks
+ * Pure string inspection, so the check needs no `Path` service and the layer's
+ * requirements do not grow. On `win32` both `C:\x` and a rooted `\x` or `/x`
+ * count; everywhere else only a leading `/` does.
+ */
+const isAbsoluteFor = (platform: XdgPlatform, value: string): boolean =>
+	platform === "win32" ? WIN32_ABSOLUTE.test(value) : value.startsWith("/");
+
+/**
+ * Split a `PATH`-style variable, dropping empty and relative entries.
  *
  * @remarks
  * Per the XDG spec, an unset **or empty** variable takes the default — so
- * `XDG_CONFIG_DIRS=""` is not "no system directories", it is `/etc/xdg`.
+ * `XDG_CONFIG_DIRS=""` is not "no system directories", it is `/etc/xdg`. The
+ * spec also says a relative entry is invalid and ignored, and is silent on what
+ * a list emptied by that rule means; this module reads it the way it reads an
+ * empty variable, so `XDG_CONFIG_DIRS=rel` also takes the default.
+ *
+ * On `win32` the delimiter is `;`, the Windows path-list separator: splitting
+ * `C:\ProgramData\xdg` on `:` would yield a drive letter and a drive-less
+ * rooted fragment that the absolute rule would wrongly accept.
  */
-const splitDirs = (raw: string | undefined, fallback: ReadonlyArray<string>): ReadonlyArray<string> => {
+const splitDirs = (
+	raw: string | undefined,
+	fallback: ReadonlyArray<string>,
+	platform: XdgPlatform,
+): ReadonlyArray<string> => {
 	if (raw === undefined) return fallback;
-	const parts = raw.split(":").filter((entry) => entry.length > 0);
+	const parts = raw
+		.split(platform === "win32" ? ";" : ":")
+		.filter((entry) => entry.length > 0 && isAbsoluteFor(platform, entry));
 	return parts.length === 0 ? fallback : parts;
 };
 
@@ -133,8 +194,9 @@ const splitDirs = (raw: string | undefined, fallback: ReadonlyArray<string>): Re
  * @remarks
  * The service's shape **is** {@link XdgPaths}: the environment is read once, at
  * layer construction, and the service is the resolved value. `yield* Xdg` gives
- * you a record of strings, and the only failure — an unset `HOME` — happens
- * once, where the layer is built.
+ * you a record of strings, and the only failure — an unset home directory
+ * (`HOME`, or on `win32` both `USERPROFILE` and `HOME`) — happens once, where
+ * the layer is built.
  *
  * @public
  */
@@ -146,6 +208,22 @@ export class Xdg extends Context.Service<Xdg, XdgPaths>()("@effected/xdg/Xdg") {
 	 * Reads from the ambient `ConfigProvider`, which defaults to `process.env`.
 	 * A test drives it with `ConfigProvider.layer(ConfigProvider.fromUnknown({…}))`
 	 * and never mutates the real environment.
+	 *
+	 * Three rules depend on {@link CurrentPlatform}, read once here:
+	 *
+	 * - the home directory is `HOME`, or on `win32` `USERPROFILE` then `HOME`;
+	 * - a **relative** `XDG_*` value is ignored — it reads as an absent key, per
+	 *   the XDG Base Directory specification — under the platform's absolute
+	 *   rule, while `APPDATA` and `LOCALAPPDATA`, which are Windows variables,
+	 *   are always judged by the Windows rule;
+	 * - `XDG_CONFIG_DIRS` and `XDG_DATA_DIRS` split on `;` on `win32` and `:`
+	 *   elsewhere, dropping relative entries, and a list left empty takes the
+	 *   spec default.
+	 *
+	 * The home directory itself is deliberately not validated, and a missing one
+	 * still fails the whole layer eagerly, even when every `XDG_*_HOME` is set:
+	 * the fallback rungs, the native rung and the runtime directory all derive
+	 * from it, and failing here is what keeps every downstream read infallible.
 	 */
 	static readonly layer: Layer.Layer<Xdg, XdgEnvError> = Layer.effect(
 		Xdg,
@@ -157,7 +235,15 @@ export class Xdg extends Context.Service<Xdg, XdgPaths>()("@effected/xdg/Xdg") {
 			const asEnvError = <A>(name: string, config: Config.Config<A>): Effect.Effect<A, XdgEnvError> =>
 				Effect.catchTag(config, "ConfigError", (cause) => Effect.fail(new XdgEnvError({ variable: name, cause })));
 
-			const home = yield* asEnvError("HOME", Config.String("HOME"));
+			const platform = yield* CurrentPlatform;
+
+			// On Windows the home directory is `USERPROFILE`, as Node's `os.homedir()`
+			// reads it; `HOME` is usually set only under Git Bash or MSYS, where it
+			// normally agrees, so it stays as the fallback and nothing that works
+			// today stops working.
+			const home = yield* platform === "win32"
+				? asEnvError("USERPROFILE", Config.String("USERPROFILE").pipe(Config.orElse(() => Config.String("HOME"))))
+				: asEnvError("HOME", Config.String("HOME"));
 
 			/**
 			 * An unset variable is `Option.none()`, not a failure. The residual
@@ -168,13 +254,19 @@ export class Xdg extends Context.Service<Xdg, XdgPaths>()("@effected/xdg/Xdg") {
 			const read = (name: string): Effect.Effect<string | undefined, XdgEnvError> =>
 				Effect.map(asEnvError(name, Config.option(Config.String(name))), Option.getOrUndefined<string>);
 
-			const configHome = yield* read("XDG_CONFIG_HOME");
-			const dataHome = yield* read("XDG_DATA_HOME");
-			const cacheHome = yield* read("XDG_CACHE_HOME");
-			const stateHome = yield* read("XDG_STATE_HOME");
-			const runtimeDir = yield* read("XDG_RUNTIME_DIR");
-			const appData = yield* read("APPDATA");
-			const localAppData = yield* read("LOCALAPPDATA");
+			/** A path variable whose relative value is ignored, as though it were unset. */
+			const readAbsolute = (name: string, rule: XdgPlatform): Effect.Effect<string | undefined, XdgEnvError> =>
+				Effect.map(read(name), (value) => (value !== undefined && isAbsoluteFor(rule, value) ? value : undefined));
+
+			const configHome = yield* readAbsolute("XDG_CONFIG_HOME", platform);
+			const dataHome = yield* readAbsolute("XDG_DATA_HOME", platform);
+			const cacheHome = yield* readAbsolute("XDG_CACHE_HOME", platform);
+			const stateHome = yield* readAbsolute("XDG_STATE_HOME", platform);
+			const runtimeDir = yield* readAbsolute("XDG_RUNTIME_DIR", platform);
+			// Windows variables, read only by the win32 native rung: judged by the
+			// Windows rule on every host, so the answer never depends on where it ran.
+			const appData = yield* readAbsolute("APPDATA", "win32");
+			const localAppData = yield* readAbsolute("LOCALAPPDATA", "win32");
 			const configDirs = yield* read("XDG_CONFIG_DIRS");
 			const dataDirs = yield* read("XDG_DATA_DIRS");
 
@@ -189,8 +281,8 @@ export class Xdg extends Context.Service<Xdg, XdgPaths>()("@effected/xdg/Xdg") {
 				...(runtimeDir !== undefined && { runtimeDir }),
 				...(appData !== undefined && { appData }),
 				...(localAppData !== undefined && { localAppData }),
-				configDirs: splitDirs(configDirs, ["/etc/xdg"]),
-				dataDirs: splitDirs(dataDirs, ["/usr/local/share", "/usr/share"]),
+				configDirs: splitDirs(configDirs, ["/etc/xdg"], platform),
+				dataDirs: splitDirs(dataDirs, ["/usr/local/share", "/usr/share"], platform),
 			});
 		}),
 	);

@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Cause, Effect, Exit, Layer, Option, Path, PlatformError } from "effect";
+import { Cause, ConfigProvider, Effect, Exit, Layer, Option, Path, PlatformError } from "effect";
 import type { AppDirsOptions, XdgPlatform } from "../src/index.js";
 import { AppDirs, AppDirsError, CurrentPlatform, Xdg, XdgPaths } from "../src/index.js";
 
@@ -312,6 +312,86 @@ describe("AppDirs", () => {
 				assert.strictEqual(error.path, "/denied");
 				// The underlying failure is preserved, not stringified.
 				assert.instanceOf(error.cause, Error);
+			}),
+		);
+	});
+
+	describe("end to end over Xdg.layer", () => {
+		// The environment is read by the real `Xdg.layer`, not `layerFrom`, so the
+		// relative-value and home-directory rules are exercised where they bite:
+		// in the directory `ensure*` actually creates.
+		const live = (platform: XdgPlatform, vars: Record<string, string>, made: Array<string>, options: AppDirsOptions) =>
+			AppDirs.layer(options).pipe(
+				Layer.provide(Xdg.layer),
+				Layer.provide(
+					Layer.mergeAll(
+						Path.layer,
+						recordingFs(made),
+						ConfigProvider.layer(ConfigProvider.fromUnknown(vars)),
+						Layer.succeed(CurrentPlatform, platform),
+					),
+				),
+			);
+
+		it.effect("a relative XDG_CONFIG_HOME falls through to the fallback rung, absolute", () =>
+			Effect.gen(function* () {
+				const made: Array<string> = [];
+				const created = yield* Effect.gen(function* () {
+					const appDirs = yield* AppDirs;
+					return yield* appDirs.ensureConfig;
+				}).pipe(
+					Effect.provide(
+						live("linux", { HOME: "/home/ada", XDG_CONFIG_HOME: "rel/cfg" }, made, {
+							namespace: "myapp",
+							fallbackDir: ".myapp-fb",
+						}),
+					),
+				);
+				assert.strictEqual(created, "/home/ada/.myapp-fb");
+				assert.deepStrictEqual(made, ["/home/ada/.myapp-fb"]);
+				assert.isTrue(made.every((dir) => dir.startsWith("/")));
+			}),
+		);
+
+		it.effect("an absolute XDG_CONFIG_HOME still wins (control)", () =>
+			Effect.gen(function* () {
+				const made: Array<string> = [];
+				const created = yield* Effect.gen(function* () {
+					const appDirs = yield* AppDirs;
+					return yield* appDirs.ensureConfig;
+				}).pipe(
+					Effect.provide(live("linux", { HOME: "/home/ada", XDG_CONFIG_HOME: "/x/cfg" }, made, { namespace: "myapp" })),
+				);
+				assert.strictEqual(created, "/x/cfg/myapp");
+			}),
+		);
+
+		it.effect("resolves on win32 from USERPROFILE alone, the typical Windows shell", () =>
+			Effect.gen(function* () {
+				const dirs = yield* Effect.gen(function* () {
+					const appDirs = yield* AppDirs;
+					return appDirs.dirs;
+				}).pipe(Effect.provide(live("win32", { USERPROFILE: "C:\\Users\\ada" }, [], { namespace: "myapp" })));
+				assert.isTrue(dirs.config.startsWith("C:\\Users\\ada"));
+				assert.isTrue(dirs.cache.startsWith("C:\\Users\\ada"));
+			}),
+		);
+
+		it.effect("a relative APPDATA on win32 falls back to the home-derived roaming dir", () =>
+			Effect.gen(function* () {
+				const dirs = yield* Effect.gen(function* () {
+					const appDirs = yield* AppDirs;
+					return appDirs.dirs;
+				}).pipe(
+					Effect.provide(
+						live("win32", { USERPROFILE: "C:\\Users\\ada", APPDATA: "Roaming" }, [], {
+							namespace: "myapp",
+							native: true,
+						}),
+					),
+				);
+				assert.isTrue(dirs.config.startsWith("C:\\Users\\ada"));
+				assert.include(dirs.config, "AppData");
 			}),
 		);
 	});
