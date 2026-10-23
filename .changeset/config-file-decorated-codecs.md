@@ -18,7 +18,7 @@ The loader is now generic over the codec's error type `CE`, so a decorated codec
 ### Behaviour changes (no compile error)
 
 - `EncryptedCodec.parse` trims the envelope and decodes it with core `Base64`. Whitespace inside the envelope and missing padding now fail with `ConfigEncryptionError` phase `encoding`; whitespace around it, including a BOM or NBSP, is still accepted.
-- A runtime without `globalThis.crypto` now fails `stringify` with a typed error (phase `encrypt`) instead of a `TypeError` defect.
+- A runtime without `globalThis.crypto` now fails `stringify` with a typed error (phase `encrypt`) when the IV is generated, instead of a `TypeError` defect.
 - The `StringifyFailed` event now fires for every codec stringify failure, including `ConfigEncryptionError` and `ConfigMigrationError` from the decorators.
 
 ## Bug Fixes
