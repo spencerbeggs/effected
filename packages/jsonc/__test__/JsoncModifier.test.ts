@@ -317,7 +317,7 @@ describe("JsoncModifier", () => {
 			}),
 		);
 
-		it.effect("a delete never serializes, so an unserializable sibling is irrelevant", () =>
+		it.effect("a delete never serializes: undefined at an existing key succeeds and removes it", () =>
 			Effect.gen(function* () {
 				const edits = yield* JsoncModifier.modify('{ "a": 1, "b": 2 }', ["a"], undefined);
 				assert.deepStrictEqual(yield* Jsonc.parse(apply('{ "a": 1, "b": 2 }', edits)), { b: 2 });

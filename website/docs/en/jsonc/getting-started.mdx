@@ -165,9 +165,9 @@ Effect.runPromise(program);
 
 ## Handling errors
 
-Parsing recovers rather than bailing on the first problem: every recovered error is collected into a single `JsoncParseError` whose `errors` array carries the code and position of each one, so a user sees all the mistakes in their file at once. Structural edits that cannot be navigated fail with a `JsoncModificationError` carrying typed `path`, `expected` and `depth` fields.
+Parsing recovers rather than bailing on the first problem: every recovered error is collected into a single `JsoncParseError` whose `errors` array carries the code and position of each one, so a user sees all the mistakes in their file at once. Structural edits that cannot be navigated fail with a `JsoncModificationError` carrying typed `path`, `expected` and `depth` fields. A value that cannot be written as JSON (a circular reference, a `bigint`, a function or a symbol) fails the edit with a `JsoncStringifyError` routed on its `code`.
 
-Both are tagged errors, so `Effect.catchTag` routes each by its `_tag` with full type inference:
+All three are tagged errors, so `Effect.catchTag` routes each by its `_tag` with full type inference:
 
 ```ts with-api
 import { Jsonc, JsoncEdit, JsoncModifier } from "@effected/jsonc";
