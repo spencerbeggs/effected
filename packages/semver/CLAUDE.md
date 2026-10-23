@@ -78,6 +78,16 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
 - `Range.test` implements node-semver's prerelease restriction — a prerelease
   version matches a set only when some comparator carries a prerelease on the
   same `major.minor.patch` tuple.
+- **Core `effect/SemVer` and `effect/SemVerRange` are an oracle, not a
+  dependency.** `__test__/core-parity.test.ts` diffs every parse, ordering
+  and range match against them; a new divergence is a bug unless it joins
+  the named allowlist there and in
+  `@./okf/decisions/semver-stays-independent-of-core-semver.md`. Never
+  import a core SemVer module from `src/`.
+- Range edges follow node-semver and core: any `\s` separates and may follow
+  an operator, `>*`/`<*` desugar to the unsatisfiable `<0.0.0-0` (the
+  algebra treats such a set as empty), a concrete component may not follow a
+  wildcard, and build metadata is dropped in ranges and comparators.
 - `Range.isSubset` (and thus `equivalent`, `simplify`) is a conservative
   approximation; false negatives are expected and safe. Read the in-source
   remark before "fixing" it.
@@ -88,7 +98,7 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
 
 ## Test and build
 
-Tests live in `__test__/` (6 files, 243 tests), use `@effect/vitest`, and
+Tests live in `__test__/` (8 files), use `@effect/vitest`, and
 assert with `assert.*` — never `expect`. Default to `it.effect`; `VersionCache`
 suites use one top-level `layer(VersionCache.layer)(...)` group. Shared cases
 live in `__test__/fixtures/`.

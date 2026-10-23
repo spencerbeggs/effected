@@ -178,6 +178,25 @@ Effect.runPromise(program).then(console.log);
 // "rejected: v1.2.3"
 ```
 
+**Range edges follow npm and Effect's own `SemVerRange`.** Whitespace may follow an operator and any whitespace separates comparators, so the `">= 18"` common in real `engines` fields parses like `">=18"`. A wildcard major bounds nothing: `^*` and `~*` match every release, while `>*` and `<*` match no version at all — they desugar to `<0.0.0-0`, which `Range.intersect` reports as unsatisfiable. A concrete component after a wildcard (`1.*.3`) fails with a position, and build metadata inside a range is dropped, so `1.2.3+build` prints as `1.2.3`.
+
+```ts with-api
+import { Range, SemVer } from "@effected/semver";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const v = yield* SemVer.parse("20.1.0");
+  const spaced = yield* Range.parse(">= 18");
+  const nothing = yield* Range.parse(">*");
+  return [spaced.test(v), nothing.test(v), nothing.toString()] as const;
+});
+
+Effect.runPromise(program).then(console.log);
+// [true, false, "<0.0.0-0"]
+```
+
+**Effect also ships `SemVer` and `SemVerRange` in core.** Both are marked unstable, and this package does not build on them: it adds range algebra, `VersionCache`, `FromString` codecs and errors that carry a `position`. Use core for a throwaway comparison in code that touches no kit API; use this package for anything that crosses one. The two agree on parsing, ordering and matching except in three places: this package trims padded input such as `" 1.2.3"`, which core rejects; it accepts build metadata in a range and drops it, which core rejects; and its `Equal` ignores build metadata, while core's `Equivalence` includes it, so never put values from both in one `HashSet`.
+
 **There is no `SemVer.diff`.** Because `VersionDiff` references `SemVer` in its fields, a delegating static on `SemVer` would form an import cycle. Compute a diff with [`VersionDiff.between(a, b)`](/semver/api/class/versiondiff) instead — it returns a tagged class whose `type` field is the highest-precedence component that differs (`"major"`, `"minor"`, `"patch"`, `"prerelease"`, `"build"` or `"none"`), so a release tool branches on the bump kind directly rather than re-deriving it.
 
 ## Testing with @effect/vitest

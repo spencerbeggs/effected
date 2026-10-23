@@ -9,6 +9,13 @@
 //
 // Rejects `v`/`V` prefixes, `=` prefixes on versions, leading zeros on
 // numeric identifiers, and unsafe integers. Input must be fully consumed.
+//
+// Inside ranges and comparators: any `\s` whitespace separates (a tab or a
+// newline between comparators is as good as a space, matching node-semver and
+// core `SemVerRange`), whitespace may follow an operator (`>= 18`, `^ 1.2.3`),
+// a concrete component may not follow a wildcard (`1.*.3`, `x.1.2`), and
+// build metadata is consumed but dropped — it never affects precedence
+// (SemVer §10), so keeping it in a comparator is dead data.
 
 import type { PartialParts } from "./desugar.js";
 import { desugarCaret, desugarHyphen, desugarTilde, desugarXRange } from "./desugar.js";
@@ -52,6 +59,16 @@ const isLetter = (ch: string): boolean => (ch >= "a" && ch <= "z") || (ch >= "A"
 const isIdentChar = (ch: string): boolean => isDigit(ch) || isLetter(ch) || ch === "-";
 
 const atEnd = (s: ParserState): boolean => s.pos >= s.len;
+
+// The same character class `String.prototype.trim` strips and `/\s/` matches,
+// so a separator is exactly what the entry points' `trim()` would remove.
+const WHITESPACE = /\s/u;
+
+const isSpace = (ch: string | undefined): boolean => ch !== undefined && WHITESPACE.test(ch);
+
+const peekSpace = (s: ParserState): boolean => isSpace(peek(s));
+
+const isWildcard = (ch: string | undefined): boolean => ch === "x" || ch === "X" || ch === "*";
 
 const peekDigit = (s: ParserState): boolean => {
 	const ch = peek(s);
@@ -254,30 +271,34 @@ export const parseVersion = (raw: string): ParseResult<VersionParts> => {
 // Range parsing
 // ---------------------------------------------------------------------------
 
-const parseXR = (s: ParserState): number | null => {
-	const ch = peek(s);
-	if (ch === "x" || ch === "X" || ch === "*") {
+// One component of a partial version: a wildcard (`null`) or a numeric
+// identifier. Once a wildcard has been seen, only another wildcard may follow
+// — `1.*.3`, `x.1.2` and `*.1` fail at the concrete component.
+const parseXR = (s: ParserState, wildcardSeen: boolean): number | null => {
+	if (isWildcard(peek(s))) {
 		advance(s);
 		return null;
+	}
+	if (wildcardSeen) {
+		return fail(s);
 	}
 	return parseNumericIdentifier(s);
 };
 
 const parsePartial = (s: ParserState): PartialParts => {
-	const major = parseXR(s);
+	const major = parseXR(s, false);
 
 	let minor: number | null = null;
 	let patch: number | null = null;
 	let prerelease: Array<string | number> = [];
-	let build: Array<string> = [];
 
 	if (!atEnd(s) && peek(s) === ".") {
 		advance(s);
-		minor = parseXR(s);
+		minor = parseXR(s, major === null);
 
 		if (!atEnd(s) && peek(s) === ".") {
 			advance(s);
-			patch = parseXR(s);
+			patch = parseXR(s, minor === null);
 
 			// Optional prerelease (only if patch is numeric, not wildcard)
 			if (patch !== null && !atEnd(s) && peek(s) === "-") {
@@ -285,15 +306,15 @@ const parsePartial = (s: ParserState): PartialParts => {
 				prerelease = parsePreRelease(s);
 			}
 
-			// Optional build
+			// Optional build: validated, then dropped (SemVer §10)
 			if (patch !== null && !atEnd(s) && peek(s) === "+") {
 				advance(s);
-				build = parseBuild(s);
+				parseBuild(s);
 			}
 		}
 	}
 
-	return { major, minor, patch, prerelease, build };
+	return { major, minor, patch, prerelease };
 };
 
 const parseOperator = (s: ParserState): string | null => {
@@ -322,32 +343,50 @@ const parseOperator = (s: ParserState): string | null => {
 };
 
 const skipSpaces = (s: ParserState): void => {
-	while (!atEnd(s) && peek(s) === " ") {
+	while (peekSpace(s)) {
 		advance(s);
 	}
 };
 
-const isHyphenRange = (s: ParserState): boolean =>
-	s.pos + 2 < s.len && s.input[s.pos] === " " && s.input[s.pos + 1] === "-" && s.input[s.pos + 2] === " ";
+// An operator may be separated from its version by whitespace (`>= 18`,
+// `^ 1.2.3`), as node-semver and core accept. Only called after an operator
+// was actually consumed, so a bare version never swallows the separator that
+// ends it.
+const skipSpacesAfterOperator = (s: ParserState, operator: string | null): void => {
+	if (operator !== null) skipSpaces(s);
+};
+
+// Index just past the whitespace run starting at `pos`.
+const spanSpaces = (s: ParserState, pos: number): number => {
+	let end = pos;
+	while (end < s.len && isSpace(s.input[end])) {
+		end++;
+	}
+	return end;
+};
+
+// Length of a hyphen separator (`<ws>+ - <ws>+`) at the cursor, or 0 when
+// there is none. Whitespace is required on both sides: `1.2.3 -2.0.0` and
+// `1.2.3- 2.0.0` are not hyphen ranges.
+const hyphenSeparatorLength = (s: ParserState): number => {
+	const dash = spanSpaces(s, s.pos);
+	if (dash === s.pos || dash >= s.len || s.input[dash] !== "-") return 0;
+	const end = spanSpaces(s, dash + 1);
+	if (end === dash + 1) return 0;
+	return end - s.pos;
+};
 
 const isOrSeparator = (s: ParserState): boolean => {
-	// Skip optional leading spaces, then check for ||
-	let pos = s.pos;
-	while (pos < s.len && s.input[pos] === " ") {
-		pos++;
-	}
+	// Skip optional leading whitespace, then check for ||
+	const pos = spanSpaces(s, s.pos);
 	return pos + 1 < s.len && s.input[pos] === "|" && s.input[pos + 1] === "|";
 };
 
 const consumeOrSeparator = (s: ParserState): void => {
-	while (!atEnd(s) && peek(s) === " ") {
-		advance(s);
-	}
+	skipSpaces(s);
 	advance(s); // first |
 	advance(s); // second |
-	while (!atEnd(s) && peek(s) === " ") {
-		advance(s);
-	}
+	skipSpaces(s);
 };
 
 const parseSimple = (s: ParserState): ReadonlyArray<ComparatorParts> => {
@@ -359,31 +398,26 @@ const parseSimple = (s: ParserState): ReadonlyArray<ComparatorParts> => {
 		if (peek(s) === ">") {
 			return fail(s);
 		}
+		skipSpaces(s);
 		const partial = parsePartial(s);
 		return desugarTilde(partial);
 	}
 
 	if (ch === "^") {
 		advance(s);
+		skipSpaces(s);
 		const partial = parsePartial(s);
 		return desugarCaret(partial);
 	}
 
 	// Primitive: optional operator + partial
 	const operator = parseOperator(s);
+	skipSpacesAfterOperator(s, operator);
 	const partial = parsePartial(s);
 	return desugarXRange(operator, partial);
 };
 
-const atRangeEnd = (s: ParserState): boolean => {
-	if (atEnd(s)) return true;
-	// Check if we're at || separator
-	let pos = s.pos;
-	while (pos < s.len && s.input[pos] === " ") {
-		pos++;
-	}
-	return pos + 1 < s.len && s.input[pos] === "|" && s.input[pos + 1] === "|";
-};
+const atRangeEnd = (s: ParserState): boolean => atEnd(s) || isOrSeparator(s);
 
 const parseRangeComparators = (s: ParserState): ReadonlyArray<ComparatorParts> => {
 	skipSpaces(s);
@@ -392,12 +426,11 @@ const parseRangeComparators = (s: ParserState): ReadonlyArray<ComparatorParts> =
 	const savedPos = s.pos;
 	try {
 		const lower = parsePartial(s);
-		if (!isHyphenRange(s)) {
+		const separator = hyphenSeparatorLength(s);
+		if (separator === 0) {
 			return fail(s);
 		}
-		advance(s); // space
-		advance(s); // -
-		advance(s); // space
+		s.pos += separator;
 		const upper = parsePartial(s);
 		return desugarHyphen(lower, upper);
 	} catch (failure) {
@@ -416,8 +449,8 @@ const parseRangeComparators = (s: ParserState): ReadonlyArray<ComparatorParts> =
 	}
 
 	while (!atRangeEnd(s)) {
-		// Expect at least one space between simples
-		if (peek(s) !== " ") {
+		// Expect at least one whitespace character between simples
+		if (!peekSpace(s)) {
 			break;
 		}
 		skipSpaces(s);
@@ -443,7 +476,7 @@ export const parseRange = (raw: string): ParseResult<ReadonlyArray<ReadonlyArray
 		// Empty string = match all
 		return {
 			ok: true,
-			value: [desugarXRange(null, { major: null, minor: null, patch: null, prerelease: [], build: [] })],
+			value: [desugarXRange(null, { major: null, minor: null, patch: null, prerelease: [] })],
 		};
 	}
 
@@ -481,6 +514,7 @@ export const parseRange = (raw: string): ParseResult<ReadonlyArray<ReadonlyArray
 
 const parseComparatorCore = (s: ParserState): ComparatorParts => {
 	const operator = parseOperator(s);
+	skipSpacesAfterOperator(s, operator);
 
 	// Reject things like >> or <>
 	const ch = peek(s);
@@ -511,10 +545,12 @@ const parseComparatorCore = (s: ParserState): ComparatorParts => {
 		prerelease = parsePreRelease(s);
 	}
 
-	let build: Array<string> = [];
+	// Build metadata: validated, then dropped (SemVer §10) — the same rule
+	// the range path applies, so `Comparator.parse("=1.2.3+b")` and
+	// `Range.parse("=1.2.3+b")` produce the same comparator.
 	if (!atEnd(s) && peek(s) === "+") {
 		advance(s);
-		build = parseBuild(s);
+		parseBuild(s);
 	}
 
 	if (!atEnd(s)) {
@@ -523,13 +559,14 @@ const parseComparatorCore = (s: ParserState): ComparatorParts => {
 
 	return {
 		operator: (operator ?? "=") as ComparatorOperator,
-		version: { major, minor, patch, prerelease, build },
+		version: { major, minor, patch, prerelease, build: [] },
 	};
 };
 
 /**
  * Parse a single comparator string (optional operator + complete version).
  * Wildcards and range sugar are not allowed; a missing operator means `=`.
+ * Whitespace may follow the operator, and build metadata is dropped.
  */
 export const parseComparator = (raw: string): ParseResult<ComparatorParts> => {
 	const trimmed = raw.trim();
@@ -565,10 +602,15 @@ export const formatVersion = (v: VersionParts): string => {
 	return s;
 };
 
-/** Print a comparator; the `=` operator is implicit. */
+/**
+ * Print a comparator; the `=` operator is implicit. Build metadata is never
+ * printed — it carries no constraint (SemVer §10), and the parser drops it,
+ * so printing it would make a comparator built with `make` encode to text
+ * that decodes to a different value.
+ */
 export const formatComparator = (c: ComparatorParts): string => {
 	const op = c.operator === "=" ? "" : c.operator;
-	return `${op}${formatVersion(c.version)}`;
+	return `${op}${formatVersion({ ...c.version, build: [] })}`;
 };
 
 /** Print comparator sets as `a b || c d`. */

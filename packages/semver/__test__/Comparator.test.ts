@@ -51,7 +51,9 @@ describe("Comparator", () => {
 				const encoded = yield* Schema.encodeUnknownEffect(Comparator.FromString)(c);
 				const decoded = yield* Schema.decodeUnknownEffect(Comparator.FromString)(encoded);
 				assert.isTrue(Equal.equals(decoded, c), `expected ${decoded.toString()} to equal ${c.toString()}`);
-				assert.deepStrictEqual([...decoded.version.build], [...c.version.build]);
+				// Build metadata carries no constraint (SemVer §10): the string
+				// form neither prints nor keeps it.
+				assert.deepStrictEqual([...decoded.version.build], []);
 			}),
 		);
 	});

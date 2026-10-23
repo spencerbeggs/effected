@@ -69,6 +69,25 @@ export const rangeTests: ReadonlyArray<[string, string, boolean]> = [
 	[">=1.0.0-alpha <1.0.1", "1.0.0-rc", true],
 	// Prerelease tuple restriction
 	[">=1.0.0 <2.0.0", "1.5.0-alpha", false],
+	// Wildcard-major sugar matches every release; > and < a wildcard match nothing
+	["^*", "1.0.0", true],
+	["~*", "7.2.4", true],
+	["^x", "1.0.0", true],
+	["~x.x", "1.0.0", true],
+	[">*", "1.0.0", false],
+	["<*", "0.0.0", false],
+	[">=*", "1.0.0", true],
+	// Hyphen with a wildcard side drops that side's comparator
+	["* - 0.0.0-1", "0.0.0-0", true],
+	["* - 2", "2.9.9", true],
+	["* - 2", "3.0.0", false],
+	// Whitespace: any \s separates, and may follow an operator
+	[">= 1.0.0", "1.0.0", true],
+	[">= 18", "16.0.0", false],
+	[">=1.0.0\t<2.0.0", "1.5.0", true],
+	[">=1.0.0\n<2.0.0", "2.0.0", false],
+	// Build metadata in a range is dropped
+	["1.2.3+build", "1.2.3", true],
 ];
 export const validVersions: ReadonlyArray<string> = [
 	"0.0.0",

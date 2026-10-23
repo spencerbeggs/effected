@@ -40,6 +40,20 @@ export type ComparatorSet = ReadonlyArray<Comparator>;
  * (`1.x`, `*`), tilde (`~1.2.3`), caret (`^1.2.3`) and `||` unions — which
  * parsing desugars into primitive comparators and normalizes.
  *
+ * @remarks
+ * The grammar follows node-semver and core `SemVerRange` at the edges:
+ *
+ * - any whitespace (a space, a tab, a newline) separates comparators, and
+ *   whitespace may follow an operator — `>= 18` parses like `>=18`;
+ * - a wildcard major bounds nothing: `^*`, `~*` and `^x` match every
+ *   release, while `>*` and `<*` match nothing (they desugar to the
+ *   unsatisfiable `<0.0.0-0`);
+ * - a concrete component cannot follow a wildcard — `1.*.3` and `x.1.2`
+ *   fail with a position;
+ * - build metadata is accepted and dropped (SemVer §10), so `1.2.3+build`
+ *   parses to the same range as `1.2.3` and prints without `+build`. Core
+ *   rejects build metadata in a range; this package strips it, as npm does.
+ *
  * @example
  * ```ts
  * import { Range, SemVer } from "@effected/semver";
@@ -293,7 +307,8 @@ export class Range extends Schema.Class<Range>("Range")({
 
 	/**
 	 * Check whether every version matched by `sub` is also matched by `sup`.
-	 * Dual API.
+	 * Dual API. A comparator set that matches nothing (`>*`, `<*`, or any
+	 * contradictory set) is a subset of every range.
 	 *
 	 * @remarks
 	 * This check is a conservative approximation: it may return `false` for
@@ -328,10 +343,20 @@ export class Range extends Schema.Class<Range>("Range")({
 	 * Remove redundant comparator sets: a set is redundant when it is a
 	 * subset of another set in the range (every version it matches already
 	 * matches that broader set, so the union gains nothing by keeping it).
+	 *
+	 * @remarks
+	 * Sets that are subsets of each other (duplicates, or two spellings of
+	 * one set) keep their FIRST occurrence: dropping every member of such a
+	 * group would lose the versions they match, so `^1 || ^1 || ^2` keeps
+	 * `^1`. A set that matches nothing is a subset of every set, so it is
+	 * dropped when another set remains: `>* || ^1.0.0` simplifies to
+	 * `>=1.0.0 <2.0.0-0`, while `>* || <*` keeps one match-nothing set.
 	 */
 	static simplify(range: Range): Range {
 		const sets = range.sets.filter((set, i) => {
-			return !range.sets.some((other, j) => i !== j && isComparatorSetSubset(set, other));
+			return !range.sets.some(
+				(other, j) => i !== j && isComparatorSetSubset(set, other) && (j < i || !isComparatorSetSubset(other, set)),
+			);
 		});
 
 		if (sets.length === 0) return range;
@@ -414,12 +439,20 @@ const satisfiesSet = (version: SemVer, set: ComparatorSet): boolean => {
 
 // ── Algebra internals ────────────────────────────────────────────────────
 
+// `0.0.0-0`: major, minor and patch at zero with the single lowest prerelease
+// identifier — the minimum of SemVer 2.0.0 precedence.
+const isLowestVersion = (v: SemVer): boolean =>
+	v.major === 0 && v.minor === 0 && v.patch === 0 && v.prerelease.length === 1 && v.prerelease[0] === 0;
+
 const isSetSatisfiable = (set: ComparatorSet): boolean => {
 	const lowers: Array<Comparator> = [];
 	const uppers: Array<Comparator> = [];
 	const equals: Array<Comparator> = [];
 
 	for (const c of set) {
+		// `<0.0.0-0` admits nothing: no version sorts below the lowest one
+		// SemVer can express. `>*` and `<*` desugar to exactly this.
+		if (c.operator === "<" && isLowestVersion(c.version)) return false;
 		if (c.operator === "=") equals.push(c);
 		else if (c.operator === ">" || c.operator === ">=") lowers.push(c);
 		else uppers.push(c);
@@ -498,6 +531,8 @@ const isComparatorImplied = (set: ComparatorSet, comp: Comparator): boolean => {
 };
 
 const isComparatorSetSubset = (sub: ComparatorSet, sup: ComparatorSet): boolean => {
+	// An unsatisfiable set matches no version, so it is a subset of anything.
+	if (!isSetSatisfiable(sub)) return true;
 	for (const supComp of sup) {
 		if (!isComparatorImplied(sub, supComp)) return false;
 	}

@@ -7,15 +7,20 @@ import type { ComparatorOperator, ComparatorParts, VersionParts } from "./order.
 /**
  * A partially specified version as written in range sugar (`1.x`, `1.2`,
  * `*`). `null` in `major`/`minor`/`patch` marks an unspecified (wildcard)
- * component; `prerelease`/`build` are only populated when the fully
- * specified suffix of a partial version carries them.
+ * component; `prerelease` is only populated when a fully specified version
+ * carries one. A wildcard is never followed by a concrete component — the
+ * grammar rejects `1.*.3` — so a `null` component implies every later one is
+ * `null` too.
+ *
+ * There is no build field: build metadata never affects precedence
+ * (SemVer §10), so the grammar consumes and drops it inside ranges and
+ * comparators rather than carrying dead data into `Range.toString`.
  */
 export interface PartialParts {
 	readonly major: number | null;
 	readonly minor: number | null;
 	readonly patch: number | null;
 	readonly prerelease: ReadonlyArray<string | number>;
-	readonly build: ReadonlyArray<string>;
 }
 
 const sv = (
@@ -23,10 +28,18 @@ const sv = (
 	minor: number,
 	patch: number,
 	prerelease: ReadonlyArray<string | number> = [],
-	build: ReadonlyArray<string> = [],
-): VersionParts => ({ major, minor, patch, prerelease, build });
+): VersionParts => ({ major, minor, patch, prerelease, build: [] });
 
 const comp = (operator: ComparatorOperator, version: VersionParts): ComparatorParts => ({ operator, version });
+
+// The match-all comparator set: `*`, and every wildcard-major sugar that
+// bounds nothing (`^*`, `~x`, `>=*`, `=*`).
+const matchAll = (): ReadonlyArray<ComparatorParts> => [comp(">=", sv(0, 0, 0))];
+
+// The match-nothing comparator set. `0.0.0-0` is the lowest version SemVer
+// 2.0.0 can express, so nothing sorts below it — node-semver and core
+// `SemVerRange` desugar `>*` and `<*` to exactly this.
+const matchNothing = (): ReadonlyArray<ComparatorParts> => [comp("<", sv(0, 0, 0, [0]))];
 
 /**
  * Desugar a tilde range (`~1.2.3`, `~1.2`, `~1`) into a `>=`/`<` comparator
@@ -34,7 +47,9 @@ const comp = (operator: ComparatorOperator, version: VersionParts): ComparatorPa
  * and minor-level changes when it is not.
  */
 export const desugarTilde = (p: PartialParts): ReadonlyArray<ComparatorParts> => {
-	const major = p.major ?? 0;
+	// ~* / ~x / ~x.x -> * (a wildcard major bounds nothing)
+	if (p.major === null) return matchAll();
+	const major = p.major;
 	const minor = p.minor;
 	const patch = p.patch ?? 0;
 
@@ -55,7 +70,9 @@ export const desugarTilde = (p: PartialParts): ReadonlyArray<ComparatorParts> =>
  * `^0.0.3` allows none).
  */
 export const desugarCaret = (p: PartialParts): ReadonlyArray<ComparatorParts> => {
-	const major = p.major ?? 0;
+	// ^* / ^x -> * (a wildcard major bounds nothing; it is not ^0)
+	if (p.major === null) return matchAll();
+	const major = p.major;
 	const minor = p.minor;
 	const patch = p.patch;
 
@@ -106,7 +123,7 @@ export const desugarXRange = (operator: string | null, p: PartialParts): Readonl
 
 	// Fully specified (no wildcards)
 	if (major !== null && minor !== null && patch !== null) {
-		const version = sv(major, minor, patch, p.prerelease, p.build);
+		const version = sv(major, minor, patch, p.prerelease);
 		if (operator === null || operator === "=") {
 			return [comp("=", version)];
 		}
@@ -115,8 +132,10 @@ export const desugarXRange = (operator: string | null, p: PartialParts): Readonl
 
 	// Has wildcards
 	if (major === null) {
-		// * -> >=0.0.0; >* or >=* etc. still resolve to >=0.0.0
-		return [comp(">=", sv(0, 0, 0))];
+		// >* (nothing is above every version) and <* (nothing is below every
+		// version) match nothing; *, =*, >=* and <=* match everything.
+		if (operator === ">" || operator === "<") return matchNothing();
+		return matchAll();
 	}
 
 	if (minor === null) {
@@ -164,28 +183,31 @@ export const desugarXRange = (operator: string | null, p: PartialParts): Readonl
  * Desugar a hyphen range (`1.2.3 - 2.3.4`) into a comparator pair: `>=` the
  * lower bound and, for the upper bound, `<=` when it is fully specified or
  * `<` the next unspecified component when it is partial (`1.2.3 - 2.3` →
- * `>=1.2.3 <2.4.0-0`).
+ * `>=1.2.3 <2.4.0-0`). A `*` on either side drops that side's comparator
+ * entirely (`* - 2.0.0` → `<=2.0.0`), as node-semver and core do: emitting a
+ * `>=0.0.0` lower bound instead would shut out prereleases the upper
+ * comparator's tuple admits (`* - 0.0.0-1` must match `0.0.0-0`).
  */
 export const desugarHyphen = (lower: PartialParts, upper: PartialParts): ReadonlyArray<ComparatorParts> => {
-	const lowerVersion = sv(lower.major ?? 0, lower.minor ?? 0, lower.patch ?? 0, lower.prerelease);
+	const from: ReadonlyArray<ComparatorParts> =
+		lower.major === null ? [] : [comp(">=", sv(lower.major, lower.minor ?? 0, lower.patch ?? 0, lower.prerelease))];
 
+	let to: ReadonlyArray<ComparatorParts>;
 	if (upper.major !== null && upper.minor !== null && upper.patch !== null) {
-		// Full upper: >=lower <=upper
-		const upperVersion = sv(upper.major, upper.minor, upper.patch, upper.prerelease);
-		return [comp(">=", lowerVersion), comp("<=", upperVersion)];
-	}
-
-	// Partial upper
-	if (upper.major !== null && upper.minor !== null) {
+		// Full upper: <=upper
+		to = [comp("<=", sv(upper.major, upper.minor, upper.patch, upper.prerelease))];
+	} else if (upper.major !== null && upper.minor !== null) {
 		// 1.2.3 - 2.3 -> >=1.2.3 <2.4.0-0
-		return [comp(">=", lowerVersion), comp("<", sv(upper.major, upper.minor + 1, 0, [0]))];
-	}
-
-	if (upper.major !== null) {
+		to = [comp("<", sv(upper.major, upper.minor + 1, 0, [0]))];
+	} else if (upper.major !== null) {
 		// 1.2.3 - 2 -> >=1.2.3 <3.0.0-0
-		return [comp(">=", lowerVersion), comp("<", sv(upper.major + 1, 0, 0, [0]))];
+		to = [comp("<", sv(upper.major + 1, 0, 0, [0]))];
+	} else {
+		// upper is * -> no upper bound
+		to = [];
 	}
 
-	// upper is * -> >=lower
-	return [comp(">=", lowerVersion)];
+	const set = [...from, ...to];
+	// * - * -> *
+	return set.length === 0 ? matchAll() : set;
 };
