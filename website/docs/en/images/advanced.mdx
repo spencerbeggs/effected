@@ -11,6 +11,8 @@ This page covers what the guide leaves out: replacing the directory backend, whi
 
 [`ImageBackend`](/images/api/class/imagebackend) is a port, not a dependency. It has two operations: `get(key)` and `set({ key, value, contentType?, tags? })`, both failing with [`ImageBackendError`](/images/api/class/imagebackenderror). `ImageBackend.layerFrom` adapts any service whose `get` and `set` match structurally, so there is no dependency edge between this package and the store.
 
+A backend you write by hand constructs `ImageBackendError` itself, and its `reason` field is required: `backend` when the store underneath failed, `unsupported-content-type` when `set` was given a content type the backend cannot store. `layerDirectory` and `layerFrom` set it for you.
+
 The `Cache` service from `@effected/store` is one such service:
 
 ```ts
@@ -45,7 +47,7 @@ Four tagged errors, one recovery each, routed with `Effect.catchTag`:
 
 - [`ImageParseError`](/images/api/class/imageparseerror): the bytes are not a readable image. `reason` is `unrecognized`, `truncated` or `malformed`.
 - [`ImageCacheKeyError`](/images/api/class/imagecachekeyerror): the key could not be built. `reason` is `encode` (the schema rejected the params), `non-json` (the encoded form is not JSON-representable) or `digest` (the `Crypto` service failed).
-- [`ImageBackendError`](/images/api/class/imagebackenderror): the storage backend failed. These are surfaced, never swallowed.
+- [`ImageBackendError`](/images/api/class/imagebackenderror): the storage backend failed. `reason` is `backend` (the store underneath failed) or `unsupported-content-type` (a `set` whose content type the backend has no file extension for). These are surfaced, never swallowed.
 - [`ImageGenerateError`](/images/api/class/imagegenerateerror): the generator returned bytes that are empty, unparseable or outside `accept`. Nothing is stored.
 
 The generator's own error type passes through `getOrGenerate` untouched, so a failing renderer is never relabelled. That holds only if the generator keeps it: wrap a Promise-returning renderer as `Effect.tryPromise({ try: () => render(info), catch: (cause) => cause })`, because the one-argument `Effect.tryPromise` wraps the rejection in `UnknownError`, losing the generator's own error.
