@@ -1,5 +1,43 @@
 # @effected/schemastore
 
+## 0.26.0
+
+### Breaking Changes
+
+#### `HostedSchema.resolvedCurrent` returns `Option`
+
+- In `@effected/schemastore`, `HostedSchema.resolvedCurrent` returns `Option<SchemaVersion>` instead of the version or `undefined`.
+
+#### Stricter config validation in `@effected/schemastore-cli`
+
+- A config is now validated by one Schema decode that reports every problem. `ConfigLoadError.reason` is a list of `<message> at <path>` clauses joined by ` ;  `. These configs used to load and are now rejected:
+
+- `onDrift` missing, or set to anything other than `error` or `warn`
+
+- a schema `drift` other than `strict`, `semantic` or `allow`
+
+- `catalog` present but `undefined`
+
+- a catalog `fileMatch` element that is not a string
+
+- a non-string value in the optional catalog `versions` record, which the old checker never read
+
+- a `target.schema` that is not a Schema
+
+- The types are unchanged; the CLI's behaviour and error output change. [#1066][#1066]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/semver | dependency | updated | 0.15.0 | 0.16.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.25.0
 
 ### Dependencies

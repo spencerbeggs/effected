@@ -1,5 +1,38 @@
 # @effected/github-actions
 
+## 0.26.0
+
+### Breaking Changes
+
+#### Nested log groups
+
+- The runner does not nest `::group::` commands. `ActionLogger.group` now writes the group command only at the outermost level; a nested group writes a single `▸ <name>` header line instead of a second `::group::`/`::endgroup::` pair. The log shape changes for any action that nests groups.
+
+### Features
+
+- `ActionsRegistryCredential.workload` mints the npm workload credential, masks both values and returns it.
+- `OidcTokenIssuer.recording` is a test double that records the audiences it was asked for. [#1066][#1066]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github | dependency | updated | 0.23.0 | 0.23.1 |
+| @effected/github-commands | dependency | updated | 0.6.0 | 0.6.1 |
+| @effected/jwt | dependency | updated | 0.5.0 | 0.6.0 |
+| @effected/markdown | dependency | updated | 0.20.0 | 0.21.0 |
+| @effected/npm | dependency | updated | 0.25.0 | 0.26.0 |
+| @effected/oidc | dependency | updated | 0.1.1 | 0.1.2 |
+| @effected/sbom | dependency | updated | 0.15.0 | 0.15.1 |
+| @effected/semver | dependency | updated | 0.15.0 | 0.16.0 |
+| @effected/templates | dependency | updated | 0.14.0 | 0.14.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.25.0
 
 ### Breaking Changes

@@ -1,5 +1,17 @@
 # @effected/github-commands
 
+## 0.6.1
+
+### Documentation
+
+- `WorkflowCommand.group` and `endGroup` state that the runner does not nest groups, and point to `ActionLogger.group` in `@effected/github-actions` for nesting-aware grouping. [#1066][#1066]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.6.0
 
 ### Maintenance

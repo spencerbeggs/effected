@@ -1,5 +1,27 @@
 # @effected/lockfiles
 
+## 0.19.2
+
+### Bug Fixes
+
+- `LockfileIntegrity` now judges constraint rows written with whitespace after the operator (such as `>= 18`), which it used to skip. A lockfile can report new unsatisfied rows and `valid: false` as a result.
+- A `>*` or `<*` constraint now matches nothing, so `LockfileIntegrity` flags every candidate under it. [#1066][#1066]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/npm | dependency | updated | 0.25.0 | 0.26.0 |
+| @effected/semver | dependency | updated | 0.15.0 | 0.16.0 |
+| @effected/yaml | dependency | updated | 0.23.0 | 0.24.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.19.1
 
 ### Dependencies

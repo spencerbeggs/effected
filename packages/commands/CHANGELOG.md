@@ -1,5 +1,17 @@
 # @effected/commands
 
+## 0.15.1
+
+### Bug Fixes
+
+- `VersionJson` tool-version probes decode stdout through Schema instead of `JSON.parse`, and follow only own properties, so a polluted prototype can no longer answer as a version. [#1066][#1066]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.15.0
 
 ### Maintenance

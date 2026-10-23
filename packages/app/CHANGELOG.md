@@ -1,5 +1,28 @@
 # @effected/app
 
+## 0.25.1
+
+### Documentation
+
+- `App.layerDirs` documents the win32 home directory (`USERPROFILE`, then `HOME`) and passes through the stricter `@effected/xdg` handling of relative values. [#1066][#1066]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/jsonc | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/store | dependency | updated | 0.17.0 | 0.17.1 |
+| @effected/toml | dependency | updated | 0.15.0 | 0.16.0 |
+| @effected/xdg | dependency | updated | 0.13.0 | 0.14.0 |
+| @effected/yaml | dependency | updated | 0.23.0 | 0.24.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.25.0
 
 ### Dependencies

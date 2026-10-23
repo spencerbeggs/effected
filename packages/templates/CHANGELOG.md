@@ -1,5 +1,17 @@
 # @effected/templates
 
+## 0.14.1
+
+### Bug Fixes
+
+- An unstubbed member of `ManagedSection.makeTest` now dies when its effect runs (`Effect.die`). Calling the member only builds the effect. [#1066][#1066]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.14.0
 
 ### Maintenance

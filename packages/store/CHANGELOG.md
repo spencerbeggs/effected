@@ -1,5 +1,17 @@
 # @effected/store
 
+## 0.17.1
+
+### Bug Fixes
+
+- Cache tags decode through a Schema codec. A tags column holding a mixed-type JSON array (for example `["a", 1]`) now decodes to an empty list instead of keeping its string elements, the same as any other corrupt column. [#1066][#1066]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.17.0
 
 ### Maintenance

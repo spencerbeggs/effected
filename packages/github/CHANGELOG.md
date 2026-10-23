@@ -1,5 +1,15 @@
 # @effected/github
 
+## 0.23.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jwt | dependency | updated | 0.5.0 | 0.6.0 |
+| @effected/oidc | dependency | updated | 0.1.1 | 0.1.2 |
+| @effected/semver | dependency | updated | 0.15.0 | 0.16.0 |
+
 ## 0.23.0
 
 ### Features

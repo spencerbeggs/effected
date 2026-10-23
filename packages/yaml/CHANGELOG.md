@@ -1,5 +1,26 @@
 # @effected/yaml
 
+## 0.24.0
+
+### Features
+
+- Adds the synchronous twins `YamlFormat.modifyResult` and `modifyToStringResult`, `YamlDocument.parseResult` and `parseAllResult`, and `YamlDocument#stringifyResult`. Each returns a `Result`, and the Effect forms are built from them.
+
+### Bug Fixes
+
+- `YamlFormat.modify` counts a replacement value's depth from the target's path. A value that used to die with an untyped `StringifyDepthExceeded` one or more keys down now fails typed with `NestingDepthExceeded`.
+- `YamlDocument#stringify` does its work when the effect runs, inside a new `YamlDocument.stringify` span, instead of when the method is called.
+
+### Other
+
+- Tracing: `modifyToString` no longer opens a nested `YamlFormat.modify` child span. [#1066][#1066]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.23.0
 
 ### Maintenance

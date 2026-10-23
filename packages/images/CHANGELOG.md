@@ -1,5 +1,17 @@
 # @effected/images
 
+## 0.6.0
+
+### Breaking Changes
+
+- `ImageBackendError` has a new required field, `reason`, which is `"backend"` or `"unsupported-content-type"`. `layerDirectory` and `layerFrom` set it themselves; a hand-written `ImageBackend` or test double must pass it. [#1066][#1066]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.5.0
 
 ### Maintenance

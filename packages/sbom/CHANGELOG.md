@@ -1,5 +1,14 @@
 # @effected/sbom
 
+## 0.15.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/oidc | dependency | updated | 0.1.1 | 0.1.2 |
+| @effected/package-json | dependency | updated | 0.24.1 | 0.25.0 |
+
 ## 0.15.0
 
 ### Breaking Changes

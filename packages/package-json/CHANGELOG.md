@@ -1,5 +1,35 @@
 # @effected/package-json
 
+## 0.25.0
+
+### Breaking Changes
+
+#### `PackageJsonModifyError` covers serialization failures
+
+- `PackageJsonModifyError` now also wraps serialization failures. A `bigint`, circular, function or symbol value fails with a `JsoncStringifyError` cause instead of dying. When a navigation failure and a serialization failure both apply, the navigation cause wins.
+
+- The messages of `PackageJsonSyntaxError` (invalid JSON) and `PackageJsonModifyError` now end with the cause's message, so the JSON position is kept. Code that matches the exact message text must be updated.
+
+### Features
+
+- `PackageJsonFormat.parseObjectResult` and `parseObject` turn manifest text into a plain object and report invalid JSON separately from JSON that is not an object.
+- `PackageJsonFormat.modifyResult` and `modifyToStringResult` are synchronous twins of `modify` and `modifyToString`, which are now built from them and keep the same spans.
+- `PackageManagerRange` and `Dependency.range` accept ranges with whitespace after the operator, following `@effected/semver`. [#1066][#1066]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/npm | dependency | updated | 0.25.0 | 0.26.0 |
+| @effected/semver | dependency | updated | 0.15.0 | 0.16.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.24.1
 
 ### Dependencies

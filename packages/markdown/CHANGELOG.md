@@ -1,5 +1,39 @@
 # @effected/markdown
 
+## 0.21.0
+
+### Breaking Changes
+
+#### Lookups return `Option`
+
+- `MarkdownDocument.frontmatter` returns `Option<Frontmatter>`, `firstSection` and `sectionByHeading` return `Option<DocumentSection>`, and every `find` overload returns `Option`. They used to return the value or `undefined`.
+
+- **Migration:** replace `undefined` checks with `Option.isSome`, `Option.match` or `Option.getOrUndefined`.
+
+### Features
+
+- `MarkdownVisitor.walk(root)` returns a synchronous `Iterable<MarkdownVisitorEvent>`. `visit` is now built from it and behaves as before. [#1066][#1066]
+
+### Bug Fixes
+
+- `Mdast.fromMdastResult` and `Mdast.fromMdast` now fail typed with `MdastDecodeError` on deeply nested foreign mdast instead of throwing. Any node nested more than 256 levels below the root is refused with a `SchemaIssue.InvalidValue` issue naming the depth, the same cap the parser and `Markdown.stringify` enforce. Because leaves count toward the cap, a parsed tree whose innermost text sits past it (for example 255 nested blockquotes) is refused here, as `Markdown.stringify` already refuses it. [#1038][#1038]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/toml | dependency | updated | 0.15.0 | 0.16.0 |
+| @effected/yaml | dependency | updated | 0.23.0 | 0.24.0 |
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) and [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1038]: https://github.com/spencerbeggs/effected/pull/1038
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.20.0
 
 ### Dependencies

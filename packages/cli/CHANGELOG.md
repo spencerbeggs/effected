@@ -1,5 +1,29 @@
 # @effected/cli
 
+## 0.21.0
+
+### Features
+
+- `Fmt.duration` accepts any `Duration.Input`. A number is still milliseconds and is used as given; a `bigint` is nanoseconds, as in core. An invalid, negative or infinite input formats as `0ms` instead of throwing.
+
+### Documentation
+
+- Fixes API Extractor link and code-span warnings in the `ui` TSDoc. [#1066][#1066]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/env | dependency | updated | 0.5.0 | 0.5.0 |
+| @effected/github-commands | dependency | updated | 0.6.0 | 0.6.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1066]: https://github.com/spencerbeggs/effected/pull/1066
+
 ## 0.20.0
 
 ### Bug Fixes
