@@ -1,5 +1,14 @@
 # Log
 
+## 2026-10-23
+
+* Updated @effected/crypto
+* Updated @effected/oidc
+* Updated @effected/webhooks
+* Updated Contract inversion is the default answer to a tier-dragging edge
+* Updated effected
+* Updated npm
+
 ## 2026-10-22
 
 * Updated @effected/memfs
