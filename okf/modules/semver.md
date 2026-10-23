@@ -8,11 +8,11 @@ resource: ../../packages/semver
 tags:
   - dx
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  by: "claude-code/opus-5.5"
+  at: 2026-10-23T20:38:47Z
 integrity:
   generated:
-    body: f3b1091e81939728
+    body: f33fbf8778dc6079
 ---
 
 # semver
@@ -51,11 +51,17 @@ Each `FromString` is a `Schema.decodeTo` transformation from `Schema.String` to 
 
 ## Errors
 
-Domain errors carry structured `input`/`position` payloads and derive `message` from a getter — never a preformatted string — so a serialized error stays reconstructible. The `FromString` transformations fail with `SchemaIssue.InvalidValue` instead; `SchemaError` never escapes the package. `Range.intersect` carries a typed failure rather than returning an unsatisfiable range, so an impossible constraint set is a failure the caller must handle rather than a value that silently matches nothing. `Range.isSubset` (and therefore `equivalent` and `simplify`) is a conservative approximation — false negatives are expected and safe.
+Domain errors carry structured `input`/`position` payloads (core's `SemVerError` carries prose only) and derive `message` from a getter — never a preformatted string — so a serialized error stays reconstructible. The `FromString` transformations fail with `SchemaIssue.InvalidValue` instead; `SchemaError` never escapes the package. `Range.intersect` carries a typed failure rather than returning an unsatisfiable range, so an impossible constraint set is a failure the caller must handle rather than a value that silently matches nothing. `Range.isSubset` (and therefore `equivalent` and `simplify`) is a conservative approximation — false negatives are expected and safe.
 
 ## Equal and Hash semantics
 
 `SemVer` customizes structural equality to ignore build metadata (SemVer §10) while including prerelease identifiers (§11); `VersionCache` dedupe and `Equal.equals` both inherit this. Because `Equal.equals` fast-paths on hash mismatch, the class overrides **both** `[Equal.symbol]` and `[Hash.symbol]` — overriding equality alone silently fails.
+
+## Relation to core
+
+Core ships `effect/SemVer` and `effect/SemVerRange`, both `@stability unstable`. This package stays independent of them and uses them as a test oracle instead: `__test__/core-parity.test.ts` runs every version parse, ordering and range match through both and fails on any disagreement outside three named divergences — padded version input (the kit trims), build metadata in a range or comparator (the kit drops it, core rejects it), and equality with build metadata (the kit's `Equal` follows precedence; core deliberately keeps a structural `Equivalence` that includes build beside a precedence `Order` that ignores it, so never mix the two in a hash-keyed collection). Why, and when to reach for core instead: [stays independent of core SemVer](../decisions/semver-stays-independent-of-core-semver.md).
+
+The range grammar matches node-semver and core at the edges: any `\s` whitespace separates comparators and may follow an operator (`>= 18`); `^*`, `~*` and `^x` match every release while `>*` and `<*` desugar to the unsatisfiable `<0.0.0-0`, which the range algebra treats as empty; a `*` side of a hyphen range drops that side's comparator; and a concrete component may not follow a wildcard (`1.*.3`). `SemVerBump.prerelease` reads an all-digit identifier as numeric, as core does, and throws on a malformed one. `includePrerelease` matching is not supported.
 
 ## Observability
 
@@ -63,7 +69,7 @@ Named `Effect.fn` spans on the effectful, failure-carrying public boundaries onl
 
 ## Testing
 
-`@effect/vitest` with `it.effect` as the default mode, tests in `packages/semver/__test__/`. `VersionCache` suites use one top-level `layer(VersionCache.layer)((it) => {...})` group so the layer is built once and memoized rather than provided per test. Round-trip properties run through `it.effect.prop` with `Schema.toArbitrary(SemVer)`, the payoff for the lookahead-free identifier pattern. A node-semver-compatible spec-compliance fixture suite is the safety net for any grammar change.
+`@effect/vitest` with `it.effect` as the default mode, tests in `packages/semver/__test__/`. `VersionCache` suites use one top-level `layer(VersionCache.layer)((it) => {...})` group so the layer is built once and memoized rather than provided per test. Round-trip properties run through `it.effect.prop` with `Schema.toArbitrary(SemVer)`, the payoff for the lookahead-free identifier pattern. A node-semver-compatible spec-compliance fixture suite is the safety net for any grammar change, and the core-parity differential test is the early warning for a core change.
 
 ## Build
 
