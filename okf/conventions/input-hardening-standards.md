@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/github-actions/src/internal/json.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:27:09Z
+  at: 2026-10-23T20:35:54Z
 integrity:
   generated:
-    body: fcf8b6bcb9297011
+    body: 37163ca67646721f
 ---
 
 # Input-hardening standards

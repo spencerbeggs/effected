@@ -30,10 +30,10 @@ sources:
     resource: ../../packages/spdx/src/SpdxExpression.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:27:09Z
+  at: 2026-10-23T20:35:54Z
 integrity:
   generated:
-    body: fce382639fed899f
+    body: ebd5965ae60d8d8c
 ---
 
 # Only entrypoint files re-export; never a barrel or a namespace object
