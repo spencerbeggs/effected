@@ -5,7 +5,7 @@ import * as Base64Url from "effect/encoding/Base64Url";
 import * as Hex from "effect/encoding/Hex";
 import { ConstantTime } from "./ConstantTime.js";
 import type { CryptoError } from "./CryptoError.js";
-import { secretBytes, utf8 } from "./internal/bytes.js";
+import { messageBytes, secretBytes } from "./internal/bytes.js";
 import { hmacBytes } from "./internal/hmac.js";
 
 /**
@@ -44,6 +44,18 @@ export type HmacStringEncoding = Exclude<HmacEncoding, "bytes">;
 export type HmacKey = Uint8Array | Redacted.Redacted<string>;
 
 /**
+ * An HMAC message: bytes, a string, or a list of parts.
+ *
+ * @remarks
+ * A string is its UTF-8 bytes. A list is the concatenation of its parts'
+ * bytes, in order, so a prefix and a raw body are signed without the caller
+ * building the joined buffer, and never through a decoded string.
+ *
+ * @public
+ */
+export type HmacMessage = Uint8Array | string | ReadonlyArray<Uint8Array | string>;
+
+/**
  * What every HMAC operation takes: the hash, the key and the message.
  *
  * @public
@@ -53,8 +65,8 @@ export interface HmacInput {
 	readonly algorithm: HmacAlgorithm;
 	/** The key. A `Redacted` is read only when the key is imported. */
 	readonly key: HmacKey;
-	/** The message; a string is signed as its UTF-8 bytes. */
-	readonly message: Uint8Array | string;
+	/** The message; see {@link HmacMessage}. */
+	readonly message: HmacMessage;
 }
 
 /**
@@ -139,7 +151,7 @@ const decode = (value: string, encoding: HmacStringEncoding): Result.Result<Uint
 
 const signAny = Effect.fn("Hmac.sign")(function* (options: HmacSignOptions) {
 	yield* Effect.annotateCurrentSpan("algorithm", options.algorithm);
-	const mac = yield* hmacBytes(options.algorithm, secretBytes(options.key), utf8(options.message));
+	const mac = yield* hmacBytes(options.algorithm, secretBytes(options.key), messageBytes(options.message));
 	return encode(mac, options.encoding ?? "bytes");
 });
 
@@ -151,7 +163,7 @@ function sign(options: HmacSignOptions): Effect.Effect<Uint8Array | string, Cryp
 
 const verify = Effect.fn("Hmac.verify")(function* (options: HmacVerifyOptions) {
 	yield* Effect.annotateCurrentSpan("algorithm", options.algorithm);
-	const expected = yield* hmacBytes(options.algorithm, secretBytes(options.key), utf8(options.message));
+	const expected = yield* hmacBytes(options.algorithm, secretBytes(options.key), messageBytes(options.message));
 	if (!("encoding" in options)) return ConstantTime.equal(expected, options.signature);
 	// A signature that does not decode is a wrong signature, not an error.
 	const received = decode(options.signature, options.encoding);
@@ -177,7 +189,12 @@ export class Hmac {
 	 *
 	 * @remarks
 	 * Returns raw bytes unless `encoding` names a string form: `hex` (lower
-	 * case), `base64` (padded) or `base64url` (unpadded).
+	 * case), `base64` (padded) or `base64url` (unpadded). A list `message` is
+	 * signed as its parts' bytes joined in order.
+	 *
+	 * WebCrypto's `sign` is truly asynchronous: the effect suspends on a
+	 * promise, not a scheduled fiber, so a test that forks it and then adjusts
+	 * `TestClock` can race or hang. Await it, or gate the clock on a latch.
 	 *
 	 * @public
 	 */
@@ -194,6 +211,9 @@ export class Hmac {
 	 * string signature is decoded per `encoding` first; one that does not
 	 * decode, or decodes to the wrong length, answers `false` rather than
 	 * failing. Hex is accepted in either case.
+	 *
+	 * Truly asynchronous, as {@link Hmac.sign} is: a forked verify does not
+	 * finish under `TestClock` adjustment alone; await it or use a latch.
 	 *
 	 * @public
 	 */

@@ -37,6 +37,9 @@ export class GitHub {
 	 * `missing_signature` without the header; `bad_signature` when it is not `sha256=<64 lower-case hex>` or does
 	 * not match.
 	 *
+	 * Truly asynchronous: the HMAC runs on WebCrypto, so a test that forks this and then adjusts `TestClock` can race or
+	 * hang. Await it, or gate the clock on a latch.
+	 *
 	 * @public
 	 */
 	static readonly verify: (request: WebhookRequest) => Effect.Effect<void, WebhookVerificationError> = verify;

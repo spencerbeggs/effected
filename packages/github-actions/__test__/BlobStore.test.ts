@@ -1,6 +1,7 @@
 import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Crypto, Effect, Layer, Option, PlatformError, Redacted, Schema } from "effect";
+import { SigV4 } from "@effected/crypto";
+import { Crypto, DateTime, Effect, Layer, Option, PlatformError, Redacted, Schema } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/http";
 import { TestClock } from "effect/testing";
 import type { S3Config } from "../src/index.js";
@@ -258,6 +259,48 @@ describe("BlobStore", () => {
 				const { seen, fake } = recordingFetch();
 				yield* Effect.flatMap(BlobStore, (store) => store.has("it's (a)*!")).pipe(Effect.provide(s3(fake)));
 				assert.strictEqual(seen[0]?.url, "https://account.r2.cloudflarestorage.com/cache/it%27s%20%28a%29%2A%21");
+			}),
+		);
+
+		it.effect("sends the very target and headers SigV4.sign returned, never a re-encoding", () =>
+			Effect.gen(function* () {
+				yield* TestClock.setTime(Date.UTC(2024, 0, 2, 3, 4, 5));
+				const key = "it's (a)*!/v1.2/.../ü";
+				const { seen, fake } = recordingFetch();
+				yield* Effect.flatMap(BlobStore, (store) => store.has(key)).pipe(Effect.provide(s3(fake)));
+				// Signed independently, at the same instant, with the same inputs.
+				const signed = yield* SigV4.sign(
+					{
+						method: "HEAD",
+						host: "account.r2.cloudflarestorage.com",
+						path: `cache/${key}`,
+						body: new Uint8Array(0),
+						now: DateTime.makeUnsafe(Date.UTC(2024, 0, 2, 3, 4, 5)),
+					},
+					{ accessKeyId: "AKIAEXAMPLE", secretAccessKey: CONFIG.secretAccessKey, region: "auto", service: "s3" },
+				).pipe(Effect.provide(NodeCrypto.layer));
+				assert.strictEqual(signed.path, "/cache/it%27s%20%28a%29%2A%21/v1.2/.../%C3%BC");
+				assert.strictEqual(seen[0]?.url, `https://account.r2.cloudflarestorage.com${signed.path}`);
+				assert.strictEqual(seen[0]?.headers.authorization, signed.headers.authorization);
+			}),
+		);
+
+		it.effect("fails a key with a . or .. segment as invalidKey, typed, and sends nothing", () =>
+			Effect.gen(function* () {
+				// Why the refusal exists: the WHATWG URL the client resolves collapses them.
+				assert.strictEqual(new URL("https://h.example/cache/a/../b/./c").pathname, "/cache/b/c");
+				for (const key of ["a/../b", "./a", "a/.", "..", "a/./b"]) {
+					const { seen, fake } = recordingFetch();
+					const error = yield* Effect.flip(
+						Effect.flatMap(BlobStore, (store) => store.has(key)).pipe(Effect.provide(s3(fake))),
+					);
+					assert.instanceOf(error, BlobStoreError, key);
+					assert.strictEqual(error.reason, "invalidKey", key);
+					assert.strictEqual(error.key, key);
+					assert.match(error.detail ?? "", /"\.\.?" segment/, key);
+					assert.include(error.message, `"${key}"`);
+					assert.strictEqual(seen.length, 0, `${key}: nothing leaves the process`);
+				}
 			}),
 		);
 

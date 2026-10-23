@@ -1,7 +1,7 @@
 ---
 type: Limitation
 title: ConstantTime.equal is best-effort constant time
-description: "WebCrypto has no timingSafeEqual, so @effected/crypto compares with a JavaScript XOR loop whose timing the JIT does not guarantee; secretsEqual hashes first to bound what leaks."
+description: "WebCrypto has no timingSafeEqual, so @effected/crypto compares with a JavaScript XOR loop whose timing the JIT does not guarantee; secretsEqual blinds both sides with a keyed MAC first to bound what leaks."
 status: draft
 bounds: ../modules/crypto.md
 tags:
@@ -14,10 +14,10 @@ sources:
     last_modified: 2026-10-22T00:00:00Z
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-22T23:55:11Z
+  at: 2026-10-23T01:39:30Z
 integrity:
   generated:
-    body: 4752c5195150d722
+    body: 9a03d8999091b5ee
 ---
 
 # ConstantTime.equal is best-effort constant time
@@ -32,7 +32,7 @@ None observable in normal use. The guarantee is weaker than `node:crypto`'s `tim
 
 ## Why it is acceptable
 
-WebCrypto offers no constant-time comparison, and the package must run where `node:crypto` does not. This is the standard approach in WebCrypto-only libraries. The exposure is narrow: an HMAC comparison is over a fixed-length digest, so the length leak reveals nothing, and a shared secret goes through `ConstantTime.secretsEqual`, which hashes both sides first, so neither length nor prefix of the secret reaches the loop.[^owner]
+WebCrypto offers no constant-time comparison, and the package must run where `node:crypto` does not. This is the standard approach in WebCrypto-only libraries. The exposure is narrow: an HMAC comparison is over a fixed-length digest, so the length leak reveals nothing, and a shared secret goes through `ConstantTime.secretsEqual`, which MACs both sides under a fresh random WebCrypto key first, so only two 32-byte MACs reach the loop and neither length nor prefix of the secret does.[^owner]
 
 ## What a fix would take
 

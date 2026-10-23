@@ -1,4 +1,4 @@
-import { SigV4 } from "@effected/crypto";
+import { CryptoError, SigV4 } from "@effected/crypto";
 import type { Redacted } from "effect";
 import { Context, Crypto, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
@@ -18,9 +18,12 @@ export class BlobStoreError extends Schema.TaggedError<BlobStoreError>()("BlobSt
 	 * `unreachable` — the store could not be contacted. `refused` — it answered,
 	 * unhappily; `status` says how. `misconfigured` — the layer was built with
 	 * settings the store cannot use, or a request could not be signed with them
-	 * (no WebCrypto in the runtime, or key material it refuses).
+	 * (no WebCrypto in the runtime, or key material it refuses). `invalidKey` —
+	 * the caller's key cannot be stored at all, whatever the settings: on S3, a
+	 * key with a `.` or `..` path segment, which no URL carries as signed.
+	 * Nothing is sent.
 	 */
-	reason: Schema.Literals(["unreachable", "refused", "misconfigured"]),
+	reason: Schema.Literals(["unreachable", "refused", "misconfigured", "invalidKey"]),
 	/** The key involved. A stable identifier, never a value. */
 	key: Schema.optionalKey(Schema.String),
 	/** The HTTP status, when the store answered. */
@@ -38,6 +41,8 @@ export class BlobStoreError extends Schema.TaggedError<BlobStoreError>()("BlobSt
 				return `The blob store refused "${this.key}"${this.status === undefined ? "" : ` with status ${this.status}`}${
 					this.detail === undefined ? "" : `: ${this.detail}`
 				}`;
+			case "invalidKey":
+				return `The blob store cannot hold the key "${this.key}"${this.detail === undefined ? "" : `: ${this.detail}`}`;
 			default:
 				return `The blob store is misconfigured${this.detail === undefined ? "" : `: ${this.detail}`}`;
 		}
@@ -157,7 +162,10 @@ export class BlobStore extends Context.Service<BlobStore, BlobStoreShape>()("@ef
 	 *
 	 * Requires core `Crypto` for the SHA-256 digests signing takes, resolved
 	 * once when the layer is built; `NodeServices.layer` supplies it. A request
-	 * that cannot be signed fails as {@link BlobStoreError} `misconfigured`.
+	 * that cannot be signed fails as {@link BlobStoreError} `misconfigured`. A
+	 * key with a `.` or `..` path segment fails as `invalidKey` before anything
+	 * is signed or sent: every URL parser collapses such a segment, so the store
+	 * would receive another path than the one signed.
 	 *
 	 * A parameterized layer factory mints a fresh layer per call and layers
 	 * memoize by reference — bind it to a `const` rather than calling it at each
@@ -258,21 +266,25 @@ const makeS3 = (
 				const path = objectPath(key);
 				// The signing instant comes from `Clock`, so `TestClock` drives it.
 				const now = yield* DateTime.now;
-				const headers = yield* SigV4.sign({ method, path, host, body, now }, credentials).pipe(
+				const signed = yield* SigV4.sign({ method, path, host, body, now }, credentials).pipe(
 					Effect.provideService(Crypto.Crypto, crypto),
-					Effect.mapError(
-						(cause) =>
-							new BlobStoreError({
-								reason: "misconfigured",
-								key,
-								detail: "the request could not be signed",
-								cause,
-							}),
+					Effect.mapError((cause) =>
+						// A path SigV4 refuses is the caller's key, not the layer's settings.
+						cause instanceof CryptoError && cause.reason === "path"
+							? new BlobStoreError({ reason: "invalidKey", key, detail: cause.detail, cause })
+							: new BlobStoreError({
+									reason: "misconfigured",
+									key,
+									detail: "the request could not be signed",
+									cause,
+								}),
 					),
 				);
-				// The URL carries the path exactly as it was signed: encoded per
-				// segment, `!'()*` included, or the store answers SignatureDoesNotMatch.
-				return { url: `${endpoint}/${SigV4.encodePath(path)}`, headers };
+				// The URL carries the target exactly as it was signed, never re-encoded:
+				// `!'()*` included, or the store answers SignatureDoesNotMatch. SigV4
+				// has already refused a `.` or `..` segment, which a URL would collapse.
+				const url = `${endpoint}${signed.path}${signed.query === "" ? "" : `?${signed.query}`}`;
+				return { url, headers: signed.headers };
 			});
 
 		const send = (method: "GET" | "PUT" | "HEAD", key: string, body: Uint8Array) =>

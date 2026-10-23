@@ -1,7 +1,7 @@
 import type { DateTime } from "effect";
 import { Effect, Redacted, Result } from "effect";
 import * as Base64 from "effect/encoding/Base64";
-import { annotateOutcome, checkFresh, matchesAny, readHeader, reject, signedContent } from "./internal/verify.js";
+import { annotateOutcome, checkFresh, matchesAny, readHeader, reject } from "./internal/verify.js";
 import type { FreshnessOptions, WebhookRequest } from "./WebhookRequest.js";
 import type { WebhookVerificationError } from "./WebhookVerificationError.js";
 
@@ -69,7 +69,7 @@ const verify = Effect.fn("StandardWebhooks.verify")(function* (request: WebhookR
 	const seconds = Number(timestamp);
 	// Signed over the timestamp as an integer, so a zero-padded header still matches, as the reference does. Any v1
 	// may match: the sender signs with every active secret during a rotation.
-	const signed = signedContent(`${id}.${String(seconds)}.`, request.body);
+	const signed = [`${id}.${String(seconds)}.`, request.body];
 	if (!(yield* matchesAny(key, signed, "base64", candidates))) {
 		return yield* reject(PRESET, "bad_signature");
 	}
@@ -102,6 +102,9 @@ export class StandardWebhooks {
 	 * that is not 1 to 15 digits of Unix seconds; `bad_signature` when no `v1` matches; `stale_timestamp` when the
 	 * signature matches but the timestamp sits outside `tolerance` (five minutes by default) of `receivedAt`. The
 	 * signature is always checked before the timestamp.
+	 *
+	 * Truly asynchronous: the HMAC runs on WebCrypto, so a test that forks this and then adjusts `TestClock` can race or
+	 * hang. Await it, or gate the clock on a latch.
 	 *
 	 * @public
 	 */

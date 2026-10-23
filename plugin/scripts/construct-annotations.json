@@ -186,7 +186,7 @@
 		"BlobMetadataDecodeError": "handle blob metadata that does not satisfy the caller's schema",
 		"BlobMetadataEncodeError": "handle a value that will not encode into blob metadata",
 		"BlobStore": "get/put/has durable blob storage with a metadata channel, sigv4-signed s3-compatible or in-memory backend",
-		"BlobStoreError": "handle a blob store read or write failure, unreachable or refused backend, request signing failure",
+		"BlobStoreError": "handle a blob store read or write failure, unreachable or refused backend, request signing failure, invalid key",
 		"BlobTransferError": "handle a signed blob url upload or download failure",
 		"CacheKey": "build a GitHub Actions cache key, restore-key fallback ladder, hash files",
 		"CacheKeyBadPatternError": "handle a glob pattern that will not compile while deriving a cache key",
@@ -1114,7 +1114,7 @@
 	"crypto": {
 		"ConstantTime": "constant-time compare bytes or strings, timing-safe secret or mac equality",
 		"CryptoError": "handle hmac failure, missing webcrypto subtle, rejected key material",
-		"CryptoErrorReason": "why an hmac operation failed, unsupported runtime or bad key",
+		"CryptoErrorReason": "why an hmac or sigv4 operation failed, unsupported runtime, bad key or unsendable dot-segment path",
 		"Hmac": "compute or verify hmac-sha256 or sha512, hex base64 base64url output, webcrypto",
 		"SigV4": "sign an aws or s3-compatible request, sigv4 authorization header, signing key"
 	},

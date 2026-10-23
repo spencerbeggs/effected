@@ -1,6 +1,8 @@
-import type { PlatformError, Redacted } from "effect";
-import { Crypto, Effect } from "effect";
+import type { Redacted } from "effect";
+import { Effect } from "effect";
+import { CryptoError } from "./CryptoError.js";
 import { secretBytes, utf8 } from "./internal/bytes.js";
+import { subtle, toArrayBuffer } from "./internal/subtle.js";
 
 /**
  * Secret material for {@link ConstantTime.secretsEqual}: bytes, a string, or
@@ -26,15 +28,23 @@ const equal = (a: Uint8Array | string, b: Uint8Array | string): boolean => {
 	return difference === 0;
 };
 
-const secretsEqual = (
-	expected: SecretInput,
-	received: SecretInput,
-): Effect.Effect<boolean, PlatformError.PlatformError, Crypto.Crypto> =>
+const secretsEqual = (expected: SecretInput, received: SecretInput): Effect.Effect<boolean, CryptoError> =>
 	Effect.gen(function* () {
-		const crypto = yield* Crypto.Crypto;
-		const left = yield* crypto.digest("SHA-256", secretBytes(expected));
-		const right = yield* crypto.digest("SHA-256", secretBytes(received));
-		return equal(left, right);
+		const crypto = yield* subtle;
+		// A fresh, non-extractable key per comparison: the MACs it produces are
+		// never seen outside this call, so blinding with it reveals nothing.
+		const key = yield* Effect.tryPromise({
+			try: () => crypto.generateKey({ name: "HMAC", hash: "SHA-256" }, false, ["sign"]),
+			catch: (cause) => CryptoError.of("key", "the HMAC SHA-256 blinding key could not be generated", cause),
+		});
+		const blind = (secret: SecretInput) =>
+			Effect.tryPromise({
+				try: () => crypto.sign("HMAC", key, toArrayBuffer(secretBytes(secret))),
+				catch: (cause) => CryptoError.of("key", "the HMAC SHA-256 blinding key could not sign", cause),
+			});
+		const left = yield* blind(expected);
+		const right = yield* blind(received);
+		return equal(new Uint8Array(left), new Uint8Array(right));
 	});
 
 /**
@@ -44,8 +54,8 @@ const secretsEqual = (
  * The guarantee is best-effort: WebCrypto has no `timingSafeEqual`, so this
  * is a JavaScript loop the engine is free to optimise. Compare a fixed-length
  * digest with {@link ConstantTime.equal}; compare a shared secret with
- * {@link ConstantTime.secretsEqual}, which hashes both sides first so neither
- * the secret's length nor a matching prefix can leak.
+ * {@link ConstantTime.secretsEqual}, which blinds both sides with a keyed MAC
+ * first so neither the secret's length nor a matching prefix can leak.
  *
  * @public
  */
@@ -67,18 +77,24 @@ export class ConstantTime {
 	static readonly equal: (a: Uint8Array | string, b: Uint8Array | string) => boolean = equal;
 
 	/**
-	 * Whether two secrets are equal, compared through their SHA-256 digests.
+	 * Whether two secrets are equal, compared through their HMACs under a
+	 * fresh random key.
 	 *
 	 * @remarks
-	 * Both sides are hashed with core `Crypto.digest`, so the comparison runs
-	 * over two 32-byte digests: the secret's length and any matching prefix
-	 * never reach the loop. Use it for a shared-secret header. A `Redacted`
-	 * value is read only to hash it. Fails only if the platform digest does.
+	 * Each call generates a non-extractable HMAC-SHA256 key with WebCrypto,
+	 * MACs both sides under it and compares the two 32-byte MACs with
+	 * {@link ConstantTime.equal}: the secret's length and any matching prefix
+	 * never reach the loop, and the blinding is keyed, so its output cannot be
+	 * precomputed. Use it for a shared-secret header. A `Redacted` value is
+	 * read only to MAC it. Needs nothing in `R`; fails with
+	 * {@link CryptoError} only when the runtime has no `crypto.subtle`
+	 * (`unsupportedRuntime`) or WebCrypto refuses the key (`key`).
+	 *
+	 * WebCrypto is truly asynchronous: a test that forks this and then adjusts
+	 * `TestClock` can race or hang; await it or gate the clock on a latch.
 	 *
 	 * @public
 	 */
-	static readonly secretsEqual: (
-		expected: SecretInput,
-		received: SecretInput,
-	) => Effect.Effect<boolean, PlatformError.PlatformError, Crypto.Crypto> = secretsEqual;
+	static readonly secretsEqual: (expected: SecretInput, received: SecretInput) => Effect.Effect<boolean, CryptoError> =
+		secretsEqual;
 }

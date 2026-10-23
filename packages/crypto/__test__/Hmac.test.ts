@@ -134,6 +134,43 @@ describe("Hmac.verify", () => {
 	);
 });
 
+describe("Hmac over a multi-part message", () => {
+	const key = Redacted.make("parts-key");
+	const body = new Uint8Array([0xff, 0x00, 0xc3]);
+
+	it.effect("signs the parts' bytes joined in order, exactly as the one joined message", () =>
+		Effect.gen(function* () {
+			const joined = new Uint8Array([...new TextEncoder().encode("1700000000."), ...body]);
+			const whole = yield* Hmac.sign({ algorithm: "SHA-256", key, message: joined, encoding: "hex" });
+			const parts = yield* Hmac.sign({ algorithm: "SHA-256", key, message: ["1700000000.", body], encoding: "hex" });
+			assert.strictEqual(parts, whole);
+			const split = yield* Hmac.sign({ algorithm: "SHA-256", key, message: ["17", "00000000", ".", body] });
+			assert.deepStrictEqual(split, yield* Hmac.sign({ algorithm: "SHA-256", key, message: joined }));
+			assert.isTrue(
+				yield* Hmac.verify({
+					algorithm: "SHA-256",
+					key,
+					message: ["1700000000.", body],
+					signature: whole,
+					encoding: "hex",
+				}),
+			);
+		}),
+	);
+
+	it.effect("is order-sensitive, and an empty list is the empty message", () =>
+		Effect.gen(function* () {
+			const forward = yield* Hmac.sign({ algorithm: "SHA-256", key, message: ["a", "b"], encoding: "hex" });
+			const backward = yield* Hmac.sign({ algorithm: "SHA-256", key, message: ["b", "a"], encoding: "hex" });
+			assert.notStrictEqual(forward, backward);
+			assert.strictEqual(
+				yield* Hmac.sign({ algorithm: "SHA-256", key, message: [], encoding: "hex" }),
+				yield* Hmac.sign({ algorithm: "SHA-256", key, message: "", encoding: "hex" }),
+			);
+		}),
+	);
+});
+
 describe("Hmac failures", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();

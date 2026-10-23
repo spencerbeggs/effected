@@ -315,8 +315,8 @@ console.log("RIGHT:", body);
 // For binary payloads: new Uint8Array(await new Response(init?.body).arrayBuffer())
 ```
 
-Working examples: `packages/github-actions/__test__/results.ts:61-71` (JSON
-over Twirp) and `BlobStore.test.ts:212` (bytes). The general rule: **a double
+Working examples: `packages/github-actions/__test__/results.ts:63-73` (JSON
+over Twirp) and `BlobStore.test.ts:153` (bytes). The general rule: **a double
 that mis-parses looks like the network being unreliable**, and every layer of
 retry between the two makes the diagnosis worse. When a virtual-clock suite
 times out in several places at once, suspect the double before the clock.

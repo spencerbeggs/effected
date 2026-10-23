@@ -1,5 +1,4 @@
-import { NodeCrypto } from "@effect/platform-node";
-import { assert, layer } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { SharedSecret } from "../src/SharedSecret.js";
 import { bytes, request } from "./helpers.js";
@@ -12,8 +11,8 @@ const reason = (head: Record<string, string>) =>
 		Effect.map((error) => (error._tag === "WebhookVerificationError" ? error.reason : error._tag)),
 	);
 
-layer(NodeCrypto.layer)("SharedSecret.verify", (it) => {
-	it.effect("accepts the secret itself in the named header", () =>
+describe("SharedSecret.verify", () => {
+	it.effect("accepts the secret itself in the named header, with nothing in R", () =>
 		Effect.gen(function* () {
 			yield* verify({ "cf-webhook-auth": SECRET });
 		}),
@@ -27,6 +26,17 @@ layer(NodeCrypto.layer)("SharedSecret.verify", (it) => {
 			assert.strictEqual(yield* reason({}), "missing_signature");
 			assert.strictEqual(yield* reason({ "cf-webhook-auth": "" }), "missing_signature");
 			assert.strictEqual(yield* reason({ "x-other": SECRET }), "missing_signature");
+		}),
+	);
+
+	it.effect("compares the raw value: whitespace around the secret is a bad signature, never trimmed away", () =>
+		Effect.gen(function* () {
+			for (const value of [`  ${SECRET} `, ` ${SECRET}`, `${SECRET} `, `${SECRET}\t`, `\n${SECRET}`]) {
+				assert.strictEqual(yield* reason({ "cf-webhook-auth": value }), "bad_signature", JSON.stringify(value));
+			}
+			assert.strictEqual(yield* reason({ "cf-webhook-auth": "   " }), "bad_signature", "whitespace is a value");
+			// The control: the untrimmed secret itself still verifies.
+			yield* verify({ "cf-webhook-auth": SECRET });
 		}),
 	);
 });

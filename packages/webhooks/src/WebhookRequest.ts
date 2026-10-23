@@ -10,8 +10,9 @@ import type { DateTime, Duration, Option, Redacted } from "effect";
  */
 export interface WebhookRequest {
 	/**
-	 * Look up a header. Presets call it with lower-case names. An empty or whitespace-only value counts as absent;
-	 * values are trimmed.
+	 * Look up a header, returning the value as received. Presets call it with lower-case names. The adapter need not
+	 * trim or filter: the presets guarantee that an empty value counts as absent, and the signature presets trim the
+	 * value and treat a whitespace-only one as absent too. `SharedSecret` alone compares the raw value, untrimmed.
 	 */
 	readonly header: (name: string) => Option.Option<string>;
 	/** The raw body: the exact bytes received, never a re-serialized parse. */

@@ -12,9 +12,13 @@
 
 The S3 store now signs requests with `@effected/crypto`'s SigV4 and the package's private signer is gone. `layerS3` therefore needs core `Crypto` in its requirements; provide the platform's `Crypto` layer.
 
+### `BlobStoreError` gains `invalidKey`
+
+A key with a `.` or `..` path segment cannot be sent as signed, because every URL parser collapses those segments, so the S3 store now refuses it before sending with reason `invalidKey`. Code that switches exhaustively on `BlobStoreError.reason` must handle the new case.
+
 ## Bug Fixes
 
-- A `BlobStore.layerS3` key containing `!'()*` is now requested at its encoded path, so the signed path matches the one S3 sees.
+- A `BlobStore.layerS3` key containing `!'()*` is now requested at its encoded path: the store sends exactly the path and query that SigV4 signed, so they match what S3 sees.
 - `ToolInstaller` reads the runner architecture from `RUNNER_ARCH`, mapping X86 to `ia32` and ARM to `arm`, instead of the process architecture.
 
 ## Maintenance

@@ -665,18 +665,18 @@
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "packages/github-actions/__test__/results.ts:61-71",
+			"anchor": "packages/github-actions/__test__/results.ts:63-73",
 			"source": "repo:packages/github-actions/__test__/results.ts",
 			"symbols": {
-				"61": "const fetch: typeof globalThis.fetch"
+				"63": "const fetch: typeof globalThis.fetch"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "BlobStore.test.ts:212",
+			"anchor": "BlobStore.test.ts:153",
 			"source": "repo:packages/github-actions/__test__/BlobStore.test.ts",
 			"symbols": {
-				"212": "new Uint8Array(await new Response(init?.body).arrayBuffer())"
+				"153": "new Uint8Array(await new Response(init?.body).arrayBuffer())"
 			}
 		},
 		{

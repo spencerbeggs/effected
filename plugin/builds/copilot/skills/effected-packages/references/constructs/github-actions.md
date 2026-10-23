@@ -37,7 +37,7 @@
 | `BlobMetadataDecodeError` | Class | Raised when well-framed metadata does not satisfy the caller's schema. | handle blob metadata that does not satisfy the caller's schema |
 | `BlobMetadataEncodeError` | Class | Raised when the value being stored does not satisfy its schema. | handle a value that will not encode into blob metadata |
 | `BlobStore` | Class | Durable blob storage with a metadata channel. | get/put/has durable blob storage with a metadata channel, sigv4-signed s3-compatible or in-memory backend |
-| `BlobStoreError` | Class | Raised when a blob cannot be stored or retrieved. | handle a blob store read or write failure, unreachable or refused backend, request signing failure |
+| `BlobStoreError` | Class | Raised when a blob cannot be stored or retrieved. | handle a blob store read or write failure, unreachable or refused backend, request signing failure, invalid key |
 | `BlobStoreShape` | Interface | The members of the `BlobStore` service: `get`, `put` and `has` over blobs that carry the caller's own metadata. | |
 | `BlobTransferError` | Class | Raised when bytes could not be moved to or from a signed blob url. | handle a signed blob url upload or download failure |
 | `CacheKey` | Class | A GitHub Actions cache key and the restore-key ladder that goes with it. | build a GitHub Actions cache key, restore-key fallback ladder, hash files |

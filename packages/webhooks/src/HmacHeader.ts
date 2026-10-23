@@ -62,6 +62,9 @@ export class HmacHeader {
 	 * that decodes to the right MAC verifies: hex in either case, and padded base64 even when it is not the canonical
 	 * spelling. One that does not decode, unpadded base64 included, is `bad_signature`.
 	 *
+	 * Truly asynchronous: the HMAC runs on WebCrypto, so a test that forks this and then adjusts `TestClock` can race or
+	 * hang. Await it, or gate the clock on a latch.
+	 *
 	 * @public
 	 */
 	static readonly verify: (

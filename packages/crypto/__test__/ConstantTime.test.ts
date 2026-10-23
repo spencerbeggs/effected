@@ -1,6 +1,6 @@
-import { NodeCrypto } from "@effect/platform-node";
-import { assert, describe, it, layer } from "@effect/vitest";
-import { Crypto, Effect, Redacted, Schema } from "effect";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Redacted, Schema } from "effect";
+import { afterEach, vi } from "vitest";
 import { ConstantTime } from "../src/ConstantTime.js";
 
 const byteEqual = (a: Uint8Array, b: Uint8Array): boolean =>
@@ -34,11 +34,17 @@ describe("ConstantTime.equal", () => {
 	});
 });
 
-layer(NodeCrypto.layer)("ConstantTime.secretsEqual", (it) => {
-	it.effect("is true for equal secrets in any input form", () =>
+describe("ConstantTime.secretsEqual", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	it.effect("is true for equal secrets in any input form, with nothing in R", () =>
 		Effect.gen(function* () {
 			assert.isTrue(yield* ConstantTime.secretsEqual(Redacted.make("hunter2"), "hunter2"));
 			assert.isTrue(yield* ConstantTime.secretsEqual("hunter2", new TextEncoder().encode("hunter2")));
+			assert.isTrue(yield* ConstantTime.secretsEqual("", ""));
 		}),
 	);
 
@@ -47,19 +53,37 @@ layer(NodeCrypto.layer)("ConstantTime.secretsEqual", (it) => {
 			assert.isFalse(yield* ConstantTime.secretsEqual(Redacted.make("hunter2"), "hunter3"));
 			assert.isFalse(yield* ConstantTime.secretsEqual(Redacted.make("hunter2"), "hunter"));
 			assert.isFalse(yield* ConstantTime.secretsEqual(Redacted.make("hunter2"), ""));
+			assert.isFalse(yield* ConstantTime.secretsEqual(Redacted.make("hunter2"), " hunter2 "));
 		}),
 	);
 
-	it.effect("hashes both sides through the Crypto service in R", () =>
+	it.effect("blinds both sides under one fresh, non-extractable HMAC key per comparison", () =>
 		Effect.gen(function* () {
-			// A digest that ignores its input makes every pair of secrets equal,
-			// which proves the comparison runs over Crypto.digest's output.
-			const constant = Crypto.make({
-				randomBytes: (size) => new Uint8Array(size),
-				digest: () => Effect.succeed(new Uint8Array(32)),
-			});
-			const equal = yield* ConstantTime.secretsEqual("a", "b").pipe(Effect.provideService(Crypto.Crypto, constant));
-			assert.isTrue(equal);
+			// Spies pass through to the real WebCrypto and only record the calls.
+			const generateKey = vi.spyOn(globalThis.crypto.subtle, "generateKey");
+			const sign = vi.spyOn(globalThis.crypto.subtle, "sign");
+			assert.isTrue(yield* ConstantTime.secretsEqual("a", "a"));
+			assert.isFalse(yield* ConstantTime.secretsEqual("a", "b"));
+			const params: ReadonlyArray<unknown> = [{ name: "HMAC", hash: "SHA-256" }, false, ["sign"]];
+			assert.deepStrictEqual(
+				generateKey.mock.calls.map((call): ReadonlyArray<unknown> => [...call]),
+				[params, params],
+			);
+			const keys = sign.mock.calls.map((call) => call[1]);
+			assert.strictEqual(keys.length, 4);
+			assert.strictEqual(keys[0], keys[1], "both sides of one comparison share its key");
+			assert.strictEqual(keys[2], keys[3]);
+			assert.notStrictEqual(keys[0], keys[2], "a key is never reused across comparisons");
+			assert.isFalse(keys[0]?.extractable);
+		}),
+	);
+
+	it.effect("fails with unsupportedRuntime when the runtime has no crypto.subtle", () =>
+		Effect.gen(function* () {
+			vi.stubGlobal("crypto", undefined);
+			const error = yield* Effect.flip(ConstantTime.secretsEqual("a", "a"));
+			assert.strictEqual(error._tag, "CryptoError");
+			assert.strictEqual(error.reason, "unsupportedRuntime");
 		}),
 	);
 });

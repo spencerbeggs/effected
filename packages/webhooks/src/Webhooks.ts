@@ -4,13 +4,20 @@ import { DEFAULT_TOLERANCE, checkFresh } from "./internal/verify.js";
 import type { WebhookPreset, WebhookVerificationError } from "./WebhookVerificationError.js";
 
 const checkFreshness = (
-	timestamp: DateTime.DateTime,
+	timestamp: DateTime.DateTime | number,
 	receivedAt: DateTime.Utc,
 	tolerance: Duration.Input,
 	preset: WebhookPreset = "HmacHeader",
 ): Effect.Effect<void, WebhookVerificationError> =>
 	// Suspended so an unusable tolerance surfaces when the effect runs, not when it is built.
-	Effect.suspend(() => Effect.asVoid(checkFresh(preset, DateTime.toEpochMillis(timestamp), receivedAt, { tolerance })));
+	// A number is epoch milliseconds; one no `DateTime` can represent is stale, never a throw.
+	Effect.suspend(() =>
+		Effect.asVoid(
+			checkFresh(preset, typeof timestamp === "number" ? timestamp : DateTime.toEpochMillis(timestamp), receivedAt, {
+				tolerance,
+			}),
+		),
+	);
 
 /**
  * Helpers shared across presets.
@@ -35,10 +42,14 @@ export class Webhooks {
 	 * body: verify the signature with {@link HmacHeader.verify} first, decode the body, then call this. The boundary
 	 * counts as fresh. `preset` names the scheme on the error and defaults to `HmacHeader`.
 	 *
+	 * `timestamp` is a `DateTime` or a number of epoch milliseconds, as Linear sends it. A number no `DateTime` can
+	 * represent (out of range, `NaN`, infinite) is `stale_timestamp`, never a throw, so a sender-supplied value can be
+	 * passed straight in.
+	 *
 	 * @public
 	 */
 	static readonly checkFreshness: (
-		timestamp: DateTime.DateTime,
+		timestamp: DateTime.DateTime | number,
 		receivedAt: DateTime.Utc,
 		tolerance: Duration.Input,
 		preset?: WebhookPreset,

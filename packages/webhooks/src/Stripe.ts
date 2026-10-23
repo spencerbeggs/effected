@@ -1,6 +1,6 @@
 import type { DateTime } from "effect";
 import { Effect } from "effect";
-import { annotateOutcome, checkFresh, matchesAny, readHeader, reject, signedContent } from "./internal/verify.js";
+import { annotateOutcome, checkFresh, matchesAny, readHeader, reject } from "./internal/verify.js";
 import type { FreshnessOptions, WebhookRequest } from "./WebhookRequest.js";
 import type { WebhookVerificationError } from "./WebhookVerificationError.js";
 
@@ -40,7 +40,7 @@ const verify = Effect.fn("Stripe.verify")(function* (request: WebhookRequest, op
 	if (v1.length === 0) return yield* reject(PRESET, "bad_signature", "no v1 signature");
 	// The whsec_ secret is the key as a literal string; Stripe never decodes it. Any v1 may match: during a secret
 	// roll Stripe signs with both the old and the new secret.
-	if (!(yield* matchesAny(request.secret, signedContent(`${t}.`, request.body), "hex", v1))) {
+	if (!(yield* matchesAny(request.secret, [`${t}.`, request.body], "hex", v1))) {
 		return yield* reject(PRESET, "bad_signature");
 	}
 	const timestamp = yield* checkFresh(PRESET, Number(t) * 1000, request.receivedAt, options);
@@ -68,6 +68,9 @@ export class Stripe {
 	 * `missing_signature` without the header; `bad_signature` when it carries no `t` or no `v1`, or no `v1` matches;
 	 * `stale_timestamp` when the signature matches but `t` sits outside `tolerance` (five minutes by default) of
 	 * `receivedAt`. The signature is always checked before the timestamp.
+	 *
+	 * Truly asynchronous: the HMAC runs on WebCrypto, so a test that forks this and then adjusts `TestClock` can race or
+	 * hang. Await it, or gate the clock on a latch.
 	 *
 	 * @public
 	 */

@@ -26,6 +26,31 @@ describe("Webhooks.checkFreshness", () => {
 		}),
 	);
 
+	it.effect("takes epoch milliseconds, judged exactly as the same DateTime", () =>
+		Effect.gen(function* () {
+			const millis = DateTime.toEpochMillis(NOON);
+			for (const offset of [0, 300_000, -300_000]) {
+				yield* Webhooks.checkFreshness(millis + offset, NOON, Webhooks.DEFAULT_TOLERANCE);
+			}
+			for (const offset of [300_001, -300_001]) {
+				const error = yield* Effect.flip(Webhooks.checkFreshness(millis + offset, NOON, Webhooks.DEFAULT_TOLERANCE));
+				assert.strictEqual(error.reason, "stale_timestamp");
+			}
+		}),
+	);
+
+	it.effect("answers stale_timestamp, never a throw, for a number no DateTime can represent", () =>
+		Effect.gen(function* () {
+			// The control: each of these makes makeUnsafe throw, so a lift that let one through would die here.
+			for (const bad of [8.64e15 + 1, -8.64e15 - 1, 1e300, Number.NaN, Number.POSITIVE_INFINITY]) {
+				assert.throws(() => DateTime.makeUnsafe(bad));
+				const error = yield* Effect.flip(Webhooks.checkFreshness(bad, NOON, Webhooks.DEFAULT_TOLERANCE, "Stripe"));
+				assert.strictEqual(error.reason, "stale_timestamp", String(bad));
+				assert.strictEqual(error.preset, "Stripe");
+			}
+		}),
+	);
+
 	it("defaults to five minutes", () => {
 		assert.strictEqual(Duration.toMillis(Webhooks.DEFAULT_TOLERANCE), 300_000);
 	});

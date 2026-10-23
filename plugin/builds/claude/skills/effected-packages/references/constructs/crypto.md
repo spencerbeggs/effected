@@ -7,12 +7,13 @@
 | --- | --- | --- | --- |
 | `ConstantTime` | Class | Comparison whose running time does not depend on where two values differ. | constant-time compare bytes or strings, timing-safe secret or mac equality |
 | `CryptoError` | Class | The one error `@effected/crypto` fails with. | handle hmac failure, missing webcrypto subtle, rejected key material |
-| `CryptoErrorReason` | Variable + TypeAlias | The reason union carried by `CryptoError`. | why an hmac operation failed, unsupported runtime or bad key |
+| `CryptoErrorReason` | Variable + TypeAlias | The reason union carried by `CryptoError`. | why an hmac or sigv4 operation failed, unsupported runtime, bad key or unsendable dot-segment path |
 | `Hmac` | Class | HMAC sign and verify (RFC 2104) over WebCrypto, with SHA-256 or SHA-512. | compute or verify hmac-sha256 or sha512, hex base64 base64url output, webcrypto |
 | `HmacAlgorithm` | TypeAlias | The hash an HMAC is computed over. | |
 | `HmacEncoding` | TypeAlias | How an HMAC is returned, or how a received one is encoded. | |
 | `HmacInput` | Interface | What every HMAC operation takes: the hash, the key and the message. | |
 | `HmacKey` | TypeAlias | HMAC key material: raw bytes, or a `Redacted` string used as its UTF-8 bytes. | |
+| `HmacMessage` | TypeAlias | An HMAC message: bytes, a string, or a list of parts. | |
 | `HmacSignBytesOptions` | Interface | The input to `Hmac.sign` for a raw-bytes HMAC. | |
 | `HmacSignOptions` | TypeAlias | The input to `Hmac.sign`. | |
 | `HmacSignStringOptions` | Interface | The input to `Hmac.sign` for an encoded-string HMAC. | |
@@ -25,3 +26,4 @@
 | `SigV4Canonical` | Interface | The canonical form of a request, as `SigV4.canonicalize` returns it. | |
 | `SigV4Credentials` | Interface | The access key, optional session token and scope a signature needs. | |
 | `SigV4Request` | Interface | One request to sign. | |
+| `SigV4Signed` | Interface | What `SigV4.sign` returns: the headers to send and the request target they were signed for. | |

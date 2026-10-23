@@ -22,10 +22,10 @@ sources:
     title: "InboundRequest and the verification-failure status mapping"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T00:42:56Z
+  at: 2026-10-23T01:39:30Z
 integrity:
   generated:
-    body: 0618fad4119d1ca9
+    body: 17fc429c98eb7ce9
 ---
 
 # `@effected/webhooks`
@@ -44,7 +44,7 @@ Delivery identity, vendor naming, routing, payload decoding and attestation are 
 
 Every preset's `verify` takes the same four things:
 
-- a header lookup, `(name: string) => Option<string>`, which the preset calls with lower-case names; an empty value counts as absent;
+- a header lookup, `(name: string) => Option<string>`, which the preset calls with lower-case names and which returns the value as received; the presets, not the adapter, guarantee that an empty value counts as absent and that signature values are trimmed;
 - the raw body as `Uint8Array`, the exact bytes received, never a re-serialized parse;
 - the receive time as `DateTime.Utc`, which staleness is judged against, never the wall clock, so a reprocessed delivery verifies as it did on arrival;
 - the secret as `Redacted<string>`.
@@ -62,9 +62,9 @@ Every preset's `verify` takes the same four things:
 
 Secret handling follows the vendor exactly, because getting it wrong produces a valid-looking signature that never matches. Standard Webhooks strips an optional `whsec_` prefix and base64-decodes the rest into key bytes. Stripe uses its `whsec_` secret as the literal key string, undecoded. GitHub, Sanity and `HmacHeader` use the secret's UTF-8 bytes.
 
-Linear signs with a bare hex HMAC over the body, which `HmacHeader` covers, but carries its timestamp inside the JSON body (`webhookTimestamp`, milliseconds). So `Webhooks.checkFreshness(timestamp, receivedAt, tolerance)` is exported on its own, and the caller applies it after decoding the body.
+Linear signs with a bare hex HMAC over the body, which `HmacHeader` covers, but carries its timestamp inside the JSON body (`webhookTimestamp`, milliseconds). So `Webhooks.checkFreshness(timestamp, receivedAt, tolerance)` is exported on its own, and the caller applies it after decoding the body. It takes the timestamp as a `DateTime` or as epoch milliseconds, and a number no `DateTime` can represent is `stale_timestamp`, never a throw.
 
-`SharedSecret` compares with `ConstantTime.secretsEqual`, so the secret's length does not leak; it covers Cloudflare's `cf-webhook-auth` and a path secret delivered as a header.
+`SharedSecret` compares with `ConstantTime.secretsEqual`, so the secret's length does not leak; it covers Cloudflare's `cf-webhook-auth` and a path secret delivered as a header. It compares the raw header value, untrimmed, because trimming would loosen a secret comparison; only an empty value is absent. Like every preset it needs nothing in `R`, and a `CryptoError` is a defect.
 
 `HmacHeader` verifies with `crypto`'s `Hmac.verify`, which decodes the signature and compares bytes, so any spelling that decodes to the right MAC is accepted: hex in either case, and padded base64 that is not the canonical spelling. Core's base64 decoder requires padding, so unpadded base64 does not decode and is `bad_signature`. `GitHub`, `Stripe`, `Sanity` and `StandardWebhooks` compare their encoded signature strings.
 
@@ -74,7 +74,7 @@ The signature is checked before the timestamp, in every preset. A stale delivery
 
 ## Errors
 
-`WebhookVerificationError` carries `reason` `missing_signature`, `malformed`, `bad_signature` or `stale_timestamp`, plus the preset name. A signature header that is present but off its grammar (a Stripe header with no `v1`, a GitHub value that is not `sha256=` and 64 lower-case hex digits) is `bad_signature`, as intake and the vendor libraries treat it; `malformed` is for an absent or ill-shaped auxiliary header, such as a Standard Webhooks timestamp that is not `^\d{1,15}$`. A `CryptoError` from `Hmac.sign` can only mean a missing runtime or a refused key, so it is a defect too. The audience is calling code: intake maps `missing_signature` and `bad_signature` to 401 and `malformed` and `stale_timestamp` to 400. A malformed *secret* (a `whsec_` value that is not base64) is a wiring mistake, not an attacker's input, so it is a defect at verify time rather than a typed failure.
+`WebhookVerificationError` carries `reason` `missing_signature`, `malformed`, `bad_signature` or `stale_timestamp`, plus the preset name. A signature header that is present but off its grammar (a Stripe header with no `v1`, a GitHub value that is not `sha256=` and 64 lower-case hex digits) is `bad_signature`, as intake and the vendor libraries treat it; `malformed` is for an absent or ill-shaped auxiliary header, such as a Standard Webhooks timestamp that is not `^\d{1,15}$`. A `CryptoError` from `Hmac.sign` or `ConstantTime.secretsEqual` can only mean a missing runtime or a refused key, so it is a defect too, and every preset's `E` is `WebhookVerificationError` alone. The audience is calling code: intake maps `missing_signature` and `bad_signature` to 401 and `malformed` and `stale_timestamp` to 400. A malformed *secret* (a `whsec_` value that is not base64) is a wiring mistake, not an attacker's input, so it is a defect at verify time rather than a typed failure.
 
 ## Observability
 
@@ -82,7 +82,7 @@ One named span per preset `verify`, annotated with the preset and the outcome re
 
 ## Testing
 
-Pure functions, so the suite needs no layer beyond `crypto`'s `Crypto` for `SharedSecret`. Vectors are lifted from intake's suite, which signs with `node:crypto` and cross-checks against the vendors' own libraries (`svix` `Webhook.sign`, `stripe` `constructEvent`); those two libraries become devDependencies here so the cross-check survives the move. Every preset is mutation-tested: each part of the signed string wrong in exactly one way must fail.
+Pure functions, so the suite needs no layer at all. Every `verify` is truly asynchronous (WebCrypto), so a test that forks one and then adjusts `TestClock` needs a latch. Vectors are lifted from intake's suite, which signs with `node:crypto` and cross-checks against the vendors' own libraries (`svix` `Webhook.sign`, `stripe` `constructEvent`); those two libraries become devDependencies here so the cross-check survives the move. Every preset is mutation-tested: each part of the signed string wrong in exactly one way must fail.
 
 ## Consumers
 

@@ -10,7 +10,7 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T06:20:52Z
+  at: 2026-10-23T01:39:30Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:32.522Z
@@ -18,7 +18,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 43898d8b704e948e
+    body: e15ba173ab13d71c
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -66,7 +66,10 @@ worth reporting.
 
 Two backends, both requiring core's HTTP client in their layer: the
 Actions cache protocol, and an S3-compatible backend with request signing
-(`node:crypto` HMAC), path-style addressing and a custom endpoint. The
+(`@effected/crypto`'s `SigV4`), path-style addressing and a custom endpoint.
+The S3 backend sends the target exactly as `SigV4.sign` returned it, and a
+key with a `.` or `..` path segment fails as `BlobStoreError` `invalidKey`
+with nothing sent, since no URL can carry it as signed. The
 GitHub-cache backend's layer static lives on its own module's class, never
 on the shared service class, so the Azure client stays unreachable from
 every other module that reads a blob.

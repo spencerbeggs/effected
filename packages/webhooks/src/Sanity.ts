@@ -1,6 +1,6 @@
 import type { DateTime } from "effect";
 import { Effect } from "effect";
-import { annotateOutcome, checkFresh, matchesAny, readHeader, reject, signedContent } from "./internal/verify.js";
+import { annotateOutcome, checkFresh, matchesAny, readHeader, reject } from "./internal/verify.js";
 import type { FreshnessOptions, WebhookRequest } from "./WebhookRequest.js";
 import type { WebhookVerificationError } from "./WebhookVerificationError.js";
 
@@ -25,7 +25,7 @@ const verify = Effect.fn("Sanity.verify")(function* (request: WebhookRequest, op
 	const t = match?.[1];
 	const signature = match?.[2];
 	if (t === undefined || signature === undefined) return yield* reject(PRESET, "bad_signature", "not t=<ms>,v1=<sig>");
-	if (!(yield* matchesAny(request.secret, signedContent(`${t}.`, request.body), "base64url", [signature]))) {
+	if (!(yield* matchesAny(request.secret, [`${t}.`, request.body], "base64url", [signature]))) {
 		return yield* reject(PRESET, "bad_signature");
 	}
 	// `t` is milliseconds.
@@ -54,6 +54,9 @@ export class Sanity {
 	 * `missing_signature` without the header; `bad_signature` when it is not `t=<ms>,v1=<sig>` or the signature does
 	 * not match; `stale_timestamp` when the signature matches but `t` sits outside `tolerance` (five minutes by
 	 * default) of `receivedAt`. The signature is always checked before the timestamp.
+	 *
+	 * Truly asynchronous: the HMAC runs on WebCrypto, so a test that forks this and then adjusts `TestClock` can race or
+	 * hang. Await it, or gate the clock on a latch.
 	 *
 	 * @public
 	 */

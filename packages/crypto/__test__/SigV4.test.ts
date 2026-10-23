@@ -95,7 +95,7 @@ layer(NodeCrypto.layer)("SigV4 (AWS S3 documented examples)", (it) => {
 
 	it.effect("signs GET Object with a Range header", () =>
 		Effect.gen(function* () {
-			const headers = yield* SigV4.sign(getObject, s3Example);
+			const { headers } = yield* SigV4.sign(getObject, s3Example);
 			assert.strictEqual(
 				headers.authorization,
 				"AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request, SignedHeaders=host;range;x-amz-content-sha256;x-amz-date, Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41",
@@ -108,7 +108,7 @@ layer(NodeCrypto.layer)("SigV4 (AWS S3 documented examples)", (it) => {
 
 	it.effect("signs PUT Object, hashing the body through Crypto and encoding the key", () =>
 		Effect.gen(function* () {
-			const headers = yield* SigV4.sign(
+			const { headers } = yield* SigV4.sign(
 				{
 					method: "PUT",
 					host,
@@ -141,7 +141,7 @@ layer(NodeCrypto.layer)("SigV4 (AWS S3 documented examples)", (it) => {
 			};
 			const canonical = yield* SigV4.canonicalize(request, s3Example);
 			assert.strictEqual(canonical.canonicalRequest.split("\n")[2], "max-keys=2&prefix=J");
-			const headers = yield* SigV4.sign(request, s3Example);
+			const { headers } = yield* SigV4.sign(request, s3Example);
 			assert.strictEqual(signatureOf(headers), "34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7");
 		}),
 	);
@@ -150,7 +150,7 @@ layer(NodeCrypto.layer)("SigV4 (AWS S3 documented examples)", (it) => {
 		Effect.gen(function* () {
 			const fromDate = yield* SigV4.sign(getObject, s3Example);
 			const fromDateTime = yield* SigV4.sign({ ...getObject, now: DateTime.makeUnsafe(MAY_24_2013) }, s3Example);
-			assert.strictEqual(fromDateTime.authorization, fromDate.authorization);
+			assert.strictEqual(fromDateTime.headers.authorization, fromDate.headers.authorization);
 		}),
 	);
 
@@ -158,7 +158,7 @@ layer(NodeCrypto.layer)("SigV4 (AWS S3 documented examples)", (it) => {
 		Effect.gen(function* () {
 			const nine = yield* SigV4.sign(getObject, s3Example);
 			const eight = yield* SigV4.sign({ ...getObject, headers: { range: "bytes=0-8" } }, s3Example);
-			assert.notStrictEqual(signatureOf(nine), signatureOf(eight));
+			assert.notStrictEqual(signatureOf(nine.headers), signatureOf(eight.headers));
 		}),
 	);
 });
@@ -180,7 +180,7 @@ layer(NodeCrypto.layer)("SigV4 merged behaviour", (it) => {
 
 	it.effect("signs every header it returns, including the session token", () =>
 		Effect.gen(function* () {
-			const headers = yield* SigV4.sign(base, { ...credentials, sessionToken: Redacted.make("ST") });
+			const { headers } = yield* SigV4.sign(base, { ...credentials, sessionToken: Redacted.make("ST") });
 			const signedHeaders = /SignedHeaders=([^,]+)/.exec(headers.authorization ?? "")?.[1]?.split(";") ?? [];
 			const sent = Object.keys(headers)
 				.filter((name) => name !== "authorization")
@@ -193,7 +193,7 @@ layer(NodeCrypto.layer)("SigV4 merged behaviour", (it) => {
 
 	it.effect("adds no session-token header without a session token", () =>
 		Effect.gen(function* () {
-			const headers = yield* SigV4.sign(base, credentials);
+			const { headers } = yield* SigV4.sign(base, credentials);
 			assert.isUndefined(headers["x-amz-security-token"]);
 			assert.notInclude(headers.authorization ?? "", "x-amz-security-token");
 		}),
@@ -290,6 +290,89 @@ layer(NodeCrypto.layer)("SigV4 merged behaviour", (it) => {
 			});
 			const canonical = yield* SigV4.canonicalize(base, credentials).pipe(Effect.provideService(Crypto.Crypto, zero));
 			assert.strictEqual(canonical.payloadHash, "0".repeat(64));
+		}),
+	);
+});
+
+layer(NodeCrypto.layer)("SigV4.sign's request target", (it) => {
+	const credentials: SigV4Credentials = {
+		accessKeyId: "AK",
+		secretAccessKey: Redacted.make("SK"),
+		region: "us-east-1",
+		service: "s3",
+	};
+	const base: SigV4Request = {
+		method: "GET",
+		host: "example.test",
+		path: "bucket/key",
+		payloadHash: SigV4.EMPTY_PAYLOAD_HASH,
+		now: new Date("2024-01-01T00:00:00.000Z"),
+	};
+
+	/** The path and query lines of the canonical request: what the signature actually covers. */
+	const coveredTarget = (request: SigV4Request) =>
+		Effect.map(SigV4.canonicalize(request, credentials), (canonical) => {
+			const [, path, query] = canonical.canonicalRequest.split("\n");
+			return { path, query };
+		});
+
+	it.effect("returns the encoded path and canonical query the signature covers", () =>
+		Effect.gen(function* () {
+			const request: SigV4Request = {
+				...base,
+				path: "/bucket/it's (a)*!/.../.a/ü",
+				query: [
+					["b", "two words"],
+					["a", "x!y"],
+				],
+			};
+			const signed = yield* SigV4.sign(request, credentials);
+			// Pinned literally, then against the canonical request, so neither
+			// side can drift from what was signed.
+			assert.strictEqual(signed.path, "/bucket/it%27s%20%28a%29%2A%21/.../.a/%C3%BC");
+			assert.strictEqual(signed.query, "a=x%21y&b=two%20words");
+			assert.deepStrictEqual(yield* coveredTarget(request), { path: signed.path, query: signed.query });
+		}),
+	);
+
+	it.effect("returns an empty query, with no ?, when there is none", () =>
+		Effect.gen(function* () {
+			const signed = yield* SigV4.sign(base, credentials);
+			assert.strictEqual(signed.path, "/bucket/key");
+			assert.strictEqual(signed.query, "");
+		}),
+	);
+
+	it.effect("refuses a . or .. segment before signing, in canonicalize and sign alike", () =>
+		Effect.gen(function* () {
+			// The control: a URL really does collapse them, so signing one would send another path.
+			assert.strictEqual(new URL("https://h.example/bucket/a/../b/./c").pathname, "/bucket/b/c");
+			for (const path of ["a/../b", "/bucket/./key", "..", ".", "bucket/key/..", "/./"]) {
+				const fromSign = yield* Effect.flip(SigV4.sign({ ...base, path }, credentials));
+				const fromCanonicalize = yield* Effect.flip(SigV4.canonicalize({ ...base, path }, credentials));
+				for (const error of [fromSign, fromCanonicalize]) {
+					assert.strictEqual(error._tag, "CryptoError", path);
+					if (error._tag === "CryptoError") {
+						assert.strictEqual(error.reason, "path", path);
+						assert.match(error.detail, /"\.\.?" segment/, path);
+					}
+				}
+			}
+		}),
+	);
+
+	it.effect("signs a segment that merely contains dots, or a literal %2e, which no URL collapses", () =>
+		Effect.gen(function* () {
+			for (const [path, encoded] of [
+				["a/.../b", "/a/.../b"],
+				["a/.a/b.", "/a/.a/b."],
+				["a/%2e%2E/b", "/a/%252e%252E/b"],
+				["a/ ./b", "/a/%20./b"],
+			] as const) {
+				const signed = yield* SigV4.sign({ ...base, path }, credentials);
+				assert.strictEqual(signed.path, encoded);
+				assert.strictEqual(new URL(`https://h.example${signed.path}`).pathname, signed.path, path);
+			}
 		}),
 	);
 });

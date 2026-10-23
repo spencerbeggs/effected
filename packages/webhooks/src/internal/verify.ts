@@ -1,7 +1,7 @@
 // Shared mechanics for every preset: header reads, signed-content assembly,
 // freshness arithmetic and the span's outcome annotation.
 
-import type { HmacKey, HmacStringEncoding } from "@effected/crypto";
+import type { HmacKey, HmacMessage, HmacStringEncoding } from "@effected/crypto";
 import { ConstantTime, Hmac } from "@effected/crypto";
 import { DateTime, Duration, Effect, Option } from "effect";
 import type { FreshnessOptions, WebhookRequest } from "../WebhookRequest.js";
@@ -25,20 +25,18 @@ export const readHeader = (request: WebhookRequest, name: string): string | unde
 	return value === undefined || value === "" ? undefined : value;
 };
 
-const encoder = new TextEncoder();
-
 /**
- * `prefix` as UTF-8, then the raw body bytes, joined as bytes and never via a decoded string.
+ * A header's raw value, untrimmed, or `undefined` when absent or empty. For a value compared verbatim, such as a
+ * shared secret, where trimming would loosen the comparison.
  *
  * @internal
  */
-export const signedContent = (prefix: string, body: Uint8Array): Uint8Array => {
-	const head = encoder.encode(prefix);
-	const out = new Uint8Array(head.byteLength + body.byteLength);
-	out.set(head, 0);
-	out.set(body, head.byteLength);
-	return out;
+export const readRawHeader = (request: WebhookRequest, name: string): string | undefined => {
+	const value = Option.getOrUndefined(request.header(name));
+	return value === undefined || value === "" ? undefined : value;
 };
+
+const encoder = new TextEncoder();
 
 /**
  * A typed verification failure.
@@ -63,7 +61,7 @@ export const reject = (
  */
 export const matchesAny = (
 	key: HmacKey,
-	message: Uint8Array | string,
+	message: HmacMessage,
 	encoding: HmacStringEncoding,
 	candidates: ReadonlyArray<string>,
 ): Effect.Effect<boolean> =>
