@@ -1,0 +1,98 @@
+[
+	{
+		"preset": "StandardWebhooks",
+		"name": "svix-branded headers",
+		"oracle": "svix Webhook.sign",
+		"secret": "whsec_ZWZmZWN0ZWQtc3ZpeC10ZXN0LWtleS0wMTIzNDU2Nzg5",
+		"headers": {
+			"svix-id": "msg_2abcDEF345ghiJKL678mnoPQR",
+			"svix-timestamp": "1792411200",
+			"svix-signature": "v1,Tz/poI407oaz/Q8PArkY0fi+Tafe4SBLzm9ytroNr9U="
+		},
+		"body": "eyJ0eXBlIjoidXNlci5jcmVhdGVkIiwib2JqZWN0IjoiZXZlbnQiLCJkYXRhIjp7ImlkIjoidXNlcl8xIn19",
+		"receivedAt": 1792411200000
+	},
+	{
+		"preset": "StandardWebhooks",
+		"name": "unbranded webhook- headers",
+		"oracle": "svix Webhook.sign",
+		"secret": "whsec_ZWZmZWN0ZWQtc3ZpeC10ZXN0LWtleS0wMTIzNDU2Nzg5",
+		"headers": {
+			"webhook-id": "msg_2abcDEF345ghiJKL678mnoPQR",
+			"webhook-timestamp": "1792411200",
+			"webhook-signature": "v1,Tz/poI407oaz/Q8PArkY0fi+Tafe4SBLzm9ytroNr9U="
+		},
+		"body": "eyJ0eXBlIjoidXNlci5jcmVhdGVkIiwib2JqZWN0IjoiZXZlbnQiLCJkYXRhIjp7ImlkIjoidXNlcl8xIn19",
+		"receivedAt": 1792411200000
+	},
+	{
+		"preset": "StandardWebhooks",
+		"name": "a rotation list with a v1a and a rotated-out key before the match",
+		"oracle": "svix Webhook.sign",
+		"secret": "whsec_ZWZmZWN0ZWQtc3ZpeC10ZXN0LWtleS0wMTIzNDU2Nzg5",
+		"headers": {
+			"svix-id": "msg_2abcDEF345ghiJKL678mnoPQR",
+			"svix-timestamp": "1792411200",
+			"svix-signature": "v1,Qoa9C5KBJvo4MLUm+L2yYKWE1BhnFjqQoIT//FSN2qg= v1a,abcd v1,Tz/poI407oaz/Q8PArkY0fi+Tafe4SBLzm9ytroNr9U="
+		},
+		"body": "eyJ0eXBlIjoidXNlci5jcmVhdGVkIiwib2JqZWN0IjoiZXZlbnQiLCJkYXRhIjp7ImlkIjoidXNlcl8xIn19",
+		"receivedAt": 1792411200000
+	},
+	{
+		"preset": "StandardWebhooks",
+		"name": "a body that is not UTF-8",
+		"oracle": "node:crypto createHmac",
+		"secret": "whsec_ZWZmZWN0ZWQtc3ZpeC10ZXN0LWtleS0wMTIzNDU2Nzg5",
+		"headers": {
+			"svix-id": "msg_2abcDEF345ghiJKL678mnoPQR",
+			"svix-timestamp": "1792411200",
+			"svix-signature": "v1,Tf4o1Btj6UCWdDZpF7fQeWNS/r0YQrR3RIYikGf8fSw="
+		},
+		"body": "eyJkYXRhIjp7ImlkIjoiY2Fm6SJ9fQ==",
+		"receivedAt": 1792411200000
+	},
+	{
+		"preset": "Stripe",
+		"name": "one v1",
+		"oracle": "stripe webhooks.generateTestHeaderString",
+		"secret": "whsec_effected_stripe_test_secret",
+		"headers": {
+			"stripe-signature": "t=1792411200,v1=c1d7ee197cd4be62b3738493a6fcdde57335ce0f7d144d65389def4f45e3dcad"
+		},
+		"body": "eyJpZCI6ImV2dF8xIiwib2JqZWN0IjoiZXZlbnQiLCJ0eXBlIjoiY2hhcmdlLnJlZnVuZGVkIiwibGl2ZW1vZGUiOmZhbHNlfQ==",
+		"receivedAt": 1792411200000
+	},
+	{
+		"preset": "GitHub",
+		"name": "x-hub-signature-256",
+		"oracle": "node:crypto createHmac",
+		"secret": "effected-github-test-secret",
+		"headers": {
+			"x-hub-signature-256": "sha256=fd363a657abeb123acb87e5ab357dffb445e752f17d7cd9c88f3bd0bb6b1a46c"
+		},
+		"body": "eyJ0eXBlIjoidXNlci5jcmVhdGVkIiwib2JqZWN0IjoiZXZlbnQiLCJkYXRhIjp7ImlkIjoidXNlcl8xIn19",
+		"receivedAt": 1792411200000
+	},
+	{
+		"preset": "Sanity",
+		"name": "t in milliseconds, unpadded base64url",
+		"oracle": "node:crypto createHmac",
+		"secret": "effected-sanity-test-secret",
+		"headers": {
+			"sanity-webhook-signature": "t=1792411200000,v1=A-4QYhYRnSQJ_zGyQZCpkCyTM5_v1CpNbWhVRInA8yQ"
+		},
+		"body": "eyJ0eXBlIjoidXNlci5jcmVhdGVkIiwib2JqZWN0IjoiZXZlbnQiLCJkYXRhIjp7ImlkIjoidXNlcl8xIn19",
+		"receivedAt": 1792411200000
+	},
+	{
+		"preset": "HmacHeader",
+		"name": "Linear's bare hex linear-signature",
+		"oracle": "node:crypto createHmac",
+		"secret": "lin_wh_effected_test_secret",
+		"headers": {
+			"linear-signature": "99e34ac1ca12cbee69dec72c4f8419fbb8e4e62488158976dfbddabd2e256fe9"
+		},
+		"body": "eyJ0eXBlIjoidXNlci5jcmVhdGVkIiwib2JqZWN0IjoiZXZlbnQiLCJkYXRhIjp7ImlkIjoidXNlcl8xIn19",
+		"receivedAt": 1792411200000
+	}
+]

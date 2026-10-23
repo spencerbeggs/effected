@@ -22,10 +22,10 @@ sources:
     title: "InboundRequest and the verification-failure status mapping"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-22T23:55:11Z
+  at: 2026-10-23T00:18:32Z
 integrity:
   generated:
-    body: 342df17901e0fb60
+    body: 4ec3fd6bd72262e4
 ---
 
 # `@effected/webhooks`
@@ -72,7 +72,7 @@ The signature is checked before the timestamp, in every preset. A stale delivery
 
 ## Errors
 
-`WebhookVerificationError` carries `reason` `missing_signature`, `malformed`, `bad_signature` or `stale_timestamp`, plus the preset name. The audience is calling code: intake maps `missing_signature` and `bad_signature` to 401 and `malformed` and `stale_timestamp` to 400. A malformed *secret* (a `whsec_` value that is not base64) is a wiring mistake, not an attacker's input, so it is a defect at verify time rather than a typed failure.
+`WebhookVerificationError` carries `reason` `missing_signature`, `malformed`, `bad_signature` or `stale_timestamp`, plus the preset name. A signature header that is present but off its grammar (a Stripe header with no `v1`, a GitHub value that is not `sha256=` and 64 lower-case hex digits) is `bad_signature`, as intake and the vendor libraries treat it; `malformed` is for an absent or ill-shaped auxiliary header, such as a Standard Webhooks timestamp that is not `^\d{1,15}$`. A `CryptoError` from `Hmac.sign` can only mean a missing runtime or a refused key, so it is a defect too. The audience is calling code: intake maps `missing_signature` and `bad_signature` to 401 and `malformed` and `stale_timestamp` to 400. A malformed *secret* (a `whsec_` value that is not base64) is a wiring mistake, not an attacker's input, so it is a defect at verify time rather than a typed failure.
 
 ## Observability
 
