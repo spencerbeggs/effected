@@ -3,16 +3,52 @@ import { Context, Crypto, Effect, FileSystem, Layer, Option, Redacted as Red, Sc
 import * as Hex from "effect/encoding/Hex";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { IntegrityHash } from "./IntegrityHash.js";
+import { classifyPublishAuth, publishFailureOutput } from "./internal/npmLog.js";
 import { NpmExecutor } from "./NpmExecutor.js";
 import { PublishError } from "./PublishError.js";
-import type { RegistryCredential } from "./RegistryCredential.js";
+import type { PublishCredential } from "./RegistryCredential.js";
 import { classifyRegistry } from "./RegistryKind.js";
 
 /** npm prints its transparency-log URL on this notice line. */
 const PROVENANCE_URL = /https:\/\/search\.sigstore\.dev\/\?logIndex=\d+/;
 
+/** The two npmrc auth key names npm reads per registry. */
+type AuthKeyName = "_authToken" | "_auth";
+
 /**
- * The npm config key that carries a registry's auth token.
+ * The npmrc key name a credential kind is written under.
+ *
+ * @remarks
+ * npm reads BOTH keys per registry, checking `_authToken` first and then
+ * `_auth` (npm-registry-fetch's `hasAuth`), so the credential's own kind picks
+ * the key and neither shadows the other. An exhaustive switch rather than a
+ * `kind === "token"` ternary: a ternary sends every kind it does not name to
+ * `_auth`, which is how a workload token would have been written as a basic
+ * blob.
+ */
+const keyNameOf = (kind: PublishCredential["kind"]): AuthKeyName => {
+	switch (kind) {
+		case "token":
+		case "workload":
+			return "_authToken";
+		case "basic":
+			return "_auth";
+	}
+};
+
+/** The secret a credential writes, under the same exhaustive switch as {@link keyNameOf}. */
+const secretOf = (credential: PublishCredential): Red.Redacted<string> => {
+	switch (credential.kind) {
+		case "token":
+		case "workload":
+			return credential.token;
+		case "basic":
+			return credential.encoded;
+	}
+};
+
+/**
+ * The npm config key that carries a registry's auth.
  *
  * @remarks
  * npm "nerf-darts" the registry: scheme stripped, **trailing slash required**.
@@ -20,13 +56,10 @@ const PROVENANCE_URL = /https:\/\/search\.sigstore\.dev\/\?logIndex=\d+/;
  * never does, and the publish goes out unauthenticated with no diagnostic. A
  * registry path is preserved (`//host/artifactory/api/npm/repo/:_authToken`).
  */
-const authKey = (registry: string, kind: RegistryCredential["kind"]): string => {
+const authKey = (registry: string, name: AuthKeyName): string => {
 	const withoutScheme = registry.replace(/^https?:/, "");
 	const withSlash = withoutScheme.endsWith("/") ? withoutScheme : `${withoutScheme}/`;
-	// npm reads BOTH keys per registry, checking `_authToken` first and then
-	// `_auth` (npm-registry-fetch's `hasAuth`), so the credential's own kind
-	// picks the key and neither shadows the other.
-	return `${withSlash}:${kind === "token" ? "_authToken" : "_auth"}`;
+	return `${withSlash}:${name}`;
 };
 
 /**
@@ -122,6 +155,22 @@ export class PackedTarball extends Schema.Class<PackedTarball>("PackedTarball")(
 }) {}
 
 /**
+ * Which credential a successful publish authenticated with.
+ *
+ * @remarks
+ * `"oidc-exchange"` — npm exchanged a CI identity token for a short-lived
+ * publish token (trusted publishing), which takes precedence over any token
+ * in the npmrc. `"configured-credential"` — npm used whatever the npmrc holds
+ * for the registry (a token, a basic `_auth` blob, or a workload credential
+ * written by `setupAuth`). `"unknown"` — npm's output carried no evidence
+ * either way; it is an honest answer, never a default for a guess. See
+ * {@link PublishOutcome.auth} for the evidence each value rests on.
+ *
+ * @public
+ */
+export type PublishAuthPath = "oidc-exchange" | "configured-credential" | "unknown";
+
+/**
  * What one publish produced.
  *
  * @public
@@ -132,6 +181,37 @@ export interface PublishOutcome {
 	 * Absent for GitHub Packages, custom registries, and provenance-off runs.
 	 */
 	readonly provenanceUrl?: string | undefined;
+	/**
+	 * Which credential the publish authenticated with, read from npm's own log
+	 * lines on positive evidence only.
+	 *
+	 * @remarks
+	 * npm reports its auth path only below its default log level, so every
+	 * publish runs at `--loglevel=silly` and the outcome is read from stderr:
+	 *
+	 * - `verbose oidc Successfully retrieved and set token` is
+	 *   `"oidc-exchange"`. It wins over every other marker, because npm logs
+	 *   `Failed to set provenance …` only after a successful exchange.
+	 * - A publish with `tokenAuth: true` is `"configured-credential"`: every
+	 *   identity-token source was blanked, so no exchange could happen.
+	 * - `verbose oidc Failed …` / `Failure …` or `silly oidc Skipped …` is
+	 *   `"configured-credential"`: a failed or skipped exchange leaves the
+	 *   npmrc credential in place, and the publish succeeded, so npm had one.
+	 * - Anything else is `"unknown"`.
+	 *
+	 * `"unknown"` is what a run reports when npm printed no marker: a run
+	 * outside CI (npm attempts no exchange there and says nothing); an npm
+	 * without trusted-publishing support, which includes the runner's bundled
+	 * npm used through {@link NpmExecutor.ambient}; a `--loglevel` in the
+	 * executor's `extraArgs`, which comes later on the command line and wins;
+	 * and an npm `heading` configured empty or containing a space, which no
+	 * longer matches the `<heading> <level>` line shape.
+	 *
+	 * Required rather than optional on purpose: every run can answer at least
+	 * `"unknown"`, so an optional field would only let a test double say
+	 * nothing where production says something.
+	 */
+	readonly auth: PublishAuthPath;
 }
 
 /**
@@ -184,13 +264,25 @@ export interface PublishOptions extends PackOptions {
 	/** Request npm's native provenance. */
 	readonly provenance?: boolean | undefined;
 	/**
-	 * Force classic `_authToken` auth by blanking the Actions OIDC environment.
+	 * Publish with the npmrc credential by stopping npm's OIDC exchange.
 	 *
 	 * @remarks
-	 * npm attempts tokenless trusted publishing whenever the OIDC variables are
-	 * present and does **not** fall back to a configured `_authToken` when that
-	 * attempt fails. Required for GitHub Packages, and as the bootstrap path for
-	 * a package with no trusted publisher configured yet.
+	 * npm attempts the trusted-publishing exchange whenever an identity token
+	 * is reachable — `NPM_ID_TOKEN`, or the Actions token service named by
+	 * `ACTIONS_ID_TOKEN_REQUEST_URL` / `ACTIONS_ID_TOKEN_REQUEST_TOKEN` — and an
+	 * exchanged token takes precedence over a configured `_authToken`. A failed
+	 * exchange falls back silently to the configured credential. So this
+	 * option's job is to stop an exchange from **replacing** the configured
+	 * credential: it blanks all three variables for the publish, and the
+	 * outcome reports `auth: "configured-credential"`. Use it for a registry
+	 * that should see the npmrc credential (GitHub Packages, a workload
+	 * credential written by `setupAuth`) and as the bootstrap path for a
+	 * package with no trusted publisher configured yet.
+	 *
+	 * **It also drops `--provenance`.** npm's provenance on GitHub Actions
+	 * needs the same token service this option blanks, and npm fails the
+	 * publish outright without it; so, as for a non-npm registry, the publish
+	 * goes out without provenance rather than failing.
 	 */
 	readonly tokenAuth?: boolean | undefined;
 }
@@ -202,9 +294,14 @@ export interface PublishOptions extends PackOptions {
  */
 export interface PackagePublishShape {
 	/**
-	 * Write a registry auth token into an npmrc.
+	 * Write a registry credential into an npmrc.
 	 *
 	 * @remarks
+	 * Takes a {@link PublishCredential}: a token, a basic blob, or the
+	 * publish-only workload credential (written under `_authToken`, like a
+	 * token). The span is annotated with the credential's kind and, for a
+	 * workload credential, its audience — never its value.
+	 *
 	 * The token goes to the file, **never to argv** — redaction protects this
 	 * kit's error messages, not the operating system's process table. Masking
 	 * the token in a CI log is the **caller's** job; this package takes a
@@ -230,12 +327,23 @@ export interface PackagePublishShape {
 	 */
 	readonly setupAuth: (options: {
 		readonly registry: string;
-		readonly credential: RegistryCredential;
+		readonly credential: PublishCredential;
 		readonly npmrcPath: string;
 	}) => Effect.Effect<void, PublishError>;
 	/** `npm pack --json` — writes the tarball and reports both digests. */
 	readonly pack: (packageDir: string, options?: PackOptions) => Effect.Effect<PackedTarball, PublishError>;
-	/** `npm publish <tarball>` — uploads bytes packed earlier, never re-packs. */
+	/**
+	 * `npm publish <tarball>` — uploads bytes packed earlier, never re-packs.
+	 *
+	 * @remarks
+	 * Runs npm at `--loglevel=silly` so the outcome can report
+	 * {@link PublishOutcome.auth}. That flag overrides any `loglevel` in an
+	 * npmrc or the environment; only a `--loglevel` in the executor's
+	 * `extraArgs` comes later on the command line and wins (the outcome then
+	 * reports `"unknown"`). A failure's `PublishError.output` drops the extra
+	 * `verbose`/`silly`/`http`/`info`/`timing` lines and repeated notices, so it
+	 * carries what npm prints at its default level.
+	 */
 	readonly publishTarball: (
 		tarballPath: string,
 		options: PublishOptions,
@@ -324,14 +432,16 @@ const make = Effect.fnUntraced(function* () {
 
 	const setupAuth = Effect.fn("PackagePublish.setupAuth")(function* (options: {
 		readonly registry: string;
-		readonly credential: RegistryCredential;
+		readonly credential: PublishCredential;
 		readonly npmrcPath: string;
 	}) {
 		yield* Effect.annotateCurrentSpan({
 			registry: options.registry,
 			npmrc: options.npmrcPath,
-			// The KIND is safe to annotate and worth annotating; the value is not.
+			// The KIND (and a workload's audience) is safe to annotate and worth
+			// annotating; the value is not.
 			credential: options.credential.kind,
+			...(options.credential.kind === "workload" ? { audience: options.credential.audience } : {}),
 		});
 		// Only an absent file is an empty npmrc. Any other read failure (permission
 		// denied, a directory in the way) means a file exists that we cannot read;
@@ -347,13 +457,13 @@ const make = Effect.fnUntraced(function* () {
 							),
 				),
 			);
-		const secret = options.credential.kind === "token" ? options.credential.token : options.credential.encoded;
-		const key = authKey(options.registry, options.credential.kind);
-		const line = `${key}=${Red.value(secret)}`;
+		const name = keyNameOf(options.credential.kind);
+		const key = authKey(options.registry, name);
+		const line = `${key}=${Red.value(secretOf(options.credential))}`;
 		const upserted = replaceKey(
 			existing,
 			key,
-			authKey(options.registry, options.credential.kind === "token" ? "basic" : "token"),
+			authKey(options.registry, name === "_authToken" ? "_auth" : "_authToken"),
 			line,
 		);
 		const base = upserted.text;
@@ -411,12 +521,15 @@ const make = Effect.fnUntraced(function* () {
 		options: PublishOptions,
 	) {
 		yield* Effect.annotateCurrentSpan({ tarball: tarballPath, registry: options.registry });
+		const tokenAuth = options.tokenAuth === true;
 		// Provenance is an npm-registry feature. Passing `--provenance` to GitHub
 		// Packages or a custom registry fails the publish outright, so a caller
 		// who asks for it against a non-npm target gets the publish without it
 		// rather than a failed release: a release pipeline publishing to three
-		// registries should not lose two of them to one flag.
-		const provenance = options.provenance === true && classifyRegistry(options.registry) === "npm";
+		// registries should not lose two of them to one flag. `tokenAuth` drops
+		// it for the same reason: on GitHub Actions npm's provenance needs the
+		// token service `tokenAuth` blanks, and fails the publish without it.
+		const provenance = options.provenance === true && !tokenAuth && classifyRegistry(options.registry) === "npm";
 		const args = [
 			"publish",
 			tarballPath,
@@ -425,6 +538,9 @@ const make = Effect.fnUntraced(function* () {
 			...(options.tag === undefined ? [] : ["--tag", options.tag]),
 			...(options.access === undefined ? [] : ["--access", options.access]),
 			...(provenance ? ["--provenance"] : []),
+			// npm names its auth path only below the default level. Placed before the
+			// executor's extraArgs, so a caller's own `--loglevel` comes later and wins.
+			"--loglevel=silly",
 		];
 		const output = yield* npm(args, {
 			executor: options.executor ?? NpmExecutor.ambient,
@@ -433,9 +549,11 @@ const make = Effect.fnUntraced(function* () {
 			registry: options.registry,
 			// Blanking rather than deleting: `CommandOptions.env` is an overlay on
 			// the inherited environment, so an empty value is how a variable is
-			// suppressed without replacing the whole environment.
-			...(options.tokenAuth === true
-				? { env: { ACTIONS_ID_TOKEN_REQUEST_URL: "", ACTIONS_ID_TOKEN_REQUEST_TOKEN: "" } }
+			// suppressed without replacing the whole environment. `NPM_ID_TOKEN`
+			// is npm's first identity-token source, read before the Actions token
+			// service, so leaving it set would still let the exchange happen.
+			...(tokenAuth
+				? { env: { NPM_ID_TOKEN: "", ACTIONS_ID_TOKEN_REQUEST_URL: "", ACTIONS_ID_TOKEN_REQUEST_TOKEN: "" } }
 				: {}),
 		});
 		if (!output.succeeded) {
@@ -445,7 +563,7 @@ const make = Effect.fnUntraced(function* () {
 					subject: tarballPath,
 					registry: options.registry,
 					exitCode: output.exitCode,
-					output: output.stderr === "" ? output.stdout : output.stderr,
+					output: publishFailureOutput(output.stdout, output.stderr),
 				}),
 			);
 		}
@@ -453,6 +571,7 @@ const make = Effect.fnUntraced(function* () {
 		const provenanceUrl = PROVENANCE_URL.exec(printed)?.[0];
 		return {
 			...(provenanceUrl === undefined ? {} : { provenanceUrl }),
+			auth: classifyPublishAuth(output.stderr, tokenAuth),
 		} satisfies PublishOutcome;
 	});
 
@@ -492,6 +611,39 @@ const integrityField = (raw: string | undefined): { integrity?: typeof Integrity
 				onNone: () => ({}),
 				onSome: (integrity) => ({ integrity }),
 			});
+
+/**
+ * One `setupAuth` call a {@link PackagePublish.recording} double observed.
+ *
+ * @remarks
+ * The credential's kind and, for a workload credential, its audience — never
+ * its value, so a recorded call is safe to print in a failing assertion.
+ *
+ * @public
+ */
+export interface RecordedSetupAuth {
+	/** The registry the credential was written for. */
+	readonly registry: string;
+	/** The npmrc it was written to. */
+	readonly npmrcPath: string;
+	/** Which credential arm was written. */
+	readonly kind: PublishCredential["kind"];
+	/** The audience, for a workload credential; absent otherwise. */
+	readonly audience?: string;
+}
+
+/**
+ * What {@link PackagePublish.recording} returns: the layer to provide and the
+ * calls it observed.
+ *
+ * @public
+ */
+export interface RecordingPackagePublish {
+	/** The double. */
+	readonly layer: Layer.Layer<PackagePublish>;
+	/** A snapshot of the `setupAuth` calls so far, in order. */
+	readonly setupAuthCalls: () => ReadonlyArray<RecordedSetupAuth>;
+}
 
 /** The default for an unstubbed {@link PackagePublish.makeTest} member. */
 const notStubbed = (method: string) => () =>
@@ -568,4 +720,57 @@ export class PackagePublish extends Context.Service<PackagePublish, PackagePubli
 	 */
 	static readonly layerTest = (overrides: Partial<PackagePublishShape> = {}): Layer.Layer<PackagePublish> =>
 		Layer.succeed(PackagePublish, PackagePublish.makeTest(overrides));
+
+	/**
+	 * A recording double: `setupAuth` succeeds and records each call's
+	 * registry, npmrc path, credential kind and (for a workload credential)
+	 * audience; every other member behaves as in {@link PackagePublish.makeTest}
+	 * — overridden, or dying with a defect naming itself.
+	 *
+	 * @remarks
+	 * A sibling of `layerTest` rather than a recording `layerTest`, because
+	 * `layerTest` is override-and-die everywhere in the kit. Each call returns a
+	 * fresh journal and a fresh layer — bind the result to a `const` and provide
+	 * its `layer` once, or two journals each see half the calls.
+	 *
+	 * @example
+	 * ```ts
+	 * import { PackagePublish } from "@effected/npm";
+	 * import { Effect, Redacted } from "effect";
+	 *
+	 * const recorder = PackagePublish.recording();
+	 * const program = Effect.gen(function* () {
+	 *   const publish = yield* PackagePublish;
+	 *   yield* publish.setupAuth({
+	 *     registry: "https://registry.npmjs.org",
+	 *     credential: { kind: "token", token: Redacted.make("t") },
+	 *     npmrcPath: "/home/runner/.npmrc",
+	 *   });
+	 *   return recorder.setupAuthCalls();
+	 * });
+	 * Effect.runPromise(Effect.provide(program, recorder.layer)).then(console.log);
+	 * // => [{ registry: "https://registry.npmjs.org", npmrcPath: "/home/runner/.npmrc", kind: "token" }]
+	 * ```
+	 */
+	static readonly recording = (
+		overrides: Partial<Omit<PackagePublishShape, "setupAuth">> = {},
+	): RecordingPackagePublish => {
+		const calls: Array<RecordedSetupAuth> = [];
+		const layer = Layer.succeed(
+			PackagePublish,
+			PackagePublish.makeTest({
+				...overrides,
+				setupAuth: (options) =>
+					Effect.sync(() => {
+						calls.push({
+							registry: options.registry,
+							npmrcPath: options.npmrcPath,
+							kind: options.credential.kind,
+							...(options.credential.kind === "workload" ? { audience: options.credential.audience } : {}),
+						});
+					}),
+			}),
+		);
+		return { layer, setupAuthCalls: () => calls.slice() };
+	};
 }

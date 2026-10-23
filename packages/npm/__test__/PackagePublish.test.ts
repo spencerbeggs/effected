@@ -2,12 +2,12 @@ import { assert, describe, it } from "@effect/vitest";
 import { LocalExec } from "@effected/commands";
 import type { MemoryFileSystemFaults, MemoryFileSystemHandle, MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, Exit, Layer, PlatformError, Redacted } from "effect";
+import { Effect, Exit, Layer, PlatformError, Redacted, Result } from "effect";
 import { NpmExecutor } from "../src/NpmExecutor.js";
 import { PackagePublish, PackedTarball } from "../src/PackagePublish.js";
 import { PublishError } from "../src/PublishError.js";
-import type { RegistryCredential } from "../src/RegistryCredential.js";
-import { basicCredentialFromPair } from "../src/RegistryCredential.js";
+import type { PublishCredential } from "../src/RegistryCredential.js";
+import { basicCredentialFromPairResult, workloadCredential } from "../src/RegistryCredential.js";
 import type { ScriptResult } from "./publish-fixtures.js";
 import { fakeCrypto, scripted } from "./publish-fixtures.js";
 
@@ -480,6 +480,7 @@ describe("PackagePublish.publishTarball", () => {
 				),
 			);
 			assert.strictEqual(outcome.provenanceUrl, "https://search.sigstore.dev/?logIndex=42");
+			assert.strictEqual(outcome.auth, "unknown");
 		}),
 	);
 
@@ -490,23 +491,138 @@ describe("PackagePublish.publishTarball", () => {
 				Effect.flatMap(publisher, (p) => p.publishTarball("/tmp/t.tgz", { registry: "https://r.example" })),
 			);
 			assert.isUndefined(outcome.provenanceUrl);
+			// No oidc line at all: outside CI, or an npm without trusted publishing.
+			assert.strictEqual(outcome.auth, "unknown");
 		}),
 	);
 
-	it.effect("tokenAuth strips the OIDC environment so npm uses the configured _authToken", () =>
+	it.effect("tokenAuth strips every identity-token source so npm uses the configured credential", () =>
 		Effect.gen(function* () {
 			const h = harness({ script: () => ({ stdout: "ok", exit: 0 }) });
-			yield* h.run(
+			const outcome = yield* h.run(
 				Effect.flatMap(publisher, (p) =>
 					p.publishTarball("/tmp/t.tgz", { registry: "https://r.example", tokenAuth: true }),
 				),
 			);
 			const env = h.spawner.spawns[0]?.env ?? {};
+			// NPM_ID_TOKEN is npm's FIRST identity-token source, read before the
+			// Actions token service: leaving it set still lets the exchange happen.
+			assert.strictEqual(env.NPM_ID_TOKEN, "");
 			assert.strictEqual(env.ACTIONS_ID_TOKEN_REQUEST_URL, "");
 			assert.strictEqual(env.ACTIONS_ID_TOKEN_REQUEST_TOKEN, "");
+			assert.strictEqual(outcome.auth, "configured-credential");
 			// The override must EXTEND the parent environment, not replace it — a
 			// hermetic env has no PATH, so npm itself would fail to resolve.
 			assert.strictEqual(h.spawner.spawns[0]?.extendEnv, true);
+		}),
+	);
+
+	it.effect("tokenAuth drops --provenance rather than failing the publish", () =>
+		// On GitHub Actions npm's provenance needs the token service tokenAuth
+		// blanks, and npm fails the whole publish without it.
+		Effect.gen(function* () {
+			const h = harness({ script: () => ({ stdout: "ok", exit: 0 }) });
+			yield* h.run(
+				Effect.flatMap(publisher, (p) =>
+					p.publishTarball("/tmp/t.tgz", { registry: "https://registry.npmjs.org", provenance: true, tokenAuth: true }),
+				),
+			);
+			assert.notInclude(publishArgs(h), "--provenance");
+		}),
+	);
+
+	it.effect("without tokenAuth the environment is inherited untouched", () =>
+		Effect.gen(function* () {
+			const h = harness({ script: () => ({ stdout: "ok", exit: 0 }) });
+			yield* h.run(Effect.flatMap(publisher, (p) => p.publishTarball("/tmp/t.tgz", { registry: "https://r.example" })));
+			assert.isUndefined(h.spawner.spawns[0]?.env?.NPM_ID_TOKEN);
+		}),
+	);
+
+	it.effect("runs npm at --loglevel=silly, before the executor's extraArgs so a caller's own level wins", () =>
+		Effect.gen(function* () {
+			const h = harness({ script: () => ({ stdout: "ok", exit: 0 }) });
+			yield* h.run(
+				Effect.flatMap(publisher, (p) =>
+					p.publishTarball("/tmp/t.tgz", {
+						registry: "https://r.example",
+						executor: NpmExecutor.ambient.withExtraArgs(["--loglevel=notice"]),
+					}),
+				),
+			);
+			const args = publishArgs(h);
+			const silly = args.indexOf("--loglevel=silly");
+			assert.isAtLeast(silly, 0, "the publish must ask npm for its auth markers");
+			assert.isAbove(args.indexOf("--loglevel=notice"), silly, "a caller's --loglevel must come later and win");
+		}),
+	);
+
+	it.effect("reports oidc-exchange when npm logged a successful exchange", () =>
+		Effect.gen(function* () {
+			const h = harness({
+				script: () => ({
+					stdout: "+ pkg@1.1.0\n",
+					stderr:
+						"npm notice Publishing to https://registry.npmjs.org/\nnpm verbose oidc Successfully retrieved and set token\nnpm info ok\n",
+					exit: 0,
+				}),
+			});
+			const outcome = yield* h.run(
+				Effect.flatMap(publisher, (p) => p.publishTarball("/tmp/t.tgz", { registry: "https://registry.npmjs.org" })),
+			);
+			assert.strictEqual(outcome.auth, "oidc-exchange");
+		}),
+	);
+
+	it.effect("reports configured-credential when npm logged a skipped exchange", () =>
+		Effect.gen(function* () {
+			const h = harness({
+				script: () => ({
+					stdout: "+ pkg@1.1.0\n",
+					stderr: "npm silly oidc Skipped because incorrect permissions for id-token within GitHub workflow\n",
+					exit: 0,
+				}),
+			});
+			const outcome = yield* h.run(
+				Effect.flatMap(publisher, (p) => p.publishTarball("/tmp/t.tgz", { registry: "https://registry.npmjs.org" })),
+			);
+			assert.strictEqual(outcome.auth, "configured-credential");
+		}),
+	);
+
+	it.effect("a failed publish's output carries npm's error lines, not the silly transcript", () =>
+		Effect.gen(function* () {
+			const h = harness({
+				script: () => ({
+					stderr: [
+						"npm verbose cli node npm-cli.js",
+						"npm silly config load:file:/home/runner/.npmrc",
+						"npm http fetch PUT 403 https://registry.npmjs.org/pkg 9ms",
+						"npm error 403 Forbidden - PUT https://registry.npmjs.org/pkg",
+						"npm verbose exit 1",
+					].join("\n"),
+					exit: 1,
+				}),
+			});
+			const error = yield* Effect.flip(
+				h.run(Effect.flatMap(publisher, (p) => p.publishTarball("/tmp/t.tgz", { registry: "https://r.example" }))),
+			);
+			assert.include(error.output ?? "", "npm error 403 Forbidden");
+			for (const dropped of ["npm verbose", "npm silly", "npm http"]) {
+				assert.notInclude(error.output ?? "", dropped);
+			}
+		}),
+	);
+
+	it.effect("a failed publish falls back to stdout when only silly lines reached stderr", () =>
+		Effect.gen(function* () {
+			const h = harness({
+				script: () => ({ stdout: "the failure, on stdout", stderr: "npm verbose a\nnpm silly b\n", exit: 1 }),
+			});
+			const error = yield* Effect.flip(
+				h.run(Effect.flatMap(publisher, (p) => p.publishTarball("/tmp/t.tgz", { registry: "https://r.example" }))),
+			);
+			assert.strictEqual(error.output, "the failure, on stdout");
 		}),
 	);
 
@@ -634,7 +750,7 @@ describe("PackagePublish.setupAuth with basic auth", () => {
 describe("PackagePublish.setupAuth replaces its own key", () => {
 	const HOST = "https://registry.npmjs.org";
 	const KEY = "//registry.npmjs.org/:_authToken";
-	const run = (h: Harness, options: { registry?: string; credential?: RegistryCredential } = {}) =>
+	const run = (h: Harness, options: { registry?: string; credential?: PublishCredential } = {}) =>
 		h.run(
 			Effect.flatMap(publisher, (p) =>
 				p.setupAuth({
@@ -730,22 +846,127 @@ describe("PackagePublish.setupAuth replaces its own key", () => {
 	);
 });
 
-describe("basicCredentialFromPair", () => {
+describe("PackagePublish.setupAuth with a workload credential", () => {
+	const HOST = "https://registry.savvyweb.systems/npm";
+	const TOKEN_KEY = "//registry.savvyweb.systems/npm/:_authToken";
+	const workload = workloadCredential({
+		audience: "https://registry.savvyweb.systems",
+		prefix: "pnpr_workload_",
+		identityToken: Redacted.make("hdr.payload.sig"),
+	});
+	const run = (h: Harness) =>
+		h.run(Effect.flatMap(publisher, (p) => p.setupAuth({ registry: HOST, credential: workload, npmrcPath: NPMRC })));
+
+	it.effect("writes the prefixed token under _authToken, never _auth, and spawns nothing", () =>
+		// A ternary over `kind === "token"` sent every other kind to `_auth`:
+		// the workload token would have been written as a basic blob.
+		Effect.gen(function* () {
+			const h = harness();
+			yield* run(h);
+			assert.strictEqual(npmrcOf(h), `${TOKEN_KEY}=pnpr_workload_hdr.payload.sig\n`);
+			assert.lengthOf(h.spawner.spawns, 0);
+		}),
+	);
+
+	it.effect("replaces an existing _authToken line in place", () =>
+		Effect.gen(function* () {
+			const h = harness({ files: { [NPMRC]: `a=1\n${TOKEN_KEY}=stale\nb=2\n` } });
+			yield* run(h);
+			assert.strictEqual(npmrcOf(h), `a=1\n${TOKEN_KEY}=pnpr_workload_hdr.payload.sig\nb=2\n`);
+		}),
+	);
+
+	it.effect("clears the same registry's stale _auth line, which would otherwise outlive it", () =>
+		Effect.gen(function* () {
+			const h = harness({ files: { [NPMRC]: "//registry.savvyweb.systems/npm/:_auth=b2xk\nx=1\n" } });
+			yield* run(h);
+			assert.strictEqual(npmrcOf(h), `x=1\n${TOKEN_KEY}=pnpr_workload_hdr.payload.sig\n`);
+		}),
+	);
+});
+
+describe("PackagePublish.recording", () => {
+	it.effect("records each setupAuth call's registry, npmrc, kind and workload audience, never the value", () =>
+		Effect.gen(function* () {
+			const recorder = PackagePublish.recording();
+			yield* Effect.gen(function* () {
+				const p = yield* PackagePublish;
+				yield* p.setupAuth({ registry: "https://r.example", credential: TOKEN_CREDENTIAL, npmrcPath: NPMRC });
+				yield* p.setupAuth({
+					registry: "https://w.example",
+					credential: workloadCredential({ audience: "aud", prefix: "p_", identityToken: Redacted.make("jwt") }),
+					npmrcPath: NPMRC,
+				});
+			}).pipe(Effect.provide(recorder.layer));
+			const calls = recorder.setupAuthCalls();
+			assert.deepStrictEqual(calls, [
+				{ registry: "https://r.example", npmrcPath: NPMRC, kind: "token" },
+				{ registry: "https://w.example", npmrcPath: NPMRC, kind: "workload", audience: "aud" },
+			]);
+			assert.notInclude(JSON.stringify(calls), "jwt");
+			assert.notInclude(JSON.stringify(calls), "s3cr3t");
+		}),
+	);
+
+	it.effect("other members die unless overridden", () =>
+		Effect.gen(function* () {
+			const recorder = PackagePublish.recording({
+				publishTarball: () => Effect.succeed({ auth: "configured-credential" }),
+			});
+			const p = yield* Effect.provide(publisher, recorder.layer);
+			const outcome = yield* p.publishTarball("/tmp/t.tgz", { registry: "https://r.example" });
+			assert.strictEqual(outcome.auth, "configured-credential");
+			const exit = yield* Effect.exit(p.pack("/repo/pkg"));
+			if (!Exit.isFailure(exit)) assert.fail("expected a defect from an unstubbed member");
+			assert.isTrue(exit.cause.reasons.some((reason) => reason._tag === "Die"));
+		}),
+	);
+});
+
+describe("basicCredentialFromPairResult", () => {
 	it("encodes the pair the way npm's own username/_password path does", () => {
-		const credential = basicCredentialFromPair("user", Redacted.make("pass"));
-		assert.strictEqual(credential.kind, "basic");
+		const result = basicCredentialFromPairResult("user", Redacted.make("pass"));
+		if (!Result.isSuccess(result)) return assert.fail("expected a credential");
+		assert.strictEqual(result.success.kind, "basic");
 		// base64("user:pass"), computed independently.
-		assert.strictEqual(Redacted.value(credential.encoded), "dXNlcjpwYXNz");
+		assert.strictEqual(Redacted.value(result.success.encoded), "dXNlcjpwYXNz");
 	});
 
-	it("refuses a colon in the username rather than minting a mis-split credential", () => {
+	it("refuses a colon in the username as a typed failure, not a throw", () => {
 		// The separator is positional and unescapable: "a:b" + ":" + "c" re-splits
 		// on the server as user "a", password "b:c".
-		assert.throws(() => basicCredentialFromPair("a:b", Redacted.make("c")), RangeError);
+		const result = basicCredentialFromPairResult("a:b", Redacted.make("c"));
+		if (!Result.isFailure(result)) return assert.fail("expected a refusal");
+		assert.strictEqual(result.failure._tag, "BasicCredentialError");
+		assert.strictEqual(result.failure.reason, "colon-in-username");
+		assert.include(result.failure.message, "colon");
+	});
+
+	it("accepts a colon in the password, which the server splits off correctly", () => {
+		const result = basicCredentialFromPairResult("user", Redacted.make("p:ss"));
+		if (!Result.isSuccess(result)) return assert.fail("expected a credential");
+		// base64("user:p:ss")
+		assert.strictEqual(Redacted.value(result.success.encoded), "dXNlcjpwOnNz");
 	});
 
 	it("keeps the encoded credential out of any loggable value", () => {
-		const credential = basicCredentialFromPair("user", Redacted.make("pass"));
-		assert.notInclude(String(credential.encoded), "dXNlcjpwYXNz");
+		const result = basicCredentialFromPairResult("user", Redacted.make("pass"));
+		if (!Result.isSuccess(result)) return assert.fail("expected a credential");
+		assert.notInclude(String(result.success.encoded), "dXNlcjpwYXNz");
+	});
+});
+
+describe("workloadCredential", () => {
+	it("prefixes the identity token, keeps the audience, and stays Redacted", () => {
+		const credential = workloadCredential({
+			audience: "https://registry.example",
+			prefix: "pnpr_workload_",
+			identityToken: Redacted.make("hdr.payload.sig"),
+		});
+		assert.strictEqual(credential.kind, "workload");
+		assert.strictEqual(credential.audience, "https://registry.example");
+		assert.strictEqual(Redacted.value(credential.token), "pnpr_workload_hdr.payload.sig");
+		assert.notInclude(String(credential.token), "hdr.payload.sig");
+		assert.notInclude(JSON.stringify(credential), "hdr.payload.sig");
 	});
 });
