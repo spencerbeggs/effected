@@ -103,6 +103,8 @@ export class DenoResolver extends Context.Service<
 	 * Lazy: building the layer performs no IO, so an unreachable feed surfaces
 	 * as a `FreshnessError` from `resolve`, not from layer acquisition. A failed
 	 * fetch is not memoized — the next `resolve` retries; a successful one is.
+	 * Resolves running concurrently share one fetch and its outcome, so when
+	 * that fetch fails, every one of them fails with its `FreshnessError`.
 	 */
 	static readonly layerFresh: Layer.Layer<DenoResolver, never, GitHubClient> = mk(this, (index, live) =>
 		populateFresh(index, "deno", live),

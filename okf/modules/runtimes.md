@@ -82,6 +82,12 @@ and [regenerating the bundled defaults](../runbooks/regenerate-runtimes-bundled-
 See [cache-strategy-as-layer](../decisions/cache-strategy-as-layer.md) —
 the package's signature DX and the shape most worth not breaking.
 
+Population is lazy and gated by `internal/once.ts`, which is core's
+`Effect.cachedWithTTL` with an exit-keyed time-to-live: a success is
+memoized for the layer's lifetime, a failure is retried by the next
+`resolve`. Concurrent resolves share one in-flight population and its
+outcome, so a failed `layerFresh` fetch fails every resolve waiting on it.
+
 ## Design decisions
 
 - [Provenance lives in the engine state](../decisions/runtimes-provenance-in-engine-state.md)

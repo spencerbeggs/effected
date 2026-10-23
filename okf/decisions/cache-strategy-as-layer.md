@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: Each runtimes resolver exposes three lazy layer constants, not one configurable layer
-description: layer/layerFresh/layerOffline are memoized layer constants over a run-once population gate, never Effect.cached and never a fetch inside Layer.effect.
+description: layer/layerFresh/layerOffline are memoized layer constants over a run-once population gate (Effect.cachedWithTTL with an exit-keyed TTL), never bare Effect.cached and never a fetch inside Layer.effect.
 status: stable
 tags:
   - architecture
@@ -44,13 +44,17 @@ memoization discipline, so a consumer never mints a fresh layer per call.
 Every layer is lazy, and that is load-bearing: acquisition performs no
 IO, so merging all three resolvers into one composed layer fetches
 nothing until something actually resolves a version. The first `resolve`
-call runs the population behind `internal/once.ts` — a semaphore-plus-`Ref`
-run-once gate chosen deliberately over `Effect.cached`, which memoizes
-the whole `Exit` and would let one transient failure, or an interrupted
-first resolve, poison the layer for its entire lifetime. Success is
-memoized, including the auto strategy's snapshot fallback; a **failed**
-fresh population is not memoized, so the next `resolve` call retries.
-Concurrent first resolves serialize on the gate and share one fetch.
+call runs the population behind `internal/once.ts`, which is core's
+`Effect.cachedWithTTL` with an exit-keyed time-to-live: infinite for a
+success, zero for a failure or defect. Success is memoized, including the
+auto strategy's snapshot fallback; a **failed** fresh population is not
+memoized, so the next `resolve` call retries. Concurrent resolves join the
+one in-flight population and share its outcome, a failure included: during
+an outage every concurrent waiter receives the same `FreshnessError` from
+one fetch, instead of each re-running the fetch in turn. Interruption is
+never cached, and the population is interrupted only once every caller
+waiting on it has left, so a waiter keeps an interrupted first caller's
+run alive rather than starting another.
 
 The lazy timing moves the strategy's error channel out of the layer and
 into `resolve`: all three layers type `E = never`, and `resolve`'s error
@@ -77,11 +81,19 @@ GitHub-backed resolvers into one shape that always demands
 `GitHubClient`, forcing Node consumers to provide GitHub credentials they
 do not need.
 
-**`Effect.cached` for the population gate.** Rejected because it memoizes
-the whole `Exit`, success or failure. A transient network blip on the
-first resolve — or an interrupted first resolve — would permanently
-poison the layer for every subsequent call in the same process, with no
-way to recover short of rebuilding the layer.
+**Bare `Effect.cached` for the population gate.** Rejected because it
+memoizes a failed `Exit` for the layer's lifetime. A transient network
+blip on the first fresh resolve would permanently poison the layer for
+every subsequent call in the same process, with no way to recover short
+of rebuilding the layer. (Core never caches an interrupt, so an
+interrupted first resolve is not the hazard; a failure is.)
+
+**A hand-rolled semaphore-plus-`Ref` gate.** The package's original
+mechanism, replaced by `Effect.cachedWithTTL`. It re-ran the fetch once
+per concurrent waiter during an outage, each waiting behind the last, and
+an interrupted first caller took the in-flight fetch down with it so the
+next waiter started over. Core's primitive is stable, shares one run per
+outage, and keeps an in-flight run alive while anyone still waits on it.
 
 **Fetching inside `Layer.effect`, at acquisition time.** Rejected because
 it makes merely composing the layer perform network IO, which breaks the
@@ -95,7 +107,9 @@ credentials at all. A consumer wanting live-with-fallback gets an honest
 provenance marker on every answer — see
 [provenance lives in the engine state](runtimes-provenance-in-engine-state.md) —
 so a stale snapshot served after a silent network failure is never
-indistinguishable from a fresh one. Do not replace the run-once gate with
+indistinguishable from a fresh one. A `layerFresh` consumer resolving
+concurrently during an outage sees every concurrent call fail together,
+and the next call retry. Do not replace the exit-keyed TTL with bare
 `Effect.cached`, and do not move the fetch back into `Layer.effect`;
 either change reopens the poisoning or eager-IO failure modes this
 decision closes.

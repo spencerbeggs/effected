@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Deferred, Effect, Fiber, Layer } from "effect";
 import { FetchHttpClient } from "effect/http";
 import {
 	BunResolver,
@@ -147,6 +147,117 @@ describe("lazy layer acquisition", () => {
 			}).pipe(Effect.provide(BunResolver.layerFresh.pipe(Layer.provide(flaky))));
 
 			assert.strictEqual(calls, 2, "one failed attempt, one successful retry");
+		}),
+	);
+
+	it.effect("concurrent first fresh resolves share one failed attempt", () =>
+		Effect.gen(function* () {
+			// Concurrent waiters join the one in-flight population, so they share
+			// its outcome — a failure included. During an outage that is one fetch,
+			// not one serial fetch per waiter; the next resolve still retries.
+			let calls = 0;
+			const flaky = Layer.succeed(GitHubClient)({
+				listReleases: () =>
+					Effect.suspend(() => {
+						calls += 1;
+						const attempt = calls;
+						// Suspend before answering, so the three resolves genuinely race.
+						return Effect.yieldNow.pipe(
+							Effect.andThen(
+								attempt === 1
+									? Effect.fail(new NetworkError({ url: "https://api.github.com", cause: "down" }))
+									: Effect.succeed([release("bun-v1.2.0")]),
+							),
+						);
+					}),
+				listTags: () => Effect.succeed([]),
+			});
+
+			yield* Effect.gen(function* () {
+				const resolver = yield* BunResolver;
+				const failures = yield* Effect.all(
+					[
+						Effect.flip(resolver.resolve({ range: "^1.0.0" })),
+						Effect.flip(resolver.resolve({ range: "*" })),
+						Effect.flip(resolver.resolve()),
+					],
+					{ concurrency: "unbounded" },
+				);
+				for (const failure of failures) assert.instanceOf(failure, FreshnessError);
+				assert.strictEqual(calls, 1, "every concurrent waiter shares the one failed attempt");
+
+				const recovered = yield* resolver.resolve({ range: "^1.0.0" });
+				assert.strictEqual(recovered.source, "api");
+			}).pipe(Effect.provide(BunResolver.layerFresh.pipe(Layer.provide(flaky))));
+
+			assert.strictEqual(calls, 2, "the failure is not memoized: the next resolve retries once");
+		}),
+	);
+
+	it.effect("concurrent first fresh Node resolves share one failed attempt per feed", () =>
+		Effect.gen(function* () {
+			// NodeResolver's build is the second call site of the gate, independent
+			// of the GitHub-backed resolvers, so it gets its own pin.
+			const http = makeCountingDeadFetch();
+
+			yield* Effect.gen(function* () {
+				const resolver = yield* NodeResolver;
+				const failures = yield* Effect.all(
+					[
+						Effect.flip(resolver.resolve({ range: ">=20" })),
+						Effect.flip(resolver.resolve({ range: "*" })),
+						Effect.flip(resolver.resolve()),
+					],
+					{ concurrency: "unbounded" },
+				);
+				for (const failure of failures) assert.instanceOf(failure, FreshnessError);
+				const concurrent = http.calls();
+				assert.isAbove(concurrent, 0, "the shared attempt does reach the feeds");
+
+				// One more resolve is exactly one more attempt: the failure is not
+				// memoized, and the concurrent three cost what this one alone costs.
+				const failure = yield* Effect.flip(resolver.resolve({ range: ">=20" }));
+				assert.instanceOf(failure, FreshnessError);
+				assert.strictEqual(
+					http.calls() - concurrent,
+					concurrent,
+					"three concurrent waiters must cost one attempt, not one per waiter",
+				);
+			}).pipe(Effect.provide(NodeResolver.layerFresh.pipe(Layer.provide(http.layer))));
+		}),
+	);
+
+	it.effect("interrupting the first resolve does not restart population for a concurrent waiter", () =>
+		Effect.gen(function* () {
+			let calls = 0;
+			const started = yield* Deferred.make<void>();
+			const gate = yield* Deferred.make<void>();
+			const gated = Layer.succeed(GitHubClient)({
+				listReleases: () =>
+					Effect.suspend(() => {
+						calls += 1;
+						return Deferred.succeed(started, undefined).pipe(
+							Effect.andThen(Deferred.await(gate)),
+							Effect.as([release("bun-v1.2.0")]),
+						);
+					}),
+				listTags: () => Effect.succeed([]),
+			});
+
+			yield* Effect.gen(function* () {
+				const resolver = yield* BunResolver;
+				const first = yield* Effect.forkChild(resolver.resolve({ range: "^1.0.0" }));
+				yield* Deferred.await(started);
+				// Start the waiter eagerly, so it has joined the in-flight population
+				// before the first caller leaves; otherwise the test cannot fail.
+				const second = yield* Effect.forkChild(resolver.resolve({ range: "^1.0.0" }), { startImmediately: true });
+				yield* Fiber.interrupt(first);
+				yield* Deferred.succeed(gate, undefined);
+				const result = yield* Fiber.join(second);
+				assert.strictEqual(result.source, "api");
+			}).pipe(Effect.provide(BunResolver.layer.pipe(Layer.provide(gated))));
+
+			assert.strictEqual(calls, 1, "the waiter keeps the in-flight population alive");
 		}),
 	);
 
