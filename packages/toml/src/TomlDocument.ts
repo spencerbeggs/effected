@@ -154,7 +154,10 @@ export class TomlDocument extends Schema.Class<TomlDocument>("TomlDocument")({
 	 *   {@link TomlParseError}.
 	 */
 	toValue(): Effect.Effect<unknown, TomlParseError> {
-		return Effect.fromResult(this.toValueResult());
+		// Suspended so the value is built when the Effect runs, not when
+		// `toValue()` is called — a genuine engine defect then dies inside the
+		// Effect rather than throwing out of the method call.
+		return Effect.suspend(() => Effect.fromResult(this.toValueResult()));
 	}
 
 	/**

@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Exit, Result, Stream } from "effect";
+import { Cause, Effect, Exit, Result, Stream } from "effect";
 import { Toml, TomlDocument, TomlFormat, TomlVisitor } from "../src/index.js";
 
 // Every Result twin must agree with its Effect form on BOTH channels: the
@@ -172,4 +172,44 @@ describe("TomlVisitor shares the parse error mapping", () => {
 			}),
 		);
 	}
+});
+
+describe("Effect forms defer their work until run", () => {
+	// The Effect forms bridge a Result twin, and a Result is evaluated the moment
+	// it is built — so each form must suspend, or a genuine engine defect throws
+	// out of the method call instead of dying inside the Effect or Stream.
+	const diesWithoutFailing = <A, E>(exit: Exit.Exit<A, E>) => {
+		if (!Exit.isFailure(exit)) return assert.fail("expected a defect, but the effect succeeded");
+		assert.isTrue(Cause.hasDies(exit.cause));
+		assert.isFalse(Cause.hasFails(exit.cause));
+	};
+
+	it.effect("TomlDocument#toValue on a forged instance returns an Effect that dies", () =>
+		Effect.gen(function* () {
+			const doc = yield* TomlDocument.parse("a = 1\n");
+			// Instances are not frozen: a forged expression list is a defect the
+			// engine cannot map, so it must die, not throw at call time.
+			(doc as unknown as { expressions: unknown }).expressions = [{ bogus: true }];
+			let effect: Effect.Effect<unknown, unknown>;
+			try {
+				effect = doc.toValue();
+			} catch (defect) {
+				return assert.fail(`toValue() threw at call time: ${String(defect)}`);
+			}
+			diesWithoutFailing(yield* Effect.exit(effect));
+		}),
+	);
+
+	it.effect("TomlVisitor.visit builds the stream without parsing", () =>
+		Effect.gen(function* () {
+			const forged = null as unknown as string;
+			let stream: Stream.Stream<unknown, unknown>;
+			try {
+				stream = TomlVisitor.visit(forged);
+			} catch (defect) {
+				return assert.fail(`visit() threw at construction: ${String(defect)}`);
+			}
+			diesWithoutFailing(yield* Effect.exit(Stream.runDrain(stream)));
+		}),
+	);
 });

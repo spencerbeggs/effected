@@ -148,11 +148,17 @@ const collectEvents = (text: string): Array<TomlVisitorEvent> => {
  * `DuplicateKey`) both fail the same way.
  */
 const collectEventsOrFail = (text: string): Effect.Effect<Array<TomlVisitorEvent>, TomlParseError> =>
-	Effect.fromResult(
-		Result.try({
-			try: () => collectEvents(text),
-			catch: (defect) => toTomlParseError(text, defect),
-		}),
+	// `Effect.suspend` keeps the parse lazy: `Result.try` evaluates as soon as
+	// its argument is built, so without it `visit` would parse at call time and
+	// a non-carrier engine defect would throw out of `visit` instead of dying
+	// inside the stream.
+	Effect.suspend(() =>
+		Effect.fromResult(
+			Result.try({
+				try: () => collectEvents(text),
+				catch: (defect) => toTomlParseError(text, defect),
+			}),
+		),
 	);
 
 /**
