@@ -865,25 +865,41 @@ describe("Git surface — status untracked-files modes (#1061)", () => {
 		),
 	);
 
-	// Runs last: it writes repository-local config the earlier tests must not see.
+	// Writes repository-local config into the shared fixture, so it is scoped:
+	// acquireUseRelease unsets the key however the body exits, and no other test
+	// in this block sees it whatever order the suite runs in.
 	it.effect("the listing ignores the caller's status.showUntrackedFiles config", () =>
 		run(
-			Effect.gen(function* () {
-				yield* runFixtureGit(dir, ["config", "status.showUntrackedFiles", "no"]);
-				// Control: with no flag, git honours the config and lists no untracked file.
-				const bare = yield* runFixtureGit(dir, ["status", "--porcelain", "-z"]);
-				assert.notInclude(bare, "??");
+			Effect.acquireUseRelease(
+				runFixtureGit(dir, ["config", "status.showUntrackedFiles", "no"]),
+				() =>
+					Effect.gen(function* () {
+						// Control: with no flag, git honours the config and lists no untracked file.
+						const bare = yield* runFixtureGit(dir, ["status", "--porcelain", "-z"]);
+						assert.notInclude(bare, "??");
 
-				const git = yield* Git;
-				assert.deepStrictEqual(untrackedPaths(yield* git.status(dir)), [
-					".changeset/pre/a.md",
-					".changeset/pre/nested/b.md",
-					"vendor/inner/",
-				]);
-				assert.deepStrictEqual(untrackedPaths(yield* git.status(dir, { untrackedFiles: "normal" })), [
-					".changeset/pre/",
-					"vendor/",
-				]);
+						const git = yield* Git;
+						assert.deepStrictEqual(untrackedPaths(yield* git.status(dir)), [
+							".changeset/pre/a.md",
+							".changeset/pre/nested/b.md",
+							"vendor/inner/",
+						]);
+						assert.deepStrictEqual(untrackedPaths(yield* git.status(dir, { untrackedFiles: "normal" })), [
+							".changeset/pre/",
+							"vendor/",
+						]);
+					}),
+				() => runFixtureGit(dir, ["config", "--unset", "status.showUntrackedFiles"]),
+			),
+		),
+	);
+
+	it.effect("the fixture carries no status.showUntrackedFiles config after the config test", () =>
+		run(
+			Effect.gen(function* () {
+				// Bare git honours its own default ("normal") again: the untracked entries are back.
+				const bare = yield* runFixtureGit(dir, ["status", "--porcelain", "-z"]);
+				assert.include(bare, "?? .changeset/pre/");
 			}),
 		),
 	);
