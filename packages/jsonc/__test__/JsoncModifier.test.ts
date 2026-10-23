@@ -1,6 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
-import { Jsonc, JsoncEdit, JsoncFormattingOptions, JsoncModificationError, JsoncModifier } from "../src/index.js";
+import { Effect, Exit, Result } from "effect";
+import {
+	Jsonc,
+	JsoncEdit,
+	JsoncFormattingOptions,
+	JsoncModificationError,
+	JsoncModifier,
+	JsoncStringifyError,
+} from "../src/index.js";
 
 const apply = (text: string, edits: ReadonlyArray<JsoncEdit>) => JsoncEdit.applyAll(text, edits);
 
@@ -245,5 +252,119 @@ describe("JsoncModifier", () => {
 				assert.deepStrictEqual(yield* Jsonc.parse(out), { k: 5 });
 			}),
 		);
+	});
+
+	describe("unserializable values (JsoncStringifyError)", () => {
+		const circular = (): Record<string, unknown> => {
+			const self: Record<string, unknown> = {};
+			self.self = self;
+			return self;
+		};
+		const fn = () => 1;
+		const sym = Symbol("s");
+		// One row per branch of the engine: root replace, located replace, insert.
+		const branches = [
+			{ name: "root ([])", text: '{ "a": 1 }', path: [] as ReadonlyArray<string> },
+			{ name: "replace (existing key)", text: '{ "a": 1 }', path: ["a"] },
+			{ name: "insert (new key)", text: '{\n  "a": 1\n}', path: ["b"] },
+		];
+		const values = [
+			{ name: "a circular object", value: circular, code: "CircularReference" },
+			{ name: "a bigint", value: () => 10n, code: "BigIntValue" },
+			{ name: "a function", value: () => fn, code: "TopLevelUnrepresentable" },
+			{ name: "a symbol", value: () => sym, code: "TopLevelUnrepresentable" },
+		] as const;
+
+		for (const branch of branches) {
+			for (const row of values) {
+				it.effect(`${branch.name} with ${row.name} fails typed with ${row.code}`, () =>
+					Effect.gen(function* () {
+						const error = yield* Effect.flip(JsoncModifier.modify(branch.text, branch.path, row.value()));
+						assert.instanceOf(error, JsoncStringifyError);
+						assert.strictEqual(error._tag, "JsoncStringifyError");
+						if (error._tag === "JsoncStringifyError") {
+							assert.strictEqual(error.code, row.code);
+						}
+					}),
+				);
+			}
+		}
+
+		it.effect("inserting a function under a new key never writes the literal text undefined", () =>
+			Effect.gen(function* () {
+				// Regression: raw JSON.stringify returned undefined here and the insert
+				// template interpolated it, reporting success with `"b": undefined`.
+				const text = '{\n  "a": 1\n}';
+				const result = JsoncModifier.modifyResult(text, ["b"], () => 1);
+				assert.isTrue(Result.isFailure(result));
+				if (Result.isSuccess(result)) {
+					assert.fail(`expected a failure, got ${JsoncEdit.applyAll(text, result.success)}`);
+				}
+			}),
+		);
+
+		it.effect("a function nested inside an object still drops by JSON semantics (positive control)", () =>
+			Effect.gen(function* () {
+				const edits = yield* JsoncModifier.modify("{}", ["a"], { x: () => 1 });
+				assert.deepStrictEqual(yield* Jsonc.parse(apply("{}", edits)), { a: {} });
+			}),
+		);
+
+		it.effect("a navigation mismatch wins over an unserializable value", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(JsoncModifier.modify('{ "a": 1 }', ["a", "b"], 10n));
+				assert.strictEqual(error._tag, "JsoncModificationError");
+			}),
+		);
+
+		it.effect("a delete never serializes: undefined at an existing key succeeds and removes it", () =>
+			Effect.gen(function* () {
+				const edits = yield* JsoncModifier.modify('{ "a": 1, "b": 2 }', ["a"], undefined);
+				assert.deepStrictEqual(yield* Jsonc.parse(apply('{ "a": 1, "b": 2 }', edits)), { b: 2 });
+			}),
+		);
+
+		it.effect("a tab indent survives serialization through stringifyResult", () =>
+			Effect.gen(function* () {
+				const edits = yield* JsoncModifier.modify(
+					'{ "a": 1 }',
+					["a"],
+					{ b: [1] },
+					{
+						formattingOptions: { insertSpaces: false },
+					},
+				);
+				assert.strictEqual(edits[0].content, '{\n\t"b": [\n\t\t1\n\t]\n}');
+			}),
+		);
+	});
+
+	describe("modifyResult parity with modify", () => {
+		const rows: ReadonlyArray<{ name: string; text: string; path: ReadonlyArray<string | number>; value: unknown }> = [
+			{ name: "replace", text: '{ "a": 1 }', path: ["a"], value: 2 },
+			{ name: "insert", text: '{ "a": 1 }', path: ["b"], value: { c: true } },
+			{ name: "root", text: "[1]", path: [], value: [2] },
+			{ name: "mismatch", text: '{ "a": 1 }', path: ["a", "b"], value: 2 },
+			{ name: "no-op delete", text: '{ "a": 1 }', path: ["z"], value: undefined },
+			{ name: "delete with comma", text: '{ "a": 1, "b": 2 }', path: ["a"], value: undefined },
+			{ name: "bigint", text: '{ "a": 1 }', path: ["a"], value: 10n },
+			{ name: "symbol insert", text: '{ "a": 1 }', path: ["s"], value: Symbol("s") },
+		];
+
+		for (const row of rows) {
+			it.effect(`${row.name}: the Effect form agrees with the Result form`, () =>
+				Effect.gen(function* () {
+					const exit = yield* Effect.exit(JsoncModifier.modify(row.text, row.path, row.value));
+					const result = JsoncModifier.modifyResult(row.text, row.path, row.value);
+					if (Result.isSuccess(result)) {
+						assert.isTrue(Exit.isSuccess(exit));
+						if (Exit.isSuccess(exit)) assert.deepStrictEqual(exit.value, result.success);
+					} else {
+						const flipped = yield* Effect.flip(JsoncModifier.modify(row.text, row.path, row.value));
+						assert.deepStrictEqual(flipped, result.failure);
+					}
+				}),
+			);
+		}
 	});
 });

@@ -19,14 +19,12 @@
 // throws raw carriers (`RawTomlError`, `GuardExceeded`); this module builds
 // the typed `TomlParseError`, never letting a raw carrier escape as a defect.
 
-import { Data, Effect, Stream } from "effect";
-import { isRawTomlError } from "./internal/diagnostics.js";
-import { isGuardExceeded } from "./internal/limits.js";
+import { Data, Effect, Result, Stream } from "effect";
 import { parseExpressions } from "./internal/parser.js";
 import { scanComment, scanNewline, scanWhitespace } from "./internal/scanner.js";
 import { analyze } from "./internal/semantic.js";
-import { TomlParseError } from "./Toml.js";
-import { TomlDiagnostic } from "./TomlDiagnostic.js";
+import type { TomlParseError } from "./Toml.js";
+import { toTomlParseError } from "./Toml.js";
 import type { TomlArrayTableHeader, TomlTableHeader } from "./TomlNode.js";
 import { TomlKeyValue, TomlTrivia } from "./TomlNode.js";
 
@@ -145,31 +143,23 @@ const collectEvents = (text: string): Array<TomlVisitorEvent> => {
 
 /**
  * Run `collectEvents`, materializing the engine's raw carriers into
- * {@link TomlParseError} exactly like `Toml.parse` — a lex/parse error and a
- * semantic-pass error (e.g. `DuplicateKey`) both fail the same way.
+ * {@link TomlParseError} through the same `toTomlParseError` mapping
+ * `Toml.parse` uses — a lex/parse error and a semantic-pass error (e.g.
+ * `DuplicateKey`) both fail the same way.
  */
 const collectEventsOrFail = (text: string): Effect.Effect<Array<TomlVisitorEvent>, TomlParseError> =>
-	Effect.try({
-		try: () => collectEvents(text),
-		catch: (defect) => {
-			if (isRawTomlError(defect)) {
-				return new TomlParseError({ diagnostics: [TomlDiagnostic.fromRaw(text, defect.diagnostic)] });
-			}
-			if (isGuardExceeded(defect)) {
-				return new TomlParseError({
-					diagnostics: [
-						TomlDiagnostic.fromRaw(text, {
-							code: "NestingDepthExceeded",
-							message: defect.message,
-							offset: defect.offset,
-							length: 0,
-						}),
-					],
-				});
-			}
-			throw defect;
-		},
-	});
+	// `Effect.suspend` keeps the parse lazy: `Result.try` evaluates as soon as
+	// its argument is built, so without it `visit` would parse at call time and
+	// a non-carrier engine defect would throw out of `visit` instead of dying
+	// inside the stream.
+	Effect.suspend(() =>
+		Effect.fromResult(
+			Result.try({
+				try: () => collectEvents(text),
+				catch: (defect) => toTomlParseError(text, defect),
+			}),
+		),
+	);
 
 /**
  * Walks TOML text as a `Stream` of table, array-table, key-value and comment

@@ -6,17 +6,21 @@
 // (`composeFirstDocumentCounted`, `stringifyDocument`) exactly as `Yaml.ts`
 // does; nothing imports `YamlFormat.ts` back.
 //
-// Neither `format` nor `modify` catch the internal stringifier's
-// `StringifyFailure` (the circular-reference guard) or `StringifyDepthExceeded`:
-// `format` builds its output AST from already-parsed nodes, and `modify`'s
-// `jsValueToNode` runs BOTH guards itself while lowering the caller's value —
-// failing typed with a `CircularReference` / `NestingDepthExceeded` diagnostic
-// before a node ever reaches the stringifier. So neither internal throw can
-// occur here; were one ever thrown it would indicate an internal invariant
-// violation, not a user-facing error, and is left to surface as an uncaught
-// defect.
+// `format` does not catch the internal stringifier's `StringifyFailure` (the
+// circular-reference guard) or `StringifyDepthExceeded`: it builds its output
+// AST from already-parsed, composer-bounded nodes, so neither can fire there.
+//
+// `modify` lowers the caller's value with `jsValueToNode`, which runs BOTH
+// guards itself — failing typed with a `CircularReference` /
+// `NestingDepthExceeded` diagnostic. The depth guard starts counting at the
+// target's own depth in the document (the path length), not at zero: the
+// stringifier counts from the document root, so a value lowered from zero
+// could pass the lowering guard and still trip the stringifier's cap one key
+// down. As a backstop, `modify` also maps either stringifier throw into a
+// typed `YamlModificationError` through the shared `stringifyDefectToError`
+// triage, so no input reaches the caller as a defect.
 
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { EMPTY_DOCUMENT, composeAllDocuments, composeFirstDocumentCounted } from "./internal/composer/document.js";
 import { MAX_NESTING_DEPTH } from "./internal/composer/state.js";
 import type { RawDiagnostic } from "./internal/diagnostics.js";
@@ -31,7 +35,7 @@ import {
 	stringifyValue,
 	stripNodeComments,
 } from "./internal/stringifier.js";
-import { YamlStringifyOptions } from "./Yaml.js";
+import { YamlStringifyOptions, stringifyDefectToError } from "./Yaml.js";
 import { YamlDiagnostic } from "./YamlDiagnostic.js";
 import type { YamlPath, YamlSegment } from "./YamlEdit.js";
 import { YamlEdit, YamlRange } from "./YamlEdit.js";
@@ -361,7 +365,10 @@ function formatStream(
  *
  * The two conditions with no finite rendering fail typed rather than hanging
  * or overflowing the stack: a cycle raises `CircularReference` and a graph
- * deeper than `MAX_NESTING_DEPTH` raises `NestingDepthExceeded`. `seen` holds
+ * that would sit deeper than `MAX_NESTING_DEPTH` in the output document
+ * raises `NestingDepthExceeded`. `depth` is measured in the stringifier's own
+ * units — one per node from the document root — so the caller passes the
+ * target's depth, not zero. `seen` holds
  * the ancestors of the value being lowered, so a value repeated across
  * siblings (a shared, acyclic sub-object) is lowered twice rather than
  * rejected.
@@ -408,14 +415,19 @@ function jsValueToNode(value: unknown, seen: Set<object>, depth: number): YamlNo
 	return YamlScalar.make({ value, style: "plain", offset: 0, length: 0 });
 }
 
-/** Entry point for {@link jsValueToNode}: one `seen` set per lowering. */
-function lowerValue(value: unknown): YamlNode {
-	return jsValueToNode(value, new Set<object>(), 0);
+/**
+ * Entry point for {@link jsValueToNode}: one `seen` set per lowering, counting
+ * depth from `targetDepth` — the depth the value will occupy in the output
+ * document (the path length: a root replacement sits at 0, a value one key
+ * down at 1).
+ */
+function lowerValue(value: unknown, targetDepth: number): YamlNode {
+	return jsValueToNode(value, new Set<object>(), targetDepth);
 }
 
 function modifyDocument(doc: RawYamlDocument, path: YamlPath, value: unknown): YamlNode | null {
 	if (path.length === 0) {
-		return value === undefined ? null : lowerValue(value);
+		return value === undefined ? null : lowerValue(value, 0);
 	}
 	if (doc.contents === null) {
 		throw new ModifyFailure("EmptyDocument", "Cannot navigate path in empty document", 0, 0);
@@ -438,7 +450,7 @@ function modifyNode(node: YamlNode, path: YamlPath, depth: number, value: unknow
 				return rebuildMap(node, newItems);
 			}
 
-			const newValueNode = lowerValue(value);
+			const newValueNode = lowerValue(value, depth + 1);
 			if (pairIndex >= 0) {
 				const newItems = [...node.items];
 				const oldPair = newItems[pairIndex] as YamlPair;
@@ -485,9 +497,9 @@ function modifyNode(node: YamlNode, path: YamlPath, depth: number, value: unknow
 			if (value === undefined) {
 				if (idx < newItems.length) newItems.splice(idx, 1);
 			} else if (idx < newItems.length) {
-				newItems[idx] = lowerValue(value);
+				newItems[idx] = lowerValue(value, depth + 1);
 			} else {
-				newItems.push(lowerValue(value)); // Appends after the last element.
+				newItems.push(lowerValue(value, depth + 1)); // Appends after the last element.
 			}
 			return rebuildSeq(node, newItems);
 		}
@@ -855,7 +867,9 @@ export class YamlFormat {
 	}
 
 	/**
-	 * Compute the edits that insert, replace, or remove a value at `path`.
+	 * Compute the edits that insert, replace, or remove a value at `path`,
+	 * synchronously — the primitive {@link YamlFormat.modify} is defined in
+	 * terms of, so a synchronous host can call it without an Effect runtime.
 	 * Passing `value === undefined` removes the target key/element; a missing
 	 * insertion target appends after the last pair/element. Fails with
 	 * {@link YamlModificationError} on a fatal parse error or a structural
@@ -891,8 +905,10 @@ export class YamlFormat {
 	 *
 	 * Two replacement values have no finite rendering and fail typed rather
 	 * than hanging or overflowing the stack: one containing a circular
-	 * reference (`CircularReference`) and one nesting deeper than 256 levels
-	 * (`NestingDepthExceeded`).
+	 * reference (`CircularReference`) and one that would sit deeper than 256
+	 * levels in the output document (`NestingDepthExceeded`). The depth is
+	 * counted from the document root, so the same value can fit at `[]` and
+	 * fail a few keys down.
 	 *
 	 * **Single-document contract.** A `path` carries no document index, so on
 	 * a multi-document stream there is no rule for which document it names —
@@ -917,60 +933,53 @@ export class YamlFormat {
 	 *   target instead.
 	 * @param options - Optional {@link YamlStringifyOptions} for the
 	 *   re-stringify step.
-	 * @returns An `Effect` that succeeds with the edits to apply (via
-	 *   `YamlEdit.applyAll`), or fails with {@link YamlModificationError}.
+	 * @returns A `Result` succeeding with the edits to apply (via
+	 *   `YamlEdit.applyAll`), or failing with {@link YamlModificationError}.
 	 *
 	 * @remarks
 	 * `options` is a bare {@link YamlStringifyOptions} — it controls only the
 	 * internal re-stringify step, not a range (there is no range to restrict
 	 * for a path-targeted modification).
 	 */
-	static readonly modify = Effect.fn("YamlFormat.modify")(function* (
+	static modifyResult(
 		text: string,
 		path: YamlPath,
 		value: unknown,
 		options?: YamlStringifyOptions,
-	) {
+	): Result.Result<ReadonlyArray<YamlEdit>, YamlModificationError> {
+		const fail = (diagnostics: ReadonlyArray<YamlDiagnostic>) =>
+			Result.fail(new YamlModificationError({ path, diagnostics }));
 		const { document: doc, documentCount } = composeFirstDocumentCounted(text, {});
 		if (documentCount > 1) {
-			return yield* new YamlModificationError({
-				path,
-				diagnostics: [
-					YamlDiagnostic.fromRaw(
-						{
-							code: "MultiDocumentStream",
-							message: `Cannot modify a multi-document stream (${documentCount} documents): modify re-emits exactly one document`,
-							offset: 0,
-							length: 0,
-						},
-						text,
-					),
-				],
-			});
+			return fail([
+				YamlDiagnostic.fromRaw(
+					{
+						code: "MultiDocumentStream",
+						message: `Cannot modify a multi-document stream (${documentCount} documents): modify re-emits exactly one document`,
+						offset: 0,
+						length: 0,
+					},
+					text,
+				),
+			]);
 		}
 		const fatal = doc.errors.filter((e) => isFatalCode(e.code));
 		if (fatal.length > 0) {
-			return yield* new YamlModificationError({
-				path,
-				diagnostics: fatal.map((e) => YamlDiagnostic.fromRaw(e, text)),
-			});
+			return fail(fatal.map((e) => YamlDiagnostic.fromRaw(e, text)));
 		}
 		if (doc.directives.length > 0) {
-			return yield* new YamlModificationError({
-				path,
-				diagnostics: [
-					YamlDiagnostic.fromRaw(
-						{
-							code: "DirectiveCarryingDocument",
-							message:
-								"Cannot modify a document carrying %YAML/%TAG directives: modify does not re-emit directive lines, and dropping a %TAG orphans the shorthand tags that depend on it",
-							offset: 0,
-							length: 0,
-						},
-						text,
-					),
-				],
-			});
+			return fail([
+				YamlDiagnostic.fromRaw(
+					{
+						code: "DirectiveCarryingDocument",
+						message:
+							"Cannot modify a document carrying %YAML/%TAG directives: modify does not re-emit directive lines, and dropping a %TAG orphans the shorthand tags that depend on it",
+						offset: 0,
+						length: 0,
+					},
+					text,
+				),
+			]);
 		}
 
 		// Region-confined scalar replacement: when the target is an
@@ -980,7 +989,7 @@ export class YamlFormat {
 		// to the whole-document pipeline below, unchanged.
 		const regional = tryRegionalScalarEdit(text, doc, path, value, options);
 		if (regional !== undefined) {
-			return regional.map((e) => YamlEdit.make(e)) as ReadonlyArray<YamlEdit>;
+			return Result.succeed(regional.map((e) => YamlEdit.make(e)));
 		}
 
 		let newContents: YamlNode | null;
@@ -988,21 +997,84 @@ export class YamlFormat {
 			newContents = modifyDocument(doc, path, value);
 		} catch (err) {
 			if (!(err instanceof ModifyFailure)) throw err;
-			return yield* new YamlModificationError({
-				path,
-				diagnostics: [
-					YamlDiagnostic.fromRaw(
-						{ code: err.code, message: err.message, offset: err.offset, length: err.length },
-						text,
-					),
-				],
-			});
+			return fail([
+				YamlDiagnostic.fromRaw({ code: err.code, message: err.message, offset: err.offset, length: err.length }, text),
+			]);
 		}
 
 		const outputDoc: RawYamlDocument = { ...doc, contents: newContents };
-		const formatted = stringifyDocument(outputDoc, toStringifyInput(options));
-		return computeEdits(text, withSourceBom(text, formatted)).map((e) => YamlEdit.make(e)) as ReadonlyArray<YamlEdit>;
-	});
+		let formatted: string;
+		try {
+			formatted = stringifyDocument(outputDoc, toStringifyInput(options));
+		} catch (defect) {
+			// Backstop: lowering already guards cycles and depth from the target's
+			// own depth, so this should not fire — but a stringifier throw here
+			// must still surface typed, never as a defect out of a Result. Kept as
+			// defence in depth and unpinned by construction: with the depth-aware
+			// lowering in place no test input can reach it.
+			const error = stringifyDefectToError(defect, value);
+			if (error === undefined) throw defect;
+			return fail(error.diagnostics);
+		}
+		return Result.succeed(computeEdits(text, withSourceBom(text, formatted)).map((e) => YamlEdit.make(e)));
+	}
+
+	/**
+	 * Compute the edits that insert, replace, or remove a value at `path`.
+	 * Defined in terms of {@link YamlFormat.modifyResult}, which carries the
+	 * full contract — value lowering, region-confined scalar replacement, the
+	 * single-document contract and the directive refusal — behind a
+	 * `YamlFormat.modify` span; synchronous callers can use that variant
+	 * directly.
+	 *
+	 * @param text - The YAML source to modify.
+	 * @param path - The location to insert, replace or remove.
+	 * @param value - The JavaScript value to write; `undefined` removes the
+	 *   target instead.
+	 * @param options - Optional {@link YamlStringifyOptions} for the
+	 *   re-stringify step.
+	 * @returns An `Effect` that succeeds with the edits to apply (via
+	 *   `YamlEdit.applyAll`), or fails with {@link YamlModificationError}.
+	 */
+	static readonly modify = Effect.fn("YamlFormat.modify")(
+		(text: string, path: YamlPath, value: unknown, options?: YamlStringifyOptions) =>
+			Effect.fromResult(YamlFormat.modifyResult(text, path, value, options)),
+	);
+
+	/**
+	 * Synchronous {@link YamlFormat.modifyToString}: modify `text` and apply the
+	 * resulting edits in one step (`YamlEdit.applyAll ∘ modifyResult`),
+	 * returning a `Result`. Inherits the {@link YamlFormat.modifyResult} error
+	 * channel.
+	 *
+	 * @example
+	 * ```ts
+	 * import { YamlFormat } from "@effected/yaml";
+	 * import { Result } from "effect";
+	 *
+	 * const result = YamlFormat.modifyToStringResult("port: 3000 # dev\n", ["port"], 8080);
+	 * if (Result.isSuccess(result)) {
+	 *   console.log(result.success); // => "port: 8080 # dev\n"
+	 * }
+	 * ```
+	 *
+	 * @param text - The YAML source to modify.
+	 * @param path - The location to insert, replace or remove.
+	 * @param value - The JavaScript value to write; `undefined` removes the
+	 *   target instead.
+	 * @param options - Optional {@link YamlStringifyOptions} for the
+	 *   re-stringify step.
+	 * @returns A `Result` succeeding with the modified text, or failing with
+	 *   {@link YamlModificationError}.
+	 */
+	static modifyToStringResult(
+		text: string,
+		path: YamlPath,
+		value: unknown,
+		options?: YamlStringifyOptions,
+	): Result.Result<string, YamlModificationError> {
+		return Result.map(YamlFormat.modifyResult(text, path, value, options), (edits) => YamlEdit.applyAll(text, edits));
+	}
 
 	/**
 	 * Modify `text` and apply the resulting edits in one step
@@ -1019,14 +1091,13 @@ export class YamlFormat {
 	 *   re-stringify step.
 	 * @returns An `Effect` that succeeds with the modified text, or fails with
 	 *   {@link YamlModificationError}.
+	 *
+	 * @remarks
+	 * Defined in terms of {@link YamlFormat.modifyToStringResult}; it opens its
+	 * own span and no longer a nested `YamlFormat.modify` child span.
 	 */
-	static readonly modifyToString = Effect.fn("YamlFormat.modifyToString")(function* (
-		text: string,
-		path: YamlPath,
-		value: unknown,
-		options?: YamlStringifyOptions,
-	) {
-		const edits = yield* YamlFormat.modify(text, path, value, options);
-		return YamlEdit.applyAll(text, edits);
-	});
+	static readonly modifyToString = Effect.fn("YamlFormat.modifyToString")(
+		(text: string, path: YamlPath, value: unknown, options?: YamlStringifyOptions) =>
+			Effect.fromResult(YamlFormat.modifyToStringResult(text, path, value, options)),
+	);
 }

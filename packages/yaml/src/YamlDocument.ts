@@ -6,13 +6,13 @@
 // data on `errors`/`warnings` while fatal ones fail `parse`/`parseAll` with a
 // typed `YamlParseError`.
 
-import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { composeAllDocuments, composeFirstDocument } from "./internal/composer/document.js";
 import { isFatalCode } from "./internal/diagnostics.js";
 import type { RawYamlDocument } from "./internal/raw-document.js";
-import { StringifyDepthExceeded, StringifyFailure, stringifyDocument } from "./internal/stringifier.js";
-import type { YamlParseOptions, YamlStringifyOptions } from "./Yaml.js";
-import { YamlParseError, YamlStringifyError } from "./Yaml.js";
+import { stringifyDocument } from "./internal/stringifier.js";
+import type { YamlParseOptions, YamlStringifyError, YamlStringifyOptions } from "./Yaml.js";
+import { YamlParseError, stringifyDefectToError } from "./Yaml.js";
 import { YamlDiagnostic } from "./YamlDiagnostic.js";
 import type { YamlNode as YamlNodeType } from "./YamlNode.js";
 import { YamlNode } from "./YamlNode.js";
@@ -70,10 +70,51 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	hasDocumentStartTab: Schema.optionalKey(Schema.Boolean),
 }) {
 	/**
+	 * Synchronous single-document parse, returning a `Result` instead of an
+	 * `Effect`. This is the primitive {@link YamlDocument.parse} is defined in
+	 * terms of — a synchronous host can call it without an Effect runtime.
+	 * Keeps the full AST, directives and recovered diagnostics; fails with the
+	 * aggregate {@link YamlParseError} when any fatal-code diagnostic is
+	 * present, and non-fatal diagnostics are data on the returned document.
+	 *
+	 * @example
+	 * ```ts
+	 * import { YamlDocument } from "@effected/yaml";
+	 * import { Result } from "effect";
+	 *
+	 * const result = YamlDocument.parseResult("name: Alice\n");
+	 * if (Result.isSuccess(result)) {
+	 *   console.log(result.success.toValue()); // => { name: "Alice" }
+	 * }
+	 * ```
+	 *
+	 * @param text - The YAML source to parse.
+	 * @param options - Optional {@link YamlParseOptions}; defaults apply for
+	 *   omitted fields.
+	 * @returns A `Result` succeeding with the {@link YamlDocument}, or failing
+	 *   with {@link YamlParseError}.
+	 */
+	static parseResult(text: string, options?: YamlParseOptions): Result.Result<YamlDocument, YamlParseError> {
+		const raw = composeFirstDocument(text, toParseInput(options));
+		const fatal = raw.errors.filter((e) => isFatalCode(e.code));
+		if (fatal.length > 0) {
+			return Result.fail(
+				new YamlParseError({
+					diagnostics: fatal.map((e) => YamlDiagnostic.fromRaw(e, text)),
+					input: text,
+				}),
+			);
+		}
+		return Result.succeed(fromRawDocument(raw, text));
+	}
+
+	/**
 	 * Parse a single YAML document, keeping the full AST, directives and
 	 * recovered diagnostics. Fails with the aggregate {@link YamlParseError}
 	 * when any fatal-code diagnostic is present; non-fatal diagnostics are
-	 * data on the returned document.
+	 * data on the returned document. Defined in terms of
+	 * {@link YamlDocument.parseResult} — synchronous callers can use that
+	 * variant directly.
 	 *
 	 * @param text - The YAML source to parse.
 	 * @param options - Optional {@link YamlParseOptions}; defaults apply for
@@ -81,22 +122,60 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	 * @returns An `Effect` that succeeds with the {@link YamlDocument}, or fails
 	 *   with {@link YamlParseError}.
 	 */
-	static readonly parse = Effect.fn("YamlDocument.parse")(function* (text: string, options?: YamlParseOptions) {
-		const raw = composeFirstDocument(text, toParseInput(options));
-		const fatal = raw.errors.filter((e) => isFatalCode(e.code));
+	static readonly parse = Effect.fn("YamlDocument.parse")((text: string, options?: YamlParseOptions) =>
+		Effect.fromResult(YamlDocument.parseResult(text, options)),
+	);
+
+	/**
+	 * Synchronous multi-document parse, returning a `Result` instead of an
+	 * `Effect` — the primitive {@link YamlDocument.parseAll} is defined in
+	 * terms of. Any fatal diagnostic in any document — or a stream-level
+	 * directive-placement error — fails the whole parse with one aggregate
+	 * {@link YamlParseError}.
+	 *
+	 * @example
+	 * ```ts
+	 * import { YamlDocument } from "@effected/yaml";
+	 * import { Result } from "effect";
+	 *
+	 * const result = YamlDocument.parseAllResult("a: 1\n---\nb: 2\n");
+	 * if (Result.isSuccess(result)) {
+	 *   console.log(result.success.length); // => 2
+	 * }
+	 * ```
+	 *
+	 * @param text - The YAML stream to parse.
+	 * @param options - Optional {@link YamlParseOptions}; defaults apply for
+	 *   omitted fields.
+	 * @returns A `Result` succeeding with one {@link YamlDocument} per
+	 *   document, or failing with {@link YamlParseError}.
+	 */
+	static parseAllResult(
+		text: string,
+		options?: YamlParseOptions,
+	): Result.Result<ReadonlyArray<YamlDocument>, YamlParseError> {
+		const { documents, streamErrors } = composeAllDocuments(text, toParseInput(options));
+		const fatal = [
+			...streamErrors.filter((e) => e.code === "InvalidDirective"),
+			...documents.flatMap((d) => d.errors.filter((e) => isFatalCode(e.code))),
+		];
 		if (fatal.length > 0) {
-			return yield* new YamlParseError({
-				diagnostics: fatal.map((e) => YamlDiagnostic.fromRaw(e, text)),
-				input: text,
-			});
+			return Result.fail(
+				new YamlParseError({
+					diagnostics: fatal.map((e) => YamlDiagnostic.fromRaw(e, text)),
+					input: text,
+				}),
+			);
 		}
-		return fromRawDocument(raw, text);
-	});
+		return Result.succeed(documents.map((raw) => fromRawDocument(raw, text)));
+	}
 
 	/**
 	 * Parse a multi-document YAML stream into one {@link YamlDocument} per
 	 * document. Any fatal diagnostic in any document — or a stream-level
-	 * directive-placement error — fails the whole Effect.
+	 * directive-placement error — fails the whole Effect. Defined in terms of
+	 * {@link YamlDocument.parseAllResult} — synchronous callers can use that
+	 * variant directly.
 	 *
 	 * @param text - The YAML stream to parse.
 	 * @param options - Optional {@link YamlParseOptions}; defaults apply for
@@ -104,20 +183,9 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	 * @returns An `Effect` that succeeds with one {@link YamlDocument} per
 	 *   document, or fails with {@link YamlParseError}.
 	 */
-	static readonly parseAll = Effect.fn("YamlDocument.parseAll")(function* (text: string, options?: YamlParseOptions) {
-		const { documents, streamErrors } = composeAllDocuments(text, toParseInput(options));
-		const fatal = [
-			...streamErrors.filter((e) => e.code === "InvalidDirective"),
-			...documents.flatMap((d) => d.errors.filter((e) => isFatalCode(e.code))),
-		];
-		if (fatal.length > 0) {
-			return yield* new YamlParseError({
-				diagnostics: fatal.map((e) => YamlDiagnostic.fromRaw(e, text)),
-				input: text,
-			});
-		}
-		return documents.map((raw) => fromRawDocument(raw, text)) as ReadonlyArray<YamlDocument>;
-	});
+	static readonly parseAll = Effect.fn("YamlDocument.parseAll")((text: string, options?: YamlParseOptions) =>
+		Effect.fromResult(YamlDocument.parseAllResult(text, options)),
+	);
 
 	/**
 	 * A `Schema<YamlDocument, string>` decoding YAML text into a full
@@ -151,11 +219,16 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 
 	/**
 	 * Stringify this document (contents, directives and framing) as YAML.
-	 * Fails with {@link YamlStringifyError} on circular references introduced
-	 * into a synthetic AST (`CircularReference`) or on a synthetic AST nested
-	 * deeper than the stringifier's recursion budget (`NestingDepthExceeded`)
-	 * — both surface through the typed error channel rather than as an
-	 * unhandled stack-overflow defect.
+	 * Fails with {@link YamlStringifyError} (`NestingDepthExceeded`) on a
+	 * synthetic AST nested deeper than the stringifier's recursion budget. A
+	 * cycle introduced into a synthetic AST fails the same way: the node path
+	 * keeps no ancestor set, so the cycle is caught by the depth cap rather
+	 * than reported as `CircularReference`. Either way the failure surfaces
+	 * through the typed error channel, never as an unhandled stack-overflow
+	 * defect.
+	 * Defined in terms of {@link YamlDocument.stringifyResult} behind a
+	 * `YamlDocument.stringify` span — synchronous callers can use that variant
+	 * directly.
 	 *
 	 * @remarks
 	 * `YamlStringifyOptions.lineWidth` is not honored here: column-based
@@ -174,42 +247,52 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	 *   {@link YamlStringifyError}.
 	 */
 	stringify(options?: YamlStringifyOptions): Effect.Effect<string, YamlStringifyError> {
-		return Effect.try({
+		// Suspended so the stringify runs inside the span when the Effect runs,
+		// not when `stringify()` is called — an unmapped stringifier defect then
+		// dies inside the span rather than throwing out of the method call.
+		return Effect.suspend(() => Effect.fromResult(this.stringifyResult(options))).pipe(
+			Effect.withSpan("YamlDocument.stringify"),
+		);
+	}
+
+	/**
+	 * Synchronous stringify, returning a `Result` instead of an `Effect` — the
+	 * primitive {@link YamlDocument.stringify} is defined in terms of, so a
+	 * synchronous host can round-trip a document parsed with
+	 * {@link YamlDocument.parseResult} without an Effect runtime. Fails with
+	 * {@link YamlStringifyError} exactly where `stringify` does: a synthetic
+	 * AST nested deeper than the stringifier's recursion budget, or one
+	 * containing a cycle, both as `NestingDepthExceeded` (the node path keeps
+	 * no ancestor set, so a cycle is caught by the depth cap, not reported as
+	 * `CircularReference`).
+	 *
+	 * @remarks
+	 * `YamlStringifyOptions.lineWidth` is not honored here, for the reason
+	 * given on {@link YamlDocument.stringify}.
+	 *
+	 * @example
+	 * ```ts
+	 * import { YamlDocument } from "@effected/yaml";
+	 * import { Result } from "effect";
+	 *
+	 * const parsed = YamlDocument.parseResult("# keep\nname: Alice\n");
+	 * if (Result.isSuccess(parsed)) {
+	 *   const text = parsed.success.stringifyResult();
+	 *   if (Result.isSuccess(text)) console.log(text.success); // => "# keep\nname: Alice\n"
+	 * }
+	 * ```
+	 *
+	 * @param options - Optional {@link YamlStringifyOptions}; defaults apply for
+	 *   omitted fields.
+	 * @returns A `Result` succeeding with the YAML text, or failing with
+	 *   {@link YamlStringifyError}.
+	 */
+	stringifyResult(options?: YamlStringifyOptions): Result.Result<string, YamlStringifyError> {
+		return Result.try({
 			try: () => stringifyDocument(toRawDocument(this), toStringifyInput(options)),
 			catch: (defect) => {
-				if (defect instanceof StringifyFailure) {
-					return new YamlStringifyError({
-						diagnostics: [
-							YamlDiagnostic.make({
-								code: "CircularReference",
-								message: defect.reason,
-								offset: 0,
-								length: 0,
-								line: 0,
-								character: 0,
-							}),
-						],
-						value: this,
-					});
-				}
-				// A synthetic AST nested deeper than the stringifier's cap overflowed
-				// the node-path recursion — surface it typed, not as a stack-overflow
-				// defect.
-				if (defect instanceof StringifyDepthExceeded) {
-					return new YamlStringifyError({
-						diagnostics: [
-							YamlDiagnostic.make({
-								code: "NestingDepthExceeded",
-								message: defect.message,
-								offset: 0,
-								length: 0,
-								line: 0,
-								character: 0,
-							}),
-						],
-						value: this,
-					});
-				}
+				const error = stringifyDefectToError(defect, this);
+				if (error !== undefined) return error;
 				throw defect;
 			},
 		});

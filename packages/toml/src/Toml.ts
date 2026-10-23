@@ -80,63 +80,65 @@ export class TomlStringifyError extends Schema.TaggedError<TomlStringifyError>()
 // ── Internal helpers ────────────────────────────────────────────────────────
 
 /**
- * Run the parser and semantic pass, materializing the engine's raw carriers
- * into the typed error: `RawTomlError` becomes a positioned diagnostic and a
- * `GuardExceeded` depth trip becomes a `NestingDepthExceeded` diagnostic
- * (never an unhandled defect). Anything else is a genuine defect and rethrows
- * — synchronously to a `Result` caller, and as a `Die` through the `Effect`
- * forms, which evaluate this inside the effect.
+ * Materialize an engine throw into the typed {@link TomlParseError}:
+ * `RawTomlError` becomes a positioned diagnostic and a `GuardExceeded` depth
+ * trip becomes a `NestingDepthExceeded` diagnostic (never an unhandled
+ * defect). Anything else is a genuine defect and rethrows — synchronously to a
+ * `Result` caller, and as a `Die` through the `Effect` forms, which evaluate
+ * it inside the effect.
+ *
+ * The one mapping shared by every parse path — `Toml.parse`/`parseResult`,
+ * `TomlDocument.parseResult`/`toValueResult` and `TomlVisitor.visit` — so a
+ * given input fails identically through each of them.
+ *
+ * @internal
  */
-const parseToResult = (text: string): Result.Result<unknown, TomlParseError> => {
-	try {
-		return Result.succeed(buildValue(parseExpressions(text)));
-	} catch (defect) {
-		if (isRawTomlError(defect)) {
-			return Result.fail(new TomlParseError({ diagnostics: [TomlDiagnostic.fromRaw(text, defect.diagnostic)] }));
-		}
-		if (isGuardExceeded(defect)) {
-			return Result.fail(
-				new TomlParseError({
-					diagnostics: [
-						TomlDiagnostic.fromRaw(text, {
-							code: "NestingDepthExceeded",
-							message: defect.message,
-							offset: defect.offset,
-							length: 0,
-						}),
-					],
-				}),
-			);
-		}
-		throw defect;
+export const toTomlParseError = (text: string, defect: unknown): TomlParseError => {
+	if (isRawTomlError(defect)) {
+		return new TomlParseError({ diagnostics: [TomlDiagnostic.fromRaw(text, defect.diagnostic)] });
 	}
+	if (isGuardExceeded(defect)) {
+		return new TomlParseError({
+			diagnostics: [
+				TomlDiagnostic.fromRaw(text, {
+					code: "NestingDepthExceeded",
+					message: defect.message,
+					offset: defect.offset,
+					length: 0,
+				}),
+			],
+		});
+	}
+	throw defect;
 };
 
-const stringifyToResult = (
-	value: unknown,
-	options?: TomlStringifyOptions,
-): Result.Result<string, TomlStringifyError> => {
-	try {
-		return Result.succeed(stringifyValue(value, options?.newline ?? "\n"));
-	} catch (defect) {
-		if (isRawTomlError(defect)) {
-			return Result.fail(new TomlStringifyError({ diagnostic: TomlDiagnostic.fromRaw("", defect.diagnostic) }));
-		}
-		if (isGuardExceeded(defect)) {
-			return Result.fail(
-				new TomlStringifyError({
+/** Run the parser and semantic pass, materializing failures via {@link toTomlParseError}. */
+const parseToResult = (text: string): Result.Result<unknown, TomlParseError> =>
+	Result.try({
+		try: () => buildValue(parseExpressions(text)),
+		catch: (defect) => toTomlParseError(text, defect),
+	});
+
+const stringifyToResult = (value: unknown, options?: TomlStringifyOptions): Result.Result<string, TomlStringifyError> =>
+	Result.try({
+		try: () => stringifyValue(value, options?.newline ?? "\n"),
+		catch: (defect) => {
+			if (isRawTomlError(defect)) {
+				return new TomlStringifyError({ diagnostic: TomlDiagnostic.fromRaw("", defect.diagnostic) });
+			}
+			if (isGuardExceeded(defect)) {
+				return new TomlStringifyError({
 					diagnostic: TomlDiagnostic.fromRaw("", {
 						code: "NestingDepthExceeded",
 						message: defect.message,
 						offset: 0,
 						length: 0,
 					}),
-				}),
-			);
-		}
-		throw defect;
-	}
-};
+				});
+			}
+			throw defect;
+		},
+	});
 
 // ── Bound codec ─────────────────────────────────────────────────────────────
 

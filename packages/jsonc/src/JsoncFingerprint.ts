@@ -403,14 +403,17 @@ export class JsoncFingerprint {
 	 *   with a {@link JsoncCanonicalizeError}.
 	 */
 	static canonicalizeResult(value: unknown): Result.Result<string, JsoncCanonicalizeError> {
-		try {
-			return Result.succeed(emit(value, "", 0));
-		} catch (failure) {
-			if (failure instanceof CanonicalizeFailure) {
-				return Result.fail(failure.error);
-			}
-			throw failure;
-		}
+		return Result.try({
+			try: () => emit(value, "", 0),
+			catch: (failure) => {
+				// Only the engine's own carrier is a typed failure; anything else is a
+				// genuine defect and rethrows out of the Result.
+				if (failure instanceof CanonicalizeFailure) {
+					return failure.error;
+				}
+				throw failure;
+			},
+		});
 	}
 
 	/**

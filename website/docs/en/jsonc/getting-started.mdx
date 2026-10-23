@@ -165,9 +165,9 @@ Effect.runPromise(program);
 
 ## Handling errors
 
-Parsing recovers rather than bailing on the first problem: every recovered error is collected into a single `JsoncParseError` whose `errors` array carries the code and position of each one, so a user sees all the mistakes in their file at once. Structural edits that cannot be navigated fail with a `JsoncModificationError` carrying typed `path`, `expected` and `depth` fields.
+Parsing recovers rather than bailing on the first problem: every recovered error is collected into a single `JsoncParseError` whose `errors` array carries the code and position of each one, so a user sees all the mistakes in their file at once. Structural edits that cannot be navigated fail with a `JsoncModificationError` carrying typed `path`, `expected` and `depth` fields. A value that cannot be written as JSON (a circular reference, a `bigint`, a function or a symbol) fails the edit with a `JsoncStringifyError` routed on its `code`.
 
-Both are tagged errors, so `Effect.catchTag` routes each by its `_tag` with full type inference:
+All three are tagged errors, so `Effect.catchTag` routes each by its `_tag` with full type inference:
 
 ```ts with-api
 import { Jsonc, JsoncEdit, JsoncModifier } from "@effected/jsonc";
@@ -188,12 +188,13 @@ const recovered = program.pipe(
   Effect.catchTag("JsoncModificationError", (error) =>
     Effect.succeed([`could not navigate to [${error.path.join(".")}]: expected ${error.expected}`]),
   ),
+  Effect.catchTag("JsoncStringifyError", (error) => Effect.succeed([`cannot write that value: ${error.code}`])),
 );
 
 Effect.runPromise(recovered).then(console.log);
 ```
 
-Because the error channel is fully typed, dropping either `catchTag` is a compile error until every failure is accounted for. That is the whole point of the typed channel: hostile or malformed input — including a nesting bomb, which trips a depth cap and returns a `NestingDepthExceeded` parse code rather than crashing the stack — always arrives here, never as an unhandled exception.
+Because the error channel is fully typed, dropping any of the three `catchTag`s leaves that error visible in `recovered`'s type until it is accounted for. That is the whole point of the typed channel: hostile or malformed input — including a nesting bomb, which trips a depth cap and returns a `NestingDepthExceeded` parse code rather than crashing the stack — always arrives here, never as an unhandled exception.
 
 ## Next steps
 

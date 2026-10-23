@@ -9,39 +9,13 @@
 // `TomlDiagnostic` instances and the tagged `TomlParseError`. The dependency
 // edge runs facade → engine only.
 
-import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { isRawTomlError } from "./internal/diagnostics.js";
-import { isGuardExceeded } from "./internal/limits.js";
 import { parseExpressions } from "./internal/parser.js";
 import { analyze, buildValue } from "./internal/semantic.js";
-import { TomlParseError } from "./Toml.js";
+import { TomlParseError, toTomlParseError } from "./Toml.js";
 import { TomlDiagnostic } from "./TomlDiagnostic.js";
 import { TomlExpression } from "./TomlNode.js";
-
-/**
- * Materialize an engine throw into the typed error: `RawTomlError` becomes a
- * positioned diagnostic and a `GuardExceeded` depth trip becomes a
- * `NestingDepthExceeded` diagnostic. Anything else is a genuine defect and
- * rethrows.
- */
-const materializeError = (text: string, defect: unknown): TomlParseError => {
-	if (isRawTomlError(defect)) {
-		return new TomlParseError({ diagnostics: [TomlDiagnostic.fromRaw(text, defect.diagnostic)] });
-	}
-	if (isGuardExceeded(defect)) {
-		return new TomlParseError({
-			diagnostics: [
-				TomlDiagnostic.fromRaw(text, {
-					code: "NestingDepthExceeded",
-					message: defect.message,
-					offset: defect.offset,
-					length: 0,
-				}),
-			],
-		});
-	}
-	throw defect;
-};
 
 /**
  * A parsed TOML document that never loses a byte: the `source` text, the
@@ -81,33 +55,67 @@ export class TomlDocument extends Schema.Class<TomlDocument>("TomlDocument")({
 	diagnostics: Schema.Array(TomlDiagnostic),
 }) {
 	/**
+	 * Synchronous {@link TomlDocument.parse}, returning a `Result` instead of
+	 * an `Effect` — the primitive `parse` is defined in terms of, so a
+	 * synchronous host can call it without an Effect runtime. Fails with
+	 * {@link TomlParseError} only on lex/parse errors — including a
+	 * nesting-depth bomb, which surfaces as a `NestingDepthExceeded`
+	 * diagnostic, never a throw. Semantic violations do not fail: they land in
+	 * `diagnostics` as data (first violation wins, so there is at most one
+	 * today; the array shape is the contract).
+	 *
+	 * @example
+	 * ```ts
+	 * import { TomlDocument } from "@effected/toml";
+	 * import { Result } from "effect";
+	 *
+	 * const result = TomlDocument.parseResult('name = "Alice"\n');
+	 * if (Result.isSuccess(result)) {
+	 *   console.log(result.success.stringify()); // => 'name = "Alice"\n'
+	 * }
+	 * ```
+	 *
+	 * @param text - The TOML source to parse.
+	 * @returns A `Result` succeeding with the {@link TomlDocument}, or failing
+	 *   with {@link TomlParseError}.
+	 */
+	static parseResult(text: string): Result.Result<TomlDocument, TomlParseError> {
+		return Result.map(
+			Result.try({
+				try: () => parseExpressions(text),
+				catch: (defect) => toTomlParseError(text, defect),
+			}),
+			(expressions) => {
+				const diagnostics: Array<TomlDiagnostic> = [];
+				try {
+					analyze(expressions);
+				} catch (defect) {
+					if (!isRawTomlError(defect)) {
+						throw defect;
+					}
+					diagnostics.push(TomlDiagnostic.fromRaw(text, defect.diagnostic));
+				}
+				return TomlDocument.make({ source: text, expressions, diagnostics });
+			},
+		);
+	}
+
+	/**
 	 * Parse TOML text into a lossless document. Fails with
 	 * {@link TomlParseError} only on lex/parse errors — including a
 	 * nesting-depth bomb, which surfaces as a `NestingDepthExceeded`
 	 * diagnostic, never an unhandled defect. Semantic violations do not fail:
-	 * they land in `diagnostics` as data (first violation wins, so there is at
-	 * most one today; the array shape is the contract).
+	 * they land in `diagnostics` as data. Defined in terms of
+	 * {@link TomlDocument.parseResult} — synchronous callers can use that
+	 * variant directly.
 	 *
 	 * @param text - The TOML source to parse.
 	 * @returns An `Effect` that succeeds with the {@link TomlDocument}, or fails
 	 *   with {@link TomlParseError}.
 	 */
-	static readonly parse = Effect.fn("TomlDocument.parse")(function* (text: string) {
-		const expressions = yield* Effect.try({
-			try: () => parseExpressions(text),
-			catch: (defect) => materializeError(text, defect),
-		});
-		const diagnostics: Array<TomlDiagnostic> = [];
-		try {
-			analyze(expressions);
-		} catch (defect) {
-			if (!isRawTomlError(defect)) {
-				throw defect;
-			}
-			diagnostics.push(TomlDiagnostic.fromRaw(text, defect.diagnostic));
-		}
-		return TomlDocument.make({ source: text, expressions, diagnostics });
-	});
+	static readonly parse = Effect.fn("TomlDocument.parse")((text: string) =>
+		Effect.fromResult(TomlDocument.parseResult(text)),
+	);
 
 	/**
 	 * A `Schema<TomlDocument, string>` decoding TOML text into a full document
@@ -138,15 +146,49 @@ export class TomlDocument extends Schema.Class<TomlDocument>("TomlDocument")({
 	 * {@link TomlParseError} carrying the stored `diagnostics` when the parse
 	 * recorded semantic violations; otherwise builds the value from the
 	 * expression list (already validated, so the defensive materialization
-	 * wrapper is belt-and-suspenders).
+	 * wrapper is belt-and-suspenders). Defined in terms of
+	 * {@link TomlDocument.toValueResult} — synchronous callers can use that
+	 * variant directly.
+	 *
+	 * @returns An `Effect` that succeeds with the plain value, or fails with
+	 *   {@link TomlParseError}.
 	 */
 	toValue(): Effect.Effect<unknown, TomlParseError> {
+		// Suspended so the value is built when the Effect runs, not when
+		// `toValue()` is called — a genuine engine defect then dies inside the
+		// Effect rather than throwing out of the method call.
+		return Effect.suspend(() => Effect.fromResult(this.toValueResult()));
+	}
+
+	/**
+	 * Synchronous {@link TomlDocument.toValue}, returning a `Result` — the
+	 * second half of a synchronous document round-trip that starts at
+	 * {@link TomlDocument.parseResult}. Fails with {@link TomlParseError}
+	 * carrying the stored `diagnostics` when the parse recorded semantic
+	 * violations.
+	 *
+	 * @example
+	 * ```ts
+	 * import { TomlDocument } from "@effected/toml";
+	 * import { Result } from "effect";
+	 *
+	 * const parsed = TomlDocument.parseResult("a = 1\na = 2\n");
+	 * if (Result.isSuccess(parsed)) {
+	 *   const value = parsed.success.toValueResult();
+	 *   console.log(Result.isFailure(value)); // => true — DuplicateKey
+	 * }
+	 * ```
+	 *
+	 * @returns A `Result` succeeding with the plain value, or failing with
+	 *   {@link TomlParseError}.
+	 */
+	toValueResult(): Result.Result<unknown, TomlParseError> {
 		if (this.diagnostics.length > 0) {
-			return Effect.fail(new TomlParseError({ diagnostics: this.diagnostics }));
+			return Result.fail(new TomlParseError({ diagnostics: this.diagnostics }));
 		}
-		return Effect.try({
+		return Result.try({
 			try: () => buildValue(this.expressions),
-			catch: (defect) => materializeError(this.source, defect),
+			catch: (defect) => toTomlParseError(this.source, defect),
 		});
 	}
 

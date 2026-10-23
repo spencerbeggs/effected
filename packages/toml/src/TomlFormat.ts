@@ -15,13 +15,14 @@
 // tagged TomlModificationError. The dependency edge runs facade → engine
 // only.
 
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import type { TomlErrorCodeRaw } from "./internal/diagnostics.js";
 import { isRawTomlError } from "./internal/diagnostics.js";
 import { MAX_NESTING_DEPTH, isGuardExceeded } from "./internal/limits.js";
 import { parseExpressions } from "./internal/parser.js";
 import { analyze } from "./internal/semantic.js";
 import { renderInlineValue, renderKey } from "./internal/stringifyValue.js";
+import type { TomlParseError } from "./Toml.js";
 import { TomlDiagnostic } from "./TomlDiagnostic.js";
 import { TomlDocument } from "./TomlDocument.js";
 import type { TomlPath, TomlRange, TomlSegment } from "./TomlEdit.js";
@@ -821,7 +822,9 @@ export class TomlFormat {
 
 	/**
 	 * Compute the edits that replace, delete, or insert a value at `path`,
-	 * resolved through the document's semantic view. Every segment but the
+	 * synchronously — the primitive {@link TomlFormat.modify} is defined in
+	 * terms of, so a synchronous host can call it without an Effect runtime.
+	 * Paths resolve through the document's semantic view. Every segment but the
 	 * last must resolve — intermediate tables are never auto-created. A
 	 * `value` of `undefined` deletes: a key-value's whole line, an inline
 	 * entry, or an array item, splicing separators. A new key inserts per the
@@ -838,28 +841,34 @@ export class TomlFormat {
 	 *   target instead.
 	 * @param options - Optional {@link TomlFormattingOptions}; `newline` overrides
 	 *   the newline used for inserted lines.
-	 * @returns An `Effect` that succeeds with the edits to apply (via
-	 *   `TomlEdit.applyAll`), or fails with {@link TomlParseError} when the
+	 * @returns A `Result` succeeding with the edits to apply (via
+	 *   `TomlEdit.applyAll`), or failing with {@link TomlParseError} when the
 	 *   source does not parse, or {@link TomlModificationError} when `path`
 	 *   cannot be resolved or the insertion target is not allowed.
 	 */
-	static readonly modify = Effect.fn("TomlFormat.modify")(function* (
+	static modifyResult(
 		text: string,
 		path: TomlPath,
 		value: unknown,
 		options?: TomlFormattingOptions,
-	) {
-		const failWith = (code: TomlErrorCodeRaw, message: string, offset = 0, length = 0): TomlModificationError =>
-			new TomlModificationError({ diagnostic: TomlDiagnostic.fromRaw(text, { code, message, offset, length }) });
+	): Result.Result<ReadonlyArray<TomlEdit>, TomlParseError | TomlModificationError> {
+		const failWith = (code: TomlErrorCodeRaw, message: string, offset = 0, length = 0) =>
+			Result.fail(
+				new TomlModificationError({ diagnostic: TomlDiagnostic.fromRaw(text, { code, message, offset, length }) }),
+			);
 		if (path.length === 0) {
-			return yield* failWith("DottedKeyConflict", "an empty path does not address a value");
+			return failWith("DottedKeyConflict", "an empty path does not address a value");
 		}
 		if (path.length > MAX_NESTING_DEPTH) {
-			return yield* failWith("NestingDepthExceeded", `path depth ${path.length} exceeds the ${MAX_NESTING_DEPTH} cap`);
+			return failWith("NestingDepthExceeded", `path depth ${path.length} exceeds the ${MAX_NESTING_DEPTH} cap`);
 		}
-		const doc = yield* TomlDocument.parse(text);
+		const parsed = TomlDocument.parseResult(text);
+		if (Result.isFailure(parsed)) {
+			return Result.fail(parsed.failure);
+		}
+		const doc = parsed.success;
 		if (doc.diagnostics.length > 0) {
-			return yield* new TomlModificationError({ diagnostic: doc.diagnostics[0] });
+			return Result.fail(new TomlModificationError({ diagnostic: doc.diagnostics[0] }));
 		}
 		const { root, sections } = buildSemanticIndex(doc.expressions);
 		const ctx: ModifyContext = { source: text, sections, nl: options?.newline ?? dominantNewline(text) };
@@ -872,24 +881,87 @@ export class TomlFormat {
 			raw = terminal(cursor, path[path.length - 1], value, ctx);
 		} catch (defect) {
 			if (defect instanceof ModifyFailure) {
-				return yield* failWith(defect.code, defect.message, defect.offset, defect.len);
+				return failWith(defect.code, defect.message, defect.offset, defect.len);
 			}
 			if (isRawTomlError(defect)) {
-				return yield* new TomlModificationError({ diagnostic: TomlDiagnostic.fromRaw(text, defect.diagnostic) });
+				return Result.fail(new TomlModificationError({ diagnostic: TomlDiagnostic.fromRaw(text, defect.diagnostic) }));
 			}
 			if (isGuardExceeded(defect)) {
-				return yield* failWith("NestingDepthExceeded", defect.message, defect.offset);
+				return failWith("NestingDepthExceeded", defect.message, defect.offset);
 			}
 			throw defect;
 		}
-		return raw.map((edit) =>
-			TomlEdit.make({ offset: edit.offset, length: edit.length, content: edit.newText }),
-		) as ReadonlyArray<TomlEdit>;
-	});
+		return Result.succeed(
+			raw.map((edit) => TomlEdit.make({ offset: edit.offset, length: edit.length, content: edit.newText })),
+		);
+	}
+
+	/**
+	 * Compute the edits that replace, delete, or insert a value at `path`.
+	 * Defined in terms of {@link TomlFormat.modifyResult}, which carries the
+	 * full contract — semantic path resolution, deletion splicing and the
+	 * pinned insertion placement rules — behind a `TomlFormat.modify` span;
+	 * synchronous callers can use that variant directly.
+	 *
+	 * @param text - The TOML source to modify.
+	 * @param path - The location to set, replace or delete.
+	 * @param value - The plain JavaScript value to write; `undefined` deletes the
+	 *   target instead.
+	 * @param options - Optional {@link TomlFormattingOptions}; `newline` overrides
+	 *   the newline used for inserted lines.
+	 * @returns An `Effect` that succeeds with the edits to apply (via
+	 *   `TomlEdit.applyAll`), or fails with {@link TomlParseError} when the
+	 *   source does not parse, or {@link TomlModificationError} when `path`
+	 *   cannot be resolved or the insertion target is not allowed.
+	 *
+	 * @remarks
+	 * The source is parsed through `TomlDocument.parseResult`, so this span no
+	 * longer opens a nested `TomlDocument.parse` child span.
+	 */
+	static readonly modify = Effect.fn("TomlFormat.modify")(
+		(text: string, path: TomlPath, value: unknown, options?: TomlFormattingOptions) =>
+			Effect.fromResult(TomlFormat.modifyResult(text, path, value, options)),
+	);
+
+	/**
+	 * Synchronous {@link TomlFormat.modifyToString}: modify `text` and apply the
+	 * resulting edits in one step (`TomlEdit.applyAll ∘ modifyResult`),
+	 * returning a `Result`. Inherits the {@link TomlFormat.modifyResult} error
+	 * channel.
+	 *
+	 * @example
+	 * ```ts
+	 * import { TomlFormat } from "@effected/toml";
+	 * import { Result } from "effect";
+	 *
+	 * const result = TomlFormat.modifyToStringResult("port = 3000 # dev\n", ["port"], 8080);
+	 * if (Result.isSuccess(result)) {
+	 *   console.log(result.success); // => "port = 8080 # dev\n"
+	 * }
+	 * ```
+	 *
+	 * @param text - The TOML source to modify.
+	 * @param path - The location to set, replace or delete.
+	 * @param value - The plain JavaScript value to write; `undefined` deletes the
+	 *   target instead.
+	 * @param options - Optional {@link TomlFormattingOptions}.
+	 * @returns A `Result` succeeding with the modified text, or failing with
+	 *   {@link TomlParseError} or {@link TomlModificationError}.
+	 */
+	static modifyToStringResult(
+		text: string,
+		path: TomlPath,
+		value: unknown,
+		options?: TomlFormattingOptions,
+	): Result.Result<string, TomlParseError | TomlModificationError> {
+		return Result.map(TomlFormat.modifyResult(text, path, value, options), (edits) => TomlEdit.applyAll(text, edits));
+	}
 
 	/**
 	 * Modify `text` and apply the resulting edits in one step
-	 * (`TomlEdit.applyAll ∘ modify`).
+	 * (`TomlEdit.applyAll ∘ modify`). Defined in terms of
+	 * {@link TomlFormat.modifyToStringResult}; it opens its own span and no
+	 * longer a nested `TomlFormat.modify` child span.
 	 *
 	 * @param text - The TOML source to modify.
 	 * @param path - The location to set, replace or delete.
@@ -900,13 +972,8 @@ export class TomlFormat {
 	 *   {@link TomlParseError} or {@link TomlModificationError}, as
 	 *   {@link TomlFormat.modify} does.
 	 */
-	static readonly modifyToString = Effect.fn("TomlFormat.modifyToString")(function* (
-		text: string,
-		path: TomlPath,
-		value: unknown,
-		options?: TomlFormattingOptions,
-	) {
-		const edits = yield* TomlFormat.modify(text, path, value, options);
-		return TomlEdit.applyAll(text, edits);
-	});
+	static readonly modifyToString = Effect.fn("TomlFormat.modifyToString")(
+		(text: string, path: TomlPath, value: unknown, options?: TomlFormattingOptions) =>
+			Effect.fromResult(TomlFormat.modifyToStringResult(text, path, value, options)),
+	);
 }
