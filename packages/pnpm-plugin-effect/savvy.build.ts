@@ -223,14 +223,14 @@ await build({
 							source: "workspace",
 						},
 						"@effected/github": {
-							range: "^0.22.0",
-							peer: "^0.22.0",
+							range: "^0.23.0",
+							peer: "^0.23.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
 						"@effected/github-actions": {
-							range: "^0.24.0",
-							peer: "^0.24.0",
+							range: "^0.25.0",
+							peer: "^0.25.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
@@ -277,7 +277,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/lockfiles": {
-							range: "^0.19.0",
+							range: "^0.19.1",
 							peer: "^0.19.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -307,8 +307,8 @@ await build({
 							source: "workspace",
 						},
 						"@effected/npm": {
-							range: "^0.24.0",
-							peer: "^0.24.0",
+							range: "^0.25.0",
+							peer: "^0.25.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
@@ -319,7 +319,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/package-json": {
-							range: "^0.24.0",
+							range: "^0.24.1",
 							peer: "^0.24.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -331,8 +331,8 @@ await build({
 							source: "workspace",
 						},
 						"@effected/sbom": {
-							range: "^0.14.0",
-							peer: "^0.14.0",
+							range: "^0.15.0",
+							peer: "^0.15.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
@@ -403,7 +403,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/workspaces": {
-							range: "^0.36.0",
+							range: "^0.36.1",
 							peer: "^0.36.0",
 							strategy: "lock-minor",
 							source: "workspace",
