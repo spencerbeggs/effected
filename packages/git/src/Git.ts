@@ -1,6 +1,6 @@
 import { Config, Context, DateTime, Duration, Effect, Layer, Option, PlatformError, Result, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
-import type { GitConfigScope, GitInvocation } from "./GitCommand.js";
+import type { GitConfigScope, GitInvocation, GitUntrackedFilesMode } from "./GitCommand.js";
 import { GitCommand } from "./GitCommand.js";
 import type { Collected } from "./internal/run.js";
 import { runCollected } from "./internal/run.js";
@@ -781,6 +781,22 @@ export interface StatusRenderOptions {
 /**
  * One entry of a `git status --porcelain -z` listing.
  *
+ * @remarks
+ * **An untracked (`??`) path ending in `/` is a directory, not a file** —
+ * never read or commit it as one. Which directories appear that way depends
+ * on the listing's untracked-files mode (`Git.status`'s `untrackedFiles`):
+ *
+ * - under `"normal"`, a directory holding only untracked files collapses to
+ *   one `?? dir/` entry; a directory containing an untracked nested
+ *   repository collapses at the outer directory (`?? vendor/`);
+ * - under `"all"` (the default), every untracked file has its own entry, and
+ *   the only `??` path still ending in `/` is an untracked nested repository
+ *   (`?? vendor/inner/`), which git never descends into.
+ *
+ * Only the untracked axis is pinned by the mode. Other git config still
+ * shapes the listing — `status.renames`, for example, decides whether a
+ * rename appears as an `R` entry.
+ *
  * @public
  */
 export class StatusEntry extends Schema.Class<StatusEntry>("StatusEntry")({
@@ -788,7 +804,11 @@ export class StatusEntry extends Schema.Class<StatusEntry>("StatusEntry")({
 	x: porcelainCode,
 	/** The working-tree-side status code (second porcelain column). */
 	y: porcelainCode,
-	/** The entry's path — for a rename or copy, the NEW path. */
+	/**
+	 * The entry's path, relative to the repository root — for a rename or
+	 * copy, the NEW path. A `??` path ending in `/` is a directory (see the
+	 * class remarks).
+	 */
 	path: Schema.String,
 	/** The original path; present only on rename/copy entries. */
 	origPath: Schema.optionalKey(Schema.String),
@@ -2275,9 +2295,13 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		}
 	});
 
-	const status = Effect.fn("Git.status")(function* (cwd: string) {
-		yield* Effect.annotateCurrentSpan({ cwd });
-		const classified = yield* runFor(GitCommand.status(), cwd, "generic");
+	const status = Effect.fn("Git.status")(function* (
+		cwd: string,
+		options?: { readonly untrackedFiles?: GitUntrackedFilesMode },
+	) {
+		const untrackedFiles = options?.untrackedFiles ?? "all";
+		yield* Effect.annotateCurrentSpan({ cwd, untrackedFiles });
+		const classified = yield* runFor(GitCommand.status(untrackedFiles), cwd, "generic");
 		switch (classified._tag) {
 			case "success":
 				return parseStatus(classified.output);
@@ -3667,9 +3691,30 @@ export interface GitShape {
 			readonly firstParentDiffMerges?: boolean;
 		},
 	) => Effect.Effect<ReadonlyArray<CommitLogEntry>, GitCommandError | NotARepositoryError>;
-	/** `git status --porcelain -z` — the working tree's porcelain status listing. */
+	/**
+	 * `git status --porcelain -z --untracked-files=<mode>` — the working tree's
+	 * porcelain status listing, one {@link StatusEntry} per change.
+	 *
+	 * `options.untrackedFiles` defaults to `"all"`: one `??` entry per
+	 * untracked file, so a caller that turns entries into file changes never
+	 * meets a collapsed directory. Pass `"normal"` for git's own collapsing
+	 * listing (cheaper on a large untracked tree) or `"no"` to omit untracked
+	 * files. The flag is always passed, so the caller's
+	 * `status.showUntrackedFiles` config never changes the untracked axis;
+	 * other config, such as `status.renames`, still applies.
+	 *
+	 * **Never build a commit from `"normal"` entries.** Under `"normal"` a
+	 * directory holding only untracked files is ONE `?? dir/` entry, and
+	 * reading it as a file fails: silk-release-action's release commit died on
+	 * `.changeset/pre/` this way on its first prerelease. See
+	 * {@link StatusEntry} for the trailing-slash rule under each mode.
+	 */
 	readonly status: (
 		cwd: string,
+		options?: {
+			/** git's `--untracked-files` mode. Default `"all"`. */
+			readonly untrackedFiles?: GitUntrackedFilesMode;
+		},
 	) => Effect.Effect<ReadonlyArray<StatusEntry>, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * `git ls-remote [--heads] [--tags] <remote> [<patterns>...]` — the refs

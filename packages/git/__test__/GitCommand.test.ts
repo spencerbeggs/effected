@@ -337,8 +337,14 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.remoteUrl(), ["remote", "get-url", "origin"]);
 	});
 
-	it("status builds `git status --porcelain -z`", () => {
-		assertGitCommand(GitCommand.status(), ["status", "--porcelain", "-z"]);
+	it("status emits an explicit `--untracked-files=all` by default", () => {
+		assertGitCommand(GitCommand.status(), ["status", "--porcelain", "-z", "--untracked-files=all"]);
+	});
+
+	it("status emits each untracked-files mode explicitly", () => {
+		assertGitCommand(GitCommand.status("all"), ["status", "--porcelain", "-z", "--untracked-files=all"]);
+		assertGitCommand(GitCommand.status("normal"), ["status", "--porcelain", "-z", "--untracked-files=normal"]);
+		assertGitCommand(GitCommand.status("no"), ["status", "--porcelain", "-z", "--untracked-files=no"]);
 	});
 
 	describe("working-tree restore tier", () => {
