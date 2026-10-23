@@ -219,8 +219,9 @@ describe("MarkdownVisitor", () => {
 });
 
 // `walk` is the synchronous primitive `visit` is derived from. The contract it
-// owes callers: the same events in the same order as `visit`, produced lazily,
-// and a fresh walk per iteration.
+// owes callers: document pre-order (checked against an independent oracle, not
+// against `visit`, which is defined from `walk` and so cannot disagree with it),
+// produced lazily, and a fresh walk per iteration.
 describe("MarkdownVisitor.walk", () => {
 	const shapeOf = (event: MarkdownVisitorEvent): string =>
 		event._tag === "Error" ? "Error" : `${event._tag}:${event.node.type}@${event.depth}[${event.path.join(".")}]`;
@@ -254,18 +255,54 @@ describe("MarkdownVisitor.walk", () => {
 		).check(Schema.isMaxLength(12)),
 	).pipe(Arbitrary.map((lines) => `${lines.join("\n")}\n`));
 
-	it("yields exactly the visit stream's events over the whole CommonMark corpus", () => {
+	/**
+	 * An independent oracle for the walk: an eager, hand-written recursive
+	 * pre-order over `children`, sharing no code with `MarkdownVisitor`. It
+	 * covers trees inside the depth cap only — every parsed tree is.
+	 */
+	interface OracleEvent {
+		readonly tag: "Enter" | "Exit";
+		readonly node: unknown;
+		readonly path: ReadonlyArray<number>;
+		readonly depth: number;
+	}
+	const oracle = (node: unknown, path: ReadonlyArray<number> = [], depth = 0): Array<OracleEvent> => {
+		const children = (node as { readonly children?: unknown }).children;
+		const inner = Array.isArray(children)
+			? children.flatMap((child, index) => oracle(child, [...path, index], depth + 1))
+			: [];
+		return [{ tag: "Enter", node, path, depth }, ...inner, { tag: "Exit", node, path, depth }];
+	};
+
+	/** Compare a walk to the oracle event-for-event: tag, node identity, path, depth. */
+	const assertMatchesOracle = (root: Root, label: string): void => {
+		const walked = [...MarkdownVisitor.walk(root)];
+		const expected = oracle(root);
+		assert.strictEqual(walked.length, expected.length, `${label}: event count`);
+		walked.forEach((event, index) => {
+			const want = expected[index] as OracleEvent;
+			if (event._tag === "Error") {
+				assert.fail(`${label}: unexpected Error event at ${index}`);
+			} else {
+				assert.strictEqual(event._tag, want.tag, `${label}: tag at ${index}`);
+				assert.strictEqual(event.node, want.node, `${label}: node identity at ${index}`);
+				assert.deepStrictEqual(event.path, want.path, `${label}: path at ${index}`);
+				assert.strictEqual(event.depth, want.depth, `${label}: depth at ${index}`);
+			}
+		});
+	};
+
+	it("matches an independent recursive pre-order over the whole CommonMark corpus", () => {
 		const examples = loadSpecExamples();
 		// Silently-empty-walk guard: a corpus that failed to load must fail here.
 		assert.strictEqual(examples.length, 652);
 		for (const example of examples) {
-			const root = parse(example.markdown);
-			assert.deepStrictEqual([...MarkdownVisitor.walk(root)], [...collect(root)], `example ${example.example}`);
+			assertMatchesOracle(parse(example.markdown), `example ${example.example}`);
 		}
 	});
 
 	it.prop(
-		"yields exactly the visit stream's events on generated markdown",
+		"matches an independent recursive pre-order on generated markdown",
 		[markdownish],
 		([markdown]) => {
 			const result = Markdown.parseResult(markdown);
@@ -273,13 +310,19 @@ describe("MarkdownVisitor.walk", () => {
 				// A hardening-guard trip has no tree to walk.
 				return true;
 			}
-			const root = result.success;
-			const walked = [...MarkdownVisitor.walk(root)];
-			assert.deepStrictEqual(walked.map(shapeOf), [...collect(root)].map(shapeOf));
-			assert.deepStrictEqual(walked, [...collect(root)]);
+			assertMatchesOracle(result.success, JSON.stringify(markdown));
 			return true;
 		},
 		{ arbitrary: { runs: 200, size: 12 } },
+	);
+
+	it.effect("visit delivers the walk's events through the Stream unchanged", () =>
+		Effect.gen(function* () {
+			const root = parse("# t\n\n> *a* **b**\n\n- x\n- y\n");
+			const streamed = yield* Stream.runCollect(MarkdownVisitor.visit(root));
+			assert.deepStrictEqual([...streamed].map(shapeOf), [...MarkdownVisitor.walk(root)].map(shapeOf));
+			assert.isAbove(streamed.length, 10);
+		}),
 	);
 
 	it("is lazy: breaking out never touches the rest of the tree", () => {
@@ -342,6 +385,5 @@ describe("MarkdownVisitor.walk", () => {
 		} else {
 			assert.fail("expected the walk to end on its Error event");
 		}
-		assert.deepStrictEqual(events, [...collect(tree)]);
 	});
 });
