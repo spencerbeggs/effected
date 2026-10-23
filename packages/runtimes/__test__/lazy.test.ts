@@ -194,6 +194,39 @@ describe("lazy layer acquisition", () => {
 		}),
 	);
 
+	it.effect("concurrent first fresh Node resolves share one failed attempt per feed", () =>
+		Effect.gen(function* () {
+			// NodeResolver's build is the second call site of the gate, independent
+			// of the GitHub-backed resolvers, so it gets its own pin.
+			const http = makeCountingDeadFetch();
+
+			yield* Effect.gen(function* () {
+				const resolver = yield* NodeResolver;
+				const failures = yield* Effect.all(
+					[
+						Effect.flip(resolver.resolve({ range: ">=20" })),
+						Effect.flip(resolver.resolve({ range: "*" })),
+						Effect.flip(resolver.resolve()),
+					],
+					{ concurrency: "unbounded" },
+				);
+				for (const failure of failures) assert.instanceOf(failure, FreshnessError);
+				const concurrent = http.calls();
+				assert.isAbove(concurrent, 0, "the shared attempt does reach the feeds");
+
+				// One more resolve is exactly one more attempt: the failure is not
+				// memoized, and the concurrent three cost what this one alone costs.
+				const failure = yield* Effect.flip(resolver.resolve({ range: ">=20" }));
+				assert.instanceOf(failure, FreshnessError);
+				assert.strictEqual(
+					http.calls() - concurrent,
+					concurrent,
+					"three concurrent waiters must cost one attempt, not one per waiter",
+				);
+			}).pipe(Effect.provide(NodeResolver.layerFresh.pipe(Layer.provide(http.layer))));
+		}),
+	);
+
 	it.effect("interrupting the first resolve does not restart population for a concurrent waiter", () =>
 		Effect.gen(function* () {
 			let calls = 0;
