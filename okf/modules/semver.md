@@ -51,7 +51,7 @@ Each `FromString` is a `Schema.decodeTo` transformation from `Schema.String` to 
 
 ## Errors
 
-Domain errors carry structured `input`/`position` payloads (core's `SemVerError` carries prose only) and derive `message` from a getter — never a preformatted string — so a serialized error stays reconstructible. The `FromString` transformations fail with `SchemaIssue.InvalidValue` instead; `SchemaError` never escapes the package. `Range.intersect` carries a typed failure rather than returning an unsatisfiable range, so an impossible constraint set is a failure the caller must handle rather than a value that silently matches nothing. `Range.isSubset` (and therefore `equivalent` and `simplify`) is a conservative approximation — false negatives are expected and safe.
+Domain errors carry structured `input`/`position` payloads (core's `SemVerError` carries a message and the input, but no position) and derive `message` from a getter — never a preformatted string — so a serialized error stays reconstructible. The `FromString` transformations fail with `SchemaIssue.InvalidValue` instead; `SchemaError` never escapes the package. `Range.intersect` carries a typed failure rather than returning an unsatisfiable range, so an impossible constraint set is a failure the caller must handle rather than a value that silently matches nothing. `Range.isSubset` (and therefore `equivalent` and `simplify`) is a conservative approximation — false negatives are expected and safe.
 
 ## Equal and Hash semantics
 

@@ -48,8 +48,9 @@ disagreement outside a named allowlist[^core-parity-test].
 - Core's modules can break in a minor release[^core-semver]. Building on
   them would tie a pure package and its eight dependents to that churn.
 - Core has no range algebra (`intersect`, `isSubset`, `equivalent`,
-  `simplify`) and no position-bearing errors; its `SemVerError` carries only
-  prose[^core-semverrange].
+  `simplify`)[^core-semverrange] and no position-bearing errors; its
+  `SemVerError` carries a message and the input, but no
+  position[^core-semver].
 - Core deliberately separates a structural `Equivalence` that includes
   build metadata from a precedence `Order` that ignores it. The kit's
   `Equal` follows precedence, and `VersionCache` dedupe depends on that, so
@@ -70,6 +71,14 @@ The differential test allowlists exactly three, by name:
 
 Never mix kit and core values in one hash-keyed collection: the two
 equalities disagree on build metadata.
+
+The differential test covers parsing, ordering and matching only, not
+bumps. One bump divergence is known and unguarded: on a prerelease with
+several numeric identifiers, the kit's `bump.prerelease` increments the
+last one while core's `bumpPrerelease` increments the right-most numeric
+one, so `1.0.0-1.beta` bumps to `1.0.0-1.beta.0` in the kit and
+`1.0.0-2.beta` in core. Aligning it, and adding a bump block to the
+differential test, is a follow-up.
 
 ## Consequences
 
