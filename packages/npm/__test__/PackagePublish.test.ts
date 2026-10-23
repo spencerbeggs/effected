@@ -691,11 +691,11 @@ describe("PackagePublish.setupAuth upsert mode", () => {
 		}),
 	);
 
-	it.effect("replaces only the exact key: no trailing slash, no other scheme key", () =>
+	it.effect("replaces only the exact key: no trailing slash, no other path", () =>
 		Effect.gen(function* () {
 			const lines = [
 				"//registry.npmjs.org:_authToken=no-slash",
-				"//registry.npmjs.org/:_auth=basic-blob",
+				"//registry.npmjs.org/x/:_auth=other-path-basic",
 				"//registry.npmjs.org/x/:_authToken=other-path",
 				"registry.npmjs.org/:_authToken=no-nerf",
 			];
@@ -705,11 +705,29 @@ describe("PackagePublish.setupAuth upsert mode", () => {
 		}),
 	);
 
-	it.effect("a basic credential replaces _auth and leaves _authToken alone", () =>
+	it.effect("a basic credential replaces _auth and clears the same registry's _authToken, which npm reads first", () =>
 		Effect.gen(function* () {
-			const h = harness({ files: { [NPMRC]: `${KEY}=tok\n//registry.npmjs.org/:_auth=old\n` } });
+			const h = harness({ files: { [NPMRC]: `${KEY}=tok\n//registry.npmjs.org/:_auth=old\nx=1\n` } });
 			yield* run(h, { mode: "upsert", credential: { kind: "basic", encoded: Redacted.make("YWJj") } });
-			assert.strictEqual(npmrcOf(h), `${KEY}=tok\n//registry.npmjs.org/:_auth=YWJj\n`);
+			assert.strictEqual(npmrcOf(h), "//registry.npmjs.org/:_auth=YWJj\nx=1\n");
+		}),
+	);
+
+	it.effect("a token credential clears the same registry's _auth even when it has to append", () =>
+		Effect.gen(function* () {
+			const h = harness({ files: { [NPMRC]: "a=1\n//registry.npmjs.org/:_auth=old\nb=2\n" } });
+			yield* run(h, { mode: "upsert" });
+			assert.strictEqual(npmrcOf(h), `a=1\nb=2\n${KEY}=s3cr3t-token\n`);
+		}),
+	);
+
+	it.effect("keeps the registry path in the key and treats a missing trailing slash as the same registry", () =>
+		Effect.gen(function* () {
+			const scoped = "//registry.savvyweb.systems/npm/:_authToken";
+			const sibling = "//registry.savvyweb.systems/other/:_authToken=keep-me";
+			const h = harness({ files: { [NPMRC]: `${sibling}\n${scoped}=old\n` } });
+			yield* run(h, { mode: "upsert", registry: "https://registry.savvyweb.systems/npm" });
+			assert.strictEqual(npmrcOf(h), `${sibling}\n${scoped}=s3cr3t-token\n`);
 		}),
 	);
 });

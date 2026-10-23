@@ -19,36 +19,47 @@ const PROVENANCE_URL = /https:\/\/search\.sigstore\.dev\/\?logIndex=\d+/;
  * never does, and the publish goes out unauthenticated with no diagnostic. A
  * registry path is preserved (`//host/artifactory/api/npm/repo/:_authToken`).
  */
-const authKey = (registry: string, credential: RegistryCredential): string => {
+const authKey = (registry: string, kind: RegistryCredential["kind"]): string => {
 	const withoutScheme = registry.replace(/^https?:/, "");
 	const withSlash = withoutScheme.endsWith("/") ? withoutScheme : `${withoutScheme}/`;
 	// npm reads BOTH keys per registry, checking `_authToken` first and then
 	// `_auth` (npm-registry-fetch's `hasAuth`), so the credential's own kind
 	// picks the key and neither shadows the other.
-	return `${withSlash}:${credential.kind === "token" ? "_authToken" : "_auth"}`;
+	return `${withSlash}:${kind === "token" ? "_authToken" : "_auth"}`;
 };
 
 /**
- * Replaces the first line keyed `key` with `line` and drops later duplicates.
+ * Replaces the first line keyed `key` with `line`, and drops later duplicates
+ * and every line keyed `stale`.
  *
  * @remarks
- * Returns `undefined` when no line matches, so the caller falls back to the
- * append path. Lines split on `\n` only, so every untouched line (including a
+ * `stale` is the same registry's other-scheme key. npm checks `_authToken`
+ * before `_auth`, so a token line left behind would silently win over a basic
+ * credential just written, and a basic line left behind would outlive the
+ * credential that replaced it. `replaced` is false when no line is keyed
+ * `key`, so the caller appends to `text`, whose stale lines are already gone.
+ * Lines split on `\n` only, so every untouched line (including a
  * trailing `\r`) survives byte for byte; a replaced line keeps its `\r`.
  */
-const replaceKey = (text: string, key: string, line: string): string | undefined => {
+const replaceKey = (
+	text: string,
+	key: string,
+	stale: string,
+	line: string,
+): { readonly text: string; readonly replaced: boolean } => {
 	const out: Array<string> = [];
-	let found = false;
+	let replaced = false;
 	for (const raw of text.split("\n")) {
 		const eq = raw.indexOf("=");
-		if (eq !== -1 && raw.slice(0, eq).trim() === key) {
-			if (!found) out.push(raw.endsWith("\r") ? `${line}\r` : line);
-			found = true;
-		} else {
+		const name = eq === -1 ? undefined : raw.slice(0, eq).trim();
+		if (name === key) {
+			if (!replaced) out.push(raw.endsWith("\r") ? `${line}\r` : line);
+			replaced = true;
+		} else if (name !== stale) {
 			out.push(raw);
 		}
 	}
-	return found ? out.join("\n") : undefined;
+	return { text: out.join("\n"), replaced };
 };
 
 /** What `npm pack --json` reports for one tarball. */
@@ -202,7 +213,13 @@ export interface PackagePublishShape {
 	 * text before the first `=`, trimmed) equals the key this call writes is
 	 * replaced in place: the first match takes the new line, any further matches
 	 * are removed, and every other line is left byte for byte in its original
-	 * order. With no match, upsert appends exactly as append does. A missing file
+	 * order. Upsert also removes the same registry's other-scheme key (`_auth`
+	 * when writing a token, `_authToken` when writing a basic credential),
+	 * because npm checks `_authToken` first and a leftover would shadow or
+	 * outlive the credential just written. With no match, upsert appends. The
+	 * registry path is part of the key, and a missing trailing slash on
+	 * `registry` is added, so `https://host/npm` and `https://host/npm/` write
+	 * the same key. A missing file
 	 * (`NotFound`) starts empty; any other read failure — an unreadable file, a
 	 * directory at the path — fails `PublishError` with kind `"auth"` and leaves
 	 * the file untouched, rather than overwriting config it could not read.
@@ -342,12 +359,21 @@ const make = Effect.fnUntraced(function* () {
 				),
 			);
 		const secret = options.credential.kind === "token" ? options.credential.token : options.credential.encoded;
-		const key = authKey(options.registry, options.credential);
+		const key = authKey(options.registry, options.credential.kind);
 		const line = `${key}=${Red.value(secret)}`;
-		const upserted = mode === "upsert" ? replaceKey(existing, key, line) : undefined;
-		const separator = existing === "" || existing.endsWith("\n") ? "" : "\n";
+		const upserted =
+			mode === "upsert"
+				? replaceKey(
+						existing,
+						key,
+						authKey(options.registry, options.credential.kind === "token" ? "basic" : "token"),
+						line,
+					)
+				: { text: existing, replaced: false };
+		const base = upserted.text;
+		const separator = base === "" || base.endsWith("\n") ? "" : "\n";
 		yield* fs
-			.writeFileString(options.npmrcPath, upserted ?? `${existing}${separator}${line}\n`)
+			.writeFileString(options.npmrcPath, upserted.replaced ? base : `${base}${separator}${line}\n`)
 			.pipe(
 				Effect.catch((cause) => Effect.fail(new PublishError({ kind: "auth", registry: options.registry, cause }))),
 			);
