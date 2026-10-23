@@ -19,10 +19,10 @@ sources:
     resource: "npm:pluginfinity"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T22:03:44Z
+  at: 2026-10-23T22:19:34Z
 integrity:
   generated:
-    body: e077e5aba28207b8
+    body: 6a129000832b1492
 ---
 
 # ai-plugin
@@ -250,10 +250,14 @@ reads the source.
 - `skill-anchors.bats` — every `File.ts:N` citation in every skill file
   pinned to its symbol in the vendored Effect tree or the kit source,
   through the manifest `__test__/helpers/skill-anchors.json` (scope
-  `["."]`). It fails on an unlisted citation, a cited line off its symbol
-  or on a comment line, a range end with no symbol, and a bare `:NNN` that
-  names no file. Its rederive fixtures pin `scripts/rederive-anchors.mjs`,
-  which relocates anchors by symbol after a pin move and refuses ambiguous
+  `["."]`). It fails on an unlisted citation, a token occurring more or
+  fewer times than its entry's `occurrences` (default 1), a token whose path
+  is not its entry's `source`, a cited line off its symbol or on a comment
+  line, a range end with no symbol, a bare `:NNN` that names no file, and a
+  prose citation (`at 992`) beside a file named without a line. Its
+  rederive fixtures pin `scripts/rederive-anchors.mjs`, which relocates
+  anchors by symbol after a pin move, confines an `after`-guarded symbol to
+  the block its `after` line opens, and refuses missing or ambiguous
   candidates and colliding rewrites; the two share one tokenizer,
   `scripts/skill-anchors-core.mjs`.
 

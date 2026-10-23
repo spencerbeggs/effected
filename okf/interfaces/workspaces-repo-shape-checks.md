@@ -48,10 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T22:03:44Z
+  at: 2026-10-23T22:19:34Z
 integrity:
   generated:
-    body: 3d1831b8a7d53ec8
+    body: 780eaa07f1d9a732
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -193,7 +193,7 @@ failing `assert` to stderr. It sent `log`, `info`, `debug`, `dir`, `dirxml`,
 
 The scanner cannot tell a local binding from the global. `cli`'s logger binds
 a local `console` to core's `Console` service
-(`CliLogger.ts:104`),[^cli-logger-ts] and `console` flags it. The fix is an
+(`CliLogger.ts:131`),[^cli-logger-ts] and `console` flags it. The fix is an
 `allowRules` waiver of `console` for that one file. `cli`'s own boundary test
 proves the waiver is both needed and the only one: its scan reports no
 violations, and `waived` names `CliLogger.ts` under `console` and nothing
@@ -438,7 +438,7 @@ guards that edge, through its `forbidImports`, and only for an import under
 ### Edges by name, one per field
 
 `DependencyGraph` merges all four dependency fields into one adjacency
-(`DependencyGraph.ts:114-120`),[^dependency-graph-ts] so it cannot answer
+(`DependencyGraph.ts:108-114`),[^dependency-graph-ts] so it cannot answer
 "which field declared this edge". `WorkspaceLayering.edgesOf` recomputes one
 `LayerEdge` per declaring field, and `check` reads only the policy's `fields`.
 That is why `check` takes a `LayeringGraph` of names and edges rather than a
@@ -771,7 +771,7 @@ under npm and bun, and `undefined` under pnpm, against real installs.[^packed-in
 [^import-graph-ts]: `packages/workspaces/src/ImportGraph.ts` — the
     reachability walk, the undeclared-import check and their resolution
     rules.
-[^cli-logger-ts]: `packages/cli/src/CliLogger.ts:104` — the local `console`
+[^cli-logger-ts]: `packages/cli/src/CliLogger.ts:131` — the local `console`
     binding.
 [^node-console]: <https://nodejs.org/api/console.html> — the global
     console's methods and the streams they write to.
@@ -779,7 +779,7 @@ under npm and bun, and `undefined` under pnpm, against real installs.[^packed-in
     schema and its field semantics.
 [^workspace-layering-ts]: `packages/workspaces/src/WorkspaceLayering.ts` —
     the offence rule, `edgesOf` and `check`.
-[^dependency-graph-ts]: `packages/workspaces/src/DependencyGraph.ts:114-120`
+[^dependency-graph-ts]: `packages/workspaces/src/DependencyGraph.ts:108-114`
     — the merged adjacency.
 [^layers-json]: `lib/configs/layers.json` — this repository's layer policy.
 [^packed-install-plan-ts]: `packages/workspaces/src/internal/packedInstallPlan.ts`
@@ -789,7 +789,7 @@ under npm and bun, and `undefined` under pnpm, against real installs.[^packed-in
     `run`, `closure` and the shared planner behind both.
 [^package-publish-ts]: `packages/npm/src/PackagePublish.ts:480,697-700` — the
     pack destination and the service requirements.
-[^package-tarball-ts]: `packages/npm/src/PackageTarball.ts:75,117` — the
+[^package-tarball-ts]: `packages/npm/src/PackageTarball.ts:104,120` — the
     registry fetch.
 [^vitest-agent-packed-install]: vitest-agent,
     `packages/plugin/__test__/bins-packed-install.e2e.test.ts`.

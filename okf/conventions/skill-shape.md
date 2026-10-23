@@ -11,10 +11,10 @@ sources:
     resource: ../../plugin/skills/effected-packages
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-03T04:19:44Z
+  at: 2026-10-23T22:19:34Z
 integrity:
   generated:
-    body: 3d86e42f36d61133
+    body: 72dc61a0cc605c6c
 ---
 
 # A plugin skill is a lean index over references
@@ -66,6 +66,13 @@ declaration in `node_modules` by symbol name instead. The cost is that an
 anchor is a pinned fact — an Effect catalog advance drifts every anchor at
 once, so re-verifying them belongs with the catalog bump, not on a
 schedule of its own.
+
+Write every line citation as a `Module.ts:line` token, or as a `` `:line` ``
+code span continuing one, and give it an entry in
+`plugin/__test__/helpers/skill-anchors.json`. A line number written as
+prose (`` `src/Logger.ts` ``: `consoleJson` at 992) is invisible to the
+anchor check, so it rots unchecked. The check rejects the common prose
+form, but it cannot see every phrasing.
 
 ## The frontmatter contract
 
