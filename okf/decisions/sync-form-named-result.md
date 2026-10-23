@@ -9,10 +9,10 @@ tags:
   - compat
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T22:03:44Z
 integrity:
   generated:
-    body: 53744903cc1e476a
+    body: f52fd6df9ef5c1a0
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -54,7 +54,7 @@ ascending order of force:
 The rule holds even where the `Effect` twin is not merely a span wrapper.
 `@effected/jsonc`'s `JsoncFingerprint.hash` requires core's `Crypto.Crypto`,
 so its synchronous twin, `hashResult`
-(`packages/jsonc/src/JsoncFingerprint.ts:483`), is not a free derivation — it
+(`packages/jsonc/src/JsoncFingerprint.ts:487`), is not a free derivation — it
 takes the digest from the caller instead of the service. Argument 2 does not
 strictly apply here, since the `Effect` form really is the effectful one, but
 arguments 1 and 3 still hold: `Result` is what the kit's readers have been

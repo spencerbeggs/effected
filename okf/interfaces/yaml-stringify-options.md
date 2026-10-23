@@ -8,7 +8,7 @@ resource: ../../packages/yaml/src/YamlFormat.ts
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T22:03:44Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:12.812Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: ed917dc3b3464f02
+    body: 34f49d7501bcf81d
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -94,7 +94,7 @@ On the format path, `quoteStyle` governs only quotes the stringifier
 *introduces* — it never re-quotes scalars already quoted in the source.
 That source-preserving default is a contract consumers rely on and does not
 change; `requoteScalars` (default `false`, on `YamlFormattingOptions`,
-`src/YamlFormat.ts:95`) is the opt-in that makes `quoteStyle` apply to
+`src/YamlFormat.ts:99`) is the opt-in that makes `quoteStyle` apply to
 already-quoted source scalars too, which is the behavior an ex-Prettier
 consumer expects from `singleQuote: false`.
 

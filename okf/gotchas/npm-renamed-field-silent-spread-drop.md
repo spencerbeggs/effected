@@ -12,10 +12,10 @@ sources:
     resource: ../../packages/npm/src/NpmRegistry.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T22:03:44Z
 integrity:
   generated:
-    body: d4a8b6200e587a59
+    body: cf5de4ecb8103c49
 ---
 
 # A renamed field typed never turns a silent conditional-spread drop into a compile error
@@ -65,6 +65,6 @@ from a type that callers commonly populate through a spread rather than a
 literal object — the spread is exactly the shape that an outright
 deletion cannot catch.
 
-[^npm-registry-source]: `packages/npm/src/NpmRegistry.ts:33-44` — the
+[^npm-registry-source]: `packages/npm/src/NpmRegistry.ts:32-43` — the
     `@deprecated` `token?: never` field and its comment explaining the
     conditional-spread hazard it exists to catch at compile time.

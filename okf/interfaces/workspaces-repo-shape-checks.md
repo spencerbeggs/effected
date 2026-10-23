@@ -48,10 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-11T18:18:21Z
+  at: 2026-10-23T22:03:44Z
 integrity:
   generated:
-    body: f6a6581821bab26e
+    body: 3d1831b8a7d53ec8
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -653,7 +653,7 @@ read with `tar -xzOf`. A `Path` whose separator is not `/` fails
 ### Why neither `PackagePublish.pack` nor `PackageTarball`
 
 `PackagePublish.pack` writes its tarball into the package directory
-(`PackagePublish.ts:317`) with no `--pack-destination`, so it would drop a
+(`PackagePublish.ts:480`) with no `--pack-destination`, so it would drop a
 `.tgz` into `dist/prod/npm/pkg` that a later pack ships inside itself. It
 also needs `Crypto` and `LocalExec` in `R` for a SHA-256 this check does not
 use.[^package-publish-ts] `PackageTarball.extract` fetches a *published*
@@ -787,7 +787,7 @@ under npm and bun, and `undefined` under pnpm, against real installs.[^packed-in
     `readPackedManifest`, `binConflict` and `fileOverridesOf`.
 [^packed-install-ts]: `packages/workspaces/src/PackedInstall.ts` — `PackSource`,
     `run`, `closure` and the shared planner behind both.
-[^package-publish-ts]: `packages/npm/src/PackagePublish.ts:317,453-457` — the
+[^package-publish-ts]: `packages/npm/src/PackagePublish.ts:480,697-700` — the
     pack destination and the service requirements.
 [^package-tarball-ts]: `packages/npm/src/PackageTarball.ts:75,117` — the
     registry fetch.

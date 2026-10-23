@@ -17,10 +17,10 @@ sources:
     resource: ../../.repos/effect/packages/effect/src/Result.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:35:54Z
+  at: 2026-10-23T22:03:44Z
 integrity:
   generated:
-    body: 75c0c233e1a77f62
+    body: 45ed0a7278f3b77e
 ---
 
 # Error handling standards
@@ -91,7 +91,7 @@ typed `E` channel, keeps the cause, and reads as one expression in a
 
 [^effect-schema]: `.repos/effect/packages/effect/src/Schema.ts` —
     `TaggedError` (line ~16646) and `Error` (line ~16585) constructors.
-[^config-file-file]: `packages/config-file/src/ConfigFile.ts:21-103` —
+[^config-file-file]: `packages/config-file/src/ConfigFile.ts:21-125` —
     five `Schema.TaggedError` classes defined in the same module as the
     `ConfigFile` service.
 [^effect-try]: `.repos/effect/packages/effect/src/Effect.ts` — `try_`,

@@ -27,10 +27,10 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-11T15:53:27Z
+  at: 2026-10-23T22:03:44Z
 integrity:
   generated:
-    body: 8c73f0f4c49c83c3
+    body: e014acbccf60d2fa
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -296,7 +296,7 @@ continue phase 2's A1–A10:
   spread and computed access, exempts `process.env.__PACKAGE_VERSION__`, and
   documents its misses (`SourceBoundary.ts`).
 - **B6**: `PackedInstall` reuses neither `PackagePublish.pack`, which writes
-  into the package directory (`PackagePublish.ts:317`), nor
+  into the package directory (`PackagePublish.ts:480`), nor
   `PackageTarball`, which fetches a published version
   (`PackageTarball.ts:75`).
 - **B7**: `run` returns `PackedInstallResult { consumers, unavailable,

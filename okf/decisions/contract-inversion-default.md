@@ -14,7 +14,7 @@ sources:
     resource: ../../packages/oidc/src/IdentityToken.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T00:26:52Z
+  at: 2026-10-23T22:03:44Z
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
@@ -24,7 +24,7 @@ verified:
     at: 2026-10-23T01:00:25Z
 integrity:
   generated:
-    body: 3cbee52bf2795ff9
+    body: 5afc3165da3f0e03
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -97,7 +97,7 @@ cost of an extra indirection a reader has to trace: finding out that
 resolve the same way: declare the contract at the lower tier, implement
 it at the higher one, never invert that.
 
-[^npm-index]: `packages/npm/src/index.ts:17-18,21,106` — `CatalogResolver`
+[^npm-index]: `packages/npm/src/index.ts:17-18,21,114` — `CatalogResolver`
     and `WorkspaceResolver` exported as contracts from `@effected/npm`,
     implemented elsewhere.
 [^commands-local-exec]: `packages/commands/src/LocalExec.ts:13` — "the

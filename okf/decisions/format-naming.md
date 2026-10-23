@@ -8,10 +8,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T22:03:44Z
 integrity:
   generated:
-    body: 9a9966b582e8f2db
+    body: 85a12f08f3eb5664
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -38,12 +38,12 @@ shipped and became unchangeable.
 The `*Format` concept class with total statics is the kit's naming
 convention. `formatToString` is the shared name for the bytes→bytes shape, so
 a consumer who has met one kit formatter has met them all
-(`packages/jsonc/src/JsoncFormatter.ts:48`, `packages/yaml/src/YamlFormat.ts:826`,
-`packages/toml/src/TomlFormat.ts:790`, `packages/markdown/src/MarkdownFormat.ts:673`,
-`packages/package-json/src/PackageJsonFormat.ts:196`). A package-specific
+(`packages/jsonc/src/JsoncFormatter.ts:56`, `packages/yaml/src/YamlFormat.ts:865`,
+`packages/toml/src/TomlFormat.ts:819`, `packages/markdown/src/MarkdownFormat.ts:707`,
+`packages/package-json/src/PackageJsonFormat.ts:309`). A package-specific
 shape gets a package-specific name instead of being forced into the shared
 one — `package-json`'s value-path entry point is `sortValue`
-(`packages/package-json/src/PackageJsonFormat.ts:159`), not `format`, because
+(`packages/package-json/src/PackageJsonFormat.ts:272`), not `format`, because
 its shape (`T → T`) differs from the other four's (`string →
 ReadonlyArray<Edit>`).
 

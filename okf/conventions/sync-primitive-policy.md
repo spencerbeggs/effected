@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T22:03:44Z
 integrity:
   generated:
-    body: eec01eebdbcaf466
+    body: fe52855b0c58ee10
 ---
 
 # Sync-primitive policy
@@ -95,7 +95,7 @@ The rule holds even where the `Effect` twin is not merely a span.
 so its synchronous twin is not a free derivation — it takes the digest from
 the caller — and the accuracy argument above does not strictly apply, since
 the `Effect` form really is the effectful one. It is still spelled
-`hashResult` (`packages/jsonc/src/JsoncFingerprint.ts:483`), on the
+`hashResult` (`packages/jsonc/src/JsoncFingerprint.ts:487`), on the
 precedent and naming-collision arguments: `Result` is what the kit's readers
 have been taught to look for, and `*Sync` would still collide with the
 workspaces meaning. A sync twin that needs the caller to supply the platform

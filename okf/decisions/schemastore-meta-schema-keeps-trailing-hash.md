@@ -8,10 +8,10 @@ sources:
     resource: ../../packages/schemastore/src/StoreDocument.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T22:03:44Z
 integrity:
   generated:
-    body: 2412fa6249fb6c38
+    body: 1b3370b6798ecaac
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -52,5 +52,5 @@ mistake it for a copy-paste error or an oversight — it is one of
 several places this package deliberately trades internal consistency
 with core for external fidelity to SchemaStore's own conventions.
 
-[^store-document]: `packages/schemastore/src/StoreDocument.ts:16` —
+[^store-document]: `packages/schemastore/src/StoreDocument.ts:15` —
     `export const DRAFT_07_META_SCHEMA = "http://json-schema.org/draft-07/schema#"`.

@@ -19,10 +19,10 @@ sources:
     resource: "npm:pluginfinity"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-09T19:40:15Z
+  at: 2026-10-23T22:03:44Z
 integrity:
   generated:
-    body: 79e92680e6ae1f36
+    body: e077e5aba28207b8
 ---
 
 # ai-plugin
@@ -71,7 +71,7 @@ plugin/
   pluginfinity.config.ts   # manifest fields, hooks, per-target overrides
   turbo.json               # build tasks uncached
   skills/ agents/ hooks/   # the source — the only dirs pluginfinity ships
-  scripts/                 # construct-index generator and pre-push gate
+  scripts/                 # construct-index generator, pre-push gate, anchor re-deriver
   __test__/                # bats suites and their fixtures
   builds/claude/           # GENERATED, committed
   builds/copilot/          # GENERATED, committed
@@ -247,8 +247,15 @@ reads the source.
   [construct-annotations](../models/construct-annotations.md).
 - `effected-packages-index.bats` — the routing table against the
   workspace's published packages.
-- `skill-anchors.bats` — skill source anchors pinned to their symbols in
-  the vendored Effect tree.
+- `skill-anchors.bats` — every `File.ts:N` citation in every skill file
+  pinned to its symbol in the vendored Effect tree or the kit source,
+  through the manifest `__test__/helpers/skill-anchors.json` (scope
+  `["."]`). It fails on an unlisted citation, a cited line off its symbol
+  or on a comment line, a range end with no symbol, and a bare `:NNN` that
+  names no file. Its rederive fixtures pin `scripts/rederive-anchors.mjs`,
+  which relocates anchors by symbol after a pin move and refuses ambiguous
+  candidates and colliding rewrites; the two share one tokenizer,
+  `scripts/skill-anchors-core.mjs`.
 
 What no check pins is prose about the kit rather than about the plugin —
 package counts, tier labels and publication status inside the

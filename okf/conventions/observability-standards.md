@@ -13,10 +13,10 @@ sources:
     resource: ../../packages/semver/src/SemVer.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-23T22:03:44Z
 integrity:
   generated:
-    body: c51b0b5aa8d16cda
+    body: 795723f199c623e6
 ---
 
 # Observability standards
@@ -53,7 +53,7 @@ adds noise without adding a decision point anyone can act on.
 [^effect-effect]: `.repos/effect/packages/effect/src/Effect.ts` —
     `fn`/`fnUntraced` (named-span constructors), `withSpan` and
     `annotateCurrentSpan`.
-[^semver-src]: `packages/semver/src/SemVer.ts:230` —
+[^semver-src]: `packages/semver/src/SemVer.ts:228` —
     `Effect.fn("SemVer.parse")`; the same pattern recurs in
     `packages/semver/src/Range.ts` and
     `packages/semver/src/Comparator.ts`.
