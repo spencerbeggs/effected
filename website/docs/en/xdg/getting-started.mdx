@@ -39,7 +39,7 @@ const AppDirsLive = AppDirs.layer({ namespace: "todo", native: true });
 
 ### 2. Provide the environment and the platform
 
-`AppDirs` resolves against two things: the `Xdg` environment (`$HOME` and the XDG variables, read once at layer construction) and a `FileSystem` / `Path` implementation for creating directories. Wire `Xdg.layer` and the Node platform layers underneath it:
+`AppDirs` resolves against two things: the `Xdg` environment (the home directory and the XDG variables, read once at layer construction) and a `FileSystem` / `Path` implementation for creating directories. Wire `Xdg.layer` and the Node platform layers underneath it:
 
 ```ts
 import { AppDirs, Xdg } from "@effected/xdg";
@@ -232,7 +232,7 @@ const program = Effect.gen(function* () {
 Effect.runPromise(program).then(console.log);
 ```
 
-One case is deliberately *not* a typed error: a namespace that is empty, contains a path separator, or is exactly `.` or `..` is a **defect** at layer construction, not a failure in the error channel. It can only come from your own code — `namespace: "../.."` would resolve the app's directories outside `$HOME` entirely — so it dies loudly rather than routing quietly. Give `AppDirs.layer` a single, well-formed path component and it never happens.
+One case is deliberately *not* a typed error: a namespace that is empty, contains a path separator, or is exactly `.` or `..` is a **defect** at layer construction, not a failure in the error channel. It can only come from your own code — `namespace: "../.."` would resolve the app's directories outside the home directory entirely — so it dies loudly rather than routing quietly. Give `AppDirs.layer` a single, well-formed path component and it never happens.
 
 ## Next steps
 

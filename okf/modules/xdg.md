@@ -39,8 +39,10 @@ peer and no platform-node devDependency even in
 tests.[^xdg-package-json] `peerDependencies` is `effect`,
 `@effected/walker` and `@effected/config-file`, plus `@effected/glob`,
 `@effected/jsonc`, `@effected/toml` and `@effected/yaml`, which those two
-bring into the closure; there are **no runtime dependencies**. Both workspace edges are boundary→boundary and therefore
-non-propagating: `walker` depends on nothing, keeping the graph acyclic,
+bring into the closure; there are **no runtime dependencies**. The two
+direct workspace edges, `walker` and `config-file`, are boundary→boundary
+and therefore non-propagating; the other four are pure-tier peers that
+complete the closure. `walker` depends on nothing, keeping the graph acyclic,
 and `config-file` is a peer rather than a regular dependency because the
 bridge exposes config-file's types in xdg's own public signatures, so a
 single copy in a consumer's graph is load-bearing.
@@ -224,7 +226,7 @@ Defects propagate — xdg adds no `catchCause` anywhere.
 ## Build
 
 `savvy.build.ts` carries the standard narrow `{ messageId:
-"ae-forgotten-export", pattern: "_base" }` suppression. Both workspace
+"ae-forgotten-export", pattern: "_base" }` suppression. The workspace
 peers mean xdg needs the `prepare` script — see
 [the package manifest and scaffold convention](../conventions/package-manifest-and-scaffold.md#cross-package-build-dependencies)
 — since the peers link at their built output and must be built before

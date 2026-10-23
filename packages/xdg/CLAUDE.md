@@ -10,8 +10,10 @@ XDG Base Directory resolution. Eleventh migration, and the XDG half of the
 `effect`, `@effected/walker` and `@effected/config-file` are the peers, plus
 `@effected/glob`, `@effected/jsonc`, `@effected/toml` and `@effected/yaml`, which
 those two bring into the closure; there are **no runtime dependencies**. IO goes through `effect`-core `FileSystem` and
-`Path`, arriving via the `R` channel. Both workspace edges are boundary→boundary,
-and tier 2 does not propagate (R3), so xdg's consumers pay nothing for them.
+`Path`, arriving via the `R` channel. The two direct workspace edges (`walker`,
+`config-file`) are boundary→boundary, and tier 2 does not propagate (R3); the
+other four are pure-tier peers that complete the closure, so xdg's consumers pay
+nothing for them.
 
 **xdg does NOT depend on `@effected/store`, and must not.** Store is integrated
 tier; depending on it would propagate (R2) and drag `@effect/sql-sqlite-node`

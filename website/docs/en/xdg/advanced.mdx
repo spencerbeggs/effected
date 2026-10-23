@@ -55,7 +55,7 @@ const DirsLive = Layer.provideMerge(
     // when no XDG variable and no override applies. A no-op on Linux.
     native: true,
     // Collapse all four kinds under one dot-directory when the ladder falls
-    // through to $HOME. `fallbackDir: ".release"` gives $HOME/.release.
+    // through to <home>. `fallbackDir: ".release"` gives <home>/.release.
     fallbackDir: ".release",
     // An absolute per-kind override wins outright over every rung below it —
     // e.g. a --cache-dir flag the operator passed on the command line.
