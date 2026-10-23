@@ -46,7 +46,7 @@ const identityAt = (path: string): string | undefined => {
 /**
  * Register `fs.watch` synchronously, inside the acquire — so when the effect
  * succeeds the platform watch is live, which is the contract
- * {@link Jsonl.JournalWatcherShape.watch} states and core's
+ * `JournalWatcherShape.watch` states and core's
  * `FileSystem.watch` cannot.
  *
  * A file watch follows the inode it was armed on, and Node emits neither
@@ -93,7 +93,7 @@ const watch = (
 	});
 
 /**
- * The Node implementation of {@link Jsonl.JournalWatcher}, over `node:fs`'s
+ * The Node implementation of `JournalWatcher` (from `@effected/jsonl`), over `node:fs`'s
  * `watch`.
  *
  * Registration happens synchronously while the watch effect runs, so a
@@ -122,6 +122,6 @@ const watch = (
 export class NodeJournalWatcher {
 	private constructor() {}
 
-	/** Provides {@link Jsonl.JournalWatcher} over `node:fs`. */
+	/** Provides `JournalWatcher` (from `@effected/jsonl`) over `node:fs`. */
 	static readonly layer: Layer.Layer<Jsonl.JournalWatcher> = Layer.succeed(JournalWatcher, { watch });
 }

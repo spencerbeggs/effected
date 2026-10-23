@@ -458,7 +458,7 @@ export class CliUi {
 	 * so core renders its own message and `CliRuntime.main` exits `64`. Name the parameter with `flag` (the name
 	 * without dashes) or `argument` so that error can be built.
 	 *
-	 * The options are {@link @effected/cli!CliPromptFallbackOptions}, the same as `CliPrompt.fallback`'s, and `clear`
+	 * The options are `CliPromptFallbackOptions` (from `@effected/cli`), the same as `CliPrompt.fallback`'s, and `clear`
 	 * as for {@link CliUi.run}.
 	 *
 	 * It runs during parsing, whose environment is core's alone, so it reads `CliTheme` if one is there: with

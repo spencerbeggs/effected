@@ -30,10 +30,17 @@ these before inventing a local convention.
   (kit-wide conversion, 2026-07-25: 19 containers across 11 packages). The
   line is *same module, one concept* — never cross-module, never
   one-per-engine. The only legitimate `as const` holdouts are name
-  collisions: a class cannot merge with a same-named type alias
-  (`SpdxExpression`, `EncryptedCodecKey`) or a generic interface without a
-  default type parameter (`MergeStrategy`); a same-named *data* interface
-  merges fine (`ResolvedTsconfig`).
+  collisions, and only a same-named **type alias** forces one: a class
+  cannot share its name with a `type` (TS2300, duplicate identifier), so
+  `SpdxExpression` and `EncryptedCodecKey` stay `as const`. A same-named
+  interface does not block the class form, generic or not: the class merges
+  with it when it declares the same type parameters (same count and names,
+  no conflicting defaults; variance annotations are optional). A mismatch
+  is TS2428. The merge needs a `biome-ignore` for
+  `noUnsafeDeclarationMerging` (`ResolvedTsconfig` is the precedent).
+  `MergeStrategy`, `VersionAccess`, `Envelope` and `JsonlEvent` stay
+  `as const` by choice, not by force: the merge would put a behaviour
+  interface's members on a statics-only class's instance type.
 - **`src/internal/` holds the engine; `index.ts` never exports from it.**
   Composition-only packages own no `internal/` at all — "no engine, only
   composition" is a legitimate shape.

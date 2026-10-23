@@ -1,33 +1,64 @@
 ---
 type: Gotcha
-title: A package that names its own root types shows one warning or none, depending on whether the second pass crashes
-description: "The second API Extractor pass resolves the package self-reference into src; images reports one ae-wrong-input-file-type, while cli and jsonl crash on an uncoded warning the ae-/tsdoc- filter drops, so they look clean."
-status: draft
+title: A package that names its own root types once showed one warning or none, until the bundler resolved the self-reference to declarations
+description: "Deprecated: @savvy-web/tsdown-plugins 2.10.0 maps a package's own export specifiers to its built declarations in the second API Extractor pass, so images, cli and jsonl no longer hit ae-wrong-input-file-type or a filtered crash; a clean issues.json from that pass is a checked result, and emptying a self-reference suppression pattern brings its warnings back."
+status: deprecated
 resource: ../../packages/images/dist/prod/issues.json
 stale_after: 2027-04-09T00:00:00Z
 tags:
   - dx
   - ci
+sources:
+  - id: issues
+    resource: ../../packages/images/dist/prod/issues.json
+    title: "Produced by the bundler build, not a file in version control"
+  - id: tsdown-plugins
+    resource: "npm:@savvy-web/tsdown-plugins@2.10.0"
+    title: "meta/api-extractor.js gives the second pass selfReferencePaths, mapping the package's export specifiers to its declaration files"
+  - id: jsonl-build
+    resource: ../../packages/jsonl/savvy.build.ts
+    title: "The node.d.ts ae-forgotten-export suppression the control emptied"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-09T16:03:02Z
+  at: 2026-10-23T21:37:50Z
 integrity:
   generated:
-    body: a81d40af12dd3a51
+    body: 36643f29d02f7cae
 ---
 
-# A package that names its own root types shows one warning or none, depending on whether the second pass crashes
+# A package that names its own root types once showed one warning or none, until the bundler resolved the self-reference to declarations
 
-## What a reader sees
+## Status
 
-`packages/images/dist/prod/issues.json` carries one `ae-wrong-input-file-type` warning after a clean build, while `cli` and `jsonl` show nothing for the same construct.[^issues]
+Deprecated: the trap is fixed upstream and the kit carries no workaround for
+it. `@savvy-web/tsdown-plugins` 2.10.0 gives the second API Extractor pass a
+`paths` mapping from the package's own export specifiers to its built
+declaration files, so a type-only self-reference such as
+`import type * as Jsonl from "@effected/jsonl"` resolves to declarations, not
+to `src`.[^tsdown-plugins] A forced build of `images` reports 0 warnings and no
+`ae-wrong-input-file-type`.[^issues] `cli` and `jsonl` report coded warnings
+from their second passes, so those passes run to completion. Emptying the
+`node.d.ts` suppression pattern in `jsonl` brings back 28 coded
+`ae-forgotten-export` warnings against `node.d.ts`, and restoring it returns
+the build to 0.[^jsonl-build]
 
-## What they wrongly conclude
+## What still holds
 
-That `images` did something the other two avoided, or that `cli` and `jsonl` are clean and `images` is the outlier to fix.
+The second pass still reports every root type a self-referencing entry names
+as `ae-forgotten-export` against that entry, which is why `images`, `cli` and
+`jsonl` each keep one narrow suppression scoped to their non-root entry
+points (`cli` covers two: `./ui` and `./ui/testing`).
+That suppression is checked: a clean `issues.json` from the second pass is a
+real result, not an unchecked one.
 
-## What is actually true
+## What to do
 
-All three packages use the same pattern from [the images module](../modules/images.md): cache-side modules name root types through a type-only `import type * as Images from "@effected/images"` and import runtime values relatively. The second API Extractor pass in `@savvy-web/tsdown-plugins` resolves that package self-reference into `src/*.ts`, which API Extractor rejects as the wrong input file type. In `images` the pass finishes and reports one coded warning. In `cli` and `jsonl` the same resolution makes the pass crash with an uncoded warning, and the `ae-` and `tsdoc-` filter drops it, so their `issues.json` looks clean without having been checked. The defect is upstream in the bundler plugin; do not add a suppression in any package, and treat a clean `cli` or `jsonl` gate as unproven for self-referencing types. Remove this concept when the plugin resolves a self-reference to its built declarations.
+Nothing. If a second entry point's `issues.json` stays clean while its
+suppression pattern is emptied, the pass has stopped running again: re-check
+the bundler before trusting the gate.
 
-[^issues]: `packages/images/dist/prod/issues.json`, produced by the bundler build, not a file in version control.
+[^issues]: `packages/images/dist/prod/issues.json`, produced by the bundler
+    build, not a file in version control.
+[^tsdown-plugins]: `npm:@savvy-web/tsdown-plugins@2.10.0`, `meta/api-extractor.js`.
+[^jsonl-build]: `packages/jsonl/savvy.build.ts`, the `node.d.ts`
+    `ae-forgotten-export` suppression.

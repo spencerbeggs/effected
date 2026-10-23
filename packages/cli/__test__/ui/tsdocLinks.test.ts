@@ -24,40 +24,39 @@ const entryExports = (file: string): ReadonlyArray<string> =>
 const EXTERNAL: ReadonlySet<string> = new Set(["effect", "Effect", "Layer", "Context", "Scope"]);
 
 /**
- * The `{@link …}` targets in `text` that would not resolve from the ui entries. A bare target's first identifier must
- * be an export of `./ui` or `./ui/testing`, the entries a ui doc ships in, or a known external. A root-only name must be
- * package-qualified (`@effected/cli!Style`), because API Extractor resolves a bare name against the entry being
- * documented. A link inside an `@internal` block is skipped, since it never reaches a public declaration, and URLs are
- * skipped.
+ * The `{@link …}` targets in `text` that would not resolve from the ui entries. A target's first identifier, after any
+ * `(Name:selector)` wrapper, must be an export of `./ui` or `./ui/testing`, the entries a ui doc ships in, or a known
+ * external. A root-only name cannot be linked from a ui entry in any form: API Extractor models each entry on its own,
+ * so a bare name and a package-qualified one (`@effected/cli#Style`) both report that the entry has no such export.
+ * Write a root-only name as a code span instead. A link inside an `@internal` block is skipped, since it never reaches
+ * a public declaration, and URLs are skipped.
  */
-const unresolvedLinks = (text: string, ui: ReadonlySet<string>, root: ReadonlySet<string>): ReadonlyArray<string> =>
+const unresolvedLinks = (text: string, ui: ReadonlySet<string>): ReadonlyArray<string> =>
 	[...text.matchAll(/\/\*\*[\s\S]*?\*\//g)]
 		.map((match) => match[0])
 		.filter((block) => !/@internal\b/.test(block))
 		.flatMap((block) => [...block.matchAll(/\{@link\s+([^}\s|]+)/g)].map((match) => match[1] ?? ""))
 		.filter((target) => !target.includes("://"))
 		.filter((target) => {
-			const qualified = /^@effected\/cli!([A-Za-z_$][\w$]*)/.exec(target);
-			if (qualified !== null) return !root.has(qualified[1] ?? "");
-			const first = /^[A-Za-z_$][\w$]*/.exec(target)?.[0];
+			const first = /^\(?([A-Za-z_$][\w$]*)/.exec(target)?.[1];
 			return first === undefined || !(ui.has(first) || EXTERNAL.has(first));
 		});
 
 /**
- * Why this exists: API Extractor's `ae-unresolved-link` never reaches the build report for the ui entries (their
- * per-module pass fails on the self-referencing import), so a dangling link in a ui doc would ship silently.
+ * Why this exists: a dangling link in a ui doc fails only the prod build's API Extractor gate, which `pnpm test` and
+ * `types:check` never run, so this pins the rule where the suite sees it.
  */
 describe("TSDoc links in the ui sources", () => {
 	const ui = new Set([...entryExports("ui.ts"), ...entryExports("ui-testing.ts")]);
 	const root = new Set(entryExports("index.ts"));
 
-	it("name an export of ./ui or ./ui/testing bare, a root export package-qualified, or a known external", () => {
+	it("name an export of ./ui or ./ui/testing (optionally selector-wrapped) or a known external; root-only names are code spans", () => {
 		const files = (readdirSync(SRC, { recursive: true }) as ReadonlyArray<string>)
 			.map((file) => file.split(sep).join("/"))
 			.filter((file) => file.endsWith(".ts") && /^ui(?:\.ts$|-testing\.ts$|\/)/.test(file));
 		assert.include(files, "ui/CliUi.ts", "the walk read the ui tree");
 		const offenders = files.flatMap((file) =>
-			unresolvedLinks(readFileSync(join(SRC, file), "utf8"), ui, root).map((target) => `${file} ${target}`),
+			unresolvedLinks(readFileSync(join(SRC, file), "utf8"), ui).map((target) => `${file} ${target}`),
 		);
 		assert.deepStrictEqual(offenders, []);
 	});
@@ -66,12 +65,13 @@ describe("TSDoc links in the ui sources", () => {
 		assert.isTrue(ui.has("CliUi") && ui.has("CliUiTest") && root.has("Style"), "the export lists were read");
 		assert.isFalse(ui.has("Style"), "Style is root-only");
 		const links = (doc: string): ReadonlyArray<string> =>
-			unresolvedLinks(`/**\n * ${doc}\n */\nexport const x = 1;`, ui, root);
+			unresolvedLinks(`/**\n * ${doc}\n */\nexport const x = 1;`, ui);
 		assert.deepStrictEqual(links("See {@link NoSuchThing}."), ["NoSuchThing"]);
 		assert.deepStrictEqual(links("See {@link Cli.Style}."), ["Cli.Style"], "a local import alias");
-		assert.deepStrictEqual(links("See {@link Style}."), ["Style"], "a root-only name must be package-qualified");
-		assert.deepStrictEqual(links("See {@link @effected/cli!Style}."), []);
-		assert.deepStrictEqual(links("See {@link @effected/cli!NoSuch}."), ["@effected/cli!NoSuch"]);
+		assert.deepStrictEqual(links("See {@link Style}."), ["Style"], "a root-only name is not a ui export");
+		assert.deepStrictEqual(links("See {@link @effected/cli#Style}."), ["@effected/cli#Style"], "nor package-qualified");
+		assert.deepStrictEqual(links("See {@link (CliUi:class)}."), [], "a selector wraps a ui export");
+		assert.deepStrictEqual(links("See {@link (NoSuch:type)}."), ["(NoSuch:type)"]);
 		assert.deepStrictEqual(links("See {@link CliUi.run}."), []);
 		assert.deepStrictEqual(links("See {@link Effect.gen}."), []);
 		assert.deepStrictEqual(links("Internal: {@link loadInk}.\n * @internal"), []);

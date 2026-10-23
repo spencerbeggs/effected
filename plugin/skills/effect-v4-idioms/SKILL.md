@@ -406,41 +406,41 @@ Probe with `Effect.interrupt.pipe(Effect.catchCause(h))` — the handler runs,
 `Cause.hasInterrupts(c)` is `true`, and the effect **succeeds**. It swallows
 interruption. That is almost never what you want.
 
-## `Effect.cached` memoizes the `Exit` — failures *and interrupts*
+## `Effect.cached` memoizes the first `Exit` — failures included, interrupts never
 
 `Effect.cached(self)` returns `Effect<Effect<A, E, R>>` whose inner effect
-replays the **first `Exit`**, whatever it was. Not just the success. A failure is
-cached. **An interrupt is cached.**
+replays the **first completed `Exit`**, whether it was a success or a failure. A
+failure is cached for the life of the memo.
 
-That last one is the trap, because interruption is not a property of the effect
-at all — it is a property of whichever fiber happens to touch it first. An
-`Effect.timeout`, an `Effect.race`, a cancelled request, or a sibling failing
-under `Effect.all` will permanently poison the memo for every later caller. The
-replayed cause is an *interrupt*, which sits outside the effect's declared `E`
-channel and is not recoverable with `Effect.catch` — so a memoized value's
-declared error type becomes **unsound**.
+Interruption is the exception: it is never cached. Core treats it as
+abandonment (`makeCachedUnsafe` in `internal/effect.ts`). Concurrent callers
+share one in-flight run, and when every caller has left (each one interrupted by
+an `Effect.timeout`, an `Effect.race` or a cancelled request) the run is
+interrupted and detached, and the next caller starts a fresh one. A source that
+interrupts itself is not stored either, so the next call re-runs it. Probed: an
+interrupted sole first caller, then a second call, ran the source twice and the
+second call succeeded. The control was a failing source, which ran once across
+two calls.
 
-Failure caching is its own footgun: a caller reaching for the natural spelling,
-`Effect.retry(useTheMemo(), policy)`, silently no-ops — each retry replays the
-cached `Exit` without re-running the underlying effect. Library-side failure
-caching *destroys* the caller's ability to own the retry policy.
+Failure caching is the trap. A caller reaching for the natural spelling,
+`Effect.retry(useTheMemo(), policy)`, silently does nothing: each retry replays
+the cached `Exit` without re-running the underlying effect. Library-side failure
+caching takes away the caller's ability to own the retry policy.
 
-**For success-only memoization**, invalidate on any non-success exit:
+**For success-only memoization**, give `Effect.cachedWithTTL` a TTL keyed on
+the exit:
 
 ```ts
-const [resolve, invalidate] = Effect.runSync(
-  Effect.cachedInvalidateWithTTL(expensiveEffect, Duration.infinity),
-)
-const memo = Effect.onExit(resolve, (exit) =>
-  Exit.isSuccess(exit) ? Effect.void : invalidate,
+const memo = yield* Effect.cachedWithTTL(expensiveEffect, (exit) =>
+  Exit.isSuccess(exit) ? Duration.infinity : Duration.zero,
 )
 ```
 
 Success is computed once, across sequential and concurrent observers. A failure
-or interrupt is retried on the next call, and callers bound their own retries by
-wrapping the *inner* effect. Reach for bare `Effect.cached` only when you
-genuinely want a terminal failure — and say so in the TSDoc, including the
-interrupt behavior, because no consumer will guess it.
+expires as soon as it is written, so the next call re-runs the source, and
+callers bound their own retries by wrapping the *inner* effect. Use bare
+`Effect.cached` only when you want a terminal failure, and say so in the TSDoc,
+because a consumer will not guess it.
 
 ## The `Effect.timeout` family — three forms, and timing out interrupts
 

@@ -45,7 +45,7 @@ const named = (name: KeyName): UiKey => ({ _tag: "Named", name });
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
 /**
- * Normalising Ink's input into {@link UiKey}s.
+ * Normalising Ink's input into {@link (UiKey:type)}s.
  *
  * @public
  */

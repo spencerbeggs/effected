@@ -69,8 +69,8 @@ export interface TextInputScreenOptions {
 	 * does the scrollback; erase the frame as well with `clear: true` on the run when even the mask's length should not
 	 * stay behind.
 	 *
-	 * The message `validate` returns is drawn as it is, unmasked: a message that echoes the value (`"ghp_abc is a
-	 * token"`) draws the secret in the frame. Say what is wrong without quoting the value.
+	 * The message `validate` returns is drawn as it is, unmasked: a message that echoes the value
+	 * (`"ghp_abc is a token"`) draws the secret in the frame. Say what is wrong without quoting the value.
 	 */
 	readonly mask?: string | true | ((value: string) => boolean);
 }
