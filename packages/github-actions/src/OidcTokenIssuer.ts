@@ -179,6 +179,22 @@ const make = Effect.gen(function* () {
 const dies = unstubbed("OidcTokenIssuer.makeTest");
 
 /**
+ * What {@link OidcTokenIssuer.recording} returns: the layer to provide and the
+ * audiences it was asked for.
+ *
+ * @public
+ */
+export interface RecordingOidcTokenIssuer {
+	/** The double. */
+	readonly layer: Layer.Layer<OidcTokenIssuer>;
+	/**
+	 * A snapshot of the audience each `token` or `claims` call asked for, in
+	 * order; `undefined` for a call that named none.
+	 */
+	readonly audiences: () => ReadonlyArray<string | undefined>;
+}
+
+/**
  * The runner's OIDC token service.
  *
  * @remarks
@@ -254,4 +270,49 @@ export class OidcTokenIssuer extends Context.Service<OidcTokenIssuer, OidcTokenI
 			token: () => Effect.succeed(OidcTokenIssuer.unsignedTokenFor(claims)),
 			claims: () => Effect.succeed(claims),
 		});
+
+	/**
+	 * A {@link OidcTokenIssuer.layerFor} double that also records the audience
+	 * every call asked for.
+	 *
+	 * @remarks
+	 * A sibling of `layerTest` rather than a recording `layerTest`, following
+	 * `ActionOutputs.recording`: the doubles here are override-and-die, and a
+	 * recorder is a different contract. The audience is the one input a token
+	 * request carries, and a token minted for the wrong audience is refused by
+	 * the party it was meant for — so "which audience did this ask for" is
+	 * worth an assertion rather than an assumption.
+	 *
+	 * Each call returns a fresh journal and a fresh layer: bind the result to a
+	 * `const` and provide its `layer` once.
+	 *
+	 * @example
+	 * ```ts
+	 * import type { ActionsOidcClaims } from "@effected/github";
+	 * import { OidcTokenIssuer } from "@effected/github-actions";
+	 * import { Effect } from "effect";
+	 *
+	 * declare const claims: ActionsOidcClaims;
+	 * const recorder = OidcTokenIssuer.recording(claims);
+	 * const program = Effect.gen(function* () {
+	 *   const issuer = yield* OidcTokenIssuer;
+	 *   yield* issuer.token("https://registry.example");
+	 *   return recorder.audiences();
+	 * });
+	 * Effect.runPromise(Effect.provide(program, recorder.layer)).then(console.log);
+	 * // => ["https://registry.example"]
+	 * ```
+	 */
+	static readonly recording = (claims: ActionsOidcClaims): RecordingOidcTokenIssuer => {
+		const audiences: Array<string | undefined> = [];
+		const record = (audience: string | undefined): Effect.Effect<void> =>
+			Effect.sync(() => {
+				audiences.push(audience);
+			});
+		const layer = Layer.succeed(OidcTokenIssuer, {
+			token: (audience) => Effect.as(record(audience), OidcTokenIssuer.unsignedTokenFor(claims)),
+			claims: (audience) => Effect.as(record(audience), claims),
+		});
+		return { layer, audiences: () => audiences.slice() };
+	};
 }

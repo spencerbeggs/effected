@@ -62,6 +62,7 @@ export {
 export { ActionState, ActionStateError, type ActionStateShape } from "./ActionState.js";
 export { ActionsIdentityToken } from "./ActionsIdentityToken.js";
 export { ActionsProvenance } from "./ActionsProvenance.js";
+export { ActionsRegistryCredential } from "./ActionsRegistryCredential.js";
 export {
 	Artifact,
 	ArtifactError,
@@ -137,7 +138,12 @@ export {
 	type ReadOptions,
 } from "./GitHubToken.js";
 export { ManagedDocument, ManagedDocumentError, type ManagedDocumentSource } from "./ManagedDocument.js";
-export { OidcTokenError, OidcTokenIssuer, type OidcTokenIssuerShape } from "./OidcTokenIssuer.js";
+export {
+	OidcTokenError,
+	OidcTokenIssuer,
+	type OidcTokenIssuerShape,
+	type RecordingOidcTokenIssuer,
+} from "./OidcTokenIssuer.js";
 export {
 	AmbientPackageManager,
 	CachedPackageManager,

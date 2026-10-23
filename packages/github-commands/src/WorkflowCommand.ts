@@ -125,12 +125,22 @@ export class WorkflowCommand {
 		return WorkflowCommand.render("error", WorkflowCommand.annotation(properties), message);
 	}
 
-	/** `::group::` — opens a collapsible section in the runner log. */
+	/**
+	 * `::group::` — opens a collapsible section in the runner log.
+	 *
+	 * @remarks
+	 * **The runner does not nest groups.** A second `::group::` written while
+	 * one is open implicitly ends the first, leaving an empty outer header and
+	 * a stray `::endgroup::` below it. This function renders the command and
+	 * knows nothing about what is already open; for nesting-aware grouping use
+	 * `ActionLogger.group` from `@effected/github-actions`, which writes the
+	 * command only at the outermost level.
+	 */
 	static group(name: string): string {
 		return WorkflowCommand.render("group", {}, name);
 	}
 
-	/** `::endgroup::` — closes the innermost open group. */
+	/** `::endgroup::` — closes the open group (the runner does not nest groups; see {@link WorkflowCommand.group}). */
 	static endGroup(): string {
 		return WorkflowCommand.render("endgroup", {}, "");
 	}
