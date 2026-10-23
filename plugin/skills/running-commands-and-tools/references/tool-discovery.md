@@ -64,9 +64,9 @@ Two TTL traps live in one place:
 
 So only a result with either copy found gets an infinite TTL; everything
 else gets a zero TTL. A tool that exists does not stop existing; a tool
-that does not exist very often starts to. This does **not** share the
-interrupt-poisoning some Effect caching primitives have — an interrupted
-lookup is discarded and re-run rather than memoized as a failure.
+that does not exist very often starts to. An interrupted lookup is never
+memoized: core `Cache` discards it, and the next resolve runs the probe
+again.
 
 ## `LocalExec` — the contract inversion
 

@@ -18,12 +18,14 @@ sources:
     resource: ../../.repos/effect/packages/effect/src/Schema.ts
   - id: github-actions-json
     resource: ../../packages/github-actions/src/internal/json.ts
+  - id: commands-run
+    resource: ../../packages/commands/src/Run.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:35:54Z
+  at: 2026-10-23T21:37:50Z
 integrity:
   generated:
-    body: 37163ca67646721f
+    body: 44be07ffc9d76c51
 ---
 
 # Input-hardening standards
@@ -110,6 +112,14 @@ untyped result: both give the caller a value whose shape nothing checked.
   `PackageJsonFormat.parseObjectResult` (or its `Effect` form
   `parseObject`) to keep this split, rather than re-deriving it. `@effected/config-file` keeps its own one-line
   decoder instead, so it takes no package-json edge.
+- **Keep `Result.try` or `Effect.try` around `JSON.parse` where the host
+  `SyntaxError` is the evidence the typed error carries.**
+  `Schema.fromJsonString` discards the thrown error: its parser reports a
+  bare "a valid JSON string" issue with no cause. `@effected/commands`'
+  `Run.jsonLine` keeps `Result.try` and `Run.json` keeps `Effect.try` for
+  this reason, so the `SyntaxError` reaches the failure's
+  `cause`.[^commands-run] Shape-check
+  the parsed value with a Schema afterwards, as usual.
 
 [^jsonc-limits]: `packages/jsonc/src/internal/limits.ts:22` —
     `MAX_NESTING_DEPTH = 256`, imported by every recursive surface in
@@ -123,6 +133,11 @@ untyped result: both give the caller a value whose shape nothing checked.
 [^effect-schema-json]: `.repos/effect/packages/effect/src/Schema.ts` —
     `fromJsonString` is `@stability stable`; `UnknownFromJsonString`,
     defined just below it, is `@internal`.
+[^commands-run]: `packages/commands/src/Run.ts` — the `Effect.try` in
+    `Run.json` and the `Result.try` in `Run.jsonLine`, each around
+    `JSON.parse`, with a comment naming the dropped `SyntaxError`; `SchemaGetter.parseJson` in
+    `.repos/effect/packages/effect/src/SchemaGetter.ts` is the parser that
+    discards it.
 [^github-actions-json]: `packages/github-actions/src/internal/json.ts` —
     one module-level `decodeJson` built from
     `Schema.fromJsonString(Schema.Unknown)`, shared by the package's
