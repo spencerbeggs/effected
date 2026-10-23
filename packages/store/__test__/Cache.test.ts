@@ -320,6 +320,30 @@ describe("Cache", () => {
 				}),
 			);
 
+			it.effect("a corrupted tags column degrades to an empty tag list, never a failure", () =>
+				Effect.gen(function* () {
+					const cache = yield* Cache;
+					const sql = yield* SqlClient.SqlClient;
+					// Control: a valid column round-trips to the exact array.
+					yield* cache.set({ key: "good", value: bytes("x"), tags: ["a", "b"] });
+					const good = yield* cache.get("good");
+					assert.isTrue(Option.isSome(good));
+					if (Option.isSome(good)) assert.deepStrictEqual([...good.value.tags], ["a", "b"]);
+
+					// The whole value is decoded as an array of strings, so a mixed
+					// array is rejected outright rather than filtered to its strings.
+					for (const corrupt of ["not json", "{}", '["a",1]']) {
+						yield* cache.set({ key: "bad", value: bytes("x"), tags: ["kept?"] });
+						yield* sql`UPDATE cache_entries SET tags = ${corrupt} WHERE key = 'bad'`;
+						const entry = yield* cache.get("bad");
+						assert.isTrue(Option.isSome(entry), corrupt);
+						if (Option.isSome(entry)) assert.deepStrictEqual([...entry.value.tags], [], corrupt);
+						const meta = (yield* cache.entries).find((e) => e.key === "bad");
+						assert.deepStrictEqual([...(meta?.tags ?? ["missing"])], [], corrupt);
+					}
+				}),
+			);
+
 			it.effect("a SQL failure surfaces as CacheError with the structural cause", () =>
 				Effect.gen(function* () {
 					const cache = yield* Cache;

@@ -452,18 +452,14 @@ const mapSqlError =
 			// compiler; the runtime above guarantees SqlError is gone.
 		) as Effect.Effect<A, CacheError | Exclude<E, SqlError.SqlError>, R>;
 
+const decodeTagsOption = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.String)));
+
 /**
- * Tags round-trip through JSON text. A corrupted column degrades to an empty
- * tag list rather than throwing — cache metadata is not worth a defect.
+ * Tags round-trip through JSON text. A corrupted column — not JSON, not an
+ * array, or an array holding anything but strings — degrades to an empty tag
+ * list rather than failing: cache metadata is not worth a defect.
  */
-const decodeTags = (raw: string): ReadonlyArray<string> => {
-	try {
-		const parsed: unknown = JSON.parse(raw);
-		return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === "string") : [];
-	} catch {
-		return [];
-	}
-};
+const decodeTags = (raw: string): ReadonlyArray<string> => Option.getOrElse(decodeTagsOption(raw), () => []);
 
 const toEntry = (row: CacheRow): CacheEntry =>
 	CacheEntry.make({
