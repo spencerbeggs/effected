@@ -2,7 +2,7 @@
 type: Decision
 title: Markdown editing is offset-splice, not a lossless CST
 description: "@effected/markdown edits source via offset/length/content splices over the original text, matching the jsonc/yaml/toml edit vocabulary, rather than a lossless concrete syntax tree."
-status: draft
+status: stable
 tags:
   - architecture
 generated:
@@ -11,6 +11,13 @@ generated:
 integrity:
   generated:
     body: 634055a16759f1e4
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 48618a9aa8dfc7fd
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Markdown editing is offset-splice, not a lossless CST

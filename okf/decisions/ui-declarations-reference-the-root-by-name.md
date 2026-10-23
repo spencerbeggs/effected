@@ -2,7 +2,7 @@
 type: Decision
 title: The ui declarations reference the root's types by the package's own name
 description: "The ./ui and ./ui/testing declarations import the root's types from @effected/cli (kept external with dtsExternals) instead of carrying copies, with API Extractor's resulting noise suppressed for the ui entries only and re-pinned by tests over the built declarations."
-status: draft
+status: stable
 tags: [architecture, bundle, dx]
 sources:
   - id: cli-build-config
@@ -23,6 +23,13 @@ generated:
 integrity:
   generated:
     body: d61b911ace21e180
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 38dea30c02b4b3a7
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The ui declarations reference the root's types by the package's own name

@@ -2,7 +2,7 @@
 type: Decision
 title: SchemaFile's write-if-changed compares parsed content, not bytes
 description: Content comparison is the default for write-if-changed, with byte-exact comparison an opt-out, because a repo that formats its JSON makes byte comparison never converge.
-status: draft
+status: stable
 sources:
   - id: schema-file
     resource: ../../packages/schemastore/src/SchemaFile.ts
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: d104b633e85f2f42
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 062cd1e55fc4a877
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # SchemaFile's write-if-changed compares parsed content, not bytes

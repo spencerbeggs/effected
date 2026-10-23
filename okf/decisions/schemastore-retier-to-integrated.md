@@ -2,7 +2,7 @@
 type: Decision
 title: Schemastore retiers from boundary to integrated for a direct ajv dependency
 description: The one package in the kit retiered after publishing, from boundary to integrated, to take ajv as a real validation engine rather than a contract-only seam.
-status: draft
+status: stable
 sources:
   - id: package-json
     resource: ../../packages/schemastore/package.json
@@ -14,6 +14,13 @@ generated:
 integrity:
   generated:
     body: 5154436eecf28a8f
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: efdada30979bcc78
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Schemastore retiers from boundary to integrated for a direct ajv dependency

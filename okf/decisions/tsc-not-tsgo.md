@@ -2,7 +2,7 @@
 type: Decision
 title: "The typechecker: tsc, not tsgo"
 description: Every package's types:check runs tsc --noEmit against catalog:build; @effect/tsgo is never added to a package even though the catalog entry still exists.
-status: draft
+status: stable
 tags:
   - dx
 sources:
@@ -14,6 +14,13 @@ generated:
 integrity:
   generated:
     body: cc228ae313d75923
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 21fbfcefbc8e706e
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The typechecker: tsc, not tsgo

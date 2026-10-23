@@ -2,7 +2,7 @@
 type: Decision
 title: Git failure classification happens once, in one private function
 description: No consumer of @effected/git ever string-matches stderr; a single private classify step in Git.ts is the only place that inspects stderr, stdout or exitCode.
-status: draft
+status: stable
 tags:
   - architecture
   - security
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 8e9b17588c6e7381
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 036ea2e7257d23de
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Git failure classification happens once, in one private function

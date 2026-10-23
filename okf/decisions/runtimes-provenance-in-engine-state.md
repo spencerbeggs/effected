@@ -2,7 +2,7 @@
 type: Decision
 title: Provenance lives in the engine state, and is never hardcoded
 description: The release index carries a live/cache source marker set by whichever strategy actually populated it, so a stale snapshot is never reported as fresh.
-status: draft
+status: stable
 tags:
   - architecture
 generated:
@@ -11,6 +11,13 @@ generated:
 integrity:
   generated:
     body: 7fcbe154fcac79c8
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: a2ccc766a81335d0
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Provenance lives in the engine state, and is never hardcoded

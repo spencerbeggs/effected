@@ -2,7 +2,7 @@
 type: Decision
 title: The Node schedule is keyed by release line, not by major
 description: NodeScheduleEntry carries a line string ("20", "0.10") rather than a numeric major, because early Node majors collapse under Number.parseInt.
-status: draft
+status: stable
 tags:
   - architecture
 generated:
@@ -11,6 +11,13 @@ generated:
 integrity:
   generated:
     body: dc43de583223b579
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 3efec0d5b8ab9cfa
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The Node schedule is keyed by release line, not by major

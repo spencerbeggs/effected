@@ -2,7 +2,7 @@
 type: Decision
 title: HMAC comes from WebCrypto, digests from core Crypto required in R
 description: "@effected/crypto computes HMAC through globalThis.crypto.subtle and every digest through core Crypto.digest required in R, rather than one backend for both or node:crypto."
-status: draft
+status: stable
 tags:
   - architecture
   - security
@@ -21,6 +21,13 @@ generated:
 integrity:
   generated:
     body: 21f58dc984da4a79
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 470dc4054f176caa
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # HMAC comes from WebCrypto, digests from core Crypto required in R

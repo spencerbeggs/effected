@@ -2,7 +2,7 @@
 type: Decision
 title: sbom owns its own CycloneDX emitter, declining the object-model library
 description: "@effected/sbom hand-rolls a CycloneDX 1.6 model and serializer rather than depending on @cyclonedx/cyclonedx-library."
-status: draft
+status: stable
 tags:
   - bundle
   - architecture
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: b1ff13e3758640d2
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 49e57538d26b6031
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # sbom owns its own CycloneDX emitter, declining the object-model library

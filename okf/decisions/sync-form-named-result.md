@@ -2,7 +2,7 @@
 type: Decision
 title: "The sync form is named `*Result`, never `*Sync`"
 description: "The kit spells a pure boundary's synchronous twin `*Result`, reserving `*Sync` for genuinely IO-performing sync facades."
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -13,6 +13,13 @@ generated:
 integrity:
   generated:
     body: 53744903cc1e476a
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 861836918b184c7f
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The sync form is named `*Result`, never `*Sync`

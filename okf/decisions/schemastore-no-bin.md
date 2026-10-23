@@ -2,7 +2,7 @@
 type: Decision
 title: No bin on the library — the CLI is a fixed-version companion package
 description: "@effected/schemastore ships no bin entry; the schemastore executable lives in @effected/schemastore-cli, a bin-only companion released in a fixed group with the library."
-status: draft
+status: stable
 sources:
   - id: package-json
     resource: ../../packages/schemastore/package.json
@@ -16,6 +16,13 @@ generated:
 integrity:
   generated:
     body: 0515417eae285b4e
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 72a1e0c48ad72cfe
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # No bin on the library — the CLI is a fixed-version companion package

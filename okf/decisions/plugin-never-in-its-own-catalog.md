@@ -2,7 +2,7 @@
 type: Decision
 title: pnpm-plugin-effect is deliberately absent from its own effected catalog
 description: Cataloguing @effected/pnpm-plugin-effect inside the effected catalog it ships would create a release loop with no termination condition.
-status: draft
+status: stable
 tags:
   - release
 generated:
@@ -11,6 +11,13 @@ generated:
 integrity:
   generated:
     body: b3586e06fcd0240c
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: b55d6770b7074521
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # `pnpm-plugin-effect` is deliberately absent from its own `effected` catalog

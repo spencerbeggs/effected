@@ -2,7 +2,7 @@
 type: Decision
 title: toml is a full-parity package built from scratch
 description: @effected/toml ships parse, stringify, Schema, a lossless CST, edit-in-place, formatter and visitor on a from-scratch engine, rather than a minimal port with only what the first consumer needs.
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: d7020d91b87c85f3
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 30f2c4d6ac4dde96
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # toml is a full-parity package built from scratch

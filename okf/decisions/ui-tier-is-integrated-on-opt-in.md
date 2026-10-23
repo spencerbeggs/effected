@@ -2,7 +2,7 @@
 type: Decision
 title: The cli root stays boundary, and ./ui is integrated only for consumers who opt in
 description: "@effected/cli keeps a boundary-tier root while its ./ui subpath imports the third-party ink and react, which makes ./ui integrated only for a consumer who installs those optional peers; R1-R4 are read per entrypoint for this package."
-status: draft
+status: stable
 tags: [architecture, deps, bundle]
 sources:
   - id: dependency-policy
@@ -26,6 +26,13 @@ generated:
 integrity:
   generated:
     body: 5951dba03d70fc3c
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: f20d079cc7834ec7
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The cli root stays boundary, and ./ui is integrated only for consumers who opt in

@@ -2,7 +2,7 @@
 type: Decision
 title: A schema.org property gets one fixed arity, chosen toward many when uncertain
 description: Every modeled property is either always a scalar or always an array, never a union of the two, and an uncertain case is modeled as an array because the two error costs are asymmetric.
-status: draft
+status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
@@ -10,6 +10,13 @@ generated:
 integrity:
   generated:
     body: 695d5298e6d46b8d
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 74416ec95c26878e
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # A schema.org property gets one fixed arity, chosen toward many when uncertain

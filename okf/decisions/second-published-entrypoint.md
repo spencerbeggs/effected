@@ -2,7 +2,7 @@
 type: Decision
 title: A second published entrypoint is a measured cost, not a convenience
 description: A package adds a subpath export only when a structural test proves an unbundled consumer would otherwise pay to load a part of the graph it never touches.
-status: draft
+status: stable
 tags:
   - bundle
   - dx
@@ -17,6 +17,13 @@ generated:
 integrity:
   generated:
     body: 71d7706757a9d4d1
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: a9a8f4282735530b
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # A second published entrypoint is a measured cost, not a convenience

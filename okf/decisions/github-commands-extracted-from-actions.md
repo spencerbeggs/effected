@@ -2,7 +2,7 @@
 type: Decision
 title: The workflow-command grammar left github-actions for its own pure package
 description: "WorkflowCommand and the neutralizer live in the pure @effected/github-commands so a boundary-tier package can neutralize without the integrated github-actions tier and @effect/platform-node."
-status: draft
+status: stable
 tags: [architecture, deps, security]
 generated:
   by: okfit/claude-code
@@ -10,6 +10,13 @@ generated:
 integrity:
   generated:
     body: 41d764a9a33e2189
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 0c96a220301b20e9
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The workflow-command grammar left github-actions for its own pure package

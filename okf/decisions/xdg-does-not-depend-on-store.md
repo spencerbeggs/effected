@@ -2,7 +2,7 @@
 type: Decision
 title: xdg does not depend on store
 description: XDG resolution stays boundary tier by never taking a workspace edge on the integrated-tier store package -- the SQLite database services were split out precisely to keep this split possible.
-status: draft
+status: stable
 tags:
   - architecture
 sources:
@@ -16,6 +16,13 @@ generated:
 integrity:
   generated:
     body: 2f3ad05f60ac7fd5
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: fc0e7a04bac67e08
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # xdg does not depend on store

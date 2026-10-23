@@ -2,7 +2,7 @@
 type: Decision
 title: Every default reference time comes from Clock, never new Date()
 description: Phase logic reads DateTime.now so TestClock can drive it deterministically; no member reaches for the ambient wall clock directly.
-status: draft
+status: stable
 tags:
   - architecture
   - testing
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 381efef842ec8198
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 05525b82ab6fad3c
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Every default reference time comes from Clock, never `new Date()`

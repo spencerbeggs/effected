@@ -2,7 +2,7 @@
 type: Decision
 title: Vendored Effect is pinned to the lockfile's tag, not main
 description: .repos/effect tracks the release tag matching the effect the lockfile resolves, not the catalog literal and not the upstream default branch.
-status: draft
+status: stable
 tags:
   - architecture
   - compat
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: cfc902643edd3706
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 1176704c9a0f4c0a
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Vendored Effect is pinned to the lockfile's tag, not main

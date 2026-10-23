@@ -2,7 +2,7 @@
 type: Decision
 title: "The git ssh BatchMode pin is appended to what git would have used, and declines rather than substitutes"
 description: "Before a network-touching Git member spawns, the service walks git's own GIT_SSH_COMMAND > core.sshCommand > GIT_SSH order at that cwd and appends -o BatchMode=yes only where appending is meaningful; every other case leaves the environment unpinned."
-status: draft
+status: stable
 tags:
   - security
   - architecture
@@ -17,6 +17,13 @@ generated:
 integrity:
   generated:
     body: 067bc6f52b4db9bf
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 0deac17569b8e42c
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The git ssh BatchMode pin is appended to what git would have used, and declines rather than substitutes

@@ -2,7 +2,7 @@
 type: Decision
 title: github-actions errors are per-reason tagged unions, not one class with a reason field
 description: ActionOutputError, BlobEnvelopeError, CacheKeyError and DetachedProcessError split into a union of classes rather than carrying a shared reason literal.
-status: draft
+status: stable
 tags:
   - architecture
 generated:
@@ -11,6 +11,13 @@ generated:
 integrity:
   generated:
     body: d43c9a5b235b78c9
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: a9bafa5302b7516e
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # github-actions errors are per-reason tagged unions, not one class with a reason field

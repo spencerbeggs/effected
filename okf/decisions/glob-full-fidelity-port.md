@@ -2,7 +2,7 @@
 type: Decision
 title: glob is a full-fidelity vendored port, not a minimal runtime dependency
 description: @effected/glob vendors the complete minimatch/brace-expansion/balanced-match dialect with attribution rather than taking minimatch as a runtime dependency or shipping a narrowed subset of its dialect.
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: cdd2764a005bb8e3
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 02e532a532cf4da6
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # glob is a full-fidelity vendored port, not a minimal runtime dependency

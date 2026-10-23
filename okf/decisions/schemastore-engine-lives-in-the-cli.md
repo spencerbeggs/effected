@@ -2,7 +2,7 @@
 type: Decision
 title: The ajv engine lives in the CLI, and the library returns to boundary tier
 description: "The one shipped SchemaValidator engine is @effected/schemastore-cli's AjvValidator.layer — and the one shipped InstanceValidator engine its AjvInstanceValidator.layer — so ajv is a cost only the command pays; @effected/schemastore keeps the contracts and their doubles, drops ajv and ajv-formats, and retiers from integrated back to boundary."
-status: draft
+status: stable
 supersedes: schemastore-retier-to-integrated.md
 tags:
   - architecture
@@ -29,6 +29,13 @@ generated:
 integrity:
   generated:
     body: 800700e1f8070ef5
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: fd836c05cb9d51e4
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The ajv engine lives in the CLI, and the library returns to boundary tier

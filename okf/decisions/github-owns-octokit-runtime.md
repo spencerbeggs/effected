@@ -2,7 +2,7 @@
 type: Decision
 title: "@effected/github owns the octokit runtime"
 description: Why the octokit client and the sealed-box crypto pair live in @effected/github rather than being pushed to consumers.
-status: draft
+status: stable
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
@@ -10,6 +10,13 @@ generated:
 integrity:
   generated:
     body: 32ed72acdd8cc618
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: cf6891c2828559d7
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # @effected/github owns the octokit runtime

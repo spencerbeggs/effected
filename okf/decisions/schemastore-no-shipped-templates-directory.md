@@ -2,7 +2,7 @@
 type: Decision
 title: No shipped templates/ directory
 description: The bundler publishes only emitted src, LICENSE and README; the canonical schema-generator script a consumer copies lives outside the package.
-status: draft
+status: stable
 sources:
   - id: package-json
     resource: ../../packages/schemastore/package.json
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 6afbdcd93b222773
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 8c077770e4ccc0d7
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # No shipped templates/ directory

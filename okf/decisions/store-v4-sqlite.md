@@ -2,7 +2,7 @@
 type: Decision
 title: Store is built on effect's own SQL core and @effect/sql-sqlite-node
 description: Store uses the SqlClient abstraction shipped inside effect core plus the Node sqlite driver, and hand-rolls its own reversible migration ledger rather than core's forward-only Migrator.
-status: draft
+status: stable
 tags:
   - architecture
 sources:
@@ -16,6 +16,13 @@ generated:
 integrity:
   generated:
     body: e4a37e3c8d2b5790
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 3be130e6253b1d9d
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Store is built on effect's own SQL core and @effect/sql-sqlite-node

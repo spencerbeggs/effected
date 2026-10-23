@@ -2,7 +2,7 @@
 type: Decision
 title: A live view is a scoped drain of runs, hosted or owned, with no input and the mount permit per run
 description: "CliUi.live folds a Stream into state inside the caller's scope; a run begins at an isStart event (or where an optional begins predicate says, given the state before and after) and ends at an isTerminal event, which unmounts and commits the frame, and an event outside a run that begins none is folded and not drawn; hosted and owned differ only when not interactive, neither mounts input hooks, and interactive is passed explicitly rather than left to Ink's is-in-ci guess."
-status: draft
+status: stable
 tags: [architecture, dx]
 sources:
   - id: pinned-by
@@ -17,6 +17,13 @@ generated:
 integrity:
   generated:
     body: a9a7b60c2387ff3c
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: d5b3ae90d7f238b7
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # A live view is a scoped drain of runs, hosted or owned, with no input and the mount permit per run

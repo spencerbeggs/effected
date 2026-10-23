@@ -2,7 +2,7 @@
 type: Decision
 title: Two prompt engines raise one Cancelled error
 description: Core Prompt and the kit's ./ui screens both surface a single Cancelled tagged error with reason escape or interrupt, carrying exit code 130, so a consumer maps cancellation once.
-status: draft
+status: stable
 tags: [architecture, dx]
 sources:
   - id: core-prompt
@@ -14,6 +14,13 @@ generated:
 integrity:
   generated:
     body: 1b4e92a2fd1eb226
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 03693def6fd7b5d3
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Two prompt engines raise one Cancelled error

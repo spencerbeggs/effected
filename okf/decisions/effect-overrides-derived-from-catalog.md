@@ -2,7 +2,7 @@
 type: Decision
 title: The effect family is pinned graph-wide by overrides derived from the catalog
 description: "The plugin's effect catalog rides the stable line with carets under lock-minor, and a permanent overridesFromCatalogs directive derives one line-scoped override per family member, pinning effect and every satellite to the catalog's exact version across the whole consumer graph."
-status: draft
+status: stable
 supersedes: effect-catalog-locked-exact.md
 tags:
   - deps
@@ -31,6 +31,13 @@ generated:
 integrity:
   generated:
     body: 80a4aca8a0ee1ea1
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 925d6409ae3cb45d
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The effect family is pinned graph-wide by overrides derived from the catalog

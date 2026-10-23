@@ -2,7 +2,7 @@
 type: Decision
 title: package-json reads the same document through five tolerance tiers
 description: Package, PackageManifest, LenientManifest, npm's Manifest and the decode-free PackageJsonFormat text path form one strictest-to-most-permissive ladder over the same manifest document, so a caller picks the tolerance its use case actually needs rather than fighting one all-or-nothing decode.
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -17,6 +17,13 @@ generated:
 integrity:
   generated:
     body: 580fc8c3f680a8ca
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 9a6549cb2bd05501
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # package-json reads the same document through five tolerance tiers

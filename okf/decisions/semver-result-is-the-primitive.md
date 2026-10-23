@@ -2,7 +2,7 @@
 type: Decision
 title: semver's parse and intersect Results are the primitive
 description: SemVer.parseResult, Range.parseResult, Comparator.parseResult and Range.intersectResult hold the engine; their Effect twins derive from them and never re-implement it.
-status: draft
+status: stable
 tags:
   - dx
 generated:
@@ -11,6 +11,13 @@ generated:
 integrity:
   generated:
     body: 28629ae00cfaf810
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: ffd22b9d48e866ec
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # semver's parse and intersect Results are the primitive

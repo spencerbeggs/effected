@@ -2,7 +2,7 @@
 type: Decision
 title: The JWT algorithm comes from the key, never the token header
 description: A key carries its algorithm, the token header alg is only checked against it, and alg none is unrepresentable, which closes key-confusion attacks.
-status: draft
+status: stable
 tags:
   - security
   - architecture
@@ -26,6 +26,13 @@ generated:
 integrity:
   generated:
     body: 56d709858af72b69
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 72d64ccaf8938a42
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The JWT algorithm comes from the key, never the token header

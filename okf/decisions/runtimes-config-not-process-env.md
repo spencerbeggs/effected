@@ -2,7 +2,7 @@
 type: Decision
 title: The config-driven GitHub auth layer reads Config, never process.env
 description: Token resolution uses Config with a documented precedence between two conventional environment variables, warns on ambiguity, and holds the token Redacted.
-status: draft
+status: stable
 tags:
   - architecture
   - security
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: f27d0accda740fbb
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 7da73710ad719abf
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The config-driven GitHub auth layer reads `Config`, never `process.env`

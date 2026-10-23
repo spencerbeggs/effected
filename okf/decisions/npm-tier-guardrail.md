@@ -2,7 +2,7 @@
 type: Decision
 title: The npm tier guardrail — a non-core runtime dependency in a service escalates the whole package
 description: "@effected/npm stays boundary only while its pure vocabulary never reaches IO and index.ts exports individually; a reachability test asserts both from the source graph, and the answer to the named escalation trigger is a package split, never an accepted retier."
-status: draft
+status: stable
 tags:
   - architecture
   - bundle
@@ -19,6 +19,13 @@ generated:
 integrity:
   generated:
     body: 4bcf6f7e1a7fc827
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 006a7e3d636977a4
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The npm tier guardrail — a non-core runtime dependency in a service escalates the whole package

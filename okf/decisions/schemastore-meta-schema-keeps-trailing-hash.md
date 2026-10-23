@@ -2,7 +2,7 @@
 type: Decision
 title: The Draft-07 meta-schema constant keeps its trailing hash
 description: DRAFT_07_META_SCHEMA carries a trailing hash, matching the SchemaStore corpus convention and deliberately diverging from core's equivalent constant.
-status: draft
+status: stable
 sources:
   - id: store-document
     resource: ../../packages/schemastore/src/StoreDocument.ts
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 2412fa6249fb6c38
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 47a7c1fb935ce382
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The Draft-07 meta-schema constant keeps its trailing hash

@@ -2,7 +2,7 @@
 type: Decision
 title: primaryLicense returns none for an AND expression rather than guessing a term
 description: A conjunctive SPDX expression has no single license it can honestly be said to be under, so the accessor declines instead of picking the leftmost or any other conjunct.
-status: draft
+status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
@@ -10,6 +10,13 @@ generated:
 integrity:
   generated:
     body: 8f9a4cb5d4fc60ef
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: e0d33d4a9b834827
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # primaryLicense returns none for an AND expression rather than guessing a term

@@ -2,7 +2,7 @@
 type: Decision
 title: Store is named for its primitive, not its backend
 description: The package name and public surface describe a schema-versioned migrated SqlClient and a TTL cache — nouns any SQL driver could satisfy — never the specific SQLite implementation behind them today.
-status: draft
+status: stable
 tags:
   - architecture
 sources:
@@ -14,6 +14,13 @@ generated:
 integrity:
   generated:
     body: 7823558286293c1a
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 5e886d6d0e92bb01
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Store is named for its primitive, not its backend

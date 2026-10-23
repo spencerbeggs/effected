@@ -2,7 +2,7 @@
 type: Decision
 title: The kit sets Ink's colour level on Ink's own chalk, resolved from Ink's location
 description: "At mount the kit resolves the chalk that Ink imports, from Ink's own location, sets its level from the stream's ColorLevel and restores it on release; FORCE_COLOR, a kit chalk dependency and token-only styling were each measured and rejected (probe P2)."
-status: draft
+status: stable
 tags: [compat, dx]
 sources:
   - id: probe-p2
@@ -20,6 +20,13 @@ generated:
 integrity:
   generated:
     body: 4e1c45ba39bdad5b
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 18a4433db94bdf3e
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The kit sets Ink's colour level on Ink's own chalk, resolved from Ink's location

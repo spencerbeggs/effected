@@ -2,7 +2,7 @@
 type: Decision
 title: package-json delegates SPDX license validity to @effected/spdx
 description: License.ts validates the license field's SPDX expression grammar by calling @effected/spdx's isValidExpression rather than owning that grammar itself, keeping only the two npm-specific special cases (UNLICENSED, SEE LICENSE IN); the delegation dropped the kit's last foreign spdx-expression-parse runtime dependency.
-status: draft
+status: stable
 tags:
   - architecture
   - bundle
@@ -17,6 +17,13 @@ generated:
 integrity:
   generated:
     body: 007cda72f962dbf8
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: eeaaf82dab8f0920
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # package-json delegates SPDX license validity to @effected/spdx

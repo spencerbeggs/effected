@@ -2,7 +2,7 @@
 type: Decision
 title: A schemastore outputDir is never exclusively the CLI's
 description: schemastore-cli reads only the paths it derives, never a listing of outputDir, because that directory may be shared with another config, a deploy folder, or the repository root — so orphan detection probes derived sibling shapes and knowingly misses a name change.
-status: draft
+status: stable
 tags:
   - schemastore
   - monorepo
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 0ee68c028d4b65ef
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 4747b289716663e2
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # A schemastore outputDir is never exclusively the CLI's

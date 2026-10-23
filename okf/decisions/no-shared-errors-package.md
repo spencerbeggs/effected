@@ -2,7 +2,7 @@
 type: Decision
 title: "Decided against: a shared @effected/errors package"
 description: A cross-package errors package was rejected for four reasons — the kit already has a shared error vocabulary in effect core, a central errors package inverts ownership and couples every error change to a cross-package release, Effect's error channel already composes unions structurally, and the genuine cross-boundary case already has a house pattern.
-status: draft
+status: stable
 tags:
   - architecture
 sources:
@@ -16,6 +16,13 @@ generated:
 integrity:
   generated:
     body: 269716f90fdc58fa
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 114128fb133d0812
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Decided against: a shared @effected/errors package

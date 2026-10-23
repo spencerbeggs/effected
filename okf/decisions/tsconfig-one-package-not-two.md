@@ -2,7 +2,7 @@
 type: Decision
 title: tsconfig-json is one package, not a pure-schema/boundary-IO split
 description: tsconfig-json keeps schemas and file IO in one boundary-tier package rather than splitting into a pure schema package plus a separate IO package.
-status: draft
+status: stable
 tags:
   - architecture
   - bundle
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 0581cb4db00fb4aa
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: ac02313670c65bbe
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # tsconfig-json is one package, not a pure-schema/boundary-IO split

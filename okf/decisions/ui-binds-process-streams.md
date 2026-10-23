@@ -2,7 +2,7 @@
 type: Decision
 title: Only ./ui may bind Node's process streams, and only in three named files
 description: "@effected/cli/ui alone may rely on Node's process streams, because Ink has exactly one platform shape; the licence is file-scoped to processStreams.ts, inkChalk.ts and the testing-only fakeStreams.ts, and does not generalize the platform-node licence."
-status: draft
+status: stable
 tags: [architecture, compat]
 sources:
   - id: ink-render
@@ -17,6 +17,13 @@ generated:
 integrity:
   generated:
     body: 15222b880b7522b9
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 8c177234e76de2ab
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Only ./ui may bind Node's process streams, and only in three named files

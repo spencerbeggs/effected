@@ -2,7 +2,7 @@
 type: Decision
 title: Image formats are read by in-house header readers
 description: PNG, JPEG, GIF, WebP and AVIF dimensions are read by small hardened readers under src/internal rather than by wrapping or vendoring image-size.
-status: draft
+status: stable
 tags:
   - architecture
   - deps
@@ -13,9 +13,15 @@ generated:
 verified:
   - by: human:spencer
     at: 2026-10-09T17:05:48Z
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 integrity:
   generated:
     body: cf09eccc51fb6ed0
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 4869ac02421473c4
 ---
 
 # Image formats are read by in-house header readers

@@ -2,7 +2,7 @@
 type: Decision
 title: A test needing FileSystem uses memfs, never a hand-rolled layerNoop stub
 description: Migrate every test's filesystem double from FileSystem.layerNoop to @effected/memfs, because a hand-rolled stub only encodes the semantics its author remembered.
-status: draft
+status: stable
 tags:
   - testing
 sources:
@@ -18,6 +18,13 @@ generated:
 integrity:
   generated:
     body: d4632c9697e6dfed
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 60e81b5fb07264b7
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # A test needing FileSystem uses memfs, never a hand-rolled layerNoop stub

@@ -2,7 +2,7 @@
 type: Decision
 title: "@effect/platform-node is a required peer in exactly one package"
 description: github-actions is the only kit package with a required @effect/platform-node peer, because a GitHub Action always compiles into one Node process on a GitHub-provided runner; the licence is scoped to that overlay and does not generalize to any other package.
-status: draft
+status: stable
 tags:
   - architecture
   - bundle
@@ -15,6 +15,13 @@ generated:
 integrity:
   generated:
     body: 4025479c90c2fda3
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 6fede24520fde764
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # @effect/platform-node is a required peer in exactly one package

@@ -2,7 +2,7 @@
 type: Decision
 title: Markdown dialects are a closed set with no public extension API
 description: "@effected/markdown exposes a dialect option (CommonMark or GFM) with no plugin mechanism, matching the yaml and toml packages' zero-plugin posture."
-status: draft
+status: stable
 tags:
   - architecture
   - compat
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 580ffba2579d513c
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: d0db43275009706f
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Markdown dialects are a closed set with no public extension API

@@ -2,7 +2,7 @@
 type: Decision
 title: Generated objects are closed by default, departing from core's open default
 description: "StoreDocument.fromSchema generates with onExcessProperty: error so every object is emitted with additionalProperties false, because a published document is a contract; core's own default flipped open at rc.113 and the package no longer follows it."
-status: draft
+status: stable
 tags:
   - compat
 sources:
@@ -16,6 +16,13 @@ generated:
 integrity:
   generated:
     body: 3df4d6ecdca932ff
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 95dee9924635d02a
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Generated objects are closed by default, departing from core's open default

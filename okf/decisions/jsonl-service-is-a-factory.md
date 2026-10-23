@@ -2,7 +2,7 @@
 type: Decision
 title: The jsonl Journal service is a per-registry factory, not a generic key
 description: "`Journal.Service<Self>()(id, { events, config })` produces one class per event registry, with its layer a single static value built from the definition-site config."
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 54c9ae1c05edb0ee
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 92f00a28b066e82c
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The jsonl `Journal` service is a per-registry factory, not a generic key

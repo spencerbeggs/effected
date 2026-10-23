@@ -2,7 +2,7 @@
 type: Decision
 title: "@effected/schema-org declines both available @effected edges"
 description: license and version are typed to the vocabulary's own wide ranges rather than to @effected/spdx or @effected/semver, because a vocabulary's declared range is the contract.
-status: draft
+status: stable
 tags: [compat, architecture]
 generated:
   by: "okfit/claude-code"
@@ -10,6 +10,13 @@ generated:
 integrity:
   generated:
     body: 4d71df942c08b36e
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 4249a31497ac5e8a
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # @effected/schema-org declines both available @effected edges

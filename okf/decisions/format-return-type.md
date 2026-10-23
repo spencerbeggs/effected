@@ -2,7 +2,7 @@
 type: Decision
 title: Format entry points never return Effect
 description: A three-way return-type rule keyed on whether failure is possible; a tolerant formatter entry point never returns Effect.
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -13,6 +13,13 @@ generated:
 integrity:
   generated:
     body: e711180080bbff3c
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 3af433f9956540df
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Format entry points never return `Effect`

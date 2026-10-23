@@ -2,7 +2,7 @@
 type: Decision
 title: There is no Effect v3 catalog and no camelCase catalog alias
 description: The effect3/effect3:peers catalogs and the effectPeers/effect3Peers camelCase aliases are retired and must not be reintroduced.
-status: draft
+status: stable
 tags:
   - release
   - compat
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 9e620f04a9283674
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: edc9e7ecffe95195
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # There is no Effect v3 catalog and no camelCase catalog alias

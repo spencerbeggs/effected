@@ -2,7 +2,7 @@
 type: Decision
 title: "D: strict MCP input default for Claude Code"
 description: McpToolkit.layer's DEFAULT_STRICT is "all" — every tool without its own Tool.Strict annotation is served and decoded strict — because probe P2 found Claude Code 2.1.281 never places its own protocol extras inside a tool call's arguments.
-status: draft
+status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
@@ -10,6 +10,13 @@ generated:
 integrity:
   generated:
     body: e966e2b28fed6e13
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 066c268c3ba463e9
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # D: strict MCP input default for Claude Code

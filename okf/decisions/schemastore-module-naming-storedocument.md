@@ -2,7 +2,7 @@
 type: Decision
 title: "The assembly module is named StoreDocument, not SchemaDocument"
 description: Naming the assembly module StoreDocument rather than SchemaDocument, to avoid a name that reads like the banned general-JSON-Schema scope.
-status: draft
+status: stable
 sources:
   - id: store-document
     resource: ../../packages/schemastore/src/StoreDocument.ts
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 0960fd02615bfbbc
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: da770fbac6f0af8f
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The assembly module is named StoreDocument, not SchemaDocument

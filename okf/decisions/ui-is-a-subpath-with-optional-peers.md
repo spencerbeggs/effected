@@ -2,7 +2,7 @@
 type: Decision
 title: The Ink layer is a ./ui subpath of cli, with ink and react as optional peers
 description: "Interactive screens live in @effected/cli behind ./ui and ./ui/testing, with ink and react as optional peers that the root never reaches and that ./ui itself loads only when a screen mounts; separate cli-ink and cli-ui packages were rejected."
-status: draft
+status: stable
 tags: [architecture, bundle]
 sources:
   - id: cli-package-json
@@ -20,6 +20,13 @@ generated:
 integrity:
   generated:
     body: 5d771fb96cfe3dbf
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 93acec22ba07a1b8
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The Ink layer is a ./ui subpath of cli, with ink and react as optional peers

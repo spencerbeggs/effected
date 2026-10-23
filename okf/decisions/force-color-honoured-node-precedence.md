@@ -2,7 +2,7 @@
 type: Decision
 title: "FORCE_COLOR is honoured, with Node's getColorDepth precedence"
 description: "@effected/env reads FORCE_COLOR ahead of NO_COLOR, NODE_DISABLE_COLORS, TERM=dumb and the TTY gate, in the order Node's tty getColorDepth uses, replacing the kit's earlier decision to ignore it."
-status: draft
+status: stable
 supersedes: cli-color-ignores-force-color.md
 tags: [architecture, dx]
 sources:
@@ -15,6 +15,13 @@ generated:
 integrity:
   generated:
     body: f592932ed3c63fce
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 37c02a39ff95086b
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # FORCE_COLOR is honoured, with Node's getColorDepth precedence

@@ -2,7 +2,7 @@
 type: Decision
 title: jsonc's engine/facade split is a cycle firewall
 description: The vendored scanner/parser in internal/ returns raw records and never imports the facade, which is what keeps noImportCycles satisfiable.
-status: draft
+status: stable
 tags:
   - architecture
 generated:
@@ -11,6 +11,13 @@ generated:
 integrity:
   generated:
     body: 15253645f3fd4166
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 0da6089385961b9c
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # jsonc's engine/facade split is a cycle firewall

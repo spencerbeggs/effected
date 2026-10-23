@@ -2,7 +2,7 @@
 type: Decision
 title: The fidelity obligation and how it is tested
 description: A kit formatter changes only key order, whitespace and the trailing newline, and Direction B round-trip testing is what proves it.
-status: draft
+status: stable
 tags:
   - architecture
   - testing
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: c65e47ccb4e08953
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 1ff0e5def6d4fadf
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The fidelity obligation and how it is tested

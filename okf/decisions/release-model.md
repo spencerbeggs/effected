@@ -2,7 +2,7 @@
 type: Decision
 title: Releases are changeset-driven and scope-agnostic
 description: CI builds the changesets present on a branch and releases exactly the packages they name — a whole-kit wave and a single-package patch are the same mechanism, every package stays 0.x and unstable until the kit chooses 1.0.0, which stable Effect v4 makes possible rather than automatic, and breaking changes ride minors.
-status: draft
+status: stable
 tags:
   - release
 sources:
@@ -18,6 +18,13 @@ generated:
 integrity:
   generated:
     body: 84353eade286eafd
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 90b55c30a78650d5
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Releases are changeset-driven and scope-agnostic

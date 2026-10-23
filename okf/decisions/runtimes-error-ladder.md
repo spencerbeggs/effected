@@ -2,7 +2,7 @@
 type: Decision
 title: runtimes' error ladder keeps four distinctions the pipeline must not collapse
 description: Structured Schema.TaggedError classes with no free-text message field, and four cases (invalid range, unresolvable default, auth method, no-match tag) that must stay separately typed.
-status: draft
+status: stable
 tags:
   - architecture
 generated:
@@ -11,6 +11,13 @@ generated:
 integrity:
   generated:
     body: 3ff971ca116bd58b
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: b8e489798c73e614
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # runtimes' error ladder keeps four distinctions the pipeline must not collapse

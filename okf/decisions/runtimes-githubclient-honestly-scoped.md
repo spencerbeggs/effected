@@ -2,7 +2,7 @@
 type: Decision
 title: GitHubClient keeps only the authenticated REST reads Bun and Deno need
 description: Shared JSON-over-HTTP machinery lives in internal/http.ts, used unauthenticated by the Node fetchers and authenticated by GitHubClient, over one shared HTTP error family.
-status: draft
+status: stable
 tags:
   - architecture
 generated:
@@ -11,6 +11,13 @@ generated:
 integrity:
   generated:
     body: b23c8600b71b6159
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 0cbbbd2144be4970
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # `GitHubClient` keeps only the authenticated REST reads Bun and Deno need

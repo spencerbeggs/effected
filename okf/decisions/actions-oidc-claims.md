@@ -2,7 +2,7 @@
 type: Decision
 title: One GitHub Actions OIDC claims class, ActionsOidcClaims in @effected/github
 description: "github-actions' wire-shaped OidcClaims is removed; the runner token issuer and the provenance builder read github's ActionsOidcClaims, the same class the verifier returns."
-status: draft
+status: stable
 tags:
   - architecture
   - github
@@ -23,6 +23,13 @@ generated:
 integrity:
   generated:
     body: 25f3db58bcb64167
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: cb791ffe70a63256
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # One GitHub Actions OIDC claims class, ActionsOidcClaims in @effected/github

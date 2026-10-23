@@ -2,7 +2,7 @@
 type: Decision
 title: The live view never calls Ink's clear(); a new run re-renders in place or remounts
 description: "Ink 8's clear() no longer erases scrollback, which a pty probe confirmed against Ink 7 as the control, but the live view has no path that needs it: a start while mounted re-renders in place, a terminal event unmounts to commit the frame (clear() then unmount() would leave no frame), and the next start mounts fresh."
-status: draft
+status: stable
 tags: [architecture, dx]
 sources:
   - id: pinned-by
@@ -21,6 +21,13 @@ generated:
 integrity:
   generated:
     body: 1aeb5222ff6b8247
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: d220d0d82fac9595
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The live view never calls Ink's clear(); a new run re-renders in place or remounts

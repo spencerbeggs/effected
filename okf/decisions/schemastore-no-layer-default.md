@@ -2,7 +2,7 @@
 type: Decision
 title: No layerDefault on SchemaValidator or SchemaFile
 description: Every service-shaped module ships a real layer and a test layer; a third layerDefault would only be a name for one of the two that already exist.
-status: draft
+status: stable
 sources:
   - id: schema-validator
     resource: ../../packages/schemastore/src/SchemaValidator.ts
@@ -14,6 +14,13 @@ generated:
 integrity:
   generated:
     body: 4a7f537556e351c2
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: f822e081c618a877
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # No layerDefault on SchemaValidator or SchemaFile

@@ -2,7 +2,7 @@
 type: Decision
 title: Each format package keeps its own options type
 description: No shared kit-wide formatter options shape; each package's options stay irreducibly format-specific.
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: b71add744643e74d
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: fca1d94c0144e5a3
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Each format package keeps its own options type

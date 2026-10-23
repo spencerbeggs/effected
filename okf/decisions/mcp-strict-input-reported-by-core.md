@@ -2,7 +2,7 @@
 type: Decision
 title: "Strict MCP input is reported by core; McpToolkit appends the accepted params instead of pre-checking"
 description: "Core's strict tool decode reports every unknown key, missing field and invalid field in one InvalidParams, so McpToolkit.layer drops its unknown-key pre-check and instead appends an Accepted params line per offending level to core's report, unionHandler decodes with errors: \"all\" and appends the same lines, and ToolInputSchema stays public for Tool.dynamic payloads."
-status: draft
+status: stable
 supersedes: mcp-strict-input-upstream-first.md
 tags: [architecture]
 sources:
@@ -30,9 +30,15 @@ verified:
     at: 2026-09-28T17:11:35Z
   - by: human:spencer
     at: 2026-09-28T17:52:49Z
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 integrity:
   generated:
     body: 4a505291456fbd27
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: f1be3b0d0ccecf06
 ---
 
 # Strict MCP input is reported by core; McpToolkit appends the accepted params instead of pre-checking

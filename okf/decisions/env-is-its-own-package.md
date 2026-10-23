@@ -2,7 +2,7 @@
 type: Decision
 title: "@effected/env is its own boundary package, a required peer of cli"
 description: Audience and terminal detection live in a dedicated @effected/env package that @effected/cli requires as a peer; only the --audience flag lives in cli, so MCP servers and engines detect without a CLI dependency.
-status: draft
+status: stable
 tags: [architecture, bundle, deps]
 sources:
   - id: boundary-test
@@ -14,6 +14,13 @@ generated:
 integrity:
   generated:
     body: 8a9f77cf139801b1
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 239e184493617eef
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # @effected/env is its own boundary package, a required peer of cli

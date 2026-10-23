@@ -2,7 +2,7 @@
 type: Decision
 title: "github's github-references compat re-export is droppable, not breaking"
 description: Why the six-name re-export in @effected/github exists, and why removing it later is not a breaking change for the consumer that already adopted the new home.
-status: draft
+status: stable
 tags: [bundle, compat]
 generated:
   by: "okfit/claude-code"
@@ -10,6 +10,13 @@ generated:
 integrity:
   generated:
     body: ea48fe796670ea49
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 3807cc22c2b0d97f
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # github's github-references compat re-export is droppable, not breaking

@@ -2,7 +2,7 @@
 type: Decision
 title: The validation gate ships a real ajv engine, closed by default
 description: SchemaValidator ships a real ajv-backed layer rather than a contract-only seam or a companion package, because a copied adapter is not a shipped default.
-status: draft
+status: stable
 sources:
   - id: claude-md
     resource: ../../packages/schemastore/CLAUDE.md
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 0ac05b1440426f9c
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 04ebc8bd014f5c88
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The validation gate ships a real ajv engine, closed by default

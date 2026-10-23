@@ -2,7 +2,7 @@
 type: Decision
 title: The numeric-enum codec is data, not a typescript dependency
 description: TypeScript's enum numeric values live in tsconfig-json as a hand-transcribed data table rather than being imported from the typescript package.
-status: draft
+status: stable
 tags:
   - architecture
   - compat
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 487b1546d262f025
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 4edbe0714f78f90e
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The numeric-enum codec is data, not a typescript dependency

@@ -2,7 +2,7 @@
 type: Decision
 title: The cli renderers have no JSON output
 description: "Render ships plain, ANSI, markdown and GitHub-log renderers and no JSON renderer, because both consumers encode their own schemas and JSON is data, not a rendering of a document."
-status: draft
+status: stable
 tags: [architecture, dx]
 sources:
   - id: vitest-agent
@@ -14,6 +14,13 @@ generated:
 integrity:
   generated:
     body: 23e0fbe404491f7f
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 503ca4e1ff187dc8
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The cli renderers have no JSON output

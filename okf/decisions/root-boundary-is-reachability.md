@@ -2,7 +2,7 @@
 type: Decision
 title: The cli root boundary is a module-graph walk, not a per-file scan
 description: "boundary.test.ts proves the root never reaches ./ui by walking the import graph from src/index.ts and src/testing.ts, because SourceBoundary.scan checks files one at a time and missed a root file importing a ui module (probe P4)."
-status: draft
+status: stable
 tags: [testing, bundle]
 sources:
   - id: probe-p4
@@ -23,6 +23,13 @@ generated:
 integrity:
   generated:
     body: a5ae698a88b1a16f
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 43025b72a6f96197
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The cli root boundary is a module-graph walk, not a per-file scan

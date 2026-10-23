@@ -2,7 +2,7 @@
 type: Decision
 title: memfs takes zero @effected/* edges, ever
 description: memfs never depends on another @effected package — runtime, peer or dev — because it is the filesystem double every other kit package's tests devDepend on.
-status: draft
+status: stable
 sources:
   - id: package-json
     resource: ../../packages/memfs/package.json
@@ -14,6 +14,13 @@ generated:
 integrity:
   generated:
     body: 28423255f580c733
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 7b32c749191c886c
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # memfs takes zero @effected/* edges, ever

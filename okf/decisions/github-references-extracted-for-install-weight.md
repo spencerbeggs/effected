@@ -2,7 +2,7 @@
 type: Decision
 title: github-references was extracted from github for install weight
 description: Why a pure vendor rule moved out of the client package it was born in.
-status: draft
+status: stable
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
@@ -10,6 +10,13 @@ generated:
 integrity:
   generated:
     body: 5c2c3c1d90b759e9
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 84515ac02d74377b
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # github-references was extracted from github for install weight

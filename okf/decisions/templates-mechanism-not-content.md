@@ -2,7 +2,7 @@
 type: Decision
 title: "templates owns the mechanism, never the content"
 description: Why @effected/templates carries no vendor naming, section vocabulary, or file-ordering policy of its own.
-status: draft
+status: stable
 tags: [dx]
 generated:
   by: "okfit/claude-code"
@@ -10,6 +10,13 @@ generated:
 integrity:
   generated:
     body: e09427cf7ba1cda6
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: ec18ec9e1801c788
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # templates owns the mechanism, never the content

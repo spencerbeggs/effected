@@ -2,7 +2,7 @@
 type: Decision
 title: Only package-json needs a tolerant formatting seam
 description: package-json is the one format package that adds a tolerant entry point; the other four and config-file add no new surface.
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: e816aafe3e82278b
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: f88ff5498cdb29d3
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Only `package-json` needs a tolerant formatting seam

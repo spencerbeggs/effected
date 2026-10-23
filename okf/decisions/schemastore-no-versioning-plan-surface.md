@@ -2,7 +2,7 @@
 type: Decision
 title: No SchemaVersioning.plan surface
 description: SchemaVersioning ships no separate planning function, because catalogUrls already sorts and dedupes the version set a plan would compute.
-status: draft
+status: stable
 sources:
   - id: versioning
     resource: ../../packages/schemastore/src/SchemaVersioning.ts
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 8fd0f27ea3fa36e8
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 6a75eb3dd531fd1a
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # No SchemaVersioning.plan surface

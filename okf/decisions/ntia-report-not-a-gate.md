@@ -2,7 +2,7 @@
 type: Decision
 title: The NTIA minimum-elements report is a report, not a gate
 description: NtiaReport is a pure function returning a compliance report; the caller decides whether non-compliance fails a run.
-status: draft
+status: stable
 tags:
   - architecture
 generated:
@@ -11,6 +11,13 @@ generated:
 integrity:
   generated:
     body: 6ec4277386a1c7b4
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 87f5a906ec860cf7
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The NTIA minimum-elements report is a report, not a gate

@@ -2,7 +2,7 @@
 type: Decision
 title: "WorkspacesSync is a `*Sync` escape hatch, not a `*Result` pure form"
 description: "The synchronous WorkspacesSync facade exists for a caller that cannot await, and it is named `*Sync` rather than `*Result` because it is a total port over consumer-supplied IO, not a pure computation with a sync twin."
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -17,6 +17,13 @@ generated:
 integrity:
   generated:
     body: 0a64a974e9c86d15
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 61380491cd3be372
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # WorkspacesSync is a `*Sync` escape hatch, not a `*Result` pure form

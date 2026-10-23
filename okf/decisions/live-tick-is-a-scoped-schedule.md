@@ -2,7 +2,7 @@
 type: Decision
 title: The live view's tick is a scoped Effect schedule, and its frame index comes from Clock
 description: "Each run forks Effect.repeat(push, Schedule.spaced(tickMillis)) into its scope and computes the frame index as floor(Clock.currentTimeMillis / tickMillis), replacing the first design's unref'd native timer; the scope bound lets the process exit at once and TestClock drives every frame."
-status: draft
+status: stable
 tags: [architecture, testing]
 sources:
   - id: pinned-by
@@ -17,6 +17,13 @@ generated:
 integrity:
   generated:
     body: ad7dd6c483353d93
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: fa6bfe8f2934c4c0
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The live view's tick is a scoped Effect schedule, and its frame index comes from Clock

@@ -2,7 +2,7 @@
 type: Decision
 title: The live frame is clamped to rows - 1 in height, and its root width is never taken from a hook
 description: "Ink does not miscount a line exactly columns wide, but a frame taller than the terminal takes Ink's full-clear path, which homes the cursor and erases down on every frame and so stamps the frame's overflowing top rows into the scrollback again each time, and a root width read from useTerminalSize lags Ink's own resize repaint and strands a copy on shrink; so the clamp is on height, and a margin, if wanted, is marginRight 1."
-status: draft
+status: stable
 tags: [architecture, compat]
 sources:
   - id: pinned-by
@@ -17,6 +17,13 @@ generated:
 integrity:
   generated:
     body: f3fabbeeae9cd252
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: c796fabb6c17a031
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The live frame is clamped to rows - 1 in height, and its root width is never taken from a hook

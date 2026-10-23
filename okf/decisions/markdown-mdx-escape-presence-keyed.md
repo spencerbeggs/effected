@@ -2,7 +2,7 @@
 type: Decision
 title: The MDX brace escape is presence-keyed, never a stringify option
 description: A tree carrying any MDX node additionally escapes { in text; the escape is triggered by a pre-scan of the tree, never by a caller-set option.
-status: draft
+status: stable
 tags:
   - architecture
   - compat
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 5cc451799c6528e0
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 254bc67c8099f42e
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The MDX brace escape is presence-keyed, never a stringify option

@@ -2,7 +2,7 @@
 type: Decision
 title: The release index is Ref-backed with a single atomic load
 description: An index inconsistency between the release set and its lookup map is treated as a programmer error and stays a defect, never a typed failure.
-status: draft
+status: stable
 tags:
   - architecture
 generated:
@@ -11,6 +11,13 @@ generated:
 integrity:
   generated:
     body: bb6ceb5588205d48
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: b5ce304006940e37
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The release index is Ref-backed with a single atomic load

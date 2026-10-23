@@ -2,7 +2,7 @@
 type: Decision
 title: A lockfile is a YAML stream, not always one document
 description: pnpm lockfiles using config dependencies are two YAML documents in one file, and lockfiles is parsed against that fact by position rather than by content heuristic.
-status: draft
+status: stable
 tags:
   - architecture
 generated:
@@ -11,6 +11,13 @@ generated:
 integrity:
   generated:
     body: 79dc6db6e2824ae1
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 61bfb0e11cb8dd56
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # A lockfile is a YAML stream, not always one document

@@ -2,7 +2,7 @@
 type: Decision
 title: App auth, OIDC verify and the token store land in @effected/github
 description: GitHub App authentication, Actions OIDC verification and the installation token store go in @effected/github on a regular dependency on @effected/jwt, with no @effected/github-app package.
-status: draft
+status: stable
 tags:
   - architecture
   - github
@@ -24,6 +24,13 @@ generated:
 integrity:
   generated:
     body: bd31b82a5e714c9e
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: bfe371311559f487
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # App auth, OIDC verify and the token store land in @effected/github

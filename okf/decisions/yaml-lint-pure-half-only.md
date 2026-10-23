@@ -2,7 +2,7 @@
 type: Decision
 title: The yaml lint system stays inside the pure tier
 description: The lint engine and built-in rules ship in pure-tier @effected/yaml; file discovery, config-file loading, a CLI and autofix-to-disk are explicitly out of scope for the package.
-status: draft
+status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
@@ -10,6 +10,13 @@ generated:
 integrity:
   generated:
     body: c90b8afb533af2b2
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: fba10cdb898dbf52
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The yaml lint system stays inside the pure tier

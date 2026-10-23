@@ -2,7 +2,7 @@
 type: Decision
 title: "Format-package naming is `*Format`, not `*Unvalidated`"
 description: "The `*Format` concept class with total statics is the kit's naming convention; `*Unvalidated` is rejected."
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 9a9966b582e8f2db
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 2141c605e31997ab
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # Format-package naming is `*Format`, not `*Unvalidated`

@@ -2,7 +2,7 @@
 type: Decision
 title: While a live view is mounted, kit logs go through Ink's own stdout and stderr writers
 description: "The live view exposes a bridged Console whose writes go through Ink's useStdout().write and useStderr().write while a run is mounted, so a log line lands above the frame without tearing it, and straight to the stream before mount and after unmount, since Ink silently drops hook writes after unmount."
-status: draft
+status: stable
 tags: [architecture, observability]
 sources:
   - id: pinned-by
@@ -17,6 +17,13 @@ generated:
 integrity:
   generated:
     body: a417a94bc2de2a1d
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 480a1db724a4de38
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # While a live view is mounted, kit logs go through Ink's own stdout and stderr writers

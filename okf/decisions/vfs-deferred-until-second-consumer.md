@@ -2,7 +2,7 @@
 type: Decision
 title: "@effected/vfs is deferred until a second consumer materializes"
 description: A generic node_modules/-prefixed virtual filesystem with merge/prefix helpers and an environment seam is decided-but-unbuilt; it ships only when a second VFS consumer appears beyond the TypeScript-tooling one that motivated its shape, never speculatively.
-status: draft
+status: stable
 tags:
   - architecture
 sources:
@@ -14,6 +14,13 @@ generated:
 integrity:
   generated:
     body: cbc868d3fa576166
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 7c8a0a48e253cc4d
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # @effected/vfs is deferred until a second consumer materializes

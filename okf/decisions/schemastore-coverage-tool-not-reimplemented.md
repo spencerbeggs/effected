@@ -2,7 +2,7 @@
 type: Decision
 title: SchemaStore's own coverage tool is not reimplemented
 description: The package treats SchemaStore's own coverage checks as candidate inspiration only, rather than reimplementing them as a shipped feature.
-status: draft
+status: stable
 sources:
   - id: claude-md
     resource: ../../packages/schemastore/CLAUDE.md
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: c8648f6e60cbc615
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: c58e0f385cdea1bd
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # SchemaStore's own coverage tool is not reimplemented

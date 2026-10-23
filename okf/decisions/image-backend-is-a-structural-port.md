@@ -2,7 +2,7 @@
 type: Decision
 title: The image cache backend is a structural port, not a store dependency
 description: ImageBackend is a two-method port that the store package's Cache satisfies structurally through ImageBackend.layerFrom, so images never imports store.
-status: draft
+status: stable
 tags:
   - architecture
   - deps
@@ -12,9 +12,15 @@ generated:
 verified:
   - by: human:spencer
     at: 2026-10-09T17:05:47Z
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 integrity:
   generated:
     body: f0a00e33a520b171
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 7250a74812082ee6
 ---
 
 # The image cache backend is a structural port, not a store dependency

@@ -2,7 +2,7 @@
 type: Decision
 title: runtimes reads GitHub over core HttpClient, never Octokit
 description: "@effected/runtimes' two authenticated REST reads go through effect/http directly, with GitHub App auth left as a pluggable seam rather than a built-in."
-status: draft
+status: stable
 tags:
   - architecture
   - bundle
@@ -12,6 +12,13 @@ generated:
 integrity:
   generated:
     body: 6d253355e54940b9
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 7fea6095f878d028
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # runtimes reads GitHub over core HttpClient, never Octokit

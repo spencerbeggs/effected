@@ -2,7 +2,7 @@
 type: Decision
 title: "std-osc8's pure core is ported into env, not wrapped"
 description: "@effected/env copies std-osc8's detect, terminals, semver, wrappers and env modules into an internal directory instead of depending on the published package, because std-osc8 snapshots process.env and isTTY at import time."
-status: draft
+status: stable
 tags: [architecture, bundle, deps]
 sources:
   - id: std-osc8-constants
@@ -17,6 +17,13 @@ generated:
 integrity:
   generated:
     body: b98ff37bcaec6a81
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: ab0d28b56eae32dd
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # std-osc8's pure core is ported into env, not wrapped

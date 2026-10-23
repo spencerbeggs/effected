@@ -2,7 +2,7 @@
 type: Decision
 title: "@effected/oidc is a thin package that owns the IdentityToken contract"
 description: "OIDC gets its own package over @effected/jwt holding the issuer contract, standard ID-token claims, an unverified decode and a guarded verify — not a fuller OIDC client, and not left scattered across sbom, github and github-actions."
-status: draft
+status: stable
 tags:
   - architecture
   - bundle
@@ -24,6 +24,13 @@ generated:
 integrity:
   generated:
     body: def314a0c49a8b4b
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: 2eefabbc33f47f29
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # @effected/oidc is a thin package that owns the IdentityToken contract

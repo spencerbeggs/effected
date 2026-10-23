@@ -2,7 +2,7 @@
 type: Decision
 title: The cli package owns its display-width function
 description: Fmt measures display width with a short Intl.Segmenter plus emoji and East Asian Width range implementation checked by a differential test against string-width as a devDependency, rather than declaring string-width at runtime.
-status: draft
+status: stable
 tags: [architecture, bundle, deps]
 sources:
   - id: string-width
@@ -14,6 +14,13 @@ generated:
 integrity:
   generated:
     body: 4a2886bba07afc93
+  verified:
+    by: human:spencer
+    at: 2026-10-23T01:00:25Z
+    content: cffa7954e5a74ab5
+verified:
+  - by: human:spencer
+    at: 2026-10-23T01:00:25Z
 ---
 
 # The cli package owns its display-width function
