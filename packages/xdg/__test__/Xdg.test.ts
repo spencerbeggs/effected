@@ -84,7 +84,7 @@ describe("Xdg", () => {
 				assert.deepStrictEqual([...paths.dataDirs], ["/opt/share", "/usr/share"]);
 			}).pipe(
 				Effect.provide(
-					env({
+					envOn("linux", {
 						HOME: "/home/ada",
 						XDG_CONFIG_DIRS: "/etc/xdg:/opt/xdg",
 						XDG_DATA_DIRS: "/opt/share:/usr/share",
@@ -114,7 +114,7 @@ describe("Xdg", () => {
 			Effect.gen(function* () {
 				const paths = yield* Xdg;
 				assert.deepStrictEqual([...paths.configDirs], ["/a", "/b"]);
-			}).pipe(Effect.provide(env({ HOME: "/home/ada", XDG_CONFIG_DIRS: "/a::/b:" }))),
+			}).pipe(Effect.provide(envOn("linux", { HOME: "/home/ada", XDG_CONFIG_DIRS: "/a::/b:" }))),
 		);
 	});
 
