@@ -232,7 +232,7 @@ describe("managed block", () => {
 });
 ```
 
-When you do need the service, `ManagedSection.layerTest(overrides)` supplies a double in which **every member you do not stub dies when called**, rather than returning a plausible-looking answer that makes a wrong test pass:
+When you do need the service, `ManagedSection.layerTest(overrides)` supplies a double in which **every member you do not stub dies when run** (calling one only builds the effect), rather than returning a plausible-looking answer that makes a wrong test pass:
 
 ```ts
 import { CommentStyle, ManagedSection, SectionId, SyncOutcome } from "@effected/templates";

@@ -286,8 +286,9 @@ export class ManagedSection extends Context.Service<ManagedSection, ManagedSecti
 	): Layer.Layer<ManagedSection, never, FileSystem.FileSystem> => Layer.effect(ManagedSection, make(options));
 
 	/**
-	 * A test double. Members a suite does not stub **die when called**, rather
-	 * than returning a plausible-looking answer that makes a wrong test pass.
+	 * A test double. Members a suite does not stub **die when run** (calling
+	 * one only builds the effect), rather than returning a plausible-looking
+	 * answer that makes a wrong test pass.
 	 */
 	static readonly makeTest = (overrides: Partial<ManagedSectionShape> = {}): ManagedSectionShape => ({
 		read: unstubbed("read"),
