@@ -25,8 +25,10 @@ export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>
  * value, a field the pipeline reads is malformed (`name` not a simple file
  * base name, `outputDir`/`catalogDir` not a string, `onDrift` or a schema's
  * `drift` outside its literal set, a `schemas` element, its `target`,
- * `catalog` or a `frozen` entry not shaped — every such issue reported at
- * once, each as `<message> at <path>`), two outputs
+ * `catalog` or a `frozen` entry not shaped — the catalog decoded as a whole
+ * `CatalogEntry`, so a non-string `fileMatch` element or `versions` value
+ * fails too — every such issue reported at once, each as
+ * `<message> at <path>`), two outputs
  * resolve to one absolute path, a document resolves into `catalogDir`, or
  * `catalogDir` resolves to `outputDir` or to the merged catalog's path.
  *

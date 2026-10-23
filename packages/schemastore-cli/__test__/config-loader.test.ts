@@ -131,15 +131,15 @@ describe("ConfigLoader.load", () => {
 
 	// A forged brand skips defineConfig, so every field the loader and the
 	// Runner dereference is re-checked; each case is one field wrong.
-	const loadForged = (overrides: Record<string, unknown>) =>
+	const loadForgedValue = (forged: unknown) =>
 		Effect.flip(
 			ConfigLoader.load({
 				explicit: "schemastore.config.js",
 				cwd: "/repo",
-				importModule: () =>
-					Promise.resolve({ default: Object.assign({}, config, overrides) as unknown as typeof config }),
+				importModule: () => Promise.resolve({ default: forged as typeof config }),
 			}),
 		);
+	const loadForged = (overrides: Record<string, unknown>) => loadForgedValue(Object.assign({}, config, overrides));
 
 	it.effect("fails typed when catalogDir is not a string (forged brand)", () =>
 		Effect.gen(function* () {
@@ -317,11 +317,22 @@ describe("ConfigLoader.load", () => {
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
-	it.effect("fails typed when onDrift is missing or bogus — the drift gate must not switch off silently", () =>
+	it.effect("fails typed when onDrift is absent — the drift gate must not switch off silently", () =>
 		Effect.gen(function* () {
-			const missing = yield* loadForged({ onDrift: undefined });
+			// The key is deleted, not set to undefined: the absent-key path.
+			const { onDrift: _omitted, ...withoutOnDrift } = config;
+			assert.isFalse(Object.hasOwn(withoutOnDrift, "onDrift"));
+			const missing = yield* loadForgedValue(withoutOnDrift);
 			assert.instanceOf(missing, ConfigLoadError);
-			assert.include(missing.reason, '["onDrift"]');
+			assert.include(missing.reason, 'Missing key at ["onDrift"]');
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("fails typed when onDrift is present but undefined or bogus", () =>
+		Effect.gen(function* () {
+			const undefinedValue = yield* loadForged({ onDrift: undefined });
+			assert.instanceOf(undefinedValue, ConfigLoadError);
+			assert.include(undefinedValue.reason, '["onDrift"]');
 			const bogus = yield* loadForged({ onDrift: "ignore" });
 			assert.instanceOf(bogus, ConfigLoadError);
 			assert.include(bogus.reason, '["onDrift"]');
@@ -350,6 +361,23 @@ describe("ConfigLoader.load", () => {
 			const error = yield* loadForged(schemaWith({ catalog }));
 			assert.instanceOf(error, ConfigLoadError);
 			assert.strictEqual(error.reason, 'Expected string at ["schemas"][0]["catalog"]["fileMatch"][0]');
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("rejects a catalog versions record holding a non-string URL", () =>
+		Effect.gen(function* () {
+			// The old field-by-field checker never looked at versions; the
+			// CatalogEntry decode does.
+			const catalog = {
+				name: "a",
+				description: "a",
+				fileMatch: ["a.json"],
+				url: "https://x/s/a.json",
+				versions: { "1": 1 },
+			};
+			const error = yield* loadForged(schemaWith({ catalog }));
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(error.reason, 'Expected string at ["schemas"][0]["catalog"]["versions"]["1"]');
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
