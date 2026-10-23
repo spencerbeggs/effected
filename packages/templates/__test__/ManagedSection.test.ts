@@ -291,14 +291,23 @@ describe("ManagedSection", () => {
 		it.effect("an unstubbed member dies loudly rather than answering wrongly", () =>
 			Effect.gen(function* () {
 				const service = yield* ManagedSection;
-				const exit = yield* Effect.exit(service.read("anywhere", id("example-tool")));
-				if (!Exit.isFailure(exit)) {
-					assert.fail("expected the unstubbed member to die");
+				// The first member and two later ones: the double is one helper
+				// applied per member, and each must name its own member.
+				const calls: ReadonlyArray<readonly [string, () => Effect.Effect<unknown, unknown>]> = [
+					["read", () => service.read("anywhere", id("example-tool"))],
+					["checkAll", () => service.checkAll("anywhere", [])],
+					["remove", () => service.remove("anywhere", id("example-tool"))],
+				];
+				for (const [member, call] of calls) {
+					const exit = yield* Effect.exit(call());
+					if (!Exit.isFailure(exit)) {
+						assert.fail(`expected the unstubbed ${member} to die`);
+					}
+					assert.isTrue(Cause.hasDies(exit.cause), "must be a defect, not a typed failure");
+					assert.isFalse(Cause.hasFails(exit.cause), "must not be laundered into the error channel");
+					const die = exit.cause.reasons.find(Cause.isDieReason);
+					assert.include(String((die?.defect as Error)?.message), `${member}()`);
 				}
-				assert.isTrue(Cause.hasDies(exit.cause), "must be a defect, not a typed failure");
-				assert.isFalse(Cause.hasFails(exit.cause), "must not be laundered into the error channel");
-				const die = exit.cause.reasons.find(Cause.isDieReason);
-				assert.include(String((die?.defect as Error)?.message), "read");
 			}).pipe(Effect.provide(ManagedSection.layerTest())),
 		);
 	});
