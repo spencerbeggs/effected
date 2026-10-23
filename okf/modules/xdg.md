@@ -37,8 +37,9 @@ entry](../glossary/library-tier.md). IO happens exclusively through
 from the consumer's platform layer, so there is no `@effect/platform`
 peer and no platform-node devDependency even in
 tests.[^xdg-package-json] `peerDependencies` is `effect`,
-`@effected/walker` and `@effected/config-file`; there are **no runtime
-dependencies**. Both workspace edges are boundary→boundary and therefore
+`@effected/walker` and `@effected/config-file`, plus `@effected/glob`,
+`@effected/jsonc`, `@effected/toml` and `@effected/yaml`, which those two
+bring into the closure; there are **no runtime dependencies**. Both workspace edges are boundary→boundary and therefore
 non-propagating: `walker` depends on nothing, keeping the graph acyclic,
 and `config-file` is a peer rather than a regular dependency because the
 bridge exposes config-file's types in xdg's own public signatures, so a
@@ -46,6 +47,14 @@ single copy in a consumer's graph is load-bearing.
 
 xdg **does not depend on** [store](store.md), and must not — see
 [xdg does not depend on store](../decisions/xdg-does-not-depend-on-store.md).
+
+xdg also **does not build on** core's `UserDirectories`
+(`effect/persistence`, unstable): core folds the XDG variable and the native
+directory into one answer per kind, so xdg's precedence ladder cannot sit on
+it — see [xdg stays independent of core
+UserDirectories](../decisions/xdg-stays-independent-of-core-userdirectories.md).
+The two agree on absolute `XDG_*_HOME` values and on the macOS and Windows
+native directories, a subset a parity test pins.
 
 ## Module layout
 
@@ -76,11 +85,22 @@ resolution.[^xdg-claude-md]
 - **The platform is injected, never read from a global.**
   `CurrentPlatform` is a `Context.Reference` whose default reads
   `process.platform` once, so production is unchanged while a test pins
-  macOS or Windows with a one-line `Layer.succeed`.
+  macOS or Windows with a one-line `Layer.succeed`. Three sites read it
+  — the `Xdg` layer, the `AppDirs` layer and the native config resolver —
+  so an override is provided once, at the edge, beneath all three.
+- **A relative value is ignored**, as the XDG Base Directory specification
+  requires: a relative `XDG_*_HOME`, `XDG_RUNTIME_DIR` or search-path entry
+  reads as unset, and a search path left empty takes the spec default.
+  `XDG_*` values are judged by the platform's absolute rule; the Windows
+  `APPDATA`/`LOCALAPPDATA` always by the Windows rule, so the answer never
+  depends on the host. On win32 the search paths split on `;`.
 
-A missing `HOME` is the only environment failure; everything else is
-optional by construction. `layerFrom` supplies explicit paths and is the
-test layer.
+A missing home directory is the only environment failure; everything else
+is optional by construction. Home is `HOME`, or on win32 `USERPROFILE` then
+`HOME` (the error then names `USERPROFILE`, meaning neither was set). Home is
+deliberately not validated as absolute, and its absence fails the layer
+eagerly even when every `XDG_*_HOME` is set. `layerFrom` supplies explicit
+paths, trusted as given, and is the test layer.
 
 ### NativeDirs — the pure platform map
 
@@ -101,7 +121,7 @@ test layer.
 
 Resolution happens once, at layer construction, so reading a path cannot
 fail — it is a `string`. The layer's error channel is `never`; the one
-failure that could hide behind it, a missing `HOME`, surfaces on the
+failure that could hide behind it, a missing home directory, surfaces on the
 `Xdg` layer instead, before an `AppDirs` exists. That infallible channel
 is also the only way the config-file save path fits config-file's
 `defaultPath` slot without an `orDie`.
@@ -111,8 +131,9 @@ The **five-level precedence** per directory kind:
 1. an explicit per-kind override;
 2. the XDG environment variable, namespaced;
 3. the native directory, when native mode is on and the platform has one;
-4. a single dot-directory under `$HOME` that all four kinds collapse to;
-5. `$HOME/.<namespace>`.
+4. a single dot-directory under the home directory that all four kinds
+   collapse to;
+5. `<home>/.<namespace>`.
 
 Rungs 4 and 5 are **not** the XDG spec's per-kind defaults — a caller
 wanting spec defaults passes them as per-kind overrides. Native mode
@@ -185,8 +206,11 @@ than merely observed. **Never record eagerly** — `AppDirs` builds its
 `ensure*` effects once, at layer construction, so a stub that records in
 its body counts directories that were never created; a fault handler
 consulted when the method is called gets the property for free.
-`XdgConfig`'s suites stay on a core-only `layerNoop` double, since the
-resolvers touch the filesystem only through existence probes.
+`XdgConfig`'s suites run on memfs too, with an `exists` fault handler
+that records each probe and denies seeded paths. The environment rules
+run through the real `Xdg` layer under a pinned platform and a
+`ConfigProvider` built from a record, and a differential suite compares
+the agreed subset with core's `UserDirectories`.
 
 ## Hardening
 
@@ -209,7 +233,8 @@ zero-warning `dist/prod/issues.json` via `pnpm build --filter
 @effected/xdg`.
 
 [^xdg-package-json]: `packages/xdg/package.json` — `peerDependencies`
-    lists `effect`, `@effected/walker` and `@effected/config-file`; no
-    `dependencies` block.
+    lists `effect`, `@effected/walker`, `@effected/config-file`,
+    `@effected/glob`, `@effected/jsonc`, `@effected/toml` and
+    `@effected/yaml`; no `dependencies` block.
 [^xdg-claude-md]: `packages/xdg/CLAUDE.md` — module layout and the
     resolve-once-at-construction design.

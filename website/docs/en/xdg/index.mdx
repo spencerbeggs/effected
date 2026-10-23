@@ -59,13 +59,13 @@ Effect.runPromise(program.pipe(Effect.provide(AppDirsLive)));
 
 The load-bearing design decision, and everything else follows from it. The environment is fixed when the layer is built, so that is where it is read. `Xdg`'s service shape *is* the resolved `XdgPaths` record, and `AppDirs.dirs` is a plain `ResolvedAppDirs` value.
 
-Three consequences. Reading a path cannot fail, so it is not an `Effect`. `AppDirs.layer`'s error channel is `never`, because the one resolution failure — `HOME` unset — surfaces on `Xdg.layer`, before an `AppDirs` exists. And `XdgConfig.savePath` gets a `never` channel, which is the only way it fits `@effected/config-file`'s `defaultPath` slot without an `orDie`.
+Three consequences. Reading a path cannot fail, so it is not an `Effect`. `AppDirs.layer`'s error channel is `never`, because the one resolution failure — the home directory unset (`$HOME`, or `%USERPROFILE%` then `$HOME` on Windows) — surfaces on `Xdg.layer`, before an `AppDirs` exists. And `XdgConfig.savePath` gets a `never` channel, which is the only way it fits `@effected/config-file`'s `defaultPath` slot without an `orDie`.
 
 The predecessor library re-read all eight environment variables on every property access, which made every path downstream of it fallible and forced exactly that laundering.
 
 ## The precedence ladder
 
-Five rungs per directory kind: an explicit override, then the namespaced XDG environment variable, then the OS-native directory (only when you opt in with `native: true`), then `$HOME/<fallbackDir>`, then `$HOME/.<namespace>`.
+Five rungs per directory kind: an explicit override, then the namespaced XDG environment variable, then the OS-native directory (only when you opt in with `native: true`), then `<home>/<fallbackDir>`, then `<home>/.<namespace>`. A relative XDG variable is ignored, per the spec, rather than resolved against the working directory.
 
 The runtime directory has no ladder. An override, or `$XDG_RUNTIME_DIR` namespaced, or nothing — the key is simply absent. A runtime directory must be user-owned and mode 0700, so inventing a fallback would be a lie.
 
