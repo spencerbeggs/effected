@@ -18,7 +18,7 @@
 // (SemVer §10), so keeping it in a comparator is dead data.
 
 import type { PartialParts } from "./desugar.js";
-import { desugarCaret, desugarHyphen, desugarTilde, desugarXRange } from "./desugar.js";
+import { closeSet, desugarCaret, desugarHyphen, desugarTilde, desugarXRange } from "./desugar.js";
 import type { ComparatorOperator, ComparatorParts, VersionParts } from "./order.js";
 
 /** Outcome of a grammar entry point: parsed value or input + failure position. */
@@ -432,7 +432,7 @@ const parseRangeComparators = (s: ParserState): ReadonlyArray<ComparatorParts> =
 		}
 		s.pos += separator;
 		const upper = parsePartial(s);
-		return desugarHyphen(lower, upper);
+		return closeSet(desugarHyphen(lower, upper));
 	} catch (failure) {
 		if (!(failure instanceof ParseFailure)) {
 			throw failure;
@@ -462,7 +462,7 @@ const parseRangeComparators = (s: ParserState): ReadonlyArray<ComparatorParts> =
 		}
 	}
 
-	return comparators;
+	return closeSet(comparators);
 };
 
 /**
@@ -476,7 +476,7 @@ export const parseRange = (raw: string): ParseResult<ReadonlyArray<ReadonlyArray
 		// Empty string = match all
 		return {
 			ok: true,
-			value: [desugarXRange(null, { major: null, minor: null, patch: null, prerelease: [] })],
+			value: [closeSet(desugarXRange(null, { major: null, minor: null, patch: null, prerelease: [] }))],
 		};
 	}
 

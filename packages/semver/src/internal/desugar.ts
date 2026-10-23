@@ -32,9 +32,18 @@ const sv = (
 
 const comp = (operator: ComparatorOperator, version: VersionParts): ComparatorParts => ({ operator, version });
 
-// The match-all comparator set: `*`, and every wildcard-major sugar that
-// bounds nothing (`^*`, `~x`, `>=*`, `=*`).
-const matchAll = (): ReadonlyArray<ComparatorParts> => [comp(">=", sv(0, 0, 0))];
+// A wildcard-major sugar (`*`, `^*`, `~x`, `>=*`, `=*`) bounds nothing, so it
+// contributes no comparator to its set — as node-semver and core expand it.
+// Emitting `>=0.0.0` instead would shut out the prereleases a sibling
+// comparator's tuple admits (`* <=0.0.0-1` must match `0.0.0-0`).
+const matchAll = (): ReadonlyArray<ComparatorParts> => [];
+
+/**
+ * Close a comparator set: a set every member of which bounded nothing is the
+ * match-all set `>=0.0.0`, which still excludes prereleases by the tuple rule.
+ */
+export const closeSet = (set: ReadonlyArray<ComparatorParts>): ReadonlyArray<ComparatorParts> =>
+	set.length === 0 ? [comp(">=", sv(0, 0, 0))] : set;
 
 // The match-nothing comparator set. `0.0.0-0` is the lowest version SemVer
 // 2.0.0 can express, so nothing sorts below it — node-semver and core
@@ -152,8 +161,8 @@ export const desugarXRange = (operator: string | null, p: PartialParts): Readonl
 			return [comp(">=", sv(major, 0, 0))];
 		}
 		if (operator === "<") {
-			// <1.x -> <1.0.0
-			return [comp("<", sv(major, 0, 0))];
+			// <1.x -> <1.0.0-0
+			return [comp("<", sv(major, 0, 0, [0]))];
 		}
 		// <=1.x -> <2.0.0-0
 		return [comp("<", sv(major + 1, 0, 0, [0]))];
@@ -172,8 +181,8 @@ export const desugarXRange = (operator: string | null, p: PartialParts): Readonl
 		return [comp(">=", sv(major, minor, 0))];
 	}
 	if (operator === "<") {
-		// <1.2.x -> <1.2.0
-		return [comp("<", sv(major, minor, 0))];
+		// <1.2.x -> <1.2.0-0
+		return [comp("<", sv(major, minor, 0, [0]))];
 	}
 	// <=1.2.x -> <1.3.0-0
 	return [comp("<", sv(major, minor + 1, 0, [0]))];
@@ -207,7 +216,6 @@ export const desugarHyphen = (lower: PartialParts, upper: PartialParts): Readonl
 		to = [];
 	}
 
-	const set = [...from, ...to];
-	// * - * -> *
-	return set.length === 0 ? matchAll() : set;
+	// * - * contributes nothing; closeSet makes it *
+	return [...from, ...to];
 };

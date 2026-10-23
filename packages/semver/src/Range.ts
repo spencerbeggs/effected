@@ -46,8 +46,10 @@ export type ComparatorSet = ReadonlyArray<Comparator>;
  * - any whitespace (a space, a tab, a newline) separates comparators, and
  *   whitespace may follow an operator — `>= 18` parses like `>=18`;
  * - a wildcard major bounds nothing: `^*`, `~*` and `^x` match every
- *   release, while `>*` and `<*` match nothing (they desugar to the
- *   unsatisfiable `<0.0.0-0`);
+ *   release, and beside another comparator they add no bound at all
+ *   (`* <=0.0.0-1` matches `0.0.0-0`), while `>*` and `<*` match nothing
+ *   (they desugar to the unsatisfiable `<0.0.0-0`);
+ * - `<1.x` and `<1.2.x` desugar to `<1.0.0-0` and `<1.2.0-0`;
  * - a concrete component cannot follow a wildcard — `1.*.3` and `x.1.2`
  *   fail with a position;
  * - build metadata is accepted and dropped (SemVer §10), so `1.2.3+build`

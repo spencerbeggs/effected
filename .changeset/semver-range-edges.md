@@ -11,6 +11,8 @@ Range edges now follow node-semver and Effect core. Most of these changes keep t
 - `^*`, `~*`, `^x` and `~x.x` now match every release. They used to mean `>=0.0.0 <1.0.0-0` and reject `1.0.0`, so a constraint written this way now admits 1.x and later. `@effected/runtimes` resolves such a constraint to the latest version instead of stopping below `1.0.0`.
 - `>*` and `<*` (and `>x`, `<x.x`) now match nothing. They used to match every release. `Range.intersect` with such a range fails with `UnsatisfiableConstraintError`, `isSubset(>*, anything)` is true, and `Range.simplify` drops the empty set when another set remains.
 - A hyphen range with a `*` side drops that side's comparator, so `* - 2` is now `<3.0.0-0`. `Range.toString` output changes for these ranges.
+- A wildcard beside other comparators in the same set contributes no bound, so `* <=0.0.0-1` and `^* >=0.0.0-0` now match `0.0.0-0`. A bare `*` is still `>=0.0.0` and still rejects prereleases. `Range.toString` drops the wildcard from such a set.
+- `<1.x` and `<1.2.x` now desugar to `<1.0.0-0` and `<1.2.0-0`, so `>=1.0.0-alpha <1.x` no longer matches `1.0.0-beta`.
 
 ### Parsing
 

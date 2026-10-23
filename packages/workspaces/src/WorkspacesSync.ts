@@ -191,9 +191,14 @@ export type WorkspaceDiscoverySkipKind = Exclude<WorkspaceDiscoveryError["kind"]
  * plausible empty array indistinguishable from "no workspaces configured". The
  * fields mirror
  * `WorkspaceDiscoveryError`: `root`, `path`, `kind`, and on `cause` either the
- * caught throwable (`read` / `invalidJson`) or an `Error` carrying the same
- * sentence the Effect surface fails with (`invalidShape`). Only `missingName`
- * has `cause: undefined` — the field is simply absent, and nothing threw.
+ * value the consumer's `readFile` threw (`read`) or the same
+ * `PackageJsonSyntaxError` from `@effected/package-json` that the Effect
+ * surface attaches (`invalidJson`, reason `"invalid-json"`, with the
+ * `SyntaxError` on its own `cause`; `invalidShape` for a manifest that is not
+ * an object, reason `"not-an-object"`), or, for an `invalidShape` `version`, an
+ * `Error` carrying the same sentence the Effect surface fails with. Only
+ * `missingName` has `cause: undefined` — the field is simply absent, and
+ * nothing threw.
  *
  * @public
  */
@@ -205,9 +210,10 @@ export interface WorkspaceDiscoverySkip {
 	/** Why it was skipped. */
 	readonly kind: WorkspaceDiscoverySkipKind;
 	/**
-	 * The thrown value for `read` and `invalidJson`, an `Error` whose message
-	 * matches the Effect surface's for `invalidShape`, and `undefined` for
-	 * `missingName` alone.
+	 * The thrown value for `read`; a `PackageJsonSyntaxError` for `invalidJson`
+	 * (the JSON `SyntaxError` sits on its `cause`) and for a non-object
+	 * `invalidShape`; an `Error` whose message matches the Effect surface's for
+	 * an `invalidShape` `version`; and `undefined` for `missingName` alone.
 	 */
 	readonly cause: unknown;
 }
