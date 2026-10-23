@@ -62,7 +62,7 @@ Nothing here is re-derived from core. Base64url is `effect/encoding/Base64Url` (
 | `src/index.ts` | root entrypoint |
 | `src/testing.ts` | `TestIssuer`, the `./testing` entrypoint |
 
-The package follows the [module-per-concept layout](../conventions/module-per-concept-layout.md): one `src/<Concept>.ts` per exported concept and only the entrypoints re-export.
+The package follows the [module-per-concept layout](../conventions/module-per-concept-layout.md): one `src/<Concept>.ts` per exported concept and only the entrypoints re-export. `Jws`, `Jwt`, `JwtKey` and `TestIssuer` are grouped-statics containers in the house class form (a private constructor and `static readonly` members), as [no barrel re-exports](../conventions/no-barrel-re-exports.md) requires and as `@effected/oidc`, `crypto` and `webhooks` do. None of the four shares its name with a type, so none is a name-collision holdout.
 
 ## Behaviour
 

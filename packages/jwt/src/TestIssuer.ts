@@ -161,7 +161,9 @@ const rotate = (issuer: TestIssuerShape, kid: string): Effect.Effect<TestIssuerS
  *
  * @public
  */
-export const TestIssuer: {
+export class TestIssuer {
+	private constructor() {}
+
 	/**
 	 * Make an issuer with a fresh key pair (`ES256` by default, `kid`
 	 * `"test-key"` by default).
@@ -170,12 +172,15 @@ export const TestIssuer: {
 	 * The issuer must be `https:`, or `http://localhost` /
 	 * `http://127.0.0.1`, because `JwksResolver` refuses any other
 	 * issuer; anything else is a defect.
+	 *
+	 * @public
 	 */
-	readonly make: (options: {
+	static readonly make: (options: {
 		readonly issuer: string;
 		readonly alg?: Root.JwtAlgorithm;
 		readonly kid?: string;
-	}) => Effect.Effect<TestIssuerShape, Root.JwtError>;
+	}) => Effect.Effect<TestIssuerShape, Root.JwtError> = make;
+
 	/**
 	 * Rotate: a second key under `kid`, served alongside every earlier one.
 	 *
@@ -186,6 +191,9 @@ export const TestIssuer: {
 	 * set picks the new `kid` up only after its refetch interval, so a test
 	 * under `TestClock` must `TestClock.adjust("30 seconds")` after rotating
 	 * before verifying a token signed with the new key.
+	 *
+	 * @public
 	 */
-	readonly rotate: (issuer: TestIssuerShape, kid: string) => Effect.Effect<TestIssuerShape, Root.JwtError>;
-} = { make, rotate };
+	static readonly rotate: (issuer: TestIssuerShape, kid: string) => Effect.Effect<TestIssuerShape, Root.JwtError> =
+		rotate;
+}
