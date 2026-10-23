@@ -1,6 +1,10 @@
-// SAX-style tree visitor: a demand-driven `Stream` of enter/exit events over
-// a parsed markdown tree, enabling early termination (`Stream.take`) without
-// materializing the full event sequence.
+// SAX-style tree visitor: a demand-driven sequence of enter/exit events over
+// a parsed markdown tree, enabling early termination without materializing
+// the full event sequence. Two forms over one engine: `walk` is the
+// synchronous primitive (a lazy, re-iterable `Iterable`) and `visit` is the
+// `Stream` derived from it, so the two can never disagree on an event
+// (sync-primitive policy: the Effect-world form is defined in terms of the
+// sync one, never the reverse).
 //
 // Sibling contract (yaml/toml precedent): the event union is a
 // `Data.TaggedEnum` with a `taggedEnum` constructor const, and the statics
@@ -52,8 +56,9 @@ export type MarkdownVisitorEvent = Data.TaggedEnum<{
 export const MarkdownVisitorEvent = Data.taggedEnum<MarkdownVisitorEvent>();
 
 /**
- * Walks a parsed markdown tree as a lazy `Stream` of `Enter`/`Exit` events in
- * document pre-order. Not instantiable.
+ * Walks a parsed markdown tree as a lazy sequence of `Enter`/`Exit` events in
+ * document pre-order — synchronously with {@link MarkdownVisitor.walk}, or as
+ * a `Stream` with {@link MarkdownVisitor.visit}. Not instantiable.
  *
  * @example
  * ```ts
@@ -77,6 +82,52 @@ export class MarkdownVisitor {
 	private constructor() {}
 
 	/**
+	 * Walk `root` synchronously, as a lazy `Iterable` of `MarkdownVisitorEvent`
+	 * in document pre-order: `Enter` and `Exit` for every node including the
+	 * root and every leaf. The primitive {@link MarkdownVisitor.visit} is
+	 * defined in terms of, so the two yield the same events in the same order.
+	 *
+	 * @remarks
+	 * For callers that cannot suspend — a lint rule whose host calls it
+	 * synchronously, a getter, a non-Effect adapter. Events are produced on
+	 * demand: a `for…of` that `break`s stops the walk without visiting the
+	 * rest of the tree. The iterable is re-iterable — every `[Symbol.iterator]()`
+	 * call starts a fresh walk from the root, so binding the result once and
+	 * iterating it twice walks the tree twice, independently.
+	 *
+	 * Not named `walkResult`: it returns no `Result`, and the walk has no
+	 * failure channel to put in one. A hand-constructed tree nested past the
+	 * depth cap surfaces as a terminal `MarkdownVisitorEvent` `Error` event
+	 * carrying a `NestingDepthExceeded` {@link MarkdownDiagnostic}, after which
+	 * nothing is yielded — the same posture as `visit`. A tree produced by
+	 * `Markdown.parse` or decoded by `Mdast.fromMdast` can never trip it.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Markdown, MarkdownVisitor } from "@effected/markdown";
+	 * import { Result } from "effect";
+	 *
+	 * const root = Result.getOrThrow(Markdown.parseResult("# Hi\n\ntext\n"));
+	 * const entered: Array<string> = [];
+	 * for (const event of MarkdownVisitor.walk(root)) {
+	 *   if (event._tag === "Enter") entered.push(event.node.type);
+	 * }
+	 * console.log(entered);
+	 * // => ["root", "heading", "text", "paragraph", "text"]
+	 * ```
+	 *
+	 * @param root - The tree to walk.
+	 * @returns A lazy, re-iterable `Iterable` of `MarkdownVisitorEvent`.
+	 */
+	static walk(root: Root): Iterable<MarkdownVisitorEvent> {
+		return {
+			[Symbol.iterator]() {
+				return walkNode(root, [], 0);
+			},
+		};
+	}
+
+	/**
 	 * Create a lazy `Stream` of `MarkdownVisitorEvent` walking `root` in
 	 * document pre-order: `Enter` and `Exit` for every node including the
 	 * root and every leaf. Events are produced on demand, so combining with
@@ -93,26 +144,16 @@ export class MarkdownVisitor {
 	 * mirroring the typed failure `Markdown.stringify` produces for the same
 	 * tree.
 	 *
+	 * Defined as `Stream.fromIterable(MarkdownVisitor.walk(root))`: every run
+	 * of the stream walks afresh, and the two forms never diverge.
+	 *
 	 * @param root - The tree to walk.
 	 * @returns A lazy `Stream` of `MarkdownVisitorEvent`, infallible at the type
 	 *   level.
 	 */
 	static visit(root: Root): Stream.Stream<MarkdownVisitorEvent> {
-		return Stream.fromIterable(walkIterable(root));
+		return Stream.fromIterable(MarkdownVisitor.walk(root));
 	}
-}
-
-/** Lazy per-subscription iterable so each run of the stream walks afresh. */
-function walkIterable(root: Root): Iterable<MarkdownVisitorEvent> {
-	return {
-		[Symbol.iterator]() {
-			return walk(root)[Symbol.iterator]();
-		},
-	};
-}
-
-function* walk(root: Root): Generator<MarkdownVisitorEvent> {
-	yield* walkNode(root, [], 0);
 }
 
 function* walkNode(node: MarkdownNode, path: MarkdownPath, depth: number): Generator<MarkdownVisitorEvent> {
