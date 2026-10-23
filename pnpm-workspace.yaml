@@ -1,3 +1,8 @@
+packages:
+  - packages/*
+  - plugin
+  - scratchpad
+  - website
 autoInstallPeers: true
 catalogs:
   effect:
@@ -175,9 +180,4 @@ overrides:
   "@effect/tsgo@^0.56.0": 0.56.0
   "@effect/vitest@^4.0.0": 4.0.6
   effect@^4.0.0: 4.0.6
-packages:
-  - packages/*
-  - plugin
-  - scratchpad
-  - website
 peerDependencyRules: {}
