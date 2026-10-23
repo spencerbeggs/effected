@@ -299,24 +299,35 @@ export class HostedSchema extends Schema.Class<HostedSchema>("HostedSchema")(Hos
 		return this.resolved.versions.versions;
 	}
 
-	/** The current version — `current`, else the newest of `versions`; `undefined` for an unversioned schema. */
-	get resolvedCurrent(): SchemaVersion | undefined {
-		return this.resolved.versions.current;
+	/**
+	 * The current version — `current`, else the newest of `versions`;
+	 * `Option.none()` for an unversioned schema.
+	 *
+	 * @remarks
+	 * An `Option` because this is a derived lookup that can miss, and the
+	 * kit's lookups return `Option`. The argument side is a different
+	 * contract: {@link HostedSchema.idFor}, {@link HostedSchema.urlFor} and
+	 * {@link HostedSchema.fileNameFor} still take an omitted `version` to mean
+	 * the unversioned document, so `Option.getOrUndefined(hosted.resolvedCurrent)`
+	 * feeds them directly.
+	 */
+	get resolvedCurrent(): Option.Option<SchemaVersion> {
+		return Option.fromUndefinedOr(this.resolved.versions.current);
 	}
 
 	/** The `$id` of the current document — what an application writes as `$schema`. */
 	get $id(): string {
-		return this.idFor(this.resolvedCurrent);
+		return this.idFor(this.resolved.versions.current);
 	}
 
 	/** The catalog URL of the current document; equals {@link HostedSchema.$id} except under SchemaStore. */
 	get url(): string {
-		return this.urlFor(this.resolvedCurrent);
+		return this.urlFor(this.resolved.versions.current);
 	}
 
 	/** The current document's file name relative to the output directory. */
 	get fileName(): string {
-		return this.fileNameFor(this.resolvedCurrent);
+		return this.fileNameFor(this.resolved.versions.current);
 	}
 
 	/** The `$id` of the document at `version` (or the unversioned document). */

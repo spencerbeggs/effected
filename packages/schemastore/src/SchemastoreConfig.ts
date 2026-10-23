@@ -1,4 +1,4 @@
-import { Predicate, Result, Schema } from "effect";
+import { Option, Predicate, Result, Schema } from "effect";
 import { CatalogEntry } from "./CatalogEntry.js";
 import type { DriftTolerance, OnDrift } from "./DriftPolicy.js";
 import { DriftPolicy } from "./DriftPolicy.js";
@@ -292,14 +292,12 @@ const DECODE_OPTIONS = { onExcessProperty: "error", errors: "all" } as const;
 // block, whose one optional (`name`) is dropped the same way by
 // `withoutUndefinedCatalog`.
 const withoutUndefined = (input: unknown): unknown =>
-	Predicate.isObject(input) && !Array.isArray(input)
+	Predicate.isObject(input)
 		? Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined))
 		: input;
 
 const withoutUndefinedCatalog = (entry: unknown): unknown =>
-	Predicate.isObject(entry) && !Array.isArray(entry) && "catalog" in entry
-		? { ...entry, catalog: withoutUndefined(entry.catalog) }
-		: entry;
+	Predicate.isObject(entry) && "catalog" in entry ? { ...entry, catalog: withoutUndefined(entry.catalog) } : entry;
 
 const decodeOrThrow = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, input: unknown, prefix: string) =>
 	Result.getOrThrowWith(
@@ -359,7 +357,7 @@ const resolveEntry = (
 		return fail(`schema "${name}" must declare a catalog block under baseUrl "schemastore"`);
 	}
 	const versions = hosted.resolvedVersions;
-	const current = hosted.resolvedCurrent;
+	const current = Option.getOrUndefined(hosted.resolvedCurrent);
 	const file = (version?: SchemaVersion) => `${outputDir}/${hosted.fileNameFor(version)}`;
 	const generation = {
 		...(entry.jsonSchema !== undefined ? { jsonSchema: entry.jsonSchema as Schema.ToJsonSchemaOptions } : {}),
@@ -548,7 +546,7 @@ export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig =
 	const raw = withoutUndefined(input);
 	// A plain-JS config gets no compile-time hint that `name` is required, so
 	// its absence names what the field is for rather than the bare decode.
-	if (Predicate.isObject(raw) && !Array.isArray(raw) && !Object.hasOwn(raw, "name")) {
+	if (Predicate.isObject(raw) && !Object.hasOwn(raw, "name")) {
 		return fail("name is required — the base name of this config's catalog slice (<catalogDir>/<name>.json)");
 	}
 	const config = decodeOrThrow(ConfigInput, raw, "");

@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Equal, Schema } from "effect";
+import { Equal, Option, Schema } from "effect";
 import { HostedSchema, SCHEMASTORE_CATALOG_BASE, SCHEMASTORE_ID_BASE } from "../src/index.js";
 
 const RAW = "https://raw.githubusercontent.com/savvy-web/silk-release-action/main/schemas";
@@ -14,7 +14,7 @@ describe("HostedSchema", () => {
 				versions: ["5.1", "5.2"],
 			});
 			assert.strictEqual(hosted.baseUrl, RAW);
-			assert.strictEqual(hosted.resolvedCurrent, "5.2");
+			assert.deepStrictEqual(hosted.resolvedCurrent, Option.some("5.2"));
 			assert.strictEqual(hosted.resolvedLayout, "versioned");
 			assert.strictEqual(hosted.$id, `${RAW}/5.2/silk-release-action.output-5.2.json`);
 			assert.strictEqual(hosted.url, hosted.$id);
@@ -32,7 +32,7 @@ describe("HostedSchema", () => {
 				layout: "flat",
 			});
 			assert.strictEqual(hosted.baseUrl, "https://raw.githubusercontent.com/o/r/main");
-			assert.strictEqual(hosted.resolvedCurrent, "1");
+			assert.deepStrictEqual(hosted.resolvedCurrent, Option.some("1"));
 			assert.strictEqual(hosted.$id, "https://raw.githubusercontent.com/o/r/main/cfg-1.json");
 			assert.strictEqual(
 				HostedSchema.github({ repo: "o/r", branch: "v2", name: "cfg" }).baseUrl,
@@ -118,7 +118,7 @@ describe("HostedSchema", () => {
 
 		it("unversioned: name.json, no current", () => {
 			const hosted = HostedSchema.custom({ baseUrl: "https://example.com/s", name: "cfg" });
-			assert.isUndefined(hosted.resolvedCurrent);
+			assert.isTrue(Option.isNone(hosted.resolvedCurrent));
 			assert.deepStrictEqual(hosted.resolvedVersions, []);
 			assert.strictEqual(hosted.$id, "https://example.com/s/cfg.json");
 			assert.strictEqual(hosted.fileName, "cfg.json");
