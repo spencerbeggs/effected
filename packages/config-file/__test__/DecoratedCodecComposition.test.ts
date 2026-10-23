@@ -10,7 +10,7 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import type { FileSystem } from "effect";
+import type { ConfigProvider, FileSystem } from "effect";
 import { Effect, Layer, Path, PubSub, Schema } from "effect";
 import type { ConfigCodec, ConfigCodecError } from "../src/ConfigCodec.js";
 import { ConfigEvents } from "../src/ConfigEvent.js";
@@ -18,6 +18,7 @@ import type { ConfigLoadError, ConfigReadError } from "../src/ConfigFile.js";
 import { ConfigFile } from "../src/ConfigFile.js";
 import type { ConfigMigrationError } from "../src/ConfigMigration.js";
 import { ConfigMigration } from "../src/ConfigMigration.js";
+import { asConfigProvider, layerConfigProvider } from "../src/ConfigProvider.js";
 import { ConfigResolver } from "../src/ConfigResolver.js";
 import { ConfigEncryptionError, EncryptedCodec, EncryptedCodecKey } from "../src/EncryptedCodec.js";
 import { JsonCodec } from "../src/JsonCodec.js";
@@ -113,6 +114,19 @@ describe("decorated codecs compose with ConfigFile", () => {
 				files: {},
 			});
 		for (const b of [build, buildTest]) assert.isFunction(b);
+	});
+
+	it("asConfigProvider and layerConfigProvider carry the decorated codec error", () => {
+		// CE is inferred from the widened key and must reach the error channel;
+		// the narrow default union cannot hold a ConfigEncryptionError.
+		const _layer: Layer.Layer<never, ConfigLoadError<EncryptedError>, Secrets> = layerConfigProvider(Secrets);
+		// @ts-expect-error the narrow ConfigLoadError drops ConfigEncryptionError
+		const _narrowLayer: Layer.Layer<never, ConfigLoadError, Secrets> = layerConfigProvider(Secrets);
+		const provider = Effect.flatMap(Secrets, asConfigProvider);
+		const _provider: Effect.Effect<ConfigProvider.ConfigProvider, ConfigLoadError<EncryptedError>, Secrets> = provider;
+		// @ts-expect-error the same rule holds for asConfigProvider
+		const _narrowProvider: Effect.Effect<ConfigProvider.ConfigProvider, ConfigLoadError, Secrets> = provider;
+		for (const built of [_layer, _narrowLayer, _provider, _narrowProvider]) assert.isDefined(built);
 	});
 
 	it.effect("an encrypted config round-trips through write and load", () =>
