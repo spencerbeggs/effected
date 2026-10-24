@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-24T01:01:34Z
+  at: 2026-10-24T01:02:54Z
 integrity:
   generated:
-    body: a36f6e82e0b34833
+    body: a357d74a0ec32410
 ---
 
 # @effected/github
@@ -85,7 +85,10 @@ nonce derived as `blake2b(ephemeral_pk ‖ recipient_pk, 24)`
 (`packages/github/src/internal/crypto.ts`); Node ships neither X25519
 `crypto_box` nor blake2b, so the choice was these two leaves or a full
 libsodium build. Treat a third non-octokit dependency added here as a fresh
-decision, not a free ride on this one. `blakejs`'s `blake2b` must be imported
+decision, not a free ride on this one. Whether the pair should instead live in
+[`crypto`](crypto.md) is settled: [the sealed box stays here](../decisions/sealed-box-home.md)
+until a second consumer seals or opens a box outside this package, and a move
+then lands in a new integrated package, never in `crypto`. `blakejs`'s `blake2b` must be imported
 as a default import: Node's `cjs-module-lexer` detects `blake2b` as a named
 export and not its nine siblings, so a named import works for one function
 and throws for its neighbour at runtime after a clean build
@@ -304,6 +307,7 @@ error at import time while typechecking clean
 - [`github-references`](github-references.md) — the extracted issue-reference
   grammar and the compat re-export back into this package.
 - [why `github` owns the octokit runtime](../decisions/github-owns-octokit-runtime.md)
+- [the sealed box stays in `github`](../decisions/sealed-box-home.md)
 - [the GraphQL schema is not owned here](../limitations/github-graphql-schema-not-owned.md)
 - [branch reset closes an open pull request](../gotchas/branch-reset-closes-pull-request.md)
 - [repaired fixtures go green on an impossible state](../gotchas/repaired-fixtures-go-green-on-impossible-state.md)
