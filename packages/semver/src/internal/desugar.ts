@@ -32,6 +32,23 @@ const sv = (
 
 const comp = (operator: ComparatorOperator, version: VersionParts): ComparatorParts => ({ operator, version });
 
+/**
+ * Options the desugaring honours. `includePrerelease` is node-semver's and
+ * core `SemVerRange`'s option of the same name: a wildcard lower bound is
+ * lowered to the first prerelease of its floor (`^1.2` → `>=1.2.0-0`, not
+ * `>=1.2.0`) so prereleases inside the sugar's span can match once the
+ * matcher stops applying the tuple rule.
+ */
+export interface DesugarOptions {
+	readonly includePrerelease: boolean;
+}
+
+// The prerelease a wildcard lower bound carries: `[0]` when prereleases are
+// included, so `>=1.2` admits `1.2.0-alpha`, and empty otherwise. Mirrors the
+// `z` of node-semver's `replaceXRange` and core's `expand`.
+const floorPrerelease = (options: DesugarOptions): ReadonlyArray<string | number> =>
+	options.includePrerelease ? [0] : [];
+
 // A wildcard-major sugar (`*`, `^*`, `~x`, `>=*`, `=*`) bounds nothing, so it
 // contributes no comparator to its set — as node-semver and core expand it.
 // Emitting `>=0.0.0` instead would shut out the prereleases a sibling
@@ -40,10 +57,14 @@ const matchAll = (): ReadonlyArray<ComparatorParts> => [];
 
 /**
  * Close a comparator set: a set every member of which bounded nothing is the
- * match-all set `>=0.0.0`, which still excludes prereleases by the tuple rule.
+ * match-all set `>=0.0.0`, which still excludes prereleases by the tuple
+ * rule — or `>=0.0.0-0`, the lowest version there is, when prereleases are
+ * included.
  */
-export const closeSet = (set: ReadonlyArray<ComparatorParts>): ReadonlyArray<ComparatorParts> =>
-	set.length === 0 ? [comp(">=", sv(0, 0, 0))] : set;
+export const closeSet = (
+	set: ReadonlyArray<ComparatorParts>,
+	options: DesugarOptions,
+): ReadonlyArray<ComparatorParts> => (set.length === 0 ? [comp(">=", sv(0, 0, 0, floorPrerelease(options)))] : set);
 
 // The match-nothing comparator set. `0.0.0-0` is the lowest version SemVer
 // 2.0.0 can express, so nothing sorts below it — node-semver and core
@@ -55,21 +76,25 @@ const matchNothing = (): ReadonlyArray<ComparatorParts> => [comp("<", sv(0, 0, 0
  * pair that allows patch-level changes when a minor version is specified,
  * and minor-level changes when it is not.
  */
-export const desugarTilde = (p: PartialParts): ReadonlyArray<ComparatorParts> => {
+export const desugarTilde = (p: PartialParts, options: DesugarOptions): ReadonlyArray<ComparatorParts> => {
 	// ~* / ~x / ~x.x -> * (a wildcard major bounds nothing)
 	if (p.major === null) return matchAll();
 	const major = p.major;
 	const minor = p.minor;
-	const patch = p.patch ?? 0;
+	const z = floorPrerelease(options);
 
 	if (minor === null) {
-		// ~1 -> >=1.0.0 <2.0.0-0
-		return [comp(">=", sv(major, 0, 0)), comp("<", sv(major + 1, 0, 0, [0]))];
+		// ~1 -> >=1.0.0 <2.0.0-0 (>=1.0.0-0 with includePrerelease)
+		return [comp(">=", sv(major, 0, 0, z)), comp("<", sv(major + 1, 0, 0, [0]))];
 	}
 
-	// ~1.2.3 -> >=1.2.3 <1.3.0-0
-	// ~1.2 -> >=1.2.0 <1.3.0-0
-	return [comp(">=", sv(major, minor, patch, p.prerelease)), comp("<", sv(major, minor + 1, 0, [0]))];
+	if (p.patch === null) {
+		// ~1.2 -> >=1.2.0 <1.3.0-0 (>=1.2.0-0 with includePrerelease)
+		return [comp(">=", sv(major, minor, 0, z)), comp("<", sv(major, minor + 1, 0, [0]))];
+	}
+
+	// ~1.2.3 -> >=1.2.3 <1.3.0-0 (a full floor keeps its own prerelease)
+	return [comp(">=", sv(major, minor, p.patch, p.prerelease)), comp("<", sv(major, minor + 1, 0, [0]))];
 };
 
 /**
@@ -78,14 +103,19 @@ export const desugarTilde = (p: PartialParts): ReadonlyArray<ComparatorParts> =>
  * major/minor/patch that is non-zero (so `^0.2.3` allows patch bumps only,
  * `^0.0.3` allows none).
  */
-export const desugarCaret = (p: PartialParts): ReadonlyArray<ComparatorParts> => {
+export const desugarCaret = (p: PartialParts, options: DesugarOptions): ReadonlyArray<ComparatorParts> => {
 	// ^* / ^x -> * (a wildcard major bounds nothing; it is not ^0)
 	if (p.major === null) return matchAll();
 	const major = p.major;
 	const minor = p.minor;
 	const patch = p.patch;
 
-	const lower = sv(major, minor ?? 0, patch ?? 0, p.prerelease);
+	// A partial floor (`^1.2`, `^1`) is lowered to `-0` with includePrerelease;
+	// a full one (`^1.2.3`) keeps its own prerelease either way.
+	const lower =
+		patch === null || minor === null
+			? sv(major, minor ?? 0, 0, floorPrerelease(options))
+			: sv(major, minor, patch, p.prerelease);
 
 	if (major !== 0) {
 		// ^1.2.3 -> >=1.2.3 <2.0.0-0
@@ -125,10 +155,15 @@ export const desugarCaret = (p: PartialParts): ReadonlyArray<ComparatorParts> =>
  * comparator; wildcards expand to the bounding `>=`/`<` pair implied by the
  * given `operator`.
  */
-export const desugarXRange = (operator: string | null, p: PartialParts): ReadonlyArray<ComparatorParts> => {
+export const desugarXRange = (
+	operator: string | null,
+	p: PartialParts,
+	options: DesugarOptions,
+): ReadonlyArray<ComparatorParts> => {
 	const major = p.major;
 	const minor = p.minor;
 	const patch = p.patch;
+	const z = floorPrerelease(options);
 
 	// Fully specified (no wildcards)
 	if (major !== null && minor !== null && patch !== null) {
@@ -148,17 +183,17 @@ export const desugarXRange = (operator: string | null, p: PartialParts): Readonl
 	}
 
 	if (minor === null) {
-		// 1.x or 1.*
+		// 1.x or 1.* (every `>=` floor below takes `-0` with includePrerelease)
 		if (operator === null || operator === "=") {
-			return [comp(">=", sv(major, 0, 0)), comp("<", sv(major + 1, 0, 0, [0]))];
+			return [comp(">=", sv(major, 0, 0, z)), comp("<", sv(major + 1, 0, 0, [0]))];
 		}
 		if (operator === ">") {
 			// >1.x -> >=2.0.0
-			return [comp(">=", sv(major + 1, 0, 0))];
+			return [comp(">=", sv(major + 1, 0, 0, z))];
 		}
 		if (operator === ">=") {
 			// >=1.x -> >=1.0.0
-			return [comp(">=", sv(major, 0, 0))];
+			return [comp(">=", sv(major, 0, 0, z))];
 		}
 		if (operator === "<") {
 			// <1.x -> <1.0.0-0
@@ -170,15 +205,15 @@ export const desugarXRange = (operator: string | null, p: PartialParts): Readonl
 
 	// patch is null (minor is set): 1.2.x
 	if (operator === null || operator === "=") {
-		return [comp(">=", sv(major, minor, 0)), comp("<", sv(major, minor + 1, 0, [0]))];
+		return [comp(">=", sv(major, minor, 0, z)), comp("<", sv(major, minor + 1, 0, [0]))];
 	}
 	if (operator === ">") {
 		// >1.2.x -> >=1.3.0
-		return [comp(">=", sv(major, minor + 1, 0))];
+		return [comp(">=", sv(major, minor + 1, 0, z))];
 	}
 	if (operator === ">=") {
 		// >=1.2.x -> >=1.2.0
-		return [comp(">=", sv(major, minor, 0))];
+		return [comp(">=", sv(major, minor, 0, z))];
 	}
 	if (operator === "<") {
 		// <1.2.x -> <1.2.0-0
@@ -196,10 +231,30 @@ export const desugarXRange = (operator: string | null, p: PartialParts): Readonl
  * entirely (`* - 2.0.0` → `<=2.0.0`), as node-semver and core do: emitting a
  * `>=0.0.0` lower bound instead would shut out prereleases the upper
  * comparator's tuple admits (`* - 0.0.0-1` must match `0.0.0-0`).
+ *
+ * With `includePrerelease`, a lower bound without a prerelease of its own is
+ * lowered to `-0` even when fully specified (`1.2.3 - 2` → `>=1.2.3-0`), as
+ * node-semver's `hyphenReplace` and core do — unlike a bare `>=1.2.3`.
  */
-export const desugarHyphen = (lower: PartialParts, upper: PartialParts): ReadonlyArray<ComparatorParts> => {
+export const desugarHyphen = (
+	lower: PartialParts,
+	upper: PartialParts,
+	options: DesugarOptions,
+): ReadonlyArray<ComparatorParts> => {
 	const from: ReadonlyArray<ComparatorParts> =
-		lower.major === null ? [] : [comp(">=", sv(lower.major, lower.minor ?? 0, lower.patch ?? 0, lower.prerelease))];
+		lower.major === null
+			? []
+			: [
+					comp(
+						">=",
+						sv(
+							lower.major,
+							lower.minor ?? 0,
+							lower.patch ?? 0,
+							lower.prerelease.length > 0 ? lower.prerelease : floorPrerelease(options),
+						),
+					),
+				];
 
 	let to: ReadonlyArray<ComparatorParts>;
 	if (upper.major !== null && upper.minor !== null && upper.patch !== null) {

@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Option, Ref, Schema } from "effect";
-import type { InvalidRangeError } from "./Range.js";
+import type { InvalidRangeError, RangeOptions } from "./Range.js";
 import { Range } from "./Range.js";
 import { SemVer } from "./SemVer.js";
 import { VersionDiff } from "./VersionDiff.js";
@@ -75,15 +75,25 @@ export interface VersionCacheShape {
 	readonly latest: () => Effect.Effect<SemVer, EmptyCacheError>;
 	/** The lowest cached version. Fails with {@link EmptyCacheError} when empty. */
 	readonly oldest: () => Effect.Effect<SemVer, EmptyCacheError>;
-	/** The highest cached version satisfying a range. Fails with {@link UnsatisfiedRangeError} when none match. */
+	/**
+	 * The highest cached version satisfying a range. Fails with
+	 * {@link UnsatisfiedRangeError} when none match. Prereleases match the
+	 * way the range was parsed to: see `RangeOptions.includePrerelease`.
+	 */
 	readonly resolve: (range: Range) => Effect.Effect<SemVer, UnsatisfiedRangeError>;
 	/**
-	 * Parse a range expression and resolve it. Fails with
-	 * {@link InvalidRangeError} when `input` does not parse, or
+	 * Parse a range expression with `options` (see `RangeOptions`) and resolve
+	 * it. Fails with {@link InvalidRangeError} when `input` does not parse, or
 	 * {@link UnsatisfiedRangeError} when it parses but nothing matches.
 	 */
-	readonly resolveString: (input: string) => Effect.Effect<SemVer, InvalidRangeError | UnsatisfiedRangeError>;
-	/** All cached versions satisfying a range; `[]` when empty or none match. */
+	readonly resolveString: (
+		input: string,
+		options?: RangeOptions,
+	) => Effect.Effect<SemVer, InvalidRangeError | UnsatisfiedRangeError>;
+	/**
+	 * All cached versions satisfying a range; `[]` when empty or none match.
+	 * Prereleases match the way the range was parsed to.
+	 */
 	readonly filter: (range: Range) => Effect.Effect<ReadonlyArray<SemVer>>;
 	/** Diff two cached versions. Fails with {@link VersionNotFoundError} when either is missing. */
 	readonly diff: (a: SemVer, b: SemVer) => Effect.Effect<VersionDiff, VersionNotFoundError>;
@@ -205,8 +215,8 @@ export class VersionCache extends Context.Service<VersionCache, VersionCacheShap
 
 				resolve,
 
-				resolveString: Effect.fn("VersionCache.resolveString")(function* (input: string) {
-					const range = yield* Range.parse(input);
+				resolveString: Effect.fn("VersionCache.resolveString")(function* (input: string, options?: RangeOptions) {
+					const range = yield* Range.parse(input, options);
 					return yield* resolve(range);
 				}),
 

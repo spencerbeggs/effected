@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T20:50:04Z
+  at: 2026-10-24T00:43:19Z
 integrity:
   generated:
-    body: 28c51375c9c29f75
+    body: 55b668d903ad4cd1
 ---
 
 # semver
@@ -39,7 +39,13 @@ String-level validity is a lexically paired surface: `SemVer.isValid` (boolean) 
 
 There is deliberately **no `SemVer.diff`**: `VersionDiff`'s fields reference `SemVer`, so a delegating static on `SemVer` would create an import cycle, and `noImportCycles` is error-level. `VersionDiff.between(a, b)` is the single canonical diff entry point. Grouping (`groupBy`, `latestByMajor`, `latestByMinor`) lives on `SemVer` as pure statics rather than on `VersionCache`, since grouping needs no state and putting it on the service would force a pure operation to require a layer.
 
-`VersionCache` is a `Context.Service` over a `Ref<ReadonlyArray<SemVer>>` kept sorted and deduplicated by SemVer precedence via binary search, with membership and dedupe ignoring build metadata; `VersionCache.layer` is bound once with `Layer.effect` (`Ref` construction is effectful) and requires nothing. Its absence semantics are the load-bearing design decision: "nothing is cached" and "the pivot version is not cached" are typed failures, while "the pivot sits at the boundary" and "no version matched" are `Option` and `[]` respectively — a caller that conflates the two mishandles an empty cache.
+`VersionCache` is a `Context.Service` over a `Ref<ReadonlyArray<SemVer>>` kept sorted and deduplicated by SemVer precedence via binary search, with membership and dedupe ignoring build metadata; `VersionCache.layer` is bound once with `Layer.effect` (`Ref` construction is effectful) and requires nothing. Its absence semantics are the load-bearing design decision: "nothing is cached" and "the pivot version is not cached" are typed failures, while "the pivot sits at the boundary" and "no version matched" are `Option` and `[]` respectively — a caller that conflates the two mishandles an empty cache. Its lookups take a `Range` and match the way that range was parsed to; `resolveString(input, options?)` forwards `RangeOptions` to the parse.
+
+## Prerelease matching
+
+`Range.test` applies node-semver's default rule: a prerelease version satisfies a comparator set only when some comparator in it carries a prerelease on the same `major.minor.patch`, so `^1.2.3` never matches `1.2.4-alpha`. `includePrerelease` lifts that rule, and it is a **parse** option — `Range.parse(input, { includePrerelease: true })`, `Range.parseResult` and `VersionCache.resolveString` take a `RangeOptions` bag — because node-semver and core apply it while desugaring, not only while matching: a wildcard floor is lowered to its first prerelease (`^1.2` → `>=1.2.0-0 <2.0.0-0`, `*` → `>=0.0.0-0`, `1.2.3 - 2` → `>=1.2.3-0 <3.0.0-0`) while a literal full floor keeps its release form (`>=1.2.0` stays `>=1.2.0` and still rejects `1.2.0-alpha`). The kit stores desugared comparators, so that distinction is gone after parsing; a match-time flag could only drop the tuple rule and would disagree with core on every partial floor.
+
+The parsed `Range` therefore records the choice in an `includePrerelease` schema field (constructor and decoding default `false`, so `Range.make({ sets })` and a serialized `{ sets }` keep meaning the default rule), and every matcher — `test`, `filter`, `satisfies`, `maxSatisfying`, `minSatisfying`, the `VersionCache` lookups — reads it from the value rather than taking the option again. Two ranges with the same sets but different flags are not `Equal`, a prerelease-including range is never `isSubset` of a default one, and `union`, `intersect` and `simplify` carry `self`'s flag. The one lossy path is `Range.FromString`: the string form has no syntax for the flag, so decoding always yields the default rule and only the struct form round-trips it.
 
 ## Result is the primitive
 
@@ -59,9 +65,9 @@ Domain errors carry structured `input`/`position` payloads (core's `SemVerError`
 
 ## Relation to core
 
-Core ships `effect/SemVer` and `effect/SemVerRange`, both `@stability unstable`. This package stays independent of them and uses them as a test oracle instead: `__test__/core-parity.test.ts` runs every version parse, ordering and range match through both and fails on any disagreement outside three named divergences — padded version input (the kit trims), build metadata in a range or comparator (the kit drops it, core rejects it), and equality with build metadata (the kit's `Equal` follows precedence; core deliberately keeps a structural `Equivalence` that includes build beside a precedence `Order` that ignores it, so never mix the two in a hash-keyed collection). Why, and when to reach for core instead: [stays independent of core SemVer](../decisions/semver-stays-independent-of-core-semver.md).
+Core ships `effect/SemVer` and `effect/SemVerRange`, both `@stability unstable`. This package stays independent of them and uses them as a test oracle instead: `__test__/core-parity.test.ts` runs every version parse, ordering, range match (under both prerelease rules) and prerelease bump through both and fails on any disagreement outside four named divergences — padded version input (the kit trims), build metadata in a range or comparator (the kit drops it, core rejects it), equality with build metadata (the kit's `Equal` follows precedence; core deliberately keeps a structural `Equivalence` that includes build beside a precedence `Order` that ignores it, so never mix the two in a hash-keyed collection), and release bumps of a prerelease (`bump.major()` on `2.0.0-beta.1` increments to `3.0.0`; core finishes the release at `2.0.0`). Why, and when to reach for core instead: [stays independent of core SemVer](../decisions/semver-stays-independent-of-core-semver.md).
 
-The range grammar matches node-semver and core at the edges: any `\s` whitespace separates comparators and may follow an operator (`>= 18`); `^*`, `~*` and `^x` match every release while `>*` and `<*` desugar to the unsatisfiable `<0.0.0-0`, which the range algebra treats as empty; a `*` side of a hyphen range drops that side's comparator; and a concrete component may not follow a wildcard (`1.*.3`). `SemVerBump.prerelease` reads an all-digit identifier as numeric, as core does, and throws on a malformed one. `includePrerelease` matching is not supported.
+The range grammar matches node-semver and core at the edges: any `\s` whitespace separates comparators and may follow an operator (`>= 18`); `^*`, `~*` and `^x` match every release while `>*` and `<*` desugar to the unsatisfiable `<0.0.0-0`, which the range algebra treats as empty; a `*` side of a hyphen range drops that side's comparator; and a concrete component may not follow a wildcard (`1.*.3`). `SemVerBump.prerelease` matches core `SemVer.bumpPrerelease` on every input: it reads an all-digit identifier as numeric, increments the **right-most numeric** identifier wherever it sits (`1.0.0-1.beta` → `1.0.0-2.beta`), appends `0` only when there is none, and throws on a malformed identifier. node-semver's `inc` differs from both on one quirk — an identifier equal to the first one resets to `[id, 0]` when the second identifier is not numeric — which the pinned fixtures leave out by name.
 
 ## Observability
 
@@ -69,7 +75,7 @@ Named `Effect.fn` spans on the effectful, failure-carrying public boundaries onl
 
 ## Testing
 
-`@effect/vitest` with `it.effect` as the default mode, tests in `packages/semver/__test__/`. `VersionCache` suites use one top-level `layer(VersionCache.layer)((it) => {...})` group so the layer is built once and memoized rather than provided per test. Round-trip properties run through `it.effect.prop` with `Schema.toArbitrary(SemVer)`, the payoff for the lookahead-free identifier pattern. A node-semver-compatible spec-compliance fixture suite is the safety net for any grammar change, and the core-parity differential test is the early warning for a core change.
+`@effect/vitest` with `it.effect` as the default mode, tests in `packages/semver/__test__/`. `VersionCache` suites use one top-level `layer(VersionCache.layer)((it) => {...})` group so the layer is built once and memoized rather than provided per test. Round-trip properties run through `it.effect.prop` with `Schema.toArbitrary(SemVer)`, the payoff for the lookahead-free identifier pattern. A node-semver-compatible spec-compliance fixture suite — including tables pinned from node-semver 7.8.5 for `includePrerelease` matching and prerelease bumps — is the safety net for any grammar or bump change, and the core-parity differential test is the early warning for a core change.
 
 ## Build
 

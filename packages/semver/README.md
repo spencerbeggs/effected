@@ -85,7 +85,7 @@ console.log(Effect.runSync(program));
 // => ["1.0.1-beta.0", "2.0.0-rc.2", true, "2.0.0"]
 ```
 
-Bumping is node-semver compatible: a stable version starts a prerelease of the *next* patch, switching identifiers resets the counter, and a trailing numeric identifier increments. Build metadata never survives a bump.
+Bumping is node-semver compatible: a stable version starts a prerelease of the *next* patch, switching identifiers resets the counter, and the right-most numeric identifier increments wherever it sits (`1.0.0-1.beta` becomes `1.0.0-2.beta`), with `0` appended only when there is none. Build metadata never survives a bump.
 
 Equality follows the spec rather than the string. `Equal.equals` ignores build metadata (§10) and includes prerelease identifiers (§11), and `SemVer` overrides `[Hash.symbol]` to agree with that, so two versions differing only in build metadata are one value in a `HashSet` and one slot in `VersionCache`. `SemVer.Order` sorts by precedence; `SemVer.OrderWithBuild` adds a lexical tiebreak on build metadata when you need a total order over distinct version strings.
 
@@ -111,7 +111,7 @@ console.log(Effect.runSync(program));
 // => [true, ["1.2.0", "1.6.0"]]
 ```
 
-Matching implements node-semver's prerelease restriction: a prerelease version satisfies a set only when some comparator in that set carries a prerelease on the same `major.minor.patch` tuple. That is what keeps `^1.2.3` from unexpectedly matching `1.2.4-alpha`.
+Matching implements node-semver's prerelease restriction: a prerelease version satisfies a set only when some comparator in that set carries a prerelease on the same `major.minor.patch` tuple. That is what keeps `^1.2.3` from unexpectedly matching `1.2.4-alpha`. Pass `Range.parse(input, { includePrerelease: true })` (also accepted by `Range.parseResult` and `VersionCache.resolveString`) to lift that rule: wildcard floors are lowered to their first prerelease (`^1.2` becomes `>=1.2.0-0 <2.0.0-0`) and the parsed `Range` records the choice in its `includePrerelease` field, so every matcher built on it honours it. `Range.FromString` cannot carry the flag; the struct form round-trips it.
 
 The range algebra is `union`, `intersect`, `isSubset`, `equivalent` and `simplify`. `isSubset` is a deliberate conservative approximation: it can report `false` for a range that is technically a subset, when the sub-range straddles comparator-set boundaries in the sup-range. False negatives are safe, because all they do is decline a simplification.
 

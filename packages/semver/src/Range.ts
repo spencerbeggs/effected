@@ -35,6 +35,35 @@ export class InvalidRangeError extends Schema.TaggedError<InvalidRangeError>()("
 export type ComparatorSet = ReadonlyArray<Comparator>;
 
 /**
+ * Options accepted by {@link Range.parse}, {@link Range.parseResult} and
+ * `VersionCache.resolveString`, deciding how the parsed range treats
+ * prerelease versions.
+ *
+ * @remarks
+ * `includePrerelease` is node-semver's and core `SemVerRange`'s option of the
+ * same name. It is a **parse** option because it changes what the sugar
+ * means, not only how matching runs: a wildcard floor is lowered to its first
+ * prerelease (`^1.2` desugars to `>=1.2.0-0 <1.3.0-0` instead of
+ * `>=1.2.0 <1.3.0-0`), and a range parsed with it matches a prerelease
+ * wherever its bounds contain one, with no tuple rule. The parsed
+ * {@link Range} records the choice in its `includePrerelease` field, so every
+ * matching entry point — `test`, `filter`, `satisfies`, `maxSatisfying`,
+ * `minSatisfying` and the `VersionCache` lookups — honours it without being
+ * told again.
+ *
+ * @public
+ */
+export interface RangeOptions {
+	/**
+	 * Let prerelease versions match any comparator set whose bounds contain
+	 * them, and lower wildcard floors to include prereleases. Defaults to
+	 * `false`: a prerelease only matches a set with a comparator carrying a
+	 * prerelease on the same `major.minor.patch`.
+	 */
+	readonly includePrerelease?: boolean | undefined;
+}
+
+/**
  * A SemVer range expression: a union (OR) of {@link ComparatorSet}s.
  * Supports node-semver syntax — hyphen ranges (`1.0.0 - 2.0.0`), X-ranges
  * (`1.x`, `*`), tilde (`~1.2.3`), caret (`^1.2.3`) and `||` unions — which
@@ -56,6 +85,14 @@ export type ComparatorSet = ReadonlyArray<Comparator>;
  *   parses to the same range as `1.2.3` and prints without `+build`. Core
  *   rejects build metadata in a range; this package strips it, as npm does.
  *
+ * Prerelease matching follows node-semver's default rule — a prerelease
+ * version only satisfies a comparator set that carries a prerelease on the
+ * same `major.minor.patch` — unless the range was parsed with
+ * {@link RangeOptions.includePrerelease}, which the range records in its
+ * `includePrerelease` field. Two ranges with the same comparator sets but
+ * different `includePrerelease` are not `Equal`: they match different
+ * versions.
+ *
  * @example
  * ```ts
  * import { Range, SemVer } from "@effected/semver";
@@ -76,6 +113,15 @@ export type ComparatorSet = ReadonlyArray<Comparator>;
 export class Range extends Schema.Class<Range>("Range")({
 	/** Comparator sets combined with OR semantics; a version matches when it satisfies any set. */
 	sets: Schema.Array(Schema.Array(Comparator)),
+	/**
+	 * Whether prerelease versions match on bounds alone, with no tuple rule
+	 * (see {@link RangeOptions.includePrerelease}). Defaults to `false` both
+	 * when constructing and when decoding a struct that omits the key.
+	 */
+	includePrerelease: Schema.Boolean.pipe(
+		Schema.withDecodingDefaultKey(Effect.succeed(false)),
+		Schema.withConstructorDefault(Effect.succeed(false)),
+	),
 }) {
 	// ── Schema ──────────────────────────────────────────────────────────
 
@@ -83,6 +129,13 @@ export class Range extends Schema.Class<Range>("Range")({
 	 * Schema transformation between the range expression string and
 	 * {@link Range}: decoding parses, desugars and normalizes; encoding
 	 * prints `a b || c d`.
+	 *
+	 * @remarks
+	 * The string form cannot carry {@link RangeOptions.includePrerelease}, so
+	 * decoding always produces the default matching rule, and a range parsed
+	 * with `includePrerelease` does not survive an encode/decode round trip
+	 * through this codec — only its comparator sets do. Embed the class
+	 * itself (its struct form keeps the flag) where that matters.
 	 */
 	static readonly FromString: Schema.Codec<Range, string> = Schema.String.pipe(
 		Schema.decodeTo(
@@ -128,11 +181,13 @@ export class Range extends Schema.Class<Range>("Range")({
 	 * ```
 	 *
 	 * @param input - the range expression to parse
+	 * @param options - how the range treats prereleases; see {@link RangeOptions}
 	 * @returns a `Result` succeeding with the parsed {@link Range}, or failing
 	 * with {@link InvalidRangeError}.
 	 */
-	static parseResult(input: string): Result.Result<Range, InvalidRangeError> {
-		const result = parseRange(input);
+	static parseResult(input: string, options?: RangeOptions): Result.Result<Range, InvalidRangeError> {
+		const includePrerelease = options?.includePrerelease === true;
+		const result = parseRange(input, { includePrerelease });
 		if (!result.ok) {
 			return Result.fail(new InvalidRangeError({ input: result.input, position: result.position }));
 		}
@@ -141,6 +196,7 @@ export class Range extends Schema.Class<Range>("Range")({
 				sets: normalizeSets(result.value).map((set) =>
 					set.map((c) => Comparator.make({ operator: c.operator, version: SemVer.make(c.version) })),
 				),
+				includePrerelease,
 			}),
 		);
 	}
@@ -150,10 +206,29 @@ export class Range extends Schema.Class<Range>("Range")({
 	 * terms of {@link Range.parseResult} — synchronous callers can use that
 	 * variant directly.
 	 *
+	 * @example
+	 * ```ts
+	 * import { Range, SemVer } from "@effected/semver";
+	 * import { Effect } from "effect";
+	 *
+	 * const program = Effect.gen(function* () {
+	 *   const strict = yield* Range.parse("^1.2");
+	 *   const loose = yield* Range.parse("^1.2", { includePrerelease: true });
+	 *   const candidate = yield* SemVer.parse("1.2.5-beta.1");
+	 *   return [strict.test(candidate), loose.test(candidate)] as const;
+	 * });
+	 *
+	 * console.log(Effect.runSync(program));
+	 * // => [false, true]
+	 * ```
+	 *
 	 * @param input - the range expression to parse
+	 * @param options - how the range treats prereleases; see {@link RangeOptions}
 	 * @returns the parsed {@link Range}. Fails with {@link InvalidRangeError}.
 	 */
-	static readonly parse = Effect.fn("Range.parse")((input: string) => Effect.fromResult(Range.parseResult(input)));
+	static readonly parse = Effect.fn("Range.parse")((input: string, options?: RangeOptions) =>
+		Effect.fromResult(Range.parseResult(input, options)),
+	);
 
 	// ── Matching statics (dual) ─────────────────────────────────────────
 
@@ -236,11 +311,21 @@ export class Range extends Schema.Class<Range>("Range")({
 	/**
 	 * Combine two ranges with OR semantics: the union of their comparator
 	 * sets. Dual API.
+	 *
+	 * @remarks
+	 * The result matches prereleases the way `self` does: its
+	 * `includePrerelease` is `self`'s. Combine ranges parsed with the same
+	 * option; a mixed pair has no single matching rule that is right for
+	 * both operands' sets.
 	 */
 	static readonly union: {
 		(that: Range): (self: Range) => Range;
 		(self: Range, that: Range): Range;
-	} = Fn.dual(2, (self: Range, that: Range): Range => Range.make({ sets: [...self.sets, ...that.sets] }));
+	} = Fn.dual(
+		2,
+		(self: Range, that: Range): Range =>
+			Range.make({ sets: [...self.sets, ...that.sets], includePrerelease: self.includePrerelease }),
+	);
 
 	/**
 	 * Intersect two ranges via a cross-product of their comparator sets,
@@ -254,6 +339,8 @@ export class Range extends Schema.Class<Range>("Range")({
 	 * never diverge. Reach for the `Effect` variant inside Effect code — it
 	 * carries the `Range.intersect` tracing span — and for this one at
 	 * synchronous boundaries.
+	 *
+	 * The result's `includePrerelease` is `self`'s, as for {@link Range.union}.
 	 *
 	 * @example
 	 * ```ts
@@ -287,7 +374,7 @@ export class Range extends Schema.Class<Range>("Range")({
 			return Result.fail(new UnsatisfiableConstraintError({ constraints: [self, that] }));
 		}
 
-		return Result.succeed(Range.make({ sets: candidates }));
+		return Result.succeed(Range.make({ sets: candidates, includePrerelease: self.includePrerelease }));
 	});
 
 	/**
@@ -320,11 +407,16 @@ export class Range extends Schema.Class<Range>("Range")({
 	 * but `isSubset` returns `false` because no single sup-set fully implies
 	 * the sub-set. This is a known limitation; false negatives are safe
 	 * (they prevent incorrect simplification).
+	 *
+	 * A range parsed with `includePrerelease` is never a subset of one parsed
+	 * without it: it may match prereleases the other's tuple rule rejects.
+	 * The other direction compares comparator sets as usual.
 	 */
 	static readonly isSubset: {
 		(sup: Range): (sub: Range) => boolean;
 		(sub: Range, sup: Range): boolean;
 	} = Fn.dual(2, (sub: Range, sup: Range): boolean => {
+		if (sub.includePrerelease && !sup.includePrerelease) return false;
 		for (const subSet of sub.sets) {
 			const contained = sup.sets.some((supSet) => isComparatorSetSubset(subSet, supSet));
 			if (!contained) return false;
@@ -362,7 +454,7 @@ export class Range extends Schema.Class<Range>("Range")({
 		});
 
 		if (sets.length === 0) return range;
-		return Range.make({ sets });
+		return Range.make({ sets, includePrerelease: range.includePrerelease });
 	}
 
 	// ── Instance ────────────────────────────────────────────────────────
@@ -374,10 +466,12 @@ export class Range extends Schema.Class<Range>("Range")({
 	 * Matches node-semver's prerelease restriction: a prerelease version only
 	 * satisfies the range when at least one comparator in the matching set
 	 * carries a prerelease on the same `major.minor.patch` tuple. This keeps
-	 * `^1.2.3` from unexpectedly matching `1.2.4-alpha`.
+	 * `^1.2.3` from unexpectedly matching `1.2.4-alpha`. A range parsed with
+	 * {@link RangeOptions.includePrerelease} drops that rule and matches a
+	 * prerelease wherever its bounds contain one.
 	 */
 	test(version: SemVer): boolean {
-		return this.sets.some((set) => satisfiesSet(version, set));
+		return this.sets.some((set) => satisfiesSet(version, set, this.includePrerelease));
 	}
 
 	/** Filter versions that satisfy this range, preserving order. */
@@ -421,11 +515,12 @@ export class UnsatisfiableConstraintError extends Schema.TaggedError<Unsatisfiab
 
 // Prerelease tuple restriction (node-semver semantics): a prerelease version
 // only matches a set when some comparator in the set carries a prerelease on
-// the same major.minor.patch tuple.
-const satisfiesSet = (version: SemVer, set: ComparatorSet): boolean => {
+// the same major.minor.patch tuple — unless the range includes prereleases,
+// in which case the bounds alone decide.
+const satisfiesSet = (version: SemVer, set: ComparatorSet, includePrerelease: boolean): boolean => {
 	if (set.length === 0) return true;
 
-	if (version.prerelease.length > 0) {
+	if (!includePrerelease && version.prerelease.length > 0) {
 		const hasTupleMatch = set.some(
 			(c) =>
 				c.version.prerelease.length > 0 &&
