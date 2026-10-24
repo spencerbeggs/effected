@@ -137,6 +137,37 @@ export default defineConfig({
 The tell is an `ERR_LOAD_URL` naming a setup file inside a *package*
 directory. Fix the config; do not add a cwd rule to work around it.
 
+### A `globalSetup` rebuild that was SKIPPED leaves a stale upstream `dist`
+
+In a kit monorepo every cross-package import resolves to the sibling's built
+`dist/dev` (the `publishConfig.directory` the workspace link points at), never
+to its `src/`, so a downstream test sees an upstream `src` edit only when the
+build actually ran. A root `globalSetup` that rebuilds through
+`@vitest-agent/plugin`'s `AgentPlugin.runScript` looks like that guarantee and
+is not one: `runScript` skips its command when the done-marker it wrote on
+the last success is younger than `VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS`
+(30 s by default). The window exists so a *concurrent* second vitest process
+trusts the winner's build, but the next *sequential* run inside it is skipped
+too — edit a leaf package, run a downstream suite within 30 s, and it reads
+the previous build. A sentinel export added upstream and asserted downstream
+makes it visible: the run inside the window fails with the upstream
+`dist/dev/issues.json`'s `generatedAt` unmoved; with the window disabled the
+same run rebuilds and passes.
+
+Pin the window in the setup, before the `runScript` call:
+
+```ts
+process.env.VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS ??= "1";
+AgentPlugin.runScript("pnpm exec turbo run build:dev --output-logs=errors-only");
+```
+
+A 1 ms window keeps the lock's serialization and drops the trust; turbo's
+cache keeps the re-run a fast no-op. Never raise it to make runs feel faster:
+the time saved is turbo's cache hit, and the price is a stale build read
+silently. Diagnosis rule: a downstream test that ignores an upstream edit is
+a build that did not run, not a turbo input gap — check `generatedAt` against
+the edit before reading the test as wrong.
+
 **Zero collected tests is never a pass**, whatever either signal says. The
 producers to recognise:
 
@@ -669,7 +700,7 @@ runs.
 `Effect.sleep` used to stage an interleaving hangs to the vitest timeout rather
 than interleaving. Three-way variants scale the same way — one latch per
 ordering constraint, each named for the constraint it enforces
-(`ActionLogger.test.ts:269-271` runs three).
+(`ActionLogger.test.ts:270-272` runs three).
 
 ## A spy restored in `try`/`finally` inside `Effect.gen` LEAKS
 

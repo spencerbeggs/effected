@@ -68,4 +68,4 @@ const signGet = (credentials: SigV4Credentials, key: string) =>
 
 ## Not included
 
-JWT and JWS signing (that is `@effected/jwt`), SHA-1 or MD5 HMAC, key derivation (PBKDF2, HKDF), encryption, and presigned-URL query signing.
+JWT and JWS signing (that is `@effected/jwt`), SHA-1 or MD5 HMAC, key derivation (PBKDF2, HKDF), encryption, presigned-URL query signing, and the libsodium sealed box GitHub's secrets API needs: that stays a private leaf of `@effected/github` (`tweetnacl` + `blakejs`, confined to `RepositorySecret`) and does not come here, because an external runtime dependency would retier this boundary package, and `@effected/webhooks` over it, to integrated. A second sealed-box consumer outside `github` gets a new integrated package, never a `@effected/crypto` subpath.

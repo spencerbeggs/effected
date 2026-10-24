@@ -43,8 +43,8 @@ export type ComparatorSet = ReadonlyArray<Comparator>;
  * `includePrerelease` is node-semver's and core `SemVerRange`'s option of the
  * same name. It is a **parse** option because it changes what the sugar
  * means, not only how matching runs: a wildcard floor is lowered to its first
- * prerelease (`^1.2` desugars to `>=1.2.0-0 <1.3.0-0` instead of
- * `>=1.2.0 <1.3.0-0`), and a range parsed with it matches a prerelease
+ * prerelease (`^1.2` desugars to `>=1.2.0-0 <2.0.0-0` instead of
+ * `>=1.2.0 <2.0.0-0`), and a range parsed with it matches a prerelease
  * wherever its bounds contain one, with no tuple rule. The parsed
  * {@link Range} records the choice in its `includePrerelease` field, so every
  * matching entry point — `test`, `filter`, `satisfies`, `maxSatisfying`,

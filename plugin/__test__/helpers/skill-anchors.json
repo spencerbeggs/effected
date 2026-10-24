@@ -703,11 +703,11 @@
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "ActionLogger.test.ts:269-271",
+			"anchor": "ActionLogger.test.ts:270-272",
 			"source": "repo:packages/github-actions/__test__/ActionLogger.test.ts",
 			"symbols": {
-				"269": "const leftInside = yield* Latch.make()",
-				"271": "const leftDone = yield* Latch.make()"
+				"270": "const leftInside = yield* Latch.make()",
+				"272": "const leftDone = yield* Latch.make()"
 			}
 		},
 		{

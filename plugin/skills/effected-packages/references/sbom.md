@@ -138,7 +138,9 @@ upload; this file is the surface map. Uploading a bundle is
 ## Testing machinery
 
 The two doubles default differently, on purpose.
-**`SigstoreSigner.makeTest().sign` dies** unless stubbed — a fabricated bundle
+**`SigstoreSigner.makeTest().sign` dies when run** unless stubbed — calling it
+only builds the effect, and the defect sits in that effect's `Exit`, so assert
+on the Exit rather than with `assert.throws` — because a fabricated bundle
 would be a signature-shaped lie, which is exactly the failure an attestation
 exists to prevent; the strongest case in the kit for the die-loudly default. A
 test that wants a real bundle without a network drives the **real**

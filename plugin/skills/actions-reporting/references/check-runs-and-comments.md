@@ -3,8 +3,9 @@
 Both services follow the package's usual shape: a `Context.Service` with a
 `.layer` requiring `GitHubClient`, `Repo` resolved **per call** (not at layer
 construction, so `Repo.provide(other)` works for a multi-repository caller),
-and `makeTest`/`layerTest` doubles whose unstubbed members die naming
-themselves.
+and `makeTest`/`layerTest` doubles whose unstubbed members die when run,
+naming themselves: calling one only builds the effect, so the defect is in
+the `Exit` (`Cause.hasDies`), never thrown at the call site.
 
 ## `CheckRun`
 

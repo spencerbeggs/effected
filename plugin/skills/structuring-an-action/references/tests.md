@@ -136,7 +136,7 @@ export const someServiceRecording = (recording: SomeRecording): Layer.Layer<Some
  });
 ```
 
-The kit's own service doubles die loudly on an unstubbed member by design — a handful of named exceptions aside, the ones whose safe default is a real answer rather than a fabrication. Build a thin recorder on top rather than a whole hand-rolled double: stub exactly the members a given suite exercises, and let every other member's death prove the suite doesn't quietly depend on something it never declared.
+The kit's own service doubles die loudly on an unstubbed member by design — when the effect RUNS, not when the member is called, so the defect sits in the `Exit` and an `assert.throws` around the call never sees it — a handful of named exceptions aside, the ones whose safe default is a real answer rather than a fabrication. Build a thin recorder on top rather than a whole hand-rolled double: stub exactly the members a given suite exercises, and let every other member's death prove the suite doesn't quietly depend on something it never declared.
 
 **Record inside the effect, never eagerly at layer construction.** A recorder that pushes to its array outside an `Effect.sync`/`Effect.gen` boundary logs calls that were only *described*, not run — which produces a recording of an effect's shape rather than of what actually happened when it executed.
 
