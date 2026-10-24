@@ -73,10 +73,9 @@ Confirmed clean (`warnings: 0`, the `*_base` in `suppressed`) with `tsgo`
 green and **no hand-written annotations** on:
 
 - `Schema.Opaque`, `Schema.Class`, `TaggedClass`, `TaggedError`.
-  (Naming trap: this list used to include `Schema.asClass`, which **does not
-  exist** — zero occurrences in `Schema.ts`. To give a schema value
-  a class identity you subclass it directly: `class MyString extends
-  Schema.String {}`.)
+  (Naming trap: there is no `Schema.asClass` — zero occurrences in
+  `Schema.ts`. To give a schema value a class identity you subclass it
+  directly: `class MyString extends Schema.String {}`.)
 - **Recursive `Schema.Class` + `Schema.suspend`** (a node whose field
   references itself): the inline form has **no TS2506** and needs none of the
   old `Schema.Schema<Self>` base-annotation gymnastics — that failure mode was
@@ -271,9 +270,7 @@ zero-warning.
 
 **Do not "fix" these by deleting the link.** Replacing a resolvable
 `{@link (X:interface)}` with an inert backtick span silently removes an API-doc
-cross-reference. This skill previously prescribed exactly that, on the false
-premise that no `{@link}` form resolves for a merged name; the `@effected/config-file`
-port disproved it (five selectors, warnings → 0).
+cross-reference; a selector form resolves for every merged name.
 
 **Member of a const-only namespace object: link through the exported name — no
 selector, and the bare member name never resolves.** Every package entry point
@@ -315,9 +312,7 @@ and `types:check` — it only surfaces in the **prod** build's `issues.json`.
    rather than a hand-written class member. API Extractor does not see fields
    declared in the factory's field object as class members at all, so **no
    selector form fixes it** — `{@link (ReleaseAgeGate:class).exclude}` stays
-   `ae-unresolved-link` too. Write `` `ReleaseAgeGate.exclude` ``. This one is a
-   reliable trap: two agents hit it independently in PR #139, each burning a
-   full build cycle before reaching the same answer. Note the asymmetry with the
+   `ae-unresolved-link` too. Write `` `ReleaseAgeGate.exclude` ``. Note the asymmetry with the
    inherited-member case above — there the *declaration* does not own the
    member; here the class does own it, but only through the factory, which is
    the same dead end from API Extractor's side.
@@ -363,9 +358,7 @@ Three consequences worth holding onto:
   link without a warning — the build stays green either way. Prefer citing the
   overload whose position is stable, and re-read the links when you reorder.
 
-Backticks still work here, and `@effected/walker` shipped `#629` with five
-`` `descend` `` spans for want of this section — that was a retreat, not a
-choice. Where the link would carry the reader to the right overload, use the
+Backticks still work here. Where the link would carry the reader to the right overload, use the
 selector; where any overload will do and the position is likely to move, a
 backtick is the honest form.
 
