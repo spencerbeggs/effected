@@ -23,10 +23,10 @@ sources:
     resource: ../../packages/store/__test__/StoreLifecycle.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-24T01:01:53Z
+  at: 2026-10-24T02:11:16Z
 integrity:
   generated:
-    body: 1df92e59df3229df
+    body: 235ededd8ed8b713
 ---
 
 # Error handling standards
@@ -193,7 +193,17 @@ leading comment naming this section as the source; `cmp` across
 - Two site-local `instanceof Error` reads remain in `@effected/schemastore-cli`
   outside the sites #1082 named, `src/AjvValidator.ts` (the ajv compile
   catch) and `src/cli/commands/validate.ts` (the `JSON.parse` catch); both
-  are pending convergence onto the package's `causeMessage` copy. The one
+  are pending convergence onto the package's `causeMessage` copy.
+  `@effected/jsonc`'s `JsoncFingerprint.ts` (the thrown-digest catch)
+  converged in the same wave and carries its own copy. The other
+  `instanceof Error` reads in the kit sit outside this rule's subject — they
+  render a value caught at a boundary, a defect's stack or an `Error`'s
+  identity, not a preserved `cause: Schema.Defect()` field — and are listed
+  so the inventory is complete, not as debt: in `@effected/cli`
+  `src/CliRuntime.ts`, `src/CliFailure.ts`, `src/ui/CliUiLive.ts`,
+  `src/ui/internal/inkConsole.ts` and `src/internal/fileSink.ts`;
+  `@effected/engine`'s `src/ProcessGuard.ts`; and `@effected/github-actions`'
+  `src/Action.ts`. Of the message-from-`cause` sites #1082 named, the one
   read that stays is `REPLAY_SCRIPT` in
   `packages/workspaces/src/ConfigDependencyHooks.ts`: it is JavaScript source
   text run in a bare `node` subprocess with no `effect` on its module path,
