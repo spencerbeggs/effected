@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/markdown/src/FrontmatterResolver.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-24T00:28:58Z
+  at: 2026-10-24T00:37:31Z
 integrity:
   generated:
-    body: c50787af1f5c30f3
+    body: 4514097a2844e323
 ---
 
 # A public lookup that can miss returns Option, never T | undefined
