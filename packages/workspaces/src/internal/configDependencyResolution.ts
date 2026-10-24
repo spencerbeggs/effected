@@ -441,13 +441,13 @@ const resolveDirectory = (
 
 /**
  * A lazy memo of `effect`, scoped to one {@link resolvePnpmfiles} call: the
- * house success-only memo (never `Effect.cached`, which would pin an
- * interrupt), so a failed or interrupted run is retried by the next user.
+ * house success-only memo (never `Effect.cached`, which would pin a failure),
+ * an exit-keyed TTL that keeps a success for good and expires a failure at
+ * once, so a failed run is retried by the next user while concurrent users
+ * share the one in flight. Core never caches an interrupt.
  */
 const memoizeSuccess = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<Effect.Effect<A, E>> =>
-	Effect.map(Effect.cachedInvalidateWithTTL(effect, Duration.infinity), ([once, invalidate]) =>
-		Effect.onExit(once, (exit) => (Exit.isSuccess(exit) ? Effect.void : invalidate)),
-	);
+	Effect.cachedWithTTL(effect, (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero));
 
 /** What a {@link resolvePnpmfiles} call may use beyond the declared map. */
 export interface ResolveOptions {

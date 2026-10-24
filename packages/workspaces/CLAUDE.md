@@ -22,7 +22,7 @@ Durable knowledge about this package lives in the OKF bundle, not here. Start at
 - The `./testing` modules read no `process`, import no `node:` or `@effect/platform*` module and write to no console: every environment value arrives as a parameter from the consumer's test file. `__test__/integration/SourceBoundarySelf.int.test.ts` pins it with the scanner the subpath ships.
 - `PackedInstall` owns no subprocess seam beyond `@effected/commands`' `Run` over core's `ChildProcess`; its pure decisions live in `src/internal/packedInstallPlan.ts`.
 - `RunBinOptions.stdin` omitted (or `""`) is `"ignore"`, the null device, never an open pipe; only `command`/`carrierCommand` leave stdin open. `PackedInstall.preflight` plans with the run's own `planClosure` and checks `<pkg>/<packFrom.directory>/package.json`; `PackedInstall.gate` is pure over an `env` parameter (skip off CI, fail under CI). Neither may import `vitest`: the recipe lives in the skill, not a wrapper.
-- Never `Effect.cached` for a lazy init — the memo is `Effect.cachedInvalidateWithTTL` plus invalidate-on-non-success (Module, "Lazy init").
+- Never `Effect.cached` for a lazy init — the memo is `Effect.cachedWithTTL` (or `cachedInvalidateWithTTL` where a `refresh()` needs the invalidator) with the exit-keyed TTL `Exit.isSuccess(exit) ? Duration.infinity : Duration.zero`; never a post-hoc `onExit` invalidate (Module, "Lazy init").
 - `PeerCheck` and `DuplicateCheck` join importers to instances through ONE implementation, `src/internal/roots.ts`, so they cannot disagree about which importers are answerable; do not fork the join.
 - Bind parameterized layer factories to a `const` (layers memoize by reference). `Workspaces.resolverLayer` is the deliberate exception.
 

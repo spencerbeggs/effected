@@ -131,16 +131,14 @@ export function EncryptedCodec<E>(
 	// fibers.
 	//
 	// Only SUCCESS may be memoized. `Effect.cached` alone memoizes the whole
-	// `Exit`, so an interrupt — a property of whichever caller's fiber touched
-	// the key first, not of the key effect — would be replayed forever, outside
-	// this codec's declared error channel and unrecoverable via `Effect.catch`.
-	// Invalidating on any non-success exit lets the next caller resolve again.
-	// Lazy either way: nothing runs until the first parse/stringify.
-	const [resolveKey, invalidateKey] = Effect.runSync(
-		Effect.cachedInvalidateWithTTL(keyEffect(keySource), Duration.infinity),
-	);
-	const getKey: Effect.Effect<CryptoKey, ConfigEncryptionError> = Effect.onExit(resolveKey, (exit) =>
-		Exit.isSuccess(exit) ? Effect.void : invalidateKey,
+	// `Exit`, so a failed KMS round-trip would be replayed forever. The exit-keyed
+	// TTL keeps a success for good and expires a failure at once: concurrent
+	// waiters share the one in-flight resolution (and its failure), and the next
+	// caller resolves again. Core never caches an interrupt — that is the
+	// abandoning fiber's property, not the key effect's — so no exit hook is
+	// needed. Lazy either way: nothing runs until the first parse/stringify.
+	const getKey: Effect.Effect<CryptoKey, ConfigEncryptionError> = Effect.runSync(
+		Effect.cachedWithTTL(keyEffect(keySource), (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero)),
 	);
 
 	return {

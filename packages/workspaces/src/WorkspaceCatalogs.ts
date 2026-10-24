@@ -766,8 +766,12 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 				return { catalogs: assembled, releaseAgeGate, importerVersions, peerDependencyRules, hookReplays };
 			});
 
-			const [resolveOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(assemble, Duration.infinity);
-			const memo = Effect.onExit(resolveOnce, (exit) => (Exit.isSuccess(exit) ? Effect.void : invalidate));
+			// Success-only: the exit-keyed TTL keeps a success for good and expires a
+			// failure at once, so the next read re-assembles while concurrent readers
+			// share one in-flight pass. `invalidate` is `refresh()`.
+			const [memo, invalidate] = yield* Effect.cachedInvalidateWithTTL(assemble, (exit) =>
+				Exit.isSuccess(exit) ? Duration.infinity : Duration.zero,
+			);
 
 			return {
 				set: Effect.fn("WorkspaceCatalogs.set")(function* () {

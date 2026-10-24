@@ -1,6 +1,6 @@
 import { inspect } from "node:util";
 import { afterEach, assert, describe, it, vi } from "@effect/vitest";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect";
 import type { ConfigCodec } from "../src/ConfigCodec.js";
 import { ConfigEncryptionError, EncryptedCodec, EncryptedCodecKey } from "../src/EncryptedCodec.js";
 import { JsonCodec } from "../src/JsonCodec.js";
@@ -226,6 +226,40 @@ describe("EncryptedCodec", () => {
 			assert.strictEqual(first, boom);
 			assert.strictEqual(second, boom);
 			// ...but only success is memoized, so each operation resolves the key again.
+			assert.strictEqual(attempts, 2);
+		}),
+	);
+
+	it.effect("concurrent waiters share one failing key resolution, and the next caller retries", () =>
+		Effect.gen(function* () {
+			let attempts = 0;
+			const gate = yield* Deferred.make<void>();
+			const boom = new ConfigEncryptionError({ phase: "key-derivation", cause: new Error("kms down") });
+			const gated = EncryptedCodecKey.fromCryptoKey(
+				Effect.suspend((): Effect.Effect<CryptoKey, ConfigEncryptionError> => {
+					attempts++;
+					// The first resolution parks until released, so a second operation
+					// arrives while it is in flight and must join it rather than start
+					// its own. Released, it fails.
+					return attempts === 1 ? Effect.andThen(Deferred.await(gate), Effect.fail(boom)) : generateKeyForTest();
+				}),
+			);
+			const codec = EncryptedCodec(JsonCodec, gated);
+
+			const first = yield* Effect.forkChild(Effect.flip(codec.stringify({ a: 1 })));
+			const second = yield* Effect.forkChild(Effect.flip(codec.stringify({ b: 2 })));
+			// Both fibers are parked on the one key resolution before it is released.
+			yield* Effect.yieldNow;
+			yield* Deferred.succeed(gate, undefined);
+			const [firstError, secondError] = yield* Fiber.joinAll([first, second]);
+			assert.strictEqual(firstError, boom);
+			assert.strictEqual(secondError, boom);
+			// One run served both waiters: the failure was shared, not duplicated.
+			assert.strictEqual(attempts, 1);
+
+			// The failure expired at once, so the next operation resolves again.
+			const ciphertext = yield* codec.stringify({ port: 8080 });
+			assert.deepStrictEqual(yield* codec.parse(ciphertext), { port: 8080 });
 			assert.strictEqual(attempts, 2);
 		}),
 	);
