@@ -10,7 +10,7 @@
 // Resolution is EXACT version-segment equality. Prefix resolution (`skill@2`
 // selecting the highest registered `2.y.z`) is not offered.
 
-import { Effect, Predicate, Result, Schema } from "effect";
+import { Effect, Option, Predicate, Result, Schema } from "effect";
 
 /**
  * A `$schema` declaration referencing a schema by URL — any string containing
@@ -289,26 +289,32 @@ export class SchemaResolver {
 	 * data.
 	 *
 	 * @remarks
-	 * Non-mapping data and a mapping without a `$schema` key both carry no
-	 * declaration: the result succeeds with `undefined` by default, or fails
-	 * with {@link SchemaDeclarationMissingError} under `requireDeclaration`.
+	 * A lookup that can miss, so the success channel is an `Option`:
+	 * non-mapping data and a mapping without a `$schema` key both carry no
+	 * declaration and succeed with `Option.none()` by default, or fail with
+	 * {@link SchemaDeclarationMissingError} under `requireDeclaration`. A
+	 * present key is classified by {@link SchemaResolver.classify}, and its
+	 * {@link SchemaDeclarationInvalidError} propagates unchanged. Hand the
+	 * declaration to a {@link FrontmatterSchemaResolver} with
+	 * `Option.getOrUndefined`, since the seam takes the absent case as
+	 * `undefined`.
 	 *
 	 * @param data - The decoded frontmatter data.
 	 * @param options - `requireDeclaration` makes a missing `$schema` a typed
-	 *   error.
-	 * @returns The classified declaration, `undefined` when absent and
-	 *   tolerated, or the typed error.
+	 *   error instead of `Option.none()`.
+	 * @returns `Option.some` of the classified declaration, `Option.none()`
+	 *   when absent and tolerated, or the typed error.
 	 */
 	static declarationOf(
 		data: unknown,
 		options?: { readonly requireDeclaration?: boolean },
-	): Result.Result<SchemaDeclaration | undefined, SchemaDeclarationInvalidError | SchemaDeclarationMissingError> {
+	): Result.Result<Option.Option<SchemaDeclaration>, SchemaDeclarationInvalidError | SchemaDeclarationMissingError> {
 		if (!Predicate.isObject(data) || !Object.hasOwn(data, "$schema")) {
 			return options?.requireDeclaration === true
 				? Result.fail(new SchemaDeclarationMissingError())
-				: Result.succeed(undefined);
+				: Result.succeed(Option.none());
 		}
-		return SchemaResolver.classify(data.$schema);
+		return Result.map(SchemaResolver.classify(data.$schema), Option.some);
 	}
 
 	/**

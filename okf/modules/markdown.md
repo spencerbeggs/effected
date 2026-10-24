@@ -333,7 +333,14 @@ Every lookup that can miss returns `Option`
 packages' tree lookups (`JsoncNode.find`, `YamlNode.find`). A derived getter
 counts as a lookup, not a data field, because it recomputes from the tree on
 each access; the optional fields of the node classes themselves keep mdast's
-`T | undefined` shape, since they are data.
+`T | undefined` shape, since they are data. The rule reaches inside a
+`Result` too: `SchemaResolver.declarationOf` is a lookup over decoded
+frontmatter that can miss, so it returns
+`Result<Option<SchemaDeclaration>, …>` — `Option.none()` for data without a
+`$schema` key — rather than `SchemaDeclaration | undefined`. The
+`FrontmatterSchemaResolver.resolve` seam still receives the absent case as
+`undefined`, because that is a caller-supplied callback whose parameter
+shape is its own contract; a caller bridges with `Option.getOrUndefined`.
 
 The frontmatter fence grammar is the kit's own closed set — `---` yaml, `+++`
 toml, `---json` json, each fence line exact — and it does not match

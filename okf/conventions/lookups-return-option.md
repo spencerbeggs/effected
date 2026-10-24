@@ -25,6 +25,8 @@ sources:
     resource: ../../packages/workspaces/src/ImportGraph.ts
   - id: ui-key
     resource: ../../packages/cli/src/ui/UiKey.ts
+  - id: frontmatter-resolver
+    resource: ../../packages/markdown/src/FrontmatterResolver.ts
 generated:
   by: "okfit/claude-code"
   at: 2026-10-23T20:35:54Z
@@ -48,6 +50,16 @@ that shape so a new surface does not need a survey to find it, and so a
 review can cite a rule instead of a precedent. It also brings
 `MarkdownDocument`'s `frontmatter`, `firstSection`, `sectionByHeading` and
 `find`, and `HostedSchema.resolvedCurrent`,[^hosted-schema] onto `Option`.
+
+A `Result`-returning lookup is still a lookup. `SchemaResolver.declarationOf`
+extracts a `$schema` declaration from decoded frontmatter and can miss, so
+its success channel is `Option<SchemaDeclaration>`, giving
+`Result<Option<SchemaDeclaration>, …>`.[^frontmatter-resolver] The miss is
+a tolerated success, distinct from the typed failures, and `Option` keeps
+it from being confused with a stray `undefined`; "the absent case is a
+tolerated success inside a `Result`" was considered as a fifth exemption
+and declined, because the `Result` already separates failure from success
+and buys nothing for the miss itself.
 
 Why `Option` rather than `undefined`: a stray `undefined` can carry
 meaning nobody meant it to. A spread, an optional field, or a defaulted
@@ -139,5 +151,9 @@ there an omitted ceiling would have meant an unbounded walk, while
     absent path.
 [^import-graph]: `packages/workspaces/src/ImportGraph.ts` —
     `followPackage` returns `undefined` to decline following a specifier.
+[^frontmatter-resolver]: `packages/markdown/src/FrontmatterResolver.ts` —
+    `SchemaResolver.declarationOf` returns
+    `Result.Result<Option.Option<SchemaDeclaration>, …>`; `Option.none()`
+    for data with no `$schema` key unless `requireDeclaration` is set.
 [^ui-key]: `packages/cli/src/ui/UiKey.ts` — `fromInk` maps an Ink key
     event to a `UiKey`, or `undefined` when the event has no binding.
