@@ -285,8 +285,12 @@ export interface StoreOptions {
 	 *   foreign table the rollback did not snapshot cannot be judged —
 	 *   refused, typed. No clock comparison is involved (`created_at` has
 	 *   one-second resolution). Re-applying or importing an id clears its
-	 *   tombstone. Foreign rows are never deleted by a Store without the
-	 *   option: that ledger belongs to the older program.
+	 *   tombstone. Tombstones are decoded on read, not trusted: a row in
+	 *   `_store_meta` that is not a tombstone — unparseable, the wrong shape,
+	 *   or keyed by anything but a positive integer — is refused, typed
+	 *   (`StoreError`, `operation: "setup"`, or `"migrate"` when met mid-run),
+	 *   naming the row and the decode issue. Foreign rows are never deleted by
+	 *   a Store without the option: that ledger belongs to the older program.
 	 * - **With `adoptMigratorLedger`**: both default to the same table, which
 	 *   is the intended pairing — adoption copies the old history in once,
 	 *   mirroring keeps writing it. Adoption runs first.
