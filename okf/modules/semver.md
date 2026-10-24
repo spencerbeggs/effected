@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T20:50:04Z
+  at: 2026-10-24T00:43:19Z
 integrity:
   generated:
-    body: 28c51375c9c29f75
+    body: 55b668d903ad4cd1
 ---
 
 # semver
