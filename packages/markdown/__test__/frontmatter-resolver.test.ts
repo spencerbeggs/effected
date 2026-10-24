@@ -13,8 +13,8 @@
 // prefix so the package index stays collision-free.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Result, Schema } from "effect";
-import type { FrontmatterSchemaResolver } from "../src/FrontmatterResolver.js";
+import { Effect, Option, Result, Schema } from "effect";
+import type { FrontmatterSchemaResolver, SchemaDeclaration } from "../src/FrontmatterResolver.js";
 import {
 	SchemaDeclarationByName,
 	SchemaDeclarationByPath,
@@ -181,18 +181,28 @@ describe("SchemaResolver.classify", () => {
 });
 
 describe("SchemaResolver.declarationOf", () => {
-	it("extracts and classifies the $schema key", () => {
+	it("extracts and classifies the $schema key as Option.some", () => {
 		const result = SchemaResolver.declarationOf({ $schema: "skill@2.1.0", title: "t" });
 		assert.isTrue(Result.isSuccess(result));
 		if (Result.isFailure(result)) return;
-		assert.instanceOf(result.success, SchemaDeclarationByName);
+		assert.isTrue(Option.isSome(result.success));
+		if (Option.isNone(result.success)) return;
+		assert.instanceOf(result.success.value, SchemaDeclarationByName);
+		assert.strictEqual(result.success.value.name, "skill");
 	});
 
-	it("yields undefined for a missing declaration by default", () => {
+	it("yields Option.none for a missing declaration by default", () => {
 		const result = SchemaResolver.declarationOf({ title: "t" });
 		assert.isTrue(Result.isSuccess(result));
 		if (Result.isFailure(result)) return;
-		assert.isUndefined(result.success);
+		assert.isTrue(Option.isNone(result.success));
+	});
+
+	it("hands the absent case to the resolver seam as undefined via Option.getOrUndefined", () => {
+		const result = SchemaResolver.declarationOf({ title: "t" });
+		assert.isTrue(Result.isSuccess(result));
+		if (Result.isFailure(result)) return;
+		assert.isUndefined(Option.getOrUndefined(result.success));
 	});
 
 	it("fails typed for a missing declaration under requireDeclaration", () => {
@@ -202,12 +212,31 @@ describe("SchemaResolver.declarationOf", () => {
 		assert.instanceOf(result.failure, SchemaDeclarationMissingError);
 	});
 
+	it("returns the bare declaration, not an Option, under requireDeclaration", () => {
+		const result = SchemaResolver.declarationOf({ $schema: "skill@2.1.0" }, { requireDeclaration: true });
+		assert.isTrue(Result.isSuccess(result));
+		if (Result.isFailure(result)) return;
+		// The required overload's success is `SchemaDeclaration`, so it feeds
+		// the resolver seam directly with no `Option` to unwrap.
+		const declaration: SchemaDeclaration = result.success;
+		assert.isFalse(Option.isOption(declaration));
+		assert.instanceOf(declaration, SchemaDeclarationByName);
+		assert.strictEqual(declaration.name, "skill");
+	});
+
+	it("still propagates an invalid declaration under requireDeclaration", () => {
+		const result = SchemaResolver.declarationOf({ $schema: 42 }, { requireDeclaration: true });
+		assert.isTrue(Result.isFailure(result));
+		if (Result.isSuccess(result)) return;
+		assert.instanceOf(result.failure, SchemaDeclarationInvalidError);
+	});
+
 	it("treats non-mapping data as carrying no declaration", () => {
 		for (const data of [null, undefined, "title: x", 42, ["a"]]) {
 			const result = SchemaResolver.declarationOf(data);
 			assert.isTrue(Result.isSuccess(result), String(data));
 			if (Result.isFailure(result)) return;
-			assert.isUndefined(result.success);
+			assert.isTrue(Option.isNone(result.success), String(data));
 		}
 	});
 

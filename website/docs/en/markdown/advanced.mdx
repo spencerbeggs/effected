@@ -95,7 +95,7 @@ Three properties to internalize before you depend on it. The writer has the **sa
 
 ## Let a document declare its own schema
 
-A corpus of agent documents is rarely one shape. `SchemaResolver` handles the `$schema` convention without any IO: `classify` sorts a declaration value into a tagged union — `ByUrl`, `ByPath`, `Inline`, `ByName` — `declarationOf` extracts and classifies it from decoded frontmatter data (with `requireDeclaration` as the strictness knob), and `fromRegistry` resolves `ByName` declarations against schemas you register under `name[@version]` keys. URLs, paths and inline documents are carried as data and never fetched.
+A corpus of agent documents is rarely one shape. `SchemaResolver` handles the `$schema` convention without any IO: `classify` sorts a declaration value into a tagged union — `ByUrl`, `ByPath`, `Inline`, `ByName` — `declarationOf` extracts and classifies it from decoded frontmatter data as an `Option` — `Option.none()` when the data carries no `$schema` — or, with `requireDeclaration: true`, as the bare declaration with a typed failure for the missing case, and `fromRegistry` resolves `ByName` declarations against schemas you register under `name[@version]` keys. URLs, paths and inline documents are carried as data and never fetched.
 
 ```ts with-api
 import { MarkdownDocument, MarkdownParseOptions, SchemaResolver, YamlFrontmatter } from "@effected/markdown";

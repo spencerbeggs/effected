@@ -6,6 +6,8 @@
 * Updated @effected/github-commands
 * Updated actions-attestation
 * Updated github-actions
+* Updated @effected/markdown
+* Updated A public lookup that can miss returns Option, never T | undefined
 
 ## 2026-10-23
 
