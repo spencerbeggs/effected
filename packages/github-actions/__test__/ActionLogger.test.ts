@@ -599,3 +599,85 @@ describe("ActionLogger group nesting", () => {
 		),
 	);
 });
+
+describe("ActionLogger heading", () => {
+	// A heading is the phase-level banner: the `▸ <name>` line a nested group
+	// writes, with no `::group::` of its own, so the groups inside it stay top
+	// level and each gets its own collapsible section.
+	it.effect("writes a header line and leaves the groups inside it at the top level", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				const value = yield* logger.heading(
+					"Validate",
+					Effect.andThen(logger.group("lockfile", Console.log("ok")), logger.group("manifest", Effect.succeed(3))),
+				);
+				assert.strictEqual(value, 3);
+				assert.deepStrictEqual(yield* lines, [
+					"▸ Validate",
+					"::group::lockfile",
+					"ok",
+					"::endgroup::",
+					"::group::manifest",
+					"::endgroup::",
+				]);
+			}),
+		),
+	);
+
+	it.effect("writes nothing when the body ends, and a failure passes through", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				const error = yield* Effect.flip(logger.heading("Phase", Effect.fail("boom")));
+				assert.strictEqual(error, "boom");
+				assert.deepStrictEqual(yield* lines, ["▸ Phase"]);
+			}),
+		),
+	);
+
+	it.effect("inside an open group it is a header line in that group", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* logger.group("Outer", logger.heading("Inner", Console.log("body")));
+				assert.deepStrictEqual(yield* lines, ["::group::Outer", "▸ Inner", "body", "::endgroup::"]);
+			}),
+		),
+	);
+
+	it.effect("a hostile name is one header line that is not a command", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* logger.heading("x\n::add-mask::s ##[error]y", Effect.void);
+				const captured = yield* lines;
+				assert.lengthOf(captured, 1, "the name's line break must not split the header");
+				const header = captured[0] ?? "";
+				assert.isTrue(header.startsWith("▸ x "));
+				assert.isFalse(isCommand(header), header);
+				assert.deepStrictEqual(commandLines(captured.join("\n")), []);
+			}),
+		),
+	);
+
+	it.effect("the header survives a green withStep, which discards its transcript", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* logger.withStep("s", logger.heading("Phase", Effect.logInfo("x")));
+				const captured = yield* lines;
+				assert.include(captured, "▸ Phase");
+				assert.notInclude(captured.join("\n"), "Buffered output");
+			}).pipe(Effect.provide(ActionLogger.layerLogger)),
+		),
+	);
+
+	it.effect("the test double passes the body through and writes nothing", () =>
+		Effect.gen(function* () {
+			const logger = yield* ActionLogger;
+			assert.strictEqual(yield* logger.heading("quiet", Effect.succeed(1)), 1);
+			assert.deepStrictEqual(yield* lines, []);
+		}).pipe(Effect.provide(ActionLogger.layerTest())),
+	);
+});

@@ -144,7 +144,8 @@ const GroupDepth = Context.Reference<number>("@effected/github-actions/GroupDept
 });
 
 /**
- * The line a nested group writes in place of a second `::group::`.
+ * The `▸ <name>` line a nested group writes in place of a second `::group::`,
+ * and the line {@link ActionLoggerShape.heading} writes.
  *
  * @remarks
  * Line breaks collapse to spaces so the header stays one line — the
@@ -212,8 +213,8 @@ export interface WithStepOptions {
 }
 
 /**
- * The members of the {@link ActionLogger} service: log groups, buffered steps,
- * notices and source annotations.
+ * The members of the {@link ActionLogger} service: log groups and headings,
+ * buffered steps, notices and source annotations.
  *
  * @public
  */
@@ -251,6 +252,27 @@ export interface ActionLoggerShape {
 	 *    `layerSilent` pass the effect through unchanged.
 	 */
 	readonly group: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+	/**
+	 * Run an effect under a `▸ <name>` header line, without opening a group.
+	 *
+	 * @remarks
+	 * The phase-level banner: the same one-line, neutralized header a nested
+	 * {@link ActionLoggerShape.group} writes, then the body, with no
+	 * `::group::` and no change to the depth. So the groups inside it stay
+	 * top level and each renders as its own collapsible section in the runner
+	 * log, which a `group` wrapper cannot give them: the runner does not nest
+	 * groups, and a wrapper that opened one would swallow every inner group
+	 * into a header line. Reach for this when a phase encloses groups, and for
+	 * `group` when it encloses only lines.
+	 *
+	 * The header goes out through `Console`, like a group command, so it is
+	 * never captured into, or discarded with, an enclosing `withBuffer` or
+	 * `withStep` transcript. Nothing is written when the body ends, and a
+	 * failure flushes no buffer here: the groups inside do that for their own
+	 * sections. Called inside an open group it is simply a header line in that
+	 * group. The test doubles pass the body through unchanged.
+	 */
+	readonly heading: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
 	/**
 	 * Run an effect with its verbose output captured and replayed on exit.
 	 *
@@ -390,6 +412,10 @@ const make = Effect.gen(function* () {
 					: Effect.andThen(Console.log(nestedHeader(name)), body);
 			}),
 
+		heading: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) =>
+			// No depth change: the groups inside must still see depth 0 and open real groups.
+			Effect.andThen(Console.log(nestedHeader(name)), effect),
+
 		withBuffer,
 
 		withStep: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>, options?: WithStepOptions) =>
@@ -480,12 +506,13 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 	 * **A recorded exception to the die-on-unstubbed rule**, alongside
 	 * {@link ActionEnvironment.makeTest}. A logger that dies when a suite logs
 	 * would make every double unusable, and silence is the honest default for a
-	 * service whose whole job is output. Group and buffer wrappers pass their
+	 * service whose whole job is output. Group, heading and buffer wrappers pass their
 	 * effect through unchanged, so the double does not model group nesting:
 	 * a test of nested-group output needs the live {@link ActionLogger.layer}.
 	 */
 	static readonly makeTest = (overrides: Partial<ActionLoggerShape> = {}): ActionLoggerShape => ({
 		group: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,
+		heading: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,
 		withBuffer: <A, E, R>(_label: string, effect: Effect.Effect<A, E, R>) => effect,
 		withStep: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,
 		notice: () => Effect.void,

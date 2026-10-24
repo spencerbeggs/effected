@@ -169,6 +169,13 @@ place to leak one. The pure modules carry no spans. The package emits
 Effect logs and ships the `Logger` that renders them as workflow commands;
 it composes no OpenTelemetry itself.
 
+`ActionLogger` structures the log the runner shows. `group` opens the one
+collapsible section the runner allows at a time (a nested call writes a
+`▸ <name>` header line instead, since a second `::group::` would end the
+first), `heading` writes that same header line without opening a group, so
+the groups inside a phase stay top level and each gets its own section, and
+`withBuffer`/`withStep` hold a step's transcript for its failure report.
+
 Step debugging reaches the log level, not just the renderer. When the
 runner sets `RUNNER_DEBUG=1`, `Action.run` lowers core's
 `References.MinimumLogLevel` from its `Info` default to `Debug` for the
