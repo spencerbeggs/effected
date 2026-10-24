@@ -70,9 +70,9 @@ describe("YamlFormat.modify region-confined scalar replacement (#659)", () => {
 
 	it("handles booleans into quoted targets without quoting them; null keeps the pipeline", () => {
 		assert.strictEqual(modifyToString('a: "x"\n', ["a"], true), "a: true\n");
-		// null renders as an empty scalar in the whole-document pipeline
-		// (`a:`), and the fast path deliberately defers to that convention.
-		assert.strictEqual(modifyToString("a: 'x'\n", ["a"], null), "a:\n");
+		// null takes the whole-document pipeline, which renders it as the word
+		// `null` exactly as `Yaml.stringify` does; the fast path defers to it.
+		assert.strictEqual(modifyToString("a: 'x'\n", ["a"], null), "a: null\n");
 	});
 
 	it("preserves a same-line trailing comment (it lives outside the span)", () => {

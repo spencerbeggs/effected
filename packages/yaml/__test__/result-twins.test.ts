@@ -51,6 +51,8 @@ describe("YamlFormat Result twins", () => {
 		{ name: "regional scalar splice", text: "port: 3000 # dev\n", path: ["port"], value: 8080 },
 		{ name: "whole-document fallback", text: "a: 1\n", path: ["m"], value: { x: [1, 2] } },
 		{ name: "delete", text: "a: 1\nb: 2\n", path: ["a"], value: undefined },
+		{ name: "nested null", text: "a: 1\n", path: ["a"], value: { b: null } },
+		{ name: "sequence of undefined and null", text: "a: 1\n", path: ["a"], value: [undefined, null] },
 		{ name: "multi-document stream", text: "a: 1\n---\nb: 2\n", path: ["a"], value: 2, code: "MultiDocumentStream" },
 		{ name: "fatal parse", text: "a: [1, 2\n", path: ["a"], value: 2 },
 		{

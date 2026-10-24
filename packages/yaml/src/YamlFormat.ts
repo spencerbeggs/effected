@@ -421,7 +421,13 @@ function jsValueToNode(value: unknown, seen: Set<object>, depth: number): YamlNo
 	if (typeof value === "function" || typeof value === "symbol") {
 		throw new ModifyFailure("UnrepresentableValue", `A ${typeof value} value has no YAML representation`, 0, 0);
 	}
-	return YamlScalar.make({ value, style: "plain", offset: 0, length: 0 });
+	// A synthesized `null` carries `raw: "null"` so the node stringifier writes
+	// the word: a zero-length null scalar WITHOUT a raw is the parser's empty
+	// scalar (`a:`), which it renders as nothing, and that is the one shape the
+	// value path never produces.
+	return value === null || value === undefined
+		? YamlScalar.make({ value: null, style: "plain", raw: "null", offset: 0, length: 0 })
+		: YamlScalar.make({ value, style: "plain", offset: 0, length: 0 });
 }
 
 /**

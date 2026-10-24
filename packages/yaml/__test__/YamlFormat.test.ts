@@ -695,6 +695,30 @@ describe("YamlFormat", () => {
 			}),
 		);
 
+		it.effect(
+			"lowers a nested null and undefined exactly as Yaml.stringify does: the word null, never an empty scalar",
+			() =>
+				Effect.gen(function* () {
+					// A synthesized zero-length null once rendered as the parser's empty
+					// scalar (`b:`), so modify and stringify disagreed textually on null.
+					assert.strictEqual(
+						yield* YamlFormat.modifyToString("a: 1\n", ["a"], { b: null }),
+						yield* Yaml.stringify({ a: { b: null } }),
+					);
+					assert.strictEqual(yield* YamlFormat.modifyToString("a: 1\n", ["a"], { b: null }), "a:\n  b: null\n");
+					assert.strictEqual(
+						yield* YamlFormat.modifyToString("a: 1\n", ["a"], [undefined, null]),
+						yield* Yaml.stringify({ a: [undefined, null] }),
+					);
+					assert.strictEqual(
+						yield* YamlFormat.modifyToString("a: 1\n", ["a"], [undefined, null]),
+						"a:\n- null\n- null\n",
+					);
+					// Control: a parsed empty scalar still round-trips as nothing.
+					assert.strictEqual(yield* YamlFormat.modifyToString("a:\nb: 1\n", ["b"], 2), "a:\nb: 2\n");
+				}),
+		);
+
 		it.effect("fails UnrepresentableValue on a function or symbol, matching Yaml.stringify", () =>
 			Effect.gen(function* () {
 				const fn = () => 1;

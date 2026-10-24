@@ -1103,8 +1103,10 @@ function stringifyScalarNodeLines(node: YamlScalar, ctx: StringifyContext): stri
 
 	let lines: string[];
 	if (val === null || val === undefined) {
-		// Empty scalar (zero-length) without tag/anchor renders as empty string
-		if (isEmpty) {
+		// The parser's empty scalar (zero-length, no raw) renders as nothing; a
+		// synthesized null carries `raw: "null"` and renders as the word, as the
+		// value path writes it.
+		if (isEmpty && node.raw === undefined) {
 			lines = [""];
 		} else {
 			lines = ["null"];
