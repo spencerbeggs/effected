@@ -92,7 +92,8 @@ export declare namespace ConfigCodec {
 	 *
 	 * @example
 	 * ```ts
-	 * import { ConfigCodec, ConfigFile, ConfigMigration, EncryptedCodec, EncryptedCodecKey, JsonCodec } from "@effected/config-file";
+	 * import type { ConfigCodec } from "@effected/config-file";
+	 * import { ConfigFile, ConfigMigration, EncryptedCodec, EncryptedCodecKey, JsonCodec } from "@effected/config-file";
 	 *
 	 * const codec = EncryptedCodec(
 	 * 	ConfigMigration.make({ codec: JsonCodec, migrations: [] }),
