@@ -504,3 +504,96 @@ describe("false turns both ledger options off", () => {
 		}),
 	);
 });
+
+describe("rollback tombstones are decoded, never trusted", () => {
+	const typedFailure = (exit: Exit.Exit<unknown, unknown>) => {
+		const cause = Option.getOrThrow(Exit.getCause(exit));
+		assert.isFalse(cause.reasons.some(Cause.isDieReason));
+		return cause.reasons.find(Cause.isFailReason)?.error as StoreError;
+	};
+	/** Hand-edit `_store_meta`, as an older build or a stray tool could. */
+	const editMeta = (filename: string, statement: string, ...params: Array<string>) => {
+		const db = new DatabaseSync(filename);
+		try {
+			db.prepare(statement).run(...params);
+		} finally {
+			db.close();
+		}
+	};
+	/** A mirrored Store whose rollback(1) left a well-formed tombstone for 2. */
+	const withTombstone = Effect.fn(function* () {
+		const filename = freshFile();
+		assert.isTrue(Exit.isSuccess(yield* openStore(filename, mirrored, (store) => store.rollback(1))));
+		const rows = inspect(filename, (db) => db.prepare("SELECT key FROM _store_meta").all()) as Array<{ key: string }>;
+		assert.deepStrictEqual(
+			rows.map((row) => row.key),
+			["rollback:2"],
+		);
+		return filename;
+	});
+
+	it.effect("a tombstone that is not JSON refuses the mirrored build, typed, and re-runs nothing", () =>
+		Effect.gen(function* () {
+			const filename = yield* withTombstone();
+			editMeta(filename, "UPDATE _store_meta SET value = ? WHERE key = 'rollback:2'", "{not json");
+			const error = typedFailure(yield* openStore(filename, mirrored, () => Effect.void));
+			assert.instanceOf(error, StoreError);
+			assert.strictEqual(error.operation, "setup");
+			assert.match(
+				error.message,
+				/_store_meta holds an unreadable rollback tombstone for migration 2 \("rollback:2"\)/,
+			);
+			// Refused before anything ran: the ledger is as the rollback left it.
+			assert.deepStrictEqual(ownIds(filename), [1]);
+		}),
+	);
+
+	it.effect("well-formed JSON of the wrong shape is refused the same way, not cast through", () =>
+		Effect.gen(function* () {
+			const filename = yield* withTombstone();
+			// `snapshots` must map table names to `created_at` text or null; a list
+			// would make `judgeForeign`'s `in` lookup silently miss every table.
+			editMeta(
+				filename,
+				"UPDATE _store_meta SET value = ? WHERE key = 'rollback:2'",
+				JSON.stringify({ at: "2026-01-01T00:00:00Z", snapshots: ["effect_sql_migrations"] }),
+			);
+			const error = typedFailure(yield* openStore(filename, mirrored, () => Effect.void));
+			assert.instanceOf(error, StoreError);
+			assert.strictEqual(error.operation, "setup");
+			assert.match(error.message, /unreadable rollback tombstone for migration 2/);
+			assert.match(error.message, /snapshots/);
+			assert.deepStrictEqual(ownIds(filename), [1]);
+		}),
+	);
+
+	it.effect("a tombstone key whose suffix is not a positive integer is refused by key, never read as NaN", () =>
+		Effect.gen(function* () {
+			const filename = yield* withTombstone();
+			editMeta(
+				filename,
+				"INSERT INTO _store_meta (key, value) VALUES (?, ?)",
+				"rollback:two",
+				JSON.stringify({ at: "2026-01-01T00:00:00Z", snapshots: {} }),
+			);
+			const error = typedFailure(yield* openStore(filename, mirrored, () => Effect.void));
+			assert.instanceOf(error, StoreError);
+			assert.strictEqual(error.operation, "setup");
+			assert.match(error.message, /_store_meta holds a rollback tombstone with an unreadable key "rollback:two"/);
+			assert.deepStrictEqual(ownIds(filename), [1]);
+		}),
+	);
+
+	it.effect("control: the same corrupt row is harmless to a Store that mirrors and adopts nothing", () =>
+		Effect.gen(function* () {
+			const filename = yield* withTombstone();
+			editMeta(filename, "UPDATE _store_meta SET value = ? WHERE key = 'rollback:2'", "{not json");
+			// Without a foreign ledger to judge, no tombstone is read: 2 is simply
+			// pending and runs again. Its re-apply clears the corrupt row.
+			assert.isTrue(Exit.isSuccess(yield* openStore(filename, { migrations: [notes, artifacts] }, () => Effect.void)));
+			assert.deepStrictEqual(ownIds(filename), [1, 2]);
+			const rows = inspect(filename, (db) => db.prepare("SELECT key FROM _store_meta").all());
+			assert.deepStrictEqual(rows, []);
+		}),
+	);
+});

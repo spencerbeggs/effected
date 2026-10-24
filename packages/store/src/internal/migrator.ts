@@ -1,4 +1,4 @@
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Result, Schema, SchemaIssue } from "effect";
 import type { SqlClient } from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
@@ -45,7 +45,7 @@ export interface MigratorStatusRecord {
  */
 export type MigratorFailure =
 	| { readonly _tag: "ledger"; readonly cause: SqlError }
-	| { readonly _tag: "refused"; readonly message: string }
+	| Refused
 	| {
 			readonly _tag: "migration";
 			readonly direction: "up" | "down";
@@ -54,7 +54,23 @@ export type MigratorFailure =
 			readonly cause: SqlError;
 	  };
 
+/**
+ * The engine will not guess: a ledger it cannot reconcile, or on-disk state it
+ * cannot read, is refused with the reason. Shared by {@link MigratorFailure}
+ * and {@link AdoptFailure}, so a refusal raised below either flows into both.
+ */
+export interface Refused {
+	readonly _tag: "refused";
+	readonly message: string;
+}
+
+const refused = (message: string): Refused => ({ _tag: "refused", message });
+
 const ledgerFailure = (cause: SqlError): MigratorFailure => ({ _tag: "ledger", cause });
+
+/** Map the engine's `SqlError | Refused` channel onto `MigratorFailure`: SQL is a ledger failure, a refusal is kept. */
+const ledgerOrRefused = (failure: SqlError | Refused): MigratorFailure =>
+	failure._tag === "refused" ? failure : ledgerFailure(failure);
 
 /** The structural cause of a failure: the `SqlError`, or an `Error` carrying a refusal's message. */
 export const failureCause = (failure: MigratorFailure): unknown =>
@@ -116,12 +132,54 @@ export interface RollbackHistory {
 	readonly foreignTables: ReadonlyArray<string>;
 }
 
-interface Tombstone {
-	readonly at: string;
-	readonly snapshots: Readonly<Record<string, string | null>>;
-}
+/**
+ * The persisted tombstone, as `recordTombstone` writes it: the rollback's ISO
+ * time and, per tracked foreign table, that id's `created_at` or `null`. It is
+ * the schema every tombstone row is decoded against on read, because
+ * `_store_meta` is on-disk state the store does not exclusively control.
+ */
+const Tombstone = Schema.Struct({
+	at: Schema.String,
+	snapshots: Schema.Record(Schema.String, Schema.NullOr(Schema.String)),
+});
+type Tombstone = typeof Tombstone.Type;
 
-const tombstoneKey = (id: number): string => `rollback:${id}`;
+const TOMBSTONE_PREFIX = "rollback:";
+const tombstoneKey = (id: number): string => `${TOMBSTONE_PREFIX}${id}`;
+
+const decodeTombstone = Schema.decodeUnknownResult(Schema.fromJsonString(Tombstone));
+/** A tombstone key's suffix: a positive integer in canonical decimal, bounded so `Number` reads it exactly. */
+const decodeTombstoneId = Schema.decodeUnknownResult(Schema.String.check(Schema.isPattern(/^[1-9]\d{0,15}$/)));
+const formatIssue = SchemaIssue.makeFormatterDefault();
+
+/**
+ * Decode one `_store_meta` row into `[id, Tombstone]`, or the refusal. A
+ * tombstone decides whether a migration re-runs or is imported, so a row the
+ * store cannot read is refused with its key and the decode issue — the same
+ * posture as an unreadable foreign `created_at` — never skipped or guessed at.
+ */
+const decodeTombstoneRow = (
+	meta: string,
+	row: { readonly key: string; readonly value: string },
+): Result.Result<readonly [number, Tombstone], Refused> => {
+	const id = decodeTombstoneId(row.key.slice(TOMBSTONE_PREFIX.length));
+	if (Result.isFailure(id)) {
+		return Result.fail(
+			refused(
+				`${meta} holds a rollback tombstone with an unreadable key ${JSON.stringify(row.key)}: ${formatIssue(id.failure.issue)}`,
+			),
+		);
+	}
+	const tombstone = decodeTombstone(row.value);
+	if (Result.isFailure(tombstone)) {
+		return Result.fail(
+			refused(
+				`${meta} holds an unreadable rollback tombstone for migration ${id.success} (${JSON.stringify(row.key)}): ${formatIssue(tombstone.failure.issue)}`,
+			),
+		);
+	}
+	return Result.succeed([Number(id.success), tombstone.success] as const);
+};
 
 /** Whether `name` is a table, on SQLite; elsewhere history is not kept, so `false`. */
 const tableExists = (sql: SqlClient, name: string): Effect.Effect<boolean, SqlError> =>
@@ -134,14 +192,24 @@ const tableExists = (sql: SqlClient, name: string): Effect.Effect<boolean, SqlEr
 		orElse: () => Effect.succeed(false),
 	});
 
-/** Every tombstone in `meta`, by id; empty when the table does not exist. */
-const readTombstones = (sql: SqlClient, meta: string): Effect.Effect<Map<number, Tombstone>, SqlError> =>
+/**
+ * Every tombstone in `meta`, by id; empty when the table does not exist. Each
+ * row is decoded against {@link Tombstone} and its key parsed as an integer;
+ * the first row that fails either refuses the read, typed.
+ */
+const readTombstones = (sql: SqlClient, meta: string): Effect.Effect<Map<number, Tombstone>, SqlError | Refused> =>
 	Effect.gen(function* () {
 		if (!(yield* tableExists(sql, meta))) return new Map<number, Tombstone>();
 		const rows = yield* sql<{ key: string; value: string }>`
-			SELECT key, value FROM ${sql(meta)} WHERE key LIKE 'rollback:%'
+			SELECT key, value FROM ${sql(meta)} WHERE key LIKE ${`${TOMBSTONE_PREFIX}%`}
 		`;
-		return new Map(rows.map((row) => [Number(row.key.slice("rollback:".length)), JSON.parse(row.value) as Tombstone]));
+		const tombstones = new Map<number, Tombstone>();
+		for (const row of rows) {
+			const decoded = decodeTombstoneRow(meta, row);
+			if (Result.isFailure(decoded)) return yield* Effect.fail(decoded.failure);
+			tombstones.set(decoded.success[0], decoded.success[1]);
+		}
+		return tombstones;
 	});
 
 /** Drop an id's tombstone: it has been applied (or legitimately imported) again. */
@@ -250,7 +318,7 @@ export const applyPending = (
 							const tombstones =
 								row === undefined || history === undefined
 									? new Map<number, Tombstone>()
-									: yield* readTombstones(sql, history.meta).pipe(Effect.mapError(ledgerFailure));
+									: yield* readTombstones(sql, history.meta).pipe(Effect.mapError(ledgerOrRefused));
 							const verdict = row === undefined ? "stale" : judgeForeign(mirror, row, tombstones.get(migration.id));
 							if (typeof verdict === "object") {
 								return yield* Effect.fail<MigratorFailure>({ _tag: "refused", message: verdict.refused });
@@ -538,9 +606,7 @@ const isMigratorFailure = (value: MigratorFailure | SqlError): value is Migrator
  * unreadable timestamp, or a dialect it does not support. The facade
  * materializes both.
  */
-export type AdoptFailure =
-	| { readonly _tag: "sql"; readonly cause: SqlError }
-	| { readonly _tag: "refused"; readonly message: string };
+export type AdoptFailure = { readonly _tag: "sql"; readonly cause: SqlError } | Refused;
 
 /** The shape of one row of effect/sql's Migrator ledger. */
 interface ForeignRow {
@@ -613,8 +679,6 @@ export const adoptForeignLedger = (
 	foreignTable: string,
 	migrations: ReadonlyArray<MigratorMigration>,
 ): Effect.Effect<ReadonlyArray<MigratorRecord>, AdoptFailure> => {
-	const refused = (message: string): AdoptFailure => ({ _tag: "refused", message });
-
 	const adopt = Effect.gen(function* () {
 		yield* sql`
 			CREATE TABLE IF NOT EXISTS ${sql(metaTable)} (
@@ -711,18 +775,12 @@ export const adoptForeignLedger = (
 	return sql
 		.onDialectOrElse({
 			sqlite: () => sql.withTransaction(adopt),
-			orElse: () =>
-				Effect.fail(
-					refused(`adoption is supported on SQLite only; this client's dialect is not SQLite`) as
-						| AdoptFailure
-						| SqlError,
-				),
+			orElse: (): Effect.Effect<ReadonlyArray<MigratorRecord>, Refused | SqlError> =>
+				Effect.fail(refused(`adoption is supported on SQLite only; this client's dialect is not SQLite`)),
 		})
 		.pipe(
-			Effect.mapError((failure) =>
-				"_tag" in failure && failure._tag === "refused"
-					? failure
-					: { _tag: "sql" as const, cause: failure as SqlError },
+			Effect.mapError(
+				(failure): AdoptFailure => (failure._tag === "refused" ? failure : { _tag: "sql", cause: failure }),
 			),
 		);
 };

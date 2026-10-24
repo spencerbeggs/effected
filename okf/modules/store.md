@@ -196,7 +196,12 @@ Every rollback, mirror on or off, tombstones the unwound ids in
 `_store_meta` with a snapshot of each foreign ledger's row, so a later
 import tells a row Store rolled back (unchanged → re-run) from one an
 older program re-applied (changed → import), and refuses a table it never
-snapshotted. Paired with adoption, both default to the same table.
+snapshotted. Tombstone rows are decoded against a schema on read — the
+JSON value against the tombstone struct, the key suffix as a positive
+integer — and a row that fails either is refused typed, naming the row
+and the decode issue, rather than cast through or skipped: `_store_meta`
+is on-disk state the store does not exclusively control, and a tombstone
+decides whether a migration re-runs. Paired with adoption, both default to the same table.
 SQLite only. **Connection hook.** `onConnect` on the SQLite layers runs
 once per build (one connection per build), before the ledger and outside
 any transaction. Foreign keys need no hook: `node:sqlite` enables them on
