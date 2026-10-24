@@ -164,12 +164,26 @@ describe("SemVer", () => {
 			assert.strictEqual(SemVer.of(1, 0, 1, ["alpha", 0]).bump.prerelease("alpha").toString(), "1.0.1-alpha.1");
 		});
 
+		it("prerelease bump increments the right-most numeric identifier, wherever it sits", () => {
+			// Only the LAST identifier used to be inspected; a string tail fell
+			// through to appending `.0`, so `1.0.0-1.beta` became `1.0.0-1.beta.0`
+			// where core and node-semver answer `1.0.0-2.beta`.
+			assert.strictEqual(SemVer.of(1, 0, 0, [1, "beta"]).bump.prerelease().toString(), "1.0.0-2.beta");
+			assert.strictEqual(SemVer.of(1, 0, 0, ["alpha", 1, "beta"]).bump.prerelease().toString(), "1.0.0-alpha.2.beta");
+			assert.strictEqual(
+				SemVer.of(1, 0, 0, ["alpha", 1, "beta"]).bump.prerelease("alpha").toString(),
+				"1.0.0-alpha.2.beta",
+			);
+			assert.strictEqual(SemVer.of(1, 0, 0, [1, "beta", 2]).bump.prerelease().toString(), "1.0.0-1.beta.3");
+		});
+
 		it("switching prerelease identifiers resets the counter", () => {
 			assert.strictEqual(SemVer.of(1, 0, 1, ["alpha", 4]).bump.prerelease("beta").toString(), "1.0.1-beta.0");
 		});
 
-		it("appends a counter to a non-numeric tail", () => {
+		it("appends a counter only when no identifier is numeric", () => {
 			assert.strictEqual(SemVer.of(1, 0, 1, ["alpha"]).bump.prerelease().toString(), "1.0.1-alpha.0");
+			assert.strictEqual(SemVer.of(1, 0, 1, ["alpha", "beta"]).bump.prerelease().toString(), "1.0.1-alpha.beta.0");
 		});
 
 		it("reads an all-digit identifier as numeric, so the bump still increases", () => {

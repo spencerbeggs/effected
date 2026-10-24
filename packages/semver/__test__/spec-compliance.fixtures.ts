@@ -89,6 +89,121 @@ export const rangeTests: ReadonlyArray<[string, string, boolean]> = [
 	// Build metadata in a range is dropped
 	["1.2.3+build", "1.2.3", true],
 ];
+/**
+ * [range, version, default, includePrerelease] — the answer node-semver gives
+ * for `satisfies(version, range)` and for
+ * `satisfies(version, range, { includePrerelease: true })`. Pinned from
+ * node-semver 7.8.5 so a desugaring change that only shows up under
+ * `includePrerelease` (a wildcard floor that forgot its `-0`, a full hyphen
+ * floor that kept its release form) fails here, not in a consumer. Ranges
+ * with a `*` alternative are left out: node-semver collapses `* || x` to `*`,
+ * while this package and core keep every alternative.
+ */
+export const includePrereleaseTests: ReadonlyArray<[string, string, boolean, boolean]> = [
+	// Wildcards include the lowest version there is
+	["*", "1.2.3-foo", false, true],
+	["*", "0.0.0-0", false, true],
+	["", "1.0.0-0", false, true],
+	// Caret: a full floor keeps its release form, a partial floor is lowered
+	["^1.2.3", "1.8.9-pre", false, true],
+	["^1.2.3", "2.0.0-pre", false, false],
+	["^1.2.3", "1.2.3-pre", false, false],
+	["^1.2.3", "1.2.4-pre", false, true],
+	["^1.2", "1.2.0-alpha", false, true],
+	["^1.2", "1.9.0-rc.1", false, true],
+	["^1", "1.0.0-0", false, true],
+	["^0.0.3", "0.0.3-alpha", false, false],
+	["^0.0.3", "0.0.4-0", false, false],
+	["^0.1", "0.1.0-beta", false, true],
+	["^0.0", "0.0.5-rc", false, true],
+	["^1.2.3-beta.1", "1.2.3-beta.2", true, true],
+	["^1.2.3-beta.1", "1.3.0-rc.1", false, true],
+	["^1.2.3-beta.1", "1.2.3-alpha", false, false],
+	// Tilde
+	["~1.2.3", "1.2.4-beta", false, true],
+	["~1.2.3", "1.3.0-0", false, false],
+	["~1.2.3", "1.2.3-alpha", false, false],
+	["~1.2", "1.2.0-0", false, true],
+	["~1", "1.0.0-0", false, true],
+	// X-ranges and partials
+	["1.2.x", "1.2.0-alpha", false, true],
+	["1.2.x", "1.3.0-0", false, false],
+	["1.x", "1.0.0-0", false, true],
+	["1.2", "1.2.9-beta", false, true],
+	[">1.2", "1.3.0-alpha", false, true],
+	[">1.2", "1.2.9", false, false],
+	[">=1.2", "1.2.0-alpha", false, true],
+	// A literal full floor is not lowered: `>=1.2.0` differs from `>=1.2`
+	[">=1.2.0", "1.2.0-alpha", false, false],
+	[">1.2.3", "1.2.4-pre", false, true],
+	[">1.2.3", "1.2.3-pre", false, false],
+	["<2.0.0", "2.0.0-pre", false, true],
+	["<2.0.0", "1.9.9-beta", false, true],
+	["<=2.0.0", "2.0.0-rc.1", false, true],
+	["<1.x", "1.0.0-0", false, false],
+	["<1.x", "0.9.9-beta", false, true],
+	["<=1.x", "2.0.0-0", false, false],
+	// Hyphen: a full lower bound without a prerelease is lowered too
+	["1.2.3 - 2", "1.2.3-0", false, true],
+	["1.2.3 - 2", "3.0.0-0", false, false],
+	["1.2.3 - 2.3.4", "1.2.3-alpha", false, true],
+	["1.2.3 - 2.3.4", "2.3.4-rc", false, true],
+	["1.2 - 2", "1.2.0-0", false, true],
+	["1.2.3-beta - 2", "1.2.3-alpha", false, false],
+	// Unions, exact versions and primitive sets
+	["^1.0.0 || ^2.0.0", "2.5.0-beta", false, true],
+	["^1.0.0 || ^2.0.0", "1.5.0-alpha.1", false, true],
+	["^1.0.0 || ^2.0.0", "3.0.0-0", false, false],
+	["1.0.0", "1.0.0-pre", false, false],
+	["=1.0.0", "1.0.0", true, true],
+	[">=1.0.0-alpha <1.1.0", "1.0.5-beta", false, true],
+	[">=1.0.0 <2.0.0", "1.5.0-alpha", false, true],
+	[">=1.0.0 <2.0.0", "1.5.0", true, true],
+];
+/**
+ * [version, identifier, expected] for `bump.prerelease(identifier)`, pinned
+ * from node-semver 7.8.5 `inc(version, "prerelease", identifier)`. The
+ * right-most numeric identifier increments wherever it sits, and `0` is
+ * appended only when there is none. Rows where node-semver resets to
+ * `[identifier, 0]` because the *second* identifier is not numeric
+ * (`1.0.0-1.beta` with `"1"`, `1.0.0-alpha.beta` with `"alpha"`, `1.0.0-0`
+ * with `"0"`) are left out: this package follows core there and increments
+ * instead.
+ */
+export const prereleaseBumpTests: ReadonlyArray<[string, string | undefined, string]> = [
+	["1.0.0", undefined, "1.0.1-0"],
+	["1.0.0", "alpha", "1.0.1-alpha.0"],
+	["1.0.0", "1", "1.0.1-1.0"],
+	["1.0.0-0", undefined, "1.0.0-1"],
+	["1.0.0-0", "alpha", "1.0.0-alpha.0"],
+	["1.0.0-alpha", undefined, "1.0.0-alpha.0"],
+	["1.0.0-alpha", "alpha", "1.0.0-alpha.0"],
+	["1.0.0-alpha", "beta", "1.0.0-beta.0"],
+	["1.0.0-alpha", "1", "1.0.0-1.0"],
+	["1.0.0-alpha.0", undefined, "1.0.0-alpha.1"],
+	["1.0.0-alpha.0", "alpha", "1.0.0-alpha.1"],
+	["1.0.0-alpha.0", "beta", "1.0.0-beta.0"],
+	["1.0.0-alpha.9", undefined, "1.0.0-alpha.10"],
+	["1.0.0-alpha.9", "alpha", "1.0.0-alpha.10"],
+	["1.0.0-1.beta", undefined, "1.0.0-2.beta"],
+	["1.0.0-1.beta", "alpha", "1.0.0-alpha.0"],
+	["1.0.0-1.beta.2", undefined, "1.0.0-1.beta.3"],
+	["1.0.0-1.beta.2", "rc", "1.0.0-rc.0"],
+	["1.0.0-alpha.1.beta", undefined, "1.0.0-alpha.2.beta"],
+	["1.0.0-alpha.1.beta", "alpha", "1.0.0-alpha.2.beta"],
+	["1.0.0-alpha.1.beta", "beta", "1.0.0-beta.0"],
+	["1.0.0-alpha.beta", undefined, "1.0.0-alpha.beta.0"],
+	["1.0.0-alpha.beta", "beta", "1.0.0-beta.0"],
+	["1.0.0-0.0", undefined, "1.0.0-0.1"],
+	["1.0.0-0.0", "0", "1.0.0-0.1"],
+	["1.0.0-0.0", "1", "1.0.0-1.0"],
+	["1.0.0-rc.1+build.5", undefined, "1.0.0-rc.2"],
+	["1.0.0-rc.1+build.5", "rc", "1.0.0-rc.2"],
+	["1.0.0-rc.1+build.5", "alpha", "1.0.0-alpha.0"],
+	["2.3.4-beta.1.x", undefined, "2.3.4-beta.2.x"],
+	["2.3.4-beta.1.x", "beta", "2.3.4-beta.2.x"],
+	["2.3.4-beta.1.x", "rc", "2.3.4-rc.0"],
+];
 export const validVersions: ReadonlyArray<string> = [
 	"0.0.0",
 	"1.0.0",

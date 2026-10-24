@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option, Result, Schema } from "effect";
+import { Effect, Equal, Option, Result, Schema } from "effect";
 import { InvalidRangeError, Range, SemVer, UnsatisfiableConstraintError } from "../src/index.js";
 
 describe("Range", () => {
@@ -74,6 +74,118 @@ describe("Range", () => {
 				assert.isFalse(range.test(yield* SemVer.parse("1.5.0-alpha")));
 				const withTuple = yield* Range.parse(">=1.5.0-0 <2.0.0");
 				assert.isTrue(withTuple.test(yield* SemVer.parse("1.5.0-alpha")));
+			}),
+		);
+	});
+
+	describe("includePrerelease", () => {
+		it.effect("is a parse option the range records and every matcher honours", () =>
+			Effect.gen(function* () {
+				const loose = yield* Range.parse("^1.2", { includePrerelease: true });
+				const strict = yield* Range.parse("^1.2");
+				assert.isTrue(loose.includePrerelease);
+				assert.isFalse(strict.includePrerelease);
+				const candidate = yield* SemVer.parse("1.2.5-beta.1");
+				assert.isTrue(loose.test(candidate));
+				assert.isFalse(strict.test(candidate));
+				assert.isTrue(Range.satisfies(candidate, loose));
+				assert.isTrue(Range.satisfies(loose)(candidate));
+				const versions = yield* Effect.all(["1.2.0", "1.2.5-beta.1", "1.3.0-0", "2.0.0-0"].map((v) => SemVer.parse(v)));
+				assert.deepStrictEqual(loose.filter(versions).map(String), ["1.2.0", "1.2.5-beta.1", "1.3.0-0"]);
+				assert.deepStrictEqual(strict.filter(versions).map(String), ["1.2.0"]);
+				assert.deepStrictEqual(Range.maxSatisfying(versions, loose).pipe(Option.map(String)), Option.some("1.3.0-0"));
+				assert.deepStrictEqual(Range.maxSatisfying(versions, strict).pipe(Option.map(String)), Option.some("1.2.0"));
+				assert.deepStrictEqual(Range.minSatisfying(versions, loose).pipe(Option.map(String)), Option.some("1.2.0"));
+			}),
+		);
+
+		it.effect("lowers wildcard floors to -0 but leaves a full floor alone", () =>
+			Effect.gen(function* () {
+				assert.strictEqual((yield* Range.parse("^1.2", { includePrerelease: true })).toString(), ">=1.2.0-0 <2.0.0-0");
+				assert.strictEqual((yield* Range.parse("^1.2.3", { includePrerelease: true })).toString(), ">=1.2.3 <2.0.0-0");
+				assert.strictEqual((yield* Range.parse(">1.2", { includePrerelease: true })).toString(), ">=1.3.0-0");
+				assert.strictEqual((yield* Range.parse(">=1.2.0", { includePrerelease: true })).toString(), ">=1.2.0");
+				assert.strictEqual((yield* Range.parse("*", { includePrerelease: true })).toString(), ">=0.0.0-0");
+				assert.strictEqual(
+					(yield* Range.parse("1.2.3 - 2", { includePrerelease: true })).toString(),
+					">=1.2.3-0 <3.0.0-0",
+				);
+				assert.strictEqual(
+					(yield* Range.parse("1.2.3-beta - 2", { includePrerelease: true })).toString(),
+					">=1.2.3-beta <3.0.0-0",
+				);
+			}),
+		);
+
+		it.effect("an explicit false and an omitted option are the default rule", () =>
+			Effect.gen(function* () {
+				const explicit = yield* Range.parse("^1.2", { includePrerelease: false });
+				const omitted = yield* Range.parse("^1.2");
+				const undefinedOption = yield* Range.parse("^1.2", { includePrerelease: undefined });
+				assert.isTrue(Equal.equals(explicit, omitted));
+				assert.isTrue(Equal.equals(undefinedOption, omitted));
+				assert.strictEqual(
+					Range.parseResult("^1.2", {}).pipe(
+						Result.map((r) => r.includePrerelease),
+						Result.getOrThrow,
+					),
+					false,
+				);
+			}),
+		);
+
+		it.effect("two ranges that differ only in the flag are not Equal", () =>
+			Effect.gen(function* () {
+				const loose = yield* Range.parse(">=1.2.0-0 <2.0.0-0", { includePrerelease: true });
+				const strict = yield* Range.parse(">=1.2.0-0 <2.0.0-0");
+				assert.strictEqual(loose.toString(), strict.toString());
+				assert.isFalse(Equal.equals(loose, strict));
+				assert.isTrue(Equal.equals(Range.make({ sets: strict.sets }), strict));
+			}),
+		);
+
+		it.effect("the struct form keeps the flag, the string form cannot", () =>
+			Effect.gen(function* () {
+				const loose = yield* Range.parse("^1.2", { includePrerelease: true });
+				const viaStruct = yield* Schema.decodeUnknownEffect(Range)(yield* Schema.encodeEffect(Range)(loose));
+				assert.isTrue(viaStruct.includePrerelease);
+				assert.isTrue(Equal.equals(viaStruct, loose));
+				const legacy = yield* Schema.decodeUnknownEffect(Range)({ sets: [] });
+				assert.isFalse(legacy.includePrerelease);
+				const viaString = yield* Schema.decodeUnknownEffect(Range.FromString)(
+					yield* Schema.encodeEffect(Range.FromString)(loose),
+				);
+				assert.isFalse(viaString.includePrerelease);
+				assert.strictEqual(viaString.toString(), loose.toString());
+			}),
+		);
+
+		it.effect("union, intersect and simplify carry self's flag", () =>
+			Effect.gen(function* () {
+				const loose = yield* Range.parse("^1.0.0", { includePrerelease: true });
+				const strict = yield* Range.parse("^2.0.0");
+				assert.isTrue(Range.union(loose, strict).includePrerelease);
+				assert.isFalse(Range.union(strict, loose).includePrerelease);
+				assert.isTrue((yield* Range.intersect(loose, yield* Range.parse("<1.5.0"))).includePrerelease);
+				assert.isFalse(
+					(yield* Range.intersect(strict, yield* Range.parse(">=2.1.0", { includePrerelease: true })))
+						.includePrerelease,
+				);
+				assert.isTrue(
+					Range.simplify(Range.union(loose, yield* Range.parse("^1.2.0", { includePrerelease: true })))
+						.includePrerelease,
+				);
+			}),
+		);
+
+		it.effect("a prerelease-including range is never a subset of a default one", () =>
+			Effect.gen(function* () {
+				const loose = yield* Range.parse("^1.2.3", { includePrerelease: true });
+				const strict = yield* Range.parse("^1.2.3");
+				assert.isFalse(Range.isSubset(loose, strict));
+				assert.isTrue(Range.isSubset(strict, loose));
+				assert.isFalse(Range.equivalent(loose, strict));
+				assert.isTrue(Range.equivalent(loose, yield* Range.parse(">=1.2.3 <2.0.0-0", { includePrerelease: true })));
 			}),
 		);
 	});

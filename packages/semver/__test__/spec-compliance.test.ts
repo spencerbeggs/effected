@@ -3,8 +3,10 @@ import { Effect } from "effect";
 import { Range, SemVer } from "../src/index.js";
 import {
 	comparisonPairs,
+	includePrereleaseTests,
 	incrementTests,
 	invalidVersions,
+	prereleaseBumpTests,
 	rangeTests,
 	validVersions,
 } from "./spec-compliance.fixtures.js";
@@ -48,6 +50,36 @@ describe("range satisfaction", () => {
 			const range = yield* Range.parse(rangeStr);
 			const version = yield* SemVer.parse(versionStr);
 			assert.strictEqual(range.test(version), expected);
+		}),
+	);
+});
+
+describe("prerelease matching (node-semver includePrerelease fixtures)", () => {
+	it.effect.each([...includePrereleaseTests])(
+		"%s against %s: default %s, includePrerelease %s",
+		([rangeStr, versionStr, byDefault, included]) =>
+			Effect.gen(function* () {
+				const version = yield* SemVer.parse(versionStr);
+				const strict = yield* Range.parse(rangeStr);
+				const loose = yield* Range.parse(rangeStr, { includePrerelease: true });
+				assert.strictEqual(strict.test(version), byDefault, "default rule");
+				assert.strictEqual(loose.test(version), included, "includePrerelease");
+			}),
+	);
+
+	it("the fixtures discriminate the two rules (control)", () => {
+		assert.isTrue(includePrereleaseTests.some(([, , byDefault, included]) => byDefault !== included));
+		// A literal full floor must stay in the table: it is the one `>=` shape
+		// includePrerelease does not lower.
+		assert.isTrue(includePrereleaseTests.some(([range, , , included]) => range === ">=1.2.0" && !included));
+	});
+});
+
+describe("prerelease bumps (node-semver inc fixtures)", () => {
+	it.effect.each([...prereleaseBumpTests])("%s bump prerelease(%s) => %s", ([initial, id, expected]) =>
+		Effect.gen(function* () {
+			const version = yield* SemVer.parse(initial);
+			assert.strictEqual(version.bump.prerelease(id).toString(), expected);
 		}),
 	);
 });

@@ -678,10 +678,13 @@ export class SemVerBump {
 	}
 
 	/**
-	 * Bump prerelease, optionally with a named identifier. Node-semver
-	 * compatible: a stable version starts a prerelease of the next patch
-	 * (`1.0.0` → `1.0.1-0`), switching identifiers resets the counter, and a
-	 * trailing numeric identifier increments.
+	 * Bump prerelease, optionally with a named identifier. Node-semver and
+	 * core `SemVer.bumpPrerelease` compatible: a stable version starts a
+	 * prerelease of the next patch (`1.0.0` → `1.0.1-0`), switching
+	 * identifiers resets the counter, and otherwise the **right-most numeric**
+	 * identifier increments — `1.0.0-alpha.1` → `1.0.0-alpha.2`, and
+	 * `1.0.0-1.beta` → `1.0.0-2.beta` — with `0` appended only when there is
+	 * none (`1.0.0-alpha` → `1.0.0-alpha.0`).
 	 *
 	 * @remarks
 	 * The identifier is read the way the grammar reads one: an all-digit `id`
@@ -696,7 +699,7 @@ export class SemVerBump {
 	 * identifier. It is a programmer error, not input to recover from, so it
 	 * is a defect rather than a typed failure.
 	 *
-	 * @param id - the prerelease identifier prefix (e.g. `"rc"`); when omitted, only the trailing numeric counter is bumped
+	 * @param id - the prerelease identifier prefix (e.g. `"rc"`); when omitted, only the right-most numeric identifier is bumped
 	 * @returns the bumped {@link SemVer}
 	 */
 	prerelease(id?: string): SemVer {
@@ -724,14 +727,18 @@ export class SemVerBump {
 			return SemVer.make({ major, minor, patch, prerelease: [normalized, 0], build: [] });
 		}
 
-		const last = pre[pre.length - 1];
-		if (typeof last === "number") {
-			const next: Array<string | number> = [...pre];
-			next[next.length - 1] = last + 1;
-			try {
-				return SemVer.make({ major, minor, patch, prerelease: next, build: [] });
-			} catch (cause) {
-				overflow("prerelease", cause);
+		// Increment the right-most numeric identifier, wherever it sits; append
+		// a counter only when the prerelease has no numeric identifier at all.
+		for (let i = pre.length - 1; i >= 0; i--) {
+			const identifier = pre[i];
+			if (typeof identifier === "number") {
+				const next: Array<string | number> = [...pre];
+				next[i] = identifier + 1;
+				try {
+					return SemVer.make({ major, minor, patch, prerelease: next, build: [] });
+				} catch (cause) {
+					overflow("prerelease", cause);
+				}
 			}
 		}
 

@@ -3,10 +3,11 @@
 // This package stays independent of core's SemVer modules (both
 // `@stability unstable`; see okf/decisions/semver-stays-independent-of-core-semver.md),
 // and core is used here as a free oracle instead: every version parse, every
-// ordering and every range match must agree with it, except for the
-// divergences this file allowlists by name. A disagreement outside the
-// allowlist is either a kit bug (the #1040 parity probe found seven, all on
-// the kit side) or a core change worth reading before the next Effect advance.
+// ordering, every range match (under both prerelease rules) and every
+// prerelease bump must agree with it, except for the divergences this file
+// allowlists by name. A disagreement outside the allowlist is either a kit
+// bug (the #1040 parity probe found seven, all on the kit side) or a core
+// change worth reading before the next Effect advance.
 //
 // Deliberate divergences:
 // - TRIM: `SemVer.parseResult` and `Range.parseResult` trim surrounding
@@ -18,6 +19,11 @@
 //   structural `Equivalence` (build included) from its precedence `Order`
 //   (build ignored), so the two equalities differ on `1.0.0+a` vs `1.0.0+b`.
 //   Never mix kit and core values in one hash-keyed collection.
+// - BUMP-FROM-PRERELEASE: `bump.major()`, `.minor()` and `.patch()` always
+//   increment the named component, so `2.0.0-beta.1` bumps major to `3.0.0`.
+//   Core (and node-semver) read a prerelease as an in-progress release of the
+//   version it names and answer `2.0.0`. `bump.prerelease` is not in this
+//   allowlist: it agrees with core on every input.
 
 import { assert, describe, it } from "@effect/vitest";
 import { SemVer as CoreSemVer, Effect, Equal, Result, SemVerRange } from "effect";
@@ -227,5 +233,102 @@ describe("core parity: ranges", () => {
 				assert.strictEqual(actual, expected, `${JSON.stringify(input)} against ${v}`);
 			}
 		});
+
+		it(`includePrerelease matching agrees on ${JSON.stringify(input)}`, () => {
+			// Core applies `includePrerelease` at match time over the syntactic
+			// range; the kit applies it at parse time and records it on the value.
+			// The answers must still agree version for version.
+			const kit = Range.parseResult(input, { includePrerelease: true });
+			const core = SemVerRange.parse(carriesBuild(input) ? input.replace(/\+[0-9A-Za-z.-]+/gu, "") : input);
+			assert.strictEqual(Result.isSuccess(kit), Result.isSuccess(core), "parse acceptance differs");
+			if (Result.isFailure(kit) || Result.isFailure(core)) return;
+			assert.isTrue(kit.success.includePrerelease);
+
+			for (const v of probeVersions) {
+				const expected = SemVerRange.matches(core.success, CoreSemVer.parseUnsafe(v), { includePrerelease: true });
+				const actual = kit.success.test(Result.getOrThrow(SemVer.parseResult(v)));
+				assert.strictEqual(actual, expected, `${JSON.stringify(input)} against ${v} with includePrerelease`);
+			}
+		});
 	}
+
+	it("includePrerelease changes an answer somewhere in the corpus (control)", () => {
+		const loose = Result.getOrThrow(Range.parseResult("^1.2", { includePrerelease: true }));
+		const strict = Result.getOrThrow(Range.parseResult("^1.2"));
+		const candidate = Result.getOrThrow(SemVer.parseResult("1.2.5-beta"));
+		assert.isTrue(loose.test(candidate));
+		assert.isFalse(strict.test(candidate));
+		assert.isTrue(SemVerRange.matches(SemVerRange.parseUnsafe("^1.2"), "1.2.5-beta", { includePrerelease: true }));
+		assert.isFalse(SemVerRange.matches(SemVerRange.parseUnsafe("^1.2"), "1.2.5-beta"));
+	});
+});
+
+// Receivers for the bump block: releases, single and multi-identifier
+// prereleases with the numeric identifier in every position, and build
+// metadata (which every bump drops).
+const bumpCorpus: ReadonlyArray<string> = [
+	"0.0.0",
+	"1.2.3",
+	"1.2.3+build.7",
+	"1.0.0-0",
+	"1.0.0-0.0",
+	"1.0.0-alpha",
+	"1.0.0-alpha.0",
+	"1.0.0-alpha.9",
+	"1.0.0-alpha.beta",
+	"1.0.0-alpha.1.beta",
+	"1.0.0-1.beta",
+	"1.0.0-1.beta.2",
+	"1.0.0-rc.1+build.5",
+	"2.3.4-beta.1.x",
+	"1.0.0-beta.9007199254740990",
+];
+
+// Identifiers passed to `bump.prerelease(id)`: none, names that match and
+// do not match the receivers' first identifiers, and all-digit identifiers
+// (which both sides read as numbers).
+const bumpIdentifiers: ReadonlyArray<string | undefined> = [undefined, "alpha", "beta", "rc", "0", "1"];
+
+describe("core parity: bumps", () => {
+	for (const input of bumpCorpus) {
+		for (const id of bumpIdentifiers) {
+			it(`bump.prerelease(${id === undefined ? "" : JSON.stringify(id)}) agrees on ${input}`, () => {
+				const kit = Result.getOrThrow(SemVer.parseResult(input)).bump.prerelease(id);
+				const core = CoreSemVer.bumpPrerelease(CoreSemVer.parseUnsafe(input), id);
+				assert.strictEqual(kit.toString(), CoreSemVer.format(core));
+			});
+		}
+	}
+
+	it("the corpus holds a prerelease whose numeric identifier is not last (control)", () => {
+		// The divergence #1068 fixed: only the last identifier was inspected.
+		const kit = Result.getOrThrow(SemVer.parseResult("1.0.0-1.beta")).bump.prerelease();
+		assert.strictEqual(kit.toString(), "1.0.0-2.beta");
+		assert.notStrictEqual(kit.toString(), "1.0.0-1.beta.0");
+	});
+
+	it("BUMP-FROM-PRERELEASE: release bumps of a prerelease increment here, finish the release in core", () => {
+		const kit = Result.getOrThrow(SemVer.parseResult("2.0.0-beta.1"));
+		const core = CoreSemVer.parseUnsafe("2.0.0-beta.1");
+		assert.strictEqual(kit.bump.major().toString(), "3.0.0");
+		assert.strictEqual(CoreSemVer.format(CoreSemVer.bumpMajor(core)), "2.0.0");
+		assert.strictEqual(kit.bump.minor().toString(), "2.1.0");
+		assert.strictEqual(CoreSemVer.format(CoreSemVer.bumpMinor(core)), "2.0.0");
+		assert.strictEqual(kit.bump.patch().toString(), "2.0.1");
+		assert.strictEqual(CoreSemVer.format(CoreSemVer.bumpPatch(core)), "2.0.0");
+		// On a release both sides agree.
+		const release = Result.getOrThrow(SemVer.parseResult("1.2.3"));
+		assert.strictEqual(
+			release.bump.major().toString(),
+			CoreSemVer.format(CoreSemVer.bumpMajor(CoreSemVer.parseUnsafe("1.2.3"))),
+		);
+		assert.strictEqual(
+			release.bump.minor().toString(),
+			CoreSemVer.format(CoreSemVer.bumpMinor(CoreSemVer.parseUnsafe("1.2.3"))),
+		);
+		assert.strictEqual(
+			release.bump.patch().toString(),
+			CoreSemVer.format(CoreSemVer.bumpPatch(CoreSemVer.parseUnsafe("1.2.3"))),
+		);
+	});
 });

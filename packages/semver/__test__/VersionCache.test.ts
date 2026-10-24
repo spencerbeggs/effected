@@ -111,6 +111,34 @@ layer(VersionCache.layer)("VersionCache", (it) => {
 			}),
 		);
 
+		it.effect("resolve, resolveString and filter honour a range's includePrerelease", () =>
+			Effect.gen(function* () {
+				const cache = yield* VersionCache;
+				yield* cache.load([
+					SemVer.of(1, 2, 0),
+					SemVer.of(1, 2, 5, ["beta", 1]),
+					SemVer.of(1, 3, 0, [0]),
+					SemVer.of(2, 0, 0, [0]),
+				]);
+				assert.strictEqual(String(yield* cache.resolve(yield* Range.parse("^1.2"))), "1.2.0");
+				assert.strictEqual(
+					String(yield* cache.resolve(yield* Range.parse("^1.2", { includePrerelease: true }))),
+					"1.3.0-0",
+				);
+				assert.strictEqual(String(yield* cache.resolveString("^1.2")), "1.2.0");
+				assert.strictEqual(String(yield* cache.resolveString("^1.2", { includePrerelease: true })), "1.3.0-0");
+				assert.deepStrictEqual((yield* cache.filter(yield* Range.parse("^1.2"))).map(String), ["1.2.0"]);
+				assert.deepStrictEqual(
+					(yield* cache.filter(yield* Range.parse("^1.2", { includePrerelease: true }))).map(String),
+					["1.2.0", "1.2.5-beta.1", "1.3.0-0"],
+				);
+				// The failure carries the range as parsed, flag included.
+				const error = yield* Effect.flip(cache.resolveString("^3", { includePrerelease: true }));
+				assert.instanceOf(error, UnsatisfiedRangeError);
+				assert.isTrue(error.range.includePrerelease);
+			}),
+		);
+
 		it.effect("filter returns [] uniformly for empty cache and no matches", () =>
 			Effect.gen(function* () {
 				const cache = yield* VersionCache;

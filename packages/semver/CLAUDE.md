@@ -77,11 +77,16 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
   `Arbitrary.schema(SemVer)` powers the `it.effect.prop` round-trip tests.
 - `Range.test` implements node-semver's prerelease restriction — a prerelease
   version matches a set only when some comparator carries a prerelease on the
-  same `major.minor.patch` tuple.
+  same `major.minor.patch` tuple. `includePrerelease` lifts it and is a
+  **parse** option (`Range.parse(input, { includePrerelease: true })`,
+  `VersionCache.resolveString(input, options)`), recorded on the `Range` in
+  its defaulted `includePrerelease` field: it also lowers wildcard floors to
+  `-0` while desugaring, which a match-time flag cannot reconstruct from the
+  stored comparators. `Range.FromString` cannot carry it; the struct form can.
 - **Core `effect/SemVer` and `effect/SemVerRange` are an oracle, not a
-  dependency.** `__test__/core-parity.test.ts` diffs every parse, ordering
-  and range match against them; a new divergence is a bug unless it joins
-  the named allowlist there and in
+  dependency.** `__test__/core-parity.test.ts` diffs every parse, ordering,
+  range match (both prerelease rules) and prerelease bump against them; a
+  new divergence is a bug unless it joins the named allowlist there and in
   `@./okf/decisions/semver-stays-independent-of-core-semver.md`. Never
   import a core SemVer module from `src/`.
 - Range edges follow node-semver and core: any `\s` separates and may follow

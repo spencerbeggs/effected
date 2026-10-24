@@ -34,6 +34,7 @@ export {
 	type ComparatorSet,
 	InvalidRangeError,
 	Range,
+	type RangeOptions,
 	UnsatisfiableConstraintError,
 } from "./Range.js";
 export { InvalidVersionError, SemVer, SemVerBump } from "./SemVer.js";

@@ -17,7 +17,7 @@
 // build metadata is consumed but dropped — it never affects precedence
 // (SemVer §10), so keeping it in a comparator is dead data.
 
-import type { PartialParts } from "./desugar.js";
+import type { DesugarOptions, PartialParts } from "./desugar.js";
 import { closeSet, desugarCaret, desugarHyphen, desugarTilde, desugarXRange } from "./desugar.js";
 import type { ComparatorOperator, ComparatorParts, VersionParts } from "./order.js";
 
@@ -389,7 +389,7 @@ const consumeOrSeparator = (s: ParserState): void => {
 	skipSpaces(s);
 };
 
-const parseSimple = (s: ParserState): ReadonlyArray<ComparatorParts> => {
+const parseSimple = (s: ParserState, options: DesugarOptions): ReadonlyArray<ComparatorParts> => {
 	const ch = peek(s);
 
 	if (ch === "~") {
@@ -400,26 +400,26 @@ const parseSimple = (s: ParserState): ReadonlyArray<ComparatorParts> => {
 		}
 		skipSpaces(s);
 		const partial = parsePartial(s);
-		return desugarTilde(partial);
+		return desugarTilde(partial, options);
 	}
 
 	if (ch === "^") {
 		advance(s);
 		skipSpaces(s);
 		const partial = parsePartial(s);
-		return desugarCaret(partial);
+		return desugarCaret(partial, options);
 	}
 
 	// Primitive: optional operator + partial
 	const operator = parseOperator(s);
 	skipSpacesAfterOperator(s, operator);
 	const partial = parsePartial(s);
-	return desugarXRange(operator, partial);
+	return desugarXRange(operator, partial, options);
 };
 
 const atRangeEnd = (s: ParserState): boolean => atEnd(s) || isOrSeparator(s);
 
-const parseRangeComparators = (s: ParserState): ReadonlyArray<ComparatorParts> => {
+const parseRangeComparators = (s: ParserState, options: DesugarOptions): ReadonlyArray<ComparatorParts> => {
 	skipSpaces(s);
 
 	// Try hyphen range first, backtracking on failure
@@ -432,7 +432,7 @@ const parseRangeComparators = (s: ParserState): ReadonlyArray<ComparatorParts> =
 		}
 		s.pos += separator;
 		const upper = parsePartial(s);
-		return closeSet(desugarHyphen(lower, upper));
+		return closeSet(desugarHyphen(lower, upper, options), options);
 	} catch (failure) {
 		if (!(failure instanceof ParseFailure)) {
 			throw failure;
@@ -443,7 +443,7 @@ const parseRangeComparators = (s: ParserState): ReadonlyArray<ComparatorParts> =
 
 	const comparators: Array<ComparatorParts> = [];
 
-	const first = parseSimple(s);
+	const first = parseSimple(s, options);
 	for (const c of first) {
 		comparators.push(c);
 	}
@@ -456,40 +456,44 @@ const parseRangeComparators = (s: ParserState): ReadonlyArray<ComparatorParts> =
 		skipSpaces(s);
 		if (atRangeEnd(s)) break;
 
-		const next = parseSimple(s);
+		const next = parseSimple(s, options);
 		for (const c of next) {
 			comparators.push(c);
 		}
 	}
 
-	return closeSet(comparators);
+	return closeSet(comparators, options);
 };
+
+const defaultDesugarOptions: DesugarOptions = { includePrerelease: false };
 
 /**
  * Parse a range expression into comparator sets (OR of ANDs). The empty
- * string parses as the match-all range.
+ * string parses as the match-all range. `options.includePrerelease` lowers
+ * wildcard floors to `-0` (see `DesugarOptions`).
  */
-export const parseRange = (raw: string): ParseResult<ReadonlyArray<ReadonlyArray<ComparatorParts>>> => {
+export const parseRange = (
+	raw: string,
+	options: DesugarOptions = defaultDesugarOptions,
+): ParseResult<ReadonlyArray<ReadonlyArray<ComparatorParts>>> => {
 	const trimmed = raw.trim();
 
 	if (trimmed.length === 0) {
 		// Empty string = match all
-		return {
-			ok: true,
-			value: [closeSet(desugarXRange(null, { major: null, minor: null, patch: null, prerelease: [] }))],
-		};
+		const all = { major: null, minor: null, patch: null, prerelease: [] };
+		return { ok: true, value: [closeSet(desugarXRange(null, all, options), options)] };
 	}
 
 	const s: ParserState = { input: trimmed, pos: 0, len: trimmed.length };
 	try {
 		const sets: Array<ReadonlyArray<ComparatorParts>> = [];
 
-		sets.push(parseRangeComparators(s));
+		sets.push(parseRangeComparators(s, options));
 
 		while (!atEnd(s)) {
 			if (isOrSeparator(s)) {
 				consumeOrSeparator(s);
-				sets.push(parseRangeComparators(s));
+				sets.push(parseRangeComparators(s, options));
 			} else {
 				break;
 			}
