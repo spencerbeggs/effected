@@ -77,6 +77,9 @@ export class ActionsRegistryCredential {
 		yield* Effect.annotateCurrentSpan({ audience: options.audience });
 		const issuer = yield* OidcTokenIssuer;
 		const identityToken = yield* issuer.token(options.audience);
+		// The live issuer already masked this at issuance; masking again costs one
+		// command and holds for any `OidcTokenIssuer` a consumer provides, so every
+		// credential input is registered here, unconditionally, as the canon says.
 		yield* Secret.mask(identityToken);
 		const credential = workloadCredential({ audience: options.audience, prefix: options.prefix, identityToken });
 		yield* Secret.mask(credential.token);

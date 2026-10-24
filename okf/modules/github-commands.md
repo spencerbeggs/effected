@@ -8,10 +8,10 @@ resource: ../../packages/github-commands
 tags: [github, security, bundle]
 generated:
   by: okfit/claude-code
-  at: 2026-10-07T21:32:23Z
+  at: 2026-10-24T00:40:05Z
 integrity:
   generated:
-    body: df63a018601200d8
+    body: e959b3a782be0017
 ---
 
 # @effected/github-commands
@@ -25,7 +25,7 @@ things that are the same protocol seen from its two ends.
 
 | Module | Concept |
 | --- | --- |
-| `WorkflowCommand` | Render a command, `::name key=value::message`, with the runner's escaping: `render`, and `debug`, `notice`, `warning`, `error`, `group`, `endGroup` and `addMask`, plus the `AnnotationProperties` that map readable field names onto GitHub's abbreviated wire names. Moved here unchanged from `@effected/github-actions`, which re-exports it at its entrypoint. |
+| `WorkflowCommand` | Render a command, `::name key=value::message`, with the runner's escaping: `render`, and `debug`, `notice`, `warning`, `error`, `group`, `endGroup` and `addMask`, plus the `AnnotationProperties` that map readable field names onto GitHub's abbreviated wire names. Moved here unchanged from `@effected/github-actions`, which re-exports it at its entrypoint. `groupDepthKey` names the fiber-local that counts the groups open around a fiber (see the group-depth key below). |
 | `CommandNeutralizer` | The opposite direction: make arbitrary text safe to write to a log. `CommandNeutralizer.lines(text)` splits at the runner's line breaks and returns each line neutralized, and `CommandNeutralizer.text(text)` joins them back. |
 
 ## The two-parser rule
@@ -61,6 +61,24 @@ beside the neutralizer would be the implementation's own opinion of what a
 command is, and a test that used it would pin the code's output as its own
 oracle. The oracle lives in the test tree only, written independently from the
 runner's source.
+
+## The group-depth key
+
+The runner has one log stream and one open group at a time: a second
+`::group::` ends the first. Two kit surfaces write groups, `ActionLogger.group`
+in `@effected/github-actions` and `Render.githubLog` in `@effected/cli` (a
+top-level collapsible), and neither package depends on the other, so the count
+of open groups has to live somewhere both reach. That is this package, the one
+they both already depend on, but this package imports no `effect` and so cannot
+hold the `Context.Reference` itself. It holds the **key**:
+`WorkflowCommand.groupDepthKey`, `"@effected/github-commands/GroupDepth"`.
+Effect looks a reference up by its string key, so each writer builds its own
+`Context.Reference<number>(WorkflowCommand.groupDepthKey, { defaultValue: () => 0 })`
+and they share one slot. `ActionLogger.group` reads it, writes the command only
+at `0`, and provides `depth + 1` around the body; `Render.context` reads it into
+`RenderContext.groupDepth`, so a document printed inside a group renders its
+collapsible as plain text. A consumer's own group wrapper joins the same way.
+The key is pinned by test: changing it would silently split the count.
 
 ## Tier and dependencies
 

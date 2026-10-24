@@ -1,7 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind, StreamEnv } from "@effected/env";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
-import { Console, Effect, Layer, Option } from "effect";
+import { WorkflowCommand } from "@effected/github-commands";
+import { Console, Context, Effect, Layer, Option } from "effect";
 import type { Document } from "../src/index.js";
 import { CliLinks, CliTheme, Doc, Glyphs, Render } from "../src/index.js";
 import { composite } from "./helpers/hostileDoc.js";
@@ -89,6 +90,31 @@ describe("Doc.print: each audience picks its renderer", () => {
 			assert.include(out[0] ?? "", "::group::Details");
 			assert.include(out[0] ?? "", "::endgroup::");
 			assert.notInclude(out[0] ?? "", ESC);
+		}),
+	);
+
+	it.effect("printed inside an open Actions log group, the collapsible is plain text rather than a second group", () =>
+		Effect.gen(function* () {
+			// The count `ActionLogger.group` provides lives in the fiber-local keyed by `WorkflowCommand.groupDepthKey`;
+			// a reference built here from that key is the one `Render.context` reads, with no edge to github-actions.
+			const GroupDepth = Context.Reference<number>(WorkflowCommand.groupDepthKey, { defaultValue: () => 0 });
+			const inside = yield* print({ audience: "ci", stdout: { color: "none" }, ci: "github-actions" }).pipe(
+				Effect.provideService(GroupDepth, 1),
+			);
+			assert.notInclude(inside.out[0] ?? "", "::group::");
+			assert.notInclude(inside.out[0] ?? "", "::endgroup::");
+			assert.include(inside.out[0] ?? "", "Details\n  inside");
+
+			const ctx = yield* under(
+				{ audience: "ci", stdout: { color: "none" }, ci: "github-actions" },
+				Render.context("stdout"),
+			);
+			assert.isFalse("groupDepth" in ctx.value, "no group open: the context leaves the depth unset");
+			const deeper = yield* under(
+				{ audience: "ci", stdout: { color: "none" }, ci: "github-actions" },
+				Render.context("stdout").pipe(Effect.provideService(GroupDepth, 2)),
+			);
+			assert.strictEqual(deeper.value.groupDepth, 2);
 		}),
 	);
 

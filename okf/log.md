@@ -1,5 +1,12 @@
 # Log
 
+## 2026-10-24
+
+* Updated @effected/cli
+* Updated @effected/github-commands
+* Updated actions-attestation
+* Updated github-actions
+
 ## 2026-10-23
 
 * Updated @effected/crypto

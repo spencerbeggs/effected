@@ -134,11 +134,33 @@ export class WorkflowCommand {
 	 * a stray `::endgroup::` below it. This function renders the command and
 	 * knows nothing about what is already open; for nesting-aware grouping use
 	 * `ActionLogger.group` from `@effected/github-actions`, which writes the
-	 * command only at the outermost level.
+	 * command only at the outermost level, and reads what is open through the
+	 * fiber-local keyed by {@link WorkflowCommand.groupDepthKey}.
 	 */
 	static group(name: string): string {
 		return WorkflowCommand.render("group", {}, name);
 	}
+
+	/**
+	 * The key of the fiber-local that counts the groups open around the current
+	 * fiber: `"@effected/github-commands/GroupDepth"`.
+	 *
+	 * @remarks
+	 * The runner has one log stream and one open group at a time, so every kit
+	 * surface that writes a `::group::` must know whether one is already open,
+	 * whoever opened it. This package holds the key, not the fiber-local
+	 * itself: it is pure and imports no `effect`. Each writer builds an
+	 * Effect `Context.Reference<number>` with this key and a default of `0`,
+	 * and Effect looks a reference up by its key, so every reference built
+	 * from it reads and writes one slot. `ActionLogger.group` in
+	 * `@effected/github-actions` provides `depth + 1` around a group's body
+	 * and writes the command only at `0`; `Render.context` in `@effected/cli`
+	 * reads it into `RenderContext.groupDepth`, so `Render.githubLog` renders
+	 * a collapsible as a group only when none is open. A consumer's own group
+	 * wrapper joins by doing the same: read the depth, write the command only
+	 * at `0`, and provide `depth + 1` around the body.
+	 */
+	static readonly groupDepthKey = "@effected/github-commands/GroupDepth";
 
 	/** `::endgroup::` — closes the open group (the runner does not nest groups; see {@link WorkflowCommand.group}). */
 	static endGroup(): string {

@@ -293,9 +293,12 @@ describe("bundle reachability", () => {
 		// The token issuer reads claims through `Oidc.decodeUnverified` and
 		// `ActionsOidcClaims`' wire codec; the identity adapter closes oidc's
 		// `IdentityToken`. The first assertion is the control: it proves the
-		// walker sees these modules' package edges at all.
+		// walker sees these modules' package edges at all. `@effected/github-commands`
+		// arrives through `Secret` -> `ActionOutputs`, because the issuer masks
+		// every token at issuance; it is the pure grammar, with no graph of its own.
 		assert.deepStrictEqual([...reachableBareImports("OidcTokenIssuer.ts")].sort(), [
 			"@effected/github",
+			"@effected/github-commands",
 			"@effected/oidc",
 			"effect",
 			"effect/encoding/Base64Url",

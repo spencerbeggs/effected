@@ -6,7 +6,9 @@ import * as Base64Url from "effect/encoding/Base64Url";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { ActionEnvironment } from "./ActionEnvironment.js";
+import { ActionOutputs } from "./ActionOutputs.js";
 import { unstubbed } from "./internal/unstubbed.js";
+import { Secret } from "./Secret.js";
 
 /**
  * Raised when an OIDC token cannot be issued or read.
@@ -98,6 +100,17 @@ export interface OidcTokenIssuerShape {
 	 * Omitting the audience sends no `audience` parameter at all, matching
 	 * `@actions/core.getIDToken` — the runner's default audience is not the empty
 	 * string.
+	 *
+	 * **The live issuer masks the token at issuance.** Every token it fetches is
+	 * registered with the runner's log filter (`Secret.mask`, one `::add-mask::`)
+	 * before it is returned, so a consumer that declassifies and logs it, or
+	 * serializes an error carrying it, prints a redaction rather than the JWT.
+	 * Masking is the issuer's job because it is the one place every token
+	 * passes; a consumer masking again is harmless. The caveat `Secret.mask`
+	 * documents applies: in a **detached worker** the mask line itself is the
+	 * leak, since no runner parses that process's stdout, so mint in the parent
+	 * and compose `ActionOutputs.layerDetached` in the worker, under which the
+	 * mask is a no-op. The doubles mask nothing: they issue no real token.
 	 */
 	readonly token: (audience?: string) => Effect.Effect<Redacted.Redacted<string>, OidcTokenError>;
 	/**
@@ -126,6 +139,12 @@ export interface OidcTokenIssuerShape {
 	 * {@link OidcTokenIssuer.layerFor} answers with real, decodable claims, so
 	 * a test cannot silently skip the path under test because the double
 	 * returned a token that is not a JWT.
+	 *
+	 * The token this fetches to decode is masked too, exactly as
+	 * {@link OidcTokenIssuerShape.token}'s is, though it never leaves: the raw
+	 * JWT exists in this process for the decode, and a decode failure's cause can
+	 * carry what it failed on, so the mask costs one command and closes that
+	 * path. There is one mask site, where the token is issued, for both members.
 	 */
 	readonly claims: (audience?: string) => Effect.Effect<ActionsOidcClaims, OidcTokenError>;
 }
@@ -133,12 +152,13 @@ export interface OidcTokenIssuerShape {
 const make = Effect.gen(function* () {
 	const env = yield* ActionEnvironment;
 	const http = yield* HttpClient.HttpClient;
+	const outputs = yield* ActionOutputs;
 
 	const required = (name: string): Effect.Effect<string, OidcTokenError> =>
 		env.get(name).pipe(Effect.mapError(() => new OidcTokenError({ reason: "unavailable", detail: name })));
 
 	/**
-	 * The raw JWT, before it is wrapped.
+	 * The raw JWT, masked, before it is wrapped.
 	 *
 	 * @remarks
 	 * `claims` reads this rather than unwrapping what `token` returns, so
@@ -146,6 +166,11 @@ const make = Effect.gen(function* () {
 	 * declassification invariant is that `Secret.ts` is the only place a secret
 	 * becomes a string, and a wrap-then-immediately-unwrap here would be a
 	 * genuine exception to it rather than a cosmetic one.
+	 *
+	 * This is the one place every issued token passes, so it is where the token
+	 * is registered with the runner's log filter: `token` and `claims` both get
+	 * it, once per token, before anything downstream can decode, fail on or
+	 * declassify it. The `ActionOutputs` is the one the layer was built with.
 	 */
 	const issue = Effect.fn("OidcTokenIssuer.token")(function* (audience?: string) {
 		const bearer = yield* required(REQUEST_TOKEN);
@@ -165,6 +190,7 @@ const make = Effect.gen(function* () {
 		const envelope = yield* HttpClientResponse.schemaBodyJson(TokenEnvelope)(response).pipe(
 			Effect.mapError((cause) => new OidcTokenError({ reason: "malformedResponse", cause })),
 		);
+		yield* Secret.mask(Redacted.make(envelope.value)).pipe(Effect.provideService(ActionOutputs, outputs));
 		return envelope.value;
 	});
 
@@ -226,11 +252,19 @@ export class OidcTokenIssuer extends Context.Service<OidcTokenIssuer, OidcTokenI
 	 * @remarks
 	 * Fails with {@link OidcTokenError} (`unavailable`) at use when the workflow
 	 * lacks `permissions: id-token: write`.
+	 *
+	 * Requires {@link ActionOutputs} because every token it issues is masked
+	 * through it at issuance (see {@link OidcTokenIssuerShape.token}). Under
+	 * `ActionRuntime.layer` that is already at hand; a worker that composes
+	 * `ActionOutputs.layerDetached` gets an issuer whose mask is the documented
+	 * no-op, which is the right thing there and no substitute for minting in
+	 * the parent.
 	 */
-	static readonly layer: Layer.Layer<OidcTokenIssuer, never, ActionEnvironment | HttpClient.HttpClient> = Layer.effect(
-		this,
-		make,
-	);
+	static readonly layer: Layer.Layer<
+		OidcTokenIssuer,
+		never,
+		ActionEnvironment | HttpClient.HttpClient | ActionOutputs
+	> = Layer.effect(this, make);
 
 	/**
 	 * An **unsigned** JWT carrying these claims.

@@ -1,7 +1,7 @@
 import type { AudienceKind, ColorLevel } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
-import { CommandNeutralizer } from "@effected/github-commands";
-import { Effect } from "effect";
+import { CommandNeutralizer, WorkflowCommand } from "@effected/github-commands";
+import { Context, Effect } from "effect";
 import type { CliLinksShape } from "./CliLinks.js";
 import { CliLinks } from "./CliLinks.js";
 import { CliTheme } from "./CliTheme.js";
@@ -78,7 +78,27 @@ export interface RenderContext {
 	 * cannot open. The other renderers do not read it.
 	 */
 	readonly linkBase?: string | undefined;
+	/**
+	 * How many GitHub Actions log groups are open around the output. Unset or `0`, none is: `Render.githubLog` then
+	 * writes a top-level collapsible as a `::group::`. Above `0` it writes the collapsible as plain does, its title on
+	 * a line and its body indented, because the runner does not nest groups and a second `::group::` would end the open
+	 * one. The other renderers do not read it.
+	 *
+	 * @remarks
+	 * `Render.context` reads it from the fiber-local keyed by `WorkflowCommand.groupDepthKey`
+	 * (`@effected/github-commands`), the count `ActionLogger.group` in `@effected/github-actions` provides around a
+	 * group's body, so a context built inside a group knows it. It is read when the context is built, not when a
+	 * document is rendered: a context built outside a group and used inside one still says none is open, so build it
+	 * where the document is printed, as `Doc.print` does.
+	 */
+	readonly groupDepth?: number | undefined;
 }
+
+/**
+ * The fiber-local count of open Actions log groups, by the kit-wide key, so a group `@effected/github-actions`'
+ * `ActionLogger.group` opened is visible here without an edge between the two packages.
+ */
+const GroupDepth = Context.Reference<number>(WorkflowCommand.groupDepthKey, { defaultValue: () => 0 });
 
 /**
  * Options for {@link Render.contextOf}.
@@ -108,6 +128,8 @@ export interface RenderContextOfOptions {
 	readonly neutralizeWorkflowCommands?: boolean | undefined;
 	/** See {@link RenderContext.linkBase}; unset by default. */
 	readonly linkBase?: string | undefined;
+	/** See {@link RenderContext.groupDepth}; unset (no group open) by default. */
+	readonly groupDepth?: number | undefined;
 }
 
 /** A renderer's text, with workflow commands neutralized when the context says the runner is reading it. */
@@ -169,7 +191,10 @@ export class Render {
 	 *   required), for every audience, since the runner reads whatever is written there;
 	 * - `width` is the option, else `TerminalEnv.width()` for a human whose stream is a terminal, and **unbounded**
 	 *   (`Infinity`) for a human whose stream is not one (`tool | grep`, `tool > out.txt`), an agent or a CI, so nothing
-	 *   a reader needs is truncated or wrapped for a terminal that is not there: a pipe has no width to honour.
+	 *   a reader needs is truncated or wrapped for a terminal that is not there: a pipe has no width to honour;
+	 * - `groupDepth` is the fiber's count of open Actions log groups (the fiber-local keyed by
+	 *   `WorkflowCommand.groupDepthKey`, which `ActionLogger.group` provides), set when it is above `0`, so a
+	 *   document printed inside a group opens no second one; see {@link RenderContext.groupDepth}.
 	 *
 	 * @param stream - the stream the output is for
 	 * @param options - an explicit width and a path display function
@@ -187,8 +212,10 @@ export class Render {
 			// Read if the environment has it, as `Doc.print` does: GitHub Actions makes every format unable to inject a
 			// workflow command, whoever the audience is.
 			const underActions = yield* underGithubActions;
+			const groupDepth = yield* GroupDepth;
 			return {
 				...(underActions ? { neutralizeWorkflowCommands: true } : {}),
+				...(groupDepth > 0 ? { groupDepth } : {}),
 				// A pipe or a file has no width to honour: wrapping at a guessed 80 only splits a line someone greps.
 				width:
 					options?.width ??
@@ -213,7 +240,8 @@ export class Render {
 	 * with no escape of any kind. A colour level paints with the default token styles. An `agent` is colourless and
 	 * unlinked whatever `color` and `links` say, as in {@link Render.context}.
 	 *
-	 * @param options - the audience, and the colour, glyphs, width, path display, links, neutralizing and link base
+	 * @param options - the audience, and the colour, glyphs, width, path display, links, neutralizing, link base and
+	 *   open group depth
 	 */
 	static readonly contextOf = (options: RenderContextOfOptions): RenderContext => {
 		const agent = options.audience === "agent";
@@ -240,6 +268,7 @@ export class Render {
 					? { neutralizeWorkflowCommands: false }
 					: {}),
 			...(options.linkBase === undefined ? {} : { linkBase: options.linkBase }),
+			...(options.groupDepth === undefined ? {} : { groupDepth: options.groupDepth }),
 		};
 	};
 
@@ -372,6 +401,15 @@ export class Render {
 	 * title or file is. That is a top-level collapsible, or one that is a direct child of a
 	 * top-level section. GitHub does not nest groups, so a collapsible inside a group, or inside a list or callout
 	 * (where it would not start a line), keeps plain's rendering: its title on a line and its body indented.
+	 *
+	 * A group already open around the output counts the same way. When the context's `groupDepth` is above `0`
+	 * ({@link RenderContext.groupDepth}, which `Render.context` reads from the fiber-local `ActionLogger.group` in
+	 * `@effected/github-actions` provides, by the key `WorkflowCommand.groupDepthKey`), a top-level collapsible keeps
+	 * plain's rendering too, so a document printed inside an `ActionLogger.group` does not open a second group, which
+	 * would end the first at the runner. The depth is the context's, read when the context was built. What no depth
+	 * can fix is two fibers writing groups at once: the runner has one log stream, so concurrent sibling groups, this
+	 * renderer's or `ActionLogger`'s, interleave in it. Render and print a document from the fiber that owns the
+	 * stream, not from a fiber racing another group.
 	 *
 	 * The runner has two command parsers, and a line is a command if either accepts it: after its leading whitespace it
 	 * starts with `::`, or `##[` occurs ANYWHERE in it (a bare `##` is not one). A document's text must not be able to

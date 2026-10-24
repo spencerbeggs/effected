@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T21:09:05Z
+  at: 2026-10-24T00:40:05Z
 integrity:
   generated:
-    body: 7fcb5ae9c4721ea6
+    body: 0940b115b89897cb
 ---
 
 # github-actions
@@ -168,6 +168,17 @@ package handles tokens by definition and a span annotation is the easiest
 place to leak one. The pure modules carry no spans. The package emits
 Effect logs and ships the `Logger` that renders them as workflow commands;
 it composes no OpenTelemetry itself.
+
+`ActionLogger` structures the log the runner shows. `group` opens the one
+collapsible section the runner allows at a time (a nested call writes a
+`▸ <name>` header line instead, since a second `::group::` would end the
+first), `heading` writes that same header line without opening a group, so
+the groups inside a phase stay top level and each gets its own section, and
+`withBuffer`/`withStep` hold a step's transcript for its failure report. The
+open-group count is the fiber-local keyed by
+[`github-commands`](github-commands.md)' `WorkflowCommand.groupDepthKey`, not
+a key of this package's own, so [`cli`](cli.md)'s `Render.context` built
+inside a group sees it and `Doc.print`'s collapsible stays plain there.
 
 Step debugging reaches the log level, not just the renderer. When the
 runner sets `RUNNER_DEBUG=1`, `Action.run` lowers core's
