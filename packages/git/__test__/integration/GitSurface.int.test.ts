@@ -10,9 +10,15 @@
 // Two fixtures, each in their own mkdtemp dir removed in afterAll:
 //  - Fixture A: a single introspection repository with a rename, a modified
 //    file, a staged addition and an untracked file, exercising the read tier.
-//  - Fixture B: a "library" repo and a "superproject" repo, exercising the
-//    mutating tier (submoduleAdd, add, fetch, checkout --detach,
-//    sparseCheckoutSet, submoduleUpdate) against a local file:// remote.
+//  - Fixture B: one read-only "library" repo plus a fresh "superproject" per
+//    test, exercising the mutating tier (submoduleAdd, add, fetch, checkout
+//    --detach, sparseCheckoutSet, submoduleUpdate) against a local file://
+//    remote.
+//
+// Every test in this file is independent of its siblings' run order: the
+// suite passes under `--sequence.shuffle` with any seed. A shared fixture is
+// therefore read-only to the tests that share it, or any write a test makes to
+// it is scoped (acquireUseRelease) or lands outside the working tree.
 //
 // git >= 2.38 blocks file-protocol submodules unless protocol.file.allow is
 // set to "always" — the superproject (and any clone of it) sets that BEFORE
@@ -239,8 +245,12 @@ describe("Git surface — introspection repository (fixture A)", () => {
 				assert.deepStrictEqual(yield* git.configGet(dirA, "test.kit"), Option.some("yes"));
 				assert.deepStrictEqual(yield* git.configGet(dirA, "test.unset"), Option.none());
 
-				yield* git.configSet(dirA, "submodule.x.shallow", "true", { file: "modcfg" });
-				const written = yield* runFixtureGit(dirA, ["config", "-f", "modcfg", "--get", "submodule.x.shallow"]);
+				// The explicit file lives under .git/, outside the working tree: written
+				// into the checkout it would be one more untracked file, and the
+				// partition test's untracked listing would then depend on run order.
+				const modcfg = join(dirA, ".git", "modcfg");
+				yield* git.configSet(dirA, "submodule.x.shallow", "true", { file: modcfg });
+				const written = yield* runFixtureGit(dirA, ["config", "-f", modcfg, "--get", "submodule.x.shallow"]);
 				assert.strictEqual(written.trim(), "true");
 			}),
 		),
@@ -306,25 +316,22 @@ describe("Git surface — introspection repository (fixture A)", () => {
 
 describe("Git surface — submodule/fetch pair (fixture B)", () => {
 	let libDir: string;
-	let superDir: string;
 	let libTagSha: string;
-
-	/** The submodule's working copy, once `submoduleAdd` has vendored it. */
-	const subDir = () => join(superDir, "vendor", "lib");
+	/** Every superproject and clone a test built, removed together in afterAll. */
+	const scratchDirs: Array<string> = [];
 
 	/**
-	 * "library" = a one-commit repo on `main`, tagged `v1.0.0`. "superproject" =
-	 * an empty repo with `protocol.file.allow always` set BEFORE any submodule
-	 * operation — git >= 2.38 refuses a file:// submodule otherwise.
+	 * "library" = a one-commit repo on `main`, tagged `v1.0.0`. It is the one
+	 * fixture the block shares, and it is read-only: every test fetches or
+	 * clones FROM it and writes into a superproject of its own, so no test can
+	 * leave state a sibling then trips over, whatever order the suite runs in.
 	 */
 	beforeAll(async () => {
 		libDir = await mkdtemp(join(tmpdir(), "effected-git-surface-lib-"));
-		superDir = await mkdtemp(join(tmpdir(), "effected-git-surface-super-"));
 		libTagSha = await Effect.runPromise(
 			run(
 				Effect.gen(function* () {
 					const rawLib = (args: ReadonlyArray<string>) => runFixtureGit(libDir, args);
-					const rawSuper = (args: ReadonlyArray<string>) => runFixtureGit(superDir, args);
 
 					yield* rawLib(["-c", "init.defaultBranch=main", "init"]);
 					yield* rawLib(["config", "user.email", "git-integration@example.com"]);
@@ -333,14 +340,7 @@ describe("Git surface — submodule/fetch pair (fixture B)", () => {
 					yield* rawLib(["add", "-A"]);
 					yield* rawLib(["-c", "commit.gpgsign=false", "commit", "-m", "lib commit"]);
 					yield* rawLib(["tag", "v1.0.0"]);
-					const tagSha = (yield* rawLib(["rev-parse", "v1.0.0"])).trim();
-
-					yield* rawSuper(["-c", "init.defaultBranch=main", "init"]);
-					yield* rawSuper(["config", "user.email", "git-integration@example.com"]);
-					yield* rawSuper(["config", "user.name", "Git Integration"]);
-					yield* rawSuper(["config", "protocol.file.allow", "always"]);
-
-					return tagSha;
+					return (yield* rawLib(["rev-parse", "v1.0.0"])).trim();
 				}),
 			),
 		);
@@ -348,13 +348,48 @@ describe("Git surface — submodule/fetch pair (fixture B)", () => {
 
 	afterAll(async () => {
 		if (libDir) await rm(libDir, { recursive: true, force: true });
-		if (superDir) await rm(superDir, { recursive: true, force: true });
+		await Promise.all(scratchDirs.map((dir) => rm(dir, { recursive: true, force: true })));
 	});
 
-	// Sequential, order-dependent stages against the same superproject: add
-	// vendors the submodule, fetch+checkout pin it to a tag, a bad fetch fails
-	// typed, and sparse-checkout narrows its tree — each stage builds on the
-	// last, mirroring the brief's scenario-grouped-its style.
+	/** A fresh mkdtemp directory the block owns and removes in afterAll. */
+	const scratchDir = (prefix: string) =>
+		Effect.promise(() => mkdtemp(join(tmpdir(), prefix))).pipe(
+			Effect.tap((dir) =>
+				Effect.sync(() => {
+					scratchDirs.push(dir);
+				}),
+			),
+		);
+
+	/**
+	 * "superproject" = an empty repo with `protocol.file.allow always` set
+	 * BEFORE any submodule operation — git >= 2.38 refuses a file:// submodule
+	 * otherwise (see the GIT_ALLOW_PROTOCOL note above for what actually
+	 * authorizes the internal clone).
+	 */
+	const emptySuperproject = Effect.fn("emptySuperproject")(function* () {
+		const superDir = yield* scratchDir("effected-git-surface-super-");
+		const raw = (args: ReadonlyArray<string>) => runFixtureGit(superDir, args);
+		yield* raw(["-c", "init.defaultBranch=main", "init"]);
+		yield* raw(["config", "user.email", "git-integration@example.com"]);
+		yield* raw(["config", "user.name", "Git Integration"]);
+		yield* raw(["config", "protocol.file.allow", "always"]);
+		return superDir;
+	});
+
+	/**
+	 * A superproject that has already vendored the library at `vendor/lib` and
+	 * committed it — raw fixture git, not the service, so a test of a later
+	 * stage does not rest on the `submoduleAdd` test having run first.
+	 */
+	const vendoredSuperproject = Effect.fn("vendoredSuperproject")(function* () {
+		const superDir = yield* emptySuperproject();
+		yield* runFixtureGit(superDir, ["submodule", "add", libDir, "vendor/lib"]);
+		yield* runFixtureGit(superDir, ["-c", "commit.gpgsign=false", "commit", "-m", "vendor lib"]);
+		const subDir = join(superDir, "vendor", "lib");
+		yield* assertExists(join(subDir, "lib.txt"));
+		return { superDir, subDir };
+	});
 
 	it.effect(
 		"submoduleAdd vendors the library and add stages the result",
@@ -362,10 +397,11 @@ describe("Git surface — submodule/fetch pair (fixture B)", () => {
 			run(
 				Effect.gen(function* () {
 					const git = yield* Git;
+					const superDir = yield* emptySuperproject();
 					// No depth: local-path clones ignore/warn on --depth; the depth argv
 					// is already unit-tested.
 					yield* git.submoduleAdd(superDir, { url: libDir, path: "vendor/lib" });
-					yield* assertExists(join(subDir(), "lib.txt"));
+					yield* assertExists(join(superDir, "vendor", "lib", "lib.txt"));
 
 					yield* git.add(superDir, [".gitmodules", "vendor/lib"]);
 					const entries = yield* git.status(superDir);
@@ -382,85 +418,93 @@ describe("Git surface — submodule/fetch pair (fixture B)", () => {
 		20_000,
 	);
 
-	it.effect("fetch tag + checkout --detach pins the submodule, currentBranch reads none", () =>
-		run(
-			Effect.gen(function* () {
-				const git = yield* Git;
-				yield* git.fetch(subDir(), { ref: "v1.0.0", tag: true });
-				yield* git.checkout(subDir(), "FETCH_HEAD", { detach: true });
+	it.effect(
+		"fetch tag + checkout --detach pins the submodule, currentBranch reads none",
+		() =>
+			run(
+				Effect.gen(function* () {
+					const git = yield* Git;
+					const { subDir } = yield* vendoredSuperproject();
+					yield* git.fetch(subDir, { ref: "v1.0.0", tag: true });
+					yield* git.checkout(subDir, "FETCH_HEAD", { detach: true });
 
-				assert.deepStrictEqual(yield* git.currentBranch(subDir()), Option.none());
-				assert.strictEqual(yield* git.revParse(subDir(), "HEAD"), libTagSha);
-			}),
-		),
+					assert.deepStrictEqual(yield* git.currentBranch(subDir), Option.none());
+					assert.strictEqual(yield* git.revParse(subDir, "HEAD"), libTagSha);
+				}),
+			),
+		20_000,
 	);
 
-	it.effect("fetch of a tag the remote does not have fails typed", () =>
-		run(
-			Effect.gen(function* () {
-				const git = yield* Git;
-				const exit = yield* Effect.exit(git.fetch(subDir(), { ref: "v9.9.9", tag: true }));
-				assert.isTrue(Exit.isFailure(exit));
-				if (Exit.isFailure(exit)) {
-					// Cause.failureOption does not exist at beta.98 — findFail returns a Result.
-					const found = Cause.findFail(exit.cause);
-					assert.isTrue(Result.isSuccess(found) && found.success.error instanceof UnknownRefError);
-				}
-			}),
-		),
+	it.effect(
+		"fetch of a tag the remote does not have fails typed",
+		() =>
+			run(
+				Effect.gen(function* () {
+					const git = yield* Git;
+					const { subDir } = yield* vendoredSuperproject();
+					// Control: the library really is reachable from this submodule, so
+					// the failure below can only be the missing tag, never a missing
+					// remote or a directory that is not a repository.
+					yield* git.fetch(subDir, { ref: "v1.0.0", tag: true });
+
+					const exit = yield* Effect.exit(git.fetch(subDir, { ref: "v9.9.9", tag: true }));
+					assert.isTrue(Exit.isFailure(exit));
+					if (Exit.isFailure(exit)) {
+						const found = Cause.findFail(exit.cause);
+						assert.isTrue(Result.isSuccess(found));
+						if (Result.isSuccess(found)) {
+							assert.instanceOf(found.success.error, UnknownRefError);
+							assert.strictEqual(found.success.error.ref, "v9.9.9");
+						}
+					}
+				}),
+			),
+		20_000,
 	);
 
-	it.effect("sparseCheckoutSet --no-cone narrows the submodule's tree", () =>
-		run(
-			Effect.gen(function* () {
-				const git = yield* Git;
-				yield* git.sparseCheckoutSet(subDir(), ["src"], { cone: false });
-				assert.deepStrictEqual(yield* git.configGet(subDir(), "core.sparseCheckout"), Option.some("true"));
-				// The narrowing must be real, not just configured: lib.txt sits at the
-				// tree root, outside the "src" pattern, so it leaves the working tree.
-				const libGone = yield* Effect.promise(() =>
-					stat(join(subDir(), "lib.txt")).then(
-						() => false,
-						() => true,
-					),
-				);
-				assert.isTrue(libGone);
-			}),
-		),
+	it.effect(
+		"sparseCheckoutSet --no-cone narrows the submodule's tree",
+		() =>
+			run(
+				Effect.gen(function* () {
+					const git = yield* Git;
+					const { subDir } = yield* vendoredSuperproject();
+					yield* git.sparseCheckoutSet(subDir, ["src"], { cone: false });
+					assert.deepStrictEqual(yield* git.configGet(subDir, "core.sparseCheckout"), Option.some("true"));
+					// The narrowing must be real, not just configured: lib.txt sits at the
+					// tree root, outside the "src" pattern, so it leaves the working tree.
+					const libGone = yield* Effect.promise(() =>
+						stat(join(subDir, "lib.txt")).then(
+							() => false,
+							() => true,
+						),
+					);
+					assert.isTrue(libGone);
+				}),
+			),
+		20_000,
 	);
 
-	describe("a fresh clone", () => {
-		let cloneDir: string;
+	it.effect(
+		"a fresh clone materializes the submodule via submoduleUpdate --init",
+		() =>
+			run(
+				Effect.gen(function* () {
+					const git = yield* Git;
+					// The vendored superproject carries the "vendor lib" commit, so the
+					// clone has something to check out.
+					const { superDir } = yield* vendoredSuperproject();
+					const cloneDir = yield* scratchDir("effected-git-surface-clone-");
+					yield* runFixtureGit(tmpdir(), ["clone", superDir, cloneDir]);
+					// Any clone needs protocol.file.allow set BEFORE submoduleUpdate --init too.
+					yield* runFixtureGit(cloneDir, ["config", "protocol.file.allow", "always"]);
 
-		beforeAll(async () => {
-			// The superproject needs a commit between add and clone so the clone
-			// has something to check out — fixture setup, so raw, not the service.
-			await Effect.runPromise(
-				run(runFixtureGit(superDir, ["-c", "commit.gpgsign=false", "commit", "-m", "vendor lib"])),
-			);
-			cloneDir = await mkdtemp(join(tmpdir(), "effected-git-surface-clone-"));
-			await Effect.runPromise(run(runFixtureGit(tmpdir(), ["clone", superDir, cloneDir])));
-			// Any clone needs protocol.file.allow set BEFORE submoduleUpdate --init too.
-			await Effect.runPromise(run(runFixtureGit(cloneDir, ["config", "protocol.file.allow", "always"])));
-		}, 30_000);
-
-		afterAll(async () => {
-			if (cloneDir) await rm(cloneDir, { recursive: true, force: true });
-		});
-
-		it.effect(
-			"a fresh clone materializes the submodule via submoduleUpdate --init",
-			() =>
-				run(
-					Effect.gen(function* () {
-						const git = yield* Git;
-						yield* git.submoduleUpdate(cloneDir, { init: true, paths: ["vendor/lib"] });
-						yield* assertExists(join(cloneDir, "vendor", "lib", "lib.txt"));
-					}),
-				),
-			20_000,
-		);
-	});
+					yield* git.submoduleUpdate(cloneDir, { init: true, paths: ["vendor/lib"] });
+					yield* assertExists(join(cloneDir, "vendor", "lib", "lib.txt"));
+				}),
+			),
+		30_000,
+	);
 });
 
 // Fixture C is `Git.log`'s own: it is the only member whose answer depends on
