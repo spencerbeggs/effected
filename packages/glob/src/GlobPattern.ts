@@ -223,22 +223,24 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 */
 	static compileResult(source: string, options?: GlobPatternOptions): Result.Result<GlobPattern, GlobPatternError> {
 		const engineOptions = toEngineOptions(options);
-		try {
-			// Defaults first (the value invariant), then the effective engine.
-			new Minimatch(source, {});
-			const engine = new Minimatch(source, engineOptions);
-			const pattern = new GlobPattern({ source });
-			pattern.#engine = engine;
-			pattern.#engineOptions = engineOptions;
-			return Result.succeed(pattern);
-		} catch (e) {
-			if (isGuardExceeded(e)) {
-				return Result.fail(
-					new GlobPatternError({ pattern: source, reason: e.reason, limit: e.limit, actual: e.actual }),
-				);
-			}
-			throw e;
-		}
+		return Result.try({
+			try: () => {
+				// Defaults first (the value invariant), then the effective engine.
+				new Minimatch(source, {});
+				const engine = new Minimatch(source, engineOptions);
+				const pattern = new GlobPattern({ source });
+				pattern.#engine = engine;
+				pattern.#engineOptions = engineOptions;
+				return pattern;
+			},
+			catch: (e) => {
+				// Only a guard trip is a typed failure; anything else rethrows as a defect.
+				if (isGuardExceeded(e)) {
+					return new GlobPatternError({ pattern: source, reason: e.reason, limit: e.limit, actual: e.actual });
+				}
+				throw e;
+			},
+		});
 	}
 
 	/**

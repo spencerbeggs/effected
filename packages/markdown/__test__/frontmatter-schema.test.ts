@@ -219,39 +219,39 @@ describe("frontmatter round-trip property", () => {
 	const fenced = (open: string, block: string, close: string): string =>
 		`${open}\n${block}${block.endsWith("\n") ? "" : "\n"}${close}\n\nbody\n`;
 
-	const decodeVia = (
-		source: string,
-		codec: typeof YamlFrontmatter,
-	): { readonly title: string; readonly count: number } =>
-		Effect.runSync(Effect.flatMap(parseDoc(source), (document) => MarkdownFrontmatter.schema(Meta, codec)(document)));
+	const decodeVia = (source: string, codec: typeof YamlFrontmatter) =>
+		Effect.flatMap(parseDoc(source), (document) => MarkdownFrontmatter.schema(Meta, codec)(document));
 
-	it.prop(
+	it.effect.prop(
 		"yaml: stringify, parse and decode recovers the data",
 		[MetaArb],
-		([data]) => {
-			const block = Effect.runSync(Yaml.stringify(data));
-			assert.deepStrictEqual(decodeVia(fenced("---", block, "---"), YamlFrontmatter), data);
-		},
+		([data]) =>
+			Effect.gen(function* () {
+				const block = yield* Yaml.stringify(data);
+				assert.deepStrictEqual(yield* decodeVia(fenced("---", block, "---"), YamlFrontmatter), data);
+			}),
 		{ arbitrary: { runs: 60 } },
 	);
 
-	it.prop(
+	it.effect.prop(
 		"toml: stringify, parse and decode recovers the data",
 		[MetaArb],
-		([data]) => {
-			const block = Effect.runSync(Toml.stringify(data));
-			assert.deepStrictEqual(decodeVia(fenced("+++", block, "+++"), TomlFrontmatter), data);
-		},
+		([data]) =>
+			Effect.gen(function* () {
+				const block = yield* Toml.stringify(data);
+				assert.deepStrictEqual(yield* decodeVia(fenced("+++", block, "+++"), TomlFrontmatter), data);
+			}),
 		{ arbitrary: { runs: 60 } },
 	);
 
-	it.prop(
+	it.effect.prop(
 		"json: stringify, parse and decode recovers the data",
 		[MetaArb],
-		([data]) => {
-			const block = Effect.runSync(Jsonc.stringify(data));
-			assert.deepStrictEqual(decodeVia(fenced("---json", block, "---"), JsonFrontmatter), data);
-		},
+		([data]) =>
+			Effect.gen(function* () {
+				const block = yield* Jsonc.stringify(data);
+				assert.deepStrictEqual(yield* decodeVia(fenced("---json", block, "---"), JsonFrontmatter), data);
+			}),
 		{ arbitrary: { runs: 60 } },
 	);
 });

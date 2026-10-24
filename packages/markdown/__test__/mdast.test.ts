@@ -239,13 +239,15 @@ describe("Mdast.fromMdast", () => {
 		}
 	});
 
-	it("agrees with the Effect twin on both channels", () => {
-		const good = { type: "root", children: [] };
-		const bad = { type: "widget" };
-		assert.deepStrictEqual(Effect.runSync(Effect.result(Mdast.fromMdast(good))), Mdast.fromMdastResult(good) as never);
-		const effectFailure = Effect.runSync(Effect.result(Effect.flip(Mdast.fromMdast(bad))));
-		assert.isTrue(Result.isSuccess(effectFailure));
-	});
+	it.effect("agrees with the Effect twin on both channels", () =>
+		Effect.gen(function* () {
+			const good = { type: "root", children: [] };
+			const bad = { type: "widget" };
+			assert.deepStrictEqual(yield* Effect.result(Mdast.fromMdast(good)), Mdast.fromMdastResult(good) as never);
+			const effectFailure = yield* Effect.result(Effect.flip(Mdast.fromMdast(bad)));
+			assert.isTrue(Result.isSuccess(effectFailure));
+		}),
+	);
 
 	describe("nesting depth guard", () => {
 		// Depth counts from the root at 0: root(0) > paragraph(1) >
