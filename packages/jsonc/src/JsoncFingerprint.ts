@@ -16,6 +16,7 @@
 import type { PlatformError } from "effect";
 import { Crypto, Effect, Result, Schema } from "effect";
 import * as Hex from "effect/encoding/Hex";
+import { causeMessage } from "./internal/causeMessage.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 
 /**
@@ -307,7 +308,7 @@ const digestHexResult = (text: string, digest: JsoncDigest): Result.Result<strin
 				JsoncCanonicalizeError.make({
 					code: "InvalidDigest",
 					path: "",
-					detail: `the supplied digest threw: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
+					detail: `the supplied digest threw: ${causeMessage(thrown) ?? String(thrown)}`,
 				}),
 		}),
 		(bytes) =>
