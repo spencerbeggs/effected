@@ -3,6 +3,7 @@ import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
 import type { GitHubGraphQLError } from "./GraphQL.js";
 import { GraphQLDocument } from "./GraphQL.js";
+import { unstubbed, unstubbedRead } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import type * as Rest from "./Rest.js";
 
@@ -380,14 +381,14 @@ export class GitHubRepository extends Context.Service<GitHubRepository, GitHubRe
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<GitHubRepositoryShape> = {}): GitHubRepositoryShape => ({
-		settings: overrides.settings ?? Effect.sync(() => unstubbed("settings")),
-		updateSettings: overrides.updateSettings ?? (() => unstubbed("updateSettings")),
-		defaultBranch: overrides.defaultBranch ?? Effect.sync(() => unstubbed("defaultBranch")),
-		nodeId: overrides.nodeId ?? Effect.sync(() => unstubbed("nodeId")),
-		ownerType: overrides.ownerType ?? Effect.sync(() => unstubbed("ownerType")),
-		applySettings: overrides.applySettings ?? (() => unstubbed("applySettings")),
+		settings: overrides.settings ?? unread("settings"),
+		updateSettings: overrides.updateSettings ?? (() => dies("updateSettings")),
+		defaultBranch: overrides.defaultBranch ?? unread("defaultBranch"),
+		nodeId: overrides.nodeId ?? unread("nodeId"),
+		ownerType: overrides.ownerType ?? unread("ownerType"),
+		applySettings: overrides.applySettings ?? (() => dies("applySettings")),
 	});
 
 	/** {@link GitHubRepository.makeTest} behind a `Layer`. */
@@ -395,9 +396,8 @@ export class GitHubRepository extends Context.Service<GitHubRepository, GitHubRe
 		Layer.succeed(GitHubRepository, GitHubRepository.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`GitHubRepository.makeTest: ${member} was read but not stubbed — pass an override.`);
-};
+const dies = unstubbed("GitHubRepository.makeTest");
+const unread = unstubbedRead("GitHubRepository.makeTest");
 
 const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 	const settings = Effect.fn("GitHubRepository.settings")(function* () {

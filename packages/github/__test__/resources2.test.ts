@@ -15,7 +15,7 @@ import { PageOptions } from "../src/Rest.js";
 import { WorkflowDispatch } from "../src/WorkflowDispatch.js";
 import type { Reply } from "./fixtures.js";
 import { linkNext } from "./fixtures.js";
-import { harness } from "./harness.js";
+import { REPO, defectMessage, harness } from "./harness.js";
 
 const drive = <I, S, A, E>(
 	replies: ReadonlyArray<Reply>,
@@ -823,12 +823,14 @@ describe("GitHubIssue.commentOnce", () => {
 		}),
 	);
 
-	it("makeTest dies loudly on the unstubbed member, naming it", () => {
-		assert.throws(
-			() => GitHubIssue.makeTest({}).commentOnce(1, marker, "x"),
-			/commentOnce\(\) was called but not stubbed/,
-		);
-	});
+	it.effect("makeTest dies when run on the unstubbed member, naming it", () =>
+		Effect.gen(function* () {
+			// Calling the member only builds the effect; the death is in its Exit.
+			const effect = GitHubIssue.makeTest({}).commentOnce(1, marker, "x");
+			const exit = yield* Effect.exit(Effect.provide(effect, Repo.layer(REPO)));
+			assert.match(defectMessage(exit) ?? "", /GitHubIssue\.makeTest: commentOnce\(\) was called but not stubbed/);
+		}),
+	);
 });
 
 describe("GitHubIssue GraphQL documents", () => {
@@ -1481,10 +1483,14 @@ describe("CheckRun.findByExternalId", () => {
 		}),
 	);
 
-	it("makeTest names the new members when they are unstubbed", () => {
-		const double = CheckRun.makeTest();
-		assert.throws(() => double.findByExternalId("a", "b", "c"), /findByExternalId\(\) was called but not stubbed/);
-	});
+	it.effect("makeTest names the new members when they are unstubbed", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(
+				Effect.provide(CheckRun.makeTest().findByExternalId("a", "b", "c"), Repo.layer(REPO)),
+			);
+			assert.match(defectMessage(exit) ?? "", /findByExternalId\(\) was called but not stubbed/);
+		}),
+	);
 });
 
 describe("WorkflowDispatch.cancelRun", () => {
@@ -1542,9 +1548,22 @@ describe("WorkflowDispatch.cancelRun", () => {
 		}),
 	);
 
-	it("makeTest names cancelRun when it is unstubbed", () => {
-		assert.throws(() => WorkflowDispatch.makeTest().cancelRun(1), /cancelRun\(\) was called but not stubbed/);
-	});
+	it.effect("makeTest names cancelRun when it is unstubbed", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(Effect.provide(WorkflowDispatch.makeTest().cancelRun(1), Repo.layer(REPO)));
+			assert.match(defectMessage(exit) ?? "", /cancelRun\(\) was called but not stubbed/);
+		}),
+	);
+
+	it.effect("makeTest holds a dying `list` rather than dying while the double is built", () =>
+		Effect.gen(function* () {
+			// A value member has no call to defer to: building the double must not
+			// die, and running `list` must, naming it as read rather than called.
+			const double = WorkflowDispatch.makeTest();
+			const exit = yield* Effect.exit(Effect.provide(double.list, Repo.layer(REPO)));
+			assert.match(defectMessage(exit) ?? "", /WorkflowDispatch\.makeTest: list was read but not stubbed/);
+		}),
+	);
 });
 
 describe("WorkflowDispatch.dispatchWithRun", () => {
@@ -1670,12 +1689,14 @@ describe("WorkflowDispatch.dispatchWithRun", () => {
 		}),
 	);
 
-	it("makeTest names dispatchWithRun when it is unstubbed", () => {
-		assert.throws(
-			() => WorkflowDispatch.makeTest().dispatchWithRun("a.yml", "main"),
-			/dispatchWithRun\(\) was called but not stubbed/,
-		);
-	});
+	it.effect("makeTest names dispatchWithRun when it is unstubbed", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(
+				Effect.provide(WorkflowDispatch.makeTest().dispatchWithRun("a.yml", "main"), Repo.layer(REPO)),
+			);
+			assert.match(defectMessage(exit) ?? "", /dispatchWithRun\(\) was called but not stubbed/);
+		}),
+	);
 });
 
 describe("WorkflowDispatch.dispatchAndWait run identity", () => {

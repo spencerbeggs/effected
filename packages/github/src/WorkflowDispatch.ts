@@ -2,6 +2,7 @@ import { Context, DateTime, Duration, Effect, Layer, Option, Schedule, Schema } 
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
 import { numericId } from "./internal/ids.js";
+import { unstubbed, unstubbedRead } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import { PageOptions } from "./Rest.js";
 
@@ -213,17 +214,16 @@ export class WorkflowDispatch extends Context.Service<WorkflowDispatch, Workflow
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<WorkflowDispatchShape> = {}): WorkflowDispatchShape => ({
-		dispatch: overrides.dispatch ?? (() => unstubbed("dispatch")),
-		dispatchWithRun: overrides.dispatchWithRun ?? (() => unstubbed("dispatchWithRun")),
-		runStatus: overrides.runStatus ?? (() => unstubbed("runStatus")),
-		cancelRun: overrides.cancelRun ?? (() => unstubbed("cancelRun")),
-		// A value member, so the stub has to defer: `unstubbed()` throws, and
-		// throwing while BUILDING the double would fail every test that provides
-		// it rather than the ones that actually read `list`.
-		list: overrides.list ?? Effect.sync(() => unstubbed("list")),
-		dispatchAndWait: overrides.dispatchAndWait ?? (() => unstubbed("dispatchAndWait")),
+		dispatch: overrides.dispatch ?? (() => dies("dispatch")),
+		dispatchWithRun: overrides.dispatchWithRun ?? (() => dies("dispatchWithRun")),
+		runStatus: overrides.runStatus ?? (() => dies("runStatus")),
+		cancelRun: overrides.cancelRun ?? (() => dies("cancelRun")),
+		// A value member: the double holds the dying effect itself, which fails
+		// only the tests that run `list`, not every test that provides the double.
+		list: overrides.list ?? unread("list"),
+		dispatchAndWait: overrides.dispatchAndWait ?? (() => dies("dispatchAndWait")),
 	});
 
 	/** {@link WorkflowDispatch.makeTest} behind a `Layer`. */
@@ -231,9 +231,8 @@ export class WorkflowDispatch extends Context.Service<WorkflowDispatch, Workflow
 		Layer.succeed(WorkflowDispatch, WorkflowDispatch.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`WorkflowDispatch.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("WorkflowDispatch.makeTest");
+const unread = unstubbedRead("WorkflowDispatch.makeTest");
 
 const statusOf = (raw: {
 	id: number | bigint;

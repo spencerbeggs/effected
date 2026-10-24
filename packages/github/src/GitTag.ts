@@ -2,6 +2,7 @@ import { SemVer } from "@effected/semver";
 import { Context, Effect, Layer, Option, Result, Schema, Stream } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import type { PageOptions } from "./Rest.js";
 
@@ -145,14 +146,14 @@ export class GitTag extends Context.Service<GitTag, GitTagShape>()("@effected/gi
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<GitTagShape> = {}): GitTagShape => ({
-		create: overrides.create ?? (() => unstubbed("create")),
-		upsert: overrides.upsert ?? (() => unstubbed("upsert")),
-		delete: overrides.delete ?? (() => unstubbed("delete")),
-		list: overrides.list ?? (() => unstubbed("list")),
-		resolve: overrides.resolve ?? (() => unstubbed("resolve")),
-		latestSemver: overrides.latestSemver ?? (() => unstubbed("latestSemver")),
+		create: overrides.create ?? (() => dies("create")),
+		upsert: overrides.upsert ?? (() => dies("upsert")),
+		delete: overrides.delete ?? (() => dies("delete")),
+		list: overrides.list ?? (() => dies("list")),
+		resolve: overrides.resolve ?? (() => dies("resolve")),
+		latestSemver: overrides.latestSemver ?? (() => dies("latestSemver")),
 	});
 
 	/** {@link GitTag.makeTest} behind a `Layer`. */
@@ -160,9 +161,7 @@ export class GitTag extends Context.Service<GitTag, GitTagShape>()("@effected/gi
 		Layer.succeed(GitTag, GitTag.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`GitTag.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("GitTag.makeTest");
 
 const shortTag = (tag: string): string => tag.replace(/^refs\/tags\//, "").replace(/^tags\//, "");
 

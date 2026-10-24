@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Redacted, Result } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
 import { encryptSecret } from "./internal/crypto.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 
 /**
@@ -133,14 +134,14 @@ export class RepositorySecret extends Context.Service<RepositorySecret, Reposito
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<RepositorySecretShape> = {}): RepositorySecretShape => ({
-		set: overrides.set ?? (() => unstubbed("set")),
-		list: overrides.list ?? (() => unstubbed("list")),
-		delete: overrides.delete ?? (() => unstubbed("delete")),
-		setForEnvironment: overrides.setForEnvironment ?? (() => unstubbed("setForEnvironment")),
-		listForEnvironment: overrides.listForEnvironment ?? (() => unstubbed("listForEnvironment")),
-		deleteForEnvironment: overrides.deleteForEnvironment ?? (() => unstubbed("deleteForEnvironment")),
+		set: overrides.set ?? (() => dies("set")),
+		list: overrides.list ?? (() => dies("list")),
+		delete: overrides.delete ?? (() => dies("delete")),
+		setForEnvironment: overrides.setForEnvironment ?? (() => dies("setForEnvironment")),
+		listForEnvironment: overrides.listForEnvironment ?? (() => dies("listForEnvironment")),
+		deleteForEnvironment: overrides.deleteForEnvironment ?? (() => dies("deleteForEnvironment")),
 	});
 
 	/** {@link RepositorySecret.makeTest} behind a `Layer`. */
@@ -148,9 +149,7 @@ export class RepositorySecret extends Context.Service<RepositorySecret, Reposito
 		Layer.succeed(RepositorySecret, RepositorySecret.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`RepositorySecret.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("RepositorySecret.makeTest");
 
 /**
  * Seal a value, turning a malformed public key into a typed failure.

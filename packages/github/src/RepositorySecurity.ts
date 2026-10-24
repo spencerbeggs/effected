@@ -1,6 +1,7 @@
 import { Context, Effect, Layer } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 
 /**
@@ -91,16 +92,16 @@ export class RepositorySecurity extends Context.Service<RepositorySecurity, Repo
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<RepositorySecurityShape> = {}): RepositorySecurityShape => ({
-		vulnerabilityAlerts: overrides.vulnerabilityAlerts ?? (() => unstubbed("vulnerabilityAlerts")),
-		setVulnerabilityAlerts: overrides.setVulnerabilityAlerts ?? (() => unstubbed("setVulnerabilityAlerts")),
-		automatedSecurityFixes: overrides.automatedSecurityFixes ?? (() => unstubbed("automatedSecurityFixes")),
-		setAutomatedSecurityFixes: overrides.setAutomatedSecurityFixes ?? (() => unstubbed("setAutomatedSecurityFixes")),
+		vulnerabilityAlerts: overrides.vulnerabilityAlerts ?? (() => dies("vulnerabilityAlerts")),
+		setVulnerabilityAlerts: overrides.setVulnerabilityAlerts ?? (() => dies("setVulnerabilityAlerts")),
+		automatedSecurityFixes: overrides.automatedSecurityFixes ?? (() => dies("automatedSecurityFixes")),
+		setAutomatedSecurityFixes: overrides.setAutomatedSecurityFixes ?? (() => dies("setAutomatedSecurityFixes")),
 		privateVulnerabilityReporting:
-			overrides.privateVulnerabilityReporting ?? (() => unstubbed("privateVulnerabilityReporting")),
+			overrides.privateVulnerabilityReporting ?? (() => dies("privateVulnerabilityReporting")),
 		setPrivateVulnerabilityReporting:
-			overrides.setPrivateVulnerabilityReporting ?? (() => unstubbed("setPrivateVulnerabilityReporting")),
+			overrides.setPrivateVulnerabilityReporting ?? (() => dies("setPrivateVulnerabilityReporting")),
 	});
 
 	/** {@link RepositorySecurity.makeTest} behind a `Layer`. */
@@ -108,9 +109,7 @@ export class RepositorySecurity extends Context.Service<RepositorySecurity, Repo
 		Layer.succeed(RepositorySecurity, RepositorySecurity.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`RepositorySecurity.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("RepositorySecurity.makeTest");
 
 const make = (client: GitHubClient["Service"]): RepositorySecurityShape => {
 	const vulnerabilityAlerts = Effect.fn("RepositorySecurity.vulnerabilityAlerts")(function* () {

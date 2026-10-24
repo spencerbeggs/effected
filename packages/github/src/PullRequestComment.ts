@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Option, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
 import { numericId } from "./internal/ids.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import type { PageOptions } from "./Rest.js";
 
@@ -113,12 +114,12 @@ export class PullRequestComment extends Context.Service<PullRequestComment, Pull
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<PullRequestCommentShape> = {}): PullRequestCommentShape => ({
-		create: overrides.create ?? (() => unstubbed("create")),
-		upsert: overrides.upsert ?? (() => unstubbed("upsert")),
-		find: overrides.find ?? (() => unstubbed("find")),
-		delete: overrides.delete ?? (() => unstubbed("delete")),
+		create: overrides.create ?? (() => dies("create")),
+		upsert: overrides.upsert ?? (() => dies("upsert")),
+		find: overrides.find ?? (() => dies("find")),
+		delete: overrides.delete ?? (() => dies("delete")),
 	});
 
 	/** {@link PullRequestComment.makeTest} behind a `Layer`. */
@@ -126,9 +127,7 @@ export class PullRequestComment extends Context.Service<PullRequestComment, Pull
 		Layer.succeed(PullRequestComment, PullRequestComment.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`PullRequestComment.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("PullRequestComment.makeTest");
 
 const recordOf = (raw: { id: number | bigint; body?: string | null; html_url: string }): CommentRecord =>
 	CommentRecord.make({ id: numericId(raw.id), body: raw.body ?? "", url: raw.html_url });

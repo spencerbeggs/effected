@@ -2,6 +2,7 @@ import { Cause, Context, DateTime, Effect, Exit, Layer, Option, Ref, Schema } fr
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
 import { numericId } from "./internal/ids.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import type { PageOptions } from "./Rest.js";
 
@@ -517,17 +518,17 @@ export class CheckRun extends Context.Service<CheckRun, CheckRunShape>()("@effec
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<CheckRunShape> = {}): CheckRunShape => ({
-		create: overrides.create ?? (() => unstubbed("create")),
-		get: overrides.get ?? (() => unstubbed("get")),
-		update: overrides.update ?? (() => unstubbed("update")),
-		updateRef: overrides.updateRef ?? (() => unstubbed("updateRef")),
-		list: overrides.list ?? (() => unstubbed("list")),
-		findByExternalId: overrides.findByExternalId ?? (() => unstubbed("findByExternalId")),
-		complete: overrides.complete ?? (() => unstubbed("complete")),
-		completeRef: overrides.completeRef ?? (() => unstubbed("completeRef")),
-		withCheckRun: overrides.withCheckRun ?? (() => unstubbed("withCheckRun")),
+		create: overrides.create ?? (() => dies("create")),
+		get: overrides.get ?? (() => dies("get")),
+		update: overrides.update ?? (() => dies("update")),
+		updateRef: overrides.updateRef ?? (() => dies("updateRef")),
+		list: overrides.list ?? (() => dies("list")),
+		findByExternalId: overrides.findByExternalId ?? (() => dies("findByExternalId")),
+		complete: overrides.complete ?? (() => dies("complete")),
+		completeRef: overrides.completeRef ?? (() => dies("completeRef")),
+		withCheckRun: overrides.withCheckRun ?? (() => dies("withCheckRun")),
 	});
 
 	/** {@link CheckRun.makeTest} behind a `Layer`. */
@@ -535,9 +536,7 @@ export class CheckRun extends Context.Service<CheckRun, CheckRunShape>()("@effec
 		Layer.succeed(CheckRun, CheckRun.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`CheckRun.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("CheckRun.makeTest");
 
 const wireOutput = (output: CheckRunOutput) => {
 	const capped = output.truncated();

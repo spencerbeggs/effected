@@ -4,6 +4,7 @@ import type { RecordedCall } from "../src/GitHubClient.js";
 import { GitHubClient } from "../src/GitHubClient.js";
 import { GitHubRepository, repositoryPatch, transformSecurityAndAnalysis } from "../src/GitHubRepository.js";
 import { Repo, RepoRef } from "../src/Repo.js";
+import { defectMessage } from "./harness.js";
 
 /**
  * A wrong-but-valid route literal typechecks, so every method asserts the route
@@ -26,6 +27,25 @@ const run = <A, E>(
 
 const REPO = { node_id: "R_node123", default_branch: "main" };
 const UPDATE_REPOSITORY = { UpdateRepository: { updateRepository: { repository: { id: "R_node123" } } } };
+
+const ACME = RepoRef.make({ owner: "acme", repo: "widget" });
+
+describe("GitHubRepository.makeTest", () => {
+	it.effect("a value member dies when read, not when the double is built", () =>
+		Effect.gen(function* () {
+			const double = GitHubRepository.makeTest();
+			const exit = yield* Effect.exit(Effect.provide(double.settings, Repo.layer(ACME)));
+			assert.match(defectMessage(exit) ?? "", /GitHubRepository\.makeTest: settings was read but not stubbed/);
+		}),
+	);
+
+	it.effect("a function member dies when run, naming the call", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(Effect.provide(GitHubRepository.makeTest().updateSettings({}), Repo.layer(ACME)));
+			assert.match(defectMessage(exit) ?? "", /updateSettings\(\) was called but not stubbed/);
+		}),
+	);
+});
 
 describe("GitHubRepository reads", () => {
 	it.effect("settings, defaultBranch and nodeId all come off one GET", () =>

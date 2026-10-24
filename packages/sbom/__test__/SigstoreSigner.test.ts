@@ -11,7 +11,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { IdentityToken, IdentityTokenError } from "@effected/oidc";
 import { BUNDLE_V03_MEDIA_TYPE } from "@sigstore/bundle";
 import type { Signer, Witness } from "@sigstore/sign";
-import { Effect, Layer, Redacted } from "effect";
+import { Cause, Effect, Layer, Redacted } from "effect";
 import type { Sha256Digest } from "../src/index.js";
 import {
 	IN_TOTO_PAYLOAD_TYPE,
@@ -244,11 +244,20 @@ describe("SigstoreSigner.sign — failures, attributed", () => {
 });
 
 describe("SigstoreSigner doubles", () => {
-	it("makeTest dies loudly rather than fabricating a bundle", () => {
-		// A bundle that looks signed and is not is exactly the failure an
-		// attestation exists to prevent, so no honest default answer exists.
-		assert.throws(() => SigstoreSigner.makeTest().sign(statement), /not stubbed/);
-	});
+	it.effect("makeTest dies when run rather than fabricating a bundle", () =>
+		Effect.gen(function* () {
+			// A bundle that looks signed and is not is exactly the failure an
+			// attestation exists to prevent, so no honest default answer exists.
+			// Calling `sign` only builds the effect; the death is in its Exit.
+			const exit = yield* Effect.exit(SigstoreSigner.makeTest().sign(statement));
+			assert.strictEqual(exit._tag, "Failure");
+			const die = exit._tag === "Failure" ? exit.cause.reasons.find(Cause.isDieReason) : undefined;
+			assert.match(
+				String((die?.defect as Error | undefined)?.message),
+				/SigstoreSigner\.makeTest: sign\(\) was called but not stubbed — a fabricated bundle/,
+			);
+		}),
+	);
 
 	it.effect("layerTest answers with whatever a test stubs", () =>
 		Effect.gen(function* () {

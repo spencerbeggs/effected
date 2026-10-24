@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
 import { numericId } from "./internal/ids.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import type { PageOptions } from "./Rest.js";
 
 /**
@@ -199,13 +200,13 @@ export class AuthenticatedApp extends Context.Service<AuthenticatedApp, Authenti
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<AuthenticatedAppShape> = {}): AuthenticatedAppShape => ({
-		get: overrides.get ?? (() => unstubbed("get")),
-		deliveries: overrides.deliveries ?? (() => unstubbed("deliveries")),
-		delivery: overrides.delivery ?? (() => unstubbed("delivery")),
-		redeliver: overrides.redeliver ?? (() => unstubbed("redeliver")),
-		uninstall: overrides.uninstall ?? (() => unstubbed("uninstall")),
+		get: overrides.get ?? (() => dies("get")),
+		deliveries: overrides.deliveries ?? (() => Stream.fromEffect(dies("deliveries"))),
+		delivery: overrides.delivery ?? (() => dies("delivery")),
+		redeliver: overrides.redeliver ?? (() => dies("redeliver")),
+		uninstall: overrides.uninstall ?? (() => dies("uninstall")),
 	});
 
 	/** {@link AuthenticatedApp.makeTest} behind a `Layer`. */
@@ -213,9 +214,7 @@ export class AuthenticatedApp extends Context.Service<AuthenticatedApp, Authenti
 		Layer.succeed(AuthenticatedApp, AuthenticatedApp.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`AuthenticatedApp.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("AuthenticatedApp.makeTest");
 
 /** The fields of GitHub's delivery payload this package projects. */
 interface RawDelivery {

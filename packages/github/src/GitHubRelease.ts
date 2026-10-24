@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import type { PageOptions } from "./Rest.js";
 
@@ -132,15 +133,15 @@ export class GitHubRelease extends Context.Service<GitHubRelease, GitHubReleaseS
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<GitHubReleaseShape> = {}): GitHubReleaseShape => ({
-		create: overrides.create ?? (() => unstubbed("create")),
-		getByTag: overrides.getByTag ?? (() => unstubbed("getByTag")),
-		getByTagOption: overrides.getByTagOption ?? (() => unstubbed("getByTagOption")),
-		list: overrides.list ?? (() => unstubbed("list")),
-		update: overrides.update ?? (() => unstubbed("update")),
-		uploadAsset: overrides.uploadAsset ?? (() => unstubbed("uploadAsset")),
-		listAssets: overrides.listAssets ?? (() => unstubbed("listAssets")),
+		create: overrides.create ?? (() => dies("create")),
+		getByTag: overrides.getByTag ?? (() => dies("getByTag")),
+		getByTagOption: overrides.getByTagOption ?? (() => dies("getByTagOption")),
+		list: overrides.list ?? (() => dies("list")),
+		update: overrides.update ?? (() => dies("update")),
+		uploadAsset: overrides.uploadAsset ?? (() => dies("uploadAsset")),
+		listAssets: overrides.listAssets ?? (() => dies("listAssets")),
 	});
 
 	/** {@link GitHubRelease.makeTest} behind a `Layer`. */
@@ -148,9 +149,7 @@ export class GitHubRelease extends Context.Service<GitHubRelease, GitHubReleaseS
 		Layer.succeed(GitHubRelease, GitHubRelease.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`GitHubRelease.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("GitHubRelease.makeTest");
 
 interface RawRelease {
 	readonly id: number;

@@ -3,6 +3,7 @@ import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
 import type { GitHubGraphQLError } from "./GraphQL.js";
 import { GraphQLDocument } from "./GraphQL.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 
 const CreateLinkedBranch = GraphQLDocument.make({
@@ -132,16 +133,16 @@ export class GitBranch extends Context.Service<GitBranch, GitBranchShape>()("@ef
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<GitBranchShape> = {}): GitBranchShape => ({
-		create: overrides.create ?? (() => unstubbed("create")),
-		upsert: overrides.upsert ?? (() => unstubbed("upsert")),
-		exists: overrides.exists ?? (() => unstubbed("exists")),
-		sha: overrides.sha ?? (() => unstubbed("sha")),
-		shaOption: overrides.shaOption ?? (() => unstubbed("shaOption")),
-		reset: overrides.reset ?? (() => unstubbed("reset")),
-		delete: overrides.delete ?? (() => unstubbed("delete")),
-		createLinked: overrides.createLinked ?? (() => unstubbed("createLinked")),
+		create: overrides.create ?? (() => dies("create")),
+		upsert: overrides.upsert ?? (() => dies("upsert")),
+		exists: overrides.exists ?? (() => dies("exists")),
+		sha: overrides.sha ?? (() => dies("sha")),
+		shaOption: overrides.shaOption ?? (() => dies("shaOption")),
+		reset: overrides.reset ?? (() => dies("reset")),
+		delete: overrides.delete ?? (() => dies("delete")),
+		createLinked: overrides.createLinked ?? (() => dies("createLinked")),
 	});
 
 	/** {@link GitBranch.makeTest} behind a `Layer`. */
@@ -149,9 +150,7 @@ export class GitBranch extends Context.Service<GitBranch, GitBranchShape>()("@ef
 		Layer.succeed(GitBranch, GitBranch.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`GitBranch.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("GitBranch.makeTest");
 
 /**
  * `main`, `refs/heads/main` and `heads/main` all name the same branch.

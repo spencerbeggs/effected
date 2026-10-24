@@ -22,6 +22,7 @@ import { GitHubError } from "./GitHubError.js";
 import { GitHubGraphQLError } from "./GraphQL.js";
 import { InstallationTokenStore } from "./InstallationTokenStore.js";
 import { numericId } from "./internal/ids.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import type { RetryPolicy } from "./Resilience.js";
 
 /**
@@ -627,16 +628,16 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 			),
 		);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<GitHubAppShape> = {}): GitHubAppShape => {
-		const token = overrides.token ?? (() => unstubbed("token"));
+		const token = overrides.token ?? (() => dies("token"));
 		return {
 			token,
-			scopedToken: overrides.scopedToken ?? (() => unstubbed("scopedToken")),
-			revoke: overrides.revoke ?? (() => unstubbed("revoke")),
-			identity: overrides.identity ?? (() => unstubbed("identity")),
-			botUser: overrides.botUser ?? (() => unstubbed("botUser")),
-			installations: overrides.installations ?? (() => unstubbed("installations")),
+			scopedToken: overrides.scopedToken ?? (() => dies("scopedToken")),
+			revoke: overrides.revoke ?? (() => dies("revoke")),
+			identity: overrides.identity ?? (() => dies("identity")),
+			botUser: overrides.botUser ?? (() => dies("botUser")),
+			installations: overrides.installations ?? (() => dies("installations")),
 			// The real caching over the double's `token`, so a test that stubs
 			// `token` exercises the store and the single-flight path for real.
 			cachedToken: overrides.cachedToken ?? makeCachedToken(token),
@@ -821,9 +822,7 @@ const makeCachedToken = (token: GitHubAppShape["token"]): GitHubAppShape["cached
 	});
 };
 
-const unstubbed = (member: string): never => {
-	throw new Error(`GitHubApp.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("GitHubApp.makeTest");
 
 /** Mint an app JWT: iat 60 s in the past (clock drift), exp 9 minutes after now (GitHub caps at 10). */
 const mintJwt = (credentials: AppCredentials): Effect.Effect<RotatingCredential, GitHubAppError> =>

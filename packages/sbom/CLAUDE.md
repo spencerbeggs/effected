@@ -157,7 +157,8 @@ unwitnessed bundle.
 
 ### The test doubles do not default the same way, on purpose
 
-`SigstoreSigner.makeTest().sign` **dies**: a fabricated bundle would be a
+`SigstoreSigner.makeTest().sign` **dies when run** (calling it only builds the
+effect; the defect sits in its `Exit`): a fabricated bundle would be a
 signature-shaped lie, and that is the strongest case in the kit for the
 die-loudly default. A test wanting a real bundle without a network drives the
 **real** `DSSEBundleBuilder` through

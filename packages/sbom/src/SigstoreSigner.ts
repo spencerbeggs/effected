@@ -17,6 +17,7 @@ import type { IdentityProvider, Signer, Witness } from "@sigstore/sign";
 import { DSSEBundleBuilder, FulcioSigner, RekorWitness } from "@sigstore/sign";
 import { Context, Effect, Layer, Redacted, Schema } from "effect";
 import type { InTotoStatement } from "./InTotoStatement.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { IN_TOTO_PAYLOAD_TYPE, SigstoreBundle } from "./SigstoreBundle.js";
 
 /**
@@ -166,11 +167,10 @@ const make = (identity: IdentityTokenShape, options: SigstoreSignerOptions): Sig
 	}),
 });
 
-const unstubbed = (): never => {
-	throw new Error(
-		"SigstoreSigner.makeTest: sign() was called but not stubbed — a fabricated bundle would be a signature-shaped lie. Pass a `sign` override, or drive the real builder through SigstoreSigner.layerWith({ signer, witnesses }).",
-	);
-};
+const dies = unstubbed(
+	"SigstoreSigner.makeTest",
+	"a fabricated bundle would be a signature-shaped lie. Pass a `sign` override, or drive the real builder through SigstoreSigner.layerWith({ signer, witnesses }).",
+);
 
 /**
  * Signs an in-toto statement into a Sigstore DSSE bundle, using a Fulcio
@@ -217,7 +217,8 @@ export class SigstoreSigner extends Context.Service<SigstoreSigner, SigstoreSign
 		);
 
 	/**
-	 * An in-memory double whose `sign` **dies** unless stubbed.
+	 * An in-memory double whose `sign` **dies when run** unless stubbed: calling
+	 * it only builds the effect, and the defect sits in that effect's `Exit`.
 	 *
 	 * @remarks
 	 * The strongest case in the kit for the die-loudly default: no honest
@@ -227,7 +228,7 @@ export class SigstoreSigner extends Context.Service<SigstoreSigner, SigstoreSign
 	 * {@link (SigstoreSigner:class).layerWith}.
 	 */
 	static readonly makeTest = (overrides: Partial<SigstoreSignerShape> = {}): SigstoreSignerShape => ({
-		sign: overrides.sign ?? (() => unstubbed()),
+		sign: overrides.sign ?? (() => dies("sign")),
 	});
 
 	/** {@link (SigstoreSigner:class).makeTest} behind a `Layer`. */

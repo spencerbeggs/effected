@@ -1,6 +1,7 @@
 import { Context, Effect, Layer } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import type * as Rest from "./Rest.js";
 
@@ -141,13 +142,13 @@ export class Ruleset extends Context.Service<Ruleset, RulesetShape>()("@effected
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<RulesetShape> = {}): RulesetShape => ({
-		upsert: overrides.upsert ?? (() => unstubbed("upsert")),
-		list: overrides.list ?? (() => unstubbed("list")),
-		delete: overrides.delete ?? (() => unstubbed("delete")),
-		teamId: overrides.teamId ?? (() => unstubbed("teamId")),
-		roleId: overrides.roleId ?? (() => unstubbed("roleId")),
+		upsert: overrides.upsert ?? (() => dies("upsert")),
+		list: overrides.list ?? (() => dies("list")),
+		delete: overrides.delete ?? (() => dies("delete")),
+		teamId: overrides.teamId ?? (() => dies("teamId")),
+		roleId: overrides.roleId ?? (() => dies("roleId")),
 	});
 
 	/** {@link Ruleset.makeTest} behind a `Layer`. */
@@ -155,9 +156,7 @@ export class Ruleset extends Context.Service<Ruleset, RulesetShape>()("@effected
 		Layer.succeed(Ruleset, Ruleset.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`Ruleset.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("Ruleset.makeTest");
 
 /** An inherited ruleset belongs to the organization and is not this repository's to write. */
 const isOwnedByRepository = (ruleset: { readonly source_type?: string | undefined }): boolean =>

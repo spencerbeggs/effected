@@ -3,6 +3,7 @@ import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
 import type { PageSource } from "./internal/paginate.js";
 import { paginate } from "./internal/paginate.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import type { PageOptions } from "./Rest.js";
 
@@ -151,12 +152,12 @@ export class GitHubCommit extends Context.Service<GitHubCommit, GitHubCommitShap
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<GitHubCommitShape> = {}): GitHubCommitShape => ({
-		get: overrides.get ?? (() => unstubbed("get")),
-		list: overrides.list ?? (() => unstubbed("list")),
-		compare: overrides.compare ?? (() => unstubbed("compare")),
-		changedFiles: overrides.changedFiles ?? (() => unstubbed("changedFiles")),
+		get: overrides.get ?? (() => dies("get")),
+		list: overrides.list ?? (() => dies("list")),
+		compare: overrides.compare ?? (() => dies("compare")),
+		changedFiles: overrides.changedFiles ?? (() => dies("changedFiles")),
 	});
 
 	/** {@link GitHubCommit.makeTest} behind a `Layer`. */
@@ -164,9 +165,7 @@ export class GitHubCommit extends Context.Service<GitHubCommit, GitHubCommitShap
 		Layer.succeed(GitHubCommit, GitHubCommit.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`GitHubCommit.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("GitHubCommit.makeTest");
 
 /**
  * The minimum of a commit payload this projection reads.
