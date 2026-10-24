@@ -78,5 +78,11 @@ describe("WorkflowCommand", () => {
 			assert.strictEqual(WorkflowCommand.addMask("s3cr3t"), "::add-mask::s3cr3t");
 			assert.strictEqual(WorkflowCommand.addMask("a\nb"), "::add-mask::a%0Ab");
 		});
+
+		it("names the group-depth fiber-local by one fixed key, which every writer of a group shares", () => {
+			// The key is a protocol: `@effected/github-actions` and `@effected/cli` each build a reference from it,
+			// and a change here would silently split the count between them.
+			assert.strictEqual(WorkflowCommand.groupDepthKey, "@effected/github-commands/GroupDepth");
+		});
 	});
 });

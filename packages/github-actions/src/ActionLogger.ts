@@ -127,7 +127,7 @@ const ActiveBuffer = Context.Reference<BufferState | null>("@effected/github-act
 });
 
 /**
- * How many {@link ActionLoggerShape.group} calls the current fiber is inside.
+ * How many log groups are open around the current fiber.
  *
  * @remarks
  * The runner does not nest groups: a second `::group::` implicitly ends the
@@ -137,9 +137,15 @@ const ActiveBuffer = Context.Reference<BufferState | null>("@effected/github-act
  * `Context.Reference` is provided around the body, so it unwinds on every
  * exit path with nothing to restore.
  *
+ * Keyed by `WorkflowCommand.groupDepthKey`, the kit-wide key for this count,
+ * rather than a key of this package's own: Effect looks a reference up by its
+ * key, so `@effected/cli`'s `Render.context`, which builds its own reference
+ * from the same key, sees the depth this member provides, and a document it
+ * renders inside a group opens no second one.
+ *
  * @internal
  */
-const GroupDepth = Context.Reference<number>("@effected/github-actions/GroupDepth", {
+const GroupDepth = Context.Reference<number>(WorkflowCommand.groupDepthKey, {
 	defaultValue: () => 0,
 });
 
@@ -243,11 +249,15 @@ export interface ActionLoggerShape {
 	 * 2. **A fiber forked inside a group keeps the depth it was forked at.** A
 	 *    `forkChild` joined inside the group nests correctly; a detached fiber
 	 *    that outlives the group still writes headers rather than a group.
-	 * 3. **Only groups opened here are counted.** A raw
-	 *    `WorkflowCommand.group(...)`, a document rendered by `@effected/cli`'s
-	 *    `Render.githubLog` with a top-level collapsible, or a consumer's own
-	 *    wrapper opens a group this member cannot see, and a group opened
-	 *    inside one still nests at the runner.
+	 * 3. **Only a writer that reads the shared depth is counted.** The depth
+	 *    lives in the fiber-local keyed by `WorkflowCommand.groupDepthKey`
+	 *    (from `@effected/github-commands`), which `@effected/cli` reads too:
+	 *    `Render.context` built inside a group carries it as
+	 *    `RenderContext.groupDepth`, so `Doc.print` and `Render.githubLog`
+	 *    render a top-level collapsible as plain text there rather than as a
+	 *    second group. A raw `WorkflowCommand.group(...)`, or a consumer's
+	 *    own wrapper that does not read the key, opens a group this member
+	 *    cannot see, and a group opened inside one still nests at the runner.
 	 * 4. **The test doubles do not model nesting.** `makeTest`, `layerTest` and
 	 *    `layerSilent` pass the effect through unchanged.
 	 */

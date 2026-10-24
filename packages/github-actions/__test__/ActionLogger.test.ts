@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Console, Effect, Fiber, Latch, Layer, References } from "effect";
+import { WorkflowCommand } from "@effected/github-commands";
+import { Console, Context, Effect, Fiber, Latch, Layer, References } from "effect";
 import { TestConsole } from "effect/testing";
 import { ActionEnvironment, ActionLogger } from "../src/index.js";
 import { commandLines, isCommand } from "./helpers/runnerCommands.js";
@@ -679,5 +680,37 @@ describe("ActionLogger heading", () => {
 			assert.strictEqual(yield* logger.heading("quiet", Effect.succeed(1)), 1);
 			assert.deepStrictEqual(yield* lines, []);
 		}).pipe(Effect.provide(ActionLogger.layerTest())),
+	);
+});
+
+describe("ActionLogger group depth is the kit-wide fiber-local", () => {
+	// The count lives under `WorkflowCommand.groupDepthKey`, so a reference built from
+	// that key anywhere (cli's `Render.context`, a consumer's wrapper) reads the depth
+	// `group` provides, and a depth provided elsewhere is honoured here.
+	const GroupDepth = Context.Reference<number>(WorkflowCommand.groupDepthKey, { defaultValue: () => 0 });
+
+	it.effect("a reference built from the key reads the depth group provides, and heading leaves it alone", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				assert.strictEqual(yield* GroupDepth, 0);
+				const seen = yield* logger.group(
+					"Outer",
+					Effect.all([GroupDepth, logger.group("Inner", GroupDepth), logger.heading("Phase", GroupDepth)]),
+				);
+				assert.deepStrictEqual(seen, [1, 2, 1]);
+				assert.strictEqual(yield* GroupDepth, 0);
+			}),
+		),
+	);
+
+	it.effect("a group opened by another writer, provided through the key, turns group into a header line", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* logger.group("Inner", Console.log("body")).pipe(Effect.provideService(GroupDepth, 1));
+				assert.deepStrictEqual(yield* lines, ["▸ Inner", "body"]);
+			}),
+		),
 	);
 });

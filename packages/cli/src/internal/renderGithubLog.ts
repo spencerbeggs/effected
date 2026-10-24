@@ -45,6 +45,11 @@ const blockLines = (block: Block, ctx: RenderContext): ReadonlyArray<string> => 
 		case "Annotation":
 			return [annotationLine(block)];
 		case "Collapsible": {
+			// A group is already open around the output: the runner does not nest groups, so this one is plain text,
+			// as a collapsible inside one of this document's own groups is.
+			if ((ctx.groupDepth ?? 0) > 0) {
+				return plainLines([block], ctx);
+			}
 			// The title is a command's data, so its line breaks are escaped (a raw one would end the command) and a `##[`
 			// in it is neutralized, as in an annotation's message.
 			const title = commandData(
@@ -69,7 +74,8 @@ const blockLines = (block: Block, ctx: RenderContext): ReadonlyArray<string> => 
 };
 
 /**
- * Render a document for a GitHub Actions log: plain text, with a top-level collapsible as a group.
+ * Render a document for a GitHub Actions log: plain text, with a top-level collapsible as a group when no group is
+ * open around the output (`ctx.groupDepth`).
  *
  * @internal
  */

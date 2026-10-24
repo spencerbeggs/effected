@@ -969,6 +969,11 @@ export class Doc {
 	 * GitHub's log format only when it says GitHub Actions, and plain text otherwise, including when it is
 	 * absent. An explicit `format` is honoured whatever the audience.
 	 *
+	 * The context is built here, at print time, so it carries the fiber's count of open Actions log groups
+	 * (`RenderContext.groupDepth`): printed inside an `ActionLogger.group` from `@effected/github-actions`, a
+	 * document's top-level collapsible renders as plain text rather than as a second `::group::`, which would end
+	 * the open one at the runner.
+	 *
 	 * @param doc - the document
 	 * @param options - the stream and the format
 	 */

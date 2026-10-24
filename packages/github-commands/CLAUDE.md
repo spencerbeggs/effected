@@ -8,7 +8,7 @@ The GitHub Actions workflow-command grammar as pure functions: `WorkflowCommand`
 
 ## The two modules
 
-- **`WorkflowCommand`** (`src/WorkflowCommand.ts`) — `render(name, properties, message)` and the `debug`, `notice`, `warning`, `error`, `group`, `endGroup` and `addMask` helpers, with `AnnotationProperties` mapping readable names (`startLine`) onto the wire's (`line`). The shape is public and frozen: `@effected/github-actions` re-exports it.
+- **`WorkflowCommand`** (`src/WorkflowCommand.ts`) — `render(name, properties, message)` and the `debug`, `notice`, `warning`, `error`, `group`, `endGroup` and `addMask` helpers, with `AnnotationProperties` mapping readable names (`startLine`) onto the wire's (`line`). The shape is public and frozen: `@effected/github-actions` re-exports it. `groupDepthKey` is the one string key of the fiber-local that counts open groups: this package holds the KEY, never the `Context.Reference` (that would need `effect`); `ActionLogger.group` and `Render.context` each build a reference from it, and Effect looks a reference up by key, so they share one slot.
 - **`CommandNeutralizer`** (`src/CommandNeutralizer.ts`) — `lines(text)` and `text(text)`. The text it is given is not a command; it is DATA that must not become one.
 
 ## Rules that are load-bearing

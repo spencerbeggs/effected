@@ -14,6 +14,49 @@ const plain = (doc: ReadonlyArray<Block>, overrides: Partial<RenderContext> = {}
 const linesOf = (doc: ReadonlyArray<Block>, overrides: Partial<RenderContext> = {}) =>
 	Effect.map(log(doc, overrides), (out) => out.split(LINE_BREAK));
 
+describe("Render.githubLog: a group already open around the output", () => {
+	const doc = [
+		Doc.paragraph("before"),
+		Doc.collapsible("Stack", [Doc.paragraph("frame one"), Doc.paragraph("frame two")]),
+		Doc.annotation({ level: "error" }, "boom"),
+	];
+
+	it.effect("a top-level collapsible keeps plain's rendering at groupDepth 1: no second ::group::", () =>
+		Effect.gen(function* () {
+			const out = yield* linesOf(doc, { groupDepth: 1 });
+			assert.deepStrictEqual(out, ["before", "Stack", "  frame one", "  frame two", "::error::boom"]);
+		}),
+	);
+
+	it.effect("groupDepth 0 and an unset depth both open the group", () =>
+		Effect.gen(function* () {
+			const zero = yield* linesOf(doc, { groupDepth: 0 });
+			const unset = yield* linesOf(doc);
+			assert.deepStrictEqual(zero, unset);
+			assert.include(zero, "::group::Stack");
+			assert.include(zero, "::endgroup::");
+		}),
+	);
+
+	it.effect("a collapsible that is a top-level section's child is plain too, and the section's title stays", () =>
+		Effect.gen(function* () {
+			const out = yield* linesOf([Doc.section("Results", [Doc.collapsible("Two", [Doc.paragraph("2")])])], {
+				groupDepth: 2,
+			});
+			assert.notInclude(out.join("\n"), "::group::");
+			assert.deepStrictEqual(out, ["Results", "", "Two", "  2"]);
+		}),
+	);
+
+	it.effect("Render.contextOf carries groupDepth, and leaves it unset by default", () =>
+		Effect.sync(() => {
+			assert.strictEqual(Render.contextOf({ audience: "ci", groupDepth: 1 }).groupDepth, 1);
+			assert.isFalse("groupDepth" in Render.contextOf({ audience: "ci" }));
+			assert.notInclude(Render.githubLog(doc, Render.contextOf({ audience: "ci", groupDepth: 1 })), "::group::");
+		}),
+	);
+});
+
 describe("Render.githubLog: groups", () => {
 	it.effect("a top-level collapsible is ::group:: title, its body, ::endgroup::", () =>
 		Effect.gen(function* () {

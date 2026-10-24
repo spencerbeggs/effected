@@ -174,7 +174,11 @@ collapsible section the runner allows at a time (a nested call writes a
 `▸ <name>` header line instead, since a second `::group::` would end the
 first), `heading` writes that same header line without opening a group, so
 the groups inside a phase stay top level and each gets its own section, and
-`withBuffer`/`withStep` hold a step's transcript for its failure report.
+`withBuffer`/`withStep` hold a step's transcript for its failure report. The
+open-group count is the fiber-local keyed by
+[`github-commands`](github-commands.md)' `WorkflowCommand.groupDepthKey`, not
+a key of this package's own, so [`cli`](cli.md)'s `Render.context` built
+inside a group sees it and `Doc.print`'s collapsible stays plain there.
 
 Step debugging reaches the log level, not just the renderer. When the
 runner sets `RUNNER_DEBUG=1`, `Action.run` lowers core's
