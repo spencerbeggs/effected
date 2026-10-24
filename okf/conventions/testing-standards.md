@@ -19,10 +19,10 @@ sources:
     resource: ../../vitest.setup.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T01:39:09Z
+  at: 2026-10-24T00:35:53Z
 integrity:
   generated:
-    body: 0c8fb2856835b9ef
+    body: 23bd4b59c3afeb1d
 ---
 
 # Testing standards
