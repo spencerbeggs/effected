@@ -10,10 +10,10 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:29:06Z
+  at: 2026-10-24T00:35:52Z
 integrity:
   generated:
-    body: 7267a9e29dee16e8
+    body: c291d39012846880
 ---
 
 # git
@@ -343,11 +343,16 @@ orders, and redaction surviving through `classify`. Unit tests over
 mask, with no spawning. `GitConfig`'s conformance corpus is count-guarded
 and asserts both lookups and byte-for-byte round-trip. Integration tests
 drive fixture repositories through `@effect/platform-node`'s real
-`ChildProcessSpawner` layer, with the mutating tier isolated in its own
-temp-dir fixtures, using the shared-fixture `beforeAll`/`afterAll`
+`ChildProcessSpawner` layer, using the shared-fixture `beforeAll`/`afterAll`
 lifecycle [testing standards](../conventions/testing-standards.md)
-sanction for expensive real-world fixtures. Two traps in those suites are
-recorded: [`protocol.file.allow` does not reach a submodule
+sanction for expensive real-world fixtures. Every integration test is
+independent of its siblings' run order, and the surface suite is checked
+under `vitest --sequence.shuffle`: a shared fixture is read-only to the
+tests that share it, a write a test must make to one is scoped or lands
+outside the working tree, and the mutating tier builds a fresh
+superproject per test from one read-only library repository rather than
+walking a staircase of stages over a shared one. Two traps in those
+suites are recorded: [`protocol.file.allow` does not reach a submodule
 clone](../gotchas/git-protocol-file-allow-does-not-reach-submodule-clone.md),
 and [`--follow` drops merge
 commits](../gotchas/git-log-follow-drops-merge-commits.md), which is why
