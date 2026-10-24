@@ -10,7 +10,7 @@ tags:
   - security
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-22T23:55:11Z
+  at: 2026-10-24T00:43:16Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:24.796Z
@@ -20,7 +20,7 @@ verified:
     at: 2026-10-23T01:02:08Z
 integrity:
   generated:
-    body: 56c02fde70796c36
+    body: fb1a57360d13f4e1
   verified:
     by: human:spencer
     at: 2026-10-23T01:02:08Z

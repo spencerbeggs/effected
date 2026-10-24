@@ -8,10 +8,10 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:33:42Z
+  at: 2026-10-24T00:40:05Z
 integrity:
   generated:
-    body: cdb5fad9687682b5
+    body: 4f36c3f01cb37efa
 ---
 
 # @effected/cli

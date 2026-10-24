@@ -8,10 +8,10 @@ resource: ../../packages/github-commands
 tags: [github, security, bundle]
 generated:
   by: okfit/claude-code
-  at: 2026-10-07T21:32:23Z
+  at: 2026-10-24T00:40:05Z
 integrity:
   generated:
-    body: df63a018601200d8
+    body: e959b3a782be0017
 ---
 
 # @effected/github-commands
