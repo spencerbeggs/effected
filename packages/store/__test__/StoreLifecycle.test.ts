@@ -45,6 +45,15 @@ const artifacts: StoreMigration = {
 };
 
 describe("StoreError.message carries the cause", () => {
+	it("appends a cross-realm-like plain { message } cause, which instanceof Error would miss", () => {
+		const error = new StoreError({ operation: "status", cause: { message: "foreign" } });
+		assert.strictEqual(error.message, "Store status failed: foreign");
+	});
+
+	it("renders the summary alone when the cause's message is empty", () => {
+		assert.strictEqual(new StoreError({ operation: "status", cause: new Error("") }).message, "Store status failed");
+	});
+
 	it.effect("an adopt refusal reads as one sentence: operation and reason", () =>
 		Effect.gen(function* () {
 			const filename = freshFile();
@@ -72,7 +81,7 @@ describe("StoreError.message carries the cause", () => {
 		}),
 	);
 
-	it.effect("a SQL failure carries the database's own text, not the driver's generic summary", () =>
+	it.effect("a SQL failure carries the database's own text after the driver's summary", () =>
 		Effect.gen(function* () {
 			const exit = yield* Effect.exit(
 				Effect.provide(
@@ -89,7 +98,10 @@ describe("StoreError.message carries the cause", () => {
 			// The direct cause is the SqlError ("Failed to prepare statement"); the
 			// message folds in the innermost node:sqlite text instead.
 			assert.strictEqual((error.cause as Error).message, "Failed to prepare statement");
-			assert.strictEqual(error.message, "Store setup failed: no such table: no_such_table");
+			assert.strictEqual(
+				error.message,
+				"Store setup failed: Failed to prepare statement: no such table: no_such_table",
+			);
 		}),
 	);
 
@@ -112,7 +124,10 @@ describe("StoreError.message carries the cause", () => {
 				),
 			);
 			const error = failureOf(exit) as StoreError;
-			assert.strictEqual(error.message, "Store setup failed: UNIQUE constraint failed: t.id");
+			assert.strictEqual(
+				error.message,
+				"Store setup failed: Failed to execute statement: UNIQUE constraint failed: t.id",
+			);
 			assert.notInclude(error.message, String(secret));
 		}),
 	);

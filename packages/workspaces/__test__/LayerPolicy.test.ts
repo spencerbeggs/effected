@@ -1,7 +1,7 @@
 import { assert, describe, it, layer } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, Schema } from "effect";
-import { LayerPolicy } from "../src/testing.js";
+import { LayerPolicy, LayerPolicyError } from "../src/testing.js";
 
 const VALID = { layers: [["app"], ["core"]], tooling: [], unconstrained: ["@e2e/*"] };
 
@@ -57,6 +57,18 @@ describe("LayerPolicy.decode", () => {
 			assert.strictEqual(error.reason, "decode");
 		}),
 	);
+});
+
+describe("LayerPolicyError.message", () => {
+	it("appends a cross-realm-like plain { message } decode cause, which instanceof Error would miss", () => {
+		const error = new LayerPolicyError({ reason: "decode", path: "layers.json", cause: { message: "foreign" } });
+		assert.strictEqual(error.message, "The layer policy at layers.json does not match the LayerPolicy shape: foreign");
+	});
+
+	it("renders the shape sentence alone when the decode cause's message is empty", () => {
+		const error = new LayerPolicyError({ reason: "decode", cause: new Error("") });
+		assert.strictEqual(error.message, "The layer policy does not match the LayerPolicy shape");
+	});
 });
 
 describe("LayerPolicy.load", () => {

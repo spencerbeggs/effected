@@ -5,6 +5,7 @@
 // passes through untranslated rather than being wrapped.
 
 import { Option, Schema } from "effect";
+import { causeMessage } from "./internal/causeMessage.js";
 import { LineSlice } from "./LineSlice.js";
 
 /**
@@ -185,9 +186,10 @@ export class UnserializableData extends Schema.TaggedError<UnserializableData>()
 	cause: Schema.Defect(),
 }) {
 	override get message(): string {
-		// Deliberately does not render `cause`: it may be the very cyclic value
-		// that could not be serialized in the first place.
-		const detail = this.cause instanceof Error ? this.cause.message : "value is not JSON-serializable";
+		// Deliberately does not render `cause` itself: it may be the very cyclic
+		// value that could not be serialized in the first place. Only a message
+		// it carries is read, through the bounded guarded walk.
+		const detail = causeMessage(this.cause) ?? "value is not JSON-serializable";
 		return `cannot serialize payload for event ${JSON.stringify(this.event)}: ${detail}`;
 	}
 }

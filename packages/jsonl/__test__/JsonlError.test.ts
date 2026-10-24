@@ -90,6 +90,16 @@ describe("error messages render", () => {
 		assert.include(error.message, "boom", "an Error cause contributes its own message");
 	});
 
+	it("UnserializableData reads a cross-realm-like plain { message } cause, which instanceof Error would miss", () => {
+		const error = new UnserializableData({ event: "noted", cause: { message: "foreign" } });
+		assert.include(error.message, "foreign");
+	});
+
+	it("UnserializableData falls back to the generic detail when the cause's message is empty", () => {
+		const error = new UnserializableData({ event: "noted", cause: new TypeError("") });
+		assert.include(error.message, "value is not JSON-serializable");
+	});
+
 	it("UnserializableData accepts a non-Error cause and keeps it as-is", () => {
 		// `cause` is a `Schema.Defect()`: anything `JSON.stringify` could throw.
 		const cause = { thrown: "not an Error" };

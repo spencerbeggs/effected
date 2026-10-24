@@ -1,6 +1,7 @@
 import { GlobSet } from "@effected/glob";
 import { DependencyField } from "@effected/npm";
 import { Effect, FileSystem, Result, Schema } from "effect";
+import { causeMessage } from "./internal/causeMessage.js";
 import { ALL_DEPENDENCY_FIELDS } from "./internal/dependencyFields.js";
 
 const REQUIRED_EDGE = /^\S+ -> \S+$/u;
@@ -34,8 +35,8 @@ export class LayerPolicyError extends Schema.TaggedError<LayerPolicyError>()("La
 				return `The layer policy${at} is not valid JSON`;
 			default: {
 				// The schema issue names every offending key and field; a bare "wrong shape" sends the reader hunting.
-				const detail = this.cause instanceof Error && this.cause.message !== "" ? `: ${this.cause.message}` : "";
-				return `The layer policy${at} does not match the LayerPolicy shape${detail}`;
+				const detail = causeMessage(this.cause);
+				return `The layer policy${at} does not match the LayerPolicy shape${detail === undefined ? "" : `: ${detail}`}`;
 			}
 		}
 	}

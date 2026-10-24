@@ -14,6 +14,7 @@ import { CatalogAssemblyError } from "@effected/npm";
 import { PackageJsonFormat } from "@effected/package-json";
 import { Effect, Option, Predicate, Result } from "effect";
 import type { HookReplayContext } from "../ConfigDependencyHooks.js";
+import { causeMessage } from "./causeMessage.js";
 
 /** The typed `hooks`-source failure every rung of the ladder reports through. */
 export const hooksError = (
@@ -23,8 +24,8 @@ export const hooksError = (
 ): CatalogAssemblyError =>
 	new CatalogAssemblyError({ source: "hooks", path, cause, ...(reason === undefined ? {} : { reason }) });
 
-/** The message of a cause, for splicing into ours. */
-export const messageOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
+/** The message of a cause, for splicing into ours; a cause with no message renders as its string form. */
+export const messageOf = (cause: unknown): string => causeMessage(cause) ?? String(cause);
 
 /** Where the declared spec came from, for messages: `the working tree` or `ref <ref>`. */
 export const sideLabel = (side: HookReplayContext): string =>

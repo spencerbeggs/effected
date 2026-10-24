@@ -2,6 +2,7 @@ import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import { Context, DateTime, Effect, Layer, Schema } from "effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import type * as SqlError from "effect/sql/SqlError";
+import { causeMessage } from "./internal/causeMessage.js";
 import type { AdoptFailure, MigratorFailure, RollbackHistory } from "./internal/migrator.js";
 import {
 	adoptForeignLedger,
@@ -69,25 +70,6 @@ export class StoreMigrationStatus extends Schema.Class<StoreMigrationStatus>("St
 }) {}
 
 /**
- * The most specific message in a cause. A `SqlError`'s own message is the
- * driver's generic summary ("Failed to execute statement"); the database's
- * text ("UNIQUE constraint failed: t.id") sits at the innermost `cause`, so the
- * chain is walked to it. SQLite's messages name objects, never bound values.
- */
-const causeMessage = (cause: unknown): string | undefined => {
-	if (!(cause instanceof Error)) return undefined;
-	let message = cause.message.length > 0 ? cause.message : undefined;
-	if ((cause as { readonly _tag?: unknown })._tag === "SqlError") {
-		let node: unknown = cause.cause;
-		for (let depth = 0; depth < 8 && node instanceof Error; depth++) {
-			if (node.message.length > 0) message = node.message;
-			node = node.cause;
-		}
-	}
-	return message;
-};
-
-/**
  * Raised when a store operation's own SQL fails — ledger bookkeeping or the
  * queries around a migration — or when adopting a foreign ledger finds it
  * disagrees with the migration list.
@@ -108,6 +90,10 @@ export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
 	cause: Schema.Defect(),
 }) {
 	override get message(): string {
+		// A `SqlError`'s own message is the driver's generic summary ("Failed to
+		// execute statement"); the database's text ("UNIQUE constraint failed:
+		// t.id") sits at the innermost `cause`, and the walk joins the two.
+		// SQLite's messages name objects, never bound values.
 		const detail = causeMessage(this.cause);
 		return detail === undefined ? `Store ${this.operation} failed` : `Store ${this.operation} failed: ${detail}`;
 	}

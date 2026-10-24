@@ -1,7 +1,8 @@
 import type { SchemastoreConfig } from "@effected/schemastore";
 import { CatalogEntry, SchemaVersioning, isSchemastoreConfig } from "@effected/schemastore";
-import { Effect, FileSystem, Path, Result, Schema } from "effect";
+import { Effect, FileSystem, Path, Predicate, Result, Schema } from "effect";
 import { createJiti } from "jiti";
+import { causeMessage } from "./internal/causeMessage.js";
 import { flattenSchemaError } from "./internal/decode.js";
 
 /**
@@ -84,8 +85,16 @@ export interface ConfigLoadOptions {
 // config, and the CLI's bundled location has no bearing on where they are.
 const jitiImport = (path: string): Promise<unknown> => createJiti(path, { interopDefault: true }).import(path);
 
-const describeCause = (cause: unknown): string =>
-	cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
+// An import failure's stack names the module and the line that threw, which
+// the message alone does not, so a non-empty `stack` is preferred; otherwise
+// the kit's guarded cause-message read, then the value's string form.
+const describeCause = (cause: unknown): string => {
+	const stack =
+		Predicate.hasProperty(cause, "stack") && Predicate.isString(cause.stack) && cause.stack.trim() !== ""
+			? cause.stack
+			: undefined;
+	return stack ?? causeMessage(cause) ?? String(cause);
+};
 
 // `defineConfig` validates every field it can check by shape, but a
 // hand-rolled module can forge the brand directly, skipping `defineConfig`

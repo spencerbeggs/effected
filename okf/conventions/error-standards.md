@@ -1,7 +1,7 @@
 ---
 type: Convention
 title: Error handling standards
-description: The error-type preference order, where errors are defined, the Failure/Defect/Interrupt distinction, the rule that every declared error channel must be demonstrated fireable, and Effect.try in place of a hand-written try/catch inside Effect code.
+description: The error-type preference order, where errors are defined, the Failure/Defect/Interrupt distinction, the rule that every declared error channel must be demonstrated fireable, Effect.try in place of a hand-written try/catch inside Effect code, and the one guarded cause-message read every error that renders a preserved cause copies verbatim.
 status: stable
 stale_after: "2027-03-13T00:00:00Z"
 tags:
@@ -15,6 +15,12 @@ sources:
     resource: ../../.repos/effect/packages/effect/src/Effect.ts
   - id: result-try
     resource: ../../.repos/effect/packages/effect/src/Result.ts
+  - id: effect-predicate
+    resource: ../../.repos/effect/packages/effect/src/Predicate.ts
+  - id: store-cause-message
+    resource: ../../packages/store/src/internal/causeMessage.ts
+  - id: store-lifecycle-test
+    resource: ../../packages/store/__test__/StoreLifecycle.test.ts
 generated:
   by: "okfit/claude-code"
   at: 2026-10-23T22:03:44Z
@@ -89,6 +95,73 @@ typed `E` channel, keeps the cause, and reads as one expression in a
   `JSON.parse` (see the
   [input-hardening standards](input-hardening-standards.md#json-text-is-decoded-through-a-schema-never-parsed-and-cast)).
 
+## An error that renders a preserved cause reads it through the one guarded `causeMessage`
+
+A `cause: Schema.Defect()` field holds whatever was thrown: an `Error`, an
+`Error` from another realm (which fails `instanceof Error`), a plain
+`{ message }` object, a string, or nothing useful. A `message` getter that
+splices the cause's text therefore reads it through `Predicate.hasProperty`
+and `Predicate.isString`,[^effect-predicate] never `instanceof Error`, and
+treats an empty or whitespace-only message as none. The read walks `cause`
+links to the deepest node that carries a message, because a wrapper's text is
+the generic summary and the text underneath is the actionable detail (a
+`SqlError` says "Failed to prepare statement"; SQLite, one link down, says
+"no such table: t"),[^store-lifecycle-test] and the walk is bounded so a
+cyclic chain terminates.
+
+The helper is `src/internal/causeMessage.ts`, copied verbatim into every
+package that renders a cause, rather than imported: no pure zero-dependency
+kit package is a regular dependency of every site, and a package with no
+`@effected` edge (`images`, `jsonl`, `memfs`) would otherwise gain one for a
+forty-line function. `@effected/store` carries the reference
+copy.[^store-cause-message] Change the shape there and in this section first,
+then re-copy; a site-local variant (an `instanceof Error` read, a different
+empty-message rule, a different depth) is a defect to converge, not a
+dialect. The module is:
+
+```ts
+import { Predicate } from "effect";
+
+/** How many nodes of a cause chain the walk reads before stopping, so a cyclic chain cannot spin. */
+const CAUSE_DEPTH = 8;
+
+/** The message a single node carries: a thrown string, or a non-empty string `message` property. */
+const messageAt = (node: unknown): string | undefined => {
+  const text = Predicate.isString(node)
+    ? node
+    : Predicate.hasProperty(node, "message") && Predicate.isString(node.message)
+      ? node.message
+      : undefined;
+  return text === undefined || text.trim() === "" ? undefined : text;
+};
+
+/** The most specific non-empty message a preserved cause carries, or `undefined` when nothing along its chain has one. */
+export const causeMessage = (cause: unknown): string | undefined => {
+  let message: string | undefined;
+  let node: unknown = cause;
+  for (let depth = 0; depth < CAUSE_DEPTH && node !== undefined && node !== null; depth++) {
+    message = messageAt(node) ?? message;
+    node = Predicate.hasProperty(node, "cause") ? node.cause : undefined;
+  }
+  return message;
+};
+```
+
+- The helper returns `string | undefined`; the site decides the fallback.
+  A `message` getter renders its summary alone when `causeMessage` returns
+  `undefined`, and `summary: detail` otherwise, rather than printing
+  `undefined` or `[object Object]`. A site that must produce a string for
+  splicing names its own fallback: `?? String(cause)`, or a constant such as
+  `"value is not JSON-serializable"`.
+- A site that needs more than the message (the schemastore CLI prefers an
+  import failure's `stack`, which names the module and line that threw)
+  reads that property through the same `hasProperty` + `isString` guard and
+  falls through to `causeMessage`.
+- Every copy ships with the same `__test__/causeMessage.test.ts`: a plain
+  `{ message }` object, an empty and a whitespace-only message, a thrown
+  string, a chain whose innermost node wins, a chain whose deeper nodes are
+  empty, a cycle, and a message past the depth bound.
+
 [^effect-schema]: `.repos/effect/packages/effect/src/Schema.ts` —
     `TaggedError` (line ~16646) and `Error` (line ~16585) constructors.
 [^config-file-file]: `packages/config-file/src/ConfigFile.ts:21-125` —
@@ -99,3 +172,12 @@ typed `E` channel, keeps the cause, and reads as one expression in a
     `Cause.UnknownError`; the `{ try, catch }` overload gives `Effect<A, E>`.
 [^result-try]: `.repos/effect/packages/effect/src/Result.ts` — `try_`,
     exported as `try`, the synchronous `Result` equivalent.
+[^effect-predicate]: `.repos/effect/packages/effect/src/Predicate.ts` —
+    `hasProperty` (`isObjectKeyword(self) && property in self`) and
+    `isString`, the two guards the read is built from.
+[^store-cause-message]: `packages/store/src/internal/causeMessage.ts` — the
+    reference copy of the helper.
+[^store-lifecycle-test]: `packages/store/__test__/StoreLifecycle.test.ts` —
+    `StoreError.message carries the cause`: the driver's "Failed to prepare
+    statement" is the cause's own message and "no such table" is what
+    renders.

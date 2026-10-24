@@ -9,12 +9,7 @@
 // import cycle (`noImportCycles` is an error here).
 
 import { Schema } from "effect";
-
-/** The message a cause carries, if it carries a non-empty one: an `Error`'s `message`, or a thrown string. */
-const causeMessage = (cause: unknown): string | undefined => {
-	const text = cause instanceof Error ? cause.message : typeof cause === "string" ? cause : undefined;
-	return text === undefined || text.trim() === "" ? undefined : text;
-};
+import { causeMessage } from "./internal/causeMessage.js";
 
 /**
  * Raised when a workspace's catalogs cannot be assembled — a `pnpm-workspace.yaml`

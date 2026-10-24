@@ -249,3 +249,14 @@ describe("environmentStoreRoots", () => {
 		}),
 	);
 });
+
+describe("messageOf", () => {
+	it("reads a cross-realm-like plain { message } cause, which instanceof Error would miss", () => {
+		assert.strictEqual(messageOf({ message: "foreign" }), "foreign");
+	});
+
+	it("falls back to the string form when the cause has no non-empty message", () => {
+		assert.strictEqual(messageOf(42), "42");
+		assert.strictEqual(messageOf(new Error("")), "Error");
+	});
+});

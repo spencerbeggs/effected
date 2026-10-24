@@ -57,6 +57,20 @@ describe("CatalogAssemblyError.message", () => {
 		assert.strictEqual(error.message, `${SUMMARY}: hook said no`);
 	});
 
+	it("appends a cross-realm-like plain { message } cause, which instanceof Error would miss", () => {
+		const error = new CatalogAssemblyError({
+			source: "manifest",
+			path: "pnpm-workspace.yaml",
+			cause: { message: "foreign" },
+		});
+		assert.strictEqual(error.message, "Failed to assemble catalogs from manifest pnpm-workspace.yaml: foreign");
+	});
+
+	it("renders the summary alone when the cause's message is empty", () => {
+		const error = new CatalogAssemblyError({ source: "manifest", path: "pnpm-workspace.yaml", cause: new Error("") });
+		assert.strictEqual(error.message, "Failed to assemble catalogs from manifest pnpm-workspace.yaml");
+	});
+
 	it("renders the summary alone when the cause carries no message", () => {
 		for (const cause of [{ code: "EIO" }, undefined, 42, new Error(""), "  "]) {
 			const error = new CatalogAssemblyError({ source: "manifest", path: "pnpm-workspace.yaml", cause });

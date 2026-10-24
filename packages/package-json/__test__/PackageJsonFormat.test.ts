@@ -224,10 +224,17 @@ describe("PackageJsonFormat.formatToString syntactic failures", () => {
 	it("keeps the bare message when the invalid-json cause carries no text", () => {
 		const bare = new PackageJsonSyntaxError({ reason: "invalid-json" });
 		assert.strictEqual(bare.message, "package.json text is not valid JSON");
+		const empty = new PackageJsonSyntaxError({ reason: "invalid-json", cause: new Error("") });
+		assert.strictEqual(empty.message, "package.json text is not valid JSON");
 		assert.strictEqual(
 			new PackageJsonSyntaxError({ reason: "not-an-object" }).message,
 			"package.json text is not a JSON object",
 		);
+	});
+
+	it("splices a cross-realm-like plain { message } cause, which instanceof Error would miss", () => {
+		const error = new PackageJsonSyntaxError({ reason: "invalid-json", cause: { message: "Unexpected token" } });
+		assert.strictEqual(error.message, "package.json text is not valid JSON: Unexpected token");
 	});
 
 	it("fails not-an-object on a JSON array, scalar or null", () => {
