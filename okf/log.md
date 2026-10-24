@@ -1,5 +1,10 @@
 # Log
 
+## 2026-10-24
+
+* Updated @effected/markdown
+* Updated A public lookup that can miss returns Option, never T | undefined
+
 ## 2026-10-23
 
 * Updated @effected/crypto
