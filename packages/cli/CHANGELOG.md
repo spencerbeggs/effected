@@ -1,5 +1,29 @@
 # @effected/cli
 
+## 0.22.0
+
+### Breaking Changes
+
+- `Render.githubLog` and `Doc.print` now render a top-level collapsible as plain text (title plus indented body) when `groupDepth > 0`, that is, inside an `ActionLogger.group`. Previously they emitted a second `::group::` that GitHub does not nest. Output at depth zero is unchanged. [#1091][#1091]
+
+### Features
+
+- `RenderContext` and `RenderContextOfOptions` gain an optional `groupDepth`. `Render.context` reads the shared group-depth fiber-local (keyed by `WorkflowCommand.groupDepthKey` from `@effected/github-commands`) and sets `groupDepth` when it is above zero; `Render.contextOf` forwards it.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.19.0 | 0.19.1 |
+| @effected/env | dependency | updated | 0.5.0 | 0.5.0 |
+| @effected/github-commands | dependency | updated | 0.6.1 | 0.6.2 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.21.0
 
 ### Features

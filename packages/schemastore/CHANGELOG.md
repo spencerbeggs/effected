@@ -1,5 +1,13 @@
 # @effected/schemastore
 
+## 0.26.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/semver | dependency | updated | 0.16.0 | 0.17.0 |
+
 ## 0.26.0
 
 ### Breaking Changes

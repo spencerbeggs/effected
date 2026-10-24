@@ -1,5 +1,17 @@
 # @effected/images
 
+## 0.6.1
+
+### Bug Fixes
+
+- `ImageBackendError.message` joins the cause chain nearest-first with a bounded, guarded read. When the cause carries no message, the `: <detail>` suffix is omitted instead of showing `String(cause)`. [#1091][#1091]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.6.0
 
 ### Breaking Changes

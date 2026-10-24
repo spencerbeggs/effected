@@ -1,5 +1,15 @@
 # @effected/lockfiles
 
+## 0.19.3
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/npm | dependency | updated | 0.26.0 | 0.26.1 |
+| @effected/semver | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/yaml | dependency | updated | 0.24.0 | 0.25.0 |
+
 ## 0.19.2
 
 ### Bug Fixes

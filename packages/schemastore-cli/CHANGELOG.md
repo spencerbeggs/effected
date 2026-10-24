@@ -1,5 +1,24 @@
 # @effected/schemastore-cli
 
+## 0.26.1
+
+### Bug Fixes
+
+- `ConfigLoader` import-failure messages read `stack` defensively, then the cause-chain message, then `String(cause)`. Only non-`Error` and cross-realm causes render differently. [#1091][#1091]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/schemastore | dependency | updated | 0.26.0 | 0.26.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.26.0
 
 ### Breaking Changes

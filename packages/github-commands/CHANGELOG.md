@@ -1,5 +1,17 @@
 # @effected/github-commands
 
+## 0.6.2
+
+### Features
+
+- `WorkflowCommand.groupDepthKey` (`"@effected/github-commands/GroupDepth"`) is the shared key for the group-depth fiber-local, so the logger and renderers agree on nesting. Existing behaviour is unchanged. [#1091][#1091]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.6.1
 
 ### Documentation

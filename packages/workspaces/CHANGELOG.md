@@ -1,5 +1,32 @@
 # @effected/workspaces
 
+## 0.38.0
+
+### Breaking Changes
+
+- `PackedInstallError.message` for `PackFailed` and `InstallFailed` on a non-zero exit is no longer a single line: it ends with `; output tail:` followed by the last 8 non-blank lines (at most 600 characters, prefixed with `…` when cut) of stdout and stderr. The `output` field is unchanged. Code that matched or displayed the message as one line should read `output` instead.
+
+### Bug Fixes
+
+- `LayerPolicyError` shape-mismatch messages and hooks-source `CatalogAssemblyError` messages now include the nested cause chain.
+- Lazy memoised readers (`LockfileReader`, `WorkspaceCatalogs`, `WorkspaceDiscovery`, `WorkspaceSnapshots.at`, pnpmfile resolution) cache only successes and let concurrent callers share one in-flight run. [#1091][#1091]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/lockfiles | dependency | updated | 0.19.2 | 0.19.3 |
+| @effected/npm | dependency | updated | 0.26.0 | 0.26.1 |
+| @effected/package-json | dependency | updated | 0.25.0 | 0.25.1 |
+| @effected/semver | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/yaml | dependency | updated | 0.24.0 | 0.25.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.37.0
 
 ### Breaking Changes

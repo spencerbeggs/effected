@@ -1,5 +1,24 @@
 # @effected/package-json
 
+## 0.25.1
+
+### Bug Fixes
+
+- `PackageJsonFormat` `invalid-json` messages now carry the full cause-chain detail instead of only the top-level message. [#1091][#1091]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/npm | dependency | updated | 0.26.0 | 0.26.1 |
+| @effected/semver | dependency | updated | 0.16.0 | 0.17.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.25.0
 
 ### Breaking Changes

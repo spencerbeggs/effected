@@ -1,5 +1,34 @@
 # @effected/github-actions
 
+## 0.27.0
+
+### Breaking Changes
+
+- `ActionLoggerShape` has a new required member `heading(name, effect)`, which writes the `▸ name` header without changing group depth. Custom implementations must add it; `makeTest`, `layerTest` and `layerSilent` already provide it.
+- `OidcTokenIssuer.layer` now requires `ActionOutputs` as well: its requirements widen to `ActionEnvironment | HttpClient | ActionOutputs`.
+- Every live-issued OIDC token (`token` and `claims`) now emits one `::add-mask::` at issuance. Test doubles mask nothing.
+
+### Features
+
+- `ActionLogger.group` depth is keyed by `WorkflowCommand.groupDepthKey`, shared with `@effected/cli` so rendering inside a group is aware of its depth. [#1091][#1091]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github | dependency | updated | 0.23.1 | 0.24.0 |
+| @effected/github-commands | dependency | updated | 0.6.1 | 0.6.2 |
+| @effected/markdown | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/npm | dependency | updated | 0.26.0 | 0.26.1 |
+| @effected/sbom | dependency | updated | 0.15.1 | 0.16.0 |
+| @effected/semver | dependency | updated | 0.16.0 | 0.17.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.26.0
 
 ### Breaking Changes

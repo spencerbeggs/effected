@@ -1,5 +1,46 @@
 # @effected/app
 
+## 0.26.0
+
+### Breaking Changes
+
+#### `App.layerTest` runs on an in-memory filesystem
+
+- `App.layerTest` now provides a real `@effected/memfs` volume instead of a deny-by-default platform stub. `AppDirs.ensure*` creates directories rather than dying, and the output type is widened to the new `AppTestServices` alias (`Xdg | AppDirs | Store | Cache | FileSystem | Path | MemoryFileSystemVolume`), so the platform services are visible in the layer's output rather than hidden.
+
+- `@effected/memfs` is now a required peer dependency; install it alongside `@effected/app`.
+
+- One `layerTest(...)` call is one volume. Composing `AppStore.layer` or `AppCache.layer` over a test layer is unsupported.
+
+- Code that annotated the old `layerTest` output type must switch to `AppTestServices`.
+
+#### `AppConfig` carries the codec's error type
+
+- `AppConfigOptions<A, I, RR, CE = ConfigCodecError>` gains a fourth type parameter, and `codec` is typed `ConfigCodec<CE>`. `AppConfig.layer<Self, A, I, RR, CE, S>` inserts `CE` before `S`, so explicit type arguments must be updated. The tag check compares `ConfigFileShape<A, CE>`: a key declared over the default error rejects a codec that decorates its errors, which now type-checks when the key is declared with the matching `CE`.
+
+### Features
+
+- `App.layerTest` accepts `files?: MemoryFileSystemSeed` to pre-populate the volume.
+- New export `AppTestServices`. [#1091][#1091]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.19.0 | 0.19.1 |
+| @effected/store | dependency | updated | 0.17.1 | 0.18.0 |
+| @effected/xdg | dependency | updated | 0.14.0 | 0.14.1 |
+| @effected/yaml | dependency | updated | 0.24.0 | 0.25.0 |
+| @effected/memfs | peerDependency | added | — | 0.18.0 |
+
+[#1091][#1091]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.25.1
 
 ### Documentation

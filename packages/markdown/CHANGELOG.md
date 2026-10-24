@@ -1,5 +1,29 @@
 # @effected/markdown
 
+## 0.22.0
+
+### Breaking Changes
+
+- `SchemaResolver.declarationOf(data)` now follows the lookups-return-`Option` rule.
+
+- Default overload: `Result<Option<SchemaDeclaration>, SchemaDeclarationInvalidError>`, previously `Result<SchemaDeclaration | undefined, Invalid | Missing>`. A missing declaration is `Option.none()` and no longer an error.
+
+- With `requireDeclaration: true`: `Result<SchemaDeclaration, Invalid | Missing>`, for callers that want absence to fail.
+
+- Callers that tested for `undefined` must match on the `Option`; callers that handled the missing-declaration error on the default path should use `requireDeclaration: true`. [#1091][#1091]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/yaml | dependency | updated | 0.24.0 | 0.25.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.21.0
 
 ### Breaking Changes

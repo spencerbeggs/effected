@@ -1,5 +1,31 @@
 # @effected/github
 
+## 0.24.0
+
+### Breaking Changes
+
+#### Unstubbed test-double members die when run
+
+- In every `makeTest` double, an unstubbed member now returns `Effect.die(...)` evaluated when the effect runs, rather than throwing synchronously when the member is called. `GitHubClient.makeTest().paginateStream` returns `Stream.fromEffect` of the die. Code that relied on a synchronous throw (for example `assert.throws`) must run the effect and assert on the defect.
+
+- The defect message now names the member and the override to pass, for example "`GitHubRepository.makeTest`: `get()` was called but not stubbed — pass a `get` override." Value members read "was read but not stubbed" in the same form.
+
+#### `ActionsOidc` and `GitHubFixtures` are static classes
+
+- Both were typed const objects and are now classes with static members (`ActionsOidc` has a private constructor). Members are unchanged: `ActionsOidc.issuer`, `verify`, `testClaims`, and `GitHubFixtures.failure`. `typeof ActionsOidc` and `typeof GitHubFixtures` change, and the API model kind moves from Variable to Class. [#1091][#1091]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/semver | dependency | updated | 0.16.0 | 0.17.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.23.1
 
 ### Dependencies

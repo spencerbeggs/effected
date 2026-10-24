@@ -1,5 +1,17 @@
 # @effected/jsonl
 
+## 0.15.2
+
+### Bug Fixes
+
+- `UnserializableData.message` now reports the cause-chain detail, including cross-realm errors, `{ message }` objects and thrown strings. The fallback text is unchanged. [#1091][#1091]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.15.1
 
 ### Documentation

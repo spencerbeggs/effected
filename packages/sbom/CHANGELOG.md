@@ -1,5 +1,23 @@
 # @effected/sbom
 
+## 0.16.0
+
+### Breaking Changes
+
+- `SigstoreSigner.makeTest().sign` now dies when the returned effect runs, rather than throwing synchronously when `sign` is called. The message is unchanged. Tests that asserted a synchronous throw must run the effect and assert on the defect. [#1091][#1091]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/package-json | dependency | updated | 0.25.0 | 0.25.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.15.1
 
 ### Dependencies

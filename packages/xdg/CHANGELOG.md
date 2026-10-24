@@ -1,5 +1,14 @@
 # @effected/xdg
 
+## 0.14.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.19.0 | 0.19.1 |
+| @effected/yaml | dependency | updated | 0.24.0 | 0.25.0 |
+
 ## 0.14.0
 
 ### Breaking Changes

@@ -1,5 +1,23 @@
 # @effected/npm
 
+## 0.26.1
+
+### Bug Fixes
+
+- `CatalogAssemblyError.message` now joins nested cause messages, with a guarded read, so the underlying failure is visible. [#1091][#1091]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/semver | dependency | updated | 0.16.0 | 0.17.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1091]: https://github.com/spencerbeggs/effected/pull/1091
+
 ## 0.26.0
 
 ### Breaking Changes
