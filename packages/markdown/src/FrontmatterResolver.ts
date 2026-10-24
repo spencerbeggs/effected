@@ -289,32 +289,49 @@ export class SchemaResolver {
 	 * data.
 	 *
 	 * @remarks
-	 * A lookup that can miss, so the success channel is an `Option`:
-	 * non-mapping data and a mapping without a `$schema` key both carry no
-	 * declaration and succeed with `Option.none()` by default, or fail with
-	 * {@link SchemaDeclarationMissingError} under `requireDeclaration`. A
-	 * present key is classified by {@link SchemaResolver.classify}, and its
-	 * {@link SchemaDeclarationInvalidError} propagates unchanged. Hand the
-	 * declaration to a {@link FrontmatterSchemaResolver} with
+	 * A lookup that can miss, so by default the success channel is an
+	 * `Option`: non-mapping data and a mapping without a `$schema` key both
+	 * carry no declaration and succeed with `Option.none()`, and the error
+	 * union is {@link SchemaDeclarationInvalidError} alone. Under
+	 * `requireDeclaration: true` the miss becomes a typed
+	 * {@link SchemaDeclarationMissingError} and the success is the bare
+	 * declaration, since it is statically always present. The two overloads
+	 * keep each caller's types honest: no `Option` to unwrap when the
+	 * declaration is required, no `SchemaDeclarationMissingError` to handle
+	 * when it is not. A present key is classified by
+	 * {@link SchemaResolver.classify}, and its
+	 * {@link SchemaDeclarationInvalidError} propagates unchanged. Hand an
+	 * optional declaration to a {@link FrontmatterSchemaResolver} with
 	 * `Option.getOrUndefined`, since the seam takes the absent case as
-	 * `undefined`.
+	 * `undefined`; a required one passes straight through.
 	 *
 	 * @param data - The decoded frontmatter data.
-	 * @param options - `requireDeclaration` makes a missing `$schema` a typed
-	 *   error instead of `Option.none()`.
-	 * @returns `Option.some` of the classified declaration, `Option.none()`
-	 *   when absent and tolerated, or the typed error.
+	 * @param options - `requireDeclaration: true` makes a missing `$schema` a
+	 *   typed error and narrows the success to the declaration itself.
+	 * @returns The classified declaration under `requireDeclaration`;
+	 *   otherwise `Option.some` of it, or `Option.none()` when absent.
 	 */
 	static declarationOf(
 		data: unknown,
+		options: { readonly requireDeclaration: true },
+	): Result.Result<SchemaDeclaration, SchemaDeclarationInvalidError | SchemaDeclarationMissingError>;
+	static declarationOf(
+		data: unknown,
+		options?: { readonly requireDeclaration?: false },
+	): Result.Result<Option.Option<SchemaDeclaration>, SchemaDeclarationInvalidError>;
+	static declarationOf(
+		data: unknown,
 		options?: { readonly requireDeclaration?: boolean },
-	): Result.Result<Option.Option<SchemaDeclaration>, SchemaDeclarationInvalidError | SchemaDeclarationMissingError> {
+	): Result.Result<
+		SchemaDeclaration | Option.Option<SchemaDeclaration>,
+		SchemaDeclarationInvalidError | SchemaDeclarationMissingError
+	> {
+		const required = options?.requireDeclaration === true;
 		if (!Predicate.isObject(data) || !Object.hasOwn(data, "$schema")) {
-			return options?.requireDeclaration === true
-				? Result.fail(new SchemaDeclarationMissingError())
-				: Result.succeed(Option.none());
+			return required ? Result.fail(new SchemaDeclarationMissingError()) : Result.succeed(Option.none());
 		}
-		return Result.map(SchemaResolver.classify(data.$schema), Option.some);
+		const classified = SchemaResolver.classify(data.$schema);
+		return required ? classified : Result.map(classified, Option.some);
 	}
 
 	/**

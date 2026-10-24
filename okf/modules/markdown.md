@@ -337,7 +337,10 @@ each access; the optional fields of the node classes themselves keep mdast's
 `Result` too: `SchemaResolver.declarationOf` is a lookup over decoded
 frontmatter that can miss, so it returns
 `Result<Option<SchemaDeclaration>, …>` — `Option.none()` for data without a
-`$schema` key — rather than `SchemaDeclaration | undefined`. The
+`$schema` key — rather than `SchemaDeclaration | undefined`. Its
+`requireDeclaration: true` overload turns the miss into a typed failure and
+so returns the bare `SchemaDeclaration`, with `SchemaDeclarationMissingError`
+in the error union only on that path. The
 `FrontmatterSchemaResolver.resolve` seam still receives the absent case as
 `undefined`, because that is a caller-supplied callback whose parameter
 shape is its own contract; a caller bridges with `Option.getOrUndefined`.

@@ -54,7 +54,11 @@ review can cite a rule instead of a precedent. It also brings
 A `Result`-returning lookup is still a lookup. `SchemaResolver.declarationOf`
 extracts a `$schema` declaration from decoded frontmatter and can miss, so
 its success channel is `Option<SchemaDeclaration>`, giving
-`Result<Option<SchemaDeclaration>, …>`.[^frontmatter-resolver] The miss is
+`Result<Option<SchemaDeclaration>, …>`.[^frontmatter-resolver] An overload
+narrows the shape when the caller rules the miss out: under
+`requireDeclaration: true` the miss is a typed failure, so the success is the
+bare declaration and no `Option` is wrapped around a value the type knows is
+present. The miss is
 a tolerated success, distinct from the typed failures, and `Option` keeps
 it from being confused with a stray `undefined`; "the absent case is a
 tolerated success inside a `Result`" was considered as a fifth exemption
@@ -154,6 +158,8 @@ there an omitted ceiling would have meant an unbounded walk, while
 [^frontmatter-resolver]: `packages/markdown/src/FrontmatterResolver.ts` —
     `SchemaResolver.declarationOf` returns
     `Result.Result<Option.Option<SchemaDeclaration>, …>`; `Option.none()`
-    for data with no `$schema` key unless `requireDeclaration` is set.
+    for data with no `$schema` key. The `requireDeclaration: true` overload
+    returns `Result.Result<SchemaDeclaration, …>` with the miss as a typed
+    failure.
 [^ui-key]: `packages/cli/src/ui/UiKey.ts` — `fromInk` maps an Ink key
     event to a `UiKey`, or `undefined` when the event has no binding.
