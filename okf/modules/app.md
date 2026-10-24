@@ -191,6 +191,16 @@ bearing decisions:
 - **`parseOptions` passes straight through to config-file**, unchanged
   and undefaulted, so an application can turn on excess-property
   rejection here without dropping to `ConfigFile.layer`.
+- **The codec's error channel is threaded, not flattened.**
+  `AppConfigOptions` and `AppConfig.layer` are generic over the codec
+  error `CE`, inferred from `codec` and defaulting to `ConfigCodecError`,
+  exactly as config-file's own options are. A decorated codec —
+  `EncryptedCodec`, `ConfigMigration.make` — therefore reaches the preset
+  without a cast, the `ConfigFile.Service` key must name the widened
+  union (`ConfigCodec.ErrorOf<typeof codec>` reads it back), and the
+  decorator's failure arrives on the service's own `load`/`save` error
+  types. Typing `codec` as the bare `ConfigCodec` was the defect that
+  once kept both decorators out of the app edge.
 - **The codec stays a required parameter.** Defaulting it, or inferring
   one from the filename's extension, would hard-code a format choice
   into a composition layer — not this package's decision. The caller

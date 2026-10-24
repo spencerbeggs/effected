@@ -132,12 +132,22 @@ composition defect; do not reorder the two.
   removed; `validate` cannot, because it runs after decoding has already dropped
   the excess keys. Absent = core's `"ignore"`, so it is additive.
 - **`AppConfig.layer`'s key is pinned against wider shapes**, with
-  the same conditional as `layerAs` (`S extends ConfigFileShape<A>`, defaulted,
-  so explicit four-argument calls still compile). Before, a class key over
-  `ConfigFileShape<A> & { extra }` was accepted. `ConfigFile.Service` keys —
-  every caller in the repo and in reposets — are unaffected.
+  the same conditional as `layerAs` (`S extends ConfigFileShape<A, CE>`,
+  defaulted, so explicit four-argument calls still compile). Before, a class
+  key over `ConfigFileShape<A> & { extra }` was accepted. `ConfigFile.Service`
+  keys — every caller in the repo and in reposets — are unaffected.
   `@effected/config-file`'s own `ConfigFile.layer` / `testLayer` carry the same
   pin.
+- **The codec error `CE` is threaded, never flattened.** `AppConfigOptions<A, I,
+  RR, CE>` types `codec` as `ConfigCodec<CE>` (default `ConfigCodecError`, so a
+  built-in codec never names it) and `AppConfig.layer` forwards `CE` to
+  `ConfigFile.layer`, so a decorated codec (`EncryptedCodec`,
+  `ConfigMigration.make`) goes straight in and the key must name the widened
+  union — `ConfigCodec.ErrorOf<typeof codec>` reads it off the value. **Never
+  type `codec` as the bare `ConfigCodec` again**: that was the defect that kept
+  both decorators out of the app preset without a cast.
+  `__test__/AppConfigDecoratedCodec.test.ts` pins it, mirroring config-file's
+  `DecoratedCodecComposition.test.ts`.
 - **The codec stays required** on `AppConfigOptions` — never defaulted, never
   inferred from the filename's extension. Hard-coding a *format* choice into a
   composition layer is exactly what `XdgFullLive` was killed for, and the named
