@@ -188,8 +188,11 @@ a config body seeded under the namespace's config directory loads, a
 tests. The databases stay off it — `Store` and `Cache` open SQLite
 through the native binding, which never sees `FileSystem` — so
 `AppStore.layer`/`AppCache.layer` must **never** be composed over
-`layerTest` (their `ensure*` would pass on the volume and the binding
-would open a host-disk path), and a test of `App.layer` end to end
+`layerTest` (their `ensure*` passes on the volume and the binding then
+opens the same path on the host: on the synthetic defaults that path
+does not exist, so the layer fails with a `StoreError`; with real
+`paths` it would write onto the host disk), and a test of `App.layer`
+end to end
 still uses a temp-directory `HOME`, which is what the integration suite
 does. Before this, `layerTest` provided `FileSystem.layerNoop`, every
 `ensure*` died, and the limit was documented rather than fixed —

@@ -321,10 +321,12 @@ export class App {
 	 * here, and under {@link App.layer} they open SQLite files through the
 	 * native binding, which never sees the `FileSystem` service. For the same
 	 * reason, do not compose `AppStore.layer` or `AppCache.layer` over this
-	 * layer: their `ensure*` would succeed on the volume and the binding would
-	 * then open `/home/test/...` on the **host** disk. A test of `App.layer`
-	 * end to end — real files under real directories — still runs against a
-	 * temp-directory `HOME`.
+	 * layer: their `ensure*` succeeds on the volume, then the binding opens the
+	 * same path on the **host**. On the synthetic defaults `/home/test/...` does
+	 * not exist there, so the layer fails with a setup `StoreError`; with real
+	 * `paths` it would write a database onto the host disk. A test of
+	 * `App.layer` end to end — real files under real directories — still runs
+	 * against a temp-directory `HOME`.
 	 *
 	 * @example
 	 * ```ts

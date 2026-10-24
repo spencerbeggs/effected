@@ -279,9 +279,12 @@ Three properties follow, and the tests pin each:
 **The databases stay off the volume.** `Store`/`Cache` are `:memory:` here,
 and under `App.layer` they open SQLite through the native binding, which never
 sees the `FileSystem` service. **Never compose `AppStore.layer` /
-`AppCache.layer` over `layerTest`**: `ensure*` would succeed on the volume and
-the binding would then open `/home/test/...` on the HOST disk. The `layerNoop`
-die used to make that mistake fail loudly; now the TSDoc has to. `App.layer`
+`AppCache.layer` over `layerTest`**: `ensure*` succeeds on the volume, then
+the binding opens the same path on the host. On the synthetic defaults
+`/home/test/...` does not exist there, so the layer fails with a `StoreError`
+(`operation: "setup"`) — `App.test.ts` pins that — and with real `paths` it
+would write a database onto the host disk. The `layerNoop` die used to make
+that mistake fail loudly at `ensure*`; now the TSDoc and that test have to. `App.layer`
 end to end still runs against a temp-directory `HOME`, which is what the
 integration suite does.
 

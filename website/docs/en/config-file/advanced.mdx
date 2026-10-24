@@ -250,7 +250,9 @@ import type { ConfigCodec } from "@effected/config-file";
 class Secrets extends ConfigFile.Service<Secrets, ReleaseConfig, ConfigCodec.ErrorOf<typeof secretsCodec>>()(
   "shipit/Secrets",
 ) {}
-``` Event subscribers see the decorator's failure as-is too — `ParseFailed` and `StringifyFailed` carry a `ConfigEncryptionError` or `ConfigMigrationError` when that is what the codec failed with, so narrow `error` by `_tag`.
+```
+
+Event subscribers see the decorator's failure as-is too — `ParseFailed` and `StringifyFailed` carry a `ConfigEncryptionError` or `ConfigMigrationError` when that is what the codec failed with, so narrow `error` by `_tag`.
 
 ## Learn more
 
