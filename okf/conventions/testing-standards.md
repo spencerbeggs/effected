@@ -15,12 +15,14 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
   - id: claude-md
     resource: ../../CLAUDE.md
+  - id: vitest-setup
+    resource: ../../vitest.setup.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T01:39:09Z
+  at: 2026-10-24T00:35:53Z
 integrity:
   generated:
-    body: 0c8fb2856835b9ef
+    body: 23bd4b59c3afeb1d
 ---
 
 # Testing standards
@@ -91,6 +93,38 @@ A double that exists to control *timing* rather than to hold bytes is a
 different artifact and stays hand-written; `@effected/jsonl`'s watch
 harness is the standing example of that exception.
 
+## The build before the run is not a given
+
+The root `globalSetup` rebuilds `dist/dev` through `AgentPlugin.runScript`
+before every vitest run, and every cross-package import resolves to a
+sibling's `dist/dev/pkg` (the `publishConfig.directory` the workspace
+link points at), never to its `src/`. So a downstream test sees an
+upstream `src` edit only when that build actually ran — and `runScript`
+has a short-circuit that skips it: a done-marker it writes on each
+success, trusted without re-running the command while it is younger than
+`VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS` (30 s by default). The window
+exists so a *concurrent* second vitest process trusts the winner's build
+instead of racing it, but it applies to the next *sequential* run just
+the same: edit a leaf package's `src`, run a downstream project inside
+30 s of the previous run, and the test reads the previous `dist/dev`.
+Reproduced with a sentinel export added to `@effected/semver` and a
+`@effected/npm` test asserting on it — the run inside the window failed
+with `semver/dist/dev/issues.json`'s `generatedAt` unmoved; the same run
+with the window disabled rebuilt and passed.[^vitest-setup]
+
+The setup therefore pins the window to 1 ms unless the environment
+already sets it, so every run rebuilds; turbo's cache keeps that a
+few-second no-op when nothing changed, and the lock still serializes
+concurrent runs. Two consequences for diagnosis:
+
+- **A downstream test that ignores an upstream edit is a build that did
+  not run, not a turbo input gap.** `build:dev` already lists `src/**`.
+  Check `dist/dev/issues.json`'s `generatedAt` against the edit before
+  reading the test as wrong.
+- **Never set `VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS` above 1 in this
+  repo** to make runs feel faster; the time saved is turbo's cache
+  hit, and the price is a stale build read silently.
+
 ## The oracle for a ported algorithm is external
 
 When an implementation and a remembered constant disagree, neither one
@@ -116,5 +150,8 @@ property that was never in doubt.
 [^memfs-fs]: `packages/memfs/src/MemoryFileSystem.ts:274` — contrasts the
     delegate-by-default fault layers with `FileSystem.layerNoop`'s
     deny-by-default behavior.
+[^vitest-setup]: `vitest.setup.ts` — pins
+    `VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS` to 1 ms before
+    `AgentPlugin.runScript`, with the reproduction recorded in the comment.
 [^claude-md]: `CLAUDE.md` §Testing — "tests live in each package's
     `__test__/` directory, never co-located in `src/`."

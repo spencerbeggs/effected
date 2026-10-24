@@ -113,15 +113,17 @@ describe("MarkdownDocument.findAll", () => {
 		);
 	});
 
-	it("matches the visitor's Enter order node for node, root included", () => {
-		const document = parseDoc(source);
-		const events = Effect.runSync(Stream.runCollect(MarkdownVisitor.visit(document.root)));
-		const entered = [...events].filter((event) => event._tag === "Enter").map((event) => event.node);
-		assert.deepStrictEqual(
-			document.findAll(() => true),
-			entered,
-		);
-	});
+	it.effect("matches the visitor's Enter order node for node, root included", () =>
+		Effect.gen(function* () {
+			const document = parseDoc(source);
+			const events = yield* Stream.runCollect(MarkdownVisitor.visit(document.root));
+			const entered = [...events].filter((event) => event._tag === "Enter").map((event) => event.node);
+			assert.deepStrictEqual(
+				document.findAll(() => true),
+				entered,
+			);
+		}),
+	);
 
 	it("returns an empty array when nothing matches", () => {
 		const document = parseDoc("plain paragraph\n");

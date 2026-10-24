@@ -450,36 +450,38 @@ export class Jsonc {
 	 */
 	static stringifyResult(value: unknown, options?: JsoncStringifyOptions): Result.Result<string, JsoncStringifyError> {
 		const space = options?.insertSpaces === false ? "\t" : (options?.tabSize ?? 2);
-		let text: string | undefined;
-		try {
-			text = JSON.stringify(value, null, space);
-		} catch (defect) {
-			// Classify the two exceptions JSON.stringify documents. The message
-			// patterns cover V8 ("circular structure", "serialize a BigInt"), JSC
-			// ("cyclic structures", "serialize BigInt") and SpiderMonkey ("cyclic
-			// object value", "BigInt value can't be serialized"); anything else —
-			// including a throwing `toJSON` or getter — is caller code failing and
-			// rethrows as a genuine defect.
-			if (defect instanceof TypeError) {
-				if (/circular|cyclic/i.test(defect.message)) {
-					return Result.fail(new JsoncStringifyError({ code: "CircularReference", detail: defect.message, value }));
-				}
-				if (/bigint/i.test(defect.message)) {
-					return Result.fail(new JsoncStringifyError({ code: "BigIntValue", detail: defect.message, value }));
-				}
-			}
-			throw defect;
-		}
-		if (text === undefined) {
-			return Result.fail(
-				new JsoncStringifyError({
-					code: "TopLevelUnrepresentable",
-					detail: "the top-level value (undefined, a function or a symbol) has no JSON representation",
-					value,
-				}),
-			);
-		}
-		return Result.succeed(text);
+		return Result.flatMap(
+			Result.try({
+				try: () => JSON.stringify(value, null, space) as string | undefined,
+				catch: (defect) => {
+					// Classify the two exceptions JSON.stringify documents. The message
+					// patterns cover V8 ("circular structure", "serialize a BigInt"), JSC
+					// ("cyclic structures", "serialize BigInt") and SpiderMonkey ("cyclic
+					// object value", "BigInt value can't be serialized"); anything else —
+					// including a throwing `toJSON` or getter — is caller code failing and
+					// rethrows as a genuine defect.
+					if (defect instanceof TypeError) {
+						if (/circular|cyclic/i.test(defect.message)) {
+							return new JsoncStringifyError({ code: "CircularReference", detail: defect.message, value });
+						}
+						if (/bigint/i.test(defect.message)) {
+							return new JsoncStringifyError({ code: "BigIntValue", detail: defect.message, value });
+						}
+					}
+					throw defect;
+				},
+			}),
+			(text) =>
+				text === undefined
+					? Result.fail(
+							new JsoncStringifyError({
+								code: "TopLevelUnrepresentable",
+								detail: "the top-level value (undefined, a function or a symbol) has no JSON representation",
+								value,
+							}),
+						)
+					: Result.succeed(text),
+		);
 	}
 
 	/**

@@ -293,36 +293,34 @@ const encoder = new TextEncoder();
 // that promises 64 hex characters.
 const SHA256_DIGEST_BYTES = 32;
 
-const digestHexResult = (text: string, digest: JsoncDigest): Result.Result<string, JsoncCanonicalizeError> => {
+const digestHexResult = (text: string, digest: JsoncDigest): Result.Result<string, JsoncCanonicalizeError> =>
 	// A caller's platform binding can fail two ways, and both must arrive as a
 	// `Result`: the digest can THROW (`createHash("sha-256")` — hyphenated —
 	// throws `ERR_CRYPTO_UNKNOWN_DIGEST` on Node), and it can return the wrong
 	// width. An escaping exception would cross the `Result` contract and crash
 	// the synchronous host these twins exist to serve, so the call is wrapped
 	// exactly as `TsconfigLoaderSync` wraps the consumer's `readFile`.
-	let bytes: Uint8Array;
-	try {
-		bytes = digest(encoder.encode(text));
-	} catch (thrown) {
-		return Result.fail(
-			JsoncCanonicalizeError.make({
-				code: "InvalidDigest",
-				path: "",
-				detail: `the supplied digest threw: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
-			}),
-		);
-	}
-	if (bytes.length !== SHA256_DIGEST_BYTES) {
-		return Result.fail(
-			JsoncCanonicalizeError.make({
-				code: "InvalidDigest",
-				path: "",
-				detail: `the supplied digest returned ${String(bytes.length)} bytes; SHA-256 produces ${SHA256_DIGEST_BYTES}`,
-			}),
-		);
-	}
-	return Result.succeed(Hex.encode(bytes));
-};
+	Result.flatMap(
+		Result.try({
+			try: () => digest(encoder.encode(text)),
+			catch: (thrown) =>
+				JsoncCanonicalizeError.make({
+					code: "InvalidDigest",
+					path: "",
+					detail: `the supplied digest threw: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
+				}),
+		}),
+		(bytes) =>
+			bytes.length === SHA256_DIGEST_BYTES
+				? Result.succeed(Hex.encode(bytes))
+				: Result.fail(
+						JsoncCanonicalizeError.make({
+							code: "InvalidDigest",
+							path: "",
+							detail: `the supplied digest returned ${String(bytes.length)} bytes; SHA-256 produces ${SHA256_DIGEST_BYTES}`,
+						}),
+					),
+	);
 
 const digestHex = (text: string): Effect.Effect<string, PlatformError.PlatformError, Crypto.Crypto> =>
 	Effect.gen(function* () {

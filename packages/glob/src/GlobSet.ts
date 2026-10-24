@@ -153,13 +153,18 @@ export class GlobSet extends Schema.Class<GlobSet>("GlobSet")(
 	static compileResult(patterns: ReadonlyArray<string>): Result.Result<GlobSet, GlobPatternError> {
 		for (const pattern of patterns) {
 			const target = exclusionTarget(pattern) ?? pattern;
-			try {
-				new Minimatch(target, {});
-			} catch (e) {
-				if (isGuardExceeded(e)) {
-					return Result.fail(new GlobPatternError({ pattern, reason: e.reason, limit: e.limit, actual: e.actual }));
-				}
-				throw e;
+			const compiled = Result.try({
+				try: () => new Minimatch(target, {}),
+				catch: (e) => {
+					// Only a guard trip is a typed failure; anything else rethrows as a defect.
+					if (isGuardExceeded(e)) {
+						return new GlobPatternError({ pattern, reason: e.reason, limit: e.limit, actual: e.actual });
+					}
+					throw e;
+				},
+			});
+			if (Result.isFailure(compiled)) {
+				return Result.fail(compiled.failure);
 			}
 		}
 		return Result.succeed(new GlobSet({ patterns }));

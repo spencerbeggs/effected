@@ -207,11 +207,13 @@ describe("frontmatter capture", () => {
 	});
 
 	describe("the facade and the schema", () => {
-		it("parse and parseResult agree", () => {
-			const viaEffect = Effect.runSync(Markdown.parse("---\na: 1\n---\n", withFrontmatter));
-			const viaResult = parseOn("---\na: 1\n---\n");
-			assert.deepStrictEqual(viaEffect, viaResult);
-		});
+		it.effect("parse and parseResult agree", () =>
+			Effect.gen(function* () {
+				const viaEffect = yield* Markdown.parse("---\na: 1\n---\n", withFrontmatter);
+				const viaResult = parseOn("---\na: 1\n---\n");
+				assert.deepStrictEqual(viaEffect, viaResult);
+			}),
+		);
 
 		it("a frontmatter head survives a Root decode round-trip", () => {
 			const root = parseOn("---\na: 1\n---\nrest\n");
