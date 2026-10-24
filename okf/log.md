@@ -8,6 +8,21 @@
 * Updated github-actions
 * Updated @effected/markdown
 * Updated A public lookup that can miss returns Option, never T | undefined
+* Updated @effected/crypto
+* Updated @effected/github
+* Updated @effected/semver stays independent of core SemVer and SemVerRange
+* Updated @effected/workspaces: monorepo tooling
+* Updated @effected/yaml
+* Updated Error handling standards
+* Updated Testing standards
+* Added The libsodium sealed box stays in @effected/github until a second consumer appears
+* Updated app
+* Updated config-file
+* Updated git
+* Updated sbom
+* Updated semver
+* Updated store
+* Updated workspace
 
 ## 2026-10-23
 
