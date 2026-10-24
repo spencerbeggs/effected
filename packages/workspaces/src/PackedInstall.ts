@@ -225,13 +225,18 @@ export class PackedInstallError extends Schema.TaggedError<PackedInstallError>()
 		"Discovery",
 		"Io",
 	]),
-	/** One line, naming the package or manager involved. */
+	/**
+	 * Names the package or manager involved. For `PackFailed` and
+	 * `InstallFailed` on a non-zero exit it continues with the last few lines
+	 * of the command's output, so a log that prints only the message is still
+	 * actionable; `output` carries the longer tail.
+	 */
 	message: Schema.String,
 	/** The package manager involved. */
 	manager: Schema.optionalKey(PackageManagerName),
 	/** The workspace package involved. */
 	package: Schema.optionalKey(Schema.String),
-	/** The tail of the failing command's output. */
+	/** The tail of the failing command's output, both streams, stdout first. */
 	output: Schema.optionalKey(Schema.String),
 	/** The originating failure. */
 	cause: Schema.optionalKey(Schema.Defect()),
@@ -742,6 +747,29 @@ const DEFAULT_PACK_FROM: PackSource = { directory: "dist/prod/npm/pkg" };
 const WORKSPACE_PROTOCOL_NOT_INSTALLED = "ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL";
 const TAIL = 2000;
 const tail = (text: string): string => (text.length <= TAIL ? text : text.slice(-TAIL));
+/** How much of that tail rides on `message`: the last few non-blank lines, capped, so a bare print of the error is actionable. */
+const MESSAGE_TAIL_LINES = 8;
+const MESSAGE_TAIL_CHARS = 600;
+/**
+ * `message` followed by the end of `output`. The manager's own install and
+ * pack logs are what `output` holds: npm, pnpm, yarn and bun print registry
+ * URLs and resolution failures, never the auth values they read from the
+ * user's rc files or from `NODE_AUTH_TOKEN` (npm redacts tokens in its own
+ * log lines), and the install env is already scrubbed of the parent
+ * manager's `npm_config_*` context. The message therefore widens what is
+ * printed, not what is captured: everything it shows was already in `output`.
+ */
+const withOutputTail = (message: string, output: string): string => {
+	const lines = output
+		.split(/\r?\n/)
+		.map((line) => line.trimEnd())
+		.filter((line) => line.length > 0)
+		.slice(-MESSAGE_TAIL_LINES)
+		.join("\n");
+	if (lines.length === 0) return message;
+	const bounded = lines.length <= MESSAGE_TAIL_CHARS ? lines : `…${lines.slice(-MESSAGE_TAIL_CHARS)}`;
+	return `${message}; output tail:\n${bounded}`;
+};
 const DEFAULT_INSTALL_TIMEOUT: Duration.Input = "4 minutes";
 const PROBE_TIMEOUT: Duration.Input = "30 seconds";
 const DEFAULT_PACK_TIMEOUT: Duration.Input = "2 minutes";
@@ -1254,13 +1282,17 @@ export class PackedInstall {
 				if (!output.succeeded) {
 					const notInstalled =
 						packer === "pnpm" && `${output.stdout}${output.stderr}`.includes(WORKSPACE_PROTOCOL_NOT_INSTALLED);
+					// Both streams: a pnpm WARN banner on stderr must not hide the real error on stdout.
+					const captured = tail(`${output.stdout}\n${output.stderr}`);
 					return yield* failure(
 						"PackFailed",
-						notInstalled
-							? `pnpm pack could not rewrite the workspace: specifiers of ${name} because the workspace is not installed; run pnpm install in the workspace first`
-							: `${packer} pack exited ${output.exitCode} for ${name}`,
-						// Both streams: a pnpm WARN banner on stderr must not hide the real error on stdout.
-						{ package: name, output: tail(`${output.stdout}\n${output.stderr}`) },
+						withOutputTail(
+							notInstalled
+								? `pnpm pack could not rewrite the workspace: specifiers of ${name} because the workspace is not installed; run pnpm install in the workspace first`
+								: `${packer} pack exited ${output.exitCode} for ${name}`,
+							captured,
+						),
+						{ package: name, output: captured },
 					);
 				}
 				const found = (yield* fs
@@ -1393,10 +1425,12 @@ export class PackedInstall {
 					),
 				);
 				if (!output.succeeded) {
-					return yield* failure("InstallFailed", `${manager} install exited ${output.exitCode}`, {
-						manager,
-						output: tail(`${output.stdout}\n${output.stderr}`),
-					});
+					const captured = tail(`${output.stdout}\n${output.stderr}`);
+					return yield* failure(
+						"InstallFailed",
+						withOutputTail(`${manager} install exited ${output.exitCode}`, captured),
+						{ manager, output: captured },
+					);
 				}
 				const consumer = InstalledConsumer.make({
 					manager,

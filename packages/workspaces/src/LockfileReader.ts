@@ -243,8 +243,12 @@ export class LockfileReader extends Context.Service<LockfileReader, LockfileRead
 					});
 				});
 
-			const [resolveOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(init, Duration.infinity);
-			const memo = Effect.onExit(resolveOnce, (exit) => (Exit.isSuccess(exit) ? Effect.void : invalidate));
+			// Success-only: the exit-keyed TTL keeps a success for good and expires a
+			// failure at once, so the next call re-reads while concurrent callers share
+			// one in-flight init. `invalidate` is `refresh()`.
+			const [memo, invalidate] = yield* Effect.cachedInvalidateWithTTL(init, (exit) =>
+				Exit.isSuccess(exit) ? Duration.infinity : Duration.zero,
+			);
 
 			return {
 				read: Effect.fn("LockfileReader.read")(function* () {

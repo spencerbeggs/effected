@@ -27,10 +27,10 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T22:03:44Z
+  at: 2026-10-24T01:01:49Z
 integrity:
   generated:
-    body: e014acbccf60d2fa
+    body: df5aa0028d7e6e01
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -390,10 +390,15 @@ call site pays nothing. The memo is not bare `Effect.cached`, because
 every later call, and a caller's `Effect.retry` would replay the cached
 failure without re-running the init. (An interrupted run is never cached:
 core treats interruption as abandonment and the next caller starts fresh.)
-The init memo is success-only, via an infinite-TTL cache with an exit hook
-that invalidates on any non-success: success is computed once across
-sequential and concurrent observers, and a failure retries on the next
-call.
+The init memo is success-only, via core's `cachedWithTTL` /
+`cachedInvalidateWithTTL` with an exit-keyed time-to-live — infinite for a
+success, zero for a failure — the same gate `@effected/runtimes` uses. A
+success is computed once across sequential and concurrent observers;
+concurrent waiters on a failing run share that one failure; and the next
+call retries. Services that expose `refresh()` keep the invalidating form
+and hand `refresh` the returned invalidator; sites with no public refresh
+(`WorkspaceSnapshots.at`'s per-ref cells, the pnpmfile memo) use the plain
+form. There is no post-hoc `onExit` invalidate anywhere.
 
 ## Observability
 

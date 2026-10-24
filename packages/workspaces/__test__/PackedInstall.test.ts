@@ -185,6 +185,11 @@ describe("PackedInstall.run", () => {
 					assert.include(error.output ?? "", "ERR_PNPM_BOOM", "the real error on stdout survives a stderr banner");
 					assert.include(error.output ?? "", "WARN this project pins");
 					assert.notInclude(error.message, "pnpm install", "the hint is reserved for the workspace-protocol failure");
+					// The message ends with those same lines, so a bare print of it is actionable.
+					assert.strictEqual(
+						error.message,
+						"pnpm pack exited 1 for @x/carrier; output tail:\nERR_PNPM_BOOM the pack broke\nWARN this project pins pnpm@12.6.0",
+					);
 					const pack = failing.spawns[1];
 					assert.strictEqual(pack?.command, "pnpm");
 					assert.strictEqual(pack?.cwd, "/repo/packages/carrier");
@@ -517,6 +522,11 @@ describe("PackedInstall.run past the pack", () => {
 				assert.isTrue(output.endsWith("ERR_INSTALL_BOOM"), "stderr comes last");
 				assert.isTrue(output.startsWith("aaa"), "stdout precedes it");
 				assert.strictEqual(output.length, 2000, "only the tail is kept");
+				// The message carries the end of that tail itself, bounded: a log that
+				// prints only the message still shows the manager's real error.
+				assert.isTrue(error.message.startsWith("npm install exited 1; output tail:\n…"), error.message);
+				assert.isTrue(error.message.endsWith("ERR_INSTALL_BOOM"), error.message);
+				assert.isBelow(error.message.length, 700, "the message tail is capped");
 			}),
 		);
 	});

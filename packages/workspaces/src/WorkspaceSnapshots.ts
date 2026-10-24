@@ -239,11 +239,11 @@ const unstubbed = (method: string): Effect.Effect<never> =>
  * Reads workspace state at a git ref with no checkout, and the live worktree.
  *
  * @remarks
- * `at(ref)` is cached per `(resolved root, ref)` via
- * `Effect.cachedInvalidateWithTTL` at `Duration.infinity`, invalidated on any
- * non-success exit — never bare `Effect.cached`, which would memoize an
- * interrupt. A failed `at(ref)` init is therefore retried on the next call, not
- * memoized.
+ * `at(ref)` is cached per `(resolved root, ref)` via `Effect.cachedWithTTL`
+ * with an exit-keyed time-to-live: infinite for a success, zero for a failure
+ * — never bare `Effect.cached`, which would memoize a failure. A failed
+ * `at(ref)` init is therefore retried on the next call, not memoized, and
+ * concurrent callers share one in-flight init.
  *
  * @example
  * ```ts
@@ -457,9 +457,9 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 					);
 				});
 
-			// Per-`(root, ref)` memo of the success-only invalidating cell. A failed
-			// init invalidates its cell, so the next call recomputes rather than
-			// replaying the failure.
+			// Per-`(root, ref)` memo of a success-only cell: the exit-keyed TTL
+			// expires a failure at once, so the next call recomputes rather than
+			// replaying it.
 			const atCaches = new Map<string, Effect.Effect<WorkspaceStateSnapshot, WorkspaceSnapshotAtFailure>>();
 
 			const at = Effect.fn("WorkspaceSnapshots.at")(function* (ref: string) {
@@ -473,11 +473,9 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 				const key = `${root}\0${ref}`;
 				let memo = atCaches.get(key);
 				if (memo === undefined) {
-					const [resolveOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(
-						computeAt(root, ref),
-						Duration.infinity,
+					const built = yield* Effect.cachedWithTTL(computeAt(root, ref), (exit) =>
+						Exit.isSuccess(exit) ? Duration.infinity : Duration.zero,
 					);
-					const built = Effect.onExit(resolveOnce, (exit) => (Exit.isSuccess(exit) ? Effect.void : invalidate));
 					// Re-check under the benign concurrent-miss race: keep whichever cell
 					// landed first so callers dedupe onto one.
 					const existing = atCaches.get(key);

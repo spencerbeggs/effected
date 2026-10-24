@@ -496,9 +496,11 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 
 			// Success-only memoization. See the class remarks: a bare `Effect.cached`
 			// would cache a failure, which replays forever, so `Effect.retry` could
-			// never re-run the init.
-			const [resolveOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(discover, Duration.infinity);
-			const memo = Effect.onExit(resolveOnce, (exit) => (Exit.isSuccess(exit) ? Effect.void : invalidate));
+			// never re-run the init. The exit-keyed TTL keeps a success for good and
+			// expires a failure at once; `invalidate` is what `refresh()` runs.
+			const [memo, invalidate] = yield* Effect.cachedInvalidateWithTTL(discover, (exit) =>
+				Exit.isSuccess(exit) ? Duration.infinity : Duration.zero,
+			);
 
 			/**
 			 * Per-resolved-root memos for the `…In` methods, each success-only on the
@@ -534,8 +536,9 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 				const root = yield* roots.find(directory);
 				const existing = rootMemos.get(root);
 				if (existing !== undefined) return yield* existing.memo;
-				const [resolveOnce, invalidateOne] = yield* Effect.cachedInvalidateWithTTL(discoverAt(root), Duration.infinity);
-				const built = Effect.onExit(resolveOnce, (exit) => (Exit.isSuccess(exit) ? Effect.void : invalidateOne));
+				const [built, invalidateOne] = yield* Effect.cachedInvalidateWithTTL(discoverAt(root), (exit) =>
+					Exit.isSuccess(exit) ? Duration.infinity : Duration.zero,
+				);
 				// Re-check under the benign concurrent-miss race: keep whichever cell
 				// landed first so callers dedupe onto one.
 				const raced = rootMemos.get(root);
