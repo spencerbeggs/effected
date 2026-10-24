@@ -5,6 +5,7 @@ import { fileOf } from "./GitHubCommit.js";
 import { GitHubError } from "./GitHubError.js";
 import type { GitHubGraphQLError } from "./GraphQL.js";
 import { GraphQLDocument } from "./GraphQL.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import { PageOptions } from "./Rest.js";
 
@@ -245,19 +246,19 @@ export class PullRequest extends Context.Service<PullRequest, PullRequestShape>(
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<PullRequestShape> = {}): PullRequestShape => ({
-		get: overrides.get ?? (() => unstubbed("get")),
-		list: overrides.list ?? (() => unstubbed("list")),
-		listFiles: overrides.listFiles ?? (() => unstubbed("listFiles")),
-		listAssociatedWithCommit: overrides.listAssociatedWithCommit ?? (() => unstubbed("listAssociatedWithCommit")),
-		create: overrides.create ?? (() => unstubbed("create")),
-		update: overrides.update ?? (() => unstubbed("update")),
-		upsert: overrides.upsert ?? (() => unstubbed("upsert")),
-		merge: overrides.merge ?? (() => unstubbed("merge")),
-		addLabels: overrides.addLabels ?? (() => unstubbed("addLabels")),
-		requestReviewers: overrides.requestReviewers ?? (() => unstubbed("requestReviewers")),
-		setAutoMerge: overrides.setAutoMerge ?? (() => unstubbed("setAutoMerge")),
+		get: overrides.get ?? (() => dies("get")),
+		list: overrides.list ?? (() => dies("list")),
+		listFiles: overrides.listFiles ?? (() => dies("listFiles")),
+		listAssociatedWithCommit: overrides.listAssociatedWithCommit ?? (() => dies("listAssociatedWithCommit")),
+		create: overrides.create ?? (() => dies("create")),
+		update: overrides.update ?? (() => dies("update")),
+		upsert: overrides.upsert ?? (() => dies("upsert")),
+		merge: overrides.merge ?? (() => dies("merge")),
+		addLabels: overrides.addLabels ?? (() => dies("addLabels")),
+		requestReviewers: overrides.requestReviewers ?? (() => dies("requestReviewers")),
+		setAutoMerge: overrides.setAutoMerge ?? (() => dies("setAutoMerge")),
 	});
 
 	/** {@link PullRequest.makeTest} behind a `Layer`. */
@@ -265,9 +266,7 @@ export class PullRequest extends Context.Service<PullRequest, PullRequestShape>(
 		Layer.succeed(PullRequest, PullRequest.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`PullRequest.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("PullRequest.makeTest");
 
 /**
  * The raw REST wire shape, as GitHub answers it — **not** the domain type.

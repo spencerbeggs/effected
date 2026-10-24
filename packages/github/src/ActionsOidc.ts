@@ -221,14 +221,18 @@ const testClaims = (overrides: Readonly<Record<string, unknown>> = {}): Record<s
  *
  * @public
  */
-export const ActionsOidc: {
+export class ActionsOidc {
+	private constructor() {}
+
 	/** The Actions OIDC issuer, `https://token.actions.githubusercontent.com`. */
-	readonly issuer: "https://token.actions.githubusercontent.com";
+	static readonly issuer: "https://token.actions.githubusercontent.com" = ISSUER;
+
 	/** Verify a runner-issued OIDC token: signature against GitHub's JWKS, iss, aud, exp/nbf, then typed claims. */
-	readonly verify: (
+	static readonly verify: (
 		token: string,
 		options: ActionsOidcVerifyOptions,
-	) => Effect.Effect<ActionsOidcClaims, JwtError, JwksResolver>;
+	) => Effect.Effect<ActionsOidcClaims, JwtError, JwksResolver> = verify;
+
 	/**
 	 * A valid claims payload for tests, overridable field by field.
 	 *
@@ -239,5 +243,5 @@ export const ActionsOidc: {
 	 * {@link ActionsOidc.issuer}; `aud` is a placeholder to override with the
 	 * audience under test.
 	 */
-	readonly testClaims: (overrides?: Readonly<Record<string, unknown>>) => Record<string, unknown>;
-} = { issuer: ISSUER, verify, testClaims };
+	static readonly testClaims: (overrides?: Readonly<Record<string, unknown>>) => Record<string, unknown> = testClaims;
+}

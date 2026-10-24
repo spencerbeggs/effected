@@ -5,6 +5,7 @@ import type { GraphQLDocument } from "./GraphQL.js";
 import { GitHubGraphQLError } from "./GraphQL.js";
 import { makeTransport } from "./internal/octokit.js";
 import { fromArray, paginate } from "./internal/paginate.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import type { RateLimitSnapshot } from "./Resilience.js";
 import { RetryPolicy } from "./Resilience.js";
 import type * as Rest from "./Rest.js";
@@ -151,7 +152,7 @@ export interface RecordedCall {
 
 /**
  * A raw HTTP failure recorded for {@link GitHubClient.layerFixture}, made by
- * {@link (GitHubFixtures:variable).failure}.
+ * {@link (GitHubFixtures:class).failure}.
  *
  * @remarks
  * Branded, so a fixture's data payload that happens to have a `status` and a
@@ -196,7 +197,10 @@ const isRawFailure = (value: unknown): value is RawFailure =>
  *
  * @public
  */
-export const GitHubFixtures: {
+// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: deliberate — the class carries only statics and a private constructor, so it contributes no instance members to the merge; the interface (below) remains the sole shape of a GitHubFixtures value.
+export class GitHubFixtures {
+	private constructor() {}
+
 	/**
 	 * A raw failure: what GitHub answered, classified at call time by the same
 	 * classifier the live client uses.
@@ -226,12 +230,12 @@ export const GitHubFixtures: {
 	 * });
 	 * ```
 	 */
-	readonly failure: (response: {
+	static readonly failure = (response: {
 		readonly status: number;
 		readonly headers?: Readonly<Record<string, string>> | undefined;
 		readonly body?: unknown;
-	}) => RawFailure;
-} = { failure: (response) => new RawFailure(response) };
+	}): RawFailure => new RawFailure(response);
+}
 
 /**
  * A recorded response table for {@link GitHubClient.layerFixture}.
@@ -247,7 +251,7 @@ export interface GitHubFixtures {
 	 * is how a suite stubs a 404 (or a rate-limit, or a 422) deliberately,
 	 * rather than relying on a route's absence to produce one — absence is a
 	 * wiring mistake and {@link (GitHubFixtures:interface).unstubbed} treats it as
-	 * such. A {@link RawFailure} from {@link (GitHubFixtures:variable).failure}
+	 * such. A {@link RawFailure} from {@link (GitHubFixtures:class).failure}
 	 * fails it too, classified from GitHub's raw response.
 	 *
 	 * A value of `undefined` counts as unstubbed, so stub a route that answers
@@ -308,11 +312,10 @@ const resolvePolicy = (retry: RetryPolicy | "off" | undefined): RetryPolicy =>
 
 const perPageOf = (options: PageOptions | undefined): number => options?.perPage ?? DEFAULT_PER_PAGE;
 
-const unstubbed = (member: string): never => {
-	throw new Error(
-		`GitHubClient.makeTest: ${member}() was called but not stubbed — pass an override, or use GitHubClient.layerFixture for recorded responses.`,
-	);
-};
+const dies = unstubbed(
+	"GitHubClient.makeTest",
+	"pass an override, or use GitHubClient.layerFixture for recorded responses.",
+);
 
 /**
  * The typed GitHub API client.
@@ -396,11 +399,11 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 	 * {@link GitHubClient.layerFixture}.
 	 */
 	static readonly makeTest = (overrides: Partial<GitHubClientShape> = {}): GitHubClientShape => ({
-		request: overrides.request ?? (() => unstubbed("request")),
-		requestDecoded: overrides.requestDecoded ?? (() => unstubbed("requestDecoded")),
-		paginate: overrides.paginate ?? (() => unstubbed("paginate")),
-		paginateStream: overrides.paginateStream ?? (() => unstubbed("paginateStream")),
-		graphql: overrides.graphql ?? (() => unstubbed("graphql")),
+		request: overrides.request ?? (() => dies("request")),
+		requestDecoded: overrides.requestDecoded ?? (() => dies("requestDecoded")),
+		paginate: overrides.paginate ?? (() => dies("paginate")),
+		paginateStream: overrides.paginateStream ?? (() => Stream.fromEffect(dies("paginateStream"))),
+		graphql: overrides.graphql ?? (() => dies("graphql")),
 		rateLimit: overrides.rateLimit ?? Effect.succeed(Option.none()),
 	});
 
@@ -422,7 +425,7 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 	 *
 	 * **It records every call it serves, including one that fails.** A call
 	 * answered by a recorded `GitHubError` or a
-	 * {@link (GitHubFixtures:variable).failure} is recorded before it fails, so
+	 * {@link (GitHubFixtures:class).failure} is recorded before it fails, so
 	 * one fixture both records the calls and classifies a raw failure the way
 	 * the live client would; there is no need to classify by hand inside a
 	 * {@link GitHubClient.layerTest} handler.

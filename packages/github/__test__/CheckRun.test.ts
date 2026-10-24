@@ -5,7 +5,7 @@ import type { Repo } from "../src/Repo.js";
 import { PageOptions } from "../src/Rest.js";
 import type { Reply } from "./fixtures.js";
 import { linkNext } from "./fixtures.js";
-import { harness } from "./harness.js";
+import { defectMessage, harness } from "./harness.js";
 
 const drive = <A, E>(replies: ReadonlyArray<Reply>, use: (check: CheckRun["Service"]) => Effect.Effect<A, E, Repo>) =>
 	Effect.gen(function* () {
@@ -281,10 +281,14 @@ describe("CheckRun.list", () => {
 });
 
 describe("CheckRun.makeTest", () => {
-	it("dies naming an unstubbed new member", () => {
-		const double = CheckRun.makeTest();
-		for (const member of ["updateRef", "completeRef", "list"] as const) {
-			assert.throws(() => (double[member] as (...args: Array<unknown>) => unknown)(1, "x"), new RegExp(member));
-		}
-	});
+	it.effect("dies when run, naming an unstubbed new member", () =>
+		Effect.gen(function* () {
+			const double = CheckRun.makeTest();
+			for (const member of ["updateRef", "completeRef", "list"] as const) {
+				const call = double[member] as (...args: Array<unknown>) => Effect.Effect<unknown, unknown>;
+				const exit = yield* Effect.exit(call(1, "x"));
+				assert.match(defectMessage(exit) ?? "", new RegExp(`${member}\\(\\) was called but not stubbed`));
+			}
+		}),
+	);
 });

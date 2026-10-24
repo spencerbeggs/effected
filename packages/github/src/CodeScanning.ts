@@ -1,6 +1,7 @@
 import { Context, Effect, Layer } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import type * as Rest from "./Rest.js";
 
@@ -92,10 +93,10 @@ export class CodeScanning extends Context.Service<CodeScanning, CodeScanningShap
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<CodeScanningShape> = {}): CodeScanningShape => ({
-		configure: overrides.configure ?? (() => unstubbed("configure")),
-		languages: overrides.languages ?? (() => unstubbed("languages")),
+		configure: overrides.configure ?? (() => dies("configure")),
+		languages: overrides.languages ?? (() => dies("languages")),
 	});
 
 	/** {@link CodeScanning.makeTest} behind a `Layer`. */
@@ -103,9 +104,7 @@ export class CodeScanning extends Context.Service<CodeScanning, CodeScanningShap
 		Layer.succeed(CodeScanning, CodeScanning.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`CodeScanning.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("CodeScanning.makeTest");
 
 const SETUP_KEYS = [
 	"state",

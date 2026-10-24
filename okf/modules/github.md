@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-22T23:55:11Z
+  at: 2026-10-24T01:01:34Z
 integrity:
   generated:
-    body: 6ad9f9c6f8a333a1
+    body: a36f6e82e0b34833
 ---
 
 # @effected/github
@@ -233,7 +233,13 @@ runnable anywhere.
 `__test__/`. There is no `./testing` subpath.
 
 - Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`,
-  with unstubbed members dying loudly and naming themselves.
+  and an unstubbed member **dies when run**, naming itself: calling it only
+  builds the effect, and the defect sits in that effect's `Exit` rather than
+  escaping the call site as an exception. One internal helper
+  (`src/internal/unstubbed.ts`, mirroring `github-actions`) spells the death
+  once; a value member (`GitHubRepository.settings`, `WorkflowDispatch.list`)
+  holds the dying effect itself and names itself as read, so building the
+  double never dies.
 - Tests drive the real client through octokit's documented `fetch` option
   (`packages/github/__test__/fixtures.ts`), not a double of this package's
   own service, so classification, header capture, retry and

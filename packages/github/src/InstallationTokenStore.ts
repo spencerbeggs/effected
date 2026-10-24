@@ -1,4 +1,5 @@
 import { Clock, Context, Duration, Effect, Layer, Option, Ref } from "effect";
+import { unstubbed } from "./internal/unstubbed.js";
 
 /**
  * The operations of an {@link InstallationTokenStore}.
@@ -61,14 +62,10 @@ export class InstallationTokenStore extends Context.Service<InstallationTokenSto
 		),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<InstallationTokenStoreShape> = {}): InstallationTokenStoreShape => ({
-		get:
-			overrides.get ??
-			(() => Effect.die(new Error("InstallationTokenStore.makeTest: get() was called but not stubbed"))),
-		set:
-			overrides.set ??
-			(() => Effect.die(new Error("InstallationTokenStore.makeTest: set() was called but not stubbed"))),
+		get: overrides.get ?? (() => dies("get")),
+		set: overrides.set ?? (() => dies("set")),
 	});
 
 	/** {@link InstallationTokenStore.makeTest} behind a `Layer`. */
@@ -77,3 +74,5 @@ export class InstallationTokenStore extends Context.Service<InstallationTokenSto
 	): Layer.Layer<InstallationTokenStore> =>
 		Layer.succeed(InstallationTokenStore, InstallationTokenStore.makeTest(overrides));
 }
+
+const dies = unstubbed("InstallationTokenStore.makeTest");

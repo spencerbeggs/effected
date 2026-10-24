@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 
 /**
@@ -96,10 +97,10 @@ export class Attestation extends Context.Service<Attestation, AttestationShape>(
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<AttestationShape> = {}): AttestationShape => ({
-		upload: overrides.upload ?? (() => unstubbed("upload")),
-		listForSubject: overrides.listForSubject ?? (() => unstubbed("listForSubject")),
+		upload: overrides.upload ?? (() => dies("upload")),
+		listForSubject: overrides.listForSubject ?? (() => dies("listForSubject")),
 	});
 
 	/** {@link Attestation.makeTest} behind a `Layer`. */
@@ -107,9 +108,7 @@ export class Attestation extends Context.Service<Attestation, AttestationShape>(
 		Layer.succeed(Attestation, Attestation.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`Attestation.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("Attestation.makeTest");
 
 const make = (client: GitHubClient["Service"]): AttestationShape => ({
 	upload: Effect.fn("Attestation.upload")(function* (bundle: unknown) {

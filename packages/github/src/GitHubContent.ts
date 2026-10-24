@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Option, Result } from "effect";
 import * as Base64 from "effect/encoding/Base64";
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 
 /**
@@ -73,10 +74,10 @@ export class GitHubContent extends Context.Service<GitHubContent, GitHubContentS
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<GitHubContentShape> = {}): GitHubContentShape => ({
-		getFile: overrides.getFile ?? (() => unstubbed("getFile")),
-		getFileOption: overrides.getFileOption ?? (() => unstubbed("getFileOption")),
+		getFile: overrides.getFile ?? (() => dies("getFile")),
+		getFileOption: overrides.getFileOption ?? (() => dies("getFileOption")),
 	});
 
 	/** {@link GitHubContent.makeTest} behind a `Layer`. */
@@ -84,9 +85,7 @@ export class GitHubContent extends Context.Service<GitHubContent, GitHubContentS
 		Layer.succeed(GitHubContent, GitHubContent.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`GitHubContent.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("GitHubContent.makeTest");
 
 const make = (client: GitHubClient["Service"]): GitHubContentShape => {
 	const getFile = Effect.fn("GitHubContent.getFile")(function* (

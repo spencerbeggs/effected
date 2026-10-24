@@ -8,6 +8,7 @@ import { GitHubClient } from "../src/GitHubClient.js";
 import { RetryPolicy } from "../src/Resilience.js";
 import type { Reply } from "./fixtures.js";
 import { scriptedFetch } from "./fixtures.js";
+import { defectMessage } from "./harness.js";
 
 /**
  * A real PKCS#8 RSA key, generated once. The JWT signer performs genuine RS256
@@ -625,9 +626,12 @@ describe("GitHubApp.makeTest", () => {
 		}),
 	);
 
-	it("dies loudly on an unstubbed member", () => {
-		assert.throws(() => GitHubApp.makeTest({}).token(CREDENTIALS), /was called but not stubbed/);
-	});
+	it.effect("dies when run on an unstubbed member", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(GitHubApp.makeTest({}).token(CREDENTIALS));
+			assert.match(defectMessage(exit) ?? "", /GitHubApp\.makeTest: token\(\) was called but not stubbed/);
+		}),
+	);
 
 	it.effect("layerTest provides the double", () =>
 		Effect.gen(function* () {

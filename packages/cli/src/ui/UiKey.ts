@@ -47,6 +47,11 @@ const CONTROL = /[\u0000-\u001f\u007f]/;
 /**
  * Normalising Ink's input into {@link (UiKey:type)}s.
  *
+ * @remarks
+ * A typed `const` rather than the house static-class form by force, not by
+ * choice: a class cannot share its name with the {@link (UiKey:type)} union
+ * (TS2300, duplicate identifier), and that union is the key model itself.
+ *
  * @public
  */
 export const UiKey: {

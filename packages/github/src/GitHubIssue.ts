@@ -4,6 +4,7 @@ import type { GitHubError } from "./GitHubError.js";
 import type { GitHubGraphQLError } from "./GraphQL.js";
 import { GraphQLDocument } from "./GraphQL.js";
 import { numericId } from "./internal/ids.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import type { CommentMarker } from "./PullRequestComment.js";
 import { CommentRecord } from "./PullRequestComment.js";
 import { Repo } from "./Repo.js";
@@ -238,15 +239,15 @@ export class GitHubIssue extends Context.Service<GitHubIssue, GitHubIssueShape>(
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<GitHubIssueShape> = {}): GitHubIssueShape => ({
-		get: overrides.get ?? (() => unstubbed("get")),
-		list: overrides.list ?? (() => unstubbed("list")),
-		close: overrides.close ?? (() => unstubbed("close")),
-		comment: overrides.comment ?? (() => unstubbed("comment")),
-		commentOnce: overrides.commentOnce ?? (() => unstubbed("commentOnce")),
-		linkedIssues: overrides.linkedIssues ?? (() => unstubbed("linkedIssues")),
-		isCrossReferencedBy: overrides.isCrossReferencedBy ?? (() => unstubbed("isCrossReferencedBy")),
+		get: overrides.get ?? (() => dies("get")),
+		list: overrides.list ?? (() => dies("list")),
+		close: overrides.close ?? (() => dies("close")),
+		comment: overrides.comment ?? (() => dies("comment")),
+		commentOnce: overrides.commentOnce ?? (() => dies("commentOnce")),
+		linkedIssues: overrides.linkedIssues ?? (() => dies("linkedIssues")),
+		isCrossReferencedBy: overrides.isCrossReferencedBy ?? (() => dies("isCrossReferencedBy")),
 	});
 
 	/** {@link GitHubIssue.makeTest} behind a `Layer`. */
@@ -254,9 +255,7 @@ export class GitHubIssue extends Context.Service<GitHubIssue, GitHubIssueShape>(
 		Layer.succeed(GitHubIssue, GitHubIssue.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`GitHubIssue.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("GitHubIssue.makeTest");
 
 /**
  * The REST calendar version this module's requests pin.

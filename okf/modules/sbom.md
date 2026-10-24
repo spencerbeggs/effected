@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-22T23:55:11Z
+  at: 2026-10-24T01:01:34Z
 integrity:
   generated:
-    body: 34203a4adbba217c
+    body: 0e4e4139be787e76
 ---
 
 # sbom
@@ -240,8 +240,9 @@ witness returning a canned log entry — no network, no keys, no OIDC — and
 the code under test is the **real** builder, so envelope and bundle
 assembly are genuinely exercised. The discriminating proof it ran: the
 stub signer receives the DSSE pre-authentication encoding, not the raw
-payload. `SigstoreSigner`'s own test double dies loudly unstubbed,
-because a fabricated bundle would be a signature-shaped lie. CycloneDX
+payload. `SigstoreSigner`'s own test double dies **when run** unstubbed (calling
+`sign` only builds the effect; the defect is in its `Exit`), because a
+fabricated bundle would be a signature-shaped lie. CycloneDX
 conformance is pinned against the published JSON schema, vendored as a
 test fixture at `packages/sbom/__test__/fixtures/bom-1.6.SNAPSHOT.schema.json`,
 so declining the object-model library costs no conformance confidence.

@@ -1,6 +1,7 @@
 import { Context, Effect, Layer } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 
 /**
@@ -115,14 +116,14 @@ export class RepositoryVariable extends Context.Service<RepositoryVariable, Repo
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<RepositoryVariableShape> = {}): RepositoryVariableShape => ({
-		set: overrides.set ?? (() => unstubbed("set")),
-		list: overrides.list ?? (() => unstubbed("list")),
-		delete: overrides.delete ?? (() => unstubbed("delete")),
-		setForEnvironment: overrides.setForEnvironment ?? (() => unstubbed("setForEnvironment")),
-		listForEnvironment: overrides.listForEnvironment ?? (() => unstubbed("listForEnvironment")),
-		deleteForEnvironment: overrides.deleteForEnvironment ?? (() => unstubbed("deleteForEnvironment")),
+		set: overrides.set ?? (() => dies("set")),
+		list: overrides.list ?? (() => dies("list")),
+		delete: overrides.delete ?? (() => dies("delete")),
+		setForEnvironment: overrides.setForEnvironment ?? (() => dies("setForEnvironment")),
+		listForEnvironment: overrides.listForEnvironment ?? (() => dies("listForEnvironment")),
+		deleteForEnvironment: overrides.deleteForEnvironment ?? (() => dies("deleteForEnvironment")),
 	});
 
 	/** {@link RepositoryVariable.makeTest} behind a `Layer`. */
@@ -130,9 +131,7 @@ export class RepositoryVariable extends Context.Service<RepositoryVariable, Repo
 		Layer.succeed(RepositoryVariable, RepositoryVariable.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`RepositoryVariable.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("RepositoryVariable.makeTest");
 
 const make = (client: GitHubClient["Service"]): RepositoryVariableShape => {
 	/**

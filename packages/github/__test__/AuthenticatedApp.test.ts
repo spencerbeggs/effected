@@ -8,7 +8,7 @@ import { RetryPolicy } from "../src/Resilience.js";
 import { PageOptions } from "../src/Rest.js";
 import type { Reply } from "./fixtures.js";
 import { linkNext, scriptedFetch } from "./fixtures.js";
-import { harness } from "./harness.js";
+import { defectMessage, harness } from "./harness.js";
 
 const drive = <A, E>(replies: ReadonlyArray<Reply>, use: (app: AuthenticatedApp["Service"]) => Effect.Effect<A, E>) =>
 	Effect.gen(function* () {
@@ -254,7 +254,18 @@ describe("AuthenticatedApp over GitHubApp.appClientLayer", () => {
 });
 
 describe("AuthenticatedApp.makeTest", () => {
-	it("dies naming an unstubbed member", () => {
-		assert.throws(() => AuthenticatedApp.makeTest().uninstall(1), /uninstall/);
-	});
+	it.effect("dies when run, naming an unstubbed member", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(AuthenticatedApp.makeTest().uninstall(1));
+			assert.match(defectMessage(exit) ?? "", /AuthenticatedApp\.makeTest: uninstall\(\) was called but not stubbed/);
+		}),
+	);
+
+	it.effect("an unstubbed stream member dies when pulled, not when called", () =>
+		Effect.gen(function* () {
+			const stream = AuthenticatedApp.makeTest().deliveries();
+			const exit = yield* Effect.exit(Stream.runCollect(stream));
+			assert.match(defectMessage(exit) ?? "", /deliveries\(\) was called but not stubbed/);
+		}),
+	);
 });

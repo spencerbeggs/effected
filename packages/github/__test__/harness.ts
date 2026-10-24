@@ -1,9 +1,20 @@
-import { Layer, Redacted } from "effect";
+import type { Exit } from "effect";
+import { Cause, Layer, Redacted } from "effect";
 import { GitHubClient } from "../src/GitHubClient.js";
 import { Repo, RepoRef } from "../src/Repo.js";
 import { RetryPolicy } from "../src/Resilience.js";
 import type { Reply, ScriptedFetch } from "./fixtures.js";
 import { scriptedFetch } from "./fixtures.js";
+
+/**
+ * The message of the defect `exit` died with, or `undefined` when it did not
+ * die: the one assertion an unstubbed `makeTest` member owes a test.
+ */
+export const defectMessage = <A, E>(exit: Exit.Exit<A, E>): string | undefined => {
+	if (exit._tag !== "Failure") return undefined;
+	const die = exit.cause.reasons.find(Cause.isDieReason);
+	return die === undefined ? undefined : String((die.defect as { message?: unknown }).message ?? die.defect);
+};
 
 /** The repository every resource test acts on. */
 export const REPO = RepoRef.make({ owner: "acme", repo: "widget" });

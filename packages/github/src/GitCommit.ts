@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 
 /**
@@ -141,12 +142,12 @@ export class GitCommit extends Context.Service<GitCommit, GitCommitShape>()("@ef
 		Effect.map(GitHubClient, (client) => make(client)),
 	);
 
-	/** An in-memory double; unstubbed members die naming themselves. */
+	/** An in-memory double; an unstubbed member dies when run, naming itself. */
 	static readonly makeTest = (overrides: Partial<GitCommitShape> = {}): GitCommitShape => ({
-		get: overrides.get ?? (() => unstubbed("get")),
-		createTree: overrides.createTree ?? (() => unstubbed("createTree")),
-		createCommit: overrides.createCommit ?? (() => unstubbed("createCommit")),
-		commitFiles: overrides.commitFiles ?? (() => unstubbed("commitFiles")),
+		get: overrides.get ?? (() => dies("get")),
+		createTree: overrides.createTree ?? (() => dies("createTree")),
+		createCommit: overrides.createCommit ?? (() => dies("createCommit")),
+		commitFiles: overrides.commitFiles ?? (() => dies("commitFiles")),
 	});
 
 	/** {@link GitCommit.makeTest} behind a `Layer`. */
@@ -154,9 +155,7 @@ export class GitCommit extends Context.Service<GitCommit, GitCommitShape>()("@ef
 		Layer.succeed(GitCommit, GitCommit.makeTest(overrides));
 }
 
-const unstubbed = (member: string): never => {
-	throw new Error(`GitCommit.makeTest: ${member}() was called but not stubbed — pass an override.`);
-};
+const dies = unstubbed("GitCommit.makeTest");
 
 /** The Git Database tree entry for one change. */
 const treeEntry = (change: FileChange) =>

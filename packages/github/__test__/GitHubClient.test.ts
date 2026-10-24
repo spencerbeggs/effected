@@ -11,6 +11,7 @@ import { RateLimitSnapshot, RetryPolicy } from "../src/Resilience.js";
 import { PageOptions } from "../src/Rest.js";
 import type { Reply } from "./fixtures.js";
 import { linkNext, rateLimitHeaders, scriptedFetch } from "./fixtures.js";
+import { defectMessage } from "./harness.js";
 
 const TOKEN = Redacted.make("ghs_test");
 
@@ -544,13 +545,20 @@ describe("GitHubClient.makeTest", () => {
 		}),
 	);
 
-	it("dies loudly on an unstubbed member rather than fabricating an answer", () => {
-		const double = GitHubClient.makeTest({});
-		assert.throws(
-			() => double.paginate("GET /repos/{owner}/{repo}/pulls", { owner: "o", repo: "r" }),
-			/was called but not stubbed/,
-		);
-	});
+	it.effect("dies when run on an unstubbed member rather than fabricating an answer", () =>
+		Effect.gen(function* () {
+			const double = GitHubClient.makeTest({});
+			const exit = yield* Effect.exit(double.paginate("GET /repos/{owner}/{repo}/pulls", { owner: "o", repo: "r" }));
+			assert.match(
+				defectMessage(exit) ?? "",
+				/GitHubClient\.makeTest: paginate\(\) was called but not stubbed — pass an override, or use GitHubClient\.layerFixture/,
+			);
+			const pulled = yield* Effect.exit(
+				Stream.runCollect(double.paginateStream("GET /repos/{owner}/{repo}/pulls", { owner: "o", repo: "r" })),
+			);
+			assert.match(defectMessage(pulled) ?? "", /paginateStream\(\) was called but not stubbed/);
+		}),
+	);
 
 	it.effect("reports no rate-limit observation by default", () =>
 		Effect.gen(function* () {
