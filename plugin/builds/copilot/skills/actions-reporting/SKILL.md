@@ -13,7 +13,7 @@ For the general `Effect.log*`/span rules every package follows, see `effect-v4-o
 
 | Construct | Import | Reach for it when |
 | --- | --- | --- |
-| `ActionLogger.group` / `.withBuffer` / `.notice` / `.annotated` | `import { ActionLogger } from "@effected/github-actions"` | grouping log output, holding a quiet-green transcript, or attaching source annotations to `Effect.log*` |
+| `ActionLogger.group` / `.heading` / `.withBuffer` / `.withStep` / `.notice` / `.annotated` | `import { ActionLogger } from "@effected/github-actions"` | grouping log output, a phase header over groups that opens none, holding a quiet-green transcript, or attaching source annotations to `Effect.log*` |
 | `WorkflowCommand` | same (re-exported from `@effected/github-commands`) | rendering a command's exact wire text with no runner or service — mostly internal |
 | `CommandNeutralizer` | `import { CommandNeutralizer } from "@effected/github-commands"` | writing text you did not author (an error message, file contents) to the log by a route other than `ActionLogger`, so the runner never reads it as a command |
 | `ActionOutputs.summary` / `.setSecret` | `import { ActionOutputs } from "@effected/github-actions"` | writing the job summary, or masking a value in the runner's log filter |

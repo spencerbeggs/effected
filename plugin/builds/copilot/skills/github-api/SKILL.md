@@ -79,13 +79,17 @@ routing index, not the catalogue.
   construct and test them directly, and don't wrap one in a `Context.Service`
   just to gain a double — there is nothing to mock.
 - **Every resource ships `makeTest`/`layerTest`.** Every unstubbed member
-  dies naming itself; build a partial double from the member table, not
+  dies **when run**, naming itself: calling it only builds the effect, and
+  the defect is in that effect's `Exit`, so assert with `Exit`/`Cause.hasDies`
+  on the run, never with `assert.throws` around the call. A value member
+  (`GitHubRepository.settings`) is the dying effect itself and the double
+  still builds without it. Build a partial double from the member table, not
   from a stack trace. The octokit `fetch`-hook harness that exercises the
   real client end to end belongs to `testing-actions`.
 
 ## REST calendar versioning
 
-Verified live 2026-08-14/15 during wave dogfooding (effected#189):
+Verified against the live API:
 
 - **octokit sends no `x-github-api-version` header**, so every request rides
   the DEFAULT calendar version `2022-11-28` — which GitHub deprecated when
@@ -107,7 +111,7 @@ Verified live 2026-08-14/15 during wave dogfooding (effected#189):
   `2026-03-10` removed `merge_commit_sha` from PR responses, and an
   `optionalKey` field silently decodes absent — so a naive package-wide pin
   can turn a consumer's load-bearing read into an always-absent value with
-  no error anywhere (tracked as effected#364). Pin per module, after
+  no error anywhere. Pin per module, after
   checking what the new version changed on the routes that module calls.
 
 ## Footguns

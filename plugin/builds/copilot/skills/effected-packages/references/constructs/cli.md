@@ -118,7 +118,7 @@
 | `NotInteractive` | Class | A command needed to prompt, but there is no terminal to prompt on. | a prompt was reached with no person to ask, exit 64 |
 | `OverflowOptions` | Interface | The cap and overflow options of a list or table. | |
 | `PercentOptions` | Interface | Options for `Fmt.percent`. | |
-| `Render` | Class | Pure renderers of a document: `(doc, context) => string`. | render a document as plain text, ansi, markdown or a GitHub Actions log |
+| `Render` | Class | Pure renderers of a document: `(doc, context) => string`. | render a document as plain text, ansi, markdown or a GitHub Actions log, collapsible rendered plain inside an open log group |
 | `RenderContext` | Interface | Everything a renderer needs to know about where its output is going. | |
 | `RenderContextOfOptions` | Interface | Options for `Render.contextOf`. | |
 | `RenderContextOptions` | Interface | Options for `Render.context`. | |

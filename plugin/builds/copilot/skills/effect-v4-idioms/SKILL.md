@@ -348,6 +348,32 @@ keep `reason` as the human `message` — not to add a `Defect`. Rule of thumb:
 Failing through this typed channel — never letting a `throw` escape as an
 unhandled defect — is the invariant `hardening-a-parser-port` enforces.
 
+### Core's `EncodingError` carries the whole decoder input
+
+`Base64.decode`, `Base64Url.decode` and `Hex.decode` (`effect/encoding`) return
+`Result<Uint8Array, EncodingError>`, and `EncodingError` is a `Data.TaggedError`
+whose fields are `kind`, `module`, `message` and `input: unknown` — `input` is
+the **entire string being decoded**. The constructor assigns it as an ordinary
+own property and `toJSON` spreads it, so it rides along into `JSON.stringify`,
+`util.inspect`, `Cause.pretty`, and any typed error or event payload that keeps
+the core error by identity. When the input may be a secret — an encrypted
+envelope, a token, a key, a config file that turns out to be plaintext — never
+keep the core `EncodingError` as a `cause`. Map it to a message-only error at
+the decode site, or copy the fields you need and drop `input`. The messages
+name a length or one offending character, never the input, so `message` alone
+is safe to keep:
+
+```ts
+import * as Base64 from "effect/encoding/Base64"
+
+const decodeSecret = (raw: string) =>
+  Effect.mapError(Effect.fromResult(Base64.decode(raw)), (error) => {
+    const cause = new Error(error.message) // keeps `message`, drops `input`
+    cause.name = error._tag
+    return new SecretDecodeError({ cause })
+  })
+```
+
 ## Cause — a flat array of reasons
 
 v4 replaces the recursive `Cause` tree with a flat wrapper over an array. There

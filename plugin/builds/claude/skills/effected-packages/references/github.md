@@ -152,7 +152,8 @@ tempted to reach for `as`.
   carries `account` (login), `accountType`, `accountId`, `suspendedAt`
   (`Option`) and `updatedAt` when GitHub sends them; an unreadable optional
   field is omitted, never a failure.
-- **`ActionsOidc`** — `ActionsOidc.verify(token, { audience, clockTolerance? })`
+- **`ActionsOidc`** — a static class with a private constructor (`issuer` and
+  `verify`, nothing to construct or spread). `ActionsOidc.verify(token, { audience, clockTolerance? })`
   → `Effect<ActionsOidcClaims, JwtError, JwksResolver>` (from `@effected/jwt`;
   provide `JwksResolver.layer` at the edge). It is `@effected/oidc`'s `Oidc.verify`
   pinned to GitHub's issuer. It verifies against GitHub's JWKS
@@ -288,8 +289,16 @@ tempted to reach for `as`.
 ## Testing machinery
 
 Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`: an
-unstubbed member **dies naming itself**, because a fabricated response — an
-empty list, a made-up sha — would leak into the code under test as fact. The
+unstubbed member **dies when run, naming itself**, because a fabricated
+response — an empty list, a made-up sha — would leak into the code under test
+as fact. Calling the member only builds the `Effect` (or `Stream`); the defect
+sits in that effect's `Exit`, so a test runs it and asserts on the Exit
+(`Cause.hasDies`), never with `assert.throws`. The message names the double,
+the member and the remedy — `` `<Double>.makeTest: <member>() was called but
+not stubbed — pass a `<member>` override.` `` — and a value member
+(`GitHubRepository.settings`, `WorkflowDispatch.list`) is the dying effect
+itself, reading `<member> was read but not stubbed`, so the double still
+builds without it. The
 one recorded-response double is **`GitHubClient.layerFixture(fixtures)`**, which
 builds a `PageSource` over the recorded arrays and hands it to the same
 `paginate` engine the live client uses, so `perPage` and `maxPages` cannot
@@ -300,6 +309,10 @@ A recorded `GitHubError` **is** the failure; so is
 `GitHubFixtures.failure({ status, headers?, body? })`, a branded raw response
 classified at call time by the real classifier (against `Clock`), which is the
 better choice when the test is about what GitHub actually answers.
+`GitHubFixtures` is a static class (private constructor, `failure` its one
+member) merged with the same-named interface that types the fixtures table;
+`typeof GitHubFixtures` is `"function"`, and nothing is gained by spreading or
+serializing it.
 
 ## Gotchas
 

@@ -471,9 +471,17 @@ by its weakest.
 recollection. Silent degradation into memory is the precise failure this plugin
 exists to prevent, and it is indistinguishable from success.
 
-This is the **only file in the plugin that names the path** — the agents reference this
-skill, never the directory. Keep it that way:
+This is the **only skill that resolves the path** — the agents reference this skill,
+never the directory. The other skills that mention `.repos/effect` only *cite* it:
+`effect-v4-mcp` and `effect-v4-cli` name it as the root their `Module.ts:line` anchors
+are pinned to, and `effected-packages`' `pnpm-plugin-effect.md` reference names it as
+the tree to re-pin when the lockfile's `effect` moves. Keep it that way — a new mention
+under `plugin/skills` is either an anchor-root citation like those or a resolver that
+belongs here. The listing is the positive control, and the filtered count is the gate:
 
 ```bash
-test "$(grep -rl '\.repos/effect' plugin/ | wc -l)" -eq 1
+grep -rl '\.repos/effect' plugin/skills | sort   # this skill + the three citing files
+test "$(grep -rl '\.repos/effect' plugin/skills \
+  | grep -v -e effect-v4-source-lookup -e effect-v4-mcp -e effect-v4-cli \
+            -e references/pnpm-plugin-effect.md | wc -l)" -eq 0
 ```

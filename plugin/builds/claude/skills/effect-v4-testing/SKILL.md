@@ -437,7 +437,11 @@ does not load the root config — and never `--passWithNoTests`. In a kit
 monorepo, adding an export to an upstream package requires
 `pnpm build --filter <upstream>` before any downstream suite runs; a load-time
 `Cannot read properties of undefined (reading 'ast')` IS the stale-dist
-signature. The `ERR_LOAD_URL` setup-file case and the rest →
+signature, and a `globalSetup` rebuild through `AgentPlugin.runScript` is
+not a guarantee against it: the script is skipped while its done-marker is
+younger than `VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS` (30 s by default),
+so pin that to `1` in the setup or a run inside the window reads the
+previous `dist/dev`. The `ERR_LOAD_URL` setup-file case and the rest →
 **[references/running-the-suite.md](./references/running-the-suite.md)**.
 
 ## House conventions

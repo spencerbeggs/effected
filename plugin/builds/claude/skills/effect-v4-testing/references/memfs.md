@@ -294,6 +294,16 @@ provided. Two shapes follow:
   assert that the defect is not the one under test. `AppStore.location`
   creates nothing and needs only `AppDirs` and `Path`, so it runs over memfs
   untouched.
+- **`App.layerTest(options)` is itself a memfs volume**: it provides
+  `FileSystem`, `Path` and `MemoryFileSystem.Volume` beside the four
+  control-plane services (`AppTestServices`), `options.files` seeds the
+  volume, `AppDirs.ensure*` creates real directories on it, and
+  `AppConfig.layer` composes over it with one `Layer.provide`. Its `Store`
+  and `Cache` are the `:memory:` doubles, so never compose `AppStore.layer`
+  or `AppCache.layer` over it: their `ensure*` succeeds on the volume, then
+  the binding opens the same path on the HOST — a setup `StoreError` on the
+  synthetic `/home/test` defaults, a database written to the host disk with
+  real `paths`.
 - **Testing the database end to end**: run against a temp-directory `HOME`
   (`mkdtemp`) on the real filesystem, drive the XDG variables through
   `ConfigProvider.layer(ConfigProvider.fromUnknown({ HOME, XDG_STATE_HOME, … }))`

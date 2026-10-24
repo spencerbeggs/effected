@@ -44,6 +44,23 @@ add an export to an upstream kit package, `pnpm build --filter <upstream>`
 before running any downstream suite; that error message at suite load IS the
 stale-dist signature.
 
+**A `globalSetup` that rebuilds `dist/dev` is not a guarantee either.** A
+root setup that runs the build through `@vitest-agent/plugin`'s
+`AgentPlugin.runScript` is skipped outright when the done-marker `runScript`
+wrote on its last success is younger than
+`VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS` (30 s by default). The window is
+meant for a concurrent second vitest process to trust the winner's build, but
+it applies to the next *sequential* run just the same: edit an upstream
+`src`, run a downstream project inside the window, and the test reads the
+previous `dist/dev` — a green that proves nothing about the edit, or a red
+that blames the wrong thing. Pin the window in the setup itself,
+`process.env.VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS ??= "1"` before the
+`runScript` call: the lock still serializes concurrent runs, and turbo's cache
+keeps the rebuild a fast no-op when nothing changed. The tell, when a
+downstream test ignores an upstream edit, is `dist/<target>/issues.json`'s
+`generatedAt` sitting before the edit: a build that did not run, not a turbo
+input gap.
+
 ## A probe writes no file
 
 A temporary probe left under `__test__/` is

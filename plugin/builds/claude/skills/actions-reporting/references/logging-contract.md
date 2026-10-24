@@ -18,7 +18,7 @@ ANSI/colour API, and none exists to invent — the rendering layer emits
 nothing but the `::name key=value::message` text; GitHub's own log viewer
 colours the commands, not this package.
 
-## `ActionLogger`'s four members
+## `ActionLogger`'s members
 
 ```ts
 import { ActionLogger } from "@effected/github-actions";
@@ -42,10 +42,23 @@ const program = Effect.gen(function* () {
   `withStep`/`withBuffer` that discards its transcript. The depth is
   fiber-scoped: concurrent sibling groups on separate fibers still
   interleave, a fiber forked inside a group keeps the depth it was forked at,
-  and a group opened outside `ActionLogger.group` (a raw
-  `WorkflowCommand.group`, a `Render.githubLog` collapsible) is invisible to
-  the count. The test doubles pass the effect through and do not model
-  nesting.
+  and only a writer that reads the shared depth is counted. The depth lives
+  in the fiber-local keyed by `WorkflowCommand.groupDepthKey` (from
+  `@effected/github-commands`, which holds the key, never the reference),
+  and `@effected/cli` reads the same key: `Render.context` built inside a
+  group carries it as `RenderContext.groupDepth`, so `Doc.print` and
+  `Render.githubLog` render a top-level collapsible as plain text there
+  rather than as a second group. A raw `WorkflowCommand.group`, or a
+  wrapper that does not read the key, opens a group the count cannot see.
+  The test doubles pass the effect through and do not model nesting.
+- **`heading(name, effect)`** — the phase-level banner: writes the same
+  one-line, neutralized `▸ <name>` header a nested group writes, through
+  `Console`, then runs `effect` — no `::group::`, no change to the depth.
+  The groups inside it therefore stay top level and each renders as its own
+  collapsible, which a `group` wrapper cannot give them (the runner does not
+  nest). Reach for `heading` when a phase encloses groups and for `group`
+  when it encloses only lines; called inside an open group it is simply a
+  header line in that group. The doubles pass the body through.
 - **`withBuffer(label, effect, options?)`** — the quiet-green / verbose-red
   mechanism. `Warn` and `Error` entries still go out live, rendered the same
   way as the installed logger; everything `Info` and below is held and
@@ -87,7 +100,11 @@ overrides.
 `WorkflowCommand` is **pure** — no IO, no service, just string rendering —
 which is what makes the escaping testable with no runner and reusable
 outside Actions. Members: `render`, `debug`, `notice`, `warning`, `error`,
-`group`, `endGroup`, `addMask`. The escaping order is load-bearing: `%` is
+`group`, `endGroup`, `addMask`, and the constant `groupDepthKey` — the key of
+the fiber-local open-group count that `ActionLogger.group` and `@effected/cli`'s
+`Render.context` each build their reference from (the package holds the key,
+never the reference, since it imports no `effect`). The escaping order is
+load-bearing: `%` is
 replaced **first**, or a later `\r`/`\n` substitution's own `%` would get
 re-escaped. A legitimate reason to reach for it directly: rendering a
 command's exact wire text in a unit test with no runner and no service —

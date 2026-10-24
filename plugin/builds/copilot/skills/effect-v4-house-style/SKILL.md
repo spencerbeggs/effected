@@ -26,21 +26,33 @@ these before inventing a local convention.
   class**: same-module variants of one concept ship as
   `export class X { private constructor() {} static readonly a = a; … }`,
   never as an `as const` object — an `as const` object's member types are
-  inferred in the built `.d.ts`, which silently drops every member's TSDoc
-  (kit-wide conversion, 2026-07-25: 19 containers across 11 packages). The
-  line is *same module, one concept* — never cross-module, never
-  one-per-engine. The only legitimate `as const` holdouts are name
-  collisions, and only a same-named **type alias** forces one: a class
-  cannot share its name with a `type` (TS2300, duplicate identifier), so
-  `SpdxExpression` and `EncryptedCodecKey` stay `as const`. A same-named
-  interface does not block the class form, generic or not: the class merges
-  with it when it declares the same type parameters (same count and names,
-  no conflicting defaults; variance annotations are optional). A mismatch
-  is TS2428. The merge needs a `biome-ignore` for
-  `noUnsafeDeclarationMerging` (`ResolvedTsconfig` is the precedent).
-  `MergeStrategy`, `VersionAccess`, `Envelope` and `JsonlEvent` stay
-  `as const` by choice, not by force: the merge would put a behaviour
-  interface's members on a statics-only class's instance type.
+  inferred in the built `.d.ts`, which silently drops every member's TSDoc.
+  The line is *same module, one concept* — never cross-module, never
+  one-per-engine. A same-named **interface** never blocks the class form,
+  generic or not: the class merges with it when it declares the same type
+  parameters (same count and names, no conflicting defaults; variance
+  annotations are optional — a mismatch is TS2428), under a `biome-ignore`
+  for `noUnsafeDeclarationMerging`. `ResolvedTsconfig` and `GitHubFixtures`
+  (a statics-only class merged with the fixture-map interface) are the
+  precedents; `ActionsOidc` is the plain case with no same-named type at all.
+  **The holdout rule, stated once:**
+  - **A same-named `type` alias forces a holdout.** A class cannot share its
+    name with a `type` (TS2300, duplicate identifier) and a `type` cannot
+    merge, so the value stays a `const` — `as const`, or explicitly typed when
+    its members need declared signatures — with the rationale and every
+    member's TSDoc on the const. Forced: `SpdxExpression` (`@effected/spdx`),
+    `EncryptedCodecKey` (`@effected/config-file`) and `UiKey`
+    (`@effected/cli`, whose same-named union is the key model itself).
+  - **A by-choice holdout is a same-named interface that describes the
+    *values* the container builds** — a strategy's `name`/`resolve`, a
+    version accessor's `get`/`set`, an event descriptor, an envelope. Merging
+    it onto a statics-only class would hang those members on the class's
+    instance type, which nothing ever constructs, so the `as const` object is
+    allowed for exactly that reason and no other. By choice: `MergeStrategy`
+    and `VersionAccess` (`@effected/config-file`), `Envelope` and `JsonlEvent`
+    (`@effected/jsonl`).
+  - Everything else is the static class; a module-private `as const` lookup
+    table that is never exported is not a container and needs no exemption.
 - **`src/internal/` holds the engine; `index.ts` never exports from it.**
   Composition-only packages own no `internal/` at all — "no engine, only
   composition" is a legitimate shape.
@@ -87,9 +99,9 @@ these before inventing a local convention.
   `Schema.Codec<Self, string>` (the annotation breaks circular inference).
 - Static-namespace facades: `class X { private constructor() {} }` with
   `static readonly` members, for schema/parse AND layer-factory facades
-  alike — the `as const` object form was retired kit-wide (member TSDoc does
-  not survive into the built `.d.ts`; see the grouped-statics rule above for
-  the collision-blocked holdouts). Do not invent a third shape.
+  alike — never the `as const` object form, whose member TSDoc does not
+  survive into the built `.d.ts`. The grouped-statics rule above is the one
+  statement of which holdouts exist and why. Do not invent a third shape.
 
 ## Typed error taxonomy
 

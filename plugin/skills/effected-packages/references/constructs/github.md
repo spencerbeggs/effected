@@ -5,7 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `ActionsOidc` | Variable | Verify GitHub Actions OIDC tokens: a workflow proving to your service which repository, workflow and run it is. | verify a github actions oidc token from a workflow, authorize a ci caller by repository id |
+| `ActionsOidc` | Class | Verify GitHub Actions OIDC tokens: a workflow proving to your service which repository, workflow and run it is. | verify a github actions oidc token from a workflow, authorize a ci caller by repository id |
 | `ActionsOidcClaims` | Class | The claims of a verified GitHub Actions OIDC token. | typed claims of a verified actions oidc token, repository id, run id, job workflow ref |
 | `ActionsOidcClaimsFromWire` | Variable | `ActionsOidcClaims` as the claims arrive in the token: snake_case keys and string ids, decoding to the class and encoding back to the wire. | decode or encode actions oidc claims as the token carries them, `snake_case` keys and string ids |
 | `ActionsOidcVerifyOptions` | Interface | Options for `ActionsOidc.verify`. | |
@@ -78,7 +78,7 @@
 | `GitHubContentShape` | Interface | Read a text file out of a repository at a ref. | |
 | `GitHubError` | Class | Every REST failure this package produces, from every resource. | rest api failure taxonomy, classify notFound alreadyExists rateLimited, classify a raw http response |
 | `GitHubErrorKind` | Variable | Why a GitHub call failed, as a value you can branch on. | notFound alreadyExists rejected unauthorized rateLimited transport decode, structural routing for a github rest failure |
-| `GitHubFixtures` | Variable + Interface | A recorded response table for `GitHubClient.layerFixture`. | recorded github responses for a fixture client, record a raw failure status headers body |
+| `GitHubFixtures` | Class + Interface | Builders for `(GitHubFixtures:interface)` entries. | recorded github responses for a fixture client, record a raw failure status headers body |
 | `GitHubGraphQLError` | Class | A GraphQL call failed. | classify a failed github graphql call, errors array in a 200 response |
 | `GitHubIssue` | Class | Read, list, close and comment on issues, and resolve the issues a pull request closes. | get list close and comment on an issue, post a marked comment |
 | `GitHubIssueShape` | Interface | Read, list, close and comment on issues, and resolve the issues a pull request closes. | |
@@ -114,7 +114,7 @@
 | `PullRequestInfo` | Class | A pull request, projected to what callers read. | a pull request's number head base sha state and merge status, projected for callers |
 | `PullRequestShape` | Interface | Read, list, create, update, merge and label pull requests, and control auto-merge. | |
 | `RateLimitSnapshot` | Class | What GitHub's rate-limit headers said on the most recent REST response. | what github's rate-limit headers said on the last response, remaining requests and reset time |
-| `RawFailure` | Class | A raw HTTP failure recorded for `GitHubClient.layerFixture`, made by `(GitHubFixtures:variable).failure`. | a raw github error response recorded in a fixture, classified at call time |
+| `RawFailure` | Class | A raw HTTP failure recorded for `GitHubClient.layerFixture`, made by `(GitHubFixtures:class).failure`. | a raw github error response recorded in a fixture, classified at call time |
 | `RecordedCall` | Interface | One call served by `GitHubClient.layerFixture`, as recorded in `(GitHubFixtures:interface).requested`. | |
 | `ReleaseAsset` | Class | A file attached to a release. | a file attached to a release, its download url and size |
 | `ReleaseInfo` | Class | A release, projected to the fields callers read. | a release's tag name body draft/prerelease flags and upload url |

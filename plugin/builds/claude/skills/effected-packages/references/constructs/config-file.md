@@ -5,7 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `ConfigCodec` | Interface | A pluggable configuration file codec: how to turn file content into a value and back. | |
+| `ConfigCodec` | Namespace + Interface | A pluggable configuration file codec: how to turn file content into a value and back. | |
 | `ConfigCodecError` | Class | Indicates that a codec failed to parse or stringify configuration content. | handle malformed config content, typed parse or stringify failure |
 | `ConfigDefaultPathMissingError` | Class | Indicates that `ConfigFileShape.save` or `ConfigFileShape.update` was called on a service configured without a `defaultPath`. | handle save called without a configured default path |
 | `ConfigEncodeError` | TypeAlias | The failure modes of `ConfigFileShape.encode`: everything on the write path except the write itself. | |

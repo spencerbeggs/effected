@@ -13,8 +13,8 @@
 | `ActionEnvironmentError` | Class | Raised when the runner environment does not say what an action needs. | handle a missing or malformed runner environment variable |
 | `ActionEnvironmentShape` | Interface | The members of the `ActionEnvironment` service: variable lookup, the `GITHUB_*` and `RUNNER_*` contexts, the event payload and scoped overrides. | |
 | `ActionInput` | Class | Action inputs, read as `Config` values. | read with: inputs, INPUT_ variables, config provider for action inputs, dry-run boolean input |
-| `ActionLogger` | Class | Groups, buffered step transcripts, notices — and the `Logger` that renders every `Effect.log*` in the kit as a workflow command. | workflow-command logger, collapsible log groups, buffered step transcript, notice annotation |
-| `ActionLoggerShape` | Interface | The members of the `ActionLogger` service: log groups, buffered steps, notices and source annotations. | |
+| `ActionLogger` | Class | Groups, buffered step transcripts, notices — and the `Logger` that renders every `Effect.log*` in the kit as a workflow command. | workflow-command logger, collapsible log groups, phase heading that opens no group, buffered step transcript, notice annotation |
+| `ActionLoggerShape` | Interface | The members of the `ActionLogger` service: log groups and headings, buffered steps, notices and source annotations. | |
 | `ActionOutputError` | TypeAlias | Anything that can go wrong publishing an output, variable or summary. | |
 | `ActionOutputs` | Class | Everything an action publishes: step outputs, exported variables, `PATH` additions, the job summary, log masking and failure annotations. | set step output, export env var, add to PATH, mask a secret |
 | `ActionOutputsShape` | Interface | The members of the `ActionOutputs` service: step outputs, exported variables, `PATH` additions, the job summary, masking and failure annotations. | |
@@ -97,7 +97,7 @@
 | `ManagedDocumentSource` | Interface | Options identifying a managed document inside a text that may not carry one yet. | |
 | `NotABlobEnvelopeError` | Class | Raised when bytes cannot be read as an envelope. | handle bytes that are not a recognizable blob envelope, legacy unframed blob |
 | `OidcTokenError` | Class | Raised when an OIDC token cannot be issued or read. | handle an OIDC token that could not be minted or decoded, missing id-token permission |
-| `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint runner oidc token for audience, read claims unverified as ActionsOidcClaims, recording test double |
+| `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint runner oidc token for audience, masked at issuance, read claims unverified as ActionsOidcClaims, recording test double |
 | `OidcTokenIssuerShape` | Interface | The members of the `OidcTokenIssuer` service: request an ID `token` and read its decoded `claims`, both failing with `OidcTokenError`. | |
 | `OutputEncodeError` | Class | Raised when a value did not satisfy its schema. | handle a value that did not satisfy its schema while publishing a JSON output |
 | `PackageManagerInstallOptions` | Interface | How `PackageManagerInstallerShape.install` should behave. | |

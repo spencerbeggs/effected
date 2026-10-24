@@ -8,7 +8,10 @@ Every service below follows one shape: `Context.Service<Self, Shape>()("@effecte
 a `static readonly layer: Layer.Layer<Self, never, GitHubClient>` built as
 `Layer.effect(this, Effect.map(GitHubClient, (client) => make(client)))`, plus
 `makeTest(overrides?: Partial<Shape>)` and `layerTest(overrides?)` where every
-unstubbed member dies naming itself. `E` is `GitHubError` unless noted. Every
+unstubbed member dies **when run**, naming itself — calling it only builds the
+effect, so the defect is in its `Exit` (assert there, not with `assert.throws`);
+a value member such as `GitHubRepository.settings` is the dying effect itself
+and reads `was read but not stubbed`. `E` is `GitHubError` unless noted. Every
 method requires `Repo` in its `R` unless noted (`ArtifactMetadata` is
 org-scoped and does not). Signatures below are abridged to shape — grep the
 installed package for exact parameter names.

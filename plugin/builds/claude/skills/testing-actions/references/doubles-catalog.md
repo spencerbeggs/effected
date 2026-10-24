@@ -9,19 +9,27 @@ for the doubles/recording-wrapper recipe for a specific service.
 Every service across `@effected/github-actions`, `@effected/github`,
 `@effected/sbom` and `@effected/commands` ships `makeTest(overrides?)` +
 `layerTest(overrides?)` (`Layer.succeed(Self, Self.makeTest(overrides))`).
-**Every unstubbed member dies, naming itself** — there is no shared
+**Every unstubbed member dies when run, naming itself** — there is no shared
 `./testing` subpath, and no whole-service double survives as a bare
 `Layer.succeed` of a hand-built object. Run `grep -rl makeTest
 node_modules/@effected` for the current set — dozens of services ship the
 pair today, far more than any single whole-service double could stand in
 for.
 
-**Writing a new double: the death must be LAZY.** The unstubbed default is
-a thunk that builds and returns a failing effect when the member is
-*called* — never a bare `throw` at definition time. A throw at call time,
-while the member is being invoked to *describe* the effect, escapes the
-Effect runtime entirely, so a consumer test's exit/flip assertions never
-see it and the failure surfaces as a raw thrown error in the wrong place.
+**Writing a new double: the death must be LAZY — it happens when the effect
+RUNS.** The unstubbed default is a function that returns `Effect.die(...)`
+when the member is *called*; a value member (an `Effect` the shape holds
+rather than a function returning one) is that dying effect itself, and a
+`Stream` member dies when pulled. Never a bare `throw`, at definition time
+or at call time: a throw while the member is being invoked to *describe*
+the effect escapes the Effect runtime entirely, so a consumer test's
+exit/flip assertions never see it and the failure surfaces as a raw thrown
+error in the wrong place. The flip side for the test: run the effect and
+inspect the `Exit` (`Cause.hasDies`, `Cause.isDieReason`); `assert.throws`
+around the call never fires. The defect message names the double and the
+member and ends ``pass a `<member>` override.`` — a called member reads
+`<member>() was called but not stubbed`, a value member `<member> was read
+but not stubbed`.
 
 The canonical shape stubs the ONE member a test is about and lets the death
 of the rest prove the test touches nothing else:
@@ -114,7 +122,9 @@ default is a real answer or a fabrication wearing a real answer's shape.
   unsigned JWT built from the same claims the double reports — the token
   and claims accessors cannot disagree. A synthetic non-JWT double would
   make every consumer's decode step yield nothing and silently skip the
-  path under test.
+  path under test. The doubles mask nothing; only the live
+  `OidcTokenIssuer.layer` masks each issued token at issuance, which is why
+  the live layer requires `ActionOutputs`.
 - **`@effected/github`'s fixture double shares the live pagination
   engine** — a narrow, recorded exception to "never reimplement a double":
   the live client, the fixture double, and the one custom page source in

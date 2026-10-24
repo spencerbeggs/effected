@@ -71,9 +71,20 @@ import { Layer } from "effect";
 
 const signing = SigstoreSigner.layer.pipe(
   Layer.provide(ActionsIdentityToken.layer), // Layer<IdentityToken, never, OidcTokenIssuer>
-  Layer.provide(OidcTokenIssuer.layer),
+  Layer.provide(OidcTokenIssuer.layer), // Layer<OidcTokenIssuer, never, ActionEnvironment | HttpClient | ActionOutputs>
 );
 ```
+
+**The live issuer masks every token at issuance.** `OidcTokenIssuer.layer`
+registers each token it fetches with the runner's log filter through
+`Secret.mask` (one `::add-mask::`) before `token` or `claims` returns it, so
+the layer requires `ActionOutputs` and `signing` above leaves
+`ActionEnvironment | HttpClient | ActionOutputs` in `R` — all at hand under
+`ActionRuntime.layer`. In a **detached worker** the mask line is itself the
+leak (no runner parses that process's stdout): mint in the parent and compose
+`ActionOutputs.layerDetached` in the worker, where the mask is a no-op. The
+doubles (`layerFor`, `layerTest`, `recording`) mask nothing — they issue no
+real token.
 
 Outside Actions, hand `sign` a token you already hold via
 `IdentityToken.layerStatic`.
@@ -96,7 +107,8 @@ const bundle = yield* Effect.gen(function* () {
 ```
 
 `SigstoreSigner.layer` signs against the public-good Fulcio/Rekor
-instances; `SigstoreSigner.layerWith({ fulcioBaseUrl, rekorBaseUrl, signer,
+instances (the composition above still needs `ActionEnvironment`,
+`HttpClient` and `ActionOutputs` from the Actions runtime); `SigstoreSigner.layerWith({ fulcioBaseUrl, rekorBaseUrl, signer,
 witnesses })` is one entry point for both the Sigstore staging e2e and the
 test seam.
 
@@ -144,7 +156,9 @@ small deliberate duplication beats dragging a package across a seam.
   builder id from one, a workflow path from the other). Setting them equal
   in a fixture lets a constructor that confuses them pass everything —
   don't collapse them in a new fixture.
-- **`SigstoreSigner.makeTest().sign` dies unstubbed** — a fabricated bundle
+- **`SigstoreSigner.makeTest().sign` dies when run unstubbed** — the call
+  only builds the effect, and the defect is in its `Exit`, so assert on the
+  Exit, not with `assert.throws`. A fabricated bundle
   would be a signature-shaped lie, the strongest case in the kit for the
   die-loudly default. Contrast **`IdentityToken.makeTest`, which
   answers** — a fabricated OIDC token is a real answer to "give me a

@@ -67,7 +67,7 @@ type a consumer can't import"; here nothing a consumer needs is lost). That is
 categorically different from muting, say, an `ae-missing-release-tag` you don't
 feel like fixing.
 
-### Validated across every factory kind (2026-07-08)
+### Validated across every factory kind
 
 Confirmed clean (`warnings: 0`, the `*_base` in `suppressed`) with `tsgo`
 green and **no hand-written annotations** on:
@@ -208,7 +208,7 @@ and every other class factory that takes a type argument.
 > `{@link}` resolves **only to symbols the entry point exports, under the name it
 > exports them by**. Everything else is a backtick span.
 
-Five ways a name fails that test, all confirmed in this repo's builds:
+Six ways a name fails that test:
 
 - **A schema-declared `Schema.Class` field** — the class owns it, but only
   through the factory, which API Extractor does not see through.
@@ -226,8 +226,16 @@ Five ways a name fails that test, all confirmed in this repo's builds:
   **different message** than the other cases: *"This type of declaration is
   not supported yet by the resolver"*, and issues.json may attribute it to an
   unrelated line through the rollup. Backticks are the fix. Confirmed at the
-  `@effected/sbom` build (2026-07-26); the re-export itself is fine — only
+  `@effected/sbom` build; the re-export itself is fine — only
   the `{@link}` form is rejected.
+- **A symbol exported only from the root `.`, `{@link}`ed from a module that
+  ships under a second entry point** (`./testing`, `./ui`, `./node`) — each
+  entry point is its own API Extractor pass with its own export list (see "A
+  second published entrypoint models its own surface" below), so the root's
+  `{@link Foo}` is unresolved from `./testing`'s pass however public `Foo` is
+  at `.`. This is the most common way a multi-entrypoint package breaks the
+  rule. Backticks — or, when the symbol belongs to that surface, re-export it
+  from the second entry point too, and the link resolves there.
 
 The diagnostic distinguishes the fixable case from the unfixable one, so read it
 rather than pattern-matching: *"ambiguous… add a TSDoc member reference
@@ -327,7 +335,7 @@ reference must be parenthesized:
 /** The recipe form of {@link (descend:1)}; under `"record"` see {@link (descend:2)}. */
 ```
 
-Probed 2026-09-13 at the `@effected/walker` prod build (`descend` carries two
+Probed at the `@effected/walker` prod build (`descend` carries two
 overload signatures plus an implementation signature), every form in one
 comment so the controls and the answer share a run:
 
@@ -366,8 +374,8 @@ backtick is the honest form.
 A member whose name collides with a TSDoc **system selector** (`variable`,
 `function`, `class`, `interface`, `namespace`, `enum`, `constructor`,
 `static`, `instance`, …) makes `{@link ActionInput.variable}` ambiguous to
-the parser, and the bundler warns *"identifier must be quoted"*. Hit live
-2026-08-02 on a static genuinely named `variable`. The fix is the same as
+the parser, and the bundler warns *"identifier must be quoted"*. Hit live on a
+static genuinely named `variable`. The fix is the same as
 every other unresolvable-link case in this skill: **backticks**
 (`` `ActionInput.variable` ``) — do not try quoted-selector syntax, and do
 not rename the API to appease the doc engine.
@@ -410,7 +418,7 @@ but the parser sees two half-spans and emits **two**
 `tsdoc-code-span-missing-delimiter` warnings in the prod gate. When wrapping
 would split a span, rewrap the sentence, not the span: move the whole span to
 the next line, or shorten the prose around it. (Found live in
-`@effected/package-json`, 2026-07-28, where an error-message quotation
+`@effected/package-json`, where an error-message quotation
 wrapped during an ordinary TSDoc edit.)
 
 The warning **cascades and misdirects**: once a span is unterminated, the
@@ -420,8 +428,7 @@ and `tsdoc-malformed-inline-tag` warnings whose reported lines sit BELOW the
 comment (declaration-relative reporting). Do not chase those by escaping
 braces — a properly closed one-line span protects `{`/`}` fine, and
 brace-bearing spans like `` `{ status: "enabled" }` `` are legal as-is. Find
-the one wrapped span and rejoin it; the whole fan collapses. (Bitten twice on
-2026-08-14/15 — 14 warnings in `@effected/git`, 5 in `@effected/github`, each
+the one wrapped span and rejoin it; the whole fan collapses. (Bitten twice — 14 warnings in `@effected/git`, 5 in `@effected/github`, each
 one wrapped argv/route literal; a reader triaging the second incident from
 the brace warnings alone diagnosed brace-escaping, which is exactly the wrong
 fix.)
@@ -532,13 +539,12 @@ export names surface verbatim — a `Schema.Array` field emits as
 observed across multiple package builds; do not "fix" it, and do
 not read it as a wrong import in the source.
 
-## History
+## Rejected alternatives
 
-This supersedes two earlier idioms: the `@internal`-tagged base (residual
-non-fatal `ae-incompatible-release-tags`, rejected 2026-07-07) and the
-`@public X_base` const-with-explicit-annotation idiom (ratified 2026-07-07,
-retired 2026-07-08 once the inline form + scoped `_base` suppression was
-validated on the recursive and `Context.Service` cases).
+Two other idioms are not used: the `@internal`-tagged base (it leaves a
+residual non-fatal `ae-incompatible-release-tags`) and the `@public X_base`
+const-with-explicit-annotation idiom (the inline form + scoped `_base`
+suppression covers the recursive and `Context.Service` cases it existed for).
 
 The inline factory + scoped `_base` suppression is the **single policy**, and
 the transitional backlog is **drained**: no package in the kit carries a
