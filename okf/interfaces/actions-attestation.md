@@ -65,6 +65,18 @@ key-set fetch, turning a pure decode into a network call. A consumer
 needing a *verified* token needs a different operation with a different
 name and a different error channel, not an option on this one.
 
+The live issuer **masks every token at issuance**: the raw JWT is registered
+with the runner's log filter through `Secret.mask` at the one point every
+token passes, before `token` wraps it in `Redacted` and before `claims`
+decodes it, so a consumer that declassifies and logs it, or a decode failure
+whose cause carries it, prints a redaction. `OidcTokenIssuer.layer` therefore
+requires `ActionOutputs`. The caveat `Secret.mask` records holds: in a
+detached worker the mask line is itself the leak, so mint in the parent and
+compose `ActionOutputs.layerDetached` in the worker, where the mask is a
+no-op. `ActionsRegistryCredential.workload` masks the identity token again,
+unconditionally, so a token from any issuer a consumer provides is covered;
+a second `::add-mask::` of one value is harmless.
+
 ### `ActionsIdentityToken`
 
 The layer closing `sbom`'s identity contract over the issuer, so an action

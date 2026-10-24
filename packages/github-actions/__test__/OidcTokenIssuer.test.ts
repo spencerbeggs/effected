@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { ActionsOidcClaims, ActionsOidcClaimsFromWire } from "@effected/github";
 import { Effect, Layer, Redacted, Schema } from "effect";
 import { FetchHttpClient } from "effect/http";
-import { ActionEnvironment, OidcTokenIssuer } from "../src/index.js";
+import { ActionEnvironment, ActionOutputs, OidcTokenIssuer } from "../src/index.js";
 
 const TOKEN_ENV = {
 	ACTIONS_ID_TOKEN_REQUEST_TOKEN: "runner-bearer",
@@ -48,15 +48,26 @@ const json = (body: unknown, init: ResponseInit = {}): Response =>
  * The test seam: a fake `fetch` under the real client, so request construction,
  * status mapping and body decoding all actually run.
  */
-const live = (fake: typeof globalThis.fetch, env: Record<string, string> = TOKEN_ENV) =>
+const live = (
+	fake: typeof globalThis.fetch,
+	env: Record<string, string> = TOKEN_ENV,
+	outputs: Layer.Layer<ActionOutputs> = ActionOutputs.recording().layer,
+) =>
 	OidcTokenIssuer.layer.pipe(
 		Layer.provide(
 			Layer.mergeAll(
 				ActionEnvironment.layerTest(env),
 				FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fake))),
+				outputs,
 			),
 		),
 	);
+
+/** A fetch that answers every request with this JWT. */
+const answering =
+	(jwt: string): typeof globalThis.fetch =>
+	async () =>
+		json({ value: jwt });
 
 describe("OidcTokenIssuer", () => {
 	describe("requesting a token", () => {
@@ -283,4 +294,76 @@ describe("OidcTokenIssuer", () => {
 			}).pipe(Effect.provide(OidcTokenIssuer.layerTest())),
 		);
 	});
+});
+
+describe("OidcTokenIssuer masks at issuance", () => {
+	it.effect("token registers the JWT with the runner's log filter before returning it", () =>
+		Effect.gen(function* () {
+			const outputs = ActionOutputs.recording();
+			const jwt = jwtFor(CLAIMS);
+			const token = yield* Effect.gen(function* () {
+				return yield* (yield* OidcTokenIssuer).token("sigstore");
+			}).pipe(Effect.provide(live(answering(jwt), TOKEN_ENV, outputs.layer)));
+			assert.strictEqual(Redacted.value(token), jwt);
+			assert.deepStrictEqual(
+				outputs.entries().map((entry) => [entry.member, entry.value]),
+				[["setSecret", jwt]],
+			);
+		}),
+	);
+
+	it.effect("claims masks the token it decoded too, though it never returns it", () =>
+		Effect.gen(function* () {
+			const outputs = ActionOutputs.recording();
+			const jwt = jwtFor(CLAIMS);
+			const claims = yield* Effect.gen(function* () {
+				return yield* (yield* OidcTokenIssuer).claims();
+			}).pipe(Effect.provide(live(answering(jwt), TOKEN_ENV, outputs.layer)));
+			assert.strictEqual(claims.repository, "acme/example");
+			assert.deepStrictEqual(
+				outputs.entries().map((entry) => [entry.member, entry.value]),
+				[["setSecret", jwt]],
+			);
+		}),
+	);
+
+	it.effect("a token that fails to decode was masked before the failure", () =>
+		Effect.gen(function* () {
+			const outputs = ActionOutputs.recording();
+			const error = yield* Effect.gen(function* () {
+				return yield* (yield* OidcTokenIssuer).claims();
+			}).pipe(Effect.provide(live(answering("not-a-jwt"), TOKEN_ENV, outputs.layer)), Effect.flip);
+			assert.strictEqual(error.reason, "malformedToken");
+			assert.deepStrictEqual(
+				outputs.entries().map((entry) => [entry.member, entry.value]),
+				[["setSecret", "not-a-jwt"]],
+			);
+		}),
+	);
+
+	it.effect("nothing is masked when the token service refuses or answers badly", () =>
+		Effect.gen(function* () {
+			const outputs = ActionOutputs.recording();
+			const refused: typeof globalThis.fetch = async () => json({ message: "no" }, { status: 403 });
+			const malformed: typeof globalThis.fetch = async () => json({ nope: true });
+			const ask = Effect.gen(function* () {
+				return yield* (yield* OidcTokenIssuer).token();
+			});
+			const first = yield* ask.pipe(Effect.provide(live(refused, TOKEN_ENV, outputs.layer)), Effect.flip);
+			const second = yield* ask.pipe(Effect.provide(live(malformed, TOKEN_ENV, outputs.layer)), Effect.flip);
+			assert.strictEqual(first.reason, "requestFailed");
+			assert.strictEqual(second.reason, "malformedResponse");
+			assert.lengthOf(outputs.entries(), 0);
+		}),
+	);
+
+	it.effect("under the detached layer the issuer still issues and the mask is the documented no-op", () =>
+		Effect.gen(function* () {
+			const jwt = jwtFor(CLAIMS);
+			const token = yield* Effect.gen(function* () {
+				return yield* (yield* OidcTokenIssuer).token();
+			}).pipe(Effect.provide(live(answering(jwt), TOKEN_ENV, ActionOutputs.layerDetached)));
+			assert.strictEqual(Redacted.value(token), jwt);
+		}),
+	);
 });
