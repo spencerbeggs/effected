@@ -1,11 +1,5 @@
 import { Schema } from "effect";
-
-const causeMessage = (cause: unknown): string => {
-	let current = cause;
-	for (let depth = 0; depth < 8 && current instanceof Error && current.cause instanceof Error; depth++)
-		current = current.cause;
-	return current instanceof Error ? current.message : String(current);
-};
+import { causeMessage } from "./internal/causeMessage.js";
 
 /**
  * An image backend read or write failed.
@@ -34,6 +28,8 @@ export class ImageBackendError extends Schema.TaggedError<ImageBackendError>()("
 	cause: Schema.Defect(),
 }) {
 	override get message(): string {
-		return `Image backend ${this.operation} failed for key "${this.key}" (${this.reason}): ${causeMessage(this.cause)}`;
+		const summary = `Image backend ${this.operation} failed for key "${this.key}" (${this.reason})`;
+		const detail = causeMessage(this.cause);
+		return detail === undefined ? summary : `${summary}: ${detail}`;
 	}
 }

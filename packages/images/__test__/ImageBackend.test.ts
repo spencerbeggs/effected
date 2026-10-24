@@ -172,3 +172,28 @@ describe("ImageBackend directory concurrency (review focus 4)", () => {
 		}).pipe(Effect.provide(interleavedBackend)),
 	);
 });
+
+describe("ImageBackendError.message", () => {
+	const base = { operation: "get", reason: "backend", key: KEY } as const;
+
+	it("appends every distinct message of the cause chain, nearest first", () => {
+		const cause = new Error("read failed", { cause: new Error("EIO: i/o error") });
+		assert.strictEqual(
+			new ImageBackendError({ ...base, cause }).message,
+			`Image backend get failed for key "${KEY}" (backend): read failed: EIO: i/o error`,
+		);
+	});
+
+	it("appends a cross-realm-like plain { message } cause, which instanceof Error would miss", () => {
+		assert.strictEqual(
+			new ImageBackendError({ ...base, cause: { message: "foreign" } }).message,
+			`Image backend get failed for key "${KEY}" (backend): foreign`,
+		);
+	});
+
+	it("renders the summary alone when the cause's message is empty or absent", () => {
+		const summary = `Image backend get failed for key "${KEY}" (backend)`;
+		assert.strictEqual(new ImageBackendError({ ...base, cause: new Error("") }).message, summary);
+		assert.strictEqual(new ImageBackendError({ ...base, cause: { code: "EIO" } }).message, summary);
+	});
+});

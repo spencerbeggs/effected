@@ -439,6 +439,57 @@ describe("ConfigLoader.load", () => {
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.ts": "" }))),
 	);
 
+	it.effect(
+		"reads a rejected import's message through the guarded read, so a cross-realm-like plain { message } renders",
+		() =>
+			Effect.gen(function* () {
+				const foreign = { name: "Error", message: "foreign realm import failed" };
+				assert.isFalse(foreign instanceof Error);
+				const error = yield* Effect.flip(
+					ConfigLoader.load({
+						explicit: "schemastore.config.ts",
+						cwd: "/repo",
+						importModule: () => Promise.reject(foreign),
+					}),
+				);
+				assert.instanceOf(error, ConfigLoadError);
+				assert.strictEqual(error.reason, "foreign realm import failed");
+			}).pipe(Effect.provide(platform({ "/repo/schemastore.config.ts": "" }))),
+	);
+
+	it.effect(
+		"prefers a rejected import's stack over an empty message, because the stack names the module that threw",
+		() =>
+			Effect.gen(function* () {
+				const empty = new Error("");
+				empty.stack = "Error\n    at /repo/schemastore.config.ts:3:1";
+				const error = yield* Effect.flip(
+					ConfigLoader.load({
+						explicit: "schemastore.config.ts",
+						cwd: "/repo",
+						importModule: () => Promise.reject(empty),
+					}),
+				);
+				assert.instanceOf(error, ConfigLoadError);
+				assert.strictEqual(error.reason, empty.stack);
+				assert.notInclude(error.message, "undefined");
+			}).pipe(Effect.provide(platform({ "/repo/schemastore.config.ts": "" }))),
+	);
+
+	it.effect("falls back to the value's string form when a rejected import carries neither stack nor message", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				ConfigLoader.load({
+					explicit: "schemastore.config.ts",
+					cwd: "/repo",
+					importModule: () => Promise.reject({ message: "   ", stack: "" }),
+				}),
+			);
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(error.reason, "[object Object]");
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.ts": "" }))),
+	);
+
 	it.effect("fails ConfigNotFoundError when the explicit path does not exist", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(

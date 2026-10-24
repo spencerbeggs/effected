@@ -26,14 +26,8 @@
 import type { JsoncPath } from "@effected/jsonc";
 import { JsoncEdit, JsoncModifier } from "@effected/jsonc";
 import { Effect, Predicate, Result, Schema } from "effect";
+import { causeMessage } from "./internal/causeMessage.js";
 import { detectIndent, renderJson, resolveIndent, sortKeys } from "./internal/format.js";
-
-// The message of a preserved `cause`, when it carries one. A `Schema.Defect()`
-// field holds whatever was thrown, so the read is guarded rather than assumed.
-const causeMessage = (cause: unknown): string | undefined =>
-	Predicate.hasProperty(cause, "message") && Predicate.isString(cause.message) && cause.message.length > 0
-		? cause.message
-		: undefined;
 
 /**
  * Indicates that a text input could not be treated as a package.json document:
