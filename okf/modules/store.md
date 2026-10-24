@@ -16,10 +16,10 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-05T17:44:20Z
+  at: 2026-10-24T00:32:37Z
 integrity:
   generated:
-    body: 8e31dc64e9e3b427
+    body: 8c5ac06c53bd5ea8
 ---
 
 # store
