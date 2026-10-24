@@ -1245,5 +1245,8 @@ export function shouldPreserveRaw(rawValue: string, value: unknown): boolean {
 		if (Number.isNaN(value) || !Number.isFinite(value)) return false;
 		return rawValue !== String(value);
 	}
+	// An integer past MAX_SAFE_INTEGER resolves to a bigint; a hex or octal
+	// source form must survive the round-trip exactly as it does for a number.
+	if (typeof value === "bigint") return rawValue !== value.toString();
 	return false;
 }

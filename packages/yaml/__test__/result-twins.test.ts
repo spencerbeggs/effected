@@ -1,6 +1,15 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Effect, Exit, Result } from "effect";
-import { Yaml, YamlDocument, YamlFormat, YamlModificationError, YamlScalar, YamlSeq } from "../src/index.js";
+import {
+	Yaml,
+	YamlDocument,
+	YamlFormat,
+	YamlMap,
+	YamlModificationError,
+	YamlPair,
+	YamlScalar,
+	YamlSeq,
+} from "../src/index.js";
 
 // Every Result twin must agree with its Effect form on BOTH channels: the
 // Effect form is defined in terms of the twin, so a divergence means a second
@@ -176,7 +185,7 @@ describe("YamlDocument Result twins", () => {
 		}),
 	);
 
-	it.effect("stringifyResult fails typed on a cyclic synthetic AST, matching stringify", () =>
+	it.effect("stringifyResult fails CircularReference on a cyclic synthetic AST, matching stringify", () =>
 		Effect.gen(function* () {
 			const items: Array<YamlSeq | YamlScalar> = [];
 			const seq = YamlSeq.make({ items, style: "block", offset: 0, length: 0 });
@@ -184,12 +193,44 @@ describe("YamlDocument Result twins", () => {
 			(seq.items as Array<unknown>).push(seq);
 			const doc = YamlDocument.make({ contents: seq, errors: [], warnings: [], directives: [] });
 			const result = doc.stringifyResult();
-			// The node path has no ancestor set, so a cycle surfaces through the
-			// depth cap — still typed, never a stack overflow.
+			// The node path keeps the value path's ancestor set, so the cycle is
+			// named as such on the first re-entry — not left for the depth cap.
 			if (!Result.isFailure(result)) return assert.fail("expected a typed failure");
 			assert.strictEqual(result.failure._tag, "YamlStringifyError");
-			assert.strictEqual(result.failure.diagnostics[0]?.code, "NestingDepthExceeded");
+			assert.strictEqual(result.failure.diagnostics[0]?.code, "CircularReference");
 			yield* agrees(doc.stringify(), result);
+		}),
+	);
+
+	it.effect("a cycle through a mapping value is CircularReference too, and a shared acyclic subtree is not", () =>
+		Effect.gen(function* () {
+			const pairs: Array<YamlPair> = [];
+			const map = YamlMap.make({ items: pairs, style: "block", offset: 0, length: 0 });
+			const key = YamlScalar.make({ value: "self", style: "plain", offset: 0, length: 0 });
+			(map.items as Array<unknown>).push(YamlPair.make({ key, value: map }));
+			const cyclic = YamlDocument.make({ contents: map, errors: [], warnings: [], directives: [] });
+			const result = cyclic.stringifyResult();
+			if (!Result.isFailure(result)) return assert.fail("expected CircularReference");
+			assert.strictEqual(result.failure.diagnostics[0]?.code, "CircularReference");
+			yield* agrees(cyclic.stringify(), result);
+
+			// The same leaf collection under two keys is sharing, not a cycle.
+			const leaf = YamlSeq.make({
+				items: [YamlScalar.make({ value: 1, style: "plain", offset: 0, length: 0 })],
+				style: "block",
+				offset: 0,
+				length: 0,
+			});
+			const shared = YamlMap.make({
+				items: ["a", "b"].map((k) =>
+					YamlPair.make({ key: YamlScalar.make({ value: k, style: "plain", offset: 0, length: 0 }), value: leaf }),
+				),
+				style: "block",
+				offset: 0,
+				length: 0,
+			});
+			const doc = YamlDocument.make({ contents: shared, errors: [], warnings: [], directives: [] });
+			assert.deepStrictEqual(doc.stringifyResult(), Result.succeed("a:\n- 1\nb:\n- 1\n"));
 		}),
 	);
 });

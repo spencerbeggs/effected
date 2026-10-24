@@ -680,6 +680,37 @@ describe("YamlFormat", () => {
 				assert.strictEqual(error.diagnostics[0]?.code, "NestingDepthExceeded");
 			}),
 		);
+
+		it.effect("lowers a bigint exactly as Yaml.stringify does: bare, never quoted", () =>
+			Effect.gen(function* () {
+				const big = 99999999999999999999n;
+				// Replacing an existing scalar and inserting a new key both take the
+				// whole-document path; each must agree with the value path byte for byte.
+				assert.strictEqual(yield* YamlFormat.modifyToString("a: 1\n", ["a"], 10n), yield* Yaml.stringify({ a: 10n }));
+				assert.strictEqual(
+					yield* YamlFormat.modifyToString("a: 1\n", ["b"], big),
+					yield* Yaml.stringify({ a: 1, b: big }),
+				);
+				assert.deepStrictEqual(yield* Yaml.parse(yield* YamlFormat.modifyToString("a: 1\n", ["a"], big)), { a: big });
+			}),
+		);
+
+		it.effect("fails UnrepresentableValue on a function or symbol, matching Yaml.stringify", () =>
+			Effect.gen(function* () {
+				const fn = () => 1;
+				for (const value of [fn, Symbol("s"), { nested: fn }, [Symbol("in-seq")]]) {
+					const error = yield* Effect.flip(YamlFormat.modify("a: 1\n", ["a"], value));
+					assert.instanceOf(error, YamlModificationError);
+					assert.strictEqual(error.diagnostics[0]?.code, "UnrepresentableValue");
+					const twin = YamlFormat.modifyToStringResult("a: 1\n", ["b"], value);
+					if (!Result.isFailure(twin)) return assert.fail("modifyToStringResult must agree with modify");
+					assert.strictEqual(twin.failure.diagnostics[0]?.code, "UnrepresentableValue");
+					const viaStringify = Yaml.stringifyResult({ a: value });
+					if (!Result.isFailure(viaStringify)) return assert.fail("Yaml.stringify must refuse the same value");
+					assert.strictEqual(viaStringify.failure.diagnostics[0]?.code, "UnrepresentableValue");
+				}
+			}),
+		);
 	});
 
 	describe("modify — delete via undefined", () => {

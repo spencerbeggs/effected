@@ -46,13 +46,18 @@ export const YAML_COMPOSE_ERROR_CODES = [
 ] as const;
 
 /**
- * Error codes for the stringifier stage. The engine's only deliberate
- * stringify failure is the circular-reference guard (thrown as
- * `StringifyFailure`); the facade materializes it under this code so
- * `YamlStringifyError` carries structured diagnostics rather than a
- * `reason` string.
+ * Error codes for the stringifier stage. The engine's deliberate stringify
+ * failures are the circular-reference guard and the unrepresentable-value
+ * guard (a function or symbol on the value path, or a synthetic scalar node
+ * holding anything but `null`, a boolean, a number, a bigint or a string),
+ * both thrown as `StringifyFailure` carrying one of these codes; the facade
+ * materializes them so `YamlStringifyError` carries structured diagnostics
+ * rather than a `reason` string. `UnrepresentableValue` exists because the
+ * alternative — writing `String(value)` into the document — turned a function's
+ * source text or `Symbol(s)` into a quoted string that only surfaced on the
+ * next read.
  */
-export const YAML_STRINGIFY_ERROR_CODES = ["CircularReference"] as const;
+export const YAML_STRINGIFY_ERROR_CODES = ["CircularReference", "UnrepresentableValue"] as const;
 
 /**
  * Error codes for the modify stage (`YamlFormat.modify`'s guards and path
@@ -65,10 +70,11 @@ export const YAML_STRINGIFY_ERROR_CODES = ["CircularReference"] as const;
  * without its `%TAG` orphans every shorthand tag that depends on it — the
  * output would be unparseable — so modify fails typed rather than corrupting.
  *
- * `CircularReference` and `NestingDepthExceeded` are the two limits on the
- * replacement value itself: `modify` lowers a plain JavaScript value into
- * AST nodes, and an object graph that points back at itself or nests deeper
- * than `MAX_NESTING_DEPTH` has no finite YAML rendering. Both names are
+ * `CircularReference`, `NestingDepthExceeded` and `UnrepresentableValue` are
+ * the three limits on the replacement value itself: `modify` lowers a plain
+ * JavaScript value into AST nodes, and an object graph that points back at
+ * itself or nests deeper than `MAX_NESTING_DEPTH` has no finite YAML
+ * rendering, while a function or symbol has none at all. All three names are
  * deliberately the ones the stringify and compose stages already use for the
  * same conditions, so `YamlErrorCode` gains no member.
  */
@@ -81,6 +87,7 @@ export const YAML_MODIFY_ERROR_CODES = [
 	"DirectiveCarryingDocument",
 	"CircularReference",
 	"NestingDepthExceeded",
+	"UnrepresentableValue",
 ] as const;
 
 /** The lexer-stage error-code union. */

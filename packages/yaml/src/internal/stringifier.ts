@@ -23,16 +23,31 @@ import type { StringifyOptionsInput } from "./options.js";
 import type { RawDirective, RawYamlDocument } from "./raw-document.js";
 
 /**
- * Thrown by the stringifier on its failure paths (circular references). The
- * facade catches this and materializes the public stringify error.
+ * Thrown by the stringifier on its two deliberate failure paths: a circular
+ * reference (`CircularReference`) and a value with no YAML representation
+ * (`UnrepresentableValue` — a function or symbol on the value path, or a
+ * synthetic scalar node holding anything but `null`, a boolean, a number, a
+ * bigint or a string). The facade catches this and materializes the public
+ * stringify error under `code`.
  */
 export class StringifyFailure extends Error {
+	readonly code: "CircularReference" | "UnrepresentableValue";
 	readonly reason: string;
-	constructor(reason: string) {
+	constructor(code: StringifyFailure["code"], reason: string) {
 		super(reason);
 		this.name = "StringifyFailure";
+		this.code = code;
 		this.reason = reason;
 	}
+}
+
+/**
+ * Build the unrepresentable-value failure for a value of `kind` (its
+ * `typeof`). Shared by the value path and the node path so the two report
+ * the same condition in the same words.
+ */
+function unrepresentable(kind: string): StringifyFailure {
+	return new StringifyFailure("UnrepresentableValue", `A ${kind} value has no YAML representation`);
 }
 
 /**
@@ -499,7 +514,7 @@ function renderNumber(n: number): string {
 function detectCircular(value: unknown, seen: Set<object>): void {
 	if (value !== null && typeof value === "object") {
 		if (seen.has(value)) {
-			throw new StringifyFailure("Circular reference detected");
+			throw new StringifyFailure("CircularReference", "Circular reference detected");
 		}
 	}
 }
@@ -633,8 +648,10 @@ function stringifyLines(value: unknown, ctx: StringifyContext, depth: number, al
 		}
 	}
 
-	// Fallback: coerce to string and quote
-	return [renderDoubleQuoted(String(value))];
+	// Anything left is a function or a symbol. Neither has a YAML rendering,
+	// and writing its `String()` form would put a function's source text or
+	// `Symbol(s)` into the document as a quoted string — fail typed instead.
+	throw unrepresentable(typeof value);
 }
 
 /**
@@ -1036,11 +1053,27 @@ function stringifyNodeLines(node: YamlNode, ctx: StringifyContext, depth: number
 	if (node instanceof YamlScalar) {
 		return stringifyScalarNodeLines(node, ctx);
 	}
-	if (node instanceof YamlMap) {
-		return stringifyMapNodeLines(node, ctx, depth);
-	}
-	if (node instanceof YamlSeq) {
-		return stringifySeqNodeLines(node, ctx, depth);
+	if (node instanceof YamlMap || node instanceof YamlSeq) {
+		// Ancestor set, symmetric to the value path's `detectCircular`: a cycle
+		// in a hand-built AST (a parsed one cannot contain one — the composer
+		// expresses sharing through aliases) must pass through a collection
+		// node, so re-entering an ancestor map or seq is the cycle itself. It
+		// is reported as `CircularReference` on the first re-entry rather than
+		// left for the depth cap to catch as `NestingDepthExceeded` hundreds of
+		// levels later. The set holds ancestors only — a node repeated across
+		// siblings is stringified twice, exactly as the value path treats a
+		// shared sub-object.
+		if (ctx.seen.has(node)) {
+			throw new StringifyFailure("CircularReference", "Circular reference detected in the document AST");
+		}
+		ctx.seen.add(node);
+		try {
+			return node instanceof YamlMap
+				? stringifyMapNodeLines(node, ctx, depth)
+				: stringifySeqNodeLines(node, ctx, depth);
+		} finally {
+			ctx.seen.delete(node);
+		}
 	}
 	if (node instanceof YamlAlias) {
 		return [`*${node.name}`];
@@ -1099,8 +1132,17 @@ function stringifyScalarNodeLines(node: YamlScalar, ctx: StringifyContext): stri
 			ctx.inFlow,
 		);
 		lines = rendered.split("\n");
+	} else if (typeof val === "bigint") {
+		// The composer resolves an integer past MAX_SAFE_INTEGER to a bigint;
+		// it renders bare like any other integer (the value path does the
+		// same), preferring the source form so a hex or octal literal survives.
+		lines = [node.raw !== undefined ? node.raw : val.toString()];
 	} else {
-		lines = [renderDoubleQuoted(String(val))];
+		// A scalar node can only have been built by hand to hold anything
+		// else (a function, a symbol, an object). None of it has a YAML
+		// rendering; `String(val)` would write `[object Object]` or the
+		// function's source text into the document. Fail typed.
+		throw unrepresentable(typeof val);
 	}
 	// Prepend tag first, then anchor, so the final output reads &anchor !!tag value
 	if (node.tag) {

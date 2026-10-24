@@ -200,11 +200,14 @@ export class YamlParseError extends Schema.TaggedError<YamlParseError>()("YamlPa
 }
 
 /**
- * Stringification failure (the circular-reference guard), carrying structured
- * {@link YamlDiagnostic} entries and the offending value. Raised by
- * {@link Yaml.stringify}, `YamlDocument#stringify` and the encode direction of
- * the schema factories. The error itself has no `code` field: read the code
- * from the diagnostics — `error.diagnostics[0].code` is the primary failure.
+ * Stringification failure, carrying structured {@link YamlDiagnostic} entries
+ * and the offending value. Raised by {@link Yaml.stringify},
+ * `YamlDocument#stringify` and the encode direction of the schema factories
+ * on a circular reference (`CircularReference`), a value nested past the
+ * stringifier's recursion budget (`NestingDepthExceeded`) or a value with no
+ * YAML representation (`UnrepresentableValue` — a function or a symbol). The
+ * error itself has no `code` field: read the code from the diagnostics —
+ * `error.diagnostics[0].code` is the primary failure.
  *
  * @public
  */
@@ -267,7 +270,7 @@ const aliasCountExceededError = (message: string, text: string): YamlParseError 
  * Shared by every stringify path — `Yaml.stringify`/`stringifyResult`, the
  * schema encoders, `YamlDocument#stringifyResult` and `YamlFormat.modify`'s
  * backstop — so all of them surface the hardening guards (circular
- * reference, nesting-depth cap) identically.
+ * reference, unrepresentable value, nesting-depth cap) identically.
  *
  * @internal
  */
@@ -276,7 +279,7 @@ export const stringifyDefectToError = (defect: unknown, value: unknown): YamlStr
 		return new YamlStringifyError({
 			diagnostics: [
 				YamlDiagnostic.make({
-					code: "CircularReference",
+					code: defect.code,
 					message: defect.reason,
 					offset: 0,
 					length: 0,
@@ -379,9 +382,9 @@ const parseAllResultImpl = (
 
 /**
  * Synchronous stringify returning a `Result`. Mirrors {@link Yaml.stringify}
- * without the Effect wrapper: a circular reference or a value nested past the
- * recursion budget yields a `Failure` carrying a typed {@link YamlStringifyError},
- * never a thrown defect.
+ * without the Effect wrapper: a circular reference, a function or symbol
+ * value, or a value nested past the recursion budget yields a `Failure`
+ * carrying a typed {@link YamlStringifyError}, never a thrown defect.
  */
 const stringifyResultImpl = (
 	value: unknown,
@@ -505,10 +508,14 @@ export class Yaml {
 
 	/**
 	 * Stringify a plain JavaScript value as YAML. Fails with
-	 * {@link YamlStringifyError} on circular references (`CircularReference`)
-	 * or on a value nested deeper than the stringifier's recursion budget
-	 * (`NestingDepthExceeded`) — both surface through the typed error channel
-	 * rather than as an unhandled stack-overflow defect.
+	 * {@link YamlStringifyError} on circular references (`CircularReference`),
+	 * on a value nested deeper than the stringifier's recursion budget
+	 * (`NestingDepthExceeded`) and on a function or symbol anywhere in the
+	 * value (`UnrepresentableValue`) — all surface through the typed error
+	 * channel, never as a stack-overflow defect and never as the function's
+	 * source text or `Symbol(s)` written into the document as a string. A
+	 * `bigint` is an integer and renders bare, exactly as `YamlFormat.modify`
+	 * writes one; `null` and `undefined` both render as `null`.
 	 *
 	 * @remarks
 	 * A `"<<"` object key is emitted **quoted** (`'<<': …`). This is the
@@ -616,10 +623,11 @@ export class Yaml {
 	 * The pure counterpart to {@link Yaml.stringify} for config-time callers
 	 * that cannot `await`.
 	 *
-	 * Preserves the package contract — a circular reference (`CircularReference`)
-	 * or a value nested past the recursion budget (`NestingDepthExceeded`)
-	 * yields a `Failure` carrying a {@link YamlStringifyError} rather than a
-	 * thrown stack-overflow defect; the method never throws.
+	 * Preserves the package contract — a circular reference (`CircularReference`),
+	 * a value nested past the recursion budget (`NestingDepthExceeded`) or a
+	 * function or symbol value (`UnrepresentableValue`) yields a `Failure`
+	 * carrying a {@link YamlStringifyError} rather than a thrown defect; the
+	 * method never throws.
 	 *
 	 * @example
 	 * ```ts

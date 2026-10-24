@@ -12,7 +12,8 @@
 //
 // `modify` lowers the caller's value with `jsValueToNode`, which runs BOTH
 // guards itself — failing typed with a `CircularReference` /
-// `NestingDepthExceeded` diagnostic. The depth guard starts counting at the
+// `NestingDepthExceeded` diagnostic — and refuses a function or symbol with
+// `UnrepresentableValue`, as the value path does. The depth guard starts counting at the
 // target's own depth in the document (the path length), not at zero: the
 // stringifier counts from the document root, so a value lowered from zero
 // could pass the lowering guard and still trip the stringifier's cap one key
@@ -137,7 +138,8 @@ class ModifyFailure extends Error {
 		| "InvalidIndex"
 		| "NotNavigable"
 		| "CircularReference"
-		| "NestingDepthExceeded";
+		| "NestingDepthExceeded"
+		| "UnrepresentableValue";
 	readonly offset: number;
 	readonly length: number;
 	constructor(code: ModifyFailure["code"], message: string, offset: number, length: number) {
@@ -361,12 +363,16 @@ function formatStream(
  * Before this was recursive, a mapping or sequence value fell through to the
  * node stringifier's `String(value)` fallback and landed in the document as
  * the literal text `[object Object]` — a silent corruption that only surfaced
- * on the next read.
+ * on the next read. Every other value becomes a plain {@link YamlScalar} and
+ * renders exactly as the value path renders it: a `bigint` bare, `undefined`
+ * as `null`.
  *
- * The two conditions with no finite rendering fail typed rather than hanging
- * or overflowing the stack: a cycle raises `CircularReference` and a graph
- * that would sit deeper than `MAX_NESTING_DEPTH` in the output document
- * raises `NestingDepthExceeded`. `depth` is measured in the stringifier's own
+ * Three conditions fail typed rather than hanging, overflowing the stack or
+ * corrupting the document: a cycle raises `CircularReference`, a graph that
+ * would sit deeper than `MAX_NESTING_DEPTH` in the output document raises
+ * `NestingDepthExceeded`, and a function or symbol — which has no YAML
+ * rendering, and whose `String()` form the value path refuses to write too —
+ * raises `UnrepresentableValue`. `depth` is measured in the stringifier's own
  * units — one per node from the document root — so the caller passes the
  * target's depth, not zero. `seen` holds
  * the ancestors of the value being lowered, so a value repeated across
@@ -411,6 +417,9 @@ function jsValueToNode(value: unknown, seen: Set<object>, depth: number): YamlNo
 		} finally {
 			seen.delete(value);
 		}
+	}
+	if (typeof value === "function" || typeof value === "symbol") {
+		throw new ModifyFailure("UnrepresentableValue", `A ${typeof value} value has no YAML representation`, 0, 0);
 	}
 	return YamlScalar.make({ value, style: "plain", offset: 0, length: 0 });
 }
@@ -879,7 +888,10 @@ export class YamlFormat {
 	 * sequence and any other non-null object as a block mapping over its own
 	 * enumerable string keys, recursively — the same lowering
 	 * {@link Yaml.stringify} applies to the same value, so `modify` and
-	 * `stringify` agree on what a given JavaScript value means. For a synthesized
+	 * `stringify` agree on what a given JavaScript value means: a `bigint`
+	 * renders bare (`a: 10`, never `a: "10"`), `null` renders as `null`, and a
+	 * function or symbol fails `UnrepresentableValue` on both paths rather
+	 * than landing in the document as its `String()` form. For a synthesized
 	 * subtree (an object/array value) only the surrounding document is
 	 * preserved byte-for-byte; the subtree carries no comments and takes the
 	 * stringifier's styles.
@@ -903,12 +915,13 @@ export class YamlFormat {
 	 * whole document, which normalises line endings to LF, applies those
 	 * options, and renders the replacement in the stringifier's styles.
 	 *
-	 * Two replacement values have no finite rendering and fail typed rather
-	 * than hanging or overflowing the stack: one containing a circular
-	 * reference (`CircularReference`) and one that would sit deeper than 256
-	 * levels in the output document (`NestingDepthExceeded`). The depth is
-	 * counted from the document root, so the same value can fit at `[]` and
-	 * fail a few keys down.
+	 * Three replacement values have no rendering and fail typed rather than
+	 * hanging, overflowing the stack or corrupting the document: one
+	 * containing a circular reference (`CircularReference`), one that would
+	 * sit deeper than 256 levels in the output document
+	 * (`NestingDepthExceeded`) and one containing a function or symbol
+	 * (`UnrepresentableValue`). The depth is counted from the document root,
+	 * so the same value can fit at `[]` and fail a few keys down.
 	 *
 	 * **Single-document contract.** A `path` carries no document index, so on
 	 * a multi-document stream there is no rule for which document it names —
