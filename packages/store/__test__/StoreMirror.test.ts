@@ -584,6 +584,36 @@ describe("rollback tombstones are decoded, never trusted", () => {
 		}),
 	);
 
+	it.effect("a corrupt tombstone met mid-run, inside migrate, is refused typed with operation migrate", () =>
+		Effect.gen(function* () {
+			const filename = freshFile();
+			const exit = yield* openStore(filename, mirrored, (store) =>
+				Effect.gen(function* () {
+					// The layer is built, so setup's `syncMirror` read a clean `_store_meta`.
+					// Roll 2 back here — it is now pending with a well-formed tombstone and
+					// no foreign row — then corrupt the tombstone and give 2 a foreign row,
+					// so the next apply has to judge it and reads the tombstone mid-run.
+					yield* store.rollback(1);
+					yield* Effect.sync(() => {
+						editMeta(filename, "UPDATE _store_meta SET value = ? WHERE key = 'rollback:2'", "{not json");
+						editMeta(
+							filename,
+							"INSERT INTO effect_sql_migrations (migration_id, name, created_at) VALUES (2, 'test_artifacts', '2026-01-01 00:00:00')",
+						);
+					});
+					return yield* store.migrate;
+				}),
+			);
+			const error = typedFailure(exit);
+			assert.instanceOf(error, StoreError);
+			// Not "setup": the refusal came from `applyPending`, through `migrate`.
+			assert.strictEqual(error.operation, "migrate");
+			assert.match(error.message, /_store_meta holds an unreadable rollback tombstone for migration 2/);
+			// Refused inside 2's transaction: nothing was recorded or re-run.
+			assert.deepStrictEqual(ownIds(filename), [1]);
+		}),
+	);
+
 	it.effect("control: the same corrupt row is harmless to a Store that mirrors and adopts nothing", () =>
 		Effect.gen(function* () {
 			const filename = yield* withTombstone();
