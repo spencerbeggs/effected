@@ -41,7 +41,7 @@ integrity:
 
 ## Tier and dependencies
 
-Boundary tier, with no `node:` import under `src/`, so it runs on Node, browsers and Cloudflare workerd, matching [`jwt`](jwt.md). There are no runtime dependencies; `peerDependencies` is `effect` alone. The backend split is its own decision: [HMAC comes from WebCrypto, digests from core `Crypto` in `R`](../decisions/crypto-backends.md).
+Boundary tier, with no `node:` import under `src/`, so it runs on Node, browsers and Cloudflare workerd, matching [`jwt`](jwt.md). There are no runtime dependencies; `peerDependencies` is `effect` alone. The backend split is its own decision: [HMAC comes from WebCrypto, digests from core `Crypto` in `R`](../decisions/crypto-backends.md). The libsodium sealed box that GitHub's secrets API needs is not here and does not come here: `tweetnacl` and `blakejs` would retier this package and `webhooks` to integrated, so [the sealed box stays in `github`](../decisions/sealed-box-home.md) until a second consumer appears, and then moves to a new package rather than a subpath of this one.
 
 ## Core-owned list
 
