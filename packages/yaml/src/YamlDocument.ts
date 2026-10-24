@@ -219,13 +219,16 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 
 	/**
 	 * Stringify this document (contents, directives and framing) as YAML.
-	 * Fails with {@link YamlStringifyError} (`NestingDepthExceeded`) on a
-	 * synthetic AST nested deeper than the stringifier's recursion budget. A
-	 * cycle introduced into a synthetic AST fails the same way: the node path
-	 * keeps no ancestor set, so the cycle is caught by the depth cap rather
-	 * than reported as `CircularReference`. Either way the failure surfaces
-	 * through the typed error channel, never as an unhandled stack-overflow
-	 * defect.
+	 * A parsed document always stringifies; the failures belong to hand-built
+	 * ASTs and surface as {@link YamlStringifyError} through the typed error
+	 * channel, never as an unhandled stack-overflow defect or as corrupted
+	 * output: a cycle in the AST fails `CircularReference` on the first
+	 * re-entry of an ancestor collection (the node path keeps the same
+	 * ancestor set the value path does), a tree nested deeper than the
+	 * stringifier's recursion budget fails `NestingDepthExceeded`, and a
+	 * scalar node holding anything but `null`, a boolean, a number, a bigint
+	 * or a string — a function, a symbol, an object — fails
+	 * `UnrepresentableValue` rather than being written as its `String()` form.
 	 * Defined in terms of {@link YamlDocument.stringifyResult} behind a
 	 * `YamlDocument.stringify` span — synchronous callers can use that variant
 	 * directly.
@@ -260,11 +263,10 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	 * primitive {@link YamlDocument.stringify} is defined in terms of, so a
 	 * synchronous host can round-trip a document parsed with
 	 * {@link YamlDocument.parseResult} without an Effect runtime. Fails with
-	 * {@link YamlStringifyError} exactly where `stringify` does: a synthetic
-	 * AST nested deeper than the stringifier's recursion budget, or one
-	 * containing a cycle, both as `NestingDepthExceeded` (the node path keeps
-	 * no ancestor set, so a cycle is caught by the depth cap, not reported as
-	 * `CircularReference`).
+	 * {@link YamlStringifyError} exactly where `stringify` does: a hand-built
+	 * AST containing a cycle (`CircularReference`), one nested deeper than the
+	 * stringifier's recursion budget (`NestingDepthExceeded`) or one whose
+	 * scalar node holds a value with no YAML form (`UnrepresentableValue`).
 	 *
 	 * @remarks
 	 * `YamlStringifyOptions.lineWidth` is not honored here, for the reason

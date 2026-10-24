@@ -241,7 +241,10 @@ surfaces are guarded, all regression-tested:
    lower it to or below the composer cap.
 3. **Stringify recursion** on both the value path and the node path, capped
    at the shared depth constant; the internal throw is materialized into a
-   typed stringify error at the facade. Both paths also refuse a value with
+   typed stringify error at the facade. Both paths also keep an ancestor set,
+   so a cycle — in a plain value or in a hand-built AST — is reported as
+   `CircularReference` on the first re-entry rather than left for the depth
+   cap to catch as `NestingDepthExceeded`. Both paths also refuse a value with
    no YAML rendering — a function or symbol, or a hand-built scalar node
    holding anything but `null`, a boolean, a number, a bigint or a string —
    as `UnrepresentableValue`. The alternative, the `String(value)` fallback

@@ -1053,11 +1053,27 @@ function stringifyNodeLines(node: YamlNode, ctx: StringifyContext, depth: number
 	if (node instanceof YamlScalar) {
 		return stringifyScalarNodeLines(node, ctx);
 	}
-	if (node instanceof YamlMap) {
-		return stringifyMapNodeLines(node, ctx, depth);
-	}
-	if (node instanceof YamlSeq) {
-		return stringifySeqNodeLines(node, ctx, depth);
+	if (node instanceof YamlMap || node instanceof YamlSeq) {
+		// Ancestor set, symmetric to the value path's `detectCircular`: a cycle
+		// in a hand-built AST (a parsed one cannot contain one — the composer
+		// expresses sharing through aliases) must pass through a collection
+		// node, so re-entering an ancestor map or seq is the cycle itself. It
+		// is reported as `CircularReference` on the first re-entry rather than
+		// left for the depth cap to catch as `NestingDepthExceeded` hundreds of
+		// levels later. The set holds ancestors only — a node repeated across
+		// siblings is stringified twice, exactly as the value path treats a
+		// shared sub-object.
+		if (ctx.seen.has(node)) {
+			throw new StringifyFailure("CircularReference", "Circular reference detected in the document AST");
+		}
+		ctx.seen.add(node);
+		try {
+			return node instanceof YamlMap
+				? stringifyMapNodeLines(node, ctx, depth)
+				: stringifySeqNodeLines(node, ctx, depth);
+		} finally {
+			ctx.seen.delete(node);
+		}
 	}
 	if (node instanceof YamlAlias) {
 		return [`*${node.name}`];
