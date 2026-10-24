@@ -23,8 +23,9 @@ when changing the pipeline seams, the error set, or the codec boundaries.
 
 `src/index.ts` is the only re-exporting module. Its full export list:
 
-- `src/ConfigCodec.ts` — `ConfigCodec` (**the interface, type-only**),
-  `ConfigCodecError`
+- `src/ConfigCodec.ts` — `ConfigCodec` (**the interface, type-only**, with the
+  merged `ConfigCodec.ErrorOf<C>` namespace helper that reads a codec value's
+  error union back for a `ConfigFile.Service` key), `ConfigCodecError`
 - `src/JsonCodec.ts`, `src/JsoncCodec.ts`, `src/YamlCodec.ts`,
   `src/TomlCodec.ts` — one free-standing codec each: `JsonCodec`, `JsoncCodec`,
   `YamlCodec`, `TomlCodec`

@@ -190,7 +190,7 @@ One install covers every format, and you still pay only for the parser you name.
 Codecs compose. `EncryptedCodec` wraps any codec with AES-GCM, and `ConfigMigration.make` wraps any codec so parsed content is brought up to the latest version. Each *widens* the error channel rather than flattening its failures into the inner codec's error, and a decorated codec plugs into `ConfigFile.layer`, `ConfigFile.testLayer` and `ConfigFile.read` like any other: their error unions widen with it. A service key names the widened error as its third type argument:
 
 ```ts
-import type { ConfigCodecError, ConfigEncryptionError, ConfigMigrationError } from "@effected/config-file";
+import type { ConfigCodec } from "@effected/config-file";
 import {
   ConfigFile,
   ConfigMigration,
@@ -217,7 +217,8 @@ const migrating = ConfigMigration.make({
 export const secret = EncryptedCodec(migrating, EncryptedCodecKey.fromPassphrase("hunter2", new Uint8Array(16)));
 
 const Settings = Schema.Struct({ port: Schema.Number });
-type SecretError = ConfigCodecError | ConfigMigrationError | ConfigEncryptionError;
+// Read back from the codec value: ConfigCodecError | ConfigMigrationError | ConfigEncryptionError.
+type SecretError = ConfigCodec.ErrorOf<typeof secret>;
 
 class SecretSettings extends ConfigFile.Service<SecretSettings, typeof Settings.Type, SecretError>()(
   "app/SecretSettings",
