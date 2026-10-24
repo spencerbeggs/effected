@@ -103,11 +103,17 @@ A `cause: Schema.Defect()` field holds whatever was thrown: an `Error`, an
 splices the cause's text therefore reads it through `Predicate.hasProperty`
 and `Predicate.isString`,[^effect-predicate] never `instanceof Error`, and
 treats an empty or whitespace-only message as none. The read walks `cause`
-links to the deepest node that carries a message, because a wrapper's text is
-the generic summary and the text underneath is the actionable detail (a
-`SqlError` says "Failed to prepare statement"; SQLite, one link down, says
-"no such table: t"),[^store-lifecycle-test] and the walk is bounded so a
-cyclic chain terminates.
+links and joins every distinct message it finds, nearest first, with a colon and a space,
+because a wrapper's text is often the generic summary and the text underneath
+is the actionable detail (a `SqlError` says "Failed to prepare statement";
+SQLite, one link down, says "no such table: t", and the error renders
+both),[^store-lifecycle-test] yet a wrapper that composes its own context
+(a remediation such as "run pnpm add --config x") must not lose it either.
+Neither innermost-wins nor nearest-wins keeps both, so the join is the one
+shape. Its two rules: a deeper text the accumulated message already contains
+is skipped, so a wrapper that spliced its cause's text does not repeat it;
+a deeper text that contains the accumulated message replaces it. The walk is
+bounded so a cyclic chain terminates.
 
 The helper is `src/internal/causeMessage.ts`, copied verbatim into every
 package that renders a cause, rather than imported: no pure zero-dependency
@@ -135,17 +141,38 @@ const messageAt = (node: unknown): string | undefined => {
   return text === undefined || text.trim() === "" ? undefined : text;
 };
 
-/** The most specific non-empty message a preserved cause carries, or `undefined` when nothing along its chain has one. */
+/**
+ * Every distinct non-empty message a preserved cause chain carries, nearest
+ * first and joined with `: `, or `undefined` when nothing along it has one.
+ *
+ * A `Schema.Defect()` field holds whatever was thrown, so the read is guarded
+ * rather than assumed: `Predicate.hasProperty` + `Predicate.isString` accepts
+ * an `Error`, a cross-realm `Error` that fails `instanceof`, a plain
+ * `{ message }` object and a thrown string alike. An empty or whitespace-only
+ * message counts as none. The walk follows `cause` links because a wrapper's
+ * text is often the generic summary and the driver's text underneath is the
+ * actionable detail, yet a wrapper that composes its own context must not
+ * lose it either; so nothing is dropped, and a deeper text the nearer one
+ * already contains is not repeated. The walk is bounded, so a cycle terminates.
+ */
 export const causeMessage = (cause: unknown): string | undefined => {
   let message: string | undefined;
   let node: unknown = cause;
   for (let depth = 0; depth < CAUSE_DEPTH && node !== undefined && node !== null; depth++) {
-    message = messageAt(node) ?? message;
+    const text = messageAt(node);
+    if (text !== undefined) {
+      if (message === undefined || text.includes(message)) message = text;
+      else if (!message.includes(text)) message = `${message}: ${text}`;
+    }
     node = Predicate.hasProperty(node, "cause") ? node.cause : undefined;
   }
   return message;
 };
 ```
+
+The shipped copies carry the same text under the kit's tab indentation and a
+leading comment naming this section as the source; `cmp` across
+`packages/*/src/internal/causeMessage.ts` must report them identical.
 
 - The helper returns `string | undefined`; the site decides the fallback.
   A `message` getter renders its summary alone when `causeMessage` returns
@@ -159,8 +186,20 @@ export const causeMessage = (cause: unknown): string | undefined => {
   falls through to `causeMessage`.
 - Every copy ships with the same `__test__/causeMessage.test.ts`: a plain
   `{ message }` object, an empty and a whitespace-only message, a thrown
-  string, a chain whose innermost node wins, a chain whose deeper nodes are
-  empty, a cycle, and a message past the depth bound.
+  string, a chain joined nearest first, a chain whose nearer node already
+  splices the deeper text (not repeated), a deeper text that contains the
+  nearer one (replaces it), a chain whose deeper nodes are empty, a cycle,
+  and a message past the depth bound.
+- Two site-local `instanceof Error` reads remain in `@effected/schemastore-cli`
+  outside the sites #1082 named, `src/AjvValidator.ts` (the ajv compile
+  catch) and `src/cli/commands/validate.ts` (the `JSON.parse` catch); both
+  are pending convergence onto the package's `causeMessage` copy. The one
+  read that stays is `REPLAY_SCRIPT` in
+  `packages/workspaces/src/ConfigDependencyHooks.ts`: it is JavaScript source
+  text run in a bare `node` subprocess with no `effect` on its module path,
+  so it cannot import `Predicate`; the parent decodes its serialized failure
+  through a `Schema` and rebuilds it as an `Error`, so every render downstream
+  of it goes through the guarded helper.
 
 [^effect-schema]: `.repos/effect/packages/effect/src/Schema.ts` —
     `TaggedError` (line ~16646) and `Error` (line ~16585) constructors.
@@ -178,6 +217,6 @@ export const causeMessage = (cause: unknown): string | undefined => {
 [^store-cause-message]: `packages/store/src/internal/causeMessage.ts` — the
     reference copy of the helper.
 [^store-lifecycle-test]: `packages/store/__test__/StoreLifecycle.test.ts` —
-    `StoreError.message carries the cause`: the driver's "Failed to prepare
-    statement" is the cause's own message and "no such table" is what
-    renders.
+    `StoreError.message carries the cause`: the direct cause's own message is
+    "Failed to prepare statement" and the rendered text is "Store setup
+    failed: Failed to prepare statement: no such table: no_such_table".
