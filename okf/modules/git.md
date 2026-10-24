@@ -10,10 +10,10 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:29:06Z
+  at: 2026-10-24T00:35:52Z
 integrity:
   generated:
-    body: 7267a9e29dee16e8
+    body: c291d39012846880
 ---
 
 # git
