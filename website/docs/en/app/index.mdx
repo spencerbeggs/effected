@@ -24,10 +24,10 @@ npm install @effected/app effect @effected/xdg @effected/store @effected/config-
 ```
 
 ```bash
-pnpm add @effected/app effect @effected/xdg @effected/store @effected/config-file
+pnpm add @effected/app effect @effected/xdg @effected/store @effected/config-file @effected/memfs
 ```
 
-Requires Node.js >=24.11.0. `dependencies` is empty: `effect` v4, [`@effected/xdg`](/xdg), [`@effected/store`](/store) and [`@effected/config-file`](/config-file) are all **peer** dependencies, and that is load-bearing. Each of the three appears in this package's public signature types, so a second copy of any of them in your graph would produce two distinct service tags for one concept and the layer would silently fail to satisfy the requirement. Single copies are the point, which is exactly what a peer declares.
+Requires Node.js >=24.11.0. `dependencies` is empty: `effect` v4, [`@effected/xdg`](/xdg), [`@effected/store`](/store), [`@effected/config-file`](/config-file) and [`@effected/memfs`](/memfs) (the in-memory filesystem behind `App.layerTest`) are all **peer** dependencies, and that is load-bearing. Each of them appears in this package's public signature types, so a second copy of any of them in your graph would produce two distinct service tags for one concept and the layer would silently fail to satisfy the requirement. Single copies are the point, which is exactly what a peer declares.
 
 The package is integrated tier by inheritance, not by anything it does — `@effected/store` reaches `@effect/sql-sqlite-node`, and that propagates. It performs no IO the three packages beneath it do not already perform.
 
@@ -125,7 +125,7 @@ Call the factory inline at two provide sites and you open **two databases**: two
 
 ## Testing: one line, no platform package
 
-`App.layerTest` is the hermetic control plane — fixed XDG paths, `:memory:` databases, and the platform layers provided *internally* rather than merged into the output. A consumer's first test needs no platform import at all:
+`App.layerTest` is the hermetic control plane — fixed XDG paths, `:memory:` databases, and an in-memory filesystem from `@effected/memfs`, all provided by the layer itself. A consumer's first test needs no platform import at all:
 
 ```ts
 import { App } from "@effected/app";
@@ -140,7 +140,7 @@ layer(App.layerTest({ namespace: "myapp" }))("app", (it) => {
 });
 ```
 
-The documented limit, stated up front so nobody finds it in a debugger: code paths that actually exercise `ensure*` **die** against the stub filesystem `layerTest` provides. It is for testing logic that *uses* the control plane. A test of real directory behavior uses `App.layer` against a temp-directory `HOME`, which is what this package's own integration suite does.
+The filesystem is real, just in memory: every `AppDirs.ensure*` creates directories on the volume, `files` seeds it, and the `MemoryFileSystem.Volume` service reads back what the program wrote. `FileSystem` and `Path` come out of the layer beside the four services, so an `AppConfig.layer` composes over it with a single `Layer.provide`, on the same volume. The databases are the exception — `:memory:` here, and opened through the native SQLite binding under `App.layer` — so an end-to-end test of `App.layer` still runs against a temp-directory `HOME`, which is what this package's own integration suite does.
 
 ## Catching what comes out
 

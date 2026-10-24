@@ -52,6 +52,7 @@
 		"@effected/config-file": "workspace:^",
 		"@effected/glob": "workspace:^",
 		"@effected/jsonc": "workspace:^",
+		"@effected/memfs": "workspace:^",
 		"@effected/store": "workspace:^",
 		"@effected/toml": "workspace:^",
 		"@effected/walker": "workspace:^",
