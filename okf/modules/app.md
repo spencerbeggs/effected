@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/app/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-05T17:44:20Z
+  at: 2026-10-24T01:01:42Z
 integrity:
   generated:
-    body: d38fd91cf9820386
+    body: 2f41e48a64e3ae62
 ---
 
 # app
@@ -46,14 +46,23 @@ package sits at the top of the dependency graph.
 external runtime dependencies of its own** and does no IO the three
 packages beneath it do not already do — its tier is inherited, not
 earned.[^app-package-json] `peerDependencies` is `effect` plus
-`@effected/xdg`, `@effected/store` and `@effected/config-file`;
-`dependencies` is empty. The three workspace edges are **peers, not
-regular dependencies**, because each appears in this package's public
-signature types — a second copy of any of them in a consumer's graph
-would mint two distinct service tags for one concept and the layer would
-silently fail to satisfy the requirement. Direction is acyclic and
-one-way: app → {xdg, store, config-file}. `@effect/platform-node` is a
-devDependency for the real-filesystem integration tests only.
+`@effected/xdg`, `@effected/store`, `@effected/config-file` and
+`@effected/memfs` (and the closure peers those require); `dependencies`
+is empty. The workspace edges are **peers, not regular dependencies**,
+because each appears in this package's public signature types — a second
+copy of any of them in a consumer's graph would mint two distinct service
+tags for one concept and the layer would silently fail to satisfy the
+requirement. `memfs` earns the edge through `App.layerTest`, whose output
+names `MemoryFileSystemVolume` and whose `MemoryFileSystem.Volume` key a
+consumer's test resolves from its own import: a shared-instance contract,
+so a peer. It is a runtime edge — `layerTest` is shipped API — and it is
+tier-neutral under [the dependency policy](../conventions/dependency-policy.md):
+memfs is pure, with zero `@effected/*` edges by
+[law](../decisions/memfs-zero-effected-edges.md), so R1 is untouched, and
+this package is integrated already, so R2 adds nothing. Direction is
+acyclic and one-way: app → {xdg, store, config-file, memfs}.
+`@effect/platform-node` is a devDependency for the real-filesystem
+integration tests only.
 
 ## Module layout
 
@@ -158,17 +167,36 @@ scope, and `Command.provide` on only the commands that use it.
 
 ### App.layerTest — the hermetic control plane
 
-`App.layerTest(options)` returns the same four services with `R =
-never`: synthetic XDG paths and `:memory:` databases, with `Path.layer`
-and `FileSystem.layerNoop` provided internally (satisfied, not exposed).
-A consumer's first test is one line and needs no platform package. This
-is sound because `layerTest` **satisfies** those requirements rather than
-imposing them, so `R` is `never` by construction and not by a cast. The
-documented limit: code paths that actually exercise `ensure*` **die**
-against `FileSystem.layerNoop` — it is a stub layer, not a working
-filesystem — so a test of real directory behaviour uses `App.layer` with
-a temp-directory `HOME` instead, which is what the integration suite
-does.
+`App.layerTest(options)` returns the four services **and the platform
+they run on** with `R = never`: synthetic XDG paths (or `options.paths`),
+`:memory:` databases, and `Path.layer` plus a [memfs](memfs.md) volume
+seeded from `options.files`, all `provideMerge`d so the output is `Xdg |
+AppDirs | Store | Cache | FileSystem | Path | MemoryFileSystemVolume`
+(the `AppTestServices` alias). A consumer's first test is one line and
+needs no platform package. This is sound because `layerTest`
+**satisfies** the platform requirements rather than imposing them, so
+`R` is `never` by construction and not by a cast.
+
+The volume is a real filesystem, so every `AppDirs.ensure*` creates
+directories on it and nothing is fabricated — an unseeded path is
+honestly absent. The platform is exposed rather than hidden so that
+`AppConfig.layer`, which needs `FileSystem | Path | AppDirs | Xdg`,
+composes over `layerTest` with one `Layer.provide` on the same volume:
+a config body seeded under the namespace's config directory loads, a
+`save` lands there, and `MemoryFileSystem.Volume` reads it back. One
+`layerTest(...)` call is one volume, shared by a `layer(...)` block's
+tests. The databases stay off it — `Store` and `Cache` open SQLite
+through the native binding, which never sees `FileSystem` — so
+`AppStore.layer`/`AppCache.layer` must **never** be composed over
+`layerTest` (their `ensure*` passes on the volume and the binding then
+opens the same path on the host: on the synthetic defaults that path
+does not exist, so the layer fails with a `StoreError`; with real
+`paths` it would write onto the host disk), and a test of `App.layer`
+end to end
+still uses a temp-directory `HOME`, which is what the integration suite
+does. Before this, `layerTest` provided `FileSystem.layerNoop`, every
+`ensure*` died, and the limit was documented rather than fixed —
+against [the memfs-over-layerNoop decision](../decisions/memfs-over-layernoop.md).
 
 ### AppConfig — the xdg-flavored ConfigFile preset
 
@@ -191,6 +219,16 @@ bearing decisions:
 - **`parseOptions` passes straight through to config-file**, unchanged
   and undefaulted, so an application can turn on excess-property
   rejection here without dropping to `ConfigFile.layer`.
+- **The codec's error channel is threaded, not flattened.**
+  `AppConfigOptions` and `AppConfig.layer` are generic over the codec
+  error `CE`, inferred from `codec` and defaulting to `ConfigCodecError`,
+  exactly as config-file's own options are. A decorated codec —
+  `EncryptedCodec`, `ConfigMigration.make` — therefore reaches the preset
+  without a cast, the `ConfigFile.Service` key must name the widened
+  union (`ConfigCodec.ErrorOf<typeof codec>` reads it back), and the
+  decorator's failure arrives on the service's own `load`/`save` error
+  types. Typing `codec` as the bare `ConfigCodec` was the defect that
+  once kept both decorators out of the app edge.
 - **The codec stays a required parameter.** Defaulting it, or inferring
   one from the filename's extension, would hard-code a format choice
   into a composition layer — not this package's decision. The caller
@@ -278,8 +316,10 @@ properties: a fresh namespace with no pre-existing directories builds
 without a defect; an unwritable ancestor surfaces a typed `AppDirsError`,
 never a die; a config file lands under the namespace passed to
 `App.layer` with none passed to `AppConfig` at all (the namespace-once
-property); `App.layerTest` works with zero platform layers; and a caller
-resolver outranks the XDG search path, proven with both files present
+property); `App.layerTest` works with zero platform layers, its `ensure*` members
+create directories on the memfs volume it exposes, and `AppConfig.layer`
+composed over it loads a `files`-seeded config and saves back to the
+same volume; and a caller resolver outranks the XDG search path, proven with both files present
 and different bodies so appending instead of prepending fails the
 assertion. The filename guard is exercised through a shared matrix
 (`__test__/filenameGuard.ts`) registered once per suite against each of
@@ -292,10 +332,10 @@ keyed stores coexist with disjoint tables and ledgers.
 
 `savvy.build.ts` carries **no suppression and needs none** — the package
 defines no class factories of its own, so there is no synthesized
-`_base` symbol to suppress. Three workspace peers mean the `prepare`
-script is load-bearing: `xdg`, `store` and `config-file` link at their
-built output and must be built before this package's tests resolve them
-in a fresh checkout. Cross-package `{@link}` references resolve to
+`_base` symbol to suppress. The workspace peers mean the `prepare`
+script is load-bearing: `xdg`, `store`, `config-file` and `memfs` link at
+their built output and must be built before this package's tests resolve
+them in a fresh checkout. Cross-package `{@link}` references resolve to
 `ae-unresolved-link` — API Extractor resolves links within a package's
 own model only — so the house-safe spelling for a cross-package
 reference is a plain backticked name, never a `{@link}`. Gate on a
@@ -326,5 +366,6 @@ consumer exercises this composition against a real filesystem, including
 `Store.rollback` against a real on-disk database.
 
 [^app-package-json]: `packages/app/package.json` — `peerDependencies`
-    lists `@effected/config-file`, `@effected/store`, `@effected/xdg` and
-    `effect`; no `dependencies` block.
+    lists `@effected/config-file`, `@effected/memfs`, `@effected/store`,
+    `@effected/xdg`, their closure peers and `effect`; no `dependencies`
+    block.

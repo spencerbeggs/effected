@@ -1,5 +1,6 @@
 import type {
 	ConfigCodec,
+	ConfigCodecError,
 	ConfigEvents,
 	ConfigEventsShape,
 	ConfigFileShape,
@@ -21,9 +22,15 @@ import { badFilename } from "./internal/filename.js";
  * `never`, so a chain of built-in resolvers — whose requirements are already in
  * this layer's `R` — never has to be named.
  *
+ * `CE` is the codec's error channel, inferred from `codec`. It defaults to
+ * `ConfigCodecError`, so a built-in codec never has to name it; a decorated
+ * codec (`EncryptedCodec`, `ConfigMigration.make`) widens it, and the widened
+ * union is forwarded to `ConfigFile.layer` and so into the service's own
+ * method error types.
+ *
  * @public
  */
-export interface AppConfigOptions<A, I, RR = never> {
+export interface AppConfigOptions<A, I, RR = never, CE = ConfigCodecError> {
 	/**
 	 * The config file's name within the app's config directory.
 	 *
@@ -44,8 +51,13 @@ export interface AppConfigOptions<A, I, RR = never> {
 	 * composition layer, which is not this package's decision to make. The
 	 * named import (`JsonCodec`, `TomlCodec`, …) is also what keeps the other
 	 * engines out of the consumer's bundle.
+	 *
+	 * Any `ConfigCodec<CE>`, decorated ones included: an `EncryptedCodec` or a
+	 * `ConfigMigration.make` codec goes straight in, and the `tag`'s
+	 * `ConfigFile.Service` key must name the same `CE` as its third type
+	 * argument — `ConfigCodec.ErrorOf<typeof codec>` reads it back.
 	 */
-	readonly codec: ConfigCodec;
+	readonly codec: ConfigCodec<CE>;
 	/** How several discovered sources become one value. Default `MergeStrategy.firstMatch`. */
 	readonly strategy?: MergeStrategyShape<A>;
 	/** An optional caller-supplied check run after schema decoding. */
@@ -174,16 +186,24 @@ export interface AppConfigOptions<A, I, RR = never> {
 }
 
 // Implementation of AppConfig.layer; the public contract lives on the static.
-// `tag` is pinned by three intersected parts. `Context.Key<Self, S>` captures the key's real shape;
-// `Context.Key<Self, ConfigFileShape<A>>` keeps `A` inferable from the key, which a bare
-// `MergeStrategy.firstMatch()` as `strategy` needs; the conditional only checks (`NoInfer`), rejecting a
-// shape wider than ConfigFileShape<A>. It cannot see through method-syntax parameter bivariance: a member
-// redeclared as a method with a wider parameter still passes.
-const layer = <Self, A, I, RR = never, S extends ConfigFileShape<A> = ConfigFileShape<A>>(
+// `tag` is pinned by three intersected parts, exactly as `ConfigFile.layer` pins its own. `Context.Key<Self, S>`
+// captures the key's real shape; `Context.Key<Self, ConfigFileShape<A, CE>>` keeps `A` (and `CE`) inferable
+// from the key, which a bare `MergeStrategy.firstMatch()` as `strategy` needs; the conditional only checks
+// (`NoInfer`), rejecting a shape wider than ConfigFileShape<A, CE> — and a key whose CE is narrower than the
+// codec's. It cannot see through method-syntax parameter bivariance: a member redeclared as a method with a
+// wider parameter still passes.
+const layer = <
+	Self,
+	A,
+	I,
+	RR = never,
+	CE = ConfigCodecError,
+	S extends ConfigFileShape<A, CE> = ConfigFileShape<A, CE>,
+>(
 	tag: Context.Key<Self, S> &
-		Context.Key<Self, ConfigFileShape<A>> &
-		([ConfigFileShape<NoInfer<A>>] extends [S] ? unknown : never),
-	options: AppConfigOptions<A, I, RR>,
+		Context.Key<Self, ConfigFileShape<A, CE>> &
+		([ConfigFileShape<NoInfer<A>, NoInfer<CE>>] extends [S] ? unknown : never),
+	options: AppConfigOptions<A, I, RR, CE>,
 ): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | AppDirs | Xdg | RR> =>
 	Layer.unwrap(
 		Effect.gen(function* () {
@@ -273,12 +293,21 @@ export class AppConfig {
 	 * `App.layer` and `"my-app"` to its config preset cannot happen.
 	 *
 	 * `tag` is a `ConfigFile.Service` key — its service type
-	 * `ConfigFileShape<A>` for the schema's `A`. A key whose shape adds members
-	 * (`ConfigFileShape<A> & { … }`) is a compile error, reported as an argument
-	 * "not assignable to parameter of type 'never'", because this layer could
-	 * not supply them. The check cannot see through method-syntax parameter
-	 * bivariance: a member redeclared as a method with a wider parameter still
-	 * compiles.
+	 * `ConfigFileShape<A, CE>` for the schema's `A` and the codec's error `CE`.
+	 * A key whose shape adds members (`ConfigFileShape<A> & { … }`) is a compile
+	 * error, reported as an argument "not assignable to parameter of type
+	 * 'never'", because this layer could not supply them. The check cannot see
+	 * through method-syntax parameter bivariance: a member redeclared as a
+	 * method with a wider parameter still compiles.
+	 *
+	 * The codec's error is part of the checked shape. A decorated codec —
+	 * `EncryptedCodec`, `ConfigMigration.make` — is accepted as-is, and the key
+	 * must then name the widened union as `ConfigFile.Service`'s third type
+	 * argument (`ConfigCodec.ErrorOf<typeof codec>` reads it off the value); a
+	 * key declared over the default `ConfigCodecError` alone rejects it, since
+	 * its methods would otherwise fail with an error their type never names.
+	 * The union is forwarded to `ConfigFile.layer` unchanged, so `load`, `save`
+	 * and the rest carry the decorator's failure on their own error channels.
 	 *
 	 * This is a layer-returning function: bind the result to a `const` and reuse
 	 * that binding, or two provide sites mint two independent service instances.
@@ -299,6 +328,30 @@ export class AppConfig {
 	 * 	filename: "config.json",
 	 * 	schema: Settings,
 	 * 	codec: JsonCodec,
+	 * });
+	 * ```
+	 *
+	 * @example
+	 * A decorated codec, with the key naming the codec's own error union:
+	 * ```ts
+	 * import { AppConfig } from "@effected/app";
+	 * import type { ConfigCodec } from "@effected/config-file";
+	 * import { ConfigFile, EncryptedCodec, EncryptedCodecKey, JsonCodec } from "@effected/config-file";
+	 * import { Schema } from "effect";
+	 *
+	 * class Secrets extends Schema.Class<Secrets>("Secrets")({ token: Schema.String }) {}
+	 *
+	 * const SecretsCodec = EncryptedCodec(JsonCodec, EncryptedCodecKey.fromPassphrase("hunter2", new Uint8Array(16)));
+	 *
+	 * // ConfigCodecError | ConfigEncryptionError, read back from the codec.
+	 * class SecretsFile extends ConfigFile.Service<SecretsFile, Secrets, ConfigCodec.ErrorOf<typeof SecretsCodec>>()(
+	 * 	"myapp/Secrets",
+	 * ) {}
+	 *
+	 * const SecretsLive = AppConfig.layer(SecretsFile, {
+	 * 	filename: "secrets.enc",
+	 * 	schema: Secrets,
+	 * 	codec: SecretsCodec,
 	 * });
 	 * ```
 	 */

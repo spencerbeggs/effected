@@ -16,10 +16,10 @@ npm install @effected/app effect @effected/xdg @effected/store @effected/config-
 ```
 
 ```bash
-pnpm add @effected/app effect @effected/xdg @effected/store @effected/config-file
+pnpm add @effected/app effect @effected/xdg @effected/store @effected/config-file @effected/memfs
 ```
 
-Requires Node.js >=24.11.0. Note that `effect` and the three `@effected/*` packages are **peer** dependencies, not regular ones — each appears in this package's public types, so your project must hold exactly one copy of each. Install them alongside `@effected/app`, as above. You will also want a platform package to supply the filesystem at the edge:
+Requires Node.js >=24.11.0. Note that `effect` and the `@effected/*` packages are **peer** dependencies, not regular ones — each appears in this package's public types, so your project must hold exactly one copy of each. Install them alongside `@effected/app`, as above. You will also want a platform package to supply the filesystem at the edge:
 
 ```bash
 pnpm add @effect/platform-node

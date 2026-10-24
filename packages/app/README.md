@@ -36,7 +36,7 @@ npm install @effected/app effect @effected/xdg @effected/store @effected/config-
 ```
 
 ```bash
-pnpm add @effected/app effect @effected/xdg @effected/store @effected/config-file
+pnpm add @effected/app effect @effected/xdg @effected/store @effected/config-file @effected/memfs
 ```
 
 Requires Node.js >=24.11.0.
@@ -285,7 +285,7 @@ const where = AppStore.location(options); // Effect<string, never, AppDirs | Pat
 
 ## Testing: one line, no platform package
 
-`App.layerTest` is the hermetic control plane — fixed XDG paths, `:memory:` databases, and the platform layers provided *internally* rather than merged into the output. A consumer's first test needs no platform import at all:
+`App.layerTest` is the hermetic control plane — fixed XDG paths, `:memory:` databases, and an in-memory filesystem from `@effected/memfs`, all provided by the layer itself. A consumer's first test needs no platform import at all:
 
 ```ts
 import { App } from "@effected/app";
@@ -300,7 +300,7 @@ layer(App.layerTest({ namespace: "myapp" }))("app", (it) => {
 });
 ```
 
-The documented limit, stated up front so nobody finds it in a debugger: code paths that actually exercise `ensure*` **die** against the stub filesystem `layerTest` provides. It is for testing logic that *uses* the control plane. Real directory behavior is tested through `App.layer` against a temp-directory `HOME`, which is what this package's own integration suite does.
+The filesystem is real, just in memory: every `AppDirs.ensure*` creates directories on the volume, `files` seeds it (a config body under `/home/test/.config/<namespace>/` is what an `AppConfig.layer` composed over the test layer loads), and the `MemoryFileSystem.Volume` service reads back what the program wrote. `FileSystem` and `Path` come out of the layer beside the four services, so `AppConfig.layer` composes over it with a single `Layer.provide` on the same volume. The databases are the exception — they are `:memory:` here and open through the native SQLite binding under `App.layer`, so do not compose `AppStore.layer` or `AppCache.layer` over the test layer — on the synthetic defaults the binding fails to open a path that does not exist on the host (a `StoreError`), and with real `paths` it would write onto the host disk; an end-to-end test of `App.layer` runs against a temp-directory `HOME`, which is what this package's own integration suite does.
 
 ## Errors
 
@@ -345,7 +345,7 @@ Provide it beneath the stack and every span the kit's packages already emit — 
 
 - `App.layer` — the control plane: `Xdg`, `AppDirs`, `Store` and `Cache` from one call, with only `FileSystem` and `Path` left for the platform layer to supply.
 - `App.layerDirs` — `Xdg` and `AppDirs` alone, opening no database: directories everywhere, databases attached only where they are used.
-- `App.layerTest` — the same four services, hermetic: synthetic XDG paths, `:memory:` databases, no platform package required.
+- `App.layerTest` — the same four services plus the in-memory `FileSystem`, `Path` and `MemoryFileSystem.Volume` they run on, hermetic: synthetic XDG paths, `:memory:` databases, a seedable memfs volume, no platform package required.
 - `AppStore.layer` / `AppCache.layer` — the state-directory and cache-directory databases on their own, each ensuring its directory before it opens the file.
 - `AppStore.layerAs` / `AppCache.layerAs` — an additional database under a service key you define, with its own file, migrations and ledger.
 - `AppConfig.layer` — `@effected/config-file` wired to xdg's resolver chain and save path, with the namespace read from the ambient `AppDirs` and the codec named by you.

@@ -100,7 +100,7 @@ const load = Effect.gen(function* () {
 });
 ```
 
-Three details earn their place here. The `codec` is **required** — `TomlCodec` is a named import, and that import is what keeps the JSON, JSONC and YAML engines out of your bundle; the layer will not guess a format from the `.toml` extension. `native` defaults to `true` (probing an OS-native directory a user may have written to is a cheap courtesy), and passing `false` drops that rung. And `loadOrDefault` returns the default *as-is* — it is trusted caller input, so neither the schema nor a `validate` hook runs against it.
+Three details earn their place here. The `codec` is **required** — `TomlCodec` is a named import, and that import is what keeps the JSON, JSONC and YAML engines out of your bundle; the layer will not guess a format from the `.toml` extension. It can be a decorated codec too: `AppConfig.layer` is generic over the codec's error, so an `EncryptedCodec` or a `ConfigMigration.make` codec goes straight in, provided the `ConfigFile.Service` key names the widened union as its third type argument — `ConfigCodec.ErrorOf<typeof codec>` reads it off the codec value, and a key declared without it is a compile error rather than a method that fails with an error its type never mentions. `native` defaults to `true` (probing an OS-native directory a user may have written to is a cheap courtesy), and passing `false` drops that rung. And `loadOrDefault` returns the default *as-is* — it is trusted caller input, so neither the schema nor a `validate` hook runs against it.
 
 Writing config back is a read-modify-write that never clobbers a concurrent edit:
 
@@ -255,7 +255,7 @@ Because the channel is typed, dropping any one of those tags is a compile error 
 
 ## Testing the control plane
 
-`App.layerTest` is the hermetic plane: fixed XDG paths, `:memory:` databases, and the platform layers provided *internally*, so a test needs no platform import and `R` is `never` by construction. That makes a first test one line of wiring:
+`App.layerTest` is the hermetic plane: fixed XDG paths, `:memory:` databases, and an in-memory filesystem from `@effected/memfs`, so a test needs no platform import and `R` is `never` by construction. That makes a first test one line of wiring:
 
 ```ts
 import { App } from "@effected/app";
@@ -275,7 +275,7 @@ layer(App.layerTest({ namespace: "release" }))("release control plane", (it) => 
 });
 ```
 
-Two things to keep in mind. First, the documented limit: code paths that actually exercise `ensure*` **die** against the stub filesystem `layerTest` provides — it is for testing logic that *uses* the plane, not directory behavior. A test of real directory creation uses `App.layer` against a temp-directory `HOME`, which is what this package's own integration suite does. Second, cache expiry reads Effect's `Clock`, so TTL behavior is deterministic under `@effect/vitest`'s `TestClock` — advance the clock instead of sleeping, and an entry's expiry is exact.
+Three things to keep in mind. First, the filesystem is a real memfs volume: `ensure*` creates directories on it, `files: { "/home/test/.config/release/config.json": "…" }` seeds it, and `yield* MemoryFileSystem.Volume` reads back what was written. The layer exposes `FileSystem` and `Path` beside the four services, so `AppConfig.layer` composes over it with one `Layer.provide` and loads the seeded file. Second, the databases are not on that volume — they are `:memory:` here and open through the native SQLite binding under `App.layer` — so do not compose `AppStore.layer` or `AppCache.layer` over `layerTest` (the binding opens the same path on the host: on the synthetic defaults it does not exist and the layer fails with a `StoreError`; with real `paths` it would write onto the host disk), and test `App.layer` end to end against a temp-directory `HOME`, which is what this package's own integration suite does. Third, cache expiry reads Effect's `Clock`, so TTL behavior is deterministic under `@effect/vitest`'s `TestClock` — advance the clock instead of sleeping, and an entry's expiry is exact.
 
 ## Next steps
 

@@ -70,3 +70,40 @@ export interface ConfigCodec<E = ConfigCodecError> {
 	/** Turn a document back into file content. */
 	readonly stringify: (value: unknown) => Effect.Effect<string, E>;
 }
+
+/**
+ * Type-level helpers over the `ConfigCodec` interface.
+ *
+ * @public
+ */
+export declare namespace ConfigCodec {
+	/**
+	 * The error channel of a codec value, read back from its type.
+	 *
+	 * @remarks
+	 * A decorated codec's error union is already on the value —
+	 * `EncryptedCodec(...)` over `ConfigMigration.make(...)` is a
+	 * `ConfigCodec<ConfigCodecError | ConfigEncryptionError | ConfigMigrationError>`
+	 * — and a `ConfigFile.Service` key has to name the same union as its third
+	 * type argument. Spelling it out by hand drifts the moment the codec
+	 * changes; `ConfigCodec.ErrorOf<typeof codec>` cannot.
+	 *
+	 * Anything that is not a `ConfigCodec` resolves to `never`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ConfigCodec, ConfigFile, ConfigMigration, EncryptedCodec, EncryptedCodecKey, JsonCodec } from "@effected/config-file";
+	 *
+	 * const codec = EncryptedCodec(
+	 * 	ConfigMigration.make({ codec: JsonCodec, migrations: [] }),
+	 * 	EncryptedCodecKey.fromPassphrase("hunter2", new Uint8Array(16)),
+	 * );
+	 *
+	 * // Stays in sync with the codec: ConfigCodecError | ConfigMigrationError | ConfigEncryptionError.
+	 * class Secrets extends ConfigFile.Service<Secrets, { port: number }, ConfigCodec.ErrorOf<typeof codec>>()(
+	 * 	"app/Secrets",
+	 * ) {}
+	 * ```
+	 */
+	type ErrorOf<C> = C extends ConfigCodec<infer E> ? E : never;
+}

@@ -8,7 +8,7 @@
  * @packageDocumentation
  */
 
-export type { AppError, AppOptions, AppTestOptions } from "./App.js";
+export type { AppError, AppOptions, AppTestOptions, AppTestServices } from "./App.js";
 export { App } from "./App.js";
 export type { AppCacheOptions } from "./AppCache.js";
 export { AppCache } from "./AppCache.js";

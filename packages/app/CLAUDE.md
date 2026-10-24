@@ -26,14 +26,20 @@ Integrated by **R2 alone**: `@effected/store` is tier 3 (through
 runtime dependencies of its own** and does no IO the three packages beneath it
 do not already do. Its tier is inherited, not earned.
 
-`peerDependencies` is `effect` plus `@effected/xdg`, `@effected/store` and
-`@effected/config-file` (each `workspace:^`, so a published patch floats,
-mirrored into `devDependencies` as the plain `workspace:*` — the two
-specifiers now deliberately differ).
+`peerDependencies` is `effect` plus `@effected/xdg`, `@effected/store`,
+`@effected/config-file` and `@effected/memfs` (each `workspace:^`, so a
+published patch floats, mirrored into `devDependencies` as the plain
+`workspace:*` — the two specifiers now deliberately differ), plus the closure
+peers those packages require.
 They are **peers, not regular dependencies**, because each appears in this
 package's public signature types — a second copy of `AppDirs` or `Store` in a
 consumer's graph would mint two service tags for one concept and the layer would
-silently fail to satisfy the requirement.
+silently fail to satisfy the requirement. `memfs` is the same case through
+`App.layerTest`, whose output names `MemoryFileSystemVolume` and whose `Volume`
+key a test resolves from its own `@effected/memfs` import. It is a **runtime**
+edge, not a dev one — `layerTest` is shipped API — and it costs nothing in tier:
+memfs is pure (effect-only, zero `@effected/*` edges by law) and this package is
+already integrated through `store`, so R1–R3 are untouched.
 
 **Nothing may depend on `@effected/app`.** A library taking an application
 control plane drags tier 3 into its consumers under R2 — the leak the taxonomy
@@ -132,12 +138,22 @@ composition defect; do not reorder the two.
   removed; `validate` cannot, because it runs after decoding has already dropped
   the excess keys. Absent = core's `"ignore"`, so it is additive.
 - **`AppConfig.layer`'s key is pinned against wider shapes**, with
-  the same conditional as `layerAs` (`S extends ConfigFileShape<A>`, defaulted,
-  so explicit four-argument calls still compile). Before, a class key over
-  `ConfigFileShape<A> & { extra }` was accepted. `ConfigFile.Service` keys —
-  every caller in the repo and in reposets — are unaffected.
+  the same conditional as `layerAs` (`S extends ConfigFileShape<A, CE>`,
+  defaulted, so explicit four-argument calls still compile). Before, a class
+  key over `ConfigFileShape<A> & { extra }` was accepted. `ConfigFile.Service`
+  keys — every caller in the repo and in reposets — are unaffected.
   `@effected/config-file`'s own `ConfigFile.layer` / `testLayer` carry the same
   pin.
+- **The codec error `CE` is threaded, never flattened.** `AppConfigOptions<A, I,
+  RR, CE>` types `codec` as `ConfigCodec<CE>` (default `ConfigCodecError`, so a
+  built-in codec never names it) and `AppConfig.layer` forwards `CE` to
+  `ConfigFile.layer`, so a decorated codec (`EncryptedCodec`,
+  `ConfigMigration.make`) goes straight in and the key must name the widened
+  union — `ConfigCodec.ErrorOf<typeof codec>` reads it off the value. **Never
+  type `codec` as the bare `ConfigCodec` again**: that was the defect that kept
+  both decorators out of the app preset without a cast.
+  `__test__/AppConfigDecoratedCodec.test.ts` pins it, mirroring config-file's
+  `DecoratedCodecComposition.test.ts`.
 - **The codec stays required** on `AppConfigOptions` — never defaulted, never
   inferred from the filename's extension. Hard-coding a *format* choice into a
   composition layer is exactly what `XdgFullLive` was killed for, and the named
@@ -231,24 +247,46 @@ independent `CacheEvent` PubSubs whose subscribers each see half the events.
 of any example — this is the package where an application is most likely to
 compose the same layer twice.
 
-## App.layerTest and its documented limit
+## App.layerTest runs on a memfs volume
 
-`layerTest` provides `Path.layer` and `FileSystem.layerNoop` **internally** via
-`Layer.provide` — not merged into the output, not exposed — over
-`Xdg.layerFrom` on synthetic paths and `:memory:` databases. A consumer's first
-test is one line and needs **no platform package**. This is sound because the
-layer *satisfies* those requirements rather than imposing them; `R` is `never`
-by construction, not by a cast.
+`layerTest` is `Xdg.layerFrom` on synthetic paths (or `options.paths`),
+`:memory:` databases, and `Path.layer` plus
+`MemoryFileSystem.layerWith(options.files)` **merged into the output**: it
+provides `Xdg | AppDirs | Store | Cache | FileSystem | Path |
+MemoryFileSystemVolume` (the `AppTestServices` alias) with `R = never`. A
+consumer's first test is one line and needs **no platform package**. This is
+sound because the layer *satisfies* the platform requirements rather than
+imposing them; `R` is `never` by construction, not by a cast.
 
-**The limit:** code paths that actually exercise `ensure*` **die** against
-`FileSystem.layerNoop` — it is a stub, not a working filesystem. `layerTest` is
-for testing logic that *uses* the control plane. Real directory behaviour —
-the `ensure*` members — is tested by composing `AppDirs.layer` over
-`@effected/memfs` (as `@effected/xdg`'s own `AppDirs` suite does), never by
-stubbing `FileSystem.layerNoop` better. The databases cannot follow: `Store`
-and `Cache` open SQLite files through the native binding, which never sees the
-`FileSystem` service, so `App.layer` end to end still runs against a
-temp-directory `HOME` — which is what the integration suite does.
+Three properties follow, and the tests pin each:
+
+- **`ensure*` works.** Every `AppDirs.ensure*` creates real directories on
+  the volume, and nothing is fabricated — an unseeded path is honestly
+  absent. The kit rule is that a `FileSystem` double is `@effected/memfs`,
+  never a hand-rolled `layerNoop`; `layerTest` once provided
+  `FileSystem.layerNoop`, so every `ensure*` died, and that limit was
+  documented in four places instead of fixed (#1077).
+- **The platform is exposed, on purpose.** `AppConfig.layer` needs
+  `FileSystem | Path | AppDirs | Xdg`; with all four coming out of
+  `layerTest`, the preset composes over it with ONE `Layer.provide`, on the
+  SAME volume the directories live on. `files` seeds that volume (a config
+  body under `/home/test/.config/<ns>/` loads), and `MemoryFileSystem.Volume`
+  reads back what the program wrote, synchronously.
+- **One `layerTest(...)` call is one volume.** Under `@effect/vitest`'s
+  `layer(...)` the block shares it, so tests see each other's writes; a clean
+  filesystem is another `layerTest` call or another block.
+
+**The databases stay off the volume.** `Store`/`Cache` are `:memory:` here,
+and under `App.layer` they open SQLite through the native binding, which never
+sees the `FileSystem` service. **Never compose `AppStore.layer` /
+`AppCache.layer` over `layerTest`**: `ensure*` succeeds on the volume, then
+the binding opens the same path on the host. On the synthetic defaults
+`/home/test/...` does not exist there, so the layer fails with a `StoreError`
+(`operation: "setup"`) — `App.test.ts` pins that — and with real `paths` it
+would write a database onto the host disk. The `layerNoop` die used to make
+that mistake fail loudly at `ensure*`; now the TSDoc and that test have to. `App.layer`
+end to end still runs against a temp-directory `HOME`, which is what the
+integration suite does.
 
 The unit suites follow the same rule. `AppConfig.test.ts` seeds a memfs volume
 with real config bodies and asserts saves on a pinned handle's volume;
@@ -271,7 +309,7 @@ pnpm build --filter @effected/app  # from the repo root
 - `savvy.build.ts` carries **no `_base` suppression** — this package defines no
   class factories of its own, so there is nothing to suppress. Do not add one
   speculatively.
-- Three workspace peers mean the **`prepare` script is load-bearing**: `xdg`,
-  `store` and `config-file` link at their `dist/dev/pkg` and must be built before
-  this package's tests resolve them in a fresh checkout.
+- The workspace peers mean the **`prepare` script is load-bearing**: `xdg`,
+  `store`, `config-file` and `memfs` link at their `dist/dev/pkg` and must be
+  built before this package's tests resolve them in a fresh checkout.
 - Never run `node savvy.build.ts --target prod` directly.

@@ -1,8 +1,11 @@
+import type { MemoryFileSystemSeed, MemoryFileSystemVolume } from "@effected/memfs";
+import { MemoryFileSystem } from "@effected/memfs";
 import type { CacheError, CacheOptions, StoreError, StoreMigrationError, StoreOptions } from "@effected/store";
 import { Cache, Store } from "@effected/store";
 import type { AppDirsError, AppDirsOptions, XdgEnvError } from "@effected/xdg";
 import { AppDirs, Xdg, XdgPaths } from "@effected/xdg";
-import { FileSystem, Layer, Path } from "effect";
+import type { FileSystem } from "effect";
+import { Layer, Path } from "effect";
 import type { AppCacheOptions } from "./AppCache.js";
 import { AppCache } from "./AppCache.js";
 import type { AppStoreOptions } from "./AppStore.js";
@@ -50,6 +53,20 @@ export interface AppTestOptions {
 	readonly namespace: string;
 	/** Pin real XDG paths; defaults to a synthetic set under a fake home. */
 	readonly paths?: XdgPaths;
+	/**
+	 * Seed the in-memory filesystem: absolute POSIX paths mapped to file
+	 * content, or to `MemoryFileSystem.file` / `.directory` / `.symlink`
+	 * entries. Default: an empty volume.
+	 *
+	 * @remarks
+	 * The volume is `@effected/memfs`'s, so a path nothing seeded is honestly
+	 * absent and every `ensure*` creates real directories on it. Seed a config
+	 * file under the namespace's config directory — `/home/test/.config/<ns>/`
+	 * on the default paths — and an `AppConfig.layer` composed over this layer
+	 * loads it. Inspect what the program wrote through the
+	 * `MemoryFileSystem.Volume` service the layer also provides.
+	 */
+	readonly files?: MemoryFileSystemSeed;
 	/** The in-memory state database's options. Default: no migrations. */
 	readonly store?: StoreOptions;
 	/** The in-memory cache's options. */
@@ -83,8 +100,32 @@ const layer = (
 	return Layer.provideMerge(databases, layerDirs(dirOptions));
 };
 
+/**
+ * Everything {@link App.layerTest} provides: the four control-plane services
+ * and the in-memory platform they run on.
+ *
+ * @remarks
+ * `FileSystem` and `Path` are the memfs-backed platform the directories live
+ * on, and `MemoryFileSystemVolume` is `@effected/memfs`'s synchronous view of
+ * that same volume, resolved in a test with `yield* MemoryFileSystem.Volume`.
+ *
+ * @public
+ */
+export type AppTestServices =
+	| Xdg
+	| AppDirs
+	| Store
+	| Cache
+	| FileSystem.FileSystem
+	| Path.Path
+	| MemoryFileSystemVolume;
+
 // Implementation of App.layerTest; the public contract lives on the static.
-const layerTest = (options: AppTestOptions): Layer.Layer<Xdg | AppDirs | Store | Cache, AppError> => {
+const layerTest = (options: AppTestOptions): Layer.Layer<AppTestServices, AppError> => {
+	// One volume per layerTest(...) call, shared by every service built from it
+	// and by the test body — so what AppDirs.ensure* creates and what a config
+	// layer composed on top writes are on the same filesystem the test inspects.
+	const platform = Layer.mergeAll(Path.layer, MemoryFileSystem.layerWith(options.files ?? {}));
 	const dirs = Layer.provideMerge(
 		AppDirs.layer({ namespace: options.namespace }),
 		Xdg.layerFrom(options.paths ?? testPaths()),
@@ -93,7 +134,7 @@ const layerTest = (options: AppTestOptions): Layer.Layer<Xdg | AppDirs | Store |
 		Store.layerTest(options.store ?? { migrations: [] }),
 		Cache.layerTest(options.cache),
 	);
-	return Layer.provide(Layer.mergeAll(databases, dirs), Layer.mergeAll(Path.layer, FileSystem.layerNoop({})));
+	return Layer.provideMerge(Layer.mergeAll(databases, dirs), platform);
 };
 
 /**
@@ -251,24 +292,72 @@ export class App {
 	static readonly layerDirs = layerDirs;
 
 	/**
-	 * The hermetic control plane: fixed XDG paths, `:memory:` databases, and the
-	 * platform layers provided internally.
+	 * The hermetic control plane: fixed XDG paths, `:memory:` databases, and an
+	 * in-memory filesystem, with `R = never`.
 	 *
 	 * @remarks
-	 * `Xdg.layerFrom` over a synthetic default `XdgPaths`, `Store.layerTest`
-	 * and `Cache.layerTest`, with `Path.layer` and `FileSystem.layerNoop` provided
-	 * **internally** via `Layer.provide` — not merged into the output, not
-	 * exposed. A consumer's first test needs no platform package at all.
+	 * `Xdg.layerFrom` over a synthetic default `XdgPaths` (or `options.paths`),
+	 * `Store.layerTest` and `Cache.layerTest`, over `Path.layer` and
+	 * `@effected/memfs`'s `MemoryFileSystem.layerWith(options.files)`. A
+	 * consumer's first test needs no platform package at all, and `R` is
+	 * `never` by construction — the layer satisfies the platform requirements
+	 * rather than imposing them.
 	 *
-	 * The documented limit: code paths that actually exercise `ensure*` **die**
-	 * against `FileSystem.layerNoop` — it is a stub, not a working filesystem.
-	 * `layerTest` is for testing logic that *uses* the control plane. A test of
-	 * real directory behaviour composes `AppDirs.layer` over `@effected/memfs`,
-	 * whose `ensure*` members then create directories on an in-memory volume.
-	 * The databases are the exception: `Store` and `Cache` open their SQLite
-	 * files through the native binding, which never sees the `FileSystem`
-	 * service, so a test of {@link App.layer} end to end still needs a
-	 * temp-directory `HOME`.
+	 * The platform is **merged into the output**, not hidden: `FileSystem`,
+	 * `Path` and `MemoryFileSystem.Volume` come out beside the four services.
+	 * That is what lets an `AppConfig.layer` — or anything else that needs
+	 * `FileSystem | Path | AppDirs | Xdg` — compose over this layer with a
+	 * single `Layer.provide`, on the same volume the directories live on. Every
+	 * `AppDirs.ensure*` creates real directories on that volume; `files` seeds
+	 * it; the `Volume` service reads back what the program wrote, synchronously
+	 * and without an `Effect`.
+	 *
+	 * One `layerTest(...)` call is one volume. Under `@effect/vitest`'s
+	 * `layer(...)` the layer is built once for the block, so its tests share
+	 * the volume and see each other's writes; a test that needs a clean
+	 * filesystem calls `layerTest` again or scopes its own `layer(...)` block.
+	 *
+	 * The databases are not on the volume: `Store` and `Cache` are `:memory:`
+	 * here, and under {@link App.layer} they open SQLite files through the
+	 * native binding, which never sees the `FileSystem` service. For the same
+	 * reason, do not compose `AppStore.layer` or `AppCache.layer` over this
+	 * layer: their `ensure*` succeeds on the volume, then the binding opens the
+	 * same path on the **host**. On the synthetic defaults `/home/test/...` does
+	 * not exist there, so the layer fails with a setup `StoreError`; with real
+	 * `paths` it would write a database onto the host disk. A test of
+	 * `App.layer` end to end — real files under real directories — still runs
+	 * against a temp-directory `HOME`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { App, AppConfig } from "@effected/app";
+	 * import { ConfigFile, JsonCodec } from "@effected/config-file";
+	 * import { MemoryFileSystem } from "@effected/memfs";
+	 * import { AppDirs } from "@effected/xdg";
+	 * import { assert, layer } from "@effect/vitest";
+	 * import { Effect, Layer, Schema } from "effect";
+	 *
+	 * class Settings extends Schema.Class<Settings>("Settings")({ port: Schema.Number }) {}
+	 * class SettingsFile extends ConfigFile.Service<SettingsFile, Settings>()("myapp/Settings") {}
+	 *
+	 * const TestPlane = App.layerTest({
+	 * 	namespace: "myapp",
+	 * 	files: { "/home/test/.config/myapp/config.json": `{"port":4242}` },
+	 * });
+	 * const ConfigLive = AppConfig.layer(SettingsFile, { filename: "config.json", schema: Settings, codec: JsonCodec });
+	 *
+	 * layer(Layer.provideMerge(ConfigLive, TestPlane))("myapp", (it) => {
+	 * 	it.effect("loads the seeded config and creates the state directory", () =>
+	 * 		Effect.gen(function* () {
+	 * 			const settings = yield* (yield* SettingsFile).load;
+	 * 			assert.strictEqual(settings.port, 4242);
+	 * 			const state = yield* (yield* AppDirs).ensureState;
+	 * 			const volume = yield* MemoryFileSystem.Volume;
+	 * 			assert.isTrue(volume.has(state));
+	 * 		}),
+	 * 	);
+	 * });
+	 * ```
 	 */
 	static readonly layerTest = layerTest;
 }

@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:43:19Z
+  at: 2026-10-24T01:01:42Z
 integrity:
   generated:
-    body: 468b54d8b3223e70
+    body: 63d48515a75bf19b
 ---
 
 # config-file
@@ -48,7 +48,7 @@ Callback error semantics distinguish by whether a callback's result participates
 
 ## Service API and per-schema identity
 
-Each config schema gets a uniquely-keyed service so multiple typed config services coexist in one layer graph — a generic class factory the consumer extends, putting identity and shape in one consumer-owned artifact (`class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("app/Config") {}`). Its optional third type argument is the codec error; a service over a decorated codec must name it, because the key is declared before the codec is chosen, and a key declared without it rejects a decorated codec at compile time rather than letting its methods fail with an error their type never mentions. Options are supplied to the layer, not baked into the factory, because resolver requirements must flow into the layer's `R` and the scoped test layer needs to vary options freely against the same service identity. `ConfigFile.layer` is a layer-*returning function* — bind its result to a const and provide that const, or two independent service instances get minted. The test layer seeds files into a temp directory and runs the **real** implementation over them rather than a mock; it has no default path, so save and update honestly fail under it.
+Each config schema gets a uniquely-keyed service so multiple typed config services coexist in one layer graph — a generic class factory the consumer extends, putting identity and shape in one consumer-owned artifact (`class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("app/Config") {}`). Its optional third type argument is the codec error; a service over a decorated codec must name it, because the key is declared before the codec is chosen, and a key declared without it rejects a decorated codec at compile time rather than letting its methods fail with an error their type never mentions. The union is read back from the codec value rather than spelled out: `ConfigCodec.ErrorOf<typeof codec>` — a type-only helper in the `ConfigCodec` module, declared as a namespace merged onto the interface — resolves to the codec's `E`, so the key stays in sync when the decorator stack changes, and resolves to `never` for anything that is not a codec. Options are supplied to the layer, not baked into the factory, because resolver requirements must flow into the layer's `R` and the scoped test layer needs to vary options freely against the same service identity. `ConfigFile.layer` is a layer-*returning function* — bind its result to a const and provide that const, or two independent service instances get minted. The test layer seeds files into a temp directory and runs the **real** implementation over them rather than a mock; it has no default path, so save and update honestly fail under it.
 
 The service keeps a deliberate save-versus-write distinction — default path with directory creation, versus explicit path with none — and update is load-transform-save. The default-taking loader returns its default **as-is**, applying neither the schema nor a configured validation hook. Discovery **aborts** on a found-but-corrupt low-priority source rather than skipping it: silently continuing would run the pipeline on a different, wrong configuration than the one closest to the caller's intent.
 
