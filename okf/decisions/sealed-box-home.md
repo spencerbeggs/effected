@@ -25,6 +25,10 @@ sources:
     title: "Core Crypto: randomBytes and a one-shot digest, nothing keyed and no X25519, XSalsa20-Poly1305 or BLAKE2b"
 generated:
   by: "okfit/claude-code"
+  at: 2026-10-24T00:28:31Z
+integrity:
+  generated:
+    body: 340f3a1159317921
 ---
 
 # The libsodium sealed box stays in `@effected/github` until a second consumer appears

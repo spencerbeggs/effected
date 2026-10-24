@@ -29,10 +29,10 @@ sources:
     title: "Intake's HMAC helpers and its hashed secretsEqual"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T01:52:48Z
+  at: 2026-10-24T00:28:31Z
 integrity:
   generated:
-    body: 1b936f3db9f1f10e
+    body: 1456dcb01ecb5abd
 ---
 
 # `@effected/crypto`

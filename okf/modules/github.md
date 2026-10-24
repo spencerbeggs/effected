@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-22T23:55:11Z
+  at: 2026-10-24T00:28:31Z
 integrity:
   generated:
-    body: 6ad9f9c6f8a333a1
+    body: e11a9a00cf69fd87
 ---
 
 # @effected/github
