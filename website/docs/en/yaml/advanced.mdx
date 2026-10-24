@@ -220,6 +220,7 @@ Every failure below leaves through the typed channel — route it with `Effect.c
 - **Duplicate keys are an error by default.** `uniqueKeys` defaults to `true`, so a repeated mapping key fails the parse; set it `false` on `YamlParseOptions` when last-wins is intended.
 - **Structural modification mismatch.** `YamlFormat.modify` fails with `YamlModificationError` when a path tries to navigate _through_ a scalar or into a missing intermediate key — caught with `Effect.catchTag("YamlModificationError", ...)`. Its `diagnostics` are structured, never a collapsed reason string.
 - **Circular references on stringify.** `Yaml.stringify` fails with `YamlStringifyError` (`CircularReference`) rather than looping, and a value nested past the recursion budget fails with a `NestingDepthExceeded` diagnostic instead of overflowing the stack.
+- **Functions and symbols have no YAML form.** `Yaml.stringify` and `YamlFormat.modify` both fail typed with an `UnrepresentableValue` diagnostic on a function or symbol anywhere in the value, rather than writing its `String()` form into the document. A `bigint` is an integer and renders bare on both paths — `modify` lowers every value exactly as `stringify` does.
 - **Malformed input is never equal to anything.** `Yaml.equals` / `Yaml.equalsValue` return `false` when either side fails to parse, so a release tool can skip a no-op write — `if (Yaml.equals(current, next)) return` — without risking a false match on a broken file.
 
 ## Testing tips

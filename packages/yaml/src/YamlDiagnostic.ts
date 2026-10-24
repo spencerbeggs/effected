@@ -64,7 +64,10 @@ export const YamlComposerErrorCode = Schema.Literals(YAML_COMPOSE_ERROR_CODES);
 export type YamlComposerErrorCode = typeof YamlComposerErrorCode.Type;
 
 /**
- * Error codes emitted by the stringifier (the circular-reference guard).
+ * Error codes emitted by the stringifier: `CircularReference` (the value or
+ * synthetic AST points back at itself) and `UnrepresentableValue` (a function
+ * or symbol, which has no YAML rendering and is never written as its
+ * `String()` form).
  *
  * @public
  */

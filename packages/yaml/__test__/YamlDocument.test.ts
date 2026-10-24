@@ -173,6 +173,33 @@ describe("YamlDocument", () => {
 				assert.deepStrictEqual(yield* Yaml.parse(viaValuePath), doc.toValue());
 			}),
 		);
+
+		it.effect("round-trips an integer past MAX_SAFE_INTEGER bare, keeping a hex source form", () =>
+			Effect.gen(function* () {
+				// The composer resolves these to bigints; the node path must write
+				// them as integers (never quoted strings) and keep the raw form, as
+				// it does for a number written in hex.
+				const text = "a: 99999999999999999999\nb: 0x1FFFFFFFFFFFFFFFF\n";
+				const doc = yield* YamlDocument.parse(text);
+				assert.strictEqual(typeof (doc.toValue() as Record<string, unknown>).a, "bigint");
+				assert.strictEqual(yield* doc.stringify(), text);
+			}),
+		);
+
+		it.effect("a synthetic scalar holding a function, symbol or object fails UnrepresentableValue", () =>
+			Effect.gen(function* () {
+				for (const value of [() => 1, Symbol("s"), { not: "a scalar" }]) {
+					const contents = YamlScalar.make({ value, style: "plain", offset: 0, length: 0 });
+					const doc = YamlDocument.make({ contents, errors: [], warnings: [], directives: [] });
+					const result = doc.stringifyResult();
+					if (!Result.isFailure(result)) return assert.fail("expected UnrepresentableValue");
+					assert.instanceOf(result.failure, YamlStringifyError);
+					assert.strictEqual(result.failure.diagnostics[0]?.code, "UnrepresentableValue");
+					const error = yield* Effect.flip(doc.stringify());
+					assert.strictEqual(error.diagnostics[0]?.code, "UnrepresentableValue");
+				}
+			}),
+		);
 	});
 
 	describe("toValue", () => {

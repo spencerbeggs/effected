@@ -145,8 +145,8 @@ say — per the [sync-primitive policy](../conventions/sync-primitive-policy.md)
 in terms of it behind the named span, so the two cannot diverge. The
 `Result` forms drive the same synchronous engine and share the same
 defect-materialization helpers, so hardening is identical across both: a
-fatal diagnostic, duplicate key, alias bomb, circular reference or depth
-overflow returns a failed `Result` and never throws.
+fatal diagnostic, duplicate key, alias bomb, circular reference, depth
+overflow or unrepresentable value returns a failed `Result` and never throws.
 
 The visitor is infallible by design: every composer diagnostic, including
 stream-level directive errors and the alias-count guard, surfaces as an
@@ -241,7 +241,12 @@ surfaces are guarded, all regression-tested:
    lower it to or below the composer cap.
 3. **Stringify recursion** on both the value path and the node path, capped
    at the shared depth constant; the internal throw is materialized into a
-   typed stringify error at the facade.
+   typed stringify error at the facade. Both paths also refuse a value with
+   no YAML rendering — a function or symbol, or a hand-built scalar node
+   holding anything but `null`, a boolean, a number, a bigint or a string —
+   as `UnrepresentableValue`. The alternative, the `String(value)` fallback
+   both paths once had, wrote a function's source text or `Symbol(s)` into
+   the document as a quoted string that only surfaced on the next read.
 4. **Alias-expansion budget** — a "billion laughs" bomb can stay under
    `maxAliasCount` and still exhaust the heap during materialization, so
    materialized nodes are bounded by a budget derived from `maxAliasCount`
@@ -321,6 +326,16 @@ caller's value counting depth from the target's own path depth, because the
 stringifier counts from the document root; a value that fits at `[]` can
 fail `NestingDepthExceeded` a few keys down, and it fails typed, never as a
 defect.
+
+`modify` and `Yaml.stringify` agree on what every JavaScript value means,
+and a test pins the agreement byte for byte: a `bigint` renders bare on both
+paths (the node stringifier renders a bigint scalar like any other integer,
+preferring its `raw` source form, so an integer past `MAX_SAFE_INTEGER`
+round-trips through `YamlDocument#stringify` unquoted and a hex literal keeps
+its spelling), and a function or symbol fails `UnrepresentableValue` on both
+— `modify` through its own lowering guard, `stringify` through the engine —
+matching jsonc's typed refusal of the same values. Neither path ever writes
+`String(fn)` into a document.
 
 `new` on a v4 tagged class still validates structurally — explicit
 `undefined` for an `optionalKey` field throws even with

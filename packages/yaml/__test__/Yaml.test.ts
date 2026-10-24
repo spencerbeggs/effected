@@ -416,6 +416,31 @@ describe("Yaml", () => {
 			}),
 		);
 
+		it.effect("writes a bigint bare, like any other integer", () =>
+			Effect.gen(function* () {
+				assert.strictEqual(yield* Yaml.stringify({ a: 10n }), "a: 10\n");
+				const big = 99999999999999999999n;
+				const text = yield* Yaml.stringify({ a: big });
+				assert.strictEqual(text, "a: 99999999999999999999\n");
+				assert.deepStrictEqual(yield* Yaml.parse(text), { a: big });
+			}),
+		);
+
+		it.effect("fails UnrepresentableValue on a function or symbol, never writing its String() form", () =>
+			Effect.gen(function* () {
+				const fn = () => 1;
+				for (const value of [{ a: fn }, { a: Symbol("s") }, [fn], fn, Symbol("top")]) {
+					const error = yield* Effect.flip(Yaml.stringify(value));
+					assert.instanceOf(error, YamlStringifyError);
+					assert.strictEqual(error.diagnostics[0]?.code, "UnrepresentableValue");
+					assert.strictEqual(error.value, value);
+					const result = Yaml.stringifyResult(value);
+					if (!Result.isFailure(result)) return assert.fail("stringifyResult must agree with stringify");
+					assert.strictEqual(result.failure.diagnostics[0]?.code, "UnrepresentableValue");
+				}
+			}),
+		);
+
 		describe("explicit-key spill past the 1024-char implicit-key limit (#323)", () => {
 			// YAML 1.2 §8.1.3: the `:` of an implicit block-mapping key must sit at
 			// most 1024 characters after the key's start. A RENDERED key longer than

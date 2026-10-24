@@ -63,6 +63,7 @@ describe("YamlDiagnostic", () => {
 				"InvalidTagValue",
 				"UnterminatedString",
 				"CircularReference",
+				"UnrepresentableValue",
 			] as const;
 			for (const code of nonFatal) {
 				assert.isFalse(YamlDiagnostic.isFatal(code), `${code} should not be fatal`);
