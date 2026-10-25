@@ -21,12 +21,16 @@ const confined: ReadonlyArray<readonly [candidate: string, joined: string]> = [
 	["a/b/../../x", "/srv/site/x"],
 	["..x", "/srv/site/..x"],
 	["x..", "/srv/site/x.."],
-	["...", "/srv/site/..."],
+	["x.y", "/srv/site/x.y"],
+	["console", "/srv/site/console"],
+	["com0", "/srv/site/com0"],
+	["lpt10", "/srv/site/lpt10"],
+	["nulx.txt", "/srv/site/nulx.txt"],
+	["my con", "/srv/site/my con"],
 	// No percent-decoding: an encoded dot-dot is one literal file name, as the filesystem reads it.
 	["%2e%2e/x", "/srv/site/%2e%2e/x"],
 	["%2e%2e%2fx", "/srv/site/%2e%2e%2fx"],
 	["..%2fx", "/srv/site/..%2fx"],
-	["og/C:x", "/srv/site/og/C:x"],
 ];
 
 const refused: ReadonlyArray<readonly [candidate: string, reason: PathEscapeReason]> = [
@@ -55,6 +59,32 @@ const refused: ReadonlyArray<readonly [candidate: string, reason: PathEscapeReas
 	["x\0", "nulByte"],
 	["og/\0/x", "nulByte"],
 	["../\0", "nulByte"],
+	// A drive prefix that normalisation exposes is still absolute.
+	["./C:/x", "absolute"],
+	["og/../C:/x", "absolute"],
+	["./C:x", "absolute"],
+	[".\\C:\\x", "absolute"],
+	// A colon anywhere: a drive designator past the first segment, or an NTFS alternate data stream.
+	["og/C:x", "reservedName"],
+	["file.txt::$DATA", "reservedName"],
+	["og/x:stream", "reservedName"],
+	// Dots and spaces only: win32 trims them to nothing or to `..`.
+	["...", "reservedName"],
+	["og/.../x", "reservedName"],
+	[" ", "reservedName"],
+	[".. ", "reservedName"],
+	[". .", "reservedName"],
+	// Reserved device names, any case, with or without an extension.
+	["CON", "reservedName"],
+	["prn", "reservedName"],
+	["Aux", "reservedName"],
+	["og/nul", "reservedName"],
+	["nul.txt", "reservedName"],
+	["COM1", "reservedName"],
+	["com9.log", "reservedName"],
+	["LPT1", "reservedName"],
+	["lpt9.tar.gz", "reservedName"],
+	["CON .txt", "reservedName"],
 ];
 
 describe("confineRelativeResult", () => {
@@ -66,17 +96,19 @@ describe("confineRelativeResult", () => {
 		}
 	});
 
-	describe("escaping candidates are refused with their reason", () => {
-		for (const [candidate, reason] of refused) {
-			it(`${JSON.stringify(candidate)} → ${reason}`, () => {
-				const result = confineRelativeResult(BASE, candidate);
-				assert.isTrue(Result.isFailure(result));
-				if (Result.isFailure(result)) {
-					assert.instanceOf(result.failure, PathEscapeError);
-					assert.strictEqual(result.failure.reason, reason);
-					assert.strictEqual(result.failure.candidate, candidate);
-				}
-			});
+	describe("escaping candidates are refused with their reason, under a base or an empty one", () => {
+		for (const base of [BASE, ""]) {
+			for (const [candidate, reason] of refused) {
+				it(`${JSON.stringify(base)} + ${JSON.stringify(candidate)} → ${reason}`, () => {
+					const result = confineRelativeResult(base, candidate);
+					assert.isTrue(Result.isFailure(result));
+					if (Result.isFailure(result)) {
+						assert.instanceOf(result.failure, PathEscapeError);
+						assert.strictEqual(result.failure.reason, reason);
+						assert.strictEqual(result.failure.candidate, candidate);
+					}
+				});
+			}
 		}
 	});
 

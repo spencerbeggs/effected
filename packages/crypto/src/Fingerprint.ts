@@ -35,17 +35,22 @@ export interface FingerprintDecideInput {
  * rules:
  *
  * - **Object keys are sorted at every depth**, by UTF-16 code units, so
- *   reordering a config's keys is not drift.
+ *   reordering a config's keys is not drift. Numeric-like keys sort
+ *   lexicographically too: `"10"` comes before `"2"`.
  * - **Array order is preserved**, so reordering elements is a real change.
  * - **An `undefined` object member is dropped**, as `JSON.stringify` drops it,
  *   so an absent key and an explicitly undefined key fingerprint alike.
  *
- * Otherwise the text follows `JSON.stringify`: a `toJSON` method is honoured
- * (a `Date` fingerprints as its ISO string), and an `undefined` array element
- * is written as `null`. Values with no faithful JSON form are refused with
- * {@link FingerprintError} rather than coerced: a `bigint`, a function, a
- * symbol, a non-finite number, a cycle, and any object that is not an array
- * or a plain object (encode a `Map` or a class instance to plain JSON first).
+ * Otherwise the text follows `JSON.stringify`: a `Date` fingerprints as its
+ * ISO string, and an `undefined` array element is written as `null`. Values
+ * with no faithful JSON form are refused with {@link FingerprintError} rather
+ * than coerced: a `bigint`, a function, a symbol, a non-finite number, a
+ * cycle, and any object that is not a `Date`, an array or a plain object
+ * (one whose prototype is `Object.prototype` or `null`). That includes a
+ * `Map`, a class instance, and Effect data types such as `Option` or
+ * `HashMap`, whatever `toJSON` they carry, because their `toJSON` output is
+ * no stable contract: encode a domain value to plain JSON first, for
+ * example with its `Schema`.
  *
  * This is deliberately not RFC 8785: `JsoncFingerprint` in `@effected/jsonc`
  * refuses `undefined`, where drift detection must treat it as absent.

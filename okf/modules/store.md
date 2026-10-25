@@ -16,10 +16,10 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T14:36:34Z
+  at: 2026-10-25T14:50:52Z
 integrity:
   generated:
-    body: 9a575f900d001a15
+    body: 73437b65653471e0
 ---
 
 # store
@@ -284,19 +284,22 @@ A consumer service built on `Store` is tested over its real implementation, by c
 ### AtomicDirectory
 
 `AtomicDirectory.write(root, files)` replaces a directory with exactly a
-file set, staging in the sibling `.<name>.staging` and renaming it into
-place: the on-disk counterpart to the SQLite services, for consumers that
+file set, staging in the sibling `.<name>.staging` and swapping it into
+place with two renames (live to `.<name>.old`, staging to live, then
+removing `.<name>.old`): the on-disk counterpart to the SQLite services, for consumers that
 cache whole trees (a type registry's per-package directory). It requires
-`FileSystem` and `Path` in `R` and adds no dependency. The sibling is
-load-bearing (a staging dir elsewhere makes the `rename` cross
-filesystems and stop being atomic), as are clearing leftover staging
-first and creating staging even for an empty set. Every path is
-validated before any IO. The window between removing the live directory
-and the rename is documented, not closed: a reader sees absence, never a
-partial tree, and a crash there leaves the full tree in staging for the
-next call to clear. The fixed staging name means one writer per root.
-Failures are `AtomicDirectoryError` with `operation` `validate`,
-`clear`, `stage`, `write` or `promote`.
+`FileSystem` and `Path` in `R` and adds no dependency. The siblings are
+load-bearing (elsewhere, a `rename` crosses filesystems and stops being
+atomic), as are clearing both leftovers first and creating staging even
+for an empty set. `root` is normalised and a basename of `.` or `..` is
+refused; every file path is validated before any IO. The old tree is
+removed only after it has left `root`, so no reader sees a half-deleted
+tree. The window between the two renames is documented: a reader sees
+absence, never a partial tree, and a crash there leaves both trees whole
+for the next call to clear. The fixed sibling names mean one writer per
+root. Failures are `AtomicDirectoryError` with `operation` `validate`,
+`clear`, `stage`, `write`, `promote` or `cleanup` (new tree live, old
+one not yet removed).
 
 ## Relationship to core persistence
 
