@@ -54,7 +54,22 @@ Parent directories are created recursively, so a seed only names the paths you c
 
 Seeded entries all take the volume's clock at seed time, so a seed alone cannot express "this file is older than that one". `MemoryFileSystem.file(content, { mtime })` pins an entry's modification time in epoch milliseconds, which is what a test needs to exercise a signature or cache-invalidation scheme that fingerprints a tree by modification time. Two traps come with it: the volume stamps writes from the Effect `Clock`, so under `it.effect` every write lands at the epoch until `TestClock` is advanced, and `FileSystem.utimes` reads a bare number as Unix *seconds*, so pass a `Date` when you mean milliseconds.
 
-Layer memoization is per-build: every `Effect.provide` of a layer value — even the same bound `const` — builds and re-seeds a fresh volume. To share one volume across several effects, run them under a single provide of one composed layer graph (e.g. `Layer.provideMerge` to expose both the service under test and `FileSystem`), or build a [handle](#the-handle) and provide its pinned `layer`. `Layer.fresh`'s only role is giving one consumer *inside* that graph its own volume — across separate provides there is nothing to isolate.
+Layer memoization is per-build: every `Effect.provide` of a layer value — even the same bound `const` — builds and re-seeds a fresh volume. To share one volume across several effects, run them under a single provide of one composed layer graph (e.g. `Layer.provideMerge` to expose both the service under test and `FileSystem`), or build a [handle](#the-handle) and provide its pinned `layer`. `Layer.fresh`'s only role is giving one consumer *inside* that graph its own volume — across separate provides there is nothing to isolate. [Sharing a volume across tests](#sharing-a-volume-across-tests) shows what that means under `@effect/vitest`.
+
+`FileSystem` and `Path` are almost always consumed together, so `MemoryFileSystem.layerWithPath(seed?, options?)` is `layerWith` with core's `Path.layer` merged in — one layer instead of a `Layer.mergeAll` at every call site:
+
+```ts
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem, Path } from "effect";
+
+const Volume = MemoryFileSystem.layerWithPath({ "/repo/a.txt": "a" });
+
+const program = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  return yield* fs.readFileString(path.join("/repo", "a.txt"));
+}).pipe(Effect.provide(Volume));
+```
 
 ## Options
 
@@ -65,6 +80,8 @@ Every seeded constructor — `makeWith`, `layerWith`, `makeHandle`, `makeSync` �
 | `root` | An absolute directory the seed is rooted at: seed keys become relative to it, `""` addresses the root itself, and the root is created even for an empty seed. Normalized lexically (`/ws/`, `/ws/../ws` and `/ws` are one root). It is a **join base, not a jail**: a key joins it as `path.posix.join` would, so `"../extra-dir/a.ts"` under `root: "/ws/repo"` lands at `/ws/extra-dir/a.ts`. A handle's mutators join relative paths to it too, but unnormalized: `.` and `..` resolve after links are followed, as `writeFileSync` does, so `write("link/../x")` lands beside the link's target. A relative root, or an absolute key alongside a root, is a typed `BadArgument` naming the offending value (`makeSync` throws `EINVAL` with it in the path slot). |
 | `caseSensitive` | `true` by default. `false` models a case-insensitive, case-preserving volume — see [Case-insensitive volumes](#case-insensitive-volumes). |
 | `faults` | Faults injected into the built `FileSystem` — see [Fault injection](#fault-injection). The seed is written beneath the faults, never through them. |
+| `spies` | Observers on the built `FileSystem` that always delegate — see [Spying on calls](#spying-on-calls). |
+| `watchEvents` | `"automatic"` (the default) or `"manual"`, which stops the volume's own mutations from publishing watch events — see [Driving watch events](#driving-watch-events). |
 
 ```ts
 const Workspace = MemoryFileSystem.layerWith({ "a.json": "{}", "": MemoryFileSystem.directory() }, { root: "/ws" });
@@ -146,6 +163,46 @@ vol.sync.exists("/ws-1/repo/package.json");
 
 A contradictory seed throws synchronously with node's error shape, carrying the syscall of the failing seed step (`mkdir`, `open`, `symlink`, `chmod`, `utime`); an invalid `root` is `EINVAL` with syscall `seed`, since no node call corresponds to it. The mutators create a missing parent only when it is *absent*, so their failures match the single node call they stand in for: writing under a parent that is a file fails `ENOTDIR` (as `writeFileSync` does), while `mkdir` — recursive, like `mkdirSync(p, { recursive: true })` — over an existing file fails `EEXIST`. `makeSync` runs on the real clock, so its writes do not follow `TestClock`.
 
+## Sharing a volume across tests
+
+Whether two effects see one volume is decided by how many times the layer is *built*, and that is decided by how it is provided. Get it wrong and a test either cannot observe the writes it is asserting on, or inherits another test's writes.
+
+- **`Effect.provide(layer)` builds per provide.** Each `it.effect` that provides the layer gets a freshly seeded volume, even when every test provides the same bound `const`. Two `Effect.runPromise` calls, each providing it, are two volumes: a test that writes in one run and reads in the next reads the seed. Fold the write and the read into one program under one provide.
+- **`@effect/vitest`'s `layer(L)` builds once per group.** Every test inside the `layer(L)(...)` block shares ONE volume, in run order: what an earlier test wrote, a later one sees, and a `failTimes` fault is consumed by whichever test reaches it first. Use it for a read-only fixture, or for a sequence whose order is the point.
+- **A handle pins the volume explicitly.** `makeHandle`/`makeSync` build once, and `handle.layer` is stable across every provide — the tool for assertions that run after the program under test, and for Promise-style suites that run several programs.
+
+```ts
+import { assert, it, layer } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem } from "effect";
+
+const Fixture = MemoryFileSystem.layerWith({ "/config.json": "{}" });
+
+// One volume for the group: the second test sees the first test's write.
+layer(Fixture)("shared volume", (it) => {
+  it.effect("writes", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      yield* fs.writeFileString("/out.txt", "x");
+    }),
+  );
+  it.effect("reads it back", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      assert.strictEqual(yield* fs.readFileString("/out.txt"), "x");
+    }),
+  );
+});
+
+// A fresh volume per provide: "/out.txt" is absent here.
+it.effect("isolated", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    assert.isFalse(yield* fs.exists("/out.txt"));
+  }).pipe(Effect.provide(Fixture)),
+);
+```
+
 ## The synchronous port
 
 Some code takes an injected sync filesystem port instead of requiring `FileSystem` — a config-time hook that cannot await is the usual reason. `MemoryFileSystem.syncFileSystem(volume)` (also `handle.sync`) adapts the inspection view to the `node:fs` sync subset those ports ask for: `exists`, `readFile`, `readDirectory`, `isDirectory`, `stat` and `lstat`. A pure function over a volume: no service, no layer, no `Effect`.
@@ -166,6 +223,17 @@ const program = Effect.gen(function* () {
 ```
 
 Port members are standalone functions, not methods: pass `sync.readFile` as a callback without binding.
+
+`readDirectory(path, { withFileTypes: true })` answers the directory's entries as dirents, as `readdirSync(p, { withFileTypes: true })` does and with the same literal kinds as the [promises port](#the-promises-port)'s `readdir`: the directory is reached through links, while a link *inside* it reports `isSymbolicLink()`, never its target's kind. Map it to a consumer's own entry shape, for example the optional `readDirectoryWithTypes` fast path of `@effected/workspaces`' `SyncFileSystem`:
+
+```ts
+const readDirectoryWithTypes = (p: string) =>
+  sync.readDirectory(p, { withFileTypes: true }).map((d) => ({
+    name: d.name,
+    isDirectory: d.isDirectory(),
+    isSymbolicLink: d.isSymbolicLink(),
+  }));
+```
 
 Unlike the inspection view it is built on, the port **follows symbolic links**, because the operations it stands in for are defined in `stat` terms: a link to a directory is a directory, a link is read through to its target, and a dangling link is absent exactly as `existsSync` reports it. Answering literally here would silently drop symlinked package directories from any consumer enumerating a workspace, which is the failure the port most needs to avoid.
 
@@ -189,6 +257,21 @@ sync.readFile("/r/file.txt");
 sync.readFile("/r/dir/inner.txt");
 // "x" — other paths delegate
 ```
+
+### Windows path spellings
+
+Code driven by a win32 path implementation (`node:path/win32`) hands a port spellings like `C:\repo\a.json`. Both ports take `pathStyle: "win32"`, a spelling adapter in front of the port: backslashes become slashes and a drive-letter root `C:` maps onto the volume's top-level `/C:` directory. Seed the volume under `/C:/…`:
+
+```ts
+const { volume } = yield* MemoryFileSystem.makeHandle({ "/C:/repo/package.json": "{}" });
+const sync = MemoryFileSystem.syncFileSystem(volume, { pathStyle: "win32" });
+sync.readFile("C:\\repo\\package.json");
+// "{}"
+sync.readFile("C:\\repo\\absent.json");
+// throws: "ENOENT: no such file or directory, open 'C:\repo\absent.json'"
+```
+
+Only the spelling is translated. Errors carry the caller's own spelling in `path` and the message, and fault handlers receive the arguments as given. The volume stays POSIX: drive letters are not case-folded, UNC paths are not modelled, and the `FileSystem` service is unaffected.
 
 This is deliberately not a general escape hatch from the `FileSystem` service. Code that calls `node:fs` directly still does not see the volume; only code that accepts an injected port does. Where the call site can be changed, taking `FileSystem` from the environment remains the better answer, and it buys typed errors and the rest of the service's contract along the way.
 
@@ -255,7 +338,61 @@ yield* fs.readFileString("/alias.txt");
 
 A fault key naming no member — a typo like `readFileSting` — is a wiring bug: it throws a `RangeError` naming the key at construction (a layer build dies), rather than being ignored while the test passes without its fault ever firing.
 
+### Spying on calls
+
+A spy records a call and lets it happen. `options.spies` takes the same keys as `faults`, but each handler returns nothing and the call *always* proceeds: whatever a spy returns is discarded, so a spy can never replace a call by accident, and the intent reads at the call site:
+
+```ts
+const reads: Array<string> = [];
+const Volume = MemoryFileSystem.layerWith(
+  { "/config.json": "{}" },
+  { spies: { readFile: (path) => void reads.push(path) } },
+);
+```
+
+A spy on an `Effect`-returning member runs when the effect *executes*, never when it is built, so a retried effect is recorded once per attempt; on `stream`, `sink` or `watch` it runs when the method is called. Spies run before any fault on the same member, so a spy observes a call the fault then fails, and `spies` and `faults` compose freely in one options bag.
+
+**Derived members are observed too.** Spies share the fault wrapper, which rebuilds the service through `FileSystem.make`, so a spy on a core member sees the members derived from it: a `writeFile` spy also records every `writeFileString` call, `readFile` sees `readFileString`, `access` sees `exists`, and `open` sees `stream` and `sink`. That is coherent — it is the call the volume actually received — but it differs from a hand-rolled wrapper that spread the service and overrode one member, which only saw *direct* calls. A count migrated from such a wrapper can rise; spy on the derived member itself when the direct call is what you mean to count.
+
+### Decorating opened files
+
+A `File` that `open` returns is a class instance, so spreading it copies none of its members. `MemoryFileSystem.wrapFile(file, overrides)` forwards every member and lets a handler replace one, on the same terms as a fault: it receives the real arguments and returns a replacement `Effect` or `undefined` to delegate, and `failTimes` works on every member. Return the wrapped file from an `open` fault, in the factory form so the handler reaches the unfaulted `open`, to decorate every handle the filesystem opens — the derived `stream` and `sink` then write through it too:
+
+```ts
+const Volume = MemoryFileSystem.layerWith(
+  { "/journal": MemoryFileSystem.directory() },
+  {
+    faults: (base) => ({
+      open: (path, options) =>
+        Effect.map(base.open(path, options), (file) =>
+          MemoryFileSystem.wrapFile(file, { writeAll: () => Effect.fail(denied(path)) }),
+        ),
+    }),
+  },
+);
+```
+
+Members are intercepted independently: the wrapped file's own `writeAll` calls its own `write`, so a `write` override does not reach `writeAll`. Core's `sink` writes through `writeAll`. `stat` and `sync` are `Effect`-valued members rather than methods, so their handlers are thunks. An unknown override key throws `RangeError`.
+
+### Faulting any filesystem
+
 `MemoryFileSystem.layerFaulty(faults)` and `makeFaulty(base, faults)` apply the same injection to *any* `FileSystem` — the node adapter, a hand-built double — decorating whatever is provided (`layerFaulty` leaves `FileSystem` in `R`). Keys are checked against the target's own enumerable function members, so a class instance with prototype methods must be wrapped in `FileSystem.make({ ... })` first.
+
+## Driving watch events
+
+The volume's `watch` emits events on its own as mutations happen, which fights a test that means to drive watch events itself. Build the volume with `watchEvents: "manual"` and its mutations publish nothing; the handle's `emit(path, event)` delivers exactly the events the test chooses, through the same matching a real event takes (the watched path, a direct child of a watched directory, a descendant under `recursive`), and `watcherCount()` is the live number of subscribed watchers:
+
+```ts
+const handle = yield* MemoryFileSystem.makeHandle({ "/journal/mail.jsonl": "" }, { watchEvents: "manual" });
+const events = yield* handle.fileSystem
+  .watch("/journal", { onReady: () => handle.emit("/journal/mail.jsonl", "Update") })
+  .pipe(Stream.take(1), Stream.runCollect);
+// [{ _tag: "Update", path: "/journal/mail.jsonl" }]
+handle.watcherCount();
+// 0 — the stream ended and released its watcher
+```
+
+`emit` is synchronous and changes nothing on the volume; it does not check that the path exists. A watcher that is registered but not yet pulling buffers the event, so an event emitted from `onReady` (or after it) is never lost. A relative path joins `handle.root`. `emit` also works under the default `"automatic"` mode, alongside the volume's own events. A layer built with `"manual"` never publishes; reach `emit` through `makeHandle` or `makeSync`.
 
 ## Case-insensitive volumes
 
@@ -302,6 +439,16 @@ Where Linux and macOS disagree, the Linux errno is modelled: `copyFile` from a d
 
 Three divergences are deliberate and pinned by the differential test: `copy` without `overwrite` fails `AlreadyExists` where node silently keeps the existing destination, `copy` does not create a missing destination parent, and opening a directory read-only fails at `open` (`BadResource`/`EISDIR`) where node fails at the first read with the same tag. For a two-path operation (`rename`, `copy`, `copyFile`, `link`, `symlink`) node reports the first path as `pathOrDescriptor`, and memfs reports the path the conflict concerns.
 
+## Migrating from temp directories or hand-rolled doubles
+
+A suite moved onto memfs from `mkdtemp` directories or a hand-written `FileSystem` double usually turns up a few findings. They are expected, and they are the volume doing its job:
+
+- **A missing `makeDirectory` surfaces.** A writer that never creates its output directory worked against `mkdtemp`, where the directory always existed, and against a double that created parents silently. On memfs it fails `NotFound`, as it would on a fresh machine. Either fix the writer, or seed the directory the program is entitled to assume (`"/out": MemoryFileSystem.directory()`). The old double's success was fabricated; the failure is not a memfs quirk.
+- **A faulted path must exist in the seed.** A fault denying `exists`, `stat` or `access` on a path the seed never created can prove nothing: disarmed, the honest answer is `false` or `NotFound`, and code that folds every probe failure into "absent" (a discovery walk, an upward search) answers the same either way, so the test passes whether or not the fault fired. Seed the path as a real entry, then fault it, and check the test fails once the fault is removed.
+- **Spy counts can rise.** A spy on a core member also sees the derived members built on it — see [Spying on calls](#spying-on-calls).
+- **Separate provides are separate volumes.** Writes made under one `Effect.provide` are invisible to the next — see [Sharing a volume across tests](#sharing-a-volume-across-tests).
+- **`NodeSyncFileSystem.exists` can fail.** Coming from an `existsSync`-based bridge, which swallows every error and answers `false`, note that node-sync derives `exists` from `access`, exactly as core's `FileSystem.make` and the node adapter do: `NotFound` answers `false`, and any other error (`EACCES`, `ENOTDIR` through a file, a NUL byte) fails typed.
+
 ## What the volume does not see
 
 memfs implements one thing: Effect's `FileSystem` service. It installs no hooks, patches no module registry and intercepts nothing globally, so the volume is visible to code that *asks for the service* and invisible to everything else. Five boundaries follow, and each is a property of the design rather than a gap to be closed:
@@ -328,7 +475,9 @@ const program = Effect.gen(function* () {
 const text = Effect.runSync(program.pipe(Effect.provide(NodeSyncFileSystem.layer)));
 ```
 
-The read members (`access`, `exists`, `stat`, `readFile`, `readFileString`, `readDirectory`, `readLink`, `realPath`) agree with `@effect/platform-node`'s `NodeFileSystem` value for value and failure for failure — a differential test holds them to it, down to copying the adapter's quirks (`realPath` keeps the queried case; `readDirectory` reports an invalid path argument as `Unknown` where the other members say `BadArgument`). Every other member — writes, `open` and the streams built on it, `glob`, `watch`, temp files — is a defect, not a typed failure: this filesystem never writes, and a caller that tries has a wiring bug `Effect.catch` must not absorb. `NodeSyncFileSystem.fileSystem` is the same filesystem as a plain value.
+The read members (`access`, `exists`, `stat`, `readFile`, `readFileString`, `readDirectory`, `readLink`, `realPath`) agree with `@effect/platform-node`'s `NodeFileSystem` value for value and failure for failure — a differential test holds them to it, down to copying the adapter's quirks (`realPath` keeps the queried case; `readDirectory` reports an invalid path argument as `Unknown` where the other members say `BadArgument`). Every other member — writes, `open` and the streams built on it, `glob`, `watch`, temp files — is a defect, not a typed failure: this filesystem never writes, and a caller that tries has a wiring bug `Effect.catch` must not absorb. `NodeSyncFileSystem.fileSystem` is the same filesystem as a plain value, and `NodeSyncFileSystem.layerWithPath` provides core's synchronous `Path.layer` beside it.
+
+`exists` is derived from `access`, as core's `FileSystem.make` derives it for every implementation: a `NotFound` answers `false`, and any other failure stays a typed failure. That differs from `existsSync`, which swallows every error, so a program migrated from an `existsSync`-based bridge can now see a permission or `ENOTDIR` failure where it used to see `false`.
 
 ## Credits
 

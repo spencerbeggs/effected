@@ -18,31 +18,34 @@ The main entry imports nothing from `node:*`; only the `./node-sync` subpath doe
 
 - **`MemoryFileSystem.make` / `MemoryFileSystem.layer`** — an empty volume as `Effect<FileSystem>` / `Layer<FileSystem | MemoryFileSystemVolume>` (the upstream-mirroring pair).
 - **`MemoryFileSystem.makeWith(seed?, options?)` / `layerWith(seed?, options?)`** — a seeded volume. `makeWith` keeps a contradictory seed in the typed error channel; `layerWith` dies with it (a wiring bug).
-- **`MemoryFileSystem.makeHandle(seed?, options?)`** (`Effect`) / **`makeSync(seed?, options?)`** (synchronous; throws node-shaped errors) — a `MemoryFileSystemHandle`: `fileSystem`, `volume`, a `layer` pinned to that one volume (`FileSystem | MemoryFileSystemVolume | Path`, stable across provides), `sync` and `promises` ports, `root`, `withFaults({ sync?, promises? })`, and setup mutators `write`/`mkdir`/`remove`/`symlink`.
+- **`MemoryFileSystem.layerWithPath(seed?, options?)`** — `layerWith` with core's `Path.layer` merged in (`FileSystem | MemoryFileSystemVolume | Path`).
+- **`MemoryFileSystem.makeHandle(seed?, options?)`** (`Effect`) / **`makeSync(seed?, options?)`** (synchronous; throws node-shaped errors) — a `MemoryFileSystemHandle`: `fileSystem`, `volume`, a `layer` pinned to that one volume (`FileSystem | MemoryFileSystemVolume | Path`, stable across provides), `sync` and `promises` ports, `root`, `withFaults({ sync?, promises? })`, `emit(path, event)` and `watcherCount()` for driving watch events, and setup mutators `write`/`mkdir`/`remove`/`symlink`.
 - **`MemoryFileSystem.makeFaulty(base, faults)` / `layerFaulty(faults)`** — delegate-by-default fault injection over ANY `FileSystem`; `layerFaulty` leaves `FileSystem` in `R`.
 
-`options` is `{ root?, caseSensitive?, faults? }`:
+`options` is `{ root?, caseSensitive?, faults?, spies?, watchEvents? }`:
 
 - `root` — seed keys are relative to it (`""` is the root itself; it exists even for an empty seed). A **join base, not a jail**: keys join lexically, so `"../x"` under `/ws/repo` is `/ws/x`. The handle's mutators join relative paths to it too, but unnormalized: `..` resolves after links are followed, as `writeFileSync` does. A relative root or an absolute key alongside it is a typed `BadArgument` naming the value.
 - `caseSensitive` — `true` by default; `false` models a case-insensitive, case-preserving volume (default APFS), with semantics measured on a real APFS volume.
 - `faults` — the fault map (or `(base) => faults` factory) wrapped around the built `FileSystem`. The seed lands beneath the faults; `Volume` inspects the raw volume. It does not reach a handle's ports.
+- `spies` — void observers per member that always delegate (the return value is discarded), run per execution and before any fault; like faults they propagate into derived members (a `writeFile` spy sees `writeFileString`).
+- `watchEvents` — `"automatic"` (default) or `"manual"`, which stops mutations from publishing watch events so only `handle.emit` delivers them.
 
 **Every memory layer publishes `MemoryFileSystem.Volume`** beside `FileSystem`; `yield* MemoryFileSystem.Volume` resolves the synchronous, live, **literal** view (`snapshot`, `text`, `bytes`, `has`, `paths`, `readDirectory`, `isDirectory`, `mtime`, `readLink`, `lstat`). Literal means a link is never followed, not even mid-path; absence is `undefined`, never `""`, `[]` or `0`.
 
 ## Ports
 
-- **`MemoryFileSystem.syncFileSystem(volume, { faults? })`** — the `node:fs` sync subset: `exists`, `readFile` (UTF-8 string), `readDirectory`, `isDirectory`, `stat`, `lstat`. Structurally satisfies `@effected/workspaces`' `SyncFileSystem` with no import either way.
-- **`MemoryFileSystem.promisesFileSystem(volume, { faults? })`** — the `fs/promises` subset an async walker needs: `readdir` (with `withFileTypes`, literal dirents), `stat`, `lstat`, `readFile` with node's overloads (`Uint8Array` without an encoding, `string` with `"utf8"`).
+- **`MemoryFileSystem.syncFileSystem(volume, { faults?, pathStyle? })`** — the `node:fs` sync subset: `exists`, `readFile` (UTF-8 string), `readDirectory` (with `withFileTypes`, literal dirents), `isDirectory`, `stat`, `lstat`. Structurally satisfies `@effected/workspaces`' `SyncFileSystem` with no import either way.
+- **`MemoryFileSystem.promisesFileSystem(volume, { faults?, pathStyle? })`** — the `fs/promises` subset an async walker needs: `readdir` (with `withFileTypes`, literal dirents), `stat`, `lstat`, `readFile` with node's overloads (`Uint8Array` without an encoding, `string` with `"utf8"`).
 
-Both follow symlinks (their operations are `stat`-defined) and fail with node's exact error — `code`, `syscall`, `path` and message; a `read` `EISDIR` carries no path, as node's does. The sync port throws; the promises port rejects, even when a fault handler throws synchronously. Members are standalone functions, safe to pass unbound. A fault key naming no member throws `RangeError` at construction.
+Both follow symlinks (their operations are `stat`-defined) and fail with node's exact error — `code`, `syscall`, `path` and message; a `read` `EISDIR` carries no path, as node's does. The sync port throws; the promises port rejects, even when a fault handler throws synchronously. Members are standalone functions, safe to pass unbound. A fault key naming no member throws `RangeError` at construction. `pathStyle: "win32"` translates the spelling only (`C:\x` → `/C:/x`; errors and faults keep the caller's spelling); the volume stays POSIX.
 
 ## Helpers
 
-`MemoryFileSystem.file(content, { mode, mtime })`, `directory({ mode })`, `symlink(target)` (seed entries); `failTimes(n, error)` (a transient fault, counted per execution); `die(defect)` (a defect-arm fault, which `Effect.catch` cannot absorb); `errno(code, syscall, path?)` (the node-shaped error a port fault throws); `Volume` (the context key).
+`MemoryFileSystem.file(content, { mode, mtime })`, `directory({ mode })`, `symlink(target)` (seed entries); `failTimes(n, error)` (a transient fault, counted per execution); `die(defect)` (a defect-arm fault, which `Effect.catch` cannot absorb); `wrapFile(file, overrides)` (decorates an opened `File` member by member — return it from an `open` fault); `errno(code, syscall, path?)` (the node-shaped error a port fault throws); `Volume` (the context key).
 
 ## node-sync
 
-`NodeSyncFileSystem.layer` / `NodeSyncFileSystem.fileSystem` (a value, not an `Effect`) — a read-only, synchronous `FileSystem` over `node:fs`, for programs that must run under `Effect.runSync`. Its read members (`access`/`exists`, `stat`, `readFile`/`readFileString`, `readDirectory`, `readLink`, `realPath`) agree with `@effect/platform-node`'s `NodeFileSystem` value for value and failure for failure, quirks included (`realPath` keeps the queried case; `readDirectory` reports argument errors as `Unknown`). Every other member is a **defect**. Production code, not a test double.
+`NodeSyncFileSystem.layer` / `NodeSyncFileSystem.layerWithPath` (plus core's `Path.layer`) / `NodeSyncFileSystem.fileSystem` (a value, not an `Effect`) — a read-only, synchronous `FileSystem` over `node:fs`, for programs that must run under `Effect.runSync`. Its read members (`access`/`exists`, `stat`, `readFile`/`readFileString`, `readDirectory`, `readLink`, `realPath`) agree with `@effect/platform-node`'s `NodeFileSystem` value for value and failure for failure, quirks included (`realPath` keeps the queried case; `readDirectory` reports argument errors as `Unknown`). Every other member is a **defect**. `exists` derives from `access`: only `NotFound` answers `false`, unlike `existsSync`, which swallows every error. Production code, not a test double.
 
 ## The founding contract: honest absence
 
