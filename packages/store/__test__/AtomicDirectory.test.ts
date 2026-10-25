@@ -9,6 +9,7 @@ import { AtomicDirectory } from "../src/AtomicDirectory.js";
 
 const ROOT = "/cache/pkg";
 const STAGING = "/cache/.pkg.staging";
+const OLD = "/cache/.pkg.old";
 
 const volume = (
 	seed: Record<string, string | ReturnType<typeof MemoryFileSystem.directory>>,
@@ -67,7 +68,7 @@ describe("AtomicDirectory.write", () => {
 		}).pipe(Effect.provide(volume({ "/cache/.pkg.staging/leftover.txt": "junk", "/cache/pkg/a.txt": "old" }))),
 	);
 
-	it.effect("a crash between remove and rename leaves live absent, never half-written", () =>
+	it.effect("a failed first rename leaves the live tree untouched", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(
 				AtomicDirectory.write(ROOT, [
@@ -78,8 +79,13 @@ describe("AtomicDirectory.write", () => {
 			assert.strictEqual(error._tag, "AtomicDirectoryError");
 			assert.strictEqual(error.operation, "promote");
 			const fs = yield* MemoryFileSystem.Volume;
-			assert.isFalse(fs.has(ROOT));
-			assert.deepStrictEqual(fs.paths(), ["/cache/.pkg.staging/a.txt", "/cache/.pkg.staging/b/c.txt"]);
+			assert.deepStrictEqual(fs.paths(), [
+				"/cache/.pkg.staging/a.txt",
+				"/cache/.pkg.staging/b/c.txt",
+				"/cache/pkg/a.txt",
+				"/cache/pkg/old.txt",
+			]);
+			assert.strictEqual(fs.text("/cache/pkg/a.txt"), "old");
 		}).pipe(
 			Effect.provide(
 				volume(
@@ -90,7 +96,99 @@ describe("AtomicDirectory.write", () => {
 		),
 	);
 
-	it.effect("the next call after a crashed promotion recovers", () =>
+	it.effect("a crash on the second rename leaves live absent and both trees complete, never partial", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle({ "/cache/pkg/a.txt": "old", "/cache/pkg/old.txt": "old" });
+			const crashing = Layer.merge(
+				MemoryFileSystem.layerFaulty({
+					rename: (from) => (from === STAGING ? Effect.fail(failure("rename", from)) : undefined),
+				}).pipe(Layer.provide(handle.layer)),
+				Path.layer,
+			);
+			const error = yield* Effect.flip(
+				AtomicDirectory.write(ROOT, [
+					["a.txt", "first"],
+					["b/c.txt", "first"],
+				]).pipe(Effect.provide(crashing)),
+			);
+			assert.strictEqual(error.operation, "promote");
+			assert.strictEqual(error.path, ROOT);
+			assert.isFalse(handle.volume.has(ROOT));
+			assert.deepStrictEqual(handle.volume.paths(), [
+				"/cache/.pkg.old/a.txt",
+				"/cache/.pkg.old/old.txt",
+				"/cache/.pkg.staging/a.txt",
+				"/cache/.pkg.staging/b/c.txt",
+			]);
+			assert.strictEqual(handle.volume.text("/cache/.pkg.old/a.txt"), "old");
+
+			yield* AtomicDirectory.write(ROOT, [["a.txt", "second"]]).pipe(
+				Effect.provide(Layer.merge(handle.layer, Path.layer)),
+			);
+			assert.deepStrictEqual(handle.volume.paths(), ["/cache/pkg/a.txt"]);
+			assert.strictEqual(handle.volume.text("/cache/pkg/a.txt"), "second");
+		}),
+	);
+
+	it.effect("a failed removal of the old tree leaves the new tree live and complete, and the next call clears it", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle({ "/cache/pkg/a.txt": "old" });
+			const crashing = Layer.merge(
+				MemoryFileSystem.layerFaulty({
+					remove: (path) => (path === OLD && handle.volume.has(OLD) ? Effect.fail(failure("remove", path)) : undefined),
+				}).pipe(Layer.provide(handle.layer)),
+				Path.layer,
+			);
+			const error = yield* Effect.flip(
+				AtomicDirectory.write(ROOT, [
+					["a.txt", "first"],
+					["b/c.txt", "first"],
+				]).pipe(Effect.provide(crashing)),
+			);
+			assert.strictEqual(error.operation, "cleanup");
+			assert.strictEqual(error.path, OLD);
+			assert.deepStrictEqual(handle.volume.paths(), [
+				"/cache/.pkg.old/a.txt",
+				"/cache/pkg/a.txt",
+				"/cache/pkg/b/c.txt",
+			]);
+			assert.strictEqual(handle.volume.text("/cache/pkg/a.txt"), "first");
+
+			yield* AtomicDirectory.write(ROOT, [["a.txt", "second"]]).pipe(
+				Effect.provide(Layer.merge(handle.layer, Path.layer)),
+			);
+			assert.deepStrictEqual(handle.volume.paths(), ["/cache/pkg/a.txt"]);
+			assert.strictEqual(handle.volume.text("/cache/pkg/a.txt"), "second");
+		}),
+	);
+
+	it.effect("clears a leftover old tree from a prior crash before staging", () =>
+		Effect.gen(function* () {
+			yield* AtomicDirectory.write(ROOT, [["a.txt", "new"]]);
+			const fs = yield* MemoryFileSystem.Volume;
+			assert.deepStrictEqual(fs.paths(), ["/cache/pkg/a.txt"]);
+		}).pipe(Effect.provide(volume({ "/cache/.pkg.old/leftover.txt": "junk", "/cache/pkg/a.txt": "old" }))),
+	);
+
+	it.effect("the old tree leaves the live path whole before it is removed", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle({ "/cache/pkg/a.txt": "old", "/cache/pkg/b.txt": "old" });
+			const removed: Array<string> = [];
+			const watching = Layer.merge(
+				MemoryFileSystem.layerFaulty({
+					remove: (path) => {
+						if (handle.volume.has(path)) removed.push(path);
+						return undefined;
+					},
+				}).pipe(Layer.provide(handle.layer)),
+				Path.layer,
+			);
+			yield* AtomicDirectory.write(ROOT, [["a.txt", "new"]]).pipe(Effect.provide(watching));
+			assert.deepStrictEqual(removed, [OLD]);
+		}),
+	);
+
+	it.effect("the next call after a failed first rename recovers", () =>
 		Effect.gen(function* () {
 			const handle = yield* MemoryFileSystem.makeHandle({ "/cache/pkg/a.txt": "old" });
 			const crashing = Layer.merge(
@@ -100,7 +198,7 @@ describe("AtomicDirectory.write", () => {
 				Path.layer,
 			);
 			yield* Effect.flip(AtomicDirectory.write(ROOT, [["a.txt", "first"]]).pipe(Effect.provide(crashing)));
-			assert.isFalse(handle.volume.has(ROOT));
+			assert.strictEqual(handle.volume.text("/cache/pkg/a.txt"), "old");
 			yield* AtomicDirectory.write(ROOT, [["a.txt", "second"]]).pipe(
 				Effect.provide(Layer.merge(handle.layer, Path.layer)),
 			);
@@ -175,6 +273,28 @@ describe("AtomicDirectory.write", () => {
 				const fs = yield* MemoryFileSystem.Volume;
 				assert.deepStrictEqual(fs.paths(), ["/cache/.pkg.staging/leftover.txt", "/cache/pkg/a.txt"]);
 			}).pipe(Effect.provide(volume({ "/cache/pkg/a.txt": "old", "/cache/.pkg.staging/leftover.txt": "junk" }))),
+		);
+	}
+
+	it.effect("a root ending in . or .. is normalised before its siblings are derived", () =>
+		Effect.gen(function* () {
+			yield* AtomicDirectory.write("/cache/pkg/sub/..", [["a.txt", "new"]]);
+			const fs = yield* MemoryFileSystem.Volume;
+			assert.deepStrictEqual(fs.paths(), ["/cache/keep.txt", "/cache/pkg/a.txt"]);
+			yield* AtomicDirectory.write("/cache/pkg/./", [["b.txt", "new"]]);
+			assert.deepStrictEqual(fs.paths(), ["/cache/keep.txt", "/cache/pkg/b.txt"]);
+		}).pipe(Effect.provide(volume({ "/cache/pkg/sub/x.txt": "old", "/cache/keep.txt": "keep" }))),
+	);
+
+	for (const bad of [".", "..", "../..", "./"]) {
+		it.effect(`refuses the root ${JSON.stringify(bad)} before touching the disk`, () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(AtomicDirectory.write(bad, [["a.txt", "x"]]));
+				assert.strictEqual(error.operation, "validate");
+				assert.strictEqual(error.path, bad);
+				const fs = yield* MemoryFileSystem.Volume;
+				assert.deepStrictEqual(fs.paths(), ["/cache/pkg/a.txt"]);
+			}).pipe(Effect.provide(volume({ "/cache/pkg/a.txt": "old" }))),
 		);
 	}
 

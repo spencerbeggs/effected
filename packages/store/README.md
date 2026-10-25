@@ -373,12 +373,12 @@ import { AtomicDirectory } from "@effected/store";
 yield* AtomicDirectory.write("/var/cache/app/left-pad", new Map([["package.json", "{}"], ["lib/index.d.ts", "export {};"]]));
 ```
 
-It stages in the sibling `.<name>.staging` (same parent, so the final `rename` stays on one filesystem and is atomic), clears leftover staging from a crashed run first, creates staging even for an empty set, writes every file with its parent directories, then removes the live directory and renames staging into place. Two things to design around:
+It stages in the sibling `.<name>.staging` (same parent, so every `rename` stays on one filesystem and is atomic), clears leftover `.<name>.staging` and `.<name>.old` siblings from a crashed run first, creates staging even for an empty set, and writes every file with its parent directories. It then renames the live directory to `.<name>.old`, renames staging into place, and removes `.<name>.old`, so the old tree is only deleted once no reader can reach it. Both siblings belong to the writer and are removed with force. Two things to design around:
 
-- **A brief absence window.** Between the remove and the rename, `root` does not exist. A reader in that window sees a missing directory, never a half-written one, so treat absence as a miss. A crash inside the window leaves `root` absent and the complete tree in staging; the next call recovers.
-- **One writer per root.** The staging name is fixed, which is what lets a later call clean up a crashed one. Serialize writes to the same `root`.
+- **A brief absence window.** Between the two renames, `root` does not exist. A reader in that window sees a missing directory, never a partial one, so treat absence as a miss. A crash inside the window leaves `root` absent with the old tree whole in `.<name>.old` and the new one whole in staging; the next call recovers.
+- **One writer per root.** The sibling names are fixed, which is what lets a later call clean up a crashed one. Serialize writes to the same `root`.
 
-A file path that is empty, absolute or climbs out of the directory is refused before anything is touched. Failures are `AtomicDirectoryError` with an `operation` of `validate`, `clear`, `stage`, `write` or `promote`.
+`root` is normalised first, and one whose basename is `.` or `..` is refused, as is a file path that is empty, absolute or climbs out of the directory, all before anything is touched. Failures are `AtomicDirectoryError` with an `operation` of `validate`, `clear`, `stage`, `write`, `promote` or `cleanup`.
 
 ## Errors
 
@@ -386,7 +386,7 @@ A file path that is empty, absolute or climbs out of the directory is refused be
 | --- | --- | --- |
 | `StoreError` | Its `message` reads `Store <operation> failed: <reason>`, folding in the cause's message — for a SQL failure, the database's own text (`UNIQUE constraint failed: t.id`), never a bound value. A store operation's own SQL failed — ledger bookkeeping, or the queries around a migration — or (`operation: "adopt"`) an adopted Migrator ledger disagrees with your migration list. Carries `operation` and the structural `cause`. | Usually fatal; report the operation and the cause. An `adopt` failure's cause names the mismatched migration. |
 | `StoreMigrationError` | A user-supplied migration failed with a typed `SqlError`. Carries `direction`, `id`, `name` and the structural `cause`. | Report which migration and which direction; the ledger is left consistent. |
-| `AtomicDirectoryError` | `AtomicDirectory.write` could not lay down or promote a directory. Carries `operation`, the `path` it was working on and the structural `cause`. | A `write` failure leaves the live tree untouched; a `promote` failure can leave it absent, and the next call recovers. |
+| `AtomicDirectoryError` | `AtomicDirectory.write` could not lay down or promote a directory. Carries `operation`, the `path` it was working on and the structural `cause`. | A `write` failure leaves the live tree untouched; a `promote` failure can leave it absent, and the next call recovers; a `cleanup` failure means the new tree is live and only the old one is left over. |
 | `CacheError` | A cache operation's SQL failed. Carries `operation`, an optional `key` and the structural `cause`. | A cache is a cache — falling back to the origin is usually right. |
 
 Defects are not errors here. A throwing migration callback, a throwing `onRemoved`, a `maxEntries` that is not a positive integer: all of those are programmer mistakes and stay on the defect channel where they belong.

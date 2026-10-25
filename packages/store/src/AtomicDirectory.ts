@@ -1,7 +1,7 @@
 // Atomic replacement of a whole on-disk directory: stage the file set in a
-// sibling directory, then swap it into place, so a reader never observes a
-// half-written tree. FileSystem and Path arrive through R; store owns no
-// filesystem backend.
+// sibling directory, then swap it into place with two renames, so a reader
+// never observes a half-written or half-removed tree. FileSystem and Path
+// arrive through R; store owns no filesystem backend.
 
 import { Effect, FileSystem, Path, Schema } from "effect";
 import { causeMessage } from "./internal/causeMessage.js";
@@ -25,26 +25,34 @@ export type AtomicDirectoryFiles = Iterable<readonly [path: string, content: str
  * @remarks
  * `operation` names the step that failed:
  *
- * - `validate` — a file path is empty, absolute, or climbs out of the
- *   directory. Nothing was touched.
- * - `clear` — leftover staging from an earlier run could not be removed.
+ * - `validate` — `root` names no directory of its own (it normalises to a
+ *   basename of `.` or `..`), or a file path is empty, absolute, or climbs
+ *   out of the directory. Nothing was touched.
+ * - `clear` — leftover staging or a leftover old tree from an earlier run
+ *   could not be removed. The live directory is untouched.
  * - `stage` — the staging directory could not be created.
  * - `write` — a file, or one of its parent directories, could not be
  *   written into staging. The live directory is untouched.
- * - `promote` — removing the live directory or renaming staging into its
- *   place failed. A failure here can leave the live directory absent, with
- *   the complete new tree still in staging; it is never half-written. The
- *   next call clears the staging and writes again.
+ * - `promote` — one of the two renames failed. If the first (live to
+ *   `.<name>.old`) failed, the live directory is untouched; if the second
+ *   (staging to live) failed, the live directory is absent, with the old
+ *   tree complete in `.<name>.old` and the new one complete in staging.
+ *   No tree is ever partial, and the next call clears both siblings and
+ *   writes again.
+ * - `cleanup` — the new tree is live and complete, but removing the old
+ *   one from `.<name>.old` failed. The next call removes it, so a caller
+ *   that only needs the new tree in place may treat this as success.
  *
  * `path` is the path the step was working on: the offending relative path
- * for `validate`, an absolute or root-relative path otherwise. `cause` keeps
- * the underlying failure, usually a `PlatformError`.
+ * for a file's `validate`, the root as given for the root's, and an
+ * absolute or root-relative path otherwise. `cause` keeps the underlying
+ * failure, usually a `PlatformError`.
  *
  * @public
  */
 export class AtomicDirectoryError extends Schema.TaggedError<AtomicDirectoryError>()("AtomicDirectoryError", {
 	/** The step that failed. */
-	operation: Schema.Literals(["validate", "clear", "stage", "write", "promote"]),
+	operation: Schema.Literals(["validate", "clear", "stage", "write", "promote", "cleanup"]),
 	/** The path the step was working on. */
 	path: Schema.String,
 	/** The underlying failure, preserved structurally. */
@@ -56,6 +64,9 @@ export class AtomicDirectoryError extends Schema.TaggedError<AtomicDirectoryErro
 		return detail === undefined ? head : `${head}: ${detail}`;
 	}
 }
+
+/** Trailing separators on a normalised root, stripped so its basename is its own name. */
+const TRAILING_SEPARATORS = /[\\/]+$/;
 
 /**
  * Atomic whole-directory replacement over core `FileSystem`.
@@ -71,44 +82,49 @@ export class AtomicDirectory {
 
 	/**
 	 * Replace the directory at `root` with exactly `files`, so a reader sees
-	 * either the old tree or the new one, never a partial write.
+	 * the old tree, the new one, or briefly none, but never a partial tree.
 	 *
 	 * @remarks
 	 * The choreography, in order:
 	 *
-	 * 1. Every file path is validated first. An empty path, an absolute path,
-	 *    or one that climbs out of the directory fails with operation
-	 *    `"validate"` before anything on disk is touched.
-	 * 2. The staging directory is the sibling `.<name>.staging` next to `root`
-	 *    (so `/cache/pkg` stages in `/cache/.pkg.staging`). Leftover staging
-	 *    from an earlier crash is removed.
+	 * 1. `root` is normalised (`/cache/pkg/.` is `/cache/pkg`), and a root
+	 *    whose basename is then `.` or `..` fails with operation
+	 *    `"validate"`. Every file path is validated too: an empty path, an
+	 *    absolute path, or one that climbs out of the directory fails with
+	 *    `"validate"`. Nothing on disk is touched until both pass.
+	 * 2. Two siblings of `root` are used: the staging directory
+	 *    `.<name>.staging` and the retired tree `.<name>.old` (so `/cache/pkg`
+	 *    stages in `/cache/.pkg.staging`). Both are owned by the writer, and
+	 *    any leftover of either from an earlier crash is removed with force.
 	 * 3. Staging is created, even for an empty file set, so the promotion
 	 *    always has a directory to move and an empty set yields an empty
 	 *    directory.
 	 * 4. Each file is written into staging, creating its parent directories.
-	 * 5. The live directory is removed, if present, and staging is renamed
-	 *    into its place.
+	 * 5. The live directory, if present, is renamed to `.<name>.old`, staging
+	 *    is renamed into its place, and then `.<name>.old` is removed.
 	 *
-	 * **Same filesystem.** Staging is a sibling precisely so the final
-	 * `rename` stays on one filesystem, where it is atomic. A `root` whose
-	 * parent is a mount point for a different filesystem than `root` itself
-	 * breaks that guarantee; such a layout is not supported.
+	 * **Same filesystem.** Staging and the old tree are siblings precisely so
+	 * both renames stay on one filesystem, where each is atomic. A `root`
+	 * whose parent is a mount point for a different filesystem than `root`
+	 * itself breaks that guarantee; such a layout is not supported.
 	 *
-	 * **The brief-absence window.** Between removing the live directory and
-	 * renaming staging in, `root` does not exist. A concurrent reader in that
-	 * window sees the directory as missing, never half-written, so a cache
-	 * reader should treat absence as a miss. A failure or crash inside the
-	 * window leaves `root` absent with the complete new tree in staging; the
-	 * next call clears it and writes again.
+	 * **The brief-absence window.** Between the two renames `root` does not
+	 * exist. A concurrent reader in that window sees the directory as
+	 * missing, never as a partial tree, so a cache reader should treat
+	 * absence as a miss. The old tree is removed only after it has left
+	 * `root`, so no reader sees it half-deleted. A failure or crash between
+	 * the renames leaves `root` absent, the old tree complete in
+	 * `.<name>.old` and the new one complete in staging; the next call clears
+	 * both and writes again.
 	 *
-	 * **One writer per root.** The staging name is fixed, which is what lets a
-	 * later call clean up after a crashed one, so two concurrent writers to
-	 * the same `root` race each other. Serialize writes to one `root`.
+	 * **One writer per root.** The sibling names are fixed, which is what
+	 * lets a later call clean up after a crashed one, so two concurrent
+	 * writers to the same `root` race each other. Serialize writes to one
+	 * `root`.
 	 *
-	 * A `root` with no name of its own (a filesystem root such as `/`) has no
-	 * sibling to stage in and is a defect. `root` is used as given; a
-	 * relative one resolves against the process working directory, as every
-	 * `FileSystem` call does.
+	 * A filesystem root such as `/` has no sibling to stage in and is a
+	 * defect. A relative `root` resolves against the process working
+	 * directory, as every `FileSystem` call does.
 	 *
 	 * @example
 	 * ```ts
@@ -139,13 +155,23 @@ export class AtomicDirectory {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 
-		const name = path.basename(root);
-		if (name === "" || path.dirname(root) === root) {
+		const normalised = path.normalize(root);
+		const target = normalised.length > 1 ? normalised.replace(TRAILING_SEPARATORS, "") : normalised;
+		const name = path.basename(target);
+		if (name === "." || name === "..") {
+			return yield* new AtomicDirectoryError({
+				operation: "validate",
+				path: root,
+				cause: new Error("the root must name a directory of its own, not . or .."),
+			});
+		}
+		if (name === "" || path.dirname(target) === target) {
 			return yield* Effect.die(
 				new Error(`AtomicDirectory.write: root must name a directory below a parent, received ${JSON.stringify(root)}`),
 			);
 		}
-		const staging = path.join(path.dirname(root), `.${name}.staging`);
+		const staging = path.join(path.dirname(target), `.${name}.staging`);
+		const retired = path.join(path.dirname(target), `.${name}.old`);
 
 		const entries = Array.from(files);
 		for (const [relative] of entries) {
@@ -173,6 +199,7 @@ export class AtomicDirectory {
 				Effect.mapError(effect, (cause) => new AtomicDirectoryError({ operation, path: at, cause }));
 
 		yield* fs.remove(staging, { recursive: true, force: true }).pipe(step("clear", staging));
+		yield* fs.remove(retired, { recursive: true, force: true }).pipe(step("clear", retired));
 		yield* fs.makeDirectory(staging, { recursive: true }).pipe(step("stage", staging));
 		for (const [relative, content] of entries) {
 			const full = path.join(staging, relative);
@@ -181,7 +208,10 @@ export class AtomicDirectory {
 				step("write", full),
 			);
 		}
-		yield* fs.remove(root, { recursive: true, force: true }).pipe(step("promote", root));
-		yield* fs.rename(staging, root).pipe(step("promote", root));
+		if (yield* fs.exists(target).pipe(step("promote", target))) {
+			yield* fs.rename(target, retired).pipe(step("promote", target));
+		}
+		yield* fs.rename(staging, target).pipe(step("promote", target));
+		yield* fs.remove(retired, { recursive: true, force: true }).pipe(step("cleanup", retired));
 	});
 }
