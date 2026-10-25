@@ -2,31 +2,17 @@
 // drive it over `@effected/memfs`' node-shaped sync port (`handle.sync`), which
 // throws node's exact errno on a miss — so nothing below exists on disk, and a
 // `src/` that still reached for `node:fs` could not pass. A win32-flavored
-// `node:path.win32` drives the same port through a separator shim, proving the
-// path implementation is respected end to end.
+// `node:path.win32` drives the same port in its `pathStyle: "win32"` form,
+// proving the path implementation is respected end to end.
 //
 // The documented one-liner `node:fs` wiring is pinned ONCE, against this real
 // repository, by `integration/node-sync.int.test.ts` (its `handWired` oracle).
-// The one real-disk suite left here is the `readDirectoryWithTypes` fast path,
-// which pins node `Dirent` semantics over real symlinks — see its header.
 //
 // `findWorkspaceRootSync` / `getWorkspacePackagesSync` are plain synchronous
 // functions, not Effects, so plain `it()` is correct where no Effect runs.
 
-import {
-	existsSync,
-	mkdirSync,
-	mkdtempSync,
-	readFileSync,
-	readdirSync,
-	rmSync,
-	statSync,
-	symlinkSync,
-	writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import nodePath, { join } from "node:path";
-import { afterAll, afterEach, assert, beforeAll, describe, it, vi } from "@effect/vitest";
+import nodePath from "node:path";
+import { afterEach, assert, describe, it, vi } from "@effect/vitest";
 import type { MemoryFileSystemHandle } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
 import { PackageJsonSyntaxError } from "@effected/package-json";
@@ -333,23 +319,11 @@ describe("getWorkspacePackagesSync — exclusions", () => {
 // ── the consumer's path implementation is respected end to end ─────────────
 //
 // A win32-flavored `SyncPath` (drive-letter roots, backslash output) drives the
-// whole enumeration. memfs is a POSIX volume, so a four-line shim maps each
-// win32 path the enumerator hands the port onto the volume (`C:\repo` →
-// `/C:/repo`); everything past the shim is the real memfs port. Under the posix
-// implementation these inputs cannot even ascend: `path.posix.dirname` of a
-// backslashed path is `"."` immediately — pinned below so the suite cannot
-// pass vacuously.
-
-/** A win32-path view of a POSIX port: backslashes become slashes, under `/`. */
-const win32Shim = (port: SyncFileSystem): SyncFileSystem => {
-	const posix = (p: string): string => `/${p.replace(/\\/g, "/")}`;
-	return {
-		exists: (p) => port.exists(posix(p)),
-		readFile: (p) => port.readFile(posix(p)),
-		readDirectory: (p) => port.readDirectory(posix(p)),
-		isDirectory: (p) => port.isDirectory(posix(p)),
-	};
-};
+// whole enumeration. memfs is a POSIX volume, so the port is built with
+// `pathStyle: "win32"`, which maps each win32 path the enumerator hands it onto
+// the volume (`C:\repo` → `/C:/repo`). Under the posix implementation these
+// inputs cannot even ascend: `path.posix.dirname` of a backslashed path is
+// `"."` immediately — pinned below so the suite cannot pass vacuously.
 
 describe("WorkspacesSync with a win32 SyncPath", () => {
 	const handle = MemoryFileSystem.makeSync({
@@ -357,7 +331,10 @@ describe("WorkspacesSync with a win32 SyncPath", () => {
 		"/C:/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0", private: true }),
 		"/C:/repo/packages/a/package.json": JSON.stringify({ name: "@win/a", version: "1.0.0" }),
 	});
-	const ops: WorkspacesSyncOptions = { fileSystem: win32Shim(handle.sync), path: nodePath.win32 };
+	const ops: WorkspacesSyncOptions = {
+		fileSystem: MemoryFileSystem.syncFileSystem(handle.volume, { pathStyle: "win32" }),
+		path: nodePath.win32,
+	};
 
 	it("finds the root by ascending a drive-letter path", () => {
 		assert.strictEqual(findWorkspaceRootSync("C:\\repo\\packages\\a", ops), "C:\\repo");
@@ -392,51 +369,45 @@ describe("WorkspacesSync with a win32 SyncPath", () => {
 // naive implementation trusting `Dirent.isDirectory()` silently drops packages,
 // because a dirent describes the link and not its target.
 //
-// This is the one suite left on the REAL disk, deliberately: it pins node's own
-// `readdirSync(p, { withFileTypes: true })` Dirent semantics over a real
-// symlink. memfs' sync port has no `withFileTypes` form (only its promises port
-// does), so serving the fast path from a volume would mean hand-writing the
-// very Dirent adapter this suite exists to check against node.
+// The tree is a memfs volume. Its sync port's `readDirectory(p, { withFileTypes:
+// true })` answers literal dirents — a link inside the directory reports
+// `isSymbolicLink()`, never its target's kind — and memfs' own node-differential
+// suite pins those dirents against `readdirSync(p, { withFileTypes: true })`
+// over real symlinks, so node's Dirent semantics are still what this exercises.
 describe("SyncFileSystem.readDirectoryWithTypes (optional fast path)", () => {
-	let root: string;
-
-	beforeAll(() => {
-		root = mkdtempSync(join(tmpdir(), "ws-dirent-"));
-		mkdirSync(join(root, "packages/a"), { recursive: true });
-		mkdirSync(join(root, "real/b"), { recursive: true });
-		writeFileSync(join(root, "package.json"), `{ "name": "root", "version": "0.0.0", "private": true }`);
-		writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
-		writeFileSync(join(root, "packages/a/package.json"), `{ "name": "@x/a", "version": "1.0.0" }`);
-		writeFileSync(join(root, "real/b/package.json"), `{ "name": "@x/b", "version": "2.0.0" }`);
+	const root = "/repo";
+	const handle = MemoryFileSystem.makeSync({
+		"/repo/package.json": `{ "name": "root", "version": "0.0.0", "private": true }`,
+		"/repo/pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+		"/repo/packages/a/package.json": `{ "name": "@x/a", "version": "1.0.0" }`,
+		"/repo/real/b/package.json": `{ "name": "@x/b", "version": "2.0.0" }`,
 		// packages/b is a SYMLINK to a directory holding a real package.
-		symlinkSync(join(root, "real/b"), join(root, "packages/b"), "dir");
+		"/repo/packages/b": MemoryFileSystem.symlink("/repo/real/b"),
 	});
 
-	afterAll(() => {
-		rmSync(root, { recursive: true, force: true });
-	});
-
-	// The fallback: exactly the documented four-operation wiring, no fast path.
-	const slow: SyncFileSystem = {
-		exists: existsSync,
-		readFile: (p) => readFileSync(p, "utf8"),
-		readDirectory: (p) => readdirSync(p),
-		isDirectory: (p) => statSync(p).isDirectory(),
-	};
+	// The fallback: exactly the four-operation port, no fast path.
+	const slow: SyncFileSystem = handle.sync;
 
 	const fast: SyncFileSystem = {
 		...slow,
 		readDirectoryWithTypes: (p) =>
-			readdirSync(p, { withFileTypes: true }).map((entry) => ({
+			handle.sync.readDirectory(p, { withFileTypes: true }).map((entry) => ({
 				name: entry.name,
 				isDirectory: entry.isDirectory(),
 				isSymbolicLink: entry.isSymbolicLink(),
 			})),
 	};
 
+	it("the fast path's dirent for the symlinked package reports the link, not its target", () => {
+		// The premise the agreement below rests on: a fast path trusting
+		// `isDirectory` alone would drop `packages/b`.
+		const b = fast.readDirectoryWithTypes?.("/repo/packages").find((entry) => entry.name === "b");
+		assert.deepStrictEqual(b, { name: "b", isDirectory: false, isSymbolicLink: true });
+	});
+
 	it("agrees with the fallback, symlinked package directories included", () => {
-		const viaSlow = getWorkspacePackagesSync(root, { fileSystem: slow, path: nodePath });
-		const viaFast = getWorkspacePackagesSync(root, { fileSystem: fast, path: nodePath });
+		const viaSlow = getWorkspacePackagesSync(root, { fileSystem: slow, path: nodePath.posix });
+		const viaFast = getWorkspacePackagesSync(root, { fileSystem: fast, path: nodePath.posix });
 
 		// The positive control: the symlinked package must actually be found, or
 		// "the two agree" would be satisfied by both finding nothing.

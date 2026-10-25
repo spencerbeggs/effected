@@ -31,9 +31,10 @@ const fsFixture = (options: {
 			[...(options.present ?? []), ...(options.denied ?? [])].map((target) => [target, options.files?.[target] ?? ""]),
 		),
 		{
+			// The spy runs before the fault, so a denied probe is recorded too.
+			spies: { exists: (target) => void options.probed?.push(target) },
 			faults: {
 				exists: (target) => {
-					options.probed?.push(target);
 					if (options.denied?.includes(target)) {
 						return Effect.fail(
 							PlatformError.systemError({

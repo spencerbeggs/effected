@@ -316,6 +316,11 @@ per UTF-16 unit with no Unicode normalization.
 - **Watch events race the test.** The volume publishes an event for every
   mutation, so a test driving events explicitly sees the code's own writes
   too. Build with `watchEvents: "manual"` and deliver with `handle.emit`.
+  `emit` routes as a real event does: a file's event also reaches its parent
+  directory's watchers, and a directory's event reaches the watchers below it.
+  A memfs watch does not end when its file is removed, and `watcherCount()`
+  is volume-wide. A double that must route an event to exactly one target,
+  end a file watch on unlink, or count watchers per path stays hand-built.
 - **A faulted path must exist in the seed — when the consumer absorbs the
   failure.** A `PermissionDenied` fault is distinguishable from an unseeded
   path's `NotFound`/`false` only if the code under test surfaces it. Code that
