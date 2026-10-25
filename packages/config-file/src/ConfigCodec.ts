@@ -52,13 +52,14 @@ export class ConfigCodecError extends Schema.TaggedError<ConfigCodecError>()("Co
  * decorator codecs such as `EncryptedCodec` and `ConfigMigration.make` widen it
  * rather than flattening their own failures into a string.
  *
- * The four built-in codecs — `JsonCodec`, `JsoncCodec`, `YamlCodec` and
- * `TomlCodec` — are free-standing named exports, one per module, and are
- * deliberately never collected into a namespace object. Collecting them would
- * make this module a dispatch table: referencing it at all would reach every
- * codec, and every codec would reach its parsing engine, so importing the JSON
- * codec alone would drag the JSONC, YAML and TOML engines into the bundle.
- * Name the one codec you use and a bundler drops the rest.
+ * The four built-in codecs are free-standing named exports, one per module,
+ * and are deliberately never collected into a namespace object. `JsonCodec`
+ * ships from the package root; `JsoncCodec`, `YamlCodec` and `TomlCodec` ship
+ * from the `./jsonc`, `./yaml` and `./toml` subpaths, whose engines are
+ * optional peers the root never reaches. Collecting them would make this module
+ * a dispatch table: referencing it at all would reach every codec, and every
+ * codec would reach its parsing engine, so importing the JSON codec alone would
+ * drag the JSONC, YAML and TOML engines into the bundle.
  *
  * @public
  */

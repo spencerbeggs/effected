@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Composable config file loading for Effect. Declare a resolver chain — an explicit path, an upward walk from the cwd, the workspace or git root, `/etc` — decode every discovered file through an Effect `Schema`, and combine the results with a merge strategy. JSON, JSONC, YAML and TOML all decode with no extra install. Codecs, resolvers and merge strategies are pluggable seams, and failures arrive as tagged errors carrying structured payloads rather than prose, so "no config anywhere" is routable separately from "the config I found is broken".
+Composable config file loading for Effect. Declare a resolver chain — an explicit path, an upward walk from the cwd, the workspace or git root, `/etc` — decode every discovered file through an Effect `Schema`, and combine the results with a merge strategy. JSON decodes out of the box; JSONC, YAML and TOML each take one optional engine package. Codecs, resolvers and merge strategies are pluggable seams, and failures arrive as tagged errors carrying structured payloads rather than prose, so "no config anywhere" is routable separately from "the config I found is broken".
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
 > Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
@@ -33,11 +33,17 @@ npm install @effected/config-file effect @effect/platform-node
 pnpm add @effected/config-file effect @effect/platform-node
 ```
 
-Requires Node.js >=24.11.0. Every format is covered by that one install; there is no separate package to add for YAML or TOML.
+Requires Node.js >=24.11.0. That install covers JSON. To read JSONC, YAML or TOML, add the matching engine:
+
+```bash
+pnpm add @effected/jsonc   # for @effected/config-file/jsonc
+pnpm add @effected/yaml    # for @effected/config-file/yaml
+pnpm add @effected/toml    # for @effected/config-file/toml
+```
 
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
-`effect` v4 is a peer dependency, and so are `@effected/jsonc`, `@effected/toml`, `@effected/walker` and `@effected/yaml` — the first-party engines behind the JSONC, YAML and TOML codecs, plus the traversal primitive the `upwardWalk`, `workspaceRoot` and `gitRoot` resolvers are built on. Package managers that install peers automatically will pull them in; add them to your manifest explicitly if yours does not. The package declares no runtime dependencies of its own, so nothing it drags into your tree comes from outside `effect` and `@effected/*`.
+`effect` v4 is a peer dependency, and so are `@effected/walker` and `@effected/glob` — the traversal primitive the `upwardWalk`, `workspaceRoot` and `gitRoot` resolvers are built on, and the matcher it peers on. Package managers that install peers automatically will pull them in; add them to your manifest explicitly if yours does not. `@effected/jsonc`, `@effected/yaml` and `@effected/toml` are **optional** peers: only the `./jsonc`, `./yaml` and `./toml` subpaths load them, and the package root never does, so a JSON-only program installs and loads none of them. The package declares no runtime dependencies of its own, so nothing it drags into your tree comes from outside `effect` and `@effected/*`.
 
 Reading and writing files needs a `FileSystem` and a `Path` implementation, provided once at the edge — from `@effect/platform-node` on Node.
 
@@ -80,7 +86,8 @@ Effect.runPromise(program.pipe(Effect.provide(AppConfigLive), Effect.provide(Pla
 Resolvers are consulted in priority order, highest first. `MergeStrategy.firstMatch` takes the winner; `MergeStrategy.layeredMerge` deep-merges every source that matched, with higher-priority keys overwriting lower ones:
 
 ```ts
-import { ConfigFile, ConfigResolver, MergeStrategy, YamlCodec } from "@effected/config-file";
+import { ConfigFile, ConfigResolver, MergeStrategy } from "@effected/config-file";
+import { YamlCodec } from "@effected/config-file/yaml";
 import { Schema } from "effect";
 
 class Settings extends Schema.Class<Settings>("Settings")({ port: Schema.Number }) {}
@@ -176,16 +183,16 @@ export const loadOrFallback = (config: ConfigFileShape<AppShape>) =>
 
 ## Codecs
 
-Four codecs ship in the package, each a free-standing named export:
+Four codecs ship in the package, each a free-standing named export. `JsonCodec` comes from the package root; the other three each have their own subpath and an optional engine peer to install beside it:
 
-| Codec | Format | Engine |
-| ----- | ------ | ------ |
-| `JsonCodec` | JSON | the host `JSON` global, no parser at all |
-| `JsoncCodec` | JSONC | `@effected/jsonc` |
-| `YamlCodec` | YAML | `@effected/yaml` |
-| `TomlCodec` | TOML | `@effected/toml` |
+| Codec | Format | Import from | Engine |
+| ----- | ------ | ----------- | ------ |
+| `JsonCodec` | JSON | `@effected/config-file` | the host `JSON` global, no parser at all |
+| `JsoncCodec` | JSONC | `@effected/config-file/jsonc` | `@effected/jsonc` |
+| `YamlCodec` | YAML | `@effected/config-file/yaml` | `@effected/yaml` |
+| `TomlCodec` | TOML | `@effected/config-file/toml` | `@effected/toml` |
 
-One install covers every format, and you still pay only for the parser you name. The codecs are free-standing exports rather than properties of a namespace object, so importing `TomlCodec` never references the YAML or JSONC bindings, their parsing engines are unreachable from your entrypoint and a bundler drops them. A JSON-only application ships no parser at all.
+You install and load only the parser you name. The root never reaches a subpath, so a JSON-only application installs no parser and ships none. Each subpath reaches only its own engine, and the codecs are never collected into a namespace object, so importing `TomlCodec` never references the YAML or JSONC bindings.
 
 Codecs compose. `EncryptedCodec` wraps any codec with AES-GCM, and `ConfigMigration.make` wraps any codec so parsed content is brought up to the latest version. Each *widens* the error channel rather than flattening its failures into the inner codec's error, and a decorated codec plugs into `ConfigFile.layer`, `ConfigFile.testLayer` and `ConfigFile.read` like any other: their error unions widen with it. A service key names the widened error as its third type argument:
 
@@ -242,7 +249,7 @@ Leave the third type argument off and the `ConfigFile.layer` call is a compile e
 - `encode` / `write` / `save` / `update` — the write path. `encode(value, options?)` returns the serialized text a `write` would put on disk without writing, emitting an event or naming a path in its errors: the primitive behind a `--dry-run` flag. `write` takes an explicit path the caller vouches for; `save` and `update` resolve the layer's `defaultPath` and create its parent directory. `encode` and `write` accept `{ header }`, text prepended verbatim above the document with exactly one newline between — a `#:schema https://…` directive atop a TOML file, say. The caller owns its validity in the target format; JSON has no comment syntax, so a header on `JsonCodec` yields an unparseable file by construction.
 - `ConfigResolver` — `explicitPath`, `staticDir`, `upwardWalk`, `workspaceRoot`, `gitRoot` and `systemEtc`. A resolver's error channel is `never` by contract: every filesystem failure becomes `Option.none()`, so one unreadable tier never aborts the chain.
 - `MergeStrategy` — `firstMatch` and `layeredMerge`, combining discovered sources in priority order.
-- `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec` — JSON, JSONC, YAML and TOML in the box, exported free-standing so an unused format's engine is tree-shaken away.
+- `JsonCodec` (root), `JsoncCodec` (`./jsonc`), `YamlCodec` (`./yaml`), `TomlCodec` (`./toml`) — JSON, JSONC, YAML and TOML, exported free-standing and split by subpath so an unused format's engine is neither installed nor loaded.
 - `ConfigCodec` / `EncryptedCodec` / `ConfigMigration` — a pluggable codec seam, generic in its error type so decorators widen rather than flatten. `ConfigCodec` is the interface: bring your own format by satisfying it.
 - `ConfigEvents` — an opt-in `PubSub` of `ConfigEvent`, honestly zero-cost when omitted: no `events` option means no context lookup at all. Failure events carry the structured typed error, never a `reason` string.
 - `asConfigProvider` / `layerConfigProvider` — expose a loaded, validated document as a v4 `ConfigProvider`, layered beneath the ambient one so an environment variable overrides the file it was deployed with.

@@ -1,6 +1,6 @@
+import type { ConfigCodec } from "@effected/config-file";
 import { Yaml } from "@effected/yaml";
 import { Effect } from "effect";
-import type { ConfigCodec } from "./ConfigCodec.js";
 import { ConfigCodecError } from "./ConfigCodec.js";
 
 /**
