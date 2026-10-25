@@ -13,10 +13,10 @@ sources:
     resource: ../../packages/workspaces/src/node-sync.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-25T19:59:29Z
 integrity:
   generated:
-    body: 0a64a974e9c86d15
+    body: e963599e3c4930f5
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -30,10 +30,13 @@ verified:
 
 ## Context
 
-`src/WorkspacesSync.ts` ships two synchronous functions,
-`findWorkspaceRootSync` and `getWorkspacePackagesSync`, positional-path-first
+`src/WorkspacesSync.ts` ships four synchronous functions —
+`findWorkspaceRootSync`, `getWorkspacePackagesSync`,
+`detectPackageManagerSync` and `localExecContextSync` — positional-path-first
 with an options bag second, with the cwd required rather than read from an
-ambient default.[^workspaces-sync-ts] They exist because Vitest's
+ambient default.[^workspaces-sync-ts] `@effected/commands`'
+`makeToolDiscoverySync` belongs to the same family, over a caller-supplied
+spawn rather than file operations. They exist because Vitest's
 config-time project discovery cannot await: a test runner picking up
 project configuration runs before any Effect runtime exists to drive an
 asynchronous discovery call, so the gate consumer needs a synchronous
@@ -57,7 +60,9 @@ The `*Result`/`Effect` pairing elsewhere in the kit names two forms of the
 holding no privileged claim to a platform. `WorkspacesSync` is a different
 shape entirely: it is total (`getWorkspacePackagesSync` has no error
 channel at all, reporting failure only through an optional `onSkip`
-callback), it takes its platform from the caller rather than being
+callback, while the members with no partial answer to degrade to return a
+`Result` carrying the Effect surface's own errors), it takes its platform
+from the caller rather than being
 platform-free, and it exists specifically *because* the async Effect form
 cannot run in the calling context — not as an interchangeable alternative
 to it.

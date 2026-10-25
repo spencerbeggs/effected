@@ -11,12 +11,20 @@ sources:
     resource: ../../packages/commands/src/ScriptedSpawner.ts
   - id: scripted-spawner-test
     resource: ../../packages/commands/__test__/ScriptedSpawner.test.ts
+  - id: tool-resolution-ts
+    resource: ../../packages/commands/src/internal/toolResolution.ts
+  - id: tool-discovery-sync-ts
+    resource: ../../packages/commands/src/ToolDiscoverySync.ts
+  - id: node-sync-ts
+    resource: ../../packages/commands/src/node-sync.ts
+  - id: entrypoints-test
+    resource: ../../packages/commands/__test__/entrypoints.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:33:57Z
+  at: 2026-10-25T19:59:29Z
 integrity:
   generated:
-    body: e38bce5f1c694f5c
+    body: 4c6d7034cd9ecbff
 ---
 
 # @effected/commands
@@ -60,7 +68,10 @@ contract — porting a platform spawner backend in here — is the one that
 still looks correct, because a package can speak core's types faithfully
 and be wrong by supplying them. Concretely, never add: a `Command` type, a
 service wrapping `ChildProcessSpawner`, a spawner backend, a platform
-layer, a `node:child_process` import, or a shell helper. `Run` is free
+layer, a `node:child_process` import on the main entry, or a shell helper.
+`nodeSpawnSync` under `./node-sync` is not a backend for core's contract:
+it binds the sync facade's own `SyncSpawn` port, the way
+`@effected/workspaces/node-sync` binds its sync file operations. `Run` is free
 functions, not a service, for exactly this reason — core's spawner *is*
 the runner service.
 
@@ -78,7 +89,9 @@ inverts — see
 and [the commands-specific rationale](../decisions/commands-workspaces-edge-inverts.md).
 
 - `effect` is the only peer. Zero runtime dependencies, zero
-  `@effected/*` edges, zero `node:` imports anywhere in `src/`.
+  `@effected/*` edges, zero `node:` imports on the main entry. The one
+  `node:` import in `src/` is `node-sync.ts`, the `./node-sync` subpath,
+  which `.` never reaches (see [the sync facade](#the-sync-facade)).
 - IO arrives through `R`: core's `ChildProcessSpawner` for every run,
   core's `Stdio` for the teeing variant only.
 - `@effect/platform-node` is a devDependency for the e2e suite only —
@@ -104,7 +117,9 @@ and a directory (`ExecContext`), not a workspace model.
 - **`commands` never touches a path or an ambient `cwd`.** The whole
   question moves behind the contract.
 - **The prefix table lives here, once.** `LocalExec.prefixes(launcher)` is
-  the single home of the four package managers' argv — `exec`, `dlx` and
+  the single home of the four package managers' argv; `LocalExec.contextFor(launcher,
+  { directory })` turns it into a plain `ExecContext` value, and `layerFor`
+  delegates to it — `exec`, `dlx` and
   script-runner prefixes. `scriptPrefix` is a required `ExecContext`
   field: an optional one would hand every implementation the question
   "what does absent mean?", which an execution context has no honest
@@ -132,7 +147,10 @@ Module-per-concept, no barrels; `src/index.ts` re-exports only. See
 | `Retry.ts` | transience classification and the retry policy — vocabulary for `Effect.retry`, not a retrying runner |
 | `LocalExec.ts` | the inverted contract: `LocalExec`, `ExecContext`, `LocalExecError`, the prefix table, the layers |
 | `Tool.ts` | `Tool`, the `VersionProbe` union, the `ToolSource` / `MismatchPolicy` literals |
-| `ToolDiscovery.ts` | the service and its layer, `ResolvedTool`, the tool errors, the evidence cache |
+| `ToolDiscovery.ts` | the service and its layer, `ResolvedTool`, the tool errors, the evidence cache, `resolveFromEvidence` |
+| `ToolDiscoverySync.ts` | `makeToolDiscoverySync`, the `SyncSpawn` / `SyncSpawnResult` port |
+| `node-sync.ts` | the `./node-sync` entry: `nodeSpawnSync` over `node:child_process` |
+| `internal/toolResolution.ts` | the pure resolution core both discovery surfaces share: name refusal, probe args, the presence rule, version reading, the copy decision; not exported |
 | `ScriptedSpawner.ts` | the public scripted `ChildProcessSpawner` double |
 | `internal/capture.ts` | bounded stream capture; not exported |
 
@@ -277,10 +295,30 @@ policy (`source`, `onMismatch`) is the caller's.
 
 - **No shell, ever.** Probing availability by interpolating a tool name
   into `sh -c "command -v <name>"` is an injection hazard and broken on
-  Windows. Absence is a spawn failure, never an exit code: the probe
-  spawns the tool itself with its version flag, a `PlatformError` whose
-  `reason._tag` is `"NotFound"` means absent, and any completed run means
-  present. A tool whose `--version` exits 1 exists.
+  Windows.
+- **The presence rule differs by location.** The global probe spawns the
+  tool itself with its version flag: a `PlatformError` whose `reason._tag`
+  is `"NotFound"` means absent, and any completed run means present — a
+  global tool whose `--version` exits 1 exists. The local probe spawns the
+  *launcher* (`pnpm exec`, `npx --no --`, …), which runs whether or not the
+  tool exists and reports a missing one as a non-zero exit (`pnpm exec
+  missing` exits 1, "Command not found"), so a local copy counts as found
+  only on exit 0. Reading the local probe by the global rule made every
+  tool locally present wherever pnpm existed.[^tool-resolution-ts] The
+  launcher also falls through to `PATH`, which this rule cannot see past —
+  see [a global-only tool probes as local](../limitations/commands-local-probe-fallthrough.md).
+- **Which copy runs.** An explicit `source` of `"global"` or `"local"`
+  decides; otherwise, with both copies found and versions disagreeing,
+  `onMismatch` decides; otherwise `Tool.prefer` (`"local" | "global"`, an
+  `optionalKey`, absent meaning `"local"`) decides. `Tool.named(n, {
+  prefer: "global" })` defaults `onMismatch` to `"preferGlobal"`, so the
+  preference holds either way. The default stays local, so a `Tool`
+  without `prefer` resolves exactly as before.
+- **`ResolvedTool.argv(...args)`** returns the launcher-prefixed argv as
+  plain strings for a caller handing a command line to another runner (a
+  lint-staged task). The working directory is not in it: a local
+  resolution's `context.directory` says where it must run. Prefer
+  `ResolvedTool.command` whenever this package or core spawns the process.
 - **Option-injection guard.** A tool name that is empty or begins with
   `-` is refused before any spawn, typed as its own `ToolRefusedError` —
   not `ToolNotFoundError`, which carries a `searched` list a refusal has
@@ -299,6 +337,37 @@ policy (`source`, `onMismatch`) is the caller's.
   successful lookup carrying negative evidence, and memoizing it would
   make a tool installed mid-process — an action that provisions a runtime
   and then uses it — permanently absent.
+
+### The sync facade
+
+`makeToolDiscoverySync({ spawn, context? })` returns `{ resolve,
+isAvailable, invalidate, invalidateAll }`, with `resolve` answering a
+`Result` over `ToolNotFoundError | ToolVersionMismatchError |
+ToolRefusedError` — `ToolDiscovery`'s taxonomy minus `LocalExecError`,
+since the context is a value the caller already holds.[^tool-discovery-sync-ts]
+It exists for a caller with no Effect runtime, such as a lint-staged
+handler, and follows the kit's `*Sync` escape-hatch shape
+([the escape-hatch decision](../decisions/workspaces-sync-facade-escape-hatch.md)):
+IO comes from the caller as a `SyncSpawn` (argv only, no shell, a process
+that cannot start reported through `error`; a throw also reads as absence).
+
+- **Same answers from the same code.** The refusal, the probe args, the
+  presence rule, version reading and the copy decision are
+  `internal/toolResolution.ts` plus `resolveFromEvidence`, shared with the
+  Effect service; only the spawn and the cache are the facade's own. A
+  parity matrix test pins identical answers across the two surfaces.
+- **Same caching rule.** Each instance memoizes positive evidence keyed by
+  name and version probe, never absence; hold one instance per process.
+- **Context is optional.** Omitted, every tool resolves globally, like
+  `LocalExec.layerNone`. Build one with `LocalExec.contextFor`, or derive
+  it from a workspace with `@effected/workspaces`' `localExecContextSync`.
+- **`./node-sync` exports `nodeSpawnSync`** — `spawnSync` with utf8, stdin
+  ignored, stderr discarded, no shell and no timeout (matching
+  `ToolDiscovery`; a caller wanting one wraps `spawnSync` itself).[^node-sync-ts]
+  It is a subpath so the `node:child_process` import never reaches `.`;
+  `__test__/entrypoints.test.ts` pins that `.` reaches neither `node-sync`
+  nor any `node:` import,[^entrypoints-test] per
+  [the second-entrypoint decision](../decisions/second-published-entrypoint.md).
 
 ## Test doubles
 
@@ -347,7 +416,8 @@ and dying beats a silently wrong answer.
   has to answer determinism (mtimes, uid/gid, entry order), `bsdtar`
   -versus-GNU flag divergence and whether extraction is in scope — so
   shipping one here would sink that design into the wrong package.
-- **No ambient `cwd`, no `process.env` reads, no `node:` imports.**
+- **No ambient `cwd`, no `process.env` reads, no `node:` imports** on the
+  main entry.
 - **Version constraints on a `Tool` stay deferred.** The hazard is
   asymmetric: refusing a tool that works because `tar (GNU tar) 1.35` is
   not a bare semver is worse than not checking at all.
@@ -405,6 +475,9 @@ in backticks.
 - **`@effected/github-actions`** — the general-purpose runner behind
   action work, plus the owner of the two lifecycle halves this package
   declines.
+- **[savvy-web/systems](../consumers/systems.md)** — `silk-effects`'
+  lint-staged handlers (savvy-web/systems#471) run the sync facade, the
+  consumer `makeToolDiscoverySync` was built for (effected#1100).
 
 [^scripted-spawner]: `packages/commands/src/ScriptedSpawner.ts` — the
     module comment on lazy recorders, and the `unref: Effect.sync(...)`
@@ -412,3 +485,11 @@ in backticks.
 [^scripted-spawner-test]: `packages/commands/__test__/ScriptedSpawner.test.ts`
     — "records spawns in call order, only when the effect actually runs"
     and "unrefed flips only when the handle's unref actually RUNS".
+[^tool-resolution-ts]: `packages/commands/src/internal/toolResolution.ts` —
+    `probeFromRun`, which reads a non-zero local exit as absent.
+[^tool-discovery-sync-ts]: `packages/commands/src/ToolDiscoverySync.ts` —
+    `makeToolDiscoverySync`, `SyncSpawn`, `ToolSyncResolutionFailure`.
+[^node-sync-ts]: `packages/commands/src/node-sync.ts` — `nodeSpawnSync`.
+[^entrypoints-test]: `packages/commands/__test__/entrypoints.test.ts` — the
+    main entry's module graph excludes `node-sync` and every `node:` import,
+    with a positive control that `./node-sync` does import `node:`.

@@ -26,9 +26,11 @@ sources:
     resource: ../../packages/workspaces/src/internal/layerRoot.ts
   - id: workspaces-sync-ts
     resource: ../../packages/workspaces/src/WorkspacesSync.ts
+  - id: package-manager-decision-ts
+    resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T21:58:29Z
+  at: 2026-10-25T19:59:29Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
@@ -36,7 +38,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 35047509871c75e8
+    body: 458f12a854d12625
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -253,6 +255,13 @@ never fatal, but a root manifest that is present yet unreadable or
 unparseable fails typed, because that is a real problem rather than a
 missing hint.
 
+`detectPackageManagerSync(root, ops)` gives the same answer synchronously,
+as a `Result` whose failure is the detector's own error union; it probes
+`root` as given, with no ascent. Both surfaces run one pure decision in
+`internal/packageManagerDecision.ts`, and a parity table pins their
+agreement.[^package-manager-decision-ts] See
+[the sync escape hatch](../modules/workspaces.md#workspacessync-the-escape-hatch).
+
 ## Test doubles
 
 All three services ship `makeTest` / `layerTest` doubles, so the whole
@@ -294,3 +303,6 @@ branches on and proceeds past.
     worklist traversal.
 [^workspaces-sync-ts]: `packages/workspaces/src/WorkspacesSync.ts` —
     `findWorkspaceRootSync` and its `FindWorkspaceRootSyncOptions.stopAt`.
+[^package-manager-decision-ts]: `packages/workspaces/src/internal/packageManagerDecision.ts`
+    — `decidePackageManager`, shared by `PackageManagerDetector` and
+    `detectPackageManagerSync`.

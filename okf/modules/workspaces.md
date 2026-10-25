@@ -19,6 +19,8 @@ sources:
     resource: ../../packages/workspaces/src/node-sync.ts
   - id: workspaces-sync-ts
     resource: ../../packages/workspaces/src/WorkspacesSync.ts
+  - id: package-manager-decision-ts
+    resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
   - id: savvy-build-ts
     resource: ../../packages/workspaces/savvy.build.ts
   - id: workspaces-ts
@@ -27,10 +29,10 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-24T01:01:49Z
+  at: 2026-10-25T19:59:29Z
 integrity:
   generated:
-    body: df5aa0028d7e6e01
+    body: 9c8857eeaa6d9ad6
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -317,8 +319,9 @@ continue phase 2's A1–A10:
 
 ## WorkspacesSync — the escape hatch
 
-Two synchronous functions in `src/WorkspacesSync.ts`
-(`findWorkspaceRootSync`, `getWorkspacePackagesSync`), positional-path-first
+Four synchronous functions in `src/WorkspacesSync.ts`
+(`findWorkspaceRootSync`, `getWorkspacePackagesSync`,
+`detectPackageManagerSync`, `localExecContextSync`), positional-path-first
 with an options bag second, and the cwd is required — the module reads no
 ambient cwd, because Vitest's config-time project discovery cannot
 await.[^workspaces-sync-ts] Both entry points drive the same worklist-based
@@ -335,6 +338,24 @@ caller that omits `onSkip` gets the old behavior back exactly: the skip is
 dropped, nothing is logged in its place. Before this existed, a fixture with
 one unusable manifest enumerated as a plausible empty array, indistinguishable
 from "no workspaces configured" — the failure mode issue #605 named.
+
+`detectPackageManagerSync(root, ops)` returns `Result<DetectedPackageManager,
+PackageManagerDetectionFailure>` and is not degraded-skip: there is no
+partial answer to degrade to, so the failure the Effect detector would raise
+is the `Result`'s failure, and a throwing `readFile` becomes a
+`WorkspaceManifestError` of kind `read` rather than a throw. It probes `root`
+as given, with no ascent. The decision itself lives once in
+`src/internal/packageManagerDecision.ts`, pure over the parsed root manifest
+and a marker-presence predicate, shared by `PackageManagerDetector` and the
+facade; a 21-tree parity table pins that the two agree.[^package-manager-decision-ts]
+
+`localExecContextSync(cwd, ops)` returns `Result<Option<ExecContext>,
+LocalExecError>`, the sync twin of `localExecLayer` row for row: the root
+comes from `findWorkspaceRootSync` (honouring `stopAt`), no root or a
+detection refusal is `none`, and a corrupt root manifest is a
+`LocalExecError`. It finds a *workspace* root only, so a single-package
+repository with just a lockfile gets `none`. Its context feeds
+`@effected/commands`' `makeToolDiscoverySync`.
 
 The design rule binding every sync escape hatch in the kit is that the
 package never imports `node:*` on its main path and never assumes POSIX — a
@@ -517,6 +538,9 @@ suppressed.
     `@packageDocumentation` block stating why the subpath exists.
 [^workspaces-sync-ts]: `packages/workspaces/src/WorkspacesSync.ts` —
     `SyncFileSystem`, `SyncDirectoryEntry`, and the sync facade functions.
+[^package-manager-decision-ts]: `packages/workspaces/src/internal/packageManagerDecision.ts`
+    — `decidePackageManager`; the parity table is
+    `__test__/PackageManagerDetectorSync.test.ts`.
 [^savvy-build-ts]: `packages/workspaces/savvy.build.ts:7` — the
     `suppressWarnings` entry naming `ae-forgotten-export` and the `_base`
     pattern.

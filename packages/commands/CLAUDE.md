@@ -32,6 +32,13 @@ at `okf/modules/commands.md` and load what the task needs:
   (signalling a pid, readiness polling, archives) →
   `okf/limitations/commands-no-process-supervision.md` — Load when: asked
   to add process supervision, a poll helper or a `tar` wrapper here.
+- The sync facade (`makeToolDiscoverySync`, the `./node-sync` entry) and
+  why a global-only tool probes as local through the launcher's `PATH`
+  fall-through → `okf/modules/commands.md` (tool discovery),
+  `okf/decisions/second-published-entrypoint.md`,
+  `okf/limitations/commands-local-probe-fallthrough.md` — Load when:
+  touching either discovery surface, the shared resolution core in
+  `internal/toolResolution.ts`, or `Tool.prefer`.
 - Requiring core services in `R` rather than owning a backend →
   `okf/conventions/require-in-r-default.md`.
 

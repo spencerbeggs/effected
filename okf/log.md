@@ -17,6 +17,15 @@
 * Updated toml
 * Updated walker
 * Updated workspace
+* Updated @effected/commands
+* Updated @effected/workspaces discovery and detection
+* Updated @effected/workspaces: monorepo tooling
+* Updated A second published entrypoint is a measured cost, not a convenience
+* Added A tool installed only globally also probes as local, because the package manager's exec falls through to PATH
+* Added New ae-forgotten-export errors after a bundler bump are TypeScript 7.1 emitting typeof a module local, not a bundler regression
+* Updated WorkspacesSync is a `*Sync` escape hatch, not a `*Result` pure form
+* Updated ae-forgotten-export on _base looks like a real export bug; it is a synthesized, un-nameable symbol
+* Updated savvy-web/systems
 
 ## 2026-10-24
 

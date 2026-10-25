@@ -65,6 +65,8 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `okf/modules/wo
 
 **A clean build log does not prove a build ran either** — a turbo cache hit replays the previous run's output verbatim. The tell is `dist/<target>/issues.json`'s `generatedAt`, which must postdate your last source edit.
 
+**A public member initialized with a bare non-exported local is declared `typeof local` under TypeScript 7.1's declaration emit** — `ae-forgotten-export`, fatal in CI. Fix the site (inline, static method, or an annotation with its reason); never suppress, never export the local → `okf/gotchas/typeof-local-forgotten-export.md`.
+
 **Never put `@savvy-web/bundler` in `dependencies`** — it is every building package's `devDependency`; there, the published manifest ships a build tool at runtime.
 
 **Source `package.json` files are `"private": true`** — intentional; never set `"private": false`, and never infer from it that a package will not publish. The bundler's `publishConfig` transform produces the publishable manifest at build time, and publishability is `publishConfig.access === "public"`.

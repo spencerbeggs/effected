@@ -7,10 +7,10 @@ status: stable
 tags: [bundle, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T21:15:01Z
+  at: 2026-10-25T19:59:29Z
 integrity:
   generated:
-    body: 597254c8eab76cef
+    body: f682016f34158815
 ---
 
 # savvy-web/systems
@@ -57,7 +57,10 @@ These capabilities moved out of `systems`' own `packages/silk-effects` and
 into the kit as this consumer adopted them:
 
 - Tool discovery and version probing → `ToolDiscovery` over the
-  `LocalExec` seam ([`@effected/commands`](../modules/commands.md)).
+  `LocalExec` seam ([`@effected/commands`](../modules/commands.md)); its
+  lint-staged handlers, which run with no Effect runtime, take the sync
+  facades `makeToolDiscoverySync` and `localExecContextSync`
+  (savvy-web/systems#471, effected#1100).
 - Managed file sections → `ManagedSection` plus the pure section-document
   core ([`@effected/templates`](../modules/templates.md)).
 - Tag strategy and versioning detection → `ReleaseTag` and

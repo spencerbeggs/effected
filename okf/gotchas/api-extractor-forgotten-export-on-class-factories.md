@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/config-file/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-25T19:59:29Z
 integrity:
   generated:
-    body: 8de5398de96add59
+    body: 6b0ff2c617021f7f
 ---
 
 # ae-forgotten-export on _base looks like a real export bug; it is a synthesized, un-nameable symbol
@@ -71,6 +71,11 @@ return signature is a different symbol that also trips
 structurally or promoted to `@public` — because that one is real surface
 a consumer can actually reach, unlike the un-nameable `_base` heritage
 type.[^config-file-md]
+
+A third shape, a member declared as `typeof` a non-exported local under
+TypeScript 7.1's declaration emit, is fixed at the site and never
+suppressed — see
+[the typeof-local gotcha](typeof-local-forgotten-export.md).
 
 ## The check
 

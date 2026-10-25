@@ -11,12 +11,14 @@ sources:
     resource: ../../packages/schema-org/package.json
   - id: workspaces-package-json
     resource: ../../packages/workspaces/package.json
+  - id: commands-package-json
+    resource: ../../packages/commands/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-25T19:59:29Z
 integrity:
   generated:
-    body: 71d7706757a9d4d1
+    body: f42b19f15c59f9b6
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -30,9 +32,10 @@ verified:
 
 ## Context
 
-Most packages ship a single `.` entrypoint. Two do not:
-`@effected/workspaces` adds `./node-sync`, and `@effected/schema-org` adds
-`./validate`.[^schema-org-package-json][^workspaces-package-json] `"sideEffects": false` sounds like
+Most packages ship a single `.` entrypoint. Three do not:
+`@effected/workspaces` and `@effected/commands` each add `./node-sync`, and
+`@effected/schema-org` adds
+`./validate`.[^schema-org-package-json][^workspaces-package-json][^commands-package-json] `"sideEffects": false` sounds like
 it already solves the tree-shaking problem a subpath would solve, and
 believing that is the trap this decision exists to name.
 
@@ -58,7 +61,11 @@ is justified by measurement rather than preference. `schema-org` split
 `./validate` because the vocabulary table behind it is raw bytes an
 graph-only consumer would otherwise load on every import — the raw
 figure is the one that matters, not the gzip figure, because parse cost
-is what an unbundled consumer pays.
+is what an unbundled consumer pays. The two `./node-sync` splits are the
+same mechanism for a different cost: each holds the one `node:` import
+(`node:fs`/`node:path`, `node:child_process`) a sync facade's Node binding
+needs, which a main entry that takes its platform through `R` must never
+load.
 
 The wiring is three parts:
 
@@ -105,3 +112,6 @@ the candidate module and write the reachability test before adding the
     `"./validate": "./src/conformance-entry.ts"` alongside `.`.
 [^workspaces-package-json]: `packages/workspaces/package.json` — `exports` carries
     `"./node-sync": "./src/node-sync.ts"` alongside `.`.
+[^commands-package-json]: `packages/commands/package.json` — `exports` carries
+    `"./node-sync": "./src/node-sync.ts"` alongside `.`; its reachability
+    test is `__test__/entrypoints.test.ts`.
