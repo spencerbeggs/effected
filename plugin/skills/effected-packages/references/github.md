@@ -79,7 +79,9 @@ tempted to reach for `as`.
 - **`GitHubClient`** — `Context.Service` with `request`, `requestDecoded`,
   `paginate` (array), `paginateStream` (`Stream`), `graphql`, and
   `rateLimit: Effect<Option<RateLimitSnapshot>>`. Layers:
-  `layerFromToken({ token: Redacted, retry?, baseUrl?, userAgent?, fetch? })`;
+  `layerFromToken({ token: Redacted, retry?, baseUrl?, userAgent?, fetch?, apiVersion? })`
+  — every request pins `x-github-api-version` (`apiVersion`, default
+  `"2026-03-10"`; a per-call header wins);
   `layerFromConfig()`, which reads through the ambient `ConfigProvider` (not
   `process.env`) and fails with core's `ConfigError` — an honest "no token is
   configured", where the surface it replaced failed with a wire-failure type.
@@ -257,7 +259,7 @@ tempted to reach for `as`.
   to a dangling `&`), `listAssets`.
 - **`WorkflowDispatch`** — `dispatch(workflow, ref, inputs?)`,
   `dispatchWithRun(workflow, ref, inputs?)` → `Option<DispatchedRun>` (`None` on
-  a 204 from a server that ignores `return_run_details`), `runStatus`,
+  a 204 from an older api-version), `runStatus`,
   `cancelRun(runId)` → `"cancelled" | "alreadyCompleted"` (GitHub's 409 for a
   finished run is not a failure),
   `list`, `dispatchAndWait(workflow, ref, { inputs?, poll? })` with

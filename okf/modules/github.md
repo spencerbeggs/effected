@@ -182,6 +182,24 @@ is reported in `AppliedSettings.ignored` and never sent, because the REST
 `__test__/repositoryRestSettingKeys.test.ts` regenerates the file in memory
 and fails on drift; re-run the generator after bumping the octokit types.
 
+## The api-version pin
+
+Every request carries `x-github-api-version`, set by a `before` hook on the
+octokit instance in `src/internal/octokit.ts` from
+`GitHubClientOptions.apiVersion` / `GitHubAppOptions.apiVersion` (default
+`2026-03-10`). The hook fills the header only when the call did not set one,
+so `Attestation`'s per-call pin wins. Without it GitHub serves its oldest
+calendar version and octokit prints an unsuppressable deprecation warning.
+
+The version change removed `merge_commit_sha` from REST pull request
+objects. `PullRequest` fills `PullRequestInfo.mergeCommitSha` from GraphQL
+`mergeCommit.oid` with one batched `nodes(ids:)` read for the merged pull
+requests in a result (verified live: the oid equals the old REST value on a
+merged pull request and is null on an unmerged one). It also stopped
+sending `return_run_details` on a workflow dispatch, which that version
+removed from the request, and dropped `use_squash_pr_title_as_default` from
+the generated REST settings allowlist.
+
 ## The repo coordinate
 
 Every resource method takes `Repo` in its `R` and no method takes owner and

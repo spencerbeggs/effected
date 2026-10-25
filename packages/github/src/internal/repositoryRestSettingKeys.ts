@@ -3,7 +3,8 @@
 //
 // The top-level request-body keys of `PATCH /repos/{owner}/{repo}`, read at
 // build time from @octokit/openapi-types@29.0.1 (types.d.ts,
-// operations["repos/update"].requestBody.content["application/json"]).
+// operations["repos/update"].requestBody.content["application/json"]), minus
+// the keys api-version 2026-03-10 removed (use_squash_pr_title_as_default).
 // __test__/repositoryRestSettingKeys.test.ts fails when this file drifts from it.
 
 /**
@@ -36,7 +37,6 @@ export const REPOSITORY_REST_SETTING_KEYS: ReadonlySet<string> = new Set([
 	"security_and_analysis",
 	"squash_merge_commit_message",
 	"squash_merge_commit_title",
-	"use_squash_pr_title_as_default",
 	"visibility",
 	"web_commit_signoff_required",
 ]);

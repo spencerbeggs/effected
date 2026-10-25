@@ -92,28 +92,32 @@ routing index, not the catalogue.
 
 Verified against the live API:
 
-- **octokit sends no `x-github-api-version` header**, so every request rides
-  the DEFAULT calendar version `2022-11-28` — which GitHub deprecated when
-  `2026-03-10` shipped (sunset 2028-03-10).
-- **GitHub adds `Deprecation`/`Sunset`/`Link` headers only on endpoints the
-  new version CHANGED.** A per-route octokit warning therefore reads as
-  "this route is deprecated" but actually means "you are on the old calendar
-  version, and this route changed in the new one".
-- **The designated fix is requesting a version per call**, via the typed
-  `headers` extra (`RestExtras`, see
-  [`references/pagination-retry-errors.md`](references/pagination-retry-errors.md)).
-  `GitHubIssue` pins `{ "x-github-api-version": "2026-03-10" }` and is the
-  in-kit worked example, TSDoc rationale included.
-- **The warning is unsuppressable by design.** octokit's fetch wrapper logs
-  via `request.log ?? console`, and core never threads its constructor `log`
-  option into request defaults — do not chase a logging knob; pin the
-  version instead.
-- **Migration caution: a calendar-version change REMOVES response fields.**
-  `2026-03-10` removed `merge_commit_sha` from PR responses, and an
-  `optionalKey` field silently decodes absent — so a naive package-wide pin
-  can turn a consumer's load-bearing read into an always-absent value with
-  no error anywhere. Pin per module, after
-  checking what the new version changed on the routes that module calls.
+- **The client pins `x-github-api-version: 2026-03-10` on every request.**
+  octokit itself sends no header, and without one GitHub serves its oldest
+  supported calendar version (`2022-11-28`, sunset 2028-03-10). The pin is a
+  `GitHubClientOptions.apiVersion` (and `GitHubAppOptions.apiVersion`)
+  option; set it to an older version only for a GitHub Enterprise Server
+  that rejects the default.
+- **A per-call header wins over the option.** `Attestation` pins its own
+  version per call through the typed `headers` extra (`RestExtras`, see
+  [`references/pagination-retry-errors.md`](references/pagination-retry-errors.md)),
+  and a client pinned elsewhere leaves it alone.
+- **On the old default, GitHub adds `Deprecation`/`Sunset`/`Link` headers
+  only on endpoints the new version CHANGED**, and octokit prints a warning
+  for each that cannot be silenced (its fetch wrapper logs via
+  `request.log ?? console`). That warning means "this client is on an old
+  calendar version", not "this route is deprecated"; the fix is the pin,
+  never a logging knob.
+- **A calendar-version change REMOVES response fields, and an `optionalKey`
+  decodes the absence clean.** `2026-03-10` removed `merge_commit_sha` from
+  pull request objects, so `PullRequestInfo.mergeCommitSha` is read from
+  GraphQL `mergeCommit.oid` instead: one batched `nodes(ids:)` read for the
+  merged pull requests in a result, none when nothing merged, and absent
+  until the pull request merges (never the speculative test-merge sha).
+  `get`, `list`, `listAssociatedWithCommit`, `update` and `upsert` therefore
+  carry `GitHubGraphQLError` in their error channel. Before projecting a new
+  field off a REST response, check GitHub's breaking-change list for the
+  pinned version.
 
 ## Footguns
 

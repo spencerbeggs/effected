@@ -171,7 +171,10 @@ GitHub's `null` name/body become `""`. `ReleaseAsset = {id, name, url, size}`.
 `headSha`, `base`, `baseSha` (branch names and the shas they pointed at),
 `draft`, `merged`, `mergedAt: Option<DateTime.Utc>` (an `Option`, not an
 optional field — whether a PR has merged is a fact GitHub always reports),
-`body?`, `mergeCommitSha?`.
+`body?`, `mergeCommitSha?` — read from GraphQL `mergeCommit.oid` (the REST
+object no longer carries it), so it is absent until the pull request merges;
+`get`/`list`/`listAssociatedWithCommit`/`update`/`upsert` fail with
+`GitHubGraphQLError` when that read fails, rather than dropping the field.
 
 ## `PullRequestComment`
 
@@ -209,7 +212,7 @@ mechanics) see `actions-reporting`'s reference.
 | Member | Signature | Notes |
 | --- | --- | --- |
 | `dispatch` | `(workflow, ref, inputs?) => Effect<void>` | GitHub answers 204, no run id; use `dispatchWithRun` when the id is needed |
-| `dispatchWithRun` | `(workflow, ref, inputs?) => Effect<Option<DispatchedRun>>` | Sends `return_run_details`; a 200 is `Some({runId, runUrl, htmlUrl})`, a 204 (a GitHub Enterprise Server predating the field) is `None`, not a failure; a 200 that does not decode fails `kind: "decode"`. Stub the 204 under `layerFixture` with `null` |
+| `dispatchWithRun` | `(workflow, ref, inputs?) => Effect<Option<DispatchedRun>>` | Under the pinned api-version every dispatch answers 200 with the run, which is `Some({runId, runUrl, htmlUrl})`; a 204 (an older api-version) is `None`, not a failure; a 200 that does not decode fails `kind: "decode"`. Stub the 204 under `layerFixture` with `null` |
 | `runStatus` | `(runId) => Effect<WorkflowRunStatus>` | |
 | `dispatchAndWait` | `(workflow, ref, options?: {inputs?, poll?: PollOptions}) => Effect<WorkflowRunStatus>` | Dispatches with run details and polls exactly the reported run; only on a 204 does it fall back to finding the run by creation time, where concurrent dispatches of one workflow on one ref can be confused; `PollOptions = {interval? = 10s, timeout? = 5m}`. The wait is `Effect.repeat` with a `while` predicate over the success value, not a sentinel error for "not done yet" — a genuine timeout fails `kind: "rejected"`, status 408 |
 

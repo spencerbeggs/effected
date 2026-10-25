@@ -23,6 +23,9 @@ describe("repositoryRestSettingKeys", () => {
 		// The keys effected#358 found the REST PATCH silently ignoring.
 		assert.isFalse(REPOSITORY_REST_SETTING_KEYS.has("has_discussions"));
 		assert.isFalse(REPOSITORY_REST_SETTING_KEYS.has("has_sponsorships"));
+		// Still declared by the octokit description, removed by api-version
+		// 2026-03-10: the REST PATCH would ignore it and answer 200.
+		assert.isFalse(REPOSITORY_REST_SETTING_KEYS.has("use_squash_pr_title_as_default"));
 		assert.isAbove(Object.keys(GRAPHQL_ONLY_SETTINGS).length, 0);
 	});
 

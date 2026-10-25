@@ -380,6 +380,15 @@ export interface GitHubAppOptions {
 	readonly retry?: RetryPolicy | "off" | undefined;
 	/** A replacement `fetch`, for tests and proxies. */
 	readonly fetch?: typeof globalThis.fetch | undefined;
+	/**
+	 * The REST api-version the app's clients pin; defaults to `"2026-03-10"`.
+	 *
+	 * @remarks
+	 * The same option as `GitHubClientOptions.apiVersion`, applied to every
+	 * client this module builds: as the app, as an installation, and
+	 * unauthenticated.
+	 */
+	readonly apiVersion?: string | undefined;
 }
 
 /**

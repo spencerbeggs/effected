@@ -6,7 +6,8 @@
 // reads it at build time from the declaration file `@octokit/openapi-types`
 // publishes — the same package `@octokit/types` builds its route table from —
 // and emits the top-level property names of
-// `operations["repos/update"].requestBody.content["application/json"]`.
+// `operations["repos/update"].requestBody.content["application/json"]`, minus
+// the keys the pinned api-version removed (REMOVED_BY_PINNED_VERSION).
 //
 // `@octokit/openapi-types` and `oxc-parser` are devDependencies used ONLY here
 // and in the drift test; nothing under src/** imports either at runtime.
@@ -33,6 +34,20 @@ export const SOURCE: string = require.resolve("@octokit/openapi-types/types.d.ts
 
 /** The operation whose request body is enumerated. */
 const OPERATION = "repos/update";
+
+/**
+ * Keys the description still declares that the api-version the client pins
+ * removed from the request, so the REST PATCH would ignore them and answer 200.
+ *
+ * @remarks
+ * `@octokit/openapi-types` describes GitHub's oldest supported api-version,
+ * not the pinned one. The one subtraction is taken from GitHub's published
+ * 2026-03-10 breaking-change list; each entry names its replacement.
+ */
+export const REMOVED_BY_PINNED_VERSION: ReadonlyArray<string> = [
+	// Use `squash_merge_commit_title`.
+	"use_squash_pr_title_as_default",
+];
 
 // Minimal shape for the oxc ESTree/TS-ESTree nodes walked here.
 interface Node {
@@ -99,7 +114,7 @@ export const extract = (source: string): ReadonlyArray<string> => {
 
 	const keys = json.map(keyOf).filter((key): key is string => key !== undefined);
 	if (keys.length === 0) throw new Error(`${OPERATION}: the request body declares no keys`);
-	return [...new Set(keys)].sort();
+	return [...new Set(keys)].filter((key) => !REMOVED_BY_PINNED_VERSION.includes(key)).sort();
 };
 
 /** The generated module's full text. */
@@ -109,7 +124,8 @@ export const render = (keys: ReadonlyArray<string>, version: string): string =>
 //
 // The top-level request-body keys of \`PATCH /repos/{owner}/{repo}\`, read at
 // build time from @octokit/openapi-types@${version} (types.d.ts,
-// operations["repos/update"].requestBody.content["application/json"]).
+// operations["repos/update"].requestBody.content["application/json"]), minus
+// the keys api-version 2026-03-10 removed (${REMOVED_BY_PINNED_VERSION.join(", ")}).
 // __test__/repositoryRestSettingKeys.test.ts fails when this file drifts from it.
 
 /**

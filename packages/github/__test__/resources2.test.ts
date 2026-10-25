@@ -510,6 +510,113 @@ describe("PullRequest", () => {
 		}),
 	);
 
+	const nodes = (entries: ReadonlyArray<readonly [string, string | null]>) => ({
+		status: 200,
+		body: { data: { nodes: entries.map(([id, oid]) => ({ id, mergeCommit: oid === null ? null : { oid } })) } },
+	});
+
+	it.effect("a merged pull request's mergeCommitSha comes from GraphQL mergeCommit.oid", () =>
+		Effect.gen(function* () {
+			// api-version 2026-03-10 removed merge_commit_sha from the REST object.
+			// The field is an optionalKey, so without the GraphQL read it would
+			// decode clean as always-absent (effected#364).
+			const { value, script } = yield* drive(
+				[
+					{ status: 200, body: pull(7, { state: "closed", merged: true, merged_at: "2026-01-01T00:00:00Z" }) },
+					nodes([["PR_7", "merge-sha-7"]]),
+				],
+				PullRequest,
+				PullRequest,
+				(pulls) => pulls.get(7),
+			);
+			assert.strictEqual(value.mergeCommitSha, "merge-sha-7");
+			assert.strictEqual(script.count(), 2);
+			assert.strictEqual(script.calls[1]?.path, "/graphql");
+			const sent = JSON.parse(script.calls[1]?.body ?? "{}");
+			assert.include(sent.query, "mergeCommit");
+			assert.deepStrictEqual(sent.variables, { ids: ["PR_7"] });
+		}),
+	);
+
+	it.effect("an unmerged pull request has no mergeCommitSha and costs no GraphQL read", () =>
+		Effect.gen(function* () {
+			// An older api-version reports a speculative test-merge sha on an open
+			// pull request; it is not a merge and must not be projected as one.
+			const { value, script } = yield* drive(
+				[{ status: 200, body: pull(3, { merge_commit_sha: "test-merge-sha" }) }],
+				PullRequest,
+				PullRequest,
+				(pulls) => pulls.get(3),
+			);
+			assert.isUndefined(value.mergeCommitSha);
+			assert.strictEqual(script.count(), 1);
+		}),
+	);
+
+	it.effect("a REST merge_commit_sha on a merged pull request is used without a GraphQL read", () =>
+		Effect.gen(function* () {
+			// What a client pinned to an older api-version still receives.
+			const { value, script } = yield* drive(
+				[{ status: 200, body: pull(8, { merged: true, merged_at: "2026-01-01T00:00:00Z", merge_commit_sha: "rest" }) }],
+				PullRequest,
+				PullRequest,
+				(pulls) => pulls.get(8),
+			);
+			assert.strictEqual(value.mergeCommitSha, "rest");
+			assert.strictEqual(script.count(), 1);
+		}),
+	);
+
+	it.effect("a list resolves every merged pull request in one batched GraphQL read", () =>
+		Effect.gen(function* () {
+			// The list endpoints answer pull-request-simple, which carries
+			// merged_at but no `merged`, so merged_at is what decides.
+			const merged = (n: number) => {
+				const { merged: _drop, ...rest } = pull(n, { state: "closed", merged_at: "2026-01-01T00:00:00Z" });
+				return rest;
+			};
+			const { value, script } = yield* drive(
+				[
+					{ status: 200, body: [merged(1), pull(2), merged(3)] },
+					nodes([
+						["PR_1", "sha-1"],
+						["PR_3", "sha-3"],
+					]),
+				],
+				PullRequest,
+				PullRequest,
+				(pulls) => pulls.list({ state: "all" }),
+			);
+			assert.deepStrictEqual(
+				value.map((p) => [p.number, p.mergeCommitSha]),
+				[
+					[1, "sha-1"],
+					[2, undefined],
+					[3, "sha-3"],
+				],
+			);
+			assert.strictEqual(script.count(), 2);
+			assert.deepStrictEqual(JSON.parse(script.calls[1]?.body ?? "{}").variables, { ids: ["PR_1", "PR_3"] });
+		}),
+	);
+
+	it.effect("a GraphQL failure fails the read rather than dropping the field", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				drive(
+					[
+						{ status: 200, body: pull(7, { merged: true, merged_at: "2026-01-01T00:00:00Z" }) },
+						{ status: 200, body: { data: null, errors: [{ message: "boom", type: "INTERNAL" }] } },
+					],
+					PullRequest,
+					PullRequest,
+					(pulls) => pulls.get(7),
+				),
+			);
+			assert.strictEqual(error._tag, "GitHubGraphQLError");
+		}),
+	);
+
 	it.effect("mergedAt is none for an open pull request", () =>
 		Effect.gen(function* () {
 			const { value } = yield* drive([{ status: 200, body: pull(1) }], PullRequest, PullRequest, (pulls) =>
@@ -1574,7 +1681,7 @@ describe("WorkflowDispatch.dispatchWithRun", () => {
 		html_url: "https://github.com/acme/widget/actions/runs/9001",
 	};
 
-	it.effect("a 200 is Some run, and the request carries return_run_details with ref and inputs", () =>
+	it.effect("a 200 is Some run, and the request carries ref and inputs but no return_run_details", () =>
 		Effect.gen(function* () {
 			const { value, requested } = yield* viaFixtures(
 				{ request: { [ROUTE]: DETAILS } },
@@ -1593,11 +1700,13 @@ describe("WorkflowDispatch.dispatchWithRun", () => {
 			assert.strictEqual(requested[0]?.params.workflow_id, "release.yml");
 			assert.strictEqual(requested[0]?.params.ref, "main");
 			assert.deepStrictEqual(requested[0]?.params.inputs, { dryRun: "false" });
-			assert.strictEqual(requested[0]?.params.return_run_details, true);
+			// 2026-03-10 removed the request flag: the 200 with run details is
+			// unconditional there.
+			assert.notProperty(requested[0]?.params ?? {}, "return_run_details");
 		}),
 	);
 
-	it.effect("puts return_run_details on the wire through the real client", () =>
+	it.effect("sends the dispatch body through the real client, under the pinned api-version", () =>
 		Effect.gen(function* () {
 			const { value, script } = yield* drive(
 				[{ status: 200, body: DETAILS }],
@@ -1611,14 +1720,14 @@ describe("WorkflowDispatch.dispatchWithRun", () => {
 			assert.deepStrictEqual(JSON.parse(script.calls[0]?.body ?? "null"), {
 				ref: "main",
 				inputs: { dryRun: "false" },
-				return_run_details: true,
 			});
+			assert.strictEqual(script.calls[0]?.headers["x-github-api-version"], "2026-03-10");
 		}),
 	);
 
 	it.effect("a 204 with no body is None, not a failure", () =>
 		Effect.gen(function* () {
-			// What a GitHub Enterprise Server predating the field answers: driven
+			// What an older api-version answers: driven
 			// through the real client so octokit's own 204 handling is what is read.
 			const { value, script } = yield* drive([{ status: 204 }], WorkflowDispatch, WorkflowDispatch, (w) =>
 				w.dispatchWithRun("release.yml", "main"),

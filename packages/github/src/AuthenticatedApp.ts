@@ -147,7 +147,8 @@ export interface AuthenticatedAppShape {
 	 *
 	 * @remarks
 	 * Irreversible from the app's side: only the account can install it again.
-	 * An installation that does not exist (or is already gone) fails with
+	 * GitHub answers 202 and removes the installation in the background, so it
+	 * may still be listed briefly after this returns. An installation that does not exist (or is already gone) fails with
 	 * `GitHubError { kind: "notFound" }`.
 	 */
 	readonly uninstall: (installationId: number) => Effect.Effect<void, GitHubError>;
