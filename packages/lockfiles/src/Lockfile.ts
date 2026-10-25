@@ -254,18 +254,11 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 			const from = mappedFrom === undefined || mappedFrom === "" ? dep.from : mappedFrom;
 			const to = mappedTo === undefined || mappedTo === "" ? dep.to : mappedTo;
 			if (from === dep.from && to === dep.to) return dep;
-			return WorkspaceDependency.make({ from, to, depType: dep.depType, constraint: dep.constraint });
+			return WorkspaceDependency.make({ ...dep, from, to });
 		});
 		// Importers stay untouched: they are keyed by importer path, not by
 		// package name, so a name-rewrite does not apply to them.
-		return Lockfile.make({
-			format: this.format,
-			lockfileVersion: this.lockfileVersion,
-			packages,
-			workspaceDependencies,
-			importers: this.importers,
-			...(this.extension !== undefined ? { extension: this.extension } : {}),
-		});
+		return Lockfile.make({ ...this, packages, workspaceDependencies });
 	}
 
 	/**

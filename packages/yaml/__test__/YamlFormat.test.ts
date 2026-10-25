@@ -375,6 +375,11 @@ describe("YamlFormat", () => {
 			assert.strictEqual(YamlFormat.formatToString('k: "a"\n', undefined, options), "k: 'a'\n");
 		});
 
+		it("tagged and anchored scalars survive requoting unchanged", () => {
+			assert.strictEqual(YamlFormat.formatToString("k: !!str 'a'\n", undefined, requoteDouble), "k: !!str 'a'\n");
+			assert.strictEqual(YamlFormat.formatToString("k: &x 'a'\n", undefined, requoteDouble), "k: &x 'a'\n");
+		});
+
 		it("double→single: an inner single quote is doubled", () => {
 			assert.strictEqual(YamlFormat.formatToString('k: "it\'s"\n', undefined, requoteSingle), "k: 'it''s'\n");
 		});

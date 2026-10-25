@@ -202,19 +202,10 @@ function definedFields<T extends Record<string, unknown>>(fields: T): Partial<T>
 function requoteNode(node: YamlNode, text: string, quote: '"' | "'"): YamlNode {
 	if (node instanceof YamlScalar) {
 		if (requoteScalarText(text, node, quote, "escaping") === undefined) return node;
-		return YamlScalar.make({
-			value: node.value,
-			style: quote === '"' ? "double-quoted" : "single-quoted",
-			...definedFields({
-				commentBefore: node.commentBefore,
-				comment: node.comment,
-				spaceBefore: node.spaceBefore,
-				raw: node.raw,
-				sourceMultiline: node.sourceMultiline,
-			}),
-			offset: node.offset,
-			length: node.length,
-		});
+		// `requoteScalarText` already declines tagged, anchored and block scalars,
+		// so `tag`, `anchor`, `chomp` and `blockIndent` are inert here; the spread
+		// carries them anyway so no field can be dropped.
+		return YamlScalar.make({ ...node, style: quote === '"' ? "double-quoted" : "single-quoted" });
 	}
 	if (node instanceof YamlMap) {
 		return rebuildMap(
@@ -538,37 +529,11 @@ function modifyNode(node: YamlNode, path: YamlPath, depth: number, value: unknow
 }
 
 function rebuildMap(node: YamlMap, items: ReadonlyArray<YamlPair>): YamlMap {
-	return YamlMap.make({
-		items,
-		style: node.style,
-		...definedFields({
-			tag: node.tag,
-			anchor: node.anchor,
-			commentBefore: node.commentBefore,
-			comment: node.comment,
-			spaceBefore: node.spaceBefore,
-			sourceMultiline: node.sourceMultiline,
-		}),
-		offset: node.offset,
-		length: node.length,
-	});
+	return YamlMap.make({ ...node, items });
 }
 
 function rebuildSeq(node: YamlSeq, items: ReadonlyArray<YamlNode>): YamlSeq {
-	return YamlSeq.make({
-		items,
-		style: node.style,
-		...definedFields({
-			tag: node.tag,
-			anchor: node.anchor,
-			commentBefore: node.commentBefore,
-			comment: node.comment,
-			spaceBefore: node.spaceBefore,
-			sourceMultiline: node.sourceMultiline,
-		}),
-		offset: node.offset,
-		length: node.length,
-	});
+	return YamlSeq.make({ ...node, items });
 }
 
 // ── modify: region-confined scalar replacement ───────────────────────
