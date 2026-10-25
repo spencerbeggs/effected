@@ -1,7 +1,7 @@
 import type { MemoryFileSystemFaultHandler, MemoryFileSystemFaults } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import type { Cause, Option, PlatformError } from "effect";
-import { Effect, FileSystem, Layer, Queue, Stream } from "effect";
+import type { Cause, FileSystem, PlatformError } from "effect";
+import { Effect, Layer, Queue, Stream } from "effect";
 import { JournalWatcher } from "../../src/index.js";
 
 /**
@@ -12,18 +12,19 @@ import { JournalWatcher } from "../../src/index.js";
  * Storage, `stat` (size, `dev`/`ino` identity), `exists`, `remove`, and `open`
  * with its positional reads and `O_APPEND` `writeAll` are memfs's own, so an
  * unseeded path fails typed `NotFound` exactly as a real filesystem does — a
- * missing parent directory included. Two members are decorated through the
- * faults factory, delegate-by-default:
- *
- * - `open` wraps the returned handle so a write gate and a read gate can hold a
- *   `writeAll` / `readAlloc` open;
- * - `exists` counts calls, then delegates.
+ * missing parent directory included. One member is decorated through the
+ * faults factory, delegate-by-default: `open` wraps the returned handle with
+ * `MemoryFileSystem.wrapFile` so a write gate and a read gate can hold a
+ * `writeAll` / `readAlloc` open.
  *
  * The layer also provides the journal's `JournalWatcher` as a manually driven
- * double. memfs's own watch emits events on every write, which would race the
- * explicit {@link MemFs.poke} / {@link MemFs.pokeParent} design these tests are
- * built on — offset bookkeeping, resync and activation stay timer-free only
- * while the test alone decides when an event arrives. The double honours the
+ * double, so offset bookkeeping, resync and activation stay timer-free: the
+ * test alone decides when an event arrives. It is not memfs's
+ * `watchEvents: "manual"` + `emit`, because that routing is the wrong one
+ * here: `emit` on a file also reaches its parent directory's watchers, an
+ * event cannot carry the bare basename a directory watch reports, a memfs
+ * watch does not end when its file is unlinked or replaced, and
+ * `watcherCount` is volume-wide rather than per target. The double honours the
  * service's contract exactly as the node backend does: it `stat`s the target
  * through the real volume (so a missing path fails typed), then registers its
  * listener before the watch effect succeeds.
@@ -129,7 +130,6 @@ export interface MemFs {
 	 * a paged read from one whole-file allocation, but the requested sizes can.
 	 */
 	readonly readRequests: () => ReadonlyArray<number>;
-	readonly existsCalls: () => number;
 	/**
 	 * Give the path a NEW identity, as a rename-over or recreate would: the old
 	 * file is unlinked and a fresh one written, so memfs mints a new inode. Every
@@ -195,7 +195,7 @@ const lastSeparator = (path: string): number => Math.max(path.lastIndexOf("/"), 
  * Extra faults for one {@link makeMemFs} volume, composed AHEAD of the
  * helper's own decorations: a handler that returns `undefined` falls through
  * to them, so a faulted `open` still hands back a gated handle when it
- * declines, and `exists` is still counted.
+ * declines.
  *
  * `base` is the unfaulted filesystem, so a handler can delegate and then act —
  * `stat: (path) => base.stat(path).pipe(Effect.tap(...))` — without re-entering
@@ -212,7 +212,6 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 	let gate: Promise<void> | undefined;
 	let releaseGate: (() => void) | undefined;
 	let gateEntered = false;
-	let existsCallCount = 0;
 	const readSizes: Array<number> = [];
 	let beforeWatchHook: ((target: string) => void) | undefined;
 	let watchHold: { readonly target: string; readonly promise: Promise<void>; readonly enter: () => void } | undefined;
@@ -243,67 +242,54 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 	};
 
 	/**
-	 * Decorate a real memfs handle with the two gates. memfs's `File` is a class
-	 * instance with prototype members, so every member is forwarded explicitly —
-	 * a spread would drop them.
+	 * Decorate a real memfs handle with the gates. Every other member, and each
+	 * gated one whose gate is idle, delegates to memfs's own handle.
 	 */
 	const gated = (file: FileSystem.File): FileSystem.File => {
 		/** Whether this handle has completed a `writeAll` — what arms {@link MemFs.afterNextWriteStat}. */
 		let wrote = false;
-		return {
-			[FileSystem.FileTypeId]: FileSystem.FileTypeId,
-			get stat() {
-				return Effect.suspend(() => {
-					const hook = afterWriteStatHook;
-					if (wrote && hook !== undefined) {
-						afterWriteStatHook = undefined;
-						hook();
-					}
-					return file.stat;
+		return MemoryFileSystem.wrapFile(file, {
+			stat: () => {
+				const hook = afterWriteStatHook;
+				if (wrote && hook !== undefined) {
+					afterWriteStatHook = undefined;
+					hook();
+				}
+				return undefined;
+			},
+			readAlloc: (size) => {
+				readSizes.push(size);
+				const held = readGate;
+				if (held === undefined) return undefined;
+				readGate = undefined;
+				const suspend = Effect.promise(() => {
+					held.enter();
+					return held.promise;
 				});
+				// `sampleFirst` suspends AFTER the real read; otherwise the read is
+				// taken after the suspension and sees whatever landed inside it, up to
+				// the size requested.
+				return held.sampleFirst
+					? Effect.tap(file.readAlloc(size), () => suspend)
+					: Effect.andThen(suspend, file.readAlloc(size));
 			},
-			get sync() {
-				return file.sync;
-			},
-			seek: (offset, from) => file.seek(offset, from),
-			read: (buffer) => file.read(buffer),
-			truncate: (length) => file.truncate(length),
-			write: (buffer) => file.write(buffer),
-			readAlloc: (size): Effect.Effect<Option.Option<Uint8Array>, PlatformError.PlatformError> =>
-				Effect.suspend(() => {
-					readSizes.push(size);
-					const held = readGate;
-					if (held === undefined) return file.readAlloc(size);
-					readGate = undefined;
-					const suspend = Effect.promise(() => {
-						held.enter();
-						return held.promise;
-					});
-					// `sampleFirst` suspends AFTER the real read; otherwise the read is
-					// taken after the suspension and sees whatever landed inside it, up to
-					// the size requested.
-					return held.sampleFirst
-						? Effect.tap(file.readAlloc(size), () => suspend)
-						: Effect.andThen(suspend, file.readAlloc(size));
-				}),
 			// memfs's own `writeAll` on a `{ flag: "a" }` handle appends at the end
 			// regardless of position — real O_APPEND. The gate only delays it.
-			writeAll: (buffer) =>
-				Effect.suspend(() => {
-					const written = Effect.tap(file.writeAll(buffer), () =>
-						Effect.sync(() => {
-							wrote = true;
-						}),
-					);
-					const held = gate;
-					if (held === undefined) return written;
-					gateEntered = true;
-					return Effect.andThen(
-						Effect.promise(() => held),
-						written,
-					);
-				}),
-		};
+			writeAll: (buffer) => {
+				const written = Effect.tap(file.writeAll(buffer), () =>
+					Effect.sync(() => {
+						wrote = true;
+					}),
+				);
+				const held = gate;
+				if (held === undefined) return written;
+				gateEntered = true;
+				return Effect.andThen(
+					Effect.promise(() => held),
+					written,
+				);
+			},
+		});
 	};
 
 	const handle = MemoryFileSystem.makeSync(
@@ -312,15 +298,10 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 			faults: (base) => {
 				unfaulted = base;
 				const extra = options?.faults?.(base) ?? {};
-				const extraExists = extra.exists;
 				return {
 					...extra,
 					open: (path, openOptions) =>
 						extra.open?.(path, openOptions) ?? Effect.map(base.open(path, openOptions), gated),
-					exists: (path) => {
-						existsCallCount += 1;
-						return typeof extraExists === "function" ? extraExists(path) : undefined;
-					},
 				};
 			},
 		},
@@ -415,7 +396,6 @@ export const makeMemFs = (options?: MemFsOptions): MemFs => {
 		},
 		watcherCount: (target) => watchers.get(target)?.size ?? 0,
 		readRequests: () => [...readSizes],
-		existsCalls: () => existsCallCount,
 		mkdir: (path) => handle.mkdir(path),
 		beforeWatch: (hook) => {
 			beforeWatchHook = hook;
