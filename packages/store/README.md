@@ -87,6 +87,47 @@ Both services expose the same three statics, and the split is the seam:
 | `layerSqlite(options & { filename })` | The service plus the SQLite driver | none |
 | `layerTest(options)` | `layerSqlite` at `:memory:`; hermetic, what the suites use | none |
 
+### A real service over an in-memory store
+
+When your own service is built on `Store`, test the **real implementation** over `Store.layerTest`'s in-memory SQLite rather than a hand-written double. The convention: one implementation effect written against `Store`, a `layer(filename)` for production and a `layerMemory()` **factory** for tests, both built from it. Every build of `Store.layerTest` opens a fresh, empty `:memory:` database with your migrations applied, so a test never sees another's rows. `layerMemory()` is a function rather than a const so that two consumers composed into one layer graph get two databases instead of sharing one through memoization-by-reference.
+
+```ts
+import { Store, type StoreMigration } from "@effected/store";
+import { Context, Effect, Layer } from "effect";
+
+const migrations: ReadonlyArray<StoreMigration> = [
+  {
+    id: 1,
+    name: "create-snapshots",
+    up: (sql) => sql`CREATE TABLE snapshots (name TEXT PRIMARY KEY, body TEXT NOT NULL)`,
+    down: (sql) => sql`DROP TABLE snapshots`,
+  },
+];
+
+class Snapshots extends Context.Service<Snapshots, {
+  readonly save: (name: string, body: string) => Effect.Effect<void>;
+}>()("app/Snapshots") {
+  // The one implementation, blind to where the database lives.
+  static readonly make = Effect.gen(function* () {
+    const sql = (yield* Store).client;
+    return {
+      save: (name: string, body: string) =>
+        sql`INSERT OR REPLACE INTO snapshots (name, body) VALUES (${name}, ${body})`.pipe(Effect.asVoid, Effect.orDie),
+    };
+  });
+
+  static layer(filename: string) {
+    return Layer.effect(Snapshots, Snapshots.make).pipe(Layer.provide(Store.layerSqlite({ filename, migrations })));
+  }
+
+  static layerMemory() {
+    return Layer.effect(Snapshots, Snapshots.make).pipe(Layer.provide(Store.layerTest({ migrations })));
+  }
+}
+```
+
+Pair `layerMemory()` with [`@effected/memfs`](../memfs) for anything the service also reads or writes on disk, and the whole pipeline runs hermetically. There is no extra helper to learn: `Store.layerTest` already is the in-memory factory. Production code still binds `Snapshots.layer(path)` to a const once, as with every layer static.
+
 The SQL core lives in `effect` itself, under `effect/sql` — there is no `@effect/sql` package on the v4 line, so `SqlClient` is imported from `effect/sql/SqlClient`.
 
 ### Driver options

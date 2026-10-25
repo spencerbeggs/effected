@@ -16,10 +16,10 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T14:27:46Z
+  at: 2026-10-25T14:36:34Z
 integrity:
   generated:
-    body: d3e0b6eed69bafcc
+    body: 9a575f900d001a15
 ---
 
 # store
@@ -278,6 +278,8 @@ The `CacheEvent` PubSub lives on the cache shape rather than a separate
 opt-in service, created unbounded so a slow subscriber never
 backpressures a write, with infallible emission. Events are a consumer
 hook, not the package's own telemetry.
+
+A consumer service built on `Store` is tested over its real implementation, by convention: one implementation effect against `Store`, a `layer(filename)` and a `layerMemory()` factory over `Store.layerTest` (a fresh `:memory:` database per build), documented in the README and pinned by `__test__/layerMemory.test.ts`; `Store.layerTest` already is the in-memory factory, so no helper API exists for it.
 
 ### AtomicDirectory
 

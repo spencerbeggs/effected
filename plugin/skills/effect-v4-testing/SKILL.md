@@ -298,6 +298,8 @@ one-`layer(...)`-block-per-fixture shape →
 picking the memfs form, seeds, faults, case-insensitive volumes and traps →
 **[references/memfs.md](./references/memfs.md)**.
 
+**A service built on `@effected/store` is tested over its REAL implementation, never a hand-written double**: share one implementation effect written against `Store` between `layer(filename)` (production, `Store.layerSqlite`) and a `layerMemory()` FACTORY over `Store.layerTest({ migrations })`, which opens a fresh migrated `:memory:` database per build. A factory, not a const, so two consumers in one composed graph never share a database by reference memoization. Pair it with `@effected/memfs` for a fully hermetic pipeline.
+
 **Every stub effect goes through `Effect.suspend`.** A recorder that pushes
 eagerly logs calls that never executed. Worked probe →
 [references/false-greens.md](./references/false-greens.md).
