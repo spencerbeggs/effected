@@ -641,6 +641,9 @@ importers:
       '@effected/walker':
         specifier: workspace:^
         version: link:../walker/dist/dev/pkg
+      '@effected/yaml':
+        specifier: workspace:^
+        version: link:../yaml/dist/dev/pkg
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect

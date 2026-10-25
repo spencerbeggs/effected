@@ -19,6 +19,9 @@ import { decodeJson } from "./internal/json.js";
  */
 export const inputVariable = (name: string): string => `INPUT_${name.replaceAll(" ", "_").toUpperCase()}`;
 
+/** The prefix every runner input variable carries. */
+const INPUT_PREFIX = "INPUT_";
+
 /**
  * A validation failure for an input that is present but unusable.
  *
@@ -51,6 +54,25 @@ const decodeStringArray = Schema.decodeUnknownEffect(Schema.Array(Schema.String)
 /** YAML 1.2 core-schema booleans, which is what the runner documents. */
 const TRUE = new Set(["true", "True", "TRUE"]);
 const FALSE = new Set(["false", "False", "FALSE"]);
+
+/**
+ * A provider that journals which inputs a program reads — see
+ * {@link ActionInput.recording}.
+ *
+ * @public
+ */
+export interface ActionInputRecording {
+	/** The recording provider, for composing by hand. */
+	readonly provider: ConfigProvider.ConfigProvider;
+	/** {@link ActionInputRecording.provider} installed as a layer. */
+	readonly layer: Layer.Layer<never>;
+	/**
+	 * The input names read so far, in first-read order, without duplicates —
+	 * each the runner variable with its `INPUT_` prefix dropped and lowercased
+	 * (`INPUT_WRITE-SUMMARY` reads as `write-summary`).
+	 */
+	readonly names: Effect.Effect<ReadonlyArray<string>>;
+}
 
 /**
  * Options for {@link ActionInput.pairs}.
@@ -532,6 +554,77 @@ export class ActionInput {
 	 */
 	static layer(env?: Readonly<Record<string, string | undefined>>): Layer.Layer<never> {
 		return ConfigProvider.layer(ActionInput.provider(env));
+	}
+
+	/**
+	 * {@link ActionInput.provider} over `env`, journaling every input the
+	 * program reads.
+	 *
+	 * @remarks
+	 * The test-side half of the manifest sync check: run the code under
+	 * `layer`, read `names`, and hand them to `ActionManifest.diff` as the
+	 * inputs the code actually reads. Values resolve exactly as under
+	 * `ActionInput.provider(env)` — the recorder wraps that provider's lookup
+	 * and changes nothing about what it answers — so the recording run can use
+	 * the runner-shaped environment `ActionManifest.runnerInputs` builds.
+	 *
+	 * A read is journaled when its lookup runs, not when a `Config` is merely
+	 * described, and whether or not the input has a value: an unsupplied input
+	 * the code falls back from is still an input the code reads.
+	 *
+	 * What counts as an input read is a lookup of an `INPUT_` variable, which
+	 * is what every accessor on this class performs. A **bare**
+	 * `Config.String("dry-run")` is not journaled: from inside the provider it
+	 * is indistinguishable from an ordinary environment read, and journaling
+	 * every flat name would report `GITHUB_REPOSITORY` as an undeclared input.
+	 * Reading inputs through the accessors is the rule anyway.
+	 *
+	 * Names come back in the runner-variable form, lowercased, so a declared
+	 * `My Input` reads as `my_input`. `ActionManifest.diff` matches inputs by
+	 * runner variable, under which the two are the same input.
+	 *
+	 * Each call journals into its own fresh set; bind the result once per test.
+	 *
+	 * @example
+	 * ```ts
+	 * import { assert, it } from "@effect/vitest";
+	 * import { ActionInput, ActionManifest } from "@effected/github-actions";
+	 * import { Effect } from "effect";
+	 *
+	 * declare const manifest: ActionManifest;
+	 * declare const readInputs: Effect.Effect<unknown, unknown>;
+	 *
+	 * it.effect("the code reads exactly what action.yml declares", () =>
+	 *   Effect.gen(function* () {
+	 *     const recording = ActionInput.recording(ActionManifest.runnerInputs(manifest));
+	 *     yield* readInputs.pipe(Effect.provide(recording.layer));
+	 *     const diff = ActionManifest.diff(manifest, { inputs: yield* recording.names });
+	 *     assert.isTrue(diff.inSync, JSON.stringify(diff));
+	 *   }),
+	 * );
+	 * ```
+	 *
+	 * @param env - The environment the provider serves, as for
+	 *   {@link ActionInput.provider}. Defaults to an empty record, never
+	 *   `process.env`: a recorder is a test instrument.
+	 */
+	static recording(env: Readonly<Record<string, string | undefined>> = {}): ActionInputRecording {
+		const inner = ActionInput.provider(env);
+		const seen = new Set<string>();
+		const provider = ConfigProvider.make((path) =>
+			Effect.suspend(() => {
+				const variable = path.join("_").replaceAll(" ", "_").toUpperCase();
+				if (variable.startsWith(INPUT_PREFIX) && variable.length > INPUT_PREFIX.length) {
+					seen.add(variable.slice(INPUT_PREFIX.length).toLowerCase());
+				}
+				return inner.load(path);
+			}),
+		);
+		return {
+			provider,
+			layer: ConfigProvider.layer(provider),
+			names: Effect.sync(() => [...seen]),
+		};
 	}
 
 	/**

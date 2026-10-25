@@ -39,13 +39,28 @@ export {
 	GitHubContext,
 	RunnerContext,
 } from "./ActionEnvironment.js";
-export { ActionInput, type PairsOptions } from "./ActionInput.js";
+export { ActionInput, type ActionInputRecording, type PairsOptions } from "./ActionInput.js";
 export {
 	ActionLogger,
 	type ActionLoggerShape,
 	type WithBufferOptions,
 	type WithStepOptions,
 } from "./ActionLogger.js";
+export {
+	ActionManifest,
+	ActionManifestBranding,
+	ActionManifestCompositeRuns,
+	ActionManifestDecodeError,
+	ActionManifestDiff,
+	ActionManifestDockerRuns,
+	type ActionManifestError,
+	ActionManifestInput,
+	ActionManifestNodeRuns,
+	ActionManifestOutput,
+	ActionManifestReadError,
+	type ActionManifestRuns,
+	type ActionManifestUsage,
+} from "./ActionManifest.js";
 export {
 	type ActionOutputError,
 	ActionOutputs,
