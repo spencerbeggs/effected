@@ -55,7 +55,7 @@
 	"devDependencies": {
 		"@okfit/plugin": "^0.5.23",
 		"@savvy-web/silk": "^4.4.1",
-		"@vitest-agent/plugin": "^5.4.9"
+		"@vitest-agent/plugin": "^5.5.0"
 	},
 	"engines": {
 		"node": ">=24.11.0"
