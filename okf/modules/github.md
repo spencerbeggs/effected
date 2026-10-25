@@ -157,8 +157,8 @@ resilience, GraphQL, one module per resource service, and the pure permission
 comparator; `src/internal/` holds the octokit factory, the pagination
 engine, the crypto leaf, the id funnel and header parsing.
 
-Repository settings live on `GitHubRepository`, not in a service of their
-own, because the endpoint a settings service would want is one
+Repository settings and topics live on `GitHubRepository`, not in a service
+of their own, because the endpoint a settings service would want is one
 `GitHubRepository` already owns — module-per-*concept* deciding it, not a
 size judgement. A candidate settings module once collided with the
 `RepositorySettings` type alias the entry point already exported, silently,
@@ -168,6 +168,10 @@ a valid export by that name already exists.
 `src/` is re-exported from the entry point, which is the only check that
 could have caught it, since nearly every per-module test file imports its
 module path directly rather than through the entry point.
+
+`GitHubRepository.setTopics` returns the topic set GitHub stored rather than
+the names it was given, because GitHub lowercases every topic: a caller that
+records what it sent sees drift on the next read.
 
 ## The repo coordinate
 

@@ -281,8 +281,8 @@ export interface AppliedSettings {
 }
 
 /**
- * Read and update a repository's settings, and look up its default branch, node
- * id and owner type.
+ * Read and update a repository's settings and topics, and look up its default
+ * branch, node id and owner type.
  *
  * @public
  */
@@ -346,16 +346,41 @@ export interface GitHubRepositoryShape {
 	readonly applySettings: (
 		settings: Record<string, unknown>,
 	) => Effect.Effect<AppliedSettings, GitHubError | GitHubGraphQLError, Repo>;
+
+	/**
+	 * The repository's topics, as GitHub stores them.
+	 *
+	 * @remarks
+	 * Reads `GET /repos/{owner}/{repo}/topics`, which answers the whole set in
+	 * one object, so there is nothing to paginate. GitHub stores every topic
+	 * lowercased, so this is the value to compare a desired set against.
+	 */
+	readonly topics: Effect.Effect<ReadonlyArray<string>, GitHubError, Repo>;
+
+	/**
+	 * Replace the repository's whole topic set, and return the set GitHub stored.
+	 *
+	 * @remarks
+	 * `PUT /repos/{owner}/{repo}/topics` replaces rather than merges, so `names`
+	 * is the complete desired set and an empty array clears every topic.
+	 *
+	 * **The return value is not `names`.** GitHub lowercases every topic it
+	 * stores, so a caller that records what it sent — `Effect`, say — sees drift
+	 * on the next read, which answers `effect`. Record the returned array, which
+	 * is GitHub's own answer to the write, as the applied state.
+	 */
+	readonly setTopics: (names: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<string>, GitHubError, Repo>;
 }
 
 /**
  * Read and update a repository's settings, including settings only GraphQL can
- * write, and look up its default branch, node id and owner type.
+ * write, read and replace its topics, and look up its default branch, node id
+ * and owner type.
  *
  * @remarks
  * Provide it with {@link GitHubRepository.layer}, which needs a `GitHubClient`;
- * every member also needs a `Repo` in `R`. `settings`, `defaultBranch`, `nodeId`
- * and `ownerType` are `Effect` values, not functions.
+ * every member also needs a `Repo` in `R`. `settings`, `defaultBranch`, `nodeId`,
+ * `ownerType` and `topics` are `Effect` values, not functions.
  *
  * @example
  * ```ts
@@ -389,6 +414,8 @@ export class GitHubRepository extends Context.Service<GitHubRepository, GitHubRe
 		nodeId: overrides.nodeId ?? unread("nodeId"),
 		ownerType: overrides.ownerType ?? unread("ownerType"),
 		applySettings: overrides.applySettings ?? (() => dies("applySettings")),
+		topics: overrides.topics ?? unread("topics"),
+		setTopics: overrides.setTopics ?? (() => dies("setTopics")),
 	});
 
 	/** {@link GitHubRepository.makeTest} behind a `Layer`. */
@@ -413,8 +440,24 @@ const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 		return user.type === "Organization" ? "Organization" : "User";
 	})();
 
+	const topics = Effect.fn("GitHubRepository.topics")(function* () {
+		const { owner, repo } = yield* Repo;
+		yield* Effect.annotateCurrentSpan({ owner, repo });
+		const topic = yield* client.request("GET /repos/{owner}/{repo}/topics", { owner, repo });
+		return topic.names;
+	})();
+
 	return {
 		settings,
+		topics,
+		setTopics: Effect.fn("GitHubRepository.setTopics")(function* (names: ReadonlyArray<string>) {
+			const { owner, repo } = yield* Repo;
+			yield* Effect.annotateCurrentSpan({ owner, repo, topics: names.length });
+			// GitHub's answer, not `names`: it lowercases what it stores, and the
+			// caller's applied-state record has to match the next read.
+			const topic = yield* client.request("PUT /repos/{owner}/{repo}/topics", { owner, repo, names: [...names] });
+			return topic.names;
+		}),
 		updateSettings: Effect.fn("GitHubRepository.updateSettings")(function* (patch: RepositoryPatch) {
 			const { owner, repo } = yield* Repo;
 			yield* Effect.annotateCurrentSpan({ owner, repo, fields: Object.keys(patch).length });

@@ -90,8 +90,10 @@ is one of `added/removed/modified/renamed/copied/changed/unchanged`.
 | `updateSettings` | `(patch: RepositoryPatch) => Effect<RepositorySettings>` | Build the patch with `repositoryPatch(draft)` — see below |
 | `defaultBranch` | `Effect<string>` | Derived from `settings` |
 | `nodeId` | `Effect<string>` | The repo's GraphQL node id, needed by `createLinkedBranch`/`createPullRequest`-family mutations |
+| `topics` | `Effect<ReadonlyArray<string>>` | One `GET`, no pagination — the response carries the whole set |
+| `setTopics` | `(names) => Effect<ReadonlyArray<string>>` | `PUT` replaces the whole set; `[]` clears it. Returns what GitHub **stored**, which is lowercased — record that, never `names`, or the next read looks like drift |
 
-`settings`, `defaultBranch` and `nodeId` are properties, not functions.
+`settings`, `defaultBranch`, `nodeId` and `topics` are properties, not functions.
 
 **Never cast into `RepositoryPatch`.** Octokit's generated params spell an
 optional field as `has_issues?: boolean`, *not* `boolean | undefined`, so

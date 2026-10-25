@@ -407,3 +407,61 @@ describe("repositoryPatch", () => {
 		assert.deepStrictEqual(patch, { has_issues: true });
 	});
 });
+
+describe("GitHubRepository topics", () => {
+	it.effect("topics reads the stored set off one GET", () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.topics),
+				{ "GET /repos/{owner}/{repo}/topics": { names: ["effect", "typescript"] } },
+			);
+			assert.deepStrictEqual([...value], ["effect", "typescript"]);
+			assert.strictEqual(requested[0]?.route, "GET /repos/{owner}/{repo}/topics");
+			assert.deepStrictEqual(requested[0]?.params, { owner: "acme", repo: "widget" });
+			assert.lengthOf(requested, 1);
+		}),
+	);
+
+	it.effect("setTopics returns what GitHub STORED, not what it was given", () =>
+		Effect.gen(function* () {
+			// GitHub lowercases every topic. A caller recording `names` as its
+			// applied state would see drift on the next read, so the member answers
+			// with the response.
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.setTopics(["Effect", "TypeScript"])),
+				{ "PUT /repos/{owner}/{repo}/topics": { names: ["effect", "typescript"] } },
+			);
+			assert.deepStrictEqual([...value], ["effect", "typescript"]);
+			assert.strictEqual(requested[0]?.route, "PUT /repos/{owner}/{repo}/topics");
+			assert.deepStrictEqual(requested[0]?.params, {
+				owner: "acme",
+				repo: "widget",
+				names: ["Effect", "TypeScript"],
+			});
+		}),
+	);
+
+	it.effect("setTopics with an empty array sends the empty set, which clears them", () =>
+		Effect.gen(function* () {
+			// PUT replaces the whole set, so `[]` must reach the wire: dropping it as
+			// "nothing to do" would leave every existing topic in place.
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.setTopics([])),
+				{ "PUT /repos/{owner}/{repo}/topics": { names: [] } },
+			);
+			assert.deepStrictEqual([...value], []);
+			assert.lengthOf(requested, 1);
+			assert.deepStrictEqual(requested[0]?.params, { owner: "acme", repo: "widget", names: [] });
+		}),
+	);
+
+	it.effect("an unstubbed topics member dies when read; setTopics when called", () =>
+		Effect.gen(function* () {
+			const double = GitHubRepository.makeTest();
+			const read = yield* Effect.exit(Effect.provide(double.topics, Repo.layer(ACME)));
+			assert.match(defectMessage(read) ?? "", /topics was read but not stubbed/);
+			const write = yield* Effect.exit(Effect.provide(double.setTopics(["x"]), Repo.layer(ACME)));
+			assert.match(defectMessage(write) ?? "", /setTopics\(\) was called but not stubbed/);
+		}),
+	);
+});

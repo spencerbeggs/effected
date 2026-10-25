@@ -35,7 +35,7 @@ transport is `fetch`.
 | `GitHubApp` | minting, scoping and revoking installation tokens from App credentials, or building a client from them (as an installation, as the app itself, or from a token cached across request scopes) |
 | `InstallationTokenStore` | the seam that keeps installation tokens between request scopes (a Worker's KV, a Durable Object), for `GitHubApp.cachedToken` |
 | `ActionsOidc`, `ActionsOidcClaims` | verifying a GitHub Actions OIDC token a workflow presents to your service, into typed claims |
-| `GitHubRepository` | repository settings: read, patch, apply a config blob, default branch, node id, owner type |
+| `GitHubRepository` | repository settings: read, patch, apply a config blob, default branch, node id, owner type, topics |
 | `GitBranch`, `GitTag`, `GitCommit` | git-data plumbing — refs, trees, commits, committing files through the API without a checkout |
 | `GitHubCommit`, `GitHubContent` | reading commit summaries, comparisons and changed files; reading a file at a ref |
 | `PullRequest`, `PullRequestComment`, `GitHubIssue` | PR/issue lifecycle, marker-keyed comments, linked issues, auto-merge |
@@ -172,7 +172,9 @@ tempted to reach for `as`.
 - **`GitHubRepository`** — `settings`, `updateSettings(patch)`, `defaultBranch`,
   `nodeId`, `ownerType`, and `applySettings(record)` → `AppliedSettings`, which
   reports the REST and GraphQL keys that **actually went out**, in the caller's
-  own names. `RepositorySettings` is `RestData<"GET /repos/{owner}/{repo}">`;
+  own names. `topics` reads the topic set; `setTopics(names)` replaces it
+  (`[]` clears) and returns the set GitHub **stored**, lowercased — record
+  that, not `names`, as applied state. `RepositorySettings` is `RestData<"GET /repos/{owner}/{repo}">`;
   `RepositoryPatch` is the PATCH route's params minus `owner`/`repo`;
   `GRAPHQL_ONLY_SETTINGS`, `SECURITY_ANALYSIS_STATUS_FIELDS` and
   `transformSecurityAndAnalysis` are the normalization vocabulary.
