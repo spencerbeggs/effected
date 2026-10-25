@@ -314,7 +314,9 @@ Serialization matches `mdxJsxToMarkdown`'s defaults — `"` quotes, spaced self-
 
 ## The canonical form is stable
 
-`Markdown.stringify` takes no options. It emits one canonical form, that form is pinned by byte-level tests, the engine behind it is cross-checked against commonmark.js over the full CommonMark 0.31.2 corpus, and **changing any of it is a breaking change to this package rather than a patch**. So a test may assert on these bytes, and a pipeline that needs stable rendered markdown should serialize through here instead of a third-party stringifier whose defaults are free to move between releases.
+`Markdown.stringify` emits one canonical form, that form is pinned by byte-level tests, the engine behind it is cross-checked against commonmark.js over the full CommonMark 0.31.2 corpus, and **changing any of it is a breaking change to this package rather than a patch**. So a test may assert on these bytes, and a pipeline that needs stable rendered markdown should serialize through here instead of a third-party stringifier whose defaults are free to move between releases.
+
+By default a node's fidelity fields (`bulletChar`, `headingStyle`, `markerChar`, `fenceChar`, `delimiter`) win, so a parsed `* a` list or setext heading re-emits as written. To drop them, pass `{ canonical: true }` to `stringify` or `stringifyResult`, or call the pure `MarkdownTransform.canonicalize(tree)` to get a cleared copy of the tree (the input is never mutated). Both give identical output and replace the `Mdast.toMdast` / `Mdast.fromMdastResult` round trip.
 
 For a node carrying no fidelity field:
 
