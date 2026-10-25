@@ -108,15 +108,16 @@ const emit = (raw: unknown, key: string, path: string, stack: Set<object>): stri
 	}
 };
 
+/** V8 and JavaScriptCore report stack exhaustion as a `RangeError`, SpiderMonkey as an `InternalError`; each message names the call stack or the recursion. */
+const isStackOverflow = (thrown: unknown): boolean =>
+	(thrown instanceof RangeError || (thrown instanceof Error && thrown.name === "InternalError")) &&
+	/call stack|too much recursion/i.test(thrown.message);
+
 /**
  * The canonical JSON text of a value, or a typed refusal.
  *
  * @internal
  */
-/** V8, JavaScriptCore and SpiderMonkey each report stack exhaustion as a `RangeError` whose message names the call stack. */
-const isStackOverflow = (thrown: unknown): boolean =>
-	thrown instanceof RangeError && /call stack|too much recursion/i.test(thrown.message);
-
 export const canonicalText = (value: unknown): Result.Result<string, FingerprintError> => {
 	try {
 		const text = emit(value, "", "", new Set());

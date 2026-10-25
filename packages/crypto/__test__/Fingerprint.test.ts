@@ -151,6 +151,21 @@ describe("a throw that is not about the value's JSON form", () => {
 		assert.throws(() => Fingerprint.canonicalizeResult({ p: hostile() }), "ownKeys trap");
 	});
 
+	it("SpiderMonkey's InternalError: too much recursion is the same refusal", () => {
+		const exhausted = new Proxy(
+			{},
+			{
+				ownKeys() {
+					const error = new Error("too much recursion");
+					error.name = "InternalError";
+					throw error;
+				},
+			},
+		);
+		const error = refusal({ p: exhausted });
+		assert.strictEqual(error.detail, "a value nested too deeply");
+	});
+
 	it("a RangeError that is not a stack overflow propagates too", () => {
 		const ranged = new Proxy(
 			{},
