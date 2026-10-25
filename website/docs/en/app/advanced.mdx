@@ -19,7 +19,8 @@ The sharpest case is a config-only tool: a linter, a codegen, anything that read
 
 ```ts
 import { AppConfig } from "@effected/app";
-import { ConfigFile, TomlCodec } from "@effected/config-file";
+import { ConfigFile } from "@effected/config-file";
+import { TomlCodec } from "@effected/config-file/toml";
 import { AppDirs, Xdg } from "@effected/xdg";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
@@ -68,7 +69,8 @@ A release CLI reads a project-level `release.toml` checked into the repo, but an
 
 ```ts
 import { AppConfig } from "@effected/app";
-import { ConfigFile, MergeStrategy, TomlCodec } from "@effected/config-file";
+import { ConfigFile, MergeStrategy } from "@effected/config-file";
+import { TomlCodec } from "@effected/config-file/toml";
 import { Effect, Schema } from "effect";
 
 class Release extends Schema.Class<Release>("Release")({
@@ -100,7 +102,7 @@ const load = Effect.gen(function* () {
 });
 ```
 
-Three details earn their place here. The `codec` is **required** — `TomlCodec` is a named import, and that import is what keeps the JSON, JSONC and YAML engines out of your bundle; the layer will not guess a format from the `.toml` extension. It can be a decorated codec too: `AppConfig.layer` is generic over the codec's error, so an `EncryptedCodec` or a `ConfigMigration.make` codec goes straight in, provided the `ConfigFile.Service` key names the widened union as its third type argument — `ConfigCodec.ErrorOf<typeof codec>` reads it off the codec value, and a key declared without it is a compile error rather than a method that fails with an error its type never mentions. `native` defaults to `true` (probing an OS-native directory a user may have written to is a cheap courtesy), and passing `false` drops that rung. And `loadOrDefault` returns the default *as-is* — it is trusted caller input, so neither the schema nor a `validate` hook runs against it.
+Three details earn their place here. The `codec` is **required** — `TomlCodec` is a named import from `@effected/config-file/toml` (install `@effected/toml` beside it), and that import is what keeps the JSONC and YAML engines out of your install and your bundle; the layer will not guess a format from the `.toml` extension. It can be a decorated codec too: `AppConfig.layer` is generic over the codec's error, so an `EncryptedCodec` or a `ConfigMigration.make` codec goes straight in, provided the `ConfigFile.Service` key names the widened union as its third type argument — `ConfigCodec.ErrorOf<typeof codec>` reads it off the codec value, and a key declared without it is a compile error rather than a method that fails with an error its type never mentions. `native` defaults to `true` (probing an OS-native directory a user may have written to is a cheap courtesy), and passing `false` drops that rung. And `loadOrDefault` returns the default *as-is* — it is trusted caller input, so neither the schema nor a `validate` hook runs against it.
 
 Writing config back is a read-modify-write that never clobbers a concurrent edit:
 

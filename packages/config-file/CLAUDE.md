@@ -278,6 +278,23 @@ pnpm build --filter @effected/config-file   # from the repo root
 
 - `it.effect` **always** installs a virtual `TestClock`, so `Effect.sleep`,
   `delay` and `timeout` hang silently until the vitest timeout.
+- **Adding another subpath: the self-name false positive and its recipe.** A
+  subpath entry whose modules name a root type (here `ConfigCodec`) must
+  import it through the package's own name, `import type { X } from
+  "@effected/config-file"`, never a relative path. A relative import makes
+  the declaration rollup copy the root's declarations into the subpath's
+  `.d.ts`, which gives you a second, unrelated copy of each type. With the
+  self-name import, list the package name in `savvy.build.ts`'s
+  `dtsExternals` so the import stays external. The emitted `.d.ts` is then
+  correct, but API Extractor's second pass still reports every root type it
+  reaches as `ae-forgotten-export` `needs to be exported by the entry point
+  <entry>.d.ts`, which fails CI. That report is the false positive. Add the
+  entry to the scoped suppression's `entry point (?:…)\.d\.ts$` pattern,
+  never a bare messageId suppression, and extend `__test__/subpaths.test.ts`'s
+  `SUBPATHS` list. The test's declarations check (only the exported codec is
+  declared, `@public`, importing the root) is what proves the suppression
+  hid nothing. `@effected/cli`'s `./ui` (`savvy.build.ts`,
+  `__test__/declarations.test.ts`) is the same recipe at larger scale.
 - `savvy.build.ts` carries two **narrow** suppressions:
   `{ messageId: "ae-forgotten-export", pattern: "_base" }`, and one scoped to
   the `jsonc`/`yaml`/`toml` entry points (see the codecs section). Never

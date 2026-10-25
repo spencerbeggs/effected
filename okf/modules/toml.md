@@ -69,7 +69,7 @@ Corpus comparison is structural, not textual: expected datetime strings are re-p
 
 ## Consumer seam
 
-`TomlCodec` implements `config-file`'s `ConfigCodec` over this package's parse and stringify, living inside `@effected/config-file` as one of four free-standing codec exports, reached through a `workspace:^` peer. **Nothing in toml knows about config-file**: the edge points config-file → toml, and this package stays a pure, unaware format package.
+`TomlCodec` implements `config-file`'s `ConfigCodec` over this package's parse and stringify, living inside `@effected/config-file` as one of four free-standing codec exports, served from its `./toml` subpath and reached through an optional `workspace:^` peer, so only a consumer that imports that subpath installs this package. **Nothing in toml knows about config-file**: the edge points config-file → toml, and this package stays a pure, unaware format package.
 
 ## Implementation notes
 

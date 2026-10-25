@@ -65,7 +65,10 @@ warning, just a bundle carrying engines the consumer never named.
 and `toml` format packages stay independent, and the four codecs —
 `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec` — are exported as
 free-standing named exports, one per module, never collected into a
-namespace object.[^config-file-index] `ConfigCodec` is the interface
+namespace object.[^config-file-index] `JsonCodec` is re-exported by the
+root `src/index.ts`; `JsoncCodec`, `YamlCodec` and `TomlCodec` each by
+their own subpath entrypoint (`src/jsonc.ts`, `src/yaml.ts`,
+`src/toml.ts`), so a consumer installs only the engine it names. `ConfigCodec` is the interface
 only; there is no runtime value that groups the four
 implementations.[^config-file-codec]
 
@@ -155,10 +158,10 @@ form. Such a sweep covers the explicitly typed
 Adding a seventh holdout, or converting one of the four interface
 collisions, is a change to this table first.
 
-[^config-file-index]: `packages/config-file/src/index.ts:33-38` —
-    `JsonCodec`, `JsoncCodec`, `TomlCodec` and `YamlCodec` exported as
-    separate named bindings, one import per line.
-[^config-file-codec]: `packages/config-file/src/ConfigCodec.ts:55-56` —
+[^config-file-index]: `packages/config-file/src/index.ts` exports
+    `JsonCodec`; `src/jsonc.ts`, `src/yaml.ts` and `src/toml.ts` each
+    export one of the other three, a separate named binding per entry.
+[^config-file-codec]: `packages/config-file/src/ConfigCodec.ts:55` —
     the four codecs "are free-standing named exports, one per module."
 [^merge-strategy]: `packages/config-file/src/MergeStrategy.ts` —
     `export interface MergeStrategy<A>` and

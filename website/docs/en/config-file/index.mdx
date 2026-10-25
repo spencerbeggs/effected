@@ -17,9 +17,15 @@ npm install @effected/config-file effect @effect/platform-node
 pnpm add @effected/config-file effect @effect/platform-node
 ```
 
-Requires Node.js >=24.11.0. Every format is covered by that one install; there is no separate package to add for YAML or TOML.
+Requires Node.js >=24.11.0. That install covers JSON. To read JSONC, YAML or TOML, add the matching engine beside the package:
 
-`effect` v4 is a peer dependency, and so are `@effected/jsonc`, `@effected/toml`, `@effected/walker` and `@effected/yaml` — the first-party engines behind the JSONC, YAML and TOML codecs, plus the traversal primitive the `upwardWalk`, `workspaceRoot` and `gitRoot` resolvers are built on. Package managers that install peers automatically will pull them in; add them to your manifest explicitly if yours does not. The package declares no runtime dependencies of its own, so nothing it drags into your tree comes from outside `effect` and `@effected/*`.
+```bash
+pnpm add @effected/jsonc   # for @effected/config-file/jsonc
+pnpm add @effected/yaml    # for @effected/config-file/yaml
+pnpm add @effected/toml    # for @effected/config-file/toml
+```
+
+`effect` v4 is a peer dependency, and so are `@effected/walker` and `@effected/glob` — the traversal primitive the `upwardWalk`, `workspaceRoot` and `gitRoot` resolvers are built on, and the matcher it peers on. Package managers that install peers automatically will pull them in; add them to your manifest explicitly if yours does not. `@effected/jsonc`, `@effected/yaml` and `@effected/toml` are **optional** peers: only the `./jsonc`, `./yaml` and `./toml` subpaths load them, and the package root never does, so a JSON-only program installs and loads none of them. The package declares no runtime dependencies of its own, so nothing it drags into your tree comes from outside `effect` and `@effected/*`.
 
 Reading and writing files needs a `FileSystem` and a `Path` implementation, provided once at the edge — from `@effect/platform-node` on Node.
 
@@ -61,21 +67,22 @@ Effect.runPromise(program.pipe(Effect.provide(AppConfigLive), Effect.provide(Pla
 
 ## Codecs
 
-Four codecs ship in the package, each a free-standing named export:
+Four codecs ship in the package, each a free-standing named export. `JsonCodec` comes from the package root; the other three each have their own subpath and an optional engine peer to install beside it:
 
-| Codec | Format | Engine |
-| ----- | ------ | ------ |
-| `JsonCodec` | JSON | the host `JSON` global, no parser at all |
-| `JsoncCodec` | JSONC | `@effected/jsonc` |
-| `YamlCodec` | YAML | `@effected/yaml` |
-| `TomlCodec` | TOML | `@effected/toml` |
+| Codec | Format | Import from | Engine |
+| ----- | ------ | ----------- | ------ |
+| `JsonCodec` | JSON | `@effected/config-file` | the host `JSON` global, no parser at all |
+| `JsoncCodec` | JSONC | `@effected/config-file/jsonc` | `@effected/jsonc` |
+| `YamlCodec` | YAML | `@effected/config-file/yaml` | `@effected/yaml` |
+| `TomlCodec` | TOML | `@effected/config-file/toml` | `@effected/toml` |
 
-One install covers every format, and you still pay only for the parser you name. The codecs are free-standing exports rather than properties of a namespace object, so importing `TomlCodec` never references the YAML or JSONC bindings, their parsing engines are unreachable from your entrypoint and a bundler drops them. A JSON-only application ships no parser at all.
+You install and load only the parser you name. The root never reaches a subpath, so a JSON-only application installs no parser and ships none. Each subpath reaches only its own engine, and the codecs are never collected into a namespace object, so importing `TomlCodec` never references the YAML or JSONC bindings.
 
 Swapping a format is a one-word change to the layer:
 
 ```ts
-import { ConfigFile, ConfigResolver, MergeStrategy, TomlCodec } from "@effected/config-file";
+import { ConfigFile, ConfigResolver, MergeStrategy } from "@effected/config-file";
+import { TomlCodec } from "@effected/config-file/toml";
 import { Schema } from "effect";
 
 class Settings extends Schema.Class<Settings>("Settings")({ port: Schema.Number }) {}
