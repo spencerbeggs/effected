@@ -14,13 +14,15 @@ verified:
     at: 2026-10-09T17:01:48Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-10-25T20:04:29Z
 integrity:
   generated:
     body: 6aad9f0294e37f93
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 4f0c6f8fe9a833a4
+    at: 2026-10-25T20:04:29Z
+    content: 3dceafa04d47213d
 ---
 
 # config-file's codecs are free-standing named exports, never a namespace object

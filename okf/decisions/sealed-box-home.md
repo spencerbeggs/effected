@@ -2,7 +2,7 @@
 type: Decision
 title: The libsodium sealed box stays in @effected/github until a second consumer appears
 description: "tweetnacl and blakejs remain a private leaf of @effected/github, confined to RepositorySecret; they do not move into @effected/crypto, which would turn the boundary crypto package and every package over it integrated under the dependency policy, and the primitives are not ported in house. The revisit trigger is a second consumer that seals or opens a box, or needs BLAKE2b, outside github; when it fires, the home is a new integrated package, never a subpath of crypto."
-status: draft
+status: stable
 tags:
   - architecture
   - security
@@ -29,6 +29,13 @@ generated:
 integrity:
   generated:
     body: 340f3a1159317921
+  verified:
+    by: human:spencer
+    at: 2026-10-25T20:04:29Z
+    content: 63e16801a0f2a424
+verified:
+  - by: human:spencer
+    at: 2026-10-25T20:04:29Z
 ---
 
 # The libsodium sealed box stays in `@effected/github` until a second consumer appears

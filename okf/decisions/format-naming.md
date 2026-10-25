@@ -14,11 +14,13 @@ integrity:
     body: 85a12f08f3eb5664
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 2141c605e31997ab
+    at: 2026-10-25T20:04:29Z
+    content: 55e31315ca30318d
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-25T20:04:29Z
 ---
 
 # Format-package naming is `*Format`, not `*Unvalidated`

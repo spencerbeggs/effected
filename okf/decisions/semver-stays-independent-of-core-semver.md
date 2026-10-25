@@ -2,7 +2,7 @@
 type: Decision
 title: "@effected/semver stays independent of core SemVer and SemVerRange"
 description: "The kit keeps its own grammar, classes and range algebra rather than building on or wrapping core's unstable effect/SemVer and effect/SemVerRange, and uses core as a differential test oracle instead."
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -21,6 +21,13 @@ sources:
 integrity:
   generated:
     body: 442474263b7d63c2
+  verified:
+    by: human:spencer
+    at: 2026-10-25T20:04:29Z
+    content: 7b74de953bc423dd
+verified:
+  - by: human:spencer
+    at: 2026-10-25T20:04:29Z
 ---
 
 # @effected/semver stays independent of core SemVer and SemVerRange

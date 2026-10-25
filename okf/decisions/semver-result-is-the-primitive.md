@@ -13,11 +13,13 @@ integrity:
     body: 60d008abc13e830c
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: ffd22b9d48e866ec
+    at: 2026-10-25T20:04:29Z
+    content: ead19a0c5dc851d7
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-25T20:04:29Z
 ---
 
 # semver's parse and intersect Results are the primitive

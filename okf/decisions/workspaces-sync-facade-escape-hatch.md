@@ -19,11 +19,13 @@ integrity:
     body: e963599e3c4930f5
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 61380491cd3be372
+    at: 2026-10-25T20:04:29Z
+    content: ce61c43451635c4f
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-25T20:04:29Z
 ---
 
 # WorkspacesSync is a `*Sync` escape hatch, not a `*Result` pure form

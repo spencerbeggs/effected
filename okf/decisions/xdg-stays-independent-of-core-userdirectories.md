@@ -2,7 +2,7 @@
 type: Decision
 title: xdg stays independent of core UserDirectories
 description: "@effected/xdg does not wrap or defer to effect/persistence's unstable UserDirectories, because core folds the XDG variable and the native directory into one answer per kind; instead xdg ports the two edge rules core gets right (ignore relative values, USERPROFILE on win32) and pins the agreed subset with a parity oracle."
-status: draft
+status: stable
 tags:
   - architecture
 sources:
@@ -22,6 +22,13 @@ generated:
 integrity:
   generated:
     body: 94b0d0cf18824d62
+  verified:
+    by: human:spencer
+    at: 2026-10-25T20:04:29Z
+    content: e3f0c7ecec6a926d
+verified:
+  - by: human:spencer
+    at: 2026-10-25T20:04:29Z
 ---
 
 # xdg stays independent of core UserDirectories

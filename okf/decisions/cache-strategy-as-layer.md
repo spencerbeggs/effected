@@ -14,13 +14,15 @@ verified:
     at: 2026-10-09T16:29:07Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-10-25T20:04:29Z
 integrity:
   generated:
     body: e73e2603595f2e39
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 516ad1c4fb2e4dd6
+    at: 2026-10-25T20:04:29Z
+    content: de320bc92ab8527e
 ---
 
 # Each runtimes resolver exposes three lazy layer constants, not one configurable layer

@@ -14,11 +14,13 @@ integrity:
     body: 1b3370b6798ecaac
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 47a7c1fb935ce382
+    at: 2026-10-25T20:04:29Z
+    content: a69d0431e745559b
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-25T20:04:29Z
 ---
 
 # The Draft-07 meta-schema constant keeps its trailing hash

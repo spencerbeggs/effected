@@ -26,6 +26,15 @@
 * Updated WorkspacesSync is a `*Sync` escape hatch, not a `*Result` pure form
 * Updated ae-forgotten-export on _base looks like a real export bug; it is a synthesized, un-nameable symbol
 * Updated savvy-web/systems
+* Updated @effected/semver stays independent of core SemVer and SemVerRange
+* Updated Contract inversion is the default answer to a tier-dragging edge
+* Updated Each runtimes resolver exposes three lazy layer constants, not one configurable layer
+* Updated Format-package naming is `*Format`, not `*Unvalidated`
+* Updated Keyed operations come from WebCrypto, payload digests from core Crypto required in R
+* Updated The Draft-07 meta-schema constant keeps its trailing hash
+* Updated The libsodium sealed box stays in @effected/github until a second consumer appears
+* Updated The sync form is named `*Result`, never `*Sync`
+* Updated xdg stays independent of core UserDirectories
 
 ## 2026-10-24
 
