@@ -41,13 +41,13 @@
 | `EncryptedCodec` | Function | Wrap any `(ConfigCodec:interface)` with AES-GCM encryption. | wrap a config codec with aes-gcm encryption at rest |
 | `EncryptedCodecKey` | Variable + TypeAlias | Key source union for `EncryptedCodec`. | supply a crypto key or derive one from a passphrase for encrypted config |
 | `JsonCodec` | Variable | A `ConfigCodec` backed by the host `JSON` global: plain JSON as configuration file content. | parse and stringify config as plain json, no parsing engine dependency |
-| `JsoncCodec` | Variable | A `ConfigCodec` backed by `@effected/jsonc`: JSON with comments and trailing commas. | parse and stringify config as jsonc, comments and trailing commas allowed |
+| `JsoncCodec` | Variable | A `ConfigCodec` backed by `@effected/jsonc`: JSON with comments and trailing commas. | from `@effected/config-file/jsonc` — parse and stringify config as jsonc, comments and trailing commas allowed |
 | `LayerConfigProviderOptions` | Interface | Options for `layerConfigProvider`. | |
 | `MergeStrategy` | Variable + Interface | Strategy for combining several `ConfigSource` entries into one value. | combine several discovered config sources into one value, first-match or deep merge |
 | `NonEmptySources` | TypeAlias | A source list guaranteed non-empty by the caller. | |
-| `TomlCodec` | Variable | A `ConfigCodec` backed by `@effected/toml`. | parse and stringify config as toml |
+| `TomlCodec` | Variable | A `ConfigCodec` backed by `@effected/toml`. | from `@effected/config-file/toml` — parse and stringify config as toml |
 | `UpwardWalkOptions` | TypeAlias | Options for `ConfigResolver.upwardWalk`. | |
 | `VersionAccess` | Variable + Interface | How the version number is read from and written to the parsed config. | read and write the version field used by config migrations |
-| `YamlCodec` | Variable | A `ConfigCodec` backed by `@effected/yaml`. | parse and stringify config as yaml |
+| `YamlCodec` | Variable | A `ConfigCodec` backed by `@effected/yaml`. | from `@effected/config-file/yaml` — parse and stringify config as yaml |
 | `asConfigProvider` | Function | Expose a loaded, merged, schema-validated document as a `ConfigProvider`, so it can be read through `Config.String("port")` and layered beneath other providers. | bridge a loaded config document into effect's Config accessors |
 | `layerConfigProvider` | Function | Install a loaded config document as a fallback beneath the **ambient** `ConfigProvider`, so `Config` accessors read env first and the file second. | install a config file as a fallback beneath the ambient ConfigProvider |

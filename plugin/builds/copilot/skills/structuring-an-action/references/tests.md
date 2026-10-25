@@ -45,80 +45,94 @@ and no workflow could ever set it), an input declared and documented but read
 nowhere, and three outputs written in the wrong case against a manifest that
 never declared them.
 
+Nothing in it is hand-rolled. `ActionManifest` decodes `action.yml`,
+`ActionManifest.runnerInputs` builds the environment a runner builds from it,
+`ActionInput.recording` journals the inputs the code reads, and
+`ActionManifest.diff` compares both directions at once:
+
 ```ts
 // __test__/unit/schema/manifest-sync.test.ts
-import { Yaml } from "@effected/yaml";
 import { assert, describe, it } from "@effect/vitest";
+import { ActionInput, ActionManifest } from "@effected/github-actions";
+import { MemoryFileSystem } from "@effected/memfs";
 import { Effect } from "effect";
 import * as fs from "node:fs";
 import { INPUT_NAMES, readInputs } from "../../../src/schema/inputs.js";
 import { OUTPUT_NAMES, emitOutputs } from "../../../src/schema/outputs.js";
 
-const manifest = Effect.runSync(Yaml.parse(fs.readFileSync("action.yml", "utf8"))) as {
- readonly inputs?: Record<string, { readonly default?: string }>;
- readonly outputs?: Record<string, unknown>;
-};
-
-const sorted = (names: Iterable<string>) => [...names].sort();
+// Read through FileSystem, seeded from the real file, so the suite exercises ActionManifest.read itself.
+const manifest = Effect.runSync(
+ ActionManifest.read("/action.yml").pipe(
+  Effect.provide(MemoryFileSystem.layerWith({ "/action.yml": fs.readFileSync("action.yml", "utf8") })),
+ ),
+);
 
 describe("action.yml is the single source", () => {
- it("declares exactly the inputs the tuple names", () => {
-  assert.deepStrictEqual(sorted(Object.keys(manifest.inputs ?? {})), sorted(INPUT_NAMES));
+ it("declares exactly the inputs and outputs the tuples name", () => {
+  const diff = ActionManifest.diff(manifest, { inputs: INPUT_NAMES, outputs: OUTPUT_NAMES });
+  assert.isTrue(diff.inSync, JSON.stringify(diff));
  });
 
- it("declares exactly the outputs the tuple names", () => {
-  assert.deepStrictEqual(sorted(Object.keys(manifest.outputs ?? {})), sorted(OUTPUT_NAMES));
- });
-
- // Leg three — what the code actually READS. A recorder over the provider's
- // env is the only way to observe it; a static read of the module cannot.
- it.effect("reads exactly the inputs the tuple names", () =>
+ // Leg three — what the code actually READS, against the runner-shaped
+ // environment: every declared input present, with its default or "".
+ it.effect("reads exactly the inputs the manifest declares", () =>
   Effect.gen(function* () {
-   const seen = new Set<string>();
-   yield* Effect.provide(readInputs, ActionInput.layer(recordingEnv(seen, FIXTURE_ENV)));
-   assert.isAbove(seen.size, 0); // see the spread hazard below — this line is load-bearing
-   assert.deepStrictEqual(sorted(seen), sorted(INPUT_NAMES));
+   const recording = ActionInput.recording(ActionManifest.runnerInputs(manifest));
+   yield* readInputs.pipe(Effect.provide(recording.layer));
+   const diff = ActionManifest.diff(manifest, { inputs: yield* recording.names });
+   assert.isTrue(diff.inSync, JSON.stringify(diff));
   }),
  );
 
  // Leg three — what the code actually WRITES, including case.
- it.effect("writes exactly the outputs the tuple names", () =>
+ it.effect("writes exactly the outputs the manifest declares", () =>
   Effect.gen(function* () {
    const written = yield* recordEmittedOutputs(emitOutputs(ALL_DISABLED));
-   assert.deepStrictEqual(sorted(written), sorted(OUTPUT_NAMES));
+   const diff = ActionManifest.diff(manifest, { inputs: INPUT_NAMES, outputs: written });
+   assert.deepStrictEqual([diff.unwrittenOutputs, diff.undeclaredOutputs], [[], []]);
+  }),
+ );
+
+ // The defaults half: the code's own Config.withDefault fallbacks against the
+ // manifest defaults the runner actually publishes. Change one alone and
+ // these disagree.
+ it.effect("the code's defaults ARE the manifest's defaults", () =>
+  Effect.gen(function* () {
+   const fromManifest = yield* readInputs.pipe(Effect.provide(ActionInput.layer(ActionManifest.runnerInputs(manifest))));
+   const fromCode = yield* readInputs.pipe(Effect.provide(ActionInput.layer({})));
+   assert.deepStrictEqual(fromCode, fromManifest);
   }),
  );
 });
 ```
 
-Both third legs are the point. The first two compare two *declarations*, which
-drift together the moment someone updates both and neither matches the code;
-only a recorded read and a recorded write observe behavior. `github-action-template`
-carries a working instance of this check — read it if the shape above needs
-grounding in a real repository.
+Both third legs are the point. The first test compares two *declarations*,
+which drift together the moment someone updates both and neither matches the
+code; only a recorded read and a recorded write observe behavior.
+`recordEmittedOutputs` is the suite's own recorder over the outputs double —
+see the recording wrappers below.
 
-`recordingEnv` is a `Proxy` over the fixture env whose `get` trap adds the
-demangled name to `seen` before answering. Which brings the hazard:
+Three properties of the recorder are worth knowing before leaning on it:
 
-### The `recordingEnv` spread hazard fails GREEN
+- **It journals a read when the lookup runs, whether or not the input has a
+  value.** An unsupplied input the code falls back from is still an input the
+  code reads, so leg three holds under the runner-shaped environment.
+- **It journals accessor reads only.** A bare `Config.String("dry-run")` is
+  indistinguishable from an ordinary environment read inside the provider and
+  is not journaled; read inputs through `ActionInput` and the gap never opens.
+- **Names come back in runner-variable form, lowercased** (`My Input` reads as
+  `my_input`). `diff` matches inputs by runner variable, so they line up with
+  the manifest's spelling; compare through `diff`, never with a hand-sorted
+  `deepStrictEqual` against the tuple.
 
-The natural way to compose the recorder with fixed credentials is a spread:
-
-```ts
-ActionInput.layer({ ...recordingEnv(seen), ...CREDENTIALS }) // BROKEN — silently
-```
-
-**Object spread copies via `ownKeys`.** Over a `Proxy` on an empty target that
-yields nothing, so the recorder is discarded entirely, `seen` stays empty, and
-the assertion compares empty to empty and **passes**. The test cannot fail, and
-nothing signals it.
-
-Two fixes, and use both: assert `seen.size > 0` **before** the comparison — one
-line, and it converts the whole check from decoration into a gate — and put the
-fixed values on the proxy's *target* rather than spreading around it
-(`recordingEnv(seen, { ...FIXTURE_ENV, ...CREDENTIALS })`), so there is nothing
-to flatten. The proxy is the non-obvious half of the technique; anything that
-copies it by enumeration destroys it.
+The `Proxy`-over-the-env recorder this replaces had a hazard worth
+remembering in case a hand-rolled one survives in an older suite: **object
+spread copies via `ownKeys`**, so `ActionInput.layer({ ...recordingEnv(seen),
+...CREDENTIALS })` flattened the proxy to nothing, the journal stayed empty,
+and an empty-versus-empty comparison passed. `ActionInput.recording` has no
+such failure mode — it wraps the provider's lookup, not the record — and
+`diff` against a non-empty manifest cannot be satisfied by an empty journal:
+every declared input reports unread.
 
 ## Doubles: recording wrappers over the kit's own test layers
 
@@ -202,7 +216,7 @@ What does **not** work is a per-file precaution: a `delete process.env.GITHUB_AC
 
 ## What a full suite for this shape typically pins
 
-- The three-way sync between the manifest, the names-as-data tuple, and what the code actually reads or writes — for both inputs and outputs.
+- The three-way sync between the manifest, the names-as-data tuple, and what the code actually reads or writes — for both inputs and outputs — through `ActionManifest.diff`, with reads journaled by `ActionInput.recording`.
 - The program's log stream as the decision record: the run-context block, every `SKIPPED` line, the closing result block, and outputs emitted on every exit path including failure.
 - Each step's failure posture, including the degrade path actually degrading rather than propagating.
 - The cleanup entry's double net, proven by injecting both an ordinary error and a defect.

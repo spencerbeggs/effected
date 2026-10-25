@@ -60,7 +60,7 @@
 | `FileDeletion` | Class | A file to remove in a commit. | a file to remove in a commit by path |
 | `FileMode` | Variable | A blob's file mode, as the Git Database API spells it. | git blob file mode literals for the git database api, 100644 100755 120000 |
 | `FileStatus` | Variable | How a file changed in a commit or a comparison. | added removed modified renamed copied changed unchanged, how a file changed |
-| `GRAPHQL_ONLY_SETTINGS` | Variable | Settings reachable **only** through the GraphQL `updateRepository` mutation, mapped from snake_case keys to camelCase GraphQL input fields. | repository settings reachable only through the graphql updateRepository mutation |
+| `GRAPHQL_ONLY_SETTINGS` | Variable | Settings written through the GraphQL `updateRepository` mutation, mapped from snake_case keys to camelCase GraphQL input fields. | repository settings reachable only through the graphql updateRepository mutation |
 | `GitBranch` | Class | Create, move, read and delete branch refs through GitHub's Git Database API, with an `upsert` that needs no existence check. | create reset delete a branch ref, link a branch to an issue |
 | `GitBranchShape` | Interface | Branch refs in GitHub's Git Database API. | |
 | `GitCommit` | Class | Read commits and build trees and commits through GitHub's Git Database API, including a one-call "commit these files onto a branch". | build a git tree and commit files onto a branch |
@@ -84,8 +84,8 @@
 | `GitHubIssueShape` | Interface | Read, list, close and comment on issues, and resolve the issues a pull request closes. | |
 | `GitHubRelease` | Class | Create, read, list and update GitHub releases, and upload and list their assets. | create update and list releases, upload a release asset, get a release by tag |
 | `GitHubReleaseShape` | Interface | Create, read, list and update releases, and upload and list their assets. | |
-| `GitHubRepository` | Class | Read and update a repository's settings, including settings only GraphQL can write, and look up its default branch, node id and owner type. | read patch repository settings, apply settings blob across rest graphql |
-| `GitHubRepositoryShape` | Interface | Read and update a repository's settings, and look up its default branch, node id and owner type. | |
+| `GitHubRepository` | Class | Read and update a repository's settings, including settings only GraphQL can write, read and replace its topics, and look up its default branch, node id and owner type. | read patch repository settings, apply settings blob across rest graphql |
+| `GitHubRepositoryShape` | Interface | Read and update a repository's settings and topics, and look up its default branch, node id and owner type. | |
 | `GitHubValidationCode` | Variable | The validation codes GitHub documents for a 422's `errors[].code`. | missing missing_field invalid already_exists unprocessable custom, github 422 validation error codes |
 | `GitHubValidationEntry` | Class | One entry from a failed response's `data.errors` array, as GitHub sent it. | one entry from a failed rest response's errors array, resource field code and message |
 | `GitTag` | Class | Create, move, resolve, list and delete tag refs through GitHub's Git Database API, and find the newest version-shaped tag. | create reset resolve and delete a tag ref, find newest semver-shaped tag |

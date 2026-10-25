@@ -12,9 +12,23 @@
 | `ActionEnvironment` | Class | The runner environment an action is executing inside. | read `GITHUB_*` and `RUNNER_*` variables, process.env access for an action, step debug mode |
 | `ActionEnvironmentError` | Class | Raised when the runner environment does not say what an action needs. | handle a missing or malformed runner environment variable |
 | `ActionEnvironmentShape` | Interface | The members of the `ActionEnvironment` service: variable lookup, the `GITHUB_*` and `RUNNER_*` contexts, the event payload and scoped overrides. | |
-| `ActionInput` | Class | Action inputs, read as `Config` values. | read with: inputs, INPUT_ variables, config provider for action inputs, dry-run boolean input |
+| `ActionInput` | Class | Action inputs, read as `Config` values. | read with: inputs, INPUT_ variables, config provider for action inputs, dry-run boolean input, record which inputs a program reads |
+| `ActionInputRecording` | Interface | A provider that journals which inputs a program reads — see `ActionInput.recording`. | |
 | `ActionLogger` | Class | Groups, buffered step transcripts, notices — and the `Logger` that renders every `Effect.log*` in the kit as a workflow command. | workflow-command logger, collapsible log groups, phase heading that opens no group, buffered step transcript, notice annotation |
 | `ActionLoggerShape` | Interface | The members of the `ActionLogger` service: log groups and headings, buffered steps, notices and source annotations. | |
+| `ActionManifest` | Class | A decoded `action.yml`: the action's metadata, its declared inputs and outputs, and the `runs:` block naming how it executes. | decode or read action.yml, runner-shaped INPUT_ test environment from manifest defaults, diff code reads/writes against declared inputs/outputs |
+| `ActionManifestBranding` | Class | The `branding:` block a Marketplace listing reads. | action.yml marketplace branding, icon and color |
+| `ActionManifestCompositeRuns` | Class | The `runs:` block of a composite action. | action.yml runs block for a composite action, using composite with steps |
+| `ActionManifestDecodeError` | Class | Raised when an `action.yml` is not valid YAML, or is YAML that does not have the shape of an action manifest. | handle an action.yml that is not yaml or not a valid action manifest |
+| `ActionManifestDiff` | Class | Where an action's code and its `action.yml` disagree. | where action code and action.yml disagree, unread or undeclared inputs and outputs, inSync |
+| `ActionManifestDockerRuns` | Class | The `runs:` block of a Docker container action. | action.yml runs block for a docker container action, image args env entrypoints |
+| `ActionManifestError` | TypeAlias | Anything that can go wrong loading an `action.yml`. | |
+| `ActionManifestInput` | Class | One input an `action.yml` declares under `inputs:`. | one declared action.yml input, default description required deprecationMessage |
+| `ActionManifestNodeRuns` | Class | The `runs:` block of a JavaScript action — `using: node24` and its kin. | action.yml runs block for a javascript action, node24 main pre post pre-if post-if |
+| `ActionManifestOutput` | Class | One output an `action.yml` declares under `outputs:`. | one declared action.yml output, description and composite value expression |
+| `ActionManifestReadError` | Class | Raised when an `action.yml` cannot be read from the filesystem. | handle an action.yml that cannot be read from the filesystem |
+| `ActionManifestRuns` | TypeAlias | The three `runs:` shapes an `action.yml` can declare. | |
+| `ActionManifestUsage` | Interface | The names an action's code reads and writes, for `ActionManifest.diff`. | |
 | `ActionOutputError` | TypeAlias | Anything that can go wrong publishing an output, variable or summary. | |
 | `ActionOutputs` | Class | Everything an action publishes: step outputs, exported variables, `PATH` additions, the job summary, log masking and failure annotations. | set step output, export env var, add to PATH, mask a secret |
 | `ActionOutputsShape` | Interface | The members of the `ActionOutputs` service: step outputs, exported variables, `PATH` additions, the job summary, masking and failure annotations. | |

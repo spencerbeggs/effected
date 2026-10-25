@@ -16,6 +16,11 @@ assertion runs, how to fault it, and the traps that make a memfs test lie.
 | Code takes an injected sync `node:fs` port | `handle.sync` (or `MemoryFileSystem.syncFileSystem(volume)`) |
 | Code takes an injected async `fs/promises` walker | `handle.promises` (or `MemoryFileSystem.promisesFileSystem(volume)`) |
 | A failure mid-run | `options.faults` on any seeded constructor; `handle.withFaults` for the ports |
+| Count or record calls without changing them | `options.spies` — void observers that always delegate |
+| Fail writes (or reads) on an opened handle | an `open` fault in factory form returning `MemoryFileSystem.wrapFile(file, overrides)` |
+| Drive watch events yourself | `watchEvents: "manual"` on `makeHandle`/`makeSync`, then `handle.emit(path, event)`; `handle.watcherCount()` |
+| A port driven by a win32 path implementation | `syncFileSystem(volume, { pathStyle: "win32" })` (or `promisesFileSystem`); seed under `/C:/…` |
+| The code also needs `Path` | `MemoryFileSystem.layerWithPath(seed, options)` — `layerWith` plus core's `Path.layer` |
 | Code must read the REAL disk under `Effect.runSync` | `NodeSyncFileSystem.layer` from `@effected/memfs/node-sync` — production code, not a double |
 
 Every memory layer (`layer`, `layerWith`, `handle.layer`) publishes
@@ -190,6 +195,38 @@ same injection to ANY `FileSystem` (the node adapter, a hand-built double).
 layer build dies), naming the key — so a typo like `readFileSting` fails the
 test instead of leaving the fault silently unarmed.
 
+A **spy** is `options.spies`, not a declining fault: same keys, but each
+handler returns nothing and the call always proceeds — its return value is
+discarded, so a spy can never replace a call. It runs at each execution (never
+when the effect is built, which retires the eager-recorder trap), before any
+fault on the same member, and composes with `faults` in one options bag:
+
+```ts
+const reads: Array<string> = [];
+const Spied = MemoryFileSystem.layerWith({ "/a.txt": "a" }, { spies: { readFile: (path) => void reads.push(path) } });
+```
+
+To fault an **opened file**, wrap the handle `open` returns. A memfs `File` is
+a class instance, so a spread copies none of its members;
+`MemoryFileSystem.wrapFile(file, overrides)` forwards them all and takes
+delegate-by-default handlers (or `failTimes`) per member. Use the factory form
+so the `open` fault reaches the unfaulted `open`; core's derived `sink` writes
+through the wrapped `writeAll`:
+
+```ts
+const Full = MemoryFileSystem.layerWith(
+  { "/journal": MemoryFileSystem.directory() },
+  {
+    faults: (base) => ({
+      open: (path, options) =>
+        Effect.map(base.open(path, options), (file) =>
+          MemoryFileSystem.wrapFile(file, { writeAll: () => Effect.fail(denied(path)) }),
+        ),
+    }),
+  },
+);
+```
+
 `options.faults` never reaches the handle's ports. Fault a port with
 `handle.withFaults({ sync, promises })`, which returns faulted ports over the
 same volume; throw an errno built with `MemoryFileSystem.errno` — a handler
@@ -263,6 +300,27 @@ per UTF-16 unit with no Unicode normalization.
 - **`failTimes` under `layer(...)`.** A suite-boundary `layer(...)` builds once,
   so a transient fault declared there is consumed by the first test and every
   later test sees it exhausted. Declare it per test.
+- **`layer(...)` shares one volume; `Effect.provide` does not.** Every test in
+  a `layer(L)` group sees the writes earlier tests made, while each
+  `Effect.provide` re-seeds. A test that writes under one `runPromise` and
+  reads under another reads the seed: fold them into one program.
+- **Spies see derived members.** A `writeFile` spy also records every
+  `writeFileString` call (`readFile` ↔ `readFileString`, `access` ↔ `exists`,
+  `open` ↔ `stream`/`sink`), because the wrapper rebuilds the service through
+  `FileSystem.make`. A count migrated from a spread wrapper, which only saw
+  direct calls, can rise. Spy on the member the code actually calls.
+- **Honest absence exposes a missing `makeDirectory`.** A writer that never
+  creates its output directory passed on `mkdtemp` and on doubles that created
+  parents silently; on memfs it fails `NotFound`. Fix the writer, or seed the
+  directory it is entitled to assume — never fabricate the parent in a stub.
+- **Watch events race the test.** The volume publishes an event for every
+  mutation, so a test driving events explicitly sees the code's own writes
+  too. Build with `watchEvents: "manual"` and deliver with `handle.emit`.
+  `emit` routes as a real event does: a file's event also reaches its parent
+  directory's watchers, and a directory's event reaches the watchers below it.
+  A memfs watch does not end when its file is removed, and `watcherCount()`
+  is volume-wide. A double that must route an event to exactly one target,
+  end a file watch on unlink, or count watchers per path stays hand-built.
 - **A faulted path must exist in the seed — when the consumer absorbs the
   failure.** A `PermissionDenied` fault is distinguishable from an unseeded
   path's `NotFound`/`false` only if the code under test surfaces it. Code that
@@ -315,3 +373,6 @@ provided. Two shapes follow:
 read-only synchronous `FileSystem` whose read members agree with
 `NodeFileSystem` value for value, and whose every other member is a **defect**,
 not a typed failure — a program that tries to write under it has a wiring bug.
+Its `exists` derives from `access`, as core's does: only `NotFound` answers
+`false`, where an `existsSync`-based bridge swallowed every error. Use
+`NodeSyncFileSystem.layerWithPath` when the program needs `Path` too.

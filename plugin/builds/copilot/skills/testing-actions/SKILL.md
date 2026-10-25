@@ -23,6 +23,9 @@ only the instance specific to `@effected/github-actions`, `@effected/github`,
 | `BlobStore.layerMemory` | `@effected/github-actions` | A real-framing in-memory blob store, not a stub |
 | `OidcTokenIssuer.layerFor(claims)` | `@effected/github-actions` | A real, decodable unsigned JWT double |
 | `ActionInput.layer(env?)` | `@effected/github-actions` | Injecting inputs without mutating `process.env` |
+| `ActionManifest.runnerInputs(manifest, supplied?)` | `@effected/github-actions` | The runner-shaped input baseline for a node or docker action: every declared input present with its `with:` value, manifest default or `""`; an undeclared supplied name passes through, as on a runner |
+| `ActionManifest.diff(manifest, { inputs, outputs })` | `@effected/github-actions` | Asserting the code and `action.yml` agree on input and output names, both directions |
+| `ActionInput.recording(env?)` | `@effected/github-actions` | Journaling the inputs a program actually reads, to feed `ActionManifest.diff`: run under `recording.layer`, then `ActionManifest.diff(manifest, { inputs: yield* recording.names })` |
 | `ScriptedSpawner` | `@effected/commands` | A scripted `ChildProcessSpawner` double for a fixed command sequence |
 | `it.live` vs `it.effect` | `@effect/vitest` | Real filesystem/subprocess IO vs a virtual clock |
 
@@ -92,6 +95,14 @@ Absence means unwired; a recorded error means *this route fails, and here is why
   `process.env` between reads.** The environment is seeded once, at layer
   construction; mutating it mid-suite is a quiet false green, not a loud
   failure.
+- **Start every input test from the runner-shaped environment, not an
+  empty one.** The runner publishes every declared input — its default, or
+  `""` — so `ActionInput.layer({})` arranges a state production never
+  produces and exercises the code's `Config.withDefault` fallbacks rather
+  than the manifest defaults. Build the baseline with
+  `ActionManifest.runnerInputs(manifest, { …with: values })` and check name
+  drift with `ActionManifest.diff` fed by `ActionInput.recording(…).names`;
+  never hand-parse `action.yml` or proxy the env record in a suite.
 - **Exercise at least one input read with the runner-mangled key.** A
   suite that only ever stubs its own `ConfigProvider` keyed by the plain
   input name can't fail the way production does — see

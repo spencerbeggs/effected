@@ -122,9 +122,73 @@ a caller reading `steps/lint.ts` should never have to also read
 
 Plan a **three-legged sync test** between `action.yml`'s declared inputs, the
 `INPUT_NAMES` tuple, and **what `readInputs` actually asks for**, recorded
-through a `Proxy` over the config environment. The first two legs are
+by `ActionInput.recording`. The first two legs are
 declarations that drift together — someone updates both and neither matches
 the code — so the recorded leg is the one that finds an input declared but
 never read, or read but never declared. `structuring-an-action`'s tests
-reference carries the executable form and the spread hazard that makes it
-pass while testing nothing.
+reference carries the executable form.
+
+**Do not hand-roll the manifest half.** `ActionManifest` decodes
+`action.yml` (`ActionManifest.read(path)` over `FileSystem`, or
+`decode`/`decodeResult` over text), and two statics replace the parse,
+compare and default-mirroring code every action used to write:
+
+- `ActionManifest.diff(manifest, { inputs, outputs })` reports
+  `unreadInputs` (declared, never read), `undeclaredInputs` (read, never
+  declared — absent on a real runner), and the same pair for outputs, with
+  `inSync` true when all four are empty. Inputs match by runner variable, as
+  the runner connects them; omitting `outputs` skips that comparison. Feed
+  it the reads `ActionInput.recording` journaled, not the tuple, or it
+  compares two declarations.
+- `ActionManifest.runnerInputs(manifest, supplied?)` builds the input
+  environment the runner builds: **every** declared input present under its
+  `INPUT_` variable, carrying the `with:` value, else the manifest default,
+  else `""`. That is the baseline for every input test — feed it to
+  `ActionInput.layer(...)` or spread it into `ActionEnvironment.layerTest`'s
+  overrides. A bare `ActionInput.layer({})` tests the genuinely-absent case
+  no runner produces, so it exercises the code's `Config.withDefault`
+  fallbacks instead of the manifest defaults. Supplied names match declared
+  inputs by runner variable (`write summary` supplies `write_summary`), and
+  a supplied name the manifest does not declare is passed through as one
+  more `INPUT_` variable, as the runner does; it never throws, so catch a
+  typo with `diff`. **A composite action gets no `INPUT_` environment** from
+  the runner, so the builder is for node and docker actions and for a
+  composite test that drives the inputs into its steps explicitly.
+
+```ts
+import { assert, it } from "@effect/vitest";
+import { ActionInput, ActionManifest } from "@effected/github-actions";
+import { Effect, Result } from "effect";
+import { readFileSync } from "node:fs";
+import { readInputs } from "../src/schema/inputs.js";
+
+// A loud throw is the right failure for a broken manifest in a test.
+const manifest = Result.getOrThrow(ActionManifest.decodeResult(readFileSync("action.yml", "utf8")));
+
+it.effect("the code's defaults ARE the manifest's defaults", () =>
+  Effect.gen(function* () {
+    // Change a default in either file alone and these disagree.
+    const fromManifest = yield* readInputs.pipe(Effect.provide(ActionInput.layer(ActionManifest.runnerInputs(manifest))));
+    const fromCode = yield* readInputs.pipe(Effect.provide(ActionInput.layer({})));
+    assert.deepStrictEqual(fromCode, fromManifest);
+  }),
+);
+
+it.effect("action.yml declares exactly what the code reads", () =>
+  Effect.gen(function* () {
+    const recording = ActionInput.recording(ActionManifest.runnerInputs(manifest));
+    yield* readInputs.pipe(Effect.provide(recording.layer));
+    const diff = ActionManifest.diff(manifest, { inputs: yield* recording.names, outputs: ["greeting", "result"] });
+    assert.isTrue(diff.inSync, JSON.stringify(diff));
+  }),
+);
+```
+
+`runnerInputs` passes an expression default (`${{ github.token }}`) through
+as unevaluated text, since only the runner evaluates it — supply the value
+explicitly when the code parses it. An unquoted YAML scalar default
+(`default: false`, `default: 3`) decodes to the text the runner publishes
+(`"false"`, `"3"`), a bare `default:` to `""`, and `.inf`/`.nan` to those
+spellings; `required: "true"` decodes as a boolean. A number spelled
+non-canonically (`1.0`, `0x10`) reads as JavaScript prints it, so quote it
+to pin its text.

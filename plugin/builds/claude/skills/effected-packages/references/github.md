@@ -35,7 +35,7 @@ transport is `fetch`.
 | `GitHubApp` | minting, scoping and revoking installation tokens from App credentials, or building a client from them (as an installation, as the app itself, or from a token cached across request scopes) |
 | `InstallationTokenStore` | the seam that keeps installation tokens between request scopes (a Worker's KV, a Durable Object), for `GitHubApp.cachedToken` |
 | `ActionsOidc`, `ActionsOidcClaims` | verifying a GitHub Actions OIDC token a workflow presents to your service, into typed claims |
-| `GitHubRepository` | repository settings: read, patch, apply a config blob, default branch, node id, owner type |
+| `GitHubRepository` | repository settings: read, patch, apply a config blob, default branch, node id, owner type, topics |
 | `GitBranch`, `GitTag`, `GitCommit` | git-data plumbing — refs, trees, commits, committing files through the API without a checkout |
 | `GitHubCommit`, `GitHubContent` | reading commit summaries, comparisons and changed files; reading a file at a ref |
 | `PullRequest`, `PullRequestComment`, `GitHubIssue` | PR/issue lifecycle, marker-keyed comments, linked issues, auto-merge |
@@ -79,7 +79,13 @@ tempted to reach for `as`.
 - **`GitHubClient`** — `Context.Service` with `request`, `requestDecoded`,
   `paginate` (array), `paginateStream` (`Stream`), `graphql`, and
   `rateLimit: Effect<Option<RateLimitSnapshot>>`. Layers:
-  `layerFromToken({ token: Redacted, retry?, baseUrl?, userAgent?, fetch? })`;
+  `layerFromToken({ token: Redacted, retry?, baseUrl?, userAgent?, fetch?, apiVersion? })`
+  — every request pins `x-github-api-version` (`apiVersion`, default
+  `"2026-03-10"`, must be `YYYY-MM-DD`; a per-call header wins; read back as
+  `client.apiVersion`). **A GitHub Enterprise Server older than the default
+  must set `apiVersion`.** The route types describe GitHub's oldest
+  api-version, not the default, so `client.request` types can claim fields
+  (`merge_commit_sha`, `has_downloads`) that are `undefined` at runtime;
   `layerFromConfig()`, which reads through the ambient `ConfigProvider` (not
   `process.env`) and fails with core's `ConfigError` — an honest "no token is
   configured", where the surface it replaced failed with a wire-failure type.
@@ -172,7 +178,12 @@ tempted to reach for `as`.
 - **`GitHubRepository`** — `settings`, `updateSettings(patch)`, `defaultBranch`,
   `nodeId`, `ownerType`, and `applySettings(record)` → `AppliedSettings`, which
   reports the REST and GraphQL keys that **actually went out**, in the caller's
-  own names. `RepositorySettings` is `RestData<"GET /repos/{owner}/{repo}">`;
+  own names, plus `ignored`: keys neither API accepts (checked against a REST
+  key list generated from GitHub's OpenAPI description), which are **not sent**
+  — the REST PATCH would ignore them and answer 200; a key a later
+  api-version removed is ignored only for a client pinned at or past it. `topics` reads the topic set; `setTopics(names)` replaces it
+  (`[]` clears) and returns the set GitHub **stored**, lowercased — record
+  that, not `names`, as applied state. `RepositorySettings` is `RestData<"GET /repos/{owner}/{repo}">`;
   `RepositoryPatch` is the PATCH route's params minus `owner`/`repo`;
   `GRAPHQL_ONLY_SETTINGS`, `SECURITY_ANALYSIS_STATUS_FIELDS` and
   `transformSecurityAndAnalysis` are the normalization vocabulary.
@@ -208,7 +219,8 @@ tempted to reach for `as`.
   `CommitComparison`, `changedFiles` (a route octokit does not list as
   paginating, walked by the same one pagination engine); `getFile` /
   `getFileOption(path, { ref? })`.
-- **`PullRequest`** — `get`, `list`, `listFiles`, `listAssociatedWithCommit`,
+- **`PullRequest`** — `get`, `list`, `listFiles`, `listAssociatedWithCommit`
+  (the two lists fill `mergeCommitSha` only with `mergeCommits: true`),
   `create`, `update`, `upsert` → `UpsertedPullRequest { pullRequest, created }`,
   `merge({ method?, commitTitle?, commitMessage? })`, `addLabels`,
   `requestReviewers`, and `setAutoMerge(pullRequest, method | "off")` — GraphQL,
@@ -253,7 +265,7 @@ tempted to reach for `as`.
   to a dangling `&`), `listAssets`.
 - **`WorkflowDispatch`** — `dispatch(workflow, ref, inputs?)`,
   `dispatchWithRun(workflow, ref, inputs?)` → `Option<DispatchedRun>` (`None` on
-  a 204 from a server that ignores `return_run_details`), `runStatus`,
+  a 204 from an older api-version), `runStatus`,
   `cancelRun(runId)` → `"cancelled" | "alreadyCompleted"` (GitHub's 409 for a
   finished run is not a failure),
   `list`, `dispatchAndWait(workflow, ref, { inputs?, poll? })` with

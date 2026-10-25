@@ -48,7 +48,7 @@ still exported from `Effect.ts`.
 ```ts
 import { Effect } from "effect"
 
-// Named span — our default at PUBLIC FALLIBLE boundaries (Yaml.parse, SemVer.compare).
+// Named span — our default at PUBLIC FALLIBLE boundaries (Yaml.parse, SemVer.parse).
 const parse = Effect.fn("Yaml.parse")(function* (input: string) {
   yield* Effect.annotateCurrentSpan({ length: input.length }) // stable IDs / small values ONLY
   return yield* runEngine(input)

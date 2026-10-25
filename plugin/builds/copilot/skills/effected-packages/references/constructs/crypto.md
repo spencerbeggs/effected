@@ -8,6 +8,13 @@
 | `ConstantTime` | Class | Comparison whose running time does not depend on where two values differ. | constant-time compare bytes or strings, timing-safe secret or mac equality |
 | `CryptoError` | Class | The wiring-defect error `@effected/crypto` fails with: no WebCrypto, or key material it refuses. | handle hmac failure, missing webcrypto subtle, rejected key material |
 | `CryptoErrorReason` | Variable + TypeAlias | The reason union carried by `CryptoError`. | why an hmac operation failed, unsupported runtime or bad key |
+| `DriftApply` | Class | Apply the desired value: there is no baseline yet, or the desired value changed and the live value still matches what was last applied. | drift decision to apply desired config, no baseline or desired changed |
+| `DriftDecision` | Variable + TypeAlias | The decoded type of `(DriftDecision:variable)`. | three-way drift outcome apply unchanged or drift, reconcile declared config against a remote |
+| `DriftDetected` | Class | Somebody else changed the resource: its live fingerprint no longer matches the one last applied. | drift decision, live resource changed out of band, carries applied and live fingerprints |
+| `DriftUnchanged` | Class | Leave the resource alone: the live value matches the baseline, and the desired value is the one that was applied. | drift decision to leave a resource alone, live matches applied and desired |
+| `Fingerprint` | Class | Stable fingerprints of JSON-shaped values, and the three-way drift decision built on them. | stable sha256 fingerprint of a json value, sorted keys, three-way drift detection applied live desired |
+| `FingerprintDecideInput` | Interface | The three fingerprints `Fingerprint.decide` compares. | |
+| `FingerprintError` | Class | A value handed to `Fingerprint` has no canonical JSON form, so it cannot be fingerprinted. | handle a value with no canonical json form, bigint cycle map or class instance refused |
 | `Hmac` | Class | HMAC sign and verify (RFC 2104) over WebCrypto, with SHA-256 or SHA-512. | compute or verify hmac-sha256 or sha512, hex base64 base64url output, webcrypto |
 | `HmacAlgorithm` | TypeAlias | The hash an HMAC is computed over. | |
 | `HmacEncoding` | TypeAlias | How an HMAC is returned, or how a received one is encoded. | |

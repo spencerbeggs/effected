@@ -91,28 +91,44 @@ routing index, not the catalogue.
 
 Verified against the live API:
 
-- **octokit sends no `x-github-api-version` header**, so every request rides
-  the DEFAULT calendar version `2022-11-28` — which GitHub deprecated when
-  `2026-03-10` shipped (sunset 2028-03-10).
-- **GitHub adds `Deprecation`/`Sunset`/`Link` headers only on endpoints the
-  new version CHANGED.** A per-route octokit warning therefore reads as
-  "this route is deprecated" but actually means "you are on the old calendar
-  version, and this route changed in the new one".
-- **The designated fix is requesting a version per call**, via the typed
-  `headers` extra (`RestExtras`, see
-  [`references/pagination-retry-errors.md`](references/pagination-retry-errors.md)).
-  `GitHubIssue` pins `{ "x-github-api-version": "2026-03-10" }` and is the
-  in-kit worked example, TSDoc rationale included.
-- **The warning is unsuppressable by design.** octokit's fetch wrapper logs
-  via `request.log ?? console`, and core never threads its constructor `log`
-  option into request defaults — do not chase a logging knob; pin the
-  version instead.
-- **Migration caution: a calendar-version change REMOVES response fields.**
-  `2026-03-10` removed `merge_commit_sha` from PR responses, and an
-  `optionalKey` field silently decodes absent — so a naive package-wide pin
-  can turn a consumer's load-bearing read into an always-absent value with
-  no error anywhere. Pin per module, after
-  checking what the new version changed on the routes that module calls.
+- **The client pins `x-github-api-version: 2026-03-10` on every request.**
+  octokit itself sends no header, and without one GitHub serves its oldest
+  supported calendar version (`2022-11-28`, sunset 2028-03-10). The pin is a
+  `GitHubClientOptions.apiVersion` (and `GitHubAppOptions.apiVersion`)
+  option, which must be `YYYY-MM-DD` (anything else dies at construction).
+  **A GitHub Enterprise Server older than the default rejects it, so a client
+  pointed at one must set `apiVersion`** to the newest version that server
+  supports. The resolved value is `client.apiVersion`; calendar versions
+  compare correctly as strings (`client.apiVersion < "2026-03-10"`).
+- **The route types describe a different version than the one the client
+  sends.** `client.request`'s params and `data` come from octokit's
+  generated types, which describe GitHub's oldest supported api-version, not
+  the default the client pins. So a route type can claim a field —
+  `merge_commit_sha` on a pull request, `has_downloads` on a repository —
+  that is `undefined` at runtime. Treat a field the pinned version removed
+  as absent whatever the type says, and check the version's breaking-change
+  list before reading a new one.
+- **A per-call header wins over the option.** `Attestation` pins its own
+  version per call through the typed `headers` extra (`RestExtras`, see
+  [`references/pagination-retry-errors.md`](references/pagination-retry-errors.md)),
+  and a client pinned elsewhere leaves it alone.
+- **On the old default, GitHub adds `Deprecation`/`Sunset`/`Link` headers
+  only on endpoints the new version CHANGED**, and octokit prints a warning
+  for each that cannot be silenced (its fetch wrapper logs via
+  `request.log ?? console`). That warning means "this client is on an old
+  calendar version", not "this route is deprecated"; the fix is the pin,
+  never a logging knob.
+- **A calendar-version change REMOVES response fields, and an `optionalKey`
+  decodes the absence clean.** `2026-03-10` removed `merge_commit_sha` from
+  pull request objects, so `PullRequestInfo.mergeCommitSha` is read from
+  GraphQL `mergeCommit.oid` instead, absent until the pull request merges
+  (never the speculative test-merge sha). `get`, `update` and `upsert` always
+  fill it; **`list` and `listAssociatedWithCommit` leave it absent unless
+  called with `mergeCommits: true`**, which costs one GraphQL call per 100
+  merged pull requests. All five carry `GitHubGraphQLError` in their error
+  channel. Before projecting a new
+  field off a REST response, check GitHub's breaking-change list for the
+  pinned version.
 
 ## Footguns
 

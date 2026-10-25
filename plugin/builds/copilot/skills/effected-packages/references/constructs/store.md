@@ -5,6 +5,9 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `AtomicDirectory` | Class | Atomic whole-directory replacement over core `FileSystem`. | replace a directory atomically, stage in a sibling then rename into place, write a file set without a half-written tree |
+| `AtomicDirectoryError` | Class | `AtomicDirectory.write` could not lay down or promote a directory. | handle an atomic directory write failure, validate clear stage write or promote step failed |
+| `AtomicDirectoryFiles` | TypeAlias | The file set `AtomicDirectory.write` lays down: pairs of a path relative to the directory and the file's content. | |
 | `Cache` | Class | A key → `Uint8Array` cache with TTL, tags, an eviction policy and a `CacheEvent` PubSub. | cache with ttl and tags, durable local state, tag invalidation and write-order eviction, second cache under your own key |
 | `CacheEntry` | Class | A stored cache entry: its key, value and bookkeeping fields. | a stored cache row, key value bytes, content type, tags and expiry |
 | `CacheEntryMeta` | Interface | Metadata for a cache entry, without its stored value. | |

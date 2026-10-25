@@ -211,7 +211,9 @@ an environment variable or `process.cwd()` directly).
 
 Config discovery is built the same way — one function, consumed by every
 front end, parameterized only by what a front end had to read from the
-process (an explicit `--config` path, or the discovery starting directory):
+process (an explicit `--config` path, or the discovery starting directory).
+`TomlCodec` comes from the `@effected/config-file/toml` subpath, which needs
+`@effected/toml` installed beside it:
 
 ```ts
 export const buildConfigLayer = (options: {
