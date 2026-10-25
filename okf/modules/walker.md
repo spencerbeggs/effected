@@ -219,14 +219,17 @@ span. Both `/` and `\` are separators on every platform, so a backslash
 escape is caught on POSIX too. It refuses, typed as `PathEscapeError`
 with a `reason`, a NUL character, an absolute form (POSIX, UNC, win32
 drive including drive-relative `C:x`), a `..` that climbs above the base
-after normalisation, and a path that normalises to the base itself. The
-last is a ruling: a caller confining a path names an entry under the
-base. Nothing is percent-decoded, because the filesystem decodes
+after normalisation, a path that normalises to the base itself, and a
+normalised segment win32 reserves (`reservedName`: any `:`, dots and
+spaces only, a device name such as `CON` or `nul.txt`). The drive test
+runs again on the normalised first segment, so `./C:/x` under an empty
+base is absolute rather than `C:/x`. Refusing the base itself is a
+ruling: a caller confining a path names an entry under the base. Nothing is percent-decoded, because the filesystem decodes
 nothing. The `..` resolution is shared with `descend`'s refusal of a
 pattern that climbs above `cwd` (`src/internal/segments.ts`), with the
 caller choosing the separator set because a glob's backslash is an
-escape. The check is lexical, not physical: a symlink inside the base can
-still point out of it.
+escape. The check is lexical, not physical, and symlinks are out of
+scope: a symlink inside the base can still point out of it.
 
 ## Hardening
 
