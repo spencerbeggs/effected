@@ -279,6 +279,8 @@ opt-in service, created unbounded so a slow subscriber never
 backpressures a write, with infallible emission. Events are a consumer
 hook, not the package's own telemetry.
 
+A consumer service built on `Store` is tested over its real implementation, by convention: one implementation effect against `Store`, a `layer(filename)` and a `layerMemory()` factory over `Store.layerTest` (a fresh `:memory:` database per build), documented in the README and pinned by `__test__/layerMemory.test.ts`; `Store.layerTest` already is the in-memory factory, so no helper API exists for it.
+
 ### AtomicDirectory
 
 `AtomicDirectory.write(root, files)` replaces a directory with exactly a
