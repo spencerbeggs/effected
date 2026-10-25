@@ -111,11 +111,14 @@ export interface WorkflowDispatchShape {
 	 * a `decode` `GitHubError`.
 	 *
 	 * A 204 with no body is `Option.none()`. That is what an older api-version
-	 * answers — a client pinned to one, or a GitHub Enterprise Server that
-	 * predates the current version — and it is **not a failure**: the workflow
-	 * was dispatched, the server just did not say which run it created. The
-	 * `return_run_details` flag older versions needed is not sent, because the
-	 * current version removed it from the request.
+	 * answers when it does not report the run — a GitHub Enterprise Server that
+	 * predates the field, say — and it is **not a failure**: the workflow was
+	 * dispatched, the server just did not say which run it created.
+	 *
+	 * Older api-versions report the run only when asked, so a client pinned
+	 * before `2026-03-10` (`GitHubClientShape.apiVersion`) sends
+	 * `return_run_details: true`; from `2026-03-10` on the flag is removed from
+	 * the request and is not sent.
 	 *
 	 * Under `GitHubClient.layerFixture`, stub the 204 the way every other
 	 * no-body route is stubbed: answer the dispatch route with `null`. `""`
@@ -260,6 +263,9 @@ const DispatchResponse = Schema.Struct({
 const decodeDispatchResponse = Schema.decodeUnknownEffect(DispatchResponse);
 const decodeDispatchedRun = Schema.decodeUnknownEffect(DispatchedRun);
 
+/** The api-version that reports the run unasked and removed `return_run_details`. */
+const RUN_DETAILS_BY_DEFAULT = "2026-03-10";
+
 const make = (client: GitHubClient["Service"]): WorkflowDispatchShape => {
 	const dispatch = Effect.fn("WorkflowDispatch.dispatch")(function* (
 		workflow: string,
@@ -292,6 +298,8 @@ const make = (client: GitHubClient["Service"]): WorkflowDispatchShape => {
 				workflow_id: workflow,
 				ref,
 				...(inputs !== undefined ? { inputs } : {}),
+				// Calendar versions compare correctly as strings.
+				...(client.apiVersion < RUN_DETAILS_BY_DEFAULT ? { return_run_details: true } : {}),
 			},
 		);
 		// The client hands back only `data`. octokit answers a 204 (or 205) by

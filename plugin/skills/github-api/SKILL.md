@@ -96,8 +96,19 @@ Verified against the live API:
   octokit itself sends no header, and without one GitHub serves its oldest
   supported calendar version (`2022-11-28`, sunset 2028-03-10). The pin is a
   `GitHubClientOptions.apiVersion` (and `GitHubAppOptions.apiVersion`)
-  option; set it to an older version only for a GitHub Enterprise Server
-  that rejects the default.
+  option, which must be `YYYY-MM-DD` (anything else dies at construction).
+  **A GitHub Enterprise Server older than the default rejects it, so a client
+  pointed at one must set `apiVersion`** to the newest version that server
+  supports. The resolved value is `client.apiVersion`; calendar versions
+  compare correctly as strings (`client.apiVersion < "2026-03-10"`).
+- **The route types describe a different version than the one the client
+  sends.** `client.request`'s params and `data` come from octokit's
+  generated types, which describe GitHub's oldest supported api-version, not
+  the default the client pins. So a route type can claim a field —
+  `merge_commit_sha` on a pull request, `has_downloads` on a repository —
+  that is `undefined` at runtime. Treat a field the pinned version removed
+  as absent whatever the type says, and check the version's breaking-change
+  list before reading a new one.
 - **A per-call header wins over the option.** `Attestation` pins its own
   version per call through the typed `headers` extra (`RestExtras`, see
   [`references/pagination-retry-errors.md`](references/pagination-retry-errors.md)),
@@ -111,11 +122,12 @@ Verified against the live API:
 - **A calendar-version change REMOVES response fields, and an `optionalKey`
   decodes the absence clean.** `2026-03-10` removed `merge_commit_sha` from
   pull request objects, so `PullRequestInfo.mergeCommitSha` is read from
-  GraphQL `mergeCommit.oid` instead: one batched `nodes(ids:)` read for the
-  merged pull requests in a result, none when nothing merged, and absent
-  until the pull request merges (never the speculative test-merge sha).
-  `get`, `list`, `listAssociatedWithCommit`, `update` and `upsert` therefore
-  carry `GitHubGraphQLError` in their error channel. Before projecting a new
+  GraphQL `mergeCommit.oid` instead, absent until the pull request merges
+  (never the speculative test-merge sha). `get`, `update` and `upsert` always
+  fill it; **`list` and `listAssociatedWithCommit` leave it absent unless
+  called with `mergeCommits: true`**, which costs one GraphQL call per 100
+  merged pull requests. All five carry `GitHubGraphQLError` in their error
+  channel. Before projecting a new
   field off a REST response, check GitHub's breaking-change list for the
   pinned version.
 

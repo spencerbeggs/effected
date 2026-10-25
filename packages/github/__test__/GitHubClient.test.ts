@@ -982,4 +982,36 @@ describe("GitHubClient api-version", () => {
 			{ apiVersion: "2022-11-28" },
 		),
 	);
+	it.effect("the client exposes the version it pins", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(yield* withClient([], (client) => Effect.succeed(client.apiVersion)), "2026-03-10");
+			assert.strictEqual(
+				yield* withClient([], (client) => Effect.succeed(client.apiVersion), { apiVersion: "2022-11-28" }),
+				"2022-11-28",
+			);
+			assert.strictEqual(GitHubClient.makeTest().apiVersion, "2026-03-10");
+			assert.strictEqual(GitHubClient.makeTest({ apiVersion: "2022-11-28" }).apiVersion, "2022-11-28");
+			const fixture = yield* Effect.provide(
+				Effect.map(GitHubClient, (client) => client.apiVersion),
+				GitHubClient.layerFixture({ apiVersion: "2024-01-01" }),
+			);
+			assert.strictEqual(fixture, "2024-01-01");
+		}),
+	);
+
+	it.effect("a malformed apiVersion dies at construction, naming the option", () =>
+		Effect.gen(function* () {
+			for (const bad of ["2026-3-10", "v2026-03-10", "2026-03-10 ", "latest", ""]) {
+				const script = scriptedFetch([]);
+				const exit = yield* Effect.exit(
+					Effect.provide(
+						Effect.map(GitHubClient, (client) => client.apiVersion),
+						GitHubClient.layerFromToken({ token: TOKEN, fetch: script.fetch, apiVersion: bad }),
+					),
+				);
+				assert.match(defectMessage(exit) ?? "", /apiVersion option must be a calendar version/, JSON.stringify(bad));
+				assert.strictEqual(script.count(), 0);
+			}
+		}),
+	);
 });

@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-25T14:28:29Z
+  at: 2026-10-25T14:57:06Z
 integrity:
   generated:
-    body: c94edb8be732c73f
+    body: d0d7c4bb06409c9c
 ---
 
 # @effected/github
@@ -178,9 +178,15 @@ records what it sent sees drift on the next read.
 `lib/scripts/generate-rest-setting-keys.ts` from `@octokit/openapi-types`
 (a devDependency, with `oxc-parser`). Any other key that is not GraphQL-only
 is reported in `AppliedSettings.ignored` and never sent, because the REST
-`PATCH` ignores unknown fields and answers 200.
+`PATCH` ignores unknown fields and answers 200. The file also carries
+`REMOVED_BY_PINNED_VERSION`, keys the description still declares mapped to
+the api-version that removed them; `applySettings` ignores such a key only
+when `client.apiVersion` is at or past that version.
 `__test__/repositoryRestSettingKeys.test.ts` regenerates the file in memory
-and fails on drift; re-run the generator after bumping the octokit types.
+and fails on drift, including a header that names `DEFAULT_API_VERSION`;
+re-run the generator (`pnpm --filter @effected/github exec tsx
+lib/scripts/generate-rest-setting-keys.ts`) after bumping the octokit types
+or the default version.
 
 ## The api-version pin
 
@@ -190,15 +196,22 @@ octokit instance in `src/internal/octokit.ts` from
 `2026-03-10`). The hook fills the header only when the call did not set one,
 so `Attestation`'s per-call pin wins. Without it GitHub serves its oldest
 calendar version and octokit prints an unsuppressable deprecation warning.
+The option must match `YYYY-MM-DD`; anything else dies at client (or
+`GitHubApp` layer) construction with a defect naming the option. The
+resolved version is `GitHubClientShape.apiVersion`, a plain string member, so
+resources can shape a request for the version it goes out under; calendar
+versions compare lexically as strings.
 
 The version change removed `merge_commit_sha` from REST pull request
 objects. `PullRequest` fills `PullRequestInfo.mergeCommitSha` from GraphQL
-`mergeCommit.oid` with one batched `nodes(ids:)` read for the merged pull
-requests in a result (verified live: the oid equals the old REST value on a
-merged pull request and is null on an unmerged one). It also stopped
-sending `return_run_details` on a workflow dispatch, which that version
-removed from the request, and dropped `use_squash_pr_title_as_default` from
-the generated REST settings allowlist.
+`mergeCommit.oid` (verified live: the oid equals the old REST value on a
+merged pull request and is null on an unmerged one). Single reads (`get`,
+`update`, `upsert`) always do; `list` and `listAssociatedWithCommit` only
+with `mergeCommits: true`, in `nodes(ids:)` batches of 100 run four at a
+time and joined positionally. `WorkflowDispatch.dispatchWithRun` sends
+`return_run_details: true` only for a client pinned before `2026-03-10`,
+which removed the flag, and `use_squash_pr_title_as_default` is ignored by
+`applySettings` from that version on.
 
 ## The repo coordinate
 

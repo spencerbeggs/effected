@@ -189,7 +189,8 @@ const program = Effect.gen(function* () {
 // GitHub would reject, which is what a person reading a dry run is checking for.
 // `ignored` names keys neither API accepts (a typo, say): they are never sent,
 // because the REST PATCH would ignore them and still answer 200. The REST key
-// list is generated from GitHub's OpenAPI description.
+// list is generated from GitHub's OpenAPI description; a key a later
+// api-version removed is ignored only for a client pinned at or past it.
 ```
 
 `updateSettings` takes octokit's own generated params, and those spell an optional field as `has_issues?: boolean` rather than `has_issues?: boolean | undefined` — so under `exactOptionalPropertyTypes` a `Partial<T>` built from your own settings schema does not assign to it at all. `repositoryPatch` is the supported way out, and it exists so the answer is never a cast:
@@ -305,7 +306,7 @@ const TestClient = GitHubClient.layerFixture(fixtures);
 - `GitHubApp` — App JWT signing, installation token minting/revocation, app and installation identity, and `clientLayer` for an App-authenticated `GitHubClient`.
 - `GitBranch` / `GitTag` — Git Database API refs, with `upsert` collapsing the create-or-reset dance to one call and `GitTag.latestSemver` picking the newest version-shaped tag in one pass.
 - `CheckRun` — `withCheckRun` concludes on every exit path; `CheckRunOutput.truncated()` cuts rendered output to GitHub's byte limits.
-- `PullRequest` / `PullRequestComment` — upserts for both, `listFiles` answering with the same full `CommitFile` records a commit read returns, `headSha`/`baseSha` on `PullRequestInfo`, plus `CommentMarker` for finding a sticky comment again. `PullRequestInfo.mergeCommitSha` is read from GraphQL `mergeCommit.oid` for merged pull requests only (one batched read per result), because the REST object no longer carries it.
+- `PullRequest` / `PullRequestComment` — upserts for both, `listFiles` answering with the same full `CommitFile` records a commit read returns, `headSha`/`baseSha` on `PullRequestInfo`, plus `CommentMarker` for finding a sticky comment again. `PullRequestInfo.mergeCommitSha` is read from GraphQL `mergeCommit.oid` for merged pull requests only, because the REST object no longer carries it: `get`, `update` and `upsert` always fill it, while `list` and `listAssociatedWithCommit` fill it only with `mergeCommits: true` (one GraphQL call per 100 merged pull requests).
 - `GitHubIssue` — issues and their comments, including `commentOnce` for a marked comment that is posted exactly once and never edited, and `linkedIssues` for what a pull request closes.
 - `harvestIssueReferences` / `parseBareLineReference` — a compatibility re-export of the two closing-reference dialects that moved to `@effected/github-references`, with `CLOSING_KEYWORDS` and their result types.
 - `GitHubRelease` — releases and asset uploads, including the one route (`uploadAsset`, with the endpoint's optional display label) outside GitHub's generated endpoint map.

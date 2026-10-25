@@ -140,5 +140,7 @@ protects.
 Feed it `ActionManifest.runnerInputs(manifest, supplied?)` rather than a
 hand-built record: every declared input present under its runner variable,
 with the supplied value, else the manifest default, else `""` — the
-environment a real runner builds. A supplied name the manifest does not
-declare throws instead of silently falling back to a default.
+environment a real runner builds. Supplied names match by runner variable,
+and one the manifest does not declare passes through as an extra `INPUT_`
+variable, as on a runner; `ActionManifest.diff` is what reports undeclared
+names. Composite actions get no `INPUT_` environment from the runner.

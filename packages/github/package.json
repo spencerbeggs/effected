@@ -50,6 +50,7 @@
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"oxc-parser": "^0.153.0",
+		"tsx": "catalog:build",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {

@@ -432,6 +432,45 @@ describe("GitHubApp.clientLayer", () => {
 		}),
 	);
 
+	it.effect("a malformed apiVersion dies at layer construction, before any mint", () =>
+		Effect.gen(function* () {
+			const script = scriptedFetch([]);
+			const exits = [
+				yield* Effect.exit(
+					Effect.provide(
+						Effect.map(GitHubClient, (client) => client.apiVersion),
+						GitHubApp.clientLayer(
+							{ ...CREDENTIALS, installationId: 42 },
+							{ fetch: script.fetch, retry: NO_RETRY, apiVersion: "next" },
+						),
+					),
+				),
+				yield* Effect.exit(
+					Effect.provide(
+						Effect.map(GitHubApp, () => undefined),
+						GitHubApp.layerWith({ fetch: script.fetch, apiVersion: "next" }),
+					),
+				),
+			];
+			for (const exit of exits) assert.match(defectMessage(exit) ?? "", /apiVersion option must be a calendar version/);
+			assert.strictEqual(script.count(), 0);
+		}),
+	);
+
+	it.effect("the rotating client exposes the version it pins", () =>
+		Effect.gen(function* () {
+			const script = scriptedFetch([tokenReply(), { status: 204 }]);
+			const version = yield* Effect.provide(
+				Effect.map(GitHubClient, (client) => client.apiVersion),
+				GitHubApp.clientLayer(
+					{ ...CREDENTIALS, installationId: 42 },
+					{ fetch: script.fetch, retry: NO_RETRY, apiVersion: "2022-11-28" },
+				),
+			);
+			assert.strictEqual(version, "2022-11-28");
+		}),
+	);
+
 	it.effect("revokes the token when the layer's scope closes", () =>
 		Effect.gen(function* () {
 			const script = scriptedFetch([tokenReply(), { status: 200, body: {} }, { status: 204 }]);

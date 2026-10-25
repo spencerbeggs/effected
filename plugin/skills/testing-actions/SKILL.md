@@ -24,7 +24,7 @@ only the instance specific to `@effected/github-actions`, `@effected/github`,
 | `BlobStore.layerMemory` | `@effected/github-actions` | A real-framing in-memory blob store, not a stub |
 | `OidcTokenIssuer.layerFor(claims)` | `@effected/github-actions` | A real, decodable unsigned JWT double |
 | `ActionInput.layer(env?)` | `@effected/github-actions` | Injecting inputs without mutating `process.env` |
-| `ActionManifest.runnerInputs(manifest, supplied?)` | `@effected/github-actions` | The runner-shaped input baseline: every declared input present with its `with:` value, manifest default or `""` |
+| `ActionManifest.runnerInputs(manifest, supplied?)` | `@effected/github-actions` | The runner-shaped input baseline for a node or docker action: every declared input present with its `with:` value, manifest default or `""`; an undeclared supplied name passes through, as on a runner |
 | `ActionManifest.diff(manifest, { inputs, outputs })` | `@effected/github-actions` | Asserting the code and `action.yml` agree on input and output names, both directions |
 | `ActionInput.recording(env?)` | `@effected/github-actions` | Journaling the inputs a program actually reads, to feed `ActionManifest.diff`: run under `recording.layer`, then `ActionManifest.diff(manifest, { inputs: yield* recording.names })` |
 | `ScriptedSpawner` | `@effected/commands` | A scripted `ChildProcessSpawner` double for a fixed command sequence |

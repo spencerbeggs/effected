@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
-import { OUTPUT, extract, generate, render } from "../lib/scripts/generate-rest-setting-keys.js";
+import { OUTPUT, checkRemovals, extract, generate, render } from "../lib/scripts/generate-rest-setting-keys.js";
 import { GRAPHQL_ONLY_SETTINGS } from "../src/GitHubRepository.js";
-import { REPOSITORY_REST_SETTING_KEYS } from "../src/internal/repositoryRestSettingKeys.js";
+import { DEFAULT_API_VERSION } from "../src/internal/octokit.js";
+import { REMOVED_BY_PINNED_VERSION, REPOSITORY_REST_SETTING_KEYS } from "../src/internal/repositoryRestSettingKeys.js";
 
 /**
  * The REST allowlist is generated, committed, and checked here: a bump of
@@ -12,6 +13,12 @@ import { REPOSITORY_REST_SETTING_KEYS } from "../src/internal/repositoryRestSett
 describe("repositoryRestSettingKeys", () => {
 	it("the committed file is what the generator produces from the installed octokit types", () => {
 		assert.strictEqual(readFileSync(OUTPUT, "utf8"), generate());
+	});
+
+	it("the committed header names the client's default api-version", () => {
+		// Bumping DEFAULT_API_VERSION without regenerating — and re-checking the
+		// removals against that version's breaking changes — fails here.
+		assert.include(readFileSync(OUTPUT, "utf8"), `default api-version ${DEFAULT_API_VERSION}.`);
 	});
 
 	it("carries the keys the package itself writes, and none it routes elsewhere by mistake", () => {
@@ -24,8 +31,11 @@ describe("repositoryRestSettingKeys", () => {
 		assert.isFalse(REPOSITORY_REST_SETTING_KEYS.has("has_discussions"));
 		assert.isFalse(REPOSITORY_REST_SETTING_KEYS.has("has_sponsorships"));
 		// Still declared by the octokit description, removed by api-version
-		// 2026-03-10: the REST PATCH would ignore it and answer 200.
-		assert.isFalse(REPOSITORY_REST_SETTING_KEYS.has("use_squash_pr_title_as_default"));
+		// 2026-03-10: kept in the set, keyed to its version, so a client pinned
+		// before it can still send it.
+		assert.isTrue(REPOSITORY_REST_SETTING_KEYS.has("use_squash_pr_title_as_default"));
+		assert.deepStrictEqual({ ...REMOVED_BY_PINNED_VERSION }, { use_squash_pr_title_as_default: "2026-03-10" });
+		for (const key of Object.keys(REMOVED_BY_PINNED_VERSION)) assert.isTrue(REPOSITORY_REST_SETTING_KEYS.has(key), key);
 		assert.isAbove(Object.keys(GRAPHQL_ONLY_SETTINGS).length, 0);
 	});
 
@@ -55,6 +65,11 @@ describe("repositoryRestSettingKeys", () => {
 				),
 			/expected an inline type literal/,
 		);
+	});
+
+	it("fails when a removal names a key the description no longer declares", () => {
+		assert.throws(() => checkRemovals(["has_issues"]), /use_squash_pr_title_as_default/);
+		assert.doesNotThrow(() => checkRemovals(["use_squash_pr_title_as_default"]));
 	});
 
 	it("renders a header naming the source and version", () => {
