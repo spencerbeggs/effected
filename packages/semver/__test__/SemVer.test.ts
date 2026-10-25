@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Equal, Hash, Option, Result, Schema } from "effect";
+import { Effect, Equal, Hash, Option, Order, Result, Schema } from "effect";
 import { InvalidVersionError, SemVer } from "../src/index.js";
 
 describe("SemVer", () => {
@@ -102,15 +102,22 @@ describe("SemVer", () => {
 			}),
 		);
 
-		it("dual statics support both call forms", () => {
+		it("has no static that shares a name with an instance comparison", () => {
+			// A same-named static and instance member cannot be targeted by {@link};
+			// the instance method is the only spelling.
+			for (const name of ["compare", "equal", "gt", "gte", "lt", "lte", "neq"]) {
+				assert.isFalse(Object.hasOwn(SemVer, name), `SemVer.${name} static reintroduced`);
+				assert.isFunction((SemVer.prototype as unknown as Record<string, unknown>)[name]);
+			}
+		});
+
+		it("derives data-last comparisons from Order", () => {
 			const a = SemVer.of(1, 0, 0);
 			const b = SemVer.of(2, 0, 0);
-			assert.strictEqual(SemVer.compare(a, b), -1);
-			assert.strictEqual(SemVer.compare(b)(a), -1);
-			assert.isTrue(SemVer.lt(a, b));
-			// Data-last: gt(that)(self) tests self > that.
-			assert.isTrue(SemVer.gt(a)(b));
-			assert.isTrue(SemVer.equal(a, SemVer.of(1, 0, 0, [], ["different", "build"])));
+			// Data-last: isGreaterThan(O)(that)(self) tests self > that.
+			assert.isTrue(Order.isGreaterThan(SemVer.Order)(a)(b));
+			assert.isTrue(Order.isLessThan(SemVer.Order)(a, b));
+			assert.deepStrictEqual([b, a].filter(Order.isGreaterThan(SemVer.Order)(a)), [b]);
 		});
 
 		it("Order ignores build metadata; OrderWithBuild breaks ties", () => {

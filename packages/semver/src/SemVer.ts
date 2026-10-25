@@ -60,9 +60,11 @@ const buildIdentifier = Schema.String.check(Schema.isPattern(/^[0-9A-Za-z-]+$/u)
  * validated in-schema (non-negative integer components, well-formed
  * identifiers), so `SemVer.make` only produces valid versions.
  *
- * Instance methods are the canonical API; cross-cutting operations exist as
- * dual statics on the class. The string representation is the schema's
- * encoded form via {@link SemVer.FromString}.
+ * Instance methods are the canonical API ({@link SemVer.gt}, {@link SemVer.compare});
+ * operations with no instance counterpart, such as {@link SemVer.truncate},
+ * are dual statics on the class. For a data-last comparison, derive one from
+ * {@link SemVer.Order} (`Order.isGreaterThan(SemVer.Order)(that)`). The string
+ * representation is the schema's encoded form via {@link SemVer.FromString}.
  *
  * @example
  * ```ts
@@ -314,50 +316,6 @@ export class SemVer extends Schema.Class<SemVer>("SemVer")({
 		const base = a.compare(b);
 		return base !== 0 ? base : compareBuild(a.build, b.build);
 	});
-
-	// ── Comparison statics (dual) ───────────────────────────────────────
-
-	/** Compare two versions. Returns `-1`, `0`, or `1`. Dual API. */
-	static readonly compare: {
-		(that: SemVer): (self: SemVer) => -1 | 0 | 1;
-		(self: SemVer, that: SemVer): -1 | 0 | 1;
-	} = Fn.dual(2, (self: SemVer, that: SemVer): -1 | 0 | 1 => self.compare(that));
-
-	/** Test whether `self > that`. Dual API. */
-	static readonly gt: {
-		(that: SemVer): (self: SemVer) => boolean;
-		(self: SemVer, that: SemVer): boolean;
-	} = Fn.dual(2, (self: SemVer, that: SemVer): boolean => self.gt(that));
-
-	/** Test whether `self >= that`. Dual API. */
-	static readonly gte: {
-		(that: SemVer): (self: SemVer) => boolean;
-		(self: SemVer, that: SemVer): boolean;
-	} = Fn.dual(2, (self: SemVer, that: SemVer): boolean => self.gte(that));
-
-	/** Test whether `self < that`. Dual API. */
-	static readonly lt: {
-		(that: SemVer): (self: SemVer) => boolean;
-		(self: SemVer, that: SemVer): boolean;
-	} = Fn.dual(2, (self: SemVer, that: SemVer): boolean => self.lt(that));
-
-	/** Test whether `self <= that`. Dual API. */
-	static readonly lte: {
-		(that: SemVer): (self: SemVer) => boolean;
-		(self: SemVer, that: SemVer): boolean;
-	} = Fn.dual(2, (self: SemVer, that: SemVer): boolean => self.lte(that));
-
-	/** Test whether two versions are equal (ignores build metadata). Dual API. */
-	static readonly equal: {
-		(that: SemVer): (self: SemVer) => boolean;
-		(self: SemVer, that: SemVer): boolean;
-	} = Fn.dual(2, (self: SemVer, that: SemVer): boolean => self.equal(that));
-
-	/** Test whether two versions are not equal (ignores build metadata). Dual API. */
-	static readonly neq: {
-		(that: SemVer): (self: SemVer) => boolean;
-		(self: SemVer, that: SemVer): boolean;
-	} = Fn.dual(2, (self: SemVer, that: SemVer): boolean => self.neq(that));
 
 	/**
 	 * Strip components below the given level: `"prerelease"` keeps only

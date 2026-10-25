@@ -47,7 +47,7 @@ export type ComparatorSet = ReadonlyArray<Comparator>;
  * `>=1.2.0 <2.0.0-0`), and a range parsed with it matches a prerelease
  * wherever its bounds contain one, with no tuple rule. The parsed
  * {@link Range} records the choice in its `includePrerelease` field, so every
- * matching entry point — `test`, `filter`, `satisfies`, `maxSatisfying`,
+ * matching entry point — {@link Range.test}, {@link Range.filter}, `satisfies`, `maxSatisfying`,
  * `minSatisfying` and the `VersionCache` lookups — honours it without being
  * told again.
  *
@@ -249,26 +249,13 @@ export class Range extends Schema.Class<Range>("Range")({
 	 * `TypeError: range.test is not a function` — a message that reads as a
 	 * defect inside this package rather than a caller error.
 	 *
-	 * The same order and the same hazard apply to `Range.filter`,
-	 * {@link Range.maxSatisfying} and {@link Range.minSatisfying}: subject
-	 * first, range second.
+	 * The same order and the same hazard apply to {@link Range.maxSatisfying}
+	 * and {@link Range.minSatisfying}: subject first, range second.
 	 */
 	static readonly satisfies: {
 		(range: Range): (version: SemVer) => boolean;
 		(version: SemVer, range: Range): boolean;
 	} = Fn.dual(2, (version: SemVer, range: Range): boolean => range.test(version));
-
-	/**
-	 * Filter versions that satisfy a range, preserving order. Dual API.
-	 *
-	 * @remarks
-	 * Data-first order is `(versions, range)` — see {@link Range.satisfies}
-	 * for why the order is spelled out.
-	 */
-	static readonly filter: {
-		(range: Range): (versions: ReadonlyArray<SemVer>) => ReadonlyArray<SemVer>;
-		(versions: ReadonlyArray<SemVer>, range: Range): ReadonlyArray<SemVer>;
-	} = Fn.dual(2, (versions: ReadonlyArray<SemVer>, range: Range): ReadonlyArray<SemVer> => range.filter(versions));
 
 	/**
 	 * Highest satisfying version, or `Option.none()`. Dual API.

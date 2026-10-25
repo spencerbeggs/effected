@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-24T00:43:19Z
+  at: 2026-10-25T14:19:57Z
 integrity:
   generated:
-    body: 55b668d903ad4cd1
+    body: d40ed05a46304739
 ---
 
 # semver
@@ -31,7 +31,7 @@ Module-per-concept: one file per domain concept (`SemVer.ts`, `Comparator.ts`, `
 
 ## Public surface
 
-Class-based throughout: instance methods are the canonical form, cross-cutting operations are `Fn.dual` statics on the owning class, and there are no floating functions. Construct via `.make()` (or the positional `SemVer.of`), never `new`, so validation runs.
+Class-based throughout: instance methods are the canonical form, operations with no instance counterpart are `Fn.dual` statics on the owning class, and there are no floating functions. No static shares a name with an instance member: API Extractor cannot resolve a `{@link}` to either declaration of such a pair, so the redundant comparison statics (`compare`, `gt`, `gte`, `lt`, `lte`, `equal`, `neq`) and `Range.filter` were dropped in favour of the instance methods, with data-last comparisons derived from `SemVer.Order` via core `Order.isGreaterThan` and friends. Construct via `.make()` (or the positional `SemVer.of`), never `new`, so validation runs.
 
 The class *is* the schema: `SemVer`, `Comparator` and `Range` are plain `Schema.Class` with no `_tag`, because each has a canonical string form via its own `FromString` transformation; `VersionDiff` is the one `Schema.TaggedClass`, the single concept where serialized tag discrimination earns its keep.
 
