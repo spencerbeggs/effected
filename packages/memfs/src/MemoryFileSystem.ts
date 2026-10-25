@@ -490,6 +490,13 @@ export interface MemoryFileSystemPortOptions<Faults> {
 	 * under `/C:/…`. A thrown error carries the caller's own spelling in its
 	 * `path` and message, and fault handlers receive the arguments as the
 	 * caller gave them. The `FileSystem` service is unaffected: it stays POSIX.
+	 *
+	 * Edges, by construction of the spelling adapter: a drive-relative path
+	 * such as `C:foo` has no root to map and stays the relative volume path
+	 * `C:foo`; a UNC path `\\server\share` becomes `//server/share`, a
+	 * volume path under `/server`, not a share; and a respelled error is
+	 * rebuilt from its `code` and `syscall` alone, so any other field the
+	 * original carried is dropped.
 	 */
 	readonly pathStyle?: "posix" | "win32" | undefined;
 }
@@ -650,6 +657,11 @@ export interface MemoryFileSystemOptions {
 	 * Like `faults`, spies are `FileSystem`-scoped (a handle's ports and
 	 * mutators are not observed), the seed is written beneath them, and an
 	 * unknown key throws `RangeError` at construction.
+	 *
+	 * A spy observes; it must not throw. A throw is not swallowed: on an
+	 * `Effect`-returning member it becomes a defect and the real call never
+	 * runs, and on `stream`, `sink` or `watch` it propagates synchronously out
+	 * of the method call.
 	 */
 	readonly spies?: MemoryFileSystemSpies | undefined;
 	/**

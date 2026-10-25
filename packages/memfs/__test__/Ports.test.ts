@@ -669,6 +669,26 @@ describe('port pathStyle: "win32"', () => {
 		}),
 	);
 
+	it.effect("edges: a drive-relative path stays relative, a UNC path lands under the server directory", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeHandle({
+				"/C:/repo/package.json": "{}",
+				"/C:foo/x.txt": "drive-relative",
+				"/server/share/y.txt": "unc",
+			});
+			const sync = MemoryFileSystem.syncFileSystem(volume, { pathStyle: "win32" });
+			// `C:foo` has no root to map: it names the volume's own `/C:foo` directory, not `/C:/foo`.
+			assert.strictEqual(sync.readFile("C:foo\\x.txt"), "drive-relative");
+			assert.isFalse(sync.exists("C:\\foo\\x.txt"));
+			// A UNC path becomes `//server/share/...`, a volume path under `/server`.
+			assert.strictEqual(sync.readFile("\\\\server\\share\\y.txt"), "unc");
+			// A respelled error is rebuilt from code and syscall alone.
+			const error = thrown(() => sync.readFile("\\\\server\\share\\absent")) as Record<string, unknown>;
+			assert.deepInclude(error, { code: "ENOENT", syscall: "open", path: "\\\\server\\share\\absent" });
+			assert.isUndefined(error.dest);
+		}),
+	);
+
 	it.effect('"posix" (the default) leaves a backslashed path alone', () =>
 		Effect.gen(function* () {
 			const { volume } = yield* win;

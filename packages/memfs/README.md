@@ -271,7 +271,7 @@ sync.readFile("C:\\repo\\absent.json");
 // throws: "ENOENT: no such file or directory, open 'C:\repo\absent.json'"
 ```
 
-Only the spelling is translated. Errors carry the caller's own spelling in `path` and the message, and fault handlers receive the arguments as given. The volume stays POSIX: drive letters are not case-folded, UNC paths are not modelled, and the `FileSystem` service is unaffected.
+Only the spelling is translated. Errors carry the caller's own spelling in `path` and the message, and fault handlers receive the arguments as given. The volume stays POSIX: drive letters are not case-folded, UNC paths are not modelled, and the `FileSystem` service is unaffected. Two edges follow from that: a drive-relative `C:foo` has no root to map and stays the relative volume path `C:foo`, and a UNC `\\server\share` becomes `//server/share`, a volume path under `/server`. A respelled error is rebuilt from its `code` and `syscall`, so any other field the original carried is dropped.
 
 This is deliberately not a general escape hatch from the `FileSystem` service. Code that calls `node:fs` directly still does not see the volume; only code that accepts an injected port does. Where the call site can be changed, taking `FileSystem` from the environment remains the better answer, and it buys typed errors and the rest of the service's contract along the way.
 
@@ -351,6 +351,8 @@ const Volume = MemoryFileSystem.layerWith(
 ```
 
 A spy on an `Effect`-returning member runs when the effect *executes*, never when it is built, so a retried effect is recorded once per attempt; on `stream`, `sink` or `watch` it runs when the method is called. Spies run before any fault on the same member, so a spy observes a call the fault then fails, and `spies` and `faults` compose freely in one options bag.
+
+A spy observes; it must not throw. A throw is not swallowed: on an `Effect`-returning member it surfaces as a defect and the real call never runs, and on `stream`, `sink` or `watch` it propagates synchronously out of the method call. Inject a failure through `faults`, never by throwing from a spy.
 
 **Derived members are observed too.** Spies share the fault wrapper, which rebuilds the service through `FileSystem.make`, so a spy on a core member sees the members derived from it: a `writeFile` spy also records every `writeFileString` call, `readFile` sees `readFileString`, `access` sees `exists`, and `open` sees `stream` and `sink`. That is coherent — it is the call the volume actually received — but it differs from a hand-rolled wrapper that spread the service and overrode one member, which only saw *direct* calls. A count migrated from such a wrapper can rise; spy on the derived member itself when the direct call is what you mean to count.
 

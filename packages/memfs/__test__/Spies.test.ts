@@ -3,7 +3,7 @@
 // declining-fault spelling (`return undefined`) only implied.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Layer } from "effect";
+import { Cause, Effect, Exit, FileSystem, Layer } from "effect";
 import { MemoryFileSystem } from "../src/index.js";
 import { denied } from "./helpers.js";
 
@@ -189,4 +189,49 @@ describe("options.spies", () => {
 			),
 		);
 	});
+});
+
+describe("a throwing spy is a defect, never a swallowed observation", () => {
+	it.effect("on an Effect-returning member the throw becomes a defect and the real call never runs", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const exit = yield* Effect.exit(fs.writeFileString("/w.txt", "w"));
+			assert.isTrue(Exit.isFailure(exit));
+			assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause), "the spy's throw is a defect");
+			assert.isFalse(yield* fs.exists("/w.txt"), "the real call never ran");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWith(
+					{},
+					{
+						spies: {
+							writeFile: () => {
+								throw new Error("spy exploded");
+							},
+						},
+					},
+				),
+			),
+		),
+	);
+
+	it.effect("on stream it propagates synchronously out of the method call", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			assert.throws(() => fs.stream("/a.txt"), /spy exploded/);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWith(
+					{ "/a.txt": "a" },
+					{
+						spies: {
+							stream: () => {
+								throw new Error("spy exploded");
+							},
+						},
+					},
+				),
+			),
+		),
+	);
 });
