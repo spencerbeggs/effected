@@ -7,6 +7,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
+import { IntegrityHash } from "@effected/npm";
 import { Effect, Option } from "effect";
 import { Lockfile } from "../src/Lockfile.js";
 import type { LockfileFormat } from "../src/LockfileFormat.js";
@@ -447,6 +448,34 @@ describe("Lockfile#withImporterNames (seam repair 1)", () => {
 				lockfile.workspacePackages.map((p) => p.name),
 				parsed.workspacePackages.map((p) => p.name),
 			);
+		}),
+	);
+
+	it.effect("preserves every field of a renamed package except name", () =>
+		Effect.gen(function* () {
+			const integrity = yield* IntegrityHash.decode("sha1-aaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+			const original = ResolvedPackage.make({
+				name: "packages/app",
+				version: "1.2.3",
+				instanceId: "packages/app@1.2.3",
+				integrity,
+				isWorkspace: true,
+				relativePath: "packages/app",
+				dependencies: { dep: "1.0.0" },
+				peerDependencies: { react: "^18" },
+				peerDependenciesMeta: { react: { optional: true } },
+				resolved: { dep: "dep@1.0.0" },
+				unresolvedEdges: ["missing"],
+			});
+			const lockfile = Lockfile.make({
+				format: "pnpm",
+				lockfileVersion: "9.0",
+				packages: [original],
+				workspaceDependencies: [],
+			}).withImporterNames(new Map([["packages/app", "@scope/app"]]));
+			const [renamed] = lockfile.packages;
+			assert.strictEqual(renamed.name, "@scope/app");
+			assert.deepStrictEqual({ ...renamed, name: "" }, { ...original, name: "" });
 		}),
 	);
 });
