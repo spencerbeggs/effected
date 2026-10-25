@@ -26,6 +26,7 @@ only the instance specific to `@effected/github-actions`, `@effected/github`,
 | `ActionInput.layer(env?)` | `@effected/github-actions` | Injecting inputs without mutating `process.env` |
 | `ActionManifest.runnerInputs(manifest, supplied?)` | `@effected/github-actions` | The runner-shaped input baseline: every declared input present with its `with:` value, manifest default or `""` |
 | `ActionManifest.diff(manifest, { inputs, outputs })` | `@effected/github-actions` | Asserting the code and `action.yml` agree on input and output names, both directions |
+| `ActionInput.recording(env?)` | `@effected/github-actions` | Journaling the inputs a program actually reads, to feed `ActionManifest.diff`: run under `recording.layer`, then `ActionManifest.diff(manifest, { inputs: yield* recording.names })` |
 | `ScriptedSpawner` | `@effected/commands` | A scripted `ChildProcessSpawner` double for a fixed command sequence |
 | `it.live` vs `it.effect` | `@effect/vitest` | Real filesystem/subprocess IO vs a virtual clock |
 
@@ -101,8 +102,8 @@ Absence means unwired; a recorded error means *this route fails, and here is why
   produces and exercises the code's `Config.withDefault` fallbacks rather
   than the manifest defaults. Build the baseline with
   `ActionManifest.runnerInputs(manifest, { …with: values })` and check name
-  drift with `ActionManifest.diff`; never hand-parse `action.yml` in a
-  suite.
+  drift with `ActionManifest.diff` fed by `ActionInput.recording(…).names`;
+  never hand-parse `action.yml` or proxy the env record in a suite.
 - **Exercise at least one input read with the runner-mangled key.** A
   suite that only ever stubs its own `ConfigProvider` keyed by the plain
   input name can't fail the way production does — see

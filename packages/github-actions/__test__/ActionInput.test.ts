@@ -507,3 +507,58 @@ describe("ActionInput", () => {
 		);
 	});
 });
+
+describe("ActionInput.recording", () => {
+	it.effect("journals accessor reads in first-read order, once each, answering as the provider does", () =>
+		Effect.gen(function* () {
+			const recording = ActionInput.recording({ "INPUT_WRITE-SUMMARY": "false", name: "panel" });
+			const values = yield* Effect.all([
+				ActionInput.string("name"),
+				ActionInput.boolean("write-summary"),
+				ActionInput.string("name"),
+			]).pipe(Effect.provide(recording.layer));
+			assert.deepStrictEqual(values, ["panel", false, "panel"]);
+			assert.deepStrictEqual(yield* recording.names, ["name", "write-summary"]);
+		}),
+	);
+
+	it.effect("journals an unsupplied input the code falls back from", () =>
+		Effect.gen(function* () {
+			const recording = ActionInput.recording({ "INPUT_DRY-RUN": "" });
+			const dryRun = yield* ActionInput.boolean("dry-run").pipe(
+				Config.withDefault(true),
+				Effect.provide(recording.layer),
+			);
+			assert.isTrue(dryRun);
+			assert.deepStrictEqual(yield* recording.names, ["dry-run"]);
+		}),
+	);
+
+	it.effect("journals nothing for bare Config reads", () =>
+		Effect.gen(function* () {
+			const recording = ActionInput.recording({ GITHUB_REPOSITORY: "o/r", "INPUT_DRY-RUN": "true" });
+			const repo = yield* Config.String("GITHUB_REPOSITORY").pipe(Effect.provide(recording.layer));
+			assert.strictEqual(repo, "o/r");
+			assert.deepStrictEqual(yield* recording.names, []);
+		}),
+	);
+
+	it.effect("journals a lookup when it runs, not when a Config is described", () =>
+		Effect.gen(function* () {
+			const recording = ActionInput.recording({ name: "x" });
+			const described = ActionInput.string("name");
+			assert.deepStrictEqual(yield* recording.names, []);
+			yield* described.pipe(Effect.provide(recording.layer));
+			assert.deepStrictEqual(yield* recording.names, ["name"]);
+		}),
+	);
+
+	it.effect("reports a spaced name in its runner-variable form", () =>
+		Effect.gen(function* () {
+			const recording = ActionInput.recording({ "my input": "v" });
+			const value = yield* ActionInput.string("my input").pipe(Effect.provide(recording.layer));
+			assert.strictEqual(value, "v");
+			assert.deepStrictEqual(yield* recording.names, ["my_input"]);
+		}),
+	);
+});

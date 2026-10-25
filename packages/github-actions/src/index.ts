@@ -39,7 +39,7 @@ export {
 	GitHubContext,
 	RunnerContext,
 } from "./ActionEnvironment.js";
-export { ActionInput, type PairsOptions } from "./ActionInput.js";
+export { ActionInput, type ActionInputRecording, type PairsOptions } from "./ActionInput.js";
 export {
 	ActionLogger,
 	type ActionLoggerShape,

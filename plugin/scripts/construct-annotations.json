@@ -168,7 +168,7 @@
 		"ActionCacheError": "handle a cache save or restore failure, actions cache misconfigured or unreachable",
 		"ActionEnvironment": "read `GITHUB_*` and `RUNNER_*` variables, process.env access for an action, step debug mode",
 		"ActionEnvironmentError": "handle a missing or malformed runner environment variable",
-		"ActionInput": "read with: inputs, INPUT_ variables, config provider for action inputs, dry-run boolean input",
+		"ActionInput": "read with: inputs, INPUT_ variables, config provider for action inputs, dry-run boolean input, record which inputs a program reads",
 		"ActionLogger": "workflow-command logger, collapsible log groups, phase heading that opens no group, buffered step transcript, notice annotation",
 		"ActionManifest": "decode or read action.yml, runner-shaped INPUT_ test environment from manifest defaults, diff code reads/writes against declared inputs/outputs",
 		"ActionManifestBranding": "action.yml marketplace branding, icon and color",

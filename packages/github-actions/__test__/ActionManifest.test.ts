@@ -301,6 +301,24 @@ runs:
 			assert.isFalse(diff.inSync);
 		});
 
+		it.effect("takes its reads from ActionInput.recording", () =>
+			Effect.gen(function* () {
+				const readsAll = Effect.forEach(allInputs, (name) => ActionInput.string(name).pipe(Config.withDefault("")));
+				const full = ActionInput.recording(ActionManifest.runnerInputs(manifest));
+				yield* readsAll.pipe(Effect.provide(full.layer));
+				assert.isTrue(ActionManifest.diff(manifest, { inputs: yield* full.names }).inSync);
+
+				// The control: one input dropped and one undeclared input read.
+				const drifted = ActionInput.recording(ActionManifest.runnerInputs(manifest));
+				yield* Effect.forEach([...allInputs.filter((name) => name !== "guests"), "dry-run"], (name) =>
+					ActionInput.string(name).pipe(Config.withDefault("")),
+				).pipe(Effect.provide(drifted.layer));
+				const diff = ActionManifest.diff(manifest, { inputs: yield* drifted.names });
+				assert.deepStrictEqual(diff.unreadInputs, ["guests"]);
+				assert.deepStrictEqual(diff.undeclaredInputs, ["dry-run"]);
+			}),
+		);
+
 		it("skips outputs when the usage names none", () => {
 			const diff = ActionManifest.diff(manifest, { inputs: allInputs });
 			assert.deepStrictEqual(diff.unwrittenOutputs, []);

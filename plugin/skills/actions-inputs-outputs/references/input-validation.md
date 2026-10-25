@@ -122,12 +122,11 @@ a caller reading `steps/lint.ts` should never have to also read
 
 Plan a **three-legged sync test** between `action.yml`'s declared inputs, the
 `INPUT_NAMES` tuple, and **what `readInputs` actually asks for**, recorded
-through a `Proxy` over the config environment. The first two legs are
+by `ActionInput.recording`. The first two legs are
 declarations that drift together — someone updates both and neither matches
 the code — so the recorded leg is the one that finds an input declared but
 never read, or read but never declared. `structuring-an-action`'s tests
-reference carries the recorder and the spread hazard that makes it pass
-while testing nothing.
+reference carries the executable form.
 
 **Do not hand-roll the manifest half.** `ActionManifest` decodes
 `action.yml` (`ActionManifest.read(path)` over `FileSystem`, or
@@ -139,7 +138,8 @@ compare and default-mirroring code every action used to write:
   declared — absent on a real runner), and the same pair for outputs, with
   `inSync` true when all four are empty. Inputs match by runner variable, as
   the runner connects them; omitting `outputs` skips that comparison. Feed
-  it the recorded reads, not the tuple, or it compares two declarations.
+  it the reads `ActionInput.recording` journaled, not the tuple, or it
+  compares two declarations.
 - `ActionManifest.runnerInputs(manifest, supplied?)` builds the input
   environment the runner builds: **every** declared input present under its
   `INPUT_` variable, carrying the `with:` value, else the manifest default,
@@ -159,8 +159,6 @@ import { readInputs } from "../src/schema/inputs.js";
 
 // A loud throw is the right failure for a broken manifest in a test.
 const manifest = Result.getOrThrow(ActionManifest.decodeResult(readFileSync("action.yml", "utf8")));
-// The input names readInputs asked for, captured by the recorder in structuring-an-action's tests reference.
-declare const recordedReads: ReadonlyArray<string>;
 
 it.effect("the code's defaults ARE the manifest's defaults", () =>
   Effect.gen(function* () {
@@ -171,10 +169,14 @@ it.effect("the code's defaults ARE the manifest's defaults", () =>
   }),
 );
 
-it("action.yml declares exactly what the code reads", () => {
-  const diff = ActionManifest.diff(manifest, { inputs: recordedReads, outputs: ["greeting", "result"] });
-  assert.isTrue(diff.inSync, JSON.stringify(diff));
-});
+it.effect("action.yml declares exactly what the code reads", () =>
+  Effect.gen(function* () {
+    const recording = ActionInput.recording(ActionManifest.runnerInputs(manifest));
+    yield* readInputs.pipe(Effect.provide(recording.layer));
+    const diff = ActionManifest.diff(manifest, { inputs: yield* recording.names, outputs: ["greeting", "result"] });
+    assert.isTrue(diff.inSync, JSON.stringify(diff));
+  }),
+);
 ```
 
 `runnerInputs` passes an expression default (`${{ github.token }}`) through

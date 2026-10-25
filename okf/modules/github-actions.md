@@ -221,7 +221,9 @@ The doubles worth knowing before writing a test:
   baseline, not `ActionInput.layer({})`: the runner publishes every
   declared input (its default or `""`), so an empty record tests a state
   production never produces. `ActionManifest.diff` checks the code's
-  input and output names against `action.yml` in both directions. The
+  input and output names against `action.yml` in both directions, fed
+  by `ActionInput.recording`, which wraps the real provider's lookup and
+  journals every `INPUT_` read. The
   yaml engine (a regular dependency, pure and contract-free) is confined
   to `ActionManifest.ts`, pinned by the reachability suite.
 - The runner-file doubles are a real in-memory volume from
