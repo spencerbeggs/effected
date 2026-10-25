@@ -2,24 +2,59 @@ import { Yaml } from "@effected/yaml";
 import { Effect, FileSystem, Result, Schema, SchemaTransformation } from "effect";
 import { inputVariable } from "./ActionInput.js";
 
+/** Any value a YAML scalar resolves to. */
+type YamlScalarValue = string | number | bigint | boolean | null;
+
+/**
+ * A resolved YAML scalar as text: `null` (a bare `key:`, `~`) is `""`, a
+ * non-finite number takes YAML's own spelling, and anything else is
+ * `String(value)`.
+ */
+const scalarText = (value: YamlScalarValue): string => {
+	if (value === null) return "";
+	if (typeof value === "number" && !Number.isFinite(value)) {
+		return Number.isNaN(value) ? ".nan" : value > 0 ? ".inf" : "-.inf";
+	}
+	return String(value);
+};
+
 /**
  * A YAML scalar read as the text the runner publishes.
  *
  * @remarks
- * YAML types an unquoted `default: false` as a boolean and `default: 3` as a
- * number, but the runner hands every value to the action as text. Accepting
- * all three and stringifying keeps a manifest author's quoting choice from
- * changing what a test believes the runner sends. The stringification is
- * JavaScript's (`String(value)`), so a number whose YAML spelling is not its
- * canonical form (`1.0`, `0x10`) reads as `"1"` or `"16"` here — quote such a
- * default in `action.yml` to pin its exact text.
+ * YAML types an unquoted `default: false` as a boolean, `default: 3` as a
+ * number and a bare `default:` as null, but the runner hands every value to
+ * the action as text. Accepting every scalar and stringifying keeps a
+ * manifest author's quoting choice from changing what a test believes the
+ * runner sends, and keeps a manifest that published actions really carry
+ * from failing to decode.
+ *
+ * A bare value or `~` reads as `""`, which is what the runner publishes for
+ * it. `.inf`, `-.inf` and `.nan` read as those spellings. Any other number is
+ * stringified by JavaScript (`String(value)`), so one whose YAML spelling is
+ * not its canonical form (`1.0`, `0x10`, `.Inf`) reads as `"1"`, `"16"` or
+ * `".inf"` here — quote such a value in `action.yml` to pin its exact text.
  */
-const ScalarText = Schema.Union([Schema.String, Schema.Finite, Schema.Boolean]).pipe(
+const ScalarText = Schema.Union([Schema.String, Schema.Number, Schema.BigInt, Schema.Boolean, Schema.Null]).pipe(
 	Schema.decodeTo(
 		Schema.String,
-		SchemaTransformation.transform<string, string | number | boolean>({
-			decode: (value: string | number | boolean) => String(value),
+		SchemaTransformation.transform<string, YamlScalarValue>({
+			decode: scalarText,
 			encode: (text: string) => text,
+		}),
+	),
+);
+
+/**
+ * A YAML boolean, or the strings `"true"` and `"false"`, which published
+ * manifests quote as often as not.
+ */
+const LenientBoolean = Schema.Union([Schema.Boolean, Schema.Literals(["true", "false"])]).pipe(
+	Schema.decodeTo(
+		Schema.Boolean,
+		SchemaTransformation.transform<boolean, boolean | "true" | "false">({
+			decode: (value) => value === true || value === "true",
+			encode: (value) => value,
 		}),
 	),
 );
@@ -43,9 +78,15 @@ const ScalarText = Schema.Union([Schema.String, Schema.Finite, Schema.Boolean]).
 export class ActionManifestInput extends Schema.Class<ActionManifestInput>("ActionManifestInput")({
 	/** What the input is for. */
 	description: Schema.optionalKey(Schema.String),
-	/** Whether the manifest marks the input required (not enforced by the runner). */
-	required: Schema.optionalKey(Schema.Boolean),
-	/** The text published when a workflow omits the input, stringified from any YAML scalar. */
+	/**
+	 * Whether the manifest marks the input required (not enforced by the
+	 * runner); the quoted strings `"true"` and `"false"` decode as booleans.
+	 */
+	required: Schema.optionalKey(LenientBoolean),
+	/**
+	 * The text published when a workflow omits the input, stringified from any
+	 * YAML scalar; a bare `default:` reads as `""`.
+	 */
 	default: Schema.optionalKey(ScalarText),
 	/** Set when the input is deprecated; the runner warns with this text when a workflow supplies it. */
 	deprecationMessage: Schema.optionalKey(Schema.String),
@@ -115,8 +156,8 @@ export class ActionManifestCompositeRuns extends Schema.Class<ActionManifestComp
  *
  * @remarks
  * The YAML keys `pre-entrypoint`, `post-entrypoint`, `pre-if` and `post-if`
- * decode to camelCase. `env` values are stringified from any YAML scalar, as
- * the runner passes them to the container as text.
+ * decode to camelCase. `args` entries and `env` values are stringified from
+ * any YAML scalar, as the runner passes them to the container as text.
  *
  * @public
  */
@@ -125,8 +166,8 @@ export class ActionManifestDockerRuns extends Schema.Class<ActionManifestDockerR
 	using: Schema.Literal("docker"),
 	/** A `Dockerfile` path or a `docker://` image reference. */
 	image: Schema.String,
-	/** Arguments passed to the container. */
-	args: Schema.optionalKey(Schema.Array(Schema.String)),
+	/** Arguments passed to the container, each stringified from any YAML scalar. */
+	args: Schema.optionalKey(Schema.Array(ScalarText)),
 	/** Environment variables set in the container. */
 	env: Schema.optionalKey(Schema.Record(Schema.String, ScalarText)),
 	/** Overrides the image's `ENTRYPOINT`. */
@@ -402,32 +443,44 @@ export class ActionManifest extends Schema.Class<ActionManifest>("ActionManifest
 	 * `ActionEnvironment.layerTest`'s overrides, or becomes a spawned
 	 * process's environment unchanged.
 	 *
-	 * `supplied` is the workflow's `with:` block, keyed by input name. A
-	 * supplied value wins even when it is `""`, as on a runner. A supplied
-	 * name the manifest does not declare **throws**: the runner would accept it
-	 * with only a warning, but in a test it is always a typo, and a typo here
-	 * would silently fall back to the default and pass.
+	 * `supplied` is the workflow's `with:` block, keyed by input name, and is
+	 * matched to the declared inputs **by runner variable**, the way
+	 * {@link ActionManifest.diff} matches: `write summary`, `write_summary` and
+	 * `WRITE_SUMMARY` all supply the input declared as `write_summary`. A
+	 * supplied value wins even when it is `""`, as on a runner.
+	 *
+	 * A supplied name the manifest does not declare is **passed through** as
+	 * one more `INPUT_` variable, because the runner publishes it too — it only
+	 * warns. This never throws. To catch a typo in a test, compare the names
+	 * with {@link ActionManifest.diff}, which reports an undeclared read; a
+	 * typoed supplied name otherwise leaves the declared input on its default.
+	 *
+	 * **Composite actions receive no `INPUT_` environment.** The runner
+	 * publishes these variables to node and docker actions only; a composite
+	 * action reads its inputs through `inputs.<name>` expressions in its steps.
+	 * This builder is for node and docker actions, and for a composite test
+	 * that drives the inputs into its steps explicitly.
 	 *
 	 * @param manifest - The decoded manifest.
 	 * @param supplied - The workflow's `with:` values, keyed by input name.
-	 * @returns The runner's `INPUT_*` variables, one per declared input.
+	 * @returns The runner's `INPUT_*` variables: one per declared input, then
+	 * one per supplied name the manifest does not declare.
 	 */
 	static runnerInputs(
 		manifest: ActionManifest,
 		supplied: Readonly<Record<string, string>> = {},
 	): Record<string, string> {
-		const declared = manifest.inputs ?? {};
-		const undeclared = Object.keys(supplied).filter((name) => !Object.hasOwn(declared, name));
-		if (undeclared.length > 0) {
-			throw new Error(
-				`ActionManifest.runnerInputs: supplied input(s) not declared in action.yml: ${undeclared.join(", ")}`,
-			);
-		}
+		const byVariable = new Map<string, string>();
+		for (const [name, value] of Object.entries(supplied)) byVariable.set(inputVariable(name), value);
 		const env: Record<string, string> = {};
-		for (const [name, input] of Object.entries(declared)) {
-			const value = Object.hasOwn(supplied, name) ? supplied[name] : undefined;
-			env[inputVariable(name)] = value ?? input.default ?? "";
+		for (const [name, input] of Object.entries(manifest.inputs ?? {})) {
+			const variable = inputVariable(name);
+			env[variable] = byVariable.get(variable) ?? input.default ?? "";
+			byVariable.delete(variable);
 		}
+		// What is left was supplied but not declared: the runner warns and
+		// publishes it anyway.
+		for (const [variable, value] of byVariable) env[variable] = value;
 		return env;
 	}
 

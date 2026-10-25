@@ -114,6 +114,59 @@ describe("ActionManifest", () => {
 			assert.strictEqual(inputs.token?.default, TOKEN_EXPR);
 		});
 
+		const lenient = (inputs: string) =>
+			decoded(`name: Lenient\ninputs:\n${inputs}runs:\n  using: node24\n  main: m.js\n`).inputs ?? {};
+
+		it("reads a bare default as the empty string the runner publishes", () => {
+			const inputs = lenient("  bare:\n    default:\n  tilde:\n    default: ~\n");
+			assert.strictEqual(inputs.bare?.default, "");
+			assert.strictEqual(inputs.tilde?.default, "");
+			assert.deepStrictEqual(
+				ActionManifest.runnerInputs(
+					decoded(`name: X\ninputs:\n  bare:\n    default:\nruns:\n  using: node24\n  main: m.js\n`),
+				),
+				{ INPUT_BARE: "" },
+			);
+		});
+
+		it("accepts required as a boolean or the strings true and false", () => {
+			const inputs = lenient(
+				'  a:\n    required: true\n  b:\n    required: "true"\n  c:\n    required: "false"\n  d:\n    required: false\n',
+			);
+			assert.deepStrictEqual(
+				[inputs.a?.required, inputs.b?.required, inputs.c?.required, inputs.d?.required],
+				[true, true, false, false],
+			);
+			assert.isTrue(
+				Result.isFailure(
+					ActionManifest.decodeResult(
+						`name: X\ninputs:\n  a:\n    required: "yes"\nruns:\n  using: node24\n  main: m.js\n`,
+					),
+				),
+			);
+		});
+
+		it("accepts any scalar default, non-finite and big numbers included", () => {
+			const inputs = lenient(
+				"  inf:\n    default: .inf\n  ninf:\n    default: -.inf\n  nan:\n    default: .nan\n  big:\n    default: 12345678901234567890\n  float:\n    default: 2.5\n",
+			);
+			assert.deepStrictEqual(
+				[inputs.inf?.default, inputs.ninf?.default, inputs.nan?.default, inputs.big?.default, inputs.float?.default],
+				[".inf", "-.inf", ".nan", "12345678901234567890", "2.5"],
+			);
+		});
+
+		it("stringifies docker args the way the runner passes them", () => {
+			const runs = decoded(
+				"name: D\nruns:\n  using: docker\n  image: Dockerfile\n  args: [--retries, 3, true, .inf]\n  env:\n    EMPTY:\n",
+			).runs;
+			assert.instanceOf(runs, ActionManifestDockerRuns);
+			if (runs instanceof ActionManifestDockerRuns) {
+				assert.deepStrictEqual(runs.args, ["--retries", "3", "true", ".inf"]);
+				assert.deepStrictEqual(runs.env, { EMPTY: "" });
+			}
+		});
+
 		it("decodes a composite action", () => {
 			const manifest = decoded(`name: Composite
 description: Runs steps
@@ -232,8 +285,29 @@ runs:
 			assert.strictEqual(env.INPUT_EMPHATIC, "false");
 		});
 
-		it("throws on a supplied input the manifest does not declare", () => {
-			assert.throws(() => ActionManifest.runnerInputs(manifest, { write_summary: "false" }), /write_summary/);
+		it("passes a supplied input the manifest does not declare through, as the runner does", () => {
+			const env = ActionManifest.runnerInputs(manifest, { "dry-run": "true", name: "panel" });
+			assert.strictEqual(env["INPUT_DRY-RUN"], "true");
+			assert.strictEqual(env.INPUT_NAME, "panel");
+			// Every declared input is still there, and nothing else was added.
+			assert.lengthOf(Object.keys(env), Object.keys(manifest.inputs ?? {}).length + 1);
+			// diff, not runnerInputs, is what reports the undeclared name.
+			assert.deepStrictEqual(ActionManifest.diff(manifest, { inputs: ["dry-run"] }).undeclaredInputs, ["dry-run"]);
+		});
+
+		it("matches supplied names by runner variable, as diff does", () => {
+			// `write_summary` is a different variable from `write-summary`: it does
+			// not supply the declared input, and passes through on its own.
+			const env = ActionManifest.runnerInputs(manifest, { write_summary: "false", NAME: "upper" });
+			assert.strictEqual(env["INPUT_WRITE-SUMMARY"], "true");
+			assert.strictEqual(env.INPUT_WRITE_SUMMARY, "false");
+			assert.strictEqual(env.INPUT_NAME, "upper");
+
+			const spaced = ActionManifest.runnerInputs(
+				decoded("name: X\ninputs:\n  my_input:\n    default: d\nruns:\n  using: node24\n  main: m.js\n"),
+				{ "my input": "supplied" },
+			);
+			assert.deepStrictEqual(spaced, { INPUT_MY_INPUT: "supplied" });
 		});
 
 		it.effect("is the baseline ActionInput reads: manifest defaults, not code fallbacks", () =>

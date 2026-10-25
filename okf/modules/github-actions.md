@@ -220,7 +220,14 @@ The doubles worth knowing before writing a test:
 - `ActionManifest.runnerInputs(manifest, supplied?)` is the input
   baseline, not `ActionInput.layer({})`: the runner publishes every
   declared input (its default or `""`), so an empty record tests a state
-  production never produces. `ActionManifest.diff` checks the code's
+  production never produces. Supplied names match by runner variable and
+  an undeclared one passes through as an extra `INPUT_` variable (the
+  runner warns and publishes it); it never throws, and `diff` is what
+  reports undeclared names. Composite actions get no `INPUT_` environment
+  from the runner. Decoding is lenient where published manifests are: a
+  bare `default:` is `""`, `required` accepts `"true"`/`"false"`, and
+  scalar defaults, docker `args` and `env` stringify any YAML scalar
+  (`.inf`/`.nan` keep YAML's spelling). `ActionManifest.diff` checks the code's
   input and output names against `action.yml` in both directions, fed
   by `ActionInput.recording`, which wraps the real provider's lookup and
   journals every `INPUT_` read. The

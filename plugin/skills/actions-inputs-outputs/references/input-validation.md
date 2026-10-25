@@ -147,8 +147,13 @@ compare and default-mirroring code every action used to write:
   `ActionInput.layer(...)` or spread it into `ActionEnvironment.layerTest`'s
   overrides. A bare `ActionInput.layer({})` tests the genuinely-absent case
   no runner produces, so it exercises the code's `Config.withDefault`
-  fallbacks instead of the manifest defaults. A supplied name the manifest
-  does not declare throws, because in a test it is always a typo.
+  fallbacks instead of the manifest defaults. Supplied names match declared
+  inputs by runner variable (`write summary` supplies `write_summary`), and
+  a supplied name the manifest does not declare is passed through as one
+  more `INPUT_` variable, as the runner does; it never throws, so catch a
+  typo with `diff`. **A composite action gets no `INPUT_` environment** from
+  the runner, so the builder is for node and docker actions and for a
+  composite test that drives the inputs into its steps explicitly.
 
 ```ts
 import { assert, it } from "@effect/vitest";
@@ -183,4 +188,7 @@ it.effect("action.yml declares exactly what the code reads", () =>
 as unevaluated text, since only the runner evaluates it — supply the value
 explicitly when the code parses it. An unquoted YAML scalar default
 (`default: false`, `default: 3`) decodes to the text the runner publishes
-(`"false"`, `"3"`).
+(`"false"`, `"3"`), a bare `default:` to `""`, and `.inf`/`.nan` to those
+spellings; `required: "true"` decodes as a boolean. A number spelled
+non-canonically (`1.0`, `0x10`) reads as JavaScript prints it, so quote it
+to pin its text.
