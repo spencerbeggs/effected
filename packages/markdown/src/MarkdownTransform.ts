@@ -271,8 +271,10 @@ export class MarkdownTransform {
 	 * than a recorded spelling and is kept. Positions and all mdast fields are
 	 * untouched. The input is never mutated; a subtree carrying no fidelity
 	 * field is returned as the same instance, following
-	 * {@link MarkdownTransform.(map:1)}, on which this is built and whose
-	 * recursion limit it shares.
+	 * {@link MarkdownTransform.(map:1)}, on which this is built. Like `map` it
+	 * recurses without a depth guard, so a tree nested past the stack throws a
+	 * `RangeError`; `Markdown.stringifyResult` with `canonical: true` checks
+	 * depth first and fails typed at the stringifier's own limit instead.
 	 *
 	 * `Markdown.stringify(tree, { canonical: true })` is exactly
 	 * `Markdown.stringify(MarkdownTransform.canonicalize(tree))`.

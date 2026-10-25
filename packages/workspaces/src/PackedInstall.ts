@@ -152,10 +152,10 @@ export interface PackedInstallOptions extends PackedInstallClosureOptions {
 	 * `node-modules` linker, either package can take the `.bin` slot (npm was
 	 * observed to link the package whose name sorts first, which for a `cli`
 	 * front end and a `plugin` carrier is the front end; Yarn 1 and 4 were
-	 * observed to keep the carrier's, the consumer's direct dependency; bun
-	 * gives the slot to a direct dependency of the consumer and falls back to
-	 * the alphabetically first package only between equals, so a carrier that
-	 * is the consumer's one direct dependency keeps it),
+	 * observed to keep the carrier's, the consumer's direct dependency; recent bun
+	 * gives the slot to a direct dependency of the consumer, while older
+	 * releases took the alphabetically first package, so a carrier that is the
+	 * consumer's one direct dependency keeps it only on recent bun),
 	 * and the bin that runs then carries no distribution identity: no
 	 * `--version` suffix.
 	 * When every shared bin calls the same `main()`, nothing else changes.

@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
-import { afterAll, assert, describe, layer } from "@effect/vitest";
+import { afterAll, assert, describe, it, layer } from "@effect/vitest";
 import { Run } from "@effected/commands";
 import { Duration, Effect, Layer } from "effect";
 import { ChildProcess } from "effect/process";
@@ -167,14 +167,22 @@ const VERSIONS: Readonly<Record<PackageManagerName, string | undefined>> = {
 	yarn: probe("yarn"),
 	bun: probe("bun"),
 };
-/** Whether a dotted version is at least `min`; a missing or non-numeric part counts as 0. */
+/**
+ * Whether a dotted version is at least `min`; a missing or non-numeric part counts as 0. Any prerelease suffix
+ * (`1.4.4-canary.N+sha`) counts as below the gate, since a canary may predate the change being gated.
+ */
 const atLeast = (version: string, min: readonly [number, number, number]): boolean => {
-	const parts = version.split(".").map((part) => Number.parseInt(part, 10) || 0);
+	const prerelease = /^[^+]*-/.test(version);
+	const parts =
+		version
+			.split(/[-+]/)[0]
+			?.split(".")
+			.map((part) => Number.parseInt(part, 10) || 0) ?? [];
 	for (let i = 0; i < 3; i++) {
 		const have = parts[i] ?? 0;
 		if (have !== min[i]) return have > (min[i] as number);
 	}
-	return true;
+	return !prerelease;
 };
 const HAS_NPM = VERSIONS.npm !== undefined;
 const HAS_PNPM = VERSIONS.pnpm !== undefined;
@@ -337,6 +345,16 @@ const assertConsumer = (consumer: InstalledConsumer, tarballs: Readonly<Record<s
 			assert.isTrue(provenance?.target.startsWith(`${consumer.directory}/node_modules/`), provenance?.target);
 		}
 	});
+
+describe("atLeast", () => {
+	it("compares release versions and treats any prerelease as below the gate", () => {
+		assert.isTrue(atLeast("1.4.4", [1, 4, 4]));
+		assert.isTrue(atLeast("1.5.0", [1, 4, 4]));
+		assert.isFalse(atLeast("1.4.3", [1, 4, 4]));
+		assert.isFalse(atLeast("1.4.4-canary.7+abc123", [1, 4, 4]));
+		assert.isTrue(atLeast("1.4.5-canary.7+abc123", [1, 4, 4]));
+	});
+});
 
 describe("PackedInstall against a real fixture workspace", () => {
 	layer(Live, { excludeTestServices: true })((it) => {

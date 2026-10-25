@@ -676,6 +676,30 @@ describe("canonical output", () => {
 		);
 	});
 
+	it("canonical stringify fails typed past the depth cap instead of overflowing the stack", () => {
+		const nested = (levels: number): Root => {
+			let node: FlowContent = Paragraph.make({ children: [Text.make({ value: "x" })] });
+			const ctor = Blockquote as unknown as new (
+				input: unknown,
+				options: { readonly disableChecks: true },
+			) => Blockquote;
+			for (let i = 0; i < levels; i += 1) {
+				node = new ctor({ ...Blockquote.make({ children: [] }), children: [node] }, { disableChecks: true });
+			}
+			return Root.make({ children: [node] });
+		};
+		for (const levels of [300, 5000, 30000]) {
+			const tree = nested(levels);
+			for (const options of [undefined, { canonical: true }] as const) {
+				const result = Markdown.stringifyResult(tree, options);
+				assert.isTrue(Result.isFailure(result), `${levels} levels, ${JSON.stringify(options)}`);
+				if (Result.isFailure(result)) {
+					assert.strictEqual(result.failure.diagnostic.code, "NestingDepthExceeded");
+				}
+			}
+		}
+	});
+
 	it("covers a hard break and a lone flow node", () => {
 		const tree = parse("a  \nb\n");
 		assert.strictEqual(Result.getOrThrow(Markdown.stringifyResult(tree)), "a  \nb\n");
