@@ -1,5 +1,33 @@
 # @effected/workspaces
 
+## 0.39.0
+
+### Features
+
+- `detectPackageManagerSync(root, ops)` returns a `Result` carrying exactly the decision `PackageManagerDetector` would make, for callers without an Effect runtime.
+- `localExecContextSync(cwd, ops)` returns a `Result<Option<ExecContext>, LocalExecError>`. It builds on the new `LocalExec.contextFor()` in `@effected/commands`.
+
+### Refactoring
+
+- The `Workspaces` layer factories are now static methods with real declared signatures. Call shapes are unchanged. [#1101][#1101]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.15.1 | 0.16.0 |
+| @effected/git | dependency | updated | 0.25.0 | 0.25.1 |
+| @effected/lockfiles | dependency | updated | 0.19.4 | 0.19.5 |
+| @effected/npm | dependency | updated | 0.26.2 | 0.27.0 |
+| @effected/package-json | dependency | updated | 0.25.2 | 0.26.0 |
+| @effected/walker | dependency | updated | 0.20.0 | 0.20.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1101]: https://github.com/spencerbeggs/effected/pull/1101
+
 ## 0.38.1
 
 ### Documentation

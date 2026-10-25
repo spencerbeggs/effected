@@ -1,5 +1,23 @@
 # @effected/webhooks
 
+## 0.1.3
+
+### Refactoring
+
+- Exports that carry statics now declare real signatures instead of `typeof` the local value, so the published declarations and API docs show them. There is no runtime or call-shape change. [#1101][#1101]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.2.0 | 0.2.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1101]: https://github.com/spencerbeggs/effected/pull/1101
+
 ## 0.1.2
 
 ### Dependencies

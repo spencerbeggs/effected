@@ -1,5 +1,17 @@
 # @effected/ai-plugin
 
+## 0.43.1
+
+### Maintenance
+
+- Regenerated the construct index with rows for the new synchronous facades in `@effected/commands` and `@effected/workspaces`, and rebuilt the plugin builds under pluginfinity 0.3.8. [#1101][#1101]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1101]: https://github.com/spencerbeggs/effected/pull/1101
+
 ## 0.43.0
 
 ### Documentation

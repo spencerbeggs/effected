@@ -1,5 +1,25 @@
 # @effected/cli
 
+## 0.22.2
+
+### Refactoring
+
+- Exports that carry statics now declare real signatures instead of `typeof` the local value, so the published declarations and API docs show them. There is no runtime or call-shape change. [#1101][#1101]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.20.0 | 0.20.1 |
+| @effected/env | dependency | updated | 0.5.0 | 0.5.0 |
+| @effected/walker | dependency | updated | 0.20.0 | 0.20.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1101]: https://github.com/spencerbeggs/effected/pull/1101
+
 ## 0.22.1
 
 ### Dependencies

@@ -1,5 +1,23 @@
 # @effected/npm
 
+## 0.27.0
+
+### Features
+
+- New public interface types `DependencySpecifierStatics`, `IntegrityHashStatics` and `CorepackIntegrityHashStatics` describe the statics on those exports. The exports are now declared with them, so the API docs show real signatures instead of `typeof` aliases. [#1101][#1101]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.15.1 | 0.16.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1101]: https://github.com/spencerbeggs/effected/pull/1101
+
 ## 0.26.2
 
 ### Dependencies

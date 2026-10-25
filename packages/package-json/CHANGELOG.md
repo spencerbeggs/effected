@@ -1,5 +1,24 @@
 # @effected/package-json
 
+## 0.26.0
+
+### Features
+
+- New public interface type `PackageNameStatics` describes the statics on `PackageName`. The export is now declared with it, so the API docs show real signatures instead of a `typeof` alias. [#1101][#1101]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/npm | dependency | updated | 0.26.2 | 0.27.0 |
+| @effected/spdx | dependency | updated | 0.16.0 | 0.16.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1101]: https://github.com/spencerbeggs/effected/pull/1101
+
 ## 0.25.2
 
 ### Documentation
