@@ -14,20 +14,15 @@ export interface RecordingFs {
 }
 
 /**
- * A pinned memfs volume seeded with `seed`. `makeDirectory` is spied on and then
- * delegates to the volume, so `mkdirs` records every requested directory while
- * the directory really is created. The spy runs when the call EXECUTES (memfs
- * defers every handler through `Effect.suspend`), never when it is built.
+ * A pinned memfs volume seeded with `seed`. `makeDirectory` carries a memfs
+ * spy, which always delegates, so `mkdirs` records every requested directory
+ * while the directory really is created. The spy runs when the call EXECUTES,
+ * never when it is built.
  */
 export const recordingFs = (seed: MemoryFileSystemSeed = {}): RecordingFs => {
 	const mkdirs: Array<string> = [];
 	const handle = MemoryFileSystem.makeSync(seed, {
-		faults: {
-			makeDirectory: (path) => {
-				mkdirs.push(path);
-				return undefined;
-			},
-		},
+		spies: { makeDirectory: (path) => void mkdirs.push(path) },
 	});
 	return { layer: handle.layer, volume: handle.volume, mkdirs };
 };
