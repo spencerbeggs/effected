@@ -1,10 +1,12 @@
 // The drift-detection canonicaliser: JSON text with object keys sorted by
 // UTF-16 code units at every depth, array order kept, and undefined members
-// dropped from objects. Not RFC 8785 (that refuses undefined, where drift
+// dropped from objects. Only a Date's toJSON is honoured: any other object
+// must be an array or a plain object, because another type's toJSON (an
+// Effect data type's debug rendering, say) is no stable contract. Not RFC 8785 (that refuses undefined, where drift
 // detection must treat absent and undefined alike). Unspanned: the
 // `Fingerprint` facade owns the span.
 
-import { Predicate, Result } from "effect";
+import { Result } from "effect";
 import { FingerprintError } from "../FingerprintError.js";
 
 /** Thrown inside the walk and converted at the boundary; never escapes this module. */
@@ -18,15 +20,18 @@ class Refusal {
 const pointer = (parent: string, key: string | number): string =>
 	`${parent}/${String(key).replaceAll("~", "~0").replaceAll("/", "~1")}`;
 
+/** The remedy every non-plain object refusal carries. */
+const ENCODE_FIRST = "(encode it to plain JSON first)";
+
 const describe = (value: unknown): string => {
 	if (typeof value === "bigint") return "a bigint";
 	if (typeof value === "function") return "a function";
 	if (typeof value === "symbol") return "a symbol";
 	if (value === undefined) return "undefined";
 	if (typeof value === "number") return `the number ${String(value)}`;
-	if (value instanceof Map) return "a Map";
-	if (value instanceof Set) return "a Set";
-	return "a non-plain object";
+	if (value instanceof Map) return `a Map ${ENCODE_FIRST}`;
+	if (value instanceof Set) return `a Set ${ENCODE_FIRST}`;
+	return `a non-plain object ${ENCODE_FIRST}`;
 };
 
 const isPlainObject = (value: object): boolean => {
@@ -34,9 +39,9 @@ const isPlainObject = (value: object): boolean => {
 	return proto === Object.prototype || proto === null;
 };
 
-/** `toJSON` applied as `JSON.stringify` applies it, with the member key. */
+/** A `Date`'s `toJSON` applied as `JSON.stringify` applies it; no other type's is trusted. */
 const toJson = (value: unknown, key: string, path: string): unknown => {
-	if (Predicate.hasProperty(value, "toJSON") && typeof value.toJSON === "function") {
+	if (value instanceof Date) {
 		try {
 			return value.toJSON(key);
 		} catch {
@@ -118,7 +123,12 @@ export const canonicalText = (value: unknown): Result.Result<string, Fingerprint
 		if (thrown instanceof Refusal) {
 			return Result.fail(new FingerprintError({ path: thrown.path, detail: thrown.detail }));
 		}
-		// A RangeError from a pathologically deep value is the only other throw.
-		return Result.fail(new FingerprintError({ path: "", detail: "a value nested too deeply" }));
+		// A pathologically deep value overflows the stack; anything else (a
+		// Proxy trap that throws, say) is not a property of the value's JSON form
+		// and propagates as a defect.
+		if (thrown instanceof RangeError) {
+			return Result.fail(new FingerprintError({ path: "", detail: "a value nested too deeply" }));
+		}
+		throw thrown;
 	}
 };

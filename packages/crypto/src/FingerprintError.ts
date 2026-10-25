@@ -7,9 +7,10 @@ import { Schema } from "effect";
  * @remarks
  * Raised for a `bigint`, a function or symbol anywhere, a top-level
  * `undefined`, a non-finite number, a cycle, a getter or
- * `toJSON` that throws, and any object that is neither an array nor a plain
- * object (a `Map`, a `Set`, a class instance): encode a domain value to plain
- * JSON first. `path` locates the offending value as a JSON-pointer-like
+ * `Date`'s `toJSON` that throws, and any object that is neither a `Date`, an
+ * array nor a plain object (a `Map`, a `Set`, a class instance, an Effect
+ * data type such as `Option`, whatever `toJSON` it carries): encode a domain
+ * value to plain JSON first. `path` locates the offending value as a JSON-pointer-like
  * string (`""` is the root, `/rules/0/name` a nested member), and `detail`
  * says what was found there. A fingerprint is decided by its input, so this
  * is caller input: recover with `Effect.catchTag("FingerprintError", ...)`.

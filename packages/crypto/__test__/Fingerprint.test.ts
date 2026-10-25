@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, it, layer } from "@effect/vitest";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Exit, HashMap, Option, Result, Schema } from "effect";
 import { DriftDecision } from "../src/DriftDecision.js";
 import { Fingerprint } from "../src/Fingerprint.js";
 
@@ -45,8 +45,13 @@ describe("Fingerprint.canonicalizeResult", () => {
 		assert.strictEqual(canonical([1, undefined]), "[1,null]");
 	});
 
-	it("honours toJSON, so a Date fingerprints as its ISO string", () => {
+	it("honours a Date's toJSON, so a Date fingerprints as its ISO string", () => {
 		assert.strictEqual(canonical({ at: new Date(0) }), '{"at":"1970-01-01T00:00:00.000Z"}');
+		assert.strictEqual(canonical([new Date(Number.NaN)]), "[null]");
+	});
+
+	it("sorts numeric-like keys lexicographically", () => {
+		assert.strictEqual(canonical({ 2: "b", 10: "a", 1: "c" }), '{"1":"c","10":"a","2":"b"}');
 	});
 
 	it("matches JSON.stringify's text for already-sorted plain JSON", () => {
@@ -66,9 +71,24 @@ describe("Fingerprint.canonicalizeResult", () => {
 			["a symbol element", [Symbol("s")], "/0", "a symbol"],
 			["a non-finite number", { x: Number.NaN }, "/x", "the number NaN"],
 			["Infinity", [Infinity], "/0", "the number Infinity"],
-			["a Map", { m: new Map() }, "/m", "a Map"],
-			["a Set", new Set(), "", "a Set"],
-			["a class instance", { c: new (class Point {})() }, "/c", "a non-plain object"],
+			["a Map", { m: new Map() }, "/m", "a Map (encode it to plain JSON first)"],
+			["a Set", new Set(), "", "a Set (encode it to plain JSON first)"],
+			["a class instance", { c: new (class Point {})() }, "/c", "a non-plain object (encode it to plain JSON first)"],
+			[
+				"a class instance with a toJSON",
+				{
+					c: new (class Point {
+						toJSON() {
+							return { x: 1 };
+						}
+					})(),
+				},
+				"/c",
+				"a non-plain object (encode it to plain JSON first)",
+			],
+			["an Option", { o: Option.some(1) }, "/o", "a non-plain object (encode it to plain JSON first)"],
+			["a HashMap", [HashMap.make(["a", 1])], "/0", "a non-plain object (encode it to plain JSON first)"],
+			["a plain object's toJSON member", { v: { toJSON: () => 1 } }, "/v/toJSON", "a function"],
 			["a top-level undefined", undefined, "", "undefined"],
 			["a key needing escape", { "a/b": { "~": 1n } }, "/a~1b/~0", "a bigint"],
 		];
@@ -93,6 +113,14 @@ describe("Fingerprint.canonicalizeResult", () => {
 			assert.strictEqual(canonical({ a: shared, b: shared }), '{"a":{"x":1},"b":{"x":1}}');
 		});
 
+		it("a value nested too deeply to walk", () => {
+			let deep: unknown = 1;
+			for (let depth = 0; depth < 1_000_000; depth++) deep = [deep];
+			const error = refusal(deep);
+			assert.strictEqual(error.path, "");
+			assert.strictEqual(error.detail, "a value nested too deeply");
+		});
+
 		it("a getter that throws", () => {
 			const value = {
 				get boom(): number {
@@ -105,6 +133,33 @@ describe("Fingerprint.canonicalizeResult", () => {
 			assert.strictEqual(error.message, 'cannot fingerprint "/boom": a getter that throws has no canonical JSON form');
 		});
 	});
+});
+
+describe("a throw that is not about the value's JSON form", () => {
+	const trap = new Error("ownKeys trap");
+	const hostile = () =>
+		new Proxy(
+			{},
+			{
+				ownKeys() {
+					throw trap;
+				},
+			},
+		);
+
+	it("propagates out of canonicalizeResult rather than becoming a refusal", () => {
+		assert.throws(() => Fingerprint.canonicalizeResult({ p: hostile() }), "ownKeys trap");
+	});
+
+	it.effect("is a defect, not a FingerprintError, from Fingerprint.of", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(Fingerprint.of({ p: hostile() }));
+			assert.isTrue(Exit.isFailure(exit));
+			if (Exit.isFailure(exit)) {
+				assert.isTrue(exit.cause.reasons.some((reason) => reason._tag === "Die" && reason.defect === trap));
+			}
+		}).pipe(Effect.provide(NodeCrypto.layer)),
+	);
 });
 
 layer(NodeCrypto.layer)("Fingerprint.of", (it) => {
