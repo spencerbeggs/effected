@@ -184,9 +184,12 @@ const program = Effect.gen(function* () {
     security_and_analysis: { secret_scanning: "enabled" },
   });
 });
-// AppliedSettings — { rest: [...], graphql: [...] }, in the caller's own key names.
-// The two lists agree with the input right up until preparation drops a field
+// AppliedSettings — { rest: [...], graphql: [...], ignored: [...] }, in the caller's own key names.
+// The lists agree with the input right up until preparation drops a field
 // GitHub would reject, which is what a person reading a dry run is checking for.
+// `ignored` names keys neither API accepts (a typo, say): they are never sent,
+// because the REST PATCH would ignore them and still answer 200. The REST key
+// list is generated from GitHub's OpenAPI description.
 ```
 
 `updateSettings` takes octokit's own generated params, and those spell an optional field as `has_issues?: boolean` rather than `has_issues?: boolean | undefined` — so under `exactOptionalPropertyTypes` a `Partial<T>` built from your own settings schema does not assign to it at all. `repositoryPatch` is the supported way out, and it exists so the answer is never a cast:
@@ -295,14 +298,14 @@ const TestClient = GitHubClient.layerFixture(fixtures);
 
 - `GitHubClient` — the typed transport: `request`, `requestDecoded` (a mandatory-schema escape hatch for routes outside the generated map), `paginate` / `paginateStream`, `graphql`, and `rateLimit` (observation only — nothing here throttles on your behalf).
 - `Repo` / `RepoRef` — the `{ owner, repo }` coordinate, resolved per call through `R`, with `Repo.provide` for multi-repository programs.
-- `GitHubRepository` — the repository's settings as GitHub's own generated type, plus `defaultBranch`, `nodeId`, `ownerType` for gating organization-only fields, and `applySettings` reporting the keys it actually sent.
+- `GitHubRepository` — the repository's settings as GitHub's own generated type, plus `defaultBranch`, `nodeId`, `ownerType` for gating organization-only fields, `applySettings` reporting the keys it actually sent, and `topics` / `setTopics(names)`, where `setTopics` replaces the whole set and returns what GitHub stored (lowercased).
 - `repositoryPatch` / `RepositoryPatchDraft` — build an `updateSettings` patch from fields that may be `undefined`, under `exactOptionalPropertyTypes`, without a cast.
 - `GitHubError` / `GitHubGraphQLError` — one error per transport, `kind`-routed with `hasKind` for `Effect.catchIf`; a REST 422's validation entries ride on `validation`, matched with `hasValidationCode`.
 - `RetryPolicy` — the client's one retry policy: full-jitter backoff, server-advised delays honored up to a ceiling.
 - `GitHubApp` — App JWT signing, installation token minting/revocation, app and installation identity, and `clientLayer` for an App-authenticated `GitHubClient`.
 - `GitBranch` / `GitTag` — Git Database API refs, with `upsert` collapsing the create-or-reset dance to one call and `GitTag.latestSemver` picking the newest version-shaped tag in one pass.
 - `CheckRun` — `withCheckRun` concludes on every exit path; `CheckRunOutput.truncated()` cuts rendered output to GitHub's byte limits.
-- `PullRequest` / `PullRequestComment` — upserts for both, `listFiles` answering with the same full `CommitFile` records a commit read returns, `headSha`/`baseSha` on `PullRequestInfo`, plus `CommentMarker` for finding a sticky comment again.
+- `PullRequest` / `PullRequestComment` — upserts for both, `listFiles` answering with the same full `CommitFile` records a commit read returns, `headSha`/`baseSha` on `PullRequestInfo`, plus `CommentMarker` for finding a sticky comment again. `PullRequestInfo.mergeCommitSha` is read from GraphQL `mergeCommit.oid` for merged pull requests only (one batched read per result), because the REST object no longer carries it.
 - `GitHubIssue` — issues and their comments, including `commentOnce` for a marked comment that is posted exactly once and never edited, and `linkedIssues` for what a pull request closes.
 - `harvestIssueReferences` / `parseBareLineReference` — a compatibility re-export of the two closing-reference dialects that moved to `@effected/github-references`, with `CLOSING_KEYWORDS` and their result types.
 - `GitHubRelease` — releases and asset uploads, including the one route (`uploadAsset`, with the endpoint's optional display label) outside GitHub's generated endpoint map.

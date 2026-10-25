@@ -3,7 +3,7 @@ import { Clock, Config, Context, Effect, Layer, Option, Schema, Stream } from "e
 import { GitHubError } from "./GitHubError.js";
 import type { GraphQLDocument } from "./GraphQL.js";
 import { GitHubGraphQLError } from "./GraphQL.js";
-import { makeTransport } from "./internal/octokit.js";
+import { DEFAULT_API_VERSION, makeTransport } from "./internal/octokit.js";
 import { fromArray, paginate } from "./internal/paginate.js";
 import { unstubbed } from "./internal/unstubbed.js";
 import type { RateLimitSnapshot } from "./Resilience.js";
@@ -131,6 +131,21 @@ export interface GitHubClientOptions {
 	 * a hand-written double of this service.
 	 */
 	readonly fetch?: typeof globalThis.fetch | undefined;
+	/**
+	 * The REST api-version every request pins, sent as `x-github-api-version`.
+	 * Defaults to `"2026-03-10"`.
+	 *
+	 * @remarks
+	 * Without the header GitHub serves its oldest supported version, which it
+	 * deprecates and then sunsets, so the client always sends one. A call that
+	 * sets its own `x-github-api-version` header keeps it: the per-call header
+	 * wins over this option.
+	 *
+	 * A GitHub Enterprise Server release that predates the default version
+	 * rejects the header, so a client pointed at one through `baseUrl` sets the
+	 * newest version that server supports here.
+	 */
+	readonly apiVersion?: string | undefined;
 }
 
 /**
@@ -454,6 +469,7 @@ export const makeClientShape = (
 			baseUrl: options.baseUrl,
 			userAgent: options.userAgent,
 			fetch: options.fetch,
+			apiVersion: options.apiVersion ?? DEFAULT_API_VERSION,
 		});
 
 		const request = Effect.fn("GitHubClient.request")(function* <R extends Rest.Route>(

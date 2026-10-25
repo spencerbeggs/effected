@@ -12,6 +12,10 @@ import { Repo } from "./Repo.js";
  * with a stated sunset. Pinning the version means the response is on a contract
  * the generated types do not describe — which is why this module is the one that
  * uses `requestDecoded` with owned schemas rather than the route table.
+ *
+ * Sent as a per-call header, which wins over the client's own
+ * `apiVersion`, so these reads stay on this contract even when a consumer
+ * pins the client to another version.
  */
 const API_VERSION = "2026-03-10";
 

@@ -34,7 +34,12 @@ export interface TransportOptions {
 	readonly baseUrl?: string | undefined;
 	readonly userAgent?: string | undefined;
 	readonly fetch?: typeof globalThis.fetch | undefined;
+	/** The `x-github-api-version` every request carries unless the call sets its own. */
+	readonly apiVersion: string;
 }
+
+/** The REST api-version a client pins when its options name none. */
+export const DEFAULT_API_VERSION = "2026-03-10";
 
 /** What a client layer holds. */
 export interface Transport {
@@ -76,8 +81,8 @@ const SILENT_LOG = {
  * maps Effect's logs to whatever its runtime wants, so no GitHub Actions
  * knowledge lives in this client.
  */
-const makeOctokit = (options: TransportOptions): Octokit =>
-	new Octokit({
+const makeOctokit = (options: TransportOptions): Octokit => {
+	const octokit = new Octokit({
 		// The one deliberate unwrap in this package: octokit needs the string.
 		// Nothing downstream re-exposes it — errors, spans and logs never carry it.
 		...(options.token !== undefined ? { auth: Redacted.value(options.token) } : {}),
@@ -86,6 +91,16 @@ const makeOctokit = (options: TransportOptions): Octokit =>
 		...(options.fetch !== undefined ? { request: { fetch: options.fetch } } : {}),
 		log: SILENT_LOG,
 	});
+	// octokit's constructor takes no default headers, so the pin rides a
+	// `before` hook. By the time it runs the call's own headers are merged in
+	// (lowercased), so a per-call `x-github-api-version` — the attestation
+	// routes set one — is left alone. Every surface goes through this hook:
+	// request, the paginator and GraphQL, which ignores the header.
+	octokit.hook.before("request", (request) => {
+		request.headers["x-github-api-version"] ??= options.apiVersion;
+	});
+	return octokit;
+};
 
 /**
  * Build a transport over a freshly constructed octokit instance.

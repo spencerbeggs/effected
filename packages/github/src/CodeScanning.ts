@@ -19,7 +19,15 @@ import type * as Rest from "./Rest.js";
 export interface CodeScanningSetup {
 	/** Whether default setup is `configured` or `not-configured`. */
 	readonly state?: "configured" | "not-configured" | undefined;
-	/** The CodeQL languages to analyse. */
+	/**
+	 * The CodeQL languages to analyse.
+	 *
+	 * @remarks
+	 * CodeQL's names, not linguist's: JavaScript and TypeScript are the one
+	 * combined `javascript-typescript`, and the separate `javascript` and
+	 * `typescript` values are no longer accepted under the api-version the
+	 * client pins.
+	 */
 	readonly languages?: ReadonlyArray<string> | undefined;
 	/** `default` or `extended`. */
 	readonly query_suite?: string | undefined;

@@ -27,7 +27,7 @@ const INSTANT_RETRY = RetryPolicy.make({
 const withClient = <A, E>(
 	replies: ReadonlyArray<Reply>,
 	use: (client: GitHubClient["Service"], script: ReturnType<typeof scriptedFetch>) => Effect.Effect<A, E>,
-	options: { retry?: RetryPolicy | "off" } = {},
+	options: { retry?: RetryPolicy | "off"; apiVersion?: string } = {},
 ): Effect.Effect<A, E> =>
 	Effect.gen(function* () {
 		const script = scriptedFetch(replies);
@@ -35,6 +35,7 @@ const withClient = <A, E>(
 			token: TOKEN,
 			fetch: script.fetch,
 			retry: options.retry ?? "off",
+			...(options.apiVersion !== undefined ? { apiVersion: options.apiVersion } : {}),
 		});
 		return yield* Effect.provide(
 			Effect.flatMap(GitHubClient, (client) => use(client, script)),
@@ -932,5 +933,53 @@ describe("GitHubFixtures.failure", () => {
 			);
 			assert.strictEqual(data as unknown, lookalike, "a plain object is data, served as-is");
 		}),
+	);
+});
+
+describe("GitHubClient api-version", () => {
+	it.effect("pins 2026-03-10 on every request by default, paginated reads included", () =>
+		withClient(
+			[
+				{ status: 200, body: { default_branch: "main" } },
+				{ status: 200, body: [{ id: 1 }] },
+			],
+			(client, script) =>
+				Effect.gen(function* () {
+					yield* client.request("GET /repos/{owner}/{repo}", { owner: "o", repo: "r" });
+					yield* client.paginate("GET /repos/{owner}/{repo}/releases", { owner: "o", repo: "r" });
+					assert.strictEqual(script.count(), 2);
+					for (const call of script.calls) assert.strictEqual(call.headers["x-github-api-version"], "2026-03-10");
+				}),
+		),
+	);
+
+	it.effect("the apiVersion option replaces the default", () =>
+		withClient(
+			[{ status: 200, body: { default_branch: "main" } }],
+			(client, script) =>
+				Effect.gen(function* () {
+					yield* client.request("GET /repos/{owner}/{repo}", { owner: "o", repo: "r" });
+					assert.strictEqual(script.calls[0]?.headers["x-github-api-version"], "2022-11-28");
+				}),
+			{ apiVersion: "2022-11-28" },
+		),
+	);
+
+	it.effect("a per-call header wins over the option", () =>
+		withClient(
+			[{ status: 200, body: { id: 1, name: "x" } }],
+			(client, script) =>
+				Effect.gen(function* () {
+					// The attestation routes pin their own version per call; a client
+					// pinned elsewhere must not overwrite it.
+					yield* client.requestDecoded(
+						"GET /preview/thing",
+						{ headers: { "x-github-api-version": "2099-01-01" } },
+						Schema.Struct({ id: Schema.Number }),
+					);
+					assert.strictEqual(script.calls[0]?.headers["x-github-api-version"], "2099-01-01");
+				}),
+			{ apiVersion: "2022-11-28" },
+		),
 	);
 });

@@ -414,6 +414,24 @@ describe("GitHubApp.clientLayer", () => {
 		),
 	);
 
+	it.effect("passes apiVersion through to every client it builds", () =>
+		Effect.gen(function* () {
+			const script = scriptedFetch([tokenReply(), { status: 200, body: { default_branch: "main" } }, { status: 204 }]);
+			yield* Effect.provide(
+				Effect.flatMap(GitHubClient, (client) =>
+					client.request("GET /repos/{owner}/{repo}", { owner: "o", repo: "r" }),
+				),
+				GitHubApp.clientLayer(
+					{ ...CREDENTIALS, installationId: 42 },
+					{ fetch: script.fetch, retry: NO_RETRY, apiVersion: "2022-11-28" },
+				),
+			);
+			// The mint (as the app) and the read (as the installation) both carry it.
+			assert.strictEqual(script.calls[0]?.headers["x-github-api-version"], "2022-11-28");
+			assert.strictEqual(script.calls[1]?.headers["x-github-api-version"], "2022-11-28");
+		}),
+	);
+
 	it.effect("revokes the token when the layer's scope closes", () =>
 		Effect.gen(function* () {
 			const script = scriptedFetch([tokenReply(), { status: 200, body: {} }, { status: 204 }]);

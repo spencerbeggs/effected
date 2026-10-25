@@ -407,3 +407,105 @@ describe("repositoryPatch", () => {
 		assert.deepStrictEqual(patch, { has_issues: true });
 	});
 });
+
+describe("GitHubRepository topics", () => {
+	it.effect("topics reads the stored set off one GET", () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.topics),
+				{ "GET /repos/{owner}/{repo}/topics": { names: ["effect", "typescript"] } },
+			);
+			assert.deepStrictEqual([...value], ["effect", "typescript"]);
+			assert.strictEqual(requested[0]?.route, "GET /repos/{owner}/{repo}/topics");
+			assert.deepStrictEqual(requested[0]?.params, { owner: "acme", repo: "widget" });
+			assert.lengthOf(requested, 1);
+		}),
+	);
+
+	it.effect("setTopics returns what GitHub STORED, not what it was given", () =>
+		Effect.gen(function* () {
+			// GitHub lowercases every topic. A caller recording `names` as its
+			// applied state would see drift on the next read, so the member answers
+			// with the response.
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.setTopics(["Effect", "TypeScript"])),
+				{ "PUT /repos/{owner}/{repo}/topics": { names: ["effect", "typescript"] } },
+			);
+			assert.deepStrictEqual([...value], ["effect", "typescript"]);
+			assert.strictEqual(requested[0]?.route, "PUT /repos/{owner}/{repo}/topics");
+			assert.deepStrictEqual(requested[0]?.params, {
+				owner: "acme",
+				repo: "widget",
+				names: ["Effect", "TypeScript"],
+			});
+		}),
+	);
+
+	it.effect("setTopics with an empty array sends the empty set, which clears them", () =>
+		Effect.gen(function* () {
+			// PUT replaces the whole set, so `[]` must reach the wire: dropping it as
+			// "nothing to do" would leave every existing topic in place.
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.setTopics([])),
+				{ "PUT /repos/{owner}/{repo}/topics": { names: [] } },
+			);
+			assert.deepStrictEqual([...value], []);
+			assert.lengthOf(requested, 1);
+			assert.deepStrictEqual(requested[0]?.params, { owner: "acme", repo: "widget", names: [] });
+		}),
+	);
+
+	it.effect("an unstubbed topics member dies when read; setTopics when called", () =>
+		Effect.gen(function* () {
+			const double = GitHubRepository.makeTest();
+			const read = yield* Effect.exit(Effect.provide(double.topics, Repo.layer(ACME)));
+			assert.match(defectMessage(read) ?? "", /topics was read but not stubbed/);
+			const write = yield* Effect.exit(Effect.provide(double.setTopics(["x"]), Repo.layer(ACME)));
+			assert.match(defectMessage(write) ?? "", /setTopics\(\) was called but not stubbed/);
+		}),
+	);
+});
+
+describe("GitHubRepository.applySettings ignored keys", () => {
+	it.effect("a key neither API declares is not sent and is reported ignored", () =>
+		Effect.gen(function* () {
+			// The REST PATCH ignores an unknown field and answers 200, so forwarding
+			// `has_discussion` (a typo) would report it applied while nothing
+			// changed (effected#376).
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.applySettings({ has_issues: true, has_discussion: true })),
+				{ "PATCH /repos/{owner}/{repo}": REPO },
+			);
+			assert.deepStrictEqual([...value.rest], ["has_issues"]);
+			assert.deepStrictEqual([...value.ignored], ["has_discussion"]);
+			assert.deepStrictEqual(requested[0]?.params, { owner: "acme", repo: "widget", has_issues: true });
+		}),
+	);
+
+	it.effect("a map of only unknown keys sends nothing at all", () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.applySettings({ made_up: 1, toString: "x" })),
+			);
+			assert.lengthOf(requested, 0, "no request should have been made");
+			assert.deepStrictEqual([...value.rest], []);
+			assert.deepStrictEqual([...value.graphql], []);
+			assert.deepStrictEqual([...value.ignored].sort(), ["made_up", "toString"]);
+		}),
+	);
+
+	it.effect("a GraphQL-only key is routed to GraphQL even where REST also declares it", () =>
+		Effect.gen(function* () {
+			// `has_pull_requests` appears in the REST body in GitHub's description
+			// too; the GraphQL routing is the verified one and stays first.
+			const { value } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.applySettings({ has_pull_requests: false })),
+				{ "GET /repos/{owner}/{repo}": REPO },
+				UPDATE_REPOSITORY,
+			);
+			assert.deepStrictEqual([...value.graphql], ["has_pull_requests"]);
+			assert.deepStrictEqual([...value.rest], []);
+			assert.deepStrictEqual([...value.ignored], []);
+		}),
+	);
+});
