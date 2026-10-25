@@ -31,6 +31,11 @@ export default async () => {
 					agent: "agent",
 				},
 				coverageTargets: AgentPlugin.COVERAGE_LEVELS.basic.coverageTargets,
+				// CI runners are ephemeral: nothing reads the SQLite history there, and persisting it plus the
+				// follow-on scan cost about 24 s per run (vitest-agent#568). `persist` is opt-out by design and
+				// never reads CI itself, so the decision lives here. Console summary, job summary, coverage
+				// analysis and the exit code are unchanged; VITEST_AGENT_PERSIST still overrides either way.
+				...(process.env.CI ? { persist: false } : {}),
 			}),
 		],
 		test: {
@@ -59,6 +64,9 @@ export default async () => {
 				enabled: true,
 				provider: "v8",
 				thresholds: AgentPlugin.COVERAGE_LEVELS.basic.thresholds,
+				// Our own sources only. Without an include, the coverage-target scan listed dependency files
+				// (node_modules/.pnpm/...) as "below target" (effected#945).
+				include: ["packages/*/src/**/*.{ts,tsx,mts,cts}", "lib/scripts/**/*.ts"],
 				exclude: ["scratchpad/**"],
 			},
 		},

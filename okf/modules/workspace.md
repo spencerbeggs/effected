@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-24T00:35:53Z
+  at: 2026-10-25T14:23:01Z
 integrity:
   generated:
-    body: 272d41831cd7ad5b
+    body: 5ffeba511e83e4d0
 ---
 
 # workspace
@@ -79,5 +79,7 @@ Vitest with the `@vitest-agent/plugin` `AgentPlugin`; tests live in each package
 The root `globalSetup` (`vitest.setup.ts`) runs `pnpm exec turbo run build:dev --filter '!@effected/ai-plugin' --output-logs=errors-only` via `AgentPlugin.runScript` before **every** vitest run — CLI and the MCP `run_tests` tool alike, whichever project — so tests see fresh `dist/dev` artifacts; turbo's cache makes it a fast no-op when nothing changed. The plugin is excluded because its `build:dev` regenerates the committed `plugin/builds/` trees, and the setup pins `runScript`'s recently-built window to 1 ms, because at its 30 s default a run inside the window skips the build and reads a stale upstream `dist/dev` — see [testing standards](../conventions/testing-standards.md). Run vitest from the repo root: from inside a package directory vitest does not load the root config, so `--project @effected/<pkg>` fails with `No projects matched the filter` and the repo's setup, plugins and reporter are all absent. From the root, prefer `vitest run --project @effected/<pkg>`. A bare positional filter is matched as a substring against each test file's path, not as a path selector — see [a vitest positional filter is a substring match, and a package-dir run never loads the root config](../gotchas/vitest-positional-filter-is-cwd-relative.md) for the measured comparison and the `Tests: 0/0 passed` / exit 1 shape a miss produces.
 
 `pnpm ci:test` sets `CI=true`. The global coverage thresholds in `vitest.config.ts` are set unconditionally. They measure the whole repository, so a filtered run cannot meet them — but `@vitest-agent/plugin` (4.x) detects a partial run (positional filter, `--project`, `--tags-filter`, `--changed`, `--related`, `--shard`, `-t`) and skips them, printing `Coverage thresholds skipped: partial run`. A filtered run's exit code is therefore a real signal; do not reintroduce a CI-only gate around the thresholds.
+
+Coverage is measured on our own sources only (`coverage.include`: `packages/*/src/**` and `lib/scripts/**`), so dependency files never reach the report. Under `CI` the config sets `persist: false` on `AgentPlugin`, skipping the SQLite history an ephemeral runner discards; `VITEST_AGENT_PERSIST` overrides it either way. The BATS construct-index positive control skips under `CI` (it would run a cold `pnpm build`; the pre-push gate proves it).
 
 Three of this repository's gates — the `suppressed:` count in `issues.json`, the `Tests:` line, and `packages.length`-style fixture assertions — work by asserting a number did not change unexpectedly; state which count moved and why whenever one does, per [state the reason when a gate count moves](../conventions/state-the-reason-when-a-gate-count-moves.md).
