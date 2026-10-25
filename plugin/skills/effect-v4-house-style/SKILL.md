@@ -72,6 +72,9 @@ these before inventing a local convention.
 - **No floating functions.** Instance methods are canonical; cross-cutting
   operations are `Function.dual` statics on the owning class that mirror the
   instance method's exact name (`SemVer.gt` wraps `self.gt(that)`).
+- **Copy a class instance by spreading it.** A transform that must preserve
+  every field but one is `X.make({ ...x, field: next })`, never a hand-listed
+  literal that drops whatever field is added next — see `effect-v4-schema`.
 - **`Schema.Class` member placement — one rule.** Anything that **produces or
   classifies** a value is a `static`: constructors and parsers (`parse` /
   `parseResult` — `make` is reserved, see `effect-v4-schema`), decoders,
