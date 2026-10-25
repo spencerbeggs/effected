@@ -99,9 +99,29 @@ export class VersionJson extends Schema.TaggedClass<VersionJson>()("VersionJson"
 /**
  * Do not ask for a version; presence is the only question.
  *
+ * @remarks
+ * Presence is still proven by RUNNING the tool, with `flag` (default
+ * `--version`) as its arguments. Globally, any completed run counts. Through a
+ * project-local launcher (`pnpm exec`, `npx --no --`, …) the run must exit 0,
+ * because a launcher reports a missing tool as a non-zero exit, the same code
+ * a tool that rejects its arguments returns. So a local tool that rejects
+ * `--version` reads as absent: give it a `flag` it accepts with exit 0.
+ *
+ * @example
+ * ```ts
+ * // A tool with no --version, probed with an argument it accepts.
+ * const tool = Tool.named("legacy-cli", { version: VersionNone.make({ flag: "--help" }) });
+ * ```
+ *
  * @public
  */
-export class VersionNone extends Schema.TaggedClass<VersionNone>()("VersionNone", {}) {}
+export class VersionNone extends Schema.TaggedClass<VersionNone>()("VersionNone", {
+	/**
+	 * The argument(s) the presence probe passes, split on spaces into argv.
+	 * Omitted means `"--version"`. Locally the probe must exit 0 with them.
+	 */
+	flag: Schema.optionalKey(Schema.String),
+}) {}
 
 /**
  * How to learn a tool's version.

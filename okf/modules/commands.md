@@ -21,10 +21,10 @@ sources:
     resource: ../../packages/commands/__test__/entrypoints.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T19:59:29Z
+  at: 2026-10-25T20:27:43Z
 integrity:
   generated:
-    body: 4c6d7034cd9ecbff
+    body: 067d748d9e85d606
 ---
 
 # @effected/commands
@@ -305,6 +305,11 @@ policy (`source`, `onMismatch`) is the caller's.
   missing` exits 1, "Command not found"), so a local copy counts as found
   only on exit 0. Reading the local probe by the global rule made every
   tool locally present wherever pnpm existed.[^tool-resolution-ts] The
+  launchers give a missing tool and a tool that rejects its arguments the
+  same exit code (pnpm, npx and bun all exit 1 for both; only their
+  launcher-specific stderr differs), so the probe's arguments must succeed
+  too: a presence-only `VersionNone` probe runs `--version` unless its
+  `flag` names an argument the tool accepts. The
   launcher also falls through to `PATH`, which this rule cannot see past —
   see [a global-only tool probes as local](../limitations/commands-local-probe-fallthrough.md).
 - **Which copy runs.** An explicit `source` of `"global"` or `"local"`

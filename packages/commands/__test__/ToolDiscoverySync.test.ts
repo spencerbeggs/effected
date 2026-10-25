@@ -79,6 +79,7 @@ describe("makeToolDiscoverySync — parity with ToolDiscovery", () => {
 		Tool.named("biome", { onMismatch: "fail" }),
 		Tool.named("biome", { prefer: "global", onMismatch: "preferLocal" }),
 		Tool.named("biome", { version: VersionNone.make({}), prefer: "global" }),
+		Tool.named("biome", { version: VersionNone.make({ flag: "--help" }), source: "local" }),
 	];
 
 	for (const [globalLabel, global] of outcomes) {
@@ -171,6 +172,22 @@ describe("makeToolDiscoverySync — probing", () => {
 			const resolved = discovery.resolve(Tool.named(name));
 			assert.isTrue(Result.isFailure(resolved) && resolved.failure instanceof ToolRefusedError, name);
 		}
+	});
+});
+
+describe("makeToolDiscoverySync — a presence-only probe's flag", () => {
+	it("passes the caller-chosen flag to both probes", () => {
+		const { spawn, calls } = syncSpawn({ global: { exit: 0, stdout: "" }, launcher: { exit: 0, stdout: "" } });
+		makeToolDiscoverySync({ spawn, context: pnpmContext }).resolve(
+			Tool.named("legacy", { version: VersionNone.make({ flag: "--help" }) }),
+		);
+		assert.deepStrictEqual(
+			calls.map((call) => [call.command, ...call.args]),
+			[
+				["legacy", "--help"],
+				["pnpm", "exec", "legacy", "--help"],
+			],
+		);
 	});
 });
 

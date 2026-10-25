@@ -45,9 +45,9 @@ export const isRefusedName = (name: string): boolean => name === "" || name.star
 /** Whether discovery would memoize this evidence: only a tool that was found. */
 export const isPositive = (evidence: Evidence): boolean => evidence.global.found || evidence.local.found;
 
-/** argv for a version probe: the flag string split on whitespace. */
+/** argv for a probe: the flag string split on whitespace; a presence-only probe defaults to `--version`. */
 export const probeArgs = (probe: VersionProbe): ReadonlyArray<string> =>
-	probe._tag === "VersionNone" ? ["--version"] : probe.flag.split(/\s+/).filter((part) => part.length > 0);
+	(probe.flag ?? "--version").split(/\s+/).filter((part) => part.length > 0);
 
 /**
  * Decodes a probe's stdout as JSON text, `None` when it is not JSON.
@@ -110,6 +110,13 @@ export const extractVersion = (probe: VersionProbe, stdout: string): Option.Opti
  *   non-zero exit (`pnpm exec missing` exits 1, "Command not found"). A run
  *   alone proves only the launcher, so the local copy counts as found only on
  *   exit 0.
+ *
+ * The launchers give a missing tool and a tool that rejects its arguments the
+ * same exit code (pnpm, npx and bun all exit 1 for both); only their stderr,
+ * which differs per launcher and version, tells them apart. So the local rule
+ * also requires the probe's arguments to succeed: a presence-only probe whose
+ * tool rejects `--version` must name an accepted argument with
+ * `VersionNone.flag`.
  */
 export const probeFromRun = (
 	location: "global" | "local",

@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, Option, Result } from "effect";
 import { ChildProcess } from "effect/process";
 import { ExecContext, LocalExec } from "../src/LocalExec.js";
 import type { ScriptResult } from "../src/ScriptedSpawner.js";
@@ -342,6 +342,74 @@ describe("ToolDiscovery.resolve — a launcher that runs but finds no tool", () 
 				command === "pnpm" ? { exit: 1 } : { stdout: "1.0.0", exit: 2 },
 			).effect;
 			assert.strictEqual(resolved.source, "global");
+		}),
+	);
+});
+
+describe("ToolDiscovery.resolve — a presence-only probe's flag", () => {
+	// A launcher answers a missing tool and a tool that rejects its arguments
+	// with the same exit code, so a local presence probe must use arguments the
+	// tool accepts. This world: `legacy` is installed ONLY locally, rejects
+	// `--version` (exit 1) and accepts `--help` (exit 0).
+	const legacyWorld = (command: string, args: ReadonlyArray<string>): ScriptResult =>
+		command === "pnpm"
+			? args.includes("--help")
+				? { stdout: "usage: legacy", exit: 0 }
+				: { stderr: "unknown option --version", exit: 1 }
+			: ScriptedSpawner.notFound(command);
+
+	it.effect("probes with --version by default", () =>
+		Effect.gen(function* () {
+			const harness = run(resolve(Tool.named("legacy", { version: VersionNone.make({}) })), legacyWorld);
+			yield* Effect.flip(harness.effect);
+			assert.deepStrictEqual(
+				harness.spawner.spawns.map((spawn) => [spawn.command, ...spawn.args]),
+				[
+					["legacy", "--version"],
+					["pnpm", "exec", "legacy", "--version"],
+				],
+			);
+		}),
+	);
+
+	it.effect("a local tool rejecting --version reads as absent with the default flag", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				run(resolve(Tool.named("legacy", { version: VersionNone.make({}), source: "local" })), legacyWorld).effect,
+			);
+			assert.instanceOf(error, ToolNotFoundError);
+		}),
+	);
+
+	it.effect("a caller-chosen flag the tool accepts finds it locally", () =>
+		Effect.gen(function* () {
+			const tool = Tool.named("legacy", { version: VersionNone.make({ flag: "--help" }), source: "local" });
+			const harness = run(resolve(tool), legacyWorld);
+			const resolved = yield* harness.effect;
+			assert.strictEqual(resolved.source, "local");
+			assert.isTrue(Option.isNone(resolved.version), "presence only: no version is read");
+			assert.deepStrictEqual(harness.spawner.spawns[1]?.args, ["exec", "legacy", "--help"]);
+		}),
+	);
+
+	it.effect("probes differing only in flag do not share evidence", () =>
+		Effect.gen(function* () {
+			const harness = run(
+				Effect.gen(function* () {
+					const discovery = yield* ToolDiscovery;
+					const byDefault = yield* Effect.result(
+						discovery.resolve(Tool.named("legacy", { version: VersionNone.make({}), source: "local" })),
+					);
+					const byHelp = yield* Effect.result(
+						discovery.resolve(Tool.named("legacy", { version: VersionNone.make({ flag: "--help" }), source: "local" })),
+					);
+					return { byDefault, byHelp };
+				}),
+				legacyWorld,
+			);
+			const { byDefault, byHelp } = yield* harness.effect;
+			assert.isTrue(Result.isFailure(byDefault));
+			assert.isTrue(Result.isSuccess(byHelp));
 		}),
 	);
 });

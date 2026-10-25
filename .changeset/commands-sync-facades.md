@@ -18,7 +18,7 @@ The new `@effected/commands/node-sync` subpath exports `nodeSpawnSync`, the Node
 
 ## Bug Fixes
 
-* A project-local probe now needs exit code 0 to count as found. Previously any tool read as locally present wherever the launcher (pnpm, npx, yarn, bun) existed, because `pnpm exec missing --version` starts and exits 1. Tools that were wrongly reported as local now fall through to the global probe or report as missing. Global probes are unchanged.
+* A project-local probe now needs exit code 0 to count as found. Previously any tool read as locally present wherever the launcher (pnpm, npx, yarn, bun) existed, because `pnpm exec missing --version` starts and exits 1. Tools that were wrongly reported as local now fall through to the global probe or report as missing. Global probes are unchanged. Because a launcher returns the same exit code for a missing tool and for a tool that rejects its arguments, the probe's arguments must also succeed locally: a presence-only probe still runs `--version`, and `VersionNone` gains an optional `flag` for a tool that rejects it (`VersionNone.make({ flag: "--help" })`).
 
 ## Refactoring
 
