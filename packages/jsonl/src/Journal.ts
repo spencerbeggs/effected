@@ -196,14 +196,16 @@ export class Journal {
 				readonly config: JournalConfig | Effect.Effect<JournalConfig, E, RC>;
 			},
 		): JournalClass<Self, Id, R, E, RC> => {
-			const make = (config: JournalConfig) =>
-				// The one cast: the engine is registry-erased and typed here, once.
-				Effect.map(makeEngine(id, options.events, config), (engine) => engine.journal as unknown as JournalShape<R>);
 			const config = Effect.isEffect(options.config) ? options.config : Effect.succeed(options.config);
 			class JournalService extends Context.Service<Self, JournalShape<R>>()(id) {
 				static readonly events = options.events;
-				static readonly make = make;
-				static readonly layer = Layer.effect(JournalService, Effect.flatMap(config, make));
+				static readonly make = (config: JournalConfig) =>
+					// The one cast: the engine is registry-erased and typed here, once.
+					Effect.map(makeEngine(id, options.events, config), (engine) => engine.journal as unknown as JournalShape<R>);
+				static readonly layer = Layer.effect(
+					JournalService,
+					Effect.flatMap(config, (resolved) => JournalService.make(resolved)),
+				);
 			}
 			return JournalService as unknown as JournalClass<Self, Id, R, E, RC>;
 		};

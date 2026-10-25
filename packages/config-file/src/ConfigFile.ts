@@ -384,12 +384,6 @@ export interface ConfigFileOptions<A, I, RR, CE = ConfigCodecError> {
 	readonly events?: Context.Key<ConfigEvents, ConfigEventsShape>;
 }
 
-// Implementation of ConfigFile.Service; the public contract lives on the static.
-const Service =
-	<Self, A, CE = ConfigCodecError>() =>
-	<const Id extends string>(id: Id) =>
-		Context.Service<Self, ConfigFileShape<A, CE>>()(id);
-
 /**
  * Re-raise a codec failure with the file it came from attached.
  *
@@ -718,36 +712,6 @@ const makeImpl = <A, I, RR, CE>(
 	};
 };
 
-// Implementation of ConfigFile.layer; the public contract lives on the static.
-// `tag` is pinned by three intersected parts. `Context.Key<Self, S>` captures the key's real shape;
-// `Context.Key<Self, ConfigFileShape<A>>` keeps `A` inferable from the key, which a bare
-// `MergeStrategy.firstMatch()` in the options needs; the conditional only checks (`NoInfer`), rejecting a
-// shape wider than ConfigFileShape<A>. It cannot see through method-syntax parameter bivariance: a member
-// redeclared as a method with a wider parameter still passes.
-const layer = <
-	Self,
-	A,
-	I,
-	RR = never,
-	CE = ConfigCodecError,
-	S extends ConfigFileShape<A, CE> = ConfigFileShape<A, CE>,
->(
-	tag: Context.Key<Self, S> &
-		Context.Key<Self, ConfigFileShape<A, CE>> &
-		([ConfigFileShape<NoInfer<A>, NoInfer<CE>>] extends [S] ? unknown : never),
-	options: ConfigFileOptions<A, I, RR, CE>,
-): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | RR> =>
-	Layer.effect(
-		tag,
-		Effect.gen(function* () {
-			const fs = yield* FileSystem.FileSystem;
-			// `save` needs `dirname`, so `Path` is required alongside `FileSystem`.
-			const path = yield* Path.Path;
-			const resolverEnv = yield* Effect.context<RR>();
-			return makeImpl(options, fs, path, resolverEnv);
-		}),
-	);
-
 /**
  * Options for {@link ConfigFile.testLayer}.
  *
@@ -791,52 +755,6 @@ export interface ConfigFileTestOptions<A, I, CE = ConfigCodecError> {
 	readonly validate?: (value: A) => Effect.Effect<A, ConfigValidationError>;
 }
 
-// Implementation of ConfigFile.testLayer; the public contract lives on the static.
-// `tag` is pinned exactly as ConfigFile.layer's is; see the note there.
-const testLayer = <Self, A, I, CE = ConfigCodecError, S extends ConfigFileShape<A, CE> = ConfigFileShape<A, CE>>(
-	tag: Context.Key<Self, S> &
-		Context.Key<Self, ConfigFileShape<A, CE>> &
-		([ConfigFileShape<NoInfer<A>, NoInfer<CE>>] extends [S] ? unknown : never),
-	options: ConfigFileTestOptions<A, I, CE>,
-): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path> =>
-	Layer.effect(
-		tag,
-		Effect.gen(function* () {
-			const fs = yield* FileSystem.FileSystem;
-			const path = yield* Path.Path;
-			// The resolvers below need exactly this context. Taking it from the
-			// ambient environment avoids rebuilding it — and avoids a cast.
-			const resolverEnv = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
-
-			// Failures here are test-harness defects, not config errors: die.
-			const dir = yield* fs.makeTempDirectory({ prefix: "effected-config-file-" }).pipe(Effect.orDie);
-			yield* Effect.addFinalizer(() => fs.remove(dir, { recursive: true }).pipe(Effect.orDie));
-
-			for (const [name, content] of Object.entries(options.files)) {
-				const target = path.join(dir, name);
-				yield* fs.makeDirectory(path.dirname(target), { recursive: true }).pipe(Effect.orDie);
-				yield* fs.writeFileString(target, content).pipe(Effect.orDie);
-			}
-
-			const resolvers = Object.keys(options.files).map((name) => ConfigResolver.staticDir({ dir, filename: name }));
-
-			return makeImpl(
-				{
-					schema: options.schema,
-					codec: options.codec,
-					strategy: options.strategy,
-					resolvers,
-					// Conditional spread: passing `validate: undefined` explicitly is not
-					// the same as omitting it.
-					...(options.validate !== undefined && { validate: options.validate }),
-				},
-				fs,
-				path,
-				resolverEnv,
-			);
-		}),
-	);
-
 /**
  * Options for {@link ConfigFile.read}.
  *
@@ -873,29 +791,6 @@ export interface ConfigReadOptions<A, I, CE = ConfigCodecError> {
 	readonly parseOptions?: SchemaAST.ParseOptions;
 }
 
-// Implementation of ConfigFile.read; the public contract lives on the static.
-const read = <A, I, CE = ConfigCodecError>(
-	path: string,
-	options: ConfigReadOptions<A, I, CE>,
-): Effect.Effect<A, ConfigReadError<CE>, FileSystem.FileSystem> =>
-	Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem;
-
-		const raw = yield* fs
-			.readFileString(path)
-			.pipe(Effect.mapError((cause) => new ConfigFileReadError({ path, cause })));
-
-		const parsed = yield* options.codec.parse(raw).pipe(Effect.mapError((error) => withCodecPath(error, path)));
-
-		return yield* Schema.decodeUnknownEffect(options.schema)(parsed, options.parseOptions).pipe(
-			// The same boundary normalization the service performs: never leak a
-			// SchemaError outward, and carry its issue tree rather than a string.
-			Effect.catchTag("SchemaError", (error) =>
-				Effect.fail(new ConfigValidationError({ path: Option.some(path), issue: error.issue })),
-			),
-		);
-	}).pipe(Effect.withSpan("ConfigFile.read", { attributes: { path } }));
-
 /**
  * The config file service: a per-schema service factory, its layers, and the
  * one-shot {@link ConfigFile.read}.
@@ -927,7 +822,10 @@ export class ConfigFile {
 	 * >()("app/Secrets") {}
 	 * ```
 	 */
-	static readonly Service = Service;
+	static readonly Service =
+		<Self, A, CE = ConfigCodecError>() =>
+		<const Id extends string>(id: Id) =>
+			Context.Service<Self, ConfigFileShape<A, CE>>()(id);
 
 	/**
 	 * Build the live layer for a config service class.
@@ -966,7 +864,28 @@ export class ConfigFile {
 	 * });
 	 * ```
 	 */
-	static readonly layer = layer;
+	static readonly layer =
+		// `tag` is pinned by three intersected parts. `Context.Key<Self, S>` captures the key's real shape;
+		// `Context.Key<Self, ConfigFileShape<A>>` keeps `A` inferable from the key, which a bare
+		// `MergeStrategy.firstMatch()` in the options needs; the conditional only checks (`NoInfer`), rejecting a
+		// shape wider than ConfigFileShape<A>. It cannot see through method-syntax parameter bivariance: a member
+		// redeclared as a method with a wider parameter still passes.
+		<Self, A, I, RR = never, CE = ConfigCodecError, S extends ConfigFileShape<A, CE> = ConfigFileShape<A, CE>>(
+			tag: Context.Key<Self, S> &
+				Context.Key<Self, ConfigFileShape<A, CE>> &
+				([ConfigFileShape<NoInfer<A>, NoInfer<CE>>] extends [S] ? unknown : never),
+			options: ConfigFileOptions<A, I, RR, CE>,
+		): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | RR> =>
+			Layer.effect(
+				tag,
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					// `save` needs `dirname`, so `Path` is required alongside `FileSystem`.
+					const path = yield* Path.Path;
+					const resolverEnv = yield* Effect.context<RR>();
+					return makeImpl(options, fs, path, resolverEnv);
+				}),
+			);
 
 	/**
 	 * A scoped layer that seeds `files` into a temp directory, wires the **real**
@@ -1001,7 +920,51 @@ export class ConfigFile {
 	 * }).pipe(Layer.provide(NodeServices.layer));
 	 * ```
 	 */
-	static readonly testLayer = testLayer;
+	static readonly testLayer =
+		// `tag` is pinned exactly as ConfigFile.layer's is; see the note there.
+		<Self, A, I, CE = ConfigCodecError, S extends ConfigFileShape<A, CE> = ConfigFileShape<A, CE>>(
+			tag: Context.Key<Self, S> &
+				Context.Key<Self, ConfigFileShape<A, CE>> &
+				([ConfigFileShape<NoInfer<A>, NoInfer<CE>>] extends [S] ? unknown : never),
+			options: ConfigFileTestOptions<A, I, CE>,
+		): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path> =>
+			Layer.effect(
+				tag,
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					const path = yield* Path.Path;
+					// The resolvers below need exactly this context. Taking it from the
+					// ambient environment avoids rebuilding it — and avoids a cast.
+					const resolverEnv = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
+
+					// Failures here are test-harness defects, not config errors: die.
+					const dir = yield* fs.makeTempDirectory({ prefix: "effected-config-file-" }).pipe(Effect.orDie);
+					yield* Effect.addFinalizer(() => fs.remove(dir, { recursive: true }).pipe(Effect.orDie));
+
+					for (const [name, content] of Object.entries(options.files)) {
+						const target = path.join(dir, name);
+						yield* fs.makeDirectory(path.dirname(target), { recursive: true }).pipe(Effect.orDie);
+						yield* fs.writeFileString(target, content).pipe(Effect.orDie);
+					}
+
+					const resolvers = Object.keys(options.files).map((name) => ConfigResolver.staticDir({ dir, filename: name }));
+
+					return makeImpl(
+						{
+							schema: options.schema,
+							codec: options.codec,
+							strategy: options.strategy,
+							resolvers,
+							// Conditional spread: passing `validate: undefined` explicitly is not
+							// the same as omitting it.
+							...(options.validate !== undefined && { validate: options.validate }),
+						},
+						fs,
+						path,
+						resolverEnv,
+					);
+				}),
+			);
 
 	/**
 	 * Read, decode and validate one explicit path — no service, no layer, no tag.
@@ -1040,5 +1003,25 @@ export class ConfigFile {
 	 * });
 	 * ```
 	 */
-	static readonly read = read;
+	static readonly read = <A, I, CE = ConfigCodecError>(
+		path: string,
+		options: ConfigReadOptions<A, I, CE>,
+	): Effect.Effect<A, ConfigReadError<CE>, FileSystem.FileSystem> =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+
+			const raw = yield* fs
+				.readFileString(path)
+				.pipe(Effect.mapError((cause) => new ConfigFileReadError({ path, cause })));
+
+			const parsed = yield* options.codec.parse(raw).pipe(Effect.mapError((error) => withCodecPath(error, path)));
+
+			return yield* Schema.decodeUnknownEffect(options.schema)(parsed, options.parseOptions).pipe(
+				// The same boundary normalization the service performs: never leak a
+				// SchemaError outward, and carry its issue tree rather than a string.
+				Effect.catchTag("SchemaError", (error) =>
+					Effect.fail(new ConfigValidationError({ path: Option.some(path), issue: error.issue })),
+				),
+			);
+		}).pipe(Effect.withSpan("ConfigFile.read", { attributes: { path } }));
 }

@@ -42,32 +42,6 @@ const matches = (error: CommandFailedError, patterns: ReadonlyArray<string>): bo
 	return patterns.some((pattern) => text.includes(pattern.toLowerCase()));
 };
 
-// Implementation of Retry.isTransient; the public contract lives on the static.
-const isTransient = (error: CommandFailedError): boolean => {
-	if (error.kind === "timeout") return false;
-	if (error.kind === "spawn") return !error.notFound;
-	return matches(error, TRANSIENT_PATTERNS);
-};
-
-// Implementation of Retry.transient; the public contract lives on the static.
-const transient = (options?: {
-	/** Retries after the first attempt. Defaults to 2 (three attempts total). */
-	readonly times?: number | undefined;
-	/** Extra patterns treated as transient, in addition to {@link TRANSIENT_PATTERNS}. */
-	readonly also?: ReadonlyArray<string> | undefined;
-}): {
-	readonly while: (error: CommandFailedError) => boolean;
-	readonly schedule: Schedule.Schedule<Duration.Duration>;
-	readonly times: number;
-} => {
-	const extra = options?.also ?? [];
-	return {
-		while: (error: CommandFailedError) => isTransient(error) || (error.kind !== "timeout" && matches(error, extra)),
-		schedule: Sched.jittered(Sched.exponential(Duration.millis(200))),
-		times: options?.times ?? 2,
-	};
-};
-
 /**
  * Transience classification for command failures, and the retry policy built
  * on it.
@@ -98,7 +72,11 @@ export class Retry {
 	 * Any other spawn failure (a busy or momentarily locked binary) *is* treated as
 	 * transient — that condition does clear.
 	 */
-	static readonly isTransient = isTransient;
+	static isTransient(error: CommandFailedError): boolean {
+		if (error.kind === "timeout") return false;
+		if (error.kind === "spawn") return !error.notFound;
+		return matches(error, TRANSIENT_PATTERNS);
+	}
 
 	/**
 	 * A ready-made policy for `Effect.retry`: transient failures only, on a jittered
@@ -115,8 +93,26 @@ export class Retry {
 	 * say) composes `Effect.retryOrElse` or `Effect.tapError` itself; that reset is
 	 * domain logic and does not belong in a retry policy.
 	 */
-	static readonly transient = transient;
+	static transient(options?: {
+		/** Retries after the first attempt. Defaults to 2 (three attempts total). */
+		readonly times?: number | undefined;
+		/** Extra patterns treated as transient, in addition to {@link TRANSIENT_PATTERNS}. */
+		readonly also?: ReadonlyArray<string> | undefined;
+	}): {
+		readonly while: (error: CommandFailedError) => boolean;
+		readonly schedule: Schedule.Schedule<Duration.Duration>;
+		readonly times: number;
+	} {
+		const extra = options?.also ?? [];
+		return {
+			while: (error: CommandFailedError) =>
+				Retry.isTransient(error) || (error.kind !== "timeout" && matches(error, extra)),
+			schedule: Sched.jittered(Sched.exponential(Duration.millis(200))),
+			times: options?.times ?? 2,
+		};
+	}
 
+	// Annotated: the module-local const must stay (used by isTransient and exported).
 	/** Substrings matched against a failure to classify it as transient. See {@link TRANSIENT_PATTERNS}. */
-	static readonly TRANSIENT_PATTERNS = TRANSIENT_PATTERNS;
+	static readonly TRANSIENT_PATTERNS: ReadonlyArray<string> = TRANSIENT_PATTERNS;
 }

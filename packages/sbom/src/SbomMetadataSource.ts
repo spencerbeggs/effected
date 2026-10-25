@@ -43,12 +43,6 @@ const purlSegments = (name: string): string => {
 	return `${encodeURIComponent(name.slice(0, separator))}/${encodeURIComponent(name.slice(separator + 1))}`;
 };
 
-// Implementation of SbomMetadataSource.npmPurl; the public contract lives on the static.
-const npmPurl = (name: string, version?: string): string => {
-	const path = purlSegments(name);
-	return version === undefined ? `pkg:npm/${path}` : `pkg:npm/${path}@${version}`;
-};
-
 /**
  * What a manifest cannot supply, and the two places an explicit value wins.
  *
@@ -130,106 +124,6 @@ const supplierUrl = (options: SbomMetadataOptions | undefined): string | undefin
 const documentationUrl = (pkg: Package, options: SbomMetadataOptions | undefined): string | undefined =>
 	options?.documentationUrl ?? pkg.homepage;
 
-// Implementation of SbomMetadataSource.externalReferences; the public contract lives on the static.
-const externalReferences = (pkg: Package, options?: SbomMetadataOptions): ReadonlyArray<ExternalReference> => {
-	const references: Array<ExternalReference> = [];
-
-	const vcs = pkg.repository === undefined ? Option.none<string>() : pkg.repository.browseUrl;
-	if (Option.isSome(vcs)) references.push(ExternalReference.make({ type: "vcs", url: vcs.value }));
-
-	// An email-only `bugs` entry is legal npm and carries no URL to point at.
-	if (pkg.bugs?.url !== undefined) {
-		references.push(ExternalReference.make({ type: "issue-tracker", url: pkg.bugs.url }));
-	}
-
-	const documentation = documentationUrl(pkg, options);
-	if (documentation !== undefined) {
-		references.push(ExternalReference.make({ type: "documentation", url: documentation }));
-	}
-
-	const website = supplierUrl(options);
-	if (website !== undefined && website !== documentation) {
-		references.push(ExternalReference.make({ type: "website", url: website }));
-	}
-
-	return references;
-};
-
-// Implementation of SbomMetadataSource.componentFor; the public contract lives on the static.
-const componentFor = (input: ComponentInput): Component =>
-	Component.make({
-		type: input.type ?? "library",
-		name: input.name,
-		...(input.version !== undefined && { version: input.version }),
-		purl: npmPurl(input.name, input.version),
-		bomRef: input.version === undefined ? input.name : `${input.name}@${input.version}`,
-		...(input.description !== undefined && { description: input.description }),
-		...(input.license !== undefined && { licenses: [input.license] }),
-	});
-
-// Implementation of SbomMetadataSource.rootComponent; the public contract lives on the static.
-const rootComponent = (pkg: Package, options?: SbomMetadataOptions): Component => {
-	const version = pkg.version.toString();
-	const references = externalReferences(pkg, options);
-	const authors = authorsOf(pkg);
-	const publisher = options?.publisher ?? options?.supplier?.name ?? pkg.author?.name;
-
-	return Component.make({
-		type: options?.type ?? "library",
-		name: pkg.name,
-		version,
-		purl: npmPurl(pkg.name, version),
-		bomRef: `${pkg.name}@${version}`,
-		...(pkg.description !== undefined && { description: pkg.description }),
-		...(pkg.license !== undefined && { licenses: [pkg.license] }),
-		...(references.length > 0 && { externalReferences: references }),
-		...(pkg.keywords !== undefined && pkg.keywords.length > 0 && { tags: pkg.keywords }),
-		...(authors !== undefined && { authors }),
-		...(publisher !== undefined && { publisher }),
-		...(options?.copyright !== undefined && { copyright: options.copyright }),
-	});
-};
-
-// Implementation of SbomMetadataSource.fromPackage; the public contract lives on the static.
-const fromPackage = (pkg: Package, options?: SbomMetadataOptions): SbomMetadata => {
-	const supplier = options?.supplier;
-	const contacts = supplier?.contact ?? authorsOf(pkg);
-	const resolved =
-		supplier === undefined
-			? undefined
-			: Supplier.make({
-					name: supplier.name,
-					...(supplier.url !== undefined && { url: supplier.url }),
-					...(contacts !== undefined && { contact: contacts }),
-				});
-
-	return SbomMetadata.make({
-		...(options?.timestamp !== undefined && { timestamp: options.timestamp }),
-		...(options?.authors !== undefined && { authors: options.authors }),
-		...(resolved !== undefined && { supplier: resolved }),
-	});
-};
-
-// Implementation of SbomMetadataSource.formatCopyright; the public contract lives on the static.
-const formatCopyright = (holder: string, years: CopyrightYears): string =>
-	years.startYear === undefined || years.startYear === years.year
-		? `Copyright ${years.year} ${holder}`
-		: `Copyright ${years.startYear}-${years.year} ${holder}`;
-
-// Implementation of SbomMetadataSource.merge; the public contract lives on the static.
-const merge = (base: SbomMetadata, override: SbomMetadata): SbomMetadata => {
-	const timestamp = override.timestamp ?? base.timestamp;
-	const authors = override.authors ?? base.authors;
-	const component = override.component ?? base.component;
-	const supplier = override.supplier ?? base.supplier;
-	return SbomMetadata.make({
-		...(timestamp !== undefined && { timestamp }),
-		...(authors !== undefined && { authors }),
-		...(component !== undefined && { component }),
-		...(supplier !== undefined && { supplier }),
-	});
-};
-
 /**
  * Derivation of CycloneDX metadata from a `package.json` manifest.
  *
@@ -260,7 +154,10 @@ export class SbomMetadataSource {
 	 * subject names. Exposed because a caller assembling its own components —
 	 * or a statement subject — needs the same encoding this module applies.
 	 */
-	static readonly npmPurl = npmPurl;
+	static npmPurl(name: string, version?: string): string {
+		const path = purlSegments(name);
+		return version === undefined ? `pkg:npm/${path}` : `pkg:npm/${path}@${version}`;
+	}
 
 	/**
 	 * A component entry for one resolved dependency.
@@ -272,7 +169,17 @@ export class SbomMetadataSource {
 	 * already knows it. This is the mapping that would otherwise be
 	 * re-derived at every call site.
 	 */
-	static readonly componentFor = componentFor;
+	static componentFor(input: ComponentInput): Component {
+		return Component.make({
+			type: input.type ?? "library",
+			name: input.name,
+			...(input.version !== undefined && { version: input.version }),
+			purl: SbomMetadataSource.npmPurl(input.name, input.version),
+			bomRef: input.version === undefined ? input.name : `${input.name}@${input.version}`,
+			...(input.description !== undefined && { description: input.description }),
+			...(input.license !== undefined && { licenses: [input.license] }),
+		});
+	}
 
 	/**
 	 * The root component the BOM is about, derived from its own manifest.
@@ -281,7 +188,27 @@ export class SbomMetadataSource {
 	 * `publisher` resolves explicit → supplier name → the manifest's author,
 	 * which is what lets NTIA element 6 be satisfied from a manifest alone.
 	 */
-	static readonly rootComponent = rootComponent;
+	static rootComponent(pkg: Package, options?: SbomMetadataOptions): Component {
+		const version = pkg.version.toString();
+		const references = SbomMetadataSource.externalReferences(pkg, options);
+		const authors = authorsOf(pkg);
+		const publisher = options?.publisher ?? options?.supplier?.name ?? pkg.author?.name;
+
+		return Component.make({
+			type: options?.type ?? "library",
+			name: pkg.name,
+			version,
+			purl: SbomMetadataSource.npmPurl(pkg.name, version),
+			bomRef: `${pkg.name}@${version}`,
+			...(pkg.description !== undefined && { description: pkg.description }),
+			...(pkg.license !== undefined && { licenses: [pkg.license] }),
+			...(references.length > 0 && { externalReferences: references }),
+			...(pkg.keywords !== undefined && pkg.keywords.length > 0 && { tags: pkg.keywords }),
+			...(authors !== undefined && { authors }),
+			...(publisher !== undefined && { publisher }),
+			...(options?.copyright !== undefined && { copyright: options.copyright }),
+		});
+	}
 
 	/**
 	 * The manifest's outward links, as CycloneDX external references.
@@ -296,7 +223,29 @@ export class SbomMetadataSource {
 	 * `externalReference.url` is a URL, and emitting `owner/name` there is a
 	 * document that validates and misleads.
 	 */
-	static readonly externalReferences = externalReferences;
+	static externalReferences(pkg: Package, options?: SbomMetadataOptions): ReadonlyArray<ExternalReference> {
+		const references: Array<ExternalReference> = [];
+
+		const vcs = pkg.repository === undefined ? Option.none<string>() : pkg.repository.browseUrl;
+		if (Option.isSome(vcs)) references.push(ExternalReference.make({ type: "vcs", url: vcs.value }));
+
+		// An email-only `bugs` entry is legal npm and carries no URL to point at.
+		if (pkg.bugs?.url !== undefined) {
+			references.push(ExternalReference.make({ type: "issue-tracker", url: pkg.bugs.url }));
+		}
+
+		const documentation = documentationUrl(pkg, options);
+		if (documentation !== undefined) {
+			references.push(ExternalReference.make({ type: "documentation", url: documentation }));
+		}
+
+		const website = supplierUrl(options);
+		if (website !== undefined && website !== documentation) {
+			references.push(ExternalReference.make({ type: "website", url: website }));
+		}
+
+		return references;
+	}
 
 	/**
 	 * Document-level metadata for a manifest.
@@ -316,7 +265,24 @@ export class SbomMetadataSource {
 	 * this package's entry point so a caller can name the parameter type
 	 * without adding `@effected/package-json` as an undeclared dependency.
 	 */
-	static readonly fromPackage = fromPackage;
+	static fromPackage(pkg: Package, options?: SbomMetadataOptions): SbomMetadata {
+		const supplier = options?.supplier;
+		const contacts = supplier?.contact ?? authorsOf(pkg);
+		const resolved =
+			supplier === undefined
+				? undefined
+				: Supplier.make({
+						name: supplier.name,
+						...(supplier.url !== undefined && { url: supplier.url }),
+						...(contacts !== undefined && { contact: contacts }),
+					});
+
+		return SbomMetadata.make({
+			...(options?.timestamp !== undefined && { timestamp: options.timestamp }),
+			...(options?.authors !== undefined && { authors: options.authors }),
+			...(resolved !== undefined && { supplier: resolved }),
+		});
+	}
 
 	/**
 	 * A copyright statement for a holder and a year, or a span of years.
@@ -325,7 +291,11 @@ export class SbomMetadataSource {
 	 * The year is an **argument**: nothing here reads the clock, so the output is
 	 * deterministic. Read the ambient year at the caller's edge.
 	 */
-	static readonly formatCopyright = formatCopyright;
+	static formatCopyright(holder: string, years: CopyrightYears): string {
+		return years.startYear === undefined || years.startYear === years.year
+			? `Copyright ${years.year} ${holder}`
+			: `Copyright ${years.startYear}-${years.year} ${holder}`;
+	}
 
 	/**
 	 * Field-wise metadata merge: every field the override carries wins.
@@ -336,5 +306,16 @@ export class SbomMetadataSource {
 	 * and a library that decided it would be encoding one repository's
 	 * release policy.
 	 */
-	static readonly merge = merge;
+	static merge(base: SbomMetadata, override: SbomMetadata): SbomMetadata {
+		const timestamp = override.timestamp ?? base.timestamp;
+		const authors = override.authors ?? base.authors;
+		const component = override.component ?? base.component;
+		const supplier = override.supplier ?? base.supplier;
+		return SbomMetadata.make({
+			...(timestamp !== undefined && { timestamp }),
+			...(authors !== undefined && { authors }),
+			...(component !== undefined && { component }),
+			...(supplier !== undefined && { supplier }),
+		});
+	}
 }

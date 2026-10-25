@@ -74,8 +74,12 @@ export type UnscopedPackageName = string & Brand.Brand<"UnscopedPackageName">;
  */
 export type PackageName = ScopedPackageName | UnscopedPackageName;
 
-/** Classification statics attached to the `PackageName` schema value. */
-interface PackageNameStatics {
+/**
+ * Classification statics attached to the `PackageName` schema value.
+ *
+ * @public
+ */
+export interface PackageNameStatics {
 	/** Whether the string satisfies npm's package-name rules. */
 	readonly isValid: (name: string) => boolean;
 	/** The scope of a scoped name (`@scope/x` → `Some("scope")`), else `None`. */
@@ -121,7 +125,10 @@ const isScoped = (name: string): boolean => name.startsWith("@");
  *
  * @public
  */
-export const PackageName = Object.assign(Schema.Union([ScopedPackageName, UnscopedPackageName]), {
+export const PackageName: Schema.Union<
+	readonly [Schema.brand<Schema.String, "ScopedPackageName">, Schema.brand<Schema.String, "UnscopedPackageName">]
+> &
+	PackageNameStatics = Object.assign(Schema.Union([ScopedPackageName, UnscopedPackageName]), {
 	isValid,
 	scope,
 	unscoped,

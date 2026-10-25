@@ -193,12 +193,12 @@ function materialize(raw: RawExpression): SpdxExpression {
  * depth cap — fails with {@link InvalidSpdxExpressionError} on the failure
  * channel; the parser never throws.
  */
-// A `const` arrow rather than a hoisted `function` declaration: as the
-// `SpdxExpression.parseResult` facade member, the const's structural type
-// inlines into the facade's emitted `.d.ts` (like `parse` and `FromString`),
-// whereas a named `function` would be referenced as `typeof parseResult` and
-// leak an un-exported symbol (ae-forgotten-export) onto the `@public` surface.
-const parseResult = (input: string): Result.Result<SpdxExpression, InvalidSpdxExpressionError> => {
+// Annotated with its explicit function type (not just a signature on the arrow):
+// as the `SpdxExpression.parseResult` facade member, an unannotated local is
+// emitted as `typeof parseResult` and leaks an un-exported symbol
+// (ae-forgotten-export) onto the `@public` surface, while an annotated const
+// inlines its declared type like `FromString` does.
+const parseResult: (input: string) => Result.Result<SpdxExpression, InvalidSpdxExpressionError> = (input) => {
 	const raw = parseRaw(input);
 	return raw === undefined ? Result.fail(new InvalidSpdxExpressionError({ input })) : Result.succeed(materialize(raw));
 };
@@ -309,7 +309,8 @@ const collectLicenses = (expr: SpdxExpression, into: Array<License>): void => {
  * @param expr - the expression to read
  * @returns the licenses it names, in written order
  */
-const licensesOf = (expr: SpdxExpression): ReadonlyArray<License> => {
+// Annotated so the facade member emits its signature, not `typeof licensesOf`.
+const licensesOf: (expr: SpdxExpression) => ReadonlyArray<License> = (expr) => {
 	const collected: Array<License> = [];
 	collectLicenses(expr, collected);
 	const seen = new Set<string>();
@@ -354,7 +355,8 @@ const licensesOf = (expr: SpdxExpression): ReadonlyArray<License> => {
  * @param expr - the expression to read
  * @returns the primary license, or none when the expression has no single one
  */
-const primaryLicense = (expr: SpdxExpression): Option.Option<License> => {
+// Annotated so the facade member emits its signature, not `typeof primaryLicense`.
+const primaryLicense: (expr: SpdxExpression) => Option.Option<License> = (expr) => {
 	switch (expr._tag) {
 		case "License":
 		case "LicenseRef":

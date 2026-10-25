@@ -30,6 +30,7 @@ export {
 	type DependencyProtocol,
 	DependencySpecifier,
 	type DependencySpecifierBrand,
+	type DependencySpecifierStatics,
 	DistTagSpecifier,
 	InvalidDependencySpecifierError,
 	RangeSpecifier,
@@ -39,9 +40,11 @@ export {
 } from "./DependencySpecifier.js";
 export {
 	CorepackIntegrityHash,
+	type CorepackIntegrityHashStatics,
 	type IntegrityAlgorithm,
 	IntegrityHash,
 	type IntegrityHashBrand,
+	type IntegrityHashStatics,
 	InvalidIntegrityHashError,
 	InvalidSriIntegrityHashError,
 	SriIntegrityHash,

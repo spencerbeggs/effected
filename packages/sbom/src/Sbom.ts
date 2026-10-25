@@ -52,16 +52,6 @@ export class SbomWriteError extends Schema.TaggedError<SbomWriteError>()("SbomWr
 	}
 }
 
-// Implementation of Sbom.generate; the public contract lives on the static.
-const generate = (input: SbomInput): SbomDocument =>
-	SbomDocument.make({
-		bomFormat: BOM_FORMAT,
-		specVersion: SPEC_VERSION,
-		version: 1,
-		metadata: metadataWithRoot(input),
-		components: [...input.components].sort((a, b) => a.name.localeCompare(b.name)),
-	});
-
 /**
  * Thread the root component onto the caller's metadata, or synthesize metadata
  * carrying it.
@@ -80,18 +70,6 @@ const metadataWithRoot = (input: SbomInput): SbomMetadata =>
 		...(input.metadata?.authors !== undefined && { authors: input.metadata.authors }),
 		...(input.metadata?.supplier !== undefined && { supplier: input.metadata.supplier }),
 	});
-
-// Implementation of Sbom.toJson; the public contract lives on the static.
-const toJson = (document: SbomDocument, options?: SbomJsonOptions): string =>
-	JSON.stringify(documentJson(document), null, options?.space ?? 2);
-
-// Implementation of Sbom.write; the public contract lives on the static.
-const write = Effect.fn("Sbom.write")(function* (document: SbomDocument, path: string, options?: SbomJsonOptions) {
-	const fs = yield* FileSystem.FileSystem;
-	yield* fs
-		.writeFileString(path, toJson(document, options))
-		.pipe(Effect.mapError((cause) => new SbomWriteError({ path, cause })));
-});
 
 /**
  * The SBOM emitter: assemble, serialize, write.
@@ -119,7 +97,15 @@ export class Sbom {
 	 * same bytes: an SBOM's digest becomes an attestation subject, and a document
 	 * that reordered itself between runs would change that digest for no reason.
 	 */
-	static readonly generate = generate;
+	static generate(input: SbomInput): SbomDocument {
+		return SbomDocument.make({
+			bomFormat: BOM_FORMAT,
+			specVersion: SPEC_VERSION,
+			version: 1,
+			metadata: metadataWithRoot(input),
+			components: [...input.components].sort((a, b) => a.name.localeCompare(b.name)),
+		});
+	}
 
 	/**
 	 * Serialize a document to canonical CycloneDX 1.6 JSON.
@@ -128,7 +114,9 @@ export class Sbom {
 	 * **Total.** Absent optional fields are omitted rather than emitted as `null`,
 	 * and `bomRef` becomes the specification's hyphenated `bom-ref`.
 	 */
-	static readonly toJson = toJson;
+	static toJson(document: SbomDocument, options?: SbomJsonOptions): string {
+		return JSON.stringify(documentJson(document), null, options?.space ?? 2);
+	}
 
 	/**
 	 * Write a document to `path` as canonical JSON.
@@ -139,5 +127,14 @@ export class Sbom {
 	 * that wants one creates it, so the failure mode stays "the path you gave me
 	 * is not writable" rather than "something was created somewhere".
 	 */
-	static readonly write = write;
+	static readonly write = Effect.fn("Sbom.write")(function* (
+		document: SbomDocument,
+		path: string,
+		options?: SbomJsonOptions,
+	) {
+		const fs = yield* FileSystem.FileSystem;
+		yield* fs
+			.writeFileString(path, Sbom.toJson(document, options))
+			.pipe(Effect.mapError((cause) => new SbomWriteError({ path, cause })));
+	});
 }

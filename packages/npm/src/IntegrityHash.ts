@@ -79,7 +79,7 @@ const algorithmOf = (value: string): Option.Option<IntegrityAlgorithm> => {
 /**
  * Indicates that a string could not be parsed as a valid integrity hash.
  *
- * Raised by {@link IntegrityHash.decode}. The offending string is preserved on
+ * Raised by {@link IntegrityHashStatics.decode}. The offending string is preserved on
  * `input`.
  *
  * @public
@@ -96,8 +96,12 @@ export class InvalidIntegrityHashError extends Schema.TaggedError<InvalidIntegri
 	}
 }
 
-/** Taxonomy statics attached to the `IntegrityHash` schema value. */
-interface IntegrityHashStatics {
+/**
+ * Taxonomy statics attached to the `IntegrityHash` schema value.
+ *
+ * @public
+ */
+export interface IntegrityHashStatics {
 	/** Whether the hash is in SRI (`<algo>-<base64>`) form. */
 	readonly isSri: (value: string) => boolean;
 	/** Whether the hash is in corepack (`<algo>.<hex>`) form. */
@@ -145,14 +149,17 @@ const decode = (input: string): Effect.Effect<IntegrityHashBrand, InvalidIntegri
  *
  * @public
  */
-export const IntegrityHash = Object.assign(brandedIntegrity, {
-	isSri,
-	isCorepack,
-	isYarnChecksum,
-	isValid: isValidIntegrityHash,
-	algorithmOf,
-	decode,
-} satisfies IntegrityHashStatics);
+export const IntegrityHash: Schema.brand<Schema.String, "IntegrityHash"> & IntegrityHashStatics = Object.assign(
+	brandedIntegrity,
+	{
+		isSri,
+		isCorepack,
+		isYarnChecksum,
+		isValid: isValidIntegrityHash,
+		algorithmOf,
+		decode,
+	} satisfies IntegrityHashStatics,
+);
 
 const corepackRestricted = brandedIntegrity.pipe(
 	Schema.check(
@@ -375,8 +382,12 @@ const fromSri = (input: string): Effect.Effect<IntegrityHashBrand, InvalidSriInt
 		Effect.mapError(() => new InvalidSriIntegrityHashError({ input })),
 	);
 
-/** Conversion statics attached to the `CorepackIntegrityHash` schema value. */
-interface CorepackIntegrityHashStatics {
+/**
+ * Conversion statics attached to the `CorepackIntegrityHash` schema value.
+ *
+ * @public
+ */
+export interface CorepackIntegrityHashStatics {
 	/**
 	 * Codec between npm's SRI `sha512-<base64>` form (the encoded side) and the
 	 * corepack `sha512.<hex>` form (the decoded side). Decoding tolerates one
@@ -444,7 +455,8 @@ interface CorepackIntegrityHashStatics {
  *
  * @public
  */
-export const CorepackIntegrityHash = Object.assign(corepackRestricted, {
-	FromSri: corepackFromSri,
-	fromSri,
-} satisfies CorepackIntegrityHashStatics);
+export const CorepackIntegrityHash: Schema.brand<Schema.String, "IntegrityHash"> & CorepackIntegrityHashStatics =
+	Object.assign(corepackRestricted, {
+		FromSri: corepackFromSri,
+		fromSri,
+	} satisfies CorepackIntegrityHashStatics);

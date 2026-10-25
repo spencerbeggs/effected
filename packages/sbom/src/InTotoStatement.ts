@@ -65,17 +65,21 @@ const SHA256_PREFIX_RE = /^sha256:/i;
 
 const normalizeDigest = (value: string): string => value.replace(SHA256_PREFIX_RE, "").toLowerCase();
 
-/** Statics attached to the {@link (Sha256Digest:variable)} schema. */
-interface Sha256DigestStatics {
+/**
+ * Statics attached to the {@link (Sha256Digest:variable)} schema.
+ *
+ * @public
+ */
+export interface Sha256DigestStatics {
 	/** Whether the value is, or normalizes to, a SHA-256 digest. */
 	readonly isValid: (value: string) => boolean;
 	/**
 	 * Validate and normalize synchronously: an optional `sha256:` prefix is
 	 * stripped and hex is lowercased. The sync primitive
-	 * {@link (Sha256Digest:variable).parse} is defined in terms of.
+	 * {@link Sha256DigestStatics.parse} is defined in terms of.
 	 */
 	readonly parseResult: (value: string) => Result.Result<Sha256Digest, InvalidSha256DigestError>;
-	/** {@link (Sha256Digest:variable).parseResult} in the `Effect` channel. */
+	/** {@link Sha256DigestStatics.parseResult} in the `Effect` channel. */
 	readonly parse: (value: string) => Effect.Effect<Sha256Digest, InvalidSha256DigestError>;
 }
 
@@ -98,7 +102,7 @@ const parseResult = (value: string): Result.Result<Sha256Digest, InvalidSha256Di
  *
  * @public
  */
-export const Sha256Digest = Object.assign(
+export const Sha256Digest: Schema.brand<Schema.String, "Sha256Digest"> & Sha256DigestStatics = Object.assign(
 	Schema.String.pipe(Schema.check(Schema.isPattern(SHA256_RE)), Schema.brand("Sha256Digest")),
 	{
 		isValid: (value: string): boolean => SHA256_RE.test(normalizeDigest(value)),
@@ -136,7 +140,7 @@ export class InTotoSubject extends Schema.Class<InTotoSubject>("InTotoSubject")(
 	 *
 	 * @remarks
 	 * **Total** — the digest is already validated, which is what
-	 * {@link (Sha256Digest:variable).parseResult} is for.
+	 * {@link Sha256DigestStatics.parseResult} is for.
 	 */
 	static forSha256(name: string, digest: Sha256Digest): InTotoSubject {
 		return InTotoSubject.make({ name, digest: { sha256: digest } });

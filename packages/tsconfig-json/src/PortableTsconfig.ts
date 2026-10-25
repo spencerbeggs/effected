@@ -222,23 +222,6 @@ export interface PortableTsconfigOptions {
 	readonly includeTypes?: boolean;
 }
 
-// Implementation of PortableTsconfig.make; the public contract lives on the static.
-const make = (input: ResolvedTsconfig | CompilerOptions.Type, options?: PortableTsconfigOptions): PortableTsconfig => {
-	const source: Record<string, unknown> = isResolvedTsconfig(input) ? input.compilerOptions : input;
-	const compilerOptions: Record<string, unknown> = {};
-	for (const key of PRESERVED_OPTIONS) {
-		const value = source[key];
-		if (value !== undefined) compilerOptions[key] = value;
-	}
-	if (options?.includeTypes === true) {
-		const types = source[OPT_IN_TYPES_OPTION];
-		if (types !== undefined) compilerOptions[OPT_IN_TYPES_OPTION] = types;
-	}
-	compilerOptions.composite = false;
-	compilerOptions.noEmit = true;
-	return { $schema: TSCONFIG_SCHEMA_URL, compilerOptions };
-};
-
 /**
  * The portable-tsconfig filter: {@link (PortableTsconfig:class).make}
  * narrows a resolved or bare compiler-options object to the allow-listed,
@@ -274,5 +257,19 @@ export class PortableTsconfig {
 	 * @param options - Opt-ins for options that are portable but
 	 * resolution-dependent. Omitted means the strict, always-safe subset.
 	 */
-	static readonly make = make;
+	static make(input: ResolvedTsconfig | CompilerOptions.Type, options?: PortableTsconfigOptions): PortableTsconfig {
+		const source: Record<string, unknown> = isResolvedTsconfig(input) ? input.compilerOptions : input;
+		const compilerOptions: Record<string, unknown> = {};
+		for (const key of PRESERVED_OPTIONS) {
+			const value = source[key];
+			if (value !== undefined) compilerOptions[key] = value;
+		}
+		if (options?.includeTypes === true) {
+			const types = source[OPT_IN_TYPES_OPTION];
+			if (types !== undefined) compilerOptions[OPT_IN_TYPES_OPTION] = types;
+		}
+		compilerOptions.composite = false;
+		compilerOptions.noEmit = true;
+		return { $schema: TSCONFIG_SCHEMA_URL, compilerOptions };
+	}
 }

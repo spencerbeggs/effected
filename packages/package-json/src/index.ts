@@ -83,6 +83,7 @@ export { PackageManifest } from "./PackageManifest.js";
 export {
 	InvalidPackageNameError,
 	PackageName,
+	type PackageNameStatics,
 	ScopedPackageName,
 	UnscopedPackageName,
 } from "./PackageName.js";

@@ -179,18 +179,6 @@ const runWith = <A, E>(
 	throw Cause.squash(exit.cause);
 };
 
-// Implementation of TsconfigLoaderSync.load; the public contract lives on the static.
-const load = (configPath: string, options: TsconfigLoaderSyncOptions): TsconfigJson.Type =>
-	runWith(options, TsconfigLoader.load(configPath));
-
-// Implementation of TsconfigLoaderSync.resolve; the public contract lives on the static.
-const resolve = (configPath: string, options: TsconfigLoaderSyncOptions): ResolvedTsconfig =>
-	runWith(options, TsconfigLoader.resolve(configPath));
-
-// Implementation of TsconfigLoaderSync.compilerOptions; the public contract lives on the static.
-const compilerOptions = (configPath: string, options: TsconfigLoaderSyncOptions): CompilerOptions.Type =>
-	resolve(configPath, options).compilerOptions;
-
 /**
  * The synchronous tsconfig.json loader facade: the {@link TsconfigLoader}
  * pipeline run under `Effect.runSyncExit` against consumer-supplied
@@ -229,7 +217,9 @@ export class TsconfigLoaderSync {
 	 * `TsconfigParseError` or a `PlatformError` — the async pipeline's exact
 	 * typed failures.
 	 */
-	static readonly load = load;
+	static load(configPath: string, options: TsconfigLoaderSyncOptions): TsconfigJson.Type {
+		return runWith(options, TsconfigLoader.load(configPath));
+	}
 
 	/**
 	 * {@link TsconfigLoader.resolve}, synchronously: the full load -\>
@@ -238,12 +228,16 @@ export class TsconfigLoaderSync {
 	 * `TsconfigExtendsError` or a `PlatformError` — the async pipeline's exact
 	 * typed failures.
 	 */
-	static readonly resolve = resolve;
+	static resolve(configPath: string, options: TsconfigLoaderSyncOptions): ResolvedTsconfig {
+		return runWith(options, TsconfigLoader.resolve(configPath));
+	}
 
 	/**
 	 * {@link TsconfigLoader.compilerOptions}, synchronously: resolve the full
 	 * `extends` chain and project out the merged `compilerOptions`. Throws
 	 * the same typed failures as {@link TsconfigLoaderSync.resolve}.
 	 */
-	static readonly compilerOptions = compilerOptions;
+	static compilerOptions(configPath: string, options: TsconfigLoaderSyncOptions): CompilerOptions.Type {
+		return TsconfigLoaderSync.resolve(configPath, options).compilerOptions;
+	}
 }

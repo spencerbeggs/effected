@@ -85,21 +85,6 @@ const testPaths = (): XdgPaths =>
 		dataDirs: ["/usr/local/share", "/usr/share"],
 	});
 
-// Implementation of App.layerDirs; the public contract lives on the static.
-const layerDirs = (
-	options: AppDirsOptions,
-): Layer.Layer<Xdg | AppDirs, XdgEnvError, FileSystem.FileSystem | Path.Path> =>
-	Layer.provideMerge(AppDirs.layer(options), Xdg.layer);
-
-// Implementation of App.layer; the public contract lives on the static.
-const layer = (
-	options: AppOptions,
-): Layer.Layer<Xdg | AppDirs | Store | Cache, AppError, FileSystem.FileSystem | Path.Path> => {
-	const { store, cache, ...dirOptions } = options;
-	const databases = Layer.mergeAll(AppStore.layer(store), AppCache.layer(cache));
-	return Layer.provideMerge(databases, layerDirs(dirOptions));
-};
-
 /**
  * Everything {@link App.layerTest} provides: the four control-plane services
  * and the in-memory platform they run on.
@@ -119,23 +104,6 @@ export type AppTestServices =
 	| FileSystem.FileSystem
 	| Path.Path
 	| MemoryFileSystemVolume;
-
-// Implementation of App.layerTest; the public contract lives on the static.
-const layerTest = (options: AppTestOptions): Layer.Layer<AppTestServices, AppError> => {
-	// One volume per layerTest(...) call, shared by every service built from it
-	// and by the test body — so what AppDirs.ensure* creates and what a config
-	// layer composed on top writes are on the same filesystem the test inspects.
-	const platform = Layer.mergeAll(Path.layer, MemoryFileSystem.layerWith(options.files ?? {}));
-	const dirs = Layer.provideMerge(
-		AppDirs.layer({ namespace: options.namespace }),
-		Xdg.layerFrom(options.paths ?? testPaths()),
-	);
-	const databases = Layer.mergeAll(
-		Store.layerTest(options.store ?? { migrations: [] }),
-		Cache.layerTest(options.cache),
-	);
-	return Layer.provideMerge(Layer.mergeAll(databases, dirs), platform);
-};
 
 /**
  * The application control plane: one layer wiring `Xdg`, `AppDirs`, `Store`
@@ -244,7 +212,13 @@ export class App {
 	 * NodeRuntime.runMain(CliRuntime.main(Command.run(cli, { version: "1.0.0" }), { platform: PlatformLive }));
 	 * ```
 	 */
-	static readonly layer = layer;
+	static readonly layer = (
+		options: AppOptions,
+	): Layer.Layer<Xdg | AppDirs | Store | Cache, AppError, FileSystem.FileSystem | Path.Path> => {
+		const { store, cache, ...dirOptions } = options;
+		const databases = Layer.mergeAll(AppStore.layer(store), AppCache.layer(cache));
+		return Layer.provideMerge(databases, App.layerDirs(dirOptions));
+	};
 
 	/**
 	 * Build the directories half of the control plane alone: `Xdg` and
@@ -289,7 +263,10 @@ export class App {
 	 * const withStore = program.pipe(Effect.provide(StoreLive), Effect.provide(DirsLive));
 	 * ```
 	 */
-	static readonly layerDirs = layerDirs;
+	static readonly layerDirs = (
+		options: AppDirsOptions,
+	): Layer.Layer<Xdg | AppDirs, XdgEnvError, FileSystem.FileSystem | Path.Path> =>
+		Layer.provideMerge(AppDirs.layer(options), Xdg.layer);
 
 	/**
 	 * The hermetic control plane: fixed XDG paths, `:memory:` databases, and an
@@ -359,5 +336,19 @@ export class App {
 	 * });
 	 * ```
 	 */
-	static readonly layerTest = layerTest;
+	static readonly layerTest = (options: AppTestOptions): Layer.Layer<AppTestServices, AppError> => {
+		// One volume per layerTest(...) call, shared by every service built from it
+		// and by the test body — so what AppDirs.ensure* creates and what a config
+		// layer composed on top writes are on the same filesystem the test inspects.
+		const platform = Layer.mergeAll(Path.layer, MemoryFileSystem.layerWith(options.files ?? {}));
+		const dirs = Layer.provideMerge(
+			AppDirs.layer({ namespace: options.namespace }),
+			Xdg.layerFrom(options.paths ?? testPaths()),
+		);
+		const databases = Layer.mergeAll(
+			Store.layerTest(options.store ?? { migrations: [] }),
+			Cache.layerTest(options.cache),
+		);
+		return Layer.provideMerge(Layer.mergeAll(databases, dirs), platform);
+	};
 }

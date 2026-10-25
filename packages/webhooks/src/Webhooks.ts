@@ -1,6 +1,6 @@
 import type { Duration } from "effect";
 import { DateTime, Effect } from "effect";
-import { DEFAULT_TOLERANCE, checkFresh } from "./internal/verify.js";
+import { checkFresh, DEFAULT_TOLERANCE as defaultTolerance } from "./internal/verify.js";
 import type { WebhookPreset, WebhookVerificationError } from "./WebhookVerificationError.js";
 
 const checkFreshness = (
@@ -32,7 +32,8 @@ export class Webhooks {
 	 *
 	 * @public
 	 */
-	static readonly DEFAULT_TOLERANCE: Duration.Duration = DEFAULT_TOLERANCE;
+	// Annotated, aliased import: the value stays defined once in `internal/verify.ts`, which `checkFresh` also defaults to.
+	static readonly DEFAULT_TOLERANCE: Duration.Duration = defaultTolerance;
 
 	/**
 	 * Fail with `stale_timestamp` unless `timestamp` sits within `tolerance` of `receivedAt`, either way.

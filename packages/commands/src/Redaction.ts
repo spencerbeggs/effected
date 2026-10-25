@@ -59,49 +59,10 @@ const replaceAll = (text: string, values: ReadonlyArray<string>): string => {
 	return out;
 };
 
-// Implementation of Redaction.apply; the public contract lives on the static.
-const apply = (text: string, secrets: ReadonlyArray<Redacted.Redacted<string>>): string =>
-	secrets.length === 0 ? text : replaceAll(text, prepare(secrets));
-
-// Implementation of Redaction.applyArgs; the public contract lives on the static.
-const applyArgs = (
-	args: ReadonlyArray<string>,
-	secrets: ReadonlyArray<Redacted.Redacted<string>>,
-): ReadonlyArray<string> => {
-	if (secrets.length === 0) return args;
-	const values = prepare(secrets);
-	return args.map((arg) => replaceAll(arg, values));
-};
-
 /** Whether `name` introduces a credential value. */
 const isSecretName = (name: string, extra: ReadonlySet<string>): boolean => {
 	const lower = name.toLowerCase();
 	return SECRET_FLAGS.has(lower) || extra.has(lower) || AUTH_KEY.test(name);
-};
-
-// Implementation of Redaction.scrubArgs; the public contract lives on the static.
-const scrubArgs = (
-	args: ReadonlyArray<string>,
-	options?: { readonly flags?: ReadonlyArray<string> | undefined },
-): ReadonlyArray<string> => {
-	const extra = new Set((options?.flags ?? []).map((flag) => flag.toLowerCase()));
-	const out: Array<string> = [];
-	for (let index = 0; index < args.length; index++) {
-		const arg = args[index] ?? "";
-		const equals = arg.indexOf("=");
-		if (equals > 0 && isSecretName(arg.slice(0, equals), extra)) {
-			out.push(`${arg.slice(0, equals)}=${REDACTED}`);
-			continue;
-		}
-		out.push(arg);
-		// Only consume a following value when one actually exists — a trailing
-		// secret flag must not grow the array.
-		if (isSecretName(arg, extra) && index + 1 < args.length) {
-			out.push(REDACTED);
-			index++;
-		}
-	}
-	return out;
 };
 
 /**
@@ -133,14 +94,23 @@ export class Redaction {
 	 * cannot be fully removed, because the replacement reintroduces it. That is a
 	 * documented limitation, not a defect.
 	 */
-	static readonly apply = apply;
+	static apply(text: string, secrets: ReadonlyArray<Redacted.Redacted<string>>): string {
+		return secrets.length === 0 ? text : replaceAll(text, prepare(secrets));
+	}
 
 	/**
 	 * {@link Redaction.apply} over each entry of an argv array. An entry is
 	 * redacted whether it *is* a secret or merely *contains* one
 	 * (`--url=https://u:s3cr3t@host`).
 	 */
-	static readonly applyArgs = applyArgs;
+	static applyArgs(
+		args: ReadonlyArray<string>,
+		secrets: ReadonlyArray<Redacted.Redacted<string>>,
+	): ReadonlyArray<string> {
+		if (secrets.length === 0) return args;
+		const values = prepare(secrets);
+		return args.map((arg) => replaceAll(arg, values));
+	}
 
 	/**
 	 * Heuristic backstop: redact any argv value that is introduced by a known
@@ -152,8 +122,31 @@ export class Redaction {
 	 * nobody listed. Prefer {@link Redaction.applyArgs} with the actual
 	 * `Redacted` values — this runs *in addition*, never instead.
 	 */
-	static readonly scrubArgs = scrubArgs;
+	static scrubArgs(
+		args: ReadonlyArray<string>,
+		options?: { readonly flags?: ReadonlyArray<string> | undefined },
+	): ReadonlyArray<string> {
+		const extra = new Set((options?.flags ?? []).map((flag) => flag.toLowerCase()));
+		const out: Array<string> = [];
+		for (let index = 0; index < args.length; index++) {
+			const arg = args[index] ?? "";
+			const equals = arg.indexOf("=");
+			if (equals > 0 && isSecretName(arg.slice(0, equals), extra)) {
+				out.push(`${arg.slice(0, equals)}=${REDACTED}`);
+				continue;
+			}
+			out.push(arg);
+			// Only consume a following value when one actually exists — a trailing
+			// secret flag must not grow the array.
+			if (isSecretName(arg, extra) && index + 1 < args.length) {
+				out.push(REDACTED);
+				index++;
+			}
+		}
+		return out;
+	}
 
+	// Annotated: the module-local const must stay (used by isSecretName and exported).
 	/** Flags treated as secret-bearing by {@link Redaction.scrubArgs}. See {@link SECRET_FLAGS}. */
-	static readonly SECRET_FLAGS = SECRET_FLAGS;
+	static readonly SECRET_FLAGS: ReadonlySet<string> = SECRET_FLAGS;
 }

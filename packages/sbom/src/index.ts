@@ -21,6 +21,7 @@ export {
 	InvalidSha256DigestError,
 	type PredicateType,
 	Sha256Digest,
+	type Sha256DigestStatics,
 } from "./InTotoStatement.js";
 export { NtiaElement, NtiaElementId, NtiaReport } from "./NtiaReport.js";
 export { Sbom, type SbomInput, type SbomJsonOptions, SbomWriteError } from "./Sbom.js";

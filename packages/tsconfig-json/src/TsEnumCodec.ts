@@ -190,21 +190,6 @@ const TABLES: Record<EnumFamily, FamilyTable> = {
 	fallbackPolling: FALLBACK_POLLING,
 };
 
-// Implementation of TsEnumCodec.encode; the public contract lives on the static.
-const encode = (family: EnumFamily, value: string): Option.Option<number> =>
-	Option.fromNullishOr(TABLES[family].forward.get(value));
-
-// Implementation of TsEnumCodec.decode; the public contract lives on the static.
-const decode = (family: EnumFamily, value: number): Option.Option<string> =>
-	Option.fromNullishOr(TABLES[family].reverse.get(value));
-
-// Implementation of TsEnumCodec.normalizeLibReference; the public contract lives on the static.
-const normalizeLibReference = (lib: string): string => {
-	const base = (lib.split("/").pop() ?? lib).toLowerCase();
-	const withoutPrefix = base.startsWith("lib.") ? base.slice(4) : base;
-	return withoutPrefix.endsWith(".d.ts") ? withoutPrefix.slice(0, -5) : withoutPrefix;
-};
-
 /** `compilerOptions` keys whose values are one of the enum families. */
 const COMPILER_OPTION_ENUM_KEYS: ReadonlyArray<readonly [key: string, family: EnumFamily]> = [
 	["target", "target"],
@@ -300,50 +285,6 @@ export interface ProgrammaticCompilerOptions {
 	readonly lib?: string[];
 }
 
-// Implementation of TsEnumCodec.encodeCompilerOptions; the public contract lives on the static.
-const encodeCompilerOptions = (options: CompilerOptions.Type): ProgrammaticCompilerOptions => {
-	const source: Readonly<Record<string, unknown>> = options;
-	const result: Record<string, unknown> = { ...source };
-
-	for (const [key, family] of COMPILER_OPTION_ENUM_KEYS) {
-		const value = source[key];
-		if (typeof value === "string") {
-			const encoded = encode(family, value);
-			if (Option.isSome(encoded)) result[key] = encoded.value;
-		}
-	}
-
-	const lib = source.lib;
-	if (Array.isArray(lib)) {
-		result.lib = lib.map((entry) => (typeof entry === "string" ? `lib.${normalizeLibReference(entry)}.d.ts` : entry));
-	}
-
-	// The single documented narrowing (see ProgrammaticCompilerOptions): the
-	// result's values are `unknown`/`readonly` here, but structurally satisfy
-	// the tsc-assignable value union — asserted once, so consumers do not cast.
-	return result as ProgrammaticCompilerOptions;
-};
-
-// Implementation of TsEnumCodec.decodeCompilerOptions; the public contract lives on the static.
-const decodeCompilerOptions = (numeric: Readonly<Record<string, unknown>>): Record<string, unknown> => {
-	const result: Record<string, unknown> = { ...numeric };
-
-	for (const [key, family] of COMPILER_OPTION_ENUM_KEYS) {
-		const value = numeric[key];
-		if (typeof value === "number") {
-			const decoded = decode(family, value);
-			if (Option.isSome(decoded)) result[key] = decoded.value;
-		}
-	}
-
-	const lib = numeric.lib;
-	if (Array.isArray(lib)) {
-		result.lib = lib.map((entry) => (typeof entry === "string" ? normalizeLibReference(entry) : entry));
-	}
-
-	return result;
-};
-
 /**
  * The string↔numeric enum codec for `compilerOptions` / `watchOptions`
  * families. Plain data: every lookup is a synchronous map read
@@ -358,14 +299,18 @@ export class TsEnumCodec {
 	 * Encodes a family's canonical (or alias) string spelling to its numeric
 	 * form. `Option.none()` for a string with no table entry — never guessed.
 	 */
-	static readonly encode = encode;
+	static encode(family: EnumFamily, value: string): Option.Option<number> {
+		return Option.fromNullishOr(TABLES[family].forward.get(value));
+	}
 
 	/**
 	 * Decodes a family's numeric value to its canonical string spelling.
 	 * `Option.none()` for a numeric value with no table entry (a future TS
 	 * enum member) — never guessed.
 	 */
-	static readonly decode = decode;
+	static decode(family: EnumFamily, value: number): Option.Option<string> {
+		return Option.fromNullishOr(TABLES[family].reverse.get(value));
+	}
 
 	/**
 	 * Normalizes any spelling of a `lib` reference — the plain short name
@@ -375,7 +320,11 @@ export class TsEnumCodec {
 	 * leading directory, the `lib.` prefix and the `.d.ts` suffix; idempotent
 	 * on an already-short name.
 	 */
-	static readonly normalizeLibReference = normalizeLibReference;
+	static normalizeLibReference(lib: string): string {
+		const base = (lib.split("/").pop() ?? lib).toLowerCase();
+		const withoutPrefix = base.startsWith("lib.") ? base.slice(4) : base;
+		return withoutPrefix.endsWith(".d.ts") ? withoutPrefix.slice(0, -5) : withoutPrefix;
+	}
 
 	/**
 	 * Encodes a decoded `compilerOptions` object into the
@@ -395,7 +344,30 @@ export class TsEnumCodec {
 	 * cast. Runtime behavior is unchanged; only the declared return type
 	 * narrows.
 	 */
-	static readonly encodeCompilerOptions = encodeCompilerOptions;
+	static encodeCompilerOptions(options: CompilerOptions.Type): ProgrammaticCompilerOptions {
+		const source: Readonly<Record<string, unknown>> = options;
+		const result: Record<string, unknown> = { ...source };
+
+		for (const [key, family] of COMPILER_OPTION_ENUM_KEYS) {
+			const value = source[key];
+			if (typeof value === "string") {
+				const encoded = TsEnumCodec.encode(family, value);
+				if (Option.isSome(encoded)) result[key] = encoded.value;
+			}
+		}
+
+		const lib = source.lib;
+		if (Array.isArray(lib)) {
+			result.lib = lib.map((entry) =>
+				typeof entry === "string" ? `lib.${TsEnumCodec.normalizeLibReference(entry)}.d.ts` : entry,
+			);
+		}
+
+		// The single documented narrowing (see ProgrammaticCompilerOptions): the
+		// result's values are `unknown`/`readonly` here, but structurally satisfy
+		// the tsc-assignable value union — asserted once, so consumers do not cast.
+		return result as ProgrammaticCompilerOptions;
+	}
 
 	/**
 	 * Decodes a numeric-enum-shaped `compilerOptions` object (as produced by
@@ -410,5 +382,22 @@ export class TsEnumCodec {
 	 * value would violate that narrower type's contract. Every other key is
 	 * copied through untouched.
 	 */
-	static readonly decodeCompilerOptions = decodeCompilerOptions;
+	static decodeCompilerOptions(numeric: Readonly<Record<string, unknown>>): Record<string, unknown> {
+		const result: Record<string, unknown> = { ...numeric };
+
+		for (const [key, family] of COMPILER_OPTION_ENUM_KEYS) {
+			const value = numeric[key];
+			if (typeof value === "number") {
+				const decoded = TsEnumCodec.decode(family, value);
+				if (Option.isSome(decoded)) result[key] = decoded.value;
+			}
+		}
+
+		const lib = numeric.lib;
+		if (Array.isArray(lib)) {
+			result.lib = lib.map((entry) => (typeof entry === "string" ? TsEnumCodec.normalizeLibReference(entry) : entry));
+		}
+
+		return result;
+	}
 }

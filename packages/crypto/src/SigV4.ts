@@ -128,9 +128,6 @@ const timestamps = (now: Date | DateTime.DateTime): { readonly amzDate: string; 
 	return { amzDate, dateStamp: amzDate.slice(0, 8) };
 };
 
-/** The hex SHA-256 of zero bytes. */
-const EMPTY_PAYLOAD_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-
 const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 const canonicalQuery = (query: SigV4Request["query"]): string => {
@@ -161,7 +158,8 @@ const canonicalize = (
 		const { amzDate, dateStamp } = timestamps(request.now);
 		const body = utf8(request.body ?? new Uint8Array(0));
 		// An empty body's hash is a constant: no digest call for every GET and HEAD.
-		const payloadHash = request.payloadHash ?? (body.byteLength === 0 ? EMPTY_PAYLOAD_HASH : yield* sha256Hex(body));
+		const payloadHash =
+			request.payloadHash ?? (body.byteLength === 0 ? SigV4.EMPTY_PAYLOAD_HASH : yield* sha256Hex(body));
 
 		const headers: Record<string, string> = {};
 		for (const [name, value] of Object.entries(request.headers ?? {})) headers[name.toLowerCase()] = value;
@@ -251,7 +249,7 @@ export class SigV4 {
 	 *
 	 * @public
 	 */
-	static readonly EMPTY_PAYLOAD_HASH: string = EMPTY_PAYLOAD_HASH;
+	static readonly EMPTY_PAYLOAD_HASH: string = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 	/**
 	 * The payload hash that signs no body, for streamed or presigned uploads.

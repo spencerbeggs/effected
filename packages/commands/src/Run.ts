@@ -327,170 +327,6 @@ const annotate = (command: ChildProcess.Command): Effect.Effect<void> => {
 	return Effect.annotateCurrentSpan({ command: described.command, argc: described.args.length });
 };
 
-// Implementation of Run.collect; the public contract lives on the static.
-const collect = Effect.fn("Run.collect")(function* (command: ChildProcess.Command, options?: RunOptions) {
-	yield* annotate(command);
-	return yield* collectClassified(command, options, undefined);
-});
-
-// Implementation of Run.collectTee; the public contract lives on the static.
-const collectTee = Effect.fn("Run.collectTee")(function* (command: ChildProcess.Command, options?: RunOptions) {
-	yield* annotate(command);
-	const stdio = yield* Stdio.Stdio;
-	return yield* collectClassified(command, options, stdio);
-});
-
-// Implementation of Run.text; the public contract lives on the static.
-const text = Effect.fn("Run.text")(function* (command: ChildProcess.Command, options?: RunOptions) {
-	yield* annotate(command);
-	const output = yield* collectClassified(command, options, undefined);
-	const checked = yield* requireZero(command, output, options);
-	return checked.stdout.trim();
-});
-
-// Implementation of Run.lines; the public contract lives on the static.
-const lines = Effect.fn("Run.lines")(function* (command: ChildProcess.Command, options?: RunOptions) {
-	yield* annotate(command);
-	const output = yield* collectClassified(command, options, undefined);
-	const checked = yield* requireZero(command, output, options);
-	return checked.stdout
-		.split(/\r?\n/)
-		.map((line) => line.trim())
-		.filter((line) => line.length > 0);
-});
-
-// Implementation of Run.json; the public contract lives on the static.
-const json = Effect.fn("Run.json")(function* <A, I>(
-	command: ChildProcess.Command,
-	schema: Schema.Codec<A, I>,
-	options?: RunOptions,
-) {
-	yield* annotate(command);
-	const described = describeCommand(command);
-	const output = yield* collectClassified(command, options, undefined);
-	const checked = yield* requireZero(command, output, options);
-	const parsed = yield* Effect.try({
-		try: () => JSON.parse(checked.stdout) as unknown,
-		catch: (cause) => new CommandOutputError({ kind: "notJson", command: described.command, cause }),
-	});
-	return yield* Schema.decodeUnknownEffect(schema)(parsed).pipe(
-		Effect.catch((cause) => Effect.fail(new CommandOutputError({ kind: "schema", command: described.command, cause }))),
-	);
-});
-
-// Implementation of Run.jsonLine; the public contract lives on the static.
-const jsonLine = Effect.fn("Run.jsonLine")(function* <A, I>(
-	command: ChildProcess.Command,
-	schema: Schema.Codec<A, I>,
-	options?: RunOptions,
-) {
-	yield* annotate(command);
-	const described = describeCommand(command);
-	const output = yield* collectClassified(command, options, undefined);
-	// The run's context travels on every output error: when the payload line is
-	// missing or unusable, the exit code and captured streams (already redacted
-	// by collectClassified) are the only evidence of what actually went wrong.
-	const context = { exitCode: output.exitCode, stderr: output.stderr, stdout: output.stdout };
-	const candidates = output.stdout.split(/\r?\n/).filter((candidate) => candidate.trim().length > 0);
-	if (candidates.length === 0) {
-		return yield* Effect.fail(
-			new CommandOutputError({
-				kind: "notJson",
-				command: described.command,
-				cause: new Error("stdout carried no non-empty line"),
-				...context,
-			}),
-		);
-	}
-	// Scan from the END: the first candidate that both JSON-parses and decodes
-	// under the schema is the payload. The near-miss diagnostics below record
-	// the FIRST failure of each kind encountered by the scan — i.e. the LAST
-	// non-empty line's parse error and the LAST parseable line's decode issue —
-	// because the line nearest the end is the most probable intended payload.
-	let notJsonCause: unknown;
-	let schemaCause: unknown;
-	for (let index = candidates.length - 1; index >= 0; index--) {
-		const candidate = candidates[index];
-		if (candidate === undefined) continue;
-		// `Result.try`, not Schema's JSON codec: the codec drops the host
-		// SyntaxError for a bare "a valid JSON string", and the parse error's
-		// position is the near-miss evidence a "notJson" cause exists to carry
-		// (the same cause Run.json's Effect.try keeps).
-		const parsed = Result.try(() => JSON.parse(candidate) as unknown);
-		if (Result.isFailure(parsed)) {
-			notJsonCause ??= parsed.failure;
-			continue;
-		}
-		const decoded = yield* Effect.result(Schema.decodeUnknownEffect(schema)(parsed.success));
-		if (Result.isSuccess(decoded)) return decoded.success;
-		schemaCause ??= decoded.failure;
-	}
-	// Nothing decoded anywhere. When at least one line parsed as JSON, the
-	// near-miss is a schema drift — report kind "schema" with the last
-	// parseable line's decode failure; otherwise nothing was JSON at all.
-	return yield* Effect.fail(
-		schemaCause !== undefined
-			? new CommandOutputError({ kind: "schema", command: described.command, cause: schemaCause, ...context })
-			: new CommandOutputError({ kind: "notJson", command: described.command, cause: notJsonCause, ...context }),
-	);
-});
-
-// Implementation of Run.exitCode; the public contract lives on the static.
-const exitCode = Effect.fn("Run.exitCode")(function* (command: ChildProcess.Command, options?: RunOptions) {
-	yield* annotate(command);
-	const output = yield* collectClassified(command, options, undefined);
-	return output.exitCode;
-});
-
-// Implementation of Run.succeeds; the public contract lives on the static.
-const succeeds = Effect.fn("Run.succeeds")(function* (command: ChildProcess.Command, options?: RunOptions) {
-	yield* annotate(command);
-	return yield* collectClassified(command, options, undefined).pipe(
-		Effect.map((output) => output.succeeded),
-		Effect.catch(() => Effect.succeed(false)),
-	);
-});
-
-// Implementation of Run.detach; the public contract lives on the static.
-const detach = Effect.fn("Run.detach")(function* (command: ChildProcess.Command) {
-	yield* annotate(command);
-	return yield* Effect.scoped(
-		Effect.gen(function* () {
-			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-			const handle = yield* spawner.spawn(command);
-			// Order is the whole point of this helper: the Node backend's release
-			// checks an `isReferenced` flag and does NOT kill an unref'd child, so
-			// unref must run BEFORE this scope closes. Reversed, the child dies
-			// with the scope and nothing outlives the process.
-			yield* handle.unref;
-			return handle.pid;
-		}),
-	).pipe(Effect.catch((error) => Effect.fail(CommandFailedError.spawn(command, error))));
-});
-
-// Implementation of Run.stream; the public contract lives on the static.
-const stream = (
-	command: ChildProcess.Command,
-	options?: { readonly includeStderr?: boolean | undefined },
-): Stream.Stream<string, CommandFailedError, ChildProcessSpawner.ChildProcessSpawner> =>
-	Stream.unwrap(
-		Effect.map(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
-			spawner.streamLines(command, { includeStderr: options?.includeStderr ?? false }),
-		),
-	).pipe(Stream.mapError((error) => CommandFailedError.spawn(command, error)));
-
-// Implementation of Run.extendEnv; the public contract lives on the static.
-const extendEnv: {
-	(env: Record<string, string>): (self: ChildProcess.Command) => ChildProcess.Command;
-	(self: ChildProcess.Command, env: Record<string, string>): ChildProcess.Command;
-} = Fn.dual(2, (self: ChildProcess.Command, env: Record<string, string>): ChildProcess.Command => {
-	if (ChildProcess.isStandardCommand(self)) {
-		const merged = self.options.env === undefined ? env : { ...self.options.env, ...env };
-		return ChildProcess.make(self.command, self.args, { ...self.options, env: merged, extendEnv: true });
-	}
-	return ChildProcess.pipeTo(extendEnv(self.left, env), extendEnv(self.right, env), self.options);
-});
-
 /**
  * Structured running of core `ChildProcess.Command` values.
  *
@@ -564,7 +400,10 @@ export class Run {
 	 * against an unconfigured call therefore needs only the two arms above;
 	 * handling the full union there is defensive, not required.
 	 */
-	static readonly collect = collect;
+	static readonly collect = Effect.fn("Run.collect")(function* (command: ChildProcess.Command, options?: RunOptions) {
+		yield* annotate(command);
+		return yield* collectClassified(command, options, undefined);
+	});
 
 	/**
 	 * Like {@link Run.collect}, but also tees each stream to the `Stdio` in `R`
@@ -577,7 +416,14 @@ export class Run {
 	 * (EPIPE when the host's own stdout is a closed pipe) is classified there
 	 * too, even though the child started and ran.
 	 */
-	static readonly collectTee = collectTee;
+	static readonly collectTee = Effect.fn("Run.collectTee")(function* (
+		command: ChildProcess.Command,
+		options?: RunOptions,
+	) {
+		yield* annotate(command);
+		const stdio = yield* Stdio.Stdio;
+		return yield* collectClassified(command, options, stdio);
+	});
 
 	/**
 	 * Runs `command` and resolves with trimmed stdout on a zero exit.
@@ -593,7 +439,12 @@ export class Run {
 	 * silently eat), use {@link Run.collect} and read its {@link CommandOutput}'s
 	 * untrimmed `stdout` instead.
 	 */
-	static readonly text = text;
+	static readonly text = Effect.fn("Run.text")(function* (command: ChildProcess.Command, options?: RunOptions) {
+		yield* annotate(command);
+		const output = yield* collectClassified(command, options, undefined);
+		const checked = yield* requireZero(command, output, options);
+		return checked.stdout.trim();
+	});
 
 	/**
 	 * Runs `command` and resolves with stdout split into trimmed, non-empty
@@ -603,7 +454,15 @@ export class Run {
 	 * A non-zero exit is a typed failure here — {@link CommandFailedError} —
 	 * matching {@link Run.text} and {@link Run.json}.
 	 */
-	static readonly lines = lines;
+	static readonly lines = Effect.fn("Run.lines")(function* (command: ChildProcess.Command, options?: RunOptions) {
+		yield* annotate(command);
+		const output = yield* collectClassified(command, options, undefined);
+		const checked = yield* requireZero(command, output, options);
+		return checked.stdout
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0);
+	});
 
 	/**
 	 * Runs `command`, parses stdout as JSON and decodes it against `schema` on
@@ -619,7 +478,25 @@ export class Run {
 	 * of noise around it and of a non-zero exit — use {@link Run.jsonLine}
 	 * instead.
 	 */
-	static readonly json = json;
+	static readonly json = Effect.fn("Run.json")(function* <A, I>(
+		command: ChildProcess.Command,
+		schema: Schema.Codec<A, I>,
+		options?: RunOptions,
+	) {
+		yield* annotate(command);
+		const described = describeCommand(command);
+		const output = yield* collectClassified(command, options, undefined);
+		const checked = yield* requireZero(command, output, options);
+		const parsed = yield* Effect.try({
+			try: () => JSON.parse(checked.stdout) as unknown,
+			catch: (cause) => new CommandOutputError({ kind: "notJson", command: described.command, cause }),
+		});
+		return yield* Schema.decodeUnknownEffect(schema)(parsed).pipe(
+			Effect.catch((cause) =>
+				Effect.fail(new CommandOutputError({ kind: "schema", command: described.command, cause })),
+			),
+		);
+	});
 
 	/**
 	 * Runs `command` and, **scanning stdout lines from the end**, resolves with
@@ -663,7 +540,61 @@ export class Run {
 	 * all (carrying the last non-empty line's parse error). A spawn failure or
 	 * an opted-in timeout still fails with {@link CommandFailedError}.
 	 */
-	static readonly jsonLine = jsonLine;
+	static readonly jsonLine = Effect.fn("Run.jsonLine")(function* <A, I>(
+		command: ChildProcess.Command,
+		schema: Schema.Codec<A, I>,
+		options?: RunOptions,
+	) {
+		yield* annotate(command);
+		const described = describeCommand(command);
+		const output = yield* collectClassified(command, options, undefined);
+		// The run's context travels on every output error: when the payload line is
+		// missing or unusable, the exit code and captured streams (already redacted
+		// by collectClassified) are the only evidence of what actually went wrong.
+		const context = { exitCode: output.exitCode, stderr: output.stderr, stdout: output.stdout };
+		const candidates = output.stdout.split(/\r?\n/).filter((candidate) => candidate.trim().length > 0);
+		if (candidates.length === 0) {
+			return yield* Effect.fail(
+				new CommandOutputError({
+					kind: "notJson",
+					command: described.command,
+					cause: new Error("stdout carried no non-empty line"),
+					...context,
+				}),
+			);
+		}
+		// Scan from the END: the first candidate that both JSON-parses and decodes
+		// under the schema is the payload. The near-miss diagnostics below record
+		// the FIRST failure of each kind encountered by the scan — i.e. the LAST
+		// non-empty line's parse error and the LAST parseable line's decode issue —
+		// because the line nearest the end is the most probable intended payload.
+		let notJsonCause: unknown;
+		let schemaCause: unknown;
+		for (let index = candidates.length - 1; index >= 0; index--) {
+			const candidate = candidates[index];
+			if (candidate === undefined) continue;
+			// `Result.try`, not Schema's JSON codec: the codec drops the host
+			// SyntaxError for a bare "a valid JSON string", and the parse error's
+			// position is the near-miss evidence a "notJson" cause exists to carry
+			// (the same cause Run.json's Effect.try keeps).
+			const parsed = Result.try(() => JSON.parse(candidate) as unknown);
+			if (Result.isFailure(parsed)) {
+				notJsonCause ??= parsed.failure;
+				continue;
+			}
+			const decoded = yield* Effect.result(Schema.decodeUnknownEffect(schema)(parsed.success));
+			if (Result.isSuccess(decoded)) return decoded.success;
+			schemaCause ??= decoded.failure;
+		}
+		// Nothing decoded anywhere. When at least one line parsed as JSON, the
+		// near-miss is a schema drift — report kind "schema" with the last
+		// parseable line's decode failure; otherwise nothing was JSON at all.
+		return yield* Effect.fail(
+			schemaCause !== undefined
+				? new CommandOutputError({ kind: "schema", command: described.command, cause: schemaCause, ...context })
+				: new CommandOutputError({ kind: "notJson", command: described.command, cause: notJsonCause, ...context }),
+		);
+	});
 
 	/**
 	 * Runs `command` and resolves with its exit code alone.
@@ -673,16 +604,35 @@ export class Run {
 	 * remarks for the split against {@link Run.text}, {@link Run.lines} and
 	 * {@link Run.json}.
 	 */
-	static readonly exitCode = exitCode;
+	static readonly exitCode = Effect.fn("Run.exitCode")(function* (command: ChildProcess.Command, options?: RunOptions) {
+		yield* annotate(command);
+		const output = yield* collectClassified(command, options, undefined);
+		return output.exitCode;
+	});
 
 	/**
 	 * Runs `command` and resolves with whether it exited zero, collapsing a
 	 * spawn or other classified failure to `false` rather than propagating it.
 	 */
-	static readonly succeeds = succeeds;
+	static readonly succeeds = Effect.fn("Run.succeeds")(function* (command: ChildProcess.Command, options?: RunOptions) {
+		yield* annotate(command);
+		return yield* collectClassified(command, options, undefined).pipe(
+			Effect.map((output) => output.succeeded),
+			Effect.catch(() => Effect.succeed(false)),
+		);
+	});
 
 	/** Decoded stdout lines as they arrive, for output too large or too long-lived to collect. */
-	static readonly stream = stream;
+	static stream(
+		command: ChildProcess.Command,
+		options?: { readonly includeStderr?: boolean | undefined },
+	): Stream.Stream<string, CommandFailedError, ChildProcessSpawner.ChildProcessSpawner> {
+		return Stream.unwrap(
+			Effect.map(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
+				spawner.streamLines(command, { includeStderr: options?.includeStderr ?? false }),
+			),
+		).pipe(Stream.mapError((error) => CommandFailedError.spawn(command, error)));
+	}
 
 	/**
 	 * Spawns `command` and resolves with its pid without waiting for exit.
@@ -693,7 +643,21 @@ export class Run {
 	 * unref'd child, and reversing that order kills it with the scope instead.
 	 * Fails with {@link CommandFailedError} if the process never starts.
 	 */
-	static readonly detach = detach;
+	static readonly detach = Effect.fn("Run.detach")(function* (command: ChildProcess.Command) {
+		yield* annotate(command);
+		return yield* Effect.scoped(
+			Effect.gen(function* () {
+				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+				const handle = yield* spawner.spawn(command);
+				// Order is the whole point of this helper: the Node backend's release
+				// checks an `isReferenced` flag and does NOT kill an unref'd child, so
+				// unref must run BEFORE this scope closes. Reversed, the child dies
+				// with the scope and nothing outlives the process.
+				yield* handle.unref;
+				return handle.pid;
+			}),
+		).pipe(Effect.catch((error) => Effect.fail(CommandFailedError.spawn(command, error))));
+	});
 
 	/**
 	 * Adds environment variables to a command WITHOUT losing the parent
@@ -719,11 +683,22 @@ export class Run {
 	 * vocabulary (`ChildProcess.make`, `ChildProcess.pipeTo`) — it re-declares
 	 * nothing.
 	 */
-	static readonly extendEnv = extendEnv;
+	static readonly extendEnv: {
+		(env: Record<string, string>): (self: ChildProcess.Command) => ChildProcess.Command;
+		(self: ChildProcess.Command, env: Record<string, string>): ChildProcess.Command;
+	} = Fn.dual(2, (self: ChildProcess.Command, env: Record<string, string>): ChildProcess.Command => {
+		if (ChildProcess.isStandardCommand(self)) {
+			const merged = self.options.env === undefined ? env : { ...self.options.env, ...env };
+			return ChildProcess.make(self.command, self.args, { ...self.options, env: merged, extendEnv: true });
+		}
+		return ChildProcess.pipeTo(Run.extendEnv(self.left, env), Run.extendEnv(self.right, env), self.options);
+	});
 
+	// Annotated: the module-local const must stay (used by collectRaw and exported).
 	/** Default ceiling on captured bytes per stream. See {@link DEFAULT_MAX_OUTPUT_BYTES}. */
-	static readonly DEFAULT_MAX_OUTPUT_BYTES = DEFAULT_MAX_OUTPUT_BYTES;
+	static readonly DEFAULT_MAX_OUTPUT_BYTES: number = DEFAULT_MAX_OUTPUT_BYTES;
 
+	// Annotated: REDACTED is imported from Redaction and stays a shared module value.
 	/** The placeholder written in place of a redacted secret. See {@link REDACTED}. */
-	static readonly REDACTED = REDACTED;
+	static readonly REDACTED: "***" = REDACTED;
 }

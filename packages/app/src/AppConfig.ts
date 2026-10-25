@@ -185,76 +185,6 @@ export interface AppConfigOptions<A, I, RR = never, CE = ConfigCodecError> {
 	readonly resolversAfter?: ReadonlyArray<ConfigResolver<RR>>;
 }
 
-// Implementation of AppConfig.layer; the public contract lives on the static.
-// `tag` is pinned by three intersected parts, exactly as `ConfigFile.layer` pins its own. `Context.Key<Self, S>`
-// captures the key's real shape; `Context.Key<Self, ConfigFileShape<A, CE>>` keeps `A` (and `CE`) inferable
-// from the key, which a bare `MergeStrategy.firstMatch()` as `strategy` needs; the conditional only checks
-// (`NoInfer`), rejecting a shape wider than ConfigFileShape<A, CE> — and a key whose CE is narrower than the
-// codec's. It cannot see through method-syntax parameter bivariance: a member redeclared as a method with a
-// wider parameter still passes.
-const layer = <
-	Self,
-	A,
-	I,
-	RR = never,
-	CE = ConfigCodecError,
-	S extends ConfigFileShape<A, CE> = ConfigFileShape<A, CE>,
->(
-	tag: Context.Key<Self, S> &
-		Context.Key<Self, ConfigFileShape<A, CE>> &
-		([ConfigFileShape<NoInfer<A>, NoInfer<CE>>] extends [S] ? unknown : never),
-	options: AppConfigOptions<A, I, RR, CE>,
-): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | AppDirs | Xdg | RR> =>
-	Layer.unwrap(
-		Effect.gen(function* () {
-			const invalid = badFilename("AppConfig.layer", options.filename);
-			if (invalid !== undefined) return yield* Effect.die(invalid);
-
-			const appDirs = yield* AppDirs;
-			// TS infers the resolvers' `RR` from the FIRST array element and will
-			// not union in the rest, so the chain is annotated up front.
-			const xdg = options.xdg !== false;
-			const systemEtc = options.systemEtc ?? false;
-			const systemEtcDir = typeof systemEtc === "object" ? systemEtc.dir : undefined;
-			const resolvers: ReadonlyArray<ConfigResolver<AppDirs | Xdg | FileSystem.FileSystem | Path.Path | RR>> = [
-				// Caller resolvers lead: a `--config` flag outranks the app's own
-				// search path, which is the whole point of passing one.
-				...(options.resolvers ?? []),
-				// The XDG pair is one tier: `native` is the tail of the XDG fallback
-				// chain, so `xdg: false` drops both rather than leaving an orphan.
-				...(xdg ? [XdgConfig.resolver({ filename: options.filename })] : []),
-				...(xdg && options.native !== false
-					? [XdgConfig.nativeResolver({ namespace: appDirs.namespace, filename: options.filename })]
-					: []),
-				// A machine-wide default loses to the user's own config, so the
-				// system tier sits behind the XDG pair.
-				...(systemEtc === false
-					? []
-					: [
-							ConfigResolver.systemEtc({
-								app: appDirs.namespace,
-								filename: options.filename,
-								...(systemEtcDir !== undefined && { dir: systemEtcDir }),
-							}),
-						]),
-				...(options.resolversAfter ?? []),
-			];
-
-			return ConfigFile.layer(tag, {
-				schema: options.schema,
-				codec: options.codec,
-				strategy: options.strategy ?? MergeStrategy.firstMatch<A>(),
-				resolvers,
-				defaultPath: XdgConfig.savePath(options.filename),
-				// Conditional spreads: a present key holding `undefined` is not an
-				// absent key.
-				...(options.validate !== undefined && { validate: options.validate }),
-				...(options.parseOptions !== undefined && { parseOptions: options.parseOptions }),
-				...(options.events !== undefined && { events: options.events }),
-			});
-		}),
-	);
-
 /**
  * The xdg-flavored `ConfigFile` preset: discovery through the app's XDG
  * config search path, saves into the app's own config directory.
@@ -355,5 +285,66 @@ export class AppConfig {
 	 * });
 	 * ```
 	 */
-	static readonly layer = layer;
+	static readonly layer =
+		// `tag` is pinned by three intersected parts, exactly as `ConfigFile.layer` pins its own. `Context.Key<Self, S>`
+		// captures the key's real shape; `Context.Key<Self, ConfigFileShape<A, CE>>` keeps `A` (and `CE`) inferable
+		// from the key, which a bare `MergeStrategy.firstMatch()` as `strategy` needs; the conditional only checks
+		// (`NoInfer`), rejecting a shape wider than ConfigFileShape<A, CE> — and a key whose CE is narrower than the
+		// codec's. It cannot see through method-syntax parameter bivariance: a member redeclared as a method with a
+		// wider parameter still passes.
+		<Self, A, I, RR = never, CE = ConfigCodecError, S extends ConfigFileShape<A, CE> = ConfigFileShape<A, CE>>(
+			tag: Context.Key<Self, S> &
+				Context.Key<Self, ConfigFileShape<A, CE>> &
+				([ConfigFileShape<NoInfer<A>, NoInfer<CE>>] extends [S] ? unknown : never),
+			options: AppConfigOptions<A, I, RR, CE>,
+		): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | AppDirs | Xdg | RR> =>
+			Layer.unwrap(
+				Effect.gen(function* () {
+					const invalid = badFilename("AppConfig.layer", options.filename);
+					if (invalid !== undefined) return yield* Effect.die(invalid);
+
+					const appDirs = yield* AppDirs;
+					// TS infers the resolvers' `RR` from the FIRST array element and will
+					// not union in the rest, so the chain is annotated up front.
+					const xdg = options.xdg !== false;
+					const systemEtc = options.systemEtc ?? false;
+					const systemEtcDir = typeof systemEtc === "object" ? systemEtc.dir : undefined;
+					const resolvers: ReadonlyArray<ConfigResolver<AppDirs | Xdg | FileSystem.FileSystem | Path.Path | RR>> = [
+						// Caller resolvers lead: a `--config` flag outranks the app's own
+						// search path, which is the whole point of passing one.
+						...(options.resolvers ?? []),
+						// The XDG pair is one tier: `native` is the tail of the XDG fallback
+						// chain, so `xdg: false` drops both rather than leaving an orphan.
+						...(xdg ? [XdgConfig.resolver({ filename: options.filename })] : []),
+						...(xdg && options.native !== false
+							? [XdgConfig.nativeResolver({ namespace: appDirs.namespace, filename: options.filename })]
+							: []),
+						// A machine-wide default loses to the user's own config, so the
+						// system tier sits behind the XDG pair.
+						...(systemEtc === false
+							? []
+							: [
+									ConfigResolver.systemEtc({
+										app: appDirs.namespace,
+										filename: options.filename,
+										...(systemEtcDir !== undefined && { dir: systemEtcDir }),
+									}),
+								]),
+						...(options.resolversAfter ?? []),
+					];
+
+					return ConfigFile.layer(tag, {
+						schema: options.schema,
+						codec: options.codec,
+						strategy: options.strategy ?? MergeStrategy.firstMatch<A>(),
+						resolvers,
+						defaultPath: XdgConfig.savePath(options.filename),
+						// Conditional spreads: a present key holding `undefined` is not an
+						// absent key.
+						...(options.validate !== undefined && { validate: options.validate }),
+						...(options.parseOptions !== undefined && { parseOptions: options.parseOptions }),
+						...(options.events !== undefined && { events: options.events }),
+					});
+				}),
+			);
 }

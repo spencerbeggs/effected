@@ -105,7 +105,7 @@ export type WorkspacesServices =
 // Workspaces.layerWithConfigDependenciesSubprocess; the public contracts live
 // on those statics. It takes the ConfigDependencyHooks layer EXPLICITLY —
 // built once per composite and handed to WorkspaceCatalogs here and, by
-// `withGit`, to WorkspaceSnapshots — so both services replay through ONE
+// `layerWithGitAndHooks`, to WorkspaceSnapshots — so both services replay through ONE
 // hooks reference (layer memoization is by reference) while the composite's
 // OUTPUT never carries ConfigDependencyHooks: `WorkspacesServices` is
 // unchanged. Generic in R so a hooks layer carrying an extra requirement (the
@@ -141,151 +141,6 @@ const compose = <R = never>(
 	// to compile; a consumer that never asks never supplies a policy.
 	return Layer.mergeAll(roots, detector, discovery, lockfiles, catalogs);
 };
-
-// Implementation of Workspaces.layer; the public contract lives on the static.
-const layer = (
-	options?: WorkspacesOptions,
-): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
-	compose(options, ConfigDependencyHooks.layerNoop);
-
-/**
- * The core composite widened with the git tier: `Git`, `ChangeDetector` and
- * `WorkspaceSnapshots`. It builds the core over `hooks` ITSELF, so the SAME
- * hooks layer reaches `WorkspaceCatalogs` (through `compose`) and
- * `WorkspaceSnapshots` by construction — `at(ref)` replays a ref's config
- * dependencies exactly as the live assembler replays the worktree's: one
- * reference, one memo, one policy for both sides of a diff.
- */
-const withGit = <R = never>(
-	hooks: Layer.Layer<ConfigDependencyHooks, never, R>,
-	options?: WorkspacesGitOptions,
-): Layer.Layer<
-	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
-	never,
-	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner | R
-> => {
-	const core = compose(options, hooks);
-	const git = Git.layer;
-	return Layer.mergeAll(
-		core,
-		git,
-		ChangeDetector.layer.pipe(Layer.provide(git), Layer.provide(core)),
-		WorkspaceSnapshots.layer(options).pipe(Layer.provide(git), Layer.provide(hooks), Layer.provide(core)),
-	);
-};
-
-// Implementation of Workspaces.layerWithGit; the public contract lives on the static.
-const layerWithGit = (
-	options?: WorkspacesGitOptions,
-): Layer.Layer<
-	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
-	never,
-	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
-> => withGit(ConfigDependencyHooks.layerNoop, options);
-
-// Implementation of Workspaces.resolvers; the public contract lives on the static.
-const resolvers: Layer.Layer<CatalogResolver | WorkspaceResolver, never, WorkspaceCatalogs | WorkspaceDiscovery> =
-	Layer.mergeAll(WorkspaceCatalogs.catalogResolver, WorkspaceDiscovery.workspaceResolver);
-
-// Implementation of Workspaces.layerWithConfigDependencies; the public contract lives on the static.
-const layerWithConfigDependencies = (
-	options?: WorkspacesOptions,
-): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
-	compose(options, ConfigDependencyHooks.layerLive);
-
-// Implementation of Workspaces.layerWithConfigDependenciesSubprocess; the public contract lives on the static.
-const layerWithConfigDependenciesSubprocess = (
-	options?: WorkspacesOptions,
-): Layer.Layer<
-	WorkspacesServices,
-	never,
-	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
-> => compose(options, ConfigDependencyHooks.layerSubprocess);
-
-// Implementation of Workspaces.layerWithGitAndConfigDependencies; the public
-// contract lives on the static.
-const layerWithGitAndConfigDependencies = (
-	options?: WorkspacesGitOptions,
-): Layer.Layer<
-	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
-	never,
-	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
-> => withGit(ConfigDependencyHooks.layerLive, options);
-
-// Implementation of Workspaces.layerWithGitAndConfigDependenciesSubprocess; the
-// public contract lives on the static.
-const layerWithGitAndConfigDependenciesSubprocess = (
-	options?: WorkspacesGitOptions,
-): Layer.Layer<
-	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
-	never,
-	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
-> => withGit(ConfigDependencyHooks.layerSubprocess, options);
-
-// Implementation of Workspaces.resolverLayer; the public contract lives on the static.
-const resolverLayer = (
-	options?: WorkspacesOptions,
-): Layer.Layer<CatalogResolver | WorkspaceResolver, never, FileSystem.FileSystem | Path.Path> =>
-	resolvers.pipe(Layer.provide(layerWithConfigDependencies(options)));
-
-// Implementation of Workspaces.resolveManifest; the public contract lives on the static.
-const resolveManifest: (
-	manifest: Manifest,
-	options?: WorkspacesOptions,
-) => Effect.Effect<
-	Manifest,
-	CatalogAssemblyError | DependencyResolutionError | UnresolvedDependencyError,
-	FileSystem.FileSystem | Path.Path
-> = Effect.fn("Workspaces.resolveManifest")(function* (manifest: Manifest, options?: WorkspacesOptions) {
-	return yield* manifest.resolve().pipe(Effect.provide(resolverLayer(options)));
-});
-
-// Implementation of Workspaces.localExecLayer; the public contract lives on the static.
-const localExecLayer = (options?: {
-	readonly cwd?: string;
-	readonly stopAt?: string | undefined;
-}): Layer.Layer<LocalExec, never, PackageManagerDetector | WorkspaceRoot> =>
-	Layer.effect(
-		LocalExec,
-		Effect.gen(function* () {
-			const roots = yield* WorkspaceRoot;
-			const detector = yield* PackageManagerDetector;
-
-			const context = Effect.gen(function* () {
-				// An omitted cwd is `"."`, resolved by `find` through the injected
-				// core `Path` per call — never at layer construction — so a
-				// `process.chdir` between provide and first use is honoured, and
-				// this layer reads no `process` itself.
-				const cwd = options?.cwd ?? ".";
-				const stopAt = options?.stopAt;
-
-				// A ceiling that finds no root is the ordinary None case, like any
-				// other absent root: nothing project-local to run here.
-				const root = yield* roots
-					.find(cwd, stopAt === undefined ? undefined : { stopAt })
-					.pipe(Effect.asSome, Effect.orElseSucceed(Option.none<string>));
-				if (Option.isNone(root)) return Option.none<ExecContext>();
-
-				const detected = yield* detector.detect(root.value).pipe(
-					Effect.asSome,
-					// A detection REFUSAL is not a mechanism failure: the detector
-					// found no evidence and declined to guess, which is exactly "no
-					// identifiable project-local launcher" — the None case. A
-					// WorkspaceManifestError is different in kind and must escape.
-					Effect.catchTag("PackageManagerDetectionError", () => Effect.succeed(Option.none<DetectedPackageManager>())),
-					// Everything left is a broken manifest. Wrap it in the contract's
-					// error, preserving the original structurally rather than
-					// flattening it to a message.
-					Effect.mapError((cause) => new LocalExecError({ directory: root.value, cause })),
-				);
-				if (Option.isNone(detected)) return Option.none<ExecContext>();
-
-				return Option.some(LocalExec.contextFor(detected.value.name, { directory: root.value }));
-			});
-
-			return { context };
-		}),
-	);
 
 /**
  * The composite layers.
@@ -325,7 +180,9 @@ export class Workspaces {
 	 * const AppLayer = Layer.provide(WorkspacesLayer, PlatformLayer);
 	 * ```
 	 */
-	static readonly layer = layer;
+	static layer(options?: WorkspacesOptions): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> {
+		return compose(options, ConfigDependencyHooks.layerNoop);
+	}
 
 	/**
 	 * The git-free composite, but with catalog assembly that **replays config
@@ -341,7 +198,11 @@ export class Workspaces {
 	 *
 	 * **Bind the result to a `const`.**
 	 */
-	static readonly layerWithConfigDependencies = layerWithConfigDependencies;
+	static layerWithConfigDependencies(
+		options?: WorkspacesOptions,
+	): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> {
+		return compose(options, ConfigDependencyHooks.layerLive);
+	}
 
 	/**
 	 * The git-free composite with config-dependency hook replay in a `node`
@@ -368,7 +229,15 @@ export class Workspaces {
 	 *
 	 * **Bind the result to a `const`.**
 	 */
-	static readonly layerWithConfigDependenciesSubprocess = layerWithConfigDependenciesSubprocess;
+	static layerWithConfigDependenciesSubprocess(
+		options?: WorkspacesOptions,
+	): Layer.Layer<
+		WorkspacesServices,
+		never,
+		FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+	> {
+		return compose(options, ConfigDependencyHooks.layerSubprocess);
+	}
 
 	/**
 	 * The git-free composite plus {@link ChangeDetector} and
@@ -383,7 +252,15 @@ export class Workspaces {
 	 * provides `Git.layerTest({ … })` — git's own shipped double, whose
 	 * unstubbed members die named — and needs no repository on disk.
 	 */
-	static readonly layerWithGit = layerWithGit;
+	static layerWithGit(
+		options?: WorkspacesGitOptions,
+	): Layer.Layer<
+		WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
+		never,
+		FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+	> {
+		return Workspaces.layerWithGitAndHooks(ConfigDependencyHooks.layerNoop, options);
+	}
 
 	/**
 	 * {@link Workspaces.layerWithGit} over
@@ -418,7 +295,15 @@ export class Workspaces {
 	 * const KitLayer = Workspaces.layerWithGitAndConfigDependencies();
 	 * ```
 	 */
-	static readonly layerWithGitAndConfigDependencies = layerWithGitAndConfigDependencies;
+	static layerWithGitAndConfigDependencies(
+		options?: WorkspacesGitOptions,
+	): Layer.Layer<
+		WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
+		never,
+		FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+	> {
+		return Workspaces.layerWithGitAndHooks(ConfigDependencyHooks.layerLive, options);
+	}
 
 	/**
 	 * {@link Workspaces.layerWithGitAndConfigDependencies}, with the hook replay
@@ -446,7 +331,15 @@ export class Workspaces {
 	 * const KitLayer = Workspaces.layerWithGitAndConfigDependenciesSubprocess();
 	 * ```
 	 */
-	static readonly layerWithGitAndConfigDependenciesSubprocess = layerWithGitAndConfigDependenciesSubprocess;
+	static layerWithGitAndConfigDependenciesSubprocess(
+		options?: WorkspacesGitOptions,
+	): Layer.Layer<
+		WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
+		never,
+		FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+	> {
+		return Workspaces.layerWithGitAndHooks(ConfigDependencyHooks.layerSubprocess, options);
+	}
 
 	/**
 	 * The git composite over a **caller-supplied** hooks layer — the same graph
@@ -483,7 +376,23 @@ export class Workspaces {
 	 * );
 	 * ```
 	 */
-	static readonly layerWithGitAndHooks = withGit;
+	static layerWithGitAndHooks<R = never>(
+		hooks: Layer.Layer<ConfigDependencyHooks, never, R>,
+		options?: WorkspacesGitOptions,
+	): Layer.Layer<
+		WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
+		never,
+		FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner | R
+	> {
+		const core = compose(options, hooks);
+		const git = Git.layer;
+		return Layer.mergeAll(
+			core,
+			git,
+			ChangeDetector.layer.pipe(Layer.provide(git), Layer.provide(core)),
+			WorkspaceSnapshots.layer(options).pipe(Layer.provide(git), Layer.provide(hooks), Layer.provide(core)),
+		);
+	}
 
 	/**
 	 * This package's implementation of `@effected/commands`' `LocalExec`
@@ -552,7 +461,54 @@ export class Workspaces {
 	 * );
 	 * ```
 	 */
-	static readonly localExecLayer = localExecLayer;
+	static localExecLayer(options?: {
+		readonly cwd?: string;
+		readonly stopAt?: string | undefined;
+	}): Layer.Layer<LocalExec, never, PackageManagerDetector | WorkspaceRoot> {
+		return Layer.effect(
+			LocalExec,
+			Effect.gen(function* () {
+				const roots = yield* WorkspaceRoot;
+				const detector = yield* PackageManagerDetector;
+
+				const context = Effect.gen(function* () {
+					// An omitted cwd is `"."`, resolved by `find` through the injected
+					// core `Path` per call — never at layer construction — so a
+					// `process.chdir` between provide and first use is honoured, and
+					// this layer reads no `process` itself.
+					const cwd = options?.cwd ?? ".";
+					const stopAt = options?.stopAt;
+
+					// A ceiling that finds no root is the ordinary None case, like any
+					// other absent root: nothing project-local to run here.
+					const root = yield* roots
+						.find(cwd, stopAt === undefined ? undefined : { stopAt })
+						.pipe(Effect.asSome, Effect.orElseSucceed(Option.none<string>));
+					if (Option.isNone(root)) return Option.none<ExecContext>();
+
+					const detected = yield* detector.detect(root.value).pipe(
+						Effect.asSome,
+						// A detection REFUSAL is not a mechanism failure: the detector
+						// found no evidence and declined to guess, which is exactly "no
+						// identifiable project-local launcher" — the None case. A
+						// WorkspaceManifestError is different in kind and must escape.
+						Effect.catchTag("PackageManagerDetectionError", () =>
+							Effect.succeed(Option.none<DetectedPackageManager>()),
+						),
+						// Everything left is a broken manifest. Wrap it in the contract's
+						// error, preserving the original structurally rather than
+						// flattening it to a message.
+						Effect.mapError((cause) => new LocalExecError({ directory: root.value, cause })),
+					);
+					if (Option.isNone(detected)) return Option.none<ExecContext>();
+
+					return Option.some(LocalExec.contextFor(detected.value.name, { directory: root.value }));
+				});
+
+				return { context };
+			}),
+		);
+	}
 
 	/**
 	 * Resolve every `catalog:` and `workspace:` specifier in one `Manifest`
@@ -588,7 +544,16 @@ export class Workspaces {
 	 * });
 	 * ```
 	 */
-	static readonly resolveManifest = resolveManifest;
+	static readonly resolveManifest: (
+		manifest: Manifest,
+		options?: WorkspacesOptions,
+	) => Effect.Effect<
+		Manifest,
+		CatalogAssemblyError | DependencyResolutionError | UnresolvedDependencyError,
+		FileSystem.FileSystem | Path.Path
+	> = Effect.fn("Workspaces.resolveManifest")(function* (manifest: Manifest, options?: WorkspacesOptions) {
+		return yield* manifest.resolve().pipe(Effect.provide(Workspaces.resolverLayer(options)));
+	});
 
 	/**
 	 * The one-call resolver factory: {@link Workspaces.resolvers} pre-wired
@@ -623,7 +588,11 @@ export class Workspaces {
 	 * );
 	 * ```
 	 */
-	static readonly resolverLayer = resolverLayer;
+	static resolverLayer(
+		options?: WorkspacesOptions,
+	): Layer.Layer<CatalogResolver | WorkspaceResolver, never, FileSystem.FileSystem | Path.Path> {
+		return Workspaces.resolvers.pipe(Layer.provide(Workspaces.layerWithConfigDependencies(options)));
+	}
 
 	/**
 	 * The two `@effected/npm` resolver contracts, implemented for real.
@@ -643,5 +612,9 @@ export class Workspaces {
 	 * const Resolvers = Workspaces.resolvers.pipe(Layer.provide(WorkspacesLayer));
 	 * ```
 	 */
-	static readonly resolvers = resolvers;
+	static readonly resolvers: Layer.Layer<
+		CatalogResolver | WorkspaceResolver,
+		never,
+		WorkspaceCatalogs | WorkspaceDiscovery
+	> = Layer.mergeAll(WorkspaceCatalogs.catalogResolver, WorkspaceDiscovery.workspaceResolver);
 }

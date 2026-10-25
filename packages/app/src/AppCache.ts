@@ -76,23 +76,6 @@ const build = <A, E>(
 		}),
 	);
 
-// Implementation of AppCache.location; the public contract lives on the static.
-const location = (options?: AppCacheOptions): Effect.Effect<string, never, AppDirs | Path.Path> =>
-	Effect.map(locate("AppCache.location", options), (resolved) => resolved.file);
-
-// Implementation of AppCache.layer; the public contract lives on the static.
-const layer = (
-	options?: AppCacheOptions,
-): Layer.Layer<Cache, AppDirsError | CacheError, AppDirs | Path.Path | FileSystem.FileSystem> =>
-	build("AppCache.layer", options, Cache.layerSqlite);
-
-// Implementation of AppCache.layerAs; the public contract lives on the static.
-const layerAs = <I, S extends CacheShape>(
-	tag: Context.Key<I, S> & ([CacheShape] extends [S] ? unknown : never),
-	options: AppCacheOptions & { readonly filename: string },
-): Layer.Layer<I, AppDirsError | CacheError, AppDirs | Path.Path | FileSystem.FileSystem> =>
-	build("AppCache.layerAs", options, (resolved) => Cache.layerSqliteAs<I, S>(tag, resolved));
-
 /**
  * The cache database glue: a TTL `Cache` whose file lives in one of the
  * ambient `AppDirs` directories — the cache directory unless told otherwise.
@@ -119,7 +102,10 @@ export class AppCache {
 	 * that binding, or memoization by reference is lost and the database is
 	 * opened twice.
 	 */
-	static readonly layer = layer;
+	static readonly layer = (
+		options?: AppCacheOptions,
+	): Layer.Layer<Cache, AppDirsError | CacheError, AppDirs | Path.Path | FileSystem.FileSystem> =>
+		build("AppCache.layer", options, Cache.layerSqlite);
 
 	/**
 	 * Build an additional cache under a service key the consumer defines: the
@@ -163,7 +149,11 @@ export class AppCache {
 	 * // Requires AppDirs, Path and FileSystem — App.layerDirs and the platform layer supply them.
 	 * ```
 	 */
-	static readonly layerAs = layerAs;
+	static readonly layerAs = <I, S extends CacheShape>(
+		tag: Context.Key<I, S> & ([CacheShape] extends [S] ? unknown : never),
+		options: AppCacheOptions & { readonly filename: string },
+	): Layer.Layer<I, AppDirsError | CacheError, AppDirs | Path.Path | FileSystem.FileSystem> =>
+		build("AppCache.layerAs", options, (resolved) => Cache.layerSqliteAs<I, S>(tag, resolved));
 
 	/**
 	 * Resolve the absolute path of the database file the layers would open for
@@ -191,5 +181,6 @@ export class AppCache {
 	 * });
 	 * ```
 	 */
-	static readonly location = location;
+	static readonly location = (options?: AppCacheOptions): Effect.Effect<string, never, AppDirs | Path.Path> =>
+		Effect.map(locate("AppCache.location", options), (resolved) => resolved.file);
 }

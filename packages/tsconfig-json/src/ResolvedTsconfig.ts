@@ -163,18 +163,6 @@ const transformCompilerOptionPaths = (
 	return out as CompilerOptions.Type;
 };
 
-// Implementation of ResolvedTsconfig.absolutize; the public contract lives on the static.
-const absolutize = (
-	doc: TsconfigJson.Type,
-	configDir: string,
-	join: (a: string, b: string) => string,
-): TsconfigJson.Type => {
-	const co = doc.compilerOptions;
-	if (co === undefined) return doc;
-	const absolutizeValue = (value: string): string => (startsWithConfigDir(value) ? value : join(configDir, value));
-	return { ...doc, compilerOptions: transformCompilerOptionPaths(co, absolutizeValue, false) };
-};
-
 // ── merge per field ────────────────────────────────────────────────────
 
 // Top-level keys consumed by name from a derived `TsconfigJson.Type` — everything
@@ -251,57 +239,6 @@ const mergeWatchOptions = (
 	return { ...base, ...derived };
 };
 
-// Implementation of ResolvedTsconfig.merge; the public contract lives on the static.
-const merge = (base: ResolvedTsconfig, derived: TsconfigJson.Type, derivedPath: string): ResolvedTsconfig => {
-	const finalDir = dirname(derivedPath);
-	const baseDir = dirname(base.configPath);
-
-	// compilerOptions: per-key shallow assign; `paths` is one key, replaced wholesale.
-	const compilerOptions: CompilerOptions.Type = { ...base.compilerOptions, ...derived.compilerOptions };
-
-	// pathsBase moves to the derived config's dir only when it redeclares `paths`;
-	// otherwise the earlier declaring config's dir survives later merges.
-	const pathsBase = derived.compilerOptions?.paths !== undefined ? finalDir : base.pathsBase;
-
-	// files/include/exclude: own wins; else inherit re-rooted relative to the declaring config.
-	const rerootPrefix = relative(finalDir, baseDir);
-	const files = mergeFileList(base.files, derived.files, rerootPrefix);
-	const include = mergeFileList(base.include, derived.include, rerootPrefix);
-	const exclude = mergeFileList(base.exclude, derived.exclude, rerootPrefix);
-
-	// references / typeAcquisition: never inherited — the own config's values only.
-	const references = derived.references;
-	const typeAcquisition = derived.typeAcquisition;
-
-	// compileOnSave: own wins; else inherit only a truthy value.
-	const compileOnSave =
-		derived.compileOnSave !== undefined ? derived.compileOnSave : base.compileOnSave === true ? true : undefined;
-
-	const watchOptions = mergeWatchOptions(base.watchOptions, derived.watchOptions);
-
-	// Unknown top-level keys: assign semantics, derived wins per key. Spread first
-	// so a stray passthrough key can never clobber a structural field.
-	const passthrough = {
-		...extractPassthrough(base, RESOLVED_STRUCTURAL_KEYS),
-		...extractPassthrough(derived, DERIVED_CONSUMED_KEYS),
-	};
-
-	return {
-		...passthrough,
-		configPath: derivedPath,
-		extendedPaths: [...base.extendedPaths, derivedPath],
-		compilerOptions,
-		...(files !== undefined ? { files } : {}),
-		...(include !== undefined ? { include } : {}),
-		...(exclude !== undefined ? { exclude } : {}),
-		...(references !== undefined ? { references } : {}),
-		...(watchOptions !== undefined ? { watchOptions } : {}),
-		...(typeAcquisition !== undefined ? { typeAcquisition } : {}),
-		...(compileOnSave !== undefined ? { compileOnSave } : {}),
-		...(pathsBase !== undefined ? { pathsBase } : {}),
-	};
-};
-
 // ── ${configDir} substitution (final phase) ──────────────────────────────
 
 const substituteWatchExcludes = (
@@ -317,27 +254,6 @@ const substituteWatchExcludes = (
 		}
 	}
 	return out as WatchOptions.Type;
-};
-
-// Implementation of ResolvedTsconfig.substituteConfigDir; the public contract lives on the static.
-const substituteConfigDir = (resolved: ResolvedTsconfig, finalDir: string): ResolvedTsconfig => {
-	const substitute = (value: string): string =>
-		startsWithConfigDir(value) ? finalDir + value.slice(CONFIG_DIR_TEMPLATE.length) : value;
-
-	const compilerOptions = transformCompilerOptionPaths(resolved.compilerOptions, substitute, true);
-	const files = resolved.files === undefined ? undefined : resolved.files.map(substitute);
-	const include = resolved.include === undefined ? undefined : resolved.include.map(substitute);
-	const exclude = resolved.exclude === undefined ? undefined : resolved.exclude.map(substitute);
-	const watchOptions = substituteWatchExcludes(resolved.watchOptions, substitute);
-
-	return {
-		...resolved,
-		compilerOptions,
-		...(files !== undefined ? { files } : {}),
-		...(include !== undefined ? { include } : {}),
-		...(exclude !== undefined ? { exclude } : {}),
-		...(watchOptions !== undefined ? { watchOptions } : {}),
-	};
 };
 
 /**
@@ -361,7 +277,16 @@ export class ResolvedTsconfig {
 	 * VALUES stay verbatim. Only `compilerOptions` path surfaces are touched;
 	 * `files`/`include`/`exclude` are re-rooted at merge time instead.
 	 */
-	static readonly absolutize = absolutize;
+	static absolutize(
+		doc: TsconfigJson.Type,
+		configDir: string,
+		join: (a: string, b: string) => string,
+	): TsconfigJson.Type {
+		const co = doc.compilerOptions;
+		if (co === undefined) return doc;
+		const absolutizeValue = (value: string): string => (startsWithConfigDir(value) ? value : join(configDir, value));
+		return { ...doc, compilerOptions: transformCompilerOptionPaths(co, absolutizeValue, false) };
+	}
 
 	/**
 	 * Fold one more-derived config onto the accumulated base, derived
@@ -370,7 +295,55 @@ export class ResolvedTsconfig {
 	 * normalized path, from which the re-rooting frame and `pathsBase` are
 	 * computed.
 	 */
-	static readonly merge = merge;
+	static merge(base: ResolvedTsconfig, derived: TsconfigJson.Type, derivedPath: string): ResolvedTsconfig {
+		const finalDir = dirname(derivedPath);
+		const baseDir = dirname(base.configPath);
+
+		// compilerOptions: per-key shallow assign; `paths` is one key, replaced wholesale.
+		const compilerOptions: CompilerOptions.Type = { ...base.compilerOptions, ...derived.compilerOptions };
+
+		// pathsBase moves to the derived config's dir only when it redeclares `paths`;
+		// otherwise the earlier declaring config's dir survives later merges.
+		const pathsBase = derived.compilerOptions?.paths !== undefined ? finalDir : base.pathsBase;
+
+		// files/include/exclude: own wins; else inherit re-rooted relative to the declaring config.
+		const rerootPrefix = relative(finalDir, baseDir);
+		const files = mergeFileList(base.files, derived.files, rerootPrefix);
+		const include = mergeFileList(base.include, derived.include, rerootPrefix);
+		const exclude = mergeFileList(base.exclude, derived.exclude, rerootPrefix);
+
+		// references / typeAcquisition: never inherited — the own config's values only.
+		const references = derived.references;
+		const typeAcquisition = derived.typeAcquisition;
+
+		// compileOnSave: own wins; else inherit only a truthy value.
+		const compileOnSave =
+			derived.compileOnSave !== undefined ? derived.compileOnSave : base.compileOnSave === true ? true : undefined;
+
+		const watchOptions = mergeWatchOptions(base.watchOptions, derived.watchOptions);
+
+		// Unknown top-level keys: assign semantics, derived wins per key. Spread first
+		// so a stray passthrough key can never clobber a structural field.
+		const passthrough = {
+			...extractPassthrough(base, RESOLVED_STRUCTURAL_KEYS),
+			...extractPassthrough(derived, DERIVED_CONSUMED_KEYS),
+		};
+
+		return {
+			...passthrough,
+			configPath: derivedPath,
+			extendedPaths: [...base.extendedPaths, derivedPath],
+			compilerOptions,
+			...(files !== undefined ? { files } : {}),
+			...(include !== undefined ? { include } : {}),
+			...(exclude !== undefined ? { exclude } : {}),
+			...(references !== undefined ? { references } : {}),
+			...(watchOptions !== undefined ? { watchOptions } : {}),
+			...(typeAcquisition !== undefined ? { typeAcquisition } : {}),
+			...(compileOnSave !== undefined ? { compileOnSave } : {}),
+			...(pathsBase !== undefined ? { pathsBase } : {}),
+		};
+	}
 
 	/**
 	 * The final phase: replace a leading `${configDir}` token
@@ -381,5 +354,23 @@ export class ResolvedTsconfig {
 	 * `excludeDirectories`/`excludeFiles`. Every other field is left
 	 * untouched.
 	 */
-	static readonly substituteConfigDir = substituteConfigDir;
+	static substituteConfigDir(resolved: ResolvedTsconfig, finalDir: string): ResolvedTsconfig {
+		const substitute = (value: string): string =>
+			startsWithConfigDir(value) ? finalDir + value.slice(CONFIG_DIR_TEMPLATE.length) : value;
+
+		const compilerOptions = transformCompilerOptionPaths(resolved.compilerOptions, substitute, true);
+		const files = resolved.files === undefined ? undefined : resolved.files.map(substitute);
+		const include = resolved.include === undefined ? undefined : resolved.include.map(substitute);
+		const exclude = resolved.exclude === undefined ? undefined : resolved.exclude.map(substitute);
+		const watchOptions = substituteWatchExcludes(resolved.watchOptions, substitute);
+
+		return {
+			...resolved,
+			compilerOptions,
+			...(files !== undefined ? { files } : {}),
+			...(include !== undefined ? { include } : {}),
+			...(exclude !== undefined ? { exclude } : {}),
+			...(watchOptions !== undefined ? { watchOptions } : {}),
+		};
+	}
 }

@@ -20,7 +20,7 @@ import { makeCliLogger } from "./CliLogger.js";
 import { CliTheme } from "./CliTheme.js";
 import { sanitize } from "./Fmt.js";
 import { paintStyle } from "./internal/ansi.js";
-import { Level, passes } from "./internal/diagnostics.js";
+import { Level as diagnosticsLevel, passes } from "./internal/diagnostics.js";
 import { makeFileSink } from "./internal/fileSink.js";
 import { TrustedLine, neutralizeJson } from "./internal/logSafety.js";
 import { scanAudience } from "./internal/scanAudience.js";
@@ -320,7 +320,8 @@ export class CliLog {
 	 * `CliLog.layer` sets it from the environment variable. A scope may raise it to narrow the output; it
 	 * cannot lower it below the level the layer installed, because Effect has already dropped those records.
 	 */
-	static readonly Level: Context.Reference<LogLevel.LogLevel> = Level;
+	// Annotated, aliased import: the reference must stay the one instance the internal sinks read.
+	static readonly Level: Context.Reference<LogLevel.LogLevel> = diagnosticsLevel;
 
 	/**
 	 * The whole logger set of a program: a `CliLogger` for ordinary lines plus the diagnostics sink.

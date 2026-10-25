@@ -77,23 +77,6 @@ const build = <A, E>(
 		}),
 	);
 
-// Implementation of AppStore.location; the public contract lives on the static.
-const location = (options: AppStoreOptions): Effect.Effect<string, never, AppDirs | Path.Path> =>
-	Effect.map(locate("AppStore.location", options), (resolved) => resolved.file);
-
-// Implementation of AppStore.layer; the public contract lives on the static.
-const layer = (
-	options: AppStoreOptions,
-): Layer.Layer<Store, AppDirsError | StoreError | StoreMigrationError, AppDirs | Path.Path | FileSystem.FileSystem> =>
-	build("AppStore.layer", options, Store.layerSqlite);
-
-// Implementation of AppStore.layerAs; the public contract lives on the static.
-const layerAs = <I, S extends StoreShape>(
-	tag: Context.Key<I, S> & ([StoreShape] extends [S] ? unknown : never),
-	options: AppStoreOptions & { readonly filename: string },
-): Layer.Layer<I, AppDirsError | StoreError | StoreMigrationError, AppDirs | Path.Path | FileSystem.FileSystem> =>
-	build("AppStore.layerAs", options, (resolved) => Store.layerSqliteAs<I, S>(tag, resolved));
-
 /**
  * The database glue: a migrated SQLite `Store` whose file lives in one of the
  * ambient `AppDirs` directories — the state directory unless told otherwise.
@@ -124,7 +107,10 @@ export class AppStore {
 	 * that binding, or memoization by reference is lost and the database is
 	 * opened twice.
 	 */
-	static readonly layer = layer;
+	static readonly layer = (
+		options: AppStoreOptions,
+	): Layer.Layer<Store, AppDirsError | StoreError | StoreMigrationError, AppDirs | Path.Path | FileSystem.FileSystem> =>
+		build("AppStore.layer", options, Store.layerSqlite);
 
 	/**
 	 * Build an additional database under a service key the consumer defines:
@@ -184,7 +170,11 @@ export class AppStore {
 	 * // Requires AppDirs, Path and FileSystem — App.layerDirs and the platform layer supply them.
 	 * ```
 	 */
-	static readonly layerAs = layerAs;
+	static readonly layerAs = <I, S extends StoreShape>(
+		tag: Context.Key<I, S> & ([StoreShape] extends [S] ? unknown : never),
+		options: AppStoreOptions & { readonly filename: string },
+	): Layer.Layer<I, AppDirsError | StoreError | StoreMigrationError, AppDirs | Path.Path | FileSystem.FileSystem> =>
+		build("AppStore.layerAs", options, (resolved) => Store.layerSqliteAs<I, S>(tag, resolved));
 
 	/**
 	 * Resolve the absolute path of the database file the layers would open for
@@ -212,5 +202,6 @@ export class AppStore {
 	 * });
 	 * ```
 	 */
-	static readonly location = location;
+	static readonly location = (options: AppStoreOptions): Effect.Effect<string, never, AppDirs | Path.Path> =>
+		Effect.map(locate("AppStore.location", options), (resolved) => resolved.file);
 }

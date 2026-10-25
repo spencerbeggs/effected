@@ -218,7 +218,8 @@ export class Action {
 	private constructor() {}
 
 	/** {@link describeCause}, so an action can render its own failures the same way. */
-	static readonly describeCause = describeCause;
+	// Annotated: `describeCause` stays module-level (exported from the entry point and used by `Action.run`).
+	static readonly describeCause: (cause: Cause.Cause<unknown>) => string = describeCause;
 
 	/**
 	 * Run an action program to completion.

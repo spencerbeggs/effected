@@ -97,12 +97,6 @@ const loadAbs = (
 		return yield* decodeConfig(text).pipe(Effect.mapError((cause) => TsconfigParseError.make({ path: abs, cause })));
 	});
 
-// Implementation of TsconfigLoader.load; the public contract lives on the static.
-const load = Effect.fn("TsconfigLoader.load")(function* (configPath: string) {
-	const path = yield* Path.Path;
-	return yield* loadAbs(normalizeSlashes(path.resolve(configPath)));
-});
-
 /** One absolutized config document paired with its normalized absolute path, in fold order. */
 interface ConfigLayer {
 	readonly doc: TsconfigJson.Type;
@@ -173,30 +167,6 @@ const collect = (
 		return layers;
 	});
 
-// Implementation of TsconfigLoader.resolve; the public contract lives on the static.
-const resolve = Effect.fn("TsconfigLoader.resolve")(function* (configPath: string) {
-	const path = yield* Path.Path;
-	const topAbs = normalizeSlashes(path.resolve(configPath));
-	const layers = yield* collect(topAbs, []);
-
-	// Fold base-most first onto an empty seed; each merge sets the accumulated
-	// configPath to the derived config, so the seed's is immediately overwritten.
-	const seed: ResolvedTsconfig = { configPath: topAbs, extendedPaths: [], compilerOptions: {} };
-	let acc = seed;
-	for (const entry of layers) {
-		acc = ResolvedTsconfig.merge(acc, entry.doc, entry.path);
-	}
-
-	// Final phase: ${configDir} resolves against the TOP config's directory.
-	return ResolvedTsconfig.substituteConfigDir(acc, path.dirname(topAbs));
-});
-
-// Implementation of TsconfigLoader.compilerOptions; the public contract lives on the static.
-const compilerOptions = Effect.fn("TsconfigLoader.compilerOptions")(function* (configPath: string) {
-	const resolved = yield* resolve(configPath);
-	return resolved.compilerOptions satisfies CompilerOptions.Type;
-});
-
 /**
  * The tsconfig.json loader: {@link TsconfigLoader.load} reads and decodes one
  * config file, {@link TsconfigLoader.resolve} runs the full load -\> extends -\>
@@ -227,7 +197,10 @@ export class TsconfigLoader {
 	 * untranslated. No `extends` resolution — {@link TsconfigLoader.resolve}
 	 * drives that.
 	 */
-	static readonly load = load;
+	static readonly load = Effect.fn("TsconfigLoader.load")(function* (configPath: string) {
+		const path = yield* Path.Path;
+		return yield* loadAbs(normalizeSlashes(path.resolve(configPath)));
+	});
 
 	/**
 	 * Resolve a tsconfig.json and its full `extends` chain into a
@@ -241,7 +214,22 @@ export class TsconfigLoader {
 	 * carrying that file's path), `TsconfigExtendsError` (a broken chain), or
 	 * a `PlatformError` from IO — never a defect.
 	 */
-	static readonly resolve = resolve;
+	static readonly resolve = Effect.fn("TsconfigLoader.resolve")(function* (configPath: string) {
+		const path = yield* Path.Path;
+		const topAbs = normalizeSlashes(path.resolve(configPath));
+		const layers = yield* collect(topAbs, []);
+
+		// Fold base-most first onto an empty seed; each merge sets the accumulated
+		// configPath to the derived config, so the seed's is immediately overwritten.
+		const seed: ResolvedTsconfig = { configPath: topAbs, extendedPaths: [], compilerOptions: {} };
+		let acc = seed;
+		for (const entry of layers) {
+			acc = ResolvedTsconfig.merge(acc, entry.doc, entry.path);
+		}
+
+		// Final phase: ${configDir} resolves against the TOP config's directory.
+		return ResolvedTsconfig.substituteConfigDir(acc, path.dirname(topAbs));
+	});
 
 	/**
 	 * Resolve a tsconfig.json's full `extends` chain and project out the
@@ -249,5 +237,8 @@ export class TsconfigLoader {
 	 * {@link TsconfigLoader.resolve} for the common "just give me the
 	 * effective options" query. Same pipeline, same typed failures.
 	 */
-	static readonly compilerOptions = compilerOptions;
+	static readonly compilerOptions = Effect.fn("TsconfigLoader.compilerOptions")(function* (configPath: string) {
+		const resolved = yield* TsconfigLoader.resolve(configPath);
+		return resolved.compilerOptions satisfies CompilerOptions.Type;
+	});
 }

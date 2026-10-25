@@ -109,32 +109,6 @@ const runPhase = <A>(
 ): Effect.Effect<A, ConfigMigrationError> =>
 	Effect.suspend(run).pipe(Effect.mapError((cause) => new ConfigMigrationError({ version, name, phase, cause })));
 
-// Implementation of ConfigMigration.make; the public contract lives on the static.
-const make = <CE = ConfigCodecError>(options: ConfigMigrationOptions<CE>): ConfigCodec<CE | ConfigMigrationError> => {
-	const access = options.versionAccess ?? VersionAccess.default;
-	const sorted = [...options.migrations].sort((a, b) => a.version - b.version);
-
-	return {
-		name: options.codec.name,
-		stringify: options.codec.stringify,
-		parse: (raw) =>
-			Effect.gen(function* () {
-				let parsed = yield* options.codec.parse(raw);
-				if (sorted.length === 0) return parsed;
-
-				const current = yield* runPhase("read-version", 0, "", () => access.get(parsed));
-
-				for (const migration of sorted.filter((m) => m.version > current)) {
-					parsed = yield* runPhase("apply", migration.version, migration.name, () => migration.up(parsed));
-					parsed = yield* runPhase("write-version", migration.version, migration.name, () =>
-						access.set(parsed, migration.version),
-					);
-				}
-				return parsed;
-			}),
-	};
-};
-
 /** Versioned migration support for config codecs. @public */
 export class ConfigMigration {
 	private constructor() {}
@@ -169,5 +143,30 @@ export class ConfigMigration {
 	 * });
 	 * ```
 	 */
-	static readonly make = make;
+	static readonly make = <CE = ConfigCodecError>(
+		options: ConfigMigrationOptions<CE>,
+	): ConfigCodec<CE | ConfigMigrationError> => {
+		const access = options.versionAccess ?? VersionAccess.default;
+		const sorted = [...options.migrations].sort((a, b) => a.version - b.version);
+
+		return {
+			name: options.codec.name,
+			stringify: options.codec.stringify,
+			parse: (raw) =>
+				Effect.gen(function* () {
+					let parsed = yield* options.codec.parse(raw);
+					if (sorted.length === 0) return parsed;
+
+					const current = yield* runPhase("read-version", 0, "", () => access.get(parsed));
+
+					for (const migration of sorted.filter((m) => m.version > current)) {
+						parsed = yield* runPhase("apply", migration.version, migration.name, () => migration.up(parsed));
+						parsed = yield* runPhase("write-version", migration.version, migration.name, () =>
+							access.set(parsed, migration.version),
+						);
+					}
+					return parsed;
+				}),
+		};
+	};
 }

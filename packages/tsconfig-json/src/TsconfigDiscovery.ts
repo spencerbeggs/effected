@@ -14,18 +14,6 @@ export interface FindNearestOptions {
 	readonly stopAt?: string;
 }
 
-// Implementation of TsconfigDiscovery.findNearest; the public contract lives on the static.
-const findNearest = (
-	start: string,
-	options?: FindNearestOptions,
-): Effect.Effect<Option.Option<string>, never, FileSystem.FileSystem | Path.Path> =>
-	Effect.gen(function* () {
-		const path = yield* Path.Path;
-		const filename = options?.filename ?? "tsconfig.json";
-		const dirs = yield* Walker.ascend(start, options?.stopAt === undefined ? {} : { stopAt: options.stopAt });
-		return yield* Walker.findUpward(dirs, (dir) => [path.join(dir, filename)]);
-	});
-
 /**
  * Nearest-config upward discovery for `tsconfig.json`.
  *
@@ -54,5 +42,15 @@ export class TsconfigDiscovery {
 	 * posture, and a permission-denied probe on one directory does not hide a
 	 * config file above it.
 	 */
-	static readonly findNearest = findNearest;
+	static findNearest(
+		start: string,
+		options?: FindNearestOptions,
+	): Effect.Effect<Option.Option<string>, never, FileSystem.FileSystem | Path.Path> {
+		return Effect.gen(function* () {
+			const path = yield* Path.Path;
+			const filename = options?.filename ?? "tsconfig.json";
+			const dirs = yield* Walker.ascend(start, options?.stopAt === undefined ? {} : { stopAt: options.stopAt });
+			return yield* Walker.findUpward(dirs, (dir) => [path.join(dir, filename)]);
+		});
+	}
 }

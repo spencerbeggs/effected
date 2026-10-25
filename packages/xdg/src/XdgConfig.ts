@@ -5,51 +5,6 @@ import { AppDirs } from "./AppDirs.js";
 import { NativeDirs } from "./NativeDirs.js";
 import { CurrentPlatform, Xdg } from "./Xdg.js";
 
-// Implementation of XdgConfig.resolver; the public contract lives on the static.
-const resolver = (options: {
-	readonly filename: string;
-}): ConfigResolver<AppDirs | FileSystem.FileSystem | Path.Path> => ({
-	name: "xdg",
-	resolve: Effect.gen(function* () {
-		const appDirs = yield* AppDirs;
-		const path = yield* Path.Path;
-		const fs = yield* FileSystem.FileSystem;
-		const candidates = appDirs.dirs.configSearchPath.map((dir) => path.join(dir, options.filename));
-		return yield* Walker.firstMatch(candidates, (candidate) => fs.exists(candidate));
-	}),
-});
-
-// Implementation of XdgConfig.nativeResolver; the public contract lives on the static.
-const nativeResolver = (options: {
-	readonly namespace: string;
-	readonly filename: string;
-}): ConfigResolver<Xdg | FileSystem.FileSystem | Path.Path> => ({
-	name: "native",
-	resolve: Effect.gen(function* () {
-		const paths = yield* Xdg;
-		const platform = yield* CurrentPlatform;
-		const path = yield* Path.Path;
-		const fs = yield* FileSystem.FileSystem;
-
-		const native = NativeDirs.resolve({ platform, namespace: options.namespace, paths, path });
-		if (Option.isNone(native)) return Option.none();
-
-		// One candidate, but still through `firstMatch`: the absorption contract is
-		// what `ConfigResolver` requires, and it lives in exactly one place.
-		return yield* Walker.firstMatch([path.join(native.value.config, options.filename)], (candidate) =>
-			fs.exists(candidate),
-		);
-	}),
-});
-
-// Implementation of XdgConfig.savePath; the public contract lives on the static.
-const savePath = (filename: string): Effect.Effect<string, never, AppDirs | Path.Path> =>
-	Effect.gen(function* () {
-		const appDirs = yield* AppDirs;
-		const path = yield* Path.Path;
-		return path.join(appDirs.dirs.config, filename);
-	});
-
 /**
  * The bridge from XDG directories into `@effected/config-file`.
  *
@@ -74,7 +29,18 @@ export class XdgConfig {
 	 * Place it **before** {@link XdgConfig.nativeResolver} in a chain, so an
 	 * existing `~/.config/<app>` still wins over the OS-native directory.
 	 */
-	static readonly resolver = resolver;
+	static resolver(options: { readonly filename: string }): ConfigResolver<AppDirs | FileSystem.FileSystem | Path.Path> {
+		return {
+			name: "xdg",
+			resolve: Effect.gen(function* () {
+				const appDirs = yield* AppDirs;
+				const path = yield* Path.Path;
+				const fs = yield* FileSystem.FileSystem;
+				const candidates = appDirs.dirs.configSearchPath.map((dir) => path.join(dir, options.filename));
+				return yield* Walker.firstMatch(candidates, (candidate) => fs.exists(candidate));
+			}),
+		};
+	}
 
 	/**
 	 * Probe the OS-native config directory for `filename`.
@@ -92,7 +58,29 @@ export class XdgConfig {
 	 * to configure its XDG directories, and a caller may well probe a *different*
 	 * namespace than the one their `AppDirs` was built for.
 	 */
-	static readonly nativeResolver = nativeResolver;
+	static nativeResolver(options: {
+		readonly namespace: string;
+		readonly filename: string;
+	}): ConfigResolver<Xdg | FileSystem.FileSystem | Path.Path> {
+		return {
+			name: "native",
+			resolve: Effect.gen(function* () {
+				const paths = yield* Xdg;
+				const platform = yield* CurrentPlatform;
+				const path = yield* Path.Path;
+				const fs = yield* FileSystem.FileSystem;
+
+				const native = NativeDirs.resolve({ platform, namespace: options.namespace, paths, path });
+				if (Option.isNone(native)) return Option.none();
+
+				// One candidate, but still through `firstMatch`: the absorption contract is
+				// what `ConfigResolver` requires, and it lives in exactly one place.
+				return yield* Walker.firstMatch([path.join(native.value.config, options.filename)], (candidate) =>
+					fs.exists(candidate),
+				);
+			}),
+		};
+	}
 
 	/**
 	 * The default save target for a config file: `<app config dir>/<filename>`.
@@ -120,5 +108,11 @@ export class XdgConfig {
 	 * });
 	 * ```
 	 */
-	static readonly savePath = savePath;
+	static savePath(filename: string): Effect.Effect<string, never, AppDirs | Path.Path> {
+		return Effect.gen(function* () {
+			const appDirs = yield* AppDirs;
+			const path = yield* Path.Path;
+			return path.join(appDirs.dirs.config, filename);
+		});
+	}
 }

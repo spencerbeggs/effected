@@ -49,44 +49,6 @@ export interface MergeStrategy<A> {
 	readonly resolve: (sources: NonEmptySources<A>) => Effect.Effect<A>;
 }
 
-const firstMatch = <A>(): MergeStrategy<A> => ({
-	name: "first-match",
-	resolve: (sources) => Effect.succeed(sources[0].value),
-});
-
-/**
- * Deep-merge every contributing source, higher priority winning on conflict.
- *
- * @remarks
- * Two values merge only when both are record-like and share a prototype, so a
- * document decoded through `Schema.Class` merges with another of the same class
- * and **survives as a real instance** — `instanceof` holds and its getters
- * still work. Everything else is atomic: a nested `Date`, `Map`, `Set`,
- * `RegExp`, array, or class instance is taken whole from the highest-priority
- * source that defines it, never reshaped field-by-field.
- *
- * The alternative — spreading each value into a fresh object — would make
- * `load`'s declared `Effect<A>` a lie, handing back a structurally-equal plain
- * object whose class methods are gone and whose `Date` fields have decayed to
- * `{}`.
- *
- * Nested *plain* objects (a `Schema.Struct` section) still merge field-wise.
- */
-const layeredMerge = <A>(): MergeStrategy<A> => ({
-	name: "layered-merge",
-	resolve: (sources) => {
-		// Fold from lowest priority upward so higher-priority keys overwrite.
-		let merged: unknown = sources[sources.length - 1]?.value;
-		for (let i = sources.length - 2; i >= 0; i--) {
-			const higher = sources[i]?.value;
-			merged = canMerge(merged, higher)
-				? deepMerge(higher as Record<string, unknown>, merged as Record<string, unknown>)
-				: higher;
-		}
-		return Effect.succeed(merged as A);
-	},
-});
-
 /**
  * Built-in merge strategies: `firstMatch` (the highest-priority source wins
  * whole) and `layeredMerge` (every source deep-merged, higher priority winning).
@@ -104,4 +66,42 @@ const layeredMerge = <A>(): MergeStrategy<A> => ({
  *
  * @public
  */
-export const MergeStrategy = { firstMatch, layeredMerge } as const;
+export const MergeStrategy = {
+	/** Take the highest-priority source whole. */
+	firstMatch: <A>(): MergeStrategy<A> => ({
+		name: "first-match",
+		resolve: (sources) => Effect.succeed(sources[0].value),
+	}),
+	/**
+	 * Deep-merge every contributing source, higher priority winning on conflict.
+	 *
+	 * @remarks
+	 * Two values merge only when both are record-like and share a prototype, so a
+	 * document decoded through `Schema.Class` merges with another of the same class
+	 * and **survives as a real instance** — `instanceof` holds and its getters
+	 * still work. Everything else is atomic: a nested `Date`, `Map`, `Set`,
+	 * `RegExp`, array, or class instance is taken whole from the highest-priority
+	 * source that defines it, never reshaped field-by-field.
+	 *
+	 * The alternative — spreading each value into a fresh object — would make
+	 * `load`'s declared `Effect<A>` a lie, handing back a structurally-equal plain
+	 * object whose class methods are gone and whose `Date` fields have decayed to
+	 * `{}`.
+	 *
+	 * Nested *plain* objects (a `Schema.Struct` section) still merge field-wise.
+	 */
+	layeredMerge: <A>(): MergeStrategy<A> => ({
+		name: "layered-merge",
+		resolve: (sources) => {
+			// Fold from lowest priority upward so higher-priority keys overwrite.
+			let merged: unknown = sources[sources.length - 1]?.value;
+			for (let i = sources.length - 2; i >= 0; i--) {
+				const higher = sources[i]?.value;
+				merged = canMerge(merged, higher)
+					? deepMerge(higher as Record<string, unknown>, merged as Record<string, unknown>)
+					: higher;
+			}
+			return Effect.succeed(merged as A);
+		},
+	}),
+} as const;

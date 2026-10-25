@@ -24,7 +24,7 @@ import { Effect, Exit, Option, Schema, SchemaIssue, SchemaTransformation } from 
 /**
  * Indicates that a string could not be parsed as a valid dependency specifier.
  *
- * Raised by {@link DependencySpecifier.decode}. The offending string is
+ * Raised by {@link DependencySpecifierStatics.decode}. The offending string is
  * preserved on `input`.
  *
  * @public
@@ -253,7 +253,7 @@ export class RawSpecifier extends Schema.TaggedClass<RawSpecifier>()("raw", {
 
 /**
  * A dependency specifier classified into one of the five resolver-relevant
- * cases. Decoded from a string by {@link DependencySpecifier.FromString};
+ * cases. Decoded from a string by {@link DependencySpecifierStatics.FromString};
  * every case preserves the original `raw` string.
  *
  * @public
@@ -299,8 +299,12 @@ const fromString: Schema.Codec<ClassifiedSpecifier, string> = Schema.String.pipe
 	),
 );
 
-/** Taxonomy statics attached to the `DependencySpecifier` schema value. */
-interface DependencySpecifierStatics {
+/**
+ * Taxonomy statics attached to the `DependencySpecifier` schema value.
+ *
+ * @public
+ */
+export interface DependencySpecifierStatics {
 	/** Classify a specifier into a single protocol; `"unknown"` for unrecognized input. */
 	readonly protocolOf: (value: string) => DependencyProtocol;
 	/** Parse the specifier as a semver `Range`, `None` when it is not a range. Pure. */
@@ -390,7 +394,7 @@ const decode = (input: string): Effect.Effect<DependencySpecifierBrand, InvalidD
 /**
  * A valid dependency version specifier, carrying the protocol taxonomy statics
  * (`DependencySpecifier.protocolOf` and friends) that classify any specifier
- * string, plus the {@link (DependencySpecifier:variable).FromString} codec that
+ * string, plus the {@link DependencySpecifierStatics.FromString} codec that
  * decodes a string into a {@link ClassifiedSpecifier} tagged union. Use it as a
  * schema for a specifier field and reach for the statics to inspect a raw
  * string.
@@ -409,22 +413,23 @@ const decode = (input: string): Effect.Effect<DependencySpecifierBrand, InvalidD
  *
  * @public
  */
-export const DependencySpecifier = Object.assign(brandedSpecifier, {
-	protocolOf,
-	parseRange,
-	isRange,
-	isTag,
-	isGit,
-	isUrl,
-	isLocal,
-	isLink,
-	isPortal,
-	isCatalog,
-	isWorkspace,
-	catalogNameOf,
-	resolveWorkspace,
-	workspaceTargetOf,
-	isValid: isValidDependencySpecifier,
-	decode,
-	FromString: fromString,
-} satisfies DependencySpecifierStatics);
+export const DependencySpecifier: Schema.brand<Schema.String, "DependencySpecifier"> & DependencySpecifierStatics =
+	Object.assign(brandedSpecifier, {
+		protocolOf,
+		parseRange,
+		isRange,
+		isTag,
+		isGit,
+		isUrl,
+		isLocal,
+		isLink,
+		isPortal,
+		isCatalog,
+		isWorkspace,
+		catalogNameOf,
+		resolveWorkspace,
+		workspaceTargetOf,
+		isValid: isValidDependencySpecifier,
+		decode,
+		FromString: fromString,
+	} satisfies DependencySpecifierStatics);
