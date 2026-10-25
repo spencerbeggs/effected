@@ -40,6 +40,7 @@ export {
 	type MemoryFileSystemFaultMethod,
 	type MemoryFileSystemFaults,
 	type MemoryFileSystemFaultsFactory,
+	type MemoryFileSystemFileFaults,
 	type MemoryFileSystemHandle,
 	type MemoryFileSystemOptions,
 	type MemoryFileSystemPortOptions,

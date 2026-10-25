@@ -7,7 +7,7 @@
 import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import { ErrnoException, errnoError, nodeErrno } from "./internal/errno.js";
-import { wrapFaulty } from "./internal/faults.js";
+import { wrapFaulty, wrapFile } from "./internal/faults.js";
 import {
 	makePromisesFileSystem,
 	makeSyncFileSystem,
@@ -404,6 +404,30 @@ export interface MemoryFileSystemHandle {
 		readonly promises: MemoryFileSystemPromisesFileSystem;
 	};
 	/**
+	 * Delivers one watch event to every live watcher whose watch covers `path`
+	 * — the same matching a mutation's own event takes (the path itself, a
+	 * direct child of a watched directory, any descendant of a recursive watch,
+	 * an ancestor of the watched path).
+	 *
+	 * @remarks
+	 * Synchronous and immediate; a watcher that is registered but not yet
+	 * pulling buffers the event, so an event emitted after the watch's
+	 * `onReady` is never lost. Nothing on the volume changes: the event is
+	 * not checked against what exists. A relative `path` joins
+	 * {@link MemoryFileSystemHandle.root} (or `/`), and the result is
+	 * normalized lexically, since an event carries a plain path.
+	 *
+	 * Works under either {@link MemoryFileSystemOptions.watchEvents} mode;
+	 * `"manual"` is what makes the emitted events the only ones.
+	 */
+	readonly emit: (path: string, event: FileSystem.WatchEvent["_tag"]) => void;
+	/**
+	 * The number of live watch subscriptions on the volume: a watch counts
+	 * from the moment it is registered (when its `onReady` fires) until its
+	 * stream ends or is interrupted.
+	 */
+	readonly watcherCount: () => number;
+	/**
 	 * Writes `content` at `path`, creating a missing parent. A relative `path`
 	 * joins {@link MemoryFileSystemHandle.root} (or `/` without one).
 	 */
@@ -610,6 +634,20 @@ export interface MemoryFileSystemOptions {
 	 * unknown key throws `RangeError` at construction.
 	 */
 	readonly spies?: MemoryFileSystemSpies | undefined;
+	/**
+	 * Whether the volume's own mutations publish watch events. `"automatic"`
+	 * (the default) publishes them as they happen; `"manual"` publishes none,
+	 * so a watcher sees only what a test delivers with
+	 * {@link MemoryFileSystemHandle.emit}.
+	 *
+	 * @remarks
+	 * For a suite that drives watch events explicitly: under `"automatic"` a
+	 * write the code under test makes races the event the test meant to send.
+	 * `emit` lives on the handle, so build the volume with
+	 * {@link MemoryFileSystem.makeHandle} or {@link MemoryFileSystem.makeSync}
+	 * to reach it; a layer built with `"manual"` simply never publishes.
+	 */
+	readonly watchEvents?: "automatic" | "manual" | undefined;
 }
 
 /**
@@ -624,6 +662,7 @@ export type MemoryFileSystemSpies = {
 
 const engineOptions = (options: MemoryFileSystemOptions | undefined): internal.EngineOptions => ({
 	caseSensitive: options?.caseSensitive ?? true,
+	automaticWatchEvents: options?.watchEvents !== "manual",
 });
 
 /**
@@ -711,6 +750,27 @@ export type MemoryFileSystemFaults = {
  * @public
  */
 export type MemoryFileSystemFaultsFactory = (base: FileSystem.FileSystem) => MemoryFileSystemFaults;
+
+/**
+ * The override map for {@link MemoryFileSystem.wrapFile}: per member of a
+ * `FileSystem.File`, a handler returning a replacement `Effect` or `undefined`
+ * to delegate to the wrapped file, or a {@link MemoryFileSystemTransientFault}.
+ *
+ * @remarks
+ * The methods (`seek`, `read`, `readAlloc`, `truncate`, `write`, `writeAll`)
+ * take handlers receiving the real call arguments. `stat` and `sync` are
+ * `Effect`-valued members rather than methods, so their handlers are thunks.
+ * Every handler is consulted at each execution, never when the member is read.
+ *
+ * @public
+ */
+export type MemoryFileSystemFileFaults = {
+	readonly [Member in "seek" | "read" | "readAlloc" | "truncate" | "write" | "writeAll"]?:
+		| ((...args: Parameters<FileSystem.File[Member]>) => ReturnType<FileSystem.File[Member]> | undefined)
+		| MemoryFileSystemTransientFault;
+} & {
+	readonly [Member in "stat" | "sync"]?: (() => FileSystem.File[Member] | undefined) | MemoryFileSystemTransientFault;
+};
 
 const handleContext = ({
 	fileSystem,
@@ -816,6 +876,8 @@ const buildHandle = (
 				sync: MemoryFileSystem.syncFileSystem(volume, { faults: faults.sync }),
 				promises: MemoryFileSystem.promisesFileSystem(volume, { faults: faults.promises }),
 			}),
+			emit: (path, event) => engine.emit([{ _tag: event, path: normalizeAbsolute(at(path)) }]),
+			watcherCount: engine.watcherCount,
 			write: (path, content) =>
 				runMutation(
 					Effect.andThen(
@@ -1058,6 +1120,59 @@ export class MemoryFileSystem {
 				return wrapFaulty(base, faults);
 			}),
 		);
+
+	/**
+	 * Decorates a `FileSystem.File` — typically one an `open` fault receives
+	 * from the unfaulted filesystem — so a handler can replace one member and
+	 * every other member forwards to the wrapped file.
+	 *
+	 * @remarks
+	 * A memfs `File` is a class instance whose members live on its prototype,
+	 * so spreading it copies none of them; this is the forwarder a hand-written
+	 * decorator would otherwise spell member by member. Overrides follow the
+	 * fault model: a handler receives the real arguments and returns a
+	 * replacement `Effect` or `undefined` to delegate, and
+	 * {@link MemoryFileSystem.failTimes} works on every member (armed per
+	 * `wrapFile` call). Any `File` can be wrapped, not only a memory one.
+	 *
+	 * Members are intercepted independently: the wrapped file's own `writeAll`
+	 * calls its own `write`, so a `write` override does not reach `writeAll` —
+	 * override both, or `writeAll`, which is what core's derived `sink` writes
+	 * through. To decorate every handle a filesystem opens, return the wrapped
+	 * file from an `open` fault, using the factory form so the handler reaches
+	 * the unfaulted `open`; the derived `stream` and `sink` then see it too.
+	 *
+	 * An unknown override key throws `RangeError` at the call.
+	 *
+	 * @example
+	 * ```ts
+	 * import { MemoryFileSystem } from "@effected/memfs";
+	 * import { Effect, PlatformError } from "effect";
+	 *
+	 * const full = (path: string) =>
+	 *   PlatformError.systemError({ _tag: "Unknown", module: "FileSystem", method: "writeAll", pathOrDescriptor: path });
+	 *
+	 * // Every handle opened under /journal fails its writes; reads still work.
+	 * const Volume = MemoryFileSystem.layerWith(
+	 *   { "/journal": MemoryFileSystem.directory() },
+	 *   {
+	 *     faults: (base) => ({
+	 *       open: (path, options) =>
+	 *         Effect.map(base.open(path, options), (file) =>
+	 *           path.startsWith("/journal/")
+	 *             ? MemoryFileSystem.wrapFile(file, { writeAll: () => Effect.fail(full(path)) })
+	 *             : file,
+	 *         ),
+	 *     }),
+	 *   },
+	 * );
+	 * ```
+	 *
+	 * @param file - The file to decorate.
+	 * @param overrides - Per-member handlers; see {@link MemoryFileSystemFileFaults}.
+	 */
+	static readonly wrapFile = (file: FileSystem.File, overrides: MemoryFileSystemFileFaults): FileSystem.File =>
+		wrapFile(file, overrides);
 
 	/**
 	 * A transient fault: fails the first `times` intercepted calls with `error`,
