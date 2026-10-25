@@ -84,7 +84,10 @@
 		"VersionFlag": "learn a tool's version by passing a flag and matching output pattern",
 		"VersionJson": "learn a tool's version via json, reading a dotted path within it",
 		"VersionNone": "skip asking a tool for its version; only check that it is present",
-		"VersionProbe": "ways to learn a tool's version: flag output, json path, or none"
+		"VersionProbe": "ways to learn a tool's version: flag output, json path, or none",
+		"ToolPreference": "choose global or local copy when both installed, prefer global tool",
+		"makeToolDiscoverySync": "find a cli tool without an Effect runtime, synchronous probe for lint-staged handlers",
+		"nodeSpawnSync": "node child_process binding for synchronous tool probes"
 	},
 	"config-file": {
 		"ConfigCodecError": "handle malformed config content, typed parse or stringify failure",
@@ -1068,7 +1071,9 @@
 		"UndeclaredScan": "undeclared import check result, violation labels, packages and files checked",
 		"UndeclaredImport": "runtime import of a package absent from dependencies, peer or optional",
 		"NoEntriesError": "reachability called with an empty entry list",
-		"EntryNotFoundError": "reachability entry that resolves to no file"
+		"EntryNotFoundError": "reachability entry that resolves to no file",
+		"detectPackageManagerSync": "synchronously detect pnpm, npm, yarn or bun at a root, no Effect runtime",
+		"localExecContextSync": "synchronously get the pnpm exec or npx prefix for this workspace"
 	},
 	"xdg": {
 		"AppDirKind": "the config, data, cache, state or runtime directory kind",

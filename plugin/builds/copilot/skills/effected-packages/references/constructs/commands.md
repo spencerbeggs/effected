@@ -28,16 +28,24 @@
 | `ScriptedSpawner` | Class | A scripted `ChildProcessSpawner` test double: script each spawn's outcome, read back what was spawned. | test double for ChildProcessSpawner: script each spawn's outcome, inspect recorded spawns |
 | `SpawnRecord` | Interface | What the scripted spawner observed for one spawn, in call order. | |
 | `SpawnScript` | TypeAlias | The script a `ScriptedSpawner` answers spawns from: the executable and argv in, a `ScriptResult` out. | |
+| `SyncSpawn` | TypeAlias | Spawns `command` with `args` synchronously, with no shell, and reports how it went. | |
+| `SyncSpawnResult` | Interface | What one synchronous spawn reports — the subset of Node's `spawnSync(..., { encoding: "utf8" })` result that discovery reads. | |
 | `TRANSIENT_PATTERNS` | Variable | Substrings that mark a failure as a transport hiccup rather than a verdict. | substrings in command output that mark a failure as a retryable transport hiccup |
 | `Tool` | Class | A CLI tool to resolve, and the constraints resolution must satisfy. | a cli tool to resolve, constraints: version probe, source, mismatch policy |
 | `ToolDiscovery` | Class | Resolves CLI tools: globally on `PATH`, or project-locally through the launcher `LocalExec` describes. | find a cli tool on path or project-locally, cache probe evidence, resolve its version |
 | `ToolDiscoveryShape` | Interface | The `ToolDiscovery` service shape. | |
+| `ToolDiscoverySync` | Interface | Synchronous tool discovery: `ToolDiscovery`'s contract for a caller with no Effect runtime. | |
+| `ToolDiscoverySyncOptions` | Interface | Options for `makeToolDiscoverySync`. | |
 | `ToolNotFoundError` | Class | A tool could not be found where it was required. | handle a tool that could not be found where its source requirement demanded it |
+| `ToolPreference` | Variable + TypeAlias | The decoded type of `(ToolPreference:variable)`. | choose global or local copy when both installed, prefer global tool |
 | `ToolRefusedError` | Class | A tool name that cannot safely be spawned was refused before any process started. | handle a tool name refused: looks like a flag, or empty |
 | `ToolResolutionFailure` | TypeAlias | Every way `ToolDiscovery.resolve` can fail. | |
 | `ToolSource` | Variable + TypeAlias | The decoded type of `(ToolSource:variable)`. | where a tool must be found for resolution to succeed: any, local, global, both |
+| `ToolSyncResolutionFailure` | TypeAlias | Every way `ToolDiscoverySync.resolve` can fail. | |
 | `ToolVersionMismatchError` | Class | The global and project-local copies disagree, and the tool's policy is `"fail"`. | handle global and local copies of a tool reporting different versions |
 | `VersionFlag` | Class | Ask the tool for its version with a flag and read the answer out of stdout. | learn a tool's version by passing a flag and matching output pattern |
 | `VersionJson` | Class | Ask the tool for JSON and read the version from a dotted path within it. | learn a tool's version via json, reading a dotted path within it |
 | `VersionNone` | Class | Do not ask for a version; presence is the only question. | skip asking a tool for its version; only check that it is present |
 | `VersionProbe` | Variable + TypeAlias | The decoded type of `(VersionProbe:variable)`. | ways to learn a tool's version: flag output, json path, or none |
+| `makeToolDiscoverySync` | Function | Builds synchronous tool discovery over a caller-supplied spawn. | find a cli tool without an Effect runtime, synchronous probe for lint-staged handlers |
+| `nodeSpawnSync` | Variable | `SyncSpawn` over `node:child_process.spawnSync`. | from `@effected/commands/node-sync` — node child_process binding for synchronous tool probes |
