@@ -1,5 +1,23 @@
 # Log
 
+## 2026-10-25
+
+* Updated @effected/crypto
+* Updated @effected/github
+* Updated @effected/markdown
+* Updated @effected/memfs
+* Updated Only entrypoint files re-export; never a barrel or a namespace object
+* Updated Schema standards
+* Updated config-file
+* Updated config-file's codecs are free-standing named exports, never a namespace object
+* Updated github-actions
+* Updated semver
+* Updated semver's parse and intersect Results are the primitive
+* Updated store
+* Updated toml
+* Updated walker
+* Updated workspace
+
 ## 2026-10-24
 
 * Updated @effected/cli
