@@ -17,6 +17,7 @@ import { parseBlocks } from "./internal/blockParser.js";
 import { isGuardExceeded, isRawMarkdownError } from "./internal/carriers.js";
 import { parsePhrasingText } from "./internal/phrasing.js";
 import { stringifyBlocks } from "./internal/stringify.js";
+import { assertWithinNestingDepth } from "./internal/treeDepth.js";
 import { MarkdownDiagnostic } from "./MarkdownDiagnostic.js";
 import type { FlowContent, PhrasingContent } from "./MarkdownNode.js";
 import { Root } from "./MarkdownNode.js";
@@ -448,6 +449,9 @@ export class Markdown {
 			// One path: a lone flow node is serialized as the one-block list a
 			// `Root` holding it would carry. No wrapper is constructed, so a node
 			// fails or succeeds here exactly as it would inside a `Root`.
+			// The canonicalizing walk is unguarded recursion; probe the depth
+			// iteratively first so both paths fail typed at the same limit.
+			if (options?.canonical === true) assertWithinNestingDepth(node);
 			const source = options?.canonical === true ? MarkdownTransform.canonicalize(node) : node;
 			return Result.succeed(stringifyBlocks(source.type === "root" ? source.children : [source]));
 		} catch (caught) {
