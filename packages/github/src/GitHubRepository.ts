@@ -3,6 +3,7 @@ import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
 import type { GitHubGraphQLError } from "./GraphQL.js";
 import { GraphQLDocument } from "./GraphQL.js";
+import { REPOSITORY_REST_SETTING_KEYS } from "./internal/repositoryRestSettingKeys.js";
 import { unstubbed, unstubbedRead } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import type * as Rest from "./Rest.js";
@@ -268,7 +269,7 @@ const preparePatch = (patch: RepositoryPatch): RepositoryPatch => {
  * agree right up until a field is dropped, which is exactly the case anyone
  * reading a dry run is trying to check.
  *
- * Both lists use the **caller's** key names, not the wire names, because the
+ * Every list uses the **caller's** key names, not the wire names, because the
  * audience for them is a person reading a plan against the config they wrote.
  *
  * @public
@@ -278,6 +279,18 @@ export interface AppliedSettings {
 	readonly rest: ReadonlyArray<string>;
 	/** Keys sent through the GraphQL mutation, named as the caller supplied them. */
 	readonly graphql: ReadonlyArray<string>;
+	/**
+	 * Keys neither API accepts, which were **not sent**.
+	 *
+	 * @remarks
+	 * A key that is not a GraphQL-only setting and not in the REST patch's
+	 * declared body — a typo such as `has_discussion`, or a setting GitHub has
+	 * not described — lands here. Sending it would be worse than useless: the
+	 * REST `PATCH` ignores unknown fields and answers 200, so the key would be
+	 * reported applied while the repository never changed. A caller that wants
+	 * an unknown key to fail the run checks this list.
+	 */
+	readonly ignored: ReadonlyArray<string>;
 }
 
 /**
@@ -330,7 +343,8 @@ export interface GitHubRepositoryShape {
 	 * `updateSettings` is the thin, faithfully-typed PATCH and returns what
 	 * GitHub then reports. This is the **applicator**: it takes an open map,
 	 * routes each key to whichever API can actually set it, and returns an
-	 * {@link AppliedSettings} naming the keys that were sent through each.
+	 * {@link AppliedSettings} naming the keys that were sent through each and
+	 * the keys neither accepts.
 	 *
 	 * Three settings — `has_sponsorships`, `has_pull_requests` and
 	 * `has_discussions` ({@link GRAPHQL_ONLY_SETTINGS}) — are only reachable
@@ -339,9 +353,12 @@ export interface GitHubRepositoryShape {
 	 * does not, which is the common case.
 	 *
 	 * The map is open by design. GitHub's settings surface is large and moving,
-	 * and a closed type here would date the package — but it also means a typo is
-	 * forwarded rather than rejected, so a caller that owns a schema should
-	 * validate before calling.
+	 * and a closed type here would date the package. A key that is neither
+	 * GraphQL-only nor in the REST patch's declared body — the key list is
+	 * generated from GitHub's OpenAPI description — is not sent and is reported
+	 * in `ignored`, rather than forwarded to a `PATCH` that would ignore it and
+	 * answer 200. It does not fail the call, so additive GitHub API growth never
+	 * breaks a run; a caller that owns a schema should still validate first.
 	 */
 	readonly applySettings: (
 		settings: Record<string, unknown>,
@@ -391,7 +408,7 @@ export interface GitHubRepositoryShape {
  *   const repository = yield* GitHubRepository;
  *   const branch = yield* repository.defaultBranch;
  *   const applied = yield* repository.applySettings({ has_wiki: false, has_discussions: true });
- *   return { branch, applied }; // applied.rest, applied.graphql
+ *   return { branch, applied }; // applied.rest, applied.graphql, applied.ignored
  * });
  * ```
  *
@@ -475,6 +492,7 @@ const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 			// The caller's key for each GraphQL field, so the report speaks their
 			// vocabulary rather than the wire's.
 			const graphqlKeys: Array<string> = [];
+			const ignored: Array<string> = [];
 
 			for (const [key, value] of Object.entries(input)) {
 				// `Object.hasOwn`, not a bare index: the map is open by design, so a
@@ -485,6 +503,13 @@ const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 				if (graphqlField !== undefined) {
 					graphql[graphqlField] = value;
 					graphqlKeys.push(key);
+					continue;
+				}
+				// The REST PATCH ignores a field it does not declare and answers 200,
+				// so forwarding an unknown key would report it applied while nothing
+				// changed. The allowlist is generated from the OpenAPI description.
+				if (!REPOSITORY_REST_SETTING_KEYS.has(key)) {
+					ignored.push(key);
 					continue;
 				}
 				rest[key] = value;
@@ -523,6 +548,7 @@ const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 			return {
 				rest: restKeys,
 				graphql: graphqlKeys,
+				ignored,
 			} satisfies AppliedSettings;
 		}),
 	};

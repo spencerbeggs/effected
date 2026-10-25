@@ -184,9 +184,12 @@ const program = Effect.gen(function* () {
     security_and_analysis: { secret_scanning: "enabled" },
   });
 });
-// AppliedSettings — { rest: [...], graphql: [...] }, in the caller's own key names.
-// The two lists agree with the input right up until preparation drops a field
+// AppliedSettings — { rest: [...], graphql: [...], ignored: [...] }, in the caller's own key names.
+// The lists agree with the input right up until preparation drops a field
 // GitHub would reject, which is what a person reading a dry run is checking for.
+// `ignored` names keys neither API accepts (a typo, say): they are never sent,
+// because the REST PATCH would ignore them and still answer 200. The REST key
+// list is generated from GitHub's OpenAPI description.
 ```
 
 `updateSettings` takes octokit's own generated params, and those spell an optional field as `has_issues?: boolean` rather than `has_issues?: boolean | undefined` — so under `exactOptionalPropertyTypes` a `Partial<T>` built from your own settings schema does not assign to it at all. `repositoryPatch` is the supported way out, and it exists so the answer is never a cast:

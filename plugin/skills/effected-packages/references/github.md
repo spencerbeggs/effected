@@ -172,7 +172,9 @@ tempted to reach for `as`.
 - **`GitHubRepository`** — `settings`, `updateSettings(patch)`, `defaultBranch`,
   `nodeId`, `ownerType`, and `applySettings(record)` → `AppliedSettings`, which
   reports the REST and GraphQL keys that **actually went out**, in the caller's
-  own names. `topics` reads the topic set; `setTopics(names)` replaces it
+  own names, plus `ignored`: keys neither API accepts (checked against a REST
+  key list generated from GitHub's OpenAPI description), which are **not sent**
+  — the REST PATCH would ignore them and answer 200. `topics` reads the topic set; `setTopics(names)` replaces it
   (`[]` clears) and returns the set GitHub **stored**, lowercased — record
   that, not `names`, as applied state. `RepositorySettings` is `RestData<"GET /repos/{owner}/{repo}">`;
   `RepositoryPatch` is the PATCH route's params minus `owner`/`repo`;

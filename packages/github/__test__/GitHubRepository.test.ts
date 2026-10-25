@@ -465,3 +465,47 @@ describe("GitHubRepository topics", () => {
 		}),
 	);
 });
+
+describe("GitHubRepository.applySettings ignored keys", () => {
+	it.effect("a key neither API declares is not sent and is reported ignored", () =>
+		Effect.gen(function* () {
+			// The REST PATCH ignores an unknown field and answers 200, so forwarding
+			// `has_discussion` (a typo) would report it applied while nothing
+			// changed (effected#376).
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.applySettings({ has_issues: true, has_discussion: true })),
+				{ "PATCH /repos/{owner}/{repo}": REPO },
+			);
+			assert.deepStrictEqual([...value.rest], ["has_issues"]);
+			assert.deepStrictEqual([...value.ignored], ["has_discussion"]);
+			assert.deepStrictEqual(requested[0]?.params, { owner: "acme", repo: "widget", has_issues: true });
+		}),
+	);
+
+	it.effect("a map of only unknown keys sends nothing at all", () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.applySettings({ made_up: 1, toString: "x" })),
+			);
+			assert.lengthOf(requested, 0, "no request should have been made");
+			assert.deepStrictEqual([...value.rest], []);
+			assert.deepStrictEqual([...value.graphql], []);
+			assert.deepStrictEqual([...value.ignored].sort(), ["made_up", "toString"]);
+		}),
+	);
+
+	it.effect("a GraphQL-only key is routed to GraphQL even where REST also declares it", () =>
+		Effect.gen(function* () {
+			// `has_pull_requests` appears in the REST body in GitHub's description
+			// too; the GraphQL routing is the verified one and stays first.
+			const { value } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.applySettings({ has_pull_requests: false })),
+				{ "GET /repos/{owner}/{repo}": REPO },
+				UPDATE_REPOSITORY,
+			);
+			assert.deepStrictEqual([...value.graphql], ["has_pull_requests"]);
+			assert.deepStrictEqual([...value.rest], []);
+			assert.deepStrictEqual([...value.ignored], []);
+		}),
+	);
+});
