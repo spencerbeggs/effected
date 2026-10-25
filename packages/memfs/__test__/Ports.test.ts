@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
+import type { MemoryFileSystemDirent } from "../src/index.js";
 import { MemoryFileSystem } from "../src/index.js";
 import { thrown } from "./helpers.js";
 
@@ -521,6 +522,73 @@ describe("MemoryFileSystem.syncFileSystem", () => {
 					assert.strictEqual((error as { path?: string }).path, "/repo/absent");
 				}
 			});
+		}),
+	);
+});
+
+describe("sync port readDirectory withFileTypes", () => {
+	const kinds = (d: MemoryFileSystemDirent) =>
+		`${d.name}:${d.isSymbolicLink() ? "symlink" : d.isDirectory() ? "directory" : d.isFile() ? "file" : "other"}`;
+
+	it.effect("lists literal dirents, as readdirSync(p, { withFileTypes: true }) does", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.deepStrictEqual(sync.readDirectory("/r", { withFileTypes: true }).map(kinds), [
+				"dangling:symlink",
+				"dir:directory",
+				"file.txt:file",
+				"loop-a:symlink",
+				"loop-b:symlink",
+				"to-dir:symlink",
+			]);
+			// Through a link to a directory: the listing follows the link, its entries stay literal.
+			assert.deepStrictEqual(sync.readDirectory("/r/to-dir", { withFileTypes: true }).map(kinds), ["inner.txt:file"]);
+			// Without the option, names as before.
+			assert.deepStrictEqual(sync.readDirectory("/r"), ["dangling", "dir", "file.txt", "loop-a", "loop-b", "to-dir"]);
+		}),
+	);
+
+	it.effect("agrees with the promises port's dirents", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			const promises = MemoryFileSystem.promisesFileSystem(volume);
+			const async = yield* Effect.promise(() => promises.readdir("/r", { withFileTypes: true }));
+			assert.deepStrictEqual(sync.readDirectory("/r", { withFileTypes: true }).map(kinds), async.map(kinds));
+		}),
+	);
+
+	it.effect("absence throws node's scandir errno, never []", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.deepInclude(
+				thrown(() => sync.readDirectory("/r/absent", { withFileTypes: true })),
+				{ code: "ENOENT", syscall: "scandir", path: "/r/absent" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.readDirectory("/r/file.txt", { withFileTypes: true })),
+				{ code: "ENOTDIR", syscall: "scandir" },
+			);
+		}),
+	);
+
+	it.effect("a readDirectory fault receives the options as given", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const seen: Array<unknown> = [];
+			const sync = MemoryFileSystem.syncFileSystem(volume, {
+				faults: {
+					readDirectory: (_path, options) => {
+						seen.push(options);
+						return undefined;
+					},
+				},
+			});
+			sync.readDirectory("/r");
+			sync.readDirectory("/r", { withFileTypes: true });
+			assert.deepStrictEqual(seen, [undefined, { withFileTypes: true }]);
 		}),
 	);
 });

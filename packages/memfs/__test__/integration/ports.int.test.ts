@@ -133,6 +133,27 @@ describe("sync port parity with node:fs", () => {
 		}),
 	);
 
+	it.effect("the sync port's withFileTypes listing agrees with readdirSync dirents, errors included", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeHandle(seed);
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			const kinds = (d: { name: string; isFile(): boolean; isDirectory(): boolean; isSymbolicLink(): boolean }) =>
+				`${d.name}:${d.isSymbolicLink() ? "symlink" : d.isDirectory() ? "directory" : d.isFile() ? "file" : "other"}`;
+			assert.deepStrictEqual(
+				outcome(() => sync.readDirectory("/r", { withFileTypes: true }).map(kinds).sort()),
+				outcome(() => readdirSync(host, { withFileTypes: true }).map(kinds).sort()),
+				"readDirectory withFileTypes /r",
+			);
+			for (const c of cases) {
+				assert.deepStrictEqual(
+					outcome(() => sync.readDirectory(`/r/${c}`, { withFileTypes: true }).map(kinds).sort()),
+					outcome(() => readdirSync(hostPath(c), { withFileTypes: true }).map(kinds).sort()),
+					`readDirectory withFileTypes ${c}`,
+				);
+			}
+		}),
+	);
+
 	it.effect("the promises port agrees with readdir, stat and readFile, dirents included", () =>
 		Effect.gen(function* () {
 			const { volume } = yield* MemoryFileSystem.makeHandle(seed);

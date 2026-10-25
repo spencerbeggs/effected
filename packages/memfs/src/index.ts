@@ -52,6 +52,7 @@ export {
 	type MemoryFileSystemSeedEntry,
 	type MemoryFileSystemSeedFile,
 	type MemoryFileSystemSeedSymlink,
+	type MemoryFileSystemSpies,
 	type MemoryFileSystemSyncFaults,
 	type MemoryFileSystemSyncFileSystem,
 	type MemoryFileSystemTransientFault,

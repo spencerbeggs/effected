@@ -7,6 +7,7 @@ import type {
 	MemoryFileSystemFaultMethod,
 	MemoryFileSystemFaults,
 	MemoryFileSystemFaultsFactory,
+	MemoryFileSystemSpies,
 } from "../MemoryFileSystem.js";
 
 // The armed form of a fault: per-method parameter and return typing is erased
@@ -49,15 +50,30 @@ export const assertKnownFaultKeys = (faults: object, target: object, subject: st
 export const wrapFaulty = (
 	base: FileSystem.FileSystem,
 	registration: MemoryFileSystemFaults | MemoryFileSystemFaultsFactory,
+	spies?: MemoryFileSystemSpies,
 ): FileSystem.FileSystem => {
 	const faults = typeof registration === "function" ? registration(base) : registration;
 	assertKnownFaultKeys(faults, base, "MemoryFileSystem faults");
+	if (spies !== undefined) assertKnownFaultKeys(spies, base, "MemoryFileSystem spies");
 	const armed = new Map<MemoryFileSystemFaultMethod, ArmedHandler>();
 	for (const method of Object.keys(faults) as Array<MemoryFileSystemFaultMethod>) {
 		const fault = faults[method];
 		if (fault !== undefined) {
 			armed.set(method, armFault(fault));
 		}
+	}
+	// KIT EXTENSION (spies): a spy runs first and its return value is
+	// discarded, so it observes every call — one a fault then fails included —
+	// and can never replace one. It rides the same interception, so it runs per
+	// execution and propagates into derived members exactly as a fault does.
+	for (const method of Object.keys(spies ?? {}) as Array<MemoryFileSystemFaultMethod>) {
+		const spy = spies?.[method] as ArmedHandler | undefined;
+		if (spy === undefined) continue;
+		const fault = armed.get(method);
+		armed.set(method, (...args) => {
+			spy(...args);
+			return fault?.(...args);
+		});
 	}
 	// Effect-returning methods defer through Effect.suspend so each EXECUTION
 	// re-consults its handler — a retried effect re-decides, which is what lets
