@@ -41,7 +41,16 @@ export type { RunOptions } from "./Run.js";
 export { CommandFailedError, CommandOutput, CommandOutputError, DEFAULT_MAX_OUTPUT_BYTES, Run } from "./Run.js";
 export type { ScriptResult, SpawnRecord, SpawnScript } from "./ScriptedSpawner.js";
 export { ScriptedSpawner } from "./ScriptedSpawner.js";
-export { MismatchPolicy, Tool, ToolSource, VersionFlag, VersionJson, VersionNone, VersionProbe } from "./Tool.js";
+export {
+	MismatchPolicy,
+	Tool,
+	ToolPreference,
+	ToolSource,
+	VersionFlag,
+	VersionJson,
+	VersionNone,
+	VersionProbe,
+} from "./Tool.js";
 export type { ToolDiscoveryShape, ToolResolutionFailure } from "./ToolDiscovery.js";
 export {
 	ResolvedSource,
@@ -51,3 +60,11 @@ export {
 	ToolRefusedError,
 	ToolVersionMismatchError,
 } from "./ToolDiscovery.js";
+export type {
+	SyncSpawn,
+	SyncSpawnResult,
+	ToolDiscoverySync,
+	ToolDiscoverySyncOptions,
+	ToolSyncResolutionFailure,
+} from "./ToolDiscoverySync.js";
+export { makeToolDiscoverySync } from "./ToolDiscoverySync.js";

@@ -12,16 +12,21 @@
 // `GlobSet` and walks the same worklist as the Effect enumerator, so
 // `packages/**` means the same thing in both worlds.
 
+import type { ExecContext } from "@effected/commands";
+import { LocalExec, LocalExecError } from "@effected/commands";
 import { GlobSet } from "@effected/glob";
 import { PackageJsonFormat } from "@effected/package-json";
 import { Yaml } from "@effected/yaml";
-import { Effect, Exit, Result, Schema } from "effect";
+import { Effect, Exit, Option, Result, Schema } from "effect";
 import { isStringRecord } from "./internal/guards.js";
 import { MAX_ENUMERATION_DEPTH } from "./internal/limits.js";
+import { decidePackageManager } from "./internal/packageManagerDecision.js";
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
 import { Traversal, badMaxDepthMessage, isPruned, isValidMaxDepth, joinRelative } from "./internal/traverse.js";
+import type { PackageManagerDetectionFailure } from "./PackageManagerName.js";
+import { DetectedPackageManager, PackageManagerDetectionError, PackageManagerEvidence } from "./PackageManagerName.js";
 import type { WorkspaceDiscoveryError } from "./WorkspaceDiscovery.js";
-import { PublishConfig, WorkspacePackage } from "./WorkspacePackage.js";
+import { PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./WorkspacePackage.js";
 
 /**
  * The synchronous file operations the sync entry points need, supplied by the
@@ -702,4 +707,129 @@ export const getWorkspacePackagesSync = (
 	if (rootPackage instanceof WorkspacePackage) return [rootPackage, ...members];
 	options.onSkip?.(rootPackage);
 	return members;
+};
+
+/**
+ * Which package manager owns `root`, synchronously — the same answer
+ * `PackageManagerDetector.detect` gives, as a `Result`.
+ *
+ * @remarks
+ * **Synchronous**, for a caller with no Effect runtime (a lint-staged
+ * handler, a Vitest config). Both surfaces run one decision — the same
+ * priority order, the same `devEngines`-over-`packageManager` precedence, the
+ * same refusal to guess — so the two cannot disagree about a root. Only the IO
+ * differs: the file operations are the caller's ({@link WorkspacesSyncOptions};
+ * `nodeSyncOps` from `@effected/workspaces/node-sync` is the Node binding),
+ * and only `exists` and `readFile` are used.
+ *
+ * Unlike the other sync entry points this one is not degraded-skip: there is
+ * no partial answer to degrade to, so the failure the Effect surface would
+ * raise comes back as the `Result`'s failure instead — a
+ * `PackageManagerDetectionError` when no evidence matches, a
+ * `WorkspaceManifestError` when the root `package.json` exists but cannot be
+ * read or parsed. A throwing `readFile` is caught into the latter; nothing
+ * throws out of this function.
+ *
+ * `root` is probed as given — no ascent. Pair it with
+ * {@link findWorkspaceRootSync} for the workspace root, or pass the directory
+ * whose manager you mean.
+ *
+ * @param root - The directory to probe.
+ * @param options - The consumer-supplied file and path operations.
+ *
+ * @example
+ * ```ts
+ * import { detectPackageManagerSync } from "@effected/workspaces";
+ * import { nodeSyncOps } from "@effected/workspaces/node-sync";
+ * import { Result } from "effect";
+ *
+ * const detected = detectPackageManagerSync(process.cwd(), nodeSyncOps);
+ * const name = Result.isSuccess(detected) ? detected.success.name : "npm";
+ * ```
+ *
+ * @public
+ */
+export const detectPackageManagerSync = (
+	root: string,
+	options: WorkspacesSyncOptions,
+): Result.Result<DetectedPackageManager, PackageManagerDetectionFailure> => {
+	const { fileSystem, path } = options;
+	const packageJsonPath = path.join(root, "package.json");
+
+	// The root manifest, read once. Absent is `none` — a bun or yarn repo with
+	// no root manifest is unusual but not an error; present-but-broken is a
+	// typed failure, exactly as on the Effect surface.
+	let manifest = Option.none<Record<string, unknown>>();
+	if (fileSystem.exists(packageJsonPath)) {
+		let text: string;
+		try {
+			text = fileSystem.readFile(packageJsonPath);
+		} catch (cause) {
+			return Result.fail(new WorkspaceManifestError({ packageJsonPath, kind: "read", cause }));
+		}
+		const parsed = PackageJsonFormat.parseObjectResult(text);
+		if (Result.isFailure(parsed)) {
+			return Result.fail(new WorkspaceManifestError({ packageJsonPath, kind: "decode", cause: parsed.failure }));
+		}
+		manifest = Option.some(parsed.success);
+	}
+
+	const decision = decidePackageManager(manifest, (file) => fileSystem.exists(path.join(root, file)));
+	return decision === undefined
+		? Result.fail(new PackageManagerDetectionError({ root, checked: PackageManagerEvidence.literals }))
+		: Result.succeed(DetectedPackageManager.make(decision));
+};
+
+/**
+ * The project-local execution context for `cwd`, synchronously — what
+ * `Workspaces.localExecLayer` answers through `LocalExec.context`.
+ *
+ * @remarks
+ * The sync half of the `LocalExec` bridge: hand the context to
+ * `@effected/commands`' `makeToolDiscoverySync` and project-local tools
+ * resolve through the right launcher, in the workspace root. The rules are the
+ * Effect layer's, step for step:
+ *
+ * - the workspace root is found with {@link findWorkspaceRootSync} (honouring
+ *   `stopAt`); no root is `Option.none()` — nothing project-local to run here;
+ * - a detection refusal (`PackageManagerDetectionError`) is also
+ *   `Option.none()`: no identifiable launcher is not a failure;
+ * - a root manifest that cannot be read or parsed is a mechanism failure, the
+ *   `Result`'s `LocalExecError` with the `WorkspaceManifestError` as its cause.
+ *
+ * The argv prefixes come from `LocalExec.prefixes` — the one home of that
+ * knowledge — so nothing here re-derives `pnpm exec` or `npx --no --`.
+ *
+ * @param cwd - Where to start the root ascent (typically `process.cwd()`).
+ * @param options - The consumer-supplied file and path operations, plus an
+ *   optional `stopAt` ceiling.
+ *
+ * @example
+ * ```ts
+ * import { makeToolDiscoverySync, Tool } from "@effected/commands";
+ * import { nodeSpawnSync } from "@effected/commands/node-sync";
+ * import { localExecContextSync } from "@effected/workspaces";
+ * import { nodeSyncOps } from "@effected/workspaces/node-sync";
+ * import { Option, Result } from "effect";
+ *
+ * const context = Result.getOrElse(localExecContextSync(process.cwd(), nodeSyncOps), () => Option.none());
+ * const discovery = makeToolDiscoverySync({ spawn: nodeSpawnSync, context: Option.getOrUndefined(context) });
+ * ```
+ *
+ * @public
+ */
+export const localExecContextSync = (
+	cwd: string,
+	options: FindWorkspaceRootSyncOptions,
+): Result.Result<Option.Option<ExecContext>, LocalExecError> => {
+	const root = findWorkspaceRootSync(cwd, options);
+	if (root === null) return Result.succeed(Option.none());
+
+	const detected = detectPackageManagerSync(root, options);
+	if (Result.isFailure(detected)) {
+		return detected.failure._tag === "PackageManagerDetectionError"
+			? Result.succeed(Option.none())
+			: Result.fail(new LocalExecError({ directory: root, cause: detected.failure }));
+	}
+	return Result.succeed(Option.some(LocalExec.contextFor(detected.success.name, { directory: root })));
 };

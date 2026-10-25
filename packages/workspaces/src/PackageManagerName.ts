@@ -7,8 +7,9 @@
 // parse), and because `@effected/package-json` already exports a
 // `PackageManager` class for the corepack `pnpm@10.33.0` field.
 
-import { PackageJsonFormat, PackageManager } from "@effected/package-json";
+import { PackageJsonFormat } from "@effected/package-json";
 import { Context, Effect, FileSystem, Layer, Option, Path, Predicate, Schema } from "effect";
+import { MARKER_FILES, decidePackageManager } from "./internal/packageManagerDecision.js";
 import { WorkspaceManifestError } from "./WorkspacePackage.js";
 
 /**
@@ -101,64 +102,6 @@ export class DetectedPackageManager extends Schema.Class<DetectedPackageManager>
 	/** The rung of the priority order that decided the name. */
 	evidence: PackageManagerEvidence,
 }) {}
-
-/**
- * A manager named by one of the two manifest fields: the name, plus the exact
- * version when the field carries one that parses.
- */
-interface ManagerHint {
-	readonly name: string;
-	readonly version: Option.Option<string>;
-}
-
-/**
- * The exact version a `name` + `version` pair denotes, or none when the version
- * is not an exact version.
- *
- * Reuses the corepack `name@version+integrity` grammar rather than a second
- * parser, so a `devEngines` version carrying a hash (`11.11.0+sha512.…`)
- * normalizes to the same `11.11.0` the
- * top-level field reports — and a *range* (`^11`, `11.x`) yields none, because a
- * range is not a version and corepack will not run one either.
- */
-const exactVersionOf = (name: string, version: string): Option.Option<string> =>
-	Schema.decodeUnknownOption(PackageManager.FromString)(`${name}@${version}`).pipe(Option.map((pm) => pm.version));
-
-/**
- * The `devEngines.packageManager` hint, or none.
- *
- * Every malformed shape corepack itself tolerates is tolerated here by *ignoring
- * the field*, never by failing detection: a non-object `devEngines`, a
- * non-object `packageManager`, an **array** of them (corepack does not support
- * arrays in this slot and falls back), a missing or non-string `name`, and a
- * `name` containing `@`. A version that is not an exact version is dropped on its
- * own, keeping the name — the name is still a valid disambiguator.
- */
-const devEnginesHint = (manifest: Record<string, unknown>): Option.Option<ManagerHint> => {
-	const devEngines = manifest.devEngines;
-	if (!Predicate.isObject(devEngines)) return Option.none();
-
-	const slot = devEngines.packageManager;
-	if (!Predicate.isObject(slot)) return Option.none();
-
-	const name = slot.name;
-	if (typeof name !== "string" || name === "" || name.includes("@")) return Option.none();
-
-	const version = slot.version;
-	return Option.some({
-		name,
-		version: typeof version === "string" && version !== "" ? exactVersionOf(name, version) : Option.none<string>(),
-	});
-};
-
-/** The corepack top-level `packageManager` hint, or none when absent or malformed. */
-const corepackHint = (manifest: Record<string, unknown>): Option.Option<ManagerHint> => {
-	const raw = manifest.packageManager;
-	if (typeof raw !== "string") return Option.none();
-	return Schema.decodeUnknownOption(PackageManager.FromString)(raw).pipe(
-		Option.map((pm) => ({ name: pm.name, version: Option.some(pm.version) })),
-	);
-};
 
 /**
  * Raised when a directory carries no lockfile and no workspace configuration,
@@ -294,178 +237,23 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 				return Option.some(parsed);
 			});
 
-		/**
-		 * The manager name the manifest declares, if any.
-		 *
-		 * `devEngines` first — it is authoritative for the name, and corepack errors
-		 * when the top-level field contradicts it.
-		 */
-		const declaredName = (hints: {
-			readonly devEngines: Option.Option<ManagerHint>;
-			readonly corepack: Option.Option<ManagerHint>;
-		}): Option.Option<string> =>
-			Option.map(
-				Option.orElse(hints.devEngines, () => hints.corepack),
-				(hint) => hint.name,
-			);
-
-		/** Whether the manifest declares `name` as its manager. */
-		const namesManager = (
-			hints: { readonly devEngines: Option.Option<ManagerHint>; readonly corepack: Option.Option<ManagerHint> },
-			name: PackageManagerName,
-		): boolean => Option.contains(declaredName(hints), name);
-
-		/**
-		 * The version to report for the manager that was detected — none unless a
-		 * field naming *that* manager carries one.
-		 *
-		 * The top-level `packageManager` wins when it names the manager, because it
-		 * is the field carrying the integrity hash; `devEngines` supplies the version
-		 * when it does not.
-		 */
-		const versionFor = (
-			hints: { readonly devEngines: Option.Option<ManagerHint>; readonly corepack: Option.Option<ManagerHint> },
-			name: PackageManagerName,
-		): Option.Option<string> => {
-			if (!namesManager(hints, name)) return Option.none();
-			const fromCorepack = Option.flatMap(hints.corepack, (hint) =>
-				hint.name === name ? hint.version : Option.none<string>(),
-			);
-			return Option.orElse(fromCorepack, () =>
-				Option.flatMap(hints.devEngines, (hint) => (hint.name === name ? hint.version : Option.none<string>())),
-			);
-		};
-
 		const detect = Effect.fn("PackageManagerDetector.detect")(function* (root: string) {
 			const manifest = yield* manifestOf(root);
-			const hints = {
-				devEngines: Option.flatMap(manifest, devEnginesHint),
-				corepack: Option.flatMap(manifest, corepackHint),
-			};
-
-			if (yield* has(root, "pnpm-workspace.yaml")) {
-				return DetectedPackageManager.make({
-					name: "pnpm",
-					version: versionFor(hints, "pnpm"),
-					runtime: "node",
-					evidence: "pnpm-workspace.yaml",
-				});
-			}
-
-			// Which bun lockfile is present, probed in priority order — the marker
-			// itself is the evidence a success reports, so the OR is not collapsed
-			// into a bare boolean.
-			const bunLock: Option.Option<"bun.lock" | "bun.lockb"> = (yield* has(root, "bun.lock"))
-				? Option.some("bun.lock")
-				: (yield* has(root, "bun.lockb"))
-					? Option.some("bun.lockb")
-					: Option.none();
-			if (Option.isSome(bunLock) && namesManager(hints, "bun")) {
-				return DetectedPackageManager.make({
-					name: "bun",
-					version: versionFor(hints, "bun"),
-					runtime: "bun",
-					evidence: bunLock.value,
-				});
-			}
-
-			if ((yield* has(root, "yarn.lock")) && namesManager(hints, "yarn")) {
-				return DetectedPackageManager.make({
-					name: "yarn",
-					version: versionFor(hints, "yarn"),
-					runtime: "node",
-					evidence: "yarn.lock",
-				});
-			}
-
-			const workspaces = Option.map(manifest, (fields) => fields.workspaces);
-			if (Option.isSome(workspaces) && workspaces.value !== undefined && workspaces.value !== null) {
-				return DetectedPackageManager.make({
-					name: "npm",
-					version: versionFor(hints, "npm"),
-					runtime: "node",
-					evidence: "package.json#workspaces",
-				});
-			}
-
-			// ── the standalone tier ────────────────────────────────────────────
-			//
-			// Every workspace marker has missed, so this is not a workspace. Most
-			// repos are not: a single-package repo with a pnpm-lock.yaml and no
-			// `workspaces` field must still be detectable.
-			//
-			// It runs after the workspace tier on purpose, so no input that
-			// already resolved there can change its answer, and a stray package-lock.json
-			// cannot turn a pnpm workspace into an npm repo.
-			//
-			// The conjunctions mirror the workspace tier exactly rather than
-			// inventing a looser second rule inside one service: a pnpm or npm
-			// lockfile is written by exactly one manager and stands alone, while a
-			// yarn or bun lockfile still needs the manifest to name its manager,
-			// because a stray yarn.lock is as common here as in a workspace.
-			if (yield* has(root, "pnpm-lock.yaml")) {
-				return DetectedPackageManager.make({
-					name: "pnpm",
-					version: versionFor(hints, "pnpm"),
-					runtime: "node",
-					evidence: "pnpm-lock.yaml",
-				});
-			}
-
-			if (Option.isSome(bunLock) && namesManager(hints, "bun")) {
-				return DetectedPackageManager.make({
-					name: "bun",
-					version: versionFor(hints, "bun"),
-					runtime: "bun",
-					evidence: bunLock.value,
-				});
-			}
-
-			if ((yield* has(root, "yarn.lock")) && namesManager(hints, "yarn")) {
-				return DetectedPackageManager.make({
-					name: "yarn",
-					version: versionFor(hints, "yarn"),
-					runtime: "node",
-					evidence: "yarn.lock",
-				});
-			}
-
-			if (yield* has(root, "package-lock.json")) {
-				return DetectedPackageManager.make({
-					name: "npm",
-					version: versionFor(hints, "npm"),
-					runtime: "node",
-					evidence: "package-lock.json",
-				});
-			}
-
-			// ── the declaration tier ───────────────────────────────────────────
-			//
-			// No lockfile at all. A fresh clone before its first install has none to
-			// read, but its manifest still says plainly which manager is meant to
-			// run — weaker evidence than a lockfile, which is why it is consulted
-			// last, but evidence nonetheless.
-			const declared = declaredName(hints);
-			if (Option.isSome(declared)) {
-				const name = declared.value;
-				if (name === "pnpm" || name === "npm" || name === "yarn" || name === "bun") {
-					return DetectedPackageManager.make({
-						name,
-						version: versionFor(hints, name),
-						runtime: name === "bun" ? "bun" : "node",
-						// The field that supplied the name — `declaredName` believes
-						// devEngines first, so the evidence mirrors that precedence.
-						evidence: Option.isSome(hints.devEngines)
-							? "package.json#devEngines.packageManager"
-							: "package.json#packageManager",
-					});
-				}
-			}
-
+			// Every marker's presence, gathered up front so the shared decision
+			// stays pure; `has` already reads an unreadable marker as absent.
+			const present = new Set(
+				(yield* Effect.forEach(MARKER_FILES, (file) => has(root, file).pipe(Effect.map((hit) => (hit ? file : null))), {
+					concurrency: "unbounded",
+				})).filter(Predicate.isNotNull),
+			);
+			const decision = decidePackageManager(manifest, (file) => present.has(file));
 			// Nothing matched, and the package REFUSES TO GUESS: a default is policy,
 			// not detection. A caller who wants one writes `Effect.orElseSucceed`
 			// where a reader can see it.
-			return yield* Effect.fail(new PackageManagerDetectionError({ root, checked: CHECKED }));
+			if (decision === undefined) {
+				return yield* Effect.fail(new PackageManagerDetectionError({ root, checked: CHECKED }));
+			}
+			return DetectedPackageManager.make(decision);
 		});
 
 		return {

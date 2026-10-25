@@ -4,7 +4,8 @@
 // `layer` needs a filesystem, `layerWithGit` additionally needs core's
 // `ChildProcessSpawner` (behind `@effected/git`'s `Git` service) to run git.
 
-import { ExecContext, LocalExec, LocalExecError } from "@effected/commands";
+import type { ExecContext } from "@effected/commands";
+import { LocalExec, LocalExecError } from "@effected/commands";
 import { Git } from "@effected/git";
 import type {
 	CatalogAssemblyError,
@@ -279,16 +280,7 @@ const localExecLayer = (options?: {
 				);
 				if (Option.isNone(detected)) return Option.none<ExecContext>();
 
-				const { prefix, dlxPrefix, scriptPrefix } = LocalExec.prefixes(detected.value.name);
-				return Option.some(
-					ExecContext.make({
-						label: detected.value.name,
-						prefix,
-						dlxPrefix,
-						scriptPrefix,
-						directory: root.value,
-					}),
-				);
+				return Option.some(LocalExec.contextFor(detected.value.name, { directory: root.value }));
 			});
 
 			return { context };

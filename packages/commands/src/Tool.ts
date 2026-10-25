@@ -4,9 +4,9 @@ import { Schema } from "effect";
  * Where a tool must be found for a resolution to succeed.
  *
  * @remarks
- * `"any"` (the default) accepts either location, preferring the project-local
- * one; `"local"` and `"global"` require that location specifically; `"both"`
- * requires the tool in both places.
+ * `"any"` (the default) accepts either location, choosing between them by
+ * `Tool.prefer` when both exist; `"local"` and `"global"` require that
+ * location specifically; `"both"` requires the tool in both places.
  *
  * @public
  */
@@ -38,6 +38,27 @@ export const MismatchPolicy = Schema.Literals(["preferLocal", "preferGlobal", "f
  * @public
  */
 export type MismatchPolicy = typeof MismatchPolicy.Type;
+
+/**
+ * Which copy wins when a tool is found in both locations and the versions do
+ * not force a choice.
+ *
+ * @remarks
+ * Consulted only for `source: "any"` or `"both"` with both copies present.
+ * When the two copies report different versions, `onMismatch` decides
+ * instead; `Tool.named` defaults `onMismatch` to follow this preference, so a
+ * tool named with `prefer: "global"` keeps the global copy either way.
+ *
+ * @public
+ */
+export const ToolPreference = Schema.Literals(["local", "global"]);
+
+/**
+ * The decoded type of {@link (ToolPreference:variable)}.
+ *
+ * @public
+ */
+export type ToolPreference = typeof ToolPreference.Type;
 
 /**
  * Ask the tool for its version with a flag and read the answer out of stdout.
@@ -115,15 +136,23 @@ export class Tool extends Schema.Class<Tool>("Tool")({
 	source: ToolSource,
 	/** What to do when the two locations disagree on the version. */
 	onMismatch: MismatchPolicy,
+	/**
+	 * Which copy wins when both exist and agree (or report no version).
+	 * Omitted means `"local"` — the version the repository's own lockfile pins.
+	 */
+	prefer: Schema.optionalKey(ToolPreference),
 }) {
 	/**
 	 * Builds a `Tool` from a name, with defaults for everything else
-	 * (`--version`, `source: "any"`, `onMismatch: "preferLocal"`).
+	 * (`--version`, `source: "any"`, `prefer: "local"`, and an `onMismatch`
+	 * that follows `prefer`: `"preferLocal"`, or `"preferGlobal"` for
+	 * `prefer: "global"`).
 	 *
 	 * @example
 	 * ```ts
 	 * const biome = Tool.named("biome");
 	 * const localOnly = Tool.named("biome", { source: "local" });
+	 * const globalFirst = Tool.named("biome", { prefer: "global" });
 	 * ```
 	 */
 	static readonly named = (
@@ -132,12 +161,16 @@ export class Tool extends Schema.Class<Tool>("Tool")({
 			readonly version?: VersionProbe | undefined;
 			readonly source?: ToolSource | undefined;
 			readonly onMismatch?: MismatchPolicy | undefined;
+			readonly prefer?: ToolPreference | undefined;
 		},
-	): Tool =>
-		Tool.make({
+	): Tool => {
+		const prefer = overrides?.prefer ?? "local";
+		return Tool.make({
 			name,
 			version: overrides?.version ?? VersionFlag.make({ flag: "--version" }),
 			source: overrides?.source ?? "any",
-			onMismatch: overrides?.onMismatch ?? "preferLocal",
+			onMismatch: overrides?.onMismatch ?? (prefer === "global" ? "preferGlobal" : "preferLocal"),
+			prefer,
 		});
+	};
 }

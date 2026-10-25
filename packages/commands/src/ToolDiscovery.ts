@@ -1,5 +1,14 @@
-import { Cache, Context, Duration, Effect, Exit, Layer, Option, Predicate, Schema } from "effect";
+import { Cache, Context, Duration, Effect, Exit, Layer, Option, Result, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import type { Evidence, Probe } from "./internal/toolResolution.js";
+import {
+	ABSENT,
+	decideResolution,
+	isPositive,
+	isRefusedName,
+	probeArgs,
+	probeFromRun,
+} from "./internal/toolResolution.js";
 import type { LocalExecError } from "./LocalExec.js";
 import { ExecContext, LocalExec } from "./LocalExec.js";
 import { Run } from "./Run.js";
@@ -8,9 +17,6 @@ import { VersionProbe } from "./Tool.js";
 
 /** How many tools' probe evidence to remember. */
 const CACHE_CAPACITY = 256;
-
-/** First version-shaped token: `1.2.3`, `v22.1.0`, `2.3.1-beta.4`. */
-const DEFAULT_VERSION_PATTERN = /(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/;
 
 /**
  * Where a tool was resolved from.
@@ -65,6 +71,28 @@ export class ResolvedTool extends Schema.Class<ResolvedTool>("ResolvedTool")({
 	command(...args: ReadonlyArray<string>): ChildProcess.Command {
 		const bare = ChildProcess.make(this.name, args);
 		return this.source === "local" && this.context !== undefined ? this.context.apply(bare) : bare;
+	}
+
+	/**
+	 * The argv that runs this tool, as plain strings — bare for a global
+	 * resolution, launcher-prefixed for a local one.
+	 *
+	 * @remarks
+	 * For a caller that hands a command line to another runner rather than
+	 * spawning it here: a lint-staged task, a generated script. The launcher's
+	 * working directory is NOT in the argv — a local resolution's
+	 * `context.directory` says where it must run, and a runner that starts
+	 * elsewhere must honour it. Prefer {@link ResolvedTool.command} whenever
+	 * this package or core's spawner runs the process.
+	 *
+	 * @example
+	 * ```ts
+	 * resolved.argv("check", "--write").join(" "); // "pnpm exec biome check --write"
+	 * ```
+	 */
+	argv(...args: ReadonlyArray<string>): ReadonlyArray<string> {
+		const prefix = this.source === "local" && this.context !== undefined ? this.context.prefix : [];
+		return [...prefix, this.name, ...args];
 	}
 }
 
@@ -136,19 +164,6 @@ export class ToolRefusedError extends Schema.TaggedError<ToolRefusedError>()("To
  */
 export type ToolResolutionFailure = ToolNotFoundError | ToolVersionMismatchError | ToolRefusedError | LocalExecError;
 
-/** What one probe learned about one location. */
-interface Probe {
-	readonly found: boolean;
-	readonly version: Option.Option<string>;
-}
-
-/** What probing learned about a tool. Cached; policy is applied to it per call. */
-interface Evidence {
-	readonly global: Probe;
-	readonly local: Probe;
-	readonly context: Option.Option<ExecContext>;
-}
-
 /**
  * The cache key: everything the probe outcome depends on, and nothing else.
  *
@@ -159,80 +174,70 @@ interface Evidence {
  * lookup needs no side table. Policy fields are deliberately absent: they are
  * applied to the evidence per call.
  */
-class EvidenceKey extends Schema.Class<EvidenceKey>("EvidenceKey")({
+export class EvidenceKey extends Schema.Class<EvidenceKey>("EvidenceKey")({
 	name: Schema.String,
 	probe: VersionProbe,
 }) {}
-
-/** argv for a version probe: the flag string split on whitespace. */
-const probeArgs = (probe: VersionProbe): ReadonlyArray<string> =>
-	probe._tag === "VersionNone" ? ["--version"] : probe.flag.split(/\s+/).filter((part) => part.length > 0);
-
-/**
- * Decodes a probe's stdout as JSON text, `None` when it is not JSON.
- *
- * @remarks
- * Schema's own JSON codec in place of a `JSON.parse` in a `try`: the outcome is
- * a value rather than a control-flow exception, and it agrees with
- * `JSON.parse` on every input (surrounding whitespace accepted; empty text,
- * trailing garbage and a leading BOM rejected).
- */
-const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
-
-/**
- * Steps one dotted-path segment into a decoded JSON value.
- *
- * @remarks
- * Objects and arrays are both stepped into (`versions.0` indexes an array), and
- * only an OWN property is followed: a plain index read resolves inherited
- * members, so a string planted on `Object.prototype` would be reported as the
- * version of any tool whose JSON lacks the key.
- */
-const step = (current: unknown, key: string): Option.Option<unknown> =>
-	Predicate.isObjectOrArray(current) && Object.hasOwn(current, key)
-		? Option.some((current as Readonly<Record<string, unknown>>)[key])
-		: Option.none();
-
-/** Reads a version out of one probe's captured stdout. */
-const extractVersion = (probe: VersionProbe, stdout: string): Option.Option<string> => {
-	if (probe._tag === "VersionNone") return Option.none();
-	if (probe._tag === "VersionFlag") {
-		const pattern = probe.pattern === undefined ? DEFAULT_VERSION_PATTERN : new RegExp(probe.pattern);
-		const match = pattern.exec(stdout);
-		// Group 1 when the pattern captures, else the whole match.
-		return Option.fromUndefinedOr(match?.[1] ?? match?.[0]);
-	}
-	return decodeJson(stdout).pipe(
-		Option.flatMap((root) =>
-			probe.path
-				.split(".")
-				.reduce<Option.Option<unknown>>(
-					(current, key) => Option.flatMap(current, (value) => step(value, key)),
-					Option.some(root),
-				),
-		),
-		Option.filter(Predicate.isString),
-	);
-};
 
 /**
  * Runs one location's probe.
  *
  * @remarks
- * Presence is decided by whether the process **ran**, never by its exit code:
- * a tool whose `--version` exits non-zero still exists. Absence is a spawn
- * failure, which is why `Run.collect`'s typed failure is the signal here and
- * no shell (`command -v`) is involved, so a tool name is never interpolated
- * into a command line.
+ * Presence is decided by whether the process **ran**, never by a shell
+ * `command -v`: a spawn failure (`Run.collect`'s typed failure) proves absence,
+ * so a tool name is never interpolated into a command line. What a completed
+ * run proves depends on the location — see `probeFromRun`: a global tool's
+ * non-zero `--version` still proves it exists, while a local probe's non-zero
+ * exit is the launcher reporting the tool missing.
  */
 const probeLocation = (
+	location: "global" | "local",
 	command: ChildProcess.Command,
 	probe: VersionProbe,
 ): Effect.Effect<Probe, never, ChildProcessSpawner.ChildProcessSpawner> =>
 	Run.collect(command).pipe(
-		Effect.map((output) => ({ found: true, version: extractVersion(probe, output.stdout) })),
-		Effect.catch(() => Effect.succeed({ found: false, version: Option.none<string>() })),
+		Effect.map((output) => probeFromRun(location, probe, output)),
+		Effect.catch(() => Effect.succeed(ABSENT)),
 	);
+
+/**
+ * Applies a tool's policy to its evidence, building the public result.
+ *
+ * @remarks
+ * Shared with `makeToolDiscoverySync`, so the Effect service and the sync
+ * facade answer identically from identical evidence. The refusal is NOT here:
+ * it must happen before any evidence is gathered.
+ */
+export const resolveFromEvidence = (
+	tool: Tool,
+	evidence: Evidence,
+): Result.Result<ResolvedTool, ToolNotFoundError | ToolVersionMismatchError> => {
+	const decision = decideResolution(tool, evidence);
+	switch (decision._tag) {
+		case "NotFound":
+			return Result.fail(new ToolNotFoundError({ tool: tool.name, searched: decision.searched }));
+		case "Mismatch":
+			return Result.fail(
+				new ToolVersionMismatchError({
+					tool: tool.name,
+					globalVersion: decision.globalVersion,
+					localVersion: decision.localVersion,
+				}),
+			);
+		case "Resolved":
+			return Result.succeed(
+				ResolvedTool.make({
+					name: tool.name,
+					source: decision.source,
+					version: decision.version,
+					globalVersion: evidence.global.version,
+					localVersion: evidence.local.version,
+					mismatch: decision.mismatch,
+					...(decision.context === undefined ? {} : { context: decision.context }),
+				}),
+			);
+	}
+};
 
 /**
  * The {@link ToolDiscovery} service shape.
@@ -274,10 +279,10 @@ const make = Effect.fnUntraced(function* () {
 			Effect.gen(function* () {
 				const context = yield* local.context;
 				const args = probeArgs(key.probe);
-				const globalProbe = yield* probeLocation(ChildProcess.make(key.name, args), key.probe);
+				const globalProbe = yield* probeLocation("global", ChildProcess.make(key.name, args), key.probe);
 				const localProbe = Option.isNone(context)
-					? { found: false, version: Option.none<string>() }
-					: yield* probeLocation(context.value.apply(ChildProcess.make(key.name, args)), key.probe);
+					? ABSENT
+					: yield* probeLocation("local", context.value.apply(ChildProcess.make(key.name, args)), key.probe);
 				return { global: globalProbe, local: localProbe, context } satisfies Evidence;
 			}),
 		{
@@ -297,8 +302,7 @@ const make = Effect.fnUntraced(function* () {
 			//
 			// A tool that exists does not stop existing; a tool that does not exist
 			// very often starts to.
-			timeToLive: (exit) =>
-				Exit.isSuccess(exit) && (exit.value.global.found || exit.value.local.found) ? Duration.infinity : Duration.zero,
+			timeToLive: (exit) => (Exit.isSuccess(exit) && isPositive(exit.value) ? Duration.infinity : Duration.zero),
 		},
 	).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
 
@@ -308,68 +312,11 @@ const make = Effect.fnUntraced(function* () {
 	const resolve = Effect.fn("ToolDiscovery.resolve")(function* (tool: Tool) {
 		yield* Effect.annotateCurrentSpan({ tool: tool.name, source: tool.source });
 		// Pre-spawn guard: argv position zero is not a place to accept a flag.
-		if (tool.name === "" || tool.name.startsWith("-")) {
+		if (isRefusedName(tool.name)) {
 			return yield* Effect.fail(new ToolRefusedError({ tool: tool.name }));
 		}
-
 		const evidence = yield* evidenceFor(tool);
-		const required: ReadonlyArray<ResolvedSource> =
-			tool.source === "any" ? ["global", "local"] : tool.source === "both" ? ["global", "local"] : [tool.source];
-
-		const satisfied =
-			tool.source === "any"
-				? evidence.global.found || evidence.local.found
-				: tool.source === "both"
-					? evidence.global.found && evidence.local.found
-					: tool.source === "global"
-						? evidence.global.found
-						: evidence.local.found;
-
-		if (!satisfied) {
-			return yield* Effect.fail(new ToolNotFoundError({ tool: tool.name, searched: required }));
-		}
-
-		const bothFound = evidence.global.found && evidence.local.found;
-		const mismatch =
-			bothFound &&
-			Option.isSome(evidence.global.version) &&
-			Option.isSome(evidence.local.version) &&
-			evidence.global.version.value !== evidence.local.version.value;
-
-		if (mismatch && tool.onMismatch === "fail") {
-			return yield* Effect.fail(
-				new ToolVersionMismatchError({
-					tool: tool.name,
-					globalVersion: Option.getOrElse(evidence.global.version, () => ""),
-					localVersion: Option.getOrElse(evidence.local.version, () => ""),
-				}),
-			);
-		}
-
-		// Which copy to run: an explicit source requirement decides; otherwise the
-		// mismatch policy decides when both exist; otherwise whichever exists,
-		// preferring local.
-		const selected: ResolvedSource =
-			tool.source === "global"
-				? "global"
-				: tool.source === "local"
-					? "local"
-					: mismatch && tool.onMismatch === "preferGlobal"
-						? "global"
-						: evidence.local.found
-							? "local"
-							: "global";
-
-		const context = selected === "local" ? Option.getOrUndefined(evidence.context) : undefined;
-		return ResolvedTool.make({
-			name: tool.name,
-			source: selected,
-			version: selected === "local" ? evidence.local.version : evidence.global.version,
-			globalVersion: evidence.global.version,
-			localVersion: evidence.local.version,
-			mismatch,
-			...(context === undefined ? {} : { context }),
-		});
+		return yield* Effect.fromResult(resolveFromEvidence(tool, evidence));
 	});
 
 	const isAvailable = Effect.fn("ToolDiscovery.isAvailable")(function* (tool: Tool) {

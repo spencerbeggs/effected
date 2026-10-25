@@ -205,22 +205,41 @@ export class LocalExec extends Context.Service<LocalExec, LocalExecShape>()("@ef
 		context: Eff.succeed(Option.none()),
 	});
 
+	/**
+	 * The execution context for a known package manager, from the static prefix
+	 * table — no layer, no Effect.
+	 *
+	 * @remarks
+	 * The plain-value form of {@link LocalExec.layerFor}, for a caller that
+	 * holds a launcher name and needs the context itself: a sync facade, or code
+	 * that reads `context.prefix` to build a command string for another tool to
+	 * run. `directory`, when given, is where the prefix must run.
+	 *
+	 * @example
+	 * ```ts
+	 * const context = LocalExec.contextFor("pnpm", { directory: "/repo" });
+	 * context.prefix; // ["pnpm", "exec"]
+	 * ```
+	 */
+	static readonly contextFor = (
+		launcher: Launcher,
+		options?: { readonly directory?: string | undefined },
+	): ExecContext => {
+		const { prefix, dlxPrefix, scriptPrefix } = PREFIXES[launcher];
+		return ExecContext.make({
+			label: launcher,
+			prefix,
+			dlxPrefix,
+			scriptPrefix,
+			...(options?.directory === undefined ? {} : { directory: options.directory }),
+		});
+	};
+
 	/** A context for a known package manager, from the static prefix table. */
 	static readonly layerFor = (
 		launcher: Launcher,
 		options?: { readonly directory?: string | undefined },
-	): Layer.Layer<LocalExec> => {
-		const { prefix, dlxPrefix, scriptPrefix } = PREFIXES[launcher];
-		return LocalExec.layerContext(
-			ExecContext.make({
-				label: launcher,
-				prefix,
-				dlxPrefix,
-				scriptPrefix,
-				...(options?.directory === undefined ? {} : { directory: options.directory }),
-			}),
-		);
-	};
+	): Layer.Layer<LocalExec> => LocalExec.layerContext(LocalExec.contextFor(launcher, options));
 
 	/** A caller-supplied context, answered verbatim. */
 	static readonly layerContext = (context: ExecContext): Layer.Layer<LocalExec> =>

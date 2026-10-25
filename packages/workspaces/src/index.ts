@@ -145,6 +145,8 @@ export {
 	type WorkspaceDiscoverySkip,
 	type WorkspaceDiscoverySkipKind,
 	type WorkspacesSyncOptions,
+	detectPackageManagerSync,
 	findWorkspaceRootSync,
 	getWorkspacePackagesSync,
+	localExecContextSync,
 } from "./WorkspacesSync.js";
