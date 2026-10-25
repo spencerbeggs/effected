@@ -15,20 +15,23 @@ const xdgPaths = (overrides: Partial<Omit<typeof XdgPaths.Type, "configDirs" | "
 /**
  * Records every `makeDirectory` call, in order, over a real in-memory volume.
  *
- * A fault handler runs when the method is CALLED, not when the layer is built,
- * which is the property that matters here: `AppDirs` constructs its `ensure*`
+ * A memfs spy runs when the call EXECUTES, not when the layer is built, which
+ * is the property that matters here: `AppDirs` constructs its `ensure*`
  * effects once at layer construction, so anything recording eagerly would count
  * four directories that were never created and every assertion would be
  * measuring construction rather than execution.
  *
- * Returning `undefined` delegates, so the directory is genuinely created rather
- * than merely observed — and unlike `layerNoop`, every method this fixture does
- * not name still works instead of failing as unimplemented.
+ * A spy always delegates, so the directory is genuinely created rather than
+ * merely observed — and unlike `layerNoop`, every method this fixture does not
+ * name still works instead of failing as unimplemented. `failOn` is a fault
+ * beneath the spy, so the rejected call is recorded too; the one test that
+ * sets it never reads `made`.
  */
 const recordingFs = (made: Array<string>, failOn?: string) =>
 	MemoryFileSystem.layerWith(
 		{},
 		{
+			spies: { makeDirectory: (dir) => void made.push(dir) },
 			faults: {
 				makeDirectory: (dir) => {
 					if (failOn !== undefined && dir === failOn) {
@@ -41,7 +44,6 @@ const recordingFs = (made: Array<string>, failOn?: string) =>
 							}),
 						);
 					}
-					made.push(dir);
 					return undefined; // delegate: the volume really creates it
 				},
 			},
