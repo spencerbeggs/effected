@@ -11,6 +11,6 @@
 		"validate": "pluginfinity validate"
 	},
 	"devDependencies": {
-		"pluginfinity": "^0.3.7"
+		"pluginfinity": "^0.3.8"
 	}
 }
