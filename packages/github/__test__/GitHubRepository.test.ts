@@ -14,12 +14,20 @@ const run = <A, E>(
 	effect: Effect.Effect<A, E, GitHubRepository | GitHubClient | Repo>,
 	request: Record<string, unknown> = {},
 	graphql: Record<string, unknown> = {},
+	apiVersion?: string,
 ) =>
 	Effect.gen(function* () {
 		const requested: RecordedCall[] = [];
 		const value = yield* effect.pipe(
 			Effect.provide(GitHubRepository.layer),
-			Effect.provide(GitHubClient.layerFixture({ request, graphql, requested })),
+			Effect.provide(
+				GitHubClient.layerFixture({
+					request,
+					graphql,
+					requested,
+					...(apiVersion !== undefined ? { apiVersion } : {}),
+				}),
+			),
 			Effect.provide(Repo.layer(RepoRef.make({ owner: "acme", repo: "widget" }))),
 		);
 		return { value, requested, routes: requested.filter((c) => c.kind !== "graphql").map((c) => c.route) };
@@ -506,6 +514,36 @@ describe("GitHubRepository.applySettings ignored keys", () => {
 			assert.deepStrictEqual([...value.graphql], ["has_pull_requests"]);
 			assert.deepStrictEqual([...value.rest], []);
 			assert.deepStrictEqual([...value.ignored], []);
+		}),
+	);
+
+	it.effect("a key an api-version removed is ignored at and past that version, and sent before it", () =>
+		Effect.gen(function* () {
+			const settings = { use_squash_pr_title_as_default: true };
+			for (const [apiVersion, sent] of [
+				[undefined, false],
+				["2026-03-10", false],
+				["2027-01-01", false],
+				["2026-03-09", true],
+				["2022-11-28", true],
+			] as const) {
+				const { value, requested } = yield* run(
+					Effect.flatMap(GitHubRepository, (r) => r.applySettings(settings)),
+					{ "PATCH /repos/{owner}/{repo}": REPO },
+					{},
+					apiVersion,
+				);
+				const label = apiVersion ?? "default";
+				if (sent) {
+					assert.deepStrictEqual([...value.rest], ["use_squash_pr_title_as_default"], label);
+					assert.deepStrictEqual([...value.ignored], [], label);
+					assert.strictEqual(requested[0]?.params.use_squash_pr_title_as_default, true, label);
+				} else {
+					assert.deepStrictEqual([...value.rest], [], label);
+					assert.deepStrictEqual([...value.ignored], ["use_squash_pr_title_as_default"], label);
+					assert.lengthOf(requested, 0, label);
+				}
+			}
 		}),
 	);
 });

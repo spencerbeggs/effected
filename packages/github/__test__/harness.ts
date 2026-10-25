@@ -36,13 +36,14 @@ export interface Harness {
  * mis-handle a 404 and still pass, which is most of what a resource can get
  * wrong.
  */
-export const harness = (replies: ReadonlyArray<Reply>): Harness => {
+export const harness = (replies: ReadonlyArray<Reply>, options: { readonly apiVersion?: string } = {}): Harness => {
 	const script = scriptedFetch(replies);
 	const base = Layer.mergeAll(
 		GitHubClient.layerFromToken({
 			token: Redacted.make("ghs_test"),
 			fetch: script.fetch,
 			retry: RetryPolicy.none,
+			...(options.apiVersion !== undefined ? { apiVersion: options.apiVersion } : {}),
 		}),
 		Repo.layer(REPO),
 	);

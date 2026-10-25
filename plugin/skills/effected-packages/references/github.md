@@ -81,7 +81,11 @@ tempted to reach for `as`.
   `rateLimit: Effect<Option<RateLimitSnapshot>>`. Layers:
   `layerFromToken({ token: Redacted, retry?, baseUrl?, userAgent?, fetch?, apiVersion? })`
   — every request pins `x-github-api-version` (`apiVersion`, default
-  `"2026-03-10"`; a per-call header wins);
+  `"2026-03-10"`, must be `YYYY-MM-DD`; a per-call header wins; read back as
+  `client.apiVersion`). **A GitHub Enterprise Server older than the default
+  must set `apiVersion`.** The route types describe GitHub's oldest
+  api-version, not the default, so `client.request` types can claim fields
+  (`merge_commit_sha`, `has_downloads`) that are `undefined` at runtime;
   `layerFromConfig()`, which reads through the ambient `ConfigProvider` (not
   `process.env`) and fails with core's `ConfigError` — an honest "no token is
   configured", where the surface it replaced failed with a wire-failure type.
@@ -176,7 +180,8 @@ tempted to reach for `as`.
   reports the REST and GraphQL keys that **actually went out**, in the caller's
   own names, plus `ignored`: keys neither API accepts (checked against a REST
   key list generated from GitHub's OpenAPI description), which are **not sent**
-  — the REST PATCH would ignore them and answer 200. `topics` reads the topic set; `setTopics(names)` replaces it
+  — the REST PATCH would ignore them and answer 200; a key a later
+  api-version removed is ignored only for a client pinned at or past it. `topics` reads the topic set; `setTopics(names)` replaces it
   (`[]` clears) and returns the set GitHub **stored**, lowercased — record
   that, not `names`, as applied state. `RepositorySettings` is `RestData<"GET /repos/{owner}/{repo}">`;
   `RepositoryPatch` is the PATCH route's params minus `owner`/`repo`;
@@ -214,7 +219,8 @@ tempted to reach for `as`.
   `CommitComparison`, `changedFiles` (a route octokit does not list as
   paginating, walked by the same one pagination engine); `getFile` /
   `getFileOption(path, { ref? })`.
-- **`PullRequest`** — `get`, `list`, `listFiles`, `listAssociatedWithCommit`,
+- **`PullRequest`** — `get`, `list`, `listFiles`, `listAssociatedWithCommit`
+  (the two lists fill `mergeCommitSha` only with `mergeCommits: true`),
   `create`, `update`, `upsert` → `UpsertedPullRequest { pullRequest, created }`,
   `merge({ method?, commitTitle?, commitMessage? })`, `addLabels`,
   `requestReviewers`, and `setAutoMerge(pullRequest, method | "off")` — GraphQL,

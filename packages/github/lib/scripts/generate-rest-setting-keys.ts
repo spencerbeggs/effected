@@ -6,8 +6,15 @@
 // reads it at build time from the declaration file `@octokit/openapi-types`
 // publishes — the same package `@octokit/types` builds its route table from —
 // and emits the top-level property names of
-// `operations["repos/update"].requestBody.content["application/json"]`, minus
-// the keys the pinned api-version removed (REMOVED_BY_PINNED_VERSION).
+// `operations["repos/update"].requestBody.content["application/json"]`, plus
+// REMOVED_BY_PINNED_VERSION: the keys a later api-version removed, each keyed
+// to the version that removed it. `applySettings` subtracts one only when the
+// client's api-version is at or past that version, so a client pinned to an
+// older version still sends it.
+//
+// The header names the client's default api-version, so bumping
+// DEFAULT_API_VERSION without regenerating (and re-checking this list against
+// GitHub's breaking-change notes) fails the drift test.
 //
 // `@octokit/openapi-types` and `oxc-parser` are devDependencies used ONLY here
 // and in the drift test; nothing under src/** imports either at runtime.
@@ -20,6 +27,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseSync } from "oxc-parser";
+import { DEFAULT_API_VERSION } from "../../src/internal/octokit.js";
 
 const require = createRequire(import.meta.url);
 
@@ -36,18 +44,19 @@ export const SOURCE: string = require.resolve("@octokit/openapi-types/types.d.ts
 const OPERATION = "repos/update";
 
 /**
- * Keys the description still declares that the api-version the client pins
- * removed from the request, so the REST PATCH would ignore them and answer 200.
+ * Keys the description still declares that a later api-version removed from
+ * the request, mapped to the version that removed them. Under that version or
+ * any later one the REST PATCH ignores the key and answers 200.
  *
  * @remarks
  * `@octokit/openapi-types` describes GitHub's oldest supported api-version,
- * not the pinned one. The one subtraction is taken from GitHub's published
- * 2026-03-10 breaking-change list; each entry names its replacement.
+ * not the pinned one. Each entry is taken from GitHub's published
+ * breaking-change list for its version and names its replacement.
  */
-export const REMOVED_BY_PINNED_VERSION: ReadonlyArray<string> = [
+export const REMOVED_BY_PINNED_VERSION: Readonly<Record<string, string>> = {
 	// Use `squash_merge_commit_title`.
-	"use_squash_pr_title_as_default",
-];
+	use_squash_pr_title_as_default: "2026-03-10",
+};
 
 // Minimal shape for the oxc ESTree/TS-ESTree nodes walked here.
 interface Node {
@@ -114,8 +123,22 @@ export const extract = (source: string): ReadonlyArray<string> => {
 
 	const keys = json.map(keyOf).filter((key): key is string => key !== undefined);
 	if (keys.length === 0) throw new Error(`${OPERATION}: the request body declares no keys`);
-	return [...new Set(keys)].filter((key) => !REMOVED_BY_PINNED_VERSION.includes(key)).sort();
+	return [...new Set(keys)].sort();
 };
+
+/**
+ * Fail when a removal entry names a key the description no longer declares:
+ * the entry is then dead, and the list it guards has moved without review.
+ */
+export const checkRemovals = (keys: ReadonlyArray<string>): void => {
+	const stale = Object.keys(REMOVED_BY_PINNED_VERSION).filter((key) => !keys.includes(key));
+	if (stale.length > 0) {
+		throw new Error(`REMOVED_BY_PINNED_VERSION names keys ${OPERATION} no longer declares: ${stale.join(", ")}`);
+	}
+};
+
+/** An object key as Biome's formatter writes it: bare when it is an identifier. */
+const propertyName = (key: string): string => (/^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key));
 
 /** The generated module's full text. */
 export const render = (keys: ReadonlyArray<string>, version: string): string =>
@@ -124,8 +147,9 @@ export const render = (keys: ReadonlyArray<string>, version: string): string =>
 //
 // The top-level request-body keys of \`PATCH /repos/{owner}/{repo}\`, read at
 // build time from @octokit/openapi-types@${version} (types.d.ts,
-// operations["repos/update"].requestBody.content["application/json"]), minus
-// the keys api-version 2026-03-10 removed (${REMOVED_BY_PINNED_VERSION.join(", ")}).
+// operations["repos/update"].requestBody.content["application/json"]), and the
+// keys a later api-version removed, by the version that removed them.
+// Generated for the client's default api-version ${DEFAULT_API_VERSION}.
 // __test__/repositoryRestSettingKeys.test.ts fails when this file drifts from it.
 
 /**
@@ -136,12 +160,27 @@ export const render = (keys: ReadonlyArray<string>, version: string): string =>
 export const REPOSITORY_REST_SETTING_KEYS: ReadonlySet<string> = new Set([
 ${keys.map((key) => `\t${JSON.stringify(key)},`).join("\n")}
 ]);
+
+/**
+ * Keys in {@link REPOSITORY_REST_SETTING_KEYS} that an api-version removed,
+ * mapped to that version: a client at or past it does not send the key.
+ *
+ * @internal
+ */
+export const REMOVED_BY_PINNED_VERSION: Readonly<Record<string, string>> = {
+${Object.entries(REMOVED_BY_PINNED_VERSION)
+	.sort(([a], [b]) => a.localeCompare(b))
+	.map(([key, removedIn]) => `\t${propertyName(key)}: ${JSON.stringify(removedIn)},`)
+	.join("\n")}
+};
 `;
 
 /** The generated text for the installed `@octokit/openapi-types`. */
 export const generate = (): string => {
 	const version = (require("@octokit/openapi-types/package.json") as { readonly version: string }).version;
-	return render(extract(readFileSync(SOURCE, "utf8")), version);
+	const keys = extract(readFileSync(SOURCE, "utf8"));
+	checkRemovals(keys);
+	return render(keys, version);
 };
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

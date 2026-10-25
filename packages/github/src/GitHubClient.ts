@@ -22,7 +22,8 @@ const DEFAULT_PER_PAGE = 100;
  * Every member is an `Effect`, a `Stream`, or a function returning one — the
  * rule that keeps `Layer.mock` and `layerTest(Partial<Shape>)` useful. That
  * includes `rateLimit`, which is an `Effect`-valued property rather than a
- * getter for exactly this reason.
+ * getter for exactly this reason. The one plain value is `apiVersion`, a
+ * string fixed at construction that no double needs to stub.
  *
  * @public
  */
@@ -105,6 +106,21 @@ export interface GitHubClientShape {
 	 * a caller that wants to pace itself proactively reads this.
 	 */
 	readonly rateLimit: Effect.Effect<Option.Option<RateLimitSnapshot>>;
+
+	/**
+	 * The REST api-version this client pins, as sent in `x-github-api-version`.
+	 *
+	 * @remarks
+	 * A plain value, not an `Effect`: it is fixed when the client is built and
+	 * reading it does no work. Resource services read it to shape a request for
+	 * the version it goes out under — a body field one version requires and a
+	 * later one removed, say. Calendar versions are `YYYY-MM-DD`, so two of them
+	 * compare correctly as strings: `client.apiVersion < "2026-03-10"`.
+	 *
+	 * A call that sets its own `x-github-api-version` header goes out under that
+	 * version instead; this is the version of every other call.
+	 */
+	readonly apiVersion: string;
 }
 
 /**
@@ -144,6 +160,10 @@ export interface GitHubClientOptions {
 	 * A GitHub Enterprise Server release that predates the default version
 	 * rejects the header, so a client pointed at one through `baseUrl` sets the
 	 * newest version that server supports here.
+	 *
+	 * Must be a calendar version, `YYYY-MM-DD`. Anything else is a wiring
+	 * mistake and kills the fiber building the client, with a defect naming
+	 * this option, rather than reaching GitHub as a header it rejects.
 	 */
 	readonly apiVersion?: string | undefined;
 }
@@ -310,6 +330,15 @@ export interface GitHubFixtures {
 	/** What `rateLimit` answers. */
 	readonly rateLimit?: RateLimitSnapshot | undefined;
 	/**
+	 * What `apiVersion` answers; defaults to the live client's default,
+	 * `"2026-03-10"`.
+	 *
+	 * @remarks
+	 * Set it to drive a resource's version-dependent branch — a request body
+	 * an older api-version needs — without a live client.
+	 */
+	readonly apiVersion?: string | undefined;
+	/**
 	 * Every call the fixture served, in order. Populated as the test runs.
 	 *
 	 * @remarks
@@ -405,10 +434,13 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 	 * member **dies** naming itself.
 	 *
 	 * @remarks
-	 * No member has an honest default. A fabricated response — an empty list, a
+	 * No request member has an honest default. A fabricated response — an empty list, a
 	 * made-up sha — would leak into the code under test as fact, so the double
 	 * fails loudly instead, which also makes it proof that a test touches nothing
 	 * but what it stubbed.
+	 *
+	 * `rateLimit` answers `Option.none()` and `apiVersion` the live default,
+	 * because a real client legitimately answers both without a request.
 	 *
 	 * For recorded responses that page for real, use
 	 * {@link GitHubClient.layerFixture}.
@@ -420,6 +452,8 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 		paginateStream: overrides.paginateStream ?? (() => Stream.fromEffect(dies("paginateStream"))),
 		graphql: overrides.graphql ?? (() => dies("graphql")),
 		rateLimit: overrides.rateLimit ?? Effect.succeed(Option.none()),
+		// Every real client has one, and the default is what it would answer.
+		apiVersion: overrides.apiVersion ?? DEFAULT_API_VERSION,
 	});
 
 	/** {@link GitHubClient.makeTest} behind a `Layer`. */
@@ -449,6 +483,32 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 		Layer.succeed(GitHubClient, makeFixture(fixtures));
 }
 
+/** A calendar api-version: `YYYY-MM-DD`. */
+const API_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The api-version a client pins: the option when it is a calendar version,
+ * the default when it is absent, and a defect naming the option otherwise.
+ *
+ * @remarks
+ * A defect, not a typed failure: a malformed version is a wiring mistake no
+ * caller recovers from, and every layer that builds a client would otherwise
+ * widen its error channel for it. Exported for `GitHubApp`, which validates
+ * eagerly at its own layer construction. Not part of the public surface.
+ *
+ * @internal
+ */
+export const resolveApiVersion = (option: string | undefined): Effect.Effect<string> =>
+	option === undefined
+		? Effect.succeed(DEFAULT_API_VERSION)
+		: API_VERSION_PATTERN.test(option)
+			? Effect.succeed(option)
+			: Effect.die(
+					new Error(
+						`GitHubClient: the apiVersion option must be a calendar version like "${DEFAULT_API_VERSION}" (YYYY-MM-DD), got ${JSON.stringify(option)}`,
+					),
+				);
+
 /**
  * Builds the live shape over a constructed transport.
  *
@@ -463,13 +523,14 @@ export const makeClientShape = (
 	options: Omit<GitHubClientOptions, "token"> & { readonly token?: Redacted.Redacted<string> | undefined },
 ): Effect.Effect<GitHubClientShape> =>
 	Effect.gen(function* () {
+		const apiVersion = yield* resolveApiVersion(options.apiVersion);
 		const transport = yield* makeTransport({
 			token: options.token,
 			retry: resolvePolicy(options.retry),
 			baseUrl: options.baseUrl,
 			userAgent: options.userAgent,
 			fetch: options.fetch,
-			apiVersion: options.apiVersion ?? DEFAULT_API_VERSION,
+			apiVersion,
 		});
 
 		const request = Effect.fn("GitHubClient.request")(function* <R extends Rest.Route>(
@@ -540,6 +601,7 @@ export const makeClientShape = (
 			paginateStream,
 			graphql,
 			rateLimit: transport.rateLimit,
+			apiVersion,
 		};
 	});
 
@@ -629,5 +691,6 @@ const makeFixture = (fixtures: GitHubFixtures): GitHubClientShape => {
 						);
 		},
 		rateLimit: Effect.succeed(Option.fromUndefinedOr(fixtures.rateLimit)),
+		apiVersion: fixtures.apiVersion ?? DEFAULT_API_VERSION,
 	};
 };

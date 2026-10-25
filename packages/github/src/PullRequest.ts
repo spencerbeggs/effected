@@ -3,8 +3,7 @@ import { GitHubClient } from "./GitHubClient.js";
 import type { CommitFile } from "./GitHubCommit.js";
 import { fileOf } from "./GitHubCommit.js";
 import { GitHubError } from "./GitHubError.js";
-import type { GitHubGraphQLError } from "./GraphQL.js";
-import { GraphQLDocument } from "./GraphQL.js";
+import { GitHubGraphQLError, GraphQLDocument } from "./GraphQL.js";
 import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import { PageOptions } from "./Rest.js";
@@ -61,10 +60,14 @@ export class PullRequestInfo extends Schema.Class<PullRequestInfo>("PullRequestI
 	 * Read from GraphQL's `PullRequest.mergeCommit.oid`. The REST pull request
 	 * object no longer carries `merge_commit_sha` under the api-version this
 	 * package pins, so a merged pull request costs one extra GraphQL round trip
-	 * per read — batched, for a list — and an open or closed-unmerged one costs
-	 * nothing. When the REST response does carry the field (a client pinned to
-	 * an older api-version), it is used for a merged pull request and the
-	 * GraphQL read is skipped.
+	 * per single read (`get`, `update`, `upsert`), and an open or
+	 * closed-unmerged one costs nothing. When the REST response does carry the
+	 * field (a client pinned to an older api-version), it is used for a merged
+	 * pull request and the GraphQL read is skipped.
+	 *
+	 * **A list read leaves it absent unless asked.** `list` and
+	 * `listAssociatedWithCommit` fill it only when called with
+	 * `mergeCommits: true`, at one GraphQL call per 100 merged pull requests.
 	 *
 	 * It is never the speculative test-merge commit GitHub computes for an open
 	 * pull request, so `mergeCommitSha === sha` means "this commit is what the
@@ -105,12 +108,14 @@ const DisableAutoMerge = GraphQLDocument.make({
 	response: AutoMergeResponse,
 })<{ readonly pullRequestId: string }>();
 
-/** A merged pull request's merge commit, by node id; any other node answers `{}`. */
+/**
+ * One answer per requested id, **in request order**: a merged pull request
+ * carries its merge commit, and a node of another type answers `{}`.
+ */
 const MergeCommitsResponse = Schema.Struct({
 	nodes: Schema.Array(
 		Schema.NullOr(
 			Schema.Struct({
-				id: Schema.optionalKey(Schema.String),
 				mergeCommit: Schema.optionalKey(Schema.NullOr(Schema.Struct({ oid: Schema.String }))),
 			}),
 		),
@@ -121,7 +126,7 @@ const MergeCommits = GraphQLDocument.make({
 	name: "PullRequestMergeCommits",
 	document: `query PullRequestMergeCommits($ids: [ID!]!) {
   nodes(ids: $ids) {
-    ... on PullRequest { id mergeCommit { oid } }
+    ... on PullRequest { mergeCommit { oid } }
   }
 }`,
 	response: MergeCommitsResponse,
@@ -129,6 +134,9 @@ const MergeCommits = GraphQLDocument.make({
 
 /** GraphQL's `nodes(ids:)` accepts at most this many ids per call. */
 const NODES_PER_QUERY = 100;
+
+/** How many `nodes(ids:)` calls a list's merge-commit read keeps in flight. */
+const MERGE_COMMIT_CONCURRENCY = 4;
 
 /** GraphQL spells the merge methods in capitals. */
 const GRAPHQL_MERGE_METHOD = { merge: "MERGE", squash: "SQUASH", rebase: "REBASE" } as const;
@@ -158,12 +166,19 @@ export interface PullRequestShape {
 	 * in the wrong account — the filter then matches nothing, silently. When the
 	 * head may live in a fork, pass a qualified `owner:ref` built from the source
 	 * owner rather than from anything this projection carries.
+	 *
+	 * **`mergeCommitSha` is absent on every result unless `mergeCommits` is
+	 * `true`.** The REST list no longer carries it, and filling it costs one
+	 * GraphQL call per 100 merged pull requests in the result, so it is opt-in.
+	 * Only with the option can this fail with `GitHubGraphQLError`.
 	 */
 	readonly list: (options?: {
 		readonly head?: string | undefined;
 		readonly base?: string | undefined;
 		readonly state?: "open" | "closed" | "all" | undefined;
 		readonly page?: PageOptions | undefined;
+		/** Fill `mergeCommitSha` on merged results from GraphQL. Defaults to `false`. */
+		readonly mergeCommits?: boolean | undefined;
 	}) => Effect.Effect<ReadonlyArray<PullRequestInfo>, GitHubError | GitHubGraphQLError, Repo>;
 	/**
 	 * The files a pull request changes.
@@ -183,10 +198,19 @@ export interface PullRequestShape {
 	 *
 	 * @remarks
 	 * Paginated: pass `page` to bound the walk.
+	 *
+	 * **`mergeCommitSha` is absent on every result unless `mergeCommits` is
+	 * `true`**, at one GraphQL call per 100 merged pull requests — so a caller
+	 * matching `sha` against the merge commit passes it. Only with the option
+	 * can this fail with `GitHubGraphQLError`.
 	 */
 	readonly listAssociatedWithCommit: (
 		sha: string,
-		options?: { readonly page?: PageOptions | undefined },
+		options?: {
+			readonly page?: PageOptions | undefined;
+			/** Fill `mergeCommitSha` on merged results from GraphQL. Defaults to `false`. */
+			readonly mergeCommits?: boolean | undefined;
+		},
 	) => Effect.Effect<ReadonlyArray<PullRequestInfo>, GitHubError | GitHubGraphQLError, Repo>;
 	/** Open a pull request from `head` into `base`. */
 	readonly create: (input: {
@@ -374,6 +398,11 @@ const make = (client: GitHubClient["Service"]): PullRequestShape => {
 	 * `optionalKey`, so without this it would decode clean as always-absent —
 	 * a silent break for anything matching a commit against it. Nothing is
 	 * requested when no pull request in the batch needs it.
+	 *
+	 * `nodes(ids:)` answers positionally — one entry per id, in order, `null`
+	 * for an id that resolves to nothing — so each answer is joined to the id
+	 * at its index. An answer of the wrong length cannot be joined that way and
+	 * fails as a decode error rather than pairing shas with the wrong pulls.
 	 */
 	const withMergeCommits = (
 		pulls: ReadonlyArray<PullRequestInfo>,
@@ -382,14 +411,24 @@ const make = (client: GitHubClient["Service"]): PullRequestShape => {
 		if (ids.length === 0) return Effect.succeed(pulls);
 		const batches: Array<ReadonlyArray<string>> = [];
 		for (let i = 0; i < ids.length; i += NODES_PER_QUERY) batches.push(ids.slice(i, i + NODES_PER_QUERY));
-		return Effect.forEach(batches, (batch) => client.graphql(MergeCommits, { ids: batch })).pipe(
+		return Effect.forEach(
+			batches,
+			(batch) =>
+				Effect.flatMap(client.graphql(MergeCommits, { ids: batch }), (answer) =>
+					answer.nodes.length === batch.length
+						? Effect.succeed(batch.map((id, index) => [id, answer.nodes[index]?.mergeCommit?.oid] as const))
+						: Effect.fail(
+								GitHubGraphQLError.decode(
+									MergeCommits.name,
+									`nodes(ids:) answered ${answer.nodes.length} entries for ${batch.length} ids`,
+								),
+							),
+				),
+			{ concurrency: MERGE_COMMIT_CONCURRENCY },
+		).pipe(
 			Effect.map((answers) => {
 				const oids = new Map<string, string>();
-				for (const answer of answers) {
-					for (const node of answer.nodes) {
-						if (node?.id !== undefined && node.mergeCommit != null) oids.set(node.id, node.mergeCommit.oid);
-					}
-				}
+				for (const [id, oid] of answers.flat()) if (oid !== undefined) oids.set(id, oid);
 				return pulls.map((pull) => {
 					const oid = pull.mergeCommitSha === undefined ? oids.get(pull.nodeId) : undefined;
 					return oid === undefined ? pull : PullRequestInfo.make({ ...pull, mergeCommitSha: oid });
@@ -406,6 +445,7 @@ const make = (client: GitHubClient["Service"]): PullRequestShape => {
 		readonly base?: string | undefined;
 		readonly state?: "open" | "closed" | "all" | undefined;
 		readonly page?: PageOptions | undefined;
+		readonly mergeCommits?: boolean | undefined;
 	}) {
 		const { owner, repo } = yield* Repo;
 		const raw = yield* client.paginate(
@@ -419,7 +459,8 @@ const make = (client: GitHubClient["Service"]): PullRequestShape => {
 			},
 			options?.page,
 		);
-		return yield* withMergeCommits(yield* Effect.forEach(raw, project));
+		const pulls = yield* Effect.forEach(raw, project);
+		return options?.mergeCommits === true ? yield* withMergeCommits(pulls) : pulls;
 	});
 
 	const create = Effect.fn("PullRequest.create")(function* (input: {
@@ -503,7 +544,7 @@ const make = (client: GitHubClient["Service"]): PullRequestShape => {
 
 		listAssociatedWithCommit: Effect.fn("PullRequest.listAssociatedWithCommit")(function* (
 			sha: string,
-			options?: { readonly page?: PageOptions | undefined },
+			options?: { readonly page?: PageOptions | undefined; readonly mergeCommits?: boolean | undefined },
 		) {
 			const { owner, repo } = yield* Repo;
 			yield* Effect.annotateCurrentSpan({ owner, repo, sha });
@@ -512,7 +553,8 @@ const make = (client: GitHubClient["Service"]): PullRequestShape => {
 				{ owner, repo, commit_sha: sha },
 				options?.page,
 			);
-			return yield* withMergeCommits(yield* Effect.forEach(raw, project));
+			const pulls = yield* Effect.forEach(raw, project);
+			return options?.mergeCommits === true ? yield* withMergeCommits(pulls) : pulls;
 		}),
 
 		upsert: Effect.fn("PullRequest.upsert")(function* (input: {

@@ -3,7 +3,7 @@ import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
 import type { GitHubGraphQLError } from "./GraphQL.js";
 import { GraphQLDocument } from "./GraphQL.js";
-import { REPOSITORY_REST_SETTING_KEYS } from "./internal/repositoryRestSettingKeys.js";
+import { REMOVED_BY_PINNED_VERSION, REPOSITORY_REST_SETTING_KEYS } from "./internal/repositoryRestSettingKeys.js";
 import { unstubbed, unstubbedRead } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import type * as Rest from "./Rest.js";
@@ -119,17 +119,21 @@ export const SECURITY_ANALYSIS_STATUS_FIELDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Settings reachable **only** through the GraphQL `updateRepository` mutation,
- * mapped from snake_case keys to camelCase GraphQL input fields.
+ * Settings written through the GraphQL `updateRepository` mutation, mapped
+ * from snake_case keys to camelCase GraphQL input fields.
  *
  * @remarks
- * GitHub never exposed these on the REST repository endpoint — the
- * `PATCH /repos/{owner}/{repo}` route accepts none of them, and
- * `has_discussions` is the treacherous one: the REST **read** returns it, so
- * routing its write to the PATCH looks symmetric, but the PATCH silently
- * ignores unknown body fields and answers 200, so the write would look applied
- * while the repository never changed. Setting any of these forces a second
- * round trip to learn the repository's node id.
+ * `applySettings` checks this map **first**, so a key here always goes
+ * through GraphQL, even when the REST patch also declares it.
+ * `has_sponsorships` and `has_discussions` are GraphQL-only: the
+ * `PATCH /repos/{owner}/{repo}` route accepts neither, and `has_discussions`
+ * is the treacherous one — the REST **read** returns it, so routing its write
+ * to the PATCH looks symmetric, but the PATCH silently ignores unknown body
+ * fields and answers 200, so the write would look applied while the
+ * repository never changed. `has_pull_requests` is in the REST patch's body
+ * too; GraphQL is preferred for it so the three toggles travel together.
+ * Setting any of these forces a second round trip to learn the repository's
+ * node id.
  *
  * @public
  */
@@ -285,7 +289,10 @@ export interface AppliedSettings {
 	 * @remarks
 	 * A key that is not a GraphQL-only setting and not in the REST patch's
 	 * declared body — a typo such as `has_discussion`, or a setting GitHub has
-	 * not described — lands here. Sending it would be worse than useless: the
+	 * not described — lands here, as does a key the client's api-version
+	 * removed from the patch (`use_squash_pr_title_as_default` under
+	 * `2026-03-10` and later; a client pinned to an older version still sends
+	 * it). Sending it would be worse than useless: the
 	 * REST `PATCH` ignores unknown fields and answers 200, so the key would be
 	 * reported applied while the repository never changed. A caller that wants
 	 * an unknown key to fail the run checks this list.
@@ -347,9 +354,10 @@ export interface GitHubRepositoryShape {
 	 * the keys neither accepts.
 	 *
 	 * Three settings — `has_sponsorships`, `has_pull_requests` and
-	 * `has_discussions` ({@link GRAPHQL_ONLY_SETTINGS}) — are only reachable
-	 * through GraphQL's `updateRepository`, which addresses a repository by **node
-	 * id**. So a map touching any of them costs an extra read; a map touching none
+	 * `has_discussions` ({@link GRAPHQL_ONLY_SETTINGS}) — are written through
+	 * GraphQL's `updateRepository`, which addresses a repository by **node id**;
+	 * the first and last are reachable no other way, and GraphQL is preferred
+	 * for `has_pull_requests`. So a map touching any of them costs an extra read; a map touching none
 	 * does not, which is the common case.
 	 *
 	 * The map is open by design. GitHub's settings surface is large and moving,
@@ -507,8 +515,11 @@ const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 				}
 				// The REST PATCH ignores a field it does not declare and answers 200,
 				// so forwarding an unknown key would report it applied while nothing
-				// changed. The allowlist is generated from the OpenAPI description.
-				if (!REPOSITORY_REST_SETTING_KEYS.has(key)) {
+				// changed. The allowlist is generated from the OpenAPI description;
+				// a key a later api-version removed is subtracted only for a client
+				// at or past that version, which compare correctly as strings.
+				const removedIn = Object.hasOwn(REMOVED_BY_PINNED_VERSION, key) ? REMOVED_BY_PINNED_VERSION[key] : undefined;
+				if (!REPOSITORY_REST_SETTING_KEYS.has(key) || (removedIn !== undefined && client.apiVersion >= removedIn)) {
 					ignored.push(key);
 					continue;
 				}
