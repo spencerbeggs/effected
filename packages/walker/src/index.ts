@@ -10,9 +10,20 @@
  * subtree fails typed by default — a swallowed subtree is silently missing
  * membership, not a candidate that did not match.
  *
+ * Confinement: `confineRelativeResult` (and its `Effect` twin
+ * `confineRelative`) keeps an untrusted relative path, such as an archive
+ * entry name, under a base directory, refusing absolute forms and `..`
+ * escapes before any filesystem access.
+ *
  * @packageDocumentation
  */
 
+export {
+	PathEscapeError,
+	PathEscapeReason,
+	confineRelative,
+	confineRelativeResult,
+} from "./Confine.js";
 export {
 	DescendError,
 	type DescendOptions,

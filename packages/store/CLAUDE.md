@@ -4,6 +4,8 @@ Durable local state for Effect: two services over one primitive. `Store` is a sc
 
 The two are genuinely different services, not one with a flag: an evicted cache entry is correct behaviour, a lost state row is a bug. The shared primitive is the migration-ledger engine in `src/internal/migrator.ts` — `Store` exposes it with user-supplied migrations, `Cache` uses it privately to version its own fixed schema. The engine is parameterized by ledger **table name** (`_store_migrations` vs `_cache_migrations`), so a Store and a Cache can share one database file without id collisions.
 
+`AtomicDirectory.write` sits beside them and shares nothing with the SQL side: whole-directory replacement over core `FileSystem` + `Path` in `R` (sibling `.<name>.staging`, clear leftover, stage even when empty, write, remove live, rename). The sibling placement and the documented brief-absence window are the contract; do not move staging elsewhere (the rename stops being same-filesystem) and do not try to "close" the window with a second rename dance without a design change. Tests run on `@effected/memfs` with faults on `rename`/`writeFile`/`remove`/`makeDirectory`.
+
 **Design doc:** `@./okf/modules/store.md` — load before changing the service shapes, the error model or the migration engine.
 
 ## Tier: integrated

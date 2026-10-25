@@ -38,6 +38,12 @@ describe("root entrypoint", () => {
 			"ConstantTime",
 			"CryptoError",
 			"CryptoErrorReason",
+			"DriftApply",
+			"DriftDecision",
+			"DriftDetected",
+			"DriftUnchanged",
+			"Fingerprint",
+			"FingerprintError",
 			"Hmac",
 			"SigV4",
 			"SigV4PathError",
@@ -56,6 +62,7 @@ describe("root entrypoint", () => {
 		assert.isTrue(reachable.some((file) => file.endsWith("internal/hmac.ts")));
 		assert.isTrue(reachable.some((file) => file.endsWith("internal/subtle.ts")));
 		assert.isTrue(reachable.some((file) => file.endsWith("SigV4.ts")));
+		assert.isTrue(reachable.some((file) => file.endsWith("internal/canonical.ts")));
 		const nodeImports = reachable.flatMap((file) =>
 			specifiersOf(file)
 				.filter((specifier) => specifier.startsWith("node:"))

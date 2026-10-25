@@ -875,6 +875,8 @@
 		"isValidExpression": "check if a string is a valid spdx license expression"
 	},
 	"store": {
+		"AtomicDirectory": "replace a directory atomically, stage in a sibling then rename into place, write a file set without a half-written tree",
+		"AtomicDirectoryError": "handle an atomic directory write failure, validate clear stage write or promote step failed",
 		"Cache": "cache with ttl and tags, durable local state, tag invalidation and write-order eviction, second cache under your own key",
 		"CacheEntry": "a stored cache row, key value bytes, content type, tags and expiry",
 		"CacheError": "handle a cache sql operation failure, get set has invalidate prune failed",
@@ -973,8 +975,12 @@
 	"walker": {
 		"DescendError": "handle unreadable directory during glob descent, depth cap exceeded, typed filesystem walk failure",
 		"GlobExpansionError": "handle pattern-to-files expansion failure, compile or descend stage error, wraps GlobPatternError or DescendError",
+		"PathEscapeError": "handle untrusted path escaping a base directory, zip slip, absolute or dot-dot archive entry refused",
+		"PathEscapeReason": "why a confined path was refused, nul byte absolute traversal or empty",
 		"Walker": "walk up parent directories, find nearest config file, ascend to filesystem root",
 		"compileAndExpand": "compile a glob string, expand against the filesystem, pattern to matching files",
+		"confineRelative": "confine an untrusted relative path to a base directory as an Effect, reject dot-dot escapes",
+		"confineRelativeResult": "confine an archive entry or manifest path under a base dir synchronously, zip slip guard, Result",
 		"descend": "expand a compiled glob pattern into files under a directory, prune node_modules"
 	},
 	"workspaces": {
@@ -1128,6 +1134,12 @@
 		"ConstantTime": "constant-time compare bytes or strings, timing-safe secret or mac equality",
 		"CryptoError": "handle hmac failure, missing webcrypto subtle, rejected key material",
 		"CryptoErrorReason": "why an hmac operation failed, unsupported runtime or bad key",
+		"DriftApply": "drift decision to apply desired config, no baseline or desired changed",
+		"DriftDecision": "three-way drift outcome apply unchanged or drift, reconcile declared config against a remote",
+		"DriftDetected": "drift decision, live resource changed out of band, carries applied and live fingerprints",
+		"DriftUnchanged": "drift decision to leave a resource alone, live matches applied and desired",
+		"Fingerprint": "stable sha256 fingerprint of a json value, sorted keys, three-way drift detection applied live desired",
+		"FingerprintError": "handle a value with no canonical json form, bigint cycle map or class instance refused",
 		"Hmac": "compute or verify hmac-sha256 or sha512, hex base64 base64url output, webcrypto",
 		"SigV4": "sign an aws or s3-compatible request, sigv4 authorization header, signing key",
 		"SigV4PathError": "handle an s3 key or sigv4 path with a dot segment that a url would collapse"

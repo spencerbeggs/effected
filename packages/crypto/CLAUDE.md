@@ -1,6 +1,6 @@
 # CLAUDE.md — @effected/crypto
 
-HMAC, constant-time comparison and AWS SigV4 request signing over WebCrypto, safe for Cloudflare Workers.
+HMAC, constant-time comparison and AWS SigV4 request signing over WebCrypto, safe for Cloudflare Workers, plus `Fingerprint`: stable SHA-256 fingerprints of JSON-shaped values and the three-way `DriftDecision`. Its canonicaliser (`src/internal/canonical.ts`) is deliberately not `@effected/jsonc`'s RFC 8785 one: drift detection drops `undefined` members where RFC 8785 refuses them.
 
 **Design doc:** `@../../okf/modules/crypto.md` — load before changing behavior; it is the contract this package implements. Backends: `okf/decisions/crypto-backends.md`. Known edge: `okf/limitations/constant-time-compare.md`.
 

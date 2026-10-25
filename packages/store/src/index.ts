@@ -3,10 +3,13 @@
  * user-defined migration ledger, and `Cache`, a key-to-bytes cache with TTL,
  * tags, an entry bound and a `CacheEvent` PubSub. Both come as driver-agnostic
  * layers over `SqlClient`, SQLite file layers, and in-memory test layers.
+ * Beside them, `AtomicDirectory.write` replaces a whole on-disk directory by
+ * staging it in a sibling and renaming it into place.
  *
  * @packageDocumentation
  */
 
+export { AtomicDirectory, AtomicDirectoryError, type AtomicDirectoryFiles } from "./AtomicDirectory.js";
 export { Uint8ArrayFromUtf8 } from "./Bytes.js";
 export {
 	Cache,

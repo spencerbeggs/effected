@@ -12,6 +12,7 @@
 import type { GlobPattern } from "@effected/glob";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Path, Schema } from "effect";
+import { resolveSegments } from "./internal/segments.js";
 
 /**
  * Options for `descend`.
@@ -158,15 +159,7 @@ const DEFAULT_PRUNE: ReadonlyArray<string> = ["node_modules", ".git"];
  * ever happens (a pattern must not enumerate the tree above its documented
  * root).
  */
-const escapesCwd = (relative: string): boolean => {
-	let depth = 0;
-	for (const segment of relative.split("/")) {
-		if (segment === "" || segment === ".") continue;
-		depth += segment === ".." ? -1 : 1;
-		if (depth < 0) return true;
-	}
-	return false;
-};
+const escapesCwd = (relative: string): boolean => resolveSegments(relative.split("/")) === undefined;
 
 /** Shared empty ancestor chain: frames under `followSymlinks: false` never consult theirs. */
 const NO_ANCESTORS: ReadonlyArray<string> = Object.freeze([]);
