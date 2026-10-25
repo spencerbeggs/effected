@@ -62,7 +62,7 @@ describe("Range", () => {
 				const range = yield* Range.parse("^1.0.0");
 				const versions = yield* Effect.all(["0.9.0", "1.0.0", "1.9.9", "2.0.0"].map((s) => SemVer.parse(s)));
 				assert.deepStrictEqual(range.filter(versions).map(String), ["1.0.0", "1.9.9"]);
-				assert.deepStrictEqual(Range.filter(versions, range), range.filter(versions));
+				assert.isFalse(Object.hasOwn(Range, "filter"), "Range.filter static reintroduced");
 				assert.isTrue(Range.satisfies(yield* SemVer.parse("1.5.0"), range));
 				assert.isTrue(Range.satisfies(range)(yield* SemVer.parse("1.5.0")));
 			}),

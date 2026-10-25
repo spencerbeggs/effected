@@ -238,7 +238,9 @@ Six ways a name fails that test:
 
 The diagnostic distinguishes the fixable case from the unfixable one, so read it
 rather than pattern-matching: *"ambiguous… add a TSDoc member reference
-selector"* means a selector will work (below); *"does not have an export"* means
+selector"* means a selector will work (below), with one exception: a class
+member whose name is declared both `static` and on the instance (case 4 under
+"Backtick spans" below); *"does not have an export"* means
 no selector ever will; *"not supported yet by the resolver"* means the resolver
 cannot follow the declaration shape at all — backticks, no selector to try.
 
@@ -295,7 +297,7 @@ this form warnings-clean. Expect the mistake to recur: `Jsonc`,
 `Walker` all use this export shape, and the failure is invisible to `pnpm test`
 and `types:check` — it only surfaces in the **prod** build's `issues.json`.
 
-**Backtick spans remain correct for three cases**, where no selector helps:
+**Backtick spans remain correct for four cases**, where no selector helps:
 
 1. **Inherited members** — `{@link SemVer.make}` where `make` comes from the
    synthesized base. There is no selector for a member the declaration does not
@@ -316,6 +318,18 @@ and `types:check` — it only surfaces in the **prod** build's `issues.json`.
    inherited-member case above — there the *declaration* does not own the
    member; here the class does own it, but only through the factory, which is
    the same dead end from API Extractor's side.
+4. **A class with a same-named `static` and instance member** — a
+   `Fn.dual` static `Range.filter` beside an instance `filter(versions)`.
+   `{@link Range.filter}` reports *"ambiguous because "filter" has more than
+   one declaration; you need to add a TSDoc member reference selector"*, and
+   then rejects every selector you can write: `{@link Range.(filter:static)}`
+   and `{@link Range.(filter:instance)}` are both *Unsupported system
+   selector*. The advice in the diagnostic is a dead end. The house answer is
+   to **not create the collision**: keep the instance method canonical and
+   drop the static (derive a data-last form from an `Order` or a lambda), or
+   give the static a distinct name. `@effected/semver` dropped its seven
+   comparison statics and `Range.filter` for this reason. Where a collision
+   cannot be avoided, write the name in backticks.
 
 ## Overloaded exported functions: the index selector, parenthesized
 

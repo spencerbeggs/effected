@@ -60,7 +60,7 @@ console.log(Effect.runSync(program));
 // => ["1.3.0", true, false]
 ```
 
-Instance methods are the canonical API. Cross-cutting operations are dual statics on the owning class, so `SemVer.gt(a, b)` and `a.pipe(SemVer.gt(b))` both typecheck and mean the same thing.
+Instance methods are the canonical API: compare with `a.gt(b)`, `a.compare(b)`, `range.filter(versions)`. Operations with no instance counterpart are dual statics on the owning class, so `Range.satisfies(version, range)` and `version.pipe(Range.satisfies(range))` both typecheck and mean the same thing. For a data-last comparison, derive one from `SemVer.Order`: `Arr.filter(versions, Order.isGreaterThan(SemVer.Order)(floor))`.
 
 ## Versions
 
@@ -104,7 +104,7 @@ const program = Effect.gen(function* () {
   const floor = yield* Range.parse(">=1.5.0");
   const both = yield* Range.intersect(caret, floor);
   const versions = [SemVer.of(1, 2, 0), SemVer.of(1, 6, 0), SemVer.of(2, 0, 0)];
-  return [both.test(SemVer.of(1, 6, 0)), Range.filter(versions, caret).map((v) => v.toString())] as const;
+  return [both.test(SemVer.of(1, 6, 0)), caret.filter(versions).map((v) => v.toString())] as const;
 });
 
 console.log(Effect.runSync(program));

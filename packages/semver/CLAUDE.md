@@ -34,8 +34,18 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
 - **The class is the schema.** `SemVer`, `Comparator`, `Range` are
   `Schema.Class`; `VersionDiff` is a `Schema.TaggedClass`. Each string form is
   a `static readonly FromString` transformation.
-- **No floating functions.** Instance methods are canonical; cross-cutting ops
-  are `Fn.dual` statics on the owning class (`SemVer.gt`, `Range.filter`, ...).
+- **No floating functions.** Instance methods are canonical; ops with no
+  instance counterpart are `Fn.dual` statics on the owning class
+  (`Range.satisfies`, `SemVer.truncate`, ...).
+- **Never give a static the same name as an instance member.** API Extractor
+  cannot resolve a `{@link}` to either declaration of such a pair: it reports
+  the reference ambiguous and asks for a member reference selector, then
+  rejects both `:static` and `:instance` as unsupported, so that advice is a
+  dead end. The house answer is to avoid the collision (the comparison
+  statics and `Range.filter` were dropped for exactly this reason; derive a
+  data-last comparison from `SemVer.Order` with core
+  `Order.isGreaterThan` and friends), and to write the name in backticks
+  where a collision cannot be avoided.
 - **Construct with `.make()`**, never `new` — `make` runs validation.
   `SemVer.of(1, 2, 3)` is the positional convenience form.
 - **Errors** are `Schema.TaggedError` with a `message` getter derived from
@@ -59,7 +69,7 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
   Never re-derive the grammar on the `Effect` side. Kit convention —
   `@./okf/conventions/sync-primitive-policy.md` and
   `@./okf/decisions/sync-form-named-result.md`. The
-  comparison statics (`SemVer.compare`, `Range.satisfies`, ...) are out of
+  matching statics (`Range.satisfies`, `Range.maxSatisfying`, ...) are out of
   scope: already plain, total and dual, so a `Result` twin would be dead
   surface.
 

@@ -30,7 +30,7 @@ Every fallible operation in `semver` needs both a synchronous entry point (for c
 
 The synchronous `Result` form is the primitive and holds the actual grammar/engine logic: `SemVer.parseResult`, `Range.parseResult`, `Comparator.parseResult` and `Range.intersectResult`. Each corresponding `Effect` form (`SemVer.parse`, `Range.parse`, `Comparator.parse`, `Range.intersect`) is `Effect.fromResult(...)` wrapping the `Result` twin behind the operation's existing named span, and adds nothing else. This is the kit-wide [sync primitive policy](../conventions/sync-primitive-policy.md) applied to semver specifically.
 
-The comparison statics (`SemVer.compare`, `Range.satisfies`, and similar) are **deliberately excluded** from this pattern: they are already plain, total, and `Fn.dual`-based, so producing a `Result` twin for something that cannot fail would be dead API surface with no caller ever needing it.
+The matching statics (`Range.satisfies`, `Range.maxSatisfying`, and similar) are **deliberately excluded** from this pattern: they are already plain, total, and `Fn.dual`-based, so producing a `Result` twin for something that cannot fail would be dead API surface with no caller ever needing it.
 
 ## Alternatives rejected
 

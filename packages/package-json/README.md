@@ -61,7 +61,7 @@ console.log(Effect.runSync(program));
 // => ["@acme/widget", "1.1.0", true, true]
 ```
 
-`next.version` is a `SemVer`, not a string, so you compare it with `SemVer.gt` and bump it with `version.bump.minor()` rather than reaching for a regex.
+`next.version` is a `SemVer`, not a string, so you compare it with `next.version.gt(other)` and bump it with `version.bump.minor()` rather than reaching for a regex.
 
 ## The Package model
 
