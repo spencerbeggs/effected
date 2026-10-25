@@ -1,5 +1,41 @@
 # @effected/github-actions
 
+## 0.28.0
+
+### Features
+
+#### `ActionManifest`
+
+- `ActionManifest` decodes an `action.yml` through `read`, `decode` and `decodeResult`. The result covers inputs with their defaults, outputs, branding, and the `node`, `composite` or `docker` `runs` block. Closes #856.
+
+- `runnerInputs` builds the input environment a real runner builds for a node or docker action. Every declared input appears under its `INPUT_` variable with the supplied value, its manifest default or `""`, and undeclared supplied names pass through as the runner passes them. Use it as the baseline for input tests.
+
+- `diff` reports the inputs and outputs that your code and the manifest disagree on.
+
+#### `ActionInput.recording`
+
+- `ActionInput.recording(env)` records which inputs a program reads, which is the code side of the comparison `ActionManifest.diff` makes. [#1098][#1098]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.1.1 | 0.2.0 |
+| @effected/github | dependency | updated | 0.24.0 | 0.25.0 |
+| @effected/markdown | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/npm | dependency | updated | 0.26.1 | 0.26.2 |
+| @effected/semver | dependency | updated | 0.17.0 | 0.18.0 |
+| @effected/walker | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/yaml | dependency | added | — | 0.25.1 |
+
+[#1098][#1098]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1098]: https://github.com/spencerbeggs/effected/pull/1098
+
 ## 0.27.0
 
 ### Breaking Changes

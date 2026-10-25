@@ -1,5 +1,13 @@
 # @effected/webhooks
 
+## 0.1.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.1.1 | 0.2.0 |
+
 ## 0.1.1
 
 ### Dependencies

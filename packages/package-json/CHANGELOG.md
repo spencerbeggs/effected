@@ -1,5 +1,24 @@
 # @effected/package-json
 
+## 0.25.2
+
+### Documentation
+
+- The README now compares versions with the `SemVer` instance method `next.version.gt(other)`, since `@effected/semver` removed the `SemVer.gt` static. [#1098][#1098]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/npm | dependency | updated | 0.26.1 | 0.26.2 |
+| @effected/semver | dependency | updated | 0.17.0 | 0.18.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1098]: https://github.com/spencerbeggs/effected/pull/1098
+
 ## 0.25.1
 
 ### Bug Fixes

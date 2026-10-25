@@ -1,5 +1,27 @@
 # @effected/markdown
 
+## 0.23.0
+
+### Features
+
+#### Canonical stringify
+
+- `Markdown.stringify` and `stringifyResult` take a new `MarkdownStringifyOptions` argument. By default a node's fidelity fields (`bulletChar`, `headingStyle`, `markerChar`, `fenceChar`, `delimiter`) still win, so a parsed `* a` list or setext heading is written back as it was. Pass `{ canonical: true }` to ignore them and emit the canonical form. Closes #1095.
+
+- `MarkdownTransform.canonicalize(tree)` returns a copy of the tree with those fields cleared and never mutates the input. Either route gives the same output as the `Mdast.toMdast` / `Mdast.fromMdastResult` round trip it replaces. A tree nested too deeply on the canonical path fails with the serializer's usual nesting-depth guard rather than overflowing the stack. [#1098][#1098]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/yaml | dependency | updated | 0.25.0 | 0.25.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1098]: https://github.com/spencerbeggs/effected/pull/1098
+
 ## 0.22.0
 
 ### Breaking Changes

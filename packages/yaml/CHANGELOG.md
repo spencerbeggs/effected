@@ -1,5 +1,17 @@
 # @effected/yaml
 
+## 0.25.1
+
+### Refactoring
+
+- Rebuilt instances are now created by spreading the original, so a field added later cannot be dropped silently. Behaviour is unchanged. [#1098][#1098]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1098]: https://github.com/spencerbeggs/effected/pull/1098
+
 ## 0.25.0
 
 ### Breaking Changes

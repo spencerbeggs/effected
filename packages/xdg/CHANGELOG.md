@@ -1,5 +1,25 @@
 # @effected/xdg
 
+## 0.15.0
+
+### Features
+
+- `@effected/jsonc`, `@effected/yaml` and `@effected/toml` are now optional peer dependencies. Install only the engine for the config format you read. This matches `@effected/config-file`, whose `JsoncCodec`, `YamlCodec` and `TomlCodec` now ship from the `./jsonc`, `./yaml` and `./toml` subpaths. [#1098][#1098]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.19.1 | 0.20.0 |
+| @effected/walker | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/yaml | dependency | updated | 0.25.0 | 0.25.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1098]: https://github.com/spencerbeggs/effected/pull/1098
+
 ## 0.14.1
 
 ### Dependencies

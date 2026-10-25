@@ -1,5 +1,15 @@
 # @effected/schemastore-cli
 
+## 0.26.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.22.0 | 0.22.1 |
+| @effected/schemastore | dependency | updated | 0.26.1 | 0.26.2 |
+| @effected/walker | dependency | updated | 0.19.0 | 0.20.0 |
+
 ## 0.26.1
 
 ### Bug Fixes

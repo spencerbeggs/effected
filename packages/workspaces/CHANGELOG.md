@@ -1,5 +1,28 @@
 # @effected/workspaces
 
+## 0.38.1
+
+### Documentation
+
+- The `allowSharedBins` TSDoc now describes bun's current rule for which package owns a shared bin. Closes #1090. [#1098][#1098]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/lockfiles | dependency | updated | 0.19.3 | 0.19.4 |
+| @effected/npm | dependency | updated | 0.26.1 | 0.26.2 |
+| @effected/package-json | dependency | updated | 0.25.1 | 0.25.2 |
+| @effected/semver | dependency | updated | 0.17.0 | 0.18.0 |
+| @effected/walker | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/yaml | dependency | updated | 0.25.0 | 0.25.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1098]: https://github.com/spencerbeggs/effected/pull/1098
+
 ## 0.38.0
 
 ### Breaking Changes
