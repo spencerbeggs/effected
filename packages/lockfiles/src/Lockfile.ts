@@ -243,22 +243,10 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 			if (!pkg.isWorkspace || pkg.relativePath === undefined) return pkg;
 			const realName = names.get(pkg.relativePath);
 			if (realName === undefined || realName === "" || realName === pkg.name) return pkg;
-			// Every field carries over: this rewrites the *name*, and dropping any
-			// other field here would be silent data loss (the peer and resolved
-			// maps in particular are what a peer check reads).
-			return ResolvedPackage.make({
-				name: realName,
-				version: pkg.version,
-				instanceId: pkg.instanceId,
-				...(pkg.integrity !== undefined ? { integrity: pkg.integrity } : {}),
-				isWorkspace: pkg.isWorkspace,
-				relativePath: pkg.relativePath,
-				dependencies: pkg.dependencies,
-				peerDependencies: pkg.peerDependencies,
-				peerDependenciesMeta: pkg.peerDependenciesMeta,
-				resolved: pkg.resolved,
-				unresolvedEdges: pkg.unresolvedEdges,
-			});
+			// Spread the instance and patch only the name: a field added to
+			// `ResolvedPackage` later is carried over without touching this site
+			// (an enumerated literal type-checks yet silently drops it).
+			return ResolvedPackage.make({ ...pkg, name: realName });
 		});
 		const workspaceDependencies = this.workspaceDependencies.map((dep) => {
 			const mappedFrom = names.get(dep.from);
@@ -266,18 +254,11 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 			const from = mappedFrom === undefined || mappedFrom === "" ? dep.from : mappedFrom;
 			const to = mappedTo === undefined || mappedTo === "" ? dep.to : mappedTo;
 			if (from === dep.from && to === dep.to) return dep;
-			return WorkspaceDependency.make({ from, to, depType: dep.depType, constraint: dep.constraint });
+			return WorkspaceDependency.make({ ...dep, from, to });
 		});
 		// Importers stay untouched: they are keyed by importer path, not by
 		// package name, so a name-rewrite does not apply to them.
-		return Lockfile.make({
-			format: this.format,
-			lockfileVersion: this.lockfileVersion,
-			packages,
-			workspaceDependencies,
-			importers: this.importers,
-			...(this.extension !== undefined ? { extension: this.extension } : {}),
-		});
+		return Lockfile.make({ ...this, packages, workspaceDependencies });
 	}
 
 	/**

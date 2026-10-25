@@ -17,10 +17,10 @@ sources:
     resource: ../../packages/package-json/src/Person.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T20:05:42Z
+  at: 2026-10-25T14:20:24Z
 integrity:
   generated:
-    body: 1bba05d1ec78bbc5
+    body: b3c5fb017d9a0c87
 ---
 
 # Schema standards
@@ -38,6 +38,11 @@ integrity:
   constructor. `@effected/spdx`'s `SpdxExpression` is the worked example —
   `make` builds a node from fields, `parseResult` parses the wire
   string.[^spdx-expression]
+- Copy a class instance with a patch by spreading it into the factory,
+  `X.make({ ...x, field: next })`, never by listing its fields by hand.
+  A complete-looking literal type-checks while silently dropping any
+  field added later; the spread keeps absent `optionalKey` fields absent
+  and re-runs checks on the result.
 - Never define parallel schemas for one logical entity when only encoding
   differs — use field-level transformations (`Schema.decodeTo` /
   `encodeTo`), or derive variants with `pick` / `omit` / `partial` /

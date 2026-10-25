@@ -74,6 +74,9 @@ these before inventing a local convention.
   owning class (`Range.satisfies`, `SemVer.truncate`). Never give a static the
   same name as an instance method: API Extractor cannot resolve a `{@link}` to
   either, so derive data-last forms from an `Order` instead.
+- **Copy a class instance by spreading it.** A transform that must preserve
+  every field but one is `X.make({ ...x, field: next })`, never a hand-listed
+  literal that drops whatever field is added next — see `effect-v4-schema`.
 - **`Schema.Class` member placement — one rule.** Anything that **produces or
   classifies** a value is a `static`: constructors and parsers (`parse` /
   `parseResult` — `make` is reserved, see `effect-v4-schema`), decoders,

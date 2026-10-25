@@ -257,51 +257,13 @@ export interface EscapedComment {
  * included.
  */
 export function withCommentFields(node: YamlNode, fields: CommentFields): YamlNode {
-	if (node instanceof YamlScalar) {
-		return new YamlScalar({
-			value: node.value,
-			style: node.style,
-			...(node.tag !== undefined ? { tag: node.tag } : {}),
-			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
-			...mergedCommentFields(node, fields),
-			...(node.chomp !== undefined ? { chomp: node.chomp } : {}),
-			...(node.blockIndent !== undefined ? { blockIndent: node.blockIndent } : {}),
-			...(node.raw !== undefined ? { raw: node.raw } : {}),
-			...(node.sourceMultiline !== undefined ? { sourceMultiline: node.sourceMultiline } : {}),
-			offset: node.offset,
-			length: node.length,
-		});
-	}
-	if (node instanceof YamlMap) {
-		return new YamlMap({
-			items: node.items,
-			style: node.style,
-			...(node.tag !== undefined ? { tag: node.tag } : {}),
-			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
-			...mergedCommentFields(node, fields),
-			...(node.sourceMultiline !== undefined ? { sourceMultiline: node.sourceMultiline } : {}),
-			offset: node.offset,
-			length: node.length,
-		});
-	}
-	if (node instanceof YamlSeq) {
-		return new YamlSeq({
-			items: node.items,
-			style: node.style,
-			...(node.tag !== undefined ? { tag: node.tag } : {}),
-			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
-			...mergedCommentFields(node, fields),
-			...(node.sourceMultiline !== undefined ? { sourceMultiline: node.sourceMultiline } : {}),
-			offset: node.offset,
-			length: node.length,
-		});
-	}
-	return new YamlAlias({
-		name: node.name,
-		...mergedCommentFields(node, fields),
-		offset: node.offset,
-		length: node.length,
-	});
+	// Spread the node and overlay only the merged comment triple, so a field
+	// added to a node class later is carried over rather than dropped.
+	const merged = mergedCommentFields(node, fields);
+	if (node instanceof YamlScalar) return new YamlScalar({ ...node, ...merged });
+	if (node instanceof YamlMap) return new YamlMap({ ...node, ...merged });
+	if (node instanceof YamlSeq) return new YamlSeq({ ...node, ...merged });
+	return new YamlAlias({ ...node, ...merged });
 }
 
 function mergedCommentFields(existing: CommentFields, incoming: CommentFields): CommentFields {
