@@ -145,28 +145,20 @@ layer(fixtureLayer(CHAIN_TREE))("TsconfigLoaderSync parity with TsconfigLoader",
 // against the test process cwd instead of the drive root.
 // ---------------------------------------------------------------------------
 
-/**
- * memfs is a POSIX volume, so a win32 path reaches it through a two-member
- * shim: backslashes become forward slashes and a drive root `C:` becomes the
- * top-level directory `/C:`. Only the spelling is translated — existence and
- * content still come from the volume. This suite is about the consumer's
- * `SyncPath` driving resolution, not about Windows filesystem semantics.
- */
-const win32Fs = (files: ReadonlyMap<string, string>): SyncFileSystem => {
-	const toVolume = (p: string): string => {
-		const slashed = p.replace(/\\/g, "/");
-		return /^[A-Za-z]:\//.test(slashed) ? `/${slashed}` : slashed;
-	};
-	const port = MemoryFileSystem.makeSync(Object.fromEntries([...files].map(([p, c]) => [toVolume(p), c]))).sync;
-	return { exists: (p) => port.exists(toVolume(p)), readFile: (p) => port.readFile(toVolume(p)) };
-};
-
 describe("TsconfigLoaderSync with a win32 SyncPath", () => {
-	const files = tree(
-		["C:/proj/tsconfig.json", `{ "extends": ".\\\\base.json", "compilerOptions": { "strict": true } }`],
-		["C:/proj/base.json", `{ "compilerOptions": { "target": "es2022" } }`],
-	);
-	const options: TsconfigLoaderSyncOptions = { fileSystem: win32Fs(files), path: nodePath.win32 };
+	// memfs is a POSIX volume: the drive root `C:` is seeded as the top-level
+	// directory `/C:`, and the port's `pathStyle: "win32"` translates only the
+	// spelling of each path the loader hands it. Existence and content still
+	// come from the volume — this suite is about the consumer's `SyncPath`
+	// driving resolution, not about Windows filesystem semantics.
+	const handle = MemoryFileSystem.makeSync({
+		"/C:/proj/tsconfig.json": `{ "extends": ".\\\\base.json", "compilerOptions": { "strict": true } }`,
+		"/C:/proj/base.json": `{ "compilerOptions": { "target": "es2022" } }`,
+	});
+	const options: TsconfigLoaderSyncOptions = {
+		fileSystem: MemoryFileSystem.syncFileSystem(handle.volume, { pathStyle: "win32" }),
+		path: nodePath.win32,
+	};
 
 	it("resolves a backslash extends chain under drive-letter roots", () => {
 		const resolved = TsconfigLoaderSync.resolve("C:\\proj\\tsconfig.json", options);
