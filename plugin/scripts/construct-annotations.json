@@ -963,8 +963,12 @@
 	"walker": {
 		"DescendError": "handle unreadable directory during glob descent, depth cap exceeded, typed filesystem walk failure",
 		"GlobExpansionError": "handle pattern-to-files expansion failure, compile or descend stage error, wraps GlobPatternError or DescendError",
+		"PathEscapeError": "handle untrusted path escaping a base directory, zip slip, absolute or dot-dot archive entry refused",
+		"PathEscapeReason": "why a confined path was refused, nul byte absolute traversal or empty",
 		"Walker": "walk up parent directories, find nearest config file, ascend to filesystem root",
 		"compileAndExpand": "compile a glob string, expand against the filesystem, pattern to matching files",
+		"confineRelative": "confine an untrusted relative path to a base directory as an Effect, reject dot-dot escapes",
+		"confineRelativeResult": "confine an archive entry or manifest path under a base dir synchronously, zip slip guard, Result",
 		"descend": "expand a compiled glob pattern into files under a directory, prune node_modules"
 	},
 	"workspaces": {

@@ -207,6 +207,27 @@ inverts with direction.
   truncation. `NotFound` mid-walk is never recorded — it is the same
   benign vanished-directory race in every mode.
 
+## Confinement (confineRelative)
+
+`confineRelativeResult(base, candidate)` keeps an untrusted relative
+path, such as an archive entry or a manifest's asset path, under a base
+directory. It is the package's one pure surface: lexical, IO-free and
+service-free, so per the [sync-primitive
+policy](../conventions/sync-primitive-policy.md) the `Result` form is the
+primitive and `confineRelative` is its `Effect` twin, adding only the
+span. Both `/` and `\` are separators on every platform, so a backslash
+escape is caught on POSIX too. It refuses, typed as `PathEscapeError`
+with a `reason`, a NUL character, an absolute form (POSIX, UNC, win32
+drive including drive-relative `C:x`), a `..` that climbs above the base
+after normalisation, and a path that normalises to the base itself. The
+last is a ruling: a caller confining a path names an entry under the
+base. Nothing is percent-decoded, because the filesystem decodes
+nothing. The `..` resolution is shared with `descend`'s refusal of a
+pattern that climbs above `cwd` (`src/internal/segments.ts`), with the
+caller choosing the separator set because a glob's backslash is an
+escape. The check is lexical, not physical: a symlink inside the base can
+still point out of it.
+
 ## Hardening
 
 Walker parses nothing and has no recursion over untrusted text.
