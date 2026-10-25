@@ -20,6 +20,13 @@ generated:
 integrity:
   generated:
     body: bc469123ea5a912c
+  verified:
+    by: human:spencer
+    at: 2026-10-25T20:07:35Z
+    content: 91997e8132de3136
+verified:
+  - by: human:spencer
+    at: 2026-10-25T20:07:35Z
 ---
 
 # New ae-forgotten-export errors after a bundler bump are TypeScript 7.1 emitting typeof a module local, not a bundler regression

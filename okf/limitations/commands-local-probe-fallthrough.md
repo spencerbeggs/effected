@@ -16,6 +16,13 @@ generated:
 integrity:
   generated:
     body: ff734bf19dfbd9c3
+  verified:
+    by: human:spencer
+    at: 2026-10-25T20:07:35Z
+    content: 67eef0cb98bb7b9c
+verified:
+  - by: human:spencer
+    at: 2026-10-25T20:07:35Z
 ---
 
 # A tool installed only globally also probes as local, because the package manager's exec falls through to PATH
