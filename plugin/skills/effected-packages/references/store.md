@@ -5,7 +5,7 @@ Durable local state: `Store` is a schema-versioned, migrated SQLite `SqlClient`;
 ## Import
 
 ```ts
-import { Cache, Store } from "@effected/store";
+import { AtomicDirectory, Cache, Store } from "@effected/store";
 ```
 
 Single entrypoint; no subpaths.
@@ -27,6 +27,7 @@ Single entrypoint; no subpaths.
 - **`Cache`** (`Context.Service`) — `get`, `set`, `has`, `entries` (metadata only; never loads BLOBs), `invalidate`/`invalidateByTag`/`invalidateAll`/`prune` (each with an optional transactional `onRemoved` callback), `events: PubSub<CacheEvent>`. Same layer trio: `Cache.layer` / `Cache.layerSqlite` / `Cache.layerTest`.
 - **`Cache.through(key, schema, options?)(onMiss)`** and **`Cache.throughVerbose`** — read-through caching in one call. `get` → decode → run `onMiss` → encode → `set` was ~25 lines every consumer wrote for itself. **Statics, not shape members**: they take `Cache` from context, so `R` includes `Cache` and no test double needs an implementation. `throughVerbose` returns `{ value, hit }` for a caller that wants to print *(cached)* — the `CacheEvent` PubSub is telemetry and the wrong channel for that. Two policies the package owns: **a stored value that fails to decode (or is not valid UTF-8) is a MISS, not a failure**, and is overwritten; **`CacheError` is surfaced, not swallowed** — catch it yourself with `catchTag` if a broken cache should not stop you.
 - **`Uint8ArrayFromUtf8`** — a `Schema.Codec<Uint8Array, string>`. Cache values are bytes, and core's Schema ships only `Uint8ArrayFromBase64` / `…Base64Url` / `…FromHex` — **nothing for UTF-8** — so "encode through a schema" could not be completed and every consumer hand-wired a `TextEncoder`. Encoding fails on malformed UTF-8 rather than substituting `U+FFFD`. Prefer a core equivalent if one ever ships.
+- **`AtomicDirectory.write(root, files)`** → `Effect<void, AtomicDirectoryError, FileSystem | Path>` — replace a directory atomically (a cache's per-package tree, a generated output dir) instead of hand-rolling the staging dance. Stages in the sibling `.<name>.staging` (same parent ⇒ same-filesystem atomic `rename`), clears leftover staging first, creates staging even for an empty set, writes files with parents, then removes live and renames staging in. `files` is any iterable of `[relativePath, string | Uint8Array]`; an empty, absolute or escaping path fails `operation: "validate"` before any IO. A brief window exists where `root` is ABSENT (never half-written): treat absence as a miss. One writer per `root` (fixed staging name). Needs no SQLite; it is plain core `FileSystem`.
 - Errors: `StoreError` (`operation`: `setup` | `adopt` | `migrate` | `rollback` | `status`), `StoreMigrationError`, `CacheError`; events: `CacheEvent`/`CacheEventPayload`.
 
 ## Usage

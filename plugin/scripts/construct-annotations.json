@@ -865,6 +865,8 @@
 		"isValidExpression": "check if a string is a valid spdx license expression"
 	},
 	"store": {
+		"AtomicDirectory": "replace a directory atomically, stage in a sibling then rename into place, write a file set without a half-written tree",
+		"AtomicDirectoryError": "handle an atomic directory write failure, validate clear stage write or promote step failed",
 		"Cache": "cache with ttl and tags, durable local state, tag invalidation and write-order eviction, second cache under your own key",
 		"CacheEntry": "a stored cache row, key value bytes, content type, tags and expiry",
 		"CacheError": "handle a cache sql operation failure, get set has invalidate prune failed",

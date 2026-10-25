@@ -65,7 +65,8 @@ living beside XDG resolution — see
 ## Module layout
 
 `src/Store.ts`, `src/Cache.ts`, `src/Bytes.ts` (the `Uint8ArrayFromUtf8`
-codec) and `src/internal/migrator.ts` (the shared ledger engine, defining
+codec), `src/AtomicDirectory.ts` (whole-directory replacement over core
+`FileSystem`) and `src/internal/migrator.ts` (the shared ledger engine, defining
 its own record types rather than importing from either facade — an
 import cycle there would trip Biome's error-level `noImportCycles`
 rule).[^store-claude-md]
@@ -278,6 +279,23 @@ opt-in service, created unbounded so a slow subscriber never
 backpressures a write, with infallible emission. Events are a consumer
 hook, not the package's own telemetry.
 
+### AtomicDirectory
+
+`AtomicDirectory.write(root, files)` replaces a directory with exactly a
+file set, staging in the sibling `.<name>.staging` and renaming it into
+place: the on-disk counterpart to the SQLite services, for consumers that
+cache whole trees (a type registry's per-package directory). It requires
+`FileSystem` and `Path` in `R` and adds no dependency. The sibling is
+load-bearing (a staging dir elsewhere makes the `rename` cross
+filesystems and stop being atomic), as are clearing leftover staging
+first and creating staging even for an empty set. Every path is
+validated before any IO. The window between removing the live directory
+and the rename is documented, not closed: a reader sees absence, never a
+partial tree, and a crash there leaves the full tree in staging for the
+next call to clear. The fixed staging name means one writer per root.
+Failures are `AtomicDirectoryError` with `operation` `validate`,
+`clear`, `stage`, `write` or `promote`.
+
 ## Relationship to core persistence
 
 Core's `effect/persistence/KeyValueStore` is the plain-KV subset
@@ -290,7 +308,7 @@ drops that value-add is a reinvention and should point the consumer at
 
 ## Errors
 
-Three `Schema.TaggedError` types — `StoreError`, `StoreMigrationError` and
+Three SQL `Schema.TaggedError` types — `StoreError`, `StoreMigrationError` and
 `CacheError` — each carrying the underlying failure structurally in a
 `cause: Schema.Defect()` field; `StoreMigrationError` additionally
 carries the migration's `direction`, `id` and `name`. `SqlError` is
