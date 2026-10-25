@@ -60,6 +60,17 @@
 		"@effected/yaml": "workspace:^",
 		"effect": "catalog:effect:peers"
 	},
+	"peerDependenciesMeta": {
+		"@effected/jsonc": {
+			"optional": true
+		},
+		"@effected/toml": {
+			"optional": true
+		},
+		"@effected/yaml": {
+			"optional": true
+		}
+	},
 	"engines": {
 		"node": ">=24.11.0"
 	},
