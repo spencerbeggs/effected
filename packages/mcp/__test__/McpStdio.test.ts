@@ -63,6 +63,11 @@ class Seen extends Context.Service<Seen, Stdio.Stdio>()("test/Seen") {}
 
 const idOf = (frame: unknown): unknown => (frame as { readonly id?: unknown }).id;
 
+// The fixture server registers a resource, so it may emit a `notifications/*` frame (no `id`) at any time.
+// A notification carries a `method`; a reply never does. Assertions about replies must not see notifications.
+const repliesOf = (seen: ReadonlyArray<unknown>): ReadonlyArray<unknown> =>
+	seen.filter((frame) => typeof frame !== "object" || frame === null || !("method" in frame));
+
 class ConfigMissing extends Error {
 	readonly [Runtime.errorExitCode] = 3;
 }
@@ -169,7 +174,7 @@ describe("McpStdio.layer over a real process's stdio", () => {
 			yield* server.sendRaw(`\n{not json\n${INITIALIZE}\n`);
 			const first = yield* server.readUntilResponse(1);
 			assert.deepStrictEqual(
-				first.seen.filter((frame) => idOf(frame) === null),
+				repliesOf(first.seen).filter((frame) => idOf(frame) === null),
 				[PARSE_ERROR],
 			);
 			yield* server.send({ jsonrpc: "2.0", method: "notifications/initialized" });
@@ -178,7 +183,7 @@ describe("McpStdio.layer over a real process's stdio", () => {
 			yield* server.send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
 			const second = yield* server.readUntilResponse(2);
 			assert.deepStrictEqual(
-				second.seen.filter((frame) => idOf(frame) !== 2),
+				repliesOf(second.seen).filter((frame) => idOf(frame) !== 2),
 				[PARSE_ERROR],
 			);
 			assert.isArray((second.response.result as { readonly tools: unknown }).tools);
@@ -228,14 +233,14 @@ describe("McpStdio.layer over a real process's stdio", () => {
 				yield* server.sendRaw(`null\n${toolsList(2)}\n`);
 				const first = yield* server.readUntilResponse(2);
 				assert.deepStrictEqual(
-					first.seen.filter((frame) => idOf(frame) === null),
+					repliesOf(first.seen).filter((frame) => idOf(frame) === null),
 					[INVALID_REQUEST],
 				);
 				// Scalars and an object that is neither a request nor a response get one too.
 				yield* server.sendRaw(`{"method":1}\n7\n{}\n${toolsList(3)}\n`);
 				const second = yield* server.readUntilResponse(3);
 				assert.deepStrictEqual(
-					second.seen.filter((frame) => idOf(frame) === null),
+					repliesOf(second.seen).filter((frame) => idOf(frame) === null),
 					[INVALID_REQUEST, INVALID_REQUEST, INVALID_REQUEST],
 				);
 				yield* server.send({ jsonrpc: "2.0", id: 4, method: "tools/list" });
@@ -254,7 +259,7 @@ describe("McpStdio.layer over a real process's stdio", () => {
 			yield* server.sendRaw(`{"jsonrpc":"2.0","method":"@effect/rpc/Eof"}\n${toolsList(2)}\n`);
 			const first = yield* server.readUntilResponse(2);
 			assert.deepStrictEqual(
-				first.seen.filter((frame) => idOf(frame) !== 2),
+				repliesOf(first.seen).filter((frame) => idOf(frame) !== 2),
 				[],
 			);
 			assert.isArray((first.response.result as { readonly tools: unknown }).tools);
@@ -281,10 +286,27 @@ describe("McpStdio.layer over a real process's stdio", () => {
 			yield* server.sendRaw('od":"tools/list"}\n');
 			const { response, seen } = yield* server.readUntilResponse(2);
 			assert.deepStrictEqual(
-				seen.filter((frame) => idOf(frame) === null),
+				repliesOf(seen).filter((frame) => idOf(frame) === null),
 				[INVALID_REQUEST],
 			);
 			assert.isArray((response.result as { readonly tools: unknown }).tools);
 		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
 	);
+});
+
+describe("repliesOf", () => {
+	it("ignores a synthetic notification that has no id while keeping an id:null error reply", () => {
+		const notification = { jsonrpc: "2.0", method: "notifications/resources/list_changed" };
+		const seen = [notification, PARSE_ERROR, { jsonrpc: "2.0", id: 2, result: {} }];
+		assert.deepStrictEqual(
+			repliesOf(seen).filter((frame) => idOf(frame) === null),
+			[PARSE_ERROR],
+		);
+		assert.deepStrictEqual(
+			repliesOf(seen).filter((frame) => idOf(frame) !== 2),
+			[PARSE_ERROR],
+		);
+		// Control: the unclassified filter would have kept the notification.
+		assert.strictEqual(seen.filter((frame) => idOf(frame) !== 2).length, 2);
+	});
 });
