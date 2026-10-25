@@ -53,6 +53,7 @@ export {
 	FrontmatterSourceSplit,
 } from "./FrontmatterSource.js";
 export { JsonFrontmatter } from "./JsonFrontmatter.js";
+export type { MarkdownStringifyOptions } from "./Markdown.js";
 export {
 	Markdown,
 	MarkdownDialect,

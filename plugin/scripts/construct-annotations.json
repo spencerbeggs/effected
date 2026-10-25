@@ -520,7 +520,7 @@
 		"MarkdownParseOptions": "options controlling markdown parse, dialect and frontmatter capture toggle",
 		"MarkdownRange": "offset and length span for restricting formatting to a region",
 		"MarkdownStringifyError": "handle a refused tree during stringify, typed stringify failure with diagnostic",
-		"MarkdownTransform": "map or rewrite a markdown tree with typed node handlers, replace links with link references, shift or demote heading levels, find sections by child index after a transform",
+		"MarkdownTransform": "map or rewrite a markdown tree with typed node handlers, replace links with link references, canonicalize a tree by clearing fidelity fields, shift or demote heading levels, find sections by child index after a transform",
 		"MarkdownVisitor": "walk or traverse markdown tree synchronously or as stream, sax-style enter and exit events",
 		"MarkdownVisitorEvent": "enter exit and error visitor event union, tree-walk event shape",
 		"Mdast": "project to and from plain mdast, remark ecosystem interop, strip fidelity extras, plain text of a node like mdast-util-to-string",

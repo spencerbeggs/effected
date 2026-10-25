@@ -9,6 +9,7 @@
 // handler throws propagates to the caller as a plain thrown exception; it
 // becomes a defect only if the caller is running inside an Effect.
 
+import { FIDELITY_FIELDS, clearFidelity } from "./internal/fidelity.js";
 import { rootHeadingBounds } from "./internal/sectionBounds.js";
 import type {
 	FlowContent,
@@ -259,6 +260,31 @@ export class MarkdownTransform {
 	}
 
 	/**
+	 * Return a copy of the tree with every fidelity field cleared, so
+	 * `Markdown.stringify` emits the canonical form instead of the author's
+	 * spelling.
+	 *
+	 * @remarks
+	 * Clears `headingStyle`, `markerChar` (emphasis, strong, thematic break),
+	 * `fenceChar` and `fenceLength`, `bulletChar` and `delimiter`, and
+	 * `breakStyle`. `Text`'s `escapeStyle` is an emitter instruction rather
+	 * than a recorded spelling and is kept. Positions and all mdast fields are
+	 * untouched. The input is never mutated; a subtree carrying no fidelity
+	 * field is returned as the same instance, following
+	 * {@link MarkdownTransform.(map:1)}, on which this is built and whose
+	 * recursion limit it shares.
+	 *
+	 * `Markdown.stringify(tree, { canonical: true })` is exactly
+	 * `Markdown.stringify(MarkdownTransform.canonicalize(tree))`.
+	 *
+	 * @param node - The node whose fidelity fields to clear.
+	 * @returns The node with fidelity fields cleared.
+	 */
+	static canonicalize<N extends MarkdownNode>(node: N): N {
+		return mapNode(node, canonicalHandlers) as N;
+	}
+
+	/**
 	 * Locate the root-level sections of one heading depth by child index —
 	 * no source text needed, so it works on a tree a
 	 * `MarkdownTransform.map` has reshaped.
@@ -326,6 +352,10 @@ export class MarkdownTransform {
 }
 
 const isHeadingDepth = (value: number): value is HeadingDepth => Number.isInteger(value) && value >= 1 && value <= 6;
+
+const canonicalHandlers: MarkdownTransformHandlers = Object.fromEntries(
+	Object.keys(FIDELITY_FIELDS).map((type) => [type, clearFidelity]),
+);
 
 type AnyHandler = (node: MarkdownNode) => MarkdownNode;
 

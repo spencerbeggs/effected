@@ -20,6 +20,7 @@ import { stringifyBlocks } from "./internal/stringify.js";
 import { MarkdownDiagnostic } from "./MarkdownDiagnostic.js";
 import type { FlowContent, PhrasingContent } from "./MarkdownNode.js";
 import { Root } from "./MarkdownNode.js";
+import { MarkdownTransform } from "./MarkdownTransform.js";
 
 /**
  * The markdown dialects the parser can be pointed at. `"gfm"` — CommonMark
@@ -39,6 +40,20 @@ export const MarkdownDialect = Schema.Literals(["commonmark", "gfm"]);
  * @public
  */
 export type MarkdownDialect = typeof MarkdownDialect.Type;
+
+/**
+ * Options for `Markdown.stringify` and `Markdown.stringifyResult`.
+ *
+ * @public
+ */
+export interface MarkdownStringifyOptions {
+	/**
+	 * Ignore fidelity fields (marker characters, fence style, heading
+	 * spelling) and emit the canonical form. Defaults to `false`, which honours
+	 * them.
+	 */
+	readonly canonical?: boolean;
+}
 
 /**
  * Options controlling parse behavior: `dialect` (omitted, `"gfm"`) and
@@ -342,8 +357,8 @@ export class Markdown {
 	 * surgical editing goes through the offset-splice edit layer instead.
 	 *
 	 * **The canonical form is a stability commitment, so a test may assert
-	 * against these bytes.** There are no options to configure and therefore
-	 * nothing to drift, the choices below are pinned by byte-level tests, and
+	 * against these bytes.** The one option, `canonical`, only selects
+	 * between these bytes and the author's spelling; the choices below are pinned by byte-level tests, and
 	 * the engine is cross-checked against commonmark.js over the full
 	 * CommonMark 0.31.2 corpus. Changing any of them is a **breaking** change
 	 * to this package, never a patch. A consumer asserting on rendered
@@ -412,16 +427,29 @@ export class Markdown {
 	 * trip on a tree nesting past the depth cap fails, and only synthesized
 	 * or decoded trees can nest that far.
 	 *
+	 * **`canonical: true` ignores fidelity fields.** With
+	 * {@link MarkdownStringifyOptions.canonical} set, every fidelity field is
+	 * cleared first, so a parsed `* a` list, setext heading, `_em_`, `~~~` fence
+	 * or `***` break all emit the canonical spelling. It is the same as
+	 * serializing `MarkdownTransform.canonicalize(node)`, without the
+	 * `Mdast.toMdast` / `Mdast.fromMdastResult` round trip. The default keeps
+	 * honouring fidelity fields.
+	 *
 	 * @param node - The document tree, or a single flow node, to serialize.
+	 * @param options - Optional {@link MarkdownStringifyOptions}.
 	 * @returns A `Result` succeeding with markdown source, or failing with
 	 *   {@link MarkdownStringifyError}.
 	 */
-	static stringifyResult(node: Root | FlowContent): Result.Result<string, MarkdownStringifyError> {
+	static stringifyResult(
+		node: Root | FlowContent,
+		options?: MarkdownStringifyOptions,
+	): Result.Result<string, MarkdownStringifyError> {
 		try {
 			// One path: a lone flow node is serialized as the one-block list a
 			// `Root` holding it would carry. No wrapper is constructed, so a node
 			// fails or succeeds here exactly as it would inside a `Root`.
-			return Result.succeed(stringifyBlocks(node.type === "root" ? node.children : [node]));
+			const source = options?.canonical === true ? MarkdownTransform.canonicalize(node) : node;
+			return Result.succeed(stringifyBlocks(source.type === "root" ? source.children : [source]));
 		} catch (caught) {
 			if (isGuardExceeded(caught)) {
 				return Result.fail(
@@ -464,11 +492,14 @@ export class Markdown {
 	 * see {@link Markdown.stringifyResult}.
 	 *
 	 * @param node - The document tree, or a single flow node, to serialize.
+	 * @param options - Optional {@link MarkdownStringifyOptions}; `canonical: true`
+	 *   discards fidelity fields.
 	 * @returns An `Effect` that succeeds with markdown source, or fails with
 	 *   {@link MarkdownStringifyError}.
 	 */
-	static readonly stringify = Effect.fn("Markdown.stringify")((node: Root | FlowContent) =>
-		Effect.fromResult(Markdown.stringifyResult(node)),
+	static readonly stringify = Effect.fn("Markdown.stringify")(
+		(node: Root | FlowContent, options?: MarkdownStringifyOptions) =>
+			Effect.fromResult(Markdown.stringifyResult(node, options)),
 	);
 
 	/**

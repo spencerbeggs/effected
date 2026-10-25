@@ -213,6 +213,8 @@ purpose, because an intraword `*` can open emphasis. The MDX presence-keyed
 `{` escape is documented separately in the [MDX
 interface](../interfaces/markdown-mdx.md).
 
+The one stringify option is `canonical: true` (on `stringify` and `stringifyResult`), which ignores fidelity fields. It is defined as `stringify(MarkdownTransform.canonicalize(tree))`, and both read the single fidelity-field table in `src/internal/fidelity.ts`, so the option and the transform cannot drift. `Text.escapeStyle` is an emitter instruction, not a fidelity field, and survives.
+
 `Markdown.stringify` and `Markdown.stringifyResult` accept `Root |
 FlowContent`. A lone flow node serializes as the one-block list `[node]`
 through the same internal path a root's children take
