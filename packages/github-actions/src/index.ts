@@ -47,6 +47,21 @@ export {
 	type WithStepOptions,
 } from "./ActionLogger.js";
 export {
+	ActionManifest,
+	ActionManifestBranding,
+	ActionManifestCompositeRuns,
+	ActionManifestDecodeError,
+	ActionManifestDiff,
+	ActionManifestDockerRuns,
+	type ActionManifestError,
+	ActionManifestInput,
+	ActionManifestNodeRuns,
+	ActionManifestOutput,
+	ActionManifestReadError,
+	type ActionManifestRuns,
+	type ActionManifestUsage,
+} from "./ActionManifest.js";
+export {
 	type ActionOutputError,
 	ActionOutputs,
 	type ActionOutputsShape,

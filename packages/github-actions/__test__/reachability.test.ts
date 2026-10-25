@@ -78,6 +78,7 @@ const LIGHT_MODULES = [
 	"ActionEnvironment.ts",
 	"ActionInput.ts",
 	"ActionLogger.ts",
+	"ActionManifest.ts",
 	"ActionOutputs.ts",
 	"ActionState.ts",
 	"BlobEnvelope.ts",
@@ -222,6 +223,19 @@ describe("bundle reachability", () => {
 		assert.deepStrictEqual([...reachableBareImports("ManagedDocument.ts")].sort(), ["@effected/templates", "effect"]);
 		assert.deepStrictEqual([...reachableBareImports("CheckDocument.ts")].sort(), ["@effected/templates", "effect"]);
 		assert.deepStrictEqual([...reachableBareImports("GitHubMarkdown.ts")].sort(), ["@effected/markdown", "effect"]);
+	});
+
+	it("the yaml engine is confined to the manifest decoder", () => {
+		// `@effected/yaml` arrives for one construct, `ActionManifest`, and must not
+		// ride into the runtime or any other light module. Control first, so a
+		// blinded walker fails here rather than passing everything below.
+		assert.deepStrictEqual([...reachableBareImports("ActionManifest.ts")].sort(), ["@effected/yaml", "effect"]);
+		for (const entry of LIGHT_MODULES.filter((module) => module !== "ActionManifest.ts")) {
+			assert.isFalse(
+				[...reachableBareImports(entry)].includes("@effected/yaml"),
+				`${entry} reaches @effected/yaml — the manifest confinement has leaked`,
+			);
+		}
 	});
 
 	it("the @effected/npm edge is confined to the installer, on Azure's terms", () => {

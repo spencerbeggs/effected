@@ -70,8 +70,8 @@ drags a dependency tree larger than this package; globbing is
 [`glob`](glob.md), never `@actions/glob`.
 
 Kit edges: [`github`](github.md), [`glob`](glob.md), [`markdown`](markdown.md),
-[`npm`](npm.md), [`sbom`](sbom.md), [`templates`](templates.md) and
-[`walker`](walker.md), plus one
+[`npm`](npm.md), [`sbom`](sbom.md), [`templates`](templates.md),
+[`walker`](walker.md) and [`yaml`](yaml.md), plus one
 heavy external dependency, the Azure blob client
 (`@azure/storage-blob`).
 
@@ -217,6 +217,13 @@ The doubles worth knowing before writing a test:
   through `overrides` sends the read to a noop filesystem; `undefined`
   means *not served*, so an unarranged payload still fails typed naming
   the variable.
+- `ActionManifest.runnerInputs(manifest, supplied?)` is the input
+  baseline, not `ActionInput.layer({})`: the runner publishes every
+  declared input (its default or `""`), so an empty record tests a state
+  production never produces. `ActionManifest.diff` checks the code's
+  input and output names against `action.yml` in both directions. The
+  yaml engine (a regular dependency, pure and contract-free) is confined
+  to `ActionManifest.ts`, pinned by the reachability suite.
 - The runner-file doubles are a real in-memory volume from
   [`memfs`](memfs.md) (a devDependency). `ActionOutputs` and
   `ActionState` both append (`flag: "a"`), and the `Map` stubs they

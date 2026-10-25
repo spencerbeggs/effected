@@ -44,7 +44,8 @@
 		"@effected/sbom": "workspace:^",
 		"@effected/semver": "workspace:^",
 		"@effected/templates": "workspace:^",
-		"@effected/walker": "workspace:^"
+		"@effected/walker": "workspace:^",
+		"@effected/yaml": "workspace:^"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effect",
