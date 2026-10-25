@@ -13,7 +13,7 @@
 
 import * as NFS from "node:fs";
 import type { PlatformError as PlatformErrorNs } from "effect";
-import { BigInt as BI, ByteSize, Effect, FileSystem, Layer, Option, PlatformError, Stream } from "effect";
+import { BigInt as BI, ByteSize, Effect, FileSystem, Layer, Option, Path, PlatformError, Stream } from "effect";
 import { errnoTag } from "./internal/errno.js";
 
 type PlatformErrorType = PlatformErrorNs.PlatformError;
@@ -187,6 +187,8 @@ const make: FileSystem.FileSystem = FileSystem.make({
 	writeFile: unsupported("writeFile"),
 });
 
+const layer: Layer.Layer<FileSystem.FileSystem> = Layer.succeed(FileSystem.FileSystem, make);
+
 /**
  * A read-only, synchronous `FileSystem` over `node:fs`.
  *
@@ -230,7 +232,19 @@ export class NodeSyncFileSystem {
 	static readonly fileSystem: FileSystem.FileSystem = make;
 
 	/** The filesystem as a layer providing `FileSystem.FileSystem`. */
-	static readonly layer: Layer.Layer<FileSystem.FileSystem> = Layer.succeed(FileSystem.FileSystem, make);
+	static readonly layer: Layer.Layer<FileSystem.FileSystem> = layer;
+
+	/**
+	 * {@link NodeSyncFileSystem.layer} with core's `Path.layer` merged in:
+	 * provides `FileSystem.FileSystem` and `Path.Path` from one layer.
+	 *
+	 * @remarks
+	 * `Path.layer` is core's POSIX implementation, and it is synchronous, so a
+	 * program using both services still runs under `Effect.runSync`. On Windows,
+	 * provide the platform's own `Path` beside {@link NodeSyncFileSystem.layer}
+	 * instead.
+	 */
+	static readonly layerWithPath: Layer.Layer<FileSystem.FileSystem | Path.Path> = Layer.merge(layer, Path.layer);
 
 	private constructor() {}
 }

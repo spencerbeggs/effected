@@ -7,7 +7,7 @@
 import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import { ErrnoException, errnoError, nodeErrno } from "./internal/errno.js";
-import { wrapFaulty } from "./internal/faults.js";
+import { wrapFaulty, wrapFile } from "./internal/faults.js";
 import {
 	makePromisesFileSystem,
 	makeSyncFileSystem,
@@ -16,6 +16,7 @@ import {
 	runNode,
 	syscallForMethod,
 	withFaults,
+	withPathStyle,
 } from "./internal/ports.js";
 import { applyRoot, normalizeAbsolute, seedWith } from "./internal/seed.js";
 import { makeVolumeService } from "./internal/view.js";
@@ -210,8 +211,21 @@ export interface MemoryFileSystemSyncFileSystem {
 	readonly exists: (path: string) => boolean;
 	/** The UTF-8 contents of the file at `path`, following links. Throws `ENOENT`/`EISDIR`/`ENOTDIR`/`ELOOP`. */
 	readonly readFile: (path: string) => string;
-	/** The entry names inside the directory at `path`, following links. Throws `ENOENT`/`ENOTDIR`/`ELOOP`. */
-	readonly readDirectory: (path: string) => ReadonlyArray<string>;
+	/**
+	 * The entry names inside the directory at `path`, following links — or,
+	 * with `{ withFileTypes: true }`, its entries as literal
+	 * {@link MemoryFileSystemDirent}s, as `readdirSync(p, { withFileTypes: true })`
+	 * answers. Throws `ENOENT`/`ENOTDIR`/`ELOOP` with `syscall: "scandir"`.
+	 *
+	 * @remarks
+	 * The directory itself is reached through links; its entries are not: a
+	 * link inside it is reported as a link, never as its target's kind — the
+	 * same dirents the promises port's `readdir` answers.
+	 */
+	readonly readDirectory: {
+		(path: string): ReadonlyArray<string>;
+		(path: string, options: { readonly withFileTypes: true }): ReadonlyArray<MemoryFileSystemDirent>;
+	};
 	/** Whether `path` resolves to a directory, following links — as `statSync(p).isDirectory()` does. */
 	readonly isDirectory: (path: string) => boolean;
 	/** `statSync`: follows links. Throws `ENOENT`/`ENOTDIR`/`ELOOP` with `syscall: "stat"`. */
@@ -391,6 +405,30 @@ export interface MemoryFileSystemHandle {
 		readonly promises: MemoryFileSystemPromisesFileSystem;
 	};
 	/**
+	 * Delivers one watch event to every live watcher whose watch covers `path`
+	 * — the same matching a mutation's own event takes (the path itself, a
+	 * direct child of a watched directory, any descendant of a recursive watch,
+	 * an ancestor of the watched path).
+	 *
+	 * @remarks
+	 * Synchronous and immediate; a watcher that is registered but not yet
+	 * pulling buffers the event, so an event emitted after the watch's
+	 * `onReady` is never lost. Nothing on the volume changes: the event is
+	 * not checked against what exists. A relative `path` joins
+	 * {@link MemoryFileSystemHandle.root} (or `/`), and the result is
+	 * normalized lexically, since an event carries a plain path.
+	 *
+	 * Works under either {@link MemoryFileSystemOptions.watchEvents} mode;
+	 * `"manual"` is what makes the emitted events the only ones.
+	 */
+	readonly emit: (path: string, event: FileSystem.WatchEvent["_tag"]) => void;
+	/**
+	 * The number of live watch subscriptions on the volume: a watch counts
+	 * from the moment it is registered (when its `onReady` fires) until its
+	 * stream ends or is interrupted.
+	 */
+	readonly watcherCount: () => number;
+	/**
 	 * Writes `content` at `path`, creating a missing parent. A relative `path`
 	 * joins {@link MemoryFileSystemHandle.root} (or `/` without one).
 	 */
@@ -415,9 +453,18 @@ export interface MemoryFileSystemHandle {
  * @public
  */
 export type MemoryFileSystemSyncFaults = {
-	readonly [K in keyof MemoryFileSystemSyncFileSystem]?: (
+	readonly [K in Exclude<keyof MemoryFileSystemSyncFileSystem, "readDirectory">]?: (
 		...args: Parameters<MemoryFileSystemSyncFileSystem[K]>
 	) => ReturnType<MemoryFileSystemSyncFileSystem[K]> | undefined;
+} & {
+	/**
+	 * Receives `options` as given; a replacement should match them (names
+	 * without `withFileTypes`, dirents with it).
+	 */
+	readonly readDirectory?: (
+		path: string,
+		options?: { readonly withFileTypes: true },
+	) => ReadonlyArray<string> | ReadonlyArray<MemoryFileSystemDirent> | undefined;
 };
 
 /**
@@ -428,6 +475,23 @@ export type MemoryFileSystemSyncFaults = {
 export interface MemoryFileSystemPortOptions<Faults> {
 	/** Handlers that intercept individual port members. */
 	readonly faults?: Faults | undefined;
+	/**
+	 * How the port spells the paths it is given. `"posix"` (the default) hands
+	 * them to the volume as they are. `"win32"` accepts Windows spellings for
+	 * code driven by a win32 path implementation: backslashes become slashes
+	 * and a drive-letter root `C:` maps onto the volume's top-level `/C:`
+	 * directory, so `C:\repo\a.json` reads the file seeded at
+	 * `/C:/repo/a.json`.
+	 *
+	 * @remarks
+	 * Only the spelling is translated. The volume stays POSIX and
+	 * case-sensitive unless built with `caseSensitive: false`; drive letters
+	 * are not case-folded, and UNC paths are not modelled. Seed the volume
+	 * under `/C:/…`. A thrown error carries the caller's own spelling in its
+	 * `path` and message, and fault handlers receive the arguments as the
+	 * caller gave them. The `FileSystem` service is unaffected: it stays POSIX.
+	 */
+	readonly pathStyle?: "posix" | "win32" | undefined;
 }
 
 /**
@@ -563,10 +627,60 @@ export interface MemoryFileSystemOptions {
 	 * ports. Fault those with {@link MemoryFileSystemHandle.withFaults}.
 	 */
 	readonly faults?: MemoryFileSystemFaults | MemoryFileSystemFaultsFactory | undefined;
+	/**
+	 * Observers for the built `FileSystem`: each receives the real call
+	 * arguments, returns nothing, and the call always proceeds — a spy can
+	 * never replace a call, whatever its handler returns.
+	 *
+	 * @remarks
+	 * The intent-revealing form of a declining fault handler. A spy on an
+	 * `Effect`-returning member runs at each EXECUTION (a retried effect is
+	 * observed once per attempt), never when the effect is built; a spy on
+	 * `stream`, `sink` or `watch` runs when the method is called. Spies run
+	 * before `faults` on the same member, so a spy observes a call the fault
+	 * then fails.
+	 *
+	 * Spies share the fault wrapper's rebuild through `FileSystem.make`, so
+	 * they propagate into derived members exactly as faults do: a `writeFile`
+	 * spy also observes every `writeFileString` call, `readFile` sees
+	 * `readFileString`, `access` sees `exists`, and `open` sees `stream` and
+	 * `sink`. A hand-rolled wrapper that spread the service and overrode one
+	 * member only saw direct calls, so a count migrated from one can rise.
+	 *
+	 * Like `faults`, spies are `FileSystem`-scoped (a handle's ports and
+	 * mutators are not observed), the seed is written beneath them, and an
+	 * unknown key throws `RangeError` at construction.
+	 */
+	readonly spies?: MemoryFileSystemSpies | undefined;
+	/**
+	 * Whether the volume's own mutations publish watch events. `"automatic"`
+	 * (the default) publishes them as they happen; `"manual"` publishes none,
+	 * so a watcher sees only what a test delivers with
+	 * {@link MemoryFileSystemHandle.emit}.
+	 *
+	 * @remarks
+	 * For a suite that drives watch events explicitly: under `"automatic"` a
+	 * write the code under test makes races the event the test meant to send.
+	 * `emit` lives on the handle, so build the volume with
+	 * {@link MemoryFileSystem.makeHandle} or {@link MemoryFileSystem.makeSync}
+	 * to reach it; a layer built with `"manual"` simply never publishes.
+	 */
+	readonly watchEvents?: "automatic" | "manual" | undefined;
 }
+
+/**
+ * Spy handlers for {@link MemoryFileSystemOptions.spies}: per member, an
+ * observer receiving the real call arguments. The return value is ignored.
+ *
+ * @public
+ */
+export type MemoryFileSystemSpies = {
+	readonly [Method in MemoryFileSystemFaultMethod]?: (...args: Parameters<FileSystem.FileSystem[Method]>) => void;
+};
 
 const engineOptions = (options: MemoryFileSystemOptions | undefined): internal.EngineOptions => ({
 	caseSensitive: options?.caseSensitive ?? true,
+	automaticWatchEvents: options?.watchEvents !== "manual",
 });
 
 /**
@@ -655,6 +769,27 @@ export type MemoryFileSystemFaults = {
  */
 export type MemoryFileSystemFaultsFactory = (base: FileSystem.FileSystem) => MemoryFileSystemFaults;
 
+/**
+ * The override map for {@link MemoryFileSystem.wrapFile}: per member of a
+ * `FileSystem.File`, a handler returning a replacement `Effect` or `undefined`
+ * to delegate to the wrapped file, or a {@link MemoryFileSystemTransientFault}.
+ *
+ * @remarks
+ * The methods (`seek`, `read`, `readAlloc`, `truncate`, `write`, `writeAll`)
+ * take handlers receiving the real call arguments. `stat` and `sync` are
+ * `Effect`-valued members rather than methods, so their handlers are thunks.
+ * Every handler is consulted at each execution, never when the member is read.
+ *
+ * @public
+ */
+export type MemoryFileSystemFileFaults = {
+	readonly [Member in "seek" | "read" | "readAlloc" | "truncate" | "write" | "writeAll"]?:
+		| ((...args: Parameters<FileSystem.File[Member]>) => ReturnType<FileSystem.File[Member]> | undefined)
+		| MemoryFileSystemTransientFault;
+} & {
+	readonly [Member in "stat" | "sync"]?: (() => FileSystem.File[Member] | undefined) | MemoryFileSystemTransientFault;
+};
+
 const handleContext = ({
 	fileSystem,
 	volume,
@@ -675,7 +810,10 @@ const buildHandle = (
 		const raw = engine.fileSystem;
 		yield* seedWith(raw, seed, options);
 		const volume = makeVolumeService(engine);
-		const fileSystem = options?.faults === undefined ? raw : wrapFaulty(raw, options.faults);
+		const fileSystem =
+			options?.faults === undefined && options?.spies === undefined
+				? raw
+				: wrapFaulty(raw, options.faults ?? {}, options.spies);
 		// `seedWith` has already rejected a relative root, so this is the normalized join base.
 		const root = options?.root === undefined ? undefined : normalizeAbsolute(options.root);
 		// A mutator path: absolute as given; relative joined to the root (or to
@@ -756,6 +894,8 @@ const buildHandle = (
 				sync: MemoryFileSystem.syncFileSystem(volume, { faults: faults.sync }),
 				promises: MemoryFileSystem.promisesFileSystem(volume, { faults: faults.promises }),
 			}),
+			emit: (path, event) => engine.emit([{ _tag: event, path: normalizeAbsolute(at(path)) }]),
+			watcherCount: engine.watcherCount,
 			write: (path, content) =>
 				runMutation(
 					Effect.andThen(
@@ -1000,6 +1140,59 @@ export class MemoryFileSystem {
 		);
 
 	/**
+	 * Decorates a `FileSystem.File` — typically one an `open` fault receives
+	 * from the unfaulted filesystem — so a handler can replace one member and
+	 * every other member forwards to the wrapped file.
+	 *
+	 * @remarks
+	 * A memfs `File` is a class instance whose members live on its prototype,
+	 * so spreading it copies none of them; this is the forwarder a hand-written
+	 * decorator would otherwise spell member by member. Overrides follow the
+	 * fault model: a handler receives the real arguments and returns a
+	 * replacement `Effect` or `undefined` to delegate, and
+	 * {@link MemoryFileSystem.failTimes} works on every member (armed per
+	 * `wrapFile` call). Any `File` can be wrapped, not only a memory one.
+	 *
+	 * Members are intercepted independently: the wrapped file's own `writeAll`
+	 * calls its own `write`, so a `write` override does not reach `writeAll` —
+	 * override both, or `writeAll`, which is what core's derived `sink` writes
+	 * through. To decorate every handle a filesystem opens, return the wrapped
+	 * file from an `open` fault, using the factory form so the handler reaches
+	 * the unfaulted `open`; the derived `stream` and `sink` then see it too.
+	 *
+	 * An unknown override key throws `RangeError` at the call.
+	 *
+	 * @example
+	 * ```ts
+	 * import { MemoryFileSystem } from "@effected/memfs";
+	 * import { Effect, PlatformError } from "effect";
+	 *
+	 * const full = (path: string) =>
+	 *   PlatformError.systemError({ _tag: "Unknown", module: "FileSystem", method: "writeAll", pathOrDescriptor: path });
+	 *
+	 * // Every handle opened under /journal fails its writes; reads still work.
+	 * const Volume = MemoryFileSystem.layerWith(
+	 *   { "/journal": MemoryFileSystem.directory() },
+	 *   {
+	 *     faults: (base) => ({
+	 *       open: (path, options) =>
+	 *         Effect.map(base.open(path, options), (file) =>
+	 *           path.startsWith("/journal/")
+	 *             ? MemoryFileSystem.wrapFile(file, { writeAll: () => Effect.fail(full(path)) })
+	 *             : file,
+	 *         ),
+	 *     }),
+	 *   },
+	 * );
+	 * ```
+	 *
+	 * @param file - The file to decorate.
+	 * @param overrides - Per-member handlers; see {@link MemoryFileSystemFileFaults}.
+	 */
+	static readonly wrapFile = (file: FileSystem.File, overrides: MemoryFileSystemFileFaults): FileSystem.File =>
+		wrapFile(file, overrides);
+
+	/**
 	 * A transient fault: fails the first `times` intercepted calls with `error`,
 	 * then delegates to the wrapped filesystem forever after — the shape a
 	 * retry-policy test needs.
@@ -1215,6 +1408,42 @@ export class MemoryFileSystem {
 		Layer.effectContext(Effect.map(Effect.orDie(buildHandle(seed, options)), handleContext));
 
 	/**
+	 * {@link MemoryFileSystem.layerWith} with core's `Path.layer` merged in:
+	 * provides `FileSystem.FileSystem`, {@link MemoryFileSystem.Volume} and
+	 * `Path.Path` from one layer.
+	 *
+	 * @remarks
+	 * The two services are almost always consumed together, and a memory volume
+	 * is POSIX, so the POSIX `Path.layer` is the one that matches it. Everything
+	 * {@link MemoryFileSystem.layerWith} says holds unchanged: a parameterized
+	 * factory (bind the result to a `const`), re-seeded per build, and a
+	 * contradictory seed dies.
+	 *
+	 * @example
+	 * ```ts
+	 * import { MemoryFileSystem } from "@effected/memfs";
+	 * import { Effect, FileSystem, Path } from "effect";
+	 *
+	 * const Volume = MemoryFileSystem.layerWithPath({ "/repo/a.txt": "a" });
+	 *
+	 * const program = Effect.gen(function* () {
+	 *   const fs = yield* FileSystem.FileSystem;
+	 *   const path = yield* Path.Path;
+	 *   return yield* fs.readFileString(path.join("/repo", "a.txt"));
+	 * }).pipe(Effect.provide(Volume));
+	 * ```
+	 *
+	 * @param seed - Absolute POSIX paths mapped to seed entries (relative keys
+	 *   when `options.root` is given). Defaults to an empty seed.
+	 * @param options - See {@link MemoryFileSystemOptions}.
+	 */
+	static readonly layerWithPath = (
+		seed: MemoryFileSystemSeed = {},
+		options?: MemoryFileSystemOptions,
+	): Layer.Layer<FileSystem.FileSystem | MemoryFileSystemVolume | Path.Path> =>
+		Layer.merge(MemoryFileSystem.layerWith(seed, options), Path.layer);
+
+	/**
 	 * The context key for {@link MemoryFileSystemVolume}, mirroring the shape
 	 * of `FileSystem.FileSystem` itself (the interface is both identifier and
 	 * shape).
@@ -1277,7 +1506,7 @@ export class MemoryFileSystem {
 		options?: MemoryFileSystemPortOptions<MemoryFileSystemSyncFaults>,
 	): MemoryFileSystemSyncFileSystem =>
 		withFaults(
-			makeSyncFileSystem(volume),
+			withPathStyle(makeSyncFileSystem(volume), options?.pathStyle),
 			options?.faults as
 				| Partial<Record<keyof MemoryFileSystemSyncFileSystem, (...args: ReadonlyArray<unknown>) => unknown>>
 				| undefined,
@@ -1302,7 +1531,7 @@ export class MemoryFileSystem {
 		options?: MemoryFileSystemPortOptions<MemoryFileSystemPromisesFaults>,
 	): MemoryFileSystemPromisesFileSystem =>
 		withFaults(
-			makePromisesFileSystem(volume),
+			withPathStyle(makePromisesFileSystem(volume), options?.pathStyle, true),
 			options?.faults as
 				| Partial<Record<keyof MemoryFileSystemPromisesFileSystem, (...args: ReadonlyArray<unknown>) => unknown>>
 				| undefined,

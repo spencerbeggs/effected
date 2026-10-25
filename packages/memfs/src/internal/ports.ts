@@ -143,6 +143,47 @@ export const withFaults = <Port extends object>(
 	return out as Port;
 };
 
+// KIT EXTENSION (win32 path spelling). The volume is POSIX; a win32 port
+// rewrites each path argument onto it — backslashes become slashes and a
+// drive-letter root `C:` becomes the top-level directory `/C:` — and rethrows
+// a path-carrying errno with the caller's OWN spelling, as node on Windows
+// reports it. Only the spelling is translated: no case folding, no UNC.
+export const win32ToVolume = (path: string): string => {
+	const slashed = path.replace(/\\/g, "/");
+	return /^[A-Za-z]:(\/|$)/.test(slashed) ? `/${slashed}` : slashed;
+};
+
+const respell = (error: unknown, path: string): unknown => {
+	const e = error as { code?: unknown; syscall?: unknown; path?: unknown } | null;
+	if (e === null || typeof e !== "object" || typeof e.code !== "string" || typeof e.syscall !== "string") return error;
+	return typeof e.path === "string" ? nodeErrno(e.code, e.syscall, path) : error;
+};
+
+export const withPathStyle = <Port extends object>(
+	port: Port,
+	style: "posix" | "win32" | undefined,
+	async = false,
+): Port => {
+	if (style !== "win32") return port;
+	const out: Record<string, unknown> = {};
+	for (const [name, member] of Object.entries(port)) {
+		const original = member as (path: string, ...rest: ReadonlyArray<unknown>) => unknown;
+		out[name] = async
+			? (path: string, ...rest: ReadonlyArray<unknown>) =>
+					(original(win32ToVolume(path), ...rest) as Promise<unknown>).catch((error: unknown) => {
+						throw respell(error, path);
+					})
+			: (path: string, ...rest: ReadonlyArray<unknown>) => {
+					try {
+						return original(win32ToVolume(path), ...rest);
+					} catch (error) {
+						throw respell(error, path);
+					}
+				};
+	}
+	return out as Port;
+};
+
 const decoder = new TextDecoder();
 
 // `readFileSync(path)`: the bytes of the regular file `path` resolves to, or
@@ -163,23 +204,47 @@ const readBytes = (volume: MemoryFileSystemVolume, path: string): Uint8Array => 
 // The `syscall` on each thrown error is the one node reports for the same call:
 // `open` for readFile (`read` when the target is a directory), `scandir` for
 // readDirectory, `stat`/`lstat` for the stat pair.
-export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemSyncFileSystem => ({
-	exists: (path) => !("code" in resolvePath(volume, path)),
-	readFile: (path) => decoder.decode(readBytes(volume, path)),
-	readDirectory: (path) => {
+export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemSyncFileSystem => {
+	// `readdirSync`: the directory is reached through links; with
+	// `withFileTypes` its entries are reported literally — a link is a link,
+	// as node's dirents are.
+	function readDirectory(path: string): ReadonlyArray<string>;
+	function readDirectory(
+		path: string,
+		options: { readonly withFileTypes: true },
+	): ReadonlyArray<MemoryFileSystemDirent>;
+	function readDirectory(
+		path: string,
+		options?: { readonly withFileTypes?: boolean },
+	): ReadonlyArray<string> | ReadonlyArray<MemoryFileSystemDirent> {
 		const r = resolvePath(volume, path);
 		if ("code" in r) throw nodeErrno(r.code, "scandir", path);
 		const names = volume.readDirectory(r.path);
 		if (names === undefined) throw nodeErrno("ENOTDIR", "scandir", path);
-		return names;
-	},
-	isDirectory: (path) => {
-		const r = resolvePath(volume, path);
-		return !("code" in r) && volume.isDirectory(r.path);
-	},
-	stat: (path) => statOf(volume, path, "stat", true),
-	lstat: (path) => statOf(volume, path, "lstat", false),
-});
+		if (options?.withFileTypes !== true) return names;
+		const base = r.path === "/" ? "" : r.path;
+		return names.map((name): MemoryFileSystemDirent => {
+			const kind = volume.lstat(`${base}/${name}`)?.kind;
+			return {
+				name,
+				isFile: () => kind === "file",
+				isDirectory: () => kind === "directory",
+				isSymbolicLink: () => kind === "symlink",
+			};
+		});
+	}
+	return {
+		exists: (path) => !("code" in resolvePath(volume, path)),
+		readFile: (path) => decoder.decode(readBytes(volume, path)),
+		readDirectory,
+		isDirectory: (path) => {
+			const r = resolvePath(volume, path);
+			return !("code" in r) && volume.isDirectory(r.path);
+		},
+		stat: (path) => statOf(volume, path, "stat", true),
+		lstat: (path) => statOf(volume, path, "lstat", false),
+	};
+};
 
 export const makePromisesFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemPromisesFileSystem => {
 	const sync = makeSyncFileSystem(volume);
@@ -192,22 +257,10 @@ export const makePromisesFileSystem = (volume: MemoryFileSystemVolume): MemoryFi
 		path: string,
 		options?: { readonly withFileTypes?: boolean },
 	): Promise<ReadonlyArray<string> | ReadonlyArray<MemoryFileSystemDirent>> {
-		return settle(() => {
-			const names = sync.readDirectory(path);
-			if (options?.withFileTypes !== true) return names;
-			const r = resolvePath(volume, path);
-			const base = "code" in r ? path : r.path;
-			return names.map((name): MemoryFileSystemDirent => {
-				// Literal: a link is reported as a link, as `readdir` dirents do.
-				const kind = volume.lstat(`${base === "/" ? "" : base}/${name}`)?.kind;
-				return {
-					name,
-					isFile: () => kind === "file",
-					isDirectory: () => kind === "directory",
-					isSymbolicLink: () => kind === "symlink",
-				};
-			});
-		});
+		// Literal dirents come from the sync port, so the two ports cannot disagree.
+		return settle(() =>
+			options?.withFileTypes === true ? sync.readDirectory(path, { withFileTypes: true }) : sync.readDirectory(path),
+		);
 	}
 	// node's overloads: bytes without an encoding, a string with one.
 	function readFile(path: string): Promise<Uint8Array>;

@@ -39,6 +39,9 @@
 //   of any directory, ENOTEMPTY, EBADF, fs.cp codes, trailing slashes, NUL
 //   bytes, glob roots, negative truncate).
 // - Case folding: State.caseSensitive, lookupEntry, case-only rename.
+// - Watch injection: `EngineOptions.automaticWatchEvents: false` stops
+//   transitions from publishing watch events, and `emit`/`watcherCount` let a
+//   test deliver events itself through the same path matching.
 // - Newer `FileSystem` options the pinned upstream predates: `open` honors
 //   `noFollow` (ELOOP on a final-component symlink, as O_NOFOLLOW does) and
 //   the handle's `read`/`readAlloc` honor `File.ReadOptions.position` (read at
@@ -173,6 +176,9 @@ interface Volume {
 	// reference under the volume lock — so a sync read observes one consistent
 	// snapshot and can never see a half-applied transition.
 	readonly currentState: () => State;
+	// KIT EXTENSION (watch injection): delivers `events` to every matching
+	// watcher now, outside any transition.
+	readonly emit: (events: ReadonlyArray<FileSystem.WatchEvent>) => void;
 }
 
 interface OpenFileDescriptor {
@@ -338,25 +344,32 @@ const includesWatchPath = (watchedPath: string, directory: boolean, recursive: b
 // KIT EXTENSION (case folding): on a
 // case-insensitive volume a subscription and an event name one entry in any
 // spelling, so matching compares FOLDED paths; the delivered event keeps its own.
+// KIT EXTENSION (watch injection): the delivery loop is a plain function so a
+// handle's `emit` can deliver synchronously through the same matching.
+const deliverWatchEvents = (
+	watchers: Set<WatchSubscription>,
+	events: ReadonlyArray<FileSystem.WatchEvent>,
+	caseSensitive: boolean,
+): void => {
+	const fold = caseSensitive ? (path: string) => path : (path: string) => path.toLowerCase();
+	for (const watcher of watchers) {
+		for (const event of events) {
+			if (includesWatchPath(fold(watcher.path), watcher.directory, watcher.recursive, fold(event.path))) {
+				if (watcher.queue === undefined) {
+					watcher.pending.push(event);
+				} else {
+					Queue.offerUnsafe(watcher.queue, event);
+				}
+			}
+		}
+	}
+};
+
 const publishWatchEvents = (
 	watchers: Set<WatchSubscription>,
 	events: ReadonlyArray<FileSystem.WatchEvent>,
 	caseSensitive: boolean,
-) =>
-	Effect.sync(() => {
-		const fold = caseSensitive ? (path: string) => path : (path: string) => path.toLowerCase();
-		for (const watcher of watchers) {
-			for (const event of events) {
-				if (includesWatchPath(fold(watcher.path), watcher.directory, watcher.recursive, fold(event.path))) {
-					if (watcher.queue === undefined) {
-						watcher.pending.push(event);
-					} else {
-						Queue.offerUnsafe(watcher.queue, event);
-					}
-				}
-			}
-		}
-	});
+) => Effect.sync(() => deliverWatchEvents(watchers, events, caseSensitive));
 
 // PORT NOTE: iterative worklist where upstream recursed. Callers sort the
 // result, so traversal order is not part of the contract.
@@ -2783,8 +2796,11 @@ const glob = (volume: Volume) =>
 /** @internal */
 export interface EngineOptions {
 	readonly caseSensitive: boolean;
+	// KIT EXTENSION (watch injection): `false` stops transitions from
+	// publishing watch events; only `InspectableFileSystem.emit` delivers.
+	readonly automaticWatchEvents: boolean;
 }
-const defaultEngineOptions: EngineOptions = { caseSensitive: true };
+const defaultEngineOptions: EngineOptions = { caseSensitive: true, automaticWatchEvents: true };
 
 const makeVolume = (options: EngineOptions) =>
 	Effect.gen(function* () {
@@ -2823,7 +2839,11 @@ const makeVolume = (options: EngineOptions) =>
 			Effect.sync(() => {
 				state = result.state;
 			}).pipe(
-				Effect.andThen(publishWatchEvents(watchers, result.events, options.caseSensitive)),
+				Effect.andThen(
+					options.automaticWatchEvents
+						? publishWatchEvents(watchers, result.events, options.caseSensitive)
+						: Effect.void,
+				),
 				Effect.as(result.value),
 			);
 
@@ -2842,7 +2862,14 @@ const makeVolume = (options: EngineOptions) =>
 				),
 			);
 
-		return { currentState: () => state, mutate, mutateInterruptibly, watchers, withState } satisfies Volume;
+		return {
+			currentState: () => state,
+			emit: (events) => deliverWatchEvents(watchers, events, options.caseSensitive),
+			mutate,
+			mutateInterruptibly,
+			watchers,
+			withState,
+		} satisfies Volume;
 	});
 
 // =============================================================================
@@ -3048,6 +3075,10 @@ export interface InspectableFileSystem {
 	readonly lookup: (path: string) => VolumeEntrySnapshot | undefined;
 	/** The stored names inside the directory at `path`, sorted; `undefined` when it is not one. */
 	readonly list: (path: string) => ReadonlyArray<string> | undefined;
+	/** Delivers `events` to every matching watcher now (KIT EXTENSION: watch injection). */
+	readonly emit: (events: ReadonlyArray<FileSystem.WatchEvent>) => void;
+	/** The number of live watch subscriptions (KIT EXTENSION: watch injection). */
+	readonly watcherCount: () => number;
 }
 
 /** @internal */
@@ -3063,6 +3094,8 @@ export const makeInspectableWith = (options: EngineOptions): Effect.Effect<Inspe
 			const entry = lookupLiteral(volume.currentState(), splitComponents(path));
 			return entry?._tag === "Directory" ? [...HashMap.keys(entry.entries)].sort() : undefined;
 		},
+		emit: volume.emit,
+		watcherCount: () => volume.watchers.size,
 	}));
 
 /** @internal */

@@ -4,7 +4,16 @@
 // errno. The node adapter is the reference; a mismatch is a NodeSyncFileSystem
 // bug. Everything lives under one os.tmpdir() fixture.
 
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem } from "@effect/platform-node";
@@ -178,4 +187,20 @@ describe("NodeSyncFileSystem agrees with NodeFileSystem", () => {
 			assert.strictEqual(readFileSync(join(d, "f.txt"), "utf8"), "hello");
 		});
 	}
+});
+
+// The README's migration note: unlike `existsSync`, which swallows every
+// error, `exists` derives from `access` — only NotFound answers false.
+describe("NodeSyncFileSystem.exists is not existsSync", () => {
+	it.effect("a missing path is false; ENOTDIR through a file and a NUL byte fail typed", () =>
+		Effect.gen(function* () {
+			const fs = NodeSyncFileSystem.fileSystem;
+			assert.isFalse(yield* fs.exists(join(d, "nope")));
+			const through = yield* Effect.flip(fs.exists(join(d, "f.txt", "child")));
+			assert.strictEqual((through.reason.cause as { code?: string } | undefined)?.code, "ENOTDIR");
+			const nul = yield* Effect.flip(fs.exists(join(d, "a\0b")));
+			assert.strictEqual(nul.reason._tag, "BadArgument");
+			assert.isFalse(existsSync(join(d, "f.txt", "child")), "the bridge it replaces answered false");
+		}),
+	);
 });

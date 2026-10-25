@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-22T22:20:33Z
+  at: 2026-10-25T14:33:12Z
 integrity:
   generated:
-    body: 95ce21e6eb389bb6
+    body: e37d135fbddc311f
 ---
 
 # @effected/memfs
@@ -109,7 +109,7 @@ Two entry points. The main entry, `MemoryFileSystem`, provides core's
 `./node-sync` subpath, `NodeSyncFileSystem`, is the one boundary module
 (see [node-sync](#node-sync-the-boundary-subpath)).
 
-Eight constructors, all in the main entry:
+Nine constructors, all in the main entry:
 
 - `make` / `layer` — a fresh empty volume, as an `Effect` and a `Layer`
   (fresh per build). The upstream mirror; the ported engine's own `make`.
@@ -117,6 +117,8 @@ Eight constructors, all in the main entry:
   volume pre-populated from a `path → MemoryFileSystemSeedEntry` record;
   parents are created recursively, then each entry applied in the
   record's key order. The seed is optional.
+- `layerWithPath(seed?, options?)` — `layerWith` with core's `Path.layer`
+  merged in, because the two services are almost always consumed together.
 - `makeHandle(seed?, options?)` — an `Effect<MemoryFileSystemHandle,
   PlatformError>`; `makeSync(seed?, options?)` — the same handle built
   synchronously, throwing node-shaped errors.
@@ -124,7 +126,7 @@ Eight constructors, all in the main entry:
   **any** `FileSystem`, not only this package's. `layerFaulty` is
   `Layer<FileSystem, never, FileSystem>`.
 
-`options` is `{ root?, caseSensitive?, faults? }`. `root` is a lexical
+`options` is `{ root?, caseSensitive?, faults?, spies?, watchEvents? }`. `root` is a lexical
 **join base, not a jail**: a seed key joins it as `path.posix.join` does,
 so a `..` key may normalize outside the root. A relative root, or an
 absolute key alongside a root, is still a typed `BadArgument`. Seed-key
@@ -146,7 +148,13 @@ service. Consumers that compose two memory layers with `Layer.merge` get
 two `Volume`s and the last wins — as `FileSystem` already behaves.
 
 Helpers: `file`, `directory`, `symlink` (seed entries), `failTimes`,
-`die`, `errno(code, syscall, path?)` and the `Volume` key.
+`die`, `wrapFile(file, overrides)`, `errno(code, syscall, path?)` and the
+`Volume` key.
+
+`watchEvents: "manual"` stops the volume's own mutations from publishing
+watch events ([ledger entry 16](#adaptation-ledger)); the handle's
+`emit(path, event)` delivers one through the same path matching, and
+`watcherCount()` reports live subscriptions. `emit` works in either mode.
 
 ### Seed entries
 
@@ -239,6 +247,20 @@ Design decisions worth keeping:
 - **`failTimes` counters arm per build**; `Layer.fresh` re-arms. Under
   `@effect/vitest`'s `layer(...)` one build serves the suite, so a
   `failTimes` there is consumed by whichever test runs first.
+- **Spies ride the same wrapper.** `options.spies` maps a member to a
+  void observer that runs before any fault on the same member, its return
+  value discarded, so a spy can never replace a call. It shares the
+  rebuild, so it fires per execution and propagates into derived members
+  exactly as a fault does: a `writeFile` spy also sees `writeFileString`.
+  Unknown spy keys throw `RangeError` like fault keys.
+- **`wrapFile` decorates an opened `File`.** A memfs `File` is a class
+  instance, so a spread copies none of its members; `wrapFile` forwards all
+  eight by name and lets a handler (or `failTimes`) replace one. Members are
+  intercepted independently — the wrapped file's own `writeAll` calls its
+  own `write` — and the usual home is an `open` fault in factory form,
+  which also reaches the derived `stream` and `sink`. A `faults.file` hook
+  was rejected: a key that names no `FileSystem` member would break the
+  unknown-key check every other fault key relies on.
 
 ### Volume inspection
 
@@ -280,9 +302,10 @@ Semantics, documented rather than incidental:
 
 Two adapters over the view, for consumer code that accepts an
 **injected** port rather than `FileSystem`. Neither is a service, layer
-or `Effect`; both take `(volume, { faults? })`.
+or `Effect`; both take `(volume, { faults?, pathStyle? })`.
 
-- `syncFileSystem(volume)` — `exists`, `readFile`, `readDirectory`,
+- `syncFileSystem(volume)` — `exists`, `readFile`, `readDirectory` (with
+  `withFileTypes`, the same literal dirents as the promises `readdir`),
   `isDirectory`, `stat`, `lstat`.
 - `promisesFileSystem(volume)` — `readdir` (with `withFileTypes`), `stat`,
   `lstat` and `readFile` with node's overloads: a `Uint8Array` without an
@@ -309,6 +332,11 @@ Shared contract:
 - **Not an escape hatch from the service.** Code calling `node:fs`
   directly still does not see the volume. See
   [provenance and refusals](#provenance-and-refusals).
+- **`pathStyle: "win32"` is a spelling adapter only**, in front of the
+  port and behind its faults: backslashes become slashes and a drive root
+  `C:` maps onto the top-level `/C:` directory. Errors and fault handlers
+  keep the caller's spelling. No drive-letter folding, no UNC; the
+  `FileSystem` service stays POSIX.
 
 ### Case-insensitive volumes
 
@@ -324,7 +352,8 @@ not. Listings, `paths()` and `snapshot()` keep stored spellings.
 
 `@effected/memfs/node-sync` exports `NodeSyncFileSystem.fileSystem` (a
 `FileSystem` **value**, not an Effect; renamed from `make` before any
-release) and `NodeSyncFileSystem.layer`.
+release), `NodeSyncFileSystem.layer`, and `NodeSyncFileSystem.layerWithPath`
+(the same with core's synchronous `Path.layer` merged in).
 
 - The read members — `access`/`exists`, `stat`, `readFile`/`readFileString`,
   `readDirectory` (including `recursive`), `readLink`, `realPath` — run on
@@ -670,6 +699,15 @@ authoritative list.
     pins both halves. The ported tests and the kit helpers still order
     their mutations with `Effect.yieldNow`, which stays correct and keeps
     the ported bodies upstream's.
+16. **Watch injection** — a fenced `KIT EXTENSION (watch injection)` in
+    `volume.ts`, plus one port-notes header line. `EngineOptions` gains
+    `automaticWatchEvents`; when `false`, `commitResult` publishes nothing.
+    The delivery loop became a plain `deliverWatchEvents` function so the
+    volume's `emit` can run it synchronously through the same
+    `includesWatchPath` matching and case folding. `InspectableFileSystem`
+    exposes `emit` and `watcherCount`, which the handle surfaces. Core's
+    watch contract only promises a stream of events, so a volume that
+    publishes none until told to is within it.
 
 ## Superseded: opt-in `Volume`, no type widening
 

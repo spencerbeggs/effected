@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
+import type { MemoryFileSystemDirent } from "../src/index.js";
 import { MemoryFileSystem } from "../src/index.js";
 import { thrown } from "./helpers.js";
 
@@ -521,6 +522,159 @@ describe("MemoryFileSystem.syncFileSystem", () => {
 					assert.strictEqual((error as { path?: string }).path, "/repo/absent");
 				}
 			});
+		}),
+	);
+});
+
+describe("sync port readDirectory withFileTypes", () => {
+	const kinds = (d: MemoryFileSystemDirent) =>
+		`${d.name}:${d.isSymbolicLink() ? "symlink" : d.isDirectory() ? "directory" : d.isFile() ? "file" : "other"}`;
+
+	it.effect("lists literal dirents, as readdirSync(p, { withFileTypes: true }) does", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.deepStrictEqual(sync.readDirectory("/r", { withFileTypes: true }).map(kinds), [
+				"dangling:symlink",
+				"dir:directory",
+				"file.txt:file",
+				"loop-a:symlink",
+				"loop-b:symlink",
+				"to-dir:symlink",
+			]);
+			// Through a link to a directory: the listing follows the link, its entries stay literal.
+			assert.deepStrictEqual(sync.readDirectory("/r/to-dir", { withFileTypes: true }).map(kinds), ["inner.txt:file"]);
+			// Without the option, names as before.
+			assert.deepStrictEqual(sync.readDirectory("/r"), ["dangling", "dir", "file.txt", "loop-a", "loop-b", "to-dir"]);
+		}),
+	);
+
+	it.effect("agrees with the promises port's dirents", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			const promises = MemoryFileSystem.promisesFileSystem(volume);
+			const async = yield* Effect.promise(() => promises.readdir("/r", { withFileTypes: true }));
+			assert.deepStrictEqual(sync.readDirectory("/r", { withFileTypes: true }).map(kinds), async.map(kinds));
+		}),
+	);
+
+	it.effect("absence throws node's scandir errno, never []", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.deepInclude(
+				thrown(() => sync.readDirectory("/r/absent", { withFileTypes: true })),
+				{ code: "ENOENT", syscall: "scandir", path: "/r/absent" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.readDirectory("/r/file.txt", { withFileTypes: true })),
+				{ code: "ENOTDIR", syscall: "scandir" },
+			);
+		}),
+	);
+
+	it.effect("a readDirectory fault receives the options as given", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const seen: Array<unknown> = [];
+			const sync = MemoryFileSystem.syncFileSystem(volume, {
+				faults: {
+					readDirectory: (_path, options) => {
+						seen.push(options);
+						return undefined;
+					},
+				},
+			});
+			sync.readDirectory("/r");
+			sync.readDirectory("/r", { withFileTypes: true });
+			assert.deepStrictEqual(seen, [undefined, { withFileTypes: true }]);
+		}),
+	);
+});
+
+describe('port pathStyle: "win32"', () => {
+	const win = MemoryFileSystem.makeHandle({
+		"/C:/repo/package.json": `{ "name": "root" }`,
+		"/C:/repo/packages/a/package.json": `{ "name": "a" }`,
+		"/C:/repo/link": MemoryFileSystem.symlink("/C:/repo/packages"),
+	});
+
+	it.effect("maps a drive-letter path onto the volume's /C: directory, backslashes or slashes", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const sync = MemoryFileSystem.syncFileSystem(volume, { pathStyle: "win32" });
+			assert.strictEqual(sync.readFile("C:\\repo\\package.json"), `{ "name": "root" }`);
+			assert.strictEqual(sync.readFile("C:/repo/package.json"), `{ "name": "root" }`);
+			assert.isTrue(sync.exists("C:\\repo\\packages\\a"));
+			assert.isTrue(sync.isDirectory("C:\\repo\\link"));
+			assert.deepStrictEqual(sync.readDirectory("C:\\repo"), ["link", "package.json", "packages"]);
+			assert.deepStrictEqual(
+				sync.readDirectory("C:\\repo\\link", { withFileTypes: true }).map((d) => d.name),
+				["a"],
+			);
+			assert.isTrue(sync.stat("C:\\").isDirectory());
+			assert.isTrue(sync.lstat("C:\\repo\\link").isSymbolicLink());
+		}),
+	);
+
+	it.effect("errors carry the caller's own spelling, in the path and the message", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const sync = MemoryFileSystem.syncFileSystem(volume, { pathStyle: "win32" });
+			const error = thrown(() => sync.readFile("C:\\repo\\absent.json")) as { message?: string } & ReturnType<
+				typeof thrown
+			>;
+			assert.deepInclude(error, { code: "ENOENT", syscall: "open", path: "C:\\repo\\absent.json" });
+			assert.strictEqual(error.message, "ENOENT: no such file or directory, open 'C:\\repo\\absent.json'");
+			assert.isFalse(sync.exists("D:\\repo"));
+		}),
+	);
+
+	it.effect("faults see the caller's spelling", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const seen: Array<string> = [];
+			const sync = MemoryFileSystem.syncFileSystem(volume, {
+				pathStyle: "win32",
+				faults: {
+					readFile: (path) => {
+						seen.push(path);
+						return undefined;
+					},
+				},
+			});
+			sync.readFile("C:\\repo\\package.json");
+			assert.deepStrictEqual(seen, ["C:\\repo\\package.json"]);
+		}),
+	);
+
+	it.effect("the promises port takes it too, rejecting with the caller's spelling", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const fsp = MemoryFileSystem.promisesFileSystem(volume, { pathStyle: "win32" });
+			assert.strictEqual(
+				yield* Effect.promise(() => fsp.readFile("C:\\repo\\package.json", "utf8")),
+				`{ "name": "root" }`,
+			);
+			const dirents = yield* Effect.promise(() => fsp.readdir("C:\\repo", { withFileTypes: true }));
+			assert.isTrue(dirents.find((d) => d.name === "link")?.isSymbolicLink());
+			const error = yield* Effect.promise(() =>
+				fsp.stat("C:\\nope").then(
+					() => undefined,
+					(e: { code: string; path: string }) => e,
+				),
+			);
+			assert.deepInclude(error, { code: "ENOENT", path: "C:\\nope" });
+		}),
+	);
+
+	it.effect('"posix" (the default) leaves a backslashed path alone', () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.isFalse(sync.exists("C:\\repo\\package.json"));
+			assert.isTrue(sync.exists("/C:/repo/package.json"));
 		}),
 	);
 });

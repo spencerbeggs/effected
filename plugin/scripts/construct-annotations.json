@@ -576,7 +576,8 @@
 	"memfs": {
 		"MemoryFileSystem": "in-memory FileSystem test double, seed files, inject faults, inspect writes, sync and promises ports, case-insensitive volume",
 		"MemoryFileSystemErrnoError": "node-shaped thrown error, fail a port fault like node:fs",
-		"MemoryFileSystemHandle": "one volume every view, assert after the run, sync setup mutators, fault the ports",
+		"MemoryFileSystemHandle": "one volume every view, assert after the run, sync setup mutators, fault the ports, emit watch events, count watchers",
+		"MemoryFileSystemFileFaults": "fault an opened file handle, fail writes on one file, decorate the File open returns",
 		"MemoryFileSystemOptions": "seed root, case-insensitive volume, inject faults at build",
 		"MemoryFileSystemPortStats": "stat result for an injected port, file directory symlink checks",
 		"MemoryFileSystemPromisesFaults": "fault an injected fs/promises port, reject one path",
@@ -584,7 +585,8 @@
 		"MemoryFileSystemSyncFaults": "fault an injected sync filesystem port, throw errno for one path",
 		"MemoryFileSystemVolumeStat": "literal lstat of a volume entry, kind size mtime",
 		"MemoryFileSystemDirent": "readdir withFileTypes entry from the promises port",
-		"MemoryFileSystemPortOptions": "configure faults on a sync or promises port",
+		"MemoryFileSystemPortOptions": "configure faults on a sync or promises port, win32 drive-letter path spelling",
+		"MemoryFileSystemSpies": "spy on filesystem calls, count reads or writes, observe without replacing, record call arguments",
 		"NodeSyncFileSystem": "read real disk under Effect.runSync, synchronous read-only node filesystem"
 	},
 	"mcp": {

@@ -309,7 +309,10 @@ describe("MemoryFileSystemVolume.mtime", () => {
 describe("engine snapshot size", () => {
 	it.effect("reports file bytes, symlink target length and 0 for directories", () =>
 		Effect.gen(function* () {
-			const { fileSystem, entries } = yield* internal.makeInspectableWith({ caseSensitive: true });
+			const { fileSystem, entries } = yield* internal.makeInspectableWith({
+				caseSensitive: true,
+				automaticWatchEvents: true,
+			});
 			yield* fileSystem.makeDirectory("/d");
 			yield* fileSystem.writeFileString("/d/f.txt", "héllo");
 			yield* fileSystem.symlink("/d/f.txt", "/d/l");
