@@ -135,7 +135,8 @@ Most CLIs have one, and it has to outrank the app's own search path. Pass `resol
 
 ```ts
 import { AppConfig } from "@effected/app";
-import { ConfigResolver, TomlCodec } from "@effected/config-file";
+import { ConfigResolver } from "@effected/config-file";
+import { TomlCodec } from "@effected/config-file/toml";
 
 const ConfigLive = AppConfig.layer(SettingsFile, {
  filename: "settings.toml",

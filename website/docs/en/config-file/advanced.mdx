@@ -20,7 +20,8 @@ The service is designed to disappear into an application's layer graph rather th
 Here is the `shipit` loader as an application layer. Note that `defaultPath` is itself an `Effect` that may use `Path`, so the write target is resolved through the same platform context the resolvers use:
 
 ```ts
-import { ConfigFile, ConfigResolver, MergeStrategy, TomlCodec } from "@effected/config-file";
+import { ConfigFile, ConfigResolver, MergeStrategy } from "@effected/config-file";
+import { TomlCodec } from "@effected/config-file/toml";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { Effect, Layer, Path, Schema } from "effect";
 
@@ -155,7 +156,8 @@ Pass `{ asPrimary: true }` to make the file win over the ambient provider instea
 Every fallible method is already an `Effect.fn` named span, so tracing works with no wiring. When you want a consumer-facing feed — a `--verbose` mode that prints each tier as it is discovered, say — opt into `ConfigEvents`. Pass the class as the layer's `events` option and provide `ConfigEvents.layer` alongside it:
 
 ```ts
-import { ConfigEvents, ConfigFile, ConfigResolver, MergeStrategy, TomlCodec } from "@effected/config-file";
+import { ConfigEvents, ConfigFile, ConfigResolver, MergeStrategy } from "@effected/config-file";
+import { TomlCodec } from "@effected/config-file/toml";
 import { Layer } from "effect";
 
 const ObservedRelease = ConfigFile.layer(Release, {

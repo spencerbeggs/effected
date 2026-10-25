@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:36:18Z
+  at: 2026-10-25T14:27:30Z
 integrity:
   generated:
-    body: 4f86170ea706c26a
+    body: cae89663ef8095b4
 ---
 
 # toml
@@ -69,7 +69,7 @@ Corpus comparison is structural, not textual: expected datetime strings are re-p
 
 ## Consumer seam
 
-`TomlCodec` implements `config-file`'s `ConfigCodec` over this package's parse and stringify, living inside `@effected/config-file` as one of four free-standing codec exports, reached through a `workspace:^` peer. **Nothing in toml knows about config-file**: the edge points config-file → toml, and this package stays a pure, unaware format package.
+`TomlCodec` implements `config-file`'s `ConfigCodec` over this package's parse and stringify, living inside `@effected/config-file` as one of four free-standing codec exports, served from its `./toml` subpath and reached through an optional `workspace:^` peer, so only a consumer that imports that subpath installs this package. **Nothing in toml knows about config-file**: the edge points config-file → toml, and this package stays a pure, unaware format package.
 
 ## Implementation notes
 

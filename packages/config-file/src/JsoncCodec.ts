@@ -1,6 +1,6 @@
+import type { ConfigCodec } from "@effected/config-file";
 import { Jsonc } from "@effected/jsonc";
 import { Effect } from "effect";
-import type { ConfigCodec } from "./ConfigCodec.js";
 import { ConfigCodecError } from "./ConfigCodec.js";
 
 /**

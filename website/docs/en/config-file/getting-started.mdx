@@ -19,7 +19,7 @@ npm install @effected/config-file effect @effect/platform-node
 pnpm add @effected/config-file effect @effect/platform-node
 ```
 
-`effect` v4 is a peer dependency, and so are `@effected/jsonc`, `@effected/toml`, `@effected/walker` and `@effected/yaml` — the engines behind the JSONC, YAML and TOML codecs and the traversal primitive the walking resolvers use. Package managers that install peers automatically pull them in; add them to your manifest explicitly if yours does not. The package itself declares no runtime dependencies. Reading and writing files needs a `FileSystem` and a `Path` implementation, provided once at the edge — from `@effect/platform-node` on Node.
+`effect` v4 is a peer dependency, and so are `@effected/walker` and `@effected/glob`, the traversal primitive the walking resolvers use and the matcher it peers on. Package managers that install peers automatically pull them in; add them to your manifest explicitly if yours does not. `@effected/jsonc`, `@effected/yaml` and `@effected/toml` are optional peers, needed only for the codec of the same name. The package itself declares no runtime dependencies. Reading and writing files needs a `FileSystem` and a `Path` implementation, provided once at the edge — from `@effect/platform-node` on Node.
 
 ## Your first task: load a project config
 
@@ -191,10 +191,10 @@ Both `encode` and `write` also accept `{ header }` — text prepended verbatim, 
 
 ### Switch formats with one word
 
-The codec is the only thing that changes to read YAML or TOML instead of JSON — the schema, resolvers and strategy are untouched. One install covers every format, and naming `YamlCodec` never drags the TOML or JSONC engines into your bundle:
+The codec is the only thing that changes to read YAML or TOML instead of JSON — the schema, resolvers and strategy are untouched. Import `YamlCodec` from its subpath and install its engine (`pnpm add @effected/yaml`); naming it never drags the TOML or JSONC engines into your install or your bundle:
 
 ```ts
-import { YamlCodec } from "@effected/config-file";
+import { YamlCodec } from "@effected/config-file/yaml";
 
 const TodoConfigLive = ConfigFile.layer(TodoConfig, {
   schema: TodoSettings,
@@ -204,7 +204,7 @@ const TodoConfigLive = ConfigFile.layer(TodoConfig, {
 });
 ```
 
-`JsonCodec`, `JsoncCodec`, `YamlCodec` and `TomlCodec` are all free-standing exports you drop in the same slot.
+`JsonCodec` (from the root), `JsoncCodec` (`@effected/config-file/jsonc`), `YamlCodec` (`/yaml`) and `TomlCodec` (`/toml`) are all free-standing exports you drop in the same slot. Each subpath codec needs its engine package installed: `@effected/jsonc`, `@effected/yaml` or `@effected/toml`.
 
 ## Handling failures
 

@@ -205,7 +205,10 @@ Three standing directives for a downstream repo rebuilding against this kit:
   (`JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`) — import exactly the
   one you use and never collect them into a namespace object; a namespace
   object reaches every codec and silently drags every parsing engine into the
-  bundle.
+  bundle. `JsonCodec` is on the root; the other three import from
+  `@effected/config-file/jsonc`, `/yaml` and `/toml`, and each needs its
+  optional engine peer (`@effected/jsonc`, `@effected/yaml`,
+  `@effected/toml`) installed.
 - **No library or package may depend on `@effected/app`** — but the application
   itself is exactly its intended consumer. It is the application control plane;
   a library taking it as a dependency drags integrated tier into every consumer,

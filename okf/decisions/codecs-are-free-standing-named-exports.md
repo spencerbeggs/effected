@@ -1,14 +1,14 @@
 ---
 type: Decision
 title: config-file's codecs are free-standing named exports, never a namespace object
-description: JsonCodec, JsoncCodec, YamlCodec and TomlCodec are four independent module-level exports rather than members of one collecting object.
+description: JsonCodec, JsoncCodec, YamlCodec and TomlCodec are four independent module-level exports rather than members of one collecting object; JsonCodec ships from the root and the other three from ./jsonc, ./yaml and ./toml subpaths whose engines are optional peers.
 status: stable
 tags:
   - bundle
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-25T14:27:30Z
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: fb4a1c4ef2b26e87
+    body: 6aad9f0294e37f93
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -33,10 +33,21 @@ integrity:
 
 Each codec is a distinct named export, its own binding in its own module (`JsonCodec.ts`, `JsoncCodec.ts`, `YamlCodec.ts`, `TomlCodec.ts`), importable in complete isolation. `ConfigCodec` is exported as an interface only — never as a value carrying the four codecs together. No form of a collecting object may exist: not a namespace object, not a dotted accessor, not a record, not a map.
 
+The three codecs with a parsing engine also sit behind their own subpath: `JsoncCodec` behind `@effected/config-file/jsonc`, `YamlCodec` behind `./yaml` and `TomlCodec` behind `./toml`. `JsonCodec` stays on the root, which carries everything else. `@effected/jsonc`, `@effected/yaml` and `@effected/toml` are **optional** peers (`peerDependenciesMeta`), and the root never reaches a subpath, so a JSON-only consumer neither installs nor loads any engine.[^issue-274] `@effected/walker` and `@effected/glob` stay required, since the root's resolvers reach `walker` and `walker` peers on `glob`. `__test__/subpaths.test.ts` walks the built module graph and fails if the root reaches any engine or a subpath reaches another's.
+
 ## Alternatives rejected
+
+**Marking the engines optional with the codecs still on the root** was rejected. An optional peer is optional only while no shared module reaches it: a static root re-export breaks every unbundled consumer that skipped the peer, at link time, and a bundler fails resolution before tree-shaking runs.[^optional-peers-revert] The [cli `./ui` subpath](ui-is-a-subpath-with-optional-peers.md) is the same shape for the same reason.
+
+**A lazy `import()` of each engine inside its codec** was rejected. It keeps one import path, but moves the missing-package failure from the import line to the first parse, as a defect, and leaves every codec module typed against an engine the consumer may not have.
 
 **A namespace object collecting all four codecs** (`ConfigCodec = { json, jsonc, yaml, toml }`) was rejected. Such an object is a dispatch table: referencing it at all — even to reach the type, or to destructure one member — reaches every codec, and every codec reaches its own parsing engine. A consumer that only ever uses the JSON codec would still pull the jsonc, yaml and toml engines into its bundle. Tree-shaking fails **silently** in this shape — no error, no warning, just a bundle several hundred kilobytes larger than it should be, which is a defect nobody notices until someone measures bundle size directly.
 
 ## Consequences
 
-The tree-shaking property this decision protects is **measured, not assumed**: bundling a consumer that names only one codec produces a bundle carrying that engine and no other engine's fingerprint, and bundling all four carries all four — a check cheap enough to re-run against any doubt. With no namespace object to grow, the constraint is structurally impossible to violate rather than a convention a contributor could helpfully (and silently) undo by collecting the exports "for convenience." The one entity that would notice a violation immediately is `@soda3js/tools`, a real consumer that takes `@effected/config-file` needing only TOML — it therefore carries unexecuted dependency edges on `jsonc` and `yaml` today and pays nothing for them only because this decision holds; a namespace object introduced here would cost that consumer real bundle weight the next time it installs. **The tripwire stands:** if tree-shaking is ever falsified for this package, realistically only by someone reintroducing a collecting object, this whole codec consolidation into one package must be revisited.
+The tree-shaking property this decision protects is **measured, not assumed**: bundling a consumer that names only one codec produces a bundle carrying that engine and no other engine's fingerprint, and bundling all four carries all four — a check cheap enough to re-run against any doubt. With no namespace object to grow, the constraint is structurally impossible to violate rather than a convention a contributor could helpfully (and silently) undo by collecting the exports "for convenience." The one entity that would notice a violation immediately is `@soda3js/tools`, a real consumer that takes `@effected/config-file` needing only TOML — it bundles nothing of `jsonc` and `yaml` only because this decision holds, and with the engines optional it need not install them either; a namespace object introduced here would cost that consumer real bundle weight the next time it installs. **The tripwire stands:** if tree-shaking is ever falsified for this package, realistically only by someone reintroducing a collecting object, this whole codec consolidation into one package must be revisited.
+
+Free-standing exports alone limit what a consumer *bundles*. The subpaths add what it *installs*: before them, a consumer that read one JSON file still installed all three engines as required peers, because tree-shaking does not change an install.
+
+[^issue-274]: <https://github.com/spencerbeggs/effected/issues/274>
+[^optional-peers-revert]: <https://github.com/spencerbeggs/effected/issues/250>

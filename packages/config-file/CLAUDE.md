@@ -21,14 +21,16 @@ when changing the pipeline seams, the error set, or the codec boundaries.
 
 ## Public surface
 
-`src/index.ts` is the only re-exporting module. Its full export list:
+Four entrypoints re-export; no other module does. `src/jsonc.ts`, `src/yaml.ts`
+and `src/toml.ts` are the `./jsonc`, `./yaml` and `./toml` subpaths, each
+re-exporting one codec (`JsoncCodec`, `YamlCodec`, `TomlCodec`).
+`src/index.ts` is the root. Its full export list:
 
 - `src/ConfigCodec.ts` — `ConfigCodec` (**the interface, type-only**, with the
   merged `ConfigCodec.ErrorOf<C>` namespace helper that reads a codec value's
   error union back for a `ConfigFile.Service` key), `ConfigCodecError`
-- `src/JsonCodec.ts`, `src/JsoncCodec.ts`, `src/YamlCodec.ts`,
-  `src/TomlCodec.ts` — one free-standing codec each: `JsonCodec`, `JsoncCodec`,
-  `YamlCodec`, `TomlCodec`
+- `src/JsonCodec.ts` — `JsonCodec` (the other three codecs are on their
+  subpaths only, never the root)
 - `src/ConfigResolver.ts` — `ConfigResolver` (+ `explicitPath`, `staticDir`,
   `upwardWalk`, `workspaceRoot`, `gitRoot`, `systemEtc`), `ConfigMatch`,
   `UpwardWalkOptions`
@@ -240,10 +242,25 @@ and TOML engines into their bundle. **Tree-shaking dies silently** — no error,
 warning, just a fat bundle. Free-standing named exports, one module each, are the
 whole reason the consolidation was safe to do.
 
-`@effected/{jsonc,toml,yaml,walker}` are each a `workspace:^` peer (so a
+`@effected/{jsonc,toml,yaml,walker,glob}` are each a `workspace:^` peer (so a
 published patch floats) mirrored by a plain `workspace:*` `devDependency` — the
 two specifiers now deliberately differ (the `@effected/walker` precedent).
 Runtime `dependencies` stays empty.
+
+**The three format engines are optional peers, and the root must never reach
+them.** `JsoncCodec`, `YamlCodec` and `TomlCodec` ship only from their
+subpaths; the root reaches `@effected/walker` (required, with `glob` for its
+closure) and nothing else of the kit. Never re-export a subpath codec from
+`src/index.ts`, statically or through a lazy `import()`: an optional peer
+reached from the root breaks every unbundled consumer that skipped it (#250).
+`__test__/subpaths.test.ts` walks the built module graph and fails on it.
+The codec modules `import type { ConfigCodec } from "@effected/config-file"`
+(the package's own name) so each subpath's declarations refer to the root's
+type; `savvy.build.ts` keeps that import external (`dtsExternals`) and scopes
+an `ae-forgotten-export` suppression to the three subpath entries for API
+Extractor's false positive on the self-reference, the cli `./ui` precedent.
+The same test pins that each subpath `.d.ts` declares nothing but its codec,
+which is what that suppression could otherwise hide. Never widen it.
 
 **`internal/walkUp.ts` is gone.** `@effected/walker` landed and the resolvers
 — `upwardWalk`, `rootAnchored` (and through it `gitRoot`/`workspaceRoot`) — are
@@ -251,7 +268,7 @@ now expressed over `Walker.ascend`, `Walker.findUpward` and `Walker.findRoot`.
 
 ## Testing and building
 
-Tests live in `__test__/` (18 files, 191 passing), use `@effect/vitest`, and
+Tests live in `__test__/` (22 files, 227 passing), use `@effect/vitest`, and
 assert with `assert.*` — **never** `expect`.
 
 ```bash
@@ -261,5 +278,24 @@ pnpm build --filter @effected/config-file   # from the repo root
 
 - `it.effect` **always** installs a virtual `TestClock`, so `Effect.sleep`,
   `delay` and `timeout` hang silently until the vitest timeout.
-- `savvy.build.ts` carries a **narrow** suppression
-  `{ messageId: "ae-forgotten-export", pattern: "_base" }`. Never widen it.
+- **Adding another subpath: the self-name false positive and its recipe.** A
+  subpath entry whose modules name a root type (here `ConfigCodec`) must
+  import it through the package's own name, `import type { X } from
+  "@effected/config-file"`, never a relative path. A relative import makes
+  the declaration rollup copy the root's declarations into the subpath's
+  `.d.ts`, which gives you a second, unrelated copy of each type. With the
+  self-name import, list the package name in `savvy.build.ts`'s
+  `dtsExternals` so the import stays external. The emitted `.d.ts` is then
+  correct, but API Extractor's second pass still reports every root type it
+  reaches as `ae-forgotten-export` `needs to be exported by the entry point
+  <entry>.d.ts`, which fails CI. That report is the false positive. Add the
+  entry to the scoped suppression's `entry point (?:…)\.d\.ts$` pattern,
+  never a bare messageId suppression, and extend `__test__/subpaths.test.ts`'s
+  `SUBPATHS` list. The test's declarations check (only the exported codec is
+  declared, `@public`, importing the root) is what proves the suppression
+  hid nothing. `@effected/cli`'s `./ui` (`savvy.build.ts`,
+  `__test__/declarations.test.ts`) is the same recipe at larger scale.
+- `savvy.build.ts` carries two **narrow** suppressions:
+  `{ messageId: "ae-forgotten-export", pattern: "_base" }`, and one scoped to
+  the `jsonc`/`yaml`/`toml` entry points (see the codecs section). Never
+  widen either.

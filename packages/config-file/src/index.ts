@@ -2,9 +2,11 @@
  * Composable config file loading for Effect: pluggable codecs, resolvers that
  * find the file, and merge strategies that combine several into one value.
  *
- * Name the codec you use (`JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`)
- * and a bundler drops the rest. Build a service with `ConfigFile.Service` and
- * `ConfigFile.layer`, or read one known path with `ConfigFile.read`.
+ * `JsonCodec` ships here; `JsoncCodec`, `YamlCodec` and `TomlCodec` ship from
+ * the `@effected/config-file/jsonc`, `/yaml` and `/toml` subpaths, each backed
+ * by an optional peer this entrypoint never reaches. Build a service with
+ * `ConfigFile.Service` and `ConfigFile.layer`, or read one known path with
+ * `ConfigFile.read`.
  *
  * @packageDocumentation
  */
@@ -42,8 +44,5 @@ export type { ConfigMatch, ConfigProbe, UpwardWalkOptions } from "./ConfigResolv
 export { ConfigResolver } from "./ConfigResolver.js";
 export { ConfigEncryptionError, EncryptedCodec, EncryptedCodecKey } from "./EncryptedCodec.js";
 export { JsonCodec } from "./JsonCodec.js";
-export { JsoncCodec } from "./JsoncCodec.js";
 export type { ConfigSource, NonEmptySources } from "./MergeStrategy.js";
 export { MergeStrategy } from "./MergeStrategy.js";
-export { TomlCodec } from "./TomlCodec.js";
-export { YamlCodec } from "./YamlCodec.js";
