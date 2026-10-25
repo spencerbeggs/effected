@@ -113,6 +113,10 @@ const emit = (raw: unknown, key: string, path: string, stack: Set<object>): stri
  *
  * @internal
  */
+/** V8, JavaScriptCore and SpiderMonkey each report stack exhaustion as a `RangeError` whose message names the call stack. */
+const isStackOverflow = (thrown: unknown): boolean =>
+	thrown instanceof RangeError && /call stack|too much recursion/i.test(thrown.message);
+
 export const canonicalText = (value: unknown): Result.Result<string, FingerprintError> => {
 	try {
 		const text = emit(value, "", "", new Set());
@@ -124,9 +128,10 @@ export const canonicalText = (value: unknown): Result.Result<string, Fingerprint
 			return Result.fail(new FingerprintError({ path: thrown.path, detail: thrown.detail }));
 		}
 		// A pathologically deep value overflows the stack; anything else (a
-		// Proxy trap that throws, say) is not a property of the value's JSON form
+		// Proxy trap that throws, say, or another RangeError such as V8's
+		// "Invalid string length") is not a property of the value's JSON form
 		// and propagates as a defect.
-		if (thrown instanceof RangeError) {
+		if (isStackOverflow(thrown)) {
 			return Result.fail(new FingerprintError({ path: "", detail: "a value nested too deeply" }));
 		}
 		throw thrown;

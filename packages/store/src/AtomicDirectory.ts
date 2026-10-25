@@ -37,8 +37,8 @@ export type AtomicDirectoryFiles = Iterable<readonly [path: string, content: str
  *   `.<name>.old`) failed, the live directory is untouched; if the second
  *   (staging to live) failed, the live directory is absent, with the old
  *   tree complete in `.<name>.old` and the new one complete in staging.
- *   No tree is ever partial, and the next call clears both siblings and
- *   writes again.
+ *   No tree is ever partial; the next call puts the old tree back under
+ *   `root` before it stages, then writes again.
  * - `cleanup` — the new tree is live and complete, but removing the old
  *   one from `.<name>.old` failed. The next call removes it, so a caller
  *   that only needs the new tree in place may treat this as success.
@@ -65,8 +65,12 @@ export class AtomicDirectoryError extends Schema.TaggedError<AtomicDirectoryErro
 	}
 }
 
-/** Trailing separators on a normalised root, stripped so its basename is its own name. */
-const TRAILING_SEPARATORS = /[\\/]+$/;
+/** `path` without trailing `/` or `\`, so a root's basename is its own name; a loop, since the regex form backtracks on long runs. */
+const stripTrailingSeparators = (path: string): string => {
+	let end = path.length;
+	while (end > 0 && (path[end - 1] === "/" || path[end - 1] === "\\")) end -= 1;
+	return path.slice(0, end);
+};
 
 /**
  * Atomic whole-directory replacement over core `FileSystem`.
@@ -111,11 +115,14 @@ export class AtomicDirectory {
 	 * **The brief-absence window.** Between the two renames `root` does not
 	 * exist. A concurrent reader in that window sees the directory as
 	 * missing, never as a partial tree, so a cache reader should treat
-	 * absence as a miss. The old tree is removed only after it has left
-	 * `root`, so no reader sees it half-deleted. A failure or crash between
-	 * the renames leaves `root` absent, the old tree complete in
-	 * `.<name>.old` and the new one complete in staging; the next call clears
-	 * both and writes again.
+	 * absence as a miss. The two renames run uninterruptibly, so a fiber
+	 * interrupt (a timeout, a closing scope) cannot land between them. The
+	 * old tree is removed only after it has left `root`, so no reader sees
+	 * it half-deleted. A failure or crash between the renames leaves `root`
+	 * absent, the old tree complete in `.<name>.old` and the new one complete
+	 * in staging; the next call renames the old tree back under `root`
+	 * before it stages, so the absence lasts only until the next write
+	 * begins, then writes again.
 	 *
 	 * **One writer per root.** The sibling names are fixed, which is what
 	 * lets a later call clean up after a crashed one, so two concurrent
@@ -156,7 +163,7 @@ export class AtomicDirectory {
 		const path = yield* Path.Path;
 
 		const normalised = path.normalize(root);
-		const target = normalised.length > 1 ? normalised.replace(TRAILING_SEPARATORS, "") : normalised;
+		const target = normalised.length > 1 ? stripTrailingSeparators(normalised) : normalised;
 		const name = path.basename(target);
 		if (name === "." || name === "..") {
 			return yield* new AtomicDirectoryError({
@@ -199,6 +206,15 @@ export class AtomicDirectory {
 				Effect.mapError(effect, (cause) => new AtomicDirectoryError({ operation, path: at, cause }));
 
 		yield* fs.remove(staging, { recursive: true, force: true }).pipe(step("clear", staging));
+		// A run that crashed between its two renames left the only complete old
+		// tree in `.<name>.old` and `root` absent: put it back before staging,
+		// so readers see the old tree, not a miss, while this call stages.
+		if (
+			(yield* fs.exists(retired).pipe(step("clear", retired))) &&
+			!(yield* fs.exists(target).pipe(step("clear", target)))
+		) {
+			yield* fs.rename(retired, target).pipe(step("clear", retired));
+		}
 		yield* fs.remove(retired, { recursive: true, force: true }).pipe(step("clear", retired));
 		yield* fs.makeDirectory(staging, { recursive: true }).pipe(step("stage", staging));
 		for (const [relative, content] of entries) {
@@ -208,10 +224,15 @@ export class AtomicDirectory {
 				step("write", full),
 			);
 		}
-		if (yield* fs.exists(target).pipe(step("promote", target))) {
-			yield* fs.rename(target, retired).pipe(step("promote", target));
-		}
-		yield* fs.rename(staging, target).pipe(step("promote", target));
+		// One unit: an interrupt between the two renames would strand `root` absent.
+		yield* Effect.uninterruptible(
+			Effect.gen(function* () {
+				if (yield* fs.exists(target).pipe(step("promote", target))) {
+					yield* fs.rename(target, retired).pipe(step("promote", target));
+				}
+				yield* fs.rename(staging, target).pipe(step("promote", target));
+			}),
+		);
 		yield* fs.remove(retired, { recursive: true, force: true }).pipe(step("cleanup", retired));
 	});
 }

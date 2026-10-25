@@ -17,7 +17,7 @@ yield* AtomicDirectory.write(
 );
 ```
 
-The new tree is staged in a sibling directory and renamed into place. Between the two renames `root` briefly does not exist, so treat absence as a cache miss. Run one writer per `root`. A crashed run is cleaned up by the next call. Failures are `AtomicDirectoryError`, which carries the `operation` that failed (`validate`, `clear`, `stage`, `write`, `promote` or `cleanup`), the `path` and the `cause`.
+The new tree is staged in a sibling directory and renamed into place. Between the two renames `root` briefly does not exist, so treat absence as a cache miss; the renames are uninterruptible, so a fiber interrupt cannot widen that window. Run one writer per `root`. A run that crashed between the renames is repaired by the next call, which puts the old tree back under `root` before it stages. Failures are `AtomicDirectoryError`, which carries the `operation` that failed (`validate`, `clear`, `stage`, `write`, `promote` or `cleanup`), the `path` and the `cause`.
 
 ## Documentation
 

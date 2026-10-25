@@ -4,7 +4,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { MemoryFileSystemFaults } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, Layer, Path, PlatformError } from "effect";
+import { Deferred, Effect, Fiber, Layer, Path, PlatformError } from "effect";
 import { AtomicDirectory } from "../src/AtomicDirectory.js";
 
 const ROOT = "/cache/pkg";
@@ -127,6 +127,54 @@ describe("AtomicDirectory.write", () => {
 			);
 			assert.deepStrictEqual(handle.volume.paths(), ["/cache/pkg/a.txt"]);
 			assert.strictEqual(handle.volume.text("/cache/pkg/a.txt"), "second");
+		}),
+	);
+
+	it.effect("the call after a crash between the renames restores the old tree under root before it stages", () =>
+		Effect.gen(function* () {
+			// A prior run crashed after the first rename: root absent, the old tree whole in .old.
+			const handle = yield* MemoryFileSystem.makeHandle({ "/cache/.pkg.old/a.txt": "old" });
+			// Fault the staging makeDirectory so this call stops right after its clear step.
+			const stalled = Layer.merge(
+				MemoryFileSystem.layerFaulty({
+					makeDirectory: (dir) => (dir === STAGING ? Effect.fail(failure("makeDirectory", dir)) : undefined),
+				}).pipe(Layer.provide(handle.layer)),
+				Path.layer,
+			);
+			const error = yield* Effect.flip(AtomicDirectory.write(ROOT, [["a.txt", "new"]]).pipe(Effect.provide(stalled)));
+			assert.strictEqual(error.operation, "stage");
+			assert.deepStrictEqual(handle.volume.paths(), ["/cache/pkg/a.txt"], "the old tree is back under root");
+			assert.strictEqual(handle.volume.text("/cache/pkg/a.txt"), "old");
+		}),
+	);
+
+	it.effect("an interrupt cannot land between the two renames", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle({ "/cache/pkg/a.txt": "old" });
+			const gate = yield* Deferred.make<void>();
+			const entered = yield* Deferred.make<void>();
+			// The second rename waits on a gate the test opens only after interrupting the writer.
+			const gated = Layer.merge(
+				MemoryFileSystem.layerFaulty((base) => ({
+					rename: (from, to) =>
+						from === STAGING
+							? Effect.andThen(
+									Deferred.succeed(entered, undefined),
+									Effect.andThen(Deferred.await(gate), base.rename(from, to)),
+								)
+							: undefined,
+				})).pipe(Layer.provide(handle.layer)),
+				Path.layer,
+			);
+			const fiber = yield* Effect.forkChild(
+				AtomicDirectory.write(ROOT, [["a.txt", "new"]]).pipe(Effect.provide(gated)),
+			);
+			yield* Deferred.await(entered);
+			const interrupting = yield* Effect.forkChild(Fiber.interrupt(fiber));
+			yield* Deferred.succeed(gate, undefined);
+			yield* Fiber.join(interrupting);
+			assert.strictEqual(handle.volume.text("/cache/pkg/a.txt"), "new", "the promote completed as one unit");
+			assert.isFalse(handle.volume.has(STAGING));
 		}),
 	);
 

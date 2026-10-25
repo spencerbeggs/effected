@@ -82,14 +82,19 @@ const DRIVE_PREFIX = /^[A-Za-z]:/;
 const DOTS_AND_SPACES = /^[. ]+$/;
 
 /** A win32 reserved device name, with or without an extension, in any case. */
-const DEVICE_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9]) *(?:\..*)?$/i;
+const DEVICE_NAME =
+	/^(?:con|prn|aux|nul|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3]|conin\$|conout\$) *(?:\..*)?$/i;
 
 /** Whether win32 reads a normalised segment as something other than a plain entry. */
 const isReservedSegment = (segment: string): boolean =>
 	segment.includes(":") || DOTS_AND_SPACES.test(segment) || DEVICE_NAME.test(segment);
 
-/** Trailing separators on the base, stripped before the join. */
-const TRAILING_SEPARATORS = /[\\/]+$/;
+/** `path` without trailing `/` or `\`: a loop, because `/[\\/]+$/` backtracks quadratically on a long separator run. */
+const stripTrailingSeparators = (path: string): string => {
+	let end = path.length;
+	while (end > 0 && (path[end - 1] === "/" || path[end - 1] === "\\")) end -= 1;
+	return path.slice(0, end);
+};
 
 /**
  * Confine an untrusted relative path to a base directory, synchronously.
@@ -157,7 +162,7 @@ export const confineRelativeResult = (base: string, candidate: string): Result.R
 	if (DRIVE_PREFIX.test(segments[0] ?? "")) return Result.fail(new PathEscapeError({ candidate, reason: "absolute" }));
 	if (segments.some(isReservedSegment)) return Result.fail(new PathEscapeError({ candidate, reason: "reservedName" }));
 	const relative = segments.join("/");
-	return Result.succeed(base === "" ? relative : `${base.replace(TRAILING_SEPARATORS, "")}/${relative}`);
+	return Result.succeed(base === "" ? relative : `${stripTrailingSeparators(base)}/${relative}`);
 };
 
 /**

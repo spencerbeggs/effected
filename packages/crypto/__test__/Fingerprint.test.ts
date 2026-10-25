@@ -151,6 +151,18 @@ describe("a throw that is not about the value's JSON form", () => {
 		assert.throws(() => Fingerprint.canonicalizeResult({ p: hostile() }), "ownKeys trap");
 	});
 
+	it("a RangeError that is not a stack overflow propagates too", () => {
+		const ranged = new Proxy(
+			{},
+			{
+				ownKeys() {
+					throw new RangeError("Invalid string length");
+				},
+			},
+		);
+		assert.throws(() => Fingerprint.canonicalizeResult({ p: ranged }), "Invalid string length");
+	});
+
 	it.effect("is a defect, not a FingerprintError, from Fingerprint.of", () =>
 		Effect.gen(function* () {
 			const exit = yield* Effect.exit(Fingerprint.of({ p: hostile() }));
