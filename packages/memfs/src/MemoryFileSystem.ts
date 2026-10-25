@@ -16,6 +16,7 @@ import {
 	runNode,
 	syscallForMethod,
 	withFaults,
+	withPathStyle,
 } from "./internal/ports.js";
 import { applyRoot, normalizeAbsolute, seedWith } from "./internal/seed.js";
 import { makeVolumeService } from "./internal/view.js";
@@ -474,6 +475,23 @@ export type MemoryFileSystemSyncFaults = {
 export interface MemoryFileSystemPortOptions<Faults> {
 	/** Handlers that intercept individual port members. */
 	readonly faults?: Faults | undefined;
+	/**
+	 * How the port spells the paths it is given. `"posix"` (the default) hands
+	 * them to the volume as they are. `"win32"` accepts Windows spellings for
+	 * code driven by a win32 path implementation: backslashes become slashes
+	 * and a drive-letter root `C:` maps onto the volume's top-level `/C:`
+	 * directory, so `C:\repo\a.json` reads the file seeded at
+	 * `/C:/repo/a.json`.
+	 *
+	 * @remarks
+	 * Only the spelling is translated. The volume stays POSIX and
+	 * case-sensitive unless built with `caseSensitive: false`; drive letters
+	 * are not case-folded, and UNC paths are not modelled. Seed the volume
+	 * under `/C:/…`. A thrown error carries the caller's own spelling in its
+	 * `path` and message, and fault handlers receive the arguments as the
+	 * caller gave them. The `FileSystem` service is unaffected: it stays POSIX.
+	 */
+	readonly pathStyle?: "posix" | "win32" | undefined;
 }
 
 /**
@@ -1488,7 +1506,7 @@ export class MemoryFileSystem {
 		options?: MemoryFileSystemPortOptions<MemoryFileSystemSyncFaults>,
 	): MemoryFileSystemSyncFileSystem =>
 		withFaults(
-			makeSyncFileSystem(volume),
+			withPathStyle(makeSyncFileSystem(volume), options?.pathStyle),
 			options?.faults as
 				| Partial<Record<keyof MemoryFileSystemSyncFileSystem, (...args: ReadonlyArray<unknown>) => unknown>>
 				| undefined,
@@ -1513,7 +1531,7 @@ export class MemoryFileSystem {
 		options?: MemoryFileSystemPortOptions<MemoryFileSystemPromisesFaults>,
 	): MemoryFileSystemPromisesFileSystem =>
 		withFaults(
-			makePromisesFileSystem(volume),
+			withPathStyle(makePromisesFileSystem(volume), options?.pathStyle, true),
 			options?.faults as
 				| Partial<Record<keyof MemoryFileSystemPromisesFileSystem, (...args: ReadonlyArray<unknown>) => unknown>>
 				| undefined,

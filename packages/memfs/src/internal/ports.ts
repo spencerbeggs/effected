@@ -143,6 +143,47 @@ export const withFaults = <Port extends object>(
 	return out as Port;
 };
 
+// KIT EXTENSION (win32 path spelling). The volume is POSIX; a win32 port
+// rewrites each path argument onto it — backslashes become slashes and a
+// drive-letter root `C:` becomes the top-level directory `/C:` — and rethrows
+// a path-carrying errno with the caller's OWN spelling, as node on Windows
+// reports it. Only the spelling is translated: no case folding, no UNC.
+export const win32ToVolume = (path: string): string => {
+	const slashed = path.replace(/\\/g, "/");
+	return /^[A-Za-z]:(\/|$)/.test(slashed) ? `/${slashed}` : slashed;
+};
+
+const respell = (error: unknown, path: string): unknown => {
+	const e = error as { code?: unknown; syscall?: unknown; path?: unknown } | null;
+	if (e === null || typeof e !== "object" || typeof e.code !== "string" || typeof e.syscall !== "string") return error;
+	return typeof e.path === "string" ? nodeErrno(e.code, e.syscall, path) : error;
+};
+
+export const withPathStyle = <Port extends object>(
+	port: Port,
+	style: "posix" | "win32" | undefined,
+	async = false,
+): Port => {
+	if (style !== "win32") return port;
+	const out: Record<string, unknown> = {};
+	for (const [name, member] of Object.entries(port)) {
+		const original = member as (path: string, ...rest: ReadonlyArray<unknown>) => unknown;
+		out[name] = async
+			? (path: string, ...rest: ReadonlyArray<unknown>) =>
+					(original(win32ToVolume(path), ...rest) as Promise<unknown>).catch((error: unknown) => {
+						throw respell(error, path);
+					})
+			: (path: string, ...rest: ReadonlyArray<unknown>) => {
+					try {
+						return original(win32ToVolume(path), ...rest);
+					} catch (error) {
+						throw respell(error, path);
+					}
+				};
+	}
+	return out as Port;
+};
+
 const decoder = new TextDecoder();
 
 // `readFileSync(path)`: the bytes of the regular file `path` resolves to, or

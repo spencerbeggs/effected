@@ -592,3 +592,89 @@ describe("sync port readDirectory withFileTypes", () => {
 		}),
 	);
 });
+
+describe('port pathStyle: "win32"', () => {
+	const win = MemoryFileSystem.makeHandle({
+		"/C:/repo/package.json": `{ "name": "root" }`,
+		"/C:/repo/packages/a/package.json": `{ "name": "a" }`,
+		"/C:/repo/link": MemoryFileSystem.symlink("/C:/repo/packages"),
+	});
+
+	it.effect("maps a drive-letter path onto the volume's /C: directory, backslashes or slashes", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const sync = MemoryFileSystem.syncFileSystem(volume, { pathStyle: "win32" });
+			assert.strictEqual(sync.readFile("C:\\repo\\package.json"), `{ "name": "root" }`);
+			assert.strictEqual(sync.readFile("C:/repo/package.json"), `{ "name": "root" }`);
+			assert.isTrue(sync.exists("C:\\repo\\packages\\a"));
+			assert.isTrue(sync.isDirectory("C:\\repo\\link"));
+			assert.deepStrictEqual(sync.readDirectory("C:\\repo"), ["link", "package.json", "packages"]);
+			assert.deepStrictEqual(
+				sync.readDirectory("C:\\repo\\link", { withFileTypes: true }).map((d) => d.name),
+				["a"],
+			);
+			assert.isTrue(sync.stat("C:\\").isDirectory());
+			assert.isTrue(sync.lstat("C:\\repo\\link").isSymbolicLink());
+		}),
+	);
+
+	it.effect("errors carry the caller's own spelling, in the path and the message", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const sync = MemoryFileSystem.syncFileSystem(volume, { pathStyle: "win32" });
+			const error = thrown(() => sync.readFile("C:\\repo\\absent.json")) as { message?: string } & ReturnType<
+				typeof thrown
+			>;
+			assert.deepInclude(error, { code: "ENOENT", syscall: "open", path: "C:\\repo\\absent.json" });
+			assert.strictEqual(error.message, "ENOENT: no such file or directory, open 'C:\\repo\\absent.json'");
+			assert.isFalse(sync.exists("D:\\repo"));
+		}),
+	);
+
+	it.effect("faults see the caller's spelling", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const seen: Array<string> = [];
+			const sync = MemoryFileSystem.syncFileSystem(volume, {
+				pathStyle: "win32",
+				faults: {
+					readFile: (path) => {
+						seen.push(path);
+						return undefined;
+					},
+				},
+			});
+			sync.readFile("C:\\repo\\package.json");
+			assert.deepStrictEqual(seen, ["C:\\repo\\package.json"]);
+		}),
+	);
+
+	it.effect("the promises port takes it too, rejecting with the caller's spelling", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const fsp = MemoryFileSystem.promisesFileSystem(volume, { pathStyle: "win32" });
+			assert.strictEqual(
+				yield* Effect.promise(() => fsp.readFile("C:\\repo\\package.json", "utf8")),
+				`{ "name": "root" }`,
+			);
+			const dirents = yield* Effect.promise(() => fsp.readdir("C:\\repo", { withFileTypes: true }));
+			assert.isTrue(dirents.find((d) => d.name === "link")?.isSymbolicLink());
+			const error = yield* Effect.promise(() =>
+				fsp.stat("C:\\nope").then(
+					() => undefined,
+					(e: { code: string; path: string }) => e,
+				),
+			);
+			assert.deepInclude(error, { code: "ENOENT", path: "C:\\nope" });
+		}),
+	);
+
+	it.effect('"posix" (the default) leaves a backslashed path alone', () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.isFalse(sync.exists("C:\\repo\\package.json"));
+			assert.isTrue(sync.exists("/C:/repo/package.json"));
+		}),
+	);
+});
