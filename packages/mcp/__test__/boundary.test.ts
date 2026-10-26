@@ -14,7 +14,7 @@ describe("mcp boundary", () => {
 		);
 
 		it.effect(
-			"no source file reads process, imports a node:, platform or kit module, or writes to stdout or the console",
+			"no source file reads process, imports a node:, platform or kit module, or writes to stdout or the console, outside the ./node licence",
 			() =>
 				Effect.gen(function* () {
 					const scan = yield* SourceBoundary.scan({
@@ -26,11 +26,20 @@ describe("mcp boundary", () => {
 							"console",
 							{ forbidImports: ["node:*", "@effect/platform*", "@effected/cli", "@effected/workspaces"] },
 						],
+						// The ./node subpath's one licence: StdioCapture imports node:async_hooks. Its host is
+						// structural, so it reads no `process` and the other rules hold there too.
+						allowRules: { forbidImports: ["StdioCapture.ts"] },
 					});
 					assert.include(scan.files, "McpStdio.ts", "the scan read the real tree");
+					assert.include(scan.files, "StdioCapture.ts", "the scan read the ./node module");
 					assert.isAbove(scan.files.length, 2);
 					assert.deepStrictEqual(scan.allowed, []);
 					assert.deepStrictEqual(scan.violations, []);
+					assert.deepStrictEqual(
+						scan.waived.map((offence) => `${offence.file} ${offence.rule} ${offence.detail}`),
+						["StdioCapture.ts forbidImports node:async_hooks"],
+						"the licence waives exactly one import",
+					);
 				}),
 		);
 	});

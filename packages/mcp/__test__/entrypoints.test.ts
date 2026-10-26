@@ -102,6 +102,20 @@ describe("entrypoint boundary", () => {
 		assert.isTrue([...reachable].some((file) => /src\/McpHarness\.ts$/.test(file)));
 	});
 
+	it("nothing reachable from `.` or ./testing reaches the Node-only ./node modules", () => {
+		for (const entry of ["index.ts", "testing.ts"]) {
+			const offenders = [...reachableFrom(resolve(SRC, entry))].filter((file) =>
+				/src\/(node|StdioCapture)\.ts$/.test(file),
+			);
+			assert.deepStrictEqual(offenders, [], `${entry} must not load node:async_hooks`);
+		}
+	});
+
+	it("positive control: ./node DOES reach StdioCapture", () => {
+		const reachable = reachableFrom(resolve(SRC, "node.ts"));
+		assert.isTrue([...reachable].some((file) => /src\/StdioCapture\.ts$/.test(file)));
+	});
+
 	it("the walker resolves the main entry's modules, or it proves nothing", () => {
 		const reachable = reachableFrom(resolve(SRC, "index.ts"));
 		assert.isTrue([...reachable].some((file) => /src\/McpStdio\.ts$/.test(file)));

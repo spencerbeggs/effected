@@ -24,6 +24,7 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./guard": "./src/guard.ts",
+		"./node": "./src/node.ts",
 		"./testing": "./src/testing.ts",
 		"./package.json": "./package.json"
 	},

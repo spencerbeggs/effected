@@ -2,7 +2,9 @@
 
 The boundary layer of an `effect/ai` MCP server: stdio wiring that
 keeps stdout the JSON-RPC wire, tool-failure shaping, and strict-input
-walkers — plus a `./testing` subpath for driving a built server from a test.
+walkers, structured outcomes and idempotent replay — plus a Node-only
+`./node` subpath (stdio capture) and a `./testing` subpath for driving a
+built server from a test.
 Protocol handling, tool registration and the wire format stay core's; this
 package fixes the defaults consumers kept getting wrong.
 
@@ -11,12 +13,15 @@ surface, the stdio launch/teardown shape, the tool-failure message contract,
 or the strict-input walker. `okf/modules/mcp.md` stays `status: draft` until
 the user verifies it.
 
-## Tier: boundary — no exceptions in `src/`
+## Tier: boundary — one licensed exception in `src/`
 
 `src/` never reads `process` (the guard is `__test__/boundary.test.ts` over
 `SourceBoundary.scan` from `@effected/workspaces/testing`; it skips comments,
 strings, template text and regex bodies, so only a code-level reference
-counts), never imports `node:` or an `@effect/platform*` package,
+counts), never imports `node:` or an `@effect/platform*` package (one
+licensed exception: `src/StdioCapture.ts`, behind `./node`, imports
+`node:async_hooks`; the boundary test pins the waiver to exactly that one
+offence),
 and never calls `console.*`. `Console` is reached only through core's
 `Console.Console` reference. stdout is the JSON-RPC wire; any unguarded write
 to it corrupts the protocol.
@@ -42,7 +47,10 @@ that ships `./guard`.
 `teardown`), `McpToolkit` (`layer`), `ToolFailure` (`fields`, `message`,
 `truncate`, `ECHO_LIMIT`, `ENGINE_ECHO_LIMIT`), `ToolInputSchema`
 (`unknownKeys`, `formatUnknownKeys`, `objectRooted`), `ToolOutputSchema`
-(`objectRooted`), `ToolRefusal` (`refuse`), plus the
+(`objectRooted`), `ToolRefusal` (`refuse`), `ToolOutcome` (`ok`, `error`,
+`envelope`, `failure`, `catchAsEnvelope`), `ToolReplay` (`marker`,
+`storeKey`, `wrap`), plus the `ToolOutcomeErrorInput`,
+`ToolOutcomeFailure`, `ToolOutcomeFailures`, `ToolReplayOptions`,
 `McpStdioOptions`, `McpLaunchOptions`, `McpToolkitOptions`, `UnionHandlerOptions`, `UnionTool`,
 `UnionToolOptions`, `UnknownKeysLevel` and `FormatUnknownKeysOptions`
 types. `McpToolkit` also carries `unionTool` and `unionHandler`.
@@ -60,6 +68,19 @@ lives in `src/internal/guardLaunch.ts` behind a dynamic `import()`;
 `entrypoints.test.ts` pins the graph (and walks the installed
 `@effected/engine/guard` to zero packages), so a static import added to
 `McpGuard.ts` fails it.
+
+`@effected/mcp/node` (`src/node.ts`): `StdioCapture` (`install`, `discard`;
+instances carry `toStderr`, `run`, `capture`), plus the `StdioCaptureHost`,
+`StdioCaptureOptions`, `StdioCaptureStream` and `StdioSink` types. Node-only
+because of `node:async_hooks`; `entrypoints.test.ts` pins that neither `.`
+nor `./testing` reaches it. `install(process)` patches each stream's
+`write` once per process: the registry (one `AsyncLocalStorage` plus each
+stream's original `write`) lives behind a `globalThis` `Symbol.for` key
+shared across kit copies and is keyed by the STREAM, so two host objects
+over one stream never stack patches. `capture` forks its effect on a
+root fiber started inside the context, with fork and finalizer install
+masked (an interrupt between them orphaned the fiber; the interrupt test
+caught it).
 
 `@effected/mcp/testing` (`src/testing.ts`): `McpHarness` (`make`; instances
 carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `listResources`, `callTool`, `readResource`, `request`,
@@ -204,6 +225,18 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   alone. Only a `unionTool` gets a kit decode (core refuses union roots),
   with the same `errors: "all"` and the same lines. `unknownKeyMessage` on
   both option types is a deprecated no-op, kept for one minor.
+- **`ToolOutcome` and `ToolRefusal` share one error shape**
+  (`ToolFailure.fields` plus `_tag`). A refusal is a declared failure
+  (`isError`, message text only); an outcome is `{ ok: false, error }` on the
+  success channel, delivered as `structuredContent`. `catchAsEnvelope` is
+  typed like core's `catchTags`, so use it inline in the pipe: E is
+  inferred from the piped effect.
+- **`ToolReplay` requires core's `KeyValueStore` in `R`** (never a kit store
+  service), stores through `KeyValueStore.toSchemaStore(store, success)`
+  under `<tool>:<key>`, treats every store or decode failure as a miss or a
+  skipped write (debug-logged), never stores an `ok: false` value, and
+  throws at wrap time on a tool name containing `:`. Replay, not
+  exactly-once.
 - **`McpHarness` lets `ping` through before `initialize`**: a stateful
   server answers it `{}` (Effect-TS/effect PR #8505). Every other request
   still fails `NotInitialized` unsent.
