@@ -1,8 +1,9 @@
 # @effected/engine
 
 Platform-free primitives shared by every front end of an Effect v4 tool:
-distribution identity, remediation, launch context, and transport-neutral
-process crash guards (`./guard`).
+distribution identity, remediation, launch context, a one-permit lane for
+process-global work with its scoped restores, and transport-neutral process
+crash guards (`./guard`).
 
 **Design doc:** `@./okf/modules/engine.md` — Load when: changing the public
 surface, adding a new cross-front-end primitive, or deciding whether a
@@ -16,10 +17,10 @@ capability belongs here versus in `@effected/cli` or a consumer's own
 devDependency edge into `src/`. There is no IO here and nothing to provide
 at the edge.
 
-**Nothing in the kit may depend on this package except `@effected/mcp`.**
-`@effected/cli` must never depend on it — the two sit at the
-same layer, both consumed by a front end, never by each other. Adding a new
-dependent is a new Decision, not a drive-by import.
+**Kit dependents are `@effected/mcp` (peer) and `@effected/cli` (a regular
+dependency, for `CliRuntime.main`'s `distribution` option; user ruling
+2026-10-26).** Adding any other dependent is a new Decision, not a drive-by
+import.
 
 ## Public surface
 
@@ -31,9 +32,28 @@ One module per concept. `src/index.ts` is the only re-exporting module.
   to `R`), `distributionSuffix`.
 - `src/Remediation.ts` — `Remediation` (`Schema.Struct` + type): what a
   caller, usually an agent, should do after a failure.
-- `src/LaunchContext.ts` — `LaunchContext` and `ProjectDirInput`: resolves
-  where a tool launched by an agent host should treat as its project, from
-  caller-supplied `argv`/`env`/`cwd` rather than reading `process` itself.
+- `src/Distribution.ts` also carries `distributionFormatter` (a `--version`
+  line formatter shaped like `CliOutput.Formatter["formatVersion"]`) and
+  `withDistribution` (provides `CurrentDistribution` from a nullable value).
+- `src/LaunchContext.ts` — `LaunchContext` (`usable`, `resolve`,
+  `projectDir`, `isUnsubstituted`), `ProjectDirInput` and `ResolveInput`:
+  resolves launch-supplied locations from caller-supplied `argv`/`env`/`cwd`
+  rather than reading `process` itself. `usable` (trim, reject empty and
+  `${VAR}`) is the one guard; `resolve` returns `Option`; `projectDir` is
+  `resolve` with the `cwd` fallback. No host constant (`CLAUDE_PLUGIN_DATA`)
+  is baked in: callers pass `keys`.
+- `src/Exclusive.ts` — `Exclusive` (`make`, `promise`, instance `run`),
+  `ExclusiveRunOptions`, `ExclusiveTimeout`: a one-permit lane. Queue wait
+  is interruptible; once the permit is held the caller's interrupt is
+  masked; the REQUIRED timeout interrupts only the body; the body's scope
+  closes, then the permit is released, then the caller sees the outcome.
+  `Exclusive.promise` aborts its signal on interrupt and then WAITS for the
+  promise to settle (core's `Effect.promise` abandons it).
+- `src/ProcessScope.ts` — `ProcessScope` (`chdir`, `env`), `ProcessCwdHost`,
+  `ProcessScopeError`: scoped restores of the working directory and an env
+  record. The state is passed in (structural host, plain record), so the
+  module reads no `process`. No temp-dir helper: it would be IO, which this
+  pure tier does not do.
 - `src/ProcessGuard.ts` — `ProcessGuard` (`run`, `parseInjectCrash`) plus the
   `ProcessGuardHost`, `ProcessGuardPolicy`, `ProcessGuardControl`,
   `ProcessGuardOptions` and `ProcessGuardInjection` types: transport-neutral

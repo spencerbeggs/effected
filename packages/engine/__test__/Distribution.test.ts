@@ -1,6 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
-import { CurrentDistribution, Distribution, DistributionField, distributionSuffix } from "../src/index.js";
+import {
+	CurrentDistribution,
+	Distribution,
+	DistributionField,
+	distributionFormatter,
+	distributionSuffix,
+	withDistribution,
+} from "../src/index.js";
 
 describe("Distribution", () => {
 	it("round-trips a plain { name, version } object", () => {
@@ -46,4 +53,30 @@ describe("distributionSuffix", () => {
 			" via @okfit/plugin 0.5.1",
 		);
 	});
+});
+
+describe("distributionFormatter", () => {
+	it("formats a --version line with and without a carrier", () => {
+		assert.strictEqual(distributionFormatter(Option.none())("mytool", "1.2.3"), "mytool 1.2.3");
+		assert.strictEqual(
+			distributionFormatter(Option.some({ name: "@okfit/plugin", version: "0.5.1" }))("okfit", "0.13.0"),
+			"okfit 0.13.0 via @okfit/plugin 0.5.1",
+		);
+	});
+});
+
+const readCurrent = Effect.gen(function* () {
+	return yield* CurrentDistribution;
+});
+
+describe("withDistribution", () => {
+	it.effect("provides a carrier, and none for null or undefined", () =>
+		Effect.gen(function* () {
+			const carrier = { name: "@okfit/plugin", version: "0.5.1" };
+			assert.deepStrictEqual(yield* withDistribution(carrier)(readCurrent), Option.some(carrier));
+			assert.deepStrictEqual(yield* withDistribution(null)(readCurrent), Option.none());
+			const inner = Effect.provideService(readCurrent, CurrentDistribution, Option.some(carrier));
+			assert.deepStrictEqual(yield* withDistribution(undefined)(inner), Option.some(carrier));
+		}),
+	);
 });

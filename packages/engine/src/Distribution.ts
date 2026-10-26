@@ -1,4 +1,4 @@
-import { Context, Option, Schema } from "effect";
+import { Context, Effect, Option, Schema } from "effect";
 
 /**
  * The carrier package a tool's bins were installed through.
@@ -59,3 +59,36 @@ export const distributionSuffix = (distribution: Option.Option<Distribution>): s
 		onNone: () => "",
 		onSome: ({ name, version }) => ` via ${name} ${version}`,
 	});
+
+/**
+ * A `--version` line formatter that appends {@link distributionSuffix}:
+ * `(name, version) => "<name> <version>[ via <carrier> <version>]"`.
+ *
+ * @remarks
+ * Shaped like `effect/cli`'s `CliOutput.Formatter["formatVersion"]`, so a CLI
+ * front end can install it directly. The suffix is computed once, when the
+ * formatter is made, because the distribution is known at `main`.
+ *
+ * @public
+ */
+export const distributionFormatter = (
+	distribution: Option.Option<Distribution>,
+): ((name: string, version: string) => string) => {
+	const suffix = distributionSuffix(distribution);
+	return (name, version) => `${name} ${version}${suffix}`;
+};
+
+/**
+ * Provides {@link CurrentDistribution} to `self`: `Option.some` of a carrier,
+ * `Option.none()` for `null` or `undefined` (a direct install).
+ *
+ * @remarks
+ * The one-line form of what a front end's `main` does once at the top of its
+ * program. Data-last, for `pipe`.
+ *
+ * @public
+ */
+export const withDistribution =
+	(distribution: Distribution | null | undefined) =>
+	<A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+		Effect.provideService(self, CurrentDistribution, Option.fromNullishOr(distribution));

@@ -1,3 +1,5 @@
+import { Option } from "effect";
+
 /**
  * The process-derived facts a front end resolves once, passed in as values.
  *
@@ -23,6 +25,14 @@ export interface ProjectDirInput {
 	/** The fallback, usually `process.cwd()`. */
 	readonly cwd: string;
 }
+
+/**
+ * The parameter shape {@link LaunchContext.resolve} takes: {@link ProjectDirInput}
+ * without its `cwd` fallback.
+ *
+ * @public
+ */
+export type ResolveInput = Omit<ProjectDirInput, "cwd">;
 
 /**
  * Resolves where a tool launched by an agent host should treat as its project.
@@ -61,25 +71,59 @@ export class LaunchContext {
 	};
 
 	/**
-	 * The first usable argv value, then the first usable env value in `keys`
-	 * order, then `cwd`. A value is usable when it is non-empty after trimming
-	 * and carries no placeholder — `??` would return an empty string or a literal
-	 * `${VAR}`, neither of which names a directory.
+	 * `value` trimmed, when it names something: `Option.none()` for `undefined`,
+	 * an empty or whitespace-only string, or a string still carrying a literal
+	 * `${VAR}` placeholder ({@link LaunchContext.isUnsubstituted}).
+	 *
+	 * @remarks
+	 * The guard every resolver here applies; use it directly for one positional
+	 * argument, as in `LaunchContext.usable(argv[2])`. `??` would accept an empty
+	 * string or a literal `${VAR}`, neither of which names a directory or an id.
 	 */
-	static readonly projectDir = (input: ProjectDirInput): string => {
-		const usable = (value: string | undefined): string | undefined => {
-			if (value === undefined) return undefined;
-			const trimmed = value.trim();
-			return trimmed === "" || LaunchContext.isUnsubstituted(trimmed) ? undefined : trimmed;
-		};
+	static readonly usable = (value: string | undefined): Option.Option<string> => {
+		if (value === undefined) return Option.none();
+		const trimmed = value.trim();
+		return trimmed === "" || LaunchContext.isUnsubstituted(trimmed) ? Option.none() : Option.some(trimmed);
+	};
+
+	/**
+	 * The first {@link LaunchContext.usable} `argv` value, then the first usable
+	 * `env` value in `keys` order; `Option.none()` when none is usable.
+	 *
+	 * @remarks
+	 * The resolver under {@link LaunchContext.projectDir}, without its `cwd`
+	 * fallback, for any launch-supplied location: a host's plugin data
+	 * directory, then an app override, with the caller's own fallback after
+	 * it. Values are trimmed, so a value with surrounding whitespace resolves to
+	 * the trimmed path.
+	 *
+	 * @example
+	 * ```ts
+	 * import { LaunchContext } from "@effected/engine"
+	 * import { Option } from "effect"
+	 *
+	 * const dataDir = LaunchContext.resolve({ env, keys: ["CLAUDE_PLUGIN_DATA", "MYTOOL_DATA_DIR"] }).pipe(
+	 * 	Option.getOrElse(() => `${home}/.mytool`),
+	 * )
+	 * ```
+	 */
+	static readonly resolve = (input: ResolveInput): Option.Option<string> => {
 		for (const value of input.argv ?? []) {
-			const found = usable(value);
-			if (found !== undefined) return found;
+			const found = LaunchContext.usable(value);
+			if (Option.isSome(found)) return found;
 		}
 		for (const key of input.keys) {
-			const found = usable(input.env[key]);
-			if (found !== undefined) return found;
+			const found = LaunchContext.usable(input.env[key]);
+			if (Option.isSome(found)) return found;
 		}
-		return input.cwd;
+		return Option.none();
 	};
+
+	/**
+	 * The first usable argv value, then the first usable env value in `keys`
+	 * order, then `cwd`: {@link LaunchContext.resolve} with `cwd` as the
+	 * fallback.
+	 */
+	static readonly projectDir = (input: ProjectDirInput): string =>
+		Option.getOrElse(LaunchContext.resolve(input), () => input.cwd);
 }

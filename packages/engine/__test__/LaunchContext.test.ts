@@ -1,6 +1,6 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: the fixtures are unsubstituted ${...} launch placeholders, and a literal placeholder is what the tests assert on
 import { assert, describe, it } from "@effect/vitest";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import { LaunchContext } from "../src/index.js";
 
 const keys = ["OKFIT_PROJECT_DIR", "CLAUDE_PROJECT_DIR"] as const;
@@ -96,4 +96,36 @@ describe("LaunchContext.isUnsubstituted", () => {
 		assert.isFalse(LaunchContext.isUnsubstituted(hostile));
 		assert.isBelow(performance.now() - started, 100);
 	});
+});
+
+describe("LaunchContext.usable", () => {
+	it("trims a real value and rejects undefined, empty, whitespace-only and placeholder values", () => {
+		assert.deepStrictEqual(LaunchContext.usable("  /work  "), Option.some("/work"));
+		for (const value of [undefined, "", "  \t", "${CLAUDE_PLUGIN_DATA}", " ${X}/sub "]) {
+			assert.deepStrictEqual(LaunchContext.usable(value), Option.none(), JSON.stringify(value));
+		}
+	});
+});
+
+describe("LaunchContext.resolve", () => {
+	it("prefers argv, then env keys in order, and misses with none", () => {
+		assert.deepStrictEqual(
+			LaunchContext.resolve({ argv: ["", "/argv"], env: { CLAUDE_PROJECT_DIR: "/env" }, keys }),
+			Option.some("/argv"),
+		);
+		assert.deepStrictEqual(
+			LaunchContext.resolve({ env: { OKFIT_PROJECT_DIR: "${OKFIT_PROJECT_DIR}", CLAUDE_PROJECT_DIR: "/b" }, keys }),
+			Option.some("/b"),
+		);
+		assert.deepStrictEqual(LaunchContext.resolve({ env: {}, keys }), Option.none());
+	});
+
+	it.prop(
+		"projectDir is resolve with cwd as the fallback",
+		{ argv: Schema.Array(EdgeString), env: EnvArb, cwd: Schema.String },
+		({ argv, env, cwd }) =>
+			LaunchContext.projectDir({ argv, env, keys, cwd }) ===
+			Option.getOrElse(LaunchContext.resolve({ argv, env, keys }), () => cwd),
+		{ arbitrary: { runs: 200 } },
+	);
 });

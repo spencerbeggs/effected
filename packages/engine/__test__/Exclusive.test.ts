@@ -1,0 +1,284 @@
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Exit, Fiber, Latch } from "effect";
+import { TestClock } from "effect/testing";
+import { Exclusive, ExclusiveTimeout } from "../src/index.js";
+
+const timeout = { timeout: "1 minute" } as const;
+
+/** Yields to the scheduler enough times for forked fibers to reach their next suspension. */
+const settle = Effect.repeat(Effect.yieldNow, { times: 20 });
+
+describe("Exclusive.run", () => {
+	it.effect("returns the body's value and propagates its failure", () =>
+		Effect.gen(function* () {
+			const lane = yield* Exclusive.make;
+			assert.strictEqual(yield* lane.run(Effect.succeed(7), timeout), 7);
+			const failed = yield* Effect.flip(lane.run(Effect.fail("boom" as const), timeout));
+			assert.strictEqual(failed, "boom");
+		}),
+	);
+
+	it.effect("serializes two calls: the second body starts only after the first ends", () =>
+		Effect.gen(function* () {
+			const lane = yield* Exclusive.make;
+			const gate = yield* Latch.make();
+			const log: Array<string> = [];
+			const first = yield* Effect.forkChild(
+				lane.run(
+					Effect.gen(function* () {
+						log.push("first:start");
+						yield* gate.await;
+						log.push("first:end");
+					}),
+					timeout,
+				),
+			);
+			yield* settle;
+			const second = yield* Effect.forkChild(
+				lane.run(
+					Effect.sync(() => log.push("second:start")),
+					timeout,
+				),
+			);
+			yield* settle;
+			assert.deepStrictEqual(log, ["first:start"]);
+			yield* gate.open;
+			yield* Fiber.join(first);
+			yield* Fiber.join(second);
+			assert.deepStrictEqual(log, ["first:start", "first:end", "second:start"]);
+		}),
+	);
+
+	it.effect("a cancel while holding the permit waits for the body; the next call still waits for the real work", () =>
+		Effect.gen(function* () {
+			const lane = yield* Exclusive.make;
+			const started = yield* Latch.make();
+			const gate = yield* Latch.make();
+			const log: Array<string> = [];
+			const first = yield* Effect.forkChild(
+				lane.run(
+					Effect.gen(function* () {
+						yield* started.open;
+						yield* gate.await;
+						log.push("first:end");
+					}),
+					timeout,
+				),
+			);
+			yield* started.await;
+			const second = yield* Effect.forkChild(
+				lane.run(
+					Effect.sync(() => log.push("second:start")),
+					timeout,
+				),
+			);
+			const cancel = yield* Effect.forkChild(Fiber.interrupt(first));
+			yield* settle;
+			assert.isUndefined(cancel.pollUnsafe(), "the cancel waits for the body");
+			assert.deepStrictEqual(log, [], "the queued call has not run");
+			yield* gate.open;
+			yield* Fiber.join(cancel);
+			yield* Fiber.join(second);
+			assert.deepStrictEqual(log, ["first:end", "second:start"]);
+			const firstExit = yield* Fiber.await(first);
+			assert.isTrue(Exit.hasInterrupts(firstExit), "the cancelled caller sees its interruption");
+		}),
+	);
+
+	it.effect("a cancel while queued leaves the queue; the body never runs", () =>
+		Effect.gen(function* () {
+			const lane = yield* Exclusive.make;
+			const started = yield* Latch.make();
+			const gate = yield* Latch.make();
+			let ran = false;
+			const first = yield* Effect.forkChild(lane.run(Effect.andThen(started.open, gate.await), timeout));
+			yield* started.await;
+			const queued = yield* Effect.forkChild(
+				lane.run(
+					Effect.sync(() => (ran = true)),
+					timeout,
+				),
+			);
+			yield* settle;
+			yield* Fiber.interrupt(queued);
+			yield* gate.open;
+			yield* Fiber.join(first);
+			const after = yield* lane.run(Effect.succeed("free"), timeout);
+			assert.isFalse(ran);
+			assert.strictEqual(after, "free", "the permit was not leaked by the cancelled waiter");
+		}),
+	);
+
+	it.effect("the timeout interrupts the body; its finalizers run before the permit is released", () =>
+		Effect.gen(function* () {
+			const lane = yield* Exclusive.make;
+			const log: Array<string> = [];
+			const hung = Effect.gen(function* () {
+				yield* Effect.addFinalizer(() => Effect.sync(() => log.push("restore")));
+				log.push("hung:start");
+				return yield* Effect.never;
+			});
+			const first = yield* Effect.forkChild(lane.run(hung, { timeout: "10 seconds" }));
+			yield* settle;
+			const second = yield* Effect.forkChild(
+				lane.run(
+					Effect.sync(() => log.push("second:start")),
+					timeout,
+				),
+			);
+			yield* settle;
+			yield* TestClock.adjust("9 seconds");
+			assert.deepStrictEqual(log, ["hung:start"], "not yet timed out");
+			yield* TestClock.adjust("1 second");
+			const error = yield* Effect.flip(Fiber.join(first));
+			yield* Fiber.join(second);
+			assert.instanceOf(error, ExclusiveTimeout);
+			assert.strictEqual(error.timeout, "10s");
+			assert.deepStrictEqual(log, ["hung:start", "restore", "second:start"]);
+		}),
+	);
+
+	it.effect("a body that finishes inside the timeout is never reported as timed out", () =>
+		Effect.gen(function* () {
+			const lane = yield* Exclusive.make;
+			const run = yield* Effect.forkChild(
+				lane.run(Effect.as(Effect.sleep("5 seconds"), "done"), { timeout: "10 seconds" }),
+			);
+			yield* settle;
+			yield* TestClock.adjust("5 seconds");
+			assert.strictEqual(yield* Fiber.join(run), "done");
+		}),
+	);
+});
+
+describe("Exclusive.run edges", () => {
+	it.effect("not reentrant: a nested run on the same lane surfaces as the outer ExclusiveTimeout", () =>
+		Effect.gen(function* () {
+			const lane = yield* Exclusive.make;
+			let innerRan = false;
+			const outer = yield* Effect.forkChild(
+				lane.run(
+					lane.run(
+						Effect.sync(() => (innerRan = true)),
+						timeout,
+					),
+					{ timeout: "10 seconds" },
+				),
+			);
+			yield* settle;
+			yield* TestClock.adjust("10 seconds");
+			const error = yield* Effect.flip(Fiber.join(outer));
+			assert.instanceOf(error, ExclusiveTimeout);
+			assert.isFalse(innerRan);
+			assert.strictEqual(yield* lane.run(Effect.succeed("free"), timeout), "free", "the permit was released");
+		}),
+	);
+
+	it.effect("leaves no live child in the caller's fiber: the timer is stopped when the body ends", () =>
+		Effect.gen(function* () {
+			const lane = yield* Exclusive.make;
+			// `children()` is FiberImpl's (internal/effect.ts), not on the public Fiber interface; it is the only
+			// observation of a forkChild child that outlives the call it was forked for.
+			const liveChildren = Effect.withFiber((fiber) =>
+				Effect.succeed((fiber as unknown as { children(): Set<unknown> }).children().size),
+			);
+			const before = yield* liveChildren;
+			for (let i = 0; i < 3; i++) yield* lane.run(Effect.void, { timeout: "1 hour" });
+			assert.strictEqual(yield* liveChildren, before);
+		}),
+	);
+});
+
+describe("Exclusive.promise", () => {
+	it.live("an interrupt aborts the signal and then waits for the promise to settle", () =>
+		Effect.gen(function* () {
+			const events: Array<string> = [];
+			const fiber = yield* Effect.forkChild(
+				Exclusive.promise({
+					try: (signal) =>
+						new Promise<string>((resolve) => {
+							signal.addEventListener("abort", () => events.push("abort"));
+							setTimeout(() => {
+								events.push("settled");
+								resolve("late");
+							}, 30);
+						}),
+					catch: (cause) => cause,
+				}),
+			);
+			yield* Effect.sleep("5 millis");
+			yield* Fiber.interrupt(fiber);
+			events.push("interrupt-returned");
+			assert.deepStrictEqual(events, ["abort", "settled", "interrupt-returned"]);
+		}),
+	);
+
+	it.live("control: Effect.promise abandons the promise, so its interrupt returns first", () =>
+		Effect.gen(function* () {
+			const events: Array<string> = [];
+			const fiber = yield* Effect.forkChild(
+				Effect.promise(
+					() =>
+						new Promise<void>((resolve) =>
+							setTimeout(() => {
+								events.push("settled");
+								resolve();
+							}, 30),
+						),
+				),
+			);
+			yield* Effect.sleep("5 millis");
+			yield* Fiber.interrupt(fiber);
+			events.push("interrupt-returned");
+			yield* Effect.sleep("40 millis");
+			assert.deepStrictEqual(events, ["interrupt-returned", "settled"]);
+		}),
+	);
+
+	it.effect("maps a rejection and a synchronous throw through catch", () =>
+		Effect.gen(function* () {
+			const rejected = yield* Effect.flip(
+				Exclusive.promise({ try: () => Promise.reject(new Error("no")), catch: (cause) => `caught:${String(cause)}` }),
+			);
+			assert.strictEqual(rejected, "caught:Error: no");
+			const thrown = yield* Effect.flip(
+				Exclusive.promise({
+					try: () => {
+						throw new Error("sync");
+					},
+					catch: (cause) => `caught:${String(cause)}`,
+				}),
+			);
+			assert.strictEqual(thrown, "caught:Error: sync");
+		}),
+	);
+
+	it.live("as a lane body, a timeout waits for the promise before releasing the permit", () =>
+		Effect.gen(function* () {
+			const lane = yield* Exclusive.make;
+			const events: Array<string> = [];
+			const body = Exclusive.promise({
+				try: () =>
+					new Promise<void>((resolve) =>
+						setTimeout(() => {
+							events.push("settled");
+							resolve();
+						}, 40),
+					),
+				catch: (cause) => cause,
+			});
+			const first = yield* Effect.forkChild(lane.run(body, { timeout: "5 millis" }));
+			yield* Effect.sleep("1 millis");
+			const second = yield* Effect.forkChild(
+				lane.run(
+					Effect.sync(() => events.push("second")),
+					timeout,
+				),
+			);
+			const error = yield* Effect.flip(Fiber.join(first));
+			yield* Fiber.join(second);
+			assert.instanceOf(error, ExclusiveTimeout);
+			assert.deepStrictEqual(events, ["settled", "second"]);
+		}),
+	);
+});

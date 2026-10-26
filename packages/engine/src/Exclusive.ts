@@ -1,0 +1,157 @@
+import type { Scope } from "effect";
+import { Duration, Effect, Exit, Fiber, Schema, Semaphore } from "effect";
+
+/**
+ * {@link Exclusive.run}'s required options.
+ *
+ * @public
+ */
+export interface ExclusiveRunOptions {
+	/**
+	 * How long the body may run once it holds the permit. Required: a lane
+	 * that mutates process-global state must not be held forever by a body
+	 * that never settles. The timeout interrupts the body; it never releases
+	 * the permit before the body's finalizers have run.
+	 */
+	readonly timeout: Duration.Input;
+}
+
+/**
+ * The body of an {@link Exclusive.run} call ran past its timeout and was
+ * interrupted. Its finalizers had run, and the permit was released, by the
+ * time the caller sees this.
+ *
+ * @remarks
+ * Audience: calling code, which usually folds it into its own outcome (a tool
+ * result's `{ kind: "timeout" }`). `timeout` is the formatted duration.
+ *
+ * @public
+ */
+export class ExclusiveTimeout extends Schema.TaggedError<ExclusiveTimeout>()("ExclusiveTimeout", {
+	timeout: Schema.String,
+	message: Schema.String,
+}) {}
+
+/**
+ * A one-permit lane for work that mutates process-global state (the working
+ * directory, the environment, a patched stream), so two requests never
+ * interleave it and the state is restored before the next one starts.
+ *
+ * @remarks
+ * Ordering, on every exit path:
+ *
+ * 1. Waiting for the permit is interruptible: a request cancelled while it is
+ *    queued leaves the queue and never runs.
+ * 2. Once the permit is held, the caller's interruption is masked until the
+ *    body ends. A transport that maps a client cancel to an interrupt (an MCP
+ *    server does) only drops the response; the next request still waits for
+ *    the real work to finish.
+ * 3. The required timeout interrupts the body, and only the body.
+ * 4. The body runs in its own `Scope`: its finalizers (restoring the working
+ *    directory or the environment with {@link ProcessScope}, removing a temp
+ *    directory) run, then the permit is released, then the caller sees the
+ *    result, an {@link ExclusiveTimeout}, or its own deferred interruption.
+ *
+ * A body that ignores interruption delays its timeout and the permit release
+ * until it settles: a bare `Effect.promise`, an uninterruptible region. That is
+ * deliberate, because releasing the permit while process state is still being
+ * changed is the bug this lane exists to prevent. Run promise work through
+ * {@link Exclusive.promise}, whose interruption aborts the signal and then
+ * waits for the promise to settle; `Effect.promise` would abandon it.
+ *
+ * **Not reentrant.** A `run` on the same lane from inside a body waits for the
+ * permit its own caller holds. It never gets it: the nested call waits until
+ * the outer timeout fires, which interrupts the body (and the nested wait with
+ * it), so the outer `run` fails with {@link ExclusiveTimeout}. Call the inner
+ * work directly instead of through the lane again.
+ *
+ * @example
+ * ```ts
+ * import { Exclusive, ProcessScope } from "@effected/engine"
+ * import { Effect } from "effect"
+ *
+ * const lane = yield* Exclusive.make
+ * const result = yield* lane.run(
+ * 	Effect.gen(function* () {
+ * 		yield* ProcessScope.chdir(process, root)
+ * 		return yield* Exclusive.promise({ try: (signal) => runTool(signal), catch: (cause) => new ToolFailed({ cause }) })
+ * 	}),
+ * 	{ timeout: "2 minutes" },
+ * )
+ * ```
+ *
+ * @public
+ */
+export class Exclusive {
+	private constructor(private readonly semaphore: Semaphore.Semaphore) {}
+
+	/** A new lane with one permit. Bind it once (a module-level or layer-built value); every call shares it. */
+	static readonly make: Effect.Effect<Exclusive> = Effect.map(
+		Semaphore.make(1),
+		(semaphore) => new Exclusive(semaphore),
+	);
+
+	/**
+	 * A promise whose interruption aborts `signal` and then waits for the
+	 * promise to settle, rather than abandoning it as `Effect.promise` and
+	 * `Effect.tryPromise` do. A rejection, or a synchronous throw from `try`,
+	 * fails through `catch`.
+	 */
+	static readonly promise = <A, E>(options: {
+		readonly try: (signal: AbortSignal) => PromiseLike<A>;
+		readonly catch: (cause: unknown) => E;
+	}): Effect.Effect<A, E> =>
+		Effect.callback<A, E>((resume, signal) => {
+			let settled: Promise<A>;
+			try {
+				settled = Promise.resolve(options.try(signal));
+			} catch (cause) {
+				resume(Effect.fail(options.catch(cause)));
+				return;
+			}
+			settled.then(
+				(value) => resume(Effect.succeed(value)),
+				(cause: unknown) => resume(Effect.fail(options.catch(cause))),
+			);
+			return Effect.promise(() =>
+				settled.then(
+					() => undefined,
+					() => undefined,
+				),
+			);
+		});
+
+	/**
+	 * Runs `body` holding this lane's permit, under the ordering in the class
+	 * remarks. `body` gets its own `Scope`, closed before the permit is released.
+	 */
+	readonly run = <A, E, R>(
+		body: Effect.Effect<A, E, R>,
+		options: ExclusiveRunOptions,
+	): Effect.Effect<A, E | ExclusiveTimeout, Exclude<R, Scope.Scope>> => {
+		const timeout = Duration.fromInputUnsafe(options.timeout);
+		const lane = Effect.gen(function* () {
+			let timedOut = false;
+			// A child forked from this masked region starts interruptible, so the timer can interrupt it.
+			const work = yield* Effect.forkChild(Effect.scoped(body));
+			const timer = yield* Effect.forkChild(
+				Effect.sleep(timeout).pipe(
+					Effect.andThen(
+						Effect.suspend(() => {
+							timedOut = true;
+							return Fiber.interrupt(work);
+						}),
+					),
+				),
+			);
+			const exit = yield* Fiber.await(work);
+			yield* Fiber.interrupt(timer);
+			if (timedOut && Exit.hasInterrupts(exit)) {
+				const formatted = Duration.format(timeout);
+				return yield* new ExclusiveTimeout({ timeout: formatted, message: `Timed out after ${formatted}.` });
+			}
+			return yield* exit;
+		});
+		return this.semaphore.withPermit(Effect.uninterruptible(lane)).pipe(Effect.withSpan("Exclusive.run"));
+	};
+}

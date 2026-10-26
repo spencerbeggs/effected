@@ -3,6 +3,15 @@
  *
  * @packageDocumentation
  */
-export { CurrentDistribution, Distribution, DistributionField, distributionSuffix } from "./Distribution.js";
-export { LaunchContext, type ProjectDirInput } from "./LaunchContext.js";
+export {
+	CurrentDistribution,
+	Distribution,
+	DistributionField,
+	distributionFormatter,
+	distributionSuffix,
+	withDistribution,
+} from "./Distribution.js";
+export { Exclusive, type ExclusiveRunOptions, ExclusiveTimeout } from "./Exclusive.js";
+export { LaunchContext, type ProjectDirInput, type ResolveInput } from "./LaunchContext.js";
+export { type ProcessCwdHost, ProcessScope, ProcessScopeError } from "./ProcessScope.js";
 export { Remediation } from "./Remediation.js";
