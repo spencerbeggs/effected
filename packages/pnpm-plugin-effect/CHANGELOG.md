@@ -1,5 +1,17 @@
 # @effected/pnpm-plugin-effect
 
+## 0.18.7
+
+### Maintenance
+
+#### Updates 1 catalog:effected version
+
+- `@effected/github` ^0.25.0 -> ^0.25.1 (peer ^0.25.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
 ## 0.18.6
 
 ### Maintenance

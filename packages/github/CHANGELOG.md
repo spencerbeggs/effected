@@ -1,5 +1,15 @@
 # @effected/github
 
+## 0.25.1
+
+### Maintenance
+
+- Bump ocx-parser
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.25.0
 
 ### Breaking Changes
