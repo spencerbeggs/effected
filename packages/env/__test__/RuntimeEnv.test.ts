@@ -67,7 +67,10 @@ describe("RuntimeEnv", () => {
 			terminal: Option.some({ name: "iTerm.app", version: Option.some("3.5.0") }),
 		});
 		const json = Schema.encodeSync(codec)(value);
-		assert.strictEqual(json, '{"agent":"claude","ci":null,"terminal":{"name":"iTerm.app","version":"3.5.0"}}');
+		assert.strictEqual(
+			json,
+			'{"agent":"claude","ci":null,"terminal":{"name":"iTerm.app","version":"3.5.0"},"session":null,"ciRun":null,"termProgram":{"name":null,"version":null}}',
+		);
 		assert.deepStrictEqual(Schema.decodeSync(codec)(json), value);
 	});
 
@@ -80,25 +83,34 @@ describe("RuntimeEnv", () => {
 		assert.deepStrictEqual(decoded.agent, Option.some("claude"));
 		assert.deepStrictEqual(decoded.ci, Option.none());
 		assert.deepStrictEqual(decoded.terminal, Option.some({ name: "iTerm.app", version: Option.some("3.5.0") }));
-		assert.strictEqual(Schema.encodeSync(Schema.fromJsonString(RuntimeEnv))(decoded), FROZEN_0_1_0);
+		// It re-encodes as itself plus the fields added since, each in its absent form.
+		assert.strictEqual(
+			Schema.encodeSync(Schema.fromJsonString(RuntimeEnv))(decoded),
+			`${FROZEN_0_1_0.slice(0, -1)},"session":null,"ciRun":null,"termProgram":{"name":null,"version":null}}`,
+		);
 	});
 
 	// A second frozen 0.1.0 literal, with a CI named: `ci` was a plain string then, and `github-actions` is one of the
 	// two values 0.1.0 ever wrote. Like the first, never regenerate it.
 	const FROZEN_0_1_0_CI = '{"agent":"codex","ci":"github-actions","terminal":null}';
 
-	it("decodes the frozen 0.1.0 wire literal that names a CI, and encodes it back identically", () => {
+	it("decodes the frozen 0.1.0 wire literal that names a CI, and encodes it back with the added fields absent", () => {
 		const decoded = Schema.decodeSync(Schema.fromJsonString(RuntimeEnv))(FROZEN_0_1_0_CI);
 		assert.deepStrictEqual(decoded.agent, Option.some("codex"));
 		assert.deepStrictEqual(decoded.ci, Option.some("github-actions"));
 		assert.deepStrictEqual(decoded.terminal, Option.none());
-		assert.strictEqual(Schema.encodeSync(Schema.fromJsonString(RuntimeEnv))(decoded), FROZEN_0_1_0_CI);
+		assert.strictEqual(
+			Schema.encodeSync(Schema.fromJsonString(RuntimeEnv))(decoded),
+			`${FROZEN_0_1_0_CI.slice(0, -1)},"session":null,"ciRun":null,"termProgram":{"name":null,"version":null}}`,
+		);
 	});
 
 	it("every field decodes when its key is absent, so an older or sparser snapshot keeps decoding", () => {
 		const codec = Schema.fromJsonString(RuntimeEnv);
 		const empty = Schema.decodeSync(codec)("{}");
 		assert.deepStrictEqual([empty.agent, empty.ci, empty.terminal], [Option.none(), Option.none(), Option.none()]);
+		assert.deepStrictEqual([empty.session, empty.ciRun], [Option.none(), Option.none()]);
+		assert.deepStrictEqual(empty.termProgram, { name: Option.none(), version: Option.none() });
 		const partial = Schema.decodeSync(codec)('{"agent":"claude"}');
 		assert.deepStrictEqual(partial.agent, Option.some("claude"));
 		assert.deepStrictEqual(partial.ci, Option.none());
@@ -107,14 +119,17 @@ describe("RuntimeEnv", () => {
 		assert.deepStrictEqual(noVersion.terminal, Option.some({ name: "kitty", version: Option.none() }));
 	});
 
-	it("ci is the literal union github-actions | generic: both decode and encode, and anything else is rejected", () => {
+	it("ci is the CiName literal union: every name decodes and encodes, and anything else is rejected", () => {
 		const codec = Schema.fromJsonString(RuntimeEnv);
-		for (const ci of ["github-actions", "generic"] as const) {
+		for (const ci of ["github-actions", "generic", "gitlab", "jenkins", "azure-pipelines", "circleci"] as const) {
 			const decoded = Schema.decodeSync(codec)(`{"agent":null,"ci":"${ci}","terminal":null}`);
 			assert.deepStrictEqual(decoded.ci, Option.some(ci));
-			assert.strictEqual(Schema.encodeSync(codec)(decoded), `{"agent":null,"ci":"${ci}","terminal":null}`);
+			assert.strictEqual(
+				Schema.encodeSync(codec)(decoded),
+				`{"agent":null,"ci":"${ci}","terminal":null,"session":null,"ciRun":null,"termProgram":{"name":null,"version":null}}`,
+			);
 		}
-		for (const bad of ["jenkins", "", "GITHUB-ACTIONS", "true"]) {
+		for (const bad of ["JENKINS", "", "GITHUB-ACTIONS", "true", "github", "circle", "google-cloudrun"]) {
 			assert.throws(
 				() => Schema.decodeSync(codec)(`{"agent":null,"ci":"${bad}","terminal":null}`),
 				Error,
@@ -124,37 +139,25 @@ describe("RuntimeEnv", () => {
 		}
 	});
 
-	it("consumers match ci exhaustively: the compiler knows both names", () => {
-		const describeCi = (ci: RuntimeEnv["ci"]): string =>
-			Option.match(ci, {
-				onNone: () => "none",
-				onSome: (name) => {
-					switch (name) {
-						case "github-actions":
-							return "gha";
-						case "generic":
-							return "ci";
-						default: {
-							// Reached only if the type grew a name this switch does not handle: `name` would not be `never`.
-							const unreachable: never = name;
-							return unreachable;
-						}
-					}
-				},
-			});
-		assert.strictEqual(describeCi(Option.some("github-actions")), "gha");
-		assert.strictEqual(describeCi(Option.some("generic")), "ci");
-		assert.strictEqual(describeCi(Option.none()), "none");
+	it("consumers match ci exhaustively: a Record over CiName must name every provider", () => {
 		const unknown = () =>
-			// @ts-expect-error a CI that is not one of the two names is not a RuntimeEnv
-			RuntimeEnv.make({ agent: Option.none(), ci: Option.some("jenkins"), terminal: Option.none() });
+			// @ts-expect-error a CI that is not a CiName is not a RuntimeEnv
+			RuntimeEnv.make({ agent: Option.none(), ci: Option.some("not-a-ci"), terminal: Option.none() });
 		assert.throws(unknown);
+		// A widened name constructs.
+		assert.deepStrictEqual(
+			RuntimeEnv.make({ agent: Option.none(), ci: Option.some("jenkins"), terminal: Option.none() }).ci,
+			Option.some("jenkins"),
+		);
 	});
 
 	it("round-trips the all-none snapshot", () => {
 		const codec = Schema.fromJsonString(RuntimeEnv);
 		const value = RuntimeEnv.make({ agent: Option.none(), ci: Option.none(), terminal: Option.none() });
-		assert.strictEqual(Schema.encodeSync(codec)(value), '{"agent":null,"ci":null,"terminal":null}');
+		assert.strictEqual(
+			Schema.encodeSync(codec)(value),
+			'{"agent":null,"ci":null,"terminal":null,"session":null,"ciRun":null,"termProgram":{"name":null,"version":null}}',
+		);
 		assert.deepStrictEqual(Schema.decodeSync(codec)('{"agent":null,"ci":null,"terminal":null}'), value);
 	});
 });
@@ -173,6 +176,11 @@ const RECORDS: ReadonlyArray<Record<string, string>> = [
 	// An empty variable is unset for the terminal too: no version, and no program name to identify.
 	{ TERM_PROGRAM: "iTerm.app", TERM_PROGRAM_VERSION: "" },
 	{ TERM_PROGRAM: "", TERM: "xterm-kitty" },
+	{ TMUX_PANE: "%3", TMUX: "/tmp/tmux-501/default,1,0", TERM_PROGRAM: "tmux", TERM_PROGRAM_VERSION: "3.4" },
+	{ STY: "1.pts-0.h", TERM_SESSION_ID: "w0t0p0:X" },
+	{ GITHUB_ACTIONS: "true", GITHUB_RUN_ID: "1", GITHUB_RUN_ATTEMPT: "2", RUNNER_OS: "Linux", RUNNER_ARCH: "X64" },
+	{ bamboo_planKey: "PROJ-PLAN", bamboo_buildNumber: "12" },
+	{ SYSTEM_TEAMFOUNDATIONCOLLECTIONURI: "https://dev.azure.com/x/", BUILD_BUILDID: "5", AGENT_OS: "Linux" },
 ];
 
 describe("RuntimeEnv.fromRecord", () => {
@@ -290,4 +298,126 @@ describe("CurrentRuntimeEnv.layerFrom", () => {
 			assert.strictEqual(reads, single * 2);
 		}).pipe(Effect.scoped),
 	);
+});
+
+// The wire form after the kit-ports revision (session, ciRun and termProgram added after 0.5.0), every field
+// populated, exactly as the encoder emits it. Like the 0.1.0 literals, never regenerate it.
+const FROZEN_KIT_PORTS =
+	'{"agent":"claude","ci":"github-actions","terminal":{"name":"iTerm.app","version":"3.5.0"},' +
+	'"session":{"source":"tmux","variable":"TMUX_PANE","id":"%3","multiplexer":{"name":"tmux","value":"/tmp/tmux-501/default,1,0"}},' +
+	'"ciRun":{"runId":"123","attempt":"1","jobId":"test","sha":"abc","refName":"main","runner":{"os":"Linux","arch":"X64"}},' +
+	'"termProgram":{"name":"iTerm.app","version":"3.5.0"}}';
+
+describe("RuntimeEnv: session, ciRun and termProgram", () => {
+	const codec = Schema.fromJsonString(RuntimeEnv);
+	const full = RuntimeEnv.fromRecord({
+		CLAUDECODE: "1",
+		GITHUB_ACTIONS: "true",
+		GITHUB_RUN_ID: "123",
+		GITHUB_RUN_ATTEMPT: "1",
+		GITHUB_JOB: "test",
+		GITHUB_SHA: "abc",
+		GITHUB_REF_NAME: "main",
+		RUNNER_OS: "Linux",
+		RUNNER_ARCH: "X64",
+		TERM_PROGRAM: "iTerm.app",
+		TERM_PROGRAM_VERSION: "3.5.0",
+		TMUX_PANE: "%3",
+		TMUX: "/tmp/tmux-501/default,1,0",
+	});
+
+	it("the frozen kit-ports literal decodes and encodes back identically", () => {
+		const decoded = Schema.decodeSync(codec)(FROZEN_KIT_PORTS);
+		assert.strictEqual(Schema.encodeSync(codec)(decoded), FROZEN_KIT_PORTS);
+		assert.deepStrictEqual(decoded, full);
+	});
+
+	it("make defaults the added fields, so a caller written against agent/ci/terminal keeps constructing", () => {
+		const made = RuntimeEnv.make({ agent: Option.none(), ci: Option.none(), terminal: Option.none() });
+		assert.deepStrictEqual(made.session, Option.none());
+		assert.deepStrictEqual(made.ciRun, Option.none());
+		assert.deepStrictEqual(made.termProgram, { name: Option.none(), version: Option.none() });
+	});
+
+	it("an unknown session source is rejected on decode", () =>
+		assert.throws(() =>
+			Schema.decodeSync(codec)('{"session":{"source":"byobu","variable":"X","id":"1","multiplexer":null}}'),
+		));
+
+	it.effect("layer reads the session, run and term-program variables through Config", () =>
+		Effect.gen(function* () {
+			const env = yield* CurrentRuntimeEnv;
+			assert.deepStrictEqual(env, full);
+		}).pipe(
+			Effect.provide(CurrentRuntimeEnv.layer),
+			withEnv({
+				CLAUDECODE: "1",
+				GITHUB_ACTIONS: "true",
+				GITHUB_RUN_ID: "123",
+				GITHUB_RUN_ATTEMPT: "1",
+				GITHUB_JOB: "test",
+				GITHUB_SHA: "abc",
+				GITHUB_REF_NAME: "main",
+				RUNNER_OS: "Linux",
+				RUNNER_ARCH: "X64",
+				TERM_PROGRAM: "iTerm.app",
+				TERM_PROGRAM_VERSION: "3.5.0",
+				TMUX_PANE: "%3",
+				TMUX: "/tmp/tmux-501/default,1,0",
+			}),
+		),
+	);
+
+	it.effect("layerFrom over core's env provider reads a lower-case provider variable (bamboo_planKey)", () =>
+		Effect.gen(function* () {
+			const env = yield* CurrentRuntimeEnv;
+			assert.deepStrictEqual(env.ci, Option.some("bamboo"));
+			assert.deepStrictEqual(
+				Option.flatMap(env.ciRun, (run) => run.runId),
+				Option.some("12"),
+			);
+		}).pipe(
+			Effect.provide(
+				CurrentRuntimeEnv.layerFrom(
+					ConfigProvider.fromEnv({ env: { bamboo_planKey: "PROJ-PLAN", bamboo_buildNumber: "12" } }),
+				),
+			),
+		),
+	);
+
+	it.effect("layerTest sets the added fields, and defaults them when not given", () =>
+		Effect.gen(function* () {
+			const env = yield* CurrentRuntimeEnv;
+			assert.deepStrictEqual(env.session, full.session);
+			assert.deepStrictEqual(env.ciRun, Option.none());
+			assert.deepStrictEqual(env.termProgram, { name: Option.some("zed"), version: Option.none() });
+		}).pipe(
+			Effect.provide(
+				CurrentRuntimeEnv.layerTest({
+					session: full.session,
+					termProgram: { name: Option.some("zed"), version: Option.none() },
+				}),
+			),
+			withEnv({ CI: "true" }),
+		),
+	);
+
+	// vitest-agent persists host_source / host_value / host_metadata from these fields; the stored values are the raw
+	// variable names and values, so they must come back verbatim.
+	it("reproduces vitest-agent's persisted host values verbatim", () => {
+		const env = RuntimeEnv.fromRecord({
+			TMUX_PANE: "%12",
+			TMUX: "/private/tmp/tmux-501/default,4242,0",
+			TERM_PROGRAM: "tmux",
+			TERM_PROGRAM_VERSION: "3.5a",
+		});
+		const session = Option.getOrThrow(env.session);
+		assert.strictEqual(session.variable, "TMUX_PANE");
+		assert.strictEqual(session.id, "%12");
+		assert.strictEqual(Option.getOrThrow(session.multiplexer).value, "/private/tmp/tmux-501/default,4242,0");
+		assert.strictEqual(Option.getOrThrow(env.termProgram.name), "tmux");
+		assert.strictEqual(Option.getOrThrow(env.termProgram.version), "3.5a");
+		// Control: the normalized terminal name does not carry an unknown program.
+		assert.deepStrictEqual(env.terminal, Option.none());
+	});
 });

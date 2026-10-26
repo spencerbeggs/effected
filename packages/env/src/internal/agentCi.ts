@@ -1,5 +1,5 @@
-// Agent and CI detection from a pure env record. The agent table is transcribed, in order, from std-env 4.3.0
-// (dist/index.mjs); CI detection is deliberately narrower than std-env's provider table.
+// Agent detection from a pure env record. The agent table is transcribed, in order, from std-env 4.3.0
+// (dist/index.mjs). CI detection lives in ci.ts.
 import { Option } from "effect";
 import type { Env } from "./types.js";
 
@@ -63,33 +63,14 @@ export const detectAgent = (env: Env): Option.Option<string> => {
 	return Option.none();
 };
 
-// "" is falsy, as in detectAgent and std-env: an empty variable is an unset one.
-const isFalsy = (value: string | undefined): boolean =>
-	value === undefined || value === "" || value.toLowerCase() === "false" || value === "0";
-
 /**
- * The CI this process runs in: `github-actions` when `GITHUB_ACTIONS` is truthy (even under `CI=false`, since the
- * provider signal is explicit), else `generic` when `CI` or `CONTINUOUS_INTEGRATION` is truthy.
+ * Every environment variable name the agent detector reads.
  *
  * @internal
  */
-export const detectCi = (env: Env): Option.Option<"github-actions" | "generic"> => {
-	if (!isFalsy(env.GITHUB_ACTIONS)) return Option.some("github-actions");
-	if (!isFalsy(env.CI) || !isFalsy(env.CONTINUOUS_INTEGRATION)) return Option.some("generic");
-	return Option.none();
-};
-
-/**
- * Every environment variable name the detectors read.
- *
- * @internal
- */
-export const agentCiKeys: ReadonlyArray<string> = [
+export const agentKeys: ReadonlyArray<string> = [
 	"AI_AGENT",
 	...AGENT_RULES.flatMap(([, rule]) => (typeof rule === "function" ? [] : rule)),
 	"PATH",
 	"EDITOR",
-	"GITHUB_ACTIONS",
-	"CI",
-	"CONTINUOUS_INTEGRATION",
 ];

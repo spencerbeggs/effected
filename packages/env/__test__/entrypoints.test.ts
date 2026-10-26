@@ -8,6 +8,8 @@ describe("the @effected/env entrypoint", () => {
 			"CurrentRuntimeEnv",
 			"EnvOverride",
 			"RuntimeEnv",
+			"ShellExports",
+			"ShellExportsError",
 			"TerminalEnv",
 		]);
 	});

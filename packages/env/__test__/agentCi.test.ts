@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
-import { agentCiKeys, detectAgent, detectCi } from "../src/internal/agentCi.js";
+import { agentKeys, detectAgent } from "../src/internal/agentCi.js";
 
 // std-env 4.3.0 agent table (dist/index.mjs), in its declared order. AI_AGENT wins over all.
 const AGENTS: ReadonlyArray<readonly [string, Record<string, string>]> = [
@@ -61,34 +61,8 @@ describe("detectAgent", () => {
 	});
 });
 
-describe("detectCi", () => {
-	const ci = (env: Record<string, string>) => detectCi(env);
-	it("GITHUB_ACTIONS=true → github-actions, even when CI=false", () => {
-		assert.deepStrictEqual(ci({ GITHUB_ACTIONS: "true" }), Option.some("github-actions"));
-		assert.deepStrictEqual(ci({ GITHUB_ACTIONS: "true", CI: "false" }), Option.some("github-actions"));
-	});
-	for (const v of ["true", "1", "yes", "anything"]) {
-		it(`CI=${v} → generic`, () => assert.deepStrictEqual(ci({ CI: v }), Option.some("generic")));
-		it(`CONTINUOUS_INTEGRATION=${v} → generic`, () =>
-			assert.deepStrictEqual(ci({ CONTINUOUS_INTEGRATION: v }), Option.some("generic")));
-	}
-	for (const v of ["false", "0", "FALSE"]) {
-		it(`CI=${v} → none`, () => assert.deepStrictEqual(ci({ CI: v }), Option.none()));
-	}
-	it("GITHUB_ACTIONS=false is not github-actions", () =>
-		assert.deepStrictEqual(ci({ GITHUB_ACTIONS: "false" }), Option.none()));
-	it("nothing set → none", () => assert.deepStrictEqual(ci({}), Option.none()));
-	// Added by the hardening round: "" is falsy, as in detectAgent and std-env, for every CI variable.
-	it("an empty GITHUB_ACTIONS, CI or CONTINUOUS_INTEGRATION is none", () => {
-		assert.deepStrictEqual(ci({ GITHUB_ACTIONS: "" }), Option.none());
-		assert.deepStrictEqual(ci({ CI: "" }), Option.none());
-		assert.deepStrictEqual(ci({ CONTINUOUS_INTEGRATION: "" }), Option.none());
-		assert.deepStrictEqual(ci({ GITHUB_ACTIONS: "", CI: "", CONTINUOUS_INTEGRATION: "" }), Option.none());
-	});
-});
-
 // Added beyond the brief: the key list and the detector cannot drift.
-describe("agentCiKeys", () => {
+describe("agentKeys", () => {
 	const dir = fileURLToPath(new URL("../src/internal/", import.meta.url));
 	const source = readFileSync(`${dir}agentCi.ts`, "utf8");
 	const direct = new Set(
@@ -100,14 +74,14 @@ describe("agentCiKeys", () => {
 	const fixtureKeys = AGENTS.flatMap(([, env]) => Object.keys(env));
 
 	it("covers every direct env.X read in the source (regex control: it finds reads)", () => {
-		assert.isAbove(direct.size, 3);
-		for (const key of direct) assert.include(agentCiKeys, key, `agentCiKeys is missing ${key}`);
+		assert.isAbove(direct.size, 2);
+		for (const key of direct) assert.include(agentKeys, key, `agentKeys is missing ${key}`);
 	});
 	it("covers every key in the std-env fixture table", () => {
-		for (const key of fixtureKeys) assert.include(agentCiKeys, key, `agentCiKeys is missing ${key}`);
+		for (const key of fixtureKeys) assert.include(agentKeys, key, `agentKeys is missing ${key}`);
 	});
 	it("lists nothing the detectors do not read (no typo can hide in the list)", () => {
 		const known = new Set([...direct, ...fixtureKeys]);
-		for (const key of agentCiKeys) assert.isTrue(known.has(key), `agentCiKeys has an unread key ${key}`);
+		for (const key of agentKeys) assert.isTrue(known.has(key), `agentKeys has an unread key ${key}`);
 	});
 });
