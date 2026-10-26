@@ -9,15 +9,16 @@ import { AppDirs, Xdg, XdgPaths } from "@effected/xdg";
 import { Cause, Effect, Exit, FileSystem, Layer, Option, Path, Schema } from "effect";
 import type { AppError } from "../src/index.js";
 import { App, AppConfig, AppStore } from "../src/index.js";
+import { AppTest } from "../src/testing.js";
 
 const migrations: ReadonlyArray<StoreMigration> = [
 	{ id: 1, name: "create-notes", up: (sql) => sql`CREATE TABLE notes (id TEXT PRIMARY KEY, body TEXT)` },
 ];
 
-describe("App.layerTest", () => {
+describe("AppTest.layer", () => {
 	// The whole point: this fixture typechecks with R = never. If it ever needs
 	// a NodeFileSystem import, the layer has stopped doing its job.
-	layer(App.layerTest({ namespace: "myapp", store: { migrations } }))((it) => {
+	layer(AppTest.layer({ namespace: "myapp", store: { migrations } }))((it) => {
 		it.effect("provides a working Store with zero platform layers", () =>
 			Effect.gen(function* () {
 				const store = yield* Store;
@@ -81,13 +82,13 @@ describe("App.layerTest", () => {
 	class Settings extends Schema.Class<Settings>("Settings")({ port: Schema.Number }) {}
 	class SettingsFile extends ConfigFile.Service<SettingsFile, Settings>()("app-test/Settings") {}
 
-	const seeded = App.layerTest({
+	const seeded = AppTest.layer({
 		namespace: "myapp",
 		files: { "/home/test/.config/myapp/config.json": `{"port":4242}` },
 	});
 	const ConfigLive = AppConfig.layer(SettingsFile, { filename: "config.json", schema: Settings, codec: JsonCodec });
 
-	// AppConfig needs FileSystem | Path | AppDirs | Xdg — all of which layerTest now
+	// AppConfig needs FileSystem | Path | AppDirs | Xdg — all of which AppTest.layer now
 	// provides — so the preset composes over it with ONE provide, on ONE volume.
 	layer(Layer.provideMerge(ConfigLive, seeded))((it) => {
 		it.effect("loads a config file seeded through `files`", () =>
@@ -108,7 +109,7 @@ describe("App.layerTest", () => {
 	});
 
 	it("provides the platform and the volume beside the four services, with R = never", () => {
-		const live = App.layerTest({ namespace: "myapp" });
+		const live = AppTest.layer({ namespace: "myapp" });
 		const exact: Layer.Layer<
 			Xdg | AppDirs | Store | Cache | FileSystem.FileSystem | Path.Path | MemoryFileSystemVolume,
 			AppError
@@ -125,7 +126,7 @@ describe("App.layerTest", () => {
 		dataDirs: ["/usr/share"],
 	});
 
-	layer(App.layerTest({ namespace: "other", paths: pinned }))((it) => {
+	layer(AppTest.layer({ namespace: "other", paths: pinned }))((it) => {
 		it.effect("pins real XDG paths when given, and store defaults to no migrations", () =>
 			Effect.gen(function* () {
 				const appDirs = yield* AppDirs;
@@ -143,13 +144,13 @@ describe("App.layerTest", () => {
 	// native binding opens the same path on the HOST, where the synthetic
 	// /home/test does not exist. The layer must fail with a typed StoreError, not
 	// write a database anywhere.
-	it.effect("composing AppStore.layer over layerTest fails at setup instead of opening a host file", () =>
+	it.effect("composing AppStore.layer over AppTest.layer fails at setup instead of opening a host file", () =>
 		Effect.gen(function* () {
 			const exit = yield* Effect.exit(
 				Effect.provide(
 					Effect.void,
 					AppStore.layer({ migrations: [], filename: "trap.db" }).pipe(
-						Layer.provide(App.layerTest({ namespace: "myapp" })),
+						Layer.provide(AppTest.layer({ namespace: "myapp" })),
 					),
 				),
 			);

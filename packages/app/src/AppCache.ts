@@ -47,9 +47,12 @@ export interface AppCacheOptions
 	 * directory, so it **dies** at layer construction. A failure to create it
 	 * is a typed `AppDirsError` naming `directory` and the full path.
 	 *
-	 * A subdir derived from runtime data — a project path, a user-supplied
-	 * name — must come from a derivation that can only produce a valid
-	 * component, such as a hash:
+	 * A subdir derived from runtime data — a project key, a package name, a
+	 * user-supplied name — goes through `AppDirs.segment` from `@effected/xdg`
+	 * first: it maps the name to one filesystem-safe component and fails typed
+	 * (`AppDirsSegmentError`) on the names that would escape, so the error is
+	 * caught where the data enters. A hash is the alternative when distinct names
+	 * must never share a directory:
 	 * `subdir: createHash("sha256").update(projectRoot).digest("hex").slice(0, 16)`.
 	 * Passed raw, an unexpected value is a defect, not a typed failure.
 	 */

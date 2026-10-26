@@ -36,7 +36,13 @@ npm install @effected/app effect @effected/xdg @effected/store @effected/config-
 ```
 
 ```bash
-pnpm add @effected/app effect @effected/xdg @effected/store @effected/config-file @effected/memfs
+pnpm add @effected/app effect @effected/xdg @effected/store @effected/config-file
+```
+
+For the test layer at `@effected/app/testing`, add `@effected/memfs` as a dev dependency — it is an optional peer that only that entry point imports:
+
+```bash
+pnpm add -D @effected/memfs
 ```
 
 Requires Node.js >=24.11.0.
@@ -286,14 +292,14 @@ const where = AppStore.location(options); // Effect<string, never, AppDirs | Pat
 
 ## Testing: one line, no platform package
 
-`App.layerTest` is the hermetic control plane — fixed XDG paths, `:memory:` databases, and an in-memory filesystem from `@effected/memfs`, all provided by the layer itself. A consumer's first test needs no platform import at all:
+`AppTest.layer`, from the `@effected/app/testing` entry point, is the hermetic control plane — fixed XDG paths, `:memory:` databases, and an in-memory filesystem from `@effected/memfs`, all provided by the layer itself. It lives on its own entry point so an application's runtime import graph never loads test code; `@effected/memfs` is an optional peer that only this entry point needs, so install it as a dev dependency. A consumer's first test needs no platform import at all:
 
 ```ts
-import { App } from "@effected/app";
+import { AppTest } from "@effected/app/testing";
 import { layer } from "@effect/vitest";
 import { Effect } from "effect";
 
-layer(App.layerTest({ namespace: "myapp" }))("app", (it) => {
+layer(AppTest.layer({ namespace: "myapp" }))("app", (it) => {
   it.effect("stores state", () =>
     Effect.gen(function* () {
       // Store and Cache are here, in memory, hermetic.
@@ -346,7 +352,7 @@ Provide it beneath the stack and every span the kit's packages already emit — 
 
 - `App.layer` — the control plane: `Xdg`, `AppDirs`, `Store` and `Cache` from one call, with only `FileSystem` and `Path` left for the platform layer to supply.
 - `App.layerDirs` — `Xdg` and `AppDirs` alone, opening no database: directories everywhere, databases attached only where they are used.
-- `App.layerTest` — the same four services plus the in-memory `FileSystem`, `Path` and `MemoryFileSystem.Volume` they run on, hermetic: synthetic XDG paths, `:memory:` databases, a seedable memfs volume, no platform package required.
+- `AppTest.layer` (from `@effected/app/testing`) — the same four services plus the in-memory `FileSystem`, `Path` and `MemoryFileSystem.Volume` they run on, hermetic: synthetic XDG paths, `:memory:` databases, a seedable memfs volume, no platform package required.
 - `AppStore.layer` / `AppCache.layer` — the state-directory and cache-directory databases on their own, each ensuring its directory before it opens the file.
 - `AppStore.layerAs` / `AppCache.layerAs` — an additional database under a service key you define, with its own file, migrations and ledger.
 - `AppConfig.layer` — `@effected/config-file` wired to xdg's resolver chain and save path, with the namespace read from the ambient `AppDirs` and the codec named by you.

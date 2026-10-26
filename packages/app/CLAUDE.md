@@ -35,11 +35,17 @@ They are **peers, not regular dependencies**, because each appears in this
 package's public signature types — a second copy of `AppDirs` or `Store` in a
 consumer's graph would mint two service tags for one concept and the layer would
 silently fail to satisfy the requirement. `memfs` is the same case through
-`App.layerTest`, whose output names `MemoryFileSystemVolume` and whose `Volume`
-key a test resolves from its own `@effected/memfs` import. It is a **runtime**
-edge, not a dev one — `layerTest` is shipped API — and it costs nothing in tier:
-memfs is pure (effect-only, zero `@effected/*` edges by law) and this package is
-already integrated through `store`, so R1–R3 are untouched.
+`AppTest.layer`, whose output names `MemoryFileSystemVolume` and whose `Volume`
+key a test resolves from its own `@effected/memfs` import — but it is an
+**optional** peer, reached only from the `./testing` entrypoint
+(`src/testing.ts` → `src/AppTest.ts`). The root entry must never reach it, type
+imports included: `__test__/entrypoints.test.ts` walks the module graph from
+`src/index.ts` and fails on any `@effected/memfs` specifier, any `AppTest` /
+`testing` module, or a self-reference to `@effected/app/testing`, with a
+positive control from `./testing`. It once lived on the root as
+`App.layerTest`, which loaded a test filesystem in every production importer of
+`App` (kit-ports 25r.4). memfs is pure (effect-only, zero `@effected/*` edges by
+law), so its closure is empty and the optional declaration closes nothing.
 
 **Nothing may depend on `@effected/app`.** A library taking an application
 control plane drags tier 3 into its consumers under R2 — the leak the taxonomy
@@ -48,9 +54,10 @@ could be sequenced last.
 
 ## Four modules, and the split is load-bearing
 
-`App.ts` (`AppOptions`, `AppTestOptions`, `AppError`, `App.layer`,
-`App.layerDirs`, `App.layerTest`) · `AppStore.ts` (`layer`, `layerAs`) ·
-`AppCache.ts` (`layer`, `layerAs`) · `AppConfig.ts`. There is no
+`App.ts` (`AppOptions`, `AppError`, `App.layer`, `App.layerDirs`) ·
+`AppStore.ts` (`layer`, `layerAs`) · `AppCache.ts` (`layer`, `layerAs`) ·
+`AppConfig.ts` · `AppTest.ts` (`AppTest.layer`, `AppTestOptions`,
+`AppTestServices`), exported only from `./testing` (`src/testing.ts`). There is no
 engine here, only composition — two `internal/` modules. `internal/filename.ts`
 holds the path guards: `badFilename` rejects any `filename` that is not a single
 path component (the same wiring-defect rule `xdg` applies to `namespace`), and
@@ -80,7 +87,7 @@ config-file's rule one level up (it measured 506 bytes versus 129.4 kB).
 Collecting the four concepts into one `App = { … }` would destroy the split
 silently.
 
-`App`, `AppStore`, `AppCache` and `AppConfig` are each a static class with a
+`App`, `AppStore`, `AppCache`, `AppConfig` and `AppTest` are each a static class with a
 private constructor, not an `as const` namespace object — an `as const`
 object's member types are inferred in the built `.d.ts` and lose their TSDoc
 entirely, while a class's `static readonly` declarations keep it. Call syntax
@@ -247,9 +254,9 @@ independent `CacheEvent` PubSubs whose subscribers each see half the events.
 of any example — this is the package where an application is most likely to
 compose the same layer twice.
 
-## App.layerTest runs on a memfs volume
+## AppTest.layer runs on a memfs volume
 
-`layerTest` is `Xdg.layerFrom` on synthetic paths (or `options.paths`),
+`AppTest.layer` (from `@effected/app/testing`) is `Xdg.layerFrom` on synthetic paths (or `options.paths`),
 `:memory:` databases, and `Path.layer` plus
 `MemoryFileSystem.layerWith(options.files)` **merged into the output**: it
 provides `Xdg | AppDirs | Store | Cache | FileSystem | Path |
@@ -263,23 +270,23 @@ Three properties follow, and the tests pin each:
 - **`ensure*` works.** Every `AppDirs.ensure*` creates real directories on
   the volume, and nothing is fabricated — an unseeded path is honestly
   absent. The kit rule is that a `FileSystem` double is `@effected/memfs`,
-  never a hand-rolled `layerNoop`; `layerTest` once provided
+  never a hand-rolled `layerNoop`; the old `App.layerTest` once provided
   `FileSystem.layerNoop`, so every `ensure*` died, and that limit was
   documented in four places instead of fixed (#1077).
 - **The platform is exposed, on purpose.** `AppConfig.layer` needs
   `FileSystem | Path | AppDirs | Xdg`; with all four coming out of
-  `layerTest`, the preset composes over it with ONE `Layer.provide`, on the
+  `AppTest.layer`, the preset composes over it with ONE `Layer.provide`, on the
   SAME volume the directories live on. `files` seeds that volume (a config
   body under `/home/test/.config/<ns>/` loads), and `MemoryFileSystem.Volume`
   reads back what the program wrote, synchronously.
-- **One `layerTest(...)` call is one volume.** Under `@effect/vitest`'s
+- **One `AppTest.layer(...)` call is one volume.** Under `@effect/vitest`'s
   `layer(...)` the block shares it, so tests see each other's writes; a clean
-  filesystem is another `layerTest` call or another block.
+  filesystem is another `AppTest.layer` call or another block.
 
 **The databases stay off the volume.** `Store`/`Cache` are `:memory:` here,
 and under `App.layer` they open SQLite through the native binding, which never
 sees the `FileSystem` service. **Never compose `AppStore.layer` /
-`AppCache.layer` over `layerTest`**: `ensure*` succeeds on the volume, then
+`AppCache.layer` over `AppTest.layer`**: `ensure*` succeeds on the volume, then
 the binding opens the same path on the host. On the synthetic defaults
 `/home/test/...` does not exist there, so the layer fails with a `StoreError`
 (`operation: "setup"`) — `App.test.ts` pins that — and with real `paths` it
