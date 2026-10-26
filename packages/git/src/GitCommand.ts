@@ -1,5 +1,7 @@
-import { Stream } from "effect";
+import { Option, Stream } from "effect";
 import { ChildProcess } from "effect/process";
+import { GitRemote } from "./GitRemote.js";
+import { REDACTED, maskUserinfoAnywhere } from "./internal/redact.js";
 
 /**
  * A pure `git` invocation: the spawnable command plus the diagnostic argv the
@@ -26,9 +28,6 @@ export interface GitInvocation {
 	readonly redactedArgs: ReadonlyArray<string>;
 }
 
-/** The mask every whole-value sensitive positional is replaced with. */
-const REDACTED = "<redacted>";
-
 /**
  * One argv segment: a plain string, or a sensitive positional tagged with the
  * mask to apply in `redactedArgs` — `"value"` replaces the whole segment,
@@ -43,18 +42,30 @@ const secretValue = (value: string): GitArg => ({ redact: "value", value });
 const secretUrl = (value: string): GitArg => ({ redact: "url", value });
 
 /**
- * Masks the userinfo component of a URL (`scheme://user:token@host/...` →
- * `scheme://<redacted>@host/...`). A value carrying no embedded userinfo — a
- * remote name, a credential-free URL, an scp-style `host:path` — passes
- * through untouched, so the common case stays fully debuggable.
+ * Masks the credential positions of a remote positional for `redactedArgs`.
  *
- * The userinfo match is greedy (`[^/]*@` — everything through the LAST `@`
- * before the first path slash): URL authorities split at the last `@`, so a
- * password containing a literal `@` (`user:p\@ss\@host/...`) must be
- * consumed whole or its tail would survive into `redactedArgs`.
+ * A URL remote (`scheme://user:token@host/...`, bare or behind
+ * `<transport>::`) goes through {@link GitRemote.redact}: the password is
+ * dropped, the user, query and any invalid scheme are masked, and the
+ * userinfo is found at the LAST `@`, so a password holding `@`, `/`, `?` or
+ * `#` is consumed whole. Anything else goes through the form-independent
+ * {@link maskUserinfoAnywhere} backstop, so a typo'd or malformed credential
+ * URL is masked whatever form it parses as.
+ *
+ * A remote name, a credential-free URL and a plain scp `git@host:path` pass
+ * through untouched, so the common case stays fully debuggable. An `@` in a URL
+ * path is read as userinfo and over-masks by design: `https://h/pkg@1.0/r.git`
+ * becomes `https://<redacted>@1.0/r.git`, and the scp `git@host:o/n@v1` becomes
+ * `git@host:<redacted>@v1`.
  */
 const redactUrlUserinfo = (value: string): string =>
-	value.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/]*@/i, `$1${REDACTED}@`);
+	Option.match(GitRemote.parse(value), {
+		onNone: () => value,
+		onSome: (remote) => {
+			const address = remote._tag === "GitRemoteTransport" ? remote.address : remote;
+			return address._tag === "GitRemoteUrl" ? GitRemote.format(GitRemote.redact(remote)) : maskUserinfoAnywhere(value);
+		},
+	});
 
 /**
  * Builds a `git` {@link GitInvocation} with the argv this package classifies
@@ -606,6 +617,52 @@ export class GitCommand {
 	 * git 2.31 or later.
 	 */
 	static readonly commonDir = (): GitInvocation => git(["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+
+	/**
+	 * `git rev-parse --show-toplevel --path-format=absolute --git-common-dir` —
+	 * a working tree's physical toplevel and its repository's common
+	 * directory, one per line, in one spawn.
+	 *
+	 * @remarks
+	 * `--path-format` applies only to the options after it, so the toplevel
+	 * (always absolute) comes first. Both answers are symlink-resolved by git.
+	 * Outside a working tree — a bare repository, or a directory inside
+	 * `.git` — git exits 128 with `this operation must be run in a work tree`.
+	 * The flag needs git 2.31 or later; an older git echoes it as a third line.
+	 */
+	static readonly treeIdentity = (): GitInvocation =>
+		git(["rev-parse", "--show-toplevel", "--path-format=absolute", "--git-common-dir"]);
+
+	/**
+	 * `git symbolic-ref --quiet HEAD` — the full refname `HEAD` points at
+	 * (`refs/heads/<branch>`), or a silent exit 1 when `HEAD` is detached.
+	 *
+	 * @remarks
+	 * An unborn branch still answers its refname: `HEAD` names the branch
+	 * before the branch has a commit.
+	 */
+	static readonly headRef = (): GitInvocation => git(["symbolic-ref", "--quiet", "HEAD"]);
+
+	/**
+	 * `git for-each-ref --format=%(refname)%00%(upstream)%00%(upstream:short)%00%(upstream:track,nobracket) <branchRef>`
+	 * — a local branch's upstream as a NUL-separated record: the branch
+	 * refname, the upstream's full refname, its short name, and the tracking
+	 * state (`gone`, `ahead N`, `behind N`, `ahead N, behind M`, or empty).
+	 *
+	 * @remarks
+	 * Unlike `rev-parse @{upstream}`, this still reports an upstream whose
+	 * remote-tracking ref was deleted (`gone`), and its short name is the same
+	 * string `rev-parse --abbrev-ref @{upstream}` answers. `branchRef` is a full
+	 * refname (`refs/heads/main`); a pattern also matches refs below it, so the
+	 * caller keeps only the exact record. The tracking state walks history, as
+	 * `git status` does.
+	 */
+	static readonly upstream = (branchRef: string): GitInvocation =>
+		git([
+			"for-each-ref",
+			"--format=%(refname)%00%(upstream)%00%(upstream:short)%00%(upstream:track,nobracket)",
+			branchRef,
+		]);
 
 	/**
 	 * `git log -1 --format=%H%x00%G?%x00%B <ref>` — a NUL-separated triple: the

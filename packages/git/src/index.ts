@@ -29,7 +29,10 @@ export {
 	StatusEntry,
 	type StatusRenderOptions,
 	SubmoduleStatusEntry,
+	TreeIdentity,
+	type TreeRelation,
 	UnknownRefError,
+	UpstreamBranch,
 	WorktreeEntry,
 } from "./Git.js";
 export { GitCommand, type GitConfigScope, type GitInvocation, type GitUntrackedFilesMode } from "./GitCommand.js";
@@ -48,3 +51,11 @@ export {
 	GitmodulesEntry,
 	type GitmodulesParseError,
 } from "./Gitmodules.js";
+export {
+	GitRemote,
+	type GitRemoteForm,
+	GitRemotePath,
+	GitRemoteScp,
+	GitRemoteTransport,
+	GitRemoteUrl,
+} from "./GitRemote.js";

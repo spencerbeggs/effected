@@ -32,7 +32,7 @@ import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { Cause, DateTime, Effect, Exit, Layer, Option, Result } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ChildProcess } from "effect/process";
-import { Git, NotARepositoryError, UnknownRefError } from "../../src/Git.js";
+import { Git, NotARepositoryError, TreeIdentity, UnknownRefError, UpstreamBranch } from "../../src/Git.js";
 import { runCollected } from "../../src/internal/run.js";
 
 /** Resolves both `Git` and every Node platform service (including the real `ChildProcessSpawner`). */
@@ -809,6 +809,274 @@ describe("Git surface — repository identity across worktrees (commonDir)", () 
 			Effect.gen(function* () {
 				const git = yield* Git;
 				const failure = yield* Effect.flip(git.commonDir(outside));
+				assert.instanceOf(failure, NotARepositoryError);
+			}),
+		),
+	);
+
+	it.effect("treeIdentity answers git's physical pair from every spelling of one tree, with no realpath", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const toplevel = yield* Effect.promise(() => realpath(main));
+				const commonDir = yield* Effect.promise(() => realpath(join(main, ".git")));
+				for (const cwd of [main, join(main, "sub"), linked, join(linked, "sub")]) {
+					const identity = yield* git.treeIdentity(cwd);
+					assert.deepStrictEqual(identity, Option.some(TreeIdentity.make({ toplevel, commonDir })), cwd);
+				}
+			}),
+		),
+	);
+
+	it.effect("treeIdentity relates a linked worktree as a sibling and another repository as different", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const fromMain = Option.getOrThrow(yield* git.treeIdentity(join(main, "sub")));
+				const fromLinked = Option.getOrThrow(yield* git.treeIdentity(linked));
+				const fromWorktree = Option.getOrThrow(yield* git.treeIdentity(worktree));
+				assert.strictEqual(fromWorktree.toplevel, yield* Effect.promise(() => realpath(worktree)));
+				assert.strictEqual(TreeIdentity.relation(fromMain, fromLinked), "same-tree");
+				assert.strictEqual(TreeIdentity.relation(fromMain, fromWorktree), "sibling-worktree");
+				assert.isTrue(TreeIdentity.sameRepository(fromMain, fromWorktree));
+				const other = TreeIdentity.make({ toplevel: fromMain.toplevel, commonDir: `${fromMain.commonDir}-other` });
+				assert.strictEqual(TreeIdentity.relation(fromMain, other), "different-repo");
+			}),
+		),
+	);
+
+	it.effect("treeIdentity is Option.none with no working tree: bare, inside .git, and outside any repository", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				for (const cwd of [bare, join(main, ".git"), outside]) {
+					assert.deepStrictEqual(yield* git.treeIdentity(cwd), Option.none(), cwd);
+				}
+			}),
+		),
+	);
+
+	it.effect("repoRoot in a bare repository still fails as a GitCommandError (the no-work-tree row is scoped)", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const failure = yield* Effect.flip(git.repoRoot(bare));
+				assert.strictEqual(failure._tag, "GitCommandError");
+			}),
+		),
+	);
+});
+
+describe("Git surface — git's stderr echo of a mistyped credential URL is masked", () => {
+	let dir: string;
+	let allowed: string | undefined;
+
+	// This file pins GIT_ALLOW_PROTOCOL=file, under which git refuses the
+	// `https` transport before it ever echoes the URL. Widen it for this block
+	// only (tests in a file run sequentially), and restore it after.
+	beforeAll(async () => {
+		dir = await mkdtemp(join(tmpdir(), "effected-git-stderr-mask-"));
+		allowed = process.env.GIT_ALLOW_PROTOCOL;
+		process.env.GIT_ALLOW_PROTOCOL = "file:https";
+	});
+
+	afterAll(async () => {
+		if (allowed === undefined) delete process.env.GIT_ALLOW_PROTOCOL;
+		else process.env.GIT_ALLOW_PROTOCOL = allowed;
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	// Both fail locally, with no network: the `https` helper aborts on a URL with
+	// no scheme, and `//...` is a missing local path.
+	// The last two hold a quote and a space: the token-wise shape masker splits
+	// on those, so only the exact-string mask of the argv's secret catches them.
+	for (const remote of [
+		"https:://u:tok3n@github.com/o/r",
+		"//u:tok3n@h/r",
+		"https:://u:to'k3n@github.com/o/r",
+		"https:://u:to k3n@github.com/o/r",
+	]) {
+		it.effect(`${remote}: git echoes the token, the GitCommandError does not`, () =>
+			run(
+				Effect.gen(function* () {
+					// Positive control: real git really does print the token on stderr,
+					// so the assertions below can fail.
+					const raw = yield* runCollected(
+						ChildProcess.setCwd(
+							ChildProcess.make("git", ["ls-remote", remote], { env: FIXTURE_ENV, extendEnv: true }),
+							dir,
+						),
+					).pipe(Effect.orDie);
+					assert.notStrictEqual(raw.exitCode, 0);
+					const secret = remote.includes("to'k3n") ? "to'k3n" : remote.includes("to k3n") ? "to k3n" : "tok3n";
+					assert.include(raw.stderr, secret);
+
+					const git = yield* Git;
+					const error = yield* Effect.flip(git.lsRemote(dir, remote));
+					assert.strictEqual(error._tag, "GitCommandError");
+					if (error._tag !== "GitCommandError") return;
+					assert.include(error.stderr, "<redacted>");
+					for (const field of [error.stderr, error.message, JSON.stringify(error), error.args.join(" ")]) {
+						assert.notInclude(field, secret);
+						assert.notInclude(field, "k3n");
+					}
+				}),
+			),
+		);
+	}
+});
+
+describe("Git surface — upstream tracking", () => {
+	let base: string;
+	let repo: string;
+	let remote: string;
+	let unborn: string;
+
+	const IDENTITY = [
+		"-c",
+		"user.email=git-integration@example.com",
+		"-c",
+		"user.name=Git Integration",
+		"-c",
+		"commit.gpgsign=false",
+	];
+
+	/**
+	 * A repository whose branches each pin one upstream state, plus a bare
+	 * remote and an unborn repository. Every test checks out its own branch in
+	 * its own worktree, so tests never move a HEAD another test reads.
+	 */
+	beforeAll(async () => {
+		base = await mkdtemp(join(tmpdir(), "effected-git-upstream-"));
+		repo = join(base, "repo");
+		remote = join(base, "remote.git");
+		unborn = join(base, "unborn");
+		await mkdir(repo);
+		await mkdir(unborn);
+		await Effect.runPromise(
+			run(
+				Effect.gen(function* () {
+					yield* runFixtureGit(base, ["init", "--bare", remote]);
+					yield* runFixtureGit(repo, ["-c", "init.defaultBranch=main", "init"]);
+					yield* runFixtureGit(repo, [...IDENTITY, "commit", "--allow-empty", "-m", "init"]);
+					yield* runFixtureGit(repo, ["remote", "add", "origin", remote]);
+					// in-sync: tracks origin/in-sync at the same commit.
+					yield* runFixtureGit(repo, ["branch", "in-sync"]);
+					yield* runFixtureGit(repo, ["push", "-q", "-u", "origin", "in-sync"]);
+					// diverged: one commit ahead, and the remote one commit ahead of it.
+					yield* runFixtureGit(repo, ["branch", "diverged"]);
+					yield* runFixtureGit(repo, ["push", "-q", "-u", "origin", "diverged"]);
+					yield* runFixtureGit(repo, ["worktree", "add", "-q", join(base, "wt-diverged"), "diverged"]);
+					yield* runFixtureGit(join(base, "wt-diverged"), [...IDENTITY, "commit", "--allow-empty", "-m", "remote"]);
+					yield* runFixtureGit(join(base, "wt-diverged"), ["push", "-q", "origin", "diverged"]);
+					yield* runFixtureGit(join(base, "wt-diverged"), ["reset", "-q", "--hard", "HEAD~1"]);
+					yield* runFixtureGit(join(base, "wt-diverged"), [...IDENTITY, "commit", "--allow-empty", "-m", "local"]);
+					// gone: tracks a remote branch whose remote-tracking ref was deleted.
+					yield* runFixtureGit(repo, ["branch", "gone"]);
+					yield* runFixtureGit(repo, ["push", "-q", "-u", "origin", "gone"]);
+					yield* runFixtureGit(repo, ["update-ref", "-d", "refs/remotes/origin/gone"]);
+					// local: tracks the local branch main (remote ".").
+					yield* runFixtureGit(repo, ["branch", "--track", "local", "main"]);
+					// ambiguous: a local branch named like the remote-tracking ref it tracks.
+					// Its own remote ref, so the shadowing local branch shortens no other case.
+					yield* runFixtureGit(repo, ["push", "-q", "origin", "main:shadowed"]);
+					yield* runFixtureGit(repo, ["branch", "origin/shadowed"]);
+					yield* runFixtureGit(repo, ["branch", "ambiguous", "--track", "refs/remotes/origin/shadowed"]);
+					for (const branch of ["in-sync", "gone", "local", "ambiguous"]) {
+						yield* runFixtureGit(repo, ["worktree", "add", "-q", join(base, `wt-${branch}`), branch]);
+					}
+					yield* runFixtureGit(repo, ["worktree", "add", "-q", "--detach", join(base, "wt-detached")]);
+					yield* runFixtureGit(unborn, ["-c", "init.defaultBranch=fresh", "init"]);
+				}),
+			),
+		);
+	});
+
+	afterAll(async () => {
+		await rm(base, { recursive: true, force: true });
+	});
+
+	const upstreamIn = (dir: string) => Effect.flatMap(Git, (git) => git.upstream(join(base, dir)));
+
+	/** What rev-parse --abbrev-ref @{upstream} answers in `dir`: the string the kit must match byte for byte. */
+	const abbrevRef = (dir: string) =>
+		runFixtureGit(join(base, dir), ["rev-parse", "--abbrev-ref", "@{upstream}"]).pipe(Effect.map((out) => out.trim()));
+
+	it.effect("reports an in-sync upstream, its short name byte-identical to rev-parse --abbrev-ref", () =>
+		run(
+			Effect.gen(function* () {
+				const upstream = Option.getOrThrow(yield* upstreamIn("wt-in-sync"));
+				assert.deepStrictEqual(
+					upstream,
+					UpstreamBranch.make({
+						ref: "refs/remotes/origin/in-sync",
+						name: "origin/in-sync",
+						gone: false,
+						ahead: 0,
+						behind: 0,
+					}),
+				);
+				assert.strictEqual(upstream.name, yield* abbrevRef("wt-in-sync"));
+			}),
+		),
+	);
+
+	it.effect("counts commits ahead and behind a diverged upstream", () =>
+		run(
+			Effect.gen(function* () {
+				const upstream = Option.getOrThrow(yield* upstreamIn("wt-diverged"));
+				assert.strictEqual(upstream.ahead, 1);
+				assert.strictEqual(upstream.behind, 1);
+				assert.isFalse(upstream.gone);
+			}),
+		),
+	);
+
+	it.effect("still reports an upstream whose ref was deleted, as gone", () =>
+		run(
+			Effect.gen(function* () {
+				const upstream = Option.getOrThrow(yield* upstreamIn("wt-gone"));
+				assert.deepStrictEqual(
+					upstream,
+					UpstreamBranch.make({
+						ref: "refs/remotes/origin/gone",
+						name: "origin/gone",
+						gone: true,
+						ahead: 0,
+						behind: 0,
+					}),
+				);
+			}),
+		),
+	);
+
+	it.effect("reports a local upstream (remote '.') and an ambiguous short name exactly as rev-parse does", () =>
+		run(
+			Effect.gen(function* () {
+				const local = Option.getOrThrow(yield* upstreamIn("wt-local"));
+				assert.strictEqual(local.ref, "refs/heads/main");
+				assert.strictEqual(local.name, yield* abbrevRef("wt-local"));
+				const ambiguous = Option.getOrThrow(yield* upstreamIn("wt-ambiguous"));
+				assert.strictEqual(ambiguous.name, yield* abbrevRef("wt-ambiguous"));
+				assert.strictEqual(ambiguous.name, "remotes/origin/shadowed");
+			}),
+		),
+	);
+
+	it.effect("is Option.none with no upstream, a detached HEAD, and an unborn branch", () =>
+		run(
+			Effect.gen(function* () {
+				assert.deepStrictEqual(yield* upstreamIn("repo"), Option.none());
+				assert.deepStrictEqual(yield* upstreamIn("wt-detached"), Option.none());
+				assert.deepStrictEqual(yield* upstreamIn("unborn"), Option.none());
+			}),
+		),
+	);
+
+	it.effect("fails NotARepositoryError outside any repository", () =>
+		run(
+			Effect.gen(function* () {
+				const failure = yield* Effect.flip(upstreamIn(""));
 				assert.instanceOf(failure, NotARepositoryError);
 			}),
 		),

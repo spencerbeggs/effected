@@ -1,7 +1,9 @@
 import { Config, Context, DateTime, Duration, Effect, Layer, Option, PlatformError, Result, Schema } from "effect";
+import { dual } from "effect/Function";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { GitConfigScope, GitInvocation, GitUntrackedFilesMode } from "./GitCommand.js";
 import { GitCommand } from "./GitCommand.js";
+import { REDACTED, credentialSegments, maskCredentialsInText, maskSecrets } from "./internal/redact.js";
 import type { Collected } from "./internal/run.js";
 import { runCollected } from "./internal/run.js";
 
@@ -237,7 +239,12 @@ export class GitCommandError extends Schema.TaggedError<GitCommandError>()("GitC
 	cwd: Schema.String,
 	/** git's exit code, when it produced one. */
 	exitCode: Schema.optionalKey(Schema.Number),
-	/** git's stderr, captured under `LC_ALL=C`. */
+	/**
+	 * git's stderr, captured under `LC_ALL=C`, with credential-shaped tokens
+	 * masked (`//u:tok@h/r` reads `//<redacted>@h/r`): git echoes a remote it
+	 * could not parse, token included. Classification reads the raw stream;
+	 * only the stored copy is masked.
+	 */
 	stderr: Schema.String,
 	/**
 	 * A human-readable reason, set whenever an exit code does not sum up the
@@ -432,9 +439,10 @@ type Classified =
  * degrade, `"noSuchRemote"` enables the no-such-remote degrade, `"push"`
  * enables the rejected-non-fast-forward row, `"merge"` enables the
  * dirty-worktree and merge-conflict rows, `"log"` enables the unborn-HEAD
- * degrade, `"generic"` enables none of them.
+ * degrade, `"tree"` enables the no-work-tree degrade, `"generic"` enables
+ * none of them.
  */
-type ClassifyKind = "show" | "refExists" | "quiet" | "noSuchRemote" | "push" | "merge" | "log" | "generic";
+type ClassifyKind = "show" | "refExists" | "quiet" | "noSuchRemote" | "push" | "merge" | "log" | "tree" | "generic";
 
 const NOT_A_REPOSITORY = "not a git repository";
 // Unanchored substring matching against LC_ALL=C-pinned phrases: a path or ref
@@ -474,6 +482,14 @@ const DIRTY_WORKTREE_PATTERN = "would be overwritten by";
 // unborn HEAD is a genuine failure to report.
 const UNBORN_HEAD_PATTERN = "does not have any commits yet";
 
+// No working tree: a work-tree-only command (`rev-parse --show-toplevel`) run
+// in a bare repository or inside `.git` exits 128 with `fatal: this operation
+// must be run in a work tree` (probed against git 2.56 under LC_ALL=C).
+// Scoped to the `"tree"` kind: for `treeIdentity` a directory with no working
+// tree has no tree identity, while every other member keeps reporting it as a
+// failure.
+const NO_WORK_TREE_PATTERN = "must be run in a work tree";
+
 const matchesAny = (stderr: string, patterns: ReadonlyArray<string>): boolean =>
 	patterns.some((pattern) => stderr.includes(pattern));
 
@@ -490,7 +506,11 @@ const classify = (
 	args: ReadonlyArray<string>,
 	outcome: Collected | PlatformError.PlatformError,
 	kind: ClassifyKind,
+	secrets: ReadonlyArray<string> = [],
 ): Classified => {
+	// Exact strings first (they match a secret holding a quote or a space,
+	// which the token-wise shape masker splits on), then the shape backstop.
+	const scrub = (text: string): string => maskCredentialsInText(maskSecrets(text, secrets));
 	if (outcome instanceof PlatformError.PlatformError) {
 		// The non-NotFound arms keep the underlying diagnostic: flattening the
 		// PlatformError to its reason tag alone drops module/method/cause detail
@@ -499,7 +519,10 @@ const classify = (
 			outcome.reason._tag === "NotFound"
 				? "git is not installed (or the working directory does not exist)"
 				: `spawn failed: ${outcome.reason._tag}: ${outcome.message}`;
-		return { _tag: "failure", error: GitCommandError.make({ kind: "failed", args, cwd, stderr: "", detail }) };
+		return {
+			_tag: "failure",
+			error: GitCommandError.make({ kind: "failed", args, cwd, stderr: "", detail: scrub(detail) }),
+		};
 	}
 	const { stdout, stderr, exitCode } = outcome;
 	if (exitCode === 0) {
@@ -528,6 +551,9 @@ const classify = (
 	if (kind === "log" && stderr.includes(UNBORN_HEAD_PATTERN)) {
 		return { _tag: "absent" };
 	}
+	if (kind === "tree" && stderr.includes(NO_WORK_TREE_PATTERN)) {
+		return { _tag: "absent" };
+	}
 	if (kind === "quiet" && exitCode === 1 && stderr === "") {
 		// --quiet probes (symbolic-ref) and config --get signal "unset" as a
 		// silent exit 1; any stderr text means a real failure instead.
@@ -542,7 +568,13 @@ const classify = (
 	if (kind === "refExists" && exitCode === 1) {
 		return { _tag: "refMissing" };
 	}
-	return { _tag: "failure", error: GitCommandError.make({ kind: "failed", args, cwd, exitCode, stderr }) };
+	// Classified on the raw stderr above; stored masked, because git echoes a
+	// remote it could not parse — token included — and the stored stderr
+	// reaches `GitCommandError.message`, logs and spans.
+	return {
+		_tag: "failure",
+		error: GitCommandError.make({ kind: "failed", args, cwd, exitCode, stderr: scrub(stderr) }),
+	};
 };
 
 /**
@@ -561,6 +593,21 @@ const classify = (
  * the service's members is spawned with the pins and nothing else in the
  * package needs to know they exist.
  */
+/**
+ * The exact secret strings an invocation carries, read off the raw argv
+ * against its redacted twin: a positional masked whole (a config value) is a
+ * secret as it stands, and a URL positional contributes its credential
+ * segments. git may echo either in its stderr; `classify` masks them there.
+ */
+const secretsOf = (invocation: GitInvocation): ReadonlyArray<string> => {
+	const raw = invocation.command.args;
+	return raw.flatMap((arg, index) => {
+		const redacted = invocation.redactedArgs[index];
+		if (redacted === undefined || arg === redacted) return [];
+		return redacted === REDACTED ? [arg] : credentialSegments(arg);
+	});
+};
+
 const runClassified = (
 	invocation: GitInvocation,
 	cwd: string,
@@ -568,10 +615,11 @@ const runClassified = (
 	env: Record<string, string>,
 ): Effect.Effect<Classified, never, ChildProcessSpawner.ChildProcessSpawner> => {
 	const args = invocation.redactedArgs;
+	const secrets = secretsOf(invocation);
 	const command = ChildProcess.setEnv(ChildProcess.setCwd(invocation.command, cwd), env);
 	return runCollected(command).pipe(
-		Effect.map((collected) => classify(cwd, args, collected, kind)),
-		Effect.catch((platformError) => Effect.succeed(classify(cwd, args, platformError, kind))),
+		Effect.map((collected) => classify(cwd, args, collected, kind, secrets)),
+		Effect.catch((platformError) => Effect.succeed(classify(cwd, args, platformError, kind, secrets))),
 		Effect.timeoutOrElse({
 			duration: GIT_TIMEOUT,
 			orElse: () =>
@@ -1232,6 +1280,122 @@ const parseWorktreeList = (output: string): ReadonlyArray<WorktreeEntry> => {
 	}
 	flush();
 	return entries;
+};
+
+/**
+ * How two working trees relate: the same tree, two worktrees of one
+ * repository, or two repositories.
+ *
+ * @public
+ */
+export type TreeRelation = "same-tree" | "sibling-worktree" | "different-repo";
+
+/**
+ * A working tree's identity, from `Git.treeIdentity`: its physical toplevel
+ * and its repository's common directory.
+ *
+ * @remarks
+ * Both paths are git's own symlink-resolved answers, so two identities
+ * compare as strings with no realpath step. Compare them only with other git
+ * answers, never with a path spelled by the caller. `commonDir` is shared by
+ * every worktree of one repository, and `toplevel` is different for each, so
+ * the pair tells a sibling worktree apart from the same tree.
+ *
+ * @public
+ */
+export class TreeIdentity extends Schema.Class<TreeIdentity>("TreeIdentity")({
+	/** The working tree's physical root (`git rev-parse --show-toplevel`). */
+	toplevel: Schema.String,
+	/** The repository's physical common directory, shared by all its worktrees. */
+	commonDir: Schema.String,
+}) {
+	/**
+	 * How `self` relates to `that`: `"same-tree"` when both name one working
+	 * tree, `"sibling-worktree"` when they are different worktrees of one
+	 * repository, `"different-repo"` otherwise.
+	 */
+	static readonly relation: {
+		(that: TreeIdentity): (self: TreeIdentity) => TreeRelation;
+		(self: TreeIdentity, that: TreeIdentity): TreeRelation;
+	} = dual(2, (self: TreeIdentity, that: TreeIdentity): TreeRelation => {
+		if (self.commonDir !== that.commonDir) return "different-repo";
+		return self.toplevel === that.toplevel ? "same-tree" : "sibling-worktree";
+	});
+
+	/** Whether `self` and `that` belong to one repository, in any of its worktrees. */
+	static readonly sameRepository: {
+		(that: TreeIdentity): (self: TreeIdentity) => boolean;
+		(self: TreeIdentity, that: TreeIdentity): boolean;
+	} = dual(2, (self: TreeIdentity, that: TreeIdentity): boolean => self.commonDir === that.commonDir);
+}
+
+/**
+ * Splits `git rev-parse --show-toplevel --path-format=absolute
+ * --git-common-dir` output into its two lines, or `undefined` when the answer
+ * is not exactly two non-empty lines (an older git echoes the flag as a
+ * third).
+ */
+const parseTreeIdentity = (output: string): TreeIdentity | undefined => {
+	const lines = output.replace(/\r?\n$/, "").split(/\r?\n/);
+	const [toplevel, commonDir] = lines;
+	if (lines.length !== 2 || toplevel === undefined || commonDir === undefined) return undefined;
+	if (toplevel === "" || commonDir === "" || commonDir.startsWith("-")) return undefined;
+	return TreeIdentity.make({ toplevel, commonDir });
+};
+
+/**
+ * The current branch's upstream, from `Git.upstream`.
+ *
+ * @public
+ */
+export class UpstreamBranch extends Schema.Class<UpstreamBranch>("UpstreamBranch")({
+	/**
+	 * The upstream's full refname: `refs/remotes/origin/main`, or
+	 * `refs/heads/<b>` when the branch tracks a local branch (remote `.`).
+	 */
+	ref: Schema.String,
+	/**
+	 * The upstream's short name, the same string
+	 * `git rev-parse --abbrev-ref @{upstream}` answers (`origin/main`).
+	 */
+	name: Schema.String,
+	/**
+	 * Whether the upstream is configured but its ref no longer exists (the
+	 * remote branch was deleted and pruned). `ahead` and `behind` are 0 then.
+	 */
+	gone: Schema.Boolean,
+	/** Commits on the branch that the upstream lacks. */
+	ahead: Schema.Number,
+	/** Commits on the upstream that the branch lacks. */
+	behind: Schema.Number,
+}) {}
+
+// git's C-locale `%(upstream:track,nobracket)`: empty when in sync, else
+// `ahead N`, `behind N` or `ahead N, behind M` (`gone` is handled first).
+const TRACK = /^(?:ahead (\d+)(?:, behind (\d+))?|behind (\d+))?$/;
+
+/**
+ * Parses the `for-each-ref` upstream record for exactly `branchRef`. Yields
+ * `Option.none` when the branch has no record (unborn) or no upstream, and
+ * `undefined` when the tracking field is not one git's C locale writes.
+ */
+const parseUpstream = (output: string, branchRef: string): Option.Option<UpstreamBranch> | undefined => {
+	const line = output.split("\n").find((record) => record.split("\0")[0] === branchRef);
+	if (line === undefined) return Option.none();
+	const [, ref = "", name = "", track = ""] = line.split("\0");
+	if (ref === "") return Option.none();
+	if (track === "gone") return Option.some(UpstreamBranch.make({ ref, name, gone: true, ahead: 0, behind: 0 }));
+	const counts = TRACK.exec(track);
+	if (counts === null) return undefined;
+	return Option.some(
+		UpstreamBranch.make({
+			ref,
+			name,
+			gone: false,
+			ahead: Number(counts[1] ?? 0),
+			behind: Number(counts[2] ?? counts[3] ?? 0),
+		}),
+	);
 };
 
 /**
@@ -2168,6 +2332,85 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		}
 	});
 
+	const treeIdentity = Effect.fn("Git.treeIdentity")(function* (cwd: string) {
+		yield* Effect.annotateCurrentSpan({ cwd });
+		const invocation = GitCommand.treeIdentity();
+		const classified = yield* runFor(invocation, cwd, "tree");
+		switch (classified._tag) {
+			case "success": {
+				const identity = parseTreeIdentity(classified.output);
+				if (identity === undefined) {
+					// git before 2.31 echoes the unknown --path-format flag and exits 0.
+					return yield* Effect.fail(
+						new GitCommandError({
+							kind: "failed",
+							args: invocation.redactedArgs,
+							cwd,
+							stderr: "",
+							detail: `unparseable tree-identity output (--path-format needs git 2.31 or later): ${JSON.stringify(classified.output)}`,
+						}),
+					);
+				}
+				return Option.some(identity);
+			}
+			// Outside any repository, and in a repository with no working tree,
+			// there is no tree to identify: a tolerated miss, not a failure.
+			case "notARepository":
+			case "absent":
+				return Option.none();
+			case "failure":
+				return yield* Effect.fail(classified.error);
+			default:
+				// rev-parse names no ref here, so no ref-error stderr can reach this arm.
+				return yield* Effect.die(`Git.treeIdentity: unexpected classification "${classified._tag}"`);
+		}
+	});
+
+	const upstream = Effect.fn("Git.upstream")(function* (cwd: string) {
+		yield* Effect.annotateCurrentSpan({ cwd });
+		const head = yield* runFor(GitCommand.headRef(), cwd, "quiet");
+		let branchRef: string;
+		switch (head._tag) {
+			case "success":
+				branchRef = head.output.replace(/\r?\n$/, "");
+				break;
+			case "absent":
+				// A detached HEAD is on no branch, so it tracks nothing.
+				return Option.none<UpstreamBranch>();
+			case "notARepository":
+				return yield* Effect.fail(new NotARepositoryError({ cwd }));
+			case "failure":
+				return yield* Effect.fail(head.error);
+			default:
+				return yield* Effect.die(`Git.upstream: unexpected classification "${head._tag}"`);
+		}
+		const invocation = GitCommand.upstream(branchRef);
+		const classified = yield* runFor(invocation, cwd, "generic");
+		switch (classified._tag) {
+			case "success": {
+				const parsed = parseUpstream(classified.output, branchRef);
+				if (parsed === undefined) {
+					return yield* Effect.fail(
+						new GitCommandError({
+							kind: "failed",
+							args: invocation.redactedArgs,
+							cwd,
+							stderr: "",
+							detail: `unparseable upstream tracking state: ${JSON.stringify(classified.output)}`,
+						}),
+					);
+				}
+				return parsed;
+			}
+			case "notARepository":
+				return yield* Effect.fail(new NotARepositoryError({ cwd }));
+			case "failure":
+				return yield* Effect.fail(classified.error);
+			default:
+				return yield* Effect.die(`Git.upstream: unexpected classification "${classified._tag}"`);
+		}
+	});
+
 	const configGet = Effect.fn("Git.configGet")(function* (
 		cwd: string,
 		key: string,
@@ -3079,6 +3322,8 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		currentBranch,
 		repoRoot,
 		commonDir,
+		treeIdentity,
+		upstream,
 		configGet,
 		remoteUrl,
 		commitInfo,
@@ -3622,6 +3867,38 @@ export interface GitShape {
 	 * `GitCommandError` (`kind: "failed"`) rather than passing as an identity.
 	 */
 	readonly commonDir: (cwd: string) => Effect.Effect<string, GitCommandError | NotARepositoryError>;
+	/**
+	 * `git rev-parse --show-toplevel --path-format=absolute --git-common-dir` —
+	 * the {@link TreeIdentity} of the working tree holding `cwd`, in one spawn,
+	 * or `Option.none` when `cwd` is in no working tree.
+	 *
+	 * @remarks
+	 * `Option.none` covers both a directory outside any repository and one in a
+	 * repository with no working tree (a bare repository, or inside `.git`).
+	 * Both paths are git's physical answers, so no realpath step is needed to
+	 * compare two identities; relate them with {@link TreeIdentity.relation}.
+	 * Only git's terminating newlines are removed. Needs git 2.31 or later; an
+	 * older git fails as a `GitCommandError` (`kind: "failed"`).
+	 */
+	readonly treeIdentity: (cwd: string) => Effect.Effect<Option.Option<TreeIdentity>, GitCommandError>;
+	/**
+	 * The current branch's upstream (`branch.<name>.remote` +
+	 * `branch.<name>.merge`) with its tracking state, or `Option.none` when
+	 * there is none to report.
+	 *
+	 * @remarks
+	 * Two spawns: `git symbolic-ref --quiet HEAD`, then
+	 * `git for-each-ref --format=… <branch ref>` (see
+	 * {@link GitCommand.upstream}). `Option.none` when `HEAD` is detached,
+	 * when the branch is unborn, and when no upstream is configured. An
+	 * upstream whose ref was deleted is still reported, with `gone: true`,
+	 * where `git rev-parse @{upstream}` would fail as an unknown revision.
+	 * `UpstreamBranch.name` is the same string
+	 * `git rev-parse --abbrev-ref @{upstream}` answers.
+	 */
+	readonly upstream: (
+		cwd: string,
+	) => Effect.Effect<Option.Option<UpstreamBranch>, GitCommandError | NotARepositoryError>;
 	/**
 	 * `git config [--<scope>] --get <key>` — the trimmed value, or `Option.none`
 	 * when the key is unset.
@@ -4277,6 +4554,8 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		currentBranch: notStubbed("currentBranch"),
 		repoRoot: notStubbed("repoRoot"),
 		commonDir: notStubbed("commonDir"),
+		treeIdentity: notStubbed("treeIdentity"),
+		upstream: notStubbed("upstream"),
 		configGet: notStubbed("configGet"),
 		remoteUrl: notStubbed("remoteUrl"),
 		commitInfo: notStubbed("commitInfo"),
