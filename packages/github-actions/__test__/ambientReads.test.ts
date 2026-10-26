@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
-import { LanguageVariant, SyntaxKind, computeLineStarts, createScanner } from "typescript/unstable/ast";
+import { LanguageVariant, SyntaxKind, computeLineStarts, createScanner } from "typescript/ast";
 
 /**
  * The package's rule that ambient process state is never read behind a
@@ -41,7 +41,7 @@ const AMBIENT_MEMBERS: ReadonlySet<string> = new Set(["env", "arch", "platform"]
  * template span, not code. Without that, a `}` inside a template resumes
  * scanning template text as identifiers.
  *
- * The scanner is TypeScript 7's, from `typescript/unstable/ast` — the
+ * The scanner is TypeScript 7's, from `typescript/ast` — the
  * package's root export carries only `version` now that the compiler is
  * native, and the JS scanner moved there with a shorter signature (no
  * `ScriptTarget`) and `SyntaxKind.EndOfFile` in place of `EndOfFileToken`.

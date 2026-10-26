@@ -46,7 +46,7 @@
 		"@effect/platform-node": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
 		"@octokit/openapi-types": "^29.0.1",
-		"@savvy-web/bundler": "^2.6.1",
+		"@savvy-web/bundler": "^2.6.2",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"oxc-parser": "^0.153.0",
