@@ -49,7 +49,7 @@
 		"@savvy-web/bundler": "^2.6.2",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"oxc-parser": "^0.153.0",
+		"oxc-parser": "^0.155.0",
 		"tsx": "catalog:build",
 		"typescript": "catalog:build"
 	},
