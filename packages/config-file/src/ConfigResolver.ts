@@ -152,29 +152,17 @@ const cwdOf = (given: string | undefined): string => given ?? globalThis.process
  * (`".config/app.toml"`), which is how a mixed convention is spelled without a
  * `subpaths` cross product.
  *
+ * At most one of `stopAt` (a lexical ceiling) and `ceiling` (a physical
+ * one) is given. Bound the walk by a path git answered — `Git.repoRoot` — with
+ * `ceiling`; `stopAt` never matches a symlink-resolved spelling of the start.
+ *
  * @public
  */
-export type UpwardWalkOptions =
+export type UpwardWalkOptions = (
 	| {
 			/** The single file name probed at each ancestor directory. */
 			readonly filename: string;
 			readonly filenames?: undefined;
-			/** Where the walk starts. Defaults to the process cwd. */
-			readonly cwd?: string;
-			/** An absolute ceiling the walk stops at, inclusive. */
-			readonly stopAt?: string;
-			/** Directories probed under each ancestor, in order. Defaults to `["."]`. */
-			readonly subpaths?: ReadonlyArray<string>;
-			/**
-			 * The resolver's reported name. Defaults to `"walk"`.
-			 *
-			 * @remarks
-			 * Two `upwardWalk` entries in one chain otherwise report the same
-			 * `"walk"`, so `ConfigSource.resolver` cannot tell them apart. Pass a
-			 * distinct name per call — or read `ConfigSource.match` instead, which
-			 * identifies the matching candidate rather than the resolver.
-			 */
-			readonly name?: string;
 	  }
 	| {
 			/**
@@ -183,15 +171,56 @@ export type UpwardWalkOptions =
 			 */
 			readonly filenames: ReadonlyArray<string>;
 			readonly filename?: undefined;
-			/** Where the walk starts. Defaults to the process cwd. */
-			readonly cwd?: string;
-			/** An absolute ceiling the walk stops at, inclusive. */
-			readonly stopAt?: string;
-			/** Directories probed under each ancestor, in order. Defaults to `["."]`. */
-			readonly subpaths?: ReadonlyArray<string>;
-			/** The resolver's reported name. Defaults to `"walk"`. */
-			readonly name?: string;
-	  };
+	  }
+) &
+	(
+		| {
+				/**
+				 * An absolute ceiling the walk stops at, inclusive, compared
+				 * LEXICALLY (`Walker.ascend`'s `stopAt`).
+				 *
+				 * @remarks
+				 * A ceiling spelled differently from the walk's own path never
+				 * matches, and the walk runs on to the filesystem root. That is
+				 * every physical path — `Git.repoRoot`'s answer from a symlinked or
+				 * macOS-tmpdir start — so bound by such a path with `ceiling`.
+				 */
+				readonly stopAt?: string;
+				readonly ceiling?: undefined;
+		  }
+		| {
+				/**
+				 * A ceiling the walk stops at, inclusive, compared PHYSICALLY: the
+				 * nearest ancestor whose real path is the ceiling's real path
+				 * (`Walker.ascendWithin`).
+				 *
+				 * @remarks
+				 * For a ceiling that may be spelled differently from the walk's own
+				 * path, above all `Git.repoRoot`'s symlink-resolved answer:
+				 * `ceiling: yield* Effect.option(git.repoRoot(cwd))`.
+				 * `Option.none()` walks to the filesystem root, so "no ceiling" is
+				 * stated rather than defaulted. A present relative ceiling is a
+				 * defect. Cannot be combined with `stopAt`.
+				 */
+				readonly ceiling: Option.Option<string>;
+				readonly stopAt?: undefined;
+		  }
+	) & {
+		/** Where the walk starts. Defaults to the process cwd. */
+		readonly cwd?: string;
+		/** Directories probed under each ancestor, in order. Defaults to `["."]`. */
+		readonly subpaths?: ReadonlyArray<string>;
+		/**
+		 * The resolver's reported name. Defaults to `"walk"`.
+		 *
+		 * @remarks
+		 * Two `upwardWalk` entries in one chain otherwise report the same
+		 * `"walk"`, so `ConfigSource.resolver` cannot tell them apart. Pass a
+		 * distinct name per call — or read `ConfigSource.match` instead, which
+		 * identifies the matching candidate rather than the resolver.
+		 */
+		readonly name?: string;
+	};
 
 /**
  * Ascend from `cwd` looking for the first directory where `isRoot` reports
@@ -333,8 +362,8 @@ export class ConfigResolver {
 		);
 
 	/**
-	 * Ascends from `cwd` (or the process cwd) toward `stopAt`, resolving the
-	 * first `subpaths/filename` combination found at each level.
+	 * Ascends from `cwd` (or the process cwd) toward `stopAt` or `ceiling`,
+	 * resolving the first `subpaths/filename` combination found at each level.
 	 *
 	 * @remarks
 	 * `filenames` replaces `filename` with a per-directory candidate list: every
@@ -355,9 +384,12 @@ export class ConfigResolver {
 				const path = yield* Path.Path;
 				const subpaths = options.subpaths ?? ["."];
 				const filenames = options.filenames ?? [options.filename];
-				const dirs = yield* Walker.ascend(cwdOf(options.cwd), {
-					...(options.stopAt !== undefined && { stopAt: options.stopAt }),
-				});
+				const dirs =
+					options.ceiling !== undefined
+						? yield* Walker.ascendWithin(cwdOf(options.cwd), options.ceiling)
+						: yield* Walker.ascend(cwdOf(options.cwd), {
+								...(options.stopAt !== undefined && { stopAt: options.stopAt }),
+							});
 				// Directory-major, then subpath, then filename: every candidate at one
 				// ancestor is exhausted before the walk ascends. A parent's first
 				// candidate must never beat a child's second, which is exactly what

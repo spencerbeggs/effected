@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import type { FileSystem } from "effect";
-import { Effect, Layer, Option, Path, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Path, Schema } from "effect";
 import { ConfigFile } from "../src/ConfigFile.js";
 import { ConfigResolver } from "../src/ConfigResolver.js";
 import { JsonCodec } from "../src/JsonCodec.js";
@@ -279,5 +279,68 @@ describe("ConfigResolver probe reporting", () => {
 				Option.map(probe.match, (m) => m.path),
 			);
 		}).pipe(Effect.provide(platform({ "/repo/app.toml": "" }))),
+	);
+});
+
+describe("ConfigResolver.upwardWalk ceiling (physical)", () => {
+	// `/link` -> `/real`: the walk runs from the lexical `/link/repo/pkg`, while
+	// a git-derived ceiling names the physical `/real/repo`. A config above the
+	// repository must stay out of reach.
+	const linkedWith = (files: Record<string, string>) =>
+		Layer.mergeAll(MemoryFileSystem.layerWith({ ...files, "/link": MemoryFileSystem.symlink("/real") }), Path.layer);
+	const linked = linkedWith({ "/real/repo/pkg/.keep": "", "/real/app.toml": "" });
+
+	it.effect("control: a lexical stopAt misses the physical ceiling and the walk escapes the repository", () =>
+		Effect.gen(function* () {
+			const found = yield* ConfigResolver.upwardWalk({
+				filename: "app.toml",
+				cwd: "/link/repo/pkg",
+				stopAt: "/real/repo",
+			}).resolve;
+			assert.deepStrictEqual(found, Option.some("/link/app.toml"));
+		}).pipe(Effect.provide(linked)),
+	);
+
+	it.effect("a physical ceiling stops at the lexical ancestor whose real path is the ceiling", () =>
+		Effect.gen(function* () {
+			const found = yield* ConfigResolver.upwardWalk({
+				filename: "app.toml",
+				cwd: "/link/repo/pkg",
+				ceiling: Option.some("/real/repo"),
+			}).resolve;
+			assert.isTrue(Option.isNone(found));
+		}).pipe(Effect.provide(linked)),
+	);
+
+	it.effect("the ceiling is inclusive and the match keeps the walk's lexical spelling", () =>
+		Effect.gen(function* () {
+			const found = yield* ConfigResolver.upwardWalk({
+				filenames: [".app.toml", "app.toml"],
+				cwd: "/link/repo/pkg",
+				ceiling: Option.some("/real/repo"),
+			}).resolve;
+			assert.deepStrictEqual(found, Option.some("/link/repo/app.toml"));
+		}).pipe(Effect.provide(linkedWith({ "/real/repo/pkg/.keep": "", "/real/repo/app.toml": "" }))),
+	);
+
+	it.effect("Option.none() walks to the filesystem root, like no bound at all", () =>
+		Effect.gen(function* () {
+			const found = yield* ConfigResolver.upwardWalk({
+				filename: "app.toml",
+				cwd: "/link/repo/pkg",
+				ceiling: Option.none(),
+			}).resolve;
+			assert.deepStrictEqual(found, Option.some("/link/app.toml"));
+		}).pipe(Effect.provide(linked)),
+	);
+
+	it.effect("a relative ceiling is a defect, never absorbed into 'no config found'", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(
+				ConfigResolver.upwardWalk({ filename: "app.toml", cwd: "/link/repo/pkg", ceiling: Option.some("repo") })
+					.resolve,
+			);
+			assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause));
+		}).pipe(Effect.provide(linked)),
 	);
 });
