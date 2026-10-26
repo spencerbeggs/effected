@@ -1,4 +1,4 @@
-import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
 import { NativeDirs } from "./NativeDirs.js";
 import type { XdgPaths, XdgPlatform } from "./Xdg.js";
 import { CurrentPlatform, Xdg } from "./Xdg.js";
@@ -39,6 +39,33 @@ export class AppDirsError extends Schema.TaggedError<AppDirsError>()("AppDirsErr
 }) {
 	override get message(): string {
 		return `Failed to create the ${this.directory} directory at "${this.path}"`;
+	}
+}
+
+/**
+ * Raised by {@link AppDirs.segment} when a name maps to no usable path
+ * segment.
+ *
+ * @remarks
+ * The mapping never produces a separator, so the only unusable results are the
+ * three that do not name a child directory: the empty string (reason
+ * `"empty"`), `.` (`"dot"`) and `..` (`"dot-dot"`). Joined under a directory,
+ * the first two resolve to the directory itself and the third to its parent —
+ * an escape. `input` is the name as given, for a message that tells the user
+ * which value to fix.
+ *
+ * @public
+ */
+export class AppDirsSegmentError extends Schema.TaggedError<AppDirsSegmentError>()("AppDirsSegmentError", {
+	/** The name that was given. */
+	input: Schema.String,
+	/** Why its mapping is unusable. */
+	reason: Schema.Literals(["empty", "dot", "dot-dot"]),
+}) {
+	override get message(): string {
+		return this.reason === "empty"
+			? "A path segment cannot be empty"
+			: `${JSON.stringify(this.input)} cannot be a path segment: it names ${this.reason === "dot" ? "the directory itself" : "the parent directory"}`;
 	}
 }
 
@@ -251,6 +278,19 @@ const resolveAll = (options: AppDirsOptions, paths: XdgPaths, platform: XdgPlatf
 };
 
 /**
+ * The segment mapping, applied in order: `/` becomes `__`, so `@org/pkg` is
+ * `@org__pkg`; every character outside `[A-Za-z0-9._@-]` becomes `_`; then
+ * runs of three or more `_` collapse to `__`. No `u` flag, deliberately: the
+ * class is matched per UTF-16 code unit, so a character outside the BMP is two
+ * `_` — the byte-for-byte contract persisted keys depend on.
+ */
+const toSegment = (name: string): string =>
+	name
+		.replaceAll("/", "__")
+		.replace(/[^A-Za-z0-9._@-]/g, "_")
+		.replace(/_{3,}/g, "__");
+
+/**
  * A namespace is a single path component. Anything else escapes the app's own
  * directories, so it **dies** rather than resolving somewhere surprising. This
  * is wiring, not input: only code supplies a namespace, so a bad one is a
@@ -295,6 +335,54 @@ const badNamespace = (namespace: string): Error | undefined => {
  * @public
  */
 export class AppDirs extends Context.Service<AppDirs, AppDirsShape>()("@effected/xdg/AppDirs") {
+	/**
+	 * Map an arbitrary name — a package name, a project key — to one
+	 * filesystem-safe path segment, for a directory or file under an app
+	 * directory.
+	 *
+	 * @remarks
+	 * Three rules, in order: `/` becomes `__` (so `@org/pkg` is `@org__pkg`);
+	 * every character outside `[A-Za-z0-9._@-]` becomes `_` (separators,
+	 * Windows-reserved characters, control characters, whitespace); runs of
+	 * three or more `_` collapse to `__`. Matching is per UTF-16 code unit, so a
+	 * character outside the Basic Multilingual Plane becomes `__`. The mapping
+	 * is stable — a name always maps to the same segment, which is what lets a
+	 * program find what it stored — and it is **not** injective: `@org/pkg` and
+	 * `@org__pkg` share a segment, as do `a b` and `a_b`. Hash the name when
+	 * distinct names must never share a directory.
+	 *
+	 * The result never contains a separator. It fails with
+	 * {@link AppDirsSegmentError} when it is `""`, `.` or `..`, none of which
+	 * names a child: joined under a directory they mean the directory itself or
+	 * its parent. On Windows a trailing `.` is dropped by the filesystem and
+	 * device names such as `CON` are reserved; neither is refused here, because
+	 * the mapping must stay the same on every platform.
+	 *
+	 * Pure, so a `Result` rather than an `Effect`: synchronous callers read it
+	 * directly, and Effect code lifts it with `Effect.fromResult`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { AppDirs } from "@effected/xdg";
+	 * import { Result } from "effect";
+	 *
+	 * const key = AppDirs.segment("@org/pkg");
+	 * // Result.succeed("@org__pkg")
+	 * const escape = AppDirs.segment("..");
+	 * // Result.fail(AppDirsSegmentError { reason: "dot-dot" })
+	 * if (Result.isSuccess(key)) console.log(key.success);
+	 * ```
+	 *
+	 * @param name - the name to map
+	 */
+	static segment(name: string): Result.Result<string, AppDirsSegmentError> {
+		const segment = toSegment(name);
+		if (segment === "") return Result.fail(new AppDirsSegmentError({ input: name, reason: "empty" }));
+		if (segment === ".") return Result.fail(new AppDirsSegmentError({ input: name, reason: "dot" }));
+		if (segment === "..") return Result.fail(new AppDirsSegmentError({ input: name, reason: "dot-dot" }));
+		return Result.succeed(segment);
+	}
+
 	/**
 	 * Resolve the namespace's directories against the ambient {@link Xdg}
 	 * environment and platform.

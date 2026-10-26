@@ -14,6 +14,7 @@ export {
 	AppDirs,
 	AppDirsError,
 	type AppDirsOptions,
+	AppDirsSegmentError,
 	type AppDirsShape,
 	ResolvedAppDirs,
 } from "./AppDirs.js";

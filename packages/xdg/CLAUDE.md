@@ -74,6 +74,25 @@ Three consequences, and they are why the design holds together:
   `..` — all are **defects** at layer construction, not typed errors. It can only
   come from code, and `namespace: "../.."` would resolve the app's directories
   outside the home directory.
+- **`Xdg.layerFromEnv(source)` and `Xdg.layer` share one resolution** (`readPaths`
+  in `Xdg.ts`); `layerFromEnv` provides it a `ConfigProvider` (a record goes
+  through `fromEnvRecord`, so `""` reads as unset) and is `Layer.fresh`, mirroring
+  `CurrentRuntimeEnv.layerFrom`: one layer value re-reads its source on every build, even
+  nested inside a provide of itself (pinned; removing `Layer.fresh` fails that test). Separate
+  calls are independent anyway, since each returns a new layer. Never answer "read an env record" by providing a
+  `ConfigProvider` beneath the static `Xdg.layer` — it is memoized by reference,
+  so the first provider wins graph-wide (the `XdgLayerFromEnv` suite pins that as
+  its control). `Xdg.layerFrom(paths)` is the different, older thing: fixed paths.
+  There is **no** posix `USERPROFILE` fallback — declined 2026-10-26 — so the
+  home rule is identical across both layers.
+- **`AppDirs.segment(name)` is a persisted contract.** It is vitest-agent's
+  `normalizeWorkspaceKey` byte for byte (`/`→`__`, outside `[A-Za-z0-9._@-]`→`_`,
+  `_{3,}`→`__`, **no `u` flag** so an astral character is `__`), returning a
+  `Result` that fails `AppDirsSegmentError` (`empty` / `dot` / `dot-dot`) on the
+  three results that name no child. Never "fix" the regex flags or the collapse
+  rule: stored data directories are keyed on today's output, and the suite runs
+  a copy of the original as an oracle. It does not refuse Windows device names
+  or trailing dots — the mapping must be platform-independent.
 - **Every join goes through `Path.Path`**, never string interpolation. v3 built
   every path with `${home}/Library/...`, which emits forward slashes on Windows.
 
@@ -100,7 +119,7 @@ would be a one-element loop and the walker edge would be ceremony.
 
 ## Testing and building
 
-74 tests in `__test__/`, `@effect/vitest`, `assert.*` — never `expect`.
+86 tests in `__test__/`, `@effect/vitest`, `assert.*` — never `expect`.
 
 ```bash
 pnpm vitest run packages/xdg
