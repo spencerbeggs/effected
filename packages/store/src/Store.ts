@@ -1,8 +1,9 @@
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
-import { Context, DateTime, Effect, Layer, Schema } from "effect";
+import { Context, DateTime, Effect, FileSystem, Layer, Order, Path, Schema } from "effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import type * as SqlError from "effect/sql/SqlError";
 import { causeMessage } from "./internal/causeMessage.js";
+import { isEphemeralFilename, registryKey, runOnce } from "./internal/migrateOnce.js";
 import type { AdoptFailure, MigratorFailure, RollbackHistory } from "./internal/migrator.js";
 import {
 	adoptForeignLedger,
@@ -487,6 +488,60 @@ const make = (
 	});
 
 /**
+ * effect/sql's `Migrator.fromRecord` key grammar, copied verbatim
+ * (`.repos/effect/packages/effect/src/sql/Migrator.ts`): no flags, so `\d` is
+ * ASCII digits only and `.` stops at a line terminator.
+ */
+const MIGRATOR_RECORD_KEY = /^(\d+)_(.+)$/;
+
+/** `Order.Number` on the id, as effect/sql sorts; total even where ids overflow to `Infinity`. */
+const byId: Order.Order<StoreMigration> = Order.mapInput(Order.Number, (migration: StoreMigration) => migration.id);
+
+const fromMigratorRecord = (
+	record: Readonly<Record<string, Effect.Effect<unknown, SqlError.SqlError, SqlClient.SqlClient>>>,
+): ReadonlyArray<StoreMigration> => {
+	const migrations: Array<StoreMigration> = [];
+	for (const key of Object.keys(record)) {
+		const match = MIGRATOR_RECORD_KEY.exec(key);
+		if (match === null) continue;
+		const effect = record[key] as Effect.Effect<unknown, SqlError.SqlError, SqlClient.SqlClient>;
+		migrations.push({
+			id: Number(match[1]),
+			name: match[2] as string,
+			up: (sql) => Effect.provideService(effect, SqlClient.SqlClient, sql),
+		});
+	}
+	return migrations.sort(byId);
+};
+
+const migrateOnce = Effect.fn("Store.migrateOnce")(function* (options: StoreSqliteOptions) {
+	if (isEphemeralFilename(options.filename)) {
+		return yield* Effect.die(
+			new Error(
+				`Store.migrateOnce: \`filename\` must name a database file, received ${JSON.stringify(options.filename)}`,
+			),
+		);
+	}
+	const fs = yield* FileSystem.FileSystem;
+	const path = yield* Path.Path;
+	const absolute = path.resolve(options.filename);
+	// The parent, not the file: the first open creates the file, but the driver
+	// never creates a directory, so the parent must already exist.
+	const directory = yield* fs
+		.realPath(path.dirname(absolute))
+		.pipe(Effect.mapError((cause) => new StoreError({ operation: "setup", cause })));
+	const fingerprint = JSON.stringify({
+		migrations: options.migrations.map((migration) => [migration.id, migration.name]),
+		adopt: options.adoptMigratorLedger ?? false,
+		mirror: options.mirrorMigratorLedger ?? false,
+	});
+	yield* runOnce<StoreError | StoreMigrationError>(
+		registryKey(path.join(directory, path.basename(absolute)), fingerprint),
+		Effect.scoped(Layer.build(Store.layerSqlite(options))).pipe(Effect.asVoid),
+	);
+});
+
+/**
  * A schema-versioned, migrated SQL client: a managed database connection with
  * a user-defined migration ledger.
  *
@@ -630,6 +685,113 @@ export class Store extends Context.Service<Store, StoreShape>()("@effected/store
 			SqlClient.SqlClient,
 			Effect.map(tag, (store) => store.client),
 		);
+	}
+
+	/**
+	 * Convert a migration record in effect/sql's `Migrator.fromRecord` shape —
+	 * `"<id>_<name>"` → migration effect — into the {@link StoreMigration} list
+	 * `Store` runs, so a program moving off effect/sql's `Migrator` keeps its
+	 * migration modules as they are.
+	 *
+	 * @remarks
+	 * Keys parse exactly as `Migrator.fromRecord` parses them, with the same
+	 * `/^(\d+)_(.+)$/` and `Number(id)`: `"0001_initial"` is id `1`, name
+	 * `"initial"`, which is what effect/sql recorded in its ledger and what
+	 * {@link StoreOptions.adoptMigratorLedger} matches against. A key that does
+	 * not match is skipped, as effect/sql skips it — including one whose name
+	 * holds a line break. The list is sorted by id. Each `up` provides the
+	 * migration effect with the store's `SqlClient`; there is no `down`, since
+	 * effect/sql migrations have none.
+	 *
+	 * Nothing is validated here. Where effect/sql and `Store` disagree — an id
+	 * of `0`, which `Migrator` silently never runs, or two keys with one id
+	 * (`"1_a"`, `"01_b"`), which it refuses — `Store.layer` dies on the list as
+	 * the wiring defect it is, rather than this function hiding a migration.
+	 *
+	 * Values are typed `SqlError` on the error channel, as `StoreMigration.up`
+	 * requires; effect/sql's own record type admits `unknown`, so such a record
+	 * maps its errors first.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Store } from "@effected/store";
+	 * import { SqlClient } from "effect/sql/SqlClient";
+	 * import { Effect } from "effect";
+	 *
+	 * const migrations = Store.fromMigratorRecord({
+	 * 	"0001_initial": Effect.flatMap(SqlClient, (sql) => sql`CREATE TABLE notes (body TEXT)`),
+	 * });
+	 * const StoreLive = Store.layerSqlite({ filename: "state.db", migrations, adoptMigratorLedger: true });
+	 * ```
+	 *
+	 * @param record - effect/sql migrations keyed `"<id>_<name>"`
+	 */
+	static fromMigratorRecord(
+		record: Readonly<Record<string, Effect.Effect<unknown, SqlError.SqlError, SqlClient.SqlClient>>>,
+	): ReadonlyArray<StoreMigration> {
+		return fromMigratorRecord(record);
+	}
+
+	/**
+	 * Migrate a SQLite database file at most once per process, sharing one
+	 * in-flight run between every concurrent caller — for several reporters or
+	 * workers in one process that each open the same database.
+	 *
+	 * @remarks
+	 * Builds {@link Store.layerSqlite} with `options`, which ensures the ledger
+	 * and applies every pending migration, then closes it. Runs are keyed on
+	 * the **real path** of the file's directory plus its name — so a relative
+	 * path, an absolute one and one through a symlinked directory share a run —
+	 * and on the migration list's ids and names and the two ledger options, so
+	 * a caller with a different migration set runs its own. The directory must
+	 * exist, as it must for the driver; resolving it fails as a `StoreError`
+	 * with `operation: "setup"`. Case variants on a case-insensitive filesystem
+	 * resolve to different keys and run twice, which is safe.
+	 *
+	 * A failed run is **not** remembered: its entry is removed before its
+	 * waiters see the failure, so the next call starts afresh. The run executes
+	 * on a detached fiber, so interrupting a caller stops only that caller's
+	 * wait.
+	 *
+	 * **It deduplicates migration runs; it does not guarantee a migrated
+	 * database.** A successful run is remembered for the life of the process,
+	 * keyed on the path — not on the file. Delete the database and recreate it
+	 * at the same path, and a later `migrateOnce` with the same migrations
+	 * returns at once without migrating it; open that file with
+	 * {@link Store.layerSqlite}, which always migrates, rather than relying on
+	 * this. There is deliberately no reset. Nor is this what makes concurrent
+	 * opening safe: every `Store` build already re-checks the ledger under
+	 * SQLite's write lock, across processes too, so no migration runs twice
+	 * either way.
+	 *
+	 * The registry lives on `globalThis` under an unversioned key, so every
+	 * copy of this package in one process — different versions included —
+	 * shares it, and its key and stored shape are a stable contract between
+	 * versions. A failure therefore reaches a waiter as the `StoreError` or
+	 * `StoreMigrationError` instance of whichever copy ran the migration: from
+	 * another copy it fails `instanceof`, while `_tag`-based handling
+	 * (`Effect.catchTag`) still matches.
+	 *
+	 * `":memory:"`, `""` and a `file:` URI name no shared file and die as
+	 * wiring.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Store } from "@effected/store";
+	 * import { NodeServices } from "@effect/platform-node";
+	 * import { Effect } from "effect";
+	 *
+	 * await Effect.runPromise(
+	 * 	Store.migrateOnce({ filename: "/var/lib/myapp/state.db", migrations: [] }).pipe(Effect.provide(NodeServices.layer)),
+	 * );
+	 * ```
+	 *
+	 * @param options - the options {@link Store.layerSqlite} takes
+	 */
+	static migrateOnce(
+		options: StoreSqliteOptions,
+	): Effect.Effect<void, StoreError | StoreMigrationError, FileSystem.FileSystem | Path.Path> {
+		return migrateOnce(options);
 	}
 
 	/** An in-memory (`:memory:`) `Store` layer for tests; each build is a fresh, empty database. */
