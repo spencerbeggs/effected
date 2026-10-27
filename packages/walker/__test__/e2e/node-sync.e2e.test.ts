@@ -47,13 +47,13 @@ describe("descendSync over node:fs", () => {
 				descendEntriesSync(all, { cwd: root, boundaries: ["package.json"], ...nodeWalkerSyncOps }),
 			);
 			assert.deepStrictEqual(
-				entries.map((entry) => [entry.path, entry.stat.size]),
+				entries.map((entry) => [entry.path, entry.info.size]),
 				[
 					["src/a.ts", 1],
 					["src/lib/b.ts", 2],
 				],
 			);
-			assert.isAbove(entries[0]?.stat.mtimeMs ?? 0, 0);
+			assert.isAbove(entries[0]?.info.mtimeMs ?? 0, 0);
 		});
 	});
 });

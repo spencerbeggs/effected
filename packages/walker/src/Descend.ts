@@ -6,14 +6,14 @@
 // matching a glob under a directory" lives here. The walker is semantics-free:
 // dotfile behavior, case folding and every other matching option are carried
 // by the COMPILED pattern the caller hands in — this module never re-derives
-// options, it only reads `hasMagic` / `negated` / `enumerationPrefix` /
-// `crossesSegments` and calls `matches`.
+// options, it only reads `hasMagic` / `negated` / `enumerationRoots` and calls
+// `matches`.
 
 import type { GlobPattern } from "@effected/glob";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Path, Schema } from "effect";
-import type { DescendRequest, ReadAnswer, StatAnswer } from "./internal/descendMachine.js";
-import { descendMachine } from "./internal/descendMachine.js";
+import type { DescendRequest, LstatAnswer, ReadAnswer, StatAnswer } from "./internal/descendMachine.js";
+import { descendMachine, failureOf } from "./internal/descendMachine.js";
 
 /**
  * Options for `descend`.
@@ -57,7 +57,9 @@ export interface DescendOptions {
 	readonly onUnreadable?: "fail" | "skip";
 	/**
 	 * Whether to descend into symlinked directories. Defaults to `false`: a
-	 * symlinked directory is never entered (cycle safety). Under `true` links
+	 * symlinked directory is never entered (cycle safety) — the walk base, and
+	 * every directory on the way to it, included: a base reached through a link
+	 * is an empty result. Under `true` links
 	 * are followed with the cycle guard kept underneath, in `@actions/glob`'s
 	 * `traversalChain` semantics: each descended directory records its real
 	 * path on its own branch's ancestor chain (only the base and each link pay
@@ -109,7 +111,7 @@ export interface DescendRecordOptions extends Omit<DescendOptions, "onUnreadable
  *
  * @public
  */
-export interface UnreadableDirectory {
+export interface UnreadableDirectory<C = PlatformError.PlatformError> {
 	/**
 	 * The directory's path relative to `cwd`, POSIX separators.
 	 *
@@ -121,7 +123,7 @@ export interface UnreadableDirectory {
 	 */
 	readonly path: string;
 	/** The `readDirectory` (or, for a link under `followSymlinks`, `realPath`) failure, never `NotFound` (a vanished directory is a benign race and is not recorded). */
-	readonly cause: PlatformError.PlatformError;
+	readonly cause: C;
 }
 
 /**
@@ -134,11 +136,11 @@ export interface UnreadableDirectory {
  *
  * @public
  */
-export interface DescendResult {
+export interface DescendResult<C = PlatformError.PlatformError> {
 	/** Matching FILE paths relative to `cwd`, POSIX separators, sorted — identical in shape to the `"fail"`/`"skip"` success value. */
 	readonly matches: ReadonlyArray<string>;
 	/** Directories that could not be read, each with its cause, in walk order. */
-	readonly unreadable: ReadonlyArray<UnreadableDirectory>;
+	readonly unreadable: ReadonlyArray<UnreadableDirectory<C>>;
 }
 
 /**
@@ -172,13 +174,16 @@ export class DescendError extends Schema.TaggedError<DescendError>()("DescendErr
  * element. Costs no syscall beyond `descend`'s: the walk stats every entry to
  * classify it, and this keeps the answer instead of discarding it.
  *
+ * The type parameter is the stat's type, so the sync walk reuses this shape
+ * with its port's stats.
+ *
  * @public
  */
-export interface DescendEntry {
+export interface DescendEntry<I = FileSystem.File.Info> {
 	/** The file's path relative to `cwd`, POSIX separators. */
 	readonly path: string;
 	/** `FileSystem.stat` of the file — links followed, so a symlinked file reports its target. */
-	readonly info: FileSystem.File.Info;
+	readonly info: I;
 }
 
 /**
@@ -188,11 +193,11 @@ export interface DescendEntry {
  *
  * @public
  */
-export interface DescendEntriesResult {
+export interface DescendEntriesResult<I = FileSystem.File.Info, C = PlatformError.PlatformError> {
 	/** Matching files with their stats, sorted by path. */
-	readonly matches: ReadonlyArray<DescendEntry>;
+	readonly matches: ReadonlyArray<DescendEntry<I>>;
 	/** Directories that could not be read, each with its cause, in walk order. */
-	readonly unreadable: ReadonlyArray<UnreadableDirectory>;
+	readonly unreadable: ReadonlyArray<UnreadableDirectory<C>>;
 }
 
 /**
@@ -248,11 +253,15 @@ const walk = (
 						Effect.map((info): StatAnswer<FileSystem.File.Info> => ({ kind: kindOf(info), info })),
 						Effect.orElseSucceed((): StatAnswer<FileSystem.File.Info> => undefined),
 					);
-				case "IsSymbolicLink":
-					// `readLink` succeeds only on links; any failure means "not one".
-					return fs.readLink(request.path).pipe(
-						Effect.as(true),
-						Effect.orElseSucceed(() => false),
+				case "Lstat":
+					// A link is reported as one, without its target; anything
+					// unstatable is "no entry".
+					return fs.lstat(request.path).pipe(
+						Effect.map(
+							(info): LstatAnswer<FileSystem.File.Info> =>
+								info.type === "SymbolicLink" ? { kind: "SymbolicLink" } : { kind: kindOf(info), info },
+						),
+						Effect.orElseSucceed((): LstatAnswer<FileSystem.File.Info> => undefined),
 					);
 				case "RealPath":
 					return read(fs.realPath(request.path));
@@ -269,12 +278,7 @@ const walk = (
 		const result = step.value;
 		if (result._tag === "Defect") return yield* Effect.die(new Error(result.message));
 		if (result._tag === "Fail") {
-			return yield* new DescendError({
-				pattern: pattern.source,
-				reason: result.reason,
-				path: result.path,
-				...(result.limit === undefined ? {} : { limit: result.limit }),
-			});
+			return yield* new DescendError(failureOf(pattern, result));
 		}
 		return { entries: result.entries, unreadable: result.unreadable };
 	});
@@ -318,11 +322,16 @@ export function descend(
  * FILE paths relative to `cwd` (POSIX separators), sorted by relative path.
  *
  * @remarks
- * A literal pattern (no magic, not negated) fast-paths to a single stat: the
+ * A path is answered in the spelling the pattern matched it under: `./src/*.ts`
+ * answers `./src/a.ts`, and `src/*.ts` answers `src/a.ts`. A file several
+ * brace alternatives match under different spellings (`{src,./src}/*.ts`) is
+ * answered once, in the spelling of the earliest of them in pattern order. A
+ * literal pattern (no magic, not negated) fast-paths to a single stat: the
  * result is `[source]` when it resolves to a file, `[]` otherwise — a missing
- * path is zero matches, not an error. A magic pattern walks from its literal
- * directory prefix (`GlobPattern.enumerationPrefix`); a NEGATED pattern can
- * match paths outside that prefix, so it walks from `cwd` itself. A missing
+ * path is zero matches, not an error. A magic pattern walks each of its
+ * `GlobPattern.enumerationRoots`, reading each directory once however many
+ * alternatives spell it; a NEGATED pattern can match paths outside those
+ * roots, so it walks from `cwd` itself. A missing
  * base directory is likewise an empty result, because zero matches is a
  * normal glob answer — as is any pattern that lexically climbs above `cwd`
  * via `..` segments (walked paths never contain `..`). "Never reads outside
@@ -335,7 +344,7 @@ export function descend(
  *
  * Only files match. A symlink counts when it stat-resolves to a file
  * (`FileSystem.stat` follows links, as node's does); a symlinked directory is
- * never descended into by default (cycle safety — detected by a `readLink`
+ * never descended into by default (cycle safety — detected by an `lstat`
  * probe), unless `followSymlinks: true` asks for it, which follows links under
  * `@actions/glob`'s `traversalChain` cycle guard: a directory is a cycle only
  * when its real path is already an ancestor of the current branch, so sibling

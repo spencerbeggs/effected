@@ -10,10 +10,17 @@
 
 import type { GlobPattern } from "@effected/glob";
 import { Result } from "effect";
-import type { DescendOptions, DescendRecordOptions } from "./Descend.js";
+import type {
+	DescendEntriesResult,
+	DescendEntry,
+	DescendOptions,
+	DescendRecordOptions,
+	DescendResult,
+	UnreadableDirectory,
+} from "./Descend.js";
 import { DescendError } from "./Descend.js";
-import type { DescendRequest, ReadAnswer, StatAnswer } from "./internal/descendMachine.js";
-import { descendMachine } from "./internal/descendMachine.js";
+import type { DescendRequest, LstatAnswer, ReadAnswer, StatAnswer } from "./internal/descendMachine.js";
+import { descendMachine, failureOf } from "./internal/descendMachine.js";
 
 /**
  * The stats {@link WalkerSyncFileSystem} answers — a structural subset of
@@ -43,9 +50,8 @@ export interface WalkerSyncStats {
  * Every member reports failure by throwing a node-shaped error. A `code` of
  * `"ENOENT"` is the benign vanished-path race (empty, never recorded); any
  * other throw from `readDirectory` or `realPath` is an unreadable directory,
- * handled per `onUnreadable`. A throwing `stat` reads as "no entry" and a
- * throwing `lstat` as "not a link", exactly as the `Effect` walk reads its
- * failed `stat` and `readLink`.
+ * handled per `onUnreadable`. A throwing `stat` or `lstat` reads as "no
+ * entry", exactly as the `Effect` walk reads its failed `stat` and `lstat`.
  *
  * @public
  */
@@ -101,55 +107,6 @@ export interface DescendSyncOptions extends DescendOptions, WalkerSyncOps {}
  */
 export interface DescendSyncRecordOptions extends DescendRecordOptions, WalkerSyncOps {}
 
-/**
- * One directory the sync walk could not read under `onUnreadable: "record"`:
- * its `cwd`-relative path (`""` for the walk base) and what the port threw.
- *
- * @public
- */
-export interface UnreadableDirectorySync {
-	/** The directory's path relative to `cwd`, POSIX separators; `""` is the walk base. */
-	readonly path: string;
-	/** What `readDirectory` (or, for a link under `followSymlinks`, `realPath`) threw — never an `ENOENT`. */
-	readonly cause: unknown;
-}
-
-/**
- * `descendSync`'s success value under `onUnreadable: "record"`.
- *
- * @public
- */
-export interface DescendSyncResult {
-	/** Matching FILE paths relative to `cwd`, POSIX separators, sorted. */
-	readonly matches: ReadonlyArray<string>;
-	/** Directories that could not be read, in walk order. */
-	readonly unreadable: ReadonlyArray<UnreadableDirectorySync>;
-}
-
-/**
- * One matched file with its stat — `descendEntriesSync`' element.
- *
- * @public
- */
-export interface DescendSyncEntry {
-	/** The file's path relative to `cwd`, POSIX separators. */
-	readonly path: string;
-	/** `stat` of the file, links followed. */
-	readonly stat: WalkerSyncStats;
-}
-
-/**
- * `descendEntriesSync`' success value under `onUnreadable: "record"`.
- *
- * @public
- */
-export interface DescendEntriesSyncResult {
-	/** Matching files with their stats, sorted by path. */
-	readonly matches: ReadonlyArray<DescendSyncEntry>;
-	/** Directories that could not be read, in walk order. */
-	readonly unreadable: ReadonlyArray<UnreadableDirectorySync>;
-}
-
 type AnySyncOptions = Omit<DescendSyncOptions, "onUnreadable"> & {
 	readonly onUnreadable?: "fail" | "skip" | "record";
 };
@@ -166,8 +123,8 @@ const walkSync = (
 	options: AnySyncOptions,
 ): Result.Result<
 	{
-		readonly entries: ReadonlyArray<DescendSyncEntry>;
-		readonly unreadable: ReadonlyArray<UnreadableDirectorySync>;
+		readonly entries: ReadonlyArray<DescendEntry<WalkerSyncStats>>;
+		readonly unreadable: ReadonlyArray<UnreadableDirectory<unknown>>;
 	},
 	DescendError
 > => {
@@ -188,11 +145,14 @@ const walkSync = (
 				} catch {
 					return undefined;
 				}
-			case "IsSymbolicLink":
+			case "Lstat":
 				try {
-					return fileSystem.lstat(request.path).isSymbolicLink();
+					const info = fileSystem.lstat(request.path);
+					return (
+						info.isSymbolicLink() ? { kind: "SymbolicLink" } : { kind: kindOf(info), info }
+					) satisfies LstatAnswer<WalkerSyncStats>;
 				} catch {
-					return false;
+					return undefined;
 				}
 			case "RealPath":
 				return read(() => fileSystem.realPath(request.path));
@@ -207,17 +167,10 @@ const walkSync = (
 	const result = step.value;
 	if (result._tag === "Defect") throw new Error(result.message);
 	if (result._tag === "Fail") {
-		return Result.fail(
-			new DescendError({
-				pattern: pattern.source,
-				reason: result.reason,
-				path: result.path,
-				...(result.limit === undefined ? {} : { limit: result.limit }),
-			}),
-		);
+		return Result.fail(new DescendError(failureOf(pattern, result)));
 	}
 	return Result.succeed({
-		entries: result.entries.map((entry) => ({ path: entry.path, stat: entry.info })),
+		entries: result.entries,
 		unreadable: result.unreadable,
 	});
 };
@@ -230,7 +183,7 @@ const walkSync = (
 export function descendSync(
 	pattern: GlobPattern,
 	options: DescendSyncRecordOptions,
-): Result.Result<DescendSyncResult, DescendError>;
+): Result.Result<DescendResult<unknown>, DescendError>;
 /**
  * `descend`, synchronously, over a caller-supplied file port: matching FILE
  * paths relative to `cwd` (POSIX separators), sorted.
@@ -264,10 +217,10 @@ export function descendSync(
 export function descendSync(
 	pattern: GlobPattern,
 	options: DescendSyncOptions | DescendSyncRecordOptions,
-): Result.Result<ReadonlyArray<string> | DescendSyncResult, DescendError> {
+): Result.Result<ReadonlyArray<string> | DescendResult<unknown>, DescendError> {
 	return Result.map(walkSync(pattern, options), ({ entries, unreadable }) => {
 		const matches = entries.map((entry) => entry.path);
-		return options.onUnreadable === "record" ? ({ matches, unreadable } satisfies DescendSyncResult) : matches;
+		return options.onUnreadable === "record" ? ({ matches, unreadable } satisfies DescendResult<unknown>) : matches;
 	});
 }
 
@@ -279,7 +232,7 @@ export function descendSync(
 export function descendEntriesSync(
 	pattern: GlobPattern,
 	options: DescendSyncRecordOptions,
-): Result.Result<DescendEntriesSyncResult, DescendError>;
+): Result.Result<DescendEntriesResult<WalkerSyncStats, unknown>, DescendError>;
 /**
  * `descendEntries`, synchronously: `descendSync`'s matches, each with
  * the stat the walk already read for it.
@@ -289,12 +242,17 @@ export function descendEntriesSync(
 export function descendEntriesSync(
 	pattern: GlobPattern,
 	options: DescendSyncOptions,
-): Result.Result<ReadonlyArray<DescendSyncEntry>, DescendError>;
+): Result.Result<ReadonlyArray<DescendEntry<WalkerSyncStats>>, DescendError>;
 export function descendEntriesSync(
 	pattern: GlobPattern,
 	options: DescendSyncOptions | DescendSyncRecordOptions,
-): Result.Result<ReadonlyArray<DescendSyncEntry> | DescendEntriesSyncResult, DescendError> {
+): Result.Result<
+	ReadonlyArray<DescendEntry<WalkerSyncStats>> | DescendEntriesResult<WalkerSyncStats, unknown>,
+	DescendError
+> {
 	return Result.map(walkSync(pattern, options), ({ entries, unreadable }) =>
-		options.onUnreadable === "record" ? ({ matches: entries, unreadable } satisfies DescendEntriesSyncResult) : entries,
+		options.onUnreadable === "record"
+			? ({ matches: entries, unreadable } satisfies DescendEntriesResult<WalkerSyncStats, unknown>)
+			: entries,
 	);
 }

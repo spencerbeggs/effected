@@ -36,12 +36,8 @@ export {
 	descendEntries,
 } from "./Descend.js";
 export {
-	type DescendEntriesSyncResult,
-	type DescendSyncEntry,
 	type DescendSyncOptions,
 	type DescendSyncRecordOptions,
-	type DescendSyncResult,
-	type UnreadableDirectorySync,
 	type WalkerSyncFileSystem,
 	type WalkerSyncOps,
 	type WalkerSyncPath,
