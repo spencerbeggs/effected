@@ -1,16 +1,17 @@
 import { Option } from "effect";
 
 /**
- * The process-derived facts a front end resolves once, passed in as values.
+ * The parameter shape {@link LaunchContext.resolve} takes: the process-derived
+ * facts a front end resolves once, passed in as values.
  *
  * @remarks
- * Nothing here reads `process`: `argv`, `env` and `cwd` come from the front
- * end's own `main.ts`. That keeps the resolution rule shared and testable
- * while the process read stays at the one place allowed to make it.
+ * Nothing here reads `process`: `argv` and `env` come from the front end's own
+ * `main.ts`. That keeps the resolution rule shared and testable while the
+ * process read stays at the one place allowed to make it.
  *
  * @public
  */
-export interface ProjectDirInput {
+export interface ResolveInput {
 	/**
 	 * Positional candidates, checked in order. Pass positional arguments only —
 	 * the parsed positionals of your command, never raw `process.argv.slice(2)`:
@@ -22,17 +23,18 @@ export interface ProjectDirInput {
 	readonly env: Readonly<Record<string, string | undefined>>;
 	/** Env keys to try in order, for example `["OKFIT_PROJECT_DIR", "CLAUDE_PROJECT_DIR"]`. */
 	readonly keys: ReadonlyArray<string>;
-	/** The fallback, usually `process.cwd()`. */
-	readonly cwd: string;
 }
 
 /**
- * The parameter shape {@link LaunchContext.resolve} takes: {@link ProjectDirInput}
- * without its `cwd` fallback.
+ * The parameter shape {@link LaunchContext.projectDir} takes: {@link ResolveInput}
+ * plus the `cwd` fallback.
  *
  * @public
  */
-export type ResolveInput = Omit<ProjectDirInput, "cwd">;
+export interface ProjectDirInput extends ResolveInput {
+	/** The fallback, usually `process.cwd()`. */
+	readonly cwd: string;
+}
 
 /**
  * Resolves where a tool launched by an agent host should treat as its project.

@@ -1,5 +1,5 @@
 import type { Scope } from "effect";
-import { Duration, Effect, Exit, Fiber, Schema, Semaphore } from "effect";
+import { Duration, Effect, Schema, Semaphore } from "effect";
 
 /**
  * {@link Exclusive.run}'s required options.
@@ -130,28 +130,19 @@ export class Exclusive {
 		options: ExclusiveRunOptions,
 	): Effect.Effect<A, E | ExclusiveTimeout, Exclude<R, Scope.Scope>> => {
 		const timeout = Duration.fromInputUnsafe(options.timeout);
-		const lane = Effect.gen(function* () {
-			let timedOut = false;
-			// A child forked from this masked region starts interruptible, so the timer can interrupt it.
-			const work = yield* Effect.forkChild(Effect.scoped(body));
-			const timer = yield* Effect.forkChild(
-				Effect.sleep(timeout).pipe(
-					Effect.andThen(
-						Effect.suspend(() => {
-							timedOut = true;
-							return Fiber.interrupt(work);
-						}),
-					),
-				),
-			);
-			const exit = yield* Fiber.await(work);
-			yield* Fiber.interrupt(timer);
-			if (timedOut && Exit.hasInterrupts(exit)) {
-				const formatted = Duration.format(timeout);
-				return yield* new ExclusiveTimeout({ timeout: formatted, message: `Timed out after ${formatted}.` });
-			}
-			return yield* exit;
-		});
+		// Core's race runs the body and the timer on their own fibers and returns only after the loser
+		// is interrupted and has exited: a timed-out body's finalizers have run, and a body that won has
+		// stopped the timer, before the permit is released. `interruptible` lets the timer interrupt the
+		// body while the caller stays masked by the `uninterruptible` below.
+		const lane = Effect.interruptible(Effect.scoped(body)).pipe(
+			Effect.timeoutOrElse({
+				duration: timeout,
+				orElse: () => {
+					const formatted = Duration.format(timeout);
+					return Effect.fail(new ExclusiveTimeout({ timeout: formatted, message: `Timed out after ${formatted}.` }));
+				},
+			}),
+		);
 		return this.semaphore.withPermit(Effect.uninterruptible(lane)).pipe(Effect.withSpan("Exclusive.run"));
 	};
 }

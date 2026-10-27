@@ -4,9 +4,9 @@ import {
 	CurrentDistribution,
 	Distribution,
 	DistributionField,
-	distributionFormatter,
 	distributionSuffix,
 	withDistribution,
+	withDistributionVersion,
 } from "../src/index.js";
 
 describe("Distribution", () => {
@@ -55,12 +55,22 @@ describe("distributionSuffix", () => {
 	});
 });
 
-describe("distributionFormatter", () => {
-	it("formats a --version line with and without a carrier", () => {
-		assert.strictEqual(distributionFormatter(Option.none())("mytool", "1.2.3"), "mytool 1.2.3");
+describe("withDistributionVersion", () => {
+	const plain = (name: string, version: string) => `${name} ${version}`;
+
+	it("leaves the wrapped line unchanged for a direct install", () => {
+		assert.strictEqual(withDistributionVersion(Option.none())(plain)("mytool", "1.2.3"), "mytool 1.2.3");
+	});
+
+	it("appends the carrier to whatever the wrapped formatter produced", () => {
+		const carrier = Option.some({ name: "@okfit/plugin", version: "0.5.1" });
 		assert.strictEqual(
-			distributionFormatter(Option.some({ name: "@okfit/plugin", version: "0.5.1" }))("okfit", "0.13.0"),
+			withDistributionVersion(carrier)(plain)("okfit", "0.13.0"),
 			"okfit 0.13.0 via @okfit/plugin 0.5.1",
+		);
+		assert.strictEqual(
+			withDistributionVersion(carrier)((name, version) => `[${name}@${version}]`)("okfit", "0.13.0"),
+			"[okfit@0.13.0] via @okfit/plugin 0.5.1",
 		);
 	});
 });

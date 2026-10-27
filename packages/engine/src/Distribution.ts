@@ -61,21 +61,35 @@ export const distributionSuffix = (distribution: Option.Option<Distribution>): s
 	});
 
 /**
- * A `--version` line formatter that appends {@link distributionSuffix}:
- * `(name, version) => "<name> <version>[ via <carrier> <version>]"`.
+ * Decorates a `--version` line formatter so its line ends with
+ * {@link distributionSuffix}: `formatVersion(name, version)` followed by
+ * ` via <carrier> <version>` when installed through a carrier, unchanged for
+ * a direct install.
  *
  * @remarks
- * Shaped like `effect/cli`'s `CliOutput.Formatter["formatVersion"]`, so a CLI
- * front end can install it directly. The suffix is computed once, when the
- * formatter is made, because the distribution is known at `main`.
+ * Shaped around `effect/cli`'s `CliOutput.Formatter["formatVersion"]`: it
+ * wraps whatever formatter is in effect (a coloured default or a custom one)
+ * rather than replacing it. The suffix is computed once, when the decorator is
+ * applied, because the distribution is known at `main`. Data-last, for `pipe`.
+ *
+ * @example
+ * ```ts
+ * import { withDistributionVersion } from "@effected/engine";
+ * import { Option } from "effect";
+ *
+ * const formatVersion = withDistributionVersion(Option.some({ name: "@scope/plugin", version: "2.0.0" }))(
+ * 	(name, version) => `${name} ${version}`,
+ * );
+ * formatVersion("tool", "1.0.0"); // "tool 1.0.0 via @scope/plugin 2.0.0"
+ * ```
  *
  * @public
  */
-export const distributionFormatter = (
+export const withDistributionVersion = (
 	distribution: Option.Option<Distribution>,
-): ((name: string, version: string) => string) => {
+): ((formatVersion: (name: string, version: string) => string) => (name: string, version: string) => string) => {
 	const suffix = distributionSuffix(distribution);
-	return (name, version) => `${name} ${version}${suffix}`;
+	return (formatVersion) => (name, version) => `${formatVersion(name, version)}${suffix}`;
 };
 
 /**

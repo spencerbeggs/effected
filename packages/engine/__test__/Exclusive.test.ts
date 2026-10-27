@@ -138,6 +138,40 @@ describe("Exclusive.run", () => {
 		}),
 	);
 
+	it.effect("an asynchronous finalizer holds both the timeout result and the permit until it finishes", () =>
+		Effect.gen(function* () {
+			const lane = yield* Exclusive.make;
+			const gate = yield* Latch.make();
+			const log: Array<string> = [];
+			const hung = Effect.gen(function* () {
+				yield* Effect.addFinalizer(() =>
+					Effect.andThen(
+						gate.await,
+						Effect.sync(() => log.push("restore")),
+					),
+				);
+				return yield* Effect.never;
+			});
+			const first = yield* Effect.forkChild(lane.run(hung, { timeout: "10 seconds" }));
+			yield* settle;
+			const second = yield* Effect.forkChild(
+				lane.run(
+					Effect.sync(() => log.push("second:start")),
+					timeout,
+				),
+			);
+			yield* settle;
+			yield* TestClock.adjust("10 seconds");
+			yield* settle;
+			assert.isUndefined(first.pollUnsafe(), "the timeout is not reported while the finalizer runs");
+			assert.deepStrictEqual(log, [], "the permit is still held");
+			yield* gate.open;
+			assert.instanceOf(yield* Effect.flip(Fiber.join(first)), ExclusiveTimeout);
+			yield* Fiber.join(second);
+			assert.deepStrictEqual(log, ["restore", "second:start"]);
+		}),
+	);
+
 	it.effect("a body that finishes inside the timeout is never reported as timed out", () =>
 		Effect.gen(function* () {
 			const lane = yield* Exclusive.make;

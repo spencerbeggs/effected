@@ -7,9 +7,9 @@ export {
 	CurrentDistribution,
 	Distribution,
 	DistributionField,
-	distributionFormatter,
 	distributionSuffix,
 	withDistribution,
+	withDistributionVersion,
 } from "./Distribution.js";
 export { Exclusive, type ExclusiveRunOptions, ExclusiveTimeout } from "./Exclusive.js";
 export { LaunchContext, type ProjectDirInput, type ResolveInput } from "./LaunchContext.js";
