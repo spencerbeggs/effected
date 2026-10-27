@@ -407,6 +407,36 @@ describe("CacheKey", () => {
 			),
 		);
 
+		it.effect("a ./-prefixed pattern matches real files: ./src/**, ./**/*.ts and ./**/pnpm-lock.yaml", () =>
+			walking(
+				(root) =>
+					Effect.gen(function* () {
+						// matchingFiles re-filters the walk's answer with the set's own matches(), which is
+						// spelling-sensitive: the walk must answer in the pattern's spelling, or nothing survives.
+						const relative = (files: ReadonlyArray<string>) => files.map((file) => file.slice(root.length + 1));
+						assert.deepStrictEqual(
+							relative(yield* CacheKey.matchingFiles({ workspace: root, patterns: ["./src/**"] })),
+							["src/a.ts", "src/lib/b.ts"],
+						);
+						assert.deepStrictEqual(
+							relative(yield* CacheKey.matchingFiles({ workspace: root, patterns: ["./**/*.ts"] })),
+							["src/a.ts", "src/lib/b.ts", "top.ts"],
+						);
+						assert.deepStrictEqual(
+							relative(
+								yield* CacheKey.matchingFiles({
+									workspace: root,
+									patterns: ["./**/pnpm-lock.yaml", "!./node_modules/**"],
+								}),
+							),
+							["packages/a/pnpm-lock.yaml", "pnpm-lock.yaml"],
+						);
+						assert.isTrue(Option.isSome(yield* CacheKey.hashMatching({ workspace: root, patterns: ["./src/**"] })));
+					}),
+				{ "/ws/src/a.ts": "a\n", "/ws/src/lib/b.ts": "b\n", "/ws/top.ts": "top\n" },
+			),
+		);
+
 		it.effect("is exactly hashFiles over what it matched", () =>
 			walking((root) =>
 				Effect.gen(function* () {
