@@ -13,6 +13,5 @@ export {
 	StdioCapture,
 	type StdioCaptureHost,
 	type StdioCaptureOptions,
-	type StdioCaptureStream,
 	type StdioSink,
 } from "./StdioCapture.js";

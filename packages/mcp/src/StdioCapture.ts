@@ -3,13 +3,14 @@ import type { Context } from "effect";
 import { Effect, Fiber } from "effect";
 
 /**
- * Where captured writes go. A Node `Writable` satisfies it, as do
- * {@link StdioCapture.discard} and {@link StdioCapture.toStderr}.
+ * Anything with a replaceable `write`: a patched stream (Node's
+ * `process.stdout` and `process.stderr`) and a sink captured writes go to (a
+ * Node `Writable`, {@link StdioCapture.discard}, {@link StdioCapture.toStderr}).
  *
  * @remarks
- * `write` receives exactly the arguments the patched stream's `write` was
- * called with, including any trailing callback, so a sink must call that
- * callback itself, as a `Writable` does.
+ * A sink's `write` receives exactly the arguments the patched stream's
+ * `write` was called with, including any trailing callback, so a sink must
+ * call that callback itself, as a `Writable` does.
  *
  * @public
  */
@@ -19,25 +20,14 @@ export interface StdioSink {
 }
 
 /**
- * One stream a {@link StdioCaptureHost} carries: anything with a replaceable
- * `write`. Node's `process.stdout` and `process.stderr` satisfy it.
- *
- * @public
- */
-export interface StdioCaptureStream {
-	// biome-ignore lint/suspicious/noExplicitAny: Node's overloaded `write` signatures only unify through `any` arguments
-	write: (chunk: any, ...rest: Array<any>) => boolean;
-}
-
-/**
  * The two streams {@link StdioCapture.install} patches. Node's `process`
  * satisfies it; pass it in from `main.ts`.
  *
  * @public
  */
 export interface StdioCaptureHost {
-	readonly stdout: StdioCaptureStream;
-	readonly stderr: StdioCaptureStream;
+	readonly stdout: StdioSink;
+	readonly stderr: StdioSink;
 }
 
 /**
@@ -51,17 +41,11 @@ export interface StdioCaptureOptions {
 	readonly stderr?: StdioSink | undefined;
 }
 
-interface HostState {
-	readonly host: StdioCaptureHost;
-	readonly storage: AsyncLocalStorage<StdioCaptureOptions>;
-	readonly stderr: StdioCaptureStream["write"];
-}
-
 interface Registry {
 	/** The one routing context, so a capture started through one copy is honoured by a patch made by another. */
 	readonly storage: AsyncLocalStorage<StdioCaptureOptions>;
 	/** Each patched stream's original `write`, keyed by the stream itself: two hosts over one stream share one patch. */
-	readonly originals: WeakMap<StdioCaptureStream, StdioCaptureStream["write"]>;
+	readonly originals: WeakMap<StdioSink, StdioSink["write"]>;
 }
 
 /**
@@ -77,17 +61,20 @@ const registry: Registry = ((): Registry => {
 })();
 
 /** Patches `stream` once and returns its original `write`; a stream already patched keeps its first patch. */
-const patch = (stream: StdioCaptureStream, pick: (options: StdioCaptureOptions) => StdioSink | undefined) => {
+const patch = (stream: StdioSink, pick: (options: StdioCaptureOptions) => StdioSink | undefined) => {
 	const known = registry.originals.get(stream);
 	if (known !== undefined) return known;
 	const original = stream.write;
 	registry.originals.set(stream, original);
 	const { storage } = registry;
-	stream.write = function capturedWrite(this: unknown, ...args: Array<unknown>): boolean {
+	stream.write = function capturedWrite(this: unknown): boolean {
+		// The store is read first: a write outside every capture (the wire's hot path) forwards its
+		// own `arguments` object without allocating an array.
 		const options = storage.getStore();
 		const sink = options === undefined ? undefined : pick(options);
-		return sink === undefined ? original.apply(this, args as [unknown]) : sink.write(...(args as [unknown]));
-	};
+		// biome-ignore lint/complexity/noArguments: forwarding `arguments` avoids a rest-array allocation per write
+		return sink === undefined ? original.apply(this, arguments as never) : sink.write.apply(sink, arguments as never);
+	} as StdioSink["write"];
 	return original;
 };
 
@@ -138,7 +125,12 @@ const callbackOf = (rest: ReadonlyArray<unknown>): (() => void) | undefined => {
  * @public
  */
 export class StdioCapture {
-	private constructor(private readonly state: HostState) {}
+	/** A sink that writes through the host's original, unpatched stderr: captured output stays visible off the wire. */
+	readonly toStderr: StdioSink;
+
+	private constructor(toStderr: StdioSink) {
+		this.toStderr = toStderr;
+	}
 
 	/**
 	 * Patches `host`'s two streams. Idempotent per stream, across every installed
@@ -148,7 +140,9 @@ export class StdioCapture {
 	static readonly install = (host: StdioCaptureHost): StdioCapture => {
 		patch(host.stdout, (options) => options.stdout);
 		const stderr = patch(host.stderr, (options) => options.stderr);
-		return new StdioCapture({ host, storage: registry.storage, stderr });
+		return new StdioCapture({
+			write: (...args: Array<unknown>): boolean => stderr.apply(host.stderr, args as [unknown]),
+		});
 	};
 
 	/**
@@ -163,18 +157,12 @@ export class StdioCapture {
 		},
 	};
 
-	/** A sink that writes through the host's original, unpatched stderr: captured output stays visible off the wire. */
-	get toStderr(): StdioSink {
-		const { host, stderr } = this.state;
-		return { write: (...args: Array<unknown>): boolean => stderr.apply(host.stderr, args as [unknown]) };
-	}
-
 	/**
 	 * Runs `evaluate` with its writes captured, for code that is not Effect.
 	 * A synchronous throw from `evaluate` rejects the returned promise.
 	 */
 	run<A>(options: StdioCaptureOptions, evaluate: () => PromiseLike<A>): Promise<A> {
-		return this.state.storage.run(options, async () => evaluate());
+		return registry.storage.run(options, async () => evaluate());
 	}
 
 	/**
@@ -184,7 +172,7 @@ export class StdioCapture {
 	 * for it.
 	 */
 	capture(options: StdioCaptureOptions): <A, E, R>(self: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R> {
-		const storage = this.state.storage;
+		const { storage } = registry;
 		return <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
 			// Fork and finalizer install happen with interruption masked: the inner fiber can start (and
 			// wake the caller's interrupter) synchronously, and an interrupt landing between the fork and

@@ -138,9 +138,9 @@ export class ToolOutcome {
 	 * every case name against the effect's real tags. Bound to a `const` first,
 	 * the combinator never sees that effect: `E` infers as `unknown`, the
 	 * unknown-tag check switches off, and a misspelled tag compiles and never
-	 * matches. A case is looked up only among `cases`' own keys, so an error
-	 * tagged `"toString"` or `"constructor"` never hits an inherited
-	 * `Object.prototype` member.
+	 * matches. Core's `catchTags` looks a case up only among `cases`' own keys,
+	 * so an error tagged `"toString"` or `"constructor"` never hits an inherited
+	 * `Object.prototype` member and stays in the error channel.
 	 */
 	static readonly catchAsEnvelope =
 		<
@@ -157,20 +157,26 @@ export class ToolOutcome {
 		) =>
 		<A, R>(
 			self: Effect.Effect<A, E, R>,
-		): Effect.Effect<A | ToolOutcomeFailures<Cases>, Exclude<E, { readonly _tag: keyof Cases }>, R> =>
-			Effect.catch(self, (error: E) => {
-				const tag = tagOf(error);
-				const handle =
-					tag !== undefined && Object.hasOwn(cases, tag)
-						? (cases as Record<string, ((error: E) => ToolOutcomeErrorInput) | undefined>)[tag]
-						: undefined;
-				return handle === undefined
-					? Effect.fail(error as Exclude<E, { readonly _tag: keyof Cases }>)
-					: Effect.succeed(ToolOutcome.failure(tag as string, handle(error)) as ToolOutcomeFailures<Cases>);
-			});
-}
+		): Effect.Effect<A | ToolOutcomeFailures<Cases>, Exclude<E, { readonly _tag: keyof Cases }>, R> => {
+			const handlers: Record<string, (error: { readonly _tag: string }) => Effect.Effect<ToolOutcomeFailures<Cases>>> =
+				{};
+			for (const [tag, handle] of Object.entries(cases as Record<string, (error: never) => ToolOutcomeErrorInput>)) {
+				handlers[tag] = (error) =>
+					Effect.succeed(ToolOutcome.failure(tag, handle(error as never)) as ToolOutcomeFailures<Cases>);
+			}
+			return Effect.catchTags(self as Effect.Effect<A, { readonly _tag: string }, R>, handlers) as Effect.Effect<
+				A | ToolOutcomeFailures<Cases>,
+				Exclude<E, { readonly _tag: keyof Cases }>,
+				R
+			>;
+		};
 
-const tagOf = (error: unknown): string | undefined =>
-	typeof error === "object" && error !== null && typeof (error as { readonly _tag?: unknown })._tag === "string"
-		? (error as { readonly _tag: string })._tag
-		: undefined;
+	/**
+	 * Whether `value` is an `ok: false` envelope member: an object whose `ok` is
+	 * exactly `false`. A success member that discriminates some other way, or a
+	 * non-object, is not a failure. Narrows to `{ ok: false }` only: it checks
+	 * the discriminant, not the `error` payload.
+	 */
+	static readonly isFailure = (value: unknown): value is { readonly ok: false } =>
+		typeof value === "object" && value !== null && (value as { readonly ok?: unknown }).ok === false;
+}

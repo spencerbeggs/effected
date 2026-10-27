@@ -1,5 +1,7 @@
+import type { Struct } from "effect";
 import { Effect, Option, Schema } from "effect";
 import { KeyValueStore } from "effect/persistence";
+import { ToolOutcome } from "./ToolOutcome.js";
 
 /**
  * What {@link ToolReplay.wrap} needs to know about one tool.
@@ -12,7 +14,8 @@ export interface ToolReplayOptions<P, S extends Schema.Top> {
 	/**
 	 * The tool's success schema. Results are stored encoded through it and
 	 * decoded through it on replay. It must declare {@link ToolReplay.marker} on
-	 * each object member, or core's encoder drops the marker from the reply.
+	 * each object member, or core's encoder drops the marker from the reply:
+	 * build each member with {@link ToolReplay.success} so it cannot be left out.
 	 */
 	readonly success: S;
 	/**
@@ -69,7 +72,7 @@ export interface ToolReplayOptions<P, S extends Schema.Top> {
  * import { ToolReplay } from "@effected/mcp"
  * import { Option, Schema } from "effect"
  *
- * const Created = Schema.Struct({ ok: Schema.Literal(true), id: Schema.Number, ...ToolReplay.marker })
+ * const Created = ToolReplay.success(Schema.Struct({ ok: Schema.Literal(true), id: Schema.Number }))
  * const create = ToolReplay.wrap({
  * 	tool: "goal_create",
  * 	success: Created,
@@ -82,8 +85,25 @@ export interface ToolReplayOptions<P, S extends Schema.Top> {
 export class ToolReplay {
 	private constructor() {}
 
-	/** The marker field, to spread into each object member of a replayable success schema. */
+	/**
+	 * The marker field, to spread into each object member of a replayable
+	 * success schema. {@link ToolReplay.success} adds it for you.
+	 */
 	static readonly marker = { _idempotentReplay: Schema.optionalKey(Schema.Literal(true)) } as const;
+
+	/**
+	 * A struct with {@link ToolReplay.marker} added. Use it for each object
+	 * success member, so core's encoder keeps the marker on a replayed reply.
+	 *
+	 * @remarks
+	 * Built with core's `fieldsAssign`, which, like `mapFields`, does not carry
+	 * the struct's own `.check(...)` refinements over: apply checks to the
+	 * result, not to the struct passed in.
+	 */
+	static readonly success = <const Fields extends Schema.Struct.Fields>(
+		schema: Schema.Struct<Fields>,
+	): Schema.Struct<Struct.Simplify<Struct.Assign<Fields, typeof ToolReplay.marker>>> =>
+		schema.pipe(Schema.fieldsAssign(ToolReplay.marker));
 
 	/**
 	 * The `KeyValueStore` key one call is stored under: `<tool>:<key>`. Split on
@@ -110,13 +130,18 @@ export class ToolReplay {
 			throw new Error(`ToolReplay.wrap: tool name "${options.tool}" contains ":", the stored-key separator.`);
 		}
 		const { tool, success } = options;
+		// The JSON codec is built once per wrap, not per call: the same pair `KeyValueStore.toSchemaStore` builds.
+		const json = Schema.fromJsonString(Schema.toCodecJson(success));
+		const decode = Schema.decodeEffect(json);
+		const encode = Schema.encodeEffect(json);
 		return (handler) => (params) => {
 			const found = options.key(params);
 			if (Option.isNone(found)) return handler(params);
 			const storeKey = ToolReplay.storeKey(tool, found.value);
 			return Effect.gen(function* () {
-				const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, success);
+				const store = yield* KeyValueStore.KeyValueStore;
 				const cached = yield* store.get(storeKey).pipe(
+					Effect.flatMap((raw) => (raw === undefined ? Effect.succeedNone : Effect.asSome(decode(raw)))),
 					Effect.tapCause((cause) => Effect.logDebug("ToolReplay lookup failed; treating as a miss", { tool, cause })),
 					Effect.orElseSucceed(() => Option.none<S["Type"]>()),
 				);
@@ -126,8 +151,9 @@ export class ToolReplay {
 				}
 				yield* Effect.annotateCurrentSpan("mcp.tool.replayed", false);
 				const result = yield* handler(params);
-				if (!isOkFalse(result)) {
-					yield* store.set(storeKey, result).pipe(
+				if (!ToolOutcome.isFailure(result)) {
+					yield* encode(result).pipe(
+						Effect.flatMap((encoded) => store.set(storeKey, encoded)),
 						Effect.tapCause((cause) => Effect.logDebug("ToolReplay store failed; result not stored", { tool, cause })),
 						Effect.ignore,
 					);
@@ -142,6 +168,3 @@ const withMarker = <A>(value: A): A =>
 	typeof value === "object" && value !== null && !Array.isArray(value)
 		? ({ ...value, _idempotentReplay: true } as A)
 		: value;
-
-const isOkFalse = (value: unknown): boolean =>
-	typeof value === "object" && value !== null && (value as { readonly ok?: unknown }).ok === false;

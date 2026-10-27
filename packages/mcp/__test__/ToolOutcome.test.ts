@@ -169,3 +169,13 @@ describe("ToolOutcome on the wire", () => {
 		);
 	}
 });
+
+describe("ToolOutcome.isFailure", () => {
+	it("is true only for an object whose ok is exactly false", () => {
+		assert.isTrue(ToolOutcome.isFailure(ToolOutcome.failure("Busy", { message: "m", remediation })));
+		assert.isTrue(ToolOutcome.isFailure({ ok: false }));
+		for (const value of [{ ok: true }, { found: false }, { ok: 0 }, { ok: "false" }, null, undefined, false, [false]]) {
+			assert.isFalse(ToolOutcome.isFailure(value), JSON.stringify(value));
+		}
+	});
+});

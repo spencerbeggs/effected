@@ -5,7 +5,7 @@ import { KeyValueStore } from "effect/persistence";
 import { McpStdio, McpToolkit, ToolOutcome, ToolReplay } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
 
-const Created = Schema.Struct({ ok: Schema.Literal(true), id: Schema.Number, ...ToolReplay.marker });
+const Created = ToolReplay.success(Schema.Struct({ ok: Schema.Literal(true), id: Schema.Number }));
 const Failed = ToolOutcome.error("Busy");
 const Result = ToolOutcome.envelope(Created, [Failed]);
 
@@ -149,6 +149,19 @@ const server = McpToolkit.layer(Kit).pipe(
 	Layer.provide(KeyValueStore.layerMemory),
 	Layer.provideMerge(McpStdio.layer({ name: "replay", version: "0.0.0" })),
 );
+
+describe("ToolReplay.success", () => {
+	it("adds the optional marker beside the struct's own fields", () => {
+		const Marked = ToolReplay.success(Schema.Struct({ id: Schema.Number }));
+		assert.deepStrictEqual(Object.keys(Marked.fields), ["id", "_idempotentReplay"]);
+		assert.deepStrictEqual(Schema.decodeUnknownSync(Marked)({ id: 1, _idempotentReplay: true }), {
+			id: 1,
+			_idempotentReplay: true,
+		});
+		assert.deepStrictEqual(Schema.decodeUnknownSync(Marked)({ id: 1 }), { id: 1 });
+		assert.throws(() => Schema.decodeUnknownSync(Marked)({ id: 1, _idempotentReplay: false }));
+	});
+});
 
 describe("ToolReplay on the wire", () => {
 	it.effect("the declared marker survives core's encoder into structuredContent", () =>

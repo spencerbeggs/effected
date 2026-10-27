@@ -48,8 +48,8 @@ that ships `./guard`.
 `truncate`, `ECHO_LIMIT`, `ENGINE_ECHO_LIMIT`), `ToolInputSchema`
 (`unknownKeys`, `formatUnknownKeys`, `objectRooted`), `ToolOutputSchema`
 (`objectRooted`), `ToolRefusal` (`refuse`), `ToolOutcome` (`ok`, `error`,
-`envelope`, `failure`, `catchAsEnvelope`), `ToolReplay` (`marker`,
-`storeKey`, `wrap`), plus the `ToolOutcomeErrorInput`,
+`envelope`, `failure`, `catchAsEnvelope`, `isFailure`), `ToolReplay`
+(`marker`, `success`, `storeKey`, `wrap`), plus the `ToolOutcomeErrorInput`,
 `ToolOutcomeFailure`, `ToolOutcomeFailures`, `ToolReplayOptions`,
 `McpStdioOptions`, `McpLaunchOptions`, `McpToolkitOptions`, `UnionHandlerOptions`, `UnionTool`,
 `UnionToolOptions`, `UnknownKeysLevel` and `FormatUnknownKeysOptions`
@@ -71,7 +71,8 @@ lives in `src/internal/guardLaunch.ts` behind a dynamic `import()`;
 
 `@effected/mcp/node` (`src/node.ts`): `StdioCapture` (`install`, `discard`;
 instances carry `toStderr`, `run`, `capture`), plus the `StdioCaptureHost`,
-`StdioCaptureOptions`, `StdioCaptureStream` and `StdioSink` types. Node-only
+`StdioCaptureOptions` and `StdioSink` types (`StdioSink` is both a
+patched stream and a sink). Node-only
 because of `node:async_hooks`; `entrypoints.test.ts` pins that neither `.`
 nor `./testing` reaches it. `install(process)` patches each stream's
 `write` once per process: the registry (one `AsyncLocalStorage` plus each
@@ -229,11 +230,13 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   (`ToolFailure.fields` plus `_tag`). A refusal is a declared failure
   (`isError`, message text only); an outcome is `{ ok: false, error }` on the
   success channel, delivered as `structuredContent`. `catchAsEnvelope` is
-  typed like core's `catchTags`, so use it inline in the pipe: E is
-  inferred from the piped effect.
+  built on core's `catchTags` (own-key case lookup, so a `"toString"` tag
+  stays in E), so use it inline in the pipe: E is inferred from the piped
+  effect. `ToolReplay` skips storing exactly what `ToolOutcome.isFailure`
+  accepts.
 - **`ToolReplay` requires core's `KeyValueStore` in `R`** (never a kit store
-  service), stores through `KeyValueStore.toSchemaStore(store, success)`
-  under `<tool>:<key>`, treats every store or decode failure as a miss or a
+  service), stores through the JSON codec `KeyValueStore.toSchemaStore`
+  uses, built once per `wrap` rather than per call, under `<tool>:<key>`, treats every store or decode failure as a miss or a
   skipped write (debug-logged), never stores an `ok: false` value, and
   throws at wrap time on a tool name containing `:`. Replay, not
   exactly-once.
