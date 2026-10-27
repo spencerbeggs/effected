@@ -63,8 +63,8 @@ export const distributionSuffix = (distribution: Option.Option<Distribution>): s
 /**
  * Decorates a `--version` line formatter so its line ends with
  * {@link distributionSuffix}: `formatVersion(name, version)` followed by
- * ` via <carrier> <version>` when installed through a carrier, unchanged for
- * a direct install.
+ * a space and `via <carrier> <version>` when installed through a carrier,
+ * unchanged for a direct install.
  *
  * @remarks
  * Shaped around `effect/cli`'s `CliOutput.Formatter["formatVersion"]`: it
