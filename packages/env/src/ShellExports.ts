@@ -1,7 +1,7 @@
 import { Effect, Result, Schema } from "effect";
 
 /**
- * Why {@link ShellExports.parseResult} rejected a text.
+ * Why {@link ShellExports.parseResult} or {@link ShellExports.parseBytesResult} rejected a text.
  *
  * - `unsupported-statement`: anything but a blank line, a `#` comment line, or one `export NAME=WORD` (a second
  *   assignment, a trailing comment or word, an operator, `export NAME` without a value, `NAME+=`, a subscript,
@@ -13,8 +13,9 @@ import { Effect, Result, Schema } from "effect";
  *   changes how bash reads the rest of the text), or any name starting with `BASH_`.
  * - `unterminated-quote`: a `'…'`, `"…"` or `$'…'` runs to the end of the text.
  * - `invalid-encoding`: text the dialect does not spell that way: a raw control character (other than a tab or
- *   newline inside quotes), a `$'…'` byte escape that is not UTF-8 or is NUL, a `\u`/`\U` escape (its bytes depend
- *   on the locale), an escape bash does not define, or a lone UTF-16 surrogate.
+ *   newline inside quotes), a `$'…'` whose bytes are not UTF-8 or that holds a NUL escape, a `\u`/`\U` escape (its
+ *   bytes depend on the locale), an escape bash does not define, or a lone UTF-16 surrogate; and, read as bytes, a
+ *   non-ASCII byte outside `$'…'` that does not begin a whole UTF-8 character.
  * - `invalid-name`: the name does not match `[A-Za-z_][A-Za-z0-9_]*`.
  *
  * @public
@@ -36,7 +37,10 @@ export type ShellExportsErrorReason =
 export class ShellExportsError extends Schema.TaggedError<ShellExportsError>()("ShellExportsError", {
 	/** The 1-based line of the offending character (lines end at `\n`). */
 	line: Schema.Number,
-	/** The 1-based column of the offending character, in UTF-16 code units from the line start. */
+	/**
+	 * The 1-based column of the offending character, in UTF-16 code units from the line start (for bytes, of the line
+	 * decoded as UTF-8).
+	 */
 	column: Schema.Number,
 	/** What is wrong there. */
 	reason: Schema.Literals([
@@ -97,40 +101,87 @@ const isSpecial = (name: string): boolean => SPECIAL.has(name) || name.startsWit
 
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const isControl = (code: number): boolean => code < 0x20 || code === 0x7f;
-const isOctal = (ch: string | undefined): boolean => ch !== undefined && ch >= "0" && ch <= "7";
-const isHex = (ch: string | undefined): boolean => ch !== undefined && /[0-9A-Fa-f]/.test(ch);
+const isOctal = (code: number | undefined): boolean => code !== undefined && code >= 0x30 && code <= 0x37;
+const isHex = (code: number | undefined): boolean =>
+	code !== undefined &&
+	((code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x46) || (code >= 0x61 && code <= 0x66));
 // Name characters by code, so the statement loop tests no regex per character.
 const isNameChar = (code: number): boolean =>
 	(code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a) || code === 0x5f;
 
+const hexValue = (code: number): number => (code <= 0x39 ? code - 0x30 : (code | 0x20) - 0x57);
+
 const decoder = new TextDecoder("utf-8", { fatal: true });
+const lenient = new TextDecoder("utf-8");
+const encoder = new TextEncoder();
 
-/** The one-character `$'…'` escapes, as bytes. */
-const SIMPLE_ESCAPES: Readonly<Record<string, number>> = {
-	a: 0x07,
-	b: 0x08,
-	e: 0x1b,
-	E: 0x1b,
-	f: 0x0c,
-	n: 0x0a,
-	r: 0x0d,
-	t: 0x09,
-	v: 0x0b,
-	"\\": 0x5c,
-	"'": 0x27,
-	'"': 0x22,
-	"?": 0x3f,
+// The ASCII bytes the tokenizer branches on.
+const TAB = 0x09;
+const LF = 0x0a;
+const SPACE = 0x20;
+const DQUOTE = 0x22;
+const HASH = 0x23;
+const DOLLAR = 0x24;
+const SQUOTE = 0x27;
+const SEMI = 0x3b;
+const EQUALS = 0x3d;
+const BACKSLASH = 0x5c;
+const BACKTICK = 0x60;
+const COLON = 0x3a;
+const TILDE = 0x7e;
+const EXPORT = [0x65, 0x78, 0x70, 0x6f, 0x72, 0x74];
+/** Unquoted, these expand: a backtick, `{`, `}`, `*`, `?`, `[`, `]`. */
+const EXPANDS = new Set([0x60, 0x7b, 0x7d, 0x2a, 0x3f, 0x5b, 0x5d]);
+/** Unquoted, these are operators: `|`, `&`, `<`, `>`, `(`, `)`. */
+const OPERATORS = new Set([0x7c, 0x26, 0x3c, 0x3e, 0x28, 0x29]);
+
+/** The one-character `$'…'` escapes, as bytes, keyed by the escape letter's byte. */
+const SIMPLE_ESCAPES: ReadonlyMap<number, number> = new Map([
+	[0x61, 0x07], // a
+	[0x62, 0x08], // b
+	[0x65, 0x1b], // e
+	[0x45, 0x1b], // E
+	[0x66, 0x0c], // f
+	[0x6e, 0x0a], // n
+	[0x72, 0x0d], // r
+	[0x74, 0x09], // t
+	[0x76, 0x0b], // v
+	[0x5c, 0x5c], // \
+	[0x27, 0x27], // '
+	[0x22, 0x22], // "
+	[0x3f, 0x3f], // ?
+]);
+
+/**
+ * The `\c` targets every bash this dialect promises reads alike: letters, `@`, `[`, `]`, `^` and `_`. `\c?` is left
+ * out because bash versions disagree on it (3.2 reads 0x1F, 5.x reads DEL), and so is every other target, which bash
+ * reads as its low five bits but no writer emits. `\c@` is NUL, rejected after decoding like every NUL.
+ */
+const isControlTarget = (code: number | undefined): code is number =>
+	code !== undefined &&
+	((code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a) || [0x40, 0x5b, 0x5d, 0x5e, 0x5f].includes(code));
+
+const inRange = (code: number | undefined, low: number, high: number): boolean =>
+	code !== undefined && code >= low && code <= high;
+
+/**
+ * The length of the well-formed UTF-8 sequence at `at` (WHATWG's table: no overlong form, no surrogate, nothing past
+ * U+10FFFF), or 0 when the bytes there are not one.
+ */
+const utf8Length = (bytes: Uint8Array, at: number): number => {
+	const lead = bytes[at] as number;
+	if (lead < 0x80) return 1;
+	const b1 = bytes[at + 1];
+	if (lead >= 0xc2 && lead <= 0xdf) return inRange(b1, 0x80, 0xbf) ? 2 : 0;
+	const low = lead === 0xe0 ? 0xa0 : lead === 0xf0 ? 0x90 : 0x80;
+	const high = lead === 0xed ? 0x9f : lead === 0xf4 ? 0x8f : 0xbf;
+	if (lead >= 0xe0 && lead <= 0xef) return inRange(b1, low, high) && inRange(bytes[at + 2], 0x80, 0xbf) ? 3 : 0;
+	if (lead >= 0xf0 && lead <= 0xf4)
+		return inRange(b1, low, high) && inRange(bytes[at + 2], 0x80, 0xbf) && inRange(bytes[at + 3], 0x80, 0xbf) ? 4 : 0;
+	return 0;
 };
 
-/** Appends the UTF-8 bytes of one code point; the text is known to hold no lone surrogate. */
-const pushUtf8 = (bytes: Array<number>, cp: number): void => {
-	if (cp < 0x80) bytes.push(cp);
-	else if (cp < 0x800) bytes.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
-	else if (cp < 0x10000) bytes.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
-	else bytes.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
-};
-
-/** A rejection at an index; the caller turns it into a line and column. */
+/** A rejection at a byte offset; the caller turns it into a line and column. */
 class Reject {
 	constructor(
 		readonly reason: ShellExportsErrorReason,
@@ -138,69 +189,79 @@ class Reject {
 	) {}
 }
 
-/** The single linear pass: every character is visited a bounded number of times, and nothing is copied per line. */
-const tokenize = (text: string): Readonly<Record<string, string>> => {
-	const surrogate = LONE_SURROGATE.exec(text);
-	if (surrogate !== null) throw new Reject("invalid-encoding", surrogate.index);
+/**
+ * The single linear pass, over bytes: every byte is visited a bounded number of times, and nothing is copied per
+ * line. Outside `$'…'` every non-ASCII byte must start a whole UTF-8 character; inside it, raw bytes and byte escapes
+ * join one byte string, which must then be UTF-8 as a whole.
+ */
+const tokenize = (src: Uint8Array): Readonly<Record<string, string>> => {
 	const vars: Record<string, string> = Object.create(null);
-	const n = text.length;
+	const n = src.length;
 	let i = 0;
 	let lineStart = true;
 
-	/** A raw character inside quotes: tab and newline are allowed, any other control is not. */
-	const quotedChar = (at: number): void => {
-		const code = text.charCodeAt(at);
-		if (isControl(code) && code !== 0x09 && code !== 0x0a) throw new Reject("invalid-encoding", at);
+	/**
+	 * One raw character at `at` outside `$'…'`, appended to `out`: a control byte is rejected (a tab and newline are
+	 * let through when `quoted`), and a non-ASCII byte must start a whole UTF-8 character. Returns its length.
+	 */
+	const rawChar = (out: Array<number>, at: number, quoted: boolean): number => {
+		const code = src[at] as number;
+		if (isControl(code) && !(quoted && (code === TAB || code === LF))) throw new Reject("invalid-encoding", at);
+		const length = utf8Length(src, at);
+		if (length === 0) throw new Reject("invalid-encoding", at);
+		for (let k = 0; k < length; k++) out.push(src[at + k] as number);
+		return length;
 	};
 
-	/** `$'…'` from just past `$'`; returns the decoded content and leaves `i` past the closing quote. */
-	const ansiC = (): string => {
-		const bytes: Array<number> = [];
+	/** `$'…'` from just past `$'`, appended to `out`; leaves `i` past the closing quote. */
+	const ansiC = (out: Array<number>): void => {
+		const from = out.length;
 		for (;;) {
 			if (i >= n) throw new Reject("unterminated-quote", i);
-			const c = text[i] as string;
-			if (c === "'") {
+			const c = src[i] as number;
+			if (c === SQUOTE) {
 				i++;
 				break;
 			}
-			if (c !== "\\") {
-				quotedChar(i);
-				pushUtf8(bytes, text.codePointAt(i) as number);
-				i += (text.codePointAt(i) as number) > 0xffff ? 2 : 1;
+			if (c !== BACKSLASH) {
+				// A raw byte, high or not: bash 3.2's printf %q leaves some bytes of a character raw and escapes the rest.
+				if (isControl(c) && c !== TAB && c !== LF) throw new Reject("invalid-encoding", i);
+				out.push(c);
+				i++;
 				continue;
 			}
 			const escapeAt = i;
-			const e = text[i + 1];
+			const e = src[i + 1];
 			if (e === undefined) throw new Reject("unterminated-quote", i);
 			i += 2;
-			const simple = SIMPLE_ESCAPES[e];
+			const simple = SIMPLE_ESCAPES.get(e);
 			let byte: number;
 			if (simple !== undefined) {
 				byte = simple;
 			} else if (isOctal(e)) {
-				const from = i - 1;
-				while (i - from < 3 && isOctal(text[i])) i++;
-				byte = Number.parseInt(text.slice(from, i), 8) & 0xff;
-			} else if (e === "x") {
-				const from = i;
-				while (i - from < 2 && isHex(text[i])) i++;
-				if (i === from) throw new Reject("invalid-encoding", escapeAt);
-				byte = Number.parseInt(text.slice(from, i), 16);
-			} else if (e === "c") {
-				const target = text[i];
-				if (target === undefined || !/[A-Za-z@[\]^_?]/.test(target)) throw new Reject("invalid-encoding", escapeAt);
+				// Up to three octal digits, the escape letter the first; a value past 0o377 keeps its low byte, as in bash.
+				byte = e - 0x30;
+				for (let k = 0; k < 2 && isOctal(src[i]); k++) byte = byte * 8 + ((src[i++] as number) - 0x30);
+				byte &= 0xff;
+			} else if (e === 0x78 /* x */) {
+				if (!isHex(src[i])) throw new Reject("invalid-encoding", escapeAt);
+				byte = 0;
+				for (let k = 0; k < 2 && isHex(src[i]); k++) byte = byte * 16 + hexValue(src[i++] as number);
+			} else if (e === 0x63 /* c */) {
+				const target = src[i];
+				if (!isControlTarget(target)) throw new Reject("invalid-encoding", escapeAt);
 				i++;
-				byte = target === "?" ? 0x7f : target.toUpperCase().charCodeAt(0) & 0x1f;
+				byte = target & 0x1f;
 			} else {
 				// \u and \U spell a code point whose bytes depend on the locale; anything else is no escape bash defines.
 				throw new Reject("invalid-encoding", escapeAt);
 			}
 			// A bash string cannot hold NUL: bash would cut the value short here.
 			if (byte === 0) throw new Reject("invalid-encoding", escapeAt);
-			bytes.push(byte);
+			out.push(byte);
 		}
 		try {
-			return decoder.decode(new Uint8Array(bytes));
+			decoder.decode(new Uint8Array(out.slice(from)));
 		} catch {
 			throw new Reject("invalid-encoding", i - 1);
 		}
@@ -209,123 +270,134 @@ const tokenize = (text: string): Readonly<Record<string, string>> => {
 	/** One WORD from `i`, up to an unquoted blank, newline, `;` or the end. */
 	const word = (): string => {
 		const start = i;
-		let out = "";
+		const out: Array<number> = [];
 		for (;;) {
-			if (i >= n) return out;
-			const c = text[i] as string;
-			if (c === " " || c === "\t" || c === "\n" || c === ";") return out;
-			if (c === "'") {
-				const close = text.indexOf("'", i + 1);
+			if (i >= n) break;
+			const c = src[i] as number;
+			if (c === SPACE || c === TAB || c === LF || c === SEMI) break;
+			if (c === SQUOTE) {
+				const close = src.indexOf(SQUOTE, i + 1);
 				if (close === -1) throw new Reject("unterminated-quote", i);
-				for (let k = i + 1; k < close; k++) quotedChar(k);
-				out += text.slice(i + 1, close);
+				for (let k = i + 1; k < close; ) k += rawChar(out, k, true);
 				i = close + 1;
-			} else if (c === '"') {
+			} else if (c === DQUOTE) {
 				i++;
 				for (;;) {
 					if (i >= n) throw new Reject("unterminated-quote", i);
-					const q = text[i] as string;
-					if (q === '"') {
+					const q = src[i] as number;
+					if (q === DQUOTE) {
 						i++;
 						break;
 					}
-					if (q === "$" || q === "`") throw new Reject("expansion", i);
-					if (q === "\\") {
-						const next = text[i + 1];
+					if (q === DOLLAR || q === BACKTICK) throw new Reject("expansion", i);
+					if (q === BACKSLASH) {
+						const next = src[i + 1];
 						if (next === undefined) throw new Reject("unterminated-quote", i);
-						if (next === '"' || next === "\\") {
-							out += next;
+						if (next === DQUOTE || next === BACKSLASH) {
+							out.push(next);
 							i += 2;
 							continue;
 						}
 						// `\$` and a backslash-backtick hold the characters the dialect keeps out of quotes; `\`-newline
 						// is a continuation.
-						if (next === "$" || next === "`") throw new Reject("expansion", i + 1);
-						if (next === "\n") throw new Reject("unsupported-statement", i);
-						out += "\\";
+						if (next === DOLLAR || next === BACKTICK) throw new Reject("expansion", i + 1);
+						if (next === LF) throw new Reject("unsupported-statement", i);
+						out.push(BACKSLASH);
 						i++;
 						continue;
 					}
-					quotedChar(i);
-					out += q;
-					i++;
+					i += rawChar(out, i, true);
 				}
-			} else if (c === "$") {
-				if (text[i + 1] !== "'") throw new Reject("expansion", i);
+			} else if (c === DOLLAR) {
+				if (src[i + 1] !== SQUOTE) throw new Reject("expansion", i);
 				i += 2;
-				out += ansiC();
-			} else if (c === "\\") {
-				const next = text[i + 1];
-				if (next === undefined || next === "\n") throw new Reject("unsupported-statement", i);
-				if (isControl(next.charCodeAt(0))) throw new Reject("invalid-encoding", i + 1);
-				const s = String.fromCodePoint(text.codePointAt(i + 1) as number);
-				out += s;
-				i += 1 + s.length;
-			} else if ("`{}*?[]".includes(c)) {
+				ansiC(out);
+			} else if (c === BACKSLASH) {
+				const next = src[i + 1];
+				if (next === undefined || next === LF) throw new Reject("unsupported-statement", i);
+				i += 1 + rawChar(out, i + 1, false);
+			} else if (EXPANDS.has(c)) {
 				throw new Reject("expansion", i);
-			} else if (c === "~" && (i === start || text[i - 1] === ":" || text[i - 1] === "=")) {
+			} else if (c === TILDE && (i === start || src[i - 1] === COLON || src[i - 1] === EQUALS)) {
 				// A tilde expands at the start of an assignment's value and after `:` or `=` in it; elsewhere it is literal.
 				throw new Reject("expansion", i);
-			} else if ("|&<>()".includes(c)) {
+			} else if (OPERATORS.has(c)) {
 				throw new Reject("unsupported-statement", i);
-			} else if (isControl(c.charCodeAt(0))) {
-				throw new Reject("invalid-encoding", i);
 			} else {
-				out += c;
-				i++;
+				i += rawChar(out, i, false);
 			}
 		}
+		// Every part was checked as it was read, so the whole is UTF-8.
+		return decoder.decode(new Uint8Array(out));
+	};
+
+	const isExport = (at: number): boolean => {
+		for (let k = 0; k < EXPORT.length; k++) if (src[at + k] !== EXPORT[k]) return false;
+		return src[at + EXPORT.length] === SPACE || src[at + EXPORT.length] === TAB;
 	};
 
 	while (i < n) {
-		const c = text[i] as string;
-		if (c === " " || c === "\t") {
+		const c = src[i] as number;
+		if (c === SPACE || c === TAB) {
 			i++;
 			continue;
 		}
-		if (c === "\n") {
+		if (c === LF) {
 			i++;
 			lineStart = true;
 			continue;
 		}
-		if (c === "#" && lineStart) {
-			const nl = text.indexOf("\n", i);
+		if (c === HASH && lineStart) {
+			const nl = src.indexOf(LF, i);
 			i = nl === -1 ? n : nl;
 			continue;
 		}
 		// A statement: `export`, blanks, NAME, `=`, WORD, then blanks and a newline, `;` or the end.
-		if (!text.startsWith("export", i) || (text[i + 6] !== " " && text[i + 6] !== "\t"))
-			throw new Reject("unsupported-statement", i);
-		i += 6;
-		while (text[i] === " " || text[i] === "\t") i++;
+		if (!isExport(i)) throw new Reject("unsupported-statement", i);
+		i += EXPORT.length;
+		while (src[i] === SPACE || src[i] === TAB) i++;
 		const nameStart = i;
-		while (i < n && isNameChar(text.charCodeAt(i))) i++;
-		const name = text.slice(nameStart, i);
-		if (name === "") throw new Reject(text[i] === "$" ? "expansion" : "unsupported-statement", nameStart);
+		while (i < n && isNameChar(src[i] as number)) i++;
+		if (i === nameStart) throw new Reject(src[i] === DOLLAR ? "expansion" : "unsupported-statement", nameStart);
+		// A name is ASCII by construction, so its bytes are its characters.
+		const name = lenient.decode(src.subarray(nameStart, i));
 		if (!NAME.test(name)) throw new Reject("invalid-name", nameStart);
 		// `NAME+=`, `NAME[…]=` and `export NAME` with no value all stop here.
-		if (text[i] !== "=") throw new Reject("unsupported-statement", i);
+		if (src[i] !== EQUALS) throw new Reject("unsupported-statement", i);
 		if (isSpecial(name)) throw new Reject("special-variable", nameStart);
 		i++;
 		const value = word();
-		while (text[i] === " " || text[i] === "\t") i++;
-		if (i < n && text[i] !== "\n" && text[i] !== ";") throw new Reject("unsupported-statement", i);
-		if (text[i] === ";") i++;
+		while (src[i] === SPACE || src[i] === TAB) i++;
+		if (i < n && src[i] !== LF && src[i] !== SEMI) throw new Reject("unsupported-statement", i);
+		if (src[i] === SEMI) i++;
 		vars[name] = value;
 		lineStart = false;
 	}
 	return vars;
 };
 
-/** The 1-based line and column of index `at`. Called once, on rejection. */
-const position = (text: string, at: number): { readonly line: number; readonly column: number } => {
+/**
+ * The 1-based line and column of byte offset `at`: the column counts UTF-16 code units of the line so far, decoded
+ * leniently, so a text and its UTF-8 bytes report the same position. Called once, on rejection.
+ */
+const position = (src: Uint8Array, at: number): { readonly line: number; readonly column: number } => {
 	let line = 1;
 	let lineStart = 0;
-	for (let k = text.indexOf("\n"); k !== -1 && k < at; k = text.indexOf("\n", k + 1)) {
+	for (let k = src.indexOf(LF); k !== -1 && k < at; k = src.indexOf(LF, k + 1)) {
 		line++;
 		lineStart = k + 1;
 	}
-	return { line, column: at - lineStart + 1 };
+	return { line, column: lenient.decode(src.subarray(lineStart, at)).length + 1 };
+};
+
+/** Runs the byte pass over `src`, turning a rejection into a typed failure. */
+const run = (src: Uint8Array): Result.Result<Readonly<Record<string, string>>, ShellExportsError> => {
+	try {
+		return Result.succeed(tokenize(src));
+	} catch (error) {
+		if (!(error instanceof Reject)) throw error;
+		return Result.fail(new ShellExportsError({ ...position(src, error.at), reason: error.reason }));
+	}
 };
 
 // A value needs no quoting when every character is one of these (printf %q leaves them bare too).
@@ -408,12 +480,34 @@ export class ShellExports {
 	 * @param text - the file's text
 	 */
 	static parseResult(text: string): Result.Result<Readonly<Record<string, string>>, ShellExportsError> {
-		try {
-			return Result.succeed(tokenize(text));
-		} catch (error) {
-			if (!(error instanceof Reject)) throw error;
-			return Result.fail(new ShellExportsError({ ...position(text, error.at), reason: error.reason }));
+		// A lone surrogate has no UTF-8 form, so it is reported before the text becomes bytes.
+		const surrogate = LONE_SURROGATE.exec(text);
+		if (surrogate !== null) {
+			const prefix = encoder.encode(text.slice(0, surrogate.index));
+			return Result.fail(new ShellExportsError({ ...position(prefix, prefix.length), reason: "invalid-encoding" }));
 		}
+		return run(encoder.encode(text));
+	}
+
+	/**
+	 * Read a file's bytes in the dialect: {@link ShellExports.parseResult} at the byte level, so a value bash wrote
+	 * partly as raw bytes reads back whole.
+	 *
+	 * @remarks
+	 * macOS's `/bin/bash` 3.2 writes a non-ASCII value through `printf %q` as raw bytes mixed with octal escapes inside
+	 * one `$'…'`: `日` becomes the raw byte 0xE6, the escape `\227`, then the raw byte 0xA5. Decoding the file to a string first
+	 * turns those lone raw bytes into U+FFFD, and {@link ShellExports.parseResult} then rightly rejects the text. Here
+	 * the raw bytes and byte escapes of each `$'…'` join one byte string, which must be UTF-8 as a whole. Outside
+	 * `$'…'`, every non-ASCII byte must begin a whole UTF-8 character, and a `#` comment line is skipped unread.
+	 *
+	 * The dialect is otherwise the same: for the UTF-8 bytes of any text, the result equals
+	 * {@link ShellExports.parseResult}'s for that text, rejection position included. A rejection's column counts
+	 * UTF-16 code units of its line decoded as UTF-8, a malformed sequence counting as U+FFFD.
+	 *
+	 * @param bytes - the file's bytes
+	 */
+	static parseBytesResult(bytes: Uint8Array): Result.Result<Readonly<Record<string, string>>, ShellExportsError> {
+		return run(bytes);
 	}
 
 	/**

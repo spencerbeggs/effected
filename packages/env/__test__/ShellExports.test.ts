@@ -38,9 +38,9 @@ describe("ShellExports.parseResult: the dialect", () => {
 	it("$'…' escapes: the one-character set, octal and hex bytes decoded as UTF-8, and \\c", () =>
 		assert.deepStrictEqual(
 			ok(
-				`export A=$'\\a\\b\\e\\E\\f\\n\\r\\t\\v\\\\\\'\\"\\?'\nexport B=$'\\303\\251'\nexport C=$'\\xc3\\xa9\\101\\x41\\cA\\c?'\n`,
+				`export A=$'\\a\\b\\e\\E\\f\\n\\r\\t\\v\\\\\\'\\"\\?'\nexport B=$'\\303\\251'\nexport C=$'\\xc3\\xa9\\101\\x41\\cA\\c[\\c_'\n`,
 			),
-			{ A: "\x07\b\x1b\x1b\f\n\r\t\v\\'\"?", B: "é", C: "éAA\x01\x7f" },
+			{ A: "\x07\b\x1b\x1b\f\n\r\t\v\\'\"?", B: "é", C: "éAA\x01\x1b\x1f" },
 		));
 
 	it("tab and newline are allowed inside quotes", () =>
@@ -168,6 +168,9 @@ const NEGATIVE: ReadonlyArray<readonly [text: string, reason: ShellExportsErrorR
 	["export A=$'\\q'", "invalid-encoding"],
 	["export A=$'\\x'", "invalid-encoding"],
 	["export A=$'\\c\\\\'", "invalid-encoding"],
+	// bash 3.2 reads \c? as 0x1F and bash 5 as DEL: a text whose meaning depends on the bash is outside the dialect.
+	["export A=$'\\c?'", "invalid-encoding"],
+	["export A=$'\\c1'", "invalid-encoding"],
 	["export A=1\r", "invalid-encoding"],
 	["export A='a\rb'", "invalid-encoding"],
 	["export A=a\u0001b", "invalid-encoding"],
@@ -202,6 +205,79 @@ describe("ShellExports.parseResult: anything else rejects the whole text", () =>
 		assert.strictEqual(error._tag, "ShellExportsError");
 		assert.strictEqual(error.message, "Not a shell export file: expansion at line 1, column 10");
 	});
+});
+
+/** Bytes from parts: a string contributes its UTF-8, an array of numbers its raw bytes. */
+const bytes = (...parts: ReadonlyArray<string | ReadonlyArray<number>>): Uint8Array =>
+	new Uint8Array(parts.flatMap((part) => (typeof part === "string" ? [...new TextEncoder().encode(part)] : [...part])));
+
+const okBytes = (input: Uint8Array): Record<string, string> => {
+	const parsed = ShellExports.parseBytesResult(input);
+	if (Result.isFailure(parsed)) assert.fail(`rejected bytes: ${parsed.failure.message}`);
+	return { ...parsed.success };
+};
+
+const bytesRejection = (input: Uint8Array): ShellExportsError => {
+	const parsed = ShellExports.parseBytesResult(input);
+	if (Result.isSuccess(parsed)) return assert.fail("accepted bytes");
+	return parsed.failure;
+};
+
+describe("ShellExports.parseBytesResult", () => {
+	it("bash 3.2's printf %q shape: raw high bytes and octal escapes in one $'…' join into one character", () => {
+		// What macOS /bin/bash 3.2 writes for 日本 under a UTF-8 locale (captured with od -c).
+		const input = bytes("export A=$'", [0xe6], "\\227", [0xa5, 0xe6], "\\234", [0xac], "'\n");
+		assert.deepStrictEqual(okBytes(input), { A: "日本" });
+		// The same file decoded to a string first holds U+FFFD, which parseResult rightly rejects.
+		assert.strictEqual(rejection(new TextDecoder().decode(input)).reason, "invalid-encoding");
+	});
+
+	it("is parseResult over a text's UTF-8 bytes: the same success, or the same rejection at the same position", () => {
+		const texts = [
+			...NEGATIVE.map(([text]) => text).filter((text) => !/[\uD800-\uDFFF]/.test(text)),
+			"export A=1\n\nexport B=ok$X\n",
+			"export C=日本😀\nexport D=日本*\n",
+			"export E='日\n本'\nexport F=$'日\\q'\n",
+			`export A=plain\nexport B='a b'\nexport C="x y"\nexport D='it'\\''s'"!"$'\\t'x\n`,
+			"# 日本\nexport A=$'\\303\\251'\\ é\n",
+		];
+		for (const text of texts)
+			assert.deepStrictEqual(
+				ShellExports.parseBytesResult(new TextEncoder().encode(text)),
+				ShellExports.parseResult(text),
+				JSON.stringify(text),
+			);
+	});
+
+	const MALFORMED: ReadonlyArray<readonly [label: string, input: Uint8Array, line: number, column: number]> = [
+		["a lone continuation byte in a bare word", bytes("export A=x", [0xa5], "\n"), 1, 11],
+		["a lone continuation byte in '…'", bytes("export A='x", [0xa5], "'\n"), 1, 12],
+		['a lone continuation byte in "…"', bytes('export A="x', [0xa5], '"\n'), 1, 12],
+		["a lone continuation byte after a bare backslash", bytes("export A=\\", [0xa5], "\n"), 1, 11],
+		["a truncated character in a bare word", bytes("export A=", [0xe6, 0x97], "\n"), 1, 10],
+		["an overlong NUL", bytes("export A=", [0xc0, 0x80], "\n"), 1, 10],
+		["an encoded surrogate", bytes("export A=", [0xed, 0xa0, 0x80], "\n"), 1, 10],
+		["a character split across a quote", bytes("export A=", [0xe6], "'", [0x97, 0xa5], "'\n"), 1, 10],
+		// Inside $'…' the whole quote must be UTF-8; the rejection points at its closing quote, as for escapes.
+		["a $'…' whose raw and escaped bytes stop mid-character", bytes("export A=$'", [0xe6], "\\227'\n"), 1, 17],
+		["a $'…' character split across two quotes", bytes("export A=$'\\346'$'\\227\\245'\n"), 1, 16],
+		["the column after earlier non-ASCII on the line", bytes("export A=日本", [0xff], "\n"), 1, 12],
+	];
+	for (const [label, input, line, column] of MALFORMED) {
+		it(`rejects ${label} as invalid-encoding at its position`, () => {
+			const error = bytesRejection(input);
+			assert.deepStrictEqual([error.reason, error.line, error.column], ["invalid-encoding", line, column]);
+		});
+	}
+
+	it("a raw control byte inside $'…' is still rejected, and a raw NUL anywhere", () => {
+		assert.strictEqual(bytesRejection(bytes("export A=$'a", [0x01], "'\n")).reason, "invalid-encoding");
+		assert.strictEqual(bytesRejection(bytes("export A=$'a", [0x00], "'\n")).reason, "invalid-encoding");
+		assert.strictEqual(bytesRejection(bytes("export A=a", [0x00], "\n")).reason, "invalid-encoding");
+	});
+
+	it("a # comment line is skipped unread, whatever its bytes", () =>
+		assert.deepStrictEqual(okBytes(bytes("# ", [0xff, 0xa5], "\nexport A=1\n")), { A: "1" }));
 });
 
 describe("ShellExports.format", () => {
@@ -414,6 +490,161 @@ describe.skipIf(!hasBash)("ShellExports against real bash", () => {
 		const text = `# c\n  # c\nexport A="x\\"y\\\\z\\q" ; export B='a\tb\nc'\nexport C=a\\ b$'\\303\\251\\cA'"d"\nexport D=a~b/~x\nexport A=last\n`;
 		assert.deepStrictEqual(bashExports(text, ["A", "B", "C", "D"]), ok(text));
 	});
+});
+
+/** `printf 'export %s=%q\n'` over every entry of `map`, run by the bash at `bin`, as the raw bytes it wrote. */
+const printfBytes = (bin: string, map: Record<string, string>, lcAll: string): Uint8Array => {
+	const input = Object.entries(map)
+		.map(([name, value]) => `${name}\0${value}\0`)
+		.join("");
+	const script = 'while IFS= read -r -d "" n && IFS= read -r -d "" v; do printf "export %s=%q\\n" "$n" "$v"; done';
+	const result = spawnSync(bin, ["--norc", "--noprofile", "-c", script], {
+		input,
+		cwd: sandbox,
+		env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: sandbox, LC_ALL: lcAll },
+		maxBuffer: 16 * 1024 * 1024,
+		timeout: 10_000,
+	});
+	assert.strictEqual(result.status, 0, result.stderr?.toString());
+	return new Uint8Array(result.stdout);
+};
+
+// bash 3.2's printf %q leaves `~` bare, so its `~/x` means $HOME/x to bash itself: the dialect rejects that text as
+// an expansion (pinned below), and the bash 3.2 maps leave every value holding a `~` out.
+const bash3Maps = maps.map((map) =>
+	Object.fromEntries(Object.entries(map).filter(([, value]) => !value.includes("~"))),
+);
+
+/** The bash 3.2 maps that hold a non-ASCII character: the ones bash 3.2 writes as mixed bytes. */
+const nonAsciiMaps = bash3Maps.filter((map) =>
+	Object.values(map).some((value) => [...value].some((ch) => (ch.codePointAt(0) as number) > 0x7f)),
+);
+
+/** Whether `input` holds a raw byte of 0x80 or above inside a `$'…'`: the mixed form bash 3.2 writes. */
+const hasRawHighByteInAnsiC = (input: Uint8Array): boolean => {
+	const text = new TextDecoder("latin1").decode(input);
+	return /\$'(?:[^'\\]|\\.)*[\x80-\xff]/.test(text);
+};
+
+// macOS ships bash 3.2 as /bin/bash, and its printf %q writes non-ASCII values partly as raw bytes. The oracle runs
+// only where that bash is present.
+const BASH3 = "/bin/bash";
+const bash3Version = spawnSync(BASH3, ["--version"], { encoding: "utf8", timeout: 10_000 });
+const hasBash3 = bash3Version.status === 0 && /version 3\.2\./.test(bash3Version.stdout ?? "");
+
+describe.skipIf(!hasBash3)("ShellExports.parseBytesResult against bash 3.2", () => {
+	it("control: bash 3.2 really writes raw high bytes inside $'…', which parseResult cannot read", () => {
+		assert.isAbove(nonAsciiMaps.length, 5);
+		const input = printfBytes(BASH3, Object.assign({}, ...nonAsciiMaps), "en_US.UTF-8");
+		assert.isTrue(hasRawHighByteInAnsiC(input));
+		assert.isTrue(Result.isFailure(ShellExports.parseResult(new TextDecoder().decode(input))));
+	});
+
+	for (const lcAll of ["C", "en_US.UTF-8"]) {
+		it(`bash 3.2's printf %q bytes, then parseBytesResult, give back every map (LC_ALL=${lcAll})`, () => {
+			for (const map of bash3Maps) assert.deepStrictEqual(okBytes(printfBytes(BASH3, map, lcAll)), map);
+		});
+	}
+
+	it("bash 3.2 writes a leading ~ bare, which bash expands, and the dialect rejects that text as an expansion", () => {
+		const input = printfBytes(BASH3, { A: "~/x" }, "en_US.UTF-8");
+		assert.strictEqual(new TextDecoder().decode(input), "export A=~/x\n");
+		assert.strictEqual(bytesRejection(input).reason, "expansion");
+	});
+
+	it("bash 3.2 sourcing its own printf %q bytes exports exactly what parseBytesResult returns", () => {
+		for (const map of nonAsciiMaps) {
+			const input = printfBytes(BASH3, map, "en_US.UTF-8");
+			const names = Object.keys(map);
+			// bash 3.2 has no [[ -v ]]; ${!n+x} tells a set variable from an unset one.
+			const script = `. /dev/stdin; for n in ${names.join(" ")}; do if [ -n "\${!n+x}" ]; then printf "%s=%s\\0" "$n" "\${!n}"; fi; done; :`;
+			const result = spawnSync(BASH3, ["--norc", "--noprofile", "-c", script], {
+				input,
+				encoding: "utf8",
+				cwd: sandbox,
+				env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: sandbox, LC_ALL: "en_US.UTF-8" },
+				timeout: 10_000,
+			});
+			assert.strictEqual(result.status, 0, result.stderr);
+			const exported = Object.fromEntries(
+				result.stdout
+					.split("\0")
+					.slice(0, -1)
+					.map((entry) => [entry.slice(0, entry.indexOf("=")), entry.slice(entry.indexOf("=") + 1)]),
+			);
+			assert.deepStrictEqual(exported, map);
+			assert.deepStrictEqual(okBytes(input), exported);
+		}
+	});
+});
+
+/** The bytes `bin` exports as `V` after sourcing `input`, or undefined when bash fails on it. */
+const exportedBytes = (bin: string, input: Uint8Array): ReadonlyArray<number> | undefined => {
+	const result = spawnSync(bin, ["--norc", "--noprofile", "-c", '. /dev/stdin; printf %s "$V"'], {
+		input,
+		cwd: sandbox,
+		env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: sandbox, LC_ALL: "en_US.UTF-8" },
+		timeout: 10_000,
+	});
+	return result.status === 0 ? [...result.stdout] : undefined;
+};
+
+// Every one-character escape and every \c target bash could be handed, plus byte escapes at their length edges.
+const ESCAPE_BODIES: ReadonlyArray<string> = [
+	...Array.from({ length: 0x7e - 0x21 + 1 }, (_, k) => String.fromCharCode(0x21 + k))
+		.filter((ch) => ch !== "'")
+		.flatMap((ch) => [`\\${ch}`, `\\c${ch}`, `\\c${ch}x`]),
+	"\\101",
+	"\\1010",
+	"\\0101",
+	"\\x41",
+	"\\x4",
+	"\\x414",
+	"\\x7f",
+	"\\177",
+	"\\303\\251",
+	"\\xc3\\xa9",
+];
+
+describe.skipIf(!(hasBash3 && hasBash5))("$'…' escapes mean the same to bash 3.2 and bash 5", () => {
+	const encode = (body: string) => new TextEncoder().encode(`export V=$'${body}'\n`);
+
+	it("control: the two shells really disagree on \\c?, and the dialect rejects it", () => {
+		const input = encode("\\c?");
+		assert.deepStrictEqual(exportedBytes(BASH3, input), [0x1f]);
+		assert.deepStrictEqual(exportedBytes("bash", input), [0x7f]);
+		assert.isTrue(Result.isFailure(ShellExports.parseBytesResult(input)));
+	});
+
+	it("every escape the dialect accepts exports identically under both, as what parse returns", () => {
+		let accepted = 0;
+		const targets = new Set<string>();
+		for (const body of ESCAPE_BODIES) {
+			const input = encode(body);
+			const parsed = ShellExports.parseBytesResult(input);
+			if (Result.isFailure(parsed)) continue;
+			accepted++;
+			if (body.startsWith("\\c")) targets.add(body.slice(2, 3));
+			const expected = [...new TextEncoder().encode(parsed.success.V)];
+			assert.deepStrictEqual(exportedBytes(BASH3, input), expected, `bash 3.2 on ${body}`);
+			assert.deepStrictEqual(exportedBytes("bash", input), expected, `bash 5 on ${body}`);
+		}
+		// Every \c target the dialect defines was exercised, and the sweep is not vacuous.
+		assert.deepStrictEqual([...targets].sort(), [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_abcdefghijklmnopqrstuvwxyz"].sort());
+		assert.isAbove(accepted, 120);
+	});
+});
+
+describe.skipIf(!hasBash5)("bash 5's printf %q reads back through both entry points", () => {
+	for (const lcAll of ["C", "en_US.UTF-8"]) {
+		it(`parseResult over the text and parseBytesResult over the bytes give back every map (LC_ALL=${lcAll})`, () => {
+			for (const map of maps) {
+				const input = printfBytes("bash", map, lcAll);
+				assert.deepStrictEqual(okBytes(input), map);
+				assert.deepStrictEqual(ok(new TextDecoder("utf-8", { fatal: true }).decode(input)), map);
+			}
+		});
+	}
 });
 
 // Each special name, in the bash the oracle runs (5.x): exporting `NAME=sentinel` from a file does not leave a plain
