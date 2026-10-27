@@ -4,7 +4,9 @@ import { Cancelled } from "./Cancelled.js";
 import type { Block, Document, InlineOf, TreeInput } from "./Doc.js";
 import { Doc } from "./Doc.js";
 import { Fmt } from "./Fmt.js";
+import { identity } from "./internal/displayPath.js";
 import { issueEntries, issueTreeChildren } from "./internal/format.js";
+import { failureText, tagOf } from "./internal/inspect.js";
 import { splitFrame } from "./internal/splitFrame.js";
 import { NotInteractive } from "./NotInteractive.js";
 import { Status } from "./Status.js";
@@ -87,26 +89,7 @@ const MAX_SPANS = 32;
 const hasCliDoc = (value: unknown): value is CliDocSource =>
 	typeof value === "object" && value !== null && typeof (value as Partial<CliDocSource>)[CliDoc] === "function";
 
-// String(value) can throw for an object with no prototype or a hostile toString, and says only "[object Object]" for
-// a plain failure value: such a value with a string message is that message.
-const describe = (value: unknown): string => {
-	try {
-		const text = String(value);
-		if (text !== "[object Object]") return text;
-		const message = (value as { readonly message?: unknown } | null)?.message;
-		return typeof message === "string" ? message : text;
-	} catch {
-		return "[unprintable value]";
-	}
-};
-
 const firstLine = (text: string): string => text.split(/\r\n|\r|\n/, 1)[0] ?? "";
-
-const tagOf = (value: unknown): string | undefined => {
-	if (typeof value !== "object" || value === null) return undefined;
-	const tag = (value as { readonly _tag?: unknown })._tag;
-	return typeof tag === "string" ? tag : undefined;
-};
 
 /** The failure status and the text of a message: one block per line, the status on the first. */
 const failureBlocks = (message: string): ReadonlyArray<Block> => {
@@ -129,7 +112,7 @@ const schemaBlocks = (error: unknown): ReadonlyArray<Block> | undefined => {
 	if (entries.length === 0) return undefined;
 	const header =
 		typeof error === "object" && error !== null && !SchemaIssue.isIssue(error)
-			? firstLine(describe((error as { readonly message?: unknown }).message ?? ""))
+			? firstLine(failureText((error as { readonly message?: unknown }).message ?? ""))
 			: "";
 	const label: Array<InlineOf<"Text"> | InlineOf<"StatusMark"> | string> = [
 		Doc.status(Status.core, "failure"),
@@ -248,7 +231,7 @@ const causeTree = (defect: Error): Block | undefined => {
 	for (let current: unknown = defect.cause; current !== undefined && chain.length < MAX_DEPTH; ) {
 		if (seen.has(current)) break;
 		seen.add(current);
-		chain.push(firstLine(describe(current)));
+		chain.push(firstLine(failureText(current)));
 		current = current instanceof Error ? current.cause : undefined;
 	}
 	if (chain.length === 0) return undefined;
@@ -256,7 +239,7 @@ const causeTree = (defect: Error): Block | undefined => {
 		index === chain.length - 1
 			? { label: chain[index] as string }
 			: { label: chain[index] as string, children: [nest(index + 1)] };
-	return Doc.tree({ label: firstLine(describe(defect)), children: [nest(0)] });
+	return Doc.tree({ label: firstLine(failureText(defect)), children: [nest(0)] });
 };
 
 const dieBlocks = (
@@ -267,7 +250,7 @@ const dieBlocks = (
 ): ReadonlyArray<Block> => {
 	// A prompt that was cancelled, or refused for want of a terminal, is a defect to the runtime and a fixed line to a person.
 	if (defect instanceof Cancelled || defect instanceof NotInteractive) return [Doc.paragraph(defect.message)];
-	const header = failureBlocks(describe(defect));
+	const header = failureBlocks(failureText(defect));
 	if (!(defect instanceof Error)) return [...header, ...spans];
 	const chain = causeTree(defect);
 	return [...header, ...spans, stackBlock(defect, displayPath, mode), ...(chain === undefined ? [] : [chain])];
@@ -300,7 +283,7 @@ const failBlocks = (
 	if (error instanceof Cancelled || error instanceof NotInteractive) return [Doc.paragraph(error.message)];
 	const schema = schemaBlocks(error);
 	if (schema !== undefined) return [...schema, ...spans];
-	return [...failureBlocks(describe(error)), ...spans];
+	return [...failureBlocks(failureText(error)), ...spans];
 };
 
 /** A file of the kit's own packages or of Effect, as installed: a span defined there is not the program's. */
@@ -411,7 +394,7 @@ export class CliFailure {
 	static readonly toDoc = (cause: CauseType.Cause<unknown>, options?: CliFailureOptions): Document => {
 		const reasons = cause.reasons;
 		if (reasons.length > 0 && reasons.every(Cause.isInterruptReason)) return [Doc.paragraph("interrupted")];
-		const displayPath = options?.displayPath ?? ((absolute: string) => absolute);
+		const displayPath = options?.displayPath ?? identity;
 		return reasons.flatMap((reason): ReadonlyArray<Block> => {
 			const spans = options?.spans ?? "app";
 			const appDir = packageDirOf(options?.appModule);

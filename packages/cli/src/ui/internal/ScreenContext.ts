@@ -26,6 +26,8 @@ export interface ScreenContextValue {
 	 * `DocView` sets `neutralizeWorkflowCommands` from it.
 	 */
 	readonly neutralizeWorkflowCommands?: boolean;
+	/** How a `DocView` shows an absolute path: the run's `displayPath`, the identity when absent. */
+	readonly displayPath?: ((absolute: string) => string) | undefined;
 }
 
 /**

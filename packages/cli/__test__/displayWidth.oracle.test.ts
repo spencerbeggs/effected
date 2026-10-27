@@ -117,3 +117,30 @@ describe("displayWidth against string-width", () => {
 		assert.deepStrictEqual(mismatches.slice(0, 5), []);
 	});
 });
+
+describe("displayWidth against string-width: escapes that are not CSI or OSC", () => {
+	// Each of these left a printable byte behind before the strip covered them (`ESC c` measured as "c").
+	const ESCAPES: ReadonlyArray<readonly [label: string, text: string]> = [
+		["reset (ESC c)", "\u001bcabc"],
+		["save and restore cursor (ESC 7, ESC 8)", "\u001b7abc\u001b8"],
+		["charset designation (ESC ( B)", "\u001b(Babc"],
+		["keypad mode (ESC =)", "\u001b=abc"],
+		["private CSI (cursor hide)", "\u001b[?25labc"],
+	];
+
+	for (const [label, text] of ESCAPES) {
+		it(`agrees: ${label}`, () => {
+			assert.strictEqual(displayWidth(text), stringWidth(text));
+			assert.strictEqual(displayWidth(text), 3);
+		});
+	}
+
+	it("pins the string divergence: a DCS or APC payload draws nothing, though the oracle counts it", () => {
+		const dcs = "\u001bPq#0\u001b\\abc";
+		const apc = "\u001b_Ga=T\u001b\\abc";
+		assert.strictEqual(displayWidth(dcs), 3);
+		assert.strictEqual(displayWidth(apc), 3);
+		assert.isAbove(stringWidth(dcs), 3);
+		assert.isAbove(stringWidth(apc), 3);
+	});
+});

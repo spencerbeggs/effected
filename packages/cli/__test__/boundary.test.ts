@@ -100,18 +100,16 @@ const nodeImporters = (entry: string): ReadonlyArray<string> =>
  * The process-streams licence (`okf/decisions/ui-binds-process-streams.md`), one
  * `file rule detail` line per waived offence that is not an `ink` or `react`
  * import. Exactly three files may ever appear here, and each joins when it
- * lands:
+ * lands (Ink's chalk resolution left the list when it moved onto `@effected/commands/node-sync`):
  *
  * - `ui/internal/processStreams.ts`: `process` (reads the three process streams);
- * - `ui/internal/inkChalk.ts`: `forbidImports` of `node:module`, `node:url`, `node:fs`;
+ * - `ui/CliUiRouteStream.ts`: `forbidImports` of `node:stream`, for the `Writable` `CliUi.routeStream` returns;
  * - `ui/testing/fakeStreams.ts` (testing only): `forbidImports` of `node:stream` (it needs no `node:events`), and
  *   `process`, to disarm the real-terminal cursor restore a fake TTY arms (#983); it touches no stream.
  */
 const NODE_LICENCE: ReadonlyArray<string> = [
-	"ui/internal/inkChalk.ts forbidImports node:fs",
-	"ui/internal/inkChalk.ts forbidImports node:module",
-	"ui/internal/inkChalk.ts forbidImports node:url",
 	"ui/internal/processStreams.ts process process",
+	"ui/CliUiRouteStream.ts forbidImports node:stream",
 	"ui/testing/fakeStreams.ts forbidImports node:stream",
 	"ui/testing/fakeStreams.ts process process",
 ];
@@ -123,11 +121,11 @@ const NODE_LICENCE: ReadonlyArray<string> = [
  */
 const UI_WRITE_LICENCE: ReadonlyArray<string> = ["ui/internal/inkConsole.ts stdout-write stdout.write"];
 
-/** The `node:` importers reachable from `./ui`: only Ink's chalk resolution. The testing fakes stay off it. */
-const UI_NODE_IMPORTERS: ReadonlyArray<string> = ["ui/internal/inkChalk.ts"];
+/** The `node:` importers reachable from `./ui`: the routed stream alone. The testing fakes stay off it. */
+const UI_NODE_IMPORTERS: ReadonlyArray<string> = ["ui/CliUiRouteStream.ts"];
 
 /** The `node:` importers `./ui/testing` may reach. */
-const UI_TESTING_NODE_LICENCE: ReadonlySet<string> = new Set(["ui/internal/inkChalk.ts", "ui/testing/fakeStreams.ts"]);
+const UI_TESTING_NODE_LICENCE: ReadonlySet<string> = new Set(["ui/CliUiRouteStream.ts", "ui/testing/fakeStreams.ts"]);
 
 const licensedLine = (offence: Offence): string => `${offence.file} ${offence.rule} ${offence.detail}`;
 
@@ -138,7 +136,7 @@ describe("cli boundary", () => {
 		);
 
 		it.effect(
-			"no source file reads process, writes to stdout, or imports node:, a platform package, mcp, engine, ink or react, outside the ./ui waivers",
+			"no source file reads process, writes to stdout, or imports node:, a platform package, mcp, ink or react, outside the ./ui waivers",
 			() =>
 				Effect.gen(function* () {
 					const scan = yield* SourceBoundary.scan({
@@ -148,15 +146,7 @@ describe("cli boundary", () => {
 							"node:process",
 							"stdout-write",
 							{
-								forbidImports: [
-									"node:*",
-									"@effect/platform*",
-									"@effected/mcp",
-									"@effected/engine",
-									"ink",
-									"react",
-									"react/*",
-								],
+								forbidImports: ["node:*", "@effect/platform*", "@effected/mcp", "ink", "react", "react/*"],
 							},
 						],
 						allowRules: {
@@ -223,6 +213,22 @@ describe("cli boundary", () => {
 			assert.include(specifiers, "react", 'the dynamic import("react") in the loader is reached');
 			assert.include(specifiers, "ink");
 			assert.isTrue(reachableFrom(resolve(SRC, "ui-testing.ts")).has(resolve(SRC, "ui-testing.ts")));
+		});
+
+		it("@effected/commands/node-sync is reached from ./ui's Ink loader, and never from `.` or `./testing`", () => {
+			const importersOf = (entry: string): ReadonlyArray<string> =>
+				[...reachableFrom(resolve(SRC, entry))]
+					.filter((file) => specifiersOf(file, readSource).includes("@effected/commands/node-sync"))
+					.map((file) => relativeTo(SRC, file))
+					.sort();
+			assert.deepStrictEqual(importersOf("ui.ts"), ["ui/internal/inkChalk.ts"], "control: the loader reaches it");
+			assert.deepStrictEqual(importersOf("index.ts"), []);
+			assert.deepStrictEqual(importersOf("testing.ts"), []);
+			// Nothing in the package imports the commands root: only the node-sync subpath, and only there.
+			const anyCommands = [...reachableFrom(resolve(SRC, "ui.ts")), ...reachableFrom(resolve(SRC, "index.ts"))]
+				.flatMap((file) => specifiersOf(file, readSource))
+				.filter((specifier) => specifier.startsWith("@effected/commands"));
+			assert.deepStrictEqual([...new Set(anyCommands)], ["@effected/commands/node-sync"]);
 		});
 
 		it("node: imports reachable from ./ui are exactly the licensed ones", () => {

@@ -20,7 +20,9 @@ export {
 	type Screen,
 	type ScreenControl,
 } from "./ui/CliUi.js";
+export type { DetachedLive, DetachedLiveOptions } from "./ui/CliUiDetached.js";
 export type { LiveHandle, LiveOptions } from "./ui/CliUiLive.js";
+export type { RouteStreamOptions, RoutedStream } from "./ui/CliUiRouteStream.js";
 export {
 	Confirm,
 	type ConfirmAction,

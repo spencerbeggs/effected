@@ -331,6 +331,12 @@ importers:
 
   packages/cli:
     dependencies:
+      '@effected/commands':
+        specifier: workspace:^
+        version: link:../commands/dist/dev/pkg
+      '@effected/engine':
+        specifier: workspace:^
+        version: link:../engine/dist/dev/pkg
       '@effected/github-commands':
         specifier: workspace:^
         version: link:../github-commands/dist/dev/pkg
@@ -405,6 +411,9 @@ importers:
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.6(effect@4.0.6)(vitest@5.0.5)
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.6.3
         version: 2.6.3(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redis@6.3.0)(tsx@4.23.15)(typescript@7.1.0-beta)

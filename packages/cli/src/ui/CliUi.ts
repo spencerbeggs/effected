@@ -2,7 +2,7 @@
 // (kept external by dtsExternals) instead of carrying copies a consumer's root layers cannot satisfy.
 import type * as Cli from "@effected/cli";
 import { Audience } from "@effected/env";
-import type { Scope } from "effect";
+import type { Layer, Scope } from "effect";
 import { Cause, Deferred, Effect, Exit, Option, Semaphore } from "effect";
 import type { Param } from "effect/cli";
 import { Prompt } from "effect/cli";
@@ -10,18 +10,21 @@ import type { ReactElement, ReactNode } from "react";
 import { Cancelled } from "../Cancelled.js";
 import { CliInteractive } from "../CliInteractive.js";
 import { CliTheme } from "../CliTheme.js";
-import { underGithubActions } from "../internal/autoFormat.js";
 import { answerWithoutPerson } from "../internal/fallbackAnswer.js";
 import { NotInteractive } from "../NotInteractive.js";
+import type { DetachedLive, DetachedLiveOptions } from "./CliUiDetached.js";
+import { liveDetached } from "./CliUiDetached.js";
 import type { LiveHandle, LiveOptions } from "./CliUiLive.js";
 import { live } from "./CliUiLive.js";
+import type { RouteStreamOptions, RoutedStream } from "./CliUiRouteStream.js";
+import { routeStream } from "./CliUiRouteStream.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
 import { inkModules, loadInk, withInkColour } from "./internal/ink.js";
 import { lazyView } from "./internal/lazyView.js";
 import { mountPermit } from "./internal/mountPermit.js";
 import { UiRenderOptions } from "./internal/renderOptions.js";
 import { useScreenGuard } from "./internal/ScreenContext.js";
-import { uiProviders } from "./internal/UiProviders.js";
+import { treeBase, uiProviders } from "./internal/UiProviders.js";
 import { KeyTable, useKeys } from "./KeyTable.js";
 import type { UiContextValue } from "./UiProvider.js";
 import { UiStreams } from "./UiStreams.js";
@@ -126,10 +129,10 @@ const mount = <A>(
 	theme: Cli.StreamTheme,
 	clear: boolean,
 	crash: CrashCell,
-	neutralize: boolean,
 ): Effect.Effect<A, Cli.Cancelled, Scope.Scope> =>
 	Effect.gen(function* () {
 		const overrides = yield* UiRenderOptions;
+		const base = yield* treeBase(theme);
 		// The harness's bracket, around everything a run does, so a thunk that throws before Ink draws is a screen too.
 		// Released last: after Ink has exited and the colour level is restored, with the defect the run died of.
 		yield* Effect.acquireRelease(
@@ -163,13 +166,7 @@ const mount = <A>(
 		const tree = react.createElement(errorBoundary(), {
 			onError: die,
 			children: uiProviders(
-				{
-					cancel: control.cancel,
-					die,
-					theme,
-					glyphs: theme.glyphs,
-					...(neutralize ? { neutralizeWorkflowCommands: true } : {}),
-				},
+				{ ...base, cancel: control.cancel, die },
 				react.createElement(RootKeys, { cancel: control.cancel, children: element }),
 			),
 		});
@@ -275,13 +272,9 @@ export class CliUi {
 		Effect.gen(function* () {
 			if (!(yield* CliInteractive)) return yield* Effect.fail(new NotInteractive());
 			const theme = yield* audienceTheme;
-			const neutralize = yield* underGithubActions;
 			const crash: CrashCell = { current: undefined };
 			const exit = yield* Effect.exit(
-				Semaphore.withPermit(
-					mountPermit,
-					Effect.scoped(mount(screen, theme, options?.clear === true, crash, neutralize)),
-				),
+				Semaphore.withPermit(mountPermit, Effect.scoped(mount(screen, theme, options?.clear === true, crash))),
 			);
 			// A tree that crashed is a defect however the screen ended: a cancel or a resolve in the same tick, which
 			// settled the result first, must not hide it. An interrupt stays an interrupt. The interrupt check is
@@ -324,15 +317,9 @@ export class CliUi {
 	 * ```
 	 */
 	static readonly context: Effect.Effect<UiContextValue, never, Cli.CliTheme> = Effect.gen(function* () {
-		const theme = yield* audienceTheme;
-		const neutralize = yield* underGithubActions;
+		const base = yield* treeBase(yield* audienceTheme);
 		yield* loadInk;
-		return {
-			"~@effected/cli/ui/UiContextValue": true,
-			theme,
-			glyphs: theme.glyphs,
-			...(neutralize ? { neutralizeWorkflowCommands: true } : {}),
-		};
+		return { "~@effected/cli/ui/UiContextValue": true, ...base };
 	});
 
 	/**
@@ -414,6 +401,72 @@ export class CliUi {
 	static readonly live: <E, S>(
 		options: LiveOptions<E, S>,
 	) => Effect.Effect<LiveHandle<S>, never, Scope.Scope | Cli.CliTheme> = live;
+
+	/**
+	 * A live view hosted by code that is not built on Effect: a test runner's reporter, a bundler plugin, a build hook.
+	 *
+	 * @remarks
+	 * It runs `CliUi.live` in a fiber of its own, under `env` and in a scope of its own, and returns at once. A `PubSub`
+	 * given as `events` is subscribed before it returns, so the first event published after the call is not lost.
+	 * `env` is the environment the view reads, built by the host, which owns the platform: under Node,
+	 * `CliEnv.layer().pipe(Layer.provide(NodeServices.layer))`; a test gives `CliEnv.layerTest` with a session's layer.
+	 *
+	 * End it with `close`, and only then shut the `PubSub` down: `close` folds the subscription's queued tail, commits
+	 * the last run and releases the scope, and a shutdown before it drops that tail. `close` never rejects; `exit`
+	 * says how the view ended. Forward output the host did not write through `printAbove`, or hand
+	 * `CliUi.routeStream` the detached view's `printAbove` as its printer.
+	 *
+	 * Inside an Effect program, use `CliUi.live` in a scope instead.
+	 *
+	 * @param options - the live view's options, with the events as a `PubSub` or a stream
+	 * @param env - the environment the view runs under
+	 */
+	static readonly liveDetached: <E, S>(
+		options: DetachedLiveOptions<E, S>,
+		env: Layer.Layer<Cli.CliTheme>,
+	) => DetachedLive<S> = liveDetached;
+
+	/**
+	 * A stream to hand to a writer in place of a terminal stream, which routes what it writes line by line through
+	 * `printer`, usually a live view's `printAbove`, and writes whatever the printer declines to `original`.
+	 *
+	 * @remarks
+	 * For output the program does not write itself: a child process's stderr, or the streams of a test runner or a
+	 * bundler running in-process. Each complete line is offered to `printer`; a `false` (no frame mounted) writes it,
+	 * with its line break, to `original`. Text without a line break yet is held until one comes, until `flush`, or
+	 * until it passes `maxHeld` characters, when it is offered as a line of its own. Bytes are decoded as UTF-8 across
+	 * writes, so a character split between two writes arrives whole.
+	 *
+	 * Everything written to `original` is the decoded text, so a character split across two writes, by whichever path,
+	 * arrives once and whole. A write that is nothing but escape sequences (a cursor hide, a clear-screen) goes
+	 * straight to `original` when no partial line is held, since there is nothing to print above a frame. Ending
+	 * `writable` flushes the held text, so a writer's last line with no line break is printed, not lost. A line's own cursor
+	 * movements still tear the frame; `carriageReturn: "last"` keeps only what a progress bar redrawn with `\r` would
+	 * have shown.
+	 *
+	 * The returned `writable` reports the original's `isTTY`, `columns`, `rows`, `getColorDepth`, `hasColors` and
+	 * `getWindowSize` where the original has them. A printer that throws fails the write. Node only, as `./ui` is.
+	 *
+	 * @example
+	 * ```ts
+	 * const view = CliUi.liveDetached(options, env)
+	 * const routed = CliUi.routeStream(process.stderr, view.printAbove, { stream: "stderr" })
+	 * runner.errorStream = routed.writable
+	 * // ...at the end
+	 * routed.flush()
+	 * await view.close()
+	 * ```
+	 *
+	 * @param original - the stream the writer would have written to
+	 * @param printer - where each line is offered first: `true` when it printed it, `false` with nothing written
+	 * @param options - the printer's stream, the hold limit, carriage returns and a text tap
+	 * @throws RangeError when `maxHeld` is not a non-negative integer
+	 */
+	static readonly routeStream: (
+		original: NodeJS.WritableStream,
+		printer: (stream: "stdout" | "stderr", line: string) => boolean,
+		options: RouteStreamOptions,
+	) => RoutedStream = routeStream;
 
 	/**
 	 * Run `screen` from a handler when the run is interactive; otherwise answer with `otherwise`, or fail with

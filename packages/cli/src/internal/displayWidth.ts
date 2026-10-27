@@ -2,8 +2,20 @@
 // `__test__/displayWidth.oracle.test.ts` is what catches the drift.
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-// biome-ignore lint/suspicious/noControlCharactersInRegex: an ANSI escape starts with ESC and an OSC ends with BEL
-const ANSI = /\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)|\u001B\[[0-?]*[ -/]*[@-~]/g;
+// Every escape sequence a terminal consumes without drawing, in the order they must be tried:
+// - CSI, `ESC [` parameters, intermediates and a final byte (SGR colour, cursor moves, erases);
+// - OSC, `ESC ]` up to BEL or ST (titles, OSC 8 hyperlinks);
+// - the DCS, SOS, PM and APC strings, `ESC P`, `ESC X`, `ESC ^` or `ESC _` up to ST (sixel, the kitty graphics protocol);
+// - the nF sequences terminals use, and no other: a charset designation (`ESC ( B`, `ESC ) 0`, any of `( ) * + - . /`
+//   then a final, or `ESC $` with an optional one of them for a multibyte set), `ESC #` and one of `3 4 5 6 8` (`ESC # 8`), and
+//   `ESC SP` with `F`, `G`, `L`, `M` or `N`. A stray ESC before a space, a quote or `#` text keeps that text;
+// - the two-byte Fp sequences (`ESC 7`, `ESC 8`, `ESC =`, `ESC >`), the Fe ones but `[` and `]` (`ESC M`, `ESC D`), and
+//   `ESC c`, the reset. Not every other Fs byte: a stray ESC in front of a lowercase word loses the ESC, not the letter.
+// An unterminated string falls through to the Fe branch, which takes its introducer alone; an unterminated CSI or OSC
+// keeps its `[` or `]`, and only the ESC goes, when `sanitize` drops it.
+const ANSI =
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: an ANSI escape starts with ESC and an OSC ends with BEL
+	/\u001B(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001B]*(?:\u0007|\u001B\\)|[PX^_][^\u001B]*\u001B\\|[()*+\-./][0-~]|\$[()*+\-./]?[@-~]|#[3-68]| [FGLMN]|[0-?@-Z\\^_c])/g;
 const EMOJI = /^\p{RGI_Emoji}$/v;
 
 const WIDE2 =
@@ -11,11 +23,20 @@ const WIDE2 =
 const ZERO2 = /^[\p{Mn}\p{Me}\p{Cf}\p{Cc}\u115F\u1160\u3164\uFFA0]+$/u;
 
 /**
- * The text without its ANSI escape sequences: CSI (including SGR colour) and OSC (including OSC-8 hyperlinks).
+ * The text without its escape sequences: CSI (including SGR colour), OSC (including OSC-8 hyperlinks), the DCS, SOS,
+ * PM and APC strings, and every other escape (`ESC c`, `ESC 7`, `ESC ( B`).
  *
  * @internal
  */
 export const stripAnsi = (input: string): string => input.replace(ANSI, "");
+
+/**
+ * Whether `input` is nothing but escape sequences, as {@link stripAnsi} reads them; empty text is not. Every sequence
+ * starts with ESC, so text that does not is answered without running the strip.
+ *
+ * @internal
+ */
+export const isEscapeOnly = (input: string): boolean => input.charCodeAt(0) === 0x1b && stripAnsi(input) === "";
 
 /**
  * The display width of `input` in terminal columns: graphemes, wide East Asian characters and emoji count two,

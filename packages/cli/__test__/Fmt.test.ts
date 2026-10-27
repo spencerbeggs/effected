@@ -192,3 +192,189 @@ describe("Fmt.sanitize", () => {
 		}
 	});
 });
+
+describe("Fmt.pad", () => {
+	it("pads by display width, not by length", () => {
+		assert.strictEqual(Fmt.pad("日本", 6), "日本  ");
+		assert.strictEqual(Fmt.pad("\u001b[31mab\u001b[39m", 4), "\u001b[31mab\u001b[39m  ");
+		assert.strictEqual(Fmt.width(Fmt.pad("👍x", 5)), 5);
+	});
+
+	it("aligns right and center, the odd column on the right", () => {
+		assert.strictEqual(Fmt.pad("ab", 5, { align: "right" }), "   ab");
+		assert.strictEqual(Fmt.pad("ab", 5, { align: "center" }), " ab  ");
+		assert.strictEqual(Fmt.pad("ab", 5, { align: "left" }), "ab   ");
+	});
+
+	it("returns text at or over the width unchanged", () => {
+		assert.strictEqual(Fmt.pad("abcdef", 3), "abcdef");
+		assert.strictEqual(Fmt.pad("abc", 3), "abc");
+	});
+
+	it("uses a one-column fill and falls back to a space for any other", () => {
+		assert.strictEqual(Fmt.pad("a", 3, { fill: "." }), "a..");
+		assert.strictEqual(Fmt.pad("a", 3, { fill: "日" }), "a  ");
+		assert.strictEqual(Fmt.pad("a", 3, { fill: "ab" }), "a  ");
+		assert.strictEqual(Fmt.pad("a", 3, { fill: "\u001b[31m." }), "a  ");
+		assert.strictEqual(Fmt.pad("a", 3, { fill: "" }), "a  ");
+	});
+
+	it("pads nothing for a width that is not finite, and never throws", () => {
+		assert.strictEqual(Fmt.pad("a", Number.NaN), "a");
+		assert.strictEqual(Fmt.pad("a", Number.POSITIVE_INFINITY), "a");
+		assert.strictEqual(Fmt.pad("a", 2.9), "a ");
+	});
+});
+
+describe("Fmt.stripAnsi", () => {
+	it("removes CSI, OSC 8 by BEL and by ST, strings and two-byte escapes", () => {
+		assert.strictEqual(Fmt.stripAnsi("\u001b[1;31mred\u001b[0m"), "red");
+		assert.strictEqual(Fmt.stripAnsi("\u001b]8;;https://x.test\u0007link\u001b]8;;\u0007"), "link");
+		assert.strictEqual(Fmt.stripAnsi("\u001b]8;;https://x.test\u001b\\link\u001b]8;;\u001b\\"), "link");
+		assert.strictEqual(Fmt.stripAnsi("\u001bc\u001b7a\u001b8\u001b(Bb\u001b=c"), "abc");
+		assert.strictEqual(Fmt.stripAnsi("\u001bPq#0\u001b\\x"), "x");
+	});
+
+	it("keeps a lone ESC and other control characters", () => {
+		assert.strictEqual(Fmt.stripAnsi("a\u001b"), "a\u001b");
+		assert.strictEqual(Fmt.stripAnsi("lone\u001bescape"), "lone\u001bescape", "ESC e is not a sequence it strips");
+		assert.strictEqual(Fmt.stripAnsi("cut \u001b[12;"), "cut \u001b[12;", "an unterminated CSI keeps its bytes");
+		assert.strictEqual(Fmt.stripAnsi("a\rb\u0007"), "a\rb\u0007");
+	});
+
+	it("keeps the text after a stray ESC before a space, a quote, a dollar or a hash, and strips the nF sequences terminals use", () => {
+		assert.strictEqual(Fmt.sanitize("\u001b hello \u001b'quoted'"), " hello 'quoted'");
+		assert.strictEqual(Fmt.sanitize("\u001b$5 and \u001b#1 issue"), "$5 and #1 issue");
+		assert.strictEqual(Fmt.stripAnsi("\u001b(Ba\u001b)0b\u001b$Bc\u001b$(Cd\u001b#8e\u001b Ff"), "abcdef");
+	});
+
+	it("strips an unterminated million-character sequence in linear time (no catastrophic backtracking)", () => {
+		const long = "a".repeat(1_000_000);
+		for (const input of [
+			`\u001b]${long}`,
+			`\u001bP${long}`,
+			`\u001b[${"1;".repeat(500_000)}`,
+			"\u001b ".repeat(500_000),
+		]) {
+			const started = performance.now();
+			Fmt.stripAnsi(input);
+			// Linear inputs strip in a few milliseconds; a quadratic regex would take minutes. The bound leaves room for a
+			// loaded machine.
+			assert.isBelow(performance.now() - started, 500);
+		}
+	});
+
+	it("is the strip sanitize starts from: a two-byte escape leaves nothing behind", () => {
+		assert.strictEqual(Fmt.sanitize("\u001bcabc"), "abc");
+		assert.strictEqual(Fmt.width("\u001bcabc"), 3);
+		assert.strictEqual(Fmt.truncate("\u001b7abcdef", 4), "abc…");
+	});
+});
+
+describe("Fmt.isEscapeOnly", () => {
+	it("is true for text made only of escape sequences", () => {
+		assert.isTrue(Fmt.isEscapeOnly("\u001b[?25l"));
+		assert.isTrue(Fmt.isEscapeOnly("\u001b[2J\u001b[3J\u001b[H"));
+		assert.isTrue(Fmt.isEscapeOnly("\u001bc"));
+	});
+
+	it("is false for empty text, text with content, and bare controls", () => {
+		assert.isFalse(Fmt.isEscapeOnly(""));
+		assert.isFalse(Fmt.isEscapeOnly("\u001b[31mx"));
+		assert.isFalse(Fmt.isEscapeOnly("\r"));
+		assert.isFalse(Fmt.isEscapeOnly("\u0007"));
+		assert.isFalse(Fmt.isEscapeOnly("\u001b"));
+	});
+});
+
+describe("Fmt.ranges", () => {
+	const cases: ReadonlyArray<readonly [ReadonlyArray<number>, string]> = [
+		[[], ""],
+		[[42], "42"],
+		[[1, 2, 3, 5, 10, 11, 12], "1-3,5,10-12"],
+		[[5, 3, 2, 1, 3], "1-3,5"],
+		[[1, 3, 5], "1,3,5"],
+		[[1, 2], "1-2"],
+		[[-2, -1, 0, 2], "-2-0,2"],
+		[[1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2], "1-2"],
+	];
+	for (const [input, expected] of cases) {
+		it(`${JSON.stringify(input)} is ${JSON.stringify(expected)}`, () => {
+			assert.strictEqual(Fmt.ranges(input), expected);
+		});
+	}
+
+	it("takes any iterable", () => {
+		assert.strictEqual(Fmt.ranges(new Set([3, 1, 2])), "1-3");
+	});
+});
+
+describe("Fmt.describe", () => {
+	it("keeps strings and stringifies other primitives", () => {
+		assert.strictEqual(Fmt.describe("x"), "x");
+		assert.strictEqual(Fmt.describe(3), "3");
+		assert.strictEqual(Fmt.describe(false), "false");
+		assert.strictEqual(Fmt.describe(10n), "10");
+		assert.strictEqual(Fmt.describe(Symbol("s")), "Symbol(s)");
+		assert.strictEqual(Fmt.describe(undefined), "undefined");
+		assert.strictEqual(Fmt.describe(null), "null");
+	});
+
+	it("is the message of anything with a string message", () => {
+		assert.strictEqual(Fmt.describe(new Error("boom")), "boom");
+		assert.strictEqual(Fmt.describe({ message: "plain" }), "plain");
+	});
+
+	it("is JSON for a plain object or array", () => {
+		assert.strictEqual(Fmt.describe({ a: 1 }), '{"a":1}');
+		assert.strictEqual(Fmt.describe([1, 2]), "[1,2]");
+	});
+
+	it("never throws: a cycle, a bigint field, a throwing getter, a hostile toString", () => {
+		const cycle: Record<string, unknown> = {};
+		cycle.self = cycle;
+		assert.strictEqual(Fmt.describe(cycle), "[object Object]");
+		assert.strictEqual(Fmt.describe({ n: 1n }), "[object Object]");
+		const getter = Object.defineProperty({}, "message", {
+			get() {
+				throw new Error("no");
+			},
+		});
+		assert.strictEqual(Fmt.describe(getter), "{}");
+		const hostile = Object.create(null) as object;
+		Object.defineProperty(hostile, "toJSON", {
+			value: () => {
+				throw new Error("no");
+			},
+		});
+		assert.strictEqual(Fmt.describe(hostile), "[unprintable value]");
+	});
+});
+
+describe("Fmt.causeMessage", () => {
+	it("joins the chain nearest first, skipping text already spliced", () => {
+		const driver = new Error("SQLITE_BUSY: database is locked");
+		const outer = new Error("Failed to execute statement", {
+			cause: new Error("Failed to execute statement", { cause: driver }),
+		});
+		assert.strictEqual(Fmt.causeMessage(outer), "Failed to execute statement: SQLITE_BUSY: database is locked");
+		assert.strictEqual(Fmt.causeMessage({}), undefined);
+		assert.strictEqual(Fmt.causeMessage("thrown"), "thrown");
+	});
+
+	it("never throws: a throwing message getter is no answer, a throwing cause getter keeps the text found", () => {
+		const throwingMessage = Object.defineProperty({}, "message", {
+			get() {
+				throw new Error("no");
+			},
+		});
+		const throwingCause = Object.defineProperty({ message: "outer" }, "cause", {
+			get() {
+				throw new Error("no");
+			},
+		});
+		assert.strictEqual(Fmt.causeMessage(throwingMessage), undefined);
+		assert.strictEqual(Fmt.causeMessage(throwingCause), "outer");
+		assert.strictEqual(Fmt.causeMessage(throwingMessage) ?? Fmt.describe(throwingMessage), "{}");
+	});
+});

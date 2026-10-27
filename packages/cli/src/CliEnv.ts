@@ -10,6 +10,7 @@ import type { CliLogFileOptions, CliLogOptions } from "./CliLog.js";
 import { CliPrompt } from "./CliPrompt.js";
 import type { CliThemeOptions } from "./CliTheme.js";
 import { CliTheme } from "./CliTheme.js";
+import { displayPathLayer } from "./internal/displayPath.js";
 
 /**
  * Options for {@link CliEnv.layer} and for `CliRuntime.main`'s `env` option.
@@ -60,10 +61,19 @@ export interface CliEnvOptions {
 	 */
 	readonly formatter?: Partial<CliOutput.Formatter> | undefined;
 	/**
-	 * Turns an absolute path into its display form, for example relative to the workspace: the stack frames of the
-	 * default failure report are shown through it. Only `CliRuntime.main` reads this. The identity by default.
+	 * How an absolute path is shown: a function, or `{ relativeTo: root }` to show a path under `root` relative to it.
+	 * The identity by default.
+	 *
+	 * @remarks
+	 * It is every path the kit shows for this run: `Render.context` takes it as its default, so `Doc.print`, a
+	 * `Doc.path` or file link, and a live view's `final` document follow it, and so do the stack frames of the default
+	 * failure report. An explicit `displayPath` passed to `Doc.print` or `Render.context` still wins.
+	 *
+	 * `{ relativeTo: root }` takes an absolute `root`. A path under it is shown relative to it; `root` itself, and a path
+	 * outside it, are shown absolute, since a `../..` chain says less than the absolute path. It uses the `Path` service
+	 * when the platform provides one (as `CliRuntime.main`'s does), and otherwise a plain prefix test on `/` and `\`.
 	 */
-	readonly displayPath?: ((absolute: string) => string) | undefined;
+	readonly displayPath?: ((absolute: string) => string) | { readonly relativeTo: string } | undefined;
 	/**
 	 * Which frames of a defect's stack the default failure report shows: `app`, the default, leaves out every
 	 * `node_modules` frame (Effect's and any other dependency's) and the runtime's own (every `node:` frame and every
@@ -197,9 +207,13 @@ export class CliEnv {
 		// The gates read CliInteractive when built, and the terminal gate wraps the REAL Terminal, which the
 		// environment layers above have already read.
 		// `promptTheme` bridges the theme to core's prompts, so they follow the terminal's colour too.
-		return LayerModule.mergeAll(CliPrompt.gateTerminal, CliPrompt.gateWizard, CliTheme.promptTheme).pipe(
-			LayerModule.provideMerge(withInteractive),
-		);
+		return LayerModule.mergeAll(
+			CliPrompt.gateTerminal,
+			CliPrompt.gateWizard,
+			CliTheme.promptTheme,
+			// Sets the reference `Render.context` reads its default path display from; `Path` is read if it is there.
+			displayPathLayer(options.displayPath),
+		).pipe(LayerModule.provideMerge(withInteractive));
 	};
 
 	/**

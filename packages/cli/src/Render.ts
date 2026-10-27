@@ -10,6 +10,7 @@ import type { GlyphSet } from "./Glyphs.js";
 import { Glyphs } from "./Glyphs.js";
 import { paintStyle } from "./internal/ansi.js";
 import { underGithubActions } from "./internal/autoFormat.js";
+import { CurrentDisplayPath, identity } from "./internal/displayPath.js";
 import { renderAnsi } from "./internal/renderAnsi.js";
 import { renderGithubLog } from "./internal/renderGithubLog.js";
 import { renderMarkdown } from "./internal/renderMarkdown.js";
@@ -195,6 +196,8 @@ export class Render {
 	 * - `groupDepth` is the fiber's count of open Actions log groups (the fiber-local keyed by
 	 *   `WorkflowCommand.groupDepthKey`, which `ActionLogger.group` provides), set when it is above `0`, so a
 	 *   document printed inside a group opens no second one; see {@link RenderContext.groupDepth}.
+	 * - `displayPath` is the option, else the run's own path display (`CliEnvOptions.displayPath`, which
+	 *   `CliEnv.layer` sets), else the identity.
 	 *
 	 * @param stream - the stream the output is for
 	 * @param options - an explicit width and a path display function
@@ -227,7 +230,8 @@ export class Render {
 				paint: seen.paint,
 				glyphs: theme.glyphs,
 				link: CliLinks.linker({ links, hyperlinks: terminal[stream].hyperlinks, audience: kind }),
-				displayPath: options?.displayPath ?? ((absolute: string) => absolute),
+				// The run's own display when `CliEnv.layer` set one (`displayPath`), else the identity.
+				displayPath: options?.displayPath ?? (yield* CurrentDisplayPath),
 			};
 		});
 
@@ -260,7 +264,7 @@ export class Render {
 				links === "off"
 					? (_target: LinkTarget, label: string) => label
 					: CliLinks.linker({ links, hyperlinks: true, audience: options.audience }),
-			displayPath: options.displayPath ?? ((absolute: string) => absolute),
+			displayPath: options.displayPath ?? identity,
 			// A ci audience may be read by the Actions runner, and neutralizing is harmless anywhere else.
 			...((options.neutralizeWorkflowCommands ?? options.audience === "ci")
 				? { neutralizeWorkflowCommands: true }

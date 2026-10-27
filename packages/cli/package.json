@@ -36,6 +36,8 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effected/commands": "workspace:^",
+		"@effected/engine": "workspace:^",
 		"@effected/github-commands": "workspace:^"
 	},
 	"devDependencies": {

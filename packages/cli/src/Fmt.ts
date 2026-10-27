@@ -1,5 +1,6 @@
-import { Duration, Option } from "effect";
-import { displayWidth, graphemes, stripAnsi } from "./internal/displayWidth.js";
+import { Duration, Option, Predicate } from "effect";
+import { causeMessage } from "./internal/causeMessage.js";
+import { displayWidth, graphemes, isEscapeOnly, stripAnsi } from "./internal/displayWidth.js";
 
 /**
  * Options for {@link Fmt.truncate}.
@@ -24,6 +25,21 @@ export interface PercentOptions {
 	 * to 100, as istanbul's coverage numbers are.
 	 */
 	readonly scale?: 1 | 100 | undefined;
+}
+
+/**
+ * Options for {@link Fmt.pad}.
+ *
+ * @public
+ */
+export interface PadOptions {
+	/**
+	 * Where the text sits in the padded field: `left` (the default) fills on the right, `right` fills on the left, and
+	 * `center` splits the fill, the odd column going on the right.
+	 */
+	readonly align?: "left" | "right" | "center" | undefined;
+	/** The fill, one column wide; a space by default. Anything that is not exactly one column wide is a space. */
+	readonly fill?: string | undefined;
 }
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to match control characters
@@ -173,4 +189,139 @@ export class Fmt {
 	 */
 	static readonly plural = (n: number, singular: string, plural?: string): string =>
 		`${n} ${n === 1 ? singular : (plural ?? `${singular}s`)}`;
+
+	/**
+	 * Pad `text` to `width` terminal columns, measured as {@link Fmt.width} measures: a wide character counts two and
+	 * an escape sequence none, so coloured text pads to the same column as plain text.
+	 *
+	 * @remarks
+	 * Text already `width` columns or wider is returned unchanged: compose with {@link Fmt.truncate} to cut it. A
+	 * `width` that is not a finite number pads nothing. Never throws.
+	 *
+	 * @param text - the text to pad
+	 * @param width - the columns the result should take
+	 * @param options - the alignment and the fill
+	 */
+	static readonly pad = (text: string, width: number, options?: PadOptions): string => {
+		const missing = Number.isFinite(width) ? Math.floor(width) - displayWidth(text) : 0;
+		if (missing <= 0) return text;
+		const fill =
+			options?.fill !== undefined && displayWidth(options.fill) === 1 && stripAnsi(options.fill) === options.fill
+				? options.fill
+				: " ";
+		switch (options?.align) {
+			case "right":
+				return `${fill.repeat(missing)}${text}`;
+			case "center": {
+				const before = Math.floor(missing / 2);
+				return `${fill.repeat(before)}${text}${fill.repeat(missing - before)}`;
+			}
+			default:
+				return `${text}${fill.repeat(missing)}`;
+		}
+	};
+
+	/**
+	 * `text` without its escape sequences: CSI (colour, cursor moves, erases), OSC (titles, OSC 8 hyperlinks) ending in
+	 * BEL or ST, the DCS, SOS, PM and APC strings, and every other escape, the nF sequences (`ESC ( B`) and the
+	 * two-byte ones (`ESC 7`, `ESC 8`, `ESC =`, `ESC c`).
+	 *
+	 * @remarks
+	 * The same strip {@link Fmt.width} and {@link Fmt.sanitize} start from. Only complete sequences go: a lone ESC, or
+	 * any other control character, is kept, and so is an ESC in front of a lowercase letter other than `c`, which a
+	 * stray ESC before a word would otherwise cost the word its first letter. An unterminated CSI or OSC keeps its `[`
+	 * or `]`. Use {@link Fmt.sanitize} for text that will be laid out and printed.
+	 *
+	 * @param text - the text
+	 */
+	static readonly stripAnsi = (text: string): string => stripAnsi(text);
+
+	/**
+	 * Whether `text` is nothing but escape sequences, as {@link Fmt.stripAnsi} reads them: a cursor hide or show, a
+	 * clear-screen, an erase-scrollback. Empty text is not escape-only, and neither is a bare control character
+	 * (`\r`, BEL), which is not an escape sequence.
+	 *
+	 * @param text - the text
+	 */
+	static readonly isEscapeOnly = (text: string): boolean => isEscapeOnly(text);
+
+	/**
+	 * Integers as compact ranges: `[1, 2, 3, 5, 10, 11]` is `"1-3,5,10-11"`, a run of consecutive numbers written
+	 * `start-end` and the rest one by one, joined with commas.
+	 *
+	 * @remarks
+	 * The input is sorted and its duplicates dropped first, so order does not matter. Anything that is not a finite
+	 * integer is left out, and no input is `""`. Never throws.
+	 *
+	 * @param numbers - the integers, such as line numbers
+	 */
+	static readonly ranges = (numbers: Iterable<number>): string => {
+		const sorted = [...new Set(Array.from(numbers).filter((n) => Number.isInteger(n)))].sort((a, b) => a - b);
+		const parts: Array<string> = [];
+		let index = 0;
+		while (index < sorted.length) {
+			const start = sorted[index] as number;
+			let end = start;
+			while (index + 1 < sorted.length && sorted[index + 1] === end + 1) end = sorted[++index] as number;
+			parts.push(start === end ? `${start}` : `${start}-${end}`);
+			index++;
+		}
+		return parts.join(",");
+	};
+
+	/**
+	 * Any value as text, without ever throwing.
+	 *
+	 * @remarks
+	 * A string is itself; a number, boolean, bigint or symbol is `String(value)`; `undefined` and `null` are
+	 * `"undefined"` and `"null"`. A value with a string `message` (an `Error`, one from another realm, a plain
+	 * `{ message }`) is that message. Anything else is its JSON, or `String(value)` when it has none (a cycle, a
+	 * function), or `"[unprintable value]"` when that throws too. A getter that throws is a value with no message.
+	 *
+	 * The text is not sanitised: pass it through {@link Fmt.sanitize} before printing data you do not control. For
+	 * the messages along an error's `cause` chain, use {@link Fmt.causeMessage}.
+	 *
+	 * @param value - the value
+	 */
+	static readonly describe = (value: unknown): string => {
+		if (Predicate.isString(value)) return value;
+		if (value === undefined || value === null) return String(value);
+		if (typeof value !== "object" && typeof value !== "function") return String(value);
+		try {
+			if (Predicate.hasProperty(value, "message") && Predicate.isString(value.message)) return value.message;
+		} catch {
+			// A throwing `message` getter: describe the value some other way.
+		}
+		try {
+			const json = JSON.stringify(value);
+			if (json !== undefined) return json;
+		} catch {
+			// A cycle or a bigint: fall through to String.
+		}
+		try {
+			return String(value);
+		} catch {
+			return "[unprintable value]";
+		}
+	};
+
+	/**
+	 * Every distinct non-empty message along a value's `cause` chain, nearest first and joined with `: `, or
+	 * `undefined` when nothing along it has one.
+	 *
+	 * @remarks
+	 * The kit's one guarded cause-message read, the one its own errors render a preserved cause with. A node's message
+	 * is a thrown string or a non-empty string `message` property, read without `instanceof Error`, so an error from
+	 * another realm or a plain `{ message }` object counts. A deeper message the joined text already contains is not
+	 * repeated, and one that contains the joined text replaces it, so a `SqlError` wrapping SQLite's own text reads
+	 * `Failed to execute statement: SQLITE_BUSY: database is locked`. The walk stops after eight nodes, so a cyclic
+	 * chain terminates.
+	 *
+	 * Never throws: a `message` getter that throws leaves that node without text, and a `cause` getter that throws ends
+	 * the walk with the text found so far, `undefined` when there is none, so a caller's own fallback
+	 * (`?? Fmt.describe(value)`) applies.
+	 *
+	 * @param value - the error, or whatever was thrown
+	 */
+	static readonly causeMessage = (value: unknown): string | undefined => causeMessage(value);
 }

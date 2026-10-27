@@ -54,6 +54,7 @@ describe("entrypoint boundary", () => {
 			"CliEnv",
 			"CliExit",
 			"CliFailure",
+			"CliFormat",
 			"CliInteractive",
 			"CliLinks",
 			"CliLog",

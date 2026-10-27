@@ -366,6 +366,18 @@ describe("CliFailure.toDoc: hostile text", () => {
 	}
 });
 
+describe("CliFailure.toDoc: a hostile _tag", () => {
+	it("a _tag getter that throws is a failure with no tag: its text is still drawn", () => {
+		const hostile = Object.defineProperty({ message: "tagless" }, "_tag", {
+			get: () => {
+				throw new Error("no tag for you");
+			},
+		});
+		const doc = CliFailure.toDoc(Cause.fail(hostile), { render: { X: () => [] } });
+		assert.include(plain(doc), "tagless");
+	});
+});
+
 describe("CliRuntime: the default failure path", () => {
 	/** Every stream on a terminal, or none: the report goes to stderr, whose own check decides its colour. */
 	const platform = (tty: boolean) =>

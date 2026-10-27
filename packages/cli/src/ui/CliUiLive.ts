@@ -23,7 +23,7 @@ import type { FunctionComponent, ReactElement, ReactNode } from "react";
 import { CliInteractive } from "../CliInteractive.js";
 import { CliLinks } from "../CliLinks.js";
 import { CliTheme } from "../CliTheme.js";
-import { autoFormat, underGithubActions } from "../internal/autoFormat.js";
+import { autoFormat } from "../internal/autoFormat.js";
 import type { RenderContext } from "../Render.js";
 import { Render } from "../Render.js";
 import { errorBoundary } from "./internal/ErrorBoundary.js";
@@ -34,7 +34,7 @@ import { makeInkConsole } from "./internal/inkConsole.js";
 import { LazyViewShapeError, loadView } from "./internal/lazyView.js";
 import { mountPermit } from "./internal/mountPermit.js";
 import { UiRenderOptions } from "./internal/renderOptions.js";
-import { uiProviders } from "./internal/UiProviders.js";
+import { treeBase, uiProviders } from "./internal/UiProviders.js";
 import { UiStreams } from "./UiStreams.js";
 import { useTerminalSize } from "./UiTheme.js";
 
@@ -298,8 +298,8 @@ export const live = <E, S>(
 		const colour = theme.color;
 		// Under the GitHub Actions runner, text from data must not form a workflow command: a DocView neutralizes its own
 		// lines, and a frame printed as a string is neutralized whole, a consumer's raw Text included.
-		const neutralize = yield* underGithubActions;
-		const provided = { theme, glyphs: theme.glyphs, ...(neutralize ? { neutralizeWorkflowCommands: true } : {}) };
+		const provided = yield* treeBase(theme);
+		const neutralize = provided.neutralizeWorkflowCommands === true;
 		const interactive = yield* CliInteractive;
 		const streams = yield* UiStreams;
 		const overrides = yield* UiRenderOptions;
@@ -430,6 +430,7 @@ export const live = <E, S>(
 				color: theme.color,
 				glyphs: theme.glyphs,
 				...(neutralize ? { neutralizeWorkflowCommands: true } : {}),
+				displayPath: provided.displayPath,
 			});
 		});
 

@@ -1,8 +1,10 @@
+import type { Distribution } from "@effected/engine";
+import { withDistribution, withDistributionVersion } from "@effected/engine";
 import type { Audience, TerminalEnv } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
 import type { FileSystem, Path, Stdio, Terminal } from "effect";
-import { Cause, Effect, Layer, Logger, MutableRef, Runtime } from "effect";
-import { CliError } from "effect/cli";
+import { Cause, Effect, Layer, Logger, MutableRef, Option, Runtime } from "effect";
+import { CliError, CliOutput } from "effect/cli";
 import { Cancelled } from "./Cancelled.js";
 import { CliColor } from "./CliColor.js";
 import type { CliEnvOptions, CliEnvServices } from "./CliEnv.js";
@@ -25,6 +27,7 @@ import {
 	refreshFailureTarget,
 } from "./internal/failureTarget.js";
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
+import { failureText, tagOf } from "./internal/inspect.js";
 import { isExitCode } from "./internal/isExitCode.js";
 import { TrustedLine } from "./internal/logSafety.js";
 import { NotInteractive } from "./NotInteractive.js";
@@ -98,6 +101,22 @@ export interface FailureDetails {
 		readonly status?: boolean | undefined;
 		readonly spans?: "app" | "all" | "off" | undefined;
 	}) => ReadonlyArray<string>;
+	/**
+	 * The exit code this failure exits with: the error's own `Runtime.errorExitCode` when it carries one, else its
+	 * entry in `exitCodes` (a typed failure only), else `exitCode`, else `1`.
+	 *
+	 * @remarks
+	 * The code is decided before `render` is called, so a render can print it. A hook that parses a fixed stderr shape
+	 * builds it here, reading the tag off `error` itself:
+	 *
+	 * ```ts
+	 * const render = (error: unknown, details: FailureDetails) => {
+	 *   const tag = Predicate.hasProperty(error, "_tag") && Predicate.isString(error._tag) ? error._tag : "Defect";
+	 *   return `${details.exitCode} ${tag}: ${Fmt.sanitize(Fmt.describe(error))}`;
+	 * };
+	 * ```
+	 */
+	readonly exitCode: number;
 }
 
 /**
@@ -138,6 +157,23 @@ export interface ReportFailuresOptions {
 	 * POSIX exit status can carry — `256` wraps to `0` and passes a failed run.
 	 */
 	readonly exitCode?: number | undefined;
+	/**
+	 * Exit codes by tag: a typed failure whose `_tag` is a key here exits with that code.
+	 *
+	 * @remarks
+	 * Checked after the error's own `Runtime.errorExitCode` (an error that chose its code keeps it) and before
+	 * `exitCode`, which stays the fallback for every other failure, defects included. Only a typed failure is looked
+	 * up: a defect that happens to carry a `_tag` exits with `exitCode`. A usage error (`usageExitCode`), a cancel
+	 * (`130`) and a non-interactive prompt (`64`) carry their own codes and are not looked up either.
+	 *
+	 * Each code must be an integer in `1..255`: `0` would pass a failed run, and `256` wraps to `0`. Anything else
+	 * throws a `RangeError` when the options are passed, since it is a wiring mistake, not a runtime condition.
+	 *
+	 * ```ts
+	 * CliRuntime.main(program, { platform, exitCodes: { DataStoreError: 3, SidecarTimeoutError: 2 }, exitCode: 5 })
+	 * ```
+	 */
+	readonly exitCodes?: Readonly<Record<string, number>> | undefined;
 	/**
 	 * The exit code for a usage error: a `ShowHelp` carrying parse errors, or a
 	 * `CliError.UserError` `Command.runWith` already printed.
@@ -215,18 +251,42 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 * no errors are printed, so nothing marks the help as a usage error's.
 	 */
 	readonly helpOnUsageError?: "stdout" | "stderr" | undefined;
+	/**
+	 * The carrier package the bin was installed through, when a carrier launched it: `null` (or `undefined`) for a
+	 * direct install.
+	 *
+	 * @remarks
+	 * Given (even as `null`), `main` provides `@effected/engine`'s `CurrentDistribution` around the program, as
+	 * `Option.some` of the carrier or `Option.none()`, so a program and the engine it calls read the same value. With a
+	 * carrier, `--version` ends with its `via <name> <version>` suffix (`distributionSuffix`), appended to whatever
+	 * `formatVersion` is in effect, the coloured default or `env.formatter`'s: do not also append it in
+	 * `env.formatter`.
+	 *
+	 * ```ts
+	 * CliRuntime.main(CliAudience.run(root, { version }), { platform, env, distribution: options.distribution ?? null })
+	 * ```
+	 */
+	readonly distribution?: Distribution | null | undefined;
 }
 
-/** The last line of defence of a failure report: the error's text, sanitised and neutralized, whatever else broke. */
-const lastResort = (error: unknown): ReadonlyArray<string> => {
-	let text: string;
-	try {
-		text = String(error);
-	} catch {
-		text = "[unprintable failure]";
-	}
-	return CommandNeutralizer.lines(sanitize(text));
+/**
+ * The program with `CurrentDistribution` set (engine's own `withDistribution`), and `--version` decorated with the
+ * carrier's suffix (`withDistributionVersion`), wrapping whatever `formatVersion` is in effect rather than replacing a
+ * coloured or custom one.
+ */
+const withCarrier = <A, E, R>(program: Effect.Effect<A, E, R>, distribution: Distribution | null) => {
+	const provided = program.pipe(withDistribution(distribution));
+	return distribution === null
+		? provided
+		: Effect.updateService(provided, CliOutput.Formatter, (formatter) => ({
+				...formatter,
+				formatVersion: withDistributionVersion(Option.some(distribution))(formatter.formatVersion),
+			}));
 };
+
+/** The last line of defence of a failure report: the error's text, sanitised and neutralized, whatever else broke. */
+const lastResort = (error: unknown): ReadonlyArray<string> =>
+	CommandNeutralizer.lines(sanitize(failureText(error, "[unprintable failure]")));
 
 const toLines = (rendered: string | ReadonlyArray<string>): ReadonlyArray<string> =>
 	typeof rendered === "string" ? [rendered] : rendered;
@@ -240,10 +300,28 @@ const toLines = (rendered: string | ReadonlyArray<string>): ReadonlyArray<string
  * silently override a deliberate `1`. Testing for the marker keeps "the error
  * chose its code" distinct from "nothing chose".
  */
-const chooseExitCode = (error: unknown, fallback: number | undefined): number =>
-	typeof error === "object" && error !== null && Runtime.errorExitCode in error
-		? Runtime.getErrorExitCode(error)
-		: (fallback ?? 1);
+const chooseExitCode = (
+	error: unknown,
+	fallback: number | undefined,
+	byTag?: Readonly<Record<string, number>> | undefined,
+): number => {
+	if (typeof error === "object" && error !== null && Runtime.errorExitCode in error) {
+		return Runtime.getErrorExitCode(error);
+	}
+	if (byTag === undefined) return fallback ?? 1;
+	const tag = tagOf(error);
+	return tag !== undefined && Object.hasOwn(byTag, tag) ? (byTag[tag] as number) : (fallback ?? 1);
+};
+
+/** Every `exitCodes` entry an integer in `1..255`, or a `RangeError` naming the first that is not. */
+const checkExitCodes = (exitCodes: Readonly<Record<string, number>> | undefined): void => {
+	if (exitCodes === undefined) return;
+	for (const [tag, code] of Object.entries(exitCodes)) {
+		if (!isExitCode(code) || code === 0) {
+			throw new RangeError(`CliRuntime: exitCodes.${tag} must be an integer 1..255, received ${String(code)}`);
+		}
+	}
+};
 
 /**
  * Report a CLI program's failures through the program's own logger.
@@ -361,9 +439,9 @@ export class CliRuntime {
 	 *
 	 * @param options - how to render the failure and which exit codes to use
 	 */
-	static readonly reportFailures =
-		(options: ReportFailuresOptions = {}) =>
-		<A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, Error, R> =>
+	static readonly reportFailures = (options: ReportFailuresOptions = {}) => {
+		checkExitCodes(options.exitCodes);
+		return <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, Error, R> =>
 			effect.pipe(
 				Effect.catchCause((cause: Cause.Cause<E>): Effect.Effect<A, Error> => {
 					// An interrupt is not a failure anyone wants rendered, and the default
@@ -415,9 +493,12 @@ export class CliRuntime {
 						};
 						const defaultLines = reportLines(true);
 						// Cause.squash prefers a Fail over a Die, so `error` is a defect exactly when there is no Fail.
+						const isDefect = !Cause.hasFails(cause);
+						const exitCode = chooseExitCode(error, options.exitCode, isDefect ? undefined : options.exitCodes);
 						const details: FailureDetails = {
 							cause,
-							isDefect: !Cause.hasFails(cause),
+							isDefect,
+							exitCode,
 							isCancelled: error instanceof Cancelled,
 							isNotInteractive: error instanceof NotInteractive,
 							defaultLines,
@@ -437,10 +518,11 @@ export class CliRuntime {
 							yield* Effect.logError(line).pipe(Effect.provideService(TrustedLine, true));
 						}
 
-						return yield* Effect.fail(CliRuntime.reported(error, chooseExitCode(error, options.exitCode)));
+						return yield* Effect.fail(CliRuntime.reported(error, exitCode));
 					});
 				}),
 			);
+	};
 
 	/**
 	 * Assemble a CLI program in the one order that reports every failure well.
@@ -564,7 +646,6 @@ export class CliRuntime {
 									);
 								}
 								yield* refreshFailureTarget(undefined, {
-									displayPath: options.env?.displayPath,
 									stackFrames: options.env?.stackFrames,
 									spans,
 									appModule: options.env?.appModule,
@@ -573,9 +654,11 @@ export class CliRuntime {
 						),
 					).pipe(Layer.provideMerge(env));
 
+		// The carrier, when the bin says how it was installed: provided to the program, and named by `--version`.
+		const carried = options.distribution === undefined ? program : withCarrier(program, options.distribution);
 		const run = Effect.gen(function* () {
 			// Inside the platform provide, so the rerouting sees the platform's own Formatter.
-			yield* options.helpOnUsageError === "stderr" ? routeHelpOnUsageError(program) : program;
+			yield* options.helpOnUsageError === "stderr" ? routeHelpOnUsageError(carried) : carried;
 			const exit = yield* CliExit;
 			const code = MutableRef.get(exit.code);
 			// CliExit.set validates, but the cell is a public MutableRef a program

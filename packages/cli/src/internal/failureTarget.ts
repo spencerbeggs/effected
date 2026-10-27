@@ -12,6 +12,7 @@ import { Glyphs } from "../Glyphs.js";
 import type { RenderContext } from "../Render.js";
 import { Render } from "../Render.js";
 import { autoFormat } from "./autoFormat.js";
+import { identity } from "./displayPath.js";
 
 /**
  * Where a failure report is written to: the context the renderer lays out for, and which renderer.
@@ -68,7 +69,7 @@ export const fallbackTarget: FailureTarget = {
 		paint: (_token, text) => text,
 		glyphs: Glyphs.ascii,
 		link: (_target, label) => label,
-		displayPath: (absolute) => absolute,
+		displayPath: identity,
 		// Nothing is known about the runner here, so the report refuses to emit a workflow command: the neutralizer's
 		// one blank cell in front of a line that starts with `::`, or inside a `##[`, costs little anywhere else.
 		neutralizeWorkflowCommands: true,

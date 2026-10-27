@@ -49,6 +49,13 @@ export {
 } from "./CliEnv.js";
 export { CliExit, type CliExitShape } from "./CliExit.js";
 export { CliDoc, type CliDocSource, CliFailure, type CliFailureOptions } from "./CliFailure.js";
+export {
+	CliFormat,
+	type CliFormatFlagOptions,
+	type CliFormatName,
+	type CliFormatOutput,
+	type CliFormatPrintOptions,
+} from "./CliFormat.js";
 export { CliInteractive } from "./CliInteractive.js";
 export {
 	CliLinks,
@@ -104,7 +111,7 @@ export {
 	type TreeInput,
 	type TreeNode,
 } from "./Doc.js";
-export { Fmt, type PercentOptions, type TruncateOptions } from "./Fmt.js";
+export { Fmt, type PadOptions, type PercentOptions, type TruncateOptions } from "./Fmt.js";
 export { type AnnotationLevel, GithubAnnotation, type GithubAnnotationProperties } from "./GithubAnnotation.js";
 export { type GlyphSelectOptions, type GlyphSet, Glyphs } from "./Glyphs.js";
 export { NotInteractive } from "./NotInteractive.js";

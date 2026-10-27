@@ -1,6 +1,7 @@
 // Root types are named through the package's own name, so the emitted ui.d.ts imports them from "@effected/cli".
 import type * as Cli from "@effected/cli";
 import type { FunctionComponent, ReactElement } from "react";
+import { identity } from "../internal/displayPath.js";
 import { Render } from "../Render.js";
 import { fromReact, inkModules } from "./internal/ink.js";
 import { screenContext } from "./internal/ScreenContext.js";
@@ -17,7 +18,7 @@ export interface DocViewProps {
 	/**
 	 * The render context. Omitted, it is built from the tree's theme (`useTheme`): its colour, its `paint` (token
 	 * overrides included) and its glyphs, the width `useTerminalSize().columns`, a human audience, links off, the
-	 * identity `displayPath`, and `neutralizeWorkflowCommands` when the tree is under the GitHub Actions runner. Given,
+	 * run's `displayPath` (the identity outside `CliRuntime.main`'s `env`), and `neutralizeWorkflowCommands` when the tree is under the GitHub Actions runner. Given,
 	 * it replaces that context entirely, neutralizing included (set `neutralizeWorkflowCommands` on it when the runner
 	 * reads the output), and the view needs no provider.
 	 */
@@ -28,7 +29,12 @@ const OUTSIDE =
 	"@effected/cli/ui: DocView was drawn with no ctx outside a screen, a live view or a UiProvider, so it has no theme";
 
 /** The context a `DocView` builds from its tree's theme: the theme's own paint, so token overrides hold. */
-const contextOf = (theme: Cli.StreamTheme, width: number, neutralize: boolean): Cli.RenderContext => ({
+const contextOf = (
+	theme: Cli.StreamTheme,
+	width: number,
+	neutralize: boolean,
+	displayPath: (absolute: string) => string,
+): Cli.RenderContext => ({
 	...(neutralize ? { neutralizeWorkflowCommands: true } : {}),
 	width,
 	audience: "human",
@@ -36,7 +42,7 @@ const contextOf = (theme: Cli.StreamTheme, width: number, neutralize: boolean): 
 	paint: theme.paint,
 	glyphs: theme.glyphs,
 	link: (_target, label) => label,
-	displayPath: (absolute) => absolute,
+	displayPath,
 });
 
 /** The document's lines as the kit's own renderer lays them out: plain at colour `none`, painted otherwise. */
@@ -55,10 +61,11 @@ const docView: () => FunctionComponent<DocViewProps> = fromReact((react) => {
 		const given = props.ctx;
 		const theme = screen?.theme;
 		const neutralize = screen?.neutralizeWorkflowCommands === true;
+		const displayPath = screen?.displayPath ?? identity;
 		if (given === undefined && theme === undefined) throw new Error(OUTSIDE);
 		const ctx = react.useMemo(
-			() => given ?? contextOf(theme as Cli.StreamTheme, columns, neutralize),
-			[given, theme, columns, neutralize],
+			() => given ?? contextOf(theme as Cli.StreamTheme, columns, neutralize, displayPath),
+			[given, theme, columns, neutralize, displayPath],
 		);
 		// Laid out once per document and context: a live view's tick redraws with the same document.
 		const lines = react.useMemo(() => linesOf(props.doc, ctx), [props.doc, ctx]);
