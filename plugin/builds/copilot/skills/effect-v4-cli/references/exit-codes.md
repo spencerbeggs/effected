@@ -1,6 +1,6 @@
 # The exit-code contract
 
-Loaded from `effect-v4-cli`. Covers why a non-zero exit comes from the program failing, the `CliError` union, and the WRONG/RIGHT shape of a usage-error check.
+Loaded from `effect-v4-cli`. Covers why a non-zero exit comes from the program failing, the `CliError` union, the WRONG/RIGHT shape of a usage-error check, `CliRuntime.main`'s assembly order, the code table, and exit codes by tag (`exitCodes`, `FailureDetails.exitCode`).
 
 ## The exit-code contract
 
@@ -56,7 +56,7 @@ wrong (fail), or did the *world* simply not contain what they asked for (succeed
 ## `CliRuntime.main` assembles the whole program, in one order
 
 `CliRuntime.main(program, { platform, env?, logger?, render?, exitCode?,
-usageExitCode?, helpOnUsageError? })` wraps an `effect/cli` program so every failure — a parse error, a
+exitCodes?, usageExitCode?, helpOnUsageError?, distribution? })` wraps an `effect/cli` program so every failure — a parse error, a
 layer-build failure, a domain error, a findings exit — reports the same way.
 The order it assembles in is the whole point, not an implementation detail:
 
@@ -112,8 +112,9 @@ Running this prints nothing and exits `2`.
 | `64` | usage — `usageExitCode`'s default, BSD `EX_USAGE`: a `ShowHelp` carrying parse errors, or a `CliError.UserError` `Command.runWith` already rendered |
 | `64` | `NotInteractive` — a screen reached in a run that cannot prompt, with no `otherwise` |
 | `130` | interrupt — the default teardown maps an interrupt-only cause to `130` before any error-exit-code logic runs; also `Cancelled`, a prompt or screen the user quit with Esc or Ctrl-C |
-| the `exitCode` fallback (default `1`) | any other failure that carries no `Runtime.errorExitCode` of its own |
-| an error's own `Runtime.errorExitCode` | always wins over both fallbacks — see below |
+| an `exitCodes` entry | a typed failure whose `_tag` is a key of `exitCodes` and that carries no `Runtime.errorExitCode` of its own — see below |
+| the `exitCode` fallback (default `1`) | any other failure that carries no `Runtime.errorExitCode` of its own, defects included |
+| an error's own `Runtime.errorExitCode` | always wins over `exitCodes` and both fallbacks — see below |
 | 2, 3 | not reserved by the kit; a consumer's own taxonomy (conformance vs. lint, say) — `1` is already the kit's own `exitCode` fallback, above, not a free code to repurpose |
 
 ## Findings exit non-zero by succeeding, never by failing
@@ -145,3 +146,36 @@ a findings run exits `0` having found something.
 A domain error that is itself a usage error carries the marker directly —
 `override readonly [Runtime.errorExitCode] = 64` on the error class — or is
 marked at the throw site with `CliRuntime.reported(error, 64)`.
+
+## Exit codes by tag: `exitCodes`
+
+A program with its own taxonomy maps typed failures to codes by tag instead
+of marking every error class:
+
+~~~ts
+CliRuntime.main(program, { platform, exitCodes: { DataStoreError: 3, SidecarTimeoutError: 2 }, exitCode: 5 })
+~~~
+
+The order is: the error's own `Runtime.errorExitCode`, then its `_tag` in
+`exitCodes`, then `exitCode`, then `1`. **Only a typed failure is looked up**:
+a defect that happens to carry a `_tag` exits with `exitCode`. A usage error
+(`usageExitCode`), a cancel (`130`) and `NotInteractive` (`64`) keep their own
+codes. Each entry must be an integer in `1..255` — `0` would pass a failed
+run — and anything else throws a `RangeError` when the options are passed,
+since it is a wiring mistake.
+
+The code is decided before `render` runs and handed to it as
+`FailureDetails.exitCode`, so a report can print it. `FailureDetails` has no
+tag field: a hook that writes a fixed stderr shape reads `_tag` off the error
+itself.
+
+~~~ts
+import type { FailureDetails } from "@effected/cli"
+import { Fmt } from "@effected/cli"
+import { Predicate } from "effect"
+
+const render = (error: unknown, details: FailureDetails) => {
+  const tag = Predicate.hasProperty(error, "_tag") && Predicate.isString(error._tag) ? error._tag : "Defect"
+  return `${details.exitCode} ${tag}: ${Fmt.sanitize(Fmt.describe(error))}`
+}
+~~~

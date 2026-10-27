@@ -14,5 +14,6 @@
 | `AppOptions` | Interface | Options for `App.layer`. | |
 | `AppStore` | Class | The database glue: a migrated SQLite `Store` whose file lives in one of the ambient `AppDirs` directories — the state directory unless told otherwise. | the app's migrated sqlite state database in the xdg state directory, multiple stores each under your own service key |
 | `AppStoreOptions` | Interface | Options for `AppStore.layer` and `AppStore.layerAs`. | |
-| `AppTestOptions` | Interface | Options for `App.layerTest`. | |
-| `AppTestServices` | TypeAlias | Everything `App.layerTest` provides: the four control-plane services and the in-memory platform they run on. | |
+| `AppTest` | Class | The hermetic application control plane for tests, from `@effected/app/testing`. | from `@effected/app/testing` — hermetic app layer for tests over an in-memory filesystem, from the testing entrypoint |
+| `AppTestOptions` | Interface | Options for `AppTest.layer`. | from `@effected/app/testing` |
+| `AppTestServices` | TypeAlias | Everything `AppTest.layer` provides: the four control-plane services and the in-memory platform they run on. | from `@effected/app/testing` |

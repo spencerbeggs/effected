@@ -1,10 +1,10 @@
 # The live view: `CliUi.live`, `DocView` and `UiProvider`
 
-Loaded from `effect-v4-cli`. Covers drawing progress that updates in place while work runs: folding a stream of events into state, how runs start and end, logging without tearing the frame, ending the view without losing its tail, drawing the `Doc` IR inside Ink, and giving an Ink tree the kit did not mount the same theme. All of it lives behind `@effected/cli/ui` and its optional peers `ink` and `react`.
+Loaded from `effect-v4-cli`. Covers drawing progress that updates in place while work runs: folding a stream of events into state, how runs start and end, logging without tearing the frame, ending the view without losing its tail, forwarding output the program did not write (`CliUi.routeStream`), hosting a view from code not built on Effect (`CliUi.liveDetached`), drawing the `Doc` IR inside Ink, and giving an Ink tree the kit did not mount the same theme. All of it lives behind `@effected/cli/ui` and its optional peers `ink` and `react`.
 
 ## The shape
 
-`CliUi.live(options)` → `Effect<LiveHandle<S>, never, Scope | CliTheme>`. It folds `events` into state in a fiber of the caller's scope and draws **runs**: a run begins at an `isStart` event and ends at an `isTerminal` one, whose frame is committed to the terminal (the view never clears it). Between runs nothing is drawn; the next run mounts afresh below. It is a view, not a screen: it mounts no input, so Ctrl-C stays the platform's SIGINT and closes the scope. `live` returns its handle **at once, before Ink loads** — Ink is loaded when a run first mounts, or when an owned run prints its final frame — so a host outside Effect can take the handle with `Effect.runSync`, and a `close` before any run mounted loads nothing.
+`CliUi.live(options)` → `Effect<LiveHandle<S>, never, Scope | CliTheme>`. It folds `events` into state in a fiber of the caller's scope and draws **runs**: a run begins at an `isStart` event and ends at an `isTerminal` one, whose frame is committed to the terminal (the view never clears it). Between runs nothing is drawn; the next run mounts afresh below. It is a view, not a screen: it mounts no input, so Ctrl-C stays the platform's SIGINT and closes the scope. `live` returns its handle **at once, before Ink loads** — Ink is loaded when a run first mounts, or when an owned run prints its final frame — and a `close` before any run mounted loads nothing. A host that is not an Effect program uses `CliUi.liveDetached` (below).
 
 The JSX lives in a module of its own, so the command that uses the view imports no React until a run draws:
 
@@ -89,25 +89,46 @@ const program = Effect.scoped(
 - **Pass the `PubSub.Subscription` itself, made before the first publish.** The view takes from it directly, so nothing published after the subscribe is missed. A stream is subscribed only on its first pull: `live` makes that pull before returning, so `Stream.fromPubSub` is subscribed in time, but a stream that forks its upstream (`Stream.merge`, `buffer`, a concurrent `flatMap`) subscribes later and loses what was published before.
 - **End with `handle.close`** — it folds every message still queued in a subscription, ends the run as the events ending would, then waits for `done`. It is idempotent, and it dies as `done` dies (a `reduce` that threw, a stream that died), so a host that only calls `close` still sees the defect.
 - **`PubSub.end(pubsub, last)` is lossless too**: the view folds the buffer, then `last` once. Make `last` an `isTerminal` event to commit the run with it.
-- **`PubSub.shutdown` drops what the view has not taken**, and closing the caller's scope stops the fold at once: both lose a tail. Close first, then release the scope: `handle.close.pipe(Effect.ensuring(Scope.close(scope, Exit.void)))`.
+- **`PubSub.shutdown` drops what the view has not taken**, and closing the caller's scope stops the fold at once: both lose a tail. Close first, then release the scope; a host outside Effect gets that order from `CliUi.liveDetached`'s `close` rather than writing it.
 
 ## Logging while drawn: `logConsole`
 
 A line written to the terminal while a run is drawn tears the frame. `handle.logConsole` is a `Console` whose every method writes **above** the frame while a run is mounted (split to stdout and stderr as Node's console splits them), and straight to the stream otherwise. **`Console.Console` is the seam**: `CliLogger`, `CliLog` and `Effect.log*` all write through the fiber's `Console`, so providing `logConsole` around the work routes every log line correctly with no reference to the view. Output that bypasses Effect's `Console` (a library's own `process.stderr` writes) still tears the frame.
 
-**A host forwarding output it did not write uses `handle.printAbove(stream, line)`.** It is synchronous (callable from a Node stream's `write` callback) and returns `true` once the line went above a mounted frame, or `false` having written nothing: no frame is mounted before the first run, between runs, after `close`, in a degraded run, and never when the view is not interactive. Check and write are one step, so the answer is never stale about the frame; `true` means Ink took the line, which it drops while a render has suspended the terminal (`useApp().suspendTerminal`). Use it to capture a child process's stderr or a test runner's streams: on `false`, send the line wherever it would have gone anyway. There is deliberately no separate "is a frame mounted" query: one run could answer it and the line land after that run's unmount.
+**A host forwarding output it did not write uses `handle.printAbove(stream, line)`, or `CliUi.routeStream` over it.** It is synchronous (callable from a Node stream's `write` callback) and returns `true` once the line went above a mounted frame, or `false` having written nothing: no frame is mounted before the first run, between runs, after `close`, in a degraded run, and never when the view is not interactive. Check and write are one step, so the answer is never stale about the frame; `true` means Ink took the line, which it drops while a render has suspended the terminal (`useApp().suspendTerminal`). Use it to capture a child process's stderr or a test runner's streams: on `false`, send the line wherever it would have gone anyway. There is deliberately no separate "is a frame mounted" query: one run could answer it and the line land after that run's unmount.
 
-A `data` chunk is not a line: it can end mid-line, so read lines with `node:readline`, which buffers the partial tail, keeps blank lines and takes the `\r` off a `\r\n` ending:
+A `data` chunk is not a line: it can end mid-line. `CliUi.routeStream(original, printer, { stream, maxHeld?, carriageReturn?, onText? })` does the line work: its `writable` holds a partial line until its break (or `maxHeld`, 8192 characters by default), decodes UTF-8 across writes, offers each complete line to `printer` and writes a declined one to `original`, and flushes the held tail on `end()`. Hand it to a library in place of `process.stderr`, or pipe a child into it:
 
 ```ts
-import { createInterface } from "node:readline"
-
-createInterface({ input: child.stderr, crlfDelay: Infinity }).on("line", (line) => {
-  if (!handle.printAbove("stderr", line)) process.stderr.write(`${line}\n`)
-})
+const routed = CliUi.routeStream(process.stderr, handle.printAbove, { stream: "stderr", carriageReturn: "last" })
+child.stderr.pipe(routed.writable)
 ```
 
-`printAbove` writes the line as given. A child's own cursor movements (a progress bar's lone `\r`, a cursor-up, an erase-line) still tear the frame through it, because they move the cursor Ink repaints from: strip them, or run the child with its progress output off.
+The `writable` reports the original's `isTTY`, `columns`, `rows` and colour-depth methods, so a library that sizes its output to the terminal still sees one. `route(false)` sends every write straight to `original` until turned back on; `flush()` offers the held text now. `printAbove` and `routeStream` write a line as given: a child's own cursor movements (a cursor-up, an erase-line) still tear the frame, because they move the cursor Ink repaints from. `carriageReturn: "last"` keeps only what a progress bar redrawn with `\r` would have shown; otherwise run the child with its progress output off.
+
+## Hosting a view outside Effect: `CliUi.liveDetached`
+
+A test runner's reporter, a bundler plugin or a build hook is not an Effect program, so it cannot hold a scope around `CliUi.live`. **`CliUi.liveDetached(options, env)` is that host**: it runs `CliUi.live` in a fiber and a scope of its own, under the `env` layer the host builds, and returns at once with Promises.
+
+```ts
+const view = CliUi.liveDetached(
+  { ...viewOptions, events: pubsub }, // a PubSub is subscribed before liveDetached returns
+  CliEnv.layer().pipe(Layer.provide(NodeServices.layer)),
+)
+const routed = CliUi.routeStream(process.stderr, view.printAbove, { stream: "stderr" })
+// ...publish while the runner works
+routed.flush()
+await view.close() // folds the queued tail, commits the last run, then releases the scope
+await Effect.runPromise(PubSub.shutdown(pubsub)) // only after close resolves
+```
+
+- **`events`** is a `PubSub` or a `Stream`. A `PubSub` is subscribed synchronously, in the view's own scope, so an event published right after the call is seen.
+- **`render`** is the view, as for `CliUi.live`, or an `Effect` that makes it, run once under `env` before the view is set up, so a render that needs `CliLinks` or `TerminalEnv` reads the same build the view runs under instead of building the layer twice. `env` must provide what that effect reads. It may return a `CliUi.lazyView`.
+- **`close()`** stops `printAbove` printing, awaits the setup, runs the handle's `close` (folding the subscription's queued tail and committing the last run), then closes the scope. It is idempotent and never rejects. **Shut the `PubSub` down only after it resolves.**
+- **`exit`** says how the view ended: success, the failure it died of (a throwing `reduce`, a dying stream, a failed setup, a render effect that died), or an interrupt. `handle` rejects when setup failed; the rejection is handled, so a host that never awaits it sees no unhandled rejection.
+- **`printAbove`** answers `false`, writing nothing, before setup, whenever no frame is mounted, and from the moment `close` is called: the host writes the line itself.
+
+Inside an Effect program, use `CliUi.live` in a scope instead. A test gives `env` as `CliEnv.layerTest` with a `CliUiTest` session's layer.
 
 ## Not interactive: `owned` vs `hosted`
 

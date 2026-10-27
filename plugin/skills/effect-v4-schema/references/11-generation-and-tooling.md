@@ -519,7 +519,8 @@ house translations, each taken from a migrated property test:
 | `fc.stringMatching(/^[a-z]{1,12}$/)` | `Schema.String.check(Schema.isPattern(/^[a-z]{1,12}$/u))` — generated **constructively** when the pattern compiles (see traps); the `u` flag is what lets JSON Schema export the `pattern` |
 | `fc.record({ a: fc.option(x) })` — some keys absent | `Schema.Struct({ a: Schema.optionalKey(X) })` — **not** `Schema.Record(Literals, X)`, which always emits every key |
 | `fc.oneof(arbA, arbB)` over *Arbitraries* (not Schemas) | `Schema.Union([A, B])` when both sides are Schemas; otherwise `flatMap` over a generated index: `Arbitrary.schema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: rest.length }))).pipe(Arbitrary.flatMap((i) => i === 0 ? first : rest[i - 1]))` |
-| `fc.array(arb)` over an *Arbitrary* | `flatMap` a generated length into `Arbitrary.all(Array.from({ length }, () => item))` |
+| `fc.array(arb, { minLength, maxLength })` over an *Arbitrary* | `Arbitrary.array(arb, { minLength, maxLength })` — the length is still clamped by `size` (below) |
+| `fc.string({ unit: fc.constantFrom(...chars) })` — a custom alphabet | `Arbitrary.array(Arbitrary.schema(Schema.Literals(CHARS)), { maxLength }).pipe(Arbitrary.map((cs) => cs.join("")))` |
 | `fc.option(arb, { nil: undefined })` | `Arbitrary.schema(Schema.Struct({ value: Schema.optionalKey(S) })).pipe(Arbitrary.map((o) => o.value))` |
 | `fc.fullUnicodeString()` / `fc.string({ unit: "binary" })` | generate **code points** — `Schema.Array(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 0x10ffff })))` (filter the surrogate block if the consumer needs scalar values) mapped through `String.fromCodePoint`; the native string generator stays in printable ASCII |
 | `fc.sample(arb, n)` | `Effect.runPromise(Arbitrary.sampleEffect(arb, { count: n }))` |

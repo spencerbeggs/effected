@@ -1,6 +1,6 @@
-# Tools: definition, strict input, failures, and the ok-false envelope
+# Tools: definition, strict input, failures, envelopes, replay and capture
 
-Loaded from `effect-v4-mcp`. Covers `Tool.make`, annotations, `Toolkit.toLayer`, strict-input reporting, what reaches the agent on failure, and the `ok: false` envelope recipe.
+Loaded from `effect-v4-mcp`. Covers `Tool.make`, annotations, `Toolkit.toLayer`, strict-input reporting, what reaches the agent on failure, the `ok: false` envelope (`ToolOutcome`), idempotent replay (`ToolReplay`), and keeping an in-process library's output off the wire (`StdioCapture`).
 
 ## Defining a tool
 
@@ -348,45 +348,30 @@ before registering.
 ## The `ok: false` envelope
 
 When an agent needs **structured** remediation for an error it should
-handle programmatically — not just read as a sentence — put the expected
-domain errors inside the tool's own **success** schema instead of its
-declared failure channel. Root that schema in an object, not a top-level
-`Schema.Union`: unlike [Failures on the wire](#failures-on-the-wire)'s
-`Schema.Struct({})` and top-level-union `parameters` cases, which kill the
-server at **registration**, a union success root is not a registration-time
-defect — the `outputSchema` is simply **silently omitted** from
-`tools/list`, and the server keeps serving. An `ok: Schema.Boolean` field
-with optional `value`/`error` fields keeps one object root while still
-discriminating, at the cost of giving up discriminated typing on the
-result — a consumer narrows on `ok` at runtime rather than the type system
-narrowing a tagged union for them. (To keep the tagged union instead, when
-every member is an object shape, wrap it in `ToolOutputSchema.objectRooted`,
-which adds `type: "object"` beside the `anyOf` so the `outputSchema` is
-served. Never on a union with a primitive or array member: the added
-`type: "object"` is an unchecked claim about every member, and the served
-schema would contradict what the tool returns.) The envelope:
+handle programmatically — not just read as a sentence — return the expected
+domain error on the tool's **success** channel, where `structuredContent`
+does arrive, instead of its declared failure channel. `ToolOutcome`
+(`@effected/mcp`) builds that envelope. `ToolRefusal` stays the declared
+failure for a call that was itself wrong; both carry `ToolFailure.fields`
+(`message`, `remediation`), so an error can move between channels without
+reshaping.
 
 ~~~ts
-import { Remediation } from "@effected/engine"
-import { McpStdio, McpToolkit } from "@effected/mcp"
+import { McpStdio, McpToolkit, ToolOutcome } from "@effected/mcp"
 import { McpHarness } from "@effected/mcp/testing"
 import { Effect, Layer, Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
 
 class NotFound extends Schema.TaggedError<NotFound>()("NotFound", { id: Schema.String }) {}
 
-const Envelope = Schema.Struct({
-  ok: Schema.Boolean,
-  value: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
-  error: Schema.optionalKey(
-    Schema.Struct({ _tag: Schema.Literal("NotFound"), message: Schema.String, remediation: Remediation }),
-  ),
-})
-
 const Lookup = Tool.make("lookup", {
   description: "Look up a thing by id.",
   parameters: Schema.Struct({ id: Schema.String }),
-  success: Envelope,
+  success: ToolOutcome.envelope(
+    Schema.Struct({ ...ToolOutcome.ok, name: Schema.String }),
+    [ToolOutcome.error("NotFound", { id: Schema.String })],
+    { identifier: "LookupFailure" },
+  ),
 })
 
 const lookup = (id: string): Effect.Effect<{ readonly name: string }, NotFound> =>
@@ -396,17 +381,14 @@ const Tools = Toolkit.make(Lookup)
 const Handlers = Tools.toLayer({
   lookup: ({ id }) =>
     lookup(id).pipe(
-      Effect.map((value) => ({ ok: true as const, value })),
-      Effect.catchTag("NotFound", (error) =>
-        Effect.succeed({
-          ok: false as const,
-          error: {
-            _tag: "NotFound" as const,
-            message: `No thing "${error.id}".`,
-            remediation: { hint: "List the ids first.", suggestedTool: "list_things" },
-          },
+      Effect.map(({ name }) => ({ ok: true as const, name })),
+      ToolOutcome.catchAsEnvelope({
+        NotFound: (error) => ({
+          id: error.id,
+          message: `No thing "${error.id}".`,
+          remediation: { hint: "List the ids first.", suggestedTool: "list_things" },
         }),
-      ),
+      }),
     ),
 })
 
@@ -419,8 +401,6 @@ const program = Effect.scoped(
   Effect.gen(function* () {
     const harness = yield* McpHarness.make(ServerLayer)
     yield* harness.initialize
-    const [served] = yield* harness.listTools
-    console.log("outputSchema present:", served?.outputSchema !== undefined)
     const call = yield* harness.callTool("lookup", { id: "missing" })
     console.log(JSON.stringify(call.result))
   }),
@@ -429,20 +409,153 @@ const program = Effect.scoped(
 await Effect.runPromise(program)
 ~~~
 
-Prints `outputSchema present: true`, then a result whose
-`structuredContent` is the whole `{"ok":false,"error":{...}}` envelope,
-`Remediation`'s own `hint`/`suggestedTool` fields included, and `isError`
-`false` — the failure never left the success channel, so it is data the
-agent can branch on, not text it has to parse. `Effect.catchTag` (or
-`Effect.catchTags` for more than one expected error) turns each expected
-domain error into that success value. `Remediation` (`@effected/engine`) is
-the same shape `ToolFailure` folds into a declared failure's message — reuse
-it here instead of a hand-rolled `remediation: Schema.String`, since an
-agent reading `structuredContent` benefits from the same `suggestedTool`/
-`suggestedArgs` structure either channel would otherwise duplicate. The
-trade-off: the success schema now has to describe both the "ok true" and
-"ok false" shapes, and grows with every domain error a caller is expected to
-handle programmatically. Keep genuinely unexpected failures — the ones no
-caller should special-case — as `Error`-instance declared failures instead
-of folding everything into this envelope; that keeps its growth
-proportional to what an agent actually needs to branch on.
+Prints a result with `isError: false` and `structuredContent`
+`{"ok":false,"error":{"_tag":"NotFound","message":"No thing \"missing\".","remediation":{"hint":"List the ids first.","suggestedTool":"list_things"},"id":"missing"}}`,
+the same object JSON-stringified in `content[0].text`. The failure never left
+the success channel, so it is data the agent branches on, not text it parses.
+
+- **`ToolOutcome.envelope(success, errors, options?)`** is
+  `Union([success, { ok: false, error: Union(errors) }])`, object-rooted with
+  `ToolOutputSchema.objectRooted` so the `outputSchema` is served on every
+  revision — a bare top-level union success is silently left out of
+  `tools/list`. Spread `ToolOutcome.ok` into each success member so a client
+  can discriminate on `ok`. For a hand-built union success, apply
+  `ToolOutputSchema.objectRooted` yourself — only when every member is an
+  object shape, since its added `type: "object"` is an unchecked claim about
+  each member.
+- **`ToolOutcome.error(tag, fields?)`** is one error's schema: `_tag`,
+  `message`, `remediation` (engine's `Remediation`), and your fields. A field
+  named `_tag`, `message` or `remediation` is a type error.
+- **Envelope options.** By default the failure member is inlined and carries
+  the description "An expected error the caller should branch on, returned in
+  place of a result." (its `ok` and `error` carry their own default
+  descriptions). `identifier` names it, so it is emitted once under `$defs`
+  and the `anyOf` refers to it by `$ref` (`#/$defs/LookupFailure` above);
+  `description` replaces the default text.
+- **`catchAsEnvelope` belongs inline in the effect's `pipe`.** It is typed
+  like core's `Effect.catchTags` and built on it: `E` is inferred from the
+  piped effect, so a case for a tag the effect cannot fail with is a type
+  error, the handled tags leave `E`, and every other error stays in the error
+  channel with its original `Cause`. Bound to a `const` first and applied
+  later, `E` infers as `unknown`, the unknown-tag check switches off, and a
+  misspelled tag compiles and never matches.
+- **`ToolOutcome.failure(tag, input)`** builds one `ok: false` value for a
+  handler that decides on a failure without catching an error;
+  `ToolOutcome.isFailure(value)` is `true` exactly when `value` is an object
+  whose `ok` is `false`. It checks the discriminant, not the payload.
+
+The success schema grows with every domain error a caller is expected to
+branch on. Keep genuinely unexpected failures — the ones no caller should
+special-case — as `Error`-instance declared failures, so the envelope stays
+proportional to what an agent actually needs.
+
+## Idempotent replay
+
+A write tool an agent may retry — after a timeout, a dropped connection, a
+restarted session — should not run its mutation twice. `ToolReplay.wrap`
+returns a repeated call's stored first result, marked
+`_idempotentReplay: true`, instead of running the handler again:
+
+~~~ts
+import { ToolOutcome, ToolReplay } from "@effected/mcp"
+import { Effect, Option, Schema } from "effect"
+import { Tool } from "effect/ai"
+import { KeyValueStore } from "effect/persistence"
+
+const Created = ToolReplay.success(Schema.Struct({ ...ToolOutcome.ok, id: Schema.Number }))
+
+const Create = Tool.make("create", {
+  description: "Create a thing.",
+  parameters: Schema.Struct({ requestId: Schema.optionalKey(Schema.String), name: Schema.String }),
+  success: Created,
+  dependencies: [KeyValueStore.KeyValueStore],
+})
+
+declare const createThing: (params: { readonly name: string }) => Effect.Effect<{ readonly ok: true; readonly id: number }>
+
+const create = ToolReplay.wrap({
+  tool: "create",
+  success: Created,
+  key: (params: { readonly requestId?: string; readonly name: string }) => Option.fromUndefinedOr(params.requestId),
+})(createThing)
+~~~
+
+Under `KeyValueStore.layerMemory`, two calls with `requestId: "r1"` answer
+`{"ok":true,"id":1}` and then `{"ok":true,"id":1,"_idempotentReplay":true}`
+— **even though the second call sent a different `name`.**
+
+- **The store.** Omit `store` and `wrap` requires core's `KeyValueStore`
+  (`effect/persistence`) in `R`: `KeyValueStore.layerMemory`,
+  `layerFileSystem` or `layerSql`. Declare it in the tool's `dependencies`.
+  Pass `store` — a `ToolReplayStore`, just `get` (answering `undefined` for a
+  miss) and `set` — to back replay with your own table instead; `KeyValueStore`
+  then leaves `R`. A `KeyValueStore` value satisfies `ToolReplayStore` as is.
+- **The key is the request's whole identity.** A hit compares nothing else:
+  not the params, not the schema version. A key reused with different params
+  replays the first result, as above, so when params under one
+  caller-supplied id can vary, fold a digest of them into the key.
+  `Option.none()` runs the handler with nothing read or stored. Rows are
+  stored under `<tool>:<key>`, and `wrap` throws at wrap time on a tool name
+  containing `:`.
+- **Rows never expire.** The store keeps a result until something removes it.
+  A row written under an older schema replays whenever it still decodes; one
+  that no longer decodes is a miss.
+- **Build every object success member with `ToolReplay.success`.** It adds
+  `ToolReplay.marker` (an optional `_idempotentReplay: true`); a success schema
+  that does not declare it has the marker dropped by core's encoder on the
+  replayed reply. `ToolReplay.success` is built on `Schema.fieldsAssign`, which
+  does not carry a struct's own `.check(...)` refinements over: apply checks
+  to its result, not to the struct you pass in.
+- **Best-effort.** A failed lookup, an undecodable row and a failed write are
+  a miss or a skipped write, logged at debug level, never a tool error. A
+  handler failure stores nothing, and neither does an `ok: false` envelope
+  result — a "not found" must not replay after the thing exists.
+- **Wrap inside `catchAsEnvelope`**:
+  `ToolReplay.wrap(options)(handler)` first, then
+  `.pipe(ToolOutcome.catchAsEnvelope({ … }))` around it, so the envelope sees
+  the handler's real errors and replay sees only real successes.
+- **Replay, not exactly-once.** Two concurrent calls with one key both miss
+  and both run the mutation. Serialize them yourself when that matters.
+
+## Keeping a library's output off the wire
+
+A handler that runs a chatty library in-process — a test runner, a bundler,
+a linter — writes to the same stdout the JSON-RPC wire uses. `StdioCapture`
+from `@effected/mcp/node` (Node only, since it imports `node:async_hooks`)
+diverts writes made inside one async context while every other context, the
+transport included, keeps writing to the real streams:
+
+~~~ts
+import { StdioCapture } from "@effected/mcp/node"
+
+// main.ts, once:
+const capture = StdioCapture.install(process)
+
+// in a handler: the runner's console output goes to stderr, never the wire
+const report = yield* runTests(files).pipe(capture.capture({ stdout: capture.toStderr }))
+~~~
+
+`install` patches each stream's `write` once — idempotent per stream, across
+every installed copy of the package — and `capture.capture(options)` runs the
+effect on its own fiber started inside the capture's context.
+`capture.run(options, evaluate)` is the same for code that is not Effect.
+`stderr` passes through when omitted. Sinks: `capture.toStderr` (the original,
+unpatched stderr), `StdioCapture.discard` (drops writes, but is a bare sink
+with no stream protocol), and `StdioCapture.nullWritable()` — a new Node
+`Writable` that drops everything, for a library that expects a real stream it
+can `pipe` into or call `setMaxListeners` on. It is a factory because a source
+piped into it ends it; build one per consumer.
+
+A server fiber woken by captured code keeps writing to the wire: a fiber
+resumes in the async context it suspended in, not the one of whatever woke
+it. Two kinds of write escape a capture:
+
+- **Writes from a context the capture lost** reach the original stream — on
+  stdout, the wire. A callback registered outside the capture keeps the
+  context it was registered in: a native addon, worker-thread output relayed
+  by the main thread, a listener on a child process's pipe attached earlier.
+  Attach such listeners inside the capture, or route them to stderr yourself.
+- **Fibers started inside the capture keep capturing after it ends.** A fiber
+  forked inside it (`Effect.forkDetach`, a memoized layer first built inside
+  it, a library's own background fiber) keeps writing to the sink after the
+  capture's work is done. Build shared layers before the first capture.

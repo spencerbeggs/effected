@@ -6,6 +6,7 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `FormatUnknownKeysOptions` | Interface | Options for `ToolInputSchema.formatUnknownKeys`. | |
+| `InjectCrash` | Interface | One test-only injected crash, as `McpGuard.parseInjectCrash` returns it and `McpGuardRunOptions.injectCrash` takes it: which point of the launch to raise it at, and which process event to raise. The same shape as `ProcessGuardInjection` from `@effected/engine/guard`. | from `@effected/mcp/guard` |
 | `JsonRpcMessage` | Interface | One JSON-RPC 2.0 frame as an MCP test client sees it. | from `@effected/mcp/testing` |
 | `McpGuard` | Class | Crash guards for an MCP server process, installed before the server's module graph is loaded. Imported from `@effected/mcp/guard`. | from `@effected/mcp/guard` — crash guards before the server graph loads, exit only before connect, startup failure exits 1, parse a crash-injection env value |
 | `McpGuardHost` | Interface | The slice of the host process the guard uses. Node's `process` satisfies it. | from `@effected/mcp/guard` |
@@ -29,10 +30,22 @@
 | `McpToolkitOptions` | Interface | Options for `McpToolkit.layer`. | |
 | `ServedResource` | Interface | One entry of a `resources/list` result. | from `@effected/mcp/testing` |
 | `ServedTool` | Interface | One entry of a `tools/list` result. | from `@effected/mcp/testing` |
+| `StdioCapture` | Class | Diverts a host's stdout (and optionally stderr) writes to a sink, for code running inside one async context only, while every other context keeps writing to the real streams. | from `@effected/mcp/node` — divert stdout and stderr writes in one async context, keep the stdio wire clean, null writable |
+| `StdioCaptureHost` | Interface | The two streams `StdioCapture.install` patches. Node's `process` satisfies it; pass it in from `main.ts`. | from `@effected/mcp/node` |
+| `StdioCaptureOptions` | Interface | The sinks for one capture. `stderr` passes through to the real stream when omitted. | from `@effected/mcp/node` |
+| `StdioSink` | Interface | Anything with a replaceable `write`: a patched stream (Node's `process.stdout` and `process.stderr`) and a sink captured writes go to (a Node `Writable`, `StdioCapture.nullWritable`, `StdioCapture.discard`, `StdioCapture.toStderr`). | from `@effected/mcp/node` |
 | `ToolFailure` | Class | How a tool's declared failure should read on the wire. | fold remediation into tool error message, truncate echoed caller values |
 | `ToolInputSchema` | Class | Pure walkers over a tool's served JSON Schema: every unknown key at every depth, a message naming them all, and an object-rooted form of a union. | find unknown tool arguments at every depth, object-root a union input |
+| `ToolOutcome` | Class | The `ok: false` structured-outcome envelope: an expected error an agent should branch on, returned on a tool's success channel so it reaches the client as `structuredContent` instead of message text. | return expected tool errors as an ok false structured envelope agents can branch on |
+| `ToolOutcomeEnvelopeOptions` | Interface | `ToolOutcome.envelope`'s options: annotations for the `ok: false` member, so a served `outputSchema` can name and describe it. | |
+| `ToolOutcomeErrorInput` | Interface | What a `ToolOutcome.catchAsEnvelope` case returns for one caught error: the same `message` and `remediation` a `ToolRefusal` carries, plus any structured fields the agent branches on. | |
+| `ToolOutcomeFailure` | Interface | The `ok: false` member of an envelope: `{ ok: false, error: { _tag, message, remediation, ...fields } }`. | |
+| `ToolOutcomeFailures` | TypeAlias | The failure values `ToolOutcome.catchAsEnvelope` produces for a set of cases: one `ToolOutcomeFailure` per handled tag. | |
 | `ToolOutputSchema` | Class | Shaping for a tool's `success` schema, so the `outputSchema` core serves is one every client accepts. | object-root a union tool success schema so outputSchema is served |
 | `ToolRefusal` | Class | A tool call refused for a reason the caller can fix: the kit's ready-made declared failure, built on `ToolFailure.fields`. | declared tool refusal with remediation in the message, survives error scrubbing |
+| `ToolReplay` | Class | Idempotent replay for a write tool: a repeated call with the same key returns the first call's stored result, marked `_idempotentReplay: true`, instead of running the mutation again. | idempotent write tool replay by key, return the stored first result |
+| `ToolReplayOptions` | Interface | What `ToolReplay.wrap` needs to know about one tool. | |
+| `ToolReplayStore` | Interface | The narrow store `ToolReplay.wrap` reads and writes: `get` and `set` on string values, nothing else. | |
 | `UnionHandlerOptions` | Interface | Options for `McpToolkit.unionHandler`. | |
 | `UnionTool` | Interface | A `Tool.dynamic` made by `McpToolkit.unionTool`: served with the strict, object-rooted JSON Schema of a `Schema.Union` of objects, and carrying that union so `McpToolkit.unionHandler` can decode it. | |
 | `UnionToolOptions` | Interface | Options for `McpToolkit.unionTool`. | |

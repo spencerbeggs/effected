@@ -43,7 +43,8 @@ compose an `Arbitrary` instead. The module's surface, the fast-check → native
 translation table (`constantFrom` → `Schema.Literals`, `array` →
 `Schema.Array(...).check(isBetweenLength)`, `stringMatching` → `isPattern`,
 `oneof` over Arbitraries → `flatMap` over a Schema-generated index — there is
-**no** `oneof`/`constantFrom`/`array`/`weighted` in the module) and the
+**no** `oneof`/`constantFrom`/`string`/`weighted` in the module; `array` is
+the one collection combinator over an `Arbitrary`) and the
 declaration-level `toCodecArbitrary` contract live in
 `effect-v4-schema/references/11-generation-and-tooling.md`. What follows is
 what a probe settled about **this repo's** thirteen migrated property suites:
@@ -105,6 +106,26 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   mapped through `String.fromCodePoint`), because the native string
   generator stays in printable ASCII and the module has no
   `fc.string({ unit: "binary" })` equivalent.
+- **A custom-alphabet string is an `Arbitrary.array` of literal characters,
+  joined.** No string generator takes an alphabet, and an `isPattern` class
+  over hostile characters (`@`, `:`, `[`, NUL) is the pattern-dropping trap
+  above. Generate characters and join them:
+
+  ```ts
+  const ALPHABET = ["a", "@", ":", "/", "[", "]", "\0"] as const;
+  const text = Arbitrary.array(Arbitrary.schema(Schema.Literals(ALPHABET)), { maxLength: 40 }).pipe(
+    Arbitrary.map((chars) => chars.join("")),
+  );
+  ```
+
+  Bias toward known-interesting fragments with `Arbitrary.all` over a
+  `Schema.Literals` of fragments plus the random text, then `Arbitrary.map`
+  to pick or concatenate (`packages/git/__test__/GitRemote.test.ts`).
+  **`Arbitrary.array` is under the same `size` clamp**: its upper length is
+  `min(maxLength, max(minLength, size))` (`internal/arbitrary/runner.ts:302`),
+  so `maxLength: 40` produces at most 10 characters at the default size —
+  pass `arbitrary: { size: 40 }` to reach the bound. Invalid length bounds
+  throw `RangeError` when `Arbitrary.array` is called.
 - **Derivation composes through `Schema.Union` of `Schema.Class` members, and
   the generated values are REAL class instances** — `instanceof` holds for
   each member and every element is one of them, verified directly against the

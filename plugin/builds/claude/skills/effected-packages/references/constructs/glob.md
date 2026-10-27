@@ -5,6 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `EnumerationRoot` | Interface | One place a walker must read to enumerate a pattern: a directory prefix and whether matches can lie more than one level below it. See `GlobPattern.enumerationRoots`. | |
 | `GlobPattern` | Class | A compiled glob pattern with a total `matches(candidate)` predicate, plus the metadata a directory walker needs. | compile a glob pattern, test if a path matches, minimatch dialect |
 | `GlobPatternError` | Class | Typed failure raised when a glob pattern trips a compile-time guard: over-length, brace-expansion budget exhaustion, or nesting past the depth cap. Malformed input is never a defect — this is the only failure the package's fallible boundaries (`GlobPattern.compile` and `GlobSet.compile`) can produce. | handle malformed glob pattern, pattern too long, brace expansion budget exceeded, nesting depth exceeded |
 | `GlobPatternOptions` | Class | Matching options for a glob pattern: the full minimatch options surface, schema-validated. Invalid options are a developer wiring error and throw at `make` — a defect at construction; the typed channel stays reserved for malformed patterns. | configure glob matching: dialect, dot files, case sensitivity, brace expansion, extglob |

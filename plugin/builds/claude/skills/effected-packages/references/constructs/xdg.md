@@ -10,6 +10,7 @@
 | `AppDirs` | Class | App-namespaced XDG directories, with on-demand creation. | resolve and create an app's namespaced config, data, cache, state and runtime directories |
 | `AppDirsError` | Class | Indicates that an application directory could not be created. | handle an app directory failing to be created on disk |
 | `AppDirsOptions` | Interface | Options for `AppDirs.layer`. | |
+| `AppDirsSegmentError` | Class | Raised by `AppDirs.segment` when a name maps to no usable path segment. | workspace key maps to an empty, dot or dot-dot directory segment |
 | `AppDirsShape` | Interface | App-namespaced directory resolution and on-demand creation. | |
 | `CurrentPlatform` | Variable | The platform every native-directory decision is taken against. | override the detected os platform for native directory resolution in tests |
 | `NativeDirs` | Class | The OS-native application directories for one namespace. | map platform and environment to os-native app directories, macOS Application Support, Windows AppData |

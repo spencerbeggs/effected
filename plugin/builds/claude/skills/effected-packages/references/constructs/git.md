@@ -22,6 +22,12 @@
 | `GitConfigScope` | TypeAlias | Which configuration file a read is scoped to. | |
 | `GitConfigSection` | Class | One section of a git-config document. | one [section] or [section "subsection"] block of a parsed git-config document |
 | `GitInvocation` | Interface | A pure `git` invocation: the spawnable command plus the diagnostic argv the error taxonomy is allowed to persist. | |
+| `GitRemote` | Class | Git remote addresses: parse into verbatim parts, render back, redact for logging. | parse, format and redact git remote urls, scp addresses and paths, repository path |
+| `GitRemoteForm` | TypeAlias | A parsed git remote address. | |
+| `GitRemotePath` | Class | A remote that is a filesystem path: no `:`, or a `/` before the first `:` (`/srv/repo.git`, `../sibling.git`, `./a:b`, `owner/name`). | a remote given as a filesystem path |
+| `GitRemoteScp` | Class | A remote in git's scp-like form: `[<user>@]<host>:<path>` (`git@github.com:o/n.git`). Git reads an address as this form when a `:` comes before any `/`. | a remote in scp-like user at host colon path form |
+| `GitRemoteTransport` | Class | A remote routed through a named remote helper: `<transport>::<address>` (`persistent::https://host/r`, `ext::ssh host %S`). git runs `git-remote-<transport>` and hands it `address`. | a remote routed through a transport helper, double-colon address |
+| `GitRemoteUrl` | Class | A remote in URL form: `<scheme>://[<user>[:<password>]@]<host>[:<port>]<path>` (`https://github.com/o/n.git`, `ssh://git@host:22/o/n`, `file:///srv/r.git`). | a remote in url form with scheme, credentials, host, port and path |
 | `GitShape` | Interface | The `Git` service shape. | |
 | `GitUntrackedFilesMode` | TypeAlias | The untracked-files mode of `git status` — git's `--untracked-files` flag. | |
 | `Gitmodules` | Class | The typed view over a `.gitmodules` document: the decoded submodule entries, in first-appearance order. | typed view over a .gitmodules document, parse .gitmodules, decoded submodule entries |
@@ -40,5 +46,8 @@
 | `StatusEntry` | Class | One entry of a `git status --porcelain -z` listing. | one entry of git status --porcelain, index and working-tree status codes and path |
 | `StatusRenderOptions` | Interface | Options for `StatusEntry.toLine` / `StatusEntry.format`: how a rename/copy entry's path field renders. | |
 | `SubmoduleStatusEntry` | Class | One line of a `git submodule status` listing. | one line of git submodule status, decoded state current uninitialized outOfSync conflict |
+| `TreeIdentity` | Class | A working tree's identity, from `Git.treeIdentity`: its physical toplevel and its repository's common directory. | compare working trees, same worktree, same repository or unrelated, physical toplevel |
+| `TreeRelation` | TypeAlias | How two working trees relate: the same tree, two worktrees of one repository, or two repositories. | |
 | `UnknownRefError` | Class | `ref` does not resolve to an object in the repository at `cwd`. | a ref or ref range does not resolve to an object in the repository |
+| `UpstreamBranch` | Class | The current branch's upstream, from `Git.upstream`. | the current branch's upstream remote and branch, gone when deleted |
 | `WorktreeEntry` | Class | One working tree, from `git worktree list --porcelain`. | one working tree from git worktree list, path head branch detached bare locked prunable |

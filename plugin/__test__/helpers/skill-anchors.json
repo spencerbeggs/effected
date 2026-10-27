@@ -2346,6 +2346,38 @@
 			"symbols": {
 				"16525": "export const TaggedClass: {"
 			}
+		},
+		{
+			"file": "effect-v4-idioms/SKILL.md",
+			"anchor": "Effect.ts:8929",
+			"source": "effect:Effect.ts",
+			"symbols": {
+				"8929": "export const forkChild: <"
+			}
+		},
+		{
+			"file": "effect-v4-schema/SKILL.md",
+			"anchor": "Schema.ts:3550",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"3550": "return makeStruct(SchemaAST.struct(fields, options?.unsafePreserveChecks ? this.ast.checks : undefined), fields)"
+			}
+		},
+		{
+			"file": "effect-v4-schema/SKILL.md",
+			"anchor": "Schema.ts:3630",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"3630": "struct.mapFields(Struct_.assign(fields))"
+			}
+		},
+		{
+			"file": "effect-v4-testing/references/property-testing.md",
+			"anchor": "internal/arbitrary/runner.ts:302",
+			"source": "effect:internal/arbitrary/runner.ts",
+			"symbols": {
+				"302": "const upper = Math.min("
+			}
 		}
 	],
 	"ignore": [

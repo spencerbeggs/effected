@@ -44,7 +44,7 @@ export const main = (): void => {
 decide `CliInteractive`, and install a coloured `CliOutput.Formatter` closer
 to the program than the platform — so help text, parse errors, prompts and
 rendered output share one colour decision. Customise that formatter through
-`env.formatter` (see [Version formatter](#version-formatter)); never wire a
+`env.formatter` (see [`--version` and the carrier](#--version-and-the-carrier)); never wire a
 bare `CliOutput.layer(formatter)` or a second `CliColor.formatterLayer` into
 the platform, which `main`'s own formatter shadows. `env.log.argv` is the one
 `process` read the logging needs: the platform's `Stdio` does not exist while
@@ -76,38 +76,43 @@ Why a recipe: the substitution is a build-time define wired into one
 package's own bundler config — the kit cannot perform a consumer's own
 package substitution for it.
 
-## Version formatter
+## `--version` and the carrier
 
-Under `CliRuntime.main` with `env`, the override is a plain function on
-`env.formatter`, and the distribution a plain value `version.ts` already
-computed from `process.argv`:
+`main` owns this: pass the carrier the bin was installed through as
+`distribution` (`null` for a direct install), a plain value `version.ts`
+already computed from `process.argv`. `main` provides `@effected/engine`'s
+`CurrentDistribution` around the program, so the program and the engine it
+calls read the same value, and with a carrier `--version` ends with
+`via <name> <version>` (after a space), appended to whatever `formatVersion` is in effect:
 
 ~~~ts
 import { CliAudience, CliRuntime } from "@effected/cli"
-import { distributionSuffix } from "@effected/engine"
 import type { Distribution } from "@effected/engine"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
-import type { Option } from "effect"
 import { Command } from "effect/cli"
 
 declare const root: Command.Command<"mytool", {}, {}, never, never>
-declare const distribution: Option.Option<Distribution> // from version.ts
+declare const distribution: Distribution | null // from version.ts
 
 NodeRuntime.runMain(
   CliRuntime.main(CliAudience.run(root.pipe(Command.withSharedFlags(CliAudience.flags())), { version: "1.2.3" }), {
     platform: NodeServices.layer,
-    env: { formatter: { formatVersion: (name, version) => `${name} ${version}${distributionSuffix(distribution)}` } },
+    env: { formatter: { formatVersion: (name, version) => `${name} ${version}` } }, // optional: core's default is `<name> v<version>`
+    distribution,
   }),
 )
 ~~~
 
-Without `env`, read the distribution from its reference and build the
-formatter layer from it, provided once at the program boundary:
+`env.formatter.formatVersion` only chooses the line's shape; **never append
+the suffix in it too**, or `--version` prints it twice. Without `main`, wrap a
+formatter yourself with engine's `withDistributionVersion(distribution)(formatVersion)`,
+which decorates rather than replaces, and provide the layer once at the
+program boundary:
 
 ~~~ts
 import { MemoryFileSystem } from "@effected/memfs"
 import { CliColor } from "@effected/cli"
-import { CurrentDistribution, distributionSuffix } from "@effected/engine"
+import { CurrentDistribution, withDistributionVersion } from "@effected/engine"
 import { Effect, Layer, Option, Path, Stdio, Terminal } from "effect"
 import { Command } from "effect/cli"
 import { ChildProcessSpawner } from "effect/process"
@@ -115,7 +120,7 @@ import { ChildProcessSpawner } from "effect/process"
 const versionLayer = Layer.unwrap(
   Effect.map(CurrentDistribution, (distribution) =>
     CliColor.formatterLayer({
-      formatVersion: (name, version) => `${name} ${version}${distributionSuffix(distribution)}`,
+      formatVersion: withDistributionVersion(distribution)((name, version) => `${name} ${version}`),
     }),
   ),
 )
@@ -148,28 +153,16 @@ await Effect.runPromise(
 )
 ~~~
 
-Prints `mytool 1.2.3 via carrier 0.4.0` — the real `--version` global flag,
-not a hand-called formatter: `GlobalFlag`'s built-in version action calls
+Prints `mytool 1.2.3 via carrier 0.4.0` — the real `--version` global flag:
+`GlobalFlag`'s built-in version action calls
 `formatter.formatVersion(command.name, version)` itself, so wiring
 `versionLayer` once at the program boundary (instead of `CliColor`'s own
 `formatterLayer`, never both — two `CliOutput` layers means one silently
 wins) is enough.
-`CliColor.formatterLayer`'s `formatVersion` override takes exactly
-`(name, version)`, in that order — a replacement with a third required
-parameter fails to typecheck (`TS2322`, not assignable to
-`(name: string, version: string) => string`), so this cannot silently drift
-to the wrong pair.
 
-**Ruling for the reader:** a *consumer* front end may depend on both
-`@effected/cli` and `@effected/engine`. The kit's own `cli` package never
-depends on `@effected/engine`: its kit edges are `@effected/env`,
-`@effected/glob` and `@effected/walker` (required peers),
-`@effected/config-file` (an optional peer, for config-issue rendering) and
-`@effected/github-commands` (a regular dependency, pure).
-
-Why a recipe: combining `distributionSuffix` into a formatter is only
-possible for a package willing to take the `@effected/engine` dependency,
-which the kit's own `cli` package is specifically forbidden from taking.
+Why a recipe: the kit packages the suffix (`main`'s `distribution`); what
+stays per-consumer is how `version.ts` reads the carrier from `process.argv`,
+and the shape of the line before it.
 
 ## JSON failure tap
 

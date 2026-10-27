@@ -283,7 +283,7 @@ one-`layer(...)`-block-per-fixture shape →
 picking the memfs form, seeds, faults, case-insensitive volumes and traps →
 **[references/memfs.md](./references/memfs.md)**.
 
-**A service built on `@effected/store` is tested over its REAL implementation, never a hand-written double**: share one implementation effect written against `Store` between `layer(filename)` (production, `Store.layerSqlite`) and a `layerMemory()` FACTORY over `Store.layerTest({ migrations })`, which opens a fresh migrated `:memory:` database per build. A factory, not a const, so two consumers in one composed graph never share a database by reference memoization. Pair it with `@effected/memfs` for a fully hermetic pipeline.
+**A service built on `@effected/store` is tested over its REAL implementation, never a hand-written double**: share one implementation effect written against `Store` between `layer(filename)` (production, `Store.layerSqlite`) and a `layerMemory()` FACTORY over `Store.layerTest({ migrations })`, which opens a fresh migrated `:memory:` database per build. A factory, not a const, so two consumers in one composed graph never share a database by reference memoization. Pair it with `@effected/memfs` for a fully hermetic pipeline. An application wired through `@effected/app` tests over `AppTest.layer(options)` from `@effected/app/testing` — fixed XDG paths, `:memory:` `Store`/`Cache` and a memfs volume, `R = never`; `@effected/memfs` is that subpath's optional peer, so add it as a devDependency.
 
 **Every stub effect goes through `Effect.suspend`.** A recorder that pushes
 eagerly logs calls that never executed. Worked probe →
@@ -324,6 +324,9 @@ The traps a probe settled, each with its fix in
 - A partial dictionary is a Struct of `optionalKey`, not a `Record`.
 - `isPattern` regexes must be lookaround-free, free of `i`/`m`/`v`, and carry
   `u`; otherwise the pattern is silently dropped.
+- A custom-alphabet string is `Arbitrary.array` over a `Schema.Literals`
+  of characters, mapped through `join("")`; `Arbitrary.array` is under the
+  same `size` clamp.
 - Reading a failure: the agent reporter compacts it to one line; the full
   shrunk input and replay token are in the `--reporter=json` output file. Pin
   the counterexample as an ordinary regression test.
@@ -419,7 +422,9 @@ was ever queued; `PubSub.shutdown` dropping the tail it was meant to drain; a
 stream over an ended subscription repeating `PubSub.end`'s sticky final
 message forever; a race that only shows below the default
 `Scheduler.MaxOpsBeforeYield` budget; timing
-gates lying under coverage; a green suite that fails the vitest **process**
+gates lying under coverage, and a timing guard that cannot catch a loop
+that never returns (its control runs in a subprocess with a hard timeout);
+a green suite that fails the vitest **process**
 because a test left `process.exitCode` set; a big green count for a surface the
 suite never calls; a helper used on **both sides** of every comparison, which
 agrees with itself however broken it is; an `Effect.timeout` guard that never

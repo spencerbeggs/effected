@@ -811,6 +811,20 @@ calibrated together; whichever is lower is the effective bound (the toml scale
 suite shipped a 30s `assert.isBelow` under the 5s default and CI red-flagged the
 *same* test twice before the timeout argument was added).
 
+### A timing guard cannot catch a loop that never returns
+
+A ratio guard (`time(4n) / time(n)` below a bound, so hardware cancels) and a
+wall-clock ceiling both read the clock AFTER the call returns. Against an
+infinite loop, or a quadratic one on a large enough input, the synchronous
+call never returns: vitest's test timeout is a timer on the same thread and
+cannot fire, so the worker hangs and the run never reports the bound you
+wrote. The guard is still worth having for the code that returns; what it
+cannot be is its own positive control. Prove it fires by running the
+mutated (deliberately quadratic or looping) control in a **subprocess with a
+hard timeout** — `spawnSync(process.execPath, [script], { timeout })` and
+assert on the kill — never by mutating the code under the in-process test
+(`packages/git/__test__/GitRemote.test.ts` carries the ratio guard).
+
 ## A helper used on BOTH sides of a comparison is not tested by that comparison
 
 A broken helper still agrees with itself. If every test that touches a helper

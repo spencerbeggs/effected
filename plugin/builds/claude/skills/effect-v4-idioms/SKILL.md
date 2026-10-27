@@ -575,11 +575,31 @@ Effect.uninterruptible(Effect.andThen(Ref.set(current, Option.none()), Scope.clo
 A low `Scheduler.MaxOpsBeforeYield` in a test is how to prove the window
 exists — see `effect-v4-testing`.
 
+**`FileSystem.makeTempDirectoryScoped`'s release is `Effect.orDie`.** The
+Node implementation releases with `Effect.orDie(remove(directory, { recursive: true }))`
+(the `makeTempDirectoryScoped` member of `@effect/platform-node-shared`'s
+`NodeFileSystem`; `makeTempFileScoped` is the same), so when the work already deleted or renamed the directory, the
+scope's close **dies** with the `NotFound` — a defect no `Effect.catch`
+reaches, surfacing far from the code that removed the directory. When the
+directory may be gone by release time, acquire it yourself:
+
+```ts
+const dir = yield* Effect.acquireRelease(fs.makeTempDirectory(), (path) =>
+  fs.remove(path, { recursive: true }).pipe(Effect.ignore),
+)
+```
+
 ## Forking and fibers
 
 The fork verbs take an options object:
 
 - `Effect.forkChild` — child of the current fiber; there is no bare `Effect.fork`.
+  "Current fiber" means the **caller's**: a helper is not a fiber, so a child
+  it forks (a timeout timer, a heartbeat) keeps running after the helper
+  returns, until the calling fiber itself ends (`Effect.ts:8929`, the `forkChild`
+  doc: "attached to the parent fiber's scope"). A helper that forks must
+  `Fiber.interrupt` its children before it returns, or use `Effect.forkScoped`
+  under a scope it closes.
 - `Effect.forkDetach` — detached from the parent lifecycle; there is no `forkDaemon`.
 - `Effect.forkScoped` — tied to the current `Scope`.
 - `Effect.forkIn` — forked into a specific `Scope`.

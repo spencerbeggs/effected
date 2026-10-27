@@ -1,11 +1,12 @@
 # @effected/glob
 
-The complete minimatch dialect (extglobs, braces, POSIX classes, true globstar, negation) compiled to pure string→predicate schemas — zero IO. Pure tier: peers only on `effect`; the engine is vendored and hardened from minimatch 10.x. Point it at arbitrary candidate strings (e.g. `git ls-tree` output); for filesystem scanning use core's `FileSystem.glob`, or `@effected/walker`'s `descend` (round 3), which takes a compiled `GlobPattern` and expands it against a real directory tree — the reason to reach for `GlobPattern.compile` even when the immediate need is "find matching files on disk", not just string matching.
+The complete minimatch dialect (extglobs, braces, POSIX classes, true globstar, negation) compiled to pure string→predicate schemas — zero IO. Pure tier: peers only on `effect`; the engine is vendored and hardened from minimatch 10.x. Point it at arbitrary candidate strings (e.g. `git ls-tree` output); for filesystem scanning use core's `FileSystem.glob`, or `@effected/walker`'s `descend`, which takes a compiled `GlobPattern` and expands it against a real directory tree — the reason to reach for `GlobPattern.compile` even when the immediate need is "find matching files on disk", not just string matching.
 
 ## Import
 
 ```ts
 import { GlobPattern, GlobPatternOptions, GlobSet } from "@effected/glob";
+import type { EnumerationRoot } from "@effected/glob";
 ```
 
 Single entrypoint; no subpaths.
@@ -25,7 +26,7 @@ Single entrypoint; no subpaths.
 
 ## Core API
 
-- **`GlobPattern`** — `Schema.Class` over one encoded field `source`. `GlobPattern.compile(source, options?)` → `Effect<GlobPattern, GlobPatternError>` is the fallible boundary; after that `matches(candidate)` is **total** (pure boolean, never throws). `FromString` embeds patterns in config schemas. Metadata: `hasMagic`, `negated`, `enumerationPrefix` (longest literal directory prefix shared by every brace alternative — `""` when the first segment carries magic), `crossesSegments` (true iff the pattern can match more than one level below `enumerationPrefix` — a globstar, or a magic segment followed by more segments). Both metadata getters exist for exactly one consumer shape: an enumerator deciding between a single-level directory read and a bounded recursive descent (this is what `@effected/walker`'s `descend` does internally). Statics `escape`/`unescape` for user-supplied literals.
+- **`GlobPattern`** — `Schema.Class` over one encoded field `source`. `GlobPattern.compile(source, options?)` → `Effect<GlobPattern, GlobPatternError>` is the fallible boundary (`GlobPattern.compileResult` is its synchronous `Result` twin); after that `matches(candidate)` is **total** (pure boolean, never throws). `FromString` embeds patterns in config schemas. Metadata: `hasMagic`, `negated`, `enumerationPrefix` (longest literal directory prefix shared by every brace alternative — `""` when the first segment carries magic), `crossesSegments` (true iff the pattern can match more than one level below `enumerationPrefix` — a globstar, or a magic segment followed by more segments). Both fold every brace alternative into one answer. **`enumerationRoots`** → `ReadonlyArray<EnumerationRoot>` keeps them apart — one root per alternative, each `{ prefix, deep, spellings }` (`prefix` canonical and slash-terminated, `""` for the base; `deep` when matches can lie more than one level below it; `spellings` every literal prefix the pattern spells that root with, in pattern order) — so `packages/{a,b}/src/*.ts` reads `packages/a/src/` and `packages/b/src/` one level each rather than all of `packages/`. Roots are distinct, one inside a `deep` root is absorbed into it, and two kept roots never yield the same file. These getters exist for one consumer shape — an enumerator deciding where to read and how deep (`@effected/walker`'s `descend` walks per root) — and all ignore whole-pattern negation: guard on `negated` and enumerate a negated pattern from `cwd`. Statics `escape`/`unescape` for user-supplied literals.
 - **`GlobSet`** — set semantics over many patterns: leading `!` marks an exclusion filter; `matches(candidate) = someInclude && !someExclude`. `GlobSet.compile(patterns)` → `Effect<GlobSet, GlobPatternError>`, failing typed on the FIRST uncompilable member (the error's `pattern` field names the offender, bang included for exclusions). Accessors: `literals` (deduped effective literal include paths, unescaped, first-seen order — an exact-lookup fast path), `wildcards` (compiled magic include alternatives), `excludes` (compiled exclusion patterns, leading bang stripped), `isExcluded(candidate)`.
 
 ## Usage
@@ -83,7 +84,7 @@ None exported (minimatch is the internal test oracle only).
 ## Gotchas
 
 - `**` really crosses segments. Code migrated from ad-hoc glob layers that rewrote `/**` to `/*` will see MORE matches here.
-- `dot` defaults to `false` — a bare `*`/`**` does NOT match dotfiles or dot-directories unless you pass `{ dot: true }`. Any consumer replacing an older glob tool that matched dotfiles unconditionally needs this option to stay behavior-compatible.
+- `dot` defaults to `false` — a bare `*`/`**` does NOT match dotfiles or dot-directories unless you pass `{ dot: true }`. Vitest's include/exclude matching runs with `dot: true`, as do other tools that matched dotfiles unconditionally; a consumer replacing one needs the option to stay behavior-compatible.
 - Invalid options are a defect at construction; only malformed *patterns* use the typed error channel.
 - Brace-expansion budget exhaustion fails as typed `GlobPatternError` (`ExpansionBudgetExceeded`) rather than silently truncating.
 - Extglob over-nesting degrades to literal matching (no error); globstar recursion over the cap is a deliberate false negative — both preserved upstream trade-offs.

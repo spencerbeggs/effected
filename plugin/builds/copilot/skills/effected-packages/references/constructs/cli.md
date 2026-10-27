@@ -26,6 +26,11 @@
 | `CliExitShape` | Interface | The shape behind `CliExit`. | |
 | `CliFailure` | Class | A failure as a document: what the default report prints, and a building block for a custom one. | draw a failure as a document, schema issues as a tree, app frames and spans only |
 | `CliFailureOptions` | Interface | Options for `CliFailure.toDoc`. | |
+| `CliFormat` | Class | A `--format` flag and the one print that honours it, so a command builds its report once as a `Doc` and its data once as a value, and never writes per-format output by hand. | add a --format flag, print one report as text, markdown or json |
+| `CliFormatFlagOptions` | Interface | Options for `CliFormat.flag`. | |
+| `CliFormatName` | TypeAlias | An output format a `--format` flag can offer: `auto` (the renderer the audience gets, as `Doc.print` picks it), one of the `Doc` renderers by name, or `json`, the command's data rather than its document. | |
+| `CliFormatOutput` | Interface | What `CliFormat.print` prints: the command's document and, for `json`, its data. | |
+| `CliFormatPrintOptions` | Interface | Options for `CliFormat.print`. | |
 | `CliInteractive` | Class | Whether this run may prompt a person: a human audience, with a terminal on both standard input and standard output, and a `TERM` that is not `dumb`. | may this run prompt a person, human audience on a tty, not TERM=dumb |
 | `CliLinks` | Class | Editor-aware links for file targets: where a link to a file opens. | open file links in vscode or as file urls, osc 8, never for agents |
 | `CliLinksLinkerOptions` | Interface | The options of `CliLinks.linker`. | |
@@ -77,6 +82,8 @@
 | `CountsOptions` | Interface | The options of `Doc.counts`. | |
 | `CountsRow` | Interface | One row of a `CountsTable`: its label, its counters and how long it took. | |
 | `CountsTableOptions` | Interface | The options of `Doc.countsTable`. | |
+| `DetachedLive` | Interface | A live view running outside Effect, from `CliUi.liveDetached`. | from `@effected/cli/ui` |
+| `DetachedLiveOptions` | Interface | Options for `CliUi.liveDetached`: those of `CliUi.live`, with the events given as a `PubSub` or a stream, and the render given directly or as an effect that makes it. | from `@effected/cli/ui` |
 | `Doc` | Class | Constructors for the document IR, and two helpers a renderer shares. | build a report once as a document: tables, trees, lists, counts, diffs, callouts |
 | `DocPrintOptions` | Interface | Options for `Doc.print`. | |
 | `DocView` | Function | The kit's document IR (`Doc`) drawn as Ink rows, laid out by the kit's own renderers, so a live view and a static report show a document the same way. | from `@effected/cli/ui` — draw a document inside an ink tree, byte for byte like the static output |
@@ -117,6 +124,7 @@
 | `NamedColor` | TypeAlias | A named terminal colour: the eight ANSI colours and their bright variants. | |
 | `NotInteractive` | Class | A command needed to prompt, but there is no terminal to prompt on. | a prompt was reached with no person to ask, exit 64 |
 | `OverflowOptions` | Interface | The cap and overflow options of a list or table. | |
+| `PadOptions` | Interface | Options for `Fmt.pad`. | |
 | `PercentOptions` | Interface | Options for `Fmt.percent`. | |
 | `Render` | Class | Pure renderers of a document: `(doc, context) => string`. | render a document as plain text, ansi, markdown or a GitHub Actions log, collapsible rendered plain inside an open log group |
 | `RenderContext` | Interface | Everything a renderer needs to know about where its output is going. | |
@@ -124,6 +132,8 @@
 | `RenderContextOptions` | Interface | Options for `Render.context`. | |
 | `ReportFailuresOptions` | Interface | How a failure is turned into output and an exit code. | |
 | `RequiresAudienceFlags` | TypeAlias | Resolves to nothing for a command that carries the four audience flags, and to an unsatisfiable marker otherwise, so `CliAudience.run` on a root that forgot `Command.withSharedFlags(CliAudience.flags())` does not compile. (A plain `Input extends AudienceFlagInput` constraint does not do this: `Command` is contravariant in its input, so a command with no flags still type-checks against it.) | |
+| `RouteStreamOptions` | Interface | Options for `CliUi.routeStream`. | from `@effected/cli/ui` |
+| `RoutedStream` | Interface | A stream routed line by line through a printer, from `CliUi.routeStream`. | from `@effected/cli/ui` |
 | `RunOptions` | Interface | How `CliTest.run` spawns a bin. | from `@effected/cli/testing` |
 | `RunResult` | Interface | What a spawned bin did, as data: a non-zero exit is a result, not a failure. | from `@effected/cli/testing` |
 | `Sandbox` | Interface | A hermetic temp directory minted by `CliTest.sandbox`, removed when its scope closes. | from `@effected/cli/testing` |

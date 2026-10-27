@@ -10,24 +10,47 @@
 | `CommandOutputError` | Class | A command ran, but its output could not be used. | handle a command whose output was not usable json, exceeded byte cap |
 | `DEFAULT_MAX_OUTPUT_BYTES` | Variable | Default ceiling on captured bytes per stream (16 MiB). | the default 16 MiB per-stream captured output ceiling |
 | `ExecContext` | Class | How to run a project-local binary here. | how to run a project-local binary: launcher argv prefix, dlx prefix, script prefix, directory |
+| `ExecKind` | Variable + TypeAlias | The decoded type of `(ExecKind:variable)`. | classify a launcher argv as npx, pnpm dlx, bunx or a local exec |
 | `Launcher` | Variable + TypeAlias | The decoded type of `(Launcher:variable)`. | four package managers' local exec argv: npm, pnpm, yarn, bun |
 | `LauncherPrefixes` | Interface | The per-launcher argv prefix record: exec, dlx and script-runner. | |
 | `LocalExec` | Class | Contract: how to run a project-local binary in this project. | contract for the project-local way to run a binary here — implemented by `Workspaces` in `@effected/workspaces` |
 | `LocalExecError` | Class | The project-local execution context could not be determined. | handle failure determining the project-local execution context |
 | `LocalExecShape` | Interface | The `LocalExec` service shape. | |
 | `MismatchPolicy` | Variable + TypeAlias | The decoded type of `(MismatchPolicy:variable)`. | what to do when global and project-local tool versions disagree: preferLocal, preferGlobal, fail |
+| `ModuleLoadOptions` | Interface | Options for `ModuleResolution.load`. | from `@effected/commands/node-sync` |
+| `ModuleResolution` | Class | Anchored module resolution, stale-install detection and an injectable loader, for a long-lived Node process that loads a project's own copy of a package. | from `@effected/commands/node-sync` — resolve a package from the project's own install, detect a stale install, load it lazily |
+| `ModuleResolveOptions` | Interface | Options for `ModuleResolution.resolve`. | from `@effected/commands/node-sync` |
+| `ParsedInvocation` | Interface | An argv split back into its launcher prefix, the binary (or script name) it runs, and the arguments after it — what `LocalExec.parse` answers. | |
+| `PrebuiltBinary` | Class | Resolution of the platform-specific binary an `optionalDependencies` fan-out ships. | find the platform-specific binary an optionalDependencies fan-out installed |
+| `PrebuiltBinaryError` | Class | No usable prebuilt binary for this host. | no usable prebuilt binary for this platform, missing package or deleted binary |
+| `PrebuiltBinaryReason` | Variable + TypeAlias | The decoded type of `(PrebuiltBinaryReason:variable)`. | why prebuilt binary resolution failed, branch on the reason |
+| `PrebuiltBinarySpec` | Interface | Which package carries the binary for each target, and where in it the binary sits. | |
+| `PrebuiltHost` | Interface | The platform facts and module resolution `PrebuiltBinary.resolveSync` runs against — `nodePrebuiltHost` from `@effected/commands/node-sync` on Node. | |
+| `PrebuiltTarget` | Interface | The host a prebuilt binary must match. | |
+| `ProcessLiveness` | Class | Contract: who this process is, and whether another process is alive. | current pid and hostname, check whether another process is still alive |
+| `ProcessLivenessShape` | Interface | The `ProcessLiveness` service shape: this process's identity and a liveness probe for another process on the same host. | |
 | `REDACTED` | Variable | The placeholder every redaction writes in place of a secret. | the placeholder string written in place of a redacted secret |
 | `Redaction` | Class | Secret scrubbing for command arguments and captured output. | scrub secret values and known secret-bearing flags out of command args and captured output |
+| `ResolvedPrebuilt` | Class | A resolved prebuilt binary. | the resolved binary path, package and version for this platform |
 | `ResolvedSource` | Variable + TypeAlias | The decoded type of `(ResolvedSource:variable)`. | which copy of a tool was resolved from: global or local |
 | `ResolvedTool` | Class | A tool that was found, with everything discovery learned about it. | a tool discovery found, with its resolved source, version and a runnable command builder |
 | `Retry` | Class | Transience classification for command failures, and the retry policy built on it. | classify a command failure as a transient transport hiccup, ready-made retry policy with backoff |
 | `Run` | Class | Structured running of core `ChildProcess.Command` values. | run a subprocess and collect output, text, lines, json, or a streaming line-by-line result |
+| `RunOnce` | Class | Run a piece of work once across concurrent processes. | run work once across concurrent processes with a lock file and done marker, stale lock takeover |
+| `RunOnceCommand` | Interface | The command `RunOnce.commandSync` runs. | |
+| `RunOnceCommandHost` | Interface | `RunOnceSyncHost` plus the synchronous runner `RunOnce.commandSync` spawns through. | |
+| `RunOnceFileSystem` | Interface | The file operations `RunOnce.runSync` needs, supplied by the caller — `nodeRunOnceHost` from `@effected/commands/node-sync` on Node. | |
+| `RunOnceOptions` | Interface | Settings for one run-once key. | |
+| `RunOnceOutcome` | TypeAlias | How a run-once call ended. | |
+| `RunOnceSyncHost` | Interface | Everything `RunOnce.runSync` runs against. | |
 | `RunOptions` | Interface | Policy for one run. | |
 | `SECRET_FLAGS` | Variable | Argument tokens whose *following* positional (or `=`-joined value) is a secret. Lowercase; matching is case-insensitive. | argv flag names whose following value is treated as a secret to redact |
 | `ScriptResult` | TypeAlias | One scripted outcome for a spawned command. | |
 | `ScriptedSpawner` | Class | A scripted `ChildProcessSpawner` test double: script each spawn's outcome, read back what was spawned. | test double for ChildProcessSpawner: script each spawn's outcome, inspect recorded spawns |
 | `SpawnRecord` | Interface | What the scripted spawner observed for one spawn, in call order. | |
 | `SpawnScript` | TypeAlias | The script a `ScriptedSpawner` answers spawns from: the executable and argv in, a `ScriptResult` out. | |
+| `SyncRun` | TypeAlias | Runs `command` with `args` synchronously, with no shell, to completion. | |
+| `SyncRunResult` | Interface | What one synchronous run reports — the subset of Node's `spawnSync` result `RunOnce.commandSync` reads. | |
 | `SyncSpawn` | TypeAlias | Spawns `command` with `args` synchronously, with no shell, and reports how it went. | |
 | `SyncSpawnResult` | Interface | What one synchronous spawn reports — the subset of Node's `spawnSync(..., { encoding: "utf8" })` result that discovery reads. | |
 | `TRANSIENT_PATTERNS` | Variable | Substrings that mark a failure as a transport hiccup rather than a verdict. | substrings in command output that mark a failure as a retryable transport hiccup |
@@ -48,4 +71,9 @@
 | `VersionNone` | Class | Do not ask for a version; presence is the only question. | skip asking a tool for its version; only check that it is present |
 | `VersionProbe` | Variable + TypeAlias | The decoded type of `(VersionProbe:variable)`. | ways to learn a tool's version: flag output, json path, or none |
 | `makeToolDiscoverySync` | Function | Builds synchronous tool discovery over a caller-supplied spawn. | find a cli tool without an Effect runtime, synchronous probe for lint-staged handlers |
+| `nodePrebuiltHost` | Function | `PrebuiltHost` for the running Node process, resolving from `anchor`. | from `@effected/commands/node-sync` — node binding for prebuilt binary resolution from an anchor path |
+| `nodeProcessLiveness` | Variable | `ProcessLivenessShape` for the running Node process: `process.pid`, `os.hostname()`, and a signal-0 probe. | from `@effected/commands/node-sync` — node binding for pid, hostname and a signal-0 liveness probe |
+| `nodeRunOnceFileSystem` | Variable | `RunOnceFileSystem` over `node:fs`. | from `@effected/commands/node-sync` — node fs binding for the run-once lock and done files |
+| `nodeRunOnceHost` | Variable | `RunOnceCommandHost` for the running Node process: `nodeRunOnceFileSystem`, `nodeProcessLiveness`, `Date.now`, an `Atomics.wait` sleep, a 96-bit `crypto.randomBytes` nonce and `nodeRunSync`. Satisfies `RunOnceSyncHost`. | from `@effected/commands/node-sync` — complete node host for synchronous run-once: fs, liveness, clock, sleep, nonce, spawn |
+| `nodeRunSync` | Variable | `SyncRun` over `node:child_process.spawnSync`. | from `@effected/commands/node-sync` — node child_process binding for a synchronous run-once command |
 | `nodeSpawnSync` | Variable | `SyncSpawn` over `node:child_process.spawnSync`. | from `@effected/commands/node-sync` — node child_process binding for synchronous tool probes |

@@ -1,6 +1,6 @@
 ---
 name: effect-v4-mcp
-description: "Use when building, wiring, testing or reviewing an MCP server on Effect v4 — effect/ai's McpServer, Tool and Toolkit plus the @effected/mcp boundary that keeps stdout the JSON-RPC wire and makes tool failures readable to an agent. Also use when: MCP server, McpServer, Tool.make, Toolkit, layerStdio, tools/call, server/discover, initialize, Tool.Strict, unknown keys, isError, structuredContent, InvalidParams, MCP resource, mimeType, stdio server exits 130, JSON-RPC on stdout, McpHarness, McpProbe, crash guard"
+description: "Use when building, wiring, testing or reviewing an MCP server on Effect v4 — effect/ai's McpServer, Tool and Toolkit plus the @effected/mcp boundary that keeps stdout the JSON-RPC wire and makes tool failures readable to an agent. Also use when: MCP server, McpServer, Tool.make, Toolkit, layerStdio, tools/call, server/discover, initialize, Tool.Strict, unknown keys, isError, structuredContent, InvalidParams, MCP resource, mimeType, stdio server exits 130, JSON-RPC on stdout, McpHarness, McpProbe, crash guard, ok false envelope, ToolOutcome, idempotency key, ToolReplay, StdioCapture, library writes to stdout, Exclusive, ProcessScope, chdir per request"
 ---
 
 # Effect v4 MCP servers
@@ -21,6 +21,11 @@ clients.
 | `ToolFailure` | `@effected/mcp` | folding remediation into a declared failure's message — core sends only `error.message` |
 | `ToolInputSchema` | `@effected/mcp` | naming unknown keys in a `Tool.dynamic` tool's raw payload, inside its own handler — core never validates a raw JSON Schema |
 | `McpToolkit.unionTool` / `unionHandler` | `@effected/mcp` | a tool whose parameters are a `Schema.Union` of objects, rejected like a `Tool.make` decode failure |
+| `ToolOutcome` | `@effected/mcp` | an expected domain error the agent should branch on as data: the `ok: false` envelope on the success channel, where `structuredContent` arrives |
+| `ToolReplay` | `@effected/mcp` | a write tool whose retried call with the same idempotency key returns the first result instead of running again |
+| `StdioCapture` | `@effected/mcp/node` | an in-process library (a test runner, a bundler) that writes to stdout from inside a handler |
+| `Exclusive` | `@effected/engine` | handlers that mutate process-global state (cwd, env, a patched stream) must run one at a time, under a timeout |
+| `ProcessScope` | `@effected/engine` | a `chdir` or an env patch restored when the request's scope closes |
 | `McpGuard` | `@effected/mcp/guard` | crash guards installed before the server graph loads, with an exit-before-connect policy |
 | `ProcessGuard` | `@effected/engine/guard` | the same guards for a server on another transport (an LSP), which reports `markConnected` itself |
 | `Remediation`, `LaunchContext` | `@effected/engine` | a structured `{ hint, suggestedTool? }` shape, or resolving an agent-launched project directory |
@@ -32,6 +37,7 @@ clients.
 - Register toolkits through `McpToolkit.layer`, not core's `McpServer.toolkit` directly, so every tool is strict unless it opts out.
 - Fold remediation into a declared failure's message with `ToolFailure` at construction — nothing else reaches the agent.
 - Declare every service a handler uses in `Tool.make`'s `dependencies` option.
+- Return an expected error the agent branches on through `ToolOutcome.catchAsEnvelope`, written inline in the handler's `pipe`.
 - Test the server layer in process with `McpHarness`; test a **built** bin with `McpProcess`/`McpProbe`.
 
 ## Footguns
@@ -47,6 +53,11 @@ clients.
 - A top-level union `parameters` schema dies the server at registration, not at the first call — use `McpToolkit.unionTool` — see [Failures on the wire](./references/tools.md#failures-on-the-wire).
 - A pattern-keyed `Schema.Record` parameter is served open unless its key RegExp has the `u` flag, while core still rejects a non-matching key — see [Strict input](./references/tools.md#strict-input).
 - A `Schema.String` success is sent as raw text with no `structuredContent` on the stateful revisions, and as JSON-quoted text plus a string `structuredContent` on `2026-07-28` — see [Failures on the wire](./references/tools.md#failures-on-the-wire).
+- `ToolOutcome.catchAsEnvelope` bound to a `const` before it is applied loses the piped effect's error type, so a misspelled tag compiles and never matches — see [The `ok: false` envelope](./references/tools.md#the-ok-false-envelope).
+- A `ToolReplay` key reused with different params replays the first call's result — it compares nothing but the key, and rows never expire — and two concurrent calls with one key both run: it is replay, not exactly-once — see [Idempotent replay](./references/tools.md#idempotent-replay).
+- `ToolReplay.success` drops the struct's own `.check(...)` refinements; apply checks to its result — see [Idempotent replay](./references/tools.md#idempotent-replay).
+- `StdioCapture` leaks both ways: a callback registered outside the capture (a child-pipe listener, relayed worker output) still writes to the wire, and a fiber forked inside it keeps writing to the sink after it ends — see [Keeping a library's output off the wire](./references/tools.md#keeping-a-librarys-output-off-the-wire).
+- `Exclusive.run` is not reentrant: a nested `run` on the same lane waits on its own caller's permit and fails as the outer `ExclusiveTimeout`. `Effect.promise` inside a lane abandons the promise on timeout; use `Exclusive.promise`, and `abandon: true` for a promise that ignores its signal.
 - `Schema.Struct({})` is not `Tool.EmptyParams` — it fails server registration outright — see [Defining a tool](./references/tools.md#defining-a-tool).
 - Closing stdin does not cancel requests in flight: the server answers them, then stops — so `McpHarness.close` never releases a wait on a request that never completes; `McpHarness.stop` does — see [`McpStdio.teardown`](./references/server-wiring.md).
 - A bare-string resource `content` loses its `mimeType` on the read itself, even though it still appears in `resources/list` — see [The `mimeType` trap](./references/resources.md#the-mimetype-trap).
@@ -57,7 +68,7 @@ clients.
 ## Additional resources
 
 - [server-wiring.md](./references/server-wiring.md) — the complete `main.ts`, `McpStdio.layer`/`launch`/`teardown`, protocol ordering, crash guards, and launch-context project-directory resolution. Load when: assembling or reviewing a server's `main.ts`, or debugging why a failure or a log line reached the wire.
-- [tools.md](./references/tools.md) — defining a tool, strict input reporting, failures on the wire, and the `ok: false` structured-remediation envelope. Load when: declaring a `Tool.make`, wiring a `Toolkit`, or a client is seeing the wrong failure shape.
+- [tools.md](./references/tools.md) — defining a tool, strict input reporting, failures on the wire, the `ToolOutcome` `ok: false` envelope, `ToolReplay` idempotent replay, and `StdioCapture`. Load when: declaring a `Tool.make`, wiring a `Toolkit`, a client is seeing the wrong failure shape, a write tool needs an idempotency key, or a handler runs a library that writes to stdout.
 - [resources.md](./references/resources.md) — `McpServer.resource`'s single and URI-template forms, the `mimeType` trap, and why a slash-containing id needs a static resource instead of a template. Load when: registering an MCP resource, or a client's read is missing a `mimeType` it expects.
 - [testing.md](./references/testing.md) — the in-process harness, the protocol matrix, spawned clients, the packed-install proof, and the tool audit. Load when: writing a test against an MCP server, or choosing between `McpHarness`, `McpProcess`, `McpProbe` and `McpToolAudit`.
 - `effected-packages`' [mcp.md](../effected-packages/references/mcp.md) — the `@effected/mcp` package surface as a routing reference (import table, full API, Usage block). Load when: you need the package-level index rather than the teaching depth here.

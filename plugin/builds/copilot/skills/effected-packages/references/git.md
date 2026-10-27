@@ -1,7 +1,7 @@
 # @effected/git
 
-Typed git over core's `ChildProcessSpawner`: **72 service members in two
-tiers** — a read tier (32 members) that reads a repository's state at any ref
+Typed git over core's `ChildProcessSpawner`: **76 service members in two
+tiers** — a read tier (36 members) that reads a repository's state at any ref
 without touching the working tree, including the one network read (`lsRemote`)
 and the index read (`lsFiles`), plus a clearly-marked mutating tier (40
 members: checkout/fetch, the restore trio, stash, branches, tags, remotes,
@@ -10,23 +10,23 @@ and staging) that changes it — nothing serializes concurrent access, so a
 caller running two mutating calls (or a mutating call alongside a read)
 against the same `cwd` owns the race. Alongside the service sits a **pure
 git-config document core** (`GitConfig` + `Gitmodules`) with no subprocess
-anywhere near it. Boundary tier: peers only on `effect`, zero runtime deps,
+anywhere near it, and a pure remote-address parser (`GitRemote`). Boundary tier: peers only on `effect`, zero runtime deps,
 zero `node:` imports — the spawner is required in `R` and discharged once by
 the consumer's platform layer.
 
 ## Import
 
 ```ts
-import { Git, GitCommand, GitConfig, Gitmodules } from "@effected/git";
-import type { GitConfigScope, GitInvocation, GitShape } from "@effected/git";
+import { Git, GitCommand, GitConfig, Gitmodules, GitRemote, TreeIdentity, UpstreamBranch } from "@effected/git";
+import type { GitConfigScope, GitInvocation, GitRemoteForm, GitShape, TreeRelation } from "@effected/git";
 ```
 
 Single entrypoint; no subpaths.
 
 **Platform**: provide `ChildProcessSpawner` once at the edge —
 `@effect/platform-node`'s `NodeServices.layer` (or `@effect/platform-bun`'s
-equivalent), as in the example below. `GitConfig`/`Gitmodules` need nothing at
-all; they are pure.
+equivalent), as in the example below. `GitConfig`/`Gitmodules` and `GitRemote`
+need nothing at all; they are pure.
 
 ## Core API
 
@@ -35,17 +35,17 @@ all; they are pure.
   explicitly; every failure is one of the typed errors below or a documented
   non-error degradation (`Option.none()`, `false`, `[]`).
 
-### Read tier (32 members; `R = never`)
+### Read tier (36 members; `R = never`)
 
 | Group | Members | Notes |
 | --- | --- | --- |
 | Content at a ref | `show` (`Option<string>` — absent-at-ref is `None`, never an error), `lsTree` (`LsTreeEntry[]`, optional pathspec) | NUL-safe parsing |
 | Index | `lsFiles` (`LsFilesEntry[]` from `ls-files --stage -z`) | the index-side sibling of `lsTree`; the only read that sees a staged-but-uncommitted `160000` gitlink |
-| Refs | `refExists` (`false` for an unresolvable OR unknown-syntax ref, never an error), `revParse`, `mergeBase`, `mergeBaseOption` (`Option<string>`), `forEachRef` (`RefEntry[]`), `revList`, `branchList` (`BranchEntry[]`, `current` decodes the `*`), `tagList` | `mergeBase`'s `UnknownRefError.ref` carries the `"a...b"` range, not one side. `mergeBaseOption` is the PROBE sibling — disjoint histories answer `Option.none` instead of failing; an unknown ref still fails. `mergeBase` itself must never grow an `Option` |
+| Refs | `refExists` (`false` for an unresolvable OR unknown-syntax ref, never an error), `revParse`, `mergeBase`, `mergeBaseOption` (`Option<string>`), `forEachRef` (`RefEntry[]`), `revList`, `branchList` (`BranchEntry[]`, `current` decodes the `*`), `tagList`, `upstream` (`Option<UpstreamBranch>`), `log` (`CommitLogEntry[]`; `paths`, `follow`, `limit`) | `mergeBase`'s `UnknownRefError.ref` carries the `"a...b"` range, not one side. `mergeBaseOption` is the PROBE sibling — disjoint histories answer `Option.none` instead of failing; an unknown ref still fails. `mergeBase` itself must never grow an `Option`. `upstream` is `None` on a detached `HEAD`, an unborn branch or no configured upstream; `UpstreamBranch` is `{ ref, name, gone, ahead, behind }`, `name` the string `rev-parse --abbrev-ref @{upstream}` answers, and a deleted-and-pruned upstream is still reported with `gone: true` (where `rev-parse @{upstream}` fails) |
 | Diffs | `changedFiles`, `nameStatus` (`NameStatusEntry[]`), `workingChanges` (deduplicated union of unstaged + staged + untracked; no ref, so never `UnknownRefError`), `unstagedChanges`, `stagedChanges`, `untrackedFiles`, `status` (`StatusEntry[]`; `untrackedFiles: "all" \| "normal" \| "no"`, default `"all"`) | `relative: false` adds `--full-name` to `untrackedFiles` so `workingChanges` unions one path base; `status` always passes `--untracked-files`, and a `??` path ending in `/` is a directory (under `"all"`, only an untracked nested repository) — never build a commit from `"normal"` entries |
-| Repo facts | `repoRoot` (PHYSICAL — symlinks resolved), `commonDir` (the absolute, symlink-resolved directory a repo shares with all its linked worktrees; git 2.31+), `currentBranch` (`None` on detached `HEAD`, never the literal `"HEAD"`), `defaultBranch` (`None` when `origin/HEAD` is unset), `isShallow`, `commitInfo` (`CommitInfo`; raw untrimmed message) | `isShallow` is a dedicated predicate, deliberately not folded into `revParse`. Compare repositories with `commonDir(a) === commonDir(b)` — `repoRoot` differs per worktree. Bound an upward walk by `repoRoot` with `@effected/walker`'s `Walker.ascendWithin`, never `ascend`'s lexical `stopAt` |
+| Repo facts | `repoRoot` (PHYSICAL — symlinks resolved), `commonDir` (the absolute, symlink-resolved directory a repo shares with all its linked worktrees; git 2.31+), `treeIdentity` (`Option<TreeIdentity>` — `{ toplevel, commonDir }` in one spawn; `None` outside a working tree, bare repositories and `.git` included; git 2.31+), `currentBranch` (`None` on detached `HEAD`, never the literal `"HEAD"`), `defaultBranch` (`None` when `origin/HEAD` is unset), `isShallow`, `commitInfo` (`CommitInfo`; raw untrimmed message) | `isShallow` is a dedicated predicate, deliberately not folded into `revParse`. Relate two checkouts with `TreeIdentity.relation(a, b)` (dual) → `"same-tree" \| "sibling-worktree" \| "different-repo"`; `commonDir(a) === commonDir(b)` alone answers "same repository" — `repoRoot` differs per worktree. Both paths are git's physical, true-case answers, so no `realPath` step is needed — but compare them only with other git answers, never with a caller-spelled path. Bound an upward walk by `repoRoot` with `@effected/walker`'s `Walker.ascendWithin`, never `ascend`'s lexical `stopAt` |
 | Config reads | `configGet` (`None` when unset), `configGetAll` (`[]` when unset), `configList` (`ConfigListEntry[]`); `configGet` and `configList` take `{ scope?: GitConfigScope }` (`"local"` / `"global"` / `"system"` / `"worktree"`), `configGetAll` does NOT | **Omitted `scope` means the MERGED read** — repository plus global plus system — so a globally set key shadows what this checkout itself declares; pass `{ scope: "local" }` for the precise read. `configList` additionally takes `file`, and `file` + `scope` together fail typed (git accepts only one source). `configList` splits at the first newline so multi-line values survive |
-| Remotes / network | `remoteUrl` (`None` when the remote doesn't exist), `lsRemote` (`LsRemoteEntry[]` — the ONE network read, still a read) | `LsRemoteEntry.shortName` and `.nearMatches` are pure decode-side statics; the near-miss suggestion policy lives on the entry VALUE, not the service |
+| Remotes / network | `remoteUrl` (`None` when the remote doesn't exist; the URL **after** `url.<base>.insteadOf` rewrites — for the URL as written, persisted or compared across machines, read `configGet(cwd, "remote.<name>.url")`), `lsRemote` (`LsRemoteEntry[]` — the ONE network read, still a read) | `LsRemoteEntry.shortName` and `.nearMatches` are pure decode-side statics; the near-miss suggestion policy lives on the entry VALUE, not the service |
 | Misc | `stashList` (`StashEntry[]` — array position IS the current stash index), `worktreeList` (`WorktreeEntry[]`), `submoduleStatus` (`SubmoduleStatusEntry[]`), `checkIgnore` (`[]` when nothing is ignored) | |
 
 ### Mutating tier (40 members) — nothing serializes concurrent access to the same `cwd`
@@ -70,9 +70,13 @@ marker is the only signal a caller gets.
   downstream service's dependency to exactly the methods it reads;
   `Layer.succeed(Git, fake)` accepts any `GitShape`-shaped object as a full
   test double.
-- **`GitCommand`** — 67 pure, `cwd`-less constructors returning `GitInvocation`
-  values (a core `ChildProcess.StandardCommand` plus `redactedArgs`),
-  inspectable without spawning. (`workingChanges` and `fetchAny` are `Git`
+- **`GitCommand`** — 74 pure, `cwd`-less constructors returning `GitInvocation`
+  values (a core `ChildProcess.StandardCommand`, `redactedArgs`, and `scrub`,
+  a closure masking the argv's exact secrets in any text — a closure so the raw
+  secrets are no enumerable field a serializer could surface), inspectable
+  without spawning. `GitCommand.headRef()` (`symbolic-ref --quiet HEAD`, the
+  full refname, an unborn branch included) has no service member; `upstream`
+  composes it. (`workingChanges` and `fetchAny` are `Git`
   methods with no matching constructor — each composes others.)
 - **Errors** — `GitCommandError` (`args` are the REDACTED argv; plus
   `cwd`/`exitCode`/`stderr`/optional `detail` for an absorbed spawn failure or
@@ -109,7 +113,35 @@ package** — no subprocess, no `R`, usable from any pure context.
   its formatting. `update` stays a raw string deliberately (git accepts
   `!command` values).
 
-## The redaction policy — argv never leaks a secret
+## `GitRemote` — remote addresses, parsed verbatim
+
+`GitRemote.parse(raw)` → `Option<GitRemoteForm>` (`None` only for a blank
+string; total and linear) classifies an address the way git does: a
+`<transport>::<address>` first (`GitRemoteTransport`, its `address` parsed
+once more, never as a second transport), then any `://` (`GitRemoteUrl`:
+`scheme`, `user?`, `host`, `port?`, `path`), then a `:` before any `/`
+(`GitRemoteScp`: `user?`, `host`, `path` — so `github:o/n` is scp with host
+`github`, and a Windows `C:/repo` is scp with host `C`, exactly as git reads
+them), else `GitRemotePath`. Parts are **verbatim** — no lowercasing, no
+`.git` stripping, no shorthand expansion — and `GitRemote.format` inverts
+`parse`, with one exception: **a URL's password is never retained**. A URL's
+userinfo ends at the LAST `@`, stricter than git's own credential parser, so a
+password holding `@`, `/`, `?` or `#` is consumed whole; the accepted cost is
+that an `@` in a URL path is read as userinfo and the host is lost.
+`GitRemote.repositoryPath(remote)` is the display path (`o/n` for both
+`https://github.com/o/n.git/` and `git@host:o/n.git`) — not a canonical key:
+case is untouched and the host is dropped.
+
+**Credentials elsewhere are kept**: a token used as the URL user, a token in a
+query, whatever git reads as an scp path. `GitRemote.redact(remote)` masks
+every such position as `<redacted>` — the user, a URL query, an invalid scheme,
+anything that could be userinfo before the last `@` in an scp or path form, and
+a transport's unknown scheme — and re-parses, so the redacted form can come
+back as a different form. **Anything that logs or annotates a remote URL —
+`remoteUrl` and `configGet` answers included, which carry it raw — passes it
+through `GitRemote.redact` first.**
+
+## The redaction policy — argv and stderr
 
 Every `GitCommand` constructor returns a `GitInvocation`: the spawnable command
 **plus `redactedArgs`**, the same argv with every sensitive positional masked.
@@ -119,15 +151,20 @@ which positionals are sensitive:
 - `configSet`'s value is masked wholesale as `<redacted>` (a config value can
   be a secret).
 - URL positionals (`fetch`, `fetchUnshallow`, `lsRemote`, `push`, `pull`,
-  `submoduleAdd`, `submoduleSetUrl`, `remoteAdd`, `remoteSetUrl`) keep
-  everything **but** an embedded `userinfo@` credential — a plain remote name
-  or credential-free URL passes through untouched. The mask is greedy through
-  the LAST `@` before the first path slash, so a password containing a literal
-  `@` is masked whole.
+  `submoduleAdd`, `submoduleSetUrl`, `remoteAdd`, `remoteSetUrl`) go through
+  `GitRemote.redact` when they parse as a URL (transport-prefixed included);
+  every other form goes through a form-independent backstop that masks
+  whatever could be userinfo before the last `@`, so a typo'd credential URL
+  (`https:://u:tok@h/r`) is masked too. A plain remote name, a credential-free
+  URL and `git@host:path` pass through untouched; an `@` in a URL path
+  over-masks, by design.
 
 Only `redactedArgs` is persisted into `GitCommandError.args`, and `message`
-renders that redacted vector — **raw argv never survives into an error value**,
-including a pre-spawn guard refusal. The second half of the policy: span
+renders that redacted vector, a pre-spawn guard refusal included. The stored
+`GitCommandError.stderr` (and `detail`) is masked too: first the invocation's
+`scrub` (each exact secret of three characters or more), then the same backstop
+token by token; classification reads the raw stream. These masks are a
+backstop, not a licence to log raw URLs yourself — use `GitRemote.redact`. The second half of the policy: span
 annotations carry stable identifiers only (`cwd`, refs, keys, paths, remote
 names), never config values and never URLs. A constructor with no sensitive
 positional produces element-wise identical raw and redacted argvs.
@@ -246,6 +283,10 @@ reads only a few methods, faking the narrowed `Pick<GitShape, ...>` type via
   deliberate divergence from git's `orig -> new`); opt into git's form with
   `{ renames: "arrow" }`. No C-quoting of special-character paths — machine
   parsers should consume the decoded entries.
+- `remoteUrl` is the rewritten URL, not the configured one: a remote added as
+  `gh:me/repo` under an `insteadOf = gh:` rule reads
+  `https://github.com/me/repo`. Read `configGet(cwd, "remote.<name>.url")`
+  for the raw value.
 - `fetchAny` discards the tag attempt's failure when both attempts fail — only
   the plain fetch's error surfaces.
 - `submoduleStatus` is the one path-emitting parser with no `-z` mode to lean

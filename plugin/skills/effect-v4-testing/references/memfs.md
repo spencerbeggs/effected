@@ -89,6 +89,10 @@ const walker = {
 const entries = await walker.readDirectory("/ws/repo/src"); // hand `walker` to the code under test
 ```
 
+The sync port answers `realPath` (as `realpathSync` does: every link
+resolved, `ENOENT`/`ENOTDIR`/`ELOOP` with `syscall: "realpath"`), so code that
+canonicalizes through an injected sync port runs on the volume unchanged.
+
 Port members are standalone functions, not methods: pass `handle.sync.readFile`
 as a callback without binding. The promises `readFile` has node's overloads —
 bytes without an encoding, a string with `"utf8"` — so pass the encoding when
@@ -309,6 +313,13 @@ per UTF-16 unit with no Unicode normalization.
   `open` ↔ `stream`/`sink`), because the wrapper rebuilds the service through
   `FileSystem.make`. A count migrated from a spread wrapper, which only saw
   direct calls, can rise. Spy on the member the code actually calls.
+- **A write has two spellings; fault both.** `writeFile` and `open` are
+  separate core members: `writeFileString` derives from `writeFile`, while
+  `sink` and an opened file's `write`/`writeAll` go through `open`. A fault on
+  `writeFile` never reaches a `sink`-based writer, and a fault on `open` never
+  reaches `writeFileString`. When the test means "the disk refuses writes",
+  fault `writeFile` AND `open` (wrapping the handle with `wrapFile`), or the
+  code under test survives by taking the other route.
 - **Honest absence exposes a missing `makeDirectory`.** A writer that never
   creates its output directory passed on `mkdtemp` and on doubles that created
   parents silently; on memfs it fails `NotFound`. Fix the writer, or seed the
@@ -352,7 +363,8 @@ provided. Two shapes follow:
   assert that the defect is not the one under test. `AppStore.location`
   creates nothing and needs only `AppDirs` and `Path`, so it runs over memfs
   untouched.
-- **`App.layerTest(options)` is itself a memfs volume**: it provides
+- **`AppTest.layer(options)` (from `@effected/app/testing`) is itself a memfs
+  volume**: it provides
   `FileSystem`, `Path` and `MemoryFileSystem.Volume` beside the four
   control-plane services (`AppTestServices`), `options.files` seeds the
   volume, `AppDirs.ensure*` creates real directories on it, and

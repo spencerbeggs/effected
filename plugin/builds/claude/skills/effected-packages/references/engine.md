@@ -3,20 +3,35 @@
 Pattern: `design-patterns`.
 
 Platform-free primitives shared by every front end of an Effect v4 tool: carrier
-distribution identity, a remediation shape, launch-context resolution, and
+distribution identity, a remediation shape, launch-context resolution, a
+one-permit lane and scoped restores for process-global state, and
 transport-neutral process crash guards (`./guard`). Pure
 tier: `effect` is the only peer, and the only dependency of any kind — no
 `process`, no `node:` import, no platform package, not even as a devDependency
-edge into `src/`. There is no IO here and nothing to provide at the edge.
+edge into `src/`. What touches the process (`ProcessScope`) takes it as an
+argument. There is no IO here and nothing to provide at the edge.
 
-**Nothing in the kit may depend on this package except `@effected/mcp`.**
-`@effected/cli` must never depend on it — the two sit at the same
-layer, both consumed by a front end, never by each other.
+**Two kit packages depend on it:** `@effected/mcp` as a peer, and
+`@effected/cli` as a regular dependency, for `MainOptions.distribution`. A
+front end consumes both; engine depends on neither.
 
 ## Import
 
 ```ts
-import { CurrentDistribution, Distribution, DistributionField, LaunchContext, Remediation, distributionSuffix } from "@effected/engine";
+import {
+  CurrentDistribution,
+  Distribution,
+  DistributionField,
+  Exclusive,
+  ExclusiveTimeout,
+  LaunchContext,
+  ProcessScope,
+  ProcessScopeError,
+  Remediation,
+  distributionSuffix,
+  withDistribution,
+  withDistributionVersion,
+} from "@effected/engine";
 ```
 
 ```ts
@@ -41,10 +56,21 @@ re-exports it.
   not a `Context.Service`: it carries its own default (`Option.none()`), so a
   direct install needs no provision at all and reading it adds nothing to `R`. A
   front end's `main` provides it once, at the top of the program, with
-  `Effect.provideService(CurrentDistribution, Option.fromNullishOr(options.distribution))`.
+  `program.pipe(withDistribution(options.distribution))`. A CLI on
+  `CliRuntime.main` passes `distribution` there instead, which does both this
+  and the `--version` suffix.
+- **`withDistribution(distribution)`** — data-last: provides
+  `CurrentDistribution` to an effect, `Option.some` of a carrier and
+  `Option.none()` for `null` or `undefined`.
 - **`distributionSuffix(distribution)`** — the `via <name> <version>` suffix
   (with a leading space) a `--version` line or a startup log line appends;
   `""` for a direct install (`Option.none()`).
+- **`withDistributionVersion(distribution)(formatVersion)`** — decorates a
+  `(name, version) => string` line formatter (shaped like `effect/cli`'s
+  `CliOutput.Formatter["formatVersion"]`) so its line ends with
+  `distributionSuffix`. It **wraps** the formatter in effect — a coloured
+  default or a custom one — rather than replacing it; the suffix is computed
+  once, when the decorator is applied.
 - **`Remediation`** — `Schema.Struct({ hint, suggestedTool?, suggestedArgs? })` +
   its decoded type: what a caller — usually an agent — should do after a
   failure. The superset of two shapes consumers built independently: a
@@ -59,14 +85,65 @@ re-exports it.
     `${VAR}` placeholder — Claude Code passes `${CLAUDE_PROJECT_DIR}` through
     unsubstituted in some launch paths, and a path containing one is never what
     was meant.
+  - `LaunchContext.resolve(input: ResolveInput): Option<string>` — the same
+    walk without the `cwd` fallback, for any launch-supplied location (a
+    host's plugin data directory, then an app override), with the caller's
+    own fallback after it. `projectDir` is `resolve` plus `cwd`.
+  - `LaunchContext.usable(value: string | undefined): Option<string>` — the
+    guard both apply, for a single value (`LaunchContext.usable(argv[2])`):
+    the trimmed value, or `Option.none()` for `undefined`, empty,
+    whitespace-only or an unsubstituted placeholder.
   - `LaunchContext.isUnsubstituted(value: string): boolean` — whether a value
     still carries a literal `${VAR}` placeholder.
-  - `ProjectDirInput` — `{ argv?, env, keys, cwd }`, all caller-supplied.
+  - `ResolveInput` — `{ argv?, env, keys }`; `ProjectDirInput` extends it with
+    `cwd`. Both interfaces, all caller-supplied.
     Nothing inside `LaunchContext` reads `process`; `argv`/`env`/`cwd` come from
     the front end's own `main.ts`, which keeps the resolution rule shared and
     testable while the `process` read stays at the one place allowed to make
     it.
 
+- **`Exclusive`** — a one-permit lane for work that mutates process-global
+  state (the working directory, the environment, a patched stream), so two
+  requests never interleave it. `Exclusive.make: Effect<Exclusive>` — bind it
+  once; every call shares the lane. `lane.run(body, { timeout })` →
+  `Effect<A, E | ExclusiveTimeout, Exclude<R, Scope>>`; `timeout`
+  (`Duration.Input`) is required. The ordering contract, on every exit path:
+  waiting for the permit is interruptible (a request cancelled in the queue
+  never runs); once the permit is held the caller's interruption is masked
+  until the body ends (an MCP client cancel only drops the response); the
+  timeout interrupts the body alone; the body runs in its own `Scope`, whose
+  finalizers run before the permit is released and before the caller sees the
+  result, an `ExclusiveTimeout` (`timeout` formatted, `message`), or its own
+  deferred interruption. A body that ignores interruption delays the timeout
+  and the release until it settles — deliberately. **Not reentrant**: a `run`
+  on the same lane from inside a body waits on the permit its own caller holds
+  until the outer timeout fires, so the outer `run` fails `ExclusiveTimeout`;
+  call the inner work directly.
+- **`Exclusive.promise({ try, catch, abandon? })`** — `ExclusivePromiseOptions`:
+  `try(signal)` starts the promise, `catch(cause)` maps a rejection or a
+  synchronous throw. Its interruption aborts `signal` and then **waits for the
+  promise to settle**, where `Effect.promise`/`Effect.tryPromise` abandon it —
+  so a promise that ignores its signal and never settles holds the interrupt,
+  the lane's timeout and the permit forever. `abandon: true` (default `false`)
+  aborts and resumes at once, leaving the promise running unobserved; the
+  body's scope still closes before the permit is released. Choose it only for
+  a promise that cannot be stopped, and restore what it touches in a
+  finalizer.
+- **`ProcessScope`** — scoped changes to process-global state, restored when
+  the enclosing `Scope` closes. `ProcessScope.chdir(host: ProcessCwdHost,
+  directory)` → `Effect<void, ProcessScopeError, Scope>` (`host` is
+  `{ cwd(), chdir(dir) }`, which `process` satisfies; when the previous
+  directory was deleted, the change still happens and nothing is restored).
+  `ProcessScope.env(env, patch)` → `Effect<void, never, Scope>`: an `undefined`
+  patch value deletes the key, and a key absent before is deleted again on
+  restore, never assigned `undefined` (Node's `process.env` would store
+  `"undefined"`). `ProcessScopeError` has `reason: "ChdirFailed"`, `path`,
+  `message`, `cause`. Pair them with `Exclusive`: a scoped restore protects the
+  next request only when nothing else runs while the change is live. There is
+  no temp-directory helper: use core's `FileSystem.makeTempDirectory` in an
+  `Effect.acquireRelease` whose release ignores a failed removal —
+  `makeTempDirectoryScoped`'s release dies when the directory is already gone,
+  turning a successful body into a defect.
 - **`ProcessGuard`** (`./guard`) — `ProcessGuard.run(options): Promise<void>`
   installs `uncaughtException`/`unhandledRejection` listeners on a structural
   `ProcessGuardHost` (`on`, `emit`, `stderr`, `exit`; Node's `process`
@@ -179,9 +256,11 @@ unexpanded, it falls through to `MY_TOOL_PROJECT_DIR`, then
 - `LaunchContext.projectDir` never returns an empty string when `cwd` is
   non-empty (a property test pins this) — an env value that decodes to `""`
   or whitespace-only is treated as absent, not as "found but empty".
+- `Exclusive.run` inside another `run` on the same lane is a deadlock that
+  surfaces as the outer `ExclusiveTimeout`, not as an error naming the nesting.
 - `CurrentDistribution` is a reference, not a service: `yield* CurrentDistribution`
   works with nothing provided (`Option.none()` default) — do not reach for
-  `Layer.succeed` to give it a value; use `Effect.provideService`.
+  `Layer.succeed` to give it a value; use `withDistribution` (or `Effect.provideService`).
 - `ProcessGuard`'s report lines are fixed: `<label>: uncaughtException
   (<origin>): …`, `<label>: unhandledRejection: …`, `<label>: startup
   failed: …`. Only `label` is configurable.

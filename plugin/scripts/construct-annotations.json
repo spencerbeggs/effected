@@ -3,7 +3,8 @@
 		"App": "wire xdg dirs, store and cache together, the application control plane layer, directories-only layer so a cli opens databases per command, in-memory test layer seeded with files",
 		"AppCache": "the app's ttl cache database in the xdg cache directory, a second named cache under your own service key",
 		"AppConfig": "xdg-namespaced config file preset, load and save app config via config-file, decorated codec with its own error union",
-		"AppStore": "the app's migrated sqlite state database in the xdg state directory, multiple stores each under your own service key"
+		"AppStore": "the app's migrated sqlite state database in the xdg state directory, multiple stores each under your own service key",
+		"AppTest": "hermetic app layer for tests over an in-memory filesystem, from the testing entrypoint"
 	},
 	"cli": {
 		"Cancelled": "user quit a prompt or screen with esc or ctrl-c, exit 130",
@@ -54,7 +55,8 @@
 		"useGlyphs": "read the cli glyph set inside an ink component",
 		"useKeys": "dispatch ink keystrokes through a key table, chunk-safe",
 		"useTerminalSize": "usable terminal columns and rows inside an ink component",
-		"useTheme": "read the cli theme inside an ink component"
+		"useTheme": "read the cli theme inside an ink component",
+		"CliFormat": "add a --format flag, print one report as text, markdown or json"
 	},
 	"commands": {
 		"CommandFailedError": "handle a command that failed to spawn, exited non-zero, or timed out",
@@ -87,7 +89,20 @@
 		"VersionProbe": "ways to learn a tool's version: flag output, json path, or none",
 		"ToolPreference": "choose global or local copy when both installed, prefer global tool",
 		"makeToolDiscoverySync": "find a cli tool without an Effect runtime, synchronous probe for lint-staged handlers",
-		"nodeSpawnSync": "node child_process binding for synchronous tool probes"
+		"nodeSpawnSync": "node child_process binding for synchronous tool probes",
+		"ExecKind": "classify a launcher argv as npx, pnpm dlx, bunx or a local exec",
+		"ModuleResolution": "resolve a package from the project's own install, detect a stale install, load it lazily",
+		"PrebuiltBinary": "find the platform-specific binary an optionalDependencies fan-out installed",
+		"PrebuiltBinaryError": "no usable prebuilt binary for this platform, missing package or deleted binary",
+		"PrebuiltBinaryReason": "why prebuilt binary resolution failed, branch on the reason",
+		"ProcessLiveness": "current pid and hostname, check whether another process is still alive",
+		"ResolvedPrebuilt": "the resolved binary path, package and version for this platform",
+		"RunOnce": "run work once across concurrent processes with a lock file and done marker, stale lock takeover",
+		"nodePrebuiltHost": "node binding for prebuilt binary resolution from an anchor path",
+		"nodeProcessLiveness": "node binding for pid, hostname and a signal-0 liveness probe",
+		"nodeRunOnceFileSystem": "node fs binding for the run-once lock and done files",
+		"nodeRunOnceHost": "complete node host for synchronous run-once: fs, liveness, clock, sleep, nonce, spawn",
+		"nodeRunSync": "node child_process binding for a synchronous run-once command"
 	},
 	"config-file": {
 		"ConfigCodecError": "handle malformed config content, typed parse or stringify failure",
@@ -123,14 +138,22 @@
 		"LaunchContext": "resolve a launched tool's project directory from argv, env keys, then cwd, rejecting unsubstituted placeholders",
 		"ProcessGuard": "transport-neutral crash guards for an lsp or any server process before its graph loads, mark connected yourself, exit only before connect, startup failure exits 1, parse a crash-injection env value",
 		"Remediation": "what a caller, usually an agent, should do after a failure: hint plus optional suggested tool and args",
-		"distributionSuffix": "render the via name version suffix for a --version line or startup log, empty for a direct install"
+		"distributionSuffix": "render the via name version suffix for a --version line or startup log, empty for a direct install",
+		"Exclusive": "serialize work that mutates process-global state, one at a time with a timeout, abortable promises",
+		"ExclusiveTimeout": "exclusive lane body ran past its timeout",
+		"ProcessScope": "scoped chdir, env var and stream patches restored when the scope closes",
+		"ProcessScopeError": "changing the working directory or process state failed",
+		"withDistribution": "provide the carrier package name and version a tool was installed through",
+		"withDistributionVersion": "append the via carrier suffix to a --version line formatter"
 	},
 	"env": {
 		"Audience": "tell a human from an agent or CI job, override variable, flag-sourced",
 		"CurrentRuntimeEnv": "detect the running agent, CI provider and terminal once, from config",
 		"EnvOverride": "read a mode variable accepted per audience, report rejected values without logging",
 		"RuntimeEnv": "agent, CI and terminal detection snapshot, persist as plain JSON",
-		"TerminalEnv": "terminal colour level, hyperlink support, width and tty facts per stream, `FORCE_COLOR` precedence"
+		"TerminalEnv": "terminal colour level, hyperlink support, width and tty facts per stream, `FORCE_COLOR` precedence",
+		"ShellExports": "parse and write shell export files, read a session env file, strict bash dialect",
+		"ShellExportsError": "shell export text rejected, line, column and reason"
 	},
 	"git": {
 		"BranchEntry": "one local or remote-tracking branch, name sha and whether it is checked out",
@@ -163,7 +186,14 @@
 		"StatusEntry": "one entry of git status --porcelain, index and working-tree status codes and path",
 		"SubmoduleStatusEntry": "one line of git submodule status, decoded state current uninitialized outOfSync conflict",
 		"UnknownRefError": "a ref or ref range does not resolve to an object in the repository",
-		"WorktreeEntry": "one working tree from git worktree list, path head branch detached bare locked prunable"
+		"WorktreeEntry": "one working tree from git worktree list, path head branch detached bare locked prunable",
+		"GitRemote": "parse, format and redact git remote urls, scp addresses and paths, repository path",
+		"GitRemotePath": "a remote given as a filesystem path",
+		"GitRemoteScp": "a remote in scp-like user at host colon path form",
+		"GitRemoteTransport": "a remote routed through a transport helper, double-colon address",
+		"GitRemoteUrl": "a remote in url form with scheme, credentials, host, port and path",
+		"TreeIdentity": "compare working trees, same worktree, same repository or unrelated, physical toplevel",
+		"UpstreamBranch": "the current branch's upstream remote and branch, gone when deleted"
 	},
 	"github-actions": {
 		"Action": "run an action's main/pre/post entry point, compose the runtime, set exit code on failure",
@@ -604,7 +634,10 @@
 		"ToolFailure": "fold remediation into tool error message, truncate echoed caller values",
 		"ToolInputSchema": "find unknown tool arguments at every depth, object-root a union input",
 		"ToolOutputSchema": "object-root a union tool success schema so outputSchema is served",
-		"ToolRefusal": "declared tool refusal with remediation in the message, survives error scrubbing"
+		"ToolRefusal": "declared tool refusal with remediation in the message, survives error scrubbing",
+		"StdioCapture": "divert stdout and stderr writes in one async context, keep the stdio wire clean, null writable",
+		"ToolOutcome": "return expected tool errors as an ok false structured envelope agents can branch on",
+		"ToolReplay": "idempotent write tool replay by key, return the stored first result"
 	},
 	"npm": {
 		"BasicCredentialError": "handle a username and password that cannot become basic auth, colon in username",
@@ -986,7 +1019,13 @@
 		"compileAndExpand": "compile a glob string, expand against the filesystem, pattern to matching files",
 		"confineRelative": "confine an untrusted relative path to a base directory as an Effect, reject dot-dot escapes",
 		"confineRelativeResult": "confine an archive entry or manifest path under a base dir synchronously, zip slip guard, Result",
-		"descend": "expand a compiled glob pattern into files under a directory, prune node_modules"
+		"descend": "expand a compiled glob pattern into files under a directory, prune node_modules",
+		"descendEntries": "walk glob matches keeping each file's stat, record unreadable directories",
+		"descendEntriesSync": "synchronous glob walk keeping stats, over a caller-supplied fs port",
+		"descendSync": "synchronous glob walk over a caller-supplied fs port, no Effect runtime",
+		"nodeWalkerFileSystem": "node fs binding for the synchronous walker",
+		"nodeWalkerPath": "node path binding for the synchronous walker",
+		"nodeWalkerSyncOps": "node fs and path bindings to spread into a synchronous walk"
 	},
 	"workspaces": {
 		"CatalogSet": "pnpm catalog data, resolve a catalog: specifier to a version range",
@@ -1086,7 +1125,8 @@
 		"XdgConfig": "bridge xdg app directories into a config-file resolver, search path or native directory",
 		"XdgEnvError": "handle the HOME environment variable missing for xdg resolution",
 		"XdgPaths": "the resolved XDG_CONFIG_HOME/XDG_DATA_HOME and friends, home directory required",
-		"XdgPlatform": "the os platform values xdg resolution reasons about, darwin/win32/linux and others"
+		"XdgPlatform": "the os platform values xdg resolution reasons about, darwin/win32/linux and others",
+		"AppDirsSegmentError": "workspace key maps to an empty, dot or dot-dot directory segment"
 	},
 	"yaml": {
 		"CollectionStyle": "block vs flow collection style literal, {} and [] vs indented",

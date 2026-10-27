@@ -9,14 +9,21 @@
 | `AudienceKind` | TypeAlias | Who the output is for: a person at a terminal, an AI agent, or a CI job. | |
 | `AudienceOptions` | Interface | The options `Audience.layer` takes. | |
 | `AudienceShape` | Interface | The shape of the `Audience` service: one immutable value. | |
-| `CiName` | TypeAlias | The CI providers a `RuntimeEnv` names: `github-actions` when `GITHUB_ACTIONS` is set, `generic` for any other CI signal (`CI`, `CONTINUOUS_INTEGRATION`). | |
+| `CiName` | TypeAlias | The CI providers a `RuntimeEnv` names: std-env 4.3.0's provider set, less the runtime hosts and the rows std-env itself does not call CI, plus `generic` for any other CI signal (`CI`, `CONTINUOUS_INTEGRATION`). | |
+| `CiRun` | Interface | The coordinates of the CI run the process is part of, each read raw from the provider's documented variable. | |
 | `ColorLevel` | TypeAlias | The colour support of one output stream: none, 16 colours, 256 colours or truecolor. | |
 | `CurrentRuntimeEnv` | Class | The `RuntimeEnv` of the running process, as a service. | detect the running agent, CI provider and terminal once, from config |
 | `EnvOverride` | Class | Reads an environment variable that picks a mode within an audience. | read a mode variable accepted per audience, report rejected values without logging |
-| `RuntimeEnv` | Class | A snapshot of who is running the program: the agent, the CI, and the terminal. | agent, CI and terminal detection snapshot, persist as plain JSON |
+| `RuntimeEnv` | Class | A snapshot of who is running the program: the agent, the CI and its run, the terminal, and the session. | agent, CI and terminal detection snapshot, persist as plain JSON |
 | `RuntimeEnvOverrides` | Interface | The fields `CurrentRuntimeEnv.layerTest` can override. | |
+| `SessionSource` | TypeAlias | Where a `TerminalSession` came from, in priority order: `tmux` (`TMUX_PANE`), `screen` (`STY`), `windows-terminal` (`WT_SESSION`), `wezterm` (`WEZTERM_PANE`), `kitty` (`KITTY_WINDOW_ID`), `term-session` (`TERM_SESSION_ID`, set by iTerm2 and Terminal.app). | |
+| `ShellExports` | Class | Read and write shell export files in one strict dialect: what `printf 'export %s=%q\\n'` and `ShellExports.format` write, and Claude Code's `session-env` files use. | parse and write shell export files, read a session env file, strict bash dialect |
+| `ShellExportsError` | Class | The first place a text leaves the `ShellExports` dialect. The whole text is rejected: once one statement is not understood, no earlier variable can be trusted. | shell export text rejected, line, column and reason |
+| `ShellExportsErrorReason` | TypeAlias | Why `ShellExports.parseResult` or `ShellExports.parseBytesResult` rejected a text. | |
 | `StreamEnv` | Interface | What one output stream can do. | |
+| `TermProgram` | Interface | `TERM_PROGRAM` and `TERM_PROGRAM_VERSION`, verbatim and independent of each other: the raw values behind `RuntimeEnv.terminal`'s normalized name, kept even when the program is not a known terminal (`tmux`, `zed`). | |
 | `TerminalEnv` | Class | What the terminal can do: per-stream colour level, hyperlink support and columns, and the width to lay out at. | terminal colour level, hyperlink support, width and tty facts per stream, `FORCE_COLOR` precedence |
 | `TerminalEnvOptions` | Interface | The options `TerminalEnv.layer` takes. | |
 | `TerminalEnvShape` | Interface | The shape of the `TerminalEnv` service: a snapshot taken when the layer is built, not a live view. | |
 | `TerminalEnvTestOptions` | Interface | The options `TerminalEnv.layerTest` takes: fields to set over the quiet terminal. | |
+| `TerminalSession` | Interface | The terminal or multiplexer session the process runs in: the identity that survives a re-attach or a new shell in the same pane. | |
