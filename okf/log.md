@@ -1,5 +1,9 @@
 # Log
 
+## 2026-10-27
+
+* Updated Error handling standards
+
 ## 2026-10-25
 
 * Updated @effected/crypto

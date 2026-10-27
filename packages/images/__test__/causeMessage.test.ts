@@ -84,4 +84,57 @@ describe("causeMessage", () => {
 		for (let depth = 0; depth < 6; depth++) near = new Error("", { cause: near });
 		assert.strictEqual(causeMessage(near), "within reach");
 	});
+
+	it("never throws on a throwing `message` getter: that link has no text, the walk goes on", () => {
+		const hostile = {
+			get message(): string {
+				throw new Error("hostile message");
+			},
+			cause: new Error("deeper"),
+		};
+		assert.strictEqual(causeMessage(hostile), "deeper");
+		assert.strictEqual(
+			causeMessage({
+				get message(): string {
+					throw new Error("hostile message");
+				},
+			}),
+			undefined,
+		);
+	});
+
+	it("never throws on a throwing `cause` getter: the walk ends with what it found", () => {
+		const hostile = {
+			message: "near",
+			get cause(): unknown {
+				throw new Error("hostile cause");
+			},
+		};
+		assert.strictEqual(causeMessage(hostile), "near");
+	});
+
+	it("never throws on a throwing getter deep in the chain, keeping the text above it", () => {
+		const bad = {
+			get message(): string {
+				throw new Error("hostile message");
+			},
+			get cause(): unknown {
+				throw new Error("hostile cause");
+			},
+		};
+		const outer = new Error("top", { cause: new Error("middle", { cause: bad }) });
+		assert.strictEqual(causeMessage(outer), "top: middle");
+	});
+
+	it("never throws on a proxy whose `has` trap throws", () => {
+		const proxy = new Proxy(
+			{},
+			{
+				has() {
+					throw new Error("hostile has");
+				},
+			},
+		);
+		assert.isUndefined(causeMessage(proxy));
+	});
 });

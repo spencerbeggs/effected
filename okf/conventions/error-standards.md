@@ -1,7 +1,7 @@
 ---
 type: Convention
 title: Error handling standards
-description: The error-type preference order, where errors are defined, the Failure/Defect/Interrupt distinction, the rule that every declared error channel must be demonstrated fireable, Effect.try in place of a hand-written try/catch inside Effect code, and the one guarded cause-message read every error that renders a preserved cause copies verbatim.
+description: The error-type preference order, where errors are defined, the Failure/Defect/Interrupt distinction, the rule that every declared error channel must be demonstrated fireable, Effect.try in place of a hand-written try/catch inside Effect code, and the one guarded, never-throwing cause-message read every error that renders a preserved cause copies verbatim.
 status: stable
 stale_after: "2027-03-13T00:00:00Z"
 tags:
@@ -23,10 +23,10 @@ sources:
     resource: ../../packages/store/__test__/StoreLifecycle.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-24T02:11:16Z
+  at: 2026-10-27T00:55:20Z
 integrity:
   generated:
-    body: 235ededd8ed8b713
+    body: d5b31c099a5a91bd
 ---
 
 # Error handling standards
@@ -113,7 +113,10 @@ Neither innermost-wins nor nearest-wins keeps both, so the join is the one
 shape. Its two rules: a deeper text the accumulated message already contains
 is skipped, so a wrapper that spliced its cause's text does not repeat it;
 a deeper text that contains the accumulated message replaces it. The walk is
-bounded so a cyclic chain terminates.
+bounded so a cyclic chain terminates. Every property read is guarded: a
+`message` getter (or proxy trap) that throws leaves that link without text, and
+a `cause` getter that throws ends the walk with what was found, so the helper
+never throws.
 
 The helper is `src/internal/causeMessage.ts`, copied verbatim into every
 package that renders a cause, rather than imported: no pure zero-dependency
@@ -131,14 +134,30 @@ import { Predicate } from "effect";
 /** How many nodes of a cause chain the walk reads before stopping, so a cyclic chain cannot spin. */
 const CAUSE_DEPTH = 8;
 
-/** The message a single node carries: a thrown string, or a non-empty string `message` property. */
+/**
+ * The message a single node carries: a thrown string, or a non-empty string `message` property. A getter or
+ * proxy trap that throws is a node with no message.
+ */
 const messageAt = (node: unknown): string | undefined => {
-  const text = Predicate.isString(node)
-    ? node
-    : Predicate.hasProperty(node, "message") && Predicate.isString(node.message)
-      ? node.message
-      : undefined;
-  return text === undefined || text.trim() === "" ? undefined : text;
+  try {
+    const text = Predicate.isString(node)
+      ? node
+      : Predicate.hasProperty(node, "message") && Predicate.isString(node.message)
+        ? node.message
+        : undefined;
+    return text === undefined || text.trim() === "" ? undefined : text;
+  } catch {
+    return undefined;
+  }
+};
+
+/** The next link of the chain: a node's `cause`, or `undefined` when it has none or reading it throws. */
+const causeAt = (node: unknown): unknown => {
+  try {
+    return Predicate.hasProperty(node, "cause") ? node.cause : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 /**
@@ -154,6 +173,9 @@ const messageAt = (node: unknown): string | undefined => {
  * actionable detail, yet a wrapper that composes its own context must not
  * lose it either; so nothing is dropped, and a deeper text the nearer one
  * already contains is not repeated. The walk is bounded, so a cycle terminates.
+ *
+ * It never throws: every property read is guarded, so a `message` getter that throws leaves that link
+ * without text, and a `cause` getter that throws ends the walk with what was found so far.
  */
 export const causeMessage = (cause: unknown): string | undefined => {
   let message: string | undefined;
@@ -164,7 +186,7 @@ export const causeMessage = (cause: unknown): string | undefined => {
       if (message === undefined || text.includes(message)) message = text;
       else if (!message.includes(text)) message = `${message}: ${text}`;
     }
-    node = Predicate.hasProperty(node, "cause") ? node.cause : undefined;
+    node = causeAt(node);
   }
   return message;
 };
@@ -189,7 +211,9 @@ leading comment naming this section as the source; `cmp` across
   string, a chain joined nearest first, a chain whose nearer node already
   splices the deeper text (not repeated), a deeper text that contains the
   nearer one (replaces it), a chain whose deeper nodes are empty, a cycle,
-  and a message past the depth bound.
+  a message past the depth bound, and a throwing `message` getter, a throwing
+  `cause` getter and a throwing getter deep in the chain (each yields the
+  partial text, never a throw).
 - Two site-local `instanceof Error` reads remain in `@effected/schemastore-cli`
   outside the sites #1082 named, `src/AjvValidator.ts` (the ajv compile
   catch) and `src/cli/commands/validate.ts` (the `JSON.parse` catch); both
