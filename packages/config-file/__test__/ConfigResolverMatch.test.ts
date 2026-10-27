@@ -306,7 +306,7 @@ describe("ConfigResolver.upwardWalk ceiling (physical)", () => {
 			const found = yield* ConfigResolver.upwardWalk({
 				filename: "app.toml",
 				cwd: "/link/repo/pkg",
-				ceiling: Option.some("/real/repo"),
+				ceiling: "/real/repo",
 			}).resolve;
 			assert.isTrue(Option.isNone(found));
 		}).pipe(Effect.provide(linked)),
@@ -317,18 +317,17 @@ describe("ConfigResolver.upwardWalk ceiling (physical)", () => {
 			const found = yield* ConfigResolver.upwardWalk({
 				filenames: [".app.toml", "app.toml"],
 				cwd: "/link/repo/pkg",
-				ceiling: Option.some("/real/repo"),
+				ceiling: "/real/repo",
 			}).resolve;
 			assert.deepStrictEqual(found, Option.some("/link/repo/app.toml"));
 		}).pipe(Effect.provide(linkedWith({ "/real/repo/pkg/.keep": "", "/real/repo/app.toml": "" }))),
 	);
 
-	it.effect("Option.none() walks to the filesystem root, like no bound at all", () =>
+	it.effect("an omitted ceiling walks to the filesystem root, like no bound at all", () =>
 		Effect.gen(function* () {
 			const found = yield* ConfigResolver.upwardWalk({
 				filename: "app.toml",
 				cwd: "/link/repo/pkg",
-				ceiling: Option.none(),
 			}).resolve;
 			assert.deepStrictEqual(found, Option.some("/link/app.toml"));
 		}).pipe(Effect.provide(linked)),
@@ -337,8 +336,7 @@ describe("ConfigResolver.upwardWalk ceiling (physical)", () => {
 	it.effect("a relative ceiling is a defect, never absorbed into 'no config found'", () =>
 		Effect.gen(function* () {
 			const exit = yield* Effect.exit(
-				ConfigResolver.upwardWalk({ filename: "app.toml", cwd: "/link/repo/pkg", ceiling: Option.some("repo") })
-					.resolve,
+				ConfigResolver.upwardWalk({ filename: "app.toml", cwd: "/link/repo/pkg", ceiling: "repo" }).resolve,
 			);
 			assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause));
 		}).pipe(Effect.provide(linked)),

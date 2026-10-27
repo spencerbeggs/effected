@@ -196,13 +196,11 @@ export type UpwardWalkOptions = (
 				 *
 				 * @remarks
 				 * For a ceiling that may be spelled differently from the walk's own
-				 * path, above all `Git.repoRoot`'s symlink-resolved answer:
-				 * `ceiling: yield* Effect.option(git.repoRoot(cwd))`.
-				 * `Option.none()` walks to the filesystem root, so "no ceiling" is
-				 * stated rather than defaulted. A present relative ceiling is a
-				 * defect. Cannot be combined with `stopAt`.
+				 * path, above all `Git.repoRoot`'s symlink-resolved answer. Omit it
+				 * to walk to the filesystem root. A relative ceiling is a defect.
+				 * Cannot be combined with `stopAt`.
 				 */
-				readonly ceiling: Option.Option<string>;
+				readonly ceiling?: string;
 				readonly stopAt?: undefined;
 		  }
 	) & {
@@ -386,7 +384,7 @@ export class ConfigResolver {
 				const filenames = options.filenames ?? [options.filename];
 				const dirs =
 					options.ceiling !== undefined
-						? yield* Walker.ascendWithin(cwdOf(options.cwd), options.ceiling)
+						? yield* Walker.ascendWithin(cwdOf(options.cwd), Option.some(options.ceiling))
 						: yield* Walker.ascend(cwdOf(options.cwd), {
 								...(options.stopAt !== undefined && { stopAt: options.stopAt }),
 							});
