@@ -109,12 +109,22 @@ export interface McpGuardRunOptions<ROut, E> {
 	 * an `at` or `kind` outside these values, does nothing at all. Wire it to
 	 * an environment variable only a test sets.
 	 */
-	readonly injectCrash?:
-		| {
-				readonly at: "load" | "connected";
-				readonly kind: "uncaughtException" | "unhandledRejection";
-		  }
-		| undefined;
+	readonly injectCrash?: InjectCrash | undefined;
+}
+
+/**
+ * One test-only injected crash, as {@link McpGuard.parseInjectCrash} returns
+ * it and {@link McpGuardRunOptions.injectCrash} takes it: which point of the
+ * launch to raise it at, and which process event to raise. The same shape as
+ * `ProcessGuardInjection` from `@effected/engine/guard`.
+ *
+ * @public
+ */
+export interface InjectCrash {
+	/** `"load"`: before the server module loads. `"connected"`: once the server is serving. */
+	readonly at: "load" | "connected";
+	/** The process event raised to the guard's listeners. */
+	readonly kind: "uncaughtException" | "unhandledRejection";
 }
 
 /**
@@ -179,7 +189,7 @@ export class McpGuard {
 	 * McpGuard.parseInjectCrash("load:uncaughtException"); // => { at: "load", kind: "uncaughtException" }
 	 * ```
 	 */
-	static readonly parseInjectCrash: (value: string | undefined) => McpGuardRunOptions<unknown, unknown>["injectCrash"] =
+	static readonly parseInjectCrash: (value: string | undefined) => InjectCrash | undefined =
 		ProcessGuard.parseInjectCrash;
 
 	/** Install the guards, load the server, and launch it. Resolves once the server is launched. */

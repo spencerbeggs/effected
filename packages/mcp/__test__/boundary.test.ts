@@ -26,7 +26,8 @@ describe("mcp boundary", () => {
 							"console",
 							{ forbidImports: ["node:*", "@effect/platform*", "@effected/cli", "@effected/workspaces"] },
 						],
-						// The ./node subpath's one licence: StdioCapture imports node:async_hooks. Its host is
+						// The ./node subpath's one licence: StdioCapture imports node:async_hooks (the capture context)
+						// and node:stream (StdioCapture.nullWritable). Its host is
 						// structural, so it reads no `process` and the other rules hold there too.
 						allowRules: { forbidImports: ["StdioCapture.ts"] },
 					});
@@ -37,8 +38,8 @@ describe("mcp boundary", () => {
 					assert.deepStrictEqual(scan.violations, []);
 					assert.deepStrictEqual(
 						scan.waived.map((offence) => `${offence.file} ${offence.rule} ${offence.detail}`),
-						["StdioCapture.ts forbidImports node:async_hooks"],
-						"the licence waives exactly one import",
+						["StdioCapture.ts forbidImports node:async_hooks", "StdioCapture.ts forbidImports node:stream"],
+						"the licence waives exactly these two imports",
 					);
 				}),
 		);

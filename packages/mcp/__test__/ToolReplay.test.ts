@@ -2,6 +2,7 @@ import { assert, describe, it, layer } from "@effect/vitest";
 import { Effect, Layer, Option, Schema } from "effect";
 import { McpProtocol, Tool, Toolkit } from "effect/ai";
 import { KeyValueStore } from "effect/persistence";
+import type { ToolReplayStore } from "../src/index.js";
 import { McpStdio, McpToolkit, ToolOutcome, ToolReplay } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
 
@@ -130,6 +131,74 @@ describe("ToolReplay.wrap", () => {
 			),
 		),
 	);
+
+	it.effect("a given store port is used instead of KeyValueStore, which leaves R", () =>
+		Effect.gen(function* () {
+			const rows = new Map<string, string>();
+			const writes: Array<string> = [];
+			const store: ToolReplayStore = {
+				get: (key) => Effect.sync(() => rows.get(key)),
+				set: (key, value) =>
+					Effect.sync(() => {
+						writes.push(key);
+						rows.set(key, value);
+					}),
+			};
+			const { handler, runs } = makeHandler();
+			const create = ToolReplay.wrap({
+				tool: "create",
+				success: Result,
+				key: (params: Params) => Option.fromUndefinedOr(params.requestId),
+				store,
+			})(handler);
+			// No KeyValueStore is provided anywhere: R is `never`, and a read of it would die.
+			const first: Effect.Effect<typeof Result.Type, "typed", never> = create({ requestId: "p" });
+			assert.deepStrictEqual(yield* first, { ok: true, id: 1 });
+			assert.deepStrictEqual(yield* create({ requestId: "p" }), { ok: true, id: 1, _idempotentReplay: true });
+			assert.strictEqual(runs(), 1);
+			assert.deepStrictEqual(writes, [ToolReplay.storeKey("create", "p")]);
+			assert.deepStrictEqual(JSON.parse(rows.get(ToolReplay.storeKey("create", "p")) ?? "null"), { ok: true, id: 1 });
+		}),
+	);
+
+	it.effect("a failing store port never fails the call", () =>
+		Effect.gen(function* () {
+			const { handler, runs } = makeHandler();
+			const create = ToolReplay.wrap({
+				tool: "create",
+				success: Result,
+				key: (params: Params) => Option.fromUndefinedOr(params.requestId),
+				store: { get: () => Effect.fail("down"), set: () => Effect.fail("down") },
+			})(handler);
+			assert.deepStrictEqual(yield* create({ requestId: "x" }), { ok: true, id: 1 });
+			assert.deepStrictEqual(yield* create({ requestId: "x" }), { ok: true, id: 2 });
+			assert.strictEqual(runs(), 2);
+		}),
+	);
+
+	it.effect("a KeyValueStore value satisfies the port as is", () =>
+		Effect.gen(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore;
+			const { handler, runs } = makeHandler();
+			const create = ToolReplay.wrap({
+				tool: "create",
+				success: Result,
+				key: (params: Params) => Option.fromUndefinedOr(params.requestId),
+				store: kv,
+			})(handler);
+			yield* create({ requestId: "k" });
+			assert.deepStrictEqual(yield* create({ requestId: "k" }), { ok: true, id: 1, _idempotentReplay: true });
+			assert.strictEqual(runs(), 1);
+		}).pipe(Effect.provide(KeyValueStore.layerMemory)),
+	);
+
+	it("without a store, KeyValueStore stays in R", () => {
+		const { handler } = makeHandler();
+		const create = wrapWith(handler);
+		// @ts-expect-error -- R is KeyValueStore when no store is given
+		const run: Effect.Effect<typeof Result.Type, "typed", never> = create({ requestId: "r" });
+		assert.isDefined(run);
+	});
 
 	it("a tool name containing the key separator is a wiring defect at wrap time", () => {
 		assert.throws(() => ToolReplay.wrap({ tool: "a:b", success: Result, key: () => Option.none() }), /contains ":"/);

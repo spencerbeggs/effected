@@ -5,7 +5,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Fiber, Layer } from "effect";
 import { ChildProcess } from "effect/process";
-import type { McpGuardHost, McpGuardPolicy, McpGuardRunOptions } from "../src/guard.js";
+import type { InjectCrash, McpGuardHost, McpGuardPolicy, McpGuardRunOptions } from "../src/guard.js";
 import { McpGuard } from "../src/guard.js";
 import { McpProcess } from "../src/testing.js";
 
@@ -72,6 +72,14 @@ describe("McpGuard.parseInjectCrash", () => {
 		});
 		for (const value of [undefined, "", "load:boom", "later:uncaughtException", "load:uncaughtException:x"])
 			assert.isUndefined(McpGuard.parseInjectCrash(value), String(value));
+	});
+
+	it("returns the named InjectCrash, which is what injectCrash takes", () => {
+		const parsed: InjectCrash | undefined = McpGuard.parseInjectCrash("load:uncaughtException");
+		const option: McpGuardRunOptions<unknown, unknown>["injectCrash"] = parsed;
+		// Compile-time both ways: the option's type is exactly the named one.
+		const back: InjectCrash | undefined = option;
+		assert.deepStrictEqual(back, { at: "load", kind: "uncaughtException" });
 	});
 });
 

@@ -45,6 +45,25 @@ export type ToolOutcomeFailures<Cases> = {
 }[keyof Cases];
 
 /**
+ * {@link ToolOutcome.envelope}'s options: annotations for the `ok: false`
+ * member, so a served `outputSchema` can name and describe it.
+ *
+ * @public
+ */
+export interface ToolOutcomeEnvelopeOptions {
+	/**
+	 * The failure member's schema identifier. Core's JSON Schema output then
+	 * emits it once under `$defs` by this name and refers to it with `$ref`.
+	 */
+	readonly identifier?: string;
+	/**
+	 * The failure member's description, replacing the default one (which says
+	 * that `ok: false` carries an expected error to branch on).
+	 */
+	readonly description?: string;
+}
+
+/**
  * The `ok: false` structured-outcome envelope: an expected error an agent
  * should branch on, returned on a tool's success channel so it reaches the
  * client as `structuredContent` instead of message text.
@@ -92,7 +111,9 @@ export class ToolOutcome {
 	private constructor() {}
 
 	/** `{ ok: true }` as schema fields, to spread into each success member. */
-	static readonly ok = { ok: Schema.Literal(true) } as const;
+	static readonly ok = {
+		ok: Schema.Literal(true).annotate({ description: "true: the call succeeded." }),
+	} as const;
 
 	/**
 	 * The schema of one envelope error: `_tag`, {@link ToolFailure.fields} and
@@ -103,21 +124,43 @@ export class ToolOutcome {
 		tag: Tag,
 		fields?: Fields & { readonly [K in "_tag" | "message" | "remediation"]?: never },
 	): Schema.Struct<{ readonly _tag: Schema.Literal<Tag> } & typeof ToolFailure.fields & Fields> =>
-		Schema.Struct({ _tag: Schema.Literal(tag), ...ToolFailure.fields, ...(fields as Fields) });
+		Schema.Struct({
+			_tag: Schema.Literal(tag).annotate({ description: "The error's tag: the value to branch on." }),
+			...ToolFailure.fields,
+			...(fields as Fields),
+		});
 
 	/**
 	 * A tool's success schema: `success`, or `{ ok: false, error }` where `error`
 	 * is one of `errors`. Object-rooted with {@link ToolOutputSchema.objectRooted},
 	 * so core serves its `outputSchema` on every protocol revision.
+	 *
+	 * @remarks
+	 * The failure member, its `ok` and its `error` carry default descriptions.
+	 * `options` names the member (`identifier`, served once under `$defs`) or
+	 * replaces its description.
 	 */
 	static readonly envelope = <S extends Schema.Top, const Errors extends ReadonlyArray<Schema.Top>>(
 		success: S,
 		errors: Errors,
+		options?: ToolOutcomeEnvelopeOptions,
 	): Schema.Union<
 		readonly [S, Schema.Struct<{ readonly ok: Schema.Literal<false>; readonly error: Schema.Union<Errors> }>]
 	> =>
 		ToolOutputSchema.objectRooted(
-			Schema.Union([success, Schema.Struct({ ok: Schema.Literal(false), error: Schema.Union(errors) })] as const),
+			Schema.Union([
+				success,
+				Schema.Struct({
+					ok: Schema.Literal(false).annotate({
+						description: "false: the call hit an expected error, described in error.",
+					}),
+					error: Schema.Union(errors).annotate({ description: "The expected error. Branch on its _tag." }),
+				}).annotate({
+					description:
+						options?.description ?? "An expected error the caller should branch on, returned in place of a result.",
+					...(options?.identifier === undefined ? {} : { identifier: options.identifier }),
+				}),
+			] as const),
 		);
 
 	/** One `ok: false` value, for a handler that decides on a failure without catching an error. */

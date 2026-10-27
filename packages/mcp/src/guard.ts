@@ -6,6 +6,7 @@
  * @packageDocumentation
  */
 export {
+	type InjectCrash,
 	McpGuard,
 	type McpGuardHost,
 	type McpGuardPolicy,

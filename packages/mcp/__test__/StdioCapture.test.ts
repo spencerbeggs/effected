@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import { assert, describe, it } from "@effect/vitest";
 import { Deferred, Effect, Fiber } from "effect";
 import { vi } from "vitest";
@@ -245,6 +246,38 @@ describe("sinks", () => {
 			await new Promise<void>((resolve) => {
 				StdioCapture.discard.write("x", "utf8", () => resolve());
 			});
+		}),
+	);
+
+	it.effect("nullWritable is a pipe target that takes setMaxListeners, as a runner's logger stream is used", () =>
+		Effect.promise(async () => {
+			const sink = StdioCapture.nullWritable();
+			// The shape of vitest's forks worker: bump the listener cap, then pipe without ending the target.
+			sink.setMaxListeners(1 + sink.getMaxListeners());
+			const source = Readable.from(["a", "b", "c"]);
+			source.pipe(sink, { end: false });
+			await new Promise<void>((resolve, reject) => {
+				source.on("end", resolve);
+				source.on("error", reject);
+			});
+			assert.isTrue(sink.writable, "an end:false pipe leaves the target open");
+			await new Promise<void>((resolve) => sink.write("more", () => resolve()));
+			const ended = Readable.from(["z"]);
+			ended.pipe(sink);
+			await new Promise<void>((resolve) => sink.on("finish", resolve));
+			assert.isFalse(sink.writable, "a default pipe ends it, so each consumer builds its own");
+			assert.notStrictEqual(StdioCapture.nullWritable(), sink);
+		}),
+	);
+
+	it.effect("nullWritable is also a capture sink: a captured write lands nowhere and its callback fires", () =>
+		Effect.promise(async () => {
+			const { host, wire } = makeHost();
+			const sink: StdioSink = StdioCapture.nullWritable();
+			await StdioCapture.install(host).run({ stdout: sink }, async () => {
+				await new Promise<void>((resolve) => host.stdout.write("hidden\n", () => resolve()));
+			});
+			assert.deepStrictEqual(wire, []);
 		}),
 	);
 

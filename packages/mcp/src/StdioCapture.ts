@@ -1,11 +1,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { Writable } from "node:stream";
 import type { Context } from "effect";
 import { Effect, Fiber } from "effect";
 
 /**
  * Anything with a replaceable `write`: a patched stream (Node's
  * `process.stdout` and `process.stderr`) and a sink captured writes go to (a
- * Node `Writable`, {@link StdioCapture.discard}, {@link StdioCapture.toStderr}).
+ * Node `Writable`, {@link StdioCapture.nullWritable}, {@link StdioCapture.discard},
+ * {@link StdioCapture.toStderr}).
  *
  * @remarks
  * A sink's `write` receives exactly the arguments the patched stream's
@@ -146,8 +148,14 @@ export class StdioCapture {
 	};
 
 	/**
-	 * A sink that drops every write and calls the write's callback, as a
-	 * null `Writable` would.
+	 * A write-only sink that drops every write and calls the write's callback.
+	 *
+	 * @remarks
+	 * It is a {@link StdioSink}, not a stream: it has no `on`, `pipe` target
+	 * protocol or `setMaxListeners`, so it cannot stand in where a library
+	 * expects a `Writable` (a test runner's logger stream that worker output
+	 * is piped into, for one). Use {@link StdioCapture.nullWritable} there; it
+	 * serves as a capture sink too.
 	 */
 	static readonly discard: StdioSink = {
 		write: (_chunk: unknown, ...rest: Array<unknown>): boolean => {
@@ -156,6 +164,22 @@ export class StdioCapture {
 			return true;
 		},
 	};
+
+	/**
+	 * A new Node `Writable` that drops everything written to it: a real stream,
+	 * so it works as a `pipe` target, takes `setMaxListeners`, emits `drain`
+	 * and `finish`, and is also a {@link StdioSink} for a capture.
+	 *
+	 * @remarks
+	 * A factory, not a shared value: a stream ends once, and a source piped in
+	 * with the default `{ end: true }` ends its destination. Build one per
+	 * consumer.
+	 */
+	static readonly nullWritable = (): Writable =>
+		new Writable({
+			decodeStrings: false,
+			write: (_chunk, _encoding, callback) => callback(),
+		});
 
 	/**
 	 * Runs `evaluate` with its writes captured, for code that is not Effect.

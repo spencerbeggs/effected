@@ -49,14 +49,14 @@ that ships `./guard`.
 (`unknownKeys`, `formatUnknownKeys`, `objectRooted`), `ToolOutputSchema`
 (`objectRooted`), `ToolRefusal` (`refuse`), `ToolOutcome` (`ok`, `error`,
 `envelope`, `failure`, `catchAsEnvelope`, `isFailure`), `ToolReplay`
-(`marker`, `success`, `storeKey`, `wrap`), plus the `ToolOutcomeErrorInput`,
-`ToolOutcomeFailure`, `ToolOutcomeFailures`, `ToolReplayOptions`,
+(`marker`, `success`, `storeKey`, `wrap`), plus the `ToolOutcomeEnvelopeOptions`, `ToolOutcomeErrorInput`,
+`ToolOutcomeFailure`, `ToolOutcomeFailures`, `ToolReplayOptions`, `ToolReplayStore`,
 `McpStdioOptions`, `McpLaunchOptions`, `McpToolkitOptions`, `UnionHandlerOptions`, `UnionTool`,
 `UnionToolOptions`, `UnknownKeysLevel` and `FormatUnknownKeysOptions`
 types. `McpToolkit` also carries `unionTool` and `unionHandler`.
 
 `@effected/mcp/guard` (`src/guard.ts`): `McpGuard` (`run`, and `parseInjectCrash`, which is `ProcessGuard.parseInjectCrash`), plus the
-`McpGuardHost`, `McpGuardPolicy`, `McpGuardedServer` and
+`InjectCrash` (its return), `McpGuardHost`, `McpGuardPolicy`, `McpGuardedServer` and
 `McpGuardRunOptions` types. **Its only static runtime import is
 `@effected/engine/guard`, which itself imports nothing**: the guards must
 be listening before `effect` or the server graph evaluates. `McpGuard.run`
@@ -69,11 +69,14 @@ lives in `src/internal/guardLaunch.ts` behind a dynamic `import()`;
 `@effected/engine/guard` to zero packages), so a static import added to
 `McpGuard.ts` fails it.
 
-`@effected/mcp/node` (`src/node.ts`): `StdioCapture` (`install`, `discard`;
+`@effected/mcp/node` (`src/node.ts`): `StdioCapture` (`install`, `discard`, `nullWritable`;
 instances carry `toStderr`, `run`, `capture`), plus the `StdioCaptureHost`,
 `StdioCaptureOptions` and `StdioSink` types (`StdioSink` is both a
-patched stream and a sink). Node-only
-because of `node:async_hooks`; `entrypoints.test.ts` pins that neither `.`
+patched stream and a sink). `discard` is a write-only sink;
+`nullWritable()` is a fresh real `Writable` (a pipe target that takes
+`setMaxListeners`), one per consumer because a pipe can end it. Node-only
+because of `node:async_hooks` and `node:stream` (the boundary test waives
+exactly those two imports in `StdioCapture.ts`); `entrypoints.test.ts` pins that neither `.`
 nor `./testing` reaches it. `install(process)` patches each stream's
 `write` once per process: the registry (one `AsyncLocalStorage` plus each
 stream's original `write`) lives behind a `globalThis` `Symbol.for` key
@@ -234,8 +237,12 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   stays in E), so use it inline in the pipe: E is inferred from the piped
   effect. `ToolReplay` skips storing exactly what `ToolOutcome.isFailure`
   accepts.
-- **`ToolReplay` requires core's `KeyValueStore` in `R`** (never a kit store
-  service), stores through the JSON codec `KeyValueStore.toSchemaStore`
+- **`ToolReplay` requires core's `KeyValueStore` in `R` unless `store` is
+  given** (never a kit store service). `ToolReplayStore` is just `{ get, set }`,
+  a caller-supplied port (`get` answers `undefined`, the `KeyValueStore.get`
+  contract, so a `KeyValueStore` value fits as is); a given store drops
+  `KeyValueStore` from `R` through a conditional on the `Store` type
+  parameter. It stores through the JSON codec `KeyValueStore.toSchemaStore`
   uses, built once per `wrap` rather than per call, under `<tool>:<key>`, treats every store or decode failure as a miss or a
   skipped write (debug-logged), never stores an `ok: false` value, and
   throws at wrap time on a tool name containing `:`. Replay, not

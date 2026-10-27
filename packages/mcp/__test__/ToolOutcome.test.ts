@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Schema } from "effect";
 import { McpProtocol, Tool, Toolkit } from "effect/ai";
-import { McpStdio, McpToolkit, ToolOutcome } from "../src/index.js";
+import { McpStdio, McpToolkit, ToolOutcome, ToolReplay } from "../src/index.js";
 import { McpHarness, McpToolAudit } from "../src/testing.js";
 
 class GoalNotFound extends Schema.TaggedError<GoalNotFound>()("GoalNotFound", { id: Schema.Number }) {}
@@ -178,4 +178,82 @@ describe("ToolOutcome.isFailure", () => {
 			assert.isFalse(ToolOutcome.isFailure(value), JSON.stringify(value));
 		}
 	});
+});
+
+interface SchemaNode {
+	readonly description?: string;
+	readonly $ref?: string;
+	readonly anyOf?: ReadonlyArray<SchemaNode>;
+	readonly properties?: Readonly<Record<string, SchemaNode>>;
+	readonly $defs?: Readonly<Record<string, SchemaNode>>;
+}
+
+const NamedSuccess = ToolReplay.success(Schema.Struct({ ...ToolOutcome.ok, name: Schema.String }));
+const NamedTool = Tool.make("named", {
+	description: "An envelope whose failure member is named and described.",
+	parameters: Schema.Struct({ id: Schema.Number }),
+	success: ToolOutcome.envelope(NamedSuccess, [NotFoundSchema], {
+		identifier: "GoalErrorEnvelope",
+		description: "A goal lookup that missed.",
+	}),
+});
+const PlainTool = Tool.make("plain", {
+	description: "An envelope with the default failure annotations.",
+	parameters: Schema.Struct({ id: Schema.Number }),
+	success: ToolOutcome.envelope(NamedSuccess, [NotFoundSchema]),
+});
+const DescribedKit = Toolkit.make(NamedTool, PlainTool);
+const describedServer = McpToolkit.layer(DescribedKit).pipe(
+	Layer.provide(
+		DescribedKit.toLayer({
+			named: () => Effect.succeed({ ok: true as const, name: "n" }),
+			plain: () => Effect.succeed({ ok: true as const, name: "p" }),
+		}),
+	),
+	Layer.provideMerge(McpStdio.layer({ name: "described", version: "0.0.0" })),
+);
+
+describe("ToolOutcome served descriptions", () => {
+	for (const protocol of [McpProtocol.v2025_11_25, McpProtocol.v2025_06_18, McpProtocol.v2026_07_28]) {
+		it.effect(
+			`${protocol.protocolVersion}: envelope options name the failure member; the shared fields are described`,
+			() =>
+				Effect.gen(function* () {
+					const harness = yield* McpHarness.make(describedServer, { protocol });
+					yield* harness.initialize;
+					const tools = yield* harness.listTools;
+					assert.deepStrictEqual(McpToolAudit.check(tools, { input: "closed", requireOutputSchema: true }), []);
+					const output = (name: string): SchemaNode =>
+						tools.find((tool) => tool.name === name)?.outputSchema as unknown as SchemaNode;
+
+					const named = output("named");
+					assert.strictEqual(
+						named.anyOf?.[1]?.$ref,
+						"#/$defs/GoalErrorEnvelope",
+						"the identifier is served as a $defs name",
+					);
+					const failure = named.$defs?.GoalErrorEnvelope;
+					assert.strictEqual(failure?.description, "A goal lookup that missed.");
+					assert.strictEqual(
+						failure?.properties?.ok?.description,
+						"false: the call hit an expected error, described in error.",
+					);
+					assert.strictEqual(failure?.properties?.error?.description, "The expected error. Branch on its _tag.");
+					const error = failure?.properties?.error?.anyOf?.[0]?.properties;
+					assert.strictEqual(error?._tag?.description, "The error's tag: the value to branch on.");
+					assert.strictEqual(error?.message?.description, "What went wrong, as one plain sentence.");
+					assert.match(error?.remediation?.description ?? "", /^What to do next/);
+					const success = named.anyOf?.[0]?.properties;
+					assert.strictEqual(success?.ok?.description, "true: the call succeeded.");
+					assert.match(success?._idempotentReplay?.description ?? "", /replays an earlier call/);
+
+					const plain = output("plain");
+					assert.isUndefined(plain.$defs, "no identifier, no $defs");
+					assert.strictEqual(
+						plain.anyOf?.[1]?.description,
+						"An expected error the caller should branch on, returned in place of a result.",
+					);
+				}),
+		);
+	}
 });

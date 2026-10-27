@@ -45,8 +45,17 @@ export class ToolFailure {
 	/** The larger cap for a value the engine produced (a path, a diagnostic), not one a caller typed. */
 	static readonly ENGINE_ECHO_LIMIT: number = 2000;
 
-	/** The `message` and `remediation` fields to spread into a consumer's `Schema.TaggedError`. */
-	static readonly fields = { message: Schema.String, remediation: Remediation } as const;
+	/**
+	 * The `message` and `remediation` fields to spread into a consumer's
+	 * `Schema.TaggedError`, each carrying a default `description` that a served
+	 * JSON Schema (a tool's `outputSchema`) shows the agent.
+	 */
+	static readonly fields = {
+		message: Schema.String.annotate({ description: "What went wrong, as one plain sentence." }),
+		remediation: Remediation.annotate({
+			description: "What to do next: a hint, and optionally the tool to call next and the arguments to call it with.",
+		}),
+	} as const;
 
 	/**
 	 * `"<raw> <hint> Try <suggestedTool>."`, dropping any empty part, so a
