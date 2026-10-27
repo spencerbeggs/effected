@@ -1,5 +1,20 @@
 # @effected/engine
 
+## 0.9.0
+
+### Features
+
+- `Exclusive` runs a handler under a one-permit, uninterruptible-once-started gate with a required timeout. `Exclusive.promise` takes `abandon: true` for a promise that ignores its abort signal; the default aborts and awaits.
+- `ProcessScope` (`chdir`, `env`) restores process state on every exit.
+- `LaunchContext.usable` and `LaunchContext.resolve` share one guard that rejects empty and unsubstituted `${…}` values.
+- `withDistribution` and `withDistributionVersion` wrap a hand-wired program with the distribution carrier. [#1111][#1111]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1111]: https://github.com/spencerbeggs/effected/pull/1111
+
 ## 0.8.0
 
 ### Maintenance

@@ -1,5 +1,11 @@
 # @effected/schemastore
 
+## 0.26.3
+
+### Maintenance
+
+- Released in lockstep with `@effected/schemastore-cli@0.26.3` (fixed version group).
+
 ## 0.26.2
 
 ### Dependencies
@@ -819,8 +825,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | :-- | :-- | :-- | :-- | :-- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Patch Changes
-
 [#389]: https://github.com/spencerbeggs/effected/pull/389
 
 ## 0.3.0
@@ -935,8 +939,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | :-- | :-- | :-- | :-- | :-- | --- |
   | ajv | dependency | added | — | ^8.20.0 | [#263][#263] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Minor Changes
 
 [#263]: https://github.com/spencerbeggs/effected/pull/263
 

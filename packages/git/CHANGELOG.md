@@ -1,5 +1,23 @@
 # @effected/git
 
+## 0.26.0
+
+### Breaking Changes
+
+- Redaction of command arguments now goes through the same parser. A URL such as `https://host:8080/a@b` is over-redacted to `https://<redacted>@b`, and query strings in URL arguments are masked. If you derive a persisted key from a redacted remote, compare it against stored keys before upgrading. [#1111][#1111]
+
+### Features
+
+- `Git.treeIdentity(cwd)` returns the physical toplevel and common dir in one call, and `TreeIdentity.relation(a, b)` answers `same-tree`, `sibling-worktree` or `different-repo`.
+- `Git.upstream(cwd)` returns an `UpstreamBranch` with `ref`, `name`, `gone`, `ahead` and `behind`. A deleted upstream reports `gone: true` instead of failing as an unknown ref.
+- `GitRemote` parses a remote into `GitRemoteUrl`, `GitRemoteScp`, `GitRemotePath` or `GitRemoteTransport` following git's own classification, with `format`, `redact` and `repositoryPath`. A URL password is never retained.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1111]: https://github.com/spencerbeggs/effected/pull/1111
+
 ## 0.25.1
 
 ### Refactoring
@@ -461,8 +479,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | :-- | :-- | :-- | :-- | :-- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Minor Changes
-
 [#389]: https://github.com/spencerbeggs/effected/pull/389
 
 ## 0.8.0
@@ -642,8 +658,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | --- | --- | --- | --- | --- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Patch Changes
-
 [#162]: https://github.com/spencerbeggs/effected/pull/162
 
 ## 0.4.1
@@ -653,8 +667,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | --- | --- | --- | --- | --- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Patch Changes
 
 [#122]: https://github.com/spencerbeggs/effected/pull/122
 

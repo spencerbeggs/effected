@@ -1,5 +1,29 @@
 # @effected/workspaces
 
+## 0.39.1
+
+### Bug Fixes
+
+- The internal cause-message helper no longer throws when an error's `message` or `cause` getter (or a proxy trap) throws; that node is read as having no message. [#1111][#1111]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/git | dependency | updated | 0.25.1 | 0.26.0 |
+| @effected/glob | dependency | updated | 0.14.0 | 0.15.0 |
+| @effected/jsonc | dependency | updated | 0.20.0 | 0.20.1 |
+| @effected/npm | dependency | updated | 0.27.0 | 0.27.1 |
+| @effected/package-json | dependency | updated | 0.26.0 | 0.26.1 |
+| @effected/walker | dependency | updated | 0.20.1 | 0.21.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1111]: https://github.com/spencerbeggs/effected/pull/1111
+
 ## 0.39.0
 
 ### Features
@@ -1327,8 +1351,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | --- | --- | --- | --- | --- | --- |
   | @pnpm/catalogs.config | dependency | updated | ^1100.0.0 | ^1100.0.5 | [#400][#400] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Patch Changes
-
 [#400]: https://github.com/spencerbeggs/effected/pull/400
 
 ## 0.14.0
@@ -1350,8 +1372,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | :-- | :-- | :-- | :-- | :-- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Patch Changes
 
 [#389]: https://github.com/spencerbeggs/effected/pull/389
 
@@ -1819,8 +1839,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | --- | --- | --- | --- | --- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Patch Changes
-
 [#162]: https://github.com/spencerbeggs/effected/pull/162
 
 ## 0.6.1
@@ -1985,8 +2003,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | --- | --- | --- | --- | --- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Patch Changes
-
 [#122]: https://github.com/spencerbeggs/effected/pull/122
 
 ## 0.4.0
@@ -2069,8 +2085,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | --- | --- | --- | --- | --- | --- |
   | @effected/semver | dependency | added | — | 0.1.0 | [#106][#106] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Patch Changes
 
 [#106]: https://github.com/spencerbeggs/effected/pull/106
 

@@ -1,5 +1,44 @@
 # @effected/cli
 
+## 0.23.0
+
+### Breaking Changes
+
+- `FailureDetails` gains a required `exitCode`, a type break for code that builds the literal itself. A `render` hook reads the tag from the `error` argument it already receives.
+- `env.displayPath` now reaches `Doc.print`, live-view frames, a live view's `final` document and `CliUi.context`, not only the failure report. Paths in normal output change if you set it.
+- cli now depends on `@effected/engine` and `@effected/commands` as regular dependencies. `MainOptions.distribution` provides engine's `CurrentDistribution` and appends the carrier to `--version`.
+
+### Features
+
+- `Fmt` gains `pad`, `stripAnsi`, `isEscapeOnly`, `ranges`, `describe` and `causeMessage`.
+- `CliUi.routeStream` routes a foreign stream line by line above a live view, and `CliUi.liveDetached` hosts a live view from code not built on Effect, with `render` allowed to be an Effect resolved under the same env layer.
+- `CliLog.parseLevel(text)` returns an `Option<LogLevel>`.
+- `CliRuntime.main` accepts `exitCodes` and `displayPath: { relativeTo }`.
+- `CliFormat` provides a shared `--format` flag paired with `Doc.print`.
+
+### Bug Fixes
+
+- `CliFailure.toDoc` never throws: an error whose `stack`, `message`, `cause`, `issue` or `_tag` getter throws renders with that part missing.
+- `Fmt.width`, `Fmt.truncate` and `Fmt.sanitize` recognize two-byte escapes and DCS/SOS/PM/APC strings.
+- `CliLog.parseLevel` rejects inherited keys such as `constructor`. [#1111][#1111]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/config-file | dependency | updated | 0.20.1 | 0.21.0 |
+| @effected/engine | dependency | updated | 0.8.0 | 0.9.0 |
+| @effected/env | dependency | updated | 0.5.0 | 0.6.0 |
+| @effected/glob | dependency | updated | 0.14.0 | 0.15.0 |
+| @effected/walker | dependency | updated | 0.20.1 | 0.21.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1111]: https://github.com/spencerbeggs/effected/pull/1111
+
 ## 0.22.2
 
 ### Refactoring
@@ -977,8 +1016,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | :-- | :-- | :-- | :-- | :-- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Patch Changes
 
 [#389]: https://github.com/spencerbeggs/effected/pull/389
 

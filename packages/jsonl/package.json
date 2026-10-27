@@ -1,6 +1,6 @@
 {
 	"name": "@effected/jsonl",
-	"version": "0.15.3",
+	"version": "0.15.4",
 	"private": true,
 	"description": "Append-only, schema-validated JSONL journals as a definable Effect service.",
 	"keywords": ["jsonl", "journal", "append-only", "watch", "effect", "effected"],

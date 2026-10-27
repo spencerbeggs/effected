@@ -1,5 +1,17 @@
 # @effected/ai-plugin
 
+## 0.43.2
+
+### Maintenance
+
+- Updated the skills and regenerated the construct index for the kit-ports API changes in env, git, app, cli, commands, engine, mcp, walker, glob, xdg and memfs, and rebuilt the Claude and Copilot plugin builds. [#1111][#1111]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1111]: https://github.com/spencerbeggs/effected/pull/1111
+
 ## 0.43.1
 
 ### Maintenance

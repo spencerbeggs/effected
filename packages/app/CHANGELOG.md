@@ -1,5 +1,38 @@
 # @effected/app
 
+## 0.28.0
+
+### Breaking Changes
+
+- `App.layerTest` and its option and service types are removed from the root entry. Use `AppTest.layer` from `@effected/app/testing`:
+
+```ts
+import { AppTest } from "@effected/app/testing";
+
+const TestPlane = AppTest.layer({ namespace: "myapp" });
+```
+
+- `@effected/memfs` is now an optional peer reached only from `./testing`, so the root no longer loads it. Add it as a devDependency wherever tests use `AppTest`.
+- The error channel of `AppTest.layer` narrowed from `AppError` to `StoreError | StoreMigrationError | CacheError`. [#1111][#1111]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.20.1 | 0.21.0 |
+| @effected/glob | dependency | updated | 0.14.0 | 0.15.0 |
+| @effected/jsonc | dependency | updated | 0.20.0 | 0.20.1 |
+| @effected/memfs | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/store | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/walker | dependency | updated | 0.20.1 | 0.21.0 |
+| @effected/xdg | dependency | updated | 0.15.1 | 0.16.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1111]: https://github.com/spencerbeggs/effected/pull/1111
+
 ## 0.27.1
 
 ### Refactoring
@@ -822,8 +855,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | :-- | :-- | :-- | :-- | :-- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Patch Changes
-
 [#389]: https://github.com/spencerbeggs/effected/pull/389
 
 ## 0.10.4
@@ -1404,8 +1435,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | --- | --- | --- | --- | --- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Patch Changes
 
 [#122]: https://github.com/spencerbeggs/effected/pull/122
 

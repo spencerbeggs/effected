@@ -1,5 +1,15 @@
 # @effected/github-actions
 
+## 0.28.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.14.0 | 0.15.0 |
+| @effected/npm | dependency | updated | 0.27.0 | 0.27.1 |
+| @effected/walker | dependency | updated | 0.20.1 | 0.21.0 |
+
 ## 0.28.1
 
 ### Refactoring
@@ -1065,8 +1075,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | :-- | :-- | :-- | :-- | :-- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 |  |
   | @effect/platform-node | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Patch Changes
 
 [#389]: https://github.com/spencerbeggs/effected/pull/389
 

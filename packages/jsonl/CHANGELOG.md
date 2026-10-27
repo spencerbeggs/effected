@@ -1,5 +1,17 @@
 # @effected/jsonl
 
+## 0.15.4
+
+### Bug Fixes
+
+- The internal cause-message helper no longer throws when an error's `message` or `cause` getter (or a proxy trap) throws; that node is read as having no message. [#1111][#1111]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1111]: https://github.com/spencerbeggs/effected/pull/1111
+
 ## 0.15.3
 
 ### Refactoring

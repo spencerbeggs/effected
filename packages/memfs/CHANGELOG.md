@@ -1,5 +1,17 @@
 # @effected/memfs
 
+## 0.20.0
+
+### Features
+
+- The sync interface gains `realPath`, which resolves links and throws `ENOENT`, `ENOTDIR` or `ELOOP` with `syscall: "realpath"`. A memfs handle now satisfies walker's sync port directly. [#1111][#1111]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1111]: https://github.com/spencerbeggs/effected/pull/1111
+
 ## 0.19.0
 
 ### Features
@@ -574,8 +586,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | :-- | :-- | :-- | :-- | :-- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Minor Changes
 
 [#389]: https://github.com/spencerbeggs/effected/pull/389
 

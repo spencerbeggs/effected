@@ -1,5 +1,27 @@
 # @effected/schemastore-cli
 
+## 0.26.3
+
+### Bug Fixes
+
+- The internal cause-message helper no longer throws when an error's `message` or `cause` getter (or a proxy trap) throws; that node is read as having no message. [#1111][#1111]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.22.2 | 0.23.0 |
+| @effected/env | dependency | updated | 0.5.0 | 0.6.0 |
+| @effected/glob | dependency | updated | 0.14.0 | 0.15.0 |
+| @effected/schemastore | dependency | updated | 0.26.2 | 0.26.3 |
+| @effected/walker | dependency | updated | 0.20.1 | 0.21.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1111]: https://github.com/spencerbeggs/effected/pull/1111
+
 ## 0.26.2
 
 ### Dependencies
