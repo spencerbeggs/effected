@@ -7,5 +7,6 @@
  * @packageDocumentation
  */
 
+export type { EnumerationRoot } from "./GlobPattern.js";
 export { GlobPattern, GlobPatternError, GlobPatternOptions } from "./GlobPattern.js";
 export { GlobSet } from "./GlobSet.js";

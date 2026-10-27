@@ -153,6 +153,50 @@ const compilesUnderDefaults = (source: string): true | string => {
 };
 
 /**
+ * One place a walker must read to enumerate a pattern: a directory prefix and
+ * whether matches can lie more than one level below it. See
+ * {@link GlobPattern.enumerationRoots}.
+ *
+ * @public
+ */
+export interface EnumerationRoot {
+	/**
+	 * The literal directory prefix in canonical form, slash-terminated: no `.` or
+	 * empty segment, and a `..` resolved against the segment before it (a leading
+	 * `..` stays). `""` for the walk's own base, so `./src/*.ts` and `src/*.ts`
+	 * share the root `src/`.
+	 */
+	readonly prefix: string;
+	/** Whether matches can lie deeper than one level below `prefix` — a globstar, or a magic segment followed by more. */
+	readonly deep: boolean;
+	/**
+	 * Every literal prefix this root's walk covers, as the pattern's alternatives
+	 * spell it: its own and those of the roots it absorbs. Matching is
+	 * spelling-sensitive, since `./src/*.ts` does not match `src/a.ts`, so a walker
+	 * tests a canonical path below `prefix` once per spelling whose canonical
+	 * form the path lies in. The spelling replaces that canonical part of the
+	 * path. Distinct, never empty, and in pattern order: ordered by the first
+	 * brace alternative that spells each one.
+	 */
+	readonly spellings: ReadonlyArray<string>;
+}
+
+/**
+ * A literal prefix's canonical form: `.` and empty segments dropped, and a `..`
+ * popping the segment before it unless that is a `..` too. A climb above the
+ * base keeps its leading `..` segments, so a walker can still refuse it.
+ */
+const canonicalPrefix = (literals: ReadonlyArray<string>): string => {
+	const kept: Array<string> = [];
+	for (const segment of literals) {
+		if (segment === "" || segment === ".") continue;
+		if (segment === ".." && kept.length > 0 && kept[kept.length - 1] !== "..") kept.pop();
+		else kept.push(segment);
+	}
+	return kept.length === 0 ? "" : `${kept.join("/")}/`;
+};
+
+/**
  * A compiled glob pattern with a total `matches(candidate)` predicate, plus the
  * metadata a directory walker needs.
  *
@@ -165,6 +209,11 @@ const compilesUnderDefaults = (source: string): true | string => {
  * A GlobPattern value is ALWAYS a pattern that compiles under default options
  * — the schema check enforces it on every construction path. Options refine
  * matching; they do not admit patterns that defaults reject.
+ *
+ * Matching options default to minimatch's, so `dot` is `false`: `*` and `**`
+ * never match a dotfile or a dot-directory. Vitest matches its include and
+ * exclude globs with `dot: true`; a pattern meant to agree with it must say
+ * so — `GlobPatternOptions.make({ dot: true })`.
  *
  * @public
  */
@@ -314,6 +363,62 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 		}
 		if (common === undefined || common.length === 0) return "";
 		return `${common.join("/")}/`;
+	}
+
+	/**
+	 * Where a walker must read to enumerate this pattern: one root per brace
+	 * alternative, each with its own literal directory prefix and its own depth.
+	 *
+	 * @remarks
+	 * Where {@link GlobPattern.enumerationPrefix} and
+	 * {@link GlobPattern.crossesSegments} fold every alternative into one answer
+	 * (the shared prefix, "deep if any is"), this keeps them apart, so
+	 * `packages/{a,b}/src/*.ts` reads `packages/a/src/` and `packages/b/src/` —
+	 * one level each — rather than all of `packages/`. A root's `prefix`
+	 * excludes the final segment of an all-literal alternative (a file name),
+	 * so `src/{a,b}.ts` has the single root `src/`. Prefixes are canonical, so
+	 * `{src,./src}/*.ts` has the single root `src/` too. Roots are distinct; one
+	 * whose prefix lies inside a `deep` root's is dropped, since that root
+	 * already reads it, and its spellings join that root's. Two kept roots never
+	 * yield the same file: a shallow root's files lie exactly one level below
+	 * it, and no root lies inside a deep one.
+	 *
+	 * Like the other enumerator getters it reads the inner pattern and ignores
+	 * whole-pattern negation: guard on {@link GlobPattern.negated}, and
+	 * enumerate a negated pattern from `cwd`.
+	 */
+	get enumerationRoots(): ReadonlyArray<EnumerationRoot> {
+		// Canonical prefix -> whether any alternative under it is deep, and the spellings that reach it.
+		const merged = new Map<string, { deep: boolean; spellings: Set<string> }>();
+		// Each spelling's first alternative, so a root lists its spellings in pattern order.
+		const firstSeen = new Map<string, number>();
+		for (const row of this.#engineOf().set) {
+			const firstMagic = row.findIndex((part) => typeof part !== "string");
+			const literals = (firstMagic === -1 ? row.slice(0, -1) : row.slice(0, firstMagic)) as Array<string>;
+			const deep = row.includes(GLOBSTAR) || (firstMagic !== -1 && firstMagic < row.length - 1);
+			const prefix = canonicalPrefix(literals);
+			const spelling = literals.length === 0 ? "" : `${literals.join("/")}/`;
+			if (!firstSeen.has(spelling)) firstSeen.set(spelling, firstSeen.size);
+			const entry = merged.get(prefix);
+			if (entry === undefined) merged.set(prefix, { deep, spellings: new Set([spelling]) });
+			else {
+				entry.deep ||= deep;
+				entry.spellings.add(spelling);
+			}
+		}
+		const inside = (prefix: string, deepPrefix: string): boolean => deepPrefix === "" || prefix.startsWith(deepPrefix);
+		const kept = [...merged].filter(
+			([prefix]) => ![...merged].some(([other, { deep }]) => other !== prefix && deep && inside(prefix, other)),
+		);
+		// A kept deep root walks every root it absorbed, so it matches under their spellings too.
+		return kept.map(([prefix, { deep, spellings: own }]): EnumerationRoot => {
+			const all = new Set(own);
+			if (deep)
+				for (const [other, absorbed] of merged)
+					if (other !== prefix && inside(other, prefix)) for (const spelling of absorbed.spellings) all.add(spelling);
+			const spellings = [...all].sort((a, b) => (firstSeen.get(a) ?? 0) - (firstSeen.get(b) ?? 0));
+			return { prefix, deep, spellings };
+		});
 	}
 
 	/**

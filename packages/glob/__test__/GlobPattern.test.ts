@@ -144,6 +144,70 @@ describe("GlobPattern metadata", () => {
 		}),
 	);
 
+	it.effect("enumerationRoots keeps one root per brace alternative, each with its own depth", () =>
+		Effect.gen(function* () {
+			const roots = (source: string) => GlobPattern.compileResult(source).pipe(Result.getOrThrow).enumerationRoots;
+			// A file-name alternative contributes its directory, read one level.
+			assert.deepStrictEqual(roots("src/{a,b}.ts"), [{ prefix: "src/", deep: false, spellings: ["src/"] }]);
+			assert.deepStrictEqual(roots("packages/{a,b}/src/*.ts"), [
+				{ prefix: "packages/a/src/", deep: false, spellings: ["packages/a/src/"] },
+				{ prefix: "packages/b/src/", deep: false, spellings: ["packages/b/src/"] },
+			]);
+			assert.deepStrictEqual(roots("{packages/a/src/x,packages/b/src/y}.ts"), [
+				{ prefix: "packages/a/src/", deep: false, spellings: ["packages/a/src/"] },
+				{ prefix: "packages/b/src/", deep: false, spellings: ["packages/b/src/"] },
+			]);
+			// Depth is per alternative.
+			assert.deepStrictEqual(roots("{a/**,b/*}"), [
+				{ prefix: "a/", deep: true, spellings: ["a/"] },
+				{ prefix: "b/", deep: false, spellings: ["b/"] },
+			]);
+			// A root inside a deep root is already read by it.
+			assert.deepStrictEqual(roots("{a/**,a/b/*.ts}"), [{ prefix: "a/", deep: true, spellings: ["a/", "a/b/"] }]);
+			assert.deepStrictEqual(roots("{a/**,a/b/*.ts,c/*}"), [
+				{ prefix: "a/", deep: true, spellings: ["a/", "a/b/"] },
+				{ prefix: "c/", deep: false, spellings: ["c/"] },
+			]);
+			// A magic first segment roots at the base; one non-brace pattern is one root.
+			assert.deepStrictEqual(roots("*/x"), [{ prefix: "", deep: true, spellings: [""] }]);
+			assert.deepStrictEqual(roots("a/b/*"), [{ prefix: "a/b/", deep: false, spellings: ["a/b/"] }]);
+			assert.deepStrictEqual(roots("**/*.ts"), [{ prefix: "", deep: true, spellings: [""] }]);
+		}),
+	);
+
+	it.effect("enumerationRoots prefixes are canonical, and a root keeps every spelling it covers", () =>
+		Effect.gen(function* () {
+			const roots = (source: string) => GlobPattern.compileResult(source).pipe(Result.getOrThrow).enumerationRoots;
+			// A leading or inner `.` is no directory of its own: `./` roots at the base.
+			assert.deepStrictEqual(roots("./*.ts"), [{ prefix: "", deep: false, spellings: ["./"] }]);
+			assert.deepStrictEqual(roots("./**/*.ts"), [{ prefix: "", deep: true, spellings: ["./"] }]);
+			assert.deepStrictEqual(roots("src/./a/*.ts"), [{ prefix: "src/a/", deep: false, spellings: ["src/./a/"] }]);
+			// Two spellings of one directory are one root.
+			assert.deepStrictEqual(roots("{src,./src}/*.ts"), [
+				{ prefix: "src/", deep: false, spellings: ["src/", "./src/"] },
+			]);
+			// A root inside a deep one is absorbed by its canonical form, spellings and all.
+			assert.deepStrictEqual(roots("{.,src}/**"), [{ prefix: "", deep: true, spellings: ["./", "src/"] }]);
+			assert.deepStrictEqual(roots("{./a,a}/**/*.ts"), [{ prefix: "a/", deep: true, spellings: ["./a/", "a/"] }]);
+			// Spellings come in pattern order, an absorbed alternative's included.
+			assert.deepStrictEqual(roots("{src/*.ts,**/*.md}"), [{ prefix: "", deep: true, spellings: ["src/", ""] }]);
+			assert.deepStrictEqual(roots("{a,./a}/**"), [{ prefix: "a/", deep: true, spellings: ["a/", "./a/"] }]);
+			// A climb keeps its `..`, so a walker can refuse it; `./..` is the same climb.
+			assert.deepStrictEqual(roots("./../x/*.ts"), [{ prefix: "../x/", deep: false, spellings: ["./../x/"] }]);
+		}),
+	);
+
+	it.effect("enumerationRoots: one prefix reached shallow and deep is deep, in either order", () =>
+		Effect.gen(function* () {
+			const roots = (source: string) => GlobPattern.compileResult(source).pipe(Result.getOrThrow).enumerationRoots;
+			assert.deepStrictEqual(roots("{src/**/*.md,src/*.ts}"), [{ prefix: "src/", deep: true, spellings: ["src/"] }]);
+			assert.deepStrictEqual(roots("{src/*.ts,src/**/*.md}"), [{ prefix: "src/", deep: true, spellings: ["src/"] }]);
+			assert.deepStrictEqual(roots("{./src/**/*.md,src/*.ts}"), [
+				{ prefix: "src/", deep: true, spellings: ["./src/", "src/"] },
+			]);
+		}),
+	);
+
 	it.effect("crossesSegments is true iff matching can go deeper than the prefix by more than one level", () =>
 		Effect.gen(function* () {
 			assert.isTrue((yield* GlobPattern.compile("packages/**")).crossesSegments);
