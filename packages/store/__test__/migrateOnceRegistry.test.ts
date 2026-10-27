@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Exit, Fiber, Option, Scheduler } from "effect";
+import { Cause, Effect, Exit, Fiber, Option, Scheduler } from "effect";
 import { runOnce } from "../src/internal/migrateOnce.js";
 
 let keyCount = 0;
@@ -71,6 +71,49 @@ describe("runOnce: the registry behind Store.migrateOnce", () => {
 			assert.strictEqual(runs, 2);
 			const after = yield* Effect.exit(runOnce<"boom">(key, failing));
 			assert.isTrue(Exit.isSuccess(after), "the successful retry is what stays registered");
+		}),
+	);
+
+	it.live("a waiter in the copy that ran keeps the run's whole cause, every defect included", () =>
+		Effect.gen(function* () {
+			const key = freshKey();
+			const dying = Effect.andThen(
+				Effect.sleep("10 millis"),
+				Effect.failCause(Cause.combine(Cause.die("a"), Cause.die("b"))),
+			);
+			const exits = yield* Effect.all(
+				[Effect.exit(runOnce<never>(key, dying)), Effect.exit(runOnce<never>(key, dying))],
+				{
+					concurrency: "unbounded",
+				},
+			);
+			for (const exit of exits) {
+				assert.isTrue(Exit.isFailure(exit));
+				if (Exit.isFailure(exit)) {
+					const defects = exit.cause.reasons.filter(Cause.isDieReason).map((reason) => reason.defect);
+					assert.deepStrictEqual(defects, ["a", "b"]);
+				}
+			}
+		}),
+	);
+
+	it.live("an outcome another copy registered is read through the frozen plain shape", () =>
+		Effect.gen(function* () {
+			// Another copy's run: the registry entry is all it shares, never its Cause.
+			const runs = (globalThis as { [key: symbol]: Map<string, Promise<unknown>> | undefined })[
+				Symbol.for("@effected/store/migrateOnce")
+			];
+			assert.isDefined(runs, "earlier tests created the registry");
+			const failed = freshKey();
+			const died = freshKey();
+			runs?.set(failed, Promise.resolve({ _tag: "Failure", error: { _tag: "StoreError" } }));
+			runs?.set(died, Promise.resolve({ _tag: "Defect", defect: "elsewhere" }));
+			const work = Effect.die("must not run");
+			assert.deepStrictEqual(yield* Effect.flip(runOnce<{ readonly _tag: string }>(failed, work)), {
+				_tag: "StoreError",
+			});
+			const exit = yield* Effect.exit(runOnce<never>(died, work));
+			assert.isTrue(Exit.isFailure(exit) && Cause.squash(exit.cause) === "elsewhere");
 		}),
 	);
 });

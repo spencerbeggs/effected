@@ -27,7 +27,8 @@ import { Cause, Effect, Exit, Option } from "effect";
  *   whatever the run failed with — a `StoreError` instance of the copy that
  *   ran it — so a waiter in another copy sees an object that fails its own
  *   `instanceof StoreError` while `_tag`-based handling (`catchTag`) still
- *   matches.
+ *   matches. A waiter in the copy that ran replays the run's full `Cause`
+ *   instead, from {@link localCauses}, which is per copy and never shared.
  *
  * A change to any of the three needs a new symbol, so an old and a new copy
  * stop sharing rather than misreading each other.
@@ -44,13 +45,18 @@ const REGISTRY = Symbol.for("@effected/store/migrateOnce");
 
 const registry = (): Registry => {
 	const holder = globalThis as { [REGISTRY]?: Registry };
-	let found = holder[REGISTRY];
-	if (found === undefined) {
-		found = new Map();
-		holder[REGISTRY] = found;
-	}
-	return found;
+	holder[REGISTRY] ??= new Map();
+	return holder[REGISTRY];
 };
+
+/**
+ * The full `Cause` behind each failed {@link Outcome} this copy produced,
+ * keyed by the outcome object itself. Module-local, so it never crosses
+ * copies and the shared shape stays plain: a waiter in this copy replays the
+ * run's own cause (every defect, every error, their spans), while a waiter in
+ * another copy finds nothing here and rebuilds from the plain outcome.
+ */
+const localCauses = new WeakMap<Outcome, Cause.Cause<unknown>>();
 
 /**
  * A filename that names no shared file: `:memory:` and `""` are a fresh
@@ -74,6 +80,8 @@ const awaitOutcome = <E>(outcome: Promise<Outcome>): Effect.Effect<void, E> =>
 	Effect.flatMap(
 		Effect.promise(() => outcome),
 		(settled): Effect.Effect<void, E> => {
+			const cause = settled._tag === "Interrupted" ? undefined : localCauses.get(settled);
+			if (cause !== undefined) return Effect.failCause(cause as Cause.Cause<E>);
 			switch (settled._tag) {
 				case "Success":
 					return Effect.void;
@@ -130,7 +138,9 @@ export const runOnce = <E>(key: string, work: Effect.Effect<void, E>): Effect.Ef
 					// Delete first: a released waiter that calls again must start a
 					// fresh run, never join this failed one.
 					runs.delete(key);
-					settle(outcomeOf(exit.cause));
+					const outcome = outcomeOf(exit.cause);
+					if (outcome._tag !== "Interrupted") localCauses.set(outcome, exit.cause);
+					settle(outcome);
 				}),
 			);
 			return Effect.andThen(Effect.forkDetach(runner), restore(awaitOutcome<E>(pending)));

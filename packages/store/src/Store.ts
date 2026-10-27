@@ -501,10 +501,9 @@ const fromMigratorRecord = (
 	record: Readonly<Record<string, Effect.Effect<unknown, SqlError.SqlError, SqlClient.SqlClient>>>,
 ): ReadonlyArray<StoreMigration> => {
 	const migrations: Array<StoreMigration> = [];
-	for (const key of Object.keys(record)) {
+	for (const [key, effect] of Object.entries(record)) {
 		const match = MIGRATOR_RECORD_KEY.exec(key);
 		if (match === null) continue;
-		const effect = record[key] as Effect.Effect<unknown, SqlError.SqlError, SqlClient.SqlClient>;
 		migrations.push({
 			id: Number(match[1]),
 			name: match[2] as string,
