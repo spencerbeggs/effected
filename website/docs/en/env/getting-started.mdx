@@ -152,7 +152,9 @@ import { Schema } from "effect";
 const Json = Schema.fromJsonString(RuntimeEnv);
 
 console.log(Schema.encodeSync(Json)(RuntimeEnv.fromRecord({ GITHUB_ACTIONS: "true" })));
-// {"agent":null,"ci":"github-actions","terminal":null}
+// {"agent":null,"ci":"github-actions","terminal":null,"session":null,
+//  "ciRun":{"runId":null,"attempt":null,"jobId":null,"sha":null,"refName":null,"runner":null},
+//  "termProgram":{"name":null,"version":null}}
 ```
 
 ### Re-read the environment in a long-lived host

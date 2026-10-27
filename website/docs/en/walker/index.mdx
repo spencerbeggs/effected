@@ -63,6 +63,8 @@ Defects still propagate. Absorption catches failures, not defects, so a genuine 
 
 `Walker.findRoot(dirs, isRoot)` returns the nearest directory a marker predicate accepts.
 
+`descend(pattern, options)` is the downward walk: the files a compiled `@effected/glob` pattern matches under `cwd`, sorted. `descendEntries` is the same walk, keeping the stat it already read for each match (`entry.info`), at no extra syscall, for a cache signature over a tree. `boundaries` stops the walk at any directory containing one of the named marker files, such as a nested `package.json`. `descendSync` and `descendEntriesSync` run the same traversal synchronously over a caller-supplied port, returning a `Result`, for a caller with no Effect runtime. `@effected/walker/node-sync` supplies the Node port as `nodeWalkerSyncOps`.
+
 ## API reference
 
 Every export, with full signatures, lives in the [API reference](/walker/api).

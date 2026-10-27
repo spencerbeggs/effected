@@ -257,16 +257,16 @@ Because the channel is typed, dropping any one of those tags is a compile error 
 
 ## Testing the control plane
 
-`App.layerTest` is the hermetic plane: fixed XDG paths, `:memory:` databases, and an in-memory filesystem from `@effected/memfs`, so a test needs no platform import and `R` is `never` by construction. That makes a first test one line of wiring:
+`AppTest.layer`, from `@effected/app/testing`, is the hermetic plane: fixed XDG paths, `:memory:` databases, and an in-memory filesystem from `@effected/memfs`, so a test needs no platform import and `R` is `never` by construction. That makes a first test one line of wiring:
 
 ```ts
-import { App } from "@effected/app";
+import { AppTest } from "@effected/app/testing";
 import { Cache } from "@effected/store";
 import { layer } from "@effect/vitest";
 import { Effect, Option } from "effect";
 import { assert } from "vitest";
 
-layer(App.layerTest({ namespace: "release" }))("release control plane", (it) => {
+layer(AppTest.layer({ namespace: "release" }))("release control plane", (it) => {
   it.effect("caches a registry lookup in memory", () =>
     Effect.gen(function* () {
       const cache = yield* Cache;
@@ -277,10 +277,10 @@ layer(App.layerTest({ namespace: "release" }))("release control plane", (it) => 
 });
 ```
 
-Three things to keep in mind. First, the filesystem is a real memfs volume: `ensure*` creates directories on it, `files: { "/home/test/.config/release/config.json": "…" }` seeds it, and `yield* MemoryFileSystem.Volume` reads back what was written. The layer exposes `FileSystem` and `Path` beside the four services, so `AppConfig.layer` composes over it with one `Layer.provide` and loads the seeded file. Second, the databases are not on that volume — they are `:memory:` here and open through the native SQLite binding under `App.layer` — so do not compose `AppStore.layer` or `AppCache.layer` over `layerTest` (the binding opens the same path on the host: on the synthetic defaults it does not exist and the layer fails with a `StoreError`; with real `paths` it would write onto the host disk), and test `App.layer` end to end against a temp-directory `HOME`, which is what this package's own integration suite does. Third, cache expiry reads Effect's `Clock`, so TTL behavior is deterministic under `@effect/vitest`'s `TestClock` — advance the clock instead of sleeping, and an entry's expiry is exact.
+Four things to keep in mind. First, the filesystem is a real memfs volume: `ensure*` creates directories on it, `files: { "/home/test/.config/release/config.json": "…" }` seeds it, and `yield* MemoryFileSystem.Volume` reads back what was written. The layer exposes `FileSystem` and `Path` beside the four services, so `AppConfig.layer` composes over it with one `Layer.provide` and loads the seeded file. Second, the databases are not on that volume — they are `:memory:` here and open through the native SQLite binding under `App.layer` — so do not compose `AppStore.layer` or `AppCache.layer` over `AppTest.layer` (the binding opens the same path on the host: on the synthetic defaults it does not exist and the layer fails with a `StoreError`; with real `paths` it would write onto the host disk), and test `App.layer` end to end against a temp-directory `HOME`, which is what this package's own integration suite does. Third, `@effected/memfs` is an optional peer that only `@effected/app/testing` loads, so add it to your devDependencies; the package root never imports it. Fourth, cache expiry reads Effect's `Clock`, so TTL behavior is deterministic under `@effect/vitest`'s `TestClock` — advance the clock instead of sleeping, and an entry's expiry is exact.
 
 ## Next steps
 
 - Composing telemetry, the full quick start, and where files land on each platform are in the [overview](/app).
 - The three services this package wires live in their own packages: [`Store`](/store) and [`Cache`](/store) in [`@effected/store`](/store), [`ConfigFile`](/config-file) and the codecs in [`@effected/config-file`](/config-file), and the directory resolution in [`@effected/xdg`](/xdg).
-- Every export, with full signatures, is in the [API reference](/app/api) — start with [`App`](/app/api/variable/app), [`AppConfig`](/app/api/variable/appconfig), [`AppStore`](/app/api/variable/appstore), [`AppCache`](/app/api/variable/appcache) and [`AppError`](/app/api/type/apperror).
+- Every export, with full signatures, is in the [API reference](/app/api) — start with [`App`](/app/api/class/app), [`AppConfig`](/app/api/class/appconfig), [`AppStore`](/app/api/class/appstore), [`AppCache`](/app/api/class/appcache), [`AppTest`](/app/api/class/apptest) and [`AppError`](/app/api/type/apperror).

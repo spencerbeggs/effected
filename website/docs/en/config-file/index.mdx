@@ -100,7 +100,7 @@ export const SettingsLive = ConfigFile.layer(SettingsConfig, {
 
 ## Resolvers and merge strategies
 
-Resolvers are consulted in priority order, highest first: `explicitPath`, `staticDir`, `upwardWalk`, `workspaceRoot`, `gitRoot` and `systemEtc`. A resolver's error channel is `never` by contract — every filesystem failure becomes `Option.none()`, so one unreadable tier never aborts the chain.
+Resolvers are consulted in priority order, highest first: `explicitPath`, `staticDir`, `upwardWalk`, `workspaceRoot`, `gitRoot` and `systemEtc`. `upwardWalk` bounds its ascent by `stopAt`, compared lexically, or by `ceiling`, compared physically, so a ceiling from `git rev-parse` (symlinks resolved) still stops a walk started through a symlinked path. Pass at most one of them. A resolver's error channel is `never` by contract — every filesystem failure becomes `Option.none()`, so one unreadable tier never aborts the chain.
 
 The strategy then reduces what was discovered to one value. `MergeStrategy.firstMatch` takes the highest-priority winner; `MergeStrategy.layeredMerge` deep-merges every source that matched, with higher-priority keys overwriting lower ones and every contributing source reported.
 

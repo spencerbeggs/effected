@@ -14,7 +14,7 @@ That is the job `@effected/tsconfig-json` is built for. It reproduces what tsc d
 The package is a boundary-tier port with **zero external runtime dependencies**. Every disk touch flows through `effect`-core's `FileSystem` and `Path`, which arrive from your platform layer once at the edge — so the loader is an ordinary effect you provide context to, never a thing that reaches out to the filesystem on its own:
 
 - **All IO is in `R`.** `TsconfigLoader.resolve` returns `Effect<ResolvedTsconfig, …, FileSystem | Path>`. You satisfy that requirement with `@effect/platform-node` on Node, `@effect/platform-bun` on Bun, and — in a test — with `Path.layer` plus `FileSystem.layerNoop` straight from core, nothing else installed.
-- **It composes with the rest of the kit through first-party peers.** `extends`-chain resolution walks `node_modules` and parses each file, so the package leans on [`@effected/jsonc`](/jsonc/api) for the parse (every read is JSONC — comments and trailing commas are legal everywhere) and on [`@effected/walker`](/walker/api) for the upward directory scan behind [`TsconfigDiscovery`](/tsconfig-json/api/variable/tsconfigdiscovery). Nothing from outside `effect` and `@effected/*` enters your tree.
+- **It composes with the rest of the kit through first-party peers.** `extends`-chain resolution walks `node_modules` and parses each file, so the package leans on [`@effected/jsonc`](/jsonc/api) for the parse (every read is JSONC — comments and trailing commas are legal everywhere) and on [`@effected/walker`](/walker/api) for the upward directory scan behind [`TsconfigDiscovery`](/tsconfig-json/api/class/tsconfigdiscovery). Nothing from outside `effect` and `@effected/*` enters your tree.
 - **The result is a plain, serializable value.** [`ResolvedTsconfig`](/tsconfig-json/api/interface/resolvedtsconfig) is an interface, not a class — the merged `compilerOptions`, the full `extendedPaths` chain, and provenance like `pathsBase`. You can log it, cache it, or hand slices of it to the projections below.
 
 Here is the `typecheck-all` core as an application program. `findNearest` locates the package's config, `resolve` folds its whole `extends` chain, and the platform layer is provided once at the edge:
@@ -77,7 +77,7 @@ Diamond `extends` chains (two branches that both reach the same base) are legal:
 
 ## Pattern: a portable subset for virtual TypeScript environments
 
-The orchestrator's virtual-environment consumer — an API Extractor run, a Twoslash pass, an in-memory language service — controls its own file set and its own emit. Handing it the source config's absolute `outDir`, `rootDir` or `paths` would be wrong at best and machine-specific at worst. [`PortableTsconfig.make`](/tsconfig-json/api/variable/portabletsconfig) projects a resolved config (or a bare options bag) down to exactly the type-semantics options a virtual environment can safely inherit:
+The orchestrator's virtual-environment consumer — an API Extractor run, a Twoslash pass, an in-memory language service — controls its own file set and its own emit. Handing it the source config's absolute `outDir`, `rootDir` or `paths` would be wrong at best and machine-specific at worst. [`PortableTsconfig.make`](/tsconfig-json/api/class/portabletsconfig) projects a resolved config (or a bare options bag) down to exactly the type-semantics options a virtual environment can safely inherit:
 
 ```ts with-api
 import { PortableTsconfig, TsconfigLoader } from "@effected/tsconfig-json";
@@ -104,7 +104,7 @@ Two properties are worth internalizing before you rely on it:
 
 ## Pattern: encoding to the numeric shape a real compiler expects
 
-When the destination is a real `ts.CompilerOptions` — driving `@typescript/vfs` or `ts.createProgram` — the string form has to become TypeScript's numeric enums. [`TsEnumCodec`](/tsconfig-json/api/variable/tsenumcodec) holds those version-coupled mappings as plain data tables, so the conversion is an explicit final step rather than a `typescript` dependency you carry everywhere:
+When the destination is a real `ts.CompilerOptions` — driving `@typescript/vfs` or `ts.createProgram` — the string form has to become TypeScript's numeric enums. [`TsEnumCodec`](/tsconfig-json/api/class/tsenumcodec) holds those version-coupled mappings as plain data tables, so the conversion is an explicit final step rather than a `typescript` dependency you carry everywhere:
 
 ```ts with-api
 import { TsconfigLoader, TsEnumCodec } from "@effected/tsconfig-json";
@@ -155,7 +155,7 @@ Effect.runPromise(jsxRuntime.pipe(Effect.provide(PlatformLive)));
 
 ## Synchronous loading for sync-only hosts
 
-A bundler plugin hook or a config factory often cannot `await`. [`TsconfigLoaderSync`](/tsconfig-json/api/variable/tsconfigloadersync) runs the **unchanged** loader pipeline synchronously over file and path operations you supply — the package still imports no `node:*` module, and Node's built-ins satisfy the operations directly:
+A bundler plugin hook or a config factory often cannot `await`. [`TsconfigLoaderSync`](/tsconfig-json/api/class/tsconfigloadersync) runs the **unchanged** loader pipeline synchronously over file and path operations you supply — the package still imports no `node:*` module, and Node's built-ins satisfy the operations directly:
 
 ```ts with-api
 import { existsSync, readFileSync } from "node:fs";
@@ -237,7 +237,7 @@ it.effect("derived config wins per field, base fills the rest", () =>
 );
 ```
 
-Assert with `assert.*`, never `expect`. The map holds file paths only, so `exists` is file-only by construction — the same shape the loader's real contract assumes, which means a passing test is a statement about the actual merge engine rather than about a stub. The pure engine ([`ResolvedTsconfig.merge`](/tsconfig-json/api/variable/resolvedtsconfig)) takes no services at all, so its per-field semantics can also be unit-tested with plain values and no layer.
+Assert with `assert.*`, never `expect`. The map holds file paths only, so `exists` is file-only by construction — the same shape the loader's real contract assumes, which means a passing test is a statement about the actual merge engine rather than about a stub. The pure engine ([`ResolvedTsconfig.merge`](/tsconfig-json/api/class/resolvedtsconfig)) takes no services at all, so its per-field semantics can also be unit-tested with plain values and no layer.
 
 ## Learn more
 

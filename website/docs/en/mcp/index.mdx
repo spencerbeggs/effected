@@ -50,6 +50,19 @@ reads no `process` token, imports no `node:` module, and calls no
   a tool's declared-failure message, because core sends only
   `error.message` to the client. **`ToolRefusal`** is that shape
   ready-made, with `ToolRefusal.refuse(reason, remediation)`.
+- **`ToolOutcome`** — the `ok: false` envelope for an *expected* domain
+  outcome (an id that does not exist) that an agent should branch on: it
+  travels on the success channel as `structuredContent`. `ToolOutcome.error`
+  declares an error, `envelope` builds the success schema, and
+  `catchAsEnvelope` folds typed failures into it inline in the handler's
+  pipe. A wrong call stays a `ToolRefusal`; both carry the same `message` and
+  `remediation`.
+- **`ToolReplay`** — idempotent replay for a write tool: a repeated call
+  with the same key returns the first call's stored result, marked
+  `_idempotentReplay: true`, instead of running the mutation again. The store
+  is core's `KeyValueStore` in `R`, or your own `get`/`set` pair. It is replay,
+  not exactly-once, and the key is the request's whole identity, so it must
+  fold in a digest of any params that can vary under one id.
 - **`ToolOutputSchema`** — `objectRooted`, so a union success schema
   whose members are all objects is served as an object-rooted
   `outputSchema` on every revision. Not for a union with a primitive member.
@@ -62,6 +75,12 @@ reads no `process` token, imports no `node:` module, and calls no
   union.
 - **`@effected/mcp/guard`** — `McpGuard.run`, crash guards installed
   before the server graph loads.
+- **`@effected/mcp/node`** — `StdioCapture`, which diverts stdout (and
+  optionally stderr) writes made inside one async context to a sink, so a
+  chatty library run in-process stays off the JSON-RPC wire while the
+  transport keeps writing. Writes from callbacks registered outside the
+  capture still reach the real stream. This is the one entrypoint that
+  imports `node:` modules; the root stays free of them.
 - **`@effected/mcp/testing`** — `McpHarness` (in-process), `McpProcess`
   and `McpProbe` (spawned bins), `McpToolAudit` (a pure `tools/list`
   policy sweep), and `McpTestFailure`.

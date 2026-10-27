@@ -47,11 +47,15 @@ Effect.runPromise(program.pipe(Effect.provide(GitLive))).then(console.log);
 
 ## A read tier and a mutating tier
 
-The read tier is total in intent: `show`, `lsTree`, `refExists`, `mergeBase`, `changedFiles`, `unstagedChanges`, `stagedChanges`, `untrackedFiles`, `revParse`, `nameStatus`, `defaultBranch`, `currentBranch`, `repoRoot`, `commonDir`, `commitInfo`, `configGet`, `remoteUrl` and `status` observe a repository without changing it. Absence — a ref that does not resolve, a remote that is not configured — is `Option.none`, not a failure. The mutating tier (`checkout`, `fetch`, `fetchAny`, `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`) is named apart precisely so a read-only consumer can see, at a glance, that it never reaches for it.
+The read tier is total in intent: `show`, `lsTree`, `refExists`, `mergeBase`, `changedFiles`, `unstagedChanges`, `stagedChanges`, `untrackedFiles`, `revParse`, `nameStatus`, `defaultBranch`, `currentBranch`, `repoRoot`, `commonDir`, `commitInfo`, `configGet`, `remoteUrl`, `treeIdentity`, `upstream` and `status` observe a repository without changing it. Absence — a ref that does not resolve, a remote that is not configured — is `Option.none`, not a failure. The mutating tier (`checkout`, `fetch`, `fetchAny`, `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`) is named apart precisely so a read-only consumer can see, at a glance, that it never reaches for it.
 
 ## Locating a repository
 
 `repoRoot` and `commonDir` both answer physical paths, with symlinks resolved. `commonDir` is the directory a repository shares with all of its linked worktrees, so it is the same string from any checkout and two answers compare with `===`; `repoRoot` is different in every worktree. It needs git 2.31 or later, and an older git fails typed rather than returning a wrong answer. To bound an upward walk by `repoRoot`, use `@effected/walker`'s `Walker.ascendWithin`: `ascend`'s lexical `stopAt` never matches the resolved spelling from a start reached through a symlink.
+
+`treeIdentity` answers both at once, as a `TreeIdentity` of the physical `toplevel` and `commonDir`, and `TreeIdentity.relation` tells two of them apart as `"same-tree"`, `"sibling-worktree"` or `"different-repo"`. Because both paths are git's own resolved answers, compare them only with other git answers, never with a path the caller spelled. `upstream` reports the current branch's upstream with its ahead and behind counts, including one whose ref was deleted (`gone: true`), where `git rev-parse @{upstream}` would fail.
+
+`remoteUrl` answers the URL git will use, with `url.<base>.insteadOf` rewrites applied; read the configured value with `configGet`. `GitRemote` is the pure parser for those answers: `GitRemote.parse` classifies a remote the way git does, as a `<transport>::` address, a URL, an scp-like `host:path` or a local path, `format` writes it back, `repositoryPath` extracts the path, and `redact` masks credentials before a remote reaches a log.
 
 ## Errors
 

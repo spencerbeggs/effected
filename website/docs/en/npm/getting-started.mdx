@@ -153,7 +153,7 @@ const program = Effect.gen(function* () {
 
 ### Map between dependency kinds and manifest fields
 
-[`DependencySection`](/npm/api/variable/dependencysection) is the kit-wide vocabulary for the four dependency sections — a short `kind` (`prod`/`dev`/`peer`/`optional`) and the `package.json` field name it lives under — with a total mapping each way.
+[`DependencySection`](/npm/api/class/dependencysection) is the kit-wide vocabulary for the four dependency sections — a short `kind` (`prod`/`dev`/`peer`/`optional`) and the `package.json` field name it lives under — with a total mapping each way.
 
 ```ts with-api
 import { DependencySection } from "@effected/npm";

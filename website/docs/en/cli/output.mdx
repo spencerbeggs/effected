@@ -246,7 +246,7 @@ class ConflictError extends Data.TaggedError("ConflictError")<{ readonly files: 
 
 ### Replace the rendering
 
-For full control, pass `render` to `main`. It receives the squashed error and a [`FailureDetails`](/cli/api/interface/failuredetails), which says whether it is a defect and carries the report the kit would have written for this run. Return your own lines for the errors you own, and hand the rest back:
+For full control, pass `render` to `main`. It receives the squashed error and a [`FailureDetails`](/cli/api/interface/failuredetails), which says whether it is a defect, carries the `exitCode` the run will exit with, and carries the report the kit would have written for this run. Read the error's own `_tag` to tell your errors apart. Return your own lines for the errors you own, and hand the rest back:
 
 ```ts
 import { CliAudience, CliRuntime } from "@effected/cli";

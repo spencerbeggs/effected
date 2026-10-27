@@ -5,7 +5,7 @@ description: "Sign and verify JWTs, import keys and resolve an issuer's JWKS ove
 
 # @effected/jwt
 
-Signed-token primitives over WebCrypto. [`Jwt`](/jwt/api/variable/jwt) signs a JWT and verifies one, checking the signature and then `exp`, `nbf`, `iat`, `iss` and `aud` before decoding the payload with your schema. [`JwtKey`](/jwt/api/variable/jwtkey) imports keys, including the PKCS#1 PEM that github.com hands out for an App, and [`JwksResolver`](/jwt/api/class/jwksresolver) finds a verification key in an issuer's published JWKS, caches it, and picks up a key rotation without letting a flood of made-up key ids through.
+Signed-token primitives over WebCrypto. [`Jwt`](/jwt/api/class/jwt) signs a JWT and verifies one, checking the signature and then `exp`, `nbf`, `iat`, `iss` and `aud` before decoding the payload with your schema. [`JwtKey`](/jwt/api/class/jwtkey) imports keys, including the PKCS#1 PEM that github.com hands out for an App, and [`JwksResolver`](/jwt/api/class/jwksresolver) finds a verification key in an issuer's published JWKS, caches it, and picks up a key rotation without letting a flood of made-up key ids through.
 
 ## Why @effected/jwt
 

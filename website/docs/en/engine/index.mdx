@@ -48,13 +48,31 @@ no runtime dependencies of its own.
 - **`Distribution`** / **`DistributionField`** / **`CurrentDistribution`** /
   **`distributionSuffix`** — the carrier package a tool's bins were installed
   through, read anywhere as a `Context.Reference` with no provision needed for
-  a direct install.
+  a direct install. **`withDistribution(distribution)`** provides it to an
+  effect in one line, and **`withDistributionVersion(distribution)`** wraps a
+  `--version` formatter so its line ends with ` via <carrier> <version>`,
+  keeping whatever formatter (coloured or custom) it wraps.
+- **`Exclusive`** — a one-permit lane for work that changes process-global
+  state. `lane.run(body, { timeout })` masks the caller's interruption once
+  the permit is held, interrupts only the body on timeout (failing with
+  `ExclusiveTimeout`), and runs the body's finalizers before the next caller
+  gets the permit. `Exclusive.promise` aborts a promise's signal on
+  interruption and waits for it to settle instead of abandoning it. The lane
+  is not reentrant: a nested `run` on the same lane times out the outer one.
+- **`ProcessScope`** — `chdir` and `env`, scoped changes to the working
+  directory and an environment record, each restored when the scope closes.
+  Both take the state they change as an argument, so they read no `process`.
+  Pair them with `Exclusive`.
 - **`Remediation`** — what a caller, usually an agent, should do after a
   failure: a hint plus an optional suggested tool and its arguments.
 - **`LaunchContext`** — `LaunchContext.projectDir`, resolving where an
   agent-launched tool should treat as its project from caller-supplied
   `argv`/`env`/`cwd`, and `LaunchContext.isUnsubstituted`, detecting a launch
   argument an agent host left as a literal `${VAR}` placeholder.
+  `LaunchContext.usable` is the guard behind both (trimmed, non-empty, no
+  placeholder), and `LaunchContext.resolve` is the resolver without the `cwd`
+  fallback, for any other launch-supplied location such as a plugin data
+  directory.
 
 ## Reach for it when
 

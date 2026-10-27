@@ -19,7 +19,7 @@ pnpm add @effected/jwt effect
 
 ## Step 1: import a key and sign
 
-[`JwtKey.fromPkcs8Pem`](/jwt/api/variable/jwtkey) takes the PEM as a `Redacted<string>` and the algorithm to use it for. It accepts PKCS#8 (`BEGIN PRIVATE KEY`) for either algorithm and PKCS#1 (`BEGIN RSA PRIVATE KEY`) for `RS256`; a PEM whose newlines arrive escaped as `\n`, the one-line form an environment variable carries, is accepted too. An RSA key under 2048 bits, or one that does not import, fails as `key`.
+[`JwtKey.fromPkcs8Pem`](/jwt/api/class/jwtkey) takes the PEM as a `Redacted<string>` and the algorithm to use it for. It accepts PKCS#8 (`BEGIN PRIVATE KEY`) for either algorithm and PKCS#1 (`BEGIN RSA PRIVATE KEY`) for `RS256`; a PEM whose newlines arrive escaped as `\n`, the one-line form an environment variable carries, is accepted too. An RSA key under 2048 bits, or one that does not import, fails as `key`.
 
 ```ts with-api
 import { Jwt, JwtKey } from "@effected/jwt";
