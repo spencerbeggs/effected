@@ -8,10 +8,10 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T14:19:29Z
+  at: 2026-10-27T14:31:24Z
 integrity:
   generated:
-    body: c6aeb8f7e49236b8
+    body: 9ffc8771da39d65f
 ---
 
 # Every git constructor and error path carries the redaction mask
@@ -64,8 +64,9 @@ not use, token included. `GitCommandError.stderr` (and a spawn failure's
 `detail`) passes through two maskers: first the invocation's `scrub`
 closure, which replaces every exact occurrence of each secret the argv
 carries (each whole-value secret, and for each remote URL every part
-`GitRemote.redact` would change: the userinfo, user and password
-segments, a masked scheme and the query; longest first; secrets under three characters are
+`GitRemote.redact` would change: the userinfo and password segments,
+a masked scheme and the query, but never the bare user name, which would
+mask ordinary words; longest first; secrets under three characters are
 skipped, since a one- or two-character mask would garble the text and
 protect nothing), then the backstop applied token by token to every
 whitespace- or quote-delimited token holding an `@`. `scrub` is a closure

@@ -1071,7 +1071,9 @@ describe("GitInvocation serialization", () => {
 	const COVERED = [
 		{ value: "https://h/r.git?token=abcS3CRET", secret: "token=abcS3CRET" },
 		{ value: "https://h/r.git?t=S3CRET#frag", secret: "t=S3CRET#frag" },
-		{ value: "https://userS3CRET:x-oauth-basic@h/o/r", secret: "userS3CRET" },
+		// A token carried as the user is masked wherever the URL is echoed, but
+		// not as a free word: see the ordinary-user test below.
+		{ value: "https://userS3CRET:x-oauth-basic@h/o/r", secret: "userS3CRET", bare: false },
 		{ value: "persistent::https://h/r?k=S3CRETq", secret: "k=S3CRETq" },
 		{ value: "https::S3CRETscheme://@h/r", secret: "S3CRETscheme" },
 		// The invalid scheme is masked whole, as argv masks it: echoed within
@@ -1088,6 +1090,16 @@ describe("GitInvocation serialization", () => {
 			assert.notInclude(echoed, secret, value);
 			assert.include(echoed, "<redacted>", value);
 		}
+	});
+
+	it("scrub does not mask an ordinary user name outside the URL", () => {
+		const invocation = GitCommand.fetch("https://alice:S3CRETTOKEN@github.com/alice/r.git", "main");
+		assert.strictEqual(
+			invocation.scrub("fatal: github.com/alice/r.git said no; see git help"),
+			"fatal: github.com/alice/r.git said no; see git help",
+		);
+		const git = GitCommand.fetch("https://git:S3CRETTOKEN@github.com/o/r.git", "main");
+		assert.strictEqual(git.scrub("github.com said no; see git help"), "github.com said no; see git help");
 	});
 
 	it("scrub leaves a query of under three characters alone", () => {
