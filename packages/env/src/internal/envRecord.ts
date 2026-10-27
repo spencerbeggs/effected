@@ -1,3 +1,4 @@
+import type { ConfigProvider } from "effect";
 import { Config, Effect, Option } from "effect";
 import type { Env } from "./types.js";
 
@@ -33,3 +34,12 @@ export const readEnv = (keys: ReadonlyArray<string>): Effect.Effect<Env> =>
 			),
 		),
 	);
+
+/**
+ * Whether a record-or-provider source is the `ConfigProvider`: a record's values are strings, so a function-valued
+ * `load` identifies a provider.
+ *
+ * @internal
+ */
+export const isProvider = (source: Env | ConfigProvider.ConfigProvider): source is ConfigProvider.ConfigProvider =>
+	typeof (source as { readonly load?: unknown }).load === "function";

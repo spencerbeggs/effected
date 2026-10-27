@@ -3,7 +3,21 @@ import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import type { CiName } from "../src/CiName.js";
-import { ciKeys, ciNames, ciProviders, detectCi, detectCiRun } from "../src/internal/ci.js";
+import type { CiProvider } from "../src/internal/ci.js";
+import {
+	PROVIDERS,
+	ciCoordinateKeys,
+	ciDetectKeys,
+	ciNames,
+	detectCi as detectCiRaw,
+	detectCiRun as detectCiRunRaw,
+	providerOf,
+} from "../src/internal/ci.js";
+import { normalizeEnv } from "../src/internal/envRecord.js";
+
+// The detectors take a normalized record (an empty value is absent): `readEnv` and `RuntimeEnv.fromRecord` guarantee it.
+const detectCi = (env: Record<string, string | undefined>) => detectCiRaw(normalizeEnv(env));
+const detectCiRun = (env: Record<string, string | undefined>) => detectCiRunRaw(normalizeEnv(env));
 
 // std-env 4.3.0's provider table (dist/index.mjs), transcribed row by row in its declared order: [std-env name, the
 // variable std-env tests, the CiName this package reports, or null where the row is deliberately left out].
@@ -150,11 +164,18 @@ describe("detectCi against std-env 4.3.0's provider table", () => {
 		it(`CONTINUOUS_INTEGRATION=${v} → generic`, () =>
 			assert.deepStrictEqual(detectCi({ CONTINUOUS_INTEGRATION: v }), Option.some("generic")));
 	}
-	for (const v of ["false", "0", "FALSE", ""]) {
+	// Departure from std-env 4.3.0, which tests `!!env.CI` (so `CI=false` is CI there): the falsy spellings mean not CI,
+	// for CI and for a provider's marker alike, because users set `CI=false` to get interactive output back.
+	for (const v of ["false", "0", "FALSE", "off", "No"]) {
 		it(`CI=${JSON.stringify(v)} → none`, () => assert.deepStrictEqual(detectCi({ CI: v }), Option.none()));
+		it(`CONTINUOUS_INTEGRATION=${JSON.stringify(v)} → none`, () =>
+			assert.deepStrictEqual(detectCi({ CONTINUOUS_INTEGRATION: v }), Option.none()));
 		it(`GITHUB_ACTIONS=${JSON.stringify(v)} is not github-actions`, () =>
 			assert.deepStrictEqual(detectCi({ GITHUB_ACTIONS: v }), Option.none()));
+		it(`TRAVIS=${JSON.stringify(v)} is not travis, and CI=true is then generic`, () =>
+			assert.deepStrictEqual(detectCi({ TRAVIS: v, CI: "true" }), Option.some("generic")));
 	}
+	it(`CI="" → none`, () => assert.deepStrictEqual(detectCi({ CI: "" }), Option.none()));
 	it("nothing set → none", () => assert.deepStrictEqual(detectCi({}), Option.none()));
 });
 
@@ -299,12 +320,17 @@ describe("detectCiRun", () => {
 		));
 });
 
-// The key list and the table cannot drift: every variable a row names is read.
-describe("ciKeys", () => {
-	it("lists every detection and coordinate variable of every row, plus CI and CONTINUOUS_INTEGRATION", () => {
-		for (const provider of ciProviders) {
-			for (const key of [
-				...provider.detect,
+// The key lists and the table cannot drift: every variable a row names is read, detection first, coordinates after.
+describe("ciDetectKeys and ciCoordinateKeys", () => {
+	it("ciDetectKeys lists every detection variable, plus CI and CONTINUOUS_INTEGRATION, without duplicates", () => {
+		for (const provider of PROVIDERS) for (const key of provider.detect) assert.include(ciDetectKeys, key);
+		assert.include(ciDetectKeys, "CI");
+		assert.include(ciDetectKeys, "CONTINUOUS_INTEGRATION");
+		assert.strictEqual(new Set(ciDetectKeys).size, ciDetectKeys.length, "no duplicates");
+	});
+	it("ciCoordinateKeys lists exactly the matched provider's coordinate variables", () => {
+		for (const provider of PROVIDERS as ReadonlyArray<CiProvider>) {
+			const expected = new Set([
 				...(provider.runId ?? []),
 				...(provider.attempt ?? []),
 				...(provider.jobId ?? []),
@@ -312,18 +338,25 @@ describe("ciKeys", () => {
 				...(provider.refName ?? []),
 				...(provider.os ?? []),
 				...(provider.arch ?? []),
-			]) {
-				assert.include(ciKeys, key);
-			}
+			]);
+			assert.deepStrictEqual(new Set(ciCoordinateKeys(provider)), expected, provider.name);
 		}
-		assert.include(ciKeys, "CI");
-		assert.include(ciKeys, "CONTINUOUS_INTEGRATION");
-		assert.strictEqual(new Set(ciKeys).size, ciKeys.length, "no duplicates");
 	});
-	it("the source reads env only through the table (no direct env.X read to forget)", () => {
+	it("a record holding only the detect keys picks the provider whose coordinates are then read", () =>
+		assert.strictEqual(providerOf({ GITLAB_CI: "true" })?.name, "gitlab"));
+	it("the source names an env variable only in the table or as CI / CONTINUOUS_INTEGRATION", () => {
 		const source = readFileSync(fileURLToPath(new URL("../src/internal/ci.ts", import.meta.url)), "utf8");
-		const direct = [...source.matchAll(/(?<![\w./])env\.([A-Z][A-Za-z_]+)/g)].map((m) => m[1]);
-		// Control: the regex does see the two direct reads the generic fallback makes.
-		assert.deepStrictEqual(new Set(direct), new Set(["CI", "CONTINUOUS_INTEGRATION"]));
+		const reads = /(?<![\w./])env\.([A-Z][A-Za-z_]+)/g;
+		// Control: the regex does see a direct read when one is written.
+		assert.deepStrictEqual(
+			[..."env.CI".matchAll(reads)].map((m) => m[1]),
+			["CI"],
+		);
+		assert.deepStrictEqual(
+			[...source.matchAll(reads)].map((m) => m[1]),
+			[],
+		);
+		const named = new Set([...source.matchAll(/isSet\(env, "([A-Z_]+)"\)/g)].map((m) => m[1]));
+		assert.deepStrictEqual(named, new Set(["CI", "CONTINUOUS_INTEGRATION"]));
 	});
 });

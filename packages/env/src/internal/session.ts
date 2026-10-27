@@ -17,28 +17,17 @@ export const SESSION_RULES = [
 	["term-session", "TERM_SESSION_ID"],
 ] as const;
 
-/** @internal */
-export type SessionSourceName = (typeof SESSION_RULES)[number][0];
-
-/** @internal */
-export interface SessionRecord {
-	readonly source: SessionSourceName;
-	readonly variable: string;
-	readonly id: string;
-	readonly multiplexer: Option.Option<{ readonly name: "tmux" | "screen"; readonly value: string }>;
-}
-
-const present = (value: string | undefined): value is string => value !== undefined && value !== "";
-
 /**
  * The multiplexer the process runs inside, with its variable's raw value: `TMUX` (socket path, server pid and session
  * index, unparsed) before `STY`.
  *
  * @internal
  */
-export const detectMultiplexer = (env: Env): SessionRecord["multiplexer"] => {
-	if (present(env.TMUX)) return Option.some({ name: "tmux", value: env.TMUX });
-	if (present(env.STY)) return Option.some({ name: "screen", value: env.STY });
+export const detectMultiplexer = (
+	env: Env,
+): Option.Option<{ readonly name: "tmux" | "screen"; readonly value: string }> => {
+	if (env.TMUX !== undefined) return Option.some({ name: "tmux", value: env.TMUX });
+	if (env.STY !== undefined) return Option.some({ name: "screen", value: env.STY });
 	return Option.none();
 };
 
@@ -47,24 +36,25 @@ export const detectMultiplexer = (env: Env): SessionRecord["multiplexer"] => {
  *
  * @internal
  */
-export const detectSession = (env: Env): Option.Option<SessionRecord> => {
+export const detectSession = (env: Env) => {
 	for (const [source, variable] of SESSION_RULES) {
 		const id = env[variable];
-		if (present(id)) return Option.some({ source, variable, id, multiplexer: detectMultiplexer(env) });
+		if (id !== undefined) return Option.some({ source, variable, id, multiplexer: detectMultiplexer(env) });
 	}
 	return Option.none();
 };
+
+/** No `TERM_PROGRAM` pair: both halves unset. */
+export const noTermProgram = { name: Option.none<string>(), version: Option.none<string>() };
 
 /**
  * `TERM_PROGRAM` and `TERM_PROGRAM_VERSION`, verbatim and independent of each other.
  *
  * @internal
  */
-export const detectTermProgram = (
-	env: Env,
-): { readonly name: Option.Option<string>; readonly version: Option.Option<string> } => ({
-	name: Option.filter(Option.fromNullishOr(env.TERM_PROGRAM), present),
-	version: Option.filter(Option.fromNullishOr(env.TERM_PROGRAM_VERSION), present),
+export const detectTermProgram = (env: Env): typeof noTermProgram => ({
+	name: Option.fromNullishOr(env.TERM_PROGRAM),
+	version: Option.fromNullishOr(env.TERM_PROGRAM_VERSION),
 });
 
 /**

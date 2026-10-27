@@ -99,8 +99,10 @@ const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[
 const isControl = (code: number): boolean => code < 0x20 || code === 0x7f;
 const isOctal = (ch: string | undefined): boolean => ch !== undefined && ch >= "0" && ch <= "7";
 const isHex = (ch: string | undefined): boolean => ch !== undefined && /[0-9A-Fa-f]/.test(ch);
+// Name characters by code, so the statement loop tests no regex per character.
+const isNameChar = (code: number): boolean =>
+	(code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a) || code === 0x5f;
 
-const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
 /** The one-character `$'…'` escapes, as bytes. */
@@ -118,6 +120,14 @@ const SIMPLE_ESCAPES: Readonly<Record<string, number>> = {
 	"'": 0x27,
 	'"': 0x22,
 	"?": 0x3f,
+};
+
+/** Appends the UTF-8 bytes of one code point; the text is known to hold no lone surrogate. */
+const pushUtf8 = (bytes: Array<number>, cp: number): void => {
+	if (cp < 0x80) bytes.push(cp);
+	else if (cp < 0x800) bytes.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
+	else if (cp < 0x10000) bytes.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+	else bytes.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
 };
 
 /** A rejection at an index; the caller turns it into a line and column. */
@@ -155,9 +165,8 @@ const tokenize = (text: string): Readonly<Record<string, string>> => {
 			}
 			if (c !== "\\") {
 				quotedChar(i);
-				const s = String.fromCodePoint(text.codePointAt(i) as number);
-				for (const byte of encoder.encode(s)) bytes.push(byte);
-				i += s.length;
+				pushUtf8(bytes, text.codePointAt(i) as number);
+				i += (text.codePointAt(i) as number) > 0xffff ? 2 : 1;
 				continue;
 			}
 			const escapeAt = i;
@@ -290,7 +299,7 @@ const tokenize = (text: string): Readonly<Record<string, string>> => {
 		i += 6;
 		while (text[i] === " " || text[i] === "\t") i++;
 		const nameStart = i;
-		while (i < n && /[A-Za-z0-9_]/.test(text[i] as string)) i++;
+		while (i < n && isNameChar(text.charCodeAt(i))) i++;
 		const name = text.slice(nameStart, i);
 		if (name === "") throw new Reject(text[i] === "$" ? "expansion" : "unsupported-statement", nameStart);
 		if (!NAME.test(name)) throw new Reject("invalid-name", nameStart);
@@ -335,10 +344,15 @@ const ANSI_C_ESCAPES: Readonly<Record<string, string>> = {
 	"'": "\\'",
 };
 
+const hasControl = (value: string): boolean => {
+	for (let k = 0; k < value.length; k++) if (isControl(value.charCodeAt(k))) return true;
+	return false;
+};
+
 const quote = (value: string): string => {
 	if (value === "") return "''";
 	if (BARE.test(value)) return value;
-	if ([...value].some((ch) => isControl(ch.codePointAt(0) as number))) {
+	if (hasControl(value)) {
 		let body = "";
 		for (const ch of value) {
 			const code = ch.codePointAt(0) as number;
@@ -363,6 +377,10 @@ const quote = (value: string): string => {
  * Nothing is interpreted: a text inside the dialect means exactly the variables it names, as bash sourcing it would
  * export them, and anything else rejects the whole text. That claim assumes the sourcing shell has no `export`
  * function or alias and no read-only variable the text names. Pure and synchronous: no `process`, no IO.
+ *
+ * Core's `ConfigProvider.fromDotEnvContents` is not enough here: it reads a lenient dotenv grammar (`:` separators,
+ * trailing comments, backtick quotes, no `$'…'` decoding) and skips what it does not understand, so it cannot promise
+ * that what it read is what bash would export.
  *
  * @example
  * ```ts

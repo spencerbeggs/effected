@@ -3,7 +3,7 @@ import { Context, Effect, Layer, Option, Stdio, Terminal } from "effect";
 import type { ColorLevel } from "./ColorLevel.js";
 import { colorDepth, colorKeys } from "./internal/colorDepth.js";
 import { readEnv } from "./internal/envRecord.js";
-import { allKeys } from "./internal/keys.js";
+import { terminalEnvKeys } from "./internal/keys.js";
 import { detectOsc8 } from "./internal/osc8/detect.js";
 
 /**
@@ -113,7 +113,7 @@ const snapshot = (
 		const stdin = yield* stdio.stdinIsTerminal;
 		const stdout = yield* stdio.stdoutIsTerminal;
 		const stderr = yield* options?.stderrIsTerminal ?? stdio.stderrIsTerminal;
-		const env = yield* readEnv([...allKeys, "COLUMNS"]);
+		const env = yield* readEnv(terminalEnvKeys);
 		return make(env, { stdin, stdout, stderr }, columns);
 	});
 

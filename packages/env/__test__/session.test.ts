@@ -1,6 +1,15 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
-import { detectSession, detectTermProgram, sessionKeys } from "../src/internal/session.js";
+import { normalizeEnv } from "../src/internal/envRecord.js";
+import {
+	detectSession as detectSessionRaw,
+	detectTermProgram as detectTermProgramRaw,
+	sessionKeys,
+} from "../src/internal/session.js";
+
+// The detectors take a normalized record (an empty value is absent): `readEnv` and `RuntimeEnv.fromRecord` guarantee it.
+const detectSession = (env: Record<string, string | undefined>) => detectSessionRaw(normalizeEnv(env));
+const detectTermProgram = (env: Record<string, string | undefined>) => detectTermProgramRaw(normalizeEnv(env));
 
 // The variables each terminal and multiplexer documents for its pane, window or session, in the priority order the
 // package promises: a multiplexer before the terminal it is attached to.

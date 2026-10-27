@@ -1,11 +1,12 @@
 import { ConfigProvider, Context, Effect, Layer, Option, Schema } from "effect";
 import type { CiName } from "./CiName.js";
 import { detectAgent } from "./internal/agentCi.js";
-import { ciNames, detectCi, detectCiRun } from "./internal/ci.js";
-import { normalizeEnv, readEnv } from "./internal/envRecord.js";
-import { allKeys } from "./internal/keys.js";
+import { ciCoordinateKeys, ciNames, detectCiState, providerOf } from "./internal/ci.js";
+import { isProvider, normalizeEnv, readEnv } from "./internal/envRecord.js";
+import { runtimeKeys } from "./internal/keys.js";
 import { detectOsc8 } from "./internal/osc8/detect.js";
-import { detectSession, detectTermProgram } from "./internal/session.js";
+import { SESSION_RULES, detectSession, detectTermProgram, noTermProgram } from "./internal/session.js";
+import type { Env } from "./internal/types.js";
 
 /**
  * An `Option` field that encodes `None` as `null` and decodes when its key is absent, so a persisted snapshot keeps
@@ -20,6 +21,24 @@ const optionField = <S extends Schema.Constraint>(schema: S) =>
  */
 const addedOptionField = <S extends Schema.Constraint>(schema: S) =>
 	optionField(schema).pipe(Schema.withConstructorDefault(Effect.succeed(Option.none())));
+
+const TerminalSessionSchema = Schema.Struct({
+	source: Schema.Literals(SESSION_RULES.map(([source]) => source)),
+	variable: Schema.String,
+	id: Schema.String,
+	multiplexer: optionField(Schema.Struct({ name: Schema.Literals(["tmux", "screen"]), value: Schema.String })),
+});
+
+const CiRunSchema = Schema.Struct({
+	runId: optionField(Schema.String),
+	attempt: optionField(Schema.String),
+	jobId: optionField(Schema.String),
+	sha: optionField(Schema.String),
+	refName: optionField(Schema.String),
+	runner: optionField(Schema.Struct({ os: Schema.String, arch: optionField(Schema.String) })),
+});
+
+const TermProgramSchema = Schema.Struct({ name: optionField(Schema.String), version: optionField(Schema.String) });
 
 /**
  * Where a {@link TerminalSession} came from, in priority order: `tmux` (`TMUX_PANE`), `screen` (`STY`),
@@ -106,37 +125,27 @@ export class RuntimeEnv extends Schema.Class<RuntimeEnv>("@effected/env/RuntimeE
 	 * beyond that), or `None`.
 	 */
 	agent: optionField(Schema.String),
-	/** The CI the process runs in: {@link CiName}, so a consumer can match it exhaustively, or `None`. */
+	/**
+	 * The CI the process runs in: {@link CiName}, so a consumer can match it exhaustively, or `None`.
+	 *
+	 * @remarks
+	 * Unlike std-env, a detection variable (`CI` or a provider's own) set to `false`, `0`, `off` or `no` (any case)
+	 * reads as unset, so a user can set `CI=false` to get interactive output back.
+	 */
 	ci: optionField(Schema.Literals(ciNames)),
 	/** The identified terminal program and its version when it exposes one, or `None`. */
 	terminal: optionField(Schema.Struct({ name: Schema.String, version: optionField(Schema.String) })),
 	/** The terminal or multiplexer session: see {@link TerminalSession}. Defaults to `None` in `make`. */
-	session: addedOptionField(
-		Schema.Struct({
-			source: Schema.Literals(["tmux", "screen", "windows-terminal", "wezterm", "kitty", "term-session"]),
-			variable: Schema.String,
-			id: Schema.String,
-			multiplexer: optionField(Schema.Struct({ name: Schema.Literals(["tmux", "screen"]), value: Schema.String })),
-		}),
-	),
+	session: addedOptionField(TerminalSessionSchema),
 	/** The coordinates of the CI run: see {@link CiRun}. Defaults to `None` in `make`. */
-	ciRun: addedOptionField(
-		Schema.Struct({
-			runId: optionField(Schema.String),
-			attempt: optionField(Schema.String),
-			jobId: optionField(Schema.String),
-			sha: optionField(Schema.String),
-			refName: optionField(Schema.String),
-			runner: optionField(Schema.Struct({ os: Schema.String, arch: optionField(Schema.String) })),
-		}),
-	),
+	ciRun: addedOptionField(CiRunSchema),
 	/**
 	 * The raw `TERM_PROGRAM` pair: see {@link TermProgram}. Both halves default to `None`, when the key is absent on
 	 * decode and in `make`.
 	 */
-	termProgram: Schema.Struct({ name: optionField(Schema.String), version: optionField(Schema.String) }).pipe(
-		Schema.withDecodingDefaultTypeKey(Effect.succeed({ name: Option.none(), version: Option.none() })),
-		Schema.withConstructorDefault(Effect.succeed({ name: Option.none(), version: Option.none() })),
+	termProgram: TermProgramSchema.pipe(
+		Schema.withDecodingDefaultTypeKey(Effect.succeed(noTermProgram)),
+		Schema.withConstructorDefault(Effect.succeed(noTermProgram)),
 	),
 }) {
 	/**
@@ -153,14 +162,23 @@ export class RuntimeEnv extends Schema.Class<RuntimeEnv>("@effected/env/RuntimeE
 		const clean = normalizeEnv(env);
 		return RuntimeEnv.make({
 			agent: detectAgent(clean),
-			ci: detectCi(clean),
+			...detectCiState(clean),
 			terminal: detectOsc8(clean, false, false).terminal,
 			session: detectSession(clean),
-			ciRun: detectCiRun(clean),
 			termProgram: detectTermProgram(clean),
 		});
 	}
 }
+
+/**
+ * Reads the keys every detector needs, then only the matched CI provider's run coordinates: about sixty
+ * configuration reads instead of every provider's.
+ */
+const readRuntimeEnv: Effect.Effect<Env> = Effect.gen(function* () {
+	const base = yield* readEnv(runtimeKeys);
+	const provider = providerOf(base);
+	return provider === undefined ? base : { ...base, ...(yield* readEnv(ciCoordinateKeys(provider))) };
+});
 
 /**
  * The fields {@link CurrentRuntimeEnv.layerTest} can override.
@@ -219,7 +237,7 @@ export class CurrentRuntimeEnv extends Context.Service<CurrentRuntimeEnv, Runtim
 	 */
 	static readonly layer: Layer.Layer<CurrentRuntimeEnv> = Layer.effect(
 		this,
-		Effect.map(readEnv(allKeys), (env) => RuntimeEnv.fromRecord(env)),
+		Effect.map(readRuntimeEnv, (env) => RuntimeEnv.fromRecord(env)),
 	);
 
 	/**
@@ -240,15 +258,11 @@ export class CurrentRuntimeEnv extends Context.Service<CurrentRuntimeEnv, Runtim
 		Layer.fresh(
 			Layer.effect(
 				CurrentRuntimeEnv,
-				// A record's values are strings, so a function-valued `load` identifies a provider.
-				typeof source.load === "function"
-					? Effect.map(
-							readEnv(allKeys).pipe(
-								Effect.provideService(ConfigProvider.ConfigProvider, source as ConfigProvider.ConfigProvider),
-							),
-							(env) => RuntimeEnv.fromRecord(env),
+				isProvider(source)
+					? Effect.map(readRuntimeEnv.pipe(Effect.provideService(ConfigProvider.ConfigProvider, source)), (env) =>
+							RuntimeEnv.fromRecord(env),
 						)
-					: Effect.sync(() => RuntimeEnv.fromRecord(source as Readonly<Record<string, string | undefined>>)),
+					: Effect.sync(() => RuntimeEnv.fromRecord(source)),
 			),
 		);
 
@@ -260,13 +274,6 @@ export class CurrentRuntimeEnv extends Context.Service<CurrentRuntimeEnv, Runtim
 	static readonly layerTest = (overrides: RuntimeEnvOverrides = {}): Layer.Layer<CurrentRuntimeEnv> =>
 		Layer.succeed(
 			CurrentRuntimeEnv,
-			RuntimeEnv.make({
-				agent: overrides.agent ?? Option.none(),
-				ci: overrides.ci ?? Option.none(),
-				terminal: overrides.terminal ?? Option.none(),
-				session: overrides.session ?? Option.none(),
-				ciRun: overrides.ciRun ?? Option.none(),
-				termProgram: overrides.termProgram ?? { name: Option.none(), version: Option.none() },
-			}),
+			RuntimeEnv.make({ agent: Option.none(), ci: Option.none(), terminal: Option.none(), ...overrides }),
 		);
 }

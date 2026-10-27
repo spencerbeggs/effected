@@ -1,10 +1,7 @@
 import { Config, ConfigProvider, Effect, Option } from "effect";
 import type { AudienceKind } from "./Audience.js";
 import { Audience } from "./Audience.js";
-
-const isProvider = (
-	source: Readonly<Record<string, string | undefined>> | ConfigProvider.ConfigProvider,
-): source is ConfigProvider.ConfigProvider => typeof (source as { readonly load?: unknown }).load === "function";
+import { isProvider } from "./internal/envRecord.js";
 
 /**
  * Reads an environment variable that picks a mode within an audience.

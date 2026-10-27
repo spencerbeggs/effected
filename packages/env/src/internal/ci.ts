@@ -12,7 +12,7 @@ import type { Env } from "./types.js";
  * @internal
  */
 export interface CiProvider {
-	readonly name: CiName;
+	readonly name: Exclude<CiName, "generic">;
 	readonly detect: ReadonlyArray<string>;
 	readonly runId?: ReadonlyArray<string>;
 	readonly attempt?: ReadonlyArray<string>;
@@ -42,7 +42,7 @@ export interface CiProvider {
 // only URL, SITE_NAME and SITE_ID reach functions at runtime), CF_PAGES and WORKERS_CI (Cloudflare: injected into the
 // build), NOW_BUILDER (Vercel's legacy build-image variable; VERCEL itself, set at build and runtime, is std-env's
 // ci:false row and is left out above).
-const PROVIDERS: ReadonlyArray<CiProvider> = [
+export const PROVIDERS = [
 	{
 		name: "github-actions",
 		detect: ["GITHUB_ACTIONS"],
@@ -236,104 +236,109 @@ const PROVIDERS: ReadonlyArray<CiProvider> = [
 	{ name: "appcenter", detect: ["APPCENTER_BUILD_ID"], runId: ["APPCENTER_BUILD_ID"], refName: ["APPCENTER_BRANCH"] },
 	{ name: "cleavr", detect: ["CLEAVR"] },
 	{ name: "edgeone-pages", detect: ["EO_PAGES_CI"] },
-];
+] as const satisfies ReadonlyArray<CiProvider>;
 
-/**
- * Every provider, in detection order, followed by nothing: `generic` is not a row.
- *
- * @internal
- */
-export const ciProviders: ReadonlyArray<CiProvider> = PROVIDERS;
+/** Every `CiName` with a row, or `never` when one has none: a name added to `CiName` without a provider fails to compile. */
+type RowName = [Exclude<CiName, "generic" | (typeof PROVIDERS)[number]["name"]>] extends [never] ? CiName : never;
 
 /**
  * Every {@link CiName}, in detection order, with `generic` last: the literal set `RuntimeEnv.ci` decodes.
  *
  * @internal
  */
-export const ciNames: ReadonlyArray<CiName> = [...PROVIDERS.map((provider) => provider.name), "generic"];
+export const ciNames: ReadonlyArray<RowName> = [...PROVIDERS.map((provider) => provider.name), "generic"];
 
-// "" is falsy, as in detectAgent and std-env: an empty variable is an unset one. "false" and "0" are falsy too, so
-// CI=false is honoured; std-env reads any non-empty value as set.
-const isFalsy = (value: string | undefined): boolean =>
-	value === undefined || value === "" || value.toLowerCase() === "false" || value === "0";
+// Departure from std-env, which reads any non-empty value as set (`CI=false` is CI there): `false`, `0`, `off` and `no`
+// (any case) read as not set, for `CI` and for a provider's own marker alike. Users set `CI=false` to get interactive
+// output back, and GitHub Actions has honoured it here since 0.5.0. The record is normalized, so empty is already absent.
+const FALSY = new Set(["false", "0", "off", "no"]);
+const isSet = (env: Env, key: string): boolean => {
+	const value = env[key];
+	return value !== undefined && !FALSY.has(value.toLowerCase());
+};
 
 const first = (env: Env, keys: ReadonlyArray<string> | undefined): Option.Option<string> => {
 	for (const key of keys ?? []) {
 		const value = env[key];
-		if (value !== undefined && value !== "") return Option.some(value);
+		if (value !== undefined) return Option.some(value);
 	}
 	return Option.none();
 };
 
 /** The provider row whose detection variable is set, in detection order. */
-const providerOf = (env: Env): CiProvider | undefined =>
-	PROVIDERS.find((provider) => provider.detect.some((key) => !isFalsy(env[key])));
+export const providerOf = (env: Env): CiProvider | undefined =>
+	PROVIDERS.find((provider) => provider.detect.some((key) => isSet(env, key)));
+
+const noRun = {
+	runId: Option.none<string>(),
+	attempt: Option.none<string>(),
+	jobId: Option.none<string>(),
+	sha: Option.none<string>(),
+	refName: Option.none<string>(),
+	runner: Option.none<{ readonly os: string; readonly arch: Option.Option<string> }>(),
+};
 
 /**
- * The CI this process runs in: the first provider whose detection variable is truthy (GitHub Actions first, then
- * std-env's order, a provider signal winning even under `CI=false`), else `generic` when `CI` or
- * `CONTINUOUS_INTEGRATION` is truthy.
+ * The CI this process runs in and its run coordinates, from one scan of the provider table: the first provider whose
+ * detection variable is set (GitHub Actions first, then std-env's order, a provider signal winning even under
+ * `CI=false`), else `generic` when `CI` or `CONTINUOUS_INTEGRATION` is set. A value is set unless it is `false`, `0`, `off` or `no` (any case): as in std-env
+ * otherwise, but `CI=false` is not CI, a deliberate departure so a user can turn CI output off. `ciRun` is `Some` exactly when `ci` is, with every coordinate the provider
+ * does not document (and every coordinate of `generic`) `None`. The record must be normalized.
  *
  * @internal
  */
-export const detectCi = (env: Env): Option.Option<CiName> => {
+export const detectCiState = (
+	env: Env,
+): { readonly ci: Option.Option<CiName>; readonly ciRun: Option.Option<typeof noRun> } => {
 	const provider = providerOf(env);
-	if (provider !== undefined) return Option.some(provider.name);
-	if (!isFalsy(env.CI) || !isFalsy(env.CONTINUOUS_INTEGRATION)) return Option.some("generic");
-	return Option.none();
+	if (provider === undefined) {
+		return isSet(env, "CI") || isSet(env, "CONTINUOUS_INTEGRATION")
+			? { ci: Option.some("generic"), ciRun: Option.some(noRun) }
+			: { ci: Option.none(), ciRun: Option.none() };
+	}
+	const placeholders = provider.shaPlaceholders ?? [];
+	return {
+		ci: Option.some(provider.name),
+		ciRun: Option.some({
+			runId: first(env, provider.runId),
+			attempt: first(env, provider.attempt),
+			jobId: first(env, provider.jobId),
+			sha: Option.filter(first(env, provider.sha), (sha) => !placeholders.includes(sha)),
+			refName: first(env, provider.refName),
+			runner: Option.map(first(env, provider.os), (os) => ({ os, arch: first(env, provider.arch) })),
+		}),
+	};
 };
 
-/**
- * The run coordinates of a CI run, each read raw from its provider's documented variable.
- *
- * @internal
- */
-export interface CiRunRecord {
-	readonly runId: Option.Option<string>;
-	readonly attempt: Option.Option<string>;
-	readonly jobId: Option.Option<string>;
-	readonly sha: Option.Option<string>;
-	readonly refName: Option.Option<string>;
-	readonly runner: Option.Option<{ readonly os: string; readonly arch: Option.Option<string> }>;
-}
+/** The CI this process runs in: see {@link detectCiState}. @internal */
+export const detectCi = (env: Env): Option.Option<CiName> => detectCiState(env).ci;
+
+/** The run coordinates for the detected CI: see {@link detectCiState}. @internal */
+export const detectCiRun = (env: Env): Option.Option<typeof noRun> => detectCiState(env).ciRun;
 
 /**
- * The run coordinates for the detected CI: `Some` exactly when {@link detectCi} is, with every coordinate the provider
- * does not document (and every coordinate of `generic`) `None`.
+ * The variable names that decide whether a CI is present, and which: every provider's detection variables plus `CI`
+ * and `CONTINUOUS_INTEGRATION`. Read these first, then {@link ciCoordinateKeys} for the matched provider only.
  *
  * @internal
  */
-export const detectCiRun = (env: Env): Option.Option<CiRunRecord> => {
-	if (Option.isNone(detectCi(env))) return Option.none();
-	const provider: CiProvider = providerOf(env) ?? { name: "generic", detect: [] };
-	return Option.some({
-		runId: first(env, provider.runId),
-		attempt: first(env, provider.attempt),
-		jobId: first(env, provider.jobId),
-		sha: Option.filter(first(env, provider.sha), (sha) => !(provider.shaPlaceholders ?? []).includes(sha)),
-		refName: first(env, provider.refName),
-		runner: Option.map(first(env, provider.os), (os) => ({ os, arch: first(env, provider.arch) })),
-	});
-};
+export const ciDetectKeys: ReadonlyArray<string> = [
+	...new Set([...PROVIDERS.flatMap((provider) => provider.detect), "CI", "CONTINUOUS_INTEGRATION"]),
+];
 
 /**
- * Every environment variable name the CI detectors read.
+ * The variable names a matched provider's run coordinates are read from.
  *
  * @internal
  */
-export const ciKeys: ReadonlyArray<string> = [
+export const ciCoordinateKeys = (provider: CiProvider): ReadonlyArray<string> => [
 	...new Set([
-		...PROVIDERS.flatMap((provider) => [
-			...provider.detect,
-			...(provider.runId ?? []),
-			...(provider.attempt ?? []),
-			...(provider.jobId ?? []),
-			...(provider.sha ?? []),
-			...(provider.refName ?? []),
-			...(provider.os ?? []),
-			...(provider.arch ?? []),
-		]),
-		"CI",
-		"CONTINUOUS_INTEGRATION",
+		...(provider.runId ?? []),
+		...(provider.attempt ?? []),
+		...(provider.jobId ?? []),
+		...(provider.sha ?? []),
+		...(provider.refName ?? []),
+		...(provider.os ?? []),
+		...(provider.arch ?? []),
 	]),
 ];
