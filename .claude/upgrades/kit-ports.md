@@ -1,20 +1,30 @@
 # Upgrade this project to the kit-ports release of `@effected/*`
 
-You are moving this repository onto the `@effected/*` release built on branch `feat/kit-ports`. It is a breaking `0.x` round. Most of it is new API: generic code that downstream projects had hand-rolled has moved into the kit. There are a few real breaks, listed first.
+You are moving this repository onto the kit-ports release of `@effected/*` (effected PR #1111, released by #1112). It is a breaking `0.x` round, and the latest in a long series of upgrades: the kit has grown a great deal, and much of what downstream projects hand-rolled now ships in it, or already ships in Effect itself. There are a few real breaks, listed first.
 
 Work in this order:
 
-1. Fix the breaks in step 2.
-2. Find hand-rolled code the kit now covers (step 3) and replace it where it fits.
-3. Run the verification at the end.
+1. Bump the catalog plugin and fix peers (step 1), then fix the breaks (step 2).
+2. Get the build and the full test suite green (step 4).
+3. **Only then**, align your code on the kit and on Effect (step 5): review all of it, not just the call sites this ledger names, and replace whatever you hand-rolled that the kit or Effect now provides. Step 3 lists this round's new surfaces as a starting point.
+4. Run the verification again.
 
 Check every API claim against the **installed** `.d.ts`, never against this document or memory. This ledger names shapes, not exact signatures.
+
+## Versions in this release
+
+| Minor (breaking or new API) | Patch |
+| --- | --- |
+| app 0.28.0, cli 0.23.0, commands 0.17.0, config-file 0.21.0, engine 0.9.0, env 0.6.0, git 0.26.0, glob 0.15.0, mcp 0.10.0, memfs 0.20.0, store 0.20.0, walker 0.21.0, xdg 0.16.0 | github-actions 0.28.2, images 0.6.2, jsonc 0.20.1, jsonl 0.15.4, npm 0.27.1, package-json 0.26.1, schemastore 0.26.3, schemastore-cli 0.26.3, tsconfig-json 0.17.4, workspaces 0.39.1 |
+
+The catalog plugin `@effected/pnpm-plugin-effect` that names them is 0.18.8 or later. Confirm with `pnpm view @effected/pnpm-plugin-effect version` before you bump. The effected agent plugin (`@effected/ai-plugin`) is 0.43.2.
 
 ## 1. Bump the catalog plugin, then fix peer declarations
 
 Your `@effected/*` versions come from `@effected/pnpm-plugin-effect` through `configDependencies` and `catalog:effected`. You do not edit `@effected/*` ranges by hand.
 
 1. **Bump the plugin.** Move `@effected/pnpm-plugin-effect` in `pnpm-workspace.yaml`'s `configDependencies` to the release built on this round. Version and `+sha512` integrity move together: `pnpm view @effected/pnpm-plugin-effect@<version> dist.integrity`. That release's catalog names every touched `@effected` package at its new `0.x` minor.
+   **Your `@effected` versions will jump several minors at once** if you are coming from an older plugin. Every intermediate release's breaks apply too; read each package's CHANGELOG between your old version and the new one.
 2. **Reinstall from scratch:** `pnpm clean --lockfile && pnpm install`.
    - Dropping the lockfile is required. A plain install reports "Lockfile is up to date" and keeps the old versions, even after the plugin bump.
    - Check the lockfile diff: platform binaries (turbo, biome, tsgo) must still be present.
@@ -94,6 +104,7 @@ For each item, search your repo for the hand-rolled pattern. Replace it only whe
     - a bash special or readonly variable (`UID`, `RANDOM`, `_`, `PWD`, `IFS`, `BASH_*`, …).
 
     It is not a shell interpreter, and that is deliberate: once an unknown statement exists, no earlier variable can be trusted.
+  - A leading U+FEFF in a value is kept, as bash keeps it. `SRANDOM`, `BASH_MONOSECONDS` and `BASH_TRAPSIG` are rejected on every bash version, though older bash leaves them plain.
   - `format` emits exactly this dialect. It throws a `RangeError` on a NUL, a lone surrogate, an invalid name or a special variable.
   - **Reading a file? Use `ShellExports.parseBytesResult(bytes)`.** macOS `/bin/bash` 3.2's `%q` writes raw UTF-8 bytes mixed with octal escapes inside `$'…'`. Decoding that file to a string first breaks those characters. Each `$'…'` must decode as UTF-8 on its own.
   - bash 3.2 writes `~` unquoted, and bash itself expands it, so such a value is rejected.
@@ -115,7 +126,7 @@ For each item, search your repo for the hand-rolled pattern. Replace it only whe
   - **Password contract.** A URL's password is never retained, in any form. URL userinfo runs to the **last** `@`, which is deliberately stricter than git's own credential parser, so a password containing `/`, `@` or `?` cannot leak. The cost: an `@` in a URL path moves the text before it into `user`.
   - **Not safe to log as-is.** Credentials in other positions are kept verbatim: a token used as the URL user, a token in a query string, and anything git itself reads as an scp path. Log `GitRemote.format(GitRemote.redact(form))`. `redact` masks the user and the query.
   - **Helpers:** `GitRemote.format` re-renders the parts, and for password-free input `format(parse(x)) === x`. `GitRemote.repositoryPath` strips the leading `/`, a trailing `/` and `.git`.
-  - **Redaction in `GitCommand`:** git commands' redacted argument lists now go through the same parser. A URL such as `https://host:8080/a@b` is over-redacted to `https://<redacted>@b`, and a query string in a URL argument is masked. Search: remote-URL regexes, `canonicalizeGitUrl`-style helpers. **If you derive a persisted key from a remote URL,** compose it from the parts and compare it against your stored keys before switching.
+  - **Redaction in `GitCommand`:** git commands' redacted argument lists now go through the same parser, and a failed command's stored `stderr` and `message` mask everything the argument list masks, query tokens included. A bare user name such as `git` is never masked in prose. A URL such as `https://host:8080/a@b` is over-redacted to `https://<redacted>@b`, and a query string in a URL argument is masked. Search: remote-URL regexes, `canonicalizeGitUrl`-style helpers. **If you derive a persisted key from a remote URL,** compose it from the parts and compare it against your stored keys before switching.
 - `Git.currentBranch` returns `None` on a detached HEAD. This was already the contract; it is now stated explicitly.
 
 ### `@effected/config-file`
@@ -132,7 +143,7 @@ For each item, search your repo for the hand-rolled pattern. Replace it only whe
 
 ### `@effected/xdg`
 
-- **`Xdg.layerFromEnv(record)`:** an Xdg layer built from an env record. It is fresh per call, so two in one graph do not share a build. If you have a `ConfigProvider` instead, provide it beneath `Xdg.layer`: `Layer.provide(Xdg.layer, ConfigProvider.layer(p))`. Search: `Xdg.layer.pipe(Layer.provide(ConfigProvider.layer(...)))`. That pattern memoizes the first build.
+- **`Xdg.layerFromEnv(record)`:** an Xdg layer built from an env record. It is fresh per call, so two in one graph do not share a build, and `""` reads as unset. With a single `ConfigProvider` for the whole graph you can still provide it beneath `Xdg.layer` (`Layer.provide(Xdg.layer, ConfigProvider.layer(p))`), but `Xdg.layer` is memoized, so the first provider wins everywhere: with two env sources in one graph, read each into a record and use `layerFromEnv`. Search: `Xdg.layer.pipe(Layer.provide(ConfigProvider.layer(...)))`.
 - **`AppDirs.segment(name)` → `Result<string, AppDirsSegmentError>`:** a filesystem-safe path segment. It maps `@org/pkg` to `@org__pkg` and rejects `""`, `.` and `..`. Use it for any runtime-supplied name that becomes a directory. Search: hand-written workspace-key normalizers, and `join(dataRoot, userValue)`.
 - The kit does **not** substitute `USERPROFILE` for an empty `HOME` on posix. On win32 it already reads `USERPROFILE` first.
 
@@ -149,6 +160,7 @@ For each item, search your repo for the hand-rolled pattern. Replace it only whe
   - A wait timeout falls through to running without the lock (`RanUnserialized`).
   - Builds run from an argv, not a shell string, and output is captured through files, so a chatty build never hits ENOBUFS.
   - **Locks on a shared filesystem:** for a lock shared across hosts, `staleMs` must exceed your longest run.
+  - **A custom sync host's `nonce`** must be non-empty, contain no `.`, `/` or `\`, and not be `lock` or `done`; `runSync` throws otherwise. The shipped `nodeRunOnceHost` complies. Keys may contain dots: one key never touches another key's lock, done or breaker files.
   - Search: lockfile helpers around a pre-build step in `globalSetup`.
 - **`LocalExec.parse(argv)` → `Option<{ launcher, kind, binary, rest }>`:** the inverse of `LocalExec.prefixes`. It recognizes `npx --no --`, `bun x --no-install`, `pnpm exec`, `dlx` and the rest. Tokenizing a command string is your job. Search: regexes that match `npx|pnpx|bunx … <tool>`.
 - **`ModuleResolution` (`./node-sync`):** resolves a package from a given root's `node_modules` instead of the caller's own (`resolve(specifier, { from })`), detects a stale install (`isStale`), and loads through an injectable importer (`load`). Search: `createRequire(join(root, "x.js"))`.
@@ -158,6 +170,7 @@ For each item, search your repo for the hand-rolled pattern. Replace it only whe
 - **`boundaries` option:** marker file names, such as `package.json`, that stop descent into nested packages.
 - **`descendEntries`:** walk results that carry the stat info the walk already read, at no extra syscall cost.
 - **Sync walker binding:** `descendSync` / `descendEntriesSync` share the Effect form's result types (`DescendResult`, `DescendEntry`), and an entry's stat lives on `info`. Node bindings come from `@effected/walker/node-sync`. A memfs handle satisfies the sync port directly; memfs's sync interface gained `realPath`.
+- **A brace alternative that climbs above the walk base contributes nothing**, as a standalone climbing pattern already did: `{**/*.md,../x/*.ts}` returns only the `.md` files.
 - **Brace patterns now match.** A pattern whose only magic is a brace group (`src/{a,b}.test.ts`) used to return nothing. Each brace alternative is now walked from its own root (`GlobPattern.enumerationRoots`), so `packages/{a,b}/src/*.ts` reads only the two `src` directories.
 - **Symlinks (behaviour change):** with `followSymlinks` off (the default), no symlinked directory is entered, and that now includes a symlinked walk base and a symlinked directory on a literal pattern's path. Both used to be entered. A literal pattern that is itself a symlink to a file still matches. With `followSymlinks: true`, a cycle guard stops link loops.
 
@@ -187,12 +200,12 @@ For each item, search your repo for the hand-rolled pattern. Replace it only whe
   - **Bring your own store:** pass `store: { get, set }` to `wrap`, and `KeyValueStore` leaves `R`. A `KeyValueStore` value satisfies that port as-is.
 - **`ToolOutcome.envelope(success, errors, { identifier, description })`:** `identifier` names the failure member, which is then served under `$defs/<identifier>`. The envelope's fields now carry default descriptions in the served JSON Schema, an additive change to every `outputSchema` that uses these helpers.
 - **`StdioCapture.nullWritable()`:** a real null `Writable` that can be a pipe target and accepts `setMaxListeners`. `StdioCapture.discard` is write-only and can't stand in for one.
-- **`Exclusive.promise({ try, catch, abandon: true })`:** use `abandon: true` for a promise that ignores its abort signal. The default awaits the promise after aborting, which hangs forever on such a promise.
+- **`Exclusive.promise({ try, catch, abandon: true })`:** use `abandon: true` for a promise that ignores its abort signal. The default awaits the promise after aborting, which hangs forever on such a promise. A `catch` that throws dies with what it threw.
 - **`InjectCrash`** names `McpGuard.parseInjectCrash`'s return type.
 - **engine `Exclusive`:** a one-permit, uninterruptible-once-started handler with a required timeout. **`ProcessScope.chdir` / `.env`** restore process state on every exit.
 - **`LaunchContext.usable` / `resolve`:** the shared guard that rejects empty and unsubstituted `${…}` values.
 
-## 4. Verify
+## 4. Verify the upgrade
 
 1. `pnpm install` from scratch resolves every `@effected/*` package to the plugin catalog's new minors, with no `file:` overrides left. Verify this by resolution, not by reading a manifest: the installed package exports a new symbol.
 2. Typecheck every package (`tsc --noEmit` or the repo's `types:check`).
@@ -201,3 +214,15 @@ For each item, search your repo for the hand-rolled pattern. Replace it only whe
 5. For every value you persist and now compute through a kit API, compare new output against stored data before you ship.
 
 Update READMEs, docs and agent context files that show the old shapes. Leave CHANGELOGs alone.
+
+## 5. Align on the kit and on Effect
+
+Do this only once step 4 is green, so every replacement is measured against a working baseline.
+
+The kit has absorbed a long run of capabilities over these upgrades, and Effect v4 ships many primitives (platform services, `ChildProcess`, `FileSystem`, `KeyValueStore`, `Schema` codecs, `Config`, `Clock`, `Schedule`, CLI and MCP modules) that older code hand-rolls. **Review all of your code, not just the call sites named above**, and look for anything you implement yourself that the kit or Effect now provides. The goal is one shared vocabulary: kit and Effect-native code wherever their semantics fit, and local code only where yours genuinely differ.
+
+- **Delegate the review to the effected plugin's `effect-developer` agent.** It carries the kit's package index (`effected-packages`, including the per-construct intent index under `references/constructs/`) and the Effect v4 skills, and it verifies every API against the installed `.d.ts`. Work package by package or module by module, and ask it, for each module, what the kit or Effect already provides for what that module does.
+- **Typical finds:** environment and CI detection, git plumbing and remote parsing, config-file discovery, XDG paths, SQLite stores and migrations, running commands and resolving local tools, globbing and walking, CLI output and failure reporting, MCP tool envelopes and stdout capture, in-memory filesystems in tests (use `@effected/memfs`, never a hand-rolled `FileSystem.layerNoop` double), and test layers for anything in `R`.
+- **Replace only where semantics match.** Where the kit computes a value you persist (a key, a path, a normalized name), compare its output against your stored data first, and keep a local version or a migration where they differ.
+- **When the kit almost fits, report the gap upstream** rather than wrapping it in a local shim. A missing option is cheaper to add once in the kit than to carry in every consumer.
+- Keep each replacement behaviour-preserving, with the suite green after every step, and re-run the step 4 verification at the end.
