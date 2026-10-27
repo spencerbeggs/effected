@@ -15,6 +15,7 @@ export interface NodeRunOps {
 			readonly stdio: ReadonlyArray<"ignore" | "inherit" | number>;
 			readonly windowsHide: boolean;
 			readonly cwd?: string;
+			readonly windowsVerbatimArguments?: boolean;
 		},
 	) => { readonly error?: Error | undefined; readonly status: number | null };
 	readonly mkdtempSync: (prefix: string) => string;
@@ -44,7 +45,12 @@ const failedToStart = (error: unknown): SyncRunResult => ({ error, status: null,
 export const makeNodeRunSync =
 	(ops: NodeRunOps): SyncRun =>
 	(command, args, options) => {
-		const cwd = options.cwd === undefined ? {} : { cwd: options.cwd };
+		const passed = {
+			...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+			...(options.windowsVerbatimArguments === undefined
+				? {}
+				: { windowsVerbatimArguments: options.windowsVerbatimArguments }),
+		};
 		// `spawnSync` THROWS (rather than reporting `error`) for an argument it
 		// refuses outright — a NUL byte in argv, say. That is still a process that
 		// could not start, so it is reported the same way.
@@ -53,7 +59,7 @@ export const makeNodeRunSync =
 				const result = ops.spawnSync(command, args, {
 					stdio: ["ignore", "inherit", "inherit"],
 					windowsHide: true,
-					...cwd,
+					...passed,
 				});
 				return {
 					...(result.error === undefined ? {} : { error: result.error }),
@@ -72,7 +78,7 @@ export const makeNodeRunSync =
 			dir = ops.mkdtempSync(`${ops.tmpdir()}/effected-run-`);
 			out = ops.openSync(`${dir}/stdout`, "w+");
 			err = ops.openSync(`${dir}/stderr`, "w+");
-			const result = ops.spawnSync(command, args, { stdio: ["ignore", out, err], windowsHide: true, ...cwd });
+			const result = ops.spawnSync(command, args, { stdio: ["ignore", out, err], windowsHide: true, ...passed });
 			return {
 				...(result.error === undefined ? {} : { error: result.error }),
 				status: result.status,

@@ -11,6 +11,7 @@
 
 import { Result, Schema } from "effect";
 import { ChildProcess } from "effect/process";
+import { errorCode } from "./internal/errorCode.js";
 
 /**
  * The host a prebuilt binary must match.
@@ -90,7 +91,8 @@ export type PrebuiltBinaryReason = typeof PrebuiltBinaryReason.Type;
  * `candidates`; `"notInstalled"` — the matching package is absent (installed
  * with optional dependencies omitted, or a lockfile from another platform);
  * `"binaryMissing"` — the package is installed but holds no file at the binary
- * subpath (a partial extraction, or a spec naming the wrong path);
+ * subpath, or at its `"."` export when no subpath is given (a partial
+ * extraction, or a spec naming the wrong path);
  * `"unresolvable"` — the package is present but resolution failed some other
  * way (a subpath it does not export, an unreadable manifest), which is a
  * packaging fault, carried in `cause`. When several candidate keys are
@@ -160,9 +162,6 @@ const isInstalled = (host: PrebuiltHost, packageName: string): boolean => {
 	return false;
 };
 
-const errorCode = (error: unknown): unknown =>
-	typeof error === "object" && error !== null ? (error as { readonly code?: unknown }).code : undefined;
-
 /**
  * Resolution of the platform-specific binary an `optionalDependencies` fan-out ships.
  *
@@ -192,8 +191,9 @@ export class PrebuiltBinary {
 	 * when no declared candidate resolves, describing the most actionable
 	 * failure (a present-but-broken package over an absent one). A
 	 * `MODULE_NOT_FOUND` reads as `"notInstalled"`, or as `"binaryMissing"` when
-	 * the package itself is installed and only the binary subpath is absent;
-	 * any other resolution failure is `"unresolvable"`.
+	 * the package itself is installed and only the binary is absent — whether
+	 * the binary is a subpath or the package's own `"."` export; any other
+	 * resolution failure is `"unresolvable"`.
 	 *
 	 * @example
 	 * ```ts
@@ -214,17 +214,20 @@ export class PrebuiltBinary {
 		const subpath = typeof spec.binary === "function" ? spec.binary(host.target) : spec.binary;
 		const failures: Array<PrebuiltBinaryError> = [];
 		for (const key of candidates) {
-			if (!Object.hasOwn(spec.packages, key)) continue;
-			const packageName = spec.packages[key];
+			// Own keys only: a target key must never pick up an inherited property.
+			const packageName = Object.hasOwn(spec.packages, key) ? spec.packages[key] : undefined;
 			if (packageName === undefined) continue;
 			const specifier = subpath === undefined || subpath === "" ? packageName : `${packageName}/${subpath}`;
 			try {
 				return Result.succeed(ResolvedPrebuilt.make({ path: host.resolve(specifier), packageName, key }));
 			} catch (cause) {
+				// A `MODULE_NOT_FOUND` for the binary's own specifier — a subpath, or the
+				// package's `"."` export when the package IS the binary — is absence of the
+				// package only when its manifest is absent too.
 				const reason =
 					errorCode(cause) !== "MODULE_NOT_FOUND"
 						? "unresolvable"
-						: specifier !== packageName && isInstalled(host, packageName)
+						: isInstalled(host, packageName)
 							? "binaryMissing"
 							: "notInstalled";
 				failures.push(new PrebuiltBinaryError({ reason, candidates, packageName, cause }));

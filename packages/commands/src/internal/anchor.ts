@@ -37,6 +37,8 @@ export const anchorFile = (from: string | URL): string => {
 	return path;
 };
 
+/** A `require` anchored at `from` — build it once when resolving several specifiers from one place. */
+export const requireFrom = (from: string | URL): NodeJS.Require => createRequire(anchorFile(from));
+
 /** Resolves `specifier` as the module at `from` would through `require.resolve`. Throws like `require.resolve`. */
-export const requireResolve = (specifier: string, from: string | URL): string =>
-	createRequire(anchorFile(from)).resolve(specifier);
+export const requireResolve = (specifier: string, from: string | URL): string => requireFrom(from).resolve(specifier);

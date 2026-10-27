@@ -38,9 +38,18 @@ export interface ModuleResolveOptions {
 	 */
 	readonly esm?: ((specifier: string) => string) | undefined;
 	/**
-	 * Return the resolved file's real path, symlinks resolved. Node keys ES
-	 * modules by real path, so this is the spelling that identifies the module
-	 * instance another importer already holds. Defaults to `false`.
+	 * Pass the answer through `realpathSync`, resolving any symlink left in it.
+	 * Defaults to `false`.
+	 *
+	 * @remarks
+	 * Node's own resolvers already answer with the real path —
+	 * `require.resolve` and `import.meta.resolve` both follow symlinks unless
+	 * the process runs with `--preserve-symlinks` — so for a CommonJS answer, or
+	 * Node's own `import.meta.resolve`, this changes nothing in an ordinary
+	 * process. It matters only when the answer may still hold a symlink: under
+	 * `--preserve-symlinks`, or when `esm` is a resolver that does not follow
+	 * them. Node keys ES modules by real path, so the real path is the spelling
+	 * that identifies the module instance another importer already holds.
 	 */
 	readonly realPath?: boolean | undefined;
 }

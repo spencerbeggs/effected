@@ -393,6 +393,25 @@ describe("RunOnce.commandSync", () => {
 		]);
 	});
 
+	it("passes windowsVerbatimArguments through to the host runner", () => {
+		const calls: Array<unknown> = [];
+		const host = makeHost();
+		ranWith(
+			RunOnce.commandSync(
+				OPTIONS,
+				{
+					...host,
+					run: (_command, _args, options) => {
+						calls.push(options);
+						return { status: 0, stdout: "", stderr: "" };
+					},
+				},
+				{ argv: ["cmd.exe", "/d", "/s", "/c", '"echo "a b""'], windowsVerbatimArguments: true },
+			),
+		);
+		assert.deepStrictEqual(calls, [{ stdio: "capture", maxOutputBytes: 1048576, windowsVerbatimArguments: true }]);
+	});
+
 	it("fails nonZero with redacted argv and output, and leaves no marker", () => {
 		const host = makeHost({}, { status: 2, stdout: "token s3cr3t", stderr: "bad s3cr3t" });
 		const result = RunOnce.commandSync(OPTIONS, host, {

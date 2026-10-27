@@ -135,6 +135,21 @@ describe("PrebuiltBinary.resolveSync", () => {
 		assert.strictEqual(failure(PrebuiltBinary.resolveSync(SPEC, hidden)).reason, "binaryMissing");
 	});
 
+	it("a package whose own export is the binary, with the binary deleted, is binaryMissing", () => {
+		const spec: PrebuiltBinarySpec = { packages: SPEC.packages };
+		const host = fakeHost(
+			{ platform: "darwin", arch: "arm64" },
+			{ "@acme/cli-darwin-arm64/package.json": "/nm/pkg.json" },
+		);
+		const error = failure(PrebuiltBinary.resolveSync(spec, host));
+		assert.strictEqual(error.reason, "binaryMissing");
+		assert.strictEqual(error.packageName, "@acme/cli-darwin-arm64");
+		assert.notInclude(error.message, "reinstall");
+		// The package itself absent stays notInstalled.
+		const absent = fakeHost({ platform: "darwin", arch: "arm64" }, {});
+		assert.strictEqual(failure(PrebuiltBinary.resolveSync(spec, absent)).reason, "notInstalled");
+	});
+
 	it("reports a broken package over an absent one", () => {
 		const host: PrebuiltHost = {
 			target: { platform: "linux", arch: "x64", libc: "musl" },
@@ -209,6 +224,36 @@ describe("nodePrebuiltHost", () => {
 				failure(PrebuiltBinary.resolveSync({ ...spec, binary: "bin/other" }, host)).reason,
 				"unresolvable",
 			);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it('reads a deleted "." binary as binaryMissing under real Node resolution, exports-only or main-only', () => {
+		const root = mkdtempSync(join(tmpdir(), "prebuilt-"));
+		try {
+			const thin = join(root, "thin");
+			const key = `${process.platform}-${process.arch}`;
+			const shapes = {
+				// No "./package.json" export: the manifest probe answers ERR_PACKAGE_PATH_NOT_EXPORTED.
+				exports: { exports: { ".": "./bin/acme" } },
+				main: { main: "./bin/acme" },
+			};
+			const host = nodePrebuiltHost(pathToFileURL(join(thin, "index.js")));
+			// Node caches a successful resolution process-wide, so the control (binary
+			// present) and the case (binary deleted) are separate packages.
+			for (const [shape, manifest] of Object.entries(shapes)) {
+				for (const present of [true, false]) {
+					const name = `@acme/cli-${shape}-${present}-${key}`;
+					const dir = join(thin, "node_modules", name);
+					mkdirSync(join(dir, "bin"), { recursive: true });
+					writeFileSync(join(dir, "package.json"), JSON.stringify({ name, ...manifest }));
+					if (present) writeFileSync(join(dir, "bin", "acme"), "");
+					const result = PrebuiltBinary.resolveSync({ packages: { [key]: name } }, host);
+					if (present) assert.isTrue(Result.isSuccess(result), shape);
+					else assert.strictEqual(failure(result).reason, "binaryMissing", shape);
+				}
+			}
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}

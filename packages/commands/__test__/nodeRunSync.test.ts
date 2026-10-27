@@ -117,3 +117,33 @@ describe("nodeRunSync cleanup", () => {
 		assert.isFalse(existsSync(join(root, "stdout")));
 	});
 });
+
+describe("nodeRunSync options", () => {
+	it("passes windowsVerbatimArguments to spawnSync in both stdio modes, and omits it when unset", () => {
+		const s = spy();
+		const seen: Array<Parameters<NodeRunOps["spawnSync"]>[2]> = [];
+		const run = makeNodeRunSync({
+			...s.ops,
+			spawnSync: (command, args, options) => {
+				seen.push({ ...options });
+				return s.ops.spawnSync(command, args, options);
+			},
+		});
+		for (const stdio of ["capture", "inherit"] as const) {
+			for (const verbatim of [true, false]) {
+				seen.length = 0;
+				const result = run(process.execPath, ["-e", ""], {
+					stdio,
+					maxOutputBytes: 64,
+					windowsVerbatimArguments: verbatim,
+				});
+				assert.strictEqual(result.status, 0);
+				assert.strictEqual(seen[0]?.windowsVerbatimArguments, verbatim, `${stdio} ${verbatim}`);
+			}
+			seen.length = 0;
+			run(process.execPath, ["-e", ""], { stdio, maxOutputBytes: 64 });
+			assert.isFalse(Object.hasOwn(seen[0] ?? {}, "windowsVerbatimArguments"), stdio);
+		}
+		assert.deepStrictEqual(leftovers(), []);
+	});
+});

@@ -212,7 +212,8 @@ function* evidence(path: string): Protocol<{ readonly text: string | undefined; 
  * Compare-and-delete, built from an atomic rename because a file has no CAS.
  *
  * `path` is renamed to a tomb private to this caller, and ONLY THEN judged:
- * `accept` sees the text and age read from the tomb, never from the live path,
+ * `accept` sees the owner decoded from the tomb's text (none when that text is
+ * not a record) and the tomb's age — never the live path's —
  * so nothing that arrives at `path` after the rename can be mistaken for what
  * was judged. Accepted, the tomb is deleted; rejected, its exact text is put
  * back with an exclusive create, so its owner still owns it, nonce and all —
@@ -223,7 +224,7 @@ function* evidence(path: string): Protocol<{ readonly text: string | undefined; 
 function* compareAndDelete(
 	path: string,
 	mine: string,
-	accept: (text: string | undefined, ageMs: number | undefined) => boolean,
+	accept: (owner: Option.Option<OwnerRecord>, ageMs: number) => boolean,
 ): Protocol<"deleted" | "restored" | "lost" | "missing" | "stuck"> {
 	// The tomb's NAME carries the time of the rename: a rename preserves mtime,
 	// so a just-made tomb of an old file already looks old, and only the name
@@ -242,7 +243,8 @@ function* compareAndDelete(
 	// file caught between a non-atomic create and its write — and that
 	// creator, finding its file gone (its write landed in our tomb), backs off
 	// and retries. Putting it back would leave an empty file nobody can judge.
-	if (!accept(text, ageMs) && Option.isSome(decodeOwner(text))) {
+	const owner = decodeOwner(text);
+	if (!accept(owner, ageMs) && Option.isSome(owner)) {
 		const restored = yield* ask({ _tag: "CreateExclusive", path, text });
 		yield* ask({ _tag: "Remove", path: tomb });
 		return restored === "created" ? "restored" : "lost";
@@ -351,8 +353,7 @@ function* breakLock(
 		!(lock.text === undefined && lock.ageMs === undefined) &&
 		stillBreakable(expected, owner, lock.ageMs, config.staleMs)
 	) {
-		outcome = yield* compareAndDelete(lockPath, held.mine, (text, ageMs) => {
-			const moved = text === undefined ? Option.none<OwnerRecord>() : decodeOwner(text);
+		outcome = yield* compareAndDelete(lockPath, held.mine, (moved, ageMs) => {
 			if (Option.isSome(moved)) state.observed.add(moved.value.nonce);
 			return stillBreakable(expected, moved, ageMs, config.staleMs);
 		});
@@ -395,10 +396,11 @@ const RELEASE_BACKOFF_MS: ReadonlyArray<number> = [10, 25, 50, 100, 200];
 function* release(lockPath: string, nonce: string): Protocol<void> {
 	for (const pause of [0, ...RELEASE_BACKOFF_MS]) {
 		if (pause > 0) yield* ask({ _tag: "Backoff", ms: pause });
-		const outcome = yield* compareAndDelete(lockPath, nonce, (text) => {
-			const owner = text === undefined ? Option.none<OwnerRecord>() : decodeOwner(text);
-			return Option.isSome(owner) && owner.value.nonce === nonce;
-		});
+		const outcome = yield* compareAndDelete(
+			lockPath,
+			nonce,
+			(owner) => Option.isSome(owner) && owner.value.nonce === nonce,
+		);
 		if (outcome !== "stuck") return;
 	}
 }

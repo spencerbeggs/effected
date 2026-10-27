@@ -36,11 +36,11 @@ import {
 	rmSync,
 	statSync,
 	writeFileSync,
-	writeSync,
 } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import process from "node:process";
-import { requireResolve } from "./internal/anchor.js";
+import { requireFrom } from "./internal/anchor.js";
+import { errorCode } from "./internal/errorCode.js";
 import { makeNodeRunSync } from "./internal/nodeRunSync.js";
 import type { PrebuiltHost, PrebuiltTarget } from "./PrebuiltBinary.js";
 import type { ProcessLivenessShape, RunOnceCommandHost, RunOnceFileSystem, SyncRun } from "./RunOnce.js";
@@ -82,17 +82,42 @@ export const nodeSpawnSync: SyncSpawn = (command, args, options) =>
 		...(options.cwd === undefined ? {} : { cwd: options.cwd }),
 	});
 
-/** The running Node's libc on Linux, from the process report header; absent elsewhere or when unknown. */
-const nodeLibc = (): PrebuiltTarget["libc"] => {
+/**
+ * The running Node's libc on Linux, read from the process report header;
+ * absent elsewhere or when unknown.
+ *
+ * The rule: Node writes `header.glibcVersionRuntime` only in a glibc build
+ * (as the `gnu_get_libc_version()` string), so a string there means glibc and
+ * its absence means musl. `@effected/github-actions`' pnpm detection also
+ * reads an empty string as musl; Node never writes one, so the two agree on
+ * every real report. `getReport()` builds a whole diagnostic report, so the
+ * answer is computed once per process, with the report's network section
+ * (which can stall on slow DNS) excluded for the call.
+ */
+const detectLibc = (): PrebuiltTarget["libc"] => {
 	if (process.platform !== "linux") return undefined;
+	// `excludeNetwork` is missing from `@types/node`'s `ProcessReport`.
+	const report = process.report as (NodeJS.ProcessReport & { excludeNetwork?: boolean }) | undefined;
+	if (report === undefined) return undefined;
+	const excluded = report.excludeNetwork;
 	try {
-		const header = (process.report?.getReport() as { readonly header?: { readonly glibcVersionRuntime?: unknown } })
-			?.header;
+		report.excludeNetwork = true;
+		const header = (report.getReport() as { readonly header?: { readonly glibcVersionRuntime?: unknown } })?.header;
 		if (header === undefined) return undefined;
 		return typeof header.glibcVersionRuntime === "string" ? "glibc" : "musl";
 	} catch {
 		return undefined;
+	} finally {
+		if (excluded !== undefined) report.excludeNetwork = excluded;
 	}
+};
+
+let libcOnce: { readonly libc: PrebuiltTarget["libc"] } | undefined;
+
+/** {@link detectLibc}, run at most once per process. */
+const nodeLibc = (): PrebuiltTarget["libc"] => {
+	if (libcOnce === undefined) libcOnce = { libc: detectLibc() };
+	return libcOnce.libc;
 };
 
 /**
@@ -111,9 +136,11 @@ const nodeLibc = (): PrebuiltTarget["libc"] => {
  */
 export const nodePrebuiltHost = (anchor: string | URL): PrebuiltHost => {
 	const libc = nodeLibc();
+	// One `createRequire` for the host: a failing resolution probes several specifiers from the same anchor.
+	const anchored = requireFrom(anchor);
 	return {
 		target: { platform: process.platform, arch: process.arch, ...(libc === undefined ? {} : { libc }) },
-		resolve: (specifier) => requireResolve(specifier, anchor),
+		resolve: (specifier) => anchored.resolve(specifier),
 	};
 };
 
@@ -143,15 +170,14 @@ export const nodeProcessLiveness: ProcessLivenessShape = {
 	},
 };
 
-const errnoCode = (error: unknown): unknown => (error as NodeJS.ErrnoException | undefined)?.code;
-
 /**
  * `RunOnceFileSystem` over `node:fs`.
  *
  * @remarks
- * `createExclusive` is an `O_EXCL` create (`"wx"`); a write that fails after
- * the create removes what it created, so a half-initialized lock is never left
- * behind for every later caller to wait out.
+ * `createExclusive` is an `O_EXCL` create (`"wx"`). A write that fails after
+ * the create leaves the file in place. Removing it by path could delete a
+ * rival's live lock, so the garbled file waits out `staleMs` instead (see
+ * `RunOnce`'s remarks).
  *
  * @public
  */
@@ -163,7 +189,7 @@ export const nodeRunOnceFileSystem: RunOnceFileSystem = {
 		try {
 			return readFileSync(path, "utf8");
 		} catch (error) {
-			if (errnoCode(error) === "ENOENT") return undefined;
+			if (errorCode(error) === "ENOENT") return undefined;
 			throw error;
 		}
 	},
@@ -172,14 +198,16 @@ export const nodeRunOnceFileSystem: RunOnceFileSystem = {
 		try {
 			fd = openSync(path, "wx");
 		} catch (error) {
-			if (errnoCode(error) === "EEXIST") return false;
+			if (errorCode(error) === "EEXIST") return false;
 			throw error;
 		}
 		try {
-			writeSync(fd, text);
+			// `writeFileSync` on a descriptor loops until every byte is written;
+			// a bare `writeSync` may write part of `text` and report it.
+			writeFileSync(fd, text);
 		} catch (error) {
+			// Never removed by path: see the remarks above.
 			closeSync(fd);
-			rmSync(path, { force: true });
 			throw error;
 		}
 		closeSync(fd);
@@ -191,7 +219,7 @@ export const nodeRunOnceFileSystem: RunOnceFileSystem = {
 		try {
 			return statSync(path).mtimeMs;
 		} catch (error) {
-			if (errnoCode(error) === "ENOENT") return undefined;
+			if (errorCode(error) === "ENOENT") return undefined;
 			throw error;
 		}
 	},
@@ -201,7 +229,7 @@ export const nodeRunOnceFileSystem: RunOnceFileSystem = {
 			renameSync(from, to);
 			return true;
 		} catch (error) {
-			if (errnoCode(error) === "ENOENT") return false;
+			if (errorCode(error) === "ENOENT") return false;
 			throw error;
 		}
 	},
@@ -215,7 +243,8 @@ export const nodeRunOnceFileSystem: RunOnceFileSystem = {
  * stream goes to a private temporary FILE, not a pipe, so no amount of output
  * can trip `spawnSync`'s buffer limit and kill a successful build; the
  * trailing `maxOutputBytes` of each are read back and the files removed. No
- * timeout is imposed.
+ * timeout is imposed. `windowsVerbatimArguments`, when given, is passed to
+ * `spawnSync` as is (Node ignores it off Windows).
  *
  * @public
  */

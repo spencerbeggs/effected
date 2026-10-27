@@ -177,8 +177,11 @@ export interface RunOnceFileSystem {
 	readonly readText: (path: string) => string | undefined;
 	/**
 	 * Creates `path` holding `text` only if nothing is there: `true` when
-	 * created, `false` when something already was. Any other failure throws,
-	 * and must not leave a half-written file behind.
+	 * created, `false` when something already was. Any other failure throws.
+	 * A write that fails after the create must NOT remove the file by path:
+	 * by then a breaker may have swept it into its tomb and a rival created
+	 * its own lock there. Leave it; the protocol takes a garbled lock over
+	 * once it is older than `staleMs`.
 	 */
 	readonly createExclusive: (path: string, text: string) => boolean;
 	/** Writes `text` to `path`, replacing it. */
@@ -251,6 +254,12 @@ export type SyncRun = (
 		readonly cwd?: string | undefined;
 		readonly stdio: "inherit" | "capture";
 		readonly maxOutputBytes: number;
+		/**
+		 * Windows only: pass `args` to the process verbatim, with no quoting or
+		 * escaping — `spawnSync`'s option of the same name. Absent means the
+		 * runner's default (escaped).
+		 */
+		readonly windowsVerbatimArguments?: boolean | undefined;
 	},
 ) => SyncRunResult;
 
@@ -278,6 +287,13 @@ export interface RunOnceCommand {
 	readonly stdio?: "inherit" | "capture" | undefined;
 	/** Per-stream capture bound; the trailing bytes are kept. Defaults to 1 MiB. */
 	readonly maxOutputBytes?: number | undefined;
+	/**
+	 * Windows only: hand the arguments to the process verbatim, with no quoting
+	 * or escaping, as `spawnSync`'s option of the same name does. Set it for a
+	 * `cmd.exe /d /s /c "<command line>"` argv, whose quotes `cmd.exe` parses
+	 * itself; ignored on other platforms by `nodeRunSync`.
+	 */
+	readonly windowsVerbatimArguments?: boolean | undefined;
 	/** Secrets scrubbed from the argv and the captured output of a failure. */
 	readonly redact?: ReadonlyArray<Redacted.Redacted<string>> | undefined;
 }
@@ -316,7 +332,12 @@ const absorb =
 		}
 	};
 
-const DEFAULT_MAX_OUTPUT = 1024 * 1024;
+/**
+ * `RunOnceCommand.maxOutputBytes`' default: the TAIL of each stream kept for a
+ * failure report. Not `Run`'s `DEFAULT_MAX_OUTPUT_BYTES`, a ceiling whose
+ * breach fails the run.
+ */
+const DEFAULT_TAIL_BYTES = 1024 * 1024;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -326,6 +347,8 @@ const utf8Length = (text: string): number => encoder.encode(text).length;
 
 /** The trailing `max` UTF-8 bytes of `text` (a split leading character decodes as U+FFFD). */
 const keepTail = (text: string, max: number): string => {
+	// A UTF-16 code unit is at most 3 UTF-8 bytes: text this short fits without encoding it.
+	if (text.length * 3 <= max) return text;
 	const bytes = encoder.encode(text);
 	return bytes.length <= max ? text : decoder.decode(bytes.subarray(bytes.length - max));
 };
@@ -379,6 +402,15 @@ const keepTail = (text: string, max: number): string => {
  *   the old mtime — and tombs a crashed caller left behind are swept once that
  *   time is older than `staleMs`. A lock emptied between a non-atomic create
  *   and its write is repaired by its creator.
+ * - **A lock whose write failed is left, not removed** — a deliberate
+ *   liveness cost. When the exclusive create succeeds and the write of the
+ *   record then fails, the caller runs unserialized and leaves the file in
+ *   place. Removing it by path could delete a rival's live lock: a breaker
+ *   may have swept the half-written file into its tomb, and the rival may
+ *   have created its lock at the path since. Left alone, the garbled file
+ *   reads as a lock with no record and is taken over once older than
+ *   `staleMs`. Until then other callers wait, or run unserialized past
+ *   `waitTimeoutMs`.
  * - **Release retries.** A release whose rename fails outright — on Windows, a
  *   scanner or indexer holding the file without share-delete answers
  *   `EPERM`/`EBUSY` for a moment — is retried five times over about 400ms.
@@ -523,7 +555,7 @@ export class RunOnce {
 	): Result.Result<RunOnceOutcome<SyncRunResult>, CommandFailedError> => {
 		const [executable, ...args] = command.argv;
 		const secrets = command.redact ?? [];
-		const maxOutputBytes = command.maxOutputBytes ?? DEFAULT_MAX_OUTPUT;
+		const maxOutputBytes = command.maxOutputBytes ?? DEFAULT_TAIL_BYTES;
 		if (!Number.isSafeInteger(maxOutputBytes) || maxOutputBytes < 1) {
 			throw new Error(`RunOnce: maxOutputBytes must be a positive integer, received ${maxOutputBytes}`);
 		}
@@ -541,6 +573,9 @@ export class RunOnce {
 					...(command.cwd === undefined ? {} : { cwd: command.cwd }),
 					stdio: command.stdio ?? "capture",
 					maxOutputBytes: maxOutputBytes + slack,
+					...(command.windowsVerbatimArguments === undefined
+						? {}
+						: { windowsVerbatimArguments: command.windowsVerbatimArguments }),
 				});
 			} catch (cause) {
 				// A runner that throws (an argument the platform refuses outright)
@@ -628,13 +663,25 @@ export class RunOnce {
 								Effect.orElseSucceed(() => undefined),
 							);
 						case "CreateExclusive":
-							return fs.writeFileString(request.path, request.text, { flag: "wx" }).pipe(
-								Effect.as<"created" | "exists" | "failed">("created"),
-								Effect.catch((error) =>
-									error.reason._tag === "AlreadyExists"
-										? Effect.succeed<"created" | "exists" | "failed">("exists")
-										: fs.remove(request.path).pipe(Effect.ignore, Effect.as<"created" | "exists" | "failed">("failed")),
+							// Open and write are kept apart so a failed open (EMFILE, EACCES),
+							// which created nothing, is told from a failed write. Neither removes
+							// anything: by a failed write, a breaker may have swept our file into
+							// its tomb and a rival created its lock at the path, so a remove by
+							// path could delete a live lock. The garbled file is left for the
+							// stale rule (see RunOnce's remarks).
+							return Effect.scoped(
+								Effect.flatMap(fs.open(request.path, { flag: "wx" }), (file) =>
+									Effect.result(file.writeAll(encoder.encode(request.text))),
 								),
+							).pipe(
+								Effect.matchEffect({
+									onFailure: (error) =>
+										Effect.succeed<"created" | "exists" | "failed">(
+											error.reason._tag === "AlreadyExists" ? "exists" : "failed",
+										),
+									onSuccess: (written) =>
+										Effect.succeed<"created" | "exists" | "failed">(Result.isSuccess(written) ? "created" : "failed"),
+								}),
 							);
 						case "WriteText":
 							return fs.writeFileString(request.path, request.text).pipe(Effect.ignore, Effect.as(undefined));
@@ -682,10 +729,7 @@ export class RunOnce {
 				const outcome = step.value;
 				yield* Effect.annotateCurrentSpan({ "runOnce.key": config.key, "runOnce.outcome": outcome._tag });
 				if (Option.isSome(ran) && Exit.isFailure(ran.value)) return yield* Effect.failCause(ran.value.cause);
-				return withValue(
-					outcome,
-					Option.flatMap(ran, (exit) => (Exit.isSuccess(exit) ? Option.some(exit.value) : Option.none())),
-				);
+				return withValue(outcome, Option.flatMap(ran, Exit.getSuccess));
 			}),
 		).pipe(Effect.withSpan("RunOnce.run"));
 }
