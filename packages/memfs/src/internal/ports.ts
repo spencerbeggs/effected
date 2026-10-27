@@ -243,6 +243,11 @@ export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSy
 		},
 		stat: (path) => statOf(volume, path, "stat", true),
 		lstat: (path) => statOf(volume, path, "lstat", false),
+		realPath: (path) => {
+			const r = resolvePath(volume, path);
+			if ("code" in r) throw nodeErrno(r.code, "realpath", path);
+			return r.path;
+		},
 	};
 };
 

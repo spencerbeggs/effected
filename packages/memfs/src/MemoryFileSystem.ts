@@ -232,6 +232,11 @@ export interface MemoryFileSystemSyncFileSystem {
 	readonly stat: (path: string) => MemoryFileSystemPortStats;
 	/** `lstatSync`: does not follow a final link. Throws `ENOENT`/`ENOTDIR`/`ELOOP` with `syscall: "lstat"`. */
 	readonly lstat: (path: string) => MemoryFileSystemPortStats;
+	/**
+	 * `realpathSync`: the canonical path of `path`, every link in it resolved.
+	 * Throws `ENOENT`/`ENOTDIR`/`ELOOP` with `syscall: "realpath"`.
+	 */
+	readonly realPath: (path: string) => string;
 }
 
 /**

@@ -93,6 +93,24 @@ describe("sync port stat/lstat", () => {
 		}),
 	);
 
+	it.effect("realPath resolves links and throws realpath-syscall errnos", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.strictEqual(sync.realPath("/r/to-dir"), "/r/dir");
+			assert.strictEqual(sync.realPath("/r/to-dir/inner.txt"), "/r/dir/inner.txt");
+			assert.strictEqual(sync.realPath("/r/file.txt"), "/r/file.txt");
+			assert.deepInclude(
+				thrown(() => sync.realPath("/r/dangling")),
+				{ code: "ENOENT", syscall: "realpath", path: "/r/dangling" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.realPath("/r/loop-a")),
+				{ code: "ELOOP", syscall: "realpath" },
+			);
+		}),
+	);
+
 	it.effect("absence throws ENOENT with code/syscall/path", () =>
 		Effect.gen(function* () {
 			const { volume } = yield* tree;
