@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/commands"
-description: The kit's tool-and-output layer over core's subprocess contract — structured running and CLI tool discovery.
+description: The kit's tool-and-output layer over core's subprocess contract — structured running, CLI tool discovery, run-once serialization across processes, prebuilt-binary resolution, launcher argv parsing, and (behind ./node-sync) anchored module resolution.
 status: stable
 kind: package
 resource: ../../packages/commands
@@ -19,12 +19,20 @@ sources:
     resource: ../../packages/commands/src/node-sync.ts
   - id: entrypoints-test
     resource: ../../packages/commands/__test__/entrypoints.test.ts
+  - id: run-once-ts
+    resource: ../../packages/commands/src/RunOnce.ts
+  - id: prebuilt-binary-ts
+    resource: ../../packages/commands/src/PrebuiltBinary.ts
+  - id: module-resolution-ts
+    resource: ../../packages/commands/src/ModuleResolution.ts
+  - id: local-exec-ts
+    resource: ../../packages/commands/src/LocalExec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T20:27:43Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: 067d748d9e85d606
+    body: caa2983c9ea6be18
 ---
 
 # @effected/commands
@@ -42,6 +50,14 @@ re-invented:
 - **Tool discovery** (`ToolDiscovery`) — is this tool available here,
   globally on `PATH` or project-locally through the package manager's
   exec, what version is each, and which copy should run?
+
+Around those two sit four smaller tools the same consumers kept
+re-inventing, each on the same no-new-subprocess-vocabulary footing:
+`RunOnce` (do a piece of work once across concurrent processes),
+`PrebuiltBinary` (find the platform binary an `optionalDependencies`
+fan-out installed), `LocalExec.parse` (read a launcher argv back), and,
+Node-only behind `./node-sync`, `ModuleResolution` (resolve and load
+someone else's copy of a package, and notice when it is reinstalled).
 
 The two are one package because `ToolDiscovery` is `Run`'s first consumer:
 discovery is a spawn plus a classification, and splitting them would put a
@@ -89,9 +105,12 @@ inverts — see
 and [the commands-specific rationale](../decisions/commands-workspaces-edge-inverts.md).
 
 - `effect` is the only peer. Zero runtime dependencies, zero
-  `@effected/*` edges, zero `node:` imports on the main entry. The one
-  `node:` import in `src/` is `node-sync.ts`, the `./node-sync` subpath,
-  which `.` never reaches (see [the sync facade](#the-sync-facade)).
+  `@effected/*` edges, zero `node:` imports on the main entry. Three files
+  in `src/` import `node:`: `node-sync.ts` (the `./node-sync` entry),
+  `ModuleResolution.ts` and `internal/anchor.ts` (the one `createRequire`
+  call, shared by `ModuleResolution` and `nodePrebuiltHost`). All three are
+  reachable from `./node-sync` only, which `.` never reaches (see
+  [the sync facade](#the-sync-facade)).
 - IO arrives through `R`: core's `ChildProcessSpawner` for every run,
   core's `Stdio` for the teeing variant only.
 - `@effect/platform-node` is a devDependency for the e2e suite only —
@@ -145,11 +164,17 @@ Module-per-concept, no barrels; `src/index.ts` re-exports only. See
 | `Run.ts` | the structured run combinators, `CommandOutput`, `CommandFailedError`, `CommandOutputError` |
 | `Redaction.ts` | value-based secret scrubbing plus the secret-flag heuristic backstop |
 | `Retry.ts` | transience classification and the retry policy — vocabulary for `Effect.retry`, not a retrying runner |
-| `LocalExec.ts` | the inverted contract: `LocalExec`, `ExecContext`, `LocalExecError`, the prefix table, the layers |
+| `LocalExec.ts` | the inverted contract: `LocalExec`, `ExecContext`, `LocalExecError`, the prefix table, the layers, and `LocalExec.parse` with `ExecKind` and `ParsedInvocation` |
 | `Tool.ts` | `Tool`, the `VersionProbe` union, the `ToolSource` / `MismatchPolicy` literals |
 | `ToolDiscovery.ts` | the service and its layer, `ResolvedTool`, the tool errors, the evidence cache, `resolveFromEvidence` |
 | `ToolDiscoverySync.ts` | `makeToolDiscoverySync`, the `SyncSpawn` / `SyncSpawnResult` port |
-| `node-sync.ts` | the `./node-sync` entry: `nodeSpawnSync` over `node:child_process` |
+| `RunOnce.ts` | `RunOnce` (`runSync`, `commandSync`, the `Effect` `run`), its options, outcome and host ports, and the `ProcessLiveness` contract |
+| `internal/runOnceMachine.ts` | the run-once protocol as one generator yielding IO requests; every rule lives here and the drivers only answer it; not exported |
+| `PrebuiltBinary.ts` | `PrebuiltBinary` (`candidates`, `resolveSync`), `ResolvedPrebuilt`, `PrebuiltBinaryError`, `PrebuiltBinaryReason`, and the `PrebuiltHost` / `PrebuiltTarget` / `PrebuiltBinarySpec` shapes |
+| `ModuleResolution.ts` | `./node-sync` only: anchored `resolve`, `isStale` and `load` |
+| `node-sync.ts` | the `./node-sync` entry: `nodeSpawnSync`, `nodePrebuiltHost`, `nodeProcessLiveness`, `nodeRunOnceFileSystem`, `nodeRunSync`, `nodeRunOnceHost`, and the `ModuleResolution` re-export |
+| `internal/anchor.ts` | `./node-sync` only: anchored CommonJS resolution, the one `createRequire` call; not exported |
+| `internal/nodeRunSync.ts` | `nodeRunSync` over injected Node operations, so its cleanup paths are testable; not exported |
 | `internal/toolResolution.ts` | the pure resolution core both discovery surfaces share: name refusal, probe args, the presence rule, version reading, the copy decision; not exported |
 | `ScriptedSpawner.ts` | the public scripted `ChildProcessSpawner` double |
 | `internal/capture.ts` | bounded stream capture; not exported |
@@ -369,10 +394,147 @@ that cannot start reported through `error`; a throw also reads as absence).
 - **`./node-sync` exports `nodeSpawnSync`** — `spawnSync` with utf8, stdin
   ignored, stderr discarded, no shell and no timeout (matching
   `ToolDiscovery`; a caller wanting one wraps `spawnSync` itself).[^node-sync-ts]
-  It is a subpath so the `node:child_process` import never reaches `.`;
+  It also carries the Node bindings of the other sync surfaces:
+  `nodePrebuiltHost`, `nodeProcessLiveness` (`process.pid`, `os.hostname()`
+  and a signal-0 probe in which `EPERM` counts as alive),
+  `nodeRunOnceFileSystem` (an `O_EXCL` create whose failed write never
+  removes the file by path), `nodeRunSync` (a `SyncRun` over `spawnSync`
+  that captures each stream to a private temporary **file**, not a pipe, so
+  no output volume trips `spawnSync`'s buffer limit; it reads back the
+  trailing `maxOutputBytes`, removes the files, and passes
+  `windowsVerbatimArguments` through for a `cmd.exe /d /s /c` argv),
+  `nodeRunOnceHost` (all of these, with `Date.now`, an `Atomics.wait`
+  sleep and a 96-bit `crypto.randomBytes` nonce), and `ModuleResolution`.
+  A type re-exported from both entries must not `{@link}` a symbol only
+  `.` exports. It is a subpath so its `node:` imports never reach `.`;
   `__test__/entrypoints.test.ts` pins that `.` reaches neither `node-sync`
   nor any `node:` import,[^entrypoints-test] per
   [the second-entrypoint decision](../decisions/second-published-entrypoint.md).
+
+## Run once across processes
+
+`RunOnce` runs a piece of work at most once among concurrent callers that
+share a `key` and a lock `dir`: a Vitest `globalSetup` in every worker, a
+sidecar and its host. One caller runs it, and the others wait. A waiter
+trusts the result only if the winner was an owner it watched hold the
+lock. Past `waitTimeoutMs`, or when the lock cannot be created, a waiter
+runs the work itself, unserialized, rather than hang.[^run-once-ts] The
+protocol, and why each of its rules is there, is
+[its own Decision](../decisions/run-once-trust.md).
+
+- **Three drivers, one protocol.** `RunOnce.runSync(options, host, run)`
+  answers the protocol's IO from a `RunOnceSyncHost` (`fs`, `liveness`,
+  `now`, `sleep`, `nonce`) and takes `run: () => Result<A, E>`; a `Result`
+  failure and a throw both leave no done marker, and a throw releases the
+  lock and is rethrown. `RunOnce.commandSync(options, host, command)` runs
+  an argv through `host.run` (a `SyncRun`), never a shell, and fails as
+  `CommandFailedError` (`"spawn"`, or `"nonZero"` for a non-zero exit or a
+  signal) with redacted argv and, under `"capture"`, the redacted tail of
+  both streams. `RunOnce.run(options, effect)` is the `Effect` form, over
+  core's `FileSystem`, `Clock` (so `TestClock` drives the polling),
+  `Random` for the nonce, and `ProcessLiveness`; `effect`'s failure is
+  re-raised after the lock is released.
+- **`RunOnceOutcome<A>`** is `Ran { value }`, `Trusted { owner,
+  finishedAt }` (the work did not run here) or `RanUnserialized { value,
+  reason: "waitTimeout" | "lockUnavailable" }`.
+- **`RunOnceOptions`**: `key` (letters, digits, `.`, `_`, `-`, at most 128
+  characters; hash anything else), `dir` (host-local runtime state, never a
+  network filesystem), `staleMs` (60000), `pollMs` (200, at least 10),
+  `waitTimeoutMs` (600000) and the opt-in `trustSequentialMs`. A bad value
+  throws (dies, in the `Effect` form) before any IO.
+- **`RunOnceFileSystem`** is the sync port: `makeDirectory`, `readText`,
+  `createExclusive` (an `O_EXCL` create that answers `false` for
+  "exists"), `writeText`, `remove`, `mtimeMs`, `rename` and
+  `readDirectory`. A memfs-backed host satisfies it in tests.
+- **`ProcessLiveness` is a kit-declared contract.** Core declares no
+  process-identity or liveness service, and the probe needs a platform, so
+  the package declares `ProcessLivenessShape` (`pid`, `host`,
+  `isAlive(pid)`) and a `Context.Service` around it. The caller wires it:
+  `ProcessLiveness.layerFrom(nodeProcessLiveness)`, the Node object being a
+  plain sync value in `./node-sync`, never a layer, and there is no `./node`
+  subpath. Bind the layer to a `const`; a parameterized layer memoizes by
+  reference.
+- **Testing.** The `Effect` driver runs over `@effected/memfs` and
+  `TestClock`; the sync driver over an in-memory host whose `sleep` is
+  where "another process" acts; a bounded model checker
+  (`__test__/runOnceModel.ts`) explores the protocol's interleavings, and
+  `__test__/e2e/RunOnce.e2e.test.ts` races four real `node` processes
+  through a fixture that imports the dev build.
+
+## Prebuilt binaries and launcher argv
+
+`PrebuiltBinary.resolveSync(spec, host)` finds the binary a package's
+`optionalDependencies` fan-out installed for this platform (the esbuild
+shape). It is synchronous over a caller host, so it runs during config
+evaluation or in a Node SEA sidecar.[^prebuilt-binary-ts]
+`PrebuiltBinary.candidates(target)` gives the target keys most specific
+first: `${platform}-${arch}-${libc}` when the libc is known, then
+`${platform}-${arch}`. The first declared candidate that *resolves* wins,
+so a declared musl package that is not installed falls back to the generic
+one. `spec.binary` is a subpath, or a function of the target (`.exe` on
+win32); when it is absent, the package's own `"."` export is the binary.
+On success the result is a `ResolvedPrebuilt` (`path`, `packageName`,
+`key`, and `command(...args)`, a core `Command` with no shell and no
+launcher). When nothing resolves, `resolveSync` returns a
+`PrebuiltBinaryError` describing the most actionable failure:
+
+- `reason: "unsupportedTarget"`: no package is declared for any candidate.
+- `"notInstalled"`: a `MODULE_NOT_FOUND` with the package itself absent.
+- `"binaryMissing"`: the package is installed (its manifest or root
+  resolves, `ERR_PACKAGE_PATH_NOT_EXPORTED` included) but holds no file at
+  the subpath, or has no `"."` export when no subpath is given.
+- `"unresolvable"`: any other failure, a packaging fault carried in
+  `cause`.
+
+`nodePrebuiltHost(anchor)` is the Node host. `anchor` must be a module of
+the package that *declares* the optional dependencies (its
+`import.meta.url`), because `require.resolve` finds an optional dependency
+only from inside its declaring package. The target is `process.platform`
+and `process.arch` plus, on Linux, the libc read once per process from the
+process report header, with the report's network section excluded so slow
+DNS cannot stall it.
+
+`LocalExec.parse(argv)` is the inverse of `LocalExec.prefixes`: it returns
+`Option<ParsedInvocation>` (`launcher`, `kind: ExecKind` (`exec`, `dlx` or
+`script`), `binary`, `rest`).[^local-exec-ts] It is derived from the same
+prefix table plus a recognition-only alias table: `npm exec` with or
+without `--no --`, `npm x`, `npx -y` / `--yes`, `npx --no` /
+`--no-install`, `npm run` without `--`, `npm run-script`, `pnpx`, `bunx`
+with or without `--no-install`. The longest prefix wins, which tells
+`npx --no -- tool` (exec) from `npx` (dlx). `prefixes` never emits an
+alias. A binary that is empty or starts with `-` is no invocation (the
+`ToolRefusedError` rule). Implicit forms (`pnpm vitest`) are deliberately
+`Option.none()`: without the manifest they cannot be told from a script.
+
+## Anchored module resolution
+
+`ModuleResolution`, exported from `./node-sync` only, is for a long-lived
+Node process that loads *someone else's* copy of a package (a project's
+own `vitest`, the `chalk` Ink itself imports) and has to notice when that
+copy is reinstalled underneath it.[^module-resolution-ts]
+
+- `resolve(specifier, { from, esm?, realPath? }): Option<string>`. With
+  `esm`, the *calling* module's own `import.meta.resolve` is tried first,
+  for packages whose `exports` have no `require` or `default` condition; a
+  throw (Vite's module runner throws "not supported") or a non-`file:`
+  answer falls through to CommonJS resolution from `from`. `from` is a
+  module URL, a module path, or a directory (an existing one, or any path
+  spelled with a trailing separator). `realPath: true` passes the answer
+  through `realpathSync`, which matters only under `--preserve-symlinks`
+  or with an `esm` resolver that does not follow symlinks: Node's own
+  resolvers already answer with the real path. Every failure is
+  `Option.none()`, and it never throws.
+- `isStale(entry)`: whether a resolved absolute path or `file:` URL is
+  gone from disk (a lockfile regeneration renamed the store directory). A
+  bare specifier is never stale.
+- `load(entry, { importer? })`: a dynamic import of a path (converted
+  with `pathToFileURL`), a `file:` URL or a specifier, returning
+  `unknown`; `importer` is the test seam, since a computed `import()`
+  defeats `vi.mock`.
+
+`@effected/cli`'s `./ui` is the in-kit consumer: its Ink loader imports
+`@effected/commands/node-sync` lazily to resolve Ink's own chalk
+([why](../decisions/ink-colour-via-inks-own-chalk.md)).
 
 ## Test doubles
 
@@ -410,13 +572,17 @@ and dying beats a silently wrong answer.
   misbehaving backend is fixed upstream, not shimmed here; a consumer
   running a configured command string builds `ChildProcess.make("sh",
   ["-c", str])` itself and owns the injection surface.
+- **No `PrebuiltBinary` version check.** A resolved binary's own version
+  is not compared with anything; an `expectVersion` check was considered
+  and not built.
 - **No package-manager detection, no PATH or `which` implementation.**
   The first is inverted to `LocalExec`; the second is unnecessary, because
   probing by spawn answers the only question asked without a filesystem
   scan, `PATHEXT` handling or a `FileSystem` requirement.
 - **No process supervision, no readiness polling.** `detach` hands back a
   pid and stops. The reap half and the poll-until-predicate helper are
-  `@effected/github-actions`'.
+  `@effected/github-actions`'. `RunOnce`'s signal-0 liveness probe is not
+  supervision: it only asks whether a lock owner exists.
 - **No archive helper.** An honest archive API is not a `tar` wrapper — it
   has to answer determinism (mtimes, uid/gid, entry order), `bsdtar`
   -versus-GNU flag divergence and whether extraction is in scope — so
@@ -428,6 +594,7 @@ and dying beats a silently wrong answer.
   not a bare semver is worse than not checking at all.
 
 See also
+[`RunOnce` trusts only observed owners](../decisions/run-once-trust.md),
 [the workspaces edge inverts rather than dragging four packages integrated](../decisions/commands-workspaces-edge-inverts.md)
 and
 [the limitations this package deliberately does not lift](../limitations/commands-no-process-supervision.md).
@@ -471,8 +638,8 @@ in backticks.
 
 ## Consumers
 
-- **`@effected/workspaces`** — implements `LocalExec` and takes the only
-  inbound edge; also a `Run` caller, since
+- **`@effected/workspaces`** — implements `LocalExec`, the inbound edge
+  the inversion exists for; also a `Run` caller, since
   `ConfigDependencyHooks.layerSubprocess` runs its replay child through
   `Run.jsonLine`.
 - **`@effected/npm`** — `PackagePublish` runs `npm publish` through `Run`,
@@ -480,6 +647,9 @@ in backticks.
 - **`@effected/github-actions`** — the general-purpose runner behind
   action work, plus the owner of the two lifecycle halves this package
   declines.
+- **`@effected/cli`** — a regular dependency; its `./ui` Ink loader
+  imports `./node-sync`'s `ModuleResolution` lazily, and nothing in cli
+  imports the main entry.
 - **[savvy-web/systems](../consumers/systems.md)** — `silk-effects`'
   lint-staged handlers (savvy-web/systems#471) run the sync facade, the
   consumer `makeToolDiscoverySync` was built for (effected#1100).
@@ -498,3 +668,11 @@ in backticks.
 [^entrypoints-test]: `packages/commands/__test__/entrypoints.test.ts` — the
     main entry's module graph excludes `node-sync` and every `node:` import,
     with a positive control that `./node-sync` does import `node:`.
+[^run-once-ts]: `packages/commands/src/RunOnce.ts` — `RunOnce`,
+    `RunOnceOptions`, `RunOnceOutcome`, `ProcessLiveness`.
+[^prebuilt-binary-ts]: `packages/commands/src/PrebuiltBinary.ts` —
+    `PrebuiltBinary.resolveSync` and `PrebuiltBinaryError`.
+[^module-resolution-ts]: `packages/commands/src/ModuleResolution.ts` —
+    `ModuleResolution.resolve`, `isStale`, `load`.
+[^local-exec-ts]: `packages/commands/src/LocalExec.ts` — `LocalExec.parse`
+    and the alias table.

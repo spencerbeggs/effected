@@ -1,8 +1,9 @@
 # @effected/env
 
-Effect-native environment detection: which agent or CI is running a program,
-what the terminal can do (colour level, hyperlinks, columns), and which audience
-the output is for. Read once through `Config`, swapped in tests with `layerTest`.
+Effect-native environment detection: which agent or CI (and which CI run) is
+running a program, which terminal session it is in, what the terminal can do
+(colour level, hyperlinks, columns), and which audience the output is for. Also
+`ShellExports`, a strict reader and writer for shell export files. Read once through `Config`, swapped in tests with `layerTest`.
 
 **Design doc:** `@./okf/modules/env.md` — Load when: changing the public
 surface, adding a detector, or deciding whether a capability belongs here
@@ -26,13 +27,30 @@ purity test only.
 - One module per concept; `src/index.ts` is the only re-exporting module.
   Detectors live under `src/internal/` and are not exported.
 
-## The three oracles
+## The four oracles
 
 Never pin this package's own output as the oracle in a test.
 
 - Colour depth: Node's `tty.WriteStream.prototype.getColorDepth`.
 - OSC 8 hyperlink support: std-osc8's own shipped test cases.
-- Agent and CI detection: std-env 4.3.0's table, transcribed from source.
+- Agent and CI detection: std-env 4.3.0's table, transcribed from source, **minus
+  the runtime hosts** (and the rows std-env marks `ci: false`, and four hosts with
+  no build-only evidence); the exclusion list and its reasons live in
+  `src/internal/ci.ts`. One documented departure: `false`, `0`, `off` or `no`
+  (any case) on `CI`, `CONTINUOUS_INTEGRATION` or a provider marker means NOT CI,
+  where std-env reads any non-empty value as set. `JENKINS_URL` detection matches
+  std-env.
+- `ShellExports`: real bash. Generated maps go through bash's own `printf %q` and
+  through `format`, and bash **sources** the result; the exported values must equal
+  what `parseResult` returns. Only dialect-valid text is ever sourced. Run bash with
+  `--norc --noprofile`, and give any `BASH_ENV` probe `</dev/null`: bash treats a
+  socket stdin as the sshd heuristic and reads its rc file. Special-name evidence
+  needs bash >= 5 (`COMP_WORDBREAKS` is special, `PIPESTATUS` is plain, under 5.3);
+  the bash 3.2 suites (macOS `/bin/bash`) cover `parseBytesResult`'s mixed raw-byte
+  `$'…'` form and skip where bash 3.2 is absent.
+
+A posix `HOME`→`USERPROFILE` fallback was declined; `@effected/xdg`, which owns
+home-directory reads, uses `USERPROFILE` only on win32.
 
 ## Test and build
 

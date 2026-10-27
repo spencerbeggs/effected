@@ -74,9 +74,10 @@ Three consequences, and they are why the design holds together:
   `..` — all are **defects** at layer construction, not typed errors. It can only
   come from code, and `namespace: "../.."` would resolve the app's directories
   outside the home directory.
-- **`Xdg.layerFromEnv(source)` and `Xdg.layer` share one resolution** (`readPaths`
-  in `Xdg.ts`); `layerFromEnv` provides it a `ConfigProvider` (a record goes
-  through `fromEnvRecord`, so `""` reads as unset) and is `Layer.fresh`, mirroring
+- **`Xdg.layerFromEnv(env)` and `Xdg.layer` share one resolution** (`readPaths`
+  in `Xdg.ts`); `layerFromEnv` takes a **record only** and provides it to that
+  resolution as `ConfigProvider.fromEnvRecord(env)` (so `""` reads as unset); it
+  is `Layer.fresh`, mirroring
   `CurrentRuntimeEnv.layerFrom`: one layer value re-reads its source on every build, even
   nested inside a provide of itself (pinned; removing `Layer.fresh` fails that test). Separate
   calls are independent anyway, since each returns a new layer. Never answer "read an env record" by providing a
@@ -92,7 +93,8 @@ Three consequences, and they are why the design holds together:
   three results that name no child. Never "fix" the regex flags or the collapse
   rule: stored data directories are keyed on today's output, and the suite runs
   a copy of the original as an oracle. It does not refuse Windows device names
-  or trailing dots — the mapping must be platform-independent.
+  or trailing dots — the mapping must be platform-independent →
+  `okf/limitations/xdg-segment-win32-aliasing.md`.
 - **Every join goes through `Path.Path`**, never string interpolation. v3 built
   every path with `${home}/Library/...`, which emits forward slashes on Windows.
 

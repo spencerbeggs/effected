@@ -10,10 +10,10 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-24T00:35:52Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: c291d39012846880
+    body: 32319c607e3f61bb
 ---
 
 # git
@@ -171,7 +171,24 @@ staged-but-uncommitted `160000` gitlink — and both are still reads.
 Introspection probes degrade "not there" to `Option.none`:
 `defaultBranch`, `currentBranch` (git's literal `"HEAD"` for detached HEAD
 maps to none — a fake branch name would be worse than an honest absence),
-`configGet`, `remoteUrl` and `mergeBaseOption`.
+`configGet`, `remoteUrl` and `mergeBaseOption`. `remoteUrl` answers the
+URL as git would fetch from it: `git remote get-url` applies the
+`url.<base>.insteadOf` rewrites in effect, so for the URL as written in the
+configuration — the right source for anything persisted or compared across
+machines — read `configGet(cwd, "remote.<remote>.url")`.
+
+**`upstream(cwd)`** is the current branch's upstream with its tracking
+state, as `Option<UpstreamBranch>`: `ref` (the full refname,
+`refs/remotes/origin/main`, or `refs/heads/<b>` when tracking a local
+branch), `name` (the same string `git rev-parse --abbrev-ref @{upstream}`
+answers), `gone`, `ahead` and `behind`. Two spawns: `GitCommand.headRef()`
+(`symbolic-ref --quiet HEAD`) and `GitCommand.upstream(branchRef)`
+(`for-each-ref` with a NUL-separated format), keeping only the exact
+record. `Option.none()` covers a detached `HEAD`, an unborn branch and no
+configured upstream. **A deleted upstream is still reported**, with
+`gone: true` and both counts 0, where `rev-parse @{upstream}` would fail as
+an unknown revision. A tracking field the C locale does not write fails as
+a `GitCommandError` with `detail`.
 
 Two probes locate a repository, and both answer **physical** paths.
 `repoRoot` (`rev-parse --show-toplevel`) is git's symlink-resolved
@@ -195,6 +212,21 @@ stripped, never `trim`, because a directory name may end in whitespace.
 The canonicalization is git's, deliberately — resolving symlinks in this
 package would add `FileSystem` to `Git.layer`'s `R`, which stays
 `ChildProcessSpawner` alone.
+
+**`treeIdentity(cwd)`** answers both in one spawn
+(`GitCommand.treeIdentity()`: `rev-parse --show-toplevel
+--path-format=absolute --git-common-dir`; the toplevel comes first because
+`--path-format` applies only to the options after it) as
+`Option<TreeIdentity { toplevel, commonDir }>`. `Option.none()` covers a
+directory outside any repository and one in a repository with no working
+tree (a bare repository, or inside `.git`), the latter through the `"tree"`
+classify kind. **`TreeIdentity.relation(self, that)`** (dual) answers
+`"same-tree"`, `"sibling-worktree"` (one `commonDir`, two toplevels) or
+`"different-repo"`. Both paths are git's physical, true-case answers, so
+two identities compare as strings with **no realpath step**; compare git
+output only with git output, never with a path the caller spelled. The
+answer must be exactly two non-empty lines, so an older git that echoes the
+flag fails as a `GitCommandError`.
 
 Config reads are
 scopeable and config writes are not; [the merged-read
@@ -269,6 +301,64 @@ that way (`vendor/inner/`). The default is `"all"` rather than git's
 needs files, and silk-release-action's release commit failed reading a
 collapsed `.changeset/pre/` entry.
 
+### `GitRemote` — pure remote-address parsing
+
+`GitRemote.ts` is a pure module inside the boundary package: no spawn, no
+`Git` service, no regex, no recursion, total and linear.
+`GitRemote.parse(raw)` returns `Option<GitRemoteForm>`, `none` only for a
+blank string, splitting an address into **verbatim** parts: nothing is
+lowercased, no `.git` is stripped, no trailing slash trimmed, nothing
+percent-decoded, no shorthand expanded. Four forms, classified in git's own
+order (probed against git 2.56 with a recording `GIT_SSH_COMMAND` and a stub
+remote helper):
+
+1. **`GitRemoteTransport`** — `<transport>::<address>`, a run of scheme
+   characters then `::` (transport.c `transport_get`); the address is parsed
+   once more as one of the other three forms, never as a second transport.
+2. **`GitRemoteUrl`** — any `://` makes a URL (connect.c
+   `parse_connect_url`), with `scheme` (unvalidated), `user`, `host`
+   (brackets and case kept, empty for `file:///`), `port` and `path`
+   (everything from the first `/`, `?` or `#`).
+3. **`GitRemotePath`** — no `:`, or a `/` before the first `:`
+   (`url_is_local_not_ssh`, a plain `strchr` with no bracket skipping).
+4. **`GitRemoteScp`** — otherwise `[<user>@]<host>:<path>`, the host ending
+   at the first `:` after git's bracket rule, `user` split at the last `@`.
+   The rule is git's POSIX one, applied on every platform, so a Windows
+   drive path `C:/repo` is scp with host `C`, and `github:o/n` is scp with
+   host `github`.
+
+**The credential contract** is exact: a URL's password is **never
+retained**, in any form, a transport's address included. Credentials in
+other positions are retained, because the parts are verbatim: a token used
+as the URL user, a token in a query string, and anything git itself reads as
+an scp path (git reads `u:s3cret@host:repo` as host `u`, path
+`s3cret@host:repo`). `GitRemote.format(remote)` renders it back, so for any
+input whose URL userinfo has no password, `format(parse(raw))` is `raw`.
+The URL userinfo ends at the **last** `@` after `://`, which is stricter
+than git's credential parser (it splits at the first `@` inside the first
+`/?#`-bounded span), so an unencoded password holding `@`, `/`, `?` or `#`
+is consumed whole instead of leaking part of itself into the host or path.
+The accepted cost: an `@` in a URL path is read as the end of userinfo and
+the host is lost (`https://h/pkg@1.0/r.git` parses as user `h/pkg`, host
+`1.0`).
+
+**`GitRemote.redact(remote)`** is for logging. It masks with `<redacted>`
+a URL's or scp form's `user`; a URL's query (from `?` to the end, fragment
+included); a URL scheme outside RFC 3986's grammar; in an scp or path form,
+whatever could be userinfo before the last `@`, wherever the parse put it,
+by string-level masking of the formatted text, which is then re-parsed — so
+**a redacted form can come back as a different form**; a transport's URL
+scheme unless well-known; and a transport's non-URL address the same
+way. Valid schemes, hosts and ports are kept, so the redacted form still
+says where the remote is. Log a parsed remote only through `redact`; the
+argv redaction rides the same function (see [the redaction
+policy](../conventions/git-redaction-policy.md)).
+**`GitRemote.repositoryPath(remote)`** strips a URL's leading `/`, one
+trailing `/` and one trailing `.git` (`o/n` for both
+`https://github.com/o/n.git/` and `git@host:o/n.git`); it is a display and
+matching convenience, not a canonical key, since case is untouched and the
+host is not included.
+
 ## Rendering status back to text
 
 `StatusEntry.toLine()` and `StatusEntry.format(entries)` take the whole
@@ -312,12 +402,18 @@ See [the git redaction policy](../conventions/git-redaction-policy.md).
 
 ## Module layout
 
-Six source modules, per the module-per-concept standard: `GitCommand.ts`
+Nine source modules, per the module-per-concept standard: `GitCommand.ts`
 (pure invocation constructors, both tiers), `Git.ts` (the service, its
 live layer and test double, the error taxonomy, `classify`/`runClassified`
-and the parsed-result models), `GitConfig.ts` (the lossless document
+and the parsed-result models, `TreeIdentity` and `UpstreamBranch`
+included), `GitRemote.ts` (the pure remote-address parser, a pure module
+inside the boundary package), `GitConfig.ts` (the lossless document
 model and surgical editor), `Gitmodules.ts` (the typed `.gitmodules`
-view), `internal/run.ts` (the collected-run and `available` helpers over
+view), `internal/redact.ts` (the form-independent credential backstop and
+the exact-secret maskers), `internal/redactRemote.ts` (the one
+string-to-string remote redaction entry point, apart from `redact.ts`
+because `GitRemote` imports that module and folding it in would be a
+cycle), `internal/run.ts` (the collected-run and `available` helpers over
 `ChildProcessSpawner`, not exported — `available` has no production
 consumer and is kept deliberately with its tests) and `internal/config.ts`
 (the git-config engine: raw scanner records and splice/serialize

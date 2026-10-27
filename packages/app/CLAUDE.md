@@ -46,6 +46,9 @@ positive control from `./testing`. It once lived on the root as
 `App.layerTest`, which loaded a test filesystem in every production importer of
 `App` (kit-ports 25r.4). memfs is pure (effect-only, zero `@effected/*` edges by
 law), so its closure is empty and the optional declaration closes nothing.
+`AppTest.layer`'s error channel is `StoreError | StoreMigrationError |
+CacheError`, narrower than `AppError`: `Xdg.layerFrom` and `AppDirs.layer`
+cannot fail. Why the split → `okf/decisions/app-testing-entrypoint.md`.
 
 **Nothing may depend on `@effected/app`.** A library taking an application
 control plane drags tier 3 into its consumers under R2 — the leak the taxonomy

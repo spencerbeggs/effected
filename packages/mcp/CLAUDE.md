@@ -20,8 +20,8 @@ the user verifies it.
 strings, template text and regex bodies, so only a code-level reference
 counts), never imports `node:` or an `@effect/platform*` package (one
 licensed exception: `src/StdioCapture.ts`, behind `./node`, imports
-`node:async_hooks`; the boundary test pins the waiver to exactly that one
-offence),
+`node:async_hooks` and `node:stream`; the boundary test pins the waiver to
+exactly those two offences; why → `@./okf/decisions/mcp-node-subpath.md`),
 and never calls `console.*`. `Console` is reached only through core's
 `Console.Console` reference. stdout is the JSON-RPC wire; any unguarded write
 to it corrupts the protocol.
@@ -246,7 +246,10 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   uses, built once per `wrap` rather than per call, under `<tool>:<key>`, treats every store or decode failure as a miss or a
   skipped write (debug-logged), never stores an `ok: false` value, and
   throws at wrap time on a tool name containing `:`. Replay, not
-  exactly-once.
+  exactly-once. The key is the request's whole identity (no params or
+  schema-version check, rows never expire). `ToolReplay.success` is
+  `Schema.fieldsAssign(marker)`, which drops the struct's own `.check()`
+  refinements: apply checks to its result.
 - **`McpHarness` lets `ping` through before `initialize`**: a stateful
   server answers it `{}` (Effect-TS/effect PR #8505). Every other request
   still fails `NotInitialized` unsent.

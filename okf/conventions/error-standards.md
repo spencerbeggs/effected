@@ -23,10 +23,10 @@ sources:
     resource: ../../packages/store/__test__/StoreLifecycle.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T00:55:20Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: d5b31c099a5a91bd
+    body: e5885369f2be1817
 ---
 
 # Error handling standards
@@ -194,7 +194,12 @@ export const causeMessage = (cause: unknown): string | undefined => {
 
 The shipped copies carry the same text under the kit's tab indentation and a
 leading comment naming this section as the source; `cmp` across
-`packages/*/src/internal/causeMessage.ts` must report them identical.
+`packages/*/src/internal/causeMessage.ts` must report them identical. There
+are nine, every one with the getter guards above: `@effected/cli`,
+`images`, `jsonc`, `jsonl`, `npm`, `package-json`, `schemastore-cli`,
+`store` and `workspaces`. `@effected/cli` is the one that also publishes
+it, as `Fmt.causeMessage`, the read a consumer's own error rendering should
+use instead of copying the module (see [`cli.md`](../modules/cli.md)).
 
 - The helper returns `string | undefined`; the site decides the fallback.
   A `message` getter renders its summary alone when `causeMessage` returns

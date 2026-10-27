@@ -134,7 +134,10 @@ caller function, not a request. The sync forms are on the root entry (pure);
 `@effected/walker/node-sync` binds them to Node (`nodeWalkerSyncOps`), and
 `__test__/entrypoints.test.ts` pins that `.` never reaches it. Sync
 record-mode causes are `unknown` (`UnreadableDirectory<unknown>`): the port has no
-`PlatformError`.
+`PlatformError`. Otherwise the sync forms return the Effect forms' own types
+(`DescendResult`, `DescendEntry`, `DescendEntriesResult`) — never add parallel
+sync result types — and an entry's stat lives on `info`. A memfs handle
+satisfies the sync port directly (its sync interface carries `realPath`).
 
 - **`boundaries`** — marker FILE names. A directory strictly below `cwd`
   holding one contributes nothing (no matches, no descent); `cwd` itself is

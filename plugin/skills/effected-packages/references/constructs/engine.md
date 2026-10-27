@@ -8,13 +8,23 @@
 | `CurrentDistribution` | Variable | The carrier this run was installed through, read anywhere without appearing in `R`. | read which carrier package installed this run without it appearing in R, defaults to none |
 | `Distribution` | Variable + TypeAlias | A decoded `(Distribution:variable)`. | the carrier package name and version a tool's bins were installed through |
 | `DistributionField` | Variable | The `distribution` field of a machine-readable envelope: `null` when the front end was installed directly rather than through a carrier. | the nullable distribution field of a machine-readable envelope, null for a direct install |
+| `Exclusive` | Class | A one-permit lane for work that mutates process-global state (the working directory, the environment, a patched stream), so two requests never interleave it and the state is restored before the next one starts. | serialize work that mutates process-global state, one at a time with a timeout, abortable promises |
+| `ExclusivePromiseOptions` | Interface | `Exclusive.promise`'s options. | |
+| `ExclusiveRunOptions` | Interface | `Exclusive.run`'s required options. | |
+| `ExclusiveTimeout` | Class | The body of an `Exclusive.run` call ran past its timeout and was interrupted. Its finalizers had run, and the permit was released, by the time the caller sees this. | exclusive lane body ran past its timeout |
 | `LaunchContext` | Class | Resolves where a tool launched by an agent host should treat as its project. | resolve a launched tool's project directory from argv, env keys, then cwd, rejecting unsubstituted placeholders |
+| `ProcessCwdHost` | Interface | The working-directory half of a process, structurally. Node's `process` satisfies it; pass it in, so nothing here reads `process` itself. | |
 | `ProcessGuard` | Class | Transport-neutral crash guards for a server process, installed before the server's module graph loads. Imported from `@effected/engine/guard`. | from `@effected/engine/guard` — transport-neutral crash guards for an lsp or any server process before its graph loads, mark connected yourself, exit only before connect, startup failure exits 1, parse a crash-injection env value |
 | `ProcessGuardControl` | Interface | What `ProcessGuardOptions.load` is handed: the two moments only the caller can see. | from `@effected/engine/guard` |
 | `ProcessGuardHost` | Interface | The slice of the host process `ProcessGuard.run` uses. Node's `process` satisfies it. | from `@effected/engine/guard` |
 | `ProcessGuardInjection` | Interface | One crash `ProcessGuardOptions.injectCrash` raises: which event, and when. | from `@effected/engine/guard` |
 | `ProcessGuardOptions` | Interface | Options for `ProcessGuard.run`. | from `@effected/engine/guard` |
 | `ProcessGuardPolicy` | Interface | When a stray exception or rejection ends the process. | from `@effected/engine/guard` |
-| `ProjectDirInput` | Interface | The process-derived facts a front end resolves once, passed in as values. | |
+| `ProcessScope` | Class | Scoped changes to process-global state, each restored when the enclosing `Scope` closes, on every exit path. | scoped chdir, env var and stream patches restored when the scope closes |
+| `ProcessScopeError` | Class | A `ProcessScope` change could not be made. | changing the working directory or process state failed |
+| `ProjectDirInput` | Interface | The parameter shape `LaunchContext.projectDir` takes: `ResolveInput` plus the `cwd` fallback. | |
 | `Remediation` | Variable + TypeAlias | A decoded `(Remediation:variable)`. | what a caller, usually an agent, should do after a failure: hint plus optional suggested tool and args |
+| `ResolveInput` | Interface | The parameter shape `LaunchContext.resolve` takes: the process-derived facts a front end resolves once, passed in as values. | |
 | `distributionSuffix` | Function | The `via <name> <version>` suffix (prefixed with a space) a `--version` line or a startup log line appends, or `""` for a direct install. | render the via name version suffix for a --version line or startup log, empty for a direct install |
+| `withDistribution` | Function | Provides `CurrentDistribution` to `self`: `Option.some` of a carrier, `Option.none()` for `null` or `undefined` (a direct install). | provide the carrier package name and version a tool was installed through |
+| `withDistributionVersion` | Function | Decorates a `--version` line formatter so its line ends with `distributionSuffix`: `formatVersion(name, version)` followed by `via <carrier> <version>` when installed through a carrier, unchanged for a direct install. | append the via carrier suffix to a --version line formatter |

@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: e455653ed4287cb9
+    body: 801f5328025520ea
 ---
 
 # glob
@@ -48,6 +48,10 @@ A `FromString` transformation schema exists for embedding patterns in config sch
 `enumerationPrefix` (the longest literal directory prefix) and `crossesSegments` (whether the pattern can match more than one level below that prefix — true iff it contains `**` or a `/` after the first magic segment) are API with no upstream analogue, designed for the enumerator contract; a substring-to-last-`/` prefix is wrong once `**` is real. Both are computed under default options, and their interaction with `matchBase` or windows modes stays defined only for default-options patterns.
 
 `enumerationPrefix` is meaningful for **non-negated** patterns only: it is computed from the *inner* pattern, but a negated pattern's `matches` inverts, matching everything the inner pattern does not — and those matches can land outside the prefix. A negated pattern's walk must therefore ignore the prefix entirely and deep-walk from the root unconditionally, regardless of `crossesSegments`.
+
+**`enumerationRoots`** keeps the alternatives apart where those two fold them into one answer (the shared prefix, "deep if any is"): it returns one `EnumerationRoot { prefix, deep, spellings }` per brace alternative, so `packages/{a,b}/src/*.ts` reads `packages/a/src/` and `packages/b/src/`, one level each, rather than all of `packages/`. `prefix` is canonical and slash-terminated (no `.` or empty segment, a `..` resolved against the segment before it, a leading `..` kept so a walker can still refuse the climb; `""` is the walk's own base), so `{src,./src}/*.ts` has the single root `src/`; an all-literal alternative's final segment is a file name and is excluded from the prefix. A root inside a `deep` root's prefix is dropped and its spellings join that root's, so two kept roots never yield the same file. `spellings` lists every literal prefix the root covers as the pattern spells it, in pattern order: matching is spelling-sensitive (`./src/*.ts` does not match `src/a.ts`), so a walker tests a canonical path once per spelling and answers in the earliest one that matches. Like the other getters it reads the inner pattern and ignores negation. [walker](walker.md)'s per-root walk is its consumer.
+
+**`dot` defaults to `false`**, as minimatch's does: `*` and `**` never match a dotfile or a dot-directory. Vitest matches its include and exclude globs with `dot: true`, so a pattern meant to agree with Vitest says so with `GlobPatternOptions.make({ dot: true })`.
 
 The contract has held under three independent consumers unmodified — `workspaces`' enumerator, `walker`'s `descend`, and `github-actions`' cache-path search-root derivation, the last under real filesystem enumeration with round-trip and real-runner coverage. What remains open: no dedicated conformance run against a reference enumerator (`@actions/glob` or similar) has been performed, so the enumeration semantics are materially de-risked, not closed.
 

@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T14:50:52Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: c96bcda3b1ad8c15
+    body: 0519036d5d6cd1e2
 ---
 
 # walker
@@ -58,8 +58,11 @@ directory" is the gap `descend` fills.
 ## Module layout
 
 Two directions and one recipe: `Walker.ts` (upward), `Descend.ts`
-(downward) and `Expand.ts` (the recipe), plus the re-export-only
-`index.ts`.[^walker-claude-md] `descend` and `compileAndExpand` are bare
+(downward, over core `FileSystem`), `DescendSync.ts` (the same walk over a
+caller-supplied synchronous port), `internal/descendMachine.ts` (the one
+walk both drive) and `Expand.ts` (the recipe), plus two entrypoints: the
+re-export-only `index.ts` and `node-sync.ts`, the
+`@effected/walker/node-sync` subpath.[^walker-claude-md] `descend` and `compileAndExpand` are bare
 functions, not statics on the `Walker` class, because they are different
 algorithms with a different error posture and folding either in would
 imply they share `Walker`'s `never`-channel contract. `Walker` itself is
@@ -120,13 +123,60 @@ Decision](../decisions/physical-ceiling-is-a-separate-static.md).
 
 ## The downward walk (descend)
 
+**One walk, two drivers.** The downward walk is one generator,
+`internal/descendMachine.ts`, yielding filesystem requests (`Stat`,
+`Lstat`, `RealPath`, `ReadDirectory`); every rule lives in the machine, and
+a driver only maps its platform's answers and failures. `descend` and
+`descendEntries` answer the requests through core's `FileSystem`;
+`descendSync` and `descendEntriesSync` answer them from a
+`WalkerSyncFileSystem`, a `node:fs`-shaped port (`readDirectory`, `stat`,
+`lstat`, `realPath`; an error with `code: "ENOENT"` is the benign race),
+plus a `WalkerSyncPath` (`join`), together the `WalkerSyncOps` a caller
+spreads into the options. The sync forms are on the root entry, pure; the
+Node binding is `@effected/walker/node-sync` (`nodeWalkerFileSystem`,
+`nodeWalkerPath`, `nodeWalkerSyncOps`), the only module that imports
+`node:`, with a reachability test pinning that `.` never reaches it (see
+[a second published entrypoint is a measured
+cost](../decisions/second-published-entrypoint.md)). A memfs handle
+satisfies the sync port directly. The sync forms share the Effect forms'
+result types (`DescendResult`, `DescendEntry`, `DescendEntriesResult`);
+only the record-mode cause differs, `unknown` rather than `PlatformError`,
+since the port has none. `__test__/DescendSync.test.ts` is a parity matrix:
+sync against Effect over one memfs volume, with faults mirrored on the sync
+port and fixtures reaching every driver mapping (a vanished directory, an
+unresolvable and a denied link).
+
+**`descendEntries`** returns each match as `DescendEntry { path, info }`,
+`info` being the `stat` the walk already read (links followed), so a
+consumer that fingerprints files pays no extra syscall. The kit ships no
+fingerprint: which fields to hash is the consumer's policy.
+
+**`boundaries`** takes marker **file** names. A directory strictly below
+`cwd` that holds one contributes nothing, neither matches nor descent;
+`cwd` itself is never a boundary, and a directory merely named like a
+marker does not count. The rule is positional: it applies between `cwd`
+and the walk base and to a literal pattern too, so the answer never
+depends on whether the pattern has magic. It is not `Walker.ascend`'s
+`stopAt`, an inclusive upward ceiling; keep the two names apart.
+
+**Per-root walking.** A magic pattern walks each of `@effected/glob`'s
+`enumerationRoots`, one per brace alternative with its own prefix and
+depth, so `packages/{a,b}/src/*.ts` reads only those two directories.
+Braces count as magic here, though glob's `hasMagic` ignores them. The walk
+is canonical inside: each canonical directory is read once and a file is
+answered once, in the spelling of the earliest alternative it matches under,
+so `{src,./src}/*.ts` reads `src` once and answers `src/index.ts`. A path is
+answered in the spelling it matched under (`./src/*.ts` answers
+`./src/a.ts`), because consumers re-filter the answer with a
+spelling-sensitive `matches`; never canonicalize the output.
+
 A worklist, not a recursion — it cannot overflow the stack — dequeued by
 a head index rather than `Array.shift()`, which re-indexes the whole
 array on every dequeue. What earns a filesystem read is decided by the
 pattern's metadata:
 
-- A literal pattern — no magic, not negated — never walks at all: one
-  stat decides.
+- A literal pattern — no magic, no braces, not negated — never walks at
+  all: one stat decides.
 - A pattern that cannot match below one level never descends, reading a
   single level instead.
 - A negated pattern walks from `cwd` and always deep-walks: the
@@ -142,7 +192,10 @@ pattern's metadata:
 Zero matches is a normal glob answer, not an error. Only files match — a
 symlink counts when it stat-resolves to a file, a dangling symlink does
 not, and a symlinked directory is never descended by default (cycle
-safety). `followSymlinks: true` enters links under `@actions/glob`'s
+safety, detected by an `lstat` kind check). Without `followSymlinks` that
+covers the walk base and every directory on the way to it: a base reached
+through a link is an empty result, and so is a literal pattern reached
+through one. `followSymlinks: true` enters links under `@actions/glob`'s
 per-branch `traversalChain` guard: each worklist frame carries its
 branch's ancestor real paths, a directory whose real path is already an
 ancestor of its own branch is a cycle and is skipped, and two sibling

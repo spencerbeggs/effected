@@ -3,6 +3,33 @@
 ## 2026-10-27
 
 * Updated Error handling standards
+* Updated @effected/cli
+* Added @effected/cli depends on @effected/engine as a regular dependency, for distribution
+* Updated @effected/commands
+* Updated @effected/commands does not supervise or archive processes
+* Updated @effected/engine
+* Updated @effected/env
+* Updated @effected/mcp
+* Added @effected/mcp ships StdioCapture behind a Node-only ./node subpath, licensed for two node: imports
+* Updated @effected/memfs
+* Updated A physical ascend ceiling is a separate static taking an Option, not a realpath mode of stopAt
+* Updated A second published entrypoint is a measured cost, not a convenience
+* Added AppDirs.segment does not refuse Windows trailing dots or device names
+* Updated D1: @effected/engine exists and holds Distribution, Remediation and LaunchContext
+* Updated Every git constructor and error path carries the redaction mask
+* Updated Git failure classification happens once, in one private function
+* Updated Only ./ui may bind Node's process streams, and only in three named files
+* Added RunOnce trusts a done marker only from an owner it observed, and breaks a lock through per-contender tickets and a rename-based compare-and-delete
+* Added Store.migrateOnce keeps a process-global registry of plain Promises
+* Updated The kit sets Ink's colour level on Ink's own chalk, resolved from Ink's location
+* Updated app
+* Added app's test layer lives behind ./testing, with memfs an optional peer
+* Updated config-file
+* Updated git
+* Updated glob
+* Updated store
+* Updated walker
+* Updated xdg
 
 ## 2026-10-25
 

@@ -99,6 +99,13 @@ Three orthogonal seams, composed by `ConfigFile.layer`:
   at one ancestor before ascending. Separate `upwardWalk` entries cannot express
   it — `discover` exhausts one resolver to the filesystem root before starting
   the next, so a parent's first candidate would beat a child's second.
+- **`upwardWalk` takes `stopAt` (lexical) or `ceiling` (physical), never both** —
+  the options type makes them exclusive. `ceiling?: string` goes through
+  `Walker.ascendWithin(cwd, Option.some(ceiling))`; use it for a bound git
+  answered (`Git.repoRoot` is symlink-resolved, which a lexical `stopAt` never
+  matches). It is deliberately `string | undefined`, not an `Option`: omitting it
+  walks to the root, as omitting `stopAt` already does. Why →
+  `okf/decisions/physical-ceiling-is-a-separate-static.md`.
 - **Strategy** — many sources → one value. Cannot fail; the empty case raises
   `ConfigFileNotFoundError` before a strategy is consulted.
 

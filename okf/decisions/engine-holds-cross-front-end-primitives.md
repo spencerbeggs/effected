@@ -6,7 +6,7 @@ status: stable
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
+  at: 2026-10-27T13:22:20Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -14,7 +14,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 6e6ce95b3d182d98
+    body: 313bdee13d1f5b1c
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -43,9 +43,9 @@ application") makes that a hard constraint, not a style preference.
 
 A new pure-tier `@effected/engine` package holds `Distribution`,
 `DistributionField`, `CurrentDistribution`, `distributionSuffix`,
-`Remediation`, and `LaunchContext`. It depends on `effect` only, as a
-peer. It sits below both `@effected/cli` and the phase-2 `@effected/mcp`
-in the dependency graph, and a consumer's own engine package is free to
+`Remediation`, and `LaunchContext`. Its only dependency of any kind is
+`effect`, declared as a peer. It sits below both `@effected/cli` and
+`@effected/mcp` in the dependency graph, and a consumer's own engine package is free to
 depend on it directly — the entire reason it exists as a separate package
 rather than folding into one of the front ends.
 
@@ -68,10 +68,10 @@ carrying a bug — is exactly what a recipe reproduces.
 
 ## Consequences
 
-`@effected/cli` and the phase-2 `@effected/mcp` both consume
-`@effected/engine` as a peer, but nothing in the kit depends on it except
-`@effected/mcp` — an edge from any other kit package to `engine` needs its
-own Decision. A consumer's engine package gains a legitimate kit
+Two kit packages depend on `@effected/engine`: `@effected/mcp`, as a
+peer, and `@effected/cli`, as a regular dependency for `CliRuntime.main`'s
+`distribution` option ([its own Decision](cli-engine-edge.md)). An edge
+from any other kit package to `engine` needs its own Decision. A consumer's engine package gains a legitimate kit
 dependency it did not have before, which is the intended effect: it can
 stamp `distribution` and build `Remediation` values without smuggling in
 a `cli` or `mcp` edge to do it. The package ships nothing that reads

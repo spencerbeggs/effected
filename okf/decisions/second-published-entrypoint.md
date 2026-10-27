@@ -13,12 +13,18 @@ sources:
     resource: ../../packages/workspaces/package.json
   - id: commands-package-json
     resource: ../../packages/commands/package.json
+  - id: walker-package-json
+    resource: ../../packages/walker/package.json
+  - id: app-package-json
+    resource: ../../packages/app/package.json
+  - id: mcp-package-json
+    resource: ../../packages/mcp/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T19:59:29Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: f42b19f15c59f9b6
+    body: f64f2a8b421058e8
   verified:
     by: human:spencer
     at: 2026-10-25T20:04:29Z
@@ -34,10 +40,11 @@ verified:
 
 ## Context
 
-Most packages ship a single `.` entrypoint. Three do not:
-`@effected/workspaces` and `@effected/commands` each add `./node-sync`, and
-`@effected/schema-org` adds
-`./validate`.[^schema-org-package-json][^workspaces-package-json][^commands-package-json] `"sideEffects": false` sounds like
+Most packages ship a single `.` entrypoint. Among those that do not:
+`@effected/workspaces`, `@effected/commands` and `@effected/walker` each add
+`./node-sync`, `@effected/schema-org` adds `./validate`, `@effected/app`
+adds `./testing`, and `@effected/mcp` adds
+`./node`.[^schema-org-package-json][^workspaces-package-json][^commands-package-json][^walker-package-json][^app-package-json][^mcp-package-json] `"sideEffects": false` sounds like
 it already solves the tree-shaking problem a subpath would solve, and
 believing that is the trap this decision exists to name.
 
@@ -63,11 +70,20 @@ is justified by measurement rather than preference. `schema-org` split
 `./validate` because the vocabulary table behind it is raw bytes an
 graph-only consumer would otherwise load on every import — the raw
 figure is the one that matters, not the gzip figure, because parse cost
-is what an unbundled consumer pays. The two `./node-sync` splits are the
+is what an unbundled consumer pays. The `./node-sync` splits are the
 same mechanism for a different cost: each holds the one `node:` import
 (`node:fs`/`node:path`, `node:child_process`) a sync facade's Node binding
 needs, which a main entry that takes its platform through `R` must never
-load.
+load. Walker's `./node-sync` binds `descendSync` / `descendEntriesSync` to
+`node:fs` and `node:path` (`nodeWalkerFileSystem`, `nodeWalkerPath`,
+`nodeWalkerSyncOps`). `app`'s `./testing` is the same mechanism for test
+code: `AppTest.layer` reaches `@effected/memfs`, an optional peer, which a
+production importer of `App` must never load; see
+[app's test layer lives behind ./testing](app-testing-entrypoint.md).
+`mcp`'s `./node` is the same mechanism for a Node-only capability: it
+carries `StdioCapture`, whose `node:async_hooks` and `node:stream` imports
+the boundary-tier root must never load; see
+[`@effected/mcp` ships `StdioCapture` behind `./node`](mcp-node-subpath.md).
 
 The wiring is three parts:
 
@@ -90,7 +106,13 @@ boundary, so a package with a split ships a structural test asserting it,
 with a positive control — assert that the light entrypoint's transitive
 module graph excludes the heavy module, and that the heavy entrypoint's
 graph includes it, so a test that has quietly stopped resolving anything
-fails instead of passing vacuously.
+fails instead of passing vacuously. Walker, app and mcp each carry theirs in
+`__test__/entrypoints.test.ts`: walker's asserts that nothing reachable from
+`.` is `./node-sync` or imports a `node:` built-in, app's that nothing
+reachable from `.` names `@effected/memfs`, the testing modules or a
+self-reference to `@effected/app/testing`, type-only imports included, and
+mcp's that nothing reachable from `.` or `./testing` reaches `node.ts` or
+`StdioCapture.ts`; all three have the positive control.
 
 See [the case-collision rule](../gotchas/subpath-case-collision.md) for
 the naming trap a subpath walks into on a case-insensitive filesystem.
@@ -117,3 +139,12 @@ the candidate module and write the reachability test before adding the
 [^commands-package-json]: `packages/commands/package.json` — `exports` carries
     `"./node-sync": "./src/node-sync.ts"` alongside `.`; its reachability
     test is `__test__/entrypoints.test.ts`.
+[^walker-package-json]: `packages/walker/package.json` — `exports` carries
+    `"./node-sync": "./src/node-sync.ts"` alongside `.`; its reachability
+    test is `__test__/entrypoints.test.ts`.
+[^app-package-json]: `packages/app/package.json` — `exports` carries
+    `"./testing": "./src/testing.ts"` alongside `.`, and `@effected/memfs`
+    is marked optional in `peerDependenciesMeta`.
+[^mcp-package-json]: `packages/mcp/package.json` — `exports` carries
+    `"./node": "./src/node.ts"` alongside `.`; its reachability test is
+    `__test__/entrypoints.test.ts`.

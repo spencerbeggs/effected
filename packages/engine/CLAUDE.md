@@ -18,9 +18,9 @@ devDependency edge into `src/`. There is no IO here and nothing to provide
 at the edge.
 
 **Kit dependents are `@effected/mcp` (peer) and `@effected/cli` (a regular
-dependency, for `CliRuntime.main`'s `distribution` option; user ruling
-2026-10-26).** Adding any other dependent is a new Decision, not a drive-by
-import.
+dependency, for `CliRuntime.main`'s `distribution` option).** Why a regular
+dependency → `@./okf/decisions/cli-engine-edge.md`. Adding any other
+dependent is a new Decision, not a drive-by import.
 
 ## Public surface
 
@@ -32,9 +32,12 @@ One module per concept. `src/index.ts` is the only re-exporting module.
   to `R`), `distributionSuffix`.
 - `src/Remediation.ts` — `Remediation` (`Schema.Struct` + type): what a
   caller, usually an agent, should do after a failure.
-- `src/Distribution.ts` also carries `distributionFormatter` (a `--version`
-  line formatter shaped like `CliOutput.Formatter["formatVersion"]`) and
+- `src/Distribution.ts` also carries `withDistributionVersion(d)(formatVersion)`
+  (decorates a `--version` formatter shaped like
+  `CliOutput.Formatter["formatVersion"]` with `distributionSuffix`; it WRAPS
+  the formatter in effect, coloured or custom, never replaces it) and
   `withDistribution` (provides `CurrentDistribution` from a nullable value).
+  `@effected/cli`'s `MainOptions.distribution` is built on both.
 - `src/LaunchContext.ts` — `LaunchContext` (`usable`, `resolve`,
   `projectDir`, `isUnsubstituted`), `ProjectDirInput` and `ResolveInput`:
   resolves launch-supplied locations from caller-supplied `argv`/`env`/`cwd`

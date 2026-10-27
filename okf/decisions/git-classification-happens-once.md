@@ -8,10 +8,10 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: 8e9b17588c6e7381
+    body: 82c7193a27dcf596
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -78,9 +78,12 @@ it:
 | `"push"` | `push` | `[rejected]` together with `non-fast-forward`, `fetch first` or `stale info` is `NonFastForwardError`; git 2.54's remote-moved wording is `fetch first`, not the classic phrase, and the `--force-with-lease` lease failure is `stale info` |
 | `"merge"` | `pull`, `stashPop`, `stashApply` | `would be overwritten by` on stderr is `DirtyWorktreeError`; `CONFLICT (`, `Automatic merge failed` or `could not apply` is `MergeConflictError` — the one place `classify` reads **stdout**, because git's merge machinery reports conflicts there while a rebase-mode pull's `could not apply` lands on stderr |
 | `"log"` | `log` | an unborn HEAD (`does not have any commits yet`) is the empty listing — scoped to `log` because for every other member an unborn HEAD is a real failure |
+| `"tree"` | `treeIdentity` | `must be run in a work tree` (a bare repository, or a directory inside `.git`) degrades to `Option.none()`, as `NotARepositoryError` does for this member — scoped to `treeIdentity` because "no working tree" is its answer, while for any other member it is a real failure |
 | `"generic"` | everything else | none |
 
-`mergeBase` deliberately stays `"generic"` while `mergeBaseOption` is
+`upstream` makes two spawns on two kinds: `headRef` runs `"quiet"`, so a
+detached `HEAD`'s silent exit 1 is `Option.none()`, and the `for-each-ref`
+read runs `"generic"`. `mergeBase` deliberately stays `"generic"` while `mergeBaseOption` is
 `"quiet"`: disjoint histories exit 1 silently, and the loud failure is the
 contract `mergeBase`'s existing consumers depend on, so the one argv backs
 both members. `"couldn't find remote ref"` sits in the unknown-ref
@@ -98,7 +101,12 @@ plumbing. `log` is the one member whose parser can fail: every other
 parser is total, but two ISO dates must decode and a record short of its
 declared fields cannot be answered plausibly, so `parseLog` returns a
 `Result` and both shapes surface as a `GitCommandError` with `detail`,
-never a defect.
+never a defect. `treeIdentity` and `upstream` follow the same rule: an
+answer that exits 0 but does not parse (an older git echoing
+`--path-format`, a tracking field the C locale does not write) is a
+`GitCommandError` with `detail` and no stderr. Every stored `stderr` and
+`detail` is masked by [the redaction policy](../conventions/git-redaction-policy.md)
+after classification has read the raw text.
 
 The stderr matching itself is unanchored substring matching against
 `LC_ALL=C`-pinned phrases, an accepted, recorded tradeoff — a path or ref

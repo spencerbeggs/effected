@@ -130,5 +130,11 @@ it**. `package.json` stays `"private": true`.
   enumerator** has been performed, so nothing asserts case-by-case agreement
   with `@actions/glob` or another reference implementation. See
   `@./okf/modules/glob.md`.
+- **`enumerationRoots`** is the per-alternative form walker consumes: one
+  `EnumerationRoot { prefix, deep, spellings }` per brace alternative, prefixes
+  canonical, roots inside a deep root absorbed into it. Matching stays
+  spelling-sensitive, which is why each root carries its `spellings` — never
+  canonicalize a match. `dot` defaults to `false` (minimatch's default); Vitest
+  globs use `dot: true`, so say so to agree with it. See `@./okf/modules/glob.md`.
 - Both getters are computed under default options; their `matchBase`/win32
   interaction stays undefined (documented for default-options patterns only).

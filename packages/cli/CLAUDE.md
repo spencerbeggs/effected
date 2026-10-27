@@ -19,6 +19,13 @@ as breaks. A status vocabulary's glyphs are sanitised too, at one source
 (`Status.glyph`, which a theme's `status`, `CliMessage`, `CliLog.status` and
 `Doc` all draw through), so a glyph built from data cannot inject an escape
 on a trusted line; a theme's glyph set (separators, ellipsis) is configuration.
+`CliFormat` pairs a shared `--format` flag with `Doc.print` (plus `json`);
+`Fmt` carries the text helpers, `Fmt.causeMessage` among them (the kit's
+guarded cause read, never throwing). `CliRuntime.main` takes `exitCodes` (by
+tag), `distribution` (the carrier: engine's `CurrentDistribution` plus the
+`--version` suffix, wrapping whatever formatter is in effect) and
+`env.displayPath` (a function or `{ relativeTo: root }`, the path display
+every renderer, `Doc.print` and a live view's `final` follow).
 `okf/modules/cli.md` has the rows.
 
 **Design doc:** `@./okf/modules/cli.md` — Load when:
@@ -48,10 +55,22 @@ tier and imports only the boundary root, so nothing inherits a tier from `./ui`.
 Same posture as `app`: the two are siblings, not layers — `app` is the control
 plane, `cli` the presentation boundary, and neither imports the other.
 
+**Three regular dependencies, no new peers:** `@effected/github-commands`,
+`@effected/engine` (the root's `CliRuntime` imports `withDistribution` and
+`withDistributionVersion` for `MainOptions.distribution`) and
+`@effected/commands` (ONLY its `./node-sync` subpath, ONLY from
+`ui/internal/inkChalk.ts`, ONLY by a dynamic `import()` when a screen
+mounts). None has an `@effected` peer, so the peer closure is unchanged.
+`boundary.test.ts` pins that `.` and `./testing` reach no
+`@effected/commands` module and that the Ink loader alone reaches
+`./node-sync`. Why a regular dependency on engine →
+`@./okf/decisions/cli-engine-edge.md` — Load when: adding an edge to engine
+or commands, or touching `MainOptions.distribution`.
+
 ## The `./ui`, `./ui/testing` and `./ui/testing/serializer` subpaths
 
 `./ui` holds the interactive screens: `CliUi` (`run`, `prompt`, `fallback`,
-`lazy`, `map`, `live`, `lazyView`, `context`), `DocView`, `UiProvider`, the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
+`lazy`, `map`, `live`, `liveDetached`, `routeStream`, `lazyView`, `context`), `DocView`, `UiProvider`, the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
 `Toggle`, `Tabs`, `Viewport`), the key layer (`UiKey`, `KeyTable`, `useKeys`,
 `KeyHelp`) and the theme bridge (`Styled`, `inkProps`, `useTheme`,
 `useGlyphs`, `useTerminalSize`). `./ui/testing` holds `CliUiTest`: `render`
@@ -142,6 +161,22 @@ snapshot test here uses `expect` for the snapshot alone. `okf/modules/cli.md` ha
     terminal, `written` is every raw byte, and `write(stream, bytes)` puts raw
     bytes under the frame: the control that shows a foreign line stranding the
     frame's top row at the next redraw.
+- **Only three files may touch Node:** `ui/internal/processStreams.ts` (reads
+  the process streams), `ui/CliUiRouteStream.ts` (imports `node:stream` for
+  the `Writable` `CliUi.routeStream` returns) and the testing-only
+  `ui/testing/fakeStreams.ts`. `inkChalk.ts` imports no `node:` module: it
+  resolves Ink's own chalk through `@effected/commands/node-sync`'s
+  `ModuleResolution`, loaded lazily by the Ink loader, so importing `./ui`
+  loads none of it. `boundary.test.ts` holds the waiver list exact —
+  `@./okf/decisions/ui-binds-process-streams.md`,
+  `@./okf/decisions/ink-colour-via-inks-own-chalk.md` — Load when: a `./ui`
+  file needs a `node:` import or `process`, or touching `inkChalk.ts`.
+- **Non-Effect hosts:** `CliUi.liveDetached(options, env)` runs a live view on
+  its own fiber for a reporter or plugin and returns `{ handle, printAbove,
+  close, exit }`; shut a `PubSub` down only AFTER `close()` resolves, or the
+  queued tail is lost. `CliUi.routeStream(original, printer, options)` routes a
+  foreign writer's output line by line through `printAbove`, decoding UTF-8
+  across writes and flushing the held line on `flush()` or `end()`.
 - **Ink hands every key of one stdin read over before React re-renders.** A
   key handler must step from current state (a functional update, a reducer
   or a ref), never render-closure state; test it with `chunk` —
@@ -252,9 +287,10 @@ is a crash for every consumer who took the manifest at its word. Shared
 rendering lives in `src/internal/format.ts`, which both renderers import and
 neither re-exports. The entrypoint re-exporting `ConfigIssueRenderer` is fine.
 
-Verify this with a build, not by reading: every runtime `import` in
-`dist/prod/npm/pkg/**/*.js` must be `effect` or a relative path. The `.d.ts`
-carries a type-only import of `ConfigValidationError`, which is erased.
+Verify this with a build, not by reading: no runtime `import` of
+`@effected/config-file` may appear in `dist/prod/npm/pkg/**/*.js` outside
+`ConfigIssueRenderer`'s own module. The `.d.ts` carries a type-only import of
+`ConfigValidationError`, which is erased.
 
 ## Testing
 

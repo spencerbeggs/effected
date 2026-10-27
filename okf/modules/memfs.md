@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T14:33:12Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: e37d135fbddc311f
+    body: 23a682f7f6155227
 ---
 
 # @effected/memfs
@@ -261,6 +261,10 @@ Design decisions worth keeping:
   which also reaches the derived `stream` and `sink`. A `faults.file` hook
   was rejected: a key that names no `FileSystem` member would break the
   unknown-key check every other fault key relies on.
+- **Fault both spellings of a write.** `writeFile` and `open` are separate
+  members, neither derived from the other, so a fault on `writeFile` does
+  not reach a write made through `open` (and its `sink`), nor the reverse. A
+  test meant to make every write fail faults both.
 
 ### Volume inspection
 
@@ -306,7 +310,11 @@ or `Effect`; both take `(volume, { faults?, pathStyle? })`.
 
 - `syncFileSystem(volume)` — `exists`, `readFile`, `readDirectory` (with
   `withFileTypes`, the same literal dirents as the promises `readdir`),
-  `isDirectory`, `stat`, `lstat`.
+  `isDirectory`, `stat`, `lstat`, `realPath`. `realPath` is
+  `realpathSync`: the canonical path with every link resolved, throwing
+  `ENOENT`, `ENOTDIR` or `ELOOP` with `syscall: "realpath"`. With it the
+  sync port satisfies [walker](walker.md)'s `WalkerSyncFileSystem`
+  structurally, so `descendSync` runs on a memfs handle directly.
 - `promisesFileSystem(volume)` — `readdir` (with `withFileTypes`), `stat`,
   `lstat` and `readFile` with node's overloads: a `Uint8Array` without an
   encoding, a `string` with `"utf8"`, `"utf-8"` or `{ encoding }`.

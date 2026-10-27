@@ -16,10 +16,10 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T14:50:52Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: 73437b65653471e0
+    body: 55786932a8479062
 ---
 
 # store
@@ -66,10 +66,12 @@ living beside XDG resolution — see
 
 `src/Store.ts`, `src/Cache.ts`, `src/Bytes.ts` (the `Uint8ArrayFromUtf8`
 codec), `src/AtomicDirectory.ts` (whole-directory replacement over core
-`FileSystem`) and `src/internal/migrator.ts` (the shared ledger engine, defining
+`FileSystem`), `src/internal/migrator.ts` (the shared ledger engine, defining
 its own record types rather than importing from either facade — an
 import cycle there would trip Biome's error-level `noImportCycles`
-rule).[^store-claude-md]
+rule) and `src/internal/migrateOnce.ts` (the process-global registry behind
+`Store.migrateOnce`, facade-free on the same terms: the facade hands in the
+work to run).[^store-claude-md]
 
 ## Public surface
 
@@ -119,13 +121,16 @@ discipline (see [app](app.md#memoization) for
 where it bites hardest).
 
 Deliberately not done: no `mkdir: true` on `layerSqlite` — directory
-creation is path policy, owned by the caller or [xdg](xdg.md). No
-`onConnect` / PRAGMA hook — `SqliteClient` opens one serialized
-connection per layer build and itself sets `busy_timeout`
-(`client.busyTimeout`, default five seconds) and `journal_mode = WAL`
-(unless `client.disableWAL`), both reachable through the `client`
-passthrough. A consumer setting them inside a migration, which runs
-once per database rather than once per connection, moves them there.
+creation is path policy, owned by the caller or [xdg](xdg.md).
+Per-connection PRAGMAs split between the driver and `onConnect`:
+`SqliteClient` opens one serialized connection per layer build and itself
+sets `busy_timeout` (`client.busyTimeout`, default five seconds) and
+`journal_mode = WAL` (unless `client.disableWAL`), both reachable through
+the `client` passthrough; anything else per-connection (`PRAGMA
+synchronous`, `cache_size`) goes in `onConnect`, which runs once per build
+and so once per connection. A consumer setting either inside a migration,
+which runs once per database rather than once per connection, moves it to
+`client` or `onConnect`.
 
 ### Store
 
@@ -221,6 +226,42 @@ A migration's `up`/`down` return `Effect<unknown, SqlError>`, not
 statement's rows, so a `void` return type would force every consumer to
 pipe an `Effect.asVoid` onto an otherwise self-describing statement. The
 engine discards the value either way.
+
+### Migrating from effect/sql, and migrating once
+
+**`Store.fromMigratorRecord(record)`** converts a migration record in
+effect/sql's `Migrator.fromRecord` shape (`"<id>_<name>"` → migration
+effect) into the `StoreMigration` list `Store` runs, so a program moving off
+`Migrator` keeps its migration modules as they are. Keys parse with
+`Migrator.fromRecord`'s exact regex, `/^(\d+)_(.+)$/` with no flags, and
+`Number(id)`: `"0001_initial"` is id `1`, name `"initial"`, which is what
+effect/sql recorded and what `adoptMigratorLedger` matches against. A key
+that does not match is skipped, as effect/sql skips it; the list is sorted
+by id; each `up` provides the effect with the store's `SqlClient`, and
+there is no `down`. A differential test runs core's loader over the same
+keys. **It validates nothing**: an id `0` (which `Migrator` silently never
+runs) or two keys with one id (`"1_a"`, `"01_b"`, which `Migrator` refuses
+typed) dies in `Store.layer` as a wiring defect, deliberately louder than
+effect/sql.
+
+**`Store.migrateOnce(options)`** migrates a SQLite database file at most
+once per process, sharing one in-flight run between concurrent callers —
+several reporters or workers that each open the same file. It builds
+`Store.layerSqlite(options)` and closes it, and requires `FileSystem` and
+`Path` in `R`. Runs are keyed on the real path of the file's directory plus
+its basename (so relative, absolute and symlinked-directory spellings share
+a run; the directory must exist, and failing to resolve it is a
+`StoreError` with `operation: "setup"`), then on a fingerprint of the
+migration ids and names and the two ledger options. A failure is not
+remembered: its entry is removed before waiters are released. The run is
+detached, so interrupting a caller stops only its wait. `":memory:"`, `""`
+and a `file:` URI die as wiring. **It deduplicates work and is not a
+lock**: a success is remembered per path for the process lifetime, so a
+database deleted and recreated at the same path is not re-migrated by it,
+and there is no reset; the ledger re-check under `BEGIN IMMEDIATE` is what
+makes concurrent opens safe. Why the registry is process-global, holds plain
+`Promise`s and is a frozen cross-version contract →
+[the migrateOnce registry decision](../decisions/migrate-once-registry.md).
 
 ### Cache
 

@@ -10,7 +10,7 @@ sources:
     resource: ../../packages/walker/src/Walker.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-29T06:16:45Z
+  at: 2026-10-27T13:22:20Z
 verified:
   - by: human:spencer
     at: 2026-09-29T06:17:45Z
@@ -18,7 +18,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: be6b99169429f34a
+    body: 5cff3190b71d6d8d
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -79,6 +79,16 @@ an unbounded walk, so an accidentally-undefined ceiling cannot become one.
 [git](../modules/git.md) state the pairing from both sides. Never fold
 the physical test back into `stopAt` without first moving every
 `Path`-only caller.
+
+[config-file](../modules/config-file.md)'s `ConfigResolver.upwardWalk`
+exposes the physical ceiling as an optional `ceiling?: string`, mutually
+exclusive with `stopAt` at the type level, and routes it through
+`Walker.ascendWithin(cwd, Option.some(ceiling))`. It is a plain optional
+string there, not an `Option`, on purpose: `upwardWalk` already walks to
+the filesystem root when neither bound is given, so an omitted `ceiling`
+asks for nothing `stopAt`'s omission does not already ask for, and the
+`Option` guard stays where the unbounded answer is otherwise
+unreachable, on the walker static.
 
 [^walker-source]: `packages/walker/src/Walker.ts` — `ascendWithin` and
     its private `ascendToPhysical`, plus the `AscendOptions.stopAt`

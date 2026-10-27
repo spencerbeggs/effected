@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/xdg/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:38:57Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: 9f246f99ca18b5ab
+    body: 8556a00e8232933e
 ---
 
 # xdg
@@ -101,8 +101,24 @@ A missing home directory is the only environment failure; everything else
 is optional by construction. Home is `HOME`, or on win32 `USERPROFILE` then
 `HOME` (the error then names `USERPROFILE`, meaning neither was set). Home is
 deliberately not validated as absolute, and its absence fails the layer
-eagerly even when every `XDG_*_HOME` is set. `layerFrom` supplies explicit
-paths, trusted as given, and is the test layer.
+eagerly even when every `XDG_*_HOME` is set. There is deliberately **no**
+posix `USERPROFILE` fallback for an unset or empty `HOME`; the owner declined
+it, so the home rule is the same in both reading layers. `layerFrom` supplies
+explicit paths, trusted as given, and is the test layer.
+
+**`Xdg.layerFromEnv(env)`** reads the same environment from an explicit
+record instead of the ambient `ConfigProvider`. It shares one resolution
+with `Xdg.layer` (`readPaths` in `Xdg.ts`), rule for rule, and the record
+goes through `ConfigProvider.fromEnvRecord`, so `""` reads as unset, as
+`process.env` does. It takes a record only. Each call returns a new layer,
+and the layer is `Layer.fresh` (as `CurrentRuntimeEnv.layerFrom` is), so one
+returned value re-reads its source on every build, even nested inside a
+provide of itself. Never answer "read an env record" by providing a
+`ConfigProvider` beneath the static `Xdg.layer`: the static is memoized by
+reference, so within one graph the first provider wins everywhere it is
+used, which the `XdgLayerFromEnv` suite pins as its control. A caller who
+holds a `ConfigProvider` rather than a record, and needs only one in the
+graph, composes `Layer.provide(Xdg.layer, ConfigProvider.layer(p))`.
 
 ### NativeDirs — the pure platform map
 
@@ -144,6 +160,25 @@ application to a location; the `ensure*` operations `mkdir -p` and
 return the path, with the runtime one `Option`-returning since a runtime
 directory exists only when the environment says so.
 
+**`AppDirs.segment(name)`** maps an arbitrary name (a package name, a
+project key) to one filesystem-safe path segment, returning
+`Result<string, AppDirsSegmentError>`. Three rules, in order: `/` becomes
+`__` (so `@org/pkg` is `@org__pkg`); every character outside
+`[A-Za-z0-9._@-]` becomes `_`; runs of three or more `_` collapse to `__`.
+The regex has **no `u` flag**, so it matches per UTF-16 code unit and an
+astral character becomes `__`. The result never holds a separator, and the
+three results that name no child (`""`, `.`, `..`) fail. It is pure, so a
+`Result` rather than an `Effect`; Effect code lifts it with
+`Effect.fromResult`. The mapping is stable and **not injective** (`@org/pkg`
+and `@org__pkg` share a segment); hash the name when distinct names must
+never share a directory. It is a **persisted contract**: vitest-agent's
+`normalizeWorkspaceKey` byte for byte, with the suite running a copy of the
+original as an oracle, so never "fix" its regex flags or collapse rule —
+stored data directories are keyed on today's output. It refuses neither
+Windows trailing dots nor device names, because the mapping must be the
+same on every platform → [AppDirs.segment does not refuse Windows trailing
+dots or device names](../limitations/xdg-segment-win32-aliasing.md).
+
 ### XdgConfig — the config-file bridge
 
 Statics on a concept class: a config-search-path resolver, a
@@ -174,11 +209,13 @@ here.
 
 ## Errors
 
-Two `Schema.TaggedError` types, one per fallible concept, each carrying
-its underlying failure structurally in a `cause: Schema.Defect()` field:
-an environment error naming the missing variable, and a
-directory-creation error carrying the failing kind as a literal union
-plus the path. `PlatformError` is wrapped, never leaked. Nothing is
+Three `Schema.TaggedError` types. Two carry their underlying failure
+structurally in a `cause: Schema.Defect()` field: `XdgEnvError`, naming the
+missing variable, and `AppDirsError`, the directory-creation error carrying
+the failing kind as a literal union plus the path. The third,
+`AppDirsSegmentError`, is the `AppDirs.segment` failure: `input` (the name
+as given) and `reason` (`"empty"`, `"dot"` or `"dot-dot"`), with no cause
+because nothing failed underneath it. `PlatformError` is wrapped, never leaked. Nothing is
 `orDie`d — "the cache directory could not be created" is an expected,
 recoverable boundary failure. Wiring errors are construction defects: an
 empty namespace, or one containing a path separator, dies at layer
@@ -217,7 +254,9 @@ the agreed subset with core's `UserDirectories`.
 ## Hardening
 
 Not a parser — no recursion, no untrusted text, no nesting cap, no
-numeric option. The namespace is a path component, validated as one: an
+numeric option. `AppDirs.segment` is the sanctioned route for a
+runtime-supplied name that becomes a directory: its output never contains a
+separator and never names the directory itself or its parent. The namespace is a path component, validated as one: an
 empty namespace or one containing a separator is rejected at layer
 construction as a defect. Every join goes through `Path.Path`, never
 string interpolation. Absorption is per candidate, not per resolver.

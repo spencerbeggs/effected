@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/app/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-24T01:01:42Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: 2f41e48a64e3ae62
+    body: 72ea12750e29070b
 ---
 
 # app
@@ -52,10 +52,13 @@ is empty. The workspace edges are **peers, not regular dependencies**,
 because each appears in this package's public signature types — a second
 copy of any of them in a consumer's graph would mint two distinct service
 tags for one concept and the layer would silently fail to satisfy the
-requirement. `memfs` earns the edge through `App.layerTest`, whose output
+requirement. `memfs` earns the edge through `AppTest.layer`, whose output
 names `MemoryFileSystemVolume` and whose `MemoryFileSystem.Volume` key a
 consumer's test resolves from its own import: a shared-instance contract,
-so a peer. It is a runtime edge — `layerTest` is shipped API — and it is
+so a peer. It is an **optional** peer, reached only from the `./testing`
+entrypoint, so the root never loads it and a consumer that uses `AppTest`
+adds memfs as a devDependency → [app's test layer lives behind
+./testing](../decisions/app-testing-entrypoint.md). It is
 tier-neutral under [the dependency policy](../conventions/dependency-policy.md):
 memfs is pure, with zero `@effected/*` edges by
 [law](../decisions/memfs-zero-effected-edges.md), so R1 is untouched, and
@@ -67,11 +70,19 @@ integration tests only.
 ## Module layout
 
 One module per concept under `src/` — `App.ts`, `AppStore.ts`,
-`AppCache.ts`, `AppConfig.ts` — plus `internal/filename.ts` (the
+`AppCache.ts`, `AppConfig.ts` and `AppTest.ts` — plus `internal/filename.ts` (the
 path guards for `filename` and `subdir`) and `internal/location.ts`
 (`ensureLocation`: the directory's `ensure*`, then the subdir's recursive
 `mkdir`, both on `AppDirsError`). There is no engine here, nothing but
 composition and those wiring-defect guards.
+
+Two entrypoints: `.` (`src/index.ts`: `App`, `AppStore`, `AppCache`,
+`AppConfig` and the `AppError`/`AppOptions`/option types) and `./testing`
+(`src/testing.ts`: `AppTest`, `AppTestOptions`, `AppTestServices`). The
+root must never reach `AppTest.ts` or `@effected/memfs`, type imports
+included; `__test__/entrypoints.test.ts` walks the module graph from each
+entry to enforce it, with a positive control from `./testing` and a check
+that the two export disjoint surfaces.
 
 `AppConfig.ts` must stay a separate module and a free-standing export
 from anything that reaches the sqlite driver: `AppConfig` reaches `xdg`
@@ -86,7 +97,7 @@ level up. `App.ts` imports `AppStore.ts` and `AppCache.ts` but **not**
 `AppConfig.ts` — the import direction is what keeps the two graphs
 separate.
 
-Each of `App`, `AppStore`, `AppCache` and `AppConfig` is a static class
+Each of `App`, `AppStore`, `AppCache`, `AppConfig` and `AppTest` is a static class
 with a private constructor, not an `as const` namespace object, keeping
 its TSDoc in the built declaration file.
 
@@ -165,15 +176,16 @@ deleted a `store.db` its own process held open. The CLI shape is
 directories once at the edge, each database layer bound once at module
 scope, and `Command.provide` on only the commands that use it.
 
-### App.layerTest — the hermetic control plane
+### AppTest.layer — the hermetic control plane
 
-`App.layerTest(options)` returns the four services **and the platform
+`AppTest.layer(options)`, from `@effected/app/testing`, returns the four services **and the platform
 they run on** with `R = never`: synthetic XDG paths (or `options.paths`),
 `:memory:` databases, and `Path.layer` plus a [memfs](memfs.md) volume
 seeded from `options.files`, all `provideMerge`d so the output is `Xdg |
 AppDirs | Store | Cache | FileSystem | Path | MemoryFileSystemVolume`
-(the `AppTestServices` alias). A consumer's first test is one line and
-needs no platform package. This is sound because `layerTest`
+(the `AppTestServices` alias), failing only with `StoreError |
+StoreMigrationError | CacheError`. A consumer's first test is one line and
+needs no platform package. This is sound because `AppTest.layer`
 **satisfies** the platform requirements rather than imposing them, so
 `R` is `never` by construction and not by a cast.
 
@@ -181,20 +193,20 @@ The volume is a real filesystem, so every `AppDirs.ensure*` creates
 directories on it and nothing is fabricated — an unseeded path is
 honestly absent. The platform is exposed rather than hidden so that
 `AppConfig.layer`, which needs `FileSystem | Path | AppDirs | Xdg`,
-composes over `layerTest` with one `Layer.provide` on the same volume:
+composes over `AppTest.layer` with one `Layer.provide` on the same volume:
 a config body seeded under the namespace's config directory loads, a
 `save` lands there, and `MemoryFileSystem.Volume` reads it back. One
-`layerTest(...)` call is one volume, shared by a `layer(...)` block's
+`AppTest.layer(...)` call is one volume, shared by a `layer(...)` block's
 tests. The databases stay off it — `Store` and `Cache` open SQLite
 through the native binding, which never sees `FileSystem` — so
 `AppStore.layer`/`AppCache.layer` must **never** be composed over
-`layerTest` (their `ensure*` passes on the volume and the binding then
+`AppTest.layer` (their `ensure*` passes on the volume and the binding then
 opens the same path on the host: on the synthetic defaults that path
 does not exist, so the layer fails with a `StoreError`; with real
 `paths` it would write onto the host disk), and a test of `App.layer`
 end to end
 still uses a temp-directory `HOME`, which is what the integration suite
-does. Before this, `layerTest` provided `FileSystem.layerNoop`, every
+does. Before this, the old root `App.layerTest` provided `FileSystem.layerNoop`, every
 `ensure*` died, and the limit was documented rather than fixed —
 against [the memfs-over-layerNoop decision](../decisions/memfs-over-layernoop.md).
 
@@ -316,7 +328,7 @@ properties: a fresh namespace with no pre-existing directories builds
 without a defect; an unwritable ancestor surfaces a typed `AppDirsError`,
 never a die; a config file lands under the namespace passed to
 `App.layer` with none passed to `AppConfig` at all (the namespace-once
-property); `App.layerTest` works with zero platform layers, its `ensure*` members
+property); `AppTest.layer` works with zero platform layers, its `ensure*` members
 create directories on the memfs volume it exposes, and `AppConfig.layer`
 composed over it loads a `files`-seeded config and saves back to the
 same volume; and a caller resolver outranks the XDG search path, proven with both files present
@@ -326,7 +338,8 @@ assertion. The filename guard is exercised through a shared matrix
 the five filename options. `App.layerDirs` is pinned to open no
 database against a positive control (`App.layer` built and unused does
 create both files), and the `layerAs` suites prove a primary and two
-keyed stores coexist with disjoint tables and ledgers.
+keyed stores coexist with disjoint tables and ledgers. The entrypoint
+boundary is pinned by `__test__/entrypoints.test.ts` (see Module layout).
 
 ## Build
 
@@ -366,6 +379,6 @@ consumer exercises this composition against a real filesystem, including
 `Store.rollback` against a real on-disk database.
 
 [^app-package-json]: `packages/app/package.json` — `peerDependencies`
-    lists `@effected/config-file`, `@effected/memfs`, `@effected/store`,
-    `@effected/xdg`, their closure peers and `effect`; no `dependencies`
-    block.
+    lists `@effected/config-file`, `@effected/memfs` (optional),
+    `@effected/store`, `@effected/xdg`, their closure peers and `effect`;
+    no `dependencies` block. `exports` carries `.` and `./testing`.

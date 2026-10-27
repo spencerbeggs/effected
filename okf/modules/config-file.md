@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T14:27:30Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: 41a88aa0f10a51bb
+    body: 9617b8bef1f47917
 ---
 
 # config-file
@@ -28,7 +28,7 @@ integrity:
 
 **IV generation is a recorded exception to [require core in R](../conventions/require-in-r-default.md).** Core declares a randomness contract (`Crypto.randomBytes`), and by the letter of that convention the IV should come from it. It does not, on purpose: the IV is a GCM nonce, and a nonce repeated under one key destroys GCM's confidentiality and integrity. A swappable random source makes that a wiring accident — `Crypto.make`'s own documentation example returns zero-filled bytes, and a seeded `TestCrypto` that reached production would repeat IVs. The `ConfigCodec` seam also has no `R` channel to carry the service, so honouring the convention would have been a breaking redesign of the seam for a test benefit (fixed IVs) no test needs. This is a security-motivated exception for nonces, not a precedent for randomness in general, and it does not follow from [the crypto-backends decision](../decisions/crypto-backends.md), which decides keyed operations versus digests and treats random bytes as core's. A runtime without `globalThis.crypto` fails typed with phase `encrypt`, like the neighbouring WebCrypto steps. `@effected/*` peers do not change the tier, since tier does not propagate ([R3](../glossary/library-tier.md)).
 
-The upward-walk resolvers are expressed over `walker`'s primitives, so this package has no walk-up loop of its own.
+The upward-walk resolvers are expressed over `walker`'s primitives, so this package has no walk-up loop of its own. `ConfigResolver.upwardWalk` takes at most one bound, enforced at the type level: `stopAt`, a **lexical** ceiling (`Walker.ascend`'s `stopAt`), or `ceiling?: string`, a **physical** one routed through `Walker.ascendWithin(cwd, Option.some(ceiling))`, which stops at the nearest ancestor whose real path is the ceiling's. Use `ceiling` for a bound git answered, above all `Git.repoRoot`'s symlink-resolved path, which a lexical `stopAt` never matches from a symlinked or macOS-tmpdir start. Omit both and the walk runs to the filesystem root; a relative `ceiling` is a defect. It is a plain optional string, not an `Option`, because omitting it asks for nothing that omitting `stopAt` does not → [the physical-ceiling decision](../decisions/physical-ceiling-is-a-separate-static.md).
 
 ## The load-bearing constraint: free-standing named exports, never a namespace object
 

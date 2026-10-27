@@ -16,10 +16,10 @@ sources:
     title: "chalk 6.0.1, source/index.js:17-37: level is a validating accessor over a stored value every style getter reads"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-07T21:32:23Z
+  at: 2026-10-27T13:22:20Z
 integrity:
   generated:
-    body: 4e1c45ba39bdad5b
+    body: 14cb107e62695534
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -48,9 +48,14 @@ drop colour props from its own widgets.
 
 When a screen mounts, after the lazy `import("ink")`, the kit:
 
-1. resolves Ink's chalk from Ink's location, with
-   `createRequire(fileURLToPath(import.meta.resolve("ink"))).resolve("chalk")`,
-   then `realpath`, then `import()`;
+1. resolves Ink's chalk from Ink's location and imports it, through
+   `@effected/commands/node-sync`'s `ModuleResolution`, loaded by a dynamic
+   `import()` at this point and never when `./ui` is imported:
+   `ModuleResolution.resolve("ink", { from: import.meta.url, esm })` finds
+   Ink's entry (the kit module's own `import.meta.resolve` first, Node's
+   CommonJS resolution where it is missing or throws, as under Vite's module
+   runner), `ModuleResolution.resolve("chalk", { from: entry, realPath: true })`
+   finds the chalk beside it, and `ModuleResolution.load` imports that file;
 2. maps the stream's `ColorLevel` to a chalk level (`none` 0, basic 1, 256
    colours 2, truecolor 3), saves the previous level and sets the new one;
 3. restores the saved level in the release of the same `acquireRelease`.
@@ -58,7 +63,11 @@ When a screen mounts, after the lazy `import("ink")`, the kit:
 `@effected/cli` takes **no `chalk` dependency of any kind**. Resolving from
 Ink's location gives the identical instance by construction: Node's ESM
 loader keys modules by realpath, and pnpm's symlink to Ink's chalk resolves
-to the file Ink imports. The kit's widgets still style only through
+to the file Ink imports. Node's resolvers already answer with the real path
+unless the process runs with `--preserve-symlinks`, so `realPath: true` is
+the guard for that one case. The resolution lives in `@effected/commands`
+(a regular dependency) rather than in `./ui`, so `inkChalk.ts` imports no
+`node:` module ([the `./ui` Node licence](ui-binds-process-streams.md)). The kit's widgets still style only through
 `CliTheme` tokens, but colour correctness does not rest on that.
 
 ## Alternatives rejected

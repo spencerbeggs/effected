@@ -1,10 +1,10 @@
 # Module
 
 * [@effected/cli](cli.md) - The presentation boundary of an effect/cli program — audience, colour, theme, messages, logging, failure reporting and schema-issue renderers in a React-free root, with interactive Ink screens behind ./ui and their test harness behind ./ui/testing.
-* [@effected/commands](commands.md) - The kit's tool-and-output layer over core's subprocess contract — structured running and CLI tool discovery.
+* [@effected/commands](commands.md) - The kit's tool-and-output layer over core's subprocess contract — structured running, CLI tool discovery, run-once serialization across processes, prebuilt-binary resolution, launcher argv parsing, and (behind ./node-sync) anchored module resolution.
 * [@effected/crypto](crypto.md) - HMAC, constant-time comparison and AWS SigV4 request signing over WebCrypto, with no node imports, for the keyed primitives core Crypto does not offer.
-* [@effected/engine](engine.md) - The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, and launch-context resolution.
-* [@effected/env](env.md) - The boundary package that detects who is running a program and in what terminal — agent, CI, colour level, hyperlink support and width — through Config, with no node imports and no import-time reads.
+* [@effected/engine](engine.md) - The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, launch-context resolution, a one-permit lane for process-global work with scoped restores, and transport-neutral crash guards.
+* [@effected/env](env.md) - The boundary package that detects who is running a program and in what terminal — agent, CI and its run, session, colour level, hyperlink support and width — through Config, and reads shell export files in one strict dialect, with no node imports and no import-time reads.
 * [@effected/github](github.md) - The kit's typed GitHub REST and GraphQL API layer, owning the octokit runtime.
 * [@effected/github-commands](github-commands.md) - The GitHub Actions workflow-command grammar as pure functions: render a command, and neutralize text so the runner cannot read it as one.
 * [@effected/github-references](github-references.md) - GitHub's issue-reference grammar as pure functions, extracted from @effected/github.
@@ -13,7 +13,7 @@
 * [@effected/jwt](jwt.md) - Signed-token primitives (JWS, JWT, JWK, JWKS) over WebCrypto that run anywhere WebCrypto does, including Cloudflare workerd.
 * [@effected/lsp](lsp.md) - Language Server Protocol base-protocol framing as pure functions (Content-Length encode, an incremental byte decoder and a Stream transform), an LspStdio launcher that keeps stdout the wire and exits with the specification's code, plus a ./testing subpath whose LspProbe proves a Language Server bin boots and whose LspProcess drives one frame by frame — the LSP twins of McpStdio, McpProbe and McpProcess.
 * [@effected/markdown](markdown.md) - CommonMark 0.31.2 + GFM as pure Effect Schema classes; parse, edit, format, modify, transform and project markdown documents.
-* [@effected/mcp](mcp.md) - The boundary-tier MCP front end — stdio server wiring with a JSON-RPC stdin guard, tool-failure shaping, JSON-schema input walkers for Tool.dynamic tools, and strict-by-default toolkit registration — plus an in-process/spawned testing subpath.
+* [@effected/mcp](mcp.md) - The boundary-tier MCP front end — stdio server wiring with a JSON-RPC stdin guard, tool-failure shaping, the ok:false outcome envelope, idempotent replay, JSON-schema input walkers for Tool.dynamic tools, and strict-by-default toolkit registration — plus a Node-only ./node stdio capture and an in-process/spawned testing subpath.
 * [@effected/memfs](memfs.md) - An in-memory implementation of core Effect's FileSystem service — an isolated virtual POSIX volume the kit's tests use as their filesystem double.
 * [@effected/oidc](oidc.md) - The kit's OpenID Connect vocabulary over @effected/jwt — the IdentityToken issuer contract, standard ID-token claims, an unverified decode and a discovery-backed verify.
 * [@effected/schema-org](schema-org.md) - The schema.org vocabulary as pure Effect Schema classes, a JsonLdDocument graph assembler with a script-safe serializer, and offline conformance validation over the vendored vocabulary.
