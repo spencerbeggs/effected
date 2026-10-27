@@ -25,7 +25,14 @@ export interface RouteStreamOptions {
 	 * A CRLF line ending is a line ending either way. A line written to the original stream is always written as it came.
 	 */
 	readonly carriageReturn?: "keep" | "last" | undefined;
-	/** Called with every piece of text written, decoded, before it is routed: a tap for a recorder. */
+	/**
+	 * Called with every piece of text written, decoded, before it is routed: a tap for a recorder.
+	 *
+	 * @remarks
+	 * Every write reaches it, a write of nothing but escape sequences (a cursor hide, a clear-screen) included, though
+	 * such a write is never offered to the printer. A write holding only the first bytes of a character reaches it when
+	 * the character completes, or as U+FFFD at `flush`.
+	 */
 	readonly onText?: ((text: string) => void) | undefined;
 }
 

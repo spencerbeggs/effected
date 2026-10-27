@@ -30,3 +30,16 @@ export const failureText = (value: unknown, unprintable = "[unprintable value]")
 		return unprintable;
 	}
 };
+
+/**
+ * A property of a failure value, or `undefined` when it has none or reading it throws: a report must never fail on a
+ * hostile getter. An `Error`'s `stack` counts, since V8 formats it on first read and the formatting reads `message`.
+ */
+export const readProperty = (value: unknown, key: string): unknown => {
+	if (typeof value !== "object" || value === null) return undefined;
+	try {
+		return (value as Readonly<Record<string, unknown>>)[key];
+	} catch {
+		return undefined;
+	}
+};

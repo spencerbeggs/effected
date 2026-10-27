@@ -262,6 +262,10 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 * `formatVersion` is in effect, the coloured default or `env.formatter`'s: do not also append it in
 	 * `env.formatter`.
 	 *
+	 * Core's default `formatVersion` prints `<name> v<version>`. A program moving off a hand-rolled `--version` that
+	 * printed another shape (no `v`, say) keeps it by passing that shape as `env.formatter`'s `formatVersion`; the
+	 * suffix is appended to it either way.
+	 *
 	 * ```ts
 	 * CliRuntime.main(CliAudience.run(root, { version }), { platform, env, distribution: options.distribution ?? null })
 	 * ```

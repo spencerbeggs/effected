@@ -416,14 +416,33 @@ export class CliUi {
 	 * says how the view ended. Forward output the host did not write through `printAbove`, or hand
 	 * `CliUi.routeStream` the detached view's `printAbove` as its printer.
 	 *
+	 * A render that needs an environment service is given as an effect that makes the render function: it runs once
+	 * under `env`, before the view is set up, so `CliLinks` or `TerminalEnv` come from the same build the view reads and
+	 * the layer is not built a second time to resolve them. `env` must provide what that effect reads.
+	 *
 	 * Inside an Effect program, use `CliUi.live` in a scope instead.
 	 *
-	 * @param options - the live view's options, with the events as a `PubSub` or a stream
-	 * @param env - the environment the view runs under
+	 * @example
+	 * ```ts
+	 * const view = CliUi.liveDetached(
+	 * 	{
+	 * 		...options,
+	 * 		render: Effect.gen(function* () {
+	 * 			const links = yield* CliLinks
+	 * 			return (state: State, frame: number) => drawWith(links, state, frame)
+	 * 		}),
+	 * 	},
+	 * 	CliEnv.layer().pipe(Layer.provide(NodeServices.layer)),
+	 * )
+	 * ```
+	 *
+	 * @param options - the live view's options, with the events as a `PubSub` or a stream and the render given directly
+	 *   or as an effect that makes it
+	 * @param env - the environment the view runs under, providing what a render effect reads
 	 */
-	static readonly liveDetached: <E, S>(
-		options: DetachedLiveOptions<E, S>,
-		env: Layer.Layer<Cli.CliTheme>,
+	static readonly liveDetached: <E, S, R = never>(
+		options: DetachedLiveOptions<E, S, R>,
+		env: Layer.Layer<Cli.CliTheme | NoInfer<R>>,
 	) => DetachedLive<S> = liveDetached;
 
 	/**

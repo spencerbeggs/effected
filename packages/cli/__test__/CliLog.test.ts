@@ -198,6 +198,38 @@ describe("CliLog.layer threshold", () => {
 	);
 });
 
+describe("CliLog.parseLevel", () => {
+	it("reads every spelling, in any case, to its level", () => {
+		const cases: ReadonlyArray<readonly [string, string]> = [
+			["all", "All"],
+			["TRACE", "Trace"],
+			["Debug", "Debug"],
+			["info", "Info"],
+			["warn", "Warn"],
+			["WARNING", "Warn"],
+			["error", "Error"],
+			["fatal", "Fatal"],
+			["None", "None"],
+		];
+		for (const [text, level] of cases) assert.deepStrictEqual(CliLog.parseLevel(text), Option.some(level), text);
+	});
+
+	it("is none for anything else: unknown, empty, padded, or an inherited object key", () => {
+		for (const text of ["loud", "", " info", "info ", "warnings", "constructor", "toString", "__proto__"])
+			assert.isTrue(Option.isNone(CliLog.parseLevel(text)), JSON.stringify(text));
+	});
+
+	it.effect(
+		"CliLog.layer gives the same answer: an inherited key in the env var is warned about, not taken as a level",
+		() =>
+			Effect.gen(function* () {
+				const { err } = yield* capture(Effect.logError("boom"), { env: { [ENV]: "constructor" } });
+				assert.strictEqual(err.filter((l) => l.includes("constructor")).length, 1, err.join("\n"));
+				assert.deepStrictEqual(ndjson(err), []);
+			}),
+	);
+});
+
 const env = { [ENV]: "info" };
 
 describe("CliLog.layer format", () => {

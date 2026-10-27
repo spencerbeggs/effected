@@ -378,6 +378,56 @@ describe("CliFailure.toDoc: a hostile _tag", () => {
 	});
 });
 
+describe("CliFailure.toDoc: hostile getters never make it throw", () => {
+	const throwing = (name: string) => () => {
+		throw new Error(`${name} getter broke`);
+	};
+	/** An Error whose `name` property is a getter that throws. */
+	const withGetter = (message: string, name: "stack" | "message" | "cause" | "issue") =>
+		Object.defineProperty(new Error(message), name, { get: throwing(name), configurable: true });
+
+	it("a defect whose stack getter throws is drawn with its message and no stack", () => {
+		const text = plain(CliFailure.toDoc(Cause.die(withGetter("stackless defect", "stack"))));
+		assert.include(text, "stackless defect");
+		assert.include(text, "no stack");
+	});
+
+	it("a defect whose message getter throws is still drawn", () => {
+		const doc = CliFailure.toDoc(Cause.die(withGetter("unused", "message")));
+		assert.isAbove(plain(doc).length, 0);
+	});
+
+	it("a defect whose cause getter throws is drawn without the chain", () => {
+		const text = plain(CliFailure.toDoc(Cause.die(withGetter("causeless defect", "cause"))));
+		assert.include(text, "causeless defect");
+	});
+
+	it("a defect deeper in a cause chain whose getters throw ends the chain there", () => {
+		const inner = withGetter("inner", "cause");
+		const defect = new Error("outer", { cause: inner });
+		const text = plain(CliFailure.toDoc(Cause.die(defect)));
+		assert.include(text, "outer");
+		assert.include(text, "inner");
+	});
+
+	it("a failure whose stack, message, cause or issue getter throws is still drawn", () => {
+		for (const name of ["stack", "message", "cause", "issue"] as const) {
+			const doc = CliFailure.toDoc(Cause.fail(withGetter(`failed with a hostile ${name}`, name)));
+			assert.isAbove(plain(doc).length, 0, name);
+		}
+	});
+
+	it("a schema failure whose message getter throws still draws its issue", () => {
+		const exit = Schema.decodeUnknownExit(Schema.Struct({ a: Schema.String }))({ a: 1 });
+		if (!Exit.isFailure(exit)) throw new Error("expected a failure");
+		const error = Cause.squash(exit.cause) as object;
+		Object.defineProperty(error, "message", { get: throwing("message"), configurable: true });
+		const text = plain(CliFailure.toDoc(Cause.fail(error)));
+		// The unreadable message leaves the tree's generic label; the issue itself is still drawn.
+		assert.include(text, "invalid value (1 problem)");
+	});
+});
+
 describe("CliRuntime: the default failure path", () => {
 	/** Every stream on a terminal, or none: the report goes to stderr, whose own check decides its colour. */
 	const platform = (tty: boolean) =>

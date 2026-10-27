@@ -192,18 +192,22 @@ export interface CliLogFileOptions extends CliLogOptions {
 	readonly file: CliLogFile | undefined;
 }
 
-/** The accepted spellings of a level, lower-cased, to the level they mean. */
-const LEVELS: Readonly<Record<string, LogLevel.LogLevel>> = {
-	all: "All",
-	trace: "Trace",
-	debug: "Debug",
-	info: "Info",
-	warn: "Warn",
-	warning: "Warn",
-	error: "Error",
-	fatal: "Fatal",
-	none: "None",
-};
+/** The accepted spellings of a level, lower-cased, to the level they mean. A `Map`, so no inherited key matches. */
+const LEVELS: ReadonlyMap<string, LogLevel.LogLevel> = new Map([
+	["all", "All"],
+	["trace", "Trace"],
+	["debug", "Debug"],
+	["info", "Info"],
+	["warn", "Warn"],
+	["warning", "Warn"],
+	["error", "Error"],
+	["fatal", "Fatal"],
+	["none", "None"],
+]);
+
+/** A level's spelling, in any case, to the level it means. */
+const parseLevel = (text: string): Option.Option<LogLevel.LogLevel> =>
+	Option.fromUndefinedOr(LEVELS.get(text.toLowerCase()));
 
 const LEVEL_STYLES: Readonly<Record<string, Style>> = {
 	FATAL: { fg: "red", bold: true },
@@ -224,11 +228,11 @@ const readLevel = (
 		if (envVar === undefined) return { level: "None", invalid: undefined };
 		const raw = yield* Config.option(Config.String(envVar)).pipe(Effect.orElseSucceed(() => Option.none<string>()));
 		if (Option.isNone(raw) || raw.value === "") return { level: "None", invalid: undefined };
-		const level = LEVELS[raw.value.toLowerCase()];
-		if (level !== undefined) return { level, invalid: undefined };
+		const level = parseLevel(raw.value);
+		if (Option.isSome(level)) return { level: level.value, invalid: undefined };
 		return {
 			level: "None",
-			invalid: `${envVar}=${raw.value} is not a log level (${Object.keys(LEVELS).join("|")}); ignoring it`,
+			invalid: `${envVar}=${raw.value} is not a log level (${[...LEVELS.keys()].join("|")}); ignoring it`,
 		};
 	});
 
@@ -322,6 +326,27 @@ export class CliLog {
 	 */
 	// Annotated, aliased import: the reference must stay the one instance the internal sinks read.
 	static readonly Level: Context.Reference<LogLevel.LogLevel> = diagnosticsLevel;
+
+	/**
+	 * Read a log level the way `CliLog.layer` reads its environment variable: `Option.some` of the level, or
+	 * `Option.none()` when the text is not one.
+	 *
+	 * @remarks
+	 * Case-insensitive, and not trimmed. The spellings are `all`, `trace`, `debug`, `info`, `warn` (or `warning`),
+	 * `error`, `fatal` and `none`. For a host that reads a level from its own flag or config and wants the same answer
+	 * the layer would give.
+	 *
+	 * @example
+	 * ```ts
+	 * CliLog.parseLevel("WARNING") // Option.some("Warn")
+	 * CliLog.parseLevel("loud") // Option.none()
+	 * ```
+	 *
+	 * @param text - the level's spelling
+	 */
+	static parseLevel(text: string): Option.Option<LogLevel.LogLevel> {
+		return parseLevel(text);
+	}
 
 	/**
 	 * The whole logger set of a program: a `CliLogger` for ordinary lines plus the diagnostics sink.

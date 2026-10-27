@@ -314,8 +314,8 @@ export class Fmt {
 	 * is a thrown string or a non-empty string `message` property, read without `instanceof Error`, so an error from
 	 * another realm or a plain `{ message }` object counts. A deeper message the joined text already contains is not
 	 * repeated, and one that contains the joined text replaces it, so a `SqlError` wrapping SQLite's own text reads
-	 * `Failed to execute statement: SQLITE_BUSY: database is locked`. The walk stops after eight nodes, so a cyclic
-	 * chain terminates.
+	 * `Failed to execute statement: SQLITE_BUSY: database is locked`. It is the whole chain, not the innermost
+	 * message alone. The walk stops after eight nodes, so a cyclic chain terminates.
 	 *
 	 * Never throws: a `message` getter that throws leaves that node without text, and a `cause` getter that throws ends
 	 * the walk with the text found so far, `undefined` when there is none, so a caller's own fallback

@@ -8,17 +8,30 @@ import type { LiveHandle, LiveOptions } from "./CliUiLive.js";
 import { live } from "./CliUiLive.js";
 
 /**
- * Options for `CliUi.liveDetached`: those of `CliUi.live`, with the events given as a `PubSub` or a stream.
+ * Options for `CliUi.liveDetached`: those of `CliUi.live`, with the events given as a `PubSub` or a stream, and the
+ * render given directly or as an effect that makes it.
+ *
+ * @typeParam R - the services a `render` effect reads, which the `env` layer provides
  *
  * @public
  */
-export interface DetachedLiveOptions<E, S> extends Omit<LiveOptions<E, S>, "events"> {
+export interface DetachedLiveOptions<E, S, R = never> extends Omit<LiveOptions<E, S>, "events" | "render"> {
 	/**
 	 * The events to fold. A `PubSub` is subscribed before `liveDetached` returns, in the view's own scope, so an event
 	 * published right after the call is seen and `close` folds every message still queued. A stream is read as
 	 * `CliUi.live` reads one.
 	 */
 	readonly events: PubSub.PubSub<E> | Stream.Stream<E>;
+	/**
+	 * Draw the state, as `CliUi.live`'s `render`; or an effect that makes that function, run once under `env` before
+	 * the view is set up, so a render that needs an environment service (`CliLinks` to build links, `TerminalEnv` for
+	 * the terminal's capabilities) reads it from the layer the view already builds rather than from a second build.
+	 *
+	 * @remarks
+	 * A render effect that dies is the view's setup failing: `handle` rejects, `close` resolves, and `exit` carries
+	 * the die, as for an `env` layer that dies. It can return a `CliUi.lazyView`.
+	 */
+	readonly render: LiveOptions<E, S>["render"] | Effect.Effect<LiveOptions<E, S>["render"], never, R>;
 }
 
 /**
@@ -58,18 +71,22 @@ export interface DetachedLive<S> {
 }
 
 /** @internal */
-export const liveDetached = <E, S>(
-	options: DetachedLiveOptions<E, S>,
-	env: Layer.Layer<Cli.CliTheme>,
+export const liveDetached = <E, S, R = never>(
+	options: DetachedLiveOptions<E, S, R>,
+	env: Layer.Layer<Cli.CliTheme | NoInfer<R>>,
 ): DetachedLive<S> => {
 	const scope = Effect.runSync(Scope.make());
-	const { events: source, ...rest } = options;
+	const { events: source, render: drawing, ...rest } = options;
+	// Resolved inside the program, under the one `env` build, so the render reads the services the view runs under.
+	const render: Effect.Effect<LiveOptions<E, S>["render"], never, R> = Effect.isEffect(drawing)
+		? drawing
+		: Effect.succeed(drawing);
 	// Subscribed here, synchronously, so nothing published after the call is missed.
 	const events = PubSub.isPubSub<E>(source)
 		? Effect.runSync(PubSub.subscribe(source).pipe(Scope.provide(scope)))
 		: source;
 	const mounted = Effect.runSync(Deferred.make<LiveHandle<S>>());
-	const program = live<E, S>({ ...rest, events }).pipe(
+	const program = Effect.flatMap(render, (draw) => live<E, S>({ ...rest, render: draw, events })).pipe(
 		Effect.tap((handle) => Deferred.succeed(mounted, handle)),
 		Effect.flatMap((handle) => handle.done),
 		Scope.provide(scope),
