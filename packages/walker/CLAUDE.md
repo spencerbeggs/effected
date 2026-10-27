@@ -103,6 +103,39 @@ hands in — never re-derived here.
 - `prune` suppresses **directories only** — a FILE named `.git` (a submodule
   or worktree gitlink) stays matchable.
 
+## One walk, two drivers
+
+The downward walk is ONE generator, `src/internal/descendMachine.ts`, yielding
+filesystem requests (`Stat`, `IsSymbolicLink`, `RealPath`, `ReadDirectory`).
+`descend` / `descendEntries` (`Descend.ts`) answer them through core's
+`FileSystem`; `descendSync` / `descendEntriesSync` (`DescendSync.ts`) answer
+them from a caller-supplied `WalkerSyncFileSystem` (a `node:fs`-shaped port:
+`readDirectory`, `stat`, `lstat`, `realPath`; `code: "ENOENT"` is the benign
+race). Every rule lives in the machine — **never put one in a driver**; a
+driver only maps its platform's answers and failures. Path joining is a
+caller function, not a request. The sync forms are on the root entry (pure);
+`@effected/walker/node-sync` binds them to Node (`nodeWalkerSyncOps`), and
+`__test__/entrypoints.test.ts` pins that `.` never reaches it. Sync
+record-mode causes are `unknown` (`UnreadableDirectorySync`): the port has no
+`PlatformError`.
+
+- **`boundaries`** — marker FILE names. A directory strictly below `cwd`
+  holding one contributes nothing (no matches, no descent); `cwd` itself is
+  never a boundary and a directory merely *named* like a marker does not
+  count. The rule is positional: it also applies between `cwd` and the walk
+  base and to a literal pattern, so the answer never depends on whether the
+  pattern has magic. Not `Walker.ascend`'s `stopAt` (an inclusive upward
+  ceiling) — keep the names apart.
+- **`descendEntries`** keeps the stat the walk already read (no extra
+  syscall). The kit ships no fingerprint: which fields to hash is the
+  consumer's policy.
+- `__test__/DescendSync.test.ts` is a parity matrix — sync vs `Effect` over ONE
+  memfs volume, with faults mirrored on the sync port. It needs fixtures that
+  reach every driver mapping (a vanished directory, an unresolvable and a
+  denied link); without them a broken `ENOENT` mapping passed. memfs's sync
+  port has no `realPath`, so the suite bridges it through the handle's
+  `FileSystem`.
+
 ## Invariants
 
 - `ascend` is **lexical, not physical**: `Path.dirname` does not resolve

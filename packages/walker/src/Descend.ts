@@ -12,7 +12,8 @@
 import type { GlobPattern } from "@effected/glob";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Path, Schema } from "effect";
-import { resolveSegments } from "./internal/segments.js";
+import type { DescendRequest, ReadAnswer, StatAnswer } from "./internal/descendMachine.js";
+import { descendMachine } from "./internal/descendMachine.js";
 
 /**
  * Options for `descend`.
@@ -26,6 +27,23 @@ export interface DescendOptions {
 	readonly maxDepth?: number;
 	/** Directory names never descended into. Defaults to `["node_modules", ".git"]`; a custom list replaces the default. */
 	readonly prune?: ReadonlyArray<string>;
+	/**
+	 * Marker FILE names that make a directory a boundary — a nested unit (another
+	 * package, say: `["package.json"]`) whose contents belong to a separate walk.
+	 *
+	 * @remarks
+	 * A directory strictly below `cwd` holding a FILE with one of these names
+	 * contributes nothing: none of its files match and its subtree is never
+	 * descended. `cwd` itself is never a boundary, and a DIRECTORY named like a
+	 * marker does not count. The rule is about where a file sits, not how the
+	 * walk reached it, so it applies to a walk that starts below `cwd` (the
+	 * pattern's literal prefix) and to a literal pattern alike: a boundary
+	 * between `cwd` and the walk base, or between `cwd` and a literal file,
+	 * also answers zero matches. Each directory pays one stat per marker it
+	 * actually lists. Defaults to none. Not to be confused with
+	 * `Walker.ascend`'s `stopAt`, an inclusive upward ceiling.
+	 */
+	readonly boundaries?: ReadonlyArray<string>;
 	/**
 	 * What an unreadable directory mid-walk does. `"fail"` (the default) fails
 	 * typed — downward enumeration must not silently swallow a subtree, or the
@@ -149,35 +167,32 @@ export class DescendError extends Schema.TaggedError<DescendError>()("DescendErr
 	}
 }
 
-/** Directory names never descended into unless the caller overrides `prune`. */
-const DEFAULT_PRUNE: ReadonlyArray<string> = ["node_modules", ".git"];
+/**
+ * One matched file with the stat the walk already read for it — `descendEntries`'
+ * element. Costs no syscall beyond `descend`'s: the walk stats every entry to
+ * classify it, and this keeps the answer instead of discarding it.
+ *
+ * @public
+ */
+export interface DescendEntry {
+	/** The file's path relative to `cwd`, POSIX separators. */
+	readonly path: string;
+	/** `FileSystem.stat` of the file — links followed, so a symlinked file reports its target. */
+	readonly info: FileSystem.File.Info;
+}
 
 /**
- * Whether a cwd-relative pattern path lexically climbs above `cwd` via `..`
- * segments. Walked paths never contain `..`, so such a pattern can never match
- * one — the answer is zero matches, and no filesystem access outside `cwd`
- * ever happens (a pattern must not enumerate the tree above its documented
- * root).
+ * `descendEntries`' success value under `onUnreadable: "record"`: the matched
+ * {@link DescendEntry} values plus every {@link UnreadableDirectory}, exactly
+ * as {@link DescendResult} carries them for `descend`.
+ *
+ * @public
  */
-const escapesCwd = (relative: string): boolean => resolveSegments(relative.split("/")) === undefined;
-
-/** Shared empty ancestor chain: frames under `followSymlinks: false` never consult theirs. */
-const NO_ANCESTORS: ReadonlyArray<string> = Object.freeze([]);
-
-/**
- * A directory queued for reading: its cwd-relative POSIX path, its absolute
- * path, its depth below the base, and — only under `followSymlinks` — the
- * real paths of this branch's ancestors, inherited from the parent frame.
- * The chain is per-branch, never walk-global: it is `@actions/glob`'s
- * `traversalChain` carried on the worklist, so a link is a cycle only when it
- * resolves to an ancestor of the branch it sits on, and two sibling links to
- * one target both enumerate.
- */
-interface DescendFrame {
-	readonly relative: string;
-	readonly absolute: string;
-	readonly depth: number;
-	readonly ancestors: ReadonlyArray<string>;
+export interface DescendEntriesResult {
+	/** Matching files with their stats, sorted by path. */
+	readonly matches: ReadonlyArray<DescendEntry>;
+	/** Directories that could not be read, each with its cause, in walk order. */
+	readonly unreadable: ReadonlyArray<UnreadableDirectory>;
 }
 
 /**
@@ -190,193 +205,96 @@ type DescendAnyOptions = Omit<DescendOptions, "onUnreadable"> & {
 	readonly onUnreadable?: "fail" | "skip" | "record";
 };
 
-/** Not exported — `descend`'s overloads below carry the public documentation. */
-const descendImpl: (
+const kindOf = (info: FileSystem.File.Info): "File" | "Directory" | "Other" =>
+	info.type === "File" ? "File" : info.type === "Directory" ? "Directory" : "Other";
+
+/**
+ * The `Effect` driver of the shared walk (`internal/descendMachine.ts`): each
+ * request the walk yields is answered through core's `FileSystem`, joins
+ * through `Path`. Every rule lives in the machine; the sync driver in
+ * `DescendSync.ts` answers the same requests from a synchronous port.
+ */
+const walk = (
 	pattern: GlobPattern,
 	options: DescendAnyOptions,
-) => Effect.Effect<ReadonlyArray<string> | DescendResult, DescendError, FileSystem.FileSystem | Path.Path> = Effect.fn(
-	"Walker.descend",
-)(function* (pattern: GlobPattern, options: DescendAnyOptions) {
-	const fs = yield* FileSystem.FileSystem;
-	const path = yield* Path.Path;
+): Effect.Effect<
+	{
+		readonly entries: ReadonlyArray<DescendEntry>;
+		readonly unreadable: ReadonlyArray<UnreadableDirectory>;
+	},
+	DescendError,
+	FileSystem.FileSystem | Path.Path
+> =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
 
-	const maxDepth = options.maxDepth ?? 256;
-	if (!Number.isInteger(maxDepth) || maxDepth < 1) {
-		return yield* Effect.die(new Error(`Walker.descend: maxDepth must be a positive integer, received ${maxDepth}`));
-	}
-	const prune = new Set(options.prune ?? DEFAULT_PRUNE);
-	const onUnreadable = options.onUnreadable ?? "fail";
-	const followSymlinks = options.followSymlinks ?? false;
-	// Populated only under "record"; the wrapper decides the return shape.
-	const unreadable: Array<UnreadableDirectory> = [];
+		const read = <T>(effect: Effect.Effect<T, PlatformError.PlatformError>) =>
+			effect.pipe(
+				Effect.map((value): ReadAnswer<T, PlatformError.PlatformError> => ({ _tag: "Ok", value })),
+				Effect.catch((error) =>
+					Effect.succeed<ReadAnswer<T, PlatformError.PlatformError>>(
+						error.reason._tag === "NotFound" ? { _tag: "NotFound" } : { _tag: "Failed", cause: error },
+					),
+				),
+			);
 
-	/** The stat-resolved type of `absolute`, or `undefined` when it does not resolve (missing, dangling symlink, unstatable). */
-	const typeOf = (absolute: string): Effect.Effect<FileSystem.File.Info["type"] | undefined> =>
-		fs.stat(absolute).pipe(
-			Effect.map((info) => info.type),
-			Effect.orElseSucceed(() => undefined),
-		);
-
-	/** Whether `absolute` is itself a symlink. `readLink` succeeds only on links; any failure means "not one". */
-	const isSymbolicLink = (absolute: string): Effect.Effect<boolean> =>
-		fs.readLink(absolute).pipe(
-			Effect.map(() => true),
-			Effect.orElseSucceed(() => false),
-		);
-
-	/**
-	 * The real path of a directory the cycle guard must identify — the walk
-	 * base, or a symlinked directory — or `undefined` when the walk must not
-	 * enter it. A link the resolver cannot resolve is one the guard cannot
-	 * reason about: recording a stand-in (the link's own path) would make
-	 * every hop around a loop look unseen, so the subtree is never queued.
-	 * Whether the caller HEARS about it follows `onUnreadable` exactly as a
-	 * failed `readDirectory` does: a `NotFound` is the benign vanished-target
-	 * race (the subtree would have read as empty anyway) and stays silent in
-	 * every mode; anything else — `EACCES` on a path component, above all —
-	 * is a subtree this walk was asked to enumerate and cannot, so the
-	 * default fails typed, `"record"` keeps the path and the cause, and
-	 * `"skip"` forgets it. A silent skip here would hand a caller a smaller
-	 * answer with nothing reporting it, which is the failure `"fail"` exists
-	 * to prevent.
-	 */
-	const realPathOf = (absolute: string, relative: string): Effect.Effect<string | undefined, DescendError> =>
-		fs.realPath(absolute).pipe(
-			Effect.map((real): string | undefined => real),
-			Effect.catch((error) => {
-				if (error.reason._tag === "NotFound") return Effect.succeed(undefined);
-				if (onUnreadable === "fail") {
-					return Effect.fail(
-						new DescendError({ pattern: pattern.source, reason: "unreadableDirectory", path: relative }),
+		const answer = (request: DescendRequest): Effect.Effect<unknown> => {
+			switch (request._tag) {
+				case "Stat":
+					// `stat` follows links, as node's does; anything that does not
+					// resolve (missing, dangling, unstatable) is "no entry".
+					return fs.stat(request.path).pipe(
+						Effect.map((info): StatAnswer<FileSystem.File.Info> => ({ kind: kindOf(info), info })),
+						Effect.orElseSucceed((): StatAnswer<FileSystem.File.Info> => undefined),
 					);
-				}
-				if (onUnreadable === "record") unreadable.push({ path: relative, cause: error });
-				return Effect.succeed(undefined);
-			}),
-		);
-
-	/** Wrap the walk's success value per `onUnreadable`: a plain array unless "record" asked for the pair. */
-	const finish = (matches: ReadonlyArray<string>): ReadonlyArray<string> | DescendResult =>
-		onUnreadable === "record" ? { matches, unreadable } : matches;
-
-	// Literal pattern: a single stat decides. Missing is zero matches, and so is
-	// a literal that climbs above `cwd` — never stat outside the documented root.
-	if (!pattern.hasMagic && !pattern.negated) {
-		if (escapesCwd(pattern.source)) return finish([]);
-		return finish((yield* typeOf(path.join(options.cwd, pattern.source))) === "File" ? [pattern.source] : []);
-	}
-
-	// Magic pattern: walk from the literal prefix. An absent base directory is
-	// an EMPTY result, not an error — zero matches is a normal glob answer. A
-	// NEGATED pattern matches everything its inner pattern does NOT — including
-	// paths outside the inner pattern's literal prefix — so it walks from `cwd`
-	// itself, never from the inner prefix (which would silently omit matches).
-	// A prefix that climbs above `cwd` yields zero matches for the same reason
-	// the literal fast-path refuses it.
-	const base = pattern.negated ? "" : pattern.enumerationPrefix.replace(/\/+$/, "");
-	if (escapesCwd(base)) return finish([]);
-	const absoluteBase = base === "" ? options.cwd : path.join(options.cwd, base);
-	if ((yield* typeOf(absoluteBase)) !== "Directory") return finish([]);
-	// Under followSymlinks the base's real path seeds the root frame's ancestor
-	// chain — the `@actions/glob` traversalChain position for the search path —
-	// so a link resolving back to the base is the cycle it is, on every branch.
-	let baseAncestors: ReadonlyArray<string> = NO_ANCESTORS;
-	if (followSymlinks) {
-		const real = yield* realPathOf(absoluteBase, base);
-		if (real === undefined) return finish([]);
-		baseAncestors = [real];
-	}
-
-	// Only a pattern that can match below one level earns a descent; a negated
-	// pattern matches everything its inner pattern does NOT, so it can match
-	// arbitrarily deep paths and always walks.
-	const deep = pattern.crossesSegments || pattern.negated;
-
-	const results: Array<string> = [];
-	const frames: Array<DescendFrame> = [{ relative: base, absolute: absoluteBase, depth: 0, ancestors: baseAncestors }];
-	// A head index, never Array.shift(): shift() re-indexes the whole array on
-	// every dequeue, turning a large walk quadratic.
-	for (let head = 0; head < frames.length; head += 1) {
-		const frame = frames[head];
-		if (frame === undefined) break;
-
-		// A directory that vanished between its parent's listing and this read is
-		// a benign race — treat it as empty, and never record it as unreadable:
-		// `DescendResult.unreadable` documents only a non-`NotFound` failure.
-		// Anything else means a subtree we were asked to enumerate is unreadable,
-		// and (unlike walker's upward per-probe absorption, where the scan can
-		// still succeed above) a swallowed subtree down here is silently missing
-		// membership — so the default fails typed. `"record"` also absorbs and
-		// continues, like `"skip"`, but keeps the offending relative path AND
-		// the failure itself instead of discarding them.
-		const entries = yield* fs.readDirectory(frame.absolute).pipe(
-			Effect.catch((error) => {
-				if (error.reason._tag === "NotFound") return Effect.succeed<Array<string>>([]);
-				if (onUnreadable === "fail") {
-					return Effect.fail(
-						new DescendError({ pattern: pattern.source, reason: "unreadableDirectory", path: frame.relative }),
+				case "IsSymbolicLink":
+					// `readLink` succeeds only on links; any failure means "not one".
+					return fs.readLink(request.path).pipe(
+						Effect.as(true),
+						Effect.orElseSucceed(() => false),
 					);
-				}
-				if (onUnreadable === "record") unreadable.push({ path: frame.relative, cause: error });
-				return Effect.succeed<Array<string>>([]);
-			}),
+				case "RealPath":
+					return read(fs.realPath(request.path));
+				case "ReadDirectory":
+					return read(fs.readDirectory(request.path));
+			}
+		};
+
+		const machine = descendMachine<FileSystem.File.Info, PlatformError.PlatformError>(pattern, options, (a, b) =>
+			path.join(a, b),
 		);
-
-		for (const entry of entries) {
-			const relative = frame.relative === "" ? entry : `${frame.relative}/${entry}`;
-			const absolute = path.join(frame.absolute, entry);
-
-			const kind = yield* typeOf(absolute);
-			if (kind === "File") {
-				if (pattern.matches(relative)) results.push(relative);
-				continue;
-			}
-			if (kind !== "Directory" || !deep) continue;
-			// Prune suppresses DIRECTORIES only, per the option's contract — a
-			// FILE named `.git` (a submodule or worktree gitlink) stays matchable.
-			if (prune.has(entry)) continue;
-			// A symlinked directory is skipped unless followSymlinks asked for
-			// it; when it does, the cycle guard is `@actions/glob`'s
-			// traversalChain carried per branch: every descended directory
-			// records its real path on the frame's ancestor chain, and a
-			// directory whose real path is already an ancestor of the current
-			// branch closes a cycle and is skipped. Sibling links resolving to
-			// one target sit on separate branches, so both enumerate — the
-			// parity the runner's globber has, which a walk-global visited set
-			// would break. Only a LINK pays a `realPath`: a plain directory's
-			// real path is its parent's real path (the chain's last entry —
-			// the base was resolved up front, and every link since was) plus
-			// its own name, derived with no syscall and no failure mode. A
-			// link whose real path cannot be resolved is never queued — the
-			// guard cannot reason about it, and a stand-in (the link's own
-			// path) would make every hop around a loop look unseen — and
-			// `realPathOf` reports or fails that per `onUnreadable`.
-			let ancestors = frame.ancestors;
-			if (followSymlinks) {
-				const parentReal = frame.ancestors[frame.ancestors.length - 1] ?? frame.absolute;
-				const real = (yield* isSymbolicLink(absolute))
-					? yield* realPathOf(absolute, relative)
-					: path.join(parentReal, entry);
-				if (real === undefined || frame.ancestors.includes(real)) continue;
-				ancestors = [...frame.ancestors, real];
-			} else if (yield* isSymbolicLink(absolute)) {
-				continue;
-			}
-			// Depth exhaustion is a typed failure, not a truncation.
-			if (frame.depth + 1 > maxDepth) {
-				return yield* new DescendError({
-					pattern: pattern.source,
-					reason: "depthExceeded",
-					path: frame.relative,
-					limit: maxDepth,
-				});
-			}
-			frames.push({ relative, absolute, depth: frame.depth + 1, ancestors });
+		let step = machine.next();
+		while (step.done !== true) step = machine.next(yield* answer(step.value));
+		const result = step.value;
+		if (result._tag === "Defect") return yield* Effect.die(new Error(result.message));
+		if (result._tag === "Fail") {
+			return yield* new DescendError({
+				pattern: pattern.source,
+				reason: result.reason,
+				path: result.path,
+				...(result.limit === undefined ? {} : { limit: result.limit }),
+			});
 		}
-	}
+		return { entries: result.entries, unreadable: result.unreadable };
+	});
 
-	results.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-	return finish(results);
+/** Not exported — `descend`'s overloads below carry the public documentation. */
+const descendImpl = Effect.fn("Walker.descend")(function* (pattern: GlobPattern, options: DescendAnyOptions) {
+	const { entries, unreadable } = yield* walk(pattern, options);
+	const matches = entries.map((entry) => entry.path);
+	return options.onUnreadable === "record" ? ({ matches, unreadable } satisfies DescendResult) : matches;
+});
+
+/** Not exported — `descendEntries`' overloads below carry the public documentation. */
+const descendEntriesImpl = Effect.fn("Walker.descendEntries")(function* (
+	pattern: GlobPattern,
+	options: DescendAnyOptions,
+) {
+	const { entries, unreadable } = yield* walk(pattern, options);
+	return options.onUnreadable === "record"
+		? ({ matches: entries, unreadable } satisfies DescendEntriesResult)
+		: entries;
 });
 
 /**
@@ -463,4 +381,51 @@ export function descend(
 	options: DescendOptions | DescendRecordOptions,
 ): Effect.Effect<ReadonlyArray<string> | DescendResult, DescendError, FileSystem.FileSystem | Path.Path> {
 	return descendImpl(pattern, options);
+}
+
+/**
+ * `descend` under `onUnreadable: "record"`, keeping each match's stat:
+ * resolves to a {@link DescendEntriesResult}.
+ *
+ * @public
+ */
+export function descendEntries(
+	pattern: GlobPattern,
+	options: DescendRecordOptions,
+): Effect.Effect<DescendEntriesResult, DescendError, FileSystem.FileSystem | Path.Path>;
+/**
+ * `descend`, keeping the stat the walk already read for each matched
+ * file: resolves to {@link DescendEntry} values sorted by path.
+ *
+ * @remarks
+ * The same walk, the same matches in the same order, the same errors — only
+ * the element type differs, and at no extra syscall (the walk stats every
+ * entry to classify it). For a cache signature over a tree, map each entry's
+ * `path` and `info.mtime` (or `info.size`) into whatever key the cache needs;
+ * the kit does not choose the fingerprint.
+ *
+ * @example
+ * ```ts
+ * import { GlobPattern, GlobPatternOptions } from "@effected/glob";
+ * import { descendEntries } from "@effected/walker";
+ * import { Effect, Option } from "effect";
+ *
+ * const signature = Effect.gen(function* () {
+ * 	const pattern = yield* GlobPattern.compile("**", GlobPatternOptions.make({ dot: true }));
+ * 	const entries = yield* descendEntries(pattern, { cwd: "/repo/src", boundaries: ["package.json"] });
+ * 	return entries.map((e) => `${e.path}:${Option.match(e.info.mtime, { onNone: () => "", onSome: (d) => d.getTime() })}`).join("|");
+ * });
+ * ```
+ *
+ * @public
+ */
+export function descendEntries(
+	pattern: GlobPattern,
+	options: DescendOptions,
+): Effect.Effect<ReadonlyArray<DescendEntry>, DescendError, FileSystem.FileSystem | Path.Path>;
+export function descendEntries(
+	pattern: GlobPattern,
+	options: DescendOptions | DescendRecordOptions,
+): Effect.Effect<ReadonlyArray<DescendEntry> | DescendEntriesResult, DescendError, FileSystem.FileSystem | Path.Path> {
+	return descendEntriesImpl(pattern, options);
 }

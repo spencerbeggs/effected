@@ -25,12 +25,29 @@ export {
 	confineRelativeResult,
 } from "./Confine.js";
 export {
+	type DescendEntriesResult,
+	type DescendEntry,
 	DescendError,
 	type DescendOptions,
 	type DescendRecordOptions,
 	type DescendResult,
 	type UnreadableDirectory,
 	descend,
+	descendEntries,
 } from "./Descend.js";
+export {
+	type DescendEntriesSyncResult,
+	type DescendSyncEntry,
+	type DescendSyncOptions,
+	type DescendSyncRecordOptions,
+	type DescendSyncResult,
+	type UnreadableDirectorySync,
+	type WalkerSyncFileSystem,
+	type WalkerSyncOps,
+	type WalkerSyncPath,
+	type WalkerSyncStats,
+	descendEntriesSync,
+	descendSync,
+} from "./DescendSync.js";
 export { type CompileAndExpandOptions, GlobExpansionError, compileAndExpand } from "./Expand.js";
 export { type AscendOptions, Walker } from "./Walker.js";
