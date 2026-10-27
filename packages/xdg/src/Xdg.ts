@@ -323,8 +323,9 @@ export class Xdg extends Context.Service<Xdg, XdgPaths>()("@effected/xdg/Xdg") {
 	 * const DirsLive = Layer.provideMerge(AppDirs.layer({ namespace: "myapp" }), Xdg.layerFromEnv(env));
 	 * ```
 	 *
-	 * @param env - a variable-name-to-value record; for a `ConfigProvider`, provide it beneath {@link Xdg.layer}
-	 *   with `Layer.provide(Xdg.layer, ConfigProvider.layer(provider))`
+	 * @param env - a variable-name-to-value record; for a single `ConfigProvider` per graph, provide it beneath
+	 *   {@link Xdg.layer} with `Layer.provide(Xdg.layer, ConfigProvider.layer(provider))` (the first provider wins
+	 *   graph-wide, as above)
 	 */
 	static layerFromEnv(env: Readonly<Record<string, string | undefined>>): Layer.Layer<Xdg, XdgEnvError> {
 		return Layer.fresh(

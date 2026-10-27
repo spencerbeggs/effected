@@ -72,7 +72,7 @@ export class ExclusiveTimeout extends Schema.TaggedError<ExclusiveTimeout>()("Ex
  *    result, an {@link ExclusiveTimeout}, or its own deferred interruption.
  *
  * A body that ignores interruption delays its timeout and the permit release
- * until it settles: a bare `Effect.promise`, an uninterruptible region. That is
+ * until it settles, as an uninterruptible region does. That is
  * deliberate, because releasing the permit while process state is still being
  * changed is the bug this lane exists to prevent. Run promise work through
  * {@link Exclusive.promise}, whose interruption aborts the signal and then

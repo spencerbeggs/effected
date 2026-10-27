@@ -100,7 +100,7 @@ export class CliFormat {
 	 *
 	 * @remarks
 	 * `json` writes `output.json()` as JSON, one `Console.log` (or `Console.error` for stderr), indented by `indent`.
-	 * Under GitHub Actions a `##[` inside it is written as the JSON escape `##[`, which decodes to the same text,
+	 * Under GitHub Actions a `##[` inside it is written as the JSON escape `#\u0023[`, which decodes to the same text,
 	 * so the runner cannot read it as a command. A value JSON cannot hold (a cycle, a bigint) is a defect. Every other
 	 * format prints `output.doc()` with `Doc.print`, which renders it as `auto` or the named renderer would.
 	 *
