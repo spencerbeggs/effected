@@ -57,6 +57,86 @@ const PREFIXES: Readonly<Record<Launcher, LauncherPrefixes>> = {
 };
 
 /**
+ * Which of a launcher's three prefixes an invocation used: `prefix` (`"exec"`),
+ * `dlxPrefix` (`"dlx"`) or `scriptPrefix` (`"script"`).
+ *
+ * @public
+ */
+export const ExecKind = Schema.Literals(["exec", "dlx", "script"]);
+
+/**
+ * The decoded type of {@link (ExecKind:variable)}.
+ *
+ * @public
+ */
+export type ExecKind = typeof ExecKind.Type;
+
+/**
+ * An argv split back into its launcher prefix, the binary (or script name) it
+ * runs, and the arguments after it — what {@link LocalExec.parse} answers.
+ *
+ * @public
+ */
+export interface ParsedInvocation {
+	/** The package manager whose prefix the argv starts with. */
+	readonly launcher: Launcher;
+	/** Which of the launcher's prefixes it is. */
+	readonly kind: ExecKind;
+	/** The binary the prefix runs — the script name when `kind` is `"script"`. */
+	readonly binary: string;
+	/** Every argument after `binary`, verbatim. */
+	readonly rest: ReadonlyArray<string>;
+}
+
+/**
+ * Spellings `LocalExec.parse` recognizes but `LocalExec.prefixes` never emits:
+ * the real alternative forms of the same three launches. Recognition only —
+ * the canonical table above stays the one thing `prefixes` hands out.
+ */
+const ALIASES: ReadonlyArray<readonly [Launcher, ExecKind, ReadonlyArray<string>]> = [
+	["npm", "exec", ["npm", "exec", "--no", "--"]],
+	["npm", "exec", ["npx", "--no-install"]],
+	["npm", "exec", ["npx", "--no"]],
+	["npm", "dlx", ["npm", "exec", "--"]],
+	["npm", "dlx", ["npm", "exec"]],
+	["npm", "dlx", ["npm", "x"]],
+	["npm", "dlx", ["npx", "--yes"]],
+	["npm", "dlx", ["npx", "-y"]],
+	["npm", "script", ["npm", "run"]],
+	["npm", "script", ["npm", "run-script"]],
+	["pnpm", "dlx", ["pnpx"]],
+	["bun", "exec", ["bunx", "--no-install"]],
+	["bun", "dlx", ["bunx"]],
+];
+
+const KIND_FIELD: Readonly<Record<ExecKind, keyof LauncherPrefixes>> = {
+	exec: "prefix",
+	dlx: "dlxPrefix",
+	script: "scriptPrefix",
+};
+
+/** @internal */
+export interface ParseRow {
+	readonly launcher: Launcher;
+	readonly kind: ExecKind;
+	readonly tokens: ReadonlyArray<string>;
+}
+
+/**
+ * Every recognized prefix, longest first — a longer prefix always wins, which
+ * is what tells `npx --no -- tool` (exec) from `npx` (dlx) and
+ * `bun x --no-install tool` from `bun x`. Derived from `PREFIXES`, so the
+ * parse direction cannot drift from the build direction.
+ */
+/** @internal Exported for the ordering test only; not re-exported by any entry point. */
+export const PARSE_TABLE: ReadonlyArray<ParseRow> = [
+	...Launcher.literals.flatMap((launcher) =>
+		ExecKind.literals.map((kind): ParseRow => ({ launcher, kind, tokens: PREFIXES[launcher][KIND_FIELD[kind]] })),
+	),
+	...ALIASES.map(([launcher, kind, tokens]): ParseRow => ({ launcher, kind, tokens })),
+].sort((a, b) => b.tokens.length - a.tokens.length);
+
+/**
  * How to run a project-local binary here.
  *
  * @remarks
@@ -193,6 +273,45 @@ export class LocalExec extends Context.Service<LocalExec, LocalExecShape>()("@ef
 	 * other three forward post-script arguments without it.
 	 */
 	static readonly scriptPrefix = (launcher: Launcher): ReadonlyArray<string> => PREFIXES[launcher].scriptPrefix;
+
+	/**
+	 * Splits `argv` back into launcher, prefix kind, binary and arguments — the
+	 * inverse of {@link LocalExec.prefixes}.
+	 *
+	 * @remarks
+	 * Pure. Recognizes every prefix `prefixes` emits, so
+	 * `parse([...prefixes(l).prefix, bin, ...rest])` answers exactly
+	 * `{ launcher: l, kind: "exec", binary: bin, rest }` (and likewise for
+	 * `dlxPrefix` and `scriptPrefix`), plus the real alternative spellings of
+	 * the same launches: `npm exec` (with or without `--`), `npm x`,
+	 * `npx -y` / `--yes`, `npx --no` and `npx --no-install`, `npm run` without
+	 * `--`, `npm run-script`, `pnpx` and
+	 * `bunx` (with or without `--no-install`). The longest matching prefix
+	 * wins.
+	 *
+	 * The binary must be non-empty and must not begin with `-` — the rule
+	 * `ToolRefusedError` applies — so a prefix followed by a flag is not
+	 * an invocation. Implicit forms (`pnpm vitest`, `yarn vitest`) are
+	 * `Option.none()`: without the manifest they cannot be told apart from a
+	 * script. A shell command line must be split into argv by the caller; no
+	 * prefix contains quoting, so a whitespace split suffices for the prefix
+	 * itself.
+	 *
+	 * @example
+	 * ```ts
+	 * LocalExec.parse(["bun", "x", "--no-install", "vitest", "run"]);
+	 * // Option.some({ launcher: "bun", kind: "exec", binary: "vitest", rest: ["run"] })
+	 * ```
+	 */
+	static readonly parse = (argv: ReadonlyArray<string>): Option.Option<ParsedInvocation> => {
+		for (const { launcher, kind, tokens } of PARSE_TABLE) {
+			if (argv.length <= tokens.length || !tokens.every((token, index) => argv[index] === token)) continue;
+			const binary = argv[tokens.length];
+			if (binary === undefined || binary === "" || binary.startsWith("-")) continue;
+			return Option.some({ launcher, kind, binary, rest: argv.slice(tokens.length + 1) });
+		}
+		return Option.none();
+	};
 
 	/**
 	 * No project-local execution context: every tool resolves globally.

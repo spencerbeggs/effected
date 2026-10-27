@@ -33,12 +33,26 @@
  * @packageDocumentation
  */
 
-export type { LauncherPrefixes, LocalExecShape } from "./LocalExec.js";
-export { ExecContext, Launcher, LocalExec, LocalExecError } from "./LocalExec.js";
+export type { LauncherPrefixes, LocalExecShape, ParsedInvocation } from "./LocalExec.js";
+export { ExecContext, ExecKind, Launcher, LocalExec, LocalExecError } from "./LocalExec.js";
+export type { PrebuiltBinarySpec, PrebuiltHost, PrebuiltTarget } from "./PrebuiltBinary.js";
+export { PrebuiltBinary, PrebuiltBinaryError, PrebuiltBinaryReason, ResolvedPrebuilt } from "./PrebuiltBinary.js";
 export { REDACTED, Redaction, SECRET_FLAGS } from "./Redaction.js";
 export { Retry, TRANSIENT_PATTERNS } from "./Retry.js";
 export type { RunOptions } from "./Run.js";
 export { CommandFailedError, CommandOutput, CommandOutputError, DEFAULT_MAX_OUTPUT_BYTES, Run } from "./Run.js";
+export type {
+	ProcessLivenessShape,
+	RunOnceCommand,
+	RunOnceCommandHost,
+	RunOnceFileSystem,
+	RunOnceOptions,
+	RunOnceOutcome,
+	RunOnceSyncHost,
+	SyncRun,
+	SyncRunResult,
+} from "./RunOnce.js";
+export { ProcessLiveness, RunOnce } from "./RunOnce.js";
 export type { ScriptResult, SpawnRecord, SpawnScript } from "./ScriptedSpawner.js";
 export { ScriptedSpawner } from "./ScriptedSpawner.js";
 export {

@@ -49,4 +49,24 @@ describe("entrypoint boundary", () => {
 		assert.isTrue(main.some((file) => file.endsWith("src/ToolDiscoverySync.ts")));
 		assert.isTrue(specifiersOf(resolve(SRC, "node-sync.ts")).includes("node:child_process"));
 	});
+
+	it("positive control: `.` reaches the new pure modules, and only ./node-sync reaches the Node-bound ones", () => {
+		for (const module of ["src/RunOnce.ts", "src/internal/runOnceMachine.ts", "src/PrebuiltBinary.ts"]) {
+			assert.isTrue(
+				main.some((file) => file.endsWith(module)),
+				module,
+			);
+		}
+		const nodeSync = [...reachableFrom(resolve(SRC, "node-sync.ts"))];
+		for (const module of ["src/ModuleResolution.ts", "src/internal/anchor.ts"]) {
+			assert.isTrue(
+				nodeSync.some((file) => file.endsWith(module)),
+				module,
+			);
+			assert.isFalse(
+				main.some((file) => file.endsWith(module)),
+				module,
+			);
+		}
+	});
 });
