@@ -47,6 +47,25 @@ const ESC = String.fromCharCode(0x1b);
 const settle = (millis: number): Effect.Effect<void> =>
 	Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, millis)));
 
+/**
+ * Polls `ready` on real time, for an `it.effect` body whose `TestClock` would stall `until`'s schedule. Loading Ink
+ * is real time too, and on a loaded worker it can outlast any fixed settle: advancing the clock before the first
+ * frame fires the ticks at a view that is not mounted yet.
+ */
+const untilReal = (ready: () => boolean): Effect.Effect<void> =>
+	Effect.promise(
+		() =>
+			new Promise<void>((resolve, reject) => {
+				const deadline = Date.now() + 5000;
+				const poll = (): void => {
+					if (ready()) resolve();
+					else if (Date.now() > deadline) reject(new Error("untilReal: not ready within 5 s"));
+					else setTimeout(poll, 5);
+				};
+				poll();
+			}),
+	);
+
 describe("CliUi.live: the tick, an Effect schedule in the run's scope", () => {
 	it.effect("each run ticks on the clock: 400 ms on the TestClock draws frames 0 through 5", () =>
 		Effect.gen(function* () {
@@ -63,9 +82,9 @@ describe("CliUi.live: the tick, an Effect schedule in the run's scope", () => {
 				}),
 			);
 			yield* Queue.offer(queue, Start);
-			yield* settle(30);
+			yield* untilReal(() => frames.includes(0));
 			yield* TestClock.adjust("400 millis");
-			yield* settle(50);
+			yield* untilReal(() => frames.includes(5));
 			assert.deepStrictEqual(
 				[...new Set(frames)].sort((a, b) => a - b),
 				[0, 1, 2, 3, 4, 5],
@@ -88,7 +107,9 @@ describe("CliUi.live: the tick, an Effect schedule in the run's scope", () => {
 				}),
 			);
 			yield* Queue.offerAll(queue, [Start, End]);
-			yield* settle(30);
+			yield* untilReal(() => frames.includes(0));
+			// The run ends at End: the view unmounts and gives the cursor back.
+			yield* untilReal(() => fake.stdout().includes(SHOW_CURSOR));
 			const drawn = frames.length;
 			yield* TestClock.adjust("400 millis");
 			yield* settle(50);
@@ -533,7 +554,7 @@ describe("CliUi.live: a stream that dies, a fallback that throws, an agent audie
 				}),
 			);
 			yield* Queue.offer(queue, Start);
-			yield* settle(20);
+			yield* untilReal(() => frames.length > 0);
 			for (let step = 1; step <= 30; step++) {
 				yield* Queue.offer(queue, tick(step));
 				yield* TestClock.adjust("25 millis");
