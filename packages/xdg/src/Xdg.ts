@@ -291,13 +291,13 @@ export class Xdg extends Context.Service<Xdg, XdgPaths>()("@effected/xdg/Xdg") {
 	static readonly layer: Layer.Layer<Xdg, XdgEnvError> = Layer.effect(Xdg, readPaths);
 
 	/**
-	 * Read the XDG environment from an explicit source instead of the ambient
-	 * `ConfigProvider`: an environment record, or a `ConfigProvider`.
+	 * Read the XDG environment from an explicit environment record instead of
+	 * the ambient `ConfigProvider`.
 	 *
 	 * @remarks
 	 * The same resolution as {@link Xdg.layer}, rule for rule — the home
 	 * directory (`HOME`, or on `win32` `USERPROFILE` then `HOME`), the relative
-	 * value rule, the search-path split — over `source` rather than
+	 * value rule, the search-path split — over `env` rather than
 	 * `process.env`. A record goes through `ConfigProvider.fromEnvRecord`, so an
 	 * empty value reads as unset, exactly as `process.env` does through the
 	 * default provider; it is read when the layer is built, never at the call.
@@ -323,23 +323,16 @@ export class Xdg extends Context.Service<Xdg, XdgPaths>()("@effected/xdg/Xdg") {
 	 * const DirsLive = Layer.provideMerge(AppDirs.layer({ namespace: "myapp" }), Xdg.layerFromEnv(env));
 	 * ```
 	 *
-	 * @param source - a variable-name-to-value record, or a `ConfigProvider`
+	 * @param env - a variable-name-to-value record; for a `ConfigProvider`, provide it beneath {@link Xdg.layer}
+	 *   with `Layer.provide(Xdg.layer, ConfigProvider.layer(provider))`
 	 */
-	static layerFromEnv(
-		source: Readonly<Record<string, string | undefined>> | ConfigProvider.ConfigProvider,
-	): Layer.Layer<Xdg, XdgEnvError> {
+	static layerFromEnv(env: Readonly<Record<string, string | undefined>>): Layer.Layer<Xdg, XdgEnvError> {
 		return Layer.fresh(
 			Layer.effect(
 				Xdg,
 				Effect.suspend(() =>
 					readPaths.pipe(
-						Effect.provideService(
-							ConfigProvider.ConfigProvider,
-							// A record's values are strings, so a function-valued `load` identifies a provider.
-							typeof source.load === "function"
-								? (source as ConfigProvider.ConfigProvider)
-								: ConfigProvider.fromEnvRecord({ ...(source as Readonly<Record<string, string | undefined>>) }),
-						),
+						Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromEnvRecord({ ...env })),
 					),
 				),
 			),

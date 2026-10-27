@@ -32,10 +32,14 @@ describe("Xdg.layerFromEnv", () => {
 		}),
 	);
 
-	it.effect("accepts a ConfigProvider as the source", () =>
+	it.effect("a ConfigProvider is provided beneath Xdg.layer, not passed in", () =>
 		Effect.gen(function* () {
-			const paths = yield* read(Xdg.layerFromEnv(ConfigProvider.fromUnknown({ HOME: "/home/grace" })));
+			const paths = yield* read(
+				Layer.provide(Xdg.layer, ConfigProvider.layer(ConfigProvider.fromUnknown({ HOME: "/home/grace" }))),
+			);
 			assert.strictEqual(paths.home, "/home/grace");
+			// @ts-expect-error layerFromEnv takes a record only
+			Xdg.layerFromEnv(ConfigProvider.fromUnknown({ HOME: "/home/grace" }));
 		}),
 	);
 
