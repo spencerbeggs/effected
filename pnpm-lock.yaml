@@ -6,8 +6,8 @@ importers:
   .:
     configDependencies:
       '@savvy-web/pnpm-plugin-silk':
-        specifier: 0.51.2
-        version: 0.51.2
+        specifier: 0.51.3
+        version: 0.51.3
     packageManagerDependencies:
       pnpm:
         specifier: 12.16.1
@@ -92,8 +92,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@savvy-web/pnpm-plugin-silk@0.51.2':
-    resolution: {integrity: sha512-jASO2tQpgZGtdMTn4LT6j+qpWPdv8jbI++RWyQb+dzzN9cuQZJnPUczQgQ0w+gLuoRDIVEWs1yrXiaoRaQMNaw==}
+  '@savvy-web/pnpm-plugin-silk@0.51.3':
+    resolution: {integrity: sha512-G5ytfrABIR20ILCxVryow6Xrk24W+944zW9EL6BUPN6HwjcXwu5jonWfGDy/utBbVXlzaXFYZWVPL/VwwEGQjA==}
 
   pnpm@12.16.1:
     resolution: {integrity: sha512-CR0d7nknV1Zhsl2rPCrjHK/BxU1rce1qZgDPDByxBDSkR+rhQBXxsj4ua+3u1535SpMuIWTSgyKA3OP7MvZW0Q==}
@@ -144,7 +144,7 @@ snapshots:
   '@pnpm/exe.win32-x64@12.16.1':
     optional: true
 
-  '@savvy-web/pnpm-plugin-silk@0.51.2': {}
+  '@savvy-web/pnpm-plugin-silk@0.51.3': {}
 
   pnpm@12.16.1:
     optionalDependencies:
@@ -263,7 +263,7 @@ overrides:
   '@effect/vitest@^4.0.0': 4.0.6
   effect@^4.0.0: 4.0.6
 
-pnpmfileChecksum: sha256-B//LL40DIbHZKtyI54iyt+gbrzVio/Lsx8grYNWUFdQ=
+pnpmfileChecksum: sha256-rRltG9coEsRlEk6BITfwx3QPzRh61/AgQfNMVprCmT8=
 
 importers:
 
