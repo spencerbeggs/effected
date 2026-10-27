@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/commands/src/LocalExec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-10-27T14:19:29Z
 integrity:
   generated:
-    body: caa2983c9ea6be18
+    body: ec02787645bc0ea8
 ---
 
 # @effected/commands
@@ -424,7 +424,11 @@ protocol, and why each of its rules is there, is
 
 - **Three drivers, one protocol.** `RunOnce.runSync(options, host, run)`
   answers the protocol's IO from a `RunOnceSyncHost` (`fs`, `liveness`,
-  `now`, `sleep`, `nonce`) and takes `run: () => Result<A, E>`; a `Result`
+  `now`, `sleep`, `nonce` — a nonce must be non-empty, hold no `.`, `/`
+  or `\`, and not be `lock` or `done`, or `runSync` throws a wiring defect
+  before any create, so the key's own file names (`K.lock`, `K.done`,
+  `K.lock.break.<nonce>`, `K.lock.tomb.<nonce>.<ms>`) never match another
+  key's) and takes `run: () => Result<A, E>`; a `Result`
   failure and a throw both leave no done marker, and a throw releases the
   lock and is rethrown. `RunOnce.commandSync(options, host, command)` runs
   an argv through `host.run` (a `SyncRun`), never a shell, and fails as

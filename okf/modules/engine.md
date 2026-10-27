@@ -9,10 +9,10 @@ layer: pure
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-10-27T14:19:29Z
 integrity:
   generated:
-    body: a5f2791c56974e99
+    body: 7dfbf3ad0968e579
 ---
 
 # @effected/engine
@@ -61,7 +61,7 @@ object, which loses TSDoc on its members in the built `.d.ts`.
 | `type ResolveInput`, `type ProjectDirInput` | interfaces | The parameter shapes `LaunchContext.resolve` and `LaunchContext.projectDir` take; `ProjectDirInput` extends `ResolveInput` with `cwd`. |
 | `Exclusive.make` | `Effect<Exclusive>` | A new one-permit lane. Bind it once (module level or layer-built); every call shares it. |
 | `lane.run(body, { timeout })` | instance method | `Effect<A, E \| ExclusiveTimeout, Exclude<R, Scope>>`. Runs `body` holding the permit, under the ordering contract below. `timeout` is required. |
-| `Exclusive.promise({ try, catch, abandon? })` | static function | `Effect<A, E>`. A promise whose interruption aborts `signal` and then **waits** for it to settle, where `Effect.promise` and `Effect.tryPromise` abandon it. A rejection or a synchronous throw from `try` fails through `catch`. `abandon: true` aborts and resumes at once, for a promise that ignores its signal. |
+| `Exclusive.promise({ try, catch, abandon? })` | static function | `Effect<A, E>`. A promise whose interruption aborts `signal` and then **waits** for it to settle, where `Effect.promise` and `Effect.tryPromise` abandon it. A rejection or a synchronous throw from `try` fails through `catch`; a `catch` that throws dies with what it threw. `abandon: true` aborts and resumes at once, for a promise that ignores its signal. |
 | `ExclusiveTimeout` | tagged error | `{ timeout, message }`, `timeout` the formatted duration. By the time a caller sees it, the body's finalizers have run and the permit is released. |
 | `ExclusiveRunOptions`, `ExclusivePromiseOptions<A, E>` | interfaces | The option shapes of `run` and `promise`. |
 | `ProcessScope.chdir(host, directory)` | static function | `Effect<void, ProcessScopeError, Scope>`. Enters `directory` and returns to the previous working directory when the scope closes. When the previous one cannot be read (deleted, so `cwd()` throws), the change still happens and nothing is restored; a restore that throws is ignored for the same reason. |
