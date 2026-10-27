@@ -3888,7 +3888,18 @@ export interface GitShape {
 		key: string,
 		options?: { readonly scope?: GitConfigScope },
 	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
-	/** `git remote get-url <remote>` — the trimmed URL, or `Option.none` when the remote does not exist. */
+	/**
+	 * `git remote get-url <remote>` — the trimmed URL, or `Option.none` when the remote does not exist.
+	 *
+	 * @remarks
+	 * The URL as git would fetch from it: `git remote get-url` applies the
+	 * `url.<base>.insteadOf` rewrites in effect (probed against git 2.56), so
+	 * a remote added as `gh:me/repo` under an `insteadOf = gh:` rule reads
+	 * `https://github.com/me/repo` here. For the URL as written in the
+	 * configuration, read `configGet(cwd, "remote.<remote>.url")` — the right
+	 * source for anything persisted or compared across machines, whose
+	 * rewrite rules differ.
+	 */
 	readonly remoteUrl: (
 		cwd: string,
 		options?: { readonly remote?: string },

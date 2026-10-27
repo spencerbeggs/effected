@@ -718,6 +718,10 @@ export class GitCommand {
 	 * `git remote get-url <remote>` — the fetch URL of the given remote. A
 	 * missing remote exits non-zero with a "No such remote" stderr shape, which
 	 * the `Git` service degrades to `Option.none`, never a typed error.
+	 *
+	 * @remarks
+	 * git applies `url.<base>.insteadOf` rewrites to this URL; the value as
+	 * configured is {@link GitCommand.configGet} of `remote.<remote>.url`.
 	 */
 	static readonly remoteUrl = (remote = "origin"): GitInvocation => git(["remote", "get-url", remote]);
 
