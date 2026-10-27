@@ -197,6 +197,31 @@ describe("GlobPattern metadata", () => {
 		}),
 	);
 
+	it.effect("enumerationRoots: a climbing alternative is never absorbed into the base's deep root", () =>
+		Effect.gen(function* () {
+			const roots = (source: string) => GlobPattern.compileResult(source).pipe(Result.getOrThrow).enumerationRoots;
+			// `../x/` lies outside the base, not inside it: it stays its own root, which a walker refuses,
+			// rather than lending its spelling to the base's walk.
+			assert.deepStrictEqual(roots("{**/*.md,../x/*.ts}"), [
+				{ prefix: "", deep: true, spellings: [""] },
+				{ prefix: "../x/", deep: false, spellings: ["../x/"] },
+			]);
+			assert.deepStrictEqual(roots("{../x/*.ts,**/*.ts}"), [
+				{ prefix: "../x/", deep: false, spellings: ["../x/"] },
+				{ prefix: "", deep: true, spellings: [""] },
+			]);
+			// The same climb spelled through an inner `..` (the engine folds `src/..` away).
+			assert.deepStrictEqual(roots("{./**/*.ts,src/../../x/*.ts}"), [
+				{ prefix: "", deep: true, spellings: ["./"] },
+				{ prefix: "../x/", deep: false, spellings: ["../x/"] },
+			]);
+			// A deep climbing root still absorbs a climb inside it.
+			assert.deepStrictEqual(roots("{../**/*.ts,../x/*.ts}"), [
+				{ prefix: "../", deep: true, spellings: ["../", "../x/"] },
+			]);
+		}),
+	);
+
 	it.effect("enumerationRoots: one prefix reached shallow and deep is deep, in either order", () =>
 		Effect.gen(function* () {
 			const roots = (source: string) => GlobPattern.compileResult(source).pipe(Result.getOrThrow).enumerationRoots;

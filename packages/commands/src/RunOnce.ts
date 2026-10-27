@@ -214,7 +214,12 @@ export interface RunOnceSyncHost {
 	readonly now: () => number;
 	/** Blocks the calling thread for `ms` milliseconds. */
 	readonly sleep: (ms: number) => void;
-	/** A fresh random token, unique across processes. */
+	/**
+	 * A fresh random token, unique across processes. It names files, so it must
+	 * be non-empty, hold no `.`, `/` or `\`, and be neither `lock` nor `done`;
+	 * `runSync` throws on one that breaks this. `crypto.randomBytes(12)` as hex
+	 * qualifies.
+	 */
 	readonly nonce: () => string;
 }
 

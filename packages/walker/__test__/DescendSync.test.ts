@@ -354,6 +354,17 @@ describe("prefixes spelled with ./ or a second alternative", () => {
 		assert.strictEqual(reads.filter((path) => path === "/repo/src").length, 1);
 	});
 
+	it("an alternative climbing above cwd contributes nothing beside a deep one, in either order", () => {
+		// Each climbing alternative alone is zero matches; beside `**` it must not re-spell cwd's own files.
+		assert.deepStrictEqual(walk("../x/*.md").result, { ok: [] });
+		const ts = okOf(walk("**/*.ts", { onUnreadable: "skip" }).result);
+		assert.deepStrictEqual(walk("{**/*.ts,../x/*.md}", { onUnreadable: "skip" }).result, { ok: ts });
+		assert.deepStrictEqual(walk("{../x/*.md,**/*.md}", { onUnreadable: "skip" }).result, { ok: ["readme.md"] });
+		assert.deepStrictEqual(walk("{**/*.md,src/../../x/*.md}", { onUnreadable: "skip" }).result, {
+			ok: ["readme.md"],
+		});
+	});
+
 	it("one prefix reached shallow and deep keeps the deep matches, whichever alternative comes first", () => {
 		const deep = { ok: ["src/index.ts", "src/lib/deep/core.test.ts", "src/lib/util.ts"] };
 		assert.deepStrictEqual(walk("{src/**/*.ts,src/*.ts}").result, deep);

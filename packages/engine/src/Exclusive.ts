@@ -116,7 +116,8 @@ export class Exclusive {
 	 * A promise whose interruption aborts `signal` and then waits for the
 	 * promise to settle, rather than abandoning it as `Effect.promise` and
 	 * `Effect.tryPromise` do. A rejection, or a synchronous throw from `try`,
-	 * fails through `catch`.
+	 * fails through `catch`; a `catch` that itself throws dies with what it
+	 * threw.
 	 *
 	 * @remarks
 	 * **The default hangs on a promise that ignores its signal.** Waiting is
@@ -137,16 +138,26 @@ export class Exclusive {
 	 */
 	static readonly promise = <A, E>(options: ExclusivePromiseOptions<A, E>): Effect.Effect<A, E> =>
 		Effect.callback<A, E>((resume, signal) => {
+			// A `catch` that throws is a defect, on every path: thrown inside the
+			// `.then` handler it would reject a promise nobody observes and never
+			// resume, hanging the caller until the lane timeout (or forever).
+			const failure = (cause: unknown): Effect.Effect<never, E> => {
+				try {
+					return Effect.fail(options.catch(cause));
+				} catch (error) {
+					return Effect.die(error);
+				}
+			};
 			let settled: Promise<A>;
 			try {
 				settled = Promise.resolve(options.try(signal));
 			} catch (cause) {
-				resume(Effect.fail(options.catch(cause)));
+				resume(failure(cause));
 				return;
 			}
 			settled.then(
 				(value) => resume(Effect.succeed(value)),
-				(cause: unknown) => resume(Effect.fail(options.catch(cause))),
+				(cause: unknown) => resume(failure(cause)),
 			);
 			// No cancel effect: core aborts the signal and resumes the interrupt immediately.
 			if (options.abandon === true) return;

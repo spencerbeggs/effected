@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Exit, Fiber, Latch } from "effect";
+import { Cause, Effect, Exit, Fiber, Latch } from "effect";
 import { TestClock } from "effect/testing";
 import { Exclusive, ExclusiveTimeout } from "../src/index.js";
 
@@ -383,6 +383,109 @@ describe("Exclusive.promise", () => {
 			assert.sameMembers(events.slice(2), ["timeout-seen", "second"]);
 			yield* Effect.sleep("100 millis");
 			assert.strictEqual(events.at(-1), "settled");
+		}),
+	);
+});
+
+describe("Exclusive.promise: a catch that throws", () => {
+	const boom = new Error("catch threw");
+	const throwingCatch = (): never => {
+		throw boom;
+	};
+	/** Fails the test fast instead of hanging when the promise never resumes. */
+	const hard = <A, E>(self: Effect.Effect<A, E>) =>
+		self.pipe(
+			Effect.timeoutOrElse({ duration: "2 seconds", orElse: () => Effect.die(new Error("hung: never resumed")) }),
+		);
+	/** Collects every unhandled rejection raised while `self` runs, plus a short grace period. */
+	const watchUnhandled = <A, E>(self: Effect.Effect<A, E>) =>
+		Effect.acquireUseRelease(
+			Effect.sync(() => {
+				const seen: Array<unknown> = [];
+				const listener = (reason: unknown) => seen.push(reason);
+				process.on("unhandledRejection", listener);
+				return { seen, listener };
+			}),
+			({ seen }) =>
+				Effect.exit(self).pipe(Effect.flatMap((exit) => Effect.as(Effect.sleep("30 millis"), { exit, seen }))),
+			({ listener }) => Effect.sync(() => process.off("unhandledRejection", listener)),
+		);
+	const assertDiedWithBoom = (exit: Exit.Exit<unknown, unknown>) => {
+		assert.isTrue(Exit.isFailure(exit), "the promise resumed as a failure");
+		if (Exit.isFailure(exit)) {
+			assert.isTrue(Cause.hasDies(exit.cause), Cause.pretty(exit.cause));
+			assert.strictEqual(Cause.squash(exit.cause), boom);
+		}
+	};
+
+	it.live("a rejection dies with the thrown error instead of hanging", () =>
+		Effect.gen(function* () {
+			const { exit, seen } = yield* watchUnhandled(
+				hard(Exclusive.promise({ try: () => Promise.reject(new Error("no")), catch: throwingCatch })),
+			);
+			assertDiedWithBoom(exit);
+			assert.deepStrictEqual(seen, [], "no unhandled rejection");
+		}),
+	);
+
+	it.live("abandon: a rejection dies with the thrown error instead of hanging", () =>
+		Effect.gen(function* () {
+			const { exit, seen } = yield* watchUnhandled(
+				hard(Exclusive.promise({ try: () => Promise.reject(new Error("no")), catch: throwingCatch, abandon: true })),
+			);
+			assertDiedWithBoom(exit);
+			assert.deepStrictEqual(seen, [], "no unhandled rejection");
+		}),
+	);
+
+	it.live("abandon: a rejection after the interrupt raises no unhandled rejection", () =>
+		Effect.gen(function* () {
+			const { seen } = yield* watchUnhandled(
+				Effect.gen(function* () {
+					const fiber = yield* Effect.forkChild(
+						Exclusive.promise({
+							try: () => new Promise<never>((_, reject) => setTimeout(() => reject(new Error("late")), 20)),
+							catch: throwingCatch,
+							abandon: true,
+						}),
+					);
+					yield* Effect.sleep("5 millis");
+					yield* hard(Fiber.interrupt(fiber));
+					yield* Effect.sleep("40 millis");
+				}),
+			);
+			assert.deepStrictEqual(seen, [], "the dropped rejection is observed");
+		}),
+	);
+
+	it.live("a synchronous throw from try still dies with the thrown error", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(
+				hard(
+					Exclusive.promise({
+						try: () => {
+							throw new Error("sync");
+						},
+						catch: throwingCatch,
+					}),
+				),
+			);
+			assertDiedWithBoom(exit);
+		}),
+	);
+
+	it.live("as a lane body, it dies rather than holding the permit until the timeout", () =>
+		Effect.gen(function* () {
+			const lane = yield* Exclusive.make;
+			const exit = yield* Effect.exit(
+				hard(
+					lane.run(Exclusive.promise({ try: () => Promise.reject(new Error("no")), catch: throwingCatch }), {
+						timeout: "1 second",
+					}),
+				),
+			);
+			assertDiedWithBoom(exit);
+			assert.strictEqual(yield* hard(lane.run(Effect.succeed("next"), timeout)), "next");
 		}),
 	);
 });

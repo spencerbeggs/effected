@@ -13,6 +13,7 @@
 
 import type { GlobPattern } from "@effected/glob";
 import { resolveSegments } from "./segments.js";
+import { trimTrailing } from "./trimTrailing.js";
 
 /** What a stat answers: the resolved kind (links followed) and the raw info, or `undefined` when it does not resolve. */
 export type StatAnswer<S> = { readonly kind: "File" | "Directory" | "Other"; readonly info: S } | undefined;
@@ -80,6 +81,9 @@ export type DescendMachineResult<S, C> =
 
 /** Directory names never descended into unless the caller overrides `prune`. */
 export const DEFAULT_PRUNE: ReadonlyArray<string> = ["node_modules", ".git"];
+
+/** A glob pattern's one separator: its backslash is an escape, never a separator. */
+const isSlash = (character: string): boolean => character === "/";
 
 /** Shared empty ancestor chain: frames under `followSymlinks: false` never consult theirs. */
 const NO_ANCESTORS: ReadonlyArray<string> = Object.freeze([]);
@@ -230,7 +234,7 @@ export function* descendMachine<S, C>(
 		// (`./` reports `.`), and a directory below it as that spelling plus the rest.
 		const own = spelled.find(({ canonical }) => canonical === baseCanonical)?.spelling ?? baseCanonical;
 		const shown = (relative: string): string =>
-			relative === base ? own.replace(/\/+$/, "") : own + relative.slice(baseCanonical.length);
+			relative === base ? trimTrailing(own, isSlash) : own + relative.slice(baseCanonical.length);
 		const absoluteBase = base === "" ? options.cwd : join(options.cwd, base);
 		const baseStat = yield* ask({ _tag: "Stat", path: absoluteBase });
 		if (baseStat?.kind !== "Directory") return undefined;
@@ -310,7 +314,7 @@ export function* descendMachine<S, C>(
 	// is read twice and no file is found by two roots.
 	const roots = pattern.negated ? [{ prefix: "", deep: true, spellings: [""] }] : pattern.enumerationRoots;
 	for (const root of roots) {
-		const failed = yield* walkRoot(root.prefix.replace(/\/+$/, ""), root.deep, root.spellings);
+		const failed = yield* walkRoot(trimTrailing(root.prefix, isSlash), root.deep, root.spellings);
 		if (failed !== undefined) return failed;
 	}
 	return done(results);

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -294,6 +294,25 @@ describe("ShellExports.format", () => {
 		assert.throws(() => ShellExports.format({ A: "a\0b" }), RangeError);
 		assert.throws(() => ShellExports.format({ A: "a\uD800" }), RangeError);
 	});
+	it("keeps a leading U+FEFF: format, then parse, gives the map back, BOM and all", () => {
+		const map = { A: "\uFEFFabc", B: "\uFEFF", C: "\uFEFF\uFEFFx", D: "a\uFEFF" };
+		assert.deepStrictEqual(ok(ShellExports.format(map)), map);
+		assert.deepStrictEqual(okBytes(new TextEncoder().encode(ShellExports.format(map))), map);
+	});
+});
+
+describe("ShellExports: a word that starts with U+FEFF", () => {
+	it("keeps it in every word form: bare, '…', \"…\", and $'…' bytes", () =>
+		assert.deepStrictEqual(
+			ok(
+				`export A=\uFEFFx\nexport B='\uFEFFx'\nexport C="\uFEFFx"\nexport D=$'\\xef\\xbb\\xbfx'\nexport E=$'\\357\\273\\277'\n`,
+			),
+			{ A: "\uFEFFx", B: "\uFEFFx", C: "\uFEFFx", D: "\uFEFFx", E: "\uFEFF" },
+		));
+	it("counts it as a column: a rejection after a leading U+FEFF lands where it is in the text", () => {
+		const error = rejection("export A='\uFEFF'$X\n");
+		assert.deepStrictEqual([error.reason, error.line, error.column], ["expansion", 1, 13]);
+	});
 });
 
 describe("ShellExports performance", () => {
@@ -330,9 +349,15 @@ describe("ShellExports performance", () => {
 // Real bash is the oracle. Only dialect-valid text, rendered from generated maps, is ever sourced, so no file can
 // run a command, change IFS or set a trap. Deterministic: seeded generators.
 // biome-ignore lint/suspicious/noTemplateCurlyInString: a bash expansion, not a template
-const probe = spawnSync("bash", ["-c", 'printf %s "${BASH_VERSINFO[0]}"'], { encoding: "utf8" });
-const hasBash = probe.status === 0 && /^\d+$/.test(probe.stdout);
-const hasBash5 = hasBash && Number(probe.stdout) >= 5;
+const probe = spawnSync("bash", ["-c", 'printf %s.%s "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"'], {
+	encoding: "utf8",
+});
+const hasBash = probe.status === 0 && /^\d+\.\d+$/.test(probe.stdout);
+const [bashMajor, bashMinor] = hasBash ? probe.stdout.split(".").map(Number) : [0, 0];
+const hasBash5 = (bashMajor as number) >= 5;
+/** Whether the bash on PATH is at least `major.minor`. */
+const bashAtLeast = (major: number, minor: number): boolean =>
+	(bashMajor as number) > major || (bashMajor === major && (bashMinor as number) >= minor);
 
 /** A small seeded PRNG (mulberry32), so the generated maps are the same on every run. */
 const mulberry32 = (seed: number) => {
@@ -413,6 +438,33 @@ afterAll(() => {
 	if (sandbox !== "") rmSync(sandbox, { recursive: true, force: true });
 });
 
+/**
+ * The text bash sources, written to a fresh file in the sandbox, as the relative path a script sources it by. Never
+ * `/dev/stdin`: Node hands the child a socket for fd 0 on Linux, `open("/dev/stdin")` fails there with ENXIO, and a
+ * failed source exports nothing.
+ */
+let sourceFiles = 0;
+const sourceFile = (text: string | Uint8Array): string => {
+	const name = `source-${sourceFiles++}.sh`;
+	writeFileSync(join(sandbox, name), text);
+	return `./${name}`;
+};
+
+/** The exit status a script uses when it cannot read the file it was handed: a harness failure, never a bash verdict. */
+const UNREADABLE = 97;
+/**
+ * Sources `path` as the script's first command, leaving its status in `$status`, and exits with UNREADABLE when it
+ * failed because `path` could not be read. The check runs only after a failed source: a pipeline run before the source
+ * makes PIPESTATUS an array that the next pipeline overwrites, where sourced first an exported PIPESTATUS stays plain
+ * (bash 3.2 through 5.3 alike).
+ */
+const source = (path: string, redirect = "") =>
+	`. ${path}${redirect}; status=$?; [ $status -eq 0 ] || [ -r ${path} ] || exit ${UNREADABLE}`;
+
+/** Fails the test loudly when bash could not read the file it was to source. */
+const assertRead = (result: { readonly status: number | null; readonly stderr: unknown }) =>
+	assert.notStrictEqual(result.status, UNREADABLE, `harness: bash could not read the file to source ${result.stderr}`);
+
 /** Run bash with `script`, `input` on stdin, in an empty directory with a minimal environment. */
 const runBash = (script: string, input: string, lcAll = "en_US.UTF-8") =>
 	spawnSync("bash", ["--norc", "--noprofile", "-c", script], {
@@ -427,8 +479,10 @@ const runBash = (script: string, input: string, lcAll = "en_US.UTF-8") =>
 /** The values bash exports for `names` after sourcing `text`, which must be dialect-valid. */
 const bashExports = (text: string, names: ReadonlyArray<string>): Record<string, string> => {
 	assert.isTrue(Result.isSuccess(ShellExports.parseResult(text)), "only dialect-valid text is ever sourced");
-	const script = `. /dev/stdin; for n in ${names.join(" ")}; do [[ -v $n ]] && printf "%s=%s\\0" "$n" "\${!n}"; done; :`;
-	const result = runBash(script, text);
+	const path = sourceFile(text);
+	const script = `${source(path)}; [ $status -eq 0 ] || exit $status; for n in ${names.join(" ")}; do if [[ -v $n ]]; then printf "%s=%s\\0" "$n" "\${!n}"; fi; done`;
+	const result = runBash(script, "");
+	assertRead(result);
 	assert.strictEqual(result.status, 0, result.stderr);
 	return Object.fromEntries(
 		result.stdout
@@ -484,6 +538,14 @@ describe.skipIf(!hasBash)("ShellExports against real bash", () => {
 			assert.deepStrictEqual(exported, map);
 			assert.deepStrictEqual(ok(text), exported);
 		}
+	});
+
+	it("bash exports a leading U+FEFF as part of the value, and parse keeps it too", () => {
+		const map = { A: "\uFEFFabc", B: "\uFEFF" };
+		const text = ShellExports.format(map);
+		const exported = bashExports(text, Object.keys(map));
+		assert.deepStrictEqual(exported, map);
+		assert.deepStrictEqual(ok(text), exported);
 	});
 
 	it("hand-written dialect forms mean to bash what parse says: quotes, tabs and newlines in quotes, ;, comments", () => {
@@ -556,15 +618,17 @@ describe.skipIf(!hasBash3)("ShellExports.parseBytesResult against bash 3.2", () 
 		for (const map of nonAsciiMaps) {
 			const input = printfBytes(BASH3, map, "en_US.UTF-8");
 			const names = Object.keys(map);
+			const path = sourceFile(input);
 			// bash 3.2 has no [[ -v ]]; ${!n+x} tells a set variable from an unset one.
-			const script = `. /dev/stdin; for n in ${names.join(" ")}; do if [ -n "\${!n+x}" ]; then printf "%s=%s\\0" "$n" "\${!n}"; fi; done; :`;
+			const script = `${source(path)}; [ $status -eq 0 ] || exit $status; for n in ${names.join(" ")}; do if [ -n "\${!n+x}" ]; then printf "%s=%s\\0" "$n" "\${!n}"; fi; done`;
 			const result = spawnSync(BASH3, ["--norc", "--noprofile", "-c", script], {
-				input,
+				input: "",
 				encoding: "utf8",
 				cwd: sandbox,
 				env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: sandbox, LC_ALL: "en_US.UTF-8" },
 				timeout: 10_000,
 			});
+			assertRead(result);
 			assert.strictEqual(result.status, 0, result.stderr);
 			const exported = Object.fromEntries(
 				result.stdout
@@ -580,12 +644,14 @@ describe.skipIf(!hasBash3)("ShellExports.parseBytesResult against bash 3.2", () 
 
 /** The bytes `bin` exports as `V` after sourcing `input`, or undefined when bash fails on it. */
 const exportedBytes = (bin: string, input: Uint8Array): ReadonlyArray<number> | undefined => {
-	const result = spawnSync(bin, ["--norc", "--noprofile", "-c", '. /dev/stdin; printf %s "$V"'], {
-		input,
+	const path = sourceFile(input);
+	const result = spawnSync(bin, ["--norc", "--noprofile", "-c", `${source(path)}; printf %s "$V"`], {
+		input: "",
 		cwd: sandbox,
 		env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: sandbox, LC_ALL: "en_US.UTF-8" },
 		timeout: 10_000,
 	});
+	assertRead(result);
 	return result.status === 0 ? [...result.stdout] : undefined;
 };
 
@@ -720,10 +786,14 @@ const BASH_PREFIXED: ReadonlyArray<string> = [
 	"BASH_ENV",
 ];
 
-/** Whether bash shows `name` special after sourcing `export name=sentinel`. Sources text built here, by name. */
+/**
+ * Whether bash shows `name` special after sourcing `export name=sentinel`. Sources text built here, by name. A file bash
+ * cannot read, or a verdict that is not exactly 0 or 1, fails the test: a harness fault is never counted as special.
+ */
 const bashTreatsSpecially = (name: string): boolean => {
+	const path = sourceFile(`export ${name}=sentinel\n`);
 	const script = [
-		". /dev/stdin 2>err.txt; status=$?",
+		source(path, " 2>err.txt"),
 		`n=${name}; special=0`,
 		"[ $status -ne 0 ] && special=1",
 		"[ -s err.txt ] && special=1",
@@ -736,8 +806,16 @@ const bashTreatsSpecially = (name: string): boolean => {
 		BEHAVIOUR[name] ?? ":",
 		"printf %s $special",
 	].join("\n");
-	return runBash(script, `export ${name}=sentinel\n`).stdout.endsWith("1");
+	const result = runBash(script, "");
+	assertRead(result);
+	assert.strictEqual(result.status, 0, `harness: ${result.stderr}`);
+	assert.match(result.stdout, /^[01]$/, `harness: no verdict for ${name}: ${result.stderr}`);
+	return result.stdout === "1";
 };
+
+// Specials bash added after 5.0, by the 5.x minor that added them (each checked against bash 5.0 to 5.3): an earlier
+// bash leaves the name plain, and the dialect rejects it all the same.
+const SPECIAL_SINCE: Readonly<Record<string, number>> = { SRANDOM: 1, BASH_MONOSECONDS: 3, BASH_TRAPSIG: 3 };
 
 describe.skipIf(!hasBash5)("the special-variable denylist, against bash 5", () => {
 	it("control: ordinary names are not shown special by the same tests (PIPESTATUS included: bash 5 leaves an exported one plain)", () => {
@@ -747,8 +825,16 @@ describe.skipIf(!hasBash5)("the special-variable denylist, against bash 5", () =
 	});
 
 	for (const name of [...SPECIAL_NAMES, ...BASH_PREFIXED]) {
+		const since = SPECIAL_SINCE[name];
+		if (since !== undefined && !bashAtLeast(5, since)) {
+			it(`${name}: bash ${probe.stdout} still leaves it plain (special from 5.${since}), and the dialect rejects it`, () => {
+				assert.isFalse(bashTreatsSpecially(name), `bash ${probe.stdout} already treats ${name} specially`);
+				assert.strictEqual(rejection(`export ${name}=x\n`).reason, "special-variable");
+			});
+			continue;
+		}
 		it(`${name}: bash treats it specially, and the dialect rejects it`, () => {
-			assert.isTrue(bashTreatsSpecially(name), `bash leaves ${name} plain`);
+			assert.isTrue(bashTreatsSpecially(name), `bash ${probe.stdout} leaves ${name} plain`);
 			assert.strictEqual(rejection(`export ${name}=x\n`).reason, "special-variable");
 		});
 	}

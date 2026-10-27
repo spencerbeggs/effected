@@ -9,6 +9,7 @@
 
 import { Effect, Result, Schema } from "effect";
 import { resolveSegments } from "./internal/segments.js";
+import { trimTrailing } from "./internal/trimTrailing.js";
 
 /**
  * Why {@link confineRelativeResult} refused a candidate path.
@@ -89,12 +90,9 @@ const DEVICE_NAME =
 const isReservedSegment = (segment: string): boolean =>
 	segment.includes(":") || DOTS_AND_SPACES.test(segment) || DEVICE_NAME.test(segment);
 
-/** `path` without trailing `/` or `\`: a loop, because `/[\\/]+$/` backtracks quadratically on a long separator run. */
-const stripTrailingSeparators = (path: string): string => {
-	let end = path.length;
-	while (end > 0 && (path[end - 1] === "/" || path[end - 1] === "\\")) end -= 1;
-	return path.slice(0, end);
-};
+/** `path` without trailing `/` or `\`, by a loop: `/[\\/]+$/` backtracks quadratically on a long separator run. */
+const stripTrailingSeparators = (path: string): string =>
+	trimTrailing(path, (character) => character === "/" || character === "\\");
 
 /**
  * Confine an untrusted relative path to a base directory, synchronously.

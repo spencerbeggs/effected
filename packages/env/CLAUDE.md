@@ -44,8 +44,14 @@ Never pin this package's own output as the oracle in a test.
   through `format`, and bash **sources** the result; the exported values must equal
   what `parseResult` returns. Only dialect-valid text is ever sourced. Run bash with
   `--norc --noprofile`, and give any `BASH_ENV` probe `</dev/null`: bash treats a
-  socket stdin as the sshd heuristic and reads its rc file. Special-name evidence
-  needs bash >= 5 (`COMP_WORDBREAKS` is special, `PIPESTATUS` is plain, under 5.3);
+  socket stdin as the sshd heuristic and reads its rc file. Source a file written
+  into the sandbox, never `/dev/stdin`: Node hands the child a socket for fd 0 on
+  Linux and `open("/dev/stdin")` fails with ENXIO, so the source exports nothing.
+  A file bash could not read exits 97 and fails the test; it is never a verdict.
+  Source as the script's first command: an exported `PIPESTATUS` stays plain only
+  when no pipeline ran before it (bash 3.2 through 5.3 alike). Special-name evidence
+  needs bash >= 5 (`COMP_WORDBREAKS` is special); `SRANDOM` is special from 5.1 and
+  `BASH_MONOSECONDS` / `BASH_TRAPSIG` from 5.3, and the suite asserts them plain below;
   the bash 3.2 suites (macOS `/bin/bash`) cover `parseBytesResult`'s mixed raw-byte
   `$'…'` form and skip where bash 3.2 is absent.
 

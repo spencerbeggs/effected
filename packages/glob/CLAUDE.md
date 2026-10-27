@@ -132,7 +132,9 @@ it**. `package.json` stays `"private": true`.
   `@./okf/modules/glob.md`.
 - **`enumerationRoots`** is the per-alternative form walker consumes: one
   `EnumerationRoot { prefix, deep, spellings }` per brace alternative, prefixes
-  canonical, roots inside a deep root absorbed into it. Matching stays
+  canonical, roots inside a deep root absorbed into it — except that a climbing
+  prefix (`../`) is never inside the base root `""`: it stays its own root so a
+  walker can refuse it. Matching stays
   spelling-sensitive, which is why each root carries its `spellings` — never
   canonicalize a match. `dot` defaults to `false` (minimatch's default); Vitest
   globs use `dot: true`, so say so to agree with it. See `@./okf/modules/glob.md`.

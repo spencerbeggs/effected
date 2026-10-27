@@ -597,7 +597,11 @@ const makeTerminal = (
 		if (mode === "debug") return chunk;
 		const text = chunk.replace(FRAME_BRACKETS, "");
 		if (text === "" || CONTROLS_ONLY.test(text)) return undefined;
-		return text.replace(LEADING_MOVES, "").replace(/\n+$/, "");
+		const frame = text.replace(LEADING_MOVES, "");
+		// A loop, not `/\n+$/`: unanchored, that retries from every newline of a run inside the frame, quadratically.
+		let end = frame.length;
+		while (end > 0 && frame[end - 1] === "\n") end -= 1;
+		return frame.slice(0, end);
 	};
 	const fake = makeFakeStreams({
 		columns,

@@ -379,7 +379,9 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * so `src/{a,b}.ts` has the single root `src/`. Prefixes are canonical, so
 	 * `{src,./src}/*.ts` has the single root `src/` too. Roots are distinct; one
 	 * whose prefix lies inside a `deep` root's is dropped, since that root
-	 * already reads it, and its spellings join that root's. Two kept roots never
+	 * already reads it, and its spellings join that root's. A prefix that climbs
+	 * above the base (a leading `..`) never lies inside the base's own root, so
+	 * `{**,../x/*}` keeps `../x/` as a root of its own. Two kept roots never
 	 * yield the same file: a shallow root's files lie exactly one level below
 	 * it, and no root lies inside a deep one.
 	 *
@@ -406,7 +408,10 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 				entry.spellings.add(spelling);
 			}
 		}
-		const inside = (prefix: string, deepPrefix: string): boolean => deepPrefix === "" || prefix.startsWith(deepPrefix);
+		// The base's own root holds every prefix below it, but not a climb: `../x/` lies outside the base, so it stays
+		// a root of its own, one a walker refuses, and never lends its spelling to the base's walk.
+		const inside = (prefix: string, deepPrefix: string): boolean =>
+			deepPrefix === "" ? !prefix.startsWith("../") : prefix.startsWith(deepPrefix);
 		const kept = [...merged].filter(
 			([prefix]) => ![...merged].some(([other, { deep }]) => other !== prefix && deep && inside(prefix, other)),
 		);

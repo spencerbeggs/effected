@@ -192,6 +192,65 @@ export const stillBreakable = (
 
 const pathOf = (dir: string, name: string): string => `${dir.replace(/[\\/]+$/, "")}/${name}`;
 
+/*
+ * The file names this machine produces for a key `K` — the whole grammar:
+ *
+ * - `K.lock`, the lock, and `K.done`, the done marker;
+ * - `K.lock.break.<nonce>`, a breaker ticket (and `K.lock.break`, the single
+ *   breaker file an older version left);
+ * - `K.lock.tomb.<nonce>.<renamedAt>`, a compare-and-delete tomb of the lock
+ *   (and `K.lock.break.tomb.<nonce>.<renamedAt>`, one of the older single
+ *   breaker).
+ *
+ * A key may hold `.`, so another key's files can share any prefix of these:
+ * `foo.lock.breaker.lock` starts with `foo.lock.break`. Every other key's name
+ * is that key plus one of the suffixes above, so whatever follows a shared
+ * prefix holds a `.`, or is that key's `lock` or `done` — and a nonce is
+ * neither. Every list-and-match site goes through these predicates, which
+ * accept only names this grammar produces for THIS key.
+ */
+
+/**
+ * A nonce names files, so it holds no `.` (the grammar's separator) and no
+ * path separator, and is neither `lock` nor `done`: key `K.lock.break`'s own
+ * `K.lock.break.lock` and `K.lock.break.done` would otherwise read as a ticket
+ * of `K`. Those two are the only one-segment suffixes, so nothing else collides.
+ */
+const isNonce = (text: string): boolean =>
+	text.length > 0 && text !== "lock" && text !== "done" && !/[./\\]/.test(text);
+
+/** Whether `name` is one of `key`'s breaker tickets, or the single breaker file an older version left. */
+const isTicketName = (key: string, name: string): boolean => {
+	const legacy = `${key}.lock.break`;
+	return name === legacy || (name.startsWith(`${legacy}.`) && isNonce(name.slice(legacy.length + 1)));
+};
+
+/** The rename time a tomb of `key`'s lock (or older breaker) carries in its name, or `undefined` when `name` is not one. */
+const tombRenamedAt = (key: string, name: string): number | undefined => {
+	const prefix = [`${key}.lock.tomb.`, `${key}.lock.break.tomb.`].find((candidate) => name.startsWith(candidate));
+	if (prefix === undefined) return undefined;
+	const rest = name.slice(prefix.length);
+	const dot = rest.lastIndexOf(".");
+	if (dot === -1 || !isNonce(rest.slice(0, dot)) || !/^\d+$/.test(rest.slice(dot + 1))) return undefined;
+	return Number(rest.slice(dot + 1));
+};
+
+/**
+ * A fresh nonce from the host, held to the grammar: a nonce with a `.` would
+ * make this caller's ticket and tombs indistinguishable from another key's
+ * files, so every other caller would skip them. A host that breaks the
+ * contract is a wiring defect, so this throws.
+ */
+function* freshNonce(): Protocol<string> {
+	const nonce = yield* ask({ _tag: "Nonce" });
+	if (!isNonce(nonce)) {
+		throw new Error(
+			`RunOnce: a nonce names files, so it must be non-empty, neither "lock" nor "done", with no ".", "/" or "\\", received ${JSON.stringify(nonce)}`,
+		);
+	}
+	return nonce;
+}
+
 function* observeLock(config: MachineConfig, lockPath: string): Protocol<LockState> {
 	const { text, ageMs } = yield* evidence(lockPath);
 	if (text === undefined && ageMs === undefined) return { _tag: "Absent" };
@@ -296,7 +355,7 @@ function* takeBreaker(
 	lockPath: string,
 	expected: Option.Option<string>,
 ): Protocol<{ readonly ticket: string; readonly mine: string } | undefined> {
-	const mine = yield* ask({ _tag: "Nonce" });
+	const mine = yield* freshNonce();
 	const startedAt = yield* ask({ _tag: "Now" });
 	const ticket = `${lockPath}.break.${mine}`;
 	const record = encodeBreaker({
@@ -312,10 +371,9 @@ function* takeBreaker(
 		yield* ask({ _tag: "Remove", path: ticket });
 		return undefined;
 	}
-	const prefix = `${config.key}.lock.break`;
 	let contended = false;
 	for (const name of names) {
-		if (!name.startsWith(prefix) || name.includes(".tomb.")) continue;
+		if (!isTicketName(config.key, name)) continue;
 		const path = pathOf(config.dir, name);
 		if (path === ticket) continue;
 		const { text, ageMs } = yield* evidence(path);
@@ -363,7 +421,8 @@ function* breakLock(
 }
 
 /**
- * Garbage-collects tombs (`*.tomb.<nonce>.<renamedAt>` under this key) whose
+ * Garbage-collects this key's tombs (`<key>.lock.tomb.<nonce>.<renamedAt>`, or
+ * `<key>.lock.break.tomb.…` of an older breaker) whose
  * rename is older than `staleMs` — a caller that crashed between a rename and
  * its delete leaves one. Nobody else ever reads a tomb, and its owner treats
  * one that vanished as collected (never resurrecting it), so a plain remove is
@@ -372,15 +431,13 @@ function* breakLock(
 function* sweepTombs(config: MachineConfig): Protocol<void> {
 	const names = yield* ask({ _tag: "ListDirectory", path: config.dir });
 	if (names === undefined) return;
-	const prefix = `${config.key}.lock.`;
 	const now = yield* ask({ _tag: "Now" });
 	for (const name of names) {
-		if (!name.startsWith(prefix) || !name.includes(".tomb.")) continue;
 		// Judged by the rename time in the name, never by mtime (which a rename
 		// preserves). A tomb is abandoned once its critical section — a few
 		// syscalls — has been outlived by `staleMs`.
-		const renamedAt = Number(/\.(\d+)$/.exec(name)?.[1] ?? Number.NaN);
-		if (!Number.isFinite(renamedAt) || now - renamedAt <= config.staleMs) continue;
+		const renamedAt = tombRenamedAt(config.key, name);
+		if (renamedAt === undefined || !Number.isFinite(renamedAt) || now - renamedAt <= config.staleMs) continue;
 		yield* ask({ _tag: "Remove", path: pathOf(config.dir, name) });
 	}
 }
@@ -455,7 +512,7 @@ function* protocol(config: MachineConfig, state: RunState): Protocol<MachineOutc
 				continue;
 			}
 			case "Create": {
-				const nonce = yield* ask({ _tag: "Nonce" });
+				const nonce = yield* freshNonce();
 				const text = encodeOwner({ pid: config.self.pid, host: config.self.host, nonce, startedAt: now });
 				const created = yield* ask({ _tag: "CreateExclusive", path: lockPath, text });
 				if (created === "failed") return yield* unserialized("lockUnavailable");

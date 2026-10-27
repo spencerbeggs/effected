@@ -3,7 +3,7 @@
 // because `GitRemote` imports that module, so folding this in would be a cycle.
 import { Option } from "effect";
 import { GitRemote } from "../GitRemote.js";
-import { maskUserinfoAnywhere } from "./redact.js";
+import { MIN_SECRET_LENGTH, REDACTED, credentialSegments, maskUserinfoAnywhere } from "./redact.js";
 
 /**
  * Masks the credential positions of any remote text, total over a string.
@@ -27,4 +27,38 @@ export const redactRemoteText = (text: string): string => {
 	const remote = parsed.value;
 	const address = remote._tag === "GitRemoteTransport" ? remote.address : remote;
 	return address._tag === "GitRemoteUrl" ? GitRemote.format(GitRemote.redact(remote)) : maskUserinfoAnywhere(text);
+};
+
+/**
+ * The exact secret strings {@link redactRemoteText} masks in a remote
+ * positional, for masking the same text wherever git echoes it (stderr).
+ *
+ * @remarks
+ * The form-independent userinfo segments of {@link credentialSegments}, plus
+ * each URL part {@link GitRemote.redact} masks that those segments do not
+ * reach: the raw `user` (a password's presence keeps it out of the segments),
+ * the query (everything after the path's first `?`, fragment included, which
+ * carries no `@` for any segment or shape masker to find), and a scheme it
+ * masks (outside RFC 3986's grammar, or unknown behind `<transport>::`).
+ * The parts are read by comparing the parsed remote with its redaction, so a
+ * new redaction rule there is covered here without a second copy of it.
+ * Secrets under three characters are dropped, as {@link credentialSegments}
+ * drops them.
+ */
+export const remoteSecrets = (text: string): ReadonlyArray<string> => {
+	const secrets = new Set(credentialSegments(text));
+	const parsed = GitRemote.parse(text);
+	if (Option.isSome(parsed)) {
+		const remote = parsed.value;
+		const raw = remote._tag === "GitRemoteTransport" ? remote.address : remote;
+		const redacted = GitRemote.redact(remote);
+		const masked = redacted._tag === "GitRemoteTransport" ? redacted.address : redacted;
+		if (raw._tag === "GitRemoteUrl" && masked._tag === "GitRemoteUrl") {
+			if (masked.scheme !== raw.scheme) secrets.add(raw.scheme);
+			if (raw.user !== undefined && masked.user !== raw.user) secrets.add(raw.user);
+			const query = raw.path.indexOf("?");
+			if (masked.path !== raw.path && query !== -1) secrets.add(raw.path.slice(query + 1));
+		}
+	}
+	return [...secrets].filter((secret) => secret.length >= MIN_SECRET_LENGTH && secret !== REDACTED);
 };

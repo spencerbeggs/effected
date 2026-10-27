@@ -1,7 +1,7 @@
 import { Stream } from "effect";
 import { ChildProcess } from "effect/process";
-import { REDACTED, credentialSegments, maskSecrets } from "./internal/redact.js";
-import { redactRemoteText } from "./internal/redactRemote.js";
+import { REDACTED, maskSecrets } from "./internal/redact.js";
+import { redactRemoteText, remoteSecrets } from "./internal/redactRemote.js";
 
 /**
  * A pure `git` invocation: the spawnable command plus the diagnostic argv the
@@ -28,7 +28,8 @@ export interface GitInvocation {
 	readonly redactedArgs: ReadonlyArray<string>;
 	/**
 	 * Masks, in any text, the exact secret strings the argv carries: each
-	 * whole-value secret and each secret URL's credential segments. The `Git`
+	 * whole-value secret, and every part of a secret URL that `redactedArgs`
+	 * masks — its credential segments, user, query and a masked scheme. The `Git`
 	 * service applies it to git's stderr. A closure, so the raw secrets are not
 	 * an enumerable field a log line or serializer could surface.
 	 */
@@ -84,7 +85,7 @@ const git = (args: ReadonlyArray<GitArg>, stdin?: string): GitInvocation => {
 		typeof arg === "string" ? arg : arg.redact === "value" ? REDACTED : redactRemoteText(arg.value),
 	);
 	const secrets = args.flatMap((arg) =>
-		typeof arg === "string" ? [] : arg.redact === "value" ? [arg.value] : credentialSegments(arg.value),
+		typeof arg === "string" ? [] : arg.redact === "value" ? [arg.value] : remoteSecrets(arg.value),
 	);
 	return {
 		command: ChildProcess.make("git", raw, {

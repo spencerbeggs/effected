@@ -1063,4 +1063,35 @@ describe("GitInvocation serialization", () => {
 		assert.isFalse(fetch?.scrub(`fatal: ${urlSecret}`).includes(urlSecret));
 		assert.strictEqual(fetch?.scrub("fatal: nothing to hide"), "fatal: nothing to hide");
 	});
+
+	// Every credential position `redactedArgs` masks must be masked in git's
+	// echo of the same text too: a query token carries no `@`, a user beside a
+	// password is no userinfo segment, and an invalid or unknown scheme is
+	// neither, so none of the shape maskers downstream would reach them.
+	const COVERED = [
+		{ value: "https://h/r.git?token=abcS3CRET", secret: "token=abcS3CRET" },
+		{ value: "https://h/r.git?t=S3CRET#frag", secret: "t=S3CRET#frag" },
+		{ value: "https://userS3CRET:x-oauth-basic@h/o/r", secret: "userS3CRET" },
+		{ value: "persistent::https://h/r?k=S3CRETq", secret: "k=S3CRETq" },
+		{ value: "https::S3CRETscheme://@h/r", secret: "S3CRETscheme" },
+		// The invalid scheme is masked whole, as argv masks it: echoed within
+		// the URL, not as a bare word.
+		{ value: "uS3CRET:pw@h://x", secret: "uS3CRET", bare: false },
+	];
+
+	it("scrub masks every credential position redactedArgs masks", () => {
+		for (const { value, secret, bare = true } of COVERED) {
+			const invocation = GitCommand.fetch(value, "main");
+			// Control: the argv mask hides the secret, so the scrub must too.
+			assert.notInclude(invocation.redactedArgs.join(" "), secret, value);
+			const echoed = invocation.scrub(`fatal: unable to access '${value}'${bare ? `: ${secret}` : ""}\n`);
+			assert.notInclude(echoed, secret, value);
+			assert.include(echoed, "<redacted>", value);
+		}
+	});
+
+	it("scrub leaves a query of under three characters alone", () => {
+		const invocation = GitCommand.fetch("https://h/r.git?ab", "main");
+		assert.strictEqual(invocation.scrub("fatal: ab cd"), "fatal: ab cd");
+	});
 });

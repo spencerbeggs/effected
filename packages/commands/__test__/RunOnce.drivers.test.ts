@@ -14,6 +14,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, FileSystem, Layer, PlatformError, Result } from "effect";
+import { TestClock } from "effect/testing";
 import type { RunOnceFileSystem, RunOnceSyncHost } from "../src/RunOnce.js";
 import { ProcessLiveness, RunOnce } from "../src/RunOnce.js";
 
@@ -241,5 +242,101 @@ describe("RunOnce drivers: a failing exclusive create of the lock", () => {
 		}).pipe(
 			Effect.provide(Layer.mergeAll(Faulty, ProcessLiveness.layerFrom({ pid: 7, host: "here", isAlive: () => true }))),
 		);
+	});
+});
+
+// A key may hold `.`, so another key's files can share a prefix with this
+// key's tickets and tombs: key `k.lock.breaker`'s lock is `k.lock.breaker.lock`,
+// which starts with `k.lock.break`. A takeover on `k` lists the directory and
+// must touch only names its own grammar produces — another key's stale-looking
+// lock or done marker removed here lets two holders run, or re-runs done work.
+describe("RunOnce drivers: keys that share a prefix with this key's file names", () => {
+	const DEAD = JSON.stringify({ pid: 99, host: "here", nonce: "dead", startedAt: 0 });
+	const OTHER_OWNER = JSON.stringify({ pid: 8, host: "here", nonce: "other", startedAt: 0 });
+	const OTHER_DONE = JSON.stringify({ nonce: "other", at: 0 });
+	/** Other keys' files, every one old enough to look abandoned: none may be touched. */
+	const FOREIGN: ReadonlyArray<readonly [string, string]> = [
+		["k.lock.breaker.lock", OTHER_OWNER], // key `k.lock.breaker`
+		["k.lock.breaker.done", OTHER_DONE],
+		["k.lock.break.lock", OTHER_OWNER], // key `k.lock.break`: a one-segment suffix after the ticket prefix
+		["k.lock.break.done", OTHER_DONE],
+		["k.lock.break.x.lock", OTHER_OWNER], // key `k.lock.break.x`
+		["k.lock.x.lock.tomb.n5.0", OTHER_OWNER], // key `k.lock.x`'s stale tomb
+		["k.lock.tomb.x.lock", OTHER_OWNER], // key `k.lock.tomb.x`
+		["k.lock.break.tomb.lock", OTHER_OWNER], // key `k.lock.break.tomb`
+		["k.lock.break.tomb.x.lock.tomb.n7.0", OTHER_OWNER], // key `k.lock.break.tomb.x`'s stale tomb
+	];
+	/** This key's own abandoned leftovers: a stale ticket, the older single breaker, a stale tomb. Each is collected. */
+	const OWN: ReadonlyArray<readonly [string, string]> = [
+		["k.lock.break.old", JSON.stringify({ pid: 98, host: "here", nonce: "old", startedAt: 0 })],
+		["k.lock.break", JSON.stringify({ pid: 98, host: "here", nonce: "older", startedAt: 0 })],
+		["k.lock.tomb.n5.0", DEAD],
+		["k.lock.break.tomb.n6.0", DEAD],
+	];
+	const isAlive = (pid: number) => pid !== 99 && pid !== 98;
+	const LATER = 10 * 60_000;
+
+	it("the sync driver takes over its own key and leaves every other key's files alone", () => {
+		const files = new Map<string, string>();
+		let clock = 0;
+		const now = () => clock;
+		const fs = memorySync(files, now, (text, put) => {
+			put(LOCK, text);
+			return true;
+		});
+		fs.writeText(LOCK, DEAD);
+		for (const [name, text] of [...FOREIGN, ...OWN]) fs.writeText(`${DIR}/${name}`, text);
+		clock = LATER;
+		let runs = 0;
+		const outcome = Result.getOrThrow(
+			RunOnce.runSync(OPTIONS, { ...host(fs, now), liveness: { pid: 7, host: "here", isAlive } }, () => {
+				runs++;
+				return Result.succeed("x");
+			}),
+		);
+		assert.strictEqual(outcome._tag, "Ran");
+		assert.strictEqual(runs, 1);
+		for (const [name, text] of FOREIGN) assert.strictEqual(files.get(`${DIR}/${name}`), text, name);
+		for (const [name] of OWN) assert.isFalse(files.has(`${DIR}/${name}`), name);
+	});
+
+	it.effect("the Effect driver takes over its own key and leaves every other key's files alone", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			yield* fs.makeDirectory(DIR, { recursive: true });
+			yield* fs.writeFileString(LOCK, DEAD);
+			for (const [name, text] of [...FOREIGN, ...OWN]) yield* fs.writeFileString(`${DIR}/${name}`, text);
+			yield* TestClock.setTime(LATER);
+			const outcome = yield* RunOnce.run(OPTIONS, Effect.succeed("x"));
+			assert.deepStrictEqual(outcome, { _tag: "Ran", value: "x" });
+			for (const [name, text] of FOREIGN) {
+				assert.strictEqual(yield* fs.readFileString(`${DIR}/${name}`), text, name);
+			}
+			for (const [name] of OWN) assert.isFalse(yield* fs.exists(`${DIR}/${name}`), name);
+		}).pipe(
+			Effect.provide(
+				Layer.mergeAll(MemoryFileSystem.layer, ProcessLiveness.layerFrom({ pid: 7, host: "here", isAlive })),
+			),
+		),
+	);
+
+	it("a host nonce outside the grammar is a wiring defect, thrown before any ticket or lock is created", () => {
+		for (const bad of ["a.b", "lock", "done", "", "a/b"]) {
+			const files = new Map<string, string>();
+			const fs = memorySync(
+				files,
+				() => 0,
+				(text, put) => {
+					put(LOCK, text);
+					return true;
+				},
+			);
+			assert.throws(
+				() => RunOnce.runSync(OPTIONS, { ...host(fs, () => 0), nonce: () => bad }, () => Result.succeed("x")),
+				/nonce names files/,
+				JSON.stringify(bad),
+			);
+			assert.isFalse(files.has(LOCK), JSON.stringify(bad));
+		}
 	});
 });

@@ -45,7 +45,7 @@ const userinfoSpan = (value: string): { readonly start: number; readonly end: nu
  * one- or two-character mask would garble every occurrence in git's stderr
  * while protecting nothing. The shape-based masker still applies to them.
  */
-const MIN_SECRET_LENGTH = 3;
+export const MIN_SECRET_LENGTH = 3;
 
 /**
  * The credential text a sensitive URL positional carries, for exact-string

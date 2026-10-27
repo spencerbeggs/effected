@@ -1512,6 +1512,29 @@ describe("Git", () => {
 			}),
 		);
 
+		it.effect("a failing fetch masks a query-string token in stderr and message, not only in args", () =>
+			Effect.gen(function* () {
+				const remote = "https://h/r.git?token=abcS3CRET";
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchUnshallow(cwd, { remote });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stderr: `fatal: repository '${remote}/' not found\n`,
+						exit: 128,
+					})),
+				);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.notInclude(failure.args.join(" "), "abcS3CRET");
+					assert.notInclude(failure.stderr, "abcS3CRET");
+					assert.notInclude(failure.message, "abcS3CRET");
+					assert.include(failure.stderr, "https://h/r.git?<redacted>");
+				}
+			}),
+		);
+
 		it.effect("fetchUnshallow refuses an option-like remote before spawning", () =>
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {

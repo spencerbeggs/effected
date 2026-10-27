@@ -43,7 +43,10 @@ export const relativeTo = (root: string, path: Option.Option<Path.Path>): Displa
 					: rel;
 			},
 		onNone: (): DisplayPath => {
-			const base = root.replace(/[\\/]+$/, "");
+			// A loop, not `/[\\/]+$/`: unanchored, that retries from every separator of a run inside `root`, quadratically.
+			let end = root.length;
+			while (end > 0 && (root[end - 1] === "/" || root[end - 1] === "\\")) end -= 1;
+			const base = root.slice(0, end);
 			return (absolute) => {
 				const next = absolute.charAt(base.length);
 				return absolute.startsWith(base) && (next === "/" || next === "\\") && absolute.length > base.length + 1

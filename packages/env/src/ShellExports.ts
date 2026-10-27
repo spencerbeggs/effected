@@ -111,8 +111,9 @@ const isNameChar = (code: number): boolean =>
 
 const hexValue = (code: number): number => (code <= 0x39 ? code - 0x30 : (code | 0x20) - 0x57);
 
-const decoder = new TextDecoder("utf-8", { fatal: true });
-const lenient = new TextDecoder("utf-8");
+// ignoreBOM keeps a leading U+FEFF: each word is decoded on its own, and bash exports the BOM as part of the value.
+const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+const lenient = new TextDecoder("utf-8", { ignoreBOM: true });
 const encoder = new TextEncoder();
 
 // The ASCII bytes the tokenizer branches on.
