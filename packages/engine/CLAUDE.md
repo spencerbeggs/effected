@@ -43,12 +43,15 @@ One module per concept. `src/index.ts` is the only re-exporting module.
   `resolve` with the `cwd` fallback. No host constant (`CLAUDE_PLUGIN_DATA`)
   is baked in: callers pass `keys`.
 - `src/Exclusive.ts` — `Exclusive` (`make`, `promise`, instance `run`),
-  `ExclusiveRunOptions`, `ExclusiveTimeout`: a one-permit lane. Queue wait
+  `ExclusivePromiseOptions`, `ExclusiveRunOptions`, `ExclusiveTimeout`: a one-permit lane. Queue wait
   is interruptible; once the permit is held the caller's interrupt is
   masked; the REQUIRED timeout interrupts only the body; the body's scope
   closes, then the permit is released, then the caller sees the outcome.
   `Exclusive.promise` aborts its signal on interrupt and then WAITS for the
-  promise to settle (core's `Effect.promise` abandons it).
+  promise to settle (core's `Effect.promise` abandons it). That wait hangs
+  forever on a promise that ignores its signal; `abandon: true` aborts and
+  resumes at once instead. The body's scope still closes before the permit
+  is released either way.
 - `src/ProcessScope.ts` — `ProcessScope` (`chdir`, `env`), `ProcessCwdHost`,
   `ProcessScopeError`: scoped restores of the working directory and an env
   record. The state is passed in (structural host, plain record), so the

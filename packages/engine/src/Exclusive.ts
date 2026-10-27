@@ -17,6 +17,25 @@ export interface ExclusiveRunOptions {
 }
 
 /**
+ * {@link Exclusive.promise}'s options.
+ *
+ * @public
+ */
+export interface ExclusivePromiseOptions<A, E> {
+	/** Starts the promise. `signal` aborts when the effect is interrupted. */
+	readonly try: (signal: AbortSignal) => PromiseLike<A>;
+	/** Maps a rejection, or a synchronous throw from `try`, to the typed failure. */
+	readonly catch: (cause: unknown) => E;
+	/**
+	 * On interruption, abort `signal` and resume at once instead of waiting for
+	 * the promise to settle. Default `false` (abort, then wait). Set it for a
+	 * promise that ignores its signal, which would otherwise hold the interrupt
+	 * forever; see {@link Exclusive.promise}.
+	 */
+	readonly abandon?: boolean;
+}
+
+/**
  * The body of an {@link Exclusive.run} call ran past its timeout and was
  * interrupted. Its finalizers had run, and the permit was released, by the
  * time the caller sees this.
@@ -57,7 +76,9 @@ export class ExclusiveTimeout extends Schema.TaggedError<ExclusiveTimeout>()("Ex
  * deliberate, because releasing the permit while process state is still being
  * changed is the bug this lane exists to prevent. Run promise work through
  * {@link Exclusive.promise}, whose interruption aborts the signal and then
- * waits for the promise to settle; `Effect.promise` would abandon it.
+ * waits for the promise to settle; `Effect.promise` would abandon it. A
+ * promise that ignores its signal and never settles therefore hangs the
+ * timeout and the permit forever: give it `abandon: true`.
  *
  * **Not reentrant.** A `run` on the same lane from inside a body waits for the
  * permit its own caller holds. It never gets it: the nested call waits until
@@ -96,11 +117,25 @@ export class Exclusive {
 	 * promise to settle, rather than abandoning it as `Effect.promise` and
 	 * `Effect.tryPromise` do. A rejection, or a synchronous throw from `try`,
 	 * fails through `catch`.
+	 *
+	 * @remarks
+	 * **The default hangs on a promise that ignores its signal.** Waiting is
+	 * the point: the interrupt (a lane timeout, a cancel) returns only once the
+	 * promise has settled, so no work is still changing process state when the
+	 * permit is released. But a promise that never observes `signal` and never
+	 * settles (a test runner's `start`, a third-party call with no
+	 * cancellation) holds the interrupt, the lane's timeout and the permit
+	 * forever.
+	 *
+	 * Pass `abandon: true` for such a promise. Interruption still aborts
+	 * `signal`, then resumes at once without waiting; the promise keeps running
+	 * unobserved and its eventual result is dropped. Inside {@link Exclusive.run}
+	 * the body's scope still closes, and its finalizers still run, before the
+	 * permit is released. What abandoning gives up is the guarantee that the
+	 * promise itself has stopped: choose it only when the promise cannot be
+	 * stopped, and restore any state it touches in a finalizer.
 	 */
-	static readonly promise = <A, E>(options: {
-		readonly try: (signal: AbortSignal) => PromiseLike<A>;
-		readonly catch: (cause: unknown) => E;
-	}): Effect.Effect<A, E> =>
+	static readonly promise = <A, E>(options: ExclusivePromiseOptions<A, E>): Effect.Effect<A, E> =>
 		Effect.callback<A, E>((resume, signal) => {
 			let settled: Promise<A>;
 			try {
@@ -113,6 +148,8 @@ export class Exclusive {
 				(value) => resume(Effect.succeed(value)),
 				(cause: unknown) => resume(Effect.fail(options.catch(cause))),
 			);
+			// No cancel effect: core aborts the signal and resumes the interrupt immediately.
+			if (options.abandon === true) return;
 			return Effect.promise(() =>
 				settled.then(
 					() => undefined,

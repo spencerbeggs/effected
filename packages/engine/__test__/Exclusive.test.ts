@@ -315,4 +315,74 @@ describe("Exclusive.promise", () => {
 			assert.deepStrictEqual(events, ["settled", "second"]);
 		}),
 	);
+
+	/** Resolves after `ms`, ignoring its signal: the shape of a runner's `start` that never observes cancellation. */
+	const ignoresSignal = (events: Array<string>, ms: number) => (signal: AbortSignal) =>
+		new Promise<string>((resolve) => {
+			signal.addEventListener("abort", () => events.push("abort"));
+			setTimeout(() => {
+				events.push("settled");
+				resolve("late");
+			}, ms);
+		});
+
+	it.live("abandon: an interrupt aborts the signal and returns without waiting for the promise", () =>
+		Effect.gen(function* () {
+			const events: Array<string> = [];
+			const fiber = yield* Effect.forkChild(
+				Exclusive.promise({ try: ignoresSignal(events, 40), catch: (cause) => cause, abandon: true }),
+			);
+			yield* Effect.sleep("5 millis");
+			const exit = yield* Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber)));
+			events.push("interrupt-returned");
+			assert.isTrue(Exit.hasInterrupts(exit));
+			yield* Effect.sleep("60 millis");
+			assert.deepStrictEqual(events, ["abort", "interrupt-returned", "settled"]);
+		}),
+	);
+
+	it.effect("abandon: an uninterrupted promise still resolves and rejects as usual", () =>
+		Effect.gen(function* () {
+			const value = yield* Exclusive.promise({ try: () => Promise.resolve(3), catch: (cause) => cause, abandon: true });
+			assert.strictEqual(value, 3);
+			const failed = yield* Effect.flip(
+				Exclusive.promise({
+					try: () => Promise.reject("no"),
+					catch: (cause) => `caught:${String(cause)}`,
+					abandon: true,
+				}),
+			);
+			assert.strictEqual(failed, "caught:no");
+		}),
+	);
+
+	it.live("abandon as a lane body: the timeout returns early, but the scope closes before the permit is released", () =>
+		Effect.gen(function* () {
+			const lane = yield* Exclusive.make;
+			const events: Array<string> = [];
+			const body = Effect.gen(function* () {
+				yield* Effect.addFinalizer(() =>
+					Effect.sleep("10 millis").pipe(Effect.andThen(Effect.sync(() => events.push("finalizer")))),
+				);
+				return yield* Exclusive.promise({ try: ignoresSignal(events, 80), catch: (cause) => cause, abandon: true });
+			});
+			const first = yield* Effect.forkChild(lane.run(body, { timeout: "5 millis" }));
+			yield* Effect.sleep("1 millis");
+			const second = yield* Effect.forkChild(
+				lane.run(
+					Effect.sync(() => events.push("second")),
+					timeout,
+				),
+			);
+			const error = yield* Effect.flip(Fiber.join(first));
+			events.push("timeout-seen");
+			yield* Fiber.join(second);
+			assert.instanceOf(error, ExclusiveTimeout);
+			assert.deepStrictEqual(events.slice(0, 2), ["abort", "finalizer"], "the finalizer runs before release");
+			assert.notInclude(events, "settled", "the abandoned promise has not settled yet");
+			assert.sameMembers(events.slice(2), ["timeout-seen", "second"]);
+			yield* Effect.sleep("100 millis");
+			assert.strictEqual(events.at(-1), "settled");
+		}),
+	);
 });
