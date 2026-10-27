@@ -266,22 +266,49 @@ const isValidScheme = (scheme: string): boolean => {
 const redactAsString = (text: string, separated: boolean): GitRemoteUrl | GitRemoteScp | GitRemotePath => {
 	const masked = separated ? maskUserinfoAnywhere(`:${text}`).slice(1) : maskUserinfoAnywhere(text);
 	const form = parseAddress(masked);
-	if (form._tag === "GitRemoteUrl") return redactAddress(form);
+	if (form._tag === "GitRemoteUrl") return redactAddress(form, separated);
 	if (form._tag === "GitRemoteScp" && form.user !== undefined) {
 		return GitRemoteScp.make({ user: REDACTED, host: form.host, path: form.path });
 	}
 	return form;
 };
 
+/**
+ * The URL schemes a transport's address keeps when redacted. After `<transport>::`
+ * the scheme is free text git hands to a helper, so `https::S3CRET://@` reads as
+ * a token between two colons; only a scheme from this list is known not to be one.
+ */
+const KNOWN_URL_SCHEMES: ReadonlySet<string> = new Set([
+	"http",
+	"https",
+	"ssh",
+	"git",
+	"file",
+	"ftp",
+	"ftps",
+	"rsync",
+	"svn",
+	"git+ssh",
+	"ssh+git",
+	"git+https",
+	"git+http",
+	"git+file",
+	"svn+ssh",
+]);
+
 const redactAddress = (
 	remote: GitRemoteUrl | GitRemoteScp | GitRemotePath,
+	inTransport = false,
 ): GitRemoteUrl | GitRemoteScp | GitRemotePath => {
 	switch (remote._tag) {
 		case "GitRemoteUrl": {
 			const query = remote.path.indexOf("?");
 			const path = query === -1 ? remote.path : `${remote.path.slice(0, query + 1)}${REDACTED}`;
 			return GitRemoteUrl.make({
-				scheme: isValidScheme(remote.scheme) ? remote.scheme : REDACTED,
+				scheme:
+					isValidScheme(remote.scheme) && (!inTransport || KNOWN_URL_SCHEMES.has(remote.scheme.toLowerCase()))
+						? remote.scheme
+						: REDACTED,
 				host: remote.host,
 				path,
 				...(remote.user !== undefined && { user: REDACTED }),
@@ -373,6 +400,8 @@ export class GitRemote {
 	 *   result's form can differ from the input's. This also masks a mistyped
 	 *   credential URL that does not parse as a URL: `https:://u:tok@h/r`,
 	 *   `https:/u:tok@h/r`, `//u:tok@h/r`;
+	 * - a transport's URL scheme unless it is a well-known one (`https`, `ssh`,
+	 *   `git+ssh`, ...), since after `::` it is free text (`https::S3CRET://@`);
 	 * - a transport's non-URL address the same way, its `::` standing in for
 	 *   the `:` (`https::tok@h` becomes `https::<redacted>@h`).
 	 *
@@ -387,7 +416,7 @@ export class GitRemote {
 		if (remote._tag !== "GitRemoteTransport") return redactAddress(remote);
 		const address =
 			remote.address._tag === "GitRemoteUrl"
-				? redactAddress(remote.address)
+				? redactAddress(remote.address, true)
 				: redactAsString(formatAddress(remote.address), true);
 		return GitRemoteTransport.make({ transport: remote.transport, address });
 	}

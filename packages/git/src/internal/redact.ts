@@ -1,7 +1,11 @@
 // The form-independent credential mask shared by `GitRemote.redact` and
 // `GitCommand`'s argv redaction. Internal: not part of the package surface.
 
-/** The mask every redacted credential position is replaced with. */
+/**
+ * The mask every redacted credential position is replaced with. It is
+ * `<redacted>`, git's own placeholder style in its messages, and deliberately
+ * not the `***` of `@effected/commands`' Redaction: git takes no dependency on it.
+ */
 export const REDACTED = "<redacted>";
 
 /**

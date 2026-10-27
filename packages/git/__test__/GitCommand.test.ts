@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { assert, describe, it } from "@effect/vitest";
 import { Arbitrary, Effect, Schema, Stream } from "effect";
 import { ChildProcess } from "effect/process";
@@ -1015,13 +1016,21 @@ describe("GitCommand redaction — the form-independent credential backstop", ()
 	const text = Arbitrary.array(Arbitrary.schema(Schema.Literals(ALPHABET)), { maxLength: 24 }).pipe(
 		Arbitrary.map((chars) => chars.join("")),
 	);
-	const prefix = Arbitrary.all([Arbitrary.schema(Schema.Literals(PREFIXES)), text]).pipe(
-		Arbitrary.map(([known, random]) => `${random.length % 2 === 0 ? known : random}`),
-	);
+	const prefix = Arbitrary.all([
+		Arbitrary.schema(
+			Schema.Literals([...PREFIXES, "https::", "ext::", "git+ssh::", "a::https://", "zz::", "persistent::https:/"]),
+		),
+		text,
+	]).pipe(Arbitrary.map(([known, random]) => `${random.length % 2 === 0 ? known : random}`)); // A tail that often holds `://`, `//` or `/`: the shape that puts a free-text
+	// scheme or a URL after a transport's `::`. Pure random text almost never does.
+	const tailText = Arbitrary.all([
+		Arbitrary.schema(Schema.Literals(["://", "//", "/", ":", "://x", "", "://u", "/x"])),
+		text,
+	]).pipe(Arbitrary.map(([known, random]) => (random.length % 2 === 0 ? known : random)));
 
 	it.prop(
 		"no user:secret@ survives in redactedArgs, whatever surrounds it",
-		[prefix, text, text, text],
+		[prefix, text, tailText, text],
 		([head, user, tail, rest]) => {
 			if (user.includes("@") || rest.includes("@")) return true;
 			const value = `${head}${user}:S3CRET${tail}@${rest}`;
@@ -1029,4 +1038,29 @@ describe("GitCommand redaction — the form-independent credential backstop", ()
 		},
 		{ arbitrary: { runs: 5000 } },
 	);
+});
+
+describe("GitInvocation serialization", () => {
+	const urlSecret = "s3cretTokenValue";
+	const valueSecret = "cfgSecretValue42";
+	const invocations = [
+		GitCommand.configSet("remote.o.pushurl", valueSecret),
+		GitCommand.fetch(`https://user:${urlSecret}@host/o/r.git`, "main"),
+	];
+
+	it("JSON.stringify and util.inspect of an invocation show no raw secret", () => {
+		for (const invocation of invocations) {
+			for (const text of [JSON.stringify(invocation), inspect(invocation, { depth: 8 })]) {
+				assert.isFalse(text.includes(urlSecret));
+				assert.isFalse(text.includes(valueSecret));
+			}
+		}
+	});
+
+	it("scrub masks each exact secret and leaves other text alone", () => {
+		const [config, fetch] = invocations;
+		assert.strictEqual(config?.scrub(`bad ${valueSecret} here`), "bad <redacted> here");
+		assert.isFalse(fetch?.scrub(`fatal: ${urlSecret}`).includes(urlSecret));
+		assert.strictEqual(fetch?.scrub("fatal: nothing to hide"), "fatal: nothing to hide");
+	});
 });

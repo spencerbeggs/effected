@@ -132,10 +132,8 @@ describe("TreeIdentity", () => {
 		assert.strictEqual(TreeIdentity.relation(other, main), "different-repo");
 	});
 
-	it("relation and sameRepository are dual (data-last)", () => {
+	it("relation is dual (data-last)", () => {
 		assert.strictEqual(TreeIdentity.relation(sibling)(main), "sibling-worktree");
-		assert.isTrue(TreeIdentity.sameRepository(sibling)(main));
-		assert.isFalse(TreeIdentity.sameRepository(main, other));
 	});
 });
 

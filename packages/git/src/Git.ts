@@ -3,7 +3,7 @@ import { dual } from "effect/Function";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { GitConfigScope, GitInvocation, GitUntrackedFilesMode } from "./GitCommand.js";
 import { GitCommand } from "./GitCommand.js";
-import { REDACTED, credentialSegments, maskCredentialsInText, maskSecrets } from "./internal/redact.js";
+import { maskCredentialsInText } from "./internal/redact.js";
 import type { Collected } from "./internal/run.js";
 import { runCollected } from "./internal/run.js";
 
@@ -506,11 +506,11 @@ const classify = (
 	args: ReadonlyArray<string>,
 	outcome: Collected | PlatformError.PlatformError,
 	kind: ClassifyKind,
-	secrets: ReadonlyArray<string> = [],
+	maskExact: (text: string) => string = (text) => text,
 ): Classified => {
 	// Exact strings first (they match a secret holding a quote or a space,
 	// which the token-wise shape masker splits on), then the shape backstop.
-	const scrub = (text: string): string => maskCredentialsInText(maskSecrets(text, secrets));
+	const scrub = (text: string): string => maskCredentialsInText(maskExact(text));
 	if (outcome instanceof PlatformError.PlatformError) {
 		// The non-NotFound arms keep the underlying diagnostic: flattening the
 		// PlatformError to its reason tag alone drops module/method/cause detail
@@ -578,6 +578,14 @@ const classify = (
 };
 
 /**
+ * The typed failure for a successful git exit whose output this package could
+ * not parse (an older git, an unexpected locale): the redacted argv, no stderr,
+ * the `detail` saying what was unparseable.
+ */
+const unparseableOutput = (invocation: GitInvocation, cwd: string, detail: string): GitCommandError =>
+	new GitCommandError({ kind: "failed", args: invocation.redactedArgs, cwd, stderr: "", detail });
+
+/**
  * Runs an invocation's command in `cwd`, classifies the outcome, and never
  * fails: a spawn-level `PlatformError` and a per-run timeout are both
  * absorbed into the `"failure"` classification rather than escaping the
@@ -593,21 +601,6 @@ const classify = (
  * the service's members is spawned with the pins and nothing else in the
  * package needs to know they exist.
  */
-/**
- * The exact secret strings an invocation carries, read off the raw argv
- * against its redacted twin: a positional masked whole (a config value) is a
- * secret as it stands, and a URL positional contributes its credential
- * segments. git may echo either in its stderr; `classify` masks them there.
- */
-const secretsOf = (invocation: GitInvocation): ReadonlyArray<string> => {
-	const raw = invocation.command.args;
-	return raw.flatMap((arg, index) => {
-		const redacted = invocation.redactedArgs[index];
-		if (redacted === undefined || arg === redacted) return [];
-		return redacted === REDACTED ? [arg] : credentialSegments(arg);
-	});
-};
-
 const runClassified = (
 	invocation: GitInvocation,
 	cwd: string,
@@ -615,11 +608,11 @@ const runClassified = (
 	env: Record<string, string>,
 ): Effect.Effect<Classified, never, ChildProcessSpawner.ChildProcessSpawner> => {
 	const args = invocation.redactedArgs;
-	const secrets = secretsOf(invocation);
+	const maskExact = invocation.scrub;
 	const command = ChildProcess.setEnv(ChildProcess.setCwd(invocation.command, cwd), env);
 	return runCollected(command).pipe(
-		Effect.map((collected) => classify(cwd, args, collected, kind, secrets)),
-		Effect.catch((platformError) => Effect.succeed(classify(cwd, args, platformError, kind, secrets))),
+		Effect.map((collected) => classify(cwd, args, collected, kind, maskExact)),
+		Effect.catch((platformError) => Effect.succeed(classify(cwd, args, platformError, kind, maskExact))),
 		Effect.timeoutOrElse({
 			duration: GIT_TIMEOUT,
 			orElse: () =>
@@ -1321,12 +1314,6 @@ export class TreeIdentity extends Schema.Class<TreeIdentity>("TreeIdentity")({
 		if (self.commonDir !== that.commonDir) return "different-repo";
 		return self.toplevel === that.toplevel ? "same-tree" : "sibling-worktree";
 	});
-
-	/** Whether `self` and `that` belong to one repository, in any of its worktrees. */
-	static readonly sameRepository: {
-		(that: TreeIdentity): (self: TreeIdentity) => boolean;
-		(self: TreeIdentity, that: TreeIdentity): boolean;
-	} = dual(2, (self: TreeIdentity, that: TreeIdentity): boolean => self.commonDir === that.commonDir);
 }
 
 /**
@@ -1380,7 +1367,8 @@ const TRACK = /^(?:ahead (\d+)(?:, behind (\d+))?|behind (\d+))?$/;
  * `undefined` when the tracking field is not one git's C locale writes.
  */
 const parseUpstream = (output: string, branchRef: string): Option.Option<UpstreamBranch> | undefined => {
-	const line = output.split("\n").find((record) => record.split("\0")[0] === branchRef);
+	const prefix = `${branchRef}\0`;
+	const line = output.split("\n").find((record) => record.startsWith(prefix));
 	if (line === undefined) return Option.none();
 	const [, ref = "", name = "", track = ""] = line.split("\0");
 	if (ref === "") return Option.none();
@@ -2311,13 +2299,11 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 				// to stdout, answers the relative form on the next line, and exits 0.
 				if (answer.startsWith("-") || answer.includes("\n")) {
 					return yield* Effect.fail(
-						new GitCommandError({
-							kind: "failed",
-							args: invocation.redactedArgs,
+						unparseableOutput(
+							invocation,
 							cwd,
-							stderr: "",
-							detail: `unparseable common-dir output (--path-format needs git 2.31 or later): ${JSON.stringify(answer)}`,
-						}),
+							`unparseable common-dir output (--path-format needs git 2.31 or later): ${JSON.stringify(answer)}`,
+						),
 					);
 				}
 				return answer;
@@ -2342,13 +2328,11 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 				if (identity === undefined) {
 					// git before 2.31 echoes the unknown --path-format flag and exits 0.
 					return yield* Effect.fail(
-						new GitCommandError({
-							kind: "failed",
-							args: invocation.redactedArgs,
+						unparseableOutput(
+							invocation,
 							cwd,
-							stderr: "",
-							detail: `unparseable tree-identity output (--path-format needs git 2.31 or later): ${JSON.stringify(classified.output)}`,
-						}),
+							`unparseable tree-identity output (--path-format needs git 2.31 or later): ${JSON.stringify(classified.output)}`,
+						),
 					);
 				}
 				return Option.some(identity);
@@ -2391,13 +2375,11 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 				const parsed = parseUpstream(classified.output, branchRef);
 				if (parsed === undefined) {
 					return yield* Effect.fail(
-						new GitCommandError({
-							kind: "failed",
-							args: invocation.redactedArgs,
+						unparseableOutput(
+							invocation,
 							cwd,
-							stderr: "",
-							detail: `unparseable upstream tracking state: ${JSON.stringify(classified.output)}`,
-						}),
+							`unparseable upstream tracking state: ${JSON.stringify(classified.output)}`,
+						),
 					);
 				}
 				return parsed;
@@ -2510,15 +2492,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 			case "success": {
 				const parsed = parseLog(classified.output);
 				if (Result.isFailure(parsed)) {
-					return yield* Effect.fail(
-						new GitCommandError({
-							kind: "failed",
-							args: invocation.redactedArgs,
-							cwd,
-							stderr: "",
-							detail: `unparseable log output: ${parsed.failure}`,
-						}),
-					);
+					return yield* Effect.fail(unparseableOutput(invocation, cwd, `unparseable log output: ${parsed.failure}`));
 				}
 				return parsed.success;
 			}

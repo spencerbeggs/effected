@@ -436,18 +436,49 @@ describe("GitRemote.redact — conservative whatever the form", () => {
 		assert.strictEqual(redacted("host:o/n.git"), "host:o/n.git");
 	});
 
+	it("masks a free-text scheme after a transport's `::` (shrunk property counterexample)", () => {
+		assert.strictEqual(redacted("https::S3CRET://@"), "https::<redacted>://<redacted>@");
+		assert.isFalse(redacted("https::S3CRET://u@h").includes("S3CRET"));
+		// Control: a well-known scheme behind a transport stays readable.
+		assert.strictEqual(redacted("persistent::git+ssh://u@h/r"), "persistent::git+ssh://<redacted>@h/r");
+	});
+
 	const ALPHABET = ["a", "B", "1", ".", "-", "+", "_", "/", ":", "@", "[", "]", "?", "#", "\\", " ", "é"];
 	const text = Arbitrary.array(Arbitrary.schema(Schema.Literals(ALPHABET)), { maxLength: 24 }).pipe(
 		Arbitrary.map((chars) => chars.join("")),
 	);
-	const KNOWN = ["https://", "https:://", "https:/", "//", "https:", "persistent::https:/", "zz::", "ssh:/", ""];
+	const KNOWN = [
+		"https://",
+		"https:://",
+		"https:/",
+		"//",
+		"https:",
+		"persistent::https:/",
+		"zz::",
+		"ssh:/",
+		"",
+		"https::",
+		"ext::",
+		"git+ssh::",
+		"a::https://",
+		"https:///",
+		"http:\\\\",
+		":",
+	];
 	const head = Arbitrary.all([Arbitrary.schema(Schema.Literals(KNOWN)), text]).pipe(
 		Arbitrary.map(([known, random]) => (random.length % 2 === 0 ? known : random)),
 	);
 
+	// A tail that often holds `://`, `//` or `/`: the shape that puts a free-text
+	// scheme or a URL after a transport's `::`. Pure random text almost never does.
+	const tailText = Arbitrary.all([
+		Arbitrary.schema(Schema.Literals(["://", "//", "/", ":", "://x", "", "://u", "/x"])),
+		text,
+	]).pipe(Arbitrary.map(([known, random]) => (random.length % 2 === 0 ? known : random)));
+
 	it.prop(
 		"no user:secret@ survives redact, whatever form the value parses as",
-		[head, text, text, text],
+		[head, text, tailText, text],
 		([prefix, user, tail, rest]) => {
 			if (user.includes("@") || rest.includes("@")) return true;
 			return !redacted(`${prefix}${user}:S3CRET${tail}@${rest}`).includes("S3CRET");

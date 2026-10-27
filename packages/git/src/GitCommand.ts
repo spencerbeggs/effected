@@ -1,7 +1,7 @@
-import { Option, Stream } from "effect";
+import { Stream } from "effect";
 import { ChildProcess } from "effect/process";
-import { GitRemote } from "./GitRemote.js";
-import { REDACTED, maskUserinfoAnywhere } from "./internal/redact.js";
+import { REDACTED, credentialSegments, maskSecrets } from "./internal/redact.js";
+import { redactRemoteText } from "./internal/redactRemote.js";
 
 /**
  * A pure `git` invocation: the spawnable command plus the diagnostic argv the
@@ -26,6 +26,13 @@ export interface GitInvocation {
 	readonly command: ChildProcess.StandardCommand;
 	/** The argv with sensitive positionals masked — the only argv diagnostics may persist. */
 	readonly redactedArgs: ReadonlyArray<string>;
+	/**
+	 * Masks, in any text, the exact secret strings the argv carries: each
+	 * whole-value secret and each secret URL's credential segments. The `Git`
+	 * service applies it to git's stderr. A closure, so the raw secrets are not
+	 * an enumerable field a log line or serializer could surface.
+	 */
+	readonly scrub: (text: string) => string;
 }
 
 /**
@@ -40,32 +47,6 @@ const secretValue = (value: string): GitArg => ({ redact: "value", value });
 
 // Tags a URL positional whose embedded userinfo (if any) must be masked.
 const secretUrl = (value: string): GitArg => ({ redact: "url", value });
-
-/**
- * Masks the credential positions of a remote positional for `redactedArgs`.
- *
- * A URL remote (`scheme://user:token@host/...`, bare or behind
- * `<transport>::`) goes through {@link GitRemote.redact}: the password is
- * dropped, the user, query and any invalid scheme are masked, and the
- * userinfo is found at the LAST `@`, so a password holding `@`, `/`, `?` or
- * `#` is consumed whole. Anything else goes through the form-independent
- * {@link maskUserinfoAnywhere} backstop, so a typo'd or malformed credential
- * URL is masked whatever form it parses as.
- *
- * A remote name, a credential-free URL and a plain scp `git@host:path` pass
- * through untouched, so the common case stays fully debuggable. An `@` in a URL
- * path is read as userinfo and over-masks by design: `https://h/pkg@1.0/r.git`
- * becomes `https://<redacted>@1.0/r.git`, and the scp `git@host:o/n@v1` becomes
- * `git@host:<redacted>@v1`.
- */
-const redactUrlUserinfo = (value: string): string =>
-	Option.match(GitRemote.parse(value), {
-		onNone: () => value,
-		onSome: (remote) => {
-			const address = remote._tag === "GitRemoteTransport" ? remote.address : remote;
-			return address._tag === "GitRemoteUrl" ? GitRemote.format(GitRemote.redact(remote)) : maskUserinfoAnywhere(value);
-		},
-	});
 
 /**
  * Builds a `git` {@link GitInvocation} with the argv this package classifies
@@ -100,7 +81,10 @@ const redactUrlUserinfo = (value: string): string =>
 const git = (args: ReadonlyArray<GitArg>, stdin?: string): GitInvocation => {
 	const raw = args.map((arg) => (typeof arg === "string" ? arg : arg.value));
 	const redactedArgs = args.map((arg) =>
-		typeof arg === "string" ? arg : arg.redact === "value" ? REDACTED : redactUrlUserinfo(arg.value),
+		typeof arg === "string" ? arg : arg.redact === "value" ? REDACTED : redactRemoteText(arg.value),
+	);
+	const secrets = args.flatMap((arg) =>
+		typeof arg === "string" ? [] : arg.redact === "value" ? [arg.value] : credentialSegments(arg.value),
 	);
 	return {
 		command: ChildProcess.make("git", raw, {
@@ -111,6 +95,7 @@ const git = (args: ReadonlyArray<GitArg>, stdin?: string): GitInvocation => {
 			...(stdin !== undefined ? { stdin: Stream.make(new TextEncoder().encode(stdin)) } : {}),
 		}),
 		redactedArgs,
+		scrub: (text) => maskSecrets(text, secrets),
 	};
 };
 

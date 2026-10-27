@@ -838,7 +838,6 @@ describe("Git surface — repository identity across worktrees (commonDir)", () 
 				assert.strictEqual(fromWorktree.toplevel, yield* Effect.promise(() => realpath(worktree)));
 				assert.strictEqual(TreeIdentity.relation(fromMain, fromLinked), "same-tree");
 				assert.strictEqual(TreeIdentity.relation(fromMain, fromWorktree), "sibling-worktree");
-				assert.isTrue(TreeIdentity.sameRepository(fromMain, fromWorktree));
 				const other = TreeIdentity.make({ toplevel: fromMain.toplevel, commonDir: `${fromMain.commonDir}-other` });
 				assert.strictEqual(TreeIdentity.relation(fromMain, other), "different-repo");
 			}),
