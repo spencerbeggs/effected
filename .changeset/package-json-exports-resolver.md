@@ -14,6 +14,9 @@
 
 ## Bug Fixes
 
+* A `*` match is substituted literally, as Node does: a `$&`, `$$`, `` $` `` or `$'` in a request or file name no longer reads as a replacement pattern, and `exportedFiles` no longer drops such files.
+* A `main`, `types` or `typesVersions` target with a `..` that stays inside the package (`./lib/../index.js`) resolves to the normalized path, as Node loads it, instead of failing `invalidPackageTarget`. A `..` that climbs out, or any encoded or control-character dot segment, is still refused.
+
 ### Security
 
 * Every `exports` and `imports` target is confined to the package, and substituted targets and bare imports are re-checked, so a pattern match cannot inject a forbidden segment or escape through substitution.

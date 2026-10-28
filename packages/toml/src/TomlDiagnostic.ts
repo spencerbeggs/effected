@@ -107,9 +107,10 @@ export type TomlErrorCode = typeof TomlErrorCode.Type;
  * structurally, so a consumer written over that interface (an LSP server, a
  * CLI printing annotations) reads it directly. `line` and `character` come
  * from `@effected/source`'s `LineIndex` under its default `"lsp"` rule: a line
- * ends at `\n`, `\r\n` or a bare `\r`, which is both TOML's newline grammar
- * and an LSP client's. An offset at the `\n` of a `\r\n` reads as the end of
- * its line.
+ * ends at `\n`, `\r\n` or a bare `\r`, as an LSP client counts. TOML's own
+ * newline is `\n` or `\r\n` only, so a bare `\r` is invalid TOML; it is
+ * counted as a line break only so a diagnostic about it positions LSP-style.
+ * An offset at the `\n` of a `\r\n` reads as the end of its line.
  *
  * @public
  */

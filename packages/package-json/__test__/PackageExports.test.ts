@@ -280,8 +280,9 @@ describe("a resolved target stays inside the package", () => {
 		assert.strictEqual(path({ exports: { "./*": "./dist/*.js" } }, "./a%20b"), "./dist/a b.js");
 		assert.strictEqual(path({ exports: { "./*": "./dist/*.js" } }, "./a%2520b"), "./dist/a%20b.js");
 		// A spelling that never settles is refused rather than decoded forever.
-		let layered = ".";
-		for (let index = 0; index < 6; index++) layered = layered.replaceAll("%", "%25").replace(".", "%2e");
+		// `.` encoded once (`%2e`), then its `%` re-encoded five more times.
+		let layered = "%2e";
+		for (let index = 0; index < 5; index++) layered = layered.replaceAll("%", "%25");
 		assert.strictEqual(path({ exports: { "./*": "./dist/*.js" } }, `./${layered}x`), "!invalidModuleSpecifier");
 	});
 
@@ -294,6 +295,58 @@ describe("a resolved target stays inside the package", () => {
 		assert.strictEqual(path({ main: "../outside.js" }, "."), "!invalidPackageTarget");
 		assert.strictEqual(path({ main: "/abs.js" }, "."), "!invalidPackageTarget");
 		assert.strictEqual(path({ main: "lib/%2e%2e/%2e%2e/x.js" }, "."), "!invalidPackageTarget");
+	});
+
+	it("a '..' in main that stays inside the package resolves, as Node loads it", () => {
+		assert.strictEqual(path({ main: "./lib/../index.js" }, "."), "./index.js");
+		assert.strictEqual(path({ main: "lib/a/../../index.js" }, "."), "./index.js");
+		assert.strictEqual(path({ main: "lib//../x.js" }, "."), "./lib/x.js");
+		assert.strictEqual(path({ main: "node_modules/../x.js" }, "."), "./x.js");
+		assert.strictEqual(declaration({ types: "./lib/../index.d.ts" }, "."), "./index.d.ts");
+		assert.strictEqual(declaration({ typesVersions: { "*": { "*": ["lib/../ts/*"] } } }, "./x.d.ts"), "./ts/x.d.ts");
+	});
+
+	it("a '..' in main that climbs out, or that rides an encoded or backslash spelling, is refused", () => {
+		for (const main of [
+			"./lib/../../x.js",
+			"lib/..",
+			"lib/../..",
+			"..",
+			"lib/%2e%2e/../x.js",
+			"lib/%2E/../x.js",
+			"lib/%252e%252e/../x.js",
+			"lib/.%2e/../x.js",
+			"lib/../%2e%2e/x.js",
+			"lib/a%2fb/../x.js",
+			"lib/../node_modules/x.js",
+			"lib\\x/../y.js",
+			"lib\\..\\x.js",
+			// URL parsing strips a tab or newline, so this segment is a `..`.
+			`lib/.${String.fromCodePoint(9)}./../x.js`,
+			"lib/.%09./../x.js",
+		]) {
+			assert.strictEqual(path({ main }, "."), "!invalidPackageTarget", main);
+		}
+		assert.strictEqual(declaration({ types: "lib/../../x.d.ts" }, "."), "!invalidPackageTarget");
+		assert.strictEqual(
+			declaration({ typesVersions: { "*": { "*": ["lib/../../ts/*"] } } }, "./x.d.ts"),
+			"!invalidPackageTarget",
+		);
+	});
+
+	it("a '$' in a pattern match is substituted literally, never as a replacement pattern", () => {
+		const exports = { "./*": "./dist/*.js" };
+		for (const name of ["a$&b", "a$$b", "a$`b", "a$'b"]) {
+			assert.strictEqual(path({ exports }, `./${name}`), `./dist/${name}.js`, name);
+			assert.strictEqual(importOf({ imports: { "#u/*": "./src/*.js" } }, `#u/${name}`), `./src/${name}.js`, name);
+			const typed = types({ typesVersions: { "*": { "*": ["ts/*"] } } }, `./${name}.d.ts`);
+			assert.strictEqual(typeof typed === "string" ? typed : typed.target, `./ts/${name}.d.ts`, name);
+		}
+	});
+
+	it("typesVersions substitutes the first '*' of a target only, as TypeScript does", () => {
+		const typed = types({ typesVersions: { "*": { "*": ["ts/*/*"] } } }, "./x");
+		assert.strictEqual(typeof typed === "string" ? typed : typed.target, "./ts/x/*");
 	});
 
 	it("a legacy subpath request is held to the segment rule", () => {

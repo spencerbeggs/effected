@@ -216,4 +216,52 @@ describe("XdgConfig.savePath", () => {
 			assert.strictEqual(saved, "/home/ada/.config/myapp/rc.json");
 		}),
 	);
+
+	// The TSDoc example pins `saveTarget: "default"`. These two pin why: a file
+	// found only under $XDG_CONFIG_DIRS is the source, and under firstMatch an
+	// unset saveTarget writes back into it.
+	const systemOnly = {
+		present: ["/etc/xdg/myapp/rc.json"],
+		files: { "/etc/xdg/myapp/rc.json": `{"port":4242}` },
+	};
+	const AppShape = Schema.Struct({ port: Schema.Number });
+	class SystemConfig extends ConfigFile.Service<SystemConfig, typeof AppShape.Type>()("test/SystemConfig") {}
+	const saveOver = (saveTarget: "default" | undefined) =>
+		Effect.gen(function* () {
+			const config = yield* SystemConfig;
+			assert.deepStrictEqual(yield* config.load, { port: 4242 });
+			const target = yield* config.save({ port: 8080 });
+			const volume = yield* MemoryFileSystem.Volume;
+			return { target, system: volume.text("/etc/xdg/myapp/rc.json") };
+		}).pipe(
+			Effect.provide(
+				Layer.provideMerge(
+					ConfigFile.layer(SystemConfig, {
+						schema: AppShape,
+						codec: JsonCodec,
+						strategy: MergeStrategy.firstMatch<typeof AppShape.Type>(),
+						resolvers: [XdgConfig.resolver({ filename: "rc.json" })],
+						defaultPath: XdgConfig.savePath("rc.json"),
+						...(saveTarget !== undefined && { saveTarget }),
+					}),
+					context(systemOnly),
+				),
+			),
+		);
+
+	it.effect("control: under firstMatch an unset saveTarget writes back into the system file", () =>
+		Effect.gen(function* () {
+			const { target, system } = yield* saveOver(undefined);
+			assert.strictEqual(target, "/etc/xdg/myapp/rc.json");
+			assert.deepStrictEqual(JSON.parse(system ?? "null"), { port: 8080 });
+		}),
+	);
+
+	it.effect('with saveTarget: "default", save writes the user\'s file and leaves the system file alone', () =>
+		Effect.gen(function* () {
+			const { target, system } = yield* saveOver("default");
+			assert.strictEqual(target, "/home/ada/.config/myapp/rc.json");
+			assert.deepStrictEqual(JSON.parse(system ?? "null"), { port: 4242 });
+		}),
+	);
 });

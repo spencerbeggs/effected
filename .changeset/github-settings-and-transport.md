@@ -18,3 +18,7 @@
 
 * `repositoryPatch(draft, { extra })` sends extras verbatim while the draft stays type-checked, and `applySettings(settings, { unknownKeys: "send" })` forwards undescribed settings keys, reported in `AppliedSettings.unverified` (#1115).
 * Interrupting `paginate` aborts the in-flight page.
+
+## Bug Fixes
+
+* Release-asset uploads through `GitHubApp.clientLayer` and `appClientLayer` clients go to the upload host (`uploads.github.com`, or `<ghes>/api/uploads` on GHES) with the current installation token, also after a token rotation. They were sent to the API host, and refused on GHES.

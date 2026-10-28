@@ -7,6 +7,7 @@
 import type { JsoncPath } from "@effected/jsonc";
 import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
+import { substituteEveryStar, substituteFirstStar } from "./internal/exports.js";
 import type { PackageDecodeError, PackageFormatOptions } from "./Package.js";
 import { Package } from "./Package.js";
 import type { PackageExportsError, PackageExportsManifest, PackageExportsOptions } from "./PackageExports.js";
@@ -468,11 +469,13 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 				const free = file.length - fixed;
 				if (!file.startsWith(prefix) || free <= 0 || free % stars !== 0) continue;
 				const match = file.slice(prefix.length, prefix.length + free / stars);
-				if (template.replaceAll("*", match) !== file) continue;
+				if (substituteEveryStar(template, match) !== file) continue;
 				// The match is a decoded file name; the subpath is a request, which
 				// Node decodes once more, so the characters decoding or URL parsing
-				// would alter are escaped back first.
-				const subpath = entry.subpath.replace("*", encodeMatch(match));
+				// would alter are escaped back first. A subpath key carries exactly
+				// one `*` (Node's rule; a multi-`*` key never matches), so the first
+				// is the only one.
+				const subpath = substituteFirstStar(entry.subpath, encodeMatch(match));
 				const resolved = PackageExports.resolveResult(manifest, subpath, options);
 				if (Result.isSuccess(resolved) && resolved.success.path === file) {
 					keep(ExportEntry.make({ subpath, path: file, key: entry.key, pattern: false }));

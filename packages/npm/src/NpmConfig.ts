@@ -1,6 +1,7 @@
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Path, Redacted, Result, Schema } from "effect";
 import * as Base64 from "effect/encoding/Base64";
+import { nerfDartKeys } from "./internal/nerfDartKeys.js";
 import type { RegistryTarget } from "./NpmRegistry.js";
 import { DEFAULT_REGISTRY } from "./NpmRegistry.js";
 import type { RegistryCredential } from "./RegistryCredential.js";
@@ -225,31 +226,6 @@ const envLayer = (env: Readonly<Record<string, string | undefined>>): string => 
 };
 
 /**
- * The nerf-dart keys npm tries for a URL, deepest first: `//host[:port]/path/`
- * up to `//host[:port]/`, never past the host. `undefined` for a URL that does
- * not parse.
- */
-const authKeys = (url: string): ReadonlyArray<string> | undefined => {
-	let parsed: URL;
-	try {
-		parsed = new URL(url);
-	} catch {
-		return undefined;
-	}
-	// `new URL(".", …)` drops a final segment that does not end in `/`, which
-	// is npm's `toNerfDart`; the host is lowercased and a default port dropped.
-	const directory = new URL(".", `${parsed.protocol}//${parsed.host}${parsed.pathname}`);
-	const keys: Array<string> = [];
-	let path = directory.pathname;
-	for (;;) {
-		keys.push(`//${directory.host}${path}`);
-		if (path === "/") break;
-		path = path.replace(/[^/]+\/$/, "");
-	}
-	return keys;
-};
-
-/**
  * The npm configuration a registry read needs: the default and scoped
  * registries and per-registry credentials, resolved from npmrc files and the
  * environment the way the npm CLI resolves them.
@@ -266,12 +242,23 @@ const authKeys = (url: string): ReadonlyArray<string> | undefined => {
  *
  * **A credential only ever goes to the host it was configured for.**
  * `credentialFor(url)` looks a credential up by the URL being requested, as
- * npm does: the nerf-dart key (`//host[:port]/path/`) of that URL, walked up
- * through its parent paths to `//host[:port]/` and never further. A scoped
+ * npm does: the nerf-dart key of that URL, walked up through its parent paths
+ * to `//host[:port]` and never further. Each level is tried with its trailing
+ * slash and then without it, as npm tries them, so an npmrc line written
+ * `//host/path/:_authToken`, `//host/path:_authToken`, `//host/:_authToken`
+ * or `//host:_authToken` is found; when both spellings of one level are
+ * configured, the one with the slash wins. Every key ends on a segment
+ * boundary of the request's own host and path, so `//host:_authToken` never
+ * matches `//hostevil.com`, and `//host/pa:_authToken` never matches
+ * `/path/`. A scoped
  * registry on another host, a lookalike host (`registry.npmjs.org.evil.dev`),
  * another port, or a tarball URL on a CDN therefore gets no credential unless
  * one is configured for that host itself. An unscoped top-level `_authToken`
  * or `_auth` names no host, so it is never used (npm refuses it too).
+ * An empty path segment is a level of its own, as in npm: a tarball at
+ * `https://host//pkg/-/pkg-1.0.0.tgz` (the shape Artifactory and Nexus emit)
+ * walks down through `//host//pkg/`, `//host//pkg`, `//host//`, `//host/` and
+ * `//host`, so a credential configured for the host is still found.
  *
  * **A credential only ever goes over `https:`, unless the configuration chose
  * `http:` for that host.** This is a deliberate departure from npm, which
@@ -347,7 +334,9 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 	 *
 	 * @remarks
 	 * Looked up by the request URL's own host, port and path (see the class
-	 * remarks): never another host's credential. Within the matched key,
+	 * remarks): never another host's credential. Keys are tried deepest first,
+	 * each level with its trailing slash before the same level without it, and
+	 * the first key holding a usable credential is the match. Within that key,
 	 * `_authToken` wins over `_auth`, which wins over `username` + `_password`
 	 * (decoded from base64, as npm stores it) — npm's order. An unparseable URL
 	 * has no credential, and neither does any scheme but `https:`, or `http:`
@@ -355,7 +344,7 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 	 */
 	credentialFor(url: string): Option.Option<RegistryCredential> {
 		if (!this.allowsScheme(url)) return Option.none();
-		const keys = authKeys(url);
+		const keys = nerfDartKeys(url);
 		if (keys === undefined) return Option.none();
 		for (const key of keys) {
 			const token = this.secret(`${key}:_authToken`);

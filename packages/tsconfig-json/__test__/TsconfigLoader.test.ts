@@ -323,6 +323,15 @@ describe("resolveExports", () => {
 		assert.deepStrictEqual(resolveExports(exports, "."), Option.some("./r.json"));
 	});
 
+	it("substitutes a wildcard the way tsc does, $ replacement patterns included (tsc parity)", () => {
+		// tsc 6.0.3 substitutes with `resolvedTarget.replace(/\*/g, subpath)` (typescript.js:46252), so a `$&`
+		// in the match reads as "the matched star" and `$$` as a literal `$`. This is deliberate parity, unlike
+		// @effected/package-json, which resolves like Node and substitutes literally.
+		const exports = { "./*": "./configs/*.json" };
+		assert.deepStrictEqual(resolveExports(exports, "./a$&b"), Option.some("./configs/a*b.json"));
+		assert.deepStrictEqual(resolveExports(exports, "./a$$b"), Option.some("./configs/a$b.json"));
+	});
+
 	it("walks a fallback array to the first resolvable entry", () => {
 		const exports = { ".": [{ unknowncond: "./a.json" }, "./b.json"] };
 		assert.deepStrictEqual(resolveExports(exports, "."), Option.some("./b.json"));

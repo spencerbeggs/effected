@@ -15,6 +15,10 @@
 
 ## Bug Fixes
 
+* `NpmConfig.credentialFor` also matches npmrc credential keys written without a trailing slash (`//host:_authToken`, `//host/path:_authToken`, `//host:port:_authToken`), in npm's own order: the request's own path first, then each level with its slash and then without it, so the slash form wins when both are configured. A key matches only on a segment boundary of the request's own host and path, so a slash-less key never reaches a lookalike host.
+
+* `NpmConfig.credentialFor`, `targetFor` and `PackageTarball.extract` no longer hang on a URL whose path holds `//`, such as an Artifactory or Nexus tarball URL or a registry configured as `https://host//`. An empty path segment is its own level, as npm treats it, so the host's credential is still found.
+
 ### Security
 
 * npmrc credentials are kept off cleartext transports and out of printed output.
