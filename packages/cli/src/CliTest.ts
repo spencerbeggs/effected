@@ -85,7 +85,9 @@ export interface SpawnedBin {
 	readonly stderr: Stream.Stream<string>;
 	/**
 	 * Send `signal` (`SIGTERM` by default) and wait for the child to exit. A child still running after
-	 * {@link RunOptions.forceKillAfter} is sent `SIGKILL`, so this always ends.
+	 * {@link RunOptions.forceKillAfter} is sent `SIGKILL`, so this always ends. A child that has already exited, on its
+	 * own or at the same moment, is not an error: this returns normally, and `exitCode` and `result` keep reporting how
+	 * it ended. A kill that fails on a child still running fails with that `PlatformError`.
 	 */
 	readonly kill: (signal?: ChildProcess.Signal) => Effect.Effect<void, PlatformError.PlatformError>;
 	/**
@@ -317,7 +319,15 @@ export class CliTest {
 			const spawned: SpawnedBin = {
 				stdout: out.lines,
 				stderr: err.lines,
-				kill: (signal) => handle.kill({ killSignal: signal ?? "SIGTERM", forceKillAfter }),
+				kill: (signal) =>
+					handle.kill({ killSignal: signal ?? "SIGTERM", forceKillAfter }).pipe(
+						// Core fails a kill once nothing is left to signal: the child already exited, so the kill is done.
+						// Its exit has landed by then (Node records it before core can fail), and a child still running
+						// keeps the failure.
+						Effect.catchTag("PlatformError", (error) =>
+							Effect.flatMap(handle.isRunning, (running) => (running ? Effect.fail(error) : Effect.void)),
+						),
+					),
 				exitCode: Effect.map(ending, (end) => end.exitCode),
 				result: Effect.gen(function* () {
 					const end = yield* ending;
