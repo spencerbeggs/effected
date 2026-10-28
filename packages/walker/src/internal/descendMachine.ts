@@ -8,8 +8,8 @@
 // unreadable-directory posture, the depth cap, the sort — lives here, so the
 // two worlds cannot disagree about what a pattern matches (the move
 // `WorkspacesSync` makes with one traversal state machine for both).
-// Pure: no IO, no platform. Path joining is a caller-supplied function, not a
-// request, because it is pure in both worlds.
+// Pure: no IO, no platform. Path joining and the absoluteness test are
+// caller-supplied functions, not requests, because they are pure in both worlds.
 
 import type { GlobPattern } from "@effected/glob";
 import { resolveSegments } from "./segments.js";
@@ -56,9 +56,16 @@ export interface DescendMachineOptions {
 	readonly boundaries?: ReadonlyArray<string> | undefined;
 	readonly onUnreadable?: "fail" | "skip" | "record" | undefined;
 	readonly followSymlinks?: boolean | undefined;
+	readonly match?: "file" | "directory" | "any" | undefined;
 }
 
-/** One matched file. */
+/** The pure path operations the walk uses. */
+export interface DescendPathOps {
+	readonly join: (directory: string, name: string) => string;
+	readonly isAbsolute: (path: string) => boolean;
+}
+
+/** One matched entry. */
 export interface MachineEntry<S> {
 	readonly path: string;
 	readonly info: S;
@@ -107,8 +114,9 @@ type Walk<A> = Generator<DescendRequest, A, unknown>;
 export function* descendMachine<S, C>(
 	pattern: GlobPattern,
 	options: DescendMachineOptions,
-	join: (directory: string, name: string) => string,
+	path: DescendPathOps,
 ): Walk<DescendMachineResult<S, C>> {
+	const join = path.join;
 	/** Yields one request; the answer is typed by the request's tag. */
 	function* ask<R extends DescendRequest>(request: R): Walk<DescendResponses<S, C>[R["_tag"]]> {
 		return (yield request) as DescendResponses<S, C>[R["_tag"]];
@@ -117,6 +125,27 @@ export function* descendMachine<S, C>(
 	if (!Number.isInteger(maxDepth) || maxDepth < 1) {
 		return { _tag: "Defect", message: `Walker.descend: maxDepth must be a positive integer, received ${maxDepth}` };
 	}
+	// A relative `cwd` — the empty string above all — would resolve against the
+	// process working directory, and on win32 `join("", "C:/x")` is `C:\x`: a
+	// walk rooted nowhere the caller named. Statically wrong at the call site,
+	// so it dies exactly as an invalid `maxDepth` does.
+	if (options.cwd.includes("\0") || !path.isAbsolute(options.cwd)) {
+		return {
+			_tag: "Defect",
+			message: `Walker.descend: cwd must be an absolute path, received ${JSON.stringify(options.cwd)}`,
+		};
+	}
+	const match = options.match ?? "file";
+	if (match !== "file" && match !== "directory" && match !== "any") {
+		return {
+			_tag: "Defect",
+			message: `Walker.descend: match must be "file", "directory" or "any", received ${JSON.stringify(match)}`,
+		};
+	}
+	const matchFiles = match !== "directory";
+	const matchDirectories = match !== "file";
+	/** Canonical paths of the directories already answered: a root's base may also be an entry of another root. */
+	const answeredDirectories = new Set<string>();
 	const prune = new Set(options.prune ?? DEFAULT_PRUNE);
 	const boundaries = options.boundaries ?? [];
 	const onUnreadable = options.onUnreadable ?? "fail";
@@ -183,7 +212,11 @@ export function* descendMachine<S, C>(
 		if (segments === undefined) return done([]);
 		if (yield* blocked(segments, segments.length - 1, segments.length - 1)) return done([]);
 		const answer = yield* ask({ _tag: "Stat", path: join(options.cwd, pattern.source) });
-		return done(answer?.kind === "File" ? [{ path: pattern.source, info: answer.info }] : []);
+		// `cwd` itself (a literal that resolves to no segment) is never a match.
+		const wanted =
+			(answer?.kind === "File" && matchFiles) ||
+			(answer?.kind === "Directory" && matchDirectories && segments.length > 0);
+		return done(answer !== undefined && wanted ? [{ path: pattern.source, info: answer.info }] : []);
 	}
 
 	const results: Array<MachineEntry<S>> = [];
@@ -214,7 +247,7 @@ export function* descendMachine<S, C>(
 			const canonical = resolveSegments(spelling.split("/"))?.join("/") ?? "";
 			return { spelling, canonical: canonical === "" ? "" : `${canonical}/` };
 		});
-		/** The file at canonical `relative`, in the first spelling the pattern matches it under, or `undefined`. */
+		/** The entry at canonical `relative`, in the first spelling the pattern matches it under, or `undefined`. */
 		const matchedAs = (relative: string): string | undefined => {
 			for (const { spelling, canonical } of spelled) {
 				if (canonical !== "" && !relative.startsWith(canonical)) continue;
@@ -222,6 +255,17 @@ export function* descendMachine<S, C>(
 				if (pattern.matches(candidate)) return candidate;
 			}
 			return undefined;
+		};
+		/**
+		 * The directory at canonical `relative`, in the first spelling the pattern
+		 * matches it under — bare, or with a trailing `/` (a glob's directory-only
+		 * form) — or `undefined`. Each directory is answered once.
+		 */
+		const matchedDirectoryAs = (relative: string): string | undefined => {
+			if (answeredDirectories.has(relative)) return undefined;
+			const answer = matchedAs(relative) ?? matchedAs(`${relative}/`);
+			if (answer !== undefined) answeredDirectories.add(relative);
+			return answer;
 		};
 		// A base that lexically climbs above `cwd` can match no walked path (none holds `..`): zero matches, and no
 		// filesystem access outside `cwd`.
@@ -245,6 +289,11 @@ export function* descendMachine<S, C>(
 			if (typeof real === "object") return unreadableFail(shown(base));
 			if (real === undefined) return undefined;
 			baseAncestors = [real];
+		}
+		// The base itself is a directory the walk reached, so it can match too — `cwd` never does.
+		if (matchDirectories && base !== "") {
+			const answer = matchedDirectoryAs(base);
+			if (answer !== undefined) results.push({ path: answer, info: baseStat.info });
 		}
 
 		const frames: Array<Frame> = [{ relative: base, absolute: absoluteBase, depth: 0, ancestors: baseAncestors }];
@@ -278,9 +327,15 @@ export function* descendMachine<S, C>(
 				const stat = link ? yield* ask({ _tag: "Stat", path: absolute }) : own;
 				if (stat === undefined) continue;
 				if (stat.kind === "File") {
-					const path = matchedAs(relative);
-					if (path !== undefined) results.push({ path, info: stat.info });
+					const answer = matchFiles ? matchedAs(relative) : undefined;
+					if (answer !== undefined) results.push({ path: answer, info: stat.info });
 					continue;
+				}
+				// A directory matches as an entry of its parent, so prune, a boundary
+				// and an unentered link withhold only what lies BELOW it.
+				if (stat.kind === "Directory" && matchDirectories) {
+					const answer = matchedDirectoryAs(relative);
+					if (answer !== undefined) results.push({ path: answer, info: stat.info });
 				}
 				if (stat.kind !== "Directory" || !deep) continue;
 				// Prune suppresses DIRECTORIES only — a FILE named `.git` stays matchable.

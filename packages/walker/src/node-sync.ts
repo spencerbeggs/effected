@@ -47,7 +47,13 @@ export const nodeWalkerFileSystem: WalkerSyncFileSystem = {
  *
  * @public
  */
-export const nodeWalkerPath: WalkerSyncPath = { join: path.join };
+export const nodeWalkerPath: WalkerSyncPath = {
+	sep: path.sep,
+	join: path.join,
+	dirname: path.dirname,
+	resolve: path.resolve,
+	isAbsolute: path.isAbsolute,
+};
 
 /**
  * Both bindings, to spread into `descendSync` options.
