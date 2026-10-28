@@ -192,6 +192,31 @@ describe("NpmConfig credentials", () => {
 		});
 	});
 
+	describe("a URL path holding `//` (Artifactory and Nexus tarballs) returns, with npm's answer", () => {
+		// These once looped forever; nerfDartKeys.test.ts proves termination under a hard timeout.
+		const doubled = config([
+			"//art.example/:_authToken=host_token",
+			"//deep.example//repo/:_authToken=repo_token",
+			"@art:registry=https://art.example//",
+		]);
+
+		it("a host credential is still found below an empty segment", () => {
+			assert.strictEqual(secretOf(doubled.credentialFor("https://art.example//pkg/-/pkg-1.0.0.tgz")), "host_token");
+			assert.strictEqual(secretOf(doubled.credentialFor("https://art.example//")), "host_token");
+			assert.strictEqual(secretOf(doubled.targetFor("@art/widget").credential), "host_token");
+		});
+
+		it("a credential under the empty segment is its own path, not the single-slash one", () => {
+			assert.strictEqual(secretOf(doubled.credentialFor("https://deep.example//repo/pkg/-/pkg.tgz")), "repo_token");
+			assert.isTrue(Option.isNone(doubled.credentialFor("https://deep.example/repo/pkg/-/pkg.tgz")));
+			assert.isTrue(Option.isNone(doubled.credentialFor("https://deep.example//other/pkg.tgz")));
+		});
+
+		it("another host gets nothing, `//` or not", () => {
+			assert.isTrue(Option.isNone(doubled.credentialFor("https://elsewhere.example//pkg/-/pkg-1.0.0.tgz")));
+		});
+	});
+
 	describe("sends a credential over https only, unless config chose http for that host (a departure from npm)", () => {
 		it("never sends one to http, ws or any other scheme on the same host by default", () => {
 			// npm matches the nerf-dart key and ignores the scheme, so it would
