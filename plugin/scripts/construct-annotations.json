@@ -662,6 +662,8 @@
 		"InvalidSriIntegrityHashError": "handle failure converting an sri integrity string to corepack form",
 		"Manifest": "resolve catalog: and workspace: specifiers in a tolerant package.json-shaped record to concrete version ranges",
 		"ManifestDecodeError": "handle a manifest whose dependency fields fail to decode",
+		"NpmConfig": "read .npmrc, scoped registries, per-host auth token lookup, registry target from npm config",
+		"NpmConfigError": "handle npmrc load failure: unset env var in a token, unreadable npmrc file",
 		"NpmExecutor": "choose which npm binary runs a publish command, ambient vs pinned",
 		"NpmRegistry": "read package metadata from an npm registry over http: version lookup, dist-tags, publish times",
 		"PackageManagerCache": "look up a package manager's default cache directory for a platform",

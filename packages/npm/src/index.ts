@@ -55,6 +55,12 @@ export {
 	ManifestDecodeError,
 	UnresolvedDependencyError,
 } from "./Manifest.js";
+export {
+	NpmConfig,
+	NpmConfigError,
+	type NpmConfigLoadOptions,
+	type NpmConfigSource,
+} from "./NpmConfig.js";
 export { NpmExecutor } from "./NpmExecutor.js";
 // Free-standing named exports, never gathered into a namespace object: a
 // consumer that imports only the pure vocabulary (IntegrityHash, the

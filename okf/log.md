@@ -10,6 +10,7 @@
 * Updated @effected/memfs
 * Updated @effected/github
 * Updated @effected/github REST client
+* Updated npm
 
 ## 2026-10-27
 
