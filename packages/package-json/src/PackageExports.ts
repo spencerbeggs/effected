@@ -28,6 +28,7 @@ import {
 	isRecord,
 	isRootSugar,
 	starCount,
+	substituteFirstStar,
 	targetResolve,
 	toFilePath,
 } from "./internal/exports.js";
@@ -459,9 +460,10 @@ const applyTypesVersions = (
 	if (!Array.isArray(targets)) throw new ExportsFailure("invalidPackageConfiguration");
 	return targets.map((target) => {
 		if (typeof target !== "string") throw new ExportsFailure("invalidPackageConfiguration");
-		// TypeScript substitutes the FIRST `*` only; the match is drawn from a
-		// subpath already held to the segment rule, and the result is confined.
-		return confineLegacyPath(matched.star === null ? target : target.replace("*", matched.star));
+		// TypeScript substitutes the FIRST `*` only (its `typesVersions` path
+		// mapping); the match is drawn from a subpath already held to the
+		// segment rule, and the result is confined.
+		return confineLegacyPath(matched.star === null ? target : substituteFirstStar(target, matched.star));
 	});
 };
 
@@ -606,12 +608,18 @@ const entryPath = (path: string, pattern: boolean, key: string): string => {
  * `./%2e%2e/secret`. Every check runs under every percent-decoding of the
  * string, not just one, and the SUBSTITUTED target is checked again whole, so
  * a match completing an escape the template began (`"./%2*"` with `e%2e`)
- * is refused too. Four checks here are stricter than Node, each because a
+ * is refused too. Five checks here are stricter than Node, each because a
  * pure resolver hands back a string its caller will decode or follow: an
  * encoded `/` or `\` is refused outright; an `imports` bare target must be a
  * package name plus a subpath with no forbidden segment, and a `*` match
- * substituted into one is checked too; and `main`, `types` and
- * `typesVersions` targets, which Node does not confine, are confined.
+ * substituted into one is checked too; `main`, `types` and `typesVersions`
+ * targets, which Node does not confine, are confined; and a request ending in
+ * `/` is refused, where Node's `exports` resolution still answers one through
+ * a pattern under the DEP0155 deprecation warning. A `..` in `main`, `types`
+ * or `typesVersions` that stays inside the package is resolved as Node
+ * resolves it (`./lib/../index.js` is `./index.js`); one that climbs out, or
+ * that shares the path with a `\`, a tab or newline, or a percent-encoded dot
+ * segment, is refused.
  *
  * **A resolved path is the decoded file.** Once a target has passed every
  * check above, it is decoded the way Node's resolution decodes it — parsed as
