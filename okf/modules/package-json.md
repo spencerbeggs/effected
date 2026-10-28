@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:55:59Z
+  at: 2026-10-28T18:09:10Z
 integrity:
   generated:
-    body: a630fc679ce16dc0
+    body: a7eb8281b59b5a11
 ---
 
 # package-json
@@ -40,7 +40,7 @@ Module-per-concept, one class or concept per file:
 - `PackageValidator.ts` — the validation service, its rule interface, the default rule set and a parameterized layer factory.
 - `PackageJsonFile.ts` — the only IO module: one service, read/write over core `FileSystem`/`Path`, plus its error tags, and the `exportedFiles` static that expands pattern exports against the files on disk.
 - `EntryPoint.ts` — entry-point resolution, pure and IO-free, and the one module whose input is deliberately structural rather than a `Package`. See [the entry-point resolver interface](../interfaces/package-json-entry-point.md).
-- `PackageExports.ts` — Node's `exports`/`imports` resolution for any subpath, TypeScript's `types` reading, and entry-point enumeration, pure over a structural manifest; the algorithm is `internal/exports.ts`, a step-by-step transcription of Node's resolver specification. See [the exports resolver interface](../interfaces/package-json-exports-resolver.md).
+- `PackageExports.ts` — Node's `exports`/`imports` resolution for any subpath, TypeScript's `types` reading, and entry-point enumeration, pure over a structural manifest; the algorithm is `internal/exports.ts`, a step-by-step transcription of Node's resolver specification. A resolved `path` is the decoded filesystem path Node's resolution yields (`./dist/a b.js` for a target `./dist/a%20b.js`); the TypeScript statics keep targets undecoded, as `tsc` reads them. See [the exports resolver interface](../interfaces/package-json-exports-resolver.md).
 - `PackageJsonFormat.ts` — the decode-free text seam: the text-to-object parse (`parseObjectResult`/`parseObject`), formatting and surgical edits, none of which decodes. See [the decode-free text path interface](../interfaces/package-json-text.md).
 - `internal/format.ts` — the pure canonical-key-order, map-alphabetizing and empty-map-stripping functions shared by the write options, the model's serializer and the format seam.
 - `internal/wire.ts` — the `rest`-partitioning wire codec builder, shared by `Package` and `PackageManifest` so the two tiers cannot drift on what round-trips.

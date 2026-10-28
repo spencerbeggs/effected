@@ -343,6 +343,14 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 	 * key, a `null` exclusion (`"./internal/*": null`) and the segment rule all
 	 * decide exactly as they do for a single request.
 	 *
+	 * Every `path` is a decoded package-relative file path, as
+	 * {@link PackageExports.resolveResult} answers it, so a target written
+	 * `./dist/a%20b.js` is the file `dist/a b.js` on disk. A pattern's
+	 * reported `subpath` is a request that resolves back to its file: a `%`,
+	 * `?`, `#` or control character in the file name is percent-encoded in it
+	 * (the file `dist/100%.js` is the subpath `./100%25`), while a space or a
+	 * non-ASCII character is kept as it is.
+	 *
 	 * The walk never enters a `node_modules` directory and never follows a
 	 * symbolic link: every path is `lstat`ed, component by component from the
 	 * package root, so a linked file, a linked parent directory of a concrete
@@ -461,7 +469,10 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 				if (!file.startsWith(prefix) || free <= 0 || free % stars !== 0) continue;
 				const match = file.slice(prefix.length, prefix.length + free / stars);
 				if (template.replaceAll("*", match) !== file) continue;
-				const subpath = entry.subpath.replace("*", match);
+				// The match is a decoded file name; the subpath is a request, which
+				// Node decodes once more, so the characters decoding or URL parsing
+				// would alter are escaped back first.
+				const subpath = entry.subpath.replace("*", encodeMatch(match));
 				const resolved = PackageExports.resolveResult(manifest, subpath, options);
 				if (Result.isSuccess(resolved) && resolved.success.path === file) {
 					keep(ExportEntry.make({ subpath, path: file, key: entry.key, pattern: false }));
@@ -471,6 +482,24 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 		return found;
 	});
 }
+
+/**
+ * Percent-encode what would not survive a request's decoding as written: `%`
+ * (else read as an escape), `?` and `#` (a URL query and fragment), and the C0
+ * controls and DEL (a tab or newline is dropped by URL parsing). Everything
+ * else, a space and non-ASCII included, resolves to itself.
+ */
+const encodeMatch = (match: string): string => {
+	let encoded = "";
+	for (const char of match) {
+		const code = char.charCodeAt(0);
+		encoded +=
+			char === "%" || char === "?" || char === "#" || code < 0x20 || code === 0x7f
+				? `%${code.toString(16).toUpperCase().padStart(2, "0")}`
+				: char;
+	}
+	return encoded;
+};
 
 /** How deep {@link PackageJsonFile.exportedFiles} descends below a pattern's base directory. */
 const MAX_WALK_DEPTH = 32;

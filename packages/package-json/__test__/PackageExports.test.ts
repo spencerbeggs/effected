@@ -8,6 +8,7 @@ import { SemVer } from "@effected/semver";
 import { Effect, Option, Result } from "effect";
 import type { PackageExportsManifest, PackageExportsOptions, PackageTypesOptions } from "../src/index.js";
 import { PackageExports } from "../src/index.js";
+import { toFilePath } from "../src/internal/exports.js";
 
 /** The resolved path, or the failure reason prefixed with `!`. */
 const path = (manifest: PackageExportsManifest, subpath: string, options?: PackageExportsOptions): string => {
@@ -273,10 +274,11 @@ describe("a resolved target stays inside the package", () => {
 		assert.strictEqual(path({ exports: { "./*": "./dist/%%32%65*/x.js" } }, "./%2e"), "!invalidModuleSpecifier");
 		assert.strictEqual(target("./%252e%252e/x.js"), "!invalidPackageTarget");
 		assert.strictEqual(path({ main: "lib/%252e%252e/x.js" }, "."), "!invalidPackageTarget");
-		// An ordinary escape in a file name still resolves, and so does a
-		// second layer that settles on nothing forbidden.
-		assert.strictEqual(path({ exports: { "./*": "./dist/*.js" } }, "./a%20b"), "./dist/a%20b.js");
-		assert.strictEqual(path({ exports: { "./*": "./dist/*.js" } }, "./a%2520b"), "./dist/a%2520b.js");
+		// An ordinary escape in a file name still resolves, decoded once as Node
+		// decodes it, and so does a second layer that settles on nothing
+		// forbidden — which decodes to the literal file name `a%20b`.
+		assert.strictEqual(path({ exports: { "./*": "./dist/*.js" } }, "./a%20b"), "./dist/a b.js");
+		assert.strictEqual(path({ exports: { "./*": "./dist/*.js" } }, "./a%2520b"), "./dist/a%20b.js");
 		// A spelling that never settles is refused rather than decoded forever.
 		let layered = ".";
 		for (let index = 0; index < 6; index++) layered = layered.replaceAll("%", "%25").replace(".", "%2e");
@@ -622,4 +624,159 @@ describe("the Effect twins", () => {
 			assert.lengthOf(typesEntries, 1);
 		}),
 	);
+});
+
+describe("a resolved path is the decoded file Node names", () => {
+	// Every expectation here is what Node's own import.meta.resolve, read
+	// through fileURLToPath, answers for the same target (checked against
+	// Node directly); the "stricter" cases say where this resolver refuses
+	// instead.
+	const target = (value: string) => path({ exports: { "./x": value } }, "./x");
+	const match = (request: string) => path({ exports: { "./p/*": "./dist/*.js" } }, request);
+	const e = String.fromCodePoint(0xe9);
+
+	it("an escape decodes once: a space, a literal '%', and no second round", () => {
+		assert.strictEqual(target("./dist/a%20b.js"), "./dist/a b.js");
+		assert.strictEqual(target("./dist/a b.js"), "./dist/a b.js");
+		assert.strictEqual(target("./dist/a%25b.js"), "./dist/a%b.js");
+		// `%2541` is the file `%41`, never `A`.
+		assert.strictEqual(target("./dist/a%2541.js"), "./dist/a%41.js");
+		assert.strictEqual(match("./p/a%20b"), "./dist/a b.js");
+		assert.strictEqual(match("./p/a%25b"), "./dist/a%b.js");
+		assert.strictEqual(match("./p/a%2541"), "./dist/a%41.js");
+	});
+
+	it("'+' is not a space", () => {
+		assert.strictEqual(target("./dist/a+b.js"), "./dist/a+b.js");
+		assert.strictEqual(match("./p/a+b"), "./dist/a+b.js");
+	});
+
+	it("a UTF-8 escape decodes to its character, and a raw non-ASCII character is itself", () => {
+		assert.strictEqual(target("./dist/%C3%A9.js"), `./dist/${e}.js`);
+		assert.strictEqual(target(`./dist/${e}.js`), `./dist/${e}.js`);
+		assert.strictEqual(match("./p/%C3%A9"), `./dist/${e}.js`);
+		assert.strictEqual(match(`./p/${e}`), `./dist/${e}.js`);
+	});
+
+	it("an invalid UTF-8 escape or a '%' starting no escape is refused, as Node refuses it", () => {
+		// Lone continuation byte, truncated sequence, encoded surrogate, overlong '.'.
+		for (const value of [
+			"./dist/%FF.js",
+			"./dist/%C3.js",
+			"./dist/%ED%A0%80.js",
+			"./dist/%C0%AE.js",
+			"./dist/100%.js",
+			"./dist/%zz.js",
+		]) {
+			assert.strictEqual(target(value), "!invalidPackageTarget", value);
+		}
+		// Supplied by the request's match, it is the request that is to blame.
+		for (const request of ["./p/%FF", "./p/%C0%AE", "./p/100%"]) {
+			assert.strictEqual(match(request), "!invalidModuleSpecifier", request);
+		}
+	});
+
+	it("a target that fails to decode does not fall back to the next array entry", () => {
+		// Node picks the first valid target and only then fails reading it.
+		assert.strictEqual(path({ exports: { "./x": ["./dist/%FF.js", "./ok.js"] } }, "./x"), "!invalidPackageTarget");
+	});
+
+	it("a raw '?' or '#', which Node truncates as a query or fragment, is refused: stricter than Node", () => {
+		assert.strictEqual(target("./dist/a#b.js"), "!invalidPackageTarget");
+		assert.strictEqual(target("./dist/a?b.js"), "!invalidPackageTarget");
+		assert.strictEqual(match("./p/a#b"), "!invalidModuleSpecifier");
+		assert.strictEqual(match("./p/a?b"), "!invalidModuleSpecifier");
+		// Encoded, they are ordinary file-name characters.
+		assert.strictEqual(target("./dist/a%23b.js"), "./dist/a#b.js");
+		assert.strictEqual(target("./dist/a%3Fb.js"), "./dist/a?b.js");
+	});
+
+	it("a decoded NUL is refused: stricter than Node, which hands it to the filesystem", () => {
+		assert.strictEqual(target("./dist/%00.js"), "!invalidPackageTarget");
+		assert.strictEqual(match("./p/%00"), "!invalidModuleSpecifier");
+	});
+
+	it("a backslash separates, as URL parsing makes it one", () => {
+		assert.strictEqual(target("./dist\\a.js"), "./dist/a.js");
+	});
+
+	it("an encoded '..' is refused BEFORE decoding, where decoding would quietly land elsewhere in the package", () => {
+		// URL parsing would normalize this to ./index.js, a file of the
+		// package, so only the validation ahead of decoding refuses it.
+		assert.strictEqual(target("./dist/%2e%2e/index.js"), "!invalidPackageTarget");
+		assert.strictEqual(path({ exports: { "./p/*": "./dist/*/index.js" } }, "./p/%2e%2e"), "!invalidModuleSpecifier");
+		assert.strictEqual(path({ exports: { "./p/*": "./dist/*/index.js" } }, "./p/%2E%2E"), "!invalidModuleSpecifier");
+		assert.strictEqual(importOf({ imports: { "#x": "./src/%2e%2e/index.js" } }, "#x"), "!invalidPackageTarget");
+	});
+
+	it("imports file targets, the legacy main and a legacy subpath decode too", () => {
+		assert.strictEqual(importOf({ imports: { "#x": "./src/a%20b.js" } }, "#x"), "./src/a b.js");
+		assert.strictEqual(importOf({ imports: { "#x/*": "./src/*.js" } }, "#x/a%25b"), "./src/a%b.js");
+		// A bare-specifier target is handed on as written.
+		assert.strictEqual(importOf({ imports: { "#d": "dep/a%20b" } }, "#d"), "pkg:dep/a%20b");
+		assert.strictEqual(path({ main: "lib/a%20b.js" }, "."), "./lib/a b.js");
+		assert.strictEqual(path({ main: "lib/./x.js" }, "."), "./lib/x.js");
+		assert.strictEqual(path({ main: "lib/%FF.js" }, "."), "!invalidPackageTarget");
+		assert.strictEqual(path({}, "./a%20b.js"), "./a b.js");
+		assert.strictEqual(path({}, "./a%FF.js"), "!invalidModuleSpecifier");
+	});
+
+	it("TypeScript reads targets UNDECODED, so the types statics keep the written form", () => {
+		// tsc reads "./dist/a%20b.d.ts" as that literal file name, never "a b.d.ts".
+		assert.strictEqual(
+			declaration({ exports: { "./x": { types: "./dist/a%20b.d.ts", default: "./dist/a.js" } } }, "./x"),
+			"./dist/a%20b.d.ts",
+		);
+		assert.strictEqual(declaration({ types: "lib/a%20b.d.ts" }, "."), "./lib/a%20b.d.ts");
+		const fromMain = types({ main: "lib/a%20b.js" }, ".");
+		assert.strictEqual(typeof fromMain === "string" ? fromMain : fromMain.target, "./lib/a%20b.js");
+	});
+
+	it("the last guard on a decoded path holds even for input no validation passed", () => {
+		// Climbs out of the package URL (a name long enough that only the
+		// package-URL check, not the empty-path one, can refuse it).
+		assert.isUndefined(toFilePath("./%2e%2e/outside-the-package.js"));
+		// Normalizes INTO node_modules.
+		assert.isUndefined(toFilePath("./a/%2e%2e/node_modules/x.js"));
+		assert.isUndefined(toFilePath("./NODE_MODULES/x.js"));
+		assert.isUndefined(toFilePath("./a%00.js"));
+		assert.isUndefined(toFilePath("./a%2fb.js"));
+		assert.isUndefined(toFilePath("./"));
+		assert.strictEqual(toFilePath("./a%20b.js"), "./a b.js");
+		// A template keeps its stars; a run that cannot decode alone, or decodes to a star, names no files.
+		assert.strictEqual(toFilePath("./dist/%C3%A9/*.js", true), `./dist/${e}/*.js`);
+		assert.isUndefined(toFilePath("./dist/%2*/z.js", true));
+		assert.isUndefined(toFilePath("./dist/%2a*.js", true));
+		assert.strictEqual(toFilePath("./dist/%2a.js"), "./dist/*.js");
+	});
+
+	it("enumeration reports decoded paths, and fails naming the key of a target that names no file", () => {
+		const entries = Result.getOrThrow(
+			PackageExports.entriesResult({ exports: { "./sp": "./dist/a%20b.js", "./*": "./dist/%C3%A9/*.js" } }),
+		);
+		assert.deepStrictEqual(
+			entries.map((entry) => [entry.subpath, entry.path] as const),
+			[
+				["./sp", "./dist/a b.js"],
+				["./*", `./dist/${e}/*.js`],
+			],
+		);
+		for (const [key, value] of [
+			["./bad", "./dist/%FF.js"],
+			["./split/*", "./dist/%2*/z.js"],
+		] as const) {
+			const result = PackageExports.entriesResult({ exports: { "./a": "./a.js", [key]: value } });
+			if (Result.isFailure(result)) {
+				assert.strictEqual(result.failure.reason, "invalidPackageTarget");
+				assert.strictEqual(result.failure.request, key);
+			} else {
+				assert.fail(`expected ${key} to fail the enumeration`);
+			}
+		}
+		// The TypeScript enumeration is undecoded.
+		const typesEntries = Result.getOrThrow(
+			PackageExports.typesEntriesResult({ exports: { "./sp": "./dist/a%20b.d.ts" } }),
+		);
+		assert.strictEqual(typesEntries[0]?.target, "./dist/a%20b.d.ts");
+	});
 });
