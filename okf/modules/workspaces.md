@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T19:59:29Z
+  at: 2026-10-28T16:37:08Z
 integrity:
   generated:
-    body: 9c8857eeaa6d9ad6
+    body: b73f67e2b2a7167c
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -199,8 +199,10 @@ hand-roll, each a static class with a private
 constructor:[^testing-ts]
 
 - `SourceBoundary` (with `Offence`, `OffenceRule`, `SourceScan`,
-  `BoundaryRule`, `BoundaryFixture`, `ReferenceOptions` and `ScanOptions`): a
-  lexer-backed scanner that flags a `process` read, a forbidden import, a
+  `BoundaryRule`, `BoundaryFixture`, `ForbiddenImportedNames`,
+  `ReferenceOptions` and `ScanOptions`): a lexer-backed scanner that flags a
+  `process` read, a forbidden import, a forbidden name imported from a module
+  (`forbidImportedNames`), a forbidden token, a
   `stdout.write`, any console reference (`console`) or one that can reach
   stdout (`console-stdout`), with pure `check` and `referencesProcess`, a
   `scan` over `FileSystem` with whole-file `allow` and per-rule `allowRules`

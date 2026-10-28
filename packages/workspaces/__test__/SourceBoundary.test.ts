@@ -207,6 +207,87 @@ describe("SourceBoundary.check", () => {
 		);
 	});
 
+	describe("forbidImportedNames", () => {
+		const rule: BoundaryRule = {
+			forbidImportedNames: { from: "@effected/app", names: ["App", "AppStore", "AppCache"] },
+		};
+		const labels = (text: string, rules: ReadonlyArray<BoundaryRule> = [rule]): ReadonlyArray<string> =>
+			SourceBoundary.check("f.ts", text, rules).map((offence) => offence.label);
+
+		it("flags each forbidden imported name at the name, naming it and the module", () => {
+			const text = [
+				'import { AppConfig, App } from "@effected/app";',
+				'import {\n\tAppStore as Store,\n\ttype AppCache,\n} from "@effected/app";',
+				'import type { App as AppType } from "@effected/app";',
+			].join("\n");
+			assert.deepStrictEqual(labels(text), [
+				"f.ts:1:21 forbidImportedNames App from @effected/app",
+				"f.ts:3:2 forbidImportedNames AppStore from @effected/app",
+				"f.ts:4:7 forbidImportedNames AppCache from @effected/app",
+				"f.ts:6:15 forbidImportedNames App from @effected/app",
+			]);
+		});
+
+		it("spares the module's other exports, other modules, a subpath, comments, strings and a local alias", () => {
+			const text = [
+				'import { AppConfig, AppDirs } from "@effected/app";',
+				'import { App } from "./App.js";',
+				'import { App as Other } from "@effected/app/testing";',
+				'// import { App } from "@effected/app";',
+				"const s = 'import { App } from \"@effected/app\"';",
+				'import { AppConfig as App } from "@effected/app";',
+				'import "@effected/app";',
+				'const dynamic = await import("@effected/app");',
+			].join("\n");
+			assert.deepStrictEqual(labels(text), []);
+		});
+
+		it("reads re-exports: a named re-export at the name, an export * at the star", () => {
+			const text = [
+				'export { AppConfig, App } from "@effected/app";',
+				'export * from "@effected/app";',
+				'export * as app from "@effected/app";',
+				'export { AppConfig as Config } from "@effected/app";',
+			].join("\n");
+			assert.deepStrictEqual(labels(text), [
+				"f.ts:1:21 forbidImportedNames App from @effected/app",
+				"f.ts:2:8 forbidImportedNames * from @effected/app",
+				"f.ts:3:8 forbidImportedNames * from @effected/app",
+			]);
+		});
+
+		it("flags a forbidden member of a namespace binding, and spares its other members", () => {
+			const text = [
+				'import * as app from "@effected/app";',
+				"const a = app.App.layer;",
+				"const b = app?.AppStore;",
+				"const c = app.AppConfig;",
+				"const d = other.App;",
+				"const e = app.Apparent;",
+			].join("\n");
+			assert.deepStrictEqual(labels(text), [
+				"f.ts:2:15 forbidImportedNames App from @effected/app",
+				"f.ts:3:16 forbidImportedNames AppStore from @effected/app",
+			]);
+		});
+
+		it('flags a default import only when "default" is forbidden', () => {
+			const text = 'import app, { AppConfig } from "@effected/app";';
+			assert.deepStrictEqual(labels(text), []);
+			assert.deepStrictEqual(labels(text, [{ forbidImportedNames: { from: "@effected/app", names: ["default"] } }]), [
+				"f.ts:1:8 forbidImportedNames default from @effected/app",
+			]);
+		});
+
+		it("a whole-module forbidImports rule flags the specifier, the named rule only the names", () => {
+			const text = 'import { AppConfig } from "@effected/app";';
+			assert.deepStrictEqual(labels(text, [{ forbidImports: ["@effected/app"] }]), [
+				"f.ts:1:27 forbidImports @effected/app",
+			]);
+			assert.deepStrictEqual(labels(text), []);
+		});
+	});
+
 	it("forbidTokens leaves the process rule's exemption of the version constant in force", () => {
 		const text = "export const version = process.env.__PACKAGE_VERSION__;";
 		assert.deepStrictEqual(SourceBoundary.check("f.ts", text, ["process"]), []);
@@ -302,7 +383,13 @@ describe("SourceBoundary.check console-stdout", () => {
 
 /** The OffenceRule a fixture's rule reports under. */
 const kindOf = (rule: BoundaryRule): OffenceRule =>
-	typeof rule === "string" ? rule : "forbidTokens" in rule ? "forbidTokens" : "forbidImports";
+	typeof rule === "string"
+		? rule
+		: "forbidTokens" in rule
+			? "forbidTokens"
+			: "forbidImportedNames" in rule
+				? "forbidImportedNames"
+				: "forbidImports";
 
 describe("SourceBoundary.fixtures", () => {
 	it("every shipped fixture behaves as it claims (the consumer's positive control)", () => {
@@ -322,7 +409,7 @@ describe("SourceBoundary.fixtures", () => {
 				`${kind} has a spared fixture`,
 			);
 		}
-		assert.strictEqual(kinds.size, 7);
+		assert.strictEqual(kinds.size, 8);
 	});
 });
 

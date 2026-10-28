@@ -56,6 +56,7 @@ export {
 export {
 	type BoundaryFixture,
 	type BoundaryRule,
+	type ForbiddenImportedNames,
 	Offence,
 	type OffenceRule,
 	type ReferenceOptions,

@@ -33,6 +33,7 @@
 | `EntryNotFoundError` | Class | An entry named a file no resolution candidate could find. The walk fails rather than starting from nothing: a typo'd entry must never read as clean. | from `@effected/workspaces/testing` — reachability entry that resolves to no file |
 | `FindWorkspaceRootOptions` | Interface | Options for `WorkspaceRoot`'s `find`. | |
 | `FindWorkspaceRootSyncOptions` | Interface | Options for `findWorkspaceRootSync`: the consumer-supplied operations plus the ascent's ceiling. | |
+| `ForbiddenImportedNames` | Interface | The names a `{ forbidImportedNames }` rule forbids, and the module they must not be imported from. | from `@effected/workspaces/testing` |
 | `GetWorkspacePackagesSyncOptions` | Interface | Options for `getWorkspacePackagesSync`: the required consumer-supplied operations plus the traversal bound. | |
 | `HookInjection` | Interface | The result of replaying a workspace's `configDependencies` hooks: the catalogs the hooks yield, and the release-age gate contribution they leave on the config (pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude`). | |
 | `HookReplay` | Interface | Which version of a config dependency a replay actually loaded, and where that version came from. | |
@@ -55,7 +56,7 @@
 | `NoEntriesError` | Class | The entries list named no file to start from, so a walk would prove nothing. | from `@effected/workspaces/testing` — reachability called with an empty entry list |
 | `NoPeerDependencyRules` | Variable | The empty `PeerDependencyRules`: every axis present and empty. | empty peer-dependency suppression rules, assert a workspace declares no peerDependencyRules |
 | `Offence` | Class | One place a source file breaks a `BoundaryRule`. | from `@effected/workspaces/testing` — one boundary violation with file line column and rule |
-| `OffenceRule` | TypeAlias | The rule an `Offence` names: every string `BoundaryRule`, plus `"forbidImports"` for any `{ forbidImports }` rule and `"forbidTokens"` for any `{ forbidTokens }` rule. These are the keys of `ScanOptions.allowRules`. | from `@effected/workspaces/testing` |
+| `OffenceRule` | TypeAlias | The rule an `Offence` names: every string `BoundaryRule`, plus `"forbidImports"` for any `{ forbidImports }` rule, `"forbidTokens"` for any `{ forbidTokens }` rule and `"forbidImportedNames"` for any `{ forbidImportedNames }` rule. These are the keys of `ScanOptions.allowRules`. | from `@effected/workspaces/testing` |
 | `PackSource` | TypeAlias | Where each closure package is packed from. | from `@effected/workspaces/testing` |
 | `PackageManagerDetectionError` | Class | Raised when a directory carries no lockfile and no workspace configuration, so no package manager can be attributed to it. | handle no package manager could be detected at a workspace root |
 | `PackageManagerDetectionFailure` | TypeAlias | Every failure `PackageManagerDetector` can surface: no manager could be attributed to the root, or the root's `package.json` exists but cannot be read or parsed. | |
