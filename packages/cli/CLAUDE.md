@@ -316,7 +316,8 @@ mints a scoped temp directory with a fresh `HOME` and
 pass as `PATH` — the host environment is never inherited. `CliTest.run(bin,
 args, { sandbox, execPath, cwd?, env?, stdin? })` spawns `execPath` with
 `[bin, ...args]` over core's `ChildProcess`/`ChildProcessSpawner` and returns
-`{ exitCode, stdout, stderr }` as data — a non-zero exit is never a failure.
+`{ exitCode, signal, stdout, stderr }` as data — a non-zero exit is never a
+failure, and a signalled child is `exitCode: null` with its `signal`.
 **When `stdin` is omitted, or passed as `""`, the child receives an
 already-ended empty input (`Stream.empty`), never an open pipe** — core's
 default `"pipe"` stdio stays open until something writes to and ends it, so a
@@ -324,7 +325,8 @@ stdin-reading bin would otherwise hang the test. `CliTest.spawn(bin, args, optio
 returns at once with `{ stdout, stderr, kill, exitCode, result }` for a
 long-running bin: line streams replayed from the start and drained whether
 read or not, so a chatty child never blocks; the child is killed when the
-caller's scope closes.
+caller's scope closes, `SIGKILL` following `SIGTERM` after `forceKillAfter`
+(`2 seconds` by default) so a child ignoring the signal is never left behind.
 
 ```bash
 pnpm vitest run packages/cli        # from the repo root
