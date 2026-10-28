@@ -27,10 +27,10 @@ sources:
     title: "LSP 3.17 Position: zero-based, UTF-16 by default, line endings \\n, \\r\\n and \\r"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T16:45:13Z
+  at: 2026-10-28T17:32:13Z
 integrity:
   generated:
-    body: 2458acaee9e15cc5
+    body: a9fddc1935fbb056
 ---
 
 # @effected/source
@@ -91,7 +91,7 @@ single scan the hand-rolled loops cost.
 zero-based today (jsonc, yaml and toml say "LSP convention" in their TSDoc),
 and LSP is zero-based. A person reads `line + 1:character + 1`, which is what
 the packages' error `message`s already print. markdown's mdast `Point` is the
-one one-based surface, and maps by adding 1 (below).
+one one-based surface; it maps through `lineAt` and `lineStart`, not `positionAt` + 1 (below).
 
 **Encoding: UTF-16 code units, no code-point option.** LSP's default
 encoding, what a JavaScript string index is, and what every kit format
@@ -143,7 +143,7 @@ differential run of every string of up to five characters over
 | yaml lint lines (`YamlLint.ts` `buildLines`) | 0 | `\n` only; a `\r` before `\n` is stripped from the line's text | n/a | n/a | `"lf"`: `lineText(n)` for `n < lineCount - 1` when the text ends in `\n`, else every line; the empty text has none |
 | `TomlDiagnostic` (`TomlDiagnostic.ts` `lineChar`) | 0 | `\n`, `\r\n`, `\r` | next line, `-1` | unclamped | `positionAt` (default `"lsp"`) |
 | `MarkdownDiagnostic` (`MarkdownDiagnostic.ts` `lineChar`) | 0 | `\n`, `\r\n`, `\r` | next line, `-1` | unclamped | `positionAt` (default `"lsp"`) |
-| markdown mdast `Point` (`internal/lineIndex.ts`, fed the preprocessor's line table) | 1 (`line`, `column`) | `\n`, `\r\n`, `\r`, plus a final empty line after a trailing `\n` | not reached by any node position | clamped | `"lsp"`: `{ line: p.line + 1, column: p.character + 1 }` from `positionAt`, or `lineAt` plus `lineStart` |
+| markdown mdast `Point` (now `LineIndex`; was `internal/lineIndex.ts`, fed the preprocessor's line table) | 1 (`line`, `column`) | `\n`, `\r\n`, `\r`, plus a final empty line after a trailing `\n` | reached: a node can end at the `\n` of a `\r\n` (the empty list item in `*\r\na` ends at offset 2, line 1, column 3) | clamped | `"lsp"`: `line = lineAt(o) + 1`, `column = o - lineStart(lineAt(o)) + 1`, as `vfile-location` counts. Not `positionAt` + 1, which clamps that offset to the line's end and changes 130 parsed trees in the differential |
 
 The differential found **zero** disagreements under those mappings except at
 one offset class, an offset at the `\n` of a `\r\n`, where all four
@@ -157,7 +157,9 @@ and `LineIndex` clamps them where the loops do not.
   `\r\n`.** The loop advances past the pair and then subtracts. Reproduced on
   `YamlDiagnostic.fromRaw`, `TomlDiagnostic.fromRaw` and
   `MarkdownDiagnostic.fromRaw` with `"a\r\nb"` at offset 2 (`1:-1`); jsonc's
-  loop is the same code. okfit's own `lineCharacter` (the #1126 consumer)
+  loop is the same code, but jsonc's scanner never emits that offset (zero in
+  over 2 million generated parse errors), so there it is reachable only through
+  the internal materializer. okfit's own `lineCharacter` (the #1126 consumer)
   carries the same bug. Adopting `LineIndex` fixes it, and changes output
   only at that offset class.
 - **Bug, `@effected/yaml`: diagnostics count U+2028 and U+2029 as line
