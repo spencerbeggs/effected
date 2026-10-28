@@ -8,6 +8,8 @@
 * Updated @effected/mcp
 * Updated Keyed operations come from WebCrypto, payload digests from core Crypto required in R
 * Updated package-json
+* Updated The package-json entry-point resolver
+* Added The package-json exports resolver
 
 ## 2026-10-27
 
