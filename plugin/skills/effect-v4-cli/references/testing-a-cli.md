@@ -361,6 +361,14 @@ guaranteed to be the same. Omitted or empty `stdin` hands the child an
 already-ended stream, so a stdin-reading bin exits instead of hanging on an
 open pipe.
 
+`CliTest.spawn(bin, args, options)` takes `run`'s options and returns at
+once with a handle: `stdout` and `stderr` as streams of lines (each replayed
+from the first line to every reader, and drained whether read or not),
+`kill(signal?)`, `exitCode` and `result` (a `RunResult` once the child has
+exited). Use it for a bin `run` would wait on forever, such as a `--follow` or
+a watch mode. It needs `Scope` as well as the spawner, and closing the scope
+kills the child.
+
 Three traps this replaces:
 
 - A hand-rolled `child_process.execFileSync` that throws on a non-zero exit,

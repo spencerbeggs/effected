@@ -192,6 +192,20 @@ keeps stdout for its protocol but may log to stderr. A bare or aliased
 `console` is still flagged, since it can reach `log`. Neither flags core's
 `Console` service.
 
+To hold a package to "may import some of a module, never the rest", use
+`{ forbidImportedNames: { from, names } }` rather than forbidding the whole
+module: `rules: [{ forbidImportedNames: { from: "@effected/app", names: ["App", "AppStore"] } }]`.
+It flags a named import (aliased, `type`-only included), a named re-export, an
+`export * from` of the module, a member access on a namespace import
+(`app.App`), and a default import when `names` holds `"default"`. `from` must
+equal the specifier exactly, since a subpath is another module. The offence's
+`detail` is `<name> from <module>`, and `allowRules: { forbidImportedNames: [...] }`
+waives it per file. Its documented misses: a name taken from a dynamic
+`import()` or `require()`, a computed member (`app["App"]`), a destructured
+namespace binding (`const { App } = app`) or a namespace passed on whole, and,
+with no scope analysis, a local that shadows the namespace binding's name,
+which reads as the binding.
+
 Remove any hand-rolled `stripComments` + regex scanner — `SourceBoundary`
 already tokenizes correctly enough to spare a comment or a string literal
 that merely mentions `process`, and ships the fixtures that prove it.
