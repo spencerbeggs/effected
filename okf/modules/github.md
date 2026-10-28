@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T18:51:58Z
+  at: 2026-10-28T19:29:52Z
 integrity:
   generated:
-    body: 2fe6cf555b486a9e
+    body: 2ca29b4e93c23ae7
 ---
 
 # @effected/github
@@ -78,6 +78,7 @@ package named for it.
 | `tweetnacl` + `blakejs` | the libsodium sealed box GitHub's secrets API requires, reachable only from `RepositorySecret` |
 | `@effected/semver` (`workspace:^`) | semver-aware tag selection; pure tier, so the edge is free |
 | `@effected/github-references` (`workspace:^`) | the compat re-export of six issue-reference names — see [`github-references`](github-references.md) |
+| `@effected/crypto` (`workspace:^`) | `HttpRedaction`, which the kept-cause scrubber (`internal/scrub.ts`) builds on: `GitHubError.fromOctokit` and `GitHubGraphQLError.fromThrowable` keep a credential-free copy of octokit's throwable — see [`crypto`](crypto.md); pure, with an `effect` peer only. It pulls core's `effect/http` modules onto the error path |
 
 **The crypto pair is not a free-hand choice, and `node:crypto` is not an
 alternative.** A sealed box is `crypto_box` under an ephemeral keypair with a
@@ -115,7 +116,7 @@ The tree-shakability invariant is measured:
 | the Actions OIDC verifier (`ActionsOidc`) | `@effected/oidc` and `@effected/jwt`, nothing else | all octokit, the crypto pair |
 | the installation token store seam (`InstallationTokenStore`) | nothing but `effect` | the JWT signer, all octokit |
 | `RepositorySecret` | the above plus `tweetnacl` and `blakejs` | the JWT signer |
-| the pure classes | nothing but `effect` | all octokit |
+| the pure classes | nothing but `effect` (the GraphQL and REST error classes also reach `@effected/crypto`) | all octokit |
 
 Three mechanisms carry it:
 

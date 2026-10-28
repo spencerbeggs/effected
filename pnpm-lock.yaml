@@ -566,6 +566,9 @@ importers:
 
   packages/github:
     dependencies:
+      '@effected/crypto':
+        specifier: workspace:^
+        version: link:../crypto/dist/dev/pkg
       '@effected/github-references':
         specifier: workspace:^
         version: link:../github-references/dist/dev/pkg

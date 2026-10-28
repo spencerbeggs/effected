@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { headerNumber, headerString, retryAfterMillisFrom } from "./internal/headers.js";
+import { scrubThrowable } from "./internal/scrub.js";
 
 /**
  * Why a GitHub call failed, as a value you can branch on.
@@ -121,7 +122,7 @@ export class GitHubError extends Schema.TaggedError<GitHubError>()("GitHubError"
 	 * 422s ("Update is not a fast forward") are prose only.
 	 */
 	validation: Schema.optionalKey(Schema.Array(GitHubValidationEntry)),
-	/** The underlying throwable, when one exists. */
+	/** The underlying throwable, when one exists; an octokit throwable is kept as a credential-free copy. */
 	cause: Schema.optionalKey(Schema.Defect()),
 }) {
 	/** `"GitBranch.upsert failed (422): Reference already exists"`. */
@@ -186,9 +187,20 @@ export class GitHubError extends Schema.TaggedError<GitHubError>()("GitHubError"
 	 * epoch second, and turning it into a delay needs a "now" the caller controls.
 	 * The client supplies `Clock.currentTimeMillis`, which is the `TestClock`
 	 * under test.
+	 *
+	 * The kept `cause` is a credential-free copy of the throwable, not the
+	 * throwable itself. octokit redacts only the `authorization` credential and
+	 * two query values; the copy also drops the request body (a webhook secret,
+	 * GraphQL variables), the per-request options and the response body beyond
+	 * its top-level `message` and `documentation_url`, drops `set-cookie`, and
+	 * reads `REDACTED` for every other credential-bearing header. It keeps the
+	 * prototype (so `instanceof` still answers), `name`, `message`, `status`,
+	 * the method, the redacted url and the remaining headers. A throwable with
+	 * no `request`, `response` or `headers` field is kept as it is.
 	 */
 	static fromOctokit(operation: string, error: unknown, nowMillis: number): GitHubError {
-		return fromFacts(operation, readThrowable(error), nowMillis, error);
+		// The facts are read off the original; only a redacted copy is kept.
+		return fromFacts(operation, readThrowable(error), nowMillis, scrubThrowable(error));
 	}
 
 	/**

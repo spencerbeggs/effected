@@ -236,10 +236,16 @@ describe("GitHubError.fromOctokit", () => {
 		assert.isTrue(error.reason.endsWith("…"));
 	});
 
-	it("keeps the original throwable on cause", () => {
-		const original = thrown({ status: 404 });
+	it("keeps a redacted copy of the throwable on cause", () => {
+		// A copy, not the original: an octokit throwable carries its request body
+		// and response headers, which `__test__/credentials.test.ts` pins.
+		const original = thrown({ status: 404, message: "Not Found" });
 		const error = GitHubError.fromOctokit("x", original, NOW);
-		assert.strictEqual(error.cause, original);
+		assert.notStrictEqual(error.cause, original);
+		const cause = error.cause as { readonly name?: string; readonly message?: string; readonly status?: number };
+		assert.strictEqual(cause.name, "HttpError");
+		assert.strictEqual(cause.message, "Not Found");
+		assert.strictEqual(cause.status, 404);
 	});
 });
 
