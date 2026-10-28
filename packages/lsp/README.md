@@ -88,6 +88,22 @@ The kit does not own the message loop, so it cannot see `shutdown` or `exit` its
 
 `LogToStderr` reaches Effect's default logger and `Logger.consolePretty`. `Logger.consoleJson`, `consoleLogFmt` and `consoleStructured` write through `console.log` regardless — wrap a formatter in `Logger.withConsoleError` instead — and `Console.log` still writes to stdout.
 
+## LspUri
+
+LSP names documents by `file:` URI, the file system by path. `LspUri` converts both ways without `node:url`, so it also runs in a worker:
+
+```ts
+import { LspUri } from "@effected/lsp";
+
+const platform = process.platform === "win32" ? "win32" : "posix";
+
+LspUri.toPath("file:///home/me/My%20Project/a.ts", { platform }); // Option.some("/home/me/My Project/a.ts")
+LspUri.toPath("untitled:Untitled-1", { platform }); // Option.none()
+LspUri.fromPath("C:\\Users\\me\\a.ts", { platform: "win32" }); // "file:///c:/Users/me/a.ts"
+```
+
+`toPath` answers `Option.none()` instead of throwing for a URI that names no path: another scheme, a malformed escape, a `%2F` inside a name, a host on posix. `.` and `..` never climb above the root, a drive or a UNC share. The drive letter comes back lowercase however the client spelled it (`C:`, `c:` or VS Code's `c%3A`), so key documents by path, not by the client's URI string.
+
 ## LspProbe (`@effected/lsp/testing`)
 
 The packed-install proof for a Language Server bin, the twin of `@effected/mcp/testing`'s `McpProbe`. It spawns the command and runs the lifecycle an editor runs — `initialize`, `initialized`, `shutdown`, `exit` — then waits for the server to exit:

@@ -8,10 +8,10 @@ resource: ../../packages/yaml
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-24T01:01:32Z
+  at: 2026-10-28T17:13:49Z
 integrity:
   generated:
-    body: bd128723d4d8b454
+    body: bffec8e8014ed05c
 ---
 
 # @effected/yaml
@@ -46,9 +46,60 @@ obligation](../decisions/format-fidelity-obligation.md).
 Pure tier, per [the tier taxonomy](../glossary/library-tier.md) — no IO
 anywhere. Inputs are strings; outputs are values, documents, edits, streams
 or domain errors, and even the visitor streams are pure. `effect` is the only
-peer; no `@effect/platform*` or `node:` imports. `@effected/config-file`
-depends on this package through a one-file codec adapter, never the reverse.
-The package ships `"sideEffects": false`.
+peer; no `@effect/platform*` or `node:` imports. The one runtime dependency is
+[`@effected/source`](source.md), a regular `workspace:^` dependency: it is
+pure, has no dependency of its own and carries no shared-instance contract,
+so the [peer discipline](../conventions/peer-dependency-discipline.md) does
+not ask for a peer. `@effected/config-file` depends on this package through a
+one-file codec adapter, never the reverse. The package ships
+`"sideEffects": false`.
+
+## Positions
+
+Every `line`/`character` the package reports comes from `@effected/source`'s
+`LineIndex` with its default `"lsp"` line breaks: `\n`, `\r\n` and a bare
+`\r`, YAML 1.2's own `b-break` set and the set the lexer emits a `newline`
+token for. U+2028 and U+2029 are **not** line breaks (YAML 1.2 dropped them,
+which only 1.1 had). `character` counts UTF-16 code units, and an offset at
+the `\n` of a `\r\n` reads as the end of its line. There is no hand-rolled
+offset loop left in the package; a new producer reuses the index rather than
+growing one.
+
+- `YamlDiagnostic.fromRaw(raw, text | LineIndex)` derives its position with
+  `positionAt`. The parse entry points materialize all of one parse's
+  diagnostics against a single index, built lazily (`lazyLineIndex` in
+  `src/YamlDiagnostic.ts`), so a parse with no diagnostics never builds one.
+- `YamlToken` positions are `positionAt(token.offset)` over one index per
+  tokenize (`tokensOf` in `src/YamlToken.ts`).
+- `LintContext.lines` are the index's lines (`lineText`, `lineStart`), the
+  terminator stripped, the empty segment after a trailing line break
+  dropped, none for `""`. The lint context builds ONE index for its lines,
+  its tokens and its document's diagnostics, so a rule may index
+  `ctx.lines` by any token's or diagnostic's `line`. `eof-newline` and
+  `document-end` treat a trailing bare `\r` as a final line break
+  (`endsWithLineBreak` in `src/internal/rules/util.ts`).
+- `YamlDiagnostic` satisfies `SourceDiagnostic<YamlErrorCode>` and
+  `YamlToken` satisfies `SourceLocation`; both are pinned by type-level
+  tests.
+- The entry point re-exports `@effected/source`'s surface (`LineIndex`,
+  `LineBreaks`, `LineIndexOptions` and the position shapes), so a consumer
+  computing positions over the same text it parsed
+  ([#1126](https://github.com/spencerbeggs/effected/issues/1126)) writes
+  `LineIndex.make(text)` with no second dependency and gets exactly the
+  package's answers. `YamlDocument` keeps no source text, so it carries no
+  `lineIndex` of its own (markdown's `MarkdownDocument` does).
+
+Adoption changed output in three classes and nowhere else, measured by a
+differential of the pre-adoption build against the new one over every string
+of up to five characters from `{a, \n, \r, U+2028, U+2029, U+1F600}` and
+from a YAML-shaped alphabet, at every offset: a diagnostic at the `\n` of a
+`\r\n` (was `character: -1` on the next line); a diagnostic after U+2028 or
+U+2029 (was one line further down); and tokens, lint lines and lint findings
+in a document containing a bare `\r` (were all on line 0). A bare-CR
+document now lints as its LF twin does wherever the engine reports the same
+offsets for both; where it does not, the lexer and composer themselves treat
+a bare `\r` differently from `\n` (`":\r :"`, `"a\r-"`), which is an
+engine matter, not a position one.
 
 ## Module layout
 
@@ -269,7 +320,9 @@ The jsonc/yaml parity convention requires `YamlEdit`, `YamlRange`,
 `YamlPath`, `YamlSegment` and the diagnostic core to be structurally
 identical to their `Jsonc*` counterparts. `YamlDiagnostic` adopts the shared
 five-field core (code, offset, length, line, character), with `message` and
-`severity` additive on top. All of that holds exactly. The point is
+`severity` additive on top; the core is now named by `@effected/source`'s
+`SourceLocation` / `SourceDiagnostic`. The line-break rules are no longer
+identical: jsonc counts U+2028 and U+2029, yaml does not (see Positions). All of that holds exactly. The point is
 codec-generic consumer code — one function over "a document codec's
 Edit/Range/Path" that works against both packages — and it is the pre-work
 for a possible future extraction, deferred until a consumer needs it.

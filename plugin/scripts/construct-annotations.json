@@ -507,7 +507,8 @@
 		"LspProbe": "smoke-test a built language server bin, initialize then shutdown and exit 0",
 		"LspProcess": "drive a spawned language server bin from a test, send content-length frames, read until a response, wait for a stderr report, assert stdout carried only lsp frames",
 		"LspStdio": "launch an effect language server over stdio, keep runMain's failure report off stdout, exit 1 on exit without shutdown, end the process on exit when stdin stays open",
-		"LspTestFailure": "lsp probe or process failure, stream ended, invalid frame, not json-rpc, timeout"
+		"LspTestFailure": "lsp probe or process failure, stream ended, invalid frame, not json-rpc, timeout",
+		"LspUri": "convert a file uri to a path and back, textDocument uri to fsPath, windows drive and unc paths, without node:url"
 	},
 	"markdown": {
 		"Blockquote": "build a blockquote node, construct quoted content, mdast blockquote",

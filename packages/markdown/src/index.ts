@@ -20,9 +20,24 @@
  * maps, re-levels and sections trees without source text; and the document's navigation
  * accessors (headings, sections, links) serve outline and link extraction.
  *
+ * {@link MarkdownDocument.lineIndex} converts offsets to zero-based
+ * `{ line, character }` and back with the rules every position in the package
+ * uses; `LineIndex` and the position shapes are re-exported from
+ * `@effected/source`, so a consumer needs no second dependency to name them.
+ *
  * @packageDocumentation
  */
 
+export {
+	type LineBreaks,
+	LineIndex,
+	type LineIndexOptions,
+	type SourceDiagnostic,
+	type SourceLocation,
+	type SourcePosition,
+	type SourceRange,
+	type SourceSpan,
+} from "@effected/source";
 export type { FrontmatterCodec, FrontmatterSchemaError, FrontmatterWriteError } from "./Frontmatter.js";
 export {
 	FrontmatterDecodeError,

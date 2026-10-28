@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Zero-dependency CommonMark 0.31.2 and GFM parsing, editing and transformation expressed as Effect schemas and pure functions. Parse markdown into mdast-shaped nodes carrying byte offsets, navigate headings, sections and links, compute surgical offset-splice edits, normalize markers, decode frontmatter into a validated domain schema, project to and from plain mdast for the remark ecosystem, and walk a document as a `Stream`.
+CommonMark 0.31.2 and GFM parsing, editing and transformation expressed as Effect schemas and pure functions. Parse markdown into mdast-shaped nodes carrying byte offsets, navigate headings, sections and links, compute surgical offset-splice edits, normalize markers, decode frontmatter into a validated domain schema, project to and from plain mdast for the remark ecosystem, and walk a document as a `Stream`.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
 > Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
@@ -41,7 +41,7 @@ npm install @effected/markdown effect
 pnpm add @effected/markdown effect
 ```
 
-Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package itself adds no runtime dependencies.
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package's one runtime dependency is the dependency-free `@effected/source`, whose `LineIndex` it re-exports.
 
 `@effected/yaml`, `@effected/toml` and `@effected/jsonc` are **optional** peers, required only by the frontmatter codec module you import. A consumer decoding yaml frontmatter installs `@effected/yaml` and nothing else; a consumer who never touches frontmatter installs none of them.
 

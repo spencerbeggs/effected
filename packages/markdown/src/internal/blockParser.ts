@@ -28,8 +28,9 @@
 // Imports node classes from `../MarkdownNode.js` (the sanctioned exception to
 // the cycle firewall) and nothing else public.
 
+import { LineIndex } from "@effected/source";
 import type { Definition } from "../MarkdownNode.js";
-import { Frontmatter, Point, Position, Root } from "../MarkdownNode.js";
+import { Frontmatter, Position, Root } from "../MarkdownNode.js";
 import type { MarkdownDialect } from "./blockRegistry.js";
 import { blockDialect } from "./blockRegistry.js";
 import type { FrontmatterCapture } from "./blocks/frontmatter.js";
@@ -51,7 +52,7 @@ import { makeBlockNode } from "./blockTypes.js";
 import type { RawDiagnostic } from "./carriers.js";
 import { GuardExceeded } from "./carriers.js";
 import { MAX_NESTING_DEPTH } from "./limits.js";
-import { LineIndex } from "./lineIndex.js";
+import { pointAt } from "./point.js";
 import type { SourceLine } from "./preprocess.js";
 import { columnsToNextTabStop, preprocessLines } from "./preprocess.js";
 import { prepareInline } from "./rawInline.js";
@@ -90,6 +91,12 @@ export interface BlockPassResult {
 	 * Always empty under the `commonmark` dialect, which has no such construct.
 	 */
 	readonly footnoteLabels: ReadonlySet<string>;
+	/**
+	 * The parse's own line index over the source, built once: the facade
+	 * materializes diagnostics against it and hands it to the document, so
+	 * nothing downstream rescans the text.
+	 */
+	readonly lineIndex: LineIndex;
 }
 
 class BlockParser implements BlockScanner {
@@ -130,19 +137,18 @@ class BlockParser implements BlockScanner {
 		// at most once, before any line enters the loop, so it lives outside
 		// the dialect registries entirely (see blocks/frontmatter.ts).
 		this.frontmatterCapture = frontmatter ? scanFrontmatter(this.lines, text) : null;
-		// The index is built from the preprocessor's OWN line table, not from a
-		// second scan of the text: the two disagree about bare `\r`, and a
-		// document with one would otherwise report line numbers off by however
-		// many it contains. One addition the preprocessor deliberately omits:
-		// a text ending in `\n` has a phantom empty final line whose start is
-		// `text.length`, and unist point mapping (vfile, mdast-util) places the
+		// One index per parse, over `@effected/source`'s default LSP line breaks
+		// (`\n`, `\r\n` and a bare `\r`): the same three terminators the
+		// preprocessor splits on, so the index and the line loop agree about what
+		// a line is (a document with a bare `\r` would otherwise report line
+		// numbers off by however many it contains). Its one line the preprocessor
+		// deliberately omits is the phantom empty final line of a text ending in
+		// a terminator: unist point mapping (vfile, mdast-util) places the
 		// end-of-input offset on it (`line N+1, column 1`) rather than clamping
-		// into the last content line. Only the root's end point can sit there.
-		const starts = this.lines.map((line) => line.start);
-		if (text.endsWith("\n")) {
-			starts.push(text.length);
-		}
-		this.lineIndex = LineIndex.fromLineStarts(text, starts);
+		// into the last content line, and only the root's end point can sit
+		// there. The facade reuses this index for diagnostics and
+		// `MarkdownDocument.lineIndex`.
+		this.lineIndex = LineIndex.make(text);
 		this.sourceLength = text.length;
 		this.dialect = dialect;
 		this.dialectName = dialectName;
@@ -505,12 +511,7 @@ class BlockParser implements BlockScanner {
 	private position(startOffset: number, endOffset: number): Position {
 		const start = Math.min(Math.max(startOffset, 0), this.sourceLength);
 		const end = Math.min(Math.max(endOffset, start), this.sourceLength);
-		const startPoint = this.lineIndex.positionAt(start);
-		const endPoint = this.lineIndex.positionAt(end);
-		return Position.make({
-			start: Point.make({ line: startPoint.line, column: startPoint.column, offset: start }),
-			end: Point.make({ line: endPoint.line, column: endPoint.column, offset: end }),
-		});
+		return Position.make({ start: pointAt(this.lineIndex, start), end: pointAt(this.lineIndex, end) });
 	}
 
 	/**
@@ -649,7 +650,7 @@ class BlockParser implements BlockScanner {
 
 		const root = this.withFrontmatter(materialized);
 
-		return { root, rawInlines, carriers: [], refmap, footnoteLabels };
+		return { root, rawInlines, carriers: [], refmap, footnoteLabels, lineIndex: this.lineIndex };
 	}
 }
 

@@ -30,6 +30,10 @@
 * Updated @effected/commands
 * Updated Run.collect drains stdout, stderr and the exit code concurrently
 * Updated RunOnce trusts a done marker only from an owner it observed, and breaks a lock through per-contender tickets and a rename-based compare-and-delete
+* Updated @effected/markdown
+* Updated @effected/yaml
+* Updated @effected/yaml lint system
+* Updated @effected/lsp
 
 ## 2026-10-27
 

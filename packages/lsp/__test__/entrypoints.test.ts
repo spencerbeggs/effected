@@ -49,7 +49,13 @@ describe("entrypoint boundary", () => {
 	});
 
 	it("each entrypoint exports exactly its runtime names", () => {
-		assert.deepStrictEqual(Object.keys(Main).sort(), ["LspFrame", "LspFrameError", "LspFrameErrorCode", "LspStdio"]);
+		assert.deepStrictEqual(Object.keys(Main).sort(), [
+			"LspFrame",
+			"LspFrameError",
+			"LspFrameErrorCode",
+			"LspStdio",
+			"LspUri",
+		]);
 		assert.deepStrictEqual(Object.keys(Testing).sort(), ["LspProbe", "LspProcess", "LspTestFailure"]);
 	});
 });

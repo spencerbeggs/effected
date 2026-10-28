@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Zero-dependency YAML 1.2 parsing, editing, formatting and linting expressed as Effect schemas and pure functions. Parse a single document or a multi-document stream into plain values or an offset-preserving AST, resolve anchors and aliases, read and preserve per-node comments, strip comments, compute byte-minimal edits, format, modify by path, walk a document as a `Stream` of AST events or positioned tokens, lint it against a rule catalog with surgical autofix — inferring the lint config from files you already have — and decode straight into a validated domain schema.
+YAML 1.2 parsing, editing, formatting and linting expressed as Effect schemas and pure functions. Parse a single document or a multi-document stream into plain values or an offset-preserving AST, resolve anchors and aliases, read and preserve per-node comments, strip comments, compute byte-minimal edits, format, modify by path, walk a document as a `Stream` of AST events or positioned tokens, lint it against a rule catalog with surgical autofix — inferring the lint config from files you already have — and decode straight into a validated domain schema.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
 > Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
@@ -25,7 +25,7 @@ YAML is where untrusted text meets production systems: CI pipeline definitions, 
 
 This package treats that as a first-class requirement rather than a footnote. An alias-expansion budget bounds the number of materialized nodes, a depth cap bounds collection nesting on both the parse and the stringify side, and both fire into the typed error channel. Hostile input produces a `YamlParseError` carrying structured `YamlDiagnostic` values with codes and positions; it never produces a `RangeError`, an unhandled defect or an exhausted heap.
 
-The rest follows from the same discipline. Parsing recovers from errors and aggregates every diagnostic into one failure rather than throwing on the first. Modifications are computed as edits against the original bytes, so comments and layout survive a change. Everything is a pure function or a schema: no IO, no services and no runtime dependency other than `effect` — the lexer, CST parser, composer and stringifier are vendored into the package with attribution rather than taken as a dependency. It is the largest package in the repo, and it earns that by owning its engine.
+The rest follows from the same discipline. Parsing recovers from errors and aggregates every diagnostic into one failure rather than throwing on the first. Modifications are computed as edits against the original bytes, so comments and layout survive a change. Everything is a pure function or a schema: no IO, no services and no runtime dependency other than `effect` and the dependency-free `@effected/source` (the line index every reported position comes from) — the lexer, CST parser, composer and stringifier are vendored into the package with attribution rather than taken as a dependency. It is the largest package in the repo, and it earns that by owning its engine.
 
 ## Install
 

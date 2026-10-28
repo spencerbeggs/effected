@@ -4,13 +4,15 @@
 //
 // Cycle firewall: the internal engine emits raw `{ code, message, offset,
 // length }` records; this module materializes them into `YamlDiagnostic`,
-// deriving `line`/`character` from `offset` against the source text. The
-// dependency edge runs public modules → engine only.
+// deriving `line`/`character` from `offset` through `@effected/source`'s
+// `LineIndex` over the source text. The dependency edge runs public modules →
+// engine only.
 //
-// The five-field positional core (`code`/`offset`/`length`/`line`/`character`)
-// is structurally identical to `JsoncParseErrorDetail` per the jsonc/yaml
-// parity convention; `message` is yaml's additive extra.
+// The positional core (`code`/`message`/`offset`/`length`/`line`/`character`)
+// is `@effected/source`'s `SourceDiagnostic`, the shape every kit format
+// package's diagnostic satisfies.
 
+import { LineIndex } from "@effected/source";
 import { Schema } from "effect";
 import {
 	YAML_COMPOSE_ERROR_CODES,
@@ -123,9 +125,16 @@ export type YamlErrorCode = typeof YamlErrorCode.Type;
  * fatality is a property of the code — see {@link YamlDiagnostic.isFatal}.
  *
  * @remarks
- * The five-field positional core (`code`/`offset`/`length`/`line`/`character`)
- * is structurally identical to `@effected/jsonc`'s parse-error detail shape;
- * `message` is this package's additive extra.
+ * Satisfies `@effected/source`'s `SourceDiagnostic<YamlErrorCode>`: the
+ * positional core (`code`/`message`/`offset`/`length`/`line`/`character`)
+ * the kit's format packages share, so a consumer printing or serving
+ * diagnostics (an LSP server, a CLI annotation) is written once against that
+ * shape. `line`/`character` are zero-based, `character` in UTF-16 code units,
+ * with `\n`, `\r\n` and a bare `\r` as line breaks, YAML 1.2's own
+ * `b-break` set: exactly `LineIndex.make(text).positionAt(offset)`. U+2028
+ * and U+2029 are not line breaks (YAML 1.2 dropped them, the lexer never
+ * treated them as one, and neither does an LSP client), and an offset at the
+ * `\n` of a `\r\n` reads as the end of its line.
  *
  * @public
  */
@@ -154,15 +163,22 @@ export class YamlDiagnostic extends Schema.Class<YamlDiagnostic>("YamlDiagnostic
 	 * deriving `line`/`character` from `offset` against the source `text`.
 	 * Advanced — the parse/stringify entry points call this for you.
 	 *
+	 * @remarks
+	 * Pass a `LineIndex` already built over the source to materialize many
+	 * records without rescanning the text; a string builds one. An offset
+	 * outside the source clamps into it, as `LineIndex.positionAt` does.
+	 *
 	 * @param raw - The engine record: `code`, `message`, `offset` and `length`.
-	 * @param text - The source text the record's `offset` indexes into.
+	 * @param text - The source text the record's `offset` indexes into, or a
+	 *   `LineIndex` over it.
 	 * @returns The diagnostic with `line` and `character` filled in.
 	 */
 	static fromRaw(
 		raw: { readonly code: YamlErrorCode; readonly message: string; readonly offset: number; readonly length: number },
-		text: string,
+		text: string | LineIndex,
 	): YamlDiagnostic {
-		const { line, character } = lineChar(text, raw.offset);
+		const index = typeof text === "string" ? LineIndex.make(text) : text;
+		const { line, character } = index.positionAt(raw.offset);
 		return YamlDiagnostic.make({
 			code: raw.code,
 			message: raw.message,
@@ -175,29 +191,16 @@ export class YamlDiagnostic extends Schema.Class<YamlDiagnostic>("YamlDiagnostic
 }
 
 /**
- * Compute the zero-based line/character position of `offset` within `text`.
- * Recognizes `\n`, `\r`, `\r\n`, LS and PS as line breaks, matching the
- * jsonc counterpart so positions are codec-generic.
+ * A line index over `text`, built on first call and shared by every later
+ * one: the parse entry points materialize all of a parse's diagnostics
+ * against one index, and a parse with none never builds it.
+ *
+ * @internal
  */
-function lineChar(text: string, offset: number): { line: number; character: number } {
-	let line = 0;
-	let lineStart = 0;
-	const limit = Math.min(offset, text.length);
-	for (let i = 0; i < limit; i++) {
-		const ch = text.charCodeAt(i);
-		if (ch === 0x0a) {
-			line++;
-			lineStart = i + 1;
-		} else if (ch === 0x0d) {
-			if (i + 1 < text.length && text.charCodeAt(i + 1) === 0x0a) {
-				i++;
-			}
-			line++;
-			lineStart = i + 1;
-		} else if (ch === 0x2028 || ch === 0x2029) {
-			line++;
-			lineStart = i + 1;
-		}
-	}
-	return { line, character: offset - lineStart };
-}
+export const lazyLineIndex = (text: string): (() => LineIndex) => {
+	let index: LineIndex | undefined;
+	return () => {
+		index ??= LineIndex.make(text);
+		return index;
+	};
+};

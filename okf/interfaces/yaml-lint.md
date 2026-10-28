@@ -8,7 +8,7 @@ resource: ../../packages/yaml/src/YamlLint.ts
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
+  at: 2026-10-28T17:13:49Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:11.119Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: f298a2970a4ea1c9
+    body: 1f739ee740caa0de
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -106,8 +106,9 @@ none.
 
 **Positions and text are derived, not copied — and the engine was not
 touched.** The public `line`/`character` are computed from each token's
-`offset` against a line-start index built in one monotone pass, and `text`
-is the raw source slice. Neither is the internal token's own field, and
+`offset` against `@effected/source`'s `LineIndex` (`\n`, `\r\n` and a bare
+`\r` as line breaks, the rule every yaml position uses), and `text` is the
+raw source slice. Neither is the internal token's own field, and
 that is the point: the internal `column` is CST-parser vocabulary carrying
 the *construct's* indent on the synthetic block-start markers rather than
 the token's own position, and the internal `value` is the *processed* form
@@ -137,6 +138,14 @@ the facade, shipped across two modules (`YamlLintRule.ts` and
 The context handed to every rule (`YamlLintRule.ts`) carries the source
 `text`, a `lines` array of `LintLine` records, the materialized `tokens`
 and the composed `document`.
+
+`lines`, `tokens` and the document's diagnostics are positioned against ONE
+`LineIndex` built per lint run, so they share one line-break rule and a rule
+may index `ctx.lines` by any token's `line` (document-start and document-end
+do). A bare `\r` splits a line like `\n` does, and a trailing one is a final
+line break (`endsWithLineBreak`): a bare-CR document lints as its LF twin.
+Before the shared index, lines split on `\n` only while tokens did the same
+and diagnostics also counted U+2028/U+2029, three rules for one text.
 
 The engine tokenizes once and every rule shares the one materialized
 `tokens` array. It materializes rather than streaming on purpose: linting
