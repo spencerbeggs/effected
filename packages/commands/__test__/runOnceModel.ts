@@ -57,6 +57,11 @@ export interface ModelOptions {
 	/** Record a step-by-step trace for the first schedule of each violation kind. Slower; off by default. */
 	readonly trace?: boolean;
 	/**
+	 * Explore serialize-only mode: no done marker is read or written, so every
+	 * process must end `Ran` (or `RanUnserialized`), never `Trusted`.
+	 */
+	readonly serialize?: boolean;
+	/**
 	 * Partial-order reduction: never preempt a process whose next request is
 	 * local (`Now`, `Nonce`, `MakeDirectory`). Such a step touches no shared
 	 * file, so a switch just before it explores nothing a switch just before
@@ -196,7 +201,14 @@ export const explore = (options: ModelOptions, machine: MachineFactory): ModelRe
 		for (let index = 0; index < options.processes; index++) {
 			const id = index + 1;
 			const config: MachineConfig = {
-				...validate({ key: "k", dir: DIR, pollMs: 100, staleMs: 1000, waitTimeoutMs: 1_000_000 }),
+				...validate({
+					key: "k",
+					dir: DIR,
+					pollMs: 100,
+					staleMs: 1000,
+					waitTimeoutMs: 1_000_000,
+					...(options.serialize === true ? { mode: "serialize" as const } : {}),
+				}),
 				self: { pid: id, host: "h" },
 				isAlive: (pid) => {
 					const proc = procs[pid - 1];
@@ -425,7 +437,9 @@ export const explore = (options: ModelOptions, machine: MachineFactory): ModelRe
 			}
 			for (const proc of procs) {
 				if (proc.outcome?._tag === "RanUnserialized") violate(`UNSERIALIZED(${proc.outcome.reason})`);
+				if (options.serialize === true && proc.outcome?._tag === "Trusted") violate("TRUSTED_WHILE_SERIALIZING");
 			}
+			if (options.serialize === true && paths.has(DONE)) violate("DONE_MARKER_WHILE_SERIALIZING");
 			for (const [kind, count] of scheduleViolations) {
 				violations.set(kind, (violations.get(kind) ?? 0) + count);
 				if (!traces.has(kind)) traces.set(kind, [...trace]);

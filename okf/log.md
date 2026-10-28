@@ -12,6 +12,7 @@
 * Updated @effected/workspaces discovery and detection
 * Updated @effected/commands
 * Updated Run.collect drains stdout, stderr and the exit code concurrently
+* Updated RunOnce trusts a done marker only from an owner it observed, and breaks a lock through per-contender tickets and a rename-based compare-and-delete
 
 ## 2026-10-27
 

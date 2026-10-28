@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/commands/src/LocalExec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:53:35Z
+  at: 2026-10-28T17:11:13Z
 integrity:
   generated:
-    body: ff42f5503276de3d
+    body: 8507a0f9f1545ce2
 ---
 
 # @effected/commands
@@ -455,8 +455,18 @@ protocol, and why each of its rules is there, is
 - **`RunOnceOptions`**: `key` (letters, digits, `.`, `_`, `-`, at most 128
   characters; hash anything else), `dir` (host-local runtime state, never a
   network filesystem), `staleMs` (60000), `pollMs` (200, at least 10),
-  `waitTimeoutMs` (600000) and the opt-in `trustSequentialMs`. A bad value
-  throws (dies, in the `Effect` form) before any IO.
+  `waitTimeoutMs` (600000), the opt-in `trustSequentialMs` and `mode`
+  (`"once"`, or `"serialize"`). A bad value, or `trustSequentialMs` under
+  `"serialize"`, throws (dies, in the `Effect` form) before any IO.
+- **`mode: "serialize"` is a cross-process mutex.** The machine reads, trusts
+  and writes no done marker, so every caller runs the work, one at a time,
+  and the outcome is never `Trusted`. The rule is two guards in the one
+  generator, not a driver flag. It is not what a "rebuild every run" build
+  needs: under `"once"` a later, sequential call already re-runs, because
+  it never trusts an earlier call's marker, so the key need not hash the
+  inputs. `"serialize"` is for work every concurrent caller must run
+  itself. Callers queue on one lock, so `waitTimeoutMs` bounds the whole
+  queue ahead of a caller, not one turn.
 - **`RunOnceFileSystem`** is the sync port: `makeDirectory`, `readText`,
   `createExclusive` (an `O_EXCL` create that answers `false` for
   "exists"), `writeText`, `remove`, `mtimeMs`, `rename` and

@@ -59,6 +59,38 @@ describe("RunOnce.run", () => {
 		}).pipe(Effect.provide(platform())),
 	);
 
+	it.effect('mode: "serialize" makes the waiter run the work after the owner, one at a time, with no marker', () =>
+		Effect.gen(function* () {
+			const SERIAL = { ...OPTIONS, mode: "serialize" } as const;
+			const started = yield* Deferred.make<void>();
+			const gate = yield* Deferred.make<void>();
+			let runs = 0;
+			let running = 0;
+			let overlapped = false;
+			const work = Effect.gen(function* () {
+				runs++;
+				running++;
+				if (running > 1) overlapped = true;
+				yield* Deferred.succeed(started, undefined);
+				yield* Deferred.await(gate);
+				running--;
+				return runs;
+			});
+			const owner = yield* RunOnce.run(SERIAL, work).pipe(Effect.forkChild);
+			yield* Deferred.await(started);
+			const waiter = yield* RunOnce.run(SERIAL, work).pipe(Effect.forkChild);
+			yield* TestClock.adjust("600 millis");
+			assert.strictEqual(runs, 1, "the waiter does not run while the owner holds the lock");
+			yield* Deferred.succeed(gate, undefined);
+			assert.deepStrictEqual(yield* Fiber.join(owner), { _tag: "Ran", value: 1 });
+			yield* TestClock.adjust("200 millis");
+			assert.deepStrictEqual(yield* Fiber.join(waiter), { _tag: "Ran", value: 2 });
+			assert.isFalse(overlapped);
+			assert.isFalse(yield* exists(DONE));
+			assert.isFalse(yield* exists(LOCK));
+		}).pipe(Effect.provide(platform())),
+	);
+
 	it.effect("the work's failure is re-raised after release, with no done marker", () =>
 		Effect.gen(function* () {
 			const error = yield* RunOnce.run(OPTIONS, Effect.fail("broke" as const)).pipe(Effect.flip);
