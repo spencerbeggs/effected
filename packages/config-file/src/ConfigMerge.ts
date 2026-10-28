@@ -55,10 +55,15 @@ export class ConfigMerge {
 	 *   non-enumerable properties and getters on the prototype are not copied.
 	 * - **Nothing is cloned.** Merged levels are fresh objects; every value
 	 *   taken whole is the same reference as in its input.
+	 * - **Shared and cyclic inputs keep their shape.** Each pair of objects
+	 *   merges once: a subobject that two keys share on both sides yields one
+	 *   merged object both keys share, and a cycle in the inputs becomes the
+	 *   same cycle in the result. That also bounds the work to one merge per
+	 *   distinct pair, so a cyclic input returns promptly.
 	 * - **It is total.** Nested levels merge down to a depth of 1024, far below
 	 *   any decoded document; below that, `override`'s value is taken whole,
-	 *   so cyclic or pathologically deep inputs return instead of overflowing
-	 *   the stack.
+	 *   so a pathologically deep input returns instead of overflowing the
+	 *   stack.
 	 */
 	static deep<A>(base: A, override: A): A {
 		return deepMerge(base, override) as A;
