@@ -503,6 +503,12 @@ declare const service: WorkspaceDiscovery
 declare const layering: typeof WorkspaceLayering
 ```
 
+A second entrypoint that re-exports types whose TSDoc `{@link}`s a class only
+the main entry exports fails `ae-unresolved-link` on the second entry's own
+report: the link has nothing to resolve against there. Spell those references
+in backticks instead of `{@link}`. `packages/commands/CLAUDE.md` and
+`packages/memfs` both do this.
+
 ## Reading the gate without fooling yourself
 
 `issues.json` is a **false-green oracle**. Four rules, each learned by being burned:
