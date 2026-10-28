@@ -875,6 +875,87 @@ describe("Git", () => {
 		);
 	});
 
+	describe("ignoreRepositoryEnv (#1123)", () => {
+		/** Runs `program` and returns the env of every command it spawned. */
+		const envs = <A, E>(program: Effect.Effect<A, E, Git>) =>
+			Effect.gen(function* () {
+				const seen: Array<ChildProcess.StandardCommand["options"]["env"]> = [];
+				const recording = Layer.succeed(
+					ChildProcessSpawner.ChildProcessSpawner,
+					ChildProcessSpawner.make((command) => {
+						if (!ChildProcess.isStandardCommand(command)) return Effect.die("piped commands not scripted");
+						seen.push(command.options.env);
+						return Effect.succeed(
+							ChildProcessSpawner.makeHandle({
+								pid: ChildProcessSpawner.ProcessId(1),
+								exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+								isRunning: Effect.succeed(false),
+								kill: () => Effect.void,
+								stdin: Sink.drain,
+								stdout: Stream.make(
+									new TextEncoder().encode(
+										command.args.includes("--show-toplevel") && command.args.includes("--git-common-dir")
+											? "/repo\n/repo/.git\n"
+											: "/repo\n",
+									),
+								),
+								stderr: Stream.empty,
+								all: Stream.empty,
+								getInputFd: () => Sink.drain,
+								getOutputFd: () => Stream.empty,
+								unref: Effect.succeed(Effect.void),
+							}),
+						);
+					}),
+				);
+				yield* program.pipe(
+					Effect.provide(Git.layer),
+					Effect.provide(recording),
+					Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({}))),
+				);
+				return seen;
+			});
+
+		const scrubbed = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_PREFIX"];
+
+		it.effect("removes the repository variables from all three locating reads, keeping the pins", () =>
+			Effect.gen(function* () {
+				const seen = yield* envs(
+					Effect.gen(function* () {
+						const git = yield* Git;
+						yield* git.repoRoot(cwd, { ignoreRepositoryEnv: true });
+						yield* git.commonDir(cwd, { ignoreRepositoryEnv: true });
+						yield* git.treeIdentity(cwd, { ignoreRepositoryEnv: true });
+					}),
+				);
+				assert.lengthOf(seen, 3);
+				for (const env of seen) {
+					assert.isDefined(env);
+					for (const key of scrubbed) {
+						assert.isTrue(Object.hasOwn(env ?? {}, key), key);
+						assert.isUndefined(env?.[key], key);
+					}
+					assert.strictEqual(env?.LC_ALL, "C");
+				}
+			}),
+		);
+
+		it.effect("leaves the inherited environment alone by default", () =>
+			Effect.gen(function* () {
+				const seen = yield* envs(
+					Effect.gen(function* () {
+						const git = yield* Git;
+						yield* git.repoRoot(cwd);
+						yield* git.treeIdentity(cwd, { ignoreRepositoryEnv: false });
+					}),
+				);
+				for (const env of seen) {
+					for (const key of scrubbed) assert.isFalse(Object.hasOwn(env ?? {}, key), key);
+				}
+			}),
+		);
+	});
+
 	describe("commonDir", () => {
 		it.effect("returns the trimmed absolute common directory", () =>
 			Effect.gen(function* () {

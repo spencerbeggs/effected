@@ -13,6 +13,8 @@
 * Updated Add a kit package
 * Updated walker
 * Updated @effected/engine
+* Updated git
+* Updated config-file
 
 ## 2026-10-27
 

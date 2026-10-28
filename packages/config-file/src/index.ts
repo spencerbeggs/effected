@@ -36,6 +36,7 @@ export {
 	ConfigFileWriteError,
 	ConfigValidationError,
 } from "./ConfigFile.js";
+export { ConfigMerge } from "./ConfigMerge.js";
 export type { ConfigFileMigration, ConfigMigrationOptions } from "./ConfigMigration.js";
 export { ConfigMigration, ConfigMigrationError, VersionAccess } from "./ConfigMigration.js";
 export type { LayerConfigProviderOptions } from "./ConfigProvider.js";
