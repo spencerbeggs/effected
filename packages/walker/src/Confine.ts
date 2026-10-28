@@ -35,8 +35,8 @@ import { trimTrailing } from "./internal/trimTrailing.js";
  *   resolved, lies outside the base's real path.
  * - `unresolvable` — `confineReal` only: resolving the candidate or the base
  *   failed for a reason other than absence (a permission error, a link loop,
- *   a file used as a directory), so containment cannot be verified. The
- *   failure rides in the error's `cause`.
+ *   a file used as a directory, a dangling link), so containment cannot be
+ *   verified. The failure rides in the error's `cause`.
  *
  * @public
  */

@@ -10,7 +10,7 @@
 // Path arithmetic is a caller-supplied set of functions, not a request,
 // because it is pure in both worlds.
 
-import type { ReadAnswer } from "./descendMachine.js";
+import { isCurrentDriveRooted, isPinnedAbsolute } from "./absolute.js";
 import { trimTrailing } from "./trimTrailing.js";
 
 /** The pure path operations the upward walk and the confinement check use. */
@@ -22,15 +22,36 @@ export interface PathOps {
 	readonly join: (...segments: ReadonlyArray<string>) => string;
 }
 
-/** One filesystem request: whether a path exists (links followed), or its real path. */
+/**
+ * One filesystem request: whether a path exists (links followed), its real
+ * path, or whether ANY entry — a dangling link included — lives at the path
+ * itself (`lstat`, links not followed).
+ */
 export type UpwardRequest =
 	| { readonly _tag: "Exists"; readonly path: string }
-	| { readonly _tag: "RealPath"; readonly path: string };
+	| { readonly _tag: "RealPath"; readonly path: string }
+	| { readonly _tag: "Present"; readonly path: string };
+
+/** A presence answer: something lives at the path, nothing does, or the probe failed. */
+export type PresentAnswer<C> =
+	| { readonly _tag: "Present" }
+	| { readonly _tag: "NotFound" }
+	| { readonly _tag: "Failed"; readonly cause: C };
+
+/**
+ * A real-path answer. `NotFound` keeps the failure that reported it: a
+ * dangling link reports `NotFound` too, and its refusal carries that cause.
+ */
+export type RealPathAnswer<C> =
+	| { readonly _tag: "Ok"; readonly value: string }
+	| { readonly _tag: "NotFound"; readonly cause: C }
+	| { readonly _tag: "Failed"; readonly cause: C };
 
 /** The driver's answer to each request kind. `Exists` absorbs every failure as `false`. */
 export interface UpwardResponses<C> {
 	readonly Exists: boolean;
-	readonly RealPath: ReadAnswer<string, C>;
+	readonly RealPath: RealPathAnswer<C>;
+	readonly Present: PresentAnswer<C>;
 }
 
 /** How a machine ended: a value, or a wiring defect the driver dies (or throws) with. */
@@ -41,8 +62,13 @@ export type UpwardResult<A> =
 type Walk<A> = Generator<UpwardRequest, A, unknown>;
 
 /** Asks for the real path at `path`. */
-function* realPath<C>(path: string): Walk<ReadAnswer<string, C>> {
+function* realPath<C>(path: string): Walk<RealPathAnswer<C>> {
 	return (yield { _tag: "RealPath", path }) as UpwardResponses<C>["RealPath"];
+}
+
+/** Asks whether anything — a dangling link included — lives at `path` itself. */
+function* present<C>(path: string): Walk<PresentAnswer<C>> {
+	return (yield { _tag: "Present", path }) as UpwardResponses<C>["Present"];
 }
 
 /** Asks whether `path` exists. */
@@ -77,7 +103,7 @@ export const ascendChain = (
 	// A relative CEILING dies, exactly as an invalid maxDepth does — same
 	// category, same construct. `start` is deliberately unconstrained: a
 	// relative start still ascends to the relative root.
-	if (options?.stopAt !== undefined && !path.isAbsolute(options.stopAt)) {
+	if (options?.stopAt !== undefined && !isPinnedAbsolute(options.stopAt, path)) {
 		return defect(
 			`${name}: stopAt must be an absolute path, received ${JSON.stringify(options.stopAt)} (ascending from ${JSON.stringify(start)})`,
 		);
@@ -120,7 +146,7 @@ export function* ascendWithinMachine(
 ): Walk<UpwardResult<ReadonlyArray<string>>> {
 	const maxDepth = options?.maxDepth === undefined ? {} : { maxDepth: options.maxDepth };
 	if (ceiling === undefined) return ascendChain(name, start, maxDepth, path);
-	if (!path.isAbsolute(ceiling)) {
+	if (!isPinnedAbsolute(ceiling, path)) {
 		return defect(
 			`${name}: ceiling must be an absolute path, received ${JSON.stringify(ceiling)} (ascending from ${JSON.stringify(start)})`,
 		);
@@ -238,8 +264,13 @@ const isWin32Reserved = (segment: string): boolean =>
  * common case in one request when no `..` is present (a lexical-first
  * `realpath` — node's JS `fs.realpath` — would otherwise collapse `link/..`
  * before resolving the link). A path, or tail, that does not exist yet is
- * resolved lexically from its real existing ancestor: what does not exist is
- * not a link. Any failure other than `NotFound` makes the path unresolvable.
+ * resolved lexically from its real existing ancestor — but `NotFound` from a
+ * real-path request is NOT proof of absence: a dangling link answers it too,
+ * and a write through one creates its target wherever it points. So every
+ * `NotFound` segment is checked with `Present`, and only "nothing lives here"
+ * continues lexically; a dangling link (or an entry that appeared between the
+ * two requests) is unresolvable, its target unverified. Any failure other
+ * than `NotFound` makes the path unresolvable too. Fail closed throughout.
  */
 function* resolvePhysical<C>(
 	absolute: string,
@@ -278,7 +309,17 @@ function* resolvePhysical<C>(
 		const next = `${trimTrailing(current, isSep)}${path.sep}${segment}`;
 		const answer = yield* real(next);
 		if (answer._tag === "Failed") return { _tag: "Unresolvable", cause: answer.cause };
-		current = answer._tag === "Ok" ? answer.value : next;
+		if (answer._tag === "Ok") {
+			current = answer.value;
+			continue;
+		}
+		// `NotFound`: absent, or a dangling link. Only absence continues lexically.
+		const entry = yield* present<C>(next);
+		if (entry._tag === "Failed") return { _tag: "Unresolvable", cause: entry.cause };
+		// A link whose target does not resolve, or an entry that appeared between
+		// the two requests: either way nothing proves where it leads.
+		if (entry._tag === "Present") return { _tag: "Unresolvable", cause: answer.cause };
+		current = next;
 	}
 	return { _tag: "Ok", value: current };
 }
@@ -293,7 +334,9 @@ export function* confineRealMachine<C>(
 	candidate: string,
 	path: PathOps,
 ): Walk<UpwardResult<{ readonly _tag: "Ok"; readonly value: string } | ConfineRefusal<C>>> {
-	if (base.includes("\0") || !path.isAbsolute(base)) {
+	// A win32 `\repo` is absolute to `isAbsolute`, yet which drive it names
+	// depends on the process working directory: a wiring defect like `C:repo`.
+	if (base.includes("\0") || !isPinnedAbsolute(base, path)) {
 		return defect(`${name}: base must be an absolute path, received ${JSON.stringify(base)}`);
 	}
 	const refuse = (reason: Extract<ConfineRefusal<C>, { _tag: "Refused" }>["reason"]) =>
@@ -304,7 +347,9 @@ export function* confineRealMachine<C>(
 	const isSep = (character: string): boolean => character === path.sep || (win32 && character === "/");
 	// A drive-relative `C:x` is not absolute to win32's `isAbsolute`, yet it is
 	// not relative to the base either: it names the current directory of drive C.
+	// A driveless `\x` is its mirror image — absolute, but on the current drive.
 	if (win32 && DRIVE.test(candidate) && !path.isAbsolute(candidate)) return refuse("absolute");
+	if (isCurrentDriveRooted(candidate, path.sep)) return refuse("absolute");
 	// Joined by concatenation, never `path.join`, which would collapse `link/..`
 	// lexically before the physical resolution below ever saw it.
 	const full = path.isAbsolute(candidate) ? candidate : `${trimTrailing(base, isSep)}${path.sep}${candidate}`;

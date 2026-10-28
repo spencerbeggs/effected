@@ -186,10 +186,15 @@ tempted to reach for `as`.
   instead (a setting GitHub ships before its description does) and names it in
   `AppliedSettings.unverified` as well as `rest`: a 200 does not say GitHub
   used it. A removed key stays ignored and GraphQL-only keys still route to
-  GraphQL. `topics` reads the topic set; `setTopics(names)` replaces it
+  GraphQL. Settings travel as octokit's `data` body, so no key is ever read as
+  a request option; an option name (`baseUrl`, `url`, `headers`, `request`,
+  `data`, ...), `owner`, `repo` and `__proto__` are never sent and land in
+  `ignored`. A `layerFixture` records the PATCH params as
+  `{ owner, repo, data }`. `topics` reads the topic set; `setTopics(names)` replaces it
   (`[]` clears) and returns the set GitHub **stored**, lowercased — record
   that, not `names`, as applied state. `RepositorySettings` is `RestData<"GET /repos/{owner}/{repo}">`;
-  `RepositoryPatch` is the PATCH route's params minus `owner`/`repo`;
+  `RepositoryPatch` is the PATCH route's params minus `owner`/`repo` and the
+  `RequestExtras` transport knobs (`headers`, `mediaType`, `baseUrl`);
   `GRAPHQL_ONLY_SETTINGS`, `SECURITY_ANALYSIS_STATUS_FIELDS` and
   `transformSecurityAndAnalysis` are the normalization vocabulary.
 - **`repositoryPatch(draft)` / `RepositoryPatchDraft`** — the supported spelling
@@ -207,7 +212,9 @@ tempted to reach for `as`.
   `repositoryPatch(draft, { extra })` (`RepositoryPatchOptions`,
   `RepositoryPatchExtra`) carries settings octokit's types do not declare yet,
   verbatim, while the draft stays type-checked: a known key is a compile error
-  in a literal `extra` and a `RangeError` at runtime (a GraphQL-only key too).
+  in a literal `extra` and a `RangeError` at runtime (a GraphQL-only key too,
+  and a `RepositoryPatchReservedKey` in the draft or the extra: an octokit
+  request option, `owner`, `repo` or `__proto__`).
   GitHub may ignore an extra silently, so read it back when it matters.
 - **`GitBranch` / `GitTag`** — `create`, `upsert` (`GitBranch.upsert` answers
   `BranchOutcome`: `"created" | "reset"`), `exists`, `sha`/`shaOption`, `reset`,

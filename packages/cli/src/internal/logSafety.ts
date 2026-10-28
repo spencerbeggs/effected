@@ -42,7 +42,7 @@ export const sanitizeParts = (message: unknown): unknown => {
 
 /**
  * Neutralize the `##[` the runner's legacy parser finds anywhere in a line, inside an NDJSON record, as the JSON escape
- * `##[`: it decodes to the identical text, so the record loses nothing. A `##[` can only sit in a string there.
+ * `#\u0023[`: it decodes to the identical text, so the record loses nothing. A `##[` can only sit in a string there.
  *
  * @internal
  */

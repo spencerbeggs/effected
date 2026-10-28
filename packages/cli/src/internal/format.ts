@@ -1,4 +1,8 @@
-import { SchemaIssue } from "effect";
+import { SchemaAST, SchemaIssue } from "effect";
+import { Fmt } from "../Fmt.js";
+
+/** The message an unknown key renders as: the leaf hook below writes it and the "did you mean" hint reads it. */
+const UNKNOWN_KEY = "unknown key";
 
 /**
  * Core's structured formatter, with one phrasing override.
@@ -16,7 +20,7 @@ import { SchemaIssue } from "effect";
  * @internal
  */
 const formatter = SchemaIssue.makeFormatterStandardSchemaV1({
-	leafHook: (issue) => (issue._tag === "UnexpectedKey" ? "unknown key" : SchemaIssue.defaultLeafHook(issue)),
+	leafHook: (issue) => (issue._tag === "UnexpectedKey" ? UNKNOWN_KEY : SchemaIssue.defaultLeafHook(issue)),
 });
 
 /**
@@ -43,6 +47,82 @@ export const formatIssue = (issue: unknown): ReadonlyArray<string> =>
 	issueEntries(issue).map((entry) =>
 		entry.path.length === 0 ? entry.message : `${entry.message} at ${entry.path.join(".")}`,
 	);
+
+/**
+ * {@link formatIssue}, with a "did you mean" hint on an unknown key the schema has a near match for.
+ *
+ * @remarks
+ * Used by `ConfigIssueRenderer` only. The declared keys come from the issue tree itself: core's `UnexpectedKey` leaf
+ * carries the AST of the struct being decoded, whose property signatures are the keys the schema accepts at that
+ * path, so no schema is passed in and no `@effected/config-file` value is needed. The hint is `Fmt.suggest`'s list,
+ * each key sanitised, and a line with no near match is exactly the line {@link formatIssue} draws.
+ *
+ * @internal
+ */
+export const formatIssueWithHints = (issue: unknown): ReadonlyArray<string> => {
+	const declared = declaredKeys(issue);
+	return issueEntries(issue).map((entry) => {
+		if (entry.path.length === 0) return entry.message;
+		const line = `${entry.message} at ${entry.path.join(".")}`;
+		if (entry.message !== UNKNOWN_KEY) return line;
+		const candidates = declared.get(pathKey(entry.path));
+		const input = entry.path[entry.path.length - 1];
+		if (candidates === undefined || input === undefined) return line;
+		const near = Fmt.suggest(input, candidates);
+		if (near.length === 0) return line;
+		return `${line} (did you mean ${orList(near.map((key) => `"${Fmt.sanitize(key)}"`))}?)`;
+	});
+};
+
+/** A path as a map key: `JSON.stringify` keeps `["a.b"]` and `["a", "b"]` apart, which joining on `.` would not. */
+const pathKey = (path: ReadonlyArray<string>): string => JSON.stringify(path);
+
+/** `"a"`, `"a" or "b"`, `"a", "b" or "c"`. */
+const orList = (items: ReadonlyArray<string>): string =>
+	items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
+
+/**
+ * The keys each unknown key's struct declares, by the unknown key's own path.
+ *
+ * @remarks
+ * Walks the tree the way core's formatter does (a `Pointer` extends the path; a `Filter`, `Encoding`, `Composite` or
+ * `AnyOf` passes it through), so a path here is the path the formatter gives the same leaf. A union reports one
+ * `UnexpectedKey` per branch at one path, and every branch's keys are candidates. Only string keys are offered: a
+ * symbol key is never something a person typed into a config file.
+ */
+const declaredKeys = (issue: unknown): ReadonlyMap<string, ReadonlySet<string>> => {
+	const found = new Map<string, Set<string>>();
+	if (!SchemaIssue.isIssue(issue)) return found;
+	const walk = (node: SchemaIssue.Issue, path: ReadonlyArray<string>): void => {
+		switch (node._tag) {
+			case "Filter":
+			case "Encoding":
+				walk(node.issue, path);
+				return;
+			case "Pointer":
+				walk(node.issue, [...path, ...node.path.map(String)]);
+				return;
+			case "Composite":
+			case "AnyOf":
+				for (const child of node.issues) walk(child, path);
+				return;
+			case "UnexpectedKey": {
+				if (!SchemaAST.isObjects(node.ast)) return;
+				const key = pathKey(path);
+				const keys = found.get(key) ?? new Set<string>();
+				for (const signature of node.ast.propertySignatures) {
+					if (typeof signature.name === "string") keys.add(signature.name);
+				}
+				found.set(key, keys);
+				return;
+			}
+			default:
+				return;
+		}
+	};
+	walk(issue, []);
+	return found;
+};
 
 /**
  * One rejected value: what is wrong and where.

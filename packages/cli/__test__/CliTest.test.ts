@@ -17,6 +17,23 @@ describe("CliTest", () => {
 		}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 	);
 
+	it.effect("a child ended by a signal is data too: no exit code, and the signal", () =>
+		Effect.gen(function* () {
+			const sandbox = yield* CliTest.sandbox({ path: process.env.PATH ?? "" });
+			const options = { sandbox, execPath: process.execPath };
+			const result = yield* CliTest.run(
+				"-e",
+				["process.stdout.write('bye'); process.kill(process.pid, 'SIGTERM')"],
+				options,
+			);
+			assert.isNull(result.exitCode);
+			assert.strictEqual(result.signal, "SIGTERM");
+			const exited = yield* CliTest.run(BIN, [], options);
+			assert.strictEqual(exited.exitCode, 3, "control: an exit has a code");
+			assert.isNull(exited.signal);
+		}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+	);
+
 	it.effect("the sandbox never inherits the host HOME", () =>
 		Effect.gen(function* () {
 			const sandbox = yield* CliTest.sandbox({ path: process.env.PATH ?? "" });
