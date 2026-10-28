@@ -146,7 +146,10 @@ const NODE_CODES: Record<ExportsFailureReason, string | undefined> = {
  *   starting with `./`, carrying a `..`, `.`, empty or `node_modules` segment
  *   (percent-encoded variants included), an encoded separator, or a URL.
  * - `invalidModuleSpecifier` — the REQUESTED subpath or specifier is
- *   malformed, or a `*` pattern match would inject a forbidden segment.
+ *   malformed, a `*` pattern match would inject a forbidden segment (on its
+ *   own or once substituted into the target), or an `imports` bare target is
+ *   not a package name plus a confined subpath, as Node's PACKAGE_RESOLVE
+ *   reports it.
  * - `packagePathNotExported` / `packageImportNotDefined` — nothing in the map
  *   answers the request.
  * - `limitExceeded` — a nesting depth or `*` count no real manifest reaches;
@@ -548,11 +551,15 @@ const enumerate = <A>(
  * and carry no `..`, `.`, empty or `node_modules` segment after the first,
  * case-insensitively and percent-decoded; a `*` pattern match is held to the
  * same rule, so `"./*": "./dist/*.js"` resolves `./a` but refuses
- * `./%2e%2e/secret`. Three checks here are stricter than Node, each because a
+ * `./%2e%2e/secret`. Every check runs under every percent-decoding of the
+ * string, not just one, and the SUBSTITUTED target is checked again whole, so
+ * a match completing an escape the template began (`"./%2*"` with `e%2e`)
+ * is refused too. Four checks here are stricter than Node, each because a
  * pure resolver hands back a string its caller will decode or follow: an
- * encoded `/` or `\` is refused outright, a `*` match substituted into an
- * `imports` bare specifier is checked too, and `main`, `types` and
- * `typesVersions` targets — which Node does not confine — are confined.
+ * encoded `/` or `\` is refused outright; an `imports` bare target must be a
+ * package name plus a subpath with no forbidden segment, and a `*` match
+ * substituted into one is checked too; and `main`, `types` and
+ * `typesVersions` targets, which Node does not confine, are confined.
  *
  * **The manifest's key order decides between conditions.** A conditions
  * object is walked in insertion order and the first key the environment
@@ -658,7 +665,12 @@ export class PackageExports {
 	 * PACKAGE_IMPORTS_RESOLVE. Unlike `exports`, an `imports` target may name
 	 * another package (`"#dep": "dep/feature"`), answered as a
 	 * {@link PackageSpecifierTarget} for the caller to resolve in turn; a
-	 * relative `../` target, an absolute path or a URL is still refused. Only
+	 * relative `../` target, an absolute path or a URL is still refused. The
+	 * specifier must be a package name (npm's characters, no leading `.` or
+	 * `_`, no backslash or `%`) and an optional subpath with no `.`, `..`,
+	 * empty or `node_modules` segment, so `".."`, `"..\\evil"` and a UNC
+	 * path are refused as Node refuses them, and `"dep/../x"` is refused where
+	 * Node would hand it to `dep`'s own resolution. Only
 	 * `"#"` itself is an invalid specifier — `"#/x"` is a legal key.
 	 */
 	static resolveImportResult(

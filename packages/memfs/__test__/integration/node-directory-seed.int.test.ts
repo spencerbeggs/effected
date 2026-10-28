@@ -3,12 +3,13 @@
 // what is refused (links leaving the fixture, oversized files, other types).
 
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { Effect, FileSystem } from "effect";
 import { MemoryFileSystem } from "../../src/index.js";
+import { readSeedFile } from "../../src/NodeDirectorySeed.js";
 import { NodeDirectorySeed } from "../../src/NodeSyncFileSystem.js";
 
 let base: string;
@@ -160,6 +161,48 @@ describe("NodeDirectorySeed.read — what is refused", () => {
 		assert.strictEqual(thrownBy(() => NodeDirectorySeed.read(dir)).code, "ERR_SEED_SYMLINK_ESCAPE");
 	});
 
+	it("a dangling target whose escape only shows once a link in its path is followed", () => {
+		// `sub/up -> ..` is the fixture root, so `sub/out -> up/../nope` names a
+		// sibling of the fixture. It dangles, so the kernel's realpath cannot
+		// answer, and the lexical reading (`sub/nope`) looks inside.
+		const dir = fresh("dangling-chain/fixture");
+		mkdirSync(join(dir, "sub"));
+		symlinkSync("..", join(dir, "sub", "up"));
+		symlinkSync("up/../nope", join(dir, "sub", "out"));
+		const error = thrownBy(() => NodeDirectorySeed.read(dir));
+		assert.strictEqual(error.code, "ERR_SEED_SYMLINK_ESCAPE");
+		assert.strictEqual(error.path, join(dir, "sub", "out"));
+	});
+
+	it("a target that leaves the fixture and comes back in, which the volume resolves outside the mount", () => {
+		const dir = fresh("reentry/fixture");
+		writeFileSync(join(dir, "a.txt"), "a");
+		symlinkSync("../fixture/a.txt", join(dir, "back"));
+		assert.strictEqual(thrownBy(() => NodeDirectorySeed.read(dir)).code, "ERR_SEED_SYMLINK_ESCAPE");
+	});
+
+	it("a dangling target that climbs out after a missing component", () => {
+		const dir = fresh("missing-then-up");
+		symlinkSync("missing/../../x", join(dir, "gone"));
+		assert.strictEqual(thrownBy(() => NodeDirectorySeed.read(dir)).code, "ERR_SEED_SYMLINK_ESCAPE");
+	});
+
+	it("still copies links that stay inside: dangling, through a link, and a cycle", () => {
+		const dir = fresh("inside-links");
+		mkdirSync(join(dir, "sub"));
+		writeFileSync(join(dir, "a.txt"), "a");
+		symlinkSync("..", join(dir, "sub", "up"));
+		symlinkSync("up/a.txt", join(dir, "sub", "via"));
+		symlinkSync("up/later.txt", join(dir, "sub", "dangling-via"));
+		symlinkSync("../sub/../a.txt", join(dir, "sub", "dotted"));
+		symlinkSync("loop-b", join(dir, "loop-a"));
+		symlinkSync("loop-a", join(dir, "loop-b"));
+		const seed = NodeDirectorySeed.read(dir);
+		for (const key of ["sub/via", "sub/dangling-via", "sub/dotted", "loop-a", "loop-b"]) {
+			assert.isTrue(Object.hasOwn(seed, key), key);
+		}
+	});
+
 	it("a file over maxFileBytes, while a file of exactly that size is read", () => {
 		const dir = fresh("large");
 		writeFileSync(join(dir, "big.bin"), new Uint8Array(1025));
@@ -167,6 +210,37 @@ describe("NodeDirectorySeed.read — what is refused", () => {
 		assert.strictEqual(error.code, "EFBIG");
 		assert.strictEqual(error.path, join(dir, "big.bin"));
 		assert.isTrue(Object.hasOwn(NodeDirectorySeed.read(dir, { maxFileBytes: 1025 }), "big.bin"));
+	});
+
+	// The walk's `lstat` and the read are two calls; `readSeedFile` is the read,
+	// handed the `lstat` the walk took, so each swap is staged between them.
+	describe("an entry swapped between the walk and the read", () => {
+		it("another file in its place", () => {
+			const dir = fresh("swap-file");
+			writeFileSync(join(dir, "a.txt"), "a");
+			writeFileSync(join(dir, "b.txt"), "b");
+			const seen = lstatSync(join(dir, "a.txt"));
+			const error = thrownBy(() => readSeedFile(join(dir, "b.txt"), seen, 1024));
+			assert.strictEqual(error.code, "ERR_SEED_CHANGED");
+			assert.strictEqual(error.path, join(dir, "b.txt"));
+		});
+
+		it.skipIf(process.platform === "win32")("a link in its place, even to the very file seen", () => {
+			const dir = fresh("swap-link");
+			writeFileSync(join(dir, "a.txt"), "a");
+			symlinkSync("a.txt", join(dir, "link"));
+			const seen = lstatSync(join(dir, "a.txt"));
+			assert.strictEqual(thrownBy(() => readSeedFile(join(dir, "link"), seen, 1024)).code, "ELOOP");
+		});
+
+		it("the same file grown past maxFileBytes, and a file read exactly", () => {
+			const dir = fresh("swap-grow");
+			writeFileSync(join(dir, "grow.bin"), new Uint8Array(4));
+			const seen = lstatSync(join(dir, "grow.bin"));
+			assert.deepStrictEqual(readSeedFile(join(dir, "grow.bin"), seen, 1024), new Uint8Array(4));
+			writeFileSync(join(dir, "grow.bin"), new Uint8Array(2048));
+			assert.strictEqual(thrownBy(() => readSeedFile(join(dir, "grow.bin"), seen, 1024)).code, "EFBIG");
+		});
 	});
 
 	it.skipIf(process.platform === "win32")("a FIFO", () => {

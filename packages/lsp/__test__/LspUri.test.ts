@@ -81,6 +81,8 @@ describe("LspUri.toPath (posix)", () => {
 			"file://",
 			"file://server/share/a",
 			"file://%zz/a",
+			"file://%6Cocalhost/a",
+			"file://user@localhost/a",
 		]) {
 			assert.deepStrictEqual(LspUri.toPath(uri), none, uri);
 		}
@@ -134,6 +136,61 @@ describe("LspUri.toPath (win32)", () => {
 			assert.deepStrictEqual(LspUri.toPath(uri, win32), none, uri);
 		}
 	});
+	it("answers none for a device or namespace host, raw or percent-encoded", () => {
+		// Each of these would read as `\\.\…`, `\\?\…` or `\\??\…`: a Win32
+		// device or namespace path, which fromPath refuses to write.
+		for (const uri of [
+			"file://./pipe/evil",
+			"file://%2E/pipe/evil",
+			"file://%2e/pipe/evil",
+			"file://%3F/C:/x",
+			"file://%3f/C:/x",
+			"file://%3F%3F/C:/x",
+			"file:////./PhysicalDrive0/x",
+			"file:////%2E/pipe/evil",
+			"file:////%3F/UNC/srv/share",
+			"file:////%3F/C:/x",
+			"file:////%3F%3F/C:/x",
+			"file://../share/x",
+		]) {
+			assert.deepStrictEqual(LspUri.toPath(uri, win32), none, uri);
+		}
+	});
+
+	it("answers none for a host that is not a plain hostname", () => {
+		for (const uri of [
+			"file://a%2Fb/x",
+			"file://a%2fb/share/x",
+			"file://a%5Cb/share/x",
+			"file://a%25b/share/x",
+			"file://a%00b/share/x",
+			"file://a%20b/share/x",
+			"file://%73erver/share/x",
+			"file://user@server/share/x",
+			"file://server:445/share/x",
+			"file://[::1]/share/x",
+			"file://server./share/x",
+			"file://.server/share/x",
+			"file://a..b/share/x",
+			"file://caf%C3%A9/share/x",
+			"file:////a%25b/share/x",
+			"file:////a%20b/share/x",
+		]) {
+			assert.deepStrictEqual(LspUri.toPath(uri, win32), none, uri);
+		}
+		// Positive controls: hostnames with dots, digits, hyphens and underscores.
+		assert.deepStrictEqual(
+			LspUri.toPath("file://srv-01.corp_x.example/s/x", win32),
+			some("\\\\srv-01.corp_x.example\\s\\x"),
+		);
+		assert.deepStrictEqual(LspUri.toPath("file://10.0.0.1/s", win32), some("\\\\10.0.0.1\\s"));
+	});
+
+	it("answers none for a dot-segment share", () => {
+		for (const uri of ["file://server/./x", "file://server/../x", "file://server/%2E%2E/x", "file:////server/../x"]) {
+			assert.deepStrictEqual(LspUri.toPath(uri, win32), none, uri);
+		}
+	});
 });
 
 describe("LspUri.fromPath", () => {
@@ -177,6 +234,20 @@ describe("LspUri.fromPath", () => {
 			["\\\\?\\C:\\a", "win32"],
 			["\\\\.\\pipe\\x", "win32"],
 			["C:\\a\0", "win32"],
+			["\\\\??\\C:\\a", "win32"],
+			["/??/C:/a", "win32"],
+			["\\\\.\\", "win32"],
+			["\\\\?\\", "win32"],
+			["\\\\.", "win32"],
+			["\\\\..\\share\\x", "win32"],
+			["\\\\a%b\\share", "win32"],
+			["\\\\a b\\share", "win32"],
+			["\\\\user@server\\share", "win32"],
+			["\\\\server:445\\share", "win32"],
+			["\\\\server.\\share", "win32"],
+			["\\\\café\\share", "win32"],
+			["\\\\server\\.\\x", "win32"],
+			["\\\\server\\..\\x", "win32"],
 		];
 		for (const [path, platform] of cases) {
 			assert.throws(
@@ -185,6 +256,14 @@ describe("LspUri.fromPath", () => {
 				undefined,
 				`${platform} ${JSON.stringify(path)}`,
 			);
+		}
+	});
+});
+
+describe("LspUri.fromPath device and namespace paths", () => {
+	it("names a device or namespace path as one", () => {
+		for (const path of ["\\\\?\\C:\\a", "\\\\.\\pipe\\x", "\\??\\C:\\a", "//?/C:/a"]) {
+			assert.throws(() => LspUri.fromPath(path, win32), TypeError, "Win32 device or namespace path", path);
 		}
 	});
 });
@@ -289,4 +368,78 @@ describe("round trips and the node:url differential", () => {
 		}
 		assert.isAbove(identities, 2000, "the corpus must hold dot-free paths");
 	});
+});
+
+// toPath and fromPath refuse one set: whatever path toPath answers, fromPath
+// must accept. Checked over every URI of up to three segments, with and
+// without an authority, over an alphabet of the tokens that reach a device,
+// namespace or malformed UNC path: dots, `?`, separators raw and encoded,
+// `%`, NUL, drive segments and hostname-looking names.
+const URI_TOKENS = [
+	"",
+	".",
+	"..",
+	"?",
+	"??",
+	"%2E",
+	"%2E%2E",
+	"%3F",
+	"%3F%3F",
+	"%2F",
+	"%5C",
+	"%25",
+	"%00",
+	"%20",
+	"a",
+	"server",
+	"srv.example",
+	"a%2Fb",
+	"a%5Cb",
+	"C:",
+	"c%3A",
+	"C|",
+	"UNC",
+	"pipe",
+	"localhost",
+	"user@h",
+	"h:1",
+	"caf%C3%A9",
+];
+
+const uris = (): ReadonlyArray<string> => {
+	const out: Array<string> = [];
+	for (const head of ["file:///", "file://", "file:////"]) {
+		for (const a of URI_TOKENS) {
+			for (const b of URI_TOKENS) {
+				out.push(`${head}${a}/${b}`);
+				for (const c of ["", "x", "%2E%2E", "C:"]) out.push(`${head}${a}/${b}/${c}`);
+			}
+		}
+	}
+	return out;
+};
+
+describe("toPath never answers a path fromPath refuses", () => {
+	const corpus = uris();
+
+	for (const platform of ["posix", "win32"] as const) {
+		it(`${platform}: every path toPath answers is one fromPath writes`, () => {
+			let answered = 0;
+			for (const uri of corpus) {
+				const path = LspUri.toPath(uri, { platform });
+				if (Option.isNone(path)) continue;
+				answered++;
+				// Not assert.doesNotThrow: its third argument matches the thrown
+				// message, so a label passed there makes the check vacuous.
+				try {
+					LspUri.fromPath(path.value, { platform });
+				} catch (error) {
+					assert.fail(`${uri} => ${JSON.stringify(path.value)}: fromPath refuses it (${String(error)})`);
+				}
+			}
+			// The corpus must reach both answers, or the property checks nothing.
+			assert.isAbove(answered, 1000, "the corpus must reach paths toPath answers");
+			assert.isBelow(answered, corpus.length, "the corpus must reach URIs toPath refuses");
+		});
+	}
 });

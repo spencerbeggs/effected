@@ -687,6 +687,76 @@ describe('port pathStyle: "win32"', () => {
 		}),
 	);
 
+	it.effect("realPath answers in win32 spelling, as node's win32 realpath does", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const sync = MemoryFileSystem.syncFileSystem(volume, { pathStyle: "win32" });
+			assert.strictEqual(sync.realPath("C:\\repo"), "C:\\repo");
+			assert.strictEqual(sync.realPath("C:/repo/package.json"), "C:\\repo\\package.json");
+			assert.strictEqual(sync.realPath("C:\\repo\\packages\\a\\..\\a"), "C:\\repo\\packages\\a");
+			// A link resolves to its target, respelled; the drive root keeps its separator.
+			assert.strictEqual(sync.realPath("C:\\repo\\link\\a"), "C:\\repo\\packages\\a");
+			assert.strictEqual(sync.realPath("C:\\"), "C:\\");
+			// A drive-less absolute path stays drive-less: the port models no current drive.
+			assert.strictEqual(sync.realPath("\\"), "\\");
+			const error = thrown(() => sync.realPath("C:\\repo\\absent")) as Record<string, unknown>;
+			assert.deepInclude(error, { code: "ENOENT", syscall: "realpath", path: "C:\\repo\\absent" });
+		}),
+	);
+
+	it.effect("realPath keeps the drive letter as the caller cased it; an absolute link target supplies its own", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeHandle(
+				{
+					"/C:/repo/a.txt": "",
+					"/C:/repo/up": MemoryFileSystem.symlink("/C:/out"),
+					"/C:/out/s.txt": "",
+				},
+				{ caseSensitive: false },
+			);
+			const sync = MemoryFileSystem.syncFileSystem(volume, { pathStyle: "win32" });
+			assert.strictEqual(sync.realPath("c:\\repo\\a.txt"), "c:\\repo\\a.txt");
+			assert.strictEqual(sync.realPath("C:\\repo\\a.txt"), "C:\\repo\\a.txt");
+			assert.strictEqual(sync.realPath("c:\\"), "c:\\");
+			// An absolute target replaces the whole prefix, drive included, as node's
+			// `path.resolve(previous, target)` does.
+			assert.strictEqual(sync.realPath("c:\\repo\\up\\s.txt"), "C:\\out\\s.txt");
+		}),
+	);
+
+	it.effect("the other port answers carry no path to respell: names, dirents and stats", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const sync = MemoryFileSystem.syncFileSystem(volume, { pathStyle: "win32" });
+			const posix = MemoryFileSystem.syncFileSystem(volume);
+			assert.deepStrictEqual(sync.readDirectory("C:\\repo"), posix.readDirectory("/C:/repo"));
+			assert.deepStrictEqual(
+				sync.readDirectory("C:\\repo", { withFileTypes: true }).map((d) => Object.keys(d).sort()),
+				[
+					["isDirectory", "isFile", "isSymbolicLink", "name"],
+					["isDirectory", "isFile", "isSymbolicLink", "name"],
+					["isDirectory", "isFile", "isSymbolicLink", "name"],
+				],
+			);
+			assert.deepStrictEqual(Object.keys(sync.stat("C:\\repo")).sort(), [
+				"isDirectory",
+				"isFile",
+				"isSymbolicLink",
+				"mtimeMs",
+				"size",
+			]);
+		}),
+	);
+
+	it.effect('"posix" (the default) realPath keeps the volume spelling', () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.strictEqual(sync.realPath("/C:/repo/link/a"), "/C:/repo/packages/a");
+			assert.strictEqual(sync.realPath("/C:"), "/C:");
+		}),
+	);
+
 	it.effect("edges: a drive-relative path stays relative, a UNC path lands under the server directory", () =>
 		Effect.gen(function* () {
 			const { volume } = yield* MemoryFileSystem.makeHandle({

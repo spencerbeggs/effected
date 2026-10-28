@@ -344,7 +344,10 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 	 * decide exactly as they do for a single request.
 	 *
 	 * The walk never enters a `node_modules` directory and never follows a
-	 * symbolic link, so it cannot leave the package; it stops descending
+	 * symbolic link: every path is `lstat`ed, component by component from the
+	 * package root, so a linked file, a linked parent directory of a concrete
+	 * target and a linked parent of a pattern's base all contribute nothing,
+	 * and it cannot leave the package. It stops descending
 	 * below a depth no published package reaches. A missing directory
 	 * contributes nothing. With `exports` absent, only the legacy `"."` entry
 	 * is reported, when its file exists.
@@ -379,14 +382,35 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 		const path = yield* Path.Path;
 		const entries = yield* Effect.fromResult(PackageExports.entriesResult(manifest, options));
 
-		const infoOf = (relative: string, follow: boolean) =>
-			(follow ? fs.stat : fs.lstat)(path.join(directory, relative)).pipe(
+		// `lstat`, never `stat`: a symbolic link is reported as one, never as
+		// whatever it points at, so nothing below can follow it.
+		const infoOf = (relative: string) =>
+			fs.lstat(path.join(directory, relative)).pipe(
 				Effect.map(Option.some),
 				Effect.catchIf(
 					(error) => error.reason._tag === "NotFound",
 					() => Effect.succeedNone,
 				),
 			);
+
+		// The entry at `relative` (a `./`-prefixed package path), reached
+		// without passing through a symlink at ANY component: an `lstat` of the
+		// last component alone would still walk through a linked parent
+		// directory (`./vendor/x.js` with `vendor` a link). `None` when a
+		// component is missing, a link, or not a directory where one is needed.
+		const reach = (relative: string) =>
+			Effect.gen(function* () {
+				const components = relative.split("/").slice(1);
+				let current = ".";
+				for (let index = 0; index < components.length; index++) {
+					current = `${current}/${components[index]}`;
+					const info = yield* infoOf(current);
+					if (Option.isNone(info) || info.value.type === "SymbolicLink") return Option.none();
+					if (index === components.length - 1) return info;
+					if (info.value.type !== "Directory") return Option.none();
+				}
+				return yield* infoOf(".");
+			});
 
 		// Package-relative files under `relative`, sorted, never through a
 		// symlink and never into node_modules.
@@ -396,14 +420,16 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 		): Effect.Effect<ReadonlyArray<string>, PlatformError.PlatformError> =>
 			Effect.gen(function* () {
 				if (depth > MAX_WALK_DEPTH) return [];
-				const info = yield* infoOf(relative, false);
+				// The base directory is reached link-free from the package root;
+				// below it, every child is `lstat`ed before it is entered.
+				const info = depth === 0 ? yield* reach(relative) : yield* infoOf(relative);
 				if (Option.isNone(info) || info.value.type !== "Directory") return [];
 				const names = [...(yield* fs.readDirectory(path.join(directory, relative)))].sort();
 				const files: Array<string> = [];
 				for (const name of names) {
 					if (name.toLowerCase() === "node_modules") continue;
 					const child = `${relative}/${name}`;
-					const childInfo = yield* infoOf(child, false);
+					const childInfo = yield* infoOf(child);
 					if (Option.isNone(childInfo)) continue;
 					if (childInfo.value.type === "Directory") files.push(...(yield* listFiles(child, depth + 1)));
 					else if (childInfo.value.type === "File") files.push(child);
@@ -421,7 +447,7 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 
 		for (const entry of entries) {
 			if (!entry.pattern) {
-				const info = yield* infoOf(entry.path, true);
+				const info = yield* reach(entry.path);
 				if (Option.isSome(info) && info.value.type === "File") keep(entry);
 				continue;
 			}
