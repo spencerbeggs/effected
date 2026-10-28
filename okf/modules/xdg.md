@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/xdg/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:38:47Z
+  at: 2026-10-28T20:19:51Z
 integrity:
   generated:
-    body: efe71dcba641fb4e
+    body: 11dd44274515026c
 ---
 
 # xdg
@@ -219,6 +219,15 @@ each system config directory, namespaced, in that order — placed ahead
 of the native resolver so an existing `~/.config/<app>` still beats the
 native directory. Both resolvers get a `never` error channel from walker
 rather than a hand-rolled `catchAll`.
+
+The save path is meant to be paired with config-file's `saveTarget:
+"default"`. Under `firstMatch` an unset `saveTarget` means `"source"`:
+write back into the file that was found. Because the primary resolver
+also searches the system config directories, that file can be
+`/etc/xdg/<app>/<filename>`, which a normal user cannot write. With
+`"default"` the write goes to the user's own config directory, which the
+resolver searches first, so the saved file wins the next load. Every
+example in the package pins it.
 
 Deliberately not present: preset ladders and format-coupled factories
 (that composition belongs in [app](app.md)), and a central error union

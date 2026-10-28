@@ -1,5 +1,8 @@
+import { generateKeyPairSync } from "node:crypto";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer, Redacted } from "effect";
+import { DateTime, Duration, Effect, Layer, Redacted } from "effect";
+import { TestClock } from "effect/testing";
+import { GitHubApp } from "../src/GitHubApp.js";
 import type { GitHubClientOptions } from "../src/GitHubClient.js";
 import { GitHubClient } from "../src/GitHubClient.js";
 import { GitHubError } from "../src/GitHubError.js";
@@ -7,7 +10,7 @@ import { GitHubRelease, ReleaseInfo } from "../src/GitHubRelease.js";
 import { uploadsBaseUrlFor } from "../src/internal/uploads.js";
 import { Repo } from "../src/Repo.js";
 import { RetryPolicy } from "../src/Resilience.js";
-import type { ScriptedFetch } from "./fixtures.js";
+import type { Reply, ScriptedFetch } from "./fixtures.js";
 import { scriptedFetch } from "./fixtures.js";
 import { REPO } from "./harness.js";
 
@@ -40,7 +43,7 @@ const clientLayer = (script: ScriptedFetch, options: Partial<GitHubClientOptions
 		...options,
 	});
 
-const upload = (release: ReleaseInfo, client: Layer.Layer<GitHubClient>) =>
+const upload = <E>(release: ReleaseInfo, client: Layer.Layer<GitHubClient, E>) =>
 	Effect.flatMap(GitHubRelease, (releases) =>
 		releases.uploadAsset(release, { name: "app.zip", data: "bytes", contentType: "application/zip" }),
 	).pipe(Effect.provide(GitHubRelease.layer.pipe(Layer.provideMerge(Layer.mergeAll(client, Repo.layer(REPO))))));
@@ -61,7 +64,12 @@ describe("GitHubRelease.uploadAsset upload host", () => {
 			assert.strictEqual(call?.path, "/api/uploads/repos/acme/widget/releases/5/assets");
 			assert.strictEqual(script.queryOf(0).get("name"), "app.zip");
 			assert.strictEqual(call?.headers.authorization, "token ghs_secret");
-			assert.isFalse(script.calls.some((recorded) => recorded.url.includes("github.com")));
+			// Hosts compared parsed and exact: a substring match on "github.com"
+			// would also accept "github.com.attacker.example".
+			assert.deepStrictEqual(
+				script.calls.map((recorded) => new URL(recorded.url).host),
+				["ghe.example"],
+			);
 		}),
 	);
 
@@ -129,6 +137,124 @@ describe("GitHubRelease.uploadAsset upload host", () => {
 			// Control: the same double accepts a github.com release.
 			yield* upload(releaseWith(DOTCOM_UPLOAD_URL), handBuilt);
 			assert.strictEqual(called, 1);
+		}),
+	);
+});
+
+describe("GitHubRelease.uploadAsset under GitHub App auth", () => {
+	// The App layers build their client through a rotating facade over a live
+	// inner client; these drive the real octokit client underneath it.
+	const { privateKey } = generateKeyPairSync("rsa", {
+		modulusLength: 2048,
+		privateKeyEncoding: { type: "pkcs8", format: "pem" },
+		publicKeyEncoding: { type: "spki", format: "pem" },
+	});
+	const CREDENTIALS = { appId: "Iv1.upload", privateKey: Redacted.make(privateKey) };
+	const GHES_BASE = "https://ghe.example/api/v3";
+	/** A realistic wall clock for the JWT; TestClock otherwise starts at the epoch. */
+	const NOW_MILLIS = 1_800_000_000_000;
+
+	const tokenReply = (token: string, expiresAt = "2099-01-01T00:00:00Z"): Reply => ({
+		status: 201,
+		body: { token, expires_at: expiresAt, permissions: { contents: "write" } },
+	});
+
+	const installationLayer = (script: ScriptedFetch, baseUrl?: string) =>
+		GitHubApp.clientLayer(
+			{ ...CREDENTIALS, installationId: 42 },
+			{ fetch: script.fetch, retry: RetryPolicy.none, ...(baseUrl === undefined ? {} : { baseUrl }) },
+		);
+
+	const appLayer = (script: ScriptedFetch, baseUrl?: string) =>
+		GitHubApp.appClientLayer(CREDENTIALS, {
+			fetch: script.fetch,
+			retry: RetryPolicy.none,
+			...(baseUrl === undefined ? {} : { baseUrl }),
+		});
+
+	/** The recorded call that POSTed the asset; exactly one must exist. */
+	const uploadCall = (script: ScriptedFetch) => {
+		const posts = script.calls.filter((call) => call.method === "POST" && call.path.endsWith("/assets"));
+		assert.lengthOf(posts, 1, "exactly one asset upload reached the wire");
+		const call = posts[0];
+		if (call === undefined) return assert.fail("no upload call");
+		return call;
+	};
+
+	it.effect("a github.com installation uploads to uploads.github.com with the installation token", () =>
+		Effect.gen(function* () {
+			const script = scriptedFetch([tokenReply("ghs_installation"), { status: 201, body: ASSET }, { status: 204 }]);
+			const asset = yield* upload(releaseWith(DOTCOM_UPLOAD_URL), installationLayer(script));
+			assert.strictEqual(asset.id, 9);
+			const call = uploadCall(script);
+			assert.strictEqual(new URL(call.url).origin, "https://uploads.github.com");
+			assert.strictEqual(call.path, "/repos/acme/widget/releases/5/assets");
+			assert.strictEqual(call.headers.authorization, "token ghs_installation");
+		}),
+	);
+
+	it.effect("a GHES installation uploads to <ghes>/api/uploads", () =>
+		Effect.gen(function* () {
+			const script = scriptedFetch([tokenReply("ghs_installation"), { status: 201, body: ASSET }, { status: 204 }]);
+			yield* upload(releaseWith(GHES_UPLOAD_URL), installationLayer(script, GHES_BASE));
+			const call = uploadCall(script);
+			assert.strictEqual(new URL(call.url).origin, "https://ghe.example");
+			assert.strictEqual(call.path, "/api/uploads/repos/acme/widget/releases/5/assets");
+			assert.strictEqual(call.headers.authorization, "token ghs_installation");
+			assert.deepStrictEqual(
+				[...new Set(script.calls.map((recorded) => new URL(recorded.url).host))],
+				["ghe.example"],
+				"nothing goes to github.com",
+			);
+		}),
+	);
+
+	it.effect("an upload after a token rotation carries the new token", () =>
+		Effect.gen(function* () {
+			const epoch = DateTime.toDateUtc(DateTime.makeUnsafe(0)).toISOString();
+			const script = scriptedFetch([
+				tokenReply("ghs_first", epoch),
+				{ status: 204 }, // revoke of the first
+				tokenReply("ghs_second"),
+				{ status: 201, body: ASSET },
+				{ status: 204 }, // revoke on scope close
+			]);
+			yield* Effect.provide(
+				Effect.gen(function* () {
+					// The first token expired at the epoch, where the TestClock starts,
+					// so the upload must rotate first.
+					yield* TestClock.adjust(Duration.seconds(1));
+					const releases = yield* GitHubRelease;
+					yield* releases.uploadAsset(releaseWith(DOTCOM_UPLOAD_URL), {
+						name: "app.zip",
+						data: "bytes",
+						contentType: "application/zip",
+					});
+				}),
+				GitHubRelease.layer.pipe(Layer.provideMerge(Layer.mergeAll(installationLayer(script), Repo.layer(REPO)))),
+			);
+			const call = uploadCall(script);
+			assert.strictEqual(new URL(call.url).origin, "https://uploads.github.com");
+			assert.strictEqual(call.headers.authorization, "token ghs_second");
+		}),
+	);
+
+	it.effect("an App-JWT client uploads to the derived host on github.com and GHES", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(NOW_MILLIS);
+			const cases: ReadonlyArray<readonly [string | undefined, string, string, string]> = [
+				[undefined, DOTCOM_UPLOAD_URL, "https://uploads.github.com", "/repos/acme/widget/releases/5/assets"],
+				[GHES_BASE, GHES_UPLOAD_URL, "https://ghe.example", "/api/uploads/repos/acme/widget/releases/5/assets"],
+			];
+			for (const [baseUrl, uploadUrl, origin, path] of cases) {
+				const label = String(baseUrl);
+				const script = scriptedFetch([{ status: 201, body: ASSET }]);
+				yield* upload(releaseWith(uploadUrl), appLayer(script, baseUrl));
+				const call = uploadCall(script);
+				assert.strictEqual(new URL(call.url).origin, origin, label);
+				assert.strictEqual(call.path, path, label);
+				assert.isTrue((call.headers.authorization ?? "").startsWith("bearer "), label);
+			}
 		}),
 	);
 });

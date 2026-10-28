@@ -20,3 +20,7 @@
 * `CliTest.spawn` starts a bin and returns at once with stdout and stderr line streams, `kill`, `exitCode` and `result`. Both streams replay to every reader and the child is killed when the scope closes (#1120).
 * `RunOptions.forceKillAfter` (default 2 seconds) escalates to SIGKILL for a child that ignores SIGTERM.
 * `Fmt.suggest` gives a did-you-mean list with `effect/cli`'s threshold (#1134), and `ConfigIssueRenderer` appends it to unknown-key lines (#1114).
+
+## Bug Fixes
+
+* `CliTest.spawn`'s `kill()` returns normally for a child that has already exited, on its own or at the same moment, instead of failing with `PlatformError`. A kill that fails on a child still running still fails, and `exitCode` and `result` still report how the child ended.

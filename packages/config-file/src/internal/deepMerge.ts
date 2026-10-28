@@ -52,13 +52,27 @@ const FORBIDDEN = new Set(["__proto__", "constructor", "prototype"]);
  *
  * @remarks
  * Far above the 256-level nesting cap of the kit's parsers, so a decoded
- * document never reaches it. It exists so the merge is total: a cyclic pair of
- * inputs stops here instead of recursing forever, and a pathologically deep
- * one cannot overflow the stack.
+ * document never reaches it. It exists so a pathologically deep pair of inputs
+ * cannot overflow the stack. Cycles do not depend on it: the per-pair memo in
+ * {@link deepMerge} bounds them, because a depth cap bounds depth, not work —
+ * a self-cycle through two keys recursed into both at every level, about
+ * 2^depth calls, before the memo existed.
  *
  * @internal
  */
 export const MAX_MERGE_DEPTH = 1024;
+
+/**
+ * Results already built for a `(base, override)` pair, keyed base first.
+ *
+ * @remarks
+ * Each pair merges once per {@link deepMerge} call. A revisit reuses the
+ * result, including one still being built, so a cyclic input yields a result
+ * with the same cycle and a subobject shared between keys stays shared. That
+ * also bounds the work: at most one merge per distinct pair of objects.
+ * `WeakMap`s, so the memo holds no input alive past the call.
+ */
+type Memo = WeakMap<object, WeakMap<object, Record<string, unknown>>>;
 
 /**
  * Merge `override` over `base`. Two mergeable values ({@link canMerge}) merge
@@ -68,7 +82,7 @@ export const MAX_MERGE_DEPTH = 1024;
  */
 export const deepMerge = (base: unknown, override: unknown): unknown =>
 	canMerge(base, override)
-		? mergeRecords(base as Record<string, unknown>, override as Record<string, unknown>, 1)
+		? mergeRecords(base as Record<string, unknown>, override as Record<string, unknown>, 1, new WeakMap())
 		: override;
 
 /**
@@ -91,8 +105,18 @@ const mergeRecords = (
 	base: Record<string, unknown>,
 	override: Record<string, unknown>,
 	depth: number,
+	memo: Memo,
 ): Record<string, unknown> => {
+	const seen = memo.get(base)?.get(override);
+	if (seen !== undefined) return seen;
 	const result: Record<string, unknown> = Object.create(Object.getPrototypeOf(override));
+	// Registered before recursing, so a cycle back to this pair finds it.
+	let byOverride = memo.get(base);
+	if (byOverride === undefined) {
+		byOverride = new WeakMap();
+		memo.set(base, byOverride);
+	}
+	byOverride.set(override, result);
 	// `override`'s keys must be filtered too, and copied as data properties. A
 	// bare assignment uses [[Set]] semantics, so an own `__proto__` key on the
 	// higher-priority document would reach `Object.prototype`'s inherited
@@ -104,7 +128,7 @@ const mergeRecords = (
 		const overrideValue = override[key];
 		const baseValue = Object.hasOwn(base, key) ? base[key] : undefined;
 		if (depth < MAX_MERGE_DEPTH && isPlainObject(baseValue) && isPlainObject(overrideValue)) {
-			define(result, key, mergeRecords(baseValue, overrideValue, depth + 1));
+			define(result, key, mergeRecords(baseValue, overrideValue, depth + 1, memo));
 		} else {
 			define(result, key, overrideValue);
 		}

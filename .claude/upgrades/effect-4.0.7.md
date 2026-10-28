@@ -234,6 +234,10 @@ git grep -nE 'WalkerSyncPath|confineReal|descend\(|RunResult|exitCode|SpawnedBin
   - `github`: `GitHubError` and `GitHubGraphQLError` keep no request body, options, `set-cookie`, response data, or GraphQL data and errors.
   - `github-actions`: the OIDC, blob store, cache, artifact, Twirp and `ToolInstaller` errors. `ToolInstallerError.subject` is the redacted URL, and `BlobTransferError.cause` is a redacted `RestError` copy.
 
+### 5.14 `@effected/workspaces`: `WORKSPACE_MARKERS` is narrowed
+
+- **`WORKSPACE_MARKERS` is typed `ReadonlyArray<WorkspaceMarker>`, not `ReadonlyArray<string>`.** `WORKSPACE_MARKERS.includes(someString)` stops compiling. Narrow the string first, or widen the array at the call site: `(WORKSPACE_MARKERS as ReadonlyArray<string>).includes(name)`. Typecheck finds every site.
+
 ## 6. Security fixes
 
 These landed in the drain. Upgrading is what closes them; no code change of yours is needed beyond step 5.

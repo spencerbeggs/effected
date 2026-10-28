@@ -130,6 +130,25 @@ describe("PackageTarball credentials: what goes on the wire", () => {
 		}),
 	);
 
+	it.effect("a double-slash tarball URL (Artifactory, Nexus) returns and carries its host's token", () =>
+		// The tarball URL is registry-controlled; this one once hung the lookup forever.
+		Effect.gen(function* () {
+			const { requests, client } = recording(() => ({ status: 200 }));
+			yield* extractWith(client, published("https://npm.acme.dev//@acme/widget/-/widget-1.0.0.tgz"), ACME);
+			assert.lengthOf(requests, 1);
+			assert.strictEqual(requests[0]?.authorization, `Bearer ${REGISTRY_TOKEN}`);
+		}),
+	);
+
+	it.effect("a double-slash tarball URL on another host returns with no credential", () =>
+		Effect.gen(function* () {
+			const { requests, client } = recording(() => ({ status: 200 }));
+			yield* extractWith(client, published("https://cdn.acme-static.net//@acme/widget-1.0.0.tgz"), ACME);
+			assert.lengthOf(requests, 1);
+			assert.isUndefined(requests[0]?.authorization);
+		}),
+	);
+
 	it.effect("a tarball on a lookalike host gets no credential", () =>
 		Effect.gen(function* () {
 			const { requests, client } = recording(() => ({ status: 200 }));

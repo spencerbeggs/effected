@@ -15,6 +15,8 @@
 
 ## Bug Fixes
 
+* `NpmConfig.credentialFor`, `targetFor` and `PackageTarball.extract` no longer hang on a URL whose path holds `//`, such as an Artifactory or Nexus tarball URL or a registry configured as `https://host//`. An empty path segment is its own level, as npm treats it, so the host's credential is still found.
+
 ### Security
 
 * npmrc credentials are kept off cleartext transports and out of printed output.
