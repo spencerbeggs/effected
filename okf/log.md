@@ -8,6 +8,8 @@
 * Updated @effected/mcp
 * Updated Keyed operations come from WebCrypto, payload digests from core Crypto required in R
 * Updated @effected/memfs
+* Updated @effected/github
+* Updated @effected/github REST client
 
 ## 2026-10-27
 
