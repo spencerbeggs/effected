@@ -12,6 +12,7 @@
 // caller-supplied functions, not requests, because they are pure in both worlds.
 
 import type { GlobPattern } from "@effected/glob";
+import { isPinnedAbsolute } from "./absolute.js";
 import { resolveSegments } from "./segments.js";
 import { trimTrailing } from "./trimTrailing.js";
 
@@ -61,6 +62,7 @@ export interface DescendMachineOptions {
 
 /** The pure path operations the walk uses. */
 export interface DescendPathOps {
+	readonly sep: string;
 	readonly join: (directory: string, name: string) => string;
 	readonly isAbsolute: (path: string) => boolean;
 }
@@ -127,9 +129,11 @@ export function* descendMachine<S, C>(
 	}
 	// A relative `cwd` — the empty string above all — would resolve against the
 	// process working directory, and on win32 `join("", "C:/x")` is `C:\x`: a
-	// walk rooted nowhere the caller named. Statically wrong at the call site,
-	// so it dies exactly as an invalid `maxDepth` does.
-	if (options.cwd.includes("\0") || !path.isAbsolute(options.cwd)) {
+	// walk rooted nowhere the caller named. A win32 `\repo` is absolute to
+	// `isAbsolute` yet rooted on the current drive, process-dependent the same
+	// way. Statically wrong at the call site, so it dies exactly as an invalid
+	// `maxDepth` does.
+	if (options.cwd.includes("\0") || !isPinnedAbsolute(options.cwd, path)) {
 		return {
 			_tag: "Defect",
 			message: `Walker.descend: cwd must be an absolute path, received ${JSON.stringify(options.cwd)}`,

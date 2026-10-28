@@ -52,24 +52,100 @@ const DEFAULT_MAX_FILE_BYTES = 16 * 1024 * 1024;
 const seedError = (code: string, path: string, message: string): Error =>
 	Object.assign(new Error(`${code}: ${message}, '${path}'`), { code, path, syscall: "seed" });
 
-/** Lexical POSIX normalization of a relative path; `..` above the start is kept as a leading `..`. */
-const normalizeRelative = (path: string): string => {
-	const segments: Array<string> = [];
-	for (const segment of path.split("/")) {
-		if (segment === "" || segment === ".") continue;
-		if (segment === ".." && segments.length > 0 && segments[segments.length - 1] !== "..") {
-			segments.pop();
-			continue;
-		}
-		segments.push(segment);
-	}
-	return segments.join("/");
+// The ELOOP budget a real filesystem applies, shared by one link's whole
+// resolution. Running out without a cycle cannot be proved inside: refused.
+const MAX_LINK_HOPS = 40;
+
+/** The separators a link's target text splits on: a backslash too where the host spells paths that way. */
+const SEPARATORS = NPath.sep === "\\" ? /[\\/]/ : /\//;
+
+/** How many directories below the root `real` sits; `real` is the root or inside it. */
+const depthBelow = (realRoot: string, real: string): number => {
+	const relative = NPath.relative(realRoot, real);
+	return relative === "" ? 0 : relative.split(NPath.sep).length;
 };
 
-/** Whether `child` is `parent` or inside it, comparing real paths. */
-const within = (parent: string, child: string): boolean => {
-	const relative = NPath.relative(parent, child);
-	return relative === "" || (!relative.startsWith("..") && !NPath.isAbsolute(relative));
+/**
+ * Whether the segments still to resolve stay inside, read lexically from
+ * `depth` — for the part of a path past a component the host cannot resolve,
+ * where nothing exists to follow. A `..` above the root at any point escapes.
+ */
+const lexicallyInside = (depth: number, segments: ReadonlyArray<string>): boolean => {
+	let at = depth;
+	for (const segment of segments) {
+		if (segment === "" || segment === ".") continue;
+		if (segment === "..") {
+			at -= 1;
+			if (at < 0) return false;
+		} else {
+			at += 1;
+		}
+	}
+	return true;
+};
+
+type Resolution = { readonly path: string } | "escapes" | "unresolved";
+
+interface LinkWalk {
+	hops: number;
+	readonly active: Set<string>;
+}
+
+/**
+ * Resolves `target` from the real directory `from` one segment at a time on
+ * the host, following every link on the way, and answers `"escapes"` the
+ * moment any step leaves `realRoot` — even one that comes back in, because the
+ * volume mounts the fixture alone and has no host above it to come back
+ * through. A path that stops resolving (a missing component, a component under
+ * a file, a cycle) has nothing left to follow; its remaining segments are
+ * checked lexically, failing closed.
+ */
+const resolveInside = (realRoot: string, from: string, target: string, walk: LinkWalk): Resolution => {
+	if (NPath.isAbsolute(target) || target.startsWith("/")) return "escapes";
+	const segments = target.split(SEPARATORS);
+	let current = from;
+	for (let index = 0; index < segments.length; index++) {
+		const segment = segments[index] as string;
+		if (segment === "" || segment === ".") continue;
+		if (segment === "..") {
+			if (current === realRoot) return "escapes";
+			current = NPath.dirname(current);
+			continue;
+		}
+		const candidate = NPath.join(current, segment);
+		let stat: NFS.Stats | undefined;
+		try {
+			stat = NFS.lstatSync(candidate);
+		} catch {
+			// ENOENT, or ENOTDIR under a file: nothing exists here to follow.
+			stat = undefined;
+		}
+		if (stat === undefined) {
+			return lexicallyInside(depthBelow(realRoot, current), segments.slice(index)) ? "unresolved" : "escapes";
+		}
+		if (stat.isSymbolicLink()) {
+			// A link already being resolved is a cycle: ELOOP on the host and in
+			// the volume alike, and every step so far stayed inside.
+			let next: Resolution = "unresolved";
+			if (!walk.active.has(candidate)) {
+				walk.hops += 1;
+				if (walk.hops > MAX_LINK_HOPS) return "escapes";
+				walk.active.add(candidate);
+				next = resolveInside(realRoot, current, NFS.readlinkSync(candidate), walk);
+				walk.active.delete(candidate);
+			}
+			if (next === "escapes") return "escapes";
+			if (next === "unresolved") {
+				// Nothing to follow past a link that resolves nowhere, and no place
+				// to read the rest from: read it from the root, the strictest base.
+				return lexicallyInside(0, segments.slice(index + 1)) ? "unresolved" : "escapes";
+			}
+			current = next.path;
+			continue;
+		}
+		current = candidate;
+	}
+	return { path: current };
 };
 
 /**
@@ -79,11 +155,12 @@ const within = (parent: string, child: string): boolean => {
  * @remarks
  * The link is NEVER followed to read content — only its text is copied — so
  * nothing outside the fixture is ever read. What is refused is a link whose
- * target would leave the fixture: an absolute target (a host path the volume
- * would resolve against itself, not the host), a target that resolves on the
- * host outside the fixture root (the kernel's `realpath` sees through chains of links),
- * or, for a dangling link the host cannot resolve, a target that escapes the
- * fixture lexically.
+ * target would leave the fixture at any step: an absolute target (a host path
+ * the volume would resolve against itself, not the host), or a relative one
+ * whose host resolution, segment by segment through every link, steps outside
+ * the fixture root. A dangling target is resolved the same way as far as the
+ * host can follow it, then lexically. A resolution that runs out of link hops
+ * without a cycle is refused.
  */
 const checkLink = (realRoot: string, linkPath: string, relativeLink: string, target: string): string => {
 	if (NPath.isAbsolute(target) || target.startsWith("/")) {
@@ -93,20 +170,13 @@ const checkLink = (realRoot: string, linkPath: string, relativeLink: string, tar
 			`symlink target "${target}" is absolute; only relative targets inside the fixture can be seeded`,
 		);
 	}
-	let resolved: string | undefined;
-	try {
-		// `.native`, the kernel's answer: the JS `realpathSync` joins a link's
-		// target lexically, so `sub/out -> up/..` with `sub/up -> ..` reads as
-		// `sub` there while the kernel resolves it above the fixture.
-		resolved = NFS.realpathSync.native(linkPath);
-	} catch {
-		// Dangling, or a loop: the host cannot answer, so the lexical check below decides.
-		resolved = undefined;
-	}
+	// The walk reaches each directory through real directories only (links are
+	// never descended), so the link's real parent is a plain join.
 	const parent = relativeLink.includes("/") ? relativeLink.slice(0, relativeLink.lastIndexOf("/")) : "";
-	const lexical = normalizeRelative(parent === "" ? target : `${parent}/${target}`);
-	const escapes = resolved !== undefined ? !within(realRoot, resolved) : lexical === ".." || lexical.startsWith("../");
-	if (escapes) {
+	const realParent = parent === "" ? realRoot : NPath.join(realRoot, ...parent.split("/"));
+	const self = NPath.join(realParent, NPath.basename(linkPath));
+	const walk: LinkWalk = { hops: 1, active: new Set([self]) };
+	if (resolveInside(realRoot, realParent, target, walk) === "escapes") {
 		throw seedError(
 			"ERR_SEED_SYMLINK_ESCAPE",
 			linkPath,
@@ -114,6 +184,51 @@ const checkLink = (realRoot: string, linkPath: string, relativeLink: string, tar
 		);
 	}
 	return target;
+};
+
+/**
+ * Reads the regular file at `path` that `expected` (its `lstat`) described,
+ * through one descriptor, so the checks apply to the bytes actually read.
+ *
+ * @remarks
+ * The entry can change between the walk's `lstat` and the read. Opened with
+ * `O_NOFOLLOW` where the host has it (a link swapped in fails `ELOOP`) and
+ * `O_NONBLOCK` where it has that (a FIFO swapped in cannot block the open),
+ * the descriptor's own `fstat` must still be a regular file with the
+ * `lstat`'s device and inode, or the read throws `ERR_SEED_CHANGED`; its size
+ * is checked against `maxFileBytes`, and the read is bounded by that size. A
+ * file that shrinks mid-read also throws `ERR_SEED_CHANGED`.
+ *
+ * @internal
+ */
+export const readSeedFile = (path: string, expected: NFS.Stats, maxFileBytes: number): Uint8Array => {
+	const constants = NFS.constants;
+	const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+	const fd = NFS.openSync(path, flags);
+	try {
+		const stat = NFS.fstatSync(fd);
+		if (!stat.isFile() || stat.dev !== expected.dev || stat.ino !== expected.ino) {
+			throw seedError("ERR_SEED_CHANGED", path, "the entry changed while the fixture was read");
+		}
+		if (stat.size > maxFileBytes) {
+			throw seedError("EFBIG", path, `file is ${stat.size} bytes, over maxFileBytes ${maxFileBytes}`);
+		}
+		// Our own buffer, not node's: a small Buffer is a view into a shared
+		// pool, and the seed must own exactly these bytes.
+		const content = new Uint8Array(stat.size);
+		let offset = 0;
+		while (offset < content.length) {
+			const read = NFS.readSync(fd, content, offset, content.length - offset, offset);
+			if (read === 0) break;
+			offset += read;
+		}
+		if (offset < content.length) {
+			throw seedError("ERR_SEED_CHANGED", path, "the file shrank while the fixture was read");
+		}
+		return content;
+	} finally {
+		NFS.closeSync(fd);
+	}
 };
 
 /**
@@ -131,13 +246,22 @@ const checkLink = (realRoot: string, linkPath: string, relativeLink: string, tar
  * - **Symlinks are copied as links, never followed.** The target text is
  *   stored verbatim, so a link inside the fixture still points where it did.
  *   A link that would leave the fixture throws `ERR_SEED_SYMLINK_ESCAPE`: an
- *   absolute target, a target the host resolves outside the directory, or a
- *   dangling target that escapes it lexically. Nothing outside the directory
- *   is read. The directory argument itself may be a link; it is resolved once.
+ *   absolute target, or a target whose resolution on the host, one segment at
+ *   a time through every link on the way, steps outside the directory at any
+ *   point — even to come back in, since the volume has nothing above the
+ *   mount to come back through. A dangling target is followed as far as the
+ *   host can, then read lexically; a chain that runs out of link hops without
+ *   a cycle is refused. Nothing outside the directory is read. The directory
+ *   argument itself may be a link; it is resolved once.
  * - **Modes** are copied only with `modes: true`; mtimes never are (they
  *   differ per checkout, and a seed's times are the volume clock's).
  * - **A file over `maxFileBytes`** (16 MiB by default) throws `EFBIG`, checked
- *   from `lstat` before the read.
+ *   against the open descriptor's size before the read, and the read is
+ *   bounded by that size.
+ * - **An entry that changes while it is read** throws `ERR_SEED_CHANGED`: a
+ *   file is opened without following a link (where the host supports it) and
+ *   must still be the regular file the walk saw (same device and inode), so a
+ *   link or another file swapped in between the walk and the read is refused.
  * - **Anything else** — a FIFO, a socket, a device — throws
  *   `ERR_SEED_UNSUPPORTED_TYPE`; the volume models files, directories and
  *   links only.
@@ -226,9 +350,7 @@ export class NodeDirectorySeed {
 					if (stat.size > maxFileBytes) {
 						throw seedError("EFBIG", realPath, `file is ${stat.size} bytes, over maxFileBytes ${maxFileBytes}`);
 					}
-					// A copy, not node's Buffer: a small Buffer is a view into a shared
-					// pool, and the seed must own exactly these bytes.
-					const content = new Uint8Array(NFS.readFileSync(realPath));
+					const content = readSeedFile(realPath, stat, maxFileBytes);
 					const entry: MemoryFileSystemSeedFile = modes
 						? { _tag: "MemoryFileSystemSeedFile", content, mode: stat.mode & 0o7777 }
 						: { _tag: "MemoryFileSystemSeedFile", content };

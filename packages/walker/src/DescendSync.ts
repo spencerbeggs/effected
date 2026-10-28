@@ -175,6 +175,7 @@ const walkSync = (
 	};
 
 	const machine = descendMachine<WalkerSyncStats, unknown>(pattern, options, {
+		sep: path.sep,
 		join: (a, b) => path.join(a, b),
 		isAbsolute: (p) => path.isAbsolute(p),
 	});

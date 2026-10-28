@@ -44,24 +44,31 @@ const toResult = <C>(
  * TARGET — `base/link/../x` is outside when `link` points outside — rather
  * than being collapsed lexically first, as `path.resolve` and node's JS
  * `fs.realpath` would. A path, or the tail of one, that does not exist yet
- * is resolved lexically from its real existing ancestor, since what does not
- * exist is not a link, so a write target can be checked before it is
- * created. The base is resolved the same way.
+ * is resolved lexically from its real existing ancestor, so a write target
+ * can be checked before it is created — but only once absence is proved: a
+ * segment whose real path is not found is checked again without following
+ * links, because a dangling link is "not found" too, and a write through one
+ * creates its target wherever it points. The base is resolved the same way.
  *
  * Refused, typed as {@link PathEscapeError}: a NUL character (`nulByte`);
  * the empty string or any path whose real location IS the base (`empty`,
  * the same ruling `confineRelative` makes — a caller confining a path names
- * an entry under the base); on win32 a drive-relative `C:x` (`absolute`) or a
- * segment win32 reads as something else, such as a device name or `..  `
+ * an entry under the base); on win32 a drive-relative `C:x` or a driveless
+ * rooted `\x`, which names the current drive (`absolute`), or a segment
+ * win32 reads as something else, such as a device name or `..  `
  * (`reservedName`); a real path outside the base's (`outside`); and a
  * resolution that fails for a reason other than absence, such as a
- * permission error or a link loop (`unresolvable`, with the failure in
- * `cause`) — containment that cannot be verified is refused, never assumed.
+ * permission error, a link loop, or a dangling link — a link whose target
+ * does not exist, refused even when that target would lie inside the base
+ * (`unresolvable`, with the failure in `cause`) — containment that cannot be
+ * verified is refused, never assumed.
  *
  * A relative `base` — the empty string included — is a **defect**: it would
  * be resolved against the process working directory, the silent wrong-root
  * walk `ascend` refuses for a relative `stopAt`. Absoluteness is judged by
- * the injected `Path`, so win32 accepts `C:\repo`.
+ * the injected `Path`, so win32 accepts `C:\repo` and `\\server\share`;
+ * a win32 `\repo`, rooted on whichever drive the process is on, is a defect
+ * too.
  *
  * Use the returned path, not the candidate: it is the location that was
  * checked. Comparison is exact on the real paths, so on a case-insensitive
@@ -105,8 +112,9 @@ export const confineReal: (
  *
  * @remarks
  * The same resolution from the same code, through the port's `realPath`; a
- * `realPath` throwing `code: "ENOENT"` is absence, anything else is
- * `unresolvable`, with the thrown value as the `cause`. A relative `base`
+ * `realPath` throwing `code: "ENOENT"` is absence only when the port's
+ * `lstat` throws `ENOENT` too (otherwise a dangling link is there); anything
+ * else is `unresolvable`, with the thrown value as the `cause`. A relative `base`
  * throws. For a caller with no Effect runtime; inside Effect, use
  * `confineReal`.
  *
