@@ -106,6 +106,55 @@ describe("CliFormat.print", () => {
 	);
 });
 
+describe("CliFormat.printJson", () => {
+	const captured = (effect: Effect.Effect<void>, actions = false) =>
+		Effect.gen(function* () {
+			const { double, out, err } = capturing();
+			const exit = yield* effect.pipe(
+				actions ? Effect.provide(CurrentRuntimeEnv.layerTest({ ci: Option.some("github-actions") })) : (e) => e,
+				Effect.provideService(Console.Console, double),
+				Effect.exit,
+			);
+			return { exit, out, err };
+		});
+
+	it.effect("needs no presentation services, and writes what print writes for json, byte for byte", () =>
+		Effect.gen(function* () {
+			for (const actions of [false, true]) {
+				const alone = yield* captured(CliFormat.printJson(output.json()), actions);
+				const viaPrint = yield* printed("json", "ci", actions);
+				assert.lengthOf(alone.out, 1, "one document, one write");
+				assert.strictEqual(alone.out[0], viaPrint.out);
+			}
+		}),
+	);
+
+	it.effect("escapes ##[ under GitHub Actions only, and honours stream and indent", () =>
+		Effect.gen(function* () {
+			const actions = yield* captured(CliFormat.printJson(output.json()), true);
+			assert.notInclude(actions.out[0] ?? "", "##[");
+			assert.deepStrictEqual(JSON.parse(actions.out[0] ?? ""), output.json());
+			const plain = yield* captured(CliFormat.printJson(output.json()));
+			assert.include(plain.out[0] ?? "", "##[", "control: untouched outside Actions");
+			const err = yield* captured(CliFormat.printJson([1, 2], { stream: "stderr", indent: 0 }));
+			assert.deepStrictEqual(err.out, []);
+			assert.deepStrictEqual(err.err, ["[1,2]"]);
+		}),
+	);
+
+	it.effect("a value JSON cannot hold is a defect", () =>
+		Effect.gen(function* () {
+			const cycle: Record<string, unknown> = {};
+			cycle.self = cycle;
+			for (const value of [cycle, 1n, undefined]) {
+				const { exit, out } = yield* captured(CliFormat.printJson(value));
+				assert.isTrue(Exit.hasDies(exit));
+				assert.deepStrictEqual(out, []);
+			}
+		}),
+	);
+});
+
 describe("CliFormat.flag", () => {
 	const parsed = (flag: Flag.Flag<string>, argv: ReadonlyArray<string>) =>
 		Effect.gen(function* () {

@@ -266,10 +266,8 @@ export class CliFormat {
 	 * Print a command's output in `format`.
 	 *
 	 * @remarks
-	 * `json` writes `output.json()` as JSON, one `Console.log` (or `Console.error` for stderr), indented by `indent`.
-	 * Under GitHub Actions a `##[` inside it is written as the JSON escape `##[`, which decodes to the same text,
-	 * so the runner cannot read it as a command. A value JSON cannot hold (a cycle, a bigint) is a defect. Every other
-	 * format prints `output.doc()` with `Doc.print`, which renders it as `auto` or the named renderer would.
+	 * `json` writes `output.json()` exactly as {@link CliFormat.printJson} writes a value, which it delegates to. Every
+	 * other format prints `output.doc()` with `Doc.print`, which renders it as `auto` or the named renderer would.
 	 *
 	 * @param format - the chosen format, usually the value of {@link CliFormat.flag}
 	 * @param output - the document and the data
@@ -287,9 +285,34 @@ export class CliFormat {
 			if (data === undefined) {
 				return yield* Effect.die(new Error("CliFormat.print: format json needs output.json"));
 			}
-			const text = yield* Effect.sync(() => JSON.stringify(data(), null, options?.indent ?? 2));
-			if (text === undefined) return yield* Effect.die(new Error("CliFormat.print: output.json() is not JSON"));
+			return yield* CliFormat.printJson(data(), options);
+		});
+
+	/**
+	 * Print `value` as JSON, the way {@link CliFormat.print} prints the `json` format, for a CLI that keeps a JSON flag
+	 * of its own.
+	 *
+	 * @remarks
+	 * One `Console.log` (or `Console.error` for stderr), indented by `indent`: one document, never one line per item.
+	 * Under GitHub Actions a `##[` inside it is written as the JSON escape `#\u0023[`, which decodes to the same
+	 * text, so the runner cannot read it as a command. A value JSON cannot hold (a cycle, a bigint, `undefined`) is a
+	 * defect. It needs no theme, terminal or audience: whether this is GitHub Actions is read from `CurrentRuntimeEnv`
+	 * when the environment has it, and is "no" otherwise.
+	 *
+	 * ```ts
+	 * const status = Command.make("status", { json: Flag.Boolean("json").pipe(Flag.withDefault(false)) }, ({ json }) =>
+	 *   json ? CliFormat.printJson(results) : Doc.print(report(results)),
+	 * )
+	 * ```
+	 *
+	 * @param value - the data to print
+	 * @param options - the stream and the JSON indent
+	 */
+	static readonly printJson = (value: unknown, options?: CliFormatPrintOptions): Effect.Effect<void> =>
+		Effect.gen(function* () {
+			const text = yield* Effect.sync(() => JSON.stringify(value, null, options?.indent ?? 2));
+			if (text === undefined) return yield* Effect.die(new Error("CliFormat.printJson: the value is not JSON"));
 			const safe = (yield* underGithubActions) ? neutralizeJson(text) : text;
-			yield* stream === "stdout" ? Console.log(safe) : Console.error(safe);
+			yield* (options?.stream ?? "stdout") === "stdout" ? Console.log(safe) : Console.error(safe);
 		});
 }

@@ -26,7 +26,7 @@
 | `CliExitShape` | Interface | The shape behind `CliExit`. | |
 | `CliFailure` | Class | A failure as a document: what the default report prints, and a building block for a custom one. | draw a failure as a document, schema issues as a tree, app frames and spans only |
 | `CliFailureOptions` | Interface | Options for `CliFailure.toDoc`. | |
-| `CliFormat` | Class | A `--format` flag and the one print that honours it, so a command builds its report once as a `Doc` and its data once as a value, and never writes per-format output by hand. | add a --format flag, alias or custom formats, retired --json, print json |
+| `CliFormat` | Class | A `--format` flag and the one print that honours it, so a command builds its report once as a `Doc` and its data once as a value, and never writes per-format output by hand. | add a --format flag, alias or custom formats, retired --json, print json, print json without the flag |
 | `CliFormatFlagOptions` | Interface | Options for `CliFormat.flag`. | |
 | `CliFormatLegacyJson` | Interface | The retired boolean flag `CliFormatFlagOptions.legacyJson` accepts, spelled as an object. | |
 | `CliFormatName` | TypeAlias | An output format a `--format` flag can offer: `auto` (the renderer the audience gets, as `Doc.print` picks it), one of the `Doc` renderers by name, or `json`, the command's data rather than its document. | |

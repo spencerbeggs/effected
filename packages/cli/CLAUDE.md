@@ -19,7 +19,7 @@ as breaks. A status vocabulary's glyphs are sanitised too, at one source
 (`Status.glyph`, which a theme's `status`, `CliMessage`, `CliLog.status` and
 `Doc` all draw through), so a glyph built from data cannot inject an escape
 on a trusted line; a theme's glyph set (separators, ellipsis) is configuration.
-`CliFormat` pairs a shared `--format` flag with `Doc.print` (plus `json`);
+`CliFormat` pairs a shared `--format` flag with `Doc.print` (plus `json`, also alone as `CliFormat.printJson`);
 `Fmt` carries the text helpers: `Fmt.describe`, `Fmt.causeMessage` (the kit's
 guarded cause read, never throwing) and `Fmt.errorText` are `@effected/engine`'s
 `ErrorText` functions, delegated rather than copied, and `Fmt.suggest` is the
