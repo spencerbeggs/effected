@@ -35,6 +35,7 @@
 * Updated @effected/yaml lint system
 * Updated @effected/lsp
 * Updated Error handling standards
+* Updated @effected/github GraphQL
 
 ## 2026-10-27
 

@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T18:09:57Z
+  at: 2026-10-28T18:21:14Z
 integrity:
   generated:
-    body: 5ce9b7f8a5766aaf
+    body: 7f6cc4fa8851df41
 ---
 
 # @effected/github
@@ -197,6 +197,10 @@ calls send `POST /graphql` with `data: { query, variables }` rather than
 through `octokit.graphql`, which reads a variable named `baseUrl`, `headers`,
 `request`, `mediaType` or `operationName` as a request option. The audit of
 every params-building call site behind both is in the REST client interface.
+`GitHubRelease.uploadAsset` takes its upload host from the client's
+configured base (`internal/uploads.ts`), never from the release's
+`uploadUrl`, so a GitHub Enterprise Server client's token stays on that
+server; the derivation is in the REST client interface too.
 `__test__/repositoryRestSettingKeys.test.ts` regenerates the file in memory
 and fails on drift, including a header that names `DEFAULT_API_VERSION`;
 re-run the generator (`pnpm --filter @effected/github exec tsx
