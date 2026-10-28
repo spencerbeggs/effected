@@ -7,7 +7,7 @@ import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { YamlRule } from "../../YamlLintRule.js";
 import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
-import { insideScalarSpan } from "./util.js";
+import { insideComposedScalar, insideScalarSpan } from "./util.js";
 
 /** Options for `trailing-spaces` (severity only — nothing to tune). */
 export const trailingSpacesOptions = Schema.Struct({
@@ -27,7 +27,11 @@ export const trailingSpaces: YamlRule = {
 			if (match === null) continue;
 			const runOffset = line.offset + match.index;
 			// Trailing whitespace inside scalar content is the value's business.
-			if (insideScalarSpan(ctx.tokens, runOffset)) continue;
+			// The token check covers block scalars; the composer check covers
+			// a multi-line plain or quoted scalar the lexer splits into several
+			// tokens, whose blank lines are content (`b\r \n  c` is `"b\nc"`, and
+			// deleting the space fuses CR and LF into one break: `"b c"`).
+			if (insideScalarSpan(ctx.tokens, runOffset) || insideComposedScalar(ctx, runOffset)) continue;
 			out.push(
 				new YamlLintDiagnostic({
 					rule: "trailing-spaces",

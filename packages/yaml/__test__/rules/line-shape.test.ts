@@ -76,6 +76,20 @@ testRule(builtin("trailing-spaces"), [
 		expected: [{ line: 0, character: 4, length: 3 }],
 		fixed: "a: 1\r\nb: 2\r\n",
 	},
+	{
+		// `b\r \n  c` is the plain scalar `"b\nc"`: the line between the bare CR
+		// and the LF is a blank line of its content. Deleting its space fused
+		// the two breaks into one CRLF and the value folded to `"b c"`.
+		name: "whitespace on a blank line inside a multi-line plain scalar is the value's business",
+		input: "a: b\r \n  c\n",
+		expected: [],
+	},
+	{
+		name: "whitespace between a bare CR and an LF outside any scalar still fixes",
+		input: "a: 1\r \nb: 2\n",
+		expected: [{ line: 1, character: 0, length: 1 }],
+		fixed: "a: 1\r\nb: 2\n",
+	},
 ]);
 
 testRule(builtin("empty-lines"), [
