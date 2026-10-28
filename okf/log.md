@@ -37,6 +37,7 @@
 * Updated Error handling standards
 * Updated @effected/github GraphQL
 * Updated @effected/jwt
+* Updated actions-storage
 
 ## 2026-10-27
 

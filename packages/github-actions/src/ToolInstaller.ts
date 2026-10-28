@@ -1,3 +1,4 @@
+import { HttpRedaction } from "@effected/crypto";
 import type { Duration, PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer, Option, Path, Schedule, Schema, Stream } from "effect";
 import { HttpClient } from "effect/http";
@@ -24,7 +25,7 @@ export class ToolInstallerError extends Schema.TaggedError<ToolInstallerError>()
 	reason: Schema.Literals(["downloadFailed", "extractFailed", "cacheFailed"]),
 	/** The HTTP status, when there was one. Drives the retry decision. */
 	status: Schema.optionalKey(Schema.Number),
-	/** What was being worked on — a url, an archive path, or a tool name. */
+	/** What was being worked on — a url (with userinfo and credential query values redacted), an archive path, or a tool name. */
 	subject: Schema.String,
 	/** The extraction tool's own complaint, which is the only useful part of a tar failure. */
 	stderr: Schema.optionalKey(Schema.String),
@@ -369,23 +370,32 @@ const make = Effect.gen(function* () {
 		);
 
 	const download = Effect.fn("ToolInstaller.download")(function* (url: string, options?: ToolDownloadOptions) {
+		// The url is kept on every error redacted: a signed download url carries
+		// its credential in userinfo or the query string.
+		const subject = HttpRedaction.url(url);
 		const attempt = Effect.gen(function* () {
 			const response = yield* http
 				.get(url)
-				.pipe(Effect.mapError((cause) => new ToolInstallerError({ reason: "downloadFailed", subject: url, cause })));
+				.pipe(
+					Effect.mapError(
+						(cause) => new ToolInstallerError({ reason: "downloadFailed", subject, cause: HttpRedaction.cause(cause) }),
+					),
+				);
 			if (response.status < 200 || response.status >= 300) {
 				return yield* Effect.fail(
-					new ToolInstallerError({ reason: "downloadFailed", subject: url, status: response.status }),
+					new ToolInstallerError({ reason: "downloadFailed", subject, status: response.status }),
 				);
 			}
 			const directory = yield* fs
 				.makeTempDirectory({ prefix: "effected-download-" })
-				.pipe(Effect.mapError((cause) => new ToolInstallerError({ reason: "downloadFailed", subject: url, cause })));
+				.pipe(Effect.mapError((cause) => new ToolInstallerError({ reason: "downloadFailed", subject, cause })));
 			const file = path.join(directory, "download");
 			// Streamed to disk rather than buffered: a toolchain archive is measured
 			// in hundreds of megabytes and a runner is not generous with memory.
 			yield* Stream.run(response.stream, fs.sink(file)).pipe(
-				Effect.mapError((cause) => new ToolInstallerError({ reason: "downloadFailed", subject: url, cause })),
+				Effect.mapError(
+					(cause) => new ToolInstallerError({ reason: "downloadFailed", subject, cause: HttpRedaction.cause(cause) }),
+				),
 			);
 			return file;
 		});
@@ -396,7 +406,7 @@ const make = Effect.gen(function* () {
 			// downloadFailed instead of a silent hang to the job timeout.
 			Effect.timeout(options?.timeout ?? DOWNLOAD_TIMEOUT),
 			Effect.catchTag("TimeoutError", (cause) =>
-				Effect.fail(new ToolInstallerError({ reason: "downloadFailed", subject: url, cause })),
+				Effect.fail(new ToolInstallerError({ reason: "downloadFailed", subject, cause })),
 			),
 			Effect.retry({
 				schedule: Schedule.exponential("1 second"),

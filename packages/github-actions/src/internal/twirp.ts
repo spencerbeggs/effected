@@ -6,6 +6,7 @@
 // `TwirpFailure` into its own typed error, because the failure a caller
 // reports is about *its* operation, not about HTTP.
 
+import { HttpRedaction } from "@effected/crypto";
 import type { Redacted } from "effect";
 import { Effect, Schedule } from "effect";
 import type { HttpClient } from "effect/http";
@@ -128,14 +129,20 @@ export const twirpCall = (options: {
 		);
 		const response = yield* http
 			.execute(request)
-			.pipe(Effect.mapError((cause): TwirpFailure => ({ method, kind: "transport", cause })));
+			// Every kept cause is redacted: core's error holds the live request,
+			// the runtime token's `authorization` header included, as a readable field.
+			.pipe(
+				Effect.mapError((cause): TwirpFailure => ({ method, kind: "transport", cause: HttpRedaction.cause(cause) })),
+			);
 		if (response.status === 409) {
 			return CONFLICT;
 		}
 		if (response.status < 200 || response.status >= 300) {
 			return yield* Effect.fail<TwirpFailure>({ method, kind: "status", status: response.status });
 		}
-		return yield* response.json.pipe(Effect.mapError((cause): TwirpFailure => ({ method, kind: "malformed", cause })));
+		return yield* response.json.pipe(
+			Effect.mapError((cause): TwirpFailure => ({ method, kind: "malformed", cause: HttpRedaction.cause(cause) })),
+		);
 	});
 
 	return attempt.pipe(
