@@ -128,7 +128,7 @@
 | `WorkspaceMarker` | Variable + TypeAlias | The decoded type of `(WorkspaceMarker:variable)`. | workspace root marker filename schema, restrict root search to pnpm-workspace.yaml |
 | `WorkspacePackage` | Class | A single package inside a workspace: the discovery-relevant slice of its `package.json` plus its filesystem location. | a located workspace member, discovered package.json projection, dependency lookups and glob matching |
 | `WorkspacePatternError` | Class | Raised when a `packages:` pattern cannot be enumerated: its base directory is absent (usually a typo), the descent exceeded its depth cap, or the visit budget was exhausted. | handle a packages: glob pattern that cannot be enumerated, missing base directory |
-| `WorkspaceRoot` | Class | Locates the workspace root by ascending from a starting directory. | find the nearest workspace root, ascend directories for pnpm-workspace.yaml or a package.json workspaces field |
+| `WorkspaceRoot` | Class | Locates the workspace root by ascending from a starting directory. | find the nearest workspace root, ascend directories for pnpm-workspace.yaml or a package.json workspaces field, locate the matched marker file as an Effect |
 | `WorkspaceRootMatch` | Class | A workspace root, and the marker file that made it one. | found workspace root with its matched marker file path |
 | `WorkspaceRootNotFoundError` | Class | Raised when no workspace root can be found by ascending from a directory. | handle no workspace root found above a starting directory |
 | `WorkspaceRootShape` | Interface | The `WorkspaceRoot` service contract. | |

@@ -9,7 +9,7 @@ import { PackageJsonFormat } from "@effected/package-json";
 import { Walker } from "@effected/walker";
 import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
 import type { WorkspaceMarker } from "./WorkspaceMarker.js";
-import { WORKSPACE_MARKERS, probedMarkers } from "./WorkspaceMarker.js";
+import { WorkspaceRootMatch, probedMarkers } from "./WorkspaceMarker.js";
 
 /** How the not-found message names the `package.json` marker: only one with a `workspaces` field counts. */
 const PACKAGE_JSON_MARKER_PROSE = 'package.json with a "workspaces" field';
@@ -138,6 +138,58 @@ const markerOf = (
 	});
 
 /**
+ * The ascent both `WorkspaceRoot.find` (through the service) and
+ * `WorkspaceRoot.locate` (straight from `R`) run: one implementation, so the
+ * two cannot disagree about which root a set of options names. Not spanned —
+ * each caller opens its own named span.
+ */
+const locateIn = (
+	cwd: string,
+	options: FindWorkspaceRootOptions | undefined,
+): Effect.Effect<WorkspaceRootMatch, WorkspaceRootNotFoundError, FileSystem.FileSystem | Path.Path> =>
+	Effect.gen(function* () {
+		const path = yield* Path.Path;
+		// A bad marker list is wiring: it dies here, before any probe.
+		const markers = yield* Effect.try({
+			try: () => probedMarkers(options?.markers),
+			catch: (error) => error,
+		}).pipe(Effect.orDie);
+		const start = path.resolve(cwd);
+		// Resolved, not passed through raw: walker compares the ceiling to each
+		// ancestor by string equality, so an unresolved `stopAt` would never
+		// match and would silently degrade to the unbounded ascent this option
+		// exists to prevent.
+		const ceiling = options?.stopAt === undefined ? undefined : path.resolve(options.stopAt);
+		const chain = yield* Walker.ascend(start, {
+			// Conditional spreads, not explicit `undefined`: the house rule keeps
+			// optional keys absent when unset.
+			...(ceiling === undefined ? {} : { stopAt: ceiling }),
+			...(options?.maxDepth === undefined ? {} : { maxDepth: options.maxDepth }),
+		});
+		// `findRoot` probes sequentially and stops at the first root, so the
+		// marker recorded here is the matched directory's own.
+		let matched: WorkspaceMarker | undefined;
+		const found = yield* Walker.findRoot(chain, (dir) =>
+			Effect.map(markerOf(dir, markers), (marker) => {
+				if (Option.isNone(marker)) return false;
+				matched = marker.value;
+				return true;
+			}),
+		);
+		if (Option.isNone(found) || matched === undefined) {
+			return yield* Effect.fail(
+				new WorkspaceRootNotFoundError({
+					searchPath: start,
+					markers,
+					...(ceiling === undefined ? {} : { stopAt: ceiling }),
+				}),
+			);
+		}
+		yield* Effect.logDebug("Workspace root found").pipe(Effect.annotateLogs("workspace.root", found.value));
+		return WorkspaceRootMatch.make({ root: found.value, marker: matched, path: path.join(found.value, matched) });
+	});
+
+/**
  * The {@link WorkspaceRoot} service contract.
  *
  * @remarks
@@ -207,36 +259,7 @@ export class WorkspaceRoot extends Context.Service<WorkspaceRoot, WorkspaceRootS
 			const path = yield* Path.Path;
 
 			const find = Effect.fn("WorkspaceRoot.find")(function* (cwd: string, options?: FindWorkspaceRootOptions) {
-				// A bad marker list is wiring: it dies here, before any probe.
-				const markers = yield* Effect.try({
-					try: () => probedMarkers(options?.markers),
-					catch: (error) => error,
-				}).pipe(Effect.orDie);
-				const start = path.resolve(cwd);
-				// Resolved, not passed through raw: walker compares the ceiling to each
-				// ancestor by string equality, so an unresolved `stopAt` would never
-				// match and would silently degrade to the unbounded ascent this option
-				// exists to prevent.
-				const ceiling = options?.stopAt === undefined ? undefined : path.resolve(options.stopAt);
-				const chain = yield* Walker.ascend(start, {
-					// Conditional spreads, not explicit `undefined`: walker reads these
-					// with `?? default`, and an explicit `undefined` is fine there, but
-					// the house rule keeps optional keys absent when unset.
-					...(ceiling === undefined ? {} : { stopAt: ceiling }),
-					...(options?.maxDepth === undefined ? {} : { maxDepth: options.maxDepth }),
-				});
-				const found = yield* Walker.findRoot(chain, (dir) => Effect.map(markerOf(dir, markers), Option.isSome));
-				if (Option.isNone(found)) {
-					return yield* Effect.fail(
-						new WorkspaceRootNotFoundError({
-							searchPath: start,
-							markers,
-							...(ceiling === undefined ? {} : { stopAt: ceiling }),
-						}),
-					);
-				}
-				yield* Effect.logDebug("Workspace root found").pipe(Effect.annotateLogs("workspace.root", found.value));
-				return found.value;
+				return (yield* locateIn(cwd, options)).root;
 			});
 
 			return {
@@ -248,6 +271,50 @@ export class WorkspaceRoot extends Context.Service<WorkspaceRoot, WorkspaceRootS
 			};
 		},
 	);
+
+	/**
+	 * The nearest workspace root at or above `cwd` and the marker file that made
+	 * it one — the Effect form of `locateWorkspaceRootSync`.
+	 *
+	 * @remarks
+	 * The same ascent as the service's `find`, with the same `stopAt`,
+	 * `maxDepth` and `markers`, answering a {@link WorkspaceRootMatch} whose
+	 * `path` is the matched file. A tool that rewrites the marker (an `export`
+	 * writing `pnpm-workspace.yaml`) reads the path from here rather than
+	 * re-deriving it from the root.
+	 *
+	 * It is a static over core `FileSystem` and `Path` in `R`, not a member of
+	 * {@link WorkspaceRootShape}: a new member would break every hand-written
+	 * `Layer.succeed(WorkspaceRoot, { find })` double. The consequence is that
+	 * it never consults a provided `WorkspaceRoot` — a
+	 * {@link WorkspaceRoot.layerTest} double does not answer it; a test gives it
+	 * a filesystem (an `@effected/memfs` volume) instead. On the same inputs it
+	 * agrees with `locateWorkspaceRootSync`, which answers `null` where this
+	 * fails {@link WorkspaceRootNotFoundError}.
+	 *
+	 * @param cwd - The directory to start the ascent from; resolved to an
+	 *   absolute path first.
+	 * @param options - The ascent bounds and marker filter of `find`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { WorkspaceRoot } from "@effected/workspaces";
+	 * import { Effect } from "effect";
+	 *
+	 * const program = Effect.gen(function* () {
+	 *   const match = yield* WorkspaceRoot.locate("/repo/packages/a", { markers: ["pnpm-workspace.yaml"] });
+	 *   return match.path; // "/repo/pnpm-workspace.yaml"
+	 * });
+	 * ```
+	 */
+	static readonly locate: (
+		cwd: string,
+		options?: FindWorkspaceRootOptions,
+	) => Effect.Effect<WorkspaceRootMatch, WorkspaceRootNotFoundError, FileSystem.FileSystem | Path.Path> = Effect.fn(
+		"WorkspaceRoot.locate",
+	)(function* (cwd: string, options?: FindWorkspaceRootOptions) {
+		return yield* locateIn(cwd, options);
+	});
 
 	/** The live layer. */
 	static readonly layer: Layer.Layer<WorkspaceRoot, never, FileSystem.FileSystem | Path.Path> = Layer.effect(

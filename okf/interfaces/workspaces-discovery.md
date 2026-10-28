@@ -32,7 +32,7 @@ sources:
     resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:41:47Z
+  at: 2026-10-28T17:47:12Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
@@ -40,7 +40,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 95b48cceb1916109
+    body: e0f7832cfd110f9a
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -172,10 +172,16 @@ migration would otherwise read as the root, and rolldown-pnpm-config's
 `export` would have written a new `pnpm-workspace.yaml` there. The not-found
 error's `markers` field records the filtered list. `locateWorkspaceRootSync`
 is `findWorkspaceRootSync` with the match kept: a `WorkspaceRootMatch` of
-`root`, `marker` and the marker file's `path`.[^workspace-marker-ts] The
-Effect service has no such variant: adding a member to `WorkspaceRootShape`
-would break every hand-written double, and its only consumer so far is
-sync.
+`root`, `marker` and the marker file's `path`.[^workspace-marker-ts] Its
+Effect form is the static `WorkspaceRoot.locate(cwd, options)`, which takes
+`FileSystem` and `Path` from `R` and runs the same ascent the service's
+`find` does (one shared implementation), answering a `WorkspaceRootMatch` or
+failing `WorkspaceRootNotFoundError` where the sync form answers `null`. It is
+a static rather than a `WorkspaceRootShape` member because a new member would
+break every hand-written `Layer.succeed(WorkspaceRoot, { find })` double; the
+cost is that a `WorkspaceRoot.layerTest` double does not answer it, so a test
+gives it a filesystem instead. A memfs agreement matrix pins it to
+`locateWorkspaceRootSync` on the same inputs.[^workspace-root-ts]
 
 The layer-level options (`WorkspaceDiscovery`, `LockfileReader`,
 `WorkspaceCatalogs`, `WorkspaceSnapshots`) take the same `markers` and
@@ -316,8 +322,9 @@ branches on and proceeds past.
     `WorkspacePackage`, `PublishConfig`, `DependencyDiff`,
     `WorkspaceManifestError`.
 [^workspace-root-ts]: `packages/workspaces/src/WorkspaceRoot.ts` — the
-    `WorkspaceRoot` service, `FindWorkspaceRootOptions` (`stopAt` /
-    `maxDepth` / `markers`), and the `makeTest` / `layerTest` double.
+    `WorkspaceRoot` service, the `locate` static, `FindWorkspaceRootOptions`
+    (`stopAt` / `maxDepth` / `markers`), and the `makeTest` / `layerTest`
+    double.
 [^package-manager-name-ts]: `packages/workspaces/src/PackageManagerName.ts` —
     `PackageManagerName`, `DetectedPackageManager`, `PackageManagerDetector`.
 [^enumerate-ts]: `packages/workspaces/src/internal/enumerate.ts` — the
