@@ -1,5 +1,41 @@
 # @effected/yaml
 
+## 0.26.0
+
+### Bug Fixes
+
+#### Line breaks
+
+- A bare CR now breaks a line in the lexer and composer, so a bare-CR document parses like its LF twin. `YamlToken` positions and lint lines follow the LSP line-break rule (LF, CRLF, bare CR), and diagnostics no longer count LS or PS as line breaks.
+- A CRLF inside a single-quoted scalar no longer leaves a `\r`, and a root block scalar with an indent indicator after `---` decodes as it does without the marker.
+- Positions are computed through `@effected/source`, fixing a character of `-1` at the `\n` of a `\r\n`.
+
+#### Lint fixes keep the value
+
+- Lint fixes no longer change a document's value:
+
+- `colon-spacing` and `hyphen-spacing` decline fixes that would restructure content or move it across a later column; the issue is still reported.
+
+- `trailing-spaces`, `empty-lines` and `comments-spacing` no longer report inside composed scalars, so they cannot edit multi-line plain scalar content. [#1151][#1151]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/source | dependency | updated | 0.0.0 | 0.1.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.25.1
 
 ### Refactoring
@@ -471,8 +507,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | :-- | :-- | :-- | :-- | :-- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Minor Changes
-
 [#389]: https://github.com/spencerbeggs/effected/pull/389
 
 ## 0.9.0
@@ -680,8 +714,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | --- | --- | --- | --- | --- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Patch Changes
 
 [#162]: https://github.com/spencerbeggs/effected/pull/162
 

@@ -1,5 +1,31 @@
 # @effected/jwt
 
+## 0.7.0
+
+### Bug Fixes
+
+#### Security
+
+- The `JwtError` `jwksFetch` cause keeps a redacted copy of the request, so no credential is readable from a failed JWKS fetch. `@effected/jwt` now depends on `@effected/crypto`. [#1151][#1151]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.2.1 | 0.3.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.6.0
 
 ### Breaking Changes

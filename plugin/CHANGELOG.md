@@ -1,5 +1,27 @@
 # @effected/ai-plugin
 
+## 0.44.0
+
+### Features
+
+- Skills and package references cover the backlog-drain APIs: `@effected/source`, `ErrorText`, `CliFormat` and `CliTest.spawn`, `Walker` marker and sync forms, `PackageExports`, `NpmConfig`, `LspUri`, `Run.bytes`, `ConfigMerge.deep`, `HttpRedaction` and `SourceBoundary`'s `forbidImportedNames`.
+
+### Documentation
+
+- New warnings: `baseUrl` sends the token to any host, and a `doesNotThrow` label is read as a matcher. [#1151][#1151]
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.43.2
 
 ### Maintenance

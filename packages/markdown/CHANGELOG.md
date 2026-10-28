@@ -1,5 +1,36 @@
 # @effected/markdown
 
+## 0.24.0
+
+### Breaking Changes
+
+- `MarkdownDocument.lineIndex` is typed as the structural `SourceIndex` interface from `@effected/source`. Annotate with `SourceIndex`, not `LineIndex`.
+
+### Bug Fixes
+
+- Positions come from `@effected/source`, fixing a character of `-1` at the `\n` of a `\r\n`. [#1151][#1151]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.20.1 | 0.21.0 |
+| @effected/source | dependency | updated | 0.0.0 | 0.1.0 |
+| @effected/toml | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/yaml | dependency | updated | 0.25.1 | 0.26.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.23.0
 
 ### Features
@@ -717,8 +748,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | :-- | :-- | :-- | :-- | :-- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Patch Changes
 
 [#389]: https://github.com/spencerbeggs/effected/pull/389
 

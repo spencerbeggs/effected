@@ -1,5 +1,66 @@
 # @effected/github
 
+## 0.26.0
+
+### Breaking Changes
+
+- `AppliedSettings.unverified` is required. Test doubles that build `AppliedSettings` literals must add it.
+- `RestExtras.baseUrl` is removed, and `Rest.Params` and `requestDecoded` params forbid `baseUrl`. Point the client at another host through its configuration instead.
+- The raw `request`, `requestDecoded`, `paginate` and `paginateStream` refuse `baseUrl`, `url`, `request` and `method` params and any route that resolves off the configured origin. A top-level `url` body field must go in `data`. Cross-origin pagination `Link` headers and continuations fail as rejected instead of truncating.
+- `RepositoryPatch` drops the `RequestExtras` transport keys (`headers`, `mediaType`, `baseUrl`).
+- `layerFixture` records a repository PATCH as `{ owner, repo, data: {...} }`, not a flat object.
+- `DeploymentEnvironment.upsert` takes its configuration in the PUT body only; an `owner` or `repo` in the config now dies instead of silently overriding the target.
+- `uploadAsset` uses a private channel: a spread client that overrides `requestDecoded` no longer sees uploads. A hand-built `ReleaseInfo` with an empty, relative or foreign `uploadUrl` now fails as rejected.
+- GraphQL variables named `query`, `method` or `url` are now sent as variables, in the POST body; the abort signal now reaches GraphQL calls.
+- The test doubles (`makeTest`, `layerTest`, `layerFixture`) refuse the same request options and any route off `api.github.com`, even in GHES-simulating suites. Refused calls are not recorded in `fixtures.requested`.
+
+### Features
+
+- `repositoryPatch(draft, { extra })` sends extras verbatim while the draft stays type-checked, and `applySettings(settings, { unknownKeys: "send" })` forwards undescribed settings keys, reported in `AppliedSettings.unverified` (#1115).
+- Interrupting `paginate` aborts the in-flight page.
+
+### Bug Fixes
+
+#### Security: request-option injection
+
+- `updateSettings` and `applySettings` spread an open settings map beside octokit's request options, so a key such as `baseUrl`, `headers` or `request` could send the authenticated PATCH to another host with the token attached. Settings now travel as octokit's `data` body. `repositoryPatch` throws a `RangeError` for a reserved name or `__proto__`, and `applySettings` reports one in `ignored`.
+
+#### Security: token confined to the configured base
+
+- The configured token is only sent to the configured base. Routes that resolve elsewhere, absolute-URL routes and pagination `Link` headers pointing to another origin are refused.
+
+#### Security: GHES upload host
+
+- On GitHub Enterprise Server the release-asset upload host is derived from the configured base, so the token is no longer sent to `uploads.github.com`.
+
+#### Security: credential-free error causes
+
+- `GitHubError` and `GitHubGraphQLError` keep a scrubbed copy of the cause: no request body, options, `set-cookie`, response data or GraphQL data and errors. `instanceof` still holds but object identity does not. `@effected/github` now depends on `@effected/crypto`. [#1151][#1151]
+
+* Release-asset uploads through `GitHubApp.clientLayer` and `appClientLayer` clients go to the upload host (`uploads.github.com`, or `<ghes>/api/uploads` on GHES) with the current installation token, also after a token rotation. They were sent to the API host, and refused on GHES. [#1151][#1151]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.2.1 | 0.3.0 |
+| @effected/github-references | dependency | updated | 0.11.0 | 0.12.0 |
+| @effected/jwt | dependency | updated | 0.6.0 | 0.7.0 |
+| @effected/oidc | dependency | updated | 0.1.2 | 0.2.0 |
+| @effected/semver | dependency | updated | 0.18.0 | 0.19.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.25.1
 
 ### Maintenance
@@ -719,8 +780,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | @octokit/plugin-paginate-rest | dependency | updated | ^14.0.0 | ^15.0.0 |  |
   | @octokit/types | dependency | updated | ^16.0.0 | ^17.0.0 | [#400][#400] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Patch Changes
-
 [#400]: https://github.com/spencerbeggs/effected/pull/400
 
 ## 0.6.0
@@ -1054,8 +1113,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - `GitHubRelease.uploadAsset` now carries the asset `name` in the route
   template. The release-asset route is the one route outside GitHub's generated
   endpoint map, so no schema told octokit that `name` is a query parameter —
-  passed only as a parameter it was silently dropped, GitHub answered `400
-  Invalid name for request`, and every release asset upload failed quietly.
+  passed only as a parameter it was silently dropped, GitHub answered `400 Invalid name for request`, and every release asset upload failed quietly.
   The member also gains the endpoint's optional `label` (the display label
   shown in place of the file name on the release page).
 

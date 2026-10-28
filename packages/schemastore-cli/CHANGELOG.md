@@ -1,5 +1,27 @@
 # @effected/schemastore-cli
 
+## 0.27.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.23.0 | 0.24.0 |
+| @effected/env | dependency | updated | 0.6.0 | 0.7.0 |
+| @effected/glob | dependency | updated | 0.15.0 | 0.16.0 |
+| @effected/schemastore | dependency | updated | 0.26.3 | 0.27.0 |
+| @effected/walker | dependency | updated | 0.21.0 | 0.22.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
 ## 0.26.3
 
 ### Bug Fixes

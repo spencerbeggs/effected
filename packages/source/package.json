@@ -1,6 +1,6 @@
 {
 	"name": "@effected/source",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Source-text positions as plain values: a line index over a text, LSP-style line and character, and the structural range and diagnostic shapes the kit's format packages share.",
 	"keywords": ["source", "position", "line", "character", "offset", "lsp", "diagnostic", "range", "effected"],

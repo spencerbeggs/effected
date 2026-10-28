@@ -1,5 +1,39 @@
 # @effected/config-file
 
+## 0.22.0
+
+### Breaking Changes
+
+- When `saveTarget` is unset, `save` and `update` now write to the discovered file under a `firstMatch` strategy. Under `layeredMerge` and custom strategies the target is still the default path. To keep the old target under `firstMatch`, pin `saveTarget: "default"`.
+
+### Features
+
+- `saveTarget` (`"source"` or `"default"`): `"source"` writes the highest-priority file the resolver chain found, falling back to `defaultPath` (#1113).
+- `ConfigMerge.deep` is public: the pure, synchronous merge `layeredMerge` folds with. Arrays are atomic, an own `undefined` wins, prototype keys are dropped, each object pair merges once (so cyclic and shared inputs return, keeping their cycles and sharing), and a depth cap guards the stack (#1122).
+- The top-level merge now admits a null-prototype object and a plain object together, as every nested level already did. [#1151][#1151]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.15.0 | 0.16.0 |
+| @effected/jsonc | dependency | updated | 0.20.1 | 0.21.0 |
+| @effected/toml | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/walker | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/yaml | dependency | updated | 0.25.1 | 0.26.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.21.0
 
 ### Features

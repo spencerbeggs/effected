@@ -1,5 +1,17 @@
 # @effected/github-references
 
+## 0.12.0
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
 ## 0.11.0
 
 ### Maintenance

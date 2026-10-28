@@ -1,5 +1,61 @@
 # @effected/cli
 
+## 0.24.0
+
+### Breaking Changes
+
+- `CliTest`'s `RunResult.exitCode` is now `number | null`, and `RunResult` gains `signal`. A child killed by a signal reports `exitCode: null` with the signal named. `SpawnedBin.exitCode` is `Effect<number | null>` and no longer fails after the default kill. Narrow on `null` where you read it.
+- `Fmt.describe` and `Fmt.causeMessage` now delegate to `@effected/engine`'s `ErrorText`; their output is unchanged, but a custom copy should move to `ErrorText`.
+
+### Features
+
+#### CliFormat
+
+- `CliFormat.flag` takes aliases (map your names onto built-in formats, such as `human` to `auto`) and custom formats that are offered and yielded as themselves for the caller to render.
+- `CliFormat.printJson` is the JSON half of `CliFormat.print` on its own, an `Effect<void>` with no requirement, so a CLI that keeps its own `--json` flag prints JSON the kit's way (#1128).
+- `CliFormat.flag` offers `--format` only. A retired `--json` is not supported: a CLI that still accepts it keeps its own hidden `Flag.Boolean("json")` and maps it to the `json` format.
+
+#### Testing and suggestions
+
+- `CliTest.spawn` starts a bin and returns at once with stdout and stderr line streams, `kill`, `exitCode` and `result`. Both streams replay to every reader and the child is killed when the scope closes (#1120).
+- `RunOptions.forceKillAfter` (default 2 seconds) escalates to SIGKILL for a child that ignores SIGTERM.
+- `Fmt.suggest` gives a did-you-mean list with `effect/cli`'s threshold (#1134), and `ConfigIssueRenderer` appends it to unknown-key lines (#1114).
+
+### Bug Fixes
+
+- `CliTest.spawn`'s `kill()` returns normally for a child that has already exited, on its own or at the same moment, instead of failing with `PlatformError`. A kill that fails on a child still running still fails, and `exitCode` and `result` still report how the child ended. [#1151][#1151]
+
+* `CliPrompt.fallback` and `CliUi.fallback` answer with `otherwise` again in a run that is not interactive, such as a piped agent or CI run. Core skips a `withFallbackPrompt` fallback entirely when its `TerminalCapabilities.canPrompt` is `false`, which lost the default and exited `64`. `CliInteractive.layer` and `CliInteractive.layerTest` now hold core's `canPrompt` open, so the kit's own interactivity decision governs. A `TerminalCapabilities` with `canPrompt: false` provided inside the program bypasses the kit's fallbacks.
+* `CliEnv.layer` and `CliEnv.layerTest` install core's `TerminalCapabilities` from the kit's `TerminalEnv`, so core's built-in help colour follows the kit's colour rule, where `FORCE_COLOR` wins over `NO_COLOR`. [#1145][#1145]
+
+- `CliRuntime.main` with `helpOnUsageError: "stderr"` now routes a usage error's help through core's `CliOutput.Presenter`. A `CliOutput.Formatter` or `Console` provided inside the program is honoured: its help goes to stderr beside the errors instead of staying on stdout. A `CliOutput.Presenter` provided inside the program replaces the routing. [#1145][#1145]
+
+* `CliRuntime.main` and `CliRuntime.reportFailures` report a handler failure that carries a `CliError.userMessage` once. `Command.runWith` renders any such failure itself and re-fails with it, and the kit printed a second `[FAIL] <Tag>` line after it. The failure keeps the exit code a handler failure gets: its `exitCodes` entry by tag, then `exitCode`, then `1`. [#1145][#1145]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.17.0 | 0.18.0 |
+| @effected/config-file | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/engine | dependency | updated | 0.9.0 | 0.10.0 |
+| @effected/env | dependency | updated | 0.6.0 | 0.7.0 |
+| @effected/github-commands | dependency | updated | 0.6.2 | 0.7.0 |
+| @effected/glob | dependency | updated | 0.15.0 | 0.16.0 |
+| @effected/walker | dependency | updated | 0.21.0 | 0.22.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.23.0
 
 ### Breaking Changes

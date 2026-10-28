@@ -1,5 +1,32 @@
 # @effected/runtimes
 
+## 0.16.0
+
+### Bug Fixes
+
+#### Security
+
+- `NetworkError` and `ResponseParseError` keep redacted copies of HTTP causes, so no GitHub token is readable from a kept request. `@effected/runtimes` now depends on `@effected/crypto`. [#1151][#1151]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.2.1 | 0.3.0 |
+| @effected/semver | dependency | updated | 0.18.0 | 0.19.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.15.2
 
 ### Dependencies
@@ -603,8 +630,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | :-- | :-- | :-- | :-- | :-- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Patch Changes
-
 [#389]: https://github.com/spencerbeggs/effected/pull/389
 
 ## 0.3.0
@@ -808,8 +833,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | --- | --- | --- | --- | --- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Patch Changes
 
 [#122]: https://github.com/spencerbeggs/effected/pull/122
 

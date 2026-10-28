@@ -1,5 +1,26 @@
 # @effected/lockfiles
 
+## 0.20.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.20.1 | 0.21.0 |
+| @effected/npm | dependency | updated | 0.27.1 | 0.28.0 |
+| @effected/semver | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/yaml | dependency | updated | 0.25.1 | 0.26.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
 ## 0.19.5
 
 ### Dependencies
@@ -663,8 +684,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | :-- | :-- | :-- | :-- | :-- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Patch Changes
-
 [#389]: https://github.com/spencerbeggs/effected/pull/389
 
 ## 0.4.2
@@ -843,8 +862,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   | --- | --- | --- | --- | --- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
-### Patch Changes
-
 [#162]: https://github.com/spencerbeggs/effected/pull/162
 
 ## 0.1.9
@@ -908,8 +925,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | --- | --- | --- | --- | --- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Patch Changes
 
 [#122]: https://github.com/spencerbeggs/effected/pull/122
 

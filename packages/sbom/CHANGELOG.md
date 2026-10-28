@@ -1,5 +1,25 @@
 # @effected/sbom
 
+## 0.18.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/oidc | dependency | updated | 0.1.2 | 0.2.0 |
+| @effected/package-json | dependency | updated | 0.26.1 | 0.27.0 |
+| @effected/spdx | dependency | updated | 0.16.1 | 0.17.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
 ## 0.17.0
 
 ### Features
@@ -516,8 +536,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - | Dependency | Type | Action | From | To |  |
   | :-- | :-- | :-- | :-- | :-- | --- |
   | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
-
-### Patch Changes
 
 [#389]: https://github.com/spencerbeggs/effected/pull/389
 
