@@ -41,7 +41,9 @@ export interface DescendOptions {
 	 * walk different trees from a hook, a CLI and a test runner, and on win32
 	 * an empty `cwd` joined with a pattern spelled `C:/x` is the drive path
 	 * `C:\x`. Absoluteness is judged by the injected `Path` (or the sync port's
-	 * `isAbsolute`), so win32 accepts `C:\repo`.
+	 * `isAbsolute`), so win32 accepts `C:\repo` and `\\server\share`; a
+	 * win32 `\repo` names the root of whichever drive the process is on, so
+	 * it dies as a relative `cwd` does.
 	 */
 	readonly cwd: string;
 	/**
@@ -310,6 +312,7 @@ const walk = (
 		};
 
 		const machine = descendMachine<FileSystem.File.Info, PlatformError.PlatformError>(pattern, options, {
+			sep: path.sep,
 			join: (a, b) => path.join(a, b),
 			isAbsolute: (p) => path.isAbsolute(p),
 		});

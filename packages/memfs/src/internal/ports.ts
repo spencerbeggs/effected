@@ -153,6 +153,26 @@ export const win32ToVolume = (path: string): string => {
 	return /^[A-Za-z]:(\/|$)/.test(slashed) ? `/${slashed}` : slashed;
 };
 
+// The inverse of `win32ToVolume`, for the one port answer that IS a path
+// (`realPath`): the top-level `/C:` becomes the drive root `C:\` and every
+// slash a backslash. The drive letter is the volume's own spelling of it,
+// which is the caller's (the walk builds the answer from the components it was
+// given, and keeps the queried spelling on a case-insensitive volume) unless an
+// absolute link target replaced the prefix — node's win32 `realpath` resolves
+// a target against the previous path the same way, so this is its casing too.
+// A drive-less answer stays drive-less: the port models no current drive.
+export const volumeToWin32 = (path: string): string => {
+	const drive = /^\/([A-Za-z]:)(?:\/|$)/.exec(path);
+	if (drive === null) return path.replace(/\//g, "\\");
+	const rest = path.slice(drive[0].length).replace(/\//g, "\\");
+	return `${drive[1]}\\${rest}`;
+};
+
+// Port members whose ANSWER is a volume path, respelled under win32. Every
+// other answer is a name, a dirent, a stats record, bytes or a boolean, none
+// of which carries a path.
+const pathAnswers: ReadonlySet<string> = new Set(["realPath"]);
+
 const respell = (error: unknown, path: string): unknown => {
 	const e = error as { code?: unknown; syscall?: unknown; path?: unknown } | null;
 	if (e === null || typeof e !== "object" || typeof e.code !== "string" || typeof e.syscall !== "string") return error;
@@ -168,17 +188,22 @@ export const withPathStyle = <Port extends object>(
 	const out: Record<string, unknown> = {};
 	for (const [name, member] of Object.entries(port)) {
 		const original = member as (path: string, ...rest: ReadonlyArray<unknown>) => unknown;
+		const answer = pathAnswers.has(name)
+			? (value: unknown) => volumeToWin32(value as string)
+			: (value: unknown) => value;
 		out[name] = async
 			? (path: string, ...rest: ReadonlyArray<unknown>) =>
-					(original(win32ToVolume(path), ...rest) as Promise<unknown>).catch((error: unknown) => {
+					(original(win32ToVolume(path), ...rest) as Promise<unknown>).then(answer, (error: unknown) => {
 						throw respell(error, path);
 					})
 			: (path: string, ...rest: ReadonlyArray<unknown>) => {
+					let value: unknown;
 					try {
-						return original(win32ToVolume(path), ...rest);
+						value = original(win32ToVolume(path), ...rest);
 					} catch (error) {
 						throw respell(error, path);
 					}
+					return answer(value);
 				};
 	}
 	return out as Port;

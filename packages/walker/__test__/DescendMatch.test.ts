@@ -195,7 +195,13 @@ describe("descend cwd contract", () => {
 		assert.match(String(run("")), /cwd must be an absolute path/);
 		assert.match(String(run("C:")), /cwd must be an absolute path/);
 		assert.match(String(run("C:repo")), /cwd must be an absolute path/);
+		// Rooted on the CURRENT drive: absolute to `win32.isAbsolute`, process-dependent.
+		assert.match(String(run("\\repo")), /cwd must be an absolute path/);
+		assert.match(String(run("/repo")), /cwd must be an absolute path/);
+		assert.match(String(run("\\")), /cwd must be an absolute path/);
 		// An absolute win32 cwd is accepted; the volume has no such tree, so nothing matches.
 		assert.deepStrictEqual(run("C:\\repo"), Result.succeed([]));
+		// A UNC root names its server and share: no drive to depend on.
+		assert.deepStrictEqual(run("\\\\server\\share"), Result.succeed([]));
 	});
 });
