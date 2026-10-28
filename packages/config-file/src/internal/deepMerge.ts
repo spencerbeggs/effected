@@ -8,6 +8,8 @@
  * instance loses its prototype, so `instanceof` fails and its getters vanish.
  * Recursion is gated on this predicate so nested values of those kinds stay
  * atomic — the higher-priority source wins them whole.
+ *
+ * @internal
  */
 export const isPlainObject = (value: unknown): value is Record<string, unknown> => {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -25,57 +27,91 @@ const isRecordLike = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && Object.prototype.toString.call(value) === "[object Object]";
 
 /**
- * Two values may be merged only if both are record-like and share a prototype.
- * Same-prototype instances merge field-wise; anything else is atomic.
+ * Whether two TOP-LEVEL values merge field-wise: both plain objects (either
+ * prototype, `Object.prototype` or `null`), or both record-like on one shared
+ * prototype. Anything else is atomic.
  *
  * @remarks
- * Requiring an identical prototype is what keeps the merge honest: a document
- * decoded through `Schema.Class` merges with another of the same class and
- * keeps its identity, and nothing else is ever silently reshaped.
+ * The shared-prototype arm is what lets a document decoded through
+ * `Schema.Class` merge with another of the same class and keep its identity;
+ * nothing else is ever silently reshaped. The plain arm admits a
+ * null-prototype object beside an ordinary one, the same pairing every nested
+ * level has always merged.
+ *
+ * @internal
  */
 export const canMerge = (a: unknown, b: unknown): boolean =>
-	isRecordLike(a) && isRecordLike(b) && Object.getPrototypeOf(a) === Object.getPrototypeOf(b);
+	(isPlainObject(a) && isPlainObject(b)) ||
+	(isRecordLike(a) && isRecordLike(b) && Object.getPrototypeOf(a) === Object.getPrototypeOf(b));
 
 const FORBIDDEN = new Set(["__proto__", "constructor", "prototype"]);
 
 /**
- * Recursively merge `source` into `target`; keys already present on `target`
- * win. Nested plain objects merge; every other value is atomic.
+ * How many nested levels merge field-wise. At this depth the override's value
+ * is taken whole.
  *
  * @remarks
- * The result is built on `target`'s prototype rather than spread into `{}`, so
- * a decoded `Schema.Class` document survives the merge as a real instance —
+ * Far above the 256-level nesting cap of the kit's parsers, so a decoded
+ * document never reaches it. It exists so the merge is total: a cyclic pair of
+ * inputs stops here instead of recursing forever, and a pathologically deep
+ * one cannot overflow the stack.
+ *
+ * @internal
+ */
+export const MAX_MERGE_DEPTH = 1024;
+
+/**
+ * Merge `override` over `base`. Two mergeable values ({@link canMerge}) merge
+ * field-wise; otherwise `override` wins whole.
+ *
+ * @internal
+ */
+export const deepMerge = (base: unknown, override: unknown): unknown =>
+	canMerge(base, override)
+		? mergeRecords(base as Record<string, unknown>, override as Record<string, unknown>, 1)
+		: override;
+
+/**
+ * Field-wise merge, `override`'s own keys winning. Nested plain objects merge;
+ * every other value is atomic.
+ *
+ * @remarks
+ * The result is built on `override`'s prototype rather than spread into `{}`,
+ * so a decoded `Schema.Class` document survives the merge as a real instance:
  * `instanceof` holds and its getters still work. Without this, `load` would
  * declare `Effect<A>` and hand back a structurally-equal plain object, and a
  * consumer calling a class method would get a `TypeError` that typechecked.
  *
- * Only own enumerable keys are consulted (`Object.hasOwn`), so a prototype
- * getter on `target` never shadows a real key on `source`.
+ * Only own enumerable string keys are consulted (`Object.keys`, `Object.hasOwn`),
+ * so a prototype getter on `override` never shadows a real key on `base`.
+ * Presence decides, not value: an own key on `override` wins even when it holds
+ * `undefined`.
  */
-export const deepMerge = (
-	target: Record<string, unknown>,
-	source: Record<string, unknown>,
+const mergeRecords = (
+	base: Record<string, unknown>,
+	override: Record<string, unknown>,
+	depth: number,
 ): Record<string, unknown> => {
-	const result: Record<string, unknown> = Object.create(Object.getPrototypeOf(target));
-	// `target`'s keys must be filtered too, and copied as data properties. A bare
-	// assignment uses [[Set]] semantics, so an own `__proto__` key on the
-	// higher-priority document would reach `Object.prototype`'s inherited accessor
-	// and reassign `result`'s prototype to attacker-controlled data — defeating
-	// FORBIDDEN and the prototype we just installed. `Object.assign` and `result[k] = v`
-	// both do this; `defineProperty` does not.
-	for (const key of Object.keys(target)) {
+	const result: Record<string, unknown> = Object.create(Object.getPrototypeOf(override));
+	// `override`'s keys must be filtered too, and copied as data properties. A
+	// bare assignment uses [[Set]] semantics, so an own `__proto__` key on the
+	// higher-priority document would reach `Object.prototype`'s inherited
+	// accessor and reassign `result`'s prototype to attacker-controlled data —
+	// defeating FORBIDDEN and the prototype just installed. `Object.assign` and
+	// `result[k] = v` both do this; `defineProperty` does not.
+	for (const key of Object.keys(override)) {
 		if (FORBIDDEN.has(key)) continue;
-		define(result, key, target[key]);
-	}
-	for (const key of Object.keys(source)) {
-		if (FORBIDDEN.has(key)) continue;
-		const sourceValue = source[key];
-		const targetValue = result[key];
-		if (Object.hasOwn(result, key) && isPlainObject(targetValue) && isPlainObject(sourceValue)) {
-			define(result, key, deepMerge(targetValue, sourceValue));
-		} else if (!Object.hasOwn(result, key)) {
-			define(result, key, sourceValue);
+		const overrideValue = override[key];
+		const baseValue = Object.hasOwn(base, key) ? base[key] : undefined;
+		if (depth < MAX_MERGE_DEPTH && isPlainObject(baseValue) && isPlainObject(overrideValue)) {
+			define(result, key, mergeRecords(baseValue, overrideValue, depth + 1));
+		} else {
+			define(result, key, overrideValue);
 		}
+	}
+	for (const key of Object.keys(base)) {
+		if (FORBIDDEN.has(key) || Object.hasOwn(result, key)) continue;
+		define(result, key, base[key]);
 	}
 	return result;
 };

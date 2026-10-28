@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import type { ConfigMatch } from "./ConfigResolver.js";
-import { canMerge, deepMerge } from "./internal/deepMerge.js";
+import { deepMerge } from "./internal/deepMerge.js";
 
 /**
  * A single configuration source discovered during a resolver-chain pass.
@@ -89,6 +89,10 @@ export const MergeStrategy = {
 	 * `{}`.
 	 *
 	 * Nested *plain* objects (a `Schema.Struct` section) still merge field-wise.
+	 *
+	 * Each step of the fold is `ConfigMerge.deep(lower, higher)`, so the rules
+	 * documented there (arrays, `undefined`, prototype keys, null-prototype
+	 * objects) are this strategy's rules too.
 	 */
 	layeredMerge: <A>(): MergeStrategy<A> => ({
 		name: "layered-merge",
@@ -96,10 +100,7 @@ export const MergeStrategy = {
 			// Fold from lowest priority upward so higher-priority keys overwrite.
 			let merged: unknown = sources[sources.length - 1]?.value;
 			for (let i = sources.length - 2; i >= 0; i--) {
-				const higher = sources[i]?.value;
-				merged = canMerge(merged, higher)
-					? deepMerge(higher as Record<string, unknown>, merged as Record<string, unknown>)
-					: higher;
+				merged = deepMerge(merged, sources[i]?.value);
 			}
 			return Effect.succeed(merged as A);
 		},
