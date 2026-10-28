@@ -9,10 +9,10 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-05T19:06:35Z
+  at: 2026-10-28T17:23:22Z
 integrity:
   generated:
-    body: 2e1904869a50639a
+    body: 53dac5af693b9ed4
 ---
 
 # @effected/lsp
@@ -73,6 +73,9 @@ separately.
 | `LspStdio.teardown` | `(host: LspExitHost) => Runtime.Teardown`. A numeric success is the code (any other success 0), an interrupt-only exit is 0, anything else goes to `Runtime.defaultTeardown`; then `host.exit(code)`. |
 | `LspSessionEnd` | `{ reason: "exit" \| "closed"; shutdownReceived: boolean }`, returned by the server's own message loop. |
 | `LspExitHost` | `{ exit: (code: number) => void }`; Node's `process` satisfies it. |
+| `LspUri.toPath` | `(uri: string, options?: LspUriOptions) => Option<string>`. The absolute path a `file:` URI names, `.`/`..` removed, or `Option.none()` when it names none ([#1127](https://github.com/spencerbeggs/effected/issues/1127)). |
+| `LspUri.fromPath` | `(path: string, options?: LspUriOptions) => string`. The `file:` URI of an absolute path; a path no URI can name faithfully throws `TypeError`. |
+| `LspUriOptions` / `LspUriPlatform` | `{ platform?: "posix" \| "win32" }`, default `"posix"`. |
 
 Decoding rules: header fields end `\r\n`, the header ends `\r\n\r\n`,
 names are case-insensitive, `Content-Length` must be one decimal safe
@@ -152,6 +155,58 @@ buffering without bound. The body must be valid UTF-8 and valid JSON.
 - **The `./testing` split mirrors `@effected/mcp`.** Test tooling never
   enters a runtime graph; `entrypoints.test.ts` pins that nothing
   reachable from `.` imports the probe, with a positive control.
+
+## `file:` URIs and paths (`LspUri`)
+
+Every server converts between `textDocument.uri` and a path, and okfit's
+`@okfit/lsp` wrapped `node:url` to do it, returning `Option.none()` for
+`untitled:` rather than letting `fileURLToPath` throw. `LspUri` is that
+conversion, pure, so it runs in a worker and keeps `src/` free of `node:`.
+It follows RFC 8089 and RFC 3986 and agrees with Node's `fileURLToPath` /
+`pathToFileURL` and `vscode-uri` where they agree; the rulings where they
+do not:
+
+- **The platform is a parameter**, never `process.platform`: the boundary
+  test forbids the read, and a test converts both syntaxes on one host.
+- **`toPath` answers `Option.none()`, never throws**, per the kit's
+  [lookup convention](../conventions/lookups-return-option.md): for a
+  non-`file:` scheme, a malformed escape or invalid UTF-8, a relative
+  `file:` URI, a `%2F` inside a segment (or `%5C` under `"win32"`), which
+  would smuggle a separator into one name, a `%00`, a host under `"posix"`,
+  and a rooted path with no drive or share under `"win32"`. Node throws for
+  each of these.
+- **Dot segments are removed in both directions** (RFC 3986 §5.2.4),
+  encoded ones (`%2E%2E`) included, and never climb above the root, a drive
+  or a UNC share: a URI is never a traversal. Node's `pathToFileURL` resolves
+  through `path.resolve`, which drops a trailing slash and climbs above a
+  share; `LspUri` keeps the slash and the share.
+- **The drive letter is lowercase both ways**, as `vscode-uri`'s `fsPath`
+  makes it: `file:///C:/a`, `file:///c:/a` and VS Code's own `file:///c%3A/a`
+  all read as `c:\a`, so the paths of one file agree however a client spelled
+  its URI. `fromPath` writes `file:///c:/a`, RFC 8089's form with the colon
+  literal, which `vscode-uri` and Node both read.
+- **`fromPath` encodes everything outside RFC 3986's unreserved set**, `/`
+  aside, non-ASCII as uppercase UTF-8 escapes, as `vscode-uri` does (Node
+  leaves `!'()*` and some sub-delims bare). A non-absolute path, a NUL, a
+  lone surrogate or a Win32 device path (`\\?\`, `\\.\`) throws a
+  `TypeError`: a programmer error, since no URI names them faithfully.
+- **`localhost` is the local machine** (RFC 8089 §2); any other host is a
+  UNC path under `"win32"`, lowercased, and none under `"posix"`. A query or
+  fragment is ignored, as Node ignores it. IDN hosts are not punycoded.
+
+`__test__/LspUri.test.ts` pins every case above and runs a differential
+against `node:url` over every path of up to three segments from an
+adversarial segment alphabet (spaces, `%`, `%2F`, `#?`, non-ASCII, astral,
+`.`, `..`, empty), for posix, drive and UNC paths: Node's reader reads the
+URIs `LspUri` writes as `LspUri` reads them, `LspUri` reads the URIs Node
+writes as Node reads them (drive case aside, and refusing the shareless UNC
+URIs Node's resolver produces), and `toPath(fromPath(p))` is a fixed point
+that is `p` itself for a dot-free path.
+
+`LspUri` converts no positions, so the package takes no `@effected/source`
+edge: the "no `@effected/*` import in `src/`" boundary stays as it was. A
+server converting offsets to LSP positions reaches for `LineIndex` from
+`@effected/source` (or a format package's re-export) itself.
 
 ## See also
 

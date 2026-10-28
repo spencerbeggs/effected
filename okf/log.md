@@ -25,6 +25,7 @@
 * Updated @effected/markdown
 * Updated @effected/yaml
 * Updated @effected/yaml lint system
+* Updated @effected/lsp
 
 ## 2026-10-27
 

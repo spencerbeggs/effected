@@ -35,8 +35,9 @@ guard is `@effected/engine`'s business.
 
 `@effected/lsp` (`src/index.ts`): `LspFrame` (`encode`, `decodeResult`,
 `decode`, `decodeAllResult`, `decodeAll`, `decodeStream`), `LspFrameError`,
-`LspFrameErrorCode`, `LspStdio` (`exitCode`, `launch`, `teardown`), plus
-the `LspFrameDecoded`, `LspMessage`, `LspSessionEnd` and `LspExitHost` types.
+`LspFrameErrorCode`, `LspStdio` (`exitCode`, `launch`, `teardown`), `LspUri`
+(`toPath`, `fromPath`), plus the `LspFrameDecoded`, `LspMessage`,
+`LspSessionEnd`, `LspExitHost`, `LspUriOptions` and `LspUriPlatform` types.
 
 `@effected/lsp/testing` (`src/testing.ts`): `LspProbe` (`initialize`),
 `LspProcess` (`spawn`; instances carry `send`, `sendRaw`, `nextMessage`,
@@ -98,6 +99,12 @@ the `LspFrameDecoded`, `LspMessage`, `LspSessionEnd` and `LspExitHost` types.
   failure names the pending step and the stderr so far; the probe's scope
   kills the child. The timeout reads `Clock`: test the probe under
   `it.live`, never `it.effect`.
+- **`LspUri` is pure and takes the platform as a parameter.** No `node:url`,
+  no `process.platform`; `toPath` answers `Option.none()` rather than
+  throwing, dot segments never climb above a root, drive or share, and the
+  drive letter is lowercase both ways. `node:url` appears only in
+  `__test__/LspUri.test.ts`, as the differential oracle. The rulings are in
+  `okf/modules/lsp.md` ("`file:` URIs and paths").
 - **The `./testing` split mirrors `@effected/mcp`.** `entrypoints.test.ts`
   pins that nothing reachable from `.` imports the probe, with positive
   controls.
