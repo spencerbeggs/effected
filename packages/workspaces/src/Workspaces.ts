@@ -20,6 +20,7 @@ import { Effect, Layer, Option } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ChangeDetector } from "./ChangeDetector.js";
 import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
+import { layerFindOptions } from "./internal/layerRoot.js";
 import type { LockfileReaderOptions } from "./LockfileReader.js";
 import { LockfileReader } from "./LockfileReader.js";
 import type { DetectedPackageManager } from "./PackageManagerName.js";
@@ -28,6 +29,7 @@ import type { WorkspaceCatalogsOptions } from "./WorkspaceCatalogs.js";
 import { WorkspaceCatalogs } from "./WorkspaceCatalogs.js";
 import type { WorkspaceDiscoveryOptions } from "./WorkspaceDiscovery.js";
 import { WorkspaceDiscovery } from "./WorkspaceDiscovery.js";
+import type { WorkspaceMarker } from "./WorkspaceMarker.js";
 import { WorkspaceRoot } from "./WorkspaceRoot.js";
 import type { WorkspaceSnapshotsOptions } from "./WorkspaceSnapshots.js";
 import { WorkspaceSnapshots } from "./WorkspaceSnapshots.js";
@@ -40,7 +42,7 @@ import { WorkspaceSnapshots } from "./WorkspaceSnapshots.js";
  * {@link WorkspaceDiscoveryOptions}, {@link LockfileReaderOptions} and
  * {@link WorkspaceCatalogsOptions} — and handed to each of them unchanged, so a
  * root-resolving option one service grows cannot silently stop at the
- * composite. `cwd` and `stopAt` are re-declared here only to document them as
+ * composite. `cwd`, `stopAt` and `markers` are re-declared here only to document them as
  * the one concern they are across the composite.
  *
  * @public
@@ -71,6 +73,20 @@ export interface WorkspacesOptions extends WorkspaceDiscoveryOptions, LockfileRe
 	 * @defaultValue no ceiling — the ascent runs to the filesystem root.
 	 */
 	readonly stopAt?: string | undefined;
+	/**
+	 * The markers that count as a workspace root, forwarded to EVERY
+	 * root-resolving service the composite builds, exactly as `stopAt` is.
+	 *
+	 * @remarks
+	 * Pass `["pnpm-workspace.yaml"]` for a pnpm-only tool: a member package that
+	 * kept `package.json#workspaces` then reads as a member of the enclosing pnpm
+	 * workspace for discovery, the lockfile, the catalogs and `at(ref)` alike,
+	 * never as a root of its own for some of them. An empty list is a
+	 * **defect** at first use.
+	 *
+	 * @defaultValue every marker, `WORKSPACE_MARKERS`
+	 */
+	readonly markers?: ReadonlyArray<WorkspaceMarker> | undefined;
 }
 
 /**
@@ -426,7 +442,10 @@ export class Workspaces {
 	 * project-local launcher has to run where the workspace is. `stopAt` caps
 	 * that ascent exactly as {@link WorkspacesOptions.stopAt} does, and a
 	 * ceiling with no root at or below it is the same `Option.none()` as no
-	 * root at all.
+	 * root at all. `markers` filters the ascent exactly as
+	 * {@link WorkspacesOptions.markers} does, so a pnpm-only tool's launcher
+	 * runs from the pnpm workspace root, not from a member that kept
+	 * `package.json#workspaces`.
 	 *
 	 * An omitted `cwd` is `"."`, which `WorkspaceRoot.find` resolves through
 	 * the injected core `Path` on every call — this layer reads no `process`
@@ -464,6 +483,7 @@ export class Workspaces {
 	static localExecLayer(options?: {
 		readonly cwd?: string;
 		readonly stopAt?: string | undefined;
+		readonly markers?: ReadonlyArray<WorkspaceMarker> | undefined;
 	}): Layer.Layer<LocalExec, never, PackageManagerDetector | WorkspaceRoot> {
 		return Layer.effect(
 			LocalExec,
@@ -477,12 +497,12 @@ export class Workspaces {
 					// `process.chdir` between provide and first use is honoured, and
 					// this layer reads no `process` itself.
 					const cwd = options?.cwd ?? ".";
-					const stopAt = options?.stopAt;
 
-					// A ceiling that finds no root is the ordinary None case, like any
-					// other absent root: nothing project-local to run here.
+					// A ceiling (or a marker filter) that finds no root is the ordinary
+					// None case, like any other absent root: nothing project-local to
+					// run here.
 					const root = yield* roots
-						.find(cwd, stopAt === undefined ? undefined : { stopAt })
+						.find(cwd, layerFindOptions(options))
 						.pipe(Effect.asSome, Effect.orElseSucceed(Option.none<string>));
 					if (Option.isNone(root)) return Option.none<ExecContext>();
 

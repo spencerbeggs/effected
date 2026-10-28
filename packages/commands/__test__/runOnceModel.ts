@@ -62,6 +62,15 @@ export interface ModelOptions {
 	 */
 	readonly serialize?: boolean;
 	/**
+	 * Per-process modes, overriding `serialize`: process `i + 1` runs
+	 * `modes[i]`, and a process past the end of the list takes `serialize`'s
+	 * mode. Mixing `"once"` and `"serialize"` callers on one key explores the
+	 * cross-mode guarantees: runs stay mutually exclusive across modes, a
+	 * serialize caller never ends `Trusted` and may run after a done marker it
+	 * saw, and a done marker is only ever written by a once caller.
+	 */
+	readonly modes?: ReadonlyArray<"once" | "serialize">;
+	/**
 	 * Partial-order reduction: never preempt a process whose next request is
 	 * local (`Now`, `Nonce`, `MakeDirectory`). Such a step touches no shared
 	 * file, so a switch just before it explores nothing a switch just before
@@ -112,6 +121,8 @@ const STEP_CAP = 4000;
 
 interface Proc {
 	readonly id: number;
+	/** Whether this process runs serialize-only (no done marker read or written). */
+	readonly serializeMode: boolean;
 	readonly gen: Generator<Request, MachineOutcome, unknown>;
 	next: IteratorResult<Request, MachineOutcome>;
 	done: boolean;
@@ -200,6 +211,8 @@ export const explore = (options: ModelOptions, machine: MachineFactory): ModelRe
 		const procs: Array<Proc> = [];
 		for (let index = 0; index < options.processes; index++) {
 			const id = index + 1;
+			const serializeMode =
+				(options.modes?.[index] ?? (options.serialize === true ? "serialize" : "once")) === "serialize";
 			const config: MachineConfig = {
 				...validate({
 					key: "k",
@@ -207,7 +220,7 @@ export const explore = (options: ModelOptions, machine: MachineFactory): ModelRe
 					pollMs: 100,
 					staleMs: 1000,
 					waitTimeoutMs: 1_000_000,
-					...(options.serialize === true ? { mode: "serialize" as const } : {}),
+					...(serializeMode ? { mode: "serialize" as const } : {}),
 				}),
 				self: { pid: id, host: "h" },
 				isAlive: (pid) => {
@@ -218,6 +231,7 @@ export const explore = (options: ModelOptions, machine: MachineFactory): ModelRe
 			const gen = machine(config);
 			procs.push({
 				id,
+				serializeMode,
 				gen,
 				next: gen.next(),
 				done: false,
@@ -344,7 +358,10 @@ export const explore = (options: ModelOptions, machine: MachineFactory): ModelRe
 				const others = procs.filter((other) => other !== proc && other.running && other.serialized);
 				if (mine && others.length > 0) violate("DOUBLE_RUN_OVERLAP");
 				const done = parse(fileAt(DONE)?.text)?.nonce;
-				if (mine && typeof done === "string" && proc.observed.has(done)) violate("RAN_DESPITE_OBSERVED_DONE");
+				// A serialize caller never reads the marker, so running after one it saw is its contract.
+				if (mine && !proc.serializeMode && typeof done === "string" && proc.observed.has(done)) {
+					violate("RAN_DESPITE_OBSERVED_DONE");
+				}
 				proc.running = true;
 				tracing && trace.push(`P${proc.id} RUN start (serialized=${mine})`);
 				return;
@@ -437,9 +454,20 @@ export const explore = (options: ModelOptions, machine: MachineFactory): ModelRe
 			}
 			for (const proc of procs) {
 				if (proc.outcome?._tag === "RanUnserialized") violate(`UNSERIALIZED(${proc.outcome.reason})`);
-				if (options.serialize === true && proc.outcome?._tag === "Trusted") violate("TRUSTED_WHILE_SERIALIZING");
+				if (proc.serializeMode && proc.outcome?._tag === "Trusted") violate("TRUSTED_WHILE_SERIALIZING");
 			}
-			if (options.serialize === true && paths.has(DONE)) violate("DONE_MARKER_WHILE_SERIALIZING");
+			if (paths.has(DONE)) {
+				// Only a once caller writes a marker: one with no once caller is a serialize
+				// run's, and one naming a serialize caller's lock nonce is too.
+				const writer = parse(fileAt(DONE)?.text)?.nonce;
+				const once = procs.filter((proc) => !proc.serializeMode);
+				const serializeNonces = new Set(
+					procs.filter((proc) => proc.serializeMode).map((proc) => parse(proc.lockText)?.nonce),
+				);
+				if (once.length === 0 || (typeof writer === "string" && serializeNonces.has(writer))) {
+					violate("DONE_MARKER_WHILE_SERIALIZING");
+				}
+			}
 			for (const [kind, count] of scheduleViolations) {
 				violations.set(kind, (violations.get(kind) ?? 0) + count);
 				if (!traces.has(kind)) traces.set(kind, [...trace]);

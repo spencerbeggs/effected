@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:45:11Z
+  at: 2026-10-28T17:47:12Z
 integrity:
   generated:
-    body: 1b3195761e4e2ca3
+    body: 13e50b344c7b9b63
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -323,7 +323,8 @@ continue phase 2's A1–A10:
 
 Five synchronous functions in `src/WorkspacesSync.ts`
 (`findWorkspaceRootSync`, `locateWorkspaceRootSync`, which also answers the
-matched marker file, `getWorkspacePackagesSync`, `detectPackageManagerSync`,
+matched marker file and whose Effect form is the `WorkspaceRoot.locate`
+static, `getWorkspacePackagesSync`, `detectPackageManagerSync`,
 `localExecContextSync`), positional-path-first
 with an options bag second, and the cwd is required — the module reads no
 ambient cwd, because Vitest's config-time project discovery cannot

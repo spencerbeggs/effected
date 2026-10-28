@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/commands/src/LocalExec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:12:09Z
+  at: 2026-10-28T18:51:45Z
 integrity:
   generated:
-    body: 1bac32ec1dde61e7
+    body: 34c882b60b486fb7
 ---
 
 # @effected/commands
@@ -506,7 +506,10 @@ protocol, and why each of its rules is there, is
 - **Testing.** The `Effect` driver runs over `@effected/memfs` and
   `TestClock`; the sync driver over an in-memory host whose `sleep` is
   where "another process" acts; a bounded model checker
-  (`__test__/runOnceModel.ts`) explores the protocol's interleavings, and
+  (`__test__/runOnceModel.ts`) explores the protocol's interleavings, in the
+  suite at small bounds and at the review's full bounds through
+  `lib/scripts/run-once-model-full.ts` (`pnpm --filter @effected/commands
+  model:full`, offline only, never CI), and
   `__test__/e2e/RunOnce.e2e.test.ts` races four real `node` processes
   through a fixture that imports the dev build.
 

@@ -19,13 +19,16 @@ sources:
     title: "A bounded stateless model checker: inode-modelled files, non-atomic writes, a preemption bound, crashes"
   - id: model-test
     resource: ../../packages/commands/__test__/RunOnce.model.test.ts
-    title: "The in-suite scenarios a, c, e and the g0 breaker-race regressions"
+    title: "The in-suite scenarios a, c, e, the g0 breaker-race regressions, serialize and mixed-mode"
+  - id: model-full
+    resource: ../../packages/commands/lib/scripts/run-once-model-full.ts
+    title: "The review's full bounds: scenarios a-h and g0 in once, serialize and both mixed orders, each in a child under a hard timeout"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:11:13Z
+  at: 2026-10-28T18:51:45Z
 integrity:
   generated:
-    body: bc71f6309c71bc50
+    body: 8bf9a4ce7ff62a4b
 ---
 
 # `RunOnce` trusts only observed owners and breaks locks through tickets and tombs
@@ -143,8 +146,16 @@ crashes, and it enumerates schedules under a preemption bound. It reports
 overlapping runs, displaced locks, a run despite an observed marker, and hot
 loops, counting a safety violation even in a schedule later pruned for
 length.[^model] The suite runs scenarios a, c and e and the g0
-breaker-race regressions; a change to the machine must also pass the
-review's full bounds offline.[^model-test] A rule the model cannot reach (it
+breaker-race regressions.[^model-test] A change to the machine must also pass
+the review's full bounds, which have ONE definition:
+`lib/scripts/run-once-model-full.ts`, run by hand as `pnpm --filter
+@effected/commands model:full`. It explores scenarios a–h and g0 in `once`
+mode, in `serialize` mode, and with the two modes mixed on one key in both
+orders, each scenario in its own child process under a hard timeout (30 min by
+default, SIGKILL on overrun), and exits non-zero on a violation, a hit
+schedule cap, a timeout or an exploration below its leaf floor. The whole
+matrix takes tens of minutes, so it is offline and never in CI.[^model-full]
+A rule the model cannot reach (it
 treats a finished process as dead) gets a scripted test in
 `RunOnce.sync.test.ts`.
 
@@ -154,7 +165,11 @@ trusts one, and writes none after the work: every caller takes the lock in
 turn and runs the work itself. It is two guards in `runOnceMachine.ts`,
 never a driver rule, and the model checker runs it as scenarios s/a, s/c
 and s/e, adding two invariants: no process ends `Trusted`, and no done
-marker exists at the end. `trustSequentialMs` beside it is a wiring defect,
+marker exists at the end. Mixed scenarios (m/a in both orders, m/c, m/e)
+put `once` and `serialize` callers on one key and prove mixing safe: runs
+stay mutually exclusive across modes, a serialize caller never ends
+`Trusted` (running after a marker it saw is its contract), and only a once
+caller writes the marker. `trustSequentialMs` beside it is a wiring defect,
 since it trusts a marker the mode never writes. The mode was asked for as a
 way to rebuild on every run, which `"once"` already does (a later,
 sequential caller never trusts an earlier caller's marker); its real use is
@@ -194,3 +209,4 @@ place `@effected/commands` looks at another process, and it lives in
 [^node-sync]: `../../packages/commands/src/node-sync.ts`, `nodeRunOnceFileSystem`
 [^model]: `../../packages/commands/__test__/runOnceModel.ts`
 [^model-test]: `../../packages/commands/__test__/RunOnce.model.test.ts`
+[^model-full]: `../../packages/commands/lib/scripts/run-once-model-full.ts`

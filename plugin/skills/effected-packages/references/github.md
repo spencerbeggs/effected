@@ -72,7 +72,10 @@ tempted to reach for `as`.
   route on another origin, and a pagination `Link` header naming another
   origin, each as `GitHubError` `kind: "rejected"` with nothing sent. A
   request to another GitHub host is a second client configured for it; a
-  body field named `url` (a webhook config) goes inside `data`. `RestData<R>`,
+  body field named `url` (a webhook config) goes inside `data`. The client
+  doubles (`makeTest`, `layerTest`, `layerFixture`) refuse the same calls with
+  the same error, held to github.com's API host, and an interrupted
+  `paginate` / `paginateStream` aborts its in-flight page request. `RestData<R>`,
   `RestResponse<R>`, `RestRoute`, `RestPaginatingRoute` and `RestItem<R>` are the
   rest of the type vocabulary.
 - **A route outside the generated map goes through `requestDecoded(route,
