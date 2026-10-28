@@ -1,5 +1,31 @@
 # @effected/mcp
 
+## 0.11.0
+
+### Bug Fixes
+
+- `McpHarness` records captured console arguments the way the console shows them: an `Error` argument becomes `Error: boom` through `ErrorText`, a plain object or array renders as JSON, and anything else falls back to a description. Assertions that matched an `Error`'s bare message must now match the `Error:` prefix. [#1151][#1151]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/engine | dependency | updated | 0.9.0 | 0.10.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+* `McpStdio.layer`'s stdin guard no longer intercepts lines whose `method` starts with `@effect/rpc/`. Core serves MCP with Effect's RPC control messages turned off, so such a notification is ignored and such a request is answered by core with `-32601` (`Method not found: @effect/rpc/Eof`) instead of the guard's `Method not found`. The server keeps serving either way. [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.10.0
 
 ### Features

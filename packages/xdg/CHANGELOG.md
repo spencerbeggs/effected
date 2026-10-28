@@ -1,5 +1,42 @@
 # @effected/xdg
 
+## 0.17.0
+
+### Features
+
+- A program that follows a shell rule such as `XDG_STATE_HOME:-HOME/.local/state` can now use `Xdg`. Both departures from the XDG spec are opt-in through `XdgEnvOptions`; every default stays the spec (#1119).
+
+- `Xdg.layerWith(options)`, plus an options argument on `layerFromEnv`.
+
+- `homeFallback` replaces only a missing home, never a set one.
+
+- `relativeHomes: "keep"` uses a relative XDG home value as given instead of discarding it.
+
+- The runtime directory and the search paths keep the spec rule. [#1151][#1151]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/glob | dependency | updated | 0.15.0 | 0.16.0 |
+| @effected/jsonc | dependency | updated | 0.20.1 | 0.21.0 |
+| @effected/toml | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/walker | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/yaml | dependency | updated | 0.25.1 | 0.26.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.16.0
 
 ### Features

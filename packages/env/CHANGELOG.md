@@ -1,5 +1,33 @@
 # @effected/env
 
+## 0.7.0
+
+### Features
+
+- `ShellExports.quote` is exported: a one-word shell quoter for a caller that builds its own `export` lines. It has no POSIX-sh-only mode.
+
+* `TerminalEnv.colorLevelFrom(env, isTTY)` reads a colour level from an environment record and a TTY flag, with no `Stdio` service and no Effect runtime. It applies the same rule as `TerminalEnv.layer`: `FORCE_COLOR` first, then `NO_COLOR`, `NODE_DISABLE_COLORS` and `TERM=dumb`, then the terminal table.
+
+* `TerminalEnv.capabilities(terminal, term?)` projects a `TerminalEnv` snapshot into core's `TerminalCapabilities` value: `canColor` from the kit's colour rule, `canAnimate` from stdout being a terminal, and `canPrompt` from both stdin and stdout being terminals. `TERM=dumb` clears animation and prompting.
+
+* Closes #1139 [#1145][#1145]
+
+### Bug Fixes
+
+- `ShellExports` now rejects `PIPESTATUS` as a special variable, like the other shell-managed names. [#1151][#1151]
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.6.0
 
 ### Breaking Changes

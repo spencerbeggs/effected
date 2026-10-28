@@ -1,5 +1,46 @@
 # @effected/github-actions
 
+## 0.29.0
+
+### Bug Fixes
+
+- `CacheKey.matchingFiles` and `hashMatching` accept a relative `workspace` again, resolved against the process working directory; the returned paths, and a `CacheKeyReadError`'s `path`, are absolute. Digests are unchanged.
+
+#### Security
+
+- Credentials are scrubbed from kept HTTP error causes: the OIDC, blob store, cache, artifact, Twirp and `ToolInstaller` errors keep redacted copies, and `ToolInstallerError.subject` is the redacted URL.
+- `BlobTransferError.cause` is a redacted `RestError` copy, so a SAS URL is no longer readable from it. [#1151][#1151]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.2.1 | 0.3.0 |
+| @effected/github | dependency | updated | 0.25.1 | 0.26.0 |
+| @effected/github-commands | dependency | updated | 0.6.2 | 0.7.0 |
+| @effected/glob | dependency | updated | 0.15.0 | 0.16.0 |
+| @effected/jwt | dependency | updated | 0.6.0 | 0.7.0 |
+| @effected/markdown | dependency | updated | 0.23.0 | 0.24.0 |
+| @effected/npm | dependency | updated | 0.27.1 | 0.28.0 |
+| @effected/oidc | dependency | updated | 0.1.2 | 0.2.0 |
+| @effected/sbom | dependency | updated | 0.17.0 | 0.18.0 |
+| @effected/semver | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/templates | dependency | updated | 0.14.1 | 0.15.0 |
+| @effected/walker | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/yaml | dependency | updated | 0.25.1 | 0.26.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.28.2
 
 ### Dependencies

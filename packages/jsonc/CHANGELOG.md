@@ -1,5 +1,33 @@
 # @effected/jsonc
 
+## 0.21.0
+
+### Features
+
+- `JsoncCanonicalizeOptions` opts in, per value kind, to lenient fingerprinting: `bigint` as a bare decimal literal, `undefined` omitted (`null` in arrays), non-finite numbers as `null`, and `toJSON` on a `Date` only or on any object. `canonicalizeResult`, `canonicalize`, `hash` and `hashResult` take it as an optional last argument. The strict RFC 8785 default is unchanged (#1121).
+
+### Bug Fixes
+
+- Diagnostic positions come from `@effected/source`, fixing a character of `-1` at the `\n` of a `\r\n`. [#1151][#1151]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/source | dependency | updated | 0.0.0 | 0.1.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.20.1
 
 ### Bug Fixes

@@ -1,5 +1,37 @@
 # @effected/app
 
+## 0.29.0
+
+### Features
+
+- `AppConfig` passes `saveTarget` through to `@effected/config-file` and pins `"default"`, so the preset's write target does not move with the config-file default change. [#1151][#1151]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/glob | dependency | updated | 0.15.0 | 0.16.0 |
+| @effected/jsonc | dependency | updated | 0.20.1 | 0.21.0 |
+| @effected/memfs | dependency | updated | 0.20.0 | 0.21.0 |
+| @effected/store | dependency | updated | 0.20.0 | 0.21.0 |
+| @effected/toml | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/walker | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/xdg | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/yaml | dependency | updated | 0.25.1 | 0.26.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.28.0
 
 ### Breaking Changes

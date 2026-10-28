@@ -1,5 +1,23 @@
 # @effected/engine
 
+## 0.10.0
+
+### Features
+
+- `ErrorText` (`describe`, `causeMessage` and `of`) is the never-throwing error-text rendering that used to live in `@effected/cli`. `of` is the `causeMessage ?? describe` fallback. `cli` and `mcp` both build on it now (#1141). [#1151][#1151]
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.0.7 [#1145][#1145]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1145]: https://github.com/spencerbeggs/effected/pull/1145
+
+[#1151]: https://github.com/spencerbeggs/effected/pull/1151
+
 ## 0.9.0
 
 ### Features
