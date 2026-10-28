@@ -1,6 +1,8 @@
 # @effected/github
 
-Typed GitHub REST and GraphQL over octokit's core request surface: one client
+Typed GitHub REST and GraphQL over octokit's core `request` (GraphQL is sent
+as `POST /graphql` with a `data: { query, variables }` body, never through
+`octokit.graphql`, and on GitHub Enterprise Server to `/api/graphql`): one client
 service, one error taxonomy, one retry policy, one pagination engine, and
 twenty-odd resource services on top — branches, tags, commits, contents,
 issues, pull requests, comments, checks, releases, workflow dispatch,
@@ -63,7 +65,9 @@ tempted to reach for `as`.
 
 - **`Rest.Params<R>`** intersects a three-field `RequestExtras` (`headers`,
   `mediaType`, `baseUrl`), deliberately not octokit's `RequestParameters` — that
-  carries an index signature and accepts every typo. `RestData<R>`,
+  carries an index signature and accepts every typo. `baseUrl` sends the
+  client's token to whatever host it names, so never fill it (or an
+  absolute-URL `requestDecoded` route) from untrusted input. `RestData<R>`,
   `RestResponse<R>`, `RestRoute`, `RestPaginatingRoute` and `RestItem<R>` are the
   rest of the type vocabulary.
 - **A route outside the generated map goes through `requestDecoded(route,
@@ -279,7 +283,10 @@ tempted to reach for `as`.
 - **`GitHubRelease`** — `create`, `getByTag`/`getByTagOption`, `list`, `update`,
   `uploadAsset(release, { name, data, contentType, label? })` (a hand-written
   route with two URI-template spellings, because an absent `label` would expand
-  to a dangling `&`), `listAssets`.
+  to a dangling `&`; the upload host is derived from the client's configured
+  base — `uploads.github.com` on github.com, `https://<host>/api/uploads` on
+  GitHub Enterprise Server — and a release whose `uploadUrl` names another
+  origin fails `kind: "rejected"` before anything is sent), `listAssets`.
 - **`WorkflowDispatch`** — `dispatch(workflow, ref, inputs?)`,
   `dispatchWithRun(workflow, ref, inputs?)` → `Option<DispatchedRun>` (`None` on
   a 204 from an older api-version), `runStatus`,

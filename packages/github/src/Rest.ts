@@ -28,9 +28,13 @@ export type Route = keyof Endpoints;
  * index signature, so intersecting it would silently accept every misspelled
  * parameter. These three are the ones callers need:
  * `headers` for a release asset's `content-type` and the attestations API
- * version pin, `mediaType.format` for raw content reads, and `baseUrl` for the
- * `uploads.github.com` host that release-asset uploads go to. Everything else a
- * caller might reach for is a real endpoint parameter and is already typed.
+ * version pin, `mediaType.format` for raw content reads, and `baseUrl` for a
+ * request to a host other than the API root (release-asset uploads use it).
+ * Everything else a caller might reach for is a real endpoint parameter and is
+ * already typed.
+ *
+ * `baseUrl` is the one with a security consequence: the client's token goes
+ * wherever it points. See {@link RestExtras.baseUrl}.
  *
  * @public
  */
@@ -39,7 +43,20 @@ export interface RequestExtras {
 	readonly headers?: RequestHeaders;
 	/** Media-type negotiation, e.g. `{ format: "raw" }`. */
 	readonly mediaType?: { readonly format?: string };
-	/** Overrides the API host for this one request. */
+	/**
+	 * Overrides the API host for this one request.
+	 *
+	 * @remarks
+	 * **The client's configured token goes to whatever host this names**, with
+	 * no check against the base URL the client was built for. Only ever pass a
+	 * constant you wrote or a value derived from your own configuration — never
+	 * one read from a request, a response body, a webhook payload or any other
+	 * untrusted input, or the token travels to that host.
+	 *
+	 * The kit's own upload path does not take a host from data:
+	 * `GitHubRelease.uploadAsset` derives it from the client's configured base
+	 * and refuses a release whose upload URL disagrees.
+	 */
 	readonly baseUrl?: string;
 }
 

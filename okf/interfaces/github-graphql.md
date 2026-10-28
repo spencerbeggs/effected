@@ -8,7 +8,7 @@ resource: ../../packages/github/src/GraphQL.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-28T18:21:14Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:30.132Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 4a4078d818f8b1d1
+    body: 2ba15917b8832320
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -58,6 +58,32 @@ There is no separate GraphQL service. The only thing one could do beyond the
 typed document is error shaping — parsing another error's message string
 looking for an errors array — and with a typed error carrying that array
 structurally there is nothing left for it to do.
+
+## On the wire: `POST /graphql` with a `data` body
+
+`client.graphql` does not call `octokit.graphql`. The transport
+(`packages/github/src/internal/octokit.ts`) sends `POST /graphql` through
+octokit's core `request`, with the whole body as
+`data: { query, variables }` (`variables` omitted when there are none).
+octokit's own `graphql` merges a call's variables into its request options
+and reads `baseUrl`, `headers`, `request`, `mediaType` and `operationName`
+off them as the request itself, so a variable named `baseUrl` sent the
+authenticated call, token attached, to that host. Inside `data`, octokit
+reads no key as a request option, so every variable name, `baseUrl` and
+`query` included, reaches GitHub as a variable. No name is refused, because
+variable names are the document's own namespace.
+
+On GitHub Enterprise Server the REST root is `https://<host>/api/v3` and
+GraphQL is served at `https://<host>/api/graphql`, so `<base>/graphql` would
+miss it. A configured base ending in `/api/v3` is rewritten to `/api/graphql`,
+the rewrite `@octokit/graphql` applied, and any other base keeps the route's
+own `/graphql` under it. The endpoint is derived from the configured base
+alone, so it never names another host.
+
+GitHub answers a GraphQL failure with HTTP 200 and an `errors` array. The
+transport throws that array with the response headers, which
+`GitHubGraphQLError.fromThrowable` reads structurally, so a failure
+classifies the same way it did through `@octokit/graphql`.
 
 ## Ownership: the mechanism is ours, the schema may not be
 

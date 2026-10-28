@@ -6,6 +6,7 @@ import { GitHubGraphQLError } from "./GraphQL.js";
 import { DEFAULT_API_VERSION, makeTransport } from "./internal/octokit.js";
 import { fromArray, paginate } from "./internal/paginate.js";
 import { unstubbed } from "./internal/unstubbed.js";
+import { withConfiguredBaseUrl } from "./internal/uploads.js";
 import type { RateLimitSnapshot } from "./Resilience.js";
 import { RetryPolicy } from "./Resilience.js";
 import type * as Rest from "./Rest.js";
@@ -30,6 +31,12 @@ const DEFAULT_PER_PAGE = 100;
 export interface GitHubClientShape {
 	/**
 	 * One request. The route types both the parameters and the returned `data`.
+	 *
+	 * @remarks
+	 * The request carries this client's token to the configured base URL,
+	 * unless the parameters' `baseUrl` names another host: then the token goes
+	 * there instead. Never fill `baseUrl` from untrusted input — see
+	 * {@link RestExtras.baseUrl}.
 	 *
 	 * @example
 	 * ```ts
@@ -59,6 +66,12 @@ export interface GitHubClientShape {
 	 * checked. The attestations read uses it, because pinning
 	 * `X-GitHub-Api-Version` puts the response on a contract the generated types
 	 * do not describe.
+	 *
+	 * The token goes to the configured base URL unless the parameters' `baseUrl`
+	 * names another host, or `route` itself is an absolute URL
+	 * (`"POST https://host/path"`, which octokit sends as written). Either one
+	 * sends the token to that host, so neither may come from untrusted input —
+	 * see {@link RestExtras.baseUrl}.
 	 */
 	readonly requestDecoded: <A, I>(
 		route: string,
@@ -594,15 +607,20 @@ export const makeClientShape = (
 			);
 		});
 
-		return {
-			request,
-			requestDecoded,
-			paginate: paginateAll,
-			paginateStream,
-			graphql,
-			rateLimit: transport.rateLimit,
-			apiVersion,
-		};
+		// Carry the configured base on the shape, off its public type, so the
+		// release-asset upload derives its host from it (`internal/uploads.ts`).
+		return withConfiguredBaseUrl(
+			{
+				request,
+				requestDecoded,
+				paginate: paginateAll,
+				paginateStream,
+				graphql,
+				rateLimit: transport.rateLimit,
+				apiVersion,
+			},
+			options.baseUrl,
+		);
 	});
 
 const makeFixture = (fixtures: GitHubFixtures): GitHubClientShape => {

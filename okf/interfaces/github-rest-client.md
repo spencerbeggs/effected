@@ -8,7 +8,7 @@ resource: ../../packages/github/src/Rest.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T18:09:57Z
+  at: 2026-10-28T18:21:14Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:33.163Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: e68ab31cbee6dc93
+    body: dd4d5dabf75851e1
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -53,7 +53,11 @@ Two narrowings against octokit's own surface are deliberate:
   `headers` (an asset content type, a pinned API version), `mediaType`
   (raw content reads) and `baseUrl` (the upload host) — the ones evidence
   proves are needed. Everything else a caller might reach for is a real
-  parameter and is already typed.
+  parameter and is already typed. `baseUrl` aims the configured token at
+  whatever host it names, with no check against the client's own base; its
+  TSDoc, and the raw `request` / `requestDecoded` members', say a caller must
+  never fill it from untrusted input. An absolute-URL route string on
+  `requestDecoded` does the same.
 - **The element type of a paginating route is derived here**, because the
   paginator plugin's own helper — which handles the array-versus-`{
   total_count, items }` split — is not exported. This is what makes a
@@ -165,6 +169,29 @@ nothing. `client.request` itself is the raw surface: its params are the
 caller's own, and `Rest.RequestExtras` deliberately lets a call set
 `headers`, `mediaType` and `baseUrl` (release-asset uploads use it), so a
 caller must never spread an untrusted map into it.
+
+### The release-asset upload host comes from the configured base
+
+Asset uploads go to a separate host: `https://uploads.github.com` on
+github.com, `https://<host>/api/uploads` on GitHub Enterprise Server (GitHub's
+GHES REST docs for "Upload a release asset"). `GitHubRelease.uploadAsset`
+used to hard-code the github.com host, so a client configured for GHES sent
+its installation or personal token to github.com. The host is now derived by
+`uploadsBaseUrlFor` (`packages/github/src/internal/uploads.ts`) from the base
+URL the client was configured with: absent or `https://api.github.com` →
+`https://uploads.github.com`; `…/api/v3` → `…/api/uploads`; anything else →
+the configured base itself, so the token never goes to a host the caller did
+not configure.
+
+The configured base reaches `GitHubRelease` off the public type:
+`makeClientShape` marks the shape it builds with a module-private symbol
+property, which survives a `{ ...client }` spread. A shape the package did not
+build (a hand-written double, `makeTest`, a fixture) carries none and is read
+as github.com. The release's own `uploadUrl` is response data, so it is never
+the route. It is a cross-check: its origin must equal the derived host's, or
+the upload fails `kind: "rejected"` with no status before any request. That
+is what refuses a GHES release reached through an unmarked client, rather
+than sending the GHES token to github.com.
 
 ### Resource ids come off the wire as `number | bigint`
 
