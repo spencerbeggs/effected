@@ -1062,6 +1062,8 @@
 		"VersioningStrategy": "how a workspace assigns versions: single fixed-group or independent, derive release tags",
 		"VersioningStrategyType": "single, fixed-group or independent versioning classification",
 		"WORKSPACE_MARKERS": "marker filenames that identify a workspace root, pnpm-workspace.yaml or package.json",
+		"WorkspaceMarker": "workspace root marker filename schema, restrict root search to pnpm-workspace.yaml",
+		"WorkspaceRootMatch": "found workspace root with its matched marker file path",
 		"WorkspaceCatalogs": {
 			"intent": "assemble pnpm catalogs for a workspace, resolve a catalog: specifier, release-age gate, effective peerDependencyRules",
 			"implements": "npm.CatalogResolver"
@@ -1085,6 +1087,7 @@
 		},
 		"classifyTag": "classify a git tag string as a release tag or a tracking alias",
 		"findWorkspaceRootSync": "synchronously find the workspace root, non-Effect entry point for config files like vitest.config",
+		"locateWorkspaceRootSync": "find the workspace root and the marker file that matched, pnpm-workspace.yaml path, sync",
 		"getWorkspacePackagesSync": "synchronously enumerate workspace packages, non-Effect entry point for config files",
 		"nodeFileSystem": "sync filesystem adapter over node:fs, exists read directory stat",
 		"nodePath": "sync path adapter, the running platform's node:path",

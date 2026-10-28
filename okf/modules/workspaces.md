@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:37:08Z
+  at: 2026-10-28T16:45:11Z
 integrity:
   generated:
-    body: b73f67e2b2a7167c
+    body: 1b3195761e4e2ca3
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -321,9 +321,10 @@ continue phase 2's A1–A10:
 
 ## WorkspacesSync — the escape hatch
 
-Four synchronous functions in `src/WorkspacesSync.ts`
-(`findWorkspaceRootSync`, `getWorkspacePackagesSync`,
-`detectPackageManagerSync`, `localExecContextSync`), positional-path-first
+Five synchronous functions in `src/WorkspacesSync.ts`
+(`findWorkspaceRootSync`, `locateWorkspaceRootSync`, which also answers the
+matched marker file, `getWorkspacePackagesSync`, `detectPackageManagerSync`,
+`localExecContextSync`), positional-path-first
 with an options bag second, and the cwd is required — the module reads no
 ambient cwd, because Vitest's config-time project discovery cannot
 await.[^workspaces-sync-ts] Both entry points drive the same worklist-based

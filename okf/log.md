@@ -9,6 +9,7 @@
 * Updated Keyed operations come from WebCrypto, payload digests from core Crypto required in R
 * Updated @effected/workspaces/testing: the repo-shape checks
 * Updated @effected/workspaces: monorepo tooling
+* Updated @effected/workspaces discovery and detection
 
 ## 2026-10-27
 
