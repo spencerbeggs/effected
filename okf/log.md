@@ -10,6 +10,7 @@
 * Updated xdg
 * Added @effected/source
 * Updated effected
+* Updated Add a kit package
 
 ## 2026-10-27
 
