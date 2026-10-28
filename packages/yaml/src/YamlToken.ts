@@ -62,15 +62,10 @@ export type YamlTokenKind = typeof YamlTokenKind.Type;
  *
  * @remarks
  * Satisfies `@effected/source`'s `SourceLocation`. `line` / `character` are
- * `LineIndex.make(source, { lineBreaks: "lf" }).positionAt(offset)`:
- * zero-based, UTF-16 code units, with `\n` and `\r\n` as line breaks and a
- * bare `\r` an ordinary character. That is where this package's composer
- * breaks lines, so a lint fix computed from token positions lands where the
- * parsed value expects it. YAML 1.2's `b-break` also counts a bare `\r`, and
- * so does `YamlDiagnostic`: on a document holding a bare `\r` a token and a
- * diagnostic at the same offset can disagree. Making the composer break at a
- * bare `\r` is tracked separately; until it does, tokens follow the
- * composer.
+ * `LineIndex.make(source).positionAt(offset)`: zero-based, UTF-16 code
+ * units, with `\n`, `\r\n` and a bare `\r` as line breaks (YAML 1.2's
+ * `b-break`, the set the lexer emits a `newline` token for), so a token and a
+ * `YamlDiagnostic` at the same offset always agree.
  *
  * @public
  */
@@ -97,8 +92,7 @@ export class YamlToken extends Schema.Class<YamlToken>("YamlToken")({
  * tiling the source exactly.
  *
  * Takes the caller's index so the lint context builds one index for its
- * tokens and its lines. The index must use `"lf"` line breaks, the
- * composer's rule (see {\link YamlToken}).
+ * tokens and its lines.
  *
  * @internal
  */
@@ -158,7 +152,7 @@ export class YamlTokens {
 	 * @returns A `Result` succeeding with every token in source order.
 	 */
 	static tokenize(text: string): Result.Result<ReadonlyArray<YamlToken>, YamlParseError> {
-		return Result.succeed(tokensOf(LineIndex.make(text, { lineBreaks: "lf" })));
+		return Result.succeed(tokensOf(LineIndex.make(text)));
 	}
 
 	/**

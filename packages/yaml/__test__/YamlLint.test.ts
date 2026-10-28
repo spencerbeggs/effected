@@ -350,16 +350,20 @@ describe("LintContext", () => {
 		assert.isTrue(ran, "probe rule must have been invoked");
 	});
 
-	it("splits lines where the tokens and the composer do: a bare CR is line content", () => {
+	it("splits lines where the tokens do, a bare CR included", () => {
 		// Rules index `ctx.lines` by a token's `line` (document-start,
-		// document-end), so lines and tokens share one line-break rule, and
-		// that rule is the composer's: `\n` and `\r\n`, never a bare `\r`.
+		// document-end), so lines and tokens must share one line-break rule.
+		// Under the old `\n`-only split, "a: 1\rb: 2\r" was one line while its
+		// `b` token sat on line 1.
 		let ran = false;
 		const probe: YamlRule = {
 			id: "probe",
 			check: (ctx) => {
 				ran = true;
-				assert.deepStrictEqual(ctx.lines, [{ text: "a: 1\rb: 2\r", offset: 0, number: 0 }]);
+				assert.deepStrictEqual(ctx.lines, [
+					{ text: "a: 1", offset: 0, number: 0 },
+					{ text: "b: 2", offset: 5, number: 1 },
+				]);
 				for (const token of ctx.tokens) {
 					const line = ctx.lines[token.line];
 					assert.isDefined(line, `token at ${token.offset} names line ${token.line}`);
@@ -372,19 +376,18 @@ describe("LintContext", () => {
 		assert.isTrue(ran, "probe rule must have been invoked");
 	});
 
-	it("does not count a trailing bare CR as the final newline", () => {
-		// The composer reads a trailing `\r` as content, so eof-newline asks for
-		// a `\n` and its fix appends one rather than trusting the `\r`.
-		const cr = YamlLint.run("a: 1\r", YamlLint.builtins, YamlLintConfig.default);
+	it("lints a bare-CR document the way its LF twin lints", () => {
+		// A trailing bare CR is a final line break: eof-newline stays quiet and
+		// empty-lines sees no phantom blank line after it.
+		const cr = YamlLint.run("a: 1\rb: 2\r", YamlLint.builtins, YamlLintConfig.default);
+		const lf = YamlLint.run("a: 1\nb: 2\n", YamlLint.builtins, YamlLintConfig.default);
+		assert.deepStrictEqual(cr, []);
+		assert.deepStrictEqual(lf, []);
+		const missing = YamlLint.run("a: 1\rb: 2", YamlLint.builtins, YamlLintConfig.default);
 		assert.deepStrictEqual(
-			cr.map((d) => [d.rule, d.offset, d.line, d.character]),
-			[["eof-newline", 5, 0, 5]],
+			missing.map((d) => [d.rule, d.offset, d.line, d.character]),
+			[["eof-newline", 9, 1, 4]],
 		);
-		assert.deepStrictEqual(
-			YamlLint.fix("a: 1\r", YamlLint.builtins, YamlLintConfig.default),
-			Result.succeed("a: 1\r\n"),
-		);
-		assert.deepStrictEqual(YamlLint.run("a: 1\n", YamlLint.builtins, YamlLintConfig.default), []);
 	});
 
 	it("strips the CR of a CRLF and drops the empty segment after a trailing newline", () => {

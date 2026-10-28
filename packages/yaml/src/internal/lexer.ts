@@ -4,6 +4,7 @@
 // imperative character-by-character scanning with position tracking.
 // `createScanner` IS the state machine; `lexAll` drives it to completion.
 
+import { normalizeLineBreaks } from "./line-breaks.js";
 import type { YamlToken, YamlTokenKind } from "./token.js";
 
 // ---------------------------------------------------------------------------
@@ -51,7 +52,9 @@ export interface YamlScanner {
  * Returns a stateful, pull-based scanner. Call {@link YamlScanner.scan} to
  * advance to the next token, then use `getToken*` methods to inspect it.
  */
-export function createScanner(text: string): YamlScanner {
+export function createScanner(source: string): YamlScanner {
+	// A bare `\r` is a line break (YAML 1.2 `b-break`); see line-breaks.ts.
+	const text = normalizeLineBreaks(source);
 	let pos = 0;
 	let line = 0;
 	let col = 0;

@@ -10,7 +10,7 @@ import { YamlEdit } from "../../YamlEdit.js";
 import type { LintContext, YamlRule } from "../../YamlLintRule.js";
 import { StyleVote, YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
 import type { YamlToken } from "../../YamlToken.js";
-import { nonNegativeIntegerOption } from "./util.js";
+import { insideComposedScalar, nonNegativeIntegerOption } from "./util.js";
 
 /**
  * Options for `comments-spacing`: `minSpacesBefore` between content and a
@@ -46,6 +46,14 @@ const spacingBefore = (
 	return { spaces, hasContentBefore: i >= 0 && ctx.text[i] !== "\n" && ctx.text[i] !== "\r" };
 };
 
+/**
+ * A `comment` token the composer reads as scalar CONTENT is no comment: on
+ * `1-\n - ##` the composer folds the second line into the plain scalar
+ * `"1- - ##"`, so inserting a space after the `#` edited the value. Such a
+ * token neither reports nor votes.
+ */
+const isContent = (ctx: LintContext, token: YamlToken): boolean => insideComposedScalar(ctx, token.offset);
+
 /** Shebang exemption: `#!` at the very start of the stream. */
 const isShebang = (token: YamlToken): boolean => token.offset === 0 && token.text.startsWith("#!");
 
@@ -59,7 +67,7 @@ export const commentsSpacing: YamlRule = {
 		const out: Array<YamlLintDiagnostic> = [];
 		for (const token of ctx.tokens) {
 			if (token.kind !== "comment") continue;
-			if (isShebang(token)) continue;
+			if (isShebang(token) || isContent(ctx, token)) continue;
 			// Space after `#`: a bare `#` is fine, `#text` is not.
 			if (requireAfter && token.text.length > 1 && !/[ \t]/.test(token.text[1] as string)) {
 				out.push(
@@ -109,7 +117,7 @@ export const commentsSpacing: YamlRule = {
 		const out: Array<StyleVote> = [];
 		for (const token of ctx.tokens) {
 			if (token.kind !== "comment") continue;
-			if (isShebang(token)) continue;
+			if (isShebang(token) || isContent(ctx, token)) continue;
 			if (token.text.length > 1) {
 				out.push(
 					StyleVote.make({

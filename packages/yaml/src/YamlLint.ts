@@ -12,8 +12,8 @@ import { Result, Schema } from "effect";
 import { composeFirstDocument } from "./internal/composer/document.js";
 import { isFatalCode } from "./internal/diagnostics.js";
 import { builtinOptionsSchemas, builtinRules } from "./internal/rules/catalog.js";
+import { endsWithLineBreak } from "./internal/rules/util.js";
 import { YamlParseError } from "./Yaml.js";
-import { lazyLineIndex } from "./YamlDiagnostic.js";
 import { documentFromRaw } from "./YamlDocument.js";
 import { YamlEdit } from "./YamlEdit.js";
 import type { LintContext, LintLine, StyleObservation, YamlLintSeverity, YamlRule } from "./YamlLintRule.js";
@@ -140,10 +140,9 @@ export class YamlLintConfig extends Schema.Class<YamlLintConfig>("YamlLintConfig
 
 /**
  * Split the indexed text into positioned lines: one per `LineIndex` line,
- * under the `"lf"` rule the tokens use (`\n` and `\r\n`; a bare `\r` is
- * line content, as the composer reads it), so a rule may index `ctx.lines`
- * by any token's `line` and a fix aimed at a line end lands at one the
- * composer agrees with. Line text excludes the terminator whole — for CRLF
+ * under the same `\n` / `\r\n` / bare `\r` rule the tokens and
+ * diagnostics use, so a rule may index `ctx.lines` by any token's or
+ * diagnostic's `line`. Line text excludes the terminator whole — for CRLF
  * input the `\r` is part of the terminator and is stripped too, so every rule
  * sees the same line content regardless of line-ending style. The final empty
  * segment after a trailing line break is not a line, and empty input has no lines:
@@ -151,7 +150,7 @@ export class YamlLintConfig extends Schema.Class<YamlLintConfig>("YamlLintConfig
  */
 const buildLines = (index: LineIndex): ReadonlyArray<LintLine> => {
 	if (index.text === "") return [];
-	const count = index.text.endsWith("\n") ? index.lineCount - 1 : index.lineCount;
+	const count = endsWithLineBreak(index.text) ? index.lineCount - 1 : index.lineCount;
 	const lines: Array<LintLine> = [];
 	for (let number = 0; number < count; number++) {
 		lines.push({ text: index.lineText(number), offset: index.lineStart(number), number });
@@ -163,14 +162,9 @@ const buildLines = (index: LineIndex): ReadonlyArray<LintLine> => {
  * Build the eager lint context: index the text once, tokenize once, compose
  * once (through the RECOVERED path, so the context exists for malformed
  * input too — the `parse-validity` rule reports what went wrong).
- *
- * Two line rules meet here. Tokens and lines use `"lf"`, the composer's
- * rule, because fixes are computed from them; the document's diagnostics
- * keep the `"lsp"` rule every `YamlDiagnostic` uses, through their own lazy
- * index.
  */
 const buildContext = (text: string): LintContext => {
-	const index = LineIndex.make(text, { lineBreaks: "lf" });
+	const index = LineIndex.make(text);
 	return {
 		text,
 		lines: buildLines(index),
@@ -178,7 +172,7 @@ const buildContext = (text: string): LintContext => {
 		// uniqueKeys: false — duplicate-key POLICY belongs to the configurable
 		// `key-duplicates` rule, so the engine's own duplicate warnings are
 		// switched off here and `parse-validity` never double-reports them.
-		document: documentFromRaw(composeFirstDocument(text, { uniqueKeys: false }), lazyLineIndex(text)),
+		document: documentFromRaw(composeFirstDocument(text, { uniqueKeys: false }), () => index),
 	};
 };
 

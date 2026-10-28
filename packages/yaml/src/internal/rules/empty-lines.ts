@@ -7,7 +7,7 @@ import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { LintContext, YamlRule } from "../../YamlLintRule.js";
 import { StyleFloor, YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
-import { insideScalarSpan, nonNegativeIntegerOption } from "./util.js";
+import { insideComposedScalar, insideScalarSpan, nonNegativeIntegerOption } from "./util.js";
 
 /**
  * Options for `empty-lines`: `max` consecutive blank lines in the body
@@ -27,6 +27,17 @@ interface EmptyLinesOptions {
 	readonly maxEnd?: number;
 }
 
+/**
+ * Whether a blank line at `offset` is scalar CONTENT: inside a block scalar
+ * token, or inside any scalar the composer reads. The second half matters
+ * for a multi-line plain or quoted scalar, which the lexer splits into one
+ * token per line: its blank lines sit between tokens, yet each one folds
+ * into the value as a line break (`a\n\n\n\nb` is `"a\n\n\nb"`), so deleting
+ * one changes the value.
+ */
+const insideScalarContent = (ctx: LintContext, offset: number): boolean =>
+	insideScalarSpan(ctx.tokens, offset) || insideComposedScalar(ctx, offset);
+
 /** Runs of blank lines beyond the configured caps, with a deleting fix. */
 export const emptyLines: YamlRule = {
 	id: "empty-lines",
@@ -43,7 +54,7 @@ export const emptyLines: YamlRule = {
 		let i = 0;
 		while (i < lines.length) {
 			const line = lines[i];
-			if (line === undefined || line.text !== "" || insideScalarSpan(ctx.tokens, line.offset)) {
+			if (line === undefined || line.text !== "" || insideScalarContent(ctx, line.offset)) {
 				i++;
 				continue;
 			}
@@ -97,7 +108,7 @@ export const emptyLines: YamlRule = {
 		let i = 0;
 		while (i < lines.length) {
 			const line = lines[i];
-			if (line === undefined || line.text !== "" || insideScalarSpan(ctx.tokens, line.offset)) {
+			if (line === undefined || line.text !== "" || insideScalarContent(ctx, line.offset)) {
 				i++;
 				continue;
 			}

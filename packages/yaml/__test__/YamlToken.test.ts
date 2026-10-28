@@ -49,15 +49,20 @@ describe("YamlTokens", () => {
 			assert.strictEqual(b?.character, 0);
 		});
 
-		it("breaks lines where the composer does: a bare CR is line content", () => {
-			// Lint fixes are computed from token positions, and the composer does
-			// not break at a bare `\r`. Counting one as a break put "line ends"
-			// inside scalars, so `YamlLint.fix("a: 1\r")` appended `...` to `1`.
+		it("counts a bare CR as a line break, as YAML 1.2 and the lexer's newline token do", () => {
+			// The old index counted `\n` only, so every token after a bare `\r`
+			// stayed on line 0 even though the lexer emitted a `newline` for it.
 			const tokens = tokensOf("a: 1\rb: 2\r");
 			const b = tokens.find((t) => t.text === "b");
-			assert.deepStrictEqual([b?.line, b?.character], [0, 5]);
-			const crlf = tokensOf("a: 1\r\nb: 2\r\n").find((t) => t.text === "b");
-			assert.deepStrictEqual([crlf?.line, crlf?.character], [1, 0]);
+			assert.deepStrictEqual([b?.line, b?.character], [1, 0]);
+			const newlines = tokens.filter((t) => t.kind === "newline");
+			assert.deepStrictEqual(
+				newlines.map((t) => [t.line, t.text]),
+				[
+					[0, "\r"],
+					[1, "\r"],
+				],
+			);
 		});
 
 		it("keeps the CR of a CRLF on its own line and agrees with YamlDiagnostic", () => {
