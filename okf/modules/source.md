@@ -27,10 +27,10 @@ sources:
     title: "LSP 3.17 Position: zero-based, UTF-16 by default, line endings \\n, \\r\\n and \\r"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T18:00:25Z
+  at: 2026-10-28T18:04:23Z
 integrity:
   generated:
-    body: 761b2810963270e7
+    body: 60f746189dc855f8
 ---
 
 # @effected/source
@@ -132,8 +132,10 @@ most LSP servers already use, so a kit server agrees with it on every edge:
 **A non-integer argument throws `RangeError`**, as a programmer error rather
 than out-of-range input: `NaN`, `1.5` and an infinity of either sign. Clamping `NaN` would
 silently answer "line 0", the bare-`<`-guard failure the input-hardening
-convention names. `spanOf` also rejects a negative `length`, and `rangeOf` a
-span whose end precedes its start.
+convention names. `spanOf` and `locationOf` both reject a `length` that is
+not a non-negative integer, through one shared guard (`locationOf` once
+accepted `NaN` and negatives, passing them through to the location
+unchanged), and `rangeOf` rejects a span whose end precedes its start.
 
 **Every text has at least one line.** The empty text has one empty line, and a
 text ending in a terminator has an empty last line after it (`"a\n"` has two

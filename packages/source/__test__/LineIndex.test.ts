@@ -208,6 +208,14 @@ describe("LineIndex ranges", () => {
 			character: 1,
 		});
 	});
+
+	it("guards a location's length as spanOf does", () => {
+		for (const bad of [Number.NaN, 0.5, Number.POSITIVE_INFINITY, -1]) {
+			assert.throws(() => index.locationOf({ offset: 2, length: bad }), RangeError, undefined, String(bad));
+			assert.throws(() => index.spanOf({ offset: 2, length: bad }), RangeError, undefined, String(bad));
+		}
+		assert.deepStrictEqual(index.locationOf({ offset: 2, length: 0 }), { offset: 2, length: 0, line: 0, character: 2 });
+	});
 });
 
 // ── Differential check against an independent oracle ───────────────────────

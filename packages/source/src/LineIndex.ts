@@ -49,6 +49,13 @@ const requireInteger = (name: string, value: number): void => {
 	}
 };
 
+const requireLength = (length: number): void => {
+	requireInteger("length", length);
+	if (length < 0) {
+		throw new RangeError(`LineIndex: length must not be negative, received ${length}`);
+	}
+};
+
 const clamp = (value: number, low: number, high: number): number => Math.min(Math.max(value, low), high);
 
 /**
@@ -254,10 +261,7 @@ export class LineIndex implements SourceIndex {
 	 * @returns The start and exclusive end positions.
 	 */
 	spanOf(range: SourceRange): SourceSpan {
-		requireInteger("length", range.length);
-		if (range.length < 0) {
-			throw new RangeError(`LineIndex: length must not be negative, received ${range.length}`);
-		}
+		requireLength(range.length);
 		return { start: this.positionAt(range.offset), end: this.positionAt(range.offset + range.length) };
 	}
 
@@ -283,10 +287,12 @@ export class LineIndex implements SourceIndex {
 	 * The {@link SourceLocation} of a range: the range itself, unchanged,
 	 * with the position of its start. The shape a diagnostic carries.
 	 *
-	 * @param range - The range.
+	 * @param range - The range; its `length` must be a non-negative integer,
+	 *   as {@link LineIndex.spanOf} requires.
 	 * @returns `offset`, `length`, `line` and `character`.
 	 */
 	locationOf(range: SourceRange): SourceLocation {
+		requireLength(range.length);
 		const { line, character } = this.positionAt(range.offset);
 		return { offset: range.offset, length: range.length, line, character };
 	}
