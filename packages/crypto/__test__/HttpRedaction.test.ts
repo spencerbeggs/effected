@@ -233,3 +233,124 @@ describe("HttpRedaction.isSensitiveHeader", () => {
 		}
 	});
 });
+
+describe("HttpRedaction.text — URLs", () => {
+	// The pattern `text` used to scan with: kept here as the differential
+	// oracle. It is quadratic on a long scheme-shaped run with no `://`.
+	const ORACLE = /[a-z][a-z\d+.-]*:\/\/[^\s"'<>`]+/gi;
+	const oracle = (raw: string): string => raw.replace(ORACLE, (match) => HttpRedaction.url(match));
+
+	it("finds the same URLs as the regex it replaced, on a generated corpus", () => {
+		// No letters from `bearer` / `basic` / `token`, so only the URL pass can
+		// change a string. `ſ` and the Kelvin sign are non-ASCII case-fold traps.
+		const alphabet = [
+			"a",
+			"Z",
+			"1",
+			"+",
+			".",
+			"-",
+			":",
+			"/",
+			"//",
+			"://",
+			" ",
+			'"',
+			"@",
+			"?",
+			"=",
+			"u:p@",
+			"?code=v",
+			String.fromCodePoint(0x17f),
+			String.fromCodePoint(0x212a),
+			"\t",
+		];
+		let state = 0x2545f491;
+		const next = (): number => {
+			state ^= state << 13;
+			state ^= state >>> 17;
+			state ^= state << 5;
+			return (state >>> 0) / 0x100000000;
+		};
+		let matched = 0;
+		let redacted = 0;
+		for (let index = 0; index < 20_000; index++) {
+			let raw = "";
+			const length = 1 + Math.floor(next() * 24);
+			for (let k = 0; k < length; k++) raw += alphabet[Math.floor(next() * alphabet.length)];
+			const expected = oracle(raw);
+			if (raw.search(ORACLE) !== -1) matched++;
+			if (expected !== raw) redacted++;
+			assert.strictEqual(HttpRedaction.text(raw), expected, JSON.stringify(raw));
+		}
+		// Both counts gate the corpus: a corpus of identity redactions would not
+		// see a scan that finds the wrong span.
+		assert.isAbove(matched, 1000, "the corpus held URLs");
+		assert.isAbove(redacted, 400, "the corpus held URLs a redaction changes");
+	});
+
+	it("redacts a URL whose run starts with a digit, `.`, `+` or `-`", () => {
+		for (const lead of ["1", ".", "+", "-", "..."]) {
+			const scrubbed = HttpRedaction.text(`see ${lead}https://u:${PASSWORD}@h.test/x`);
+			assert.strictEqual(scrubbed, `see ${lead}https://REDACTED:REDACTED@h.test/x`);
+		}
+	});
+
+	it("scans a 1 MB adversarial input in linear time", () => {
+		const inputs = [
+			"a".repeat(1 << 20),
+			"a1+.-".repeat(1 << 18),
+			`${"a".repeat(1 << 20)}:/`,
+			"a:".repeat(1 << 19),
+			"a://".repeat(1 << 18),
+			"1://".repeat(1 << 18),
+			"a:// ".repeat(1 << 18),
+		];
+		for (const input of inputs) {
+			const start = performance.now();
+			HttpRedaction.text(input);
+			const elapsed = performance.now() - start;
+			assert.isBelow(elapsed, 500, `${JSON.stringify(input.slice(0, 8))}… took ${elapsed.toFixed(0)} ms`);
+		}
+	});
+});
+
+describe("HttpRedaction.text — credentials", () => {
+	const TOKENS = [
+		"npm_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+		"ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+		["gi", "thub_pat_11AbCdEfG0123456789_abcdefghijklmnopqrstuvwxyz"].join(""),
+		"ghs_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+		"eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln",
+	];
+
+	it("replaces a Bearer, Basic or token credential whatever the scheme's case", () => {
+		for (const scheme of ["Bearer", "bearer", "BEARER", "token", "Token", "Basic", "basic"]) {
+			for (const credential of TOKENS) {
+				const scrubbed = HttpRedaction.text(`401: ${scheme} ${credential} rejected`);
+				assert.strictEqual(scrubbed, `401: ${scheme} REDACTED rejected`, `${scheme} ${credential}`);
+			}
+		}
+		assert.strictEqual(HttpRedaction.text("Authorization: basic dXNlcjpwYXNz"), "Authorization: basic REDACTED");
+	});
+
+	it("leaves prose that only mentions a scheme intact", () => {
+		for (const prose of [
+			"invalid token provided by the server",
+			"the token expired; request a fresh token",
+			"Bearer authentication failed for registry",
+			"basic configuration is required, token missing",
+			"token rejected. Tokens: provided, revoked",
+		]) {
+			assert.strictEqual(HttpRedaction.text(prose), prose);
+		}
+	});
+
+	it("scans a 1 MB adversarial input in linear time", () => {
+		for (const input of [`token${" ".repeat(1 << 20)}`, "token ".repeat(1 << 18), `Bearer ${"a".repeat(1 << 20)}`]) {
+			const start = performance.now();
+			HttpRedaction.text(input);
+			assert.isBelow(performance.now() - start, 500);
+		}
+	});
+});

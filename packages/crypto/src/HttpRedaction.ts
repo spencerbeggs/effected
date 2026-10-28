@@ -49,11 +49,63 @@ const url = (raw: string): string => {
 	return `${head}#${UrlParams.redactUrl(`?${raw.slice(hash + 1)}`, SENSITIVE_QUERY_NAMES).slice(1)}`;
 };
 
-const URL_IN_TEXT = /[a-z][a-z\d+.-]*:\/\/[^\s"'<>`]+/gi;
-const BEARER_IN_TEXT = /\b(Bearer|Basic|token)\s+[A-Za-z0-9._~+/=-]{8,}/g;
+const isLetter = (code: number): boolean => (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+const isSchemeChar = (code: number): boolean =>
+	isLetter(code) || (code >= 48 && code <= 57) || code === 43 || code === 45 || code === 46;
+const URL_STOP = /[\s"'<>`]/;
+
+// Every `scheme://…` in `raw` redacted by `url`: exactly the matches of
+// /[a-z][a-z\d+.-]*:\/\/[^\s"'<>`]+/gi, found by a hand scan.
+//
+// Written as a scan, not that regex, because the regex is quadratic: on a long
+// scheme-shaped run with no `://` every start position rescans the run. The
+// scan finds each `://` once, walks back over its scheme run to the run's
+// first letter (where the regex's leftmost match starts), and forward over the
+// tail. A lookbehind anchor, (?<![a-z\d+.-]), is not equivalent: it misses a
+// URL whose run starts with a digit, `+`, `.` or `-`.
+const urlsInText = (raw: string): string => {
+	let out = "";
+	let copied = 0;
+	let from = 0;
+	for (;;) {
+		const separator = raw.indexOf("://", from);
+		if (separator === -1) break;
+		let start = separator;
+		while (start > copied && isSchemeChar(raw.charCodeAt(start - 1))) start--;
+		while (start < separator && !isLetter(raw.charCodeAt(start))) start++;
+		// Refuse before scanning the tail: a refused `://` must cost O(1) past
+		// its scheme run, or `1://1://…` rescans the rest of the input per `://`.
+		if (start === separator || separator + 3 >= raw.length || URL_STOP.test(raw.charAt(separator + 3))) {
+			from = separator + 1;
+			continue;
+		}
+		let end = separator + 4;
+		while (end < raw.length && !URL_STOP.test(raw.charAt(end))) end++;
+		out += raw.slice(copied, start) + url(raw.slice(start, end));
+		copied = end;
+		from = end;
+	}
+	return copied === 0 ? raw : out + raw.slice(copied);
+};
+
+// A scheme word, case-insensitive as RFC 9110 auth schemes are, and the run
+// after it. `\s+` and the run's class are disjoint, so the scan is linear.
+const CREDENTIAL_IN_TEXT = /\b(bearer|basic|token)\s+([A-Za-z0-9._~+/=-]{8,})/gi;
+const CREDENTIAL_MARK = /[\d_+/=]/;
+const INNER_UPPER = /[A-Z]/;
+
+/**
+ * Whether a run after a scheme word reads as a credential rather than the
+ * next word of a sentence: it carries a digit, `_`, `+`, `/` or `=`, or an
+ * uppercase letter after its first character. Prose (`invalid token provided
+ * by`) carries none.
+ */
+const isCredentialShaped = (value: string): boolean => CREDENTIAL_MARK.test(value) || INNER_UPPER.test(value.slice(1));
 
 const text = (raw: string): string =>
-	raw.replace(URL_IN_TEXT, (match) => url(match)).replace(BEARER_IN_TEXT, (_match, scheme) => `${scheme} ${REDACTED}`);
+	urlsInText(raw).replace(CREDENTIAL_IN_TEXT, (match, scheme: string, value: string) =>
+		isCredentialShaped(value) ? `${scheme} ${REDACTED}` : match,
+	);
 
 const headers = (input: Headers.Headers, options?: { readonly dropCookies?: boolean }): Headers.Headers => {
 	const out: Record<string, string> = {};
@@ -249,6 +301,18 @@ export class HttpRedaction {
 	/**
 	 * Free text with every embedded URL redacted as {@link HttpRedaction.url}
 	 * does and every `Bearer`, `Basic` or `token` credential replaced.
+	 *
+	 * @remarks
+	 * The scheme word matches in any case (`bearer`, `Token`). The run after it
+	 * — at least 8 characters of `A-Z a-z 0-9 . _ ~ + / = -` — is replaced only
+	 * when it reads as a credential: it carries a digit, `_`, `+`, `/` or `=`,
+	 * or an uppercase letter after its first character. That covers npm
+	 * (`npm_…`), GitHub (`ghp_…`, `ghs_…`, `github_pat_…`), JWTs and Basic
+	 * credentials, and leaves prose alone: "invalid token provided by" is
+	 * unchanged. An all-lowercase, letters-only credential is not recognised.
+	 *
+	 * Linear in the length of the text: a server's error body is attacker-sized
+	 * input, so no step rescans it.
 	 */
 	static readonly text: (text: string) => string = text;
 
