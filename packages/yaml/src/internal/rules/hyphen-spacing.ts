@@ -7,7 +7,7 @@ import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { YamlRule } from "../../YamlLintRule.js";
 import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
-import { insideComposedScalar, multilineBlockCollectionIn, positiveIntegerOption } from "./util.js";
+import { insideComposedScalar, laterLineInWindow, positiveIntegerOption } from "./util.js";
 
 /**
  * Options for `hyphen-spacing`: `maxSpacesAfter` (default 1) after the `-`.
@@ -47,10 +47,15 @@ export const hyphenSpacing: YamlRule = {
 			const next = ctx.text[j];
 			if (next === undefined || next === "\n" || next === "\r" || next === "#") continue;
 			if (after > maxAfter) {
-				// A block collection opening after the hyphen and running onto
-				// later lines pins those lines to its column: moving it re-parents
-				// them. The finding stands and the fix declines.
-				const safe = !multilineBlockCollectionIn(ctx, token.offset + token.length, j);
+				// The fix moves the entry's content left, from column `oldColumn`
+				// to `newColumn`. Block structure is read off columns, so a later
+				// line of the entry indented into that window changes parents: the
+				// entries of a block collection after the hyphen sit at its column
+				// (`-   a: 1\n    b: 2` would lose `b` to the outer level). There
+				// the finding stands and the fix declines.
+				const oldColumn = token.character + token.length + after;
+				const newColumn = token.character + token.length + maxAfter;
+				const safe = !laterLineInWindow(ctx, token.line, token.character, newColumn, oldColumn);
 				out.push(
 					new YamlLintDiagnostic({
 						rule: "hyphen-spacing",

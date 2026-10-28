@@ -7,7 +7,13 @@ import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { YamlRule } from "../../YamlLintRule.js";
 import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
-import { composedScalars, insideComposedScalar, nonNegativeIntegerOption, positiveIntegerOption } from "./util.js";
+import {
+	composedScalars,
+	insideComposedScalar,
+	laterLineInWindow,
+	nonNegativeIntegerOption,
+	positiveIntegerOption,
+} from "./util.js";
 
 /**
  * Options for `colon-spacing`: `maxSpacesBefore` (default 0) and
@@ -53,7 +59,36 @@ export const colonSpacing: YamlRule = {
 				i--;
 			}
 			const hasContentBefore = i >= 0 && ctx.text[i] !== "\n" && ctx.text[i] !== "\r" && ctx.text[i] !== "\t";
-			if (hasContentBefore && before > maxBefore) {
+			// Spaces after: at most maxAfter before the value — unless the line
+			// ends (value on the next line) or a comment follows (that spacing
+			// is comments-spacing's business).
+			let j = token.offset + token.length;
+			let after = 0;
+			while (j < ctx.text.length && ctx.text[j] === " ") {
+				after++;
+				j++;
+			}
+			const next = ctx.text[j];
+			const inlineValue = next !== undefined && next !== "\n" && next !== "\r" && next !== "#";
+			const shiftBefore = hasContentBefore && before > maxBefore ? before - maxBefore : 0;
+			const shiftAfter = inlineValue && after > maxAfter ? after - maxAfter : 0;
+			// Either fix moves an inline value left, and `YamlLint.fix` applies
+			// both together, so both judge the combined move: from `valueColumn`
+			// to `valueColumn - shiftBefore - shiftAfter`. A later line of the
+			// entry indented into that window changes parents when the value
+			// moves (block structure is read off columns), so there the finding
+			// stands and the fix declines.
+			const valueColumn = token.character + token.length + after;
+			const moveSafe =
+				!inlineValue ||
+				!laterLineInWindow(
+					ctx,
+					token.line,
+					token.character - shiftBefore,
+					valueColumn - shiftBefore - shiftAfter,
+					valueColumn,
+				);
+			if (shiftBefore > 0) {
 				// The space is only spacing when what precedes it is the entry's
 				// KEY, a plain or quoted scalar ending right there. Anything else
 				// needs it: `- :` deleted to `-:` is the plain key `-`, `a: :` to
@@ -61,9 +96,10 @@ export const colonSpacing: YamlRule = {
 				// into its name. There the finding stands and the fix declines.
 				const keyEnd = i + 1;
 				const safe =
-					maxBefore === 0
+					moveSafe &&
+					(maxBefore === 0
 						? composedScalars(ctx).some((scalar) => scalar.end === keyEnd && scalar.role === "key")
-						: true;
+						: true);
 				out.push(
 					new YamlLintDiagnostic({
 						rule: "colon-spacing",
@@ -85,18 +121,7 @@ export const colonSpacing: YamlRule = {
 					}),
 				);
 			}
-			// Spaces after: at most maxAfter before the value — unless the line
-			// ends (value on the next line) or a comment follows (that spacing
-			// is comments-spacing's business).
-			let j = token.offset + token.length;
-			let after = 0;
-			while (j < ctx.text.length && ctx.text[j] === " ") {
-				after++;
-				j++;
-			}
-			const next = ctx.text[j];
-			if (next === undefined || next === "\n" || next === "\r" || next === "#") continue;
-			if (after > maxAfter) {
+			if (shiftAfter > 0) {
 				out.push(
 					new YamlLintDiagnostic({
 						rule: "colon-spacing",
@@ -106,11 +131,15 @@ export const colonSpacing: YamlRule = {
 						length: after,
 						line: token.line,
 						character: token.character + token.length,
-						fix: YamlEdit.make({
-							offset: token.offset + token.length,
-							length: after - maxAfter,
-							content: "",
-						}),
+						...(moveSafe
+							? {
+									fix: YamlEdit.make({
+										offset: token.offset + token.length,
+										length: shiftAfter,
+										content: "",
+									}),
+								}
+							: {}),
 					}),
 				);
 			}

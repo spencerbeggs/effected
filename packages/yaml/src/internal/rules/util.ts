@@ -141,7 +141,6 @@ export interface ComposedScalar {
 
 const composedScalarsCache = new WeakMap<LintContext, ReadonlyArray<ComposedScalar>>();
 const composedContentsCache = new WeakMap<LintContext, ReadonlyArray<YamlNode | null>>();
-const blockCollectionStartsCache = new WeakMap<LintContext, ReadonlyArray<number>>();
 
 /**
  * The composed contents of every document in the context's text. The lint
@@ -154,62 +153,6 @@ function composedContents(ctx: LintContext): ReadonlyArray<YamlNode | null> {
 	const contents = composeAllDocuments(ctx.text, { uniqueKeys: false }).documents.map((d) => d.contents);
 	composedContentsCache.set(ctx, contents);
 	return contents;
-}
-
-/**
- * True when a BLOCK mapping or sequence whose entries run onto a later line
- * starts in `[from, to]` (a collection's span can open on the whitespace
- * before its first entry, so callers pass the whole run). Those later
- * entries are indented to the column the first one sits at, so moving the
- * first entry along its line (a spacing fix after a `-`) re-parents the
- * lines below it: `-   -\n    1` is `[[[null], 1]]`, while `- -\n    1` is
- * `[[[1]]]`. A collection whose entries all share the first line moves as a
- * whole and is not reported.
- */
-export function multilineBlockCollectionIn(ctx: LintContext, from: number, to: number): boolean {
-	let starts = blockCollectionStartsCache.get(ctx);
-	if (starts === undefined) {
-		const found: Array<number> = [];
-		const text = ctx.text;
-		const spansLines = (start: number, lastEntry: number): boolean => {
-			for (let i = start; i < lastEntry && i < text.length; i++) {
-				const ch = text[i];
-				if (ch === "\n" || ch === "\r") return true;
-			}
-			return false;
-		};
-		const visit = (node: YamlNode | null): void => {
-			if (node === null || node instanceof Scalar) return;
-			if (node instanceof YamlMap) {
-				const last = node.items[node.items.length - 1];
-				if (node.style === "block" && last !== undefined && spansLines(node.offset, last.key?.offset ?? node.offset)) {
-					found.push(node.offset);
-				}
-				for (const pair of node.items) {
-					visit(pair.key);
-					visit(pair.value);
-				}
-			} else if (node instanceof YamlSeq) {
-				const last = node.items[node.items.length - 1];
-				if (node.style === "block" && last !== undefined && spansLines(node.offset, last?.offset ?? node.offset)) {
-					found.push(node.offset);
-				}
-				for (const item of node.items) visit(item);
-			}
-		};
-		for (const contents of composedContents(ctx)) visit(contents);
-		starts = found.sort((x, y) => x - y);
-		blockCollectionStartsCache.set(ctx, starts);
-	}
-	// The first start at or after `from`, by binary search.
-	let lo = 0;
-	let hi = starts.length;
-	while (lo < hi) {
-		const mid = (lo + hi) >> 1;
-		if ((starts[mid] as number) < from) lo = mid + 1;
-		else hi = mid;
-	}
-	return lo < starts.length && (starts[lo] as number) <= to;
 }
 
 /**
@@ -257,4 +200,28 @@ export function insideComposedScalar(ctx: LintContext, offset: number): boolean 
 		}
 	}
 	return found !== undefined && offset > found.offset && offset < found.end;
+}
+
+/**
+ * True when a later line of the same construct starts in the column window
+ * `[lo, hi]` — the columns a spacing fix moves content across when it
+ * shifts that content from column `hi` to column `lo` on line `line`.
+ *
+ * Block structure is read off columns, so a line indented into that window
+ * can change parents when the content moves: it sat left of the content
+ * (a sibling or a parent's entry) and ends up at or right of it (a child),
+ * or the reverse. Lines are scanned until the first one indented at or left
+ * of `stop`, the column of the indicator that owns the construct, which
+ * ends it. Blank and comment-only lines carry no structure and are skipped.
+ */
+export function laterLineInWindow(ctx: LintContext, line: number, stop: number, lo: number, hi: number): boolean {
+	for (let n = line + 1; n < ctx.lines.length; n++) {
+		const text = (ctx.lines[n] as LintLine).text;
+		let indent = 0;
+		while (indent < text.length && text[indent] === " ") indent++;
+		if (indent === text.length || text[indent] === "#") continue;
+		if (indent <= stop) return false;
+		if (indent >= lo && indent <= hi) return true;
+	}
+	return false;
 }

@@ -126,6 +126,16 @@ testRule(builtin("colon-spacing"), [
 		input: "a\n  - :  b\n",
 		expected: [],
 	},
+	{
+		// `d` sits in the window the value would move across (columns 2 and 3),
+		// and the composer reads the document differently once it moves: here
+		// the moved text is a parse error. yaml 2.9 rejects this input outright;
+		// the composer accepts it, and the fix must keep whatever it reads.
+		name: "a later line indented into the window an inline value moves across: no fix",
+		input: ":  b\n   c\n  d:\n",
+		expected: [{ line: 0, character: 1, messageIncludes: 'after ":"' }],
+		fixed: ":  b\n   c\n  d:\n",
+	},
 ]);
 
 testRule(builtin("hyphen-spacing"), [
