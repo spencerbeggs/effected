@@ -8,6 +8,14 @@ import { YamlScalar as Scalar, YamlMap, YamlSeq } from "../../YamlNode.js";
 import type { YamlToken } from "../../YamlToken.js";
 
 /**
+ * Whether `text` ends in a line break. A bare `\r` counts, as it does
+ * everywhere positions are computed (YAML 1.2 `b-break`, the lexer's
+ * `newline` token, `LintLine` splitting): a bare-CR document lints the way
+ * its LF twin does.
+ */
+export const endsWithLineBreak = (text: string): boolean => text.endsWith("\n") || text.endsWith("\r");
+
+/**
  * A non-negative integer — the shape every numeric rule option takes.
  * Rejects NaN, negatives and fractions with a message naming the constraint;
  * the config layer's wrapper names the rule and the field.

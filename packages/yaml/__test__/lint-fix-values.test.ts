@@ -43,9 +43,9 @@ describe("YamlLint.fix keeps the parsed value of a bare-CR document", () => {
 		assert.strictEqual(parsedValue(fixed(text)), parsedValue(text));
 	});
 
-	it("eof-newline counts only `\\n` as a final line break, as the composer does", () => {
-		const out = fixed(`a: 1${CR}b: 2${CR}`);
-		assert.isTrue(out.endsWith(LF), JSON.stringify(out));
+	it("eof-newline counts a trailing bare CR as the final line break, as the composer does", () => {
+		const text = `a: 1${CR}b: 2${CR}`;
+		assert.strictEqual(fixed(text), text);
 	});
 });
 

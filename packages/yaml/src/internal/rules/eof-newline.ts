@@ -5,6 +5,7 @@ import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { YamlRule } from "../../YamlLintRule.js";
 import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import { endsWithLineBreak } from "./util.js";
 
 /** Options for `eof-newline` (severity only — nothing to tune). */
 export const eofNewlineOptions = Schema.Struct({
@@ -15,7 +16,7 @@ export const eofNewlineOptions = Schema.Struct({
 export const eofNewline: YamlRule = {
 	id: "eof-newline",
 	check: (ctx) => {
-		if (ctx.text.length === 0 || ctx.text.endsWith("\n")) return [];
+		if (ctx.text.length === 0 || endsWithLineBreak(ctx.text)) return [];
 		const lastLine = ctx.lines[ctx.lines.length - 1];
 		if (lastLine === undefined) return [];
 		return [

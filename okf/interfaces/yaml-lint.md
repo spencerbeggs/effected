@@ -8,7 +8,7 @@ resource: ../../packages/yaml/src/YamlLint.ts
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:52:55Z
+  at: 2026-10-28T18:52:40Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:11.119Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: c6a71a2e3e37d2c4
+    body: a03b15426a2d7b8c
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -139,16 +139,16 @@ The context handed to every rule (`YamlLintRule.ts`) carries the source
 `text`, a `lines` array of `LintLine` records, the materialized `tokens`
 and the composed `document`.
 
-`lines` and `tokens` are positioned against ONE `LineIndex` built per lint
-run with `"lf"` line breaks, so a rule may index `ctx.lines` by any token's
-`line` (document-start and document-end do). `"lf"` is the composer's rule:
-`\n` and `\r\n` end a line, a bare `\r` is line content, and only a trailing
-`\n` is a final line break. Fixes are computed from these positions, so they
-must agree with the composer or a fix lands inside a scalar and changes the
-parsed value (`YamlLint.fix("a: 1\r")` once appended `...` to `1`). The
-document's diagnostics keep the `"lsp"` rule every `YamlDiagnostic` uses,
-through their own lazy index. A composer fix for bare `\r` is tracked
-separately; the lint positions follow it, never lead it.
+`lines`, `tokens` and the document's diagnostics are positioned against ONE
+`LineIndex` built per lint run, so they share one line-break rule and a rule
+may index `ctx.lines` by any token's `line` (document-start and document-end
+do). A bare `\r` splits a line like `\n` does, and a trailing one is a final
+line break (`endsWithLineBreak`): a bare-CR document lints as its LF twin.
+That is safe because the composer breaks at a bare `\r` too, so a fix
+computed from these positions lands where the parsed value expects it. While
+the composer read a bare `\r` as content, the same rule put fixes inside
+scalars (`YamlLint.fix("a: 1\r")` with `document-end` appended `...` to the
+value `1`), and tokens and lines had to stay on `"lf"`.
 
 The engine tokenizes once and every rule shares the one materialized
 `tokens` array. It materializes rather than streaming on purpose: linting
