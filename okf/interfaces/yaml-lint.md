@@ -8,7 +8,7 @@ resource: ../../packages/yaml/src/YamlLint.ts
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:13:49Z
+  at: 2026-10-28T17:52:55Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:11.119Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 1f739ee740caa0de
+    body: c6a71a2e3e37d2c4
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -139,13 +139,16 @@ The context handed to every rule (`YamlLintRule.ts`) carries the source
 `text`, a `lines` array of `LintLine` records, the materialized `tokens`
 and the composed `document`.
 
-`lines`, `tokens` and the document's diagnostics are positioned against ONE
-`LineIndex` built per lint run, so they share one line-break rule and a rule
-may index `ctx.lines` by any token's `line` (document-start and document-end
-do). A bare `\r` splits a line like `\n` does, and a trailing one is a final
-line break (`endsWithLineBreak`): a bare-CR document lints as its LF twin.
-Before the shared index, lines split on `\n` only while tokens did the same
-and diagnostics also counted U+2028/U+2029, three rules for one text.
+`lines` and `tokens` are positioned against ONE `LineIndex` built per lint
+run with `"lf"` line breaks, so a rule may index `ctx.lines` by any token's
+`line` (document-start and document-end do). `"lf"` is the composer's rule:
+`\n` and `\r\n` end a line, a bare `\r` is line content, and only a trailing
+`\n` is a final line break. Fixes are computed from these positions, so they
+must agree with the composer or a fix lands inside a scalar and changes the
+parsed value (`YamlLint.fix("a: 1\r")` once appended `...` to `1`). The
+document's diagnostics keep the `"lsp"` rule every `YamlDiagnostic` uses,
+through their own lazy index. A composer fix for bare `\r` is tracked
+separately; the lint positions follow it, never lead it.
 
 The engine tokenizes once and every rule shares the one materialized
 `tokens` array. It materializes rather than streaming on purpose: linting

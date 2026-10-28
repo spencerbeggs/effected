@@ -9,7 +9,7 @@
 // cycle firewall's sanctioned exception (the same import blockParser.ts and
 // phrasing.ts already make).
 
-import type { LineIndex } from "@effected/source";
+import type { SourceIndex } from "@effected/source";
 import { Point } from "../MarkdownNode.js";
 
 /**
@@ -31,7 +31,7 @@ import { Point } from "../MarkdownNode.js";
  *
  * @internal
  */
-export const pointAt = (index: LineIndex, offset: number): Point => {
+export const pointAt = (index: SourceIndex, offset: number): Point => {
 	const line = index.lineAt(offset);
 	return Point.make({ line: line + 1, column: offset - index.lineStart(line) + 1, offset });
 };

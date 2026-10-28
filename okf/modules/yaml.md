@@ -8,10 +8,10 @@ resource: ../../packages/yaml
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:13:49Z
+  at: 2026-10-28T18:00:25Z
 integrity:
   generated:
-    body: bffec8e8014ed05c
+    body: d9dfb5028f1058c1
 ---
 
 # @effected/yaml
@@ -57,27 +57,40 @@ one-file codec adapter, never the reverse. The package ships
 ## Positions
 
 Every `line`/`character` the package reports comes from `@effected/source`'s
-`LineIndex` with its default `"lsp"` line breaks: `\n`, `\r\n` and a bare
-`\r`, YAML 1.2's own `b-break` set and the set the lexer emits a `newline`
-token for. U+2028 and U+2029 are **not** line breaks (YAML 1.2 dropped them,
-which only 1.1 had). `character` counts UTF-16 code units, and an offset at
-the `\n` of a `\r\n` reads as the end of its line. There is no hand-rolled
-offset loop left in the package; a new producer reuses the index rather than
-growing one.
+`LineIndex`, under one of two line-break rules. `character` counts UTF-16
+code units everywhere, U+2028 and U+2029 are never line breaks (YAML 1.2
+dropped them, which only 1.1 had), and there is no hand-rolled offset loop
+left in the package; a new producer reuses an index rather than growing one.
 
-- `YamlDiagnostic.fromRaw(raw, text | LineIndex)` derives its position with
+- **Diagnostics use the default `"lsp"` rule**: `\n`, `\r\n` and a bare
+  `\r`, YAML 1.2's own `b-break` set. An offset at the `\n` of a `\r\n`
+  reads as the end of its line.
+- **Tokens and lint lines use `"lf"`**: `\n` and `\r\n` only, a bare `\r`
+  is line content. That is the composer's rule: it does not break a line at
+  a bare `\r`, so a lint fix computed from token or line positions must not
+  either. When tokens and lines briefly used `"lsp"`, a fix aimed at a "line
+  end" landed inside a scalar: `YamlLint.fix("a: 1\r")` with `document-end`
+  on gave `"---\na: 1\r...\n"`, which parses to `{ a: "1 ..." }`, and a fuzz
+  of the reviewer's found 268 such inputs. Making the composer break at a
+  bare `\r` is tracked separately; when it does, tokens and lines can move to
+  `"lsp"` with it, never before.
+
+- `YamlDiagnostic.fromRaw(raw, text | SourceIndex)` (the structural
+  interface, so an index from another installed copy of `@effected/source`
+  is accepted) derives its position with
   `positionAt`. The parse entry points materialize all of one parse's
   diagnostics against a single index, built lazily (`lazyLineIndex` in
   `src/YamlDiagnostic.ts`), so a parse with no diagnostics never builds one.
-- `YamlToken` positions are `positionAt(token.offset)` over one index per
-  tokenize (`tokensOf` in `src/YamlToken.ts`).
-- `LintContext.lines` are the index's lines (`lineText`, `lineStart`), the
-  terminator stripped, the empty segment after a trailing line break
-  dropped, none for `""`. The lint context builds ONE index for its lines,
-  its tokens and its document's diagnostics, so a rule may index
-  `ctx.lines` by any token's or diagnostic's `line`. `eof-newline` and
-  `document-end` treat a trailing bare `\r` as a final line break
-  (`endsWithLineBreak` in `src/internal/rules/util.ts`).
+- `YamlToken` positions are `positionAt(token.offset)` over one `"lf"`
+  index per tokenize (`tokensOf` in `src/YamlToken.ts`).
+- `LintContext.lines` are the `"lf"` index's lines (`lineText`,
+  `lineStart`), the terminator stripped, the empty segment after a trailing
+  `\n` dropped, none for `""`. The lint context builds one `"lf"` index for
+  its lines and tokens, so a rule may index `ctx.lines` by any token's
+  `line`; its document's diagnostics keep `"lsp"` through their own lazy
+  index, so on a document holding a bare `\r` a diagnostic's `line` can be
+  past a token's. `eof-newline` and `document-end` count only a trailing `\n`
+  as the final line break.
 - `YamlDiagnostic` satisfies `SourceDiagnostic<YamlErrorCode>` and
   `YamlToken` satisfies `SourceLocation`; both are pinned by type-level
   tests.
@@ -94,12 +107,19 @@ differential of the pre-adoption build against the new one over every string
 of up to five characters from `{a, \n, \r, U+2028, U+2029, U+1F600}` and
 from a YAML-shaped alphabet, at every offset: a diagnostic at the `\n` of a
 `\r\n` (was `character: -1` on the next line); a diagnostic after U+2028 or
-U+2029 (was one line further down); and tokens, lint lines and lint findings
-in a document containing a bare `\r` (were all on line 0). A bare-CR
-document now lints as its LF twin does wherever the engine reports the same
-offsets for both; where it does not, the lexer and composer themselves treat
-a bare `\r` differently from `\n` (`":\r :"`, `"a\r-"`), which is an
-engine matter, not a position one.
+U+2029 (was one line further down). Tokens, lint lines, lint findings and
+lint fixes are byte-identical to the published package: a differential over
+60,000 generated documents from a YAML-shaped alphabet with bare `\r`
+found no difference in any of the four. The value-preservation property in
+`__test__/lint-fix-values.test.ts` pins the fix half.
+
+The published linter already changes values in four places, none of them a
+position matter, all tracked outside this work: `colon-spacing` rewrites
+`: :` and `- :` into another structure, `hyphen-spacing` does the same to
+`-  a` after a bare `\r`, `trailing-spaces` strips whitespace after a bare
+`\r` that the composer reads as scalar content, and `empty-lines` deletes
+blank lines inside a multi-line plain scalar, which folds them into its
+value. The property's generator excludes exactly those shapes.
 
 ## Module layout
 

@@ -6,6 +6,7 @@
 // bare-tree entry points agree exactly on what is a typed failure and what is
 // a defect.
 
+import type { SourceIndex } from "@effected/source";
 import { LineIndex } from "@effected/source";
 import { Effect, Option, Result, Schema } from "effect";
 import { scanFrontmatter } from "./internal/blocks/frontmatter.js";
@@ -285,7 +286,7 @@ const phrasingText = (nodes: ReadonlyArray<PhrasingContent>): string => {
  * field: the index is derived from `source`, so it is no part of the
  * document's schema, its equality or its encoded form.
  */
-const lineIndexes = new WeakMap<MarkdownDocument, LineIndex>();
+const lineIndexes = new WeakMap<MarkdownDocument, SourceIndex>();
 
 /**
  * A parsed markdown document: the original `source`, the mdast-shaped
@@ -386,7 +387,9 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 *
 	 * @remarks
 	 * A `LineIndex` from `@effected/source` (re-exported from this package's
-	 * entry point) with its default `"lsp"` line breaks: `\n`, `\r\n` and a
+	 * entry point), typed as the structural `SourceIndex` so a consumer on
+	 * another installed copy of `@effected/source` can pass it on, with its
+	 * default `"lsp"` line breaks: `\n`, `\r\n` and a
 	 * bare `\r`, `character` in UTF-16 code units, an offset at the `\n` of a
 	 * `\r\n` reading as the end of its line. So for any offset into
 	 * `source`:
@@ -420,7 +423,7 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 * }
 	 * ```
 	 */
-	get lineIndex(): LineIndex {
+	get lineIndex(): SourceIndex {
 		const cached = lineIndexes.get(this);
 		if (cached !== undefined) return cached;
 		const index = LineIndex.make(this.source);

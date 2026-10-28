@@ -27,10 +27,10 @@ sources:
     title: "LSP 3.17 Position: zero-based, UTF-16 by default, line endings \\n, \\r\\n and \\r"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T17:32:13Z
+  at: 2026-10-28T18:04:23Z
 integrity:
   generated:
-    body: a9fddc1935fbb056
+    body: 60f746189dc855f8
 ---
 
 # @effected/source
@@ -60,7 +60,17 @@ convenience:
   identity. Two installed copies of this package must never disagree about
   what a position is, and a class identity would make them disagree.
 - `LineIndex` is a class, but nothing checks `instanceof LineIndex` and every
-  value it returns is a plain record.
+  value it returns is a plain record, so two copies interoperate at runtime.
+- **At the type level the class is nominal**, because it has `private`
+  members: a `LineIndex` from one installed copy is not assignable to another
+  copy's `LineIndex` (TS2345, reproduced with tsc 7.1). So every signature
+  that takes or returns an index, in this package and in its adopters, names
+  the structural **`SourceIndex`** interface (its public methods and readonly
+  properties only), which `LineIndex` implements. `YamlDiagnostic.fromRaw`,
+  `MarkdownDiagnostic.fromRaw` and `MarkdownDocument.lineIndex` take or return
+  `SourceIndex`; a type-level test in each package passes a second-copy
+  stand-in with its own `private` members. `LineIndex` is the only class in
+  the surface and the only one with `private` or `#private` members.
 
 This is not the rejected shared errors package
 (`okf/decisions/no-shared-errors-package.md`). It ships no error class, no
@@ -74,6 +84,7 @@ API. `SourceDiagnostic` only names the shape they already share, so a consumer
 | Module | Exports | Concept |
 | --- | --- | --- |
 | `LineIndex` | `LineIndex`, `LineBreaks`, `LineIndexOptions` | A line table built once over a text by one forward scan; every query is a binary search. `positionAt` / `offsetAt` convert both ways; `lineCount`, `lineAt`, `lineStart`, `lineEnd` (excluding the terminator) and `lineText`; `spanOf` / `rangeOf` between offsets and an LSP `Range`; `locationOf` for the shape a diagnostic carries. |
+| `SourceIndex` | `SourceIndex` | `LineIndex`'s public surface as a structural interface: the type to name in a signature that takes or returns an index, so two installed copies interoperate. |
 | `SourcePosition` | `SourcePosition` | `{ line, character }`, zero-based, `character` in UTF-16 code units: an LSP `Position`. |
 | `SourceRange` | `SourceRange` | `{ offset, length }` in UTF-16 code units. |
 | `SourceSpan` | `SourceSpan` | `{ start, end }` positions, `end` exclusive: an LSP `Range`. |
@@ -121,8 +132,10 @@ most LSP servers already use, so a kit server agrees with it on every edge:
 **A non-integer argument throws `RangeError`**, as a programmer error rather
 than out-of-range input: `NaN`, `1.5` and an infinity of either sign. Clamping `NaN` would
 silently answer "line 0", the bare-`<`-guard failure the input-hardening
-convention names. `spanOf` also rejects a negative `length`, and `rangeOf` a
-span whose end precedes its start.
+convention names. `spanOf` and `locationOf` both reject a `length` that is
+not a non-negative integer, through one shared guard (`locationOf` once
+accepted `NaN` and negatives, passing them through to the location
+unchanged), and `rangeOf` rejects a span whose end precedes its start.
 
 **Every text has at least one line.** The empty text has one empty line, and a
 text ending in a terminator has an empty last line after it (`"a\n"` has two
@@ -172,10 +185,12 @@ and `LineIndex` clamps them where the loops do not.
   U+2028 and U+2029** because its scanner, inherited from VS Code's
   `jsonc-parser`, treats them as line breaks. Positions after one disagree
   with any LSP client. `"unicode"` reproduces it; the ruling is jsonc's.
-- **Bug, `@effected/yaml`: `YamlToken` positions ignore a bare `\r`.** YAML
-  1.2 counts a bare `\r` as a line break (`b-break`), and yaml's lexer emits a
-  `newline` token for it, yet every later token stays on line 0. `"lf"`
-  reproduces it; recommend `"lsp"`.
+- **Kept on purpose, `@effected/yaml`: `YamlToken` positions and lint lines
+  ignore a bare `\r`.** YAML 1.2 counts a bare `\r` as a line break
+  (`b-break`), but yaml's composer does not, and lint fixes are computed from
+  token and line positions. Moving them to `"lsp"` alone put fixes inside
+  scalars and changed parsed values, so they stay on `"lf"` until the
+  composer is fixed, which is tracked separately.
 - **Not a bug: markdown's two conversions.** The diagnostic loop and the AST
   index agree on line breaks; one is zero-based and one-based by design.
 - `JsoncParseErrorDetail` has no `message` field, so it satisfies

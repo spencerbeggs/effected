@@ -1,6 +1,6 @@
 # @effected/yaml
 
-YAML 1.2 parsing, editing, formatting and linting as Effect schemas. **Tier: pure** — peer-depends on `effect` only; its one runtime dependency is the dependency-free `@effected/source`, whose `LineIndex` computes every position the package reports (diagnostics, tokens and lint lines, all with `\n`, `\r\n` and a bare `\r` as line breaks — never U+2028/U+2029). No IO, no services. Never hand-roll an offset → line/character loop again. `src/internal/` holds a **vendored engine** ported with attribution from the `yaml` package; a pure package owns its parser — never add `yaml` as a dependency.
+YAML 1.2 parsing, editing, formatting and linting as Effect schemas. **Tier: pure** — peer-depends on `effect` only; its one runtime dependency is the dependency-free `@effected/source`, whose `LineIndex` computes every position the package reports (diagnostics with `\n`, `\r\n` and a bare `\r` as line breaks; tokens and lint lines with `"lf"`, `\n` and `\r\n` only, because the composer does not break at a bare `\r` and lint fixes are computed from those positions — never U+2028/U+2029 anywhere). Never move tokens or lint lines to `"lsp"` before the composer breaks at a bare `\r` (tracked separately): a fix then lands inside a scalar and changes the parsed value. No IO, no services. Never hand-roll an offset → line/character loop again. `src/internal/` holds a **vendored engine** ported with attribution from the `yaml` package; a pure package owns its parser — never add `yaml` as a dependency.
 
 ## Knowledge bundle
 
