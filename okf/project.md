@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:45:13Z
+  at: 2026-10-28T19:09:54Z
 integrity:
   generated:
-    body: 9ced4999542b991f
+    body: 8faec8086db2551b
 ---
 
 # effected
@@ -67,7 +67,7 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `schema-org` | pure | invention; schema.org vocabulary as Effect Schema classes |
 | `jsonl` | boundary | invention; append-only schema-validated JSONL journals |
 | `images` | boundary | invention; image facts (format, MIME, dimensions) from bytes and a generated-image cache behind a backend port store satisfies structurally |
-| `jwt` | boundary | invention; JWS, JWT, JWK and JWKS sign and verify over WebCrypto, with no `node:` import and no runtime dependency, so it runs on Cloudflare workerd; the signer under `github`'s App auth and its Actions OIDC verifier |
+| `jwt` | boundary | invention; JWS, JWT, JWK and JWKS sign and verify over WebCrypto, with no `node:` import and `@effected/crypto` (also WebCrypto-only) as its only runtime dependency, so it runs on Cloudflare workerd; the signer under `github`'s App auth and its Actions OIDC verifier |
 | `oidc` | boundary | invention; the OIDC vocabulary over `jwt`: the `IdentityToken` issuer contract (moved from `sbom`), ID-token claims, an unverified decode and an audience-guarded verify |
 | `crypto` | boundary | extraction from `github-actions` and `savvy-web/build` intake; HMAC, constant-time comparison and AWS SigV4 over WebCrypto, digests through core `Crypto` in `R`, no `node:` import |
 | `webhooks` | boundary | extraction from `savvy-web/build` intake; inbound webhook signature verification presets (Standard Webhooks, GitHub, Stripe, Sanity, HMAC header, shared secret) over `crypto` |

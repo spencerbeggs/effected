@@ -36,6 +36,7 @@
 * Updated @effected/lsp
 * Updated Error handling standards
 * Updated @effected/github GraphQL
+* Updated @effected/jwt
 
 ## 2026-10-27
 

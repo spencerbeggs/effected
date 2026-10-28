@@ -6,7 +6,7 @@ JWS, JWT, JWK and JWKS sign and verify over WebCrypto, safe for Cloudflare Worke
 
 ## Tier: boundary
 
-`effect` is the only peer. **No runtime dependencies and no `node:` import anywhere under `src/`.** `subtle` is read from `globalThis.crypto`; when absent the package fails with `JwtError` and `reason: "unsupportedRuntime"`. Base64url is core `effect/encoding/Base64Url`; never hand-roll it. Tests may use `node:crypto`; `src/` may not.
+`effect` is the only peer. **The one runtime dependency is `@effected/crypto`** (WebCrypto-only, no `node:` import, workerd-safe; for `HttpRedaction`, which scrubs a kept fetch cause), **and there is no `node:` import anywhere under `src/`.** Add no other dependency. `subtle` is read from `globalThis.crypto`; when absent the package fails with `JwtError` and `reason: "unsupportedRuntime"`. Base64url is core `effect/encoding/Base64Url`; never hand-roll it. Tests may use `node:crypto`; `src/` may not.
 
 ## Rules
 
