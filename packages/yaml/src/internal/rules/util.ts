@@ -2,10 +2,11 @@
 // scalar walk the style rules share, and the bounded numeric option schema.
 
 import { Schema } from "effect";
-import type { LintLine } from "../../YamlLintRule.js";
+import type { LintContext, LintLine } from "../../YamlLintRule.js";
 import type { YamlNode, YamlScalar } from "../../YamlNode.js";
 import { YamlScalar as Scalar, YamlMap, YamlSeq } from "../../YamlNode.js";
 import type { YamlToken } from "../../YamlToken.js";
+import { composeAllDocuments } from "../composer/document.js";
 
 /**
  * Whether `text` ends in a line break. A bare `\r` counts, as it does
@@ -128,4 +129,62 @@ export function positionAt(
 		}
 	}
 	return found === undefined ? { line: 0, character: 0 } : { line: found.number, character: offset - found.offset };
+}
+
+/** One composed scalar's source span, its structural role and its style. */
+export interface ComposedScalar {
+	readonly offset: number;
+	readonly end: number;
+	readonly role: ScalarRole;
+	readonly style: YamlScalar["style"];
+}
+
+const composedScalarsCache = new WeakMap<LintContext, ReadonlyArray<ComposedScalar>>();
+
+/**
+ * Every scalar the COMPOSER reads in the context's text, across all of its
+ * documents, ordered by offset. Built once per lint context, on first use.
+ *
+ * Tokens are the lexer's view and can disagree with the composer: on
+ * `"b\n -  a"` the lexer emits a `block-seq-entry` for the `-` while the
+ * composer folds the second line into the plain scalar `"b -  a"`. A fix
+ * keyed on that token edits scalar content and changes the parsed value, so
+ * a fix that must stay off content asks the composer instead.
+ */
+export function composedScalars(ctx: LintContext): ReadonlyArray<ComposedScalar> {
+	const cached = composedScalarsCache.get(ctx);
+	if (cached !== undefined) return cached;
+	const out: Array<ComposedScalar> = [];
+	const { documents } = composeAllDocuments(ctx.text, { uniqueKeys: false });
+	for (const document of documents) {
+		walkScalars(document.contents, "root", (scalar, role) => {
+			out.push({ offset: scalar.offset, end: scalar.offset + scalar.length, role, style: scalar.style });
+		});
+	}
+	out.sort((a, b) => a.offset - b.offset);
+	composedScalarsCache.set(ctx, out);
+	return out;
+}
+
+/**
+ * True when `offset` is CONTENT of a scalar the composer reads: inside its
+ * span `[offset, end)` and past its first character. Scalars never nest, so
+ * the spans are disjoint and a binary search finds the only candidate.
+ */
+export function insideComposedScalar(ctx: LintContext, offset: number): boolean {
+	const scalars = composedScalars(ctx);
+	let lo = 0;
+	let hi = scalars.length - 1;
+	let found: ComposedScalar | undefined;
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1;
+		const scalar = scalars[mid] as ComposedScalar;
+		if (scalar.offset <= offset) {
+			found = scalar;
+			lo = mid + 1;
+		} else {
+			hi = mid - 1;
+		}
+	}
+	return found !== undefined && offset > found.offset && offset < found.end;
 }

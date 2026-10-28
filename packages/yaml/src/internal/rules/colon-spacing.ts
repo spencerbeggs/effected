@@ -7,7 +7,7 @@ import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { YamlRule } from "../../YamlLintRule.js";
 import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
-import { nonNegativeIntegerOption, positiveIntegerOption } from "./util.js";
+import { composedScalars, insideComposedScalar, nonNegativeIntegerOption, positiveIntegerOption } from "./util.js";
 
 /**
  * Options for `colon-spacing`: `maxSpacesBefore` (default 0) and
@@ -39,6 +39,10 @@ export const colonSpacing: YamlRule = {
 		const out: Array<YamlLintDiagnostic> = [];
 		for (const token of ctx.tokens) {
 			if (token.kind !== "block-map-value") continue;
+			// The lexer can mint an indicator the composer reads as scalar
+			// content (`a\n  - :  b` folds into one plain scalar): that is no
+			// colon at all, so there is no spacing to report or fix.
+			if (insideComposedScalar(ctx, token.offset)) continue;
 			// Spaces before: count the run, but only when non-space content
 			// precedes it on the line — a `:` opening an explicit value sits
 			// after indentation, which is not "space before the colon".
@@ -50,6 +54,16 @@ export const colonSpacing: YamlRule = {
 			}
 			const hasContentBefore = i >= 0 && ctx.text[i] !== "\n" && ctx.text[i] !== "\r" && ctx.text[i] !== "\t";
 			if (hasContentBefore && before > maxBefore) {
+				// The space is only spacing when what precedes it is the entry's
+				// KEY, a plain or quoted scalar ending right there. Anything else
+				// needs it: `- :` deleted to `-:` is the plain key `-`, `a: :` to
+				// `a::` the key `a:`, and an alias, anchor or tag absorbs a `:`
+				// into its name. There the finding stands and the fix declines.
+				const keyEnd = i + 1;
+				const safe =
+					maxBefore === 0
+						? composedScalars(ctx).some((scalar) => scalar.end === keyEnd && scalar.role === "key")
+						: true;
 				out.push(
 					new YamlLintDiagnostic({
 						rule: "colon-spacing",
@@ -59,11 +73,15 @@ export const colonSpacing: YamlRule = {
 						length: before,
 						line: token.line,
 						character: token.character - before,
-						fix: YamlEdit.make({
-							offset: token.offset - before,
-							length: before - maxBefore,
-							content: "",
-						}),
+						...(safe
+							? {
+									fix: YamlEdit.make({
+										offset: token.offset - before,
+										length: before - maxBefore,
+										content: "",
+									}),
+								}
+							: {}),
 					}),
 				);
 			}

@@ -77,6 +77,44 @@ testRule(builtin("colon-spacing"), [
 		input: "? key\n: value\n",
 		expected: [],
 	},
+	{
+		name: "a quoted key's space before the colon reports and fixes",
+		input: '"a" : 1\n',
+		expected: [{ line: 0, character: 3, messageIncludes: 'before ":"' }],
+		fixed: '"a": 1\n',
+	},
+	{
+		// `- : 1` is a sequence of the map `{ "": 1 }`; deleting the space gives
+		// `-: 1`, the map `{ "-": 1 }`. The finding stands, the fix declines.
+		name: "the space after a sequence hyphen is not spacing before a key: no fix",
+		input: "- : 1\n",
+		expected: [{ line: 0, character: 1, messageIncludes: 'before ":"' }],
+		fixed: "- : 1\n",
+	},
+	{
+		// `a: :` deleted to `a::` is the key `a:` — another structure.
+		name: "the space after another colon is separation: no fix",
+		input: "a: : 1\n",
+		expected: [{ line: 0, character: 2, messageIncludes: 'before ":"' }],
+		fixed: "a: : 1\n",
+		setting: "error",
+		expectsParseErrors: false,
+	},
+	{
+		// An alias name may contain `:`, so `*x:` reads as the alias `x:`.
+		name: "the space after an alias key keeps the alias name whole: no fix",
+		input: "a: &x k\n*x : 1\n",
+		expected: [{ line: 1, character: 2, messageIncludes: 'before ":"' }],
+		fixed: "a: &x k\n*x : 1\n",
+	},
+	{
+		// The lexer mints a `block-map-value` for this `:`, but the composer
+		// folds the line into the plain scalar `"a - :  b"`: it is content, and
+		// a fix there changed the value.
+		name: "a colon the composer reads as scalar content is not reported",
+		input: "a\n  - :  b\n",
+		expected: [],
+	},
 ]);
 
 testRule(builtin("hyphen-spacing"), [
