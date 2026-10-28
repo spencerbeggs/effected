@@ -91,11 +91,24 @@ export interface NpmConfigLoadOptions {
 /** npm's `${VAR}` / `${VAR?}` expression, with backslash escapes (`@npmcli/config`'s `env-replace`). */
 const ENV_EXPRESSION = /(?<!\\)(\\*)\$\{([^${}?]+)(\?)?\}/g;
 
-/** Whether a key holds a secret: its last `:`-segment is a credential field. */
+/**
+ * Whether a key holds a secret: its last `:`-segment is a credential field, or
+ * an inline client key or certificate (`key`, `cert`, PEM text in the npmrc).
+ */
 const isSecretKey = (key: string): boolean => {
 	const field = key.slice(key.lastIndexOf(":") + 1);
-	return field === "_authToken" || field === "_auth" || field === "_password";
+	return field === "_authToken" || field === "_auth" || field === "_password" || field === "key" || field === "cert";
 };
+
+/** A URL's `scheme://` and the userinfo (`user:pass@`) of its authority, up to the authority's last `@`. */
+const URL_USERINFO = /^([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/?#]*@/;
+
+/**
+ * A URL-valued setting with its userinfo removed, or `undefined` when it
+ * carries none. Textual, so the rest of the value is kept exactly as written.
+ */
+const withoutUserinfo = (value: string): string | undefined =>
+	URL_USERINFO.test(value) ? value.replace(URL_USERINFO, "$1") : undefined;
 
 /**
  * npm's env substitution: `${VAR}` is replaced, `${VAR?}` is replaced or
@@ -260,6 +273,15 @@ const authKeys = (url: string): ReadonlyArray<string> | undefined => {
  * one is configured for that host itself. An unscoped top-level `_authToken`
  * or `_auth` names no host, so it is never used (npm refuses it too).
  *
+ * **A credential only ever goes over `https:`, unless the configuration chose
+ * `http:` for that host.** This is a deliberate departure from npm, which
+ * matches the nerf-dart key and ignores the scheme, so it sends a registry's
+ * token to `http://` (or `ws://`) on the same host in cleartext. Here an
+ * `http:` URL gets a credential only when a configured registry (`registry`
+ * or an `@scope:registry`) names that same host and port with an `http:`
+ * URL, which is an explicit choice in the config (a local Verdaccio on
+ * `http://localhost:4873/`, say). Every other scheme gets none.
+ *
  * Precedence, highest first: `npm_config_*` environment variables, the
  * project npmrc, the user npmrc, the global npmrc. `${VAR}` and `${VAR?}`
  * substitute from the environment in keys and values. **Not supported**:
@@ -269,7 +291,11 @@ const authKeys = (url: string): ReadonlyArray<string> | undefined => {
  * deprecated unscoped credentials.
  *
  * Credentials are held as `Redacted` values, so logging or serializing a
- * config prints `<redacted>` for them.
+ * config prints `<redacted>` for them. So are an inline client `key` or
+ * `cert` (PEM text written into the npmrc), and any userinfo in a URL-valued
+ * setting (`registry=https://user:pass@host/`): the setting keeps the URL
+ * without it, and the value as written is held in `secrets` under the same
+ * key. Userinfo is not sent as a credential; configure `_auth` for that host.
  *
  * @example
  * ```ts
@@ -290,7 +316,11 @@ const authKeys = (url: string): ReadonlyArray<string> | undefined => {
 export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 	/** Every non-credential setting, after precedence and substitution. */
 	settings: Schema.Record(Schema.String, Schema.String),
-	/** Every credential setting (`_authToken`, `_auth`, `_password`), redacted. */
+	/**
+	 * Every secret setting, redacted: `_authToken`, `_auth`, `_password`,
+	 * an inline `key` or `cert`, and the as-written value of any URL setting
+	 * whose userinfo was removed from `settings`.
+	 */
 	secrets: Schema.Record(Schema.String, Schema.Redacted(Schema.String)),
 	/** The npmrc files that were read, lowest precedence first. */
 	files: Schema.Array(Schema.String),
@@ -320,9 +350,11 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 	 * remarks): never another host's credential. Within the matched key,
 	 * `_authToken` wins over `_auth`, which wins over `username` + `_password`
 	 * (decoded from base64, as npm stores it) — npm's order. An unparseable URL
-	 * has no credential.
+	 * has no credential, and neither does any scheme but `https:`, or `http:`
+	 * to a host a configured registry names with an `http:` URL.
 	 */
 	credentialFor(url: string): Option.Option<RegistryCredential> {
+		if (!this.allowsScheme(url)) return Option.none();
 		const keys = authKeys(url);
 		if (keys === undefined) return Option.none();
 		for (const key of keys) {
@@ -359,6 +391,32 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 		return Option.isSome(credential) ? { registry, credential: credential.value } : { registry };
 	}
 
+	/**
+	 * Whether a credential may travel to `url` at all: `https:` always,
+	 * `http:` only to a host and port a configured registry names with an
+	 * `http:` URL, any other scheme never.
+	 */
+	private allowsScheme(url: string): boolean {
+		let parsed: URL;
+		try {
+			parsed = new URL(url);
+		} catch {
+			return false;
+		}
+		if (parsed.protocol === "https:") return true;
+		if (parsed.protocol !== "http:") return false;
+		for (const [key, value] of Object.entries(this.settings)) {
+			if (key !== "registry" && !key.endsWith(":registry")) continue;
+			try {
+				const registry = new URL(value);
+				if (registry.protocol === "http:" && registry.host === parsed.host) return true;
+			} catch {
+				// An unparseable registry opens nothing.
+			}
+		}
+		return false;
+	}
+
 	private secret(key: string): Redacted.Redacted<string> | undefined {
 		return Object.hasOwn(this.secrets, key) ? this.secrets[key] : undefined;
 	}
@@ -388,9 +446,22 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 			for (const [key, value] of parsed.success) {
 				// Own data properties only: a `__proto__` key in an npmrc must not
 				// reach the prototype of either map.
-				const target: Record<string, unknown> = isSecretKey(key) ? secrets : settings;
-				const stored = isSecretKey(key) ? Redacted.make(value) : value;
-				Object.defineProperty(target, key, { value: stored, writable: true, enumerable: true, configurable: true });
+				const define = (target: Record<string, unknown>, stored: unknown) =>
+					Object.defineProperty(target, key, { value: stored, writable: true, enumerable: true, configurable: true });
+				// A later layer replaces the key in both maps, so a lower layer's
+				// userinfo cannot outlive the URL that carried it.
+				delete secrets[key];
+				delete settings[key];
+				if (isSecretKey(key)) {
+					define(secrets, Redacted.make(value));
+					continue;
+				}
+				// URL userinfo (`https://user:pass@host/`) is a password in the
+				// clear: the setting keeps the URL without it, and the value as
+				// written is held redacted under the same key.
+				const stripped = withoutUserinfo(value);
+				if (stripped !== undefined) define(secrets, Redacted.make(value));
+				define(settings, stripped ?? value);
 			}
 		}
 		return Result.succeed(NpmConfig.make({ settings, secrets, files }));
