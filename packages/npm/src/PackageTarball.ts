@@ -1,4 +1,5 @@
 import { Run } from "@effected/commands";
+import { HttpRedaction } from "@effected/crypto";
 import type { Scope } from "effect";
 import { Context, Crypto, Effect, FileSystem, Layer, Option, Redacted, Schema } from "effect";
 import * as Base64 from "effect/encoding/Base64";
@@ -190,7 +191,11 @@ const make = Effect.fnUntraced(function* () {
 			credential === undefined || Option.isNone(credential) ? undefined : credential.value,
 		);
 
-		const response = yield* http.get(url, { headers }).pipe(Effect.mapError((cause) => fail("http", { cause })));
+		// Every kept cause is redacted: core's error holds the live request,
+		// `authorization` header included, as a readable field.
+		const response = yield* http
+			.get(url, { headers })
+			.pipe(Effect.mapError((cause) => fail("http", { cause: HttpRedaction.cause(cause) })));
 
 		// A non-2xx body must be caught BEFORE it reaches the disk: piping a 404
 		// error page to `tar` surfaces as a misleading "could not extract"
@@ -201,7 +206,7 @@ const make = Effect.fnUntraced(function* () {
 
 		const bytes = yield* response.arrayBuffer.pipe(
 			Effect.map((buffer) => new Uint8Array(buffer)),
-			Effect.mapError((cause) => fail("http", { cause })),
+			Effect.mapError((cause) => fail("http", { cause: HttpRedaction.cause(cause) })),
 		);
 
 		// Verification happens BEFORE extraction and before anything reads the

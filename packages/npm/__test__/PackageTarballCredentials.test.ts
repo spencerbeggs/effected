@@ -15,7 +15,7 @@ import {
 	Schema,
 	Tracer,
 } from "effect";
-import { Headers, HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
+import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 import type { RegistryCredentialLookup, TarballError } from "../src/index.js";
 import { NpmConfig, PackageTarball, PublishedVersion } from "../src/index.js";
 import { scripted } from "./publish-fixtures.js";
@@ -43,7 +43,7 @@ const crypto = Layer.succeed(
 	}),
 );
 
-type Answer = { readonly status: number; readonly location?: string } | "transport";
+type Answer = { readonly status: number; readonly location?: string } | "transport" | "brokenBody";
 
 /**
  * An `HttpClient` recording every request's URL and `Authorization` header,
@@ -61,6 +61,11 @@ const recording = (respond: (url: string) => Answer) => {
 						reason: new HttpClientError.TransportError({ request, cause: new Error("ECONNRESET") }),
 					}),
 				);
+			}
+			if (answer === "brokenBody") {
+				// The registry answered 200, then the body stream failed mid-read.
+				const body = new ReadableStream({ start: (controller) => controller.error(new Error("socket hang up")) });
+				return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(body, { status: 200 })));
 			}
 			return Effect.succeed(
 				HttpClientResponse.fromWeb(
@@ -248,20 +253,48 @@ describe("PackageTarball credentials stay Redacted", () => {
 	];
 
 	/**
-	 * Every string reachable from `value` through own properties, skipping core
-	 * `Headers` — the container core redacts `authorization` in on every
-	 * rendering, and the one place a transport cause legitimately keeps the
-	 * request it sent. Anything else holding the token is a leak.
+	 * Every string reachable from `value` through own properties, core
+	 * `Headers` included: core redacts `authorization` only when rendering, so
+	 * a kept request's headers are exactly where a walking logger finds it.
 	 */
 	const reachableStrings = (value: unknown, seen = new Set<unknown>()): ReadonlyArray<string> => {
 		if (typeof value === "string") return [value];
-		if (typeof value !== "object" || value === null || seen.has(value) || Headers.isHeaders(value)) return [];
+		if (typeof value !== "object" || value === null || seen.has(value)) return [];
 		seen.add(value);
 		return Reflect.ownKeys(value).flatMap((key) => {
 			const descriptor = Object.getOwnPropertyDescriptor(value, key);
 			return descriptor !== undefined && "value" in descriptor ? reachableStrings(descriptor.value, seen) : [];
 		});
 	};
+
+	it.effect("positive control: the walk finds the token on core's own transport error", () =>
+		Effect.gen(function* () {
+			const { client } = recording(() => "transport");
+			const exit = yield* Effect.exit(client.get(START, { headers: { authorization: `Bearer ${REGISTRY_TOKEN}` } }));
+			assert.isTrue(
+				reachableStrings(exit).some((text) => text.includes(REGISTRY_TOKEN)),
+				"core keeps the live request, so the walk below is not passing blind",
+			);
+		}),
+	);
+
+	for (const failure of ["transport", "brokenBody"] as const) {
+		it.effect(`a ${failure} failure keeps the request on its cause, minus the token`, () =>
+			Effect.gen(function* () {
+				const { requests, client } = recording(() => failure);
+				const exit = yield* Effect.exit(extractWith(client, published(START), ACME));
+				assert.strictEqual(requests[0]?.authorization, `Bearer ${REGISTRY_TOKEN}`, "the credential was really sent");
+				if (Exit.isSuccess(exit)) return assert.fail("expected a failure");
+				const error = Cause.findErrorOption(exit.cause);
+				if (Option.isNone(error)) return assert.fail("expected a typed failure");
+				const cause = error.value.cause;
+				if (!HttpClientError.isHttpClientError(cause)) return assert.fail("expected the HttpClientError cause");
+				assert.strictEqual(cause.request.headers.authorization, "REDACTED");
+				assert.include(cause.request.url, "npm.acme.dev");
+				for (const text of reachableStrings(error.value)) assert.notInclude(text, REGISTRY_TOKEN);
+			}),
+		);
+	}
 
 	it.effect("never appears in the error, its message, its JSON, its inspection or the pretty cause", () =>
 		Effect.gen(function* () {
