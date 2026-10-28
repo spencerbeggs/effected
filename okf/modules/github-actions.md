@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-25T14:57:06Z
+  at: 2026-10-28T20:26:30Z
 integrity:
   generated:
-    body: 9a34ff0ff2f626f6
+    body: 90d3af8c8f686de5
 ---
 
 # github-actions
@@ -268,7 +268,14 @@ process global is released with `acquireUseRelease`, never
 through the error channel and leaks the spy into the next test; the pid
 guard, the envelope magic, the `INPUT_` mangling, the `withEnv` scoping,
 the hex-vs-binary digest and the tool-cache swap all carry recorded,
-discriminating mutants. Two structural suites — the ambient-read
+discriminating mutants; an effect driven through the virtual clock by
+`__test__/results.ts`'s `settle` does **no real I/O**, because its
+adjustments run back to back: a real disk call still in flight sees them
+all land, the attempt's timeout fires and waits on the uninterruptible
+call, and the retry's sleep is registered after the last adjustment — a
+hang to the vitest timeout, which `ToolInstaller.download`'s temp
+directory caused on a slow CI disk until that case moved onto `memfs`.
+`settle` now dies naming the cause instead of hanging. Two structural suites — the ambient-read
 allowlist and the `Redacted.value` scan — are described under module
 topology; the reachability suite additionally asserts exact edge sets
 for the light modules (`CheckState.ts` reaches `effect` alone and in

@@ -40,4 +40,5 @@ console.log(index.lineCount); // 3: the text ends in a terminator, so its last l
 - **A non-integer throws `RangeError`** (`NaN`, `1.5`, `Infinity`): clamping `NaN` would answer "line 0" for a value that was never a position. `spanOf` and `locationOf` also throw on a negative `length`.
 - **Positions are zero-based.** Add 1 to both fields for a person (`line + 1:character + 1`); a unist/mdast `Point` is `{ line: positionAt(o).line + 1, column: positionAt(o).character + 1 }`.
 - **`character` counts UTF-16 code units**, so an emoji is two, and a position can land between the halves of a surrogate pair. There is no code-point or UTF-8 encoding option: every LSP client accepts UTF-16.
-- **`"unicode"` exists to reproduce `@effected/jsonc`'s and `@effected/yaml`'s diagnostic positions.** An LSP client does not count U+2028 or U+2029 as line breaks, so positions after one disagree with the editor's.
+- **`"unicode"` exists to reproduce `@effected/jsonc`'s diagnostic positions.** An LSP client does not count U+2028 or U+2029 as line breaks, so positions after one disagree with the editor's. `@effected/yaml` uses the default `"lsp"` everywhere.
+- **No kit package uses `"lf"`.** It stays for a consumer that must reproduce a `\n`-only line count, such as a tool that splits text on `\n`.

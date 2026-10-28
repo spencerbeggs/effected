@@ -110,6 +110,35 @@ const decodings = (value: string): ReadonlyArray<string> | undefined => {
 	return ESCAPE.test(current) ? undefined : spellings;
 };
 
+/**
+ * Every `*` of `template` replaced by `match`, as literal text.
+ *
+ * @remarks
+ * Never `template.replaceAll("*", match)`: a string replacement reads `$&`,
+ * `$$`, `` $` `` and `$'` in `match` as patterns, so a request `./a$&b` would
+ * substitute `a*b`. Node substitutes through a replacer function, literally.
+ *
+ * @internal
+ */
+export const substituteEveryStar = (template: string, match: string): string => template.split("*").join(match);
+
+/**
+ * The FIRST `*` of `template` replaced by `match`, as literal text, and any
+ * later `*` left as written: TypeScript's `typesVersions` substitution, and
+ * the one `*` an `exports` subpath key carries.
+ *
+ * @remarks
+ * Written with `indexOf` / `slice`, not `replace("*", match)`, for the same
+ * `$`-pattern reason as `substituteEveryStar`, and so the single-occurrence
+ * rule reads as intended rather than as an oversight.
+ *
+ * @internal
+ */
+export const substituteFirstStar = (template: string, match: string): string => {
+	const star = template.indexOf("*");
+	return star === -1 ? template : template.slice(0, star) + match + template.slice(star + 1);
+};
+
 /** Node's forbidden segment set: `""`, `.`, `..`, `node_modules`, case-insensitive. */
 const isForbiddenSegment = (segment: string): boolean => {
 	const lowered = segment.toLowerCase();
@@ -210,7 +239,7 @@ export const targetResolve = (
 			if (!isConfined(patternMatch, 0)) throw new ExportsFailure("invalidModuleSpecifier", target);
 			// And the substituted specifier is checked again, whole: a match can
 			// complete what the template began (`*` + `.hidden`, `%2` + `e%2e`).
-			const substituted = target.replaceAll("*", patternMatch);
+			const substituted = substituteEveryStar(target, patternMatch);
 			if (!isPackageSpecifier(substituted)) throw new ExportsFailure("invalidModuleSpecifier", target);
 			return { kind: "package", value: substituted };
 		}
@@ -224,7 +253,7 @@ export const targetResolve = (
 		// 1.6 The pattern match may not smuggle a forbidden segment in either.
 		if (!isConfined(patternMatch, 0)) throw new ExportsFailure("invalidModuleSpecifier", target);
 		// 1.7 Every "*" is replaced, not just the first.
-		const substituted = target.replaceAll("*", patternMatch);
+		const substituted = substituteEveryStar(target, patternMatch);
 		// STRICTER than Node: the RESULT is checked again, whole. The template
 		// and the match each pass alone, yet a match can complete an escape the
 		// template began (`./%2*` with `e%2e` is `./%2e%2e`), which only the
@@ -324,6 +353,11 @@ export const importsExportsResolve = (
 	matches: ConditionMatcher,
 ): MatchedEntry | null => {
 	// 1. A trailing "/" is a directory request, which no map can answer.
+	// DELIBERATELY STRICTER than Node for `exports`: Node still resolves such
+	// a request through a pattern, warning DEP0155 ("Mapping specifiers
+	// ending in / is no longer supported") — `pkg/a/` under `"./*":
+	// "./dist/*.js"` names a file literally called `.js` in `dist/a/` — while
+	// for `imports` it throws Invalid Module Specifier, as this does for both.
 	if (matchKey.endsWith("/")) throw new ExportsFailure("invalidModuleSpecifier");
 	// 2. An exact key without "*". Own keys only: `"constructor"` is not a key
 	// of a manifest that does not write one.
@@ -424,6 +458,51 @@ export const importsResolve = (imports: unknown, specifier: string, matches: Con
 };
 
 /**
+ * `written` with its literal `.` and `..` segments resolved, or `written`
+ * unchanged when it has no literal `..` segment. Throws Invalid Package Target
+ * (naming `value`) when a `..` climbs above the package root, or when the path
+ * also carries something Node's URL parsing would read differently from a
+ * lexical `/` split: a `\`, a tab or newline (stripped by URL parsing), or a
+ * segment that is a dot segment, an encoded separator or an unsettled escape
+ * under any percent-decoding. Every segment
+ * is checked before any is popped, so nothing a `..` removes escapes the
+ * confinement checks the caller runs afterwards.
+ */
+const resolveDotSegments = (written: string, value: string): string => {
+	const segments = written.split("/");
+	if (!segments.includes("..")) return written;
+	// A `\` is refused here too (Node's URL parsing reads it as `/`), by the
+	// separator test below: no segment may carry one.
+	for (const segment of segments) {
+		if (segment === "." || segment === "..") continue;
+		const spellings = decodings(segment);
+		if (spellings === undefined) throw new ExportsFailure("invalidPackageTarget", value);
+		for (const spelling of spellings) {
+			const lowered = spelling.toLowerCase();
+			// A tab or newline is stripped by URL parsing, so `.<TAB>.` is a `..`.
+			if (lowered === "." || lowered === ".." || hasEncodedSeparator(spelling) || /[/\\\t\n\r]/.test(spelling)) {
+				throw new ExportsFailure("invalidPackageTarget", value);
+			}
+		}
+	}
+	// URL path semantics: `.` is dropped, `..` removes the previous segment,
+	// and an empty segment is a segment (`lib//../x` is `lib/x`).
+	const resolved: Array<string> = [];
+	for (const segment of segments) {
+		if (segment === ".") continue;
+		if (segment === "..") {
+			if (resolved.length === 0) throw new ExportsFailure("invalidPackageTarget", value);
+			resolved.pop();
+			continue;
+		}
+		resolved.push(segment);
+	}
+	const joined = resolved.join("/");
+	if (joined === "") throw new ExportsFailure("invalidPackageTarget", value);
+	return joined;
+};
+
+/**
  * A package-relative path from a field Node reads without `exports` (`main`,
  * `types`, a legacy subpath), confined to the package.
  *
@@ -433,15 +512,25 @@ export const importsResolve = (imports: unknown, specifier: string, matches: Con
  * path that leaves the package, is absolute or is a URL is refused rather than
  * answered. A leading `./` is optional in these fields and normalized on.
  *
+ * A literal `..` that stays inside the package is resolved, as Node's URL
+ * parsing resolves it: `./lib/../index.js` is `./index.js`, and
+ * `./lib/../../x.js`, which climbs out, is refused. Only a `/`-separated path
+ * of literal dot segments is resolved; a path that also carries a `\` or a
+ * percent-encoded dot segment is refused rather than normalized, because Node
+ * reads those as separators and dot segments too and a lexical resolution of
+ * the written form would name a different file.
+ *
  * @internal
  */
 export const confineLegacyPath = (value: string): string => {
-	const bare = value.startsWith("./") ? value.slice(2) : value;
-	if (bare === "" || bare.startsWith("/") || bare.startsWith("\\") || hasScheme(bare)) {
+	const written = value.startsWith("./") ? value.slice(2) : value;
+	if (written === "" || written.startsWith("/") || written.startsWith("\\") || hasScheme(written)) {
 		throw new ExportsFailure("invalidPackageTarget", value);
 	}
+	const bare = resolveDotSegments(written, value);
 	// Looser than `isConfined` in one respect: a legacy field may carry a `.`
-	// or an empty segment (`lib/./x.js`), which names nothing outside.
+	// or an empty segment (`lib/./x.js`), which names nothing outside. Every
+	// check below runs on the RESOLVED path.
 	const spellings = decodings(bare);
 	if (spellings === undefined) throw new ExportsFailure("invalidPackageTarget", value);
 	for (const spelling of spellings) {

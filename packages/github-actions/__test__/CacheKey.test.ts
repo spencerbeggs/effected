@@ -389,6 +389,38 @@ describe("CacheKey", () => {
 			),
 		);
 
+		// `descend` makes a relative `cwd` a defect, so a relative workspace has
+		// to be resolved by `CacheKey`, through core's `Path`, before the walk.
+		// The volume is seeded under the real working directory, because that is
+		// what core's `path.resolve` resolves a relative path against.
+		const cwd = process.cwd();
+		const underCwd: Record<string, MemoryFileSystemSeedEntry> = {
+			[`${cwd}/ws/pnpm-lock.yaml`]: "lock\n",
+			[`${cwd}/ws/packages/a/pnpm-lock.yaml`]: "inner\n",
+			[`${cwd}/ws/node_modules/dep/pnpm-lock.yaml`]: "vendored\n",
+		};
+
+		it.effect(
+			"resolves a relative workspace against the working directory, matching and hashing what its absolute form does",
+			() =>
+				Effect.gen(function* () {
+					const patterns = ["**/pnpm-lock.yaml", "!**/node_modules/**"];
+					const absolute = `${cwd}/ws`;
+					const expected = [`${absolute}/packages/a/pnpm-lock.yaml`, `${absolute}/pnpm-lock.yaml`];
+					for (const workspace of ["ws", "./ws", `ws/packages/../`, absolute]) {
+						const matched = yield* CacheKey.matchingFiles({ workspace, patterns });
+						assert.deepStrictEqual(matched, expected, `workspace ${JSON.stringify(workspace)}`);
+						assert.deepStrictEqual(
+							yield* CacheKey.hashMatching({ workspace, patterns }),
+							yield* CacheKey.hashMatching({ workspace: absolute, patterns }),
+						);
+					}
+					// "." is the working directory itself.
+					const dot = yield* CacheKey.matchingFiles({ workspace: ".", patterns: ["ws/pnpm-lock.yaml"] });
+					assert.deepStrictEqual(dot, [`${absolute}/pnpm-lock.yaml`]);
+				}).pipe(Effect.provide(Layer.mergeAll(MemoryFileSystem.layerWith(underCwd), Path.layer))),
+		);
+
 		it.effect("excludes a directory whose name matches the pattern", () =>
 			walking(
 				(root) =>

@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { inspect } from "node:util";
 import { NodeCrypto, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
 import { Cause, Duration, Effect, Exit, Layer, Option, Redacted, Schema } from "effect";
 import { FetchHttpClient, HttpClientError, HttpClientRequest } from "effect/http";
 import { TestClock } from "effect/testing";
@@ -207,7 +208,15 @@ describe("ToolInstaller.download keeps no url credential on a failure", () => {
 					Layer.provide(
 						Layer.mergeAll(
 							ActionEnvironment.layerTest({ RUNNER_TOOL_CACHE: "/nonexistent-tool-cache" }),
+							// NodeServices for the spawner, then an in-memory FileSystem over it
+							// (the last provider wins the merge). Under the virtual clock every
+							// effect `settle` drives must stay off real I/O: an attempt's temp
+							// directory on the real disk is a libuv call nothing can interrupt,
+							// so `settle`'s adjustments fire the attempt's timeout, the timeout
+							// waits for the disk, and the retry's sleep is registered after the
+							// last adjustment — a hang to the vitest timeout.
 							NodeServices.layer,
+							MemoryFileSystem.layer,
 							fetchLayer(answer),
 						),
 					),

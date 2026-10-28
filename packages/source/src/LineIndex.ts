@@ -9,17 +9,18 @@ import type { SourceSpan } from "./SourceSpan.js";
  *
  * @remarks
  * - `"lsp"` (the default): `\n`, `\r\n` and a bare `\r`, the Language Server
- *   Protocol's rule. `\r\n` is one terminator. Markdown, TOML and an LSP
- *   client all count lines this way.
+ *   Protocol's rule. `\r\n` is one terminator. Markdown, TOML, YAML (its
+ *   tokens, lint lines and diagnostics alike) and an LSP client all count
+ *   lines this way.
  * - `"lf"`: a line ends at `\n` only. `\r\n` is still one terminator (the
  *   `\r` is not part of the line's text), but a bare `\r` is an ordinary
- *   character. This is how `@effected/yaml` positions its tokens and splits
- *   lines for its linter.
+ *   character. No kit package uses it now; it stays for a consumer that must
+ *   reproduce a `\n`-only line count, such as a tool that splits on `\n`.
  * - `"unicode"`: the `"lsp"` rule plus U+2028 LINE SEPARATOR and U+2029
- *   PARAGRAPH SEPARATOR, each a terminator on its own. `@effected/jsonc` and
- *   `@effected/yaml` count their diagnostics' lines this way. An LSP client
- *   does not, so a position computed under this rule disagrees with the
- *   client's after the first separator.
+ *   PARAGRAPH SEPARATOR, each a terminator on its own. `@effected/jsonc`
+ *   counts its diagnostics' lines this way, as its scanner does. An LSP
+ *   client does not, so a position computed under this rule disagrees with
+ *   the client's after the first separator.
  *
  * @public
  */

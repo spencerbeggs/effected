@@ -50,6 +50,9 @@ const matchWildcard = (pattern: string, subpath: string): string | null => {
 /** Substitute a captured wildcard segment into an export value, hardened against dunder keys and unbounded nesting. */
 const substituteWildcard = (value: unknown, captured: string, depth: number): unknown => {
 	if (depth > MAX_EXPORTS_DEPTH) return null;
+	// A string replacement on purpose: tsc substitutes with `resolvedTarget.replace(/\*/g, subpath)`
+	// (typescript.js 6.0.3:46252), so `$&` / `$$` in the match keep tsc's meaning. Do not "fix" it to a
+	// literal split/join; that would break tsc parity.
 	if (typeof value === "string") return value.replace(/\*/g, captured);
 	if (Array.isArray(value)) return value.map((entry) => substituteWildcard(entry, captured, depth + 1));
 	if (typeof value === "object" && value !== null) {

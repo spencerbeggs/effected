@@ -172,3 +172,32 @@ describe("PackageJsonFile.exportedFiles: decoded paths", () => {
 		);
 	});
 });
+
+// A `$` in a file name is literal text: substituting a match with
+// `String.prototype.replace` would read `$&`, `$$`, `` $` `` and `$'` as
+// replacement patterns and drop or rewrite these files.
+const Dollar = Layer.merge(
+	Path.layer,
+	MemoryFileSystem.layerWith({
+		"/pkg/dist/a$&b.js": "",
+		"/pkg/dist/a$$b.js": "",
+		"/pkg/dist/a$`b.js": "",
+		"/pkg/dist/a$'b.js": "",
+	}),
+);
+
+describe("PackageJsonFile.exportedFiles: a match carrying '$'", () => {
+	layer(Dollar)((it) => {
+		it.effect("substitutes the match literally, never as a replacement pattern", () =>
+			Effect.gen(function* () {
+				const found = yield* subpaths({ exports: { "./*": "./dist/*.js" } });
+				assert.deepStrictEqual(found, [
+					["./a$$b", "./dist/a$$b.js"],
+					["./a$&b", "./dist/a$&b.js"],
+					["./a$'b", "./dist/a$'b.js"],
+					["./a$`b", "./dist/a$`b.js"],
+				]);
+			}),
+		);
+	});
+});
