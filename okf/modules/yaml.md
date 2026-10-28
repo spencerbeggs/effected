@@ -8,10 +8,10 @@ resource: ../../packages/yaml
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:52:55Z
+  at: 2026-10-28T18:00:25Z
 integrity:
   generated:
-    body: f500b4159c3e14dd
+    body: d9dfb5028f1058c1
 ---
 
 # @effected/yaml
@@ -75,7 +75,9 @@ left in the package; a new producer reuses an index rather than growing one.
   bare `\r` is tracked separately; when it does, tokens and lines can move to
   `"lsp"` with it, never before.
 
-- `YamlDiagnostic.fromRaw(raw, text | LineIndex)` derives its position with
+- `YamlDiagnostic.fromRaw(raw, text | SourceIndex)` (the structural
+  interface, so an index from another installed copy of `@effected/source`
+  is accepted) derives its position with
   `positionAt`. The parse entry points materialize all of one parse's
   diagnostics against a single index, built lazily (`lazyLineIndex` in
   `src/YamlDiagnostic.ts`), so a parse with no diagnostics never builds one.

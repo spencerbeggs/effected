@@ -1,4 +1,5 @@
 import type { SourceLocation } from "./SourceDiagnostic.js";
+import type { SourceIndex } from "./SourceIndex.js";
 import type { SourcePosition } from "./SourcePosition.js";
 import type { SourceRange } from "./SourceRange.js";
 import type { SourceSpan } from "./SourceSpan.js";
@@ -89,7 +90,11 @@ const clamp = (value: number, low: number, high: number): number => Math.min(Mat
  *
  * There is no shared-instance contract. Nothing checks `instanceof LineIndex`,
  * and every value it returns is a plain record, so two installed copies of
- * this package interoperate.
+ * this package interoperate at runtime. At the type level the class does
+ * not: its `private` members make TypeScript compare it nominally, so a
+ * `LineIndex` from one copy is not assignable to another copy's `LineIndex`.
+ * Type a signature that takes or returns an index with the structural
+ * {@link SourceIndex} interface this class implements, never with the class.
  *
  * @example
  * ```ts
@@ -108,7 +113,7 @@ const clamp = (value: number, low: number, high: number): number => Math.min(Mat
  *
  * @public
  */
-export class LineIndex {
+export class LineIndex implements SourceIndex {
 	private constructor(
 		/** The text this index was built over. */
 		readonly text: string,

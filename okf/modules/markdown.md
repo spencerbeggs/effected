@@ -35,10 +35,10 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/1030
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:13:49Z
+  at: 2026-10-28T18:00:25Z
 integrity:
   generated:
-    body: ac928a943619324f
+    body: 52e44896118c7b3e
 ---
 
 # `@effected/markdown`
@@ -292,7 +292,9 @@ terminator, where the root's end point sits. The old one-based
 - **`MarkdownDiagnostic`** is `positionAt(offset)`: zero-based, UTF-16 code
   units, an offset at the `\n` of a `\r\n` reading as the end of its line
   (the hand-rolled loop answered `character: -1` on the next line there).
-  `fromRaw(source | LineIndex, raw)` accepts a prebuilt index; the parse
+  `fromRaw(source | SourceIndex, raw)` accepts a prebuilt index, typed as the
+  structural `SourceIndex` so an index from another installed copy of
+  `@effected/source` is accepted; the parse
   reuses its own. It satisfies `SourceDiagnostic<MarkdownParseErrorCode>`.
 - **A node's unist `Point`** (`internal/point.ts`, `pointAt`) is
   `line = lineAt(offset) + 1`, `column = offset - lineStart(line) + 1`. That
@@ -304,11 +306,12 @@ terminator, where the root's end point sits. The old one-based
   column 3), and the differential showed 130 strings of up to five
   characters whose trees would have moved.
 - **`MarkdownDocument.lineIndex`** ([#1126](https://github.com/spencerbeggs/effected/issues/1126))
-  returns the index over `source`: the parse's own for a parsed document,
+  returns the index over `source`, declared as `SourceIndex` rather than
+  the nominal `LineIndex` class: the parse's own for a parsed document,
   built once on first access for one constructed with `make`, kept in a
   module `WeakMap` so it is no part of the schema, equality or encoding. The
-  entry point re-exports `@effected/source`'s surface (`LineIndex` and the
-  position shapes), so a consumer converting offsets to LSP positions and
+  entry point re-exports `@effected/source`'s surface (`LineIndex`,
+  `SourceIndex` and the position shapes), so a consumer converting offsets to LSP positions and
   back needs no second dependency, and `LineIndex.make(text)` gives the same
   answers with no document.
 

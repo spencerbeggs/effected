@@ -29,6 +29,7 @@ export {
 	LineIndex,
 	type LineIndexOptions,
 	type SourceDiagnostic,
+	type SourceIndex,
 	type SourceLocation,
 	type SourcePosition,
 	type SourceRange,
