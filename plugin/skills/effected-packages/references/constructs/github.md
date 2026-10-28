@@ -15,6 +15,7 @@
 | `AppIdentity` | Class | What GitHub knows about the app itself. | resolve the github app's slug name and bot user id |
 | `AppInfo` | Class | The GitHub App itself, as `GET /app` reports it. | the github app's own id slug name and node id from GET /app |
 | `AppliedSettings` | Interface | What `GitHubRepositoryShape.applySettings` actually sent. | |
+| `ApplySettingsOptions` | Interface | Options for `GitHubRepositoryShape.applySettings`. | |
 | `ArtifactMetadata` | Class | Records where published artifacts are stored, at the organization level. | record where a published package artifact lives, org-level storage record, supply chain provenance |
 | `ArtifactMetadataShape` | Interface | Organization-level artifact metadata. | |
 | `Attestation` | Class | Uploads signed attestation bundles to a repository and lists what is attested about a subject digest. | upload a sigstore bundle, list attestations for a subject digest, slsa lookup |
@@ -124,6 +125,8 @@
 | `ReportedCheckRunOutput` | Class | The rendered output a check run reports: its title and summary, and how many annotations it carries. | a check run's reported output title summary and annotation count |
 | `RepositoryPatch` | TypeAlias | The fields `PATCH /repos/{owner}/{repo}` accepts, minus the coordinate. | |
 | `RepositoryPatchDraft` | TypeAlias | A `RepositoryPatch` under construction, where an absent field may be spelled as an explicit `undefined`. | |
+| `RepositoryPatchExtra` | TypeAlias | Repository settings the generated `RepositoryPatch` type does not know yet, for `RepositoryPatchOptions.extra`. | |
+| `RepositoryPatchOptions` | Interface | Options for `repositoryPatch`. | |
 | `RepositorySecret` | Class | Write, list and delete repository and environment secrets, encrypted client-side before they leave the process. | encrypt and write a repository or environment secret via sealed box |
 | `RepositorySecretShape` | Interface | Write, list and delete Actions, Dependabot and Codespaces secrets on a repository, and Actions secrets on its environments. | |
 | `RepositorySecurity` | Class | Read and toggle Dependabot alerts, Dependabot security fixes and private vulnerability reporting. | toggle dependabot vulnerability alerts, automated security fixes, private vulnerability reporting inbox |
@@ -161,6 +164,6 @@
 | `WorkflowDispatchShape` | Interface | Dispatch workflows, wait for the run they start, and list the repository's workflows. | |
 | `WorkflowInfo` | Interface | One workflow defined in the repository. | |
 | `WorkflowRunStatus` | Class | Where a workflow run has got to. | a workflow run's id status and conclusion, whether a dispatched run has finished |
-| `repositoryPatch` | Function | A `RepositoryPatch` from a draft, dropping every explicitly-`undefined` field. | build a repository settings patch from a draft, drop unset fields |
+| `repositoryPatch` | Function | A `RepositoryPatch` from a draft, dropping every explicitly-`undefined` field, plus any settings octokit's types do not know yet. | build a repository settings patch from a draft, drop unset fields |
 | `transformSecurityAndAnalysis` | Function | Translate a user-facing `security_and_analysis` block into the shape `PATCH /repos/{owner}/{repo}` expects. | translate a security_and_analysis block into the shape the repository patch endpoint expects |
 | `versionFromTag` | Variable | The default `VersionFromTag`. | extract a version string out of a tag name, the default tag-to-semver convention |

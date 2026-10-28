@@ -8,7 +8,7 @@ resource: ../../packages/github/src/Rest.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-28T16:43:15Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:33.163Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 7c0d5ffdea018967
+    body: 287195ae86339ec9
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -78,6 +78,30 @@ alone," while an explicit `null` or `undefined` is a value. A key-by-key loop
 still defeats TypeScript's correlation between two indexed accesses over a
 union key, so this residual limitation is recorded rather than fixed: build
 the draft as a literal where possible.
+
+`repositoryPatch(draft, { extra })` is the typed escape hatch for a setting
+GitHub accepts before octokit's generated types declare it (effected#1115).
+`RepositoryPatchExtra` is an open map minus every key `RepositoryPatch`
+declares, so a known key in a literal `extra` is a compile error and has to
+go in the draft, where its value is checked; only what octokit has not caught
+up with travels unchecked. Because a value already typed `Record<string,
+unknown>` assigns to that type anyway (an index signature does not meet an
+optional property), `repositoryPatch` checks again at runtime and throws a
+`RangeError` for a key in the generated REST key list or in
+`GRAPHQL_ONLY_SETTINGS` — a wiring bug, raised where it was written. The
+result is still typed `RepositoryPatch`; `updateSettings` sends every key it
+carries, and GitHub may ignore an extra silently, since the `PATCH` answers
+200 for a field it does not recognise.
+
+For an open map, the matching switch is on the applicator:
+`applySettings(settings, { unknownKeys: "send" })` forwards a key neither API
+declares on the REST patch instead of ignoring it, and names it in
+`AppliedSettings.unverified` (always a subset of `rest`) as well as `rest`.
+A key the client's api-version removed is still ignored and GraphQL-only
+keys still route to GraphQL, because those two facts are known rather than
+merely undescribed; `__proto__` is never sent, since assigning it would set
+the body's prototype rather than a field. `unverified` is a required field,
+empty under the default `"ignore"`.
 
 ### Resource ids come off the wire as `number | bigint`
 

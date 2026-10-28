@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-25T14:57:06Z
+  at: 2026-10-28T16:43:15Z
 integrity:
   generated:
-    body: d0d7c4bb06409c9c
+    body: 0d29dc6ad255ebad
 ---
 
 # @effected/github
@@ -181,7 +181,11 @@ is reported in `AppliedSettings.ignored` and never sent, because the REST
 `PATCH` ignores unknown fields and answers 200. The file also carries
 `REMOVED_BY_PINNED_VERSION`, keys the description still declares mapped to
 the api-version that removed them; `applySettings` ignores such a key only
-when `client.apiVersion` is at or past that version.
+when `client.apiVersion` is at or past that version. `{ unknownKeys: "send" }`
+forwards an undescribed key instead and reports it in
+`AppliedSettings.unverified`; a removed key stays ignored. The typed escape
+hatch for the same need is `repositoryPatch(draft, { extra })` — see
+[the REST client interface](../interfaces/github-rest-client.md).
 `__test__/repositoryRestSettingKeys.test.ts` regenerates the file in memory
 and fails on drift, including a header that names `DEFAULT_API_VERSION`;
 re-run the generator (`pnpm --filter @effected/github exec tsx

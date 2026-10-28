@@ -181,7 +181,12 @@ tempted to reach for `as`.
   own names, plus `ignored`: keys neither API accepts (checked against a REST
   key list generated from GitHub's OpenAPI description), which are **not sent**
   — the REST PATCH would ignore them and answer 200; a key a later
-  api-version removed is ignored only for a client pinned at or past it. `topics` reads the topic set; `setTopics(names)` replaces it
+  api-version removed is ignored only for a client pinned at or past it.
+  `applySettings(record, { unknownKeys: "send" })` forwards an undescribed key
+  instead (a setting GitHub ships before its description does) and names it in
+  `AppliedSettings.unverified` as well as `rest`: a 200 does not say GitHub
+  used it. A removed key stays ignored and GraphQL-only keys still route to
+  GraphQL. `topics` reads the topic set; `setTopics(names)` replaces it
   (`[]` clears) and returns the set GitHub **stored**, lowercased — record
   that, not `names`, as applied state. `RepositorySettings` is `RestData<"GET /repos/{owner}/{repo}">`;
   `RepositoryPatch` is the PATCH route's params minus `owner`/`repo`;
@@ -199,6 +204,11 @@ tempted to reach for `as`.
   over a union `key`) still defeats TypeScript's correlation between two indexed
   accesses, and no helper fixes that — build the draft as a literal where you
   can. The single cast in the package lives inside this function.
+  `repositoryPatch(draft, { extra })` (`RepositoryPatchOptions`,
+  `RepositoryPatchExtra`) carries settings octokit's types do not declare yet,
+  verbatim, while the draft stays type-checked: a known key is a compile error
+  in a literal `extra` and a `RangeError` at runtime (a GraphQL-only key too).
+  GitHub may ignore an extra silently, so read it back when it matters.
 - **`GitBranch` / `GitTag`** — `create`, `upsert` (`GitBranch.upsert` answers
   `BranchOutcome`: `"created" | "reset"`), `exists`, `sha`/`shaOption`, `reset`,
   `delete`, `list`, `resolve`, `GitBranch.createLinked` (the GraphQL
