@@ -77,14 +77,33 @@ export const twirpFetch = (
 	return { calls, fetch };
 };
 
-/** Run a fiber to completion while a virtual clock drives its retry sleeps. */
+/**
+ * Run a fiber to completion while a virtual clock drives its retry sleeps.
+ *
+ * @remarks
+ * The effect must do no real I/O — no disk, no socket, only in-memory doubles
+ * and fakes that settle in microtasks. The adjustments run back to back, so a
+ * real call still in flight sees them all land at once: the attempt's timeout
+ * fires, its interruption waits for the call (a libuv request cannot be
+ * cancelled), and the retry's sleep is registered after the last adjustment,
+ * with nothing left to advance it. Use `@effected/memfs` for the filesystem.
+ */
 export const settle = <A, E>(effect: Effect.Effect<A, E>, adjust: Effect.Effect<void>) =>
 	Effect.gen(function* () {
 		const fiber = yield* Effect.forkChild(effect);
-		// Bounded rather than `while (true)`: a fiber blocked on something that is
-		// not a sleep would otherwise hang to the vitest timeout with no clue why.
+		// Bounded rather than `while (true)`, and a defect rather than a bare
+		// `Fiber.await` past the bound: a fiber blocked on something that is not
+		// a virtual sleep would otherwise hang to the vitest timeout with no clue why.
 		for (let attempt = 0; attempt < 12 && fiber.pollUnsafe() === undefined; attempt += 1) {
 			yield* adjust;
+		}
+		if (fiber.pollUnsafe() === undefined) {
+			yield* Fiber.interrupt(fiber);
+			return yield* Effect.die(
+				new Error(
+					"settle: the fiber is still running after 12 clock adjustments — it is waiting on real I/O, not a virtual sleep",
+				),
+			);
 		}
 		return yield* Fiber.await(fiber);
 	});

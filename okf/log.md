@@ -40,6 +40,7 @@
 * Updated actions-storage
 * Updated runtimes
 * Updated @effected/github errors and retry
+* Updated github-actions
 
 ## 2026-10-27
 
