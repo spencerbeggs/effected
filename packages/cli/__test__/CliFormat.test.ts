@@ -3,10 +3,9 @@ import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
-import { Cause, Console, Effect, Exit, Layer, Option, Runtime } from "effect";
-import type { Flag } from "effect/cli";
-import { Command } from "effect/cli";
-import { CliFormat, CliLinks, CliRuntime, CliTheme, Doc } from "../src/index.js";
+import { Console, Effect, Exit, Layer, Option } from "effect";
+import { Command, Flag } from "effect/cli";
+import { CliFormat, CliLinks, CliTheme, Doc } from "../src/index.js";
 
 const capturing = () => {
 	const out: string[] = [];
@@ -222,129 +221,26 @@ describe("CliFormat.flag", () => {
 		}),
 	);
 
-	it("clashing names, an unoffered default, and legacyJson without json are programming mistakes", () => {
+	it.effect("is one plain flag: --json is unknown, and core's combinators such as an alias apply to it", () =>
+		Effect.gen(function* () {
+			const refused = yield* parsed(CliFormat.flag(["auto", "json"]), ["--json"]);
+			assert.isUndefined(refused.seen);
+			assert.isTrue(Exit.isFailure(refused.exit));
+			const aliased = CliFormat.flag(["auto", "json"]).pipe(Flag.withAlias("f"));
+			const short = yield* parsed(aliased, ["-f", "json"]);
+			assert.isTrue(Exit.isSuccess(short.exit));
+			assert.strictEqual(short.seen, "json");
+			assert.strictEqual((yield* parsed(aliased, [])).seen, "auto");
+		}),
+	);
+
+	it("clashing names and an unoffered default are programming mistakes", () => {
 		assert.throws(() => CliFormat.flag(["json"], { aliases: { auto: "json" } as never }), /built-in format/);
 		assert.throws(() => CliFormat.flag(["json"], { custom: ["plain"] as never }), /built-in format/);
 		assert.throws(() => CliFormat.flag(["json"], { aliases: { human: "auto" }, custom: ["human"] }), /offered twice/);
 		assert.throws(() => CliFormat.flag(["json", "json"]), /offered twice/);
 		assert.throws(() => CliFormat.flag(["json"], { default: "auto" as never }), /not one of/);
-		assert.throws(() => CliFormat.flag(["auto", "plain"], { legacyJson: true }), /yields json/);
-		assert.throws(() => CliFormat.flag(["auto", "json"], { legacyJson: { name: "format" } }), /cannot also be/);
 		// control: the same options, untangled, construct
 		CliFormat.flag(["json"], { aliases: { human: "auto" }, custom: ["dot"], default: "human" });
-		CliFormat.flag(["auto"], { aliases: { machine: "json" }, legacyJson: true });
 	});
-});
-
-describe("CliFormat.flag legacyJson", () => {
-	const parsed = (flag: Flag.Flag<string>, argv: ReadonlyArray<string>) =>
-		Effect.gen(function* () {
-			let seen: string | undefined;
-			const command = Command.make("tool", { format: flag }, ({ format }) =>
-				Effect.sync(() => {
-					seen = format;
-				}),
-			);
-			const { double, out, err } = capturing();
-			const exit = yield* Command.runWith(command, { version: "1.0.0" })(argv).pipe(
-				Effect.provide(NodeServices.layer),
-				Effect.provideService(Console.Console, double),
-				Effect.exit,
-			);
-			return { seen, exit, out: out.join("\n"), err: err.join("\n") };
-		});
-	const upgrade = CliFormat.flag(["auto", "json"], { legacyJson: true });
-
-	it.effect("control: without legacyJson, --json is an unknown flag", () =>
-		Effect.gen(function* () {
-			const refused = yield* parsed(CliFormat.flag(["auto", "json"]), ["--json"]);
-			assert.isUndefined(refused.seen);
-			assert.isTrue(Exit.isFailure(refused.exit));
-		}),
-	);
-
-	it.effect("--json is --format json, with a deprecation notice on stderr and none on stdout", () =>
-		Effect.gen(function* () {
-			const run = yield* parsed(upgrade, ["--json"]);
-			assert.isTrue(Exit.isSuccess(run.exit));
-			assert.strictEqual(run.seen, "json");
-			assert.strictEqual(run.err, "warning: --json is deprecated; use --format json");
-			assert.strictEqual(run.out, "");
-		}),
-	);
-
-	it.effect("absent, the format flag and its default behave as before, and no notice is written", () =>
-		Effect.gen(function* () {
-			const none = yield* parsed(upgrade, []);
-			assert.strictEqual(none.seen, "auto");
-			assert.strictEqual(none.err, "");
-			const chosen = yield* parsed(upgrade, ["--format", "json"]);
-			assert.strictEqual(chosen.seen, "json");
-			assert.strictEqual(chosen.err, "");
-			const refused = yield* parsed(upgrade, ["--format", "yaml"]);
-			assert.isUndefined(refused.seen);
-			assert.isTrue(Exit.isFailure(refused.exit));
-		}),
-	);
-
-	it.effect("--json together with --format, whatever the format, is a usage error naming both", () =>
-		Effect.gen(function* () {
-			for (const argv of [
-				["--json", "--format", "auto"],
-				["--format", "json", "--json"],
-			]) {
-				const run = yield* parsed(upgrade, argv);
-				assert.isUndefined(run.seen, argv.join(" "));
-				assert.isTrue(Exit.isFailure(run.exit), argv.join(" "));
-				assert.include(run.err, "--json means --format json: give one of them, not both", argv.join(" "));
-				assert.notInclude(run.err, "deprecated");
-			}
-		}),
-	);
-
-	it.effect("the retired flag is hidden from help, has no --no-json, and a second --json is refused", () =>
-		Effect.gen(function* () {
-			const help = yield* parsed(upgrade, ["--help"]);
-			assert.include(help.out, "--format");
-			assert.notInclude(help.out, "--json");
-			const negated = yield* parsed(upgrade, ["--no-json"]);
-			assert.isUndefined(negated.seen);
-			assert.isTrue(Exit.isFailure(negated.exit));
-			const twice = yield* parsed(upgrade, ["--json", "--json"]);
-			assert.isUndefined(twice.seen);
-			assert.isTrue(Exit.isFailure(twice.exit));
-		}),
-	);
-
-	it.effect("takes another name for the retired flag and can stay silent, and an alias for json works", () =>
-		Effect.gen(function* () {
-			const named = CliFormat.flag(["auto"], {
-				aliases: { machine: "json" },
-				name: "output",
-				legacyJson: { name: "as-json", notice: false },
-			});
-			const run = yield* parsed(named, ["--as-json"]);
-			assert.strictEqual(run.seen, "json");
-			assert.strictEqual(run.err, "");
-			assert.strictEqual((yield* parsed(named, ["--output", "machine"])).seen, "json");
-			const both = yield* parsed(named, ["--as-json", "--output", "auto"]);
-			assert.include(both.err, "--as-json means --output json");
-		}),
-	);
-
-	it.effect("under CliRuntime.main, --json with --format exits 64, the usage code", () =>
-		Effect.gen(function* () {
-			const command = Command.make("tool", { format: upgrade }, () => Effect.void);
-			const run = (argv: ReadonlyArray<string>) =>
-				CliRuntime.main(Command.runWith(command, { version: "1.0.0" })(argv), { platform: NodeServices.layer }).pipe(
-					Effect.exit,
-					Effect.provideService(Console.Console, capturing().double),
-				);
-			const both = yield* run(["--json", "--format", "json"]);
-			assert.isTrue(Exit.isFailure(both));
-			if (Exit.isFailure(both)) assert.strictEqual(Runtime.getErrorExitCode(Cause.squash(both.cause)), 64);
-			else assert.fail("expected a usage failure");
-			assert.isTrue(Exit.isSuccess(yield* run(["--json"])), "control: --json alone succeeds");
-		}),
-	);
 });

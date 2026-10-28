@@ -24,7 +24,7 @@ on a trusted line; a theme's glyph set (separators, ellipsis) is configuration.
 guarded cause read, never throwing) and `Fmt.errorText` are `@effected/engine`'s
 `ErrorText` functions, delegated rather than copied, and `Fmt.suggest` is the
 "did you mean" list with `effect/cli`'s own two-edit threshold. `CliFormat.flag`
-takes `aliases`, `custom` formats and a retired `legacyJson` boolean. `CliRuntime.main` takes `exitCodes` (by
+takes `aliases` and `custom` formats; a CLI that still accepts `--json` declares it itself. `CliRuntime.main` takes `exitCodes` (by
 tag), `distribution` (the carrier: engine's `CurrentDistribution` plus the
 `--version` suffix, wrapping whatever formatter is in effect) and
 `env.displayPath` (a function or `{ relativeTo: root }`, the path display
