@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T19:29:52Z
+  at: 2026-10-28T20:20:25Z
 integrity:
   generated:
-    body: 2ca29b4e93c23ae7
+    body: c1993655f3d5d5b6
 ---
 
 # @effected/github
@@ -202,7 +202,9 @@ every params-building call site behind both is in the REST client interface.
 configured base (`internal/uploads.ts`), never from the release's
 `uploadUrl`, so a GitHub Enterprise Server client's token stays on that
 server; the derivation is in the REST client interface too. The upload goes
-through a private channel the built client carries, because the public raw
+through a private channel the built client carries (the App layers'
+rotating client carries one too, delegating to its current inner client),
+because the public raw
 surface (`request`, `requestDecoded`, `paginate`, `paginateStream`) is
 confined to the configured API host: it has no `baseUrl` extra, and it
 refuses a reserved option, an absolute-URL route or a pagination `Link` on
