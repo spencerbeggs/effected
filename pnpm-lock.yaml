@@ -422,6 +422,9 @@ importers:
       effect:
         specifier: catalog:effect
         version: 4.0.7
+      tsx:
+        specifier: catalog:build
+        version: 4.23.15
       typescript:
         specifier: catalog:build
         version: 7.1.0-beta
