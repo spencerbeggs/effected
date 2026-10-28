@@ -454,6 +454,98 @@ export const confineLegacyPath = (value: string): string => {
 	return `./${bare}`;
 };
 
+// ── Finalization: the file Node's resolution names ───────────────────────────
+
+/**
+ * The URL a target is resolved against. Node resolves a target as
+ * `new URL(target, packageURL)` and reads the file with `fileURLToPath`; any
+ * `file:` directory URL stands in for the package's.
+ */
+const PACKAGE_URL = "file:///package/";
+const PACKAGE_PATH = "/package/";
+
+/** `?` and `#` begin a URL's query and fragment, which `fileURLToPath` drops. */
+const hasQueryOrFragment = (value: string): boolean => value.includes("?") || value.includes("#");
+
+/**
+ * The last guard on a decoded path: non-empty, no NUL, and no `.`, `..` or
+ * `node_modules` segment, case-insensitively. Unreachable for a target the
+ * validation passed; it holds even when that validation is wrong.
+ */
+const isDecodedConfined = (decoded: string): boolean => {
+	if (decoded === "" || decoded.includes(String.fromCharCode(0))) return false;
+	for (const segment of decoded.split(/[/\\]/)) {
+		const lowered = segment.toLowerCase();
+		if (lowered === "." || lowered === ".." || lowered === "node_modules") return false;
+	}
+	return true;
+};
+
+/**
+ * The decoded, `./`-prefixed, `/`-separated path of the file Node's
+ * resolution names for an already-validated target, or `undefined` when Node
+ * would name no file of the package.
+ *
+ * @remarks
+ * Two steps, each Node's own. The target is parsed as a URL relative to the
+ * package URL, exactly as PACKAGE_TARGET_RESOLVE does: a raw space or
+ * non-ASCII character is percent-encoded, an existing escape is kept as
+ * written, a `\` becomes `/`, a tab or newline is dropped, and `.` / `..`
+ * segments (`%2e` included) are normalized away. Then the URL's path is
+ * decoded as `fileURLToPath` decodes it on POSIX — `decodeURIComponent`, one
+ * round: `%20` is a space, `%25` is a literal `%` (so `%2541` is the file
+ * `%41`, never `A`), `+` stays `+`, and a UTF-8 escape decodes to its
+ * character.
+ *
+ * Refused, so the caller fails closed: an invalid UTF-8 escape or a `%` that
+ * starts no escape, which `decodeURIComponent` — and so Node — rejects; a raw
+ * `?` or `#`, which Node reads as the start of a query or fragment and so
+ * resolves to a different, truncated file (STRICTER than Node, which answers
+ * that file); an encoded `/` or `\` in the URL path; and a decoded path
+ * failing the last guard — empty, carrying a `.`, `..` or `node_modules`
+ * segment, or a NUL, which Node hands to the filesystem and this resolver
+ * refuses (STRICTER than Node).
+ *
+ * With `template`, the value carries `*` placeholders that stay literal: each
+ * run between two `*` is decoded on its own, and a run that does not decode
+ * alone or decodes to a `*` is refused, since the template would then name no
+ * set of files.
+ *
+ * @internal
+ */
+export const toFilePath = (value: string, template = false): string | undefined => {
+	if (hasQueryOrFragment(value)) return undefined;
+	const pathname = new URL(value, PACKAGE_URL).pathname;
+	if (!pathname.startsWith(PACKAGE_PATH) || hasEncodedSeparator(pathname)) return undefined;
+	const pieces = template ? pathname.slice(PACKAGE_PATH.length).split("*") : [pathname.slice(PACKAGE_PATH.length)];
+	const decodedPieces: Array<string> = [];
+	for (const piece of pieces) {
+		let decoded: string;
+		try {
+			decoded = decodeURIComponent(piece);
+		} catch {
+			return undefined;
+		}
+		if (template && decoded.includes("*")) return undefined;
+		decodedPieces.push(decoded);
+	}
+	const decoded = decodedPieces.join("*");
+	return isDecodedConfined(template ? decoded.replaceAll("*", "x") : decoded) ? `./${decoded}` : undefined;
+};
+
+/**
+ * {@link toFilePath} for a resolved target, throwing the failure the caller
+ * reports when it names no file: `reason` blames the target as written, or
+ * the request whose `*` match was substituted into it.
+ *
+ * @internal
+ */
+export const finalizeFile = (value: string, reason: ExportsFailureReason, request?: string): string => {
+	const path = toFilePath(value);
+	if (path === undefined) throw new ExportsFailure(reason, value, request);
+	return path;
+};
+
 /** A subpath a caller asked for, held to the segment rule. @internal */
 export const assertSubpath = (subpath: string): void => {
 	if (subpath === ".") return;

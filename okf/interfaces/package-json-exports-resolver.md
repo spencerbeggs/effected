@@ -19,10 +19,10 @@ sources:
     resource: ../../packages/package-json/__test__/ExportedFiles.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:51:20Z
+  at: 2026-10-28T18:09:10Z
 integrity:
   generated:
-    body: 5a2586ca9da7bd95
+    body: b726a9fca3e175bc
 ---
 
 # The package-json exports resolver
@@ -99,6 +99,45 @@ The one deliberate divergence from the specification text: an array
 fallback passes over a `null` entry, as Node's implementation does,
 where the prose reads as returning it.
 
+## A resolved path is the decoded file
+
+`PackageFileTarget.path` and `ExportEntry.path` are decoded, `./`-prefixed,
+`/`-separated package-relative filesystem paths: the file Node's
+resolution names, not the target string as written. Node resolves a
+target as `new URL(target, packageURL)` and reads it through
+`fileURLToPath`, and the resolver repeats both steps — URL parsing (a raw
+space or non-ASCII character encoded, a `\` turned into `/`, a tab or
+newline dropped) and then POSIX percent-decoding, one round — so
+`"./dist/a%20b.js"` is `./dist/a b.js`, `%25` is a literal `%`
+(`%2541` is the file `%41`, never `A`), `+` stays `+`, and `%C3%A9` is
+`é`. Callers relying on the old as-written form see a behaviour change.
+
+Decoding runs only after every check above has passed, and a last guard
+holds the decoded path to the same rule — non-empty, no `.`, `..` or
+`node_modules` segment, no NUL — failing closed with the existing reason.
+An encoded `..` is refused before decoding matters: decoding
+`./dist/%2e%2e/index.js` would land on `./index.js`, still inside the
+package, so only the validation ahead of it refuses it. A target that does
+not decode fails `invalidPackageTarget`, or `invalidModuleSpecifier` when
+the request's `*` match was substituted into it, and does not fall back to
+the next array entry, as Node finalizes only the target it picked:
+
+- an invalid UTF-8 escape (`%FF`, `%C3`, an encoded surrogate, an overlong
+  `%C0%AE`) or a `%` starting no escape — Node rejects these too;
+- a raw `?` or `#`, which Node reads as a URL query or fragment and so
+  answers a truncated file (`./dist/a#b.js` is `./dist/a`) — stricter
+  than Node; encoded as `%3F` / `%23` they are ordinary characters;
+- a decoded NUL, which Node hands to the filesystem — stricter than Node.
+
+The TypeScript statics do not decode. TypeScript reads an `exports`,
+`types` or `main` target as a literal file name — `tsc` 6 and 7 both
+resolve `"./dist/a%20b.d.ts"` to the file `a%20b.d.ts` — so a
+`TypesTarget`'s `target` and `candidates` keep the written form.
+
+Enumeration decodes a pattern template run by run between its `*`s; a
+template whose runs do not each decode, or decode to a `*`, names no set
+of files and fails the enumeration naming its key.
+
 ## The filesystem step lives in `PackageJsonFile`
 
 Which files a pattern reaches is a question about the package on disk, so
@@ -110,7 +149,10 @@ package root, so a linked concrete target, a linked parent directory and a
 linked parent of a pattern's base all contribute nothing. It resolves each candidate subpath back through
 `resolveResult`, keeping it only when it lands on the same file — so `null`
 exclusions and more specific keys decide exactly as they do for one
-request.[^exported-files-test]
+request. Because every path is decoded, the walk compares decoded file
+names, and the subpath it reports for a pattern match re-encodes `%`,
+`?`, `#` and control characters (the file `dist/100%.js` is the subpath
+`./100%25`) so it resolves back to the same file.[^exported-files-test]
 
 [^exports-facade]: `packages/package-json/src/PackageExports.ts` — the
     facade, the TypeScript rules and `PackageExportsError`.

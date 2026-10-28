@@ -126,3 +126,49 @@ describe("PackageJsonFile.exportedFiles", () => {
 		);
 	});
 });
+
+// File names that only round-trip if the reported subpath is re-encoded:
+// every path is decoded, every subpath is a request that resolves back to it.
+const e = String.fromCodePoint(0xe9);
+const Encoded = Layer.merge(
+	Path.layer,
+	MemoryFileSystem.layerWith({
+		"/pkg/dist/a b.js": "",
+		"/pkg/dist/100%.js": "",
+		"/pkg/dist/a#b.js": "",
+		"/pkg/dist/a%20b.js": "",
+		[`/pkg/dist/${e}.js`]: "",
+		"/pkg/dist/a+b.js": "",
+	}),
+);
+
+describe("PackageJsonFile.exportedFiles: decoded paths", () => {
+	layer(Encoded)((it) => {
+		it.effect("expands a pattern to decoded files, each under a subpath that resolves back to it", () =>
+			Effect.gen(function* () {
+				const found = yield* subpaths({ exports: { "./*": "./dist/*.js" } });
+				assert.deepStrictEqual(found, [
+					["./100%25", "./dist/100%.js"],
+					["./a b", "./dist/a b.js"],
+					["./a%23b", "./dist/a#b.js"],
+					["./a%2520b", "./dist/a%20b.js"],
+					["./a+b", "./dist/a+b.js"],
+					[`./${e}`, `./dist/${e}.js`],
+				]);
+			}),
+		);
+
+		it.effect("a concrete entry is reached by its decoded path", () =>
+			Effect.gen(function* () {
+				const found = yield* subpaths({
+					exports: { "./sp": "./dist/a%20b.js", "./pct": "./dist/a%2520b.js", "./plus": "./dist/a%2Bb.js" },
+				});
+				assert.deepStrictEqual(found, [
+					["./sp", "./dist/a b.js"],
+					["./pct", "./dist/a%20b.js"],
+					["./plus", "./dist/a+b.js"],
+				]);
+			}),
+		);
+	});
+});

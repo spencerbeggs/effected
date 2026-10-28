@@ -23,11 +23,13 @@ import {
 	assertSubpath,
 	confineLegacyPath,
 	exportsResolve,
+	finalizeFile,
 	importsResolve,
 	isRecord,
 	isRootSugar,
 	starCount,
 	targetResolve,
+	toFilePath,
 } from "./internal/exports.js";
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
@@ -150,6 +152,13 @@ const NODE_CODES: Record<ExportsFailureReason, string | undefined> = {
  *   own or once substituted into the target), or an `imports` bare target is
  *   not a package name plus a confined subpath, as Node's PACKAGE_RESOLVE
  *   reports it.
+ * - A resolved file target names no file once decoded as Node decodes it —
+ *   an invalid UTF-8 escape or a `%` starting no escape (which Node rejects),
+ *   a raw `?` or `#` (which Node would truncate as a query or fragment), or a
+ *   decoded NUL: `invalidPackageTarget` for a target as written,
+ *   `invalidModuleSpecifier` when the request's `*` match was substituted
+ *   into it. Unlike an invalid target found during resolution, this does not
+ *   fall back to the next entry of an array, as in Node.
  * - `packagePathNotExported` / `packageImportNotDefined` — nothing in the map
  *   answers the request.
  * - `limitExceeded` — a nesting depth or `*` count no real manifest reaches;
@@ -205,7 +214,17 @@ export class PackageFileTarget extends Schema.Class<PackageFileTarget>("PackageF
 	kind: Schema.tag("file"),
 	/** The subpath or `#` specifier that was resolved. */
 	request: Schema.String,
-	/** The package-relative file, always `./`-prefixed and confined to the package. */
+	/**
+	 * The package-relative file, always `./`-prefixed, `/`-separated and
+	 * confined to the package — DECODED, as Node's resolution yields it.
+	 *
+	 * @remarks
+	 * The path a filesystem call takes, not the target string as written:
+	 * Node resolves a target as a URL and reads the file through
+	 * `fileURLToPath`, so `"./dist/a%20b.js"` is the file `./dist/a b.js`,
+	 * `%25` is a literal `%`, `+` stays `+`, and a UTF-8 escape is its
+	 * character. Decoding happens once, after every validation.
+	 */
 	path: Schema.String,
 	/** The `exports` or `imports` key that matched; absent when no map was read (`main`, a legacy subpath). */
 	key: Schema.optionalKey(Schema.String),
@@ -249,7 +268,10 @@ export type PackageImportTarget = PackageFileTarget | PackageSpecifierTarget;
 export class ExportEntry extends Schema.Class<ExportEntry>("ExportEntry")({
 	/** The exported subpath; for a pattern, still carrying its `*`. */
 	subpath: Schema.String,
-	/** The package-relative target; for a pattern, carrying a `*` wherever the match lands. */
+	/**
+	 * The package-relative target, decoded as `PackageFileTarget.path`
+	 * is; for a pattern, carrying a `*` wherever the match lands.
+	 */
 	path: Schema.String,
 	/** The `exports` key the entry came from. */
 	key: Schema.String,
@@ -272,7 +294,15 @@ export class ExportEntry extends Schema.Class<ExportEntry>("ExportEntry")({
 export class TypesTarget extends Schema.Class<TypesTarget>("TypesTarget")({
 	/** The subpath that was resolved. */
 	subpath: Schema.String,
-	/** The path the manifest named for it, before extension substitution. */
+	/**
+	 * The path the manifest named for it, before extension substitution.
+	 *
+	 * @remarks
+	 * As WRITTEN, never percent-decoded, unlike `PackageFileTarget.path`:
+	 * TypeScript reads an `exports`, `types` or `main` target as a literal
+	 * file name, so `"./dist/a%20b.d.ts"` is the file `a%20b.d.ts` to it. The
+	 * `candidates` are undecoded for the same reason.
+	 */
 	target: Schema.String,
 	/** The files TypeScript probes, in order. */
 	candidates: Schema.Array(Schema.String),
@@ -355,20 +385,31 @@ const attempt = <A>(request: string, run: () => A): Result.Result<A, PackageExpo
 const hasExports = (manifest: PackageExportsManifest): boolean =>
 	manifest.exports !== undefined && manifest.exports !== null;
 
+/**
+ * A matched target as the file it names, decoded as Node decodes it — after
+ * every validation, never before. A written target that names no file blames
+ * the target; a substituted one blames the request whose match it carries.
+ */
 const fileTarget = (request: string, matched: MatchedEntry): PackageFileTarget =>
 	PackageFileTarget.make({
 		request,
-		path: matched.target.value,
+		path: finalizeFile(
+			matched.target.value,
+			matched.patternMatch === null ? "invalidPackageTarget" : "invalidModuleSpecifier",
+		),
 		key: matched.key,
 		...(matched.patternMatch !== null && { patternMatch: matched.patternMatch }),
 	});
 
-/** The legacy (no `exports`) answer for a subpath: `main` for the root, the subpath itself otherwise. */
-const legacyFile = (manifest: PackageExportsManifest, subpath: string): PackageFileTarget => {
-	if (subpath !== ".") return PackageFileTarget.make({ request: subpath, path: subpath });
-	const main = typeof manifest.main === "string" && manifest.main !== "" ? manifest.main : "index.js";
-	return PackageFileTarget.make({ request: subpath, path: confineLegacyPath(main) });
-};
+/** The legacy `main` (else `index.js`), confined but still as written: TypeScript reads it undecoded. */
+const legacyMain = (manifest: PackageExportsManifest): string =>
+	confineLegacyPath(typeof manifest.main === "string" && manifest.main !== "" ? manifest.main : "index.js");
+
+/** The legacy (no `exports`) answer for a subpath: `main` for the root, the subpath itself otherwise, decoded. */
+const legacyFile = (manifest: PackageExportsManifest, subpath: string): PackageFileTarget =>
+	subpath === "."
+		? PackageFileTarget.make({ request: subpath, path: finalizeFile(legacyMain(manifest), "invalidPackageTarget") })
+		: PackageFileTarget.make({ request: subpath, path: finalizeFile(subpath, "invalidModuleSpecifier") });
 
 /**
  * TypeScript's `matchPatternOrExact` over one `typesVersions` mapping: an exact
@@ -483,7 +524,7 @@ const typesLegacy = (
 			pattern: false,
 		});
 	}
-	const main = legacyFile(manifest, ".").path;
+	const main = legacyMain(manifest);
 	return TypesTarget.make({ subpath, target: main, candidates: fileCandidates(main), source: "main", pattern: false });
 };
 
@@ -524,6 +565,17 @@ const enumerate = <A>(
 	return entries;
 };
 
+/**
+ * An enumerated runtime target as the file (or, for a pattern, the template of
+ * files) it names, decoded as {@link PackageExports.resolveResult} decodes
+ * one. A target naming no file fails the enumeration, naming the key.
+ */
+const entryPath = (path: string, pattern: boolean, key: string): string => {
+	const decoded = toFilePath(path, pattern);
+	if (decoded === undefined) throw new ExportsFailure("invalidPackageTarget", path, key);
+	return decoded;
+};
+
 // ── The facade ───────────────────────────────────────────────────────────────
 
 /**
@@ -560,6 +612,16 @@ const enumerate = <A>(
  * package name plus a subpath with no forbidden segment, and a `*` match
  * substituted into one is checked too; and `main`, `types` and
  * `typesVersions` targets, which Node does not confine, are confined.
+ *
+ * **A resolved path is the decoded file.** Once a target has passed every
+ * check above, it is decoded the way Node's resolution decodes it — parsed as
+ * a URL against the package and read through `fileURLToPath`'s POSIX
+ * percent-decoding — so `PackageFileTarget.path` and
+ * `ExportEntry.path` are the paths a filesystem call takes:
+ * `./dist/a b.js` for a target written `./dist/a%20b.js`. Decoding a target
+ * whose escapes Node would reject fails closed. The TypeScript statics are
+ * the exception: TypeScript reads targets undecoded, so a
+ * {@link TypesTarget} keeps the written form.
  *
  * **The manifest's key order decides between conditions.** A conditions
  * object is walked in insertion order and the first key the environment
@@ -620,6 +682,10 @@ export class PackageExports {
 	 * When `exports` is absent the legacy reading applies — `"."` is `main`
 	 * (else `index.js`), any other subpath is itself — with no extension or
 	 * directory probing, which needs a filesystem.
+	 *
+	 * The answer's `path` is decoded as Node decodes the resolved URL: a
+	 * request `"./a%20b"` against `"./*": "./dist/*.js"` is the file
+	 * `./dist/a b.js`.
 	 *
 	 * Patterns, `null` exclusions and fallback arrays all follow the
 	 * specification: the most specific pattern key decides
@@ -768,7 +834,8 @@ export class PackageExports {
 			enumerate(
 				manifest,
 				matcherOf(options?.conditions ?? DEFAULT_CONDITIONS),
-				(subpath, path, key, pattern) => ExportEntry.make({ subpath, path, key, pattern }),
+				(subpath, path, key, pattern) =>
+					ExportEntry.make({ subpath, path: entryPath(path, pattern, key), key, pattern }),
 				() => [ExportEntry.make({ subpath: ".", path: legacyFile(manifest, ".").path, key: ".", pattern: false })],
 			),
 		);
