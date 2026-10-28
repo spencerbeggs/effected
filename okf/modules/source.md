@@ -27,10 +27,10 @@ sources:
     title: "LSP 3.17 Position: zero-based, UTF-16 by default, line endings \\n, \\r\\n and \\r"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T19:33:06Z
+  at: 2026-10-28T20:28:31Z
 integrity:
   generated:
-    body: 15bfb293ddba66cd
+    body: e66fa7a4c9197920
 ---
 
 # @effected/source
@@ -113,9 +113,15 @@ a surface no adopter uses. A position can name the low half of a surrogate
 pair, as LSP allows.
 
 **Line terminators: LSP's `\n`, `\r\n` and bare `\r` by default**, with two
-other rules (`LineBreaks`) so every existing producer can be reproduced:
-`"lf"` (a line ends at `\n` only; `\r\n` stays one terminator; a bare `\r`
-is text) and `"unicode"` (`"lsp"` plus U+2028 and U+2029).[^lsp-position]
+other rules (`LineBreaks`): `"unicode"` (`"lsp"` plus U+2028 and U+2029),
+which `@effected/jsonc` uses to reproduce its scanner's diagnostic
+positions, and `"lf"` (a line ends at `\n` only; `\r\n` stays one
+terminator; a bare `\r` is text).[^lsp-position] No kit package uses
+`"lf"` now: yaml held its tokens and lint lines on it only until its
+composer broke lines at a bare `\r`, and moved to `"lsp"` then (see the
+findings below). It stays because a consumer reproducing a `\n`-only line
+count, such as a tool that splits text on `\n`, has no other way to get
+one, and removing a published option would be a breaking change.
 
 **Clamping follows `vscode-languageserver-textdocument`**, the `TextDocument`
 most LSP servers already use, so a kit server agrees with it on every edge:
@@ -142,7 +148,12 @@ text ending in a terminator has an empty last line after it (`"a\n"` has two
 lines), as an editor shows it and as markdown's AST already places its root's
 end point.
 
-## What each package computes today
+## What each package computed before adopting `LineIndex`
+
+The table records the hand-rolled loops as they stood before the adoption
+wave, and the mapping that reproduced each. It is not today's state for
+yaml: after the findings below, every yaml producer uses the default
+`"lsp"` rule, and only jsonc keeps `"unicode"`.
 
 Measured by a scratchpad probe against the built packages, then by a
 differential run of every string of up to five characters over
