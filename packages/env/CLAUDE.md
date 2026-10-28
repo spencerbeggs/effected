@@ -48,8 +48,10 @@ Never pin this package's own output as the oracle in a test.
   into the sandbox, never `/dev/stdin`: Node hands the child a socket for fd 0 on
   Linux and `open("/dev/stdin")` fails with ENXIO, so the source exports nothing.
   A file bash could not read exits 97 and fails the test; it is never a verdict.
-  Source as the script's first command: an exported `PIPESTATUS` stays plain only
-  when no pipeline ran before it (bash 3.2 through 5.3 alike). Special-name evidence
+  Source as the script's first command. `PIPESTATUS` is on the denylist: bash keeps
+  an exported one only as the very first command a shell runs (bash 3.2 through 5.3
+  alike), so the special-name detector exports each name on a file's second line,
+  and a separate suite pins both positions. Special-name evidence
   needs bash >= 5 (`COMP_WORDBREAKS` is special); `SRANDOM` is special from 5.1 and
   `BASH_MONOSECONDS` / `BASH_TRAPSIG` from 5.3, and the suite asserts them plain below;
   the bash 3.2 suites (macOS `/bin/bash`) cover `parseBytesResult`'s mixed raw-byte

@@ -61,7 +61,7 @@ const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 // Names bash does not leave as plain variables when a file exports them: read-only (UID, EUID, PPID, SHELLOPTS,
 // BASHOPTS, BASH_VERSINFO), dynamic (RANDOM, SRANDOM, LINENO, SECONDS, EPOCHSECONDS, EPOCHREALTIME, BASHPID, HISTCMD,
-// OPTIND, `_`), arrays that never reach the environment (GROUPS, FUNCNAME, DIRSTACK), set by bash itself in every
+// OPTIND, `_`, PIPESTATUS), arrays that never reach the environment (GROUPS, FUNCNAME, DIRSTACK), set by bash itself in every
 // shell it starts (BASH, IFS, SHLVL, PWD, OLDPWD, COMP_WORDBREAKS), written by bash builtins (OPTARG, REPLY, MAPFILE, COPROC), or
 // changing how bash reads what follows (POSIXLY_CORRECT turns on POSIX mode). Each is pinned against bash in the tests.
 const SPECIAL = new Set([
@@ -94,6 +94,9 @@ const SPECIAL = new Set([
 	"MAPFILE",
 	"COPROC",
 	"COMP_WORDBREAKS",
+	// Rewritten after every pipeline: an export survives only as the very first command a shell runs, so a second
+	// line of the same file, or any shell that ran a command first, loses it.
+	"PIPESTATUS",
 ]);
 
 /** Whether bash treats `name` specially: the denylist, or the `BASH_` prefix bash reserves for its own variables. */

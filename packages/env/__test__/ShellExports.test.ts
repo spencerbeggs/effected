@@ -157,6 +157,7 @@ const NEGATIVE: ReadonlyArray<readonly [text: string, reason: ShellExportsErrorR
 	["export BASH_ENV=/tmp/x", "special-variable"],
 	["export BASH_ANYTHING=1", "special-variable"],
 	["export POSIXLY_CORRECT=1", "special-variable"],
+	["export PIPESTATUS=1", "special-variable"],
 	["export A='open", "unterminated-quote"],
 	['export A="open', "unterminated-quote"],
 	["export A=$'open", "unterminated-quote"],
@@ -291,6 +292,7 @@ describe("ShellExports.format", () => {
 		assert.throws(() => ShellExports.format({ "1A": "1" }), RangeError);
 		assert.throws(() => ShellExports.format({ RANDOM: "1" }), RangeError);
 		assert.throws(() => ShellExports.format({ BASH_ENV: "1" }), RangeError);
+		assert.throws(() => ShellExports.format({ PIPESTATUS: "1" }), RangeError);
 		assert.throws(() => ShellExports.format({ A: "a\0b" }), RangeError);
 		assert.throws(() => ShellExports.format({ A: "a\uD800" }), RangeError);
 	});
@@ -454,9 +456,8 @@ const sourceFile = (text: string | Uint8Array): string => {
 const UNREADABLE = 97;
 /**
  * Sources `path` as the script's first command, leaving its status in `$status`, and exits with UNREADABLE when it
- * failed because `path` could not be read. The check runs only after a failed source: a pipeline run before the source
- * makes PIPESTATUS an array that the next pipeline overwrites, where sourced first an exported PIPESTATUS stays plain
- * (bash 3.2 through 5.3 alike).
+ * failed because `path` could not be read. The check runs only after a failed source, so nothing the script runs
+ * comes before the text it sources.
  */
 const source = (path: string, redirect = "") =>
 	`. ${path}${redirect}; status=$?; [ $status -eq 0 ] || [ -r ${path} ] || exit ${UNREADABLE}`;
@@ -762,6 +763,7 @@ const SPECIAL_NAMES: ReadonlyArray<string> = [
 	"MAPFILE",
 	"COPROC",
 	"COMP_WORDBREAKS",
+	"PIPESTATUS",
 ];
 
 // The BASH_ prefix is reserved by bash; these are the members shown special the same way.
@@ -791,7 +793,9 @@ const BASH_PREFIXED: ReadonlyArray<string> = [
  * cannot read, or a verdict that is not exactly 0 or 1, fails the test: a harness fault is never counted as special.
  */
 const bashTreatsSpecially = (name: string): boolean => {
-	const path = sourceFile(`export ${name}=sentinel\n`);
+	// The name is exported second, as in any file of exports: bash keeps an exported PIPESTATUS only as the very
+	// first command a shell runs, so a detector that exported the name first would read it as plain.
+	const path = sourceFile(`export PLAIN_FIRST=1\nexport ${name}=sentinel\n`);
 	const script = [
 		source(path, " 2>err.txt"),
 		`n=${name}; special=0`,
@@ -818,10 +822,9 @@ const bashTreatsSpecially = (name: string): boolean => {
 const SPECIAL_SINCE: Readonly<Record<string, number>> = { SRANDOM: 1, BASH_MONOSECONDS: 3, BASH_TRAPSIG: 3 };
 
 describe.skipIf(!hasBash5)("the special-variable denylist, against bash 5", () => {
-	it("control: ordinary names are not shown special by the same tests (PIPESTATUS included: bash 5 leaves an exported one plain)", () => {
+	it("control: ordinary names are not shown special by the same tests", () => {
 		assert.isFalse(bashTreatsSpecially("PLAIN_CONTROL"));
 		assert.isFalse(bashTreatsSpecially("HOSTTYPE"));
-		assert.isFalse(bashTreatsSpecially("PIPESTATUS"));
 	});
 
 	for (const name of [...SPECIAL_NAMES, ...BASH_PREFIXED]) {
@@ -840,7 +843,47 @@ describe.skipIf(!hasBash5)("the special-variable denylist, against bash 5", () =
 	}
 
 	it("names near the denylist stay ordinary: PATH, HOME, LANG, LC_ALL, HOSTTYPE, BASHX, XBASH_Y", () => {
-		for (const name of ["HOSTTYPE", "PIPESTATUS", "PATH", "HOME", "LANG", "LC_ALL", "BASHX", "XBASH_Y"])
-			ok(`export ${name}=x\n`);
+		for (const name of ["HOSTTYPE", "PATH", "HOME", "LANG", "LC_ALL", "BASHX", "XBASH_Y"]) ok(`export ${name}=x\n`);
 	});
+});
+
+/** What the bash at `bin` holds as `PIPESTATUS`, in its own shell and in a child's environment, after sourcing `text`. */
+const pipestatusAfter = (bin: string, text: string): { readonly shell: string; readonly child: string } => {
+	const path = sourceFile(text);
+	const script = `${source(path)}; printf '%s\\0' "$PIPESTATUS" "$(printenv PIPESTATUS || echo '<absent>')"`;
+	const result = spawnSync(bin, ["--norc", "--noprofile", "-c", script], {
+		input: "",
+		encoding: "utf8",
+		cwd: sandbox,
+		env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: sandbox, LC_ALL: "en_US.UTF-8" },
+		timeout: 10_000,
+	});
+	assertRead(result);
+	assert.strictEqual(result.status, 0, result.stderr);
+	const [shell, child] = result.stdout.split("\0");
+	return { shell: shell as string, child: child as string };
+};
+
+const pipestatusShells: ReadonlyArray<readonly [bin: string, version: string]> = [
+	...(hasBash ? [["bash", probe.stdout] as const] : []),
+	...(hasBash3 ? [[BASH3, "3.2"] as const] : []),
+];
+
+describe.skipIf(pipestatusShells.length === 0)("PIPESTATUS: an export bash keeps only as the first command", () => {
+	for (const [bin, version] of pipestatusShells) {
+		it(`control (bash ${version}): exported on a file's first line, it survives`, () =>
+			assert.deepStrictEqual(pipestatusAfter(bin, "export PIPESTATUS=sentinel\nexport A=1\n"), {
+				shell: "sentinel",
+				child: "sentinel",
+			}));
+
+		it(`bash ${version} drops it on a file's second line, and the dialect rejects it in every position`, () => {
+			const second = "export A=1\nexport PIPESTATUS=sentinel\n";
+			const dropped = pipestatusAfter(bin, second);
+			assert.notStrictEqual(dropped.shell, "sentinel");
+			assert.strictEqual(dropped.child, "<absent>");
+			assert.strictEqual(rejection(second).reason, "special-variable");
+			assert.strictEqual(rejection("export PIPESTATUS=sentinel\nexport A=1\n").reason, "special-variable");
+		});
+	}
 });
