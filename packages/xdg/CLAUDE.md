@@ -86,6 +86,15 @@ Three consequences, and they are why the design holds together:
   its control). `Xdg.layerFrom(paths)` is the different, older thing: fixed paths.
   There is **no** posix `USERPROFILE` fallback — declined 2026-10-26 — so the
   home rule is identical across both layers.
+- **Departures from the spec are opt-in, through `XdgEnvOptions`**
+  (`Xdg.layerWith(options)`, `Xdg.layerFromEnv(env, options)`), and every
+  default is the spec: `layerWith({})` is `Xdg.layer`. `homeFallback` replaces
+  only a *missing* home (`Config.option` → `none`), never a set one and never a
+  provider failure; an empty result fails as before, a throw is a defect.
+  `relativeHomes: "keep"` keeps a relative `XDG_*_HOME` as given and touches
+  nothing else (`XDG_RUNTIME_DIR` and `*_DIRS` stay spec). Never flip a default:
+  the spec rule and the declined `USERPROFILE` ruling both stand
+  (`__test__/XdgEnvOptions.test.ts`, each clause mutation-checked).
 - **`AppDirs.segment(name)` is a persisted contract.** It is vitest-agent's
   `normalizeWorkspaceKey` byte for byte (`/`→`__`, outside `[A-Za-z0-9._@-]`→`_`,
   `_{3,}`→`__`, **no `u` flag** so an astral character is `__`), returning a
@@ -121,7 +130,7 @@ would be a one-element loop and the walker edge would be ceremony.
 
 ## Testing and building
 
-86 tests in `__test__/`, `@effect/vitest`, `assert.*` — never `expect`.
+99 tests in `__test__/`, `@effect/vitest`, `assert.*` — never `expect`.
 
 ```bash
 pnpm vitest run packages/xdg

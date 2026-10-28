@@ -1121,7 +1121,7 @@
 		"CurrentPlatform": "override the detected os platform for native directory resolution in tests",
 		"NativeDirs": "map platform and environment to os-native app directories, macOS Application Support, Windows AppData",
 		"ResolvedAppDirs": "the fully resolved app-namespaced directories and their search paths",
-		"Xdg": "read the XDG Base Directory environment variables once at layer construction",
+		"Xdg": "read the XDG Base Directory environment once at layer construction, opt-in home fallback",
 		"XdgConfig": "bridge xdg app directories into a config-file resolver, search path or native directory",
 		"XdgEnvError": "handle the HOME environment variable missing for xdg resolution",
 		"XdgPaths": "the resolved XDG_CONFIG_HOME/XDG_DATA_HOME and friends, home directory required",
