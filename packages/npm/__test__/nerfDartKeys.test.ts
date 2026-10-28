@@ -18,6 +18,40 @@ const HOSTILE = [
 	`https://r.example.com/${"a/".repeat(10_000)}`,
 ];
 
+/**
+ * The oracle: npm-registry-fetch 19.1.1's `regFromURI` (lib/auth.js), transcribed. It starts at
+ * `//host[:port]` plus the whole path and strips either the trailing run of non-slash characters or one
+ * trailing `/` per step, stopping at `//`. Every step removes at least one character, so it terminates;
+ * it is the order the kit must match, not the implementation it uses.
+ */
+const npmOrder = (url: string): ReadonlyArray<string> => {
+	const parsed = new URL(url);
+	const keys: Array<string> = [];
+	let key = `//${parsed.host}${parsed.pathname}`;
+	while (key.length > "//".length) {
+		keys.push(key);
+		key = key.replace(/([^/]+|\/)$/, "");
+	}
+	return keys;
+};
+
+const ORDINARY = [
+	"https://H.example:443/a/b/c.tgz",
+	"https://h.example:8443",
+	"https://h.example:8443/",
+	"https://h.example/a/b/",
+	"https://h.example/a",
+	"https://registry.npmjs.org/@scope%2fname/1.0.0",
+	"https://npm.pkg.github.com/acme/@acme%2fwidget?write=true#frag",
+	"https://user:pass@h.example/p/q",
+	"https://r.example.com//pkg/-/pkg-1.0.0.tgz",
+	"https://r.example.com//",
+	"https://r.example.com///a//b///",
+	"http://[::1]:4873/pkg/-/pkg-1.0.0.tgz",
+	"foo:///x",
+	"foo:bar",
+];
+
 describe("nerfDartKeys", () => {
 	it("returns on `//`-bearing paths, in a subprocess under a hard timeout", () => {
 		const script = [
@@ -32,33 +66,51 @@ describe("nerfDartKeys", () => {
 		});
 		assert.strictEqual(child.signal, null, "killed by the timeout: the walk does not terminate");
 		assert.strictEqual(child.status, 0, child.stderr);
-		assert.deepStrictEqual(JSON.parse(child.stdout), [4, 2, 8, MAX_NERF_DART_KEYS, MAX_NERF_DART_KEYS]);
+		assert.deepStrictEqual(JSON.parse(child.stdout), [8, 3, 11, MAX_NERF_DART_KEYS, MAX_NERF_DART_KEYS]);
+	});
+
+	it("tries exactly npm's keys in npm's order: each level with its slash, then without", () => {
+		for (const url of ORDINARY) {
+			assert.deepStrictEqual(nerfDartKeys(url), npmOrder(url), url);
+		}
 	});
 
 	it("treats an empty segment as a level, deepest first, ending at the host", () => {
 		assert.deepStrictEqual(nerfDartKeys("https://r.example.com//pkg/-/pkg-1.0.0.tgz"), [
+			"//r.example.com//pkg/-/pkg-1.0.0.tgz",
 			"//r.example.com//pkg/-/",
+			"//r.example.com//pkg/-",
 			"//r.example.com//pkg/",
+			"//r.example.com//pkg",
 			"//r.example.com//",
 			"//r.example.com/",
+			"//r.example.com",
 		]);
-		assert.deepStrictEqual(nerfDartKeys("https://r.example.com//"), ["//r.example.com//", "//r.example.com/"]);
+		assert.deepStrictEqual(nerfDartKeys("https://r.example.com//"), [
+			"//r.example.com//",
+			"//r.example.com/",
+			"//r.example.com",
+		]);
 	});
 
-	it("walks an ordinary path the way it always did (the control)", () => {
+	it("walks an ordinary path, lowercasing the host and dropping a default port (the control)", () => {
 		assert.deepStrictEqual(nerfDartKeys("https://H.example:443/a/b/c.tgz"), [
+			"//h.example/a/b/c.tgz",
 			"//h.example/a/b/",
+			"//h.example/a/b",
 			"//h.example/a/",
+			"//h.example/a",
 			"//h.example/",
+			"//h.example",
 		]);
-		assert.deepStrictEqual(nerfDartKeys("https://h.example:8443"), ["//h.example:8443/"]);
+		assert.deepStrictEqual(nerfDartKeys("https://h.example:8443"), ["//h.example:8443/", "//h.example:8443"]);
 		assert.isUndefined(nerfDartKeys("not a url"));
 	});
 
-	it("keeps the shallowest keys, so the host's own key survives the bound", () => {
+	it("keeps the shallowest keys, so the host's own keys survive the bound", () => {
 		const keys = nerfDartKeys(`https://h.example/${"a/".repeat(500)}`) ?? [];
 		assert.lengthOf(keys, MAX_NERF_DART_KEYS);
-		assert.strictEqual(keys.at(-1), "//h.example/");
-		assert.strictEqual(keys[0], `//h.example/${"a/".repeat(MAX_NERF_DART_KEYS - 1)}`);
+		assert.deepStrictEqual(keys.slice(-2), ["//h.example/", "//h.example"]);
+		assert.deepStrictEqual(keys, npmOrder(`https://h.example/${"a/".repeat(500)}`).slice(-MAX_NERF_DART_KEYS));
 	});
 });

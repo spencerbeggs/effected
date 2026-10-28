@@ -242,16 +242,23 @@ const envLayer = (env: Readonly<Record<string, string | undefined>>): string => 
  *
  * **A credential only ever goes to the host it was configured for.**
  * `credentialFor(url)` looks a credential up by the URL being requested, as
- * npm does: the nerf-dart key (`//host[:port]/path/`) of that URL, walked up
- * through its parent paths to `//host[:port]/` and never further. A scoped
+ * npm does: the nerf-dart key of that URL, walked up through its parent paths
+ * to `//host[:port]` and never further. Each level is tried with its trailing
+ * slash and then without it, as npm tries them, so an npmrc line written
+ * `//host/path/:_authToken`, `//host/path:_authToken`, `//host/:_authToken`
+ * or `//host:_authToken` is found; when both spellings of one level are
+ * configured, the one with the slash wins. Every key ends on a segment
+ * boundary of the request's own host and path, so `//host:_authToken` never
+ * matches `//hostevil.com`, and `//host/pa:_authToken` never matches
+ * `/path/`. A scoped
  * registry on another host, a lookalike host (`registry.npmjs.org.evil.dev`),
  * another port, or a tarball URL on a CDN therefore gets no credential unless
  * one is configured for that host itself. An unscoped top-level `_authToken`
  * or `_auth` names no host, so it is never used (npm refuses it too).
  * An empty path segment is a level of its own, as in npm: a tarball at
  * `https://host//pkg/-/pkg-1.0.0.tgz` (the shape Artifactory and Nexus emit)
- * tries `//host//pkg/-/`, `//host//pkg/`, `//host//` and then `//host/`, so a
- * credential configured for the host is still found.
+ * walks down through `//host//pkg/`, `//host//pkg`, `//host//`, `//host/` and
+ * `//host`, so a credential configured for the host is still found.
  *
  * **A credential only ever goes over `https:`, unless the configuration chose
  * `http:` for that host.** This is a deliberate departure from npm, which
@@ -327,7 +334,9 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 	 *
 	 * @remarks
 	 * Looked up by the request URL's own host, port and path (see the class
-	 * remarks): never another host's credential. Within the matched key,
+	 * remarks): never another host's credential. Keys are tried deepest first,
+	 * each level with its trailing slash before the same level without it, and
+	 * the first key holding a usable credential is the match. Within that key,
 	 * `_authToken` wins over `_auth`, which wins over `username` + `_password`
 	 * (decoded from base64, as npm stores it) — npm's order. An unparseable URL
 	 * has no credential, and neither does any scheme but `https:`, or `http:`
