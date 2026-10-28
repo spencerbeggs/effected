@@ -2,7 +2,7 @@
 	"repos": {
 		"effect": {
 			"url": "https://github.com/Effect-TS/effect.git",
-			"ref": "effect@4.0.6",
+			"ref": "effect@4.0.7",
 			"purpose": "Read-only Effect v4 source pinned to the tag matching the effect catalog — the authority on what v4 actually exports, plus the v3→v4 migration notes and the @effect/vitest reference implementation. Tracks the main Effect-TS/effect monorepo (v4 development moved back there on 2026-07-19 when the effect-smol repo was archived); vendored at .repos/effect since the 2026-07-24 rename, matching the path a consuming repo would use.",
 			"sparse": [
 				"packages/effect",
@@ -22,12 +22,6 @@
 				"startHere": "packages/effect/src settles what v4 actually exports (evidence-ladder rung 2); migration/*.md settles v3→v4 renames (rung 1). Before trusting an answer, check the pin matches the installed effect version — node_modules wins on disagreement."
 			},
 			"notes": [
-				{
-					"id": "n-7921",
-					"date": "2026-09-19",
-					"ref": "effect@4.0.0-rc.116",
-					"note": "rc.115→rc.116 advance (2026-09-19): one kit source break — Stream.scan / Stream.scanEffect take a LazyArg initial state (Stream.scan(() => initial, fold)); hit once in jsonl Journal.projection. The other rc.116 breaks did not touch the kit but bite consumers: SchemaTransformation.make is makeTransformation, Transformation#compose is the dual SchemaTransformation.composeTransformation, new SchemaGetter.Getter / onSome / onNone are gone (Getter is a tagged union exposing only pipe; use SchemaGetter.map/compose/run and transformOptionalEffect), SchemaAST.Context.constructorDefault holds the Effect directly (no Link), ByteSize.Input string literals are checked at compile time (parse external strings with ByteSize.fromString), Effect.orElseSucceed passes the error to its fallback, Effect.isEffect narrows to Effect<unknown, unknown, unknown>, Stream.partition returns [passes, fails] with a capacity option, Stream.mapBoth takes onElement/onError. Arbitrary shrinking changed so replay tokens from rc.115 no longer reproduce. Published kit stayed bound to rc.115 through the packageExtensions bridge (grep \"@effected/[a-z-]+@[0-9.]+\\(effect@4\\.0\\.0-rc\\.116\\)\" in the lockfile must be empty until the toolchain republishes)."
-				},
 				{
 					"id": "n-99ea",
 					"date": "2026-09-22",
@@ -81,6 +75,12 @@
 					"date": "2026-10-22",
 					"ref": "effect@4.0.6",
 					"note": "4.0.5→4.0.6 advance (2026-10-22): two kit breaks. (1) TYPE: FileSystem.make requires lstat (#6428) — memfs volume (resolve with followFinalSymbolicLink:false), NodeSyncFileSystem (lstatSync via a statWith helper mirroring the adapter's statFactory) and the fault wrapper (intercept \"lstat\"; MemoryFileSystemFaultMethod derives from the interface, so an un-intercepted lstat would have been an accepted-but-dead fault key). (2) RUNTIME: when a defect joins a typed failure, the typed failure is DEMOTED to a Die (#9433; probed: fail(Cancelled)+dying finalizer is Fail,Die on 4.0.5 and Die(Cancelled),Die on 4.0.6) — CliUi.run's crash-beats-cancel path collected all Die reasons and so re-carried the cancel; it now excludes Cancelled defects. Also the node adapter maps EPERM→PermissionDenied (was Unknown); memfs errnoTag follows, caught by the node run of ErrnoParityContract. Workarounds: none retired — Effect-TS/effect#8499 (McpServer stdio Eof) still OPEN, StdinFrames guard stays; #8084 remains closed-by-design (note n-5158 removed for the limit; the rule lives in okf/modules/schemastore.md). Not bugs: core TerminalCapabilities lets NO_COLOR beat FORCE_COLOR while @effected/env follows Node (FORCE_COLOR wins); an installed CliOutput.Formatter still wins, so CliRuntime.main help agrees with the kit. Layer memoization of composed layers by identity (#9634) left every kit count unchanged; only a Layer.fresh dependency INSIDE a shared composed layer now builds once. PackedInstall e2e failures on a dev machine are a user-global pnprServer in ~/.config/pnpm/config.yaml hit through the test's dead proxy, not the advance."
+				},
+				{
+					"id": "n-1c0d",
+					"date": "2026-10-28",
+					"ref": "effect@4.0.7",
+					"note": "4.0.6→4.0.7 advance (2026-10-28): two kit RUNTIME breaks, both in @effected/cli, and one workaround retired. (1) Param.withFallbackPrompt now reads core's TerminalCapabilities.canPrompt and skips the fallback entirely when false (#9881). The kit never provided TerminalCapabilities, so core read process.stdin.isTTY, and CliPrompt.fallback / CliUi.fallback never ran in a piped run: the documented `otherwise` default was lost and the run exited 64 (27 cli tests). Fix: CliInteractive.layer/layerTest hold core's canPrompt open, since CliInteractive + CliPrompt.gateTerminal own the prompt decision; CliEnv.layer installs TerminalCapabilities from the kit's TerminalEnv through cli's internal terminalCapabilities layer. env gained the pure TerminalEnv.colorLevelFrom (closes effected#1139) and TerminalEnv.capabilities, with effect/cli imported type-only: TerminalCapabilities is exported only through the effect/cli barrel, and a value import costs every env consumer +14 modules / ~15 ms over ~75 ms unbundled. (2) Command.runWith renders ANY handler failure carrying a string [CliError.userMessage] (#8349), sets errorReported=false and re-fails with the tag kept, so reportFailures printed a second \"[FAIL] <Tag>\" line; it now skips it with the handler-failure exit code (exitCodes by tag, then exitCode), not usageExitCode. Retired: @effected/mcp StdinFrames' @effect/rpc/ branch. Effect-TS/effect#8499 closed by PR #8509 (controlMessages off for MCP); probed unguarded: 4.0.6 stops after an Eof notification, 4.0.7 keeps serving, writes no Pong, answers an id'd @effect/rpc/Eof with -32601 \"Method not found: @effect/rpc/Eof\". Adopted: CliOutput.Presenter (#6743) replaces cli's Console-interception HelpRouting for helpOnUsageError \"stderr\". Test-only: #9954 makes an Effect.sync thunk's V8 frame anonymous (\"at file:L:C\", no parens) and Cause.pretty now prints it. @effect/vitest layer() gained buildPerTest (probed: per-test build into a forked memo map, released before the next test). Kept: commands Run.ts concurrent pipe drain (an invariant, not a #9846 workaround); CliPrompt.fallback's own prompt run (core still turns Ctrl-C into the missing-parameter error). Not bugs: Toml.parse fixes don't touch @effected/toml (own engine); repeated single-valued flags now fail (#9872), and no kit test passed one twice."
 				}
 			]
 		},
