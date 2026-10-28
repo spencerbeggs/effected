@@ -149,6 +149,63 @@ describe("PackageTarball credentials: what goes on the wire", () => {
 		}),
 	);
 
+	describe("an npmrc key written without its trailing slash, as npm accepts it", () => {
+		const bare = config([
+			`//npm.acme.dev:_authToken=${REGISTRY_TOKEN}`,
+			`//cdn.acme-static.net/acme:_authToken=${CDN_TOKEN}`,
+			"//localhost:4873:_auth=dXNlcjpwYXNz",
+		]);
+
+		it.effect("a host key carries its token to a tarball on that host", () =>
+			Effect.gen(function* () {
+				const { requests, client } = recording(() => ({ status: 200 }));
+				yield* extractWith(client, published("https://npm.acme.dev/@acme/widget/-/widget-1.0.0.tgz"), bare);
+				assert.strictEqual(requests[0]?.authorization, `Bearer ${REGISTRY_TOKEN}`);
+			}),
+		);
+
+		it.effect("a path key carries its token below that path, and not beside it", () =>
+			Effect.gen(function* () {
+				const { requests, client } = recording(() => ({ status: 200 }));
+				yield* extractWith(client, published("https://cdn.acme-static.net/acme/widget-1.0.0.tgz"), bare);
+				yield* extractWith(client, published("https://cdn.acme-static.net/acmex/widget-1.0.0.tgz"), bare);
+				assert.lengthOf(requests, 2);
+				assert.strictEqual(requests[0]?.authorization, `Bearer ${CDN_TOKEN}`);
+				assert.isUndefined(requests[1]?.authorization);
+			}),
+		);
+
+		it.effect("a host-and-port key carries its credential on that port only", () =>
+			Effect.gen(function* () {
+				const { requests, client } = recording(() => ({ status: 200 }));
+				const local = config(["registry=http://localhost:4873/", "//localhost:4873:_auth=dXNlcjpwYXNz"]);
+				yield* extractWith(client, published("http://localhost:4873/widget/-/widget-1.0.0.tgz"), local);
+				yield* extractWith(client, published("https://localhost/widget/-/widget-1.0.0.tgz"), bare);
+				assert.strictEqual(requests[0]?.authorization, "Basic dXNlcjpwYXNz");
+				assert.isUndefined(requests[1]?.authorization);
+			}),
+		);
+
+		it.effect("a host key sends nothing to a host it is a prefix of", () =>
+			Effect.gen(function* () {
+				const { requests, client } = recording(() => ({ status: 200 }));
+				yield* extractWith(client, published("https://npm.acme.dev.evil.example/widget-1.0.0.tgz"), bare);
+				yield* extractWith(client, published("https://npm.acme.devevil.com/widget-1.0.0.tgz"), bare);
+				assert.lengthOf(requests, 2);
+				assert.isUndefined(requests[0]?.authorization);
+				assert.isUndefined(requests[1]?.authorization);
+			}),
+		);
+
+		it.effect("a double-slash tarball URL returns and carries the slash-less host key's token", () =>
+			Effect.gen(function* () {
+				const { requests, client } = recording(() => ({ status: 200 }));
+				yield* extractWith(client, published("https://npm.acme.dev//@acme/widget/-/widget-1.0.0.tgz"), bare);
+				assert.strictEqual(requests[0]?.authorization, `Bearer ${REGISTRY_TOKEN}`);
+			}),
+		);
+	});
+
 	it.effect("a tarball on a lookalike host gets no credential", () =>
 		Effect.gen(function* () {
 			const { requests, client } = recording(() => ({ status: 200 }));

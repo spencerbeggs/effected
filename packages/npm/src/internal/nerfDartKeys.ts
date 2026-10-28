@@ -5,29 +5,42 @@
 /**
  * How many keys one URL yields at most. A credential is configured a few path
  * segments below its host, so the bound only drops the deepest keys of a path
- * with more segments than this, never the host's own key.
+ * with more segments than this, never the host's own keys.
  *
  * @internal
  */
 export const MAX_NERF_DART_KEYS = 64;
 
 /**
- * The nerf-dart keys npm tries for a URL, deepest first: `//host[:port]/path/`
- * up to `//host[:port]/`, never past the host. `undefined` for a URL that does
- * not parse.
+ * The nerf-dart keys npm tries for a URL, deepest first, never past the host.
+ * `undefined` for a URL that does not parse.
  *
  * @remarks
- * Every prefix of the URL's directory that ends in `/` is one key, so the walk
- * is over the positions of `/` and finishes on any input. An empty path
- * segment is a step of its own: `https://h//pkg/-/x.tgz` yields `//h//pkg/-/`,
- * `//h//pkg/`, `//h//` and `//h/`. That is the trailing-slash subset of what
- * npm-registry-fetch tries: its `regFromURI` strips either the last run of
- * non-slash characters or one `/` per step, so it too stops at `//h//` before
- * `//h/`, and a credential configured for `//h/` is still found.
+ * The order is npm-registry-fetch 19.1.1's `regFromURI` (`lib/auth.js`, the
+ * walk behind `getAuth`). It starts at `//host[:port]` plus the URL's whole
+ * path and, one step at a time, strips either the trailing run of non-slash
+ * characters or one trailing `/`, stopping before `//`. So every level is
+ * tried with its trailing slash and then without it, and the request's own
+ * path is the first key: `https://h/a/b.tgz` yields `//h/a/b.tgz`, `//h/a/`,
+ * `//h/a`, `//h/` and `//h`. When `//h/a/` and `//h/a` are both configured,
+ * the slash form wins, because it comes first; a deeper slash-less key still
+ * beats a shallower slash key. A port is part of the host (`//h:8443/` then
+ * `//h:8443`), and `@npmcli/config` does not rewrite either spelling when it
+ * reads an npmrc, so both reach this lookup as written.
  *
- * The final segment is dropped unless it ends in `/` (`new URL(".", …)`, which
- * is npm's `toNerfDart`); the host is lowercased and a default port dropped.
- * At most {@link MAX_NERF_DART_KEYS} keys, the shallowest ones.
+ * Every key is a prefix of the request's own `//host[:port]/path` that ends
+ * on a segment boundary, so no key can widen the match: `//h` never matches
+ * `//hevil.com`, and `//h/pa` never matches `/path/`.
+ *
+ * This builds the same list without stripping: it scans the positions of `/`
+ * in the path once, so it finishes on any input. An empty path segment is a
+ * level of its own, as in npm: `https://h//pkg/x.tgz` yields `//h//pkg/x.tgz`,
+ * `//h//pkg/`, `//h//pkg`, `//h//`, `//h/` and `//h`, so a credential
+ * configured for `//h/` is still found.
+ *
+ * The host is lowercased and a default port dropped, as `URL` does; the query
+ * and fragment are not part of any key. At most {@link MAX_NERF_DART_KEYS}
+ * keys, the shallowest ones.
  *
  * @internal
  */
@@ -38,16 +51,24 @@ export const nerfDartKeys = (url: string): ReadonlyArray<string> | undefined => 
 	} catch {
 		return undefined;
 	}
-	const directory = new URL(".", `${parsed.protocol}//${parsed.host}${parsed.pathname}`);
-	const path = directory.pathname;
-	const prefix = `//${directory.host}`;
-	// Shallowest first, stopping at the bound, then reversed: an explicit scan
-	// of `/` positions, so no step can fail to advance.
+	const prefix = `//${parsed.host}`;
+	const whole = prefix + parsed.pathname;
+	// Shallowest first, stopping at the bound, then reversed.
 	const keys: Array<string> = [];
-	let slash = path.indexOf("/");
+	const take = (end: number): void => {
+		const key = whole.slice(0, end);
+		// npm stops at `//`; a cut just before a `/` that follows another `/`
+		// is the previous level's slash form, already taken.
+		if (end > "//".length && keys.length < MAX_NERF_DART_KEYS && keys.at(-1) !== key) keys.push(key);
+	};
+	// The path's leading `/` sits at `prefix.length`, so its slash-less cut is
+	// the host alone, `//host[:port]`.
+	let slash = whole.indexOf("/", prefix.length);
 	while (slash !== -1 && keys.length < MAX_NERF_DART_KEYS) {
-		keys.push(prefix + path.slice(0, slash + 1));
-		slash = path.indexOf("/", slash + 1);
+		take(slash);
+		take(slash + 1);
+		slash = whole.indexOf("/", slash + 1);
 	}
+	take(whole.length);
 	return keys.reverse();
 };

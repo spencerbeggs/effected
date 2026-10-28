@@ -217,6 +217,79 @@ describe("NpmConfig credentials", () => {
 		});
 	});
 
+	describe("a slash-less key (`//host:_authToken`, `//host/path:_authToken`) matches where npm matches it", () => {
+		const bare = config([
+			"//bare.example:_authToken=host_bare",
+			"//path.example/acme:_authToken=path_bare",
+			"//port.example:8443:_authToken=port_bare",
+			"//dbl.example//repo:_authToken=dbl_bare",
+		]);
+
+		it("a host key without its slash is found for any path on the host", () => {
+			assert.strictEqual(secretOf(bare.credentialFor("https://bare.example/pkg")), "host_bare");
+			assert.strictEqual(secretOf(bare.credentialFor("https://bare.example/@s%2fpkg/-/pkg-1.0.0.tgz")), "host_bare");
+			assert.strictEqual(secretOf(bare.credentialFor("https://BARE.example:443/")), "host_bare");
+		});
+
+		it("a path key without its slash is found at and below that path", () => {
+			assert.strictEqual(secretOf(bare.credentialFor("https://path.example/acme/widget")), "path_bare");
+			assert.strictEqual(secretOf(bare.credentialFor("https://path.example/acme/")), "path_bare");
+			assert.strictEqual(secretOf(bare.credentialFor("https://path.example/acme")), "path_bare");
+		});
+
+		it("a port key without its slash is found on that port only", () => {
+			assert.strictEqual(secretOf(bare.credentialFor("https://port.example:8443/x")), "port_bare");
+			assert.isTrue(Option.isNone(bare.credentialFor("https://port.example/x")));
+			assert.isTrue(Option.isNone(bare.credentialFor("https://port.example:8444/x")));
+		});
+
+		it("an empty segment keeps its slash-less level too", () => {
+			assert.strictEqual(secretOf(bare.credentialFor("https://dbl.example//repo/pkg/-/pkg.tgz")), "dbl_bare");
+			assert.isTrue(Option.isNone(bare.credentialFor("https://dbl.example/repo/pkg/-/pkg.tgz")));
+		});
+
+		it("never widens the host: a host key does not match a host it is a prefix of", () => {
+			assert.isTrue(Option.isNone(bare.credentialFor("https://bare.exampleevil.com/pkg")));
+			assert.isTrue(Option.isNone(bare.credentialFor("https://bare.example.evil.com/pkg")));
+			assert.isTrue(Option.isNone(bare.credentialFor("https://evil.com/bare.example/pkg")));
+			assert.isTrue(Option.isNone(bare.credentialFor("https://port.example:844/x")));
+		});
+
+		it("never widens the path: a path key matches on a segment boundary only", () => {
+			const pa = config(["//seg.example/pa:_authToken=pa_bare"]);
+			assert.isTrue(Option.isNone(pa.credentialFor("https://seg.example/path/x")));
+			assert.isTrue(Option.isNone(pa.credentialFor("https://seg.example/path")));
+			assert.isTrue(Option.isNone(pa.credentialFor("https://seg.example/pa.tgz")));
+			assert.isTrue(Option.isNone(pa.credentialFor("https://seg.example/")));
+			assert.strictEqual(secretOf(pa.credentialFor("https://seg.example/pa/x")), "pa_bare");
+		});
+
+		describe("ranking when both spellings are configured", () => {
+			it("at one level, the key with the slash wins", () => {
+				const both = config([
+					"//rank.example/acme:_authToken=bare",
+					"//rank.example/acme/:_authToken=slash",
+					"//rank.example:_authToken=host_bare",
+					"//rank.example/:_authToken=host_slash",
+				]);
+				assert.strictEqual(secretOf(both.credentialFor("https://rank.example/acme/x")), "slash");
+				assert.strictEqual(secretOf(both.credentialFor("https://rank.example/other/x")), "host_slash");
+			});
+
+			it("a deeper slash-less key beats a shallower slash key", () => {
+				const deep = config(["//rank.example/:_authToken=host_slash", "//rank.example/acme:_authToken=deep_bare"]);
+				assert.strictEqual(secretOf(deep.credentialFor("https://rank.example/acme/x")), "deep_bare");
+			});
+
+			it("the level is chosen before the field: the slash key's _auth beats the bare key's _authToken", () => {
+				const mixed = config(["//rank.example/acme/:_auth=QUFB", "//rank.example/acme:_authToken=bare_token"]);
+				const found = Option.getOrThrow(mixed.credentialFor("https://rank.example/acme/x"));
+				assert.strictEqual(found.kind, "basic");
+				assert.strictEqual(secretOf(found), "QUFB");
+			});
+		});
+	});
+
 	describe("sends a credential over https only, unless config chose http for that host (a departure from npm)", () => {
 		it("never sends one to http, ws or any other scheme on the same host by default", () => {
 			// npm matches the nerf-dart key and ignores the scheme, so it would
