@@ -1,3 +1,4 @@
+import type { Option } from "effect";
 import { Redacted, Result, Schema } from "effect";
 import * as Base64 from "effect/encoding/Base64";
 
@@ -79,6 +80,45 @@ export interface WorkloadCredential {
  * @public
  */
 export type RegistryCredential = TokenCredential | BasicCredential;
+
+/**
+ * Answers the credential to send with a request to one URL — the shape a
+ * per-request credential source takes.
+ *
+ * @remarks
+ * Keyed by the **request URL**, never by a registry or a package name, so the
+ * source decides per host and path rather than the caller deciding once. That
+ * is what keeps a credential on the host it was configured for: a tarball is
+ * often served from a different host than the registry that listed it (a
+ * CDN, a signed-URL store), and the right answer for that host is usually
+ * none. `NpmConfig` satisfies this interface as it stands, through its
+ * `credentialFor` method, which applies npm's own host-and-path lookup.
+ *
+ * A source that answers a publish-only credential (a caller that cast past
+ * the type) is not spent: the reader sends no `Authorization` header for
+ * anything but a token or basic credential.
+ *
+ * @example
+ * ```ts
+ * import type { RegistryCredentialLookup } from "@effected/npm";
+ * import { Option, Redacted } from "effect";
+ *
+ * const onlyAcme: RegistryCredentialLookup = {
+ *   credentialFor: (url) =>
+ *     new URL(url).host === "npm.acme.dev"
+ *       ? Option.some({ kind: "token", token: Redacted.make("secret") })
+ *       : Option.none(),
+ * };
+ * console.log(Option.isNone(onlyAcme.credentialFor("https://cdn.example/a.tgz")));
+ * // => true
+ * ```
+ *
+ * @public
+ */
+export interface RegistryCredentialLookup {
+	/** The credential for a request to `url`, or `None` to send none. */
+	readonly credentialFor: (url: string) => Option.Option<RegistryCredential>;
+}
 
 /**
  * Every credential `PackagePublish.setupAuth` can write into an npmrc.
