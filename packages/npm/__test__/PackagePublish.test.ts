@@ -281,6 +281,28 @@ describe("PackagePublish.setupAuth", () => {
 			}
 		}),
 	);
+
+	it.effect("names the registry with its userinfo redacted on an auth failure", () =>
+		Effect.gen(function* () {
+			const password = "SECRET_publish_registry_password_5d5d";
+			const h = harness({ files: { [NPMRC]: MemoryFileSystem.directory() } });
+			const error = yield* Effect.flip(
+				h.run(
+					Effect.flatMap(publisher, (p) =>
+						p.setupAuth({
+							registry: `https://ci:${password}@npm.acme.dev`,
+							credential: TOKEN_CREDENTIAL,
+							npmrcPath: NPMRC,
+						}),
+					),
+				),
+			);
+			assert.instanceOf(error, PublishError);
+			assert.strictEqual(error.kind, "auth");
+			assert.strictEqual(error.registry, "https://REDACTED:REDACTED@npm.acme.dev");
+			assert.notInclude(error.message, password);
+		}),
+	);
 });
 
 describe("PackagePublish.pack", () => {

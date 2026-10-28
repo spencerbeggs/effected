@@ -149,3 +149,57 @@ describe("NpmRegistry keeps no credential on a failure", () => {
 		);
 	}
 });
+
+describe("RegistryReadError keeps no registry userinfo", () => {
+	const PASSWORD = "SECRET_registry_userinfo_password_77aa";
+	const WITH_USERINFO = `https://ci:${PASSWORD}@npm.acme.dev`;
+	const SHOWN = "https://REDACTED:REDACTED@npm.acme.dev";
+
+	const readFrom = (client: HttpClient.HttpClient, target: RegistryTarget) =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(
+				Effect.flatMap(NpmRegistry, (registry) => registry.version("@acme/widget", "1.0.0", target)).pipe(
+					Effect.provide(NpmRegistry.layer),
+					Effect.provide(Layer.succeed(HttpClient.HttpClient, client)),
+				),
+			);
+			if (Exit.isSuccess(exit)) return assert.fail("expected the read to fail");
+			const error = Cause.findErrorOption(exit.cause);
+			if (Option.isNone(error)) return assert.fail("expected a typed failure");
+			return error.value;
+		});
+
+	for (const [label, answer] of [
+		["transport", "transport"],
+		["status", { status: 500 }],
+		["decode", { status: 200, raw: "{ not json" }],
+	] as const) {
+		it.effect(`a ${label} failure names the registry with its userinfo redacted`, () =>
+			Effect.gen(function* () {
+				const { client } = recording(() => answer);
+				const error = yield* readFrom(client, { registry: WITH_USERINFO });
+				assert.strictEqual(error.kind, label);
+				assert.strictEqual(error.registry, SHOWN);
+				assert.include(error.message, "npm.acme.dev");
+				for (const s of [...reachableStrings(error), String(error), inspect(error, { depth: 12, showHidden: true })]) {
+					assert.notInclude(s, PASSWORD);
+				}
+			}),
+		);
+	}
+
+	it.effect("a refused workload credential names the registry with its userinfo redacted", () =>
+		Effect.gen(function* () {
+			const { requests, client } = recording(() => ({ status: 200 }));
+			// Cast past the type, as the runtime check exists for: the target's
+			// credential union refuses a workload credential at compile time.
+			const error = yield* readFrom(client, {
+				registry: WITH_USERINFO,
+				credential: { kind: "workload" },
+			} as unknown as RegistryTarget);
+			assert.strictEqual(error.kind, "credential");
+			assert.lengthOf(requests, 0, "refused before any request");
+			assert.strictEqual(error.registry, SHOWN);
+		}),
+	);
+});
