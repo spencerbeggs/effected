@@ -142,6 +142,11 @@ composition defect; do not reorder the two.
   so `save` still writes `XdgConfig.savePath(filename)` — which is precisely why
   a `--config` branch no longer has to drop to `ConfigFile.layer` and re-supply
   it.
+- **The preset pins `saveTarget: "default"`.** config-file's own default
+  follows the strategy (`firstMatch` → `"source"`), but where an app saves is
+  the preset's contract, so `AppConfig.layer` passes `"default"` unless the
+  caller sets `AppConfigOptions.saveTarget`. `"source"` is the opt-in for an
+  app that wants writes to go back to the discovered file.
 - **`AppConfigOptions.parseOptions` is a pass-through to `ConfigFileOptions`**, not
   a new concept. It exists for `onExcessProperty: "error"`, which is what lets a
   config loader report a typo'd section or a field the schema deliberately

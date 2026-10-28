@@ -295,15 +295,50 @@ describe("saveTarget (#1113)", () => {
 	const portAt = (host: RecordingFs, file: string): number =>
 		(JSON.parse(host.volume.text(file) as string) as { port: number }).port;
 
-	it.effect("by default, update reads the project file and writes the user default", () =>
+	it.effect("by default under firstMatch, update writes back to the file it read", () =>
 		Effect.gen(function* () {
 			const host = recordingFs({ "/project/.apprc": `{"port":1}`, "/home/.apprc": `{"port":100}` });
 			yield* Effect.gen(function* () {
 				const cfg = yield* AppConfig;
 				yield* cfg.update((current) => AppShape.make({ port: current.port + 1 }));
 			}).pipe(Effect.provide(layered(host)));
+			assert.strictEqual(portAt(host, "/project/.apprc"), 2);
+			assert.strictEqual(portAt(host, "/home/.apprc"), 100);
+		}),
+	);
+
+	it.effect('pinned "default", update reads the project file and writes the user default', () =>
+		Effect.gen(function* () {
+			const host = recordingFs({ "/project/.apprc": `{"port":1}`, "/home/.apprc": `{"port":100}` });
+			yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				yield* cfg.update((current) => AppShape.make({ port: current.port + 1 }));
+			}).pipe(Effect.provide(layered(host, "default")));
 			assert.strictEqual(portAt(host, "/project/.apprc"), 1);
 			assert.strictEqual(portAt(host, "/home/.apprc"), 2);
+		}),
+	);
+
+	it.effect("by default under layeredMerge, save writes defaultPath, not the top source", () =>
+		Effect.gen(function* () {
+			const host = recordingFs({ "/project/.apprc": `{"port":1}`, "/home/.apprc": `{"port":100}` });
+			const written = yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				return yield* cfg.save(AppShape.make({ port: 7 }));
+			}).pipe(
+				Effect.provide(
+					ConfigFile.layer(AppConfig, {
+						schema: AppShape,
+						codec: JsonCodec,
+						resolvers: [ConfigResolver.explicitPath("/project/.apprc"), ConfigResolver.explicitPath("/home/.apprc")],
+						strategy: MergeStrategy.layeredMerge<AppShape>(),
+						defaultPath: Effect.succeed("/home/.apprc"),
+					}).pipe(Layer.provide(Layer.mergeAll(host.layer, Path.layer))),
+				),
+			);
+			assert.strictEqual(written, "/home/.apprc");
+			assert.strictEqual(portAt(host, "/project/.apprc"), 1);
+			assert.strictEqual(portAt(host, "/home/.apprc"), 7);
 		}),
 	);
 
@@ -349,9 +384,9 @@ describe("saveTarget (#1113)", () => {
 		}),
 	);
 
-	it.effect('testLayer under "source" writes the seeded file, and without it keeps failing typed', () =>
+	it.effect('testLayer under firstMatch writes the seeded file by default, and pinned "default" fails typed', () =>
 		Effect.gen(function* () {
-			const seeded = (saveTarget?: "source") =>
+			const seeded = (saveTarget?: "default") =>
 				ConfigFile.testLayer(AppConfig, {
 					schema: AppShape,
 					codec: JsonCodec,
@@ -363,13 +398,13 @@ describe("saveTarget (#1113)", () => {
 				const cfg = yield* AppConfig;
 				yield* cfg.update((c) => AppShape.make({ port: c.port + 1 }));
 				return yield* cfg.load;
-			}).pipe(Effect.provide(seeded("source")));
+			}).pipe(Effect.provide(seeded()));
 			assert.strictEqual(reread.port, 2);
 
 			const error = yield* Effect.gen(function* () {
 				const cfg = yield* AppConfig;
 				return yield* Effect.flip(cfg.update((c) => c));
-			}).pipe(Effect.provide(seeded()));
+			}).pipe(Effect.provide(seeded("default")));
 			assert.instanceOf(error, ConfigDefaultPathMissingError);
 		}),
 	);

@@ -287,8 +287,8 @@ export interface ConfigFileShape<A, CE = ConfigCodecError> {
 	 * and return the path written.
 	 *
 	 * @remarks
-	 * The target is `defaultPath`, or under
-	 * {@link ConfigFileOptions.saveTarget} `"source"` the first file the
+	 * The target follows {@link ConfigFileOptions.saveTarget}: `defaultPath`,
+	 * or under `"source"` (the default for `firstMatch`) the first file the
 	 * resolver chain finds, falling back to `defaultPath`.
 	 */
 	readonly save: (value: A) => Effect.Effect<string, ConfigSaveError<CE>>;
@@ -300,10 +300,10 @@ export interface ConfigFileShape<A, CE = ConfigCodecError> {
 	 * With `defaultValue` the load cannot fail with
 	 * {@link ConfigFileNotFoundError}; without it, it can.
 	 *
-	 * The result goes to `defaultPath` unless
-	 * {@link ConfigFileOptions.saveTarget} is `"source"`, in which case it goes
-	 * back to the highest-priority file the load read (or `defaultPath` when
-	 * the load found none and fell back to `defaultValue`).
+	 * The result goes where {@link ConfigFileOptions.saveTarget} says: under
+	 * `"source"` (the default for `firstMatch`) back to the highest-priority
+	 * file the load read, or `defaultPath` when the load found none and fell
+	 * back to `defaultValue`; under `"default"` to `defaultPath`.
 	 */
 	readonly update: (fn: (current: A) => A, defaultValue?: A) => Effect.Effect<A, ConfigUpdateError<CE>>;
 }
@@ -384,15 +384,23 @@ export interface ConfigFileOptions<A, I, RR, CE = ConfigCodecError> {
 	readonly defaultPath?: Effect.Effect<string, never, RR>;
 	/**
 	 * Where {@link ConfigFileShape.save} and {@link ConfigFileShape.update}
-	 * write: `"default"` (the default) always writes `defaultPath`;
-	 * `"source"` writes the highest-priority file the resolver chain finds,
-	 * and `defaultPath` only when it finds none.
+	 * write: `"default"` always writes `defaultPath`; `"source"` writes the
+	 * highest-priority file the resolver chain finds, and `defaultPath` only
+	 * when it finds none.
 	 *
 	 * @remarks
-	 * Choose `"source"` when the chain layers a project file over a user
-	 * default. Under `"default"`, `update` reads the project file and writes
-	 * the user file, so the change lands in a file the next run does not read
-	 * and the next run reads the old value.
+	 * Unset, it follows the strategy.
+	 * {@link (MergeStrategy:variable).firstMatch} defaults to `"source"`:
+	 * the file that was read is the file in effect, so writing anywhere else
+	 * puts the change in a file the next run does not read (or creates a
+	 * second, competing config). {@link (MergeStrategy:variable).layeredMerge}
+	 * and any custom strategy default to `"default"`. A custom strategy is
+	 * matched by its `name`, so one that calls itself `"first-match"` takes
+	 * `firstMatch`'s default.
+	 *
+	 * Pin `"default"` when the program writes state of its own rather than
+	 * the user's settings: under `"source"` a write can land in a file found
+	 * by walking up, such as a project file checked into a repository.
 	 *
 	 * `update` writes to the first source of the load it just ran, under its
 	 * lock. `save` runs the resolver chain's lookups to find the target and
@@ -623,8 +631,13 @@ const makeImpl = <A, I, RR, CE>(
 		return (yield* loadOrDefaultWithSource(defaultValue)).value;
 	});
 
-	/** Whether `save` and `update` write to the source they found rather than `defaultPath`. */
-	const toSource = options.saveTarget === "source";
+	/**
+	 * Whether `save` and `update` write to the source they found rather than `defaultPath`. Unset, it follows the
+	 * strategy: `firstMatch` writes the file that is in effect; `layeredMerge` and any custom strategy write
+	 * `defaultPath`, where the merged value flattens least harmfully.
+	 */
+	const toSource =
+		(options.saveTarget ?? (options.strategy.name === "first-match" ? "source" : "default")) === "source";
 
 	/**
 	 * The first path the resolver chain finds, by lookup alone: no file is read,
@@ -805,8 +818,9 @@ const makeImpl = <A, I, RR, CE>(
  * It also has no `defaultPath`. Nothing in the temp directory is a defensible
  * default write target, so `save` and `update` fail with
  * {@link ConfigDefaultPathMissingError} under this layer — the honest answer —
- * unless `saveTarget` is `"source"` and a seeded file was found, which they
- * then write. Otherwise exercise the write path with {@link ConfigFile.layer}.
+ * unless the write target is `"source"` (the default under `firstMatch`) and
+ * a seeded file was found, which they then write. Otherwise exercise the
+ * write path with {@link ConfigFile.layer}.
  *
  * `CE` is the codec's error channel, as on {@link ConfigFileOptions}.
  *
@@ -837,7 +851,8 @@ export interface ConfigFileTestOptions<A, I, CE = ConfigCodecError> {
 	readonly validate?: (value: A) => Effect.Effect<A, ConfigValidationError>;
 	/**
 	 * Where `save` and `update` write, as on
-	 * {@link ConfigFileOptions.saveTarget}.
+	 * {@link ConfigFileOptions.saveTarget}, including its strategy-dependent
+	 * default.
 	 *
 	 * @remarks
 	 * Under `"source"` they write the seeded file the load read, so the

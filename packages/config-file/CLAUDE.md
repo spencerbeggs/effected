@@ -148,12 +148,15 @@ and provide that const, or you mint two independent service instances.
 honestly fail with `ConfigDefaultPathMissingError` under it unless
 `saveTarget: "source"` points them at the seeded file they read.
 
-`saveTarget` (`"default"` | `"source"`, default `"default"`) decides where
-`save`/`update` write. `update` under `"source"` writes to the first source of
-the load it ran under its own lock (`loadWithSource`); `save` finds its target
-with the resolvers' `resolve` alone (`locate`), so it reads no file and its
-error union does not widen. The default stays `"default"` so existing callers
-keep their write target; flipping it is a behaviour change.
+`saveTarget` (`"default"` | `"source"`) decides where `save`/`update` write.
+Unset, it follows the strategy (user ruling, 1.0): `firstMatch` defaults to
+`"source"`, because the file read is the file in effect and writing elsewhere
+loses the change; `layeredMerge` and any custom strategy default to
+`"default"`, because a merged value flattens least harmfully into
+`defaultPath`. The strategy is matched by `name` (`"first-match"`). `update`
+under `"source"` writes to the first source of the load it ran under its own
+lock (`loadWithSource`); `save` finds its target with the resolvers' `resolve`
+alone (`locate`), so it reads no file and its error union does not widen.
 
 Both take the key as `Context.Key<Self, S> & ([ConfigFileShape<A>] extends [S]
 ? unknown : never)` with a defaulted `S extends ConfigFileShape<A>` — a pin
