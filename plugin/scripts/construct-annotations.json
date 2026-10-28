@@ -732,6 +732,7 @@
 		"Person": "author or contributors field model, shorthand string or object, name email url",
 		"PublishConfigField": "publishConfig field shape, access directory targets",
 		"Repository": "repository field model, github shorthand or url, browsable url normalization, gitUrl",
+		"RepositorySlug": "repository owner and name, github owner repo, forge host from repository url",
 		"RepositoryField": "repository field raw wire shape, shorthand string or object",
 		"ScopedPackageName": "validate scoped npm package name, at-scope slash name",
 		"SpdxLicense": "validate spdx license field, spdx expression or UNLICENSED or SEE LICENSE IN",

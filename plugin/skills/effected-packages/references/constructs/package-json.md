@@ -50,6 +50,7 @@
 | `PublishConfigField` | Variable | The `publishConfig` field: an open record preserving known npm keys (`access`, `directory`, ...) plus extensions like `targets`. Not meant to be referenced directly. | publishConfig field shape, access directory targets |
 | `Repository` | Class | Where a package's source lives. | repository field model, github shorthand or url, browsable url normalization, gitUrl |
 | `RepositoryField` | Variable | The `repository` field's raw wire shape: a shorthand string or an object. | repository field raw wire shape, shorthand string or object |
+| `RepositorySlug` | Class | A repository named by its forge host, owner and name: what `Repository.slug` answers. | repository owner and name, github owner repo, forge host from repository url |
 | `ResolveEntryPointOptions` | Interface | Options for `resolveEntryPoint`. | |
 | `RuleFailure` | Interface | A single validation-rule failure. | |
 | `ScopedPackageName` | Variable + TypeAlias | A valid npm scoped package name. | validate scoped npm package name, at-scope slash name |

@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T21:11:48Z
+  at: 2026-10-28T16:32:44Z
 integrity:
   generated:
-    body: aab57f05d80ec7f3
+    body: 390a068e48feb980
 ---
 
 # package-json
@@ -71,6 +71,8 @@ The `Package` `Schema.Class` carries: computed getters over privacy, scoping, mo
 ### Repository carries the reference verbatim
 
 `Repository` holds the reference verbatim and exposes normalization as derived getters, so reading a manifest never rewrites the field and a caller that wants a link asks for one explicitly. `directoryUrl` descends `browseUrl` into `directory` for the monorepo-member case: with no `directory`, `directoryUrl` is `browseUrl` (a correct answer, not a missing one); with `directory` on a known host (GitHub's `tree/HEAD`, GitLab's `-/tree/HEAD`, Bitbucket's `src/HEAD`), it is the descended URL, using `HEAD` because the default branch is not knowable from a manifest and every one of these hosts resolves `HEAD` to it; with `directory` on any other host, or one containing `..`, it answers `Option.none()` rather than fabricating a path for an unrecognized forge — what to do with that `none` is left to the caller, since falling back to `browseUrl` is reasonable in some contexts and wrong in others.
+
+`slug` answers the repository's `RepositorySlug` — `{ host, owner, name }` plus a `path` getter (`owner/name`) — derived from `browseUrl`, so the two can never disagree on which forms count. The bare `owner/name` shorthand counts, as GitHub, because npm resolves it that way; a caller that must not treat it as GitHub tests `url` itself. A `#ref`/`?query` and a `.git` suffix are dropped; GitHub and Bitbucket require exactly two path segments, while other hosts take every segment before the last as the owner (GitLab subgroups); a gist, a host-only URL or a deeper path (`/tree/main`) has no slug. It is local rather than delegated to the git package's `GitRemote.parse`: that parser knows no npm shorthand, so delegating would add a package-json → git edge and still leave the shorthand work here.
 
 ### Wire provenance, and why the replay is guarded
 

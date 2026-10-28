@@ -97,4 +97,4 @@ export {
 	noUnresolvedDepsRule,
 } from "./PackageValidator.js";
 export { Person } from "./Person.js";
-export { Bugs, Repository } from "./Repository.js";
+export { Bugs, Repository, RepositorySlug } from "./Repository.js";
