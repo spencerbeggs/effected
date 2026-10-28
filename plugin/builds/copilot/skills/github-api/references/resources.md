@@ -169,7 +169,7 @@ normalizes GitHub's `string | {name}` union to plain names.
 | `getByTagOption` | `(tag) => Effect<Option<ReleaseInfo>>` | |
 | `list` | `(options?: {page?}) => Effect<ReadonlyArray<ReleaseInfo>>` | |
 | `update` | `(id, patch) => Effect<ReleaseInfo>` | |
-| `uploadAsset` | `(release, asset: {name, data, contentType, label?}) => Effect<ReleaseAsset>` | Uses `requestDecoded` — release-asset upload isn't in the generated route map, so the template carries the query itself: `assets{?name}` (`{?name,label}` when `label` is set) — a `name` passed only as a parameter gets silently dropped by octokit and GitHub answers 400. `label` is the release page's display label |
+| `uploadAsset` | `(release, asset: {name, data, contentType, label?}) => Effect<ReleaseAsset>` | Sends to the upload host derived from the client's configured base (`uploads.github.com`, or `<ghes>/api/uploads`), never the release's `uploadUrl`, which must agree or the upload is refused `rejected`; this holds for `GitHubApp.clientLayer`/`appClientLayer` clients too, and after a token rotation. A test double answers through its own `requestDecoded`. Release-asset upload isn't in the generated route map, so the template carries the query itself: `assets{?name}` (`{?name,label}` when `label` is set) — a `name` passed only as a parameter gets silently dropped by octokit and GitHub answers 400. `label` is the release page's display label |
 | `listAssets` | `(id, options?: {page?}) => Effect<ReadonlyArray<ReleaseAsset>>` | Forwards `PageOptions` |
 
 `ReleaseInfo = {id, tag, name, body, draft, prerelease, url, uploadUrl}`;
