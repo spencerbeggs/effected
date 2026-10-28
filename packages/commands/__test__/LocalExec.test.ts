@@ -54,6 +54,50 @@ describe("LocalExec.prefixes", () => {
 	});
 });
 
+describe("LocalExec.command", () => {
+	it("splits the launcher's exec prefix into executable and arguments, ahead of the binary and its args", () => {
+		assert.deepStrictEqual(argv(LocalExec.command("pnpm", "biome", ["check", "."])), [
+			"pnpm",
+			"exec",
+			"biome",
+			"check",
+			".",
+		]);
+		assert.deepStrictEqual(argv(LocalExec.command("npm", "vitest")), ["npx", "--no", "--", "vitest"]);
+		assert.deepStrictEqual(argv(LocalExec.command("bun", "tsc", ["-b"])), ["bun", "x", "--no-install", "tsc", "-b"]);
+	});
+
+	it("picks the dlx or script prefix by kind, and sets a cwd only when given", () => {
+		const dlx = LocalExec.command("yarn", "cowsay", ["hi"], { kind: "dlx" });
+		assert.deepStrictEqual(argv(dlx), ["yarn", "dlx", "cowsay", "hi"]);
+		assert.isUndefined(dlx.options.cwd);
+		const script = LocalExec.command("npm", "build", ["--watch"], { kind: "script", cwd: "/repo" });
+		assert.deepStrictEqual(argv(script), ["npm", "run", "--", "build", "--watch"]);
+		assert.strictEqual(script.options.cwd, "/repo");
+	});
+
+	it("round-trips through parse for every launcher and kind, with no alias emitted", () => {
+		for (const launcher of ["npm", "pnpm", "yarn", "bun"] as const) {
+			for (const kind of ["exec", "dlx", "script"] as const) {
+				const built = argv(LocalExec.command(launcher, "tool", ["--flag", "x"], { kind }));
+				const field = kind === "exec" ? "prefix" : kind === "dlx" ? "dlxPrefix" : "scriptPrefix";
+				assert.deepStrictEqual(built.slice(0, LocalExec.prefixes(launcher)[field].length), [
+					...LocalExec.prefixes(launcher)[field],
+				]);
+				assert.deepStrictEqual(
+					LocalExec.parse(built),
+					Option.some({ launcher, kind, binary: "tool", rest: ["--flag", "x"] }),
+				);
+			}
+		}
+	});
+
+	it("throws for a binary that is empty or a flag", () => {
+		assert.throws(() => LocalExec.command("pnpm", ""), /binary must be/);
+		assert.throws(() => LocalExec.command("pnpm", "--version"), /binary must be/);
+	});
+});
+
 describe("ExecContext", () => {
 	const context = ExecContext.make({
 		label: "pnpm",

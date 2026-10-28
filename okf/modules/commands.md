@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/commands/src/LocalExec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:11:13Z
+  at: 2026-10-28T17:11:51Z
 integrity:
   generated:
-    body: 8507a0f9f1545ce2
+    body: 71421d1755989e58
 ---
 
 # @effected/commands
@@ -147,6 +147,13 @@ and a directory (`ExecContext`), not a workspace model.
   silently claims the flag for npm itself, while the other three managers
   forward post-script arguments without help — see
   [npm run eats a flag meant for the script](../gotchas/npm-run-eats-flags.md).
+- **`LocalExec.command(launcher, binary, args?, { kind?, cwd? })` is the
+  ready command.** It splits the canonical prefix into executable and
+  arguments, so no caller writes `const [command = pm, ...rest] = prefix`
+  again, and its `cwd` is where the launcher runs, which decides whose
+  `node_modules` it resolves. It emits the canonical table only, never an
+  alias, and a binary that is empty or starts with `-` throws, the same
+  rule `parse` and `ToolRefusedError` apply.
 - **A consumer with no monorepo pays nothing.** A single-package checkout
   wires `LocalExec.layerNone` or `LocalExec.layerFor("npm")` and never
   installs `@effected/workspaces`.
@@ -360,6 +367,11 @@ policy (`source`, `onMismatch`) is the caller's.
   lint-staged task). The working directory is not in it: a local
   resolution's `context.directory` says where it must run. Prefer
   `ResolvedTool.command` whenever this package or core spawns the process.
+- **A local `ResolvedTool.command` runs in the discovery root.** Its cwd is
+  the context's `directory`, so running it for a sibling worktree or a
+  request's own cwd silently uses this root's launcher and `node_modules`.
+  Build the command for the other directory with `LocalExec.command` and
+  its `cwd`, or resolve against a discovery for that root.
 - **Option-injection guard.** A tool name that is empty or begins with
   `-` is refused before any spawn, typed as its own `ToolRefusedError` —
   not `ToolNotFoundError`, which carries a `searched` list a refusal has

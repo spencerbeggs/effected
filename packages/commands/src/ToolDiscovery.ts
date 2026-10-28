@@ -62,6 +62,15 @@ export class ResolvedTool extends Schema.Class<ResolvedTool>("ResolvedTool")({
 	 * {@link Run} or to core's spawner directly, and compose it with core's
 	 * combinators.
 	 *
+	 * **A local command runs in the discovery root.** Its cwd is the
+	 * `ExecContext`'s `directory`, the root that discovery resolved, so running
+	 * it for another directory (a sibling worktree, a request's own cwd)
+	 * silently uses this root's launcher and `node_modules`. To run elsewhere,
+	 * build the command for that directory with `LocalExec.command` and its
+	 * `cwd` option, or resolve the tool against a discovery for that root;
+	 * `ChildProcess.setCwd` over this command moves the launcher too, which
+	 * then resolves whatever copy that directory has.
+	 *
 	 * @example
 	 * ```ts
 	 * const biome = yield* discovery.resolve(Tool.named("biome"));
