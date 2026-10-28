@@ -238,9 +238,8 @@ describe("confineReal / confineRealSync", () => {
 	});
 });
 
-// memfs's win32 port translates the spelling of the paths it is GIVEN; its
-// `realPath` still answers the volume's POSIX spelling (`/C:/repo`). This adapter
-// respells that answer the way node's win32 `realpath` does, and nothing else.
+// memfs's win32 port takes and answers win32 spellings, `realPath` included
+// (`C:\repo\a.txt`, as node's win32 `realpath` does), so it serves as the port as is.
 const win32Fs = MemoryFileSystem.syncFileSystem(
 	MemoryFileSystem.makeSync({
 		"/C:/repo/a.txt": "",
@@ -249,11 +248,7 @@ const win32Fs = MemoryFileSystem.syncFileSystem(
 	}).volume,
 	{ pathStyle: "win32" },
 );
-const respell = (path: string): string => path.replace(/^\/([A-Za-z]:)(\/|$)/, "$1\\").replaceAll("/", "\\");
-const win32Ops: WalkerSyncOps = {
-	fileSystem: { ...win32Fs, realPath: (path: string) => respell(win32Fs.realPath(path)) },
-	path: win32,
-};
+const win32Ops: WalkerSyncOps = { fileSystem: win32Fs, path: win32 };
 
 describe("confineRealSync on win32 path shapes", () => {
 	const cases: ReadonlyArray<readonly [string, Outcome]> = [
