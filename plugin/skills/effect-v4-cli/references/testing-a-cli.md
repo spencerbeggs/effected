@@ -371,7 +371,10 @@ a watch mode. It needs `Scope` as well as the spawner, and closing the scope
 kills the child: `SIGTERM`, then `SIGKILL` after `forceKillAfter` (`2 seconds`
 by default), so a child that ignores `SIGTERM` never holds the test open.
 After `kill()`, `exitCode` is `null` and `result.signal` says which signal
-ended it.
+ended it. A `kill()` on a child that has already exited, on its own or at the
+same moment, returns normally, so a cleanup `kill()` after a short-lived
+child never fails on a race; `exitCode` and `result` still report how the
+child ended. Only a kill that fails on a child still running fails.
 
 Three traps this replaces:
 

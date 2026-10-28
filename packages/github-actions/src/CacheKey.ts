@@ -436,14 +436,21 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 	 * the filesystem happened to report.
 	 */
 	static readonly matchingFiles = Effect.fn("CacheKey.matchingFiles")(function* (options: {
-		/** The directory to walk. Nothing outside it is ever considered. */
+		/**
+		 * The directory to walk. Nothing outside it is ever considered. A
+		 * relative workspace (`"."`, `"packages/app"`) resolves against the
+		 * process working directory, and the answer is absolute either way.
+		 */
 		readonly workspace: string;
 		/** Include patterns, with a leading `!` marking an exclusion. */
 		readonly patterns: ReadonlyArray<string>;
 	}) {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
-		const { workspace } = options;
+		// Resolved here, once, through core's `Path`: `descend` makes a relative
+		// `cwd` a defect (it would walk a different tree from every caller), so an
+		// unresolved `"."` would die rather than fail typed or walk.
+		const workspace = path.resolve(options.workspace);
 		const set = yield* GlobSet.compile(options.patterns).pipe(
 			Effect.mapError((cause) => new CacheKeyBadPatternError({ pattern: cause.pattern, cause })),
 		);
@@ -533,6 +540,7 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 	 * ```
 	 */
 	static readonly hashMatching = Effect.fn("CacheKey.hashMatching")(function* (options: {
+		/** The directory to walk; a relative one resolves against the process working directory. */
 		readonly workspace: string;
 		readonly patterns: ReadonlyArray<string>;
 	}) {

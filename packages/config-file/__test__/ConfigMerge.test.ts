@@ -109,6 +109,59 @@ describe("ConfigMerge.deep", () => {
 		assert.strictEqual(merged.w, 2);
 	});
 
+	it("returns quickly on a cycle reached through two keys at every level", () => {
+		// Without per-pair memoization this recurses into both keys at every
+		// level: about 2^depth calls, which never finishes.
+		const node: Rec = {};
+		node.x = node;
+		node.y = node;
+		const start = performance.now();
+		const merged = ConfigMerge.deep<Rec>(node, node);
+		assert.isBelow(performance.now() - start, 1000);
+		// The revisited pair reuses the result in progress, so the cycle survives.
+		assert.strictEqual(merged.x, merged);
+		assert.strictEqual(merged.y, merged);
+		assert.notStrictEqual(merged, node);
+	});
+
+	it("keeps a cycle's shape instead of unrolling it to the depth cap", () => {
+		const base: Rec = { v: 1 };
+		base.self = base;
+		const override: Rec = { w: 2 };
+		override.self = override;
+		const merged = ConfigMerge.deep<Rec>(base, override);
+		assert.strictEqual(merged.self, merged);
+		assert.deepStrictEqual(Object.keys(merged).sort(), ["self", "v", "w"]);
+	});
+
+	it("merges a shared subobject once, so a DAG keeps its sharing", () => {
+		const sharedBase: Rec = { host: "localhost", port: 8080 };
+		const sharedOverride: Rec = { port: 9090 };
+		const merged = ConfigMerge.deep<Rec>(
+			{ a: sharedBase, b: sharedBase, c: sharedBase },
+			{ a: sharedOverride, b: sharedOverride, c: { port: 1 } },
+		);
+		assert.deepStrictEqual(merged.a, { port: 9090, host: "localhost" });
+		assert.strictEqual(merged.a, merged.b);
+		// A different pair is a different merge.
+		assert.deepStrictEqual(merged.c, { port: 1, host: "localhost" });
+		assert.notStrictEqual(merged.c, merged.a);
+		// Inputs untouched.
+		assert.deepStrictEqual(sharedBase, { host: "localhost", port: 8080 });
+		assert.deepStrictEqual(sharedOverride, { port: 9090 });
+	});
+
+	it("still drops prototype keys on a revisited pair", () => {
+		const evil = JSON.parse('{"__proto__": {"polluted": true}, "constructor": 1, "k": 1}') as Rec;
+		const shared: Rec = { k: 0 };
+		const merged = ConfigMerge.deep<Rec>({ a: shared, b: shared }, { a: evil, b: evil });
+		assert.strictEqual(merged.a, merged.b);
+		assert.isFalse(Object.hasOwn(merged.a as Rec, "__proto__"));
+		assert.isFalse(Object.hasOwn(merged.a as Rec, "constructor"));
+		assert.strictEqual(Object.getPrototypeOf(merged.a), Object.prototype);
+		assert.isUndefined(({} as Rec).polluted);
+	});
+
 	it("merges down to depth 1024 and takes override whole below it, without overflowing", () => {
 		const chain = (depth: number, leaf: Rec): Rec => {
 			let node: Rec = leaf;

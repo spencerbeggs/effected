@@ -124,10 +124,13 @@ export const AppConfigLive = ConfigFile.layer(AppConfig, {
   ],
   strategy: MergeStrategy.firstMatch<AppShape>(),
   defaultPath: XdgConfig.savePath("config.json"),
+  saveTarget: "default",
 });
 ```
 
 Order matters: put `resolver` before `nativeResolver` so an existing `~/.config/<app>/config.json` still wins over the OS-native directory. `savePath` does not create the directory — `ConfigFile.save` already creates the parent of whatever path it is handed.
+
+Set `saveTarget: "default"` beside `savePath`. Under `firstMatch`, config-file's unset `saveTarget` is `"source"`, which writes back into whichever file the resolvers found. `resolver` also searches `$XDG_CONFIG_DIRS`, so that file can be `/etc/xdg/myapp/config.json`, and the write fails with `EACCES`. With `"default"`, `save` and `update` write to `savePath` in the user's own config directory, which `resolver` searches first, so the saved file wins the next load.
 
 ## Errors
 

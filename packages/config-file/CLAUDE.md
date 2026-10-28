@@ -217,8 +217,12 @@ Read the comments before touching these; each shape is load-bearing.
   `Object.prototype` or `null`) or both are record-like **and share a
   prototype**, so a decoded `Schema.Class` survives a merge as a real
   instance; nested levels merge plain pairs only. The result takes the
-  override's prototype. Recursion stops at `MAX_MERGE_DEPTH` (1024), so the
-  merge is total on cyclic input. `ConfigMerge.deep` is the public face of the
+  override's prototype. Each `(base, override)` object pair merges once
+  (a `WeakMap` memo, registered before recursing), so a cycle comes back as
+  the same cycle and the work is one merge per distinct pair; the depth cap
+  alone never bounded that — `b.x = b; b.y = b` was ~2^1024 calls. Recursion
+  also stops at `MAX_MERGE_DEPTH` (1024), so a deep chain cannot overflow
+  the stack. `ConfigMerge.deep` is the public face of the
   same function: `layeredMerge` and `deep` must never get separate engines
   (`__test__/ConfigMerge.test.ts` pins that the fold equals `deep`).
 - **`isWorkspaceRoot` decodes with a module-level, never-throwing decoder**
