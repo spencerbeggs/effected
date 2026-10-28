@@ -23,10 +23,10 @@ sources:
     resource: ../../packages/store/__test__/StoreLifecycle.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:37:10Z
+  at: 2026-10-28T19:13:48Z
 integrity:
   generated:
-    body: 73f54618cb3040df
+    body: 22d6ecb74628f6c4
 ---
 
 # Error handling standards
@@ -262,3 +262,19 @@ function object as `Fmt.causeMessage` and carries no copy of its own (see
     `StoreError.message carries the cause`: the direct cause's own message is
     "Failed to prepare statement" and the rendered text is "Store setup
     failed: Failed to prepare statement: no such table: no_such_table".
+
+## A kept HTTP cause goes through `HttpRedaction.cause`
+
+Core's `HttpClientError` keeps the request it failed on, `authorization`,
+`cookie` and every other header included, as plain readable fields. Core
+redacts them only when it renders the error (`toJSON`, inspect), so an error
+that keeps one as its `cause` hands the live credential to any logger,
+serializer or consumer code that walks the object. Any kit error that keeps an
+HTTP error, request, response or URL keeps it through
+`@effected/crypto`'s `HttpRedaction.cause` (or `.url` for a bare URL string).
+The copy keeps the method, the redacted URL, the status and the
+non-sensitive headers a person needs to debug, and drops the body.
+`HttpRedaction` is pure and depends on `effect` alone, so taking it as a
+regular dependency adds no transitive weight. Test such a site by walking
+every string reachable from the error, core `Headers` included, against a
+planted token, with a positive control on core's unscrubbed error.

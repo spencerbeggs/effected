@@ -957,3 +957,14 @@ try {
   assert.fail(`${label}: threw ${String(error)}`)
 }
 ```
+
+## A credential walk that skips `Headers` tests the rendering, not the storage
+
+Core's HTTP types redact `authorization` and cookies when they RENDER
+(`toJSON`, `inspect`), but keep the live value in the object itself. A test
+that checks a kept error for a leaked token by walking its strings, and skips
+core `Headers` "because core redacts them", passes while the token sits one
+property away from any logger that walks the object. Walk every string
+reachable through own properties, `Headers` and `UrlParams` included, and
+add a positive control: the same walk over core's own, unscrubbed error must
+find the planted token, or the walk proves nothing.
