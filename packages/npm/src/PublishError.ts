@@ -24,7 +24,7 @@ export class PublishError extends Schema.TaggedError<PublishError>()("PublishErr
 	kind: Schema.Literals(["auth", "pack", "publish", "output", "digest", "executor"]),
 	/** The package directory or tarball the step was working on. */
 	subject: Schema.optionalKey(Schema.String),
-	/** The registry involved, for `"auth"` and `"publish"`. */
+	/** The registry involved, for `"auth"` and `"publish"`, with any userinfo and credential query values redacted. */
 	registry: Schema.optionalKey(Schema.String),
 	/** npm's exit code, when npm ran and failed. */
 	exitCode: Schema.optionalKey(Schema.Number),

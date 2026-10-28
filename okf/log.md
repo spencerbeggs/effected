@@ -39,6 +39,7 @@
 * Updated @effected/jwt
 * Updated actions-storage
 * Updated runtimes
+* Updated @effected/github errors and retry
 
 ## 2026-10-27
 

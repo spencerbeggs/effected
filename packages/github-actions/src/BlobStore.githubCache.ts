@@ -9,6 +9,7 @@ import { BlobStore, BlobStoreError } from "./BlobStore.js";
 import type { DataBlobTransfer } from "./BlobTransfer.js";
 import { BlobTransferError } from "./BlobTransfer.js";
 import { misconfiguredDetail, resultsBackend } from "./internal/actionsResults.js";
+import { blobCause } from "./internal/blobCause.js";
 import type { CacheServiceClient } from "./internal/cacheService.js";
 import { CACHE_SERVICE, finalizeUpload, lookupDownload, reserveUpload } from "./internal/cacheService.js";
 import { sha256Hex } from "./internal/digest.js";
@@ -43,12 +44,12 @@ const azure: DataBlobTransfer = {
 	uploadData: (url, data) =>
 		Effect.tryPromise({
 			try: () => new BlockBlobClient(url).uploadData(data),
-			catch: (cause) => new BlobTransferError({ reason: "uploadFailed", cause }),
+			catch: (cause) => new BlobTransferError({ reason: "uploadFailed", cause: blobCause(cause) }),
 		}).pipe(Effect.asVoid),
 	downloadToBuffer: (url) =>
 		Effect.tryPromise({
 			try: () => new BlobClient(url).downloadToBuffer(),
-			catch: (cause) => new BlobTransferError({ reason: "downloadFailed", cause }),
+			catch: (cause) => new BlobTransferError({ reason: "downloadFailed", cause: blobCause(cause) }),
 		}).pipe(Effect.map((buffer) => new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength))),
 };
 

@@ -8,7 +8,7 @@ resource: ../../packages/github/src/GitHubError.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T00:53:24Z
+  at: 2026-10-28T19:29:52Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:34.761Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: c889156044774fc0
+    body: cca312f6d4041f01
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -83,6 +83,23 @@ with ergonomic statics filling them from the value the mapper already has.
   error carried structurally.
 - **Statics cover every hand-construction site**, so a consumer test that
   used to build an error by hand is a one-liner.
+- **A kept octokit cause is a credential-free copy.** `fromOctokit` and
+  `GitHubGraphQLError.fromThrowable` read the classification facts off the
+  original throwable, then keep only `internal/scrub.ts`'s copy as `cause`.
+  octokit's `RequestError` redacts the `authorization` credential and the
+  `client_secret` and `access_token` query values and nothing else: its
+  `request` keeps the body (a webhook `config.secret`, GraphQL variables),
+  every other header and the per-request options, and its `response` keeps
+  `set-cookie` and the parsed body. The copy keeps the prototype, `name`,
+  `message`, `status`, the method, the URL and headers through
+  `@effected/crypto`'s `HttpRedaction`, and the top-level primitives of the
+  response body (`message`, `documentation_url`); it drops bodies, options,
+  `set-cookie`, partial GraphQL `data` and nested `errors` (already read into
+  `validation` and `errors`). A throwable with no `request`, `response` or
+  `headers` field is kept by identity. `GitHubAppError` needs no scrub of its
+  own: its causes are a `GitHubError` (already scrubbed), a `JwtError`, or a
+  token-payload `SchemaError`, whose issue tree holds only the failing field,
+  never the token.
 
 The GraphQL error keeps a structured errors list, because it is the one
 structured field a consumer reads and because GraphQL genuinely returns a

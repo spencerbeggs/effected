@@ -101,6 +101,7 @@ const LIGHT_MODULES = [
 	"ToolInstaller.ts",
 	"internal/actionsResults.ts",
 	"internal/archiveCommands.ts",
+	"internal/blobCause.ts",
 	"internal/cacheService.ts",
 	"internal/digest.ts",
 	"internal/fsProbe.ts",
@@ -293,6 +294,13 @@ describe("bundle reachability", () => {
 		]);
 		// `effect/process` is a type-only import there: the spawner
 		// arrives as a value from the caller.
+		// The cause scrubber the three Azure modules share reads a `RestError`
+		// structurally, so it never names `@azure/*` itself.
+		assert.deepStrictEqual([...reachableBareImports("internal/blobCause.ts")].sort(), [
+			"@effected/crypto",
+			"effect",
+			"effect/http",
+		]);
 		assert.deepStrictEqual([...reachableBareImports("internal/spawn.ts")].sort(), ["effect"]);
 		// The command-line half of every archiver call: `ChildProcess.make` is a
 		// VALUE import there, and it is shared by `Artifact` (Azure) and

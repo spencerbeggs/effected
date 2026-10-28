@@ -110,7 +110,7 @@ export class RegistryReadError extends Schema.TaggedError<RegistryReadError>()("
 	kind: Schema.Literals(["transport", "status", "decode", "credential"]),
 	/** The package that was being read. */
 	package: Schema.String,
-	/** The registry that was being read from. */
+	/** The registry that was being read from, with any userinfo and credential query values redacted. */
 	registry: Schema.String,
 	/** The HTTP status, for `kind: "status"`. */
 	status: Schema.optionalKey(Schema.Number),
@@ -166,7 +166,7 @@ const refuseWorkload = (
 ): Effect.Effect<void, RegistryReadError> => {
 	const kind: string | undefined = target?.credential?.kind;
 	return kind === "workload"
-		? Effect.fail(new RegistryReadError({ kind: "credential", package: name, registry }))
+		? Effect.fail(new RegistryReadError({ kind: "credential", package: name, registry: HttpRedaction.url(registry) }))
 		: Effect.void;
 };
 
@@ -300,14 +300,24 @@ const make = Effect.fnUntraced(function* () {
 					// Redacted where it is kept: core's error holds the live request,
 					// `authorization` header included, as a readable field.
 					Effect.fail(
-						new RegistryReadError({ kind: "transport", package: name, registry, cause: HttpRedaction.cause(cause) }),
+						new RegistryReadError({
+							kind: "transport",
+							package: name,
+							registry: HttpRedaction.url(registry),
+							cause: HttpRedaction.cause(cause),
+						}),
 					),
 				),
 				Effect.flatMap((response) => {
 					if (response.status === 404) return Effect.succeed(Option.none<A>());
 					if (response.status < 200 || response.status >= 300) {
 						return Effect.fail(
-							new RegistryReadError({ kind: "status", package: name, registry, status: response.status }),
+							new RegistryReadError({
+								kind: "status",
+								package: name,
+								registry: HttpRedaction.url(registry),
+								status: response.status,
+							}),
 						);
 					}
 					return response.json.pipe(
@@ -315,7 +325,12 @@ const make = Effect.fnUntraced(function* () {
 						Effect.map(Option.some),
 						Effect.catch((cause) =>
 							Effect.fail(
-								new RegistryReadError({ kind: "decode", package: name, registry, cause: HttpRedaction.cause(cause) }),
+								new RegistryReadError({
+									kind: "decode",
+									package: name,
+									registry: HttpRedaction.url(registry),
+									cause: HttpRedaction.cause(cause),
+								}),
 							),
 						),
 					);
@@ -354,7 +369,9 @@ const make = Effect.fnUntraced(function* () {
 				return Schema.decodeUnknownEffect(VersionManifest)(published[versionNumber]).pipe(
 					Effect.map(Option.some),
 					Effect.catch((cause) =>
-						Effect.fail(new RegistryReadError({ kind: "decode", package: name, registry, cause })),
+						Effect.fail(
+							new RegistryReadError({ kind: "decode", package: name, registry: HttpRedaction.url(registry), cause }),
+						),
 					),
 				);
 			}),
@@ -366,7 +383,7 @@ const make = Effect.fnUntraced(function* () {
 		target?: RegistryTarget,
 	) {
 		const registry = target?.registry ?? DEFAULT_REGISTRY;
-		yield* Effect.annotateCurrentSpan({ package: name, version: versionNumber, registry });
+		yield* Effect.annotateCurrentSpan({ package: name, version: versionNumber, registry: HttpRedaction.url(registry) });
 		const manifest = yield* classifyRegistry(registry) === "github-packages"
 			? versionFromPackument(name, versionNumber, registry, target)
 			: read(VersionManifest, packageUrl(registry, name, versionNumber), name, registry, target).pipe(
@@ -387,7 +404,10 @@ const make = Effect.fnUntraced(function* () {
 	});
 
 	const versions = Effect.fn("NpmRegistry.versions")(function* (name: string, target?: RegistryTarget) {
-		yield* Effect.annotateCurrentSpan({ package: name, registry: target?.registry ?? DEFAULT_REGISTRY });
+		yield* Effect.annotateCurrentSpan({
+			package: name,
+			registry: HttpRedaction.url(target?.registry ?? DEFAULT_REGISTRY),
+		});
 		const document = yield* packument(name, target);
 		return Option.match(document, {
 			onNone: () => [] as ReadonlyArray<string>,
@@ -396,7 +416,10 @@ const make = Effect.fnUntraced(function* () {
 	});
 
 	const distTags = Effect.fn("NpmRegistry.distTags")(function* (name: string, target?: RegistryTarget) {
-		yield* Effect.annotateCurrentSpan({ package: name, registry: target?.registry ?? DEFAULT_REGISTRY });
+		yield* Effect.annotateCurrentSpan({
+			package: name,
+			registry: HttpRedaction.url(target?.registry ?? DEFAULT_REGISTRY),
+		});
 		const document = yield* packument(name, target);
 		return Option.match(document, {
 			onNone: () => ({}) as Record<string, string>,
@@ -405,7 +428,10 @@ const make = Effect.fnUntraced(function* () {
 	});
 
 	const publishTimes = Effect.fn("NpmRegistry.publishTimes")(function* (name: string, target?: RegistryTarget) {
-		yield* Effect.annotateCurrentSpan({ package: name, registry: target?.registry ?? DEFAULT_REGISTRY });
+		yield* Effect.annotateCurrentSpan({
+			package: name,
+			registry: HttpRedaction.url(target?.registry ?? DEFAULT_REGISTRY),
+		});
 		const document = yield* packument(name, target);
 		return Option.match(document, {
 			onNone: () => [] as ReadonlyArray<PublishTime>,

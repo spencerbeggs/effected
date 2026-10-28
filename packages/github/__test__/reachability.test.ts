@@ -192,8 +192,11 @@ describe("bundle reachability", () => {
 	});
 
 	it("the pure classes reach nothing but effect", () => {
-		for (const entry of ["Resilience.ts", "GraphQL.ts"]) {
-			assert.deepStrictEqual([...reachableBareImports(entry)].sort(), ["effect"], entry);
+		assert.deepStrictEqual([...reachableBareImports("Resilience.ts")].sort(), ["effect"], "Resilience.ts");
+		// `@effected/crypto` for `HttpRedaction`, which the kept-cause scrubber
+		// builds on; it is pure, with an `effect` peer and nothing else.
+		for (const entry of ["GraphQL.ts", "GitHubError.ts"]) {
+			assert.deepStrictEqual([...reachableBareImports(entry)].sort(), ["@effected/crypto", "effect"], entry);
 		}
 	});
 

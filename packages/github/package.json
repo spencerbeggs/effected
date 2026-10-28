@@ -32,6 +32,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effected/crypto": "workspace:^",
 		"@effected/github-references": "workspace:^",
 		"@effected/jwt": "workspace:^",
 		"@effected/oidc": "workspace:^",
