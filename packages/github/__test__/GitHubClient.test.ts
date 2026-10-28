@@ -486,6 +486,114 @@ describe("GitHubClient.graphql", () => {
 	);
 });
 
+describe("GitHubClient.graphql variable confinement", () => {
+	const ByOwner = GraphQLDocument.make({
+		name: "byOwner",
+		document: "query ($owner: String!) { repositoryOwner(login: $owner) { login } }",
+		response: Schema.Struct({ repositoryOwner: Schema.Struct({ login: Schema.String }) }),
+	})<Record<string, unknown>>();
+	const ANSWER: Reply = { status: 200, body: { data: { repositoryOwner: { login: "acme" } } } };
+
+	/**
+	 * `@octokit/graphql` merges variables into its request options and lifts
+	 * these out as the REQUEST (its `NON_VARIABLE_OPTIONS`), or rejects them
+	 * (`query`, `method`, `url`). Each value is the hostile one.
+	 */
+	const attackerCalls: Array<string> = [];
+	const HOSTILE: ReadonlyArray<readonly [string, unknown]> = [
+		["baseUrl", "https://attacker.example"],
+		["url", "https://attacker.example/graphql"],
+		["method", "GET"],
+		["query", "mutation { deleteEverything }"],
+		["headers", { authorization: "token stolen", "x-evil": "1" }],
+		[
+			"request",
+			{
+				fetch: async (input: unknown) => {
+					attackerCalls.push(String(input));
+					return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+				},
+			},
+		],
+		["mediaType", { format: "raw" }],
+		["operationName", "Other"],
+		["data", { query: "mutation { deleteEverything }" }],
+	];
+
+	it.effect("control: a document goes to api.github.com/graphql with the token, query and variables", () =>
+		withClient([ANSWER], (client, script) =>
+			Effect.gen(function* () {
+				const result = yield* client.graphql(ByOwner, { owner: "acme" });
+				assert.strictEqual(result.repositoryOwner.login, "acme");
+				assert.lengthOf(script.calls, 1);
+				assert.strictEqual(script.calls[0]?.method, "POST");
+				assert.strictEqual(script.calls[0]?.url, "https://api.github.com/graphql");
+				assert.strictEqual(script.calls[0]?.headers.authorization, "token ghs_test");
+				assert.deepStrictEqual(JSON.parse(script.calls[0]?.body ?? "null"), {
+					query: ByOwner.document,
+					variables: { owner: "acme" },
+				});
+			}),
+		),
+	);
+
+	it.effect("a document with no variables sends no variables key", () =>
+		withClient([ANSWER], (client, script) =>
+			Effect.gen(function* () {
+				yield* client.graphql(ByOwner, {});
+				assert.deepStrictEqual(JSON.parse(script.calls[0]?.body ?? "null"), { query: ByOwner.document });
+			}),
+		),
+	);
+
+	it.effect("a variable named like a request option stays a variable in the body", () =>
+		Effect.gen(function* () {
+			const controlHeaders = yield* withClient([ANSWER], (client, script) =>
+				Effect.map(client.graphql(ByOwner, { owner: "acme" }), () => script.calls[0]?.headers),
+			);
+			assert.isDefined(controlHeaders);
+			for (const [key, hostile] of HOSTILE) {
+				attackerCalls.length = 0;
+				const variables = { owner: "acme", [key]: hostile };
+				yield* withClient([ANSWER], (client, script) =>
+					Effect.gen(function* () {
+						const exit = yield* Effect.exit(client.graphql(ByOwner, variables));
+						assert.isTrue(Exit.isSuccess(exit), key);
+						assert.lengthOf(attackerCalls, 0, key);
+						assert.lengthOf(script.calls, 1, key);
+						const call = script.calls[0];
+						assert.strictEqual(call?.method, "POST", key);
+						assert.strictEqual(call?.url, "https://api.github.com/graphql", key);
+						assert.deepStrictEqual(call?.headers, controlHeaders, key);
+						// Through JSON, as the wire carries it: a function value drops out.
+						assert.deepStrictEqual(
+							JSON.parse(call?.body ?? "null"),
+							{ query: ByOwner.document, variables: JSON.parse(JSON.stringify(variables)) },
+							key,
+						);
+					}),
+				);
+			}
+		}),
+	);
+
+	it.effect("on GitHub Enterprise Server, GraphQL goes to /api/graphql on the configured host", () =>
+		Effect.gen(function* () {
+			const script = scriptedFetch([ANSWER]);
+			yield* Effect.provide(
+				Effect.flatMap(GitHubClient, (client) => client.graphql(ByOwner, { owner: "acme" })),
+				GitHubClient.layerFromToken({
+					token: TOKEN,
+					fetch: script.fetch,
+					retry: "off",
+					baseUrl: "https://ghe.example/api/v3",
+				}),
+			);
+			assert.strictEqual(script.calls[0]?.url, "https://ghe.example/api/graphql");
+		}),
+	);
+});
+
 describe("GitHubClient.layerFromConfig", () => {
 	it.effect("reads GITHUB_TOKEN through the ambient ConfigProvider", () =>
 		Effect.gen(function* () {

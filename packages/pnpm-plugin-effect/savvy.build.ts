@@ -360,6 +360,12 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
+						"@effected/source": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
 						"@effected/spdx": {
 							range: "^0.17.0",
 							peer: "^0.17.0",

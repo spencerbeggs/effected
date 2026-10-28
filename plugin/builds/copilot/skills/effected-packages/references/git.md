@@ -17,8 +17,8 @@ the consumer's platform layer.
 ## Import
 
 ```ts
-import { Git, GitCommand, GitConfig, Gitmodules, GitRemote, TreeIdentity, UpstreamBranch } from "@effected/git";
-import type { GitConfigScope, GitInvocation, GitRemoteForm, GitShape, TreeRelation } from "@effected/git";
+import { Git, GitCommand, GitConfig, GitFile, Gitmodules, GitRemote, TreeIdentity, UpstreamBranch } from "@effected/git";
+import type { GitConfigScope, GitInvocation, GitLocateOptions, GitRemoteForm, GitShape, TreeRelation } from "@effected/git";
 ```
 
 Single entrypoint; no subpaths.
@@ -43,7 +43,7 @@ need nothing at all; they are pure.
 | Index | `lsFiles` (`LsFilesEntry[]` from `ls-files --stage -z`) | the index-side sibling of `lsTree`; the only read that sees a staged-but-uncommitted `160000` gitlink |
 | Refs | `refExists` (`false` for an unresolvable OR unknown-syntax ref, never an error), `revParse`, `mergeBase`, `mergeBaseOption` (`Option<string>`), `forEachRef` (`RefEntry[]`), `revList`, `branchList` (`BranchEntry[]`, `current` decodes the `*`), `tagList`, `upstream` (`Option<UpstreamBranch>`), `log` (`CommitLogEntry[]`; `paths`, `follow`, `limit`) | `mergeBase`'s `UnknownRefError.ref` carries the `"a...b"` range, not one side. `mergeBaseOption` is the PROBE sibling — disjoint histories answer `Option.none` instead of failing; an unknown ref still fails. `mergeBase` itself must never grow an `Option`. `upstream` is `None` on a detached `HEAD`, an unborn branch or no configured upstream; `UpstreamBranch` is `{ ref, name, gone, ahead, behind }`, `name` the string `rev-parse --abbrev-ref @{upstream}` answers, and a deleted-and-pruned upstream is still reported with `gone: true` (where `rev-parse @{upstream}` fails) |
 | Diffs | `changedFiles`, `nameStatus` (`NameStatusEntry[]`), `workingChanges` (deduplicated union of unstaged + staged + untracked; no ref, so never `UnknownRefError`), `unstagedChanges`, `stagedChanges`, `untrackedFiles`, `status` (`StatusEntry[]`; `untrackedFiles: "all" \| "normal" \| "no"`, default `"all"`) | `relative: false` adds `--full-name` to `untrackedFiles` so `workingChanges` unions one path base; `status` always passes `--untracked-files`, and a `??` path ending in `/` is a directory (under `"all"`, only an untracked nested repository) — never build a commit from `"normal"` entries |
-| Repo facts | `repoRoot` (PHYSICAL — symlinks resolved), `commonDir` (the absolute, symlink-resolved directory a repo shares with all its linked worktrees; git 2.31+), `treeIdentity` (`Option<TreeIdentity>` — `{ toplevel, commonDir }` in one spawn; `None` outside a working tree, bare repositories and `.git` included; git 2.31+), `currentBranch` (`None` on detached `HEAD`, never the literal `"HEAD"`), `defaultBranch` (`None` when `origin/HEAD` is unset), `isShallow`, `commitInfo` (`CommitInfo`; raw untrimmed message) | `isShallow` is a dedicated predicate, deliberately not folded into `revParse`. Relate two checkouts with `TreeIdentity.relation(a, b)` (dual) → `"same-tree" \| "sibling-worktree" \| "different-repo"`; `commonDir(a) === commonDir(b)` alone answers "same repository" — `repoRoot` differs per worktree. Both paths are git's physical, true-case answers, so no `realPath` step is needed — but compare them only with other git answers, never with a caller-spelled path. Bound an upward walk by `repoRoot` with `@effected/walker`'s `Walker.ascendWithin`, never `ascend`'s lexical `stopAt` |
+| Repo facts | `repoRoot` (PHYSICAL — symlinks resolved), `commonDir` (the absolute, symlink-resolved directory a repo shares with all its linked worktrees; git 2.31+), `treeIdentity` (`Option<TreeIdentity>` — `{ toplevel, commonDir }` in one spawn; `None` outside a working tree, bare repositories and `.git` included; git 2.31+), `currentBranch` (`None` on detached `HEAD`, never the literal `"HEAD"`), `defaultBranch` (`None` when `origin/HEAD` is unset), `isShallow`, `commitInfo` (`CommitInfo`; raw untrimmed message) | `isShallow` is a dedicated predicate, deliberately not folded into `revParse`. Relate two checkouts with `TreeIdentity.relation(a, b)` (dual) → `"same-tree" \| "sibling-worktree" \| "different-repo"`; `commonDir(a) === commonDir(b)` alone answers "same repository" — `repoRoot` differs per worktree. Both paths are git's physical, true-case answers, so no `realPath` step is needed — but compare them only with other git answers, never with a caller-spelled path. Bound an upward walk by `repoRoot` with `@effected/walker`'s `Walker.ascendWithin`, never `ascend`'s lexical `stopAt`. **Inside a git hook pass `{ ignoreRepositoryEnv: true }`** (`GitLocateOptions`, on `repoRoot`, `commonDir` and `treeIdentity` only): git exports `GIT_DIR` to a hook, and a child git that inherits it with no `GIT_WORK_TREE` answers `cwd` itself as the toplevel. The option removes the `git rev-parse --local-env-vars` list from the child's environment; it is off by default because staged reads in a hook must keep `GIT_INDEX_FILE` |
 | Config reads | `configGet` (`None` when unset), `configGetAll` (`[]` when unset), `configList` (`ConfigListEntry[]`); `configGet` and `configList` take `{ scope?: GitConfigScope }` (`"local"` / `"global"` / `"system"` / `"worktree"`), `configGetAll` does NOT | **Omitted `scope` means the MERGED read** — repository plus global plus system — so a globally set key shadows what this checkout itself declares; pass `{ scope: "local" }` for the precise read. `configList` additionally takes `file`, and `file` + `scope` together fail typed (git accepts only one source). `configList` splits at the first newline so multi-line values survive |
 | Remotes / network | `remoteUrl` (`None` when the remote doesn't exist; the URL **after** `url.<base>.insteadOf` rewrites — for the URL as written, persisted or compared across machines, read `configGet(cwd, "remote.<name>.url")`), `lsRemote` (`LsRemoteEntry[]` — the ONE network read, still a read) | `LsRemoteEntry.shortName` and `.nearMatches` are pure decode-side statics; the near-miss suggestion policy lives on the entry VALUE, not the service |
 | Misc | `stashList` (`StashEntry[]` — array position IS the current stash index), `worktreeList` (`WorktreeEntry[]`), `submoduleStatus` (`SubmoduleStatusEntry[]`), `checkIgnore` (`[]` when nothing is ignored) | |
@@ -131,6 +131,24 @@ that an `@` in a URL path is read as userinfo and the host is lost.
 `GitRemote.repositoryPath(remote)` is the display path (`o/n` for both
 `https://github.com/o/n.git/` and `git@host:o/n.git`) — not a canonical key:
 case is untouched and the host is dropped.
+
+**`parse` does not trim; trim first unless the value came through git.**
+Whitespace is part of the address to git too (`" https://h"` fails with
+`protocol ' https' is not supported`), so `" https://h/o/n.git "` parses as
+scheme `" https"` with `repositoryPath` `"o/n.git "`. `Git.remoteUrl`,
+`configGet`, `GitConfig` and `Gitmodules` already hand over trimmed values.
+
+## `GitFile` — the `.git` pointer file, parsed without git
+
+`GitFile.parseResult(text)` → `Result<GitFile, GitFileParseError>` (and
+`GitFile.parse`, the spanned `Effect` form) reads the `gitdir: <path>` file a
+linked worktree or a submodule has in place of a `.git` directory, by git's
+own rules: the text must begin with exactly `gitdir:` and one space, only trailing `\n`/`\r`
+are removed (spaces belong to the path), a NUL ends the path, and
+`GitFileParseError.code` is `"InvalidFormat"` or `"NoPath"`, git's two
+refusals. `gitdir` is the pointer as written, relative or absolute; resolving
+it against the file's directory, and any confinement check, is the caller's.
+No spawn, no filesystem — the fit for a code path that must not run git.
 
 **Credentials elsewhere are kept**: a token used as the URL user, a token in a
 query, whatever git reads as an scp path. `GitRemote.redact(remote)` masks

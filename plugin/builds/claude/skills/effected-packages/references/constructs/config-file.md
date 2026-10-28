@@ -25,6 +25,7 @@
 | `ConfigFileWriteError` | Class | Indicates that a config file could not be written to the filesystem. | handle a config file that could not be written to disk |
 | `ConfigLoadError` | TypeAlias | The failure modes of the full discovery-and-load path. | |
 | `ConfigMatch` | Interface | How a resolver found a config file, not merely where. | |
+| `ConfigMerge` | Class | Pure, synchronous merging of config values: the merge `MergeStrategy.layeredMerge` runs, without `ConfigSource` wrappers or an `Effect`. | deep merge two config values synchronously, override wins, prototype-pollution safe |
 | `ConfigMigration` | Class | Versioned migration support for config codecs. | upgrade an old config file schema to the latest version on load |
 | `ConfigMigrationError` | Class | Indicates that a versioned config migration failed. | handle a versioned config migration step failing to read, apply or write |
 | `ConfigMigrationOptions` | Interface | Options for `ConfigMigration.make`. | |

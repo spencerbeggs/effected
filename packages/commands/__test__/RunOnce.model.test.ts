@@ -75,6 +75,78 @@ describe("RunOnce protocol, model-checked", () => {
 		);
 	});
 
+	// Serialize-only mode: the same protocol with the done marker switched off.
+	// Every process must run, none may overlap or be trusted, and no marker
+	// may appear.
+	it("s/a: serialize mode, 2 processes, failing work explored, preemption bound 3", { timeout: 60_000 }, () => {
+		check(
+			{ label: "s/a", processes: 2, crashes: 0, preemptions: 3, maxPolls: 3, runFail: true, serialize: true },
+			13_000,
+		);
+	});
+
+	it("s/c: serialize mode, 3 processes, preemption bound 2", { timeout: 60_000 }, () => {
+		check({ label: "s/c", processes: 3, crashes: 0, preemptions: 2, maxPolls: 2, serialize: true }, 10_000);
+	});
+
+	it("s/e: serialize mode, a pre-existing dead lock, 2 processes, preemption bound 3", { timeout: 60_000 }, () => {
+		check(
+			{ label: "s/e", processes: 2, crashes: 0, preemptions: 3, maxPolls: 3, initial: DEAD_LOCK, serialize: true },
+			16_000,
+		);
+	});
+
+	// Mixed modes: `once` and `serialize` callers on ONE key. Runs must stay
+	// mutually exclusive across modes, a serialize caller must never end
+	// `Trusted` (it may run after a marker it saw — that is its contract), and
+	// only a once caller may write the done marker. Both orders of a 2-process
+	// mix are explored, since which mode reaches the lock first is the point.
+	for (const modes of [
+		["once", "serialize"],
+		["serialize", "once"],
+	] as const) {
+		it(`m/a: mixed ${modes.join("+")}, 2 processes, failing work explored, preemption bound 3`, {
+			timeout: 60_000,
+		}, () => {
+			check(
+				{
+					label: `m/a/${modes.join("+")}`,
+					processes: 2,
+					crashes: 0,
+					preemptions: 3,
+					maxPolls: 3,
+					runFail: true,
+					modes,
+				},
+				15_000,
+			);
+		});
+	}
+
+	it("m/c: mixed once+once+serialize, 3 processes, preemption bound 2", { timeout: 60_000 }, () => {
+		// Two once callers, so one can trust the other's marker while a
+		// serialize caller contends for the same lock.
+		check(
+			{ label: "m/c", processes: 3, crashes: 0, preemptions: 2, maxPolls: 2, modes: ["once", "once", "serialize"] },
+			11_000,
+		);
+	});
+
+	it("m/e: mixed modes, a pre-existing dead lock, 2 processes, preemption bound 3", { timeout: 60_000 }, () => {
+		check(
+			{
+				label: "m/e",
+				processes: 2,
+				crashes: 0,
+				preemptions: 3,
+				maxPolls: 3,
+				initial: DEAD_LOCK,
+				modes: ["once", "serialize"],
+			},
+			17_000,
+		);
+	});
+
 	it("g0 (3 processes): dead lock + stale breaker, preemption bound 2", { timeout: 120_000 }, () => {
 		check(
 			{ label: "g0/3", processes: 3, crashes: 0, preemptions: 2, maxPolls: 1, initial: STALE_BREAKER_WRECK },

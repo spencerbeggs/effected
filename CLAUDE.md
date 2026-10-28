@@ -37,7 +37,7 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 
 ### Kit composition
 
-The kit is **42 publishable packages**: 40 libraries plus two companions (`pnpm-plugin-effect` and `schemastore-cli`); all but `@effected/crypto`, `@effected/oidc` and `@effected/webhooks`, the newest libraries, have published. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
+The kit is **43 publishable packages**: 41 libraries plus two companions (`pnpm-plugin-effect` and `schemastore-cli`); all but `@effected/crypto`, `@effected/oidc`, `@effected/webhooks` and `@effected/source`, the newest libraries, have published. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
 
 `@effected/config-file` holds every config **codec**; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — with `ConfigCodec` the interface only. `JsonCodec` is on the root; the other three ship from the `./jsonc`, `./yaml` and `./toml` subpaths, whose engines are optional peers the root must never reach. **Never collect them into a namespace object**: it would drag every parsing engine into a JSON-only consumer's bundle, killing tree-shaking silently. Read `okf/modules/config-file.md` and `okf/decisions/codecs-are-free-standing-named-exports.md` before touching it.
 
@@ -47,7 +47,7 @@ The kit is **42 publishable packages**: 40 libraries plus two companions (`pnpm-
 
 - `packages/` — the workspace packages.
 - `plugin/` — the "effected" agent plugin (skills, specialist agents, a SessionStart briefing): one source that `pluginfinity` builds into committed Claude Code and Copilot plugins under `plugin/builds/`, which are **never hand-edited**. Its private tracking package `@effected/ai-plugin` versions and tags both builds but **never publishes to npm**; a plugin release is a git tag plus a GitHub release. Read `plugin/CLAUDE.md` before working there.
-- `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
+- `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`. **The website is frozen: write no docs pages, nav entries or website content for new or changed packages.** It ships as-is and will move to its own repo, so don't spend effort keeping it current.
 - `scratchpad/` — private agent-probe workspace: every kit package at `workspace:*`, three runners, never published, invisible to CI. Read `scratchpad/CLAUDE.md` before working there.
 - `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. Sibling submodules vendor spec inputs for specific packages (the CommonMark/mdast set). **Never write to anything under `.repos/`** — silk's PreToolUse guards deny it. Detail → `okf/modules/workspace.md`, `okf/conventions/no-writes-under-repos.md`.
 - **A generator's data input is a committed file, not a submodule.** `@effected/spdx` and `@effected/schema-org` each read one published document from their own `lib/data/`. Vendoring those as submodules cost every clone and every CI checkout the upstream repos' full history — 1.86 GB and 254 MB — to reach 332 KB and 1.5 MB of JSON, and roughly tripled CI checkout time. Submodule a source repo when the package needs to *read the repo*; commit the file when it needs one file.
@@ -55,7 +55,7 @@ The kit is **42 publishable packages**: 40 libraries plus two companions (`pnpm-
 
 ### Package context files
 
-Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 42 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
+Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 43 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
 
 ## Build Pipeline
 

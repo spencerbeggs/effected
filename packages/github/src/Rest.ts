@@ -20,17 +20,22 @@ import { Schema } from "effect";
 export type Route = keyof Endpoints;
 
 /**
- * Transport knobs octokit accepts on any route, narrowed to the three this
+ * Transport knobs octokit accepts on any route, narrowed to the two this
  * package allows.
  *
  * @remarks
  * octokit's own `RequestParameters` carries an `[parameter: string]: unknown`
  * index signature, so intersecting it would silently accept every misspelled
- * parameter. These three are the ones callers need:
- * `headers` for a release asset's `content-type` and the attestations API
- * version pin, `mediaType.format` for raw content reads, and `baseUrl` for the
- * `uploads.github.com` host that release-asset uploads go to. Everything else a
- * caller might reach for is a real endpoint parameter and is already typed.
+ * parameter. These two are the ones callers need: `headers` for a release
+ * asset's `content-type` and the attestations API version pin, and
+ * `mediaType.format` for raw content reads. Everything else a caller might
+ * reach for is a real endpoint parameter and is already typed.
+ *
+ * There is no knob that moves a request: **a client's token only ever goes to
+ * the host it was configured with.** octokit reads `baseUrl` and `url` off the
+ * flat parameters as the request's host, so the raw surface refuses either
+ * name, and an absolute-URL route, with a `rejected` `GitHubError` and nothing
+ * sent. A request to another GitHub host is a second client configured for it.
  *
  * @public
  */
@@ -39,17 +44,20 @@ export interface RequestExtras {
 	readonly headers?: RequestHeaders;
 	/** Media-type negotiation, e.g. `{ format: "raw" }`. */
 	readonly mediaType?: { readonly format?: string };
-	/** Overrides the API host for this one request. */
-	readonly baseUrl?: string;
 }
 
 /**
  * The parameters `Route` accepts — path, query and body parameters from
  * GitHub's OpenAPI description, plus the extras below.
  *
+ * @remarks
+ * `baseUrl` is typed `never`, so passing one is a compile error: the request
+ * goes to the client's configured host and nowhere else. One that arrives
+ * through a cast is refused at runtime.
+ *
  * @public
  */
-export type Params<R extends Route> = Endpoints[R]["parameters"] & RequestExtras;
+export type Params<R extends Route> = Endpoints[R]["parameters"] & RequestExtras & { readonly baseUrl?: never };
 
 /**
  * The full response `Route` returns, including `status`, `headers` and `data`.

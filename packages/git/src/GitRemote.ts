@@ -355,9 +355,23 @@ export class GitRemote {
 	 * Parses a remote address into its form and verbatim parts.
 	 *
 	 * @remarks
-	 * Total: `Option.none` only for a blank string. The input is not trimmed —
-	 * `Git.remoteUrl` already trims, and a path may carry surrounding
-	 * whitespace. Classification follows git: `<transport>::` first, then any
+	 * Total: `Option.none` only for a blank string.
+	 *
+	 * **The input is not trimmed, so trim it first** when it did not come from
+	 * git. Whitespace is part of the address to git as well: probed against
+	 * git 2.56, `git clone " https://h/o/n"` fails with
+	 * `protocol ' https' is not supported`, and `"file:///srv/r "` names a
+	 * path ending in a space.
+	 * Parsing a padded address therefore reports what git would do with it:
+	 * `" https://h/o/n.git "` is a URL with scheme `" https"`, and its
+	 * `repositoryPath` is `"o/n.git "`. Trimming here would report a remote git
+	 * cannot reach, or a different repository, as valid. Values read through
+	 * git need nothing: `Git.remoteUrl` trims git's output, and git's config
+	 * format (`Git.configGet`, `GitConfig`, `Gitmodules`) drops the whitespace
+	 * around an unquoted value. A value from anywhere else (a hand-rolled
+	 * reader, user input, a JSON file) is the caller's to trim.
+	 *
+	 * Classification follows git: `<transport>::` first, then any
 	 * `://` (a URL), then a `:` before any `/` (the scp form, so `github:o/n`
 	 * is scp with host `github` and `C:/repo` is scp with host `C`), else a
 	 * path.

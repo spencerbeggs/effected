@@ -32,7 +32,8 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effected/commands": "workspace:^"
+		"@effected/commands": "workspace:^",
+		"@effected/crypto": "workspace:^"
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",

@@ -187,6 +187,14 @@ describe("config inference (#345)", () => {
 			strict: { kind: "none" },
 			floors: { max: 2 },
 		},
+		{
+			// The three blank lines are content of the plain scalar `"x\n\n\ny"`,
+			// not layout, so only the two-line body run counts.
+			name: "blank lines inside a multi-line plain scalar are not a body run",
+			inputs: ["a: x\n\n\n\n  y\n\n\nb: 2\n"],
+			strict: { kind: "none" },
+			floors: { max: 2 },
+		},
 	]);
 
 	it("the policy rules carry no infer hook — default-driven by construction", () => {

@@ -1,7 +1,9 @@
 # @effected/walker
 
-Path traversal: upward (`Walker.ascend` / `ascendWithin` / `firstMatch` /
-`findUpward` / `findRoot`) and downward (`descend`, the public glob-file walker). Sixth
+Path traversal: upward (`Walker.ascend` / `ascendWithin` / `ascendToMarker` /
+`firstMatch` / `findUpward` / `findUpwardAll` / `findRoot`, plus `*Sync` twins)
+and downward (`descend`, the public glob-file walker), and path containment
+(`confineRelative` lexical, `confineReal` physical). Sixth
 migration; the first package extracted from an already-merged sibling rather
 than ported from a `*-effect` repo.
 
@@ -155,6 +157,48 @@ satisfies the sync port directly (its sync interface carries `realPath`).
   denied link); without them a broken `ENOENT` mapping passed. The sync
   fault handlers (`readDirectory`, `realPath`) mirror the Effect ones.
 
+## One upward machine, two drivers
+
+The upward forms and `confineReal` run ONE generator,
+`src/internal/upwardMachine.ts`, yielding `Exists`, `RealPath` and
+`Present` requests; `src/internal/upwardDrivers.ts` answers them through core
+`FileSystem` or the sync port (`stat` succeeding = exists; `realPath`
+throwing `ENOENT` = not found; `lstat` succeeding = present). Same rule as
+the downward walk: **never put a rule in a driver**.
+`ascend` is pure and calls the machine's `ascendChain` with no driver, so its
+`R` stays `Path`. `__test__/WalkerSync.test.ts` and `ConfineReal.test.ts`
+are parity matrices over one memfs volume. `WalkerSyncPath` mirrors core
+`Path` (`sep`, `join`, `dirname`, `resolve`, `isAbsolute`).
+
+- `ascendToMarker` stops at the nearest directory holding a marker ENTRY
+  (any kind), probing nothing above it; empty markers / an empty name die.
+- `findUpwardAll` probes the whole nearest hit directory, nothing above it.
+- `confineReal` resolves SEGMENT BY SEGMENT. Never replace that with one
+  `realPath` of a `..`-bearing path: node's JS `fs.realpath` (the Node
+  `FileSystem` off win32) runs `path.resolve` first, so `base/link/../x`
+  would read as inside while the OS opens the link target's sibling. memfs's
+  `realPath` is physical, so the `out/../passwd` cases catch a walker that
+  collapses `..` itself, but NOT one that hands the whole path to a
+  lexical-first `realPath` — no memfs volume behaves that way. Unresolvable
+  is refused, the base itself is `empty`, a relative base dies.
+- **`NotFound` from `realPath` is never proof of absence.** A dangling link
+  answers it too, and a write through one creates the target wherever it
+  points. Every not-found segment is re-asked with `Present` (`lstat`); only
+  "nothing lives here" continues lexically, while a present entry (the
+  dangling link) or a failed `lstat` is `unresolvable`. A dangling link is
+  refused even when its target would be inside the base: nothing resolved
+  proves where it leads. Never drop the `Present` request to save a syscall.
+- Every caller-named root (`cwd`, the confine base, `stopAt`, a ceiling) goes
+  through `internal/absolute.ts`'s `isPinnedAbsolute`: on win32 a driveless
+  `\repo` is absolute to `isAbsolute` yet names whichever drive the process
+  is on, so it dies like `C:repo`; UNC `\\server\share` is fine. A
+  candidate spelled `\x` is refused `absolute`, mirroring `C:x`.
+- `descend`'s `cwd` must be absolute (relative and `""` die: the empty-base
+  drive escape, `join("", "C:/x")`), and a missing `cwd` is an empty answer.
+- `match: "directory" | "any"` matches a directory as its parent's entry, by
+  resolved kind; prune/boundaries/unentered links withhold only what lies
+  below it.
+
 ## Invariants
 
 - `ascend` is **lexical, not physical**: `Path.dirname` does not resolve
@@ -206,6 +250,8 @@ satisfies the sync port directly (its sync interface carries `realPath`).
 
 `savvy.build.ts` carries the one narrow `_base` suppression
 (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the synthesized
-base of the `DescendError` class factory. Never widen it.
+base of the class factory behind each of the package's three tagged errors:
+`DescendError`, `PathEscapeError` and `GlobExpansionError`. It is one pattern
+covering all three. Never widen it.
 
 Never run `node savvy.build.ts --target prod` directly.

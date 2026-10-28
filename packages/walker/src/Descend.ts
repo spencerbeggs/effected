@@ -21,8 +21,49 @@ import { descendMachine, failureOf } from "./internal/descendMachine.js";
  * @public
  */
 export interface DescendOptions {
-	/** Absolute directory the pattern is resolved against. Required — walker never reads `process.cwd()`. */
+	/**
+	 * Absolute directory the pattern is resolved against. Required — walker
+	 * never reads `process.cwd()`.
+	 *
+	 * @remarks
+	 * **A missing `cwd` is an empty result, never a failure**: when `cwd` does
+	 * not exist, is a file, or is a dangling link, every pattern — literal or
+	 * magic — answers zero matches (`[]`, or `{ matches: [], unreadable: [] }`
+	 * under `"record"`), in the `Effect` and the sync forms alike. Zero
+	 * matches is a normal glob answer, so a caller that must tell "nothing
+	 * matched" from "there was nothing to look in" checks `cwd` itself first.
+	 * The same holds for a pattern's literal base below `cwd`. Only an
+	 * unreadable directory the walk does reach fails, under `"fail"`.
+	 *
+	 * **A relative `cwd` — the empty string included — is a defect**: the
+	 * `Effect` forms die and the sync forms throw. A relative directory would
+	 * resolve against the process working directory, so the same call would
+	 * walk different trees from a hook, a CLI and a test runner, and on win32
+	 * an empty `cwd` joined with a pattern spelled `C:/x` is the drive path
+	 * `C:\x`. Absoluteness is judged by the injected `Path` (or the sync port's
+	 * `isAbsolute`), so win32 accepts `C:\repo` and `\\server\share`; a
+	 * win32 `\repo` names the root of whichever drive the process is on, so
+	 * it dies as a relative `cwd` does.
+	 */
 	readonly cwd: string;
+	/**
+	 * Which entry kinds match. `"file"` (the default) answers files only, as
+	 * `descend` always has; `"directory"` answers directories only; `"any"`
+	 * answers both.
+	 *
+	 * @remarks
+	 * The kind is the RESOLVED one — links followed, as for files — so a link
+	 * to a directory matches as a directory, even where `followSymlinks: false`
+	 * keeps the walk from entering it, and even when its target lies outside
+	 * `cwd`. Check such an entry with `confineReal` before acting on it. A
+	 * directory matches as an entry of its parent: `prune`, a boundary and an
+	 * unentered link withhold what lies below a directory, never the
+	 * directory itself, so a globstar pattern for `node_modules` finds every
+	 * `node_modules` under the default `prune` without reading inside one. A directory is tested bare
+	 * and with a trailing `/`, so the directory-only glob form `dist/`
+	 * matches, answered as spelled. `cwd` itself is never a match.
+	 */
+	readonly match?: "file" | "directory" | "any";
 	/** Hard cap on directory depth below the pattern's literal prefix. Defaults to 256. */
 	readonly maxDepth?: number;
 	/** Directory names never descended into. Defaults to `["node_modules", ".git"]`; a custom list replaces the default. */
@@ -170,8 +211,8 @@ export class DescendError extends Schema.TaggedError<DescendError>()("DescendErr
 }
 
 /**
- * One matched file with the stat the walk already read for it — `descendEntries`'
- * element. Costs no syscall beyond `descend`'s: the walk stats every entry to
+ * One matched entry — a file, or under `match` a directory — with the stat
+ * the walk already read for it: `descendEntries`' element. Costs no syscall beyond `descend`'s: the walk stats every entry to
  * classify it, and this keeps the answer instead of discarding it.
  *
  * The type parameter is the stat's type, so the sync walk reuses this shape
@@ -180,7 +221,7 @@ export class DescendError extends Schema.TaggedError<DescendError>()("DescendErr
  * @public
  */
 export interface DescendEntry<I = FileSystem.File.Info> {
-	/** The file's path relative to `cwd`, POSIX separators. */
+	/** The entry's path relative to `cwd`, POSIX separators. */
 	readonly path: string;
 	/** `FileSystem.stat` of the file — links followed, so a symlinked file reports its target. */
 	readonly info: I;
@@ -270,9 +311,11 @@ const walk = (
 			}
 		};
 
-		const machine = descendMachine<FileSystem.File.Info, PlatformError.PlatformError>(pattern, options, (a, b) =>
-			path.join(a, b),
-		);
+		const machine = descendMachine<FileSystem.File.Info, PlatformError.PlatformError>(pattern, options, {
+			sep: path.sep,
+			join: (a, b) => path.join(a, b),
+			isAbsolute: (p) => path.isAbsolute(p),
+		});
 		let step = machine.next();
 		while (step.done !== true) step = machine.next(yield* answer(step.value));
 		const result = step.value;
@@ -319,7 +362,8 @@ export function descend(
 ): Effect.Effect<DescendResult, DescendError, FileSystem.FileSystem | Path.Path>;
 /**
  * Expand a compiled glob pattern against the filesystem, returning matching
- * FILE paths relative to `cwd` (POSIX separators), sorted by relative path.
+ * FILE paths relative to `cwd` (POSIX separators), sorted by relative path —
+ * or, under `match: "directory"` or `"any"`, directory paths too.
  *
  * @remarks
  * A path is answered in the spelling the pattern matched it under: `./src/*.ts`
@@ -331,8 +375,9 @@ export function descend(
  * path is zero matches, not an error. A magic pattern walks each of its
  * `GlobPattern.enumerationRoots`, reading each directory once however many
  * alternatives spell it; a NEGATED pattern can match paths outside those
- * roots, so it walks from `cwd` itself. A missing
- * base directory is likewise an empty result, because zero matches is a
+ * roots, so it walks from `cwd` itself. A missing `cwd` or
+ * base directory (absent, a file, a dangling link) is likewise an empty
+ * result — see `DescendOptions.cwd` — because zero matches is a
  * normal glob answer — as is any pattern that lexically climbs above `cwd`
  * via `..` segments (walked paths never contain `..`). "Never reads outside
  * its documented root" holds lexically always, and physically only while
@@ -342,7 +387,8 @@ export function descend(
  * (under the default `onUnreadable: "fail"`) or a walk past `maxDepth` fails,
  * typed as {@link DescendError}.
  *
- * Only files match. A symlink counts when it stat-resolves to a file
+ * Only files match by default (`match` widens that to directories). A symlink
+ * counts when it stat-resolves to a file
  * (`FileSystem.stat` follows links, as node's does); a symlinked directory is
  * never descended into by default (cycle safety — detected by an `lstat`
  * probe), unless `followSymlinks: true` asks for it, which follows links under

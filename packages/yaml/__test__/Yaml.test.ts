@@ -1415,3 +1415,15 @@ describe("Yaml", () => {
 		);
 	});
 });
+
+describe("a block scalar's explicit indentation indicator after `---`", () => {
+	// The parent-indent scan took the last `-` of a `---` marker for a sequence
+	// entry, so a root block scalar after the marker was indented two columns
+	// too far: `document-start`'s fix (inserting `---`) changed the value.
+	it("decodes the same with and without the marker", () => {
+		for (const body of [">1\n #:a", "|1\n  a", "|2\n   a\n"]) {
+			assert.deepStrictEqual(Yaml.parseResult(`---\n${body}`), Yaml.parseResult(body), JSON.stringify(body));
+		}
+		assert.deepStrictEqual(Yaml.parseResult(">1\n #:a"), Result.succeed("#:a\n"));
+	});
+});

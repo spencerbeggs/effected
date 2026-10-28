@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@effected%2Fjwt?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/jwt)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 
-JWS, JWT, JWK and JWKS sign and verify over WebCrypto, for Effect v4. It runs anywhere WebCrypto does, including Node, browsers and Cloudflare Workers, with no `node:` import and no runtime dependency beyond the `effect` peer.
+JWS, JWT, JWK and JWKS sign and verify over WebCrypto, for Effect v4. It runs anywhere WebCrypto does, including Node, browsers and Cloudflare Workers, with no `node:` import and no runtime dependency beyond the `effect` peer and `@effected/crypto`, which is WebCrypto-only too.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
 > Effect v4 (`effect` `^4.0.0`) and still in `0.x` development.

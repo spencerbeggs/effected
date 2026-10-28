@@ -422,6 +422,9 @@ importers:
       effect:
         specifier: catalog:effect
         version: 4.0.7
+      tsx:
+        specifier: catalog:build
+        version: 4.23.15
       typescript:
         specifier: catalog:build
         version: 7.1.0-beta
@@ -563,6 +566,9 @@ importers:
 
   packages/github:
     dependencies:
+      '@effected/crypto':
+        specifier: workspace:^
+        version: link:../crypto/dist/dev/pkg
       '@effected/github-references':
         specifier: workspace:^
         version: link:../github-references/dist/dev/pkg
@@ -777,6 +783,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/jsonc:
+    dependencies:
+      '@effected/source':
+        specifier: workspace:^
+        version: link:../source/dist/dev/pkg
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
@@ -821,6 +831,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/jwt:
+    dependencies:
+      '@effected/crypto':
+        specifier: workspace:^
+        version: link:../crypto/dist/dev/pkg
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
@@ -899,6 +913,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/markdown:
+    dependencies:
+      '@effected/source':
+        specifier: workspace:^
+        version: link:../source/dist/dev/pkg
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
@@ -984,6 +1002,9 @@ importers:
       '@effected/commands':
         specifier: workspace:^
         version: link:../commands/dist/dev/pkg
+      '@effected/crypto':
+        specifier: workspace:^
+        version: link:../crypto/dist/dev/pkg
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
@@ -1055,6 +1076,9 @@ importers:
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.7(effect@4.0.7)(vitest@5.0.5)
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.7.0
         version: 2.7.0(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redis@6.3.0)(tsx@4.23.15)(typescript@7.1.0-beta)
@@ -1087,6 +1111,9 @@ importers:
 
   packages/runtimes:
     dependencies:
+      '@effected/crypto':
+        specifier: workspace:^
+        version: link:../crypto/dist/dev/pkg
       '@effected/semver':
         specifier: workspace:^
         version: link:../semver/dist/dev/pkg
@@ -1222,7 +1249,7 @@ importers:
         version: 8.20.0
       ajv-formats:
         specifier: ^3.0.1
-        version: 3.0.1
+        version: 3.0.1(ajv@8.20.0)
       jiti:
         specifier: ^2.6.0
         version: 2.7.0
@@ -1251,6 +1278,25 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/semver:
+    devDependencies:
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.7(effect@4.0.7)(vitest@5.0.5)
+      '@savvy-web/bundler':
+        specifier: ^2.7.0
+        version: 2.7.0(@types/node@26.6.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redis@6.3.0)(tsx@4.23.15)(typescript@7.1.0-beta)
+      '@types/node':
+        specifier: catalog:build
+        version: 26.6.5
+      effect:
+        specifier: catalog:effect
+        version: 4.0.7
+      typescript:
+        specifier: catalog:build
+        version: 7.1.0-beta
+    publishDirectory: dist/dev/pkg
+
+  packages/source:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
@@ -1352,6 +1398,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/toml:
+    dependencies:
+      '@effected/source':
+        specifier: workspace:^
+        version: link:../source/dist/dev/pkg
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
@@ -1570,6 +1620,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/yaml:
+    dependencies:
+      '@effected/source':
+        specifier: workspace:^
+        version: link:../source/dist/dev/pkg
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
@@ -7810,7 +7864,7 @@ snapshots:
     dependencies:
       ajv: 8.20.0
       ajv-draft-04: 1.0.0(ajv@8.20.0)
-      ajv-formats: 3.0.1
+      ajv-formats: 3.0.1(ajv@8.20.0)
       fs-extra: 11.3.6
       import-lazy: 4.0.0
       jju: 1.4.0
@@ -8725,8 +8779,8 @@ snapshots:
     optionalDependencies:
       ajv: 8.20.0
 
-  ajv-formats@3.0.1:
-    dependencies:
+  ajv-formats@3.0.1(ajv@8.20.0):
+    optionalDependencies:
       ajv: 8.20.0
 
   ajv@8.18.0:

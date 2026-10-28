@@ -8,6 +8,7 @@
 | `CurrentDistribution` | Variable | The carrier this run was installed through, read anywhere without appearing in `R`. | read which carrier package installed this run without it appearing in R, defaults to none |
 | `Distribution` | Variable + TypeAlias | A decoded `(Distribution:variable)`. | the carrier package name and version a tool's bins were installed through |
 | `DistributionField` | Variable | The `distribution` field of a machine-readable envelope: `null` when the front end was installed directly rather than through a carrier. | the nullable distribution field of a machine-readable envelope, null for a direct install |
+| `ErrorText` | Class | Any value as error text, without ever throwing: the one implementation every front end of a tool uses, so a CLI and an MCP server describe the same failure with the same words. | turn any thrown value or error into text without throwing, cause-chain messages |
 | `Exclusive` | Class | A one-permit lane for work that mutates process-global state (the working directory, the environment, a patched stream), so two requests never interleave it and the state is restored before the next one starts. | serialize work that mutates process-global state, one at a time with a timeout, abortable promises |
 | `ExclusivePromiseOptions` | Interface | `Exclusive.promise`'s options. | |
 | `ExclusiveRunOptions` | Interface | `Exclusive.run`'s required options. | |

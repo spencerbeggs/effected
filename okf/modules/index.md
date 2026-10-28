@@ -2,8 +2,8 @@
 
 * [@effected/cli](cli.md) - The presentation boundary of an effect/cli program — audience, colour, theme, messages, logging, failure reporting and schema-issue renderers in a React-free root, with interactive Ink screens behind ./ui and their test harness behind ./ui/testing.
 * [@effected/commands](commands.md) - The kit's tool-and-output layer over core's subprocess contract — structured running, CLI tool discovery, run-once serialization across processes, prebuilt-binary resolution, launcher argv parsing, and (behind ./node-sync) anchored module resolution.
-* [@effected/crypto](crypto.md) - HMAC, constant-time comparison and AWS SigV4 request signing over WebCrypto, with no node imports, for the keyed primitives core Crypto does not offer.
-* [@effected/engine](engine.md) - The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, launch-context resolution, a one-permit lane for process-global work with scoped restores, and transport-neutral crash guards.
+* [@effected/crypto](crypto.md) - HMAC, constant-time comparison and AWS SigV4 request signing over WebCrypto, with no node imports, for the keyed primitives core Crypto does not offer, plus HttpRedaction, the kit's one credential scrub for kept HTTP errors.
+* [@effected/engine](engine.md) - The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, never-throwing error text, launch-context resolution, a one-permit lane for process-global work with scoped restores, and transport-neutral crash guards.
 * [@effected/env](env.md) - The boundary package that detects who is running a program and in what terminal — agent, CI and its run, session, colour level, hyperlink support and width — through Config, and reads shell export files in one strict dialect, with no node imports and no import-time reads.
 * [@effected/github](github.md) - The kit's typed GitHub REST and GraphQL API layer, owning the octokit runtime.
 * [@effected/github-commands](github-commands.md) - The GitHub Actions workflow-command grammar as pure functions: render a command, and neutralize text so the runner cannot read it as one.
@@ -19,6 +19,7 @@
 * [@effected/schema-org](schema-org.md) - The schema.org vocabulary as pure Effect Schema classes, a JsonLdDocument graph assembler with a script-safe serializer, and offline conformance validation over the vendored vocabulary.
 * [@effected/schemastore](schemastore.md) - Builds, versions, validates and lints SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources, over core's generation pipeline.
 * [@effected/schemastore-cli](schemastore-cli.md) - The companion command to @effected/schemastore: loads a schemastore.config.ts, builds or checks every declared schema and catalog entry under a per-schema published flag and a drift policy, validates a payload against a published document, and reports to a terminal, JSON or a GitHub step summary; also the home of the kit's two shipped engines, AjvValidator (SchemaValidator) and AjvInstanceValidator (InstanceValidator).
+* [@effected/source](source.md) - Source-text positions as plain values: a LineIndex from offsets to LSP-style zero-based line and character and back, and the structural range, position and diagnostic shapes the kit's format packages share.
 * [@effected/spdx](spdx.md) - SPDX license identifiers, exceptions and license expressions modeled as pure Effect Schema classes, owning the grammar rather than depending on a parser package.
 * [@effected/templates](templates.md) - A managed-section mechanism — delimited BEGIN/END blocks a tool owns inside a file the user otherwise owns.
 * [@effected/webhooks](webhooks.md) - Inbound webhook signature verification as pure functions over a header lookup, the raw body and the receive time, with presets for Standard Webhooks, GitHub, Stripe, Sanity, a generic HMAC header and a shared secret.
@@ -30,7 +31,7 @@
 * [git](git.md) - Typed git for the kit — a read tier over a repository's state and a clearly-marked mutating tier, plus a pure git-config document model.
 * [github-actions](github-actions.md) - The GitHub Actions runner runtime — environment, inputs/outputs/state, workflow commands, storage, reporting and the sbom attestation seam.
 * [glob](glob.md) - Full-fidelity glob matching as pure string-to-predicate Effect Schema compilation, vendoring the complete minimatch dialect.
-* [jsonc](jsonc.md) - Zero-dependency JSONC parsing, editing and formatting as Effect Schema classes.
+* [jsonc](jsonc.md) - Pure-tier JSONC parsing, editing and formatting as Effect Schema classes, with RFC 8785 fingerprints.
 * [lockfiles](lockfiles.md) - Pure lockfile parsing for bun, npm, pnpm and yarn Berry, normalized into one unified model, plus pure integrity checking.
 * [npm](npm.md) - The dependency-resolution contracts a manifest library defines but cannot implement, the npm vocabulary shared across the kit, and the registry/tarball/publish services that replace a shelled-out npm CLI.
 * [package-json](package-json.md) - package.json parsing, editing, validation and file IO as Effect schemas — the kit's boundary-tier manifest library and its reference for pure/IO separation.

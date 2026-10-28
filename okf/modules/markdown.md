@@ -35,16 +35,16 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/1030
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T14:19:39Z
+  at: 2026-10-28T18:08:21Z
 integrity:
   generated:
-    body: ad4fc74e96223252
+    body: b6e96463df3154e1
 ---
 
 # `@effected/markdown`
 
 `@effected/markdown` is CommonMark 0.31.2 plus GFM expressed as pure Effect
-Schema classes: parse into mdast-shaped nodes carrying byte offsets, compute
+Schema classes: parse into mdast-shaped nodes carrying UTF-16 code-unit offsets, compute
 offset-splice edits, format, modify by node, rewrite trees with typed
 transforms, project to and from plain mdast,
 walk the tree synchronously or as a `Stream`, and read and write frontmatter through
@@ -62,8 +62,12 @@ CommonMark conformance corpus (`packages/markdown/__test__/e2e/support/htmlWrite
 
 ## Tier and dependency posture
 
-**Pure tier.** No IO; the engine is owned entirely in `src/internal/`; zero
-external runtime dependencies. `peerDependencies` is `effect` plus
+**Pure tier.** No IO; the engine is owned entirely in `src/internal/`. The
+one runtime dependency is [`@effected/source`](source.md), a regular
+`workspace:^` dependency: pure, dependency-free and carrying no
+shared-instance contract, so the [peer
+discipline](../conventions/peer-dependency-discipline.md) asks for no peer.
+`peerDependencies` is `effect` plus
 **optional** kit peers on `@effected/yaml`, `@effected/toml` and
 `@effected/jsonc` (via `peerDependenciesMeta`), consumed only by the
 respective frontmatter codec modules — a recorded delta from
@@ -114,7 +118,7 @@ at the top of the block pass and never enters the inline pass.
 Node Schema classes use mdast's exact node type names and field shapes — the
 CommonMark types, the GFM additions and the frontmatter node
 (`packages/markdown/src/MarkdownNode.ts`). Positions are unist positions with
-line/column and byte offsets. Fidelity fields — bullet character, fence
+line/column and UTF-16 code-unit offsets. Fidelity fields — bullet character, fence
 character and info string, ATX vs setext heading style, delimiter runs,
 spacing — ride alongside the mdast shape; the `Mdast` module projects to
 plain spec-valid mdast JSON by stripping them. The one exception is `Text`'s
@@ -133,8 +137,8 @@ the spec types as optional booleans are `optionalKey`, with absence meaning
 unknown rather than false.
 
 Three deltas from commonmark.js were decided up front, not discovered
-mid-port: mdast type names replace commonmark.js's own names; byte offsets
-are tracked everywhere (commonmark.js has only line/column source
+mid-port: mdast type names replace commonmark.js's own names; UTF-16
+code-unit offsets are tracked everywhere (commonmark.js has only line/column source
 positions, and offsets also power the edit layer); and definition nodes are
 kept in the tree with reference nodes emitted unresolved, per mdast
 semantics, where commonmark.js deletes definitions and resolves references
@@ -273,6 +277,50 @@ table rows, frontmatter, the root, and a multi-line replacement into a
 container whose continuation lines the splice cannot prefix — fail typed
 with a code naming which refusal applied. See the [frontmatter-refusal
 limitation](../limitations/markdown-modify-refuses-frontmatter.md).
+
+## Positions
+
+Every position the package computes comes from ONE `@effected/source`
+`LineIndex` per parse, with its default `"lsp"` line breaks: `\n`, `\r\n`
+and a bare `\r` — the same three the preprocessor splits on, which a test
+over every string of up to five characters pins line start for line start
+(`__test__/hardening.test.ts`, "splits lines exactly where the preprocessor
+does"). The index's one extra line is the phantom empty line after a trailing
+terminator, where the root's end point sits. The old one-based
+`internal/lineIndex.ts` is gone.
+
+- **`MarkdownDiagnostic`** is `positionAt(offset)`: zero-based, UTF-16 code
+  units, an offset at the `\n` of a `\r\n` reading as the end of its line
+  (the hand-rolled loop answered `character: -1` on the next line there).
+  `fromRaw(source | SourceIndex, raw)` accepts a prebuilt index, typed as the
+  structural `SourceIndex` so an index from another installed copy of
+  `@effected/source` is accepted; the parse
+  reuses its own. It satisfies `SourceDiagnostic<MarkdownParseErrorCode>`.
+- **A node's unist `Point`** (`internal/point.ts`, `pointAt`) is
+  `line = lineAt(offset) + 1`, `column = offset - lineStart(line) + 1`. That
+  is `positionAt` plus one everywhere except the `\n` of a `\r\n`, which
+  a Point counts as one column past the `\r` (as `vfile-location` does) and
+  `positionAt` reads as the end of its line. The `positionAt + 1` mapping was
+  ruled first and rejected on evidence: node positions DO end there (an
+  empty list item before a CRLF, `"*\r\na"`, ends at offset 2, line 1,
+  column 3), and the differential showed 130 strings of up to five
+  characters whose trees would have moved.
+- **`MarkdownDocument.lineIndex`** ([#1126](https://github.com/spencerbeggs/effected/issues/1126))
+  returns the index over `source`, declared as `SourceIndex` rather than
+  the nominal `LineIndex` class: the parse's own for a parsed document,
+  built once on first access for one constructed with `make`, kept in a
+  module `WeakMap` so it is no part of the schema, equality or encoding. The
+  entry point re-exports `@effected/source`'s surface (`LineIndex`,
+  `SourceIndex` and the position shapes), so a consumer converting offsets to LSP positions and
+  back needs no second dependency, and `LineIndex.make(text)` gives the same
+  answers with no document.
+
+Adoption changed output in one class: a `MarkdownDiagnostic` at the `\n` of
+a `\r\n`. A differential of the pre-adoption build against the new one —
+every string of up to five characters from `{a, \n, \r, U+2028, U+2029,
+U+1F600}` and from a markdown-shaped alphabet, both dialects, the document
+form with frontmatter capture and the phrasing parse — found every tree
+byte-identical.
 
 ## Error posture: parse is near-total
 

@@ -1,3 +1,4 @@
+import { HttpRedaction } from "@effected/crypto";
 import { Context, DateTime, Effect, Layer, Option, Redacted, Schema } from "effect";
 import type { HttpClientError } from "effect/http";
 import { HttpClient } from "effect/http";
@@ -109,7 +110,7 @@ export class RegistryReadError extends Schema.TaggedError<RegistryReadError>()("
 	kind: Schema.Literals(["transport", "status", "decode", "credential"]),
 	/** The package that was being read. */
 	package: Schema.String,
-	/** The registry that was being read from. */
+	/** The registry that was being read from, with any userinfo and credential query values redacted. */
 	registry: Schema.String,
 	/** The HTTP status, for `kind: "status"`. */
 	status: Schema.optionalKey(Schema.Number),
@@ -165,7 +166,7 @@ const refuseWorkload = (
 ): Effect.Effect<void, RegistryReadError> => {
 	const kind: string | undefined = target?.credential?.kind;
 	return kind === "workload"
-		? Effect.fail(new RegistryReadError({ kind: "credential", package: name, registry }))
+		? Effect.fail(new RegistryReadError({ kind: "credential", package: name, registry: HttpRedaction.url(registry) }))
 		: Effect.void;
 };
 
@@ -253,7 +254,13 @@ export interface NpmRegistryShape {
 
 /** Builds the service over an already-resolved `HttpClient`. */
 const make = Effect.fnUntraced(function* () {
-	const client = yield* HttpClient.HttpClient;
+	// Redirects are followed here rather than left to the client, so the
+	// origin-change rule (core drops `authorization`, `proxy-authorization`
+	// and `cookie` on a redirect to another origin) holds for every client a
+	// consumer provides, the same rule `PackageTarball` applies. A client that
+	// already follows redirects (fetch by default) never returns a 3xx, so this
+	// adds nothing there.
+	const client = HttpClient.followRedirects(yield* HttpClient.HttpClient);
 
 	/**
 	 * Fetches and decodes one registry document, mapping absence to `None`.
@@ -290,20 +297,41 @@ const make = Effect.fnUntraced(function* () {
 			})
 			.pipe(
 				Effect.catch((cause: HttpClientError.HttpClientError) =>
-					Effect.fail(new RegistryReadError({ kind: "transport", package: name, registry, cause })),
+					// Redacted where it is kept: core's error holds the live request,
+					// `authorization` header included, as a readable field.
+					Effect.fail(
+						new RegistryReadError({
+							kind: "transport",
+							package: name,
+							registry: HttpRedaction.url(registry),
+							cause: HttpRedaction.cause(cause),
+						}),
+					),
 				),
 				Effect.flatMap((response) => {
 					if (response.status === 404) return Effect.succeed(Option.none<A>());
 					if (response.status < 200 || response.status >= 300) {
 						return Effect.fail(
-							new RegistryReadError({ kind: "status", package: name, registry, status: response.status }),
+							new RegistryReadError({
+								kind: "status",
+								package: name,
+								registry: HttpRedaction.url(registry),
+								status: response.status,
+							}),
 						);
 					}
 					return response.json.pipe(
 						Effect.flatMap((body) => Schema.decodeUnknownEffect(schema)(body)),
 						Effect.map(Option.some),
 						Effect.catch((cause) =>
-							Effect.fail(new RegistryReadError({ kind: "decode", package: name, registry, cause })),
+							Effect.fail(
+								new RegistryReadError({
+									kind: "decode",
+									package: name,
+									registry: HttpRedaction.url(registry),
+									cause: HttpRedaction.cause(cause),
+								}),
+							),
 						),
 					);
 				}),
@@ -341,7 +369,9 @@ const make = Effect.fnUntraced(function* () {
 				return Schema.decodeUnknownEffect(VersionManifest)(published[versionNumber]).pipe(
 					Effect.map(Option.some),
 					Effect.catch((cause) =>
-						Effect.fail(new RegistryReadError({ kind: "decode", package: name, registry, cause })),
+						Effect.fail(
+							new RegistryReadError({ kind: "decode", package: name, registry: HttpRedaction.url(registry), cause }),
+						),
 					),
 				);
 			}),
@@ -353,7 +383,7 @@ const make = Effect.fnUntraced(function* () {
 		target?: RegistryTarget,
 	) {
 		const registry = target?.registry ?? DEFAULT_REGISTRY;
-		yield* Effect.annotateCurrentSpan({ package: name, version: versionNumber, registry });
+		yield* Effect.annotateCurrentSpan({ package: name, version: versionNumber, registry: HttpRedaction.url(registry) });
 		const manifest = yield* classifyRegistry(registry) === "github-packages"
 			? versionFromPackument(name, versionNumber, registry, target)
 			: read(VersionManifest, packageUrl(registry, name, versionNumber), name, registry, target).pipe(
@@ -374,7 +404,10 @@ const make = Effect.fnUntraced(function* () {
 	});
 
 	const versions = Effect.fn("NpmRegistry.versions")(function* (name: string, target?: RegistryTarget) {
-		yield* Effect.annotateCurrentSpan({ package: name, registry: target?.registry ?? DEFAULT_REGISTRY });
+		yield* Effect.annotateCurrentSpan({
+			package: name,
+			registry: HttpRedaction.url(target?.registry ?? DEFAULT_REGISTRY),
+		});
 		const document = yield* packument(name, target);
 		return Option.match(document, {
 			onNone: () => [] as ReadonlyArray<string>,
@@ -383,7 +416,10 @@ const make = Effect.fnUntraced(function* () {
 	});
 
 	const distTags = Effect.fn("NpmRegistry.distTags")(function* (name: string, target?: RegistryTarget) {
-		yield* Effect.annotateCurrentSpan({ package: name, registry: target?.registry ?? DEFAULT_REGISTRY });
+		yield* Effect.annotateCurrentSpan({
+			package: name,
+			registry: HttpRedaction.url(target?.registry ?? DEFAULT_REGISTRY),
+		});
 		const document = yield* packument(name, target);
 		return Option.match(document, {
 			onNone: () => ({}) as Record<string, string>,
@@ -392,7 +428,10 @@ const make = Effect.fnUntraced(function* () {
 	});
 
 	const publishTimes = Effect.fn("NpmRegistry.publishTimes")(function* (name: string, target?: RegistryTarget) {
-		yield* Effect.annotateCurrentSpan({ package: name, registry: target?.registry ?? DEFAULT_REGISTRY });
+		yield* Effect.annotateCurrentSpan({
+			package: name,
+			registry: HttpRedaction.url(target?.registry ?? DEFAULT_REGISTRY),
+		});
 		const document = yield* packument(name, target);
 		return Option.match(document, {
 			onNone: () => [] as ReadonlyArray<PublishTime>,
@@ -466,6 +505,14 @@ export interface RegistrySeed {
  * rather than a bare string. Failures are {@link RegistryReadError}. The live
  * {@link NpmRegistry.layer} requires `HttpClient`; tests use
  * {@link NpmRegistry.layerSeeded} or {@link NpmRegistry.layerTest}.
+ *
+ * Redirects are followed (up to ten) by the service itself, whichever client
+ * is provided. A redirect to another origin (a different scheme, host or
+ * port) drops the `Authorization` header before the next request, so a
+ * registry that hands a read off to a mirror or CDN never forwards the
+ * credential; a same-origin redirect keeps it. A failure's `cause` is a
+ * redacted copy of core's `HttpClientError`: method, URL, status and
+ * response headers survive, the credential does not.
  *
  * @example
  * ```ts

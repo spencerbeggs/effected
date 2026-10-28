@@ -44,6 +44,19 @@ timeline — placed **outside** the `layer()` block per the `MethodsNonLive`
 shape (see [providing-layers.md](./providing-layers.md)). Keep the rest of the suite on `it.effect`; the hatch is per-test,
 not per-file.
 
+The sharpest form of it: an effect wrapped in **`Effect.timeout` around real,
+uninterruptible I/O** (a libuv filesystem call), driven by a burst of
+`TestClock.adjust`. The burst fires the timeout while the disk call is still in
+flight. The interruption has to wait for that call, because a libuv request
+cannot be cancelled, so the retry's next `Effect.sleep` registers only after
+the last adjustment, and nothing advances it. `adjust` yielding a real
+event-loop turn per call does not save it: the I/O is still running when the
+burst ends. It passes on a fast disk and hangs to the vitest timeout on a slow
+CI one. Either keep the effect off the real disk (provide `@effected/memfs`, so
+every wait is on the virtual clock) or run it `it.live`. A burst helper should
+fail fast when the fiber is still running after its last adjustment, rather
+than hang.
+
 ## …and it starts at the EPOCH, so clock *reads* return 1970
 
 The quiet half: `it.effect` starts the `TestClock` at time zero, so anything

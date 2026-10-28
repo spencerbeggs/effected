@@ -1,4 +1,5 @@
 import { LocalExec, Run } from "@effected/commands";
+import { HttpRedaction } from "@effected/crypto";
 import { Context, Crypto, Effect, FileSystem, Layer, Option, Redacted as Red, Schema } from "effect";
 import * as Hex from "effect/encoding/Hex";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
@@ -402,7 +403,7 @@ const make = Effect.fnUntraced(function* () {
 						new PublishError({
 							kind: options.kind,
 							subject: options.subject,
-							...(options.registry === undefined ? {} : { registry: options.registry }),
+							...(options.registry === undefined ? {} : { registry: HttpRedaction.url(options.registry) }),
 							cause,
 						}),
 					),
@@ -436,7 +437,7 @@ const make = Effect.fnUntraced(function* () {
 		readonly npmrcPath: string;
 	}) {
 		yield* Effect.annotateCurrentSpan({
-			registry: options.registry,
+			registry: HttpRedaction.url(options.registry),
 			npmrc: options.npmrcPath,
 			// The KIND (and a workload's audience) is safe to annotate and worth
 			// annotating; the value is not.
@@ -446,17 +447,20 @@ const make = Effect.fnUntraced(function* () {
 		// Only an absent file is an empty npmrc. Any other read failure (permission
 		// denied, a directory in the way) means a file exists that we cannot read;
 		// treating it as empty would overwrite it and drop its prior config lines.
-		const existing = yield* fs
-			.readFileString(options.npmrcPath)
-			.pipe(
-				Effect.catch((cause) =>
-					cause.reason._tag === "NotFound"
-						? Effect.succeed("")
-						: Effect.fail(
-								new PublishError({ kind: "auth", registry: options.registry, subject: options.npmrcPath, cause }),
-							),
-				),
-			);
+		const existing = yield* fs.readFileString(options.npmrcPath).pipe(
+			Effect.catch((cause) =>
+				cause.reason._tag === "NotFound"
+					? Effect.succeed("")
+					: Effect.fail(
+							new PublishError({
+								kind: "auth",
+								registry: HttpRedaction.url(options.registry),
+								subject: options.npmrcPath,
+								cause,
+							}),
+						),
+			),
+		);
 		const name = keyNameOf(options.credential.kind);
 		const key = authKey(options.registry, name);
 		const line = `${key}=${Red.value(secretOf(options.credential))}`;
@@ -471,7 +475,9 @@ const make = Effect.fnUntraced(function* () {
 		yield* fs
 			.writeFileString(options.npmrcPath, upserted.replaced ? base : `${base}${separator}${line}\n`)
 			.pipe(
-				Effect.catch((cause) => Effect.fail(new PublishError({ kind: "auth", registry: options.registry, cause }))),
+				Effect.catch((cause) =>
+					Effect.fail(new PublishError({ kind: "auth", registry: HttpRedaction.url(options.registry), cause })),
+				),
 			);
 	});
 
@@ -520,7 +526,7 @@ const make = Effect.fnUntraced(function* () {
 		tarballPath: string,
 		options: PublishOptions,
 	) {
-		yield* Effect.annotateCurrentSpan({ tarball: tarballPath, registry: options.registry });
+		yield* Effect.annotateCurrentSpan({ tarball: tarballPath, registry: HttpRedaction.url(options.registry) });
 		const tokenAuth = options.tokenAuth === true;
 		// Provenance is an npm-registry feature. Passing `--provenance` to GitHub
 		// Packages or a custom registry fails the publish outright, so a caller
@@ -561,7 +567,7 @@ const make = Effect.fnUntraced(function* () {
 				new PublishError({
 					kind: "publish",
 					subject: tarballPath,
-					registry: options.registry,
+					registry: HttpRedaction.url(options.registry),
 					exitCode: output.exitCode,
 					output: publishFailureOutput(output.stdout, output.stderr),
 				}),

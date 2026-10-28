@@ -19,5 +19,5 @@ export {
 	ResolvedAppDirs,
 } from "./AppDirs.js";
 export { NativeDirs } from "./NativeDirs.js";
-export { CurrentPlatform, Xdg, XdgEnvError, XdgPaths, XdgPlatform } from "./Xdg.js";
+export { CurrentPlatform, Xdg, XdgEnvError, type XdgEnvOptions, XdgPaths, XdgPlatform } from "./Xdg.js";
 export { XdgConfig } from "./XdgConfig.js";

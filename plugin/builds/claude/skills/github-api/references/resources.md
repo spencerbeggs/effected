@@ -115,6 +115,30 @@ Build the draft as an object literal. A key-by-key loop (`draft[key] =
 source[key]` over a union `key`) still defeats TypeScript's correlation
 between two indexed accesses, which no helper can fix.
 
+**A settings map is a body, never request options.** octokit reads `baseUrl`,
+`url`, `headers`, `request`, `mediaType`, `method` and `data` off a call's flat
+parameters as the request itself, and the route's `owner` / `repo` as its path,
+so an open map spread into them can send the authenticated PATCH to another
+host with the token attached. `updateSettings` and `applySettings` send the
+settings as octokit's `data` body, where no key is read as an option;
+`repositoryPatch` throws a `RangeError` for any of those names (and
+`__proto__`) in the draft or `extra`, and `applySettings` reports them in
+`ignored`, even under `unknownKeys: "send"`. Do not hand-roll the same write
+with `client.request("PATCH /repos/{owner}/{repo}", { ...settings, owner, repo })`.
+
+The same holds for every open map the package sends.
+`DeploymentEnvironment.upsert(name, config)` sends `config` as the `PUT`'s
+`data` body, and a config naming an octokit option, `owner`, `repo`,
+`environment_name` or `__proto__` dies with a `RangeError` before any
+request. `client.graphql` sends its variables inside a
+`{ query, variables }` body, so a variable named `baseUrl` or `headers` stays
+a variable; octokit's own `graphql` method reads those names as request
+options. `client.request` is the raw surface: its `Rest.RequestExtras`
+(`headers`, `mediaType`) are real options, so never spread an untrusted map
+into its params; pass it as `data` when the route has a body. An option that
+would move the request (`baseUrl`, `url`, `request`, `method`) is refused
+there with a `rejected` `GitHubError` and nothing sent.
+
 ## `GitHubContent`
 
 | Member | Signature | Notes |
@@ -145,7 +169,7 @@ normalizes GitHub's `string | {name}` union to plain names.
 | `getByTagOption` | `(tag) => Effect<Option<ReleaseInfo>>` | |
 | `list` | `(options?: {page?}) => Effect<ReadonlyArray<ReleaseInfo>>` | |
 | `update` | `(id, patch) => Effect<ReleaseInfo>` | |
-| `uploadAsset` | `(release, asset: {name, data, contentType, label?}) => Effect<ReleaseAsset>` | Uses `requestDecoded` — release-asset upload isn't in the generated route map, so the template carries the query itself: `assets{?name}` (`{?name,label}` when `label` is set) — a `name` passed only as a parameter gets silently dropped by octokit and GitHub answers 400. `label` is the release page's display label |
+| `uploadAsset` | `(release, asset: {name, data, contentType, label?}) => Effect<ReleaseAsset>` | Sends to the upload host derived from the client's configured base (`uploads.github.com`, or `<ghes>/api/uploads`), never the release's `uploadUrl`, which must agree or the upload is refused `rejected`; this holds for `GitHubApp.clientLayer`/`appClientLayer` clients too, and after a token rotation. A test double answers through its own `requestDecoded`. Release-asset upload isn't in the generated route map, so the template carries the query itself: `assets{?name}` (`{?name,label}` when `label` is set) — a `name` passed only as a parameter gets silently dropped by octokit and GitHub answers 400. `label` is the release page's display label |
 | `listAssets` | `(id, options?: {page?}) => Effect<ReadonlyArray<ReleaseAsset>>` | Forwards `PageOptions` |
 
 `ReleaseInfo = {id, tag, name, body, draft, prerelease, url, uploadUrl}`;

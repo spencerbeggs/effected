@@ -106,6 +106,28 @@ describe("Run against real processes", () => {
 		30_000,
 	);
 
+	it.effect(
+		"bytes returns NULs and invalid UTF-8 verbatim, draining both pipes under backpressure",
+		() =>
+			// Run.bytes shares collect's concurrent drain: on a raw handle a stream
+			// only moves while it is consumed, so the same both-pipes pressure that
+			// pins collect pins this collector too.
+			Effect.gen(function* () {
+				const script = [
+					"const big = Buffer.alloc(1024 * 1024, 0xff);",
+					"process.stdout.write(Buffer.from([0, 0xc3, 0x28]));",
+					"process.stderr.write(big);",
+					"process.stdout.write(big);",
+					"process.stderr.write(big);",
+				].join("");
+				const bytes = yield* live(Run.bytes(node(script)));
+				assert.instanceOf(bytes, Uint8Array);
+				assert.strictEqual(bytes.length, 3 + 1024 * 1024);
+				assert.deepStrictEqual([...bytes.subarray(0, 4)], [0, 0xc3, 0x28, 0xff]);
+			}),
+		30_000,
+	);
+
 	it.effect("json decodes real tool output through a schema", () =>
 		Effect.gen(function* () {
 			const parsed = yield* live(
@@ -139,6 +161,26 @@ describe("environment extension against a real spawn", () => {
 			const output = yield* live(Run.text(node(probe).pipe(ChildProcess.setEnv({ EFFECTED_MARKER: "x" }))));
 			assert.strictEqual(output, "x:no-path");
 		}),
+	);
+});
+
+describe("Run.setKillOptions against a real spawn", () => {
+	it.live.skipIf(process.platform === "win32")(
+		"a timeout with forceKillAfter ends a child that ignores SIGTERM, failing typed instead of hanging",
+		() =>
+			// The control is the same run without the combinator: core's default
+			// kill is SIGTERM with no SIGKILL follow-up, so the scope's release waits
+			// on this child forever and the test hangs to its vitest timeout.
+			Effect.gen(function* () {
+				const stubborn = node("process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);");
+				const command = Run.setKillOptions(stubborn, { forceKillAfter: "300 millis" });
+				const started = Date.now();
+				const error = yield* Effect.flip(live(Run.collect(command, { timeout: "300 millis" })));
+				assert.instanceOf(error, CommandFailedError);
+				if (error instanceof CommandFailedError) assert.strictEqual(error.kind, "timeout");
+				assert.isBelow(Date.now() - started, 10_000);
+			}),
+		20_000,
 	);
 });
 

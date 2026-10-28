@@ -21,7 +21,7 @@ import { isFatalCode } from "./internal/diagnostics.js";
 import type { ParseOptionsInput, StringifyOptionsInput } from "./internal/options.js";
 import type { RawYamlDocument } from "./internal/raw-document.js";
 import { StringifyDepthExceeded, StringifyFailure, stringifyValue } from "./internal/stringifier.js";
-import { YamlDiagnostic } from "./YamlDiagnostic.js";
+import { YamlDiagnostic, lazyLineIndex } from "./YamlDiagnostic.js";
 import type { YamlNode } from "./YamlNode.js";
 import {
 	AliasExpansionBudgetExceeded,
@@ -248,8 +248,10 @@ const toStringifyInput = (options?: YamlStringifyOptions): StringifyOptionsInput
 				forceDefaultStyles: options.forceDefaultStyles,
 			};
 
-const toDiagnostics = (text: string, records: ReadonlyArray<RawDiagnostic>): ReadonlyArray<YamlDiagnostic> =>
-	records.map((r) => YamlDiagnostic.fromRaw(r, text));
+const toDiagnostics = (text: string, records: ReadonlyArray<RawDiagnostic>): ReadonlyArray<YamlDiagnostic> => {
+	const index = lazyLineIndex(text);
+	return records.map((r) => YamlDiagnostic.fromRaw(r, index()));
+};
 
 /**
  * Build the fatal {@link YamlParseError} for an alias-expansion "billion

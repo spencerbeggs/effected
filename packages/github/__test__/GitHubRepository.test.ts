@@ -1,10 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Exit, Layer } from "effect";
 import type { RecordedCall } from "../src/GitHubClient.js";
 import { GitHubClient } from "../src/GitHubClient.js";
 import { GitHubRepository, repositoryPatch, transformSecurityAndAnalysis } from "../src/GitHubRepository.js";
 import { Repo, RepoRef } from "../src/Repo.js";
-import { defectMessage } from "./harness.js";
+import { defectMessage, harness } from "./harness.js";
 
 /**
  * A wrong-but-valid route literal typechecks, so every method asserts the route
@@ -32,6 +32,16 @@ const run = <A, E>(
 		);
 		return { value, requested, routes: requested.filter((c) => c.kind !== "graphql").map((c) => c.route) };
 	});
+
+/**
+ * The parameters a repository PATCH records: the coordinate, and the settings as
+ * octokit's `data` body, where no key is read as a request option.
+ */
+const patched = (data: Record<string, unknown>) => ({ owner: "acme", repo: "widget", data });
+
+/** The body a recorded PATCH sent, or `undefined` when it carried none. */
+const body = (call: RecordedCall | undefined): Record<string, unknown> | undefined =>
+	call?.params.data as Record<string, unknown> | undefined;
 
 const REPO = { node_id: "R_node123", default_branch: "main" };
 const UPDATE_REPOSITORY = { UpdateRepository: { updateRepository: { repository: { id: "R_node123" } } } };
@@ -102,7 +112,7 @@ describe("GitHubRepository.updateSettings", () => {
 			);
 
 			assert.strictEqual(requested[0]?.route, "PATCH /repos/{owner}/{repo}");
-			assert.deepStrictEqual(requested[0]?.params, { owner: "acme", repo: "widget", has_issues: true });
+			assert.deepStrictEqual(requested[0]?.params, patched({ has_issues: true }));
 		}),
 	);
 
@@ -119,7 +129,7 @@ describe("GitHubRepository.updateSettings", () => {
 				),
 				{ "PATCH /repos/{owner}/{repo}": REPO },
 			);
-			assert.deepStrictEqual(requested[0]?.params.security_and_analysis, {
+			assert.deepStrictEqual(body(requested[0])?.security_and_analysis, {
 				advanced_security: { status: "enabled" },
 			});
 		}),
@@ -151,7 +161,7 @@ describe("GitHubRepository.updateSettings", () => {
 			);
 
 			// The user-facing shape is not the API's shape.
-			assert.deepStrictEqual(requested[0]?.params.security_and_analysis, {
+			assert.deepStrictEqual(body(requested[0])?.security_and_analysis, {
 				secret_scanning: { status: "enabled" },
 				secret_scanning_delegated_bypass_options: { reviewers: [{ reviewer_id: 7 }] },
 			});
@@ -174,12 +184,13 @@ describe("GitHubRepository.updateSettings", () => {
 
 			// GitHub answers 422 for title/message config on a strategy being turned
 			// off in the same request.
-			assert.deepStrictEqual(requested[0]?.params, {
-				owner: "acme",
-				repo: "widget",
-				allow_merge_commit: false,
-				allow_squash_merge: false,
-			});
+			assert.deepStrictEqual(
+				requested[0]?.params,
+				patched({
+					allow_merge_commit: false,
+					allow_squash_merge: false,
+				}),
+			);
 		}),
 	);
 
@@ -194,7 +205,7 @@ describe("GitHubRepository.updateSettings", () => {
 
 			// The discriminating case: dropping unconditionally would silently stop
 			// anyone configuring merge titles at all.
-			assert.strictEqual(requested[0]?.params.merge_commit_title, "PR_TITLE");
+			assert.strictEqual(body(requested[0])?.merge_commit_title, "PR_TITLE");
 		}),
 	);
 });
@@ -207,12 +218,13 @@ describe("GitHubRepository.applySettings", () => {
 				{ "PATCH /repos/{owner}/{repo}": REPO },
 			);
 
-			assert.deepStrictEqual(requested[0]?.params, {
-				owner: "acme",
-				repo: "widget",
-				has_issues: true,
-				has_wiki: false,
-			});
+			assert.deepStrictEqual(
+				requested[0]?.params,
+				patched({
+					has_issues: true,
+					has_wiki: false,
+				}),
+			);
 			assert.lengthOf(
 				requested.filter((c) => c.kind === "graphql"),
 				0,
@@ -266,11 +278,12 @@ describe("GitHubRepository.applySettings", () => {
 				UPDATE_REPOSITORY,
 			);
 
-			assert.deepStrictEqual(requested.find((c) => c.route === "PATCH /repos/{owner}/{repo}")?.params, {
-				owner: "acme",
-				repo: "widget",
-				has_issues: true,
-			});
+			assert.deepStrictEqual(
+				requested.find((c) => c.route === "PATCH /repos/{owner}/{repo}")?.params,
+				patched({
+					has_issues: true,
+				}),
+			);
 			assert.deepStrictEqual(requested.find((c) => c.kind === "graphql")?.params, {
 				input: { repositoryId: "R_node123", hasSponsorshipsEnabled: true },
 			});
@@ -288,7 +301,7 @@ describe("GitHubRepository.applySettings", () => {
 
 			// A caller must not get a different shape depending on which of the two
 			// write paths they reached for.
-			assert.deepStrictEqual(requested[0]?.params.security_and_analysis, { secret_scanning: { status: "enabled" } });
+			assert.deepStrictEqual(body(requested[0])?.security_and_analysis, { secret_scanning: { status: "enabled" } });
 		}),
 	);
 
@@ -347,7 +360,7 @@ describe("GitHubRepository.applySettings reporting", () => {
 			assert.deepStrictEqual([...value.graphql], []);
 			// And the report agrees with the wire, which is the property that makes
 			// it trustworthy rather than merely plausible.
-			assert.notProperty(requested[0]?.params ?? {}, "merge_commit_title");
+			assert.notProperty(body(requested[0]) ?? {}, "merge_commit_title");
 		}),
 	);
 
@@ -486,7 +499,7 @@ describe("GitHubRepository.applySettings ignored keys", () => {
 			);
 			assert.deepStrictEqual([...value.rest], ["has_issues"]);
 			assert.deepStrictEqual([...value.ignored], ["has_discussion"]);
-			assert.deepStrictEqual(requested[0]?.params, { owner: "acme", repo: "widget", has_issues: true });
+			assert.deepStrictEqual(requested[0]?.params, patched({ has_issues: true }));
 		}),
 	);
 
@@ -537,12 +550,267 @@ describe("GitHubRepository.applySettings ignored keys", () => {
 				if (sent) {
 					assert.deepStrictEqual([...value.rest], ["use_squash_pr_title_as_default"], label);
 					assert.deepStrictEqual([...value.ignored], [], label);
-					assert.strictEqual(requested[0]?.params.use_squash_pr_title_as_default, true, label);
+					assert.strictEqual(body(requested[0])?.use_squash_pr_title_as_default, true, label);
 				} else {
 					assert.deepStrictEqual([...value.rest], [], label);
 					assert.deepStrictEqual([...value.ignored], ["use_squash_pr_title_as_default"], label);
 					assert.lengthOf(requested, 0, label);
 				}
+			}
+		}),
+	);
+});
+
+describe("repositoryPatch extra (#1115)", () => {
+	it("sends a setting octokit's types do not declare, beside the checked draft", () => {
+		const patch = repositoryPatch({ has_issues: true, has_wiki: undefined }, { extra: { has_new_feature: "on" } });
+		assert.deepStrictEqual<unknown>(patch, { has_issues: true, has_new_feature: "on" });
+	});
+
+	it("drops an undefined extra, as the draft does", () => {
+		assert.deepStrictEqual(repositoryPatch({}, { extra: { has_new_feature: undefined } }), {});
+	});
+
+	it("refuses a declared key in extra, which would skip the draft's type check", () => {
+		// The type refuses `{ has_issues: true }` as a literal; a value already
+		// typed as an open record gets past it, so the runtime check is the guard.
+		const open: Record<string, unknown> = { has_issues: "not a boolean" };
+		assert.throws(
+			() => repositoryPatch({}, { extra: open }),
+			RangeError,
+			/"has_issues" is a declared repository setting/,
+		);
+	});
+
+	it("refuses a GraphQL-only setting in extra, which a REST patch cannot set", () => {
+		const open: Record<string, unknown> = { has_sponsorships: true };
+		assert.throws(
+			() => repositoryPatch({}, { extra: open }),
+			RangeError,
+			/"has_sponsorships" can only be set through GraphQL/,
+		);
+		const both: Record<string, unknown> = { has_discussions: true };
+		assert.throws(() => repositoryPatch({}, { extra: both }), RangeError, /through GraphQL/);
+	});
+
+	it.effect("updateSettings sends the extra on the wire", () =>
+		Effect.gen(function* () {
+			const patch = repositoryPatch({ has_issues: false }, { extra: { has_new_feature: true } });
+			const { requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.updateSettings(patch)),
+				{ "PATCH /repos/{owner}/{repo}": REPO },
+			);
+			assert.deepStrictEqual(
+				requested[0]?.params,
+				patched({
+					has_issues: false,
+					has_new_feature: true,
+				}),
+			);
+		}),
+	);
+});
+
+describe("GitHubRepository.applySettings unknownKeys (#1115)", () => {
+	it.effect("ignores an undescribed key by default and reports nothing unverified", () =>
+		Effect.gen(function* () {
+			const { value } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.applySettings({ has_issues: true, has_new_feature: true })),
+				{ "PATCH /repos/{owner}/{repo}": REPO },
+			);
+			assert.deepStrictEqual([...value.ignored], ["has_new_feature"]);
+			assert.deepStrictEqual([...value.unverified], []);
+		}),
+	);
+
+	it.effect('sends an undescribed key under "send", reporting it in rest and unverified', () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) =>
+					r.applySettings({ has_issues: true, has_new_feature: true }, { unknownKeys: "send" }),
+				),
+				{ "PATCH /repos/{owner}/{repo}": REPO },
+			);
+			assert.deepStrictEqual([...value.rest], ["has_issues", "has_new_feature"]);
+			assert.deepStrictEqual([...value.unverified], ["has_new_feature"]);
+			assert.deepStrictEqual([...value.ignored], []);
+			assert.deepStrictEqual(
+				requested[0]?.params,
+				patched({
+					has_issues: true,
+					has_new_feature: true,
+				}),
+			);
+		}),
+	);
+
+	it.effect("still ignores a key the api-version removed, and still routes GraphQL-only keys", () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) =>
+					r.applySettings({ use_squash_pr_title_as_default: true, has_discussions: true }, { unknownKeys: "send" }),
+				),
+				{ "GET /repos/{owner}/{repo}": REPO },
+				UPDATE_REPOSITORY,
+			);
+			assert.deepStrictEqual([...value.ignored], ["use_squash_pr_title_as_default"]);
+			assert.deepStrictEqual([...value.graphql], ["has_discussions"]);
+			assert.deepStrictEqual([...value.unverified], []);
+			assert.isFalse(requested.some((call) => call.route === "PATCH /repos/{owner}/{repo}"));
+		}),
+	);
+
+	it.effect("never sends __proto__, which would set the body's prototype instead of a field", () =>
+		Effect.gen(function* () {
+			const input = JSON.parse(`{ "__proto__": { "polluted": true }, "has_new_feature": 1 }`) as Record<
+				string,
+				unknown
+			>;
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.applySettings(input, { unknownKeys: "send" })),
+				{ "PATCH /repos/{owner}/{repo}": REPO },
+			);
+			assert.deepStrictEqual([...value.ignored], ["__proto__"]);
+			assert.deepStrictEqual([...value.unverified], ["has_new_feature"]);
+			assert.deepStrictEqual(requested[0]?.params, patched({ has_new_feature: 1 }));
+		}),
+	);
+});
+
+/**
+ * octokit reads these parameter names as the REQUEST, not as body fields
+ * (`@octokit/endpoint`'s `parse`, plus `data` replacing the body and the route's
+ * own template parameters). Each value is the hostile one: the host an
+ * authenticated PATCH would be redirected to, a header that would replace the
+ * token, a fetch that would receive the request, a body that would replace the
+ * settings, a path that would retarget the write.
+ */
+const attackerCalls: Array<string> = [];
+const HOSTILE: ReadonlyArray<readonly [string, unknown]> = [
+	["baseUrl", "https://attacker.example"],
+	["url", "https://attacker.example/x"],
+	["method", "DELETE"],
+	["headers", { authorization: "token stolen", "x-evil": "1" }],
+	[
+		"request",
+		{
+			fetch: async (input: unknown) => {
+				attackerCalls.push(String(input));
+				return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+			},
+		},
+	],
+	["mediaType", { format: "raw" }],
+	["data", { private: false }],
+	["owner", "evil-owner"],
+	["repo", "evil-repo"],
+	["__proto__", { polluted: true }],
+];
+
+/** `base` (by default `{ has_issues: true }`) plus one own enumerable key, `__proto__` included. */
+const withKey = (
+	key: string,
+	value: unknown,
+	base: Record<string, unknown> = { has_issues: true },
+): Record<string, unknown> => {
+	const map: Record<string, unknown> = { ...base };
+	Object.defineProperty(map, key, { value, enumerable: true, configurable: true, writable: true });
+	return map;
+};
+
+/** The real client over scripted HTTP: the wire as octokit actually builds it. */
+const wire = <A, E>(use: (repository: GitHubRepository["Service"]) => Effect.Effect<A, E, Repo>) =>
+	Effect.gen(function* () {
+		const { script, base } = harness([{ status: 200, body: REPO }]);
+		const exit = yield* Effect.exit(
+			Effect.provide(Effect.flatMap(GitHubRepository, use), GitHubRepository.layer.pipe(Layer.provideMerge(base))),
+		);
+		return { exit, script };
+	});
+
+describe("request-option confinement", () => {
+	it.effect("control: a plain PATCH goes to api.github.com with the token and exactly the settings", () =>
+		Effect.gen(function* () {
+			const { exit, script } = yield* wire((r) => r.applySettings({ has_issues: true }));
+			assert.isTrue(Exit.isSuccess(exit));
+			assert.lengthOf(script.calls, 1);
+			const call = script.calls[0];
+			assert.strictEqual(call?.method, "PATCH");
+			assert.strictEqual(call?.url, "https://api.github.com/repos/acme/widget");
+			assert.strictEqual(call?.headers.authorization, "token ghs_test");
+			assert.deepStrictEqual(JSON.parse(call?.body ?? "null"), { has_issues: true });
+		}),
+	);
+
+	it.effect('applySettings under "send" never sends a reserved name, and reports it ignored', () =>
+		Effect.gen(function* () {
+			const control = yield* wire((r) => r.applySettings({ has_issues: true }));
+			const controlHeaders = control.script.calls[0]?.headers;
+			assert.isDefined(controlHeaders);
+			for (const [key, hostile] of HOSTILE) {
+				attackerCalls.length = 0;
+				const { exit, script } = yield* wire((r) => r.applySettings(withKey(key, hostile), { unknownKeys: "send" }));
+				if (!Exit.isSuccess(exit)) return assert.fail(`${key}: applySettings failed`);
+				assert.deepStrictEqual([...exit.value.rest], ["has_issues"], key);
+				assert.deepStrictEqual([...exit.value.unverified], [], key);
+				assert.deepStrictEqual([...exit.value.ignored], [key], key);
+				assert.lengthOf(attackerCalls, 0, key);
+				assert.lengthOf(script.calls, 1, key);
+				const call = script.calls[0];
+				assert.strictEqual(call?.method, "PATCH", key);
+				assert.strictEqual(new URL(call?.url ?? "https://unset.invalid").host, "api.github.com", key);
+				assert.strictEqual(call?.url, "https://api.github.com/repos/acme/widget", key);
+				assert.deepStrictEqual(call?.headers, controlHeaders, key);
+				assert.deepStrictEqual(JSON.parse(call?.body ?? "null"), { has_issues: true }, key);
+			}
+		}),
+	);
+
+	it.effect('a genuinely unknown setting still reaches the body under "send"', () =>
+		Effect.gen(function* () {
+			const { exit, script } = yield* wire((r) =>
+				r.applySettings({ has_issues: true, has_new_feature: "on" }, { unknownKeys: "send" }),
+			);
+			if (!Exit.isSuccess(exit)) return assert.fail("applySettings failed");
+			assert.deepStrictEqual([...exit.value.unverified], ["has_new_feature"]);
+			assert.strictEqual(script.calls[0]?.url, "https://api.github.com/repos/acme/widget");
+			assert.deepStrictEqual(JSON.parse(script.calls[0]?.body ?? "null"), { has_issues: true, has_new_feature: "on" });
+		}),
+	);
+
+	it.effect("repositoryPatch refuses a reserved name in extra or the draft before any request", () =>
+		Effect.gen(function* () {
+			for (const [key, hostile] of HOSTILE) {
+				for (const [where, build] of [
+					["extra", () => repositoryPatch({ has_issues: true }, { extra: withKey(key, hostile, {}) })],
+					["draft", () => repositoryPatch(withKey(key, hostile))],
+				] as const) {
+					const label = `${where} ${key}`;
+					const { exit, script } = yield* wire((r) => Effect.suspend(() => r.updateSettings(build())));
+					assert.include(defectMessage(exit) ?? "", `repositoryPatch: "${key}"`, label);
+					assert.lengthOf(script.calls, 0, label);
+				}
+			}
+		}),
+	);
+
+	it.effect("updateSettings confines even an unchecked patch to the body, by construction", () =>
+		Effect.gen(function* () {
+			// Past the refusals: the body travels as octokit's `data`, so no key
+			// inside it is read as a request option whatever reached the patch.
+			for (const [key, hostile] of HOSTILE) {
+				if (key === "__proto__") continue;
+				attackerCalls.length = 0;
+				const patch = { has_issues: true, [key]: hostile } as never;
+				const { exit, script } = yield* wire((r) => r.updateSettings(patch));
+				assert.isTrue(Exit.isSuccess(exit), key);
+				assert.lengthOf(attackerCalls, 0, key);
+				const call = script.calls[0];
+				assert.strictEqual(call?.method, "PATCH", key);
+				assert.strictEqual(call?.url, "https://api.github.com/repos/acme/widget", key);
+				assert.strictEqual(call?.headers.authorization, "token ghs_test", key);
+				assert.notProperty(call?.headers ?? {}, "x-evil", key);
+				assert.strictEqual(JSON.parse(call?.body ?? "null").has_issues, true, key);
 			}
 		}),
 	);

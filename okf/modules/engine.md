@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/engine"
-description: The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, launch-context resolution, a one-permit lane for process-global work with scoped restores, and transport-neutral crash guards.
+description: The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, never-throwing error text, launch-context resolution, a one-permit lane for process-global work with scoped restores, and transport-neutral crash guards.
 status: stable
 kind: package
 resource: ../../packages/engine
@@ -9,10 +9,10 @@ layer: pure
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T14:19:29Z
+  at: 2026-10-28T16:52:44Z
 integrity:
   generated:
-    body: 7dfbf3ad0968e579
+    body: cb967218b366fcec
 ---
 
 # @effected/engine
@@ -54,6 +54,9 @@ object, which loses TSDoc on its members in the built `.d.ts`.
 | `withDistribution(d)` | free function | `(d: Distribution \| null \| undefined) => <A, E, R>(self: Effect<A, E, R>) => Effect<A, E, R>`. Provides `CurrentDistribution` to `self`: `Option.some` of a carrier, `Option.none()` for `null` or `undefined`. The one-line form of what a front end's `main` does once; data-last. |
 | `withDistributionVersion(d)` | free function | `(d: Option<Distribution>) => (formatVersion: (name, version) => string) => (name, version) => string`. Decorates a `--version` formatter shaped like `effect/cli`'s `CliOutput.Formatter["formatVersion"]`, appending `distributionSuffix(d)`. It **wraps** whatever formatter is in effect (a coloured default, a custom one) rather than replacing it; the suffix is computed once, when applied. `CliRuntime.main`'s `distribution` option is built on it. |
 | `Remediation` | `Schema.Struct` and type | `{ hint: string; suggestedTool?: string; suggestedArgs?: Record<string, unknown> }`. The shape okfit and Silk both already use, plus vitest-agent's `suggestedArgs`; vitest-agent's `humanHint` maps onto `hint`. |
+| `ErrorText.describe(value)` | static function | `(value: unknown) => string`, never throwing: a string as itself, a value with a string `message` as that message (an `Error`, one from another realm, a plain `{ message }`, even an empty one), else its JSON, else `String(value)`, else `"[unprintable value]"`. A throwing getter is a value without a message. Not sanitised. Moved here from `@effected/cli`'s `Fmt.describe`, which now delegates (#1141): an MCP front end may not depend on `cli`, and both front ends of one tool must describe a failure with the same words. |
+| `ErrorText.causeMessage(value)` | static function | `(value: unknown) => string \| undefined`: the [error-standards](../conventions/error-standards.md) guarded cause read, published. Every distinct non-empty message along the `cause` chain, nearest first, joined with a colon and a space, eight nodes at most, never throwing. The `src/internal/causeMessage.ts` copy moved here from `@effected/cli`, whose `Fmt.causeMessage` delegates. |
+| `ErrorText.of(value)` | static function | `(value: unknown) => string`: exactly `causeMessage(value) ?? describe(value)`, the fallback every I/O site would otherwise spell by hand (#1134); `@effected/cli`'s `Fmt.errorText` is this function. The replacement for a per-site `error instanceof Error ? error.message : String(error)`, which misses a cross-realm error and the cause chain and throws on a prototype-less value. |
 | `LaunchContext.usable(value)` | static function | `(value: string \| undefined) => Option<string>`: the value trimmed, or `None` for `undefined`, an empty or whitespace-only string, or a string still carrying a literal `${VAR}`. The one guard every resolver applies; `??` would accept an empty string or a placeholder. |
 | `LaunchContext.resolve(input)` | static function | `({ argv?, env, keys }) => Option<string>`: the first usable `argv` value, then the first usable env value in `keys` order. For any launch-supplied location (a host's plugin data directory, an app override) with the caller's own fallback after it. `argv` must be parsed positionals, never raw `process.argv`: every non-empty value is a candidate. |
 | `LaunchContext.projectDir(input)` | static function | `({ argv?, env, keys, cwd }): string`: `resolve` with `cwd` as the fallback. Values are trimmed. Pure — `env` and `cwd` are passed in, never read from `process`. |
@@ -154,6 +157,11 @@ touched.
   all.
 - **`Now`.** An injectable clock has exactly one adopter today and stays a
   recipe rather than becoming kit surface it would have to carry forever.
+- **`ProcessGuard`'s own formatter stays its own.** `./guard` imports
+  nothing, so its fallback report text (`stack ?? message`, else
+  `String(value)` inside a guard) cannot use `ErrorText`, which imports
+  `effect`. A launcher that wants the shared words passes
+  `guard.useFormat(ErrorText.of)` once its graph has loaded.
 
 ## Tier and dependency rules
 
@@ -210,6 +218,11 @@ target directly.
   `injectCrash` phase and kind; the `"connected"` report is asserted absent
   on the `markConnected` tick. `entrypoints.test.ts` pins `./guard`'s
   source and built graphs to zero packages.
+- `ErrorText`: every `describe` branch (primitives, a `message`, JSON, a
+  cycle, a bigint field, a throwing getter, a prototype-less value),
+  `causeMessage` through the kit-wide `causeMessage.test.ts` every copy
+  carries, and `of` held to exactly `causeMessage ?? describe` across hostile
+  values. `@effected/cli`'s `Fmt.test.ts` pins its delegation by identity.
 
 ## See also
 

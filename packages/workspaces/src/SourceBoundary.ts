@@ -1,6 +1,7 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: the shipped fixtures are source text, and a template substitution inside one is the point
 import { GlobSet } from "@effected/glob";
 import { Effect, FileSystem, Schema } from "effect";
+import type { LexedSource } from "./internal/sourceText.js";
 import { isIdentifierChar, lex, locate, references, specifierLiterals } from "./internal/sourceText.js";
 import { DEFAULT_EXTENSIONS, walkSources } from "./internal/sourceWalk.js";
 
@@ -25,6 +26,15 @@ import { DEFAULT_EXTENSIONS, walkSources } from "./internal/sourceWalk.js";
  * trailing `*` (so `"node:*"` and `"@effect/platform*"` are prefixes).
  * `{ forbidTokens }` forbids each entry's exact text wherever it appears in
  * code (see {@link SourceBoundary.check} for how a token is matched).
+ * `{ forbidImportedNames: { from, names } }` forbids importing any of `names`
+ * from the module `from` while leaving its other exports free: a named import
+ * (aliased or not, `type`-only included, and a string-literal name such as
+ * `import { "App" as A }`), a default import (named `"default"`), a named
+ * re-export (`export { App } from ...`), an `export * from` of the module,
+ * and a member access on a namespace binding (`import * as m from ...` or the
+ * TypeScript `import m = require(...)`, then `m.App`). `from` must equal the specifier
+ * exactly; a subpath is a different module. See {@link SourceBoundary}'s
+ * remarks for what this lexer cannot see.
  *
  * To confine a token to named files rather than forbid it everywhere, forbid
  * it and waive the rule for those files through
@@ -51,7 +61,21 @@ export type BoundaryRule =
 	| "console"
 	| "console-stdout"
 	| { readonly forbidImports: ReadonlyArray<string> }
-	| { readonly forbidTokens: ReadonlyArray<string> };
+	| { readonly forbidTokens: ReadonlyArray<string> }
+	| { readonly forbidImportedNames: ForbiddenImportedNames };
+
+/**
+ * The names a `{ forbidImportedNames }` rule forbids, and the module they must
+ * not be imported from.
+ *
+ * @public
+ */
+export interface ForbiddenImportedNames {
+	/** The module specifier, matched exactly. */
+	readonly from: string;
+	/** The export names that must not be imported from it. `"default"` names the default export. */
+	readonly names: ReadonlyArray<string>;
+}
 
 /**
  * Options for the `process` rule.
@@ -106,8 +130,13 @@ export class Offence extends Schema.Class<Offence>("Offence")({
 		"console-stdout",
 		"forbidImports",
 		"forbidTokens",
+		"forbidImportedNames",
 	]),
-	/** What matched: the identifier, the call, the import specifier, or the token. */
+	/**
+	 * What matched: the identifier, the call, the import specifier, the token,
+	 * or, for `forbidImportedNames`, `<name> from <specifier>` (`*` for an
+	 * `export * from`).
+	 */
 	detail: Schema.String,
 }) {
 	/** `file:line:column rule detail`, the form an assertion message reads best in. */
@@ -118,8 +147,9 @@ export class Offence extends Schema.Class<Offence>("Offence")({
 
 /**
  * The rule an {@link Offence} names: every string {@link BoundaryRule}, plus
- * `"forbidImports"` for any `{ forbidImports }` rule and `"forbidTokens"` for
- * any `{ forbidTokens }` rule. These are the keys of
+ * `"forbidImports"` for any `{ forbidImports }` rule, `"forbidTokens"` for
+ * any `{ forbidTokens }` rule and `"forbidImportedNames"` for any
+ * `{ forbidImportedNames }` rule. These are the keys of
  * {@link ScanOptions.allowRules}.
  *
  * @public
@@ -168,8 +198,9 @@ export interface ScanOptions extends ReferenceOptions {
 	 * rule. A matching file is still checked against every other rule, and
 	 * each offence a glob waives is reported in `SourceScan.waived`
 	 * rather than dropped. The `"forbidImports"` key covers every
-	 * `{ forbidImports }` rule, and the `"forbidTokens"` key every
-	 * `{ forbidTokens }` rule, which is how a token is confined to named files.
+	 * `{ forbidImports }` rule, the `"forbidTokens"` key every
+	 * `{ forbidTokens }` rule, which is how a token is confined to named files,
+	 * and the `"forbidImportedNames"` key every `{ forbidImportedNames }` rule.
 	 * A file `allow` matches is exempt from every rule, so nothing in it is
 	 * waived.
 	 */
@@ -225,8 +256,12 @@ const stdoutWrites = (code: string): ReadonlyArray<{ readonly at: number; readon
 		.filter(({ end, method }) => method === "write" || END_WITH_CHUNK.test(code.slice(end)))
 		.map(({ at, method }) => ({ at, method }));
 
-/** The member name directly after the reference at `at` (`console.log` → `"log"`, `console?.log` too), or `undefined` when it is not a named member access. */
-const memberAfter = (code: string, at: number, name: string): string | undefined => {
+/** The member directly after the reference at `at` (`console.log` → `"log"`, `console?.log` too) and its offset, or `undefined` when it is not a named member access. */
+const memberAt = (
+	code: string,
+	at: number,
+	name: string,
+): { readonly name: string; readonly at: number } | undefined => {
 	let j = at + name.length;
 	while (j < code.length && /\s/.test(code[j] ?? "")) j++;
 	if (code[j] === "?" && code[j + 1] === ".") j++;
@@ -235,7 +270,173 @@ const memberAfter = (code: string, at: number, name: string): string | undefined
 	while (j < code.length && /\s/.test(code[j] ?? "")) j++;
 	let end = j;
 	while (isIdentifierChar(code[end])) end++;
-	return end > j ? code.slice(j, end) : undefined;
+	return end > j ? { name: code.slice(j, end), at: j } : undefined;
+};
+
+/** The member name directly after the reference at `at`, or `undefined` when it is not a named member access. */
+const memberAfter = (code: string, at: number, name: string): string | undefined => memberAt(code, at, name)?.name;
+
+/** One token of an import or export clause, as the code view holds it. */
+interface ClauseToken {
+	readonly text: string;
+	readonly at: number;
+	/** For a string-literal name (`text` is `""`), the characters between its quotes, escapes as written. */
+	readonly literal?: string;
+}
+
+/**
+ * The tokens of the clause between an `import`/`export` keyword and its
+ * `from`: identifiers, `{`, `}`, `,`, `*`, and a string-literal name (as
+ * `""`, carrying its value from `literals`, keyed by the opening quote's
+ * offset). `undefined` when anything else appears, so the text is not a
+ * clause.
+ */
+const clauseTokens = (
+	code: string,
+	start: number,
+	end: number,
+	literals: ReadonlyMap<number, string>,
+): ReadonlyArray<ClauseToken> | undefined => {
+	const tokens: Array<ClauseToken> = [];
+	let i = start;
+	while (i < end) {
+		const char = code[i] ?? "";
+		if (/\s/.test(char)) {
+			i++;
+		} else if (isIdentifierChar(char)) {
+			let j = i;
+			while (j < end && isIdentifierChar(code[j])) j++;
+			tokens.push({ text: code.slice(i, j), at: i });
+			i = j;
+		} else if (char === '"' || char === "'") {
+			// The code view blanks a literal's contents and keeps its quotes.
+			const close = code.indexOf(char, i + 1);
+			if (close === -1 || close >= end) return undefined;
+			const literal = literals.get(i);
+			tokens.push(literal === undefined ? { text: '""', at: i } : { text: '""', at: i, literal });
+			i = close + 1;
+		} else if ("{},*".includes(char)) {
+			tokens.push({ text: char, at: i });
+			i++;
+		} else {
+			return undefined;
+		}
+	}
+	return tokens;
+};
+
+/**
+ * A TypeScript import-equals declaration ending at the `(` of its `require(`:
+ * `import m = require(`, `import type m = require(` or `export import m =
+ * require(`. Group 1 is the binding.
+ */
+const IMPORT_EQUALS =
+	/(?<![\p{ID_Continue}$.])import\s+(?:type\s+)?([\p{ID_Start}$_][\p{ID_Continue}$\u200c\u200d]*)\s*=\s*require\s*\($/u;
+
+/** An `import` or `export` keyword that is a statement keyword, not a member or part of a longer name. */
+const CLAUSE_KEYWORD = /(?<![\p{ID_Continue}$.])(import|export)(?![\p{ID_Continue}$])/gu;
+
+/** The last `import`/`export` keyword before `end` and its offset; `at` is `-1` when there is none. */
+const clauseKeyword = (code: string, end: number): { readonly keyword: "import" | "export"; readonly at: number } => {
+	let found: { readonly keyword: "import" | "export"; readonly at: number } = { keyword: "import", at: -1 };
+	for (const match of code.slice(0, end).matchAll(CLAUSE_KEYWORD)) {
+		found = { keyword: match[1] === "export" ? "export" : "import", at: match.index ?? -1 };
+	}
+	return found;
+};
+
+/**
+ * The imported names of a `{ ... }` list (`a`, `a as b`, `type a`), and a
+ * string-literal name (`"a" as b`, an arbitrary module namespace name) by its
+ * value.
+ */
+const namedImports = (
+	tokens: ReadonlyArray<ClauseToken>,
+): ReadonlyArray<{ readonly name: string; readonly at: number }> => {
+	const names: Array<{ readonly name: string; readonly at: number }> = [];
+	let element: Array<ClauseToken> = [];
+	const flush = (): void => {
+		const [first, second] = element;
+		const name = first?.text === "type" && second !== undefined && second.text !== "as" ? second : first;
+		if (name !== undefined) {
+			if (name.text !== '""') names.push({ name: name.text, at: name.at });
+			else if (name.literal !== undefined) names.push({ name: name.literal, at: name.at });
+		}
+		element = [];
+	};
+	for (const token of tokens) {
+		if (token.text === ",") flush();
+		else element.push(token);
+	}
+	flush();
+	return names;
+};
+
+/**
+ * Where lexed source imports one of `rule.names` from `rule.from`: named and
+ * default bindings (a string-literal name included), named re-exports and
+ * `export *`, and member accesses on a namespace binding of the module —
+ * `import * as m from` or the TypeScript `import m = require(...)`.
+ */
+const importedNameUses = (
+	lexed: LexedSource,
+	rule: ForbiddenImportedNames,
+): ReadonlyArray<{ readonly offset: number; readonly detail: string }> => {
+	const { code } = lexed;
+	const forbidden = new Set(rule.names);
+	const found: Array<{ readonly offset: number; readonly detail: string }> = [];
+	const report = (offset: number, name: string): void => {
+		found.push({ offset, detail: `${name} from ${rule.from}` });
+	};
+	const literalAt = new Map(lexed.literals.map((literal) => [literal.start, literal.value] as const));
+	/** Report every forbidden member access on the namespace binding `binding`. */
+	const namespaceMembers = (binding: string): void => {
+		for (const reference of references(code, binding)) {
+			const member = memberAt(code, reference, binding);
+			if (member !== undefined && forbidden.has(member.name)) report(member.at, member.name);
+		}
+	};
+	for (const literal of specifierLiterals(lexed)) {
+		if (literal.value !== rule.from) continue;
+		let j = literal.start - 1;
+		while (j >= 0 && /\s/.test(code[j] ?? "")) j--;
+		if (code[j] === "(") {
+			// `import m = require("<module>")`: a namespace binding, like `import * as m`.
+			// Any other `require(...)` or `import(...)` binds nothing the lexer can follow.
+			const binding = IMPORT_EQUALS.exec(code.slice(0, j + 1))?.[1];
+			if (binding !== undefined) namespaceMembers(binding);
+			continue;
+		}
+		// Only `... from "<module>"` carries bindings; `import "<module>"` does not.
+		if (code.slice(j - 3, j + 1) !== "from" || isIdentifierChar(code[j - 4])) continue;
+		const { keyword, at } = clauseKeyword(code, j - 3);
+		if (at === -1) continue;
+		const tokens = clauseTokens(code, at + keyword.length, j - 3, literalAt);
+		if (tokens === undefined || tokens.length === 0) continue;
+		// `import type X` / `export type { X }`: the modifier, not a binding named `type`.
+		const rest = tokens[0]?.text === "type" && tokens.length > 1 && tokens[1]?.text !== "," ? tokens.slice(1) : tokens;
+		const open = rest.findIndex((token) => token.text === "{");
+		const close = rest.findIndex((token) => token.text === "}");
+		if (open !== -1 && close > open) {
+			for (const { name, at: nameAt } of namedImports(rest.slice(open + 1, close))) {
+				if (forbidden.has(name)) report(nameAt, name);
+			}
+		}
+		const star = rest.findIndex((token) => token.text === "*");
+		if (keyword === "export") {
+			// `export * from` and `export * as ns from` hand on every name, the forbidden ones included.
+			if (star !== -1 && forbidden.size > 0) report(rest[star]?.at ?? at, "*");
+			continue;
+		}
+		const first = rest[0];
+		if (first !== undefined && first.text !== "{" && first.text !== "*" && forbidden.has("default")) {
+			report(first.at, "default");
+		}
+		const namespace = star === -1 || rest[star + 1]?.text !== "as" ? undefined : rest[star + 2];
+		if (namespace === undefined || !isIdentifierChar(namespace.text[0])) continue;
+		namespaceMembers(namespace.text);
+	}
+	return found;
 };
 
 /**
@@ -462,6 +663,60 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
 		flagged: true,
 	},
 	{
+		name: "forbidImportedNames: an aliased named import",
+		source: 'import { AppConfig, App as Application } from "@effected/app";',
+		rule: { forbidImportedNames: { from: "@effected/app", names: ["App"] } },
+		flagged: true,
+	},
+	{
+		name: "forbidImportedNames: a member of a namespace import",
+		source: 'import * as app from "@effected/app";\nconst layer = app.App.layer;',
+		rule: { forbidImportedNames: { from: "@effected/app", names: ["App"] } },
+		flagged: true,
+	},
+	{
+		name: "forbidImportedNames: a named re-export",
+		source: 'export { type AppStore } from "@effected/app";',
+		rule: { forbidImportedNames: { from: "@effected/app", names: ["AppStore"] } },
+		flagged: true,
+	},
+	{
+		name: "forbidImportedNames: an allowed name and an allowed namespace member",
+		source: 'import { AppConfig } from "@effected/app";\nimport * as app from "@effected/app";\napp.AppConfig;',
+		rule: { forbidImportedNames: { from: "@effected/app", names: ["App"] } },
+		flagged: false,
+	},
+	{
+		name: "forbidImportedNames: the name from another module, and in a comment",
+		source: 'import { App } from "./App.js"; // import { App } from "@effected/app";',
+		rule: { forbidImportedNames: { from: "@effected/app", names: ["App"] } },
+		flagged: false,
+	},
+	{
+		name: "forbidImportedNames: a string-literal import name",
+		source: 'import { "App" as Application } from "@effected/app";',
+		rule: { forbidImportedNames: { from: "@effected/app", names: ["App"] } },
+		flagged: true,
+	},
+	{
+		name: "forbidImportedNames: a member of an import-equals binding",
+		source: 'import app = require("@effected/app");\nconst layer = app.App.layer;',
+		rule: { forbidImportedNames: { from: "@effected/app", names: ["App"] } },
+		flagged: true,
+	},
+	{
+		name: "forbidImportedNames: an allowed member of an import-equals binding",
+		source: 'import app = require("@effected/app");\nconst config = app.AppConfig;',
+		rule: { forbidImportedNames: { from: "@effected/app", names: ["App"] } },
+		flagged: false,
+	},
+	{
+		name: "forbidImportedNames: a local alias named like a forbidden name",
+		source: 'import { AppConfig as App } from "@effected/app";',
+		rule: { forbidImportedNames: { from: "@effected/app", names: ["App"] } },
+		flagged: false,
+	},
+	{
 		name: "forbidTokens: a private field",
 		source: "const v = this.#process.env.__PACKAGE_VERSION__;",
 		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
@@ -507,7 +762,18 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
  *   both words);
  *
  * - `forbidImports: ["node:*"]` does not catch a bare built-in such as
- *   `"fs"` (see {@link BoundaryRule}).
+ *   `"fs"` (see {@link BoundaryRule});
+ *
+ * - `{ forbidImportedNames }` reads static `import` and `export ... from`
+ *   clauses and member accesses on a namespace binding (an `import * as m` or
+ *   an `import m = require(...)`). It does not see a
+ *   name taken from a dynamic `import()` or a plain `require()` call
+ *   (`const { App } = await import(...)`), a computed member (`m["App"]`), a
+ *   string-literal name written with an escape (`"\u0041pp"` reads as its
+ *   escaped text, not `App`), a
+ *   destructuring of a namespace binding (`const { App } = m`), or a
+ *   namespace binding passed on whole. Without scope analysis, a local that
+ *   shadows the namespace binding's name is read as the binding.
  *
  * Assert on {@link SourceBoundary.verifyFixtures} beside your own scan: it
  * proves the scanner you are trusting still flags what it must and spares
@@ -589,6 +855,10 @@ export class SourceBoundary {
 					const member = memberAfter(lexed.code, offset, "console");
 					if (member !== undefined && STDERR_METHODS.has(member)) continue;
 					found.push({ offset, rule, detail: member === undefined ? "console" : `console.${member}` });
+				}
+			} else if ("forbidImportedNames" in rule) {
+				for (const { offset, detail } of importedNameUses(lexed, rule.forbidImportedNames)) {
+					found.push({ offset, rule: "forbidImportedNames", detail });
 				}
 			} else if ("forbidTokens" in rule) {
 				for (const token of new Set(rule.forbidTokens)) {

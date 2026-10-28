@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-10-28T20:38:07Z
 integrity:
   generated:
-    body: 23a682f7f6155227
+    body: f4f1607b1e3966cf
 ---
 
 # @effected/memfs
@@ -343,8 +343,12 @@ Shared contract:
 - **`pathStyle: "win32"` is a spelling adapter only**, in front of the
   port and behind its faults: backslashes become slashes and a drive root
   `C:` maps onto the top-level `/C:` directory. Errors and fault handlers
-  keep the caller's spelling. No drive-letter folding, no UNC; the
-  `FileSystem` service stays POSIX.
+  keep the caller's spelling. The one answer that is a path, the sync
+  port's `realPath`, is respelled back (`/C:/repo` → `C:\repo`, the drive
+  root → `C:\`), the drive letter cased as the caller gave it unless an
+  absolute link target replaced the prefix, as node's win32 `realpath`
+  answers. Names, dirents and stats carry no path. No drive-letter
+  folding, no UNC; the `FileSystem` service stays POSIX.
 
 ### Case-insensitive volumes
 
@@ -381,6 +385,75 @@ release), `NodeSyncFileSystem.layer`, and `NodeSyncFileSystem.layerWithPath`
   arguments included) against `@effect/platform-node`. It does not run
   `errnoSuite`, which includes write cases that would die against a
   read-only adapter; an earlier design's claim that it does was wrong.
+
+### Seeding from a real directory
+
+`NodeDirectorySeed.read(directory, { mountAt?, modes?, maxFileBytes? })`
+is the second Node-only concept on `./node-sync`
+(`packages/memfs/src/NodeDirectorySeed.ts`, re-exported by the entry with
+the seed types its signature names). It turns a fixture tree checked into a
+repository into a `MemoryFileSystemSeed`, replacing the recursive
+`readdirSync` copier consumers had hand-rolled (okfit had two, effected#1125).
+It is synchronous because its caller is a suite building a volume at
+`describe` scope with `makeSync`, and it throws node-shaped errors (`code`,
+`path`) for the same reason `makeSync` does.
+
+- **Bytes exact.** Every file is read as bytes and copied into its own
+  `Uint8Array`: no decoding, no line-ending change, and no aliasing of node's
+  pooled `Buffer`.
+- **Keys.** With `mountAt` (absolute) the keys are absolute; without it they
+  are relative to the directory, with `""` for the directory itself, which is
+  exactly what `layerWith(seed, { root })` joins. Every directory becomes a
+  directory entry, so empty directories survive, and entries are listed
+  parent first in code-unit order, so a read is deterministic.
+- **Symlinks are never followed.** A link is copied as a link with its
+  target text verbatim, so no link is followed to read content. A link
+  that would leave the fixture throws `ERR_SEED_SYMLINK_ESCAPE`: an absolute
+  target (a host path the volume would resolve against itself), or a
+  relative one whose resolution steps outside the fixture at ANY point.
+  Containment resolves the target one segment at a time on the host,
+  following every link on the way (an ELOOP-style 40-hop budget; a cycle
+  is accepted, it resolves nowhere in either place), and refuses the moment
+  a step leaves the root — even `../fixture/a` that comes back in, because
+  the volume mounts the fixture alone. Past a component the host cannot
+  resolve, the remaining segments are read lexically; past a link that
+  resolves nowhere, lexically from the root. Fails closed. Neither
+  `realpathSync.native` (answers nothing for a dangling link, so
+  `sub/out -> up/../nope` beside `sub/up -> ..` fell to a lexical check
+  that read it as inside — the security-review finding the integration test
+  pins) nor the JS `realpathSync` (joins link targets lexically) is enough.
+- **Modes, mtimes, size.** Modes are copied only with `modes: true`,
+  because a checkout's bits follow the host's umask; mtimes never are.
+  `maxFileBytes` (16 MiB by default) throws `EFBIG`. A FIFO, socket or
+  device throws `ERR_SEED_UNSUPPORTED_TYPE`. The walk is an explicit stack,
+  not recursion.
+- **The read is one descriptor.** The walk's `lstat` and the read are two
+  calls, so a file is opened `O_NOFOLLOW` (where the host defines it; a
+  link swapped in fails `ELOOP`) and `O_NONBLOCK` (a swapped-in FIFO cannot
+  block), its `fstat` must match the `lstat`'s device and inode or it
+  throws `ERR_SEED_CHANGED`, `maxFileBytes` is checked against the `fstat`
+  size, and the read is bounded by it (a shrink mid-read is
+  `ERR_SEED_CHANGED` too). The internal `readSeedFile` carries this and is
+  what the swap tests drive.
+- **A directory is re-checked when it is listed.** The internal
+  `readSeedDirectory` checks it before and after `readdirSync`: still a
+  directory with the walk's `lstat` device and inode, and its
+  `realpathSync.native` still the real root joined with its relative path,
+  or it throws `ERR_SEED_CHANGED`. The real-path half catches the same
+  directory moved outside the fixture and reached through a parent swapped
+  for a link, which the device and inode cannot. The root, whose argument
+  may be a link, is checked by `stat` rather than `lstat`. Node has no
+  `openat`, so every entry is still reached by path from the caller's
+  spelling: a swap made and undone between two checks is not seen. That is
+  the honest bound of the guarantee, which is for fixture trees and not for
+  a tree an adversary rewrites mid-read. `mountAt`'s trailing slashes are
+  trimmed with a loop, because an end-anchored `/\/+$/` is quadratic on a
+  run of slashes that is not trailing (CodeQL #39).
+
+The seed types' TSDoc names `MemoryFileSystem.file`, `directory` and
+`symlink` in backticks rather than `{@link}`: `./node-sync` re-exports the
+types without the class, and a link to a symbol an entry point does not
+export is an `ae-unresolved-link` in that entry's API Extractor pass.
 
 ## What the volume does not see
 
@@ -870,6 +943,13 @@ Eight layers of proof, largest first:
    `/` answered as a real directory rather than a hole in the walk;
    `undefined` distinguished from `[]` and from `0`; and the ports throwing or rejecting node's exact error where the view
    answers `undefined`.
+9. **Directory seeding** (`integration/node-directory-seed.int.test.ts`):
+   real fixture trees under `os.tmpdir()` — every byte value and CRLF text
+   round-tripping through the volume, empty directories, in-fixture links
+   resolving in the volume, both key forms, modes on and off, a 200-deep
+   tree, and each refusal (absolute, relative-escaping, kernel-resolved
+   chain and lexically escaping dangling links; `EFBIG` at one byte over
+   the cap; a FIFO; a missing directory and a file).
 
 The contract suite roots every path it touches under
 `makeTempDirectoryScoped({ prefix: "effect-filesystem-test-" })` with no

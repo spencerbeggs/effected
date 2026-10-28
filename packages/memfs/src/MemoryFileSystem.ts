@@ -496,6 +496,16 @@ export interface MemoryFileSystemPortOptions<Faults> {
 	 * `path` and message, and fault handlers receive the arguments as the
 	 * caller gave them. The `FileSystem` service is unaffected: it stays POSIX.
 	 *
+	 * The one answer that is itself a path, the sync port's `realPath`, comes
+	 * back in win32 spelling too, as node's win32 `realpath` answers:
+	 * `C:\repo\link` resolves to `C:\repo\target`, and the drive root to `C:\`.
+	 * The drive letter keeps the caller's casing (on a `caseSensitive: false`
+	 * volume, `c:\repo` answers `c:\repo`) unless an absolute link target
+	 * replaces the prefix, in which case the target's own spelling wins. A
+	 * drive-less answer stays drive-less (`\out`): the port models no current
+	 * drive. Every other answer (names, dirents, stats, contents) carries no
+	 * path.
+	 *
 	 * Edges, by construction of the spelling adapter: a drive-relative path
 	 * such as `C:foo` has no root to map and stays the relative volume path
 	 * `C:foo`; a UNC path `\\server\share` becomes `//server/share`, a
@@ -508,7 +518,7 @@ export interface MemoryFileSystemPortOptions<Faults> {
 
 /**
  * A seed entry describing a file, optionally carrying its initial permission
- * mode — built with {@link MemoryFileSystem.file}.
+ * mode — built with `MemoryFileSystem.file`.
  *
  * @public
  */
@@ -529,7 +539,7 @@ export interface MemoryFileSystemSeedFile {
 
 /**
  * A seed entry describing a directory — built with
- * {@link MemoryFileSystem.directory}. The only way a seed can express an *empty*
+ * `MemoryFileSystem.directory`. The only way a seed can express an *empty*
  * directory, and the way a directory receives an initial permission mode.
  *
  * @public
@@ -542,7 +552,7 @@ export interface MemoryFileSystemSeedDirectory {
 
 /**
  * A seed entry describing a symbolic link — built with
- * {@link MemoryFileSystem.symlink}.
+ * `MemoryFileSystem.symlink`.
  *
  * @public
  */
@@ -571,8 +581,8 @@ export type MemoryFileSystemSeedEntry =
  *
  * @remarks
  * Plain `string` values are UTF-8 encoded; `Uint8Array` values are written
- * verbatim. Tagged entries built with {@link MemoryFileSystem.file},
- * {@link MemoryFileSystem.directory} and {@link MemoryFileSystem.symlink} let one
+ * verbatim. Tagged entries built with `MemoryFileSystem.file`,
+ * `MemoryFileSystem.directory` and `MemoryFileSystem.symlink` let one
  * seed literal describe a whole tree — empty directories, symbolic links, and
  * initial permission modes included. Parent directories are created
  * recursively before each entry, so a seed never has to list them.

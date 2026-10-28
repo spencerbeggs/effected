@@ -55,6 +55,12 @@ export {
 	ManifestDecodeError,
 	UnresolvedDependencyError,
 } from "./Manifest.js";
+export {
+	NpmConfig,
+	NpmConfigError,
+	type NpmConfigLoadOptions,
+	type NpmConfigSource,
+} from "./NpmConfig.js";
 export { NpmExecutor } from "./NpmExecutor.js";
 // Free-standing named exports, never gathered into a namespace object: a
 // consumer that imports only the pure vocabulary (IntegrityHash, the
@@ -94,13 +100,19 @@ export {
 	type RecordedSetupAuth,
 	type RecordingPackagePublish,
 } from "./PackagePublish.js";
-export { PackageTarball, type PackageTarballShape, TarballError } from "./PackageTarball.js";
+export {
+	PackageTarball,
+	type PackageTarballExtractOptions,
+	type PackageTarballShape,
+	TarballError,
+} from "./PackageTarball.js";
 export { PublishError } from "./PublishError.js";
 export {
 	type BasicCredential,
 	BasicCredentialError,
 	type PublishCredential,
 	type RegistryCredential,
+	type RegistryCredentialLookup,
 	type TokenCredential,
 	type WorkloadCredential,
 	basicCredentialFromPairResult,

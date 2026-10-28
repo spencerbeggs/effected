@@ -2,7 +2,7 @@
 
 Zero-dependency TOML 1.1.0 parse/edit/format schemas: parse into plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, visit as a `Stream`.
 
-**Tier: pure.** Peer-depends on `effect` only. Zero runtime deps, no IO. Eighth migration; merged. **The first format package in the repo with no vendored code** — jsonc, yaml and glob all port an upstream engine with attribution; toml's engine is original work, built from the TOML 1.0.0 spec directly rather than translated from a reference implementation, then upgraded in place to TOML 1.1.0 (released 2025-12-24).
+**Tier: pure.** Peer-depends on `effect` only. One runtime dep, the dependency-free `@effected/source` (a regular dependency: pure, no shared-instance contract), whose `LineIndex` (default `"lsp"` rule) derives `TomlDiagnostic`'s `line`/`character`. No IO. Eighth migration; merged. **The first format package in the repo with no vendored code** — jsonc, yaml and glob all port an upstream engine with attribution; toml's engine is original work, built from the TOML 1.0.0 spec directly rather than translated from a reference implementation, then upgraded in place to TOML 1.1.0 (released 2025-12-24).
 
 **For the full design:** → `@./okf/modules/toml.md`
 

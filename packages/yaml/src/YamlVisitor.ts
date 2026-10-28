@@ -9,11 +9,12 @@
 //
 // This is the AST-level visitor only — the CST layer stays internal.
 
+import type { SourceIndex } from "@effected/source";
 import { Data, Stream } from "effect";
 import { composeAllDocuments } from "./internal/composer/document.js";
 import type { RawYamlDocument } from "./internal/raw-document.js";
 import type { YamlParseOptions } from "./Yaml.js";
-import { YamlDiagnostic } from "./YamlDiagnostic.js";
+import { YamlDiagnostic, lazyLineIndex } from "./YamlDiagnostic.js";
 import type { YamlPath } from "./YamlEdit.js";
 import type { CollectionStyle, ScalarStyle, YamlNode, YamlPair } from "./YamlNode.js";
 import { YamlAlias, YamlMap, YamlScalar, YamlSeq } from "./YamlNode.js";
@@ -128,6 +129,8 @@ export class YamlVisitor {
 }
 
 function* visitGen(text: string, options?: YamlParseOptions): Generator<YamlVisitorEvent> {
+	// One line index for the whole stream, built only if a diagnostic needs it.
+	const index = lazyLineIndex(text);
 	const { documents, streamErrors } = composeAllDocuments(text, {
 		strict: options?.strict,
 		maxAliasCount: options?.maxAliasCount,
@@ -135,15 +138,15 @@ function* visitGen(text: string, options?: YamlParseOptions): Generator<YamlVisi
 	});
 
 	for (const raw of streamErrors) {
-		yield YamlVisitorEvent.Error({ path: [], depth: 0, diagnostic: YamlDiagnostic.fromRaw(raw, text) });
+		yield YamlVisitorEvent.Error({ path: [], depth: 0, diagnostic: YamlDiagnostic.fromRaw(raw, index()) });
 	}
 
 	for (const doc of documents) {
-		yield* walkDocument(doc, text);
+		yield* walkDocument(doc, index);
 	}
 }
 
-function* walkDocument(doc: RawYamlDocument, text: string): Generator<YamlVisitorEvent> {
+function* walkDocument(doc: RawYamlDocument, index: () => SourceIndex): Generator<YamlVisitorEvent> {
 	const path: YamlPath = [];
 	const depth = 0;
 
@@ -158,10 +161,10 @@ function* walkDocument(doc: RawYamlDocument, text: string): Generator<YamlVisito
 	});
 
 	for (const raw of doc.errors) {
-		yield YamlVisitorEvent.Error({ path, depth, diagnostic: YamlDiagnostic.fromRaw(raw, text) });
+		yield YamlVisitorEvent.Error({ path, depth, diagnostic: YamlDiagnostic.fromRaw(raw, index()) });
 	}
 	for (const raw of doc.warnings) {
-		yield YamlVisitorEvent.Error({ path, depth, diagnostic: YamlDiagnostic.fromRaw(raw, text) });
+		yield YamlVisitorEvent.Error({ path, depth, diagnostic: YamlDiagnostic.fromRaw(raw, index()) });
 	}
 
 	if (doc.commentBefore !== undefined) {

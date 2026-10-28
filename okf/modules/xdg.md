@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/xdg/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-10-28T20:19:51Z
 integrity:
   generated:
-    body: 8556a00e8232933e
+    body: 11dd44274515026c
 ---
 
 # xdg
@@ -120,6 +120,37 @@ used, which the `XdgLayerFromEnv` suite pins as its control. A caller who
 holds a `ConfigProvider` rather than a record, and needs only one in the
 graph, composes `Layer.provide(Xdg.layer, ConfigProvider.layer(p))`.
 
+**Opt-in departures: `Xdg.layerWith(options)` and `Xdg.layerFromEnv(env,
+options)`.** Both take `XdgEnvOptions`, whose every field defaults to the
+specification, so `layerWith({})` resolves what `Xdg.layer` does and the
+defaults above never change. They exist for a program that must read the
+same directory as an existing shell rule, the case a consumer raised
+(effected#1119): pluginfinity's shell library writes logs under
+`${XDG_STATE_HOME:-${HOME:-…}/.local/state}`, and its CLI must read them back.
+
+- `homeFallback?: () => string` replaces a **missing** home: unset, or empty
+  (the env providers read `""` as unset). A set home, even a relative one,
+  wins and the fallback is never called; a provider that cannot be read
+  still fails typed, because the read is `Config.option` and only `none`
+  falls back. It is called once, at build; an empty result fails with the
+  variable's own `XdgEnvError`, and a throw is a defect. It is a function
+  rather than an `os.homedir()` call so xdg keeps reading no `os` module:
+  the application passes `os.homedir` from its edge. This is not the
+  declined `USERPROFILE` substitution — the default stays off, and the
+  application chooses where its files live.
+- `relativeHomes?: "ignore" | "keep"`. The issue's "shell-compatible
+  relative values" means one thing precisely: a shell's `${VAR:-default}`
+  uses a non-empty value as given, relative or not, where the specification
+  says a relative `XDG_*` value is invalid and must be ignored. The two
+  conflict, so `"keep"` is opt-in and the default stays the spec's
+  `"ignore"`. `"keep"` covers exactly the four `XDG_*_HOME` variables — the
+  ones a `${VAR:-default}` rule reads — and keeps the value unresolved, so it
+  is relative to whatever directory a later `Path.resolve` or filesystem call
+  sees. `XDG_RUNTIME_DIR` keeps the spec rule (it must be a user-owned
+  absolute directory, and has no fallback to lose), as do the `*_DIRS`
+  search-path entries. An empty value is unset under both settings, as `:-`
+  treats it.
+
 ### NativeDirs — the pure platform map
 
 - **darwin** — config, data and state under
@@ -188,6 +219,15 @@ each system config directory, namespaced, in that order — placed ahead
 of the native resolver so an existing `~/.config/<app>` still beats the
 native directory. Both resolvers get a `never` error channel from walker
 rather than a hand-rolled `catchAll`.
+
+The save path is meant to be paired with config-file's `saveTarget:
+"default"`. Under `firstMatch` an unset `saveTarget` means `"source"`:
+write back into the file that was found. Because the primary resolver
+also searches the system config directories, that file can be
+`/etc/xdg/<app>/<filename>`, which a normal user cannot write. With
+`"default"` the write goes to the user's own config directory, which the
+resolver searches first, so the saved file wins the next load. Every
+example in the package pins it.
 
 Deliberately not present: preset ladders and format-coupled factories
 (that composition belongs in [app](app.md)), and a central error union

@@ -23,10 +23,10 @@ sources:
     resource: ../../packages/store/__test__/StoreLifecycle.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-10-28T19:13:48Z
 integrity:
   generated:
-    body: e5885369f2be1817
+    body: 22d6ecb74628f6c4
 ---
 
 # Error handling standards
@@ -195,11 +195,14 @@ export const causeMessage = (cause: unknown): string | undefined => {
 The shipped copies carry the same text under the kit's tab indentation and a
 leading comment naming this section as the source; `cmp` across
 `packages/*/src/internal/causeMessage.ts` must report them identical. There
-are nine, every one with the getter guards above: `@effected/cli`,
+are nine, every one with the getter guards above: `@effected/engine`,
 `images`, `jsonc`, `jsonl`, `npm`, `package-json`, `schemastore-cli`,
-`store` and `workspaces`. `@effected/cli` is the one that also publishes
-it, as `Fmt.causeMessage`, the read a consumer's own error rendering should
-use instead of copying the module (see [`cli.md`](../modules/cli.md)).
+`store` and `workspaces`. `@effected/engine` is the one that also
+publishes it, as `ErrorText.causeMessage`, the read a consumer's own error
+rendering should use instead of copying the module (see
+[`engine.md`](../modules/engine.md)). `@effected/cli` re-publishes that same
+function object as `Fmt.causeMessage` and carries no copy of its own (see
+[`cli.md`](../modules/cli.md)).
 
 - The helper returns `string | undefined`; the site decides the fallback.
   A `message` getter renders its summary alone when `causeMessage` returns
@@ -259,3 +262,19 @@ use instead of copying the module (see [`cli.md`](../modules/cli.md)).
     `StoreError.message carries the cause`: the direct cause's own message is
     "Failed to prepare statement" and the rendered text is "Store setup
     failed: Failed to prepare statement: no such table: no_such_table".
+
+## A kept HTTP cause goes through `HttpRedaction.cause`
+
+Core's `HttpClientError` keeps the request it failed on, `authorization`,
+`cookie` and every other header included, as plain readable fields. Core
+redacts them only when it renders the error (`toJSON`, inspect), so an error
+that keeps one as its `cause` hands the live credential to any logger,
+serializer or consumer code that walks the object. Any kit error that keeps an
+HTTP error, request, response or URL keeps it through
+`@effected/crypto`'s `HttpRedaction.cause` (or `.url` for a bare URL string).
+The copy keeps the method, the redacted URL, the status and the
+non-sensitive headers a person needs to debug, and drops the body.
+`HttpRedaction` is pure and depends on `effect` alone, so taking it as a
+regular dependency adds no transitive weight. Test such a site by walking
+every string reachable from the error, core `Headers` included, against a
+planted token, with a positive control on core's unscrubbed error.

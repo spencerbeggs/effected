@@ -7,6 +7,40 @@
 * Updated @effected/env
 * Updated @effected/mcp
 * Updated Keyed operations come from WebCrypto, payload digests from core Crypto required in R
+* Updated xdg
+* Added @effected/source
+* Updated effected
+* Updated jsonc
+* Updated toml
+* Updated Add a kit package
+* Updated walker
+* Updated @effected/engine
+* Updated git
+* Updated config-file
+* Updated @effected/memfs
+* Updated @effected/github
+* Updated @effected/github REST client
+* Updated npm
+* Updated package-json
+* Updated The package-json entry-point resolver
+* Added The package-json exports resolver
+* Updated @effected/workspaces/testing: the repo-shape checks
+* Updated @effected/workspaces: monorepo tooling
+* Updated @effected/workspaces discovery and detection
+* Updated @effected/commands
+* Updated Run.collect drains stdout, stderr and the exit code concurrently
+* Updated RunOnce trusts a done marker only from an owner it observed, and breaks a lock through per-contender tickets and a rename-based compare-and-delete
+* Updated @effected/markdown
+* Updated @effected/yaml
+* Updated @effected/yaml lint system
+* Updated @effected/lsp
+* Updated Error handling standards
+* Updated @effected/github GraphQL
+* Updated @effected/jwt
+* Updated actions-storage
+* Updated runtimes
+* Updated @effected/github errors and retry
+* Updated github-actions
 
 ## 2026-10-27
 

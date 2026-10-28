@@ -377,6 +377,28 @@ Generalize it:
 > fixtures. Discriminate on the framing (position, document index, an explicit
 > marker), and make the choice explicit in the code.
 
+## A string replacement reads `$` patterns: substitute with `split`/`join`
+
+`String.prototype.replace` and `replaceAll` with a STRING replacement read
+`$&`, `$$`, `` $` ``, `$'` and `$<name>` as patterns, so substituting
+untrusted text with `template.replaceAll("*", match)` turns a match of
+`a$&b` into `a*b` and `` a$`b `` into the text before the star. Wherever the
+replacement is data (a path segment, a file name, a pattern match), substitute
+literally:
+
+```ts
+const substituteEveryStar = (template: string, match: string): string => template.split("*").join(match)
+const substituteFirstStar = (template: string, match: string): string => {
+  const at = template.indexOf("*")
+  return at === -1 ? template : template.slice(0, at) + match + template.slice(at + 1)
+}
+```
+
+A replacer function (`replace(re, () => match)`) is also literal. The one
+exception is deliberate parity with a reference that itself uses a string
+replacement: `@effected/tsconfig-json` keeps `replace(/\*/g, subpath)`
+because tsc does, and pins it with a test.
+
 ## The invariant that ties it together
 
 > Malformed input fails through the documented typed error channel

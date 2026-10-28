@@ -62,6 +62,19 @@ export {
 	StringMapField,
 } from "./Package.js";
 export {
+	ExportEntry,
+	PackageExports,
+	PackageExportsError,
+	type PackageExportsManifest,
+	type PackageExportsOptions,
+	PackageFileTarget,
+	type PackageImportTarget,
+	type PackageSpecifierParts,
+	PackageSpecifierTarget,
+	type PackageTypesOptions,
+	TypesTarget,
+} from "./PackageExports.js";
+export {
 	type PackageFieldEdit,
 	PackageJsonFile,
 	type PackageJsonFileShape,
@@ -97,4 +110,4 @@ export {
 	noUnresolvedDepsRule,
 } from "./PackageValidator.js";
 export { Person } from "./Person.js";
-export { Bugs, Repository } from "./Repository.js";
+export { Bugs, Repository, RepositorySlug } from "./Repository.js";

@@ -5,6 +5,7 @@
 import type { YamlMap, YamlNode, YamlSeq } from "../../YamlNode.js";
 import type { CstNode } from "../cst.js";
 import type { RawDiagnostic } from "../diagnostics.js";
+import { normalizeLineBreaks } from "../line-breaks.js";
 import type { ParseOptionsInput } from "../options.js";
 import type { EscapedComment } from "./comments.js";
 
@@ -173,7 +174,8 @@ export interface ComposerState {
 
 export function createState(text: string, flow: FlowComposers, options?: ParseOptionsInput): ComposerState {
 	return {
-		text,
+		// A bare `\r` is a line break (YAML 1.2 `b-break`); see line-breaks.ts.
+		text: normalizeLineBreaks(text),
 		anchors: new Map(),
 		aliasCount: 0,
 		errors: [],

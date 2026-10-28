@@ -26,7 +26,7 @@
 | `CliExitShape` | Interface | The shape behind `CliExit`. | |
 | `CliFailure` | Class | A failure as a document: what the default report prints, and a building block for a custom one. | draw a failure as a document, schema issues as a tree, app frames and spans only |
 | `CliFailureOptions` | Interface | Options for `CliFailure.toDoc`. | |
-| `CliFormat` | Class | A `--format` flag and the one print that honours it, so a command builds its report once as a `Doc` and its data once as a value, and never writes per-format output by hand. | add a --format flag, print one report as text, markdown or json |
+| `CliFormat` | Class | A `--format` flag and the one print that honours it, so a command builds its report once as a `Doc` and its data once as a value, and never writes per-format output by hand. | add a --format flag, alias or custom formats, print json, print json without the flag |
 | `CliFormatFlagOptions` | Interface | Options for `CliFormat.flag`. | |
 | `CliFormatName` | TypeAlias | An output format a `--format` flag can offer: `auto` (the renderer the audience gets, as `Doc.print` picks it), one of the `Doc` renderers by name, or `json`, the command's data rather than its document. | |
 | `CliFormatOutput` | Interface | What `CliFormat.print` prints: the command's document and, for `json`, its data. | |
@@ -49,7 +49,7 @@
 | `CliPromptFallbackOptions` | TypeAlias | Options for `CliPrompt.fallback`. | |
 | `CliPromptTarget` | TypeAlias | Which missing parameter a fallback stands in for, so a non-interactive run can fail with core's own error. | |
 | `CliRuntime` | Class | Report a CLI program's failures through the program's own logger. | report a cli program's failures through its own logger, set exit code |
-| `CliTest` | Class | Spawn a built CLI bin hermetically and read its exit code and streams as data. | from `@effected/cli/testing` — spawn a built cli bin hermetically in a sandboxed temp home, read exit code and stdout/stderr as data |
+| `CliTest` | Class | Spawn a built CLI bin hermetically and read its exit code and streams as data. | from `@effected/cli/testing` — spawn a cli bin in a sandbox, read exit and output, stream or signal |
 | `CliTheme` | Class | The presentation of a CLI: colour tokens, glyphs and statuses, decided once from the terminal. | paint text by semantic token per stream, colour level aware, status glyphs, the agent-never-gets-an-escape rule |
 | `CliThemeOptions` | Interface | Options for `CliTheme.layer`. | |
 | `CliThemeShape` | Interface | The shape of the `CliTheme` service: a colour level, a glyph set and the functions that use them. | |
@@ -91,7 +91,7 @@
 | `Document` | TypeAlias | A whole document: its blocks, in order. | |
 | `EditorLinks` | TypeAlias | Whether file links open in an editor. | |
 | `FailureDetails` | Interface | What `render` is told about a failure beyond the squashed error. | |
-| `Fmt` | Class | Small, pure formatting primitives for terminal output. | sanitize escapes from text, display width, grapheme-safe truncate, durations, percent, plural |
+| `Fmt` | Class | Small, pure formatting primitives for terminal output. | sanitize escapes, display width, truncate, durations, plural, did-you-mean suggestions, error text |
 | `GithubAnnotation` | Class | GitHub Actions annotations, as workflow commands. | format a GitHub Actions error or warning annotation for a file and line |
 | `GithubAnnotationProperties` | Interface | What an annotation says about where it points and what it is called. | |
 | `GlyphSelectOptions` | Interface | Options for `Glyphs.select`. | |
@@ -147,6 +147,7 @@
 | `SelectScreenOptions` | Interface | Options for `Select.screen`. | from `@effected/cli/ui` |
 | `SelectState` | Interface | Where a `Select` is: its choices, the viewport over them, and whether one was submitted. | from `@effected/cli/ui` |
 | `SelectViewProps` | Interface | Props of `Select.View`. | from `@effected/cli/ui` |
+| `SpawnedBin` | Interface | A bin `CliTest.spawn` started and has not waited for: its output as it arrives, a way to signal it, and its exit. | from `@effected/cli/testing` |
 | `Status` | Class | An open vocabulary of statuses. | typed status vocabulary with glyphs, colours and severity rank, extend it, pick the worst |
 | `StatusDef` | Interface | How one status looks: a Unicode glyph, an ASCII fallback, a token and a rank. | |
 | `StatusRef` | Interface | A status as a document stores it: its name and its resolved definition. | |
@@ -154,6 +155,7 @@
 | `Style` | Interface | A terminal style: an optional foreground colour and text attributes. | |
 | `Styled` | Function | Text painted with a theme token or style, through the mounted screen's theme. | from `@effected/cli/ui` — paint ink text with a theme token |
 | `StyledProps` | Interface | Props of `Styled`. | from `@effected/cli/ui` |
+| `SuggestOptions` | Interface | Options for `Fmt.suggest`. | |
 | `Tab` | Interface | One tab. | from `@effected/cli/ui` |
 | `TableOptions` | Interface | Options for `Doc.table`. | |
 | `Tabs` | Class | A row (or column) of tabs, for a consumer's own screen. | from `@effected/cli/ui` — tab bar for a custom ink screen, tab and digit keys switch tabs |

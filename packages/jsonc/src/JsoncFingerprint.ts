@@ -11,7 +11,9 @@
 // This is a deliberately different contract from `Jsonc.stringify` (plain
 // `JSON.stringify` semantics — nested unrepresentables dropped or nulled):
 // fingerprints must never silently alter the document, so every non-JSON
-// value is a typed failure carrying the JSON-pointer path to fix.
+// value is a typed failure carrying the JSON-pointer path to fix. The lenient
+// rules in `JsoncCanonicalizeOptions` (bigint, undefined, non-finite numbers,
+// toJSON) are opt-in per value kind and inert for plain JSON input.
 
 import type { PlatformError } from "effect";
 import { Crypto, Effect, Result, Schema } from "effect";
@@ -39,8 +41,13 @@ import { MAX_NESTING_DEPTH } from "./internal/limits.js";
  *   which malformed Unicode is not (`JSON.stringify` would silently emit a
  *   `\udxxx` escape).
  * - `NonPlainObject` — an object that is neither an array nor a plain object
- *   (a `Date`, `Map`, class instance, …). `toJSON` methods are deliberately
- *   ignored; encode domain values to plain JSON (e.g. via `Schema`) first.
+ *   (a `Date`, `Map`, class instance, …). `toJSON` methods are ignored by
+ *   default; encode domain values to plain JSON (e.g. via `Schema`) first,
+ *   or opt in with {@link JsoncCanonicalizeOptions}' `toJSON` rule.
+ *
+ * The `UnrepresentableValue` (for `undefined`), `BigIntValue` and
+ * `NonFiniteNumber` failures are the strict default too; each has a
+ * {@link JsoncCanonicalizeOptions} rule that accepts the value instead.
  * - `NestingDepthExceeded` — the value nests deeper than the package
  *   hardening cap, which also intercepts cyclic values before they can
  *   recurse forever.
@@ -105,6 +112,84 @@ export class JsoncTextHashOptions extends Schema.Class<JsoncTextHashOptions>("Js
 	normalizeEol: Schema.optionalKey(Schema.Boolean),
 }) {}
 
+/**
+ * Options relaxing {@link JsoncFingerprint.canonicalizeResult} (and the
+ * `canonicalize`, `hash` and `hashResult` statics built on it) for values
+ * that are not plain JSON. Every field is omissible and defaults to the
+ * strict RFC 8785 behaviour, so an empty options value changes nothing.
+ *
+ * - `bigint` — `"fail"` (default) fails `BigIntValue`; `"number"` writes the
+ *   `bigint` as its bare decimal literal (`123456789012345678901n` →
+ *   `123456789012345678901`), a JSON number token no `number` can hold.
+ *   A `bigint` and the `number` of the same value are guaranteed the same
+ *   text, and so the same fingerprint, only when the value is a safe integer
+ *   (`Number.isSafeInteger`). Past that bound a `number` writes its shortest
+ *   round-trip form: `2 ** 60` writes `1152921504606847000` while `2n ** 60n`
+ *   writes `1152921504606846976`, and from `1e21` up a `number` writes
+ *   exponent notation (`1e+21`). Some larger values happen to agree
+ *   (`2 ** 53`, `1e20`); do not rely on it.
+ * - `undefined` — `"fail"` (default) fails `UnrepresentableValue`;
+ *   `"omit"` follows `JSON.stringify`: an object member whose value is
+ *   `undefined` is left out, and an `undefined` array element (or a hole in a
+ *   sparse array) is written `null`, so indexes never shift. An `undefined`
+ *   document root still fails, since there is no text to write. Functions
+ *   and symbols fail at any position in either mode.
+ * - `nonFinite` — `"fail"` (default) fails `NonFiniteNumber`; `"null"`
+ *   writes `NaN`, `Infinity` and `-Infinity` as `null`, as `JSON.stringify`
+ *   does. YAML's `.nan` and `.inf` decode to these.
+ * - `toJSON` — `"ignore"` (default) never calls `toJSON`, so a `Date` fails
+ *   `NonPlainObject`. `"date"` calls it on a `Date` only, the same rule
+ *   `@effected/crypto`'s `Fingerprint` applies: a valid `Date` writes its ISO
+ *   string and an invalid one `null`. `"all"` calls it on any object (arrays
+ *   included) carrying a callable `toJSON`, as `JSON.stringify` does. Either
+ *   way it is called once per position with the member key, the array index
+ *   or `""` at the root, and its result is canonicalized under the same
+ *   options, without calling the result's own `toJSON`. A `toJSON` that throws
+ *   fails `UnrepresentableValue` at its path.
+ *
+ * @remarks
+ * For plain JSON input every option is inert, so the output equals strict
+ * RFC 8785 byte for byte. Lenient output is still deterministic, and it is
+ * still JSON text, but it is no longer RFC 8785 canonical JSON: two values
+ * that differ only where an option applied (a member that is `undefined`
+ * against one that is absent, `NaN` against `null`) fingerprint the same.
+ *
+ * `"all"` trusts every `toJSON`. Effect data types such as `Option` and
+ * `HashMap` carry one that is a debug rendering, not a stable contract, so
+ * prefer `"date"` and encode domain values to plain JSON (for example with
+ * `Schema`) before fingerprinting.
+ *
+ * Unchanged by any option: lone surrogates fail `LoneSurrogate`, non-plain
+ * objects with no honoured `toJSON` fail `NonPlainObject`, a throwing getter
+ * fails `UnrepresentableValue`, and nesting past the hardening cap fails
+ * `NestingDepthExceeded`, which is also where a cyclic value lands, whether
+ * the cycle runs through properties or through `toJSON` results.
+ *
+ * @example
+ * ```ts
+ * import { JsoncCanonicalizeOptions, JsoncFingerprint } from "@effected/jsonc";
+ * import { Result } from "effect";
+ *
+ * const lenient = JsoncCanonicalizeOptions.make({ bigint: "number", undefined: "omit", toJSON: "date" });
+ * const text = JsoncFingerprint.canonicalizeResult(
+ *   { ticket: 123456789012345678901n, note: undefined, at: new Date(0) },
+ *   lenient,
+ * );
+ * if (Result.isSuccess(text)) {
+ *   console.log(text.success);
+ *   // => '{"at":"1970-01-01T00:00:00.000Z","ticket":123456789012345678901}'
+ * }
+ * ```
+ *
+ * @public
+ */
+export class JsoncCanonicalizeOptions extends Schema.Class<JsoncCanonicalizeOptions>("JsoncCanonicalizeOptions")({
+	bigint: Schema.optionalKey(Schema.Literals(["fail", "number"])),
+	undefined: Schema.optionalKey(Schema.Literals(["fail", "omit"])),
+	nonFinite: Schema.optionalKey(Schema.Literals(["fail", "null"])),
+	toJSON: Schema.optionalKey(Schema.Literals(["ignore", "date", "all"])),
+}) {}
+
 // ── Internal: the JCS emitter ───────────────────────────────────────────────
 
 // Throw carrier so the single recursive emitter can surface a typed error
@@ -142,7 +227,51 @@ const readProperty = (container: object, key: string | number, path: string): un
 	}
 };
 
-const emit = (value: unknown, path: string, depth: number): string => {
+// The options resolved once per canonicalization, so the hot walk reads
+// booleans instead of re-defaulting optional fields at every node.
+interface Policy {
+	readonly bigintAsNumber: boolean;
+	readonly omitUndefined: boolean;
+	readonly nonFiniteAsNull: boolean;
+	readonly toJSON: "ignore" | "date" | "all";
+}
+
+const toPolicy = (options?: JsoncCanonicalizeOptions): Policy => ({
+	bigintAsNumber: options?.bigint === "number",
+	omitUndefined: options?.undefined === "omit",
+	nonFiniteAsNull: options?.nonFinite === "null",
+	toJSON: options?.toJSON ?? "ignore",
+});
+
+// `toJSON`, applied the way `JSON.stringify` applies it: once per position,
+// called with the member key (the index as a string for an array element,
+// `""` at the root), and never again on its result. Only under a policy that
+// honours it; the strict default never reads the property at all.
+const applyToJSON = (value: unknown, key: string, path: string, policy: Policy): unknown => {
+	if (policy.toJSON === "ignore" || value === null || typeof value !== "object") {
+		return value;
+	}
+	if (policy.toJSON === "date" && !(value instanceof Date)) {
+		return value;
+	}
+	const toJSON = readProperty(value, "toJSON", path);
+	if (typeof toJSON !== "function") {
+		return value;
+	}
+	try {
+		return (toJSON as (key: string) => unknown).call(value, key);
+	} catch {
+		throw new CanonicalizeFailure(
+			JsoncCanonicalizeError.make({
+				code: "UnrepresentableValue",
+				path,
+				detail: "the value's toJSON method threw",
+			}),
+		);
+	}
+};
+
+const emit = (value: unknown, path: string, depth: number, policy: Policy): string => {
 	if (value === null) {
 		return "null";
 	}
@@ -151,6 +280,9 @@ const emit = (value: unknown, path: string, depth: number): string => {
 			return value ? "true" : "false";
 		case "number": {
 			if (!Number.isFinite(value)) {
+				if (policy.nonFiniteAsNull) {
+					return "null";
+				}
 				throw new CanonicalizeFailure(
 					JsoncCanonicalizeError.make({
 						code: "NonFiniteNumber",
@@ -182,6 +314,10 @@ const emit = (value: unknown, path: string, depth: number): string => {
 			// remaining control characters, everything else literal.
 			return JSON.stringify(value);
 		case "bigint":
+			if (policy.bigintAsNumber) {
+				// A bigint's decimal form is a valid JSON number token.
+				return value.toString();
+			}
 			throw new CanonicalizeFailure(
 				JsoncCanonicalizeError.make({
 					code: "BigIntValue",
@@ -216,10 +352,13 @@ const emit = (value: unknown, path: string, depth: number): string => {
 		// hole away). Reading `value[index]` turns each hole into `undefined`,
 		// which fails typed above with the hole's JSON-pointer path — the same
 		// policy as an explicit `undefined` member.
+		// Under `undefined: "omit"` an undefined element (a hole included) is
+		// written `null`, as `JSON.stringify` writes it, so indexes never shift.
 		const items: Array<string> = [];
 		for (let index = 0; index < value.length; index++) {
 			const itemPath = `${path}/${index}`;
-			items.push(emit(readProperty(value, index, itemPath), itemPath, depth + 1));
+			const item = applyToJSON(readProperty(value, index, itemPath), String(index), itemPath, policy);
+			items.push(item === undefined && policy.omitUndefined ? "null" : emit(item, itemPath, depth + 1, policy));
 		}
 		return `[${items.join(",")}]`;
 	}
@@ -235,24 +374,44 @@ const emit = (value: unknown, path: string, depth: number): string => {
 	}
 	const record = value as Record<string, unknown>;
 	const keys = Object.keys(record).sort(compareCodeUnits);
-	return `{${keys
-		.map((key) => {
-			const memberPath = `${path}/${escapePointerSegment(key)}`;
-			// Member keys are strings too: an unpaired surrogate in a key is the
-			// same RFC 8785 I-JSON violation as one in a value.
-			if (!key.isWellFormed()) {
-				throw new CanonicalizeFailure(
-					JsoncCanonicalizeError.make({
-						code: "LoneSurrogate",
-						path: memberPath,
-						detail: "object member key contains an unpaired surrogate; RFC 8785 requires well-formed Unicode",
-					}),
-				);
-			}
-			return `${JSON.stringify(key)}:${emit(readProperty(record, key, memberPath), memberPath, depth + 1)}`;
-		})
-		.join(",")}}`;
+	const members: Array<string> = [];
+	for (const key of keys) {
+		const memberPath = `${path}/${escapePointerSegment(key)}`;
+		// Member keys are strings too: an unpaired surrogate in a key is the
+		// same RFC 8785 I-JSON violation as one in a value.
+		if (!key.isWellFormed()) {
+			throw new CanonicalizeFailure(
+				JsoncCanonicalizeError.make({
+					code: "LoneSurrogate",
+					path: memberPath,
+					detail: "object member key contains an unpaired surrogate; RFC 8785 requires well-formed Unicode",
+				}),
+			);
+		}
+		const member = applyToJSON(readProperty(record, key, memberPath), key, memberPath, policy);
+		// Under `undefined: "omit"` the member is left out, as `JSON.stringify`
+		// leaves it out; the decision is made after `toJSON`, so a `toJSON`
+		// returning `undefined` omits its member too.
+		if (member === undefined && policy.omitUndefined) {
+			continue;
+		}
+		members.push(`${JSON.stringify(key)}:${emit(member, memberPath, depth + 1, policy)}`);
+	}
+	return `{${members.join(",")}}`;
 };
+
+const canonicalizeWith = (value: unknown, policy: Policy): Result.Result<string, JsoncCanonicalizeError> =>
+	Result.try({
+		try: () => emit(applyToJSON(value, "", "", policy), "", 0, policy),
+		catch: (failure) => {
+			// Only the engine's own carrier is a typed failure; anything else is a
+			// genuine defect and rethrows out of the Result.
+			if (failure instanceof CanonicalizeFailure) {
+				return failure.error;
+			}
+			throw failure;
+		},
+	});
 
 /**
  * The synchronous SHA-256 implementation {@link JsoncFingerprint.hashResult}
@@ -396,23 +555,23 @@ export class JsoncFingerprint {
 	 * }
 	 * ```
 	 *
+	 * Pass {@link JsoncCanonicalizeOptions} to accept a `bigint`, an
+	 * `undefined`, a non-finite number or a `toJSON`-bearing value instead of
+	 * failing; each option states its rule, and none changes the output for
+	 * plain JSON input.
+	 *
 	 * @param value - The plain JSON value (`null`, booleans, finite numbers,
 	 *   strings, arrays, plain objects) to serialize.
+	 * @param options - Optional {@link JsoncCanonicalizeOptions}; omitted, every
+	 *   non-JSON value fails as RFC 8785 requires.
 	 * @returns A `Result` succeeding with the canonical JSON text, or failing
 	 *   with a {@link JsoncCanonicalizeError}.
 	 */
-	static canonicalizeResult(value: unknown): Result.Result<string, JsoncCanonicalizeError> {
-		return Result.try({
-			try: () => emit(value, "", 0),
-			catch: (failure) => {
-				// Only the engine's own carrier is a typed failure; anything else is a
-				// genuine defect and rethrows out of the Result.
-				if (failure instanceof CanonicalizeFailure) {
-					return failure.error;
-				}
-				throw failure;
-			},
-		});
+	static canonicalizeResult(
+		value: unknown,
+		options?: JsoncCanonicalizeOptions,
+	): Result.Result<string, JsoncCanonicalizeError> {
+		return canonicalizeWith(value, toPolicy(options));
 	}
 
 	/**
@@ -420,16 +579,19 @@ export class JsoncFingerprint {
 	 * {@link JsoncCanonicalizeError} on any non-JSON value (`undefined`,
 	 * functions, symbols, `bigint`, non-finite numbers, strings or member keys
 	 * with unpaired surrogates, non-plain objects) and
-	 * on nesting past the hardening cap (which also intercepts cycles).
+	 * on nesting past the hardening cap (which also intercepts cycles), unless
+	 * a {@link JsoncCanonicalizeOptions} rule accepts it.
 	 * Defined in terms of {@link JsoncFingerprint.canonicalizeResult} —
 	 * synchronous callers can use that variant directly.
 	 *
 	 * @param value - The plain JSON value to serialize.
+	 * @param options - Optional {@link JsoncCanonicalizeOptions}.
 	 * @returns An `Effect` that succeeds with the canonical JSON text, or
 	 *   fails with a {@link JsoncCanonicalizeError}.
 	 */
-	static readonly canonicalize = Effect.fn("JsoncFingerprint.canonicalize")((value: unknown) =>
-		Effect.fromResult(JsoncFingerprint.canonicalizeResult(value)),
+	static readonly canonicalize = Effect.fn("JsoncFingerprint.canonicalize")(
+		(value: unknown, options?: JsoncCanonicalizeOptions) =>
+			Effect.fromResult(JsoncFingerprint.canonicalizeResult(value, options)),
 	);
 
 	/**
@@ -477,14 +639,20 @@ export class JsoncFingerprint {
 	 * @param value - The plain JSON value to fingerprint.
 	 * @param digest - The consumer's SHA-256 implementation; see
 	 *   {@link JsoncDigest}.
+	 * @param options - Optional {@link JsoncCanonicalizeOptions}, applied to the
+	 *   canonicalization the digest is taken over.
 	 * @returns A `Result` succeeding with the 64-character lowercase-hex
 	 *   SHA-256, or failing with a {@link JsoncCanonicalizeError} — the same
 	 *   canonicalization failures {@link JsoncFingerprint.canonicalizeResult}
 	 *   raises, plus `InvalidDigest` if `digest` threw or returned a
 	 *   wrong-width result.
 	 */
-	static hashResult(value: unknown, digest: JsoncDigest): Result.Result<string, JsoncCanonicalizeError> {
-		return Result.flatMap(JsoncFingerprint.canonicalizeResult(value), (text) => digestHexResult(text, digest));
+	static hashResult(
+		value: unknown,
+		digest: JsoncDigest,
+		options?: JsoncCanonicalizeOptions,
+	): Result.Result<string, JsoncCanonicalizeError> {
+		return Result.flatMap(JsoncFingerprint.canonicalizeResult(value, options), (text) => digestHexResult(text, digest));
 	}
 
 	/**
@@ -509,13 +677,18 @@ export class JsoncFingerprint {
 	 * package taking any edge on `sbom`.
 	 *
 	 * @param value - The plain JSON value to fingerprint.
+	 * @param options - Optional {@link JsoncCanonicalizeOptions}, applied to the
+	 *   canonicalization the digest is taken over.
 	 * @returns An `Effect` requiring `Crypto.Crypto` that succeeds with the
 	 *   64-character lowercase-hex SHA-256, or fails with a
 	 *   {@link JsoncCanonicalizeError} (or the platform's `PlatformError`).
 	 */
 	static readonly hash = Effect.fn("JsoncFingerprint.hash")(
-		(value: unknown): Effect.Effect<string, JsoncCanonicalizeError | PlatformError.PlatformError, Crypto.Crypto> =>
-			Effect.flatMap(Effect.fromResult(JsoncFingerprint.canonicalizeResult(value)), digestHex),
+		(
+			value: unknown,
+			options?: JsoncCanonicalizeOptions,
+		): Effect.Effect<string, JsoncCanonicalizeError | PlatformError.PlatformError, Crypto.Crypto> =>
+			Effect.flatMap(Effect.fromResult(JsoncFingerprint.canonicalizeResult(value, options)), digestHex),
 	);
 
 	/**

@@ -283,8 +283,13 @@ export interface ConfigFileShape<A, CE = ConfigCodecError> {
 	 */
 	readonly write: (value: A, path: string, options?: ConfigEncodeOptions) => Effect.Effect<void, ConfigWriteError<CE>>;
 	/**
-	 * Resolve `defaultPath`, `mkdir -p` its parent, encode `value` into it, and
-	 * return the path written.
+	 * Resolve the write target, `mkdir -p` its parent, encode `value` into it,
+	 * and return the path written.
+	 *
+	 * @remarks
+	 * The target follows {@link ConfigFileOptions.saveTarget}: `defaultPath`,
+	 * or under `"source"` (the default for `firstMatch`) the first file the
+	 * resolver chain finds, falling back to `defaultPath`.
 	 */
 	readonly save: (value: A) => Effect.Effect<string, ConfigSaveError<CE>>;
 	/**
@@ -294,6 +299,11 @@ export interface ConfigFileShape<A, CE = ConfigCodecError> {
 	 * @remarks
 	 * With `defaultValue` the load cannot fail with
 	 * {@link ConfigFileNotFoundError}; without it, it can.
+	 *
+	 * The result goes where {@link ConfigFileOptions.saveTarget} says: under
+	 * `"source"` (the default for `firstMatch`) back to the highest-priority
+	 * file the load read, or `defaultPath` when the load found none and fell
+	 * back to `defaultValue`; under `"default"` to `defaultPath`.
 	 */
 	readonly update: (fn: (current: A) => A, defaultValue?: A) => Effect.Effect<A, ConfigUpdateError<CE>>;
 }
@@ -372,6 +382,39 @@ export interface ConfigFileOptions<A, I, RR, CE = ConfigCodecError> {
 	 * {@link ConfigDefaultPathMissingError}.
 	 */
 	readonly defaultPath?: Effect.Effect<string, never, RR>;
+	/**
+	 * Where {@link ConfigFileShape.save} and {@link ConfigFileShape.update}
+	 * write: `"default"` always writes `defaultPath`; `"source"` writes the
+	 * highest-priority file the resolver chain finds, and `defaultPath` only
+	 * when it finds none.
+	 *
+	 * @remarks
+	 * Unset, it follows the strategy.
+	 * {@link (MergeStrategy:variable).firstMatch} defaults to `"source"`:
+	 * the file that was read is the file in effect, so writing anywhere else
+	 * puts the change in a file the next run does not read (or creates a
+	 * second, competing config). {@link (MergeStrategy:variable).layeredMerge}
+	 * and any custom strategy default to `"default"`. A custom strategy is
+	 * matched by its `name`, so one that calls itself `"first-match"` takes
+	 * `firstMatch`'s default.
+	 *
+	 * Pin `"default"` when the program writes state of its own rather than
+	 * the user's settings: under `"source"` a write can land in a file found
+	 * by walking up, such as a project file checked into a repository.
+	 *
+	 * `update` writes to the first source of the load it just ran, under its
+	 * lock. `save` runs the resolver chain's lookups to find the target and
+	 * reads no file. With nothing found and no `defaultPath`, both fail with
+	 * {@link ConfigDefaultPathMissingError}, as under `"default"`.
+	 *
+	 * Under {@link (MergeStrategy:variable).layeredMerge}, `update`'s value
+	 * is the merge of every source, so `"source"` writes the lower layers'
+	 * values into the top file. That is the same flattening `"default"` does
+	 * into `defaultPath`, but in a file the user reads; pair `"source"` with
+	 * {@link (MergeStrategy:variable).firstMatch} when each file should keep
+	 * only its own keys.
+	 */
+	readonly saveTarget?: "default" | "source";
 	/**
 	 * The opt-in event hook. Pass the `ConfigEvents` class itself.
 	 *
@@ -546,24 +589,67 @@ const makeImpl = <A, I, RR, CE>(
 			return value;
 		});
 
+	/**
+	 * `load`, also reporting the highest-priority source's path. `update` needs
+	 * the path its own load read, so `saveTarget: "source"` writes where it
+	 * read. Not an `Effect.fn`: the public boundaries that call it open the span.
+	 */
+	const loadWithSource = (): Effect.Effect<{ readonly value: A; readonly source: string }, ConfigLoadError<CE>> =>
+		Effect.gen(function* () {
+			const { sources, candidates } = yield* discover();
+			const [first] = sources;
+			if (first === undefined) {
+				yield* emit({ _tag: "NotFound" });
+				return yield* Effect.fail(new ConfigFileNotFoundError({ searched, candidates }));
+			}
+			// Guarded by the check above; TypeScript cannot narrow Array<T> to [T, ...T[]].
+			const value = yield* mergeAndEmit(sources as unknown as NonEmptySources<A>);
+			return { value, source: first.path };
+		});
+
+	/** `loadOrDefault`, also reporting the highest-priority source's path when there is one. */
+	const loadOrDefaultWithSource = (
+		defaultValue: A,
+	): Effect.Effect<{ readonly value: A; readonly source: Option.Option<string> }, ConfigReadError<CE>> =>
+		Effect.gen(function* () {
+			const { sources } = yield* discover();
+			const [first] = sources;
+			if (first === undefined) {
+				yield* emit({ _tag: "NotFound" });
+				return { value: defaultValue, source: Option.none() };
+			}
+			// Guarded by the check above; TypeScript cannot narrow Array<T> to [T, ...T[]].
+			const value = yield* mergeAndEmit(sources as unknown as NonEmptySources<A>);
+			return { value, source: Option.some(first.path) };
+		});
+
 	const load = Effect.fn("ConfigFile.load")(function* () {
-		const { sources, candidates } = yield* discover();
-		if (sources.length === 0) {
-			yield* emit({ _tag: "NotFound" });
-			return yield* Effect.fail(new ConfigFileNotFoundError({ searched, candidates }));
-		}
-		// Guarded by the check above; TypeScript cannot narrow Array<T> to [T, ...T[]].
-		return yield* mergeAndEmit(sources as unknown as NonEmptySources<A>);
+		return (yield* loadWithSource()).value;
 	});
 
 	const loadOrDefault = Effect.fn("ConfigFile.loadOrDefault")(function* (defaultValue: A) {
-		const { sources } = yield* discover();
-		if (sources.length === 0) {
-			yield* emit({ _tag: "NotFound" });
-			return defaultValue;
+		return (yield* loadOrDefaultWithSource(defaultValue)).value;
+	});
+
+	/**
+	 * Whether `save` and `update` write to the source they found rather than `defaultPath`. Unset, it follows the
+	 * strategy: `firstMatch` writes the file that is in effect; `layeredMerge` and any custom strategy write
+	 * `defaultPath`, where the merged value flattens least harmfully.
+	 */
+	const toSource =
+		(options.saveTarget ?? (options.strategy.name === "first-match" ? "source" : "default")) === "source";
+
+	/**
+	 * The first path the resolver chain finds, by lookup alone: no file is read,
+	 * so `save` gains no read or decode failure. Every resolver's `resolve` is
+	 * total by contract.
+	 */
+	const locate: Effect.Effect<Option.Option<string>> = Effect.gen(function* () {
+		for (const resolver of options.resolvers) {
+			const found = yield* Effect.provide(resolver.resolve, resolverEnv);
+			if (Option.isSome(found)) return found;
 		}
-		// Guarded by the check above; TypeScript cannot narrow Array<T> to [T, ...T[]].
-		return yield* mergeAndEmit(sources as unknown as NonEmptySources<A>);
+		return Option.none<string>();
 	});
 
 	const validate = Effect.fn("ConfigFile.validate")(function* (value: unknown) {
@@ -642,13 +728,18 @@ const makeImpl = <A, I, RR, CE>(
 	 * emitting boundary sits in the public method, never in the shared internals
 	 * it delegates to.
 	 */
-	const saveTo = (value: A): Effect.Effect<string, ConfigSaveError<CE>> =>
+	const saveTo = (value: A, source: Option.Option<string>): Effect.Effect<string, ConfigSaveError<CE>> =>
 		Effect.gen(function* () {
-			const configured = options.defaultPath;
-			if (configured === undefined) return yield* Effect.fail(new ConfigDefaultPathMissingError({}));
-			// `defaultPath`'s requirements are `RR`, satisfied by the same context the
-			// resolvers use. No cast needed.
-			const target = yield* Effect.provide(configured, resolverEnv);
+			let target: string;
+			if (Option.isSome(source)) {
+				target = source.value;
+			} else {
+				const configured = options.defaultPath;
+				if (configured === undefined) return yield* Effect.fail(new ConfigDefaultPathMissingError({}));
+				// `defaultPath`'s requirements are `RR`, satisfied by the same context the
+				// resolvers use. No cast needed.
+				target = yield* Effect.provide(configured, resolverEnv);
+			}
 			yield* fs
 				.makeDirectory(path.dirname(target), { recursive: true })
 				.pipe(Effect.mapError((cause) => new ConfigFileWriteError({ path: target, cause })));
@@ -667,7 +758,7 @@ const makeImpl = <A, I, RR, CE>(
 	});
 
 	const save = Effect.fn("ConfigFile.save")(function* (value: A) {
-		const target = yield* saveTo(value);
+		const target = yield* saveTo(value, toSource ? yield* locate : Option.none());
 		yield* emit({ _tag: "Saved", path: target });
 		return target;
 	});
@@ -689,10 +780,13 @@ const makeImpl = <A, I, RR, CE>(
 	const update = Effect.fn("ConfigFile.update")(function* (fn: (current: A) => A, defaultValue?: A) {
 		return yield* updateLock.withPermits(1)(
 			Effect.gen(function* () {
-				const current = defaultValue !== undefined ? yield* loadOrDefault(defaultValue) : yield* load();
-				const updated = fn(current);
+				const current =
+					defaultValue !== undefined
+						? yield* loadOrDefaultWithSource(defaultValue)
+						: yield* Effect.map(loadWithSource(), ({ value, source }) => ({ value, source: Option.some(source) }));
+				const updated = fn(current.value);
 				// `saveTo`, not `save`: calling the public method would leak its `Saved`.
-				const target = yield* saveTo(updated);
+				const target = yield* saveTo(updated, toSource ? current.source : Option.none());
 				yield* emit({ _tag: "Updated", path: target });
 				return updated;
 			}),
@@ -723,8 +817,10 @@ const makeImpl = <A, I, RR, CE>(
  *
  * It also has no `defaultPath`. Nothing in the temp directory is a defensible
  * default write target, so `save` and `update` fail with
- * {@link ConfigDefaultPathMissingError} under this layer — the honest answer.
- * Exercise the write path with {@link ConfigFile.layer} instead.
+ * {@link ConfigDefaultPathMissingError} under this layer — the honest answer —
+ * unless the write target is `"source"` (the default under `firstMatch`) and
+ * a seeded file was found, which they then write. Otherwise exercise the
+ * write path with {@link ConfigFile.layer}.
  *
  * `CE` is the codec's error channel, as on {@link ConfigFileOptions}.
  *
@@ -753,6 +849,18 @@ export interface ConfigFileTestOptions<A, I, CE = ConfigCodecError> {
 	readonly files: Record<string, string>;
 	/** An optional caller-supplied check run after schema decoding. */
 	readonly validate?: (value: A) => Effect.Effect<A, ConfigValidationError>;
+	/**
+	 * Where `save` and `update` write, as on
+	 * {@link ConfigFileOptions.saveTarget}, including its strategy-dependent
+	 * default.
+	 *
+	 * @remarks
+	 * Under `"source"` they write the seeded file the load read, so the
+	 * write path can be tested over this layer. With nothing found there is no
+	 * `defaultPath` to fall back to, so they fail with
+	 * {@link ConfigDefaultPathMissingError}.
+	 */
+	readonly saveTarget?: "default" | "source";
 }
 
 /**
@@ -958,6 +1066,7 @@ export class ConfigFile {
 							// Conditional spread: passing `validate: undefined` explicitly is not
 							// the same as omitting it.
 							...(options.validate !== undefined && { validate: options.validate }),
+							...(options.saveTarget !== undefined && { saveTarget: options.saveTarget }),
 						},
 						fs,
 						path,

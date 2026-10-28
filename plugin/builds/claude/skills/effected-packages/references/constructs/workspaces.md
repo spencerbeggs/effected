@@ -33,6 +33,7 @@
 | `EntryNotFoundError` | Class | An entry named a file no resolution candidate could find. The walk fails rather than starting from nothing: a typo'd entry must never read as clean. | from `@effected/workspaces/testing` — reachability entry that resolves to no file |
 | `FindWorkspaceRootOptions` | Interface | Options for `WorkspaceRoot`'s `find`. | |
 | `FindWorkspaceRootSyncOptions` | Interface | Options for `findWorkspaceRootSync`: the consumer-supplied operations plus the ascent's ceiling. | |
+| `ForbiddenImportedNames` | Interface | The names a `{ forbidImportedNames }` rule forbids, and the module they must not be imported from. | from `@effected/workspaces/testing` |
 | `GetWorkspacePackagesSyncOptions` | Interface | Options for `getWorkspacePackagesSync`: the required consumer-supplied operations plus the traversal bound. | |
 | `HookInjection` | Interface | The result of replaying a workspace's `configDependencies` hooks: the catalogs the hooks yield, and the release-age gate contribution they leave on the config (pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude`). | |
 | `HookReplay` | Interface | Which version of a config dependency a replay actually loaded, and where that version came from. | |
@@ -55,7 +56,7 @@
 | `NoEntriesError` | Class | The entries list named no file to start from, so a walk would prove nothing. | from `@effected/workspaces/testing` — reachability called with an empty entry list |
 | `NoPeerDependencyRules` | Variable | The empty `PeerDependencyRules`: every axis present and empty. | empty peer-dependency suppression rules, assert a workspace declares no peerDependencyRules |
 | `Offence` | Class | One place a source file breaks a `BoundaryRule`. | from `@effected/workspaces/testing` — one boundary violation with file line column and rule |
-| `OffenceRule` | TypeAlias | The rule an `Offence` names: every string `BoundaryRule`, plus `"forbidImports"` for any `{ forbidImports }` rule and `"forbidTokens"` for any `{ forbidTokens }` rule. These are the keys of `ScanOptions.allowRules`. | from `@effected/workspaces/testing` |
+| `OffenceRule` | TypeAlias | The rule an `Offence` names: every string `BoundaryRule`, plus `"forbidImports"` for any `{ forbidImports }` rule, `"forbidTokens"` for any `{ forbidTokens }` rule and `"forbidImportedNames"` for any `{ forbidImportedNames }` rule. These are the keys of `ScanOptions.allowRules`. | from `@effected/workspaces/testing` |
 | `PackSource` | TypeAlias | Where each closure package is packed from. | from `@effected/workspaces/testing` |
 | `PackageManagerDetectionError` | Class | Raised when a directory carries no lockfile and no workspace configuration, so no package manager can be attributed to it. | handle no package manager could be detected at a workspace root |
 | `PackageManagerDetectionFailure` | TypeAlias | Every failure `PackageManagerDetector` can surface: no manager could be attributed to the root, or the root's `package.json` exists but cannot be read or parsed. | |
@@ -124,9 +125,11 @@
 | `WorkspaceLayering` | Class | Holds a workspace's package graph to a committed `LayerPolicy`. | from `@effected/workspaces/testing` — check monorepo package graph against layers, per-field edges |
 | `WorkspaceLookupFailure` | TypeAlias | Every failure `WorkspaceDiscovery.getPackage` can surface: the discovery failures plus a name that matches no member. | |
 | `WorkspaceManifestError` | Class | Raised when a workspace member's `package.json` cannot be read or decoded into the strict `@effected/package-json` `Package` model. | handle a package.json that cannot be read or decoded into the strict manifest model |
+| `WorkspaceMarker` | Variable + TypeAlias | The decoded type of `(WorkspaceMarker:variable)`. | workspace root marker filename schema, restrict root search to pnpm-workspace.yaml |
 | `WorkspacePackage` | Class | A single package inside a workspace: the discovery-relevant slice of its `package.json` plus its filesystem location. | a located workspace member, discovered package.json projection, dependency lookups and glob matching |
 | `WorkspacePatternError` | Class | Raised when a `packages:` pattern cannot be enumerated: its base directory is absent (usually a typo), the descent exceeded its depth cap, or the visit budget was exhausted. | handle a packages: glob pattern that cannot be enumerated, missing base directory |
-| `WorkspaceRoot` | Class | Locates the workspace root by ascending from a starting directory. | find the nearest workspace root, ascend directories for pnpm-workspace.yaml or a package.json workspaces field |
+| `WorkspaceRoot` | Class | Locates the workspace root by ascending from a starting directory. | find the nearest workspace root, ascend directories for pnpm-workspace.yaml or a package.json workspaces field, locate the matched marker file as an Effect |
+| `WorkspaceRootMatch` | Class | A workspace root, and the marker file that made it one. | found workspace root with its matched marker file path |
 | `WorkspaceRootNotFoundError` | Class | Raised when no workspace root can be found by ascending from a directory. | handle no workspace root found above a starting directory |
 | `WorkspaceRootShape` | Interface | The `WorkspaceRoot` service contract. | |
 | `WorkspaceSnapshotAtFailure` | TypeAlias | Every failure `WorkspaceSnapshots.at` can surface: git's own typed errors, a catalog-assembly failure from the inline config source or the config-dependency hook replay at the ref, or an unfindable workspace root. | |
@@ -145,6 +148,7 @@
 | `findWorkspaceRootSync` | Function | The nearest workspace root at or above `cwd`, or `null`. | synchronously find the workspace root, non-Effect entry point for config files like vitest.config |
 | `getWorkspacePackagesSync` | Function | Every workspace package under `root`, root package first. | synchronously enumerate workspace packages, non-Effect entry point for config files |
 | `localExecContextSync` | Function | The project-local execution context for `cwd`, synchronously — what `Workspaces.localExecLayer` answers through `LocalExec.context`. | synchronously get the pnpm exec or npx prefix for this workspace |
+| `locateWorkspaceRootSync` | Function | The nearest workspace root at or above `cwd` and the marker file that made it one, or `null`. | find the workspace root and the marker file that matched, pnpm-workspace.yaml path, sync |
 | `nodeFileSystem` | Variable | `SyncFileSystem` over `node:fs`. | from `@effected/workspaces/node-sync` — sync filesystem adapter over node:fs, exists read directory stat |
 | `nodePath` | Variable | `SyncPath` as the running platform's `node:path` — win32 semantics on Windows, posix elsewhere. Pass `node:path/win32` or `node:path/posix` yourself to pin a dialect. | from `@effected/workspaces/node-sync` — sync path adapter, the running platform's node:path |
 | `nodeSyncOps` | Variable | The complete Node-bound options bag for `findWorkspaceRootSync` and `getWorkspacePackagesSync` — `nodeFileSystem` plus `nodePath`. Both helpers take their path positionally, so this bag usually passes through verbatim; spread it only to add `getWorkspacePackagesSync`'s traversal extras: `{ ...nodeSyncOps, maxDepth }`. | from `@effected/workspaces/node-sync` — bundle node filesystem and path adapters for the sync entry points |

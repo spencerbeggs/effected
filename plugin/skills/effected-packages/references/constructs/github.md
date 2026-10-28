@@ -15,6 +15,7 @@
 | `AppIdentity` | Class | What GitHub knows about the app itself. | resolve the github app's slug name and bot user id |
 | `AppInfo` | Class | The GitHub App itself, as `GET /app` reports it. | the github app's own id slug name and node id from GET /app |
 | `AppliedSettings` | Interface | What `GitHubRepositoryShape.applySettings` actually sent. | |
+| `ApplySettingsOptions` | Interface | Options for `GitHubRepositoryShape.applySettings`. | |
 | `ArtifactMetadata` | Class | Records where published artifacts are stored, at the organization level. | record where a published package artifact lives, org-level storage record, supply chain provenance |
 | `ArtifactMetadataShape` | Interface | Organization-level artifact metadata. | |
 | `Attestation` | Class | Uploads signed attestation bundles to a repository and lists what is attested about a subject digest. | upload a sigstore bundle, list attestations for a subject digest, slsa lookup |
@@ -122,8 +123,11 @@
 | `RepoRef` | Class | Which repository an operation acts on. | parse an owner/repo slug into owner and repo, the pure repository coordinate value |
 | `ReportedCheckConclusion` | Variable | How a check run finished, as GitHub reports it: every `CheckConclusion` plus `"stale"`. | how a check run finished as github reports it, including stale |
 | `ReportedCheckRunOutput` | Class | The rendered output a check run reports: its title and summary, and how many annotations it carries. | a check run's reported output title summary and annotation count |
-| `RepositoryPatch` | TypeAlias | The fields `PATCH /repos/{owner}/{repo}` accepts, minus the coordinate. | |
+| `RepositoryPatch` | TypeAlias | The fields `PATCH /repos/{owner}/{repo}` accepts, minus the coordinate and the per-request transport options. | |
 | `RepositoryPatchDraft` | TypeAlias | A `RepositoryPatch` under construction, where an absent field may be spelled as an explicit `undefined`. | |
+| `RepositoryPatchExtra` | TypeAlias | Repository settings the generated `RepositoryPatch` type does not know yet, for `RepositoryPatchOptions.extra`. | |
+| `RepositoryPatchOptions` | Interface | Options for `repositoryPatch`. | |
+| `RepositoryPatchReservedKey` | TypeAlias | Names `repositoryPatch` refuses in a draft or an extra. | |
 | `RepositorySecret` | Class | Write, list and delete repository and environment secrets, encrypted client-side before they leave the process. | encrypt and write a repository or environment secret via sealed box |
 | `RepositorySecretShape` | Interface | Write, list and delete Actions, Dependabot and Codespaces secrets on a repository, and Actions secrets on its environments. | |
 | `RepositorySecurity` | Class | Read and toggle Dependabot alerts, Dependabot security fixes and private vulnerability reporting. | toggle dependabot vulnerability alerts, automated security fixes, private vulnerability reporting inbox |
@@ -132,7 +136,7 @@
 | `RepositoryVariable` | Class | Create or update, list and delete Actions variables on a repository and on its environments. | create update list and delete a repository or environment variable, github actions variables |
 | `RepositoryVariableShape` | Interface | Create or update, list and delete Actions variables on a repository and on its environments. | |
 | `RestData` | TypeAlias | The `data` payload `Route` returns. | |
-| `RestExtras` | Interface | Transport knobs octokit accepts on any route, narrowed to the three this package allows. | |
+| `RestExtras` | Interface | Transport knobs octokit accepts on any route, narrowed to the two this package allows. | |
 | `RestItem` | TypeAlias | One element of a paginating route's collection. | |
 | `RestPaginatingRoute` | TypeAlias | The subset of routes that paginate. | |
 | `RestParams` | TypeAlias | The parameters `Route` accepts — path, query and body parameters from GitHub's OpenAPI description, plus the extras below. | |
@@ -161,6 +165,6 @@
 | `WorkflowDispatchShape` | Interface | Dispatch workflows, wait for the run they start, and list the repository's workflows. | |
 | `WorkflowInfo` | Interface | One workflow defined in the repository. | |
 | `WorkflowRunStatus` | Class | Where a workflow run has got to. | a workflow run's id status and conclusion, whether a dispatched run has finished |
-| `repositoryPatch` | Function | A `RepositoryPatch` from a draft, dropping every explicitly-`undefined` field. | build a repository settings patch from a draft, drop unset fields |
+| `repositoryPatch` | Function | A `RepositoryPatch` from a draft, dropping every explicitly-`undefined` field, plus any settings octokit's types do not know yet. | build a repository settings patch from a draft, drop unset fields |
 | `transformSecurityAndAnalysis` | Function | Translate a user-facing `security_and_analysis` block into the shape `PATCH /repos/{owner}/{repo}` expects. | translate a security_and_analysis block into the shape the repository patch endpoint expects |
 | `versionFromTag` | Variable | The default `VersionFromTag`. | extract a version string out of a tag name, the default tag-to-semver convention |

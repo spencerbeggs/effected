@@ -4,7 +4,7 @@ import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import { Console, Effect, Exit, Layer, Option } from "effect";
-import { Command } from "effect/cli";
+import { Command, Flag } from "effect/cli";
 import { CliFormat, CliLinks, CliTheme, Doc } from "../src/index.js";
 
 const capturing = () => {
@@ -105,8 +105,57 @@ describe("CliFormat.print", () => {
 	);
 });
 
+describe("CliFormat.printJson", () => {
+	const captured = (effect: Effect.Effect<void>, actions = false) =>
+		Effect.gen(function* () {
+			const { double, out, err } = capturing();
+			const exit = yield* effect.pipe(
+				actions ? Effect.provide(CurrentRuntimeEnv.layerTest({ ci: Option.some("github-actions") })) : (e) => e,
+				Effect.provideService(Console.Console, double),
+				Effect.exit,
+			);
+			return { exit, out, err };
+		});
+
+	it.effect("needs no presentation services, and writes what print writes for json, byte for byte", () =>
+		Effect.gen(function* () {
+			for (const actions of [false, true]) {
+				const alone = yield* captured(CliFormat.printJson(output.json()), actions);
+				const viaPrint = yield* printed("json", "ci", actions);
+				assert.lengthOf(alone.out, 1, "one document, one write");
+				assert.strictEqual(alone.out[0], viaPrint.out);
+			}
+		}),
+	);
+
+	it.effect("escapes ##[ under GitHub Actions only, and honours stream and indent", () =>
+		Effect.gen(function* () {
+			const actions = yield* captured(CliFormat.printJson(output.json()), true);
+			assert.notInclude(actions.out[0] ?? "", "##[");
+			assert.deepStrictEqual(JSON.parse(actions.out[0] ?? ""), output.json());
+			const plain = yield* captured(CliFormat.printJson(output.json()));
+			assert.include(plain.out[0] ?? "", "##[", "control: untouched outside Actions");
+			const err = yield* captured(CliFormat.printJson([1, 2], { stream: "stderr", indent: 0 }));
+			assert.deepStrictEqual(err.out, []);
+			assert.deepStrictEqual(err.err, ["[1,2]"]);
+		}),
+	);
+
+	it.effect("a value JSON cannot hold is a defect", () =>
+		Effect.gen(function* () {
+			const cycle: Record<string, unknown> = {};
+			cycle.self = cycle;
+			for (const value of [cycle, 1n, undefined]) {
+				const { exit, out } = yield* captured(CliFormat.printJson(value));
+				assert.isTrue(Exit.hasDies(exit));
+				assert.deepStrictEqual(out, []);
+			}
+		}),
+	);
+});
+
 describe("CliFormat.flag", () => {
-	const parsed = (flag: ReturnType<typeof CliFormat.flag>, argv: ReadonlyArray<string>) =>
+	const parsed = (flag: Flag.Flag<string>, argv: ReadonlyArray<string>) =>
 		Effect.gen(function* () {
 			let seen: string | undefined;
 			const command = Command.make("tool", { format: flag }, ({ format }) =>
@@ -114,13 +163,13 @@ describe("CliFormat.flag", () => {
 					seen = format;
 				}),
 			);
-			const { double, err } = capturing();
+			const { double, out, err } = capturing();
 			const exit = yield* Command.runWith(command, { version: "1.0.0" })(argv).pipe(
 				Effect.provide(NodeServices.layer),
 				Effect.provideService(Console.Console, double),
 				Effect.exit,
 			);
-			return { seen, exit, err: err.join("\n") };
+			return { seen, exit, out: out.join("\n"), err: err.join("\n") };
 		});
 
 	it.effect("defaults to auto when offered, otherwise the first, and an explicit default wins", () =>
@@ -148,4 +197,50 @@ describe("CliFormat.flag", () => {
 			);
 		}),
 	);
+
+	it.effect("an alias offers the caller's name for a built-in format, and yields the built-in", () =>
+		Effect.gen(function* () {
+			const flag = CliFormat.flag(["json"], { aliases: { human: "auto" }, default: "human" });
+			assert.strictEqual((yield* parsed(flag, [])).seen, "auto");
+			assert.strictEqual((yield* parsed(flag, ["--format", "human"])).seen, "auto");
+			assert.strictEqual((yield* parsed(flag, ["--format", "json"])).seen, "json");
+			const refused = yield* parsed(flag, ["--format", "auto"]);
+			assert.isUndefined(refused.seen, "the target is not offered under its own name unless listed");
+			assert.isTrue(Exit.isFailure(refused.exit));
+		}),
+	);
+
+	it.effect("a custom format is offered and yielded as itself", () =>
+		Effect.gen(function* () {
+			const flag = CliFormat.flag(["json"], { custom: ["mermaid", "dot"], default: "mermaid" });
+			assert.strictEqual((yield* parsed(flag, [])).seen, "mermaid");
+			assert.strictEqual((yield* parsed(flag, ["--format", "dot"])).seen, "dot");
+			assert.strictEqual((yield* parsed(flag, ["--format", "json"])).seen, "json");
+			const help = yield* parsed(flag, ["--help"]);
+			assert.include(help.out, "json, mermaid, dot (default mermaid)");
+		}),
+	);
+
+	it.effect("is one plain flag: --json is unknown, and core's combinators such as an alias apply to it", () =>
+		Effect.gen(function* () {
+			const refused = yield* parsed(CliFormat.flag(["auto", "json"]), ["--json"]);
+			assert.isUndefined(refused.seen);
+			assert.isTrue(Exit.isFailure(refused.exit));
+			const aliased = CliFormat.flag(["auto", "json"]).pipe(Flag.withAlias("f"));
+			const short = yield* parsed(aliased, ["-f", "json"]);
+			assert.isTrue(Exit.isSuccess(short.exit));
+			assert.strictEqual(short.seen, "json");
+			assert.strictEqual((yield* parsed(aliased, [])).seen, "auto");
+		}),
+	);
+
+	it("clashing names and an unoffered default are programming mistakes", () => {
+		assert.throws(() => CliFormat.flag(["json"], { aliases: { auto: "json" } as never }), /built-in format/);
+		assert.throws(() => CliFormat.flag(["json"], { custom: ["plain"] as never }), /built-in format/);
+		assert.throws(() => CliFormat.flag(["json"], { aliases: { human: "auto" }, custom: ["human"] }), /offered twice/);
+		assert.throws(() => CliFormat.flag(["json", "json"]), /offered twice/);
+		assert.throws(() => CliFormat.flag(["json"], { default: "auto" as never }), /not one of/);
+		// control: the same options, untangled, construct
+		CliFormat.flag(["json"], { aliases: { human: "auto" }, custom: ["dot"], default: "human" });
+	});
 });

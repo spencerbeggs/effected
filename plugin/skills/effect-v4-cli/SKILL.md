@@ -58,7 +58,7 @@ NodeRuntime.runMain(
 | `CliMessage` | `@effected/cli` | a one-line themed outcome ("created 3 files") that no log level silences |
 | `CliLog.status`, `CliTheme.forAudience` | `@effected/cli` | a status glyph that keeps its colour on the log channel; painting your own lines by the kit's audience rule |
 | `Doc`, `Render`, `Fmt`, `CliLinks` | `@effected/cli` | building a report once and rendering it plain for agents, ANSI for people, markdown, or a GitHub Actions log |
-| `CliFormat.flag`, `CliFormat.print` | `@effected/cli` | a `--format` flag (`auto`, a renderer by name, or `json`) and the one print that honours it: the report built once as a `Doc`, the data once as a value |
+| `CliFormat.flag`, `CliFormat.print`, `CliFormat.printJson` | `@effected/cli` | a `--format` flag (`auto`, a renderer by name, or `json`; plus `aliases` such as `{ human: "auto" }`, and `custom` formats the command renders itself) and the one print that honours it: the report built once as a `Doc`, the data once as a value. `print` takes no custom format, so branch on it first; `printJson` alone for a CLI that keeps its own `--json` |
 | `CliFailure` | `@effected/cli` | drawing a failure as a document, or letting an error draw itself (`CliDoc`); its `in:` span trail (`spans`, `appModule`) |
 | `CliLog` | `@effected/cli` | opt-in diagnostics: a level variable, NDJSON for agents and CI, a file sink, components |
 | `CliLog.parseLevel` | `@effected/cli` | reading a level from your own flag or config with the answer `CliLog.layer` would give (`Option` of the level) |
@@ -73,7 +73,7 @@ NodeRuntime.runMain(
 | `CliUi.liveDetached` | `@effected/cli/ui` | a live view hosted by code not built on Effect (a test reporter, a bundler plugin): Promise `handle`/`close`/`exit`, its `render` given directly or as an Effect that reads `env`'s services |
 | `CliUi.routeStream` | `@effected/cli/ui` | a `Writable` to hand a library in place of a terminal stream, routing its lines above a live view's frame through `printAbove` |
 | `KeyTable`, `useKeys`, `KeyHelp`, `Styled`, `Viewport`, `Tabs` | `@effected/cli/ui` | writing your own screen: keys as data, themed text, a scrolling list, tabs |
-| `CliTest`, `TestTerminal` | `@effected/cli/testing` | spawning a built bin hermetically; driving core prompts in a test |
+| `CliTest.sandbox`/`run`/`spawn`, `TestTerminal` | `@effected/cli/testing` | spawning a built bin hermetically (`run` waits and returns the result; `spawn` returns at once for a long-running bin); driving core prompts in a test |
 | `CliUiTest` | `@effected/cli/ui/testing` | driving a screen or live view with keys and reading its frames and the terminal's transcript |
 | `MainOptions.distribution` | `@effected/cli` | the carrier the bin was installed through: `main` provides engine's `CurrentDistribution` and ends `--version` with its `via <name> <version>` suffix |
 | `CurrentDistribution`, `withDistributionVersion`, `distributionSuffix` | `@effected/engine` | reading the carrier inside the program, or decorating a `formatVersion` without `main` |

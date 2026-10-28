@@ -4,9 +4,11 @@
 // Cycle firewall: the internal engine emits raw `{ code, message, offset,
 // length }` records (src/internal/carriers.ts); this module materializes
 // them into MarkdownDiagnostic, deriving `line`/`character` from `offset`
-// against the source text. The dependency edge runs public modules ->
+// through `@effected/source`'s `LineIndex` over the source text. The dependency edge runs public modules ->
 // engine only (toml src/TomlDiagnostic.ts precedent).
 
+import type { SourceIndex } from "@effected/source";
+import { LineIndex } from "@effected/source";
 import { Schema } from "effect";
 import { MARKDOWN_PARSE_ERROR_CODES } from "./internal/carriers.js";
 
@@ -32,14 +34,20 @@ export type MarkdownParseErrorCode = typeof MarkdownParseErrorCode.Type;
  * zero-based `line`/`character`).
  *
  * @remarks
- * The five-field positional core (`code`/`offset`/`length`/`line`/`character`)
- * is structurally identical to `@effected/toml`'s `TomlDiagnostic` (and, by
- * the same cross-package contract, `@effected/jsonc`'s parse-error detail
- * shape and `@effected/yaml`'s `YamlDiagnostic`); `message` is this
- * package's additive extra. `line`/`character` here are zero-based to match
- * that contract — a different numbering from the one-based `line`/`column`
- * unist `Point`s carried on `MarkdownNode` positions, which is a deliberate,
- * unrelated convention for the AST rather than a mismatch to reconcile.
+ * Satisfies `@effected/source`'s `SourceDiagnostic<MarkdownParseErrorCode>`:
+ * the positional core (`code`/`message`/`offset`/`length`/`line`/`character`)
+ * the kit's format packages share, so a consumer printing or serving
+ * diagnostics (an LSP server, a CLI annotation) is written once against that
+ * shape. `line`/`character` are zero-based, `character` in UTF-16 code units,
+ * with `\n`, `\r\n` and a bare `\r` as line breaks: exactly
+ * `LineIndex.make(source).positionAt(offset)`, and the same index
+ * {@link MarkdownDocument.lineIndex} returns. An offset at the `\n` of a
+ * `\r\n` reads as the end of its line.
+ *
+ * The one-based `line`/`column` unist `Point`s carried on `MarkdownNode`
+ * positions read the same index, one-based: a deliberate, different
+ * convention for the AST rather than a mismatch to reconcile (see
+ * {@link MarkdownDocument.lineIndex} for the exact mapping).
  *
  * @public
  */
@@ -56,12 +64,20 @@ export class MarkdownDiagnostic extends Schema.Class<MarkdownDiagnostic>("Markdo
 	 * from `offset` against the source text. Advanced — the parse entry
 	 * points call this for you.
 	 *
-	 * @param source - The source text the record's `offset` indexes into.
+	 * @remarks
+	 * Pass a line index already built over the source to materialize many
+	 * records without rescanning the text; a string builds one. The
+	 * parameter is the structural `SourceIndex`, so an index from any
+	 * installed copy of `@effected/source` is accepted. An offset
+	 * outside the source clamps into it, as `LineIndex.positionAt` does.
+	 *
+	 * @param source - The source text the record's `offset` indexes into, or
+	 *   a `LineIndex` over it.
 	 * @param raw - The engine record: `code`, `message`, `offset` and `length`.
 	 * @returns The diagnostic with `line` and `character` filled in.
 	 */
 	static fromRaw(
-		source: string,
+		source: string | SourceIndex,
 		raw: {
 			readonly code: MarkdownParseErrorCode;
 			readonly message: string;
@@ -69,7 +85,8 @@ export class MarkdownDiagnostic extends Schema.Class<MarkdownDiagnostic>("Markdo
 			readonly length: number;
 		},
 	): MarkdownDiagnostic {
-		const { line, character } = lineChar(source, raw.offset);
+		const index = typeof source === "string" ? LineIndex.make(source) : source;
+		const { line, character } = index.positionAt(raw.offset);
 		return MarkdownDiagnostic.make({
 			code: raw.code,
 			message: raw.message,
@@ -79,31 +96,4 @@ export class MarkdownDiagnostic extends Schema.Class<MarkdownDiagnostic>("Markdo
 			character,
 		});
 	}
-}
-
-/**
- * Compute the zero-based line/character position of `offset` within `text`.
- * Recognizes `\n`, `\r` and `\r\n` as line breaks; a CRLF pair counts as a
- * single newline (toml `TomlDiagnostic` precedent — kept independent of
- * `internal/lineIndex.ts`, which answers a different, one-based question
- * for AST positions).
- */
-function lineChar(text: string, offset: number): { line: number; character: number } {
-	let line = 0;
-	let lineStart = 0;
-	const limit = Math.min(offset, text.length);
-	for (let i = 0; i < limit; i++) {
-		const ch = text.charCodeAt(i);
-		if (ch === 0x0a) {
-			line++;
-			lineStart = i + 1;
-		} else if (ch === 0x0d) {
-			if (i + 1 < text.length && text.charCodeAt(i + 1) === 0x0a) {
-				i++;
-			}
-			line++;
-			lineStart = i + 1;
-		}
-	}
-	return { line, character: offset - lineStart };
 }

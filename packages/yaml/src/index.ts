@@ -1,5 +1,5 @@
 /**
- * Zero-dependency YAML 1.2 parsing, editing and formatting as Effect schemas.
+ * YAML 1.2 parsing, editing and formatting as Effect schemas.
  *
  * @remarks
  * {@link Yaml} is the value-level facade (`parse`/`parseAll`/`stringify`,
@@ -14,9 +14,25 @@
  * collapsed string reason or an unhandled defect on malformed or adversarial
  * input.
  *
+ * Every position the package reports (`YamlDiagnostic`, `YamlToken`, lint
+ * diagnostics) is `LineIndex.make(text).positionAt(offset)`; `LineIndex` and
+ * the position shapes are re-exported from `@effected/source`, so a consumer
+ * needs no second dependency to compute or name them.
+ *
  * @packageDocumentation
  */
 
+export {
+	type LineBreaks,
+	LineIndex,
+	type LineIndexOptions,
+	type SourceDiagnostic,
+	type SourceIndex,
+	type SourceLocation,
+	type SourcePosition,
+	type SourceRange,
+	type SourceSpan,
+} from "@effected/source";
 export type { YamlBoundCodec } from "./Yaml.js";
 export {
 	Yaml,

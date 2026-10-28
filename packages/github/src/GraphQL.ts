@@ -1,6 +1,7 @@
 import type { Effect } from "effect";
 import { Schema } from "effect";
 import { retryAfterMillisFrom } from "./internal/headers.js";
+import { scrubThrowable } from "./internal/scrub.js";
 
 /**
  * One entry from a GraphQL response's `errors` array.
@@ -82,6 +83,11 @@ export class GitHubGraphQLError extends Schema.TaggedError<GitHubGraphQLError>()
 	 * failure with a `status`. Both arrive as throwables and both are read
 	 * structurally, for the same reason the REST classifier does it — the error
 	 * classes live in packages this one does not declare.
+	 *
+	 * The kept `cause` is the same credential-free copy
+	 * {@link GitHubError.fromOctokit} keeps: the GraphQL document, its variables
+	 * and any partial `data` are dropped with the rest of the request and response
+	 * bodies.
 	 */
 	static fromThrowable(operation: string, error: unknown, nowMillis: number): GitHubGraphQLError {
 		const record = typeof error === "object" && error !== null ? (error as Record<string, unknown>) : undefined;
@@ -101,7 +107,8 @@ export class GitHubGraphQLError extends Schema.TaggedError<GitHubGraphQLError>()
 			reason,
 			errors: entries,
 			...(retryAfterMillis !== undefined ? { retryAfterMillis } : {}),
-			cause: error,
+			// Read above off the original; only a redacted copy is kept.
+			cause: scrubThrowable(error),
 		});
 	}
 }

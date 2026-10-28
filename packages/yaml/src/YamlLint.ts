@@ -7,16 +7,18 @@
 // config-file loading, no IO, no CLI — strings in, diagnostics or a fixed
 // string out. The runner is someone else's tier.
 
+import { LineIndex } from "@effected/source";
 import { Result, Schema } from "effect";
 import { composeFirstDocument } from "./internal/composer/document.js";
 import { isFatalCode } from "./internal/diagnostics.js";
 import { builtinOptionsSchemas, builtinRules } from "./internal/rules/catalog.js";
+import { endsWithLineBreak } from "./internal/rules/util.js";
 import { YamlParseError } from "./Yaml.js";
 import { documentFromRaw } from "./YamlDocument.js";
 import { YamlEdit } from "./YamlEdit.js";
 import type { LintContext, LintLine, StyleObservation, YamlLintSeverity, YamlRule } from "./YamlLintRule.js";
 import { YamlLintDiagnostic } from "./YamlLintRule.js";
-import { YamlTokens } from "./YamlToken.js";
+import { tokensOf } from "./YamlToken.js";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
@@ -137,51 +139,40 @@ export class YamlLintConfig extends Schema.Class<YamlLintConfig>("YamlLintConfig
 // ── Context construction ────────────────────────────────────────────────────
 
 /**
- * Split `text` into positioned lines. Line text excludes the terminator
- * whole — for CRLF input the `\r` is part of the terminator and is stripped
- * too, so every rule sees the same line content regardless of line-ending
- * style. Empty input has no lines: rules that count blank lines must not see
- * a phantom first line.
+ * Split the indexed text into positioned lines: one per `LineIndex` line,
+ * under the same `\n` / `\r\n` / bare `\r` rule the tokens and
+ * diagnostics use, so a rule may index `ctx.lines` by any token's or
+ * diagnostic's `line`. Line text excludes the terminator whole — for CRLF
+ * input the `\r` is part of the terminator and is stripped too, so every rule
+ * sees the same line content regardless of line-ending style. The final empty
+ * segment after a trailing line break is not a line, and empty input has no lines:
+ * rules that count blank lines must not see a phantom line.
  */
-const buildLines = (text: string): ReadonlyArray<LintLine> => {
-	if (text === "") return [];
+const buildLines = (index: LineIndex): ReadonlyArray<LintLine> => {
+	if (index.text === "") return [];
+	const count = endsWithLineBreak(index.text) ? index.lineCount - 1 : index.lineCount;
 	const lines: Array<LintLine> = [];
-	let offset = 0;
-	let number = 0;
-	while (offset <= text.length) {
-		const nl = text.indexOf("\n", offset);
-		const end = nl === -1 ? text.length : nl > offset && text[nl - 1] === "\r" ? nl - 1 : nl;
-		// The final empty segment after a trailing newline is not a line.
-		if (offset === text.length && number > 0) break;
-		lines.push({ text: text.slice(offset, end), offset, number });
-		if (nl === -1) break;
-		offset = nl + 1;
-		number++;
+	for (let number = 0; number < count; number++) {
+		lines.push({ text: index.lineText(number), offset: index.lineStart(number), number });
 	}
 	return lines;
 };
 
 /**
- * Build the eager lint context: tokenize once, compose once (through the
- * RECOVERED path, so the context exists for malformed input too — the
- * `parse-validity` rule reports what went wrong).
+ * Build the eager lint context: index the text once, tokenize once, compose
+ * once (through the RECOVERED path, so the context exists for malformed
+ * input too — the `parse-validity` rule reports what went wrong).
  */
 const buildContext = (text: string): LintContext => {
-	const tokens = Result.match(YamlTokens.tokenize(text), {
-		onSuccess: (value) => value,
-		onFailure: (error) => {
-			// The tokenize failure channel is reserved and never fires today.
-			throw error;
-		},
-	});
+	const index = LineIndex.make(text);
 	return {
 		text,
-		lines: buildLines(text),
-		tokens,
+		lines: buildLines(index),
+		tokens: tokensOf(index),
 		// uniqueKeys: false — duplicate-key POLICY belongs to the configurable
 		// `key-duplicates` rule, so the engine's own duplicate warnings are
 		// switched off here and `parse-validity` never double-reports them.
-		document: documentFromRaw(composeFirstDocument(text, { uniqueKeys: false }), text),
+		document: documentFromRaw(composeFirstDocument(text, { uniqueKeys: false }), () => index),
 	};
 };
 

@@ -8,9 +8,9 @@
 // facade's error type; nothing imports `YamlToken.ts` back except the lint
 // layer above it.
 
+import { LineIndex } from "@effected/source";
 import { Result, Schema, Stream } from "effect";
 import { lexAll } from "./internal/lexer.js";
-import type { YamlToken as InternalToken } from "./internal/token.js";
 import type { YamlParseError } from "./Yaml.js";
 
 /**
@@ -60,6 +60,13 @@ export type YamlTokenKind = typeof YamlTokenKind.Type;
  * - `line` / `character` — the zero-based position of the token's start,
  *   matching the `YamlDiagnostic` position vocabulary.
  *
+ * @remarks
+ * Satisfies `@effected/source`'s `SourceLocation`. `line` / `character` are
+ * `LineIndex.make(source).positionAt(offset)`: zero-based, UTF-16 code
+ * units, with `\n`, `\r\n` and a bare `\r` as line breaks (YAML 1.2's
+ * `b-break`, the set the lexer emits a `newline` token for), so a token and a
+ * `YamlDiagnostic` at the same offset always agree.
+ *
  * @public
  */
 export class YamlToken extends Schema.Class<YamlToken>("YamlToken")({
@@ -74,29 +81,25 @@ export class YamlToken extends Schema.Class<YamlToken>("YamlToken")({
 /**
  * Promote the internal lexer tokens to the public shape.
  *
- * `line`/`character` are DERIVED from each token's offset against a
- * line-start index rather than copied from the internal token: the internal
- * `column` is a CST-parser vocabulary that carries the construct's INDENT on
- * the synthetic `block-map-start`/`block-seq-start` markers, not the token's
- * own position — the public surface promises the position. `text` is the RAW
+ * `line`/`character` are DERIVED from each token's offset against the line
+ * index rather than copied from the internal token: the internal `column` is
+ * a CST-parser vocabulary that carries the construct's INDENT on the
+ * synthetic `block-map-start`/`block-seq-start` markers, not the token's own
+ * position — the public surface promises the position. `text` is the RAW
  * source slice for the same reason: the internal `value` is the PROCESSED
  * form on quoted scalars (content without the quotes), while the public
  * contract is byte fidelity — the corpus conformance suite pins the tokens
  * tiling the source exactly.
+ *
+ * Takes the caller's index so the lint context builds one index for its
+ * tokens and its lines.
+ *
+ * @internal
  */
-const promoteAll = (text: string, tokens: ReadonlyArray<InternalToken>): ReadonlyArray<YamlToken> => {
-	const lineStarts = [0];
-	for (let i = 0; i < text.length; i++) {
-		if (text[i] === "\n") lineStarts.push(i + 1);
-	}
-	// Tokens arrive in offset order, so a monotone cursor resolves positions
-	// in one pass.
-	let line = 0;
-	return tokens.map((token) => {
-		// Defensive: a non-monotone offset would otherwise yield a negative
-		// `character`. Restart the scan instead.
-		if (token.offset < (lineStarts[line] as number)) line = 0;
-		while (line + 1 < lineStarts.length && (lineStarts[line + 1] as number) <= token.offset) line++;
+export const tokensOf = (index: LineIndex): ReadonlyArray<YamlToken> => {
+	const text = index.text;
+	return lexAll(text).map((token) => {
+		const { line, character } = index.positionAt(token.offset);
 		// Hot path: tokenizing a large document materializes thousands of
 		// instances, so construction uses `new` (the engine's recorded
 		// hot-path exception) rather than the validating `make`.
@@ -106,7 +109,7 @@ const promoteAll = (text: string, tokens: ReadonlyArray<InternalToken>): Readonl
 			offset: token.offset,
 			length: token.length,
 			line,
-			character: token.offset - (lineStarts[line] as number),
+			character,
 		});
 	});
 };
@@ -149,7 +152,7 @@ export class YamlTokens {
 	 * @returns A `Result` succeeding with every token in source order.
 	 */
 	static tokenize(text: string): Result.Result<ReadonlyArray<YamlToken>, YamlParseError> {
-		return Result.succeed(promoteAll(text, lexAll(text)));
+		return Result.succeed(tokensOf(LineIndex.make(text)));
 	}
 
 	/**

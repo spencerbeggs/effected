@@ -3,9 +3,11 @@
 //
 // Cycle firewall: the internal engine emits raw `{ code, message, offset,
 // length }` records; this module materializes them into `TomlDiagnostic`,
-// deriving `line`/`character` from `offset` against the source text. The
-// dependency edge runs public modules → engine only.
+// deriving `line`/`character` from `offset` against the source text through
+// `@effected/source`'s `LineIndex`. The dependency edge runs public modules →
+// engine only.
 
+import { LineIndex } from "@effected/source";
 import { Schema } from "effect";
 import {
 	TOML_LEX_ERROR_CODES,
@@ -101,6 +103,15 @@ export type TomlErrorCode = typeof TomlErrorCode.Type;
  * and `@effected/yaml`'s `YamlDiagnostic`; `message` is this package's
  * additive extra.
  *
+ * With `message` it satisfies `@effected/source`'s `SourceDiagnostic`
+ * structurally, so a consumer written over that interface (an LSP server, a
+ * CLI printing annotations) reads it directly. `line` and `character` come
+ * from `@effected/source`'s `LineIndex` under its default `"lsp"` rule: a line
+ * ends at `\n`, `\r\n` or a bare `\r`, as an LSP client counts. TOML's own
+ * newline is `\n` or `\r\n` only, so a bare `\r` is invalid TOML; it is
+ * counted as a line break only so a diagnostic about it positions LSP-style.
+ * An offset at the `\n` of a `\r\n` reads as the end of its line.
+ *
  * @public
  */
 export class TomlDiagnostic extends Schema.Class<TomlDiagnostic>("TomlDiagnostic")({
@@ -124,7 +135,9 @@ export class TomlDiagnostic extends Schema.Class<TomlDiagnostic>("TomlDiagnostic
 		source: string,
 		raw: { readonly code: TomlErrorCode; readonly message: string; readonly offset: number; readonly length: number },
 	): TomlDiagnostic {
-		const { line, character } = lineChar(source, raw.offset);
+		// Every parse, stringify and modify path materializes at most one
+		// diagnostic, so one line table per call is one per parse.
+		const { line, character } = LineIndex.make(source).positionAt(raw.offset);
 		return TomlDiagnostic.make({
 			code: raw.code,
 			message: raw.message,
@@ -134,29 +147,4 @@ export class TomlDiagnostic extends Schema.Class<TomlDiagnostic>("TomlDiagnostic
 			character,
 		});
 	}
-}
-
-/**
- * Compute the zero-based line/character position of `offset` within `text`.
- * Recognizes `\n`, `\r` and `\r\n` as line breaks (TOML's newline grammar);
- * a CRLF pair counts as a single newline.
- */
-function lineChar(text: string, offset: number): { line: number; character: number } {
-	let line = 0;
-	let lineStart = 0;
-	const limit = Math.min(offset, text.length);
-	for (let i = 0; i < limit; i++) {
-		const ch = text.charCodeAt(i);
-		if (ch === 0x0a) {
-			line++;
-			lineStart = i + 1;
-		} else if (ch === 0x0d) {
-			if (i + 1 < text.length && text.charCodeAt(i + 1) === 0x0a) {
-				i++;
-			}
-			line++;
-			lineStart = i + 1;
-		}
-	}
-	return { line, character: offset - lineStart };
 }

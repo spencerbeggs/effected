@@ -111,7 +111,7 @@ export {
 	type TreeInput,
 	type TreeNode,
 } from "./Doc.js";
-export { Fmt, type PadOptions, type PercentOptions, type TruncateOptions } from "./Fmt.js";
+export { Fmt, type PadOptions, type PercentOptions, type SuggestOptions, type TruncateOptions } from "./Fmt.js";
 export { type AnnotationLevel, GithubAnnotation, type GithubAnnotationProperties } from "./GithubAnnotation.js";
 export { type GlyphSelectOptions, type GlyphSet, Glyphs } from "./Glyphs.js";
 export { NotInteractive } from "./NotInteractive.js";

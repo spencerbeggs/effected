@@ -352,14 +352,29 @@ path })` mints a scoped temp directory with a fresh `HOME` and
 `XDG_{CONFIG,DATA,STATE,CACHE}_HOME`, `NO_COLOR: "1"`, and the `path` you
 pass — **nothing** from the host environment is inherited unless you pass it
 in `path`. `CliTest.run(bin, args, { sandbox, execPath, cwd?, env?, stdin? })`
-spawns `execPath` with `[bin, ...args]` and reads back `{ exitCode, stdout,
-stderr }` as plain data: **a non-zero exit is a result, not a failure** — no
-`try`/`catch`, no `Effect.catchTag` needed to read it. `execPath` always
+spawns `execPath` with `[bin, ...args]` and reads back `{ exitCode, signal,
+stdout, stderr }` as plain data: **a non-zero exit is a result, not a failure** —
+no `try`/`catch`, no `Effect.catchTag` needed to read it. A child a signal
+ended is a result too: `exitCode` is `null` and `signal` names it. `execPath` always
 comes from the test file itself (`process.execPath`), never a `PATH` lookup,
 so the binary running the test and the binary running the child are
 guaranteed to be the same. Omitted or empty `stdin` hands the child an
 already-ended stream, so a stdin-reading bin exits instead of hanging on an
 open pipe.
+
+`CliTest.spawn(bin, args, options)` takes `run`'s options and returns at
+once with a handle: `stdout` and `stderr` as streams of lines (each replayed
+from the first line to every reader, and drained whether read or not),
+`kill(signal?)`, `exitCode` and `result` (a `RunResult` once the child has
+exited). Use it for a bin `run` would wait on forever, such as a `--follow` or
+a watch mode. It needs `Scope` as well as the spawner, and closing the scope
+kills the child: `SIGTERM`, then `SIGKILL` after `forceKillAfter` (`2 seconds`
+by default), so a child that ignores `SIGTERM` never holds the test open.
+After `kill()`, `exitCode` is `null` and `result.signal` says which signal
+ended it. A `kill()` on a child that has already exited, on its own or at the
+same moment, returns normally, so a cleanup `kill()` after a short-lived
+child never fails on a race; `exitCode` and `result` still report how the
+child ended. Only a kill that fails on a child still running fails.
 
 Three traps this replaces:
 

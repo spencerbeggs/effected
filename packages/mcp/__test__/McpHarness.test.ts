@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Deferred, Effect, Exit, Layer, Logger, Result, Stdio, Stream } from "effect";
+import { Cause, Console, Deferred, Effect, Exit, Layer, Logger, Result, Stdio, Stream } from "effect";
 import { McpProtocol } from "effect/ai";
 import { McpStdio } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
@@ -173,6 +173,39 @@ describe("McpHarness", () => {
 			);
 			assert.isTrue((yield* harness.consoleLogSoFar).some((line) => line.includes("build-log")));
 			assert.notInclude(yield* harness.stderrSoFar, "build-log");
+		}),
+	);
+
+	it.effect("a captured console argument keeps what the console shows, and a null-prototype one never throws", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(
+				Layer.mergeAll(
+					Layer.effectDiscard(Console.log("args:", Object.create(null), { a: 1 }, new Error("boom"), 7)),
+					McpStdio.layer({ name: "described-log", version: "0.0.0" }),
+				),
+			);
+			// `Error: boom`, the error's own string form, not the bare message; `{}` for the null-prototype object,
+			// whose `String()` throws.
+			assert.deepStrictEqual(yield* harness.consoleLogSoFar, ['args: {} {"a":1} Error: boom 7']);
+		}),
+	);
+
+	it.effect("an object carrying a message is recorded whole, and a value with no rendering falls back", () =>
+		Effect.gen(function* () {
+			const cyclic: Record<string, unknown> = Object.create(null);
+			cyclic.self = cyclic;
+			const harness = yield* McpHarness.make(
+				Layer.mergeAll(
+					Layer.effectDiscard(
+						Console.log({ message: "x", code: 1 }, [1, "two"], new TypeError("bad"), new Date(0).getTime(), cyclic),
+					),
+					McpStdio.layer({ name: "whole-log", version: "0.0.0" }),
+				),
+			);
+			// No string form and no JSON (a cycle with no prototype): the describer's own last resort.
+			assert.deepStrictEqual(yield* harness.consoleLogSoFar, [
+				'{"message":"x","code":1} [1,"two"] TypeError: bad 0 [unprintable value]',
+			]);
 		}),
 	);
 

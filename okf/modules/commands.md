@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/commands/src/LocalExec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T14:19:29Z
+  at: 2026-10-28T18:51:45Z
 integrity:
   generated:
-    body: ec02787645bc0ea8
+    body: 34c882b60b486fb7
 ---
 
 # @effected/commands
@@ -147,6 +147,13 @@ and a directory (`ExecContext`), not a workspace model.
   silently claims the flag for npm itself, while the other three managers
   forward post-script arguments without help — see
   [npm run eats a flag meant for the script](../gotchas/npm-run-eats-flags.md).
+- **`LocalExec.command(launcher, binary, args?, { kind?, cwd? })` is the
+  ready command.** It splits the canonical prefix into executable and
+  arguments, so no caller writes `const [command = pm, ...rest] = prefix`
+  again, and its `cwd` is where the launcher runs, which decides whose
+  `node_modules` it resolves. It emits the canonical table only, never an
+  alias, and a binary that is empty or starts with `-` throws, the same
+  rule `parse` and `ToolRefusedError` apply.
 - **A consumer with no monorepo pays nothing.** A single-package checkout
   wires `LocalExec.layerNone` or `LocalExec.layerFor("npm")` and never
   installs `@effected/workspaces`.
@@ -192,6 +199,18 @@ while a class's `static readonly` declarations keep it.
   them here is exactly the re-declaration the one rule forbids. What is
   left is genuinely ours: a deadline (no default — an install and a
   `rev-parse` cannot share one), a redaction set, and a capture bound.
+- **`Run.setKillOptions` sets the kill fields core has no combinator for.**
+  A timeout kills the child by closing its scope, and core's default kill
+  is `SIGTERM` with no `SIGKILL` follow-up: the Node spawner then waits on
+  the child with no time limit, so a tool that ignores `SIGTERM` holds the
+  run past its timeout. `forceKillAfter` bounds that wait. The combinator
+  is dual, merges over the command's own fields (an unset field keeps the
+  command's value), applies through a pipeline like `extendEnv`, and works
+  on `ResolvedTool.command`'s output, so no caller rebuilds a
+  `StandardCommand` from its fields. It stays a command combinator rather
+  than a `RunOptions` field because the kill is the command's, not the
+  run's: `Run.stream` and `Run.detach` take no options. An e2e test pins it
+  against a child that ignores `SIGTERM`.
 - **`Run.extendEnv` exists because core's `setEnv` is a trap.** `setEnv`
   merges into `options.env` but never sets `extendEnv`, and the Node
   spawner resolves the child environment as `extendEnv ? { ...process.env,
@@ -204,7 +223,8 @@ while a class's `static readonly` declarations keep it.
   unit control pins core's own `setEnv` behaviour so a beta that changes
   it fails loudly.
 - **A non-zero exit is a result for `collect`, `exitCode`, `succeeds` and
-  `jsonLine`, and a typed failure for `text`, `lines` and `json`.** The
+  `jsonLine`, and a typed failure for `text`, `lines`, `json` and
+  `bytes`.** The
   split is deliberate. The interpreting helpers also trim — `Run.text`
   trims the whole result, which silently corrupts fixed-column output
   whose first column can be whitespace (`git status --porcelain` is the
@@ -220,6 +240,16 @@ while a class's `static readonly` declarations keep it.
   alone does not discriminate, which is why the e2e backpressure test in
   `packages/commands/__test__/e2e/Run.e2e.test.ts` is not optional — see
   [`Run.collect` drains both pipes concurrently](../invariants/collect-drains-both-pipes-concurrently.md).
+  Every helper, `Run.bytes` included, goes through that one drain: core's
+  `ChildProcessSpawner` helpers drain unread pipes themselves, but on a raw
+  handle an output stream only moves while it is consumed.
+- **`Run.bytes` hands back stdout undecoded.** Every other helper decodes
+  stdout as UTF-8, which replaces invalid sequences with U+FFFD; a check
+  that inspects a blob (`git show :path`, looking for NULs or invalid
+  UTF-8) needs the bytes. It keeps `Run.text`'s exit, timeout and capture
+  semantics. Redaction scrubs stderr and every error, a failure's `stdout`
+  being the bytes decoded as text, but never the returned bytes, because
+  rewriting a blob corrupts it.
 - **Teeing is a separate combinator, not an option.** Only `collectTee`
   requires core `Stdio` in `R`, and an option cannot vary the `R`
   channel — a boolean would tax every plain `collect` caller with a
@@ -349,6 +379,11 @@ policy (`source`, `onMismatch`) is the caller's.
   lint-staged task). The working directory is not in it: a local
   resolution's `context.directory` says where it must run. Prefer
   `ResolvedTool.command` whenever this package or core spawns the process.
+- **A local `ResolvedTool.command` runs in the discovery root.** Its cwd is
+  the context's `directory`, so running it for a sibling worktree or a
+  request's own cwd silently uses this root's launcher and `node_modules`.
+  Build the command for the other directory with `LocalExec.command` and
+  its `cwd`, or resolve against a discovery for that root.
 - **Option-injection guard.** A tool name that is empty or begins with
   `-` is refused before any spawn, typed as its own `ToolRefusedError` —
   not `ToolNotFoundError`, which carries a `searched` list a refusal has
@@ -444,8 +479,18 @@ protocol, and why each of its rules is there, is
 - **`RunOnceOptions`**: `key` (letters, digits, `.`, `_`, `-`, at most 128
   characters; hash anything else), `dir` (host-local runtime state, never a
   network filesystem), `staleMs` (60000), `pollMs` (200, at least 10),
-  `waitTimeoutMs` (600000) and the opt-in `trustSequentialMs`. A bad value
-  throws (dies, in the `Effect` form) before any IO.
+  `waitTimeoutMs` (600000), the opt-in `trustSequentialMs` and `mode`
+  (`"once"`, or `"serialize"`). A bad value, or `trustSequentialMs` under
+  `"serialize"`, throws (dies, in the `Effect` form) before any IO.
+- **`mode: "serialize"` is a cross-process mutex.** The machine reads, trusts
+  and writes no done marker, so every caller runs the work, one at a time,
+  and the outcome is never `Trusted`. The rule is two guards in the one
+  generator, not a driver flag. It is not what a "rebuild every run" build
+  needs: under `"once"` a later, sequential call already re-runs, because
+  it never trusts an earlier call's marker, so the key need not hash the
+  inputs. `"serialize"` is for work every concurrent caller must run
+  itself. Callers queue on one lock, so `waitTimeoutMs` bounds the whole
+  queue ahead of a caller, not one turn.
 - **`RunOnceFileSystem`** is the sync port: `makeDirectory`, `readText`,
   `createExclusive` (an `O_EXCL` create that answers `false` for
   "exists"), `writeText`, `remove`, `mtimeMs`, `rename` and
@@ -461,7 +506,10 @@ protocol, and why each of its rules is there, is
 - **Testing.** The `Effect` driver runs over `@effected/memfs` and
   `TestClock`; the sync driver over an in-memory host whose `sleep` is
   where "another process" acts; a bounded model checker
-  (`__test__/runOnceModel.ts`) explores the protocol's interleavings, and
+  (`__test__/runOnceModel.ts`) explores the protocol's interleavings, in the
+  suite at small bounds and at the review's full bounds through
+  `lib/scripts/run-once-model-full.ts` (`pnpm --filter @effected/commands
+  model:full`, offline only, never CI), and
   `__test__/e2e/RunOnce.e2e.test.ts` races four real `node` processes
   through a fixture that imports the dev build.
 

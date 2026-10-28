@@ -25,10 +25,10 @@ sources:
     resource: ../../packages/jwt/savvy.build.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:35:52Z
+  at: 2026-10-28T19:09:54Z
 integrity:
   generated:
-    body: d3580c7d1078f934
+    body: fd9411ca1cd018d6
 ---
 
 # `@effected/jwt`
@@ -37,7 +37,7 @@ integrity:
 
 ## Tier and dependencies
 
-Boundary tier, which runs anywhere WebCrypto does: Node, browsers and Cloudflare workerd. There is no `node:` import under `src/`, because the consumer that motivated the package is a Cloudflare Workers GitHub App (savvy-web/silk-app) with no `node:crypto`. There are no runtime dependencies, and `peerDependencies` is `effect` alone.
+Boundary tier, which runs anywhere WebCrypto does: Node, browsers and Cloudflare workerd. There is no `node:` import under `src/`, because the consumer that motivated the package is a Cloudflare Workers GitHub App (savvy-web/silk-app) with no `node:crypto`. Its one runtime dependency is `@effected/crypto`, which is also WebCrypto-only and has no `node:` import, so the package still runs on workerd; it supplies `HttpRedaction`, through which `JwksResolver` keeps a fetch failure's `HttpClientError` cause without the request's credentials. `peerDependencies` is `effect` alone.
 
 The package reads `globalThis.crypto?.subtle` directly. Core `Crypto` (verified against the vendored source on 2026-10-09) offers random bytes, SHA-1/256/384/512 digests, random numbers, UUIDv4/v7 and ULID, and nothing else. Core's own `eventlog/EventLogSessionAuth.ts` reads `globalThis.crypto?.subtle` for Ed25519 sign and verify, and that is the precedent this package follows. When `subtle` is absent the package fails with `JwtError` and `reason: "unsupportedRuntime"`.
 

@@ -14,7 +14,7 @@ sources:
     resource: ../../packages/package-json/__test__/EntryPoint.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
+  at: 2026-10-28T16:55:59Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:21.362Z
@@ -22,7 +22,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 2b3d0dab707e641b
+    body: b65591cdc27e644c
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -56,6 +56,12 @@ shape are the contract:
 All three legal `exports` spellings are honoured: the string shorthand,
 the subpath map with a `"."` entry, and root conditions with no `"."`
 key.
+
+Any other subpath, `imports`, patterns, fallback arrays and TypeScript's
+`types` reading belong to [the exports resolver](package-json-exports-resolver.md),
+whose condition list is a set walked in the manifest's key order — the
+opposite policy from this one, deliberately: this function's ordered
+list predates it and its callers depend on it.
 
 ## A present `exports` encapsulates the package
 

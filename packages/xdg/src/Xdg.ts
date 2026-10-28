@@ -111,8 +111,10 @@ export class XdgEnvError extends Schema.TaggedError<XdgEnvError>()("XdgEnvError"
  * absolute**: the XDG Base Directory specification says a relative path in an
  * `XDG_*` variable is invalid and must be ignored, so a relative value reads as
  * an absent key, never as a directory under the current working directory.
- * `home` is the exception and is deliberately not validated. A value passed to
- * {@link Xdg.layerFrom} is trusted as given — it is the test escape hatch.
+ * `home` is the exception and is deliberately not validated. The one opt-out is
+ * {@link XdgEnvOptions.relativeHomes} set to `"keep"`, which leaves a relative
+ * `XDG_*_HOME` in place, as given. A value passed to {@link Xdg.layerFrom} is
+ * trusted as given — it is the test escape hatch.
  *
  * @public
  */
@@ -189,67 +191,138 @@ const splitDirs = (
 };
 
 /**
- * Read the XDG environment from the ambient `ConfigProvider` — the one
- * resolution {@link Xdg.layer} and {@link Xdg.layerFromEnv} share.
+ * Opt-in departures from the XDG Base Directory rules, for a program whose
+ * directories must match an existing shell rule such as
+ * `${XDG_STATE_HOME:-$HOME/.local/state}`.
+ *
+ * @remarks
+ * Every field defaults to the specification's behaviour, so `{}` reads the
+ * environment exactly as {@link Xdg.layer} does. Taken by {@link Xdg.layerWith}
+ * and {@link Xdg.layerFromEnv}.
+ *
+ * @public
  */
-const readPaths: Effect.Effect<XdgPaths, XdgEnvError> = Effect.gen(function* () {
+export interface XdgEnvOptions {
 	/**
-	 * `Config<T>` IS an `Effect<T, ConfigError>` in v4, so it pipes directly.
-	 * Every `ConfigError` becomes an `XdgEnvError` naming the variable it came from.
+	 * The home directory to use when the home variable is unset or empty:
+	 * `HOME`, or on `win32` both `USERPROFILE` and `HOME`. Absent by default, so
+	 * a missing home fails with {@link XdgEnvError}.
+	 *
+	 * @remarks
+	 * A shell rule's `${HOME:-…}`, or Node's `os.homedir()` supplied from the
+	 * application's edge: this package reads no `os` module itself. Called once,
+	 * when the layer is built, and only when the variable is missing; a variable
+	 * that is set, even to a relative path, wins, and is never validated. An
+	 * empty string from the fallback still fails with the original
+	 * {@link XdgEnvError}. A throw from it is a defect, not a typed failure: a
+	 * home lookup that cannot fail is the contract.
+	 *
+	 * The default stays off. The kit deliberately does not substitute
+	 * `USERPROFILE` or any other variable for an empty `HOME` on posix, and a
+	 * fallback is a decision about where an application keeps its files, so the
+	 * application makes it.
 	 */
-	const asEnvError = <A>(name: string, config: Config.Config<A>): Effect.Effect<A, XdgEnvError> =>
-		Effect.catchTag(config, "ConfigError", (cause) => Effect.fail(new XdgEnvError({ variable: name, cause })));
-
-	const platform = yield* CurrentPlatform;
-
-	// On Windows the home directory is `USERPROFILE`, as Node's `os.homedir()`
-	// reads it; `HOME` is usually set only under Git Bash or MSYS, where it
-	// normally agrees, so it stays as the fallback and nothing that works
-	// today stops working.
-	const home = yield* platform === "win32"
-		? asEnvError("USERPROFILE", Config.String("USERPROFILE").pipe(Config.orElse(() => Config.String("HOME"))))
-		: asEnvError("HOME", Config.String("HOME"));
-
+	readonly homeFallback?: () => string;
 	/**
-	 * An unset variable is `Option.none()`, not a failure. The residual
-	 * `ConfigError` a `Config.option` can still raise is a *provider* failure
-	 * (a `ConfigProvider` backed by a directory or a `.env` file that cannot be
-	 * read), not a missing key — so it is mapped rather than swallowed.
+	 * What a relative `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` or
+	 * `XDG_STATE_HOME` means. `"ignore"` (the default) is the specification:
+	 * the value is invalid and reads as unset. `"keep"` uses it as given,
+	 * unresolved, as a shell's `${XDG_STATE_HOME:-…}` does, so the path is
+	 * relative to whatever directory the program resolves it from.
+	 *
+	 * @remarks
+	 * Outside the specification, so opt-in only. `XDG_RUNTIME_DIR` and the
+	 * `XDG_CONFIG_DIRS` / `XDG_DATA_DIRS` entries keep the specification's rule
+	 * either way: a runtime directory must be a user-owned absolute directory,
+	 * and a search path is not what a `${VAR:-default}` rule reads. An empty
+	 * value is unset under both settings, as `:-` treats it.
 	 */
-	const read = (name: string): Effect.Effect<string | undefined, XdgEnvError> =>
-		Effect.map(asEnvError(name, Config.option(Config.String(name))), Option.getOrUndefined<string>);
+	readonly relativeHomes?: "ignore" | "keep";
+}
 
-	/** A path variable whose relative value is ignored, as though it were unset. */
-	const readAbsolute = (name: string, rule: XdgPlatform): Effect.Effect<string | undefined, XdgEnvError> =>
-		Effect.map(read(name), (value) => (value !== undefined && isAbsoluteFor(rule, value) ? value : undefined));
+/**
+ * Read the XDG environment from the ambient `ConfigProvider` — the one
+ * resolution {@link Xdg.layer}, {@link Xdg.layerWith} and
+ * {@link Xdg.layerFromEnv} share.
+ */
+const readPaths = (options: XdgEnvOptions): Effect.Effect<XdgPaths, XdgEnvError> =>
+	Effect.gen(function* () {
+		/**
+		 * `Config<T>` IS an `Effect<T, ConfigError>` in v4, so it pipes directly.
+		 * Every `ConfigError` becomes an `XdgEnvError` naming the variable it came from.
+		 */
+		const asEnvError = <A>(name: string, config: Config.Config<A>): Effect.Effect<A, XdgEnvError> =>
+			Effect.catchTag(config, "ConfigError", (cause) => Effect.fail(new XdgEnvError({ variable: name, cause })));
 
-	const configHome = yield* readAbsolute("XDG_CONFIG_HOME", platform);
-	const dataHome = yield* readAbsolute("XDG_DATA_HOME", platform);
-	const cacheHome = yield* readAbsolute("XDG_CACHE_HOME", platform);
-	const stateHome = yield* readAbsolute("XDG_STATE_HOME", platform);
-	const runtimeDir = yield* readAbsolute("XDG_RUNTIME_DIR", platform);
-	// Windows variables, read only by the win32 native rung: judged by the
-	// Windows rule on every host, so the answer never depends on where it ran.
-	const appData = yield* readAbsolute("APPDATA", "win32");
-	const localAppData = yield* readAbsolute("LOCALAPPDATA", "win32");
-	const configDirs = yield* read("XDG_CONFIG_DIRS");
-	const dataDirs = yield* read("XDG_DATA_DIRS");
+		const platform = yield* CurrentPlatform;
 
-	// A *present* key holding `undefined` is not the same as an absent key —
-	// v4 constructors validate — so every optional field is conditionally spread.
-	return XdgPaths.make({
-		home,
-		...(configHome !== undefined && { configHome }),
-		...(dataHome !== undefined && { dataHome }),
-		...(cacheHome !== undefined && { cacheHome }),
-		...(stateHome !== undefined && { stateHome }),
-		...(runtimeDir !== undefined && { runtimeDir }),
-		...(appData !== undefined && { appData }),
-		...(localAppData !== undefined && { localAppData }),
-		configDirs: splitDirs(configDirs, ["/etc/xdg"], platform),
-		dataDirs: splitDirs(dataDirs, ["/usr/local/share", "/usr/share"], platform),
+		// On Windows the home directory is `USERPROFILE`, as Node's `os.homedir()`
+		// reads it; `HOME` is usually set only under Git Bash or MSYS, where it
+		// normally agrees, so it stays as the fallback and nothing that works
+		// today stops working.
+		const homeVariable = platform === "win32" ? "USERPROFILE" : "HOME";
+		const homeConfig =
+			platform === "win32"
+				? Config.String("USERPROFILE").pipe(Config.orElse(() => Config.String("HOME")))
+				: Config.String("HOME");
+		const { homeFallback } = options;
+		// Without a fallback, a missing home fails as it always has. With one, only a
+		// MISSING home is replaced: `Config.option` still fails on a provider error.
+		// An empty fallback re-reads the variable, so the failure carries its real cause.
+		const home = yield* homeFallback === undefined
+			? asEnvError(homeVariable, homeConfig)
+			: Effect.flatMap(asEnvError(homeVariable, Config.option(homeConfig)), (found) =>
+					Option.isSome(found)
+						? Effect.succeed(found.value)
+						: Effect.flatMap(Effect.sync(homeFallback), (fallback) =>
+								fallback.length > 0 ? Effect.succeed(fallback) : asEnvError(homeVariable, homeConfig),
+							),
+				);
+
+		/**
+		 * An unset variable is `Option.none()`, not a failure. The residual
+		 * `ConfigError` a `Config.option` can still raise is a *provider* failure
+		 * (a `ConfigProvider` backed by a directory or a `.env` file that cannot be
+		 * read), not a missing key — so it is mapped rather than swallowed.
+		 */
+		const read = (name: string): Effect.Effect<string | undefined, XdgEnvError> =>
+			Effect.map(asEnvError(name, Config.option(Config.String(name))), Option.getOrUndefined<string>);
+
+		/** A path variable whose relative value is ignored, as though it were unset. */
+		const readAbsolute = (name: string, rule: XdgPlatform): Effect.Effect<string | undefined, XdgEnvError> =>
+			Effect.map(read(name), (value) => (value !== undefined && isAbsoluteFor(rule, value) ? value : undefined));
+
+		/** An `XDG_*_HOME`: judged by the absolute rule, unless the caller keeps relative values. */
+		const readHome = (name: string): Effect.Effect<string | undefined, XdgEnvError> =>
+			options.relativeHomes === "keep" ? read(name) : readAbsolute(name, platform);
+
+		const configHome = yield* readHome("XDG_CONFIG_HOME");
+		const dataHome = yield* readHome("XDG_DATA_HOME");
+		const cacheHome = yield* readHome("XDG_CACHE_HOME");
+		const stateHome = yield* readHome("XDG_STATE_HOME");
+		const runtimeDir = yield* readAbsolute("XDG_RUNTIME_DIR", platform);
+		// Windows variables, read only by the win32 native rung: judged by the
+		// Windows rule on every host, so the answer never depends on where it ran.
+		const appData = yield* readAbsolute("APPDATA", "win32");
+		const localAppData = yield* readAbsolute("LOCALAPPDATA", "win32");
+		const configDirs = yield* read("XDG_CONFIG_DIRS");
+		const dataDirs = yield* read("XDG_DATA_DIRS");
+
+		// A *present* key holding `undefined` is not the same as an absent key —
+		// v4 constructors validate — so every optional field is conditionally spread.
+		return XdgPaths.make({
+			home,
+			...(configHome !== undefined && { configHome }),
+			...(dataHome !== undefined && { dataHome }),
+			...(cacheHome !== undefined && { cacheHome }),
+			...(stateHome !== undefined && { stateHome }),
+			...(runtimeDir !== undefined && { runtimeDir }),
+			...(appData !== undefined && { appData }),
+			...(localAppData !== undefined && { localAppData }),
+			configDirs: splitDirs(configDirs, ["/etc/xdg"], platform),
+			dataDirs: splitDirs(dataDirs, ["/usr/local/share", "/usr/share"], platform),
+		});
 	});
-});
 
 /**
  * XDG Base Directory environment resolution.
@@ -287,8 +360,40 @@ export class Xdg extends Context.Service<Xdg, XdgPaths>()("@effected/xdg/Xdg") {
 	 * still fails the whole layer eagerly, even when every `XDG_*_HOME` is set:
 	 * the fallback rungs, the native rung and the runtime directory all derive
 	 * from it, and failing here is what keeps every downstream read infallible.
+	 * {@link Xdg.layerWith} opts out of the last two rules: a home fallback, and
+	 * relative `XDG_*_HOME` values kept as given.
 	 */
-	static readonly layer: Layer.Layer<Xdg, XdgEnvError> = Layer.effect(Xdg, readPaths);
+	static readonly layer: Layer.Layer<Xdg, XdgEnvError> = Layer.effect(Xdg, readPaths({}));
+
+	/**
+	 * {@link Xdg.layer} with opt-in departures from the specification: a home
+	 * fallback, or relative `XDG_*_HOME` values kept as given.
+	 *
+	 * @remarks
+	 * Reads the ambient `ConfigProvider`, rule for rule as {@link Xdg.layer}
+	 * does, except where `options` says otherwise; `Xdg.layerWith({})` resolves
+	 * what {@link Xdg.layer} does. Reach for it only to match an existing shell
+	 * rule, and say in the application which rule it matches: a relative
+	 * `XDG_*_HOME` kept with `relativeHomes: "keep"` resolves against the
+	 * program's working directory, which the specification exists to prevent.
+	 *
+	 * Each call mints a fresh layer with its own memoization identity; bind the
+	 * result to a `const` or the environment is read twice.
+	 *
+	 * @example
+	 * ```ts
+	 * import { homedir } from "node:os";
+	 * import { Xdg } from "@effected/xdg";
+	 *
+	 * // XDG_STATE_HOME as a shell rule reads it, relative or not, under the OS home when HOME is unset.
+	 * const XdgLive = Xdg.layerWith({ homeFallback: homedir, relativeHomes: "keep" });
+	 * ```
+	 *
+	 * @param options - the departures to take; every field defaults to the specification
+	 */
+	static layerWith(options: XdgEnvOptions): Layer.Layer<Xdg, XdgEnvError> {
+		return Layer.effect(Xdg, readPaths(options));
+	}
 
 	/**
 	 * Read the XDG environment from an explicit environment record instead of
@@ -326,13 +431,18 @@ export class Xdg extends Context.Service<Xdg, XdgPaths>()("@effected/xdg/Xdg") {
 	 * @param env - a variable-name-to-value record; for a single `ConfigProvider` per graph, provide it beneath
 	 *   {@link Xdg.layer} with `Layer.provide(Xdg.layer, ConfigProvider.layer(provider))` (the first provider wins
 	 *   graph-wide, as above)
+	 * @param options - opt-in departures from the specification, as {@link Xdg.layerWith} takes them; omitted, the
+	 *   record is read by the specification's rules
 	 */
-	static layerFromEnv(env: Readonly<Record<string, string | undefined>>): Layer.Layer<Xdg, XdgEnvError> {
+	static layerFromEnv(
+		env: Readonly<Record<string, string | undefined>>,
+		options: XdgEnvOptions = {},
+	): Layer.Layer<Xdg, XdgEnvError> {
 		return Layer.fresh(
 			Layer.effect(
 				Xdg,
 				Effect.suspend(() =>
-					readPaths.pipe(
+					readPaths(options).pipe(
 						Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromEnvRecord({ ...env })),
 					),
 				),

@@ -16,6 +16,7 @@ import { enumerate } from "./internal/enumerate.js";
 import { isStringRecord } from "./internal/guards.js";
 import { findLayerRoot } from "./internal/layerRoot.js";
 import { readPatterns } from "./internal/patterns.js";
+import type { WorkspaceMarker } from "./WorkspaceMarker.js";
 import { WorkspacePackage } from "./WorkspacePackage.js";
 import type { WorkspaceRootNotFoundError } from "./WorkspaceRoot.js";
 import { WorkspaceRoot } from "./WorkspaceRoot.js";
@@ -177,6 +178,26 @@ export interface WorkspaceDiscoveryOptions {
 	 * @defaultValue no ceiling — the ascent runs to the filesystem root.
 	 */
 	readonly stopAt?: string | undefined;
+	/**
+	 * The markers that count as a workspace root, passed straight through to
+	 * the `markers` of {@link WorkspaceRoot}'s `find`.
+	 *
+	 * @remarks
+	 * Pass `["pnpm-workspace.yaml"]` for a pnpm-only tool: pnpm ignores
+	 * `package.json#workspaces`, so a member package that kept the field
+	 * (common after a yarn migration) must not read as the root. An empty
+	 * list is a **defect** at first use, as it is for `find`.
+	 *
+	 * Unlike `stopAt`, it applies to the per-call `infoIn`, `listPackagesIn`
+	 * and `refreshIn` too: which file marks a root is a property of the
+	 * tool, not of the directory it starts from. `LockfileReader`,
+	 * `WorkspaceCatalogs` and `WorkspaceSnapshots` each take the same
+	 * option; the `Workspaces.*` composites forward one `markers` to all of
+	 * them, so no service stops at a root another passed.
+	 *
+	 * @defaultValue every marker, `WORKSPACE_MARKERS`
+	 */
+	readonly markers?: ReadonlyArray<WorkspaceMarker> | undefined;
 	/** Descent cap for segment-crossing patterns. Defaults to 32. */
 	readonly maxDepth?: number;
 }
@@ -305,6 +326,11 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 			const roots = yield* WorkspaceRoot;
 			const fs = yield* FileSystem.FileSystem;
 			const path = yield* Path.Path;
+			// The per-call ascents take the layer's `markers` (which file marks a
+			// root is the tool's choice) but never its `stopAt`, a ceiling relative
+			// to the layer's own `cwd`.
+			const markers = options?.markers;
+			const perCallFind = markers === undefined ? undefined : { markers };
 
 			/** Read one `package.json` into the tolerant discovery projection. */
 			const readPackage = (
@@ -533,7 +559,7 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 				// Resolved FIRST, so two directories inside one workspace share a
 				// single memo — keying on the caller's path would discover the same
 				// workspace once per subdirectory it happens to ask from.
-				const root = yield* roots.find(directory);
+				const root = yield* roots.find(directory, perCallFind);
 				const existing = rootMemos.get(root);
 				if (existing !== undefined) return yield* existing.memo;
 				const [built, invalidateOne] = yield* Effect.cachedInvalidateWithTTL(discoverAt(root), (exit) =>
@@ -651,7 +677,7 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 				}),
 
 				refreshIn: Effect.fn("WorkspaceDiscovery.refreshIn")(function* (directory: string) {
-					const root = yield* roots.find(directory);
+					const root = yield* roots.find(directory, perCallFind);
 					const cell = rootMemos.get(root);
 					if (cell === undefined) return;
 					// Invalidate the cell BEFORE dropping the reference: a fiber already

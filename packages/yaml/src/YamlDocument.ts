@@ -6,6 +6,7 @@
 // data on `errors`/`warnings` while fatal ones fail `parse`/`parseAll` with a
 // typed `YamlParseError`.
 
+import type { SourceIndex } from "@effected/source";
 import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { composeAllDocuments, composeFirstDocument } from "./internal/composer/document.js";
 import { isFatalCode } from "./internal/diagnostics.js";
@@ -13,7 +14,7 @@ import type { RawYamlDocument } from "./internal/raw-document.js";
 import { stringifyDocument } from "./internal/stringifier.js";
 import type { YamlParseOptions, YamlStringifyError, YamlStringifyOptions } from "./Yaml.js";
 import { YamlParseError, stringifyDefectToError } from "./Yaml.js";
-import { YamlDiagnostic } from "./YamlDiagnostic.js";
+import { YamlDiagnostic, lazyLineIndex } from "./YamlDiagnostic.js";
 import type { YamlNode as YamlNodeType } from "./YamlNode.js";
 import { YamlNode } from "./YamlNode.js";
 
@@ -96,16 +97,17 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	 */
 	static parseResult(text: string, options?: YamlParseOptions): Result.Result<YamlDocument, YamlParseError> {
 		const raw = composeFirstDocument(text, toParseInput(options));
+		const index = lazyLineIndex(text);
 		const fatal = raw.errors.filter((e) => isFatalCode(e.code));
 		if (fatal.length > 0) {
 			return Result.fail(
 				new YamlParseError({
-					diagnostics: fatal.map((e) => YamlDiagnostic.fromRaw(e, text)),
+					diagnostics: fatal.map((e) => YamlDiagnostic.fromRaw(e, index())),
 					input: text,
 				}),
 			);
 		}
-		return Result.succeed(fromRawDocument(raw, text));
+		return Result.succeed(fromRawDocument(raw, index));
 	}
 
 	/**
@@ -155,6 +157,7 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 		options?: YamlParseOptions,
 	): Result.Result<ReadonlyArray<YamlDocument>, YamlParseError> {
 		const { documents, streamErrors } = composeAllDocuments(text, toParseInput(options));
+		const index = lazyLineIndex(text);
 		const fatal = [
 			...streamErrors.filter((e) => e.code === "InvalidDirective"),
 			...documents.flatMap((d) => d.errors.filter((e) => isFatalCode(e.code))),
@@ -162,12 +165,12 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 		if (fatal.length > 0) {
 			return Result.fail(
 				new YamlParseError({
-					diagnostics: fatal.map((e) => YamlDiagnostic.fromRaw(e, text)),
+					diagnostics: fatal.map((e) => YamlDiagnostic.fromRaw(e, index())),
 					input: text,
 				}),
 			);
 		}
-		return Result.succeed(documents.map((raw) => fromRawDocument(raw, text)));
+		return Result.succeed(documents.map((raw) => fromRawDocument(raw, index)));
 	}
 
 	/**
@@ -348,16 +351,20 @@ const toStringifyInput = (options?: YamlStringifyOptions) =>
  *
  * @internal
  */
-export function documentFromRaw(raw: RawYamlDocument, text: string): YamlDocument {
-	return fromRawDocument(raw, text);
+export function documentFromRaw(raw: RawYamlDocument, index: () => SourceIndex): YamlDocument {
+	return fromRawDocument(raw, index);
 }
 
-/** Materialize a raw engine document into the public class. */
-function fromRawDocument(raw: RawYamlDocument, text: string): YamlDocument {
+/**
+ * Materialize a raw engine document into the public class. `index` is the
+ * parse's one lazily built line index (`lazyLineIndex`), shared by every
+ * document of a stream and built only when a diagnostic needs it.
+ */
+function fromRawDocument(raw: RawYamlDocument, index: () => SourceIndex): YamlDocument {
 	return new YamlDocument({
 		contents: raw.contents,
-		errors: raw.errors.map((e) => YamlDiagnostic.fromRaw(e, text)),
-		warnings: raw.warnings.map((w) => YamlDiagnostic.fromRaw(w, text)),
+		errors: raw.errors.map((e) => YamlDiagnostic.fromRaw(e, index())),
+		warnings: raw.warnings.map((w) => YamlDiagnostic.fromRaw(w, index())),
 		directives: raw.directives.map((d) => new YamlDirective({ name: d.name, parameters: d.parameters })),
 		...(raw.commentBefore !== undefined ? { commentBefore: raw.commentBefore } : {}),
 		...(raw.comment !== undefined ? { comment: raw.comment } : {}),

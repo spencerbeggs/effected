@@ -1,4 +1,4 @@
-import { SigV4 } from "@effected/crypto";
+import { HttpRedaction, SigV4 } from "@effected/crypto";
 import type { Redacted } from "effect";
 import { Context, Crypto, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
@@ -300,7 +300,13 @@ const makeS3 = (
 				const built = body.length === 0 ? base : HttpClientRequest.bodyUint8Array(base, body);
 				return yield* http
 					.execute(built)
-					.pipe(Effect.mapError((cause) => new BlobStoreError({ reason: "unreachable", key, cause })));
+					// Every kept cause is redacted: core's error holds the live request,
+					// the SigV4 `authorization` and session token included, as readable fields.
+					.pipe(
+						Effect.mapError(
+							(cause) => new BlobStoreError({ reason: "unreachable", key, cause: HttpRedaction.cause(cause) }),
+						),
+					);
 			});
 
 		/** Anything outside 2xx is the store refusing; a caller reads `404` first where a miss is an answer. */
@@ -317,7 +323,9 @@ const makeS3 = (
 					}
 					yield* accepted(key, response.status);
 					const buffer = yield* response.arrayBuffer.pipe(
-						Effect.mapError((cause) => new BlobStoreError({ reason: "unreachable", key, cause })),
+						Effect.mapError(
+							(cause) => new BlobStoreError({ reason: "unreachable", key, cause: HttpRedaction.cause(cause) }),
+						),
 					);
 					return Option.some(yield* Effect.fromResult(BlobEnvelope.decodeResult(new Uint8Array(buffer), schema)));
 				}),

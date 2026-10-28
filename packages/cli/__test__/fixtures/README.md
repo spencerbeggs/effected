@@ -22,6 +22,15 @@ echoes anything it received on `stdin` back on `stdout` prefixed
 reached the child process, proving the sandbox environment — not the host's —
 was used.
 
+## `follow.mjs`
+
+Hand-written for `CliTest.spawn`'s tests, in the shape of a `logs --follow`:
+it writes `following` (ending `\r\n`, so the line splitter's CRLF handling is
+pinned) and `tick 1`, then a `tick` a second until SIGINT, on which it writes
+`stopped` with no line break and exits `0`. Run as `follow.mjs chatty`, it
+first writes 512 KiB to `stderr`, more than an OS pipe buffers, so its first
+`stdout` line arrives only when the harness drains the stream nobody reads.
+
 ## `live-view.ts`
 
 Hand-written for `ui/CliUi.live.reach.test.ts` and `ui/CliUi.live.final.test.ts`: a live view's own module, as a

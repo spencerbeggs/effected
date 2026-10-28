@@ -10,7 +10,7 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T01:39:30Z
+  at: 2026-10-28T19:30:14Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:32.522Z
@@ -20,7 +20,7 @@ verified:
     at: 2026-10-23T04:08:52Z
 integrity:
   generated:
-    body: e15ba173ab13d71c
+    body: 0c82c664e8f79b05
   verified:
     by: human:spencer
     at: 2026-10-23T04:08:52Z
@@ -173,8 +173,25 @@ which `descend` never matches.
 
 ### Tool and package-manager installation
 
-`ToolInstallerError.subject` is required, not optional. Downloads go
-through core's HTTP client and stream to disk; extraction requires core's
+`ToolInstallerError.subject` is required, not optional. For a download it
+is the URL through `@effected/crypto`'s `HttpRedaction.url` (userinfo and
+credential query values such as a SAS `sig` read `REDACTED`), and a kept
+HTTP cause goes through `HttpRedaction.cause`, because a signed download URL
+carries its credential and core's `HttpClientError` keeps the live request
+as a readable field. The same scrub applies to every HTTP cause the
+package keeps: `OidcTokenIssuer`, the Twirp results client behind
+`ActionCache`, `Artifact` and `GitHubCacheBlobStore`, and the S3
+`BlobStore`. The Azure transfer in those three modules keeps its failure as
+`BlobTransferError.cause` only through `internal/blobCause.ts`: an
+`@azure/core-rest-pipeline` `RestError` sanitizes itself only when rendered,
+so its non-enumerable `request.url` still holds the signed URL and its
+`details` and `response.headers` hold `set-cookie`. The kept copy stays on
+the `RestError` prototype with `name`, `message`, `code`, `statusCode`, the
+method, the URL with userinfo and the SAS `sig`, `se`, `st`, `sp`, `sip`,
+`skoid`, `sktid`, `skt`, `ske`, `saoid`, `suoid` and `scid` values
+`REDACTED`, and the headers minus `set-cookie`; it drops the bodies and the
+pipeline options. The helper reads the error structurally, so it never names
+`@azure/*`. Downloads go through core's HTTP client and stream to disk; extraction requires core's
 subprocess contract in `R`. Installs stage then swap: extract into a temp
 directory under the cache root and rename into place, so a failed install
 leaves nothing at the cache path (a lookup reports an empty directory as a

@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Option, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
 import { unstubbed } from "./internal/unstubbed.js";
+import { originOf, uploadChannelOf, uploadsBaseUrlFor } from "./internal/uploads.js";
 import { Repo } from "./Repo.js";
 import type { PageOptions } from "./Rest.js";
 
@@ -19,7 +20,15 @@ export class ReleaseInfo extends Schema.Class<ReleaseInfo>("ReleaseInfo")({
 	prerelease: Schema.Boolean,
 	/** The web URL. */
 	url: Schema.String,
-	/** The templated upload endpoint GitHub hands back for assets. */
+	/**
+	 * The templated upload endpoint GitHub hands back for assets.
+	 *
+	 * @remarks
+	 * {@link GitHubReleaseShape.uploadAsset} never routes by this value: it is
+	 * response data. It only cross-checks that its origin is the upload host
+	 * derived from the client's configured base URL, and refuses the upload
+	 * when it is not.
+	 */
 	uploadUrl: Schema.String,
 }) {}
 
@@ -75,9 +84,9 @@ export interface GitHubReleaseShape {
 	 *
 	 * @remarks
 	 * The one route in this package that is **not** in GitHub's generated
-	 * endpoint map: asset upload goes to `uploads.github.com` with a raw binary
-	 * body, and the map omits it. So it goes through `requestDecoded` with an
-	 * owned schema — the escape hatch is from the route table, never from typing.
+	 * endpoint map: asset upload goes to a separate upload host with a raw
+	 * binary body, and the map omits it. So it is decoded against an owned
+	 * schema — the escape hatch is from the route table, never from typing.
 	 *
 	 * Being outside the map cuts the other way too: octokit has no schema
 	 * saying `name` is a **query** parameter, so the route template must carry
@@ -85,6 +94,29 @@ export interface GitHubReleaseShape {
 	 * `Invalid name for request` — a hand-written route owns its query
 	 * parameters in the template, always. `label` is the endpoint's optional
 	 * display label, shown in place of the file name on the release page.
+	 *
+	 * The upload host is derived from the base URL the client was **configured**
+	 * with, so the token only goes where the caller pointed it: github.com
+	 * (`https://api.github.com`, or no `baseUrl`) uploads to
+	 * `https://uploads.github.com`, GitHub Enterprise Server
+	 * (`https://<host>/api/v3`) to `https://<host>/api/uploads`, and any other
+	 * base to itself. The release's own `uploadUrl` is response data, so it is
+	 * never the route; its origin must equal the derived host's, or the call
+	 * fails `kind: "rejected"` with no status and nothing is sent.
+	 *
+	 * The client's public `requestDecoded` cannot reach the upload host: it
+	 * refuses every host but the configured API host. A client this package
+	 * built uploads through a private channel it carries off its public type,
+	 * which takes no host from anyone. A shape spread from a built client
+	 * (`{ ...client, requestDecoded }`) keeps that channel, so its upload does
+	 * **not** go through an overridden `requestDecoded`.
+	 *
+	 * A client shape this package did not build (`GitHubClient.makeTest`,
+	 * `layerFixture`, a hand-written double) has no channel: it is read as
+	 * github.com for the `uploadUrl` check, and the upload is handed to its own
+	 * `requestDecoded`, so a double records and answers it as usual. Before
+	 * these checks, a GitHub Enterprise Server client's upload sent its token to
+	 * `uploads.github.com`.
 	 */
 	readonly uploadAsset: (
 		release: ReleaseInfo,
@@ -268,28 +300,50 @@ const make = (client: GitHubClient["Service"]): GitHubReleaseShape => {
 		) {
 			const { owner, repo } = yield* Repo;
 			yield* Effect.annotateCurrentSpan({ owner, repo, release: release.id, asset: asset.name });
+			// The host comes from the client's CONFIGURED base, never from the
+			// release: `uploadUrl` is response data, and the token rides with the
+			// request. It only has to agree with the derived host.
+			const channel = uploadChannelOf(client);
+			const uploadsBaseUrl = uploadsBaseUrlFor(channel?.baseUrl);
+			const expected = originOf(uploadsBaseUrl);
+			const offered = originOf(release.uploadUrl);
+			if (expected === undefined || offered !== expected) {
+				return yield* Effect.fail(
+					new GitHubError({
+						kind: "rejected",
+						operation: "GitHubRelease.uploadAsset",
+						reason:
+							offered === undefined
+								? `release ${release.id} has no absolute upload URL; refusing to upload`
+								: `release ${release.id}'s upload URL is on ${offered}, not this client's upload host ${expected ?? uploadsBaseUrl}; refusing to send the token there`,
+					}),
+				);
+			}
 			// `name` MUST be in the template: this route is outside the generated
 			// endpoint map, so no schema routes it to the query string — passed
 			// only as a parameter it is silently dropped and GitHub answers 400
 			// "Invalid name for request". The two
 			// template spellings exist because `{?name,label}` with an absent
 			// label expands to a dangling `&` (probed at @octokit/endpoint 11.0.3).
-			const raw = yield* client.requestDecoded(
+			const route =
 				asset.label === undefined
 					? "POST /repos/{owner}/{repo}/releases/{release_id}/assets{?name}"
-					: "POST /repos/{owner}/{repo}/releases/{release_id}/assets{?name,label}",
-				{
-					owner,
-					repo,
-					release_id: release.id,
-					name: asset.name,
-					...(asset.label === undefined ? {} : { label: asset.label }),
-					data: asset.data,
-					baseUrl: UPLOADS_BASE_URL,
-					headers: { "content-type": asset.contentType },
-				},
-				AssetResponse,
-			);
+					: "POST /repos/{owner}/{repo}/releases/{release_id}/assets{?name,label}";
+			const params = {
+				owner,
+				repo,
+				release_id: release.id,
+				name: asset.name,
+				...(asset.label === undefined ? {} : { label: asset.label }),
+				data: asset.data,
+				headers: { "content-type": asset.contentType },
+			};
+			// A client this package built uploads through its private channel to
+			// the derived host; a double answers through its own requestDecoded.
+			const raw =
+				channel === undefined
+					? yield* client.requestDecoded(route, params, AssetResponse)
+					: yield* channel.upload(route, params, AssetResponse);
 			return assetOf(raw);
 		}),
 
@@ -309,6 +363,3 @@ const make = (client: GitHubClient["Service"]): GitHubReleaseShape => {
 		}),
 	};
 };
-
-/** Release assets do not go to the API host. */
-const UPLOADS_BASE_URL = "https://uploads.github.com";

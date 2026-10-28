@@ -279,3 +279,144 @@ describe("ConfigFile.update — concurrency", () => {
 		}),
 	);
 });
+
+describe("saveTarget (#1113)", () => {
+	/** A project file resolved ahead of a user default, the split that lost writes. */
+	const layered = (host: RecordingFs, saveTarget?: "default" | "source") =>
+		ConfigFile.layer(AppConfig, {
+			schema: AppShape,
+			codec: JsonCodec,
+			resolvers: [ConfigResolver.explicitPath("/project/.apprc"), ConfigResolver.explicitPath("/home/.apprc")],
+			strategy: MergeStrategy.firstMatch<AppShape>(),
+			defaultPath: Effect.succeed("/home/.apprc"),
+			...(saveTarget !== undefined && { saveTarget }),
+		}).pipe(Layer.provide(Layer.mergeAll(host.layer, Path.layer)));
+
+	const portAt = (host: RecordingFs, file: string): number =>
+		(JSON.parse(host.volume.text(file) as string) as { port: number }).port;
+
+	it.effect("by default under firstMatch, update writes back to the file it read", () =>
+		Effect.gen(function* () {
+			const host = recordingFs({ "/project/.apprc": `{"port":1}`, "/home/.apprc": `{"port":100}` });
+			yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				yield* cfg.update((current) => AppShape.make({ port: current.port + 1 }));
+			}).pipe(Effect.provide(layered(host)));
+			assert.strictEqual(portAt(host, "/project/.apprc"), 2);
+			assert.strictEqual(portAt(host, "/home/.apprc"), 100);
+		}),
+	);
+
+	it.effect('pinned "default", update reads the project file and writes the user default', () =>
+		Effect.gen(function* () {
+			const host = recordingFs({ "/project/.apprc": `{"port":1}`, "/home/.apprc": `{"port":100}` });
+			yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				yield* cfg.update((current) => AppShape.make({ port: current.port + 1 }));
+			}).pipe(Effect.provide(layered(host, "default")));
+			assert.strictEqual(portAt(host, "/project/.apprc"), 1);
+			assert.strictEqual(portAt(host, "/home/.apprc"), 2);
+		}),
+	);
+
+	it.effect("by default under layeredMerge, save writes defaultPath, not the top source", () =>
+		Effect.gen(function* () {
+			const host = recordingFs({ "/project/.apprc": `{"port":1}`, "/home/.apprc": `{"port":100}` });
+			const written = yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				return yield* cfg.save(AppShape.make({ port: 7 }));
+			}).pipe(
+				Effect.provide(
+					ConfigFile.layer(AppConfig, {
+						schema: AppShape,
+						codec: JsonCodec,
+						resolvers: [ConfigResolver.explicitPath("/project/.apprc"), ConfigResolver.explicitPath("/home/.apprc")],
+						strategy: MergeStrategy.layeredMerge<AppShape>(),
+						defaultPath: Effect.succeed("/home/.apprc"),
+					}).pipe(Layer.provide(Layer.mergeAll(host.layer, Path.layer))),
+				),
+			);
+			assert.strictEqual(written, "/home/.apprc");
+			assert.strictEqual(portAt(host, "/project/.apprc"), 1);
+			assert.strictEqual(portAt(host, "/home/.apprc"), 7);
+		}),
+	);
+
+	it.effect('under "source", update writes back to the file it read, and the next load sees it', () =>
+		Effect.gen(function* () {
+			const host = recordingFs({ "/project/.apprc": `{"port":1}`, "/home/.apprc": `{"port":100}` });
+			const layer = layered(host, "source");
+			const reread = yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				yield* cfg.update((current) => AppShape.make({ port: current.port + 1 }));
+				return yield* cfg.load;
+			}).pipe(Effect.provide(layer));
+			assert.strictEqual(portAt(host, "/project/.apprc"), 2);
+			assert.strictEqual(portAt(host, "/home/.apprc"), 100);
+			assert.strictEqual(reread.port, 2);
+		}),
+	);
+
+	it.effect('under "source", save writes the first file found and returns its path', () =>
+		Effect.gen(function* () {
+			const host = recordingFs({ "/project/.apprc": `{"port":1}`, "/home/.apprc": `{"port":100}` });
+			const written = yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				return yield* cfg.save(AppShape.make({ port: 7 }));
+			}).pipe(Effect.provide(layered(host, "source")));
+			assert.strictEqual(written, "/project/.apprc");
+			assert.strictEqual(portAt(host, "/project/.apprc"), 7);
+		}),
+	);
+
+	it.effect('under "source" with nothing found, save and update fall back to defaultPath', () =>
+		Effect.gen(function* () {
+			const host = recordingFs({});
+			const [saved, updated] = yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				const saved = yield* cfg.save(AppShape.make({ port: 3 }));
+				return [saved, yield* cfg.update((c) => AppShape.make({ port: c.port + 1 }))] as const;
+			}).pipe(Effect.provide(layered(host, "source")));
+			assert.strictEqual(saved, "/home/.apprc");
+			// The save created the default, so update found and rewrote it.
+			assert.strictEqual(updated.port, 4);
+			assert.strictEqual(portAt(host, "/home/.apprc"), 4);
+		}),
+	);
+
+	it.effect('testLayer under firstMatch writes the seeded file by default, and pinned "default" fails typed', () =>
+		Effect.gen(function* () {
+			const seeded = (saveTarget?: "default") =>
+				ConfigFile.testLayer(AppConfig, {
+					schema: AppShape,
+					codec: JsonCodec,
+					strategy: MergeStrategy.firstMatch<AppShape>(),
+					files: { ".apprc": `{"port":1}` },
+					...(saveTarget !== undefined && { saveTarget }),
+				}).pipe(Layer.provide(Layer.mergeAll(MemoryFileSystem.layer, Path.layer)));
+			const reread = yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				yield* cfg.update((c) => AppShape.make({ port: c.port + 1 }));
+				return yield* cfg.load;
+			}).pipe(Effect.provide(seeded()));
+			assert.strictEqual(reread.port, 2);
+
+			const error = yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				return yield* Effect.flip(cfg.update((c) => c));
+			}).pipe(Effect.provide(seeded("default")));
+			assert.instanceOf(error, ConfigDefaultPathMissingError);
+		}),
+	);
+
+	it.effect('under "source", update with a defaultValue and nothing found writes defaultPath', () =>
+		Effect.gen(function* () {
+			const host = recordingFs({});
+			yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				yield* cfg.update((c) => AppShape.make({ port: c.port + 1 }), AppShape.make({ port: 10 }));
+			}).pipe(Effect.provide(layered(host, "source")));
+			assert.strictEqual(portAt(host, "/home/.apprc"), 11);
+		}),
+	);
+});

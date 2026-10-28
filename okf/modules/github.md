@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-25T14:57:06Z
+  at: 2026-10-28T20:20:25Z
 integrity:
   generated:
-    body: d0d7c4bb06409c9c
+    body: c1993655f3d5d5b6
 ---
 
 # @effected/github
@@ -71,13 +71,14 @@ package named for it.
 
 | Dependency | Why |
 | --- | --- |
-| `@octokit/core` | the `Octokit` class: a route-keyed, fully typed `request`, plus `graphql` |
+| `@octokit/core` | the `Octokit` class: a route-keyed, fully typed `request`, which carries GraphQL too (`POST /graphql` with a `data` body, never its `graphql` method) |
 | `@octokit/plugin-paginate-rest` | the composable paginator over a bare core instance, plus the type that statically rejects paginating a non-paginating route |
 | `@octokit/types` | the generated endpoint map; ships no JavaScript — types only |
 | `@effected/jwt` (`workspace:^`) | signs the App JWT over WebCrypto; no runtime dependencies, and accepts PKCS#1 and PKCS#8 keys on every runtime — see [`jwt`](jwt.md) |
 | `tweetnacl` + `blakejs` | the libsodium sealed box GitHub's secrets API requires, reachable only from `RepositorySecret` |
 | `@effected/semver` (`workspace:^`) | semver-aware tag selection; pure tier, so the edge is free |
 | `@effected/github-references` (`workspace:^`) | the compat re-export of six issue-reference names — see [`github-references`](github-references.md) |
+| `@effected/crypto` (`workspace:^`) | `HttpRedaction`, which the kept-cause scrubber (`internal/scrub.ts`) builds on: `GitHubError.fromOctokit` and `GitHubGraphQLError.fromThrowable` keep a credential-free copy of octokit's throwable — see [`crypto`](crypto.md); pure, with an `effect` peer only. It pulls core's `effect/http` modules onto the error path |
 
 **The crypto pair is not a free-hand choice, and `node:crypto` is not an
 alternative.** A sealed box is `crypto_box` under an ephemeral keypair with a
@@ -115,7 +116,7 @@ The tree-shakability invariant is measured:
 | the Actions OIDC verifier (`ActionsOidc`) | `@effected/oidc` and `@effected/jwt`, nothing else | all octokit, the crypto pair |
 | the installation token store seam (`InstallationTokenStore`) | nothing but `effect` | the JWT signer, all octokit |
 | `RepositorySecret` | the above plus `tweetnacl` and `blakejs` | the JWT signer |
-| the pure classes | nothing but `effect` | all octokit |
+| the pure classes | nothing but `effect` (the GraphQL and REST error classes also reach `@effected/crypto`) | all octokit |
 
 Three mechanisms carry it:
 
@@ -181,7 +182,34 @@ is reported in `AppliedSettings.ignored` and never sent, because the REST
 `PATCH` ignores unknown fields and answers 200. The file also carries
 `REMOVED_BY_PINNED_VERSION`, keys the description still declares mapped to
 the api-version that removed them; `applySettings` ignores such a key only
-when `client.apiVersion` is at or past that version.
+when `client.apiVersion` is at or past that version. `{ unknownKeys: "send" }`
+forwards an undescribed key instead and reports it in
+`AppliedSettings.unverified`; a removed key stays ignored. An octokit
+request-option name (`baseUrl`, `url`, `headers`, `request`, `mediaType`,
+`method`, `data`), the route's `owner` / `repo` and `__proto__` are never
+sent under either mode: both write paths send the settings as octokit's
+`data` body, so no key in them is read as a request option (the
+confinement and its source citations are in the REST client interface). The typed escape
+hatch for the same need is `repositoryPatch(draft, { extra })` — see
+[the REST client interface](../interfaces/github-rest-client.md).
+`DeploymentEnvironment.upsert`'s open `config` rides the same way, as the
+`PUT`'s `data` body, and dies with a `RangeError` on a reserved name; GraphQL
+calls send `POST /graphql` with `data: { query, variables }` rather than
+through `octokit.graphql`, which reads a variable named `baseUrl`, `headers`,
+`request`, `mediaType` or `operationName` as a request option. The audit of
+every params-building call site behind both is in the REST client interface.
+`GitHubRelease.uploadAsset` takes its upload host from the client's
+configured base (`internal/uploads.ts`), never from the release's
+`uploadUrl`, so a GitHub Enterprise Server client's token stays on that
+server; the derivation is in the REST client interface too. The upload goes
+through a private channel the built client carries (the App layers'
+rotating client carries one too, delegating to its current inner client),
+because the public raw
+surface (`request`, `requestDecoded`, `paginate`, `paginateStream`) is
+confined to the configured API host: it has no `baseUrl` extra, and it
+refuses a reserved option, an absolute-URL route or a pagination `Link` on
+another origin with a `rejected` `GitHubError` and nothing sent
+(`__test__/TokenConfinement.test.ts`).
 `__test__/repositoryRestSettingKeys.test.ts` regenerates the file in memory
 and fails on drift, including a header that names `DEFAULT_API_VERSION`;
 re-run the generator (`pnpm --filter @effected/github exec tsx
@@ -296,6 +324,12 @@ runnable anywhere.
   that property or the failure gets classified as a transport fault
   instead. octokit percent-encodes path parameters, so assertions run
   against the recorded decoded path rather than the URL.
+- `GitHubClient.makeTest` / `layerTest` and `GitHubClient.layerFixture`
+  refuse what the live client refuses (a reserved `baseUrl` / `url` /
+  `request` / `method` parameter, a top-level `url` body field, a route off
+  github.com's REST root) with the same `kind: "rejected"` error, through
+  the shared `src/internal/confinement.ts`; a refused call is not recorded
+  in `requested`. See [the REST client](../interfaces/github-rest-client.md).
 - One recorded-fixture client double (`GitHubClient.layerFixture`) exists
   and reimplements nothing: it pages recorded arrays through the same
   pagination engine the live layer uses and records the page requests it

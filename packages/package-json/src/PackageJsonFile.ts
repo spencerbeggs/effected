@@ -5,9 +5,13 @@
 // (compose `Package.resolve` explicitly).
 
 import type { JsoncPath } from "@effected/jsonc";
-import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
+import type { PlatformError } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
+import { substituteEveryStar, substituteFirstStar } from "./internal/exports.js";
 import type { PackageDecodeError, PackageFormatOptions } from "./Package.js";
 import { Package } from "./Package.js";
+import type { PackageExportsError, PackageExportsManifest, PackageExportsOptions } from "./PackageExports.js";
+import { ExportEntry, PackageExports } from "./PackageExports.js";
 import type { PackageJsonModifyError } from "./PackageJsonFormat.js";
 import { PackageJsonFormat } from "./PackageJsonFormat.js";
 import { PackageManifest } from "./PackageManifest.js";
@@ -323,4 +327,182 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 		PackageJsonFile,
 		PackageJsonFile.make,
 	);
+
+	/**
+	 * Every file of the package at `directory` that one of its exported
+	 * subpaths reaches — the `exports` map enumerated and its patterns
+	 * expanded against the files on disk.
+	 *
+	 * @remarks
+	 * {@link PackageExports.entriesResult} lists a pattern export as one
+	 * template; which subpaths it reaches is a question about the package's
+	 * files, answered here. A concrete entry is kept when its target is a
+	 * file. A pattern entry is expanded by walking the directory its target
+	 * fixes (`./dist` for `./dist/*.js`), and each file the template matches
+	 * is resolved BACK through {@link PackageExports.resolveResult} and kept
+	 * only when the subpath resolves to that same file. So a more specific
+	 * key, a `null` exclusion (`"./internal/*": null`) and the segment rule all
+	 * decide exactly as they do for a single request.
+	 *
+	 * Every `path` is a decoded package-relative file path, as
+	 * {@link PackageExports.resolveResult} answers it, so a target written
+	 * `./dist/a%20b.js` is the file `dist/a b.js` on disk. A pattern's
+	 * reported `subpath` is a request that resolves back to its file: a `%`,
+	 * `?`, `#` or control character in the file name is percent-encoded in it
+	 * (the file `dist/100%.js` is the subpath `./100%25`), while a space or a
+	 * non-ASCII character is kept as it is.
+	 *
+	 * The walk never enters a `node_modules` directory and never follows a
+	 * symbolic link: every path is `lstat`ed, component by component from the
+	 * package root, so a linked file, a linked parent directory of a concrete
+	 * target and a linked parent of a pattern's base all contribute nothing,
+	 * and it cannot leave the package. It stops descending
+	 * below a depth no published package reaches. A missing directory
+	 * contributes nothing. With `exports` absent, only the legacy `"."` entry
+	 * is reported, when its file exists.
+	 *
+	 * Takes the manifest rather than reading it, so a caller holding a
+	 * decoded `Package`, a `LenientManifest` or a raw object passes whichever
+	 * it has. A static on this class rather than a member of the service shape
+	 * because it needs only `FileSystem` and `Path`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { NodeFileSystem, NodePath } from "@effect/platform-node";
+	 * import { PackageJsonFile } from "@effected/package-json";
+	 * import { Effect, Layer } from "effect";
+	 *
+	 * const program = PackageJsonFile.exportedFiles("./node_modules/pkg", {
+	 *   exports: { ".": "./index.js", "./*": "./dist/*.js" },
+	 * });
+	 * Effect.runPromise(program.pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))));
+	 * ```
+	 */
+	static readonly exportedFiles = Effect.fn("PackageJsonFile.exportedFiles")(function* (
+		directory: string,
+		manifest: PackageExportsManifest,
+		options?: PackageExportsOptions,
+	): Effect.fn.Return<
+		ReadonlyArray<ExportEntry>,
+		PackageExportsError | PlatformError.PlatformError,
+		FileSystem.FileSystem | Path.Path
+	> {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const entries = yield* Effect.fromResult(PackageExports.entriesResult(manifest, options));
+
+		// `lstat`, never `stat`: a symbolic link is reported as one, never as
+		// whatever it points at, so nothing below can follow it.
+		const infoOf = (relative: string) =>
+			fs.lstat(path.join(directory, relative)).pipe(
+				Effect.map(Option.some),
+				Effect.catchIf(
+					(error) => error.reason._tag === "NotFound",
+					() => Effect.succeedNone,
+				),
+			);
+
+		// The entry at `relative` (a `./`-prefixed package path), reached
+		// without passing through a symlink at ANY component: an `lstat` of the
+		// last component alone would still walk through a linked parent
+		// directory (`./vendor/x.js` with `vendor` a link). `None` when a
+		// component is missing, a link, or not a directory where one is needed.
+		const reach = (relative: string) =>
+			Effect.gen(function* () {
+				const components = relative.split("/").slice(1);
+				let current = ".";
+				for (let index = 0; index < components.length; index++) {
+					current = `${current}/${components[index]}`;
+					const info = yield* infoOf(current);
+					if (Option.isNone(info) || info.value.type === "SymbolicLink") return Option.none();
+					if (index === components.length - 1) return info;
+					if (info.value.type !== "Directory") return Option.none();
+				}
+				return yield* infoOf(".");
+			});
+
+		// Package-relative files under `relative`, sorted, never through a
+		// symlink and never into node_modules.
+		const listFiles = (
+			relative: string,
+			depth: number,
+		): Effect.Effect<ReadonlyArray<string>, PlatformError.PlatformError> =>
+			Effect.gen(function* () {
+				if (depth > MAX_WALK_DEPTH) return [];
+				// The base directory is reached link-free from the package root;
+				// below it, every child is `lstat`ed before it is entered.
+				const info = depth === 0 ? yield* reach(relative) : yield* infoOf(relative);
+				if (Option.isNone(info) || info.value.type !== "Directory") return [];
+				const names = [...(yield* fs.readDirectory(path.join(directory, relative)))].sort();
+				const files: Array<string> = [];
+				for (const name of names) {
+					if (name.toLowerCase() === "node_modules") continue;
+					const child = `${relative}/${name}`;
+					const childInfo = yield* infoOf(child);
+					if (Option.isNone(childInfo)) continue;
+					if (childInfo.value.type === "Directory") files.push(...(yield* listFiles(child, depth + 1)));
+					else if (childInfo.value.type === "File") files.push(child);
+				}
+				return files;
+			});
+
+		const found: Array<ExportEntry> = [];
+		const seen = new Set<string>();
+		const keep = (entry: ExportEntry) => {
+			if (seen.has(entry.subpath)) return;
+			seen.add(entry.subpath);
+			found.push(entry);
+		};
+
+		for (const entry of entries) {
+			if (!entry.pattern) {
+				const info = yield* reach(entry.path);
+				if (Option.isSome(info) && info.value.type === "File") keep(entry);
+				continue;
+			}
+			const template = entry.path;
+			const prefix = template.slice(0, template.indexOf("*"));
+			const base = prefix.slice(0, prefix.lastIndexOf("/"));
+			const stars = template.split("*").length - 1;
+			const fixed = template.length - stars;
+			for (const file of yield* listFiles(base, 0)) {
+				const free = file.length - fixed;
+				if (!file.startsWith(prefix) || free <= 0 || free % stars !== 0) continue;
+				const match = file.slice(prefix.length, prefix.length + free / stars);
+				if (substituteEveryStar(template, match) !== file) continue;
+				// The match is a decoded file name; the subpath is a request, which
+				// Node decodes once more, so the characters decoding or URL parsing
+				// would alter are escaped back first. A subpath key carries exactly
+				// one `*` (Node's rule; a multi-`*` key never matches), so the first
+				// is the only one.
+				const subpath = substituteFirstStar(entry.subpath, encodeMatch(match));
+				const resolved = PackageExports.resolveResult(manifest, subpath, options);
+				if (Result.isSuccess(resolved) && resolved.success.path === file) {
+					keep(ExportEntry.make({ subpath, path: file, key: entry.key, pattern: false }));
+				}
+			}
+		}
+		return found;
+	});
 }
+
+/**
+ * Percent-encode what would not survive a request's decoding as written: `%`
+ * (else read as an escape), `?` and `#` (a URL query and fragment), and the C0
+ * controls and DEL (a tab or newline is dropped by URL parsing). Everything
+ * else, a space and non-ASCII included, resolves to itself.
+ */
+const encodeMatch = (match: string): string => {
+	let encoded = "";
+	for (const char of match) {
+		const code = char.charCodeAt(0);
+		encoded +=
+			char === "%" || char === "?" || char === "#" || code < 0x20 || code === 0x7f
+				? `%${code.toString(16).toUpperCase().padStart(2, "0")}`
+				: char;
+	}
+	return encoded;
+};
+
+/** How deep {@link PackageJsonFile.exportedFiles} descends below a pattern's base directory. */
+const MAX_WALK_DEPTH = 32;

@@ -9,10 +9,10 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-05T19:06:35Z
+  at: 2026-10-28T18:50:20Z
 integrity:
   generated:
-    body: 2e1904869a50639a
+    body: c5e061de56c13062
 ---
 
 # @effected/lsp
@@ -73,6 +73,9 @@ separately.
 | `LspStdio.teardown` | `(host: LspExitHost) => Runtime.Teardown`. A numeric success is the code (any other success 0), an interrupt-only exit is 0, anything else goes to `Runtime.defaultTeardown`; then `host.exit(code)`. |
 | `LspSessionEnd` | `{ reason: "exit" \| "closed"; shutdownReceived: boolean }`, returned by the server's own message loop. |
 | `LspExitHost` | `{ exit: (code: number) => void }`; Node's `process` satisfies it. |
+| `LspUri.toPath` | `(uri: string, options?: LspUriOptions) => Option<string>`. The absolute path a `file:` URI names, `.`/`..` removed, or `Option.none()` when it names none ([#1127](https://github.com/spencerbeggs/effected/issues/1127)). |
+| `LspUri.fromPath` | `(path: string, options?: LspUriOptions) => string`. The `file:` URI of an absolute path; a path no URI can name faithfully throws `TypeError`. |
+| `LspUriOptions` / `LspUriPlatform` | `{ platform?: "posix" \| "win32" }`, default `"posix"`. |
 
 Decoding rules: header fields end `\r\n`, the header ends `\r\n\r\n`,
 names are case-insensitive, `Content-Length` must be one decimal safe
@@ -152,6 +155,104 @@ buffering without bound. The body must be valid UTF-8 and valid JSON.
 - **The `./testing` split mirrors `@effected/mcp`.** Test tooling never
   enters a runtime graph; `entrypoints.test.ts` pins that nothing
   reachable from `.` imports the probe, with a positive control.
+
+## `file:` URIs and paths (`LspUri`)
+
+Every server converts between `textDocument.uri` and a path, and okfit's
+`@okfit/lsp` wrapped `node:url` to do it, returning `Option.none()` for
+`untitled:` rather than letting `fileURLToPath` throw. `LspUri` is that
+conversion, pure, so it runs in a worker and keeps `src/` free of `node:`.
+It follows RFC 8089 and RFC 3986 and agrees with Node's `fileURLToPath` /
+`pathToFileURL` and `vscode-uri` where they agree; the rulings where they
+do not:
+
+- **The platform is a parameter**, never `process.platform`: the boundary
+  test forbids the read, and a test converts both syntaxes on one host.
+- **`toPath` answers `Option.none()`, never throws**, per the kit's
+  [lookup convention](../conventions/lookups-return-option.md): for a
+  non-`file:` scheme, a malformed escape or invalid UTF-8, a relative
+  `file:` URI, a `%2F` inside a segment (or `%5C` under `"win32"`), which
+  would smuggle a separator into one name, a `%00`, a host under `"posix"`,
+  and a rooted path with no drive or share under `"win32"`. Node throws for
+  each of these.
+- **`toPath` never answers a path `fromPath` would refuse**, and the two
+  share one refusal for Win32 paths, so they cannot drift. A security review
+  of the first cut found `file://./pipe/evil` read as `\\.\pipe\evil` and
+  `file://%3F/C:/x` as `\\?\C:\x`: device and namespace paths that
+  `fromPath` refused to write. A host must now be a plain hostname
+  (dot-separated labels of ASCII letters, digits, `-` and `_`), whether in
+  the authority or spelled inside the path (`file:////server/…`, checked
+  after the segment is decoded). The authority is matched as written, never
+  percent-decoded, so a percent-encoded host, a `.` or `?` host, a
+  separator, `%`, NUL,
+  userinfo, a port or an IPv6 literal is `Option.none()`, as is a UNC share
+  of `.` or `..`. `fromPath` throws the same cases, and names a `\\?\`,
+  `\\.\` or `\??\` prefix as a device or namespace path.
+- **No segment win32 would open as something else**, in either direction,
+  through the same shared check, applied to the share and every segment
+  after the root once `.` and `..` are removed. Node reads `file:///c:/con`
+  as `c:\con` (the console device) and `file:///c:/a/b:stream` as an NTFS
+  alternate data stream; `LspUri` answers `Option.none()` and `fromPath`
+  throws. Refused: a DOS device name, `@effected/walker`'s win32
+  `reservedName` set exactly (`CON`, `PRN`, `AUX`, `NUL`, `COM0`-`COM9`,
+  `LPT0`-`LPT9`, the superscript-digit `COM`/`LPT` variants, `CONIN$`,
+  `CONOUT$`; any case, trailing spaces, with or without an extension:
+  `nul.txt`, `con .txt`); any `:` in a segment after the drive; and a
+  segment ending in a dot or a space. That last rule is wider than walker's,
+  which refuses only a segment made of nothing but dots and spaces: walker
+  confines a name inside a base, where `a.` is merely another spelling of
+  `a` under the same base, while a URI names one file, and `c:\a.` and
+  `c:\a` would be two URIs for the file win32 opens as `c:\a`. Walker is not
+  imported; `lsp` keeps no `@effected/*` edge, so the pattern is copied.
+- **Dot segments are removed in both directions** (RFC 3986 §5.2.4),
+  encoded ones (`%2E%2E`) included, and never climb above the root, a drive
+  or a UNC share: a URI is never a traversal. Node's `pathToFileURL` resolves
+  through `path.resolve`, which drops a trailing slash and climbs above a
+  share; `LspUri` keeps the slash and the share.
+- **The drive letter is lowercase both ways**, as `vscode-uri`'s `fsPath`
+  makes it: `file:///C:/a`, `file:///c:/a` and VS Code's own `file:///c%3A/a`
+  all read as `c:\a`, so the paths of one file agree however a client spelled
+  its URI. `fromPath` writes `file:///c:/a`, RFC 8089's form with the colon
+  literal, which `vscode-uri` and Node both read.
+- **`fromPath` encodes everything outside RFC 3986's unreserved set**, `/`
+  aside, non-ASCII as uppercase UTF-8 escapes, as `vscode-uri` does (Node
+  leaves `!'()*` and some sub-delims bare). A non-absolute path, a NUL, a
+  lone surrogate, a Win32 device or namespace path (`\\?\`, `\\.\`,
+  `\??\`) or a malformed UNC root throws a `TypeError`: a programmer
+  error, since no URI names them faithfully.
+- **`localhost` is the local machine** (RFC 8089 §2); any other host is a
+  UNC path under `"win32"`, lowercased, and none under `"posix"`. So
+  `file://localhost/share/x` is `Option.none()` under `"win32"`, and a UNC
+  path on a server literally named `localhost` is written with the host
+  inside the path, `file:////localhost/share/x`, which `toPath` reads back
+  as `\\localhost\share\x`; every other server keeps
+  `file://server/share/x`, so the round trip holds for every UNC server.
+  Node, probed as the reference reader with `windows: true`, refuses both
+  spellings ("File URL path must be absolute": its WHATWG parser empties a
+  `localhost` host), and its `pathToFileURL` writes `\\localhost\share\x` as
+  `file:///share/x`, a different file. A query or
+  fragment is ignored, as Node ignores it. An IDN host is accepted only in
+  its ASCII (punycode) form; neither direction converts it.
+
+`__test__/LspUri.test.ts` pins every case above and runs a differential
+against `node:url` over every path of up to three segments from an
+adversarial segment alphabet (spaces, `%`, `%2F`, `#?`, non-ASCII, astral,
+`.`, `..`, empty, and `x:y` under posix only), for posix, drive and UNC
+paths, plus a `\\localhost\share` corpus for the round trip alone: Node's reader reads the
+URIs `LspUri` writes as `LspUri` reads them, `LspUri` reads the URIs Node
+writes as Node reads them (drive case aside, and refusing the shareless UNC
+URIs Node's resolver produces), and `toPath(fromPath(p))` is a fixed point
+that is `p` itself for a dot-free path. A second enumeration, over every
+`file:` URI of up to three segments from an alphabet of device-reaching
+tokens (`.`, `?`, encoded separators, `%25`, `%00`, drive segments,
+userinfo, ports, DOS device names, `:` streams, and trailing dots and
+spaces), asserts on both platforms that every path `toPath`
+answers is one `fromPath` writes.
+
+`LspUri` converts no positions, so the package takes no `@effected/source`
+edge: the "no `@effected/*` import in `src/`" boundary stays as it was. A
+server converting offsets to LSP positions reaches for `LineIndex` from
+`@effected/source` (or a format package's re-export) itself.
 
 ## See also
 
