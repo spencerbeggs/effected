@@ -7,6 +7,7 @@
 // through `@effected/source`'s `LineIndex` over the source text. The dependency edge runs public modules ->
 // engine only (toml src/TomlDiagnostic.ts precedent).
 
+import type { SourceIndex } from "@effected/source";
 import { LineIndex } from "@effected/source";
 import { Schema } from "effect";
 import { MARKDOWN_PARSE_ERROR_CODES } from "./internal/carriers.js";
@@ -64,8 +65,10 @@ export class MarkdownDiagnostic extends Schema.Class<MarkdownDiagnostic>("Markdo
 	 * points call this for you.
 	 *
 	 * @remarks
-	 * Pass a `LineIndex` already built over the source to materialize many
-	 * records without rescanning the text; a string builds one. An offset
+	 * Pass a line index already built over the source to materialize many
+	 * records without rescanning the text; a string builds one. The
+	 * parameter is the structural `SourceIndex`, so an index from any
+	 * installed copy of `@effected/source` is accepted. An offset
 	 * outside the source clamps into it, as `LineIndex.positionAt` does.
 	 *
 	 * @param source - The source text the record's `offset` indexes into, or
@@ -74,7 +77,7 @@ export class MarkdownDiagnostic extends Schema.Class<MarkdownDiagnostic>("Markdo
 	 * @returns The diagnostic with `line` and `character` filled in.
 	 */
 	static fromRaw(
-		source: string | LineIndex,
+		source: string | SourceIndex,
 		raw: {
 			readonly code: MarkdownParseErrorCode;
 			readonly message: string;

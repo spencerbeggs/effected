@@ -9,7 +9,7 @@
 //
 // This is the AST-level visitor only — the CST layer stays internal.
 
-import type { LineIndex } from "@effected/source";
+import type { SourceIndex } from "@effected/source";
 import { Data, Stream } from "effect";
 import { composeAllDocuments } from "./internal/composer/document.js";
 import type { RawYamlDocument } from "./internal/raw-document.js";
@@ -146,7 +146,7 @@ function* visitGen(text: string, options?: YamlParseOptions): Generator<YamlVisi
 	}
 }
 
-function* walkDocument(doc: RawYamlDocument, index: () => LineIndex): Generator<YamlVisitorEvent> {
+function* walkDocument(doc: RawYamlDocument, index: () => SourceIndex): Generator<YamlVisitorEvent> {
 	const path: YamlPath = [];
 	const depth = 0;
 

@@ -55,6 +55,21 @@ describe("JsoncCanonicalizeOptions", () => {
 			assert.notStrictEqual(text({ n: big }, options), text({ n: String(big) }, options));
 			assert.strictEqual(text({ n: 5n }, options), text({ n: 5 }, options));
 		});
+
+		it("equals the number of the same value only up to the safe-integer bound", () => {
+			const options = JsoncCanonicalizeOptions.make({ bigint: "number" });
+			// Inside the bound both write every digit.
+			for (const n of [Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER, 0]) {
+				assert.strictEqual(text(BigInt(n), options), text(n, options), String(n));
+			}
+			// Past it a number writes its shortest round-trip form, zero-filling
+			// the digits a double cannot hold, then exponent notation from 1e21;
+			// a bigint always writes its exact digits.
+			assert.strictEqual(text(2 ** 60, options), "1152921504606847000");
+			assert.strictEqual(text(2n ** 60n, options), "1152921504606846976");
+			assert.strictEqual(text(1e21, options), "1e+21");
+			assert.strictEqual(text(10n ** 21n, options), "1000000000000000000000");
+		});
 	});
 
 	describe("undefined", () => {

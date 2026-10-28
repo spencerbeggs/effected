@@ -6,7 +6,7 @@
 // data on `errors`/`warnings` while fatal ones fail `parse`/`parseAll` with a
 // typed `YamlParseError`.
 
-import type { LineIndex } from "@effected/source";
+import type { SourceIndex } from "@effected/source";
 import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { composeAllDocuments, composeFirstDocument } from "./internal/composer/document.js";
 import { isFatalCode } from "./internal/diagnostics.js";
@@ -351,7 +351,7 @@ const toStringifyInput = (options?: YamlStringifyOptions) =>
  *
  * @internal
  */
-export function documentFromRaw(raw: RawYamlDocument, index: () => LineIndex): YamlDocument {
+export function documentFromRaw(raw: RawYamlDocument, index: () => SourceIndex): YamlDocument {
 	return fromRawDocument(raw, index);
 }
 
@@ -360,7 +360,7 @@ export function documentFromRaw(raw: RawYamlDocument, index: () => LineIndex): Y
  * parse's one lazily built line index (`lazyLineIndex`), shared by every
  * document of a stream and built only when a diagnostic needs it.
  */
-function fromRawDocument(raw: RawYamlDocument, index: () => LineIndex): YamlDocument {
+function fromRawDocument(raw: RawYamlDocument, index: () => SourceIndex): YamlDocument {
 	return new YamlDocument({
 		contents: raw.contents,
 		errors: raw.errors.map((e) => YamlDiagnostic.fromRaw(e, index())),

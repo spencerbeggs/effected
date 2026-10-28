@@ -1,6 +1,8 @@
 # @effected/github
 
-Typed GitHub REST and GraphQL over octokit's core request surface: one client
+Typed GitHub REST and GraphQL over octokit's core `request` (GraphQL is sent
+as `POST /graphql` with a `data: { query, variables }` body, never through
+`octokit.graphql`, and on GitHub Enterprise Server to `/api/graphql`): one client
 service, one error taxonomy, one retry policy, one pagination engine, and
 twenty-odd resource services on top — branches, tags, commits, contents,
 issues, pull requests, comments, checks, releases, workflow dispatch,
@@ -61,9 +63,16 @@ parameters and the returned `data` from the route literal alone. No
 property the whole package is organized around, and worth stating to a caller
 tempted to reach for `as`.
 
-- **`Rest.Params<R>`** intersects a three-field `RequestExtras` (`headers`,
-  `mediaType`, `baseUrl`), deliberately not octokit's `RequestParameters` — that
-  carries an index signature and accepts every typo. `RestData<R>`,
+- **`Rest.Params<R>`** intersects a two-field `RequestExtras` (`headers`,
+  `mediaType`), deliberately not octokit's `RequestParameters` — that carries
+  an index signature and accepts every typo. **The token never leaves the
+  configured base**: there is no `baseUrl` extra (passing one is a compile
+  error), and `request`, `requestDecoded`, `paginate` and `paginateStream`
+  refuse a cast `baseUrl` / `url` / `request` / `method`, an absolute-URL
+  route on another origin, and a pagination `Link` header naming another
+  origin, each as `GitHubError` `kind: "rejected"` with nothing sent. A
+  request to another GitHub host is a second client configured for it; a
+  body field named `url` (a webhook config) goes inside `data`. `RestData<R>`,
   `RestResponse<R>`, `RestRoute`, `RestPaginatingRoute` and `RestItem<R>` are the
   rest of the type vocabulary.
 - **A route outside the generated map goes through `requestDecoded(route,
@@ -186,10 +195,15 @@ tempted to reach for `as`.
   instead (a setting GitHub ships before its description does) and names it in
   `AppliedSettings.unverified` as well as `rest`: a 200 does not say GitHub
   used it. A removed key stays ignored and GraphQL-only keys still route to
-  GraphQL. `topics` reads the topic set; `setTopics(names)` replaces it
+  GraphQL. Settings travel as octokit's `data` body, so no key is ever read as
+  a request option; an option name (`baseUrl`, `url`, `headers`, `request`,
+  `data`, ...), `owner`, `repo` and `__proto__` are never sent and land in
+  `ignored`. A `layerFixture` records the PATCH params as
+  `{ owner, repo, data }`. `topics` reads the topic set; `setTopics(names)` replaces it
   (`[]` clears) and returns the set GitHub **stored**, lowercased — record
   that, not `names`, as applied state. `RepositorySettings` is `RestData<"GET /repos/{owner}/{repo}">`;
-  `RepositoryPatch` is the PATCH route's params minus `owner`/`repo`;
+  `RepositoryPatch` is the PATCH route's params minus `owner`/`repo` and the
+  `RequestExtras` transport knobs (`headers`, `mediaType`);
   `GRAPHQL_ONLY_SETTINGS`, `SECURITY_ANALYSIS_STATUS_FIELDS` and
   `transformSecurityAndAnalysis` are the normalization vocabulary.
 - **`repositoryPatch(draft)` / `RepositoryPatchDraft`** — the supported spelling
@@ -207,7 +221,9 @@ tempted to reach for `as`.
   `repositoryPatch(draft, { extra })` (`RepositoryPatchOptions`,
   `RepositoryPatchExtra`) carries settings octokit's types do not declare yet,
   verbatim, while the draft stays type-checked: a known key is a compile error
-  in a literal `extra` and a `RangeError` at runtime (a GraphQL-only key too).
+  in a literal `extra` and a `RangeError` at runtime (a GraphQL-only key too,
+  and a `RepositoryPatchReservedKey` in the draft or the extra: an octokit
+  request option, `owner`, `repo` or `__proto__`).
   GitHub may ignore an extra silently, so read it back when it matters.
 - **`GitBranch` / `GitTag`** — `create`, `upsert` (`GitBranch.upsert` answers
   `BranchOutcome`: `"created" | "reset"`), `exists`, `sha`/`shaOption`, `reset`,
@@ -272,7 +288,10 @@ tempted to reach for `as`.
 - **`GitHubRelease`** — `create`, `getByTag`/`getByTagOption`, `list`, `update`,
   `uploadAsset(release, { name, data, contentType, label? })` (a hand-written
   route with two URI-template spellings, because an absent `label` would expand
-  to a dangling `&`), `listAssets`.
+  to a dangling `&`; the upload host is derived from the client's configured
+  base — `uploads.github.com` on github.com, `https://<host>/api/uploads` on
+  GitHub Enterprise Server — and a release whose `uploadUrl` names another
+  origin fails `kind: "rejected"` before anything is sent), `listAssets`.
 - **`WorkflowDispatch`** — `dispatch(workflow, ref, inputs?)`,
   `dispatchWithRun(workflow, ref, inputs?)` → `Option<DispatchedRun>` (`None` on
   a 204 from an older api-version), `runStatus`,
@@ -292,7 +311,10 @@ tempted to reach for `as`.
   over `SecretScope` = `actions | dependabot | codespaces`, plus the
   `*ForEnvironment` trio; values are `Redacted`), `RepositoryVariable` (same
   shape, plain strings), `Ruleset` (`upsert`/`list`/`delete`, plus `teamId` and
-  `roleId` lookups), `DeploymentEnvironment`, `RepositorySecurity` (three
+  `roleId` lookups), `DeploymentEnvironment` (`upsert(name, config)` sends the
+  open `config` as the `PUT`'s `data` body, and dies with a `RangeError` on an
+  octokit option name, `owner`, `repo`, `environment_name` or `__proto__`),
+  `RepositorySecurity` (three
   getter/setter pairs) and `CodeScanning` (`configure`, `languages`). Two rules
   that cost real damage: **filter rulesets on `source_type` before matching by
   name** — the list mixes organization-inherited rulesets with the repository's
@@ -306,7 +328,10 @@ tempted to reach for `as`.
   `PermissionResult { missing, extra }`, `assertSufficient(required)` and
   `assertExact(required)`. Feed it `InstallationToken.permissions`.
 - **`GraphQLDocument.make({ name, document, response })`** — the typed GraphQL
-  unit; `client.graphql(document, variables)` decodes through its codec.
+  unit; `client.graphql(document, variables)` decodes through its codec. The
+  variables travel inside a `{ query, variables }` body, so a variable named
+  `baseUrl`, `headers` or `query` stays a variable — octokit's own `graphql`
+  method reads those names as request options or refuses them.
 
 ## Testing machinery
 

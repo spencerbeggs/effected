@@ -121,8 +121,13 @@ export class JsoncTextHashOptions extends Schema.Class<JsoncTextHashOptions>("Js
  * - `bigint` — `"fail"` (default) fails `BigIntValue`; `"number"` writes the
  *   `bigint` as its bare decimal literal (`123456789012345678901n` →
  *   `123456789012345678901`), a JSON number token no `number` can hold.
- *   A `bigint` and the `number` of the same value write the same text, and
- *   therefore the same fingerprint.
+ *   A `bigint` and the `number` of the same value are guaranteed the same
+ *   text, and so the same fingerprint, only when the value is a safe integer
+ *   (`Number.isSafeInteger`). Past that bound a `number` writes its shortest
+ *   round-trip form: `2 ** 60` writes `1152921504606847000` while `2n ** 60n`
+ *   writes `1152921504606846976`, and from `1e21` up a `number` writes
+ *   exponent notation (`1e+21`). Some larger values happen to agree
+ *   (`2 ** 53`, `1e20`); do not rely on it.
  * - `undefined` — `"fail"` (default) fails `UnrepresentableValue`;
  *   `"omit"` follows `JSON.stringify`: an object member whose value is
  *   `undefined` is left out, and an `undefined` array element (or a hole in a

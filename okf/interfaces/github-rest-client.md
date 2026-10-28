@@ -8,7 +8,7 @@ resource: ../../packages/github/src/Rest.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:43:15Z
+  at: 2026-10-28T18:38:13Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:33.163Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 287195ae86339ec9
+    body: e7b1ba9c90667624
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -47,13 +47,16 @@ cast, where an operation-string surface costs a cast at every projection.
 
 Two narrowings against octokit's own surface are deliberate:
 
-- **The parameter type intersects a three-field `RequestExtras` record, not
+- **The parameter type intersects a two-field `RequestExtras` record, not
   octokit's own request parameters.** octokit's own type carries an index
-  signature that would silently accept every typo. The three kept fields are
-  `headers` (an asset content type, a pinned API version), `mediaType`
-  (raw content reads) and `baseUrl` (the upload host) — the ones evidence
-  proves are needed. Everything else a caller might reach for is a real
-  parameter and is already typed.
+  signature that would silently accept every typo. The two kept fields are
+  `headers` (an asset content type, a pinned API version) and `mediaType`
+  (raw content reads) — the ones evidence proves are needed. Everything else
+  a caller might reach for is a real parameter and is already typed.
+  `baseUrl` was a third field until it was found to aim the configured token
+  at whatever host it named: it is now typed `never` on `Rest.Params` and on
+  `requestDecoded`'s params, so passing one is a compile error. See
+  [the token stays on the configured base](#the-token-stays-on-the-configured-base).
 - **The element type of a paginating route is derived here**, because the
   paginator plugin's own helper — which handles the array-versus-`{
   total_count, items }` split — is not exported. This is what makes a
@@ -102,6 +105,134 @@ keys still route to GraphQL, because those two facts are known rather than
 merely undescribed; `__proto__` is never sent, since assigning it would set
 the body's prototype rather than a field. `unverified` is a required field,
 empty under the default `"ignore"`.
+
+### Both write paths send the settings as octokit's `data`
+
+octokit takes a route's path parameters, body fields and transport options
+in one flat object, and `@octokit/endpoint`'s `parse` splits it: `method`,
+`baseUrl`, `url`, `headers`, `request` and `mediaType` are read as the
+request itself, any key the URL template names (`owner`, `repo`) is consumed
+as the path, and a `data` key replaces the whole body. `@octokit/request`
+then reads `request.fetch` and `request.hook` off the merged options. An open
+settings map spread beside `owner` and `repo` could therefore send the
+authenticated PATCH to another host with the token attached (the auth hook
+adds it to every request), swap its fetch, replace its body, or have an
+`owner` / `repo` key silently overwritten while it was reported sent.
+
+So `updateSettings` and `applySettings` send `{ owner, repo, data: body }`
+(`patchParams` in `GitHubRepository.ts`): no key inside `data` is ever read
+as an option, and confinement holds by construction. The reserved names
+(`src/internal/requestOptions.ts`, citing the octokit source) are refused as
+well, as defence in depth: `repositoryPatch` throws a `RangeError` for one in
+the draft or the extra (`RepositoryPatchReservedKey`, typed `never` in
+`RepositoryPatchExtra`), and `applySettings` reports one in `ignored` under
+either `unknownKeys` mode, so `rest` and `unverified` name only keys that went
+into the body. `RepositoryPatch` omits `Rest.RequestExtras` (`headers`,
+`mediaType`, `baseUrl`): in a body they would be fields, not the options they
+are named after. A `GitHubClient.layerFixture` records the PATCH's params as
+`{ owner, repo, data }`.
+
+### Every open map the kit sends is a `data` body or an allowlist
+
+The settings writes are not the only open map. An audit of every call site
+in `src/` that builds octokit params found two more, both now confined the
+same way:
+
+- **`DeploymentEnvironment.upsert(name, config)`** sends
+  `{ owner, repo, environment_name, data: { ...config } }`. The config used
+  to be spread into the flat params (first, so the coordinates won), which
+  left `baseUrl`, `headers`, `request` and `data` live. A reserved name
+  (`reservedBodyKey` with `ENVIRONMENT_PUT_ROUTE_PARAMS`: the octokit options,
+  `owner`, `repo`, `environment_name`, `__proto__`) now dies with a
+  `RangeError` before any request; a config naming a coordinate used to
+  succeed with the key silently overridden. The fixture records
+  `{ owner, repo, environment_name, data }`.
+- **GraphQL variables.** `@octokit/graphql` merges a call's variables into
+  its request options and lifts `baseUrl`, `headers`, `request`, `mediaType`
+  and `operationName` out as the request (its `NON_VARIABLE_OPTIONS`), and
+  rejects `query`, `method` and `url`. A variable named `baseUrl` sent the
+  authenticated call, token attached, to that host. The transport
+  (`internal/octokit.ts`) therefore no longer calls `octokit.graphql`: it
+  sends `POST /graphql` with `data: { query, variables }`, rewriting a GHES
+  `/api/v3` base to `/api/graphql` as `@octokit/graphql` did, and throws the
+  answer's `errors` with its headers so `GitHubGraphQLError.fromThrowable`
+  classifies exactly as before. No variable name is refused: GraphQL
+  variable names are the document's own namespace, and inside `data` none is
+  ever read as an option.
+
+The rest are closed: typed literals of route parameters, conditional spreads
+of typed fields, or a fixed allowlist (`CodeScanning`'s `SETUP_KEYS`,
+`Ruleset`'s six payload fields); open values (`WorkflowDispatch` `inputs`,
+ruleset `rules`, check-run `output`) sit one level down, where octokit reads
+nothing. `client.request` itself is the raw surface: its params are the
+caller's own, and `Rest.RequestExtras` deliberately lets a call set
+`headers` and `mediaType`, so a caller must never spread an untrusted map
+into it. The options that would move the request are refused there at
+runtime, as the next section describes.
+
+### The token stays on the configured base
+
+A client's token goes to the host it was configured with and nowhere else.
+octokit sends a request wherever its options point: a `baseUrl` or `url`
+parameter, an absolute-URL route (`"POST https://host/path"`, sent as
+written), a `{+x}` template expanding to one, or, during pagination, the
+absolute `next` URL of the response's `Link` header (and, for a comparison,
+the response's own URL). `@octokit/plugin-paginate-rest`'s iterator follows
+that URL to any origin with the auth header attached; a scripted fetch
+returning a foreign `Link` header proved it.
+
+So every request the public raw surface (`request`, `requestDecoded`,
+`paginate`, `paginateStream`) makes is confined in the transport
+(`packages/github/src/internal/octokit.ts`):
+
+- A `baseUrl`, `url`, `request` or `method` parameter is refused by name. The
+  list is `OCTOKIT_REQUEST_OPTION_KEYS` in
+  `packages/github/src/internal/requestOptions.ts`, minus the options the raw
+  surface accepts (`headers`, `mediaType`, and `data`, which replaces the body
+  but cannot move it). Only a cast reaches this, since the types exclude them.
+  A body field that octokit would read as an option, such as a webhook
+  configuration's `url`, goes inside `data`.
+- The URL octokit itself would build — `octokit.request.endpoint(route,
+  params).url`, so template expansion, absolute routes and the base are all
+  applied — must be on the configured base's origin.
+- The paginator is handed a request FUNCTION in place of the route (the
+  iterator accepts one), which refuses any page whose URL is on another
+  origin before requesting it.
+
+Every refusal is a `GitHubError` of `kind: "rejected"` with no status and
+nothing on the wire, matching `uploadAsset`'s refusal of a foreign upload
+URL. A refused page fails the walk rather than ending it, because a walk that
+stopped early would return a truncated collection as if it were complete.
+The fixture and test doubles do not check: they send nothing.
+
+### The release-asset upload host comes from the configured base
+
+Asset uploads go to a separate host: `https://uploads.github.com` on
+github.com, `https://<host>/api/uploads` on GitHub Enterprise Server (GitHub's
+GHES REST docs for "Upload a release asset"). `GitHubRelease.uploadAsset`
+used to hard-code the github.com host, so a client configured for GHES sent
+its installation or personal token to github.com. The host is now derived by
+`uploadsBaseUrlFor` (`packages/github/src/internal/uploads.ts`) from the base
+URL the client was configured with: absent or `https://api.github.com` →
+`https://uploads.github.com`; `…/api/v3` → `…/api/uploads`; anything else →
+the configured base itself, so the token never goes to a host the caller did
+not configure.
+
+The public surface cannot reach the upload host, since it is confined to the
+API host. `makeClientShape` marks the shape it builds with a module-private
+symbol property carrying an upload channel: the configured base, and a
+request function that sends to `uploadsBaseUrlFor(base)` and is confined to
+that origin. It takes no host from its caller, and only code that imports
+`internal/uploads.ts` can name it. The property survives a `{ ...client }`
+spread, so a spread client uploads through its channel and not through an
+overridden `requestDecoded`. A shape the package did not build (a
+hand-written double, `makeTest`, a fixture) carries none: it is read as
+github.com for the cross-check below, and the upload goes to its own
+`requestDecoded`, so a double records it. The release's own `uploadUrl` is
+response data, so it is never the route. It is a cross-check: its origin must equal the derived host's, or
+the upload fails `kind: "rejected"` with no status before any request. That
+is what refuses a GHES release reached through an unmarked client, rather
+than sending the GHES token to github.com.
 
 ### Resource ids come off the wire as `number | bigint`
 

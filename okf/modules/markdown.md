@@ -35,16 +35,16 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/1030
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:13:49Z
+  at: 2026-10-28T18:08:21Z
 integrity:
   generated:
-    body: ac928a943619324f
+    body: b6e96463df3154e1
 ---
 
 # `@effected/markdown`
 
 `@effected/markdown` is CommonMark 0.31.2 plus GFM expressed as pure Effect
-Schema classes: parse into mdast-shaped nodes carrying byte offsets, compute
+Schema classes: parse into mdast-shaped nodes carrying UTF-16 code-unit offsets, compute
 offset-splice edits, format, modify by node, rewrite trees with typed
 transforms, project to and from plain mdast,
 walk the tree synchronously or as a `Stream`, and read and write frontmatter through
@@ -118,7 +118,7 @@ at the top of the block pass and never enters the inline pass.
 Node Schema classes use mdast's exact node type names and field shapes — the
 CommonMark types, the GFM additions and the frontmatter node
 (`packages/markdown/src/MarkdownNode.ts`). Positions are unist positions with
-line/column and byte offsets. Fidelity fields — bullet character, fence
+line/column and UTF-16 code-unit offsets. Fidelity fields — bullet character, fence
 character and info string, ATX vs setext heading style, delimiter runs,
 spacing — ride alongside the mdast shape; the `Mdast` module projects to
 plain spec-valid mdast JSON by stripping them. The one exception is `Text`'s
@@ -137,8 +137,8 @@ the spec types as optional booleans are `optionalKey`, with absence meaning
 unknown rather than false.
 
 Three deltas from commonmark.js were decided up front, not discovered
-mid-port: mdast type names replace commonmark.js's own names; byte offsets
-are tracked everywhere (commonmark.js has only line/column source
+mid-port: mdast type names replace commonmark.js's own names; UTF-16
+code-unit offsets are tracked everywhere (commonmark.js has only line/column source
 positions, and offsets also power the edit layer); and definition nodes are
 kept in the tree with reference nodes emitted unresolved, per mdast
 semantics, where commonmark.js deletes definitions and resolves references
@@ -292,7 +292,9 @@ terminator, where the root's end point sits. The old one-based
 - **`MarkdownDiagnostic`** is `positionAt(offset)`: zero-based, UTF-16 code
   units, an offset at the `\n` of a `\r\n` reading as the end of its line
   (the hand-rolled loop answered `character: -1` on the next line there).
-  `fromRaw(source | LineIndex, raw)` accepts a prebuilt index; the parse
+  `fromRaw(source | SourceIndex, raw)` accepts a prebuilt index, typed as the
+  structural `SourceIndex` so an index from another installed copy of
+  `@effected/source` is accepted; the parse
   reuses its own. It satisfies `SourceDiagnostic<MarkdownParseErrorCode>`.
 - **A node's unist `Point`** (`internal/point.ts`, `pointAt`) is
   `line = lineAt(offset) + 1`, `column = offset - lineStart(line) + 1`. That
@@ -304,11 +306,12 @@ terminator, where the root's end point sits. The old one-based
   column 3), and the differential showed 130 strings of up to five
   characters whose trees would have moved.
 - **`MarkdownDocument.lineIndex`** ([#1126](https://github.com/spencerbeggs/effected/issues/1126))
-  returns the index over `source`: the parse's own for a parsed document,
+  returns the index over `source`, declared as `SourceIndex` rather than
+  the nominal `LineIndex` class: the parse's own for a parsed document,
   built once on first access for one constructed with `make`, kept in a
   module `WeakMap` so it is no part of the schema, equality or encoding. The
-  entry point re-exports `@effected/source`'s surface (`LineIndex` and the
-  position shapes), so a consumer converting offsets to LSP positions and
+  entry point re-exports `@effected/source`'s surface (`LineIndex`,
+  `SourceIndex` and the position shapes), so a consumer converting offsets to LSP positions and
   back needs no second dependency, and `LineIndex.make(text)` gives the same
   answers with no document.
 

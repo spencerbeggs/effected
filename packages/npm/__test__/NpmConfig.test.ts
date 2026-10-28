@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, Layer, Option, PlatformError, Redacted, Result } from "effect";
@@ -142,12 +143,25 @@ describe("NpmConfig credentials", () => {
 		});
 
 		it("a different port is a different host", () => {
-			assert.strictEqual(secretOf(auth.credentialFor("http://localhost:4873/pkg")), "verdaccio");
-			assert.isTrue(Option.isNone(auth.credentialFor("http://localhost/pkg")));
-			assert.isTrue(Option.isNone(auth.credentialFor("http://localhost:4874/pkg")));
+			assert.strictEqual(secretOf(auth.credentialFor("https://localhost:4873/pkg")), "verdaccio");
+			assert.isTrue(Option.isNone(auth.credentialFor("https://localhost/pkg")));
+			assert.isTrue(Option.isNone(auth.credentialFor("https://localhost:4874/pkg")));
 			// A portless key is the default port only, never every port on the host.
-			assert.strictEqual(secretOf(auth.credentialFor("http://127.0.0.1/pkg")), "portless");
-			assert.isTrue(Option.isNone(auth.credentialFor("http://127.0.0.1:8080/pkg")));
+			assert.strictEqual(secretOf(auth.credentialFor("https://127.0.0.1/pkg")), "portless");
+			assert.isTrue(Option.isNone(auth.credentialFor("https://127.0.0.1:8080/pkg")));
+		});
+
+		it("userinfo, case, a trailing dot and a backslash fail closed or match the right host", () => {
+			assert.strictEqual(secretOf(auth.credentialFor("https://evil@registry.npmjs.org/a")), NPM_TOKEN);
+			assert.isTrue(Option.isNone(auth.credentialFor("https://registry.npmjs.org@evil.com/a")));
+			assert.strictEqual(secretOf(auth.credentialFor("https://REGISTRY.NPMJS.ORG/a")), NPM_TOKEN);
+			assert.isTrue(Option.isNone(auth.credentialFor("https://registry.npmjs.org./a")));
+			assert.strictEqual(secretOf(auth.credentialFor("https://registry.npmjs.org:443/a")), NPM_TOKEN);
+			assert.isTrue(Option.isNone(auth.credentialFor("https://registry.npmjs.org:444/a")));
+			assert.isTrue(Option.isNone(auth.credentialFor("https://registry.npmjs.org%2f@evil/")));
+			// WHATWG reads a backslash as a slash in an https URL, so the request
+			// itself goes to registry.npmjs.org: its own token is the right answer.
+			assert.strictEqual(secretOf(auth.credentialFor("https://registry.npmjs.org\\@evil.com/a")), NPM_TOKEN);
 		});
 
 		it("a tarball URL on a CDN host gets no registry credential", () => {
@@ -178,6 +192,42 @@ describe("NpmConfig credentials", () => {
 		});
 	});
 
+	describe("sends a credential over https only, unless config chose http for that host (a departure from npm)", () => {
+		it("never sends one to http, ws or any other scheme on the same host by default", () => {
+			// npm matches the nerf-dart key and ignores the scheme, so it would
+			// send this token in cleartext. The kit does not.
+			assert.isTrue(Option.isSome(auth.credentialFor("https://registry.npmjs.org/a")));
+			for (const scheme of ["http", "ws", "wss", "ftp", "git+https", "file"]) {
+				assert.isTrue(
+					Option.isNone(auth.credentialFor(`${scheme}://registry.npmjs.org/a`)),
+					`${scheme}: must get no credential`,
+				);
+			}
+		});
+
+		it("allows http when the configured registry for that host is itself http", () => {
+			const local = config(["registry=http://localhost:4873/", "//localhost:4873/:_authToken=verdaccio"]);
+			assert.strictEqual(secretOf(local.credentialFor("http://localhost:4873/pkg")), "verdaccio");
+			assert.strictEqual(secretOf(local.targetFor("pkg").credential), "verdaccio");
+			// The choice is per host and port: another port on the host stays https-only.
+			const other = config([
+				"@acme:registry=http://npm.acme.dev/",
+				`//npm.acme.dev/:_authToken=${ACME_TOKEN}`,
+				`//registry.npmjs.org/:_authToken=${NPM_TOKEN}`,
+			]);
+			assert.strictEqual(secretOf(other.credentialFor("http://npm.acme.dev/@acme%2fwidget")), ACME_TOKEN);
+			assert.isTrue(Option.isNone(other.credentialFor("http://npm.acme.dev:8080/x")));
+			assert.isTrue(Option.isNone(other.credentialFor("http://registry.npmjs.org/x")));
+			// An http registry never opens a non-http scheme.
+			assert.isTrue(Option.isNone(local.credentialFor("ws://localhost:4873/pkg")));
+		});
+
+		it("an https registry for a host does not open http for it", () => {
+			const c = config(["registry=https://npm.acme.dev/", `//npm.acme.dev/:_authToken=${ACME_TOKEN}`]);
+			assert.isTrue(Option.isNone(c.credentialFor("http://npm.acme.dev/x")));
+		});
+	});
+
 	it("targetFor finds a path-scoped token for a registry written without a trailing slash", () => {
 		const c = config(["@acme:registry=https://npm.pkg.github.com/acme", "//npm.pkg.github.com/acme/:_authToken=gh"]);
 		assert.strictEqual(secretOf(c.targetFor("@acme/widget").credential), "gh");
@@ -188,6 +238,71 @@ describe("NpmConfig credentials", () => {
 		assert.notInclude(text, NPM_TOKEN);
 		assert.notInclude(text, ACME_TOKEN);
 		assert.include(text, "<redacted>");
+	});
+
+	describe("redacts every secret-bearing setting", () => {
+		const PEM = "-----BEGIN PRIVATE KEY-----\\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC";
+		const CERT = "-----BEGIN CERTIFICATE-----\\nMIIDdzCCAl+gAwIBAgIEAgAAuTANBgkq";
+		const USERINFO_PASSWORD = "hunter2_SECRET_userinfo";
+		const c = config([
+			`key="${PEM}"`,
+			`cert="${CERT}"`,
+			`//npm.acme.dev/:key="${PEM}"`,
+			`registry=https://ci:${USERINFO_PASSWORD}@registry.npmjs.org/`,
+			`@acme:registry=https://bot:${USERINFO_PASSWORD}@npm.acme.dev/`,
+			`https-proxy=http://proxyuser:${USERINFO_PASSWORD}@proxy.example:8080`,
+		]);
+
+		const renderings = (value: unknown): ReadonlyArray<string> => [
+			String(value),
+			JSON.stringify(value),
+			inspect(value, { depth: 8 }),
+		];
+
+		it("never prints an inline key, a cert or URL userinfo", () => {
+			for (const rendered of renderings(c)) {
+				assert.notInclude(rendered, "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC");
+				assert.notInclude(rendered, "MIIDdzCCAl+gAwIBAgIEAgAAuTANBgkq");
+				assert.notInclude(rendered, USERINFO_PASSWORD);
+				assert.notInclude(rendered, "proxyuser");
+			}
+			assert.include(JSON.stringify(c), "<redacted>");
+		});
+
+		it("holds them Redacted, so the value is still there for a caller that asks", () => {
+			assert.isTrue(Object.hasOwn(c.secrets, "key"));
+			assert.isFalse(Object.hasOwn(c.settings, "key"));
+			assert.isFalse(Object.hasOwn(c.settings, "cert"));
+			assert.isFalse(Object.hasOwn(c.settings, "//npm.acme.dev/:key"));
+			assert.include(Redacted.value(c.secrets.key as Redacted.Redacted<string>), "BEGIN PRIVATE KEY");
+			assert.include(Redacted.value(c.secrets.registry as Redacted.Redacted<string>), USERINFO_PASSWORD);
+		});
+
+		it("a URL setting keeps its URL, without the userinfo", () => {
+			assert.strictEqual(c.registry, "https://registry.npmjs.org/");
+			assert.strictEqual(c.registryFor("@acme/widget"), "https://npm.acme.dev/");
+			assert.strictEqual(c.settings["https-proxy"], "http://proxy.example:8080");
+			for (const rendered of renderings(c.targetFor("@acme/widget"))) assert.notInclude(rendered, USERINFO_PASSWORD);
+		});
+
+		it("a higher layer's plain URL replaces a lower layer's userinfo in both maps", () => {
+			const layered = config([
+				`registry=https://ci:${USERINFO_PASSWORD}@registry.npmjs.org/`,
+				"registry=https://npm.acme.dev/",
+			]);
+			assert.strictEqual(layered.registry, "https://npm.acme.dev/");
+			assert.isFalse(Object.hasOwn(layered.secrets, "registry"), "the stale userinfo must not outlive its URL");
+		});
+
+		it("names no secret value in an error message", () => {
+			const failed = NpmConfig.fromSourcesResult([{ text: `key=${ref("PEM_KEY")}`, path: "/p/.npmrc" }], {});
+			if (Result.isSuccess(failed)) return assert.fail("an unset variable in key must fail");
+			assert.strictEqual(failed.failure.reason, "missing-env");
+			for (const rendered of [...renderings(failed.failure), failed.failure.message]) {
+				assert.notInclude(rendered, USERINFO_PASSWORD);
+			}
+			assert.include(failed.failure.message, "PEM_KEY");
+		});
 	});
 
 	it("keeps a __proto__ key an own property, off the prototype", () => {

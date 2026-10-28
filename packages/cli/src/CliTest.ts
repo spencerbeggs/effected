@@ -1,6 +1,7 @@
 import type { PlatformError, Scope } from "effect";
-import { Effect, Fiber, FileSystem, Path, Stream, SubscriptionRef } from "effect";
+import { Duration, Effect, Fiber, FileSystem, Option, Path, Stream, SubscriptionRef } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { Fmt } from "./Fmt.js";
 
 /**
  * A hermetic temp directory minted by {@link CliTest.sandbox}, removed when its
@@ -42,6 +43,12 @@ export interface RunOptions {
 	 * the child gets an already-ended empty input, never an open pipe.
 	 */
 	readonly stdin?: string | undefined;
+	/**
+	 * How long a child has to exit after `SIGTERM` (or the signal `kill` sends), when its scope closes or
+	 * {@link SpawnedBin.kill} is called, before it is sent `SIGKILL`; `2 seconds` by default. A finite duration: a
+	 * child that ignores the signal would otherwise keep the scope from closing forever, and leave the process behind.
+	 */
+	readonly forceKillAfter?: Duration.Input | undefined;
 }
 
 /**
@@ -50,8 +57,10 @@ export interface RunOptions {
  * @public
  */
 export interface RunResult {
-	/** The child's exit code. */
-	readonly exitCode: number;
+	/** The child's exit code, or `null` when a signal ended it. */
+	readonly exitCode: number | null;
+	/** The signal that ended the child, or `null` when it exited with a code. */
+	readonly signal: ChildProcess.Signal | null;
 	/** Everything the child wrote to stdout, decoded as UTF-8. */
 	readonly stdout: string;
 	/** Everything the child wrote to stderr, decoded as UTF-8. */
@@ -75,12 +84,15 @@ export interface SpawnedBin {
 	/** The child's stderr as lines, as `stdout` gives stdout. */
 	readonly stderr: Stream.Stream<string>;
 	/**
-	 * Send `signal` (`SIGTERM` by default) and wait for the child to exit. A child that ignores the signal keeps this
-	 * waiting: bound it with `Effect.timeout`.
+	 * Send `signal` (`SIGTERM` by default) and wait for the child to exit. A child still running after
+	 * {@link RunOptions.forceKillAfter} is sent `SIGKILL`, so this always ends.
 	 */
 	readonly kill: (signal?: ChildProcess.Signal) => Effect.Effect<void, PlatformError.PlatformError>;
-	/** The child's exit code, once it exits; re-reading it after the exit answers at once. */
-	readonly exitCode: Effect.Effect<number, PlatformError.PlatformError>;
+	/**
+	 * The child's exit code once it exits, or `null` when a signal ended it (the default `kill` included): `result`
+	 * names the signal. Re-reading it after the exit answers at once.
+	 */
+	readonly exitCode: Effect.Effect<number | null, PlatformError.PlatformError>;
 	/** Wait for the exit and the end of both streams, and read everything, as {@link CliTest.run} returns it. */
 	readonly result: Effect.Effect<RunResult, PlatformError.PlatformError>;
 }
@@ -108,8 +120,54 @@ const linesFrom = (offset: number, captured: Captured): readonly [number, Readon
 	return [start, lines];
 };
 
-const commandOf = (bin: string, args: ReadonlyArray<string>, options: RunOptions): ChildProcess.Command =>
+/** The bound on a child that ignores its termination signal, when the caller gives none. */
+const FORCE_KILL_AFTER: Duration.Input = "2 seconds";
+
+/** `options.forceKillAfter` or the default; a duration that is not finite is a wiring mistake and throws. */
+const forceKillAfterOf = (options: RunOptions): Duration.Duration => {
+	const input = options.forceKillAfter ?? FORCE_KILL_AFTER;
+	const duration = Duration.fromInput(input);
+	// A NaN number becomes a zero duration, so it is refused before it is converted.
+	const nan = typeof input === "number" && Number.isNaN(input);
+	if (nan || Option.isNone(duration) || !Duration.isFinite(duration.value) || Duration.toMillis(duration.value) < 0) {
+		throw new RangeError(`CliTest: forceKillAfter must be a finite, non-negative duration, received ${String(input)}`);
+	}
+	return duration.value;
+};
+
+/** How a child ended. */
+interface Ending {
+	readonly exitCode: number | null;
+	readonly signal: ChildProcess.Signal | null;
+}
+
+/**
+ * Core's handle fails `exitCode` for a child a signal ended, naming the signal only in the error's text; this reads it
+ * back out, so a signal is an outcome as an exit code is. Any other failure (a failed stdin stream) stays a failure.
+ */
+const SIGNALLED = /receipt of signal: '(SIG[A-Z0-9]+)'/;
+
+const endingOf = (
+	exitCode: Effect.Effect<number, PlatformError.PlatformError>,
+): Effect.Effect<Ending, PlatformError.PlatformError> =>
+	exitCode.pipe(
+		Effect.map((code): Ending => ({ exitCode: Number(code), signal: null })),
+		Effect.catchTag("PlatformError", (error) => {
+			const match = SIGNALLED.exec(`${error.message} ${Fmt.causeMessage(error) ?? ""}`);
+			return match === null
+				? Effect.fail(error)
+				: Effect.succeed<Ending>({ exitCode: null, signal: match[1] as ChildProcess.Signal });
+		}),
+	);
+
+const commandOf = (
+	bin: string,
+	args: ReadonlyArray<string>,
+	options: RunOptions,
+	forceKillAfter: Duration.Duration,
+): ChildProcess.Command =>
 	ChildProcess.make(options.execPath, [bin, ...args], {
+		forceKillAfter,
 		cwd: options.cwd ?? options.sandbox.root,
 		env: { ...options.sandbox.env, ...options.env },
 		stdin:
@@ -190,20 +248,22 @@ export class CliTest {
 		bin: string,
 		args: ReadonlyArray<string>,
 		options: RunOptions,
-	): Effect.Effect<RunResult, PlatformError.PlatformError, ChildProcessSpawner.ChildProcessSpawner> =>
-		Effect.scoped(
+	): Effect.Effect<RunResult, PlatformError.PlatformError, ChildProcessSpawner.ChildProcessSpawner> => {
+		const forceKillAfter = forceKillAfterOf(options);
+		return Effect.scoped(
 			Effect.gen(function* () {
 				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-				const handle = yield* spawner.spawn(commandOf(bin, args, options));
+				const handle = yield* spawner.spawn(commandOf(bin, args, options, forceKillAfter));
 				// Read both streams and the exit concurrently: sequential reads
 				// deadlock once an OS pipe buffer fills.
-				const [stdout, stderr, exitCode] = yield* Effect.all(
-					[text(handle.stdout), text(handle.stderr), handle.exitCode],
+				const [stdout, stderr, ending] = yield* Effect.all(
+					[text(handle.stdout), text(handle.stderr), endingOf(handle.exitCode)],
 					{ concurrency: "unbounded" },
 				);
-				return { exitCode: Number(exitCode), stdout, stderr };
+				return { ...ending, stdout, stderr };
 			}),
 		);
+	};
 
 	/**
 	 * Start `execPath bin ...args` and return at once with a handle on it: its output as lines while it runs, a signal,
@@ -211,8 +271,9 @@ export class CliTest {
 	 * on forever.
 	 *
 	 * @remarks
-	 * The child lives in the caller's scope: when the scope closes first, the child is killed, so a test that ends
-	 * early leaves nothing running. Both streams are drained from the start whether or not the test reads them, so a
+	 * The child lives in the caller's scope: when the scope closes first, the child is sent `SIGTERM`, then `SIGKILL`
+	 * after `forceKillAfter` (`2 seconds` by default), so a test that ends early leaves nothing running and never waits
+	 * on a child that ignores the signal. A child a signal ended reports `exitCode: null` and the signal in `result`. Both streams are drained from the start whether or not the test reads them, so a
 	 * chatty child never blocks on a full pipe, and each stream replays from its first line to every reader. The
 	 * options are {@link CliTest.run}'s, `stdin` included: the child gets that text, then an ended input.
 	 *
@@ -231,10 +292,11 @@ export class CliTest {
 		bin: string,
 		args: ReadonlyArray<string>,
 		options: RunOptions,
-	): Effect.Effect<SpawnedBin, PlatformError.PlatformError, ChildProcessSpawner.ChildProcessSpawner | Scope.Scope> =>
-		Effect.gen(function* () {
+	): Effect.Effect<SpawnedBin, PlatformError.PlatformError, ChildProcessSpawner.ChildProcessSpawner | Scope.Scope> => {
+		const forceKillAfter = forceKillAfterOf(options);
+		return Effect.gen(function* () {
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-			const handle = yield* spawner.spawn(commandOf(bin, args, options));
+			const handle = yield* spawner.spawn(commandOf(bin, args, options, forceKillAfter));
 			const capture = (stream: Stream.Stream<Uint8Array, PlatformError.PlatformError>) =>
 				Effect.gen(function* () {
 					const ref = yield* SubscriptionRef.make<Captured>({ text: "", done: false });
@@ -251,18 +313,18 @@ export class CliTest {
 				});
 			const out = yield* capture(handle.stdout);
 			const err = yield* capture(handle.stderr);
-			const exitCode = Effect.map(handle.exitCode, Number);
+			const ending = endingOf(handle.exitCode);
 			const spawned: SpawnedBin = {
 				stdout: out.lines,
 				stderr: err.lines,
-				kill: (signal) => handle.kill(signal === undefined ? undefined : { killSignal: signal }),
-				exitCode,
+				kill: (signal) => handle.kill({ killSignal: signal ?? "SIGTERM", forceKillAfter }),
+				exitCode: Effect.map(ending, (end) => end.exitCode),
 				result: Effect.gen(function* () {
-					const code = yield* exitCode;
+					const end = yield* ending;
 					yield* Fiber.join(out.pump);
 					yield* Fiber.join(err.pump);
 					return {
-						exitCode: code,
+						...end,
 						stdout: (yield* SubscriptionRef.get(out.ref)).text,
 						stderr: (yield* SubscriptionRef.get(err.ref)).text,
 					};
@@ -270,4 +332,5 @@ export class CliTest {
 			};
 			return spawned;
 		});
+	};
 }

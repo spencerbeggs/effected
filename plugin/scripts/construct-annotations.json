@@ -56,7 +56,7 @@
 		"useKeys": "dispatch ink keystrokes through a key table, chunk-safe",
 		"useTerminalSize": "usable terminal columns and rows inside an ink component",
 		"useTheme": "read the cli theme inside an ink component",
-		"CliFormat": "add a --format flag, alias or custom formats, retired --json, print json"
+		"CliFormat": "add a --format flag, alias or custom formats, print json, print json without the flag"
 	},
 	"commands": {
 		"CommandFailedError": "handle a command that failed to spawn, exited non-zero, or timed out",
@@ -676,7 +676,8 @@
 		"PackageManagerPin": "parse and print a corepack packageManager pin string, name@version+integrity",
 		"PackageManagerPinName": "the four package managers a corepack pin can name: npm, pnpm, yarn, bun",
 		"PackagePublish": "pack tarball, publish to registry, write npmrc auth token, recording test double",
-		"PackageTarball": "download, verify and extract a published tarball by integrity",
+		"PackageTarball": "download, verify and extract a published tarball by integrity, private registry auth",
+		"PackageTarballExtractOptions": "authenticate a private registry tarball download by its url",
 		"PackedTarball": "the tarball path, digests and size npm pack produced",
 		"PartialReleaseAgeGate": "one config source's contribution to a pnpm minimumReleaseAge gate before merging",
 		"PublishError": "handle an npm publish step failure: auth, pack, publish, output parse, digest",
@@ -684,6 +685,7 @@
 		"PublishedVersion": "one package version's registry metadata: name, version, integrity, tarball url",
 		"RangeSpecifier": "represent a plain semver range or exact version dependency specifier",
 		"RawSpecifier": "fallback classification for file:/link:/portal:/git/url/npm: specifiers this package does not further interpret",
+		"RegistryCredentialLookup": "credential per request url, keep a token off cdn hosts",
 		"RegistryKind": "classify a registry url as npm, github-packages, jsr, or custom",
 		"RegistryReadError": "handle failed registry http read: transport error, bad status, undecodable body, refused workload credential",
 		"ReleaseAgeGate": "enforce pnpm minimumReleaseAge, filter candidate versions younger than the cutoff, match exclude patterns",

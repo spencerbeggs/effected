@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T16:43:15Z
+  at: 2026-10-28T18:38:13Z
 integrity:
   generated:
-    body: 0d29dc6ad255ebad
+    body: b312969f17babdb0
 ---
 
 # @effected/github
@@ -71,7 +71,7 @@ package named for it.
 
 | Dependency | Why |
 | --- | --- |
-| `@octokit/core` | the `Octokit` class: a route-keyed, fully typed `request`, plus `graphql` |
+| `@octokit/core` | the `Octokit` class: a route-keyed, fully typed `request`, which carries GraphQL too (`POST /graphql` with a `data` body, never its `graphql` method) |
 | `@octokit/plugin-paginate-rest` | the composable paginator over a bare core instance, plus the type that statically rejects paginating a non-paginating route |
 | `@octokit/types` | the generated endpoint map; ships no JavaScript — types only |
 | `@effected/jwt` (`workspace:^`) | signs the App JWT over WebCrypto; no runtime dependencies, and accepts PKCS#1 and PKCS#8 keys on every runtime — see [`jwt`](jwt.md) |
@@ -183,9 +183,30 @@ is reported in `AppliedSettings.ignored` and never sent, because the REST
 the api-version that removed them; `applySettings` ignores such a key only
 when `client.apiVersion` is at or past that version. `{ unknownKeys: "send" }`
 forwards an undescribed key instead and reports it in
-`AppliedSettings.unverified`; a removed key stays ignored. The typed escape
+`AppliedSettings.unverified`; a removed key stays ignored. An octokit
+request-option name (`baseUrl`, `url`, `headers`, `request`, `mediaType`,
+`method`, `data`), the route's `owner` / `repo` and `__proto__` are never
+sent under either mode: both write paths send the settings as octokit's
+`data` body, so no key in them is read as a request option (the
+confinement and its source citations are in the REST client interface). The typed escape
 hatch for the same need is `repositoryPatch(draft, { extra })` — see
 [the REST client interface](../interfaces/github-rest-client.md).
+`DeploymentEnvironment.upsert`'s open `config` rides the same way, as the
+`PUT`'s `data` body, and dies with a `RangeError` on a reserved name; GraphQL
+calls send `POST /graphql` with `data: { query, variables }` rather than
+through `octokit.graphql`, which reads a variable named `baseUrl`, `headers`,
+`request`, `mediaType` or `operationName` as a request option. The audit of
+every params-building call site behind both is in the REST client interface.
+`GitHubRelease.uploadAsset` takes its upload host from the client's
+configured base (`internal/uploads.ts`), never from the release's
+`uploadUrl`, so a GitHub Enterprise Server client's token stays on that
+server; the derivation is in the REST client interface too. The upload goes
+through a private channel the built client carries, because the public raw
+surface (`request`, `requestDecoded`, `paginate`, `paginateStream`) is
+confined to the configured API host: it has no `baseUrl` extra, and it
+refuses a reserved option, an absolute-URL route or a pagination `Link` on
+another origin with a `rejected` `GitHubError` and nothing sent
+(`__test__/TokenConfinement.test.ts`).
 `__test__/repositoryRestSettingKeys.test.ts` regenerates the file in memory
 and fails on drift, including a header that names `DEFAULT_API_VERSION`;
 re-run the generator (`pnpm --filter @effected/github exec tsx

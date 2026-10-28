@@ -12,6 +12,7 @@
 // is `@effected/source`'s `SourceDiagnostic`, the shape every kit format
 // package's diagnostic satisfies.
 
+import type { SourceIndex } from "@effected/source";
 import { LineIndex } from "@effected/source";
 import { Schema } from "effect";
 import {
@@ -164,8 +165,10 @@ export class YamlDiagnostic extends Schema.Class<YamlDiagnostic>("YamlDiagnostic
 	 * Advanced — the parse/stringify entry points call this for you.
 	 *
 	 * @remarks
-	 * Pass a `LineIndex` already built over the source to materialize many
-	 * records without rescanning the text; a string builds one. An offset
+	 * Pass a line index already built over the source to materialize many
+	 * records without rescanning the text; a string builds one. The
+	 * parameter is the structural `SourceIndex`, so an index from any
+	 * installed copy of `@effected/source` is accepted. An offset
 	 * outside the source clamps into it, as `LineIndex.positionAt` does.
 	 *
 	 * @param raw - The engine record: `code`, `message`, `offset` and `length`.
@@ -175,7 +178,7 @@ export class YamlDiagnostic extends Schema.Class<YamlDiagnostic>("YamlDiagnostic
 	 */
 	static fromRaw(
 		raw: { readonly code: YamlErrorCode; readonly message: string; readonly offset: number; readonly length: number },
-		text: string | LineIndex,
+		text: string | SourceIndex,
 	): YamlDiagnostic {
 		const index = typeof text === "string" ? LineIndex.make(text) : text;
 		const { line, character } = index.positionAt(raw.offset);
@@ -197,8 +200,8 @@ export class YamlDiagnostic extends Schema.Class<YamlDiagnostic>("YamlDiagnostic
  *
  * @internal
  */
-export const lazyLineIndex = (text: string): (() => LineIndex) => {
-	let index: LineIndex | undefined;
+export const lazyLineIndex = (text: string): (() => SourceIndex) => {
+	let index: SourceIndex | undefined;
 	return () => {
 		index ??= LineIndex.make(text);
 		return index;

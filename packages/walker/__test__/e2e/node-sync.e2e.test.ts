@@ -2,12 +2,13 @@
 // real `node:fs`, including a real symlink loop under followSymlinks and a real
 // nested-package boundary.
 
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import { GlobPattern } from "@effected/glob";
 import { Result } from "effect";
+import { confineRealSync } from "../../src/ConfineReal.js";
 import { descendEntriesSync, descendSync } from "../../src/DescendSync.js";
 import { nodeWalkerSyncOps } from "../../src/node-sync.js";
 
@@ -54,6 +55,46 @@ describe("descendSync over node:fs", () => {
 				],
 			);
 			assert.isAbove(entries[0]?.info.mtimeMs ?? 0, 0);
+		});
+	});
+});
+
+describe("confineRealSync over node:fs", () => {
+	const withDangling = <A>(f: (base: string, outside: string) => A): A => {
+		const root = mkdtempSync(join(tmpdir(), "walker-e2e-"));
+		try {
+			const base = join(root, "base");
+			const outside = join(root, "outside");
+			mkdirSync(base);
+			mkdirSync(outside);
+			symlinkSync(join(outside, "pwned.txt"), join(base, "dangling"));
+			symlinkSync(join(outside, "newdir"), join(base, "dangdir"));
+			return f(base, outside);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	};
+
+	// The attack the refusal closes: an accepted path through a dangling link is a
+	// write that lands outside the base. Never write through a refused candidate.
+	it("refuses a real dangling link, so no write lands outside the base", () => {
+		withDangling((base, outside) => {
+			for (const candidate of ["dangling", "dangdir/x", "dangling/../../outside/z"]) {
+				const result = confineRealSync(base, candidate, nodeWalkerSyncOps);
+				if (Result.isSuccess(result)) writeFileSync(result.success, "x");
+				assert.isTrue(Result.isFailure(result) && result.failure.reason === "unresolvable", candidate);
+			}
+			assert.isFalse(existsSync(join(outside, "pwned.txt")));
+		});
+	});
+
+	// The control: an absent path with no link in it is still checked lexically.
+	it("accepts an absent path with no link in it, and the write lands inside", () => {
+		withDangling((base) => {
+			const result = confineRealSync(base, "new.txt", nodeWalkerSyncOps);
+			assert.isTrue(Result.isSuccess(result));
+			if (Result.isSuccess(result)) writeFileSync(result.success, "x");
+			assert.isTrue(existsSync(join(base, "new.txt")));
 		});
 	});
 });

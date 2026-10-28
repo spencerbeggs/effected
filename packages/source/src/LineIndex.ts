@@ -1,4 +1,5 @@
 import type { SourceLocation } from "./SourceDiagnostic.js";
+import type { SourceIndex } from "./SourceIndex.js";
 import type { SourcePosition } from "./SourcePosition.js";
 import type { SourceRange } from "./SourceRange.js";
 import type { SourceSpan } from "./SourceSpan.js";
@@ -48,6 +49,13 @@ const requireInteger = (name: string, value: number): void => {
 	}
 };
 
+const requireLength = (length: number): void => {
+	requireInteger("length", length);
+	if (length < 0) {
+		throw new RangeError(`LineIndex: length must not be negative, received ${length}`);
+	}
+};
+
 const clamp = (value: number, low: number, high: number): number => Math.min(Math.max(value, low), high);
 
 /**
@@ -89,7 +97,11 @@ const clamp = (value: number, low: number, high: number): number => Math.min(Mat
  *
  * There is no shared-instance contract. Nothing checks `instanceof LineIndex`,
  * and every value it returns is a plain record, so two installed copies of
- * this package interoperate.
+ * this package interoperate at runtime. At the type level the class does
+ * not: its `private` members make TypeScript compare it nominally, so a
+ * `LineIndex` from one copy is not assignable to another copy's `LineIndex`.
+ * Type a signature that takes or returns an index with the structural
+ * {@link SourceIndex} interface this class implements, never with the class.
  *
  * @example
  * ```ts
@@ -108,14 +120,13 @@ const clamp = (value: number, low: number, high: number): number => Math.min(Mat
  *
  * @public
  */
-export class LineIndex {
+export class LineIndex implements SourceIndex {
 	private constructor(
 		/** The text this index was built over. */
 		readonly text: string,
 		/** The rule that decided where lines end. */
 		readonly lineBreaks: LineBreaks,
 		private readonly starts: ReadonlyArray<number>,
-		private readonly ends: ReadonlyArray<number>,
 	) {}
 
 	/**
@@ -128,29 +139,23 @@ export class LineIndex {
 	static make(text: string, options?: LineIndexOptions): LineIndex {
 		const lineBreaks = options?.lineBreaks ?? "lsp";
 		const starts: number[] = [0];
-		const ends: number[] = [];
 		const length = text.length;
 		for (let i = 0; i < length; i++) {
 			const code = text.charCodeAt(i);
 			if (code === LF) {
-				ends.push(i);
 				starts.push(i + 1);
 			} else if (code === CR) {
 				if (i + 1 < length && text.charCodeAt(i + 1) === LF) {
-					ends.push(i);
 					starts.push(i + 2);
 					i++;
 				} else if (lineBreaks !== "lf") {
-					ends.push(i);
 					starts.push(i + 1);
 				}
 			} else if ((code === LS || code === PS) && lineBreaks === "unicode") {
-				ends.push(i);
 				starts.push(i + 1);
 			}
 		}
-		ends.push(length);
-		return new LineIndex(text, lineBreaks, starts, ends);
+		return new LineIndex(text, lineBreaks, starts);
 	}
 
 	/** The number of lines, at least `1`. */
@@ -196,7 +201,7 @@ export class LineIndex {
 	 * @returns The line's end offset, excluding its terminator.
 	 */
 	lineEnd(line: number): number {
-		return this.ends[this.clampLine(line)] as number;
+		return this.endOf(this.clampLine(line));
 	}
 
 	/**
@@ -207,7 +212,7 @@ export class LineIndex {
 	 */
 	lineText(line: number): string {
 		const index = this.clampLine(line);
-		return this.text.slice(this.starts[index], this.ends[index]);
+		return this.text.slice(this.starts[index], this.endOf(index));
 	}
 
 	/**
@@ -221,7 +226,7 @@ export class LineIndex {
 		const line = this.lineAt(offset);
 		const target = clamp(offset, 0, this.text.length);
 		const start = this.starts[line] as number;
-		return { line, character: Math.min(target, this.ends[line] as number) - start };
+		return { line, character: Math.min(target, this.endOf(line)) - start };
 	}
 
 	/**
@@ -238,7 +243,7 @@ export class LineIndex {
 		if (position.line < 0) return 0;
 		if (position.line >= this.starts.length) return this.text.length;
 		const start = this.starts[position.line] as number;
-		const end = this.ends[position.line] as number;
+		const end = this.endOf(position.line);
 		return clamp(start + position.character, start, end);
 	}
 
@@ -249,10 +254,7 @@ export class LineIndex {
 	 * @returns The start and exclusive end positions.
 	 */
 	spanOf(range: SourceRange): SourceSpan {
-		requireInteger("length", range.length);
-		if (range.length < 0) {
-			throw new RangeError(`LineIndex: length must not be negative, received ${range.length}`);
-		}
+		requireLength(range.length);
 		return { start: this.positionAt(range.offset), end: this.positionAt(range.offset + range.length) };
 	}
 
@@ -278,12 +280,29 @@ export class LineIndex {
 	 * The {@link SourceLocation} of a range: the range itself, unchanged,
 	 * with the position of its start. The shape a diagnostic carries.
 	 *
-	 * @param range - The range.
+	 * @param range - The range; its `length` must be a non-negative integer,
+	 *   as {@link LineIndex.spanOf} requires.
 	 * @returns `offset`, `length`, `line` and `character`.
 	 */
 	locationOf(range: SourceRange): SourceLocation {
+		requireLength(range.length);
 		const { line, character } = this.positionAt(range.offset);
 		return { offset: range.offset, length: range.length, line, character };
+	}
+
+	/**
+	 * Where `line`'s text ends, derived from the next line's start rather
+	 * than stored: the next start minus the terminator's length, two for a
+	 * `\r\n` and one for every other terminator, or `text.length` on the
+	 * last line. Keeping one table halves the index's memory; the lookup
+	 * stays `O(1)` after the `O(log n)` search that found the line.
+	 */
+	private endOf(line: number): number {
+		const next = this.starts[line + 1];
+		if (next === undefined) return this.text.length;
+		// A line never starts between the `\r` and `\n` of a `\r\n`, so a
+		// `\r\n` just before the next start is always this line's terminator.
+		return this.text.charCodeAt(next - 1) === LF && this.text.charCodeAt(next - 2) === CR ? next - 2 : next - 1;
 	}
 
 	private clampLine(line: number): number {
