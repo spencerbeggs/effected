@@ -8,7 +8,7 @@ resource: ../../packages/github/src/Rest.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T18:51:58Z
+  at: 2026-10-28T20:20:25Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:33.163Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 9c7dcbdde34ac3ce
+    body: 512806020b8c6d47
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -260,6 +260,17 @@ response data, so it is never the route. It is a cross-check: its origin must eq
 the upload fails `kind: "rejected"` with no status before any request. That
 is what refuses a GHES release reached through an unmarked client, rather
 than sending the GHES token to github.com.
+
+A shape built from another shape must carry a channel of its own, because a
+fresh literal reads as "not built here". `GitHubApp.clientLayer` and
+`GitHubApp.appClientLayer` build their client as a rotating facade over a
+live inner client, and the facade once omitted the channel: under App auth
+an upload went to `api.github.com/repos/…/releases/{id}/assets`, where GitHub
+serves no uploads, and a GHES App's upload was refused because the expected
+host fell back to `uploads.github.com`. The facade's channel carries the
+configured base and delegates each upload through the current inner client,
+so an upload after a token rotation uses the new token
+(`packages/github/__test__/GitHubRelease.upload.test.ts`).
 
 ### Resource ids come off the wire as `number | bigint`
 

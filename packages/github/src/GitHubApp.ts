@@ -23,6 +23,8 @@ import { GitHubGraphQLError } from "./GraphQL.js";
 import { InstallationTokenStore } from "./InstallationTokenStore.js";
 import { numericId } from "./internal/ids.js";
 import { unstubbed } from "./internal/unstubbed.js";
+import type { UploadChannel } from "./internal/uploads.js";
+import { uploadChannelOf, withUploadChannel } from "./internal/uploads.js";
 import type { RetryPolicy } from "./Resilience.js";
 
 /**
@@ -1091,7 +1093,20 @@ const makeRotatingClient = (
 			),
 		);
 
-		return {
+		// The upload channel goes through the live inner client, exactly as the
+		// public members do, so an upload carries the current credential and
+		// reaches the host derived from the configured base. A fresh literal
+		// without it reads as "not built here", and `GitHubRelease.uploadAsset`
+		// would then send the asset to the API host.
+		const upload: UploadChannel["upload"] = (route, params, schema) =>
+			Effect.flatMap(current, (client) => {
+				const channel = uploadChannelOf(client);
+				return channel === undefined
+					? Effect.die(new Error(`${operation}: the inner client carries no upload channel`))
+					: channel.upload(route, params, schema);
+			});
+
+		const shape = {
 			request: (route, params) => Effect.flatMap(current, (client) => client.request(route, params)),
 			requestDecoded: (route, params, schema) =>
 				Effect.flatMap(current, (client) => client.requestDecoded(route, params, schema)),
@@ -1106,4 +1121,5 @@ const makeRotatingClient = (
 			),
 			apiVersion,
 		} satisfies GitHubClientShape;
+		return withUploadChannel(shape, { baseUrl: options.baseUrl, upload });
 	});
