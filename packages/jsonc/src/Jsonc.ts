@@ -8,10 +8,12 @@
 //
 // Cycle firewall: the internal parser returns raw error records
 // (`{ code, offset, length }`) and this module maps them into
-// `JsoncParseErrorDetail` — deriving `line`/`character` from `offset` — and
-// builds the aggregate `JsoncParseError`. The dependency edge runs facade →
-// parser only, so `noImportCycles` stays satisfied.
+// `JsoncParseErrorDetail` — deriving `line`/`character` from `offset` through
+// one `@effected/source` `LineIndex` per parse — and builds the aggregate
+// `JsoncParseError`. The dependency edge runs facade → parser only, so
+// `noImportCycles` stays satisfied.
 
+import { LineIndex } from "@effected/source";
 import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import type { ParseFlags, RawParseError } from "./internal/parser.js";
@@ -43,6 +45,23 @@ export type JsoncParseErrorCode = typeof JsoncParseErrorCode.Type;
  * One recovered parse error: its `JsoncParseErrorCode` and its exact
  * position (`offset`/`length`, plus zero-based `line`/`character`). A single
  * {@link JsoncParseError} reports a batch of these.
+ *
+ * @remarks
+ * Structurally a `SourceLocation` from `@effected/source`, so a consumer
+ * written over that interface (an LSP server, a CLI printing annotations)
+ * reads it directly. It carries no `message`, so it is not a
+ * `SourceDiagnostic`: the aggregate {@link JsoncParseError} owns the
+ * human-readable text.
+ *
+ * `line` and `character` come from `@effected/source`'s `LineIndex` under its
+ * `"unicode"` rule: a line ends at `\n`, `\r\n`, a bare `\r`, U+2028 LINE
+ * SEPARATOR or U+2029 PARAGRAPH SEPARATOR. Counting the two separators is
+ * deliberate, for parity with VS Code's `jsonc-parser`, whose scanner this
+ * package ports and which treats them as line breaks. An LSP client does not,
+ * so after a separator a position here sits one line below where an editor
+ * shows it; a consumer needing LSP positions rebuilds them from `offset` with
+ * a default `LineIndex`. An offset at the `\n` of a `\r\n` reads as the end of
+ * its line.
  *
  * @public
  */
@@ -169,36 +188,26 @@ const toFlags = (options?: JsoncParseOptions): ParseFlags =>
 				allowEmptyContent: options.allowEmptyContent,
 			};
 
-const lineChar = (text: string, offset: number): { line: number; character: number } => {
-	let line = 0;
-	let lineStart = 0;
-	const limit = Math.min(offset, text.length);
-	for (let i = 0; i < limit; i++) {
-		const ch = text.charCodeAt(i);
-		if (ch === 0x0a) {
-			line++;
-			lineStart = i + 1;
-		} else if (ch === 0x0d) {
-			if (i + 1 < text.length && text.charCodeAt(i + 1) === 0x0a) {
-				i++;
-			}
-			line++;
-			lineStart = i + 1;
-		} else if (ch === 0x2028 || ch === 0x2029) {
-			// LS/PS count as line breaks in the scanner; stay aligned so error
-			// positions after them are correct.
-			line++;
-			lineStart = i + 1;
-		}
-	}
-	return { line, character: offset - lineStart };
-};
-
-const toDetails = (text: string, errors: ReadonlyArray<RawParseError>): ReadonlyArray<JsoncParseErrorDetail> =>
-	errors.map((e) => {
-		const { line, character } = lineChar(text, e.offset);
+/**
+ * Materialize the engine's raw parse errors into {@link JsoncParseErrorDetail}s,
+ * building one line table per parse, never one per diagnostic. The
+ * `"unicode"` rule keeps U+2028/U+2029 as line breaks, matching the scanner
+ * inherited from VS Code's `jsonc-parser` (see `JsoncParseErrorDetail`).
+ *
+ * Exported for the regression test of the one offset class no parse reaches
+ * (the `\n` of a `\r\n`: the scanner consumes the pair atomically); not
+ * re-exported from the package entry point.
+ *
+ * @internal
+ */
+export const toDetails = (text: string, errors: ReadonlyArray<RawParseError>): ReadonlyArray<JsoncParseErrorDetail> => {
+	if (errors.length === 0) return [];
+	const index = LineIndex.make(text, { lineBreaks: "unicode" });
+	return errors.map((e) => {
+		const { line, character } = index.positionAt(e.offset);
 		return JsoncParseErrorDetail.make({ code: e.code, offset: e.offset, length: e.length, line, character });
 	});
+};
 
 const deepEqual = (a: unknown, b: unknown, depth = 0): boolean => {
 	if (a === b) return true;

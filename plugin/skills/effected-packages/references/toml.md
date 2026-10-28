@@ -1,6 +1,6 @@
 # @effected/toml
 
-TOML parsing, editing and formatting as Effect schemas on a from-scratch engine (the one format package with no vendored code): parse to plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, visit as a `Stream`. Pure tier: peers only on `effect`, zero runtime deps.
+TOML parsing, editing and formatting as Effect schemas on a from-scratch engine (the one format package with no vendored code): parse to plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, visit as a `Stream`. Pure tier: peers only on `effect`, with one regular dependency, the dependency-free `@effected/source`.
 
 The two directions target different spec versions on purpose: `parse` accepts the full **TOML 1.1.0** grammar, while `stringify` deliberately emits only **1.0.0** spellings (`src/index.ts:2`, `src/Toml.ts:25`). Every 1.0 document is valid 1.1, so the narrower output is portable to any consumer. Do not "fix" either side to match the other — the asymmetry is the design.
 
@@ -19,7 +19,7 @@ Single entrypoint; no subpaths.
 - **`TomlEdit`** + `applyAll`, **`TomlFormat`** (`format`/`formatToString` pure and total; `modify`/`modifyToString` → `Effect<_, TomlParseError | TomlModificationError>`, with `modifyResult`/`modifyToStringResult` sync twins) — edit vocabulary parity-identical in shape to jsonc/yaml.
 - **`TomlVisitor`** — `Stream<TomlVisitorEvent, TomlParseError>` (`TableStart`/`ArrayTableStart`/`KeyValue`/`Comment`).
 - **Date-time value objects** — `TomlLocalDate`, `TomlLocalTime`, `TomlLocalDateTime`, `TomlOffsetDateTime`: four `Schema.Class`es with real Gregorian validation; none subclasses JS `Date`.
-- **`TomlDiagnostic`** — `code`, `message`, `offset`/`length`, `line`/`character`, five staged error-code unions.
+- **`TomlDiagnostic`** — `code`, `message`, `offset`/`length`, zero-based `line`/`character` (LSP line breaks: `\n`, `\r\n`, bare `\r`), five staged error-code unions. It satisfies `@effected/source`'s `SourceDiagnostic`, so an LSP server or annotation printer written over that interface reads it directly.
 
 ## Usage
 

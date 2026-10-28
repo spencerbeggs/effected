@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import type { SourceDiagnostic, SourceLocation } from "@effected/source";
 import {
 	RawTomlError,
 	TOML_LEX_ERROR_CODES,
@@ -6,6 +7,7 @@ import {
 	TOML_SEMANTIC_ERROR_CODES,
 	TOML_STRINGIFY_ERROR_CODES,
 } from "../src/internal/diagnostics.js";
+import type { TomlErrorCode } from "../src/TomlDiagnostic.js";
 import { TomlDiagnostic } from "../src/TomlDiagnostic.js";
 
 describe("TomlDiagnostic", () => {
@@ -38,6 +40,33 @@ describe("TomlDiagnostic", () => {
 		const d = TomlDiagnostic.fromRaw("a\nb", { code: "ExpectedValue", message: "m", offset: 1, length: 1 });
 		assert.strictEqual(d.line, 0);
 		assert.strictEqual(d.character, 1);
+	});
+	it("reads an offset at the \\n of a \\r\\n as the end of its line, never character -1", () => {
+		// The hand-rolled loop this replaced answered { line: 1, character: -1 }.
+		const d = TomlDiagnostic.fromRaw("a\r\nb", { code: "ExpectedValue", message: "m", offset: 2, length: 0 });
+		assert.strictEqual(d.line, 0);
+		assert.strictEqual(d.character, 1);
+	});
+	it("treats a bare \\r as a line break and U+2028 as ordinary text (the LSP rule)", () => {
+		const cr = TomlDiagnostic.fromRaw("a\rb", { code: "ExpectedValue", message: "m", offset: 2, length: 0 });
+		assert.deepStrictEqual([cr.line, cr.character], [1, 0]);
+		const ls = TomlDiagnostic.fromRaw(`a${String.fromCodePoint(0x2028)}b`, {
+			code: "ExpectedValue",
+			message: "m",
+			offset: 2,
+			length: 0,
+		});
+		assert.deepStrictEqual([ls.line, ls.character], [0, 2]);
+	});
+	it("satisfies @effected/source's SourceDiagnostic and SourceLocation structurally", () => {
+		const d = TomlDiagnostic.fromRaw("a = ", { code: "ExpectedValue", message: "m", offset: 4, length: 0 });
+		const diagnostic: SourceDiagnostic<TomlErrorCode> = d;
+		const location: SourceLocation = d;
+		// @ts-expect-error -- the code union is closed: a foreign code is not a TomlErrorCode.
+		const foreign: SourceDiagnostic<"NotATomlCode"> = d;
+		assert.strictEqual(diagnostic.code, "ExpectedValue");
+		assert.strictEqual(location.character, 4);
+		assert.isDefined(foreign);
 	});
 	it("pins the stage code array overlap contract", () => {
 		const stageArrays = [

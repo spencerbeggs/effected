@@ -777,6 +777,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/jsonc:
+    dependencies:
+      '@effected/source':
+        specifier: workspace:^
+        version: link:../source/dist/dev/pkg
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
@@ -1374,6 +1378,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/toml:
+    dependencies:
+      '@effected/source':
+        specifier: workspace:^
+        version: link:../source/dist/dev/pkg
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect

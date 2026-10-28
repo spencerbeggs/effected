@@ -10,6 +10,8 @@
 * Updated xdg
 * Added @effected/source
 * Updated effected
+* Updated jsonc
+* Updated toml
 * Updated Add a kit package
 * Updated walker
 * Updated @effected/engine
