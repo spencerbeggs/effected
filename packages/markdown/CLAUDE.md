@@ -3,7 +3,8 @@
 CommonMark 0.31.2 + GFM as pure Effect schemas: parse into mdast-shaped nodes
 with byte offsets, compute offset-splice edits, format, modify by node, project
 to and from plain mdast, walk as a `Stream`, and read and write frontmatter
-through free-standing codecs. **Tier: pure** — no IO, zero runtime deps,
+through free-standing codecs. **Tier: pure** — no IO, one runtime dep (the dependency-free `@effected/source`,
+whose `LineIndex` positions every node and diagnostic),
 optional kit peers only for the frontmatter codecs.
 
 Durable knowledge about this package lives in the OKF bundle, not here. Load

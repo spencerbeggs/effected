@@ -899,6 +899,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/markdown:
+    dependencies:
+      '@effected/source':
+        specifier: workspace:^
+        version: link:../source/dist/dev/pkg
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
@@ -1589,6 +1593,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/yaml:
+    dependencies:
+      '@effected/source':
+        specifier: workspace:^
+        version: link:../source/dist/dev/pkg
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect

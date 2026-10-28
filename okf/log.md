@@ -10,6 +10,9 @@
 * Updated xdg
 * Added @effected/source
 * Updated effected
+* Updated @effected/markdown
+* Updated @effected/yaml
+* Updated @effected/yaml lint system
 
 ## 2026-10-27
 

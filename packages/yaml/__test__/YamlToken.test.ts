@@ -5,7 +5,8 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema, Stream } from "effect";
-import { YamlToken, YamlTokens } from "../src/index.js";
+import type { SourceLocation } from "../src/index.js";
+import { YamlDiagnostic, YamlToken, YamlTokens } from "../src/index.js";
 
 const tokensOf = (text: string): ReadonlyArray<YamlToken> => {
 	const result = YamlTokens.tokenize(text);
@@ -46,6 +47,39 @@ describe("YamlTokens", () => {
 			assert.isDefined(b);
 			assert.strictEqual(b?.line, 1);
 			assert.strictEqual(b?.character, 0);
+		});
+
+		it("counts a bare CR as a line break, as YAML 1.2 and the lexer's newline token do", () => {
+			// The old index counted `\n` only, so every token after a bare `\r`
+			// stayed on line 0 even though the lexer emitted a `newline` for it.
+			const tokens = tokensOf("a: 1\rb: 2\r");
+			const b = tokens.find((t) => t.text === "b");
+			assert.deepStrictEqual([b?.line, b?.character], [1, 0]);
+			const newlines = tokens.filter((t) => t.kind === "newline");
+			assert.deepStrictEqual(
+				newlines.map((t) => [t.line, t.text]),
+				[
+					[0, "\r"],
+					[1, "\r"],
+				],
+			);
+		});
+
+		it("keeps the CR of a CRLF on its own line and agrees with YamlDiagnostic", () => {
+			const text = "a: 1\r\nb: 2\u2028c\n";
+			for (const token of tokensOf(text)) {
+				const d = YamlDiagnostic.fromRaw({ code: "MissingKey", message: "m", offset: token.offset, length: 0 }, text);
+				assert.deepStrictEqual([token.line, token.character], [d.line, d.character], `token at ${token.offset}`);
+			}
+			const b = tokensOf(text).find((t) => t.text === "b");
+			assert.deepStrictEqual([b?.line, b?.character], [1, 0]);
+		});
+
+		it("satisfies @effected/source's SourceLocation", () => {
+			// Type-level: remove a positional field from YamlToken and this stops
+			// compiling.
+			const locations: ReadonlyArray<SourceLocation> = tokensOf("a: 1\n");
+			assert.isAbove(locations.length, 0);
 		});
 
 		it("tokenizes comments as comment-kind tokens carrying the raw # slice", () => {

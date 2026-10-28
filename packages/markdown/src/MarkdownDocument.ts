@@ -6,6 +6,7 @@
 // bare-tree entry points agree exactly on what is a typed failure and what is
 // a defect.
 
+import { LineIndex } from "@effected/source";
 import { Effect, Option, Result, Schema } from "effect";
 import { scanFrontmatter } from "./internal/blocks/frontmatter.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
@@ -280,6 +281,13 @@ const phrasingText = (nodes: ReadonlyArray<PhrasingContent>): string => {
 };
 
 /**
+ * Each document's line index, built at most once. A side table rather than a
+ * field: the index is derived from `source`, so it is no part of the
+ * document's schema, its equality or its encoded form.
+ */
+const lineIndexes = new WeakMap<MarkdownDocument, LineIndex>();
+
+/**
  * A parsed markdown document: the original `source`, the mdast-shaped
  * {@link Root} tree, the non-fatal {@link MarkdownDiagnostic}s the parse
  * produced, and the link-reference `definitions` index.
@@ -370,6 +378,54 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 */
 	get hasFrontmatterBlock(): boolean {
 		return scanFrontmatter(preprocessLines(this.source), this.source) !== null;
+	}
+
+	/**
+	 * The line index over `source`: offsets to zero-based `{ line, character }`
+	 * and back, with exactly the rules this package's own positions use.
+	 *
+	 * @remarks
+	 * A `LineIndex` from `@effected/source` (re-exported from this package's
+	 * entry point) with its default `"lsp"` line breaks: `\n`, `\r\n` and a
+	 * bare `\r`, `character` in UTF-16 code units, an offset at the `\n` of a
+	 * `\r\n` reading as the end of its line. So for any offset into
+	 * `source`:
+	 *
+	 * - `doc.lineIndex.positionAt(offset)` is the `line`/`character` a
+	 *   {@link MarkdownDiagnostic} at that offset carries;
+	 * - a node's unist `Point` has `line` = `lineAt(offset) + 1` and
+	 *   `column` = `offset - lineStart(line) + 1`: `positionAt` plus one on
+	 *   both axes everywhere except at the `\n` of a `\r\n`, which a Point
+	 *   counts as one column past the `\r` (as `vfile-location` does) and
+	 *   `positionAt` reads as the end of its line;
+	 * - `offsetAt`, `spanOf` and `rangeOf` convert an LSP `Position` or
+	 *   `Range` back to an offset or a `MarkdownRange`-shaped
+	 *   `{ offset, length }`.
+	 *
+	 * A parsed document returns the index the parse itself built; a document
+	 * constructed with `make` builds one on first access. Either way it is
+	 * built once per document and shared by every later access. To index a
+	 * text with no document, `LineIndex.make(text)` gives the same answers.
+	 *
+	 * @example
+	 * ```ts
+	 * import { MarkdownDocument } from "@effected/markdown";
+	 * import { Result } from "effect";
+	 *
+	 * const result = MarkdownDocument.parseResult("# Title\r\n\r\nBody\n");
+	 * if (Result.isSuccess(result)) {
+	 *   const index = result.success.lineIndex;
+	 *   console.log(index.positionAt(12)); // => { line: 2, character: 1 }
+	 *   console.log(index.offsetAt({ line: 2, character: 0 })); // => 11
+	 * }
+	 * ```
+	 */
+	get lineIndex(): LineIndex {
+		const cached = lineIndexes.get(this);
+		if (cached !== undefined) return cached;
+		const index = LineIndex.make(this.source);
+		lineIndexes.set(this, index);
+		return index;
 	}
 
 	/**
@@ -605,14 +661,18 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 		text: string,
 		options?: MarkdownParseOptions,
 	): Result.Result<MarkdownDocument, MarkdownParseError> {
-		return Result.map(parsePassResult(text, options), (pass) =>
-			MarkdownDocument.make({
+		return Result.map(parsePassResult(text, options), (pass) => {
+			const document = MarkdownDocument.make({
 				source: text,
 				root: pass.root,
-				diagnostics: pass.carriers.map((carrier) => MarkdownDiagnostic.fromRaw(text, carrier)),
+				diagnostics: pass.carriers.map((carrier) => MarkdownDiagnostic.fromRaw(pass.lineIndex, carrier)),
 				definitions: pass.refmap,
-			}),
-		);
+			});
+			// The parse already built an index over this exact source; hand it
+			// to the document rather than rescanning on first access.
+			lineIndexes.set(document, pass.lineIndex);
+			return document;
+		});
 	}
 
 	/**

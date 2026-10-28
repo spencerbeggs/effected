@@ -349,4 +349,62 @@ describe("LintContext", () => {
 		YamlLint.run("a: 1\nb: 2\n", [probe], YamlLintConfig.make({ rules: { probe: "error" } }));
 		assert.isTrue(ran, "probe rule must have been invoked");
 	});
+
+	it("splits lines where the tokens do, a bare CR included", () => {
+		// Rules index `ctx.lines` by a token's `line` (document-start,
+		// document-end), so lines and tokens must share one line-break rule.
+		// Under the old `\n`-only split, "a: 1\rb: 2\r" was one line while its
+		// `b` token sat on line 1.
+		let ran = false;
+		const probe: YamlRule = {
+			id: "probe",
+			check: (ctx) => {
+				ran = true;
+				assert.deepStrictEqual(ctx.lines, [
+					{ text: "a: 1", offset: 0, number: 0 },
+					{ text: "b: 2", offset: 5, number: 1 },
+				]);
+				for (const token of ctx.tokens) {
+					const line = ctx.lines[token.line];
+					assert.isDefined(line, `token at ${token.offset} names line ${token.line}`);
+					assert.strictEqual(token.offset - (line?.offset ?? 0), token.character);
+				}
+				return [];
+			},
+		};
+		YamlLint.run("a: 1\rb: 2\r", [probe], YamlLintConfig.make({ rules: { probe: "error" } }));
+		assert.isTrue(ran, "probe rule must have been invoked");
+	});
+
+	it("lints a bare-CR document the way its LF twin lints", () => {
+		// A trailing bare CR is a final line break: eof-newline stays quiet and
+		// empty-lines sees no phantom blank line after it.
+		const cr = YamlLint.run("a: 1\rb: 2\r", YamlLint.builtins, YamlLintConfig.default);
+		const lf = YamlLint.run("a: 1\nb: 2\n", YamlLint.builtins, YamlLintConfig.default);
+		assert.deepStrictEqual(cr, []);
+		assert.deepStrictEqual(lf, []);
+		const missing = YamlLint.run("a: 1\rb: 2", YamlLint.builtins, YamlLintConfig.default);
+		assert.deepStrictEqual(
+			missing.map((d) => [d.rule, d.offset, d.line, d.character]),
+			[["eof-newline", 9, 1, 4]],
+		);
+	});
+
+	it("strips the CR of a CRLF and drops the empty segment after a trailing newline", () => {
+		let ran = false;
+		const probe: YamlRule = {
+			id: "probe",
+			check: (ctx) => {
+				ran = true;
+				assert.deepStrictEqual(ctx.lines, [
+					{ text: "a: 1", offset: 0, number: 0 },
+					{ text: "", offset: 6, number: 1 },
+					{ text: "b: 2", offset: 8, number: 2 },
+				]);
+				return [];
+			},
+		};
+		YamlLint.run("a: 1\r\n\r\nb: 2\r\n", [probe], YamlLintConfig.make({ rules: { probe: "error" } }));
+		assert.isTrue(ran, "probe rule must have been invoked");
+	});
 });

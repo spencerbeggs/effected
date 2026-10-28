@@ -55,10 +55,10 @@
 // defect) belongs with the facade and lands in Task 11.
 
 import { assert, describe, it } from "@effect/vitest";
+import { LineIndex } from "@effected/source";
 import { parseBlocks } from "../src/internal/blockParser.js";
 import { GuardExceeded, isGuardExceeded } from "../src/internal/carriers.js";
 import { MAX_NESTING_DEPTH } from "../src/internal/limits.js";
-import { LineIndex } from "../src/internal/lineIndex.js";
 import { preprocessLines } from "../src/internal/preprocess.js";
 import { renderHtml } from "./e2e/support/htmlWriter.js";
 
@@ -172,26 +172,28 @@ describe("the line index", () => {
 		assert.strictEqual(heading?.position.start.line, 3);
 	});
 
-	it("keeps LF semantics identical when built from a line table", () => {
-		const source = "one\ntwo\nthree";
-		const scanned = LineIndex.make(source);
-		const handed = LineIndex.fromLineStarts(
-			source,
-			preprocessLines(source).map((line) => line.start),
-		);
-
-		for (let offset = 0; offset <= source.length; offset += 1) {
-			assert.deepStrictEqual(
-				{ ...handed.positionAt(offset) },
-				{ ...scanned.positionAt(offset) },
-				`disagreement at offset ${offset}`,
-			);
+	it("splits lines exactly where the preprocessor does", () => {
+		// The block pass positions nodes through `@effected/source`'s
+		// `LineIndex` (default LSP line breaks) while its line loop runs over
+		// `preprocessLines`. The two must agree about every line start, plus
+		// the one line the preprocessor omits: the phantom empty line after a
+		// trailing `\n`, where the root's end point sits. Every string of up
+		// to five characters over a terminator-heavy alphabet.
+		const alphabet = ["a", "\n", "\r", " ", "\u2028"];
+		let frontier = [""];
+		const corpus = [""];
+		for (let length = 1; length <= 5; length += 1) {
+			frontier = frontier.flatMap((prefix) => alphabet.map((char) => prefix + char));
+			corpus.push(...frontier);
 		}
-	});
-
-	it("refuses a line table that does not start at zero", () => {
-		assert.throws(() => LineIndex.fromLineStarts("abc", [1, 2]), TypeError);
-		assert.throws(() => LineIndex.fromLineStarts("abc", []), TypeError);
+		assert.strictEqual(corpus.length, 3906, "the corpus walk must enumerate every string");
+		for (const source of corpus) {
+			const expected = preprocessLines(source).map((line) => line.start);
+			if (source.endsWith("\n")) expected.push(source.length);
+			const index = LineIndex.make(source);
+			const actual = Array.from({ length: index.lineCount }, (_, line) => index.lineStart(line));
+			assert.deepStrictEqual(actual, expected, `line starts disagree for ${JSON.stringify(source)}`);
+		}
 	});
 });
 

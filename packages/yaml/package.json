@@ -2,7 +2,7 @@
 	"name": "@effected/yaml",
 	"version": "0.25.1",
 	"private": true,
-	"description": "Zero-dependency YAML parsing, editing, formatting and linting as Effect schemas.",
+	"description": "YAML parsing, editing, formatting and linting as Effect schemas, with no IO and no dependency beyond effect and the kit's own position helpers.",
 	"keywords": ["yaml", "parser", "effect", "schema", "ast", "cst", "editing", "formatting", "linting", "effected"],
 	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/yaml#readme",
 	"bugs": {
@@ -30,6 +30,9 @@
 		"build:prod": "node savvy.build.ts --target prod",
 		"prepare": "turbo run build:dev",
 		"types:check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@effected/source": "workspace:^"
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",

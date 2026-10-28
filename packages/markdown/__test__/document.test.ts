@@ -127,6 +127,56 @@ describe("MarkdownDocument.parseResult", () => {
 	});
 });
 
+describe("MarkdownDocument.lineIndex", () => {
+	const parsed = (text: string): MarkdownDocument => {
+		const result = MarkdownDocument.parseResult(text);
+		assert.isTrue(Result.isSuccess(result));
+		if (!Result.isSuccess(result)) throw new Error("parse failed");
+		return result.success;
+	};
+
+	it("indexes the source with the rules every node Point uses", () => {
+		const source = "# Title\r\n\r\nalpha\rbravo\n\n- item\n*\r\n";
+		const doc = parsed(source);
+		const index = doc.lineIndex;
+		assert.strictEqual(index.text, source);
+		const points: Array<Point> = [];
+		const walk = (node: { position?: Position; children?: ReadonlyArray<unknown> }): void => {
+			if (node.position !== undefined) points.push(node.position.start, node.position.end);
+			for (const child of node.children ?? []) walk(child as never);
+		};
+		walk(doc.root);
+		assert.isAbove(points.length, 6, "the walk must reach the tree's positions");
+		for (const point of points) {
+			const line = index.lineAt(point.offset);
+			const column = point.offset - index.lineStart(line) + 1;
+			assert.deepStrictEqual([line + 1, column], [point.line, point.column], `point at ${point.offset}`);
+		}
+	});
+
+	it("hands back the parse's own index, built once per document", () => {
+		const doc = parsed("a\nb\n");
+		assert.strictEqual(doc.lineIndex, doc.lineIndex);
+	});
+
+	it("builds one for a document constructed with make", () => {
+		const doc = MarkdownDocument.make({
+			source: "x\r\ny",
+			root: Root.make({ type: "root", children: [] }),
+			diagnostics: [],
+			definitions: new Map(),
+		});
+		assert.deepStrictEqual(doc.lineIndex.positionAt(3), { line: 1, character: 0 });
+		assert.strictEqual(doc.lineIndex, doc.lineIndex);
+	});
+
+	it("converts an LSP position back to an offset", () => {
+		const doc = parsed("# Title\r\n\r\nBody\n");
+		assert.strictEqual(doc.lineIndex.offsetAt({ line: 2, character: 0 }), 11);
+		assert.deepStrictEqual(doc.lineIndex.positionAt(12), { line: 2, character: 1 });
+	});
+});
+
 describe("MarkdownDocument.parse", () => {
 	it.effect("agrees with parseResult on the success channel", () =>
 		Effect.gen(function* () {

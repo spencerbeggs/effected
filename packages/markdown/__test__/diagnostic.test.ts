@@ -1,4 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
+import type { MarkdownParseErrorCode, SourceDiagnostic } from "../src/index.js";
+import { LineIndex, MarkdownDiagnostic } from "../src/index.js";
 import {
 	GuardExceeded,
 	MARKDOWN_PARSE_ERROR_CODES,
@@ -7,7 +9,6 @@ import {
 	isRawMarkdownError,
 } from "../src/internal/carriers.js";
 import { MAX_NESTING_DEPTH } from "../src/internal/limits.js";
-import { MarkdownDiagnostic } from "../src/MarkdownDiagnostic.js";
 
 describe("MarkdownDiagnostic", () => {
 	it("derives line and character from offset against LF source", () => {
@@ -47,6 +48,54 @@ describe("MarkdownDiagnostic", () => {
 		const d = MarkdownDiagnostic.fromRaw("a\nb", { code: "NestingDepthExceeded", message: "m", offset: 1, length: 1 });
 		assert.strictEqual(d.line, 0);
 		assert.strictEqual(d.character, 1);
+	});
+
+	it("reads an offset at the LF of a CRLF as the end of its line, never character -1", () => {
+		// The hand-rolled loop advanced past the pair and then subtracted,
+		// answering line 1, character -1.
+		const d = MarkdownDiagnostic.fromRaw("a\r\nb", {
+			code: "NestingDepthExceeded",
+			message: "m",
+			offset: 2,
+			length: 0,
+		});
+		assert.strictEqual(d.line, 0);
+		assert.strictEqual(d.character, 1);
+	});
+
+	it("counts a bare CR as a line break and leaves U+2028 inside its line", () => {
+		const cr = MarkdownDiagnostic.fromRaw("a\rb", { code: "NestingDepthExceeded", message: "m", offset: 2, length: 0 });
+		assert.deepStrictEqual([cr.line, cr.character], [1, 0]);
+		const ls = MarkdownDiagnostic.fromRaw("a\u2028b", {
+			code: "NestingDepthExceeded",
+			message: "m",
+			offset: 2,
+			length: 0,
+		});
+		assert.deepStrictEqual([ls.line, ls.character], [0, 2]);
+	});
+
+	it("accepts a prebuilt LineIndex and answers what the string form answers", () => {
+		const text = "a\r\n\rb\nc";
+		const index = LineIndex.make(text);
+		for (let offset = 0; offset <= text.length; offset++) {
+			const raw = { code: "NestingDepthExceeded", message: "m", offset, length: 0 } as const;
+			const fromIndex = MarkdownDiagnostic.fromRaw(index, raw);
+			const fromText = MarkdownDiagnostic.fromRaw(text, raw);
+			assert.deepStrictEqual([fromIndex.line, fromIndex.character], [fromText.line, fromText.character]);
+		}
+	});
+
+	it("satisfies @effected/source's SourceDiagnostic", () => {
+		// Type-level: remove a positional field from the class and this stops
+		// compiling.
+		const d: SourceDiagnostic<MarkdownParseErrorCode> = MarkdownDiagnostic.fromRaw("a", {
+			code: "NestingDepthExceeded",
+			message: "m",
+			offset: 0,
+			length: 0,
+		});
+		assert.strictEqual(d.code, "NestingDepthExceeded");
 	});
 
 	it("constructs via make and compares structurally equal for identical fields", () => {

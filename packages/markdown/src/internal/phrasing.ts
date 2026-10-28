@@ -19,12 +19,13 @@
 // Throws the raw `GuardExceeded` carrier on a hardening trip (the inline
 // pass's delimiter/bracket stacks); the facade materializes the typed error.
 
+import { LineIndex } from "@effected/source";
 import type { Definition, PhrasingContent, Position } from "../MarkdownNode.js";
-import { Point, Position as PositionClass } from "../MarkdownNode.js";
+import { Position as PositionClass } from "../MarkdownNode.js";
 import type { RawInlineSegment } from "./blockTypes.js";
 import { parseInlines } from "./inlineParser.js";
 import type { InlineDialectName } from "./inlineRegistry.js";
-import { LineIndex } from "./lineIndex.js";
+import { pointAt } from "./point.js";
 import { preprocessLines } from "./preprocess.js";
 import { trimWithSegments } from "./rawInline.js";
 
@@ -51,20 +52,12 @@ export const parsePhrasingText = (text: string, dialect: InlineDialectName): Rea
 	const first = trimmed.segments[0];
 	const startOffset = first === undefined ? 0 : first.sourceOffset;
 
-	const lineIndex = LineIndex.fromLineStarts(
-		text,
-		lines.map((line) => line.start),
-	);
+	const lineIndex = LineIndex.make(text);
 	const sourceLength = text.length;
 	const positionOf = (start: number, end: number): Position => {
 		const clampedStart = Math.min(Math.max(start, 0), sourceLength);
 		const clampedEnd = Math.min(Math.max(end, clampedStart), sourceLength);
-		const startPoint = lineIndex.positionAt(clampedStart);
-		const endPoint = lineIndex.positionAt(clampedEnd);
-		return PositionClass.make({
-			start: Point.make({ line: startPoint.line, column: startPoint.column, offset: clampedStart }),
-			end: Point.make({ line: endPoint.line, column: endPoint.column, offset: clampedEnd }),
-		});
+		return PositionClass.make({ start: pointAt(lineIndex, clampedStart), end: pointAt(lineIndex, clampedEnd) });
 	};
 
 	return parseInlines(
