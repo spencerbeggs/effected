@@ -11,7 +11,6 @@ import { YamlEdit } from "../../YamlEdit.js";
 import type { LintContext, YamlRule } from "../../YamlLintRule.js";
 import { StyleVote, YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
 import type { YamlToken } from "../../YamlToken.js";
-import { endsWithLineBreak } from "./util.js";
 
 /** Options for `document-end`: require (`true`, default) or forbid the marker. */
 export const documentEndOptions = Schema.Struct({
@@ -36,7 +35,7 @@ const endOfStreamPosition = (
 	ctx: LintContext,
 ): { readonly offset: number; readonly length: number; readonly line: number; readonly character: number } => {
 	const lastLine = ctx.lines[ctx.lines.length - 1];
-	const trailingNewline = endsWithLineBreak(ctx.text);
+	const trailingNewline = ctx.text.endsWith("\n");
 	return {
 		offset: ctx.text.length,
 		length: 0,
@@ -65,7 +64,7 @@ export const documentEnd: YamlRule = {
 					fix: YamlEdit.make({
 						offset: ctx.text.length,
 						length: 0,
-						content: endsWithLineBreak(ctx.text) ? "...\n" : "\n...\n",
+						content: ctx.text.endsWith("\n") ? "...\n" : "\n...\n",
 					}),
 				}),
 			];

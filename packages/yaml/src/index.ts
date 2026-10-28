@@ -14,9 +14,11 @@
  * collapsed string reason or an unhandled defect on malformed or adversarial
  * input.
  *
- * Every position the package reports (`YamlDiagnostic`, `YamlToken`, lint
- * diagnostics) is `LineIndex.make(text).positionAt(offset)`; `LineIndex` and
- * the position shapes are re-exported from `@effected/source`, so a consumer
+ * Every position the package reports is a `LineIndex` position:
+ * `YamlDiagnostic` is `LineIndex.make(text).positionAt(offset)`, while
+ * `YamlToken` and lint diagnostics use `{ lineBreaks: "lf" }`, the composer's
+ * rule, where a bare carriage return is line content. `LineIndex` and the
+ * position shapes are re-exported from `@effected/source`, so a consumer
  * needs no second dependency to compute or name them.
  *
  * @packageDocumentation

@@ -27,10 +27,10 @@ sources:
     title: "LSP 3.17 Position: zero-based, UTF-16 by default, line endings \\n, \\r\\n and \\r"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T17:32:13Z
+  at: 2026-10-28T17:52:55Z
 integrity:
   generated:
-    body: a9fddc1935fbb056
+    body: c72a6f6f23e360fc
 ---
 
 # @effected/source
@@ -172,10 +172,12 @@ and `LineIndex` clamps them where the loops do not.
   U+2028 and U+2029** because its scanner, inherited from VS Code's
   `jsonc-parser`, treats them as line breaks. Positions after one disagree
   with any LSP client. `"unicode"` reproduces it; the ruling is jsonc's.
-- **Bug, `@effected/yaml`: `YamlToken` positions ignore a bare `\r`.** YAML
-  1.2 counts a bare `\r` as a line break (`b-break`), and yaml's lexer emits a
-  `newline` token for it, yet every later token stays on line 0. `"lf"`
-  reproduces it; recommend `"lsp"`.
+- **Kept on purpose, `@effected/yaml`: `YamlToken` positions and lint lines
+  ignore a bare `\r`.** YAML 1.2 counts a bare `\r` as a line break
+  (`b-break`), but yaml's composer does not, and lint fixes are computed from
+  token and line positions. Moving them to `"lsp"` alone put fixes inside
+  scalars and changed parsed values, so they stay on `"lf"` until the
+  composer is fixed, which is tracked separately.
 - **Not a bug: markdown's two conversions.** The diagnostic loop and the AST
   index agree on line breaks; one is zero-based and one-based by design.
 - `JsoncParseErrorDetail` has no `message` field, so it satisfies
