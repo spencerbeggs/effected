@@ -125,7 +125,7 @@ describe("catalog:sync", () => {
 		await sync({ ...quiet, root, run });
 
 		assert.lengthOf(run.calls, 1);
-		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", "savvy.build.ts", "--yes", "--json"]);
+		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", "savvy.build.ts", "--yes", "--format", "json"]);
 		assert.strictEqual(run.calls[0]?.cwd, join(root, "packages/pnpm-plugin-effect"));
 	});
 
@@ -151,7 +151,7 @@ describe("catalog:check", () => {
 
 		await check({ ...quiet, root, run });
 
-		assert.notInclude(run.calls[0]?.args ?? [], "--json", "the gate's output feeds a check-run message");
+		assert.notInclude(run.calls[0]?.args ?? [], "--format", "the gate's output feeds a check-run message");
 	});
 
 	it("propagates the gate's exit code and writes nothing", async () => {

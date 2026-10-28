@@ -74,9 +74,9 @@ const DEFAULT_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 const defaultRunner: UpgradeRunner = (args, cwd) =>
 	new Promise((resolve, reject) => {
-		// stdout is captured because `--json` puts its document there; stderr is inherited
+		// stdout is captured because `--format json` puts its document there; stderr is inherited
 		// so the CLI's human commentary reaches the terminal live either way. The two
-		// modes have two audiences: `--json` for this script, text for whoever is reading
+		// modes have two audiences: `--format json` for this script, text for whoever is reading
 		// a red check, which is why the gate below prints what it captured.
 		const child = spawn("pnpm", ["exec", "rolldown-pnpm-config", ...args], {
 			cwd,
@@ -93,7 +93,7 @@ const defaultRunner: UpgradeRunner = (args, cwd) =>
 	});
 
 /**
- * Read the moved entries out of an `--json` upgrade document. Reporting only: whether the
+ * Read the moved entries out of a `--format json` upgrade document. Reporting only: whether the
  * catalog moved is decided by the config file, which cannot disagree with itself.
  */
 function parseChanged(stdout: string): { catalog: string; pkg: string; from: string; to: string }[] {
@@ -125,7 +125,7 @@ function peerOf(spec: string): string | undefined {
  * Join the CLI's reported moves to the peer ranges in the rewritten literal.
  *
  * @remarks
- * The CLI reports the `range` move only — its `--json` names one catalog and
+ * The CLI reports the `range` move only — its `--format json` names one catalog and
  * says nothing about the peers catalog, because `lock-minor` DERIVES the peer
  * from the new range rather than moving it independently. So the peer is read
  * back out of the file the CLI just wrote, which is also the only account of
@@ -507,7 +507,7 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 
 	const before = readConfig(root);
 	const { code, stdout } = await run(
-		["upgrade", "savvy.build.ts", "--yes", "--json"],
+		["upgrade", "savvy.build.ts", "--yes", "--format", "json"],
 		join(root, "packages/pnpm-plugin-effect"),
 	);
 	if (code !== 0) throw new Error(`rolldown-pnpm-config upgrade --yes exited ${code}`);
@@ -541,7 +541,7 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
  * Gate mode: report drift and write nothing. Returns the CLI's exit code — 0 in sync,
  * non-zero on drift — for a caller to propagate.
  *
- * Deliberately the TEXT output, not `--json`: this is what a release gate runs, and the
+ * Deliberately the TEXT output, not `--format json`: this is what a release gate runs, and the
  * failure message a human reads on a red check should be the drift list, not a blob.
  */
 export async function check(options: SyncOptions = {}): Promise<number> {
