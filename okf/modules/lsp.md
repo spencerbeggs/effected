@@ -9,10 +9,10 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:23:22Z
+  at: 2026-10-28T17:46:02Z
 integrity:
   generated:
-    body: 53dac5af693b9ed4
+    body: 1beb41ce651d7714
 ---
 
 # @effected/lsp
@@ -175,6 +175,19 @@ do not:
   would smuggle a separator into one name, a `%00`, a host under `"posix"`,
   and a rooted path with no drive or share under `"win32"`. Node throws for
   each of these.
+- **`toPath` never answers a path `fromPath` would refuse**, and the two
+  share one refusal for Win32 paths, so they cannot drift. A security review
+  of the first cut found `file://./pipe/evil` read as `\\.\pipe\evil` and
+  `file://%3F/C:/x` as `\\?\C:\x`: device and namespace paths that
+  `fromPath` refused to write. A host must now be a plain hostname
+  (dot-separated labels of ASCII letters, digits, `-` and `_`), whether in
+  the authority or spelled inside the path (`file:////server/…`, checked
+  after the segment is decoded). The authority is matched as written, never
+  percent-decoded, so a percent-encoded host, a `.` or `?` host, a
+  separator, `%`, NUL,
+  userinfo, a port or an IPv6 literal is `Option.none()`, as is a UNC share
+  of `.` or `..`. `fromPath` throws the same cases, and names a `\\?\`,
+  `\\.\` or `\??\` prefix as a device or namespace path.
 - **Dot segments are removed in both directions** (RFC 3986 §5.2.4),
   encoded ones (`%2E%2E`) included, and never climb above the root, a drive
   or a UNC share: a URI is never a traversal. Node's `pathToFileURL` resolves
@@ -188,11 +201,13 @@ do not:
 - **`fromPath` encodes everything outside RFC 3986's unreserved set**, `/`
   aside, non-ASCII as uppercase UTF-8 escapes, as `vscode-uri` does (Node
   leaves `!'()*` and some sub-delims bare). A non-absolute path, a NUL, a
-  lone surrogate or a Win32 device path (`\\?\`, `\\.\`) throws a
-  `TypeError`: a programmer error, since no URI names them faithfully.
+  lone surrogate, a Win32 device or namespace path (`\\?\`, `\\.\`,
+  `\??\`) or a malformed UNC root throws a `TypeError`: a programmer
+  error, since no URI names them faithfully.
 - **`localhost` is the local machine** (RFC 8089 §2); any other host is a
   UNC path under `"win32"`, lowercased, and none under `"posix"`. A query or
-  fragment is ignored, as Node ignores it. IDN hosts are not punycoded.
+  fragment is ignored, as Node ignores it. An IDN host is accepted only in
+  its ASCII (punycode) form; neither direction converts it.
 
 `__test__/LspUri.test.ts` pins every case above and runs a differential
 against `node:url` over every path of up to three segments from an
@@ -201,7 +216,11 @@ adversarial segment alphabet (spaces, `%`, `%2F`, `#?`, non-ASCII, astral,
 URIs `LspUri` writes as `LspUri` reads them, `LspUri` reads the URIs Node
 writes as Node reads them (drive case aside, and refusing the shareless UNC
 URIs Node's resolver produces), and `toPath(fromPath(p))` is a fixed point
-that is `p` itself for a dot-free path.
+that is `p` itself for a dot-free path. A second enumeration, over every
+`file:` URI of up to three segments from an alphabet of device-reaching
+tokens (`.`, `?`, encoded separators, `%25`, `%00`, drive segments,
+userinfo, ports), asserts on both platforms that every path `toPath`
+answers is one `fromPath` writes.
 
 `LspUri` converts no positions, so the package takes no `@effected/source`
 edge: the "no `@effected/*` import in `src/`" boundary stays as it was. A

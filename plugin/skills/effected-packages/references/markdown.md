@@ -1,6 +1,6 @@
 # @effected/markdown
 
-CommonMark 0.31.2 + GFM as pure schemas: parse to mdast-shaped nodes with byte offsets, **construct those nodes and serialize them back**, edit by offset splice, format, project to and from plain mdast, and read frontmatter through free-standing codecs. Second in size only to `yaml`. Pure tier: peers on `effect`, and *optionally* on `@effected/yaml` / `@effected/toml` / `@effected/jsonc` — consumed only by the three frontmatter codec modules, so parsing markdown pulls in none of them.
+CommonMark 0.31.2 + GFM as pure schemas: parse to mdast-shaped nodes with UTF-16 code-unit offsets, **construct those nodes and serialize them back**, edit by offset splice, format, project to and from plain mdast, and read frontmatter through free-standing codecs. Second in size only to `yaml`. Pure tier: peers on `effect`, and *optionally* on `@effected/yaml` / `@effected/toml` / `@effected/jsonc` — consumed only by the three frontmatter codec modules, so parsing markdown pulls in none of them.
 
 **It is not a parser-only package.** Three independent readers have concluded it was, from an `index.ts` that leads with `Markdown` / `MarkdownDocument` / `MarkdownEdit` / `MarkdownFormat` / `MarkdownVisitor` / `Mdast`. The authoring surface is the node classes in `MarkdownNode.ts`, which you construct with `new` and hand to `Markdown.stringify`. If you want to *build* a table, a heading or a link — not just read one — this is the package.
 

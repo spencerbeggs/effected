@@ -496,6 +496,16 @@ export interface MemoryFileSystemPortOptions<Faults> {
 	 * `path` and message, and fault handlers receive the arguments as the
 	 * caller gave them. The `FileSystem` service is unaffected: it stays POSIX.
 	 *
+	 * The one answer that is itself a path, the sync port's `realPath`, comes
+	 * back in win32 spelling too, as node's win32 `realpath` answers:
+	 * `C:\repo\link` resolves to `C:\repo\target`, and the drive root to `C:\`.
+	 * The drive letter keeps the caller's casing (on a `caseSensitive: false`
+	 * volume, `c:\repo` answers `c:\repo`) unless an absolute link target
+	 * replaces the prefix, in which case the target's own spelling wins. A
+	 * drive-less answer stays drive-less (`\out`): the port models no current
+	 * drive. Every other answer (names, dirents, stats, contents) carries no
+	 * path.
+	 *
 	 * Edges, by construction of the spelling adapter: a drive-relative path
 	 * such as `C:foo` has no root to map and stays the relative volume path
 	 * `C:foo`; a UNC path `\\server\share` becomes `//server/share`, a

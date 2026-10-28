@@ -194,6 +194,28 @@ describe("AppConfig.layer", () => {
 			}),
 		);
 
+		it.effect('saveTarget "source" opts into writing back to the discovered file', () =>
+			Effect.gen(function* () {
+				const host = MemoryFileSystem.makeSync({ [flagged]: `{"port":8080}` });
+				const target = yield* Effect.gen(function* () {
+					const cfg = yield* TestConfig;
+					return yield* cfg.save(Shape.make({ port: 9000 }));
+				}).pipe(
+					Effect.provide(
+						configLayer({
+							filename: "rc.json",
+							schema: Shape,
+							codec: JsonCodec,
+							resolvers: [ConfigResolver.explicitPath(flagged)],
+							saveTarget: "source",
+						}).pipe(Layer.provide(harnessWith(host.layer))),
+					),
+				);
+				assert.strictEqual(target, flagged);
+				assert.deepStrictEqual(JSON.parse(host.volume.text(flagged) ?? "null"), { port: 9000 });
+			}),
+		);
+
 		it.effect("an empty resolvers array leaves the default chain untouched", () =>
 			Effect.gen(function* () {
 				const cfg = yield* TestConfig;
