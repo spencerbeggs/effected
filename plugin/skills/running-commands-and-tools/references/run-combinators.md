@@ -70,6 +70,16 @@ reproduce this — pressure has to be on both OS pipes at once — so the
 dual-stream backpressure e2e test that proves it must never be deleted, and
 a unit-only suite can never stand in for it.
 
+The trap is in reading a **handle** yourself. Core's spawner convenience
+members drain what they do not return: `exitCode` reads and discards stdout
+and stderr until the process exits, and `string` / `lines` /
+`streamString` / `streamLines` discard stderr unless `includeStderr` is set,
+so a command that floods the unread pipe still completes. On a handle, an
+output `Sink` configured for `stdout`, `stderr` or an output fd receives data
+**only while that handle stream is consumed** — the stream emits the sink's
+results — so an unread stream starves its sink and fills the pipe just the
+same.
+
 ## Trap 3 — `collectTee` is a separate combinator, not an option
 
 Only `collectTee` requires core `Stdio` in `R`. An option cannot vary the

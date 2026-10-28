@@ -1331,6 +1331,8 @@ A record schema describes an object whose keys are dynamic (not known ahead of t
 
 Properties that are not selected by the key schema are ignored by that record. For example, `Schema.Record(Schema.String.check(Schema.isPattern(/^a/u)), Schema.Number)` decodes only string keys that start with `"a"`.
 
+A dynamic record already lets every key be absent, so its value schema **cannot** be `Schema.optionalKey(...)` or `Schema.optional(...)`: `Schema.Record(Schema.String, Schema.optional(Schema.Number))` throws at construction with `Cannot use \`Schema.optionalKey\` or \`Schema.optional\` with index signatures. Index signatures already allow keys to be absent; use \`Schema.UndefinedOr\` to allow \`undefined\` values.` Write `Schema.Record(Schema.String, Schema.UndefinedOr(Schema.Number))` when a present property may hold `undefined`. A record over finite literal or enum keys is struct-like and does take the optional combinators ([Optional Keys](#optional-keys)).
+
 ### Key Transformations
 
 `Schema.Record` supports transforming keys during decoding and encoding. This can be useful when working with different naming conventions.
@@ -1481,6 +1483,29 @@ type Type = {
 }
 */
 type Type = typeof schema.Type
+```
+
+#### Enum Keys
+
+`Schema.Enum` works as the key schema too: each enum member value becomes a required property, exactly as with a literal union.
+
+**Example** (Record keyed by a TypeScript enum)
+
+```ts
+import { Schema } from "effect"
+
+enum Color {
+  Red = "red",
+  Green = "green"
+}
+
+const schema = Schema.Record(Schema.Enum(Color), Schema.Number)
+
+console.log(Schema.decodeUnknownSync(schema)({ red: 1, green: 2 }))
+// { red: 1, green: 2 }
+
+Schema.decodeUnknownSync(schema)({ red: 1 })
+// throws: Missing key
 ```
 
 ## Unions

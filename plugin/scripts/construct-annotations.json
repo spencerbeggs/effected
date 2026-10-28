@@ -151,7 +151,7 @@
 		"CurrentRuntimeEnv": "detect the running agent, CI provider and terminal once, from config",
 		"EnvOverride": "read a mode variable accepted per audience, report rejected values without logging",
 		"RuntimeEnv": "agent, CI and terminal detection snapshot, persist as plain JSON",
-		"TerminalEnv": "terminal colour level, hyperlink support, width and tty facts per stream, `FORCE_COLOR` precedence",
+		"TerminalEnv": "per-stream colour level, `FORCE_COLOR` precedence, sync colour from env record, hyperlinks, width, core TerminalCapabilities",
 		"ShellExports": "parse and write shell export files, read a session env file, strict bash dialect",
 		"ShellExportsError": "shell export text rejected, line, column and reason"
 	},

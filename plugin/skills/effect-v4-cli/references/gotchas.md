@@ -4,7 +4,7 @@ Loaded from `effect-v4-cli`. Seven traps that pass a type-check and a casual tes
 
 ## `Command.provide` builds its layer before the handler runs
 
-`Command.provide` (`cli/Command.ts:1605`) wraps the handler in
+`Command.provide` (`cli/Command.ts:1606`) wraps the handler in
 `Effect.provide(handler, layer)`. The layer is built to satisfy the handler's
 requirements before the handler's own body can execute — so a handler cannot
 validate an input the layer itself depends on (a `--config` path, say)
@@ -238,9 +238,9 @@ behavior with `Argument.Path` — both kinds route through the same
 ## The built-in global flags are on by default, program-wide, not per command
 
 `--help`, `--version`, `--wizard`, `--completions` and `--log-level`
-(`cli/GlobalFlag.ts:166,190,214,235,271`) are registered on every
+(`cli/GlobalFlag.ts:165,189,213,234,270`) are registered on every
 command tree by default — a subcommand cannot "not have" `--help` on its own.
 Trim them program-wide with `CliConfig.layer({ builtIns: [] })`
 (`cli/CliConfig.ts`), read by `Command.runWith` when it collects the
-active flag set (`Command.ts:1838`) — there is no per-command opt-out, only
+active flag set (`Command.ts:1839`) — there is no per-command opt-out, only
 this one program-wide switch.

@@ -138,12 +138,12 @@ _set_line() {
 @test "negative control: an anchor missing from the manifest fails" {
 	local mutated="$BATS_TEST_TMPDIR/manifest.json"
 	_edit_manifest "$MANIFEST" "$mutated" '
-		m.anchors = m.anchors.filter((a) => !(a.file === "effect-v4-cli/references/gotchas.md" && a.anchor === "cli/Command.ts:1605"));
+		m.anchors = m.anchors.filter((a) => !(a.file === "effect-v4-cli/references/gotchas.md" && a.anchor === "cli/Command.ts:1606"));
 	'
 	run node "$HELPER" --repo "$REPO_ROOT" --manifest "$mutated"
 	echo "$output"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"FAIL effect-v4-cli/references/gotchas.md: anchor cli/Command.ts:1605 is not in the manifest"* ]]
+	[[ "$output" == *"FAIL effect-v4-cli/references/gotchas.md: anchor cli/Command.ts:1606 is not in the manifest"* ]]
 }
 
 @test "negative control: a new citation in a skill the old scope never covered fails coverage" {

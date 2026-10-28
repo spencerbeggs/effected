@@ -7,8 +7,8 @@ The engine is core's native **`Arbitrary`**, not
 fast-check — there is no `FastCheck` module: both `it.prop` and `it.effect.prop`
 compile every input through
 `Arbitrary.isArbitrary(input) ? input : Arbitrary.schema(input)`
-(`packages/vitest/src/internal/internal.ts:92-99`) and run
-`Arbitrary.checkEffect` (`:123`), so inputs may be Schemas, `Arbitrary`
+(`packages/vitest/src/internal/internal.ts:98-105`) and run
+`Arbitrary.checkEffect` (`:129`), so inputs may be Schemas, `Arbitrary`
 values, or a mix, in the array or the named-record form:
 
 ```ts
@@ -34,8 +34,13 @@ it.prop("mixed inputs", { name: Name, n: Schema.Int }, ({ name, n }) => typeof n
 ```
 
 The options bag is **`arbitrary?: Arbitrary.CheckOptions`** on the
-`timeout`/`TestOptions` argument (`packages/vitest/src/index.ts:129,184`):
-`{ runs, size, maxDiscards, maxShrinks, seed, replay }` (`Arbitrary.ts:195`).
+`timeout`/`TestOptions` argument (`packages/vitest/src/index.ts:129,185`):
+`{ runs, concurrency, size, maxDiscards, maxShrinks, seed, replay }` (`Arbitrary.ts:201`).
+`concurrency` (default `1`) evaluates that many independent cases at once — an
+Effectful property that sleeps or does IO runs proportionally faster — while
+results are still processed in generation order, so a deterministic property
+keeps the same verdict, counts and replay token; shrinking and replay stay
+sequential.
 There is **no `fastCheck: { numRuns }` option** — `numRuns` is `runs`, `path` is the
 opaque `replay` token, `maxSkipsPerRun` is one absolute `maxDiscards`. A raw
 fast-check arbitrary in the inputs is a type error and a runtime failure;
@@ -52,7 +57,7 @@ what a probe settled about **this repo's** thirteen migrated property suites:
 - **The `size` clamp silently shrinks a domain.** Every unconstrained string
   and array length is generated up to `min(maxLength, max(minLength, size))`
   with `size` defaulting to **10** (`internal/arbitrary/schema.ts:1081-1086`,
-  `:1299-1300`; `runner.ts:472,615`), ramping from 0 across the runs. A
+  `:1299-1300`; `runner.ts:478,727`), ramping from 0 across the runs. A
   `Schema.String.check(Schema.isMaxLength(40_000))` input never exceeded 10
   characters at the default and reached 40 000 with `arbitrary: { size: 40_000 }`.
   A byte-budget or long-input property that does not pass `size: <cap>`
@@ -98,7 +103,7 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   (`regexp.ts:835` generates full code points under it, so a negated class
   or `\S` can yield astral characters), and JSON Schema export needs it:
   `isPattern` exports `pattern` only when the flags match `/^[dg]*uy?$/`
-  (`Schema.ts:6905`), so a flag-free regex exports a bare
+  (`Schema.ts:6910`), so a flag-free regex exports a bare
   `{"type":"string"}` while decoding still enforces it. Rewrite
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`
   (`packages/semver/src/SemVer.ts`, `packages/schema-org/src/NodeRef.ts`). Hostile-unicode input is generated
@@ -122,7 +127,7 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   `Schema.Literals` of fragments plus the random text, then `Arbitrary.map`
   to pick or concatenate (`packages/git/__test__/GitRemote.test.ts`).
   **`Arbitrary.array` is under the same `size` clamp**: its upper length is
-  `min(maxLength, max(minLength, size))` (`internal/arbitrary/runner.ts:302`),
+  `min(maxLength, max(minLength, size))` (`internal/arbitrary/runner.ts:308`),
   so `maxLength: 40` produces at most 10 characters at the default size —
   pass `arbitrary: { size: 40 }` to reach the bound. Invalid length bounds
   throw `RangeError` when `Arbitrary.array` is called.
@@ -133,11 +138,11 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   `x instanceof StyleVote` takes the real branch. In-repo reference:
   `packages/yaml/__test__/inference.test.ts`.
 - **`it.prop` accepts a Schema directly.** Both runners share `makeArbitrary`
-  (`internal.ts:95`). Hand-built inputs are `Arbitrary` values, not
+  (`internal.ts:101`). Hand-built inputs are `Arbitrary` values, not
   `FastCheck.*` ones.
 
 **Reading a property failure.** `@effect/vitest` dies with
-`Arbitrary.formatCheckFailure` (`Arbitrary.ts:367`): runs, shrinks, the
+`Arbitrary.formatCheckFailure` (`Arbitrary.ts:374`): runs, shrinks, the
 **shrunk input**, the failure and the **replay token**. The vitest-agent
 reporter that owns this repo's CLI output compacts that to its first line —
 `Property falsified after 33 run(s) and 1 shrink(s)` — and drops the input

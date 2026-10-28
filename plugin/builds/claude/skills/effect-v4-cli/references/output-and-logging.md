@@ -58,6 +58,20 @@ Implementation facts worth knowing even if you write your own:
   (never printed by `Command.runWith` at all) is skipped by the same check —
   `reportFailures` only tests the tag and the mark, so it cannot tell one a
   handler reported itself from one `Command.runWith` already printed.
+- **Core renders any handler failure that carries a string
+  `[CliError.userMessage]` too**, not only a `UserError`: `Command.runWith`
+  prints that message through the formatter, sets the error's
+  `Runtime.errorReported` mark to `false`, and re-fails with the original
+  error, tag intact (`renderErrors: false` turns all of this off).
+  `CliRuntime.main` / `reportFailures` skip such an error too, so it is
+  reported once, but it is a handler failure, not a usage error: it exits
+  with the code `exitCodes` gives its tag, else `exitCode`, else `1`, where a
+  rendered `UserError` exits with the usage code. Annotate a domain error
+  with `[CliError.userMessage]` to keep its tag (and its `exitCodes` entry);
+  fail with `CliError.UserError({ cause, userMessage })` for a usage error.
+  As with the `UserError` case, `reportFailures` reads only the message and
+  the mark, so an annotated error marked with `CliRuntime.reported` and never
+  printed by `Command.runWith` is skipped as well.
 - **Exit code and duplicate-report suppression are markers on the error**, read
   off the squashed failure: `Runtime.errorExitCode` and `Runtime.errorReported`.
   Beware the polarity — **`errorReported: false` is what SUPPRESSES** the

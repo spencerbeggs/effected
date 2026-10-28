@@ -18,9 +18,9 @@ The CLI framework lives **in core**:
 | `@effect/cli` | **`effect/cli`** |
 | `@effect/platform` `HttpClient` | **`effect/http`** |
 
-`effect/cli` exports twelve modules: `Argument`, `CliConfig`,
+`effect/cli` exports thirteen modules: `Argument`, `CliConfig`,
 `CliError`, `CliOutput`, `Command`, `Completions`, `Flag`, `GlobalFlag`,
-`HelpDoc`, `Param`, `Primitive`, `Prompt`. Note the vocabulary: an
+`HelpDoc`, `Param`, `Primitive`, `Prompt`, `TerminalCapabilities`. Note the vocabulary: an
 option is a **`Flag`**, not an `Option` (the name `Option` belongs to the data
 type).
 
@@ -28,7 +28,7 @@ type).
 
 Every `Flag`, `Argument`, `Prompt` and `GlobalFlag` constructor is a
 PascalCase name (`cli/Flag.ts:60-449`, `Argument.ts:62-308`,
-`Prompt.ts:888-1442`, `GlobalFlag.ts:112,131`). The lowercase spellings are
+`Prompt.ts:888-1442`, `GlobalFlag.ts:111,130`). The lowercase spellings are
 **`undefined`** on the namespace — a call type-errors, and a lookup probe
 that prints `typeof Flag.string` and concludes "no string flag" is the
 expensive misread. The roster:
@@ -58,7 +58,7 @@ is `Param.Boolean(Param.flagKind, name)` with no fallback (`cli/Flag.ts:80`;
 its own docstring at `:72` says *"Omission fails unless the flag is made
 optional or given a fallback"*), and the shared flag parser fails with
 `CliError.MissingOption({ option: name })` the moment the flag is absent from
-the parsed args (`cli/Param.ts:2126`) — the primitive's type never
+the parsed args (`cli/Param.ts:2135`) — the primitive's type never
 enters into it. So a bare `Flag.Boolean("force")` turns every invocation that
 *omits* `--force` into a usage error, which is the opposite of what a
 boolean flag is for. Spell the default:
@@ -81,6 +81,16 @@ A boolean flag also accepts `--no-<name>`. `Flag.withNegation("skip-cache")`
 renames that form (`--skip-cache` sets the flag `false`, and `--no-cache` is
 then an unrecognized flag), and `Flag.withoutNegation` removes it; both apply
 to parsing and to shell completions.
+
+A single-valued flag passed twice is a usage error, not "first one wins":
+`--tag a --tag b` against `Flag.String("tag")` fails `ShowHelp` carrying
+`InvalidValue` — `Invalid value for flag --tag: "2 occurrences". Expected: at
+most 1 value`. A flag meant to repeat says so with `Flag.atLeast`,
+`Flag.atMost` or `Flag.between`.
+
+`Completions.fromCommand(command)` turns a `Command` tree into the
+`CommandDescriptor` that `Completions.generate` takes, so a build script can
+write shell completion scripts without running the CLI.
 
 ## Rules across flags — `Command.validate`, not the handler
 
@@ -114,7 +124,7 @@ is the handler's error, not a usage error.
 ~~~ts
 import type { Command } from "effect/cli"
 
-// effect/cli/Command.ts:405 — the five members: FileSystem.FileSystem,
+// effect/cli/Command.ts:406 — the five members: FileSystem.FileSystem,
 // Path.Path, Terminal.Terminal, ChildProcessSpawner, Stdio.Stdio
 export type Environment = Command.Environment
 ~~~
@@ -149,8 +159,8 @@ modules (`process/index.ts`):
 
 | you want | v4 |
 | --- | --- |
-| `@effect/platform/Command` (build a command value) | **`effect/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:633,724,759,825,865`). **Warning:** `setEnv` never sets `extendEnv` — it merges into `options.env` and leaves `extendEnv` untouched, so the child's env is ONLY what you pass; it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`, where `extendEnv` is a real option at `ChildProcess.ts:427`) |
-| `@effect/platform/CommandExecutor` (run it) | **`effect/process` `ChildProcessSpawner`** — a `Context.Service` with `spawn` / `exitCode` / `string` / `lines` / `streamString` / `streamLines` (`ChildProcessSpawner.ts:262`) |
+| `@effect/platform/Command` (build a command value) | **`effect/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:659,750,785,851,891`). **Warning:** `setEnv` never sets `extendEnv` — it merges into `options.env` and leaves `extendEnv` untouched, so the child's env is ONLY what you pass; it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`, where `extendEnv` is a real option at `ChildProcess.ts:453`) |
+| `@effect/platform/CommandExecutor` (run it) | **`effect/process` `ChildProcessSpawner`** — a `Context.Service` with `spawn` / `exitCode` / `string` / `lines` / `streamString` / `streamLines` (`ChildProcessSpawner.ts:271`) |
 
 > **Do not hand-roll a `node:child_process` layer or a parallel
 > `Command`/`CommandRunner` vocabulary.** One did survive four review gates in

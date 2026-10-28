@@ -427,7 +427,7 @@ Colliding bounds tighten in place rather than stacking. `Schema.Natural` exports
 
 #### The fromJsonString combinator
 
-With `fromJsonString`, the generated schema describes the encoded side: a string marked with `contentMediaType: "application/json"`. The JSON Schema of the decoded value is not embedded.
+With `fromJsonString`, the generated schema describes the encoded side: a string marked with `contentMediaType: "application/json"`, with the JSON Schema of the parsed content embedded as `contentSchema`.
 
 **Example** (JSON string content)
 
@@ -449,7 +449,19 @@ console.log(JSON.stringify(document, null, 2))
   "dialect": "draft-2020-12",
   "schema": {
     "type": "string",
-    "contentMediaType": "application/json"
+    "contentMediaType": "application/json",
+    "contentSchema": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "a"
+      ],
+      "additionalProperties": true
+    }
   },
   "definitions": {}
 }
@@ -493,16 +505,16 @@ The public surface (`Arbitrary.ts`):
 
 | name | what it is |
 | --- | --- |
-| `Arbitrary.schema(S, { shrink? })` (`:416`) | derive a generator of `S["Type"]` — decoded values, so `NumberFromString` yields numbers. Derivation is eager and **throws** for a Schema it cannot compile (no finite path through a recursion, a declaration with no representation) |
-| `Arbitrary.Constant(value)` (`:439`) | always that value, no shrinking; the branch value inside `flatMap` |
-| `Arbitrary.array(item, options?)` (`:490`) | a variable-length array generator over an existing `Arbitrary`, independent of Schema — bound its length with `ArrayOptions`; use `Arbitrary.schema` when the shape is described by a Schema instead |
-| `map` / `filter` / `filterMap` (`:504`–`:551`) | transform, keep, or transform-and-reject generated values (and their shrinks); rejections spend `maxDiscards` |
-| `flatMap` (`:583`) | dependent generation — a generated value chooses the next `Arbitrary` |
-| `all(tuple \| iterable \| record)` (`:611`) | independent members combined shape-for-shape |
-| `sampleEffect(arb, { count, size, maxDiscards, seed })` (`:637`) | `Effect<ReadonlyArray<A>, SampleError>` — fails typed when discards exhaust the budget |
-| `checkEffect(arb, property, CheckOptions)` (`:671`) | runs a pure or Effectful property and returns a **`CheckResult`** (`Passed \| Falsified \| Exhausted \| ReplayMismatch`) — it never throws for an ordinary falsification |
-| `formatCheckFailure(result)` (`:367`) | the string `@effect/vitest` dies with: runs, shrinks, shrunk input, failure, **replay token** |
-| `isArbitrary`, `CheckOptions`, `SampleOptions`, `Replay` | guard, option bags (`{ runs, size, maxDiscards, maxShrinks, seed, replay }` at `:195`), the opaque replay token |
+| `Arbitrary.schema(S, { shrink? })` (`:423`) | derive a generator of `S["Type"]` — decoded values, so `NumberFromString` yields numbers. Derivation is eager and **throws** for a Schema it cannot compile (no finite path through a recursion, a declaration with no representation) |
+| `Arbitrary.Constant(value)` (`:446`) | always that value, no shrinking; the branch value inside `flatMap` |
+| `Arbitrary.array(item, options?)` (`:497`) | a variable-length array generator over an existing `Arbitrary`, independent of Schema — bound its length with `ArrayOptions`; use `Arbitrary.schema` when the shape is described by a Schema instead |
+| `map` / `filter` / `filterMap` (`:511`–`:558`) | transform, keep, or transform-and-reject generated values (and their shrinks); rejections spend `maxDiscards` |
+| `flatMap` (`:590`) | dependent generation — a generated value chooses the next `Arbitrary` |
+| `all(tuple \| iterable \| record)` (`:618`) | independent members combined shape-for-shape |
+| `sampleEffect(arb, { count, size, maxDiscards, seed })` (`:644`) | `Effect<ReadonlyArray<A>, SampleError>` — fails typed when discards exhaust the budget |
+| `checkEffect(arb, property, CheckOptions)` (`:679`) | runs a pure or Effectful property and returns a **`CheckResult`** (`Passed \| Falsified \| Exhausted \| ReplayMismatch`) — it never throws for an ordinary falsification |
+| `formatCheckFailure(result)` (`:374`) | the string `@effect/vitest` dies with: runs, shrinks, shrunk input, failure, **replay token** |
+| `isArbitrary`, `CheckOptions`, `SampleOptions`, `Replay` | guard, option bags (`{ runs, concurrency, size, maxDiscards, maxShrinks, seed, replay }` at `:201`; `concurrency`, default `1`, evaluates independent cases in parallel with results still taken in generation order, while shrinking and replay stay sequential), the opaque replay token |
 
 **What it otherwise does NOT have, so stop looking:** no `oneof`,
 `constantFrom`, `record`, `string`, `integer`, `option`,
@@ -528,7 +540,7 @@ house translations, each taken from a migrated property test:
 
 #### The size clamp — the trap that silently shrinks a domain
 
-`size` (default **10** for both `sampleEffect` and `checkEffect`, `internal/arbitrary/runner.ts:472,615`)
+`size` (default **10** for both `sampleEffect` and `checkEffect`, `internal/arbitrary/runner.ts:478,727`)
 is a *local complexity scale*: every unconstrained string, array and record
 length is generated up to `min(maxLength, max(minLength, size))`
 (`internal/arbitrary/schema.ts:1081-1086` for strings, `:1299-1300` for
@@ -547,7 +559,7 @@ magnitude `size²` (`schema.ts:1130`).
 Generated values are always validated by the schema's checks before they are
 returned. Built-in checks (`isBetween`, `isMinLength`/`isMaxLength`/
 `isBetweenLength`, `isPattern`, `isUnique`, `isInt`, …) carry an
-`arbitraryConstraint` annotation (over twenty `arbitraryConstraint:` sites in `Schema.ts`, e.g. `isBetween` at `:7837`; `isPattern` delegates to `SchemaAST.isPattern`), so the compiler generates
+`arbitraryConstraint` annotation (over twenty `arbitraryConstraint:` sites in `Schema.ts`, e.g. `isBetween` at `:7848`; `isPattern` delegates to `SchemaAST.isPattern`), so the compiler generates
 matching values **constructively**. Any other check is a *residual filter*:
 values are generated without it and rejected when they fail. Rejections are
 budgeted (`maxDiscards`, default `max(100, count * 10)` / `max(100, runs * 10)`),
@@ -569,7 +581,7 @@ never "raise `maxDiscards`" — it is one of:
 
 - give the filter a constructive constraint —
   `Schema.makeFilter(pred, { arbitraryConstraint: { patterns: [{ source, flags }] } })`
-  (or `minimum`/`maximum` + `order`, `minLength`/`maxLength`, `number: "integer" | "finite"`, `uniqueBy`; the shape is `Schema.Annotations.ToArbitrary.FilterConstraint`, `Schema.ts:17987` — the old `ToArbitrary.Constraint` name is gone);
+  (or `minimum`/`maximum` + `order`, `minLength`/`maxLength`, `number: "integer" | "finite"`, `uniqueBy`; the shape is `Schema.Annotations.ToArbitrary.FilterConstraint`, `Schema.ts:18006` — the old `ToArbitrary.Constraint` name is gone);
 - generate the leaf from a `Schema.Literals` of real values (the
   `packages/lockfiles/__test__/roundtrip.property.test.ts` shape);
 - for a declaration, provide `toCodecArbitrary` — a `Schema.link` from an
@@ -604,7 +616,7 @@ the house examples. Named groups (`(?<h>…)`) and non-capturing groups compile 
 it (`regexp.ts:835`: without `u` generation is held to code points up to
 `0xffff`; with it a negated class or `\S` can yield astral characters), and
 JSON Schema export requires it: `isPattern` exports `pattern` only when the
-flags match `/^[dg]*uy?$/` (`Schema.ts:6905`). A flag-free
+flags match `/^[dg]*uy?$/` (`Schema.ts:6910`). A flag-free
 `Schema.String.check(Schema.isPattern(/^[a-z]+$/))` exports as a bare
 `{"type":"string"}` — decoding still enforces the regex, but every published
 JSON Schema (a config schema, an MCP tool's `inputSchema`, schemastore output)
@@ -663,7 +675,7 @@ Declaration schemas are opaque. Derivation looks, in order, for an explicit
 so a declaration that already serializes usually needs nothing. When the
 canonical representation is opaque or generates valid values too rarely,
 provide a **Schema `Link`** from an easily-generated source, not a fast-check
-arbitrary (`Schema.Annotations.ToArbitrary.Declaration`, `Schema.ts:18006`):
+arbitrary (`Schema.Annotations.ToArbitrary.Declaration`, `Schema.ts:18025`):
 
 ```ts
 import { Schema, SchemaTransformation } from "effect"

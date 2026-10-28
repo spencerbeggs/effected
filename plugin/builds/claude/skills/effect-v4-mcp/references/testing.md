@@ -322,8 +322,7 @@ frame `send` cannot construct, such as a genuinely malformed line. See
 `server-wiring.md`'s [Stdin guard](./server-wiring.md#stdin-guard), which
 already spawns a real process, sends one, and asserts the server answers a
 typed `-32700` and answers the next request. JSON that is no JSON-RPC
-message (a bare `null`, `{}`) is answered `-32600` the same way, and a
-request whose `method` starts with `@effect/rpc/` is answered `-32601`;
+message (a bare `null`, `{}`) is answered `-32600` the same way;
 send a valid request in the same `sendRaw` write after it to prove a
 co-batched frame is still answered. Match replies by `id`, never by
 position: a guard reply can precede core's answer to an earlier line.

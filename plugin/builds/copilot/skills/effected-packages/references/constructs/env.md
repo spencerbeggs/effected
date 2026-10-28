@@ -22,7 +22,7 @@
 | `ShellExportsErrorReason` | TypeAlias | Why `ShellExports.parseResult` or `ShellExports.parseBytesResult` rejected a text. | |
 | `StreamEnv` | Interface | What one output stream can do. | |
 | `TermProgram` | Interface | `TERM_PROGRAM` and `TERM_PROGRAM_VERSION`, verbatim and independent of each other: the raw values behind `RuntimeEnv.terminal`'s normalized name, kept even when the program is not a known terminal (`tmux`, `zed`). | |
-| `TerminalEnv` | Class | What the terminal can do: per-stream colour level, hyperlink support and columns, and the width to lay out at. | terminal colour level, hyperlink support, width and tty facts per stream, `FORCE_COLOR` precedence |
+| `TerminalEnv` | Class | What the terminal can do: per-stream colour level, hyperlink support and columns, and the width to lay out at. | per-stream colour level, `FORCE_COLOR` precedence, sync colour from env record, hyperlinks, width, core TerminalCapabilities |
 | `TerminalEnvOptions` | Interface | The options `TerminalEnv.layer` takes. | |
 | `TerminalEnvShape` | Interface | The shape of the `TerminalEnv` service: a snapshot taken when the layer is built, not a live view. | |
 | `TerminalEnvTestOptions` | Interface | The options `TerminalEnv.layerTest` takes: fields to set over the quiet terminal. | |

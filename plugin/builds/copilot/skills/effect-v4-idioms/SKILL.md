@@ -689,12 +689,18 @@ await runtime.runPromise(program)
 
 `Equal.equals` is **structural by default** in v4 — no `structuralRegion`
 opt-in. Plain objects, arrays, `Map`, `Set`, `Date`, and `RegExp` compare by
-value:
+value, and `ArrayBuffer` / `SharedArrayBuffer` compare and hash by their bytes:
 
 ```ts
 Equal.equals({ a: 1 }, { a: 1 })   // true
 Equal.equals(NaN, NaN)             // true  (NaN equals itself)
+Equal.equals(new Uint8Array([1, 2]).buffer, new Uint8Array([3, 4]).buffer) // false
 ```
+
+Mutable cells are the exception: `Ref` and `MutableRef` compare **by
+reference**. Two distinct refs holding equal contents are unequal and are two
+separate `HashSet` members or `HashMap` keys; compare what they hold
+(`Ref.get`, `MutableRef.get`) when the contents are what matters.
 
 To force identity comparison, opt out per object: `Equal.byReference(obj)`
 (non-mutating Proxy) or `Equal.byReferenceUnsafe(obj)` (marks the object itself,
@@ -709,13 +715,13 @@ construction throw or a service that was never provided:
 
 | Write | Not | Source |
 | --- | --- | --- |
-| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9349` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
-| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9271` — same shape, same optional-`options` trap, one page away in the same module. |
+| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9360` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
+| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9282` — same shape, same optional-`options` trap, one page away in the same module. |
 | `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:556` — a *function* returning a Layer, unlike almost every other `layer` in core. |
-| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5025` — takes ONE array argument. |
+| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5032` — takes ONE array argument. |
 
 **The discriminator is the optional argument.** `Schema.Cause(e, d)`
-(`Schema.ts:11277`) and `Schema.Exit(...)` (`:14356`) are factories too, but their
+(`Schema.ts:11287`) and `Schema.Exit(...)` (`:14366`) are factories too, but their
 arguments are required, so forgetting to call them is an immediate type error.
 Only the zero-or-optional-arg factories type-check uncalled.
 

@@ -72,7 +72,7 @@ internally would win over the harness's and talk to the real terminal.
   which writes through `console.log` whatever `LogToStderr` says (`effect`'s
   `src/Logger.ts:273-279` is `withConsoleLog`; `consoleLogFmt` is `:942`,
   `consoleStructured` `:968` and `consoleJson` `:992`; the default logger reads
-  the reference at `src/internal/effect.ts:6944`). Never install them in an MCP server: every log
+  the reference at `src/internal/effect.ts:6952`). Never install them in an MCP server: every log
   line lands on stdout, the wire. For JSON logs on stderr, install
   `Logger.layer([Logger.withConsoleError(Logger.formatJson)])`.
 - A malformed `protocols` list — more than one stateless adapter — is the
@@ -157,14 +157,12 @@ and answers such a line itself, on `stdout`, before core ever sees it:
   request nor a response. A request written in the same chunk after such a
   line is still answered.
 
-The guard also keeps core's internal RPC control methods off the wire.
-Core's JSON-RPC decoder reads a message whose `method` starts with
-`@effect/rpc/` and has no `id` as one of its own control messages, so a
-client line `{"jsonrpc":"2.0","method":"@effect/rpc/Eof"}` would silently
-stop the server. The guard drops such a notification and answers such a
-request `-32601` Method not found, echoing its `id`, as for any method the
-server does not serve. A control method inside a batch array is harmless
-and goes to core with the array.
+A line whose `method` starts with `@effect/rpc/` is not special. Core
+serves MCP with Effect's RPC control messages turned off, so
+`{"jsonrpc":"2.0","method":"@effect/rpc/Eof"}` is an ordinary notification
+it ignores, and such a request gets core's
+`-32601` (`Method not found: @effect/rpc/Eof`), echoing its `id`. Neither
+stops the server, and core writes no `@effect/rpc/Pong`.
 
 Everything else goes to core, which handles it: an array gets core's own
 `-32600` (it serves no batches), an object with an `id` and no `method` is a
@@ -177,8 +175,7 @@ before core's answer to an earlier line.
 The guard's own state — the held partial line — lives once per `Stdio`, not
 per subscription, so it survives core re-subscribing to stdin. Hand-wiring
 `McpServer.layerStdio` directly, without `McpStdio.layer`, keeps serving
-through bad lines but never answers them, and stops for good on one
-`@effect/rpc/Eof` line.
+through bad lines but never answers them.
 
 ~~~ts
 import { unlinkSync, writeFileSync } from "node:fs"

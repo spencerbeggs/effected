@@ -468,7 +468,7 @@ The first test is its own evidence: the control `logError` line reaches
 `logLines` nor `errorLines`. Outside the test services it is the same — run
 under `Effect.runPromise`, the program prints only the control line on stdout
 and nothing on stderr. `References.UnhandledLogLevel` does not change this:
-core reads it only in `Pool.ts:1052`. A test whose only assertions live in
+core reads it only in `Pool.ts:1124`. A test whose only assertions live in
 code paths that never observe a forked child's outcome is exercising nothing
 about that child. Join it, or route its `Exit` into a `Deferred` the test
 explicitly awaits — never assume a green run means every fiber it started
@@ -526,7 +526,7 @@ Three sharp edges, all clock-adjacent:
   `it.scoped` — but you do **not** need one. `it.effect` already runs its body
   through `Effect.scoped`:
   `makeTester<Scope.Scope>(flow(Effect.scoped, Effect.provide(TestEnv)), it)`
-  (`@effect/vitest` `internal/internal.ts:451`), and its type is
+  (`@effect/vitest` `internal/internal.ts:490`), and its type is
   `Tester<R | Scope.Scope>` (`index.ts:140`), so a `Scope` requirement is
   satisfied by the runner. An explicit `Effect.scoped` in the pipeline is
   harmless — it just closes the scope earlier, before the test ends — but it is

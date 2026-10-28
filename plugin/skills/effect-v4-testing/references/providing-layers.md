@@ -8,7 +8,7 @@ chosen.
 ## `layer()` memoizes; plain `Effect.provide` does NOT. That asymmetry is the whole decision
 
 The top-level `layer` builds its layer once per group through a `MemoMap` and an
-`Effect.cached` build (`packages/vitest/src/internal/internal.ts:333,335,337`),
+`Effect.cached` build (`packages/vitest/src/internal/internal.ts:345,390,392`),
 keeps the scope open for the group, and closes it in `afterAll`. A per-test
 `.pipe(Effect.provide(L))` carries no memo map and rebuilds per test.
 
@@ -50,20 +50,28 @@ The pre-flight before collapsing, in order:
    a `layer()` block — the group shares one `TestClock`.
 
 Worked failures → [migrating-a-repo.md](./migrating-a-repo.md).
-Where state must vary per test, keep the per-test provide, or use **distinct
-keys per test** and flush explicitly before asserting counts.
+Where state must vary per test, keep the per-test provide, use
+**`layer(L, { buildPerTest: true })`**, or use **distinct keys per test** and
+flush explicitly before asserting counts. `buildPerTest` builds the block's
+layer once per test, into a fork of the memo map, and releases that build
+before the next test starts, while a layer from an enclosing `layer` block is
+still shared. Probed with a `Ref`-backed layer: two tests that each increment
+it both read `1` under `buildPerTest`, and `1` then `2` without it. It keeps
+the `layer()` block shape without the cumulative state, so it is the move when
+a suite needs per-test isolation and the block's `it`. A build failure fails
+only that test, and nested blocks inside a per-test block are per test too.
 
 Other `layer(...)` mechanics (surface checked against
-`packages/vitest/src/index.ts:139-154` and `:318-329`):
+`packages/vitest/src/index.ts:139-155` and `:363-375`):
 
 - The block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`), and
   **`MethodsNonLive` has no `.live`** — a wall-clock test that also needs the
   group's layer goes **outside** the block as a top-level `it.live(...)` with
   `.pipe(Effect.provide(TheLayer))`.
 - Nest extra deps with `it.layer(BarLayer)("nested", (it) => { … })` — the
-  nested form takes **`concurrent` and `timeout` only** (no `memoMap`, no
-  `excludeTestServices`), forks the parent's memo map and inherits the parent's
-  `excludeTestServices` setting (`internal.ts:368-369`).
+  nested form takes **`concurrent`, `timeout` and `buildPerTest` only** (no
+  `memoMap`, no `excludeTestServices`), forks the parent's memo map and
+  inherits the parent's `excludeTestServices` setting (`internal.ts:363-364`).
 - `layer(L, { excludeTestServices: true })` runs the group **without** the
   `TestClock`/`TestConsole` overrides — the block-wide alternative when every
   test in the group needs the real clock, rather than pulling one wall-clock

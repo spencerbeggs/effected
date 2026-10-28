@@ -218,20 +218,20 @@ of the global `Array` type, so core defines the symbol under a private name and
 renames it in an `export {}` block:
 
 ```text
-// Schema.ts:4662 — the real definition, under a name you did not grep for
+// Schema.ts:4669 — the real definition, under a name you did not grep for
 const ArraySchema: ArrayLambda = Struct_.lambda<ArrayLambda>((schema) => …)
 
-// Schema.ts:4665 — the export, in a block your grep pattern never matches
-export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at Schema.ts:4683
+// Schema.ts:4672 — the export, in a block your grep pattern never matches
+export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at Schema.ts:4690
 ```
 
 `Schema.Array` is real, and `grep 'export const Array' Schema.ts` returns
 nothing. The confirmed occurrences of this pattern (vendored-tree lines) —
-`Schema.ts:4683`, `Equivalence.ts:637`, `Order.ts:596` — are all
+`Schema.ts:4690`, `Equivalence.ts:637`, `Order.ts:596` — are all
 `Array`, but treat the *class* of names as suspect, not just that one:
 `Array`, `Record`, `Map`, `Set`, `Error`, `Date`, `Number`, `String`, `Object`,
 `Symbol`, `Function`, `Boolean`. (Some of them do grep normally —
-`Schema.Record` is a plain `export function Record` at `Schema.ts:4009`, and
+`Schema.Record` is a plain `export function Record` at `Schema.ts:4016`, and
 `Config.Array` a plain `export function Array` at `Config.ts:1163` — which
 is exactly why the inconsistency catches people.)
 

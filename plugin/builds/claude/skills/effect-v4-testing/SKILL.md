@@ -66,8 +66,8 @@ describe("Jsonc", () => {
 
 - **`it.effect` runs the returned Effect** and provides the default test
   environment — `TestEnv = Layer.mergeAll(TestConsole.layer, TestClock.layer())`
-  (`packages/vitest/src/internal/internal.ts:62`), piped through
-  `flow(Effect.scoped, Effect.provide(TestEnv))` (`internal.ts:451`). Its type is
+  (`packages/vitest/src/internal/internal.ts:68`), piped through
+  `flow(Effect.scoped, Effect.provide(TestEnv))` (`internal.ts:490`). Its type is
   `Tester<R | Scope.Scope>`, so scoped effects (`Effect.acquireRelease`, scoped
   layers) run **directly** under `it.effect`.
 - **There is no `it.scoped`** (zero `scoped` matches in

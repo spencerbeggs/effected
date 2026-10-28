@@ -582,7 +582,7 @@ Two traps in this example, both corrected above — the upstream prose carries t
 uncorrected form:
 
 - **`serialization: { json: ... }` is not an annotation key.** `instanceOf`'s
-  second parameter is an `Annotations.Declaration` (`Schema.ts:17787`), whose
+  second parameter is an `Annotations.Declaration` (`Schema.ts:17806`), whose
   serialization hooks are `toCodec`, `toCodecJson`, `toCodecStringTree` and
   `toCodecIso`. There is no `serialization` key anywhere in `Schema.ts`. The
   earlier `Person` examples in this file already use the correct `toCodecJson`

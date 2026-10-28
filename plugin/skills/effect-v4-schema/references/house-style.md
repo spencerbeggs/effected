@@ -87,7 +87,7 @@ member) so the instance type advertises it.
 `MakeOptions.disableChecks` reads like an escape hatch from validation. Its
 docstrings say what it really does — "skip filters and checks while still
 parsing types and structure" (`Schema.ts:128`) and "skips filters and checks,
-not parsing of types and structure" (`Schema.ts:16420`) — but the name still
+not parsing of types and structure" (`Schema.ts:16439`) — but the name still
 reads as a validation switch, and the
 vendored cluster code leans on it as the trusted-construction idiom
 (`cluster/EntityAddress.ts:100`, `RunnerAddress.ts:121`, `Runner.ts:140`),
@@ -194,7 +194,7 @@ Three distinct tools — pick by intent:
   ```
 
 - **Inline predicates** → `Schema.check(Schema.makeFilter(pred))`
-  (`Schema.ts:6771`). `makeFilter`'s return shape is rich —
+  (`Schema.ts:6776`). `makeFilter`'s return shape is rich —
   this is the tool for cross-field validation:
 
   | return | meaning |
@@ -278,7 +278,7 @@ const BooleanFromString = Schema.Literals(["on", "off"]).pipe(
 ```
 
 Fallible transform — **both spellings are valid**
-(`SchemaTransformation.transformEffect` at `SchemaTransformation.ts:389`,
+(`SchemaTransformation.transformEffect` at `SchemaTransformation.ts:390`,
 `SchemaGetter.transformEffect` at `SchemaGetter.ts:763`, and `SchemaGetter.String`
 at `:919`); know both, because both spellings occur in the wild:
 
@@ -486,7 +486,7 @@ fields must be `Equal.equals` AND have identical `Hash.hash`.
   `/^[a-f]{8}$/u` control generates. `u` is the flag the compiler supports
   (`regexp.ts:835` generates full code points under it), and it is the flag
   JSON Schema export requires: `isPattern` exports `pattern` only when the
-  flags match `/^[dg]*uy?$/` (`Schema.ts:6905`), so
+  flags match `/^[dg]*uy?$/` (`Schema.ts:6910`), so
   `Schema.String.check(Schema.isPattern(/^[a-z]+$/))` exports as a bare
   `{"type":"string"}` while decoding still enforces the regex. Rewrite
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`

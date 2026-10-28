@@ -12,7 +12,7 @@ Everything follows from that one fact:
 
 `CliError.UserError` is the general-purpose failure for "the user asked for
 something invalid". The full `CliError` union is nine members
-(`CliError.ts:79`): `UnrecognizedOption`, `DuplicateOption`, `MissingOption`,
+(`CliError.ts:156`): `UnrecognizedOption`, `DuplicateOption`, `MissingOption`,
 `MissingArgument`, `UnexpectedArgument`, `InvalidValue`, `UnknownSubcommand`,
 `ShowHelp`, `UserError`. An exhaustive `catchTags` or `Match` that omits any
 one of these nine will not compile — write the exhaustive check against the
@@ -76,11 +76,13 @@ The order it assembles in is the whole point, not an implementation detail:
 With `env`, the environment services (`CliEnv.layer(env)`) and a coloured
 formatter are provided beside the platform, inside failure reporting, so a
 failure to build them renders one line too. `helpOnUsageError: "stderr"` moves
-the help core prints alongside a usage error onto stderr (core prints help with
-the same `Console.log` for `--help` and for a usage error). Customise core's
-`CliOutput.Formatter` (the version line, say) through `env.formatter`: that is the only way the
-routing sees it, so a formatter provided inside the program is invisible to it and help stays
-on stdout.
+the help core prints alongside a usage error onto stderr, beside the errors;
+`--help`, a bare group invocation and `--version` stay on stdout. It is a
+`CliOutput.Presenter` provided around the program, so the help is rendered by
+whichever `CliOutput.Formatter` is in effect where `Command.runWith` runs, one
+provided inside the program included. A `CliOutput.Presenter` provided inside
+the program replaces it. Customise the formatter `main` installs (the version
+line, say) through `env.formatter`.
 
 `CliRuntime.main` makes no platform choice of its own — pass `platform` and
 still call your own runtime's runner:
