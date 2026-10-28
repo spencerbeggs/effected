@@ -1,7 +1,6 @@
 import type { Audience, TerminalEnv } from "@effected/env";
-import { Console, Effect, Option } from "effect";
-import type { Param } from "effect/cli";
-import { CliError, Flag } from "effect/cli";
+import { Console, Effect } from "effect";
+import { Flag } from "effect/cli";
 import type { CliLinks } from "./CliLinks.js";
 import type { CliTheme } from "./CliTheme.js";
 import type { Document } from "./Doc.js";
@@ -16,18 +15,6 @@ import { neutralizeJson } from "./internal/logSafety.js";
  * @public
  */
 export type CliFormatName = "auto" | "plain" | "ansi" | "markdown" | "githubLog" | "json";
-
-/**
- * The retired boolean flag {@link CliFormatFlagOptions.legacyJson} accepts, spelled as an object.
- *
- * @public
- */
-export interface CliFormatLegacyJson {
-	/** The retired flag's name; `json` by default. */
-	readonly name?: string | undefined;
-	/** Whether giving it writes the one-line deprecation notice to stderr; `true` by default. */
-	readonly notice?: boolean | undefined;
-}
 
 /**
  * Options for {@link CliFormat.flag}.
@@ -64,18 +51,6 @@ export interface CliFormatFlagOptions<
 	 * may not reuse a built-in format's name or any other offered name.
 	 */
 	readonly custom?: ReadonlyArray<C> | undefined;
-	/**
-	 * Accept a retired boolean `--json` as `--format json`, for a CLI moving onto this flag from a flag of its own.
-	 * `true` accepts `--json`; a {@link CliFormatLegacyJson} names the flag or silences the notice.
-	 *
-	 * @remarks
-	 * The retired flag is hidden from help and has no `--no-json` form. Given, it writes one line to stderr through
-	 * `Console.error`, never stdout where the JSON goes, saying to use `--format json`, unless `notice` is `false`.
-	 * Given together with the format flag it is a usage error, whatever the format, rather than one silently winning.
-	 * The flag must be able to yield `json` (offered, or an alias for it): asking for this otherwise is a programming
-	 * mistake and throws.
-	 */
-	readonly legacyJson?: boolean | CliFormatLegacyJson | undefined;
 }
 
 /**
@@ -112,63 +87,6 @@ const BUILT_IN: ReadonlySet<string> = new Set<CliFormatName>([
 ]);
 
 /**
- * The format flag, made optional, joined with a hidden optional boolean for the retired spelling: both are parsed, so
- * giving both is refused rather than one winning.
- *
- * Core has no combinator that parses two flags into one value (`Flag.orElse` runs its alternative only when the first
- * fails), so this builds core's own `Param.Transform` node: `Flag.orElse` supplies one that carries both flags, which
- * keeps the parser and help aware of the retired flag, and its `f` is replaced by one that runs both parses. A
- * combinator applied to the result later (`Flag.withDescription`, say) rebuilds the node through `f`, so the join
- * survives it.
- */
-const withLegacyJson = <V>(
-	format: Flag.Flag<V>,
-	options: {
-		readonly name: string;
-		readonly legacyName: string;
-		readonly json: V;
-		readonly fallback: V;
-		readonly notice: boolean;
-	},
-): Flag.Flag<V> => {
-	const retired = Flag.Boolean(options.legacyName).pipe(Flag.withoutNegation, Flag.withHidden, Flag.optional);
-	const base = Flag.orElse(Flag.optional(format), () => retired) as unknown as Param.Transform<
-		"flag",
-		Option.Option<V>,
-		unknown
-	>;
-	const f: Param.Transform<"flag", Option.Option<V>, V>["f"] = (parseFormat, alternatives) => (args) =>
-		Effect.gen(function* () {
-			const parseRetired = alternatives[0];
-			if (parseRetired === undefined) {
-				return yield* Effect.die(new Error("CliFormat.flag: the retired flag is missing"));
-			}
-			const [leftover, chosen] = yield* parseFormat(args);
-			const [rest, given] = (yield* parseRetired()({ ...args, arguments: leftover })) as readonly [
-				ReadonlyArray<string>,
-				Option.Option<boolean>,
-			];
-			if (!Option.getOrElse(given, () => false)) {
-				return [rest, Option.getOrElse(chosen, () => options.fallback)] as const;
-			}
-			if (Option.isSome(chosen)) {
-				return yield* new CliError.ValidationError({
-					message: `--${options.legacyName} means --${options.name} json: give one of them, not both`,
-				});
-			}
-			if (options.notice) {
-				yield* Console.error(`warning: --${options.legacyName} is deprecated; use --${options.name} json`);
-			}
-			return [rest, options.json] as const;
-		});
-	const alternatives = base.alternatives.map((alternative) => () => alternative().parse);
-	return Object.assign(Object.create(Object.getPrototypeOf(base)), base, {
-		f,
-		parse: f(base.param.parse, alternatives),
-	}) as Flag.Flag<V>;
-};
-
-/**
  * A `--format` flag and the one print that honours it, so a command builds its report once as a `Doc` and its data
  * once as a value, and never writes per-format output by hand.
  *
@@ -197,20 +115,18 @@ export class CliFormat {
 	 * (`human` under `{ human: "auto" }` is `auto`), or a custom name as itself, so the value of a flag with no custom
 	 * formats goes straight to {@link CliFormat.print}.
 	 *
-	 * Two offered names that clash (an alias or custom name reusing a built-in name, or any name offered twice), a
-	 * default that is not offered, and `legacyJson` on a flag that cannot yield `json` or that shares the flag's name
-	 * are programming mistakes: the call throws.
+	 * Two offered names that clash (an alias or custom name reusing a built-in name, or any name offered twice) and a
+	 * default that is not offered are programming mistakes: the call throws. A CLI that still accepts a `--json` of its
+	 * own declares and resolves that flag itself; {@link CliFormat.printJson} prints the JSON the same way.
 	 *
 	 * ```ts
 	 * // okfit's contract: --format human|json, and a graph command that also draws mermaid and dot
 	 * const format = CliFormat.flag(["json"], { aliases: { human: "auto" }, default: "human" })
 	 * const graph = CliFormat.flag(["json"], { custom: ["mermaid", "dot"], default: "mermaid" })
-	 * // a CLI that used to take --json, still accepting it
-	 * const upgrade = CliFormat.flag(["auto", "json"], { legacyJson: true })
 	 * ```
 	 *
 	 * @param formats - the built-in formats the command offers under their own names, at least one
-	 * @param options - the default, the flag's name and description, aliases, custom formats and a retired `--json`
+	 * @param options - the default, the flag's name and description, aliases and custom formats
 	 */
 	static readonly flag = <
 		const F extends CliFormatName,
@@ -247,29 +163,15 @@ export class CliFormat {
 		const flag = Flag.ChoiceWithValue(name, choices).pipe(
 			Flag.withDescription(options?.description ?? `Output format: ${offered.join(", ")} (default ${fallback})`),
 		) as Flag.Flag<Value>;
-		const legacy = options?.legacyJson;
-		if (legacy === undefined || legacy === false) return Flag.withDefault(flag, fallbackChoice[1]);
-		const legacyName = (legacy === true ? undefined : legacy.name) ?? "json";
-		const json = choices.find(([, value]) => value === "json");
-		if (json === undefined) throw new Error("CliFormat.flag: legacyJson needs a format that yields json");
-		if (legacyName === name) throw new Error(`CliFormat.flag: the retired flag cannot also be --${name}`);
-		return withLegacyJson(flag, {
-			name,
-			legacyName,
-			json: json[1],
-			fallback: fallbackChoice[1],
-			notice: legacy === true || legacy.notice !== false,
-		});
+		return Flag.withDefault(flag, fallbackChoice[1]);
 	};
 
 	/**
 	 * Print a command's output in `format`.
 	 *
 	 * @remarks
-	 * `json` writes `output.json()` as JSON, one `Console.log` (or `Console.error` for stderr), indented by `indent`.
-	 * Under GitHub Actions a `##[` inside it is written as the JSON escape `##[`, which decodes to the same text,
-	 * so the runner cannot read it as a command. A value JSON cannot hold (a cycle, a bigint) is a defect. Every other
-	 * format prints `output.doc()` with `Doc.print`, which renders it as `auto` or the named renderer would.
+	 * `json` writes `output.json()` exactly as {@link CliFormat.printJson} writes a value, which it delegates to. Every
+	 * other format prints `output.doc()` with `Doc.print`, which renders it as `auto` or the named renderer would.
 	 *
 	 * @param format - the chosen format, usually the value of {@link CliFormat.flag}
 	 * @param output - the document and the data
@@ -287,9 +189,34 @@ export class CliFormat {
 			if (data === undefined) {
 				return yield* Effect.die(new Error("CliFormat.print: format json needs output.json"));
 			}
-			const text = yield* Effect.sync(() => JSON.stringify(data(), null, options?.indent ?? 2));
-			if (text === undefined) return yield* Effect.die(new Error("CliFormat.print: output.json() is not JSON"));
+			return yield* CliFormat.printJson(data(), options);
+		});
+
+	/**
+	 * Print `value` as JSON, the way {@link CliFormat.print} prints the `json` format, for a CLI that keeps a JSON flag
+	 * of its own.
+	 *
+	 * @remarks
+	 * One `Console.log` (or `Console.error` for stderr), indented by `indent`: one document, never one line per item.
+	 * Under GitHub Actions a `##[` inside it is written as the JSON escape `#\u0023[`, which decodes to the same
+	 * text, so the runner cannot read it as a command. A value JSON cannot hold (a cycle, a bigint, `undefined`) is a
+	 * defect. It needs no theme, terminal or audience: whether this is GitHub Actions is read from `CurrentRuntimeEnv`
+	 * when the environment has it, and is "no" otherwise.
+	 *
+	 * ```ts
+	 * const status = Command.make("status", { json: Flag.Boolean("json").pipe(Flag.withDefault(false)) }, ({ json }) =>
+	 *   json ? CliFormat.printJson(results) : Doc.print(report(results)),
+	 * )
+	 * ```
+	 *
+	 * @param value - the data to print
+	 * @param options - the stream and the JSON indent
+	 */
+	static readonly printJson = (value: unknown, options?: CliFormatPrintOptions): Effect.Effect<void> =>
+		Effect.gen(function* () {
+			const text = yield* Effect.sync(() => JSON.stringify(value, null, options?.indent ?? 2));
+			if (text === undefined) return yield* Effect.die(new Error("CliFormat.printJson: the value is not JSON"));
 			const safe = (yield* underGithubActions) ? neutralizeJson(text) : text;
-			yield* stream === "stdout" ? Console.log(safe) : Console.error(safe);
+			yield* (options?.stream ?? "stdout") === "stdout" ? Console.log(safe) : Console.error(safe);
 		});
 }

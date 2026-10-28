@@ -52,7 +52,6 @@ export { CliDoc, type CliDocSource, CliFailure, type CliFailureOptions } from ".
 export {
 	CliFormat,
 	type CliFormatFlagOptions,
-	type CliFormatLegacyJson,
 	type CliFormatName,
 	type CliFormatOutput,
 	type CliFormatPrintOptions,

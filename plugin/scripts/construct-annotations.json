@@ -56,7 +56,7 @@
 		"useKeys": "dispatch ink keystrokes through a key table, chunk-safe",
 		"useTerminalSize": "usable terminal columns and rows inside an ink component",
 		"useTheme": "read the cli theme inside an ink component",
-		"CliFormat": "add a --format flag, alias or custom formats, retired --json, print json"
+		"CliFormat": "add a --format flag, alias or custom formats, print json, print json without the flag"
 	},
 	"commands": {
 		"CommandFailedError": "handle a command that failed to spawn, exited non-zero, or timed out",

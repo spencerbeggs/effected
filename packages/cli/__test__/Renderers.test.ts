@@ -86,7 +86,53 @@ describe("ConfigIssueRenderer", () => {
 		// peer, so this suite does not need it installed to run.
 		const error = { _tag: "ConfigValidationError", issue: issueFrom(Config, { ownr: "typo", groups: {} }) };
 
-		assert.include(ConfigIssueRenderer.render(error as never), "unknown key at ownr");
+		assert.include(ConfigIssueRenderer.render(error as never), 'unknown key at ownr (did you mean "owner"?)');
+	});
+
+	/** Shaped like the real error, as above. */
+	const rendered = (schema: Schema.Codec<unknown, unknown>, input: unknown) =>
+		ConfigIssueRenderer.render({ _tag: "ConfigValidationError", issue: issueFrom(schema, input) } as never);
+
+	it("suggests from the keys the struct declares at that path, not from the top level", () => {
+		const lines = rendered(Config as never, { groups: { g: { repos: [], repso: 1, ownr: 2 } } });
+
+		assert.include(lines, 'unknown key at groups.g.repso (did you mean "repos"?)');
+		// `owner` is a top-level key, not one a group declares: no hint.
+		assert.include(lines, "unknown key at groups.g.ownr");
+		assert.notInclude(lines.join("\n"), '"owner"');
+	});
+
+	it("draws a key with no near match exactly as SchemaIssueRenderer does", () => {
+		const issue = issueFrom(Config, { owner: "acme", zzzzzz: 1, groups: {} });
+		const error = { _tag: "ConfigValidationError", issue };
+
+		assert.deepStrictEqual(ConfigIssueRenderer.render(error as never), SchemaIssueRenderer.render(issue));
+		assert.include(SchemaIssueRenderer.render(issue), "unknown key at zzzzzz");
+	});
+
+	it("offers every branch's keys under a union, and lists ties in declaration order", () => {
+		const lines = rendered(Group as never, { vale: {} });
+
+		assert.include(lines, 'unknown key at vale (did you mean "value"?)');
+		const Tied = Schema.Struct({ color: Schema.optionalKey(Schema.String), colon: Schema.optionalKey(Schema.String) });
+		assert.include(rendered(Tied as never, { colom: "x" }), 'unknown key at colom (did you mean "color" or "colon"?)');
+	});
+
+	it("finds the declared keys of a Schema.Class too", () => {
+		class Theme extends Schema.Class<Theme>("Theme")({ color: Schema.optionalKey(Schema.String) }) {}
+		const lines = rendered(Schema.Struct({ theme: Theme }) as never, { theme: { colour: "red" } });
+
+		assert.include(lines, 'unknown key at theme.colour (did you mean "color"?)');
+	});
+
+	it("sanitises the suggested key", () => {
+		const hostile = `colo${String.fromCodePoint(0x1b)}`;
+		const Hostile = Schema.Struct({ [hostile]: Schema.optionalKey(Schema.String) });
+		const lines = rendered(Hostile as never, { colo: "x" });
+		const hinted = lines.find((line) => line.startsWith("unknown key at colo"));
+
+		assert.isDefined(hinted);
+		assert.strictEqual(hinted, `unknown key at colo (did you mean "colo"?)`);
 	});
 
 	it("yields no lines for an error with no issue tree, or for nothing at all", () => {
