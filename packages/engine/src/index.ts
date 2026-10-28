@@ -11,6 +11,7 @@ export {
 	withDistribution,
 	withDistributionVersion,
 } from "./Distribution.js";
+export { ErrorText } from "./ErrorText.js";
 export { Exclusive, type ExclusivePromiseOptions, type ExclusiveRunOptions, ExclusiveTimeout } from "./Exclusive.js";
 export { LaunchContext, type ProjectDirInput, type ResolveInput } from "./LaunchContext.js";
 export { type ProcessCwdHost, ProcessScope, ProcessScopeError } from "./ProcessScope.js";

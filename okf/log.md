@@ -10,6 +10,18 @@
 * Updated xdg
 * Added @effected/source
 * Updated effected
+* Updated Add a kit package
+* Updated walker
+* Updated @effected/engine
+* Updated git
+* Updated config-file
+* Updated @effected/memfs
+* Updated @effected/github
+* Updated @effected/github REST client
+* Updated npm
+* Updated package-json
+* Updated The package-json entry-point resolver
+* Added The package-json exports resolver
 * Updated @effected/markdown
 * Updated @effected/yaml
 * Updated @effected/yaml lint system

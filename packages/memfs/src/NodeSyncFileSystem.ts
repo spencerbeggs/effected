@@ -248,3 +248,15 @@ export class NodeSyncFileSystem {
 
 	private constructor() {}
 }
+
+// This module is the `./node-sync` ENTRY POINT, so it re-exports the other
+// Node-only concept, and every type that concept's signature names:
+// api-extractor models each entry point as its own surface.
+export type {
+	MemoryFileSystemSeed,
+	MemoryFileSystemSeedDirectory,
+	MemoryFileSystemSeedEntry,
+	MemoryFileSystemSeedFile,
+	MemoryFileSystemSeedSymlink,
+} from "./MemoryFileSystem.js";
+export { NodeDirectorySeed, type NodeDirectorySeedOptions } from "./NodeDirectorySeed.js";

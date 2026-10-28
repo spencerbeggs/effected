@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Deferred, Effect, Exit, Layer, Logger, Result, Stdio, Stream } from "effect";
+import { Cause, Console, Deferred, Effect, Exit, Layer, Logger, Result, Stdio, Stream } from "effect";
 import { McpProtocol } from "effect/ai";
 import { McpStdio } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
@@ -173,6 +173,18 @@ describe("McpHarness", () => {
 			);
 			assert.isTrue((yield* harness.consoleLogSoFar).some((line) => line.includes("build-log")));
 			assert.notInclude(yield* harness.stderrSoFar, "build-log");
+		}),
+	);
+
+	it.effect("a captured console argument is described by engine's describer, never String(), so none throws", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(
+				Layer.mergeAll(
+					Layer.effectDiscard(Console.log("args:", Object.create(null), { a: 1 }, new Error("boom"), 7)),
+					McpStdio.layer({ name: "described-log", version: "0.0.0" }),
+				),
+			);
+			assert.deepStrictEqual(yield* harness.consoleLogSoFar, ['args: {} {"a":1} boom 7']);
 		}),
 	);
 

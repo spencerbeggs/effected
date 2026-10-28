@@ -126,12 +126,15 @@ export { CommentOnceResult, GitHubIssue, type GitHubIssueShape, IssueInfo, Linke
 export { GitHubRelease, type GitHubReleaseShape, ReleaseAsset, ReleaseInfo } from "./GitHubRelease.js";
 export {
 	type AppliedSettings,
+	type ApplySettingsOptions,
 	GRAPHQL_ONLY_SETTINGS,
 	GitHubRepository,
 	type GitHubRepositoryShape,
 	type OwnerType,
 	type RepositoryPatch,
 	type RepositoryPatchDraft,
+	type RepositoryPatchExtra,
+	type RepositoryPatchOptions,
 	type RepositorySettings,
 	SECURITY_ANALYSIS_STATUS_FIELDS,
 	repositoryPatch,

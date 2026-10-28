@@ -36,6 +36,8 @@ re-exporting one codec (`JsoncCodec`, `YamlCodec`, `TomlCodec`).
   `UpwardWalkOptions`
 - `src/MergeStrategy.ts` — `MergeStrategy` (`firstMatch`, `layeredMerge`),
   `ConfigSource`, `NonEmptySources`
+- `src/ConfigMerge.ts` — `ConfigMerge` (`deep`), the pure, synchronous merge
+  `layeredMerge` folds with; its own module, reaching no codec
 - `src/ConfigFile.ts` — `ConfigFile` (`Service`, `layer`, `testLayer`, `read`),
   `ConfigFileShape` (whose members include `encode` and `write`),
   `ConfigFileOptions`, `ConfigFileTestOptions`, `ConfigReadOptions`,
@@ -143,7 +145,15 @@ silently undo the tree-shaking rule below.
 and provide that const, or you mint two independent service instances.
 `ConfigFile.testLayer` seeds files into a temp dir and runs the **real**
 `makeImpl` over them — not a mock; it has no `defaultPath`, so `save`/`update`
-honestly fail with `ConfigDefaultPathMissingError` under it.
+honestly fail with `ConfigDefaultPathMissingError` under it unless
+`saveTarget: "source"` points them at the seeded file they read.
+
+`saveTarget` (`"default"` | `"source"`, default `"default"`) decides where
+`save`/`update` write. `update` under `"source"` writes to the first source of
+the load it ran under its own lock (`loadWithSource`); `save` finds its target
+with the resolvers' `resolve` alone (`locate`), so it reads no file and its
+error union does not widen. The default stays `"default"` so existing callers
+keep their write target; flipping it is a behaviour change.
 
 Both take the key as `Context.Key<Self, S> & ([ConfigFileShape<A>] extends [S]
 ? unknown : never)` with a defaulted `S extends ConfigFileShape<A>` — a pin
@@ -200,8 +210,14 @@ Read the comments before touching these; each shape is load-bearing.
   semantics and fires `Object.prototype`'s inherited `__proto__` accessor — that
   is prototype pollution, and it was a real regression caught in review.
   `__proto__` / `constructor` / `prototype` are filtered from **both** sides.
-  Two values merge only if both are record-like **and share a prototype**, so a
-  decoded `Schema.Class` survives a merge as a real instance.
+  At the top level two values merge if both are plain (either prototype,
+  `Object.prototype` or `null`) or both are record-like **and share a
+  prototype**, so a decoded `Schema.Class` survives a merge as a real
+  instance; nested levels merge plain pairs only. The result takes the
+  override's prototype. Recursion stops at `MAX_MERGE_DEPTH` (1024), so the
+  merge is total on cyclic input. `ConfigMerge.deep` is the public face of the
+  same function: `layeredMerge` and `deep` must never get separate engines
+  (`__test__/ConfigMerge.test.ts` pins that the fold equals `deep`).
 - **`isWorkspaceRoot` decodes with a module-level, never-throwing decoder**
   (`ConfigResolver.ts`: `decodeUnknownOption(fromJsonString(Struct({ workspaces:
   Unknown })))`). A parse throw is a defect, not a failure; `Walker.firstMatch`

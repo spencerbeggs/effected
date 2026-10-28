@@ -28,13 +28,13 @@
 			"@effected/memfs",
 			"@effected/schema-org",
 			"@effected/semver",
-			"@effected/source",
 			"@effected/spdx",
 			"@effected/store",
 			"@effected/templates",
 			"@effected/toml",
 			"@effected/yaml"
-		]
+		],
+		["@effected/source"]
 	],
 	"tooling": ["@effected/pnpm-plugin-effect"],
 	"unconstrained": ["effected", "docs", "scratchpad", "@effected/ai-plugin"],

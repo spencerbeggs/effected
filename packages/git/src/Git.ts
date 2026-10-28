@@ -4,6 +4,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { GitConfigScope, GitInvocation, GitUntrackedFilesMode } from "./GitCommand.js";
 import { GitCommand } from "./GitCommand.js";
 import { maskCredentialsInText } from "./internal/redact.js";
+import { REPOSITORY_ENV_VARS } from "./internal/repositoryEnv.js";
 import type { Collected } from "./internal/run.js";
 import { runCollected } from "./internal/run.js";
 
@@ -606,10 +607,14 @@ const runClassified = (
 	cwd: string,
 	kind: ClassifyKind,
 	env: Record<string, string>,
+	unset: ReadonlyArray<string> = [],
 ): Effect.Effect<Classified, never, ChildProcessSpawner.ChildProcessSpawner> => {
 	const args = invocation.redactedArgs;
 	const maskExact = invocation.scrub;
-	const command = ChildProcess.setEnv(ChildProcess.setCwd(invocation.command, cwd), env);
+	const command =
+		unset.length === 0
+			? ChildProcess.setEnv(ChildProcess.setCwd(invocation.command, cwd), env)
+			: withoutVars(invocation.command, cwd, env, unset);
 	return runCollected(command).pipe(
 		Effect.map((collected) => classify(cwd, args, collected, kind, maskExact)),
 		Effect.catch((platformError) => Effect.succeed(classify(cwd, args, platformError, kind, maskExact))),
@@ -622,6 +627,33 @@ const runClassified = (
 				}),
 		}),
 	);
+};
+
+/**
+ * `command` at `cwd` with `env` applied and every key in `unset` removed from
+ * the inherited environment.
+ *
+ * @remarks
+ * `ChildProcess.setEnv` takes string values only, so a removal is spelled as
+ * an `undefined` value in the command's own `env` (which core types as
+ * `Record<string, string | undefined>`). Under `extendEnv: true` the platform
+ * spawner merges that record over the parent environment, and an `undefined`
+ * value leaves the variable out of the child's environment entirely. The
+ * integration suite proves the removal against a real git.
+ */
+const withoutVars = (
+	command: ChildProcess.StandardCommand,
+	cwd: string,
+	env: Record<string, string>,
+	unset: ReadonlyArray<string>,
+): ChildProcess.StandardCommand => {
+	const removed: Record<string, string | undefined> = {};
+	for (const key of unset) removed[key] = undefined;
+	return ChildProcess.make(command.command, command.args, {
+		...command.options,
+		cwd,
+		env: { ...command.options.env, ...env, ...removed },
+	});
 };
 
 /** Splits `-z` (NUL-terminated) output into its constituent entries. */
@@ -1317,6 +1349,49 @@ export class TreeIdentity extends Schema.Class<TreeIdentity>("TreeIdentity")({
 }
 
 /**
+ * Options for the repository-locating reads: `Git.repoRoot`, `Git.commonDir`
+ * and `Git.treeIdentity`.
+ *
+ * @public
+ */
+export interface GitLocateOptions {
+	/**
+	 * Remove the variables that point git at one particular repository from
+	 * the child's environment, so git finds the repository from `cwd` alone.
+	 * Default `false`.
+	 *
+	 * @remarks
+	 * Set it in code that can run inside a git hook. git exports `GIT_DIR` to
+	 * a hook (with `GIT_INDEX_FILE` and `GIT_PREFIX`), and a git that inherits
+	 * `GIT_DIR` with no `GIT_WORK_TREE` takes its `cwd` as the top of the
+	 * working tree. Probed against git 2.56 in a linked worktree's
+	 * `pre-commit`: `rev-parse --show-toplevel` from `<worktree>/sub` answers
+	 * `<worktree>/sub`, and from another repository's directory it answers that
+	 * directory. With this option the answers are `<worktree>` and the other
+	 * repository's real toplevel.
+	 *
+	 * The variables removed are the ones `git rev-parse --local-env-vars`
+	 * lists, which git clears itself before it runs a command in another
+	 * repository: `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`,
+	 * `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`, `GIT_CONFIG_PARAMETERS` and the
+	 * rest of that list. `GIT_CEILING_DIRECTORIES` is not on it and still
+	 * applies.
+	 *
+	 * Only these three reads take the option, and it is off by default, for
+	 * two reasons. A caller who sets `GIT_DIR` and `GIT_WORK_TREE` on purpose
+	 * (a bare dotfiles repository, say) wants git to honour them. And a hook's
+	 * staged reads must keep `GIT_INDEX_FILE`: under `git commit <paths>` it
+	 * names a temporary index holding what is being committed, and a read of
+	 * the real index sees something else.
+	 */
+	readonly ignoreRepositoryEnv?: boolean;
+}
+
+/** The variables a locating read removes from the child's environment, per `options`. */
+const locateUnset = (options: GitLocateOptions | undefined): ReadonlyArray<string> =>
+	options?.ignoreRepositoryEnv === true ? REPOSITORY_ENV_VARS : [];
+
+/**
  * Splits `git rev-parse --show-toplevel --path-format=absolute
  * --git-common-dir` output into its two lines, or `undefined` when the answer
  * is not exactly two non-empty lines (an older git echoes the flag as a
@@ -1515,8 +1590,8 @@ interface SshFromEnv {
 
 /** Builds the `Git.Service` shape over an already-resolved `ChildProcessSpawner`. */
 const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: SshFromEnv) => {
-	const runFor = (invocation: GitInvocation, cwd: string, kind: ClassifyKind) =>
-		runClassified(invocation, cwd, kind, BASE_ENV).pipe(
+	const runFor = (invocation: GitInvocation, cwd: string, kind: ClassifyKind, unset?: ReadonlyArray<string>) =>
+		runClassified(invocation, cwd, kind, BASE_ENV, unset).pipe(
 			Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 		);
 
@@ -2269,9 +2344,9 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		}
 	});
 
-	const repoRoot = Effect.fn("Git.repoRoot")(function* (cwd: string) {
+	const repoRoot = Effect.fn("Git.repoRoot")(function* (cwd: string, options?: GitLocateOptions) {
 		yield* Effect.annotateCurrentSpan({ cwd });
-		const classified = yield* runFor(GitCommand.repoRoot(), cwd, "generic");
+		const classified = yield* runFor(GitCommand.repoRoot(), cwd, "generic", locateUnset(options));
 		switch (classified._tag) {
 			case "success":
 				return classified.output.trim();
@@ -2286,10 +2361,10 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		}
 	});
 
-	const commonDir = Effect.fn("Git.commonDir")(function* (cwd: string) {
+	const commonDir = Effect.fn("Git.commonDir")(function* (cwd: string, options?: GitLocateOptions) {
 		yield* Effect.annotateCurrentSpan({ cwd });
 		const invocation = GitCommand.commonDir();
-		const classified = yield* runFor(invocation, cwd, "generic");
+		const classified = yield* runFor(invocation, cwd, "generic", locateUnset(options));
 		switch (classified._tag) {
 			case "success": {
 				// Strip only git's terminating newline, never `trim`: the answer is an
@@ -2318,10 +2393,10 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		}
 	});
 
-	const treeIdentity = Effect.fn("Git.treeIdentity")(function* (cwd: string) {
+	const treeIdentity = Effect.fn("Git.treeIdentity")(function* (cwd: string, options?: GitLocateOptions) {
 		yield* Effect.annotateCurrentSpan({ cwd });
 		const invocation = GitCommand.treeIdentity();
-		const classified = yield* runFor(invocation, cwd, "tree");
+		const classified = yield* runFor(invocation, cwd, "tree", locateUnset(options));
 		switch (classified._tag) {
 			case "success": {
 				const identity = parseTreeIdentity(classified.output);
@@ -3820,8 +3895,15 @@ export interface GitShape {
 	 * `/var` → `/private/var`). Bound an upward walk by it with
 	 * `@effected/walker`'s `Walker.ascendWithin`, never `Walker.ascend`'s
 	 * lexical `stopAt`. For identity across worktrees, use `commonDir`.
+	 *
+	 * In code that can run inside a git hook, pass
+	 * `{ ignoreRepositoryEnv: true }` ({@link GitLocateOptions}): under an
+	 * inherited `GIT_DIR`, git answers `cwd` itself as the toplevel.
 	 */
-	readonly repoRoot: (cwd: string) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
+	readonly repoRoot: (
+		cwd: string,
+		options?: GitLocateOptions,
+	) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * `git rev-parse --path-format=absolute --git-common-dir` — the absolute,
 	 * symlink-resolved directory a repository shares with all of its linked
@@ -3839,8 +3921,15 @@ export interface GitShape {
 	 * Needs git 2.31 or later. An older git echoes the unknown
 	 * `--path-format` flag and exits 0; that answer fails as a
 	 * `GitCommandError` (`kind: "failed"`) rather than passing as an identity.
+	 *
+	 * Inside a git hook, pass `{ ignoreRepositoryEnv: true }`
+	 * ({@link GitLocateOptions}): under an inherited `GIT_DIR`, git answers
+	 * the hook's repository whatever `cwd` is.
 	 */
-	readonly commonDir: (cwd: string) => Effect.Effect<string, GitCommandError | NotARepositoryError>;
+	readonly commonDir: (
+		cwd: string,
+		options?: GitLocateOptions,
+	) => Effect.Effect<string, GitCommandError | NotARepositoryError>;
 	/**
 	 * `git rev-parse --show-toplevel --path-format=absolute --git-common-dir` —
 	 * the {@link TreeIdentity} of the working tree holding `cwd`, in one spawn,
@@ -3853,8 +3942,15 @@ export interface GitShape {
 	 * compare two identities; relate them with {@link TreeIdentity.relation}.
 	 * Only git's terminating newlines are removed. Needs git 2.31 or later; an
 	 * older git fails as a `GitCommandError` (`kind: "failed"`).
+	 *
+	 * Inside a git hook, pass `{ ignoreRepositoryEnv: true }`
+	 * ({@link GitLocateOptions}): under an inherited `GIT_DIR`, git reports
+	 * `cwd` itself as the toplevel.
 	 */
-	readonly treeIdentity: (cwd: string) => Effect.Effect<Option.Option<TreeIdentity>, GitCommandError>;
+	readonly treeIdentity: (
+		cwd: string,
+		options?: GitLocateOptions,
+	) => Effect.Effect<Option.Option<TreeIdentity>, GitCommandError>;
 	/**
 	 * The current branch's upstream (`branch.<name>.remote` +
 	 * `branch.<name>.merge`) with its tracking state, or `Option.none` when

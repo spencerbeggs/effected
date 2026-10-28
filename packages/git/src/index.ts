@@ -16,6 +16,7 @@ export {
 	DirtyWorktreeError,
 	Git,
 	GitCommandError,
+	type GitLocateOptions,
 	type GitShape,
 	LsFilesEntry,
 	LsRemoteEntry,
@@ -45,6 +46,7 @@ export {
 	GitConfigParseError,
 	GitConfigSection,
 } from "./GitConfig.js";
+export { GitFile, GitFileParseError } from "./GitFile.js";
 export {
 	Gitmodules,
 	GitmodulesDecodeError,

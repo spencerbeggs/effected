@@ -547,3 +547,117 @@ describe("GitHubRepository.applySettings ignored keys", () => {
 		}),
 	);
 });
+
+describe("repositoryPatch extra (#1115)", () => {
+	it("sends a setting octokit's types do not declare, beside the checked draft", () => {
+		const patch = repositoryPatch({ has_issues: true, has_wiki: undefined }, { extra: { has_new_feature: "on" } });
+		assert.deepStrictEqual<unknown>(patch, { has_issues: true, has_new_feature: "on" });
+	});
+
+	it("drops an undefined extra, as the draft does", () => {
+		assert.deepStrictEqual(repositoryPatch({}, { extra: { has_new_feature: undefined } }), {});
+	});
+
+	it("refuses a declared key in extra, which would skip the draft's type check", () => {
+		// The type refuses `{ has_issues: true }` as a literal; a value already
+		// typed as an open record gets past it, so the runtime check is the guard.
+		const open: Record<string, unknown> = { has_issues: "not a boolean" };
+		assert.throws(
+			() => repositoryPatch({}, { extra: open }),
+			RangeError,
+			/"has_issues" is a declared repository setting/,
+		);
+	});
+
+	it("refuses a GraphQL-only setting in extra, which a REST patch cannot set", () => {
+		const open: Record<string, unknown> = { has_sponsorships: true };
+		assert.throws(
+			() => repositoryPatch({}, { extra: open }),
+			RangeError,
+			/"has_sponsorships" can only be set through GraphQL/,
+		);
+		const both: Record<string, unknown> = { has_discussions: true };
+		assert.throws(() => repositoryPatch({}, { extra: both }), RangeError, /through GraphQL/);
+	});
+
+	it.effect("updateSettings sends the extra on the wire", () =>
+		Effect.gen(function* () {
+			const patch = repositoryPatch({ has_issues: false }, { extra: { has_new_feature: true } });
+			const { requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.updateSettings(patch)),
+				{ "PATCH /repos/{owner}/{repo}": REPO },
+			);
+			assert.deepStrictEqual(requested[0]?.params, {
+				owner: "acme",
+				repo: "widget",
+				has_issues: false,
+				has_new_feature: true,
+			});
+		}),
+	);
+});
+
+describe("GitHubRepository.applySettings unknownKeys (#1115)", () => {
+	it.effect("ignores an undescribed key by default and reports nothing unverified", () =>
+		Effect.gen(function* () {
+			const { value } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.applySettings({ has_issues: true, has_new_feature: true })),
+				{ "PATCH /repos/{owner}/{repo}": REPO },
+			);
+			assert.deepStrictEqual([...value.ignored], ["has_new_feature"]);
+			assert.deepStrictEqual([...value.unverified], []);
+		}),
+	);
+
+	it.effect('sends an undescribed key under "send", reporting it in rest and unverified', () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) =>
+					r.applySettings({ has_issues: true, has_new_feature: true }, { unknownKeys: "send" }),
+				),
+				{ "PATCH /repos/{owner}/{repo}": REPO },
+			);
+			assert.deepStrictEqual([...value.rest], ["has_issues", "has_new_feature"]);
+			assert.deepStrictEqual([...value.unverified], ["has_new_feature"]);
+			assert.deepStrictEqual([...value.ignored], []);
+			assert.deepStrictEqual(requested[0]?.params, {
+				owner: "acme",
+				repo: "widget",
+				has_issues: true,
+				has_new_feature: true,
+			});
+		}),
+	);
+
+	it.effect("still ignores a key the api-version removed, and still routes GraphQL-only keys", () =>
+		Effect.gen(function* () {
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) =>
+					r.applySettings({ use_squash_pr_title_as_default: true, has_discussions: true }, { unknownKeys: "send" }),
+				),
+				{ "GET /repos/{owner}/{repo}": REPO },
+				UPDATE_REPOSITORY,
+			);
+			assert.deepStrictEqual([...value.ignored], ["use_squash_pr_title_as_default"]);
+			assert.deepStrictEqual([...value.graphql], ["has_discussions"]);
+			assert.deepStrictEqual([...value.unverified], []);
+			assert.isFalse(requested.some((call) => call.route === "PATCH /repos/{owner}/{repo}"));
+		}),
+	);
+
+	it.effect("never sends __proto__, which would set the body's prototype instead of a field", () =>
+		Effect.gen(function* () {
+			const input = JSON.parse(`{ "__proto__": { "polluted": true }, "has_new_feature": 1 }`) as Record<
+				string,
+				unknown
+			>;
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.applySettings(input, { unknownKeys: "send" })),
+				{ "PATCH /repos/{owner}/{repo}": REPO },
+			);
+			assert.deepStrictEqual([...value.ignored], ["__proto__"]);
+			assert.deepStrictEqual([...value.unverified], ["has_new_feature"]);
+			assert.deepStrictEqual(requested[0]?.params, { owner: "acme", repo: "widget", has_new_feature: 1 });
+		}),
+	);
+});

@@ -10,10 +10,10 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-10-28T16:52:37Z
 integrity:
   generated:
-    body: 32319c607e3f61bb
+    body: 5c5f3a82fa1a8d6e
 ---
 
 # git
@@ -228,6 +228,25 @@ output only with git output, never with a path the caller spelled. The
 answer must be exactly two non-empty lines, so an older git that echoes the
 flag fails as a `GitCommandError`.
 
+**Inside a git hook the three locating reads take `{ ignoreRepositoryEnv:
+true }`** (`GitLocateOptions`). git exports `GIT_DIR`, `GIT_INDEX_FILE` and
+`GIT_PREFIX` to a hook, and a child git that inherits `GIT_DIR` with no
+`GIT_WORK_TREE` takes its `cwd` as the top of the working tree: probed in a
+linked worktree's `pre-commit` on git 2.56, `rev-parse --show-toplevel` from
+`<worktree>/sub` answered `<worktree>/sub`, and from another repository's
+directory it answered that directory. okfit walked the filesystem for `.git`
+and then realpath'd the result to survive it (#1123). The option removes
+git's own `rev-parse --local-env-vars` list from the child's environment —
+the variables git clears before it runs a command in another repository —
+as `undefined` values in the command's `env`, which the platform spawner
+leaves out of the child; the list lives in `internal/repositoryEnv.ts`, and
+the integration suite compares it with the installed git's answer. It is an
+option on these three reads rather than a `Git.layer` variant, and off by
+default, for two reasons: a caller who sets `GIT_DIR` and `GIT_WORK_TREE` on
+purpose (a bare dotfiles repository) wants them honoured, and a hook's staged
+reads must keep `GIT_INDEX_FILE`, which under `git commit <paths>` names the
+temporary index holding what is being committed.
+
 Config reads are
 scopeable and config writes are not; [the merged-read
 gotcha](../gotchas/git-config-read-without-scope-is-merged.md) explains
@@ -359,6 +378,32 @@ trailing `/` and one trailing `.git` (`o/n` for both
 matching convenience, not a canonical key, since case is untouched and the
 host is not included.
 
+**`parse` does not trim, and that is the contract, not an oversight.** A
+consumer asked for trimming (#1137): a padded `" https://h/o/n.git "` gives
+`repositoryPath` `"o/n.git "`. git keeps the whitespace too (probed against
+git 2.56: `git clone " https://h/o/n"` fails with `protocol ' https' is not
+supported`, and a trailing space is part of a path), so trimming would report
+a remote git cannot reach, or a different repository, as valid. The TSDoc now
+says so plainly: trim first unless the value came through git, whose own
+readers (`Git.remoteUrl`, `configGet`, `GitConfig`, `Gitmodules`) already hand
+over trimmed values.
+
+### `GitFile` — the gitfile pointer, parsed without git
+
+`GitFile.ts` is a second pure module beside `GitRemote`.
+`GitFile.parseResult(text)` returns `Result<GitFile, GitFileParseError>` and
+`GitFile.parse` is its spanned `Effect` form. It reads the `.git` file a
+linked worktree or a submodule has in place of a directory, by git's own rules
+(`setup.c` `read_gitfile_gently`, probed against git 2.56): the text must
+begin with exactly `gitdir:` and one space, every trailing `\n` and `\r` is removed and
+nothing else (spaces belong to the path), and a NUL ends the path because git
+reads it as a C string. `GitFileParseError.code` is `"InvalidFormat"` or
+`"NoPath"`, git's two refusals. `gitdir` is the pointer as written, relative or
+absolute; resolving it against the file's directory and any confinement check
+stay with the caller. It exists for code that must not spawn git (a lockdown
+check in `@savvy-web/silk-effects` hand-rolled it twice), which is why
+`commonDir` and `treeIdentity` do not serve.
+
 ## Rendering status back to text
 
 `StatusEntry.toLine()` and `StatusEntry.format(entries)` take the whole
@@ -402,12 +447,13 @@ See [the git redaction policy](../conventions/git-redaction-policy.md).
 
 ## Module layout
 
-Nine source modules, per the module-per-concept standard: `GitCommand.ts`
+Eleven source modules, per the module-per-concept standard: `GitCommand.ts`
 (pure invocation constructors, both tiers), `Git.ts` (the service, its
 live layer and test double, the error taxonomy, `classify`/`runClassified`
 and the parsed-result models, `TreeIdentity` and `UpstreamBranch`
 included), `GitRemote.ts` (the pure remote-address parser, a pure module
-inside the boundary package), `GitConfig.ts` (the lossless document
+inside the boundary package), `GitFile.ts` (the pure gitfile parser,
+likewise), `GitConfig.ts` (the lossless document
 model and surgical editor), `Gitmodules.ts` (the typed `.gitmodules`
 view), `internal/redact.ts` (the form-independent credential backstop and
 the exact-secret maskers), `internal/redactRemote.ts` (the one
@@ -415,7 +461,9 @@ string-to-string remote redaction entry point, apart from `redact.ts`
 because `GitRemote` imports that module and folding it in would be a
 cycle), `internal/run.ts` (the collected-run and `available` helpers over
 `ChildProcessSpawner`, not exported — `available` has no production
-consumer and is kept deliberately with its tests) and `internal/config.ts`
+consumer and is kept deliberately with its tests), `internal/repositoryEnv.ts`
+(git's `--local-env-vars` list, the variables `ignoreRepositoryEnv` removes)
+and `internal/config.ts`
 (the git-config engine: raw scanner records and splice/serialize
 primitives behind the cycle firewall; it never imports the public
 classes, and it recurses nowhere, so no depth cap is needed).

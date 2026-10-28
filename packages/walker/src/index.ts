@@ -13,7 +13,12 @@
  * Confinement: `confineRelativeResult` (and its `Effect` twin
  * `confineRelative`) keeps an untrusted relative path, such as an archive
  * entry name, under a base directory, refusing absolute forms and `..`
- * escapes before any filesystem access.
+ * escapes before any filesystem access; `confineReal` (and its sync twin
+ * `confineRealSync`) adds the physical check, resolving symlinks so a link
+ * inside the base cannot carry a path out of it.
+ *
+ * Every upward form that touches the filesystem, and the physical check, has a
+ * `*Sync` twin over the same caller-supplied port as `descendSync`.
  *
  * @packageDocumentation
  */
@@ -24,6 +29,7 @@ export {
 	confineRelative,
 	confineRelativeResult,
 } from "./Confine.js";
+export { confineReal, confineRealSync } from "./ConfineReal.js";
 export {
 	type DescendEntriesResult,
 	type DescendEntry,
@@ -46,4 +52,10 @@ export {
 	descendSync,
 } from "./DescendSync.js";
 export { type CompileAndExpandOptions, GlobExpansionError, compileAndExpand } from "./Expand.js";
-export { type AscendOptions, Walker } from "./Walker.js";
+export {
+	type AscendOptions,
+	type AscendSyncOptions,
+	type AscendWithinSyncOptions,
+	type UpwardMatches,
+	Walker,
+} from "./Walker.js";

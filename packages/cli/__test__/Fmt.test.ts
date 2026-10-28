@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { ErrorText } from "@effected/engine";
 import { Duration } from "effect";
 import { Doc, Fmt, Render } from "../src/index.js";
 
@@ -376,5 +377,101 @@ describe("Fmt.causeMessage", () => {
 		assert.strictEqual(Fmt.causeMessage(throwingMessage), undefined);
 		assert.strictEqual(Fmt.causeMessage(throwingCause), "outer");
 		assert.strictEqual(Fmt.causeMessage(throwingMessage) ?? Fmt.describe(throwingMessage), "{}");
+	});
+});
+
+describe("Fmt.errorText", () => {
+	it("is the cause chain's text, else the value described", () => {
+		const failure = new Error("load failed", { cause: new Error("ENOENT: no such file") });
+		assert.strictEqual(Fmt.errorText(failure), "load failed: ENOENT: no such file");
+		assert.strictEqual(Fmt.errorText({ code: 7 }), '{"code":7}');
+		assert.strictEqual(Fmt.errorText(Object.create(null)), "{}");
+	});
+
+	it("is engine's implementation, so a CLI and an MCP server describe a value alike", () => {
+		assert.strictEqual(Fmt.describe, ErrorText.describe);
+		assert.strictEqual(Fmt.causeMessage, ErrorText.causeMessage);
+		assert.strictEqual(Fmt.errorText, ErrorText.of);
+	});
+});
+
+/** The oracle: effect/cli's own suggester (internal/auto-suggest), full matrix, threshold 2, ties kept in order. */
+const coreSuggest = (input: string, candidates: ReadonlyArray<string>): ReadonlyArray<string> => {
+	const levenshtein = (a: string, b: string): number => {
+		const dp = Array.from({ length: a.length + 1 }, (_, i) =>
+			Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
+		);
+		for (let i = 1; i <= a.length; i++) {
+			for (let j = 1; j <= b.length; j++) {
+				const row = dp[i] as Array<number>;
+				const above = dp[i - 1] as Array<number>;
+				row[j] = Math.min(
+					(above[j] as number) + 1,
+					(row[j - 1] as number) + 1,
+					(above[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
+				);
+			}
+		}
+		return (dp[a.length] as Array<number>)[b.length] as number;
+	};
+	const distances = candidates
+		.map((c) => [levenshtein(input, c), c] as const)
+		.filter(([d]) => d <= 2)
+		.sort(([a], [b]) => a - b);
+	const min = distances[0]?.[0];
+	return distances.filter(([d]) => d === min).map(([, c]) => c);
+};
+
+describe("Fmt.suggest", () => {
+	it("suggests the nearest names, ties kept in the order given", () => {
+		assert.deepStrictEqual(Fmt.suggest("stauts", ["status", "stack", "build"]), ["status"]);
+		assert.deepStrictEqual(Fmt.suggest("cat", ["bat", "rat", "cart", "dog"]), ["bat", "rat", "cart"]);
+		assert.deepStrictEqual(Fmt.suggest("bulid", ["build", "rebuild", "test"]), ["build"]);
+	});
+
+	it("suggests nothing past two edits, or with no candidates", () => {
+		assert.deepStrictEqual(Fmt.suggest("deploy", ["build", "test"]), []);
+		assert.deepStrictEqual(Fmt.suggest("abc", ["abxyz"]), []);
+		assert.deepStrictEqual(Fmt.suggest("x", []), []);
+	});
+
+	it("an exact match is the only answer, and a repeated candidate is listed once", () => {
+		assert.deepStrictEqual(Fmt.suggest("test", ["tests", "test", "best"]), ["test"]);
+		assert.deepStrictEqual(Fmt.suggest("tset", ["test", "test"]), ["test"]);
+	});
+
+	it("takes another threshold, and refuses one that is not a non-negative integer", () => {
+		assert.deepStrictEqual(Fmt.suggest("abc", ["abxyz"], { maxDistance: 3 }), ["abxyz"]);
+		assert.deepStrictEqual(Fmt.suggest("abd", ["abc"], { maxDistance: 0 }), []);
+		assert.deepStrictEqual(Fmt.suggest("abc", ["abc"], { maxDistance: 0 }), ["abc"]);
+		for (const maxDistance of [Number.NaN, 1.5, -1]) {
+			assert.throws(() => Fmt.suggest("a", ["a"], { maxDistance }), RangeError);
+		}
+	});
+
+	it("agrees with effect/cli's own suggester on every word up to length four over a small alphabet", () => {
+		const words: Array<string> = [""];
+		for (const length of [1, 2, 3, 4]) {
+			for (let n = 0; n < 3 ** length; n++) {
+				words.push(Array.from({ length }, (_, k) => "abc"[Math.floor(n / 3 ** k) % 3] as string).join(""));
+			}
+		}
+		const candidates = ["a", "ab", "abc", "bca", "cab", "aaaa", "abcb", "cc", "bbbc"];
+		let suggested = 0;
+		for (const input of words) {
+			const expected = coreSuggest(input, candidates);
+			assert.deepStrictEqual(Fmt.suggest(input, candidates), expected, input);
+			if (expected.length > 0) suggested++;
+		}
+		assert.strictEqual(words.length, 121, "the walk covered every word");
+		assert.isAbove(suggested, 50, "the oracle suggested something for most words");
+	});
+
+	it("a long typed value against short names stays fast", () => {
+		const started = performance.now();
+		const long = "x".repeat(200_000);
+		assert.deepStrictEqual(Fmt.suggest(long, ["build", "test"]), []);
+		assert.deepStrictEqual(Fmt.suggest(long, [`${long}yyy`, long.slice(1)]), [long.slice(1)]);
+		assert.isBelow(performance.now() - started, 2000);
 	});
 });

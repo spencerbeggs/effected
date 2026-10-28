@@ -1,5 +1,5 @@
-import { Duration, Option, Predicate } from "effect";
-import { causeMessage } from "./internal/causeMessage.js";
+import { ErrorText } from "@effected/engine";
+import { Duration, Option } from "effect";
 import { displayWidth, graphemes, isEscapeOnly, stripAnsi } from "./internal/displayWidth.js";
 
 /**
@@ -41,6 +41,49 @@ export interface PadOptions {
 	/** The fill, one column wide; a space by default. Anything that is not exactly one column wide is a space. */
 	readonly fill?: string | undefined;
 }
+
+/**
+ * Options for {@link Fmt.suggest}.
+ *
+ * @public
+ */
+export interface SuggestOptions {
+	/** The most edits a suggestion may be away from the input; `2` by default, as `effect/cli` uses. */
+	readonly maxDistance?: number | undefined;
+}
+
+/**
+ * The Levenshtein distance between `a` and `b` when it is at most `limit`, and `limit + 1` otherwise.
+ *
+ * Only the diagonal band of the matrix within `limit` of it is computed (a cell outside it is past `limit` already),
+ * over two rows reused in turn, and a row whose every cell is past `limit` ends the walk, since no later row can come
+ * back under it: the cost is the length of `a` times `2 * limit + 1`.
+ */
+const boundedDistance = (a: string, b: string, limit: number): number => {
+	const over = limit + 1;
+	if (Math.abs(a.length - b.length) > limit) return over;
+	const n = b.length;
+	const at = (row: Array<number>, j: number): number => row[j] ?? over;
+	let previous: Array<number> = Array.from({ length: n + 1 }, (_, j) => (j <= limit ? j : over));
+	let current: Array<number> = new Array<number>(n + 1).fill(over);
+	for (let i = 1; i <= a.length; i++) {
+		const lo = Math.max(1, i - limit);
+		const hi = Math.min(n, i + limit);
+		const edge = lo === 1 && i <= limit ? i : over;
+		current[lo - 1] = edge;
+		let rowMin = edge;
+		for (let j = lo; j <= hi; j++) {
+			const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+			const cell = Math.min(at(previous, j) + 1, at(current, j - 1) + 1, at(previous, j - 1) + cost, over);
+			current[j] = cell;
+			if (cell < rowMin) rowMin = cell;
+		}
+		if (hi < n) current[hi + 1] = over;
+		if (rowMin > limit) return over;
+		[previous, current] = [current, previous];
+	}
+	return Math.min(at(previous, n), over);
+};
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to match control characters
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
@@ -279,31 +322,15 @@ export class Fmt {
 	 * function), or `"[unprintable value]"` when that throws too. A getter that throws is a value with no message.
 	 *
 	 * The text is not sanitised: pass it through {@link Fmt.sanitize} before printing data you do not control. For
-	 * the messages along an error's `cause` chain, use {@link Fmt.causeMessage}.
+	 * the messages along an error's `cause` chain, use {@link Fmt.causeMessage}; for the two combined, use
+	 * {@link Fmt.errorText}.
+	 *
+	 * It is `@effected/engine`'s `ErrorText.describe`, the same function, so a front end that cannot depend on this
+	 * package (an MCP server) describes a value with the same words.
 	 *
 	 * @param value - the value
 	 */
-	static readonly describe = (value: unknown): string => {
-		if (Predicate.isString(value)) return value;
-		if (value === undefined || value === null) return String(value);
-		if (typeof value !== "object" && typeof value !== "function") return String(value);
-		try {
-			if (Predicate.hasProperty(value, "message") && Predicate.isString(value.message)) return value.message;
-		} catch {
-			// A throwing `message` getter: describe the value some other way.
-		}
-		try {
-			const json = JSON.stringify(value);
-			if (json !== undefined) return json;
-		} catch {
-			// A cycle or a bigint: fall through to String.
-		}
-		try {
-			return String(value);
-		} catch {
-			return "[unprintable value]";
-		}
-	};
+	static readonly describe: (value: unknown) => string = ErrorText.describe;
 
 	/**
 	 * Every distinct non-empty message along a value's `cause` chain, nearest first and joined with `: `, or
@@ -319,9 +346,71 @@ export class Fmt {
 	 *
 	 * Never throws: a `message` getter that throws leaves that node without text, and a `cause` getter that throws ends
 	 * the walk with the text found so far, `undefined` when there is none, so a caller's own fallback
-	 * (`?? Fmt.describe(value)`) applies.
+	 * (`?? Fmt.describe(value)`, which {@link Fmt.errorText} spells once) applies.
+	 *
+	 * It is `@effected/engine`'s `ErrorText.causeMessage`, the same function.
 	 *
 	 * @param value - the error, or whatever was thrown
 	 */
-	static readonly causeMessage = (value: unknown): string | undefined => causeMessage(value);
+	static readonly causeMessage: (value: unknown) => string | undefined = ErrorText.causeMessage;
+
+	/**
+	 * The text of an unknown failure: {@link Fmt.causeMessage} when the chain carries a message, otherwise
+	 * {@link Fmt.describe}.
+	 *
+	 * @remarks
+	 * Exactly `Fmt.causeMessage(value) ?? Fmt.describe(value)`, the fallback an I/O site turning a caught value into
+	 * text would otherwise spell out by hand at every call. An error whose message is empty and whose chain carries none
+	 * is `""`, as `describe` reads it. Never throws, and not sanitised: pass it through {@link Fmt.sanitize} before
+	 * printing data you do not control. It is `@effected/engine`'s `ErrorText.of`, the same function.
+	 *
+	 * @param value - the error, or whatever was thrown
+	 */
+	static readonly errorText: (value: unknown) => string = ErrorText.of;
+
+	/**
+	 * The candidates nearest to `input`, for a "did you mean" hint: those at the smallest edit distance found, up to
+	 * `maxDistance` edits (two by default), in the order given, each once. No candidate that close is `[]`.
+	 *
+	 * @remarks
+	 * The distance is Levenshtein's (one insertion, deletion or substitution per edit), over UTF-16 code units and
+	 * case-sensitive, with the same two-edit threshold and the same ties-all-kept rule `effect/cli` uses for an unknown
+	 * subcommand or flag, so a program's own suggestions agree with the parser's. A candidate equal to `input` is at
+	 * distance zero and is the only one returned.
+	 *
+	 * The cost is linear in the candidates' total length: a candidate whose length differs from `input`'s by more than
+	 * `maxDistance` is skipped unmeasured, and only the band of the edit matrix within `maxDistance` of its diagonal is
+	 * measured, so a long typed value cannot make it quadratic. A `maxDistance` that is not a non-negative integer is a programming mistake and
+	 * throws a `RangeError`.
+	 *
+	 * ```ts
+	 * Fmt.suggest("stauts", ["status", "stack", "build"]) // => ["status"]
+	 * ```
+	 *
+	 * @param input - what was typed: an unknown key, a profile name, a phase name
+	 * @param candidates - the names it could have meant
+	 * @param options - the most edits a suggestion may be away
+	 */
+	static readonly suggest = (
+		input: string,
+		candidates: Iterable<string>,
+		options?: SuggestOptions,
+	): ReadonlyArray<string> => {
+		const max = options?.maxDistance ?? 2;
+		if (!Number.isInteger(max) || max < 0) {
+			throw new RangeError(`Fmt.suggest: maxDistance must be a non-negative integer, received ${max}`);
+		}
+		let best = max + 1;
+		let found: Array<string> = [];
+		for (const candidate of new Set(candidates)) {
+			const distance = boundedDistance(input, candidate, Math.min(max, best));
+			if (distance < best) {
+				best = distance;
+				found = [candidate];
+			} else if (distance === best) {
+				found.push(candidate);
+			}
+		}
+		return best <= max ? found : [];
+	};
 }

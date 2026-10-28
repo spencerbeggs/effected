@@ -32,6 +32,13 @@ One module per concept. `src/index.ts` is the only re-exporting module.
   to `R`), `distributionSuffix`.
 - `src/Remediation.ts` — `Remediation` (`Schema.Struct` + type): what a
   caller, usually an agent, should do after a failure.
+- `src/ErrorText.ts` — `ErrorText` (`describe`, `causeMessage`, `of`): any
+  value as error text, never throwing. `@effected/cli`'s `Fmt.describe`,
+  `Fmt.causeMessage` and `Fmt.errorText` ARE these functions (delegation
+  pinned by identity in cli's `Fmt.test.ts`), so a CLI and an MCP server
+  describe a failure alike. `src/internal/causeMessage.ts` is the
+  error-standards verbatim copy (moved here from cli), with its kit-wide
+  `__test__/causeMessage.test.ts`.
 - `src/Distribution.ts` also carries `withDistributionVersion(d)(formatVersion)`
   (decorates a `--version` formatter shaped like
   `CliOutput.Formatter["formatVersion"]` with `distributionSuffix`; it WRAPS

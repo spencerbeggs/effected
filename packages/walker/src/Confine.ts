@@ -31,10 +31,24 @@ import { trimTrailing } from "./internal/trimTrailing.js";
  *   reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`,
  *   `LPT1`–`LPT9`), in any case and with or without an extension
  *   (`nul.txt`).
+ * - `outside` — `confineReal` only: the candidate's real path, links
+ *   resolved, lies outside the base's real path.
+ * - `unresolvable` — `confineReal` only: resolving the candidate or the base
+ *   failed for a reason other than absence (a permission error, a link loop,
+ *   a file used as a directory), so containment cannot be verified. The
+ *   failure rides in the error's `cause`.
  *
  * @public
  */
-export const PathEscapeReason = Schema.Literals(["nulByte", "absolute", "traversal", "empty", "reservedName"]);
+export const PathEscapeReason = Schema.Literals([
+	"nulByte",
+	"absolute",
+	"traversal",
+	"empty",
+	"reservedName",
+	"outside",
+	"unresolvable",
+]);
 
 /**
  * The decoded type of {@link (PathEscapeReason:variable)}.
@@ -61,6 +75,8 @@ export class PathEscapeError extends Schema.TaggedError<PathEscapeError>()("Path
 	candidate: Schema.String,
 	/** Why the candidate was refused. */
 	reason: PathEscapeReason,
+	/** The resolution failure, present when `reason` is `"unresolvable"`. */
+	cause: Schema.optionalKey(Schema.Defect()),
 }) {
 	override get message(): string {
 		return `the path ${JSON.stringify(this.candidate)} ${REASON_TEXT[this.reason]}`;
@@ -74,6 +90,8 @@ const REASON_TEXT: Readonly<Record<PathEscapeReason, string>> = {
 	traversal: "climbs above the base directory",
 	empty: "names the base directory itself, not an entry under it",
 	reservedName: "has a segment win32 reserves or reads as something else",
+	outside: "resolves, links followed, to a path outside the base directory",
+	unresolvable: "could not be resolved, so its containment cannot be verified",
 };
 
 /** A win32 drive prefix: `C:\x`, `C:/x`, and the drive-relative `C:x`. */
@@ -124,7 +142,7 @@ const stripTrailingSeparators = (path: string): string =>
  * base yields the normalised relative path alone. The check is lexical, not
  * physical, and symlinks are out of scope: a symlink already inside the
  * base can still point out of it, so a caller extracting into a directory
- * it does not own resolves links separately.
+ * it does not own checks the result with `confineReal` as well.
  *
  * {@link confineRelative} is defined in terms of this function and adds
  * only the tracing span.
