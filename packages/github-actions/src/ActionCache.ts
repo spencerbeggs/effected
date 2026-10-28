@@ -8,6 +8,7 @@ import type { FileBlobTransfer } from "./BlobTransfer.js";
 import { BlobTransferError } from "./BlobTransfer.js";
 import type { CacheKey } from "./CacheKey.js";
 import { misconfiguredDetail, resultsBackend } from "./internal/actionsResults.js";
+import { blobCause } from "./internal/blobCause.js";
 import type { CacheServiceClient } from "./internal/cacheService.js";
 import { CACHE_SERVICE, finalizeUpload, lookupDownload, reserveUpload } from "./internal/cacheService.js";
 import { sha256Hex } from "./internal/digest.js";
@@ -160,12 +161,12 @@ const azure: FileBlobTransfer = {
 					concurrency: 8,
 					maxSingleShotSize: 128 * 1024 * 1024,
 				}),
-			catch: (cause) => new BlobTransferError({ reason: "uploadFailed", cause }),
+			catch: (cause) => new BlobTransferError({ reason: "uploadFailed", cause: blobCause(cause) }),
 		}).pipe(Effect.asVoid),
 	downloadToFile: (url, file) =>
 		Effect.tryPromise({
 			try: () => new BlobClient(url).downloadToFile(file),
-			catch: (cause) => new BlobTransferError({ reason: "downloadFailed", cause }),
+			catch: (cause) => new BlobTransferError({ reason: "downloadFailed", cause: blobCause(cause) }),
 		}).pipe(Effect.asVoid),
 };
 
