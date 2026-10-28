@@ -21,7 +21,7 @@
 		"CliMessage": "print one themed success, info, warning or failure line no log level silences",
 		"CliPrompt": "prompt for a missing flag or argument only when interactive, else a default",
 		"CliRuntime": "report a cli program's failures through its own logger, set exit code",
-		"CliTest": "spawn a built cli bin hermetically in a sandboxed temp home, read exit code and stdout/stderr as data",
+		"CliTest": "spawn a cli bin in a sandbox, read exit and output, stream or signal",
 		"CliTheme": "paint text by semantic token per stream, colour level aware, status glyphs, the agent-never-gets-an-escape rule",
 		"CliUi": "run an ink screen from a handler or flag fallback, map a screen's answer, live progress view with a lazy view and a final document",
 		"CliUiTest": "test ink screens and live views in memory: press keys, read frames, terminal transcript",
@@ -30,7 +30,7 @@
 		"Confirm": "yes or no question screen with extra toggles",
 		"Doc": "build a report once as a document: tables, trees, lists, counts, diffs, callouts",
 		"DocView": "draw a document inside an ink tree, byte for byte like the static output",
-		"Fmt": "sanitize escapes from text, display width, grapheme-safe truncate, durations, percent, plural",
+		"Fmt": "sanitize escapes, display width, truncate, durations, plural, did-you-mean suggestions, error text",
 		"GithubAnnotation": "format a GitHub Actions error or warning annotation for a file and line",
 		"Glyphs": "unicode or ascii status glyphs, spinner frames, tree segments, ascii under TERM=dumb",
 		"KeyHelp": "one-line key help footer from key tables, cut to the terminal width",
@@ -56,7 +56,7 @@
 		"useKeys": "dispatch ink keystrokes through a key table, chunk-safe",
 		"useTerminalSize": "usable terminal columns and rows inside an ink component",
 		"useTheme": "read the cli theme inside an ink component",
-		"CliFormat": "add a --format flag, print one report as text, markdown or json"
+		"CliFormat": "add a --format flag, alias or custom formats, retired --json, print json"
 	},
 	"commands": {
 		"CommandFailedError": "handle a command that failed to spawn, exited non-zero, or timed out",
@@ -135,6 +135,7 @@
 		"CurrentDistribution": "read which carrier package installed this run without it appearing in R, defaults to none",
 		"Distribution": "the carrier package name and version a tool's bins were installed through",
 		"DistributionField": "the nullable distribution field of a machine-readable envelope, null for a direct install",
+		"ErrorText": "turn any thrown value or error into text without throwing, cause-chain messages",
 		"LaunchContext": "resolve a launched tool's project directory from argv, env keys, then cwd, rejecting unsubstituted placeholders",
 		"ProcessGuard": "transport-neutral crash guards for an lsp or any server process before its graph loads, mark connected yourself, exit only before connect, startup failure exits 1, parse a crash-injection env value",
 		"Remediation": "what a caller, usually an agent, should do after a failure: hint plus optional suggested tool and args",

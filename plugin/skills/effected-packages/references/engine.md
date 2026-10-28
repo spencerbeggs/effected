@@ -3,7 +3,7 @@
 Pattern: `design-patterns`.
 
 Platform-free primitives shared by every front end of an Effect v4 tool: carrier
-distribution identity, a remediation shape, launch-context resolution, a
+distribution identity, a remediation shape, never-throwing error text, launch-context resolution, a
 one-permit lane and scoped restores for process-global state, and
 transport-neutral process crash guards (`./guard`). Pure
 tier: `effect` is the only peer, and the only dependency of any kind — no
@@ -22,6 +22,7 @@ import {
   CurrentDistribution,
   Distribution,
   DistributionField,
+  ErrorText,
   Exclusive,
   ExclusiveTimeout,
   LaunchContext,
@@ -77,6 +78,18 @@ re-exports it.
   folded-message shape and a structured-data shape. Both optional keys are
   `optionalKey`, so an explicit `undefined` is rejected rather than silently
   encoded.
+- **`ErrorText`** — a static-only class turning any value into error text,
+  never throwing, the one implementation a CLI and an MCP server share
+  (`@effected/cli`'s `Fmt.describe`, `Fmt.causeMessage` and `Fmt.errorText`
+  are these same functions). `ErrorText.describe(value)`: a string as itself,
+  a value with a string `message` as that message (an `Error`, one from
+  another realm, a plain `{ message }`), else its JSON, else `String(value)`,
+  else `"[unprintable value]"`. `ErrorText.causeMessage(value)`: every
+  distinct non-empty message along the `cause` chain, nearest first, joined
+  with a colon and a space, eight nodes at most, `undefined` when none (the kit's guarded
+  cause read). `ErrorText.of(value)`: exactly `causeMessage(value) ??
+  describe(value)`, the replacement for a per-site `error instanceof Error ?
+  error.message : String(error)`. None is sanitised.
 - **`LaunchContext`** — a static-only class resolving where a tool launched by
   an agent host should treat as its project:
   - `LaunchContext.projectDir(input: ProjectDirInput): string` — the first

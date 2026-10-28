@@ -7,6 +7,7 @@
 * Updated @effected/env
 * Updated @effected/mcp
 * Updated Keyed operations come from WebCrypto, payload digests from core Crypto required in R
+* Updated @effected/engine
 
 ## 2026-10-27
 
