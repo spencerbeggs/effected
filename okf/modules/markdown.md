@@ -35,16 +35,16 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/1030
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T18:00:25Z
+  at: 2026-10-28T18:08:21Z
 integrity:
   generated:
-    body: 52e44896118c7b3e
+    body: b6e96463df3154e1
 ---
 
 # `@effected/markdown`
 
 `@effected/markdown` is CommonMark 0.31.2 plus GFM expressed as pure Effect
-Schema classes: parse into mdast-shaped nodes carrying byte offsets, compute
+Schema classes: parse into mdast-shaped nodes carrying UTF-16 code-unit offsets, compute
 offset-splice edits, format, modify by node, rewrite trees with typed
 transforms, project to and from plain mdast,
 walk the tree synchronously or as a `Stream`, and read and write frontmatter through
@@ -118,7 +118,7 @@ at the top of the block pass and never enters the inline pass.
 Node Schema classes use mdast's exact node type names and field shapes — the
 CommonMark types, the GFM additions and the frontmatter node
 (`packages/markdown/src/MarkdownNode.ts`). Positions are unist positions with
-line/column and byte offsets. Fidelity fields — bullet character, fence
+line/column and UTF-16 code-unit offsets. Fidelity fields — bullet character, fence
 character and info string, ATX vs setext heading style, delimiter runs,
 spacing — ride alongside the mdast shape; the `Mdast` module projects to
 plain spec-valid mdast JSON by stripping them. The one exception is `Text`'s
@@ -137,8 +137,8 @@ the spec types as optional booleans are `optionalKey`, with absence meaning
 unknown rather than false.
 
 Three deltas from commonmark.js were decided up front, not discovered
-mid-port: mdast type names replace commonmark.js's own names; byte offsets
-are tracked everywhere (commonmark.js has only line/column source
+mid-port: mdast type names replace commonmark.js's own names; UTF-16
+code-unit offsets are tracked everywhere (commonmark.js has only line/column source
 positions, and offsets also power the edit layer); and definition nodes are
 kept in the tree with reference nodes emitted unresolved, per mdast
 semantics, where commonmark.js deletes definitions and resolves references

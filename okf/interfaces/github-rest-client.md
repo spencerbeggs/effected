@@ -8,7 +8,7 @@ resource: ../../packages/github/src/Rest.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:43:15Z
+  at: 2026-10-28T17:55:58Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:33.163Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 287195ae86339ec9
+    body: 7bea4b0ea0124f66
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -102,6 +102,32 @@ keys still route to GraphQL, because those two facts are known rather than
 merely undescribed; `__proto__` is never sent, since assigning it would set
 the body's prototype rather than a field. `unverified` is a required field,
 empty under the default `"ignore"`.
+
+### Both write paths send the settings as octokit's `data`
+
+octokit takes a route's path parameters, body fields and transport options
+in one flat object, and `@octokit/endpoint`'s `parse` splits it: `method`,
+`baseUrl`, `url`, `headers`, `request` and `mediaType` are read as the
+request itself, any key the URL template names (`owner`, `repo`) is consumed
+as the path, and a `data` key replaces the whole body. `@octokit/request`
+then reads `request.fetch` and `request.hook` off the merged options. An open
+settings map spread beside `owner` and `repo` could therefore send the
+authenticated PATCH to another host with the token attached (the auth hook
+adds it to every request), swap its fetch, replace its body, or have an
+`owner` / `repo` key silently overwritten while it was reported sent.
+
+So `updateSettings` and `applySettings` send `{ owner, repo, data: body }`
+(`patchParams` in `GitHubRepository.ts`): no key inside `data` is ever read
+as an option, and confinement holds by construction. The reserved names
+(`src/internal/requestOptions.ts`, citing the octokit source) are refused as
+well, as defence in depth: `repositoryPatch` throws a `RangeError` for one in
+the draft or the extra (`RepositoryPatchReservedKey`, typed `never` in
+`RepositoryPatchExtra`), and `applySettings` reports one in `ignored` under
+either `unknownKeys` mode, so `rest` and `unverified` name only keys that went
+into the body. `RepositoryPatch` omits `Rest.RequestExtras` (`headers`,
+`mediaType`, `baseUrl`): in a body they would be fields, not the options they
+are named after. A `GitHubClient.layerFixture` records the PATCH's params as
+`{ owner, repo, data }`.
 
 ### Resource ids come off the wire as `number | bigint`
 

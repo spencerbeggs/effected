@@ -50,7 +50,8 @@
 | `PackageManagerPinName` | Variable + TypeAlias | The decoded type of `(PackageManagerPinName:variable)`: `"npm" \| "pnpm" \| "yarn" \| "bun"`. | the four package managers a corepack pin can name: npm, pnpm, yarn, bun |
 | `PackagePublish` | Class | Packs, dry-runs and publishes npm tarballs, and writes registry auth into an npmrc, by running `npm` through `@effected/commands`. | pack tarball, publish to registry, write npmrc auth token, recording test double |
 | `PackagePublishShape` | Interface | The `PackagePublish` service shape. | |
-| `PackageTarball` | Class | Fetch, verify and extract a published tarball. | download, verify and extract a published tarball by integrity |
+| `PackageTarball` | Class | Fetch, verify and extract a published tarball. | download, verify and extract a published tarball by integrity, private registry auth |
+| `PackageTarballExtractOptions` | Interface | Options for `PackageTarballShape.extract`. | authenticate a private registry tarball download by its url |
 | `PackageTarballShape` | Interface | The `PackageTarball` service shape. | |
 | `PackedTarball` | Class | A packed tarball and the two digests that describe it. | the tarball path, digests and size npm pack produced |
 | `PartialReleaseAgeGate` | Variable + TypeAlias | One source's partial contribution to a release-age gate. All fields optional. | one config source's contribution to a pnpm minimumReleaseAge gate before merging |
@@ -66,6 +67,7 @@
 | `RecordedSetupAuth` | Interface | One `setupAuth` call a `PackagePublish.recording` double observed. | |
 | `RecordingPackagePublish` | Interface | What `PackagePublish.recording` returns: the layer to provide and the calls it observed. | |
 | `RegistryCredential` | TypeAlias | How to authenticate to a registry. | |
+| `RegistryCredentialLookup` | Interface | Answers the credential to send with a request to one URL — the shape a per-request credential source takes. | credential per request url, keep a token off cdn hosts |
 | `RegistryKind` | Variable + TypeAlias | The decoded type of `(RegistryKind:variable)`. | classify a registry url as npm, github-packages, jsr, or custom |
 | `RegistryReadError` | Class | A registry read failed. | handle failed registry http read: transport error, bad status, undecodable body, refused workload credential |
 | `RegistrySeed` | Interface | A whole fake registry world, keyed the way real reads are. | |

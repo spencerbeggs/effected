@@ -17,6 +17,41 @@ import { McpTestFailure } from "./McpTestFailure.js";
 import type { JsonRpcMessage, ServedResource, ServedTool } from "./McpWire.js";
 import { ToolFailure } from "./ToolFailure.js";
 
+/** The generic tag `Object.prototype.toString` answers with: a value with no string form of its own. */
+const GENERIC_STRING = /^\[object [^\]]*\]$/;
+
+/**
+ * One captured console argument as text, as close to what the console would show as a runtime-free rendering gets,
+ * and never throwing.
+ *
+ * @remarks
+ * A harness records what the server would have printed, so the record must not lose what the console shows. Hence
+ * the order: a value's own string form first (`String(error)` is `Error: boom`, where `ErrorText.describe` would keep
+ * only `boom`, and it is the same for any object carrying a `message`), then JSON for an array or a plain object,
+ * whose string form is `1,2` or `[object Object]`. `ErrorText.describe` is the last resort for a value whose string
+ * form throws and which has no JSON: an object with no prototype has no `toString`, and `String` throws on it inside
+ * the server's own console call.
+ */
+const showArg = (arg: unknown): string => {
+	if (typeof arg === "string") return arg;
+	if (typeof arg !== "object" || arg === null) return ErrorText.describe(arg);
+	try {
+		if (!Array.isArray(arg)) {
+			const text = String(arg);
+			if (!GENERIC_STRING.test(text)) return text;
+		}
+	} catch {
+		// No usable string form: try JSON.
+	}
+	try {
+		const json = JSON.stringify(arg);
+		if (json !== undefined) return json;
+	} catch {
+		// A cycle, a bigint or a throwing getter: describe it some other way.
+	}
+	return ErrorText.describe(arg);
+};
+
 /**
  * Options for {@link McpHarness.make}.
  *
@@ -171,9 +206,13 @@ export class McpHarness {
 	/** Everything written to stderr, plus every captured log line. */
 	readonly stderrSoFar: Effect.Effect<string>;
 	/**
-	 * Every captured `console.log`, `info` or `debug` call, its arguments joined with a space: a string as itself,
-	 * any other value as `ErrorText.describe` from `@effected/engine` reads it, so an argument that cannot be turned
-	 * into a string never throws inside the server's own call.
+	 * Every captured `console.log`, `info` or `debug` call, its arguments joined with a space, each rendered close to
+	 * what the console would show: a string as itself, a value with its own string form as that form (an `Error` as
+	 * `Error: boom`, a number, a date), an array or a plain object as JSON (`{"message":"x"}`, not just `x`).
+	 *
+	 * @remarks
+	 * Rendering never throws inside the server's own call. A value whose string form throws (an object with no
+	 * prototype, a throwing `toString`) and has no JSON falls back to `ErrorText.describe` from `@effected/engine`.
 	 */
 	readonly consoleLogSoFar: Effect.Effect<ReadonlyArray<string>>;
 	/**
@@ -248,9 +287,7 @@ export class McpHarness {
 					),
 			});
 			const ambient = yield* Console.Console;
-			// engine's describer, never `String(arg)`: an argument with no prototype or a throwing `toString` would
-			// otherwise throw inside the server's own console call.
-			const show = (args: ReadonlyArray<unknown>): string => args.map(ErrorText.describe).join(" ");
+			const show = (args: ReadonlyArray<unknown>): string => args.map(showArg).join(" ");
 			const toStdout = (...args: ReadonlyArray<unknown>): void => {
 				consoleLog.push(show(args));
 			};

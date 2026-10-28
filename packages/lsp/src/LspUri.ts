@@ -30,6 +30,12 @@ const FILE_SCHEME = /^file:/i;
 // legacy `|`).
 const DRIVE = /^[A-Za-z][:|]$/;
 const DRIVE_PATH = /^[A-Za-z]:(?:\/|$)/;
+// A host as `toPath` reads it and `fromPath` writes it: dot-separated labels
+// of ASCII letters, digits, `-` and `_`, never percent-encoded. That rules out
+// every host that turns a UNC root into something else: `.` and `?` (the
+// Win32 device and namespace roots `\\.\` and `\\?\`), a separator, `%`,
+// NUL, userinfo, a port, an IPv6 literal and an empty label.
+const HOSTNAME = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/;
 // The sub-delims and marks `encodeURIComponent` leaves alone but `vscode-uri`
 // encodes; encoding them too keeps a path's URI identical across both.
 const EXTRA = /[!'()*]/g;
@@ -77,6 +83,28 @@ const decode = (segment: string): string | undefined => {
 	}
 };
 
+/**
+ * Why `fromPath` refuses a Win32 path, or `undefined` when it accepts it.
+ * The one statement of the refused set: `fromPath` throws on a reason, and
+ * `toPath` answers `Option.none()` for any path this refuses, so `toPath`
+ * never answers a path `fromPath` would not write.
+ */
+const win32Refusal = (path: string): string | undefined => {
+	if (path.includes("\0")) return "holds a NUL character";
+	const slashed = path.replaceAll("\\", "/");
+	// `\\?\`, `\\.\` and the NT object-manager prefix `\??\`.
+	if (slashed.startsWith("//?/") || slashed.startsWith("//./") || slashed.startsWith("/??/")) {
+		return "is a Win32 device or namespace path, which no file: URI names";
+	}
+	if (slashed.startsWith("//")) {
+		const [server = "", share = ""] = slashed.slice(2).split("/");
+		if (!HOSTNAME.test(server)) return "is not a UNC path whose server is a hostname";
+		if (share === "" || share === "." || share === "..") return "is not a UNC path with a server and a share";
+		return undefined;
+	}
+	return DRIVE_PATH.test(slashed) ? undefined : "is not an absolute win32 path";
+};
+
 const toPosixPath = (host: string, tail: ReadonlyArray<string>): Option.Option<string> =>
 	host === "" ? Option.some(`/${removeDotSegments(tail).join("/")}`) : Option.none();
 
@@ -100,6 +128,11 @@ const toWin32Path = (host: string, tail: ReadonlyArray<string>): Option.Option<s
 	return Option.none();
 };
 
+// Every win32 answer passes through the refusal `fromPath` applies, so the two
+// can never disagree on a device, namespace or malformed UNC path.
+const toWin32 = (host: string, tail: ReadonlyArray<string>): Option.Option<string> =>
+	Option.filter(toWin32Path(host, tail), (path) => win32Refusal(path) === undefined);
+
 /**
  * Conversion between `file:` URIs and absolute file-system paths, the two
  * spellings every Language Server juggles: LSP names documents by URI
@@ -119,6 +152,15 @@ const toWin32Path = (host: string, tail: ReadonlyArray<string>): Option.Option<s
  *   under `"win32"` (the same), a `%00`, a malformed or non-UTF-8 escape, a
  *   relative `file:` URI, a host under `"posix"`, and a rooted path with no
  *   drive or share under `"win32"`. Node throws for each of these.
+ * - **`toPath` never answers a Win32 device or namespace path**, nor any
+ *   other path `fromPath` would refuse: `file://./pipe/x` and
+ *   `file://%3F/C:/x` would read as `\\.\pipe\x` and `\\?\C:\x`, and
+ *   are `Option.none()`, as is a host spelled inside the path
+ *   (`file:////./x`). A host must be a plain hostname: dot-separated labels
+ *   of ASCII letters, digits, `-` and `_`. The authority is matched as
+ *   written, never percent-decoded, so a percent-encoded host is
+ *   `Option.none()`, as is a `.` or `?` host, a separator, `%`, NUL,
+ *   userinfo, a port, an IPv6 literal, and a UNC share of `.` or `..`.
  * - **`.` and `..` segments are removed (RFC 3986 §5.2.4) and never climb
  *   above the root**, in both directions, including their encoded forms
  *   (`%2E%2E`). Node's WHATWG parser collapses them the same way; `vscode-uri`
@@ -138,8 +180,8 @@ const toWin32Path = (host: string, tail: ReadonlyArray<string>): Option.Option<s
  * - **`localhost` is the local machine** (RFC 8089 §2): `file://localhost/a`
  *   is `/a`. Any other host is a UNC path under `"win32"`
  *   (`file://server/share/a` is `\\server\share\a`, host lowercased) and
- *   `Option.none()` under `"posix"`. IDN hosts are not converted to or from
- *   punycode.
+ *   `Option.none()` under `"posix"`. An IDN host is read and written only in
+ *   its ASCII (punycode) form; neither direction converts it.
  * - A query or fragment is ignored, as Node ignores it.
  *
  * @example
@@ -183,8 +225,9 @@ export class LspUri {
 			path = slash === -1 ? "" : rest.slice(slash);
 		}
 		if (!path.startsWith("/")) return Option.none();
-		const host = decode(authority);
-		if (host === undefined) return Option.none();
+		// The host is never percent-decoded: a host is a plain hostname, so an
+		// encoded one (`%2E`, `%3F`, `a%2Fb`) stays as written and is refused,
+		// rather than decoded into a device root or a separator.
 		const win32 = options?.platform === "win32";
 		const tail: Array<string> = [];
 		for (const raw of path.slice(1).split("/")) {
@@ -193,8 +236,8 @@ export class LspUri {
 			if (win32 && segment.includes("\\")) return Option.none();
 			tail.push(segment);
 		}
-		const local = host.toLowerCase() === "localhost" ? "" : host;
-		return win32 ? toWin32Path(local, tail) : toPosixPath(local, tail);
+		const local = authority.toLowerCase() === "localhost" ? "" : authority;
+		return win32 ? toWin32(local, tail) : toPosixPath(local, tail);
 	}
 
 	/**
@@ -208,8 +251,10 @@ export class LspUri {
 	 * and a UNC path `\\server\share\…` becomes `file://server/share/…`.
 	 *
 	 * A path that is not absolute on `options.platform` (`a/b`, `C:a`, or a
-	 * rooted `\a` with no drive), one holding a NUL, a lone surrogate, or a
-	 * Win32 device path (`\\?\…`, `\\.\…`) throws a `TypeError`: these are
+	 * rooted `\a` with no drive), one holding a NUL, a lone surrogate, a Win32
+	 * device or namespace path (`\\?\…`, `\\.\…`, `\??\…`), or a UNC path
+	 * whose server is not a plain hostname or whose share is missing, `.` or
+	 * `..` throws a `TypeError`: these are
 	 * programmer errors, since a server's own paths are absolute, and no URI
 	 * could name them faithfully. Resolve a relative path first, with the
 	 * platform's path module.
@@ -226,24 +271,17 @@ export class LspUri {
 			}
 			return `file:///${removeDotSegments(path.slice(1).split("/")).map(encode).join("/")}`;
 		}
+		const refusal = win32Refusal(path);
+		if (refusal !== undefined) throw new TypeError(`LspUri.fromPath: ${JSON.stringify(path)} ${refusal}`);
 		const slashed = path.replaceAll("\\", "/");
-		if (slashed.startsWith("//?/") || slashed.startsWith("//./")) {
-			throw new TypeError(`LspUri.fromPath: ${JSON.stringify(path)} is a Win32 device path, which no file: URI names`);
-		}
 		if (slashed.startsWith("//")) {
 			const [server = "", share = "", ...rest] = slashed.slice(2).split("/");
-			if (server === "" || share === "") {
-				throw new TypeError(`LspUri.fromPath: ${JSON.stringify(path)} is not a UNC path with a server and a share`);
-			}
 			const after = rest.length === 0 ? "" : `/${removeDotSegments(rest).map(encode).join("/")}`;
-			return `file://${encode(server.toLowerCase())}/${encode(share)}${after}`;
+			return `file://${server.toLowerCase()}/${encode(share)}${after}`;
 		}
-		if (DRIVE_PATH.test(slashed)) {
-			const drive = slashed.charAt(0).toLowerCase();
-			const rest = slashed.slice(2);
-			const segments = rest === "" ? [] : rest.slice(1).split("/");
-			return `file:///${drive}:/${removeDotSegments(segments).map(encode).join("/")}`;
-		}
-		throw new TypeError(`LspUri.fromPath: ${JSON.stringify(path)} is not an absolute win32 path`);
+		const drive = slashed.charAt(0).toLowerCase();
+		const rest = slashed.slice(2);
+		const segments = rest === "" ? [] : rest.slice(1).split("/");
+		return `file:///${drive}:/${removeDotSegments(segments).map(encode).join("/")}`;
 	}
 }

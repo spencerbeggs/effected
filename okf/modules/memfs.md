@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:36:59Z
+  at: 2026-10-28T17:47:41Z
 integrity:
   generated:
-    body: 425112eabb3cc22c
+    body: 644b1ab23b9a0879
 ---
 
 # @effected/memfs
@@ -343,8 +343,12 @@ Shared contract:
 - **`pathStyle: "win32"` is a spelling adapter only**, in front of the
   port and behind its faults: backslashes become slashes and a drive root
   `C:` maps onto the top-level `/C:` directory. Errors and fault handlers
-  keep the caller's spelling. No drive-letter folding, no UNC; the
-  `FileSystem` service stays POSIX.
+  keep the caller's spelling. The one answer that is a path, the sync
+  port's `realPath`, is respelled back (`/C:/repo` → `C:\repo`, the drive
+  root → `C:\`), the drive letter cased as the caller gave it unless an
+  absolute link target replaced the prefix, as node's win32 `realpath`
+  answers. Names, dirents and stats carry no path. No drive-letter
+  folding, no UNC; the `FileSystem` service stays POSIX.
 
 ### Case-insensitive volumes
 
@@ -405,18 +409,32 @@ It is synchronous because its caller is a suite building a volume at
 - **Symlinks are never followed.** A link is copied as a link with its
   target text verbatim, so nothing outside the fixture is ever read. A link
   that would leave the fixture throws `ERR_SEED_SYMLINK_ESCAPE`: an absolute
-  target (a host path the volume would resolve against itself), a target the
-  kernel resolves outside the fixture, or a dangling target that escapes
-  lexically. Containment uses `realpathSync.native`: the JS `realpathSync`
-  joins a link's target lexically, so `sub/out -> up/..` beside
-  `sub/up -> ..` reads as inside there while the kernel resolves it above
-  the fixture — the case the integration test pins.
+  target (a host path the volume would resolve against itself), or a
+  relative one whose resolution steps outside the fixture at ANY point.
+  Containment resolves the target one segment at a time on the host,
+  following every link on the way (an ELOOP-style 40-hop budget; a cycle
+  is accepted, it resolves nowhere in either place), and refuses the moment
+  a step leaves the root — even `../fixture/a` that comes back in, because
+  the volume mounts the fixture alone. Past a component the host cannot
+  resolve, the remaining segments are read lexically; past a link that
+  resolves nowhere, lexically from the root. Fails closed. Neither
+  `realpathSync.native` (answers nothing for a dangling link, so
+  `sub/out -> up/../nope` beside `sub/up -> ..` fell to a lexical check
+  that read it as inside — the security-review finding the integration test
+  pins) nor the JS `realpathSync` (joins link targets lexically) is enough.
 - **Modes, mtimes, size.** Modes are copied only with `modes: true`,
   because a checkout's bits follow the host's umask; mtimes never are.
-  `maxFileBytes` (16 MiB by default) throws `EFBIG`, checked from `lstat`
-  before the read. A FIFO, socket or device throws
-  `ERR_SEED_UNSUPPORTED_TYPE`. The walk is an explicit stack, not
-  recursion.
+  `maxFileBytes` (16 MiB by default) throws `EFBIG`. A FIFO, socket or
+  device throws `ERR_SEED_UNSUPPORTED_TYPE`. The walk is an explicit stack,
+  not recursion.
+- **The read is one descriptor.** The walk's `lstat` and the read are two
+  calls, so a file is opened `O_NOFOLLOW` (where the host defines it; a
+  link swapped in fails `ELOOP`) and `O_NONBLOCK` (a swapped-in FIFO cannot
+  block), its `fstat` must match the `lstat`'s device and inode or it
+  throws `ERR_SEED_CHANGED`, `maxFileBytes` is checked against the `fstat`
+  size, and the read is bounded by it (a shrink mid-read is
+  `ERR_SEED_CHANGED` too). The internal `readSeedFile` carries this and is
+  what the swap tests drive.
 
 The seed types' TSDoc names `MemoryFileSystem.file`, `directory` and
 `symlink` in backticks rather than `{@link}`: `./node-sync` re-exports the

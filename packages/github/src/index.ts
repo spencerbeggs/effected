@@ -135,6 +135,7 @@ export {
 	type RepositoryPatchDraft,
 	type RepositoryPatchExtra,
 	type RepositoryPatchOptions,
+	type RepositoryPatchReservedKey,
 	type RepositorySettings,
 	SECURITY_ANALYSIS_STATUS_FIELDS,
 	repositoryPatch,

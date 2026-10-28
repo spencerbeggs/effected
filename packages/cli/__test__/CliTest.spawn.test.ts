@@ -5,6 +5,7 @@ import { Effect, Option, Stream } from "effect";
 import { CliTest } from "../src/testing.js";
 
 const FOLLOW = join(import.meta.dirname, "fixtures", "follow.mjs");
+const STUBBORN = join(import.meta.dirname, "fixtures", "stubborn.mjs");
 
 // Real time: the child is a real process, so a TestClock would never move its output along.
 describe("CliTest.spawn", () => {
@@ -44,6 +45,74 @@ describe("CliTest.spawn", () => {
 			}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 		{ timeout: 10_000 },
 	);
+
+	it.live(
+		"a child the default kill ended reports its signal, not a failure",
+		() =>
+			Effect.gen(function* () {
+				const sandbox = yield* CliTest.sandbox({ path: process.env.PATH ?? "" });
+				const child = yield* CliTest.spawn("-e", ["console.log('up'); setInterval(() => {}, 1000)"], {
+					sandbox,
+					execPath: process.execPath,
+				});
+				yield* Stream.runHead(child.stdout);
+				yield* child.kill();
+				assert.isNull(yield* child.exitCode);
+				const result = yield* child.result;
+				assert.isNull(result.exitCode);
+				assert.strictEqual(result.signal, "SIGTERM");
+				assert.strictEqual(result.stdout, "up\n");
+			}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+		{ timeout: 10_000 },
+	);
+
+	it.live(
+		"a child that ignores SIGTERM is killed with SIGKILL after forceKillAfter",
+		() =>
+			Effect.gen(function* () {
+				const sandbox = yield* CliTest.sandbox({ path: process.env.PATH ?? "" });
+				const child = yield* CliTest.spawn(STUBBORN, [], {
+					sandbox,
+					execPath: process.execPath,
+					forceKillAfter: "200 millis",
+				});
+				yield* Stream.runHead(child.stdout);
+				yield* child.kill().pipe(Effect.timeout("5 seconds"));
+				const result = yield* child.result;
+				assert.isNull(result.exitCode);
+				assert.strictEqual(result.signal, "SIGKILL");
+				assert.include(result.stdout, "ignored SIGTERM", "control: the child did see, and ignore, SIGTERM");
+			}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+		{ timeout: 10_000 },
+	);
+
+	it.live(
+		"closing the scope on a child that ignores SIGTERM ends, with the child dead, under the default bound",
+		() =>
+			Effect.gen(function* () {
+				const sandbox = yield* CliTest.sandbox({ path: process.env.PATH ?? "" });
+				let pid: Option.Option<string> = Option.none();
+				const started = Date.now();
+				yield* Effect.scoped(
+					Effect.gen(function* () {
+						const child = yield* CliTest.spawn(STUBBORN, [], { sandbox, execPath: process.execPath });
+						pid = yield* Stream.runHead(child.stdout);
+					}),
+				);
+				const id = Number(Option.getOrThrow(pid));
+				assert.isAbove(id, 0);
+				assert.throws(() => process.kill(id, 0), /ESRCH/, "the stubborn child outlived its scope");
+				assert.isBelow(Date.now() - started, 8_000);
+			}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+		{ timeout: 10_000 },
+	);
+
+	it("a forceKillAfter that is not a finite duration is a programming mistake", () => {
+		const options = { sandbox: { root: "/", home: "/", env: {} }, execPath: "node" };
+		assert.throws(() => CliTest.spawn("bin", [], { ...options, forceKillAfter: "Infinity" }), RangeError);
+		assert.throws(() => CliTest.run("bin", [], { ...options, forceKillAfter: Number.NaN }), RangeError);
+		assert.throws(() => CliTest.run("bin", [], { ...options, forceKillAfter: -1 }), RangeError);
+	});
 
 	it.live(
 		"the child is killed when the scope closes first",

@@ -1,5 +1,5 @@
 import type { ConfigValidationError } from "@effected/config-file";
-import { formatIssue } from "./internal/format.js";
+import { formatIssueWithHints } from "./internal/format.js";
 
 /**
  * Turns a `@effected/config-file` `ConfigValidationError` into one line per rejected value.
@@ -48,10 +48,16 @@ export class ConfigIssueRenderer {
 	 * `Effect.catchTag("ConfigValidationError", …)` the error is already this
 	 * type.
 	 *
+	 * An unknown key the schema has a near match for at the same path ends in a
+	 * hint, `unknown key at theme.colour (did you mean "color"?)`, drawn from the
+	 * keys the struct declares there (every branch's, under a union) with
+	 * {@link Fmt.suggest}'s threshold. A key with no near match is drawn exactly
+	 * as {@link SchemaIssueRenderer} draws it.
+	 *
 	 * It cannot throw on a malformed value: the issue tree is validated by
 	 * a guard before it is read, so a renderer on an error path never becomes the
 	 * reason a program dies.
 	 */
 	static readonly render = (error: ConfigValidationError): ReadonlyArray<string> =>
-		formatIssue((error as { readonly issue?: unknown } | null)?.issue);
+		formatIssueWithHints((error as { readonly issue?: unknown } | null)?.issue);
 }

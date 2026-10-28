@@ -60,6 +60,18 @@ export interface AppConfigOptions<A, I, RR = never, CE = ConfigCodecError> {
 	readonly codec: ConfigCodec<CE>;
 	/** How several discovered sources become one value. Default `MergeStrategy.firstMatch`. */
 	readonly strategy?: MergeStrategyShape<A>;
+	/**
+	 * Where `save` and `update` write. Default `"default"`: always
+	 * `XdgConfig.savePath(filename)`, the app's own config file.
+	 *
+	 * @remarks
+	 * The preset pins `"default"` whatever the strategy, overriding
+	 * config-file's strategy-dependent default, because where an app saves
+	 * its config is part of the preset's contract. Pass `"source"` to write
+	 * back to the highest-priority file the chain found instead (a
+	 * `--config` file, a project file), falling back to the XDG path.
+	 */
+	readonly saveTarget?: "default" | "source";
 	/** An optional caller-supplied check run after schema decoding. */
 	readonly validate?: (value: A) => Effect.Effect<A, ConfigValidationError>;
 	/**
@@ -339,6 +351,7 @@ export class AppConfig {
 						strategy: options.strategy ?? MergeStrategy.firstMatch<A>(),
 						resolvers,
 						defaultPath: XdgConfig.savePath(options.filename),
+						saveTarget: options.saveTarget ?? "default",
 						// Conditional spreads: a present key holding `undefined` is not an
 						// absent key.
 						...(options.validate !== undefined && { validate: options.validate }),

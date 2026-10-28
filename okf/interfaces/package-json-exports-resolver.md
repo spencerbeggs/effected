@@ -19,10 +19,10 @@ sources:
     resource: ../../packages/package-json/__test__/ExportedFiles.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:55:59Z
+  at: 2026-10-28T17:51:20Z
 integrity:
   generated:
-    body: 8b1e14f16723eb71
+    body: 5a2586ca9da7bd95
 ---
 
 # The package-json exports resolver
@@ -73,10 +73,20 @@ The security property, pinned by an adversarial test per rule:[^exports-test]
   `node_modules` segment after the first, split on `/` or `\`,
   case-insensitively and percent-decoded.
 - A `*` pattern match is held to the same rule, including a match that
-  starts mid-segment (`"./pre*"` against `./pre..`).
-- Three checks are stricter than Node, because a pure resolver returns a
+  starts mid-segment (`"./pre*"` against `./pre..`), and the substituted
+  target is checked again whole: the template and the match can each pass
+  alone while the join spells `..` (`"./%2*"` with `e%2e` is `./%2e%2e`).
+- "Percent-decoded" means every decoding, not one: each escape decodes on
+  its own and the string is re-decoded until it settles, so `%252e` and
+  `%%32%65` are both seen as `.`. A string still changing after four
+  rounds is refused outright.
+- Four checks are stricter than Node, because a pure resolver returns a
   string its caller decodes or follows: an encoded `/` or `\` is refused
-  outright, an `imports` bare-specifier pattern match is checked, and
+  outright; an `imports` bare target must be a package name (npm's
+  characters, no leading `.` or `_`, no backslash or `%`) plus a subpath
+  with no forbidden segment, checked again after `*` substitution, and
+  refused as Node's PACKAGE_RESOLVE refuses one (`invalidModuleSpecifier`,
+  which ends an array fallback); and
   `main`, `types` and `typesVersions` targets are confined.
 - Hostile shape is bounded: conditions and fallback arrays nest at most
   32 deep, a pattern target carries at most 16 `*`, and pattern keys are
@@ -95,7 +105,9 @@ Which files a pattern reaches is a question about the package on disk, so
 `PackageJsonFile.exportedFiles(directory, manifest, options?)` answers it,
 keeping the package's rule that all IO lives in that module. It walks the
 directory a pattern's target fixes, never into `node_modules` and never
-through a symlink, and resolves each candidate subpath back through
+through a symlink: every path is `lstat`ed component by component from the
+package root, so a linked concrete target, a linked parent directory and a
+linked parent of a pattern's base all contribute nothing. It resolves each candidate subpath back through
 `resolveResult`, keeping it only when it lands on the same file — so `null`
 exclusions and more specific keys decide exactly as they do for one
 request.[^exported-files-test]

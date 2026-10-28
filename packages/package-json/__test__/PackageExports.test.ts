@@ -252,6 +252,37 @@ describe("a resolved target stays inside the package", () => {
 		assert.strictEqual(importOf({ imports: { "#pre*": "dep/*/x" } }, "#pre.."), "!invalidModuleSpecifier");
 	});
 
+	it("the substituted target is re-checked, so a '%' escape split across template and match cannot assemble", () => {
+		// Each half passes alone; only the joined string spells "..".
+		assert.strictEqual(path({ exports: { "./*": "./%2*/%2*/%2*/etc/passwd" } }, "./e%2e"), "!invalidModuleSpecifier");
+		assert.strictEqual(path({ exports: { "./*": "./dist/%2*/x.js" } }, "./E%2E"), "!invalidModuleSpecifier");
+		assert.strictEqual(path({ exports: { "./*": "./dist/%*/x.js" } }, "./2e%2e"), "!invalidModuleSpecifier");
+		// An encoded separator assembled the same way.
+		assert.strictEqual(path({ exports: { "./*": "./dist/%*" } }, "./2f.."), "!invalidModuleSpecifier");
+		assert.strictEqual(path({ exports: { "./*": "./dist/%*" } }, "./5Cx"), "!invalidModuleSpecifier");
+		// The same through imports, to a file and to a bare specifier.
+		assert.strictEqual(importOf({ imports: { "#x/*": "./%2*/x.js" } }, "#x/e%2e"), "!invalidModuleSpecifier");
+		assert.strictEqual(importOf({ imports: { "#x/*": "dep/%2*/x" } }, "#x/e%2e"), "!invalidModuleSpecifier");
+	});
+
+	it("a forbidden segment hidden under more than one layer of encoding is refused", () => {
+		const exports = { "./*": "./dist/*/x.js" };
+		for (const request of ["./%252e%252e", "./%%32%65%%32%65", "./%25%32%65.", "./node%255fmodules", "./a%252fb"]) {
+			assert.strictEqual(path({ exports }, request), "!invalidModuleSpecifier", request);
+		}
+		assert.strictEqual(path({ exports: { "./*": "./dist/%%32%65*/x.js" } }, "./%2e"), "!invalidModuleSpecifier");
+		assert.strictEqual(target("./%252e%252e/x.js"), "!invalidPackageTarget");
+		assert.strictEqual(path({ main: "lib/%252e%252e/x.js" }, "."), "!invalidPackageTarget");
+		// An ordinary escape in a file name still resolves, and so does a
+		// second layer that settles on nothing forbidden.
+		assert.strictEqual(path({ exports: { "./*": "./dist/*.js" } }, "./a%20b"), "./dist/a%20b.js");
+		assert.strictEqual(path({ exports: { "./*": "./dist/*.js" } }, "./a%2520b"), "./dist/a%2520b.js");
+		// A spelling that never settles is refused rather than decoded forever.
+		let layered = ".";
+		for (let index = 0; index < 6; index++) layered = layered.replaceAll("%", "%25").replace(".", "%2e");
+		assert.strictEqual(path({ exports: { "./*": "./dist/*.js" } }, `./${layered}x`), "!invalidModuleSpecifier");
+	});
+
 	it("a dot inside a segment is legal", () => {
 		// The match "a.b" contains a dot but no "." segment — legal.
 		assert.strictEqual(path({ exports: { "./*": "./dist/*.js" } }, "./a.b"), "./dist/a.b.js");
@@ -370,6 +401,46 @@ describe("PACKAGE_IMPORTS_RESOLVE", () => {
 		for (const value of ["../x.js", "/x.js", "file:///x.js", "data:text/javascript,1"]) {
 			assert.strictEqual(importOf({ imports: { "#x": value } }, "#x"), "!invalidPackageTarget", value);
 		}
+	});
+
+	it("a bare import target must be a package name and an optional confined subpath", () => {
+		for (const value of [
+			"..",
+			".",
+			"..\\evil",
+			"\\\\host\\share",
+			".hidden",
+			"_private",
+			"",
+			"@scope",
+			"@/x",
+			"dep/",
+			"dep\\x",
+			"dep/a\\b",
+			"dep%2fx",
+			"%2e%2e",
+			"dep/../x",
+			"dep/./x",
+			"dep//x",
+			"dep/%2e%2e/x",
+			"dep/%252e%252e/x",
+			"dep/node_modules/x",
+		]) {
+			assert.strictEqual(importOf({ imports: { "#x": value } }, "#x"), "!invalidModuleSpecifier", value);
+		}
+		for (const value of ["dep", "dep/feature", "@scope/dep/sub/x.js", "fs", "JSONStream", "lodash.get"]) {
+			assert.strictEqual(importOf({ imports: { "#x": value } }, "#x"), `pkg:${value}`, value);
+		}
+		// As in Node, the failure ends an array fallback instead of passing to the next entry.
+		assert.strictEqual(importOf({ imports: { "#x": ["..", "./fallback.js"] } }, "#x"), "!invalidModuleSpecifier");
+		assert.strictEqual(importOf({ imports: { "#x": ["../x.js", "./fallback.js"] } }, "#x"), "./fallback.js");
+	});
+
+	it("a bare pattern target is checked as a template and again after substitution", () => {
+		assert.strictEqual(importOf({ imports: { "#x/*": "*" } }, "#x/dep"), "pkg:dep");
+		assert.strictEqual(importOf({ imports: { "#x/*": "*" } }, "#x/.hidden"), "!invalidModuleSpecifier");
+		assert.strictEqual(importOf({ imports: { "#x/*": "*" } }, "#x/@scope"), "!invalidModuleSpecifier");
+		assert.strictEqual(importOf({ imports: { "#x/*": "..\\*" } }, "#x/a"), "!invalidModuleSpecifier");
 	});
 
 	it("a '*' match cannot inject '../' into a bare specifier either", () => {
