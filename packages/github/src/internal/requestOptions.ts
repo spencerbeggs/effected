@@ -86,3 +86,34 @@ export const reservedBodyKey = (key: string, routeParams: ReadonlySet<string>, n
  */
 export const reservedSettingKey = (key: string): string | undefined =>
 	reservedBodyKey(key, REPOSITORY_PATCH_ROUTE_PARAMS, "a repository setting");
+
+/**
+ * The request options the raw surface (`request`, `requestDecoded`,
+ * `paginate`, `paginateStream`) lets a caller pass: the two typed
+ * `Rest.RequestExtras`, and `data`, which replaces the body but cannot move
+ * the request.
+ *
+ * @internal
+ */
+export const RAW_PASSTHROUGH_OPTION_KEYS: ReadonlySet<string> = new Set(["headers", "mediaType", "data"]);
+
+/**
+ * Why a parameter of a raw-surface call may not be sent, or `undefined` when
+ * it may.
+ *
+ * @remarks
+ * The rest of {@link OCTOKIT_REQUEST_OPTION_KEYS}: `baseUrl` and `url` pick
+ * the host the token goes to, `request` swaps the fetch that receives it, and
+ * `method` overrides the route's verb. None is in the raw surface's type, so
+ * one arriving here came through a cast or an untyped object. A route whose
+ * own body has a field called `url` (a webhook's configuration) sends it
+ * inside `data`, where octokit never reads it as an option.
+ *
+ * @internal
+ */
+export const reservedRawParam = (key: string): string | undefined =>
+	OCTOKIT_REQUEST_OPTION_KEYS.has(key) && !RAW_PASSTHROUGH_OPTION_KEYS.has(key)
+		? key === "url"
+			? "is read by octokit as the request URL; send a body field called url inside data"
+			: "is an octokit request option the raw surface does not accept"
+		: undefined;

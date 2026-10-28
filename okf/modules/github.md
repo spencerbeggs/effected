@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T18:21:14Z
+  at: 2026-10-28T18:38:13Z
 integrity:
   generated:
-    body: 7f6cc4fa8851df41
+    body: b312969f17babdb0
 ---
 
 # @effected/github
@@ -200,7 +200,13 @@ every params-building call site behind both is in the REST client interface.
 `GitHubRelease.uploadAsset` takes its upload host from the client's
 configured base (`internal/uploads.ts`), never from the release's
 `uploadUrl`, so a GitHub Enterprise Server client's token stays on that
-server; the derivation is in the REST client interface too.
+server; the derivation is in the REST client interface too. The upload goes
+through a private channel the built client carries, because the public raw
+surface (`request`, `requestDecoded`, `paginate`, `paginateStream`) is
+confined to the configured API host: it has no `baseUrl` extra, and it
+refuses a reserved option, an absolute-URL route or a pagination `Link` on
+another origin with a `rejected` `GitHubError` and nothing sent
+(`__test__/TokenConfinement.test.ts`).
 `__test__/repositoryRestSettingKeys.test.ts` regenerates the file in memory
 and fails on drift, including a header that names `DEFAULT_API_VERSION`;
 re-run the generator (`pnpm --filter @effected/github exec tsx

@@ -8,7 +8,7 @@ resource: ../../packages/github/src/GraphQL.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T18:21:14Z
+  at: 2026-10-28T18:38:13Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:30.132Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 2ba15917b8832320
+    body: faa2a9ae1f1a497c
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -78,7 +78,11 @@ GraphQL is served at `https://<host>/api/graphql`, so `<base>/graphql` would
 miss it. A configured base ending in `/api/v3` is rewritten to `/api/graphql`,
 the rewrite `@octokit/graphql` applied, and any other base keeps the route's
 own `/graphql` under it. The endpoint is derived from the configured base
-alone, so it never names another host.
+alone, so it never names another host. That is why the GraphQL call sends
+through octokit directly with its own `url`, rather than through the confined
+REST `request`, which refuses a `url` option from a caller (see the REST
+client interface's "The token stays on the configured base"): the URL here is
+the transport's own, never a caller's.
 
 GitHub answers a GraphQL failure with HTTP 200 and an `errors` array. The
 transport throws that array with the response headers, which
