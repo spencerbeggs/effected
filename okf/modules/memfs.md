@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:47:41Z
+  at: 2026-10-28T20:38:07Z
 integrity:
   generated:
-    body: 644b1ab23b9a0879
+    body: f4f1607b1e3966cf
 ---
 
 # @effected/memfs
@@ -407,7 +407,7 @@ It is synchronous because its caller is a suite building a volume at
   directory entry, so empty directories survive, and entries are listed
   parent first in code-unit order, so a read is deterministic.
 - **Symlinks are never followed.** A link is copied as a link with its
-  target text verbatim, so nothing outside the fixture is ever read. A link
+  target text verbatim, so no link is followed to read content. A link
   that would leave the fixture throws `ERR_SEED_SYMLINK_ESCAPE`: an absolute
   target (a host path the volume would resolve against itself), or a
   relative one whose resolution steps outside the fixture at ANY point.
@@ -435,6 +435,20 @@ It is synchronous because its caller is a suite building a volume at
   size, and the read is bounded by it (a shrink mid-read is
   `ERR_SEED_CHANGED` too). The internal `readSeedFile` carries this and is
   what the swap tests drive.
+- **A directory is re-checked when it is listed.** The internal
+  `readSeedDirectory` checks it before and after `readdirSync`: still a
+  directory with the walk's `lstat` device and inode, and its
+  `realpathSync.native` still the real root joined with its relative path,
+  or it throws `ERR_SEED_CHANGED`. The real-path half catches the same
+  directory moved outside the fixture and reached through a parent swapped
+  for a link, which the device and inode cannot. The root, whose argument
+  may be a link, is checked by `stat` rather than `lstat`. Node has no
+  `openat`, so every entry is still reached by path from the caller's
+  spelling: a swap made and undone between two checks is not seen. That is
+  the honest bound of the guarantee, which is for fixture trees and not for
+  a tree an adversary rewrites mid-read. `mountAt`'s trailing slashes are
+  trimmed with a loop, because an end-anchored `/\/+$/` is quadratic on a
+  run of slashes that is not trailing (CodeQL #39).
 
 The seed types' TSDoc names `MemoryFileSystem.file`, `directory` and
 `symlink` in backticks rather than `{@link}`: `./node-sync` re-exports the

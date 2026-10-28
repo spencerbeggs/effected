@@ -3,13 +3,23 @@
 // what is refused (links leaving the fixture, oversized files, other types).
 
 import { execFileSync } from "node:child_process";
-import { chmodSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	realpathSync,
+	renameSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { Effect, FileSystem } from "effect";
 import { MemoryFileSystem } from "../../src/index.js";
-import { readSeedFile } from "../../src/NodeDirectorySeed.js";
+import { readSeedDirectory, readSeedFile } from "../../src/NodeDirectorySeed.js";
 import { NodeDirectorySeed } from "../../src/NodeSyncFileSystem.js";
 
 let base: string;
@@ -79,6 +89,27 @@ describe("NodeDirectorySeed.read — what is copied", () => {
 		assert.isTrue(Object.hasOwn(relative, ""));
 		assert.isTrue(Object.hasOwn(relative, "nested/deeper/leaf.json"));
 		assert.isFalse(Object.keys(relative).some((key) => key.startsWith("/")));
+	});
+
+	it.skipIf(process.platform === "win32")("reads through a directory argument that is itself a link", () => {
+		const link = join(fresh("root-link"), "tree");
+		symlinkSync(tree, link);
+		assert.deepStrictEqual(
+			NodeDirectorySeed.read(link, { mountAt: "/r" }),
+			NodeDirectorySeed.read(tree, { mountAt: "/r" }),
+		);
+	});
+
+	it("trims every trailing slash of mountAt, in time linear in its length", () => {
+		assert.isTrue(Object.hasOwn(NodeDirectorySeed.read(tree, { mountAt: "/repo///" }), "/repo/crlf.txt"));
+		assert.isTrue(Object.hasOwn(NodeDirectorySeed.read(tree, { mountAt: "///" }), "/crlf.txt"));
+		// A run of slashes that is not trailing: an end-anchored `/\/+$/` rescans
+		// the run from every start position.
+		const mountAt = `/${"/".repeat(1 << 16)}m`;
+		const start = performance.now();
+		const seed = NodeDirectorySeed.read(join(tree, "empty"), { mountAt });
+		assert.isBelow(performance.now() - start, 500);
+		assert.deepStrictEqual(Object.keys(seed), [mountAt]);
 	});
 
 	it.effect("relative keys seed under layerWith's root", () =>
@@ -241,6 +272,60 @@ describe("NodeDirectorySeed.read — what is refused", () => {
 			writeFileSync(join(dir, "grow.bin"), new Uint8Array(2048));
 			assert.strictEqual(thrownBy(() => readSeedFile(join(dir, "grow.bin"), seen, 1024)).code, "EFBIG");
 		});
+	});
+
+	// The same for a directory: the walk's `lstat` of it, and its real path
+	// then, are what `readSeedDirectory` is handed when it is listed.
+	describe("a directory swapped between the walk and its listing", () => {
+		it("is listed, sorted, when nothing changed", () => {
+			const dir = fresh("swap-dir-same");
+			mkdirSync(join(dir, "d"));
+			writeFileSync(join(dir, "d", "b"), "b");
+			writeFileSync(join(dir, "d", "a"), "a");
+			const seen = lstatSync(join(dir, "d"));
+			assert.deepStrictEqual(readSeedDirectory(join(dir, "d"), seen, realpathSync.native(join(dir, "d"))), ["a", "b"]);
+		});
+
+		it.skipIf(process.platform === "win32")("a link to a directory outside in its place", () => {
+			const dir = fresh("swap-dir-link");
+			const outside = fresh("swap-dir-link-outside");
+			writeFileSync(join(outside, "secret.txt"), "secret");
+			mkdirSync(join(dir, "d"));
+			const seen = lstatSync(join(dir, "d"));
+			const real = realpathSync.native(join(dir, "d"));
+			rmSync(join(dir, "d"), { recursive: true });
+			symlinkSync(outside, join(dir, "d"));
+			const error = thrownBy(() => readSeedDirectory(join(dir, "d"), seen, real));
+			assert.strictEqual(error.code, "ERR_SEED_CHANGED");
+			assert.strictEqual(error.path, join(dir, "d"));
+		});
+
+		it("another directory in its place", () => {
+			const dir = fresh("swap-dir-other");
+			mkdirSync(join(dir, "d"));
+			mkdirSync(join(dir, "e"));
+			const seen = lstatSync(join(dir, "d"));
+			const real = realpathSync.native(join(dir, "d"));
+			rmSync(join(dir, "d"), { recursive: true });
+			renameSync(join(dir, "e"), join(dir, "d"));
+			assert.strictEqual(thrownBy(() => readSeedDirectory(join(dir, "d"), seen, real)).code, "ERR_SEED_CHANGED");
+		});
+
+		it.skipIf(process.platform === "win32")(
+			"the very directory, moved outside and reached through a linked parent",
+			() => {
+				// Same device and inode, so only the real path tells the two apart.
+				const dir = fresh("swap-dir-parent/fixture");
+				const outside = fresh("swap-dir-parent/outside");
+				mkdirSync(join(dir, "p", "d"), { recursive: true });
+				const seen = lstatSync(join(dir, "p", "d"));
+				const real = realpathSync.native(join(dir, "p", "d"));
+				renameSync(join(dir, "p"), join(outside, "p"));
+				symlinkSync(join(outside, "p"), join(dir, "p"));
+				assert.strictEqual(lstatSync(join(dir, "p", "d")).ino, seen.ino);
+				assert.strictEqual(thrownBy(() => readSeedDirectory(join(dir, "p", "d"), seen, real)).code, "ERR_SEED_CHANGED");
+			},
+		);
 	});
 
 	it.skipIf(process.platform === "win32")("a FIFO", () => {

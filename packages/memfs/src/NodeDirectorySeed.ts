@@ -232,6 +232,63 @@ export const readSeedFile = (path: string, expected: NFS.Stats, maxFileBytes: nu
 };
 
 /**
+ * Throws `ERR_SEED_CHANGED` unless `path` is still the directory the walk saw,
+ * at the real path it saw it. `follow` is for the root, which may be a link.
+ */
+const verifySeedDirectory = (path: string, expected: NFS.Stats, realExpected: string, follow: boolean): void => {
+	const changed = (): Error => seedError("ERR_SEED_CHANGED", path, "the entry changed while the fixture was read");
+	let stat: NFS.Stats;
+	let real: string;
+	try {
+		stat = follow ? NFS.statSync(path) : NFS.lstatSync(path);
+		real = NFS.realpathSync.native(path);
+	} catch {
+		throw changed();
+	}
+	if (!stat.isDirectory() || stat.dev !== expected.dev || stat.ino !== expected.ino || real !== realExpected) {
+		throw changed();
+	}
+};
+
+/**
+ * Lists the directory at `path` that `expected` (its `lstat`) described, at
+ * the real path `realExpected` the walk reached it by, sorted in code-unit
+ * order.
+ *
+ * @remarks
+ * The entry can change between the walk's `lstat` and the listing. Checked
+ * before and after `readdirSync`, it must still be a directory (not a link
+ * swapped in) with the `lstat`'s device and inode (not another directory
+ * moved into its place), and its real path must still be `realExpected` (not
+ * the same directory moved outside and reached through a linked parent), or
+ * the listing throws `ERR_SEED_CHANGED`. Node has no `openat`, so a swap made
+ * and undone between two checks is not seen. `follow` is for the walk's root,
+ * whose argument may be a link to the directory (resolved, then re-checked by
+ * the same device, inode and real path).
+ *
+ * @internal
+ */
+export const readSeedDirectory = (
+	path: string,
+	expected: NFS.Stats,
+	realExpected: string,
+	follow = false,
+): Array<string> => {
+	verifySeedDirectory(path, expected, realExpected, follow);
+	const names = NFS.readdirSync(path).sort();
+	verifySeedDirectory(path, expected, realExpected, follow);
+	return names;
+};
+
+// The trailing slashes of `path`, trimmed with a loop: an end-anchored
+// `/\/+$/` is quadratic on a long run of slashes that is not trailing.
+const trimTrailingSlashes = (path: string): string => {
+	let end = path.length;
+	while (end > 0 && path.charCodeAt(end - 1) === 47) end--;
+	return path.slice(0, end);
+};
+
+/**
  * Reads a real directory into a `MemoryFileSystemSeed`, byte for byte, for
  * `MemoryFileSystem.layerWith` / `makeSync`.
  *
@@ -251,7 +308,7 @@ export const readSeedFile = (path: string, expected: NFS.Stats, maxFileBytes: nu
  *   point — even to come back in, since the volume has nothing above the
  *   mount to come back through. A dangling target is followed as far as the
  *   host can, then read lexically; a chain that runs out of link hops without
- *   a cycle is refused. Nothing outside the directory is read. The directory
+ *   a cycle is refused. No link is followed to read content. The directory
  *   argument itself may be a link; it is resolved once.
  * - **Modes** are copied only with `modes: true`; mtimes never are (they
  *   differ per checkout, and a seed's times are the volume clock's).
@@ -262,6 +319,13 @@ export const readSeedFile = (path: string, expected: NFS.Stats, maxFileBytes: nu
  *   file is opened without following a link (where the host supports it) and
  *   must still be the regular file the walk saw (same device and inode), so a
  *   link or another file swapped in between the walk and the read is refused.
+ *   A directory is checked before and after it is listed: still a directory
+ *   (not a link swapped in), with the device and inode the walk saw (not
+ *   another directory moved into its place), at the real path the walk
+ *   reached it by (not the same directory moved outside behind a linked
+ *   parent). Node has no `openat`, so each entry is still reached by path: a
+ *   swap made and undone between two checks is not seen. The guarantee is for
+ *   a fixture tree, not one an adversary rewrites while it is read.
  * - **Anything else** — a FIFO, a socket, a device — throws
  *   `ERR_SEED_UNSUPPORTED_TYPE`; the volume models files, directories and
  *   links only.
@@ -312,7 +376,7 @@ export class NodeDirectorySeed {
 		if (!rootStat.isDirectory()) throw seedError("ENOTDIR", directory, "not a directory");
 		const realRoot = NFS.realpathSync.native(directory);
 
-		const mount = mountAt === undefined ? undefined : mountAt === "/" ? "" : mountAt.replace(/\/+$/, "");
+		const mount = mountAt === undefined ? undefined : trimTrailingSlashes(mountAt);
 		const keyFor = (relative: string): string =>
 			mount === undefined ? relative : relative === "" ? (mount === "" ? "/" : mount) : `${mount}/${relative}`;
 
@@ -324,14 +388,17 @@ export class NodeDirectorySeed {
 
 		seed[keyFor("")] = directoryEntry(rootStat.mode);
 		// An explicit stack: a deep fixture must not overflow the call stack.
-		const pending: Array<string> = [""];
+		// Each directory carries the `lstat` the walk took of it (the root's
+		// `stat`, its argument resolved once), so it is re-checked when listed.
+		const pending: Array<{ readonly relative: string; readonly stat: NFS.Stats }> = [{ relative: "", stat: rootStat }];
 		while (pending.length > 0) {
-			const relativeDir = pending.pop() as string;
+			const { relative: relativeDir, stat: dirStat } = pending.pop() as { relative: string; stat: NFS.Stats };
 			// Read through the caller's spelling of the directory, so every error
 			// names a path they recognize; only containment compares real paths.
 			const realDir = relativeDir === "" ? directory : NPath.join(directory, ...relativeDir.split("/"));
-			const names = NFS.readdirSync(realDir).sort();
-			const subdirectories: Array<string> = [];
+			const realExpected = relativeDir === "" ? realRoot : NPath.join(realRoot, ...relativeDir.split("/"));
+			const names = readSeedDirectory(realDir, dirStat, realExpected, relativeDir === "");
+			const subdirectories: Array<{ readonly relative: string; readonly stat: NFS.Stats }> = [];
 			for (const name of names) {
 				const relative = relativeDir === "" ? name : `${relativeDir}/${name}`;
 				const realPath = NPath.join(realDir, name);
@@ -345,7 +412,7 @@ export class NodeDirectorySeed {
 					seed[keyFor(relative)] = entry;
 				} else if (stat.isDirectory()) {
 					seed[keyFor(relative)] = directoryEntry(stat.mode);
-					subdirectories.push(relative);
+					subdirectories.push({ relative, stat });
 				} else if (stat.isFile()) {
 					if (stat.size > maxFileBytes) {
 						throw seedError("EFBIG", realPath, `file is ${stat.size} bytes, over maxFileBytes ${maxFileBytes}`);
@@ -361,7 +428,7 @@ export class NodeDirectorySeed {
 			}
 			// Reversed onto the stack so subdirectories are visited in name order.
 			for (let index = subdirectories.length - 1; index >= 0; index--) {
-				pending.push(subdirectories[index] as string);
+				pending.push(subdirectories[index] as { relative: string; stat: NFS.Stats });
 			}
 		}
 		return seed;
