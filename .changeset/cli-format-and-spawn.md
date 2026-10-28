@@ -13,7 +13,7 @@
 
 * `CliFormat.flag` takes aliases (map your names onto built-in formats, such as `human` to `auto`) and custom formats that are offered and yielded as themselves for the caller to render.
 * `CliFormat.printJson` is the JSON half of `CliFormat.print` on its own, an `Effect<void>` with no requirement, so a CLI that keeps its own `--json` flag prints JSON the kit's way (#1128).
-* `CliFormat.flag` offers `--format` only. A retired `--json` is not supported: a CLI that still accepts it keeps its own hidden `Flag.boolean("json")` and maps it to the `json` format.
+* `CliFormat.flag` offers `--format` only. A retired `--json` is not supported: a CLI that still accepts it keeps its own hidden `Flag.Boolean("json")` and maps it to the `json` format.
 
 ### Testing and suggestions
 
