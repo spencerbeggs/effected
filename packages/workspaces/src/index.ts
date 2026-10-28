@@ -114,10 +114,10 @@ export {
 	type WorkspaceLookupFailure,
 	WorkspacePatternError,
 } from "./WorkspaceDiscovery.js";
+export { WORKSPACE_MARKERS, WorkspaceMarker, WorkspaceRootMatch } from "./WorkspaceMarker.js";
 export { type DependencyDiff, PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./WorkspacePackage.js";
 export {
 	type FindWorkspaceRootOptions,
-	WORKSPACE_MARKERS,
 	WorkspaceRoot,
 	WorkspaceRootNotFoundError,
 	type WorkspaceRootShape,
@@ -149,4 +149,5 @@ export {
 	findWorkspaceRootSync,
 	getWorkspacePackagesSync,
 	localExecContextSync,
+	locateWorkspaceRootSync,
 } from "./WorkspacesSync.js";

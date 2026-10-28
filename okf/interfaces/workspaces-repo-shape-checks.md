@@ -48,10 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T22:19:34Z
+  at: 2026-10-28T16:37:08Z
 integrity:
   generated:
-    body: 780eaa07f1d9a732
+    body: af42fd167ca615c2
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -150,6 +150,40 @@ that ends with one does not run into the next. Whitespace must match byte
 for byte, and a token containing a string literal never matches, since
 strings are blanked. A member access still matches:
 `globalThis.process.env.__PACKAGE_VERSION__` contains the token.
+
+### Forbidding named imports: `forbidImportedNames`
+
+`{ forbidImports }` forbids a whole module, and `{ forbidTokens }` forbids
+text. Neither can say "this package may import `AppConfig` from
+`@effected/app`, but never `App`, `AppStore` or `AppCache`", which is okfit's
+engine rule: the engine stays a library and the front ends own the app layer.
+`{ forbidImportedNames: { from, names } }` says it:[^source-boundary-ts]
+
+```ts
+SourceBoundary.scan({
+  root,
+  rules: [{ forbidImportedNames: { from: "@effected/app", names: ["App", "AppStore", "AppCache"] } }],
+});
+```
+
+It reads the bindings of the static clauses whose specifier equals `from`
+exactly (a subpath is another module):
+
+| Flagged | Spared |
+| --- | --- |
+| a named import, aliased or not, `type`-only included, at the imported name | another export of the module, or a local alias named like a forbidden name (`AppConfig as App`) |
+| a named re-export, `export { App } from` | the same name from another module |
+| `export * from` and `export * as ns from`, at the `*` | a side-effect import, `import "<module>"` |
+| a member access on a namespace import, `app.App` | another member of the namespace, or `App` on another object |
+| a default import, only when `names` holds `"default"` | comments, strings and template text |
+
+The `detail` is `<name> from <module>` (`*` for an `export *`), and the
+`"forbidImportedNames"` key of `allowRules` waives every such rule for the
+files it names. The rule sees no name taken from a dynamic `import()` or a
+`require()`, no computed member (`app["App"]`), no destructuring of a
+namespace binding (`const { App } = app`), and no namespace passed on whole.
+With no scope analysis, a local that shadows the namespace binding's name
+reads as the binding.
 
 The known misses:
 

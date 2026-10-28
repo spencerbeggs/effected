@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T19:59:29Z
+  at: 2026-10-28T16:45:11Z
 integrity:
   generated:
-    body: 9c8857eeaa6d9ad6
+    body: 1b3195761e4e2ca3
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -199,8 +199,10 @@ hand-roll, each a static class with a private
 constructor:[^testing-ts]
 
 - `SourceBoundary` (with `Offence`, `OffenceRule`, `SourceScan`,
-  `BoundaryRule`, `BoundaryFixture`, `ReferenceOptions` and `ScanOptions`): a
-  lexer-backed scanner that flags a `process` read, a forbidden import, a
+  `BoundaryRule`, `BoundaryFixture`, `ForbiddenImportedNames`,
+  `ReferenceOptions` and `ScanOptions`): a lexer-backed scanner that flags a
+  `process` read, a forbidden import, a forbidden name imported from a module
+  (`forbidImportedNames`), a forbidden token, a
   `stdout.write`, any console reference (`console`) or one that can reach
   stdout (`console-stdout`), with pure `check` and `referencesProcess`, a
   `scan` over `FileSystem` with whole-file `allow` and per-rule `allowRules`
@@ -319,9 +321,10 @@ continue phase 2's A1–A10:
 
 ## WorkspacesSync — the escape hatch
 
-Four synchronous functions in `src/WorkspacesSync.ts`
-(`findWorkspaceRootSync`, `getWorkspacePackagesSync`,
-`detectPackageManagerSync`, `localExecContextSync`), positional-path-first
+Five synchronous functions in `src/WorkspacesSync.ts`
+(`findWorkspaceRootSync`, `locateWorkspaceRootSync`, which also answers the
+matched marker file, `getWorkspacePackagesSync`, `detectPackageManagerSync`,
+`localExecContextSync`), positional-path-first
 with an options bag second, and the cwd is required — the module reads no
 ambient cwd, because Vitest's config-time project discovery cannot
 await.[^workspaces-sync-ts] Both entry points drive the same worklist-based

@@ -103,6 +103,11 @@ export interface MachineConfig {
 	readonly pollMs: number;
 	readonly waitTimeoutMs: number;
 	readonly trustSequentialMs: number | undefined;
+	/**
+	 * Serialize only: never read, trust or write a done marker, so every
+	 * caller runs the work, one at a time.
+	 */
+	readonly serialize: boolean;
 	readonly self: { readonly pid: number; readonly host: string };
 	readonly isAlive: (pid: number) => boolean;
 }
@@ -492,7 +497,9 @@ function* protocol(config: MachineConfig, state: RunState): Protocol<MachineOutc
 		// owner wrote is already on disk for the read below.
 		const lock = yield* observeLock(config, lockPath);
 		if (lock._tag === "Held" && Option.isSome(lock.owner)) observed.add(lock.owner.value.nonce);
-		const done = yield* readDone();
+		// Serialize-only mode reads no marker, so `decide` never trusts one: every
+		// caller waits its turn for the lock and then runs the work itself.
+		const done = config.serialize ? Option.none<DoneRecord>() : yield* readDone();
 		const now = yield* ask({ _tag: "Now" });
 		const decision = decide({ done, lock, now }, { observed, deadline }, config);
 
@@ -529,13 +536,13 @@ function* protocol(config: MachineConfig, state: RunState): Protocol<MachineOutc
 				}
 				// An owner observed earlier may have finished between this poll's
 				// reads and the create.
-				const late = yield* readDone();
+				const late = config.serialize ? Option.none<DoneRecord>() : yield* readDone();
 				if (Option.isSome(late) && observed.has(late.value.nonce)) {
 					yield* release(lockPath, nonce);
 					return { _tag: "Trusted", owner: late.value.nonce, finishedAt: late.value.at };
 				}
 				const ran = yield* ask({ _tag: "Run" });
-				if (ran === "succeeded") {
+				if (ran === "succeeded" && !config.serialize) {
 					const at = yield* ask({ _tag: "Now" });
 					yield* ask({ _tag: "WriteText", path: donePath, text: encodeDone({ nonce, at }) });
 				}
@@ -554,6 +561,7 @@ export interface MachineInput {
 	readonly pollMs?: number | undefined;
 	readonly waitTimeoutMs?: number | undefined;
 	readonly trustSequentialMs?: number | undefined;
+	readonly mode?: "once" | "serialize" | undefined;
 }
 
 export const DEFAULT_STALE_MS = 60_000;
@@ -580,6 +588,13 @@ export const validate = (
 		);
 	}
 	if (input.dir === "") throw new Error("RunOnce: dir must not be empty");
+	const mode = input.mode ?? "once";
+	if (mode !== "once" && mode !== "serialize") {
+		throw new Error(`RunOnce: mode must be "once" or "serialize", received ${JSON.stringify(input.mode)}`);
+	}
+	if (mode === "serialize" && input.trustSequentialMs !== undefined) {
+		throw new Error("RunOnce: trustSequentialMs trusts a done marker, which serialize mode never writes");
+	}
 	return {
 		key: input.key,
 		dir: input.dir,
@@ -588,5 +603,6 @@ export const validate = (
 		waitTimeoutMs: positive("waitTimeoutMs", input.waitTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS),
 		trustSequentialMs:
 			input.trustSequentialMs === undefined ? undefined : positive("trustSequentialMs", input.trustSequentialMs),
+		serialize: mode === "serialize",
 	};
 };

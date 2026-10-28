@@ -71,9 +71,31 @@ export interface RunOnceOptions {
 	 * @remarks
 	 * Off by default, because a sequential re-run after a source edit must not
 	 * skip the work. Without it, a done marker is trusted only when its writer is
-	 * an owner this caller watched hold the lock.
+	 * an owner this caller watched hold the lock. Setting it under
+	 * `mode: "serialize"` is a wiring defect and throws.
 	 */
 	readonly trustSequentialMs?: number | undefined;
+	/**
+	 * `"once"` (the default): a caller that waited on a concurrent owner trusts
+	 * its done marker and skips the work. `"serialize"`: no done marker is read,
+	 * trusted or written, so every caller runs the work, one at a time under the
+	 * lock — a cross-process mutex.
+	 *
+	 * @remarks
+	 * The key does NOT need to hash the work's inputs for `"once"` to re-run
+	 * after a change: a later, sequential call never trusts an earlier call's
+	 * marker unless `trustSequentialMs` opts in. `"once"` already gives a
+	 * Vitest `globalSetup` build "one build per concurrent wave, a fresh build
+	 * every run"; reach for `"serialize"` when every concurrent caller must run
+	 * the work itself, just not at the same time.
+	 *
+	 * Under `"serialize"` the outcome is `Ran` or `RanUnserialized`, never
+	 * `Trusted`. Callers queue on one lock, so `waitTimeoutMs` bounds the whole
+	 * wait including every turn ahead of this one: N callers of a work taking
+	 * T need `waitTimeoutMs` above (N - 1) × T, or the later ones run
+	 * unserialized.
+	 */
+	readonly mode?: "once" | "serialize" | undefined;
 }
 
 /**
@@ -390,6 +412,9 @@ const keepTail = (text: string, max: number): string => {
  * - **Release is owner-only**, by nonce.
  * - **Failure leaves no marker.** A failed run releases the lock; the next
  *   waiter runs the work itself.
+ * - **`mode: "serialize"` writes no marker at all.** Every caller runs the
+ *   work in turn under the lock, and none is `Trusted`; every other rule
+ *   here holds unchanged.
  * - **Serialization is best-effort.** Past `waitTimeoutMs`, or when the lock
  *   cannot be created at all, the work runs unserialized
  *   (`RanUnserialized`) rather than hanging or failing the caller.

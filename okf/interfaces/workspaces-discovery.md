@@ -14,6 +14,8 @@ sources:
     resource: ../../packages/workspaces/src/WorkspacePackage.ts
   - id: workspace-root-ts
     resource: ../../packages/workspaces/src/WorkspaceRoot.ts
+  - id: workspace-marker-ts
+    resource: ../../packages/workspaces/src/WorkspaceMarker.ts
   - id: package-manager-name-ts
     resource: ../../packages/workspaces/src/PackageManagerName.ts
   - id: enumerate-ts
@@ -30,7 +32,7 @@ sources:
     resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T19:59:29Z
+  at: 2026-10-28T16:45:11Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
@@ -38,7 +40,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 458f12a854d12625
+    body: 1f2fac65e8dfc888
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -159,6 +161,23 @@ the consumer's `SyncPath.resolve` at lookup time, a non-ancestor never
 matching); being total, it answers `null` where the Effect surface fails
 typed.[^workspaces-sync-ts] It takes no `maxDepth`: its ascent is bounded
 only by the `dirname` fixpoint and an internal cap.
+
+Both surfaces take a `markers` filter (`WorkspaceMarker`, the two marker
+filenames as a literal schema). The markers keep their fixed priority
+whatever order a caller lists them in, and an empty list is a wiring defect
+(a die on the Effect surface, a throw on the sync one). A pnpm-only tool
+passes `["pnpm-workspace.yaml"]`, because pnpm ignores
+`package.json#workspaces`: a member that kept the field after a yarn
+migration would otherwise read as the root, and rolldown-pnpm-config's
+`export` would have written a new `pnpm-workspace.yaml` there. The not-found
+error's `markers` field records the filtered list. `locateWorkspaceRootSync`
+is `findWorkspaceRootSync` with the match kept: a `WorkspaceRootMatch` of
+`root`, `marker` and the marker file's `path`.[^workspace-marker-ts] The
+Effect service has no such variant: adding a member to `WorkspaceRootShape`
+would break every hand-written double, and its only consumer so far is
+sync. The layer-level options (`WorkspaceDiscovery`, `LockfileReader`,
+`WorkspaceCatalogs`, `WorkspaceSnapshots`) forward `stopAt` but not
+`markers` yet.
 
 Every service that resolves a root from its layer options takes the same
 ceiling as `stopAt`: `WorkspaceDiscovery`, `LockfileReader`,
@@ -289,8 +308,8 @@ branches on and proceeds past.
     `WorkspacePackage`, `PublishConfig`, `DependencyDiff`,
     `WorkspaceManifestError`.
 [^workspace-root-ts]: `packages/workspaces/src/WorkspaceRoot.ts` — the
-    `WorkspaceRoot` service, `WORKSPACE_MARKERS`, `FindWorkspaceRootOptions`
-    (`stopAt` / `maxDepth`), and the `makeTest` / `layerTest` double.
+    `WorkspaceRoot` service, `FindWorkspaceRootOptions` (`stopAt` /
+    `maxDepth` / `markers`), and the `makeTest` / `layerTest` double.
 [^package-manager-name-ts]: `packages/workspaces/src/PackageManagerName.ts` —
     `PackageManagerName`, `DetectedPackageManager`, `PackageManagerDetector`.
 [^enumerate-ts]: `packages/workspaces/src/internal/enumerate.ts` — the
@@ -302,7 +321,10 @@ branches on and proceeds past.
 [^traverse-ts]: `packages/workspaces/src/internal/traverse.ts` — the shared
     worklist traversal.
 [^workspaces-sync-ts]: `packages/workspaces/src/WorkspacesSync.ts` —
-    `findWorkspaceRootSync` and its `FindWorkspaceRootSyncOptions.stopAt`.
+    `findWorkspaceRootSync`, `locateWorkspaceRootSync` and
+    `FindWorkspaceRootSyncOptions` (`stopAt`, `markers`).
+[^workspace-marker-ts]: `packages/workspaces/src/WorkspaceMarker.ts` —
+    `WorkspaceMarker`, `WORKSPACE_MARKERS` and `WorkspaceRootMatch`.
 [^package-manager-decision-ts]: `packages/workspaces/src/internal/packageManagerDecision.ts`
     — `decidePackageManager`, shared by `PackageManagerDetector` and
     `detectPackageManagerSync`.

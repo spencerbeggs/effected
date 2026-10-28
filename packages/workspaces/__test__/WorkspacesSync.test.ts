@@ -23,14 +23,52 @@ import {
 	WorkspaceDiscoveryError,
 	WorkspacePatternError,
 	WorkspaceRoot,
+	WorkspaceRootMatch,
 	findWorkspaceRootSync,
 	getWorkspacePackagesSync,
+	locateWorkspaceRootSync,
 } from "../src/index.js";
 
 /** Sync ops over a fresh memfs volume holding exactly `seed`. */
 const memOps = (seed: Readonly<Record<string, string>>): WorkspacesSyncOptions => ({
 	fileSystem: MemoryFileSystem.makeSync(seed).sync,
 	path: nodePath.posix,
+});
+
+// ── markers and the matched file ─────────────────────────────────────────
+
+describe("locateWorkspaceRootSync — markers and the matched file", () => {
+	const ops = memOps({
+		"/repo/pnpm-workspace.yaml": "packages:\n  - 'packages/*'\n",
+		"/repo/package.json": JSON.stringify({ name: "root", private: true }),
+		"/repo/packages/legacy/package.json": JSON.stringify({ name: "legacy", workspaces: ["sub/*"] }),
+		"/yarn/package.json": JSON.stringify({ name: "yarn-root", workspaces: ["packages/*"] }),
+	});
+	const pnpmOnly = { ...ops, markers: ["pnpm-workspace.yaml"] } as const;
+
+	it("control: by default a member that kept package.json#workspaces reads as the root", () => {
+		assert.strictEqual(findWorkspaceRootSync("/repo/packages/legacy", ops), "/repo/packages/legacy");
+	});
+
+	it('markers: ["pnpm-workspace.yaml"] passes the member, and reports the matched file', () => {
+		assert.deepStrictEqual(
+			locateWorkspaceRootSync("/repo/packages/legacy", pnpmOnly),
+			WorkspaceRootMatch.make({ root: "/repo", marker: "pnpm-workspace.yaml", path: "/repo/pnpm-workspace.yaml" }),
+		);
+		assert.strictEqual(findWorkspaceRootSync("/repo/packages/legacy", pnpmOnly), "/repo");
+	});
+
+	it("reports a package.json match as that file, and a pnpm-only search finds nothing above it", () => {
+		assert.deepStrictEqual(
+			locateWorkspaceRootSync("/yarn/packages/a", ops),
+			WorkspaceRootMatch.make({ root: "/yarn", marker: "package.json", path: "/yarn/package.json" }),
+		);
+		assert.isNull(locateWorkspaceRootSync("/yarn/packages/a", pnpmOnly));
+	});
+
+	it("an empty marker list throws", () => {
+		assert.throws(() => findWorkspaceRootSync("/repo", { ...ops, markers: [] }), /markers must name/);
+	});
 });
 
 describe("getWorkspacePackagesSync — hostile manifests", () => {

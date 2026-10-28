@@ -22,10 +22,10 @@ sources:
     title: "The in-suite scenarios a, c, e and the g0 breaker-race regressions"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-10-28T17:11:13Z
 integrity:
   generated:
-    body: 4d93bc41588b1fc4
+    body: bc71f6309c71bc50
 ---
 
 # `RunOnce` trusts only observed owners and breaks locks through tickets and tombs
@@ -147,6 +147,18 @@ breaker-race regressions; a change to the machine must also pass the
 review's full bounds offline.[^model-test] A rule the model cannot reach (it
 treats a finished process as dead) gets a scripted test in
 `RunOnce.sync.test.ts`.
+
+**Serialize-only mode switches the marker off in the machine.** Under
+`mode: "serialize"` the protocol reads no done marker, so `decide` never
+trusts one, and writes none after the work: every caller takes the lock in
+turn and runs the work itself. It is two guards in `runOnceMachine.ts`,
+never a driver rule, and the model checker runs it as scenarios s/a, s/c
+and s/e, adding two invariants: no process ends `Trusted`, and no done
+marker exists at the end. `trustSequentialMs` beside it is a wiring defect,
+since it trusts a marker the mode never writes. The mode was asked for as a
+way to rebuild on every run, which `"once"` already does (a later,
+sequential caller never trusts an earlier caller's marker); its real use is
+work each concurrent caller must run, but not at the same time.
 
 ## Alternatives rejected
 

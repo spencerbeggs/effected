@@ -209,6 +209,53 @@ describe("RunOnce.runSync", () => {
 		assert.deepStrictEqual(host.sleeps, [200, 200, 200]);
 	});
 
+	describe('mode: "serialize"', () => {
+		const SERIAL = { ...OPTIONS, mode: "serialize" } as const;
+
+		it("waits on a live concurrent owner, then runs the work itself, and writes no done marker", () => {
+			// The same interleaving the "once" test above trusts: the winner writes
+			// its marker and releases while this caller sleeps.
+			const host = makeHost({
+				onSleep: (h) => {
+					if (h.sleeps.length === 3) {
+						h.put(DONE, done("winner", h.clock));
+						h.files.delete(LOCK);
+					}
+				},
+			});
+			host.alive.add(99);
+			host.put(LOCK, owner("winner", 99));
+			let runs = 0;
+			const outcome = ranWith(RunOnce.runSync(SERIAL, host, () => Result.succeed(++runs)));
+			assert.deepStrictEqual(outcome, { _tag: "Ran", value: 1 });
+			assert.deepStrictEqual(host.sleeps, [200, 200, 200]);
+			assert.strictEqual(JSON.parse(host.files.get(DONE)?.text ?? "{}").nonce, "winner", "its own marker is untouched");
+			assert.isFalse(host.files.has(LOCK));
+		});
+
+		it("runs uncontended work and leaves no marker behind", () => {
+			const host = makeHost();
+			assert.deepStrictEqual(ranWith(RunOnce.runSync(SERIAL, host, () => Result.succeed("x"))), {
+				_tag: "Ran",
+				value: "x",
+			});
+			assert.isFalse(host.files.has(DONE));
+			assert.isFalse(host.files.has(LOCK));
+		});
+
+		it("rejects trustSequentialMs and an unknown mode as wiring defects", () => {
+			const host = makeHost();
+			assert.throws(
+				() => RunOnce.runSync({ ...SERIAL, trustSequentialMs: 10 }, host, () => Result.succeed(1)),
+				/serialize mode never writes/,
+			);
+			assert.throws(
+				() => RunOnce.runSync({ ...OPTIONS, mode: "twice" as unknown as "once" }, host, () => Result.succeed(1)),
+				/mode must be/,
+			);
+		});
+	});
+
 	it("B3: a dead same-host owner is taken over immediately, with no stale wait", () => {
 		const host = makeHost();
 		host.put(LOCK, owner("dead", 1234));
