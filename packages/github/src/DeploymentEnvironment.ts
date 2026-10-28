@@ -1,6 +1,7 @@
 import { Context, Effect, Layer } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
+import { ENVIRONMENT_PUT_ROUTE_PARAMS, reservedBodyKey } from "./internal/requestOptions.js";
 import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 import type * as Rest from "./Rest.js";
@@ -31,6 +32,14 @@ export interface DeploymentEnvironmentShape {
 	 * `config` stays an open record because the protection-rule body is a moving
 	 * target: wait timers, reviewers, deployment-branch policies and whatever
 	 * GitHub adds next.
+	 *
+	 * It is sent as the request BODY and nothing else. octokit reads `baseUrl`,
+	 * `url`, `method`, `headers`, `request` and `mediaType` off a call's flat
+	 * parameters as the request itself, and a `data` key as the whole body, so a
+	 * config spread beside the coordinates could send the authenticated `PUT` to
+	 * another host with the token attached. A config naming one of those, the
+	 * route's own `owner`, `repo` or `environment_name`, or `__proto__`, dies
+	 * with a `RangeError` before any request is made.
 	 */
 	readonly upsert: (name: string, config?: Record<string, unknown>) => Effect.Effect<void, GitHubError, Repo>;
 
@@ -110,19 +119,30 @@ const make = (client: GitHubClient["Service"]): DeploymentEnvironmentShape => {
 		const { owner, repo } = yield* Repo;
 		yield* Effect.annotateCurrentSpan({ owner, repo, environment: name });
 
+		// A name octokit would read as a request option, or the route's own path
+		// parameter, is never an environment setting. The body travels as `data`
+		// below, so it could not reach the request anyway; refusing it as well is
+		// defence in depth, and stops a config that names one from reporting
+		// success while GitHub ignores the key.
+		for (const key of Object.keys(config)) {
+			const reason = reservedBodyKey(key, ENVIRONMENT_PUT_ROUTE_PARAMS, "an environment setting");
+			if (reason !== undefined) {
+				return yield* Effect.die(new RangeError(`DeploymentEnvironment.upsert: "${key}" ${reason}`));
+			}
+		}
+
 		yield* client.request("PUT /repos/{owner}/{repo}/environments/{environment_name}", {
-			// An open record by design, so it cannot be narrowed to the route's
-			// parameter union. The cast is on the BODY, never the route literal.
-			//
-			// It spreads FIRST so the coordinates below stay authoritative: a caller
-			// key named `owner`, `repo` or `environment_name` would otherwise
-			// silently retarget the request at a different repository, with no
-			// error and with the span still annotating the intended one.
-			...config,
 			owner,
 			repo,
 			environment_name: name,
-		} as Rest.Params<"PUT /repos/{owner}/{repo}/environments/{environment_name}">);
+			// `data` REPLACES octokit's body, so no key in the open config is read
+			// as a request option (`baseUrl`, `headers`, `request`, ...) or as a path
+			// parameter: the coordinates above stay authoritative by construction.
+			// Copied, so a caller mutating its map afterwards cannot change what was
+			// sent. An open record cannot be narrowed to the route's parameter
+			// union, so the cast is on the parameters, never the route literal.
+			data: { ...config },
+		} as unknown as Rest.Params<"PUT /repos/{owner}/{repo}/environments/{environment_name}">);
 	});
 
 	const list = Effect.fn("DeploymentEnvironment.list")(function* () {

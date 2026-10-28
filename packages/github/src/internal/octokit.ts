@@ -198,17 +198,76 @@ export const makeTransport = (options: TransportOptions): Effect.Effect<Transpor
 			};
 		};
 
+		const graphqlUrl = graphqlEndpoint(options.baseUrl);
 		const graphql = (operation: string, document: string, variables: Record<string, unknown>) =>
 			withRetry(
 				operation,
 				attempt(
-					() => octokit.graphql<unknown>(document, variables),
+					(signal) =>
+						octokit
+							.request("POST /graphql", {
+								...(graphqlUrl !== undefined ? { url: graphqlUrl } : {}),
+								// The document and its variables ride as `data`, the whole body,
+								// and nowhere else. octokit's own `graphql` merges the variables
+								// into its request options and lifts `baseUrl`, `headers`,
+								// `request`, `mediaType` and `operationName` out of them as the
+								// REQUEST — a variable named `baseUrl` sent the authenticated
+								// call, token attached, to that host. Inside `data` no key is
+								// ever read as an option.
+								data: Object.keys(variables).length > 0 ? { query: document, variables } : { query: document },
+								request: { signal },
+							})
+							.then((response) => readGraphQLResponse(response)),
 					(error, now) => GitHubGraphQLError.fromThrowable(operation, error, now),
 				),
 			);
 
 		return { request, pageSource, graphql, rateLimit: Ref.get(snapshot) };
 	});
+
+/**
+ * The GraphQL endpoint for a GitHub Enterprise Server base URL, or `undefined`
+ * for the route's own `/graphql` under the configured base.
+ *
+ * @remarks
+ * GHES serves REST under `/api/v3` and GraphQL under `/api/graphql`, so
+ * `<base>/graphql` would miss it. This is the rewrite `@octokit/graphql`
+ * applies, kept because the call no longer goes through it. The result is
+ * derived from the configured base alone, so it never names another host.
+ */
+const graphqlEndpoint = (baseUrl: string | undefined): string | undefined =>
+	baseUrl !== undefined && GHES_V3_SUFFIX.test(baseUrl) ? baseUrl.replace(GHES_V3_SUFFIX, "/api/graphql") : undefined;
+
+const GHES_V3_SUFFIX = /\/api\/v3\/?$/;
+
+/**
+ * The `data` of a GraphQL answer, or a throw carrying its `errors`.
+ *
+ * @remarks
+ * GitHub answers a GraphQL failure with HTTP 200 and an `errors` array. The
+ * throw carries `errors` and the response `headers` — the fields
+ * `GitHubGraphQLError.fromThrowable` reads structurally — so it classifies
+ * exactly as `@octokit/graphql`'s `GraphqlResponseError` did.
+ */
+const readGraphQLResponse = (response: { readonly data: unknown; readonly headers: unknown }): unknown => {
+	const body =
+		typeof response.data === "object" && response.data !== null ? (response.data as Record<string, unknown>) : {};
+	if (body.errors !== undefined) {
+		const errors = Array.isArray(body.errors) ? body.errors : [];
+		const messages = errors.map((entry) =>
+			typeof entry === "object" && entry !== null && typeof (entry as Record<string, unknown>).message === "string"
+				? ` - ${(entry as Record<string, unknown>).message as string}`
+				: ` - ${String(entry)}`,
+		);
+		throw Object.assign(new Error(`Request failed due to following response errors:\n${messages.join("\n")}`), {
+			name: "GraphqlResponseError",
+			errors: body.errors,
+			headers: response.headers,
+			data: body.data,
+		});
+	}
+	return body.data;
+};
 
 /** Merge our abort signal into octokit's per-request options without clobbering them. */
 const withSignal = (params: Record<string, unknown>, signal: AbortSignal): Record<string, unknown> => {
