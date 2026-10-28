@@ -491,3 +491,90 @@ describe("Repository and Bugs — the shorthand is replayed only while it can ca
 		}),
 	);
 });
+
+describe("Repository.slug — owner and name", () => {
+	const slugOf = (input: string | { readonly [k: string]: unknown }) =>
+		Effect.map(decode(Repository.FromValue, input), (repo) =>
+			Option.map(repo.slug, (slug) => [slug.host, slug.owner, slug.name] as const),
+		);
+
+	it.effect("every GitHub spelling names the same repository", () =>
+		Effect.gen(function* () {
+			const cases = [
+				"github:effected/kit",
+				"git+https://github.com/effected/kit.git",
+				"git+ssh://git@github.com/effected/kit.git",
+				"git://github.com/effected/kit.git",
+				"git@github.com:effected/kit.git",
+				"https://github.com/effected/kit",
+				"https://GitHub.com/effected/kit/",
+				"github:effected/kit#main",
+				"https://github.com/effected/kit.git#semver:^1.0.0",
+			] as const;
+			for (const input of cases) {
+				assert.deepStrictEqual(yield* slugOf(input), Option.some(["github.com", "effected", "kit"] as const), input);
+			}
+		}),
+	);
+
+	it.effect("the bare owner/name shorthand counts, as GitHub", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* slugOf("effected/kit"), Option.some(["github.com", "effected", "kit"] as const));
+		}),
+	);
+
+	it.effect("the object form reads its url", () =>
+		Effect.gen(function* () {
+			const slug = yield* slugOf({
+				type: "git",
+				url: "git+https://github.com/effected/kit.git",
+				directory: "packages/x",
+			});
+			assert.deepStrictEqual(slug, Option.some(["github.com", "effected", "kit"] as const));
+		}),
+	);
+
+	it.effect("other forges: GitLab nests groups, Bitbucket is two segments", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(
+				yield* slugOf("gitlab:group/sub/project"),
+				Option.some(["gitlab.com", "group/sub", "project"] as const),
+			);
+			assert.deepStrictEqual(
+				yield* slugOf("bitbucket:team/repo"),
+				Option.some(["bitbucket.org", "team", "repo"] as const),
+			);
+			assert.deepStrictEqual(
+				yield* slugOf("git@git.example.com:team/repo.git"),
+				Option.some(["git.example.com", "team", "repo"] as const),
+			);
+		}),
+	);
+
+	it.effect("references that do not name an owner and a name have no slug", () =>
+		Effect.gen(function* () {
+			for (const input of [
+				"gist:abc123def",
+				"https://github.com/effected",
+				"https://github.com/effected/kit/tree/main",
+				"https://bitbucket.org/a/b/c",
+				"https://example.com/",
+				"not a url",
+				"",
+				"https://github.com/effected/..",
+			]) {
+				assert.isTrue(Option.isNone(yield* slugOf(input)), input);
+			}
+		}),
+	);
+
+	it.effect("path joins owner and name", () =>
+		Effect.gen(function* () {
+			const repo = yield* decode(Repository.FromValue, "gitlab:group/sub/project");
+			assert.deepStrictEqual(
+				Option.map(repo.slug, (slug) => slug.path),
+				Option.some("group/sub/project"),
+			);
+		}),
+	);
+});

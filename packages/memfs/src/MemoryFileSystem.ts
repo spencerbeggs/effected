@@ -508,7 +508,7 @@ export interface MemoryFileSystemPortOptions<Faults> {
 
 /**
  * A seed entry describing a file, optionally carrying its initial permission
- * mode — built with {@link MemoryFileSystem.file}.
+ * mode — built with `MemoryFileSystem.file`.
  *
  * @public
  */
@@ -529,7 +529,7 @@ export interface MemoryFileSystemSeedFile {
 
 /**
  * A seed entry describing a directory — built with
- * {@link MemoryFileSystem.directory}. The only way a seed can express an *empty*
+ * `MemoryFileSystem.directory`. The only way a seed can express an *empty*
  * directory, and the way a directory receives an initial permission mode.
  *
  * @public
@@ -542,7 +542,7 @@ export interface MemoryFileSystemSeedDirectory {
 
 /**
  * A seed entry describing a symbolic link — built with
- * {@link MemoryFileSystem.symlink}.
+ * `MemoryFileSystem.symlink`.
  *
  * @public
  */
@@ -571,8 +571,8 @@ export type MemoryFileSystemSeedEntry =
  *
  * @remarks
  * Plain `string` values are UTF-8 encoded; `Uint8Array` values are written
- * verbatim. Tagged entries built with {@link MemoryFileSystem.file},
- * {@link MemoryFileSystem.directory} and {@link MemoryFileSystem.symlink} let one
+ * verbatim. Tagged entries built with `MemoryFileSystem.file`,
+ * `MemoryFileSystem.directory` and `MemoryFileSystem.symlink` let one
  * seed literal describe a whole tree — empty directories, symbolic links, and
  * initial permission modes included. Parent directories are created
  * recursively before each entry, so a seed never has to list them.

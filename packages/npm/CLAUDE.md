@@ -14,7 +14,8 @@ Everything durable about this package lives in `okf/`, not here. Start at
   reasoning behind its shape, consumers and implementers, testing, build) →
   `okf/modules/npm.md` — Load when: changing a contract shape, `Manifest`, a
   vocabulary module, or any of `NpmRegistry`, `PackageTarball`,
-  `RegistryCredential`, `PackagePublish`, `NpmExecutor`, `RegistryKind`.
+  `RegistryCredential`, `PackagePublish`, `NpmExecutor`, `RegistryKind`, or
+  `NpmConfig` (npmrc resolution; a credential never goes to another host).
 - The tier guardrail (pure vocabulary never reaches IO; `index.ts` exports
   individually; the escalation answer is a split, never a retier) →
   `okf/decisions/npm-tier-guardrail.md`,

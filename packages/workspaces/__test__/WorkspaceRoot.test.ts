@@ -299,3 +299,58 @@ describe("WorkspaceRootNotFoundError — message", () => {
 		);
 	});
 });
+
+// ── markers: a pnpm-only search ignores package.json#workspaces ──────────────
+
+// A member that kept `package.json#workspaces` after a yarn migration, inside a
+// pnpm workspace. pnpm ignores the field, so a pnpm-only tool must skip it.
+const migrated: Tree = {
+	"/repo/pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+	"/repo/package.json": manifest("root"),
+	"/repo/packages/legacy/package.json": JSON.stringify({ name: "legacy", workspaces: ["sub/*"] }),
+};
+
+describe("WorkspaceRoot.find — markers", () => {
+	layer(rootsOver(migrated))((it) => {
+		it.effect("control: every marker counts by default, so the migrated member reads as a root", () =>
+			Effect.gen(function* () {
+				const roots = yield* WorkspaceRoot;
+				assert.strictEqual(yield* roots.find("/repo/packages/legacy"), "/repo/packages/legacy");
+			}),
+		);
+
+		it.effect('markers: ["pnpm-workspace.yaml"] passes the member and finds the pnpm root', () =>
+			Effect.gen(function* () {
+				const roots = yield* WorkspaceRoot;
+				assert.strictEqual(yield* roots.find("/repo/packages/legacy", { markers: ["pnpm-workspace.yaml"] }), "/repo");
+			}),
+		);
+
+		it.effect('markers: ["package.json"] skips pnpm-workspace.yaml and names only that marker on failure', () =>
+			Effect.gen(function* () {
+				const roots = yield* WorkspaceRoot;
+				const error = yield* Effect.flip(roots.find("/repo/packages", { markers: ["package.json"], stopAt: "/repo" }));
+				assert.deepStrictEqual([...error.markers], ["package.json"]);
+			}),
+		);
+
+		it.effect("an empty marker list is a defect, not a typed failure", () =>
+			Effect.gen(function* () {
+				const roots = yield* WorkspaceRoot;
+				const exit = yield* Effect.exit(roots.find("/repo", { markers: [] }));
+				assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause));
+			}),
+		);
+	});
+
+	it.effect("the test double honours markers: a root marked otherwise is not found", () =>
+		Effect.gen(function* () {
+			const double = yield* WorkspaceRoot.makeTest("/repo", { marker: "package.json" }).pipe(
+				Effect.provide(Path.layer),
+			);
+			assert.strictEqual(yield* double.find("/repo/a"), "/repo");
+			const error = yield* Effect.flip(double.find("/repo/a", { markers: ["pnpm-workspace.yaml"] }));
+			assert.deepStrictEqual([...error.markers], ["pnpm-workspace.yaml"]);
+		}),
+	);
+});

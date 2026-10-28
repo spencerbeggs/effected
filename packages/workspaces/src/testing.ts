@@ -56,6 +56,7 @@ export {
 export {
 	type BoundaryFixture,
 	type BoundaryRule,
+	type ForbiddenImportedNames,
 	Offence,
 	type OffenceRule,
 	type ReferenceOptions,
@@ -75,6 +76,7 @@ export {
 	WorkspacePatternError,
 } from "./WorkspaceDiscovery.js";
 export { LayerEdge, type LayeringGraph, LayeringReport, WorkspaceLayering } from "./WorkspaceLayering.js";
+export { WorkspaceMarker } from "./WorkspaceMarker.js";
 export { type DependencyDiff, PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./WorkspacePackage.js";
 export {
 	type FindWorkspaceRootOptions,

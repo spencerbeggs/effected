@@ -20,8 +20,11 @@ as breaks. A status vocabulary's glyphs are sanitised too, at one source
 `Doc` all draw through), so a glyph built from data cannot inject an escape
 on a trusted line; a theme's glyph set (separators, ellipsis) is configuration.
 `CliFormat` pairs a shared `--format` flag with `Doc.print` (plus `json`);
-`Fmt` carries the text helpers, `Fmt.causeMessage` among them (the kit's
-guarded cause read, never throwing). `CliRuntime.main` takes `exitCodes` (by
+`Fmt` carries the text helpers: `Fmt.describe`, `Fmt.causeMessage` (the kit's
+guarded cause read, never throwing) and `Fmt.errorText` are `@effected/engine`'s
+`ErrorText` functions, delegated rather than copied, and `Fmt.suggest` is the
+"did you mean" list with `effect/cli`'s own two-edit threshold. `CliFormat.flag`
+takes `aliases`, `custom` formats and a retired `legacyJson` boolean. `CliRuntime.main` takes `exitCodes` (by
 tag), `distribution` (the carrier: engine's `CurrentDistribution` plus the
 `--version` suffix, wrapping whatever formatter is in effect) and
 `env.displayPath` (a function or `{ relativeTo: root }`, the path display
@@ -317,7 +320,11 @@ args, { sandbox, execPath, cwd?, env?, stdin? })` spawns `execPath` with
 **When `stdin` is omitted, or passed as `""`, the child receives an
 already-ended empty input (`Stream.empty`), never an open pipe** — core's
 default `"pipe"` stdio stays open until something writes to and ends it, so a
-stdin-reading bin would otherwise hang the test.
+stdin-reading bin would otherwise hang the test. `CliTest.spawn(bin, args, options)`
+returns at once with `{ stdout, stderr, kill, exitCode, result }` for a
+long-running bin: line streams replayed from the start and drained whether
+read or not, so a chatty child never blocks; the child is killed when the
+caller's scope closes.
 
 ```bash
 pnpm vitest run packages/cli        # from the repo root

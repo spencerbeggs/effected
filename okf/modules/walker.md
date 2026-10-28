@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-10-28T16:51:47Z
 integrity:
   generated:
-    body: 0519036d5d6cd1e2
+    body: fe3c3868daaa7759
 ---
 
 # walker
@@ -121,6 +121,43 @@ It is a separate static taking an `Option`, not a mode of `stopAt`, so
 `ascend`'s `R` stays `Path` alone — see [the physical-ceiling
 Decision](../decisions/physical-ceiling-is-a-separate-static.md).
 
+## A marker stop is ascendToMarker
+
+`Walker.ascendToMarker(start, markers, options?)` is the chain up to and
+including the nearest directory holding any of the named entries (any
+kind, so a worktree's `.git` file counts). It is a separate static for the
+reason `ascendWithin` is: a marker probe needs `FileSystem`, and `ascend`'s
+`R` stays `Path`. The probes stop at the hit, which is the point — the
+consumer's `findRoot` over a full `ascend` statted `.git` to the root first.
+A failed probe is absorbed. An empty marker list (an unbounded walk asked
+for silently) and an empty marker name (every directory matches) are
+defects, on the line `maxDepth` and a relative `stopAt` already draw.
+
+`Walker.findUpwardAll(dirs, candidatesFor)` answers every existing
+candidate of the nearest directory with any, as `UpwardMatches { dir,
+found }`, for a caller that must report an ambiguity rather than have
+`findUpward` choose; it probes that whole directory and nothing above it.
+
+## One upward machine, two drivers
+
+The upward forms and `confineReal` share `internal/upwardMachine.ts`, a
+generator yielding `Exists` and `RealPath` requests over caller-supplied
+path functions, the move the downward walk makes. `internal/upwardDrivers.ts`
+answers through core `FileSystem` (`exists`, `realPath`) or through the
+sync port (`stat` succeeding is existence; `realPath` throwing `ENOENT` is
+absence). Every rule lives in the machine, so `ascendSync`,
+`ascendWithinSync`, `ascendToMarkerSync`, `findUpwardSync`,
+`findUpwardAllSync` and `confineRealSync` cannot drift from their `Effect`
+twins, and `__test__/WalkerSync.test.ts` and `ConfineReal.test.ts` run both
+over one memfs volume. `ascend` itself is pure arithmetic and reaches the
+machine's `ascendChain` without a driver. The sync forms are `*Sync`, the
+walker precedent for IO-performing sync forms; the upward ones return the
+Effect forms' own value types (`ReadonlyArray<string>`, `Option`) and throw
+a defect. There is no `firstMatchSync`/`findRootSync`: with a synchronous
+predicate those are `Array.find`. `WalkerSyncPath` grew from `{ join }` to
+`{ sep, join, dirname, resolve, isAbsolute }`, mirroring core `Path`, so a
+sync form judges absoluteness and compares ceilings as its twin does.
+
 ## The downward walk (descend)
 
 **One walk, two drivers.** The downward walk is one generator,
@@ -189,7 +226,16 @@ pattern's metadata:
   is off — under it a link targeting outside `cwd` is descended, as
   `@actions/glob` follows links out of the tree.
 
-Zero matches is a normal glob answer, not an error. Only files match — a
+Zero matches is a normal glob answer, not an error — including for a
+`cwd` that is absent, a file or a dangling link, in every mode and both
+drivers (a stated contract, pinned in `__test__/DescendMatch.test.ts`). A
+**relative `cwd`, the empty string above all, is a defect**: it would
+resolve against the process working directory, and on win32 an empty
+`cwd` joined with a pattern spelled `C:/x` is the drive path `C:\x` — the
+empty-base class `confineRelative` once had. Absoluteness is judged by the
+injected `Path` or the sync port's `isAbsolute`.
+
+By default only files match — a
 symlink counts when it stat-resolves to a file, a dangling symlink does
 not, and a symlinked directory is never descended by default (cycle
 safety, detected by an `lstat` kind check). Without `followSymlinks` that
@@ -205,6 +251,15 @@ parent's plus its name); a link whose `realPath` fails is never entered,
 and that failure follows `onUnreadable` like a failed `readDirectory`, with
 `NotFound` the silent benign race. `CacheKey.matchingFiles` in
 `github-actions` opts in for runner `hashFiles()` parity.
+
+`match: "directory" | "any"` (default `"file"`) answers directories too.
+The kind is the resolved one, as for files, so a link to a directory
+matches even unentered and even pointing outside `cwd`. A directory
+matches as an entry of its parent: `prune`, a boundary and an unentered
+link withhold only what lies below it, so a clean command finds every
+`node_modules` without reading one. A directory is tested bare and with a
+trailing `/` (a glob's directory-only form), answered as spelled, once
+across brace alternatives; `cwd` never matches.
 Output is sorted by cwd-relative POSIX path, since an unsorted
 enumeration is a reproducibility hazard for every downstream consumer
 that hashes or diffs it.
@@ -283,6 +338,23 @@ pattern that climbs above `cwd` (`src/internal/segments.ts`), with the
 caller choosing the separator set because a glob's backslash is an
 escape. The check is lexical, not physical, and symlinks are out of
 scope: a symlink inside the base can still point out of it.
+
+## Physical containment (confineReal)
+
+`confineReal(base, candidate)` and `confineRealSync(base, candidate, ops)`
+are the symlink-aware sibling: the candidate's real path when it lies
+strictly inside the base's real path, otherwise `PathEscapeError` with the
+new reasons `outside` and `unresolvable` (the failure in `cause`). The
+candidate is resolved segment by segment, never collapsed lexically first,
+because node's JS `fs.realpath` — what the Node `FileSystem` uses off
+win32 — runs `path.resolve` before resolving links, so `base/link/../x`
+would read as `base/x` while the OS opens the link target's sibling. A
+tail that does not exist yet resolves lexically from its real ancestor
+(what does not exist is not a link). Resolution failures other than
+absence refuse rather than assume, the base itself is `empty` (the
+`confineRelative` ruling), and a relative base is a defect. On win32 a
+drive-relative candidate is `absolute` and a reserved segment is
+`reservedName`; the win32 shapes are tested through memfs's win32 port.
 
 ## Hardening
 

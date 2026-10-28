@@ -275,6 +275,52 @@ export class LocalExec extends Context.Service<LocalExec, LocalExecShape>()("@ef
 	static readonly scriptPrefix = (launcher: Launcher): ReadonlyArray<string> => PREFIXES[launcher].scriptPrefix;
 
 	/**
+	 * A ready core `Command` that runs `binary` with `args` through
+	 * `launcher`'s project-local prefix — the build direction of
+	 * {@link LocalExec.parse}.
+	 *
+	 * @remarks
+	 * Saves every caller the split of {@link LocalExec.prefixes}' array into an
+	 * executable and the rest. `options.kind` picks the prefix: `"exec"` (the
+	 * default) runs a project-local binary, `"dlx"` fetches and runs a package
+	 * binary, and `"script"` runs a `package.json` script named `binary`.
+	 * `options.cwd` is where the launcher runs, which decides whose
+	 * `node_modules` it resolves; omitted, the command carries no cwd and runs
+	 * in the caller's own.
+	 *
+	 * Uses the canonical prefix table only, never an alias. A `binary` that is
+	 * empty or starts with `-` would put a flag where the binary belongs, so it
+	 * throws: the name is wiring, not runtime input.
+	 *
+	 * @example
+	 * ```ts
+	 * import { LocalExec, Run } from "@effected/commands";
+	 *
+	 * const command = LocalExec.command("pnpm", "biome", ["check", "."], { cwd: "/repo" });
+	 * // pnpm exec biome check . (in /repo)
+	 * const output = Run.text(command);
+	 * ```
+	 */
+	static readonly command = (
+		launcher: Launcher,
+		binary: string,
+		args: ReadonlyArray<string> = [],
+		options?: { readonly kind?: ExecKind | undefined; readonly cwd?: string | undefined },
+	): ChildProcess.StandardCommand => {
+		if (binary === "" || binary.startsWith("-")) {
+			throw new Error(
+				`LocalExec.command: binary must be non-empty and not start with "-", received ${JSON.stringify(binary)}`,
+			);
+		}
+		const [executable = launcher, ...prefixArgs] = PREFIXES[launcher][KIND_FIELD[options?.kind ?? "exec"]];
+		return ChildProcess.make(
+			executable,
+			[...prefixArgs, binary, ...args],
+			options?.cwd === undefined ? undefined : { cwd: options.cwd },
+		);
+	};
+
+	/**
 	 * Splits `argv` back into launcher, prefix kind, binary and arguments — the
 	 * inverse of {@link LocalExec.prefixes}.
 	 *

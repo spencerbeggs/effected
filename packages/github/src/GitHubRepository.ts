@@ -46,8 +46,49 @@ export type RepositoryPatchDraft = {
 };
 
 /**
+ * Repository settings the generated {@link RepositoryPatch} type does not know
+ * yet, for {@link RepositoryPatchOptions.extra}.
+ *
+ * @remarks
+ * An open map minus every key `RepositoryPatch` declares: a known key written
+ * here is a compile error, so it has to go in the draft, where its value is
+ * checked against octokit's type. Only what octokit has not caught up with
+ * travels unchecked. The guard holds for a literal; a value already typed
+ * `Record<string, unknown>` assigns anyway (an index signature does not meet an
+ * optional property), which is why {@link repositoryPatch} checks again at
+ * runtime.
+ *
+ * @public
+ */
+export type RepositoryPatchExtra = { readonly [key: string]: unknown } & {
+	readonly [K in keyof RepositoryPatch]?: never;
+};
+
+/**
+ * Options for {@link repositoryPatch}.
+ *
+ * @public
+ */
+export interface RepositoryPatchOptions {
+	/**
+	 * Settings GitHub accepts that octokit's generated types do not declare
+	 * yet, sent verbatim.
+	 *
+	 * @remarks
+	 * **GitHub may ignore them silently.** The REST `PATCH` answers 200 for a
+	 * field it does not recognise, so a misspelled extra reads as applied while
+	 * nothing changed: read the setting back when it matters. An `undefined`
+	 * value is dropped, as in the draft. A key the PATCH body already declares,
+	 * or a GraphQL-only setting (`has_sponsorships`, `has_pull_requests`,
+	 * `has_discussions`, which this patch cannot set; use
+	 * `GitHubRepository.applySettings`), throws a `RangeError` naming it.
+	 */
+	readonly extra?: RepositoryPatchExtra | undefined;
+}
+
+/**
  * A {@link RepositoryPatch} from a draft, dropping every explicitly-`undefined`
- * field.
+ * field, plus any settings octokit's types do not know yet.
  *
  * @remarks
  * The supported spelling for "apply only what was configured" — the natural
@@ -56,6 +97,13 @@ export type RepositoryPatchDraft = {
  * Dropping the key rather than sending `undefined` is what the wire needs:
  * `PATCH` treats an absent field as "leave it alone", while an explicit `null`
  * or `undefined` is a value.
+ *
+ * `options.extra` is the typed escape hatch for a setting GitHub accepts
+ * before octokit's generated types declare it: the draft stays checked, and
+ * only the extras ride unchecked. The result is still typed `RepositoryPatch`,
+ * and `GitHubRepository.updateSettings` sends every key it carries. A known key
+ * passed through `extra` throws a `RangeError` rather than skipping the draft's
+ * type check (see {@link RepositoryPatchOptions.extra}).
  *
  * A key-by-key loop still defeats TypeScript's correlation between two indexed
  * accesses (`draft[key] = source[key]` over a union `key`), which no helper can
@@ -66,27 +114,52 @@ export type RepositoryPatchDraft = {
  * import { repositoryPatch } from "@effected/github";
  *
  * // `config.has_issues` is `boolean | undefined`; absent fields drop out.
- * const patch = repositoryPatch({
- *   has_issues: config.has_issues,
- *   has_wiki: config.has_wiki,
- *   description: config.description,
- * });
+ * const patch = repositoryPatch(
+ *   {
+ *     has_issues: config.has_issues,
+ *     has_wiki: config.has_wiki,
+ *     description: config.description,
+ *   },
+ *   // A setting GitHub accepts before octokit's types declare it.
+ *   { extra: { has_new_feature: true } },
+ * );
  * ```
  *
  * @param draft - The fields to apply, any of which may be `undefined`.
+ * @param options - `extra`: settings the generated type does not declare.
  * @returns A patch carrying only the fields that were actually set.
  *
  * @public
  */
-export const repositoryPatch = (draft: RepositoryPatchDraft): RepositoryPatch => {
+export const repositoryPatch = (draft: RepositoryPatchDraft, options?: RepositoryPatchOptions): RepositoryPatch => {
 	const out: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(draft)) {
 		if (value !== undefined) out[key] = value;
 	}
+	for (const [key, value] of Object.entries(options?.extra ?? {})) {
+		// The type refuses a known key in a literal, but not in a value already
+		// typed `Record<string, unknown>`. Letting one through would send a known
+		// setting with no type check at all, which is the one thing the draft
+		// exists for, so a known key here is a wiring bug raised where it was
+		// written.
+		// GraphQL first: two of the three are also in the REST description, and
+		// the useful message for them is where they can actually be set.
+		if (Object.hasOwn(GRAPHQL_ONLY_SETTINGS, key)) {
+			throw new RangeError(
+				`repositoryPatch: "${key}" can only be set through GraphQL; use GitHubRepository.applySettings, not a REST patch`,
+			);
+		}
+		if (REPOSITORY_REST_SETTING_KEYS.has(key)) {
+			throw new RangeError(
+				`repositoryPatch: "${key}" is a declared repository setting; pass it in the draft, where its type is checked, not in extra`,
+			);
+		}
+		if (value !== undefined) out[key] = value;
+	}
 	// The one cast, owned here rather than at every call site: `out` holds a
-	// subset of `draft`'s keys with every `undefined` removed, which is exactly
-	// what `RepositoryPatch` describes and what TypeScript cannot narrow to
-	// through `Object.entries`.
+	// subset of `draft`'s keys with every `undefined` removed, plus extras,
+	// which is what `RepositoryPatch` describes (a structural type admits extra
+	// properties) and what TypeScript cannot narrow to through `Object.entries`.
 	return out as RepositoryPatch;
 };
 
@@ -296,8 +369,46 @@ export interface AppliedSettings {
 	 * REST `PATCH` ignores unknown fields and answers 200, so the key would be
 	 * reported applied while the repository never changed. A caller that wants
 	 * an unknown key to fail the run checks this list.
+	 *
+	 * Under `unknownKeys: "send"` an undescribed key is sent instead and named
+	 * in {@link AppliedSettings.unverified}; a key the api-version removed is
+	 * still ignored, because the description says GitHub drops it.
 	 */
 	readonly ignored: ReadonlyArray<string>;
+	/**
+	 * Keys sent on the REST patch that GitHub's description does not declare,
+	 * so nothing confirms GitHub acted on them. Always a subset of
+	 * {@link AppliedSettings.rest}, and empty unless the call passed
+	 * `unknownKeys: "send"`.
+	 *
+	 * @remarks
+	 * The REST `PATCH` answers 200 whether or not it recognised a field, so a
+	 * key here may have changed the repository or done nothing. Read the setting
+	 * back when it matters.
+	 */
+	readonly unverified: ReadonlyArray<string>;
+}
+
+/**
+ * Options for {@link GitHubRepositoryShape.applySettings}.
+ *
+ * @public
+ */
+export interface ApplySettingsOptions {
+	/**
+	 * What to do with a key neither API declares. `"ignore"` (the default)
+	 * leaves it unsent and reports it in {@link AppliedSettings.ignored};
+	 * `"send"` forwards it on the REST patch verbatim and reports it in
+	 * {@link AppliedSettings.rest} and {@link AppliedSettings.unverified}.
+	 *
+	 * @remarks
+	 * `"send"` is for a sync tool applying settings a user declared that GitHub
+	 * accepts before its OpenAPI description, and octokit's types, catch up.
+	 * The cost is that a typo is sent too and answered 200, so it is only as
+	 * safe as the caller's own validation. GraphQL-only keys still route to
+	 * GraphQL, and a key the client's api-version removed is still ignored.
+	 */
+	readonly unknownKeys?: "ignore" | "send" | undefined;
 }
 
 /**
@@ -367,9 +478,14 @@ export interface GitHubRepositoryShape {
 	 * in `ignored`, rather than forwarded to a `PATCH` that would ignore it and
 	 * answer 200. It does not fail the call, so additive GitHub API growth never
 	 * breaks a run; a caller that owns a schema should still validate first.
+	 *
+	 * A setting GitHub accepts before its description declares it is sent with
+	 * `{ unknownKeys: "send" }` ({@link ApplySettingsOptions}), and reported in
+	 * `unverified` as well as `rest`, because a 200 does not say GitHub used it.
 	 */
 	readonly applySettings: (
 		settings: Record<string, unknown>,
+		options?: ApplySettingsOptions,
 	) => Effect.Effect<AppliedSettings, GitHubError | GitHubGraphQLError, Repo>;
 
 	/**
@@ -491,9 +607,13 @@ const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 		defaultBranch: Effect.map(settings, (repository) => repository.default_branch),
 		nodeId: Effect.map(settings, (repository) => repository.node_id),
 		ownerType,
-		applySettings: Effect.fn("GitHubRepository.applySettings")(function* (input: Record<string, unknown>) {
+		applySettings: Effect.fn("GitHubRepository.applySettings")(function* (
+			input: Record<string, unknown>,
+			options?: ApplySettingsOptions,
+		) {
 			const { owner, repo } = yield* Repo;
-			yield* Effect.annotateCurrentSpan({ owner, repo });
+			const sendUnknown = options?.unknownKeys === "send";
+			yield* Effect.annotateCurrentSpan({ owner, repo, unknownKeys: sendUnknown ? "send" : "ignore" });
 
 			const rest: Record<string, unknown> = {};
 			const graphql: Record<string, unknown> = {};
@@ -501,6 +621,7 @@ const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 			// vocabulary rather than the wire's.
 			const graphqlKeys: Array<string> = [];
 			const ignored: Array<string> = [];
+			const unverified: Array<string> = [];
 
 			for (const [key, value] of Object.entries(input)) {
 				// `Object.hasOwn`, not a bare index: the map is open by design, so a
@@ -519,9 +640,19 @@ const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 				// a key a later api-version removed is subtracted only for a client
 				// at or past that version, which compare correctly as strings.
 				const removedIn = Object.hasOwn(REMOVED_BY_PINNED_VERSION, key) ? REMOVED_BY_PINNED_VERSION[key] : undefined;
-				if (!REPOSITORY_REST_SETTING_KEYS.has(key) || (removedIn !== undefined && client.apiVersion >= removedIn)) {
+				if (removedIn !== undefined && client.apiVersion >= removedIn) {
 					ignored.push(key);
 					continue;
+				}
+				if (!REPOSITORY_REST_SETTING_KEYS.has(key)) {
+					// `__proto__` is never sent, even under "send": assigning it below
+					// would set the body's prototype instead of a field, and the key
+					// would vanish from the wire while the report named it sent.
+					if (!sendUnknown || key === "__proto__") {
+						ignored.push(key);
+						continue;
+					}
+					unverified.push(key);
 				}
 				rest[key] = value;
 			}
@@ -560,6 +691,9 @@ const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 				rest: restKeys,
 				graphql: graphqlKeys,
 				ignored,
+				// Filtered through the prepared body like `rest`, so the subset
+				// relation holds even if preparation ever drops an unknown key.
+				unverified: unverified.filter((key) => Object.hasOwn(prepared, key)),
 			} satisfies AppliedSettings;
 		}),
 	};

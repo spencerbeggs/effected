@@ -272,6 +272,34 @@ describe("SourceBoundary.scan over a virtual tree", () => {
 		);
 	});
 
+	// The okfit engine's rule: AppConfig may come from @effected/app, App never; the front end owns the app layer.
+	const ENGINE = {
+		"/pkg/src/config.ts": 'import { AppConfig } from "@effected/app";\nexport const c = AppConfig;\n',
+		"/pkg/src/wiring.ts": 'import { App, AppConfig } from "@effected/app";\nexport const w = [App, AppConfig];\n',
+	};
+	layer(
+		Layer.mergeAll(MemoryFileSystem.layerWith(ENGINE), Path.layer),
+		LIVE_CLOCK,
+	)((it) => {
+		it.effect("forbidImportedNames flags the forbidden name only, and its allowRules key waives it per file", () =>
+			Effect.gen(function* () {
+				const rules = [{ forbidImportedNames: { from: "@effected/app", names: ["App", "AppStore"] } }] as const;
+				const strict = yield* SourceBoundary.scan({ root: "/pkg/src", rules });
+				assert.deepStrictEqual(strict.violations, ["wiring.ts:1:10 forbidImportedNames App from @effected/app"]);
+				const waived = yield* SourceBoundary.scan({
+					root: "/pkg/src",
+					rules,
+					allowRules: { forbidImportedNames: ["wiring.ts"] },
+				});
+				assert.deepStrictEqual(waived.violations, []);
+				assert.deepStrictEqual(
+					waived.waived.map((offence) => offence.label),
+					["wiring.ts:1:10 forbidImportedNames App from @effected/app"],
+				);
+			}).pipe(Effect.timeout("3 seconds")),
+		);
+	});
+
 	layer(
 		Layer.mergeAll(MemoryFileSystem.layerWith(SEED), BackslashPath),
 		LIVE_CLOCK,

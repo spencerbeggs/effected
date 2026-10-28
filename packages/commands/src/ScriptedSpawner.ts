@@ -6,7 +6,9 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
  *
  * @remarks
  * A completed run is an object of optional fields — `stdout` and `stderr`
- * default to empty, `exit` to `0`, so `{}` scripts a silent success. Setting
+ * default to empty, `exit` to `0`, so `{}` scripts a silent success. Either
+ * stream may be raw bytes (a `Uint8Array`) rather than text, for output that
+ * is not valid UTF-8. Setting
  * `hang: true` makes the handle's `exitCode` never resolve, which exercises a
  * caller-supplied timeout (pair it with `TestClock` from `effect/testing`).
  * Returning a `PlatformError` instead fails the spawn itself — the shape of an
@@ -16,7 +18,12 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
  * @public
  */
 export type ScriptResult =
-	| { readonly stdout?: string; readonly stderr?: string; readonly exit?: number; readonly hang?: boolean }
+	| {
+			readonly stdout?: string | Uint8Array;
+			readonly stderr?: string | Uint8Array;
+			readonly exit?: number;
+			readonly hang?: boolean;
+	  }
 	| PlatformError.PlatformError;
 
 /**
@@ -56,9 +63,21 @@ export interface SpawnRecord {
 	readonly unrefed: boolean;
 }
 
-// Implementation of the byte streams a handle serves; one UTF-8 chunk.
-const bytes = (text: string): Stream.Stream<Uint8Array, PlatformError.PlatformError> =>
-	text === "" ? Stream.empty : Stream.make(new TextEncoder().encode(text));
+// The raw bytes of one scripted stream: text is UTF-8 encoded, bytes pass through.
+const raw = (output: string | Uint8Array | undefined): Uint8Array =>
+	output === undefined ? new Uint8Array() : typeof output === "string" ? new TextEncoder().encode(output) : output;
+
+// Implementation of the byte streams a handle serves; one chunk.
+const bytes = (chunk: Uint8Array): Stream.Stream<Uint8Array, PlatformError.PlatformError> =>
+	chunk.length === 0 ? Stream.empty : Stream.make(chunk);
+
+// Both streams' bytes, stdout first, for the handle's `all`.
+const concat = (left: Uint8Array, right: Uint8Array): Uint8Array => {
+	const joined = new Uint8Array(left.length + right.length);
+	joined.set(left, 0);
+	joined.set(right, left.length);
+	return joined;
+};
 
 // Implementation of ScriptedSpawner.notFound / permissionDenied.
 const spawnError = (tag: "NotFound" | "PermissionDenied", command: string, code: string): PlatformError.PlatformError =>
@@ -170,9 +189,9 @@ export class ScriptedSpawner {
 							isRunning: Effect.succeed(false),
 							kill: () => Effect.void,
 							stdin: Sink.drain,
-							stdout: bytes(result.stdout ?? ""),
-							stderr: bytes(result.stderr ?? ""),
-							all: bytes(`${result.stdout ?? ""}${result.stderr ?? ""}`),
+							stdout: bytes(raw(result.stdout)),
+							stderr: bytes(raw(result.stderr)),
+							all: bytes(concat(raw(result.stdout), raw(result.stderr))),
 							getInputFd: () => Sink.drain,
 							getOutputFd: () => Stream.empty,
 							// `unref` yields a Reref effect; the record flips when unref RUNS.

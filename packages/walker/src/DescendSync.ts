@@ -67,17 +67,30 @@ export interface WalkerSyncFileSystem {
 }
 
 /**
- * The synchronous path operation the sync walk needs — a structural subset of
- * `node:path`, so the module itself (or its `win32` / `posix` variant)
+ * The synchronous path operations the sync forms need — a structural subset
+ * of `node:path`, so the module itself (or its `win32` / `posix` variant)
  * satisfies it. It shapes only the absolute paths handed to the
  * {@link WalkerSyncFileSystem}; matching is POSIX-relative by the glob
  * contract.
  *
+ * @remarks
+ * The members mirror core's `Path` service, so a sync form judges
+ * absoluteness, ascends and compares ceilings exactly as its `Effect` twin
+ * does under the `Path` layer of the same platform.
+ *
  * @public
  */
 export interface WalkerSyncPath {
+	/** The implementation's separator (`path.sep`). */
+	readonly sep: string;
 	/** Join segments with the implementation's separator (like `path.join`). */
 	readonly join: (...segments: ReadonlyArray<string>) => string;
+	/** The parent directory of a path (like `path.dirname`); a fixpoint at the root. */
+	readonly dirname: (path: string) => string;
+	/** Resolve segments to a normalized path (like `path.resolve`). */
+	readonly resolve: (...segments: ReadonlyArray<string>) => string;
+	/** Whether a path is absolute under this implementation (like `path.isAbsolute`). */
+	readonly isAbsolute: (path: string) => boolean;
 }
 
 /**
@@ -161,7 +174,10 @@ const walkSync = (
 		}
 	};
 
-	const machine = descendMachine<WalkerSyncStats, unknown>(pattern, options, (a, b) => path.join(a, b));
+	const machine = descendMachine<WalkerSyncStats, unknown>(pattern, options, {
+		join: (a, b) => path.join(a, b),
+		isAbsolute: (p) => path.isAbsolute(p),
+	});
 	let step = machine.next();
 	while (step.done !== true) step = machine.next(answer(step.value));
 	const result = step.value;

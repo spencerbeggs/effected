@@ -93,6 +93,76 @@ const browseUrlOf = (raw: string): Option.Option<string> => {
 	return Option.none();
 };
 
+/**
+ * The forges whose repository paths are exactly `owner/name`. Any other host
+ * (GitLab, a self-hosted forge) may nest groups, so the owner there is every
+ * segment before the last.
+ */
+const TWO_SEGMENT_HOSTS: ReadonlySet<string> = new Set(["github.com", "bitbucket.org"]);
+
+/** One path segment of an owner or repository name. */
+const SLUG_SEGMENT = /^[\w.-]+$/;
+
+/**
+ * The `{ host, owner, name }` a repository reference names, or none.
+ *
+ * @remarks
+ * Derived from {@link browseUrlOf} so the two can never disagree about which
+ * forms are recognized: anything with a browse URL whose path is an owner and
+ * a name has a slug. A `#ref` or `?query` suffix and a `.git` suffix are
+ * dropped; anything else on the path (`/tree/main`, a gist id with no owner)
+ * means the reference does not name a repository by owner and name.
+ */
+const slugOf = (raw: string): Option.Option<RepositorySlug> =>
+	Option.flatMap(browseUrlOf(raw), (url) => {
+		const match = /^https:\/\/([^/]+)\/(.*)$/.exec(url);
+		const authority = match?.[1];
+		const rawPath = match?.[2];
+		if (authority === undefined || rawPath === undefined) return Option.none();
+		const cut = rawPath.search(/[#?]/);
+		const path = stripGitSuffix((cut === -1 ? rawPath : rawPath.slice(0, cut)).replace(/\/+$/, ""));
+		const segments = path.split("/");
+		if (segments.some((segment) => !SLUG_SEGMENT.test(segment) || segment === "." || segment === "..")) {
+			return Option.none();
+		}
+		const host = authority.toLowerCase();
+		if (TWO_SEGMENT_HOSTS.has(host) ? segments.length !== 2 : segments.length < 2) return Option.none();
+		return Option.some(
+			RepositorySlug.make({
+				host,
+				owner: segments.slice(0, -1).join("/"),
+				name: segments[segments.length - 1] ?? "",
+			}),
+		);
+	});
+
+/**
+ * A repository named by its forge host, owner and name: what
+ * {@link Repository.slug} answers.
+ *
+ * @remarks
+ * `owner` is every path segment before the last, so a GitLab subgroup
+ * repository (`gitlab.com/group/sub/project`) reads as owner `group/sub` and
+ * name `project`. On GitHub and Bitbucket, whose paths are exactly two
+ * segments, `owner` is a single segment. `host` is lower-cased; the owner and
+ * name keep the case the manifest wrote.
+ *
+ * @public
+ */
+export class RepositorySlug extends Schema.Class<RepositorySlug>("RepositorySlug")({
+	/** The forge host, lower-cased: `github.com`, `gitlab.com`, `git.example.com`. */
+	host: Schema.String,
+	/** The owning user, organization or (on GitLab) group path. */
+	owner: Schema.String,
+	/** The repository name, without any `.git` suffix. */
+	name: Schema.String,
+}) {
+	/** `owner/name`, the form GitHub's API and most forges' URLs use. */
+	get path(): string {
+		return `${this.owner}/${this.name}`;
+	}
+}
+
 /** The wire value a repository or bugs entry was decoded from. */
 type FieldWire = string | { readonly [k: string]: unknown };
 
@@ -192,6 +262,40 @@ export class Repository extends Schema.Class<Repository>("Repository")({
 	 */
 	get browseUrl(): Option.Option<string> {
 		return browseUrlOf(this.url);
+	}
+
+	/**
+	 * The forge host, owner and name this repository names, or `Option.none()`
+	 * when `url` does not name one.
+	 *
+	 * @remarks
+	 * Every form {@link Repository.browseUrl} recognizes counts, and that
+	 * includes the **bare `owner/name` shorthand**, which npm resolves to
+	 * GitHub: `"effected/kit"` answers `github.com`, `effected`, `kit`, exactly
+	 * as `"github:effected/kit"`, `"git+https://github.com/effected/kit.git"`,
+	 * `"git@github.com:effected/kit.git"` and the object form's `url` do. A
+	 * caller that must not treat a bare shorthand as GitHub has to test `url`
+	 * itself; this getter follows npm.
+	 *
+	 * A `#ref` or `?query` suffix and a `.git` suffix are dropped. A reference
+	 * that browses to a deeper path (`https://github.com/o/n/tree/main`), to a
+	 * gist (`gist:id`, which has no owner) or to a host-only URL has no slug.
+	 * `directory` plays no part: the slug names the repository, not the
+	 * package inside it.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Repository } from "@effected/package-json";
+	 * import { Option, Schema } from "effect";
+	 *
+	 * const repo = Schema.decodeUnknownSync(Repository.FromValue)("git@github.com:effected/kit.git");
+	 * const slug = Option.getOrThrow(repo.slug);
+	 * console.log(slug.host, slug.path);
+	 * // => github.com effected/kit
+	 * ```
+	 */
+	get slug(): Option.Option<RepositorySlug> {
+		return slugOf(this.url);
 	}
 
 	/** The canonical https clone URL, or none when it cannot be derived. */

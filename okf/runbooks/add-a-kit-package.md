@@ -8,10 +8,10 @@ tags:
   - architecture
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-03T04:19:44Z
+  at: 2026-10-28T16:50:50Z
 integrity:
   generated:
-    body: 97ef2299fd4e3c4f
+    body: 0afdbb20b9707c41
 ---
 
 # Add a kit package
@@ -35,8 +35,9 @@ that does not yet exist.
 3. **Build** against Effect v4.
 4. **Test** with `@effect/vitest`, following the `__test__/` convention
    (tests never co-located in `src/`) and sibling suites.
-5. **Document** — wire the api-extractor model (`website/lib/models/`)
-   and website docs.
+5. **Document** — the package's README, `CLAUDE.md` and TSDoc. Write no
+   website docs pages or nav entries: the website is frozen and will move
+   to its own repo.
 6. **Distill** lessons into plugin skills. This is the point of the
    cycle: best practices that emerge from a build get recorded in the
    "effected" agent plugin's source under `plugin/` — see

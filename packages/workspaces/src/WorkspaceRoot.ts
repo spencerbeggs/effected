@@ -8,13 +8,8 @@
 import { PackageJsonFormat } from "@effected/package-json";
 import { Walker } from "@effected/walker";
 import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
-
-/**
- * The marker filenames {@link WorkspaceRoot} probes for, in priority order.
- *
- * @public
- */
-export const WORKSPACE_MARKERS: ReadonlyArray<string> = ["pnpm-workspace.yaml", "package.json"];
+import type { WorkspaceMarker } from "./WorkspaceMarker.js";
+import { WORKSPACE_MARKERS, probedMarkers } from "./WorkspaceMarker.js";
 
 /** How the not-found message names the `package.json` marker: only one with a `workspaces` field counts. */
 const PACKAGE_JSON_MARKER_PROSE = 'package.json with a "workspaces" field';
@@ -50,6 +45,19 @@ export interface FindWorkspaceRootOptions {
 	 * @defaultValue 256
 	 */
 	readonly maxDepth?: number;
+	/**
+	 * The markers that count, matched in their fixed priority order
+	 * (`pnpm-workspace.yaml` first) whatever order they are listed in.
+	 *
+	 * @remarks
+	 * Pass `["pnpm-workspace.yaml"]` for a pnpm-only tool: pnpm ignores
+	 * `package.json#workspaces`, so a member package that kept the field (common
+	 * after a yarn migration) must not read as the root. An empty list is a
+	 * **defect**, like a bad `maxDepth`.
+	 *
+	 * @defaultValue every marker, `WORKSPACE_MARKERS`
+	 */
+	readonly markers?: ReadonlyArray<WorkspaceMarker>;
 }
 
 /**
@@ -92,25 +100,31 @@ export class WorkspaceRootNotFoundError extends Schema.TaggedError<WorkspaceRoot
 }
 
 /**
- * Whether `dir` is a workspace root: it holds a `pnpm-workspace.yaml`, or a
- * `package.json` with a `workspaces` field.
+ * Which of `markers` makes `dir` a workspace root, in priority order: a
+ * `pnpm-workspace.yaml`, or a `package.json` with a `workspaces` field.
  *
  * A malformed root `package.json` is "not a root", not an error — the ascent
  * continues past it, matching walker's absorption contract.
  */
-const isWorkspaceRoot = (dir: string): Effect.Effect<boolean, never, FileSystem.FileSystem | Path.Path> =>
+const markerOf = (
+	dir: string,
+	markers: ReadonlyArray<WorkspaceMarker>,
+): Effect.Effect<Option.Option<WorkspaceMarker>, never, FileSystem.FileSystem | Path.Path> =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 
-		const pnpmWorkspace = yield* fs
-			.exists(path.join(dir, "pnpm-workspace.yaml"))
-			.pipe(Effect.orElseSucceed(() => false));
-		if (pnpmWorkspace) return true;
+		if (markers.includes("pnpm-workspace.yaml")) {
+			const pnpmWorkspace = yield* fs
+				.exists(path.join(dir, "pnpm-workspace.yaml"))
+				.pipe(Effect.orElseSucceed(() => false));
+			if (pnpmWorkspace) return Option.some<WorkspaceMarker>("pnpm-workspace.yaml");
+		}
+		if (!markers.includes("package.json")) return Option.none();
 
 		const packageJson = path.join(dir, "package.json");
 		const hasManifest = yield* fs.exists(packageJson).pipe(Effect.orElseSucceed(() => false));
-		if (!hasManifest) return false;
+		if (!hasManifest) return Option.none();
 
 		const content = yield* fs.readFileString(packageJson).pipe(Effect.orElseSucceed(() => "{}"));
 		// Unparseable text and valid JSON that is not an object (`null`, an
@@ -118,7 +132,9 @@ const isWorkspaceRoot = (dir: string): Effect.Effect<boolean, never, FileSystem.
 		// `null` through, and reading `.workspaces` off it would throw a
 		// TypeError — a defect inside this never-failing effect.
 		const parsed = PackageJsonFormat.parseObjectResult(content);
-		return Result.isSuccess(parsed) && parsed.success.workspaces !== undefined && parsed.success.workspaces !== null;
+		const isRoot =
+			Result.isSuccess(parsed) && parsed.success.workspaces !== undefined && parsed.success.workspaces !== null;
+		return isRoot ? Option.some<WorkspaceMarker>("package.json") : Option.none();
 	});
 
 /**
@@ -191,6 +207,11 @@ export class WorkspaceRoot extends Context.Service<WorkspaceRoot, WorkspaceRootS
 			const path = yield* Path.Path;
 
 			const find = Effect.fn("WorkspaceRoot.find")(function* (cwd: string, options?: FindWorkspaceRootOptions) {
+				// A bad marker list is wiring: it dies here, before any probe.
+				const markers = yield* Effect.try({
+					try: () => probedMarkers(options?.markers),
+					catch: (error) => error,
+				}).pipe(Effect.orDie);
 				const start = path.resolve(cwd);
 				// Resolved, not passed through raw: walker compares the ceiling to each
 				// ancestor by string equality, so an unresolved `stopAt` would never
@@ -204,12 +225,12 @@ export class WorkspaceRoot extends Context.Service<WorkspaceRoot, WorkspaceRootS
 					...(ceiling === undefined ? {} : { stopAt: ceiling }),
 					...(options?.maxDepth === undefined ? {} : { maxDepth: options.maxDepth }),
 				});
-				const found = yield* Walker.findRoot(chain, isWorkspaceRoot);
+				const found = yield* Walker.findRoot(chain, (dir) => Effect.map(markerOf(dir, markers), Option.isSome));
 				if (Option.isNone(found)) {
 					return yield* Effect.fail(
 						new WorkspaceRootNotFoundError({
 							searchPath: start,
-							markers: WORKSPACE_MARKERS,
+							markers,
 							...(ceiling === undefined ? {} : { stopAt: ceiling }),
 						}),
 					);
@@ -254,32 +275,50 @@ export class WorkspaceRoot extends Context.Service<WorkspaceRoot, WorkspaceRootS
 	 * `Path.layer` internally, so the requirement never surfaces at their call
 	 * site.
 	 *
+	 * `markers` is honoured the same way: the double's root is marked by
+	 * `marker` (`"pnpm-workspace.yaml"` unless given), so a `find` whose
+	 * `markers` leave that marker out fails as the live service would, and a
+	 * `find` with an empty list dies.
+	 *
 	 * `maxDepth` is deliberately NOT modelled: the double does not walk, so it has
 	 * no depth to cap, and pretending otherwise would encode a fiction. A suite
 	 * exercising the depth guard wants the live service over a fixture tree.
 	 *
 	 * @param root - The root every unbounded `find` resolves to.
+	 * @param options - `marker`: the marker the double's root carries.
 	 */
-	static readonly makeTest = (root: string): Effect.Effect<WorkspaceRootShape, never, Path.Path> =>
+	static readonly makeTest = (
+		root: string,
+		options?: { readonly marker?: WorkspaceMarker | undefined },
+	): Effect.Effect<WorkspaceRootShape, never, Path.Path> =>
 		Effect.gen(function* () {
 			const path = yield* Path.Path;
+			const marker = options?.marker ?? "pnpm-workspace.yaml";
 			return {
-				find: (cwd: string, options?: FindWorkspaceRootOptions) =>
-					// Resolve the ceiling through the injected `Path` exactly as the live
-					// `make` path does before the raw string comparison in `isAtOrBelow` —
-					// an unresolved ceiling (`..` segments) would match differently here
-					// than live, the divergence this double exists to prevent.
-					options?.stopAt !== undefined && !isAtOrBelow(root, path.resolve(options.stopAt))
-						? Effect.fail(
+				find: (cwd: string, findOptions?: FindWorkspaceRootOptions) =>
+					Effect.gen(function* () {
+						const markers = yield* Effect.try({
+							try: () => probedMarkers(findOptions?.markers),
+							catch: (error) => error,
+						}).pipe(Effect.orDie);
+						// Resolve the ceiling through the injected `Path` exactly as the live
+						// `make` path does before the raw string comparison in `isAtOrBelow` —
+						// an unresolved ceiling (`..` segments) would match differently here
+						// than live, the divergence this double exists to prevent.
+						const bounded = findOptions?.stopAt !== undefined && !isAtOrBelow(root, path.resolve(findOptions.stopAt));
+						if (bounded || !markers.includes(marker)) {
+							return yield* Effect.fail(
 								new WorkspaceRootNotFoundError({
 									// Resolved like the live service's `start`: the layer-bound
 									// readers pass `"."` for an omitted cwd.
 									searchPath: path.resolve(cwd),
-									markers: WORKSPACE_MARKERS,
-									stopAt: options.stopAt,
+									markers,
+									...(findOptions?.stopAt === undefined ? {} : { stopAt: findOptions.stopAt }),
 								}),
-							)
-						: Effect.succeed(root),
+							);
+						}
+						return root;
+					}),
 			};
 		});
 
@@ -312,6 +351,9 @@ export class WorkspaceRoot extends Context.Service<WorkspaceRoot, WorkspaceRootS
 	 * // program.pipe(Effect.provide(TestRoot), Effect.provide(TestDiscovery))
 	 * ```
 	 */
-	static readonly layerTest = (root: string): Layer.Layer<WorkspaceRoot> =>
-		Layer.effect(WorkspaceRoot, WorkspaceRoot.makeTest(root)).pipe(Layer.provide(Path.layer));
+	static readonly layerTest = (
+		root: string,
+		options?: { readonly marker?: WorkspaceMarker | undefined },
+	): Layer.Layer<WorkspaceRoot> =>
+		Layer.effect(WorkspaceRoot, WorkspaceRoot.makeTest(root, options)).pipe(Layer.provide(Path.layer));
 }

@@ -1,3 +1,4 @@
+import { ErrorText } from "@effected/engine";
 import type { Cause, Scope } from "effect";
 import { Console, Deferred, Effect, Exit, Fiber, Layer, Queue, Sink, Stdio, Stream } from "effect";
 import { McpProtocol } from "effect/ai";
@@ -169,7 +170,11 @@ export class McpHarness {
 	readonly sentSoFar: Effect.Effect<ReadonlyArray<unknown>>;
 	/** Everything written to stderr, plus every captured log line. */
 	readonly stderrSoFar: Effect.Effect<string>;
-	/** Every captured `console.log`, `info` or `debug` call. */
+	/**
+	 * Every captured `console.log`, `info` or `debug` call, its arguments joined with a space: a string as itself,
+	 * any other value as `ErrorText.describe` from `@effected/engine` reads it, so an argument that cannot be turned
+	 * into a string never throws inside the server's own call.
+	 */
 	readonly consoleLogSoFar: Effect.Effect<ReadonlyArray<string>>;
 	/**
 	 * End stdin, as a client disconnecting does. The server drains first:
@@ -243,8 +248,9 @@ export class McpHarness {
 					),
 			});
 			const ambient = yield* Console.Console;
-			const show = (args: ReadonlyArray<unknown>): string =>
-				args.map((arg) => (typeof arg === "string" ? arg : String(arg))).join(" ");
+			// engine's describer, never `String(arg)`: an argument with no prototype or a throwing `toString` would
+			// otherwise throw inside the server's own console call.
+			const show = (args: ReadonlyArray<unknown>): string => args.map(ErrorText.describe).join(" ");
 			const toStdout = (...args: ReadonlyArray<unknown>): void => {
 				consoleLog.push(show(args));
 			};

@@ -26,6 +26,8 @@ import { Traversal, badMaxDepthMessage, isPruned, isValidMaxDepth, joinRelative 
 import type { PackageManagerDetectionFailure } from "./PackageManagerName.js";
 import { DetectedPackageManager, PackageManagerDetectionError, PackageManagerEvidence } from "./PackageManagerName.js";
 import type { WorkspaceDiscoveryError } from "./WorkspaceDiscovery.js";
+import type { WorkspaceMarker } from "./WorkspaceMarker.js";
+import { WorkspaceRootMatch, probedMarkers } from "./WorkspaceMarker.js";
 import { PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./WorkspacePackage.js";
 
 /**
@@ -358,6 +360,18 @@ export interface FindWorkspaceRootSyncOptions extends WorkspacesSyncOptions {
 	 * itself a root still resolves, and one that is not returns `null`.
 	 */
 	readonly stopAt?: string | undefined;
+	/**
+	 * The markers that count, with the semantics of
+	 * `FindWorkspaceRootOptions.markers`: matched in their fixed priority order
+	 * whatever order they are listed in, every marker when omitted.
+	 *
+	 * @remarks
+	 * Pass `["pnpm-workspace.yaml"]` for a pnpm-only tool, which must not take a
+	 * member package that kept `package.json#workspaces` for the root. An empty
+	 * list throws: it is developer wiring, and a search that probes nothing
+	 * would answer `null` everywhere.
+	 */
+	readonly markers?: ReadonlyArray<WorkspaceMarker> | undefined;
 }
 
 /**
@@ -376,7 +390,9 @@ export interface FindWorkspaceRootSyncOptions extends WorkspacesSyncOptions {
  * positional, so the function reads no ambient `process.cwd()`.
  *
  * Markers match the async service exactly: a `pnpm-workspace.yaml`, or a
- * `package.json` carrying a `workspaces` field.
+ * `package.json` carrying a `workspaces` field, narrowed by
+ * `options.markers` ({@link FindWorkspaceRootSyncOptions.markers}). For the
+ * matched file as well as the root, use {@link locateWorkspaceRootSync}.
  *
  * The ascent is unbounded unless `options.stopAt` names a ceiling
  * ({@link FindWorkspaceRootSyncOptions.stopAt}), with the Effect surface's
@@ -409,8 +425,43 @@ export interface FindWorkspaceRootSyncOptions extends WorkspacesSyncOptions {
  *
  * @public
  */
-export const findWorkspaceRootSync = (cwd: string, options: FindWorkspaceRootSyncOptions): string | null => {
+export const findWorkspaceRootSync = (cwd: string, options: FindWorkspaceRootSyncOptions): string | null =>
+	locateWorkspaceRootSync(cwd, options)?.root ?? null;
+
+/**
+ * The nearest workspace root at or above `cwd` and the marker file that made
+ * it one, or `null`.
+ *
+ * @remarks
+ * {@link findWorkspaceRootSync} with the match kept: the same ascent, the same
+ * `stopAt` and `markers`, answering a `WorkspaceRootMatch` whose `path` is the
+ * matched file. A tool that rewrites the marker (an `export` writing
+ * `pnpm-workspace.yaml`) reads the path from here rather than re-deriving it.
+ *
+ * @param cwd - Where to start the ascent.
+ * @param options - The consumer-supplied file and path operations, plus the
+ *   optional `stopAt` ceiling and `markers` filter.
+ *
+ * @example
+ * ```ts
+ * import { locateWorkspaceRootSync } from "@effected/workspaces";
+ * import { nodeSyncOps } from "@effected/workspaces/node-sync";
+ *
+ * const match = locateWorkspaceRootSync(process.cwd(), { ...nodeSyncOps, markers: ["pnpm-workspace.yaml"] });
+ * console.log(match?.path);
+ * // => /repo/pnpm-workspace.yaml
+ * ```
+ *
+ * @public
+ */
+export const locateWorkspaceRootSync = (
+	cwd: string,
+	options: FindWorkspaceRootSyncOptions,
+): WorkspaceRootMatch | null => {
 	const { fileSystem, path } = options;
+	const markers = probedMarkers(options.markers);
+	const matched = (root: string, marker: WorkspaceMarker): WorkspaceRootMatch =>
+		WorkspaceRootMatch.make({ root, marker, path: path.join(root, marker) });
 	let current = path.resolve(cwd);
 	// Resolved at lookup time, exactly as `WorkspaceRoot.find` resolves it: the
 	// comparison below is string equality, so an unresolved ceiling would never
@@ -419,9 +470,13 @@ export const findWorkspaceRootSync = (cwd: string, options: FindWorkspaceRootSyn
 	// Bounded twice over: `dirname` is a fixpoint at the filesystem root, and the
 	// depth cap guards a pathological path implementation that never reaches one.
 	for (let depth = 0; depth < MAX_ENUMERATION_DEPTH * 8; depth++) {
-		if (fileSystem.exists(path.join(current, "pnpm-workspace.yaml"))) return current;
-		const manifest = readJson(fileSystem, path.join(current, "package.json"));
-		if (manifest?.workspaces !== undefined && manifest.workspaces !== null) return current;
+		if (markers.includes("pnpm-workspace.yaml") && fileSystem.exists(path.join(current, "pnpm-workspace.yaml"))) {
+			return matched(current, "pnpm-workspace.yaml");
+		}
+		if (markers.includes("package.json")) {
+			const manifest = readJson(fileSystem, path.join(current, "package.json"));
+			if (manifest?.workspaces !== undefined && manifest.workspaces !== null) return matched(current, "package.json");
+		}
 		// Inclusive: the ceiling itself was just probed. A ceiling naming no
 		// ancestor never matches and the ascent runs to the filesystem root —
 		// walker's rule, which the Effect surface inherits.

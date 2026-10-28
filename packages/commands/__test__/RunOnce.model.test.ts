@@ -75,6 +75,27 @@ describe("RunOnce protocol, model-checked", () => {
 		);
 	});
 
+	// Serialize-only mode: the same protocol with the done marker switched off.
+	// Every process must run, none may overlap or be trusted, and no marker
+	// may appear.
+	it("s/a: serialize mode, 2 processes, failing work explored, preemption bound 3", { timeout: 60_000 }, () => {
+		check(
+			{ label: "s/a", processes: 2, crashes: 0, preemptions: 3, maxPolls: 3, runFail: true, serialize: true },
+			13_000,
+		);
+	});
+
+	it("s/c: serialize mode, 3 processes, preemption bound 2", { timeout: 60_000 }, () => {
+		check({ label: "s/c", processes: 3, crashes: 0, preemptions: 2, maxPolls: 2, serialize: true }, 10_000);
+	});
+
+	it("s/e: serialize mode, a pre-existing dead lock, 2 processes, preemption bound 3", { timeout: 60_000 }, () => {
+		check(
+			{ label: "s/e", processes: 2, crashes: 0, preemptions: 3, maxPolls: 3, initial: DEAD_LOCK, serialize: true },
+			16_000,
+		);
+	});
+
 	it("g0 (3 processes): dead lock + stale breaker, preemption bound 2", { timeout: 120_000 }, () => {
 		check(
 			{ label: "g0/3", processes: 3, crashes: 0, preemptions: 2, maxPolls: 1, initial: STALE_BREAKER_WRECK },

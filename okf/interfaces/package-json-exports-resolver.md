@@ -1,0 +1,111 @@
+---
+type: Interface
+title: The package-json exports resolver
+description: "PackageExports implements Node's PACKAGE_EXPORTS_RESOLVE / PACKAGE_IMPORTS_RESOLVE pure over a structural manifest, adds TypeScript's types reading and enumeration, confines every answer to the package, and leaves the one filesystem step, pattern expansion, to PackageJsonFile.exportedFiles."
+status: stable
+kind: api
+resource: ../../packages/package-json/src/PackageExports.ts
+tags:
+  - dx
+  - security
+sources:
+  - id: exports-facade
+    resource: ../../packages/package-json/src/PackageExports.ts
+  - id: exports-engine
+    resource: ../../packages/package-json/src/internal/exports.ts
+  - id: exports-test
+    resource: ../../packages/package-json/__test__/PackageExports.test.ts
+  - id: exported-files-test
+    resource: ../../packages/package-json/__test__/ExportedFiles.test.ts
+generated:
+  by: "okfit/claude-code"
+  at: 2026-10-28T16:55:59Z
+integrity:
+  generated:
+    body: 8b1e14f16723eb71
+---
+
+# The package-json exports resolver
+
+## What stays stable
+
+`PackageExports` answers "which file serves this subpath?" for any
+subpath, where `resolveEntryPoint` answers it for `"."` alone. Every
+static is a sync `*Result` primitive with an `Effect` twin behind a named
+span, and each is a transcription of a named step of Node's resolver
+algorithm specification:[^exports-engine]
+
+- `resolveResult(manifest, subpath, options?)` — PACKAGE_EXPORTS_RESOLVE,
+  with PACKAGE_IMPORTS_EXPORTS_RESOLVE, PATTERN_KEY_COMPARE and
+  PACKAGE_TARGET_RESOLVE beneath it; the legacy `main` / bare-subpath
+  reading when `exports` is absent.
+- `resolveImportResult(manifest, specifier, options?)` —
+  PACKAGE_IMPORTS_RESOLVE, answering a package file or another package's
+  bare specifier.
+- `resolveTypesResult(manifest, subpath, options?)` — TypeScript's
+  reading: `types`, `default` and `types@<range>` conditions, extension
+  substitution into an ordered `candidates` list, and `typesVersions`
+  only when `exports` is absent.
+- `entriesResult` / `typesEntriesResult` — every subpath the map
+  declares, a pattern key as one template entry.
+- `splitSpecifier(specifier)` — Node's package-name parsing, which is the
+  path-boundary rule (`pkg2/x` names `pkg2`, never `pkg` plus `2/x`).
+
+The input is the structural `PackageExportsManifest`, so a manifest
+fetched from a registry or CDN resolves with nothing else
+validated.[^exports-facade]
+
+## The condition set is not a priority list
+
+`options.conditions` is a SET. A conditions object is walked in the
+manifest's own key order and the first key the environment matches wins,
+as Node and TypeScript both do. That is the opposite of
+`resolveEntryPoint`, whose list is an ordered policy, and the two must not
+be "harmonized": following the caller's order here answers a file Node
+would never load. The visible consequence is the `types` position rule — a
+`types` key written after `import` or `default` is never reached.
+
+## Every answer stays inside the package
+
+The security property, pinned by an adversarial test per rule:[^exports-test]
+
+- A target must start with `./` and carry no `""`, `.`, `..` or
+  `node_modules` segment after the first, split on `/` or `\`,
+  case-insensitively and percent-decoded.
+- A `*` pattern match is held to the same rule, including a match that
+  starts mid-segment (`"./pre*"` against `./pre..`).
+- Three checks are stricter than Node, because a pure resolver returns a
+  string its caller decodes or follows: an encoded `/` or `\` is refused
+  outright, an `imports` bare-specifier pattern match is checked, and
+  `main`, `types` and `typesVersions` targets are confined.
+- Hostile shape is bounded: conditions and fallback arrays nest at most
+  32 deep, a pattern target carries at most 16 `*`, and pattern keys are
+  matched by prefix and suffix after a sort — nothing is compiled to a
+  regular expression, so thousands of `*` keys cost a scan. Membership
+  uses own keys only, so a `__proto__` key is an ordinary key and an
+  inherited name is no key.
+
+The one deliberate divergence from the specification text: an array
+fallback passes over a `null` entry, as Node's implementation does,
+where the prose reads as returning it.
+
+## The filesystem step lives in `PackageJsonFile`
+
+Which files a pattern reaches is a question about the package on disk, so
+`PackageJsonFile.exportedFiles(directory, manifest, options?)` answers it,
+keeping the package's rule that all IO lives in that module. It walks the
+directory a pattern's target fixes, never into `node_modules` and never
+through a symlink, and resolves each candidate subpath back through
+`resolveResult`, keeping it only when it lands on the same file — so `null`
+exclusions and more specific keys decide exactly as they do for one
+request.[^exported-files-test]
+
+[^exports-facade]: `packages/package-json/src/PackageExports.ts` — the
+    facade, the TypeScript rules and `PackageExportsError`.
+[^exports-engine]: `packages/package-json/src/internal/exports.ts` — the
+    step-by-step transcription and the stricter-than-Node sites.
+[^exports-test]: `packages/package-json/__test__/PackageExports.test.ts` —
+    the "a resolved target stays inside the package" and "hostile
+    manifests" groups.
+[^exported-files-test]: `packages/package-json/__test__/ExportedFiles.test.ts`
+    — pattern expansion over `@effected/memfs`.
