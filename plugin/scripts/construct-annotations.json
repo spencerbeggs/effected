@@ -125,6 +125,7 @@
 		"JsonCodec": "parse and stringify config as plain json, no parsing engine dependency",
 		"JsoncCodec": "parse and stringify config as jsonc, comments and trailing commas allowed",
 		"MergeStrategy": "combine several discovered config sources into one value, first-match or deep merge",
+		"ConfigMerge": "deep merge two config values synchronously, override wins, prototype-pollution safe",
 		"TomlCodec": "parse and stringify config as toml",
 		"VersionAccess": "read and write the version field used by config migrations",
 		"YamlCodec": "parse and stringify config as yaml",
@@ -193,6 +194,8 @@
 		"GitRemoteTransport": "a remote routed through a transport helper, double-colon address",
 		"GitRemoteUrl": "a remote in url form with scheme, credentials, host, port and path",
 		"TreeIdentity": "compare working trees, same worktree, same repository or unrelated, physical toplevel",
+		"GitFile": "parse a worktree or submodule .git pointer file, gitdir line, no spawn",
+		"GitFileParseError": "text is not a gitfile, missing gitdir prefix or empty path",
 		"UpstreamBranch": "the current branch's upstream remote and branch, gone when deleted"
 	},
 	"github-actions": {

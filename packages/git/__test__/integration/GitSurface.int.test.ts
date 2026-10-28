@@ -33,6 +33,7 @@ import { Cause, DateTime, Effect, Exit, Layer, Option, Result } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ChildProcess } from "effect/process";
 import { Git, NotARepositoryError, TreeIdentity, UnknownRefError, UpstreamBranch } from "../../src/Git.js";
+import { REPOSITORY_ENV_VARS } from "../../src/internal/repositoryEnv.js";
 import { runCollected } from "../../src/internal/run.js";
 
 /** Resolves both `Git` and every Node platform service (including the real `ChildProcessSpawner`). */
@@ -1211,6 +1212,125 @@ describe("Git surface — status untracked-files modes (#1061)", () => {
 				// Bare git honours its own default ("normal") again: the untracked entries are back.
 				const bare = yield* runFixtureGit(dir, ["status", "--porcelain", "-z"]);
 				assert.include(bare, "?? .changeset/pre/");
+			}),
+		),
+	);
+});
+
+describe("Git surface — locating a repository from inside a git hook (#1123)", () => {
+	let base: string;
+	let main: string;
+	let worktree: string;
+	let other: string;
+	/** What git exports to a linked worktree's hook: its own gitdir and index. */
+	let hookEnv: Record<string, string>;
+
+	beforeAll(async () => {
+		base = await mkdtemp(join(tmpdir(), "effected-git-hook-env-"));
+		main = join(base, "main");
+		worktree = join(base, "worktree");
+		other = join(base, "other");
+		await mkdir(main);
+		await mkdir(other);
+		await Effect.runPromise(
+			run(
+				Effect.gen(function* () {
+					yield* runFixtureGit(main, ["-c", "init.defaultBranch=main", "init"]);
+					yield* runFixtureGit(main, [
+						"-c",
+						"user.email=git-integration@example.com",
+						"-c",
+						"user.name=Git Integration",
+						"-c",
+						"commit.gpgsign=false",
+						"commit",
+						"--allow-empty",
+						"-m",
+						"init",
+					]);
+					yield* runFixtureGit(main, ["worktree", "add", "-b", "side", worktree]);
+					yield* runFixtureGit(other, ["-c", "init.defaultBranch=main", "init"]);
+				}),
+			),
+		);
+		await mkdir(join(worktree, "sub"));
+		const gitDir = join(await realpath(main), ".git", "worktrees", "worktree");
+		hookEnv = { GIT_DIR: gitDir, GIT_INDEX_FILE: join(gitDir, "index"), GIT_PREFIX: "" };
+	});
+
+	afterAll(async () => {
+		await rm(base, { recursive: true, force: true });
+	});
+
+	/**
+	 * Runs `body` with `hookEnv` exported on this process, the way a hook's git
+	 * children inherit it, and restores the previous values however it exits.
+	 */
+	const inHook = <A, E>(body: Effect.Effect<A, E, Git | ChildProcessSpawner.ChildProcessSpawner>) =>
+		Effect.acquireUseRelease(
+			Effect.sync(() => {
+				const previous = new Map<string, string | undefined>();
+				for (const [key, value] of Object.entries(hookEnv)) {
+					previous.set(key, process.env[key]);
+					process.env[key] = value;
+				}
+				return previous;
+			}),
+			() => run(body),
+			(previous) =>
+				Effect.sync(() => {
+					for (const [key, value] of previous) {
+						if (value === undefined) delete process.env[key];
+						else process.env[key] = value;
+					}
+				}),
+		);
+
+	// The control: without the option the inherited GIT_DIR reaches git, which
+	// answers the cwd itself. If this ever stops reproducing, the environment
+	// never reached the child and the test below proves nothing.
+	it.effect("without the option, an inherited GIT_DIR reports the cwd as the toplevel", () =>
+		inHook(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const sub = yield* Effect.promise(() => realpath(join(worktree, "sub")));
+				assert.strictEqual(yield* git.repoRoot(sub), sub);
+				const fromOther = Option.getOrThrow(yield* git.treeIdentity(other));
+				assert.strictEqual(fromOther.toplevel, yield* Effect.promise(() => realpath(other)));
+				assert.strictEqual(fromOther.commonDir, yield* Effect.promise(() => realpath(join(main, ".git"))));
+			}),
+		),
+	);
+
+	it.effect("ignoreRepositoryEnv makes repoRoot, treeIdentity and commonDir answer for the cwd", () =>
+		inHook(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const options = { ignoreRepositoryEnv: true };
+				const toplevel = yield* Effect.promise(() => realpath(worktree));
+				const commonDir = yield* Effect.promise(() => realpath(join(main, ".git")));
+				const sub = join(worktree, "sub");
+				assert.strictEqual(yield* git.repoRoot(sub, options), toplevel);
+				assert.deepStrictEqual(
+					yield* git.treeIdentity(sub, options),
+					Option.some(TreeIdentity.make({ toplevel, commonDir })),
+				);
+				const otherTop = yield* Effect.promise(() => realpath(other));
+				assert.deepStrictEqual(
+					yield* git.treeIdentity(other, options),
+					Option.some(TreeIdentity.make({ toplevel: otherTop, commonDir: join(otherTop, ".git") })),
+				);
+				assert.strictEqual(yield* git.commonDir(other, options), join(otherTop, ".git"));
+			}),
+		),
+	);
+
+	it.effect("the removed variables are exactly the installed git's --local-env-vars", () =>
+		run(
+			Effect.gen(function* () {
+				const listed = yield* runFixtureGit(base, ["rev-parse", "--local-env-vars"]);
+				const vars = listed.split("\n").filter((line) => line.length > 0);
+				assert.deepStrictEqual([...REPOSITORY_ENV_VARS].sort(), [...vars].sort());
 			}),
 		),
 	);

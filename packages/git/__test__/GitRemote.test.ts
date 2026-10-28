@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Arbitrary, Option, Schema } from "effect";
+import { Arbitrary, Option, Result, Schema } from "effect";
+import { Gitmodules } from "../src/Gitmodules.js";
 import type { GitRemoteForm } from "../src/GitRemote.js";
 import { GitRemote, GitRemotePath, GitRemoteScp, GitRemoteTransport, GitRemoteUrl } from "../src/GitRemote.js";
 
@@ -485,4 +486,34 @@ describe("GitRemote.redact — conservative whatever the form", () => {
 		},
 		{ arbitrary: { runs: 5000 } },
 	);
+});
+
+describe("GitRemote.parse — the input is not trimmed (#1137)", () => {
+	// git keeps the whitespace too: cloning " https://h/o/n" fails with
+	// "protocol ' https' is not supported" (probed against git 2.56), so a
+	// padded address parses as what git would make of it.
+	it("keeps surrounding whitespace in the parts, as git does", () => {
+		const parsed = Option.getOrThrow(GitRemote.parse(" https://h/o/n.git "));
+		assert.instanceOf(parsed, GitRemoteUrl);
+		if (parsed._tag === "GitRemoteUrl") {
+			assert.strictEqual(parsed.scheme, " https");
+			assert.strictEqual(parsed.path, "/o/n.git ");
+		}
+		assert.strictEqual(GitRemote.repositoryPath(parsed), "o/n.git ");
+		assert.strictEqual(GitRemote.format(parsed), " https://h/o/n.git ");
+	});
+
+	it("parses the trimmed address the way a caller who trims first expects", () => {
+		const parsed = Option.getOrThrow(GitRemote.parse(" https://h/o/n.git ".trim()));
+		assert.strictEqual(GitRemote.repositoryPath(parsed), "o/n");
+	});
+
+	it("needs no trimming for a url read through Gitmodules, whose reader drops it", () => {
+		const modules = Result.getOrThrow(
+			Gitmodules.parseResult('[submodule "a"]\n\tpath = a\n\turl =   https://h/o/n.git   \n'),
+		);
+		const url = modules.entries[0]?.url ?? "";
+		assert.strictEqual(url, "https://h/o/n.git");
+		assert.strictEqual(GitRemote.repositoryPath(Option.getOrThrow(GitRemote.parse(url))), "o/n");
+	});
 });
