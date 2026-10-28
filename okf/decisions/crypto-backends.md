@@ -23,8 +23,8 @@ integrity:
     body: ea667f699fdbbc5e
   verified:
     by: human:spencer
-    at: 2026-10-25T20:04:29Z
-    content: 312032d656cd03f8
+    at: 2026-10-28T14:29:17Z
+    content: 9dd3867c3b740669
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -32,6 +32,8 @@ verified:
     at: 2026-10-23T04:05:21Z
   - by: human:spencer
     at: 2026-10-25T20:04:29Z
+  - by: human:spencer
+    at: 2026-10-28T14:29:17Z
 ---
 
 # Keyed operations come from WebCrypto, payload digests from core Crypto required in R
