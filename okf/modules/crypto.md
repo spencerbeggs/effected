@@ -17,7 +17,7 @@ sources:
     last_modified: 2026-10-22T00:00:00Z
   - id: core-crypto
     resource: ../../.repos/effect/packages/effect/src/Crypto.ts
-    title: "Core Crypto at 4.0.6: random bytes, random numbers, UUIDs, ULID and a one-shot digest; no HMAC, no key import"
+    title: "Core Crypto: random bytes, random numbers, UUIDs, ULID and a one-shot digest; no HMAC, no key import"
   - id: actions-sigv4
     resource: https://github.com/spencerbeggs/effected/blob/e8990d4f/packages/github-actions/src/internal/sigv4.ts
     title: "The retired github-actions SigV4 copy: session token, per-segment path encoding, explicit now, node:crypto createHmac"
@@ -29,10 +29,10 @@ sources:
     title: "Intake's HMAC helpers and its hashed secretsEqual"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-25T14:50:52Z
+  at: 2026-10-28T14:02:58Z
 integrity:
   generated:
-    body: c707704868384917
+    body: 66511c9c32b4af9d
 ---
 
 # `@effected/crypto`
@@ -45,7 +45,7 @@ Boundary tier, with no `node:` import under `src/`, so it runs on Node, browsers
 
 ## Core-owned list
 
-Core `Crypto` at 4.0.6 offers random bytes, random numbers, UUIDv4/v7, ULID and a one-shot `digest` over bytes already in memory, and nothing keyed.[^core-crypto] So a digest is always core's `Crypto.digest`, required in `R`, never re-wrapped here; hex, base64 and base64url are `effect/encoding`; time is a caller-supplied instant, never `Date.now()`. What this package owns is exactly what core lacks: HMAC, constant-time comparison, and the SigV4 algorithm on top of them. A streamed digest (hashing a file without holding it in memory) is out of scope: no WebCrypto primitive hashes a stream, which is why `github-actions` keeps `node:crypto` for `digestFile`.
+Core `Crypto` offers random bytes, random numbers, UUIDv4/v7, ULID and a one-shot `digest` over bytes already in memory, and nothing keyed.[^core-crypto] So a digest is always core's `Crypto.digest`, required in `R`, never re-wrapped here; hex, base64 and base64url are `effect/encoding`; time is a caller-supplied instant, never `Date.now()`. What this package owns is exactly what core lacks: HMAC, constant-time comparison, and the SigV4 algorithm on top of them. A streamed digest (hashing a file without holding it in memory) is out of scope: no WebCrypto primitive hashes a stream, which is why `github-actions` keeps `node:crypto` for `digestFile`.
 
 ## Modules
 

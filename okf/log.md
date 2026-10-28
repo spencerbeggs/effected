@@ -1,5 +1,13 @@
 # Log
 
+## 2026-10-28
+
+* Updated @effected/cli
+* Updated @effected/crypto
+* Updated @effected/env
+* Updated @effected/mcp
+* Updated Keyed operations come from WebCrypto, payload digests from core Crypto required in R
+
 ## 2026-10-27
 
 * Updated Error handling standards
