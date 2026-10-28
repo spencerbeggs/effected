@@ -1,7 +1,7 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Console, Effect, Exit, Layer, Runtime } from "effect";
-import { CliError, CliOutput, Command, Flag } from "effect/cli";
+import { CliOutput, Command, Flag } from "effect/cli";
 import { CliRuntime } from "../src/index.js";
 
 const sub = Command.make("sub", { count: Flag.Int("count").pipe(Flag.withDefault(1)) }, ({ count }) =>
@@ -140,106 +140,64 @@ describe("CliRuntime.main helpOnUsageError", () => {
 		}),
 	);
 
-	it.effect("a Formatter provided inside the program bypasses the routing (documented caveat)", () =>
+	it.effect("a Formatter provided inside the program renders the rerouted help", () =>
 		Effect.gen(function* () {
-			const { double, out } = capturing();
+			const { double, out, err } = capturing();
 			const program = Command.runWith(app, { version: "1.0.0" })(["sub", "--nope"]).pipe(
-				Effect.provide(CliOutput.layer(CliOutput.defaultFormatter({ colors: false }))),
+				Effect.provide(
+					CliOutput.layer({ ...CliOutput.defaultFormatter({ colors: false }), formatHelpDoc: () => "INNER HELP" }),
+				),
+			);
+			yield* CliRuntime.main(program, { platform: NodeServices.layer, helpOnUsageError: "stderr" }).pipe(
+				Effect.exit,
+				Effect.provideService(Console.Console, double),
+			);
+			assert.deepStrictEqual(out, []);
+			assert.strictEqual(err[0], "INNER HELP");
+		}),
+	);
+
+	it.effect("a Console provided inside the program receives the help and errors on its own error", () =>
+		Effect.gen(function* () {
+			const outer = capturing();
+			const inner = capturing();
+			const program = Command.runWith(app, { version: "1.0.0" })(["sub", "--nope"]).pipe(
+				Effect.provideService(Console.Console, inner.double),
+			);
+			yield* CliRuntime.main(program, { platform: NodeServices.layer, helpOnUsageError: "stderr" }).pipe(
+				Effect.exit,
+				Effect.provideService(Console.Console, outer.double),
+			);
+			assert.deepStrictEqual(inner.out, []);
+			assert.isTrue(helpIn(inner.err));
+			assert.isFalse(helpIn(outer.out));
+		}),
+	);
+
+	it.effect("a Presenter provided inside the program replaces the routing (documented caveat)", () =>
+		Effect.gen(function* () {
+			const { double, out, err } = capturing();
+			const program = Command.runWith(app, { version: "1.0.0" })(["sub", "--nope"]).pipe(
+				Effect.provide(CliOutput.layerPresenter(CliOutput.defaultPresenter)),
 			);
 			yield* CliRuntime.main(program, { platform: NodeServices.layer, helpOnUsageError: "stderr" }).pipe(
 				Effect.exit,
 				Effect.provideService(Console.Console, double),
 			);
 			assert.isTrue(helpIn(out));
+			assert.isFalse(helpIn(err));
 		}),
 	);
 
-	describe("held help, driven directly (order across both streams)", () => {
-		/** Run `body` under main with routing on; `help`/`errors` are strings the recording Formatter produced. */
-		const drive = (
-			body: (text: { readonly help: string; readonly errors: string }) => Effect.Effect<void>,
-		): Effect.Effect<ReadonlyArray<readonly ["out" | "err", string]>> =>
-			Effect.gen(function* () {
-				const { double, seq } = capturing();
-				const program = Effect.gen(function* () {
-					const formatter = yield* CliOutput.Formatter;
-					const help = formatter.formatHelpDoc({ description: "", usage: "USAGE x", flags: [], args: [] } as never);
-					const errors = formatter.formatErrors([new CliError.UserError({ cause: "bad flag" })]);
-					yield* body({ help, errors });
-				});
-				yield* CliRuntime.main(program, { platform: NodeServices.layer, helpOnUsageError: "stderr" }).pipe(
-					Effect.exit,
-					Effect.provideService(Console.Console, double),
-				);
-				return seq;
-			});
-
-		it.effect("help then its recorded errors: both on stderr, help first", () =>
-			Effect.gen(function* () {
-				let text = { help: "", errors: "" };
-				const seq = yield* drive((t) => {
-					text = t;
-					return Effect.andThen(Console.log(t.help), Console.error(t.errors));
-				});
-				assert.deepStrictEqual(seq, [
-					["err", text.help],
-					["err", text.errors],
-				]);
-			}),
-		);
-
-		it.effect("help then another console method: help is released to stdout FIRST", () =>
-			Effect.gen(function* () {
-				let help = "";
-				const seq = yield* drive((t) => {
-					help = t.help;
-					return Console.log(t.help).pipe(Effect.andThen(Console.warn("after")), Effect.andThen(Console.log("plain")));
-				});
-				assert.deepStrictEqual(seq, [
-					["out", help],
-					["err", "warn:after"],
-					["out", "plain"],
-				]);
-			}),
-		);
-
-		it.effect("help then an unrelated error(): help stays on stdout, ahead of the error", () =>
-			Effect.gen(function* () {
-				let help = "";
-				const seq = yield* drive((t) => {
-					help = t.help;
-					return Effect.andThen(Console.log(t.help), Console.error("something else broke"));
-				});
-				assert.deepStrictEqual(seq, [
-					["out", help],
-					["err", "something else broke"],
-				]);
-			}),
-		);
-
-		it.effect("only recorded help is held: a plain log before recorded errors stays on stdout", () =>
-			Effect.gen(function* () {
-				let errors = "";
-				const seq = yield* drive((t) => {
-					errors = t.errors;
-					return Effect.andThen(Console.log("plain line"), Console.error(t.errors));
-				});
-				assert.deepStrictEqual(seq, [
-					["out", "plain line"],
-					["err", errors],
-				]);
-			}),
-		);
-
-		it.effect("help at the very end of the program is released to stdout", () =>
-			Effect.gen(function* () {
-				let help = "";
-				const seq = yield* drive((t) => {
-					help = t.help;
-					return Console.log(t.help);
-				});
-				assert.deepStrictEqual(seq, [["out", help]]);
-			}),
-		);
-	});
+	it.effect("--version stays on stdout under stderr", () =>
+		Effect.gen(function* () {
+			const { out, err, code } = yield* run(["--version"], "stderr");
+			assert.isTrue(
+				out.some((line) => line.includes("1.0.0")),
+				out.join("\n"),
+			);
+			assert.deepStrictEqual(err, []);
+			assert.strictEqual(code, 0);
+		}),
+	);
 });

@@ -536,7 +536,10 @@ export class CliUi {
 	 * It runs during parsing, whose environment is core's alone, so it reads `CliTheme` if one is there: with
 	 * `CliRuntime.main`'s `env` (`CliEnv.layer`), or provided around the program. With no theme it treats the run as
 	 * not interactive, and when `CliInteractive` is on it says so once, at debug level. Interactivity is
-	 * `CliInteractive`, which an audience flag can set before parsing under `CliAudience`.
+	 * `CliInteractive`, which an audience flag can set before parsing under `CliAudience`. Core calls a fallback only
+	 * when its `TerminalCapabilities.canPrompt` is `true`; `CliInteractive.layer` and `layerTest` hold it there so that
+	 * `otherwise` survives a piped run, and a `canPrompt: false` provided inside the program bypasses this fallback,
+	 * as it does `CliPrompt.fallback`.
 	 *
 	 * As with `CliPrompt.fallback`, the screen runs here rather than being handed to core, whose fallback runner
 	 * turns a quit into the missing-parameter error, which would exit `64`. A cancel (Esc, Ctrl-C) is `Cancelled`,

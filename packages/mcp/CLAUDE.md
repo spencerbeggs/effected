@@ -133,13 +133,11 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   is no JSON-RPC message core can handle with a `-32600` Invalid Request:
   a non-object non-array value, an object with a non-string `method` and
   no usable `id`, and an object with neither `method` nor `id`. A line
-  whose `method` starts with `@effect/rpc/` never reaches core: without an
-  `id` core reads it as its own RPC control message, and
-  `@effect/rpc/Eof` silently stops the server (Effect-TS/effect#8499); the
-  guard drops such a notification and answers such a request `-32601`.
-  Remove that branch once #8499 is fixed in the installed `effect` (open
-  PR #8509 proposes the fix) and a probe shows an unguarded server
-  answering a ping sent after an Eof notification. Arrays (even one wrapping an Eof, probed), responses and
+  whose `method` starts with `@effect/rpc/` goes to core like any other:
+  core serves MCP with its RPC control messages off (Effect-TS/effect PR
+  #8509), so it ignores such a notification and answers such a request
+  `-32601`; probed, an unguarded server keeps serving after an
+  `@effect/rpc/Eof` notification. Arrays, responses and
   requests with an `id` go to core, which answers or ignores them
   correctly itself — probe before widening the guard, and keep the
   `answerFor` classes in step with what core actually does. Its state lives once per `Stdio`, not

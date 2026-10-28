@@ -1,5 +1,6 @@
 import { Audience, TerminalEnv } from "@effected/env";
 import { Context, Effect, Layer } from "effect";
+import { TerminalCapabilities } from "effect/cli";
 import { canPrompt } from "./internal/canPrompt.js";
 
 /**
@@ -20,6 +21,19 @@ import { canPrompt } from "./internal/canPrompt.js";
  * {@link CliInteractive.layerTest} are typed `Layer<never>`: they set the
  * reference rather than provide a service.
  *
+ * Both layers also hold core's `TerminalCapabilities.canPrompt` at `true`,
+ * keeping its `canColor` and `canAnimate` as they find them. Core skips a
+ * `Flag.withFallbackPrompt` or `Argument.withFallbackPrompt` fallback entirely
+ * when `canPrompt` is `false`, and decides that from the process's own
+ * terminal, so a kit fallback (`CliPrompt.fallback`, `CliUi.fallback`) would
+ * never be called in a piped run and its `otherwise` would be lost. With the
+ * gate held open, this reference makes the prompt decision instead: the kit's
+ * fallbacks answer without a person when it is `false`, and
+ * `CliPrompt.gateTerminal` quits any other prompt at once. A
+ * `TerminalCapabilities` with `canPrompt: false` provided inside the program,
+ * under these layers, bypasses the kit's fallbacks again: the parameter fails
+ * as missing even when an `otherwise` is given.
+ *
  * @public
  */
 export class CliInteractive extends Context.Reference<boolean>("@effected/cli/CliInteractive", {
@@ -35,23 +49,24 @@ export class CliInteractive extends Context.Reference<boolean>("@effected/cli/Cl
 	 * as `@effected/env` reads the environment, so it adds no requirement; a test fixes it with
 	 * `Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ TERM: "dumb" }))`.
 	 *
+	 * It also holds core's `TerminalCapabilities.canPrompt` at `true`; see {@link CliInteractive}.
+	 *
 	 * Bind the layer to a constant and provide it once; `Audience` and `TerminalEnv` come from `@effected/env`.
 	 */
-	static readonly layer: Layer.Layer<never, never, Audience | TerminalEnv> = Layer.effect(
-		CliInteractive,
+	static readonly layer: Layer.Layer<never, never, Audience | TerminalEnv> = Layer.effectContext(
 		Effect.gen(function* () {
 			const audience = yield* Audience;
 			const terminal = yield* TerminalEnv;
-			return audience.kind === "human" && (yield* canPrompt(terminal));
+			return yield* decided(audience.kind === "human" && (yield* canPrompt(terminal)));
 		}),
 	);
 
 	/**
-	 * A fixed answer that needs nothing.
+	 * A fixed answer that needs nothing. It holds core's `canPrompt` open too, as {@link CliInteractive.layer} does.
 	 *
 	 * @param value - whether the run is interactive
 	 */
-	static readonly layerTest = (value: boolean): Layer.Layer<never> => Layer.succeed(CliInteractive, value);
+	static readonly layerTest = (value: boolean): Layer.Layer<never> => Layer.effectContext(decided(value));
 
 	/**
 	 * Run `self` with interactivity switched off when `condition` holds.
@@ -75,3 +90,14 @@ export class CliInteractive extends Context.Reference<boolean>("@effected/cli/Cl
 				return yield* Effect.provideService(self, CliInteractive, current && !condition);
 			});
 }
+
+/**
+ * The context the two layers set: the decision, and core's capabilities as they are found with `canPrompt` held at
+ * `true`, so core always hands a missing parameter to its fallback and the kit's decision governs.
+ */
+const decided = (interactive: boolean): Effect.Effect<Context.Context<never>> =>
+	Effect.map(TerminalCapabilities.TerminalCapabilities, (capabilities) =>
+		Context.make(CliInteractive, interactive).pipe(
+			Context.add(TerminalCapabilities.TerminalCapabilities, { ...capabilities, canPrompt: true }),
+		),
+	);

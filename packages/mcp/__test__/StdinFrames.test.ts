@@ -6,7 +6,6 @@ import {
 	guardStdin,
 	makeFrameGuard,
 	makeGuardedStdio,
-	methodNotFoundFrame,
 } from "../src/internal/StdinFrames.js";
 
 const encoder = new TextEncoder();
@@ -129,35 +128,14 @@ describe("makeFrameGuard", () => {
 		assert.deepStrictEqual(run([input]), { forwarded: input, replies: [] });
 	});
 
-	it("drops an @effect/rpc/ control notification, which core would act on, and forwards the lines around it", () => {
-		for (const value of [
+	it("forwards @effect/rpc/ frames to core, which serves MCP with its RPC control messages off", () => {
+		const frames = [
 			'{"jsonrpc":"2.0","method":"@effect/rpc/Eof"}',
 			'{"jsonrpc":"2.0","method":"@effect/rpc/Interrupt","params":{"requestId":"1"}}',
-			'{"jsonrpc":"2.0","method":"@effect/rpc/Eof","id":null}',
-		]) {
-			assert.deepStrictEqual(
-				run([`{"id":1}\n${value}\n{"id":2}\n`]),
-				{ forwarded: '{"id":1}\n{"id":2}\n', replies: [] },
-				value,
-			);
-		}
-	});
-
-	it("answers an @effect/rpc/ request -32601, echoing its id", () => {
-		assert.deepStrictEqual(run(['{"jsonrpc":"2.0","id":9,"method":"@effect/rpc/Eof"}\n{"id":1}\n']), {
-			forwarded: '{"id":1}\n',
-			replies: [methodNotFoundFrame(9)],
-		});
-		assert.deepStrictEqual(JSON.parse(methodNotFoundFrame("a")), {
-			jsonrpc: "2.0",
-			id: "a",
-			error: { code: -32601, message: "Method not found" },
-		});
-	});
-
-	it("forwards a method that merely contains @effect/rpc/ past its start", () => {
-		const frame = '{"jsonrpc":"2.0","method":"x/@effect/rpc/Eof"}\n';
-		assert.deepStrictEqual(run([frame]), { forwarded: frame, replies: [] });
+			'{"jsonrpc":"2.0","id":9,"method":"@effect/rpc/Eof"}',
+		];
+		const input = frames.map((frame) => `${frame}\n`).join("");
+		assert.deepStrictEqual(run([input]), { forwarded: input, replies: [] });
 	});
 
 	it("answers each bad line in stdin order, a parse error and an invalid request alike", () => {

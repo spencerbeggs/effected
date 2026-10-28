@@ -1,8 +1,9 @@
 import type { Stdio as StdioModule, Terminal as TerminalModule } from "effect";
 import { Context, Effect, Layer, Option, Stdio, Terminal } from "effect";
+import type { TerminalCapabilities } from "effect/cli";
 import type { ColorLevel } from "./ColorLevel.js";
 import { colorDepth, colorKeys } from "./internal/colorDepth.js";
-import { readEnv } from "./internal/envRecord.js";
+import { normalizeEnv, readEnv } from "./internal/envRecord.js";
 import { terminalEnvKeys } from "./internal/keys.js";
 import { detectOsc8 } from "./internal/osc8/detect.js";
 
@@ -196,6 +197,62 @@ export class TerminalEnv extends Context.Service<TerminalEnv, TerminalEnvShape>(
 			width: (fallback = 80) => Option.getOrElse(stdout.columns, () => fallback),
 		});
 	};
+
+	/**
+	 * The colour level of a stream, as a pure function of an environment record and whether the stream is a terminal:
+	 * no `Config`, no `Stdio`, no service.
+	 *
+	 * @remarks
+	 * It is the rule {@link TerminalEnv.layer} applies to each stream, so the two agree on the same record. A
+	 * `FORCE_COLOR` that is present decides alone and beats `NO_COLOR` (`1` or `true` is `basic`, `2` is `256`, `3` is
+	 * `truecolor`, anything else is `none`); otherwise a stream that is not a terminal has none, and a terminal is
+	 * decided by `NODE_DISABLE_COLORS`, `NO_COLOR`, `TERM=dumb` and the terminal table. An `undefined` or empty value
+	 * reads as unset, as the layer reads it. Use it where a service is in the way: synchronous code that decides
+	 * whether to colour a log, with the TTY fact it already holds.
+	 *
+	 * @example
+	 * ```ts
+	 * import { TerminalEnv } from "@effected/env"
+	 *
+	 * const level = TerminalEnv.colorLevelFrom({ TERM: "xterm-256color" }, true) // "256"
+	 * ```
+	 *
+	 * @param env - variable name to value
+	 * @param isTTY - whether the stream is attached to a terminal
+	 */
+	static colorLevelFrom(env: Readonly<Record<string, string | undefined>>, isTTY: boolean): ColorLevel {
+		return colorDepth(normalizeEnv(env), isTTY);
+	}
+
+	/**
+	 * Core's `TerminalCapabilities` value for a terminal snapshot, as a pure function.
+	 *
+	 * @remarks
+	 * `canColor` is stdout's colour level under the kit's rule (see {@link TerminalEnv.colorLevelFrom}): it is not
+	 * `none`. That rule differs from core's own detection in two places: a present `FORCE_COLOR` beats `NO_COLOR`, as in
+	 * Node, and the terminal table can answer `none` for a terminal it does not know. `canAnimate` is stdout being a
+	 * terminal, and `canPrompt` is stdin and stdout both being terminals. A `TERM` of `dumb` clears both, as it does in
+	 * core: a terminal that cannot move the cursor can neither redraw a frame nor a prompt. It leaves `canColor` to the
+	 * colour rule, where a `FORCE_COLOR` still wins.
+	 *
+	 * The snapshot does not carry `TERM`, so it is passed alongside. This package installs no layer for core's
+	 * reference: `effect/cli` exports it only through its barrel, and a value import here would load that barrel for
+	 * every consumer of this package. `@effected/cli`'s `CliEnv.layer` installs it, reading `TERM` through `Config`.
+	 *
+	 * @param terminal - the terminal snapshot
+	 * @param term - the value of `TERM`, or `undefined` when it is unset
+	 */
+	static capabilities(
+		terminal: TerminalEnvShape,
+		term?: string | undefined,
+	): TerminalCapabilities.TerminalCapabilities {
+		const cursor = term !== "dumb";
+		return {
+			canColor: terminal.stdout.color !== "none",
+			canAnimate: cursor && terminal.stdout.isTerminal,
+			canPrompt: cursor && terminal.stdinIsTerminal && terminal.stdout.isTerminal,
+		};
+	}
 
 	/**
 	 * The colour level of a stream.

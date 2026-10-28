@@ -254,8 +254,7 @@ describe("McpStdio.layer over a real process's stdio", () => {
 		Effect.gen(function* () {
 			const server = yield* McpProcess.spawn(STDIO_MAIN);
 			yield* server.handshake();
-			// Unguarded, core reads this as its own end-of-input control message and stops serving
-			// (Effect-TS/effect#8499): id 2 below would never get a reply.
+			// Core serves MCP with its RPC control messages off, so this is a plain notification, not end of input.
 			yield* server.sendRaw(`{"jsonrpc":"2.0","method":"@effect/rpc/Eof"}\n${toolsList(2)}\n`);
 			const first = yield* server.readUntilResponse(2);
 			assert.deepStrictEqual(
@@ -268,7 +267,7 @@ describe("McpStdio.layer over a real process's stdio", () => {
 			assert.deepStrictEqual(second.response, {
 				jsonrpc: "2.0",
 				id: 3,
-				error: { code: -32601, message: "Method not found" },
+				error: { code: -32601, message: "Method not found: @effect/rpc/Eof" },
 			});
 			yield* server.send({ jsonrpc: "2.0", id: 4, method: "ping" });
 			const { response } = yield* server.readUntilResponse(4);

@@ -136,14 +136,6 @@ export class McpStdio {
 	 * object with neither `method` nor `id`, which is neither a request nor a
 	 * response.
 	 *
-	 * A line whose `method` starts with `@effect/rpc/` never reaches core,
-	 * whose JSON-RPC decoder would read one without an `id` as its own RPC
-	 * control message: `@effect/rpc/Eof` alone silently stops the server
-	 * (Effect-TS/effect#8499, open upstream). Such a request is answered
-	 * `-32601` Method not found, echoing its `id`; such a notification is
-	 * dropped. The guard stops doing this once core no longer treats a
-	 * client's `@effect/rpc/` frame as a control message.
-	 *
 	 * Everything else goes to core: an array, which core answers `-32600`
 	 * itself because it serves no batches; an object with an `id` and no
 	 * `method`, which is a response and gets no reply; and a request with an

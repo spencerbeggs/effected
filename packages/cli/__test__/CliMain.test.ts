@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Console, Context, Effect, Exit, Layer, MutableRef, Runtime } from "effect";
+import { Cause, Console, Context, Effect, Exit, Layer, MutableRef, Runtime, Schema } from "effect";
 import { CliError, Command } from "effect/cli";
 import { CliExit, CliRuntime } from "../src/index.js";
 
@@ -236,6 +236,56 @@ describe("CliRuntime.main and --log-level", () => {
 				});
 			assert.deepStrictEqual(yield* run("none"), []);
 			assert.deepStrictEqual(yield* run("error"), ["inside"]);
+		}),
+	);
+});
+
+describe("CliRuntime.main and a handler failure carrying CliError.userMessage", () => {
+	// runWith renders any handler failure with a userMessage, marks it, and re-fails with it, tag kept.
+	class Occupied extends Schema.TaggedError<Occupied>()("Occupied", { path: Schema.String }) {
+		get [CliError.userMessage]() {
+			return `${this.path} already exists`;
+		}
+	}
+	const init = Command.make("init", {}, () => Effect.fail(new Occupied({ path: "config.yaml" })));
+
+	it.effect("reports it exactly once, and exits as a handler failure, not a usage error", () =>
+		Effect.gen(function* () {
+			const { double, out, err } = capturing();
+			const exit = yield* CliRuntime.main(Command.runWith(init, { version: "1.0.0" })([]), {
+				platform: NodeServices.layer,
+			}).pipe(Effect.exit, Effect.provideService(Console.Console, double));
+			assert.strictEqual(err.length, 1, `expected one stderr entry, got ${JSON.stringify(err)}`);
+			assert.include(err[0], "config.yaml already exists");
+			assert.deepStrictEqual(out, []);
+			assert.strictEqual(codeOf(exit), 1);
+		}),
+	);
+
+	it.effect("keeps the exit code chosen by tag, and the exitCode fallback", () =>
+		Effect.gen(function* () {
+			const byTag = yield* CliRuntime.main(Command.runWith(init, { version: "1.0.0" })([]), {
+				platform: NodeServices.layer,
+				exitCodes: { Occupied: 73 },
+			}).pipe(Effect.exit, Effect.provideService(Console.Console, capturing().double));
+			assert.strictEqual(codeOf(byTag), 73);
+			const fallback = yield* CliRuntime.main(Command.runWith(init, { version: "1.0.0" })([]), {
+				platform: NodeServices.layer,
+				exitCode: 5,
+			}).pipe(Effect.exit, Effect.provideService(Console.Console, capturing().double));
+			assert.strictEqual(codeOf(fallback), 5);
+		}),
+	);
+
+	it.effect("with renderErrors: false runWith prints nothing, so reportFailures renders it once", () =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			const exit = yield* CliRuntime.main(Command.runWith(init, { version: "1.0.0", renderErrors: false })([]), {
+				platform: NodeServices.layer,
+			}).pipe(Effect.exit, Effect.provideService(Console.Console, double));
+			assert.strictEqual(err.length, 1, `expected one stderr entry, got ${JSON.stringify(err)}`);
+			assert.include(err[0], "Occupied");
+			assert.strictEqual(codeOf(exit), 1);
 		}),
 	);
 });

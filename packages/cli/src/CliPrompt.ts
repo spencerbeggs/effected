@@ -55,6 +55,13 @@ export class CliPrompt {
 	 * input (core acquires it only when a prompt needs a key), so piped stdin is left untouched without any gate.
 	 * `CliPrompt.gateTerminal`, which `CliEnv.layer` installs, covers the prompts this function does not wrap.
 	 *
+	 * Core calls a fallback only when its `TerminalCapabilities.canPrompt` is `true`, and its own default decides that
+	 * from the process's terminal, so in a piped run it would fail the parameter as missing without calling this
+	 * function and `otherwise` would be lost. `CliInteractive.layer` and `CliInteractive.layerTest` (and so
+	 * `CliEnv.layer`) hold `canPrompt` at `true` for that reason: the decision is `CliInteractive`'s, made here. A
+	 * `TerminalCapabilities` with `canPrompt: false` provided inside the program bypasses this fallback again, and a
+	 * program that sets `CliInteractive` with neither layer keeps core's own gate.
+	 *
 	 * @param prompt - the prompt to show
 	 * @param options - the parameter it stands in for, and the non-interactive default
 	 */

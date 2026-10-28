@@ -2,7 +2,7 @@ import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, TerminalEnv } from "@effected/env";
 import { Cause, Console, Effect, Exit, Layer, Queue, Runtime, Terminal } from "effect";
-import { Command, Flag, Prompt } from "effect/cli";
+import { Command, Flag, Prompt, TerminalCapabilities } from "effect/cli";
 import { CliInteractive, CliPrompt, CliRuntime } from "../src/index.js";
 import type { TestTerminalHandle } from "../src/testing.js";
 import { TestTerminal } from "../src/testing.js";
@@ -43,13 +43,20 @@ const run = (
 		readonly interactive: boolean | Layer.Layer<never>;
 		readonly terminal: TestTerminalHandle;
 		readonly gate?: boolean;
+		/** Core's capabilities provided INSIDE the program, around the parse, as a consumer's own would be. */
+		readonly capabilities?: TerminalCapabilities.TerminalCapabilities;
 	},
 ) =>
 	Effect.gen(function* () {
 		const { double, out, err } = capturing();
 		const interactive =
 			typeof options.interactive === "boolean" ? CliInteractive.layerTest(options.interactive) : options.interactive;
-		const program = CliRuntime.main(Command.runWith(root, { version: "1.0.0" })(argv), {
+		const parsed = Command.runWith(root, { version: "1.0.0" })(argv);
+		const inside =
+			options.capabilities === undefined
+				? parsed
+				: Effect.provideService(parsed, TerminalCapabilities.TerminalCapabilities, options.capabilities);
+		const program = CliRuntime.main(inside, {
 			// The gate reads CliInteractive when it is built; CliEnv installs it for a real program.
 			platform: Layer.mergeAll(NodeServices.layer, CliPrompt.gateTerminal.pipe(Layer.provide(options.terminal.layer))),
 		}).pipe(
@@ -133,6 +140,53 @@ describe("CliPrompt.fallback", () => {
 			assert.deepStrictEqual(err, ["cancelled; nothing written"]);
 			assert.deepStrictEqual(out, []);
 		}),
+	);
+
+	it.effect("why CliInteractive holds core's canPrompt open: without it, a non-interactive run loses `otherwise`", () =>
+		Effect.gen(function* () {
+			const fallback = app(withPrompt({ otherwise: "software-project" }));
+			const held = yield* run(fallback, ["run"], { interactive: false, terminal: yield* TestTerminal.make() });
+			assert.strictEqual(held.code, 0);
+			assert.deepStrictEqual(held.out, ["profile=software-project"]);
+			// The same program with core's gate shut inside it: core skips the fallback and never calls it.
+			const shut = yield* run(fallback, ["run"], {
+				interactive: false,
+				terminal: yield* TestTerminal.make(),
+				capabilities: { canColor: false, canAnimate: false, canPrompt: false },
+			});
+			assert.strictEqual(shut.code, 64);
+			assert.isFalse(shut.out.some((line) => line.includes("profile=")));
+			assert.isTrue(
+				shut.err.some((line) => line.includes("Missing required flag: --profile")),
+				shut.err.join("\n"),
+			);
+		}),
+	);
+
+	it.effect(
+		"core's plain withFallbackPrompt, not interactive: the gate quits it, nothing read, the missing flag, 64",
+		() =>
+			Effect.gen(function* () {
+				const terminal = yield* TestTerminal.make();
+				yield* terminal.input([{ name: "down" }, { name: "enter" }]);
+				const { out, err, code } = yield* run(
+					app(Flag.String("profile").pipe(Flag.withFallbackPrompt(select))),
+					["run"],
+					{
+						interactive: false,
+						terminal,
+					},
+				);
+				assert.strictEqual(code, 64);
+				assert.isFalse(out.some((line) => line.includes("profile=")));
+				assert.isTrue(
+					err.some((line) => line.includes("Missing required flag: --profile")),
+					err.join("\n"),
+				);
+				assert.deepStrictEqual(yield* terminal.reads, { keys: 0, lines: 0, subscriptions: 0 });
+				assert.strictEqual(yield* terminal.pending, 2);
+				assert.strictEqual(yield* terminal.output, "");
+			}),
 	);
 
 	it.effect(

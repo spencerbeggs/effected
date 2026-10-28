@@ -39,6 +39,16 @@ const isRenderedUserError = (u: unknown): u is CliError.UserError =>
 	CliError.isCliError(u) && u._tag === "UserError" && Runtime.getErrorReported(u) === false;
 
 /**
+ * A handler failure carrying a `CliError.userMessage` that `Command.runWith` already printed: it renders any such
+ * failure and sets the mark to `false`, keeping the error's own tag.
+ */
+const isRenderedUserMessage = (u: unknown): u is object =>
+	typeof u === "object" &&
+	u !== null &&
+	CliError.getUserMessage(u) !== undefined &&
+	Runtime.getErrorReported(u) === false;
+
+/**
  * What `render` is told about a failure beyond the squashed error.
  *
  * @public
@@ -240,15 +250,18 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 * bare invocation of a command group still print help on stdout: neither
 	 * is an error.
 	 *
+	 * `main` routes through core's `CliOutput.Presenter`, so the help and
+	 * errors are rendered by whichever `CliOutput` Formatter is in effect
+	 * where `Command.runWith` runs, one provided inside `program` included,
+	 * and written to whichever `Console` is in effect there. To change the
+	 * Formatter `main` installs, pass `env.formatter` (for example
+	 * `formatVersion`); a Formatter the platform provides is shadowed by
+	 * `main`'s, so pass it through `env.formatter` as well.
+	 *
 	 * Two cases keep help on stdout even under `"stderr"`. A `CliOutput`
-	 * Formatter or a `Console` provided inside `program` is not seen by
-	 * `main`, so its help is not rerouted. To change the Formatter, pass
-	 * `env.formatter` (for example `formatVersion`): `main` installs its own
-	 * Formatter inside the platform, so that is the way in, and a Formatter
-	 * provided inside the program is invisible to the routing. A Formatter
-	 * the platform provides is shadowed by `main`'s, so pass it through
-	 * `env.formatter` as well. And with `Command.runWith`'s `renderErrors: false`
-	 * no errors are printed, so nothing marks the help as a usage error's.
+	 * Presenter provided inside `program` replaces the routing. And with
+	 * `Command.runWith`'s `renderErrors: false` core presents the help as
+	 * plain help, with no errors, so it is not a usage error's.
 	 */
 	readonly helpOnUsageError?: "stdout" | "stderr" | undefined;
 	/**
@@ -384,7 +397,10 @@ const checkExitCodes = (exitCodes: Readonly<Record<string, number>> | undefined)
  * already rendered through its `CliOutput` formatter. It exits with its own
  * `Runtime.errorExitCode` when it carries one, otherwise `usageExitCode`;
  * under runWith's `renderErrors: false` the mark stays set, and it renders
- * here like any other failure. Every other
+ * here like any other failure. A handler failure carrying a
+ * `CliError.userMessage` is skipped the same way, since `Command.runWith`
+ * renders it and sets the mark to `false`; it keeps the exit code a
+ * handler failure gets (`exitCodes` by tag, then `exitCode`). Every other
  * error renders even when it already carries the reported mark — a gate
  * failure marked with `CliRuntime.reported` still prints its line. The
  * private `ExitRequested` sentinel `CliRuntime.main`
@@ -474,6 +490,12 @@ export class CliRuntime {
 					// below.
 					if (isRenderedUserError(error)) {
 						return Effect.fail(CliRuntime.reported(error, chooseExitCode(error, options.usageExitCode ?? 64)));
+					}
+
+					// The same for a handler failure carrying a `CliError.userMessage`: runWith printed the message and
+					// flipped the mark. It is a handler failure, not a usage error, so it keeps its own exit code.
+					if (isRenderedUserMessage(error)) {
+						return Effect.fail(CliRuntime.reported(error, chooseExitCode(error, options.exitCode, options.exitCodes)));
 					}
 
 					const render = options.render;

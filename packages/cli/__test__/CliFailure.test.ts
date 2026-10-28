@@ -526,8 +526,8 @@ describe("CliRuntime: the default failure path", () => {
 			const { err } = yield* runMain(program, { AI_AGENT: "claude" }, true);
 			const text = err.join("\n");
 			assert.include(text, "thrown by a thunk");
-			// V8 names the thunk's own frame by Effect's method alias; the frame is still the program's.
-			const first = /\((.*CliFailure\.test\.ts:\d+:\d+)\)/.exec(thrown?.stack ?? "")?.[1];
+			// The thunk's own frame, named `at fn (path:line:col)` or anonymous `at path:line:col`.
+			const first = /at (?:[^\n]*\()?([^\s()]*CliFailure\.test\.ts:\d+:\d+)\)?/.exec(thrown?.stack ?? "")?.[1];
 			assert.isDefined(first, "control: V8 put the thunk's frame on the stack");
 			assert.include(text, first as string);
 		}),

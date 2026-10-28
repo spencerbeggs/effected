@@ -11,6 +11,7 @@ import { CliPrompt } from "./CliPrompt.js";
 import type { CliThemeOptions } from "./CliTheme.js";
 import { CliTheme } from "./CliTheme.js";
 import { displayPathLayer } from "./internal/displayPath.js";
+import { capabilitiesLayer } from "./internal/terminalCapabilities.js";
 
 /**
  * Options for {@link CliEnv.layer} and for `CliRuntime.main`'s `env` option.
@@ -170,6 +171,15 @@ export type CliEnvTestServices = TerminalEnv | Audience | CliTheme;
  * `Console` or `Stdio`, never `Terminal`. It also installs `CliTheme.promptTheme`, so core's prompts follow the
  * theme.
  *
+ * It sets core's `TerminalCapabilities` from `TerminalEnv` (through `TerminalEnv.capabilities` in `@effected/env`), so
+ * the colour of core's own help, version and error output follows the kit's colour rule, and `canAnimate` is stdout
+ * being a terminal that is not `dumb`. `canPrompt` alone is held at `true` whatever the terminal is: core skips a
+ * fallback prompt entirely when it is `false`, which would lose `CliPrompt.fallback`'s and `CliUi.fallback`'s
+ * `otherwise` in every piped run, and `CliInteractive` with `CliPrompt.gateTerminal` already owns that decision (the
+ * gate quits any other prompt at once when the run is not interactive). A `TerminalCapabilities` with
+ * `canPrompt: false` provided inside the program bypasses the kit's fallbacks: the parameter then fails as missing even
+ * when an `otherwise` is given.
+ *
  * @public
  */
 export class CliEnv {
@@ -202,8 +212,11 @@ export class CliEnv {
 			...(options.editorLinks === undefined ? {} : { editorLinks: options.editorLinks }),
 			...(options.editorLinksEnvVar === undefined ? {} : { envVar: options.editorLinksEnvVar }),
 		}).pipe(LayerModule.provideMerge(withTheme));
+		// Core's TerminalCapabilities from the kit's TerminalEnv, so core's colour follows the kit's rule. CliInteractive,
+		// built over it, then holds its `canPrompt` at true: the kit's fallbacks and gateTerminal make the prompt decision.
+		const withCapabilities = capabilitiesLayer.pipe(LayerModule.provideMerge(withLinks));
 		// Sets the CliInteractive reference from the audience and terminal; it has no output type of its own.
-		const withInteractive = CliInteractive.layer.pipe(LayerModule.provideMerge(withLinks));
+		const withInteractive = CliInteractive.layer.pipe(LayerModule.provideMerge(withCapabilities));
 		// The gates read CliInteractive when built, and the terminal gate wraps the REAL Terminal, which the
 		// environment layers above have already read.
 		// `promptTheme` bridges the theme to core's prompts, so they follow the terminal's colour too.
@@ -220,7 +233,7 @@ export class CliEnv {
 	 * The environment services a test fixes, needing nothing and reading nothing of the host's: `TerminalEnv` and
 	 * `Audience` from the answers given, `CliTheme` built from them as {@link CliEnv.layer} builds it, and
 	 * `CliInteractive` set from them by the same rule (a human, every stream a terminal, and a `TERM` that is not
-	 * `dumb`).
+	 * `dumb`), and core's `TerminalCapabilities` from them as `CliEnv.layer` sets it, `canPrompt` held at `true`.
 	 *
 	 * @remarks
 	 * `term` is handed to the theme and interactivity builds alone, through a `ConfigProvider` of their own: the
@@ -247,7 +260,9 @@ export class CliEnv {
 		const term = ConfigProvider.layer(
 			ConfigProvider.fromUnknown(options.term === undefined ? {} : { TERM: options.term }),
 		);
-		return LayerModule.mergeAll(CliTheme.layer(options.theme), CliInteractive.layer).pipe(
+		// Core's capabilities come from the fixed facts too, never the host's process; CliInteractive holds `canPrompt` open.
+		const interactive = CliInteractive.layer.pipe(LayerModule.provideMerge(capabilitiesLayer));
+		return LayerModule.mergeAll(CliTheme.layer(options.theme), interactive).pipe(
 			LayerModule.provide(term),
 			LayerModule.provideMerge(facts),
 		);
