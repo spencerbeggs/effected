@@ -28,6 +28,9 @@ package roster. Load the concept a task needs:
 - `okf/interfaces/package-json-entry-point.md` — Load when: touching
   `resolveEntryPoint`, its condition policy, or the `exports`-encapsulation
   rule.
+- `okf/interfaces/package-json-exports-resolver.md` — Load when: touching
+  `PackageExports`, `internal/exports.ts`, `PackageJsonFile.exportedFiles`,
+  or any rule that keeps a resolved target inside the package.
 - `okf/invariants/package-manager-shares-strict-schemas-by-identity.md` — Load
   when: touching `PackageManager`'s `version` or `integrity` field or the
   identity assertions that pin them.

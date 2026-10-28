@@ -5,9 +5,12 @@
 // (compose `Package.resolve` explicitly).
 
 import type { JsoncPath } from "@effected/jsonc";
-import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
+import type { PlatformError } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
 import type { PackageDecodeError, PackageFormatOptions } from "./Package.js";
 import { Package } from "./Package.js";
+import type { PackageExportsError, PackageExportsManifest, PackageExportsOptions } from "./PackageExports.js";
+import { ExportEntry, PackageExports } from "./PackageExports.js";
 import type { PackageJsonModifyError } from "./PackageJsonFormat.js";
 import { PackageJsonFormat } from "./PackageJsonFormat.js";
 import { PackageManifest } from "./PackageManifest.js";
@@ -323,4 +326,125 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 		PackageJsonFile,
 		PackageJsonFile.make,
 	);
+
+	/**
+	 * Every file of the package at `directory` that one of its exported
+	 * subpaths reaches — the `exports` map enumerated and its patterns
+	 * expanded against the files on disk.
+	 *
+	 * @remarks
+	 * {@link PackageExports.entriesResult} lists a pattern export as one
+	 * template; which subpaths it reaches is a question about the package's
+	 * files, answered here. A concrete entry is kept when its target is a
+	 * file. A pattern entry is expanded by walking the directory its target
+	 * fixes (`./dist` for `./dist/*.js`), and each file the template matches
+	 * is resolved BACK through {@link PackageExports.resolveResult} and kept
+	 * only when the subpath resolves to that same file. So a more specific
+	 * key, a `null` exclusion (`"./internal/*": null`) and the segment rule all
+	 * decide exactly as they do for a single request.
+	 *
+	 * The walk never enters a `node_modules` directory and never follows a
+	 * symbolic link, so it cannot leave the package; it stops descending
+	 * below a depth no published package reaches. A missing directory
+	 * contributes nothing. With `exports` absent, only the legacy `"."` entry
+	 * is reported, when its file exists.
+	 *
+	 * Takes the manifest rather than reading it, so a caller holding a
+	 * decoded `Package`, a `LenientManifest` or a raw object passes whichever
+	 * it has. A static on this class rather than a member of the service shape
+	 * because it needs only `FileSystem` and `Path`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { NodeFileSystem, NodePath } from "@effect/platform-node";
+	 * import { PackageJsonFile } from "@effected/package-json";
+	 * import { Effect, Layer } from "effect";
+	 *
+	 * const program = PackageJsonFile.exportedFiles("./node_modules/pkg", {
+	 *   exports: { ".": "./index.js", "./*": "./dist/*.js" },
+	 * });
+	 * Effect.runPromise(program.pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))));
+	 * ```
+	 */
+	static readonly exportedFiles = Effect.fn("PackageJsonFile.exportedFiles")(function* (
+		directory: string,
+		manifest: PackageExportsManifest,
+		options?: PackageExportsOptions,
+	): Effect.fn.Return<
+		ReadonlyArray<ExportEntry>,
+		PackageExportsError | PlatformError.PlatformError,
+		FileSystem.FileSystem | Path.Path
+	> {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const entries = yield* Effect.fromResult(PackageExports.entriesResult(manifest, options));
+
+		const infoOf = (relative: string, follow: boolean) =>
+			(follow ? fs.stat : fs.lstat)(path.join(directory, relative)).pipe(
+				Effect.map(Option.some),
+				Effect.catchIf(
+					(error) => error.reason._tag === "NotFound",
+					() => Effect.succeedNone,
+				),
+			);
+
+		// Package-relative files under `relative`, sorted, never through a
+		// symlink and never into node_modules.
+		const listFiles = (
+			relative: string,
+			depth: number,
+		): Effect.Effect<ReadonlyArray<string>, PlatformError.PlatformError> =>
+			Effect.gen(function* () {
+				if (depth > MAX_WALK_DEPTH) return [];
+				const info = yield* infoOf(relative, false);
+				if (Option.isNone(info) || info.value.type !== "Directory") return [];
+				const names = [...(yield* fs.readDirectory(path.join(directory, relative)))].sort();
+				const files: Array<string> = [];
+				for (const name of names) {
+					if (name.toLowerCase() === "node_modules") continue;
+					const child = `${relative}/${name}`;
+					const childInfo = yield* infoOf(child, false);
+					if (Option.isNone(childInfo)) continue;
+					if (childInfo.value.type === "Directory") files.push(...(yield* listFiles(child, depth + 1)));
+					else if (childInfo.value.type === "File") files.push(child);
+				}
+				return files;
+			});
+
+		const found: Array<ExportEntry> = [];
+		const seen = new Set<string>();
+		const keep = (entry: ExportEntry) => {
+			if (seen.has(entry.subpath)) return;
+			seen.add(entry.subpath);
+			found.push(entry);
+		};
+
+		for (const entry of entries) {
+			if (!entry.pattern) {
+				const info = yield* infoOf(entry.path, true);
+				if (Option.isSome(info) && info.value.type === "File") keep(entry);
+				continue;
+			}
+			const template = entry.path;
+			const prefix = template.slice(0, template.indexOf("*"));
+			const base = prefix.slice(0, prefix.lastIndexOf("/"));
+			const stars = template.split("*").length - 1;
+			const fixed = template.length - stars;
+			for (const file of yield* listFiles(base, 0)) {
+				const free = file.length - fixed;
+				if (!file.startsWith(prefix) || free <= 0 || free % stars !== 0) continue;
+				const match = file.slice(prefix.length, prefix.length + free / stars);
+				if (template.replaceAll("*", match) !== file) continue;
+				const subpath = entry.subpath.replace("*", match);
+				const resolved = PackageExports.resolveResult(manifest, subpath, options);
+				if (Result.isSuccess(resolved) && resolved.success.path === file) {
+					keep(ExportEntry.make({ subpath, path: file, key: entry.key, pattern: false }));
+				}
+			}
+		}
+		return found;
+	});
 }
+
+/** How deep {@link PackageJsonFile.exportedFiles} descends below a pattern's base directory. */
+const MAX_WALK_DEPTH = 32;

@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T21:11:48Z
+  at: 2026-10-28T16:55:59Z
 integrity:
   generated:
-    body: aab57f05d80ec7f3
+    body: a630fc679ce16dc0
 ---
 
 # package-json
@@ -26,7 +26,7 @@ integrity:
 
 Boundary tier, set by the file IO in `PackageJsonFile.ts` and nothing more — the package carries no third-party runtime dependency outside `effect` core. Its `@effected` edges (`@effected/npm`, `@effected/semver`, `@effected/spdx`, `@effected/jsonc`, all `workspace:^`) are to pure and boundary packages, and the dependency policy's tier propagation applies only to tier-3 (integrated) edges, so none of them lifts this package's tier.
 
-`effect` is the only peer — there is no `@effect/platform` peer, because `FileSystem` and `Path` live in core. `@effect/platform-node` stays a devDependency for integration tests that provide a real filesystem; consumers of the file API supply their own platform implementation at the edge. The IO is deliberately not split into its own package: in v4 the motivation for that split evaporates, since platform abstractions already live in core, so a hypothetical fs-only package would carry the identical peer closure as the whole package does now, and `"sideEffects": false` already lets bundlers tree-shake the fs code out of pure usage.
+`effect` is the only peer — there is no `@effect/platform` peer, because `FileSystem` and `Path` live in core. `@effect/platform-node` stays a devDependency for integration tests that provide a real filesystem; `@effected/memfs` is the devDependency the `exportedFiles` tests run over; consumers of the file API supply their own platform implementation at the edge. The IO is deliberately not split into its own package: in v4 the motivation for that split evaporates, since platform abstractions already live in core, so a hypothetical fs-only package would carry the identical peer closure as the whole package does now, and `"sideEffects": false` already lets bundlers tree-shake the fs code out of pure usage.
 
 Core SPDX license validity is delegated to [`@effected/spdx`](spdx.md); see [the SPDX-delegation decision](../decisions/spdx-delegation.md).
 
@@ -38,8 +38,9 @@ Module-per-concept, one class or concept per file:
 - `PackageManifest.ts` and `LenientManifest.ts` — the two more permissive tiers; see [the tolerance ladder](#the-tolerance-ladder).
 - The leaf concepts: `PackageName.ts`, `License.ts`, `PackageManager.ts`, `PackageManagerRange.ts` (with `InvalidPackageManagerRangeError`), `Person.ts`, `Repository.ts` (holding both `Repository` and `Bugs`, since they share the shorthand-or-object encoding and the wire-provenance machinery), `Funding.ts`, `DevEngines.ts`, `Dependency.ts`.
 - `PackageValidator.ts` — the validation service, its rule interface, the default rule set and a parameterized layer factory.
-- `PackageJsonFile.ts` — the only IO module: one service, read/write over core `FileSystem`/`Path`, plus its error tags.
+- `PackageJsonFile.ts` — the only IO module: one service, read/write over core `FileSystem`/`Path`, plus its error tags, and the `exportedFiles` static that expands pattern exports against the files on disk.
 - `EntryPoint.ts` — entry-point resolution, pure and IO-free, and the one module whose input is deliberately structural rather than a `Package`. See [the entry-point resolver interface](../interfaces/package-json-entry-point.md).
+- `PackageExports.ts` — Node's `exports`/`imports` resolution for any subpath, TypeScript's `types` reading, and entry-point enumeration, pure over a structural manifest; the algorithm is `internal/exports.ts`, a step-by-step transcription of Node's resolver specification. See [the exports resolver interface](../interfaces/package-json-exports-resolver.md).
 - `PackageJsonFormat.ts` — the decode-free text seam: the text-to-object parse (`parseObjectResult`/`parseObject`), formatting and surgical edits, none of which decodes. See [the decode-free text path interface](../interfaces/package-json-text.md).
 - `internal/format.ts` — the pure canonical-key-order, map-alphabetizing and empty-map-stripping functions shared by the write options, the model's serializer and the format seam.
 - `internal/wire.ts` — the `rest`-partitioning wire codec builder, shared by `Package` and `PackageManifest` so the two tiers cannot drift on what round-trips.
@@ -71,6 +72,8 @@ The `Package` `Schema.Class` carries: computed getters over privacy, scoping, mo
 ### Repository carries the reference verbatim
 
 `Repository` holds the reference verbatim and exposes normalization as derived getters, so reading a manifest never rewrites the field and a caller that wants a link asks for one explicitly. `directoryUrl` descends `browseUrl` into `directory` for the monorepo-member case: with no `directory`, `directoryUrl` is `browseUrl` (a correct answer, not a missing one); with `directory` on a known host (GitHub's `tree/HEAD`, GitLab's `-/tree/HEAD`, Bitbucket's `src/HEAD`), it is the descended URL, using `HEAD` because the default branch is not knowable from a manifest and every one of these hosts resolves `HEAD` to it; with `directory` on any other host, or one containing `..`, it answers `Option.none()` rather than fabricating a path for an unrecognized forge — what to do with that `none` is left to the caller, since falling back to `browseUrl` is reasonable in some contexts and wrong in others.
+
+`slug` answers the repository's `RepositorySlug` — `{ host, owner, name }` plus a `path` getter (`owner/name`) — derived from `browseUrl`, so the two can never disagree on which forms count. The bare `owner/name` shorthand counts, as GitHub, because npm resolves it that way; a caller that must not treat it as GitHub tests `url` itself. A `#ref`/`?query` and a `.git` suffix are dropped; GitHub and Bitbucket require exactly two path segments, while other hosts take every segment before the last as the owner (GitLab subgroups); a gist, a host-only URL or a deeper path (`/tree/main`) has no slug. It is local rather than delegated to the git package's `GitRemote.parse`: that parser knows no npm shorthand, so delegating would add a package-json → git edge and still leave the shorthand work here.
 
 ### Wire provenance, and why the replay is guarded
 

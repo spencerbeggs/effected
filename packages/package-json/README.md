@@ -236,6 +236,39 @@ The last case above is the semantic worth knowing: **`exports` encapsulates the 
 
 Pair it with `@effected/npm`'s `PackageTarball` to find the entry file inside a tarball extracted before any install has run.
 
+## Resolving any subpath, imports and types
+
+`PackageExports` is Node's resolver algorithm over a manifest: any subpath, `#` imports, `*` patterns, `null` exclusions, array fallbacks, and TypeScript's reading of the same fields. Every static is a synchronous `Result` primitive with an `Effect` twin:
+
+```ts
+import { PackageExports } from "@effected/package-json";
+import { Option, Result } from "effect";
+
+const manifest = {
+ exports: {
+  ".": { types: "./index.d.ts", import: "./index.js" },
+  "./*": { types: "./types/*.d.ts", import: "./dist/*.js" },
+  "./internal/*": null,
+ },
+};
+
+const http = PackageExports.resolveResult(manifest, "./Http");
+console.log(Result.isSuccess(http) && http.success.path);
+// => ./dist/Http.js
+
+const hidden = PackageExports.resolveResult(manifest, "./internal/secret");
+console.log(Result.isFailure(hidden) && hidden.failure.code);
+// => ERR_PACKAGE_PATH_NOT_EXPORTED
+
+const typed = PackageExports.resolveTypesResult(manifest, "./Http");
+console.log(Result.isSuccess(typed) && Option.getOrNull(typed.success.declaration));
+// => ./types/Http.d.ts
+```
+
+`conditions` is a set, not a priority list: the manifest's own key order decides, as it does in Node and TypeScript, so a `types` key written after `import` is never reached. `splitSpecifier("@scope/pkg/sub")` gives the name and subpath, `entriesResult` and `typesEntriesResult` enumerate everything a package exports, and `PackageJsonFile.exportedFiles(directory, manifest)` expands pattern exports against the files on disk.
+
+Every answer stays inside the package. A target that does not start with `./`, or that carries a `..`, `.`, empty or `node_modules` segment (percent-encoded or not, `\` included), fails typed with `PackageExportsError`, and a `*` match cannot inject one either: `"./*": "./dist/*.js"` resolves `./a` and refuses `./%2e%2e/secret`.
+
 ## Errors
 
 Every failure is a `Schema.TaggedError` routed with `Effect.catchTag`. Causes are preserved structurally on a `Schema.Defect` field — a `PackageDecodeError` hands you the `SchemaError` issue tree, not `String(error)`.
