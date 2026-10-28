@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T16:43:15Z
+  at: 2026-10-28T17:55:58Z
 integrity:
   generated:
-    body: 0d29dc6ad255ebad
+    body: 48c5beb807933418
 ---
 
 # @effected/github
@@ -183,7 +183,12 @@ is reported in `AppliedSettings.ignored` and never sent, because the REST
 the api-version that removed them; `applySettings` ignores such a key only
 when `client.apiVersion` is at or past that version. `{ unknownKeys: "send" }`
 forwards an undescribed key instead and reports it in
-`AppliedSettings.unverified`; a removed key stays ignored. The typed escape
+`AppliedSettings.unverified`; a removed key stays ignored. An octokit
+request-option name (`baseUrl`, `url`, `headers`, `request`, `mediaType`,
+`method`, `data`), the route's `owner` / `repo` and `__proto__` are never
+sent under either mode: both write paths send the settings as octokit's
+`data` body, so no key in them is read as a request option (the
+confinement and its source citations are in the REST client interface). The typed escape
 hatch for the same need is `repositoryPatch(draft, { extra })` — see
 [the REST client interface](../interfaces/github-rest-client.md).
 `__test__/repositoryRestSettingKeys.test.ts` regenerates the file in memory

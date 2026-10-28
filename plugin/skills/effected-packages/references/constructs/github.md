@@ -123,10 +123,11 @@
 | `RepoRef` | Class | Which repository an operation acts on. | parse an owner/repo slug into owner and repo, the pure repository coordinate value |
 | `ReportedCheckConclusion` | Variable | How a check run finished, as GitHub reports it: every `CheckConclusion` plus `"stale"`. | how a check run finished as github reports it, including stale |
 | `ReportedCheckRunOutput` | Class | The rendered output a check run reports: its title and summary, and how many annotations it carries. | a check run's reported output title summary and annotation count |
-| `RepositoryPatch` | TypeAlias | The fields `PATCH /repos/{owner}/{repo}` accepts, minus the coordinate. | |
+| `RepositoryPatch` | TypeAlias | The fields `PATCH /repos/{owner}/{repo}` accepts, minus the coordinate and the per-request transport options. | |
 | `RepositoryPatchDraft` | TypeAlias | A `RepositoryPatch` under construction, where an absent field may be spelled as an explicit `undefined`. | |
 | `RepositoryPatchExtra` | TypeAlias | Repository settings the generated `RepositoryPatch` type does not know yet, for `RepositoryPatchOptions.extra`. | |
 | `RepositoryPatchOptions` | Interface | Options for `repositoryPatch`. | |
+| `RepositoryPatchReservedKey` | TypeAlias | Names `repositoryPatch` refuses in a draft or an extra. | |
 | `RepositorySecret` | Class | Write, list and delete repository and environment secrets, encrypted client-side before they leave the process. | encrypt and write a repository or environment secret via sealed box |
 | `RepositorySecretShape` | Interface | Write, list and delete Actions, Dependabot and Codespaces secrets on a repository, and Actions secrets on its environments. | |
 | `RepositorySecurity` | Class | Read and toggle Dependabot alerts, Dependabot security fixes and private vulnerability reporting. | toggle dependabot vulnerability alerts, automated security fixes, private vulnerability reporting inbox |
