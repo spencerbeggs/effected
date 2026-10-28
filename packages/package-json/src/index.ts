@@ -62,6 +62,19 @@ export {
 	StringMapField,
 } from "./Package.js";
 export {
+	ExportEntry,
+	PackageExports,
+	PackageExportsError,
+	type PackageExportsManifest,
+	type PackageExportsOptions,
+	PackageFileTarget,
+	type PackageImportTarget,
+	type PackageSpecifierParts,
+	PackageSpecifierTarget,
+	type PackageTypesOptions,
+	TypesTarget,
+} from "./PackageExports.js";
+export {
 	type PackageFieldEdit,
 	PackageJsonFile,
 	type PackageJsonFileShape,

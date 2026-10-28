@@ -15,6 +15,7 @@
 | `DevEngines` | TypeAlias | The decoded `devEngines` field type. | |
 | `DevEnginesSchema` | Variable | The `devEngines` field schema, modeling runtime and package-manager constraints as optional `DevEngine` slots. | devEngines field schema, runtime and package manager os cpu libc constraints |
 | `EntryPointManifest` | Interface | The manifest fields entry resolution reads. | |
+| `ExportEntry` | Class | One subpath a package exports, as `PackageExports.entriesResult` enumerates it. | one exported subpath and its target file, pattern template or concrete |
 | `ExportsField` | Variable | The `exports` field: a single string entry point or an open object of conditional exports. Not meant to be referenced directly. | exports field shape, string entry point or conditional exports object |
 | `Funding` | Class | Where to send money for a package: one funding entry. | read a package's funding field, where to sponsor a maintainer, single entry or array |
 | `InvalidPackageManagerRangeError` | Class | Indicates that a `packageManager` value, or a `devEngines.packageManager` entry, could not be read as a `PackageManagerRange`. | handle a malformed packageManager or devEngines.packageManager range, bad name, range or integrity |
@@ -24,9 +25,15 @@
 | `LenientManifest` | Class | The shape-lenient view of a package.json document, for discovery and sniffing — probing a fetched tarball's manifest, walking a `node_modules` tree, listing candidate packages — where the document is other people's data and one malformed field must not fail the read. | sniff or discover a package.json leniently, degrade malformed fields instead of failing |
 | `Package` | Class | A package.json document as a rich `Schema.Class`: typed known fields, a `rest` catch-all preserving unknown top-level fields across a read/edit/write cycle, computed getters, and immutable mutation statics. | read a package.json, strict publishable manifest, resolve workspace and catalog specifiers |
 | `PackageDecodeError` | Class | Indicates that a JSON value could not be decoded into a valid `Package`. | handle package.json schema decode failure |
+| `PackageExports` | Class | Subpath resolution over a manifest's `exports` and `imports`, the view TypeScript takes of the same fields, and enumeration of what a package exports — Node's resolver algorithm, pure over the manifest. | resolve package exports subpath, imports specifier, types declaration file, enumerate entry points, node resolution algorithm |
+| `PackageExportsError` | Class | Raised when a subpath or import specifier does not resolve against a manifest. | handle subpath not exported, invalid package target, path traversal refused, node error code |
+| `PackageExportsManifest` | Interface | The manifest fields subpath resolution reads. | |
+| `PackageExportsOptions` | Interface | Options for `PackageExports.resolveResult`, `PackageExports.resolveImportResult` and `PackageExports.entriesResult`. | |
 | `PackageFieldEdit` | Interface | One surgical field edit for `PackageJsonFile`'s `modify`: set `value` at `path`, or delete the key there when `value` is `undefined` (the `@effected/jsonc` / `@effected/yaml` modify convention — deletion is spelled with an explicit `value: undefined`, so it is always deliberate). | |
+| `PackageFileTarget` | Class | A request resolved to a file of the package. | resolved exports or imports file path inside the package |
 | `PackageFormatOptions` | Interface | Options for `Package.toJsonString` and `PackageJsonFile.write`. | |
 | `PackageFormatTextOptions` | Interface | Options for `PackageJsonFormat.formatToString`. | |
+| `PackageImportTarget` | TypeAlias | What an `imports` specifier resolves to: a file of the package, or another package's specifier. | |
 | `PackageIndent` | TypeAlias | Indentation for serialized package.json output: a spaces count, `"tab"` for real tab indentation, or `"preserve"` to reuse the indentation detected from the original source text (falling back to the two-space default when no source text is available). | |
 | `PackageJsonFile` | Class | Reads, writes and surgically edits package.json files over core `FileSystem` / `Path`. The layer requires those services; provide `@effect/platform-node`'s `NodeFileSystem` / `NodePath` (or a bun equivalent) at the application boundary. | read and write package.json over the filesystem, surgical field edit preserving byte layout |
 | `PackageJsonFileShape` | Interface | The shape of the `PackageJsonFile` service — the value produced by `PackageJsonFile.make` and carried by its layer. | |
@@ -43,6 +50,9 @@
 | `PackageName` | Variable + TypeAlias | A valid npm package name, scoped or unscoped. | validate npm package name, scoped or unscoped, classify scope |
 | `PackageNameStatics` | Interface | Classification statics attached to the `PackageName` schema value. | |
 | `PackagePatch` | TypeAlias | A patch over `Package`'s modeled fields — every field optional, derived from the schema so it never drifts from the model. | |
+| `PackageSpecifierParts` | Interface | A package name and the subpath of it a specifier asks for. | |
+| `PackageSpecifierTarget` | Class | An `imports` request resolved to another package's specifier, which the caller resolves in turn. | imports entry mapped to another package bare specifier |
+| `PackageTypesOptions` | Interface | Options for the TypeScript statics, `PackageExports.resolveTypesResult` and `PackageExports.typesEntriesResult`. | |
 | `PackageValidationError` | Class | Indicates that a `Package` failed one or more validation rules. | handle package.json validation rule failures, aggregated report |
 | `PackageValidator` | Class | Validates a `Package` against a set of `ValidationRule`s, aggregating every failure into one `PackageValidationError`. Use `PackageValidator.layer` for `defaultRules` or `PackageValidator.layerRules` for a custom rule set. | validate package.json against rules, license description repository not-private checks, custom rule set |
 | `PeerDependenciesMetaField` | Variable | The `peerDependenciesMeta` field: a map of package name to `{ optional? }`. Not meant to be referenced directly. | peerDependenciesMeta field shape, optional flag per peer |
@@ -56,6 +66,7 @@
 | `ScopedPackageName` | Variable + TypeAlias | A valid npm scoped package name. | validate scoped npm package name, at-scope slash name |
 | `SpdxLicense` | Variable + TypeAlias | A branded SPDX license string. | validate spdx license field, spdx expression or UNLICENSED or SEE LICENSE IN |
 | `StringMapField` | Variable | A string→string map field decoding a plain JSON object to a `HashMap`, with no default (an absent key stays absent). Backs `engines`. Not meant to be referenced directly. | engines field codec, string map to HashMap, no default |
+| `TypesTarget` | Class | Where TypeScript finds the declarations for one subpath. | typescript declaration file candidates for a subpath, types condition, typesVersions |
 | `UnresolvedDependency` | TypeAlias | A `Dependency` whose specifier is an unresolved `catalog:` or `workspace:` protocol. | |
 | `UnresolvedEntryPointError` | Class | Raised when a manifest resolves no root entry point. | handle a package with no resolvable exports entry point, no condition matched |
 | `UnscopedPackageName` | Variable + TypeAlias | A valid npm unscoped package name. | validate unscoped npm package name |
