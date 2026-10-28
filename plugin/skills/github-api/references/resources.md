@@ -115,6 +115,17 @@ Build the draft as an object literal. A key-by-key loop (`draft[key] =
 source[key]` over a union `key`) still defeats TypeScript's correlation
 between two indexed accesses, which no helper can fix.
 
+**A settings map is a body, never request options.** octokit reads `baseUrl`,
+`url`, `headers`, `request`, `mediaType`, `method` and `data` off a call's flat
+parameters as the request itself, and the route's `owner` / `repo` as its path,
+so an open map spread into them can send the authenticated PATCH to another
+host with the token attached. `updateSettings` and `applySettings` send the
+settings as octokit's `data` body, where no key is read as an option;
+`repositoryPatch` throws a `RangeError` for any of those names (and
+`__proto__`) in the draft or `extra`, and `applySettings` reports them in
+`ignored`, even under `unknownKeys: "send"`. Do not hand-roll the same write
+with `client.request("PATCH /repos/{owner}/{repo}", { ...settings, owner, repo })`.
+
 ## `GitHubContent`
 
 | Member | Signature | Notes |
