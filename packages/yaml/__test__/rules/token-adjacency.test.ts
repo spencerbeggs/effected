@@ -42,6 +42,15 @@ testRule(builtin("comments-spacing"), [
 		input: "a: 1\n  # indented own-line\nb: 2\n",
 		expected: [],
 	},
+	{
+		// The lexer emits a comment token for `#b`, but this package's composer
+		// folds the line into the plain scalar `"a - #b"` (yaml 2.9 reads a
+		// comment there; the divergence is the composer's). The rule follows the
+		// composer: inserting a space edited the value.
+		name: "a # the composer reads as scalar content is not reported",
+		input: "a\n - #b\n",
+		expected: [],
+	},
 ]);
 
 testRule(builtin("colon-spacing"), [
@@ -110,7 +119,9 @@ testRule(builtin("colon-spacing"), [
 	{
 		// The lexer mints a `block-map-value` for this `:`, but the composer
 		// folds the line into the plain scalar `"a - :  b"`: it is content, and
-		// a fix there changed the value.
+		// a fix there changed the value. yaml 2.9 rejects this input (an implicit
+		// key across two lines); the leniency is the composer's, and the rule
+		// follows the composer either way.
 		name: "a colon the composer reads as scalar content is not reported",
 		input: "a\n  - :  b\n",
 		expected: [],
