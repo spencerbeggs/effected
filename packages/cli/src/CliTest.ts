@@ -1,5 +1,5 @@
 import type { PlatformError, Scope } from "effect";
-import { Effect, FileSystem, Path, Stream } from "effect";
+import { Effect, Fiber, FileSystem, Path, Stream, SubscriptionRef } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 /**
@@ -57,6 +57,66 @@ export interface RunResult {
 	/** Everything the child wrote to stderr, decoded as UTF-8. */
 	readonly stderr: string;
 }
+
+/**
+ * A bin {@link CliTest.spawn} started and has not waited for: its output as it arrives, a way to signal it, and its
+ * exit.
+ *
+ * @public
+ */
+export interface SpawnedBin {
+	/**
+	 * The child's stdout as lines, each without its line break (`\r\n` included), from the first byte it wrote,
+	 * ending when the child closes stdout; a last line with no line break comes when it does. Every subscription replays
+	 * from the start, so a test may read it more than once, and output a test never reads is still drained, so the
+	 * child never blocks on a full pipe.
+	 */
+	readonly stdout: Stream.Stream<string>;
+	/** The child's stderr as lines, as `stdout` gives stdout. */
+	readonly stderr: Stream.Stream<string>;
+	/**
+	 * Send `signal` (`SIGTERM` by default) and wait for the child to exit. A child that ignores the signal keeps this
+	 * waiting: bound it with `Effect.timeout`.
+	 */
+	readonly kill: (signal?: ChildProcess.Signal) => Effect.Effect<void, PlatformError.PlatformError>;
+	/** The child's exit code, once it exits; re-reading it after the exit answers at once. */
+	readonly exitCode: Effect.Effect<number, PlatformError.PlatformError>;
+	/** Wait for the exit and the end of both streams, and read everything, as {@link CliTest.run} returns it. */
+	readonly result: Effect.Effect<RunResult, PlatformError.PlatformError>;
+}
+
+/** Everything a stream carried so far, and whether it has ended. */
+interface Captured {
+	readonly text: string;
+	readonly done: boolean;
+}
+
+/** The complete lines of `captured` from `offset`, and the rest too once it has ended; with the offset after them. */
+const linesFrom = (offset: number, captured: Captured): readonly [number, ReadonlyArray<string>] => {
+	const lines: Array<string> = [];
+	let start = offset;
+	let end = captured.text.indexOf("\n", start);
+	while (end !== -1) {
+		lines.push(captured.text.slice(start, captured.text[end - 1] === "\r" ? end - 1 : end));
+		start = end + 1;
+		end = captured.text.indexOf("\n", start);
+	}
+	if (captured.done && start < captured.text.length) {
+		lines.push(captured.text.slice(start));
+		start = captured.text.length;
+	}
+	return [start, lines];
+};
+
+const commandOf = (bin: string, args: ReadonlyArray<string>, options: RunOptions): ChildProcess.Command =>
+	ChildProcess.make(options.execPath, [bin, ...args], {
+		cwd: options.cwd ?? options.sandbox.root,
+		env: { ...options.sandbox.env, ...options.env },
+		stdin:
+			options.stdin === undefined || options.stdin === ""
+				? Stream.empty
+				: Stream.make(new TextEncoder().encode(options.stdin)),
+	});
 
 const text = <E, R>(stream: Stream.Stream<Uint8Array, E, R>): Effect.Effect<string, E, R> =>
 	Stream.mkString(Stream.decodeText(stream));
@@ -134,15 +194,7 @@ export class CliTest {
 		Effect.scoped(
 			Effect.gen(function* () {
 				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-				const command = ChildProcess.make(options.execPath, [bin, ...args], {
-					cwd: options.cwd ?? options.sandbox.root,
-					env: { ...options.sandbox.env, ...options.env },
-					stdin:
-						options.stdin === undefined || options.stdin === ""
-							? Stream.empty
-							: Stream.make(new TextEncoder().encode(options.stdin)),
-				});
-				const handle = yield* spawner.spawn(command);
+				const handle = yield* spawner.spawn(commandOf(bin, args, options));
 				// Read both streams and the exit concurrently: sequential reads
 				// deadlock once an OS pipe buffer fills.
 				const [stdout, stderr, exitCode] = yield* Effect.all(
@@ -152,4 +204,70 @@ export class CliTest {
 				return { exitCode: Number(exitCode), stdout, stderr };
 			}),
 		);
+
+	/**
+	 * Start `execPath bin ...args` and return at once with a handle on it: its output as lines while it runs, a signal,
+	 * and its exit, for a long-running command (a `--follow`, a watch mode, a server) that {@link CliTest.run} would wait
+	 * on forever.
+	 *
+	 * @remarks
+	 * The child lives in the caller's scope: when the scope closes first, the child is killed, so a test that ends
+	 * early leaves nothing running. Both streams are drained from the start whether or not the test reads them, so a
+	 * chatty child never blocks on a full pipe, and each stream replays from its first line to every reader. The
+	 * options are {@link CliTest.run}'s, `stdin` included: the child gets that text, then an ended input.
+	 *
+	 * ```ts
+	 * const child = yield* CliTest.spawn("dist/bin.js", ["logs", "--follow"], { sandbox, execPath: process.execPath })
+	 * yield* Stream.runHead(child.stdout) // the first line: it is following
+	 * yield* child.kill("SIGINT")
+	 * assert.strictEqual(yield* child.exitCode, 0)
+	 * ```
+	 *
+	 * @param bin - the built bin to run
+	 * @param args - its arguments
+	 * @param options - the sandbox, the node binary, and the working directory, environment and stdin
+	 */
+	static readonly spawn = (
+		bin: string,
+		args: ReadonlyArray<string>,
+		options: RunOptions,
+	): Effect.Effect<SpawnedBin, PlatformError.PlatformError, ChildProcessSpawner.ChildProcessSpawner | Scope.Scope> =>
+		Effect.gen(function* () {
+			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+			const handle = yield* spawner.spawn(commandOf(bin, args, options));
+			const capture = (stream: Stream.Stream<Uint8Array, PlatformError.PlatformError>) =>
+				Effect.gen(function* () {
+					const ref = yield* SubscriptionRef.make<Captured>({ text: "", done: false });
+					const pump = yield* Stream.decodeText(stream).pipe(
+						Stream.runForEach((chunk) => SubscriptionRef.update(ref, (s) => ({ text: s.text + chunk, done: false }))),
+						Effect.ensuring(SubscriptionRef.update(ref, (s) => ({ text: s.text, done: true }))),
+						Effect.forkScoped,
+					);
+					const lines = SubscriptionRef.changes(ref).pipe(
+						Stream.takeUntil((s) => s.done),
+						Stream.mapAccum(() => 0, linesFrom),
+					);
+					return { ref, pump, lines };
+				});
+			const out = yield* capture(handle.stdout);
+			const err = yield* capture(handle.stderr);
+			const exitCode = Effect.map(handle.exitCode, Number);
+			const spawned: SpawnedBin = {
+				stdout: out.lines,
+				stderr: err.lines,
+				kill: (signal) => handle.kill(signal === undefined ? undefined : { killSignal: signal }),
+				exitCode,
+				result: Effect.gen(function* () {
+					const code = yield* exitCode;
+					yield* Fiber.join(out.pump);
+					yield* Fiber.join(err.pump);
+					return {
+						exitCode: code,
+						stdout: (yield* SubscriptionRef.get(out.ref)).text,
+						stderr: (yield* SubscriptionRef.get(err.ref)).text,
+					};
+				}),
+			};
+			return spawned;
+		});
 }

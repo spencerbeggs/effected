@@ -12,6 +12,7 @@
 * Updated effected
 * Updated Add a kit package
 * Updated walker
+* Updated @effected/engine
 
 ## 2026-10-27
 
