@@ -39,7 +39,7 @@ describe("YamlLint.fix keeps the parsed value of a bare-CR document", () => {
 
 	it("empty-lines does not merge a bare-CR line into a key", () => {
 		const text = `${CR}:${LF}b`;
-		assert.strictEqual(parsedValue(text), JSON.stringify(["b"]));
+		assert.strictEqual(parsedValue(text), parsedValue(`${LF}:${LF}b`));
 		assert.strictEqual(parsedValue(fixed(text)), parsedValue(text));
 	});
 

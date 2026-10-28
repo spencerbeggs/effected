@@ -352,7 +352,9 @@ function decodeDoubleQuoted(raw: string): string {
  * - Leading whitespace (indentation) on continuation lines trimmed
  */
 export function foldFlowLines(text: string): string {
-	const lines = text.split("\n");
+	// Split on `\r\n` as well as `\n`: a `\r` left at a line end survived
+	// the first line's `[ \t]` trim, so `'a\r\n'` decoded to `"a\r "`.
+	const lines = text.split(/\r?\n/);
 	let result = "";
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i] ?? "";

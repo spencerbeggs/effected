@@ -6,6 +6,7 @@
 
 import type { CstNode, CstNodeType } from "./cst.js";
 import { lexAll } from "./lexer.js";
+import { normalizeLineBreaks } from "./line-breaks.js";
 import type { YamlToken } from "./token.js";
 
 // ---------------------------------------------------------------------------
@@ -1092,6 +1093,7 @@ function parseDocuments(tokens: ReadonlyArray<YamlToken>, text: string): CstNode
  * whitespace, comments, and structural indicators. No value interpretation
  * occurs at this stage — `true` is still the string `"true"`.
  */
-export function parseCSTAll(text: string): ReadonlyArray<CstNode> {
+export function parseCSTAll(source: string): ReadonlyArray<CstNode> {
+	const text = normalizeLineBreaks(source);
 	return parseDocuments(lexAll(text), text);
 }
