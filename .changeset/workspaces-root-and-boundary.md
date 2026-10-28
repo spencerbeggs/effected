@@ -2,6 +2,10 @@
 "@effected/workspaces": minor
 ---
 
+## Breaking Changes
+
+* `WORKSPACE_MARKERS` is typed `ReadonlyArray<WorkspaceMarker>` instead of `ReadonlyArray<string>`, so `WORKSPACE_MARKERS.includes(someString)` no longer compiles. Narrow the string first, or widen the array at the call site (`(WORKSPACE_MARKERS as ReadonlyArray<string>).includes(name)`).
+
 ## Features
 
 * `WorkspaceRoot.locate(cwd, options)` answers a `WorkspaceRootMatch` as an Effect, from `FileSystem` and `Path` in `R`. It shares one ascent with `find`, so the two cannot disagree on a root. `WorkspaceRootShape` is unchanged, so hand-written `find` doubles keep compiling.
