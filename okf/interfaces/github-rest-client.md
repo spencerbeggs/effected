@@ -8,7 +8,7 @@ resource: ../../packages/github/src/Rest.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T18:38:13Z
+  at: 2026-10-28T18:51:58Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:33.163Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: e7b1ba9c90667624
+    body: 9c7dcbdde34ac3ce
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -199,11 +199,38 @@ So every request the public raw surface (`request`, `requestDecoded`,
   iterator accepts one), which refuses any page whose URL is on another
   origin before requesting it.
 
+The rules are written once, in `packages/github/src/internal/confinement.ts`
+(`rawRequestRefusal`, `refusedRequest`); the transport supplies octokit's own
+URL expansion to them.
+
 Every refusal is a `GitHubError` of `kind: "rejected"` with no status and
 nothing on the wire, matching `uploadAsset`'s refusal of a foreign upload
 URL. A refused page fails the walk rather than ending it, because a walk that
 stopped early would return a truncated collection as if it were complete.
-The fixture and test doubles do not check: they send nothing.
+
+The shipped doubles, `GitHubClient.makeTest` (and `layerTest`) and
+`GitHubClient.layerFixture`, apply the same functions in front of their four
+raw members, so a consumer's suite on a double sees the refusal production
+would raise. A double has no configured base, so it is held to github.com's
+REST root (`expandOnDotcom` in `internal/octokit.ts`, an octokit instance
+that never sends): an absolute-URL route on a double must name
+`api.github.com`. A refused call never reaches the override, the fixture or
+`fixtures.requested`, as a refused live call never reaches the wire. Only the
+`Link`-header check has no double counterpart, since a double's pages come
+from a recorded array.
+
+### Interrupting a walk aborts its page request
+
+`@octokit/plugin-paginate-rest`'s iterator calls its request function with
+`{ method, url, headers }` only, dropping every request option, so the
+fiber's `AbortSignal` that `Effect.tryPromise` supplies never reached a page
+request: interrupting `paginate` or `paginateStream` left the HTTP request in
+flight. Each `next()` attempt now records its own signal and the confined
+request function merges it into the page it sends as `request: { signal }`,
+the same merge every single request makes. Interrupting a walk aborts the
+in-flight page and requests nothing further
+(`packages/github/__test__/PaginationAbort.test.ts`, over a fetch that never
+resolves).
 
 ### The release-asset upload host comes from the configured base
 

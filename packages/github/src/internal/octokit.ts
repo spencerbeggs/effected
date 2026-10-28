@@ -6,8 +6,9 @@ import { GitHubError, readRateLimitHeaders } from "../GitHubError.js";
 import { GitHubGraphQLError } from "../GraphQL.js";
 import type { RetryPolicy, RetryableFailure } from "../Resilience.js";
 import { RateLimitSnapshot } from "../Resilience.js";
+import type { ExpandRoute } from "./confinement.js";
+import { rawRequestRefusal, refusedRequest, reservedParamReason, routeReason } from "./confinement.js";
 import type { PageSource } from "./paginate.js";
-import { reservedRawParam } from "./requestOptions.js";
 import { DOTCOM_API_BASE_URL, originOf } from "./uploads.js";
 
 /**
@@ -123,6 +124,21 @@ const makeOctokit = (options: TransportOptions): Octokit => {
 	return octokit;
 };
 
+let dotcomExpand: ExpandRoute | undefined;
+
+/**
+ * octokit's URL expansion against github.com's REST root, for the shipped
+ * doubles, which have no transport of their own but must refuse exactly what
+ * an unconfigured live client refuses.
+ *
+ * @remarks
+ * Built on first use, from an octokit instance that never sends anything.
+ */
+export const expandOnDotcom: ExpandRoute = (route, params) => {
+	dotcomExpand ??= new Octokit({ log: SILENT_LOG }).request.endpoint as unknown as ExpandRoute;
+	return dotcomExpand(route, params);
+};
+
 /**
  * Build a transport over a freshly constructed octokit instance.
  *
@@ -178,40 +194,10 @@ export const makeTransport = (options: TransportOptions): Effect.Effect<Transpor
 
 		const apiOrigin = originOf(options.baseUrl ?? DOTCOM_API_BASE_URL);
 
-		// Why `route` with `params` may not be sent to `allowed`, or `undefined`.
-		// The URL checked is the one octokit itself would build — template
-		// expansion, an absolute route and the base all applied — so no spelling
-		// of the route reaches a host this check did not see.
-		const refusal = (
-			route: string,
-			params: Record<string, unknown>,
-			allowed: string | undefined,
-		): string | undefined => {
-			let url: string;
-			try {
-				url = octokit.request.endpoint(route, params).url;
-			} catch {
-				return "the route does not expand to a URL";
-			}
-			if (allowed === undefined) return "the configured base URL is not an absolute URL";
-			const origin = originOf(url);
-			return origin === allowed
-				? undefined
-				: `the route resolves to ${origin ?? "a URL that does not parse"}, not the configured host ${allowed}; refusing to send the token there`;
-		};
-
-		// A reserved request option among the CALLER's params, checked before
-		// anything this module adds.
-		const reservedKey = (params: Record<string, unknown>): string | undefined => {
-			for (const key of Object.keys(params)) {
-				const reason = reservedRawParam(key);
-				if (reason !== undefined) return `the parameter "${key}" ${reason}`;
-			}
-			return undefined;
-		};
-
-		const refused = (operation: string, reason: string): GitHubError =>
-			new GitHubError({ kind: "rejected", operation, reason });
+		// The confinement rules live in `confinement.ts`, shared with the shipped
+		// doubles; this transport supplies octokit's own URL expansion.
+		const expand: ExpandRoute = (route, params) => octokit.request.endpoint(route, params);
+		const refused = refusedRequest;
 
 		const send = <A>(operation: string, route: string, params: Record<string, unknown>) =>
 			withRetry(
@@ -224,14 +210,15 @@ export const makeTransport = (options: TransportOptions): Effect.Effect<Transpor
 
 		const request = <A>(operation: string, route: string, params: Record<string, unknown>) =>
 			Effect.suspend(() => {
-				const reason = reservedKey(params) ?? refusal(route, params, apiOrigin);
+				const reason = rawRequestRefusal(expand, route, params, apiOrigin);
 				return reason !== undefined ? Effect.fail(refused(operation, reason)) : send<A>(operation, route, params);
 			});
 
 		const requestAt = <A>(operation: string, route: string, params: Record<string, unknown>, baseUrl: string) =>
 			Effect.suspend(() => {
 				const target = { ...params, baseUrl };
-				const reason = reservedKey(params) ?? refusal(route, target, originOf(baseUrl));
+				// Reserved keys are checked on the CALLER's params, before `baseUrl` is added.
+				const reason = reservedParamReason(params) ?? routeReason(expand, route, target, originOf(baseUrl));
 				return reason !== undefined ? Effect.fail(refused(operation, reason)) : send<A>(operation, route, target);
 			});
 
@@ -249,13 +236,20 @@ export const makeTransport = (options: TransportOptions): Effect.Effect<Transpor
 			// points, token attached. It accepts a request FUNCTION in place of
 			// the route, so every page it asks for goes through `onApiHost`, which
 			// refuses a page on any origin but the configured one before sending.
-			const reason = reservedKey(params) ?? refusal(route, params, apiOrigin);
+			//
+			// The iterator also drops every request option but `method`, `url` and
+			// `headers`, so the fiber's `AbortSignal` would never reach a page
+			// request and an interrupted walk would leave its HTTP request running.
+			// `attempt` hands each `next()` its own signal; `onApiHost` reads it
+			// back and merges it into the page it sends.
+			const reason = rawRequestRefusal(expand, route, params, apiOrigin);
 			if (reason !== undefined) return { next: Effect.fail(refused(operation, reason)) };
+			let signal: AbortSignal | undefined;
 			const onApiHost = Object.assign(
-				(page: { readonly url: string }) => {
+				(page: Record<string, unknown> & { readonly url: string }) => {
 					const origin = originOf(page.url);
 					return origin === apiOrigin
-						? octokit.request(page as never)
+						? octokit.request((signal === undefined ? page : withSignal(page, signal)) as never)
 						: Promise.reject(new CrossOriginPage(origin, apiOrigin));
 				},
 				{ endpoint: (parameters: Record<string, unknown>) => octokit.request.endpoint(route as never, parameters) },
@@ -272,7 +266,11 @@ export const makeTransport = (options: TransportOptions): Effect.Effect<Transpor
 						: withRetry(
 								operation,
 								attempt(
-									() => iterator.next(),
+									(pageSignal) => {
+										// `next()` calls `onApiHost` synchronously, before its first await.
+										signal = pageSignal;
+										return iterator.next();
+									},
 									(error, now) =>
 										error instanceof CrossOriginPage
 											? refused(operation, error.message)

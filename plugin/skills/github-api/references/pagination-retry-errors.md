@@ -40,6 +40,18 @@ inside `data`, which octokit never reads as an option.
 `GitHubRelease.uploadAsset` reaches the upload host through a private
 channel the built client carries, derived from the configured base.
 
+**The test doubles refuse the same calls.** `GitHubClient.makeTest`,
+`layerTest` and `layerFixture` apply the live client's checks before an
+override or a fixture answers, and fail with the same `kind: "rejected"`
+error. A double has no configured base, so it is held to github.com: an
+absolute-URL route on a double must name `api.github.com`. A refused call is
+not recorded in `fixtures.requested`.
+
+**Interrupting a walk aborts its in-flight page.** `paginate` and
+`paginateStream` hand each page request the fiber's `AbortSignal`, so an
+interrupt (an `Effect.timeout`, a cancelled caller) cancels the HTTP request
+rather than leaving it running, and no further page is requested.
+
 `RestPaginatingRoute` is narrower than `RestRoute` — only the routes GitHub's
 pagination plugin actually knows how to walk. Handing a non-paginating route
 to `client.paginate` is therefore a **compile** error, not a runtime

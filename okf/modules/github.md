@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T18:38:13Z
+  at: 2026-10-28T18:51:58Z
 integrity:
   generated:
-    body: b312969f17babdb0
+    body: 2fe6cf555b486a9e
 ---
 
 # @effected/github
@@ -321,6 +321,12 @@ runnable anywhere.
   that property or the failure gets classified as a transport fault
   instead. octokit percent-encodes path parameters, so assertions run
   against the recorded decoded path rather than the URL.
+- `GitHubClient.makeTest` / `layerTest` and `GitHubClient.layerFixture`
+  refuse what the live client refuses (a reserved `baseUrl` / `url` /
+  `request` / `method` parameter, a top-level `url` body field, a route off
+  github.com's REST root) with the same `kind: "rejected"` error, through
+  the shared `src/internal/confinement.ts`; a refused call is not recorded
+  in `requested`. See [the REST client](../interfaces/github-rest-client.md).
 - One recorded-fixture client double (`GitHubClient.layerFixture`) exists
   and reimplements nothing: it pages recorded arrays through the same
   pagination engine the live layer uses and records the page requests it
