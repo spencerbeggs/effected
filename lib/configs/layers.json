@@ -14,7 +14,6 @@
 		["@effected/oidc", "@effected/webhooks"],
 		[
 			"@effected/commands",
-			"@effected/crypto",
 			"@effected/engine",
 			"@effected/env",
 			"@effected/git",
@@ -34,6 +33,7 @@
 			"@effected/toml",
 			"@effected/yaml"
 		],
+		["@effected/crypto"],
 		["@effected/source"]
 	],
 	"tooling": ["@effected/pnpm-plugin-effect"],

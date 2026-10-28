@@ -1214,6 +1214,7 @@
 		"Fingerprint": "stable sha256 fingerprint of a json value, sorted keys, three-way drift detection applied live desired",
 		"FingerprintError": "handle a value with no canonical json form, bigint cycle map or class instance refused",
 		"Hmac": "compute or verify hmac-sha256 or sha512, hex base64 base64url output, webcrypto",
+		"HttpRedaction": "scrub credentials from a kept http error cause, redact authorization cookie api key headers, redact url userinfo token query, safe HttpClientError request response copy for logs",
 		"SigV4": "sign an aws or s3-compatible request, sigv4 authorization header, signing key",
 		"SigV4PathError": "handle an s3 key or sigv4 path with a dot segment that a url would collapse"
 	},
