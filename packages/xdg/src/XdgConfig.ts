@@ -94,6 +94,14 @@ export class XdgConfig {
 	 * It does **not** create the directory — `ConfigFile.save` already `mkdir -p`s
 	 * the parent of whatever path it is given.
 	 *
+	 * Pair it with `saveTarget: "default"`. Under `firstMatch`, config-file's
+	 * unset `saveTarget` is `"source"`: `save` writes to whichever file the
+	 * resolver found, and {@link XdgConfig.resolver} also searches
+	 * `$XDG_CONFIG_DIRS`, so the found file can be `/etc/xdg/<app>/<filename>`,
+	 * which a normal user cannot write (`EACCES`). `"default"` writes to this
+	 * path instead, in the user's own config directory, which the resolver
+	 * searches first, so the saved file wins the next load.
+	 *
 	 * @example
 	 * ```ts
 	 * import { XdgConfig } from "@effected/xdg";
@@ -105,6 +113,8 @@ export class XdgConfig {
 	 * 	strategy: MergeStrategy.firstMatch<AppShape>(),
 	 * 	resolvers: [XdgConfig.resolver({ filename: "config.json" })],
 	 * 	defaultPath: XdgConfig.savePath("config.json"),
+	 * 	// Never write back into a system file found under $XDG_CONFIG_DIRS.
+	 * 	saveTarget: "default",
 	 * });
 	 * ```
 	 */
