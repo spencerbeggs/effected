@@ -67,9 +67,12 @@ Rules that bite while editing:
   the work).
 - **The protocol is model-checked.** Any change to `runOnceMachine.ts` must
   stay clean in `__test__/RunOnce.model.test.ts` AND at the review's full
-  bounds (scenarios a–h and g0), run offline in a subprocess under a hard
-  timeout. A rule the model cannot reach (it treats a finished process as
-  dead) gets a scripted test in `RunOnce.sync.test.ts`.
+  bounds, whose one definition is `lib/scripts/run-once-model-full.ts`
+  (scenarios a–h and g0 in `once`, `serialize` and both mixed orders, each
+  in a child process under a hard timeout). Run it offline with
+  `pnpm --filter @effected/commands model:full`; it takes tens of minutes
+  and is deliberately not in CI. A rule the model cannot reach (it treats a
+  finished process as dead) gets a scripted test in `RunOnce.sync.test.ts`.
 - **Never let `LocalExec.prefixes` emit an alias**; `parse` recognises the
   aliases, `prefixes` hands out the canonical table only.
 - **`nodeRunSync` captures to files, not pipes** (no `ENOBUFS`) — keep it
