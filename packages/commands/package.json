@@ -29,6 +29,7 @@
 	"scripts": {
 		"build:dev": "node savvy.build.ts --target dev",
 		"build:prod": "node savvy.build.ts --target prod",
+		"model:full": "node --import tsx lib/scripts/run-once-model-full.ts",
 		"prepare": "turbo run build:dev",
 		"types:check": "tsc --noEmit"
 	},

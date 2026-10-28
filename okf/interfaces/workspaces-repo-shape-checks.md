@@ -48,10 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:37:08Z
+  at: 2026-10-28T17:51:20Z
 integrity:
   generated:
-    body: af42fd167ca615c2
+    body: 2cc86c26050119e5
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -171,16 +171,17 @@ exactly (a subpath is another module):
 
 | Flagged | Spared |
 | --- | --- |
-| a named import, aliased or not, `type`-only included, at the imported name | another export of the module, or a local alias named like a forbidden name (`AppConfig as App`) |
+| a named import, aliased or not, `type`-only included, at the imported name, and a string-literal name (`import { "App" as A }`) by its value | another export of the module, or a local alias named like a forbidden name (`AppConfig as App`) |
 | a named re-export, `export { App } from` | the same name from another module |
 | `export * from` and `export * as ns from`, at the `*` | a side-effect import, `import "<module>"` |
-| a member access on a namespace import, `app.App` | another member of the namespace, or `App` on another object |
+| a member access on a namespace binding, `import * as app` or TypeScript's `import app = require(...)`, then `app.App` | another member of the namespace, or `App` on another object |
 | a default import, only when `names` holds `"default"` | comments, strings and template text |
 
 The `detail` is `<name> from <module>` (`*` for an `export *`), and the
 `"forbidImportedNames"` key of `allowRules` waives every such rule for the
 files it names. The rule sees no name taken from a dynamic `import()` or a
-`require()`, no computed member (`app["App"]`), no destructuring of a
+plain `require()` call, no string-literal name written with an escape
+(`"\u0041pp"` is read as its escaped text), no computed member (`app["App"]`), no destructuring of a
 namespace binding (`const { App } = app`), and no namespace passed on whole.
 With no scope analysis, a local that shadows the namespace binding's name
 reads as the binding.
