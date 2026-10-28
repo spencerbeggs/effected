@@ -414,6 +414,7 @@
 	"jsonc": {
 		"Jsonc": "parse and stringify jsonc, edit-adjacent utilities, build jsonc schemas",
 		"JsoncCanonicalizeError": "handle canonicalization failure, malformed value at a json-pointer path",
+		"JsoncCanonicalizeOptions": "lenient fingerprint, accept bigint, omit undefined, honour date tojson, nan as null",
 		"JsoncCanonicalizeErrorCode": "canonicalize-stage error code, rfc 8785 serialization failure mode",
 		"JsoncEdit": "non-mutating text edit, replace offset/length span with content",
 		"JsoncFingerprint": "canonical json serialization rfc 8785, sha-256 content hash, deduplicate or diff json documents",

@@ -12,12 +12,15 @@ sources:
     resource: conversation with the repository owner
     author: human:spencerbeggs
     last_modified: 2026-10-28T00:00:00Z
+  - id: issue-1121
+    resource: https://github.com/spencerbeggs/effected/issues/1121
+    title: "jsonc: a lenient JsoncFingerprint canonicalization mode (bigint, undefined, toJSON)"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T17:01:30Z
+  at: 2026-10-28T17:14:12Z
 integrity:
   generated:
-    body: 684524551bdfe33f
+    body: cd80f00af1b83e74
 ---
 
 # jsonc
@@ -36,9 +39,9 @@ Module-per-concept: `Jsonc.ts` (the facade — a static class over the parser an
 
 ## Engine/facade split
 
-`noImportCycles` is error-level, so the split is structural rather than stylistic — see [the engine/facade split is a cycle firewall](../decisions/jsonc-engine-facade-split.md). `internal/` returns raw records (`{ code, offset, length }` parse errors, `_tag`-discriminated navigate results); the facade materializes `Schema.Class` types and tagged errors from them, deriving each detail's `line`/`character` from its `offset` against the source text — offsets are the engine's single positional currency, and the scanner tracks no line or column of its own.
+`noImportCycles` is error-level, so the split is structural rather than stylistic — see [the engine/facade split is a cycle firewall](../decisions/jsonc-engine-facade-split.md). `internal/` returns raw records (`{ code, offset, length }` parse errors, `_tag`-discriminated navigate results); the facade materializes `Schema.Class` types and tagged errors from them, deriving each detail's `line`/`character` from its `offset` against the source text — offsets are the engine's single positional currency, and the scanner tracks no line or column of its own. An internal module importing a facade module fails the lint; the one permitted edge is `internal/parser.ts` → `JsoncNode.ts`, which is exactly why the depth cap lives in the zero-dependency leaf `internal/limits.ts` — every recursive surface imports one constant without closing a cycle.
 
-The derivation is one `@effected/source` `LineIndex` per parse, built under its `"unicode"` rule: `\n`, `\r\n`, a bare `\r`, U+2028 and U+2029 each end a line. Counting the two separators is a ruling of the owner, for parity with VS Code's `jsonc-parser`, whose scanner this package ports and which treats them as line breaks; it means a position after a separator sits one line below where an LSP client shows it, and a consumer needing LSP positions rebuilds them from `offset` with a default `LineIndex`.[^owner-unicode] An offset at the `\n` of a `\r\n` reads as the end of its line; the hand-rolled loop this replaced answered `character: -1` there. No parse reaches that offset today (the scanner consumes `\r\n` as one token), so the regression test drives the `@internal` materializer `toDetails` directly. `JsoncParseErrorDetail` satisfies `source`'s `SourceLocation` structurally, and not `SourceDiagnostic`, since it carries no `message`; a type-level test pins both. An internal module importing a facade module fails the lint; the one permitted edge is `internal/parser.ts` → `JsoncNode.ts`, which is exactly why the depth cap lives in the zero-dependency leaf `internal/limits.ts` — every recursive surface imports one constant without closing a cycle.
+The derivation is one `@effected/source` `LineIndex` per parse, built under its `"unicode"` rule: `\n`, `\r\n`, a bare `\r`, U+2028 and U+2029 each end a line. Counting the two separators is a ruling of the owner, for parity with VS Code's `jsonc-parser`, whose scanner this package ports and which treats them as line breaks; it means a position after a separator sits one line below where an LSP client shows it, and a consumer needing LSP positions rebuilds them from `offset` with a default `LineIndex`.[^owner-unicode] An offset at the `\n` of a `\r\n` reads as the end of its line; the hand-rolled loop this replaced answered `character: -1` there. No parse reaches that offset today (the scanner consumes `\r\n` as one token), so the regression test drives the `@internal` materializer `toDetails` directly. `JsoncParseErrorDetail` satisfies `source`'s `SourceLocation` structurally, and not `SourceDiagnostic`, since it carries no `message`; a type-level test pins both.
 
 ## Effect-wrapping policy
 
@@ -101,6 +104,17 @@ There is deliberately **no shared-package extraction**: a possible `@effected/te
 
 Canonicalization is deliberately **stricter** than `Jsonc.stringify`: a fingerprint must never silently alter the document it claims to summarize, so every non-JSON value fails typed instead, carrying a JSON-pointer `path` to the offending value. `JsoncCanonicalizeError`'s closed code set: `UnrepresentableValue` (`undefined`, function, symbol, anywhere), `BigIntValue`, `NonFiniteNumber` (`NaN`/`±Infinity`, which RFC 8785 forbids and `JSON.stringify` would silently null), `NonPlainObject` (anything but a plain object or array — `toJSON` methods are deliberately ignored; encode domain values to plain JSON first), `NestingDepthExceeded` (the shared `MAX_NESTING_DEPTH` cap, which also intercepts cyclic values before they can recurse forever), and `InvalidDigest` (about the hashing twins, below, not the document).
 
+That strictness is the **default**, not the only mode. `JsoncCanonicalizeOptions`, an optional last argument to `canonicalizeResult`, `canonicalize`, `hashResult` and `hash`, opts into one lenient rule per value kind, for consumers that hash decoded YAML or other not-quite-JSON values and must keep existing digests stable (okfit's hand-rolled `Canonical.json` asked for it).[^issue-1121] Every rule is inert on plain JSON input, so lenient output equals strict RFC 8785 there byte for byte, and a property test over `Schema.Json` pins it. The rules:
+
+| Option | Default | Lenient value and its rule |
+| --- | --- | --- |
+| `bigint` | `"fail"` (`BigIntValue`) | `"number"`: the bare decimal literal. A `bigint` and the `number` of the same value write the same text. |
+| `undefined` | `"fail"` (`UnrepresentableValue`) | `"omit"`: as `JSON.stringify` — an object member is left out, an array element or a hole is written `null` so indexes never shift. An `undefined` root still fails. |
+| `nonFinite` | `"fail"` (`NonFiniteNumber`) | `"null"`: `NaN` and both infinities are written `null`, as `JSON.stringify` writes them (YAML's `.nan` and `.inf` decode to these). |
+| `toJSON` | `"ignore"` (a `Date` fails `NonPlainObject`) | `"date"`: a `Date`'s `toJSON` only, the same rule `@effected/crypto`'s `Fingerprint` applies. `"all"`: any object's (arrays included), as `JSON.stringify` does. Called once per position with the member key, the index as a string or `""`, never again on its result; the result is canonicalized under the same options, so a `toJSON` returning `undefined` omits its member under `"omit"`. A throwing `toJSON` fails `UnrepresentableValue` at its path, like a throwing getter. |
+
+No option touches functions, symbols, lone surrogates, other non-plain objects, throwing getters or the depth cap. A cycle therefore still lands on `NestingDepthExceeded` under every lenient rule, whether it runs through properties or through successive `toJSON` results. `nonFinite` goes beyond the three knobs the issue named because YAML decodes `.nan`/`.inf` to non-finite numbers, which okfit's serializer writes `null`; without it a concept carrying one would move from "hashed" to "failed". Lone surrogates remain a known gap against okfit's serializer, which escapes them. Lenient output is deterministic JSON text but no longer RFC 8785 canonical JSON: values differing only where a rule applied fingerprint alike.
+
 Hashing requires core's `Crypto.Crypto` service in `R`, and that does not lift the package's tier: `hash`/`hashText` need a real digest backend this pure-tier package does not own, so the sanctioned pattern is a service required in `R` with the backend supplied by the consumer at the edge (`@effect/platform-node`'s `NodeCrypto.layer`, or any `Crypto` layer). This is not a tier violation — the dependency policy governs runtime *dependencies* and IO ownership, not service *requirements* threaded through `R`; jsonc's only runtime dependency is the dependency-free `@effected/source`, and it owns no backend.
 
 The sync hashing twins (`hashResult`/`hashTextResult`) bind the platform in the *caller*, not the package: they take a `JsoncDigest` (`(bytes: Uint8Array) => Uint8Array`) and return a `Result`, so a consumer inside a synchronous host hook (a bundler plugin's `preprocess`, a cache `read`/`write` with no fiber to run an `Effect` in) can fingerprint at all — the same shape as `tsconfig-json`'s `TsconfigLoaderSyncOptions`. They are named `*Result`, never `*Sync`, per the [sync primitive policy](../conventions/sync-primitive-policy.md). A caller-supplied digest can fail two ways a `Crypto` layer cannot — throwing (an unknown algorithm name) or returning the wrong width — and both arrive as a typed `InvalidDigest` at path `""` rather than crashing the synchronous host. The output format is a cross-package guarantee: exactly 64 lowercase hex characters, no algorithm prefix — the same bare-hex vocabulary `sbom`'s `Sha256Digest` schema decodes, so a fingerprint flows downstream into an attestation subject without jsonc taking a dependency edge on `sbom`. `hashText`/`hashTextResult` additionally expose `normalizeEol` for file content that must fingerprint identically across checkout line-ending settings. Equal JSON values canonicalize (and therefore hash) identically regardless of object key order.
@@ -119,3 +133,5 @@ Every Effect class factory is written inline with no exported `*_base` const; th
 
 [^owner-unicode]: The owner ruled on 2026-10-28 that jsonc keeps counting
     U+2028 and U+2029 as line breaks when it adopts `@effected/source`.
+[^issue-1121]: Issue 1121, `jsonc: a lenient JsoncFingerprint canonicalization
+    mode`, filed for okfit's `Canonical.json`.
