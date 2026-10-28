@@ -17,10 +17,10 @@ sources:
     title: "jsonc: a lenient JsoncFingerprint canonicalization mode (bigint, undefined, toJSON)"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T17:14:12Z
+  at: 2026-10-28T18:02:38Z
 integrity:
   generated:
-    body: cd80f00af1b83e74
+    body: e6dd397d02da7d85
 ---
 
 # jsonc
@@ -108,7 +108,7 @@ That strictness is the **default**, not the only mode. `JsoncCanonicalizeOptions
 
 | Option | Default | Lenient value and its rule |
 | --- | --- | --- |
-| `bigint` | `"fail"` (`BigIntValue`) | `"number"`: the bare decimal literal. A `bigint` and the `number` of the same value write the same text. |
+| `bigint` | `"fail"` (`BigIntValue`) | `"number"`: the bare decimal literal. A `bigint` and the `number` of the same value are guaranteed the same text only for a safe integer: past 2^53 a `number` writes its shortest round-trip form (`2 ** 60` → `1152921504606847000`, `2n ** 60n` → `1152921504606846976`) and from `1e21` exponent notation (`1e+21`), while a `bigint` always writes its exact digits. Some larger values coincide (`2 ** 53`, `1e20`); nothing promises it. |
 | `undefined` | `"fail"` (`UnrepresentableValue`) | `"omit"`: as `JSON.stringify` — an object member is left out, an array element or a hole is written `null` so indexes never shift. An `undefined` root still fails. |
 | `nonFinite` | `"fail"` (`NonFiniteNumber`) | `"null"`: `NaN` and both infinities are written `null`, as `JSON.stringify` writes them (YAML's `.nan` and `.inf` decode to these). |
 | `toJSON` | `"ignore"` (a `Date` fails `NonPlainObject`) | `"date"`: a `Date`'s `toJSON` only, the same rule `@effected/crypto`'s `Fingerprint` applies. `"all"`: any object's (arrays included), as `JSON.stringify` does. Called once per position with the member key, the index as a string or `""`, never again on its result; the result is canonicalized under the same options, so a `toJSON` returning `undefined` omits its member under `"omit"`. A throwing `toJSON` fails `UnrepresentableValue` at its path, like a throwing getter. |
