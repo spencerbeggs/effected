@@ -129,6 +129,13 @@ testRule(builtin("empty-lines"), [
 		expected: [],
 	},
 	{
+		// Each blank line folds into the plain scalar as a line break: the value
+		// is `"one\n\n\ntwo"`, and deleting one gave `"one\n\ntwo"`.
+		name: "blank lines inside a multi-line plain scalar are the value's business",
+		input: "a: one\n\n\n\n  two\n",
+		expected: [],
+	},
+	{
 		name: "CRLF: blank lines count as empty and the fix removes both terminator characters",
 		input: "a: 1\r\n\r\n\r\n\r\nb: 2\r\n",
 		expected: [{ line: 3, character: 0, length: 2 }],
