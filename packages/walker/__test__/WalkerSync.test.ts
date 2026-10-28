@@ -8,7 +8,7 @@
 // themselves (marker stop, ambiguity, probes stopping at the hit) are pinned on
 // both sides directly.
 
-import { posix } from "node:path";
+import { posix, win32 } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import type { MemoryFileSystemSeedEntry } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
@@ -301,4 +301,36 @@ describe("Walker.findUpwardAll", () => {
 			assert.deepStrictEqual(none, Option.none());
 		}).pipe(Effect.provide(platform)),
 	);
+});
+
+// A win32 ceiling rooted on the current drive (`\\repo`) is absolute to
+// `win32.isAbsolute` but names a different directory per process drive: the
+// relative-ceiling class, so it dies like one.
+describe("a win32 ceiling rooted on the current drive", () => {
+	const dies = (f: () => unknown, message = /must be an absolute path/): boolean => {
+		try {
+			f();
+			return false;
+		} catch (error) {
+			return error instanceof Error && message.test(error.message);
+		}
+	};
+	it("dies as stopAt and as ascendWithin's ceiling; a drive or UNC ceiling does not", () => {
+		const start = "C:\\repo\\a";
+		for (const ceiling of ["\\repo", "/repo"]) {
+			assert.isTrue(
+				dies(() => Walker.ascendSync(start, { stopAt: ceiling, path: win32 })),
+				`stopAt ${ceiling}`,
+			);
+			assert.isTrue(
+				dies(
+					() => Walker.ascendWithinSync(start, Option.some(ceiling), { fileSystem: syncFs, path: win32 }),
+					/ceiling must be an absolute path/,
+				),
+				`ceiling ${ceiling}`,
+			);
+		}
+		assert.deepStrictEqual(Walker.ascendSync(start, { stopAt: "C:\\repo", path: win32 }), ["C:\\repo\\a", "C:\\repo"]);
+		assert.isFalse(dies(() => Walker.ascendSync("\\\\srv\\share\\a", { stopAt: "\\\\srv\\share", path: win32 })));
+	});
 });

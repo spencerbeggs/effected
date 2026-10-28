@@ -49,7 +49,8 @@ export interface AscendOptions {
 	 *
 	 * Only the CEILING is constrained — a relative `start` is fine and ascends
 	 * to the relative root. Absoluteness is judged by the injected `Path`
-	 * service, so the win32 layer accepts `C:\repo` and posix does not.
+	 * service, so the win32 layer accepts `C:\repo` and posix does not; a
+	 * win32 `\repo`, rooted on whichever drive the process is on, dies too.
 	 *
 	 * Normalization governs the comparison only: the chain `ascend` returns is
 	 * still the lexical one derived from `start`, unrewritten. A ceiling naming

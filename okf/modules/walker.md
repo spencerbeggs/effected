@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:51:47Z
+  at: 2026-10-28T17:53:09Z
 integrity:
   generated:
-    body: fe3c3868daaa7759
+    body: dbfa2cde236f6bb4
 ---
 
 # walker
@@ -105,7 +105,9 @@ resolved against `process.cwd()` — see
 [the ascend ceiling fails closed](../decisions/ascend-ceiling-fails-closed.md)
 for the full reasoning. Only the ceiling is constrained: a relative start
 still ascends to the relative root, and absoluteness is judged by the
-injected `Path`, so a win32 layer accepts `C:\repo`.
+injected `Path`, so a win32 layer accepts `C:\repo`. A win32 `\repo` is
+absolute to `isAbsolute` but names the root of whichever drive the process
+is on, so it dies like a relative ceiling; a UNC `\\server\share` does not.
 
 ## A physical ceiling is ascendWithin
 
@@ -141,11 +143,12 @@ found }`, for a caller that must report an ambiguity rather than have
 ## One upward machine, two drivers
 
 The upward forms and `confineReal` share `internal/upwardMachine.ts`, a
-generator yielding `Exists` and `RealPath` requests over caller-supplied
-path functions, the move the downward walk makes. `internal/upwardDrivers.ts`
-answers through core `FileSystem` (`exists`, `realPath`) or through the
-sync port (`stat` succeeding is existence; `realPath` throwing `ENOENT` is
-absence). Every rule lives in the machine, so `ascendSync`,
+generator yielding `Exists`, `RealPath` and `Present` requests over
+caller-supplied path functions, the move the downward walk makes.
+`internal/upwardDrivers.ts` answers through core `FileSystem` (`exists`,
+`realPath`, `lstat`) or through the sync port (`stat` succeeding is
+existence; `realPath` throwing `ENOENT` is not-found; `lstat` succeeding is
+presence). Every rule lives in the machine, so `ascendSync`,
 `ascendWithinSync`, `ascendToMarkerSync`, `findUpwardSync`,
 `findUpwardAllSync` and `confineRealSync` cannot drift from their `Effect`
 twins, and `__test__/WalkerSync.test.ts` and `ConfineReal.test.ts` run both
@@ -233,7 +236,9 @@ drivers (a stated contract, pinned in `__test__/DescendMatch.test.ts`). A
 resolve against the process working directory, and on win32 an empty
 `cwd` joined with a pattern spelled `C:/x` is the drive path `C:\x` — the
 empty-base class `confineRelative` once had. Absoluteness is judged by the
-injected `Path` or the sync port's `isAbsolute`.
+injected `Path` or the sync port's `isAbsolute` — and on win32 a driveless
+`\repo`, which `isAbsolute` accepts, dies too: it is rooted on whichever
+drive the process is on, process-dependent exactly as `C:repo` is.
 
 By default only files match — a
 symlink counts when it stat-resolves to a file, a dangling symlink does
@@ -349,12 +354,19 @@ candidate is resolved segment by segment, never collapsed lexically first,
 because node's JS `fs.realpath` — what the Node `FileSystem` uses off
 win32 — runs `path.resolve` before resolving links, so `base/link/../x`
 would read as `base/x` while the OS opens the link target's sibling. A
-tail that does not exist yet resolves lexically from its real ancestor
-(what does not exist is not a link). Resolution failures other than
-absence refuse rather than assume, the base itself is `empty` (the
-`confineRelative` ruling), and a relative base is a defect. On win32 a
-drive-relative candidate is `absolute` and a reserved segment is
-`reservedName`; the win32 shapes are tested through memfs's win32 port.
+tail that does not exist yet resolves lexically from its real ancestor,
+but only once its absence is proved: a real path that is not found is
+re-asked without following links (`Present`, an `lstat`), because a
+dangling link is not found too and a write through it creates its target
+wherever it points. A dangling link is `unresolvable` even when its target
+would be inside the base, and a failed `lstat` is `unresolvable` too.
+Resolution failures other than absence refuse rather than assume, the base
+itself is `empty` (the `confineRelative` ruling), and a relative base is a
+defect — on win32 a driveless `\repo` base included. On win32 a
+drive-relative `C:x` or a driveless rooted `\x` candidate is `absolute` and
+a reserved segment is `reservedName`; the win32 shapes are tested through
+memfs's win32 port, and the dangling-link write against a real temporary
+directory in `__test__/e2e/node-sync.e2e.test.ts`.
 
 ## Hardening
 

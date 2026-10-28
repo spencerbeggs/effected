@@ -26,9 +26,17 @@ const TREE: Readonly<Record<string, MemoryFileSystemSeedEntry>> = {
 	// A base reached through a link.
 	"/link": MemoryFileSystem.symlink("/srv"),
 	"/srv/site/locked/secret": "",
+	// Dangling links: a write through one creates its target, wherever that is.
+	"/srv/site/dangling": MemoryFileSystem.symlink("/etc/pwned.txt"),
+	"/srv/site/dangdir": MemoryFileSystem.symlink("/etc/newdir"),
+	"/srv/site/inner-dangling": MemoryFileSystem.symlink("/srv/site/later"),
+	"/srv/site/chain": MemoryFileSystem.symlink("/srv/site/dangling"),
+	"/dangling-base": MemoryFileSystem.symlink("/nowhere"),
 };
 
 const LOCKED = "/srv/site/locked/secret";
+/** Absent, but its presence probe is denied: absence that cannot be proved. */
+const GHOST = "/srv/site/ghost";
 /** A NUL character, spelled so no editor or tool can collapse it. */
 const NUL = String.fromCodePoint(0);
 
@@ -45,12 +53,27 @@ const handle = MemoryFileSystem.makeSync(TREE, {
 						}),
 					)
 				: undefined,
+		lstat: (path: string) =>
+			path === GHOST
+				? Effect.fail(
+						PlatformError.systemError({
+							_tag: "PermissionDenied",
+							module: "FileSystem",
+							method: "lstat",
+							pathOrDescriptor: path,
+						}),
+					)
+				: undefined,
 	},
 });
 const syncFs: WalkerSyncFileSystem = handle.withFaults({
 	sync: {
 		realPath: (path: string) => {
 			if (path === LOCKED) throw MemoryFileSystem.errno("EACCES", "realpath", path);
+			return undefined;
+		},
+		lstat: (path: string) => {
+			if (path === GHOST) throw MemoryFileSystem.errno("EACCES", "lstat", path);
 			return undefined;
 		},
 	},
@@ -153,6 +176,40 @@ describe("confineReal / confineRealSync", () => {
 		}).pipe(Effect.provide(platform)),
 	);
 
+	// A dangling link does not resolve, yet it is not absent: writing through it
+	// creates its target. Absence is only absence when nothing — not even a link —
+	// lives at the path, so every dangling link is refused, its target unverified.
+	it("refuses a path through a dangling link, wherever its target points", () => {
+		both("/srv/site", "dangling", { refused: "unresolvable" });
+		both("/srv/site", "/srv/site/dangling", { refused: "unresolvable" });
+		both("/srv/site", "dangdir/x", { refused: "unresolvable" });
+		both("/srv/site", "dangling/../../etc/z", { refused: "unresolvable" });
+		both("/srv/site", "chain", { refused: "unresolvable" });
+		// Fail closed: a target inside the base is not proved by a link that does not resolve.
+		both("/srv/site", "inner-dangling", { refused: "unresolvable" });
+	});
+
+	// Absence must be proved: a `NotFound` real path whose presence probe fails
+	// is not taken as "nothing here".
+	it("refuses an absent segment whose presence cannot be checked", () => {
+		both("/srv/site", "ghost", { refused: "unresolvable" });
+		both("/srv/site", "ghost/x", { refused: "unresolvable" });
+	});
+
+	it("refuses a base that is a dangling link", () => {
+		both("/dangling-base", "a", { refused: "unresolvable" });
+	});
+
+	it.effect("carries the dangling link's resolution failure as the cause", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(confineReal("/srv/site", "dangling"));
+			assert.strictEqual(error.reason, "unresolvable");
+			assert.instanceOf(error.cause, PlatformError.PlatformError);
+			const sync = confineRealSync("/srv/site", "dangling", ops);
+			assert.isTrue(Result.isFailure(sync) && (sync.failure.cause as { code?: string }).code === "ENOENT");
+		}).pipe(Effect.provide(platform)),
+	);
+
 	it("resolves a base reached through a link", () => {
 		both("/link/site", "og/card.png", { ok: "/srv/site/og/card.png" });
 		both("/link/site", "/srv/site/index.html", { ok: "/srv/site/index.html" });
@@ -181,9 +238,8 @@ describe("confineReal / confineRealSync", () => {
 	});
 });
 
-// memfs's win32 port translates the spelling of the paths it is GIVEN; its
-// `realPath` still answers the volume's POSIX spelling (`/C:/repo`). This adapter
-// respells that answer the way node's win32 `realpath` does, and nothing else.
+// memfs's win32 port takes and answers win32 spellings, `realPath` included
+// (`C:\repo\a.txt`, as node's win32 `realpath` does), so it serves as the port as is.
 const win32Fs = MemoryFileSystem.syncFileSystem(
 	MemoryFileSystem.makeSync({
 		"/C:/repo/a.txt": "",
@@ -192,11 +248,7 @@ const win32Fs = MemoryFileSystem.syncFileSystem(
 	}).volume,
 	{ pathStyle: "win32" },
 );
-const respell = (path: string): string => path.replace(/^\/([A-Za-z]:)(\/|$)/, "$1\\").replaceAll("/", "\\");
-const win32Ops: WalkerSyncOps = {
-	fileSystem: { ...win32Fs, realPath: (path: string) => respell(win32Fs.realPath(path)) },
-	path: win32,
-};
+const win32Ops: WalkerSyncOps = { fileSystem: win32Fs, path: win32 };
 
 describe("confineRealSync on win32 path shapes", () => {
 	const cases: ReadonlyArray<readonly [string, Outcome]> = [
@@ -207,7 +259,10 @@ describe("confineRealSync on win32 path shapes", () => {
 		["link\\..\\out\\s.txt", { refused: "outside" }],
 		["D:\\x", { refused: "outside" }],
 		["\\\\server\\share\\x", { refused: "outside" }],
-		["\\out\\s.txt", { refused: "outside" }],
+		// Driveless rooted: absolute to win32, but on whichever drive the process is on.
+		["\\out\\s.txt", { refused: "absolute" }],
+		["\\repo\\a.txt", { refused: "absolute" }],
+		["/repo/a.txt", { refused: "absolute" }],
 		// Drive-relative: not absolute to win32, not relative to the base either.
 		["C:x", { refused: "absolute" }],
 		["C:", { refused: "absolute" }],
@@ -224,8 +279,13 @@ describe("confineRealSync on win32 path shapes", () => {
 		});
 	}
 
-	// `C:` alone is drive-relative, and the empty base names no drive at all.
+	// `C:` alone is drive-relative, the empty base names no drive at all, and a
+	// driveless `\\repo` names the current drive's root.
 	it("dies on a drive-relative or empty base", () => {
-		for (const base of ["C:", "C:repo", ""]) assert.isTrue("defect" in viaSync(base, "a.txt", win32Ops), base);
+		for (const base of ["C:", "C:repo", "", "\\repo", "/repo", "\\"]) {
+			assert.isTrue("defect" in viaSync(base, "a.txt", win32Ops), base);
+		}
+		// The control: a UNC base names its root, so it is not a defect.
+		assert.isFalse("defect" in viaSync("\\\\server\\share", "a.txt", win32Ops));
 	});
 });
