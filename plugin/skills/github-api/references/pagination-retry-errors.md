@@ -20,7 +20,12 @@ type, whose open index signature would silently accept a misspelled
 parameter as if it were real. These three survive because real call sites
 need exactly them: `headers` for a release asset's content type and an API
 version pin, `mediaType` for a raw content read, `baseUrl` for the uploads
-host a release-asset upload targets.
+host a release-asset upload targets. **The client's configured token goes to
+whatever host `baseUrl` names, with no check**, and the same holds for an
+absolute-URL route such as `"POST https://host/…"`. Never build either from a
+request, a response, a webhook payload or any other untrusted input.
+`GitHubRelease.uploadAsset` derives its host from the configured base for
+exactly this reason.
 
 `RestPaginatingRoute` is narrower than `RestRoute` — only the routes GitHub's
 pagination plugin actually knows how to walk. Handing a non-paginating route
