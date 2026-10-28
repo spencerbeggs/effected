@@ -8,7 +8,7 @@ resource: ../../packages/github/src/Rest.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T18:21:14Z
+  at: 2026-10-28T18:38:13Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:33.163Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: dd4d5dabf75851e1
+    body: e7b1ba9c90667624
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -47,17 +47,16 @@ cast, where an operation-string surface costs a cast at every projection.
 
 Two narrowings against octokit's own surface are deliberate:
 
-- **The parameter type intersects a three-field `RequestExtras` record, not
+- **The parameter type intersects a two-field `RequestExtras` record, not
   octokit's own request parameters.** octokit's own type carries an index
-  signature that would silently accept every typo. The three kept fields are
-  `headers` (an asset content type, a pinned API version), `mediaType`
-  (raw content reads) and `baseUrl` (the upload host) — the ones evidence
-  proves are needed. Everything else a caller might reach for is a real
-  parameter and is already typed. `baseUrl` aims the configured token at
-  whatever host it names, with no check against the client's own base; its
-  TSDoc, and the raw `request` / `requestDecoded` members', say a caller must
-  never fill it from untrusted input. An absolute-URL route string on
-  `requestDecoded` does the same.
+  signature that would silently accept every typo. The two kept fields are
+  `headers` (an asset content type, a pinned API version) and `mediaType`
+  (raw content reads) — the ones evidence proves are needed. Everything else
+  a caller might reach for is a real parameter and is already typed.
+  `baseUrl` was a third field until it was found to aim the configured token
+  at whatever host it named: it is now typed `never` on `Rest.Params` and on
+  `requestDecoded`'s params, so passing one is a compile error. See
+  [the token stays on the configured base](#the-token-stays-on-the-configured-base).
 - **The element type of a paginating route is derived here**, because the
   paginator plugin's own helper — which handles the array-versus-`{
   total_count, items }` split — is not exported. This is what makes a
@@ -167,8 +166,44 @@ of typed fields, or a fixed allowlist (`CodeScanning`'s `SETUP_KEYS`,
 ruleset `rules`, check-run `output`) sit one level down, where octokit reads
 nothing. `client.request` itself is the raw surface: its params are the
 caller's own, and `Rest.RequestExtras` deliberately lets a call set
-`headers`, `mediaType` and `baseUrl` (release-asset uploads use it), so a
-caller must never spread an untrusted map into it.
+`headers` and `mediaType`, so a caller must never spread an untrusted map
+into it. The options that would move the request are refused there at
+runtime, as the next section describes.
+
+### The token stays on the configured base
+
+A client's token goes to the host it was configured with and nowhere else.
+octokit sends a request wherever its options point: a `baseUrl` or `url`
+parameter, an absolute-URL route (`"POST https://host/path"`, sent as
+written), a `{+x}` template expanding to one, or, during pagination, the
+absolute `next` URL of the response's `Link` header (and, for a comparison,
+the response's own URL). `@octokit/plugin-paginate-rest`'s iterator follows
+that URL to any origin with the auth header attached; a scripted fetch
+returning a foreign `Link` header proved it.
+
+So every request the public raw surface (`request`, `requestDecoded`,
+`paginate`, `paginateStream`) makes is confined in the transport
+(`packages/github/src/internal/octokit.ts`):
+
+- A `baseUrl`, `url`, `request` or `method` parameter is refused by name. The
+  list is `OCTOKIT_REQUEST_OPTION_KEYS` in
+  `packages/github/src/internal/requestOptions.ts`, minus the options the raw
+  surface accepts (`headers`, `mediaType`, and `data`, which replaces the body
+  but cannot move it). Only a cast reaches this, since the types exclude them.
+  A body field that octokit would read as an option, such as a webhook
+  configuration's `url`, goes inside `data`.
+- The URL octokit itself would build — `octokit.request.endpoint(route,
+  params).url`, so template expansion, absolute routes and the base are all
+  applied — must be on the configured base's origin.
+- The paginator is handed a request FUNCTION in place of the route (the
+  iterator accepts one), which refuses any page whose URL is on another
+  origin before requesting it.
+
+Every refusal is a `GitHubError` of `kind: "rejected"` with no status and
+nothing on the wire, matching `uploadAsset`'s refusal of a foreign upload
+URL. A refused page fails the walk rather than ending it, because a walk that
+stopped early would return a truncated collection as if it were complete.
+The fixture and test doubles do not check: they send nothing.
 
 ### The release-asset upload host comes from the configured base
 
@@ -183,12 +218,18 @@ URL the client was configured with: absent or `https://api.github.com` →
 the configured base itself, so the token never goes to a host the caller did
 not configure.
 
-The configured base reaches `GitHubRelease` off the public type:
-`makeClientShape` marks the shape it builds with a module-private symbol
-property, which survives a `{ ...client }` spread. A shape the package did not
-build (a hand-written double, `makeTest`, a fixture) carries none and is read
-as github.com. The release's own `uploadUrl` is response data, so it is never
-the route. It is a cross-check: its origin must equal the derived host's, or
+The public surface cannot reach the upload host, since it is confined to the
+API host. `makeClientShape` marks the shape it builds with a module-private
+symbol property carrying an upload channel: the configured base, and a
+request function that sends to `uploadsBaseUrlFor(base)` and is confined to
+that origin. It takes no host from its caller, and only code that imports
+`internal/uploads.ts` can name it. The property survives a `{ ...client }`
+spread, so a spread client uploads through its channel and not through an
+overridden `requestDecoded`. A shape the package did not build (a
+hand-written double, `makeTest`, a fixture) carries none: it is read as
+github.com for the cross-check below, and the upload goes to its own
+`requestDecoded`, so a double records it. The release's own `uploadUrl` is
+response data, so it is never the route. It is a cross-check: its origin must equal the derived host's, or
 the upload fails `kind: "rejected"` with no status before any request. That
 is what refuses a GHES release reached through an unmarked client, rather
 than sending the GHES token to github.com.

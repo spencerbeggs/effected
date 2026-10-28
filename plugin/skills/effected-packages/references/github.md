@@ -63,11 +63,16 @@ parameters and the returned `data` from the route literal alone. No
 property the whole package is organized around, and worth stating to a caller
 tempted to reach for `as`.
 
-- **`Rest.Params<R>`** intersects a three-field `RequestExtras` (`headers`,
-  `mediaType`, `baseUrl`), deliberately not octokit's `RequestParameters` — that
-  carries an index signature and accepts every typo. `baseUrl` sends the
-  client's token to whatever host it names, so never fill it (or an
-  absolute-URL `requestDecoded` route) from untrusted input. `RestData<R>`,
+- **`Rest.Params<R>`** intersects a two-field `RequestExtras` (`headers`,
+  `mediaType`), deliberately not octokit's `RequestParameters` — that carries
+  an index signature and accepts every typo. **The token never leaves the
+  configured base**: there is no `baseUrl` extra (passing one is a compile
+  error), and `request`, `requestDecoded`, `paginate` and `paginateStream`
+  refuse a cast `baseUrl` / `url` / `request` / `method`, an absolute-URL
+  route on another origin, and a pagination `Link` header naming another
+  origin, each as `GitHubError` `kind: "rejected"` with nothing sent. A
+  request to another GitHub host is a second client configured for it; a
+  body field named `url` (a webhook config) goes inside `data`. `RestData<R>`,
   `RestResponse<R>`, `RestRoute`, `RestPaginatingRoute` and `RestItem<R>` are the
   rest of the type vocabulary.
 - **A route outside the generated map goes through `requestDecoded(route,
@@ -198,7 +203,7 @@ tempted to reach for `as`.
   (`[]` clears) and returns the set GitHub **stored**, lowercased — record
   that, not `names`, as applied state. `RepositorySettings` is `RestData<"GET /repos/{owner}/{repo}">`;
   `RepositoryPatch` is the PATCH route's params minus `owner`/`repo` and the
-  `RequestExtras` transport knobs (`headers`, `mediaType`, `baseUrl`);
+  `RequestExtras` transport knobs (`headers`, `mediaType`);
   `GRAPHQL_ONLY_SETTINGS`, `SECURITY_ANALYSIS_STATUS_FIELDS` and
   `transformSecurityAndAnalysis` are the normalization vocabulary.
 - **`repositoryPatch(draft)` / `RepositoryPatchDraft`** — the supported spelling

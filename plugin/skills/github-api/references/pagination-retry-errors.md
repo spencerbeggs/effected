@@ -14,18 +14,31 @@ endpoint map GitHub's own OpenAPI description produces — a caller never names
 a payload type by hand, and the map costs zero runtime bytes since it ships
 as types only.
 
-`RestParams<R>` intersects a **three-field** `RestExtras` (`headers`,
-`mediaType`, `baseUrl`) — never octokit's own, more permissive parameters
-type, whose open index signature would silently accept a misspelled
-parameter as if it were real. These three survive because real call sites
-need exactly them: `headers` for a release asset's content type and an API
-version pin, `mediaType` for a raw content read, `baseUrl` for the uploads
-host a release-asset upload targets. **The client's configured token goes to
-whatever host `baseUrl` names, with no check**, and the same holds for an
-absolute-URL route such as `"POST https://host/…"`. Never build either from a
-request, a response, a webhook payload or any other untrusted input.
-`GitHubRelease.uploadAsset` derives its host from the configured base for
-exactly this reason.
+`RestParams<R>` intersects a **two-field** `RestExtras` (`headers`,
+`mediaType`) — never octokit's own, more permissive parameters type, whose
+open index signature would silently accept a misspelled parameter as if it
+were real. These two survive because real call sites need exactly them:
+`headers` for a release asset's content type and an API version pin,
+`mediaType` for a raw content read.
+
+**A client's token only ever goes to the host it was configured with.**
+There is no `baseUrl` extra: passing one is a compile error. The raw members
+(`request`, `requestDecoded`, `paginate`, `paginateStream`) refuse, with a
+`GitHubError` of `kind: "rejected"`, no status and nothing sent:
+
+- a `baseUrl`, `url`, `request` or `method` parameter that arrives through a
+  cast;
+- a route that resolves to another origin, whether absolute
+  (`"POST https://host/…"`) or expanded from a template;
+- during a paginated walk, a `Link` header whose next page names another
+  origin. The walk fails rather than stopping, because a stopped walk would
+  hand back a truncated collection as if it were complete.
+
+To reach another GitHub host, build a second client configured for it. A
+route whose body has a field named `url` (a webhook configuration) sends it
+inside `data`, which octokit never reads as an option.
+`GitHubRelease.uploadAsset` reaches the upload host through a private
+channel the built client carries, derived from the configured base.
 
 `RestPaginatingRoute` is narrower than `RestRoute` — only the routes GitHub's
 pagination plugin actually knows how to walk. Handing a non-paginating route

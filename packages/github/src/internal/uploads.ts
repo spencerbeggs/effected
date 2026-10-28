@@ -8,14 +8,45 @@
 // methods` hard-codes the github.com host for this route and leaves GHES to
 // the caller, which is how a GHES client once sent its token to github.com.
 
+import type { Effect, Schema } from "effect";
+import type { GitHubError } from "../GitHubError.js";
+
 /** The upload host on github.com. @internal */
 export const DOTCOM_UPLOADS_BASE_URL = "https://uploads.github.com";
 
-const DOTCOM_API_BASE_URL = "https://api.github.com";
+/** The REST root on github.com, and the base of a client configured with none. @internal */
+export const DOTCOM_API_BASE_URL = "https://api.github.com";
 const GHES_REST_SUFFIX = "/api/v3";
 
 /**
- * The configured base URL, carried on the client shape under a key only this
+ * The release-asset upload channel of a client this package built: the base
+ * URL it was configured with, and a module-private request function that
+ * reaches the upload host derived from it.
+ *
+ * @remarks
+ * The public request surface refuses every host but the configured API host,
+ * so an upload to `uploads.github.com` cannot go through it. This is the one
+ * way to that host, and only this package can name it: `upload` takes no
+ * base URL, it derives the host from the configured base itself.
+ *
+ * @internal
+ */
+export interface UploadChannel {
+	/** The base URL the client was configured with; `undefined` for github.com. */
+	readonly baseUrl: string | undefined;
+	/**
+	 * One request to the upload host derived from `baseUrl`, decoded against
+	 * `schema`. Refused, with nothing sent, when the route resolves anywhere else.
+	 */
+	readonly upload: <A, I>(
+		route: string,
+		params: Record<string, unknown>,
+		schema: Schema.Codec<A, I>,
+	) => Effect.Effect<A, GitHubError>;
+}
+
+/**
+ * The upload channel, carried on the client shape under a key only this
  * package can name.
  *
  * @remarks
@@ -24,30 +55,29 @@ const GHES_REST_SUFFIX = "/api/v3";
  * It is not on `GitHubClientShape`, so the public surface does not grow, and a
  * module-private `Symbol` (not `Symbol.for`) cannot be forged from outside.
  */
-const CONFIGURED_BASE_URL: unique symbol = Symbol("@effected/github/configuredBaseUrl");
+const UPLOAD_CHANNEL: unique symbol = Symbol("@effected/github/uploadChannel");
 
 interface Carrier {
-	readonly [CONFIGURED_BASE_URL]?: { readonly baseUrl: string | undefined };
+	readonly [UPLOAD_CHANNEL]?: UploadChannel;
 }
 
 /**
- * Mark a client shape built by this package with the base URL it was built for.
+ * Mark a client shape built by this package with its upload channel.
  *
  * @internal
  */
-export const withConfiguredBaseUrl = <S extends object>(shape: S, baseUrl: string | undefined): S =>
-	Object.assign(shape, { [CONFIGURED_BASE_URL]: { baseUrl } });
+export const withUploadChannel = <S extends object>(shape: S, channel: UploadChannel): S =>
+	Object.assign(shape, { [UPLOAD_CHANNEL]: channel });
 
 /**
- * The base URL a client was configured with, as `{ baseUrl }` when this
- * package built it, or `undefined` for a shape built elsewhere (a hand-written
- * double, `GitHubClient.makeTest`, a fixture). `{ baseUrl: undefined }` means
- * "built here, for github.com", which is not the same as "not built here".
+ * The upload channel of a client this package built, or `undefined` for a
+ * shape built elsewhere (a hand-written double, `GitHubClient.makeTest`, a
+ * fixture). A channel whose `baseUrl` is `undefined` means "built here, for
+ * github.com", which is not the same as "not built here".
  *
  * @internal
  */
-export const configuredBaseUrlOf = (client: object): { readonly baseUrl: string | undefined } | undefined =>
-	(client as Carrier)[CONFIGURED_BASE_URL];
+export const uploadChannelOf = (client: object): UploadChannel | undefined => (client as Carrier)[UPLOAD_CHANNEL];
 
 /** `url` with every trailing slash removed — a loop, not a regex. */
 const trimTrailingSlashes = (url: string): string => {

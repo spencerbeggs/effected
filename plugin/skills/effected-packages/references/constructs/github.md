@@ -136,7 +136,7 @@
 | `RepositoryVariable` | Class | Create or update, list and delete Actions variables on a repository and on its environments. | create update list and delete a repository or environment variable, github actions variables |
 | `RepositoryVariableShape` | Interface | Create or update, list and delete Actions variables on a repository and on its environments. | |
 | `RestData` | TypeAlias | The `data` payload `Route` returns. | |
-| `RestExtras` | Interface | Transport knobs octokit accepts on any route, narrowed to the three this package allows. | |
+| `RestExtras` | Interface | Transport knobs octokit accepts on any route, narrowed to the two this package allows. | |
 | `RestItem` | TypeAlias | One element of a paginating route's collection. | |
 | `RestPaginatingRoute` | TypeAlias | The subset of routes that paginate. | |
 | `RestParams` | TypeAlias | The parameters `Route` accepts — path, query and body parameters from GitHub's OpenAPI description, plus the extras below. | |

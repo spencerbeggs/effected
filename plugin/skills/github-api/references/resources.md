@@ -134,8 +134,10 @@ request. `client.graphql` sends its variables inside a
 `{ query, variables }` body, so a variable named `baseUrl` or `headers` stays
 a variable; octokit's own `graphql` method reads those names as request
 options. `client.request` is the raw surface: its `Rest.RequestExtras`
-(`headers`, `mediaType`, `baseUrl`) are real options, so never spread an
-untrusted map into its params; pass it as `data` when the route has a body.
+(`headers`, `mediaType`) are real options, so never spread an untrusted map
+into its params; pass it as `data` when the route has a body. An option that
+would move the request (`baseUrl`, `url`, `request`, `method`) is refused
+there with a `rejected` `GitHubError` and nothing sent.
 
 ## `GitHubContent`
 

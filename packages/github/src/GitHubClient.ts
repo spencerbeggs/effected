@@ -6,7 +6,7 @@ import { GitHubGraphQLError } from "./GraphQL.js";
 import { DEFAULT_API_VERSION, makeTransport } from "./internal/octokit.js";
 import { fromArray, paginate } from "./internal/paginate.js";
 import { unstubbed } from "./internal/unstubbed.js";
-import { withConfiguredBaseUrl } from "./internal/uploads.js";
+import { uploadsBaseUrlFor, withUploadChannel } from "./internal/uploads.js";
 import type { RateLimitSnapshot } from "./Resilience.js";
 import { RetryPolicy } from "./Resilience.js";
 import type * as Rest from "./Rest.js";
@@ -33,10 +33,10 @@ export interface GitHubClientShape {
 	 * One request. The route types both the parameters and the returned `data`.
 	 *
 	 * @remarks
-	 * The request carries this client's token to the configured base URL,
-	 * unless the parameters' `baseUrl` names another host: then the token goes
-	 * there instead. Never fill `baseUrl` from untrusted input — see
-	 * {@link RestExtras.baseUrl}.
+	 * The request carries this client's token to the configured base URL and
+	 * nowhere else. A `baseUrl` or `url` parameter (through a cast), or a
+	 * route that resolves to another origin, fails `kind: "rejected"` with no
+	 * status and nothing sent.
 	 *
 	 * @example
 	 * ```ts
@@ -67,15 +67,17 @@ export interface GitHubClientShape {
 	 * `X-GitHub-Api-Version` puts the response on a contract the generated types
 	 * do not describe.
 	 *
-	 * The token goes to the configured base URL unless the parameters' `baseUrl`
-	 * names another host, or `route` itself is an absolute URL
-	 * (`"POST https://host/path"`, which octokit sends as written). Either one
-	 * sends the token to that host, so neither may come from untrusted input —
-	 * see {@link RestExtras.baseUrl}.
+	 * The token goes to the configured base URL and nowhere else. An
+	 * absolute-URL route (`"POST https://host/path"`, which octokit would send
+	 * as written) on another origin, a `baseUrl`, `url`, `request` or `method`
+	 * parameter, or a template that expands to another host fails
+	 * `kind: "rejected"` with no status and nothing sent. A body field octokit
+	 * would otherwise read as an option, such as a webhook configuration's
+	 * `url`, goes inside `data`, which is sent as the whole body.
 	 */
 	readonly requestDecoded: <A, I>(
 		route: string,
-		params: Record<string, unknown> & Rest.RequestExtras,
+		params: Record<string, unknown> & Rest.RequestExtras & { readonly baseUrl?: never },
 		schema: Schema.Codec<A, I>,
 	) => Effect.Effect<A, GitHubError>;
 
@@ -84,6 +86,12 @@ export interface GitHubClientShape {
 	 *
 	 * @remarks
 	 * Handing this a non-paginating route is a compile error.
+	 *
+	 * Every page goes to the configured host. A route or parameter that
+	 * resolves elsewhere is refused before the first request, and a `Link`
+	 * header whose next page names another origin fails the walk
+	 * `kind: "rejected"` before that page is requested, rather than sending the
+	 * token there or ending the walk early as if the collection were complete.
 	 */
 	readonly paginate: <R extends Rest.PaginatingRoute>(
 		route: R,
@@ -96,7 +104,8 @@ export interface GitHubClientShape {
 	 *
 	 * @remarks
 	 * Lazy in requests: a downstream `Stream.take` stops the walk rather than
-	 * filtering pages that were already fetched.
+	 * filtering pages that were already fetched. Confined to the configured
+	 * host exactly as {@link GitHubClientShape.paginate} is.
 	 */
 	readonly paginateStream: <R extends Rest.PaginatingRoute>(
 		route: R,
@@ -555,19 +564,35 @@ export const makeClientShape = (
 			return response.data;
 		});
 
+		const decodeWith =
+			<A, I>(route: string, schema: Schema.Codec<A, I>) =>
+			(data: unknown): Effect.Effect<A, GitHubError> =>
+				Schema.decodeUnknownEffect(schema)(data).pipe(
+					Effect.catchTag("SchemaError", (error) =>
+						Effect.fail(GitHubError.decode(route, "response did not match its schema", error)),
+					),
+				);
+
 		const requestDecoded = Effect.fn("GitHubClient.requestDecoded")(function* <A, I>(
 			route: string,
-			params: Record<string, unknown> & Rest.RequestExtras,
+			params: Record<string, unknown> & Rest.RequestExtras & { readonly baseUrl?: never },
 			schema: Schema.Codec<A, I>,
 		) {
 			yield* Effect.annotateCurrentSpan({ route });
 			const response = yield* transport.request<unknown>(route, route, params);
-			return yield* Schema.decodeUnknownEffect(schema)(response.data).pipe(
-				Effect.catchTag("SchemaError", (error) =>
-					Effect.fail(GitHubError.decode(route, "response did not match its schema", error)),
-				),
-			);
+			return yield* decodeWith(route, schema)(response.data);
 		});
+
+		// The release-asset upload channel: the one request that leaves the API
+		// host, to the upload host derived from the CONFIGURED base. It is not on
+		// the public shape; `GitHubRelease.uploadAsset` reaches it through the
+		// module-private carrier in `internal/uploads.ts`. The span is the
+		// caller's (`GitHubRelease.uploadAsset`).
+		const uploadsBaseUrl = uploadsBaseUrlFor(options.baseUrl);
+		const upload = <A, I>(route: string, params: Record<string, unknown>, schema: Schema.Codec<A, I>) =>
+			Effect.flatMap(transport.requestAt<unknown>(route, route, params, uploadsBaseUrl), (response) =>
+				decodeWith(route, schema)(response.data),
+			);
 
 		const paginateStream = <R extends Rest.PaginatingRoute>(
 			route: R,
@@ -607,9 +632,9 @@ export const makeClientShape = (
 			);
 		});
 
-		// Carry the configured base on the shape, off its public type, so the
-		// release-asset upload derives its host from it (`internal/uploads.ts`).
-		return withConfiguredBaseUrl(
+		// Carry the upload channel on the shape, off its public type
+		// (`internal/uploads.ts`).
+		return withUploadChannel(
 			{
 				request,
 				requestDecoded,
@@ -619,7 +644,7 @@ export const makeClientShape = (
 				rateLimit: transport.rateLimit,
 				apiVersion,
 			},
-			options.baseUrl,
+			{ baseUrl: options.baseUrl, upload },
 		);
 	});
 
