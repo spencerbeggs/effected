@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T00:20:13Z
+  at: 2026-10-28T16:45:13Z
 integrity:
   generated:
-    body: ba193af819eb31fe
+    body: 9ced4999542b991f
 ---
 
 # effected
@@ -59,6 +59,7 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `github` | integrated | port-with-redesign of `@savvy-web/github-action-effects`'s GitHub half |
 | `github-references` | pure | extraction from `github`; the issue-reference grammar as pure functions |
 | `github-commands` | pure | extraction from `github-actions`; the workflow-command grammar (`WorkflowCommand`, and `CommandNeutralizer`, the runner's two-parser rule) as pure functions; a regular dependency of `github-actions` and `cli` |
+| `source` | pure | extraction of the line/character conversion `jsonc`, `yaml`, `toml` and `markdown` each hand-rolled; `LineIndex` (offset to LSP-style zero-based `{ line, character }` and back) and the structural `SourcePosition`/`SourceRange`/`SourceSpan`/`SourceLocation`/`SourceDiagnostic` shapes, no dependency at all; a regular dependency for its adopters |
 | `github-actions` | integrated | port-with-redesign of the same package's Actions half |
 | `sbom` | integrated | port-with-redesign of the same package's `Attest` knot |
 | `schemastore` | boundary (integrated 2026-08-04 → 2026-09-15) | invention; SchemaStore-shaped JSON Schema documents from Effect Schema sources |
@@ -72,7 +73,7 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `webhooks` | boundary | extraction from `savvy-web/build` intake; inbound webhook signature verification presets (Standard Webhooks, GitHub, Stripe, Sanity, HMAC header, shared secret) over `crypto` |
 | `pnpm-plugin-effect` | companion — no tier | invention; publishes the Effect catalogs the kit pins against |
 
-The roster is **42 packages**: 40 libraries and two companions (`pnpm-plugin-effect` and `schemastore-cli`). All but `crypto`, `oidc` and `webhooks`, the newest, have published.
+The roster is **43 packages**: 41 libraries and two companions (`pnpm-plugin-effect` and `schemastore-cli`). All but `crypto`, `oidc`, `webhooks` and `source`, the newest, have published.
 
 ### Consumers
 
