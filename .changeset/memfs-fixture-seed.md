@@ -16,3 +16,4 @@
 ### Security
 
 * `NodeDirectorySeed` closes two escape paths. A link's target is resolved one segment at a time against the real filesystem, following every link on the way, so a dangling link can no longer escape through a lexical check (`sub/up -> ..`, `sub/out -> up/../nope`); a link that leaves the fixture throws `ERR_SEED_SYMLINK_ESCAPE`. A file is read through `O_NOFOLLOW` and checked by `fstat` against the walk's `lstat` (device and inode), so a file swapped for a link or grown past `maxFileBytes` between the check and the read throws `ERR_SEED_CHANGED`.
+* `NodeDirectorySeed.read` re-checks a directory before listing it, so a directory swapped for a link (or for another directory) between the walk's check and its listing throws `ERR_SEED_CHANGED`; `mountAt` is trimmed in linear time.
