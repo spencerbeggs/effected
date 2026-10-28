@@ -1,3 +1,4 @@
+import { HttpRedaction } from "@effected/crypto";
 import { Context, DateTime, Effect, Layer, Option, Redacted, Schema } from "effect";
 import type { HttpClientError } from "effect/http";
 import { HttpClient } from "effect/http";
@@ -253,7 +254,13 @@ export interface NpmRegistryShape {
 
 /** Builds the service over an already-resolved `HttpClient`. */
 const make = Effect.fnUntraced(function* () {
-	const client = yield* HttpClient.HttpClient;
+	// Redirects are followed here rather than left to the client, so the
+	// origin-change rule (core drops `authorization`, `proxy-authorization`
+	// and `cookie` on a redirect to another origin) holds for every client a
+	// consumer provides, the same rule `PackageTarball` applies. A client that
+	// already follows redirects (fetch by default) never returns a 3xx, so this
+	// adds nothing there.
+	const client = HttpClient.followRedirects(yield* HttpClient.HttpClient);
 
 	/**
 	 * Fetches and decodes one registry document, mapping absence to `None`.
@@ -290,7 +297,11 @@ const make = Effect.fnUntraced(function* () {
 			})
 			.pipe(
 				Effect.catch((cause: HttpClientError.HttpClientError) =>
-					Effect.fail(new RegistryReadError({ kind: "transport", package: name, registry, cause })),
+					// Redacted where it is kept: core's error holds the live request,
+					// `authorization` header included, as a readable field.
+					Effect.fail(
+						new RegistryReadError({ kind: "transport", package: name, registry, cause: HttpRedaction.cause(cause) }),
+					),
 				),
 				Effect.flatMap((response) => {
 					if (response.status === 404) return Effect.succeed(Option.none<A>());
@@ -303,7 +314,9 @@ const make = Effect.fnUntraced(function* () {
 						Effect.flatMap((body) => Schema.decodeUnknownEffect(schema)(body)),
 						Effect.map(Option.some),
 						Effect.catch((cause) =>
-							Effect.fail(new RegistryReadError({ kind: "decode", package: name, registry, cause })),
+							Effect.fail(
+								new RegistryReadError({ kind: "decode", package: name, registry, cause: HttpRedaction.cause(cause) }),
+							),
 						),
 					);
 				}),
@@ -466,6 +479,14 @@ export interface RegistrySeed {
  * rather than a bare string. Failures are {@link RegistryReadError}. The live
  * {@link NpmRegistry.layer} requires `HttpClient`; tests use
  * {@link NpmRegistry.layerSeeded} or {@link NpmRegistry.layerTest}.
+ *
+ * Redirects are followed (up to ten) by the service itself, whichever client
+ * is provided. A redirect to another origin (a different scheme, host or
+ * port) drops the `Authorization` header before the next request, so a
+ * registry that hands a read off to a mirror or CDN never forwards the
+ * credential; a same-origin redirect keeps it. A failure's `cause` is a
+ * redacted copy of core's `HttpClientError`: method, URL, status and
+ * response headers survive, the credential does not.
  *
  * @example
  * ```ts

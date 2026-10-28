@@ -76,7 +76,7 @@ export {
 	WorkspacePatternError,
 } from "./WorkspaceDiscovery.js";
 export { LayerEdge, type LayeringGraph, LayeringReport, WorkspaceLayering } from "./WorkspaceLayering.js";
-export { WorkspaceMarker } from "./WorkspaceMarker.js";
+export { WorkspaceMarker, WorkspaceRootMatch } from "./WorkspaceMarker.js";
 export { type DependencyDiff, PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./WorkspacePackage.js";
 export {
 	type FindWorkspaceRootOptions,

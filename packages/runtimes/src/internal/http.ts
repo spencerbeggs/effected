@@ -6,6 +6,7 @@
 // `NetworkError` / `ResponseParseError`. That is what keeps this module
 // importable from every direction without an import cycle.
 
+import { HttpRedaction } from "@effected/crypto";
 import type { Schema } from "effect";
 import { Duration, Effect, Schedule } from "effect";
 import { HttpClient } from "effect/http";
@@ -98,14 +99,16 @@ export const getJson = <A, I>(
 
 		const response = yield* client
 			.get(url, { headers })
-			.pipe(Effect.mapError((cause): HttpFailure => ({ _kind: "network", url, cause })));
+			// Every kept cause is redacted: core's error holds the live request,
+			// the GitHub token's `authorization` header included, as a readable field.
+			.pipe(Effect.mapError((cause): HttpFailure => ({ _kind: "network", url, cause: HttpRedaction.cause(cause) })));
 
 		if (response.status < 200 || response.status >= 300) {
 			return yield* Effect.fail(failureForStatus(url, response.status, response.headers));
 		}
 
 		return yield* HttpClientResponse.schemaBodyJson(schema)(response).pipe(
-			Effect.mapError((cause): HttpFailure => ({ _kind: "parse", source: url, cause })),
+			Effect.mapError((cause): HttpFailure => ({ _kind: "parse", source: url, cause: HttpRedaction.cause(cause) })),
 		);
 	});
 

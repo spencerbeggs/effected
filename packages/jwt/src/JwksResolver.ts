@@ -1,3 +1,4 @@
+import { HttpRedaction } from "@effected/crypto";
 import { Cause, Clock, Context, Duration, Effect, Layer, Option, Schema, Semaphore, Stream } from "effect";
 import type { HttpClientResponse } from "effect/http";
 import { HttpClient } from "effect/http";
@@ -50,8 +51,11 @@ const maxBodyBytes = 1024 * 1024;
 const Discovery = Schema.Struct({ issuer: Schema.String, jwks_uri: Schema.String });
 const RawKeys = Schema.Struct({ keys: Schema.Array(Schema.Unknown) });
 
+// Every kept cause is redacted: core's `HttpClientError` holds the live
+// request as a readable field, so an `authorization` header a consumer's
+// client adds (an authenticated JWKS endpoint) would ride along otherwise.
 const fetchFailed = (detail: string, cause?: unknown) =>
-	JwtError.of("jwksFetch", detail, cause === undefined ? undefined : { cause });
+	JwtError.of("jwksFetch", detail, cause === undefined ? undefined : { cause: HttpRedaction.cause(cause) });
 
 // Core's client reads a response body whole (`json`, `text`) with no limit,
 // so the body is read from the stream and refused past `maxBodyBytes`.

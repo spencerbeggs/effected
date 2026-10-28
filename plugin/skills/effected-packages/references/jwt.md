@@ -1,6 +1,6 @@
 # @effected/jwt
 
-Sign and verify compact JWS tokens, validate JWT claims, import keys, and resolve verification keys from an issuer's JWKS — over WebCrypto, so it runs anywhere WebCrypto does: Node, browsers and Cloudflare workerd. Boundary tier: no `node:` import, no runtime dependency, and `effect` is the only peer. `JwksResolver` needs an `HttpClient` and a `JwksStore` in `R`; everything else needs nothing.
+Sign and verify compact JWS tokens, validate JWT claims, import keys, and resolve verification keys from an issuer's JWKS — over WebCrypto, so it runs anywhere WebCrypto does: Node, browsers and Cloudflare workerd. Boundary tier: no `node:` import, `@effected/crypto` (WebCrypto-only, workerd-safe) as its only runtime dependency, and `effect` is the only peer. `JwksResolver` needs an `HttpClient` and a `JwksStore` in `R`; everything else needs nothing.
 
 ## Import
 

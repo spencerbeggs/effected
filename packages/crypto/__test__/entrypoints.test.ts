@@ -45,6 +45,7 @@ describe("root entrypoint", () => {
 			"Fingerprint",
 			"FingerprintError",
 			"Hmac",
+			"HttpRedaction",
 			"SigV4",
 			"SigV4PathError",
 		]);
@@ -63,6 +64,7 @@ describe("root entrypoint", () => {
 		assert.isTrue(reachable.some((file) => file.endsWith("internal/subtle.ts")));
 		assert.isTrue(reachable.some((file) => file.endsWith("SigV4.ts")));
 		assert.isTrue(reachable.some((file) => file.endsWith("internal/canonical.ts")));
+		assert.isTrue(reachable.some((file) => file.endsWith("HttpRedaction.ts")));
 		const nodeImports = reachable.flatMap((file) =>
 			specifiersOf(file)
 				.filter((specifier) => specifier.startsWith("node:"))

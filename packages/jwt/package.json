@@ -32,6 +32,9 @@
 		"prepare": "turbo run build:dev",
 		"types:check": "tsc --noEmit"
 	},
+	"dependencies": {
+		"@effected/crypto": "workspace:^"
+	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effect",
 		"@effect/vitest": "catalog:effect",

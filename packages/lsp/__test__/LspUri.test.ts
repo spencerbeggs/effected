@@ -268,14 +268,129 @@ describe("LspUri.fromPath device and namespace paths", () => {
 	});
 });
 
+// The superscript digits win32 also reads as COM/LPT port numbers.
+const SUPERSCRIPTS = [0xb9, 0xb2, 0xb3].map((code) => String.fromCodePoint(code));
+
+describe("LspUri DOS device names, alternate data streams and trimmed segments (win32)", () => {
+	// The same set as @effected/walker's win32 reservedName check, plus a
+	// segment ending in a dot or a space (walker refuses only an all-dots-and-
+	// spaces segment).
+	const refused = [
+		"con",
+		"CON",
+		"Prn",
+		"aux",
+		"nul",
+		"con.txt",
+		"NUL.tar.gz",
+		"con .txt",
+		"con ",
+		"conin$",
+		"CONOUT$",
+		...Array.from({ length: 10 }, (_, digit) => `com${digit}`),
+		...Array.from({ length: 10 }, (_, digit) => `LPT${digit}`),
+		...SUPERSCRIPTS.flatMap((digit) => [`com${digit}`, `lpt${digit}.log`]),
+		"b:stream",
+		"b::$DATA",
+		"a.",
+		"a ",
+		"...",
+		". ",
+	];
+	const accepted = ["console", "nul_", "com", "com10", "lpt", "a.b", "con-x.txt", "auxiliary", ".a", " a"];
+
+	it("fromPath throws for a refused segment in any position, drive or UNC", () => {
+		for (const segment of refused) {
+			for (const path of [`C:\\${segment}`, `C:\\a\\${segment}\\b`, `\\\\server\\share\\${segment}`]) {
+				assert.throws(() => LspUri.fromPath(path, win32), TypeError, undefined, JSON.stringify(path));
+			}
+		}
+		assert.throws(() => LspUri.fromPath("\\\\server\\con\\a", win32), TypeError, "DOS device");
+		assert.throws(() => LspUri.fromPath("C:\\a\\b:stream", win32), TypeError, "alternate data stream");
+		assert.throws(() => LspUri.fromPath("C:\\a.", win32), TypeError, "dot or a space");
+	});
+
+	it("toPath answers none for a refused segment, raw or percent-encoded", () => {
+		for (const segment of refused) {
+			const encoded = encodeURIComponent(segment);
+			for (const uri of [
+				`file:///c:/${encoded}`,
+				`file:///C:/a/${encoded}/b`,
+				`file://server/share/${encoded}`,
+				`file://server/${encoded}/x`,
+			]) {
+				assert.deepStrictEqual(LspUri.toPath(uri, win32), none, uri);
+			}
+		}
+		assert.deepStrictEqual(LspUri.toPath("file:///c:/con", win32), none);
+		assert.deepStrictEqual(LspUri.toPath("file:///c:/a/b:stream", win32), none);
+		assert.deepStrictEqual(LspUri.toPath("file:///c:/a/b%3Astream", win32), none);
+	});
+
+	it("accepts names that only resemble a device, and checks segments after dot removal", () => {
+		for (const segment of accepted) {
+			assert.deepStrictEqual(
+				LspUri.toPath(LspUri.fromPath(`C:\\a\\${segment}`, win32), win32),
+				some(`c:\\a\\${segment}`),
+			);
+		}
+		// The drive's own colon, and `.`/`..` segments both directions remove.
+		assert.strictEqual(LspUri.fromPath("C:\\a\\.\\b\\..\\c", win32), "file:///c:/a/c");
+		assert.strictEqual(LspUri.fromPath("C:\\con\\..\\a", win32), "file:///c:/a");
+		assert.deepStrictEqual(LspUri.toPath("file:///c:/con/../a", win32), some("c:\\a"));
+	});
+
+	it("leaves posix paths alone: none of these are special there", () => {
+		for (const segment of ["con", "nul.txt", "b:stream", "a.", "a "]) {
+			const path = `/a/${segment}`;
+			assert.deepStrictEqual(LspUri.toPath(LspUri.fromPath(path)), some(path));
+		}
+	});
+});
+
+describe("LspUri UNC paths on a server named localhost (win32)", () => {
+	it("writes the host inside the path, so the round trip holds", () => {
+		assert.strictEqual(LspUri.fromPath("\\\\localhost\\share\\x", win32), "file:////localhost/share/x");
+		assert.strictEqual(LspUri.fromPath("\\\\LocalHost\\share", win32), "file:////localhost/share");
+		assert.deepStrictEqual(LspUri.toPath("file:////localhost/share/x", win32), some("\\\\localhost\\share\\x"));
+		assert.deepStrictEqual(
+			LspUri.toPath(LspUri.fromPath("\\\\localhost\\share\\x", win32), win32),
+			some("\\\\localhost\\share\\x"),
+		);
+		// A server that only starts like localhost keeps the host form.
+		assert.strictEqual(LspUri.fromPath("\\\\localhost2\\share\\x", win32), "file://localhost2/share/x");
+	});
+
+	it("reads file://localhost/share/x as the local machine, which has no such path", () => {
+		assert.deepStrictEqual(LspUri.toPath("file://localhost/share/x", win32), none);
+		assert.deepStrictEqual(LspUri.toPath("file://LOCALHOST/c:/a", win32), some("c:\\a"));
+	});
+
+	it("matches node:url, which reads neither spelling and writes a different file", () => {
+		// The reference reader: Node's WHATWG parser empties a `localhost` host,
+		// so both URIs reach its win32 reader as a driveless path and throw.
+		for (const uri of ["file://localhost/share/x", "file:////localhost/share/x"]) {
+			assert.throws(() => fileURLToPath(uri, { windows: true }), TypeError, "must be absolute", uri);
+		}
+		// Node's writer drops the server: `\share\x`, not `\\localhost\share\x`.
+		assert.strictEqual(pathToFileURL("\\\\localhost\\share\\x", { windows: true }).href, "file:///share/x");
+	});
+});
+
 // Every path of up to four segments over an adversarial segment alphabet.
 const SEGMENTS = ["a", "a b", "%", "%2F", "#?", "é", "\u{1F600}", ".", "..", "", "~!*", "x:y"];
-const paths = (prefix: string, separator: string): ReadonlyArray<string> => {
+// `x:y` is an alternate data stream under win32, which both directions refuse.
+const WIN32_SEGMENTS = SEGMENTS.filter((segment) => segment !== "x:y");
+const paths = (
+	prefix: string,
+	separator: string,
+	segments: ReadonlyArray<string> = SEGMENTS,
+): ReadonlyArray<string> => {
 	const out: Array<string> = [];
 	let frontier = [prefix];
 	for (let depth = 1; depth <= 3; depth++) {
 		frontier = frontier.flatMap((head) =>
-			SEGMENTS.map((segment) => `${head}${depth === 1 ? "" : separator}${segment}`),
+			segments.map((segment) => `${head}${depth === 1 ? "" : separator}${segment}`),
 		);
 		out.push(...frontier);
 	}
@@ -294,15 +409,18 @@ const DOT_WIN32 = /(^|\\)\.\.?(\\|$)/;
 
 describe("round trips and the node:url differential", () => {
 	const posix = paths("/", "/");
-	const windows = paths("C:\\", "\\");
-	const unc = paths("", "\\")
-		.filter((tail) => tail !== "")
-		.map((tail) => `\\\\server\\share\\${tail}`);
+	const windows = paths("C:\\", "\\", WIN32_SEGMENTS);
+	const uncTails = paths("", "\\", WIN32_SEGMENTS).filter((tail) => tail !== "");
+	const unc = uncTails.map((tail) => `\\\\server\\share\\${tail}`);
+	// Node cannot read a UNC path on a server named `localhost` at all, so this
+	// corpus joins only the fixed-point round trip, never the differential.
+	const localhost = uncTails.map((tail) => `\\\\localhost\\share\\${tail}`);
 
 	it("enumerates the corpora", () => {
 		assert.strictEqual(posix.length, 12 + 144 + 1728);
-		assert.strictEqual(windows.length, posix.length);
-		assert.isAbove(unc.length, 1800);
+		assert.strictEqual(windows.length, 11 + 121 + 1331);
+		assert.isAbove(unc.length, 1400);
+		assert.strictEqual(localhost.length, unc.length);
 	});
 
 	it("posix: Node reads our URI as the path we read it as", () => {
@@ -358,7 +476,7 @@ describe("round trips and the node:url differential", () => {
 
 	it("win32: toPath(fromPath(p)) is a fixed point, and a dot-free path round-trips to itself", () => {
 		let identities = 0;
-		for (const path of [...windows, ...unc]) {
+		for (const path of [...windows, ...unc, ...localhost]) {
 			const normal = Option.getOrThrow(LspUri.toPath(LspUri.fromPath(path, win32), win32));
 			assert.strictEqual(LspUri.fromPath(normal, win32), LspUri.fromPath(path, win32), JSON.stringify(path));
 			if (!DOT_WIN32.test(path)) {
@@ -404,6 +522,19 @@ const URI_TOKENS = [
 	"user@h",
 	"h:1",
 	"caf%C3%A9",
+	// DOS devices, alternate data streams and the trailing dot and space win32
+	// trims: each must be refused by toPath wherever fromPath refuses it.
+	"con",
+	"CON.txt",
+	"nul%20.txt",
+	"Com0",
+	"lpt%C2%B9",
+	"conin$",
+	"b:stream",
+	"b%3A%24DATA",
+	"a.",
+	"a%20",
+	"...",
 ];
 
 const uris = (): ReadonlyArray<string> => {

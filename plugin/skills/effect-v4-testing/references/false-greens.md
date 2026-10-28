@@ -932,3 +932,39 @@ braille blank) lands in the source where no reviewer can see it. Write such
 characters with `String.fromCodePoint(0x200b)` or `String.fromCharCode(0xd800)`,
 or keep a raw-byte corpus as a file under `__test__/fixtures/`, which Biome
 does not lint. Then read the file back and confirm the escape survived as code.
+
+## `assert.doesNotThrow`'s second and third arguments are matchers, not labels
+
+`assert.doesNotThrow(fn, errMsgMatcher?, ignored?, message?)` treats its second
+argument (and, in the other overload, its third) as a matcher on the thrown
+message: it fails only when `fn` throws an error that MATCHES. Pass a label there
+and a throwing `fn` passes, because the label never matches the error. Probed:
+
+```ts
+const boom = () => { throw new TypeError("refused") }
+assert.doesNotThrow(boom, undefined, "my label") // passes: vacuous
+assert.doesNotThrow(boom, "my label")            // passes: vacuous
+assert.doesNotThrow(boom)                        // fails, correctly
+```
+
+Put the label in the fourth argument, or write the check out so the label can
+never be read as a matcher:
+
+```ts
+try {
+  fn()
+} catch (error) {
+  assert.fail(`${label}: threw ${String(error)}`)
+}
+```
+
+## A credential walk that skips `Headers` tests the rendering, not the storage
+
+Core's HTTP types redact `authorization` and cookies when they RENDER
+(`toJSON`, `inspect`), but keep the live value in the object itself. A test
+that checks a kept error for a leaked token by walking its strings, and skips
+core `Headers` "because core redacts them", passes while the token sits one
+property away from any logger that walks the object. Walk every string
+reachable through own properties, `Headers` and `UrlParams` included, and
+add a positive control: the same walk over core's own, unscrubbed error must
+find the planted token, or the walk proves nothing.

@@ -28,6 +28,7 @@
 | `HmacVerifyBytesOptions` | Interface | The input to `Hmac.verify` for a signature held as raw bytes. | |
 | `HmacVerifyOptions` | TypeAlias | The input to `Hmac.verify`. | |
 | `HmacVerifyStringOptions` | Interface | The input to `Hmac.verify` for a signature held as an encoded string. | |
+| `HttpRedaction` | Class | Credential-free copies of core HTTP client values, for keeping as an error's `cause` or field. | scrub credentials from a kept http error cause, redact authorization cookie api key headers, redact url userinfo token query, safe HttpClientError request response copy for logs |
 | `SecretInput` | TypeAlias | Secret material for `ConstantTime.secretsEqual`: bytes, a string, or a `Redacted` string. | |
 | `SigV4` | Class | AWS Signature Version 4 request signing, for S3 and S3-compatible stores such as R2, MinIO and Spaces. | sign an aws or s3-compatible request, sigv4 authorization header, signing key |
 | `SigV4Canonical` | Interface | The canonical form of a request, as `SigV4.canonicalize` returns it. | |

@@ -271,6 +271,45 @@ describe("SourceBoundary.check", () => {
 			]);
 		});
 
+		it("flags a string-literal import name by its value, in imports and re-exports", () => {
+			const text = [
+				'import { "App" as Application, "AppConfig" as Config } from "@effected/app";',
+				"import { type 'AppStore' as Store } from \"@effected/app\";",
+				'export { "AppCache" as Cache } from "@effected/app";',
+				'import { "App" as A } from "./App.js";',
+			].join("\n");
+			assert.deepStrictEqual(labels(text), [
+				"f.ts:1:10 forbidImportedNames App from @effected/app",
+				"f.ts:2:15 forbidImportedNames AppStore from @effected/app",
+				"f.ts:3:10 forbidImportedNames AppCache from @effected/app",
+			]);
+		});
+
+		it("reads an import-equals binding as a namespace binding, sparing other requires", () => {
+			const text = [
+				'import app = require("@effected/app");',
+				"const a = app.App.layer;",
+				"const b = app.AppConfig;",
+				'export import kit = require("@effected/app");',
+				"kit.AppStore;",
+				'import other = require("./App.js");',
+				"other.App;",
+				'const plain = require("@effected/app");',
+				"plain.App;",
+			].join("\n");
+			assert.deepStrictEqual(labels(text), [
+				"f.ts:2:15 forbidImportedNames App from @effected/app",
+				"f.ts:5:5 forbidImportedNames AppStore from @effected/app",
+			]);
+		});
+
+		it("misses a string-literal name written with an escape (a documented miss)", () => {
+			// The backslash is built, not typed, so no tool decodes the escape on the way in.
+			const escaped = `${String.fromCodePoint(92)}u0041pp`;
+			const text = `import { "${escaped}" as A } from "@effected/app";`;
+			assert.deepStrictEqual(labels(text), []);
+		});
+
 		it('flags a default import only when "default" is forbidden', () => {
 			const text = 'import app, { AppConfig } from "@effected/app";';
 			assert.deepStrictEqual(labels(text), []);

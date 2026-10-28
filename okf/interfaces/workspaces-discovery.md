@@ -32,7 +32,7 @@ sources:
     resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:45:11Z
+  at: 2026-10-28T17:47:12Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
@@ -40,7 +40,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 1f2fac65e8dfc888
+    body: e0f7832cfd110f9a
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -172,12 +172,26 @@ migration would otherwise read as the root, and rolldown-pnpm-config's
 `export` would have written a new `pnpm-workspace.yaml` there. The not-found
 error's `markers` field records the filtered list. `locateWorkspaceRootSync`
 is `findWorkspaceRootSync` with the match kept: a `WorkspaceRootMatch` of
-`root`, `marker` and the marker file's `path`.[^workspace-marker-ts] The
-Effect service has no such variant: adding a member to `WorkspaceRootShape`
-would break every hand-written double, and its only consumer so far is
-sync. The layer-level options (`WorkspaceDiscovery`, `LockfileReader`,
-`WorkspaceCatalogs`, `WorkspaceSnapshots`) forward `stopAt` but not
-`markers` yet.
+`root`, `marker` and the marker file's `path`.[^workspace-marker-ts] Its
+Effect form is the static `WorkspaceRoot.locate(cwd, options)`, which takes
+`FileSystem` and `Path` from `R` and runs the same ascent the service's
+`find` does (one shared implementation), answering a `WorkspaceRootMatch` or
+failing `WorkspaceRootNotFoundError` where the sync form answers `null`. It is
+a static rather than a `WorkspaceRootShape` member because a new member would
+break every hand-written `Layer.succeed(WorkspaceRoot, { find })` double; the
+cost is that a `WorkspaceRoot.layerTest` double does not answer it, so a test
+gives it a filesystem instead. A memfs agreement matrix pins it to
+`locateWorkspaceRootSync` on the same inputs.[^workspace-root-ts]
+
+The layer-level options (`WorkspaceDiscovery`, `LockfileReader`,
+`WorkspaceCatalogs`, `WorkspaceSnapshots`) take the same `markers` and
+forward it through the one shared lookup alongside `stopAt`, and
+`WorkspacesOptions` and `Workspaces.localExecLayer` take it too, so a
+pnpm-only tool going through `Workspaces.layer({ markers:
+["pnpm-workspace.yaml"] })` gets one root from every service. Unlike
+`stopAt`, discovery's per-call `infoIn` / `listPackagesIn` / `refreshIn`
+honour the layer's `markers`: which file marks a root is a property of the
+tool, not of the directory it starts from.[^layer-root-ts]
 
 Every service that resolves a root from its layer options takes the same
 ceiling as `stopAt`: `WorkspaceDiscovery`, `LockfileReader`,
@@ -308,8 +322,9 @@ branches on and proceeds past.
     `WorkspacePackage`, `PublishConfig`, `DependencyDiff`,
     `WorkspaceManifestError`.
 [^workspace-root-ts]: `packages/workspaces/src/WorkspaceRoot.ts` — the
-    `WorkspaceRoot` service, `FindWorkspaceRootOptions` (`stopAt` /
-    `maxDepth` / `markers`), and the `makeTest` / `layerTest` double.
+    `WorkspaceRoot` service, the `locate` static, `FindWorkspaceRootOptions`
+    (`stopAt` / `maxDepth` / `markers`), and the `makeTest` / `layerTest`
+    double.
 [^package-manager-name-ts]: `packages/workspaces/src/PackageManagerName.ts` —
     `PackageManagerName`, `DetectedPackageManager`, `PackageManagerDetector`.
 [^enumerate-ts]: `packages/workspaces/src/internal/enumerate.ts` — the
@@ -317,7 +332,8 @@ branches on and proceeds past.
 [^workspaces-ts]: `packages/workspaces/src/Workspaces.ts` — `WorkspacesOptions`,
     the composites' one-options-object forwarding, and `localExecLayer`.
 [^layer-root-ts]: `packages/workspaces/src/internal/layerRoot.ts` — the one
-    layer-bound root lookup the four root-resolving services share.
+    layer-bound root lookup the four root-resolving services share, and the
+    `stopAt` / `markers` forwarding `localExecLayer` reuses.
 [^traverse-ts]: `packages/workspaces/src/internal/traverse.ts` — the shared
     worklist traversal.
 [^workspaces-sync-ts]: `packages/workspaces/src/WorkspacesSync.ts` —

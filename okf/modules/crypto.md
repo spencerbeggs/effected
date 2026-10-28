@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/crypto"
-description: HMAC, constant-time comparison and AWS SigV4 request signing over WebCrypto, with no node imports, for the keyed primitives core Crypto does not offer.
+description: HMAC, constant-time comparison and AWS SigV4 request signing over WebCrypto, with no node imports, for the keyed primitives core Crypto does not offer, plus HttpRedaction, the kit's one credential scrub for kept HTTP errors.
 status: draft
 kind: package
 resource: ../../packages/crypto
@@ -29,10 +29,10 @@ sources:
     title: "Intake's HMAC helpers and its hashed secretsEqual"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T14:02:58Z
+  at: 2026-10-28T19:09:09Z
 integrity:
   generated:
-    body: 66511c9c32b4af9d
+    body: 227fa6d26f28c0fd
 ---
 
 # `@effected/crypto`
@@ -41,7 +41,7 @@ integrity:
 
 ## Tier and dependencies
 
-Boundary tier, with no `node:` import under `src/`, so it runs on Node, browsers and Cloudflare workerd, matching [`jwt`](jwt.md). There are no runtime dependencies; `peerDependencies` is `effect` alone. The backend split is its own decision: [HMAC comes from WebCrypto, digests from core `Crypto` in `R`](../decisions/crypto-backends.md). The libsodium sealed box that GitHub's secrets API needs is not here and does not come here: `tweetnacl` and `blakejs` would retier this package and `webhooks` to integrated, so [the sealed box stays in `github`](../decisions/sealed-box-home.md) until a second consumer appears, and then moves to a new package rather than a subpath of this one.
+Boundary tier, with no `node:` import under `src/`, so it runs on Node, browsers and Cloudflare workerd, matching [`jwt`](jwt.md). There are no runtime dependencies; `peerDependencies` is `effect` alone. That keeps it at the bottom of the layer graph (its own layer in `lib/configs/layers.json`, below every package that depends on it, `jwt` included). The backend split is its own decision: [HMAC comes from WebCrypto, digests from core `Crypto` in `R`](../decisions/crypto-backends.md). The libsodium sealed box that GitHub's secrets API needs is not here and does not come here: `tweetnacl` and `blakejs` would retier this package and `webhooks` to integrated, so [the sealed box stays in `github`](../decisions/sealed-box-home.md) until a second consumer appears, and then moves to a new package rather than a subpath of this one.
 
 ## Core-owned list
 
@@ -59,6 +59,7 @@ Core `Crypto` offers random bytes, random numbers, UUIDv4/v7, ULID and a one-sho
 | `src/SigV4.ts` | `SigV4Signed`, `SigV4.canonicalize`, `SigV4.signingKey`, `SigV4.sign`, `SigV4.encodePath`, `SigV4.EMPTY_PAYLOAD_HASH`, `SigV4.UNSIGNED_PAYLOAD` |
 | `src/Fingerprint.ts` | `Fingerprint.of`, `Fingerprint.canonicalizeResult` and `Fingerprint.decide`: drift-detection fingerprints |
 | `src/DriftDecision.ts` | the `DriftDecision` union of `DriftApply`, `DriftUnchanged` and `DriftDetected` |
+| `src/HttpRedaction.ts` | `HttpRedaction`: credential-free copies of core `HttpClientError`, request and response values, for keeping as a `cause` |
 | `src/FingerprintError.ts` | the caller-input tagged error for a value with no canonical JSON form, carrying `path` and `detail` |
 | `src/internal/canonical.ts` | the drift canonicaliser: sorted keys, kept array order, dropped `undefined` members |
 | `src/index.ts` | root entrypoint, re-exporting by name only |
@@ -74,6 +75,8 @@ The package follows the [module-per-concept layout](../conventions/module-per-co
 
 - **`Fingerprint`** is three-way drift detection for reconciling declared config against a remote, asked for by `reposets`. The canonicalisation is the contract: object keys sorted by UTF-16 code units at every depth, array order preserved, and `undefined` object members dropped so absent and undefined fingerprint alike; numeric-like keys sort lexicographically (`"10"` before `"2"`); otherwise it follows `JSON.stringify` (a `Date` written as its ISO string, an `undefined` array element written `null`). Only a `Date`'s `toJSON` is honoured: any other object that is not an array or plain object, Effect data types such as `Option` and `HashMap` included, is refused, because their `toJSON` is a debug rendering and no stable contract. A value with no faithful JSON form (a `bigint`, function, symbol, non-finite number, cycle, throwing getter, or non-plain object) is refused with `FingerprintError` rather than coerced, because a silent coercion makes drift detection blind; a throw that is not about the value (a Proxy trap) propagates as a defect, and only a stack overflow becomes the `nested too deeply` refusal. It is a separate canonicaliser from `@effected/jsonc`'s `JsoncFingerprint` on purpose: that one is RFC 8785, which refuses `undefined`, and crypto takes no runtime dependency. The digest is SHA-256 through core `Crypto.digest`, so it runs on Node and Workers alike. `Fingerprint.decide` is pure: no baseline is `Apply`; a live fingerprint that departed from the applied one is `Drift`, even when the desired value also changed, since that is when a user most wants to be told before anything is overwritten; a changed desired value is otherwise `Apply`; else `Unchanged`.
 
+- **`HttpRedaction`** exists because core's `HttpClientError` keeps the live request, `authorization`, `cookie` and `proxy-authorization` headers included, as a plain readable field, and redacts them only when rendering (`toJSON`, inspect). A kit error that keeps such an error as its `cause` lets a custom logger, a serializer or any consumer that walks the object read the token. `HttpRedaction.cause(cause)` is the one call every kit site makes where it keeps a cause: an `HttpClientError`, a bare reason, a request or a response becomes a copy, and anything else passes through by identity. The copy keeps the method, the URL with userinfo and sensitive query and fragment values replaced by `REDACTED` (core's own query list, the SigV4 presigned set, Azure SAS `sig`, `token`, `*_token`, `api_key`, `client_secret`, `secret`, `password`, `code`), the status, and the response headers minus `set-cookie` and `cookie`. Sensitive request header values (`authorization`, `proxy-authorization`, `cookie`, `x-api-key`, `private-token` and the `x-*-token` / `x-*-api-key` / `x-*-signature` family) read `REDACTED`. Bodies are dropped. A nested foreign cause (the `TypeError` a fetch rejects with) is rebuilt on the same prototype with its message and stack passed through `HttpRedaction.text`, keeping primitive fields such as `code` and dropping object-valued ones. It lives here, rather than in a package of its own, because every HTTP-speaking kit package (`npm`, `runtimes`, `jwt`, `github-actions`) can take a regular dependency on this one without a cycle, it is pure and imports nothing beyond core `effect/http`, and the SigV4 query set it strips belongs beside `SigV4`. Its response stand-in is a body-less WebAPI `Response`, which workerd and Node both provide.
+
 - **Asynchrony.** Every WebCrypto call is truly asynchronous: a test that forks `Hmac.sign`, `Hmac.verify`, `secretsEqual` or `SigV4.sign` and then adjusts `TestClock` can race or hang, and needs a latch or an `Effect.yieldNow` loop.
 
 ## Errors
@@ -82,15 +85,16 @@ The package follows the [module-per-concept layout](../conventions/module-per-co
 
 ## Observability
 
-Named `Effect.fn` spans on `Hmac.sign`, `Hmac.verify`, `SigV4.sign` and `Fingerprint.of`. No key, secret or signature is ever annotated; the algorithm and the SigV4 region and service are.
+Named `Effect.fn` spans on `Hmac.sign`, `Hmac.verify`, `SigV4.sign` and `Fingerprint.of`. `HttpRedaction` is pure and total and carries none. No key, secret or signature is ever annotated; the algorithm and the SigV4 region and service are.
 
 ## Testing
 
-SigV4 is pinned to the AWS documented worked examples (the `AKIAIOSFODNN7EXAMPLE` key pair on 2013-05-24), lifted from intake's suite, plus the `github-actions` suite's canonical-request assertions. HMAC is pinned to the RFC 4231 test vectors. `ConstantTime.equal` is property-tested to agree with byte equality. Fixtures carry a provenance README per [fixtures carry provenance](../conventions/fixtures-carry-provenance-readme.md).
+SigV4 is pinned to the AWS documented worked examples (the `AKIAIOSFODNN7EXAMPLE` key pair on 2013-05-24), lifted from intake's suite, plus the `github-actions` suite's canonical-request assertions. HMAC is pinned to the RFC 4231 test vectors. `ConstantTime.equal` is property-tested to agree with byte equality. `HttpRedaction` is tested by walking every string reachable from the redacted error through own properties (`Headers` and `UrlParams` included) as well as its renderings, with a positive control that the same walk finds the planted credentials on core's own error; each consuming package repeats that walk on its own error type. Fixtures carry a provenance README per [fixtures carry provenance](../conventions/fixtures-carry-provenance-readme.md).
 
 ## Consumers
 
-- [`github-actions`](github-actions.md): `BlobStore.layerS3` signs with `SigV4`; `internal/sigv4.ts` is deleted.
+- [`npm`](npm.md), [`runtimes`](runtimes.md) and [`jwt`](jwt.md): `HttpRedaction.cause` on every kept HTTP cause.
+- [`github-actions`](github-actions.md): `BlobStore.layerS3` signs with `SigV4`; `internal/sigv4.ts` is deleted. `OidcTokenIssuer`, the Twirp results client, the S3 `BlobStore` and `ToolInstaller.download` keep HTTP causes through `HttpRedaction.cause`, and `ToolInstallerError.subject` is the URL through `HttpRedaction.url`.
 - [`webhooks`](webhooks.md): every preset verifies through `Hmac` and `ConstantTime`.
 - `savvy-web/build` intake: its S3 archive signs with `SigV4`, replacing `src/s3/SigV4.ts`, and its verifiers move onto `webhooks`.
 

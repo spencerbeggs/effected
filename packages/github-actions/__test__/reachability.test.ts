@@ -259,6 +259,8 @@ describe("bundle reachability", () => {
 		// particular the DEFAULT RUNTIME stays clear: `Action.ts`'s exact edge set
 		// above is what pins `ActionRuntime.layer` never linking this module.
 		assert.deepStrictEqual([...reachableBareImports("PackageManagerInstaller.ts")].sort(), [
+			// `@effected/crypto` for `HttpRedaction`: pure, effect-only, no Azure.
+			"@effected/crypto",
 			"@effected/npm",
 			"effect",
 			"effect/encoding/Base64",
@@ -277,13 +279,18 @@ describe("bundle reachability", () => {
 		assert.deepStrictEqual([...reachableBareImports("internal/actionsResults.ts")].sort(), ["@effected/jwt", "effect"]);
 		assert.deepStrictEqual(
 			[...reachableBareImports("internal/twirp.ts")].sort(),
-			["effect", "effect/http"],
+			// `@effected/crypto` for `HttpRedaction`, which scrubs a kept cause.
+			["@effected/crypto", "effect", "effect/http"],
 			"the Twirp client speaks HTTP and nothing heavier",
 		);
 		// The cache-entry choreography shared by `ActionCache` and
 		// `BlobStore.githubCache` owns the three RPCs and NOT the Azure transfer
 		// between them — that is the whole point of it being an internal.
-		assert.deepStrictEqual([...reachableBareImports("internal/cacheService.ts")].sort(), ["effect", "effect/http"]);
+		assert.deepStrictEqual([...reachableBareImports("internal/cacheService.ts")].sort(), [
+			"@effected/crypto",
+			"effect",
+			"effect/http",
+		]);
 		// `effect/process` is a type-only import there: the spawner
 		// arrives as a value from the caller.
 		assert.deepStrictEqual([...reachableBareImports("internal/spawn.ts")].sort(), ["effect"]);
@@ -311,6 +318,7 @@ describe("bundle reachability", () => {
 		// arrives through `Secret` -> `ActionOutputs`, because the issuer masks
 		// every token at issuance; it is the pure grammar, with no graph of its own.
 		assert.deepStrictEqual([...reachableBareImports("OidcTokenIssuer.ts")].sort(), [
+			"@effected/crypto",
 			"@effected/github",
 			"@effected/github-commands",
 			"@effected/oidc",
