@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:36:59Z
+  at: 2026-10-28T17:37:34Z
 integrity:
   generated:
-    body: 425112eabb3cc22c
+    body: 1151c8ce8256555a
 ---
 
 # @effected/memfs
@@ -343,8 +343,12 @@ Shared contract:
 - **`pathStyle: "win32"` is a spelling adapter only**, in front of the
   port and behind its faults: backslashes become slashes and a drive root
   `C:` maps onto the top-level `/C:` directory. Errors and fault handlers
-  keep the caller's spelling. No drive-letter folding, no UNC; the
-  `FileSystem` service stays POSIX.
+  keep the caller's spelling. The one answer that is a path, the sync
+  port's `realPath`, is respelled back (`/C:/repo` → `C:\repo`, the drive
+  root → `C:\`), the drive letter cased as the caller gave it unless an
+  absolute link target replaced the prefix, as node's win32 `realpath`
+  answers. Names, dirents and stats carry no path. No drive-letter
+  folding, no UNC; the `FileSystem` service stays POSIX.
 
 ### Case-insensitive volumes
 
