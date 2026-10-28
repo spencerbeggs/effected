@@ -31,4 +31,6 @@
 | `MemoryFileSystemTransientFault` | Interface | A transient fault built with `MemoryFileSystem.failTimes`: usable anywhere a fault handler is, it fails a fixed number of calls with a given `PlatformError` and then delegates forever after. | |
 | `MemoryFileSystemVolume` | Interface | Synchronous, read-only inspection of one memory volume — the write-path counterpart to seeding, for asserting on what a program actually wrote without routing every assertion through an `Effect` read. | |
 | `MemoryFileSystemVolumeStat` | Interface | The answer of `MemoryFileSystemVolume.lstat`. | literal lstat of a volume entry, kind size mtime |
+| `NodeDirectorySeed` | Class | Reads a real directory into a `MemoryFileSystemSeed`, byte for byte, for `MemoryFileSystem.layerWith` / `makeSync`. | from `@effected/memfs/node-sync` — seed volume from real fixture directory, copy fixture tree byte-exact |
+| `NodeDirectorySeedOptions` | Interface | Options for `NodeDirectorySeed.read`. | from `@effected/memfs/node-sync` |
 | `NodeSyncFileSystem` | Class | A read-only, synchronous `FileSystem` over `node:fs`. | from `@effected/memfs/node-sync` — read real disk under Effect.runSync, synchronous read-only node filesystem |

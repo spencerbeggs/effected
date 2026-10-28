@@ -15,8 +15,9 @@
 | `CurrentPlatform` | Variable | The platform every native-directory decision is taken against. | override the detected os platform for native directory resolution in tests |
 | `NativeDirs` | Class | The OS-native application directories for one namespace. | map platform and environment to os-native app directories, macOS Application Support, Windows AppData |
 | `ResolvedAppDirs` | Class | The fully resolved, app-namespaced directories. | the fully resolved app-namespaced directories and their search paths |
-| `Xdg` | Class | XDG Base Directory environment resolution. | read the XDG Base Directory environment variables once at layer construction |
+| `Xdg` | Class | XDG Base Directory environment resolution. | read the XDG Base Directory environment once at layer construction, opt-in home fallback |
 | `XdgConfig` | Class | The bridge from XDG directories into `@effected/config-file`. | bridge xdg app directories into a config-file resolver, search path or native directory |
 | `XdgEnvError` | Class | Indicates that the environment cannot satisfy XDG directory resolution. | handle the HOME environment variable missing for xdg resolution |
+| `XdgEnvOptions` | Interface | Opt-in departures from the XDG Base Directory rules, for a program whose directories must match an existing shell rule such as `${XDG_STATE_HOME:-$HOME/.local/state}`. | |
 | `XdgPaths` | Class | The XDG Base Directory environment, resolved. | the resolved XDG_CONFIG_HOME/XDG_DATA_HOME and friends, home directory required |
 | `XdgPlatform` | Variable + TypeAlias | The decoded form of `(XdgPlatform:variable)`. | the os platform values xdg resolution reasons about, darwin/win32/linux and others |

@@ -21,7 +21,10 @@
 | `GitConfigParseError` | Class | The document could not be parsed as git-config text. | git-config text failed to parse, malformed config, handle diagnostics |
 | `GitConfigScope` | TypeAlias | Which configuration file a read is scoped to. | |
 | `GitConfigSection` | Class | One section of a git-config document. | one [section] or [section "subsection"] block of a parsed git-config document |
+| `GitFile` | Class | A parsed gitfile: the `.git` file of a linked worktree or a submodule, pointing at the repository directory git uses for it. | parse a worktree or submodule .git pointer file, gitdir line, no spawn |
+| `GitFileParseError` | Class | A text that git would refuse as a gitfile. | text is not a gitfile, missing gitdir prefix or empty path |
 | `GitInvocation` | Interface | A pure `git` invocation: the spawnable command plus the diagnostic argv the error taxonomy is allowed to persist. | |
+| `GitLocateOptions` | Interface | Options for the repository-locating reads: `Git.repoRoot`, `Git.commonDir` and `Git.treeIdentity`. | |
 | `GitRemote` | Class | Git remote addresses: parse into verbatim parts, render back, redact for logging. | parse, format and redact git remote urls, scp addresses and paths, repository path |
 | `GitRemoteForm` | TypeAlias | A parsed git remote address. | |
 | `GitRemotePath` | Class | A remote that is a filesystem path: no `:`, or a `/` before the first `:` (`/srv/repo.git`, `../sibling.git`, `./a:b`, `owner/name`). | a remote given as a filesystem path |
