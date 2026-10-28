@@ -719,8 +719,10 @@ export class CliRuntime {
 	 *
 	 * Under `CliRuntime.main` or {@link CliRuntime.reportFailures}, do NOT
 	 * print the failure yourself before failing with it: `reportFailures`
-	 * renders every error except a `ShowHelp` and a `CliError.UserError` whose
-	 * reported mark is `false`, so it would print twice. Fail with the marked
+	 * renders every error except a `ShowHelp`, a `CliError.UserError` whose
+	 * reported mark is `false`, and any error carrying a string
+	 * `[CliError.userMessage]` whose reported mark is `false`, so it would
+	 * print twice. Fail with the marked
 	 * error and put any multi-line rendering in the `render` option instead. The
 	 * mark matters for a program run WITHOUT `reportFailures`, where it keeps the
 	 * runtime from reporting a failure the program already printed.
@@ -731,6 +733,12 @@ export class CliRuntime {
 	 * `Command.runWith` printed from one marked here: both carry the same `false`
 	 * mark. It does keep the code you pass: `reported(userError, 3)` exits `3`,
 	 * not `usageExitCode`.
+	 *
+	 * The same holds for an error carrying a string `[CliError.userMessage]`:
+	 * `Command.runWith` prints such a handler failure and leaves the same
+	 * `false` mark, so one marked here is treated as already printed and is not
+	 * rendered. Mark an error without the annotation, or leave it unmarked, if
+	 * the program has not printed it. It keeps the code you pass.
 	 *
 	 * The marks are added in place, so a typed error comes back as its own
 	 * type: the `E` overload returns the very instance it was given, and a
