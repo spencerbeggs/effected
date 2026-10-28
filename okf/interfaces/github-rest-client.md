@@ -8,7 +8,7 @@ resource: ../../packages/github/src/Rest.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:55:58Z
+  at: 2026-10-28T18:09:57Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:33.163Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 7bea4b0ea0124f66
+    body: e68ab31cbee6dc93
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -128,6 +128,43 @@ into the body. `RepositoryPatch` omits `Rest.RequestExtras` (`headers`,
 `mediaType`, `baseUrl`): in a body they would be fields, not the options they
 are named after. A `GitHubClient.layerFixture` records the PATCH's params as
 `{ owner, repo, data }`.
+
+### Every open map the kit sends is a `data` body or an allowlist
+
+The settings writes are not the only open map. An audit of every call site
+in `src/` that builds octokit params found two more, both now confined the
+same way:
+
+- **`DeploymentEnvironment.upsert(name, config)`** sends
+  `{ owner, repo, environment_name, data: { ...config } }`. The config used
+  to be spread into the flat params (first, so the coordinates won), which
+  left `baseUrl`, `headers`, `request` and `data` live. A reserved name
+  (`reservedBodyKey` with `ENVIRONMENT_PUT_ROUTE_PARAMS`: the octokit options,
+  `owner`, `repo`, `environment_name`, `__proto__`) now dies with a
+  `RangeError` before any request; a config naming a coordinate used to
+  succeed with the key silently overridden. The fixture records
+  `{ owner, repo, environment_name, data }`.
+- **GraphQL variables.** `@octokit/graphql` merges a call's variables into
+  its request options and lifts `baseUrl`, `headers`, `request`, `mediaType`
+  and `operationName` out as the request (its `NON_VARIABLE_OPTIONS`), and
+  rejects `query`, `method` and `url`. A variable named `baseUrl` sent the
+  authenticated call, token attached, to that host. The transport
+  (`internal/octokit.ts`) therefore no longer calls `octokit.graphql`: it
+  sends `POST /graphql` with `data: { query, variables }`, rewriting a GHES
+  `/api/v3` base to `/api/graphql` as `@octokit/graphql` did, and throws the
+  answer's `errors` with its headers so `GitHubGraphQLError.fromThrowable`
+  classifies exactly as before. No variable name is refused: GraphQL
+  variable names are the document's own namespace, and inside `data` none is
+  ever read as an option.
+
+The rest are closed: typed literals of route parameters, conditional spreads
+of typed fields, or a fixed allowlist (`CodeScanning`'s `SETUP_KEYS`,
+`Ruleset`'s six payload fields); open values (`WorkflowDispatch` `inputs`,
+ruleset `rules`, check-run `output`) sit one level down, where octokit reads
+nothing. `client.request` itself is the raw surface: its params are the
+caller's own, and `Rest.RequestExtras` deliberately lets a call set
+`headers`, `mediaType` and `baseUrl` (release-asset uploads use it), so a
+caller must never spread an untrusted map into it.
 
 ### Resource ids come off the wire as `number | bigint`
 

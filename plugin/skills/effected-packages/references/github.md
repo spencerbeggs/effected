@@ -299,7 +299,10 @@ tempted to reach for `as`.
   over `SecretScope` = `actions | dependabot | codespaces`, plus the
   `*ForEnvironment` trio; values are `Redacted`), `RepositoryVariable` (same
   shape, plain strings), `Ruleset` (`upsert`/`list`/`delete`, plus `teamId` and
-  `roleId` lookups), `DeploymentEnvironment`, `RepositorySecurity` (three
+  `roleId` lookups), `DeploymentEnvironment` (`upsert(name, config)` sends the
+  open `config` as the `PUT`'s `data` body, and dies with a `RangeError` on an
+  octokit option name, `owner`, `repo`, `environment_name` or `__proto__`),
+  `RepositorySecurity` (three
   getter/setter pairs) and `CodeScanning` (`configure`, `languages`). Two rules
   that cost real damage: **filter rulesets on `source_type` before matching by
   name** — the list mixes organization-inherited rulesets with the repository's
@@ -313,7 +316,10 @@ tempted to reach for `as`.
   `PermissionResult { missing, extra }`, `assertSufficient(required)` and
   `assertExact(required)`. Feed it `InstallationToken.permissions`.
 - **`GraphQLDocument.make({ name, document, response })`** — the typed GraphQL
-  unit; `client.graphql(document, variables)` decodes through its codec.
+  unit; `client.graphql(document, variables)` decodes through its codec. The
+  variables travel inside a `{ query, variables }` body, so a variable named
+  `baseUrl`, `headers` or `query` stays a variable — octokit's own `graphql`
+  method reads those names as request options or refuses them.
 
 ## Testing machinery
 

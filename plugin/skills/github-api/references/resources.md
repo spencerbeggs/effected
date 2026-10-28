@@ -126,6 +126,17 @@ settings as octokit's `data` body, where no key is read as an option;
 `ignored`, even under `unknownKeys: "send"`. Do not hand-roll the same write
 with `client.request("PATCH /repos/{owner}/{repo}", { ...settings, owner, repo })`.
 
+The same holds for every open map the package sends.
+`DeploymentEnvironment.upsert(name, config)` sends `config` as the `PUT`'s
+`data` body, and a config naming an octokit option, `owner`, `repo`,
+`environment_name` or `__proto__` dies with a `RangeError` before any
+request. `client.graphql` sends its variables inside a
+`{ query, variables }` body, so a variable named `baseUrl` or `headers` stays
+a variable; octokit's own `graphql` method reads those names as request
+options. `client.request` is the raw surface: its `Rest.RequestExtras`
+(`headers`, `mediaType`, `baseUrl`) are real options, so never spread an
+untrusted map into its params; pass it as `data` when the route has a body.
+
 ## `GitHubContent`
 
 | Member | Signature | Notes |

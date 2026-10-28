@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T17:55:58Z
+  at: 2026-10-28T18:09:57Z
 integrity:
   generated:
-    body: 48c5beb807933418
+    body: 5ce9b7f8a5766aaf
 ---
 
 # @effected/github
@@ -71,7 +71,7 @@ package named for it.
 
 | Dependency | Why |
 | --- | --- |
-| `@octokit/core` | the `Octokit` class: a route-keyed, fully typed `request`, plus `graphql` |
+| `@octokit/core` | the `Octokit` class: a route-keyed, fully typed `request`, which carries GraphQL too (`POST /graphql` with a `data` body, never its `graphql` method) |
 | `@octokit/plugin-paginate-rest` | the composable paginator over a bare core instance, plus the type that statically rejects paginating a non-paginating route |
 | `@octokit/types` | the generated endpoint map; ships no JavaScript — types only |
 | `@effected/jwt` (`workspace:^`) | signs the App JWT over WebCrypto; no runtime dependencies, and accepts PKCS#1 and PKCS#8 keys on every runtime — see [`jwt`](jwt.md) |
@@ -191,6 +191,12 @@ sent under either mode: both write paths send the settings as octokit's
 confinement and its source citations are in the REST client interface). The typed escape
 hatch for the same need is `repositoryPatch(draft, { extra })` — see
 [the REST client interface](../interfaces/github-rest-client.md).
+`DeploymentEnvironment.upsert`'s open `config` rides the same way, as the
+`PUT`'s `data` body, and dies with a `RangeError` on a reserved name; GraphQL
+calls send `POST /graphql` with `data: { query, variables }` rather than
+through `octokit.graphql`, which reads a variable named `baseUrl`, `headers`,
+`request`, `mediaType` or `operationName` as a request option. The audit of
+every params-building call site behind both is in the REST client interface.
 `__test__/repositoryRestSettingKeys.test.ts` regenerates the file in memory
 and fails on drift, including a header that names `DEFAULT_API_VERSION`;
 re-run the generator (`pnpm --filter @effected/github exec tsx
