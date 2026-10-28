@@ -34,6 +34,7 @@
 * Updated @effected/yaml
 * Updated @effected/yaml lint system
 * Updated @effected/lsp
+* Updated Error handling standards
 
 ## 2026-10-27
 
