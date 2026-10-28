@@ -32,7 +32,7 @@ sources:
     resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:45:11Z
+  at: 2026-10-28T17:41:47Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
@@ -40,7 +40,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 1f2fac65e8dfc888
+    body: 95b48cceb1916109
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -175,9 +175,17 @@ is `findWorkspaceRootSync` with the match kept: a `WorkspaceRootMatch` of
 `root`, `marker` and the marker file's `path`.[^workspace-marker-ts] The
 Effect service has no such variant: adding a member to `WorkspaceRootShape`
 would break every hand-written double, and its only consumer so far is
-sync. The layer-level options (`WorkspaceDiscovery`, `LockfileReader`,
-`WorkspaceCatalogs`, `WorkspaceSnapshots`) forward `stopAt` but not
-`markers` yet.
+sync.
+
+The layer-level options (`WorkspaceDiscovery`, `LockfileReader`,
+`WorkspaceCatalogs`, `WorkspaceSnapshots`) take the same `markers` and
+forward it through the one shared lookup alongside `stopAt`, and
+`WorkspacesOptions` and `Workspaces.localExecLayer` take it too, so a
+pnpm-only tool going through `Workspaces.layer({ markers:
+["pnpm-workspace.yaml"] })` gets one root from every service. Unlike
+`stopAt`, discovery's per-call `infoIn` / `listPackagesIn` / `refreshIn`
+honour the layer's `markers`: which file marks a root is a property of the
+tool, not of the directory it starts from.[^layer-root-ts]
 
 Every service that resolves a root from its layer options takes the same
 ceiling as `stopAt`: `WorkspaceDiscovery`, `LockfileReader`,
@@ -317,7 +325,8 @@ branches on and proceeds past.
 [^workspaces-ts]: `packages/workspaces/src/Workspaces.ts` — `WorkspacesOptions`,
     the composites' one-options-object forwarding, and `localExecLayer`.
 [^layer-root-ts]: `packages/workspaces/src/internal/layerRoot.ts` — the one
-    layer-bound root lookup the four root-resolving services share.
+    layer-bound root lookup the four root-resolving services share, and the
+    `stopAt` / `markers` forwarding `localExecLayer` reuses.
 [^traverse-ts]: `packages/workspaces/src/internal/traverse.ts` — the shared
     worklist traversal.
 [^workspaces-sync-ts]: `packages/workspaces/src/WorkspacesSync.ts` —
