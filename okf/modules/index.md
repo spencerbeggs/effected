@@ -2,7 +2,7 @@
 
 * [@effected/cli](cli.md) - The presentation boundary of an effect/cli program — audience, colour, theme, messages, logging, failure reporting and schema-issue renderers in a React-free root, with interactive Ink screens behind ./ui and their test harness behind ./ui/testing.
 * [@effected/commands](commands.md) - The kit's tool-and-output layer over core's subprocess contract — structured running, CLI tool discovery, run-once serialization across processes, prebuilt-binary resolution, launcher argv parsing, and (behind ./node-sync) anchored module resolution.
-* [@effected/crypto](crypto.md) - HMAC, constant-time comparison and AWS SigV4 request signing over WebCrypto, with no node imports, for the keyed primitives core Crypto does not offer.
+* [@effected/crypto](crypto.md) - HMAC, constant-time comparison and AWS SigV4 request signing over WebCrypto, with no node imports, for the keyed primitives core Crypto does not offer, plus HttpRedaction, the kit's one credential scrub for kept HTTP errors.
 * [@effected/engine](engine.md) - The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, never-throwing error text, launch-context resolution, a one-permit lane for process-global work with scoped restores, and transport-neutral crash guards.
 * [@effected/env](env.md) - The boundary package that detects who is running a program and in what terminal — agent, CI and its run, session, colour level, hyperlink support and width — through Config, and reads shell export files in one strict dialect, with no node imports and no import-time reads.
 * [@effected/github](github.md) - The kit's typed GitHub REST and GraphQL API layer, owning the octokit runtime.

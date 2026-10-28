@@ -36,6 +36,9 @@
 * Updated @effected/lsp
 * Updated Error handling standards
 * Updated @effected/github GraphQL
+* Updated @effected/jwt
+* Updated actions-storage
+* Updated runtimes
 
 ## 2026-10-27
 

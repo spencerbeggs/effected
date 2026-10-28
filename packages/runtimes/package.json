@@ -32,6 +32,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effected/crypto": "workspace:^",
 		"@effected/semver": "workspace:^"
 	},
 	"devDependencies": {

@@ -828,6 +828,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/jwt:
+    dependencies:
+      '@effected/crypto':
+        specifier: workspace:^
+        version: link:../crypto/dist/dev/pkg
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
@@ -995,6 +999,9 @@ importers:
       '@effected/commands':
         specifier: workspace:^
         version: link:../commands/dist/dev/pkg
+      '@effected/crypto':
+        specifier: workspace:^
+        version: link:../crypto/dist/dev/pkg
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
@@ -1101,6 +1108,9 @@ importers:
 
   packages/runtimes:
     dependencies:
+      '@effected/crypto':
+        specifier: workspace:^
+        version: link:../crypto/dist/dev/pkg
       '@effected/semver':
         specifier: workspace:^
         version: link:../semver/dist/dev/pkg

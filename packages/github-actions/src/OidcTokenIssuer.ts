@@ -1,3 +1,4 @@
+import { HttpRedaction } from "@effected/crypto";
 import type { ActionsOidcClaims } from "@effected/github";
 import { ActionsOidcClaimsFromWire } from "@effected/github";
 import { Oidc } from "@effected/oidc";
@@ -181,14 +182,20 @@ const make = Effect.gen(function* () {
 
 		const response = yield* http
 			.execute(HttpClientRequest.get(url).pipe(HttpClientRequest.bearerToken(bearer), HttpClientRequest.acceptJson))
-			.pipe(Effect.mapError((cause) => new OidcTokenError({ reason: "requestFailed", cause })));
+			// Every kept cause is redacted: core's error holds the live request,
+			// the runner's request token included, as a readable field.
+			.pipe(
+				Effect.mapError((cause) => new OidcTokenError({ reason: "requestFailed", cause: HttpRedaction.cause(cause) })),
+			);
 
 		if (response.status < 200 || response.status >= 300) {
 			return yield* Effect.fail(new OidcTokenError({ reason: "requestFailed", status: response.status }));
 		}
 
 		const envelope = yield* HttpClientResponse.schemaBodyJson(TokenEnvelope)(response).pipe(
-			Effect.mapError((cause) => new OidcTokenError({ reason: "malformedResponse", cause })),
+			Effect.mapError(
+				(cause) => new OidcTokenError({ reason: "malformedResponse", cause: HttpRedaction.cause(cause) }),
+			),
 		);
 		yield* Secret.mask(Redacted.make(envelope.value)).pipe(Effect.provideService(ActionOutputs, outputs));
 		return envelope.value;
