@@ -140,6 +140,77 @@ export interface ComposedScalar {
 }
 
 const composedScalarsCache = new WeakMap<LintContext, ReadonlyArray<ComposedScalar>>();
+const composedContentsCache = new WeakMap<LintContext, ReadonlyArray<YamlNode | null>>();
+const blockCollectionStartsCache = new WeakMap<LintContext, ReadonlyArray<number>>();
+
+/**
+ * The composed contents of every document in the context's text. The lint
+ * context carries only the FIRST document, and a fix in a later one must be
+ * judged against what the composer reads there too.
+ */
+function composedContents(ctx: LintContext): ReadonlyArray<YamlNode | null> {
+	const cached = composedContentsCache.get(ctx);
+	if (cached !== undefined) return cached;
+	const contents = composeAllDocuments(ctx.text, { uniqueKeys: false }).documents.map((d) => d.contents);
+	composedContentsCache.set(ctx, contents);
+	return contents;
+}
+
+/**
+ * True when a BLOCK mapping or sequence whose entries run onto a later line
+ * starts in `[from, to]` (a collection's span can open on the whitespace
+ * before its first entry, so callers pass the whole run). Those later
+ * entries are indented to the column the first one sits at, so moving the
+ * first entry along its line (a spacing fix after a `-`) re-parents the
+ * lines below it: `-   -\n    1` is `[[[null], 1]]`, while `- -\n    1` is
+ * `[[[1]]]`. A collection whose entries all share the first line moves as a
+ * whole and is not reported.
+ */
+export function multilineBlockCollectionIn(ctx: LintContext, from: number, to: number): boolean {
+	let starts = blockCollectionStartsCache.get(ctx);
+	if (starts === undefined) {
+		const found: Array<number> = [];
+		const text = ctx.text;
+		const spansLines = (start: number, lastEntry: number): boolean => {
+			for (let i = start; i < lastEntry && i < text.length; i++) {
+				const ch = text[i];
+				if (ch === "\n" || ch === "\r") return true;
+			}
+			return false;
+		};
+		const visit = (node: YamlNode | null): void => {
+			if (node === null || node instanceof Scalar) return;
+			if (node instanceof YamlMap) {
+				const last = node.items[node.items.length - 1];
+				if (node.style === "block" && last !== undefined && spansLines(node.offset, last.key?.offset ?? node.offset)) {
+					found.push(node.offset);
+				}
+				for (const pair of node.items) {
+					visit(pair.key);
+					visit(pair.value);
+				}
+			} else if (node instanceof YamlSeq) {
+				const last = node.items[node.items.length - 1];
+				if (node.style === "block" && last !== undefined && spansLines(node.offset, last?.offset ?? node.offset)) {
+					found.push(node.offset);
+				}
+				for (const item of node.items) visit(item);
+			}
+		};
+		for (const contents of composedContents(ctx)) visit(contents);
+		starts = found.sort((x, y) => x - y);
+		blockCollectionStartsCache.set(ctx, starts);
+	}
+	// The first start at or after `from`, by binary search.
+	let lo = 0;
+	let hi = starts.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		if ((starts[mid] as number) < from) lo = mid + 1;
+		else hi = mid;
+	}
+	return lo < starts.length && (starts[lo] as number) <= to;
+}
 
 /**
  * Every scalar the COMPOSER reads in the context's text, across all of its
@@ -155,9 +226,8 @@ export function composedScalars(ctx: LintContext): ReadonlyArray<ComposedScalar>
 	const cached = composedScalarsCache.get(ctx);
 	if (cached !== undefined) return cached;
 	const out: Array<ComposedScalar> = [];
-	const { documents } = composeAllDocuments(ctx.text, { uniqueKeys: false });
-	for (const document of documents) {
-		walkScalars(document.contents, "root", (scalar, role) => {
+	for (const contents of composedContents(ctx)) {
+		walkScalars(contents, "root", (scalar, role) => {
 			out.push({ offset: scalar.offset, end: scalar.offset + scalar.length, role, style: scalar.style });
 		});
 	}

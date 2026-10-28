@@ -7,7 +7,7 @@ import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { YamlRule } from "../../YamlLintRule.js";
 import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
-import { positiveIntegerOption } from "./util.js";
+import { insideComposedScalar, multilineBlockCollectionIn, positiveIntegerOption } from "./util.js";
 
 /**
  * Options for `hyphen-spacing`: `maxSpacesAfter` (default 1) after the `-`.
@@ -34,6 +34,10 @@ export const hyphenSpacing: YamlRule = {
 		const out: Array<YamlLintDiagnostic> = [];
 		for (const token of ctx.tokens) {
 			if (token.kind !== "block-seq-entry") continue;
+			// The lexer can mint a hyphen the composer reads as scalar content:
+			// `b\n -  a` folds into the plain scalar `"b -  a"`, and deleting
+			// a space there changes the value. No entry, so no spacing to check.
+			if (insideComposedScalar(ctx, token.offset)) continue;
 			let j = token.offset + token.length;
 			let after = 0;
 			while (j < ctx.text.length && ctx.text[j] === " ") {
@@ -43,6 +47,10 @@ export const hyphenSpacing: YamlRule = {
 			const next = ctx.text[j];
 			if (next === undefined || next === "\n" || next === "\r" || next === "#") continue;
 			if (after > maxAfter) {
+				// A block collection opening after the hyphen and running onto
+				// later lines pins those lines to its column: moving it re-parents
+				// them. The finding stands and the fix declines.
+				const safe = !multilineBlockCollectionIn(ctx, token.offset + token.length, j);
 				out.push(
 					new YamlLintDiagnostic({
 						rule: "hyphen-spacing",
@@ -52,11 +60,15 @@ export const hyphenSpacing: YamlRule = {
 						length: after,
 						line: token.line,
 						character: token.character + token.length,
-						fix: YamlEdit.make({
-							offset: token.offset + token.length,
-							length: after - maxAfter,
-							content: "",
-						}),
+						...(safe
+							? {
+									fix: YamlEdit.make({
+										offset: token.offset + token.length,
+										length: after - maxAfter,
+										content: "",
+									}),
+								}
+							: {}),
 					}),
 				);
 			}

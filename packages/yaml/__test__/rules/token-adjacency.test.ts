@@ -139,4 +139,31 @@ testRule(builtin("hyphen-spacing"), [
 		input: "steps:\n  - a\n  - b\n",
 		expected: [],
 	},
+	{
+		// The lexer mints a `block-seq-entry` for this `-`, but the composer
+		// folds the line into the plain scalar `"b -  a"`: deleting a space
+		// changed the value.
+		name: "a hyphen the composer reads as scalar content is not reported",
+		input: "b\n -  a\n",
+		expected: [],
+	},
+	{
+		// `b: 2` is indented to `a`'s column; moving `a` left re-parents it.
+		name: "a multi-line block mapping after the hyphen keeps its column: no fix",
+		input: "-   a: 1\n    b: 2\n",
+		expected: [{ line: 0, character: 1, messageIncludes: 'after "-"' }],
+		fixed: "-   a: 1\n    b: 2\n",
+	},
+	{
+		name: "a multi-line block sequence after the hyphen keeps its column: no fix",
+		input: "-   - a\n    - b\n",
+		expected: [{ line: 0, character: 1, messageIncludes: 'after "-"' }],
+		fixed: "-   - a\n    - b\n",
+	},
+	{
+		name: "a single-line block mapping after the hyphen still fixes",
+		input: "-   a: 1\n- b\n",
+		expected: [{ line: 0, character: 1, messageIncludes: 'after "-"' }],
+		fixed: "- a: 1\n- b\n",
+	},
 ]);
