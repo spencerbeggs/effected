@@ -19,10 +19,10 @@ sources:
     resource: ../../packages/package-json/__test__/ExportedFiles.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T18:09:10Z
+  at: 2026-10-28T20:28:13Z
 integrity:
   generated:
-    body: b726a9fca3e175bc
+    body: 41c05bf28be660d3
 ---
 
 # The package-json exports resolver
@@ -80,14 +80,35 @@ The security property, pinned by an adversarial test per rule:[^exports-test]
   its own and the string is re-decoded until it settles, so `%252e` and
   `%%32%65` are both seen as `.`. A string still changing after four
   rounds is refused outright.
-- Four checks are stricter than Node, because a pure resolver returns a
+- Five checks are stricter than Node, because a pure resolver returns a
   string its caller decodes or follows: an encoded `/` or `\` is refused
   outright; an `imports` bare target must be a package name (npm's
   characters, no leading `.` or `_`, no backslash or `%`) plus a subpath
   with no forbidden segment, checked again after `*` substitution, and
   refused as Node's PACKAGE_RESOLVE refuses one (`invalidModuleSpecifier`,
-  which ends an array fallback); and
-  `main`, `types` and `typesVersions` targets are confined.
+  which ends an array fallback);
+  `main`, `types` and `typesVersions` targets are confined; and a request
+  ending in `/` is refused (`invalidModuleSpecifier`). Node refuses that
+  last one for `imports`, but for `exports` it still resolves it through a
+  pattern under the DEP0155 deprecation warning: `pkg/a/` under
+  `"./*": "./dist/*.js"` names a file literally called `.js` in `dist/a/`.
+  Probed against Node, and kept refused on purpose.
+- Confining `main`, `types` and `typesVersions` does not mean refusing
+  every `..`. A literal `..` that stays inside the package is resolved as
+  Node's URL parsing resolves it: `./lib/../index.js` answers
+  `./index.js`, which Node loads too, and the confinement checks then run
+  on the resolved path. A `..` that climbs out (`./lib/../../x.js`) is
+  refused, and so is any `..` path that also carries a `\`, a tab or
+  newline, or a segment that is a dot segment or an encoded separator
+  under any percent-decoding (`lib/%2e%2e/../x.js`), because Node reads
+  those as separators and dot segments too and a lexical resolution of the
+  written form would name a different file.
+- A `*` match is substituted as literal text, never through
+  `String.prototype.replace`, which would read `$&`, `$$`, `` $` `` and
+  `$'` in the match as replacement patterns (a request `./a$&b` once
+  answered `./dist/a*b.js`). `exports`, `imports` and
+  `PackageJsonFile.exportedFiles` replace every `*`; `typesVersions`
+  replaces the first only, as TypeScript does.
 - Hostile shape is bounded: conditions and fallback arrays nest at most
   32 deep, a pattern target carries at most 16 `*`, and pattern keys are
   matched by prefix and suffix after a sort — nothing is compiled to a
