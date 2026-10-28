@@ -865,7 +865,7 @@ function findParentIndent(fullText: string, indicatorOffset: number): number {
 		return findKeyIndent(fullText, scanBack);
 	}
 	if (scanBack >= 0 && fullText[scanBack] === "-") {
-		return findColOnLine(fullText, scanBack);
+		return isDocumentStartDash(fullText, scanBack) ? 0 : findColOnLine(fullText, scanBack);
 	}
 	// Block scalar is on its own line (after tag, anchor, or newline).
 	// Scan backward across lines to find the ":" or "-" that introduces
@@ -885,12 +885,30 @@ function findParentIndent(fullText: string, indicatorOffset: number): number {
 				fullText[afterDash] === "\n" ||
 				fullText[afterDash] === "\r"
 			) {
-				return findColOnLine(fullText, scanBack);
+				return isDocumentStartDash(fullText, scanBack) ? 0 : findColOnLine(fullText, scanBack);
 			}
 		}
 		scanBack--;
 	}
 	return 0;
+}
+
+/**
+ * True when the `-` at `pos` belongs to a `---` document-start marker. The
+ * marker opens a document at the top level, so a block scalar after it has
+ * the root's parent indent, 0. Taking its last `-` for a sequence entry put
+ * the parent at column 2: `---\n>1\n #:a` decoded to `""` where `>1\n #:a`
+ * decodes to `"#:a\n"`, and inserting the marker (`document-start`'s fix)
+ * changed the value.
+ */
+function isDocumentStartDash(text: string, pos: number): boolean {
+	let lineStart = pos;
+	while (lineStart > 0 && text[lineStart - 1] !== "\n" && text[lineStart - 1] !== "\r") {
+		lineStart--;
+	}
+	if (pos - lineStart > 2 || !text.startsWith("---", lineStart)) return false;
+	const after = text[lineStart + 3];
+	return after === undefined || after === " " || after === "\t" || after === "\n" || after === "\r";
 }
 
 /** Find the column of a character on its line. */
