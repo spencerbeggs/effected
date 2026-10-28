@@ -1,18 +1,23 @@
 ---
 type: Module
 title: jsonc
-description: Zero-dependency JSONC parsing, editing and formatting as Effect Schema classes.
+description: Pure-tier JSONC parsing, editing and formatting as Effect Schema classes, with RFC 8785 fingerprints.
 status: stable
 kind: package
 resource: ../../packages/jsonc
 tags:
   - dx
+sources:
+  - id: owner-unicode
+    resource: conversation with the repository owner
+    author: human:spencerbeggs
+    last_modified: 2026-10-28T00:00:00Z
 generated:
-  by: "okfit/claude-code"
-  at: 2026-10-23T20:36:18Z
+  by: "claude-code/opus-5.5"
+  at: 2026-10-28T17:01:30Z
 integrity:
   generated:
-    body: fc550fa0fb570f89
+    body: 684524551bdfe33f
 ---
 
 # jsonc
@@ -23,7 +28,7 @@ integrity:
 
 ## Tier and dependency posture
 
-[Pure tier](../glossary/library-tier.md): `effect` is the only peer, no `@effect/platform*` imports, no `node:` imports, and no outbound `@effected` edges — `config-file` and `workspaces` depend on this package, never the reverse. `"sideEffects": false`.
+[Pure tier](../glossary/library-tier.md): `effect` is the only peer, no `@effect/platform*` imports, no `node:` imports, and one outbound `@effected` edge: [`@effected/source`](source.md), a **regular dependency**. That edge is sound only because `source` is pure, has no dependency of its own and carries no shared-instance contract, which the [peer discipline](../conventions/peer-dependency-discipline.md) admits as a regular dependency. `config-file` and `workspaces` depend on this package, never the reverse. `"sideEffects": false`.
 
 ## Module layout
 
@@ -31,7 +36,9 @@ Module-per-concept: `Jsonc.ts` (the facade — a static class over the parser an
 
 ## Engine/facade split
 
-`noImportCycles` is error-level, so the split is structural rather than stylistic — see [the engine/facade split is a cycle firewall](../decisions/jsonc-engine-facade-split.md). `internal/` returns raw records (`{ code, offset, length }` parse errors, `_tag`-discriminated navigate results); the facade materializes `Schema.Class` types and tagged errors from them, deriving each detail's `line`/`character` from its `offset` against the source text — offsets are the engine's single positional currency, and the scanner tracks no line or column of its own. An internal module importing a facade module fails the lint; the one permitted edge is `internal/parser.ts` → `JsoncNode.ts`, which is exactly why the depth cap lives in the zero-dependency leaf `internal/limits.ts` — every recursive surface imports one constant without closing a cycle.
+`noImportCycles` is error-level, so the split is structural rather than stylistic — see [the engine/facade split is a cycle firewall](../decisions/jsonc-engine-facade-split.md). `internal/` returns raw records (`{ code, offset, length }` parse errors, `_tag`-discriminated navigate results); the facade materializes `Schema.Class` types and tagged errors from them, deriving each detail's `line`/`character` from its `offset` against the source text — offsets are the engine's single positional currency, and the scanner tracks no line or column of its own.
+
+The derivation is one `@effected/source` `LineIndex` per parse, built under its `"unicode"` rule: `\n`, `\r\n`, a bare `\r`, U+2028 and U+2029 each end a line. Counting the two separators is a ruling of the owner, for parity with VS Code's `jsonc-parser`, whose scanner this package ports and which treats them as line breaks; it means a position after a separator sits one line below where an LSP client shows it, and a consumer needing LSP positions rebuilds them from `offset` with a default `LineIndex`.[^owner-unicode] An offset at the `\n` of a `\r\n` reads as the end of its line; the hand-rolled loop this replaced answered `character: -1` there. No parse reaches that offset today (the scanner consumes `\r\n` as one token), so the regression test drives the `@internal` materializer `toDetails` directly. `JsoncParseErrorDetail` satisfies `source`'s `SourceLocation` structurally, and not `SourceDiagnostic`, since it carries no `message`; a type-level test pins both. An internal module importing a facade module fails the lint; the one permitted edge is `internal/parser.ts` → `JsoncNode.ts`, which is exactly why the depth cap lives in the zero-dependency leaf `internal/limits.ts` — every recursive surface imports one constant without closing a cycle.
 
 ## Effect-wrapping policy
 
@@ -94,7 +101,7 @@ There is deliberately **no shared-package extraction**: a possible `@effected/te
 
 Canonicalization is deliberately **stricter** than `Jsonc.stringify`: a fingerprint must never silently alter the document it claims to summarize, so every non-JSON value fails typed instead, carrying a JSON-pointer `path` to the offending value. `JsoncCanonicalizeError`'s closed code set: `UnrepresentableValue` (`undefined`, function, symbol, anywhere), `BigIntValue`, `NonFiniteNumber` (`NaN`/`±Infinity`, which RFC 8785 forbids and `JSON.stringify` would silently null), `NonPlainObject` (anything but a plain object or array — `toJSON` methods are deliberately ignored; encode domain values to plain JSON first), `NestingDepthExceeded` (the shared `MAX_NESTING_DEPTH` cap, which also intercepts cyclic values before they can recurse forever), and `InvalidDigest` (about the hashing twins, below, not the document).
 
-Hashing requires core's `Crypto.Crypto` service in `R`, and that does not lift the package's tier: `hash`/`hashText` need a real digest backend this pure-tier package does not own, so the sanctioned pattern is a service required in `R` with the backend supplied by the consumer at the edge (`@effect/platform-node`'s `NodeCrypto.layer`, or any `Crypto` layer). This is not a tier violation — the dependency policy governs runtime *dependencies* and IO ownership, not service *requirements* threaded through `R`; jsonc still has zero runtime dependencies and owns no backend.
+Hashing requires core's `Crypto.Crypto` service in `R`, and that does not lift the package's tier: `hash`/`hashText` need a real digest backend this pure-tier package does not own, so the sanctioned pattern is a service required in `R` with the backend supplied by the consumer at the edge (`@effect/platform-node`'s `NodeCrypto.layer`, or any `Crypto` layer). This is not a tier violation — the dependency policy governs runtime *dependencies* and IO ownership, not service *requirements* threaded through `R`; jsonc's only runtime dependency is the dependency-free `@effected/source`, and it owns no backend.
 
 The sync hashing twins (`hashResult`/`hashTextResult`) bind the platform in the *caller*, not the package: they take a `JsoncDigest` (`(bytes: Uint8Array) => Uint8Array`) and return a `Result`, so a consumer inside a synchronous host hook (a bundler plugin's `preprocess`, a cache `read`/`write` with no fiber to run an `Effect` in) can fingerprint at all — the same shape as `tsconfig-json`'s `TsconfigLoaderSyncOptions`. They are named `*Result`, never `*Sync`, per the [sync primitive policy](../conventions/sync-primitive-policy.md). A caller-supplied digest can fail two ways a `Crypto` layer cannot — throwing (an unknown algorithm name) or returning the wrong width — and both arrive as a typed `InvalidDigest` at path `""` rather than crashing the synchronous host. The output format is a cross-package guarantee: exactly 64 lowercase hex characters, no algorithm prefix — the same bare-hex vocabulary `sbom`'s `Sha256Digest` schema decodes, so a fingerprint flows downstream into an attestation subject without jsonc taking a dependency edge on `sbom`. `hashText`/`hashTextResult` additionally expose `normalizeEol` for file content that must fingerprint identically across checkout line-ending settings. Equal JSON values canonicalize (and therefore hash) identically regardless of object key order.
 
@@ -109,3 +116,6 @@ The sync hashing twins (`hashResult`/`hashTextResult`) bind the platform in the 
 ## Build
 
 Every Effect class factory is written inline with no exported `*_base` const; the synthesized `_base` heritage symbols are suppressed narrowly in `savvy.build.ts` and land in the `issues.json` `suppressed` bucket, keeping it zero-warning. Never widen the suppression.
+
+[^owner-unicode]: The owner ruled on 2026-10-28 that jsonc keeps counting
+    U+2028 and U+2029 as line breaks when it adopts `@effected/source`.

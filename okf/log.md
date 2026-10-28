@@ -10,6 +10,8 @@
 * Updated xdg
 * Added @effected/source
 * Updated effected
+* Updated jsonc
+* Updated toml
 
 ## 2026-10-27
 

@@ -8,11 +8,11 @@ resource: ../../packages/toml
 tags:
   - dx
 generated:
-  by: "okfit/claude-code"
-  at: 2026-10-25T14:27:30Z
+  by: "claude-code/opus-5.5"
+  at: 2026-10-28T17:01:30Z
 integrity:
   generated:
-    body: cae89663ef8095b4
+    body: 0efce54a5a23127d
 ---
 
 # toml
@@ -23,7 +23,7 @@ integrity:
 
 ## Tier and dependency posture
 
-[Pure tier](../glossary/library-tier.md): `effect` is the only peer and there are **zero runtime dependencies**. No IO, no services, no layers, no `R` — all inputs are strings, all outputs are values, documents, edits, streams or typed errors. `smol-toml` is pinned exact as a devDependency only, imported solely by the oracle test file. `"sideEffects": false`.
+[Pure tier](../glossary/library-tier.md): `effect` is the only peer, and the one runtime dependency is [`@effected/source`](source.md), taken as a **regular dependency** because it is pure, has no dependency of its own and carries no shared-instance contract (the [peer discipline](../conventions/peer-dependency-discipline.md) admits exactly that case). No IO, no services, no layers, no `R` — all inputs are strings, all outputs are values, documents, edits, streams or typed errors. `smol-toml` is pinned exact as a devDependency only, imported solely by the oracle test file. `"sideEffects": false`.
 
 ## Architecture: linear CST plus semantic pass
 
@@ -39,7 +39,7 @@ The exact tiling is the round-trip proof: document stringify reconstructs the so
 
 One concern per file, mirroring yaml's layout: a value facade (`Toml.ts`), the four datetime classes, the lossless document, the CST node classes, the edit vocabulary, format, visitor and diagnostics, with the engine under `src/internal/`. `src/index.ts` is the only barrel.
 
-`noImportCycles` is error-level, held by one rule: `src/internal/` throws **raw carriers** — a raw error record and a guard-exceeded signal — and never imports a public module. The public modules catch those throws and materialize `TomlDiagnostic` (deriving `line`/`character` from `offset`) plus the tagged errors. The one sanctioned exception is that the engine may import the CST node classes and the four datetime value classes, because both are leaves that import only `effect` (and, for the nodes, the datetimes), so importing them from `internal/` cannot close a cycle back into the facade. Defect passthrough is proven, not assumed: every `catch` in the facade tests for the two raw carriers and rethrows anything else, so a genuine programmer-error defect is never silently swallowed into a typed error channel it does not belong in.
+`noImportCycles` is error-level, held by one rule: `src/internal/` throws **raw carriers** — a raw error record and a guard-exceeded signal — and never imports a public module. The public modules catch those throws and materialize `TomlDiagnostic` (deriving `line`/`character` from `offset`) plus the tagged errors. The derivation is `@effected/source`'s `LineIndex` under its default `"lsp"` rule (`\n`, `\r\n` and a bare `\r` end a line, which is TOML's newline grammar and an LSP client's), built once inside `TomlDiagnostic.fromRaw`: every parse, stringify and modify path materializes at most one diagnostic, so one table per call is one per parse, and the public `fromRaw(source, raw)` signature is unchanged. An offset at the `\n` of a `\r\n` reads as the end of its line, where the hand-rolled loop this replaced answered `character: -1`. `TomlDiagnostic` satisfies `source`'s `SourceDiagnostic` (and so `SourceLocation`) structurally; a type-level test pins it. The one sanctioned exception is that the engine may import the CST node classes and the four datetime value classes, because both are leaves that import only `effect` (and, for the nodes, the datetimes), so importing them from `internal/` cannot close a cycle back into the facade. Defect passthrough is proven, not assumed: every `catch` in the facade tests for the two raw carriers and rethrows anything else, so a genuine programmer-error defect is never silently swallowed into a typed error channel it does not belong in.
 
 ## TOML 1.1.0
 

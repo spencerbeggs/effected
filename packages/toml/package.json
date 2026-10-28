@@ -31,6 +31,9 @@
 		"prepare": "turbo run build:dev",
 		"types:check": "tsc --noEmit"
 	},
+	"dependencies": {
+		"@effected/source": "workspace:^"
+	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
 		"@savvy-web/bundler": "^2.7.0",

@@ -1,6 +1,6 @@
 # @effected/jsonc
 
-Zero-dependency JSONC (JSON with comments) parse/edit/format as Effect schemas: parse to values or an AST, strip comments offset-preservingly, compute byte-minimal edits, format, modify by path, visit as a `Stream`. Pure tier: peers only on `effect`; the engine is a vendored, hardened port of Microsoft's `jsonc-parser`.
+JSONC (JSON with comments) parse/edit/format as Effect schemas: parse to values or an AST, strip comments offset-preservingly, compute byte-minimal edits, format, modify by path, visit as a `Stream`. Pure tier: peers only on `effect`, with one regular dependency, the dependency-free `@effected/source`; the engine is a vendored, hardened port of Microsoft's `jsonc-parser`.
 
 ## Import
 
@@ -13,6 +13,7 @@ Single entrypoint; no subpaths.
 ## Core API
 
 - **`Jsonc`** (facade) — `parse(text, options?)` → `Effect<unknown, JsoncParseError>` (error-recovering; aggregates all parse errors into one typed failure); `parseTree(text, options?)` → `Effect<Option<JsoncNode>, JsoncParseError>`; `stripComments(text, replaceCh?)` (pure); `equals`/`equalsValue` (pure, key-order-independent). Schema factories: `Jsonc.fromString(options?)` decodes a JSONC string to `unknown`; `Jsonc.schema(Target, options?)` decodes straight into your schema; `Jsonc.JsoncFromString` is the pre-bound default-options singleton. `JsoncParseOptions` fields: `disallowComments` (default `false`), `allowTrailingComma` (default `true` — deliberately diverges from Microsoft's parser default of `false`), `allowEmptyContent` (default `false`; when `true`, empty/whitespace/comment-only input decodes to `Option.none()` from `parseTree` instead of failing).
+- **`JsoncParseErrorDetail`** — one entry of `JsoncParseError.errors`: `code`, `offset`, `length` and zero-based `line`/`character`. It satisfies `@effected/source`'s `SourceLocation` (not `SourceDiagnostic`: no `message`), so a consumer written over that interface reads it directly. Its lines count U+2028 and U+2029 as breaks, for parity with `jsonc-parser`, where an LSP client does not; rebuild LSP positions from `offset` with `LineIndex.make(text).positionAt(offset)` when you need them.
 - **`JsoncNode`** — recursive AST class (no parent pointers): `find(path)`, `findAtOffset(offset)`, `pathAt(offset)`, `toValue()`. Absence is `Option`, never an error.
 - **The edit pipeline** — structurally parallel to yaml's:
   - **`JsoncEdit`** (`offset`, `length`, `content`) + `JsoncEdit.applyAll(text, edits)` — a pure, non-mutating text-splice applier; edits apply in reverse-offset order so earlier offsets stay valid.

@@ -2,7 +2,7 @@
 
 Zero-dependency JSONC parse/edit/format schemas: parse into values or an AST, strip comments offset-preservingly, compute byte-minimal edits, format, modify by path, visit as a `Stream`.
 
-**Tier: pure.** Peer-depends on `effect` only. Zero runtime deps, no IO. Second migration; merged. Public facades in `src/`, the engine in `src/internal/`, tests in `__test__/`.
+**Tier: pure.** Peer-depends on `effect` only. One runtime dep, the dependency-free `@effected/source` (a regular dependency: pure, no shared-instance contract), whose `LineIndex` derives `JsoncParseErrorDetail`'s `line`/`character` under its `"unicode"` rule — U+2028/U+2029 stay line breaks, an owner ruling for `jsonc-parser` parity. No IO. Second migration; merged. Public facades in `src/`, the engine in `src/internal/`, tests in `__test__/`.
 
 **For the full design:** → `@./okf/modules/jsonc.md`
 
