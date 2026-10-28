@@ -8,10 +8,10 @@ resource: ../../packages/yaml
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T18:52:40Z
+  at: 2026-10-28T19:27:35Z
 integrity:
   generated:
-    body: f9dd11d6a1b525c4
+    body: f78b91228cfadca5
 ---
 
 # @effected/yaml
@@ -116,13 +116,10 @@ which were all on line 0 and now break at each `\r`. A document with no bare
 `\r` parses, tokenizes and lints exactly as before. The value-preservation
 property in `__test__/lint-fix-values.test.ts` pins the fix half.
 
-The published linter already changes values in four places, none of them a
-position matter, all tracked outside this work: `colon-spacing` rewrites
-`: :` and `- :` into another structure, `hyphen-spacing` does the same to
-`-  a` after a bare `\r`, `trailing-spaces` strips whitespace after a bare
-`\r` that the composer reads as scalar content, and `empty-lines` deletes
-blank lines inside a multi-line plain scalar, which folds them into its
-value. The property's generator excludes exactly those shapes.
+Lint fixes never change the parsed value; where one would, the rule
+declines and reports the finding without a fix. The rulings and the
+property that pins them are in
+[the lint interface](../interfaces/yaml-lint.md#autofix-surgical-and-comment-safe).
 
 ## Module layout
 

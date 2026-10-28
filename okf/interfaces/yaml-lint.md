@@ -8,7 +8,7 @@ resource: ../../packages/yaml/src/YamlLint.ts
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T18:52:40Z
+  at: 2026-10-28T19:27:35Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:11.119Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: a03b15426a2d7b8c
+    body: 829101ecb4577d16
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -229,6 +229,42 @@ insertions at one position do not overlap yet would apply in arbitrary
 order, so the tie is broken by the same total order everything else uses.
 A dropped fix is still **reported** by `run`; only its application is
 skipped, and a second `fix` pass applies it.
+
+**A fix never changes the parsed value.** It is a style edit, so applying
+it must leave `Yaml.parseAll` answering exactly as before. Where a rule
+cannot fix a finding without changing the value it **declines**: it
+reports the finding and omits `fix`. Two sources of value-changing fixes
+shaped the rules:
+
+- **The lexer and the composer disagree.** Tokens are the lexer's view, and
+  it mints indicators and comments on lines the composer folds into a
+  multi-line plain scalar (`b\n -  a` is the scalar `"b -  a"`, yet carries
+  a `block-seq-entry` token). It also splits such a scalar into one token
+  per line, so its blank lines sit between tokens. A rule that must stay off
+  content asks the composer instead: `composedScalars` and
+  `insideComposedScalar` in `src/internal/rules/util.ts` index every scalar
+  the composer reads, across all documents, once per lint context.
+  `colon-spacing`, `hyphen-spacing` and `comments-spacing` skip a token
+  inside one (it is not structure, so there is nothing to report), and
+  `trailing-spaces` and `empty-lines` skip its whitespace and blank lines.
+- **Moving content across columns re-parents lines.** Deleting spaces after
+  a `-` or around a `:` moves the content behind them left, and block
+  structure is read off columns. `hyphen-spacing` and `colon-spacing`
+  decline when a later line of the entry starts in the window the content
+  moves across (`laterLineInWindow`): `-   a: 1\n    b: 2` keeps its
+  spaces. `colon-spacing` also declines to delete the space before a colon
+  unless a composed key scalar ends there, because after a `-`, another `:`
+  or an alias the space is separation (`- : 1` is not `-: 1`).
+
+`__test__/lint-fix-values.test.ts` holds the property over every built-in
+rule, with every rule on, for documents from a YAML-shaped alphabet holding
+`\n`, `\r\n` and a bare `\r`, plus a second alphabet with flow, block
+scalar, anchor, tag and marker indicators. A fuzz of up to 30 pieces, held
+to documents yaml 2.9 accepts (LF only, since yaml 2.9 reads a bare `\r` as
+content), finds no value change across 188,783 fixed documents, where the
+rules as they stood before these rulings changed 0.38% of them. What
+remains is confined to inputs yaml 2.9 rejects and the composer accepts
+leniently, a few in 100,000; those are composer matters, not fix matters.
 
 **`fix` fails with `YamlParseError` when the input carries a fatal parse
 error.** A document the engine cannot compose has no trustworthy offsets to
